@@ -56,7 +56,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: './index.html',
-        verify: './verify.html'
+        verify: './verify.html',
+        verifyHash: './verify-hash.html'
       }
     }
   }
