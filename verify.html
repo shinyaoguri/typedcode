@@ -125,6 +125,24 @@
         <!-- コンテンツプレビュー -->
         <div class="content-preview">
           <h3>📄 コンテンツプレビュー</h3>
+
+          <!-- タイムシークバー -->
+          <div class="time-seekbar" id="time-seekbar" style="display: none;">
+            <div class="seekbar-header">
+              <span class="seekbar-label">⏱️ タイムライン</span>
+              <span class="seekbar-time" id="seekbar-time">0.00秒 / 0.00秒</span>
+              <span class="seekbar-event-count" id="seekbar-event-count">イベント: 0 / 0</span>
+            </div>
+            <div class="seekbar-controls">
+              <button class="seekbar-btn" id="seekbar-start" title="最初に戻る">⏮️</button>
+              <button class="seekbar-btn" id="seekbar-prev" title="前のイベント">◀️</button>
+              <button class="seekbar-btn" id="seekbar-play" title="自動再生">▶️</button>
+              <input type="range" class="seekbar-slider" id="seekbar-slider" min="0" max="100" value="100" step="1">
+              <button class="seekbar-btn" id="seekbar-next" title="次のイベント">▶️</button>
+              <button class="seekbar-btn" id="seekbar-end" title="最後に進む">⏭️</button>
+            </div>
+          </div>
+
           <pre id="content-preview"><code>-</code></pre>
         </div>
 

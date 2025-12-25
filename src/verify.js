@@ -33,6 +33,24 @@ const externalInputList = document.getElementById('external-input-list');
 const typingSpeedChart = document.getElementById('typing-speed-chart');
 const speedChartCanvas = document.getElementById('speed-chart');
 
+// シークバー要素
+const timeSeekbar = document.getElementById('time-seekbar');
+const seekbarSlider = document.getElementById('seekbar-slider');
+const seekbarTime = document.getElementById('seekbar-time');
+const seekbarEventCount = document.getElementById('seekbar-event-count');
+const seekbarStart = document.getElementById('seekbar-start');
+const seekbarPrev = document.getElementById('seekbar-prev');
+const seekbarPlay = document.getElementById('seekbar-play');
+const seekbarNext = document.getElementById('seekbar-next');
+const seekbarEnd = document.getElementById('seekbar-end');
+
+// シークバー用のグローバル変数
+let currentEvents = [];
+let currentEventIndex = 0;
+let isPlaying = false;
+let playInterval = null;
+let finalContent = ''; // 最終コンテンツを保存
+
 // ドラッグ&ドロップイベント
 dropZone.addEventListener('dragover', (e) => {
   e.preventDefault();
@@ -154,11 +172,19 @@ async function verifyProofData(data) {
         chainValidBadge.innerHTML = '✅ 有効';
         chainValidBadge.className = 'badge success';
         chainMessage.textContent = `全${data.proof.totalEvents}イベントのハッシュ鎖が正常に検証されました`;
+        console.log('[Verify] ✅ Hash chain verification passed');
       } else {
         chainValidBadge.innerHTML = '❌ 無効';
         chainValidBadge.className = 'badge error';
         chainMessage.textContent = `エラー: ${chainVerification.message}`;
         chainError = chainVerification;
+        console.error('[Verify] ❌ Hash chain verification failed:', chainVerification);
+
+        // 詳細なエラー情報を出力
+        if (chainVerification.errorAt !== undefined) {
+          console.error('[Verify] Error at event index:', chainVerification.errorAt);
+          console.error('[Verify] Event data:', chainVerification.event);
+        }
       }
     }
 
@@ -178,6 +204,11 @@ async function verifyProofData(data) {
     // 5. タイピング速度グラフの描画
     if (data.proof && data.proof.events) {
       drawTypingSpeedChart(data.proof.events);
+    }
+
+    // 6. タイムシークバーの初期化
+    if (data.proof && data.proof.events) {
+      initializeSeekbar(data.proof.events, data.content);
     }
 
     // 総合判定
@@ -455,3 +486,274 @@ verifyAgainBtn.addEventListener('click', () => {
   resultSection.style.display = 'none';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
+
+// ========== タイムシークバー機能 ==========
+
+/**
+ * シークバーを初期化
+ */
+function initializeSeekbar(events, content) {
+  if (!events || events.length === 0) {
+    timeSeekbar.style.display = 'none';
+    return;
+  }
+
+  console.log('[Seekbar] Initializing with', events.length, 'events');
+  console.log('[Seekbar] First 3 events:', events.slice(0, 3).map(e => ({
+    type: e.type,
+    inputType: e.inputType,
+    dataLength: typeof e.data === 'string' ? e.data.length : (typeof e.data === 'object' ? JSON.stringify(e.data).length : 0),
+    dataPreview: typeof e.data === 'string' ? e.data.substring(0, 50) + '...' : (e.data ? JSON.stringify(e.data).substring(0, 50) + '...' : null),
+    sequence: e.sequence,
+    timestamp: e.timestamp
+  })));
+  console.log('[Seekbar] Final content length:', content?.length || 0);
+
+  // Event 0がcontentSnapshotかどうか確認
+  if (events.length > 0 && events[0].type === 'contentSnapshot') {
+    console.log('[Seekbar] ✅ Event 0 is contentSnapshot with', events[0].data?.length || 0, 'chars');
+  } else if (events.length > 0) {
+    console.warn('[Seekbar] ⚠️ Event 0 is NOT contentSnapshot! Type:', events[0].type);
+    console.warn('[Seekbar] This proof file may have been created before initial content recording was added.');
+  }
+
+  currentEvents = events;
+  finalContent = content || ''; // 最終コンテンツを保存
+  currentEventIndex = events.length; // デフォルトは最終状態
+  contentCache.clear(); // キャッシュをクリア
+  timeSeekbar.style.display = 'block';
+
+  // スライダーの最大値を設定
+  seekbarSlider.max = events.length;
+  seekbarSlider.value = events.length;
+
+  // UI更新（コンテンツは再構築しない - 既に表示されているため）
+  updateSeekbarUI();
+  // reconstructCodeAtIndex(currentEventIndex); // 初期化時は再構築しない
+}
+
+/**
+ * 指定したインデックスまでのコンテンツを再構築（キャッシュ付き）
+ */
+let contentCache = new Map(); // index -> content のキャッシュ
+
+function getContentAtIndex(index) {
+  // キャッシュチェック
+  if (contentCache.has(index)) {
+    console.log(`[Seekbar] Cache hit for index ${index}`);
+    return contentCache.get(index);
+  }
+
+  console.log(`[Seekbar] Reconstructing content at index ${index}`);
+
+  // index === 0: 空の初期状態
+  if (index === 0) {
+    const content = '';
+    contentCache.set(index, content);
+    console.log(`[Seekbar] Index 0: empty state`);
+    return content;
+  }
+
+  // index === currentEvents.length: 最終状態
+  if (index === currentEvents.length) {
+    contentCache.set(index, finalContent);
+    console.log(`[Seekbar] Index ${index}: final state (${finalContent.length} chars)`);
+    return finalContent;
+  }
+
+  // 最も近いキャッシュされたインデックスを探す
+  let startIndex = 0;
+  let lines = [''];
+
+  for (let i = index - 1; i >= 0; i--) {
+    if (contentCache.has(i)) {
+      startIndex = i;
+      lines = contentCache.get(i).split('\n');
+      console.log(`[Seekbar] Starting from cached index ${i}`);
+      break;
+    }
+  }
+
+  console.log(`[Seekbar] Applying events from ${startIndex} to ${index - 1}`);
+
+  // startIndexからindexまでイベントを適用
+  for (let i = startIndex; i < index && i < currentEvents.length; i++) {
+    const event = currentEvents[i];
+
+    // contentSnapshotイベントの場合
+    if (event.type === 'contentSnapshot') {
+      lines = (event.data || '').split('\n');
+      console.log(`[Seekbar] Event ${i}: contentSnapshot (${event.data?.length || 0} chars)`);
+      continue;
+    }
+
+    // contentChangeイベントの場合
+    if (event.type === 'contentChange' && event.range) {
+      const { startLineNumber, startColumn, endLineNumber, endColumn } = event.range;
+      const text = event.data || '';
+
+      console.log(`[Seekbar] Event ${i}: contentChange at ${startLineNumber}:${startColumn}-${endLineNumber}:${endColumn}, text: "${text.substring(0, 20)}..."`);
+
+      // 開始行と終了行が存在することを確認（1-based → 0-based変換）
+      while (lines.length < endLineNumber) {
+        lines.push('');
+      }
+
+      // 削除範囲を計算
+      if (startLineNumber === endLineNumber) {
+        // 同じ行内での変更
+        const line = lines[startLineNumber - 1] || '';
+        const before = line.substring(0, startColumn - 1);
+        const after = line.substring(endColumn - 1);
+
+        console.log(`[Seekbar]   Before: "${before}", After: "${after}"`);
+
+        // テキストを挿入
+        const newText = before + text + after;
+        const newLines = newText.split('\n');
+
+        console.log(`[Seekbar]   Result: ${newLines.length} lines, first: "${newLines[0].substring(0, 30)}..."`);
+
+        // 行を置き換え
+        lines.splice(startLineNumber - 1, 1, ...newLines);
+      } else {
+        // 複数行にまたがる変更
+        const startLine = lines[startLineNumber - 1] || '';
+        const endLine = lines[endLineNumber - 1] || '';
+        const before = startLine.substring(0, startColumn - 1);
+        const after = endLine.substring(endColumn - 1);
+
+        console.log(`[Seekbar]   Multi-line: deleting ${endLineNumber - startLineNumber + 1} lines`);
+
+        // テキストを挿入
+        const newText = before + text + after;
+        const newLines = newText.split('\n');
+
+        console.log(`[Seekbar]   Result: ${newLines.length} lines`);
+
+        // 複数行を置き換え
+        const deleteCount = endLineNumber - startLineNumber + 1;
+        lines.splice(startLineNumber - 1, deleteCount, ...newLines);
+      }
+    }
+  }
+
+  const content = lines.join('\n');
+  contentCache.set(index, content);
+  console.log(`[Seekbar] Cached index ${index} with ${content.length} chars, ${lines.length} lines`);
+  return content;
+}
+
+/**
+ * 特定のイベントインデックスまでコードを再構築
+ */
+function reconstructCodeAtIndex(index) {
+  console.log('[Seekbar] Reconstructing code up to event index:', index);
+
+  // getContentAtIndex を使ってコンテンツを取得
+  const content = getContentAtIndex(index);
+  const lines = content.split('\n');
+  const preview = lines.slice(0, 100).join('\n'); // 最大100行表示
+  contentPreview.textContent = preview + (lines.length > 100 ? '\n...' : '');
+}
+
+/**
+ * シークバーUIを更新
+ */
+function updateSeekbarUI() {
+  if (currentEvents.length === 0) return;
+
+  const totalTime = currentEvents[currentEvents.length - 1]?.timestamp || 0;
+  const currentTime = currentEventIndex > 0 && currentEventIndex <= currentEvents.length
+    ? currentEvents[currentEventIndex - 1].timestamp
+    : 0;
+
+  seekbarTime.textContent = `${(currentTime / 1000).toFixed(2)}秒 / ${(totalTime / 1000).toFixed(2)}秒`;
+  seekbarEventCount.textContent = `イベント: ${currentEventIndex} / ${currentEvents.length}`;
+}
+
+/**
+ * 指定インデックスにシーク
+ */
+function seekToIndex(index) {
+  currentEventIndex = Math.max(0, Math.min(index, currentEvents.length));
+  seekbarSlider.value = currentEventIndex;
+  updateSeekbarUI();
+  reconstructCodeAtIndex(currentEventIndex);
+}
+
+// シークバーのイベントリスナー
+
+// スライダー変更
+seekbarSlider.addEventListener('input', (e) => {
+  seekToIndex(parseInt(e.target.value));
+});
+
+// 最初に戻る
+seekbarStart.addEventListener('click', () => {
+  stopPlayback();
+  seekToIndex(0);
+});
+
+// 前のイベント
+seekbarPrev.addEventListener('click', () => {
+  stopPlayback();
+  seekToIndex(currentEventIndex - 1);
+});
+
+// 次のイベント
+seekbarNext.addEventListener('click', () => {
+  stopPlayback();
+  seekToIndex(currentEventIndex + 1);
+});
+
+// 最後に進む
+seekbarEnd.addEventListener('click', () => {
+  stopPlayback();
+  seekToIndex(currentEvents.length);
+});
+
+// 自動再生/停止
+seekbarPlay.addEventListener('click', () => {
+  if (isPlaying) {
+    stopPlayback();
+  } else {
+    startPlayback();
+  }
+});
+
+/**
+ * 自動再生を開始
+ */
+function startPlayback() {
+  if (currentEventIndex >= currentEvents.length) {
+    currentEventIndex = 0;
+  }
+
+  isPlaying = true;
+  seekbarPlay.textContent = '⏸️';
+  seekbarPlay.title = '一時停止';
+
+  playInterval = setInterval(() => {
+    if (currentEventIndex >= currentEvents.length) {
+      stopPlayback();
+      return;
+    }
+
+    seekToIndex(currentEventIndex + 1);
+  }, 200); // 200msごとに1イベント進む
+}
+
+/**
+ * 自動再生を停止
+ */
+function stopPlayback() {
+  isPlaying = false;
+  seekbarPlay.textContent = '▶️';
+  seekbarPlay.title = '自動再生';
+
+  if (playInterval) {
+    clearInterval(playInterval);
+    playInterval = null;
+  }
+}

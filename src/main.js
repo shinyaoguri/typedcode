@@ -84,6 +84,8 @@ const editor = monaco.editor.create(document.getElementById('editor'), {
 // テーマ管理の初期化
 const themeManager = new ThemeManager(editor);
 
+// NOTE: 初期コンテンツの記録は initializeApp() 内で typingProof.initialize() の後に実行される
+
 // 言語切り替え
 const languageSelector = document.getElementById('language-selector');
 languageSelector.addEventListener('change', (e) => {
@@ -269,10 +271,10 @@ editor.onDidChangeCursorPosition(async (e) => {
 
   const event = {
     type: 'cursorPositionChange',
-    data: JSON.stringify({
+    data: {
       lineNumber: e.position.lineNumber,
       column: e.position.column
-    })
+    }
   };
 
   const result = await typingProof.recordEvent(event);
@@ -316,12 +318,12 @@ editor.onDidChangeCursorSelection(async (e) => {
 
   const event = {
     type: 'selectionChange',
-    data: JSON.stringify({
+    data: {
       startLineNumber: e.selection.startLineNumber,
       startColumn: e.selection.startColumn,
       endLineNumber: e.selection.endLineNumber,
       endColumn: e.selection.endColumn
-    }),
+    },
     range: {
       startLineNumber: e.selection.startLineNumber,
       startColumn: e.selection.startColumn,
@@ -345,24 +347,11 @@ editor.onDidChangeCursorSelection(async (e) => {
 });
 
 // 証明ステータスを更新
-async function updateProofStatus() {
+function updateProofStatus() {
   const stats = typingProof.getStats();
   eventCountEl.textContent = stats.totalEvents;
-
-  // タイピング証明ハッシュを生成して表示
-  try {
-    const editorContent = editor.getValue();
-    const typingProof_result = await typingProof.generateTypingProofHash(editorContent);
-    const hash = typingProof_result.typingProofHash;
-
-    currentHashEl.textContent = hash.substring(0, 16) + '...';
-    currentHashEl.title = `クリックでコピー: ${hash}`; // フルハッシュをツールチップで表示
-    currentHashEl.dataset.fullHash = hash; // フルハッシュを保存
-    currentHashEl.style.cursor = 'pointer'; // カーソルをポインターに
-  } catch (error) {
-    console.error('[TypedCode] Failed to generate typing proof hash:', error);
-    currentHashEl.textContent = 'エラー';
-  }
+  currentHashEl.textContent = stats.currentHash.substring(0, 16) + '...';
+  currentHashEl.title = stats.currentHash;
 
   // 100イベントごとにスナップショット記録
   if (stats.totalEvents > 0 && stats.totalEvents % 100 === 0) {
@@ -376,26 +365,6 @@ async function updateProofStatus() {
       });
   }
 }
-
-// ハッシュをクリックでコピー
-currentHashEl.addEventListener('click', async () => {
-  const fullHash = currentHashEl.dataset.fullHash;
-  if (fullHash) {
-    try {
-      await navigator.clipboard.writeText(fullHash);
-      const originalText = currentHashEl.textContent;
-      currentHashEl.textContent = 'コピーしました！';
-      currentHashEl.style.color = '#4CAF50';
-      setTimeout(() => {
-        currentHashEl.textContent = originalText;
-        currentHashEl.style.color = '';
-      }, 1500);
-    } catch (error) {
-      console.error('[TypedCode] Failed to copy hash:', error);
-      alert('コピーに失敗しました');
-    }
-  }
-});
 
 
 // 証明データのエクスポート機能
@@ -465,6 +434,46 @@ async function initializeApp() {
     ...fingerprintComponents
   });
   console.log('[TypedCode] TypingProof initialized with device ID');
+
+  // LocalStorageからコンテンツを復元（初期コンテンツ記録の前に実行）
+  const savedContent = localStorage.getItem('editorContent');
+  const savedLanguage = localStorage.getItem('editorLanguage');
+
+  // イベント記録を一時的に無効化（初期化時の変更を記録しない）
+  isEventRecordingEnabled = false;
+
+  if (savedContent) {
+    editor.setValue(savedContent);
+    console.log('[TypedCode] Restored content from localStorage');
+  }
+
+  if (savedLanguage) {
+    languageSelector.value = savedLanguage;
+    const model = editor.getModel();
+    monaco.editor.setModelLanguage(model, savedLanguage);
+    console.log('[TypedCode] Restored language from localStorage:', savedLanguage);
+  }
+
+  // 初期コンテンツを記録（エディタに既にあるコード）
+  const initialContent = editor.getValue();
+  console.log('[TypedCode] Recording initial content, length:', initialContent.length);
+
+  if (initialContent && initialContent.trim()) {
+    const result = await typingProof.recordEvent({
+      type: 'contentSnapshot',
+      data: initialContent,
+      description: '初期コンテンツ',
+      isSnapshot: true
+    });
+    updateProofStatus();
+    console.log('[TypedCode] Initial content recorded as event', result.index, 'with hash:', result.hash.substring(0, 16) + '...');
+  } else {
+    console.log('[TypedCode] No initial content to record');
+  }
+
+  // イベント記録を有効化（これ以降のユーザー入力を記録する）
+  isEventRecordingEnabled = true;
+  console.log('[TypedCode] Event recording enabled');
 
   // ログビューアの初期化
   const logEntriesContainer = document.getElementById('log-entries');
@@ -543,42 +552,7 @@ async function initializeApp() {
     });
   }
 
-  const savedContent = localStorage.getItem('editorContent');
-  const savedLanguage = localStorage.getItem('editorLanguage');
-
-  // イベント記録を一時的に無効化（初期化時の変更を記録しない）
-  isEventRecordingEnabled = false;
-
-  if (savedContent) {
-    editor.setValue(savedContent);
-  }
-
-  if (savedLanguage) {
-    languageSelector.value = savedLanguage;
-    const model = editor.getModel();
-    monaco.editor.setModelLanguage(model, savedLanguage);
-  }
-
-  // イベント記録を再度有効化
-  isEventRecordingEnabled = true;
-
-  // 初期コンテンツを記録
-  const initialContent = editor.getValue();
-  const initialEvent = {
-    type: 'editorInitialized',
-    data: initialContent,
-    rangeLength: initialContent.length,
-    range: {
-      startLineNumber: 1,
-      startColumn: 1,
-      endLineNumber: editor.getModel().getLineCount(),
-      endColumn: editor.getModel().getLineMaxColumn(editor.getModel().getLineCount())
-    },
-    description: `エディタ初期化（${initialContent.length}文字）`
-  };
-  typingProof.recordEvent(initialEvent).then(() => {
-    updateProofStatus();
-  });
+  // NOTE: LocalStorageからの復元と初期コンテンツの記録は既に上で実行済み
 
   // コピーボタンの機能
   const copyCodeBtn = document.getElementById('copy-code-btn');

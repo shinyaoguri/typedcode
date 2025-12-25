@@ -94,13 +94,23 @@ export class TypingProof {
     this.currentHash = await this.computeHash(combinedData);
 
     // デバッグ: ハッシュ計算に使用したデータをログ出力
-    if (this.events.length < 5 || event.type === 'selectionChange') {
+    // 全てのイベントをログ出力（デバッグ用）
+    if (this.events.length < 30) {  // 最初の30イベントを表示
       console.log(`[Record] Event ${this.events.length}:`, {
         type: event.type,
+        sequence,
+        timestamp: timestamp.toFixed(2),
         eventData,
-        eventString,
+        eventDataKeys: Object.keys(eventData),
+        eventString: eventString.substring(0, 300) + (eventString.length > 300 ? '...' : ''),
+        eventStringLength: eventString.length,
+        combinedData: combinedData.substring(0, 300) + (combinedData.length > 300 ? '...' : ''),
+        combinedDataLength: combinedData.length,
         hash: this.currentHash
       });
+      if (this.events.length <= 2) {
+        console.log(`[Record] Event ${this.events.length} FULL eventString:`, eventString);
+      }
     }
 
     // イベントを保存（ハッシュ計算に使用したフィールド + 追加のメタデータ）
@@ -286,11 +296,16 @@ export class TypingProof {
           event,
           eventData,
           eventString,
+          eventStringLength: eventString.length,
           previousHash: hash,
           expectedHash: event.hash,
           computedHash,
-          combinedData: combinedData.substring(0, 200) + '...'
+          combinedData: combinedData.substring(0, 300) + '...',
+          combinedDataLength: combinedData.length
         });
+        // JSONキーの順序を確認
+        console.error('[Verify] eventData keys:', Object.keys(eventData));
+        console.error('[Verify] Full eventString:', eventString);
         return {
           valid: false,
           errorAt: i,
