@@ -28,6 +28,8 @@ const timestampEl = document.getElementById('timestamp');
 const userAgentEl = document.getElementById('user-agent');
 const contentPreview = document.getElementById('content-preview');
 const verifyAgainBtn = document.getElementById('verify-again-btn');
+const externalInputPreview = document.getElementById('external-input-preview');
+const externalInputList = document.getElementById('external-input-list');
 
 // ドラッグ&ドロップイベント
 dropZone.addEventListener('dragover', (e) => {
@@ -109,12 +111,16 @@ async function verifyProofData(data) {
         pureTypingBadge.innerHTML = '✅ 純粋なタイピング';
         pureTypingBadge.className = 'badge success';
         pasteInfo.textContent = 'コピー&ペーストは検出されませんでした';
+        externalInputPreview.style.display = 'none';
       } else {
         pureTypingBadge.innerHTML = '⚠️ 外部入力あり';
         pureTypingBadge.className = 'badge warning';
         const pasteCount = data.typingProofData.metadata.pasteEvents || 0;
         const dropCount = data.typingProofData.metadata.dropEvents || 0;
         pasteInfo.textContent = `ペースト: ${pasteCount}回、ドロップ: ${dropCount}回`;
+
+        // 外部入力イベントを抽出して表示
+        displayExternalInputs(data.proof.events);
       }
 
       // デバイスID
@@ -214,6 +220,61 @@ function showError(title, message) {
   statusIcon.textContent = '❌';
   statusTitle.textContent = title;
   statusMessage.textContent = message;
+}
+
+// 外部入力イベントを表示
+function displayExternalInputs(events) {
+  if (!events || events.length === 0) {
+    externalInputPreview.style.display = 'none';
+    return;
+  }
+
+  // ペースト・ドロップイベントを抽出
+  const externalInputEvents = events.filter(event =>
+    event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop'
+  );
+
+  if (externalInputEvents.length === 0) {
+    externalInputPreview.style.display = 'none';
+    return;
+  }
+
+  // 外部入力セクションを表示
+  externalInputPreview.style.display = 'block';
+  externalInputList.innerHTML = '';
+
+  externalInputEvents.forEach((event) => {
+    const eventDiv = document.createElement('div');
+    eventDiv.className = 'external-input-item';
+
+    // イベントタイプ
+    const typeSpan = document.createElement('span');
+    typeSpan.className = 'external-input-type';
+    typeSpan.textContent = event.inputType === 'insertFromPaste' ? '📋 ペースト' : '📂 ドロップ';
+    eventDiv.appendChild(typeSpan);
+
+    // タイムスタンプ
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'external-input-time';
+    timeSpan.textContent = `${(event.timestamp / 1000).toFixed(2)}秒`;
+    eventDiv.appendChild(timeSpan);
+
+    // コンテンツプレビュー
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'external-input-content';
+
+    const content = event.data || '';
+    const maxLength = 200;
+    const preview = content.length > maxLength
+      ? content.substring(0, maxLength) + '...'
+      : content;
+
+    contentDiv.textContent = preview;
+    contentDiv.title = content; // フルコンテンツをツールチップに
+    eventDiv.appendChild(contentDiv);
+
+    externalInputList.appendChild(eventDiv);
+  });
 }
 
 // ハッシュのコピー

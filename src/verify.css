@@ -283,6 +283,66 @@ header h1 {
   background: #5568d3;
 }
 
+/* 外部入力プレビュー */
+.external-input-preview {
+  background: #fff3cd;
+  padding: 20px;
+  border-radius: 10px;
+  border: 2px solid #ffc107;
+  margin-bottom: 20px;
+}
+
+.external-input-preview h3 {
+  font-size: 1.2rem;
+  margin-bottom: 15px;
+  color: #856404;
+}
+
+.external-input-item {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #ffeaa7;
+  margin-bottom: 10px;
+}
+
+.external-input-item:last-child {
+  margin-bottom: 0;
+}
+
+.external-input-type {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #ffc107;
+  color: #333;
+  border-radius: 15px;
+  font-weight: bold;
+  font-size: 0.9rem;
+  margin-right: 10px;
+}
+
+.external-input-time {
+  display: inline-block;
+  color: #666;
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.external-input-content {
+  margin-top: 10px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 5px;
+  border-left: 3px solid #ffc107;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #333;
+  cursor: help;
+}
+
 /* コンテンツプレビュー */
 .content-preview {
   background: #f8f9fa;
