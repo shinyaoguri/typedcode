@@ -242,6 +242,15 @@ body {
   color: var(--accent-danger);
 }
 
+.activitybar-item-primary {
+  color: var(--accent-info);
+}
+
+.activitybar-item-primary:hover {
+  color: #fff;
+  background: var(--accent-info);
+}
+
 /* Tooltip for activity bar items */
 .activitybar-item::after {
   content: attr(title);
@@ -359,18 +368,117 @@ body {
 
 #editor {
   width: 100%;
-  height: 100%;
+  height: calc(100% - 35px);
+}
+
+/* Editor Tabs (VSCode-style) */
+.editor-tabs {
+  display: flex;
+  height: 35px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-shrink: 0;
+}
+
+.editor-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+
+.editor-tabs::-webkit-scrollbar-thumb {
+  background: var(--bg-hover);
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  height: 35px;
+  padding: 0 10px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  user-select: none;
+  position: relative;
+  min-width: 120px;
+  max-width: 200px;
+}
+
+.editor-tab:hover {
+  background: var(--bg-hover);
+}
+
+.editor-tab.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.editor-tab.active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--accent-info);
+}
+
+.editor-tab .tab-icon {
+  margin-right: 6px;
+  font-size: 14px;
+  color: #e8ab53;
+  flex-shrink: 0;
+}
+
+.editor-tab .tab-filename {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-tab .tab-extension {
+  color: var(--text-tertiary);
+}
+
+.editor-tab .tab-modified {
+  width: 8px;
+  height: 8px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  flex-shrink: 0;
+  display: none;
+}
+
+.editor-tab.modified .tab-modified {
+  display: block;
+}
+
+/* Tab filename editing */
+.editor-tab .tab-filename-input {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent-info);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 2px 4px;
+  margin: 0;
+  outline: none;
+  min-width: 60px;
+  max-width: 140px;
 }
 
 /* Copy Code Button */
 .copy-code-btn {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 100;
+  top: 43px;
+  right: 24px;
+  z-index: 1000;
   width: 32px;
   height: 32px;
-  background: var(--bg-hover);
+  background: var(--bg-tertiary);
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
   border-radius: 4px;
@@ -380,7 +488,8 @@ body {
   justify-content: center;
   font-size: 14px;
   transition: all 0.2s ease;
-  opacity: 0.7;
+  opacity: 0.6;
+  box-shadow: 0 2px 8px var(--shadow);
 }
 
 .copy-code-btn:hover {
@@ -716,9 +825,9 @@ body {
    ============================================ */
 #block-notification {
   position: fixed;
-  top: 50%;
+  top: 80px;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   background-color: var(--bg-tertiary);
   color: var(--text-primary);
   padding: 12px 24px;
@@ -728,7 +837,7 @@ body {
   font-size: 13px;
   font-weight: 500;
   z-index: 10000;
-  animation: notificationSlideIn 0.2s ease-out;
+  animation: notificationSlideIn 0.3s ease-out;
 }
 
 #block-notification.hidden {
@@ -738,11 +847,11 @@ body {
 @keyframes notificationSlideIn {
   from {
     opacity: 0;
-    transform: translate(-50%, -60%);
+    transform: translateX(-50%) translateY(-20px);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -50%);
+    transform: translateX(-50%) translateY(0);
   }
 }
 

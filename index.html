@@ -30,10 +30,13 @@
       <!-- Activity Bar (Left Icon Column) -->
       <div class="activitybar">
         <div class="activitybar-top">
-          <button class="activitybar-item" id="download-btn" title="Save Code">
-            <i class="fas fa-download"></i>
+          <button class="activitybar-item activitybar-item-primary" id="export-zip-btn" title="Download All (ZIP)">
+            <i class="fas fa-file-zipper"></i>
           </button>
-          <button class="activitybar-item" id="export-proof-btn" title="Export Proof">
+          <button class="activitybar-item" id="download-btn" title="Save Code Only">
+            <i class="fas fa-code"></i>
+          </button>
+          <button class="activitybar-item" id="export-proof-btn" title="Export Proof Only">
             <i class="fas fa-shield-halved"></i>
           </button>
           <a class="activitybar-item" href="./verify.html" title="Verify Proof">
@@ -53,6 +56,15 @@
       <!-- Workbench (Editor + Panel) -->
       <main class="workbench">
         <div class="editor-container">
+          <!-- Editor Tabs -->
+          <div class="editor-tabs">
+            <div class="editor-tab active" id="editor-tab">
+              <i class="fas fa-file-code tab-icon"></i>
+              <span class="tab-filename" id="tab-filename">untitled</span>
+              <span class="tab-extension" id="tab-extension">.js</span>
+              <span class="tab-modified" id="tab-modified" title="Modified"></span>
+            </div>
+          </div>
           <button id="copy-code-btn" class="copy-code-btn" title="コードをコピー">
             <i class="fas fa-copy"></i>
           </button>

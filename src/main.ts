@@ -4,6 +4,7 @@ import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
 import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
+import JSZip from 'jszip';
 import './style.css';
 import { TypingProof } from './typingProof.js';
 import { InputDetector } from './inputDetector.js';
@@ -104,6 +105,16 @@ const currentHashEl = document.getElementById('current-hash');
 const blockNotificationEl = document.getElementById('block-notification');
 const blockMessageEl = document.getElementById('block-message');
 
+// タブ要素
+const editorTab = document.getElementById('editor-tab');
+const tabFilename = document.getElementById('tab-filename');
+const tabExtension = document.getElementById('tab-extension');
+const tabModified = document.getElementById('tab-modified');
+
+// ファイル名の状態
+let currentFilename = 'untitled';
+let isFileModified = false;
+
 // 通知を表示
 function showNotification(message: string): void {
   if (blockMessageEl) blockMessageEl.textContent = message;
@@ -140,6 +151,72 @@ const themeManager = new ThemeManager(editor);
 
 // NOTE: 初期コンテンツの記録は initializeApp() 内で typingProof.initialize() の後に実行される
 
+// タブの拡張子を更新
+function updateTabExtension(language: string): void {
+  const ext = '.' + getFileExtension(language);
+  if (tabExtension) {
+    tabExtension.textContent = ext;
+  }
+}
+
+// タブの変更状態を更新
+function setFileModified(modified: boolean): void {
+  isFileModified = modified;
+  if (editorTab) {
+    if (modified) {
+      editorTab.classList.add('modified');
+    } else {
+      editorTab.classList.remove('modified');
+    }
+  }
+}
+
+// ファイル名編集モードを開始
+function startFilenameEdit(): void {
+  if (!tabFilename) return;
+
+  const currentName = tabFilename.textContent ?? 'untitled';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tab-filename-input';
+  input.value = currentName;
+
+  const finishEdit = (): void => {
+    const newName = input.value.trim() || 'untitled';
+    currentFilename = newName;
+    tabFilename.textContent = newName;
+    tabFilename.style.display = '';
+    input.remove();
+
+    // localStorageに保存
+    localStorage.setItem('editorFilename', newName);
+  };
+
+  input.addEventListener('blur', finishEdit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    } else if (e.key === 'Escape') {
+      input.value = currentFilename;
+      input.blur();
+    }
+  });
+
+  tabFilename.style.display = 'none';
+  tabFilename.parentElement?.insertBefore(input, tabFilename);
+  input.focus();
+  input.select();
+}
+
+// タブのダブルクリックでファイル名編集
+if (editorTab) {
+  editorTab.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    startFilenameEdit();
+  });
+}
+
 // 言語切り替え
 const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
 if (languageSelector) {
@@ -149,6 +226,8 @@ if (languageSelector) {
     if (model) {
       monaco.editor.setModelLanguage(model, target.value);
     }
+    // タブの拡張子を更新
+    updateTabExtension(target.value);
   });
 }
 
@@ -196,6 +275,12 @@ resetBtn?.addEventListener('click', async () => {
     }
 
     localStorage.removeItem('editorContent');
+    localStorage.removeItem('editorFilename');
+
+    // ファイル名をリセット
+    currentFilename = 'untitled';
+    if (tabFilename) tabFilename.textContent = 'untitled';
+    setFileModified(false);
 
     updateProofStatus();
 
@@ -213,7 +298,7 @@ downloadBtn?.addEventListener('click', () => {
   const content = editor.getValue();
   const language = languageSelector?.value ?? 'javascript';
   const extension = getFileExtension(language);
-  const filename = `code.${extension}`;
+  const filename = `${currentFilename}.${extension}`;
 
   const blob = new Blob([content], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
@@ -222,6 +307,9 @@ downloadBtn?.addEventListener('click', () => {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+
+  // ダウンロード後は未変更状態に
+  setFileModified(false);
 });
 
 // ファイル拡張子の取得
@@ -276,6 +364,8 @@ editor.onDidChangeModelContent(async (e) => {
     }
   }
 
+  // ファイル変更を示す
+  setFileModified(true);
   updateProofStatus();
 
   localStorage.setItem('editorContent', editor.getValue());
@@ -624,6 +714,71 @@ exportProofBtn?.addEventListener('click', async () => {
   }
 });
 
+// ZIPでまとめてダウンロード
+const exportZipBtn = document.getElementById('export-zip-btn');
+exportZipBtn?.addEventListener('click', async () => {
+  try {
+    const editorContent = editor.getValue();
+    const language = languageSelector?.value ?? 'javascript';
+    const extension = getFileExtension(language);
+    const proofData = await typingProof.exportProof(editorContent);
+
+    const exportData = {
+      ...proofData,
+      content: editorContent,
+      language
+    };
+
+    // ZIPファイルを作成
+    const zip = new JSZip();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const codeFilename = `${currentFilename}.${extension}`;
+
+    // コードファイルを追加
+    zip.file(codeFilename, editorContent);
+
+    // 証明ファイルを追加
+    const jsonString = JSON.stringify(exportData, null, 2);
+    zip.file(`typedcode-proof-${timestamp}.json`, jsonString);
+
+    // READMEを追加
+    const readme = `TypedCode Export
+================
+
+This archive contains:
+- ${codeFilename}: Your source code
+- typedcode-proof-${timestamp}.json: Typing proof data
+
+To verify this proof:
+1. Visit the TypedCode verification page
+2. Drop the proof JSON file to verify
+
+Generated: ${new Date().toISOString()}
+Events: ${proofData.proof.totalEvents}
+`;
+    zip.file('README.txt', readme);
+
+    // ZIPを生成してダウンロード
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `typedcode-${timestamp}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    const verification = await typingProof.verify();
+    if (verification.valid) {
+      showNotification('ZIPファイルをダウンロードしました（検証: OK）');
+    } else {
+      showNotification('警告: ハッシュ鎖の検証に失敗しました');
+    }
+  } catch (error) {
+    console.error('[TypedCode] ZIP export failed:', error);
+    showNotification('ZIPエクスポートに失敗しました');
+  }
+});
+
 // 初期化処理
 async function initializeApp(): Promise<void> {
   console.log('[TypedCode] Initializing app...');
@@ -670,7 +825,17 @@ async function initializeApp(): Promise<void> {
     if (model) {
       monaco.editor.setModelLanguage(model, savedLanguage);
     }
+    // タブの拡張子を更新
+    updateTabExtension(savedLanguage);
     console.log('[TypedCode] Restored language from localStorage:', savedLanguage);
+  }
+
+  // ファイル名をlocalStorageから復元
+  const savedFilename = localStorage.getItem('editorFilename');
+  if (savedFilename && tabFilename) {
+    currentFilename = savedFilename;
+    tabFilename.textContent = savedFilename;
+    console.log('[TypedCode] Restored filename from localStorage:', savedFilename);
   }
 
   const initialContent = editor.getValue();
