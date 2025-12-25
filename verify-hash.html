@@ -11,7 +11,7 @@
   <div class="container">
     <header>
       <h1>🔐 タイピング証明ハッシュ検証</h1>
-      <p class="subtitle">コードとハッシュから純粋なタイピングかを検証</p>
+      <p class="subtitle">証明ファイル（JSON）から純粋なタイピングかを検証</p>
       <div class="nav-links">
         <a href="./index.html" class="nav-link">← エディタに戻る</a>
         <a href="./verify.html" class="nav-link">完全検証ページ →</a>
@@ -22,19 +22,7 @@
       <!-- 入力セクション -->
       <section class="input-section">
         <div class="input-card">
-          <h2>📝 コード入力</h2>
-          <p class="help-text">検証したいコードを貼り付けてください</p>
-          <textarea id="code-input" placeholder="ここにコードを貼り付け..."></textarea>
-        </div>
-
-        <div class="input-card">
-          <h2>🔑 タイピング証明ハッシュ</h2>
-          <p class="help-text">エディタから取得したハッシュを貼り付けてください</p>
-          <input type="text" id="hash-input" placeholder="例: a3f8b2c9d4e5f6g7h8i9j0k1l2m3n4o5...">
-        </div>
-
-        <div class="input-card">
-          <h2>💾 または証明ファイルから読み込み</h2>
+          <h2>💾 証明ファイルから読み込み（推奨）</h2>
           <p class="help-text">typedcode-proof-*.json をドロップまたは選択</p>
           <div class="file-drop-zone" id="file-drop-zone">
             <div class="drop-zone-icon">📁</div>
@@ -46,7 +34,17 @@
           </div>
         </div>
 
-        <button class="verify-btn" id="verify-btn">🔍 検証する</button>
+        <div class="input-card">
+          <h2>📝 手動入力（参考用）</h2>
+          <p class="help-text" style="color: #dc3545; font-weight: bold;">⚠️ コードとハッシュのみでは完全な検証はできません</p>
+          <p class="help-text">タイピング証明ハッシュにはデバイスIDとイベント履歴が含まれるため、証明ファイル全体が必要です</p>
+          <label style="display: block; margin-bottom: 5px; font-weight: bold;">コード:</label>
+          <textarea id="code-input" placeholder="ここにコードを貼り付け..." style="margin-bottom: 15px;"></textarea>
+          <label style="display: block; margin-bottom: 5px; font-weight: bold;">ハッシュ:</label>
+          <input type="text" id="hash-input" placeholder="例: a3f8b2c9d4e5f6g7h8i9j0k1l2m3n4o5...">
+        </div>
+
+        <button class="verify-btn" id="verify-btn">🔍 検証する（手動入力の場合は警告表示）</button>
       </section>
 
       <!-- 結果セクション -->

@@ -103,59 +103,25 @@ verifyBtn.addEventListener('click', async () => {
   showVerifying();
 
   try {
-    // TypingProofインスタンスを作成
-    const typingProof = new TypingProof();
+    // 警告を表示
+    hashValidBadge.innerHTML = '⚠️ 制限あり';
+    hashValidBadge.className = 'badge warning';
+    hashMessage.textContent = 'コードとハッシュのみでは完全な検証ができません。タイピング証明ハッシュにはデバイスIDとイベント履歴が含まれるため、証明ファイル全体が必要です。';
 
-    // コードから新しいハッシュを生成
-    const generatedResult = await typingProof.generateTypingProofHash(code);
-    const generatedHash = generatedResult.typingProofHash;
+    pureTypingBadge.innerHTML = '❓ 不明';
+    pureTypingBadge.className = 'badge warning';
+    typingInfo.textContent = '完全な検証には証明ファイル（JSON）を読み込んでください。';
 
-    // ハッシュの比較
-    const hashMatches = generatedHash === hash;
+    deviceIdEl.textContent = '-';
+    totalEventsEl.textContent = '-';
+    insertEventsEl.textContent = '-';
+    deleteEventsEl.textContent = '-';
+    pasteEventsEl.textContent = '-';
+    dropEventsEl.textContent = '-';
+    typingTimeEl.textContent = '-';
 
-    if (hashMatches) {
-      // ハッシュが一致
-      hashValidBadge.innerHTML = '✅ 一致';
-      hashValidBadge.className = 'badge success';
-      hashMessage.textContent = '入力されたコードとハッシュが一致しました';
-
-      // 純粋なタイピング判定は不可（証明データがないため）
-      pureTypingBadge.innerHTML = '❓ 不明';
-      pureTypingBadge.className = 'badge warning';
-      typingInfo.textContent = 'タイピング判定には完全な証明データが必要です。証明ファイルを読み込んでください。';
-
-      // 統計情報は表示できない
-      deviceIdEl.textContent = '-';
-      totalEventsEl.textContent = '-';
-      insertEventsEl.textContent = '-';
-      deleteEventsEl.textContent = '-';
-      pasteEventsEl.textContent = '-';
-      dropEventsEl.textContent = '-';
-      typingTimeEl.textContent = '-';
-
-      detailsGrid.style.display = 'grid';
-      showSuccess('✅ ハッシュ検証成功：コードとハッシュが一致しました');
-    } else {
-      // ハッシュが不一致
-      hashValidBadge.innerHTML = '❌ 不一致';
-      hashValidBadge.className = 'badge error';
-      hashMessage.textContent = 'コードとハッシュが一致しません。改ざんされた可能性があります。';
-
-      pureTypingBadge.innerHTML = '-';
-      pureTypingBadge.className = 'badge';
-      typingInfo.textContent = '-';
-
-      deviceIdEl.textContent = '-';
-      totalEventsEl.textContent = '-';
-      insertEventsEl.textContent = '-';
-      deleteEventsEl.textContent = '-';
-      pasteEventsEl.textContent = '-';
-      dropEventsEl.textContent = '-';
-      typingTimeEl.textContent = '-';
-
-      detailsGrid.style.display = 'grid';
-      showError('❌ ハッシュ検証失敗', 'コードとハッシュが一致しません');
-    }
+    detailsGrid.style.display = 'grid';
+    showWarning('⚠️ コードとハッシュのみでは検証できません。証明ファイル（JSON）を読み込んでください。');
   } catch (error) {
     console.error('[VerifyHash] Verification error:', error);
     showError('エラーが発生しました', error.message);
