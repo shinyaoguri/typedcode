@@ -419,6 +419,7 @@ main {
 
 /* ログビューア */
 #log-viewer {
+  position: relative;
   flex: 0 0 0%;
   background-color: var(--bg-primary);
   border-left: 1px solid var(--border-color);
@@ -434,6 +435,52 @@ main {
   flex: 0 0 40%;
   opacity: 1;
   visibility: visible;
+}
+
+/* リサイズ時はトランジションを無効化 */
+#log-viewer.resizing {
+  transition: none;
+}
+
+.editor-container.resizing {
+  transition: none;
+}
+
+/* リサイズハンドル */
+.log-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  background: transparent;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color 0.2s;
+}
+
+.log-resize-handle:hover,
+.log-resize-handle.dragging {
+  background: var(--accent-primary);
+}
+
+.log-resize-handle::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  background: var(--border-color);
+  border-radius: 1px;
+  transition: background-color 0.2s, height 0.2s;
+}
+
+.log-resize-handle:hover::before,
+.log-resize-handle.dragging::before {
+  background: white;
+  height: 60px;
 }
 
 .log-viewer-header {

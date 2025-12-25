@@ -27,7 +27,7 @@ export class LogViewer {
   toggle(): void {
     this.isVisible = !this.isVisible;
     const logViewer = document.getElementById('log-viewer');
-    const editorContainer = document.querySelector('.editor-container');
+    const editorContainer = document.querySelector('.editor-container') as HTMLElement | null;
 
     if (this.isVisible) {
       logViewer?.classList.add('visible');
@@ -36,6 +36,13 @@ export class LogViewer {
     } else {
       logViewer?.classList.remove('visible');
       editorContainer?.classList.remove('with-log');
+      // リサイズで設定されたインラインスタイルをリセット
+      if (logViewer) {
+        logViewer.style.flex = '';
+      }
+      if (editorContainer) {
+        editorContainer.style.flex = '';
+      }
     }
   }
 

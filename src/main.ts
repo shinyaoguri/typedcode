@@ -733,6 +733,68 @@ async function initializeApp(): Promise<void> {
     });
   }
 
+  // ログビューアのリサイズ機能
+  const logResizeHandle = document.getElementById('log-resize-handle');
+  const logViewerEl = document.getElementById('log-viewer');
+  const mainEl = document.querySelector('main');
+
+  if (logResizeHandle && logViewerEl && editorContainer && mainEl) {
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    logResizeHandle.addEventListener('mousedown', (e: MouseEvent) => {
+      e.preventDefault();
+      isResizing = true;
+      startX = e.clientX;
+      startWidth = logViewerEl.offsetWidth;
+
+      // リサイズ中はトランジションを無効化
+      logViewerEl.classList.add('resizing');
+      editorContainer.classList.add('resizing');
+      logResizeHandle.classList.add('dragging');
+
+      // body全体でカーソルを変更
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e: MouseEvent) => {
+      if (!isResizing) return;
+
+      const mainWidth = mainEl.clientWidth;
+      const deltaX = startX - e.clientX;
+      const newWidth = startWidth + deltaX;
+
+      // 最小幅200px、最大幅は画面の70%
+      const minWidth = 200;
+      const maxWidth = mainWidth * 0.7;
+      const clampedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+
+      // パーセンテージを計算
+      const widthPercent = (clampedWidth / mainWidth) * 100;
+
+      // flexで幅を設定
+      logViewerEl.style.flex = `0 0 ${widthPercent}%`;
+      editorContainer.style.flex = `1 1 ${100 - widthPercent}%`;
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!isResizing) return;
+
+      isResizing = false;
+
+      // トランジションを再有効化
+      logViewerEl.classList.remove('resizing');
+      editorContainer.classList.remove('resizing');
+      logResizeHandle.classList.remove('dragging');
+
+      // カーソルを元に戻す
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+  }
+
   const clearLogBtn = document.getElementById('clear-log-btn');
   if (clearLogBtn) {
     clearLogBtn.addEventListener('click', () => {
