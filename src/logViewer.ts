@@ -32,9 +32,6 @@ const MOUSE_INPUT_GROUP_TYPES: EventType[] = [
   'selectionChange',
 ];
 
-/** 特殊キー（Enter, Delete, Backspace）- 通常のキー入力とは別グループ */
-const SPECIAL_KEYS = ['Enter', 'Delete', 'Backspace'];
-
 /** キー入力グループの種類 */
 type KeyInputGroupKind = 'normal' | 'enter' | 'delete';
 
