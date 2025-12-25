@@ -19,6 +19,7 @@ import type {
   FingerprintComponents,
   InputType,
   EventType,
+  PoSWData,
 } from './types.js';
 
 export class TypingProof {
@@ -29,6 +30,9 @@ export class TypingProof {
   startTime: number = performance.now();
   initialized: boolean = false;
   private recordQueue: Promise<RecordEventResult> = Promise.resolve({ hash: '', index: -1 });
+
+  // PoSW設定
+  private poswIterations: number = 5000;  // 反復回数（10-50ms程度を目標）
 
   /**
    * 初期化（非同期）
@@ -75,6 +79,64 @@ export class TypingProof {
   }
 
   /**
+   * Proof of Sequential Work を計算
+   * 前のハッシュに依存するため、逐次的にしか計算できない
+   */
+  async computePoSW(previousHash: string, eventDataString: string): Promise<PoSWData> {
+    const startTime = performance.now();
+
+    // ランダムなnonceを生成
+    const nonceData = new Uint8Array(16);
+    crypto.getRandomValues(nonceData);
+    const nonce = this.arrayBufferToHex(nonceData);
+
+    // 初期入力: 前のハッシュ + イベントデータ + nonce
+    let hash = await this.computeHash(previousHash + eventDataString + nonce);
+
+    // SHA-256を反復（逐次計算を強制）
+    for (let i = 1; i < this.poswIterations; i++) {
+      hash = await this.computeHash(hash);
+    }
+
+    const computeTimeMs = performance.now() - startTime;
+
+    return {
+      iterations: this.poswIterations,
+      nonce,
+      intermediateHash: hash,
+      computeTimeMs
+    };
+  }
+
+  /**
+   * PoSWを検証
+   */
+  async verifyPoSW(previousHash: string, eventDataString: string, posw: PoSWData): Promise<boolean> {
+    // 同じ計算を再実行
+    let hash = await this.computeHash(previousHash + eventDataString + posw.nonce);
+
+    for (let i = 1; i < posw.iterations; i++) {
+      hash = await this.computeHash(hash);
+    }
+
+    return hash === posw.intermediateHash;
+  }
+
+  /**
+   * PoSW反復回数を取得
+   */
+  getPoSWIterations(): number {
+    return this.poswIterations;
+  }
+
+  /**
+   * PoSW反復回数を設定（キャリブレーション用）
+   */
+  setPoSWIterations(iterations: number): void {
+    this.poswIterations = Math.max(100, Math.min(10000, iterations));
+  }
+
+  /**
    * イベントを記録してハッシュ鎖を更新（排他制御付き）
    * @returns ハッシュと配列のインデックス
    */
@@ -92,8 +154,8 @@ export class TypingProof {
     const timestamp = performance.now() - this.startTime;
     const sequence = this.events.length;
 
-    // ハッシュ計算に使用するフィールド（検証時と一致させる必要がある）
-    const eventData: EventHashData = {
+    // PoSW計算前のイベントデータ（poswフィールドなし）
+    const eventDataWithoutPoSW = {
       sequence,
       timestamp,
       type: event.type,
@@ -105,28 +167,31 @@ export class TypingProof {
       previousHash: this.currentHash
     };
 
+    // PoSW計算（前のハッシュに依存 → 逐次計算を強制）
+    const eventDataString = JSON.stringify(eventDataWithoutPoSW);
+    const posw = await this.computePoSW(this.currentHash ?? '', eventDataString);
+
+    // ハッシュ計算に使用するフィールド（PoSW含む）
+    const eventData: EventHashData = {
+      ...eventDataWithoutPoSW,
+      posw
+    };
+
     // イベントデータを文字列化してハッシュ計算
     const eventString = JSON.stringify(eventData);
     const combinedData = this.currentHash + eventString;
     this.currentHash = await this.computeHash(combinedData);
 
     // デバッグ: ハッシュ計算に使用したデータをログ出力
-    if (this.events.length < 30) {
+    if (this.events.length < 10) {
       console.log(`[Record] Event ${this.events.length}:`, {
         type: event.type,
         sequence,
         timestamp: timestamp.toFixed(2),
-        eventData,
-        eventDataKeys: Object.keys(eventData),
-        eventString: eventString.substring(0, 300) + (eventString.length > 300 ? '...' : ''),
-        eventStringLength: eventString.length,
-        combinedData: combinedData.substring(0, 300) + (combinedData.length > 300 ? '...' : ''),
-        combinedDataLength: combinedData.length,
+        poswIterations: posw.iterations,
+        poswTimeMs: posw.computeTimeMs.toFixed(2),
         hash: this.currentHash
       });
-      if (this.events.length <= 2) {
-        console.log(`[Record] Event ${this.events.length} FULL eventString:`, eventString);
-      }
     }
 
     // イベントを保存（ハッシュ計算に使用したフィールド + 追加のメタデータ）
@@ -221,7 +286,7 @@ export class TypingProof {
     const typingProof = await this.generateTypingProofHash(finalContent);
 
     return {
-      version: '2.0.0',
+      version: '3.0.0',
       typingProofHash: typingProof.typingProofHash,
       typingProofData: typingProof.proofData,
       proof: signature,
@@ -257,7 +322,7 @@ export class TypingProof {
   }
 
   /**
-   * ハッシュ鎖を検証
+   * ハッシュ鎖を検証（PoSW検証含む）
    */
   async verify(): Promise<VerificationResult> {
     let hash = this.events[0]?.previousHash ?? null;
@@ -290,8 +355,8 @@ export class TypingProof {
       }
       lastTimestamp = event.timestamp;
 
-      // recordEvent()で使用したのと同じフィールドのみを再構築
-      const eventData: EventHashData = {
+      // PoSW検証のためのデータ（poswフィールドなし）
+      const eventDataWithoutPoSW = {
         sequence: event.sequence,
         timestamp: event.timestamp,
         type: event.type,
@@ -303,6 +368,29 @@ export class TypingProof {
         previousHash: event.previousHash
       };
 
+      // PoSW検証
+      const eventDataStringForPoSW = JSON.stringify(eventDataWithoutPoSW);
+      const poswValid = await this.verifyPoSW(hash ?? '', eventDataStringForPoSW, event.posw);
+
+      if (!poswValid) {
+        console.error(`[Verify] PoSW verification failed at event ${i}:`, {
+          posw: event.posw,
+          previousHash: hash
+        });
+        return {
+          valid: false,
+          errorAt: i,
+          message: `PoSW verification failed at event ${i}: invalid proof of work`,
+          event
+        };
+      }
+
+      // recordEvent()で使用したのと同じフィールドを再構築（PoSW含む）
+      const eventData: EventHashData = {
+        ...eventDataWithoutPoSW,
+        posw: event.posw
+      };
+
       const eventString = JSON.stringify(eventData);
       const combinedData = hash + eventString;
       const computedHash = await this.computeHash(combinedData);
@@ -311,16 +399,11 @@ export class TypingProof {
         console.error(`[Verify] Hash mismatch at event ${i}:`, {
           event,
           eventData,
-          eventString,
           eventStringLength: eventString.length,
           previousHash: hash,
           expectedHash: event.hash,
-          computedHash,
-          combinedData: combinedData.substring(0, 300) + '...',
-          combinedDataLength: combinedData.length
+          computedHash
         });
-        console.error('[Verify] eventData keys:', Object.keys(eventData));
-        console.error('[Verify] Full eventString:', eventString);
         return {
           valid: false,
           errorAt: i,
@@ -337,7 +420,7 @@ export class TypingProof {
 
     return {
       valid: true,
-      message: 'All hashes verified successfully'
+      message: 'All hashes verified successfully (including PoSW)'
     };
   }
 

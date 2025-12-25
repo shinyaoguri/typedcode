@@ -16,7 +16,12 @@ export type EventType =
   | 'cursorPositionChange'
   | 'selectionChange'
   | 'externalInput'
-  | 'editorInitialized';
+  | 'editorInitialized'
+  | 'mousePositionChange'
+  | 'visibilityChange'
+  | 'focusChange'
+  | 'keyDown'
+  | 'keyUp';
 
 /** 入力タイプ（Monaco Editor準拠 + カスタム） */
 export type InputType =
@@ -74,6 +79,48 @@ export interface SelectionData extends TextRange {}
 /** カーソル位置データ */
 export interface CursorPositionData extends CursorPosition {}
 
+/** マウス位置データ */
+export interface MousePositionData {
+  x: number;
+  y: number;
+  clientX: number;
+  clientY: number;
+}
+
+/** Visibility変更データ */
+export interface VisibilityChangeData {
+  visible: boolean;
+  visibilityState: DocumentVisibilityState;
+}
+
+/** フォーカス変更データ */
+export interface FocusChangeData {
+  focused: boolean;
+}
+
+/** キーストロークダイナミクスデータ */
+export interface KeystrokeDynamicsData {
+  key: string;              // キー名（'a', 'Enter', 'Shift'など）
+  code: string;             // 物理キーコード（'KeyA', 'Enter', 'ShiftLeft'など）
+  keyDownTime?: number;     // keydown時刻（performance.now()）
+  dwellTime?: number;       // キー押下時間（keyUpで設定）
+  flightTime?: number;      // 前のキーからの経過時間
+  modifiers: {              // 修飾キー状態
+    shift: boolean;
+    ctrl: boolean;
+    alt: boolean;
+    meta: boolean;
+  };
+}
+
+/** Proof of Sequential Work データ */
+export interface PoSWData {
+  iterations: number;       // 反復回数
+  nonce: string;            // 計算で使用したnonce
+  intermediateHash: string; // 中間ハッシュ（検証用）
+  computeTimeMs: number;    // 計算時間（参考値、ミリ秒）
+}
+
 // ============================================================================
 // TypingProof イベント関連
 // ============================================================================
@@ -82,7 +129,7 @@ export interface CursorPositionData extends CursorPosition {}
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -102,11 +149,12 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;
   previousHash: string | null;
+  posw: PoSWData;  // Proof of Sequential Work
 }
 
 /** 保存されるイベントデータ（ハッシュデータ + メタデータ） */
@@ -395,7 +443,7 @@ export interface SeekbarEventInfo {
   type: EventType;
   inputType: InputType | null;
   timestamp: number;
-  data: string | CursorPositionData | SelectionData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | null;
   dataLength: number;
   dataPreview: string | null;
   rangeOffset: number | null;

@@ -16,6 +16,10 @@ import type {
   CursorPosition,
   RecordEventInput,
   DetectedEvent,
+  MousePositionData,
+  VisibilityChangeData,
+  FocusChangeData,
+  KeystrokeDynamicsData,
 } from './types.js';
 
 // Monaco Editor の Worker 設定
@@ -54,8 +58,45 @@ let lastCursorTime = 0;
 let lastSelectionRange: string | null = null;
 let lastSelectionTime = 0;
 
+// マウス位置追跡用
+let lastMousePosition: MousePositionData | null = null;
+let lastMouseTime = 0;
+const MOUSE_THROTTLE_MS = 100; // マウス移動イベントの間引き間隔
+
+// キーストロークダイナミクス追跡用
+const keyDownTimes: Map<string, number> = new Map(); // code -> keyDown時刻
+let lastKeyUpTime = 0; // 前回のkeyUp時刻（Flight Time計算用）
+
+// キーストロークダイナミクスの閾値（ノイズ対策）
+const KEYSTROKE_THRESHOLDS = {
+  MAX_FLIGHT_TIME: 2000,   // Flight Timeの上限（ms）- 2秒以上は異常値
+  MAX_DWELL_TIME: 1000,    // Dwell Timeの上限（ms）- 1秒以上は異常値（長押し）
+  MIN_DWELL_TIME: 5,       // Dwell Timeの下限（ms）- 5ms未満は計測誤差
+  MIN_FLIGHT_TIME: 0,      // Flight Timeの下限（ms）
+};
+
 // イベント記録を無効化するフラグ（リセット時などに使用）
 let isEventRecordingEnabled = true;
+
+/**
+ * イベントを記録（fire-and-forget）
+ * PoSW計算を待たずに即座に返り、バックグラウンドで処理
+ * ログビューアとステータスは非同期で更新される
+ */
+function recordEventAsync(event: RecordEventInput): void {
+  typingProof.recordEvent(event).then(result => {
+    // ログビューアに追加（非同期）
+    if (logViewer?.isVisible) {
+      const recordedEvent = typingProof.events[result.index];
+      if (recordedEvent) {
+        logViewer.addLogEntry(recordedEvent, result.index);
+      }
+    }
+    updateProofStatus();
+  }).catch(err => {
+    console.error('[TypedCode] Event recording failed:', err);
+  });
+}
 
 // UI要素の取得
 const eventCountEl = document.getElementById('event-count');
@@ -137,17 +178,7 @@ new InputDetector(document.body, async (detectedEvent: DetectedEvent) => {
           `ドロップ（${detectedEvent.data.length}文字）`
       };
 
-      const result = await typingProof.recordEvent(event);
-
-      // ログビューアに追加
-      if (logViewer?.isVisible) {
-        const recordedEvent = typingProof.events[result.index];
-        if (recordedEvent) {
-          logViewer.addLogEntry(recordedEvent, result.index);
-        }
-      }
-
-      updateProofStatus();
+      recordEventAsync(event);
     }
   }
 });
@@ -234,14 +265,7 @@ editor.onDidChangeModelContent(async (e) => {
       ...(operation.deleteDirection && { deleteDirection: operation.deleteDirection })
     };
 
-    const result = await typingProof.recordEvent(event);
-
-    if (logViewer?.isVisible) {
-      const recordedEvent = typingProof.events[result.index];
-      if (recordedEvent) {
-        logViewer.addLogEntry(recordedEvent, result.index);
-      }
-    }
+    recordEventAsync(event);
 
     if (import.meta.env.DEV) {
       console.log('[TypedCode] Operation detected:', {
@@ -284,16 +308,7 @@ editor.onDidChangeCursorPosition(async (e) => {
     }
   };
 
-  const result = await typingProof.recordEvent(event);
-
-  if (logViewer?.isVisible) {
-    const recordedEvent = typingProof.events[result.index];
-    if (recordedEvent) {
-      logViewer.addLogEntry(recordedEvent, result.index);
-    }
-  }
-
-  updateProofStatus();
+  recordEventAsync(event);
 });
 
 // 選択範囲変更イベントを記録
@@ -338,17 +353,202 @@ editor.onDidChangeCursorSelection(async (e) => {
     description: isEmpty ? '選択解除' : `${selectionLength}文字選択`
   };
 
-  const result = await typingProof.recordEvent(event);
+  recordEventAsync(event);
+});
 
-  if (logViewer?.isVisible) {
-    const recordedEvent = typingProof.events[result.index];
-    if (recordedEvent) {
-      logViewer.addLogEntry(recordedEvent, result.index);
+// マウス位置変更イベントを記録（エディタ上のみ）
+editorContainer.addEventListener('mousemove', async (e: MouseEvent) => {
+  if (!isEventRecordingEnabled) {
+    return;
+  }
+
+  const currentTime = performance.now();
+  if (currentTime - lastMouseTime < MOUSE_THROTTLE_MS) {
+    return;
+  }
+
+  const mouseData: MousePositionData = {
+    x: e.offsetX,
+    y: e.offsetY,
+    clientX: e.clientX,
+    clientY: e.clientY
+  };
+
+  // 位置が変わっていない場合はスキップ
+  if (lastMousePosition &&
+      lastMousePosition.x === mouseData.x &&
+      lastMousePosition.y === mouseData.y) {
+    return;
+  }
+
+  lastMousePosition = mouseData;
+  lastMouseTime = currentTime;
+
+  const event: RecordEventInput = {
+    type: 'mousePositionChange',
+    data: mouseData,
+    description: `マウス位置: (${mouseData.x}, ${mouseData.y})`
+  };
+
+  recordEventAsync(event);
+});
+
+// Visibility変更イベントを記録（タブ切り替えなど）
+document.addEventListener('visibilitychange', async () => {
+  if (!isEventRecordingEnabled) {
+    return;
+  }
+
+  const visibilityData: VisibilityChangeData = {
+    visible: document.visibilityState === 'visible',
+    visibilityState: document.visibilityState
+  };
+
+  const event: RecordEventInput = {
+    type: 'visibilityChange',
+    data: visibilityData,
+    description: visibilityData.visible ? 'タブがアクティブになりました' : 'タブが非アクティブになりました'
+  };
+
+  recordEventAsync(event);
+  console.log('[TypedCode] Visibility changed:', visibilityData.visibilityState);
+});
+
+// フォーカス変更イベントを記録（ウィンドウフォーカス）
+window.addEventListener('focus', async () => {
+  if (!isEventRecordingEnabled) {
+    return;
+  }
+
+  const focusData: FocusChangeData = {
+    focused: true
+  };
+
+  const event: RecordEventInput = {
+    type: 'focusChange',
+    data: focusData,
+    description: 'ウィンドウがフォーカスされました'
+  };
+
+  recordEventAsync(event);
+  console.log('[TypedCode] Window focused');
+});
+
+window.addEventListener('blur', async () => {
+  if (!isEventRecordingEnabled) {
+    return;
+  }
+
+  const focusData: FocusChangeData = {
+    focused: false
+  };
+
+  const event: RecordEventInput = {
+    type: 'focusChange',
+    data: focusData,
+    description: 'ウィンドウがフォーカスを失いました'
+  };
+
+  recordEventAsync(event);
+  console.log('[TypedCode] Window blurred');
+});
+
+// キーストロークダイナミクス: keydownイベントを記録
+editorContainer.addEventListener('keydown', async (e: KeyboardEvent) => {
+  if (!isEventRecordingEnabled) {
+    return;
+  }
+
+  const currentTime = performance.now();
+  const code = e.code;
+
+  // 既に押されている場合（キーリピート）はスキップ
+  if (keyDownTimes.has(code)) {
+    return;
+  }
+
+  // keyDown時刻を記録
+  keyDownTimes.set(code, currentTime);
+
+  // Flight Time計算（前回のkeyUpからの時間）- 閾値でクランプ
+  let flightTime: number | undefined;
+  if (lastKeyUpTime > 0) {
+    const rawFlightTime = currentTime - lastKeyUpTime;
+    // 閾値を超える場合はundefined（異常値として記録しない）
+    if (rawFlightTime <= KEYSTROKE_THRESHOLDS.MAX_FLIGHT_TIME) {
+      flightTime = Math.max(KEYSTROKE_THRESHOLDS.MIN_FLIGHT_TIME, rawFlightTime);
     }
   }
 
-  updateProofStatus();
-});
+  const keystrokeData: KeystrokeDynamicsData = {
+    key: e.key,
+    code: code,
+    keyDownTime: currentTime,
+    flightTime: flightTime,
+    modifiers: {
+      shift: e.shiftKey,
+      ctrl: e.ctrlKey,
+      alt: e.altKey,
+      meta: e.metaKey
+    }
+  };
+
+  const event: RecordEventInput = {
+    type: 'keyDown',
+    data: keystrokeData,
+    description: `キー押下: ${e.key}${e.shiftKey ? ' (Shift)' : ''}${e.ctrlKey ? ' (Ctrl)' : ''}${e.altKey ? ' (Alt)' : ''}${e.metaKey ? ' (Meta)' : ''}`
+  };
+
+  recordEventAsync(event);
+}, { capture: true });
+
+// キーストロークダイナミクス: keyupイベントを記録
+editorContainer.addEventListener('keyup', async (e: KeyboardEvent) => {
+  if (!isEventRecordingEnabled) {
+    return;
+  }
+
+  const currentTime = performance.now();
+  const code = e.code;
+
+  // Dwell Time計算（keyDownからkeyUpまでの時間）- 閾値でクランプ
+  const keyDownTime = keyDownTimes.get(code);
+  let dwellTime: number | undefined;
+  if (keyDownTime !== undefined) {
+    const rawDwellTime = currentTime - keyDownTime;
+    // 閾値内の場合のみ有効な値として記録
+    if (rawDwellTime >= KEYSTROKE_THRESHOLDS.MIN_DWELL_TIME &&
+        rawDwellTime <= KEYSTROKE_THRESHOLDS.MAX_DWELL_TIME) {
+      dwellTime = rawDwellTime;
+    }
+  }
+
+  // keyDownTimeをクリア
+  keyDownTimes.delete(code);
+
+  // lastKeyUpTimeを更新（次のFlight Time計算用）
+  lastKeyUpTime = currentTime;
+
+  const keystrokeData: KeystrokeDynamicsData = {
+    key: e.key,
+    code: code,
+    dwellTime: dwellTime,
+    modifiers: {
+      shift: e.shiftKey,
+      ctrl: e.ctrlKey,
+      alt: e.altKey,
+      meta: e.metaKey
+    }
+  };
+
+  const event: RecordEventInput = {
+    type: 'keyUp',
+    data: keystrokeData,
+    description: `キー離上: ${e.key}${dwellTime !== undefined ? ` (押下時間: ${dwellTime.toFixed(0)}ms)` : ''}`
+  };
+
+  recordEventAsync(event);
+}, { capture: true });
 
 // 証明ステータスを更新
 function updateProofStatus(): void {
