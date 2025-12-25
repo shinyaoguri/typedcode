@@ -16,15 +16,15 @@ export class LogViewer {
   toggle() {
     this.isVisible = !this.isVisible;
     const logViewer = document.getElementById('log-viewer');
-    const editor = document.getElementById('editor');
+    const editorContainer = document.querySelector('.editor-container');
 
     if (this.isVisible) {
       logViewer.classList.add('visible');
-      editor.classList.add('with-log');
+      editorContainer.classList.add('with-log');
       this.refreshLogs();
     } else {
       logViewer.classList.remove('visible');
-      editor.classList.remove('with-log');
+      editorContainer.classList.remove('with-log');
     }
   }
 

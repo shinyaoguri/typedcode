@@ -580,6 +580,29 @@ async function initializeApp() {
     updateProofStatus();
   });
 
+  // コピーボタンの機能
+  const copyCodeBtn = document.getElementById('copy-code-btn');
+  copyCodeBtn.addEventListener('click', async () => {
+    try {
+      const code = editor.getValue();
+      await navigator.clipboard.writeText(code);
+
+      // ボタンの見た目を変更
+      copyCodeBtn.classList.add('copied');
+
+      // 通知を表示
+      showNotification('📋 コードをコピーしました！');
+
+      // 2秒後に元に戻す
+      setTimeout(() => {
+        copyCodeBtn.classList.remove('copied');
+      }, 2000);
+    } catch (error) {
+      console.error('[TypedCode] Copy failed:', error);
+      showNotification('❌ コピーに失敗しました');
+    }
+  });
+
   console.log('[TypedCode] App initialized successfully');
 }
 
