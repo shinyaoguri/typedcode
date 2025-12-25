@@ -12,92 +12,110 @@
 </head>
 <body>
   <div id="app">
-    <header>
-      <h1><i class="fas fa-code"></i> TypedCode</h1>
-      <div class="controls">
-        <select id="language-selector">
-          <option value="c">C</option>
-          <option value="cpp">C++</option>
-          <option value="javascript">JavaScript</option>
-          <option value="typescript">TypeScript</option>
-          <option value="html">HTML</option>
-          <option value="css">CSS</option>
-          <option value="json">JSON</option>
-          <option value="markdown">Markdown</option>
-          <option value="python">Python</option>
-        </select>
-        <button id="theme-toggle-btn" title="テーマ切り替え">
-          <i class="fas fa-moon"></i>
-        </button>
-        <button id="reset-btn" title="リセット">
-          <i class="fas fa-rotate-left"></i>
-          <span>リセット</span>
-        </button>
-        <button id="download-btn" title="ダウンロード">
-          <i class="fas fa-download"></i>
-          <span>ダウンロード</span>
-        </button>
-        <button id="export-proof-btn" title="証明をエクスポート">
-          <i class="fas fa-shield-halved"></i>
-          <span>証明をエクスポート</span>
-        </button>
-        <a href="./verify.html" class="verify-link" title="証明を検証">
-          <i class="fas fa-check-circle"></i>
-          <span>証明を検証</span>
-        </a>
-        <button id="toggle-log-btn" title="ログ表示">
-          <i class="fas fa-list"></i>
-          <span>ログ表示</span>
-        </button>
-      </div>
-    </header>
-
-    <!-- タイピング証明ステータス -->
-    <div id="typing-proof-status">
-      <div class="status-item">
-        <span class="label">ステータス:</span>
-        <span id="proof-status" class="status-active">記録中</span>
-      </div>
-      <div class="status-item">
-        <span class="label">イベント数:</span>
-        <span id="event-count">0</span>
-      </div>
-      <div class="status-item">
-        <span class="label">現在のハッシュ:</span>
-        <span id="current-hash" class="hash-display">-</span>
-      </div>
+    <!-- Title Bar -->
+    <div class="titlebar">
+      <div class="titlebar-title"><i class="fas fa-code"></i> TypedCode</div>
+      <button class="titlebar-panel-toggle" id="toggle-log-btn" title="Toggle Log Panel">
+        <i class="fas fa-columns"></i>
+      </button>
     </div>
 
-    <!-- ブロック通知 -->
+    <!-- Block Notification -->
     <div id="block-notification" class="hidden">
       <span id="block-message"></span>
     </div>
 
-    <main>
-      <div class="editor-container">
-        <button id="copy-code-btn" class="copy-code-btn" title="コードをコピー">
-          <i class="fas fa-copy"></i>
-        </button>
-        <div id="editor"></div>
+    <!-- Main Layout: Activity Bar + Workbench -->
+    <div class="main-layout">
+      <!-- Activity Bar (Left Icon Column) -->
+      <div class="activitybar">
+        <div class="activitybar-top">
+          <button class="activitybar-item" id="download-btn" title="Save Code">
+            <i class="fas fa-download"></i>
+          </button>
+          <button class="activitybar-item" id="export-proof-btn" title="Export Proof">
+            <i class="fas fa-shield-halved"></i>
+          </button>
+          <a class="activitybar-item" href="./verify.html" title="Verify Proof">
+            <i class="fas fa-check-circle"></i>
+          </a>
+          <button class="activitybar-item activitybar-item-danger" id="reset-btn" title="Reset">
+            <i class="fas fa-rotate-left"></i>
+          </button>
+        </div>
+        <div class="activitybar-bottom">
+          <button class="activitybar-item" id="theme-toggle-btn" title="Toggle Theme">
+            <i class="fas fa-moon"></i>
+          </button>
+        </div>
       </div>
 
-      <!-- ログビューア -->
-      <div id="log-viewer">
-        <div id="log-resize-handle" class="log-resize-handle"></div>
-        <div class="log-viewer-header">
-          <h2><i class="fas fa-file-lines"></i> 操作ログ</h2>
-          <div class="log-controls">
-            <button id="close-log-btn" class="log-control-btn">
-              <i class="fas fa-times"></i>
-              <span>閉じる</span>
-            </button>
+      <!-- Workbench (Editor + Panel) -->
+      <main class="workbench">
+        <div class="editor-container">
+          <button id="copy-code-btn" class="copy-code-btn" title="コードをコピー">
+            <i class="fas fa-copy"></i>
+          </button>
+          <div id="editor"></div>
+        </div>
+
+        <!-- Log Viewer Panel -->
+        <div id="log-viewer">
+          <div id="log-resize-handle" class="log-resize-handle"></div>
+          <div class="log-viewer-header">
+            <h2><i class="fas fa-file-lines"></i> Log</h2>
+            <div class="log-controls">
+              <button id="close-log-btn" class="log-control-btn" title="Close">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+          </div>
+          <div class="log-content">
+            <div id="log-entries"></div>
           </div>
         </div>
-        <div class="log-content">
-          <div id="log-entries"></div>
+      </main>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="statusbar">
+      <div class="statusbar-left">
+        <div class="status-item" id="proof-status-item" title="Typing proof status">
+          <i class="fas fa-shield-halved"></i>
+          <span id="proof-status">Recording</span>
+        </div>
+        <div class="status-item" title="Total events recorded">
+          <i class="fas fa-list-ol"></i>
+          <span id="event-count">0</span> events
+        </div>
+        <div class="status-item hash-status" id="hash-status-item" title="Current hash chain">
+          <i class="fas fa-link"></i>
+          <span id="current-hash">-</span>
+        </div>
+        <div class="status-item" id="posw-status-item" title="PoSW (Proof of Sequential Work) status">
+          <i class="fas fa-microchip"></i>
+          <span id="posw-status">Calibrating...</span>
         </div>
       </div>
-    </main>
+      <div class="statusbar-right">
+        <div class="status-item" id="language-status" title="Select language">
+          <select id="language-selector">
+            <option value="c">C</option>
+            <option value="cpp">C++</option>
+            <option value="javascript">JavaScript</option>
+            <option value="typescript">TypeScript</option>
+            <option value="html">HTML</option>
+            <option value="css">CSS</option>
+            <option value="json">JSON</option>
+            <option value="markdown">Markdown</option>
+            <option value="python">Python</option>
+          </select>
+        </div>
+        <div class="status-item" id="cursor-position" title="Cursor position">
+          Ln <span id="cursor-line">1</span>, Col <span id="cursor-col">1</span>
+        </div>
+      </div>
+    </div>
   </div>
   <script type="module" src="/src/main.ts"></script>
 </body>

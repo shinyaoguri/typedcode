@@ -31,17 +31,78 @@ export class TypingProof {
   initialized: boolean = false;
   private recordQueue: Promise<RecordEventResult> = Promise.resolve({ hash: '', index: -1 });
 
-  // PoSW設定
-  private poswIterations: number = 5000;  // 反復回数（10-50ms程度を目標）
+  // PoSW設定（固定値 - セキュリティ上の理由で動的変更は不可）
+  private static readonly POSW_ITERATIONS = 5000;
+
+  // Web Worker関連
+  private worker: Worker | null = null;
+  private requestIdCounter: number = 0;
+  private pendingRequests: Map<number, {
+    resolve: (value: unknown) => void;
+    reject: (error: unknown) => void;
+  }> = new Map();
+
+  /**
+   * Web Workerを初期化
+   */
+  private initWorker(): void {
+    if (this.worker) return;
+
+    this.worker = new Worker(
+      new URL('./poswWorker.ts', import.meta.url),
+      { type: 'module' }
+    );
+
+    this.worker.onmessage = (event) => {
+      const response = event.data;
+
+      // PoSW計算・検証結果
+      const requestId = response.requestId;
+      const pending = this.pendingRequests.get(requestId);
+      if (pending) {
+        this.pendingRequests.delete(requestId);
+        pending.resolve(response);
+      }
+    };
+
+    this.worker.onerror = (error) => {
+      console.error('[TypingProof] Worker error:', error);
+    };
+  }
+
+  /**
+   * Workerにリクエストを送信して結果を待つ
+   */
+  private sendWorkerRequest<T>(request: Record<string, unknown>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      if (!this.worker) {
+        reject(new Error('Worker not initialized'));
+        return;
+      }
+
+      const requestId = ++this.requestIdCounter;
+      this.pendingRequests.set(requestId, { resolve: resolve as (value: unknown) => void, reject });
+      this.worker.postMessage({ ...request, requestId });
+    });
+  }
 
   /**
    * 初期化（非同期）
    * フィンガープリントを生成して初期ハッシュを設定
    */
-  async initialize(fingerprintHash: string, fingerprintComponents: FingerprintComponents): Promise<void> {
+  async initialize(
+    fingerprintHash: string,
+    fingerprintComponents: FingerprintComponents
+  ): Promise<void> {
     this.fingerprint = fingerprintHash;
     this.fingerprintComponents = fingerprintComponents;
     this.currentHash = await this.initialHash(fingerprintHash);
+
+    // Web Workerを初期化
+    this.initWorker();
+
+    console.log('[TypingProof] Initialized with fixed PoSW iterations:', TypingProof.POSW_ITERATIONS);
+
     this.initialized = true;
   }
 
@@ -79,40 +140,58 @@ export class TypingProof {
   }
 
   /**
-   * Proof of Sequential Work を計算
-   * 前のハッシュに依存するため、逐次的にしか計算できない
+   * Proof of Sequential Work を計算（Worker使用）
    */
   async computePoSW(previousHash: string, eventDataString: string): Promise<PoSWData> {
-    const startTime = performance.now();
-
-    // ランダムなnonceを生成
-    const nonceData = new Uint8Array(16);
-    crypto.getRandomValues(nonceData);
-    const nonce = this.arrayBufferToHex(nonceData);
-
-    // 初期入力: 前のハッシュ + イベントデータ + nonce
-    let hash = await this.computeHash(previousHash + eventDataString + nonce);
-
-    // SHA-256を反復（逐次計算を強制）
-    for (let i = 1; i < this.poswIterations; i++) {
-      hash = await this.computeHash(hash);
+    if (!this.worker) {
+      throw new Error('Worker not initialized');
     }
 
-    const computeTimeMs = performance.now() - startTime;
+    const response = await this.sendWorkerRequest<{
+      type: string;
+      requestId: number;
+      iterations: number;
+      nonce: string;
+      intermediateHash: string;
+      computeTimeMs: number;
+    }>({
+      type: 'compute-posw',
+      previousHash,
+      eventDataString,
+      iterations: TypingProof.POSW_ITERATIONS
+    });
 
     return {
-      iterations: this.poswIterations,
-      nonce,
-      intermediateHash: hash,
-      computeTimeMs
+      iterations: response.iterations,
+      nonce: response.nonce,
+      intermediateHash: response.intermediateHash,
+      computeTimeMs: response.computeTimeMs
     };
   }
 
   /**
-   * PoSWを検証
+   * PoSWを検証（Worker使用、フォールバックあり）
    */
   async verifyPoSW(previousHash: string, eventDataString: string, posw: PoSWData): Promise<boolean> {
-    // 同じ計算を再実行
+    // Workerが初期化されている場合はWorkerを使用
+    if (this.worker) {
+      const response = await this.sendWorkerRequest<{
+        type: string;
+        requestId: number;
+        valid: boolean;
+      }>({
+        type: 'verify-posw',
+        previousHash,
+        eventDataString,
+        nonce: posw.nonce,
+        iterations: posw.iterations,
+        expectedHash: posw.intermediateHash
+      });
+
+      return response.valid;
+    }
+
+    // フォールバック: メインスレッドで検証（検証ページ用）
     let hash = await this.computeHash(previousHash + eventDataString + posw.nonce);
 
     for (let i = 1; i < posw.iterations; i++) {
@@ -123,17 +202,10 @@ export class TypingProof {
   }
 
   /**
-   * PoSW反復回数を取得
+   * PoSW反復回数を取得（固定値）
    */
   getPoSWIterations(): number {
-    return this.poswIterations;
-  }
-
-  /**
-   * PoSW反復回数を設定（キャリブレーション用）
-   */
-  setPoSWIterations(iterations: number): void {
-    this.poswIterations = Math.max(100, Math.min(10000, iterations));
+    return TypingProof.POSW_ITERATIONS;
   }
 
   /**
@@ -323,10 +395,12 @@ export class TypingProof {
 
   /**
    * ハッシュ鎖を検証（PoSW検証含む）
+   * @param onProgress - 進捗コールバック (current, total, hashInfo?) => void
    */
-  async verify(): Promise<VerificationResult> {
+  async verify(onProgress?: (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => void): Promise<VerificationResult> {
     let hash = this.events[0]?.previousHash ?? null;
     let lastTimestamp = -Infinity;
+    const total = this.events.length;
 
     for (let i = 0; i < this.events.length; i++) {
       const event = this.events[i];
@@ -416,6 +490,17 @@ export class TypingProof {
       }
 
       hash = event.hash;
+
+      // 進捗を報告（UIスレッドに制御を戻すためにyield）
+      if (onProgress) {
+        onProgress(i + 1, total, {
+          computed: computedHash,
+          expected: event.hash,
+          poswHash: event.posw.intermediateHash
+        });
+        // 毎回UIスレッドに制御を戻す（ハッシュ表示をリアルタイム更新）
+        await new Promise(r => setTimeout(r, 0));
+      }
     }
 
     return {

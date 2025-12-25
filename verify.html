@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TypedCode - 証明の検証</title>
   <link rel="stylesheet" href="./src/verify.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -110,113 +111,97 @@
           </div>
         </div>
 
-        <!-- タイピング速度グラフ -->
-        <div class="typing-speed-chart" id="typing-speed-chart" style="display: none;">
-          <h2>⚡ タイピング速度の推移</h2>
-          <div class="chart-container">
-            <canvas id="speed-chart"></canvas>
-          </div>
-          <div class="chart-legend">
-            <div class="legend-item">
-              <span class="legend-color" style="background: #667eea;"></span>
-              <span>文字/秒</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-color" style="background: #ffc107;"></span>
-              <span>外部入力</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- マウス軌跡・アクティビティチャート -->
-        <div class="activity-charts" id="activity-charts" style="display: none;">
-          <h2>🖱️ ユーザーアクティビティ</h2>
-
-          <!-- マウス軌跡 -->
-          <div class="mouse-trajectory-section">
-            <h3>マウス軌跡</h3>
-            <div class="chart-container mouse-chart-container">
-              <canvas id="mouse-trajectory-chart"></canvas>
-            </div>
-            <div class="mouse-stats" id="mouse-stats">
-              <span>マウス移動イベント: <strong id="mouse-event-count">0</strong></span>
-            </div>
-          </div>
-
-          <!-- フォーカス・Visibilityタイムライン -->
-          <div class="focus-timeline-section">
-            <h3>フォーカス・タブ状態</h3>
-            <div class="chart-container focus-chart-container">
-              <canvas id="focus-timeline-chart"></canvas>
-            </div>
-            <div class="focus-stats" id="focus-stats">
-              <span>フォーカス変更: <strong id="focus-event-count">0</strong>回</span>
-              <span>タブ切り替え: <strong id="visibility-event-count">0</strong>回</span>
-            </div>
-            <div class="focus-legend">
-              <div class="legend-item">
-                <span class="legend-color" style="background: #28a745;"></span>
-                <span>アクティブ/フォーカス</span>
-              </div>
-              <div class="legend-item">
-                <span class="legend-color" style="background: #dc3545;"></span>
-                <span>非アクティブ/フォーカス外</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- キーストロークダイナミクス -->
-        <div class="keystroke-dynamics-section" id="keystroke-dynamics-section" style="display: none;">
-          <h2>⌨️ キーストロークダイナミクス</h2>
-          <div class="keystroke-stats">
-            <span>キー押下: <strong id="keydown-count">0</strong>回</span>
-            <span>キー離上: <strong id="keyup-count">0</strong>回</span>
-            <span>平均Dwell Time: <strong id="avg-dwell-time">0ms</strong></span>
-            <span>平均Flight Time: <strong id="avg-flight-time">0ms</strong></span>
-          </div>
-          <div class="chart-container keystroke-chart-container">
-            <canvas id="keystroke-dynamics-chart"></canvas>
-          </div>
-          <div class="chart-legend">
-            <div class="legend-item">
-              <span class="legend-color" style="background: #667eea;"></span>
-              <span>Dwell Time（キー押下時間）</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-color" style="background: #28a745;"></span>
-              <span>Flight Time（キー間隔）</span>
-            </div>
-          </div>
-        </div>
-
         <!-- 外部入力プレビュー -->
         <div class="external-input-preview" id="external-input-preview" style="display: none;">
           <h3>📋 外部入力の内容</h3>
           <div id="external-input-list"></div>
         </div>
 
-        <!-- コンテンツプレビュー -->
-        <div class="content-preview">
-          <h3>📄 コンテンツプレビュー</h3>
+        <!-- 統合タイムライン -->
+        <div class="integrated-timeline" id="integrated-timeline" style="display: none;">
+          <h2>📊 タイムライン分析</h2>
 
-          <!-- タイムシークバー -->
-          <div class="time-seekbar" id="time-seekbar" style="display: none;">
-            <div class="seekbar-header">
-              <span class="seekbar-label">⏱️ タイムライン</span>
-              <span class="seekbar-time" id="seekbar-time">0.00秒 / 0.00秒</span>
-              <span class="seekbar-event-count" id="seekbar-event-count">イベント: 0 / 0</span>
+          <!-- 統合チャートキャンバス -->
+          <div class="integrated-chart-container">
+            <canvas id="integrated-timeline-chart"></canvas>
+          </div>
+
+          <!-- 凡例 -->
+          <div class="integrated-legend">
+            <div class="legend-group">
+              <span class="legend-title">タイピング速度</span>
+              <div class="legend-item">
+                <span class="legend-color" style="background: #667eea;"></span>
+                <span>文字/秒</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-color" style="background: rgba(255, 193, 7, 0.5);"></span>
+                <span>外部入力</span>
+              </div>
             </div>
-            <div class="seekbar-controls">
-              <button class="seekbar-btn" id="seekbar-start" title="最初に戻る">⏮️</button>
-              <button class="seekbar-btn" id="seekbar-prev" title="前のイベント">◀️</button>
-              <button class="seekbar-btn" id="seekbar-play" title="自動再生">▶️</button>
-              <input type="range" class="seekbar-slider" id="seekbar-slider" min="0" max="100" value="100" step="1">
-              <button class="seekbar-btn" id="seekbar-next" title="次のイベント">▶️</button>
-              <button class="seekbar-btn" id="seekbar-end" title="最後に進む">⏭️</button>
+            <div class="legend-group">
+              <span class="legend-title">フォーカス状態</span>
+              <div class="legend-item">
+                <span class="legend-color" style="background: #28a745;"></span>
+                <span>アクティブ</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-color" style="background: #dc3545;"></span>
+                <span>非アクティブ</span>
+              </div>
+            </div>
+            <div class="legend-group">
+              <span class="legend-title">キーストローク</span>
+              <div class="legend-item">
+                <span class="legend-color" style="background: rgba(102, 126, 234, 0.7);"></span>
+                <span>Dwell Time</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-color" style="background: rgba(40, 167, 69, 0.7);"></span>
+                <span>Flight Time</span>
+              </div>
             </div>
           </div>
 
+          <!-- マウス軌跡（オーバーレイ表示用） -->
+          <div class="mouse-trajectory-overlay" id="mouse-trajectory-section" style="display: none;">
+            <h3>🖱️ マウス軌跡</h3>
+            <div class="mouse-chart-container">
+              <canvas id="mouse-trajectory-chart"></canvas>
+            </div>
+            <div class="mouse-stats">
+              <span>マウス移動: <strong id="mouse-event-count">0</strong>回</span>
+            </div>
+          </div>
+
+          <!-- 統計情報サマリー -->
+          <div class="timeline-stats">
+            <div class="stat-item">
+              <span class="stat-label">フォーカス変更</span>
+              <strong id="focus-event-count">0</strong>回
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">タブ切替</span>
+              <strong id="visibility-event-count">0</strong>回
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">キー押下</span>
+              <strong id="keydown-count">0</strong>回
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">平均Dwell</span>
+              <strong id="avg-dwell-time">0ms</strong>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">平均Flight</span>
+              <strong id="avg-flight-time">0ms</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- コンテンツプレビュー -->
+        <div class="content-preview">
+          <h3>📄 コンテンツプレビュー</h3>
           <pre id="content-preview"><code>-</code></pre>
         </div>
 
@@ -228,6 +213,40 @@
     <footer>
       <p>TypedCode - タイピング証明エディタ</p>
     </footer>
+  </div>
+
+  <!-- フローティングシークバー -->
+  <div class="floating-seekbar" id="floating-seekbar" style="display: none;">
+    <div class="floating-seekbar-inner">
+      <div class="seekbar-main">
+        <div class="seekbar-controls">
+          <button class="seekbar-btn seekbar-btn-secondary" id="seekbar-start" title="最初に戻る">
+            <i class="fas fa-backward-fast"></i>
+          </button>
+          <button class="seekbar-btn seekbar-btn-secondary" id="seekbar-prev" title="前のイベント">
+            <i class="fas fa-backward-step"></i>
+          </button>
+          <button class="seekbar-btn seekbar-btn-primary" id="seekbar-play" title="自動再生">
+            <i class="fas fa-play" id="play-icon"></i>
+          </button>
+          <button class="seekbar-btn seekbar-btn-secondary" id="seekbar-next" title="次のイベント">
+            <i class="fas fa-forward-step"></i>
+          </button>
+          <button class="seekbar-btn seekbar-btn-secondary" id="seekbar-end" title="最後に進む">
+            <i class="fas fa-forward-fast"></i>
+          </button>
+        </div>
+        <div class="seekbar-track-container">
+          <input type="range" class="seekbar-slider" id="seekbar-slider" min="0" max="100" value="100" step="1">
+          <div class="seekbar-progress" id="seekbar-progress"></div>
+        </div>
+        <div class="seekbar-info">
+          <span class="seekbar-time" id="seekbar-time">0:00 / 0:00</span>
+          <span class="seekbar-divider">|</span>
+          <span class="seekbar-event-count" id="seekbar-event-count">0 / 0 events</span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="/src/verify.ts"></script>

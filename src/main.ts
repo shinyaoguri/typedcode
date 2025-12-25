@@ -121,8 +121,8 @@ if (!editorContainer) {
 }
 
 const editor: MonacoEditor = monaco.editor.create(editorContainer, {
-  value: '// TypedCode へようこそ！\n// 手動のタイピングを証明するエディタです\n// コピペや自動入力を検出して記録します\n\n#include<stdio.h>\n int main() {\n  printf("Hello, World!");\n  return 0;\n}\n',
-  language: 'javascript',
+  value: '// Hello, TypedCode!',
+  language: 'C',
   theme: 'vs-dark',
   automaticLayout: true,
   minimap: {
@@ -286,6 +286,12 @@ editor.onDidChangeModelContent(async (e) => {
 
 // カーソル位置変更イベントを記録
 editor.onDidChangeCursorPosition(async (e) => {
+  // Update status bar cursor position
+  const lineEl = document.getElementById('cursor-line');
+  const colEl = document.getElementById('cursor-col');
+  if (lineEl) lineEl.textContent = String(e.position.lineNumber);
+  if (colEl) colEl.textContent = String(e.position.column);
+
   if (!isEventRecordingEnabled) {
     return;
   }
@@ -629,11 +635,23 @@ async function initializeApp(): Promise<void> {
   const fingerprintComponents = await Fingerprint.collectComponents();
   const fingerprintHash = await Fingerprint.generate();
 
+  // PoSW状態表示用の要素を取得
+  const poswStatusEl = document.getElementById('posw-status');
+
   await typingProof.initialize(deviceId, {
     deviceId,
     fingerprintHash,
     ...fingerprintComponents
   } as Parameters<typeof typingProof.initialize>[1]);
+
+  // PoSW固定値をステータスバーに表示
+  const poswIterations = typingProof.getPoSWIterations();
+  if (poswStatusEl) {
+    poswStatusEl.textContent = `${poswIterations.toLocaleString()} iter`;
+    poswStatusEl.parentElement?.setAttribute('title',
+      `PoSW: ${poswIterations.toLocaleString()} iterations per event (fixed)`
+    );
+  }
   console.log('[TypedCode] TypingProof initialized with device ID');
 
   const savedContent = localStorage.getItem('editorContent');
@@ -702,17 +720,18 @@ async function initializeApp(): Promise<void> {
 
   const toggleLogBtn = document.getElementById('toggle-log-btn');
   if (toggleLogBtn) {
-    const updateLogButtonText = (): void => {
-      const textSpan = toggleLogBtn.querySelector('span');
-      if (textSpan && logViewer) {
-        textSpan.textContent = logViewer.isVisible ? 'ログ非表示' : 'ログ表示';
+    const updateToggleButtonState = (): void => {
+      if (logViewer?.isVisible) {
+        toggleLogBtn.classList.add('active');
+      } else {
+        toggleLogBtn.classList.remove('active');
       }
     };
 
     toggleLogBtn.addEventListener('click', () => {
       console.log('[TypedCode] Toggle log button clicked');
       logViewer?.toggle();
-      updateLogButtonText();
+      updateToggleButtonState();
     });
     console.log('[TypedCode] Toggle button listener added');
   } else {
@@ -723,13 +742,9 @@ async function initializeApp(): Promise<void> {
   if (closeLogBtn) {
     closeLogBtn.addEventListener('click', () => {
       logViewer?.hide();
-      const toggleLogBtnInner = document.getElementById('toggle-log-btn');
-      if (toggleLogBtnInner) {
-        const textSpan = toggleLogBtnInner.querySelector('span');
-        if (textSpan) {
-          textSpan.textContent = 'ログ表示';
-        }
-      }
+      // Update toggle button state when closed via X button
+      const toggleBtn = document.getElementById('toggle-log-btn');
+      toggleBtn?.classList.remove('active');
     });
   }
 
