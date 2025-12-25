@@ -67,7 +67,7 @@ function showNotification(message) {
 
 // エディタの初期化
 const editor = monaco.editor.create(document.getElementById('editor'), {
-  value: '// TypedCode へようこそ！\n// タイピング証明エディタです\n// コピー&ペーストを検出・記録します\n\n#include<stdio.h>\n int main() {\n  printf("Hello, World!");\n  return 0;\n}\n',
+  value: '// TypedCode へようこそ！\n// 手動のタイピングを証明するエディタです\n// コピペや自動入力を検出して記録します\n\n#include<stdio.h>\n int main() {\n  printf("Hello, World!");\n  return 0;\n}\n',
   language: 'javascript',
   theme: 'vs-dark',
   automaticLayout: true,
@@ -345,11 +345,24 @@ editor.onDidChangeCursorSelection(async (e) => {
 });
 
 // 証明ステータスを更新
-function updateProofStatus() {
+async function updateProofStatus() {
   const stats = typingProof.getStats();
   eventCountEl.textContent = stats.totalEvents;
-  currentHashEl.textContent = stats.currentHash.substring(0, 16) + '...';
-  currentHashEl.title = stats.currentHash; // フルハッシュをツールチップで表示
+
+  // タイピング証明ハッシュを生成して表示
+  try {
+    const editorContent = editor.getValue();
+    const typingProof_result = await typingProof.generateTypingProofHash(editorContent);
+    const hash = typingProof_result.typingProofHash;
+
+    currentHashEl.textContent = hash.substring(0, 16) + '...';
+    currentHashEl.title = `クリックでコピー: ${hash}`; // フルハッシュをツールチップで表示
+    currentHashEl.dataset.fullHash = hash; // フルハッシュを保存
+    currentHashEl.style.cursor = 'pointer'; // カーソルをポインターに
+  } catch (error) {
+    console.error('[TypedCode] Failed to generate typing proof hash:', error);
+    currentHashEl.textContent = 'エラー';
+  }
 
   // 100イベントごとにスナップショット記録
   if (stats.totalEvents > 0 && stats.totalEvents % 100 === 0) {
@@ -364,13 +377,33 @@ function updateProofStatus() {
   }
 }
 
+// ハッシュをクリックでコピー
+currentHashEl.addEventListener('click', async () => {
+  const fullHash = currentHashEl.dataset.fullHash;
+  if (fullHash) {
+    try {
+      await navigator.clipboard.writeText(fullHash);
+      const originalText = currentHashEl.textContent;
+      currentHashEl.textContent = 'コピーしました！';
+      currentHashEl.style.color = '#4CAF50';
+      setTimeout(() => {
+        currentHashEl.textContent = originalText;
+        currentHashEl.style.color = '';
+      }, 1500);
+    } catch (error) {
+      console.error('[TypedCode] Failed to copy hash:', error);
+      alert('コピーに失敗しました');
+    }
+  }
+});
+
 
 // 証明データのエクスポート機能
 const exportProofBtn = document.getElementById('export-proof-btn');
 exportProofBtn.addEventListener('click', async () => {
   try {
-    const proofData = await typingProof.exportProof();
     const editorContent = editor.getValue();
+    const proofData = await typingProof.exportProof(editorContent);
 
     // 証明データとコンテンツを含むJSONを生成
     const exportData = {

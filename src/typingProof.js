@@ -188,11 +188,18 @@ export class TypingProof {
 
   /**
    * 証明データをエクスポート
+   * @param {string} finalContent - 最終的なコード
    */
-  async exportProof() {
+  async exportProof(finalContent) {
     const signature = await this.generateSignature();
+
+    // タイピング証明ハッシュを生成
+    const typingProof = await this.generateTypingProofHash(finalContent);
+
     return {
       version: '2.0.0',
+      typingProofHash: typingProof.typingProofHash,
+      typingProofData: typingProof.proofData,
       proof: signature,
       fingerprint: {
         hash: this.fingerprint,
@@ -200,7 +207,8 @@ export class TypingProof {
       },
       metadata: {
         userAgent: navigator.userAgent,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        isPureTyping: typingProof.compact.isPureTyping
       }
     };
   }
@@ -327,5 +335,125 @@ export class TypingProof {
       description: `スナップショット（イベント${this.events.length}）`,
       isSnapshot: true
     });
+  }
+
+  /**
+   * タイピング統計を取得
+   * @returns {Object} タイピング統計情報
+   */
+  getTypingStatistics() {
+    let pasteEvents = 0;
+    let dropEvents = 0;
+    let insertEvents = 0;
+    let deleteEvents = 0;
+
+    for (const event of this.events) {
+      if (event.inputType === 'insertFromPaste') pasteEvents++;
+      if (event.inputType === 'insertFromDrop') dropEvents++;
+      if (event.type === 'contentChange' && event.data) insertEvents++;
+      if (event.inputType?.startsWith('delete')) deleteEvents++;
+    }
+
+    const duration = performance.now() - this.startTime;
+    // WPM計算（挿入イベント数から推定）
+    const averageWPM = insertEvents / (duration / 60000);
+
+    return {
+      totalEvents: this.events.length,
+      pasteEvents,
+      dropEvents,
+      insertEvents,
+      deleteEvents,
+      duration,
+      averageWPM: Math.round(averageWPM * 10) / 10
+    };
+  }
+
+  /**
+   * タイピング証明ハッシュを生成
+   * @param {string} finalContent - 最終的なコード
+   * @returns {Promise<Object>} 証明ハッシュと検証情報
+   */
+  async generateTypingProofHash(finalContent) {
+    // 1. 最終コンテンツのハッシュ
+    const finalContentHash = await this.computeHash(finalContent);
+
+    // 2. タイピング統計
+    const stats = this.getTypingStatistics();
+
+    // 3. 証明データの構築
+    const proofData = {
+      finalContentHash,
+      finalEventChainHash: this.currentHash,
+      deviceId: this.fingerprint,
+      metadata: {
+        totalEvents: stats.totalEvents,
+        pasteEvents: stats.pasteEvents,
+        dropEvents: stats.dropEvents,
+        insertEvents: stats.insertEvents,
+        deleteEvents: stats.deleteEvents,
+        totalTypingTime: stats.duration,
+        averageTypingSpeed: stats.averageWPM
+      }
+    };
+
+    // 4. 証明ハッシュの生成
+    const proofString = JSON.stringify(proofData);
+    const typingProofHash = await this.computeHash(proofString);
+
+    return {
+      typingProofHash,
+      proofData,
+      // 検証用の簡潔な情報
+      compact: {
+        hash: typingProofHash,
+        content: finalContent,
+        isPureTyping: stats.pasteEvents === 0 && stats.dropEvents === 0,
+        deviceId: this.fingerprint,
+        totalEvents: stats.totalEvents
+      }
+    };
+  }
+
+  /**
+   * タイピング証明ハッシュを検証
+   * @param {string} typingProofHash - 検証するハッシュ
+   * @param {Object} proofData - 証明データ
+   * @param {string} finalContent - 最終コード
+   * @returns {Promise<Object>} 検証結果
+   */
+  async verifyTypingProofHash(typingProofHash, proofData, finalContent) {
+    // 1. 最終コンテンツのハッシュを再計算
+    const computedContentHash = await this.computeHash(finalContent);
+
+    if (computedContentHash !== proofData.finalContentHash) {
+      return {
+        valid: false,
+        reason: 'Final content does not match the proof'
+      };
+    }
+
+    // 2. 証明ハッシュを再計算
+    const proofString = JSON.stringify(proofData);
+    const computedProofHash = await this.computeHash(proofString);
+
+    if (computedProofHash !== typingProofHash) {
+      return {
+        valid: false,
+        reason: 'Proof hash does not match'
+      };
+    }
+
+    // 3. タイピングのみで作成されたか確認
+    const isPureTyping =
+      proofData.metadata.pasteEvents === 0 &&
+      proofData.metadata.dropEvents === 0;
+
+    return {
+      valid: true,
+      isPureTyping,
+      deviceId: proofData.deviceId,
+      metadata: proofData.metadata
+    };
   }
 }
