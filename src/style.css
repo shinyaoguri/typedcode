@@ -371,15 +371,24 @@ body {
   height: calc(100% - 35px);
 }
 
+/* Editor Tabs Container */
+.editor-tabs-container {
+  display: flex;
+  align-items: center;
+  height: 35px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
 /* Editor Tabs (VSCode-style) */
 .editor-tabs {
   display: flex;
   height: 35px;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
   overflow-x: auto;
   overflow-y: hidden;
-  flex-shrink: 0;
+  flex: 1;
 }
 
 .editor-tabs::-webkit-scrollbar {
@@ -390,43 +399,71 @@ body {
   background: var(--bg-hover);
 }
 
+/* Add Tab Button */
+.add-tab-btn {
+  width: 28px;
+  height: 28px;
+  margin: 0 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.add-tab-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 .editor-tab {
   display: flex;
   align-items: center;
   height: 35px;
   padding: 0 10px;
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
   border-right: 1px solid var(--border-color);
   cursor: pointer;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   user-select: none;
   position: relative;
   min-width: 120px;
   max-width: 200px;
+  opacity: 0.7;
 }
 
 .editor-tab:hover {
-  background: var(--bg-hover);
+  background: var(--bg-secondary);
+  opacity: 0.9;
 }
 
 .editor-tab.active {
   background: var(--bg-primary);
   color: var(--text-primary);
+  opacity: 1;
+  border-bottom: 1px solid var(--bg-primary);
+  margin-bottom: -1px;
 }
 
-.editor-tab.active::after {
+.editor-tab.active::before {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 1px;
+  height: 2px;
   background: var(--accent-info);
 }
 
 .editor-tab .tab-icon {
-  margin-right: 6px;
+  margin-right: 5px;
   font-size: 14px;
   color: #e8ab53;
   flex-shrink: 0;
@@ -436,6 +473,17 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.editor-tab.active .tab-filename,
+.editor-tab.active .tab-extension {
+  cursor: text;
+}
+
+.editor-tab.active .tab-filename:hover,
+.editor-tab.active .tab-extension:hover {
+  text-decoration: underline;
+  text-decoration-style: dotted;
 }
 
 .editor-tab .tab-extension {
@@ -454,6 +502,46 @@ body {
 
 .editor-tab.modified .tab-modified {
   display: block;
+}
+
+/* Tab Close Button */
+.tab-close-btn {
+  width: 20px;
+  height: 20px;
+  margin-left: 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  opacity: 0.5;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.editor-tab:hover .tab-close-btn {
+  opacity: 1;
+}
+
+.tab-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.editor-tab.modified .tab-close-btn {
+  opacity: 0;
+}
+
+.editor-tab.modified:hover .tab-close-btn {
+  opacity: 1;
+}
+
+.editor-tab.modified:hover .tab-modified {
+  display: none;
 }
 
 /* Tab filename editing */

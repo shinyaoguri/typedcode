@@ -63,6 +63,17 @@ export class LogViewer {
   }
 
   /**
+   * TypingProofインスタンスを切り替え（タブ切り替え時に使用）
+   */
+  setTypingProof(typingProof: TypingProof): void {
+    this.typingProof = typingProof;
+    this.lastGroupedEntry = null;
+    if (this.isVisible) {
+      this.refreshLogs();
+    }
+  }
+
+  /**
    * ログビューアの表示/非表示を切り替え
    */
   toggle(): void {

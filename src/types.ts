@@ -457,6 +457,79 @@ export interface SeekbarEventInfo {
 export type ContentCache = Map<number, string>;
 
 // ============================================================================
+// マルチタブ関連
+// ============================================================================
+
+/** タブ切り替えイベント */
+export interface TabSwitchEvent {
+  timestamp: number;
+  fromTabId: string | null;
+  toTabId: string;
+  fromFilename: string | null;
+  toFilename: string;
+}
+
+/** シリアライズされたプルーフ状態 */
+export interface SerializedProofState {
+  events: StoredEvent[];
+  currentHash: string | null;
+  startTime: number;
+}
+
+/** シリアライズされたタブ状態（localStorage用） */
+export interface SerializedTabState {
+  id: string;
+  filename: string;
+  language: string;
+  content: string;
+  proofState: SerializedProofState | null;
+  createdAt: number;
+}
+
+/** マルチタブストレージ構造 */
+export interface MultiTabStorage {
+  version: 2;
+  activeTabId: string;
+  tabs: Record<string, SerializedTabState>;
+  tabSwitches: TabSwitchEvent[];
+}
+
+/** マルチファイルエクスポート用ファイルエントリ */
+export interface MultiFileExportEntry {
+  content: string;
+  language: string;
+  typingProofHash: string;
+  typingProofData: ProofData;
+  proof: SignatureData;
+}
+
+/** マルチファイルエクスポート形式 */
+export interface MultiFileExportedProof {
+  version: '3.1.0';
+  type: 'multi-file';
+  fingerprint: {
+    hash: string;
+    components: FingerprintComponents;
+  };
+  files: Record<string, MultiFileExportEntry>;
+  tabSwitches: TabSwitchEvent[];
+  metadata: {
+    userAgent: string;
+    timestamp: string;
+    totalFiles: number;
+    overallPureTyping: boolean;
+  };
+}
+
+/** エクスポートプルーフの統合型 */
+export type AnyExportedProof = ExportedProof | MultiFileExportedProof;
+
+/** マルチファイルプルーフかどうかを判定する型ガード */
+export function isMultiFileProof(data: AnyExportedProof): data is MultiFileExportedProof {
+  return 'type' in data && data.type === 'multi-file';
+}
+
+// ============================================================================
 // グローバル拡張
 // ============================================================================
 

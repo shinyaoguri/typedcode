@@ -20,6 +20,7 @@ import type {
   InputType,
   EventType,
   PoSWData,
+  SerializedProofState,
 } from './types.js';
 
 export class TypingProof {
@@ -45,7 +46,7 @@ export class TypingProof {
   /**
    * Web Workerを初期化
    */
-  private initWorker(): void {
+  initWorker(): void {
     if (this.worker) return;
 
     this.worker = new Worker(
@@ -642,5 +643,46 @@ export class TypingProof {
       deviceId: proofData.deviceId,
       metadata: proofData.metadata
     };
+  }
+
+  /**
+   * 状態をシリアライズ（localStorage保存用）
+   */
+  serializeState(): SerializedProofState {
+    return {
+      events: this.events,
+      currentHash: this.currentHash,
+      startTime: this.startTime
+    };
+  }
+
+  /**
+   * シリアライズされた状態から復元
+   * @param state - シリアライズされた状態
+   */
+  restoreState(state: SerializedProofState): void {
+    this.events = state.events;
+    this.currentHash = state.currentHash;
+    this.startTime = state.startTime;
+  }
+
+  /**
+   * シリアライズされた状態から新しいインスタンスを作成
+   * @param state - シリアライズされた状態
+   * @param fingerprintHash - フィンガープリントハッシュ
+   * @param fingerprintComponents - フィンガープリント構成要素
+   */
+  static async fromSerializedState(
+    state: SerializedProofState,
+    fingerprintHash: string,
+    fingerprintComponents: FingerprintComponents
+  ): Promise<TypingProof> {
+    const proof = new TypingProof();
+    proof.fingerprint = fingerprintHash;
+    proof.fingerprintComponents = fingerprintComponents;
+    proof.restoreState(state);
+    proof.initWorker();
+    proof.initialized = true;
+    return proof;
   }
 }

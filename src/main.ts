@@ -12,6 +12,7 @@ import { OperationDetector } from './operationDetector.js';
 import { LogViewer } from './logViewer.js';
 import { ThemeManager } from './themeManager.js';
 import { Fingerprint } from './fingerprint.js';
+import { TabManager, type TabState } from './tabManager.js';
 import type {
   MonacoEditor,
   CursorPosition,
@@ -44,11 +45,11 @@ self.MonacoEnvironment = {
   }
 };
 
-// タイピング証明システムの初期化
-const typingProof = new TypingProof();
-
 // 操作検出器の初期化
 const operationDetector = new OperationDetector();
+
+// TabManager（initializeApp後に初期化）
+let tabManager: TabManager | null = null;
 
 // ログビューアの初期化（DOMContentLoaded後に行う）
 let logViewer: LogViewer | null = null;
@@ -85,15 +86,20 @@ let isEventRecordingEnabled = true;
  * ログビューアとステータスは非同期で更新される
  */
 function recordEventAsync(event: RecordEventInput): void {
-  typingProof.recordEvent(event).then(result => {
+  const activeProof = tabManager?.getActiveProof();
+  if (!activeProof) return;
+
+  activeProof.recordEvent(event).then(result => {
     // ログビューアに追加（非同期）
     if (logViewer?.isVisible) {
-      const recordedEvent = typingProof.events[result.index];
+      const recordedEvent = activeProof.events[result.index];
       if (recordedEvent) {
         logViewer.addLogEntry(recordedEvent, result.index);
       }
     }
     updateProofStatus();
+    // タブデータを保存
+    tabManager?.saveToStorage();
   }).catch(err => {
     console.error('[TypedCode] Event recording failed:', err);
   });
@@ -106,14 +112,8 @@ const blockNotificationEl = document.getElementById('block-notification');
 const blockMessageEl = document.getElementById('block-message');
 
 // タブ要素
-const editorTab = document.getElementById('editor-tab');
-const tabFilename = document.getElementById('tab-filename');
-const tabExtension = document.getElementById('tab-extension');
-const tabModified = document.getElementById('tab-modified');
-
-// ファイル名の状態
-let currentFilename = 'untitled';
-let isFileModified = false;
+const editorTabsContainer = document.getElementById('editor-tabs');
+const addTabBtn = document.getElementById('add-tab-btn');
 
 // 通知を表示
 function showNotification(message: string): void {
@@ -132,8 +132,8 @@ if (!editorContainer) {
 }
 
 const editor: MonacoEditor = monaco.editor.create(editorContainer, {
-  value: '// Hello, TypedCode!',
-  language: 'C',
+  value: '',
+  language: 'c',
   theme: 'vs-dark',
   automaticLayout: true,
   minimap: {
@@ -149,33 +149,100 @@ const editor: MonacoEditor = monaco.editor.create(editorContainer, {
 // テーマ管理の初期化
 const themeManager = new ThemeManager(editor);
 
-// NOTE: 初期コンテンツの記録は initializeApp() 内で typingProof.initialize() の後に実行される
-
-// タブの拡張子を更新
-function updateTabExtension(language: string): void {
-  const ext = '.' + getFileExtension(language);
-  if (tabExtension) {
-    tabExtension.textContent = ext;
-  }
+// ファイル拡張子の取得
+function getFileExtension(language: string): string {
+  const extensions: Record<string, string> = {
+    javascript: 'js',
+    typescript: 'ts',
+    c: 'c',
+    cpp: 'cpp',
+    html: 'html',
+    css: 'css',
+    json: 'json',
+    markdown: 'md',
+    python: 'py'
+  };
+  return extensions[language] ?? 'txt';
 }
 
-// タブの変更状態を更新
-function setFileModified(modified: boolean): void {
-  isFileModified = modified;
-  if (editorTab) {
-    if (modified) {
-      editorTab.classList.add('modified');
-    } else {
-      editorTab.classList.remove('modified');
+// タブUIを生成
+function createTabElement(tab: TabState): HTMLElement {
+  const tabEl = document.createElement('div');
+  tabEl.className = 'editor-tab';
+  tabEl.dataset.tabId = tab.id;
+
+  if (tabManager?.getActiveTab()?.id === tab.id) {
+    tabEl.classList.add('active');
+  }
+  if (tab.isModified) {
+    tabEl.classList.add('modified');
+  }
+
+  const ext = '.' + getFileExtension(tab.language);
+
+  tabEl.innerHTML = `
+    <i class="fas fa-file-code tab-icon"></i>
+    <span class="tab-filename">${tab.filename}</span>
+    <span class="tab-extension">${ext}</span>
+    <span class="tab-modified" title="Modified"></span>
+    <button class="tab-close-btn" title="Close Tab"><i class="fas fa-times"></i></button>
+  `;
+
+  // タブクリックで切り替え
+  tabEl.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    // 閉じるボタンのクリックは除外
+    if (target.closest('.tab-close-btn')) return;
+    // ファイル名クリックは編集モードに（アクティブタブの場合のみ）
+    if (target.closest('.tab-filename') || target.closest('.tab-extension')) {
+      if (tabManager?.getActiveTab()?.id === tab.id) {
+        e.stopPropagation();
+        startFilenameEdit(tabEl, tab.id);
+        return;
+      }
     }
+    tabManager?.switchTab(tab.id);
+  });
+
+  // 閉じるボタン
+  const closeBtn = tabEl.querySelector('.tab-close-btn');
+  closeBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (tabManager?.getTabCount() === 1) {
+      showNotification('最後のタブは閉じられません');
+      return;
+    }
+    const targetTab = tabManager?.getTab(tab.id);
+    const tabName = targetTab ? `${targetTab.filename}.${getFileExtension(targetTab.language)}` : 'このタブ';
+    if (confirm(`「${tabName}」を閉じますか？\n記録された操作ログも削除されます。`)) {
+      tabManager?.closeTab(tab.id);
+    }
+  });
+
+  return tabEl;
+}
+
+// タブUIを更新
+function updateTabUI(): void {
+  if (!editorTabsContainer || !tabManager) return;
+
+  // 全タブを再生成
+  editorTabsContainer.innerHTML = '';
+  for (const tab of tabManager.getAllTabs()) {
+    const tabEl = createTabElement(tab);
+    editorTabsContainer.appendChild(tabEl);
   }
 }
 
 // ファイル名編集モードを開始
-function startFilenameEdit(): void {
-  if (!tabFilename) return;
+function startFilenameEdit(tabEl: HTMLElement, tabId: string): void {
+  const filenameSpan = tabEl.querySelector('.tab-filename') as HTMLElement | null;
+  if (!filenameSpan) return;
 
-  const currentName = tabFilename.textContent ?? 'untitled';
+  const tab = tabManager?.getTab(tabId);
+  if (!tab) return;
+
+  const currentName = tab.filename;
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'tab-filename-input';
@@ -183,13 +250,10 @@ function startFilenameEdit(): void {
 
   const finishEdit = (): void => {
     const newName = input.value.trim() || 'untitled';
-    currentFilename = newName;
-    tabFilename.textContent = newName;
-    tabFilename.style.display = '';
+    tabManager?.renameTab(tabId, newName);
+    filenameSpan.textContent = newName;
+    filenameSpan.style.display = '';
     input.remove();
-
-    // localStorageに保存
-    localStorage.setItem('editorFilename', newName);
   };
 
   input.addEventListener('blur', finishEdit);
@@ -198,23 +262,15 @@ function startFilenameEdit(): void {
       e.preventDefault();
       input.blur();
     } else if (e.key === 'Escape') {
-      input.value = currentFilename;
+      input.value = currentName;
       input.blur();
     }
   });
 
-  tabFilename.style.display = 'none';
-  tabFilename.parentElement?.insertBefore(input, tabFilename);
+  filenameSpan.style.display = 'none';
+  filenameSpan.parentElement?.insertBefore(input, filenameSpan);
   input.focus();
   input.select();
-}
-
-// タブのダブルクリックでファイル名編集
-if (editorTab) {
-  editorTab.addEventListener('dblclick', (e) => {
-    e.preventDefault();
-    startFilenameEdit();
-  });
 }
 
 // 言語切り替え
@@ -222,14 +278,37 @@ const languageSelector = document.getElementById('language-selector') as HTMLSel
 if (languageSelector) {
   languageSelector.addEventListener('change', (e) => {
     const target = e.target as HTMLSelectElement;
-    const model = editor.getModel();
-    if (model) {
-      monaco.editor.setModelLanguage(model, target.value);
+    const activeTab = tabManager?.getActiveTab();
+    if (activeTab) {
+      tabManager?.setTabLanguage(activeTab.id, target.value);
+      updateTabUI();
     }
-    // タブの拡張子を更新
-    updateTabExtension(target.value);
   });
 }
+
+// 次の Untitled 番号を取得
+function getNextUntitledNumber(): number {
+  if (!tabManager) return 1;
+  const tabs = tabManager.getAllTabs();
+  const untitledNumbers: number[] = [];
+  for (const tab of tabs) {
+    const match = tab.filename.match(/^Untitled-(\d+)$/i);
+    if (match) {
+      untitledNumbers.push(parseInt(match[1]!, 10));
+    }
+  }
+  if (untitledNumbers.length === 0) return 1;
+  return Math.max(...untitledNumbers) + 1;
+}
+
+// 新規タブ追加ボタン
+addTabBtn?.addEventListener('click', async () => {
+  if (!tabManager) return;
+  const num = getNextUntitledNumber();
+  const newTab = await tabManager.createTab(`Untitled-${num}`, 'c', '');
+  await tabManager.switchTab(newTab.id);
+  showNotification('新しいタブを作成しました');
+});
 
 // 入力検出器の初期化
 new InputDetector(document.body, async (detectedEvent: DetectedEvent) => {
@@ -265,26 +344,17 @@ new InputDetector(document.body, async (detectedEvent: DetectedEvent) => {
 // リセット機能
 const resetBtn = document.getElementById('reset-btn');
 resetBtn?.addEventListener('click', async () => {
-  if (confirm('エディタの内容と操作ログを全て削除してリセットしますか？\nこの操作は取り消せません。')) {
+  if (confirm('全てのタブと操作ログを削除してリセットしますか？\nこの操作は取り消せません。')) {
     isEventRecordingEnabled = false;
 
-    await typingProof.reset();
+    await tabManager?.reset();
 
     if (logViewer) {
       logViewer.clear();
     }
 
-    localStorage.removeItem('editorContent');
-    localStorage.removeItem('editorFilename');
-
-    // ファイル名をリセット
-    currentFilename = 'untitled';
-    if (tabFilename) tabFilename.textContent = 'untitled';
-    setFileModified(false);
-
+    updateTabUI();
     updateProofStatus();
-
-    editor.setValue('');
 
     isEventRecordingEnabled = true;
 
@@ -292,13 +362,15 @@ resetBtn?.addEventListener('click', async () => {
   }
 });
 
-// ダウンロード機能
+// ダウンロード機能（アクティブタブのコードのみ）
 const downloadBtn = document.getElementById('download-btn');
 downloadBtn?.addEventListener('click', () => {
-  const content = editor.getValue();
-  const language = languageSelector?.value ?? 'javascript';
-  const extension = getFileExtension(language);
-  const filename = `${currentFilename}.${extension}`;
+  const activeTab = tabManager?.getActiveTab();
+  if (!activeTab) return;
+
+  const content = activeTab.model.getValue();
+  const extension = getFileExtension(activeTab.language);
+  const filename = `${activeTab.filename}.${extension}`;
 
   const blob = new Blob([content], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
@@ -309,24 +381,9 @@ downloadBtn?.addEventListener('click', () => {
   URL.revokeObjectURL(url);
 
   // ダウンロード後は未変更状態に
-  setFileModified(false);
+  tabManager?.setTabModified(activeTab.id, false);
+  updateTabUI();
 });
-
-// ファイル拡張子の取得
-function getFileExtension(language: string): string {
-  const extensions: Record<string, string> = {
-    javascript: 'js',
-    typescript: 'ts',
-    c: 'c',
-    cpp: 'cpp',
-    html: 'html',
-    css: 'css',
-    json: 'json',
-    markdown: 'md',
-    python: 'py'
-  };
-  return extensions[language] ?? 'txt';
-}
 
 // エディタの変更イベントを監視してタイピング証明を記録
 editor.onDidChangeModelContent(async (e) => {
@@ -365,13 +422,15 @@ editor.onDidChangeModelContent(async (e) => {
   }
 
   // ファイル変更を示す
-  setFileModified(true);
+  const activeTab = tabManager?.getActiveTab();
+  if (activeTab) {
+    tabManager?.setTabModified(activeTab.id, true);
+    updateTabUI();
+  }
   updateProofStatus();
 
-  localStorage.setItem('editorContent', editor.getValue());
-  if (languageSelector) {
-    localStorage.setItem('editorLanguage', languageSelector.value);
-  }
+  // タブデータを保存（recordEventAsyncでも保存しているが、念のため）
+  tabManager?.saveToStorage();
 });
 
 // カーソル位置変更イベントを記録
@@ -648,7 +707,10 @@ editorContainer.addEventListener('keyup', async (e: KeyboardEvent) => {
 
 // 証明ステータスを更新
 function updateProofStatus(): void {
-  const stats = typingProof.getStats();
+  const activeProof = tabManager?.getActiveProof();
+  if (!activeProof) return;
+
+  const stats = activeProof.getStats();
   if (eventCountEl) eventCountEl.textContent = String(stats.totalEvents);
   if (currentHashEl && stats.currentHash) {
     currentHashEl.textContent = stats.currentHash.substring(0, 16) + '...';
@@ -658,7 +720,7 @@ function updateProofStatus(): void {
   // 100イベントごとにスナップショット記録
   if (stats.totalEvents > 0 && stats.totalEvents % 100 === 0) {
     const editorContent = editor.getValue();
-    typingProof.recordContentSnapshot(editorContent)
+    activeProof.recordContentSnapshot(editorContent)
       .then(result => {
         console.log('[TypedCode] Content snapshot recorded at event', result.index);
       })
@@ -669,17 +731,20 @@ function updateProofStatus(): void {
 }
 
 
-// 証明データのエクスポート機能
+// 証明データのエクスポート機能（アクティブタブのみ）
 const exportProofBtn = document.getElementById('export-proof-btn');
 exportProofBtn?.addEventListener('click', async () => {
   try {
-    const editorContent = editor.getValue();
-    const proofData = await typingProof.exportProof(editorContent);
+    const activeTab = tabManager?.getActiveTab();
+    if (!activeTab) return;
+
+    const proofData = await tabManager!.exportSingleTab(activeTab.id);
+    if (!proofData) return;
 
     const exportData = {
       ...proofData,
-      content: editorContent,
-      language: languageSelector?.value ?? 'javascript'
+      content: activeTab.model.getValue(),
+      language: activeTab.language
     };
 
     const jsonString = JSON.stringify(exportData, null, 2);
@@ -700,7 +765,7 @@ exportProofBtn?.addEventListener('click', async () => {
     console.log('Final hash:', proofData.proof.finalHash);
     console.log('Signature:', proofData.proof.signature);
 
-    const verification = await typingProof.verify();
+    const verification = await activeTab.typingProof.verify();
     console.log('[TypedCode] Verification result:', verification);
 
     if (verification.valid) {
@@ -714,47 +779,43 @@ exportProofBtn?.addEventListener('click', async () => {
   }
 });
 
-// ZIPでまとめてダウンロード
+// ZIPでまとめてダウンロード（全タブをマルチファイル形式でエクスポート）
 const exportZipBtn = document.getElementById('export-zip-btn');
 exportZipBtn?.addEventListener('click', async () => {
   try {
-    const editorContent = editor.getValue();
-    const language = languageSelector?.value ?? 'javascript';
-    const extension = getFileExtension(language);
-    const proofData = await typingProof.exportProof(editorContent);
+    if (!tabManager) return;
 
-    const exportData = {
-      ...proofData,
-      content: editorContent,
-      language
-    };
+    const multiProofData = await tabManager.exportAllTabs();
 
     // ZIPファイルを作成
     const zip = new JSZip();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const codeFilename = `${currentFilename}.${extension}`;
 
-    // コードファイルを追加
-    zip.file(codeFilename, editorContent);
+    // 各ファイルを追加
+    for (const [filename, fileData] of Object.entries(multiProofData.files)) {
+      zip.file(filename, fileData.content);
+    }
 
-    // 証明ファイルを追加
-    const jsonString = JSON.stringify(exportData, null, 2);
-    zip.file(`typedcode-proof-${timestamp}.json`, jsonString);
+    // マルチファイル証明ファイルを追加
+    const jsonString = JSON.stringify(multiProofData, null, 2);
+    zip.file(`typedcode-multi-proof-${timestamp}.json`, jsonString);
 
     // READMEを追加
-    const readme = `TypedCode Export
-================
+    const fileList = Object.keys(multiProofData.files).map(f => `- ${f}`).join('\n');
+    const readme = `TypedCode Multi-File Export
+===========================
 
 This archive contains:
-- ${codeFilename}: Your source code
-- typedcode-proof-${timestamp}.json: Typing proof data
+${fileList}
+- typedcode-multi-proof-${timestamp}.json: Multi-file typing proof data
 
 To verify this proof:
 1. Visit the TypedCode verification page
 2. Drop the proof JSON file to verify
 
 Generated: ${new Date().toISOString()}
-Events: ${proofData.proof.totalEvents}
+Total files: ${multiProofData.metadata.totalFiles}
+Pure typing: ${multiProofData.metadata.overallPureTyping ? 'Yes' : 'No'}
 `;
     zip.file('README.txt', readme);
 
@@ -767,12 +828,7 @@ Events: ${proofData.proof.totalEvents}
     a.click();
     URL.revokeObjectURL(url);
 
-    const verification = await typingProof.verify();
-    if (verification.valid) {
-      showNotification('ZIPファイルをダウンロードしました（検証: OK）');
-    } else {
-      showNotification('警告: ハッシュ鎖の検証に失敗しました');
-    }
+    showNotification(`ZIPファイルをダウンロードしました（${multiProofData.metadata.totalFiles}ファイル）`);
   } catch (error) {
     console.error('[TypedCode] ZIP export failed:', error);
     showNotification('ZIPエクスポートに失敗しました');
@@ -793,66 +849,59 @@ async function initializeApp(): Promise<void> {
   // PoSW状態表示用の要素を取得
   const poswStatusEl = document.getElementById('posw-status');
 
-  await typingProof.initialize(deviceId, {
+  // TabManagerを初期化
+  tabManager = new TabManager(editor);
+
+  // タブ変更コールバックを設定
+  tabManager.setOnTabChange((tab, previousTab) => {
+    console.log('[TypedCode] Tab switched:', previousTab?.filename, '->', tab.filename);
+    updateTabUI();
+    updateProofStatus();
+
+    // 言語セレクタを更新
+    if (languageSelector) {
+      languageSelector.value = tab.language;
+    }
+
+    // LogViewerの表示を更新
+    if (logViewer) {
+      logViewer.setTypingProof(tab.typingProof);
+    }
+  });
+
+  tabManager.setOnTabUpdate((tab) => {
+    updateTabUI();
+  });
+
+  isEventRecordingEnabled = false;
+
+  await tabManager.initialize(deviceId, {
     deviceId,
     fingerprintHash,
     ...fingerprintComponents
-  } as Parameters<typeof typingProof.initialize>[1]);
+  } as Parameters<typeof tabManager.initialize>[1]);
+
+  // タブUIを生成
+  updateTabUI();
 
   // PoSW固定値をステータスバーに表示
-  const poswIterations = typingProof.getPoSWIterations();
-  if (poswStatusEl) {
+  const activeProof = tabManager.getActiveProof();
+  if (activeProof && poswStatusEl) {
+    const poswIterations = activeProof.getPoSWIterations();
     poswStatusEl.textContent = `${poswIterations.toLocaleString()} iter`;
     poswStatusEl.parentElement?.setAttribute('title',
       `PoSW: ${poswIterations.toLocaleString()} iterations per event (fixed)`
     );
   }
-  console.log('[TypedCode] TypingProof initialized with device ID');
+  console.log('[TypedCode] TabManager initialized');
 
-  const savedContent = localStorage.getItem('editorContent');
-  const savedLanguage = localStorage.getItem('editorLanguage');
-
-  isEventRecordingEnabled = false;
-
-  if (savedContent) {
-    editor.setValue(savedContent);
-    console.log('[TypedCode] Restored content from localStorage');
+  // 言語セレクタを更新
+  const activeTab = tabManager.getActiveTab();
+  if (activeTab && languageSelector) {
+    languageSelector.value = activeTab.language;
   }
 
-  if (savedLanguage && languageSelector) {
-    languageSelector.value = savedLanguage;
-    const model = editor.getModel();
-    if (model) {
-      monaco.editor.setModelLanguage(model, savedLanguage);
-    }
-    // タブの拡張子を更新
-    updateTabExtension(savedLanguage);
-    console.log('[TypedCode] Restored language from localStorage:', savedLanguage);
-  }
-
-  // ファイル名をlocalStorageから復元
-  const savedFilename = localStorage.getItem('editorFilename');
-  if (savedFilename && tabFilename) {
-    currentFilename = savedFilename;
-    tabFilename.textContent = savedFilename;
-    console.log('[TypedCode] Restored filename from localStorage:', savedFilename);
-  }
-
-  const initialContent = editor.getValue();
-  console.log('[TypedCode] Recording initial content, length:', initialContent.length);
-
-  if (initialContent?.trim()) {
-    const result = await typingProof.recordEvent({
-      type: 'contentSnapshot',
-      data: initialContent,
-      description: '初期コンテンツ',
-      isSnapshot: true
-    });
-    updateProofStatus();
-    console.log('[TypedCode] Initial content recorded as event', result.index, 'with hash:', result.hash.substring(0, 16) + '...');
-  } else {
-    console.log('[TypedCode] No initial content to record');
-  }
+  updateProofStatus();
 
   isEventRecordingEnabled = true;
   console.log('[TypedCode] Event recording enabled');
@@ -863,8 +912,11 @@ async function initializeApp(): Promise<void> {
     return;
   }
 
-  logViewer = new LogViewer(logEntriesContainer, typingProof);
-  console.log('[TypedCode] LogViewer initialized');
+  const initialProof = tabManager.getActiveProof();
+  if (initialProof) {
+    logViewer = new LogViewer(logEntriesContainer, initialProof);
+    console.log('[TypedCode] LogViewer initialized');
+  }
 
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
   if (themeToggleBtn) {
