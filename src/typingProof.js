@@ -73,9 +73,11 @@ export class TypingProof {
    */
   async _recordEventInternal(event) {
     const timestamp = performance.now() - this.startTime;
+    const sequence = this.events.length;
 
     // ハッシュ計算に使用するフィールド（検証時と一致させる必要がある）
     const eventData = {
+      sequence,
       timestamp,
       type: event.type,
       inputType: event.inputType || null,
@@ -190,7 +192,7 @@ export class TypingProof {
   async exportProof() {
     const signature = await this.generateSignature();
     return {
-      version: '1.0.0',
+      version: '2.0.0',
       proof: signature,
       fingerprint: {
         hash: this.fingerprint,
@@ -226,12 +228,37 @@ export class TypingProof {
    */
   async verify() {
     let hash = this.events[0]?.previousHash;
+    let lastTimestamp = -Infinity;
 
     for (let i = 0; i < this.events.length; i++) {
       const event = this.events[i];
 
+      // シーケンス番号チェック
+      if (event.sequence !== i) {
+        return {
+          valid: false,
+          errorAt: i,
+          message: `Sequence mismatch at event ${i}: expected ${i}, got ${event.sequence}`,
+          event
+        };
+      }
+
+      // タイムスタンプ連続性チェック
+      if (event.timestamp < lastTimestamp) {
+        return {
+          valid: false,
+          errorAt: i,
+          message: `Timestamp violation at event ${i}: time moved backward from ${lastTimestamp.toFixed(2)}ms to ${event.timestamp.toFixed(2)}ms`,
+          event,
+          previousTimestamp: lastTimestamp,
+          currentTimestamp: event.timestamp
+        };
+      }
+      lastTimestamp = event.timestamp;
+
       // recordEvent()で使用したのと同じフィールドのみを再構築
       const eventData = {
+        sequence: event.sequence,
         timestamp: event.timestamp,
         type: event.type,
         inputType: event.inputType,
@@ -286,5 +313,19 @@ export class TypingProof {
       this.currentHash = await this.initialHash(this.fingerprint);
     }
     this.startTime = performance.now();
+  }
+
+  /**
+   * コンテンツスナップショットを記録
+   * @param {string} editorContent - エディタの全コンテンツ
+   * @returns {Promise<{hash: string, index: number}>}
+   */
+  async recordContentSnapshot(editorContent) {
+    return await this.recordEvent({
+      type: 'contentSnapshot',
+      data: editorContent,
+      description: `スナップショット（イベント${this.events.length}）`,
+      isSnapshot: true
+    });
   }
 }

@@ -350,6 +350,18 @@ function updateProofStatus() {
   eventCountEl.textContent = stats.totalEvents;
   currentHashEl.textContent = stats.currentHash.substring(0, 16) + '...';
   currentHashEl.title = stats.currentHash; // フルハッシュをツールチップで表示
+
+  // 100イベントごとにスナップショット記録
+  if (stats.totalEvents > 0 && stats.totalEvents % 100 === 0) {
+    const editorContent = editor.getValue();
+    typingProof.recordContentSnapshot(editorContent)
+      .then(result => {
+        console.log('[TypedCode] Content snapshot recorded at event', result.index);
+      })
+      .catch(error => {
+        console.error('[TypedCode] Snapshot recording failed:', error);
+      });
+  }
 }
 
 

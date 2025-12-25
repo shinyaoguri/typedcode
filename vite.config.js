@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  base: '/typedcode/',
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
@@ -13,6 +14,7 @@ export default defineConfig({
         theme_color: '#1e1e1e',
         background_color: '#1e1e1e',
         display: 'standalone',
+        start_url: '/typedcode/',
         icons: [
           {
             src: 'icon-192.png',
@@ -28,6 +30,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
