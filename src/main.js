@@ -67,7 +67,7 @@ function showNotification(message) {
 
 // エディタの初期化
 const editor = monaco.editor.create(document.getElementById('editor'), {
-  value: '// TypedCode へようこそ！\n// タイピング証明エディタです\n// コピー&ペーストを検出・記録します\n\nfunction hello() {\n  console.log("Hello, World!");\n}\n\nhello();',
+  value: '// TypedCode へようこそ！\n// タイピング証明エディタです\n// コピー&ペーストを検出・記録します\n\n#include<stdio.h>\n int main() {\n  printf("Hello, World!");\n  return 0;\n}\n',
   language: 'javascript',
   theme: 'vs-dark',
   automaticLayout: true,
