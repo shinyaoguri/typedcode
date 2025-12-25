@@ -2,36 +2,47 @@
  * LogViewer - 操作ログを表示する読み取り専用ビューア
  */
 
+import type { TypingProof } from './typingProof.js';
+import type {
+  StoredEvent,
+  LogStats,
+  EventType,
+  InputType,
+} from './types.js';
+
 export class LogViewer {
-  constructor(containerElement, typingProof) {
+  private container: HTMLElement;
+  private typingProof: TypingProof;
+  isVisible: boolean = false;
+  private autoScroll: boolean = true;
+
+  constructor(containerElement: HTMLElement, typingProof: TypingProof) {
     this.container = containerElement;
     this.typingProof = typingProof;
-    this.isVisible = false;
-    this.autoScroll = true;
   }
 
   /**
    * ログビューアの表示/非表示を切り替え
    */
-  toggle() {
+  toggle(): void {
     this.isVisible = !this.isVisible;
     const logViewer = document.getElementById('log-viewer');
     const editorContainer = document.querySelector('.editor-container');
 
     if (this.isVisible) {
-      logViewer.classList.add('visible');
-      editorContainer.classList.add('with-log');
+      logViewer?.classList.add('visible');
+      editorContainer?.classList.add('with-log');
       this.refreshLogs();
     } else {
-      logViewer.classList.remove('visible');
-      editorContainer.classList.remove('with-log');
+      logViewer?.classList.remove('visible');
+      editorContainer?.classList.remove('with-log');
     }
   }
 
   /**
    * ログビューアを表示
    */
-  show() {
+  show(): void {
     if (!this.isVisible) {
       this.toggle();
     }
@@ -40,7 +51,7 @@ export class LogViewer {
   /**
    * ログビューアを非表示
    */
-  hide() {
+  hide(): void {
     if (this.isVisible) {
       this.toggle();
     }
@@ -49,7 +60,7 @@ export class LogViewer {
   /**
    * ログを全て再描画
    */
-  refreshLogs() {
+  refreshLogs(): void {
     const events = this.typingProof.events;
     this.container.innerHTML = '';
 
@@ -57,7 +68,6 @@ export class LogViewer {
       this.addLogEntry(event, index);
     });
 
-    // 最下部にスクロール
     if (this.autoScroll) {
       this.scrollToBottom();
     }
@@ -66,7 +76,7 @@ export class LogViewer {
   /**
    * 新しいログエントリを追加
    */
-  addLogEntry(event, index) {
+  addLogEntry(event: StoredEvent, index: number): void {
     const entry = document.createElement('div');
     entry.className = `log-entry log-type-${event.type}`;
 
@@ -91,11 +101,11 @@ export class LogViewer {
 
     const typeEl = document.createElement('span');
     typeEl.className = 'log-entry-type';
-    typeEl.textContent = event.inputType || event.type;
+    typeEl.textContent = event.inputType ?? event.type;
 
     const descEl = document.createElement('span');
     descEl.className = 'log-entry-description';
-    descEl.textContent = event.description || this.getEventDescription(event);
+    descEl.textContent = event.description ?? this.getEventDescription(event);
 
     infoContainer.appendChild(typeEl);
     infoContainer.appendChild(descEl);
@@ -115,12 +125,12 @@ export class LogViewer {
       const detailsLine = document.createElement('div');
       detailsLine.className = 'log-entry-details';
 
-      const parts = [];
-      if (hasData) {
+      const parts: string[] = [];
+      if (hasData && typeof event.data === 'string') {
         parts.push(this.formatData(event.data));
       }
       if (hasSelectedText) {
-        parts.push(this.formatData(event.selectedText));
+        parts.push(this.formatData(event.selectedText!));
       }
       if (details) {
         parts.push(details);
@@ -135,13 +145,12 @@ export class LogViewer {
       const hashEl = document.createElement('div');
       hashEl.className = 'log-entry-hash';
       hashEl.textContent = `${event.hash.substring(0, 16)}...`;
-      hashEl.title = event.hash; // フルハッシュをツールチップで表示
+      hashEl.title = event.hash;
       entry.appendChild(hashEl);
     }
 
     this.container.appendChild(entry);
 
-    // 自動スクロール
     if (this.autoScroll) {
       this.scrollToBottom();
     }
@@ -150,18 +159,20 @@ export class LogViewer {
   /**
    * イベントの説明を生成
    */
-  getEventDescription(event) {
+  private getEventDescription(event: StoredEvent): string {
     switch (event.type) {
       case 'contentChange':
-        return event.description || '内容変更';
+        return event.description ?? '内容変更';
       case 'cursorPositionChange':
         return 'カーソル移動';
       case 'selectionChange':
         return '選択範囲変更';
       case 'externalInput':
-        return event.description || '外部入力';
+        return event.description ?? '外部入力';
       case 'editorInitialized':
         return 'エディタ初期化';
+      case 'contentSnapshot':
+        return 'スナップショット';
       default:
         return event.type;
     }
@@ -170,8 +181,8 @@ export class LogViewer {
   /**
    * イベントの詳細情報を生成
    */
-  getEventDetails(event) {
-    const details = [];
+  private getEventDetails(event: StoredEvent): string | null {
+    const details: string[] = [];
 
     if (event.range) {
       details.push(
@@ -179,15 +190,15 @@ export class LogViewer {
       );
     }
 
-    if (event.rangeLength !== undefined) {
+    if (event.rangeLength !== undefined && event.rangeLength !== null) {
       details.push(`範囲長: ${event.rangeLength}`);
     }
 
-    if (event.deletedLength !== undefined) {
+    if (event.deletedLength !== undefined && event.deletedLength !== null) {
       details.push(`削除: ${event.deletedLength}文字`);
     }
 
-    if (event.insertLength !== undefined) {
+    if (event.insertLength !== undefined && event.insertLength !== null) {
       details.push(`挿入: ${event.insertLength}文字`);
     }
 
@@ -205,7 +216,7 @@ export class LogViewer {
   /**
    * データを表示用にフォーマット
    */
-  formatData(data) {
+  private formatData(data: string): string {
     if (!data) return '';
 
     // 改行を可視化
@@ -225,7 +236,7 @@ export class LogViewer {
   /**
    * 最下部にスクロール
    */
-  scrollToBottom() {
+  private scrollToBottom(): void {
     const logContent = this.container.parentElement;
     if (logContent) {
       logContent.scrollTop = logContent.scrollHeight;
@@ -235,38 +246,37 @@ export class LogViewer {
   /**
    * ログをクリア
    */
-  clear() {
+  clear(): void {
     this.container.innerHTML = '';
   }
 
   /**
    * ログをJSON形式でエクスポート
    */
-  exportAsJSON() {
+  exportAsJSON(): string {
     const events = this.typingProof.events;
-    const jsonString = JSON.stringify(events, null, 2);
-    return jsonString;
+    return JSON.stringify(events, null, 2);
   }
 
   /**
    * ログをテキスト形式でエクスポート
    */
-  exportAsText() {
+  exportAsText(): string {
     const events = this.typingProof.events;
     let text = 'TypedCode 操作ログ\n';
     text += '='.repeat(50) + '\n\n';
 
     events.forEach((event, index) => {
       text += `[${index + 1}] ${(event.timestamp / 1000).toFixed(3)}s\n`;
-      text += `  タイプ: ${event.inputType || event.type}\n`;
-      text += `  説明: ${event.description || this.getEventDescription(event)}\n`;
+      text += `  タイプ: ${event.inputType ?? event.type}\n`;
+      text += `  説明: ${event.description ?? this.getEventDescription(event)}\n`;
 
       const details = this.getEventDetails(event);
       if (details) {
         text += `  詳細: ${details}\n`;
       }
 
-      if (event.data && event.type === 'contentChange') {
+      if (event.data && event.type === 'contentChange' && typeof event.data === 'string') {
         text += `  データ: ${this.formatData(event.data)}\n`;
       }
 
@@ -280,21 +290,21 @@ export class LogViewer {
   /**
    * 統計情報を表示
    */
-  getStats() {
+  getStats(): LogStats {
     const events = this.typingProof.events;
-    const stats = {
+    const stats: LogStats = {
       total: events.length,
       byType: {},
       byInputType: {}
     };
 
     events.forEach(event => {
-      // type別カウント
-      stats.byType[event.type] = (stats.byType[event.type] || 0) + 1;
+      const eventType = event.type as EventType;
+      stats.byType[eventType] = (stats.byType[eventType] ?? 0) + 1;
 
-      // inputType別カウント
       if (event.inputType) {
-        stats.byInputType[event.inputType] = (stats.byInputType[event.inputType] || 0) + 1;
+        const inputType = event.inputType as InputType;
+        stats.byInputType[inputType] = (stats.byInputType[inputType] ?? 0) + 1;
       }
     });
 

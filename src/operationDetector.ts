@@ -2,25 +2,28 @@
  * OperationDetector - Monaco Editorの変更イベントから操作種別を推定
  */
 
+import type {
+  InputType,
+  DeleteDirection,
+  TextRange,
+  OperationResult,
+  ModelContentChange,
+  ModelContentChangedEvent,
+} from './types.js';
+
 export class OperationDetector {
-  constructor() {
-    this.lastOperation = null;
-    this.undoRedoDepth = 0;
-  }
+  private lastOperation: OperationResult | null = null;
 
   /**
    * Monaco Editorの変更イベントから操作種別を推定
-   * @param {Object} change - Monaco Editorのchange object
-   * @param {Object} event - Monaco EditorのonDidChangeModelContent event
-   * @returns {Object} - 詳細な操作情報
    */
-  detectOperationType(change, event) {
+  detectOperationType(change: ModelContentChange, event: ModelContentChangedEvent): OperationResult {
     const { text, rangeLength, range } = change;
-    const hasText = text && text.length > 0;
+    const hasText = text.length > 0;
     const hasRangeLength = rangeLength > 0;
 
-    let inputType = 'insertText';
-    let operationDetail = {};
+    let inputType: InputType = 'insertText';
+    let operationDetail: Partial<OperationResult> = {};
 
     // 1. 削除操作の検出
     if (hasRangeLength && !hasText) {
@@ -32,7 +35,7 @@ export class OperationDetector {
     }
     // 2. 挿入操作の検出
     else if (hasText && !hasRangeLength) {
-      inputType = this.detectInsertType(text, change);
+      inputType = this.detectInsertType(text);
       operationDetail = {
         insertedText: text,
         insertLength: text.length
@@ -49,8 +52,6 @@ export class OperationDetector {
     }
 
     // 4. Undo/Redoの検出（ヒューリスティック）
-    // Monaco Editorは直接的なUndo/Redo検出手段を提供しないため、
-    // isUndoing/isRedoingフラグやstack depthで推定
     if (event.isUndoing) {
       inputType = 'historyUndo';
     } else if (event.isRedoing) {
@@ -60,17 +61,19 @@ export class OperationDetector {
     // 5. 複数行の変更の検出
     const isMultiLine = this.isMultiLineChange(range);
 
-    const result = {
+    const textRange: TextRange = {
+      startLineNumber: range.startLineNumber,
+      startColumn: range.startColumn,
+      endLineNumber: range.endLineNumber,
+      endColumn: range.endColumn
+    };
+
+    const result: OperationResult = {
       inputType,
-      text: text || '',
+      text: text ?? '',
       rangeOffset: change.rangeOffset,
       rangeLength: rangeLength,
-      range: {
-        startLineNumber: range.startLineNumber,
-        startColumn: range.startColumn,
-        endLineNumber: range.endLineNumber,
-        endColumn: range.endColumn
-      },
+      range: textRange,
       isMultiLine,
       ...operationDetail
     };
@@ -82,22 +85,20 @@ export class OperationDetector {
   /**
    * 削除操作の詳細な種別を推定
    */
-  detectDeleteType(change, range) {
+  private detectDeleteType(change: ModelContentChange, range: ModelContentChange['range']): InputType {
     const { rangeLength } = change;
 
     // 単一文字の削除
     if (rangeLength === 1) {
-      // Backspace（カーソルより前を削除）
       if (range.startColumn > 1) {
         return 'deleteContentBackward';
       }
-      // Delete（カーソル位置を削除）
       return 'deleteContentForward';
     }
 
     // 単語単位の削除（5文字以上で空白を含まない）
     if (rangeLength > 1 && rangeLength < 50) {
-      return 'deleteWordBackward'; // または deleteWordForward
+      return 'deleteWordBackward';
     }
 
     // 行単位の削除
@@ -112,7 +113,7 @@ export class OperationDetector {
   /**
    * 挿入操作の詳細な種別を推定
    */
-  detectInsertType(text, change) {
+  private detectInsertType(text: string): InputType {
     // 改行の検出
     if (text === '\n' || text === '\r\n') {
       return 'insertLineBreak';
@@ -135,13 +136,10 @@ export class OperationDetector {
 
     // 複数文字の挿入（オートコンプリートなど）
     if (text.length > 1) {
-      // IME入力の可能性
       if (this.isLikelyIMEInput(text)) {
         return 'insertFromComposition';
       }
-
-      // オートコンプリートや snippet
-      return 'insertText'; // または insertReplacementText
+      return 'insertText';
     }
 
     return 'insertText';
@@ -150,8 +148,7 @@ export class OperationDetector {
   /**
    * 削除方向を推定
    */
-  getDeleteDirection(range) {
-    // カーソルが行の先頭にある場合は forward、それ以外は backward
+  private getDeleteDirection(range: ModelContentChange['range']): DeleteDirection {
     if (range.startColumn === 1) {
       return 'forward';
     }
@@ -161,14 +158,14 @@ export class OperationDetector {
   /**
    * 複数行の変更かどうか
    */
-  isMultiLineChange(range) {
+  private isMultiLineChange(range: ModelContentChange['range']): boolean {
     return range.startLineNumber !== range.endLineNumber;
   }
 
   /**
    * IME入力の可能性を推定（日本語、中国語など）
    */
-  isLikelyIMEInput(text) {
+  private isLikelyIMEInput(text: string): boolean {
     // 日本語の平仮名、カタカナ、漢字
     const japaneseRegex = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]/;
     // 中国語の漢字
@@ -182,13 +179,11 @@ export class OperationDetector {
   /**
    * フォーマット操作の検出（インデント調整など）
    */
-  isFormattingOperation(changes) {
-    // 複数の変更が同時に発生した場合はフォーマット操作の可能性
+  isFormattingOperation(changes: ModelContentChange[]): boolean {
     if (changes.length > 5) {
       return true;
     }
 
-    // 全ての変更がインデント（空白/タブ）のみの場合
     const allIndentChanges = changes.every(change => {
       return /^[\s\t]*$/.test(change.text);
     });
@@ -199,24 +194,42 @@ export class OperationDetector {
   /**
    * 操作の詳細な説明を生成
    */
-  getOperationDescription(operation) {
-    const descriptions = {
+  getOperationDescription(operation: OperationResult): string {
+    const descriptions: Record<InputType, string> = {
       'insertText': '文字入力',
       'insertLineBreak': '改行',
       'insertParagraph': '段落挿入',
       'insertTab': 'タブ挿入',
       'insertFromComposition': 'IME入力',
+      'insertCompositionText': 'IME入力',
+      'deleteCompositionText': 'IME削除',
       'deleteContentBackward': 'Backspace削除',
       'deleteContentForward': 'Delete削除',
       'deleteWordBackward': '単語削除（後方）',
       'deleteWordForward': '単語削除（前方）',
+      'deleteSoftLineBackward': '行削除（ソフト）',
+      'deleteSoftLineForward': '行削除（ソフト前方）',
       'deleteHardLineBackward': '行削除',
+      'deleteHardLineForward': '行削除（前方）',
+      'deleteByDrag': 'ドラッグ削除',
       'deleteByCut': '範囲削除',
       'replaceContent': 'コンテンツ置換',
       'historyUndo': 'Undo',
-      'historyRedo': 'Redo'
+      'historyRedo': 'Redo',
+      'insertFromPaste': 'ペースト',
+      'insertFromDrop': 'ドロップ',
+      'insertFromYank': 'ヤンク',
+      'insertReplacementText': '置換テキスト',
+      'insertFromPasteAsQuotation': '引用ペースト'
     };
 
-    return descriptions[operation.inputType] || operation.inputType;
+    return descriptions[operation.inputType] ?? operation.inputType;
+  }
+
+  /**
+   * 最後の操作を取得
+   */
+  getLastOperation(): OperationResult | null {
+    return this.lastOperation;
   }
 }

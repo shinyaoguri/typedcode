@@ -2,8 +2,13 @@
  * ThemeManager - ライト/ダークテーマの切り替え管理
  */
 
+import type { Theme, MonacoEditor } from './types.js';
+
 export class ThemeManager {
-  constructor(editor) {
+  private editor: MonacoEditor;
+  private currentTheme: Theme;
+
+  constructor(editor: MonacoEditor) {
     this.editor = editor;
     this.currentTheme = this.loadTheme();
     this.applyTheme(this.currentTheme);
@@ -12,22 +17,22 @@ export class ThemeManager {
   /**
    * 保存されたテーマを読み込む
    */
-  loadTheme() {
+  private loadTheme(): Theme {
     const savedTheme = localStorage.getItem('typedcode-theme');
-    return savedTheme || 'dark'; // デフォルトはダーク
+    return (savedTheme === 'light' || savedTheme === 'dark') ? savedTheme : 'dark';
   }
 
   /**
    * テーマを保存
    */
-  saveTheme(theme) {
+  private saveTheme(theme: Theme): void {
     localStorage.setItem('typedcode-theme', theme);
   }
 
   /**
    * テーマを適用
    */
-  applyTheme(theme) {
+  applyTheme(theme: Theme): void {
     this.currentTheme = theme;
 
     // HTMLのdata-theme属性を設定
@@ -42,7 +47,7 @@ export class ThemeManager {
     // theme-color metaタグを更新
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
     if (themeColorMeta) {
-      themeColorMeta.content = theme === 'light' ? '#f5f5f5' : '#1e1e1e';
+      themeColorMeta.setAttribute('content', theme === 'light' ? '#f5f5f5' : '#1e1e1e');
     }
 
     this.saveTheme(theme);
@@ -51,8 +56,8 @@ export class ThemeManager {
   /**
    * テーマを切り替え
    */
-  toggle() {
-    const newTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
+  toggle(): Theme {
+    const newTheme: Theme = this.currentTheme === 'dark' ? 'light' : 'dark';
     this.applyTheme(newTheme);
     return newTheme;
   }
@@ -60,21 +65,21 @@ export class ThemeManager {
   /**
    * 現在のテーマを取得
    */
-  getTheme() {
+  getTheme(): Theme {
     return this.currentTheme;
   }
 
   /**
    * ライトテーマかどうか
    */
-  isLight() {
+  isLight(): boolean {
     return this.currentTheme === 'light';
   }
 
   /**
    * ダークテーマかどうか
    */
-  isDark() {
+  isDark(): boolean {
     return this.currentTheme === 'dark';
   }
 }

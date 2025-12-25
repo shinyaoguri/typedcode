@@ -3,21 +3,33 @@
  * ブロックはせず、検出して通知・記録する
  */
 
+import type {
+  DetectedEvent,
+  DetectedEventType,
+  DetectedEventData,
+  OnDetectedCallback,
+} from './types.js';
+
 export class InputDetector {
-  constructor(domElement, onDetectedAction) {
+  private element: HTMLElement | null;
+  private onDetectedAction: OnDetectedCallback;
+
+  constructor(domElement: HTMLElement, onDetectedAction?: OnDetectedCallback) {
     this.element = domElement;
-    this.onDetectedAction = onDetectedAction || (() => {});
+    this.onDetectedAction = onDetectedAction ?? (() => {});
     this.setupDetectors();
   }
 
   /**
    * 全ての検出器を設定
    */
-  setupDetectors() {
+  private setupDetectors(): void {
+    if (!this.element) return;
+
     // paste イベントを検出
-    this.element.addEventListener('paste', (e) => {
-      const clipboardData = e.clipboardData || window.clipboardData;
-      const pastedText = clipboardData.getData('text');
+    this.element.addEventListener('paste', (e: ClipboardEvent) => {
+      const clipboardData = e.clipboardData ?? window.clipboardData;
+      const pastedText = clipboardData?.getData('text') ?? '';
 
       this.notifyDetected('paste', 'コピー&ペーストを検出しました', {
         text: pastedText,
@@ -26,8 +38,8 @@ export class InputDetector {
     }, true);
 
     // drop イベントを検出
-    this.element.addEventListener('drop', (e) => {
-      const droppedText = e.dataTransfer.getData('text');
+    this.element.addEventListener('drop', (e: DragEvent) => {
+      const droppedText = e.dataTransfer?.getData('text') ?? '';
 
       this.notifyDetected('drop', 'ドラッグ&ドロップを検出しました', {
         text: droppedText,
@@ -36,9 +48,9 @@ export class InputDetector {
     }, true);
 
     // copy イベント（読み取り専用なので記録のみ）
-    this.element.addEventListener('copy', (e) => {
+    this.element.addEventListener('copy', () => {
       const selection = window.getSelection();
-      const copiedText = selection.toString();
+      const copiedText = selection?.toString() ?? '';
 
       console.log('[InputDetector] Copy detected:', copiedText.substring(0, 50));
     }, true);
@@ -47,20 +59,23 @@ export class InputDetector {
   /**
    * 検出されたことを通知
    */
-  notifyDetected(eventType, message, data) {
+  private notifyDetected(eventType: DetectedEventType, message: string, data: DetectedEventData): void {
     console.log(`[InputDetector] Detected: ${eventType} - ${message}`, data);
-    this.onDetectedAction({
+
+    const event: DetectedEvent = {
       type: eventType,
       message,
       data,
       timestamp: Date.now()
-    });
+    };
+
+    this.onDetectedAction(event);
   }
 
   /**
    * 検出器を削除
    */
-  destroy() {
+  destroy(): void {
     this.element = null;
   }
 }

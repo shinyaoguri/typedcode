@@ -3,22 +3,38 @@
  * コピペを禁止し、全ての操作をハッシュ鎖として記録
  */
 
+import type {
+  RecordEventInput,
+  RecordEventResult,
+  EventHashData,
+  StoredEvent,
+  VerificationResult,
+  TypingProofVerificationResult,
+  SignatureData,
+  ExportedProof,
+  TypingStats,
+  TypingStatistics,
+  TypingProofHashResult,
+  ProofData,
+  FingerprintComponents,
+  InputType,
+  EventType,
+} from './types.js';
+
 export class TypingProof {
-  constructor() {
-    this.events = [];
-    this.currentHash = null;  // 非同期初期化を待つ
-    this.fingerprint = null;
-    this.fingerprintComponents = null;
-    this.startTime = performance.now();
-    this.initialized = false;
-    this.recordQueue = Promise.resolve();  // イベント記録の排他制御用
-  }
+  events: StoredEvent[] = [];
+  currentHash: string | null = null;
+  fingerprint: string | null = null;
+  fingerprintComponents: FingerprintComponents | null = null;
+  startTime: number = performance.now();
+  initialized: boolean = false;
+  private recordQueue: Promise<RecordEventResult> = Promise.resolve({ hash: '', index: -1 });
 
   /**
    * 初期化（非同期）
    * フィンガープリントを生成して初期ハッシュを設定
    */
-  async initialize(fingerprintHash, fingerprintComponents) {
+  async initialize(fingerprintHash: string, fingerprintComponents: FingerprintComponents): Promise<void> {
     this.fingerprint = fingerprintHash;
     this.fingerprintComponents = fingerprintComponents;
     this.currentHash = await this.initialHash(fingerprintHash);
@@ -28,7 +44,7 @@ export class TypingProof {
   /**
    * 初期ハッシュを生成（フィンガープリント + ランダム値）
    */
-  async initialHash(fingerprintHash) {
+  async initialHash(fingerprintHash: string): Promise<string> {
     const randomData = new Uint8Array(32);
     crypto.getRandomValues(randomData);
     const randomHex = this.arrayBufferToHex(randomData);
@@ -41,8 +57,9 @@ export class TypingProof {
   /**
    * ArrayBufferを16進数文字列に変換
    */
-  arrayBufferToHex(buffer) {
-    return Array.from(new Uint8Array(buffer))
+  arrayBufferToHex(buffer: ArrayBuffer | Uint8Array): string {
+    const uint8Array = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    return Array.from(uint8Array)
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
   }
@@ -50,7 +67,7 @@ export class TypingProof {
   /**
    * 文字列からSHA-256ハッシュを計算
    */
-  async computeHash(data) {
+  async computeHash(data: string): Promise<string> {
     const encoder = new TextEncoder();
     const dataBuffer = encoder.encode(data);
     const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
@@ -59,9 +76,9 @@ export class TypingProof {
 
   /**
    * イベントを記録してハッシュ鎖を更新（排他制御付き）
-   * @returns {Promise<{hash: string, index: number}>} ハッシュと配列のインデックス
+   * @returns ハッシュと配列のインデックス
    */
-  async recordEvent(event) {
+  async recordEvent(event: RecordEventInput): Promise<RecordEventResult> {
     // 前のイベント記録が完了するまで待つ（排他制御）
     this.recordQueue = this.recordQueue.then(() => this._recordEventInternal(event));
     return this.recordQueue;
@@ -71,20 +88,20 @@ export class TypingProof {
    * イベントを記録する内部実装
    * @private
    */
-  async _recordEventInternal(event) {
+  private async _recordEventInternal(event: RecordEventInput): Promise<RecordEventResult> {
     const timestamp = performance.now() - this.startTime;
     const sequence = this.events.length;
 
     // ハッシュ計算に使用するフィールド（検証時と一致させる必要がある）
-    const eventData = {
+    const eventData: EventHashData = {
       sequence,
       timestamp,
       type: event.type,
-      inputType: event.inputType || null,
-      data: event.data || null,
-      rangeOffset: event.rangeOffset || null,
-      rangeLength: event.rangeLength || null,
-      range: event.range || null,  // 位置情報を追加
+      inputType: event.inputType ?? null,
+      data: event.data ?? null,
+      rangeOffset: event.rangeOffset ?? null,
+      rangeLength: event.rangeLength ?? null,
+      range: event.range ?? null,
       previousHash: this.currentHash
     };
 
@@ -94,8 +111,7 @@ export class TypingProof {
     this.currentHash = await this.computeHash(combinedData);
 
     // デバッグ: ハッシュ計算に使用したデータをログ出力
-    // 全てのイベントをログ出力（デバッグ用）
-    if (this.events.length < 30) {  // 最初の30イベントを表示
+    if (this.events.length < 30) {
       console.log(`[Record] Event ${this.events.length}:`, {
         type: event.type,
         sequence,
@@ -115,18 +131,18 @@ export class TypingProof {
 
     // イベントを保存（ハッシュ計算に使用したフィールド + 追加のメタデータ）
     const eventIndex = this.events.length;
-    this.events.push({
+    const storedEvent: StoredEvent = {
       ...eventData,
       hash: this.currentHash,
-      // 以下は表示用のメタデータ（ハッシュ計算には含めない）
-      description: event.description || null,
-      isMultiLine: event.isMultiLine || null,
-      deletedLength: event.deletedLength || null,
-      insertedText: event.insertedText || null,
-      insertLength: event.insertLength || null,
-      deleteDirection: event.deleteDirection || null,
-      selectedText: event.selectedText || null
-    });
+      description: event.description ?? null,
+      isMultiLine: event.isMultiLine ?? null,
+      deletedLength: event.deletedLength ?? null,
+      insertedText: event.insertedText ?? null,
+      insertLength: event.insertLength ?? null,
+      deleteDirection: event.deleteDirection ?? null,
+      selectedText: event.selectedText ?? null
+    };
+    this.events.push(storedEvent);
 
     return { hash: this.currentHash, index: eventIndex };
   }
@@ -134,9 +150,8 @@ export class TypingProof {
   /**
    * 入力タイプが許可されているかチェック
    */
-  isAllowedInputType(inputType) {
-    // 許可される操作
-    const allowedTypes = [
+  isAllowedInputType(inputType: InputType): boolean {
+    const allowedTypes: InputType[] = [
       'insertText',
       'insertLineBreak',
       'insertParagraph',
@@ -162,9 +177,8 @@ export class TypingProof {
   /**
    * 禁止される操作かチェック
    */
-  isProhibitedInputType(inputType) {
-    // 禁止される操作
-    const prohibitedTypes = [
+  isProhibitedInputType(inputType: InputType): boolean {
+    const prohibitedTypes: InputType[] = [
       'insertFromPaste',
       'insertFromDrop',
       'insertFromYank',
@@ -178,7 +192,7 @@ export class TypingProof {
   /**
    * 最終署名を生成
    */
-  async generateSignature() {
+  async generateSignature(): Promise<SignatureData> {
     const finalData = {
       totalEvents: this.events.length,
       finalHash: this.currentHash,
@@ -198,9 +212,9 @@ export class TypingProof {
 
   /**
    * 証明データをエクスポート
-   * @param {string} finalContent - 最終的なコード
+   * @param finalContent - 最終的なコード
    */
-  async exportProof(finalContent) {
+  async exportProof(finalContent: string): Promise<ExportedProof> {
     const signature = await this.generateSignature();
 
     // タイピング証明ハッシュを生成
@@ -212,8 +226,8 @@ export class TypingProof {
       typingProofData: typingProof.proofData,
       proof: signature,
       fingerprint: {
-        hash: this.fingerprint,
-        components: this.fingerprintComponents
+        hash: this.fingerprint!,
+        components: this.fingerprintComponents!
       },
       metadata: {
         userAgent: navigator.userAgent,
@@ -226,16 +240,17 @@ export class TypingProof {
   /**
    * 統計情報を取得
    */
-  getStats() {
+  getStats(): TypingStats {
     const duration = performance.now() - this.startTime;
     const eventTypes = this.events.reduce((acc, event) => {
-      acc[event.type] = (acc[event.type] || 0) + 1;
+      const eventType = event.type as EventType;
+      acc[eventType] = (acc[eventType] ?? 0) + 1;
       return acc;
-    }, {});
+    }, {} as Record<EventType, number>);
 
     return {
       totalEvents: this.events.length,
-      duration: duration / 1000, // 秒単位
+      duration: duration / 1000,
       eventTypes,
       currentHash: this.currentHash
     };
@@ -244,12 +259,13 @@ export class TypingProof {
   /**
    * ハッシュ鎖を検証
    */
-  async verify() {
-    let hash = this.events[0]?.previousHash;
+  async verify(): Promise<VerificationResult> {
+    let hash = this.events[0]?.previousHash ?? null;
     let lastTimestamp = -Infinity;
 
     for (let i = 0; i < this.events.length; i++) {
       const event = this.events[i];
+      if (!event) continue;
 
       // シーケンス番号チェック
       if (event.sequence !== i) {
@@ -275,7 +291,7 @@ export class TypingProof {
       lastTimestamp = event.timestamp;
 
       // recordEvent()で使用したのと同じフィールドのみを再構築
-      const eventData = {
+      const eventData: EventHashData = {
         sequence: event.sequence,
         timestamp: event.timestamp,
         type: event.type,
@@ -283,7 +299,7 @@ export class TypingProof {
         data: event.data,
         rangeOffset: event.rangeOffset,
         rangeLength: event.rangeLength,
-        range: event.range,  // 位置情報も含める
+        range: event.range,
         previousHash: event.previousHash
       };
 
@@ -303,7 +319,6 @@ export class TypingProof {
           combinedData: combinedData.substring(0, 300) + '...',
           combinedDataLength: combinedData.length
         });
-        // JSONキーの順序を確認
         console.error('[Verify] eventData keys:', Object.keys(eventData));
         console.error('[Verify] Full eventString:', eventString);
         return {
@@ -329,9 +344,8 @@ export class TypingProof {
   /**
    * 全てのイベントをクリアして初期状態に戻す
    */
-  async reset() {
+  async reset(): Promise<void> {
     this.events = [];
-    // フィンガープリントは保持したまま新しい初期ハッシュを生成
     if (this.fingerprint) {
       this.currentHash = await this.initialHash(this.fingerprint);
     }
@@ -340,10 +354,9 @@ export class TypingProof {
 
   /**
    * コンテンツスナップショットを記録
-   * @param {string} editorContent - エディタの全コンテンツ
-   * @returns {Promise<{hash: string, index: number}>}
+   * @param editorContent - エディタの全コンテンツ
    */
-  async recordContentSnapshot(editorContent) {
+  async recordContentSnapshot(editorContent: string): Promise<RecordEventResult> {
     return await this.recordEvent({
       type: 'contentSnapshot',
       data: editorContent,
@@ -354,9 +367,8 @@ export class TypingProof {
 
   /**
    * タイピング統計を取得
-   * @returns {Object} タイピング統計情報
    */
-  getTypingStatistics() {
+  getTypingStatistics(): TypingStatistics {
     let pasteEvents = 0;
     let dropEvents = 0;
     let insertEvents = 0;
@@ -370,7 +382,6 @@ export class TypingProof {
     }
 
     const duration = performance.now() - this.startTime;
-    // WPM計算（挿入イベント数から推定）
     const averageWPM = insertEvents / (duration / 60000);
 
     return {
@@ -386,21 +397,16 @@ export class TypingProof {
 
   /**
    * タイピング証明ハッシュを生成
-   * @param {string} finalContent - 最終的なコード
-   * @returns {Promise<Object>} 証明ハッシュと検証情報
+   * @param finalContent - 最終的なコード
    */
-  async generateTypingProofHash(finalContent) {
-    // 1. 最終コンテンツのハッシュ
+  async generateTypingProofHash(finalContent: string): Promise<TypingProofHashResult> {
     const finalContentHash = await this.computeHash(finalContent);
-
-    // 2. タイピング統計
     const stats = this.getTypingStatistics();
 
-    // 3. 証明データの構築
-    const proofData = {
+    const proofData: ProofData = {
       finalContentHash,
-      finalEventChainHash: this.currentHash,
-      deviceId: this.fingerprint,
+      finalEventChainHash: this.currentHash!,
+      deviceId: this.fingerprint!,
       metadata: {
         totalEvents: stats.totalEvents,
         pasteEvents: stats.pasteEvents,
@@ -412,19 +418,17 @@ export class TypingProof {
       }
     };
 
-    // 4. 証明ハッシュの生成
     const proofString = JSON.stringify(proofData);
     const typingProofHash = await this.computeHash(proofString);
 
     return {
       typingProofHash,
       proofData,
-      // 検証用の簡潔な情報
       compact: {
         hash: typingProofHash,
         content: finalContent,
         isPureTyping: stats.pasteEvents === 0 && stats.dropEvents === 0,
-        deviceId: this.fingerprint,
+        deviceId: this.fingerprint!,
         totalEvents: stats.totalEvents
       }
     };
@@ -432,13 +436,15 @@ export class TypingProof {
 
   /**
    * タイピング証明ハッシュを検証
-   * @param {string} typingProofHash - 検証するハッシュ
-   * @param {Object} proofData - 証明データ
-   * @param {string} finalContent - 最終コード
-   * @returns {Promise<Object>} 検証結果
+   * @param typingProofHash - 検証するハッシュ
+   * @param proofData - 証明データ
+   * @param finalContent - 最終コード
    */
-  async verifyTypingProofHash(typingProofHash, proofData, finalContent) {
-    // 1. 最終コンテンツのハッシュを再計算
+  async verifyTypingProofHash(
+    typingProofHash: string,
+    proofData: ProofData,
+    finalContent: string
+  ): Promise<TypingProofVerificationResult> {
     const computedContentHash = await this.computeHash(finalContent);
 
     if (computedContentHash !== proofData.finalContentHash) {
@@ -448,7 +454,6 @@ export class TypingProof {
       };
     }
 
-    // 2. 証明ハッシュを再計算
     const proofString = JSON.stringify(proofData);
     const computedProofHash = await this.computeHash(proofString);
 
@@ -459,7 +464,6 @@ export class TypingProof {
       };
     }
 
-    // 3. タイピングのみで作成されたか確認
     const isPureTyping =
       proofData.metadata.pasteEvents === 0 &&
       proofData.metadata.dropEvents === 0;

@@ -11,10 +11,18 @@ import { OperationDetector } from './operationDetector.js';
 import { LogViewer } from './logViewer.js';
 import { ThemeManager } from './themeManager.js';
 import { Fingerprint } from './fingerprint.js';
+import type {
+  MonacoEditor,
+  CursorPosition,
+  RecordEventInput,
+  DetectedEvent,
+} from './types.js';
 
 // Monaco Editor の Worker 設定
+declare const self: Window & typeof globalThis & { MonacoEnvironment: monaco.Environment };
+
 self.MonacoEnvironment = {
-  getWorker(_, label) {
+  getWorker(_: string, label: string): Worker {
     if (label === 'json') {
       return new jsonWorker();
     }
@@ -38,12 +46,12 @@ const typingProof = new TypingProof();
 const operationDetector = new OperationDetector();
 
 // ログビューアの初期化（DOMContentLoaded後に行う）
-let logViewer = null;
+let logViewer: LogViewer | null = null;
 
 // 前回のカーソル位置を記録（重複イベント防止用）
-let lastCursorPosition = null;
+let lastCursorPosition: string | null = null;
 let lastCursorTime = 0;
-let lastSelectionRange = null;
+let lastSelectionRange: string | null = null;
 let lastSelectionTime = 0;
 
 // イベント記録を無効化するフラグ（リセット時などに使用）
@@ -56,17 +64,22 @@ const blockNotificationEl = document.getElementById('block-notification');
 const blockMessageEl = document.getElementById('block-message');
 
 // 通知を表示
-function showNotification(message) {
-  blockMessageEl.textContent = message;
-  blockNotificationEl.classList.remove('hidden');
+function showNotification(message: string): void {
+  if (blockMessageEl) blockMessageEl.textContent = message;
+  blockNotificationEl?.classList.remove('hidden');
 
   setTimeout(() => {
-    blockNotificationEl.classList.add('hidden');
+    blockNotificationEl?.classList.add('hidden');
   }, 2000);
 }
 
 // エディタの初期化
-const editor = monaco.editor.create(document.getElementById('editor'), {
+const editorContainer = document.getElementById('editor');
+if (!editorContainer) {
+  throw new Error('Editor container not found');
+}
+
+const editor: MonacoEditor = monaco.editor.create(editorContainer, {
   value: '// TypedCode へようこそ！\n// 手動のタイピングを証明するエディタです\n// コピペや自動入力を検出して記録します\n\n#include<stdio.h>\n int main() {\n  printf("Hello, World!");\n  return 0;\n}\n',
   language: 'javascript',
   theme: 'vs-dark',
@@ -87,75 +100,76 @@ const themeManager = new ThemeManager(editor);
 // NOTE: 初期コンテンツの記録は initializeApp() 内で typingProof.initialize() の後に実行される
 
 // 言語切り替え
-const languageSelector = document.getElementById('language-selector');
-languageSelector.addEventListener('change', (e) => {
-  const model = editor.getModel();
-  monaco.editor.setModelLanguage(model, e.target.value);
-});
+const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
+if (languageSelector) {
+  languageSelector.addEventListener('change', (e) => {
+    const target = e.target as HTMLSelectElement;
+    const model = editor.getModel();
+    if (model) {
+      monaco.editor.setModelLanguage(model, target.value);
+    }
+  });
+}
 
 // 入力検出器の初期化
-const inputDetector = new InputDetector(document.body, async (detectedEvent) => {
+new InputDetector(document.body, async (detectedEvent: DetectedEvent) => {
   showNotification(detectedEvent.message);
   console.log('[TypedCode] Detected operation:', detectedEvent);
 
   // コピペやドロップをログに記録
   if (detectedEvent.type === 'paste' || detectedEvent.type === 'drop') {
-    // カーソル位置を取得
-    const position = editor.getPosition();
+    const position: CursorPosition | null = editor.getPosition();
 
-    const event = {
-      type: 'externalInput',
-      inputType: detectedEvent.type === 'paste' ? 'insertFromPaste' : 'insertFromDrop',
-      data: detectedEvent.data.text,
-      rangeLength: detectedEvent.data.length,
-      range: {
-        startLineNumber: position.lineNumber,
-        startColumn: position.column,
-        endLineNumber: position.lineNumber,
-        endColumn: position.column
-      },
-      description: detectedEvent.type === 'paste' ?
-        `ペースト（${detectedEvent.data.length}文字）` :
-        `ドロップ（${detectedEvent.data.length}文字）`
-    };
+    if (position) {
+      const event: RecordEventInput = {
+        type: 'externalInput',
+        inputType: detectedEvent.type === 'paste' ? 'insertFromPaste' : 'insertFromDrop',
+        data: detectedEvent.data.text,
+        rangeLength: detectedEvent.data.length,
+        range: {
+          startLineNumber: position.lineNumber,
+          startColumn: position.column,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column
+        },
+        description: detectedEvent.type === 'paste' ?
+          `ペースト（${detectedEvent.data.length}文字）` :
+          `ドロップ（${detectedEvent.data.length}文字）`
+      };
 
-    const result = await typingProof.recordEvent(event);
+      const result = await typingProof.recordEvent(event);
 
-    // ログビューアに追加
-    if (logViewer && logViewer.isVisible) {
-      const recordedEvent = typingProof.events[result.index];
-      logViewer.addLogEntry(recordedEvent, result.index);
+      // ログビューアに追加
+      if (logViewer?.isVisible) {
+        const recordedEvent = typingProof.events[result.index];
+        if (recordedEvent) {
+          logViewer.addLogEntry(recordedEvent, result.index);
+        }
+      }
+
+      updateProofStatus();
     }
-
-    updateProofStatus();
   }
 });
 
 // リセット機能
 const resetBtn = document.getElementById('reset-btn');
-resetBtn.addEventListener('click', async () => {
+resetBtn?.addEventListener('click', async () => {
   if (confirm('エディタの内容と操作ログを全て削除してリセットしますか？\nこの操作は取り消せません。')) {
-    // イベント記録を一時的に無効化
     isEventRecordingEnabled = false;
 
-    // TypingProofをリセット（非同期）
     await typingProof.reset();
 
-    // ログビューアをクリア
     if (logViewer) {
       logViewer.clear();
     }
 
-    // LocalStorageをクリア
     localStorage.removeItem('editorContent');
 
-    // UIを更新
     updateProofStatus();
 
-    // エディタをクリア
     editor.setValue('');
 
-    // イベント記録を再度有効化
     isEventRecordingEnabled = true;
 
     showNotification('リセットしました');
@@ -164,9 +178,9 @@ resetBtn.addEventListener('click', async () => {
 
 // ダウンロード機能
 const downloadBtn = document.getElementById('download-btn');
-downloadBtn.addEventListener('click', () => {
+downloadBtn?.addEventListener('click', () => {
   const content = editor.getValue();
-  const language = languageSelector.value;
+  const language = languageSelector?.value ?? 'javascript';
   const extension = getFileExtension(language);
   const filename = `code.${extension}`;
 
@@ -180,8 +194,8 @@ downloadBtn.addEventListener('click', () => {
 });
 
 // ファイル拡張子の取得
-function getFileExtension(language) {
-  const extensions = {
+function getFileExtension(language: string): string {
+  const extensions: Record<string, string> = {
     javascript: 'js',
     typescript: 'ts',
     c: 'c',
@@ -192,23 +206,20 @@ function getFileExtension(language) {
     markdown: 'md',
     python: 'py'
   };
-  return extensions[language] || 'txt';
+  return extensions[language] ?? 'txt';
 }
 
 // エディタの変更イベントを監視してタイピング証明を記録
 editor.onDidChangeModelContent(async (e) => {
-  // イベント記録が無効化されている場合はスキップ
   if (!isEventRecordingEnabled) {
     return;
   }
 
-  // 変更内容を記録（詳細な操作種別を推定）
   for (const change of e.changes) {
-    // 操作種別を検出
     const operation = operationDetector.detectOperationType(change, e);
     const description = operationDetector.getOperationDescription(operation);
 
-    const event = {
+    const event: RecordEventInput = {
       type: 'contentChange',
       inputType: operation.inputType,
       data: operation.text,
@@ -217,7 +228,6 @@ editor.onDidChangeModelContent(async (e) => {
       range: operation.range,
       isMultiLine: operation.isMultiLine,
       description: description,
-      // 追加の詳細情報
       ...(operation.deletedLength && { deletedLength: operation.deletedLength }),
       ...(operation.insertedText && { insertedText: operation.insertedText }),
       ...(operation.insertLength && { insertLength: operation.insertLength }),
@@ -226,14 +236,14 @@ editor.onDidChangeModelContent(async (e) => {
 
     const result = await typingProof.recordEvent(event);
 
-    // ログビューアに追加（表示されている場合）
-    if (logViewer && logViewer.isVisible) {
+    if (logViewer?.isVisible) {
       const recordedEvent = typingProof.events[result.index];
-      logViewer.addLogEntry(recordedEvent, result.index);
+      if (recordedEvent) {
+        logViewer.addLogEntry(recordedEvent, result.index);
+      }
     }
 
-    // デバッグログ（開発時のみ）
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log('[TypedCode] Operation detected:', {
         type: operation.inputType,
         description,
@@ -242,23 +252,20 @@ editor.onDidChangeModelContent(async (e) => {
     }
   }
 
-  // UI を更新
   updateProofStatus();
 
-  // LocalStorage にコンテンツを保存
   localStorage.setItem('editorContent', editor.getValue());
-  localStorage.setItem('editorLanguage', languageSelector.value);
+  if (languageSelector) {
+    localStorage.setItem('editorLanguage', languageSelector.value);
+  }
 });
 
 // カーソル位置変更イベントを記録
 editor.onDidChangeCursorPosition(async (e) => {
-  // イベント記録が無効化されている場合はスキップ
   if (!isEventRecordingEnabled) {
     return;
   }
 
-  // 前回と同じ位置への移動は無視（重複イベント防止）
-  // 50ms以内の同一位置への移動は重複とみなす
   const currentPos = `${e.position.lineNumber}:${e.position.column}`;
   const currentTime = performance.now();
 
@@ -269,7 +276,7 @@ editor.onDidChangeCursorPosition(async (e) => {
   lastCursorPosition = currentPos;
   lastCursorTime = currentTime;
 
-  const event = {
+  const event: RecordEventInput = {
     type: 'cursorPositionChange',
     data: {
       lineNumber: e.position.lineNumber,
@@ -279,10 +286,11 @@ editor.onDidChangeCursorPosition(async (e) => {
 
   const result = await typingProof.recordEvent(event);
 
-  // ログビューアに追加（表示されている場合）
-  if (logViewer && logViewer.isVisible) {
+  if (logViewer?.isVisible) {
     const recordedEvent = typingProof.events[result.index];
-    logViewer.addLogEntry(recordedEvent, result.index);
+    if (recordedEvent) {
+      logViewer.addLogEntry(recordedEvent, result.index);
+    }
   }
 
   updateProofStatus();
@@ -290,13 +298,10 @@ editor.onDidChangeCursorPosition(async (e) => {
 
 // 選択範囲変更イベントを記録
 editor.onDidChangeCursorSelection(async (e) => {
-  // イベント記録が無効化されている場合はスキップ
   if (!isEventRecordingEnabled) {
     return;
   }
 
-  // 前回と同じ選択範囲は無視（重複イベント防止）
-  // 50ms以内の同一範囲への変更は重複とみなす
   const currentRange = `${e.selection.startLineNumber}:${e.selection.startColumn}-${e.selection.endLineNumber}:${e.selection.endColumn}`;
   const currentTime = performance.now();
 
@@ -307,16 +312,14 @@ editor.onDidChangeCursorSelection(async (e) => {
   lastSelectionRange = currentRange;
   lastSelectionTime = currentTime;
 
-  // 選択されたテキストを取得
   const model = editor.getModel();
-  const selectedText = model.getValueInRange(e.selection);
+  const selectedText = model?.getValueInRange(e.selection) ?? '';
   const selectionLength = selectedText.length;
 
-  // 選択範囲が空かどうか
   const isEmpty = e.selection.startLineNumber === e.selection.endLineNumber &&
                   e.selection.startColumn === e.selection.endColumn;
 
-  const event = {
+  const event: RecordEventInput = {
     type: 'selectionChange',
     data: {
       startLineNumber: e.selection.startLineNumber,
@@ -337,21 +340,24 @@ editor.onDidChangeCursorSelection(async (e) => {
 
   const result = await typingProof.recordEvent(event);
 
-  // ログビューアに追加（表示されている場合）
-  if (logViewer && logViewer.isVisible) {
+  if (logViewer?.isVisible) {
     const recordedEvent = typingProof.events[result.index];
-    logViewer.addLogEntry(recordedEvent, result.index);
+    if (recordedEvent) {
+      logViewer.addLogEntry(recordedEvent, result.index);
+    }
   }
 
   updateProofStatus();
 });
 
 // 証明ステータスを更新
-function updateProofStatus() {
+function updateProofStatus(): void {
   const stats = typingProof.getStats();
-  eventCountEl.textContent = stats.totalEvents;
-  currentHashEl.textContent = stats.currentHash.substring(0, 16) + '...';
-  currentHashEl.title = stats.currentHash;
+  if (eventCountEl) eventCountEl.textContent = String(stats.totalEvents);
+  if (currentHashEl && stats.currentHash) {
+    currentHashEl.textContent = stats.currentHash.substring(0, 16) + '...';
+    currentHashEl.title = stats.currentHash;
+  }
 
   // 100イベントごとにスナップショット記録
   if (stats.totalEvents > 0 && stats.totalEvents % 100 === 0) {
@@ -369,16 +375,15 @@ function updateProofStatus() {
 
 // 証明データのエクスポート機能
 const exportProofBtn = document.getElementById('export-proof-btn');
-exportProofBtn.addEventListener('click', async () => {
+exportProofBtn?.addEventListener('click', async () => {
   try {
     const editorContent = editor.getValue();
     const proofData = await typingProof.exportProof(editorContent);
 
-    // 証明データとコンテンツを含むJSONを生成
     const exportData = {
       ...proofData,
       content: editorContent,
-      language: languageSelector.value
+      language: languageSelector?.value ?? 'javascript'
     };
 
     const jsonString = JSON.stringify(exportData, null, 2);
@@ -399,7 +404,6 @@ exportProofBtn.addEventListener('click', async () => {
     console.log('Final hash:', proofData.proof.finalHash);
     console.log('Signature:', proofData.proof.signature);
 
-    // 検証を実行
     const verification = await typingProof.verify();
     console.log('[TypedCode] Verification result:', verification);
 
@@ -415,31 +419,26 @@ exportProofBtn.addEventListener('click', async () => {
 });
 
 // 初期化処理
-async function initializeApp() {
+async function initializeApp(): Promise<void> {
   console.log('[TypedCode] Initializing app...');
 
-  // 永続的なデバイスIDを取得（LocalStorageに保存）
   console.log('[TypedCode] Getting device ID...');
   const deviceId = await Fingerprint.getDeviceId();
   console.log('[TypedCode] Device ID:', deviceId.substring(0, 16) + '...');
 
-  // 詳細なフィンガープリント情報を収集（参考情報として）
   const fingerprintComponents = await Fingerprint.collectComponents();
   const fingerprintHash = await Fingerprint.generate();
 
-  // デバイスIDをメインの識別子として使用
   await typingProof.initialize(deviceId, {
     deviceId,
     fingerprintHash,
     ...fingerprintComponents
-  });
+  } as Parameters<typeof typingProof.initialize>[1]);
   console.log('[TypedCode] TypingProof initialized with device ID');
 
-  // LocalStorageからコンテンツを復元（初期コンテンツ記録の前に実行）
   const savedContent = localStorage.getItem('editorContent');
   const savedLanguage = localStorage.getItem('editorLanguage');
 
-  // イベント記録を一時的に無効化（初期化時の変更を記録しない）
   isEventRecordingEnabled = false;
 
   if (savedContent) {
@@ -447,18 +446,19 @@ async function initializeApp() {
     console.log('[TypedCode] Restored content from localStorage');
   }
 
-  if (savedLanguage) {
+  if (savedLanguage && languageSelector) {
     languageSelector.value = savedLanguage;
     const model = editor.getModel();
-    monaco.editor.setModelLanguage(model, savedLanguage);
+    if (model) {
+      monaco.editor.setModelLanguage(model, savedLanguage);
+    }
     console.log('[TypedCode] Restored language from localStorage:', savedLanguage);
   }
 
-  // 初期コンテンツを記録（エディタに既にあるコード）
   const initialContent = editor.getValue();
   console.log('[TypedCode] Recording initial content, length:', initialContent.length);
 
-  if (initialContent && initialContent.trim()) {
+  if (initialContent?.trim()) {
     const result = await typingProof.recordEvent({
       type: 'contentSnapshot',
       data: initialContent,
@@ -471,11 +471,9 @@ async function initializeApp() {
     console.log('[TypedCode] No initial content to record');
   }
 
-  // イベント記録を有効化（これ以降のユーザー入力を記録する）
   isEventRecordingEnabled = true;
   console.log('[TypedCode] Event recording enabled');
 
-  // ログビューアの初期化
   const logEntriesContainer = document.getElementById('log-entries');
   if (!logEntriesContainer) {
     console.error('[TypedCode] log-entries not found!');
@@ -485,16 +483,12 @@ async function initializeApp() {
   logViewer = new LogViewer(logEntriesContainer, typingProof);
   console.log('[TypedCode] LogViewer initialized');
 
-  // テーマ切り替えボタン
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
   if (themeToggleBtn) {
-    // アイコンを更新
-    const updateThemeIcon = () => {
+    const updateThemeIcon = (): void => {
       const icon = themeToggleBtn.querySelector('i');
-      if (themeManager.isLight()) {
-        icon.className = 'fas fa-sun';
-      } else {
-        icon.className = 'fas fa-moon';
+      if (icon) {
+        icon.className = themeManager.isLight() ? 'fas fa-sun' : 'fas fa-moon';
       }
     };
 
@@ -503,23 +497,21 @@ async function initializeApp() {
       updateThemeIcon();
     });
 
-    // 初期アイコンを設定
     updateThemeIcon();
   }
 
-  // ログビューアのトグル
   const toggleLogBtn = document.getElementById('toggle-log-btn');
   if (toggleLogBtn) {
-    const updateLogButtonText = () => {
+    const updateLogButtonText = (): void => {
       const textSpan = toggleLogBtn.querySelector('span');
-      if (textSpan) {
+      if (textSpan && logViewer) {
         textSpan.textContent = logViewer.isVisible ? 'ログ非表示' : 'ログ表示';
       }
     };
 
     toggleLogBtn.addEventListener('click', () => {
       console.log('[TypedCode] Toggle log button clicked');
-      logViewer.toggle();
+      logViewer?.toggle();
       updateLogButtonText();
     });
     console.log('[TypedCode] Toggle button listener added');
@@ -527,14 +519,13 @@ async function initializeApp() {
     console.error('[TypedCode] toggle-log-btn not found!');
   }
 
-  // ログビューアを閉じる
   const closeLogBtn = document.getElementById('close-log-btn');
   if (closeLogBtn) {
     closeLogBtn.addEventListener('click', () => {
-      logViewer.hide();
-      const toggleLogBtn = document.getElementById('toggle-log-btn');
-      if (toggleLogBtn) {
-        const textSpan = toggleLogBtn.querySelector('span');
+      logViewer?.hide();
+      const toggleLogBtnInner = document.getElementById('toggle-log-btn');
+      if (toggleLogBtnInner) {
+        const textSpan = toggleLogBtnInner.querySelector('span');
         if (textSpan) {
           textSpan.textContent = 'ログ表示';
         }
@@ -542,38 +533,31 @@ async function initializeApp() {
     });
   }
 
-  // ログをクリア
   const clearLogBtn = document.getElementById('clear-log-btn');
   if (clearLogBtn) {
     clearLogBtn.addEventListener('click', () => {
       if (confirm('ログをクリアしますか？（証明データは保持されます）')) {
-        logViewer.clear();
+        logViewer?.clear();
       }
     });
   }
 
-  // NOTE: LocalStorageからの復元と初期コンテンツの記録は既に上で実行済み
-
-  // コピーボタンの機能
   const copyCodeBtn = document.getElementById('copy-code-btn');
-  copyCodeBtn.addEventListener('click', async () => {
+  copyCodeBtn?.addEventListener('click', async () => {
     try {
       const code = editor.getValue();
       await navigator.clipboard.writeText(code);
 
-      // ボタンの見た目を変更
       copyCodeBtn.classList.add('copied');
 
-      // 通知を表示
-      showNotification('📋 コードをコピーしました！');
+      showNotification('コードをコピーしました！');
 
-      // 2秒後に元に戻す
       setTimeout(() => {
         copyCodeBtn.classList.remove('copied');
       }, 2000);
     } catch (error) {
       console.error('[TypedCode] Copy failed:', error);
-      showNotification('❌ コピーに失敗しました');
+      showNotification('コピーに失敗しました');
     }
   });
 
@@ -582,10 +566,9 @@ async function initializeApp() {
 
 // DOMContentLoaded または即座に実行
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeApp);
+  document.addEventListener('DOMContentLoaded', () => void initializeApp());
 } else {
-  // DOMが既に読み込まれている場合は即座に実行
-  initializeApp();
+  void initializeApp();
 }
 
 // エディタインスタンスをエクスポート（拡張用）
