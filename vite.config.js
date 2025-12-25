@@ -52,6 +52,12 @@ export default defineConfig({
   ],
   build: {
     target: 'esnext',
-    minify: 'esbuild'
+    minify: 'esbuild',
+    rollupOptions: {
+      input: {
+        main: './index.html',
+        verify: './verify.html'
+      }
+    }
   }
 });
