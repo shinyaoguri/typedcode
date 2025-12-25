@@ -30,6 +30,8 @@ const contentPreview = document.getElementById('content-preview');
 const verifyAgainBtn = document.getElementById('verify-again-btn');
 const externalInputPreview = document.getElementById('external-input-preview');
 const externalInputList = document.getElementById('external-input-list');
+const typingSpeedChart = document.getElementById('typing-speed-chart');
+const speedChartCanvas = document.getElementById('speed-chart');
 
 // ドラッグ&ドロップイベント
 dropZone.addEventListener('dragover', (e) => {
@@ -173,6 +175,11 @@ async function verifyProofData(data) {
       contentPreview.textContent = preview + (lines.length > 20 ? '\n...' : '');
     }
 
+    // 5. タイピング速度グラフの描画
+    if (data.proof && data.proof.events) {
+      drawTypingSpeedChart(data.proof.events);
+    }
+
     // 総合判定
     const allValid = typingHashValid && chainValid;
 
@@ -275,6 +282,156 @@ function displayExternalInputs(events) {
 
     externalInputList.appendChild(eventDiv);
   });
+}
+
+// タイピング速度グラフを描画
+function drawTypingSpeedChart(events) {
+  if (!events || events.length === 0) {
+    typingSpeedChart.style.display = 'none';
+    return;
+  }
+
+  // グラフ表示
+  typingSpeedChart.style.display = 'block';
+
+  // Canvasのコンテキストを取得
+  const ctx = speedChartCanvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+
+  // Canvasのサイズを設定（高解像度対応）
+  const rect = speedChartCanvas.getBoundingClientRect();
+  speedChartCanvas.width = rect.width * dpr;
+  speedChartCanvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+
+  const width = rect.width;
+  const height = rect.height;
+  const padding = { top: 20, right: 20, bottom: 40, left: 60 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  // 時系列データを計算（5秒ごとの速度）
+  const windowSize = 5000; // 5秒のウィンドウ
+  const totalTime = events[events.length - 1]?.timestamp || 0;
+  const dataPoints = [];
+  const externalInputMarkers = [];
+
+  // タイムウィンドウごとに文字数をカウント
+  for (let time = 0; time <= totalTime; time += 1000) { // 1秒ごと
+    const windowStart = Math.max(0, time - windowSize);
+    const windowEnd = time;
+
+    // このウィンドウ内の挿入イベント数をカウント
+    let charCount = 0;
+    events.forEach(event => {
+      if (event.timestamp >= windowStart && event.timestamp <= windowEnd) {
+        if (event.type === 'contentChange' && event.data &&
+            event.inputType !== 'insertFromPaste' && event.inputType !== 'insertFromDrop') {
+          charCount += (event.data?.length || 0);
+        }
+      }
+    });
+
+    // 文字/秒に変換
+    const speed = charCount / (windowSize / 1000);
+    dataPoints.push({ time: time / 1000, speed });
+  }
+
+  // 外部入力イベントのマーカー位置を記録
+  events.forEach(event => {
+    if (event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop') {
+      externalInputMarkers.push({
+        time: event.timestamp / 1000,
+        type: event.inputType
+      });
+    }
+  });
+
+  // Y軸の最大値を計算
+  const maxSpeed = Math.max(...dataPoints.map(d => d.speed), 1);
+  const yMax = Math.ceil(maxSpeed * 1.2); // 20%のマージン
+
+  // 背景
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+
+  // グリッド線を描画
+  ctx.strokeStyle = '#e9ecef';
+  ctx.lineWidth = 1;
+
+  // Y軸グリッド（5本）
+  for (let i = 0; i <= 5; i++) {
+    const y = padding.top + (chartHeight / 5) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(padding.left + chartWidth, y);
+    ctx.stroke();
+
+    // Y軸ラベル
+    const value = yMax - (yMax / 5) * i;
+    ctx.fillStyle = '#666';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(value.toFixed(1), padding.left - 10, y + 4);
+  }
+
+  // X軸グリッド（時間）
+  const timeStep = Math.ceil(totalTime / 1000 / 10); // 約10分割
+  for (let t = 0; t <= totalTime / 1000; t += timeStep) {
+    const x = padding.left + (t / (totalTime / 1000)) * chartWidth;
+    ctx.strokeStyle = '#e9ecef';
+    ctx.beginPath();
+    ctx.moveTo(x, padding.top);
+    ctx.lineTo(x, padding.top + chartHeight);
+    ctx.stroke();
+
+    // X軸ラベル
+    ctx.fillStyle = '#666';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(t.toFixed(0) + 's', x, height - padding.bottom + 20);
+  }
+
+  // 外部入力マーカーを描画（縦線）
+  externalInputMarkers.forEach(marker => {
+    const x = padding.left + (marker.time / (totalTime / 1000)) * chartWidth;
+    ctx.strokeStyle = 'rgba(255, 193, 7, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, padding.top);
+    ctx.lineTo(x, padding.top + chartHeight);
+    ctx.stroke();
+  });
+
+  // 速度曲線を描画
+  ctx.strokeStyle = '#667eea';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  dataPoints.forEach((point, index) => {
+    const x = padding.left + (point.time / (totalTime / 1000)) * chartWidth;
+    const y = padding.top + chartHeight - (point.speed / yMax) * chartHeight;
+
+    if (index === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+
+  ctx.stroke();
+
+  // 軸ラベル
+  ctx.fillStyle = '#333';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('時間 (秒)', width / 2, height - 5);
+
+  ctx.save();
+  ctx.translate(15, height / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('タイピング速度 (文字/秒)', 0, 0);
+  ctx.restore();
 }
 
 // ハッシュのコピー
