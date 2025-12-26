@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/typedcode/verify/',
+  base: '/verify/',
   build: {
     target: 'esnext',
     minify: 'esbuild'

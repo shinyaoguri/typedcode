@@ -34,6 +34,12 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Merge build outputs
+        run: |
+          mkdir -p ./dist
+          cp -r ./packages/editor/dist/* ./dist/
+          cp -r ./packages/verify/dist ./dist/verify
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
