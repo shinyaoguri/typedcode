@@ -141,6 +141,12 @@ body {
   color: var(--accent-primary);
 }
 
+.titlebar-logo {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
 .titlebar-actions {
   position: absolute;
   right: 8px;
@@ -805,6 +811,9 @@ body {
   font-size: 14px;
   color: #e8ab53;
   flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
 }
 
 .editor-tab .tab-filename {

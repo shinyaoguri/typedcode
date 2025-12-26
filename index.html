@@ -6,15 +6,15 @@
   <meta name="description" content="シンプルなコードエディタ">
   <meta name="theme-color" content="#1e1e1e">
   <title>TypedCode</title>
-  <link rel="manifest" href="/manifest.json">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body>
   <div id="app">
     <!-- Title Bar -->
     <div class="titlebar">
-      <div class="titlebar-title"><i class="fas fa-code"></i> TypedCode</div>
+      <div class="titlebar-title"><img src="/icon-192.png" alt="TypedCode" class="titlebar-logo"> TypedCode</div>
       <div class="titlebar-actions">
         <button class="titlebar-panel-toggle" id="toggle-terminal-btn" title="Toggle Terminal">
           <i class="fas fa-terminal"></i>
@@ -174,8 +174,6 @@
             <option value="typescript">TypeScript</option>
             <option value="html">HTML</option>
             <option value="css">CSS</option>
-            <option value="json">JSON</option>
-            <option value="markdown">Markdown</option>
             <option value="python">Python</option>
           </select>
         </div>

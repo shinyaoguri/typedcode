@@ -236,6 +236,12 @@ function getFileExtension(language: string): string {
   return extensions[language] ?? 'txt';
 }
 
+// SVGアイコンがある言語のリスト
+const LANGUAGES_WITH_SVG_ICON = ['c', 'cpp', 'javascript', 'typescript', 'html', 'css', 'python'];
+
+// ベースパスを取得（Viteのbase設定を反映）
+const BASE_PATH = import.meta.env.BASE_URL;
+
 // タブUIを生成
 function createTabElement(tab: TabState): HTMLElement {
   const tabEl = document.createElement('div');
@@ -247,8 +253,14 @@ function createTabElement(tab: TabState): HTMLElement {
   }
   const ext = '.' + getFileExtension(tab.language);
 
+  // SVGアイコンがあればimgタグ、なければFont Awesomeのデフォルトアイコン
+  const hasSvgIcon = LANGUAGES_WITH_SVG_ICON.includes(tab.language);
+  const iconHtml = hasSvgIcon
+    ? `<img src="${BASE_PATH}icons/${tab.language}.svg" class="tab-icon" alt="${tab.language}" />`
+    : `<i class="fas fa-file-code tab-icon"></i>`;
+
   tabEl.innerHTML = `
-    <i class="fas fa-file-code tab-icon"></i>
+    ${iconHtml}
     <span class="tab-filename">${tab.filename}</span>
     <span class="tab-extension">${ext}</span>
     <button class="tab-close-btn" title="Close Tab"><i class="fas fa-times"></i></button>
