@@ -15,9 +15,14 @@
     <!-- Title Bar -->
     <div class="titlebar">
       <div class="titlebar-title"><i class="fas fa-code"></i> TypedCode</div>
-      <button class="titlebar-panel-toggle" id="toggle-log-btn" title="Toggle Log Panel">
-        <i class="fas fa-columns"></i>
-      </button>
+      <div class="titlebar-actions">
+        <button class="titlebar-panel-toggle" id="toggle-terminal-btn" title="Toggle Terminal">
+          <i class="fas fa-terminal"></i>
+        </button>
+        <button class="titlebar-panel-toggle" id="toggle-log-btn" title="Toggle Log Panel">
+          <i class="fas fa-columns"></i>
+        </button>
+      </div>
     </div>
 
     <!-- Block Notification -->
@@ -55,35 +60,67 @@
 
       <!-- Workbench (Editor + Panel) -->
       <main class="workbench">
-        <div class="editor-container">
-          <!-- Editor Tabs -->
-          <div class="editor-tabs-container">
-            <div class="editor-tabs" id="editor-tabs">
-              <!-- タブは動的に生成される -->
+        <!-- Upper Area: Editor + Log Viewer -->
+        <div class="workbench-upper">
+          <div class="editor-container">
+            <!-- Editor Tabs -->
+            <div class="editor-tabs-container">
+              <div class="editor-tabs" id="editor-tabs">
+                <!-- タブは動的に生成される -->
+              </div>
+              <button class="add-tab-btn" id="add-tab-btn" title="New Tab">
+                <i class="fas fa-plus"></i>
+              </button>
             </div>
-            <button class="add-tab-btn" id="add-tab-btn" title="New Tab">
-              <i class="fas fa-plus"></i>
+            <button id="copy-code-btn" class="copy-code-btn" title="コードをコピー">
+              <i class="fas fa-copy"></i>
             </button>
+            <div id="editor"></div>
           </div>
-          <button id="copy-code-btn" class="copy-code-btn" title="コードをコピー">
-            <i class="fas fa-copy"></i>
-          </button>
-          <div id="editor"></div>
+
+          <!-- Log Viewer Panel -->
+          <div id="log-viewer">
+            <div id="log-resize-handle" class="log-resize-handle"></div>
+            <div class="log-viewer-header">
+              <h2><i class="fas fa-file-lines"></i> Log</h2>
+              <div class="log-controls">
+                <button id="close-log-btn" class="log-control-btn" title="Close">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+            </div>
+            <div class="log-content">
+              <div id="log-entries"></div>
+            </div>
+          </div>
         </div>
 
-        <!-- Log Viewer Panel -->
-        <div id="log-viewer">
-          <div id="log-resize-handle" class="log-resize-handle"></div>
-          <div class="log-viewer-header">
-            <h2><i class="fas fa-file-lines"></i> Log</h2>
-            <div class="log-controls">
-              <button id="close-log-btn" class="log-control-btn" title="Close">
+        <!-- Terminal Panel (Bottom) -->
+        <div id="terminal-panel">
+          <div id="terminal-resize-handle" class="terminal-resize-handle"></div>
+          <div class="terminal-header">
+            <div class="terminal-tabs">
+              <button class="terminal-tab active">
+                <i class="fas fa-terminal"></i> Terminal
+              </button>
+            </div>
+            <div class="terminal-controls">
+              <button id="close-terminal-btn" class="terminal-control-btn" title="Close">
                 <i class="fas fa-times"></i>
               </button>
             </div>
           </div>
-          <div class="log-content">
-            <div id="log-entries"></div>
+          <div class="terminal-content">
+            <div class="terminal-output">
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-text">Welcome to TypedCode Terminal</span>
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cursor"></span>
+              </div>
+            </div>
           </div>
         </div>
       </main>

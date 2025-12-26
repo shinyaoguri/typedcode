@@ -935,20 +935,103 @@ async function initializeApp(): Promise<void> {
     updateThemeIcon();
   }
 
-  const toggleLogBtn = document.getElementById('toggle-log-btn');
-  if (toggleLogBtn) {
-    const updateToggleButtonState = (): void => {
-      if (logViewer?.isVisible) {
-        toggleLogBtn.classList.add('active');
-      } else {
-        toggleLogBtn.classList.remove('active');
-      }
-    };
+  // ターミナルパネルのトグル
+  const toggleTerminalBtn = document.getElementById('toggle-terminal-btn');
+  const terminalPanel = document.getElementById('terminal-panel');
+  const closeTerminalBtn = document.getElementById('close-terminal-btn');
 
+  const updateTerminalButtonState = (): void => {
+    if (terminalPanel?.classList.contains('visible')) {
+      toggleTerminalBtn?.classList.add('active');
+    } else {
+      toggleTerminalBtn?.classList.remove('active');
+    }
+  };
+
+  if (toggleTerminalBtn && terminalPanel) {
+    toggleTerminalBtn.addEventListener('click', () => {
+      terminalPanel.classList.toggle('visible');
+      updateTerminalButtonState();
+      console.log('[TypedCode] Terminal toggled');
+    });
+  }
+
+  if (closeTerminalBtn && terminalPanel) {
+    closeTerminalBtn.addEventListener('click', () => {
+      terminalPanel.classList.remove('visible');
+      updateTerminalButtonState();
+    });
+  }
+
+  // ターミナルパネルのリサイズ機能
+  const terminalResizeHandle = document.getElementById('terminal-resize-handle');
+  const workbenchUpperEl = document.querySelector('.workbench-upper') as HTMLElement | null;
+
+  if (terminalResizeHandle && terminalPanel && workbenchUpperEl) {
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    terminalResizeHandle.addEventListener('mousedown', (e: MouseEvent) => {
+      e.preventDefault();
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = terminalPanel.offsetHeight;
+
+      terminalPanel.classList.add('resizing');
+      workbenchUpperEl.classList.add('resizing');
+      terminalResizeHandle.classList.add('dragging');
+
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e: MouseEvent) => {
+      if (!isResizing) return;
+
+      const workbenchEl = document.querySelector('.workbench') as HTMLElement | null;
+      if (!workbenchEl) return;
+
+      const workbenchHeight = workbenchEl.clientHeight;
+      const deltaY = startY - e.clientY;
+      const newHeight = startHeight + deltaY;
+
+      // 最小高さ100px、最大高さは画面の60%
+      const minHeight = 100;
+      const maxHeight = workbenchHeight * 0.6;
+      const clampedHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
+
+      terminalPanel.style.height = `${clampedHeight}px`;
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!isResizing) return;
+
+      isResizing = false;
+
+      terminalPanel.classList.remove('resizing');
+      workbenchUpperEl.classList.remove('resizing');
+      terminalResizeHandle.classList.remove('dragging');
+
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+  }
+
+  const toggleLogBtn = document.getElementById('toggle-log-btn');
+  const updateLogToggleButtonState = (): void => {
+    if (logViewer?.isVisible) {
+      toggleLogBtn?.classList.add('active');
+    } else {
+      toggleLogBtn?.classList.remove('active');
+    }
+  };
+
+  if (toggleLogBtn) {
     toggleLogBtn.addEventListener('click', () => {
       console.log('[TypedCode] Toggle log button clicked');
       logViewer?.toggle();
-      updateToggleButtonState();
+      updateLogToggleButtonState();
     });
     console.log('[TypedCode] Toggle button listener added');
   } else {
@@ -959,9 +1042,19 @@ async function initializeApp(): Promise<void> {
   if (closeLogBtn) {
     closeLogBtn.addEventListener('click', () => {
       logViewer?.hide();
-      // Update toggle button state when closed via X button
-      const toggleBtn = document.getElementById('toggle-log-btn');
-      toggleBtn?.classList.remove('active');
+      updateLogToggleButtonState();
+    });
+  }
+
+  // ステータスバーのイベント情報クリックでログビューを表示
+  const eventCountItem = document.querySelector('.status-item[title="Total events recorded"]');
+  if (eventCountItem) {
+    (eventCountItem as HTMLElement).style.cursor = 'pointer';
+    eventCountItem.addEventListener('click', () => {
+      if (!logViewer?.isVisible) {
+        logViewer?.show();
+        updateLogToggleButtonState();
+      }
     });
   }
 
