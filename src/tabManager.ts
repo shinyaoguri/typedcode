@@ -22,7 +22,6 @@ export interface TabState {
   language: string;
   typingProof: TypingProof;
   model: monaco.editor.ITextModel;
-  isModified: boolean;
   createdAt: number;
 }
 
@@ -144,7 +143,6 @@ export class TabManager {
       language,
       typingProof,
       model,
-      isModified: false,
       createdAt
     };
 
@@ -272,19 +270,6 @@ export class TabManager {
     return true;
   }
 
-  /**
-   * タブの変更状態を設定
-   */
-  setTabModified(tabId: string, modified: boolean): void {
-    const tab = this.tabs.get(tabId);
-    if (!tab) return;
-
-    tab.isModified = modified;
-
-    if (this.onTabUpdateCallback) {
-      this.onTabUpdateCallback(tab);
-    }
-  }
 
   /**
    * アクティブなタブを取得
@@ -393,7 +378,6 @@ export class TabManager {
           language: serializedTab.language,
           typingProof,
           model,
-          isModified: false,
           createdAt: serializedTab.createdAt
         };
 

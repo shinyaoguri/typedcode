@@ -1,4 +1,4 @@
-import type { StoredEvent } from '../types.js';
+import type { StoredEvent, SampledVerificationResult } from '../types.js';
 import type { ProofFile } from './types.js';
 import { TypingProof } from '../typingProof.js';
 import {
@@ -14,6 +14,9 @@ import {
   typingSpeedEl,
   chainValidBadge,
   chainMessage,
+  sampledVerification,
+  sampledSummary,
+  sampledSegments,
   poswValidBadge,
   poswMessage,
   poswIterationsEl,
@@ -39,6 +42,45 @@ import {
   showError,
 } from './ui.js';
 import { initializeSeekbar } from './seekbar.js';
+
+/**
+ * サンプリング検証結果を表示
+ */
+function displaySampledVerification(result: SampledVerificationResult): void {
+  if (!sampledVerification || !sampledSummary || !sampledSegments) return;
+
+  sampledVerification.style.display = 'block';
+
+  // サマリー表示
+  const percentage = ((result.totalEventsVerified / result.totalEvents) * 100).toFixed(1);
+  sampledSummary.innerHTML = `
+    <div class="sampled-summary-text">
+      <strong>サンプリング検証:</strong>
+      ${result.sampledSegments.length} / ${result.totalSegments} 区間を検証
+      (${result.totalEventsVerified} / ${result.totalEvents} イベント, ${percentage}%)
+    </div>
+  `;
+
+  // 各区間の詳細を表示
+  let segmentsHtml = '<div class="sampled-segments-list">';
+  for (const segment of result.sampledSegments) {
+    const statusIcon = segment.verified ? '✅' : '❌';
+    const statusClass = segment.verified ? 'verified' : 'failed';
+    segmentsHtml += `
+      <div class="sampled-segment-item ${statusClass}">
+        <span class="segment-status">${statusIcon}</span>
+        <span class="segment-range">イベント ${segment.startIndex} - ${segment.endIndex}</span>
+        <span class="segment-count">(${segment.eventCount} イベント)</span>
+        <div class="segment-hashes">
+          <span class="segment-hash" title="${segment.startHash}">開始: ${segment.startHash.substring(0, 12)}...</span>
+          <span class="segment-hash" title="${segment.endHash}">終了: ${segment.endHash.substring(0, 12)}...</span>
+        </div>
+      </div>
+    `;
+  }
+  segmentsHtml += '</div>';
+  sampledSegments.innerHTML = segmentsHtml;
+}
 
 /**
  * 外部入力イベントを表示
@@ -228,49 +270,104 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
       if (typingSpeedEl) typingSpeedEl.textContent = meta.averageTypingSpeed + ' WPM';
     }
 
-    // 2. ハッシュ鎖の検証
+    // 2. ハッシュ鎖の検証（チェックポイントがあればサンプリング検証）
     let chainValid = false;
     let chainError: { message: string } | null = null;
 
     if (data.proof?.events) {
       const eventCount = data.proof.events.length;
-      const chainLog = addLoadingLogWithHash(`ハッシュ鎖を検証中... (0/${eventCount})`);
+      const hasCheckpoints = data.checkpoints && data.checkpoints.length > 0;
+      const verificationMode = hasCheckpoints ? 'サンプリング' : '全件';
+      const chainLog = addLoadingLogWithHash(`ハッシュ鎖を検証中 (${verificationMode})... (0/${eventCount})`);
       await new Promise(r => setTimeout(r, 50));
 
       typingProof.events = data.proof.events;
       typingProof.currentHash = data.proof.finalHash;
 
-      // 進捗表示用のコールバック（ハッシュ情報付き）- 毎回更新
-      const onProgress = (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }): void => {
-        const msgEl = chainLog.querySelector('.log-message');
-        const hashEl = chainLog.querySelector('.log-hash-display');
-        if (msgEl) {
-          const percent = Math.round((current / total) * 100);
-          msgEl.textContent = `ハッシュ鎖を検証中... (${current}/${total}) ${percent}%`;
-        }
-        if (hashEl && hashInfo) {
-          // ハッシュをかっこよく表示（一部だけ見せる）
-          const shortHash = hashInfo.computed.substring(0, 16);
-          const poswShort = hashInfo.poswHash.substring(0, 12);
-          hashEl.innerHTML = `<span class="hash-chain">${shortHash}...</span> <span class="hash-posw">PoSW:${poswShort}</span>`;
+      let chainVerification;
 
-          // ハッシュ表示エリアが見えるようにスクロール
-          if (loadingLog.container) {
-            loadingLog.container.scrollTop = loadingLog.container.scrollHeight;
+      if (hasCheckpoints) {
+        // サンプリング検証（チェックポイントあり）
+        let currentPhase = '';
+        const onSampledProgress = (phase: string, current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash?: string }): void => {
+          const msgEl = chainLog.querySelector('.log-message');
+          const hashEl = chainLog.querySelector('.log-hash-display');
+
+          let phaseLabel = '';
+          switch (phase) {
+            case 'checkpoint':
+              phaseLabel = `チェックポイント検証 (${current}/${total})`;
+              break;
+            case 'segment':
+              phaseLabel = `区間検証 (${current}/${total})`;
+              break;
+            case 'final':
+              phaseLabel = '最終ハッシュ検証';
+              break;
+            case 'fallback':
+              phaseLabel = 'フォールバック: 全件検証';
+              break;
+            default:
+              phaseLabel = `検証中 (${current}/${total})`;
           }
-        }
-      };
 
-      const chainVerification = await typingProof.verify(onProgress);
+          if (msgEl) {
+            if (phase !== currentPhase) {
+              currentPhase = phase;
+            }
+            msgEl.textContent = `ハッシュ鎖を検証中 (${verificationMode})... ${phaseLabel}`;
+          }
+
+          if (hashEl && hashInfo) {
+            const shortHash = hashInfo.computed.substring(0, 16);
+            const poswShort = hashInfo.poswHash?.substring(0, 12) ?? '-';
+            hashEl.innerHTML = `<span class="hash-chain">${shortHash}...</span> <span class="hash-posw">PoSW:${poswShort}</span>`;
+
+            if (loadingLog.container) {
+              loadingLog.container.scrollTop = loadingLog.container.scrollHeight;
+            }
+          }
+        };
+
+        chainVerification = await typingProof.verifySampled(data.checkpoints!, 3, onSampledProgress);
+      } else {
+        // 全件検証（チェックポイントなし - 旧バージョン互換）
+        const onProgress = (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }): void => {
+          const msgEl = chainLog.querySelector('.log-message');
+          const hashEl = chainLog.querySelector('.log-hash-display');
+          if (msgEl) {
+            const percent = Math.round((current / total) * 100);
+            msgEl.textContent = `ハッシュ鎖を検証中 (${verificationMode})... (${current}/${total}) ${percent}%`;
+          }
+          if (hashEl && hashInfo) {
+            const shortHash = hashInfo.computed.substring(0, 16);
+            const poswShort = hashInfo.poswHash.substring(0, 12);
+            hashEl.innerHTML = `<span class="hash-chain">${shortHash}...</span> <span class="hash-posw">PoSW:${poswShort}</span>`;
+
+            if (loadingLog.container) {
+              loadingLog.container.scrollTop = loadingLog.container.scrollHeight;
+            }
+          }
+        };
+
+        chainVerification = await typingProof.verify(onProgress);
+      }
+
       chainValid = chainVerification.valid;
 
       if (chainValid) {
-        updateLoadingLog(chainLog, 'success', `ハッシュ鎖: ${eventCount} イベント検証完了`);
+        const checkpointInfo = hasCheckpoints ? ` (${data.checkpoints!.length}チェックポイント)` : '';
+        updateLoadingLog(chainLog, 'success', `ハッシュ鎖: ${eventCount} イベント検証完了${checkpointInfo}`);
         if (chainValidBadge) {
           chainValidBadge.innerHTML = '✅ 有効';
           chainValidBadge.className = 'badge success';
         }
-        if (chainMessage) chainMessage.textContent = `全${data.proof.totalEvents}イベントのハッシュ鎖が正常に検証されました`;
+        if (chainMessage) {
+          const modeInfo = hasCheckpoints
+            ? `サンプリング検証で${data.checkpoints!.length}チェックポイントを使用`
+            : '全イベントを検証';
+          chainMessage.textContent = `${modeInfo}して正常に検証されました`;
+        }
       } else {
         updateLoadingLog(chainLog, 'error', 'ハッシュ鎖: 検証失敗');
         if (chainValidBadge) {
@@ -279,6 +376,11 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
         }
         if (chainMessage) chainMessage.textContent = `エラー: ${chainVerification.message}`;
         chainError = chainVerification;
+      }
+
+      // サンプリング検証結果を表示
+      if (chainVerification.sampledResult) {
+        displaySampledVerification(chainVerification.sampledResult);
       }
 
       // PoSW検証ログ

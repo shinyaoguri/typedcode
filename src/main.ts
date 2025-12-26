@@ -22,6 +22,7 @@ import type {
   VisibilityChangeData,
   FocusChangeData,
   KeystrokeDynamicsData,
+  WindowSizeData,
 } from './types.js';
 
 // Monaco Editor の Worker 設定
@@ -65,6 +66,11 @@ let lastMousePosition: MousePositionData | null = null;
 let lastMouseTime = 0;
 const MOUSE_THROTTLE_MS = 100; // マウス移動イベントの間引き間隔
 
+// ウィンドウサイズ追跡用
+let lastWindowSize: WindowSizeData | null = null;
+let windowResizeTimeout: ReturnType<typeof setTimeout> | null = null;
+const WINDOW_RESIZE_DEBOUNCE_MS = 500; // リサイズイベントのデバウンス間隔
+
 // キーストロークダイナミクス追跡用
 const keyDownTimes: Map<string, number> = new Map(); // code -> keyDown時刻
 let lastKeyUpTime = 0; // 前回のkeyUp時刻（Flight Time計算用）
@@ -79,6 +85,62 @@ const KEYSTROKE_THRESHOLDS = {
 
 // イベント記録を無効化するフラグ（リセット時などに使用）
 let isEventRecordingEnabled = true;
+
+// ページ離脱確認を無効化するフラグ（リセット時に使用）
+let skipBeforeUnload = false;
+
+/**
+ * 現在のウィンドウサイズを取得
+ */
+function getCurrentWindowSize(): WindowSizeData {
+  return {
+    width: window.outerWidth,
+    height: window.outerHeight,
+    innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
+    devicePixelRatio: window.devicePixelRatio
+  };
+}
+
+/**
+ * ウィンドウサイズが変更されたかチェック
+ */
+function hasWindowSizeChanged(current: WindowSizeData, previous: WindowSizeData | null): boolean {
+  if (!previous) return true;
+  return (
+    current.width !== previous.width ||
+    current.height !== previous.height ||
+    current.innerWidth !== previous.innerWidth ||
+    current.innerHeight !== previous.innerHeight ||
+    current.devicePixelRatio !== previous.devicePixelRatio
+  );
+}
+
+/**
+ * ウィンドウリサイズイベントを記録
+ */
+function recordWindowResize(isInitial: boolean = false): void {
+  if (!isEventRecordingEnabled) return;
+
+  const currentSize = getCurrentWindowSize();
+
+  // サイズが変わっていない場合はスキップ
+  if (!hasWindowSizeChanged(currentSize, lastWindowSize)) {
+    return;
+  }
+
+  lastWindowSize = currentSize;
+
+  const event: RecordEventInput = {
+    type: 'windowResize',
+    data: currentSize,
+    description: isInitial
+      ? `初期ウィンドウサイズ: ${currentSize.innerWidth}x${currentSize.innerHeight}`
+      : `ウィンドウリサイズ: ${currentSize.innerWidth}x${currentSize.innerHeight}`
+  };
+
+  recordEventAsync(event);
+}
 
 /**
  * イベントを記録（fire-and-forget）
@@ -97,19 +159,28 @@ function recordEventAsync(event: RecordEventInput): void {
         logViewer.addLogEntry(recordedEvent, result.index);
       }
     }
-    updateProofStatus();
     // タブデータを保存
     tabManager?.saveToStorage();
   }).catch(err => {
     console.error('[TypedCode] Event recording failed:', err);
+  }).finally(() => {
+    // 成功・失敗に関わらずステータスを更新
+    updateProofStatus();
   });
 }
 
 // UI要素の取得
 const eventCountEl = document.getElementById('event-count');
 const currentHashEl = document.getElementById('current-hash');
+const proofStatusItemEl = document.getElementById('proof-status-item');
+const proofProgressRing = document.getElementById('proof-progress-ring');
+const progressBar = document.getElementById('progress-bar') as SVGCircleElement | null;
 const blockNotificationEl = document.getElementById('block-notification');
 const blockMessageEl = document.getElementById('block-message');
+
+// プログレスリング用の状態管理
+let peakPendingCount = 0;  // 処理開始時のキュー数（ピーク値）
+const PROGRESS_RING_CIRCUMFERENCE = 2 * Math.PI * 8;  // 円周 = 2πr (r=8)
 
 // タブ要素
 const editorTabsContainer = document.getElementById('editor-tabs');
@@ -174,17 +245,12 @@ function createTabElement(tab: TabState): HTMLElement {
   if (tabManager?.getActiveTab()?.id === tab.id) {
     tabEl.classList.add('active');
   }
-  if (tab.isModified) {
-    tabEl.classList.add('modified');
-  }
-
   const ext = '.' + getFileExtension(tab.language);
 
   tabEl.innerHTML = `
     <i class="fas fa-file-code tab-icon"></i>
     <span class="tab-filename">${tab.filename}</span>
     <span class="tab-extension">${ext}</span>
-    <span class="tab-modified" title="Modified"></span>
     <button class="tab-close-btn" title="Close Tab"><i class="fas fa-times"></i></button>
   `;
 
@@ -343,22 +409,59 @@ new InputDetector(document.body, async (detectedEvent: DetectedEvent) => {
 
 // リセット機能
 const resetBtn = document.getElementById('reset-btn');
-resetBtn?.addEventListener('click', async () => {
-  if (confirm('全てのタブと操作ログを削除してリセットしますか？\nこの操作は取り消せません。')) {
-    isEventRecordingEnabled = false;
+const resetDialog = document.getElementById('reset-dialog');
+const resetCancelBtn = document.getElementById('reset-cancel-btn');
+const resetConfirmBtn = document.getElementById('reset-confirm-btn');
 
-    await tabManager?.reset();
+// ダイアログを表示
+resetBtn?.addEventListener('click', () => {
+  // ドロップダウンを閉じる
+  document.getElementById('settings-dropdown')?.classList.remove('visible');
+  // ダイアログを表示
+  resetDialog?.classList.remove('hidden');
+});
 
-    if (logViewer) {
-      logViewer.clear();
-    }
+// キャンセル
+resetCancelBtn?.addEventListener('click', () => {
+  resetDialog?.classList.add('hidden');
+});
 
-    updateTabUI();
-    updateProofStatus();
+// オーバーレイクリックでキャンセル
+resetDialog?.addEventListener('click', (e) => {
+  if (e.target === resetDialog) {
+    resetDialog.classList.add('hidden');
+  }
+});
 
-    isEventRecordingEnabled = true;
+// ESCキーでキャンセル
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !resetDialog?.classList.contains('hidden')) {
+    resetDialog?.classList.add('hidden');
+  }
+});
 
-    showNotification('リセットしました');
+// リセット実行
+resetConfirmBtn?.addEventListener('click', () => {
+  // ダイアログを閉じる
+  resetDialog?.classList.add('hidden');
+
+  // localStorageを完全にクリア
+  localStorage.clear();
+
+  // beforeunloadを無効化してリロード
+  skipBeforeUnload = true;
+  window.location.reload();
+});
+
+// ページ離脱時の確認ダイアログ（VSCode風）
+window.addEventListener('beforeunload', (e) => {
+  // リセット時はスキップ
+  if (skipBeforeUnload) return;
+
+  // データがある場合のみ確認
+  const activeProof = tabManager?.getActiveProof();
+  if (activeProof && activeProof.events.length > 0) {
+    e.preventDefault();
   }
 });
 
@@ -379,10 +482,6 @@ downloadBtn?.addEventListener('click', () => {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-
-  // ダウンロード後は未変更状態に
-  tabManager?.setTabModified(activeTab.id, false);
-  updateTabUI();
 });
 
 // エディタの変更イベントを監視してタイピング証明を記録
@@ -421,12 +520,6 @@ editor.onDidChangeModelContent(async (e) => {
     }
   }
 
-  // ファイル変更を示す
-  const activeTab = tabManager?.getActiveTab();
-  if (activeTab) {
-    tabManager?.setTabModified(activeTab.id, true);
-    updateTabUI();
-  }
   updateProofStatus();
 
   // タブデータを保存（recordEventAsyncでも保存しているが、念のため）
@@ -717,6 +810,36 @@ function updateProofStatus(): void {
     currentHashEl.title = stats.currentHash;
   }
 
+  // 待ち行列状況を円形プログレスゲージで表示
+  if (proofProgressRing && progressBar) {
+    if (stats.pendingCount > 0) {
+      // 処理中: プログレスリングを表示
+      proofProgressRing.classList.add('processing');
+
+      // ピーク値を更新（キューが増えた場合）
+      if (stats.pendingCount > peakPendingCount) {
+        peakPendingCount = stats.pendingCount;
+      }
+
+      // 進捗を計算（処理済み / ピーク値）
+      const processed = peakPendingCount - stats.pendingCount;
+      const progress = peakPendingCount > 0 ? processed / peakPendingCount : 0;
+
+      // stroke-dashoffsetを設定（0 = 100%, circumference = 0%）
+      const offset = PROGRESS_RING_CIRCUMFERENCE * (1 - progress);
+      progressBar.style.strokeDashoffset = String(offset);
+
+      // ツールチップを更新
+      proofStatusItemEl?.setAttribute('title', `Processing: ${stats.pendingCount} remaining (${processed}/${peakPendingCount} done)`);
+    } else {
+      // 待機中: プログレスリングを非表示、ピークをリセット
+      proofProgressRing.classList.remove('processing');
+      peakPendingCount = 0;
+      progressBar.style.strokeDashoffset = String(PROGRESS_RING_CIRCUMFERENCE);
+      proofStatusItemEl?.setAttribute('title', 'Typing proof status');
+    }
+  }
+
   // 100イベントごとにスナップショット記録
   if (stats.totalEvents > 0 && stats.totalEvents % 100 === 0) {
     const editorContent = editor.getValue();
@@ -731,12 +854,81 @@ function updateProofStatus(): void {
 }
 
 
+// 処理待機ダイアログ関連
+const processingDialog = document.getElementById('processing-dialog');
+const processingProgressBar = document.getElementById('processing-progress-bar');
+const processingStatus = document.getElementById('processing-status');
+const processingCancelBtn = document.getElementById('processing-cancel-btn');
+let processingCancelled = false;
+
+/**
+ * ハッシュチェーン生成が完了するまで待機
+ * @returns true: 完了, false: キャンセルされた
+ */
+async function waitForProcessingComplete(): Promise<boolean> {
+  const activeProof = tabManager?.getActiveProof();
+  if (!activeProof) return true;
+
+  const stats = activeProof.getStats();
+  if (stats.pendingCount === 0) {
+    return true;  // 待機不要
+  }
+
+  // ダイアログを表示
+  processingCancelled = false;
+  processingDialog?.classList.remove('hidden');
+
+  const initialPending = stats.pendingCount;
+
+  return new Promise<boolean>((resolve) => {
+    const checkInterval = setInterval(() => {
+      const currentStats = activeProof.getStats();
+
+      if (processingCancelled) {
+        clearInterval(checkInterval);
+        processingDialog?.classList.add('hidden');
+        resolve(false);
+        return;
+      }
+
+      if (currentStats.pendingCount === 0) {
+        clearInterval(checkInterval);
+        processingDialog?.classList.add('hidden');
+        resolve(true);
+        return;
+      }
+
+      // プログレスバーを更新
+      const processed = initialPending - currentStats.pendingCount;
+      const progress = initialPending > 0 ? (processed / initialPending) * 100 : 0;
+      if (processingProgressBar) {
+        processingProgressBar.style.width = `${progress}%`;
+      }
+      if (processingStatus) {
+        processingStatus.textContent = `処理中: ${currentStats.pendingCount} 件待機中 (${processed}/${initialPending} 完了)`;
+      }
+    }, 100);
+  });
+}
+
+// 処理待機ダイアログのキャンセルボタン
+processingCancelBtn?.addEventListener('click', () => {
+  processingCancelled = true;
+});
+
 // 証明データのエクスポート機能（アクティブタブのみ）
 const exportProofBtn = document.getElementById('export-proof-btn');
 exportProofBtn?.addEventListener('click', async () => {
   try {
     const activeTab = tabManager?.getActiveTab();
     if (!activeTab) return;
+
+    // ハッシュチェーン生成完了を待機
+    const completed = await waitForProcessingComplete();
+    if (!completed) {
+      showNotification('エクスポートがキャンセルされました');
+      return;
+    }
 
     const proofData = await tabManager!.exportSingleTab(activeTab.id);
     if (!proofData) return;
@@ -784,6 +976,13 @@ const exportZipBtn = document.getElementById('export-zip-btn');
 exportZipBtn?.addEventListener('click', async () => {
   try {
     if (!tabManager) return;
+
+    // ハッシュチェーン生成完了を待機
+    const completed = await waitForProcessingComplete();
+    if (!completed) {
+      showNotification('エクスポートがキャンセルされました');
+      return;
+    }
 
     const multiProofData = await tabManager.exportAllTabs();
 
@@ -906,6 +1105,19 @@ async function initializeApp(): Promise<void> {
   isEventRecordingEnabled = true;
   console.log('[TypedCode] Event recording enabled');
 
+  // 初期ウィンドウサイズを記録
+  recordWindowResize(true);
+
+  // ウィンドウリサイズイベントのリスナー（デバウンス付き）
+  window.addEventListener('resize', () => {
+    if (windowResizeTimeout) {
+      clearTimeout(windowResizeTimeout);
+    }
+    windowResizeTimeout = setTimeout(() => {
+      recordWindowResize(false);
+    }, WINDOW_RESIZE_DEBOUNCE_MS);
+  });
+
   const logEntriesContainer = document.getElementById('log-entries');
   if (!logEntriesContainer) {
     console.error('[TypedCode] log-entries not found!');
@@ -916,6 +1128,24 @@ async function initializeApp(): Promise<void> {
   if (initialProof) {
     logViewer = new LogViewer(logEntriesContainer, initialProof);
     console.log('[TypedCode] LogViewer initialized');
+  }
+
+  // 設定ドロップダウンメニュー
+  const settingsBtn = document.getElementById('settings-btn');
+  const settingsDropdown = document.getElementById('settings-dropdown');
+
+  if (settingsBtn && settingsDropdown) {
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      settingsDropdown.classList.toggle('visible');
+    });
+
+    // 外側クリックでドロップダウンを閉じる
+    document.addEventListener('click', (e) => {
+      if (!settingsDropdown.contains(e.target as Node) && !settingsBtn.contains(e.target as Node)) {
+        settingsDropdown.classList.remove('visible');
+      }
+    });
   }
 
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
@@ -930,6 +1160,8 @@ async function initializeApp(): Promise<void> {
     themeToggleBtn.addEventListener('click', () => {
       themeManager.toggle();
       updateThemeIcon();
+      // ドロップダウンを閉じる
+      settingsDropdown?.classList.remove('visible');
     });
 
     updateThemeIcon();

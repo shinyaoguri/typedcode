@@ -1013,6 +1013,77 @@ footer {
 }
 
 
+/* サンプリング検証結果 */
+.sampled-verification {
+  background: #f0f7ff;
+  border: 1px solid #b8daff;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.sampled-summary-text {
+  font-size: 0.9rem;
+  color: #004085;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #b8daff;
+}
+
+.sampled-segments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sampled-segment-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: white;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  border-left: 3px solid #28a745;
+}
+
+.sampled-segment-item.failed {
+  border-left-color: #dc3545;
+  background: #fff5f5;
+}
+
+.segment-status {
+  font-size: 1rem;
+}
+
+.segment-range {
+  font-weight: bold;
+  color: #333;
+}
+
+.segment-count {
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.segment-hashes {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.segment-hash {
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: #666;
+  background: #f8f9fa;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: help;
+}
+
 /* レスポンシブ */
 @media (max-width: 768px) {
   header h1 {
@@ -1046,5 +1117,10 @@ footer {
     width: 100%;
     order: -1;
     margin-bottom: 10px;
+  }
+
+  .segment-hashes {
+    flex-direction: column;
+    gap: 4px;
   }
 }

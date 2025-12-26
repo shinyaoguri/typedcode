@@ -21,6 +21,8 @@ import type {
   EventType,
   PoSWData,
   SerializedProofState,
+  CheckpointData,
+  SampledSegmentInfo,
 } from './types.js';
 
 export class TypingProof {
@@ -32,8 +34,12 @@ export class TypingProof {
   initialized: boolean = false;
   private recordQueue: Promise<RecordEventResult> = Promise.resolve({ hash: '', index: -1 });
 
+  // チェックポイント関連
+  checkpoints: CheckpointData[] = [];
+  private static readonly CHECKPOINT_INTERVAL = 100;  // 100イベントごとにチェックポイント作成
+
   // PoSW設定（固定値 - セキュリティ上の理由で動的変更は不可）
-  private static readonly POSW_ITERATIONS = 5000;
+  private static readonly POSW_ITERATIONS = 10000;
 
   // Web Worker関連
   private worker: Worker | null = null;
@@ -42,6 +48,9 @@ export class TypingProof {
     resolve: (value: unknown) => void;
     reject: (error: unknown) => void;
   }> = new Map();
+
+  // キュー待ち数（recordQueueに積まれているイベント数）
+  private queuedEventCount: number = 0;
 
   /**
    * Web Workerを初期化
@@ -214,8 +223,23 @@ export class TypingProof {
    * @returns ハッシュと配列のインデックス
    */
   async recordEvent(event: RecordEventInput): Promise<RecordEventResult> {
+    // キュー待ち数を増加
+    this.queuedEventCount++;
+
     // 前のイベント記録が完了するまで待つ（排他制御）
-    this.recordQueue = this.recordQueue.then(() => this._recordEventInternal(event));
+    // .catch()でエラーを握りつぶしてチェーンを継続させる
+    this.recordQueue = this.recordQueue
+      .catch(() => {
+        // 前のイベントでエラーが発生してもチェーンを継続
+      })
+      .then(async () => {
+        try {
+          return await this._recordEventInternal(event);
+        } finally {
+          // 処理完了後にキュー待ち数を減少
+          this.queuedEventCount--;
+        }
+      });
     return this.recordQueue;
   }
 
@@ -282,7 +306,36 @@ export class TypingProof {
     };
     this.events.push(storedEvent);
 
+    // チェックポイントの自動作成（CHECKPOINT_INTERVALイベントごと）
+    if ((eventIndex + 1) % TypingProof.CHECKPOINT_INTERVAL === 0) {
+      await this.createCheckpoint(eventIndex);
+    }
+
     return { hash: this.currentHash, index: eventIndex };
+  }
+
+  /**
+   * チェックポイントを作成
+   * @param eventIndex - チェックポイントを作成するイベントインデックス
+   */
+  private async createCheckpoint(eventIndex: number): Promise<void> {
+    const event = this.events[eventIndex];
+    if (!event) return;
+
+    // イベントのデータからコンテンツハッシュを計算
+    const contentHash = event.data
+      ? await this.computeHash(typeof event.data === 'string' ? event.data : JSON.stringify(event.data))
+      : '';
+
+    const checkpoint: CheckpointData = {
+      eventIndex,
+      hash: event.hash,
+      timestamp: event.timestamp,
+      contentHash
+    };
+
+    this.checkpoints.push(checkpoint);
+    console.log(`[TypingProof] Checkpoint created at event ${eventIndex}, hash: ${event.hash.substring(0, 16)}...`);
   }
 
   /**
@@ -358,8 +411,15 @@ export class TypingProof {
     // タイピング証明ハッシュを生成
     const typingProof = await this.generateTypingProofHash(finalContent);
 
+    // 最終チェックポイントを作成（最後のイベントがチェックポイント間隔でない場合）
+    const lastEventIndex = this.events.length - 1;
+    if (lastEventIndex >= 0 && this.checkpoints.length === 0 ||
+        (this.checkpoints.length > 0 && this.checkpoints[this.checkpoints.length - 1]!.eventIndex !== lastEventIndex)) {
+      await this.createCheckpoint(lastEventIndex);
+    }
+
     return {
-      version: '3.0.0',
+      version: '3.2.0',
       typingProofHash: typingProof.typingProofHash,
       typingProofData: typingProof.proofData,
       proof: signature,
@@ -371,7 +431,8 @@ export class TypingProof {
         userAgent: navigator.userAgent,
         timestamp: new Date().toISOString(),
         isPureTyping: typingProof.compact.isPureTyping
-      }
+      },
+      checkpoints: this.checkpoints
     };
   }
 
@@ -390,7 +451,8 @@ export class TypingProof {
       totalEvents: this.events.length,
       duration: duration / 1000,
       eventTypes,
-      currentHash: this.currentHash
+      currentHash: this.currentHash,
+      pendingCount: this.queuedEventCount
     };
   }
 
@@ -515,10 +577,297 @@ export class TypingProof {
    */
   async reset(): Promise<void> {
     this.events = [];
+    this.checkpoints = [];
     if (this.fingerprint) {
       this.currentHash = await this.initialHash(this.fingerprint);
     }
     this.startTime = performance.now();
+  }
+
+  /**
+   * チェックポイントを使用したサンプリング検証
+   * ランダムな区間をサンプリングして、開始ハッシュから再計算し終了ハッシュと一致するか検証
+   * @param checkpoints - チェックポイントデータ
+   * @param sampleCount - サンプリングする区間数（デフォルト: 3）
+   * @param onProgress - 進捗コールバック
+   */
+  async verifySampled(
+    checkpoints: CheckpointData[],
+    sampleCount: number = 3,
+    onProgress?: (phase: string, current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash?: string }) => void
+  ): Promise<VerificationResult> {
+    // チェックポイントがない場合は全検証にフォールバック
+    if (!checkpoints || checkpoints.length === 0) {
+      onProgress?.('fallback', 0, this.events.length);
+      return await this.verify((current, total, hashInfo) => {
+        onProgress?.('full', current, total, hashInfo);
+      });
+    }
+
+    // チェックポイントをソート（念のため）
+    const sortedCheckpoints = [...checkpoints].sort((a, b) => a.eventIndex - b.eventIndex);
+
+    // 検証対象の区間を構築（チェックポイント間）
+    const allSegments = this.buildCheckpointSegments(sortedCheckpoints);
+
+    // ランダムにサンプリング
+    const selectedSegments = this.selectRandomSegments(allSegments, sampleCount);
+
+    // 検証対象のイベント総数を計算
+    let totalEventsToVerify = 0;
+    for (const seg of selectedSegments) {
+      totalEventsToVerify += seg.endIndex - seg.startIndex + 1;
+    }
+
+    onProgress?.('checkpoint', 0, selectedSegments.length);
+
+    // サンプリング結果を記録
+    const sampledSegmentInfos: SampledSegmentInfo[] = [];
+
+    // 各区間を再計算して検証
+    let verifiedCount = 0;
+    for (let segIdx = 0; segIdx < selectedSegments.length; segIdx++) {
+      const segment = selectedSegments[segIdx]!;
+
+      // 区間を再計算検証（開始ハッシュから計算し、終了ハッシュと一致するか）
+      const result = await this.verifySegmentWithExpectedEnd(
+        segment.startIndex,
+        segment.endIndex,
+        segment.startHash,
+        segment.expectedEndHash,
+        (_current, _total, hashInfo) => {
+          verifiedCount++;
+          onProgress?.('segment', verifiedCount, totalEventsToVerify, hashInfo);
+        }
+      );
+
+      // サンプリング結果を記録
+      sampledSegmentInfos.push({
+        startIndex: segment.startIndex,
+        endIndex: segment.endIndex,
+        eventCount: segment.endIndex - segment.startIndex + 1,
+        startHash: segment.startHash,
+        endHash: segment.expectedEndHash,
+        verified: result.valid
+      });
+
+      if (!result.valid) {
+        return {
+          ...result,
+          sampledResult: {
+            sampledSegments: sampledSegmentInfos,
+            totalSegments: allSegments.length,
+            totalEventsVerified: verifiedCount,
+            totalEvents: this.events.length
+          }
+        };
+      }
+
+      onProgress?.('checkpoint', segIdx + 1, selectedSegments.length, {
+        computed: result.computedHash ?? '',
+        expected: segment.expectedEndHash
+      });
+    }
+
+    return {
+      valid: true,
+      message: `Sampling verification passed (${selectedSegments.length} segments, ${verifiedCount} events verified out of ${this.events.length} total)`,
+      sampledResult: {
+        sampledSegments: sampledSegmentInfos,
+        totalSegments: allSegments.length,
+        totalEventsVerified: verifiedCount,
+        totalEvents: this.events.length
+      }
+    };
+  }
+
+  /**
+   * チェックポイント間の区間を構築
+   * 各区間は開始ハッシュと期待される終了ハッシュを持つ
+   */
+  private buildCheckpointSegments(
+    checkpoints: CheckpointData[]
+  ): Array<{ startIndex: number; endIndex: number; startHash: string; expectedEndHash: string }> {
+    const segments: Array<{ startIndex: number; endIndex: number; startHash: string; expectedEndHash: string }> = [];
+
+    // 最初の区間: イベント0 から 最初のチェックポイントまで
+    if (checkpoints.length > 0 && checkpoints[0]!.eventIndex >= 0) {
+      const firstCp = checkpoints[0]!;
+      segments.push({
+        startIndex: 0,
+        endIndex: firstCp.eventIndex,
+        startHash: this.events[0]?.previousHash ?? '',
+        expectedEndHash: firstCp.hash
+      });
+    }
+
+    // チェックポイント間の区間
+    for (let i = 0; i < checkpoints.length - 1; i++) {
+      const currentCp = checkpoints[i]!;
+      const nextCp = checkpoints[i + 1]!;
+
+      // 次のチェックポイントまでの区間（現在のチェックポイントの次から）
+      segments.push({
+        startIndex: currentCp.eventIndex + 1,
+        endIndex: nextCp.eventIndex,
+        startHash: currentCp.hash,
+        expectedEndHash: nextCp.hash
+      });
+    }
+
+    // 最後の区間: 最後のチェックポイントから最終イベントまで
+    const lastCp = checkpoints[checkpoints.length - 1];
+    if (lastCp && lastCp.eventIndex < this.events.length - 1) {
+      const lastEvent = this.events[this.events.length - 1];
+      segments.push({
+        startIndex: lastCp.eventIndex + 1,
+        endIndex: this.events.length - 1,
+        startHash: lastCp.hash,
+        expectedEndHash: lastEvent?.hash ?? ''
+      });
+    }
+
+    return segments;
+  }
+
+  /**
+   * 区間からランダムにサンプリング
+   * 必ず最初と最後の区間を含め、残りはランダム選択
+   */
+  private selectRandomSegments(
+    segments: Array<{ startIndex: number; endIndex: number; startHash: string; expectedEndHash: string }>,
+    sampleCount: number
+  ): Array<{ startIndex: number; endIndex: number; startHash: string; expectedEndHash: string }> {
+    if (segments.length <= sampleCount) {
+      return segments;
+    }
+
+    const selected: Array<{ startIndex: number; endIndex: number; startHash: string; expectedEndHash: string }> = [];
+
+    // 必ず最初と最後の区間を含める
+    selected.push(segments[0]!);
+    if (segments.length > 1) {
+      selected.push(segments[segments.length - 1]!);
+    }
+
+    // 残りの区間からランダムにサンプリング
+    const middleSegments = segments.slice(1, -1);
+    const remaining = sampleCount - selected.length;
+
+    for (let i = 0; i < remaining && middleSegments.length > 0; i++) {
+      const randomIndex = Math.floor(Math.random() * middleSegments.length);
+      selected.push(middleSegments.splice(randomIndex, 1)[0]!);
+    }
+
+    // インデックス順にソート
+    return selected.sort((a, b) => a.startIndex - b.startIndex);
+  }
+
+  /**
+   * 区間を再計算検証し、期待される終了ハッシュと一致するか確認
+   */
+  private async verifySegmentWithExpectedEnd(
+    startIndex: number,
+    endIndex: number,
+    startHash: string,
+    expectedEndHash: string,
+    onProgress?: (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => void
+  ): Promise<VerificationResult & { computedHash?: string }> {
+    let hash: string | null = startIndex === 0 ? (this.events[0]?.previousHash ?? null) : startHash;
+    let lastTimestamp = startIndex > 0 ? (this.events[startIndex - 1]?.timestamp ?? -Infinity) : -Infinity;
+    const total = endIndex - startIndex + 1;
+
+    for (let i = startIndex; i <= endIndex; i++) {
+      const event = this.events[i];
+      if (!event) continue;
+
+      // シーケンス番号チェック
+      if (event.sequence !== i) {
+        return {
+          valid: false,
+          errorAt: i,
+          message: `Sequence mismatch at event ${i}: expected ${i}, got ${event.sequence}`,
+          event
+        };
+      }
+
+      // タイムスタンプ連続性チェック
+      if (event.timestamp < lastTimestamp) {
+        return {
+          valid: false,
+          errorAt: i,
+          message: `Timestamp violation at event ${i}`,
+          event,
+          previousTimestamp: lastTimestamp,
+          currentTimestamp: event.timestamp
+        };
+      }
+      lastTimestamp = event.timestamp;
+
+      // PoSW検証のためのデータ
+      const eventDataWithoutPoSW = {
+        sequence: event.sequence,
+        timestamp: event.timestamp,
+        type: event.type,
+        inputType: event.inputType,
+        data: event.data,
+        rangeOffset: event.rangeOffset,
+        rangeLength: event.rangeLength,
+        range: event.range,
+        previousHash: event.previousHash
+      };
+
+      // PoSW検証
+      const eventDataStringForPoSW = JSON.stringify(eventDataWithoutPoSW);
+      const poswValid = await this.verifyPoSW(hash ?? '', eventDataStringForPoSW, event.posw);
+
+      if (!poswValid) {
+        return {
+          valid: false,
+          errorAt: i,
+          message: `PoSW verification failed at event ${i}`,
+          event
+        };
+      }
+
+      // ハッシュ計算
+      const eventData: EventHashData = {
+        ...eventDataWithoutPoSW,
+        posw: event.posw
+      };
+
+      const eventString = JSON.stringify(eventData);
+      const combinedData = hash + eventString;
+      const computedHash = await this.computeHash(combinedData);
+
+      hash = computedHash;
+
+      if (onProgress) {
+        onProgress(i - startIndex + 1, total, {
+          computed: computedHash,
+          expected: event.hash,
+          poswHash: event.posw.intermediateHash
+        });
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+
+    // 区間の終了ハッシュが期待値と一致するか確認
+    if (hash !== expectedEndHash) {
+      return {
+        valid: false,
+        errorAt: endIndex,
+        message: `Segment end hash mismatch at event ${endIndex}: computed ${hash?.substring(0, 16)}..., expected ${expectedEndHash.substring(0, 16)}...`,
+        expectedHash: expectedEndHash,
+        computedHash: hash ?? undefined
+      };
+    }
+
+    return {
+      valid: true,
+      message: `Segment ${startIndex}-${endIndex} verified successfully`,
+      computedHash: hash ?? undefined
+    };
   }
 
   /**

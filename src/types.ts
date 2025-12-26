@@ -21,7 +21,8 @@ export type EventType =
   | 'visibilityChange'
   | 'focusChange'
   | 'keyDown'
-  | 'keyUp';
+  | 'keyUp'
+  | 'windowResize';
 
 /** 入力タイプ（Monaco Editor準拠 + カスタム） */
 export type InputType =
@@ -98,6 +99,15 @@ export interface FocusChangeData {
   focused: boolean;
 }
 
+/** ウィンドウサイズデータ */
+export interface WindowSizeData {
+  width: number;         // window.outerWidth
+  height: number;        // window.outerHeight
+  innerWidth: number;    // window.innerWidth
+  innerHeight: number;   // window.innerHeight
+  devicePixelRatio: number;
+}
+
 /** キーストロークダイナミクスデータ */
 export interface KeystrokeDynamicsData {
   key: string;              // キー名（'a', 'Enter', 'Shift'など）
@@ -129,7 +139,7 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -149,7 +159,7 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;
@@ -179,6 +189,24 @@ export interface RecordEventResult {
 // 検証関連
 // ============================================================================
 
+/** サンプリングされた区間の情報 */
+export interface SampledSegmentInfo {
+  startIndex: number;
+  endIndex: number;
+  eventCount: number;
+  startHash: string;
+  endHash: string;
+  verified: boolean;
+}
+
+/** サンプリング検証結果 */
+export interface SampledVerificationResult {
+  sampledSegments: SampledSegmentInfo[];
+  totalSegments: number;
+  totalEventsVerified: number;
+  totalEvents: number;
+}
+
 /** ハッシュ検証結果 */
 export interface VerificationResult {
   valid: boolean;
@@ -190,6 +218,7 @@ export interface VerificationResult {
   computedHash?: string;
   previousTimestamp?: number;
   currentTimestamp?: number;
+  sampledResult?: SampledVerificationResult;
 }
 
 /** タイピング証明ハッシュ検証結果 */
@@ -247,6 +276,14 @@ export interface TypingProofHashResult {
   };
 }
 
+/** チェックポイントデータ */
+export interface CheckpointData {
+  eventIndex: number;     // チェックポイント時点のイベントインデックス
+  hash: string;           // その時点のハッシュ値
+  timestamp: number;      // その時点のタイムスタンプ
+  contentHash: string;    // その時点のコンテンツハッシュ（オプショナル検証用）
+}
+
 /** エクスポートされる証明ファイル */
 export interface ExportedProof {
   version: string;
@@ -262,6 +299,7 @@ export interface ExportedProof {
     timestamp: string;
     isPureTyping: boolean;
   };
+  checkpoints?: CheckpointData[];  // チェックポイント（v3.2.0以降）
 }
 
 // ============================================================================
@@ -280,6 +318,7 @@ export interface TypingStats {
   duration: number;
   eventTypes: EventTypeCounts;
   currentHash: string | null;
+  pendingCount: number;  // PoSW計算待ちのイベント数
 }
 
 /** タイピング統計 */
@@ -443,7 +482,7 @@ export interface SeekbarEventInfo {
   type: EventType;
   inputType: InputType | null;
   timestamp: number;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | null;
   dataLength: number;
   dataPreview: string | null;
   rangeOffset: number | null;

@@ -44,17 +44,30 @@
           <button class="activitybar-item" id="export-proof-btn" title="Export Proof Only">
             <i class="fas fa-shield-halved"></i>
           </button>
-          <a class="activitybar-item" href="./verify.html" title="Verify Proof">
-            <i class="fas fa-check-circle"></i>
-          </a>
-          <button class="activitybar-item activitybar-item-danger" id="reset-btn" title="Reset">
-            <i class="fas fa-rotate-left"></i>
-          </button>
         </div>
         <div class="activitybar-bottom">
-          <button class="activitybar-item" id="theme-toggle-btn" title="Toggle Theme">
-            <i class="fas fa-moon"></i>
-          </button>
+          <div class="activitybar-menu-container">
+            <button class="activitybar-item" id="settings-btn" title="Settings">
+              <i class="fas fa-gear"></i>
+            </button>
+            <div class="activitybar-dropdown" id="settings-dropdown">
+              <a class="dropdown-item" href="./verify.html" target="_blank" rel="noopener noreferrer">
+                <i class="fas fa-check-circle"></i>
+                <span>Verify Proof</span>
+                <i class="fas fa-external-link-alt dropdown-external-icon"></i>
+              </a>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item" id="theme-toggle-btn">
+                <i class="fas fa-moon"></i>
+                <span>Toggle Theme</span>
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item dropdown-item-danger" id="reset-btn">
+                <i class="fas fa-rotate-left"></i>
+                <span>Reset All</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -130,7 +143,13 @@
     <div class="statusbar">
       <div class="statusbar-left">
         <div class="status-item" id="proof-status-item" title="Typing proof status">
-          <i class="fas fa-shield-halved"></i>
+          <div class="proof-progress-ring" id="proof-progress-ring">
+            <svg viewBox="0 0 20 20">
+              <circle class="progress-bg" cx="10" cy="10" r="8" />
+              <circle class="progress-bar" id="progress-bar" cx="10" cy="10" r="8" />
+            </svg>
+            <i class="fas fa-shield-halved" id="proof-icon"></i>
+          </div>
           <span id="proof-status">Recording</span>
         </div>
         <div class="status-item" title="Total events recorded">
@@ -161,10 +180,59 @@
           </select>
         </div>
         <div class="status-item" id="cursor-position" title="Cursor position">
-          Ln <span id="cursor-line">1</span>, Col <span id="cursor-col">1</span>
+          行 <span id="cursor-line">1</span>, 列 <span id="cursor-col">1</span>
         </div>
       </div>
     </div>
+
+    <!-- Reset Confirmation Dialog -->
+    <div id="reset-dialog" class="modal-overlay hidden">
+      <div class="modal-dialog modal-danger">
+        <div class="modal-header">
+          <i class="fas fa-triangle-exclamation"></i>
+          <h3>すべてのデータをリセット</h3>
+        </div>
+        <div class="modal-body">
+          <p class="modal-warning">この操作は取り消せません！</p>
+          <p>以下のデータが完全に削除されます：</p>
+          <ul class="modal-list">
+            <li><i class="fas fa-file-code"></i> すべてのタブとコード</li>
+            <li><i class="fas fa-list"></i> すべての操作ログ</li>
+            <li><i class="fas fa-shield-halved"></i> すべてのタイピング証明</li>
+            <li><i class="fas fa-database"></i> すべての保存データ</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn modal-btn-cancel" id="reset-cancel-btn">キャンセル</button>
+          <button class="modal-btn modal-btn-danger" id="reset-confirm-btn">
+            <i class="fas fa-trash"></i> すべてリセット
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Processing Wait Dialog -->
+    <div id="processing-dialog" class="modal-overlay hidden">
+      <div class="modal-dialog modal-info">
+        <div class="modal-header">
+          <i class="fas fa-spinner fa-spin"></i>
+          <h3>ハッシュチェーン生成中...</h3>
+        </div>
+        <div class="modal-body">
+          <p>PoSW（Proof of Sequential Work）の計算が完了するまでお待ちください。</p>
+          <div class="processing-progress">
+            <div class="processing-progress-bar" id="processing-progress-bar"></div>
+          </div>
+          <p class="processing-status" id="processing-status">処理中: 0 件待機中</p>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn modal-btn-cancel" id="processing-cancel-btn">キャンセル</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page Transition Overlay -->
+    <div id="page-transition-overlay" class="page-transition-overlay"></div>
   </div>
   <script type="module" src="/src/main.ts"></script>
 </body>
