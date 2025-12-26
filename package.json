@@ -6,12 +6,15 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
+    "dev": "concurrently \"npm run dev:editor\" \"npm run dev:verify\"",
     "dev:editor": "npm run dev -w @typedcode/editor",
     "dev:verify": "npm run dev -w @typedcode/verify",
     "dev:workers": "npm run dev -w @typedcode/workers",
     "build": "npm run build --workspaces --if-present",
     "build:editor": "npm run build -w @typedcode/editor",
     "build:verify": "npm run build -w @typedcode/verify"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }
