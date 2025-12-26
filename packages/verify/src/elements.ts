@@ -78,3 +78,12 @@ export const seekbarPlay = document.getElementById('seekbar-play');
 export const playIcon = document.getElementById('play-icon');
 export const seekbarNext = document.getElementById('seekbar-next');
 export const seekbarEnd = document.getElementById('seekbar-end');
+
+// チャート拡大モーダル
+export const chartModal = document.getElementById('chart-modal');
+export const chartModalBackdrop = document.getElementById('chart-modal-backdrop');
+export const chartModalClose = document.getElementById('chart-modal-close');
+export const chartThumbnail = document.getElementById('chart-thumbnail');
+export const modalTimelineCanvas = document.getElementById('modal-timeline-chart') as HTMLCanvasElement | null;
+export const modalMouseCanvas = document.getElementById('modal-mouse-chart') as HTMLCanvasElement | null;
+export const modalMouseSection = document.getElementById('modal-mouse-section');

@@ -49,6 +49,7 @@ import {
   showError,
 } from './ui.js';
 import { initializeSeekbar } from './seekbar.js';
+import { cacheEventsForModal } from './charts.js';
 
 // API URL for attestation verification
 const API_URL = 'https://typedcode-api.shinya-oguri.workers.dev';
@@ -86,7 +87,7 @@ async function displayHumanAttestation(attestation: HumanAttestation | undefined
 
   if (!attestation) {
     // 証明書なし
-    humanAttestationSection.style.display = 'block';
+    humanAttestationSection.style.display = 'table-row';
     if (humanAttestationBadge) {
       humanAttestationBadge.innerHTML = '⚠️ なし';
       humanAttestationBadge.className = 'badge warning';
@@ -100,7 +101,7 @@ async function displayHumanAttestation(attestation: HumanAttestation | undefined
     return true; // 証明書なしでも検証自体は成功扱い
   }
 
-  humanAttestationSection.style.display = 'block';
+  humanAttestationSection.style.display = 'table-row';
 
   // サーバーで署名を検証
   const verifyLog = addLoadingLog('人間証明書を検証中...');
@@ -492,7 +493,7 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
     }
 
     // 3. 人間証明書の検証
-    const attestationValid = await displayHumanAttestation(data.humanAttestation);
+    await displayHumanAttestation(data.humanAttestation);
 
     // 4. メタデータ表示
     if (versionEl) versionEl.textContent = data.version ?? '-';
@@ -518,11 +519,13 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
 
     // 検証完了後に結果セクションを表示（チャート描画前に表示が必要）
     if (resultSection) {
-      resultSection.style.display = 'block';
+      resultSection.style.display = 'flex';
     }
 
     // 5. タイムシークバーの初期化（結果セクション表示後にチャートを描画）
     if (data.proof?.events) {
+      // モーダル用にイベントデータをキャッシュ
+      cacheEventsForModal(data.proof.events, data.proof.events);
       // DOMが更新されるのを待ってからチャートを描画
       requestAnimationFrame(() => {
         initializeSeekbar(data.proof.events, data.content);

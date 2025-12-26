@@ -1524,3 +1524,12 @@ body {
   opacity: 1;
   pointer-events: all;
 }
+
+/* ===================================
+   reCAPTCHA Badge
+   =================================== */
+
+.grecaptcha-badge {
+  z-index: 99999 !important;
+  bottom: 30px !important;
+}

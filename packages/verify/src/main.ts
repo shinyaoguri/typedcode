@@ -11,21 +11,13 @@
  */
 
 import type { ProofFile } from './types.js';
-import {
-  dropZone,
-  fileInput,
-  resultSection,
-  typingProofHashEl,
-  copyHashBtn,
-  verifyAgainBtn,
-} from './elements.js';
+import { dropZone, fileInput } from './elements.js';
 import {
   showDropZoneLoading,
   addLoadingLog,
   updateLoadingLog,
   resetDropZoneLoading,
   hideDropZone,
-  showDropZone,
   showError,
 } from './ui.js';
 import { initializeSeekbarListeners } from './seekbar.js';
@@ -91,7 +83,7 @@ if (dropZone) {
   });
 }
 
-// ファイル選択
+// ファイル選択 (メインのファイル入力)
 fileInput?.addEventListener('change', (e) => {
   const target = e.target as HTMLInputElement;
   if (target.files && target.files.length > 0) {
@@ -99,31 +91,38 @@ fileInput?.addEventListener('change', (e) => {
   }
 });
 
-// ハッシュのコピー
-if (copyHashBtn) {
-  const btn = copyHashBtn;
-  btn.addEventListener('click', async () => {
-    const hash = typingProofHashEl?.textContent ?? '';
-    try {
-      await navigator.clipboard.writeText(hash);
-      const originalText = btn.textContent;
-      btn.textContent = '✅ コピーしました！';
-      setTimeout(() => {
-        btn.textContent = originalText;
-      }, 2000);
-    } catch (error) {
-      console.error('[Verify] Copy failed:', error);
-      alert('コピーに失敗しました');
-    }
-  });
-}
-
-// 再検証ボタン
-verifyAgainBtn?.addEventListener('click', () => {
-  if (resultSection) resultSection.style.display = 'none';
-  showDropZone(handleFile);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+// ファイル選択 (結果画面内のファイル入力)
+const fileInput2 = document.getElementById('file-input-2') as HTMLInputElement | null;
+fileInput2?.addEventListener('change', (e) => {
+  const target = e.target as HTMLInputElement;
+  if (target.files && target.files.length > 0) {
+    void handleFile(target.files[0]!);
+  }
 });
 
 // シークバーのイベントリスナーを初期化
 initializeSeekbarListeners();
+
+// === タブ切り替え機能 ===
+
+const tabTimeline = document.getElementById('tab-timeline');
+const tabMouse = document.getElementById('tab-mouse');
+const panelTimeline = document.getElementById('panel-timeline');
+const panelMouse = document.getElementById('panel-mouse');
+
+function switchTab(tab: 'timeline' | 'mouse'): void {
+  if (tab === 'timeline') {
+    tabTimeline?.classList.add('active');
+    tabMouse?.classList.remove('active');
+    panelTimeline?.classList.add('active');
+    panelMouse?.classList.remove('active');
+  } else {
+    tabTimeline?.classList.remove('active');
+    tabMouse?.classList.add('active');
+    panelTimeline?.classList.remove('active');
+    panelMouse?.classList.add('active');
+  }
+}
+
+tabTimeline?.addEventListener('click', () => switchTab('timeline'));
+tabMouse?.addEventListener('click', () => switchTab('mouse'));
