@@ -2,7 +2,8 @@
  * ThemeManager - ライト/ダークテーマの切り替え管理
  */
 
-import type { Theme, MonacoEditor } from './types.js';
+import type { Theme } from '@typedcode/shared';
+import type { MonacoEditor } from './monacoTypes.js';
 
 export class ThemeManager {
   private editor: MonacoEditor;

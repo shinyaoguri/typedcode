@@ -1,0 +1,15 @@
+{
+  "name": "@typedcode/workers",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:prod": "wrangler deploy --env production"
+  },
+  "devDependencies": {
+    "wrangler": "^3.99.0",
+    "@cloudflare/workers-types": "^4.20251218.0",
+    "typescript": "^5.9.3"
+  }
+}

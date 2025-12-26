@@ -1,6 +1,7 @@
-import type { StoredEvent, SampledVerificationResult } from '../types.js';
+import type { StoredEvent, SampledVerificationResult } from '@typedcode/shared';
 import type { ProofFile } from './types.js';
-import { TypingProof } from '../typingProof.js';
+import { TypingProof } from '@typedcode/shared';
+import type { HumanAttestation } from './types.js';
 import {
   typingProofHashEl,
   copyHashBtn,
@@ -22,6 +23,12 @@ import {
   poswIterationsEl,
   poswAvgTimeEl,
   poswTotalTimeEl,
+  humanAttestationSection,
+  humanAttestationBadge,
+  humanAttestationMessage,
+  humanAttestationScore,
+  humanAttestationTimestamp,
+  humanAttestationHostname,
   versionEl,
   languageEl,
   timestampEl,
@@ -42,6 +49,98 @@ import {
   showError,
 } from './ui.js';
 import { initializeSeekbar } from './seekbar.js';
+
+// API URL for attestation verification
+const API_URL = 'https://typedcode-api.shinya-oguri.workers.dev';
+
+/**
+ * 人間証明書をサーバーで検証
+ */
+async function verifyHumanAttestation(attestation: HumanAttestation): Promise<{ valid: boolean; message: string }> {
+  try {
+    const response = await fetch(`${API_URL}/api/verify-attestation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ attestation }),
+    });
+
+    if (!response.ok) {
+      return { valid: false, message: `HTTP ${response.status}` };
+    }
+
+    const result = await response.json() as { valid: boolean; message: string };
+    return result;
+  } catch (error) {
+    console.error('[Verify] Attestation verification failed:', error);
+    return { valid: false, message: 'ネットワークエラー' };
+  }
+}
+
+/**
+ * 人間証明書を表示
+ */
+async function displayHumanAttestation(attestation: HumanAttestation | undefined): Promise<boolean> {
+  if (!humanAttestationSection) return true; // 要素がなければスキップ
+
+  if (!attestation) {
+    // 証明書なし
+    humanAttestationSection.style.display = 'block';
+    if (humanAttestationBadge) {
+      humanAttestationBadge.innerHTML = '⚠️ なし';
+      humanAttestationBadge.className = 'badge warning';
+    }
+    if (humanAttestationMessage) {
+      humanAttestationMessage.textContent = '人間証明書が含まれていません（reCAPTCHA未検証）';
+    }
+    if (humanAttestationScore) humanAttestationScore.textContent = '-';
+    if (humanAttestationTimestamp) humanAttestationTimestamp.textContent = '-';
+    if (humanAttestationHostname) humanAttestationHostname.textContent = '-';
+    return true; // 証明書なしでも検証自体は成功扱い
+  }
+
+  humanAttestationSection.style.display = 'block';
+
+  // サーバーで署名を検証
+  const verifyLog = addLoadingLog('人間証明書を検証中...');
+  await new Promise(r => setTimeout(r, 50));
+
+  const result = await verifyHumanAttestation(attestation);
+
+  if (result.valid) {
+    updateLoadingLog(verifyLog, 'success', '人間証明書: 有効（署名検証OK）');
+    if (humanAttestationBadge) {
+      humanAttestationBadge.innerHTML = '✅ 検証済み';
+      humanAttestationBadge.className = 'badge success';
+    }
+    if (humanAttestationMessage) {
+      humanAttestationMessage.textContent = 'サーバー署名が正常に検証されました';
+    }
+  } else {
+    updateLoadingLog(verifyLog, 'error', `人間証明書: 無効 (${result.message})`);
+    if (humanAttestationBadge) {
+      humanAttestationBadge.innerHTML = '❌ 無効';
+      humanAttestationBadge.className = 'badge error';
+    }
+    if (humanAttestationMessage) {
+      humanAttestationMessage.textContent = `署名検証に失敗: ${result.message}`;
+    }
+  }
+
+  // 詳細を表示
+  if (humanAttestationScore) {
+    humanAttestationScore.textContent = `${attestation.score.toFixed(2)} (${attestation.score >= 0.5 ? '人間' : 'ボット疑い'})`;
+  }
+  if (humanAttestationTimestamp) {
+    humanAttestationTimestamp.textContent = attestation.timestamp;
+  }
+  if (humanAttestationHostname) {
+    humanAttestationHostname.textContent = attestation.hostname;
+  }
+
+  return result.valid;
+}
 
 /**
  * サンプリング検証結果を表示
@@ -392,7 +491,10 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
       updateLoadingLog(poswLog, 'success', 'PoSW検証完了');
     }
 
-    // 3. メタデータ表示
+    // 3. 人間証明書の検証
+    const attestationValid = await displayHumanAttestation(data.humanAttestation);
+
+    // 4. メタデータ表示
     if (versionEl) versionEl.textContent = data.version ?? '-';
     if (languageEl) languageEl.textContent = data.language ?? '-';
     if (timestampEl) timestampEl.textContent = data.metadata?.timestamp ?? '-';

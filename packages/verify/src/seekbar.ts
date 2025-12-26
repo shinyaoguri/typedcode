@@ -1,4 +1,4 @@
-import type { StoredEvent } from '../types.js';
+import type { StoredEvent } from '@typedcode/shared';
 import type { ContentCache } from './types.js';
 import {
   floatingSeekbar,

@@ -4,7 +4,7 @@
  */
 
 import * as monaco from 'monaco-editor';
-import { TypingProof } from './typingProof.js';
+import { TypingProof } from '@typedcode/shared';
 import type {
   FingerprintComponents,
   TabSwitchEvent,
@@ -13,7 +13,7 @@ import type {
   ExportedProof,
   MultiFileExportedProof,
   MultiFileExportEntry,
-} from './types.js';
+} from '@typedcode/shared';
 
 /** タブの実行時状態 */
 export interface TabState {

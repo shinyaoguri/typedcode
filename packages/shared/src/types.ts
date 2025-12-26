@@ -3,8 +3,6 @@
  * プロジェクト全体で使用する共通の型定義
  */
 
-import type * as monaco from 'monaco-editor';
-
 // ============================================================================
 // イベント関連の型定義
 // ============================================================================
@@ -443,24 +441,6 @@ export type OnDetectedCallback = (event: DetectedEvent) => void;
 /** テーマタイプ */
 export type Theme = 'light' | 'dark';
 
-// ============================================================================
-// Monaco Editor 拡張型
-// ============================================================================
-
-/** Monaco Editor インスタンス */
-export type MonacoEditor = monaco.editor.IStandaloneCodeEditor;
-
-/** Monaco Editor モデル変更イベント */
-export type ModelContentChange = monaco.editor.IModelContentChange;
-
-/** Monaco Editor コンテンツ変更イベント */
-export type ModelContentChangedEvent = monaco.editor.IModelContentChangedEvent;
-
-/** Monaco Editor カーソル位置変更イベント */
-export type CursorPositionChangedEvent = monaco.editor.ICursorPositionChangedEvent;
-
-/** Monaco Editor 選択変更イベント */
-export type CursorSelectionChangedEvent = monaco.editor.ICursorSelectionChangedEvent;
 
 // ============================================================================
 // ログビューア関連

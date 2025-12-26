@@ -47,6 +47,10 @@ interface ImportMetaEnv {
   readonly DEV: boolean;
   readonly PROD: boolean;
   readonly MODE: string;
+  readonly BASE_URL: string;
+  // reCAPTCHA v3 configuration
+  readonly VITE_RECAPTCHA_SITE_KEY?: string;
+  readonly VITE_API_URL?: string;
 }
 
 interface ImportMeta {

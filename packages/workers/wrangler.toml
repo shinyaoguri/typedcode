@@ -1,0 +1,9 @@
+name = "typedcode-api"
+main = "src/index.ts"
+compatibility_date = "2025-12-26"
+
+[vars]
+ENVIRONMENT = "development"
+
+[env.production]
+vars = { ENVIRONMENT = "production" }

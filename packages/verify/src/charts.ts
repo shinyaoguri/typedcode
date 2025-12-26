@@ -1,4 +1,4 @@
-import type { StoredEvent, KeystrokeDynamicsData, MousePositionData, FocusChangeData, VisibilityChangeData, InputType } from '../types.js';
+import type { StoredEvent, KeystrokeDynamicsData, MousePositionData, FocusChangeData, VisibilityChangeData, InputType } from '@typedcode/shared';
 import type { IntegratedTimelineCache, MouseTrajectoryCache } from './types.js';
 import {
   integratedTimeline,

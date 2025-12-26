@@ -8,7 +8,7 @@ import type {
   DetectedEventType,
   DetectedEventData,
   OnDetectedCallback,
-} from './types.js';
+} from '@typedcode/shared';
 
 export class InputDetector {
   private element: HTMLElement | null;

@@ -33,6 +33,14 @@ export const poswMessage = document.getElementById('posw-message');
 export const poswIterationsEl = document.getElementById('posw-iterations');
 export const poswAvgTimeEl = document.getElementById('posw-avg-time');
 export const poswTotalTimeEl = document.getElementById('posw-total-time');
+
+// 人間証明書
+export const humanAttestationSection = document.getElementById('human-attestation-section');
+export const humanAttestationBadge = document.getElementById('human-attestation-badge');
+export const humanAttestationMessage = document.getElementById('human-attestation-message');
+export const humanAttestationScore = document.getElementById('human-attestation-score');
+export const humanAttestationTimestamp = document.getElementById('human-attestation-timestamp');
+export const humanAttestationHostname = document.getElementById('human-attestation-hostname');
 export const versionEl = document.getElementById('version');
 export const languageEl = document.getElementById('language');
 export const timestampEl = document.getElementById('timestamp');

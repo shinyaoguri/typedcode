@@ -13,7 +13,7 @@
     <header>
       <h1>🔍 TypedCode 証明検証</h1>
       <p class="subtitle">タイピング証明データの検証を行います</p>
-      <a href="./index.html" class="back-link">← エディタに戻る</a>
+      <a href="/typedcode/" class="back-link">← エディタに戻る</a>
     </header>
 
     <main>
@@ -101,6 +101,18 @@
               <li>反復回数: <span id="posw-iterations">-</span></li>
               <li>平均計算時間: <span id="posw-avg-time">-</span></li>
               <li>総計算時間: <span id="posw-total-time">-</span></li>
+            </ul>
+          </div>
+
+          <!-- 人間証明書 -->
+          <div class="detail-card" id="human-attestation-section" style="display: none;">
+            <h3>🤖 人間証明書</h3>
+            <div class="badge" id="human-attestation-badge">-</div>
+            <p class="detail-text" id="human-attestation-message">-</p>
+            <ul class="stats-list" style="margin-top: 10px;">
+              <li>スコア: <span id="human-attestation-score">-</span></li>
+              <li>検証日時: <span id="human-attestation-timestamp">-</span></li>
+              <li>ホスト名: <span id="human-attestation-hostname">-</span></li>
             </ul>
           </div>
 
@@ -254,6 +266,6 @@
     </div>
   </div>
 
-  <script type="module" src="/src/verify.ts"></script>
+  <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

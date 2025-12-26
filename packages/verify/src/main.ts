@@ -2,15 +2,15 @@
  * TypedCode 証明検証ページ
  *
  * モジュール構成:
- * - verify/types.ts: 型定義
- * - verify/elements.ts: DOM要素のキャッシュ
- * - verify/ui.ts: UI関連（ローディング、ステータス表示など）
- * - verify/charts.ts: チャート描画関連
- * - verify/seekbar.ts: シークバー機能
- * - verify/verification.ts: 検証ロジック
+ * - types.ts: 型定義
+ * - elements.ts: DOM要素のキャッシュ
+ * - ui.ts: UI関連（ローディング、ステータス表示など）
+ * - charts.ts: チャート描画関連
+ * - seekbar.ts: シークバー機能
+ * - verification.ts: 検証ロジック
  */
 
-import type { ProofFile } from './verify/types.js';
+import type { ProofFile } from './types.js';
 import {
   dropZone,
   fileInput,
@@ -18,7 +18,7 @@ import {
   typingProofHashEl,
   copyHashBtn,
   verifyAgainBtn,
-} from './verify/elements.js';
+} from './elements.js';
 import {
   showDropZoneLoading,
   addLoadingLog,
@@ -27,9 +27,9 @@ import {
   hideDropZone,
   showDropZone,
   showError,
-} from './verify/ui.js';
-import { initializeSeekbarListeners } from './verify/seekbar.js';
-import { verifyProofData } from './verify/verification.js';
+} from './ui.js';
+import { initializeSeekbarListeners } from './seekbar.js';
+import { verifyProofData } from './verification.js';
 
 // ファイル処理
 async function handleFile(file: File): Promise<void> {

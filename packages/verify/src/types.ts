@@ -1,9 +1,22 @@
-import type { ExportedProof, StoredEvent, InputType } from '../types.js';
+import type { ExportedProof, StoredEvent, InputType } from '@typedcode/shared';
+
+/**
+ * 署名付き人間証明書（サーバーが発行、改竄不可）
+ */
+export interface HumanAttestation {
+  verified: boolean;
+  score: number;
+  action: string;
+  timestamp: string;
+  hostname: string;
+  signature: string;
+}
 
 // Extended proof data with content and language
 export interface ProofFile extends ExportedProof {
   content: string;
   language: string;
+  humanAttestation?: HumanAttestation;
 }
 
 // Content cache type

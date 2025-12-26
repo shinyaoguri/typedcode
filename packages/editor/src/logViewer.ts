@@ -2,13 +2,13 @@
  * LogViewer - 操作ログを表示する読み取り専用ビューア
  */
 
-import type { TypingProof } from './typingProof.js';
+import type { TypingProof } from '@typedcode/shared';
 import type {
   StoredEvent,
   LogStats,
   EventType,
   InputType,
-} from './types.js';
+} from '@typedcode/shared';
 
 /** 同種イベントのグループ化（フォーカス変更など） */
 const SAME_TYPE_GROUPABLE: EventType[] = [

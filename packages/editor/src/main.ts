@@ -6,15 +6,8 @@ import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
 import JSZip from 'jszip';
 import './style.css';
-import { TypingProof } from './typingProof.js';
-import { InputDetector } from './inputDetector.js';
-import { OperationDetector } from './operationDetector.js';
-import { LogViewer } from './logViewer.js';
-import { ThemeManager } from './themeManager.js';
-import { Fingerprint } from './fingerprint.js';
-import { TabManager, type TabState } from './tabManager.js';
+import { TypingProof, Fingerprint } from '@typedcode/shared';
 import type {
-  MonacoEditor,
   CursorPosition,
   RecordEventInput,
   DetectedEvent,
@@ -23,7 +16,14 @@ import type {
   FocusChangeData,
   KeystrokeDynamicsData,
   WindowSizeData,
-} from './types.js';
+} from '@typedcode/shared';
+import { InputDetector } from './inputDetector.js';
+import { OperationDetector } from './operationDetector.js';
+import { LogViewer } from './logViewer.js';
+import { ThemeManager } from './themeManager.js';
+import { TabManager, type TabState } from './tabManager.js';
+import type { MonacoEditor } from './monacoTypes.js';
+import { performRecaptchaVerification, isRecaptchaConfigured, loadRecaptchaScript as preloadRecaptcha, type HumanAttestation } from './recaptcha.js';
 
 // Monaco Editor の Worker 設定
 declare const self: Window & typeof globalThis & { MonacoEnvironment: monaco.Environment };
@@ -935,6 +935,20 @@ exportProofBtn?.addEventListener('click', async () => {
     const activeTab = tabManager?.getActiveTab();
     if (!activeTab) return;
 
+    // reCAPTCHA検証（設定されている場合のみ）
+    let humanAttestation: HumanAttestation | undefined;
+    if (isRecaptchaConfigured()) {
+      showNotification('人間判定を実行中...');
+      const recaptchaResult = await performRecaptchaVerification('export_proof');
+      if (!recaptchaResult.success) {
+        console.error('[TypedCode] reCAPTCHA verification failed:', recaptchaResult.error);
+        showNotification('人間判定に失敗しました。しばらく待ってから再試行してください。');
+        return;
+      }
+      console.log('[TypedCode] reCAPTCHA verification passed, score:', recaptchaResult.score);
+      humanAttestation = recaptchaResult.attestation;
+    }
+
     // ハッシュチェーン生成完了を待機
     const completed = await waitForProcessingComplete();
     if (!completed) {
@@ -948,7 +962,8 @@ exportProofBtn?.addEventListener('click', async () => {
     const exportData = {
       ...proofData,
       content: activeTab.model.getValue(),
-      language: activeTab.language
+      language: activeTab.language,
+      humanAttestation, // 署名付き人間証明書を追加
     };
 
     const jsonString = JSON.stringify(exportData, null, 2);
@@ -968,6 +983,9 @@ exportProofBtn?.addEventListener('click', async () => {
     console.log('Total events:', proofData.proof.totalEvents);
     console.log('Final hash:', proofData.proof.finalHash);
     console.log('Signature:', proofData.proof.signature);
+    if (humanAttestation) {
+      console.log('Human attestation:', humanAttestation);
+    }
 
     const verification = await activeTab.typingProof.verify();
     console.log('[TypedCode] Verification result:', verification);
@@ -989,6 +1007,20 @@ exportZipBtn?.addEventListener('click', async () => {
   try {
     if (!tabManager) return;
 
+    // reCAPTCHA検証（設定されている場合のみ）
+    let humanAttestation: HumanAttestation | undefined;
+    if (isRecaptchaConfigured()) {
+      showNotification('人間判定を実行中...');
+      const recaptchaResult = await performRecaptchaVerification('export_zip');
+      if (!recaptchaResult.success) {
+        console.error('[TypedCode] reCAPTCHA verification failed:', recaptchaResult.error);
+        showNotification('人間判定に失敗しました。しばらく待ってから再試行してください。');
+        return;
+      }
+      console.log('[TypedCode] reCAPTCHA verification passed, score:', recaptchaResult.score);
+      humanAttestation = recaptchaResult.attestation;
+    }
+
     // ハッシュチェーン生成完了を待機
     const completed = await waitForProcessingComplete();
     if (!completed) {
@@ -997,6 +1029,11 @@ exportZipBtn?.addEventListener('click', async () => {
     }
 
     const multiProofData = await tabManager.exportAllTabs();
+
+    // 署名付き人間証明書を追加
+    if (humanAttestation) {
+      (multiProofData as typeof multiProofData & { humanAttestation: HumanAttestation }).humanAttestation = humanAttestation;
+    }
 
     // ZIPファイルを作成
     const zip = new JSZip();
@@ -1049,6 +1086,13 @@ Pure typing: ${multiProofData.metadata.overallPureTyping ? 'Yes' : 'No'}
 // 初期化処理
 async function initializeApp(): Promise<void> {
   console.log('[TypedCode] Initializing app...');
+
+  // reCAPTCHAスクリプトをプリロード（設定されている場合のみ）
+  if (isRecaptchaConfigured()) {
+    preloadRecaptcha().catch(err => {
+      console.warn('[TypedCode] reCAPTCHA preload failed:', err);
+    });
+  }
 
   console.log('[TypedCode] Getting device ID...');
   const deviceId = await Fingerprint.getDeviceId();
