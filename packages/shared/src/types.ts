@@ -23,7 +23,9 @@ export type EventType =
   | 'focusChange'
   | 'keyDown'
   | 'keyUp'
-  | 'windowResize';
+  | 'windowResize'
+  | 'codeExecution'  // コード実行（コンパイル＋実行の開始）
+  | 'terminalInput';  // ターミナルへの入力（行単位）
 
 /** 入力タイプ（Monaco Editor準拠 + カスタム） */
 export type InputType =

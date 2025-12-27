@@ -12,6 +12,14 @@
   <!-- reCAPTCHA v3 will be loaded dynamically with site key from environment -->
 </head>
 <body>
+  <!-- Initialization Overlay (shown until app is ready) -->
+  <div id="init-overlay" class="init-overlay">
+    <div class="init-overlay-content">
+      <div class="init-spinner"></div>
+      <div class="init-message">準備中...</div>
+    </div>
+  </div>
+
   <div id="app">
     <!-- Title Bar -->
     <div class="titlebar">
@@ -62,6 +70,11 @@
               <a class="dropdown-item" href="/verify/" target="_blank" rel="noopener noreferrer">
                 <i class="fas fa-check-circle"></i>
                 <span>Verify Proof</span>
+                <i class="fas fa-external-link-alt dropdown-external-icon"></i>
+              </a>
+              <a class="dropdown-item" href="https://github.com/shinyaoguri/typedcode" target="_blank" rel="noopener noreferrer">
+                <i class="fab fa-github"></i>
+                <span>GitHub</span>
                 <i class="fas fa-external-link-alt dropdown-external-icon"></i>
               </a>
               <div class="dropdown-divider"></div>
@@ -163,15 +176,9 @@
           <i class="fas fa-microchip"></i>
           <span id="posw-status">Calibrating...</span>
         </div>
-        <div class="status-item status-runtime" id="runtime-status-item" title="Runtime environments">
-          <span class="runtime-badge runtime-c not-ready" id="runtime-c-badge" title="C runtime: Not initialized">
-            <img src="/icons/c.svg" alt="C" class="runtime-icon">
-            <span class="runtime-state" id="runtime-c-state">-</span>
-          </span>
-        </div>
       </div>
       <div class="statusbar-right">
-        <div class="status-item" id="language-status" title="Select language">
+        <div class="status-item language-runtime-status" id="language-status" title="Select language">
           <select id="language-selector">
             <option value="c">C</option>
             <option value="cpp">C++</option>
@@ -181,6 +188,7 @@
             <option value="css">CSS</option>
             <option value="python">Python</option>
           </select>
+          <span class="runtime-state-indicator" id="runtime-state-indicator"></span>
         </div>
         <div class="status-item" id="cursor-position" title="Cursor position">
           行 <span id="cursor-line">1</span>, 列 <span id="cursor-col">1</span>

@@ -1,5 +1,6 @@
 /* Terminal Panel */
 #terminal-panel {
+  position: relative;
   height: 0;
   background: var(--bg-primary);
   border-top: 1px solid var(--border-color);

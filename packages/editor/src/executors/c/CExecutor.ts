@@ -27,6 +27,12 @@ int main() {
 }
 `;
 
+/** Options for compiling with different settings */
+export interface CompileOptions {
+  sourceFile?: string;
+  compileArgs?: string[];
+}
+
 export class CExecutor extends BaseExecutor {
   readonly config: ExecutorConfig = {
     id: 'c',
@@ -37,7 +43,7 @@ export class CExecutor extends BaseExecutor {
     icon: 'c-icon',
   };
 
-  private clangPkg: Wasmer | null = null;
+  protected clangPkg: Wasmer | null = null;
 
   protected async _doInitialize(
     onProgress?: (progress: InitializationProgress) => void
@@ -73,9 +79,23 @@ export class CExecutor extends BaseExecutor {
   }
 
   async run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult> {
+    return this.runWithOptions(code, callbacks, {});
+  }
+
+  /**
+   * Run code with custom compile options (for subclasses like CppExecutor)
+   */
+  protected async runWithOptions(
+    code: string,
+    callbacks: ExecutionCallbacks,
+    options: CompileOptions
+  ): Promise<ExecutionResult> {
     if (!this._initialized || !this.clangPkg) {
-      throw new Error('CExecutor not initialized. Call initialize() first.');
+      throw new Error('Executor not initialized. Call initialize() first.');
     }
+
+    const sourceFile = options.sourceFile ?? 'main.c';
+    const extraArgs = options.compileArgs ?? [];
 
     this.resetAbort();
 
@@ -84,20 +104,21 @@ export class CExecutor extends BaseExecutor {
 
       // Create virtual filesystem with source file
       const project = new Directory();
-      await project.writeFile('main.c', code);
+      await project.writeFile(sourceFile, code);
 
       const entrypoint = this.clangPkg.entrypoint;
       if (!entrypoint) {
         throw new Error('Clang package has no entrypoint');
       }
 
-      // Compile the C code
+      // Compile the code
       const compileOptions: SpawnOptions = {
         args: [
-          '/project/main.c',
+          `/project/${sourceFile}`,
           '-o', '/project/main.wasm',
           '-target', 'wasm32-wasi',
           '-O2',
+          ...extraArgs,
         ],
         mount: {
           '/project': project,
@@ -197,7 +218,8 @@ export class CExecutor extends BaseExecutor {
   parseErrors(stderr: string): ParsedError[] {
     const errors: ParsedError[] = [];
     // clang error format: "filename:line:column: severity: message"
-    const regex = /(?:<stdin>|main\.c|[\w.]+\.c):(\d+):(\d+):\s*(error|warning|note):\s*(.+)/g;
+    // Matches .c, .cpp, .cc, .cxx files
+    const regex = /(?:<stdin>|main\.c(?:pp)?|[\w.]+\.(?:c|cpp|cc|cxx)):(\d+):(\d+):\s*(error|warning|note):\s*(.+)/g;
 
     let match;
     while ((match = regex.exec(stderr)) !== null) {

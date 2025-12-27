@@ -164,3 +164,39 @@
 .runtime-badge.ready .runtime-state {
   color: #6fdc6f;
 }
+
+/* Language + Runtime Status Combined */
+.language-runtime-status {
+  gap: 6px;
+}
+
+.runtime-state-indicator {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+.runtime-state-indicator:empty {
+  display: none;
+}
+
+.runtime-state-indicator.loading {
+  color: #ffd54f;
+  animation: pulse-loading 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-loading {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+.runtime-state-indicator.ready {
+  background: rgba(14, 125, 14, 0.3);
+  color: #6fdc6f;
+}
+
+.runtime-state-indicator.not-ready {
+  color: rgba(255, 255, 255, 0.5);
+}

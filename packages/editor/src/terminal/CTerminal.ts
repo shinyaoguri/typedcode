@@ -6,6 +6,9 @@
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 
+/** Callback type for terminal input events */
+export type TerminalInputCallback = (input: string) => void;
+
 export class CTerminal {
   private terminal: Terminal;
   private fitAddon: FitAddon;
@@ -17,6 +20,12 @@ export class CTerminal {
   // Stream connection mode for WASI stdin
   private stdinWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private encoder = new TextEncoder();
+
+  // Line buffer for stdin mode (to track input until Enter)
+  private stdinLineBuffer: string = '';
+
+  // Callback for input events (called when user presses Enter)
+  private inputCallback: TerminalInputCallback | null = null;
 
   constructor(container: HTMLElement) {
 
@@ -63,6 +72,26 @@ export class CTerminal {
     this.terminal.onData((data) => {
       // Stream connection mode: forward input directly to WASI stdin
       if (this.stdinWriter) {
+        // Track input for line-based logging
+        if (data === '\r' || data === '\n') {
+          // Enter key - notify callback with the complete line
+          if (this.inputCallback && this.stdinLineBuffer.length > 0) {
+            this.inputCallback(this.stdinLineBuffer);
+          }
+          this.stdinLineBuffer = '';
+        } else if (data === '\x7f' || data === '\b') {
+          // Backspace - remove last character from buffer
+          if (this.stdinLineBuffer.length > 0) {
+            this.stdinLineBuffer = this.stdinLineBuffer.slice(0, -1);
+          }
+        } else if (data === '\x03') {
+          // Ctrl+C - clear buffer
+          this.stdinLineBuffer = '';
+        } else if (data >= ' ' || data === '\t') {
+          // Regular printable character - add to buffer
+          this.stdinLineBuffer += data;
+        }
+
         // Forward to stdin (no local echo - WASI program handles echo)
         this.stdinWriter.write(this.encoder.encode(data)).catch(() => {
           // Ignore errors when program has ended
@@ -217,7 +246,16 @@ export class CTerminal {
       }
       this.stdinWriter = null;
     }
+    this.stdinLineBuffer = ''; // Clear line buffer
     this.terminal.options.disableStdin = true; // Disable input after program ends
+  }
+
+  /**
+   * Set callback for terminal input events
+   * Called when user presses Enter with the complete line
+   */
+  setInputCallback(callback: TerminalInputCallback | null): void {
+    this.inputCallback = callback;
   }
 
   /**

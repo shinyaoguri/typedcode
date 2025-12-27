@@ -30,6 +30,11 @@ import {
 } from './services/TurnstileService.js';
 import { CTerminal } from './terminal/CTerminal.js';
 import { getCExecutor, type ParsedError } from './executors/c/CExecutor.js';
+import { getCppExecutor } from './executors/cpp/CppExecutor.js';
+import { getJavaScriptExecutor } from './executors/javascript/JavaScriptExecutor.js';
+import { getTypeScriptExecutor } from './executors/typescript/TypeScriptExecutor.js';
+import { getPythonExecutor } from './executors/python/PythonExecutor.js';
+import type { ILanguageExecutor } from './executors/interfaces/ILanguageExecutor.js';
 import '@xterm/xterm/css/xterm.css';
 
 // Monaco Editor の Worker 設定
@@ -99,9 +104,8 @@ let skipBeforeUnload = false;
 // アプリ初期化完了フラグ（tabManager初期化前のイベント記録を防止）
 let isAppInitialized = false;
 
-// C言語実行環境
+// ターミナル・実行環境
 let cTerminal: CTerminal | null = null;
-let cExecutor: ReturnType<typeof getCExecutor> | null = null;
 let isRunningCode = false;
 
 // 利用規約関連
@@ -111,14 +115,88 @@ const TERMS_VERSION = '1.0';  // バージョン管理（規約変更時に再�
 // ランタイム状態管理
 type RuntimeState = 'not-ready' | 'loading' | 'ready';
 
-interface RuntimeStatus {
-  c: RuntimeState;
-  // 将来拡張: python, javascript, etc.
+// 実行可能な言語のランタイム状態
+const runtimeStatus: Record<string, RuntimeState> = {
+  c: 'not-ready',
+  cpp: 'not-ready',
+  javascript: 'ready',  // ブラウザ内蔵なので常にready
+  typescript: 'ready',  // ブラウザ内蔵なので常にready
+  python: 'not-ready',
+};
+
+// 言語ごとのランタイム表示名
+const runtimeDisplayNames: Record<string, string> = {
+  c: 'Clang',
+  cpp: 'Clang',
+  javascript: 'Browser JS',
+  typescript: 'TS Compiler',
+  python: 'Pyodide',
+};
+
+// 共通の注意書き
+const EXECUTION_DISCLAIMER = '※ ブラウザ上の簡易実行環境です。ローカル環境と動作が異なる場合があります。';
+
+/**
+ * 言語ごとのターミナル説明を取得
+ */
+function getLanguageDescription(language: string): string[] {
+  switch (language) {
+    case 'c':
+      return [
+        'TypedCode Terminal - C 実行環境',
+        'Clang (WASM) でコンパイル・実行',
+        '標準入出力対応 | タイムアウトなし',
+        EXECUTION_DISCLAIMER,
+      ];
+    case 'cpp':
+      return [
+        'TypedCode Terminal - C++ 実行環境',
+        'Clang (WASM) でコンパイル・実行 | C++17対応',
+        '標準入出力対応 | タイムアウトなし',
+        EXECUTION_DISCLAIMER,
+      ];
+    case 'javascript':
+      return [
+        'TypedCode Terminal - JavaScript 実行環境',
+        'ブラウザ内蔵エンジンで実行 | top-level await対応',
+        'console.log で出力 | 30秒タイムアウト',
+        EXECUTION_DISCLAIMER,
+      ];
+    case 'typescript':
+      return [
+        'TypedCode Terminal - TypeScript 実行環境',
+        'トランスパイル後にブラウザで実行 | 型チェックなし',
+        'console.log で出力 | 30秒タイムアウト',
+        EXECUTION_DISCLAIMER,
+      ];
+    case 'python':
+      return [
+        'TypedCode Terminal - Python 実行環境',
+        'Pyodide (CPython WASM) で実行 |',
+        'NumPy/Pandas等は自動インストール | 60秒タイムアウト',
+        EXECUTION_DISCLAIMER,
+      ];
+    default:
+      return [
+        'TypedCode Terminal',
+        'Ctrl+Enter または Run ボタンでコードを実行',
+        EXECUTION_DISCLAIMER,
+      ];
+  }
 }
 
-const runtimeStatus: RuntimeStatus = {
-  c: 'not-ready'
-};
+/**
+ * ターミナルに言語説明を表示
+ */
+function showLanguageDescriptionInTerminal(language: string): void {
+  if (!cTerminal) return;
+  cTerminal.clear();
+  const langDesc = getLanguageDescription(language);
+  for (const line of langDesc) {
+    cTerminal.writeLine(line);
+  }
+  cTerminal.writeLine('');
+}
 
 /**
  * 利用規約に同意済みかチェック
@@ -179,35 +257,84 @@ async function showTermsModal(): Promise<void> {
 }
 
 /**
- * ランタイムインジケーターを更新
+ * ランタイム状態を更新
  */
-function updateRuntimeIndicator(language: keyof RuntimeStatus, state: RuntimeState): void {
-  const badge = document.getElementById(`runtime-${language}-badge`);
-  const stateEl = document.getElementById(`runtime-${language}-state`);
+function updateRuntimeStatus(language: string, state: RuntimeState): void {
+  runtimeStatus[language] = state;
+  // C++はCと同じランタイム（Clang）を共有
+  if (language === 'c') {
+    runtimeStatus['cpp'] = state;
+  }
+  // 現在選択中の言語の場合、インジケーターも更新
+  const currentLanguage = (document.getElementById('language-selector') as HTMLSelectElement)?.value;
+  if (currentLanguage === language || (language === 'c' && currentLanguage === 'cpp')) {
+    updateLanguageRuntimeIndicator(currentLanguage);
+  }
+}
 
-  if (!badge || !stateEl) return;
+/**
+ * 言語セレクタ横のランタイムインジケーターを更新
+ */
+function updateLanguageRuntimeIndicator(language: string): void {
+  const indicator = document.getElementById('runtime-state-indicator');
+  if (!indicator) return;
+
+  const state = runtimeStatus[language] || 'not-ready';
+  const displayName = runtimeDisplayNames[language] || '';
+
+  // 実行非対応言語（HTML, CSS等）の場合は非表示
+  if (!displayName) {
+    indicator.textContent = '';
+    indicator.className = 'runtime-state-indicator';
+    return;
+  }
 
   // 状態クラスを更新
-  badge.classList.remove('not-ready', 'loading', 'ready');
-  badge.classList.add(state);
+  indicator.className = `runtime-state-indicator ${state}`;
 
   // 表示テキストを更新
   const stateText: Record<RuntimeState, string> = {
-    'not-ready': '-',
-    'loading': 'Loading',
-    'ready': 'Ready'
+    'not-ready': `${displayName}`,
+    'loading': `${displayName} Loading...`,
+    'ready': `${displayName} ✓`
   };
-  stateEl.textContent = stateText[state];
+  indicator.textContent = stateText[state];
+}
 
-  // ツールチップを更新
-  const tooltips: Record<RuntimeState, string> = {
-    'not-ready': 'C runtime: Not initialized',
-    'loading': 'C runtime: Downloading compiler...',
-    'ready': 'C runtime: Ready to run'
-  };
-  badge.title = tooltips[state];
+/**
+ * C言語実行環境をバックグラウンドで初期化
+ * エディタの操作をブロックせずに非同期でダウンロード
+ */
+async function initializeCRuntimeInBackground(): Promise<void> {
+  // 既にreadyなら何もしない
+  if (runtimeStatus['c'] === 'ready') {
+    console.log('[TypedCode] C runtime already initialized');
+    return;
+  }
 
-  runtimeStatus[language] = state;
+  // loadingなら既に初期化中
+  if (runtimeStatus['c'] === 'loading') {
+    console.log('[TypedCode] C runtime initialization already in progress');
+    return;
+  }
+
+  console.log('[TypedCode] Starting background C runtime initialization...');
+  updateRuntimeStatus('c', 'loading');
+
+  try {
+    const executor = getCExecutor();
+    await executor.initialize((progress) => {
+      console.log('[TypedCode] C runtime:', progress.message);
+      // ステータスバーのインジケーターは updateRuntimeStatus で既に 'loading' になっている
+    });
+
+    updateRuntimeStatus('c', 'ready');
+    console.log('[TypedCode] C runtime initialization complete');
+  } catch (error) {
+    console.error('[TypedCode] C runtime initialization failed:', error);
+    // 失敗時は not-ready に戻す
+    updateRuntimeStatus('c', 'not-ready');
+  }
 }
 
 /**
@@ -495,6 +622,10 @@ if (languageSelector) {
     if (activeTab) {
       tabManager?.setTabLanguage(activeTab.id, target.value);
       updateTabUI();
+      // 言語切り替え時にターミナルに説明を表示
+      showLanguageDescriptionInTerminal(target.value);
+      // ランタイムインジケーターを更新
+      updateLanguageRuntimeIndicator(target.value);
     }
   });
 }
@@ -1143,8 +1274,10 @@ exportProofBtn?.addEventListener('click', async () => {
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `typedcode-proof-${timestamp}.json`;
+    const now = new Date();
+    const timestamp = `${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    const tabFilename = activeTab.filename.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `TC_${tabFilename}_${timestamp}.json`;
 
     const a = document.createElement('a');
     a.href = url;
@@ -1275,15 +1408,46 @@ Pure typing: ${multiProofData.metadata.overallPureTyping ? 'Yes' : 'No'}
   }
 });
 
+// 初期化オーバーレイの制御
+const initOverlay = document.getElementById('init-overlay');
+const initMessage = initOverlay?.querySelector('.init-message');
+
+function updateInitMessage(message: string): void {
+  if (initMessage) {
+    initMessage.textContent = message;
+  }
+}
+
+function hideInitOverlay(): void {
+  if (initOverlay) {
+    initOverlay.classList.add('hidden');
+    // アニメーション完了後にDOMから削除
+    setTimeout(() => {
+      initOverlay.remove();
+    }, 300);
+  }
+}
+
 // 初期化処理
 async function initializeApp(): Promise<void> {
   console.log('[TypedCode] Initializing app...');
 
   // 利用規約モーダルを先に表示（未同意の場合）
   if (!hasAcceptedTerms()) {
+    // 利用規約モーダルを表示するためオーバーレイを一時的に非表示
+    initOverlay?.classList.add('hidden');
     console.log('[TypedCode] Showing terms modal...');
     await showTermsModal();
+    // 同意後、オーバーレイを再表示
+    initOverlay?.classList.remove('hidden');
+    updateInitMessage('初期化中...');
   }
+
+  // C言語実行環境をバックグラウンドで初期化（awaitしない）
+  // エディタ操作をブロックせず、並行してダウンロードを進める
+  initializeCRuntimeInBackground().catch(err => {
+    console.warn('[TypedCode] Background C runtime initialization failed:', err);
+  });
 
   // Turnstileスクリプトをプリロード（設定されている場合のみ）
   if (isTurnstileConfigured()) {
@@ -1292,6 +1456,7 @@ async function initializeApp(): Promise<void> {
     });
   }
 
+  updateInitMessage('デバイス情報を取得中...');
   console.log('[TypedCode] Getting device ID...');
   const deviceId = await Fingerprint.getDeviceId();
   console.log('[TypedCode] Device ID:', deviceId.substring(0, 16) + '...');
@@ -1319,6 +1484,11 @@ async function initializeApp(): Promise<void> {
       languageSelector.value = tab.language;
     }
 
+    // タブ切り替え時にターミナルの言語説明を更新
+    showLanguageDescriptionInTerminal(tab.language);
+    // ランタイムインジケーターを更新
+    updateLanguageRuntimeIndicator(tab.language);
+
     // LogViewerの表示を更新
     if (logViewer) {
       logViewer.setTypingProof(tab.typingProof);
@@ -1338,7 +1508,10 @@ async function initializeApp(): Promise<void> {
 
   // Turnstile設定時は認証中メッセージを表示
   if (isTurnstileConfigured()) {
+    updateInitMessage('人間認証を実行中...');
     showNotification('人間認証を実行中...');
+  } else {
+    updateInitMessage('エディタを初期化中...');
   }
 
   const initialized = await tabManager.initialize(deviceId, {
@@ -1349,10 +1522,14 @@ async function initializeApp(): Promise<void> {
 
   if (!initialized) {
     // Turnstile失敗時（初期化に失敗した場合）
+    updateInitMessage('認証に失敗しました。ページをリロードしてください。');
     showNotification('認証に失敗しました。ページをリロードしてください。');
     console.error('[TypedCode] Initialization failed (Turnstile)');
     return;
   }
+
+  // 初期化完了 - オーバーレイを非表示
+  hideInitOverlay();
 
   // タブUIを生成
   updateTabUI();
@@ -1487,9 +1664,15 @@ async function initializeApp(): Promise<void> {
 
   if (toggleTerminalBtn && terminalPanel) {
     toggleTerminalBtn.addEventListener('click', () => {
-      terminalPanel.classList.toggle('visible');
+      const isVisible = terminalPanel.classList.contains('visible');
+      if (isVisible) {
+        terminalPanel.classList.remove('visible');
+      } else {
+        terminalPanel.classList.add('visible');
+      }
       updateTerminalButtonState();
-      console.log('[TypedCode] Terminal toggled');
+      // ターミナルのサイズを調整
+      cTerminal?.fit();
     });
   }
 
@@ -1504,12 +1687,22 @@ async function initializeApp(): Promise<void> {
   const xtermContainer = document.getElementById('xterm-container');
   if (xtermContainer) {
     cTerminal = new CTerminal(xtermContainer);
-    cTerminal.writeLine('TypedCode Terminal - C言語実行環境');
-    cTerminal.writeLine('Ctrl+Enter または Run ボタンでコードを実行\n');
-  }
 
-  // C実行エンジンの初期化（遅延ロード）
-  cExecutor = getCExecutor();
+    // 初期タブの言語に応じた説明を表示
+    const initialTab = tabManager?.getActiveTab();
+    const initialLanguage = initialTab?.language ?? 'c';
+    showLanguageDescriptionInTerminal(initialLanguage);
+    // ランタイムインジケーターを初期化
+    updateLanguageRuntimeIndicator(initialLanguage);
+
+    // ターミナル入力をハッシュチェーンに記録
+    cTerminal.setInputCallback((input: string) => {
+      recordEventAsync({
+        type: 'terminalInput',
+        description: `ターミナル入力: ${input}`,
+      });
+    });
+  }
 
   // Run/Stopボタンのハンドラ
   const runCodeBtn = document.getElementById('run-code-btn');
@@ -1558,6 +1751,30 @@ async function initializeApp(): Promise<void> {
     }
   };
 
+  // 実行対応言語のリスト
+  const EXECUTABLE_LANGUAGES = ['c', 'cpp', 'javascript', 'typescript', 'python'];
+
+  // 言語に対応するExecutorを取得
+  const getExecutorForLanguage = (language: string): ILanguageExecutor | null => {
+    switch (language) {
+      case 'c':
+        return getCExecutor();
+      case 'cpp':
+        return getCppExecutor();
+      case 'javascript':
+        return getJavaScriptExecutor();
+      case 'typescript':
+        return getTypeScriptExecutor();
+      case 'python':
+        return getPythonExecutor();
+      default:
+        return null;
+    }
+  };
+
+  // 現在実行中のExecutor
+  let currentExecutor: ILanguageExecutor | null = null;
+
   const handleRunCode = async (): Promise<void> => {
     if (isRunningCode) {
       showNotification('既にコードを実行中です');
@@ -1570,10 +1787,19 @@ async function initializeApp(): Promise<void> {
       return;
     }
 
-    if (activeTab.language !== 'c') {
-      showNotification('C言語のコードのみ実行できます（現在: ' + activeTab.language + '）');
+    // 実行対応言語かチェック
+    if (!EXECUTABLE_LANGUAGES.includes(activeTab.language)) {
+      showNotification(`${activeTab.language} は実行できません`);
       return;
     }
+
+    // 言語に対応するExecutorを取得
+    const executor = getExecutorForLanguage(activeTab.language);
+    if (!executor) {
+      showNotification(`${activeTab.language} の実行環境が見つかりません`);
+      return;
+    }
+    currentExecutor = executor;
 
     isRunningCode = true;
     runCodeBtn?.classList.add('running');
@@ -1587,29 +1813,49 @@ async function initializeApp(): Promise<void> {
     }
 
     cTerminal?.clear();
-    cTerminal?.writeInfo('$ Compiling ' + activeTab.filename + '...\n');
+
+    // 言語に応じたメッセージ
+    const isCompiled = activeTab.language === 'c' || activeTab.language === 'cpp';
+    const langName = executor.config.name; // 'C', 'C++', 'JavaScript'
+    if (isCompiled) {
+      cTerminal?.writeInfo(`$ Compiling ${langName} program (${activeTab.filename})...\n`);
+    } else {
+      cTerminal?.writeInfo(`$ Running ${langName} (${activeTab.filename})...\n`);
+    }
+
+    // コード実行イベントをハッシュチェーンに記録
+    recordEventAsync({
+      type: 'codeExecution',
+      description: `コード実行: ${activeTab.filename}`,
+    });
 
     try {
-      // 初回はコンパイラをダウンロード
-      if (!cExecutor?.isInitialized) {
-        showClangLoading();
-        updateRuntimeIndicator('c', 'loading');
-        await cExecutor?.initialize((progress) => {
-          updateClangStatus(progress.message);
+      // 初回は初期化（C/C++の場合はコンパイラをダウンロード）
+      if (!executor.isInitialized) {
+        if (isCompiled) {
+          showClangLoading();
+        }
+        updateRuntimeStatus(activeTab.language, 'loading');
+        await executor.initialize((progress) => {
+          if (isCompiled) {
+            updateClangStatus(progress.message);
+          }
           cTerminal?.writeInfo(progress.message + '\n');
         });
-        hideClangLoading();
-        updateRuntimeIndicator('c', 'ready');
+        updateRuntimeStatus(activeTab.language, 'ready');
+        if (isCompiled) {
+          hideClangLoading();
+        }
       }
 
       const code = activeTab.model.getValue();
 
-      const result = await cExecutor?.run(code, {
+      const result = await executor.run(code, {
         onStdout: (text: string) => cTerminal?.write(text),
         onStderr: (text: string) => {
           cTerminal?.writeError(text);
           // エラーをパースしてエディタに表示
-          const errors = cExecutor?.parseErrors(text) ?? [];
+          const errors = executor.parseErrors(text) ?? [];
           if (errors.length > 0) {
             showErrorsInEditor(errors);
           }
@@ -1622,18 +1868,19 @@ async function initializeApp(): Promise<void> {
 
       if (result) {
         if (result.success) {
-          cTerminal?.writeSuccess('\n$ Program exited with code ' + result.exitCode + '\n');
+          cTerminal?.writeSuccess(`\n$ ${langName} exited with code ${result.exitCode}\n`);
         } else {
-          cTerminal?.writeError('\n$ Program failed with code ' + result.exitCode + '\n');
+          cTerminal?.writeError(`\n$ ${langName} failed with code ${result.exitCode}\n`);
         }
       }
     } catch (error) {
-      console.error('[TypedCode] C execution error:', error);
+      console.error('[TypedCode] Execution error:', error);
       hideClangLoading();
       cTerminal?.writeError('Execution error: ' + error + '\n');
       showNotification('コードの実行に失敗しました');
     } finally {
       isRunningCode = false;
+      currentExecutor = null;
       cTerminal?.disconnectStdin(); // Disconnect stdin stream
       runCodeBtn?.classList.remove('running');
       stopCodeBtn?.classList.add('hidden');
@@ -1641,10 +1888,11 @@ async function initializeApp(): Promise<void> {
   };
 
   const handleStopCode = (): void => {
-    if (cExecutor && isRunningCode) {
-      cExecutor.abort();
+    if (currentExecutor && isRunningCode) {
+      const langName = currentExecutor.config.name;
+      currentExecutor.abort();
       cTerminal?.disconnectStdin(); // Disconnect stdin stream
-      cTerminal?.writeError('\n$ Execution aborted\n');
+      cTerminal?.writeError(`\n$ ${langName} execution aborted\n`);
       isRunningCode = false;
       runCodeBtn?.classList.remove('running');
       stopCodeBtn?.classList.add('hidden');
