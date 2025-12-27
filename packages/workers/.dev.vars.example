@@ -1,0 +1,10 @@
+# Local development secrets for Cloudflare Workers
+# Copy this file to .dev.vars and fill in your actual values
+# .dev.vars is gitignored and should never be committed
+
+# Cloudflare Turnstile secret key
+# Get from: https://dash.cloudflare.com/?to=/:account/turnstile
+TURNSTILE_SECRET_KEY=your_turnstile_secret_key_here
+
+# Attestation signing secret (any random string, must match production)
+ATTESTATION_SECRET_KEY=your_attestation_secret_key_here

@@ -1,21 +1,21 @@
 /**
  * TypedCode API - Cloudflare Workers
- * reCAPTCHA v3 検証エンドポイント with 署名付き証明書
+ * Turnstile 検証エンドポイント with 署名付き証明書
  */
 
 interface Env {
-  RECAPTCHA_SECRET_KEY: string;
+  TURNSTILE_SECRET_KEY: string;
   ATTESTATION_SECRET_KEY: string; // 証明書署名用の秘密鍵
   ENVIRONMENT: string;
 }
 
-interface RecaptchaResponse {
+interface TurnstileResponse {
   success: boolean;
-  score: number;
-  action: string;
   challenge_ts: string;
   hostname: string;
   'error-codes'?: string[];
+  action?: string;
+  cdata?: string;
 }
 
 /**
@@ -83,13 +83,13 @@ async function createHmacSignature(data: string, secret: string): Promise<string
 }
 
 /**
- * reCAPTCHA検証を実行
+ * Turnstile検証を実行
  */
-async function verifyCaptcha(
+async function verifyTurnstile(
   token: string,
   secretKey: string
-): Promise<RecaptchaResponse> {
-  const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+): Promise<TurnstileResponse> {
+  const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -107,13 +107,13 @@ async function verifyCaptcha(
  * 署名付き証明書を生成
  */
 async function createAttestation(
-  result: RecaptchaResponse,
+  result: TurnstileResponse,
   attestationSecret: string
 ): Promise<HumanAttestation> {
   const attestationData = {
-    verified: result.success && result.score >= 0.5,
-    score: result.score,
-    action: result.action,
+    verified: result.success,
+    score: 1.0, // Turnstile has no score, always 1.0 on success
+    action: result.action ?? 'unknown',
     timestamp: result.challenge_ts,
     hostname: result.hostname,
   };
@@ -129,7 +129,7 @@ async function createAttestation(
 }
 
 /**
- * reCAPTCHA検証エンドポイント
+ * Turnstile検証エンドポイント
  */
 async function handleVerifyCaptcha(
   request: Request,
@@ -158,8 +158,8 @@ async function handleVerifyCaptcha(
       );
     }
 
-    const result = await verifyCaptcha(token, env.RECAPTCHA_SECRET_KEY);
-    const isVerified = result.success && result.score >= 0.5;
+    const result = await verifyTurnstile(token, env.TURNSTILE_SECRET_KEY);
+    const isVerified = result.success;
 
     // 署名付き証明書を生成（検証成功時のみ）
     let attestation: HumanAttestation | undefined;
@@ -169,11 +169,9 @@ async function handleVerifyCaptcha(
 
     const response: VerifyResponse = {
       success: isVerified,
-      score: result.score ?? 0,
+      score: isVerified ? 1.0 : 0,
       message: result.success
-        ? result.score >= 0.5
-          ? 'Verified'
-          : 'Score too low'
+        ? 'Verified'
         : `Verification failed: ${result['error-codes']?.join(', ') ?? 'Unknown error'}`,
       attestation,
     };

@@ -9,6 +9,7 @@
 
 /** イベントタイプ */
 export type EventType =
+  | 'humanAttestation'  // 人間認証（event #0として記録）
   | 'contentChange'
   | 'contentSnapshot'
   | 'cursorPositionChange'
@@ -84,6 +85,8 @@ export interface MousePositionData {
   y: number;
   clientX: number;
   clientY: number;
+  screenX: number;       // スクリーン座標
+  screenY: number;       // スクリーン座標
 }
 
 /** Visibility変更データ */
@@ -104,6 +107,18 @@ export interface WindowSizeData {
   innerWidth: number;    // window.innerWidth
   innerHeight: number;   // window.innerHeight
   devicePixelRatio: number;
+  screenX: number;       // window.screenX（スクリーン上の位置）
+  screenY: number;       // window.screenY（スクリーン上の位置）
+}
+
+/** 人間認証イベントデータ（reCAPTCHA結果） */
+export interface HumanAttestationEventData {
+  verified: boolean;      // 認証成功かどうか
+  score: number;          // reCAPTCHAスコア（0.0-1.0）
+  action: string;         // アクション名（'create_tab'など）
+  timestamp: string;      // サーバータイムスタンプ（信頼できるアンカー）
+  hostname: string;       // ホスト名
+  signature: string;      // HMAC-SHA256署名（改ざん検出用）
 }
 
 /** キーストロークダイナミクスデータ */
@@ -137,7 +152,7 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | HumanAttestationEventData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -157,7 +172,7 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | HumanAttestationEventData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;
@@ -462,7 +477,7 @@ export interface SeekbarEventInfo {
   type: EventType;
   inputType: InputType | null;
   timestamp: number;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | HumanAttestationEventData | null;
   dataLength: number;
   dataPreview: string | null;
   rangeOffset: number | null;

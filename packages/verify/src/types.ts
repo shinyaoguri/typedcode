@@ -36,6 +36,10 @@ export interface MouseTrajectoryCache {
   padding: { top: number; right: number; bottom: number; left: number };
   maxX: number;
   maxY: number;
+  // スクリーン座標系の範囲（ウィンドウ枠描画用）
+  minScreenX: number;
+  minScreenY: number;
+  windowRects: { x: number; y: number; width: number; height: number; time: number }[];
 }
 
 // Integrated timeline cache

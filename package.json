@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev:editor\" \"npm run dev:verify\"",
+    "dev": "concurrently \"npm run dev:editor\" \"npm run dev:verify\" \"npm run dev:workers\"",
     "dev:editor": "npm run dev -w @typedcode/editor",
     "dev:verify": "npm run dev -w @typedcode/verify",
     "dev:workers": "npm run dev -w @typedcode/workers",

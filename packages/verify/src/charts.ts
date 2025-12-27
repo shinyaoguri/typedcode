@@ -1,4 +1,4 @@
-import type { StoredEvent, KeystrokeDynamicsData, MousePositionData, FocusChangeData, VisibilityChangeData, InputType } from '@typedcode/shared';
+import type { StoredEvent, KeystrokeDynamicsData, MousePositionData, FocusChangeData, VisibilityChangeData, InputType, WindowSizeData } from '@typedcode/shared';
 import type { IntegratedTimelineCache, MouseTrajectoryCache } from './types.js';
 import {
   integratedTimeline,
@@ -66,12 +66,17 @@ export function drawIntegratedTimeline(events: StoredEvent[], currentEvents: Sto
   if (visibilityEventCountEl) visibilityEventCountEl.textContent = String(visibilityEvents.length);
   if (keyDownCountEl) keyDownCountEl.textContent = String(keyDownEvents.length);
 
-  // Dwell/Flight Time の平均を計算
+  // Dwell/Flight Time の平均を計算（異常値をフィルタ）
   const dwellTimes: number[] = [];
+  const MAX_VALID_TIME = 10000; // 10秒を上限とする
   keyUpEvents.forEach(event => {
     const data = event.data as KeystrokeDynamicsData | null;
     if (data && typeof data === 'object' && 'dwellTime' in data && data.dwellTime !== undefined) {
-      dwellTimes.push(data.dwellTime);
+      const dwellTime = data.dwellTime;
+      // 異常値をスキップ（負の値、NaN、Infinity、10秒以上）
+      if (Number.isFinite(dwellTime) && dwellTime >= 0 && dwellTime <= MAX_VALID_TIME) {
+        dwellTimes.push(dwellTime);
+      }
     }
   });
   const avgDwellTime = dwellTimes.length > 0
@@ -83,7 +88,11 @@ export function drawIntegratedTimeline(events: StoredEvent[], currentEvents: Sto
   keyDownEvents.forEach(event => {
     const data = event.data as KeystrokeDynamicsData | null;
     if (data && typeof data === 'object' && 'flightTime' in data && data.flightTime !== undefined) {
-      flightTimes.push(data.flightTime);
+      const flightTime = data.flightTime;
+      // 異常値をスキップ（負の値、NaN、Infinity、10秒以上）
+      if (Number.isFinite(flightTime) && flightTime >= 0 && flightTime <= MAX_VALID_TIME) {
+        flightTimes.push(flightTime);
+      }
     }
   });
   const avgFlightTime = flightTimes.length > 0
@@ -91,10 +100,10 @@ export function drawIntegratedTimeline(events: StoredEvent[], currentEvents: Sto
     : 0;
   if (avgFlightTimeEl) avgFlightTimeEl.textContent = `${avgFlightTime.toFixed(1)}ms`;
 
-  // マウス軌跡を描画（別キャンバス）
+  // マウス軌跡を描画（別キャンバス）- 全イベントを渡す（windowResizeも含む）
   if (mouseEvents.length > 0) {
     if (mouseTrajectorySection) mouseTrajectorySection.style.display = 'block';
-    drawMouseTrajectory(mouseEvents, currentEvents);
+    drawMouseTrajectory(events, currentEvents);
   } else {
     if (mouseTrajectorySection) mouseTrajectorySection.style.display = 'none';
   }
@@ -384,13 +393,18 @@ function drawFocusBar(
 
 /**
  * マウス軌跡を描画
+ * @param events 全イベント（mousePositionChangeとwindowResizeを含む）
+ * @param currentEvents シークバー用の現在イベントリスト
  */
-function drawMouseTrajectory(mouseEvents: StoredEvent[], currentEvents: StoredEvent[]): void {
+export function drawMouseTrajectory(events: StoredEvent[], currentEvents: StoredEvent[]): void {
   if (!mouseTrajectoryCanvas) return;
 
   const canvasInit = initCanvas(mouseTrajectoryCanvas);
   if (!canvasInit) return;
   const { ctx, width, height } = canvasInit;
+
+  // キャンバスサイズが0の場合（非表示状態）はスキップ
+  if (width === 0 || height === 0) return;
 
   const padding = { top: 20, right: 20, bottom: 20, left: 20 };
   const chartWidth = width - padding.left - padding.right;
@@ -400,30 +414,101 @@ function drawMouseTrajectory(mouseEvents: StoredEvent[], currentEvents: StoredEv
   ctx.fillStyle = '#1e1e1e';
   ctx.fillRect(0, 0, width, height);
 
-  // マウス位置データを抽出（イベントインデックス付き）
+  // マウスイベントとウィンドウイベントを抽出
+  const mouseEvents = events.filter(e => e.type === 'mousePositionChange');
+  const windowEvents = events.filter(e => e.type === 'windowResize');
+
+  // マウス位置データを抽出（スクリーン座標を優先使用）
   const positions: { x: number; y: number; time: number; eventIndex: number }[] = [];
-  let maxX = 0;
-  let maxY = 0;
+  let minX = Infinity, minY = Infinity;
+  let maxX = 0, maxY = 0;
+  let hasScreenCoords = false;
 
   mouseEvents.forEach(event => {
     const data = event.data as MousePositionData | null;
     if (data && typeof data === 'object' && 'x' in data && 'y' in data) {
+      // スクリーン座標があればそれを使用、なければローカル座標を使用
+      const x = ('screenX' in data && typeof data.screenX === 'number') ? data.screenX : data.x;
+      const y = ('screenY' in data && typeof data.screenY === 'number') ? data.screenY : data.y;
+      if ('screenX' in data) hasScreenCoords = true;
+
+      // 座標値の検証（NaN、Infinity、負の大きすぎる値をスキップ）
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < -10000 || y < -10000 || x > 100000 || y > 100000) {
+        console.warn('[Charts] Invalid mouse position data, skipping:', data);
+        return;
+      }
+
       const eventIndex = currentEvents.findIndex(e => e.sequence === event.sequence);
-      positions.push({ x: data.x, y: data.y, time: event.timestamp, eventIndex });
-      maxX = Math.max(maxX, data.x);
-      maxY = Math.max(maxY, data.y);
+      positions.push({ x, y, time: event.timestamp, eventIndex });
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
     }
   });
 
   if (positions.length === 0) return;
 
+  // ウィンドウ枠データを抽出
+  const windowRects: { x: number; y: number; width: number; height: number; time: number }[] = [];
+  windowEvents.forEach(event => {
+    const data = event.data as WindowSizeData | null;
+    if (data && typeof data === 'object' && 'screenX' in data && typeof data.screenX === 'number') {
+      windowRects.push({
+        x: data.screenX,
+        y: data.screenY,
+        width: data.width,
+        height: data.height,
+        time: event.timestamp
+      });
+      // ウィンドウ枠も含めて範囲を計算
+      minX = Math.min(minX, data.screenX);
+      minY = Math.min(minY, data.screenY);
+      maxX = Math.max(maxX, data.screenX + data.width);
+      maxY = Math.max(maxY, data.screenY + data.height);
+    }
+  });
+
+  // 座標をminから正規化（0を基準に）
+  const rangeX = maxX - minX || 1;
+  const rangeY = maxY - minY || 1;
+
   // スケーリング
-  const scaleX = chartWidth / (maxX || 1);
-  const scaleY = chartHeight / (maxY || 1);
+  const scaleX = chartWidth / rangeX;
+  const scaleY = chartHeight / rangeY;
   const scale = Math.min(scaleX, scaleY);
 
   // キャッシュを保存
-  mouseTrajectoryCache = { positions, scale, padding, maxX, maxY };
+  mouseTrajectoryCache = {
+    positions,
+    scale,
+    padding,
+    maxX: rangeX,
+    maxY: rangeY,
+    minScreenX: minX,
+    minScreenY: minY,
+    windowRects
+  };
+
+  // ウィンドウ枠を描画（最後のウィンドウ位置のみ表示）
+  if (windowRects.length > 0 && hasScreenCoords) {
+    const lastWindow = windowRects[windowRects.length - 1]!;
+    const rectX = padding.left + (lastWindow.x - minX) * scale;
+    const rectY = padding.top + (lastWindow.y - minY) * scale;
+    const rectW = lastWindow.width * scale;
+    const rectH = lastWindow.height * scale;
+
+    ctx.strokeStyle = 'rgba(100, 150, 255, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(rectX, rectY, rectW, rectH);
+    ctx.setLineDash([]);
+
+    // ウィンドウラベル
+    ctx.fillStyle = 'rgba(100, 150, 255, 0.8)';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('Window', rectX + 4, rectY + 12);
+  }
 
   // 時間に基づいて色を変化させる
   const startTime = positions[0]?.time ?? 0;
@@ -445,8 +530,8 @@ function drawMouseTrajectory(mouseEvents: StoredEvent[], currentEvents: StoredEv
     ctx.strokeStyle = `hsla(${hue}, 80%, 50%, 0.7)`;
 
     ctx.beginPath();
-    ctx.moveTo(padding.left + prev.x * scale, padding.top + prev.y * scale);
-    ctx.lineTo(padding.left + curr.x * scale, padding.top + curr.y * scale);
+    ctx.moveTo(padding.left + (prev.x - minX) * scale, padding.top + (prev.y - minY) * scale);
+    ctx.lineTo(padding.left + (curr.x - minX) * scale, padding.top + (curr.y - minY) * scale);
     ctx.stroke();
   }
 
@@ -458,13 +543,13 @@ function drawMouseTrajectory(mouseEvents: StoredEvent[], currentEvents: StoredEv
     // 開始点（緑）
     ctx.fillStyle = '#28a745';
     ctx.beginPath();
-    ctx.arc(padding.left + start.x * scale, padding.top + start.y * scale, 6, 0, Math.PI * 2);
+    ctx.arc(padding.left + (start.x - minX) * scale, padding.top + (start.y - minY) * scale, 6, 0, Math.PI * 2);
     ctx.fill();
 
     // 終了点（赤）
     ctx.fillStyle = '#dc3545';
     ctx.beginPath();
-    ctx.arc(padding.left + end.x * scale, padding.top + end.y * scale, 6, 0, Math.PI * 2);
+    ctx.arc(padding.left + (end.x - minX) * scale, padding.top + (end.y - minY) * scale, 6, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -486,7 +571,10 @@ export function updateMouseTrajectoryMarker(eventIndex: number, currentEvents: S
   if (!canvasInit) return;
   const { ctx, width, height } = canvasInit;
 
-  const { positions, scale, padding } = mouseTrajectoryCache;
+  // キャンバスサイズが0の場合（非表示状態）はスキップ
+  if (width === 0 || height === 0) return;
+
+  const { positions, scale, padding, minScreenX, minScreenY, windowRects } = mouseTrajectoryCache;
 
   // 現在のイベントインデックスまでの最後のマウス位置を見つける
   let currentPos: { x: number; y: number } | null = null;
@@ -507,16 +595,35 @@ export function updateMouseTrajectoryMarker(eventIndex: number, currentEvents: S
   ctx.fillStyle = '#1e1e1e';
   ctx.fillRect(0, 0, width, height);
 
+  // ウィンドウ枠を描画（最後のウィンドウ位置のみ表示）
+  if (windowRects.length > 0) {
+    const lastWindow = windowRects[windowRects.length - 1]!;
+    const rectX = padding.left + (lastWindow.x - minScreenX) * scale;
+    const rectY = padding.top + (lastWindow.y - minScreenY) * scale;
+    const rectW = lastWindow.width * scale;
+    const rectH = lastWindow.height * scale;
+
+    ctx.strokeStyle = 'rgba(100, 150, 255, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(rectX, rectY, rectW, rectH);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = 'rgba(100, 150, 255, 0.8)';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('Window', rectX + 4, rectY + 12);
+  }
+
   // 全軌跡を薄く描画
   if (positions.length > 1) {
     ctx.strokeStyle = 'rgba(100, 100, 100, 0.3)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     const first = positions[0]!;
-    ctx.moveTo(padding.left + first.x * scale, padding.top + first.y * scale);
+    ctx.moveTo(padding.left + (first.x - minScreenX) * scale, padding.top + (first.y - minScreenY) * scale);
     for (let i = 1; i < positions.length; i++) {
       const pos = positions[i]!;
-      ctx.lineTo(padding.left + pos.x * scale, padding.top + pos.y * scale);
+      ctx.lineTo(padding.left + (pos.x - minScreenX) * scale, padding.top + (pos.y - minScreenY) * scale);
     }
     ctx.stroke();
   }
@@ -543,8 +650,8 @@ export function updateMouseTrajectoryMarker(eventIndex: number, currentEvents: S
       ctx.strokeStyle = `hsla(${hue}, 80%, 50%, 0.8)`;
 
       ctx.beginPath();
-      ctx.moveTo(padding.left + prev.x * scale, padding.top + prev.y * scale);
-      ctx.lineTo(padding.left + curr.x * scale, padding.top + curr.y * scale);
+      ctx.moveTo(padding.left + (prev.x - minScreenX) * scale, padding.top + (prev.y - minScreenY) * scale);
+      ctx.lineTo(padding.left + (curr.x - minScreenX) * scale, padding.top + (curr.y - minScreenY) * scale);
       ctx.stroke();
     }
   }
@@ -554,7 +661,7 @@ export function updateMouseTrajectoryMarker(eventIndex: number, currentEvents: S
     const start = positions[0]!;
     ctx.fillStyle = '#28a745';
     ctx.beginPath();
-    ctx.arc(padding.left + start.x * scale, padding.top + start.y * scale, 5, 0, Math.PI * 2);
+    ctx.arc(padding.left + (start.x - minScreenX) * scale, padding.top + (start.y - minScreenY) * scale, 5, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -564,13 +671,13 @@ export function updateMouseTrajectoryMarker(eventIndex: number, currentEvents: S
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(padding.left + currentPos.x * scale, padding.top + currentPos.y * scale, 10, 0, Math.PI * 2);
+    ctx.arc(padding.left + (currentPos.x - minScreenX) * scale, padding.top + (currentPos.y - minScreenY) * scale, 10, 0, Math.PI * 2);
     ctx.stroke();
 
     // 内側の円
     ctx.fillStyle = '#ffc107';
     ctx.beginPath();
-    ctx.arc(padding.left + currentPos.x * scale, padding.top + currentPos.y * scale, 8, 0, Math.PI * 2);
+    ctx.arc(padding.left + (currentPos.x - minScreenX) * scale, padding.top + (currentPos.y - minScreenY) * scale, 8, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -579,7 +686,7 @@ export function updateMouseTrajectoryMarker(eventIndex: number, currentEvents: S
     const end = positions[positions.length - 1]!;
     ctx.fillStyle = '#dc3545';
     ctx.beginPath();
-    ctx.arc(padding.left + end.x * scale, padding.top + end.y * scale, 6, 0, Math.PI * 2);
+    ctx.arc(padding.left + (end.x - minScreenX) * scale, padding.top + (end.y - minScreenY) * scale, 6, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -661,6 +768,23 @@ export function cacheEventsForModal(events: StoredEvent[], currentEvents: Stored
 }
 
 /**
+ * マウス軌跡パネルを再描画（タブ切り替え時用）
+ * パネルが表示状態になった後に呼び出すことで、正しいキャンバスサイズで再描画される
+ */
+export function redrawMouseTrajectory(eventIndex: number): void {
+  if (cachedEvents.length === 0) return;
+
+  const mouseEvents = cachedEvents.filter(e => e.type === 'mousePositionChange');
+  if (mouseEvents.length === 0) return;
+
+  // マウス軌跡を再描画（キャッシュも再作成される）- 全イベントを渡す
+  drawMouseTrajectory(cachedEvents, cachedCurrentEvents);
+
+  // 現在位置マーカーを描画
+  updateMouseTrajectoryMarker(eventIndex, cachedCurrentEvents);
+}
+
+/**
  * モーダル用のチャートを描画
  */
 export function drawModalCharts(): void {
@@ -668,14 +792,14 @@ export function drawModalCharts(): void {
 
   // モーダル用タイムラインを描画
   if (modalTimelineCanvas) {
-    drawTimelineOnCanvas(modalTimelineCanvas, cachedEvents, cachedCurrentEvents);
+    drawTimelineOnCanvas(modalTimelineCanvas, cachedEvents);
   }
 
-  // モーダル用マウス軌跡を描画
+  // モーダル用マウス軌跡を描画 - 全イベントを渡す
   const mouseEvents = cachedEvents.filter(e => e.type === 'mousePositionChange');
   if (mouseEvents.length > 0 && modalMouseCanvas) {
     if (modalMouseSection) modalMouseSection.style.display = 'block';
-    drawMouseTrajectoryOnCanvas(modalMouseCanvas, mouseEvents, cachedCurrentEvents);
+    drawMouseTrajectoryOnCanvas(modalMouseCanvas, cachedEvents);
   } else {
     if (modalMouseSection) modalMouseSection.style.display = 'none';
   }
@@ -684,7 +808,7 @@ export function drawModalCharts(): void {
 /**
  * 指定されたキャンバスにタイムラインを描画
  */
-function drawTimelineOnCanvas(canvas: HTMLCanvasElement, events: StoredEvent[], _currentEvents: StoredEvent[]): void {
+function drawTimelineOnCanvas(canvas: HTMLCanvasElement, events: StoredEvent[]): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
@@ -944,9 +1068,11 @@ function drawFocusBarOnCtx(
 }
 
 /**
- * 指定されたキャンバスにマウス軌跡を描画
+ * 指定されたキャンバスにマウス軌跡を描画（モーダル用）
+ * @param canvas 描画先キャンバス
+ * @param events 全イベント（mousePositionChangeとwindowResizeを含む）
  */
-function drawMouseTrajectoryOnCanvas(canvas: HTMLCanvasElement, mouseEvents: StoredEvent[], _currentEvents: StoredEvent[]): void {
+function drawMouseTrajectoryOnCanvas(canvas: HTMLCanvasElement, events: StoredEvent[]): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
@@ -967,25 +1093,76 @@ function drawMouseTrajectoryOnCanvas(canvas: HTMLCanvasElement, mouseEvents: Sto
   ctx.fillStyle = '#1e1e1e';
   ctx.fillRect(0, 0, width, height);
 
-  // マウス位置データを抽出
+  // マウスイベントとウィンドウイベントを抽出
+  const mouseEvents = events.filter(e => e.type === 'mousePositionChange');
+  const windowEvents = events.filter(e => e.type === 'windowResize');
+
+  // マウス位置データを抽出（スクリーン座標を優先使用）
   const positions: { x: number; y: number; time: number }[] = [];
-  let maxX = 0;
-  let maxY = 0;
+  let minX = Infinity, minY = Infinity;
+  let maxX = 0, maxY = 0;
+  let hasScreenCoords = false;
 
   mouseEvents.forEach(event => {
     const data = event.data as MousePositionData | null;
     if (data && typeof data === 'object' && 'x' in data && 'y' in data) {
-      positions.push({ x: data.x, y: data.y, time: event.timestamp });
-      maxX = Math.max(maxX, data.x);
-      maxY = Math.max(maxY, data.y);
+      const x = ('screenX' in data && typeof data.screenX === 'number') ? data.screenX : data.x;
+      const y = ('screenY' in data && typeof data.screenY === 'number') ? data.screenY : data.y;
+      if ('screenX' in data) hasScreenCoords = true;
+
+      positions.push({ x, y, time: event.timestamp });
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
     }
   });
 
   if (positions.length === 0) return;
 
-  const scaleX = chartWidth / (maxX || 1);
-  const scaleY = chartHeight / (maxY || 1);
+  // ウィンドウ枠データを抽出
+  const windowRects: { x: number; y: number; width: number; height: number }[] = [];
+  windowEvents.forEach(event => {
+    const data = event.data as WindowSizeData | null;
+    if (data && typeof data === 'object' && 'screenX' in data && typeof data.screenX === 'number') {
+      windowRects.push({
+        x: data.screenX,
+        y: data.screenY,
+        width: data.width,
+        height: data.height
+      });
+      minX = Math.min(minX, data.screenX);
+      minY = Math.min(minY, data.screenY);
+      maxX = Math.max(maxX, data.screenX + data.width);
+      maxY = Math.max(maxY, data.screenY + data.height);
+    }
+  });
+
+  const rangeX = maxX - minX || 1;
+  const rangeY = maxY - minY || 1;
+
+  const scaleX = chartWidth / rangeX;
+  const scaleY = chartHeight / rangeY;
   const scale = Math.min(scaleX, scaleY);
+
+  // ウィンドウ枠を描画
+  if (windowRects.length > 0 && hasScreenCoords) {
+    const lastWindow = windowRects[windowRects.length - 1]!;
+    const rectX = padding.left + (lastWindow.x - minX) * scale;
+    const rectY = padding.top + (lastWindow.y - minY) * scale;
+    const rectW = lastWindow.width * scale;
+    const rectH = lastWindow.height * scale;
+
+    ctx.strokeStyle = 'rgba(100, 150, 255, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(rectX, rectY, rectW, rectH);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = 'rgba(100, 150, 255, 0.8)';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('Window', rectX + 4, rectY + 12);
+  }
 
   const startTime = positions[0]?.time ?? 0;
   const endTime = positions[positions.length - 1]?.time ?? 1;
@@ -1004,8 +1181,8 @@ function drawMouseTrajectoryOnCanvas(canvas: HTMLCanvasElement, mouseEvents: Sto
     ctx.strokeStyle = `hsla(${hue}, 80%, 50%, 0.7)`;
 
     ctx.beginPath();
-    ctx.moveTo(padding.left + prev.x * scale, padding.top + prev.y * scale);
-    ctx.lineTo(padding.left + curr.x * scale, padding.top + curr.y * scale);
+    ctx.moveTo(padding.left + (prev.x - minX) * scale, padding.top + (prev.y - minY) * scale);
+    ctx.lineTo(padding.left + (curr.x - minX) * scale, padding.top + (curr.y - minY) * scale);
     ctx.stroke();
   }
 
@@ -1016,12 +1193,12 @@ function drawMouseTrajectoryOnCanvas(canvas: HTMLCanvasElement, mouseEvents: Sto
 
     ctx.fillStyle = '#28a745';
     ctx.beginPath();
-    ctx.arc(padding.left + start.x * scale, padding.top + start.y * scale, 6, 0, Math.PI * 2);
+    ctx.arc(padding.left + (start.x - minX) * scale, padding.top + (start.y - minY) * scale, 6, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = '#dc3545';
     ctx.beginPath();
-    ctx.arc(padding.left + end.x * scale, padding.top + end.y * scale, 6, 0, Math.PI * 2);
+    ctx.arc(padding.left + (end.x - minX) * scale, padding.top + (end.y - minY) * scale, 6, 0, Math.PI * 2);
     ctx.fill();
   }
 

@@ -34,7 +34,7 @@ jobs:
       - name: Build project
         run: npm run build
         env:
-          VITE_RECAPTCHA_SITE_KEY: ${{ secrets.VITE_RECAPTCHA_SITE_KEY }}
+          VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
       - name: Merge build outputs

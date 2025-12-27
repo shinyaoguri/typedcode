@@ -13,7 +13,9 @@ import type {
   ExportedProof,
   MultiFileExportedProof,
   MultiFileExportEntry,
+  HumanAttestationEventData,
 } from '@typedcode/shared';
+import { isTurnstileConfigured, performTurnstileVerification } from './turnstile.js';
 
 /** タブの実行時状態 */
 export interface TabState {
@@ -30,6 +32,12 @@ export type OnTabChangeCallback = (tab: TabState, previousTab: TabState | null) 
 
 /** タブ更新コールバック */
 export type OnTabUpdateCallback = (tab: TabState) => void;
+
+/** タブ作成オプション */
+export interface CreateTabOptions {
+  /** localStorageからの復元時はtrue（reCAPTCHA不要） */
+  skipAttestation?: boolean;
+}
 
 /** 言語IDから拡張子を取得 */
 function getFileExtension(language: string): string {
@@ -73,11 +81,12 @@ export class TabManager {
 
   /**
    * TabManagerを初期化
+   * @returns 初期化成功時はtrue、reCAPTCHA失敗時はfalse
    */
   async initialize(
     fingerprintHash: string,
     fingerprintComponents: FingerprintComponents
-  ): Promise<void> {
+  ): Promise<boolean> {
     this.fingerprint = fingerprintHash;
     this.fingerprintComponents = fingerprintComponents;
 
@@ -89,8 +98,14 @@ export class TabManager {
 
     // タブがない場合は新規タブを作成
     if (!loaded || this.tabs.size === 0) {
-      await this.createTab('Untitled-1', 'c', '// Hello, TypedCode!\n');
+      const tab = await this.createTab('Untitled-1', 'c', '// Hello, TypedCode!\n');
+      if (!tab) {
+        console.error('[TabManager] Failed to create initial tab (reCAPTCHA failed)');
+        return false;
+      }
     }
+
+    return true;
   }
 
   /**
@@ -121,18 +136,46 @@ export class TabManager {
 
   /**
    * 新しいタブを作成
+   * reCAPTCHAが設定されている場合、認証をevent #0として記録
+   * @returns 成功時はTabState、reCAPTCHA失敗時はnull
    */
   async createTab(
     filename: string = 'untitled',
     language: string = 'c',
-    content: string = ''
-  ): Promise<TabState> {
+    content: string = '',
+    options?: CreateTabOptions
+  ): Promise<TabState | null> {
     const id = generateUUID();
     const createdAt = Date.now();
 
     // TypingProofインスタンスを作成
     const typingProof = new TypingProof();
     await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!);
+
+    // Turnstile認証（skipAttestationでない場合のみ）
+    if (!options?.skipAttestation && isTurnstileConfigured()) {
+      console.log('[TabManager] Performing Turnstile verification for new tab...');
+
+      const result = await performTurnstileVerification('create_tab');
+
+      if (!result.success || !result.attestation) {
+        console.error('[TabManager] Human attestation failed:', result.error);
+        return null;  // タブ作成をブロック
+      }
+
+      // attestationをevent #0として記録
+      const attestationData: HumanAttestationEventData = {
+        verified: result.attestation.verified,
+        score: result.attestation.score,
+        action: result.attestation.action,
+        timestamp: result.attestation.timestamp,
+        hostname: result.attestation.hostname,
+        signature: result.attestation.signature,
+      };
+
+      await typingProof.recordHumanAttestation(attestationData);
+      console.log('[TabManager] Human attestation recorded as event #0');
+    }
 
     // Monacoモデルを作成
     const model = monaco.editor.createModel(content, language);
@@ -404,8 +447,9 @@ export class TabManager {
 
   /**
    * 全データをリセット
+   * @returns リセット成功時はtrue、reCAPTCHA失敗時はfalse
    */
-  async reset(): Promise<void> {
+  async reset(): Promise<boolean> {
     // 全モデルを破棄
     for (const tab of this.tabs.values()) {
       tab.model.dispose();
@@ -421,7 +465,13 @@ export class TabManager {
     localStorage.removeItem(STORAGE_KEY);
 
     // 新しいタブを作成
-    await this.createTab('Untitled-1', 'c', '// Hello, TypedCode!\n');
+    const tab = await this.createTab('Untitled-1', 'c', '// Hello, TypedCode!\n');
+    if (!tab) {
+      console.error('[TabManager] Failed to create tab after reset (reCAPTCHA failed)');
+      return false;
+    }
+
+    return true;
   }
 
   /**

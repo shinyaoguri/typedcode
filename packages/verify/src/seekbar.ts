@@ -33,17 +33,17 @@ let finalContent = '';
 const contentCache: ContentCache = new Map();
 
 /**
- * 現在のイベント配列を取得
- */
-export function getCurrentEvents(): StoredEvent[] {
-  return currentEvents;
-}
-
-/**
  * 現在のイベントインデックスを取得
  */
 export function getCurrentEventIndex(): number {
   return currentEventIndex;
+}
+
+/**
+ * 現在のイベント配列を取得
+ */
+export function getCurrentEvents(): StoredEvent[] {
+  return currentEvents;
 }
 
 /**
@@ -77,10 +77,11 @@ export function initializeSeekbar(events: StoredEvent[], content: string): void 
   drawIntegratedTimeline(events, currentEvents);
 
   // 初期状態のマーカーを描画（最終位置）
-  setTimeout(() => {
+  // DOMが更新されるのを待ってから同期的に描画
+  requestAnimationFrame(() => {
     updateIntegratedTimelineMarker(currentEventIndex, currentEvents);
     updateMouseTrajectoryMarker(currentEventIndex, currentEvents);
-  }, 100);
+  });
 }
 
 /**

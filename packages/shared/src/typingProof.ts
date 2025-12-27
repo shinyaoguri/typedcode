@@ -23,6 +23,7 @@ import type {
   SerializedProofState,
   CheckpointData,
   SampledSegmentInfo,
+  HumanAttestationEventData,
 } from './types.js';
 
 export class TypingProof {
@@ -77,11 +78,20 @@ export class TypingProof {
 
     this.worker.onerror = (error) => {
       console.error('[TypingProof] Worker error:', error);
+      // すべてのpending requestsをreject
+      for (const [, { reject }] of this.pendingRequests) {
+        reject(new Error(`Worker error: ${error.message}`));
+      }
+      this.pendingRequests.clear();
     };
   }
 
+  // ワーカーリクエストのタイムアウト（30秒）
+  private static readonly WORKER_REQUEST_TIMEOUT_MS = 30000;
+
   /**
    * Workerにリクエストを送信して結果を待つ
+   * @throws タイムアウトまたはワーカーエラー時にエラー
    */
   private sendWorkerRequest<T>(request: Record<string, unknown>): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -91,7 +101,24 @@ export class TypingProof {
       }
 
       const requestId = ++this.requestIdCounter;
-      this.pendingRequests.set(requestId, { resolve: resolve as (value: unknown) => void, reject });
+
+      // タイムアウト設定
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        reject(new Error(`Worker request timeout (id: ${requestId})`));
+      }, TypingProof.WORKER_REQUEST_TIMEOUT_MS);
+
+      this.pendingRequests.set(requestId, {
+        resolve: (value: unknown) => {
+          clearTimeout(timeout);
+          resolve(value as T);
+        },
+        reject: (error: unknown) => {
+          clearTimeout(timeout);
+          reject(error);
+        }
+      });
+
       this.worker.postMessage({ ...request, requestId });
     });
   }
@@ -117,6 +144,53 @@ export class TypingProof {
   }
 
   /**
+   * 人間認証をevent #0として記録
+   * reCAPTCHA attestationをハッシュチェーンの最初のイベントとして記録し、
+   * 「人間がファイルを作り始めた」ことを証明する
+   * @param attestation - reCAPTCHA認証結果
+   * @throws 既にイベントが存在する場合はエラー
+   */
+  async recordHumanAttestation(attestation: HumanAttestationEventData): Promise<RecordEventResult> {
+    if (this.events.length > 0) {
+      throw new Error('Human attestation must be event #0 (no events should exist yet)');
+    }
+
+    return await this.recordEvent({
+      type: 'humanAttestation',
+      data: attestation,
+      description: `Human verified (score: ${attestation.score.toFixed(2)}, action: ${attestation.action})`,
+    });
+  }
+
+  /**
+   * 人間認証イベントを持っているかチェック
+   */
+  hasHumanAttestation(): boolean {
+    return this.events.length > 0 && this.events[0]?.type === 'humanAttestation';
+  }
+
+  /**
+   * 人間認証イベントを取得
+   */
+  getHumanAttestation(): HumanAttestationEventData | null {
+    if (!this.hasHumanAttestation()) return null;
+    return this.events[0]?.data as HumanAttestationEventData;
+  }
+
+  /**
+   * エクスポート前の人間認証を記録
+   * ファイル作成時（event #0）とは別に、エクスポート直前の認証を記録する
+   * @param attestation - Turnstile認証結果
+   */
+  async recordPreExportAttestation(attestation: HumanAttestationEventData): Promise<RecordEventResult> {
+    return await this.recordEvent({
+      type: 'preExportAttestation',
+      data: attestation,
+      description: `Pre-export verification (score: ${attestation.score.toFixed(2)}, action: ${attestation.action})`,
+    });
+  }
+
+  /**
    * 初期ハッシュを生成（フィンガープリント + ランダム値）
    */
   async initialHash(fingerprintHash: string): Promise<string> {
@@ -127,6 +201,22 @@ export class TypingProof {
     // フィンガープリント + ランダム値をハッシュ化
     const combined = fingerprintHash + randomHex;
     return await this.computeHash(combined);
+  }
+
+  /**
+   * オブジェクトをキーがソートされた決定的なJSON文字列に変換
+   * ハッシュ計算時の一貫性を保証するため、キー順序を常にソート
+   */
+  private deterministicStringify(obj: unknown): string {
+    return JSON.stringify(obj, (_key, value) => {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return Object.keys(value as Record<string, unknown>).sort().reduce((sorted, k) => {
+          sorted[k] = (value as Record<string, unknown>)[k];
+          return sorted;
+        }, {} as Record<string, unknown>);
+      }
+      return value;
+    });
   }
 
   /**
@@ -220,14 +310,21 @@ export class TypingProof {
 
   /**
    * イベントを記録してハッシュ鎖を更新（排他制御付き）
+   * エラーが発生しても可能な限りチェーンを継続し、部分的な検証を可能にする
    * @returns ハッシュと配列のインデックス
+   * @throws 初期化前に呼び出された場合はエラー
    */
   async recordEvent(event: RecordEventInput): Promise<RecordEventResult> {
+    // 初期化チェック
+    if (!this.initialized) {
+      throw new Error('TypingProof not initialized. Call initialize() first.');
+    }
+
     // キュー待ち数を増加
     this.queuedEventCount++;
 
     // 前のイベント記録が完了するまで待つ（排他制御）
-    // .catch()でエラーを握りつぶしてチェーンを継続させる
+    // エラーが発生してもチェーンを継続させる
     this.recordQueue = this.recordQueue
       .catch(() => {
         // 前のイベントでエラーが発生してもチェーンを継続
@@ -235,6 +332,11 @@ export class TypingProof {
       .then(async () => {
         try {
           return await this._recordEventInternal(event);
+        } catch (error) {
+          // エラー発生時もログを出力するがチェーンは継続
+          console.error('[TypingProof] Event recording error (chain continues):', error);
+          // エラー時は現在の状態を返す（チェーンは途切れない）
+          return { hash: this.currentHash ?? '', index: this.events.length - 1 };
         } finally {
           // 処理完了後にキュー待ち数を減少
           this.queuedEventCount--;
@@ -265,7 +367,8 @@ export class TypingProof {
     };
 
     // PoSW計算（前のハッシュに依存 → 逐次計算を強制）
-    const eventDataString = JSON.stringify(eventDataWithoutPoSW);
+    // 決定的なJSON文字列化を使用（キー順序を保証）
+    const eventDataString = this.deterministicStringify(eventDataWithoutPoSW);
     const posw = await this.computePoSW(this.currentHash ?? '', eventDataString);
 
     // ハッシュ計算に使用するフィールド（PoSW含む）
@@ -274,8 +377,8 @@ export class TypingProof {
       posw
     };
 
-    // イベントデータを文字列化してハッシュ計算
-    const eventString = JSON.stringify(eventData);
+    // イベントデータを決定的に文字列化してハッシュ計算
+    const eventString = this.deterministicStringify(eventData);
     const combinedData = this.currentHash + eventString;
     this.currentHash = await this.computeHash(combinedData);
 
@@ -492,6 +595,18 @@ export class TypingProof {
       }
       lastTimestamp = event.timestamp;
 
+      // previousHashチェック（保存されたpreviousHashが期待値と一致するか）
+      if (event.previousHash !== hash) {
+        return {
+          valid: false,
+          errorAt: i,
+          message: `Previous hash mismatch at event ${i}: stored previousHash doesn't match computed chain`,
+          event,
+          expectedHash: hash ?? undefined,
+          computedHash: event.previousHash ?? undefined
+        };
+      }
+
       // PoSW検証のためのデータ（poswフィールドなし）
       const eventDataWithoutPoSW = {
         sequence: event.sequence,
@@ -505,8 +620,8 @@ export class TypingProof {
         previousHash: event.previousHash
       };
 
-      // PoSW検証
-      const eventDataStringForPoSW = JSON.stringify(eventDataWithoutPoSW);
+      // PoSW検証（決定的なJSON文字列化を使用）
+      const eventDataStringForPoSW = this.deterministicStringify(eventDataWithoutPoSW);
       const poswValid = await this.verifyPoSW(hash ?? '', eventDataStringForPoSW, event.posw);
 
       if (!poswValid) {
@@ -528,7 +643,8 @@ export class TypingProof {
         posw: event.posw
       };
 
-      const eventString = JSON.stringify(eventData);
+      // 決定的なJSON文字列化を使用
+      const eventString = this.deterministicStringify(eventData);
       const combinedData = hash + eventString;
       const computedHash = await this.computeHash(combinedData);
 
@@ -817,8 +933,8 @@ export class TypingProof {
         previousHash: event.previousHash
       };
 
-      // PoSW検証
-      const eventDataStringForPoSW = JSON.stringify(eventDataWithoutPoSW);
+      // PoSW検証（決定的なJSON文字列化を使用）
+      const eventDataStringForPoSW = this.deterministicStringify(eventDataWithoutPoSW);
       const poswValid = await this.verifyPoSW(hash ?? '', eventDataStringForPoSW, event.posw);
 
       if (!poswValid) {
@@ -830,13 +946,13 @@ export class TypingProof {
         };
       }
 
-      // ハッシュ計算
+      // ハッシュ計算（決定的なJSON文字列化を使用）
       const eventData: EventHashData = {
         ...eventDataWithoutPoSW,
         posw: event.posw
       };
 
-      const eventString = JSON.stringify(eventData);
+      const eventString = this.deterministicStringify(eventData);
       const combinedData = hash + eventString;
       const computedHash = await this.computeHash(combinedData);
 

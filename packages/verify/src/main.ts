@@ -20,8 +20,9 @@ import {
   hideDropZone,
   showError,
 } from './ui.js';
-import { initializeSeekbarListeners } from './seekbar.js';
+import { initializeSeekbarListeners, getCurrentEventIndex } from './seekbar.js';
 import { verifyProofData } from './verification.js';
+import { redrawMouseTrajectory } from './charts.js';
 
 // ファイル処理
 async function handleFile(file: File): Promise<void> {
@@ -121,6 +122,12 @@ function switchTab(tab: 'timeline' | 'mouse'): void {
     tabMouse?.classList.add('active');
     panelTimeline?.classList.remove('active');
     panelMouse?.classList.add('active');
+
+    // マウス軌跡パネルが表示されたらキャンバスを再描画
+    // (非表示状態ではキャンバスサイズが0になるため、キャッシュごと再作成する)
+    requestAnimationFrame(() => {
+      redrawMouseTrajectory(getCurrentEventIndex());
+    });
   }
 }
 

@@ -6,7 +6,7 @@ import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
 import JSZip from 'jszip';
 import './style.css';
-import { TypingProof, Fingerprint } from '@typedcode/shared';
+import { Fingerprint } from '@typedcode/shared';
 import type {
   CursorPosition,
   RecordEventInput,
@@ -23,7 +23,11 @@ import { LogViewer } from './logViewer.js';
 import { ThemeManager } from './themeManager.js';
 import { TabManager, type TabState } from './tabManager.js';
 import type { MonacoEditor } from './monacoTypes.js';
-import { performRecaptchaVerification, isRecaptchaConfigured, loadRecaptchaScript as preloadRecaptcha, type HumanAttestation } from './recaptcha.js';
+import {
+  isTurnstileConfigured,
+  loadTurnstileScript as preloadTurnstile,
+  performTurnstileVerification,
+} from './turnstile.js';
 
 // Monaco Editor の Worker 設定
 declare const self: Window & typeof globalThis & { MonacoEnvironment: monaco.Environment };
@@ -89,6 +93,9 @@ let isEventRecordingEnabled = true;
 // ページ離脱確認を無効化するフラグ（リセット時に使用）
 let skipBeforeUnload = false;
 
+// アプリ初期化完了フラグ（tabManager初期化前のイベント記録を防止）
+let isAppInitialized = false;
+
 /**
  * 現在のウィンドウサイズを取得
  */
@@ -98,7 +105,9 @@ function getCurrentWindowSize(): WindowSizeData {
     height: window.outerHeight,
     innerWidth: window.innerWidth,
     innerHeight: window.innerHeight,
-    devicePixelRatio: window.devicePixelRatio
+    devicePixelRatio: window.devicePixelRatio,
+    screenX: window.screenX,
+    screenY: window.screenY
   };
 }
 
@@ -112,7 +121,9 @@ function hasWindowSizeChanged(current: WindowSizeData, previous: WindowSizeData 
     current.height !== previous.height ||
     current.innerWidth !== previous.innerWidth ||
     current.innerHeight !== previous.innerHeight ||
-    current.devicePixelRatio !== previous.devicePixelRatio
+    current.devicePixelRatio !== previous.devicePixelRatio ||
+    current.screenX !== previous.screenX ||
+    current.screenY !== previous.screenY
   );
 }
 
@@ -148,6 +159,12 @@ function recordWindowResize(isInitial: boolean = false): void {
  * ログビューアとステータスは非同期で更新される
  */
 function recordEventAsync(event: RecordEventInput): void {
+  // 初期化完了前のイベント記録をスキップ
+  if (!isAppInitialized) {
+    console.debug('[TypedCode] Skipping event - app not initialized');
+    return;
+  }
+
   const activeProof = tabManager?.getActiveProof();
   if (!activeProof) return;
 
@@ -163,6 +180,10 @@ function recordEventAsync(event: RecordEventInput): void {
     tabManager?.saveToStorage();
   }).catch(err => {
     console.error('[TypedCode] Event recording failed:', err);
+    // ユーザーに通知（初期化エラーなど重大なエラーの場合）
+    if (err instanceof Error && err.message.includes('not initialized')) {
+      showNotification('イベント記録エラー: 初期化が完了していません');
+    }
   }).finally(() => {
     // 成功・失敗に関わらずステータスを更新
     updateProofStatus();
@@ -382,8 +403,21 @@ function getNextUntitledNumber(): number {
 // 新規タブ追加ボタン
 addTabBtn?.addEventListener('click', async () => {
   if (!tabManager) return;
+
+  // Turnstile設定時は認証中メッセージを表示
+  if (isTurnstileConfigured()) {
+    showNotification('人間認証を実行中...');
+  }
+
   const num = getNextUntitledNumber();
   const newTab = await tabManager.createTab(`Untitled-${num}`, 'c', '');
+
+  if (!newTab) {
+    // Turnstile失敗時
+    showNotification('認証に失敗しました。もう一度お試しください。');
+    return;
+  }
+
   await tabManager.switchTab(newTab.id);
   showNotification('新しいタブを作成しました');
 });
@@ -631,7 +665,9 @@ editorContainer.addEventListener('mousemove', async (e: MouseEvent) => {
     x: e.offsetX,
     y: e.offsetY,
     clientX: e.clientX,
-    clientY: e.clientY
+    clientY: e.clientY,
+    screenX: e.screenX,
+    screenY: e.screenY
   };
 
   // 位置が変わっていない場合はスキップ
@@ -928,6 +964,38 @@ processingCancelBtn?.addEventListener('click', () => {
   processingCancelled = true;
 });
 
+/**
+ * エクスポート前にTurnstile検証を実行し、attestationを記録
+ */
+async function performPreExportVerification(activeTab: TabState): Promise<boolean> {
+  if (!isTurnstileConfigured()) {
+    return true; // 開発環境ではスキップ
+  }
+
+  showNotification('エクスポート前の認証を実行中...');
+
+  const result = await performTurnstileVerification('export_proof');
+
+  if (!result.success || !result.attestation) {
+    console.error('[Export] Pre-export verification failed:', result.error);
+    showNotification('エクスポート前の認証に失敗しました');
+    return false;
+  }
+
+  // アクティブタブのTypingProofにエクスポート前attestationを記録
+  await activeTab.typingProof.recordPreExportAttestation({
+    verified: result.attestation.verified,
+    score: result.attestation.score,
+    action: result.attestation.action,
+    timestamp: result.attestation.timestamp,
+    hostname: result.attestation.hostname,
+    signature: result.attestation.signature,
+  });
+  console.log('[Export] Pre-export attestation recorded');
+
+  return true;
+}
+
 // 証明データのエクスポート機能（アクティブタブのみ）
 const exportProofBtn = document.getElementById('export-proof-btn');
 exportProofBtn?.addEventListener('click', async () => {
@@ -935,24 +1003,16 @@ exportProofBtn?.addEventListener('click', async () => {
     const activeTab = tabManager?.getActiveTab();
     if (!activeTab) return;
 
-    // reCAPTCHA検証（設定されている場合のみ）
-    let humanAttestation: HumanAttestation | undefined;
-    if (isRecaptchaConfigured()) {
-      showNotification('人間判定を実行中...');
-      const recaptchaResult = await performRecaptchaVerification('export_proof');
-      if (!recaptchaResult.success) {
-        console.error('[TypedCode] reCAPTCHA verification failed:', recaptchaResult.error);
-        showNotification('人間判定に失敗しました。しばらく待ってから再試行してください。');
-        return;
-      }
-      console.log('[TypedCode] reCAPTCHA verification passed, score:', recaptchaResult.score);
-      humanAttestation = recaptchaResult.attestation;
-    }
-
     // ハッシュチェーン生成完了を待機
     const completed = await waitForProcessingComplete();
     if (!completed) {
       showNotification('エクスポートがキャンセルされました');
+      return;
+    }
+
+    // エクスポート前にTurnstile検証を実行
+    const verified = await performPreExportVerification(activeTab);
+    if (!verified) {
       return;
     }
 
@@ -963,7 +1023,6 @@ exportProofBtn?.addEventListener('click', async () => {
       ...proofData,
       content: activeTab.model.getValue(),
       language: activeTab.language,
-      humanAttestation, // 署名付き人間証明書を追加
     };
 
     const jsonString = JSON.stringify(exportData, null, 2);
@@ -983,9 +1042,6 @@ exportProofBtn?.addEventListener('click', async () => {
     console.log('Total events:', proofData.proof.totalEvents);
     console.log('Final hash:', proofData.proof.finalHash);
     console.log('Signature:', proofData.proof.signature);
-    if (humanAttestation) {
-      console.log('Human attestation:', humanAttestation);
-    }
 
     const verification = await activeTab.typingProof.verify();
     console.log('[TypedCode] Verification result:', verification);
@@ -1001,25 +1057,46 @@ exportProofBtn?.addEventListener('click', async () => {
   }
 });
 
+/**
+ * 全タブに対してエクスポート前のTurnstile検証を実行
+ */
+async function performPreExportVerificationForAllTabs(): Promise<boolean> {
+  if (!isTurnstileConfigured() || !tabManager) {
+    return true;
+  }
+
+  showNotification('エクスポート前の認証を実行中...');
+
+  const result = await performTurnstileVerification('export_proof');
+
+  if (!result.success || !result.attestation) {
+    console.error('[Export] Pre-export verification failed:', result.error);
+    showNotification('エクスポート前の認証に失敗しました');
+    return false;
+  }
+
+  // 全タブのTypingProofにエクスポート前attestationを記録
+  const allTabs = tabManager.getAllTabs();
+  for (const tab of allTabs) {
+    await tab.typingProof.recordPreExportAttestation({
+      verified: result.attestation.verified,
+      score: result.attestation.score,
+      action: result.attestation.action,
+      timestamp: result.attestation.timestamp,
+      hostname: result.attestation.hostname,
+      signature: result.attestation.signature,
+    });
+  }
+  console.log(`[Export] Pre-export attestation recorded for ${allTabs.length} tabs`);
+
+  return true;
+}
+
 // ZIPでまとめてダウンロード（全タブをマルチファイル形式でエクスポート）
 const exportZipBtn = document.getElementById('export-zip-btn');
 exportZipBtn?.addEventListener('click', async () => {
   try {
     if (!tabManager) return;
-
-    // reCAPTCHA検証（設定されている場合のみ）
-    let humanAttestation: HumanAttestation | undefined;
-    if (isRecaptchaConfigured()) {
-      showNotification('人間判定を実行中...');
-      const recaptchaResult = await performRecaptchaVerification('export_zip');
-      if (!recaptchaResult.success) {
-        console.error('[TypedCode] reCAPTCHA verification failed:', recaptchaResult.error);
-        showNotification('人間判定に失敗しました。しばらく待ってから再試行してください。');
-        return;
-      }
-      console.log('[TypedCode] reCAPTCHA verification passed, score:', recaptchaResult.score);
-      humanAttestation = recaptchaResult.attestation;
-    }
 
     // ハッシュチェーン生成完了を待機
     const completed = await waitForProcessingComplete();
@@ -1028,12 +1105,13 @@ exportZipBtn?.addEventListener('click', async () => {
       return;
     }
 
-    const multiProofData = await tabManager.exportAllTabs();
-
-    // 署名付き人間証明書を追加
-    if (humanAttestation) {
-      (multiProofData as typeof multiProofData & { humanAttestation: HumanAttestation }).humanAttestation = humanAttestation;
+    // エクスポート前にTurnstile検証を実行（全タブに適用）
+    const verified = await performPreExportVerificationForAllTabs();
+    if (!verified) {
+      return;
     }
+
+    const multiProofData = await tabManager.exportAllTabs();
 
     // ZIPファイルを作成
     const zip = new JSZip();
@@ -1087,10 +1165,10 @@ Pure typing: ${multiProofData.metadata.overallPureTyping ? 'Yes' : 'No'}
 async function initializeApp(): Promise<void> {
   console.log('[TypedCode] Initializing app...');
 
-  // reCAPTCHAスクリプトをプリロード（設定されている場合のみ）
-  if (isRecaptchaConfigured()) {
-    preloadRecaptcha().catch(err => {
-      console.warn('[TypedCode] reCAPTCHA preload failed:', err);
+  // Turnstileスクリプトをプリロード（設定されている場合のみ）
+  if (isTurnstileConfigured()) {
+    preloadTurnstile().catch(err => {
+      console.warn('[TypedCode] Turnstile preload failed:', err);
     });
   }
 
@@ -1124,17 +1202,29 @@ async function initializeApp(): Promise<void> {
     }
   });
 
-  tabManager.setOnTabUpdate((tab) => {
+  tabManager.setOnTabUpdate(() => {
     updateTabUI();
   });
 
   isEventRecordingEnabled = false;
 
-  await tabManager.initialize(deviceId, {
+  // Turnstile設定時は認証中メッセージを表示
+  if (isTurnstileConfigured()) {
+    showNotification('人間認証を実行中...');
+  }
+
+  const initialized = await tabManager.initialize(deviceId, {
     deviceId,
     fingerprintHash,
     ...fingerprintComponents
   } as Parameters<typeof tabManager.initialize>[1]);
+
+  if (!initialized) {
+    // Turnstile失敗時（初期化に失敗した場合）
+    showNotification('認証に失敗しました。ページをリロードしてください。');
+    console.error('[TypedCode] Initialization failed (Turnstile)');
+    return;
+  }
 
   // タブUIを生成
   updateTabUI();
@@ -1436,6 +1526,8 @@ async function initializeApp(): Promise<void> {
     }
   });
 
+  // アプリ初期化完了フラグを設定
+  isAppInitialized = true;
   console.log('[TypedCode] App initialized successfully');
 }
 
