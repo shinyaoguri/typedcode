@@ -55,7 +55,27 @@
                 </tr>
                 <tr id="human-attestation-section" style="display: none;">
                   <th>人間証明</th>
-                  <td><span class="badge-inline" id="human-attestation-badge">-</span> <span class="text-muted" id="human-attestation-message"></span></td>
+                  <td>
+                    <div class="attestation-list">
+                      <!-- 作成時認証 (event #0) -->
+                      <div class="attestation-item" id="create-attestation-item" style="display: none;">
+                        <span class="badge-inline" id="create-attestation-badge">-</span>
+                        <span class="attestation-label">作成時</span>
+                        <span class="attestation-time text-muted" id="create-attestation-time"></span>
+                      </div>
+                      <!-- エクスポート前認証 -->
+                      <div class="attestation-item" id="export-attestation-item" style="display: none;">
+                        <span class="badge-inline" id="export-attestation-badge">-</span>
+                        <span class="attestation-label">エクスポート時</span>
+                        <span class="attestation-time text-muted" id="export-attestation-time"></span>
+                      </div>
+                      <!-- 認証なし or 旧形式 -->
+                      <div class="attestation-item" id="legacy-attestation-item" style="display: none;">
+                        <span class="badge-inline" id="human-attestation-badge">-</span>
+                        <span class="text-muted" id="human-attestation-message"></span>
+                      </div>
+                    </div>
+                  </td>
                 </tr>
               </tbody>
             </table>

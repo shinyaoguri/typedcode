@@ -41,6 +41,15 @@ export const humanAttestationMessage = document.getElementById('human-attestatio
 export const humanAttestationScore = document.getElementById('human-attestation-score');
 export const humanAttestationTimestamp = document.getElementById('human-attestation-timestamp');
 export const humanAttestationHostname = document.getElementById('human-attestation-hostname');
+
+// 新しい人間証明書UI（作成時・エクスポート時の2つ）
+export const createAttestationItem = document.getElementById('create-attestation-item');
+export const createAttestationBadge = document.getElementById('create-attestation-badge');
+export const createAttestationTime = document.getElementById('create-attestation-time');
+export const exportAttestationItem = document.getElementById('export-attestation-item');
+export const exportAttestationBadge = document.getElementById('export-attestation-badge');
+export const exportAttestationTime = document.getElementById('export-attestation-time');
+export const legacyAttestationItem = document.getElementById('legacy-attestation-item');
 export const versionEl = document.getElementById('version');
 export const languageEl = document.getElementById('language');
 export const timestampEl = document.getElementById('timestamp');

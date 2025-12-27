@@ -4,16 +4,13 @@ import { TypingProof } from '@typedcode/shared';
 import type { HumanAttestation } from './types.js';
 
 /**
- * イベント#0からHumanAttestationを抽出
+ * イベントからHumanAttestationを抽出するヘルパー
  */
-function extractAttestationFromFirstEvent(events: StoredEvent[]): HumanAttestationEventData | null {
-  if (!events || events.length === 0) return null;
+function extractAttestationFromEvent(event: StoredEvent | undefined): HumanAttestationEventData | null {
+  if (!event) return null;
+  if (event.type !== 'humanAttestation' && event.type !== 'preExportAttestation') return null;
 
-  const firstEvent = events[0];
-  if (!firstEvent || firstEvent.type !== 'humanAttestation') return null;
-
-  // dataがHumanAttestationEventData型であることを確認
-  const data = firstEvent.data;
+  const data = event.data;
   if (!data || typeof data !== 'object') return null;
 
   const attestation = data as HumanAttestationEventData;
@@ -29,6 +26,31 @@ function extractAttestationFromFirstEvent(events: StoredEvent[]): HumanAttestati
   }
 
   return attestation;
+}
+
+/**
+ * イベント#0からHumanAttestationを抽出（作成時認証）
+ */
+function extractAttestationFromFirstEvent(events: StoredEvent[]): HumanAttestationEventData | null {
+  if (!events || events.length === 0) return null;
+  const firstEvent = events[0];
+  if (firstEvent?.type !== 'humanAttestation') return null;
+  return extractAttestationFromEvent(firstEvent);
+}
+
+/**
+ * preExportAttestationイベントを抽出（エクスポート前認証）
+ */
+function extractPreExportAttestation(events: StoredEvent[]): HumanAttestationEventData | null {
+  if (!events || events.length === 0) return null;
+  // 最後のpreExportAttestationイベントを探す
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event?.type === 'preExportAttestation') {
+      return extractAttestationFromEvent(event);
+    }
+  }
+  return null;
 }
 import {
   typingProofHashEl,
@@ -57,6 +79,13 @@ import {
   humanAttestationScore,
   humanAttestationTimestamp,
   humanAttestationHostname,
+  createAttestationItem,
+  createAttestationBadge,
+  createAttestationTime,
+  exportAttestationItem,
+  exportAttestationBadge,
+  exportAttestationTime,
+  legacyAttestationItem,
   versionEl,
   languageEl,
   timestampEl,
@@ -108,85 +137,187 @@ async function verifyHumanAttestation(attestation: HumanAttestation): Promise<{ 
 }
 
 /**
- * 人間証明書を表示
- * @param attestation 証明書データ
- * @param source 証明書の取得元 ('event0' = イベント#0から, 'legacy' = 旧形式のトップレベルから)
+ * タイムスタンプをフォーマット
  */
-async function displayHumanAttestation(
-  attestation: HumanAttestation | HumanAttestationEventData | undefined,
-  source: 'event0' | 'legacy' | 'none'
-): Promise<boolean> {
-  if (!humanAttestationSection) return true; // 要素がなければスキップ
-
-  if (!attestation || source === 'none') {
-    // 証明書なし
-    humanAttestationSection.style.display = 'table-row';
-    if (humanAttestationBadge) {
-      humanAttestationBadge.innerHTML = '⚠️ なし';
-      humanAttestationBadge.className = 'badge warning';
-    }
-    if (humanAttestationMessage) {
-      humanAttestationMessage.textContent = '人間証明書が含まれていません（reCAPTCHA未検証）';
-    }
-    if (humanAttestationScore) humanAttestationScore.textContent = '-';
-    if (humanAttestationTimestamp) humanAttestationTimestamp.textContent = '-';
-    if (humanAttestationHostname) humanAttestationHostname.textContent = '-';
-    return true; // 証明書なしでも検証自体は成功扱い
+function formatAttestationTime(timestamp: string): string {
+  try {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return timestamp;
+    return date.toLocaleString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return timestamp;
   }
+}
 
-  humanAttestationSection.style.display = 'table-row';
+/**
+ * 単一のattestation項目を検証・表示
+ */
+async function verifySingleAttestation(
+  attestation: HumanAttestation | HumanAttestationEventData,
+  badgeEl: HTMLElement | null,
+  timeEl: HTMLElement | null,
+  itemEl: HTMLElement | null,
+  logLabel: string
+): Promise<boolean> {
+  if (!itemEl) return true;
+  itemEl.style.display = 'flex';
 
-  // サーバーで署名を検証
-  const sourceLabel = source === 'event0' ? 'イベント#0' : 'エクスポート時';
-  const verifyLog = addLoadingLog(`人間証明書を検証中 (${sourceLabel})...`);
+  const verifyLog = addLoadingLog(`人間証明書を検証中 (${logLabel})...`);
   await new Promise(r => setTimeout(r, 50));
 
   const result = await verifyHumanAttestation(attestation);
 
   if (result.valid) {
-    const successMessage = source === 'event0'
-      ? '人間証明書: 有効（ファイル作成時に検証済み）'
-      : '人間証明書: 有効（エクスポート時に検証 - 旧形式）';
-    updateLoadingLog(verifyLog, 'success', successMessage);
-    if (humanAttestationBadge) {
-      const badgeText = source === 'event0' ? '✅ 作成時検証済み' : '✅ 検証済み（旧形式）';
-      humanAttestationBadge.innerHTML = badgeText;
-      humanAttestationBadge.className = 'badge success';
-    }
-    if (humanAttestationMessage) {
-      const message = source === 'event0'
-        ? 'ファイル作成時にreCAPTCHAで人間認証され、ハッシュチェーンの起点として記録されました'
-        : 'エクスポート時にreCAPTCHAで人間認証されました（旧形式：ハッシュチェーン外）';
-      humanAttestationMessage.textContent = message;
+    updateLoadingLog(verifyLog, 'success', `人間証明書: 有効 (${logLabel})`);
+    if (badgeEl) {
+      badgeEl.innerHTML = '✅ 有効';
+      badgeEl.className = 'badge-inline success';
     }
   } else {
-    updateLoadingLog(verifyLog, 'error', `人間証明書: 無効 (${result.message})`);
-    if (humanAttestationBadge) {
-      humanAttestationBadge.innerHTML = '❌ 無効';
-      humanAttestationBadge.className = 'badge error';
-    }
-    if (humanAttestationMessage) {
-      humanAttestationMessage.textContent = `署名検証に失敗: ${result.message}`;
+    updateLoadingLog(verifyLog, 'error', `人間証明書: 無効 (${logLabel}) - ${result.message}`);
+    if (badgeEl) {
+      badgeEl.innerHTML = '❌ 無効';
+      badgeEl.className = 'badge-inline error';
     }
   }
 
-  // 詳細を表示（スコア値の検証を含む）
-  if (humanAttestationScore) {
-    const score = attestation.score;
-    if (!Number.isFinite(score) || score < 0 || score > 1) {
-      humanAttestationScore.textContent = '不正な値';
-    } else {
-      humanAttestationScore.textContent = `${score.toFixed(2)} (${score >= 0.5 ? '人間' : 'ボット疑い'})`;
-    }
-  }
-  if (humanAttestationTimestamp) {
-    humanAttestationTimestamp.textContent = attestation.timestamp;
-  }
-  if (humanAttestationHostname) {
-    humanAttestationHostname.textContent = attestation.hostname;
+  if (timeEl) {
+    timeEl.textContent = formatAttestationTime(attestation.timestamp);
   }
 
   return result.valid;
+}
+
+/**
+ * 人間証明書を表示（新形式: 作成時 + エクスポート時の2つ）
+ */
+async function displayHumanAttestations(
+  createAttestation: HumanAttestationEventData | null,
+  exportAttestation: HumanAttestationEventData | null,
+  legacyAttestation: HumanAttestation | undefined
+): Promise<boolean> {
+  if (!humanAttestationSection) return true;
+  humanAttestationSection.style.display = 'table-row';
+
+  // すべての項目を非表示に初期化
+  if (createAttestationItem) createAttestationItem.style.display = 'none';
+  if (exportAttestationItem) exportAttestationItem.style.display = 'none';
+  if (legacyAttestationItem) legacyAttestationItem.style.display = 'none';
+
+  let allValid = true;
+
+  // 新形式: 作成時 + エクスポート時の両方がある場合
+  if (createAttestation && exportAttestation) {
+    const createValid = await verifySingleAttestation(
+      createAttestation,
+      createAttestationBadge,
+      createAttestationTime,
+      createAttestationItem,
+      '作成時'
+    );
+    const exportValid = await verifySingleAttestation(
+      exportAttestation,
+      exportAttestationBadge,
+      exportAttestationTime,
+      exportAttestationItem,
+      'エクスポート時'
+    );
+    allValid = createValid && exportValid;
+  }
+  // 新形式: 作成時のみ（エクスポート前検証なし）
+  else if (createAttestation) {
+    allValid = await verifySingleAttestation(
+      createAttestation,
+      createAttestationBadge,
+      createAttestationTime,
+      createAttestationItem,
+      '作成時'
+    );
+  }
+  // 旧形式: トップレベルのhumanAttestation
+  else if (legacyAttestation) {
+    if (legacyAttestationItem) legacyAttestationItem.style.display = 'flex';
+    const verifyLog = addLoadingLog('人間証明書を検証中 (旧形式)...');
+    await new Promise(r => setTimeout(r, 50));
+    const result = await verifyHumanAttestation(legacyAttestation);
+
+    if (result.valid) {
+      updateLoadingLog(verifyLog, 'success', '人間証明書: 有効 (旧形式)');
+      if (humanAttestationBadge) {
+        humanAttestationBadge.innerHTML = '✅ 検証済み（旧形式）';
+        humanAttestationBadge.className = 'badge-inline success';
+      }
+      if (humanAttestationMessage) {
+        humanAttestationMessage.textContent = 'エクスポート時に認証';
+      }
+    } else {
+      updateLoadingLog(verifyLog, 'error', `人間証明書: 無効 - ${result.message}`);
+      if (humanAttestationBadge) {
+        humanAttestationBadge.innerHTML = '❌ 無効';
+        humanAttestationBadge.className = 'badge-inline error';
+      }
+      if (humanAttestationMessage) {
+        humanAttestationMessage.textContent = result.message;
+      }
+    }
+    allValid = result.valid;
+  }
+  // 証明書なし
+  else {
+    if (legacyAttestationItem) legacyAttestationItem.style.display = 'flex';
+    if (humanAttestationBadge) {
+      humanAttestationBadge.innerHTML = '⚠️ なし';
+      humanAttestationBadge.className = 'badge-inline warning';
+    }
+    if (humanAttestationMessage) {
+      humanAttestationMessage.textContent = '人間証明書が含まれていません';
+    }
+    // 証明書なしでも検証自体は成功扱い
+    allValid = true;
+  }
+
+  // 旧形式の隠し要素も更新（互換性のため）
+  const attestation = createAttestation ?? legacyAttestation;
+  if (attestation) {
+    if (humanAttestationScore) {
+      const score = attestation.score;
+      humanAttestationScore.textContent = Number.isFinite(score) && score >= 0 && score <= 1
+        ? `${score.toFixed(2)}`
+        : '-';
+    }
+    if (humanAttestationTimestamp) {
+      humanAttestationTimestamp.textContent = attestation.timestamp;
+    }
+    if (humanAttestationHostname) {
+      humanAttestationHostname.textContent = attestation.hostname;
+    }
+  }
+
+  return allValid;
+}
+
+/**
+ * 人間証明書を表示（後方互換性のためのラッパー）
+ * @deprecated displayHumanAttestationsを使用してください
+ */
+async function displayHumanAttestation(
+  attestation: HumanAttestation | HumanAttestationEventData | undefined,
+  source: 'event0' | 'legacy' | 'none'
+): Promise<boolean> {
+  if (source === 'event0') {
+    return displayHumanAttestations(attestation as HumanAttestationEventData, null, undefined);
+  } else if (source === 'legacy') {
+    return displayHumanAttestations(null, null, attestation as HumanAttestation);
+  } else {
+    return displayHumanAttestations(null, null, undefined);
+  }
 }
 
 /**
@@ -548,19 +679,12 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
     }
 
     // 3. 人間証明書の検証
-    // まずイベント#0からattestationを探す（新形式）
-    const event0Attestation = data.proof?.events ? extractAttestationFromFirstEvent(data.proof.events) : null;
+    // イベント#0から作成時attestation、preExportAttestationからエクスポート時attestationを探す
+    const createAttestation = data.proof?.events ? extractAttestationFromFirstEvent(data.proof.events) : null;
+    const exportAttestation = data.proof?.events ? extractPreExportAttestation(data.proof.events) : null;
 
-    if (event0Attestation) {
-      // 新形式: イベント#0に人間証明書が含まれている
-      await displayHumanAttestation(event0Attestation, 'event0');
-    } else if (data.humanAttestation) {
-      // 旧形式: トップレベルに人間証明書が含まれている（エクスポート時reCAPTCHA）
-      await displayHumanAttestation(data.humanAttestation, 'legacy');
-    } else {
-      // 証明書なし
-      await displayHumanAttestation(undefined, 'none');
-    }
+    // 新しいdisplayHumanAttestations関数を使用
+    await displayHumanAttestations(createAttestation, exportAttestation, data.humanAttestation);
 
     // 4. メタデータ表示
     if (versionEl) versionEl.textContent = data.version ?? '-';

@@ -1191,6 +1191,9 @@ async function initializeApp(): Promise<void> {
     updateTabUI();
     updateProofStatus();
 
+    // ブラウザタブのタイトルを更新
+    document.title = `${tab.filename} - TypedCode`;
+
     // 言語セレクタを更新
     if (languageSelector) {
       languageSelector.value = tab.language;
@@ -1204,6 +1207,11 @@ async function initializeApp(): Promise<void> {
 
   tabManager.setOnTabUpdate(() => {
     updateTabUI();
+    // アクティブタブの場合、ブラウザタイトルも更新
+    const activeTab = tabManager?.getActiveTab();
+    if (activeTab) {
+      document.title = `${activeTab.filename} - TypedCode`;
+    }
   });
 
   isEventRecordingEnabled = false;

@@ -475,6 +475,32 @@ body {
   margin-left: 6px;
 }
 
+/* Attestation list styling */
+.attestation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.attestation-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.attestation-label {
+  font-size: 10px;
+  color: #888;
+  min-width: 70px;
+}
+
+.attestation-time {
+  font-size: 10px;
+  color: #666;
+  font-family: monospace;
+}
+
 .stats-compact {
   display: flex;
   flex-wrap: wrap;
