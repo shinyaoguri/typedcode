@@ -36,6 +36,13 @@
       <!-- Activity Bar (Left Icon Column) -->
       <div class="activitybar">
         <div class="activitybar-top">
+          <button class="activitybar-item activitybar-item-run" id="run-code-btn" title="Run Code (Ctrl+Enter)">
+            <i class="fas fa-play"></i>
+          </button>
+          <button class="activitybar-item activitybar-item-stop hidden" id="stop-code-btn" title="Stop Execution">
+            <i class="fas fa-stop"></i>
+          </button>
+          <div class="activitybar-divider"></div>
           <button class="activitybar-item activitybar-item-primary" id="export-zip-btn" title="Download All (ZIP)">
             <i class="fas fa-file-zipper"></i>
           </button>
@@ -125,16 +132,7 @@
             </div>
           </div>
           <div class="terminal-content">
-            <div class="terminal-output">
-              <div class="terminal-line">
-                <span class="terminal-prompt">$</span>
-                <span class="terminal-text">Welcome to TypedCode Terminal</span>
-              </div>
-              <div class="terminal-line">
-                <span class="terminal-prompt">$</span>
-                <span class="terminal-cursor"></span>
-              </div>
-            </div>
+            <div id="xterm-container"></div>
           </div>
         </div>
       </main>
@@ -164,6 +162,12 @@
         <div class="status-item" id="posw-status-item" title="PoSW (Proof of Sequential Work) status">
           <i class="fas fa-microchip"></i>
           <span id="posw-status">Calibrating...</span>
+        </div>
+        <div class="status-item status-runtime" id="runtime-status-item" title="Runtime environments">
+          <span class="runtime-badge runtime-c not-ready" id="runtime-c-badge" title="C runtime: Not initialized">
+            <img src="/icons/c.svg" alt="C" class="runtime-icon">
+            <span class="runtime-state" id="runtime-c-state">-</span>
+          </span>
         </div>
       </div>
       <div class="statusbar-right">
@@ -232,6 +236,69 @@
 
     <!-- Page Transition Overlay -->
     <div id="page-transition-overlay" class="page-transition-overlay"></div>
+
+    <!-- C Compiler Loading Overlay -->
+    <div id="clang-loading-overlay" class="modal-overlay hidden">
+      <div class="modal-dialog modal-info">
+        <div class="modal-header">
+          <i class="fas fa-spinner fa-spin"></i>
+          <h3>Cコンパイラを準備中...</h3>
+        </div>
+        <div class="modal-body">
+          <p>初回のみ、コンパイラのダウンロードが必要です。</p>
+          <div class="processing-progress">
+            <div class="processing-progress-bar clang-progress" id="clang-progress-bar"></div>
+          </div>
+          <p class="processing-status" id="clang-status">初期化中...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Terms of Service Modal -->
+    <div id="terms-modal" class="modal-overlay hidden">
+      <div class="modal-dialog modal-terms">
+        <div class="modal-header">
+          <i class="fas fa-file-contract"></i>
+          <h3>利用規約</h3>
+        </div>
+        <div class="modal-body">
+          <p class="terms-intro">TypedCodeをご利用いただく前に、以下の内容をご確認ください。</p>
+
+          <div class="terms-section">
+            <h4><i class="fas fa-list-check"></i> 操作ログの記録</h4>
+            <p>タイピング証明のため、以下の操作を記録します：</p>
+            <ul class="terms-list">
+              <li>キーストローク（タイミング情報含む）</li>
+              <li>カーソル・選択範囲の変更</li>
+              <li>マウス移動・ウィンドウ操作</li>
+              <li>コピー・ペースト・ドロップ操作</li>
+            </ul>
+          </div>
+
+          <div class="terms-section">
+            <h4><i class="fas fa-robot"></i> Bot検出</h4>
+            <p>不正利用防止のため、Cloudflare Turnstileによる人間認証を行います。</p>
+          </div>
+
+          <div class="terms-section">
+            <h4><i class="fas fa-database"></i> データ保存</h4>
+            <p>すべての操作ログは<strong>ブラウザのローカルストレージにのみ保存</strong>されます。サーバーへの自動送信は一切行いません。</p>
+          </div>
+
+          <div class="terms-checkbox-container">
+            <label class="terms-checkbox">
+              <input type="checkbox" id="terms-agree-checkbox">
+              <span>上記の内容を理解し、同意します</span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn modal-btn-primary" id="terms-agree-btn" disabled>
+            <i class="fas fa-check"></i> 同意して開始
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
   <script type="module" src="/src/main.ts"></script>
 </body>

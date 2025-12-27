@@ -10,6 +10,8 @@
 /** イベントタイプ */
 export type EventType =
   | 'humanAttestation'  // 人間認証（event #0として記録）
+  | 'preExportAttestation'  // エクスポート前認証
+  | 'termsAccepted'  // 利用規約同意
   | 'contentChange'
   | 'contentSnapshot'
   | 'cursorPositionChange'
@@ -121,6 +123,13 @@ export interface HumanAttestationEventData {
   signature: string;      // HMAC-SHA256署名（改ざん検出用）
 }
 
+/** 利用規約同意データ */
+export interface TermsAcceptedData {
+  version: string;        // 規約バージョン
+  timestamp: number;      // 同意時のタイムスタンプ（Date.now()）
+  agreedAt: string;       // ISO 8601形式の日時文字列
+}
+
 /** キーストロークダイナミクスデータ */
 export interface KeystrokeDynamicsData {
   key: string;              // キー名（'a', 'Enter', 'Shift'など）
@@ -152,7 +161,7 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | HumanAttestationEventData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | HumanAttestationEventData | TermsAcceptedData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -172,7 +181,7 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | HumanAttestationEventData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | HumanAttestationEventData | TermsAcceptedData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;

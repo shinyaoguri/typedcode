@@ -28,6 +28,9 @@ import {
   loadTurnstileScript as preloadTurnstile,
   performTurnstileVerification,
 } from './turnstile.js';
+import { CTerminal } from './terminal.js';
+import { getCExecutor, type ParsedError } from './cExecutor.js';
+import '@xterm/xterm/css/xterm.css';
 
 // Monaco Editor の Worker 設定
 declare const self: Window & typeof globalThis & { MonacoEnvironment: monaco.Environment };
@@ -95,6 +98,117 @@ let skipBeforeUnload = false;
 
 // アプリ初期化完了フラグ（tabManager初期化前のイベント記録を防止）
 let isAppInitialized = false;
+
+// C言語実行環境
+let cTerminal: CTerminal | null = null;
+let cExecutor: ReturnType<typeof getCExecutor> | null = null;
+let isRunningCode = false;
+
+// 利用規約関連
+const TERMS_ACCEPTED_KEY = 'typedcode-terms-accepted';
+const TERMS_VERSION = '1.0';  // バージョン管理（規約変更時に再同意を求める）
+
+// ランタイム状態管理
+type RuntimeState = 'not-ready' | 'loading' | 'ready';
+
+interface RuntimeStatus {
+  c: RuntimeState;
+  // 将来拡張: python, javascript, etc.
+}
+
+const runtimeStatus: RuntimeStatus = {
+  c: 'not-ready'
+};
+
+/**
+ * 利用規約に同意済みかチェック
+ */
+function hasAcceptedTerms(): boolean {
+  const accepted = localStorage.getItem(TERMS_ACCEPTED_KEY);
+  if (!accepted) return false;
+  try {
+    const data = JSON.parse(accepted);
+    return data.version === TERMS_VERSION;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 利用規約モーダルを表示
+ */
+async function showTermsModal(): Promise<void> {
+  const termsModal = document.getElementById('terms-modal');
+  const termsAgreeCheckbox = document.getElementById('terms-agree-checkbox') as HTMLInputElement | null;
+  const termsAgreeBtn = document.getElementById('terms-agree-btn') as HTMLButtonElement | null;
+
+  if (!termsModal || !termsAgreeCheckbox || !termsAgreeBtn) {
+    console.error('[TypedCode] Terms modal elements not found');
+    return;
+  }
+
+  return new Promise((resolve) => {
+    termsModal.classList.remove('hidden');
+
+    const handleCheckboxChange = (): void => {
+      termsAgreeBtn.disabled = !termsAgreeCheckbox.checked;
+    };
+
+    const handleAgree = (): void => {
+      const timestamp = Date.now();
+
+      // localStorageに保存
+      localStorage.setItem(TERMS_ACCEPTED_KEY, JSON.stringify({
+        version: TERMS_VERSION,
+        timestamp,
+        agreedAt: new Date(timestamp).toISOString()
+      }));
+
+      // イベントリスナーをクリーンアップ
+      termsAgreeCheckbox.removeEventListener('change', handleCheckboxChange);
+      termsAgreeBtn.removeEventListener('click', handleAgree);
+
+      termsModal.classList.add('hidden');
+      console.log('[TypedCode] Terms accepted at', new Date(timestamp).toISOString());
+      resolve();
+    };
+
+    termsAgreeCheckbox.addEventListener('change', handleCheckboxChange);
+    termsAgreeBtn.addEventListener('click', handleAgree);
+  });
+}
+
+/**
+ * ランタイムインジケーターを更新
+ */
+function updateRuntimeIndicator(language: keyof RuntimeStatus, state: RuntimeState): void {
+  const badge = document.getElementById(`runtime-${language}-badge`);
+  const stateEl = document.getElementById(`runtime-${language}-state`);
+
+  if (!badge || !stateEl) return;
+
+  // 状態クラスを更新
+  badge.classList.remove('not-ready', 'loading', 'ready');
+  badge.classList.add(state);
+
+  // 表示テキストを更新
+  const stateText: Record<RuntimeState, string> = {
+    'not-ready': '-',
+    'loading': 'Loading',
+    'ready': 'Ready'
+  };
+  stateEl.textContent = stateText[state];
+
+  // ツールチップを更新
+  const tooltips: Record<RuntimeState, string> = {
+    'not-ready': 'C runtime: Not initialized',
+    'loading': 'C runtime: Downloading compiler...',
+    'ready': 'C runtime: Ready to run'
+  };
+  badge.title = tooltips[state];
+
+  runtimeStatus[language] = state;
+}
 
 /**
  * 現在のウィンドウサイズを取得
@@ -1165,6 +1279,12 @@ Pure typing: ${multiProofData.metadata.overallPureTyping ? 'Yes' : 'No'}
 async function initializeApp(): Promise<void> {
   console.log('[TypedCode] Initializing app...');
 
+  // 利用規約モーダルを先に表示（未同意の場合）
+  if (!hasAcceptedTerms()) {
+    console.log('[TypedCode] Showing terms modal...');
+    await showTermsModal();
+  }
+
   // Turnstileスクリプトをプリロード（設定されている場合のみ）
   if (isTurnstileConfigured()) {
     preloadTurnstile().catch(err => {
@@ -1259,6 +1379,37 @@ async function initializeApp(): Promise<void> {
   isEventRecordingEnabled = true;
   console.log('[TypedCode] Event recording enabled');
 
+  // 利用規約同意をハッシュチェーンに記録（初回のみ）
+  const activeProofForTerms = tabManager.getActiveProof();
+  if (activeProofForTerms) {
+    const termsData = localStorage.getItem(TERMS_ACCEPTED_KEY);
+    if (termsData) {
+      try {
+        const parsed = JSON.parse(termsData);
+        // 新規タブで、まだtermsAcceptedイベントが記録されていない場合のみ記録
+        const hasTermsEvent = activeProofForTerms.events.some(e => e.type === 'termsAccepted');
+        if (!hasTermsEvent) {
+          activeProofForTerms.recordEvent({
+            type: 'termsAccepted',
+            data: {
+              version: parsed.version,
+              timestamp: parsed.timestamp,
+              agreedAt: parsed.agreedAt
+            },
+            description: `Terms v${parsed.version} accepted`
+          }).then(() => {
+            console.log('[TypedCode] Terms acceptance recorded to hash chain');
+            tabManager?.saveToStorage();
+          }).catch(err => {
+            console.error('[TypedCode] Failed to record terms acceptance:', err);
+          });
+        }
+      } catch (err) {
+        console.error('[TypedCode] Failed to parse terms data:', err);
+      }
+    }
+  }
+
   // 初期ウィンドウサイズを記録
   recordWindowResize(true);
 
@@ -1349,6 +1500,168 @@ async function initializeApp(): Promise<void> {
     });
   }
 
+  // xterm.js ターミナルの初期化
+  const xtermContainer = document.getElementById('xterm-container');
+  if (xtermContainer) {
+    cTerminal = new CTerminal(xtermContainer);
+    cTerminal.writeLine('TypedCode Terminal - C言語実行環境');
+    cTerminal.writeLine('Ctrl+Enter または Run ボタンでコードを実行\n');
+  }
+
+  // C実行エンジンの初期化（遅延ロード）
+  cExecutor = getCExecutor();
+
+  // Run/Stopボタンのハンドラ
+  const runCodeBtn = document.getElementById('run-code-btn');
+  const stopCodeBtn = document.getElementById('stop-code-btn');
+  const clangLoadingOverlay = document.getElementById('clang-loading-overlay');
+  const clangStatus = document.getElementById('clang-status');
+
+  const showClangLoading = (): void => {
+    clangLoadingOverlay?.classList.remove('hidden');
+  };
+
+  const hideClangLoading = (): void => {
+    clangLoadingOverlay?.classList.add('hidden');
+  };
+
+  const updateClangStatus = (message: string): void => {
+    if (clangStatus) {
+      clangStatus.textContent = message;
+    }
+  };
+
+  const showErrorsInEditor = (errors: ParsedError[]): void => {
+    const activeTab = tabManager?.getActiveTab();
+    if (!activeTab) return;
+
+    const markers = errors.map(err => ({
+      startLineNumber: err.line,
+      startColumn: err.column,
+      endLineNumber: err.line,
+      endColumn: activeTab.model.getLineMaxColumn(err.line),
+      message: err.message,
+      severity: err.severity === 'error'
+        ? monaco.MarkerSeverity.Error
+        : err.severity === 'warning'
+          ? monaco.MarkerSeverity.Warning
+          : monaco.MarkerSeverity.Info,
+    }));
+
+    monaco.editor.setModelMarkers(activeTab.model, 'c-compiler', markers);
+  };
+
+  const clearEditorErrors = (): void => {
+    const activeTab = tabManager?.getActiveTab();
+    if (activeTab) {
+      monaco.editor.setModelMarkers(activeTab.model, 'c-compiler', []);
+    }
+  };
+
+  const handleRunCode = async (): Promise<void> => {
+    if (isRunningCode) {
+      showNotification('既にコードを実行中です');
+      return;
+    }
+
+    const activeTab = tabManager?.getActiveTab();
+    if (!activeTab) {
+      showNotification('アクティブなタブがありません');
+      return;
+    }
+
+    if (activeTab.language !== 'c') {
+      showNotification('C言語のコードのみ実行できます（現在: ' + activeTab.language + '）');
+      return;
+    }
+
+    isRunningCode = true;
+    runCodeBtn?.classList.add('running');
+    stopCodeBtn?.classList.remove('hidden');
+    clearEditorErrors();
+
+    // ターミナル表示
+    if (terminalPanel) {
+      terminalPanel.classList.add('visible');
+      updateTerminalButtonState();
+    }
+
+    cTerminal?.clear();
+    cTerminal?.writeInfo('$ Compiling ' + activeTab.filename + '...\n');
+
+    try {
+      // 初回はコンパイラをダウンロード
+      if (!cExecutor?.isInitialized) {
+        showClangLoading();
+        updateRuntimeIndicator('c', 'loading');
+        await cExecutor?.initialize((msg: string) => {
+          updateClangStatus(msg);
+          cTerminal?.writeInfo(msg + '\n');
+        });
+        hideClangLoading();
+        updateRuntimeIndicator('c', 'ready');
+      }
+
+      const code = activeTab.model.getValue();
+
+      const result = await cExecutor?.run(code, {
+        onStdout: (text: string) => cTerminal?.write(text),
+        onStderr: (text: string) => {
+          cTerminal?.writeError(text);
+          // エラーをパースしてエディタに表示
+          const errors = cExecutor?.parseErrors(text) ?? [];
+          if (errors.length > 0) {
+            showErrorsInEditor(errors);
+          }
+        },
+        onStdinReady: (stdinStream: WritableStream<Uint8Array>) => {
+          cTerminal?.connectStdin(stdinStream);
+        },
+        onProgress: (msg: string) => cTerminal?.writeInfo(msg + '\n'),
+      });
+
+      if (result) {
+        if (result.success) {
+          cTerminal?.writeSuccess('\n$ Program exited with code ' + result.exitCode + '\n');
+        } else {
+          cTerminal?.writeError('\n$ Program failed with code ' + result.exitCode + '\n');
+        }
+      }
+    } catch (error) {
+      console.error('[TypedCode] C execution error:', error);
+      hideClangLoading();
+      cTerminal?.writeError('Execution error: ' + error + '\n');
+      showNotification('コードの実行に失敗しました');
+    } finally {
+      isRunningCode = false;
+      cTerminal?.disconnectStdin(); // Disconnect stdin stream
+      runCodeBtn?.classList.remove('running');
+      stopCodeBtn?.classList.add('hidden');
+    }
+  };
+
+  const handleStopCode = (): void => {
+    if (cExecutor && isRunningCode) {
+      cExecutor.abort();
+      cTerminal?.disconnectStdin(); // Disconnect stdin stream
+      cTerminal?.writeError('\n$ Execution aborted\n');
+      isRunningCode = false;
+      runCodeBtn?.classList.remove('running');
+      stopCodeBtn?.classList.add('hidden');
+    }
+  };
+
+  runCodeBtn?.addEventListener('click', () => void handleRunCode());
+  stopCodeBtn?.addEventListener('click', handleStopCode);
+
+  // Ctrl+Enter でコード実行
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault();
+      void handleRunCode();
+    }
+  });
+
   // ターミナルパネルのリサイズ機能
   const terminalResizeHandle = document.getElementById('terminal-resize-handle');
   const workbenchUpperEl = document.querySelector('.workbench-upper') as HTMLElement | null;
@@ -1388,6 +1701,9 @@ async function initializeApp(): Promise<void> {
       const clampedHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
 
       terminalPanel.style.height = `${clampedHeight}px`;
+
+      // xterm.jsのリサイズ
+      cTerminal?.fit();
     });
 
     document.addEventListener('mouseup', () => {

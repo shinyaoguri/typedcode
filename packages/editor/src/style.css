@@ -263,6 +263,52 @@ body {
   background: var(--accent-info);
 }
 
+/* Run button */
+.activitybar-item-run {
+  color: var(--accent-success);
+}
+
+.activitybar-item-run:hover {
+  color: #fff;
+  background: var(--accent-success);
+}
+
+.activitybar-item-run.running {
+  color: var(--accent-success);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.activitybar-item-run.running:hover {
+  background: transparent;
+}
+
+/* Stop button */
+.activitybar-item-stop {
+  color: var(--accent-danger);
+}
+
+.activitybar-item-stop:hover {
+  color: #fff;
+  background: var(--accent-danger);
+}
+
+/* Activity bar divider */
+.activitybar-divider {
+  width: 24px;
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px auto;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
 /* Tooltip for activity bar items */
 .activitybar-item::after {
   content: attr(title);
@@ -653,18 +699,35 @@ body {
 /* Terminal Content */
 .terminal-content {
   flex: 1;
-  overflow-y: auto;
-  padding: 8px 12px;
-  font-family: 'Courier New', Consolas, 'Monaco', monospace;
-  font-size: 13px;
-  line-height: 1.4;
+  overflow: hidden;
+  padding: 0;
   background: var(--bg-primary);
 }
 
+/* xterm.js container */
+#xterm-container {
+  width: 100%;
+  height: 100%;
+  padding: 4px 8px;
+}
+
+#xterm-container .xterm {
+  height: 100%;
+}
+
+#xterm-container .xterm-viewport {
+  overflow-y: auto !important;
+}
+
+/* Legacy terminal styles (kept for fallback) */
 .terminal-output {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding: 8px 12px;
+  font-family: 'Courier New', Consolas, 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .terminal-line {
@@ -1456,6 +1519,24 @@ body {
   transition: width 0.15s ease;
 }
 
+/* Clang loading progress - indeterminate animation */
+.processing-progress-bar.clang-progress {
+  width: 30%;
+  animation: clang-loading 1.5s ease-in-out infinite;
+}
+
+@keyframes clang-loading {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(200%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
 .processing-status {
   text-align: center;
   font-size: 12px !important;
@@ -1532,4 +1613,156 @@ body {
 .grecaptcha-badge {
   z-index: 99999 !important;
   bottom: 30px !important;
+}
+
+/* ============================================
+   Terms of Service Modal
+   ============================================ */
+.modal-terms {
+  max-width: 520px;
+  border-top: 3px solid var(--accent-primary);
+}
+
+.modal-terms .modal-header i {
+  color: var(--accent-primary);
+}
+
+.terms-intro {
+  font-size: 14px;
+  margin-bottom: 16px;
+  color: var(--text-primary);
+}
+
+.terms-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+}
+
+.terms-section h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.terms-section h4 i {
+  color: var(--accent-primary);
+  font-size: 14px;
+}
+
+.terms-section p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.terms-list {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+  list-style-type: disc;
+}
+
+.terms-list li {
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  padding: 0;
+  border-bottom: none;
+}
+
+.terms-checkbox-container {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.terms-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.terms-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.modal-btn-primary {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border: none;
+}
+
+.modal-btn-primary:hover:not(:disabled) {
+  background: var(--accent-secondary);
+}
+
+.modal-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   Runtime Status Indicator
+   ============================================ */
+.status-runtime {
+  gap: 6px;
+}
+
+.runtime-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+}
+
+.runtime-icon {
+  width: 12px;
+  height: 12px;
+  filter: brightness(0) invert(1);
+}
+
+.runtime-state {
+  font-size: 10px;
+}
+
+/* Runtime states */
+.runtime-badge.not-ready {
+  opacity: 0.5;
+}
+
+.runtime-badge.loading {
+  opacity: 0.7;
+}
+
+.runtime-badge.loading .runtime-state::after {
+  content: '...';
+  animation: loading-dots 1.5s steps(4, end) infinite;
+}
+
+@keyframes loading-dots {
+  0%, 20% { content: '.'; }
+  40% { content: '..'; }
+  60%, 100% { content: '...'; }
+}
+
+.runtime-badge.ready {
+  background: rgba(14, 125, 14, 0.3);
+  opacity: 1;
+}
+
+.runtime-badge.ready .runtime-state {
+  color: #6fdc6f;
 }
