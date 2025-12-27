@@ -15,7 +15,7 @@ import type {
   MultiFileExportEntry,
   HumanAttestationEventData,
 } from '@typedcode/shared';
-import { isTurnstileConfigured, performTurnstileVerification } from './turnstile.js';
+import { isTurnstileConfigured, performTurnstileVerification } from '../../services/TurnstileService.js';
 
 /** タブの実行時状態 */
 export interface TabState {

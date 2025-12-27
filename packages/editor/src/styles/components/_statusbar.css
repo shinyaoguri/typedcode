@@ -1,0 +1,166 @@
+/* Status Bar */
+.statusbar {
+  display: flex;
+  justify-content: space-between;
+  height: 22px;
+  background: var(--statusbar-bg);
+  color: var(--statusbar-text);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.statusbar-left,
+.statusbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.statusbar .status-item {
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 100%;
+  cursor: default;
+  transition: background-color 0.1s;
+}
+
+.statusbar .status-item:hover {
+  background: var(--statusbar-hover-bg);
+}
+
+.statusbar .status-item > i {
+  font-size: 11px;
+}
+
+/* Proof progress ring */
+.proof-progress-ring {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.proof-progress-ring svg {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.proof-progress-ring.processing svg {
+  opacity: 1;
+}
+
+.proof-progress-ring .progress-bg {
+  fill: none;
+  stroke: var(--statusbar-fg);
+  stroke-width: 2;
+  opacity: 0.2;
+}
+
+.proof-progress-ring .progress-bar {
+  fill: none;
+  stroke: #4fc3f7;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 50.265;
+  stroke-dashoffset: 50.265;
+  transition: stroke-dashoffset 0.15s ease;
+}
+
+.proof-progress-ring i {
+  font-size: 9px;
+  z-index: 1;
+  transition: opacity 0.2s ease;
+}
+
+.proof-progress-ring.processing i {
+  opacity: 0.6;
+}
+
+.statusbar .hash-status {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+}
+
+.statusbar .hash-status span {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Language selector in status bar */
+.statusbar #language-selector {
+  background: transparent;
+  border: none;
+  color: var(--statusbar-text);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+}
+
+.statusbar #language-selector option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* Runtime Status Indicator */
+.status-runtime {
+  gap: 6px;
+}
+
+.runtime-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+}
+
+.runtime-icon {
+  width: 12px;
+  height: 12px;
+  filter: brightness(0) invert(1);
+}
+
+.runtime-state {
+  font-size: 10px;
+}
+
+/* Runtime states */
+.runtime-badge.not-ready {
+  opacity: 0.5;
+}
+
+.runtime-badge.loading {
+  opacity: 0.7;
+}
+
+.runtime-badge.loading .runtime-state::after {
+  content: '...';
+  animation: loading-dots 1.5s steps(4, end) infinite;
+}
+
+@keyframes loading-dots {
+  0%, 20% { content: '.'; }
+  40% { content: '..'; }
+  60%, 100% { content: '...'; }
+}
+
+.runtime-badge.ready {
+  background: rgba(14, 125, 14, 0.3);
+  opacity: 1;
+}
+
+.runtime-badge.ready .runtime-state {
+  color: #6fdc6f;
+}

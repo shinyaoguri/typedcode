@@ -1,0 +1,38 @@
+/* Responsive Design */
+@media (max-width: 768px) {
+  .statusbar .hash-status {
+    display: none;
+  }
+
+  .activitybar {
+    width: 40px;
+  }
+
+  .activitybar-item {
+    width: 40px;
+    height: 40px;
+  }
+
+  .activitybar-item i {
+    font-size: 18px;
+  }
+
+  #log-viewer.visible {
+    flex: 0 0 100%;
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .activitybar-item::after {
+    display: none;
+  }
+
+  .statusbar .status-item span:not(#cursor-line):not(#cursor-col) {
+    display: none;
+  }
+}

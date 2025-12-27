@@ -5,7 +5,7 @@ import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
 import JSZip from 'jszip';
-import './style.css';
+import './styles/main.css';
 import { Fingerprint } from '@typedcode/shared';
 import type {
   CursorPosition,
@@ -17,19 +17,19 @@ import type {
   KeystrokeDynamicsData,
   WindowSizeData,
 } from '@typedcode/shared';
-import { InputDetector } from './inputDetector.js';
-import { OperationDetector } from './operationDetector.js';
-import { LogViewer } from './logViewer.js';
-import { ThemeManager } from './themeManager.js';
-import { TabManager, type TabState } from './tabManager.js';
-import type { MonacoEditor } from './monacoTypes.js';
+import { InputDetector } from './tracking/InputDetector.js';
+import { OperationDetector } from './tracking/OperationDetector.js';
+import { LogViewer } from './ui/components/LogViewer.js';
+import { ThemeManager } from './editor/ThemeManager.js';
+import { TabManager, type TabState } from './ui/tabs/TabManager.js';
+import type { MonacoEditor } from './editor/types.js';
 import {
   isTurnstileConfigured,
   loadTurnstileScript as preloadTurnstile,
   performTurnstileVerification,
-} from './turnstile.js';
-import { CTerminal } from './terminal.js';
-import { getCExecutor, type ParsedError } from './cExecutor.js';
+} from './services/TurnstileService.js';
+import { CTerminal } from './terminal/CTerminal.js';
+import { getCExecutor, type ParsedError } from './executors/c/CExecutor.js';
 import '@xterm/xterm/css/xterm.css';
 
 // Monaco Editor の Worker 設定
@@ -1594,9 +1594,9 @@ async function initializeApp(): Promise<void> {
       if (!cExecutor?.isInitialized) {
         showClangLoading();
         updateRuntimeIndicator('c', 'loading');
-        await cExecutor?.initialize((msg: string) => {
-          updateClangStatus(msg);
-          cTerminal?.writeInfo(msg + '\n');
+        await cExecutor?.initialize((progress) => {
+          updateClangStatus(progress.message);
+          cTerminal?.writeInfo(progress.message + '\n');
         });
         hideClangLoading();
         updateRuntimeIndicator('c', 'ready');

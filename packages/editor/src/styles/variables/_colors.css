@@ -1,0 +1,92 @@
+/* CSS Variables for theming - VSCode style */
+:root[data-theme="dark"] {
+  /* Base colors */
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-tertiary: #2d2d2d;
+  --bg-hover: #3c3c3c;
+  --bg-active: #4a4a4a;
+  --bg-input: #3c3c3c;
+  --border-color: #3e3e3e;
+  --border-input: #555555;
+  --text-primary: #cccccc;
+  --text-secondary: #9d9d9d;
+  --text-tertiary: #6e6e6e;
+  --text-quaternary: #505050;
+
+  /* Accent colors */
+  --accent-primary: #0078d4;
+  --accent-secondary: #005a9e;
+  --accent-tertiary: #004578;
+  --accent-success: #0e7d0e;
+  --accent-success-hover: #0c6b0c;
+  --accent-warning: #8a7a1e;
+  --accent-danger: #f14c4c;
+  --accent-danger-hover: #d13b3b;
+
+  /* Title Bar */
+  --titlebar-bg: #323233;
+  --titlebar-text: #cccccc;
+
+  /* Activity Bar */
+  --activitybar-bg: #333333;
+  --activitybar-icon: #858585;
+  --activitybar-icon-hover: #ffffff;
+  --activitybar-icon-active: #ffffff;
+  --activitybar-indicator: #ffffff;
+
+  /* Status Bar */
+  --statusbar-bg: #007acc;
+  --statusbar-text: #ffffff;
+  --statusbar-hover-bg: rgba(255, 255, 255, 0.12);
+
+  /* Shadows */
+  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-light: rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme="light"] {
+  /* Base colors */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f3f3;
+  --bg-tertiary: #e8e8e8;
+  --bg-hover: #e0e0e0;
+  --bg-active: #d0d0d0;
+  --bg-input: #ffffff;
+  --border-color: #d4d4d4;
+  --border-input: #c0c0c0;
+  --text-primary: #333333;
+  --text-secondary: #616161;
+  --text-tertiary: #888888;
+  --text-quaternary: #aaaaaa;
+
+  /* Accent colors */
+  --accent-primary: #0066cc;
+  --accent-secondary: #0052a3;
+  --accent-tertiary: #003d7a;
+  --accent-success: #0a6e0a;
+  --accent-success-hover: #085e08;
+  --accent-warning: #8a7a1e;
+  --accent-danger: #d13b3b;
+  --accent-danger-hover: #b02020;
+
+  /* Title Bar */
+  --titlebar-bg: #dddddd;
+  --titlebar-text: #333333;
+
+  /* Activity Bar */
+  --activitybar-bg: #2c2c2c;
+  --activitybar-icon: #858585;
+  --activitybar-icon-hover: #ffffff;
+  --activitybar-icon-active: #ffffff;
+  --activitybar-indicator: #ffffff;
+
+  /* Status Bar */
+  --statusbar-bg: #007acc;
+  --statusbar-text: #ffffff;
+  --statusbar-hover-bg: rgba(255, 255, 255, 0.12);
+
+  /* Shadows */
+  --shadow: rgba(0, 0, 0, 0.15);
+  --shadow-light: rgba(0, 0, 0, 0.08);
+}

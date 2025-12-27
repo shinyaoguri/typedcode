@@ -1,0 +1,226 @@
+/* Activity Bar */
+.activitybar {
+  width: 48px;
+  background: var(--activitybar-bg);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.activitybar-top,
+.activitybar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.activitybar-item {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--activitybar-icon);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s;
+  text-decoration: none;
+}
+
+.activitybar-item i {
+  font-size: 22px;
+}
+
+.activitybar-item:hover {
+  color: var(--activitybar-icon-hover);
+}
+
+.activitybar-item.active {
+  color: var(--activitybar-icon-active);
+}
+
+.activitybar-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--activitybar-indicator);
+}
+
+.activitybar-item-danger:hover {
+  color: var(--accent-danger);
+}
+
+.activitybar-item-primary {
+  color: var(--accent-info);
+}
+
+.activitybar-item-primary:hover {
+  color: #fff;
+  background: var(--accent-info);
+}
+
+/* Run button */
+.activitybar-item-run {
+  color: var(--accent-success);
+}
+
+.activitybar-item-run:hover {
+  color: #fff;
+  background: var(--accent-success);
+}
+
+.activitybar-item-run.running {
+  color: var(--accent-success);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.activitybar-item-run.running:hover {
+  background: transparent;
+}
+
+/* Stop button */
+.activitybar-item-stop {
+  color: var(--accent-danger);
+}
+
+.activitybar-item-stop:hover {
+  color: #fff;
+  background: var(--accent-danger);
+}
+
+/* Activity bar divider */
+.activitybar-divider {
+  width: 24px;
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px auto;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Tooltip for activity bar items */
+.activitybar-item::after {
+  content: attr(title);
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 1000;
+  margin-left: 8px;
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+.activitybar-item:hover::after {
+  opacity: 1;
+}
+
+/* Activity Bar Menu Container */
+.activitybar-menu-container {
+  position: relative;
+}
+
+.activitybar-dropdown {
+  position: absolute;
+  left: 100%;
+  bottom: 0;
+  min-width: 180px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px var(--shadow);
+  padding: 4px 0;
+  z-index: 1001;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-8px);
+  transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
+  margin-left: 8px;
+}
+
+.activitybar-dropdown.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  transition: background-color 0.1s;
+}
+
+.dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.dropdown-item i {
+  width: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.dropdown-item:hover i {
+  color: var(--text-primary);
+}
+
+.dropdown-item-danger {
+  color: var(--text-primary);
+}
+
+.dropdown-item-danger:hover {
+  background: rgba(241, 76, 76, 0.15);
+  color: var(--accent-danger);
+}
+
+.dropdown-item-danger:hover i {
+  color: var(--accent-danger);
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
+}
+
+.dropdown-external-icon {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.dropdown-item:hover .dropdown-external-icon {
+  opacity: 1;
+}

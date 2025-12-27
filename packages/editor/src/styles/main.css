@@ -1,0 +1,30 @@
+/**
+ * TypedCode Editor - Main CSS Entry Point
+ *
+ * This file imports all CSS modules in the correct order.
+ * Organized by: variables -> base -> layout -> components -> utilities
+ */
+
+/* Variables */
+@import './variables/_colors.css';
+
+/* Base */
+@import './base/_reset.css';
+
+/* Layout */
+@import './layout/_titlebar.css';
+@import './layout/_main.css';
+@import './layout/_workbench.css';
+
+/* Components */
+@import './components/_activitybar.css';
+@import './components/_statusbar.css';
+@import './components/_tabs.css';
+@import './components/_terminal.css';
+@import './components/_log-viewer.css';
+@import './components/_modals.css';
+@import './components/_notifications.css';
+
+/* Utilities */
+@import './utilities/_responsive.css';
+@import './utilities/_misc.css';

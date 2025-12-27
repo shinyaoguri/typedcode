@@ -1,0 +1,43 @@
+/* Workbench (Main Editor Area) */
+.workbench {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.workbench-upper {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.workbench-upper.with-terminal {
+  flex: 1 1 70%;
+}
+
+.workbench-upper.resizing {
+  transition: none;
+}
+
+.editor-container {
+  flex: 1 1 100%;
+  position: relative;
+  transition: flex 0.3s ease;
+  min-width: 0;
+}
+
+.editor-container.with-log {
+  flex: 1 1 60%;
+}
+
+.editor-container.resizing {
+  transition: none;
+}
+
+#editor {
+  width: 100%;
+  height: calc(100% - 35px);
+}

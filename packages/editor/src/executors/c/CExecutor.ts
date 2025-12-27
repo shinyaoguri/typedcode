@@ -1,93 +1,83 @@
 /**
- * C Language Executor using Wasmer SDK
- * Compiles and executes C code in the browser using WebAssembly
+ * C Language Executor
+ *
+ * Compiles and executes C code in the browser using Wasmer SDK and Clang.
  */
 
 import { init, Wasmer, Directory, type SpawnOptions } from '@wasmer/sdk';
 import wasmUrl from '@wasmer/sdk/wasm?url';
 
-export interface CompileResult {
-  success: boolean;
-  binary?: Uint8Array;
-  errors?: string[];
-  warnings?: string[];
-}
+import { BaseExecutor } from '../base/BaseExecutor.js';
+import type {
+  ExecutorConfig,
+  ExecutionCallbacks,
+  ExecutionResult,
+  InitializationProgress,
+  ParsedError,
+} from '../interfaces/ILanguageExecutor.js';
 
-export interface ExecutionResult {
-  success: boolean;
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  error?: string;
-}
+// Re-export ParsedError for backward compatibility
+export type { ParsedError } from '../interfaces/ILanguageExecutor.js';
 
-export interface ParsedError {
-  line: number;
-  column: number;
-  severity: 'error' | 'warning' | 'note';
-  message: string;
-}
+const DEFAULT_C_CODE = `#include <stdio.h>
 
-export interface ExecutionCallbacks {
-  onStdout: (text: string) => void;
-  onStderr: (text: string) => void;
-  onStdinReady?: (stdinStream: WritableStream<Uint8Array>) => void;
-  onProgress?: (message: string) => void;
+int main() {
+    printf("Hello, World!\\n");
+    return 0;
 }
+`;
 
-export class CExecutor {
-  private initialized: boolean = false;
-  private initializing: boolean = false;
+export class CExecutor extends BaseExecutor {
+  readonly config: ExecutorConfig = {
+    id: 'c',
+    name: 'C',
+    fileExtension: '.c',
+    monacoLanguage: 'c',
+    defaultCode: DEFAULT_C_CODE,
+    icon: 'c-icon',
+  };
+
   private clangPkg: Wasmer | null = null;
 
-  /**
-   * Check if the executor is initialized
-   */
-  get isInitialized(): boolean {
-    return this.initialized;
-  }
-
-  /**
-   * Initialize Wasmer SDK and download Clang
-   */
-  async initialize(onProgress?: (message: string) => void): Promise<void> {
-    if (this.initialized) return;
-    if (this.initializing) {
-      // Wait for ongoing initialization
-      while (this.initializing) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-      return;
-    }
-
-    this.initializing = true;
-
+  protected async _doInitialize(
+    onProgress?: (progress: InitializationProgress) => void
+  ): Promise<void> {
     try {
-      onProgress?.('Initializing Wasmer SDK...');
+      onProgress?.({
+        stage: 'sdk',
+        message: 'Initializing Wasmer SDK...',
+        percentage: 10,
+      });
+
       await init({ module: wasmUrl });
 
-      onProgress?.('Downloading C compiler (this may take a while)...');
+      onProgress?.({
+        stage: 'compiler',
+        message: 'Downloading C compiler (this may take a while)...',
+        percentage: 30,
+      });
+
       // Use clang package from Wasmer registry
       // See: https://wasmer.io/syrusakbary/clang
       this.clangPkg = await Wasmer.fromRegistry('syrusakbary/clang');
 
-      this.initialized = true;
-      onProgress?.('C compiler ready!');
+      onProgress?.({
+        stage: 'ready',
+        message: 'C compiler ready!',
+        percentage: 100,
+      });
     } catch (error) {
       console.error('[CExecutor] Initialization failed:', error);
       throw new Error(`Failed to initialize C compiler: ${error}`);
-    } finally {
-      this.initializing = false;
     }
   }
 
-  /**
-   * Compile and run C code
-   */
   async run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult> {
-    if (!this.initialized || !this.clangPkg) {
+    if (!this._initialized || !this.clangPkg) {
       throw new Error('CExecutor not initialized. Call initialize() first.');
     }
+
+    this.resetAbort();
 
     try {
       callbacks.onProgress?.('Compiling...');
@@ -149,7 +139,6 @@ export class CExecutor {
       const decoder = new TextDecoder();
 
       // Connect stdout using pipeTo() for direct streaming
-      // Note: pipeTo() runs in background - we don't wait for it
       runInstance.stdout.pipeTo(
         new WritableStream({
           write: (chunk) => {
@@ -200,17 +189,11 @@ export class CExecutor {
     }
   }
 
-  /**
-   * Abort current execution (placeholder for future implementation)
-   */
-  abort(): void {
+  protected _onAbort(): void {
     console.log('[CExecutor] Abort requested');
     // TODO: Implement proper abort mechanism for WASI programs
   }
 
-  /**
-   * Parse compiler error output
-   */
   parseErrors(stderr: string): ParsedError[] {
     const errors: ParsedError[] = [];
     // clang error format: "filename:line:column: severity: message"
@@ -234,11 +217,20 @@ export class CExecutor {
 
     return errors;
   }
+
+  override dispose(): void {
+    super.dispose();
+    this.clangPkg = null;
+  }
 }
 
 // Singleton instance
 let executorInstance: CExecutor | null = null;
 
+/**
+ * Get the singleton CExecutor instance
+ * @deprecated Use ExecutorRegistry.get('c') instead
+ */
 export function getCExecutor(): CExecutor {
   if (!executorInstance) {
     executorInstance = new CExecutor();

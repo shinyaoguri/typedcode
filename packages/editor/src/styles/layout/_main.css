@@ -1,0 +1,6 @@
+/* Main Layout (Activity Bar + Workbench) */
+.main-layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
