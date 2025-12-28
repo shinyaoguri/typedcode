@@ -43,8 +43,11 @@ export function isTurnstileConfigured(): boolean {
   return Boolean(TURNSTILE_SITE_KEY && API_URL);
 }
 
+/** Timeout for script loading (10 seconds) */
+const SCRIPT_LOAD_TIMEOUT_MS = 10000;
+
 /**
- * Load Turnstile script dynamically
+ * Load Turnstile script dynamically with timeout
  */
 export function loadTurnstileScript(): Promise<void> {
   if (scriptLoaded) {
@@ -68,7 +71,17 @@ export function loadTurnstileScript(): Promise<void> {
     script.async = true;
     script.defer = true;
 
+    // Timeout for script loading
+    const timeoutId = setTimeout(() => {
+      scriptLoading = false;
+      loadPromise = null;
+      script.remove();
+      console.error('[Turnstile] Script load timed out');
+      reject(new Error('Turnstile script load timed out'));
+    }, SCRIPT_LOAD_TIMEOUT_MS);
+
     script.onload = () => {
+      clearTimeout(timeoutId);
       scriptLoaded = true;
       scriptLoading = false;
       console.log('[Turnstile] Script loaded successfully');
@@ -76,6 +89,7 @@ export function loadTurnstileScript(): Promise<void> {
     };
 
     script.onerror = () => {
+      clearTimeout(timeoutId);
       scriptLoading = false;
       loadPromise = null;
       console.error('[Turnstile] Failed to load script');
@@ -88,50 +102,122 @@ export function loadTurnstileScript(): Promise<void> {
   return loadPromise;
 }
 
+/** Timeout for Turnstile challenge (20 seconds total) */
+const TURNSTILE_TIMEOUT_MS = 20000;
+
+/** Result from getTurnstileToken including failure reason */
+interface TokenResult {
+  token: string | null;
+  failureReason?: VerificationFailureReason;
+}
+
 /**
- * Get Turnstile token for the specified action using invisible mode
+ * Get Turnstile token for the specified action
+ * Shows challenge UI centered on screen when interaction is needed
  */
-export async function getTurnstileToken(action: string): Promise<string | null> {
+export async function getTurnstileToken(action: string): Promise<TokenResult> {
   if (!TURNSTILE_SITE_KEY) {
     console.warn('[Turnstile] Site key not configured');
-    return null;
+    return { token: null, failureReason: 'token_acquisition_failed' };
   }
 
   try {
     await loadTurnstileScript();
 
     return new Promise((resolve) => {
-      // Create a hidden container for the widget
-      // The widget will be visually hidden but still functional
+      // Create container centered on screen for challenge visibility
       const container = document.createElement('div');
+      container.id = 'turnstile-container';
       container.style.position = 'fixed';
-      container.style.top = '-9999px';
-      container.style.left = '-9999px';
-      container.style.visibility = 'hidden';
+      container.style.top = '50%';
+      container.style.left = '50%';
+      container.style.transform = 'translate(-50%, -50%)';
+      container.style.zIndex = '10001';
+      container.style.background = 'var(--bg-secondary, #1e1e1e)';
+      container.style.padding = '24px';
+      container.style.borderRadius = '8px';
+      container.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.5)';
+      // Initially hidden until challenge is needed
+      container.style.opacity = '0';
+      container.style.pointerEvents = 'none';
+      container.style.transition = 'opacity 0.2s ease';
       document.body.appendChild(container);
 
-      const widgetId = window.turnstile.render(container, {
-        sitekey: TURNSTILE_SITE_KEY,
-        size: 'compact',
-        action,
-        appearance: 'execute',  // Only show when interaction needed
-        callback: (token) => {
+      // Add title element
+      const title = document.createElement('div');
+      title.textContent = '人間認証';
+      title.style.textAlign = 'center';
+      title.style.marginBottom = '16px';
+      title.style.fontSize = '14px';
+      title.style.color = 'var(--text-primary, #ffffff)';
+      container.appendChild(title);
+
+      // Widget container
+      const widgetContainer = document.createElement('div');
+      container.appendChild(widgetContainer);
+
+      let resolved = false;
+
+      // Timeout handler
+      const timeoutId = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
           window.turnstile.remove(widgetId);
           container.remove();
-          console.log('[Turnstile] Token acquired for action:', action);
-          resolve(token);
+          console.warn('[Turnstile] Challenge timed out after', TURNSTILE_TIMEOUT_MS, 'ms');
+          resolve({ token: null, failureReason: 'timeout' });
+        }
+      }, TURNSTILE_TIMEOUT_MS);
+
+      const widgetId = window.turnstile.render(widgetContainer, {
+        sitekey: TURNSTILE_SITE_KEY,
+        size: 'normal',
+        action,
+        theme: 'dark',
+        appearance: 'interaction-only',  // Show only when interaction needed
+        callback: (token) => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeoutId);
+            window.turnstile.remove(widgetId);
+            container.remove();
+            console.log('[Turnstile] Token acquired for action:', action);
+            resolve({ token });
+          }
         },
         'error-callback': () => {
-          window.turnstile.remove(widgetId);
-          container.remove();
-          console.error('[Turnstile] Challenge failed');
-          resolve(null);
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeoutId);
+            window.turnstile.remove(widgetId);
+            container.remove();
+            console.error('[Turnstile] Challenge failed');
+            resolve({ token: null, failureReason: 'challenge_failed' });
+          }
         },
       });
+
+      // Show container when widget needs interaction
+      // Use MutationObserver to detect when iframe appears
+      const observer = new MutationObserver(() => {
+        const iframe = widgetContainer.querySelector('iframe');
+        if (iframe) {
+          // Widget is rendering, show the container
+          container.style.opacity = '1';
+          container.style.pointerEvents = 'auto';
+          observer.disconnect();
+        }
+      });
+      observer.observe(widgetContainer, { childList: true, subtree: true });
+
+      // Auto-hide after short delay if no iframe appears (auto-pass case)
+      setTimeout(() => {
+        observer.disconnect();
+      }, 2000);
     });
   } catch (error) {
     console.error('[Turnstile] Failed to get token:', error);
-    return null;
+    return { token: null, failureReason: 'token_acquisition_failed' };
   }
 }
 
@@ -148,6 +234,15 @@ export interface HumanAttestation {
 }
 
 /**
+ * Failure reason for verification
+ */
+export type VerificationFailureReason =
+  | 'challenge_failed'
+  | 'timeout'
+  | 'network_error'
+  | 'token_acquisition_failed';
+
+/**
  * Verification result from the backend
  */
 export interface VerificationResult {
@@ -156,6 +251,7 @@ export interface VerificationResult {
   action?: string;
   error?: string;
   attestation?: HumanAttestation;
+  failureReason?: VerificationFailureReason;
 }
 
 /**
@@ -164,7 +260,7 @@ export interface VerificationResult {
 export async function verifyTurnstileToken(token: string): Promise<VerificationResult> {
   if (!API_URL) {
     console.warn('[Turnstile] API URL not configured');
-    return { success: false, error: 'API not configured' };
+    return { success: false, error: 'API not configured', failureReason: 'network_error' };
   }
 
   try {
@@ -179,7 +275,7 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[Turnstile] Verification failed:', response.status, errorText);
-      return { success: false, error: `HTTP ${response.status}` };
+      return { success: false, error: `HTTP ${response.status}`, failureReason: 'network_error' };
     }
 
     const result = await response.json() as VerificationResult;
@@ -190,6 +286,7 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
+      failureReason: 'network_error',
     };
   }
 }
@@ -207,11 +304,15 @@ export async function performTurnstileVerification(action: string): Promise<Veri
   }
 
   // Get token from Turnstile
-  const token = await getTurnstileToken(action);
-  if (!token) {
-    return { success: false, error: 'Failed to acquire Turnstile token' };
+  const tokenResult = await getTurnstileToken(action);
+  if (!tokenResult.token) {
+    return {
+      success: false,
+      error: 'Failed to acquire Turnstile token',
+      failureReason: tokenResult.failureReason,
+    };
   }
 
   // Verify token via backend
-  return verifyTurnstileToken(token);
+  return verifyTurnstileToken(tokenResult.token);
 }

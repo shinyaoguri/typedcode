@@ -202,6 +202,14 @@ async function handleVerifyCaptcha(
 }
 
 /**
+ * 証明書に含まれる可能性のある追加フィールド（署名対象外）
+ */
+interface AttestationWithExtras extends HumanAttestation {
+  success?: boolean;
+  failureReason?: string;
+}
+
+/**
  * 証明書検証エンドポイント（検証ページから呼び出される）
  */
 async function handleVerifyAttestation(
@@ -211,7 +219,7 @@ async function handleVerifyAttestation(
   const origin = request.headers.get('Origin');
 
   try {
-    const body = await request.json<{ attestation: HumanAttestation }>();
+    const body = await request.json<{ attestation: AttestationWithExtras }>();
     const { attestation } = body;
 
     if (!attestation) {
@@ -227,8 +235,15 @@ async function handleVerifyAttestation(
       );
     }
 
-    // 署名を除いたデータで再計算
-    const { signature, ...attestationData } = attestation;
+    // 署名対象フィールドのみを抽出（success, failureReason, signatureは除外）
+    const { signature, success: _success, failureReason: _failureReason, ...coreData } = attestation;
+    const attestationData = {
+      verified: coreData.verified,
+      score: coreData.score,
+      action: coreData.action,
+      timestamp: coreData.timestamp,
+      hostname: coreData.hostname,
+    };
     const dataToSign = JSON.stringify(attestationData);
     const expectedSignature = await createHmacSignature(dataToSign, env.ATTESTATION_SECRET_KEY);
 

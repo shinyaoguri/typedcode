@@ -53,8 +53,6 @@ function extractPreExportAttestation(events: StoredEvent[]): HumanAttestationEve
   return null;
 }
 import {
-  typingProofHashEl,
-  copyHashBtn,
   pureTypingBadge,
   pasteInfo,
   deviceIdEl,
@@ -498,12 +496,12 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
   try {
     const typingProof = new TypingProof();
 
-    // 1. タイピング証明ハッシュの検証
-    let typingHashValid = false;
+    // 1. メタデータ整合性の検証（最終コードとメタデータが改竄されていないか）
+    let metadataValid = false;
     let isPureTyping = false;
 
     if (data.typingProofHash && data.typingProofData && data.content) {
-      const hashLog = addLoadingLog('タイピング証明ハッシュを検証中...');
+      const hashLog = addLoadingLog('メタデータ整合性を検証中...');
       await new Promise(r => setTimeout(r, 50));
 
       const hashVerification = await typingProof.verifyTypingProofHash(
@@ -512,17 +510,14 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
         data.content
       );
 
-      typingHashValid = hashVerification.valid;
+      metadataValid = hashVerification.valid;
       isPureTyping = hashVerification.isPureTyping ?? false;
 
-      if (typingHashValid) {
-        updateLoadingLog(hashLog, 'success', 'タイピング証明ハッシュ: 有効');
+      if (metadataValid) {
+        updateLoadingLog(hashLog, 'success', 'メタデータ: 整合');
       } else {
-        updateLoadingLog(hashLog, 'error', 'タイピング証明ハッシュ: 無効');
+        updateLoadingLog(hashLog, 'error', 'メタデータ: 不整合');
       }
-
-      if (typingProofHashEl) typingProofHashEl.textContent = data.typingProofHash;
-      if (copyHashBtn) copyHashBtn.style.display = 'inline-block';
 
       if (isPureTyping) {
         if (pureTypingBadge) {
@@ -728,7 +723,7 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
     }
 
     // 総合判定
-    const allValid = typingHashValid && chainValid;
+    const allValid = metadataValid && chainValid;
 
     if (allValid && isPureTyping) {
       showSuccess('✅ 検証成功：純粋なタイピングで作成されたコードです');

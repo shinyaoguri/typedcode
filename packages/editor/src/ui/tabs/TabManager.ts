@@ -14,8 +14,17 @@ import type {
   MultiFileExportedProof,
   MultiFileExportEntry,
   HumanAttestationEventData,
+  VerificationState,
+  VerificationDetails,
 } from '@typedcode/shared';
-import { isTurnstileConfigured, performTurnstileVerification } from '../../services/TurnstileService.js';
+import {
+  isTurnstileConfigured,
+  performTurnstileVerification,
+  type VerificationResult,
+} from '../../services/TurnstileService.js';
+
+// Re-export for convenience
+export type { VerificationState, VerificationDetails };
 
 /** タブの実行時状態 */
 export interface TabState {
@@ -25,6 +34,8 @@ export interface TabState {
   typingProof: TypingProof;
   model: monaco.editor.ITextModel;
   createdAt: number;
+  verificationState: VerificationState;
+  verificationDetails?: VerificationDetails;
 }
 
 /** タブ変更コールバック */
@@ -32,6 +43,9 @@ export type OnTabChangeCallback = (tab: TabState, previousTab: TabState | null) 
 
 /** タブ更新コールバック */
 export type OnTabUpdateCallback = (tab: TabState) => void;
+
+/** 認証結果コールバック */
+export type OnVerificationCallback = (result: VerificationResult) => void;
 
 /** タブ作成オプション */
 export interface CreateTabOptions {
@@ -73,6 +87,7 @@ export class TabManager {
   private editor: monaco.editor.IStandaloneCodeEditor;
   private onTabChangeCallback: OnTabChangeCallback | null = null;
   private onTabUpdateCallback: OnTabUpdateCallback | null = null;
+  private onVerificationCallback: OnVerificationCallback | null = null;
   private startTime: number = performance.now();
 
   constructor(editor: monaco.editor.IStandaloneCodeEditor) {
@@ -135,9 +150,16 @@ export class TabManager {
   }
 
   /**
+   * 認証結果コールバックを設定
+   */
+  setOnVerification(callback: OnVerificationCallback): void {
+    this.onVerificationCallback = callback;
+  }
+
+  /**
    * 新しいタブを作成
-   * reCAPTCHAが設定されている場合、認証をevent #0として記録
-   * @returns 成功時はTabState、reCAPTCHA失敗時はnull
+   * Turnstileが設定されている場合、認証結果をevent #0として記録（成功・失敗問わず）
+   * @returns 常にTabState（認証失敗でもタブ作成は続行）
    */
   async createTab(
     filename: string = 'untitled',
@@ -152,29 +174,91 @@ export class TabManager {
     const typingProof = new TypingProof();
     await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!);
 
+    // 認証状態を追跡
+    let verificationState: VerificationState = 'skipped';
+    let verificationDetails: VerificationDetails | undefined;
+
     // Turnstile認証（skipAttestationでない場合のみ）
     if (!options?.skipAttestation && isTurnstileConfigured()) {
       console.log('[TabManager] Performing Turnstile verification for new tab...');
 
-      const result = await performTurnstileVerification('create_tab');
+      // ローディングモーダルを表示
+      const loadingModal = document.getElementById('verification-loading-modal');
+      const statusText = document.getElementById('verification-status-text');
+      const progressBar = document.getElementById('verification-timeout-progress');
+      loadingModal?.classList.remove('hidden');
+      if (statusText) statusText.textContent = '接続中...';
 
-      if (!result.success || !result.attestation) {
-        console.error('[TabManager] Human attestation failed:', result.error);
-        return null;  // タブ作成をブロック
+      // 20秒のプログレスバーアニメーション
+      const TIMEOUT_MS = 20000;
+      const startTime = Date.now();
+      let animationFrame: number | null = null;
+
+      const updateProgress = () => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min((elapsed / TIMEOUT_MS) * 100, 100);
+        if (progressBar) {
+          progressBar.style.width = `${progress}%`;
+        }
+        if (elapsed < TIMEOUT_MS) {
+          animationFrame = requestAnimationFrame(updateProgress);
+        }
+      };
+      animationFrame = requestAnimationFrame(updateProgress);
+
+      let result: VerificationResult;
+      try {
+        // 認証実行（TurnstileService内で20秒タイムアウト）
+        result = await performTurnstileVerification('create_tab');
+      } catch (error) {
+        // エラー時（ネットワークエラー等）はタイムアウトとして扱う
+        console.error('[TabManager] Verification error:', error);
+        result = {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          failureReason: 'network_error',
+        };
+      } finally {
+        // アニメーション停止
+        if (animationFrame !== null) {
+          cancelAnimationFrame(animationFrame);
+        }
+        // プログレスバーをリセット
+        if (progressBar) {
+          progressBar.style.width = '0%';
+        }
+        // ローディングモーダルを非表示
+        loadingModal?.classList.add('hidden');
       }
 
-      // attestationをevent #0として記録
+      // 認証状態を設定
+      verificationState = result.success ? 'verified' : 'failed';
+      verificationDetails = {
+        timestamp: new Date().toISOString(),
+        failureReason: result.failureReason,
+      };
+
+      // 認証結果をハッシュチェーンに記録（成功・失敗問わず）
       const attestationData: HumanAttestationEventData = {
-        verified: result.attestation.verified,
-        score: result.attestation.score,
-        action: result.attestation.action,
-        timestamp: result.attestation.timestamp,
-        hostname: result.attestation.hostname,
-        signature: result.attestation.signature,
+        verified: result.attestation?.verified ?? false,
+        score: result.attestation?.score ?? 0,
+        action: result.attestation?.action ?? 'create_tab',
+        timestamp: result.attestation?.timestamp ?? new Date().toISOString(),
+        hostname: result.attestation?.hostname ?? window.location.hostname,
+        signature: result.attestation?.signature ?? 'unsigned',
+        success: result.success,
+        failureReason: result.failureReason,
       };
 
       await typingProof.recordHumanAttestation(attestationData);
-      console.log('[TabManager] Human attestation recorded as event #0');
+
+      // コールバックで通知
+      this.onVerificationCallback?.(result);
+
+      console.log('[TabManager] Human attestation recorded:',
+        result.success ? 'verified' : `failed (${result.failureReason ?? result.error})`);
+
+      // 注意: 認証失敗でもタブ作成は続行（ブロックしない）
     }
 
     // Monacoモデルを作成
@@ -186,7 +270,9 @@ export class TabManager {
       language,
       typingProof,
       model,
-      createdAt
+      createdAt,
+      verificationState,
+      verificationDetails,
     };
 
     this.tabs.set(id, tab);
@@ -369,7 +455,9 @@ export class TabManager {
         language: tab.language,
         content: tab.model.getValue(),
         proofState: tab.typingProof.serializeState(),
-        createdAt: tab.createdAt
+        createdAt: tab.createdAt,
+        verificationState: tab.verificationState,
+        verificationDetails: tab.verificationDetails,
       };
       storage.tabs[id] = serializedTab;
     }
@@ -421,7 +509,9 @@ export class TabManager {
           language: serializedTab.language,
           typingProof,
           model,
-          createdAt: serializedTab.createdAt
+          createdAt: serializedTab.createdAt,
+          verificationState: serializedTab.verificationState ?? 'skipped',
+          verificationDetails: serializedTab.verificationDetails,
         };
 
         this.tabs.set(id, tab);

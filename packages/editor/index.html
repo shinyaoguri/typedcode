@@ -10,6 +10,45 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <!-- reCAPTCHA v3 will be loaded dynamically with site key from environment -->
+  <!-- Critical CSS to prevent FOUC (Flash of Unstyled Content) -->
+  <style>
+    /* Hide app until styles are loaded */
+    #app { opacity: 0; }
+    /* Init overlay styles (must be inline to show immediately) */
+    .init-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #1e1e1e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+    .init-overlay-content {
+      text-align: center;
+      color: #cccccc;
+    }
+    .init-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #3c3c3c;
+      border-top-color: #0078d4;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .init-message {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+    }
+    .init-overlay.hidden { display: none; }
+  </style>
 </head>
 <body>
   <!-- Initialization Overlay (shown until app is ready) -->
@@ -172,10 +211,6 @@
           <i class="fas fa-link"></i>
           <span id="current-hash">-</span>
         </div>
-        <div class="status-item" id="posw-status-item" title="PoSW (Proof of Sequential Work) status">
-          <i class="fas fa-microchip"></i>
-          <span id="posw-status">Calibrating...</span>
-        </div>
       </div>
       <div class="statusbar-right">
         <div class="status-item language-runtime-status" id="language-status" title="Select language">
@@ -258,6 +293,24 @@
             <div class="processing-progress-bar clang-progress" id="clang-progress-bar"></div>
           </div>
           <p class="processing-status" id="clang-status">初期化中...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Human Verification Loading Modal -->
+    <div id="verification-loading-modal" class="modal-overlay hidden">
+      <div class="modal-dialog modal-info">
+        <div class="modal-header">
+          <i class="fas fa-spinner fa-spin"></i>
+          <h3>人間認証中...</h3>
+        </div>
+        <div class="modal-body">
+          <p>認証サーバーに接続しています。</p>
+          <p class="processing-status" id="verification-status-text">接続中...</p>
+          <div class="verification-timeout-bar">
+            <div class="verification-timeout-progress" id="verification-timeout-progress"></div>
+          </div>
+          <p class="verification-timeout-hint">ネットワークに問題がある場合、20秒後に自動的にスキップされます。</p>
         </div>
       </div>
     </div>

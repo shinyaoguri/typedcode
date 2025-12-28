@@ -18,4 +18,5 @@ body {
   flex-direction: column;
   height: 100vh;
   width: 100vw;
+  opacity: 1; /* Override inline style to show app once CSS is loaded */
 }

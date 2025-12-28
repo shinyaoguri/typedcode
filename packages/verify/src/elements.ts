@@ -13,8 +13,6 @@ export const statusTitle = document.getElementById('status-title');
 export const statusMessage = document.getElementById('status-message');
 
 // 結果表示要素
-export const typingProofHashEl = document.getElementById('typing-proof-hash');
-export const copyHashBtn = document.getElementById('copy-hash-btn');
 export const pureTypingBadge = document.getElementById('pure-typing-badge');
 export const pasteInfo = document.getElementById('paste-info');
 export const deviceIdEl = document.getElementById('device-id');

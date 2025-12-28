@@ -521,10 +521,35 @@ function createTabElement(tab: TabState): HTMLElement {
     ? `<img src="${BASE_PATH}icons/${tab.language}.svg" class="tab-icon" alt="${tab.language}" />`
     : `<i class="fas fa-file-code tab-icon"></i>`;
 
+  // 認証状態のインジケーター（さりげなく表示）
+  let verificationIndicator = '';
+  if (tab.verificationState === 'verified') {
+    const timestamp = tab.verificationDetails?.timestamp
+      ? new Date(tab.verificationDetails.timestamp).toLocaleString('ja-JP')
+      : '';
+    const tooltip = timestamp
+      ? `✓ 人間認証済み\n認証日時: ${timestamp}`
+      : '✓ 人間認証済み';
+    verificationIndicator = `<span class="tab-verification verified" title="${tooltip}"></span>`;
+  } else if (tab.verificationState === 'failed') {
+    const timestamp = tab.verificationDetails?.timestamp
+      ? new Date(tab.verificationDetails.timestamp).toLocaleString('ja-JP')
+      : '';
+    const reason = tab.verificationDetails?.failureReason;
+    const reasonText = reason === 'timeout' ? 'タイムアウト'
+      : reason === 'network_error' ? 'ネットワークエラー'
+      : reason === 'challenge_failed' ? 'チャレンジ失敗'
+      : reason === 'token_acquisition_failed' ? 'トークン取得失敗'
+      : '不明なエラー';
+    const tooltip = `✗ 認証失敗\n理由: ${reasonText}${timestamp ? `\n日時: ${timestamp}` : ''}`;
+    verificationIndicator = `<span class="tab-verification failed" title="${tooltip}"></span>`;
+  }
+
   tabEl.innerHTML = `
     ${iconHtml}
     <span class="tab-filename">${tab.filename}</span>
     <span class="tab-extension">${ext}</span>
+    ${verificationIndicator}
     <button class="tab-close-btn" title="Close Tab"><i class="fas fa-times"></i></button>
   `;
 
@@ -1146,7 +1171,6 @@ function updateProofStatus(): void {
   }
 }
 
-
 // 処理待機ダイアログ関連
 const processingDialog = document.getElementById('processing-dialog');
 const processingProgressBar = document.getElementById('processing-progress-bar');
@@ -1464,9 +1488,6 @@ async function initializeApp(): Promise<void> {
   const fingerprintComponents = await Fingerprint.collectComponents();
   const fingerprintHash = await Fingerprint.generate();
 
-  // PoSW状態表示用の要素を取得
-  const poswStatusEl = document.getElementById('posw-status');
-
   // TabManagerを初期化
   tabManager = new TabManager(editor);
 
@@ -1504,15 +1525,14 @@ async function initializeApp(): Promise<void> {
     }
   });
 
+  // 認証結果でタブUIを更新
+  tabManager.setOnVerification(() => {
+    updateTabUI();
+  });
+
   isEventRecordingEnabled = false;
 
-  // Turnstile設定時は認証中メッセージを表示
-  if (isTurnstileConfigured()) {
-    updateInitMessage('人間認証を実行中...');
-    showNotification('人間認証を実行中...');
-  } else {
-    updateInitMessage('エディタを初期化中...');
-  }
+  updateInitMessage('エディタを初期化中...');
 
   const initialized = await tabManager.initialize(deviceId, {
     deviceId,
@@ -1534,15 +1554,6 @@ async function initializeApp(): Promise<void> {
   // タブUIを生成
   updateTabUI();
 
-  // PoSW固定値をステータスバーに表示
-  const activeProof = tabManager.getActiveProof();
-  if (activeProof && poswStatusEl) {
-    const poswIterations = activeProof.getPoSWIterations();
-    poswStatusEl.textContent = `${poswIterations.toLocaleString()} iter`;
-    poswStatusEl.parentElement?.setAttribute('title',
-      `PoSW: ${poswIterations.toLocaleString()} iterations per event (fixed)`
-    );
-  }
   console.log('[TypedCode] TabManager initialized');
 
   // 言語セレクタを更新

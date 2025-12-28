@@ -140,7 +140,14 @@ async function handleVerifyAttestation(request, env) {
         }
       );
     }
-    const { signature, ...attestationData } = attestation;
+    const { signature, success: _success, failureReason: _failureReason, ...coreData } = attestation;
+    const attestationData = {
+      verified: coreData.verified,
+      score: coreData.score,
+      action: coreData.action,
+      timestamp: coreData.timestamp,
+      hostname: coreData.hostname
+    };
     const dataToSign = JSON.stringify(attestationData);
     const expectedSignature = await createHmacSignature(dataToSign, env.ATTESTATION_SECRET_KEY);
     const isValid = signature === expectedSignature;

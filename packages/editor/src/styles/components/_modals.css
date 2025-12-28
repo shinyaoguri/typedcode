@@ -352,3 +352,28 @@
   font-size: 14px;
   font-weight: 500;
 }
+
+/* Verification Loading Modal */
+.verification-timeout-bar {
+  height: 3px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 12px 0 8px 0;
+  opacity: 0.6;
+}
+
+.verification-timeout-progress {
+  height: 100%;
+  background: var(--text-tertiary);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.1s linear;
+}
+
+.verification-timeout-hint {
+  font-size: 11px !important;
+  color: var(--text-tertiary) !important;
+  margin-top: 4px !important;
+  opacity: 0.7;
+}

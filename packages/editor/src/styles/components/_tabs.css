@@ -120,6 +120,22 @@
   color: var(--text-tertiary);
 }
 
+/* Tab Verification Indicator */
+.tab-verification {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.tab-verification.verified {
+  background: #6fdc6f;
+}
+
+.tab-verification.failed {
+  background: #f14c4c;
+}
 
 /* Tab Close Button */
 .tab-close-btn {
