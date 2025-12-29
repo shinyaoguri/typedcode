@@ -23,6 +23,15 @@ import {
   type VerificationResult,
 } from '../../services/TurnstileService.js';
 
+// PoSW Workerのファクトリ関数
+// Viteがsymlinkedパッケージ内のWorkerを正しく解決できないため、editorパッケージ内から読み込む
+function createPoswWorker(): Worker {
+  return new Worker(
+    new URL('../../workers/poswWorker.ts', import.meta.url),
+    { type: 'module' }
+  );
+}
+
 // Re-export for convenience
 export type { VerificationState, VerificationDetails };
 
@@ -112,14 +121,18 @@ export class TabManager {
     const loaded = await this.loadFromStorage();
 
     // タブがない場合は新規タブを作成
+    console.log('[DEBUG TabManager] loaded:', loaded, 'tabs.size:', this.tabs.size);
     if (!loaded || this.tabs.size === 0) {
+      console.log('[DEBUG TabManager] Creating initial tab...');
       const tab = await this.createTab('Untitled-1', 'c', '// Hello, TypedCode!\n');
+      console.log('[DEBUG TabManager] createTab result:', tab);
       if (!tab) {
-        console.error('[TabManager] Failed to create initial tab (reCAPTCHA failed)');
+        console.error('[TabManager] Failed to create initial tab (verification failed)');
         return false;
       }
     }
 
+    console.log('[DEBUG TabManager] initialize() returning true');
     return true;
   }
 
@@ -170,9 +183,10 @@ export class TabManager {
     const id = generateUUID();
     const createdAt = Date.now();
 
-    // TypingProofインスタンスを作成
+    // TypingProofインスタンスを作成（Workerをeditorパッケージから注入）
     const typingProof = new TypingProof();
-    await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!);
+    const poswWorker = createPoswWorker();
+    await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
 
     // 認証状態を追跡
     let verificationState: VerificationState = 'skipped';
@@ -490,15 +504,19 @@ export class TabManager {
       for (const [id, serializedTab] of Object.entries(storage.tabs)) {
         let typingProof: TypingProof;
 
+        // Workerをeditorパッケージから作成
+        const poswWorker = createPoswWorker();
+
         if (serializedTab.proofState) {
           typingProof = await TypingProof.fromSerializedState(
             serializedTab.proofState,
             this.fingerprint!,
-            this.fingerprintComponents!
+            this.fingerprintComponents!,
+            poswWorker
           );
         } else {
           typingProof = new TypingProof();
-          await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!);
+          await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
         }
 
         const model = monaco.editor.createModel(serializedTab.content, serializedTab.language);

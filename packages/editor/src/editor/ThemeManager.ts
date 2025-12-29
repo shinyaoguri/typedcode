@@ -3,7 +3,7 @@
  */
 
 import type { Theme } from '@typedcode/shared';
-import type { MonacoEditor } from './monacoTypes.js';
+import type { MonacoEditor } from './types.js';
 
 export class ThemeManager {
   private editor: MonacoEditor;

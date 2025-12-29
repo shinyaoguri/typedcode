@@ -55,14 +55,19 @@ export class TypingProof {
 
   /**
    * Web Workerを初期化
+   * @param externalWorker - 外部から提供されたWorker（symlinkedパッケージ対応）
    */
-  initWorker(): void {
+  initWorker(externalWorker?: Worker): void {
     if (this.worker) return;
 
-    this.worker = new Worker(
-      new URL('./poswWorker.ts', import.meta.url),
-      { type: 'module' }
-    );
+    if (externalWorker) {
+      this.worker = externalWorker;
+    } else {
+      this.worker = new Worker(
+        new URL('./poswWorker.ts', import.meta.url),
+        { type: 'module' }
+      );
+    }
 
     this.worker.onmessage = (event) => {
       const response = event.data;
@@ -78,6 +83,12 @@ export class TypingProof {
 
     this.worker.onerror = (error) => {
       console.error('[TypingProof] Worker error:', error);
+      console.error('[TypingProof] Worker error details:', {
+        message: error.message,
+        filename: error.filename,
+        lineno: error.lineno,
+        colno: error.colno,
+      });
       // すべてのpending requestsをreject
       for (const [, { reject }] of this.pendingRequests) {
         reject(new Error(`Worker error: ${error.message}`));
@@ -126,17 +137,21 @@ export class TypingProof {
   /**
    * 初期化（非同期）
    * フィンガープリントを生成して初期ハッシュを設定
+   * @param fingerprintHash - フィンガープリントハッシュ
+   * @param fingerprintComponents - フィンガープリントコンポーネント
+   * @param externalWorker - 外部から提供されたWorker（symlinkedパッケージ対応）
    */
   async initialize(
     fingerprintHash: string,
-    fingerprintComponents: FingerprintComponents
+    fingerprintComponents: FingerprintComponents,
+    externalWorker?: Worker
   ): Promise<void> {
     this.fingerprint = fingerprintHash;
     this.fingerprintComponents = fingerprintComponents;
     this.currentHash = await this.initialHash(fingerprintHash);
 
     // Web Workerを初期化
-    this.initWorker();
+    this.initWorker(externalWorker);
 
     console.log('[TypingProof] Initialized with fixed PoSW iterations:', TypingProof.POSW_ITERATIONS);
 
@@ -1136,17 +1151,19 @@ export class TypingProof {
    * @param state - シリアライズされた状態
    * @param fingerprintHash - フィンガープリントハッシュ
    * @param fingerprintComponents - フィンガープリント構成要素
+   * @param externalWorker - 外部から提供されたWorker（symlinkedパッケージ対応）
    */
   static async fromSerializedState(
     state: SerializedProofState,
     fingerprintHash: string,
-    fingerprintComponents: FingerprintComponents
+    fingerprintComponents: FingerprintComponents,
+    externalWorker?: Worker
   ): Promise<TypingProof> {
     const proof = new TypingProof();
     proof.fingerprint = fingerprintHash;
     proof.fingerprintComponents = fingerprintComponents;
     proof.restoreState(state);
-    proof.initWorker();
+    proof.initWorker(externalWorker);
     proof.initialized = true;
     return proof;
   }

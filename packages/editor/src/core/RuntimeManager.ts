@@ -1,0 +1,193 @@
+/**
+ * RuntimeManager - 言語ランタイムの状態管理
+ * 各言語の実行環境の初期化状態、説明文、インジケーター更新を管理
+ */
+
+import { getCExecutor } from '../executors/c/CExecutor.js';
+import type { InitializationProgress } from '../executors/interfaces/ILanguageExecutor.js';
+
+/** ランタイム状態 */
+export type RuntimeState = 'not-ready' | 'loading' | 'ready';
+
+/** 共通の注意書き */
+const EXECUTION_DISCLAIMER =
+  '※ ブラウザ上の簡易実行環境です。ローカル環境と動作が異なる場合があります。';
+
+export interface RuntimeManagerCallbacks {
+  onStatusChange?: (language: string, state: RuntimeState) => void;
+}
+
+export class RuntimeManager {
+  private status: Record<string, RuntimeState> = {
+    c: 'not-ready',
+    cpp: 'not-ready',
+    javascript: 'ready', // ブラウザ内蔵なので常にready
+    typescript: 'ready', // ブラウザ内蔵なので常にready
+    python: 'not-ready',
+  };
+
+  private displayNames: Record<string, string> = {
+    c: 'Clang',
+    cpp: 'Clang',
+    javascript: 'Browser JS',
+    typescript: 'TS Compiler',
+    python: 'Pyodide',
+  };
+
+  private callbacks: RuntimeManagerCallbacks = {};
+
+  /**
+   * コールバックを設定
+   */
+  setCallbacks(callbacks: RuntimeManagerCallbacks): void {
+    this.callbacks = callbacks;
+  }
+
+  /**
+   * 言語のランタイム状態を取得
+   */
+  getStatus(language: string): RuntimeState {
+    return this.status[language] || 'not-ready';
+  }
+
+  /**
+   * 言語のランタイム状態を設定
+   */
+  setStatus(language: string, state: RuntimeState): void {
+    this.status[language] = state;
+
+    // C++はCと同じランタイム（Clang）を共有
+    if (language === 'c') {
+      this.status['cpp'] = state;
+    }
+
+    this.callbacks.onStatusChange?.(language, state);
+  }
+
+  /**
+   * 言語の表示名を取得
+   */
+  getDisplayName(language: string): string {
+    return this.displayNames[language] || '';
+  }
+
+  /**
+   * 言語ごとのターミナル説明を取得
+   */
+  getLanguageDescription(language: string): string[] {
+    switch (language) {
+      case 'c':
+        return [
+          'TypedCode Terminal - C 実行環境',
+          'Clang (WASM) でコンパイル・実行',
+          '標準入出力対応 | タイムアウトなし',
+          EXECUTION_DISCLAIMER,
+        ];
+      case 'cpp':
+        return [
+          'TypedCode Terminal - C++ 実行環境',
+          'Clang (WASM) でコンパイル・実行 | C++17対応',
+          '標準入出力対応 | タイムアウトなし',
+          EXECUTION_DISCLAIMER,
+        ];
+      case 'javascript':
+        return [
+          'TypedCode Terminal - JavaScript 実行環境',
+          'ブラウザ内蔵エンジンで実行 | top-level await対応',
+          'console.log で出力 | 30秒タイムアウト',
+          EXECUTION_DISCLAIMER,
+        ];
+      case 'typescript':
+        return [
+          'TypedCode Terminal - TypeScript 実行環境',
+          'トランスパイル後にブラウザで実行 | 型チェックなし',
+          'console.log で出力 | 30秒タイムアウト',
+          EXECUTION_DISCLAIMER,
+        ];
+      case 'python':
+        return [
+          'TypedCode Terminal - Python 実行環境',
+          'Pyodide (CPython WASM) で実行 |',
+          'NumPy/Pandas等は自動インストール | 60秒タイムアウト',
+          EXECUTION_DISCLAIMER,
+        ];
+      default:
+        return [
+          'TypedCode Terminal',
+          'Ctrl+Enter または Run ボタンでコードを実行',
+          EXECUTION_DISCLAIMER,
+        ];
+    }
+  }
+
+  /**
+   * 言語セレクタ横のランタイムインジケーターを更新
+   */
+  updateIndicator(language: string): void {
+    const indicator = document.getElementById('runtime-state-indicator');
+    if (!indicator) return;
+
+    const state = this.getStatus(language);
+    const displayName = this.getDisplayName(language);
+
+    // 実行非対応言語（HTML, CSS等）の場合は非表示
+    if (!displayName) {
+      indicator.textContent = '';
+      indicator.className = 'runtime-state-indicator';
+      return;
+    }
+
+    // 状態クラスを更新
+    indicator.className = `runtime-state-indicator ${state}`;
+
+    // 表示テキストを更新
+    const stateText: Record<RuntimeState, string> = {
+      'not-ready': `${displayName}`,
+      loading: `${displayName} Loading...`,
+      ready: `${displayName} ✓`,
+    };
+    indicator.textContent = stateText[state];
+  }
+
+  /**
+   * C言語実行環境をバックグラウンドで初期化
+   * エディタの操作をブロックせずに非同期でダウンロード
+   */
+  async initializeCRuntime(): Promise<void> {
+    // 既にreadyなら何もしない
+    if (this.status['c'] === 'ready') {
+      console.log('[RuntimeManager] C runtime already initialized');
+      return;
+    }
+
+    // loadingなら既に初期化中
+    if (this.status['c'] === 'loading') {
+      console.log('[RuntimeManager] C runtime initialization already in progress');
+      return;
+    }
+
+    console.log('[RuntimeManager] Starting background C runtime initialization...');
+    this.setStatus('c', 'loading');
+
+    try {
+      const executor = getCExecutor();
+      await executor.initialize((progress: InitializationProgress) => {
+        console.log('[RuntimeManager] C runtime:', progress.message);
+      });
+
+      this.setStatus('c', 'ready');
+      console.log('[RuntimeManager] C runtime initialization complete');
+    } catch (error) {
+      console.error('[RuntimeManager] C runtime initialization failed:', error);
+      // 失敗時は not-ready に戻す
+      this.setStatus('c', 'not-ready');
+    }
+  }
+
+  /**
+   * リソースを解放
+   */
+  dispose(): void {
+    this.callbacks = {};
+  }
+}

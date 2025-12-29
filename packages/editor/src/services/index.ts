@@ -12,9 +12,3 @@ export {
   generateFilename,
   type DownloadOptions,
 } from './DownloadService.js';
-
-export {
-  StorageService,
-  getStorageService,
-  type StorageOptions,
-} from './StorageService.js';

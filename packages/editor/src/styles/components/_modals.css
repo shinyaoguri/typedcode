@@ -354,6 +354,11 @@
 }
 
 /* Verification Loading Modal */
+/* init-overlay (z-index: 20000) より上に表示する */
+#verification-loading-modal {
+  z-index: 20001;
+}
+
 .verification-timeout-bar {
   height: 3px;
   background: var(--bg-tertiary);

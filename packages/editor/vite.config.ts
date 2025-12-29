@@ -5,6 +5,9 @@ import topLevelAwait from 'vite-plugin-top-level-await';
 export default defineConfig({
   plugins: [wasm(), topLevelAwait()],
   base: '/',
+  worker: {
+    format: 'es',
+  },
   server: {
     port: 5173,
     headers: {
@@ -27,7 +30,11 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    minify: 'esbuild'
+    minify: 'esbuild',
+  },
+  esbuild: {
+    // 本番ビルド時のみconsole.logを削除
+    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
   },
   optimizeDeps: {
     exclude: ['@wasmer/sdk']

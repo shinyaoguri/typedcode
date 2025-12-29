@@ -8,7 +8,7 @@ import type {
   TextRange,
   OperationResult,
 } from '@typedcode/shared';
-import type { ModelContentChange, ModelContentChangedEvent } from './monacoTypes.js';
+import type { ModelContentChange, ModelContentChangedEvent } from '../editor/types.js';
 
 export class OperationDetector {
   private lastOperation: OperationResult | null = null;
