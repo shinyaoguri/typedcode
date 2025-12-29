@@ -25,10 +25,13 @@ interface DragState {
   placeholder: HTMLElement | null;
   ghost: HTMLElement | null;
   startX: number;
+  startY: number;
   offsetX: number;
   offsetY: number;
   initialIndex: number;
   initialRect: DOMRect | null;
+  /** ドラッグ開始待ち状態（mousedownされたがまだ移動閾値を超えていない） */
+  isPending: boolean;
 }
 
 export class TabUIController {
@@ -45,13 +48,23 @@ export class TabUIController {
     placeholder: null,
     ghost: null,
     startX: 0,
+    startY: 0,
     offsetX: 0,
     offsetY: 0,
     initialIndex: -1,
     initialRect: null,
+    isPending: false,
   };
   private boundMouseMove: ((e: MouseEvent) => void) | null = null;
   private boundMouseUp: ((e: MouseEvent) => void) | null = null;
+
+  /** ドラッグ開始の移動閾値（ピクセル） */
+  private static readonly DRAG_THRESHOLD = 5;
+
+  /** ダブルクリック検出用 */
+  private lastClickTime = 0;
+  private lastClickTabId: string | null = null;
+  private static readonly DOUBLE_CLICK_DELAY = 300;
 
   constructor(options: TabUIControllerOptions) {
     this.container = options.container;
@@ -113,22 +126,6 @@ export class TabUIController {
       ${verificationIndicator}
       <button class="tab-close-btn" title="Close Tab"><i class="fas fa-times"></i></button>
     `;
-
-    // タブクリックで切り替え
-    tabEl.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      // 閉じるボタンのクリックは除外
-      if (target.closest('.tab-close-btn')) return;
-      // ファイル名クリックは編集モードに（アクティブタブの場合のみ）
-      if (target.closest('.tab-filename') || target.closest('.tab-extension')) {
-        if (this.tabManager.getActiveTab()?.id === tab.id) {
-          e.stopPropagation();
-          this.startFilenameEdit(tabEl, tab.id);
-          return;
-        }
-      }
-      this.tabManager.switchTab(tab.id);
-    });
 
     // 閉じるボタン
     const closeBtn = tabEl.querySelector('.tab-close-btn');
@@ -262,7 +259,8 @@ export class TabUIController {
   }
 
   /**
-   * ドラッグ開始
+   * ドラッグ準備（mousedown時）
+   * 実際のドラッグは移動閾値を超えた時に開始
    */
   private startDrag(e: MouseEvent, tabEl: HTMLElement, tabId: string): void {
     const rect = tabEl.getBoundingClientRect();
@@ -271,29 +269,21 @@ export class TabUIController {
 
     if (index === -1) return;
 
-    // ゴースト要素を作成
-    const ghost = this.createGhost(tabEl);
-    document.body.appendChild(ghost);
-
+    // 保留状態で初期化（まだドラッグは開始しない）
     this.dragState = {
-      isDragging: true,
+      isDragging: false,
+      isPending: true,
       draggedTabId: tabId,
       draggedElement: tabEl,
-      placeholder: this.createPlaceholder(tabEl),
-      ghost: ghost,
+      placeholder: null,
+      ghost: null,
       startX: e.clientX,
+      startY: e.clientY,
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top,
       initialIndex: index,
       initialRect: rect,
     };
-
-    // ゴーストの初期位置を設定
-    this.updateGhostPosition(e.clientX, e.clientY);
-
-    // ドラッグ中のスタイル（タブは元の位置に残る）
-    tabEl.classList.add('dragging');
-    document.body.classList.add('tab-dragging');
 
     // グローバルイベントリスナー
     this.boundMouseMove = this.handleMouseMove.bind(this);
@@ -303,9 +293,47 @@ export class TabUIController {
   }
 
   /**
+   * 実際にドラッグを開始（閾値を超えた時）
+   */
+  private beginActualDrag(): void {
+    if (!this.dragState.draggedElement) return;
+
+    const tabEl = this.dragState.draggedElement;
+
+    // ゴースト要素を作成
+    const ghost = this.createGhost(tabEl);
+    document.body.appendChild(ghost);
+
+    this.dragState.isDragging = true;
+    this.dragState.isPending = false;
+    this.dragState.ghost = ghost;
+    this.dragState.placeholder = this.createPlaceholder(tabEl);
+
+    // ゴーストの初期位置を設定
+    this.updateGhostPosition(this.dragState.startX, this.dragState.startY);
+
+    // ドラッグ中のスタイル
+    tabEl.classList.add('dragging');
+    document.body.classList.add('tab-dragging');
+  }
+
+  /**
    * ドラッグ中のマウス移動
    */
   private handleMouseMove(e: MouseEvent): void {
+    // 保留状態の場合、閾値を超えたらドラッグを開始
+    if (this.dragState.isPending) {
+      const dx = e.clientX - this.dragState.startX;
+      const dy = e.clientY - this.dragState.startY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance >= TabUIController.DRAG_THRESHOLD) {
+        this.beginActualDrag();
+      } else {
+        return; // まだ閾値を超えていないので何もしない
+      }
+    }
+
     if (!this.dragState.isDragging || !this.dragState.draggedElement || !this.dragState.initialRect) return;
 
     // ゴーストの位置を更新
@@ -319,6 +347,36 @@ export class TabUIController {
    * ドラッグ終了
    */
   private handleMouseUp(e: MouseEvent): void {
+    // 保留状態（閾値を超えずにマウスアップ）の場合は単なるクリックとして処理
+    if (this.dragState.isPending) {
+      const tabId = this.dragState.draggedTabId;
+      const now = Date.now();
+
+      // ダブルクリック判定
+      const isDoubleClick =
+        tabId === this.lastClickTabId &&
+        now - this.lastClickTime < TabUIController.DOUBLE_CLICK_DELAY;
+
+      this.cleanupDrag();
+
+      if (tabId && isDoubleClick) {
+        // ダブルクリック → ファイル名編集モード
+        this.lastClickTime = 0;
+        this.lastClickTabId = null;
+        // cleanupDrag()がupdateUI()を呼ぶので、新しいDOM要素を取得
+        const newTabEl = this.container.querySelector(`[data-tab-id="${tabId}"]`) as HTMLElement | null;
+        if (newTabEl) {
+          this.startFilenameEdit(newTabEl, tabId);
+        }
+      } else if (tabId) {
+        // シングルクリック → タブを切り替え
+        this.lastClickTime = now;
+        this.lastClickTabId = tabId;
+        this.tabManager.switchTab(tabId);
+      }
+      return;
+    }
+
     if (!this.dragState.isDragging) return;
 
     // 最終的なドロップ位置を計算
@@ -485,11 +543,13 @@ export class TabUIController {
 
     this.dragState = {
       isDragging: false,
+      isPending: false,
       draggedTabId: null,
       draggedElement: null,
       placeholder: null,
       ghost: null,
       startX: 0,
+      startY: 0,
       offsetX: 0,
       offsetY: 0,
       initialIndex: -1,

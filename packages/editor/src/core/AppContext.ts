@@ -30,6 +30,7 @@ import type { SettingsDropdown } from '../ui/components/SettingsDropdown.js';
 import type { DownloadDropdown } from '../ui/components/DownloadDropdown.js';
 import type { MainMenuDropdown } from '../ui/components/MainMenuDropdown.js';
 import type { TerminalPanel } from '../ui/components/TerminalPanel.js';
+import type { BrowserPreviewPanel } from '../ui/components/BrowserPreviewPanel.js';
 
 // Execution
 import type { CodeExecutionController } from '../execution/CodeExecutionController.js';
@@ -86,6 +87,7 @@ export interface AppContext {
   downloadDropdown: DownloadDropdown;
   mainMenuDropdown: MainMenuDropdown;
   terminalPanel: TerminalPanel;
+  browserPreviewPanel: BrowserPreviewPanel;
 
   // Flags
   skipBeforeUnload: boolean;

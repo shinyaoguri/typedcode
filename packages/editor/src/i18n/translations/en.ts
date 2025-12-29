@@ -38,6 +38,7 @@ export const en: TranslationKeys = {
     newWindow: 'New Window',
     toggleTerminal: 'Toggle Terminal',
     toggleLogPanel: 'Toggle Log Panel',
+    togglePreview: 'Toggle Preview',
     runCode: 'Run Code (Ctrl+Enter)',
     stopExecution: 'Stop Execution',
     download: 'Download',
@@ -48,6 +49,12 @@ export const en: TranslationKeys = {
     newTab: 'New Tab',
     closeTab: 'Close',
     copyCode: 'Copy Code',
+  },
+
+  preview: {
+    title: 'Preview',
+    refresh: 'Refresh Preview',
+    noHtml: 'No HTML file found. Create an HTML tab to see a preview.',
   },
 
   resetDialog: {

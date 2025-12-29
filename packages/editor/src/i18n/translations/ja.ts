@@ -38,6 +38,7 @@ export const ja: TranslationKeys = {
     newWindow: '新規ウィンドウ',
     toggleTerminal: 'ターミナルの表示切替',
     toggleLogPanel: 'ログパネルの表示切替',
+    togglePreview: 'プレビューの表示切替',
     runCode: 'コードを実行 (Ctrl+Enter)',
     stopExecution: '実行を停止',
     download: 'ダウンロード',
@@ -48,6 +49,12 @@ export const ja: TranslationKeys = {
     newTab: '新しいタブ',
     closeTab: '閉じる',
     copyCode: 'コードをコピー',
+  },
+
+  preview: {
+    title: 'プレビュー',
+    refresh: 'プレビューを更新',
+    noHtml: 'HTMLファイルがありません。HTMLタブを作成してプレビューを表示してください。',
   },
 
   resetDialog: {

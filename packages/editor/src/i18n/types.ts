@@ -48,6 +48,7 @@ export interface TranslationKeys {
     newWindow: string;
     toggleTerminal: string;
     toggleLogPanel: string;
+    togglePreview: string;
     runCode: string;
     stopExecution: string;
     download: string;
@@ -58,6 +59,13 @@ export interface TranslationKeys {
     newTab: string;
     closeTab: string;
     copyCode: string;
+  };
+
+  // Browser preview panel
+  preview: {
+    title: string;
+    refresh: string;
+    noHtml: string;
   };
 
   // Reset confirmation dialog

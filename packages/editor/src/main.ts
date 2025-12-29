@@ -43,6 +43,7 @@ import { ProofExporter } from './export/ProofExporter.js';
 import { RuntimeManager } from './execution/RuntimeManager.js';
 import { TabUIController } from './ui/tabs/TabUIController.js';
 import { LogViewerPanel } from './ui/components/LogViewerPanel.js';
+import { BrowserPreviewPanel } from './ui/components/BrowserPreviewPanel.js';
 import { EventRecorder } from './core/EventRecorder.js';
 import type { AppContext } from './core/AppContext.js';
 import { isLanguageExecutable } from './config/SupportedLanguages.js';
@@ -129,6 +130,7 @@ const ctx: AppContext = {
   downloadDropdown: new DownloadDropdown(),
   mainMenuDropdown: new MainMenuDropdown(),
   terminalPanel: new TerminalPanel(),
+  browserPreviewPanel: new BrowserPreviewPanel(),
 
   // Flags
   skipBeforeUnload: false,
@@ -731,6 +733,17 @@ function initializeCodeExecution(): void {
     resizeHandleId: 'log-resize-handle',
     panelId: 'log-viewer',
     eventCountSelector: '.status-item[title="Total events recorded"]',
+  });
+
+  // BrowserPreviewPanelの初期化
+  ctx.browserPreviewPanel.initialize({
+    panelId: 'browser-preview',
+    toggleButtonId: 'toggle-preview-btn',
+    closeButtonId: 'close-preview-btn',
+    refreshButtonId: 'refresh-preview-btn',
+    resizeHandleId: 'preview-resize-handle',
+    editorContainer: editorContainer!,
+    getTabManager: () => ctx.tabManager,
   });
 
   const copyCodeBtn = document.getElementById('copy-code-btn');

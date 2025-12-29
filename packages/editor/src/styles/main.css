@@ -22,6 +22,7 @@
 @import './components/_tabs.css';
 @import './components/_terminal.css';
 @import './components/_log-viewer.css';
+@import './components/_browser-preview.css';
 @import './components/_modals.css';
 @import './components/_notifications.css';
 
