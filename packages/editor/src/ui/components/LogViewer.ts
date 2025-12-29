@@ -9,6 +9,7 @@ import type {
   EventType,
   InputType,
 } from '@typedcode/shared';
+import { t } from '../../i18n/index.js';
 
 /** 同種イベントのグループ化（フォーカス変更など） */
 const SAME_TYPE_GROUPABLE: EventType[] = [
@@ -510,9 +511,9 @@ export class LogViewer {
     const typeEl = document.createElement('span');
     typeEl.className = 'log-entry-type';
     // 種類に応じたラベルを設定
-    if (kind === 'enter') typeEl.textContent = 'Enter';
-    else if (kind === 'delete') typeEl.textContent = '削除';
-    else typeEl.textContent = 'キー入力';
+    if (kind === 'enter') typeEl.textContent = t('operations.enter');
+    else if (kind === 'delete') typeEl.textContent = t('operations.delete');
+    else typeEl.textContent = t('logViewer.characterInput');
 
     const descEl = document.createElement('span');
     descEl.className = 'log-entry-description';
@@ -581,7 +582,7 @@ export class LogViewer {
 
     const typeEl = document.createElement('span');
     typeEl.className = 'log-entry-type';
-    typeEl.textContent = 'マウス操作';
+    typeEl.textContent = t('logViewer.mouseOperation');
 
     const descEl = document.createElement('span');
     descEl.className = 'log-entry-description';
@@ -611,11 +612,11 @@ export class LogViewer {
    */
   private getMouseInputDescription(event: StoredEvent): string {
     if (event.type === 'selectionChange' && event.selectedText) {
-      return '範囲選択';
+      return t('logViewer.rangeSelection');
     } else if (event.type === 'mousePositionChange') {
-      return 'マウス移動';
+      return t('logViewer.cursorMove');
     } else if (event.type === 'cursorPositionChange') {
-      return 'カーソル移動';
+      return t('logViewer.cursorMove');
     }
     return '';
   }
@@ -625,7 +626,7 @@ export class LogViewer {
    */
   private getKeyInputDescription(event: StoredEvent): string {
     if (event.type === 'contentChange') {
-      return event.description ?? '文字入力';
+      return event.description ?? t('logViewer.characterInput');
     } else if (event.type === 'keyDown' || event.type === 'keyUp') {
       // KeystrokeDynamicsDataからキー情報を取得
       if (event.data && typeof event.data === 'object' && 'key' in event.data) {
@@ -720,17 +721,17 @@ export class LogViewer {
   private getEventDescription(event: StoredEvent): string {
     switch (event.type) {
       case 'contentChange':
-        return event.description ?? '内容変更';
+        return event.description ?? t('logViewer.contentChange');
       case 'cursorPositionChange':
-        return 'カーソル移動';
+        return t('logViewer.cursorMove');
       case 'selectionChange':
-        return '選択範囲変更';
+        return t('logViewer.selectionChange');
       case 'externalInput':
-        return event.description ?? '外部入力';
+        return event.description ?? t('logViewer.externalInput');
       case 'editorInitialized':
-        return 'エディタ初期化';
+        return t('logViewer.editorInit');
       case 'contentSnapshot':
-        return 'スナップショット';
+        return t('logViewer.snapshot');
       default:
         return event.type;
     }
@@ -744,28 +745,28 @@ export class LogViewer {
 
     if (event.range) {
       details.push(
-        `位置: L${event.range.startLineNumber}:C${event.range.startColumn}`
+        t('logViewer.position', { line: String(event.range.startLineNumber), column: String(event.range.startColumn) })
       );
     }
 
     if (event.rangeLength !== undefined && event.rangeLength !== null) {
-      details.push(`範囲長: ${event.rangeLength}`);
+      details.push(t('logViewer.rangeLength', { length: String(event.rangeLength) }));
     }
 
     if (event.deletedLength !== undefined && event.deletedLength !== null) {
-      details.push(`削除: ${event.deletedLength}文字`);
+      details.push(t('logViewer.deleted', { count: String(event.deletedLength) }));
     }
 
     if (event.insertLength !== undefined && event.insertLength !== null) {
-      details.push(`挿入: ${event.insertLength}文字`);
+      details.push(t('logViewer.inserted', { count: String(event.insertLength) }));
     }
 
     if (event.deleteDirection) {
-      details.push(`方向: ${event.deleteDirection}`);
+      details.push(t('logViewer.direction', { direction: event.deleteDirection }));
     }
 
     if (event.isMultiLine) {
-      details.push('複数行');
+      details.push(t('logViewer.multiLine'));
     }
 
     return details.length > 0 ? details.join(' | ') : null;

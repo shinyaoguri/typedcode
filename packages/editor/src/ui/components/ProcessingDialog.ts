@@ -3,6 +3,8 @@
  * エクスポート前に未処理のイベントが完了するまで表示
  */
 
+import { t } from '../../i18n/index.js';
+
 export interface ProcessingStats {
   pendingCount: number;
   processedCount?: number;
@@ -72,7 +74,11 @@ export class ProcessingDialog {
         }
 
         if (this.statusText) {
-          this.statusText.textContent = `処理中: ${currentStats.pendingCount} 件待機中 (${processed}/${initialPending} 完了)`;
+          this.statusText.textContent = t('processingDialog.statusWithProgress', {
+            count: currentStats.pendingCount,
+            processed,
+            total: initialPending,
+          });
         }
       }, 100);
     });

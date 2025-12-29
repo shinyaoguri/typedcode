@@ -8,6 +8,7 @@
  */
 
 import type { KeystrokeDynamicsData } from '@typedcode/shared';
+import { t } from '../i18n/index.js';
 
 export interface KeystrokeThresholds {
   /** Maximum valid flight time in ms (default: 2000) */
@@ -110,7 +111,7 @@ export class KeystrokeTracker {
     this.callback({
       type: 'keyDown',
       data: keystrokeData,
-      description: `キー押下: ${e.key}${modifierStr}`,
+      description: t('events.keyDown', { key: `${e.key}${modifierStr}` }),
     });
   }
 
@@ -154,11 +155,11 @@ export class KeystrokeTracker {
       },
     };
 
-    const dwellStr = dwellTime !== undefined ? ` (押下時間: ${dwellTime.toFixed(0)}ms)` : '';
+    const dwellStr = dwellTime !== undefined ? ` (${t('events.dwellTime', { time: dwellTime.toFixed(0) })})` : '';
     this.callback({
       type: 'keyUp',
       data: keystrokeData,
-      description: `キー離上: ${e.key}${dwellStr}`,
+      description: t('events.keyUp', { key: `${e.key}${dwellStr}` }),
     });
   }
 

@@ -11,6 +11,7 @@ import {
   performTurnstileVerification,
 } from '../services/TurnstileService.js';
 import { getLanguageDefinition } from '../config/SupportedLanguages.js';
+import { t } from '../i18n/index.js';
 
 export interface ExportCallbacks {
   onNotification?: (message: string) => void;
@@ -60,13 +61,13 @@ export class ProofExporter {
       return true; // 開発環境ではスキップ
     }
 
-    this.callbacks.onNotification?.('エクスポート前の認証を実行中...');
+    this.callbacks.onNotification?.(t('export.preAuthRunning'));
 
     const result = await performTurnstileVerification('export_proof');
 
     if (!result.success || !result.attestation) {
       console.error('[Export] Pre-export verification failed:', result.error);
-      this.callbacks.onNotification?.('エクスポート前の認証に失敗しました');
+      this.callbacks.onNotification?.(t('export.preAuthFailed'));
       return false;
     }
 
@@ -92,13 +93,13 @@ export class ProofExporter {
       return true;
     }
 
-    this.callbacks.onNotification?.('エクスポート前の認証を実行中...');
+    this.callbacks.onNotification?.(t('export.preAuthRunning'));
 
     const result = await performTurnstileVerification('export_proof');
 
     if (!result.success || !result.attestation) {
       console.error('[Export] Pre-export verification failed:', result.error);
-      this.callbacks.onNotification?.('エクスポート前の認証に失敗しました');
+      this.callbacks.onNotification?.(t('export.preAuthFailed'));
       return false;
     }
 
@@ -138,7 +139,7 @@ export class ProofExporter {
       // ハッシュチェーン生成完了を待機
       const completed = await this.waitForProcessingComplete();
       if (!completed) {
-        this.callbacks.onNotification?.('エクスポートがキャンセルされました');
+        this.callbacks.onNotification?.(t('export.cancelled'));
         return;
       }
 
@@ -181,13 +182,13 @@ export class ProofExporter {
       console.log('[TypedCode] Verification result:', verification);
 
       if (verification.valid) {
-        this.callbacks.onNotification?.('証明データをエクスポートしました（検証: OK）');
+        this.callbacks.onNotification?.(t('export.successVerified'));
       } else {
-        this.callbacks.onNotification?.('警告: ハッシュ鎖の検証に失敗しました');
+        this.callbacks.onNotification?.(t('export.verifyFailed'));
       }
     } catch (error) {
       console.error('[TypedCode] Export failed:', error);
-      this.callbacks.onNotification?.('エクスポートに失敗しました');
+      this.callbacks.onNotification?.(t('export.failed'));
     }
   }
 
@@ -201,7 +202,7 @@ export class ProofExporter {
       // ハッシュチェーン生成完了を待機
       const completed = await this.waitForProcessingComplete();
       if (!completed) {
-        this.callbacks.onNotification?.('エクスポートがキャンセルされました');
+        this.callbacks.onNotification?.(t('export.cancelled'));
         return;
       }
 
@@ -317,12 +318,10 @@ Total files: ${allTabs.length}
       a.click();
       URL.revokeObjectURL(url);
 
-      this.callbacks.onNotification?.(
-        `ZIPファイルをダウンロードしました（${allTabs.length}ファイル）`
-      );
+      this.callbacks.onNotification?.(t('export.zipSuccess', { count: allTabs.length }));
     } catch (error) {
       console.error('[TypedCode] ZIP export failed:', error);
-      this.callbacks.onNotification?.('ZIPエクスポートに失敗しました');
+      this.callbacks.onNotification?.(t('export.zipFailed'));
     }
   }
 

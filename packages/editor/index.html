@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="シンプルなコードエディタ">
+  <meta name="description" data-i18n-meta="app.description" content="シンプルなコードエディタ">
   <meta name="theme-color" content="#1e1e1e">
   <title>TypedCode</title>
   <link rel="icon" href="/favicon.png" type="image/png">
@@ -55,7 +55,7 @@
   <div id="init-overlay" class="init-overlay">
     <div class="init-overlay-content">
       <div class="init-spinner"></div>
-      <div class="init-message">準備中...</div>
+      <div class="init-message" data-i18n="app.preparing">準備中...</div>
     </div>
   </div>
 
@@ -64,10 +64,10 @@
     <div class="titlebar">
       <div class="titlebar-title"><img src="/icon-192.png" alt="TypedCode" class="titlebar-logo"> TypedCode</div>
       <div class="titlebar-actions">
-        <button class="titlebar-panel-toggle" id="toggle-terminal-btn" title="Toggle Terminal">
+        <button class="titlebar-panel-toggle" id="toggle-terminal-btn" data-i18n-title="activityBar.toggleTerminal" title="Toggle Terminal">
           <i class="fas fa-terminal"></i>
         </button>
-        <button class="titlebar-panel-toggle" id="toggle-log-btn" title="Toggle Log Panel">
+        <button class="titlebar-panel-toggle" id="toggle-log-btn" data-i18n-title="activityBar.toggleLogPanel" title="Toggle Log Panel">
           <i class="fas fa-columns"></i>
         </button>
       </div>
@@ -83,48 +83,53 @@
       <!-- Activity Bar (Left Icon Column) -->
       <div class="activitybar">
         <div class="activitybar-top">
-          <button class="activitybar-item activitybar-item-run" id="run-code-btn" title="Run Code (Ctrl+Enter)">
+          <button class="activitybar-item activitybar-item-run" id="run-code-btn" data-i18n-title="activityBar.runCode" title="Run Code (Ctrl+Enter)">
             <i class="fas fa-play"></i>
           </button>
-          <button class="activitybar-item activitybar-item-stop hidden" id="stop-code-btn" title="Stop Execution">
+          <button class="activitybar-item activitybar-item-stop hidden" id="stop-code-btn" data-i18n-title="activityBar.stopExecution" title="Stop Execution">
             <i class="fas fa-stop"></i>
           </button>
           <div class="activitybar-divider"></div>
-          <button class="activitybar-item activitybar-item-primary" id="export-zip-btn" title="Download All (ZIP)">
+          <button class="activitybar-item activitybar-item-primary" id="export-zip-btn" data-i18n-title="activityBar.downloadAll" title="Download All (ZIP)">
             <i class="fas fa-file-zipper"></i>
           </button>
-          <button class="activitybar-item" id="download-btn" title="Save Code Only">
+          <button class="activitybar-item" id="download-btn" data-i18n-title="activityBar.saveCodeOnly" title="Save Code Only">
             <i class="fas fa-code"></i>
           </button>
-          <button class="activitybar-item" id="export-proof-btn" title="Export Proof Only">
+          <button class="activitybar-item" id="export-proof-btn" data-i18n-title="activityBar.exportProofOnly" title="Export Proof Only">
             <i class="fas fa-shield-halved"></i>
           </button>
         </div>
         <div class="activitybar-bottom">
           <div class="activitybar-menu-container">
-            <button class="activitybar-item" id="settings-btn" title="Settings">
+            <button class="activitybar-item" id="settings-btn" data-i18n-title="activityBar.settings" title="Settings">
               <i class="fas fa-gear"></i>
             </button>
             <div class="activitybar-dropdown" id="settings-dropdown">
               <a class="dropdown-item" href="/verify/" target="_blank" rel="noopener noreferrer">
                 <i class="fas fa-check-circle"></i>
-                <span>Verify Proof</span>
+                <span data-i18n="settings.verifyProof">Verify Proof</span>
                 <i class="fas fa-external-link-alt dropdown-external-icon"></i>
               </a>
               <a class="dropdown-item" href="https://github.com/shinyaoguri/typedcode" target="_blank" rel="noopener noreferrer">
                 <i class="fab fa-github"></i>
-                <span>GitHub</span>
+                <span data-i18n="settings.github">GitHub</span>
                 <i class="fas fa-external-link-alt dropdown-external-icon"></i>
               </a>
               <div class="dropdown-divider"></div>
+              <button class="dropdown-item" id="language-toggle-btn">
+                <i class="fas fa-globe"></i>
+                <span data-i18n="settings.language">Language</span>
+                <span class="dropdown-item-value" id="current-language-label">日本語</span>
+              </button>
               <button class="dropdown-item" id="theme-toggle-btn">
                 <i class="fas fa-moon"></i>
-                <span>Toggle Theme</span>
+                <span data-i18n="settings.toggleTheme">Toggle Theme</span>
               </button>
               <div class="dropdown-divider"></div>
               <button class="dropdown-item dropdown-item-danger" id="reset-btn">
                 <i class="fas fa-rotate-left"></i>
-                <span>Reset All</span>
+                <span data-i18n="settings.resetAll">Reset All</span>
               </button>
             </div>
           </div>
@@ -141,11 +146,11 @@
               <div class="editor-tabs" id="editor-tabs">
                 <!-- タブは動的に生成される -->
               </div>
-              <button class="add-tab-btn" id="add-tab-btn" title="New Tab">
+              <button class="add-tab-btn" id="add-tab-btn" data-i18n-title="activityBar.newTab" title="New Tab">
                 <i class="fas fa-plus"></i>
               </button>
             </div>
-            <button id="copy-code-btn" class="copy-code-btn" title="コードをコピー">
+            <button id="copy-code-btn" class="copy-code-btn" data-i18n-title="activityBar.copyCode" title="コードをコピー">
               <i class="fas fa-copy"></i>
             </button>
             <div id="editor"></div>
@@ -157,7 +162,7 @@
             <div class="log-viewer-header">
               <h2><i class="fas fa-file-lines"></i> Log</h2>
               <div class="log-controls">
-                <button id="close-log-btn" class="log-control-btn" title="Close">
+                <button id="close-log-btn" class="log-control-btn" data-i18n-title="common.close" title="Close">
                   <i class="fas fa-times"></i>
                 </button>
               </div>
@@ -178,7 +183,7 @@
               </button>
             </div>
             <div class="terminal-controls">
-              <button id="close-terminal-btn" class="terminal-control-btn" title="Close">
+              <button id="close-terminal-btn" class="terminal-control-btn" data-i18n-title="common.close" title="Close">
                 <i class="fas fa-times"></i>
               </button>
             </div>
@@ -201,11 +206,11 @@
             </svg>
             <i class="fas fa-shield-halved" id="proof-icon"></i>
           </div>
-          <span id="proof-status">Recording</span>
+          <span id="proof-status" data-i18n="statusBar.recording">Recording</span>
         </div>
         <div class="status-item" title="Total events recorded">
           <i class="fas fa-list-ol"></i>
-          <span id="event-count">0</span> events
+          <span id="event-count">0</span> <span data-i18n="statusBar.events">events</span>
         </div>
         <div class="status-item hash-status" id="hash-status-item" title="Current hash chain">
           <i class="fas fa-link"></i>
@@ -227,7 +232,7 @@
           <span class="runtime-state-indicator" id="runtime-state-indicator"></span>
         </div>
         <div class="status-item" id="cursor-position" title="Cursor position">
-          行 <span id="cursor-line">1</span>, 列 <span id="cursor-col">1</span>
+          <span data-i18n="statusBar.line">行</span> <span id="cursor-line">1</span>, <span data-i18n="statusBar.column">列</span> <span id="cursor-col">1</span>
         </div>
       </div>
     </div>
@@ -237,22 +242,22 @@
       <div class="modal-dialog modal-danger">
         <div class="modal-header">
           <i class="fas fa-triangle-exclamation"></i>
-          <h3>すべてのデータをリセット</h3>
+          <h3 data-i18n="resetDialog.title">すべてのデータをリセット</h3>
         </div>
         <div class="modal-body">
-          <p class="modal-warning">この操作は取り消せません！</p>
-          <p>以下のデータが完全に削除されます：</p>
+          <p class="modal-warning" data-i18n="resetDialog.warning">この操作は取り消せません！</p>
+          <p data-i18n="resetDialog.description">以下のデータが完全に削除されます：</p>
           <ul class="modal-list">
-            <li><i class="fas fa-file-code"></i> すべてのタブとコード</li>
-            <li><i class="fas fa-list"></i> すべての操作ログ</li>
-            <li><i class="fas fa-shield-halved"></i> すべてのタイピング証明</li>
-            <li><i class="fas fa-database"></i> すべての保存データ</li>
+            <li><i class="fas fa-file-code"></i> <span data-i18n="resetDialog.itemTabs">すべてのタブとコード</span></li>
+            <li><i class="fas fa-list"></i> <span data-i18n="resetDialog.itemLogs">すべての操作ログ</span></li>
+            <li><i class="fas fa-shield-halved"></i> <span data-i18n="resetDialog.itemProofs">すべてのタイピング証明</span></li>
+            <li><i class="fas fa-database"></i> <span data-i18n="resetDialog.itemData">すべての保存データ</span></li>
           </ul>
         </div>
         <div class="modal-footer">
-          <button class="modal-btn modal-btn-cancel" id="reset-cancel-btn">キャンセル</button>
+          <button class="modal-btn modal-btn-cancel" id="reset-cancel-btn" data-i18n="common.cancel">キャンセル</button>
           <button class="modal-btn modal-btn-danger" id="reset-confirm-btn">
-            <i class="fas fa-trash"></i> すべてリセット
+            <i class="fas fa-trash"></i> <span data-i18n="resetDialog.confirmButton">すべてリセット</span>
           </button>
         </div>
       </div>
@@ -263,17 +268,17 @@
       <div class="modal-dialog modal-info">
         <div class="modal-header">
           <i class="fas fa-spinner fa-spin"></i>
-          <h3>ハッシュチェーン生成中...</h3>
+          <h3 data-i18n="processingDialog.title">ハッシュチェーン生成中...</h3>
         </div>
         <div class="modal-body">
-          <p>PoSW（Proof of Sequential Work）の計算が完了するまでお待ちください。</p>
+          <p data-i18n="processingDialog.description">PoSW（Proof of Sequential Work）の計算が完了するまでお待ちください。</p>
           <div class="processing-progress">
             <div class="processing-progress-bar" id="processing-progress-bar"></div>
           </div>
-          <p class="processing-status" id="processing-status">処理中: 0 件待機中</p>
+          <p class="processing-status" id="processing-status" data-i18n="processingDialog.status" data-i18n-params='{"count": 0}'>処理中: 0 件待機中</p>
         </div>
         <div class="modal-footer">
-          <button class="modal-btn modal-btn-cancel" id="processing-cancel-btn">キャンセル</button>
+          <button class="modal-btn modal-btn-cancel" id="processing-cancel-btn" data-i18n="common.cancel">キャンセル</button>
         </div>
       </div>
     </div>
@@ -286,32 +291,83 @@
       <div class="modal-dialog modal-info">
         <div class="modal-header">
           <i class="fas fa-spinner fa-spin"></i>
-          <h3>Cコンパイラを準備中...</h3>
+          <h3 data-i18n="clangDialog.title">Cコンパイラを準備中...</h3>
         </div>
         <div class="modal-body">
-          <p>初回のみ、コンパイラのダウンロードが必要です。</p>
+          <p data-i18n="clangDialog.description">初回のみ、コンパイラのダウンロードが必要です。</p>
           <div class="processing-progress">
             <div class="processing-progress-bar clang-progress" id="clang-progress-bar"></div>
           </div>
-          <p class="processing-status" id="clang-status">初期化中...</p>
+          <p class="processing-status" id="clang-status" data-i18n="clangDialog.initializing">初期化中...</p>
         </div>
       </div>
     </div>
 
     <!-- Human Verification Loading Modal -->
     <div id="verification-loading-modal" class="modal-overlay hidden">
-      <div class="modal-dialog modal-info">
+      <div class="modal-dialog modal-info" id="verification-dialog">
         <div class="modal-header">
-          <i class="fas fa-spinner fa-spin"></i>
-          <h3>人間認証中...</h3>
+          <i class="fas fa-shield-halved" id="verification-icon"></i>
+          <h3 id="verification-title" data-i18n="verification.title">人間認証</h3>
         </div>
         <div class="modal-body">
-          <p>認証サーバーに接続しています。</p>
-          <p class="processing-status" id="verification-status-text">接続中...</p>
-          <div class="verification-timeout-bar">
-            <div class="verification-timeout-progress" id="verification-timeout-progress"></div>
+          <!-- Phase Steps -->
+          <div class="verification-steps">
+            <div class="verification-step" id="step-prepare" data-status="pending">
+              <div class="step-indicator">
+                <i class="fas fa-circle-notch fa-spin step-icon-loading"></i>
+                <i class="fas fa-check step-icon-done"></i>
+                <i class="fas fa-circle step-icon-pending"></i>
+              </div>
+              <div class="step-content">
+                <span class="step-label" data-i18n="verification.stepPrepare">認証システムの準備</span>
+              </div>
+            </div>
+            <div class="verification-step" id="step-challenge" data-status="pending">
+              <div class="step-indicator">
+                <i class="fas fa-circle-notch fa-spin step-icon-loading"></i>
+                <i class="fas fa-check step-icon-done"></i>
+                <i class="fas fa-circle step-icon-pending"></i>
+              </div>
+              <div class="step-content">
+                <span class="step-label" data-i18n="verification.stepChallenge">人間であることを確認</span>
+              </div>
+            </div>
+            <div class="verification-step" id="step-verify" data-status="pending">
+              <div class="step-indicator">
+                <i class="fas fa-circle-notch fa-spin step-icon-loading"></i>
+                <i class="fas fa-check step-icon-done"></i>
+                <i class="fas fa-circle step-icon-pending"></i>
+              </div>
+              <div class="step-content">
+                <span class="step-label" data-i18n="verification.stepVerify">サーバーで検証</span>
+              </div>
+            </div>
           </div>
-          <p class="verification-timeout-hint">ネットワークに問題がある場合、20秒後に自動的にスキップされます。</p>
+
+          <!-- Turnstile Challenge Container (widget renders here when interaction needed) -->
+          <div class="verification-challenge-container hidden" id="verification-challenge-container">
+            <div class="challenge-hint" data-i18n="verification.clickCheckbox">下のチェックボックスをクリックしてください</div>
+            <div id="turnstile-widget-container"></div>
+          </div>
+
+          <!-- Retry Info (shown on network error) -->
+          <div class="verification-retry-info hidden" id="verification-retry-info">
+            <div class="retry-header">
+              <i class="fas fa-exclamation-triangle"></i>
+              <span data-i18n="verification.networkError">ネットワークエラー</span>
+            </div>
+            <div class="retry-detail">
+              <span id="verification-retry-attempt" data-i18n="verification.retryAttempt" data-i18n-params='{"current": 1, "max": 3}'>リトライ 1/3</span>
+              <span class="retry-separator">•</span>
+              <span id="verification-retry-countdown" data-i18n="verification.retryCountdown" data-i18n-params='{"seconds": 1}'>1秒後に再試行...</span>
+            </div>
+          </div>
+
+          <!-- Progress bar -->
+          <div class="verification-progress-container">
+            <div class="verification-progress-bar" id="verification-timeout-progress"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -321,42 +377,42 @@
       <div class="modal-dialog modal-terms">
         <div class="modal-header">
           <i class="fas fa-file-contract"></i>
-          <h3>利用規約</h3>
+          <h3 data-i18n="terms.title">利用規約</h3>
         </div>
         <div class="modal-body">
-          <p class="terms-intro">TypedCodeをご利用いただく前に、以下の内容をご確認ください。</p>
+          <p class="terms-intro" data-i18n="terms.intro">TypedCodeをご利用いただく前に、以下の内容をご確認ください。</p>
 
           <div class="terms-section">
-            <h4><i class="fas fa-list-check"></i> 操作ログの記録</h4>
-            <p>タイピング証明のため、以下の操作を記録します：</p>
+            <h4><i class="fas fa-list-check"></i> <span data-i18n="terms.operationLogTitle">操作ログの記録</span></h4>
+            <p data-i18n="terms.operationLogDesc">タイピング証明のため、以下の操作を記録します：</p>
             <ul class="terms-list">
-              <li>キーストローク（タイミング情報含む）</li>
-              <li>カーソル・選択範囲の変更</li>
-              <li>マウス移動・ウィンドウ操作</li>
-              <li>コピー・ペースト・ドロップ操作</li>
+              <li data-i18n="terms.operationLogKeystrokes">キーストローク（タイミング情報含む）</li>
+              <li data-i18n="terms.operationLogCursor">カーソル・選択範囲の変更</li>
+              <li data-i18n="terms.operationLogMouse">マウス移動・ウィンドウ操作</li>
+              <li data-i18n="terms.operationLogClipboard">コピー・ペースト・ドロップ操作</li>
             </ul>
           </div>
 
           <div class="terms-section">
-            <h4><i class="fas fa-robot"></i> Bot検出</h4>
-            <p>不正利用防止のため、Cloudflare Turnstileによる人間認証を行います。</p>
+            <h4><i class="fas fa-robot"></i> <span data-i18n="terms.botDetectionTitle">Bot検出</span></h4>
+            <p data-i18n="terms.botDetectionDesc">不正利用防止のため、Cloudflare Turnstileによる人間認証を行います。</p>
           </div>
 
           <div class="terms-section">
-            <h4><i class="fas fa-database"></i> データ保存</h4>
-            <p>すべての操作ログは<strong>ブラウザのローカルストレージにのみ保存</strong>されます。サーバーへの自動送信は一切行いません。</p>
+            <h4><i class="fas fa-database"></i> <span data-i18n="terms.dataStorageTitle">データ保存</span></h4>
+            <p data-i18n-html="terms.dataStorageDesc">すべての操作ログは<strong>ブラウザのローカルストレージにのみ保存</strong>されます。サーバーへの自動送信は一切行いません。</p>
           </div>
 
           <div class="terms-checkbox-container">
             <label class="terms-checkbox">
               <input type="checkbox" id="terms-agree-checkbox">
-              <span>上記の内容を理解し、同意します</span>
+              <span data-i18n="terms.agreeCheckbox">上記の内容を理解し、同意します</span>
             </label>
           </div>
         </div>
         <div class="modal-footer">
           <button class="modal-btn modal-btn-primary" id="terms-agree-btn" disabled>
-            <i class="fas fa-check"></i> 同意して開始
+            <i class="fas fa-check"></i> <span data-i18n="terms.agreeButton">同意して開始</span>
           </button>
         </div>
       </div>

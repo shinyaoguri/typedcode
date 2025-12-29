@@ -5,6 +5,7 @@
  */
 
 import type { MousePositionData } from '@typedcode/shared';
+import { t } from '../i18n/index.js';
 
 export interface MouseEvent {
   type: 'mousePositionChange';
@@ -88,7 +89,7 @@ export class MouseTracker {
     this.callback({
       type: 'mousePositionChange',
       data: mouseData,
-      description: `マウス位置: (${mouseData.x}, ${mouseData.y})`,
+      description: t('events.mousePosition', { x: String(mouseData.x), y: String(mouseData.y) }),
     });
   }
 

@@ -3,6 +3,8 @@
  * Handles token acquisition and verification via Cloudflare Workers backend
  */
 
+import { t } from '../i18n/index.js';
+
 declare global {
   interface Window {
     turnstile: {
@@ -102,74 +104,125 @@ export function loadTurnstileScript(): Promise<void> {
   return loadPromise;
 }
 
-/** Timeout for Turnstile challenge (20 seconds total) */
-const TURNSTILE_TIMEOUT_MS = 20000;
+/** Timeout for automatic Turnstile verification (5 seconds - short for quick retry) */
+const TURNSTILE_AUTO_TIMEOUT_MS = 5000;
+
+/** Extended timeout when interactive challenge is displayed (60 seconds for user interaction) */
+const TURNSTILE_INTERACTIVE_TIMEOUT_MS = 60000;
 
 /** Result from getTurnstileToken including failure reason */
 interface TokenResult {
   token: string | null;
   failureReason?: VerificationFailureReason;
+  /** True if the failure is likely due to network issues (should retry) */
+  isNetworkError?: boolean;
 }
 
 /**
- * Get Turnstile token for the specified action
- * Shows challenge UI centered on screen when interaction is needed
+ * Get Turnstile token for the specified action (single attempt)
+ * Renders challenge widget inside the verification modal's container
+ * Extends timeout when interactive challenge is displayed
+ * Returns quickly on network errors to allow retry logic at higher level
  */
 export async function getTurnstileToken(action: string): Promise<TokenResult> {
   if (!TURNSTILE_SITE_KEY) {
     console.warn('[Turnstile] Site key not configured');
-    return { token: null, failureReason: 'token_acquisition_failed' };
+    return { token: null, failureReason: 'token_acquisition_failed', isNetworkError: false };
   }
 
-  try {
-    await loadTurnstileScript();
+  // Check if Turnstile script is loaded
+  if (!window.turnstile) {
+    console.error('[Turnstile] Script not loaded');
+    return { token: null, failureReason: 'token_acquisition_failed', isNetworkError: true };
+  }
 
-    return new Promise((resolve) => {
-      // Create container centered on screen for challenge visibility
-      const container = document.createElement('div');
-      container.id = 'turnstile-container';
-      container.style.position = 'fixed';
-      container.style.top = '50%';
-      container.style.left = '50%';
-      container.style.transform = 'translate(-50%, -50%)';
-      container.style.zIndex = '10001';
-      container.style.background = 'var(--bg-secondary, #1e1e1e)';
-      container.style.padding = '24px';
-      container.style.borderRadius = '8px';
-      container.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.5)';
-      // Initially hidden until challenge is needed
-      container.style.opacity = '0';
-      container.style.pointerEvents = 'none';
-      container.style.transition = 'opacity 0.2s ease';
-      document.body.appendChild(container);
+  return new Promise((resolve) => {
+    // Get the modal's widget container
+    const modalWidgetContainer = document.getElementById('turnstile-widget-container');
+    const challengeContainer = document.getElementById('verification-challenge-container');
 
-      // Add title element
+    // Use modal container if available, otherwise create a fallback
+    let widgetContainer: HTMLElement;
+    let fallbackContainer: HTMLElement | null = null;
+
+    if (modalWidgetContainer && challengeContainer) {
+      widgetContainer = modalWidgetContainer;
+    } else {
+      // Fallback: create container (for cases where modal isn't shown)
+      console.warn('[Turnstile] Modal container not found, using fallback');
+      fallbackContainer = document.createElement('div');
+      fallbackContainer.id = 'turnstile-fallback-container';
+      fallbackContainer.style.position = 'fixed';
+      fallbackContainer.style.top = '50%';
+      fallbackContainer.style.left = '50%';
+      fallbackContainer.style.transform = 'translate(-50%, -50%)';
+      fallbackContainer.style.zIndex = '20002';
+      fallbackContainer.style.background = 'var(--bg-secondary, #1e1e1e)';
+      fallbackContainer.style.padding = '24px';
+      fallbackContainer.style.borderRadius = '8px';
+      fallbackContainer.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.5)';
+      document.body.appendChild(fallbackContainer);
+
       const title = document.createElement('div');
-      title.textContent = '人間認証';
+      title.textContent = t('verification.title');
       title.style.textAlign = 'center';
       title.style.marginBottom = '16px';
       title.style.fontSize = '14px';
       title.style.color = 'var(--text-primary, #ffffff)';
-      container.appendChild(title);
+      fallbackContainer.appendChild(title);
 
-      // Widget container
-      const widgetContainer = document.createElement('div');
-      container.appendChild(widgetContainer);
+      widgetContainer = document.createElement('div');
+      fallbackContainer.appendChild(widgetContainer);
+    }
 
-      let resolved = false;
+    let resolved = false;
+    let widgetId: string | null = null;
+    let interactiveMode = false;
+    let currentTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-      // Timeout handler
-      const timeoutId = setTimeout(() => {
+    const cleanup = () => {
+      if (widgetId) {
+        try {
+          window.turnstile.remove(widgetId);
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+      // Clear the modal container content
+      if (modalWidgetContainer) {
+        modalWidgetContainer.innerHTML = '';
+      }
+      // Hide challenge container in modal
+      if (challengeContainer) {
+        challengeContainer.classList.add('hidden');
+      }
+      // Remove fallback container if used
+      if (fallbackContainer) {
+        fallbackContainer.remove();
+      }
+    };
+
+    // Start with auto timeout (short for quick retry if no challenge appears)
+    const startTimeout = (timeoutMs: number, reason: string) => {
+      if (currentTimeoutId) {
+        clearTimeout(currentTimeoutId);
+      }
+      currentTimeoutId = setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          window.turnstile.remove(widgetId);
-          container.remove();
-          console.warn('[Turnstile] Challenge timed out after', TURNSTILE_TIMEOUT_MS, 'ms');
-          resolve({ token: null, failureReason: 'timeout' });
+          cleanup();
+          console.warn(`[Turnstile] Challenge timed out after ${timeoutMs}ms (${reason})`);
+          // Timeout is likely a network issue - should retry
+          resolve({ token: null, failureReason: 'timeout', isNetworkError: true });
         }
-      }, TURNSTILE_TIMEOUT_MS);
+      }, timeoutMs);
+    };
 
-      const widgetId = window.turnstile.render(widgetContainer, {
+    // Initial timeout (short for auto-verification)
+    startTimeout(TURNSTILE_AUTO_TIMEOUT_MS, 'auto');
+
+    try {
+      widgetId = window.turnstile.render(widgetContainer, {
         sitekey: TURNSTILE_SITE_KEY,
         size: 'normal',
         action,
@@ -178,47 +231,58 @@ export async function getTurnstileToken(action: string): Promise<TokenResult> {
         callback: (token) => {
           if (!resolved) {
             resolved = true;
-            clearTimeout(timeoutId);
-            window.turnstile.remove(widgetId);
-            container.remove();
+            if (currentTimeoutId) clearTimeout(currentTimeoutId);
+            cleanup();
             console.log('[Turnstile] Token acquired for action:', action);
-            resolve({ token });
+            resolve({ token, isNetworkError: false });
           }
         },
         'error-callback': () => {
           if (!resolved) {
             resolved = true;
-            clearTimeout(timeoutId);
-            window.turnstile.remove(widgetId);
-            container.remove();
-            console.error('[Turnstile] Challenge failed');
-            resolve({ token: null, failureReason: 'challenge_failed' });
+            if (currentTimeoutId) clearTimeout(currentTimeoutId);
+            cleanup();
+            console.error('[Turnstile] Challenge error (likely network issue)');
+            // error-callback is often triggered by network issues
+            // We treat it as potentially retryable
+            resolve({ token: null, failureReason: 'network_error', isNetworkError: true });
           }
         },
       });
+    } catch (error) {
+      resolved = true;
+      if (currentTimeoutId) clearTimeout(currentTimeoutId);
+      cleanup();
+      console.error('[Turnstile] Failed to render widget:', error);
+      resolve({ token: null, failureReason: 'token_acquisition_failed', isNetworkError: true });
+    }
 
-      // Show container when widget needs interaction
-      // Use MutationObserver to detect when iframe appears
-      const observer = new MutationObserver(() => {
-        const iframe = widgetContainer.querySelector('iframe');
-        if (iframe) {
-          // Widget is rendering, show the container
-          container.style.opacity = '1';
-          container.style.pointerEvents = 'auto';
-          observer.disconnect();
+    // Watch for interactive challenge (iframe appears)
+    // When iframe appears, show challenge container and extend timeout
+    const observer = new MutationObserver(() => {
+      const iframe = widgetContainer.querySelector('iframe');
+      if (iframe && !interactiveMode) {
+        interactiveMode = true;
+        console.log('[Turnstile] Interactive challenge detected, extending timeout');
+
+        // Show challenge container in modal
+        if (challengeContainer) {
+          challengeContainer.classList.remove('hidden');
         }
-      });
-      observer.observe(widgetContainer, { childList: true, subtree: true });
 
-      // Auto-hide after short delay if no iframe appears (auto-pass case)
-      setTimeout(() => {
+        // Extend timeout for user interaction
+        startTimeout(TURNSTILE_INTERACTIVE_TIMEOUT_MS, 'interactive');
+
         observer.disconnect();
-      }, 2000);
+      }
     });
-  } catch (error) {
-    console.error('[Turnstile] Failed to get token:', error);
-    return { token: null, failureReason: 'token_acquisition_failed' };
-  }
+    observer.observe(widgetContainer, { childList: true, subtree: true });
+
+    // Auto-disconnect observer after short delay if no iframe appears (auto-pass case)
+    setTimeout(() => {
+      observer.disconnect();
+    }, 2000);
+  });
 }
 
 /**
@@ -254,8 +318,88 @@ export interface VerificationResult {
   failureReason?: VerificationFailureReason;
 }
 
+/** Retry configuration for network errors */
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  initialDelayMs: 1000, // 1秒 → 2秒 → 4秒
+};
+
+/** Verification phase */
+export type VerificationPhase = 'prepare' | 'challenge' | 'verify';
+
+/** Callback for phase updates */
+export type PhaseCallback = (phase: VerificationPhase, status: 'active' | 'done' | 'error') => void;
+
+/** Callback for retry status updates */
+export type RetryStatusCallback = (status: {
+  attempt: number;
+  maxRetries: number;
+  nextDelayMs: number;
+  isRetrying: boolean;
+}) => void;
+
+/** Global phase callback */
+let phaseCallback: PhaseCallback | null = null;
+
+/** Global retry status callback */
+let retryStatusCallback: RetryStatusCallback | null = null;
+
+/**
+ * Set callback for phase updates
+ */
+export function setPhaseCallback(callback: PhaseCallback | null): void {
+  phaseCallback = callback;
+}
+
+/**
+ * Set callback for retry status updates
+ */
+export function setRetryStatusCallback(callback: RetryStatusCallback | null): void {
+  retryStatusCallback = callback;
+}
+
+/**
+ * Check if an error is a network error (should retry) vs bot detection (should not retry)
+ */
+function isNetworkError(response: Response | null, error: Error | null): boolean {
+  // Network failure (no response)
+  if (!response && error) {
+    return true;
+  }
+
+  // Connection errors, timeouts
+  if (response === null) {
+    return true;
+  }
+
+  // Bot detection by Cloudflare (403, 429) - don't retry
+  if (response.status === 403 || response.status === 429) {
+    return false;
+  }
+
+  // Server errors (5xx) - retry
+  if (response.status >= 500) {
+    return true;
+  }
+
+  // Other client errors (4xx except 403/429) - don't retry
+  if (response.status >= 400) {
+    return false;
+  }
+
+  return false;
+}
+
+/**
+ * Sleep for specified milliseconds
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 /**
  * Verify Turnstile token via Cloudflare Workers backend
+ * Implements exponential backoff retry for network errors
  */
 export async function verifyTurnstileToken(token: string): Promise<VerificationResult> {
   if (!API_URL) {
@@ -263,36 +407,97 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
     return { success: false, error: 'API not configured', failureReason: 'network_error' };
   }
 
-  try {
-    const response = await fetch(`${API_URL}/api/verify-captcha`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ token }),
-    });
+  let lastError: Error | null = null;
+  let lastResponse: Response | null = null;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[Turnstile] Verification failed:', response.status, errorText);
-      return { success: false, error: `HTTP ${response.status}`, failureReason: 'network_error' };
+  for (let attempt = 1; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      const response = await fetch(`${API_URL}/api/verify-captcha`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token }),
+      });
+
+      lastResponse = response;
+
+      if (response.ok) {
+        const result = await response.json() as VerificationResult;
+        console.log('[Turnstile] Verification result:', result);
+        // Notify success (no more retrying)
+        retryStatusCallback?.({
+          attempt,
+          maxRetries: RETRY_CONFIG.maxRetries,
+          nextDelayMs: 0,
+          isRetrying: false,
+        });
+        return result;
+      }
+
+      // Check if we should retry
+      if (!isNetworkError(response, null)) {
+        // Bot detection or other non-retryable error
+        const errorText = await response.text();
+        console.error('[Turnstile] Verification failed (non-retryable):', response.status, errorText);
+        retryStatusCallback?.({
+          attempt,
+          maxRetries: RETRY_CONFIG.maxRetries,
+          nextDelayMs: 0,
+          isRetrying: false,
+        });
+        return {
+          success: false,
+          error: `HTTP ${response.status}`,
+          failureReason: response.status === 403 || response.status === 429 ? 'challenge_failed' : 'network_error',
+        };
+      }
+
+      // Network error - will retry if attempts remain
+      console.warn(`[Turnstile] Attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed with status ${response.status}`);
+
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      lastResponse = null;
+      console.warn(`[Turnstile] Attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed:`, lastError.message);
     }
 
-    const result = await response.json() as VerificationResult;
-    console.log('[Turnstile] Verification result:', result);
-    return result;
-  } catch (error) {
-    console.error('[Turnstile] Verification request failed:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      failureReason: 'network_error',
-    };
+    // Retry with exponential backoff if attempts remain
+    if (attempt < RETRY_CONFIG.maxRetries) {
+      const delayMs = RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt - 1);
+      console.log(`[Turnstile] Retrying in ${delayMs}ms...`);
+
+      // Notify about retry
+      retryStatusCallback?.({
+        attempt,
+        maxRetries: RETRY_CONFIG.maxRetries,
+        nextDelayMs: delayMs,
+        isRetrying: true,
+      });
+
+      await sleep(delayMs);
+    }
   }
+
+  // All retries exhausted
+  console.error('[Turnstile] All retry attempts exhausted');
+  retryStatusCallback?.({
+    attempt: RETRY_CONFIG.maxRetries,
+    maxRetries: RETRY_CONFIG.maxRetries,
+    nextDelayMs: 0,
+    isRetrying: false,
+  });
+
+  return {
+    success: false,
+    error: lastError?.message ?? `HTTP ${lastResponse?.status ?? 'unknown'}`,
+    failureReason: 'network_error',
+  };
 }
 
 /**
- * Perform full Turnstile verification flow
+ * Perform full Turnstile verification flow with retry logic
+ * Retries on network errors for both challenge and verification phases
  * @param action The action name for Turnstile (e.g., 'create_tab', 'export_proof')
  * @returns Verification result
  */
@@ -300,19 +505,117 @@ export async function performTurnstileVerification(action: string): Promise<Veri
   // If Turnstile is not configured, allow the action (development mode)
   if (!isTurnstileConfigured()) {
     console.log('[Turnstile] Not configured, allowing action');
+    // Mark all phases as done immediately
+    phaseCallback?.('prepare', 'done');
+    phaseCallback?.('challenge', 'done');
+    phaseCallback?.('verify', 'done');
     return { success: true, score: 1.0, action };
   }
 
-  // Get token from Turnstile
-  const tokenResult = await getTurnstileToken(action);
-  if (!tokenResult.token) {
+  // Phase 1: Prepare - Load Turnstile script (with retry)
+  phaseCallback?.('prepare', 'active');
+  let scriptLoaded = false;
+  for (let attempt = 1; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      await loadTurnstileScript();
+      scriptLoaded = true;
+      break;
+    } catch (error) {
+      console.warn(`[Turnstile] Script load attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed`);
+      if (attempt < RETRY_CONFIG.maxRetries) {
+        const delayMs = RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt - 1);
+        retryStatusCallback?.({
+          attempt,
+          maxRetries: RETRY_CONFIG.maxRetries,
+          nextDelayMs: delayMs,
+          isRetrying: true,
+        });
+        await sleep(delayMs);
+      }
+    }
+  }
+
+  if (!scriptLoaded) {
+    phaseCallback?.('prepare', 'error');
+    retryStatusCallback?.({
+      attempt: RETRY_CONFIG.maxRetries,
+      maxRetries: RETRY_CONFIG.maxRetries,
+      nextDelayMs: 0,
+      isRetrying: false,
+    });
+    return {
+      success: false,
+      error: 'Failed to load Turnstile script',
+      failureReason: 'network_error',
+    };
+  }
+  phaseCallback?.('prepare', 'done');
+  // Clear retry status after successful prepare
+  retryStatusCallback?.({
+    attempt: 1,
+    maxRetries: RETRY_CONFIG.maxRetries,
+    nextDelayMs: 0,
+    isRetrying: false,
+  });
+
+  // Phase 2: Challenge - Get token from Turnstile widget (with retry)
+  phaseCallback?.('challenge', 'active');
+  let tokenResult: TokenResult | null = null;
+  for (let attempt = 1; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    tokenResult = await getTurnstileToken(action);
+
+    // Success - got a token
+    if (tokenResult.token) {
+      break;
+    }
+
+    // Non-retryable error (e.g., bot detection)
+    if (!tokenResult.isNetworkError) {
+      console.error('[Turnstile] Challenge failed (non-retryable):', tokenResult.failureReason);
+      break;
+    }
+
+    // Network error - retry if attempts remain
+    console.warn(`[Turnstile] Challenge attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed (network error)`);
+    if (attempt < RETRY_CONFIG.maxRetries) {
+      const delayMs = RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt - 1);
+      retryStatusCallback?.({
+        attempt,
+        maxRetries: RETRY_CONFIG.maxRetries,
+        nextDelayMs: delayMs,
+        isRetrying: true,
+      });
+      await sleep(delayMs);
+    }
+  }
+
+  if (!tokenResult?.token) {
+    phaseCallback?.('challenge', 'error');
+    retryStatusCallback?.({
+      attempt: RETRY_CONFIG.maxRetries,
+      maxRetries: RETRY_CONFIG.maxRetries,
+      nextDelayMs: 0,
+      isRetrying: false,
+    });
     return {
       success: false,
       error: 'Failed to acquire Turnstile token',
-      failureReason: tokenResult.failureReason,
+      failureReason: tokenResult?.failureReason ?? 'network_error',
     };
   }
+  phaseCallback?.('challenge', 'done');
+  // Clear retry status after successful challenge
+  retryStatusCallback?.({
+    attempt: 1,
+    maxRetries: RETRY_CONFIG.maxRetries,
+    nextDelayMs: 0,
+    isRetrying: false,
+  });
 
-  // Verify token via backend
-  return verifyTurnstileToken(tokenResult.token);
+  // Phase 3: Verify - Verify token via backend (already has retry logic inside)
+  phaseCallback?.('verify', 'active');
+  const result = await verifyTurnstileToken(tokenResult.token);
+  phaseCallback?.('verify', result.success ? 'done' : 'error');
+
+  return result;
 }

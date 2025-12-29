@@ -44,6 +44,10 @@ import { LogViewerPanel } from './ui/components/LogViewerPanel.js';
 import { EventRecorder } from './core/EventRecorder.js';
 import type { AppContext } from './core/AppContext.js';
 import { isLanguageExecutable } from './config/SupportedLanguages.js';
+import { t, getI18n, initDOMi18n } from './i18n/index.js';
+
+// i18n初期化（DOM翻訳を適用）
+initDOMi18n();
 
 // Monaco Editor の Worker 設定
 configureMonacoWorkers();
@@ -275,19 +279,19 @@ function setupStaticEventListeners(): void {
     if (!ctx.tabManager) return;
 
     if (isTurnstileConfigured()) {
-      showNotification('人間認証を実行中...');
+      showNotification(t('notifications.authRunning'));
     }
 
     const num = ctx.tabUIController?.getNextUntitledNumber() ?? 1;
     const newTab = await ctx.tabManager.createTab(`Untitled-${num}`, 'c', '');
 
     if (!newTab) {
-      showNotification('認証に失敗しました。もう一度お試しください。');
+      showNotification(t('notifications.authFailed'));
       return;
     }
 
     await ctx.tabManager.switchTab(newTab.id);
-    showNotification('新しいタブを作成しました');
+    showNotification(t('notifications.newTabCreated'));
   });
 
   // 入力検出器の初期化
@@ -311,8 +315,8 @@ function setupStaticEventListeners(): void {
             endColumn: position.column,
           },
           description: detectedEvent.type === 'paste' ?
-            `ペースト（${detectedEvent.data.length}文字）` :
-            `ドロップ（${detectedEvent.data.length}文字）`,
+            t('notifications.pasteDetected', { length: detectedEvent.data.length }) :
+            t('notifications.dropDetected', { length: detectedEvent.data.length }),
         };
 
         ctx.eventRecorder?.record(event);
@@ -399,7 +403,7 @@ async function initializeDeviceInfo(): Promise<{
   fingerprintHash: string;
   fingerprintComponents: Awaited<ReturnType<typeof Fingerprint.collectComponents>>;
 }> {
-  updateInitMessage('デバイス情報を取得中...');
+  updateInitMessage(t('notifications.gettingDeviceInfo'));
   const deviceId = await Fingerprint.getDeviceId();
   console.log('[DEBUG INIT] Device ID:', deviceId.substring(0, 16) + '...');
 
@@ -465,7 +469,7 @@ async function initializeTabManager(
     ctx.tabUIController?.updateUI();
   });
 
-  updateInitMessage('エディタを初期化中...');
+  updateInitMessage(t('notifications.initializingEditor'));
   console.log('[DEBUG] Before tabManager.initialize()');
 
   const initialized = await ctx.tabManager.initialize(fingerprintHash, fingerprintComponents);
@@ -527,6 +531,23 @@ function initializeTerminal(): void {
     updateThemeIcon();
   }
 
+  // 言語切り替えボタン
+  const languageToggleBtn = document.getElementById('language-toggle-btn');
+  const currentLanguageLabel = document.getElementById('current-language-label');
+  if (languageToggleBtn && currentLanguageLabel) {
+    // 現在の言語を表示
+    const i18n = getI18n();
+    currentLanguageLabel.textContent = i18n.getLocaleDisplayName(i18n.getLocale());
+
+    languageToggleBtn.addEventListener('click', () => {
+      const currentLocale = i18n.getLocale();
+      const newLocale = currentLocale === 'ja' ? 'en' : 'ja';
+      i18n.setLocale(newLocale);
+      ctx.settingsDropdown.close();
+      window.location.reload();
+    });
+  }
+
   ctx.terminalPanel.initialize({
     panelId: 'terminal-panel',
     toggleButtonId: 'toggle-terminal-btn',
@@ -549,7 +570,7 @@ function initializeTerminal(): void {
     ctx.terminal.setInputCallback((input: string) => {
       ctx.eventRecorder?.record({
         type: 'terminalInput',
-        description: `ターミナル入力: ${input}`,
+        description: `${t('events.terminalInput')}: ${input}`,
       });
     });
   }
@@ -625,7 +646,7 @@ function initializeCodeExecution(): void {
   const handleRunCode = async (): Promise<void> => {
     const activeTab = ctx.tabManager?.getActiveTab();
     if (!activeTab) {
-      showNotification('アクティブなタブがありません');
+      showNotification(t('notifications.noActiveTab'));
       return;
     }
     await ctx.codeExecution.run({
@@ -667,11 +688,11 @@ function initializeCodeExecution(): void {
       const code = ctx.editor.getValue();
       await navigator.clipboard.writeText(code);
       copyCodeBtn.classList.add('copied');
-      showNotification('コードをコピーしました！');
+      showNotification(t('notifications.codeCopied'));
       setTimeout(() => copyCodeBtn.classList.remove('copied'), 2000);
     } catch (error) {
       console.error('[TypedCode] Copy failed:', error);
-      showNotification('コピーに失敗しました');
+      showNotification(t('notifications.copyFailed'));
     }
   });
 }
@@ -721,11 +742,22 @@ async function initializeApp(): Promise<void> {
     console.log('[TypedCode] Showing terms modal...');
     await showTermsModal();
     initOverlay?.classList.remove('hidden');
-    updateInitMessage('初期化中...');
+    updateInitMessage(t('app.initializing'));
     console.log('[DEBUG INIT] Terms accepted, continuing...');
   }
 
   // Phase 2: バックグラウンド初期化
+  // ランタイム状態変更時のコールバックを設定
+  ctx.runtime.setCallbacks({
+    onStatusChange: (language, _state) => {
+      const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
+      const currentLanguage = languageSelector?.value;
+      if (currentLanguage === language || (language === 'c' && currentLanguage === 'cpp')) {
+        ctx.runtime.updateIndicator(currentLanguage);
+      }
+    },
+  });
+
   console.log('[DEBUG INIT] Starting background C runtime init...');
   ctx.runtime.initializeCRuntime().catch((err: unknown) => {
     console.warn('[TypedCode] Background C runtime initialization failed:', err);
@@ -746,8 +778,8 @@ async function initializeApp(): Promise<void> {
   const initialized = await initializeTabManager(fingerprintHash, fingerprintComponents);
 
   if (!initialized) {
-    updateInitMessage('認証に失敗しました。ページをリロードしてください。');
-    showNotification('認証に失敗しました。ページをリロードしてください。');
+    updateInitMessage(t('notifications.authFailedReload'));
+    showNotification(t('notifications.authFailedReload'));
     console.error('[TypedCode] Initialization failed (Turnstile)');
     return;
   }

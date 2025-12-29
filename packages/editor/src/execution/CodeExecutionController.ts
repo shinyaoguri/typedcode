@@ -11,6 +11,7 @@ import { getCppExecutor } from '../executors/cpp/CppExecutor.js';
 import { getJavaScriptExecutor } from '../executors/javascript/JavaScriptExecutor.js';
 import { getTypeScriptExecutor } from '../executors/typescript/TypeScriptExecutor.js';
 import { getPythonExecutor } from '../executors/python/PythonExecutor.js';
+import { t } from '../i18n/index.js';
 
 /** 実行可能な言語 */
 export const EXECUTABLE_LANGUAGES = ['c', 'cpp', 'javascript', 'typescript', 'python'];
@@ -106,18 +107,18 @@ export class CodeExecutionController {
    */
   async run(target: ExecutionTarget): Promise<void> {
     if (this.isRunning) {
-      this.callbacks.onNotification?.('既にコードを実行中です');
+      this.callbacks.onNotification?.(t('notifications.alreadyRunning'));
       return;
     }
 
     if (!this.isExecutable(target.language)) {
-      this.callbacks.onNotification?.(`${target.language} は実行できません`);
+      this.callbacks.onNotification?.(t('notifications.languageNotExecutable', { language: target.language }));
       return;
     }
 
     const executor = this.getExecutorForLanguage(target.language);
     if (!executor) {
-      this.callbacks.onNotification?.(`${target.language} の実行環境が見つかりません`);
+      this.callbacks.onNotification?.(t('notifications.runtimeNotFound', { language: target.language }));
       return;
     }
 
@@ -140,7 +141,7 @@ export class CodeExecutionController {
     // コード実行イベントを記録
     this.callbacks.onRecordEvent?.({
       type: 'codeExecution',
-      description: `コード実行: ${target.filename}`,
+      description: t('notifications.codeExecution', { filename: target.filename }),
     });
 
     try {
@@ -190,7 +191,7 @@ export class CodeExecutionController {
       console.error('[CodeExecutionController] Execution error:', error);
       this.callbacks.onHideClangLoading?.();
       this.terminal?.writeError('Execution error: ' + error + '\n');
-      this.callbacks.onNotification?.('コードの実行に失敗しました');
+      this.callbacks.onNotification?.(t('notifications.executionFailed'));
     } finally {
       this.isRunning = false;
       this.currentExecutor = null;

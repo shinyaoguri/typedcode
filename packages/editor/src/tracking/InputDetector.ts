@@ -9,6 +9,7 @@ import type {
   DetectedEventData,
   OnDetectedCallback,
 } from '@typedcode/shared';
+import { t } from '../i18n/index.js';
 
 export class InputDetector {
   private element: HTMLElement | null;
@@ -31,7 +32,7 @@ export class InputDetector {
       const clipboardData = e.clipboardData ?? window.clipboardData;
       const pastedText = clipboardData?.getData('text') ?? '';
 
-      this.notifyDetected('paste', 'コピー&ペーストを検出しました', {
+      this.notifyDetected('paste', t('events.paste', { length: String(pastedText.length) }), {
         text: pastedText,
         length: pastedText.length
       });
@@ -41,7 +42,7 @@ export class InputDetector {
     this.element.addEventListener('drop', (e: DragEvent) => {
       const droppedText = e.dataTransfer?.getData('text') ?? '';
 
-      this.notifyDetected('drop', 'ドラッグ&ドロップを検出しました', {
+      this.notifyDetected('drop', t('events.drop', { length: String(droppedText.length) }), {
         text: droppedText,
         length: droppedText.length
       });

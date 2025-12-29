@@ -9,6 +9,7 @@ import type {
   OperationResult,
 } from '@typedcode/shared';
 import type { ModelContentChange, ModelContentChangedEvent } from '../editor/types.js';
+import { t } from '../i18n/index.js';
 
 export class OperationDetector {
   private lastOperation: OperationResult | null = null;
@@ -195,31 +196,31 @@ export class OperationDetector {
    */
   getOperationDescription(operation: OperationResult): string {
     const descriptions: Record<InputType, string> = {
-      'insertText': '文字入力',
-      'insertLineBreak': '改行',
-      'insertParagraph': '段落挿入',
-      'insertTab': 'タブ挿入',
-      'insertFromComposition': 'IME入力',
-      'insertCompositionText': 'IME入力',
-      'deleteCompositionText': 'IME削除',
-      'deleteContentBackward': 'Backspace削除',
-      'deleteContentForward': 'Delete削除',
-      'deleteWordBackward': '単語削除（後方）',
-      'deleteWordForward': '単語削除（前方）',
-      'deleteSoftLineBackward': '行削除（ソフト）',
-      'deleteSoftLineForward': '行削除（ソフト前方）',
-      'deleteHardLineBackward': '行削除',
-      'deleteHardLineForward': '行削除（前方）',
-      'deleteByDrag': 'ドラッグ削除',
-      'deleteByCut': '範囲削除',
-      'replaceContent': 'コンテンツ置換',
-      'historyUndo': 'Undo',
-      'historyRedo': 'Redo',
-      'insertFromPaste': 'ペースト',
-      'insertFromDrop': 'ドロップ',
-      'insertFromYank': 'ヤンク',
-      'insertReplacementText': '置換テキスト',
-      'insertFromPasteAsQuotation': '引用ペースト'
+      'insertText': t('operations.input'),
+      'insertLineBreak': t('operations.enter'),
+      'insertParagraph': t('operations.multiLineChange'),
+      'insertTab': t('operations.tab'),
+      'insertFromComposition': t('operations.imeInput'),
+      'insertCompositionText': t('operations.imeInput'),
+      'deleteCompositionText': t('operations.delete'),
+      'deleteContentBackward': t('operations.delete'),
+      'deleteContentForward': t('operations.delete'),
+      'deleteWordBackward': t('operations.multiCharDelete'),
+      'deleteWordForward': t('operations.multiCharDelete'),
+      'deleteSoftLineBackward': t('operations.bulkDelete'),
+      'deleteSoftLineForward': t('operations.bulkDelete'),
+      'deleteHardLineBackward': t('operations.bulkDelete'),
+      'deleteHardLineForward': t('operations.bulkDelete'),
+      'deleteByDrag': t('operations.delete'),
+      'deleteByCut': t('operations.bulkDelete'),
+      'replaceContent': t('operations.replace'),
+      'historyUndo': t('operations.undo'),
+      'historyRedo': t('operations.redo'),
+      'insertFromPaste': t('operations.paste'),
+      'insertFromDrop': t('operations.drop'),
+      'insertFromYank': t('operations.paste'),
+      'insertReplacementText': t('operations.replace'),
+      'insertFromPasteAsQuotation': t('operations.paste')
     };
 
     return descriptions[operation.inputType] ?? operation.inputType;

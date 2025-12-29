@@ -4,6 +4,7 @@
  */
 
 import type { VisibilityChangeData, FocusChangeData } from '@typedcode/shared';
+import { t } from '../i18n/index.js';
 
 export interface VisibilityTrackerEvent {
   type: 'visibilityChange' | 'focusChange';
@@ -72,8 +73,8 @@ export class VisibilityTracker {
       type: 'visibilityChange',
       data: visibilityData,
       description: visibilityData.visible
-        ? 'タブがアクティブになりました'
-        : 'タブが非アクティブになりました',
+        ? t('events.tabActive')
+        : t('events.tabInactive'),
     });
 
     console.log('[TypedCode] Visibility changed:', visibilityData.visibilityState);
@@ -90,7 +91,7 @@ export class VisibilityTracker {
     this.callback?.({
       type: 'focusChange',
       data: focusData,
-      description: 'ウィンドウがフォーカスされました',
+      description: t('events.windowFocused'),
     });
 
     console.log('[TypedCode] Window focused');
@@ -107,7 +108,7 @@ export class VisibilityTracker {
     this.callback?.({
       type: 'focusChange',
       data: focusData,
-      description: 'ウィンドウがフォーカスを失いました',
+      description: t('events.windowBlurred'),
     });
 
     console.log('[TypedCode] Window blurred');

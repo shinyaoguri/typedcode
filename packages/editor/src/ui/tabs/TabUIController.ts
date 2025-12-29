@@ -8,6 +8,7 @@ import {
   getLanguageDefinition,
   FILE_EXTENSIONS,
 } from '../../config/SupportedLanguages.js';
+import { t } from '../../i18n/index.js';
 
 export interface TabUIControllerOptions {
   container: HTMLElement;
@@ -104,14 +105,14 @@ export class TabUIController {
     closeBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
       if (this.tabManager.getTabCount() === 1) {
-        this.onNotification?.('最後のタブは閉じられません');
+        this.onNotification?.(t('tabs.lastTabWarning'));
         return;
       }
       const targetTab = this.tabManager.getTab(tab.id);
       const tabName = targetTab
         ? `${targetTab.filename}.${this.getFileExtension(targetTab.language)}`
-        : 'このタブ';
-      if (confirm(`「${tabName}」を閉じますか？\n記録された操作ログも削除されます。`)) {
+        : t('tabs.untitled');
+      if (confirm(t('tabs.closeConfirm', { tabName }))) {
         this.tabManager.closeTab(tab.id);
       }
     });
@@ -125,28 +126,28 @@ export class TabUIController {
   private createVerificationIndicator(tab: TabState): string {
     if (tab.verificationState === 'verified') {
       const timestamp = tab.verificationDetails?.timestamp
-        ? new Date(tab.verificationDetails.timestamp).toLocaleString('ja-JP')
+        ? new Date(tab.verificationDetails.timestamp).toLocaleString()
         : '';
       const tooltip = timestamp
-        ? `✓ 人間認証済み\n認証日時: ${timestamp}`
-        : '✓ 人間認証済み';
+        ? `✓ ${t('tabs.verifiedTooltip')}\n${timestamp}`
+        : `✓ ${t('tabs.verifiedTooltip')}`;
       return `<span class="tab-verification verified" title="${tooltip}"></span>`;
     } else if (tab.verificationState === 'failed') {
       const timestamp = tab.verificationDetails?.timestamp
-        ? new Date(tab.verificationDetails.timestamp).toLocaleString('ja-JP')
+        ? new Date(tab.verificationDetails.timestamp).toLocaleString()
         : '';
       const reason = tab.verificationDetails?.failureReason;
       const reasonText =
         reason === 'timeout'
-          ? 'タイムアウト'
+          ? t('tabs.failureTimeout')
           : reason === 'network_error'
-            ? 'ネットワークエラー'
+            ? t('tabs.failureNetworkError')
             : reason === 'challenge_failed'
-              ? 'チャレンジ失敗'
+              ? t('tabs.failureChallengeFailed')
               : reason === 'token_acquisition_failed'
-                ? 'トークン取得失敗'
-                : '不明なエラー';
-      const tooltip = `✗ 認証失敗\n理由: ${reasonText}${timestamp ? `\n日時: ${timestamp}` : ''}`;
+                ? t('tabs.failureTokenFailed')
+                : t('tabs.failureUnknown');
+      const tooltip = `✗ ${t('tabs.failedTooltip')}\n${reasonText}${timestamp ? `\n${timestamp}` : ''}`;
       return `<span class="tab-verification failed" title="${tooltip}"></span>`;
     }
     return '';

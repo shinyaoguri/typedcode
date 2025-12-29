@@ -1,0 +1,248 @@
+import type { TranslationKeys } from '../types';
+
+export const en: TranslationKeys = {
+  common: {
+    cancel: 'Cancel',
+    confirm: 'Confirm',
+    close: 'Close',
+    save: 'Save',
+    delete: 'Delete',
+    reset: 'Reset',
+    loading: 'Loading...',
+    error: 'Error',
+    success: 'Success',
+    warning: 'Warning',
+    retry: 'Retry',
+    retrying: 'Retrying...',
+  },
+
+  app: {
+    title: 'TypedCode',
+    description: 'A simple code editor',
+    preparing: 'Preparing...',
+    initializing: 'Initializing...',
+  },
+
+  settings: {
+    title: 'Settings',
+    verifyProof: 'Verify Proof',
+    github: 'GitHub',
+    toggleTheme: 'Toggle Theme',
+    language: 'Language',
+    resetAll: 'Reset All',
+  },
+
+  activityBar: {
+    toggleTerminal: 'Toggle Terminal',
+    toggleLogPanel: 'Toggle Log Panel',
+    runCode: 'Run Code (Ctrl+Enter)',
+    stopExecution: 'Stop Execution',
+    downloadAll: 'Download All (ZIP)',
+    saveCodeOnly: 'Save Code Only',
+    exportProofOnly: 'Export Proof Only',
+    settings: 'Settings',
+    newTab: 'New Tab',
+    closeTab: 'Close',
+    copyCode: 'Copy Code',
+  },
+
+  resetDialog: {
+    title: 'Reset All Data',
+    warning: 'This action cannot be undone!',
+    description: 'The following data will be permanently deleted:',
+    itemTabs: 'All tabs and code',
+    itemLogs: 'All operation logs',
+    itemProofs: 'All typing proofs',
+    itemData: 'All saved data',
+    confirmButton: 'Reset All',
+  },
+
+  processingDialog: {
+    title: 'Generating Hash Chain...',
+    description:
+      'Please wait while the PoSW (Proof of Sequential Work) calculation completes.',
+    status: 'Processing: ${count} pending',
+    statusWithProgress: 'Processing: ${count} pending (${processed}/${total} done)',
+  },
+
+  clangDialog: {
+    title: 'Preparing C Compiler...',
+    description: 'The compiler needs to be downloaded on first use.',
+    initializing: 'Initializing...',
+  },
+
+  verification: {
+    title: 'Human Verification',
+    stepPrepare: 'Preparing verification system',
+    stepChallenge: 'Verify you are human',
+    stepVerify: 'Verifying on server',
+    clickCheckbox: 'Please click the checkbox below',
+    networkError: 'Network Error',
+    retryAttempt: 'Retry ${current}/${max}',
+    retryCountdown: 'Retrying in ${seconds} seconds...',
+  },
+
+  terms: {
+    title: 'Terms of Service',
+    intro: 'Please review the following before using TypedCode.',
+    operationLogTitle: 'Operation Logging',
+    operationLogDesc:
+      'The following operations are recorded for typing proof:',
+    operationLogKeystrokes: 'Keystroke timing',
+    operationLogCursor: 'Cursor movement',
+    operationLogMouse: 'Mouse operations',
+    operationLogClipboard: 'Copy & paste detection',
+    botDetectionTitle: 'Bot Detection',
+    botDetectionDesc:
+      'Cloudflare Turnstile is used for human verification to prevent abuse.',
+    dataStorageTitle: 'Data Storage',
+    dataStorageDesc:
+      'All operation logs are stored <strong>only in your browser\'s local storage</strong>. No automatic transmission to servers occurs.',
+    agreeCheckbox: 'I understand and agree to the above',
+    agreeButton: 'Agree and Start',
+  },
+
+  statusBar: {
+    recording: 'Recording',
+    events: 'events',
+    line: 'Ln',
+    column: 'Col',
+  },
+
+  tabs: {
+    untitled: 'Untitled',
+    newTab: 'New Tab',
+    closeTab: 'Close Tab',
+    lastTabWarning: 'Cannot close the last tab',
+    closeConfirm:
+      'Close "${tabName}"?\nRecorded operation logs will also be deleted.',
+    verifiedTooltip: 'Verified',
+    failedTooltip: 'Verification Failed',
+    failureTimeout: 'Timeout',
+    failureNetworkError: 'Network Error',
+    failureChallengeFailed: 'Challenge Failed',
+    failureTokenFailed: 'Token Verification Failed',
+    failureUnknown: 'Unknown Error',
+  },
+
+  notifications: {
+    authRunning: 'Running human verification...',
+    authFailed: 'Authentication failed. Please try again.',
+    authFailedReload: 'Authentication failed. Please reload the page.',
+    newTabCreated: 'New tab created',
+    codeCopied: 'Code copied!',
+    copyFailed: 'Copy failed',
+    pasteDetected: 'Paste (${length} characters)',
+    dropDetected: 'Drop (${length} characters)',
+    gettingDeviceInfo: 'Getting device info...',
+    initializingEditor: 'Initializing editor...',
+    noActiveTab: 'No active tab',
+    alreadyRunning: 'Code is already running',
+    languageNotExecutable: '${language} cannot be executed',
+    runtimeNotFound: 'Runtime for ${language} not found',
+    executionFailed: 'Code execution failed',
+    compilationStarted: 'Compiling...',
+    executionStarted: 'Running...',
+    codeExecution: 'Code execution: ${filename}',
+    clearLogConfirm: 'Clear logs? (Proof data will be preserved)',
+  },
+
+  export: {
+    preAuthRunning: 'Running pre-export verification...',
+    preAuthFailed: 'Pre-export verification failed',
+    cancelled: 'Export cancelled',
+    success: 'Proof data exported',
+    successVerified: 'Proof data exported (Verified: OK)',
+    verifyFailed: 'Warning: Hash chain verification failed',
+    failed: 'Export failed',
+    zipSuccess: 'ZIP file downloaded (${count} files)',
+    zipFailed: 'ZIP export failed',
+  },
+
+  terminal: {
+    title: 'TypedCode Terminal',
+    cRuntime:
+      'C Runtime (Clang/WASM)\nUses Clang compiler running on WebAssembly.\nSome standard library functions are limited.',
+    cppRuntime:
+      'C++ Runtime (Clang/WASM)\nUses Clang compiler running on WebAssembly.\nC++17 compliant. Some STL features are limited.',
+    jsRuntime:
+      'JavaScript Runtime\nExecutes directly in the browser JavaScript engine.\nWeb APIs (DOM, etc.) are not available.',
+    tsRuntime:
+      'TypeScript Runtime\nTranspiles TypeScript in real-time and executes.\nRuns in the browser JavaScript engine.',
+    pythonRuntime:
+      'Python Runtime (Pyodide)\nPython interpreter running on WebAssembly.\nMajor packages like NumPy are available.',
+    notAvailable:
+      'Terminal is not available for this language.\nSupported: C, C++, JavaScript, TypeScript, Python',
+    supportedLanguages: 'C, C++, JavaScript, TypeScript, Python',
+    runHint: 'Press Ctrl+Enter or click Run to execute code',
+    cDisclaimer: '* Some standard library functions are limited in WebAssembly environment.',
+    cppDisclaimer: '* Some C++ features are limited in WebAssembly environment.',
+  },
+
+  logViewer: {
+    title: 'TypedCode Operation Log',
+    typeLabel: 'Type',
+    descriptionLabel: 'Description',
+    detailsLabel: 'Details',
+    hashLabel: 'Hash',
+    position: 'Position: L${line}:C${column}',
+    rangeLength: 'Range length: ${length}',
+    deleted: 'Deleted: ${count} chars',
+    inserted: 'Inserted: ${count} chars',
+    direction: 'Direction: ${direction}',
+    multiLine: 'Multi-line',
+    contentChange: 'Content Change',
+    cursorMove: 'Cursor Move',
+    selectionChange: 'Selection Change',
+    externalInput: 'External Input',
+    editorInit: 'Editor Init',
+    snapshot: 'Snapshot',
+    mouseOperation: 'Mouse Operation',
+    rangeSelection: 'Range Selection',
+    characterInput: 'Character Input',
+  },
+
+  events: {
+    keyDown: 'Key Down: ${key}',
+    keyUp: 'Key Up: ${key}',
+    dwellTime: 'Dwell time: ${time}ms',
+    tabActive: 'Tab became active',
+    tabInactive: 'Tab became inactive',
+    windowFocused: 'Window focused',
+    windowBlurred: 'Window lost focus',
+    windowResize: 'Window resize: ${width}x${height}',
+    initialWindowSize: 'Initial window size: ${width}x${height}',
+    networkOnline: 'Network status changed: Online',
+    networkOffline: 'Network status changed: Offline',
+    initialNetworkState: 'Initial network state: ${state}',
+    online: 'Online',
+    offline: 'Offline',
+    mousePosition: 'Mouse position: (${x}, ${y})',
+    paste: 'Paste: ${length} chars',
+    drop: 'Drop: ${length} chars',
+    selectionClear: 'Selection cleared',
+    selectionCount: '${count} chars selected',
+    terminalInput: 'Terminal input',
+  },
+
+  operations: {
+    input: 'Input',
+    enter: 'Enter',
+    delete: 'Delete',
+    multiCharDelete: 'Multi-char Delete',
+    tab: 'Tab',
+    imeInput: 'IME Input',
+    multiLinePaste: 'Multi-line Paste',
+    multiLineChange: 'Multi-line Change',
+    paste: 'Paste',
+    drop: 'Drop',
+    autoIndent: 'Auto Indent',
+    bulkDelete: 'Bulk Delete',
+    formatIndent: 'Indent',
+    formatOutdent: 'Outdent',
+    undo: 'Undo',
+    redo: 'Redo',
+    replace: 'Replace',
+    unknown: 'Unknown',
+  },
+};

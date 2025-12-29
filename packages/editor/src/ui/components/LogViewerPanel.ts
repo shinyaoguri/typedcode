@@ -4,6 +4,7 @@
  */
 
 import type { LogViewer } from './LogViewer.js';
+import { t } from '../../i18n/index.js';
 
 export interface LogViewerPanelOptions {
   /** LogViewerインスタンスを取得するゲッター */
@@ -113,7 +114,7 @@ export class LogViewerPanel {
   private setupClearButton(): void {
     if (this.clearBtn) {
       this.clearBtn.addEventListener('click', () => {
-        if (confirm('ログをクリアしますか？（証明データは保持されます）')) {
+        if (confirm(t('notifications.clearLogConfirm'))) {
           this.getLogViewer()?.clear();
         }
       });

@@ -4,6 +4,7 @@
  */
 
 import type { NetworkStatusData } from '@typedcode/shared';
+import { t } from '../i18n/index.js';
 
 export interface NetworkTrackerEvent {
   type: 'networkStatusChange';
@@ -60,7 +61,7 @@ export class NetworkTracker {
     this.callback?.({
       type: 'networkStatusChange',
       data: { online },
-      description: `初期ネットワーク状態: ${online ? 'オンライン' : 'オフライン'}`,
+      description: t('events.initialNetworkState', { state: online ? t('events.online') : t('events.offline') }),
     }, true);
   }
 
@@ -71,7 +72,7 @@ export class NetworkTracker {
     this.callback?.({
       type: 'networkStatusChange',
       data: { online: true },
-      description: 'ネットワーク状態変更: オンライン',
+      description: t('events.networkOnline'),
     }, false);
   }
 
@@ -82,7 +83,7 @@ export class NetworkTracker {
     this.callback?.({
       type: 'networkStatusChange',
       data: { online: false },
-      description: 'ネットワーク状態変更: オフライン',
+      description: t('events.networkOffline'),
     }, false);
   }
 

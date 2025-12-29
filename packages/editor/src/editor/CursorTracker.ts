@@ -4,6 +4,7 @@
  */
 
 import type * as monaco from 'monaco-editor';
+import { t } from '../i18n/index.js';
 
 export interface CursorPosition {
   lineNumber: number;
@@ -175,7 +176,7 @@ export class CursorTracker {
       range,
       rangeLength: selectionLength,
       selectedText: isEmpty ? null : selectedText,
-      description: isEmpty ? '選択解除' : `${selectionLength}文字選択`,
+      description: isEmpty ? t('events.selectionClear') : t('events.selectionCount', { count: String(selectionLength) }),
     });
   }
 

@@ -9,6 +9,7 @@ import {
   SUPPORTED_LANGUAGES,
   type LanguageId,
 } from '../config/SupportedLanguages.js';
+import { t } from '../i18n/index.js';
 
 /** ランタイム状態 */
 export type RuntimeState = 'not-ready' | 'loading' | 'ready';
@@ -98,53 +99,23 @@ export class RuntimeManager {
   getLanguageDescription(language: string): string[] {
     switch (language) {
       case 'c':
-        return [
-          'TypedCode Terminal - C 実行環境',
-          'Clang (WASM) でコンパイル・実行',
-          '標準入出力対応 | タイムアウトなし',
-          EXECUTION_DISCLAIMER,
-        ];
+        return t('terminal.cRuntime').split('\n');
       case 'cpp':
-        return [
-          'TypedCode Terminal - C++ 実行環境',
-          'Clang (WASM) でコンパイル・実行 | C++17対応',
-          '標準入出力対応 | タイムアウトなし',
-          EXECUTION_DISCLAIMER,
-        ];
+        return t('terminal.cppRuntime').split('\n');
       case 'javascript':
-        return [
-          'TypedCode Terminal - JavaScript 実行環境',
-          'ブラウザ内蔵エンジンで実行 | top-level await対応',
-          'console.log で出力 | 30秒タイムアウト',
-          EXECUTION_DISCLAIMER,
-        ];
+        return t('terminal.jsRuntime').split('\n');
       case 'typescript':
-        return [
-          'TypedCode Terminal - TypeScript 実行環境',
-          'トランスパイル後にブラウザで実行 | 型チェックなし',
-          'console.log で出力 | 30秒タイムアウト',
-          EXECUTION_DISCLAIMER,
-        ];
+        return t('terminal.tsRuntime').split('\n');
       case 'python':
-        return [
-          'TypedCode Terminal - Python 実行環境',
-          'Pyodide (CPython WASM) で実行 |',
-          'NumPy/Pandas等は自動インストール | 60秒タイムアウト',
-          EXECUTION_DISCLAIMER,
-        ];
+        return t('terminal.pythonRuntime').split('\n');
       case 'html':
       case 'css':
       case 'plaintext':
-        return [
-          'ターミナルは使用できません',
-          '',
-          'この言語はコード実行に対応していません。',
-          '実行可能な言語: C, C++, JavaScript, TypeScript, Python',
-        ];
+        return t('terminal.notAvailable').split('\n');
       default:
         return [
-          'TypedCode Terminal',
-          'Ctrl+Enter または Run ボタンでコードを実行',
+          t('terminal.title'),
+          t('terminal.runHint'),
           EXECUTION_DISCLAIMER,
         ];
     }

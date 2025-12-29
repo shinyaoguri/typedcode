@@ -4,6 +4,7 @@
  */
 
 import type { WindowSizeData } from '@typedcode/shared';
+import { t } from '../i18n/index.js';
 
 export interface WindowTrackerEvent {
   type: 'windowResize';
@@ -65,7 +66,7 @@ export class WindowTracker {
     this.callback?.({
       type: 'windowResize',
       data: currentSize,
-      description: `初期ウィンドウサイズ: ${currentSize.innerWidth}x${currentSize.innerHeight}`,
+      description: t('events.initialWindowSize', { width: String(currentSize.innerWidth), height: String(currentSize.innerHeight) }),
     }, true);
   }
 
@@ -120,7 +121,7 @@ export class WindowTracker {
       this.callback?.({
         type: 'windowResize',
         data: currentSize,
-        description: `ウィンドウリサイズ: ${currentSize.innerWidth}x${currentSize.innerHeight}`,
+        description: t('events.windowResize', { width: String(currentSize.innerWidth), height: String(currentSize.innerHeight) }),
       }, false);
     }, WINDOW_RESIZE_DEBOUNCE_MS);
   }

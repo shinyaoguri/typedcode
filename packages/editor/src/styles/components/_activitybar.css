@@ -224,3 +224,13 @@
 .dropdown-item:hover .dropdown-external-icon {
   opacity: 1;
 }
+
+/* Language toggle value */
+.dropdown-item-value {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: 2px 8px;
+  border-radius: 4px;
+}

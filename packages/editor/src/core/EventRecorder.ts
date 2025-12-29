@@ -6,6 +6,7 @@
 import type { RecordEventInput } from '@typedcode/shared';
 import type { TabManager } from '../ui/tabs/TabManager.js';
 import type { LogViewer } from '../ui/components/LogViewer.js';
+import { t } from '../i18n/index.js';
 
 export interface EventRecorderOptions {
   tabManager: TabManager;
@@ -88,7 +89,7 @@ export class EventRecorder {
         console.error('[EventRecorder] Recording failed:', err);
         // ユーザーに通知（初期化エラーなど重大なエラーの場合）
         if (err instanceof Error && err.message.includes('not initialized')) {
-          this.onError?.('イベント記録エラー: 初期化が完了していません');
+          this.onError?.(t('common.error'));
         }
       })
       .finally(() => {

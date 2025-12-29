@@ -359,26 +359,207 @@
   z-index: 20001;
 }
 
-.verification-timeout-bar {
+#verification-dialog {
+  min-width: 320px;
+}
+
+#verification-dialog .modal-header {
+  padding: 16px 20px 12px;
+}
+
+#verification-dialog .modal-header i {
+  color: #4fc3f7;
+  font-size: 20px;
+}
+
+#verification-dialog .modal-body {
+  padding: 12px 20px 20px;
+}
+
+/* Verification Steps */
+.verification-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 16px;
+}
+
+.verification-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.verification-step[data-status="active"] {
+  background: rgba(79, 195, 247, 0.1);
+}
+
+.verification-step[data-status="done"] {
+  opacity: 0.7;
+}
+
+.step-indicator {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.step-indicator i {
+  font-size: 14px;
+}
+
+/* Step icon visibility based on status */
+.verification-step .step-icon-loading,
+.verification-step .step-icon-done,
+.verification-step .step-icon-pending {
+  display: none;
+}
+
+.verification-step[data-status="pending"] .step-icon-pending {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 8px;
+}
+
+.verification-step[data-status="active"] .step-icon-loading {
+  display: block;
+  color: #4fc3f7;
+}
+
+.verification-step[data-status="done"] .step-icon-done {
+  display: block;
+  color: #4caf50;
+}
+
+.verification-step[data-status="error"] .step-icon-pending {
+  display: block;
+  color: #ff9800;
+}
+
+.step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+}
+
+.verification-step[data-status="active"] .step-label {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.verification-step[data-status="done"] .step-label {
+  color: var(--text-tertiary);
+}
+
+/* Verification Progress Bar */
+.verification-progress-container {
   height: 3px;
   background: var(--bg-tertiary);
   border-radius: 2px;
   overflow: hidden;
-  margin: 12px 0 8px 0;
-  opacity: 0.6;
+  margin-top: 4px;
 }
 
-.verification-timeout-progress {
+.verification-progress-bar {
   height: 100%;
-  background: var(--text-tertiary);
+  background: linear-gradient(90deg, #4fc3f7, #29b6f6);
   border-radius: 2px;
   width: 0%;
   transition: width 0.1s linear;
 }
 
-.verification-timeout-hint {
-  font-size: 11px !important;
-  color: var(--text-tertiary) !important;
-  margin-top: 4px !important;
-  opacity: 0.7;
+/* Verification Retry Info */
+.verification-retry-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px 0;
+  padding: 10px 12px;
+  background: rgba(255, 152, 0, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+.verification-retry-info.hidden {
+  display: none;
+}
+
+.retry-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #ff9800;
+}
+
+.retry-header i {
+  font-size: 12px;
+}
+
+.retry-detail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding-left: 20px;
+}
+
+.retry-separator {
+  color: var(--text-tertiary);
+}
+
+/* Warning state for verification modal */
+#verification-dialog.verification-warning {
+  border-top-color: #ff9800 !important;
+}
+
+#verification-dialog.verification-warning .modal-header i {
+  color: #ff9800 !important;
+}
+
+/* Verification Challenge Container */
+.verification-challenge-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  margin-top: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.verification-challenge-container.hidden {
+  display: none;
+}
+
+.challenge-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+#turnstile-widget-container {
+  min-height: 65px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#turnstile-widget-container iframe {
+  border-radius: 4px;
 }
