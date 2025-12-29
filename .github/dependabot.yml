@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # happy-dom causes Dependabot errors due to its package structure
+      # Update manually when needed
+      - dependency-name: "happy-dom"
+    groups:
+      # Group minor and patch updates together
+      npm-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

@@ -34,6 +34,7 @@ jobs:
       - name: Build project
         run: npm run build
         env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
           VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
