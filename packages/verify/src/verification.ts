@@ -3,8 +3,21 @@ import type { ProofFile } from './types.js';
 import { TypingProof } from '@typedcode/shared';
 import type { HumanAttestation } from './types.js';
 
+// 新モジュールをインポート
+import { VerificationEngine } from './core/VerificationEngine.js';
+import { AttestationService } from './services/AttestationService.js';
+
+// シングルトンインスタンス
+const verificationEngine = new VerificationEngine();
+const attestationService = new AttestationService();
+
+// Re-export for external use
+export { VerificationEngine } from './core/VerificationEngine.js';
+export { AttestationService } from './services/AttestationService.js';
+
 /**
  * イベントからHumanAttestationを抽出するヘルパー
+ * @deprecated VerificationEngine.extractAttestations() を使用してください
  */
 function extractAttestationFromEvent(event: StoredEvent | undefined): HumanAttestationEventData | null {
   if (!event) return null;
@@ -30,6 +43,7 @@ function extractAttestationFromEvent(event: StoredEvent | undefined): HumanAttes
 
 /**
  * イベント#0からHumanAttestationを抽出（作成時認証）
+ * @deprecated VerificationEngine.extractAttestations() を使用してください
  */
 function extractAttestationFromFirstEvent(events: StoredEvent[]): HumanAttestationEventData | null {
   if (!events || events.length === 0) return null;
@@ -40,6 +54,7 @@ function extractAttestationFromFirstEvent(events: StoredEvent[]): HumanAttestati
 
 /**
  * preExportAttestationイベントを抽出（エクスポート前認証）
+ * @deprecated VerificationEngine.extractAttestations() を使用してください
  */
 function extractPreExportAttestation(events: StoredEvent[]): HumanAttestationEventData | null {
   if (!events || events.length === 0) return null;
@@ -94,7 +109,6 @@ import {
   resultSection,
 } from './elements.js';
 import {
-  loadingLog,
   addLoadingLog,
   addLoadingLogWithHash,
   updateLoadingLog,
@@ -106,52 +120,22 @@ import {
 import { initializeSeekbar } from './seekbar.js';
 import { cacheEventsForModal } from './charts.js';
 
-// API URL for attestation verification
-const API_URL = 'https://typedcode-api.shinya-oguri.workers.dev';
-
 /**
  * 人間証明書をサーバーで検証
+ * @deprecated AttestationService.verify() を使用してください
  */
 async function verifyHumanAttestation(attestation: HumanAttestation): Promise<{ valid: boolean; message: string }> {
-  try {
-    const response = await fetch(`${API_URL}/api/verify-attestation`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ attestation }),
-    });
-
-    if (!response.ok) {
-      return { valid: false, message: `HTTP ${response.status}` };
-    }
-
-    const result = await response.json() as { valid: boolean; message: string };
-    return result;
-  } catch (error) {
-    console.error('[Verify] Attestation verification failed:', error);
-    return { valid: false, message: 'ネットワークエラー' };
-  }
+  // 新しいサービスに委譲
+  return attestationService.verify(attestation);
 }
 
 /**
  * タイムスタンプをフォーマット
+ * @deprecated AttestationService.formatTimestamp() を使用してください
  */
 function formatAttestationTime(timestamp: string): string {
-  try {
-    const date = new Date(timestamp);
-    if (isNaN(date.getTime())) return timestamp;
-    return date.toLocaleString('ja-JP', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  } catch {
-    return timestamp;
-  }
+  // 新しいサービスに委譲
+  return attestationService.formatTimestamp(timestamp);
 }
 
 /**
@@ -168,7 +152,6 @@ async function verifySingleAttestation(
   itemEl.style.display = 'flex';
 
   const verifyLog = addLoadingLog(`人間証明書を検証中 (${logLabel})...`);
-  await new Promise(r => setTimeout(r, 50));
 
   const result = await verifyHumanAttestation(attestation);
 
@@ -243,7 +226,6 @@ async function displayHumanAttestations(
   else if (legacyAttestation) {
     if (legacyAttestationItem) legacyAttestationItem.style.display = 'flex';
     const verifyLog = addLoadingLog('人間証明書を検証中 (旧形式)...');
-    await new Promise(r => setTimeout(r, 50));
     const result = await verifyHumanAttestation(legacyAttestation);
 
     if (result.valid) {
@@ -299,23 +281,6 @@ async function displayHumanAttestations(
   }
 
   return allValid;
-}
-
-/**
- * 人間証明書を表示（後方互換性のためのラッパー）
- * @deprecated displayHumanAttestationsを使用してください
- */
-async function displayHumanAttestation(
-  attestation: HumanAttestation | HumanAttestationEventData | undefined,
-  source: 'event0' | 'legacy' | 'none'
-): Promise<boolean> {
-  if (source === 'event0') {
-    return displayHumanAttestations(attestation as HumanAttestationEventData, null, undefined);
-  } else if (source === 'legacy') {
-    return displayHumanAttestations(null, null, attestation as HumanAttestation);
-  } else {
-    return displayHumanAttestations(null, null, undefined);
-  }
 }
 
 /**
@@ -473,19 +438,95 @@ function displayPoSWStats(events: StoredEvent[], chainValid: boolean): void {
   }
 }
 
+/**
+ * Workerで計算済みのPoSW統計を表示
+ */
+function displayPoSWStatsFromPreVerified(
+  poswStats: { count: number; avgTimeMs: number; totalTimeMs: number; iterations: number },
+  chainValid: boolean
+): void {
+  // 表示を更新
+  if (chainValid) {
+    if (poswValidBadge) {
+      poswValidBadge.innerHTML = '✅ 検証済み';
+      poswValidBadge.className = 'badge success';
+    }
+    if (poswMessage) poswMessage.textContent = `全${poswStats.count}イベントのPoSWが検証されました`;
+  } else {
+    if (poswValidBadge) {
+      poswValidBadge.innerHTML = '❌ 検証失敗';
+      poswValidBadge.className = 'badge error';
+    }
+    if (poswMessage) poswMessage.textContent = 'ハッシュ鎖検証に失敗したためPoSWも無効';
+  }
+
+  // 統計を表示
+  if (poswIterationsEl) {
+    poswIterationsEl.textContent = `${poswStats.iterations.toLocaleString()}回/イベント`;
+  }
+  if (poswAvgTimeEl) {
+    poswAvgTimeEl.textContent = `${poswStats.avgTimeMs.toFixed(1)}ms`;
+  }
+  if (poswTotalTimeEl) {
+    poswTotalTimeEl.textContent = `${(poswStats.totalTimeMs / 1000).toFixed(2)}秒`;
+  }
+}
+
 // イベント数の上限（パフォーマンス保護）
 const MAX_EVENTS = 100000;
 
 /**
- * 証明データの検証
+ * 処理進捗イベントを発火
  */
-export async function verifyProofData(data: ProofFile): Promise<void> {
-  // メタデータ確認ログ
-  const metaLog = addLoadingLog('メタデータを確認中...');
-  await new Promise(r => setTimeout(r, 50)); // UI更新のための小さな遅延
+function emitProgress(phase: string, message: string, progress?: number): void {
+  window.dispatchEvent(new CustomEvent('verification-progress', {
+    detail: { phase, message, progress }
+  }));
+}
 
-  showVerifying();
-  updateLoadingLog(metaLog, 'success', `バージョン ${data.version ?? 'unknown'} を検出`);
+/** 検証済み結果（Workerから渡される場合） */
+export interface PreVerifiedResult {
+  metadataValid: boolean;
+  chainValid: boolean;
+  isPureTyping: boolean;
+  poswStats?: {
+    count: number;
+    avgTimeMs: number;
+    totalTimeMs: number;
+    iterations: number;
+  };
+  sampledResult?: {
+    sampledSegments: Array<{
+      startIndex: number;
+      endIndex: number;
+      eventCount: number;
+      startHash: string;
+      endHash: string;
+      verified: boolean;
+    }>;
+    totalSegments: number;
+    totalEventsVerified: number;
+    totalEvents: number;
+  };
+}
+
+/**
+ * 証明データの検証
+ * @param data 証明データ
+ * @param preVerified Workerで検証済みの結果（省略時は全て再検証）
+ */
+export async function verifyProofData(data: ProofFile, preVerified?: PreVerifiedResult): Promise<void> {
+  const skipChainVerification = preVerified !== undefined;
+
+  // preVerified がある場合は検証済みなので「検証中」表示をスキップ
+  if (!skipChainVerification) {
+    // メタデータ確認ログ
+    emitProgress('metadata', 'メタデータを確認中...', 0);
+    const metaLog = addLoadingLog('メタデータを確認中...');
+
+    showVerifying();
+    updateLoadingLog(metaLog, 'success', `バージョン ${data.version ?? 'unknown'} を検出`);
+  }
 
   // イベント数上限チェック
   if (data.proof?.events && data.proof.events.length > MAX_EVENTS) {
@@ -500,9 +541,13 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
     let metadataValid = false;
     let isPureTyping = false;
 
-    if (data.typingProofHash && data.typingProofData && data.content) {
+    if (skipChainVerification && preVerified) {
+      // Workerで検証済みの結果を使用
+      metadataValid = preVerified.metadataValid;
+      isPureTyping = preVerified.isPureTyping;
+      addLoadingLog('メタデータ: 検証済み', 'success');
+    } else if (data.typingProofHash && data.typingProofData && data.content) {
       const hashLog = addLoadingLog('メタデータ整合性を検証中...');
-      await new Promise(r => setTimeout(r, 50));
 
       const hashVerification = await typingProof.verifyTypingProofHash(
         data.typingProofHash,
@@ -518,7 +563,10 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
       } else {
         updateLoadingLog(hashLog, 'error', 'メタデータ: 不整合');
       }
+    }
 
+    // UI表示（検証済みでも必要）
+    if (data.typingProofHash && data.typingProofData && data.content) {
       if (isPureTyping) {
         if (pureTypingBadge) {
           pureTypingBadge.innerHTML = '✅ 純粋なタイピング';
@@ -555,25 +603,67 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
     let chainValid = false;
     let chainError: { message: string } | null = null;
 
-    if (data.proof?.events) {
+    if (skipChainVerification && preVerified) {
+      // Workerで検証済みの結果を使用（再検証をスキップ）
+      emitProgress('chain', 'ハッシュ鎖: 検証済み', 50);
+      chainValid = preVerified.chainValid;
+
+      const eventCount = data.proof?.events?.length ?? 0;
+      const hasCheckpoints = data.checkpoints && data.checkpoints.length > 0;
+
+      addLoadingLog(`ハッシュ鎖: ${eventCount} イベント 検証済み`, 'success');
+
+      if (chainValid) {
+        if (chainValidBadge) {
+          chainValidBadge.innerHTML = '✅ 有効';
+          chainValidBadge.className = 'badge success';
+        }
+        if (chainMessage) {
+          const modeInfo = hasCheckpoints
+            ? `サンプリング検証で${data.checkpoints!.length}チェックポイントを使用`
+            : '全イベントを検証';
+          chainMessage.textContent = `${modeInfo}して正常に検証されました`;
+        }
+      } else {
+        if (chainValidBadge) {
+          chainValidBadge.innerHTML = '❌ 無効';
+          chainValidBadge.className = 'badge error';
+        }
+        if (chainMessage) chainMessage.textContent = 'ハッシュ鎖の検証に失敗しました';
+        chainError = { message: 'ハッシュ鎖の検証に失敗しました' };
+      }
+
+      // サンプリング検証結果を表示
+      if (preVerified.sampledResult) {
+        displaySampledVerification(preVerified.sampledResult);
+      }
+
+      // PoSW統計を表示（Workerで計算済み）
+      emitProgress('posw', 'PoSW統計を表示中...', 60);
+      if (preVerified.poswStats && data.proof?.events) {
+        displayPoSWStatsFromPreVerified(preVerified.poswStats, chainValid);
+      }
+      addLoadingLog('PoSW: 検証済み', 'success');
+    } else if (data.proof?.events) {
+      // 通常の検証（Workerを使わない場合）
+      emitProgress('chain', 'ハッシュ鎖を検証中...', 20);
       const eventCount = data.proof.events.length;
       const hasCheckpoints = data.checkpoints && data.checkpoints.length > 0;
       const verificationMode = hasCheckpoints ? 'サンプリング' : '全件';
       const chainLog = addLoadingLogWithHash(`ハッシュ鎖を検証中 (${verificationMode})... (0/${eventCount})`);
-      await new Promise(r => setTimeout(r, 50));
 
       typingProof.events = data.proof.events;
       typingProof.currentHash = data.proof.finalHash;
 
       let chainVerification;
 
+      // DOM要素をキャッシュ（コールバック内での繰り返しquerySelector呼び出しを避ける）
+      const msgEl = chainLog.querySelector('.log-message');
+      const hashEl = chainLog.querySelector('.log-hash-display');
+
       if (hasCheckpoints) {
         // サンプリング検証（チェックポイントあり）
-        let currentPhase = '';
         const onSampledProgress = (phase: string, current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash?: string }): void => {
-          const msgEl = chainLog.querySelector('.log-message');
-          const hashEl = chainLog.querySelector('.log-hash-display');
-
           let phaseLabel = '';
           switch (phase) {
             case 'checkpoint':
@@ -593,9 +683,6 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
           }
 
           if (msgEl) {
-            if (phase !== currentPhase) {
-              currentPhase = phase;
-            }
             msgEl.textContent = `ハッシュ鎖を検証中 (${verificationMode})... ${phaseLabel}`;
           }
 
@@ -603,10 +690,6 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
             const shortHash = hashInfo.computed.substring(0, 16);
             const poswShort = hashInfo.poswHash?.substring(0, 12) ?? '-';
             hashEl.innerHTML = `<span class="hash-chain">${shortHash}...</span> <span class="hash-posw">PoSW:${poswShort}</span>`;
-
-            if (loadingLog.container) {
-              loadingLog.container.scrollTop = loadingLog.container.scrollHeight;
-            }
           }
         };
 
@@ -614,8 +697,6 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
       } else {
         // 全件検証（チェックポイントなし - 旧バージョン互換）
         const onProgress = (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }): void => {
-          const msgEl = chainLog.querySelector('.log-message');
-          const hashEl = chainLog.querySelector('.log-hash-display');
           if (msgEl) {
             const percent = Math.round((current / total) * 100);
             msgEl.textContent = `ハッシュ鎖を検証中 (${verificationMode})... (${current}/${total}) ${percent}%`;
@@ -624,10 +705,6 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
             const shortHash = hashInfo.computed.substring(0, 16);
             const poswShort = hashInfo.poswHash.substring(0, 12);
             hashEl.innerHTML = `<span class="hash-chain">${shortHash}...</span> <span class="hash-posw">PoSW:${poswShort}</span>`;
-
-            if (loadingLog.container) {
-              loadingLog.container.scrollTop = loadingLog.container.scrollHeight;
-            }
           }
         };
 
@@ -665,8 +742,8 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
       }
 
       // PoSW検証ログ
+      emitProgress('posw', 'PoSW統計を計算中...', 60);
       const poswLog = addLoadingLog('PoSW (Proof of Sequential Work) を検証中...');
-      await new Promise(r => setTimeout(r, 50));
 
       // 2b. PoSW統計を表示
       displayPoSWStats(data.proof.events, chainValid);
@@ -674,6 +751,7 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
     }
 
     // 3. 人間証明書の検証
+    emitProgress('attestation', '人間証明書を検証中...', 70);
     // イベント#0から作成時attestation、preExportAttestationからエクスポート時attestationを探す
     const createAttestation = data.proof?.events ? extractAttestationFromFirstEvent(data.proof.events) : null;
     const exportAttestation = data.proof?.events ? extractPreExportAttestation(data.proof.events) : null;
@@ -682,6 +760,7 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
     await displayHumanAttestations(createAttestation, exportAttestation, data.humanAttestation);
 
     // 4. メタデータ表示
+    emitProgress('display', 'データを表示中...', 80);
     if (versionEl) versionEl.textContent = data.version ?? '-';
     if (languageEl) languageEl.textContent = data.language ?? '-';
     if (timestampEl) timestampEl.textContent = data.metadata?.timestamp ?? '-';
@@ -695,12 +774,12 @@ export async function verifyProofData(data: ProofFile): Promise<void> {
     }
 
     // UIレンダリングログ
+    emitProgress('chart', '分析チャートを生成中...', 90);
     const uiLog = addLoadingLog('分析チャートを生成中...');
-    await new Promise(r => setTimeout(r, 50));
-
     updateLoadingLog(uiLog, 'success', 'チャート生成完了');
 
     // 検証完了ログ
+    emitProgress('complete', '完了', 100);
     addLoadingLog('検証完了', 'success');
 
     // 検証完了後に結果セクションを表示（チャート描画前に表示が必要）

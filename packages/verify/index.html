@@ -9,162 +9,195 @@
   <link rel="icon" href="/favicon.png" type="image/png">
 </head>
 <body>
-  <div class="dashboard-container">
-    <!-- メインコンテンツ -->
-    <main class="dashboard-main">
-      <!-- 初期状態: ドロップゾーン (中央表示) -->
-      <section class="drop-zone-section" id="drop-zone-section">
-        <div class="drop-zone" id="drop-zone">
-          <div class="drop-zone-content">
-            <div class="icon">📁</div>
-            <h2>証明ファイルをドロップ</h2>
-            <p>typedcode-proof-*.json をドラッグ&ドロップ</p>
-            <label class="drop-zone-btn" for="file-input">
-              ファイルを選択
-              <input type="file" id="file-input" accept=".json" style="display: none;">
-            </label>
-          </div>
+  <div class="verify-container">
+    <!-- 初期状態: ドロップゾーン (中央表示) -->
+    <section class="drop-zone-section" id="drop-zone-section">
+      <div class="drop-zone" id="drop-zone">
+        <div class="drop-zone-content">
+          <div class="icon">📁</div>
+          <h2>証明ファイルをドロップ</h2>
+          <p>JSON または ZIP ファイルをドラッグ&ドロップ</p>
+          <p class="drop-zone-hint">単体の .json ファイル、または複数ファイルを含む .zip に対応</p>
+          <label class="drop-zone-btn" for="file-input">
+            ファイルを選択
+            <input type="file" id="file-input" accept=".json,.zip" style="display: none;">
+          </label>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- 検証結果: 左右2分割 -->
-      <section class="result-section" id="result-section" style="display: none;">
-        <!-- 左側パネル: 情報 + グラフ -->
-        <div class="left-panel">
-          <!-- ステータス -->
-          <div class="status-bar" id="status-card">
-            <span class="status-icon" id="status-icon"></span>
-            <span class="status-text" id="status-title">検証中...</span>
-          </div>
-
-          <!-- 検証結果テーブル -->
-          <div class="info-section">
-            <table class="result-table">
-              <tbody>
-                <tr>
-                  <th>タイピング</th>
-                  <td><span class="badge-inline" id="pure-typing-badge">-</span> <span class="text-muted" id="paste-info"></span></td>
-                </tr>
-                <tr>
-                  <th>ハッシュ鎖</th>
-                  <td><span class="badge-inline" id="chain-valid-badge">-</span> <span class="text-muted" id="chain-message"></span></td>
-                </tr>
-                <tr>
-                  <th>PoSW</th>
-                  <td><span class="badge-inline" id="posw-valid-badge">-</span> <span class="text-muted" id="posw-message"></span></td>
-                </tr>
-                <tr id="human-attestation-section" style="display: none;">
-                  <th>人間証明</th>
-                  <td>
-                    <div class="attestation-list">
-                      <!-- 作成時認証 (event #0) -->
-                      <div class="attestation-item" id="create-attestation-item" style="display: none;">
-                        <span class="badge-inline" id="create-attestation-badge">-</span>
-                        <span class="attestation-label">作成時</span>
-                        <span class="attestation-time text-muted" id="create-attestation-time"></span>
-                      </div>
-                      <!-- エクスポート前認証 -->
-                      <div class="attestation-item" id="export-attestation-item" style="display: none;">
-                        <span class="badge-inline" id="export-attestation-badge">-</span>
-                        <span class="attestation-label">エクスポート時</span>
-                        <span class="attestation-time text-muted" id="export-attestation-time"></span>
-                      </div>
-                      <!-- 認証なし or 旧形式 -->
-                      <div class="attestation-item" id="legacy-attestation-item" style="display: none;">
-                        <span class="badge-inline" id="human-attestation-badge">-</span>
-                        <span class="text-muted" id="human-attestation-message"></span>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-
-            <!-- 統計 -->
-            <div class="stats-compact">
-              <span><strong id="total-events">-</strong> events</span>
-              <span><strong id="typing-time">-</strong></span>
-              <span><strong id="typing-speed">-</strong></span>
-            </div>
-
-            <!-- メタデータ -->
-            <div class="meta-compact">
-              v<span id="version">-</span> | <span id="language">-</span> | <span id="timestamp">-</span>
-            </div>
-
-            <!-- 非表示要素 -->
-            <div style="display: none;">
-              <span id="insert-events">-</span>
-              <span id="delete-events">-</span>
-              <span id="device-id">-</span>
-              <span id="user-agent">-</span>
-              <span id="posw-iterations">-</span>
-              <span id="posw-avg-time">-</span>
-              <span id="posw-total-time">-</span>
-              <span id="human-attestation-score">-</span>
-              <span id="human-attestation-timestamp">-</span>
-              <span id="human-attestation-hostname">-</span>
-              <div id="sampled-verification"><div id="sampled-summary"></div><div id="sampled-segments"></div></div>
-            </div>
-
-            <!-- 外部入力 -->
-            <div class="external-input-section" id="external-input-preview" style="display: none;">
-              <strong>外部入力:</strong>
-              <div id="external-input-list"></div>
+    <!-- メインUI: サイドバー + コンテンツ -->
+    <section class="verify-main" id="verify-main" style="display: none;">
+      <div class="verify-main-container">
+        <!-- サイドバー: ファイルリスト -->
+        <div class="verify-sidebar" id="verify-sidebar">
+          <div class="sidebar-header">
+            <h3>証明ファイル</h3>
+            <div class="sidebar-actions">
+              <label class="sidebar-action-btn" for="file-input-2" title="ファイルを追加">
+                <i class="fas fa-plus"></i>
+              </label>
+              <input type="file" id="file-input-2" accept=".json,.zip" style="display: none;">
+              <a href="/" class="sidebar-action-btn" title="エディタに戻る">
+                <i class="fas fa-arrow-left"></i>
+              </a>
             </div>
           </div>
+          <div class="verify-file-list" id="verify-file-list"></div>
+        </div>
 
-          <!-- グラフ: タブ切り替え -->
-          <div class="chart-section">
-            <div class="chart-tabs">
-              <button class="chart-tab active" data-tab="timeline" id="tab-timeline">
-                <i class="fas fa-keyboard"></i> キー入力
-              </button>
-              <button class="chart-tab" data-tab="mouse" id="tab-mouse">
-                <i class="fas fa-mouse"></i> マウス軌跡
-              </button>
+        <!-- リサイズハンドル -->
+        <div class="resize-handle" id="resize-handle"></div>
+
+        <!-- メインコンテンツエリア -->
+        <div class="verify-content-area">
+          <!-- タブコンテンツパネル -->
+      <div class="tab-content-panel" id="tab-content-panel">
+        <!-- 検証待ち表示 -->
+        <div class="tab-content-loading" id="tab-content-loading" style="display: none;">
+          <div class="loading-spinner"></div>
+          <p>検証中...</p>
+        </div>
+
+        <!-- 検証結果: 左右2分割 -->
+        <div class="result-section" id="result-section" style="display: none;">
+          <!-- 左側パネル: 情報 + グラフ -->
+          <div class="left-panel">
+            <!-- ステータス -->
+            <div class="status-bar" id="status-card">
+              <span class="status-icon" id="status-icon"></span>
+              <span class="status-text" id="status-title">検証中...</span>
             </div>
-            <div class="chart-content">
-              <div class="chart-panel active" id="panel-timeline">
-                <div class="integrated-timeline" id="integrated-timeline">
-                  <canvas id="integrated-timeline-chart"></canvas>
+
+            <!-- 検証結果テーブル -->
+            <div class="info-section">
+              <table class="result-table">
+                <tbody>
+                  <tr>
+                    <th>タイピング</th>
+                    <td><span class="badge-inline" id="pure-typing-badge">-</span> <span class="text-muted" id="paste-info"></span></td>
+                  </tr>
+                  <tr>
+                    <th>ハッシュ鎖</th>
+                    <td><span class="badge-inline" id="chain-valid-badge">-</span> <span class="text-muted" id="chain-message"></span></td>
+                  </tr>
+                  <tr>
+                    <th>PoSW</th>
+                    <td><span class="badge-inline" id="posw-valid-badge">-</span> <span class="text-muted" id="posw-message"></span></td>
+                  </tr>
+                  <tr id="human-attestation-section" style="display: none;">
+                    <th>人間証明</th>
+                    <td>
+                      <div class="attestation-list">
+                        <!-- 作成時認証 (event #0) -->
+                        <div class="attestation-item" id="create-attestation-item" style="display: none;">
+                          <span class="badge-inline" id="create-attestation-badge">-</span>
+                          <span class="attestation-label">作成時</span>
+                          <span class="attestation-time text-muted" id="create-attestation-time"></span>
+                        </div>
+                        <!-- エクスポート前認証 -->
+                        <div class="attestation-item" id="export-attestation-item" style="display: none;">
+                          <span class="badge-inline" id="export-attestation-badge">-</span>
+                          <span class="attestation-label">エクスポート時</span>
+                          <span class="attestation-time text-muted" id="export-attestation-time"></span>
+                        </div>
+                        <!-- 認証なし or 旧形式 -->
+                        <div class="attestation-item" id="legacy-attestation-item" style="display: none;">
+                          <span class="badge-inline" id="human-attestation-badge">-</span>
+                          <span class="text-muted" id="human-attestation-message"></span>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <!-- 統計 -->
+              <div class="stats-compact">
+                <span><strong id="total-events">-</strong> events</span>
+                <span><strong id="typing-time">-</strong></span>
+                <span><strong id="typing-speed">-</strong></span>
+              </div>
+
+              <!-- メタデータ -->
+              <div class="meta-compact">
+                v<span id="version">-</span> | <span id="language">-</span> | <span id="timestamp">-</span>
+              </div>
+
+              <!-- 非表示要素 -->
+              <div style="display: none;">
+                <span id="insert-events">-</span>
+                <span id="delete-events">-</span>
+                <span id="device-id">-</span>
+                <span id="user-agent">-</span>
+                <span id="posw-iterations">-</span>
+                <span id="posw-avg-time">-</span>
+                <span id="posw-total-time">-</span>
+                <span id="human-attestation-score">-</span>
+                <span id="human-attestation-timestamp">-</span>
+                <span id="human-attestation-hostname">-</span>
+                <div id="sampled-verification"><div id="sampled-summary"></div><div id="sampled-segments"></div></div>
+              </div>
+
+              <!-- 外部入力 -->
+              <div class="external-input-section" id="external-input-preview" style="display: none;">
+                <strong>外部入力:</strong>
+                <div id="external-input-list"></div>
+              </div>
+            </div>
+
+            <!-- グラフ: タブ切り替え -->
+            <div class="chart-section">
+              <div class="chart-tabs">
+                <button class="chart-tab active" data-tab="timeline" id="tab-timeline">
+                  <i class="fas fa-keyboard"></i> キー入力
+                </button>
+                <button class="chart-tab" data-tab="mouse" id="tab-mouse">
+                  <i class="fas fa-mouse"></i> マウス軌跡
+                </button>
+              </div>
+              <div class="chart-content">
+                <div class="chart-panel active" id="panel-timeline">
+                  <div class="integrated-timeline" id="integrated-timeline">
+                    <canvas id="integrated-timeline-chart"></canvas>
+                  </div>
+                </div>
+                <div class="chart-panel" id="panel-mouse">
+                  <div class="mouse-trajectory" id="mouse-trajectory-section">
+                    <canvas id="mouse-trajectory-chart"></canvas>
+                  </div>
                 </div>
               </div>
-              <div class="chart-panel" id="panel-mouse">
-                <div class="mouse-trajectory" id="mouse-trajectory-section">
-                  <canvas id="mouse-trajectory-chart"></canvas>
-                </div>
+              <!-- 統計情報 -->
+              <div class="chart-stats">
+                <span>キー: <strong id="keydown-count">0</strong></span>
+                <span>Dwell: <strong id="avg-dwell-time">0ms</strong></span>
+                <span>Flight: <strong id="avg-flight-time">0ms</strong></span>
+                <span>マウス: <strong id="mouse-event-count">0</strong></span>
+                <span>フォーカス: <strong id="focus-event-count">0</strong></span>
+                <span>タブ: <strong id="visibility-event-count">0</strong></span>
               </div>
             </div>
-            <!-- 統計情報 -->
-            <div class="chart-stats">
-              <span>キー: <strong id="keydown-count">0</strong></span>
-              <span>Dwell: <strong id="avg-dwell-time">0ms</strong></span>
-              <span>Flight: <strong id="avg-flight-time">0ms</strong></span>
-              <span>マウス: <strong id="mouse-event-count">0</strong></span>
-              <span>フォーカス: <strong id="focus-event-count">0</strong></span>
-              <span>タブ: <strong id="visibility-event-count">0</strong></span>
-            </div>
           </div>
 
-          <!-- アクション -->
-          <div class="panel-actions">
-            <label class="action-btn" for="file-input-2" title="別のファイルを検証">
-              <i class="fas fa-folder-open"></i>
-            </label>
-            <input type="file" id="file-input-2" accept=".json" style="display: none;">
-            <a href="/" class="action-btn" title="エディタに戻る">
-              <i class="fas fa-arrow-left"></i>
-            </a>
+          <!-- 右側パネル: コードプレビュー -->
+          <div class="right-panel">
+            <pre id="content-preview"><code></code></pre>
           </div>
         </div>
+      </div>
+        </div><!-- /verify-content-area -->
+      </div><!-- /verify-main-container -->
+    </section>
 
-        <!-- 右側パネル: コードプレビュー -->
-        <div class="right-panel">
-          <pre id="content-preview"><code></code></pre>
-        </div>
-      </section>
-    </main>
+    <!-- ステータスバー -->
+    <footer class="verify-statusbar" id="verify-statusbar" style="display: none;">
+      <div class="statusbar-left">
+        <span id="queue-status">処理待ち: 0件</span>
+        <span class="status-separator">|</span>
+        <span id="current-status">-</span>
+      </div>
+    </footer>
 
     <!-- フローティングシークバー (QuickTime風) -->
     <div class="floating-seekbar" id="floating-seekbar" style="display: none;">
@@ -189,6 +222,21 @@
       </div>
       <div class="seek-time" id="seekbar-time">0:00</div>
       <div class="seek-count" id="seekbar-event-count">0/0</div>
+    </div>
+  </div>
+
+  <!-- 処理中ダイアログ -->
+  <div class="processing-dialog-overlay" id="processing-dialog" style="display: none;">
+    <div class="processing-dialog">
+      <div class="dialog-spinner"></div>
+      <h3 class="dialog-title" id="dialog-title">データを読み込み中...</h3>
+      <p class="dialog-message" id="dialog-message">しばらくお待ちください</p>
+      <div class="dialog-progress">
+        <div class="progress-bar">
+          <div class="progress-fill" id="dialog-progress-fill"></div>
+        </div>
+        <span class="progress-text" id="dialog-progress-text"></span>
+      </div>
     </div>
   </div>
 

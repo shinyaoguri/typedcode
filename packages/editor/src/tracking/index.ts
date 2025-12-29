@@ -17,3 +17,17 @@ export {
   type MouseEventCallback,
   type MouseTrackerOptions,
 } from './MouseTracker.js';
+
+export { InputDetector } from './InputDetector.js';
+export { OperationDetector } from './OperationDetector.js';
+export { WindowTracker } from './WindowTracker.js';
+export { VisibilityTracker } from './VisibilityTracker.js';
+export {
+  NetworkTracker,
+  type NetworkTrackerEvent,
+  type NetworkTrackerCallback,
+} from './NetworkTracker.js';
+export {
+  initializeTrackers,
+  type RecordEventCallback,
+} from './TrackersInitializer.js';

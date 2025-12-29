@@ -24,6 +24,7 @@ export class TerminalPanel {
   private onVisibilityChange: ((visible: boolean) => void) | null = null;
   private onFit: (() => void) | null = null;
   private initialized = false;
+  private _isTerminalAvailable = true;
 
   // リサイズ状態
   private isResizing = false;
@@ -198,6 +199,28 @@ export class TerminalPanel {
    */
   get isVisible(): boolean {
     return this.panel?.classList.contains('visible') ?? false;
+  }
+
+  /**
+   * ターミナルが利用可能かどうかを取得
+   */
+  get isTerminalAvailable(): boolean {
+    return this._isTerminalAvailable;
+  }
+
+  /**
+   * ターミナルの利用可否を設定
+   * 利用不可の場合、パネルに 'terminal-unavailable' クラスを追加
+   */
+  setTerminalAvailable(available: boolean): void {
+    this._isTerminalAvailable = available;
+    if (this.panel) {
+      if (available) {
+        this.panel.classList.remove('terminal-unavailable');
+      } else {
+        this.panel.classList.add('terminal-unavailable');
+      }
+    }
   }
 
   /**

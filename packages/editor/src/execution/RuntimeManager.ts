@@ -5,6 +5,10 @@
 
 import { getCExecutor } from '../executors/c/CExecutor.js';
 import type { InitializationProgress } from '../executors/interfaces/ILanguageExecutor.js';
+import {
+  SUPPORTED_LANGUAGES,
+  type LanguageId,
+} from '../config/SupportedLanguages.js';
 
 /** ランタイム状態 */
 export type RuntimeState = 'not-ready' | 'loading' | 'ready';
@@ -13,26 +17,43 @@ export type RuntimeState = 'not-ready' | 'loading' | 'ready';
 const EXECUTION_DISCLAIMER =
   '※ ブラウザ上の簡易実行環境です。ローカル環境と動作が異なる場合があります。';
 
+/** ブラウザ内蔵で常にreadyな言語 */
+const BROWSER_NATIVE_LANGUAGES: LanguageId[] = ['javascript', 'typescript'];
+
 export interface RuntimeManagerCallbacks {
   onStatusChange?: (language: string, state: RuntimeState) => void;
 }
 
-export class RuntimeManager {
-  private status: Record<string, RuntimeState> = {
-    c: 'not-ready',
-    cpp: 'not-ready',
-    javascript: 'ready', // ブラウザ内蔵なので常にready
-    typescript: 'ready', // ブラウザ内蔵なので常にready
-    python: 'not-ready',
-  };
+/**
+ * 実行可能な言語の初期ステータスを生成
+ */
+function createInitialStatus(): Record<string, RuntimeState> {
+  const status: Record<string, RuntimeState> = {};
+  for (const lang of SUPPORTED_LANGUAGES) {
+    if (lang.executable) {
+      status[lang.id] = BROWSER_NATIVE_LANGUAGES.includes(lang.id) ? 'ready' : 'not-ready';
+    }
+  }
+  return status;
+}
 
-  private displayNames: Record<string, string> = {
-    c: 'Clang',
-    cpp: 'Clang',
-    javascript: 'Browser JS',
-    typescript: 'TS Compiler',
-    python: 'Pyodide',
-  };
+/**
+ * 実行可能な言語のランタイム表示名を生成
+ */
+function createDisplayNames(): Record<string, string> {
+  const names: Record<string, string> = {};
+  for (const lang of SUPPORTED_LANGUAGES) {
+    if (lang.executable && lang.runtimeName) {
+      names[lang.id] = lang.runtimeName;
+    }
+  }
+  return names;
+}
+
+export class RuntimeManager {
+  private status: Record<string, RuntimeState> = createInitialStatus();
+
+  private displayNames: Record<string, string> = createDisplayNames();
 
   private callbacks: RuntimeManagerCallbacks = {};
 
@@ -110,6 +131,15 @@ export class RuntimeManager {
           'Pyodide (CPython WASM) で実行 |',
           'NumPy/Pandas等は自動インストール | 60秒タイムアウト',
           EXECUTION_DISCLAIMER,
+        ];
+      case 'html':
+      case 'css':
+      case 'plaintext':
+        return [
+          'ターミナルは使用できません',
+          '',
+          'この言語はコード実行に対応していません。',
+          '実行可能な言語: C, C++, JavaScript, TypeScript, Python',
         ];
       default:
         return [

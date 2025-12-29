@@ -24,6 +24,7 @@ export type EventType =
   | 'keyDown'
   | 'keyUp'
   | 'windowResize'
+  | 'networkStatusChange'  // ネットワーク状態変更（オンライン/オフライン）
   | 'codeExecution'  // コード実行（コンパイル＋実行の開始）
   | 'terminalInput';  // ターミナルへの入力（行単位）
 
@@ -115,6 +116,11 @@ export interface WindowSizeData {
   screenY: number;       // window.screenY（スクリーン上の位置）
 }
 
+/** ネットワーク状態データ */
+export interface NetworkStatusData {
+  online: boolean;       // navigator.onLine
+}
+
 /** 認証失敗の理由 */
 export type VerificationFailureReason =
   | 'challenge_failed'
@@ -173,7 +179,7 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | HumanAttestationEventData | TermsAcceptedData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -193,7 +199,7 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | HumanAttestationEventData | TermsAcceptedData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;
@@ -498,7 +504,7 @@ export interface SeekbarEventInfo {
   type: EventType;
   inputType: InputType | null;
   timestamp: number;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | HumanAttestationEventData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | null;
   dataLength: number;
   dataPreview: string | null;
   rangeOffset: number | null;

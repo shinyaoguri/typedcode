@@ -12,6 +12,7 @@ import { InputDetector } from './tracking/InputDetector.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
+import { initializeTrackers } from './tracking/TrackersInitializer.js';
 import { LogViewer } from './ui/components/LogViewer.js';
 import { ThemeManager } from './editor/ThemeManager.js';
 import { TabManager } from './ui/tabs/TabManager.js';
@@ -24,101 +25,140 @@ import { CTerminal } from './terminal/CTerminal.js';
 import type { ParsedError } from './executors/c/CExecutor.js';
 import '@xterm/xterm/css/xterm.css';
 
-// 新しいモジュールのインポート
-import { configureMonacoWorkers } from './app/MonacoConfig.js';
+// モジュールのインポート
+import { configureMonacoWorkers } from './config/MonacoConfig.js';
 import { WindowTracker } from './tracking/WindowTracker.js';
 import { VisibilityTracker } from './tracking/VisibilityTracker.js';
+import { NetworkTracker } from './tracking/NetworkTracker.js';
 import { ProcessingDialog } from './ui/components/ProcessingDialog.js';
 import { ProofStatusDisplay } from './ui/components/ProofStatusDisplay.js';
 import { CursorTracker } from './editor/CursorTracker.js';
 import { EditorController } from './editor/EditorController.js';
 import { SettingsDropdown } from './ui/components/SettingsDropdown.js';
-import { TerminalPanel } from './ui/panels/TerminalPanel.js';
+import { TerminalPanel } from './ui/components/TerminalPanel.js';
 import { CodeExecutionController } from './execution/CodeExecutionController.js';
 import { ProofExporter } from './export/ProofExporter.js';
-import { RuntimeManager } from './core/RuntimeManager.js';
+import { RuntimeManager } from './execution/RuntimeManager.js';
 import { TabUIController } from './ui/tabs/TabUIController.js';
-import { LogViewerPanel } from './ui/panels/LogViewerPanel.js';
+import { LogViewerPanel } from './ui/components/LogViewerPanel.js';
 import { EventRecorder } from './core/EventRecorder.js';
+import type { AppContext } from './core/AppContext.js';
+import { isLanguageExecutable } from './config/SupportedLanguages.js';
 
 // Monaco Editor の Worker 設定
 configureMonacoWorkers();
 
-// 操作検出器の初期化
-const operationDetector = new OperationDetector();
-
-// TabManager（initializeApp後に初期化）
-let tabManager: TabManager | null = null;
-
-// ログビューアの初期化（DOMContentLoaded後に行う）
-let logViewer: LogViewer | null = null;
-
-// 新しいトラッカーのインスタンス
-const windowTracker = new WindowTracker();
-const visibilityTracker = new VisibilityTracker();
-const keystrokeTracker = new KeystrokeTracker();
-const mouseTracker = new MouseTracker({ throttleMs: 100 });
-
-// ProcessingDialogとProofStatusDisplayのインスタンス
-const processingDialog = new ProcessingDialog();
-const proofStatusDisplay = new ProofStatusDisplay();
-
-// CursorTrackerとEditorControllerのインスタンス
-const cursorTracker = new CursorTracker({
-  onCursorPositionUpdate: (lineNumber, column) => {
-    const lineEl = document.getElementById('cursor-line');
-    const colEl = document.getElementById('cursor-col');
-    if (lineEl) lineEl.textContent = String(lineNumber);
-    if (colEl) colEl.textContent = String(column);
-  },
-});
-const editorController = new EditorController({
-  operationDetector,
-  debug: import.meta.env.DEV,
-});
-
-// SettingsDropdownとTerminalPanelのインスタンス
-const settingsDropdown = new SettingsDropdown();
-const terminalPanelController = new TerminalPanel();
-
-// CodeExecutionControllerのインスタンス
-const codeExecutionController = new CodeExecutionController();
-
-// ProofExporterのインスタンス
-const proofExporter = new ProofExporter();
-
-// RuntimeManagerのインスタンス
-const runtimeManager = new RuntimeManager();
-
-// ページ離脱確認を無効化するフラグ（リセット時に使用）
-let skipBeforeUnload = false;
-
-// ターミナル・実行環境
-let cTerminal: CTerminal | null = null;
-
-// EventRecorder（initializeApp後に初期化）
-let eventRecorder: EventRecorder | null = null;
-
-// 利用規約関連
+// 利用規約関連の定数
 const TERMS_ACCEPTED_KEY = 'typedcode-terms-accepted';
-const TERMS_VERSION = '1.0';  // バージョン管理（規約変更時に再同意を求める）
+const TERMS_VERSION = '1.0';
 
-/**
- * ターミナルに言語説明を表示
- */
-function showLanguageDescriptionInTerminal(language: string): void {
-  if (!cTerminal) return;
-  cTerminal.clear();
-  const langDesc = runtimeManager.getLanguageDescription(language);
-  for (const line of langDesc) {
-    cTerminal.writeLine(line);
-  }
-  cTerminal.writeLine('');
+// DOM要素の取得
+const editorContainer = document.getElementById('editor');
+if (!editorContainer) {
+  throw new Error('Editor container not found');
 }
 
-/**
- * 利用規約に同意済みかチェック
- */
+// エディタの初期化
+const editor: MonacoEditor = monaco.editor.create(editorContainer, {
+  value: '',
+  language: 'c',
+  theme: 'vs-dark',
+  automaticLayout: true,
+  minimap: { enabled: true },
+  fontSize: 14,
+  lineNumbers: 'on',
+  scrollBeyondLastLine: false,
+  wordWrap: 'on',
+  wrappingIndent: 'indent',
+});
+
+// アプリケーションコンテキストの初期化
+const ctx: AppContext = {
+  // Monaco Editor
+  editor,
+  themeManager: new ThemeManager(editor),
+
+  // Tab Management (後で初期化)
+  tabManager: null,
+  tabUIController: null,
+
+  // Logging (後で初期化)
+  logViewer: null,
+
+  // Trackers
+  trackers: {
+    window: new WindowTracker(),
+    visibility: new VisibilityTracker(),
+    keystroke: new KeystrokeTracker(),
+    mouse: new MouseTracker({ throttleMs: 100 }),
+    network: new NetworkTracker(),
+    cursor: new CursorTracker({
+      onCursorPositionUpdate: (lineNumber, column) => {
+        const lineEl = document.getElementById('cursor-line');
+        const colEl = document.getElementById('cursor-col');
+        if (lineEl) lineEl.textContent = String(lineNumber);
+        if (colEl) colEl.textContent = String(column);
+      },
+    }),
+    operation: new OperationDetector(),
+  },
+  editorController: new EditorController({
+    operationDetector: new OperationDetector(),
+    debug: import.meta.env.DEV,
+  }),
+
+  // Terminal & Execution
+  terminal: null,
+  codeExecution: new CodeExecutionController(),
+  runtime: new RuntimeManager(),
+
+  // Recording
+  eventRecorder: null,
+  proofExporter: new ProofExporter(),
+
+  // UI Dialogs & Controls
+  processingDialog: new ProcessingDialog(),
+  proofStatusDisplay: new ProofStatusDisplay(),
+  settingsDropdown: new SettingsDropdown(),
+  terminalPanel: new TerminalPanel(),
+
+  // Flags
+  skipBeforeUnload: false,
+};
+
+// ========================================
+// ユーティリティ関数
+// ========================================
+
+function showNotification(message: string): void {
+  const blockNotificationEl = document.getElementById('block-notification');
+  const blockMessageEl = document.getElementById('block-message');
+  if (blockMessageEl) blockMessageEl.textContent = message;
+  blockNotificationEl?.classList.remove('hidden');
+  setTimeout(() => {
+    blockNotificationEl?.classList.add('hidden');
+  }, 2000);
+}
+
+function showLanguageDescriptionInTerminal(language: string): void {
+  if (!ctx.terminal) return;
+  ctx.terminal.clear();
+
+  // 言語の実行可否に応じてターミナルパネルの状態を更新
+  const executable = isLanguageExecutable(language);
+  ctx.terminalPanel.setTerminalAvailable(executable);
+
+  const langDesc = ctx.runtime.getLanguageDescription(language);
+  for (const line of langDesc) {
+    ctx.terminal.writeLine(line);
+  }
+  ctx.terminal.writeLine('');
+}
+
+function updateProofStatus(): void {
+  ctx.proofStatusDisplay.update();
+}
+
 function hasAcceptedTerms(): boolean {
   const accepted = localStorage.getItem(TERMS_ACCEPTED_KEY);
   if (!accepted) return false;
@@ -130,9 +170,6 @@ function hasAcceptedTerms(): boolean {
   }
 }
 
-/**
- * 利用規約モーダルを表示
- */
 async function showTermsModal(): Promise<void> {
   const termsModal = document.getElementById('terms-modal');
   const termsAgreeCheckbox = document.getElementById('terms-agree-checkbox') as HTMLInputElement | null;
@@ -152,18 +189,13 @@ async function showTermsModal(): Promise<void> {
 
     const handleAgree = (): void => {
       const timestamp = Date.now();
-
-      // localStorageに保存
       localStorage.setItem(TERMS_ACCEPTED_KEY, JSON.stringify({
         version: TERMS_VERSION,
         timestamp,
-        agreedAt: new Date(timestamp).toISOString()
+        agreedAt: new Date(timestamp).toISOString(),
       }));
-
-      // イベントリスナーをクリーンアップ
       termsAgreeCheckbox.removeEventListener('change', handleCheckboxChange);
       termsAgreeBtn.removeEventListener('click', handleAgree);
-
       termsModal.classList.add('hidden');
       console.log('[TypedCode] Terms accepted at', new Date(timestamp).toISOString());
       resolve();
@@ -174,214 +206,10 @@ async function showTermsModal(): Promise<void> {
   });
 }
 
-// UI要素の取得
-const blockNotificationEl = document.getElementById('block-notification');
-const blockMessageEl = document.getElementById('block-message');
+// ========================================
+// 初期化オーバーレイ
+// ========================================
 
-// タブ要素
-const addTabBtn = document.getElementById('add-tab-btn');
-
-// 通知を表示
-function showNotification(message: string): void {
-  if (blockMessageEl) blockMessageEl.textContent = message;
-  blockNotificationEl?.classList.remove('hidden');
-
-  setTimeout(() => {
-    blockNotificationEl?.classList.add('hidden');
-  }, 2000);
-}
-
-// エディタの初期化
-const editorContainer = document.getElementById('editor');
-if (!editorContainer) {
-  throw new Error('Editor container not found');
-}
-
-const editor: MonacoEditor = monaco.editor.create(editorContainer, {
-  value: '',
-  language: 'c',
-  theme: 'vs-dark',
-  automaticLayout: true,
-  minimap: {
-    enabled: true
-  },
-  fontSize: 14,
-  lineNumbers: 'on',
-  scrollBeyondLastLine: false,
-  wordWrap: 'on',
-  wrappingIndent: 'indent'
-});
-
-// テーマ管理の初期化
-const themeManager = new ThemeManager(editor);
-
-// TabUIControllerのインスタンス（initializeApp内で初期化）
-let tabUIController: TabUIController | null = null;
-
-// 言語切り替え
-const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
-if (languageSelector) {
-  languageSelector.addEventListener('change', (e) => {
-    const target = e.target as HTMLSelectElement;
-    const activeTab = tabManager?.getActiveTab();
-    if (activeTab) {
-      tabManager?.setTabLanguage(activeTab.id, target.value);
-      tabUIController?.updateUI();
-      // 言語切り替え時にターミナルに説明を表示
-      showLanguageDescriptionInTerminal(target.value);
-      // ランタイムインジケーターを更新
-      runtimeManager.updateIndicator(target.value);
-    }
-  });
-}
-
-// 新規タブ追加ボタン
-addTabBtn?.addEventListener('click', async () => {
-  if (!tabManager) return;
-
-  // Turnstile設定時は認証中メッセージを表示
-  if (isTurnstileConfigured()) {
-    showNotification('人間認証を実行中...');
-  }
-
-  const num = tabUIController?.getNextUntitledNumber() ?? 1;
-  const newTab = await tabManager.createTab(`Untitled-${num}`, 'c', '');
-
-  if (!newTab) {
-    // Turnstile失敗時
-    showNotification('認証に失敗しました。もう一度お試しください。');
-    return;
-  }
-
-  await tabManager.switchTab(newTab.id);
-  showNotification('新しいタブを作成しました');
-});
-
-// 入力検出器の初期化
-new InputDetector(document.body, async (detectedEvent: DetectedEvent) => {
-  showNotification(detectedEvent.message);
-  console.log('[TypedCode] Detected operation:', detectedEvent);
-
-  // コピペやドロップをログに記録
-  if (detectedEvent.type === 'paste' || detectedEvent.type === 'drop') {
-    const position: CursorPosition | null = editor.getPosition();
-
-    if (position) {
-      const event: RecordEventInput = {
-        type: 'externalInput',
-        inputType: detectedEvent.type === 'paste' ? 'insertFromPaste' : 'insertFromDrop',
-        data: detectedEvent.data.text,
-        rangeLength: detectedEvent.data.length,
-        range: {
-          startLineNumber: position.lineNumber,
-          startColumn: position.column,
-          endLineNumber: position.lineNumber,
-          endColumn: position.column
-        },
-        description: detectedEvent.type === 'paste' ?
-          `ペースト（${detectedEvent.data.length}文字）` :
-          `ドロップ（${detectedEvent.data.length}文字）`
-      };
-
-      eventRecorder?.record(event);
-    }
-  }
-});
-
-// リセット機能
-const resetBtn = document.getElementById('reset-btn');
-const resetDialog = document.getElementById('reset-dialog');
-const resetCancelBtn = document.getElementById('reset-cancel-btn');
-const resetConfirmBtn = document.getElementById('reset-confirm-btn');
-
-// ダイアログを表示
-resetBtn?.addEventListener('click', () => {
-  // ドロップダウンを閉じる
-  document.getElementById('settings-dropdown')?.classList.remove('visible');
-  // ダイアログを表示
-  resetDialog?.classList.remove('hidden');
-});
-
-// キャンセル
-resetCancelBtn?.addEventListener('click', () => {
-  resetDialog?.classList.add('hidden');
-});
-
-// オーバーレイクリックでキャンセル
-resetDialog?.addEventListener('click', (e) => {
-  if (e.target === resetDialog) {
-    resetDialog.classList.add('hidden');
-  }
-});
-
-// ESCキーでキャンセル
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !resetDialog?.classList.contains('hidden')) {
-    resetDialog?.classList.add('hidden');
-  }
-});
-
-// リセット実行
-resetConfirmBtn?.addEventListener('click', () => {
-  // ダイアログを閉じる
-  resetDialog?.classList.add('hidden');
-
-  // localStorageを完全にクリア
-  localStorage.clear();
-
-  // beforeunloadを無効化してリロード
-  skipBeforeUnload = true;
-  window.location.reload();
-});
-
-// ページ離脱時の確認ダイアログ（VSCode風）
-window.addEventListener('beforeunload', (e) => {
-  // リセット時はスキップ
-  if (skipBeforeUnload) return;
-
-  // データがある場合のみ確認
-  const activeProof = tabManager?.getActiveProof();
-  if (activeProof && activeProof.events.length > 0) {
-    e.preventDefault();
-  }
-});
-
-// ダウンロード機能（アクティブタブのコードのみ）
-const downloadBtn = document.getElementById('download-btn');
-downloadBtn?.addEventListener('click', () => {
-  const activeTab = tabManager?.getActiveTab();
-  if (!activeTab) return;
-
-  const content = activeTab.model.getValue();
-  const extension = tabUIController?.getFileExtension(activeTab.language) ?? 'txt';
-  const filename = `${activeTab.filename}.${extension}`;
-
-  const blob = new Blob([content], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-});
-
-// Note: Editor content/cursor/selection events are now handled by EditorController/CursorTracker (initialized in initializeApp)
-// Note: Mouse/Keystroke events are now handled by MouseTracker/KeystrokeTracker (initialized in initializeApp)
-
-// 証明ステータスを更新
-function updateProofStatus(): void {
-  proofStatusDisplay.update();
-}
-
-// 証明データのエクスポート機能（ProofExporterを使用）
-const exportProofBtn = document.getElementById('export-proof-btn');
-exportProofBtn?.addEventListener('click', () => void proofExporter.exportSingleTab());
-
-// ZIPでまとめてダウンロード（全タブをマルチファイル形式でエクスポート）
-const exportZipBtn = document.getElementById('export-zip-btn');
-exportZipBtn?.addEventListener('click', () => void proofExporter.exportAllTabsAsZip());
-
-// 初期化オーバーレイの制御
 const initOverlay = document.getElementById('init-overlay');
 const initMessage = initOverlay?.querySelector('.init-message');
 
@@ -394,307 +222,289 @@ function updateInitMessage(message: string): void {
 function hideInitOverlay(): void {
   if (initOverlay) {
     initOverlay.classList.add('hidden');
-    // アニメーション完了後にDOMから削除
-    setTimeout(() => {
-      initOverlay.remove();
-    }, 300);
+    setTimeout(() => initOverlay.remove(), 300);
   }
 }
 
-// 初期化処理
-async function initializeApp(): Promise<void> {
-  console.log('[DEBUG INIT] ===== initializeApp START =====');
+// ========================================
+// タブ変更ハンドラ
+// ========================================
 
-  // 利用規約モーダルを先に表示（未同意の場合）
-  console.log('[DEBUG INIT] hasAcceptedTerms:', hasAcceptedTerms());
-  if (!hasAcceptedTerms()) {
-    // 利用規約モーダルを表示するためオーバーレイを一時的に非表示
-    initOverlay?.classList.add('hidden');
-    console.log('[TypedCode] Showing terms modal...');
-    await showTermsModal();
-    // 同意後、オーバーレイを再表示
-    initOverlay?.classList.remove('hidden');
-    updateInitMessage('初期化中...');
-    console.log('[DEBUG INIT] Terms accepted, continuing...');
+function handleTabChange(tab: { filename: string; language: string; typingProof: unknown }): void {
+  ctx.tabUIController?.updateUI();
+  updateProofStatus();
+  document.title = `${tab.filename} - TypedCode`;
+
+  const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
+  if (languageSelector) {
+    languageSelector.value = tab.language;
   }
 
-  console.log('[DEBUG INIT] Starting background C runtime init...');
-  // C言語実行環境をバックグラウンドで初期化（awaitしない）
-  // エディタ操作をブロックせず、並行してダウンロードを進める
-  runtimeManager.initializeCRuntime().catch((err: unknown) => {
-    console.warn('[TypedCode] Background C runtime initialization failed:', err);
+  showLanguageDescriptionInTerminal(tab.language);
+  ctx.runtime.updateIndicator(tab.language);
+
+  if (ctx.logViewer && ctx.tabManager) {
+    const activeTab = ctx.tabManager.getActiveTab();
+    if (activeTab) {
+      ctx.logViewer.setTypingProof(activeTab.typingProof);
+    }
+  }
+}
+
+// ========================================
+// イベントリスナーの設定
+// ========================================
+
+function setupStaticEventListeners(): void {
+  // 言語切り替え
+  const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
+  languageSelector?.addEventListener('change', (e) => {
+    const target = e.target as HTMLSelectElement;
+    const activeTab = ctx.tabManager?.getActiveTab();
+    if (activeTab) {
+      ctx.tabManager?.setTabLanguage(activeTab.id, target.value);
+      ctx.tabUIController?.updateUI();
+      showLanguageDescriptionInTerminal(target.value);
+      ctx.runtime.updateIndicator(target.value);
+    }
   });
 
-  // Turnstileスクリプトをプリロード（設定されている場合のみ）
-  if (isTurnstileConfigured()) {
-    preloadTurnstile().catch(err => {
-      console.warn('[TypedCode] Turnstile preload failed:', err);
-    });
-  }
+  // 新規タブ追加ボタン
+  const addTabBtn = document.getElementById('add-tab-btn');
+  addTabBtn?.addEventListener('click', async () => {
+    if (!ctx.tabManager) return;
 
-  console.log('[DEBUG INIT] Getting device ID...');
+    if (isTurnstileConfigured()) {
+      showNotification('人間認証を実行中...');
+    }
+
+    const num = ctx.tabUIController?.getNextUntitledNumber() ?? 1;
+    const newTab = await ctx.tabManager.createTab(`Untitled-${num}`, 'c', '');
+
+    if (!newTab) {
+      showNotification('認証に失敗しました。もう一度お試しください。');
+      return;
+    }
+
+    await ctx.tabManager.switchTab(newTab.id);
+    showNotification('新しいタブを作成しました');
+  });
+
+  // 入力検出器の初期化
+  new InputDetector(document.body, async (detectedEvent: DetectedEvent) => {
+    showNotification(detectedEvent.message);
+    console.log('[TypedCode] Detected operation:', detectedEvent);
+
+    if (detectedEvent.type === 'paste' || detectedEvent.type === 'drop') {
+      const position: CursorPosition | null = ctx.editor.getPosition();
+
+      if (position) {
+        const event: RecordEventInput = {
+          type: 'externalInput',
+          inputType: detectedEvent.type === 'paste' ? 'insertFromPaste' : 'insertFromDrop',
+          data: detectedEvent.data.text,
+          rangeLength: detectedEvent.data.length,
+          range: {
+            startLineNumber: position.lineNumber,
+            startColumn: position.column,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column,
+          },
+          description: detectedEvent.type === 'paste' ?
+            `ペースト（${detectedEvent.data.length}文字）` :
+            `ドロップ（${detectedEvent.data.length}文字）`,
+        };
+
+        ctx.eventRecorder?.record(event);
+      }
+    }
+  });
+
+  // リセット機能
+  const resetBtn = document.getElementById('reset-btn');
+  const resetDialog = document.getElementById('reset-dialog');
+  const resetCancelBtn = document.getElementById('reset-cancel-btn');
+  const resetConfirmBtn = document.getElementById('reset-confirm-btn');
+
+  resetBtn?.addEventListener('click', () => {
+    document.getElementById('settings-dropdown')?.classList.remove('visible');
+    resetDialog?.classList.remove('hidden');
+  });
+
+  resetCancelBtn?.addEventListener('click', () => {
+    resetDialog?.classList.add('hidden');
+  });
+
+  resetDialog?.addEventListener('click', (e) => {
+    if (e.target === resetDialog) {
+      resetDialog.classList.add('hidden');
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !resetDialog?.classList.contains('hidden')) {
+      resetDialog?.classList.add('hidden');
+    }
+  });
+
+  resetConfirmBtn?.addEventListener('click', () => {
+    resetDialog?.classList.add('hidden');
+    localStorage.clear();
+    ctx.skipBeforeUnload = true;
+    window.location.reload();
+  });
+
+  // ページ離脱時の確認ダイアログ
+  window.addEventListener('beforeunload', (e) => {
+    if (ctx.skipBeforeUnload) return;
+    const activeProof = ctx.tabManager?.getActiveProof();
+    if (activeProof && activeProof.events.length > 0) {
+      e.preventDefault();
+    }
+  });
+
+  // ダウンロード機能
+  const downloadBtn = document.getElementById('download-btn');
+  downloadBtn?.addEventListener('click', () => {
+    const activeTab = ctx.tabManager?.getActiveTab();
+    if (!activeTab) return;
+
+    const content = activeTab.model.getValue();
+    const extension = ctx.tabUIController?.getFileExtension(activeTab.language) ?? 'txt';
+    const filename = `${activeTab.filename}.${extension}`;
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // 証明データのエクスポート機能
+  const exportProofBtn = document.getElementById('export-proof-btn');
+  exportProofBtn?.addEventListener('click', () => void ctx.proofExporter.exportSingleTab());
+
+  const exportZipBtn = document.getElementById('export-zip-btn');
+  exportZipBtn?.addEventListener('click', () => void ctx.proofExporter.exportAllTabsAsZip());
+}
+
+// ========================================
+// 初期化処理
+// ========================================
+
+async function initializeDeviceInfo(): Promise<{
+  deviceId: string;
+  fingerprintHash: string;
+  fingerprintComponents: Awaited<ReturnType<typeof Fingerprint.collectComponents>>;
+}> {
   updateInitMessage('デバイス情報を取得中...');
   const deviceId = await Fingerprint.getDeviceId();
   console.log('[DEBUG INIT] Device ID:', deviceId.substring(0, 16) + '...');
 
-  console.log('[DEBUG INIT] Collecting fingerprint...');
   const fingerprintComponents = await Fingerprint.collectComponents();
   const fingerprintHash = await Fingerprint.generate();
   console.log('[DEBUG INIT] Fingerprint collected');
 
-  // TabManagerを初期化
-  console.log('[DEBUG INIT] Creating TabManager...');
-  tabManager = new TabManager(editor);
+  return { deviceId, fingerprintHash, fingerprintComponents };
+}
 
-  // TabUIControllerを初期化
+async function initializeTabManager(
+  fingerprintHash: string,
+  fingerprintComponents: Awaited<ReturnType<typeof Fingerprint.collectComponents>>
+): Promise<boolean> {
+  ctx.tabManager = new TabManager(ctx.editor);
+
   const editorTabsContainer = document.getElementById('editor-tabs');
   if (editorTabsContainer) {
-    tabUIController = new TabUIController({
+    ctx.tabUIController = new TabUIController({
       container: editorTabsContainer,
-      tabManager,
+      tabManager: ctx.tabManager,
       basePath: import.meta.env.BASE_URL,
       onNotification: showNotification,
     });
   }
 
   // ProofExporterの初期化
-  proofExporter.setTabManager(tabManager);
-  proofExporter.setProcessingDialog(processingDialog);
-  proofExporter.setCallbacks({
-    onNotification: showNotification,
-  });
+  ctx.proofExporter.setTabManager(ctx.tabManager);
+  ctx.proofExporter.setProcessingDialog(ctx.processingDialog);
+  ctx.proofExporter.setCallbacks({ onNotification: showNotification });
 
   // ProofStatusDisplayのコールバックを設定
-  proofStatusDisplay.setGetStats(() => {
-    const activeProof = tabManager?.getActiveProof();
+  ctx.proofStatusDisplay.setGetStats(() => {
+    const activeProof = ctx.tabManager?.getActiveProof();
     if (!activeProof) return null;
     return activeProof.getStats();
   });
 
-  proofStatusDisplay.setSnapshotCallback(
+  ctx.proofStatusDisplay.setSnapshotCallback(
     (content) => {
-      const activeProof = tabManager?.getActiveProof();
+      const activeProof = ctx.tabManager?.getActiveProof();
       if (!activeProof) return Promise.reject(new Error('No active proof'));
       return activeProof.recordContentSnapshot(content);
     },
-    () => editor.getValue()
+    () => ctx.editor.getValue()
   );
 
   // タブ変更コールバックを設定
-  tabManager.setOnTabChange((tab, previousTab) => {
+  ctx.tabManager.setOnTabChange((tab, previousTab) => {
     console.log('[TypedCode] Tab switched:', previousTab?.filename, '->', tab.filename);
-    tabUIController?.updateUI();
-    updateProofStatus();
-
-    // ブラウザタブのタイトルを更新
-    document.title = `${tab.filename} - TypedCode`;
-
-    // 言語セレクタを更新
-    if (languageSelector) {
-      languageSelector.value = tab.language;
-    }
-
-    // タブ切り替え時にターミナルの言語説明を更新
-    showLanguageDescriptionInTerminal(tab.language);
-    // ランタイムインジケーターを更新
-    runtimeManager.updateIndicator(tab.language);
-
-    // LogViewerの表示を更新
-    if (logViewer) {
-      logViewer.setTypingProof(tab.typingProof);
-    }
+    handleTabChange(tab);
   });
 
-  tabManager.setOnTabUpdate(() => {
-    tabUIController?.updateUI();
-    // アクティブタブの場合、ブラウザタイトルも更新
-    const activeTab = tabManager?.getActiveTab();
+  ctx.tabManager.setOnTabUpdate(() => {
+    ctx.tabUIController?.updateUI();
+    const activeTab = ctx.tabManager?.getActiveTab();
     if (activeTab) {
       document.title = `${activeTab.filename} - TypedCode`;
     }
   });
 
-  // 認証結果でタブUIを更新
-  tabManager.setOnVerification(() => {
-    tabUIController?.updateUI();
+  ctx.tabManager.setOnVerification(() => {
+    ctx.tabUIController?.updateUI();
   });
 
   updateInitMessage('エディタを初期化中...');
   console.log('[DEBUG] Before tabManager.initialize()');
 
-  const initialized = await tabManager.initialize(fingerprintHash, fingerprintComponents);
+  const initialized = await ctx.tabManager.initialize(fingerprintHash, fingerprintComponents);
   console.log('[DEBUG] After tabManager.initialize(), result:', initialized);
 
-  if (!initialized) {
-    // Turnstile失敗時（初期化に失敗した場合）
-    updateInitMessage('認証に失敗しました。ページをリロードしてください。');
-    showNotification('認証に失敗しました。ページをリロードしてください。');
-    console.error('[TypedCode] Initialization failed (Turnstile)');
-    return;
-  }
+  return initialized;
+}
 
-  console.log('[DEBUG] Calling hideInitOverlay()');
-  // 初期化完了 - オーバーレイを非表示
-  hideInitOverlay();
-
-  console.log('[DEBUG] Calling tabUIController.updateUI()');
-  // タブUIを生成
-  tabUIController?.updateUI();
-
-  console.log('[DEBUG] TabManager initialized, activeTab:', tabManager.getActiveTab());
-  console.log('[TypedCode] TabManager initialized');
-
-  // 言語セレクタを更新
-  const activeTab = tabManager.getActiveTab();
-  if (activeTab && languageSelector) {
-    languageSelector.value = activeTab.language;
-  }
-
-  updateProofStatus();
-
-  // 利用規約同意をハッシュチェーンに記録（初回のみ）
-  const activeProofForTerms = tabManager.getActiveProof();
-  if (activeProofForTerms) {
-    const termsData = localStorage.getItem(TERMS_ACCEPTED_KEY);
-    if (termsData) {
-      try {
-        const parsed = JSON.parse(termsData);
-        // 新規タブで、まだtermsAcceptedイベントが記録されていない場合のみ記録
-        const hasTermsEvent = activeProofForTerms.events.some(e => e.type === 'termsAccepted');
-        if (!hasTermsEvent) {
-          activeProofForTerms.recordEvent({
-            type: 'termsAccepted',
-            data: {
-              version: parsed.version,
-              timestamp: parsed.timestamp,
-              agreedAt: parsed.agreedAt
-            },
-            description: `Terms v${parsed.version} accepted`
-          }).then(() => {
-            console.log('[TypedCode] Terms acceptance recorded to hash chain');
-            tabManager?.saveToStorage();
-          }).catch(err => {
-            console.error('[TypedCode] Failed to record terms acceptance:', err);
-          });
-        }
-      } catch (err) {
-        console.error('[TypedCode] Failed to parse terms data:', err);
-      }
-    }
-  }
-
-  // WindowTrackerの初期化とコールバック設定
-  windowTracker.setCallback((event) => {
-    eventRecorder?.record({
-      type: event.type,
-      data: event.data,
-      description: event.description,
-    });
-  });
-  windowTracker.attach();
-  windowTracker.recordInitial();
-
-  // VisibilityTrackerの初期化とコールバック設定
-  visibilityTracker.setCallback((event) => {
-    eventRecorder?.record({
-      type: event.type,
-      data: event.data,
-      description: event.description,
-    });
-  });
-  visibilityTracker.attach();
-
-  // KeystrokeTrackerの初期化とコールバック設定
-  keystrokeTracker.setCallback((event) => {
-    eventRecorder?.record({
-      type: event.type,
-      data: event.data,
-      description: event.description,
-    });
-  });
-  keystrokeTracker.attach(editorContainer!);
-
-  // MouseTrackerの初期化とコールバック設定
-  mouseTracker.setCallback((event) => {
-    eventRecorder?.record({
-      type: event.type,
-      data: event.data,
-      description: event.description,
-    });
-  });
-  mouseTracker.attach(editorContainer!);
-
-  // CursorTrackerの初期化とコールバック設定
-  cursorTracker.setCallback((event) => {
-    if (event.type === 'cursorPositionChange') {
-      eventRecorder?.record({
-        type: event.type,
-        data: event.data,
-      });
-    } else {
-      eventRecorder?.record({
-        type: event.type,
-        data: event.data,
-        range: event.range,
-        rangeLength: event.rangeLength,
-        selectedText: event.selectedText,
-        description: event.description,
-      });
-    }
-  });
-  cursorTracker.attach(editor);
-
-  // EditorControllerの初期化とコールバック設定
-  editorController.setContentChangeCallback((event) => {
-    eventRecorder?.record({
-      type: event.type,
-      inputType: event.inputType,
-      data: event.data,
-      rangeOffset: event.rangeOffset,
-      rangeLength: event.rangeLength,
-      range: event.range,
-      isMultiLine: event.isMultiLine,
-      description: event.description,
-      ...(event.deletedLength && { deletedLength: event.deletedLength }),
-      ...(event.insertedText && { insertedText: event.insertedText }),
-      ...(event.insertLength && { insertLength: event.insertLength }),
-      ...(event.deleteDirection && { deleteDirection: event.deleteDirection }),
-    });
-  });
-  editorController.setAfterChangeCallback(() => {
-    updateProofStatus();
-    tabManager?.saveToStorage();
-  });
-  editorController.attach(editor);
-
+function initializeLogViewer(): void {
   const logEntriesContainer = document.getElementById('log-entries');
   if (!logEntriesContainer) {
     console.error('[TypedCode] log-entries not found!');
     return;
   }
 
-  const initialProof = tabManager.getActiveProof();
+  const initialProof = ctx.tabManager?.getActiveProof();
   console.log('[DEBUG] initialProof:', initialProof);
   if (initialProof) {
-    logViewer = new LogViewer(logEntriesContainer, initialProof);
+    ctx.logViewer = new LogViewer(logEntriesContainer, initialProof);
     console.log('[TypedCode] LogViewer initialized');
   } else {
     console.warn('[DEBUG] No initialProof - LogViewer NOT initialized');
   }
+}
 
-  // EventRecorderの初期化
+function initializeEventRecorder(): void {
   console.log('[DEBUG] Creating EventRecorder...');
-  eventRecorder = new EventRecorder({
-    tabManager,
-    logViewer,
+  ctx.eventRecorder = new EventRecorder({
+    tabManager: ctx.tabManager!,
+    logViewer: ctx.logViewer,
     onStatusUpdate: () => updateProofStatus(),
     onError: (msg) => showNotification(msg),
   });
-  eventRecorder.setInitialized(true);
+  ctx.eventRecorder.setInitialized(true);
   console.log('[DEBUG] EventRecorder initialized and set to initialized=true');
+}
 
-  // 設定ドロップダウンメニュー
-  settingsDropdown.initialize({
+function initializeTerminal(): void {
+  ctx.settingsDropdown.initialize({
     buttonId: 'settings-btn',
     dropdownId: 'settings-dropdown',
   });
@@ -704,76 +514,64 @@ async function initializeApp(): Promise<void> {
     const updateThemeIcon = (): void => {
       const icon = themeToggleBtn.querySelector('i');
       if (icon) {
-        icon.className = themeManager.isLight() ? 'fas fa-sun' : 'fas fa-moon';
+        icon.className = ctx.themeManager.isLight() ? 'fas fa-sun' : 'fas fa-moon';
       }
     };
 
     themeToggleBtn.addEventListener('click', () => {
-      themeManager.toggle();
+      ctx.themeManager.toggle();
       updateThemeIcon();
-      settingsDropdown.close();
+      ctx.settingsDropdown.close();
     });
 
     updateThemeIcon();
   }
 
-  // ターミナルパネルのトグル（リサイズ機能含む）
-  terminalPanelController.initialize({
+  ctx.terminalPanel.initialize({
     panelId: 'terminal-panel',
     toggleButtonId: 'toggle-terminal-btn',
     closeButtonId: 'close-terminal-btn',
     resizeHandleId: 'terminal-resize-handle',
     workbenchUpperSelector: '.workbench-upper',
     workbenchSelector: '.workbench',
-    onFit: () => cTerminal?.fit(),
+    onFit: () => ctx.terminal?.fit(),
   });
 
-  // xterm.js ターミナルの初期化
   const xtermContainer = document.getElementById('xterm-container');
   if (xtermContainer) {
-    cTerminal = new CTerminal(xtermContainer);
+    ctx.terminal = new CTerminal(xtermContainer);
 
-    // 初期タブの言語に応じた説明を表示
-    const initialTab = tabManager?.getActiveTab();
+    const initialTab = ctx.tabManager?.getActiveTab();
     const initialLanguage = initialTab?.language ?? 'c';
     showLanguageDescriptionInTerminal(initialLanguage);
-    // ランタイムインジケーターを初期化
-    runtimeManager.updateIndicator(initialLanguage);
+    ctx.runtime.updateIndicator(initialLanguage);
 
-    // ターミナル入力をハッシュチェーンに記録
-    cTerminal.setInputCallback((input: string) => {
-      eventRecorder?.record({
+    ctx.terminal.setInputCallback((input: string) => {
+      ctx.eventRecorder?.record({
         type: 'terminalInput',
         description: `ターミナル入力: ${input}`,
       });
     });
   }
+}
 
-  // Run/Stopボタンのハンドラ
+function initializeCodeExecution(): void {
   const runCodeBtn = document.getElementById('run-code-btn');
   const stopCodeBtn = document.getElementById('stop-code-btn');
   const clangLoadingOverlay = document.getElementById('clang-loading-overlay');
   const clangStatus = document.getElementById('clang-status');
 
-  const showClangLoading = (): void => {
-    clangLoadingOverlay?.classList.remove('hidden');
-  };
-
-  const hideClangLoading = (): void => {
-    clangLoadingOverlay?.classList.add('hidden');
-  };
-
+  const showClangLoading = (): void => clangLoadingOverlay?.classList.remove('hidden');
+  const hideClangLoading = (): void => clangLoadingOverlay?.classList.add('hidden');
   const updateClangStatus = (message: string): void => {
-    if (clangStatus) {
-      clangStatus.textContent = message;
-    }
+    if (clangStatus) clangStatus.textContent = message;
   };
 
   const showErrorsInEditor = (errors: ParsedError[]): void => {
-    const activeTab = tabManager?.getActiveTab();
+    const activeTab = ctx.tabManager?.getActiveTab();
     if (!activeTab) return;
 
-    const markers = errors.map(err => ({
+    const markers = errors.map((err) => ({
       startLineNumber: err.line,
       startColumn: err.column,
       endLineNumber: err.line,
@@ -790,20 +588,19 @@ async function initializeApp(): Promise<void> {
   };
 
   const clearEditorErrors = (): void => {
-    const activeTab = tabManager?.getActiveTab();
+    const activeTab = ctx.tabManager?.getActiveTab();
     if (activeTab) {
       monaco.editor.setModelMarkers(activeTab.model, 'c-compiler', []);
     }
   };
 
-  // CodeExecutionControllerの初期化
-  codeExecutionController.setTerminal(cTerminal!);
-  codeExecutionController.setCallbacks({
+  ctx.codeExecution.setTerminal(ctx.terminal!);
+  ctx.codeExecution.setCallbacks({
     onRunStart: () => {
       runCodeBtn?.classList.add('running');
       stopCodeBtn?.classList.remove('hidden');
       clearEditorErrors();
-      terminalPanelController.show();
+      ctx.terminalPanel.show();
     },
     onRunEnd: () => {
       runCodeBtn?.classList.remove('running');
@@ -811,28 +608,27 @@ async function initializeApp(): Promise<void> {
     },
     onNotification: showNotification,
     onRuntimeStatusChange: (language, state) => {
-      runtimeManager.setStatus(language, state);
-      // 現在選択中の言語の場合、インジケーターも更新
+      ctx.runtime.setStatus(language, state);
       const currentLanguage = (document.getElementById('language-selector') as HTMLSelectElement)?.value;
       if (currentLanguage === language || (language === 'c' && currentLanguage === 'cpp')) {
-        runtimeManager.updateIndicator(currentLanguage);
+        ctx.runtime.updateIndicator(currentLanguage);
       }
     },
     onShowClangLoading: showClangLoading,
     onHideClangLoading: hideClangLoading,
     onUpdateClangStatus: updateClangStatus,
-    onRecordEvent: (event) => eventRecorder?.record({ type: event.type, description: event.description }),
+    onRecordEvent: (event) => ctx.eventRecorder?.record({ type: event.type, description: event.description }),
     onShowErrors: showErrorsInEditor,
     onClearErrors: clearEditorErrors,
   });
 
   const handleRunCode = async (): Promise<void> => {
-    const activeTab = tabManager?.getActiveTab();
+    const activeTab = ctx.tabManager?.getActiveTab();
     if (!activeTab) {
       showNotification('アクティブなタブがありません');
       return;
     }
-    await codeExecutionController.run({
+    await ctx.codeExecution.run({
       language: activeTab.language,
       filename: activeTab.filename,
       code: activeTab.model.getValue(),
@@ -840,13 +636,12 @@ async function initializeApp(): Promise<void> {
   };
 
   const handleStopCode = (): void => {
-    codeExecutionController.abort();
+    ctx.codeExecution.abort();
   };
 
   runCodeBtn?.addEventListener('click', () => void handleRunCode());
   stopCodeBtn?.addEventListener('click', handleStopCode);
 
-  // Ctrl+Enter でコード実行
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.key === 'Enter') {
       e.preventDefault();
@@ -856,7 +651,7 @@ async function initializeApp(): Promise<void> {
 
   // LogViewerPanelの初期化
   new LogViewerPanel({
-    getLogViewer: () => logViewer,
+    getLogViewer: () => ctx.logViewer,
     editorContainer: editorContainer!,
     toggleButtonId: 'toggle-log-btn',
     closeButtonId: 'close-log-btn',
@@ -869,24 +664,137 @@ async function initializeApp(): Promise<void> {
   const copyCodeBtn = document.getElementById('copy-code-btn');
   copyCodeBtn?.addEventListener('click', async () => {
     try {
-      const code = editor.getValue();
+      const code = ctx.editor.getValue();
       await navigator.clipboard.writeText(code);
-
       copyCodeBtn.classList.add('copied');
-
       showNotification('コードをコピーしました！');
-
-      setTimeout(() => {
-        copyCodeBtn.classList.remove('copied');
-      }, 2000);
+      setTimeout(() => copyCodeBtn.classList.remove('copied'), 2000);
     } catch (error) {
       console.error('[TypedCode] Copy failed:', error);
       showNotification('コピーに失敗しました');
     }
   });
+}
+
+function recordTermsAcceptance(): void {
+  const activeProofForTerms = ctx.tabManager?.getActiveProof();
+  if (!activeProofForTerms) return;
+
+  const termsData = localStorage.getItem(TERMS_ACCEPTED_KEY);
+  if (!termsData) return;
+
+  try {
+    const parsed = JSON.parse(termsData);
+    const hasTermsEvent = activeProofForTerms.events.some((e: { type: string }) => e.type === 'termsAccepted');
+    if (!hasTermsEvent) {
+      activeProofForTerms.recordEvent({
+        type: 'termsAccepted',
+        data: {
+          version: parsed.version,
+          timestamp: parsed.timestamp,
+          agreedAt: parsed.agreedAt,
+        },
+        description: `Terms v${parsed.version} accepted`,
+      }).then(() => {
+        console.log('[TypedCode] Terms acceptance recorded to hash chain');
+        ctx.tabManager?.saveToStorage();
+      }).catch((err: unknown) => {
+        console.error('[TypedCode] Failed to record terms acceptance:', err);
+      });
+    }
+  } catch (err) {
+    console.error('[TypedCode] Failed to parse terms data:', err);
+  }
+}
+
+// ========================================
+// メイン初期化関数
+// ========================================
+
+async function initializeApp(): Promise<void> {
+  console.log('[DEBUG INIT] ===== initializeApp START =====');
+
+  // Phase 1: 利用規約の確認
+  console.log('[DEBUG INIT] hasAcceptedTerms:', hasAcceptedTerms());
+  if (!hasAcceptedTerms()) {
+    initOverlay?.classList.add('hidden');
+    console.log('[TypedCode] Showing terms modal...');
+    await showTermsModal();
+    initOverlay?.classList.remove('hidden');
+    updateInitMessage('初期化中...');
+    console.log('[DEBUG INIT] Terms accepted, continuing...');
+  }
+
+  // Phase 2: バックグラウンド初期化
+  console.log('[DEBUG INIT] Starting background C runtime init...');
+  ctx.runtime.initializeCRuntime().catch((err: unknown) => {
+    console.warn('[TypedCode] Background C runtime initialization failed:', err);
+  });
+
+  if (isTurnstileConfigured()) {
+    preloadTurnstile().catch((err) => {
+      console.warn('[TypedCode] Turnstile preload failed:', err);
+    });
+  }
+
+  // Phase 3: デバイス情報取得
+  console.log('[DEBUG INIT] Getting device ID...');
+  const { fingerprintHash, fingerprintComponents } = await initializeDeviceInfo();
+
+  // Phase 4: TabManager初期化
+  console.log('[DEBUG INIT] Creating TabManager...');
+  const initialized = await initializeTabManager(fingerprintHash, fingerprintComponents);
+
+  if (!initialized) {
+    updateInitMessage('認証に失敗しました。ページをリロードしてください。');
+    showNotification('認証に失敗しました。ページをリロードしてください。');
+    console.error('[TypedCode] Initialization failed (Turnstile)');
+    return;
+  }
+
+  console.log('[DEBUG] Calling hideInitOverlay()');
+  hideInitOverlay();
+
+  console.log('[DEBUG] Calling tabUIController.updateUI()');
+  ctx.tabUIController?.updateUI();
+
+  console.log('[DEBUG] TabManager initialized, activeTab:', ctx.tabManager?.getActiveTab());
+  console.log('[TypedCode] TabManager initialized');
+
+  // 言語セレクタを更新
+  const activeTab = ctx.tabManager?.getActiveTab();
+  const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
+  if (activeTab && languageSelector) {
+    languageSelector.value = activeTab.language;
+  }
+
+  updateProofStatus();
+
+  // 利用規約同意をハッシュチェーンに記録
+  recordTermsAcceptance();
+
+  // Phase 5: トラッカーの初期化
+  initializeTrackers(
+    ctx,
+    editorContainer!,
+    (event) => ctx.eventRecorder?.record(event),
+    updateProofStatus,
+    () => ctx.tabManager?.saveToStorage()
+  );
+
+  // Phase 6: LogViewerとEventRecorderの初期化
+  initializeLogViewer();
+  initializeEventRecorder();
+
+  // Phase 7: ターミナルとコード実行の初期化
+  initializeTerminal();
+  initializeCodeExecution();
 
   console.log('[TypedCode] App initialized successfully');
 }
+
+// 静的イベントリスナーを設定
+setupStaticEventListeners();
 
 // DOMContentLoaded または即座に実行
 if (document.readyState === 'loading') {

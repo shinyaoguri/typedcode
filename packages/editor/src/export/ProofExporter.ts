@@ -10,6 +10,7 @@ import {
   isTurnstileConfigured,
   performTurnstileVerification,
 } from '../services/TurnstileService.js';
+import { getLanguageDefinition } from '../config/SupportedLanguages.js';
 
 export interface ExportCallbacks {
   onNotification?: (message: string) => void;
@@ -152,6 +153,7 @@ export class ProofExporter {
 
       const exportData = {
         ...proofData,
+        filename: activeTab.filename,
         content: activeTab.model.getValue(),
         language: activeTab.language,
       };
@@ -209,51 +211,114 @@ export class ProofExporter {
         return;
       }
 
-      const multiProofData = await this.tabManager.exportAllTabs();
+      const allTabs = this.tabManager.getAllTabs();
 
       // ZIPファイルを作成
       const zip = new JSZip();
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const timestamp = this.generateTimestamp();
+      const isoTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
-      // 各ファイルを追加
-      for (const [filename, fileData] of Object.entries(multiProofData.files)) {
-        zip.file(filename, fileData.content);
+      // ファイル名の重複を処理するためのマップ
+      const usedSourceFilenames = new Map<string, number>();
+      const usedLogFilenames = new Map<string, number>();
+
+      // 各タブをエクスポート
+      const fileList: string[] = [];
+      const logList: string[] = [];
+
+      for (const tab of allTabs) {
+        const content = tab.model.getValue();
+        const proof = await tab.typingProof.exportProof(content);
+
+        // ソースファイル名を生成（拡張子付き）
+        let sourceFilename = tab.filename;
+        const ext = getLanguageDefinition(tab.language)?.fileExtension ?? 'txt';
+        if (!sourceFilename.endsWith(`.${ext}`)) {
+          sourceFilename = `${sourceFilename}.${ext}`;
+        }
+
+        // ソースファイル名の重複を処理
+        let uniqueSourceFilename = sourceFilename;
+        const sourceCount = usedSourceFilenames.get(sourceFilename) ?? 0;
+        if (sourceCount > 0) {
+          const baseName = sourceFilename.replace(/\.[^.]+$/, '');
+          const extension = sourceFilename.match(/\.[^.]+$/)?.[0] ?? '';
+          uniqueSourceFilename = `${baseName}_${sourceCount}${extension}`;
+        }
+        usedSourceFilenames.set(sourceFilename, sourceCount + 1);
+
+        // ソースコードを追加（フラット）
+        zip.file(uniqueSourceFilename, content);
+        fileList.push(uniqueSourceFilename);
+
+        // ログファイル名を生成（個別出力と同じ形式: TC_{tabFilename}_{timestamp}.json）
+        const tabFilename = tab.filename.replace(/[^a-zA-Z0-9_-]/g, '_');
+        let logFilename = `TC_${tabFilename}_${timestamp}.json`;
+
+        // ログファイル名の重複を処理
+        const logCount = usedLogFilenames.get(logFilename) ?? 0;
+        if (logCount > 0) {
+          logFilename = `TC_${tabFilename}_${timestamp}_${logCount}.json`;
+        }
+        usedLogFilenames.set(`TC_${tabFilename}_${timestamp}.json`, logCount + 1);
+
+        // 証明JSONを追加（フラット）
+        const proofWithContent = {
+          ...proof,
+          filename: tab.filename,
+          content,
+          language: tab.language,
+        };
+        zip.file(logFilename, JSON.stringify(proofWithContent, null, 2));
+        logList.push(logFilename);
       }
 
-      // マルチファイル証明ファイルを追加
-      const jsonString = JSON.stringify(multiProofData, null, 2);
-      zip.file(`typedcode-multi-proof-${timestamp}.json`, jsonString);
-
       // READMEを追加
-      const fileList = Object.keys(multiProofData.files).map(f => `- ${f}`).join('\n');
+      const filesSection = fileList.map(f => `- ${f}`).join('\n');
+      const logsSection = logList.map(f => `- ${f}`).join('\n');
       const readme = `TypedCode Multi-File Export
 ===========================
 
 This archive contains:
-${fileList}
-- typedcode-multi-proof-${timestamp}.json: Multi-file typing proof data
 
-To verify this proof:
+## Source Files
+${filesSection}
+
+## Typing Proof Logs
+${logsSection}
+
+Each log file contains:
+- typingProofHash: Unique hash of the typing proof
+- proof.events: All recorded events (keystrokes, edits, etc.)
+- fingerprint: Device information
+- metadata: Pure typing status, timestamps
+
+To verify:
 1. Visit the TypedCode verification page
-2. Drop the proof JSON file to verify
+2. Drop any log JSON file to verify
 
 Generated: ${new Date().toISOString()}
-Total files: ${multiProofData.metadata.totalFiles}
-Pure typing: ${multiProofData.metadata.overallPureTyping ? 'Yes' : 'No'}
+Total files: ${allTabs.length}
 `;
       zip.file('README.txt', readme);
 
-      // ZIPを生成してダウンロード
-      const blob = await zip.generateAsync({ type: 'blob' });
+      // ZIPを生成してダウンロード（最大圧縮）
+      const blob = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: {
+          level: 9, // 最大圧縮レベル
+        },
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `typedcode-${timestamp}.zip`;
+      a.download = `typedcode-${isoTimestamp}.zip`;
       a.click();
       URL.revokeObjectURL(url);
 
       this.callbacks.onNotification?.(
-        `ZIPファイルをダウンロードしました（${multiProofData.metadata.totalFiles}ファイル）`
+        `ZIPファイルをダウンロードしました（${allTabs.length}ファイル）`
       );
     } catch (error) {
       console.error('[TypedCode] ZIP export failed:', error);

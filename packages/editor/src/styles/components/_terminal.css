@@ -19,6 +19,19 @@
   transition: none;
 }
 
+/* Terminal Unavailable State (for non-executable languages) */
+#terminal-panel.terminal-unavailable .terminal-content {
+  opacity: 0.6;
+}
+
+#terminal-panel.terminal-unavailable .terminal-tab {
+  color: var(--text-muted);
+}
+
+#terminal-panel.terminal-unavailable .terminal-tab i {
+  opacity: 0.5;
+}
+
 /* Terminal Resize Handle */
 .terminal-resize-handle {
   position: absolute;

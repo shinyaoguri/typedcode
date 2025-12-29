@@ -3,7 +3,7 @@
  * トグル、表示/非表示、リサイズ機能を管理
  */
 
-import type { LogViewer } from '../components/LogViewer.js';
+import type { LogViewer } from './LogViewer.js';
 
 export interface LogViewerPanelOptions {
   /** LogViewerインスタンスを取得するゲッター */

@@ -4,30 +4,10 @@
  */
 
 import type { TabManager, TabState } from './TabManager.js';
-
-/** SVGアイコンがある言語のリスト */
-const LANGUAGES_WITH_SVG_ICON = [
-  'c',
-  'cpp',
-  'javascript',
-  'typescript',
-  'html',
-  'css',
-  'python',
-];
-
-/** ファイル拡張子マッピング */
-const FILE_EXTENSIONS: Record<string, string> = {
-  javascript: 'js',
-  typescript: 'ts',
-  c: 'c',
-  cpp: 'cpp',
-  html: 'html',
-  css: 'css',
-  json: 'json',
-  markdown: 'md',
-  python: 'py',
-};
+import {
+  getLanguageDefinition,
+  FILE_EXTENSIONS,
+} from '../../config/SupportedLanguages.js';
 
 export interface TabUIControllerOptions {
   container: HTMLElement;
@@ -86,7 +66,8 @@ export class TabUIController {
     const ext = '.' + this.getFileExtension(tab.language);
 
     // SVGアイコンがあればimgタグ、なければFont Awesomeのデフォルトアイコン
-    const hasSvgIcon = LANGUAGES_WITH_SVG_ICON.includes(tab.language);
+    const langDef = getLanguageDefinition(tab.language);
+    const hasSvgIcon = langDef?.hasSvgIcon ?? false;
     const iconHtml = hasSvgIcon
       ? `<img src="${this.basePath}icons/${tab.language}.svg" class="tab-icon" alt="${tab.language}" />`
       : `<i class="fas fa-file-code tab-icon"></i>`;
