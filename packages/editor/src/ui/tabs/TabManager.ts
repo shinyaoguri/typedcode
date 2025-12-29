@@ -62,7 +62,7 @@ export type OnVerificationCallback = (result: VerificationResult) => void;
 
 /** タブ作成オプション */
 export interface CreateTabOptions {
-  /** localStorageからの復元時はtrue（reCAPTCHA不要） */
+  /** sessionStorageからの復元時はtrue（認証不要） */
   skipAttestation?: boolean;
 }
 
@@ -93,6 +93,7 @@ const OLD_STORAGE_KEYS = ['editorContent', 'editorLanguage', 'editorFilename', '
 
 export class TabManager {
   private tabs: Map<string, TabState> = new Map();
+  private tabOrder: string[] = [];
   private activeTabId: string | null = null;
   private tabSwitches: TabSwitchEvent[] = [];
   private fingerprint: string | null = null;
@@ -389,6 +390,7 @@ export class TabManager {
     };
 
     this.tabs.set(id, tab);
+    this.tabOrder.push(id);
 
     // 最初のタブまたはアクティブタブがない場合はこのタブをアクティブに
     if (this.activeTabId === null) {
@@ -417,6 +419,7 @@ export class TabManager {
 
     // タブを削除
     this.tabs.delete(tabId);
+    this.tabOrder = this.tabOrder.filter(id => id !== tabId);
 
     // アクティブタブが閉じられた場合、別のタブに切り替え
     if (this.activeTabId === tabId) {
@@ -530,10 +533,12 @@ export class TabManager {
   }
 
   /**
-   * 全タブを取得
+   * 全タブを取得（tabOrder順）
    */
   getAllTabs(): TabState[] {
-    return Array.from(this.tabs.values());
+    return this.tabOrder
+      .map(id => this.tabs.get(id))
+      .filter((tab): tab is TabState => tab !== undefined);
   }
 
   /**
@@ -551,13 +556,44 @@ export class TabManager {
   }
 
   /**
-   * localStorageに保存
+   * タブの順序を変更
+   * @param fromIndex 移動元インデックス
+   * @param toIndex 移動先インデックス
+   */
+  reorderTab(fromIndex: number, toIndex: number): boolean {
+    if (fromIndex < 0 || fromIndex >= this.tabOrder.length ||
+        toIndex < 0 || toIndex >= this.tabOrder.length ||
+        fromIndex === toIndex) {
+      return false;
+    }
+
+    const [movedId] = this.tabOrder.splice(fromIndex, 1);
+    if (!movedId) return false;
+
+    this.tabOrder.splice(toIndex, 0, movedId);
+
+    // コールバック通知
+    const activeTab = this.getActiveTab();
+    if (activeTab && this.onTabUpdateCallback) {
+      this.onTabUpdateCallback(activeTab);
+    }
+
+    this.saveToStorage();
+    return true;
+  }
+
+  /**
+   * sessionStorageに保存
+   * sessionStorageを使用することで、各ブラウザタブが独立したセッションとして動作する
+   * - リロード時: データは保持される
+   * - 新規タブ: 空の状態から開始（VSCode.devと同様の動作）
    */
   saveToStorage(): void {
     const storage: MultiTabStorage = {
-      version: 2,
+      version: 3,
       activeTabId: this.activeTabId ?? '',
       tabs: {},
+      tabOrder: this.tabOrder,
       tabSwitches: this.tabSwitches
     };
 
@@ -576,31 +612,38 @@ export class TabManager {
     }
 
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(storage));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(storage));
     } catch (e) {
       console.error('[TabManager] Failed to save to storage:', e);
     }
   }
 
   /**
-   * localStorageから読み込み
+   * sessionStorageから読み込み
    */
   async loadFromStorage(): Promise<boolean> {
     try {
-      const data = localStorage.getItem(STORAGE_KEY);
+      const data = sessionStorage.getItem(STORAGE_KEY);
       if (!data) return false;
 
-      const storage: MultiTabStorage = JSON.parse(data);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawStorage: any = JSON.parse(data);
 
-      // バージョンチェック
-      if (storage.version !== 2) {
+      // バージョンチェックとマイグレーション
+      if (rawStorage.version !== 2 && rawStorage.version !== 3) {
         console.warn('[TabManager] Storage version mismatch, clearing data');
-        localStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(STORAGE_KEY);
         return false;
       }
 
-      // タブを復元
-      for (const [id, serializedTab] of Object.entries(storage.tabs)) {
+      // v2からv3へのマイグレーション: tabOrderがない場合は生成
+      const tabOrder: string[] = rawStorage.tabOrder ?? Object.keys(rawStorage.tabs);
+
+      // タブを復元（tabOrder順に処理）
+      for (const id of tabOrder) {
+        const serializedTab = rawStorage.tabs[id];
+        if (!serializedTab) continue;
+
         let typingProof: TypingProof;
 
         // Workerをeditorパッケージから作成
@@ -632,14 +675,15 @@ export class TabManager {
         };
 
         this.tabs.set(id, tab);
+        this.tabOrder.push(id);
       }
 
       // タブ切り替え履歴を復元
-      this.tabSwitches = storage.tabSwitches ?? [];
+      this.tabSwitches = rawStorage.tabSwitches ?? [];
 
       // アクティブタブを復元
-      if (storage.activeTabId && this.tabs.has(storage.activeTabId)) {
-        await this.switchTab(storage.activeTabId);
+      if (rawStorage.activeTabId && this.tabs.has(rawStorage.activeTabId)) {
+        await this.switchTab(rawStorage.activeTabId);
       } else if (this.tabs.size > 0) {
         const firstTabId = Array.from(this.tabs.keys())[0]!;
         await this.switchTab(firstTabId);
@@ -664,12 +708,13 @@ export class TabManager {
 
     // データをクリア
     this.tabs.clear();
+    this.tabOrder = [];
     this.activeTabId = null;
     this.tabSwitches = [];
     this.startTime = performance.now();
 
     // ストレージをクリア
-    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
 
     // 新しいタブを作成
     const tab = await this.createTab('Untitled-1', 'c', '// Hello, TypedCode!\n');

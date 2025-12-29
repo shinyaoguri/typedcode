@@ -218,3 +218,84 @@
 .copy-code-btn.copied i::before {
   content: "\f00c";
 }
+
+/* ========================================
+   Tab Drag & Drop
+   ======================================== */
+
+/* ドラッグ中のタブ（元の位置に残る、薄く表示） */
+.editor-tab.dragging {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ゴースト要素（マウスに追従する半透明タブ） */
+.editor-tab-ghost {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  height: 35px;
+  padding: 0 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-info);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--text-primary);
+  opacity: 0.9;
+  pointer-events: none;
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+}
+
+.editor-tab-ghost .tab-icon {
+  margin-right: 5px;
+  font-size: 14px;
+  color: #e8ab53;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.editor-tab-ghost .tab-filename {
+  color: var(--text-primary);
+}
+
+.editor-tab-ghost .tab-extension {
+  color: var(--text-tertiary);
+}
+
+/* ドロップ位置のセパレータ（VSCodeスタイル） */
+.editor-tab-placeholder {
+  width: 2px !important;
+  height: 27px;
+  background: var(--accent-info);
+  border-radius: 1px;
+  flex-shrink: 0;
+  margin: 4px 0;
+  box-shadow: 0 0 4px var(--accent-info);
+}
+
+/* タブのカーソル */
+.editor-tab {
+  cursor: grab;
+}
+
+.editor-tab:active {
+  cursor: grabbing;
+}
+
+/* ドラッグ中はbodyのカーソルを固定 */
+body.tab-dragging {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+body.tab-dragging * {
+  cursor: grabbing !important;
+}
+
+/* 他のタブの移動アニメーション */
+.editor-tabs .editor-tab:not(.dragging) {
+  transition: transform 0.15s ease;
+}

@@ -35,6 +35,8 @@ import { ProofStatusDisplay } from './ui/components/ProofStatusDisplay.js';
 import { CursorTracker } from './editor/CursorTracker.js';
 import { EditorController } from './editor/EditorController.js';
 import { SettingsDropdown } from './ui/components/SettingsDropdown.js';
+import { DownloadDropdown } from './ui/components/DownloadDropdown.js';
+import { MainMenuDropdown } from './ui/components/MainMenuDropdown.js';
 import { TerminalPanel } from './ui/components/TerminalPanel.js';
 import { CodeExecutionController } from './execution/CodeExecutionController.js';
 import { ProofExporter } from './export/ProofExporter.js';
@@ -124,6 +126,8 @@ const ctx: AppContext = {
   processingDialog: new ProcessingDialog(),
   proofStatusDisplay: new ProofStatusDisplay(),
   settingsDropdown: new SettingsDropdown(),
+  downloadDropdown: new DownloadDropdown(),
+  mainMenuDropdown: new MainMenuDropdown(),
   terminalPanel: new TerminalPanel(),
 
   // Flags
@@ -353,7 +357,9 @@ function setupStaticEventListeners(): void {
 
   resetConfirmBtn?.addEventListener('click', () => {
     resetDialog?.classList.add('hidden');
+    // 全てのストレージをクリア
     localStorage.clear();
+    sessionStorage.clear();
     ctx.skipBeforeUnload = true;
     window.location.reload();
   });
@@ -370,6 +376,7 @@ function setupStaticEventListeners(): void {
   // ダウンロード機能
   const downloadBtn = document.getElementById('download-btn');
   downloadBtn?.addEventListener('click', () => {
+    ctx.downloadDropdown.close();
     const activeTab = ctx.tabManager?.getActiveTab();
     if (!activeTab) return;
 
@@ -388,10 +395,16 @@ function setupStaticEventListeners(): void {
 
   // 証明データのエクスポート機能
   const exportProofBtn = document.getElementById('export-proof-btn');
-  exportProofBtn?.addEventListener('click', () => void ctx.proofExporter.exportSingleTab());
+  exportProofBtn?.addEventListener('click', () => {
+    ctx.downloadDropdown.close();
+    void ctx.proofExporter.exportSingleTab();
+  });
 
   const exportZipBtn = document.getElementById('export-zip-btn');
-  exportZipBtn?.addEventListener('click', () => void ctx.proofExporter.exportAllTabsAsZip());
+  exportZipBtn?.addEventListener('click', () => {
+    ctx.downloadDropdown.close();
+    void ctx.proofExporter.exportAllTabsAsZip();
+  });
 }
 
 // ========================================
@@ -511,6 +524,44 @@ function initializeTerminal(): void {
   ctx.settingsDropdown.initialize({
     buttonId: 'settings-btn',
     dropdownId: 'settings-dropdown',
+  });
+
+  ctx.downloadDropdown.initialize({
+    buttonId: 'download-menu-btn',
+    dropdownId: 'download-dropdown',
+  });
+
+  ctx.mainMenuDropdown.initialize({
+    buttonId: 'main-menu-btn',
+    dropdownId: 'main-menu-dropdown',
+  });
+
+  // メインメニューのイベントハンドラー
+  const newFileBtn = document.getElementById('new-file-btn');
+  newFileBtn?.addEventListener('click', async () => {
+    ctx.mainMenuDropdown.close();
+    if (!ctx.tabManager) return;
+
+    if (isTurnstileConfigured()) {
+      showNotification(t('notifications.authRunning'));
+    }
+
+    const num = ctx.tabUIController?.getNextUntitledNumber() ?? 1;
+    const newTab = await ctx.tabManager.createTab(`Untitled-${num}`, 'c', '');
+
+    if (!newTab) {
+      showNotification(t('notifications.authFailed'));
+      return;
+    }
+
+    await ctx.tabManager.switchTab(newTab.id);
+    showNotification(t('notifications.newTabCreated'));
+  });
+
+  const newWindowBtn = document.getElementById('new-window-btn');
+  newWindowBtn?.addEventListener('click', () => {
+    ctx.mainMenuDropdown.close();
+    window.open(window.location.href, '_blank');
   });
 
   const themeToggleBtn = document.getElementById('theme-toggle-btn');

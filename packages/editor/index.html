@@ -62,7 +62,9 @@
   <div id="app">
     <!-- Title Bar -->
     <div class="titlebar">
-      <div class="titlebar-title"><img src="/icon-192.png" alt="TypedCode" class="titlebar-logo"> TypedCode</div>
+      <div class="titlebar-left">
+        <div class="titlebar-title"><img src="/icon-192.png" alt="TypedCode" class="titlebar-logo"></div>
+      </div>
       <div class="titlebar-actions">
         <button class="titlebar-panel-toggle" id="toggle-terminal-btn" data-i18n-title="activityBar.toggleTerminal" title="Toggle Terminal">
           <i class="fas fa-terminal"></i>
@@ -83,22 +85,48 @@
       <!-- Activity Bar (Left Icon Column) -->
       <div class="activitybar">
         <div class="activitybar-top">
-          <button class="activitybar-item activitybar-item-run" id="run-code-btn" data-i18n-title="activityBar.runCode" title="Run Code (Ctrl+Enter)">
+          <div class="activitybar-menu-container">
+            <button class="activitybar-item" id="main-menu-btn" data-i18n-title="activityBar.menu" title="Menu">
+              <i class="fas fa-bars"></i>
+            </button>
+            <div class="activitybar-dropdown" id="main-menu-dropdown">
+              <button class="dropdown-item" id="new-file-btn">
+                <i class="fas fa-file-circle-plus"></i>
+                <span data-i18n="activityBar.newFile">New File</span>
+              </button>
+              <button class="dropdown-item" id="new-window-btn">
+                <i class="fas fa-window-restore"></i>
+                <span data-i18n="activityBar.newWindow">New Window</span>
+              </button>
+            </div>
+          </div>
+          <div class="activitybar-divider"></div>
+          <button class="activitybar-item" id="run-code-btn" data-i18n-title="activityBar.runCode" title="Run Code (Ctrl+Enter)">
             <i class="fas fa-play"></i>
           </button>
-          <button class="activitybar-item activitybar-item-stop hidden" id="stop-code-btn" data-i18n-title="activityBar.stopExecution" title="Stop Execution">
+          <button class="activitybar-item hidden" id="stop-code-btn" data-i18n-title="activityBar.stopExecution" title="Stop Execution">
             <i class="fas fa-stop"></i>
           </button>
           <div class="activitybar-divider"></div>
-          <button class="activitybar-item activitybar-item-primary" id="export-zip-btn" data-i18n-title="activityBar.downloadAll" title="Download All (ZIP)">
-            <i class="fas fa-file-zipper"></i>
-          </button>
-          <button class="activitybar-item" id="download-btn" data-i18n-title="activityBar.saveCodeOnly" title="Save Code Only">
-            <i class="fas fa-code"></i>
-          </button>
-          <button class="activitybar-item" id="export-proof-btn" data-i18n-title="activityBar.exportProofOnly" title="Export Proof Only">
-            <i class="fas fa-shield-halved"></i>
-          </button>
+          <div class="activitybar-menu-container">
+            <button class="activitybar-item activitybar-item-primary" id="download-menu-btn" data-i18n-title="activityBar.download" title="Download">
+              <i class="fas fa-download"></i>
+            </button>
+            <div class="activitybar-dropdown" id="download-dropdown">
+              <button class="dropdown-item" id="export-zip-btn">
+                <i class="fas fa-file-zipper"></i>
+                <span data-i18n="activityBar.downloadAll">Download All (ZIP)</span>
+              </button>
+              <button class="dropdown-item" id="download-btn">
+                <i class="fas fa-code"></i>
+                <span data-i18n="activityBar.saveCodeOnly">Save Code Only</span>
+              </button>
+              <button class="dropdown-item" id="export-proof-btn">
+                <i class="fas fa-shield-halved"></i>
+                <span data-i18n="activityBar.exportProofOnly">Export Proof Only</span>
+              </button>
+            </div>
+          </div>
         </div>
         <div class="activitybar-bottom">
           <div class="activitybar-menu-container">

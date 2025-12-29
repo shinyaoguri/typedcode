@@ -146,23 +146,31 @@
   left: 100%;
   bottom: 0;
   min-width: 180px;
+  white-space: nowrap;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px var(--shadow);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--shadow);
   padding: 4px 0;
   z-index: 1001;
   opacity: 0;
   visibility: hidden;
-  transform: translateX(-8px);
+  transform: translateX(-4px);
   transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
-  margin-left: 8px;
+  margin-left: 0;
 }
 
 .activitybar-dropdown.visible {
   opacity: 1;
   visibility: visible;
   transform: translateX(0);
+}
+
+/* Top dropdowns: align to top of button */
+#main-menu-dropdown,
+#download-dropdown {
+  bottom: auto;
+  top: 0;
 }
 
 .dropdown-item {

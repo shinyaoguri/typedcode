@@ -27,6 +27,8 @@ import type { EditorController } from '../editor/EditorController.js';
 import type { ProcessingDialog } from '../ui/components/ProcessingDialog.js';
 import type { ProofStatusDisplay } from '../ui/components/ProofStatusDisplay.js';
 import type { SettingsDropdown } from '../ui/components/SettingsDropdown.js';
+import type { DownloadDropdown } from '../ui/components/DownloadDropdown.js';
+import type { MainMenuDropdown } from '../ui/components/MainMenuDropdown.js';
 import type { TerminalPanel } from '../ui/components/TerminalPanel.js';
 
 // Execution
@@ -81,6 +83,8 @@ export interface AppContext {
   processingDialog: ProcessingDialog;
   proofStatusDisplay: ProofStatusDisplay;
   settingsDropdown: SettingsDropdown;
+  downloadDropdown: DownloadDropdown;
+  mainMenuDropdown: MainMenuDropdown;
   terminalPanel: TerminalPanel;
 
   // Flags

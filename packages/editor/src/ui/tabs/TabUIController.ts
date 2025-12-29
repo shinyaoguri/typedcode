@@ -17,11 +17,41 @@ export interface TabUIControllerOptions {
   onNotification?: (message: string) => void;
 }
 
+/** ドラッグ状態 */
+interface DragState {
+  isDragging: boolean;
+  draggedTabId: string | null;
+  draggedElement: HTMLElement | null;
+  placeholder: HTMLElement | null;
+  ghost: HTMLElement | null;
+  startX: number;
+  offsetX: number;
+  offsetY: number;
+  initialIndex: number;
+  initialRect: DOMRect | null;
+}
+
 export class TabUIController {
   private container: HTMLElement;
   private tabManager: TabManager;
   private basePath: string;
   private onNotification: ((message: string) => void) | null = null;
+
+  // ドラッグ&ドロップ関連
+  private dragState: DragState = {
+    isDragging: false,
+    draggedTabId: null,
+    draggedElement: null,
+    placeholder: null,
+    ghost: null,
+    startX: 0,
+    offsetX: 0,
+    offsetY: 0,
+    initialIndex: -1,
+    initialRect: null,
+  };
+  private boundMouseMove: ((e: MouseEvent) => void) | null = null;
+  private boundMouseUp: ((e: MouseEvent) => void) | null = null;
 
   constructor(options: TabUIControllerOptions) {
     this.container = options.container;
@@ -117,6 +147,9 @@ export class TabUIController {
       }
     });
 
+    // ドラッグイベントを設定
+    this.setupDragEvents(tabEl, tab.id);
+
     return tabEl;
   }
 
@@ -206,10 +239,272 @@ export class TabUIController {
     input.select();
   }
 
+  // ========================================
+  // ドラッグ&ドロップ関連メソッド
+  // ========================================
+
+  /**
+   * タブ要素にドラッグイベントを設定
+   */
+  private setupDragEvents(tabEl: HTMLElement, tabId: string): void {
+    tabEl.addEventListener('mousedown', (e: MouseEvent) => {
+      // 閉じるボタンやファイル名編集中は除外
+      const target = e.target as HTMLElement;
+      if (target.closest('.tab-close-btn') || target.closest('.tab-filename-input')) {
+        return;
+      }
+
+      // 左クリックのみ
+      if (e.button !== 0) return;
+
+      this.startDrag(e, tabEl, tabId);
+    });
+  }
+
+  /**
+   * ドラッグ開始
+   */
+  private startDrag(e: MouseEvent, tabEl: HTMLElement, tabId: string): void {
+    const rect = tabEl.getBoundingClientRect();
+    const tabs = this.tabManager.getAllTabs();
+    const index = tabs.findIndex(t => t.id === tabId);
+
+    if (index === -1) return;
+
+    // ゴースト要素を作成
+    const ghost = this.createGhost(tabEl);
+    document.body.appendChild(ghost);
+
+    this.dragState = {
+      isDragging: true,
+      draggedTabId: tabId,
+      draggedElement: tabEl,
+      placeholder: this.createPlaceholder(tabEl),
+      ghost: ghost,
+      startX: e.clientX,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      initialIndex: index,
+      initialRect: rect,
+    };
+
+    // ゴーストの初期位置を設定
+    this.updateGhostPosition(e.clientX, e.clientY);
+
+    // ドラッグ中のスタイル（タブは元の位置に残る）
+    tabEl.classList.add('dragging');
+    document.body.classList.add('tab-dragging');
+
+    // グローバルイベントリスナー
+    this.boundMouseMove = this.handleMouseMove.bind(this);
+    this.boundMouseUp = this.handleMouseUp.bind(this);
+    document.addEventListener('mousemove', this.boundMouseMove);
+    document.addEventListener('mouseup', this.boundMouseUp);
+  }
+
+  /**
+   * ドラッグ中のマウス移動
+   */
+  private handleMouseMove(e: MouseEvent): void {
+    if (!this.dragState.isDragging || !this.dragState.draggedElement || !this.dragState.initialRect) return;
+
+    // ゴーストの位置を更新
+    this.updateGhostPosition(e.clientX, e.clientY);
+
+    // ドロップ位置の更新（セパレータを表示）
+    this.updateDropPosition(e.clientX);
+  }
+
+  /**
+   * ドラッグ終了
+   */
+  private handleMouseUp(e: MouseEvent): void {
+    if (!this.dragState.isDragging) return;
+
+    // 最終的なドロップ位置を計算
+    const newIndex = this.calculateDropIndex(e.clientX);
+
+    // 位置が変わった場合のみ順序を更新
+    if (newIndex !== -1 && newIndex !== this.dragState.initialIndex) {
+      this.tabManager.reorderTab(this.dragState.initialIndex, newIndex);
+    }
+
+    // クリーンアップ
+    this.cleanupDrag();
+  }
+
+  /**
+   * ドロップ位置のインデックスを計算
+   */
+  private calculateDropIndex(clientX: number): number {
+    const tabs = this.tabManager.getAllTabs();
+    const tabElements = Array.from(
+      this.container.querySelectorAll('.editor-tab')
+    ) as HTMLElement[];
+
+    let dropIndex = tabs.length - 1;
+
+    for (let i = 0; i < tabElements.length; i++) {
+      const tab = tabElements[i]!;
+
+      // ドラッグ中のタブはスキップ
+      if (tab === this.dragState.draggedElement) {
+        continue;
+      }
+
+      const rect = tab.getBoundingClientRect();
+      const midPoint = rect.left + rect.width / 2;
+
+      if (clientX < midPoint) {
+        // このタブのインデックスを取得
+        const tabId = tab.dataset.tabId;
+        const tabIndex = tabs.findIndex(t => t.id === tabId);
+
+        if (tabIndex !== -1) {
+          // ドラッグ元より後ろに挿入する場合は調整
+          if (tabIndex > this.dragState.initialIndex) {
+            dropIndex = tabIndex - 1;
+          } else {
+            dropIndex = tabIndex;
+          }
+        }
+        break;
+      }
+    }
+
+    return dropIndex;
+  }
+
+  /**
+   * プレースホルダの位置を更新
+   */
+  private updateDropPosition(clientX: number): void {
+    const placeholder = this.dragState.placeholder;
+    if (!placeholder) return;
+
+    // 全タブを取得（ドラッグ中のタブも含む）
+    const tabElements = Array.from(
+      this.container.querySelectorAll('.editor-tab')
+    ) as HTMLElement[];
+
+    // プレースホルダが既に挿入されている場合は一旦削除
+    placeholder.remove();
+
+    let insertBeforeElement: HTMLElement | null = null;
+
+    for (let i = 0; i < tabElements.length; i++) {
+      const tab = tabElements[i]!;
+      const rect = tab.getBoundingClientRect();
+      const midPoint = rect.left + rect.width / 2;
+
+      if (clientX < midPoint) {
+        // ドラッグ中のタブ自身の場合はスキップ（自分の前に挿入しない）
+        if (tab === this.dragState.draggedElement) {
+          continue;
+        }
+        insertBeforeElement = tab;
+        break;
+      }
+    }
+
+    if (insertBeforeElement) {
+      this.container.insertBefore(placeholder, insertBeforeElement);
+    } else {
+      // 最後に配置
+      this.container.appendChild(placeholder);
+    }
+  }
+
+  /**
+   * ゴースト要素（マウスに追従する半透明タブ）を作成
+   */
+  private createGhost(sourceElement: HTMLElement): HTMLElement {
+    const ghost = document.createElement('div');
+    ghost.className = 'editor-tab-ghost';
+
+    // アイコンとファイル名を取得してコピー
+    const icon = sourceElement.querySelector('.tab-icon');
+    const filename = sourceElement.querySelector('.tab-filename');
+    const extension = sourceElement.querySelector('.tab-extension');
+
+    if (icon) {
+      ghost.appendChild(icon.cloneNode(true));
+    }
+    if (filename) {
+      ghost.appendChild(filename.cloneNode(true));
+    }
+    if (extension) {
+      ghost.appendChild(extension.cloneNode(true));
+    }
+
+    return ghost;
+  }
+
+  /**
+   * ゴーストの位置を更新
+   */
+  private updateGhostPosition(clientX: number, clientY: number): void {
+    const ghost = this.dragState.ghost;
+    if (!ghost) return;
+
+    ghost.style.left = `${clientX - this.dragState.offsetX}px`;
+    ghost.style.top = `${clientY - this.dragState.offsetY}px`;
+  }
+
+  /**
+   * セパレータ（ドロップ位置インジケータ）を作成
+   */
+  private createPlaceholder(_sourceElement: HTMLElement): HTMLElement {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'editor-tab-placeholder';
+    // 幅と高さはCSSで定義（セパレータスタイル）
+    return placeholder;
+  }
+
+  /**
+   * ドラッグ終了時のクリーンアップ
+   */
+  private cleanupDrag(): void {
+    if (this.dragState.draggedElement) {
+      this.dragState.draggedElement.classList.remove('dragging');
+    }
+
+    this.dragState.placeholder?.remove();
+    this.dragState.ghost?.remove();
+
+    document.body.classList.remove('tab-dragging');
+
+    if (this.boundMouseMove) {
+      document.removeEventListener('mousemove', this.boundMouseMove);
+      this.boundMouseMove = null;
+    }
+    if (this.boundMouseUp) {
+      document.removeEventListener('mouseup', this.boundMouseUp);
+      this.boundMouseUp = null;
+    }
+
+    this.dragState = {
+      isDragging: false,
+      draggedTabId: null,
+      draggedElement: null,
+      placeholder: null,
+      ghost: null,
+      startX: 0,
+      offsetX: 0,
+      offsetY: 0,
+      initialIndex: -1,
+      initialRect: null,
+    };
+
+    // UIを更新（タブ順序を反映）
+    this.updateUI();
+  }
+
   /**
    * リソースを解放
    */
   dispose(): void {
+    this.cleanupDrag();
     this.container.innerHTML = '';
     this.onNotification = null;
   }

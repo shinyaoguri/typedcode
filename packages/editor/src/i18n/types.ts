@@ -43,10 +43,14 @@ export interface TranslationKeys {
 
   // Activity bar tooltips
   activityBar: {
+    menu: string;
+    newFile: string;
+    newWindow: string;
     toggleTerminal: string;
     toggleLogPanel: string;
     runCode: string;
     stopExecution: string;
+    download: string;
     downloadAll: string;
     saveCodeOnly: string;
     exportProofOnly: string;

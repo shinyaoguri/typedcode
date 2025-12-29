@@ -33,10 +33,14 @@ export const en: TranslationKeys = {
   },
 
   activityBar: {
+    menu: 'Menu',
+    newFile: 'New File',
+    newWindow: 'New Window',
     toggleTerminal: 'Toggle Terminal',
     toggleLogPanel: 'Toggle Log Panel',
     runCode: 'Run Code (Ctrl+Enter)',
     stopExecution: 'Stop Execution',
+    download: 'Download',
     downloadAll: 'Download All (ZIP)',
     saveCodeOnly: 'Save Code Only',
     exportProofOnly: 'Export Proof Only',
