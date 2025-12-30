@@ -1,5 +1,15 @@
 console.log('[DEBUG] ===== main.ts TOP LEVEL LOADING =====');
 
+// Check if this is a fresh window request (opened via "New Window" menu)
+// If so, clear sessionStorage to start with a clean state
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('fresh') === '1') {
+  sessionStorage.removeItem('typedcode-tabs');
+  // Remove the ?fresh=1 from URL without reloading
+  const cleanUrl = window.location.origin + window.location.pathname;
+  window.history.replaceState({}, '', cleanUrl);
+}
+
 import * as monaco from 'monaco-editor';
 import './styles/main.css';
 import { Fingerprint } from '@typedcode/shared';
@@ -543,7 +553,8 @@ function initializeTerminal(): void {
   const newWindowBtn = document.getElementById('new-window-btn');
   newWindowBtn?.addEventListener('click', () => {
     ctx.mainMenuDropdown.close();
-    window.open(window.location.href, '_blank');
+    // Open a fresh window with ?fresh=1 to signal that sessionStorage should be cleared
+    window.open(window.location.origin + window.location.pathname + '?fresh=1', '_blank');
   });
 
   const themeToggleBtn = document.getElementById('theme-toggle-btn');

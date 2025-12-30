@@ -187,11 +187,21 @@ export class TabUIController {
    * タブUIを更新
    */
   updateUI(): void {
-    // 全タブを再生成
-    this.container.innerHTML = '';
+    // add-tab-btn を保持（Chrome-style: タブコンテナ内に配置）
+    const addTabBtn = this.container.querySelector('.add-tab-btn');
+
+    // タブ要素のみを削除（add-tab-btn は保持）
+    const tabElements = this.container.querySelectorAll('.editor-tab');
+    tabElements.forEach((el) => el.remove());
+
+    // add-tab-btn の前にタブを挿入
     for (const tab of this.tabManager.getAllTabs()) {
       const tabEl = this.createTabElement(tab);
-      this.container.appendChild(tabEl);
+      if (addTabBtn) {
+        this.container.insertBefore(tabEl, addTabBtn);
+      } else {
+        this.container.appendChild(tabEl);
+      }
     }
   }
 
@@ -468,8 +478,13 @@ export class TabUIController {
     if (insertBeforeElement) {
       this.container.insertBefore(placeholder, insertBeforeElement);
     } else {
-      // 最後に配置
-      this.container.appendChild(placeholder);
+      // 最後に配置（add-tab-btn の前に挿入）
+      const addTabBtn = this.container.querySelector('.add-tab-btn');
+      if (addTabBtn) {
+        this.container.insertBefore(placeholder, addTabBtn);
+      } else {
+        this.container.appendChild(placeholder);
+      }
     }
   }
 
