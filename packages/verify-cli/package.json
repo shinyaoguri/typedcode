@@ -1,0 +1,38 @@
+{
+  "name": "@typedcode/verify-cli",
+  "version": "1.0.0",
+  "description": "CLI tool to verify TypedCode typing proof files",
+  "type": "module",
+  "bin": {
+    "typedcode-verify": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "exports": {
+    ".": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@typedcode/shared": "*",
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "typedcode",
+    "typing-proof",
+    "verification",
+    "cli"
+  ],
+  "license": "MIT"
+}
