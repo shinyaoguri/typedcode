@@ -1,0 +1,139 @@
+/* Activity Bar - Left icon column */
+.activitybar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 48px;
+  background-color: var(--activitybar-bg);
+  flex-shrink: 0;
+}
+
+.activitybar-top,
+.activitybar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.activitybar-top {
+  padding-top: 4px;
+}
+
+.activitybar-bottom {
+  padding-bottom: 4px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* Activity bar items */
+.activitybar-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  color: var(--activitybar-icon);
+  transition: color 0.15s ease;
+}
+
+.activitybar-item:hover {
+  color: var(--activitybar-icon-hover);
+}
+
+.activitybar-item.active {
+  color: var(--activitybar-icon-active);
+}
+
+.activitybar-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 24px;
+  background-color: var(--activitybar-indicator);
+}
+
+.activitybar-item i {
+  font-size: 20px;
+}
+
+/* Dropdown menu container */
+.activitybar-menu-container {
+  position: relative;
+}
+
+/* Dropdown menu */
+.activitybar-dropdown {
+  position: absolute;
+  left: 52px;
+  bottom: 0;
+  min-width: 200px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-8px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.activitybar-dropdown.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+}
+
+/* Top dropdowns: align to top of button */
+#main-menu-dropdown {
+  bottom: auto;
+  top: 0;
+}
+
+/* Dropdown items */
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: background-color 0.1s ease;
+  cursor: pointer;
+  text-align: left;
+  border: none;
+  background: none;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.dropdown-item:hover {
+  background-color: var(--bg-hover);
+  text-decoration: none;
+}
+
+.dropdown-item i {
+  width: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.dropdown-item span {
+  flex: 1;
+}
+
+.dropdown-external-icon {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.dropdown-divider {
+  height: 1px;
+  margin: 4px 0;
+  background-color: var(--border-color);
+}

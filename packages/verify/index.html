@@ -1,205 +1,445 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TypedCode - 証明の検証</title>
-  <link rel="stylesheet" href="./src/verify.css">
+  <title>TypedCode Verify</title>
+  <link rel="stylesheet" href="./src/styles/main.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
 </head>
 <body>
-  <div class="verify-container">
-    <!-- 初期状態: ドロップゾーン (中央表示) -->
-    <section class="drop-zone-section" id="drop-zone-section">
-      <div class="drop-zone" id="drop-zone">
-        <div class="drop-zone-content">
-          <div class="icon">📁</div>
-          <h2>証明ファイルをドロップ</h2>
-          <p>JSON または ZIP ファイルをドラッグ&ドロップ</p>
-          <p class="drop-zone-hint">単体の .json ファイル、または複数ファイルを含む .zip に対応</p>
-          <label class="drop-zone-btn" for="file-input">
-            ファイルを選択
-            <input type="file" id="file-input" accept=".json,.zip" style="display: none;">
-          </label>
+  <div id="app">
+    <!-- Main Layout -->
+    <div class="main-layout">
+      <!-- Activity Bar -->
+      <div class="activitybar">
+        <div class="activitybar-top">
+          <div class="activitybar-menu-container">
+            <button class="activitybar-item" id="main-menu-btn" title="メニュー">
+              <i class="fas fa-bars"></i>
+            </button>
+            <div class="activitybar-dropdown" id="main-menu-dropdown">
+              <button class="dropdown-item" id="open-file-btn">
+                <i class="fas fa-folder-open"></i>
+                <span>ファイルを開く</span>
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-    </section>
-
-    <!-- メインUI: サイドバー + コンテンツ -->
-    <section class="verify-main" id="verify-main" style="display: none;">
-      <div class="verify-main-container">
-        <!-- サイドバー: ファイルリスト -->
-        <div class="verify-sidebar" id="verify-sidebar">
-          <div class="sidebar-header">
-            <h3>証明ファイル</h3>
-            <div class="sidebar-actions">
-              <label class="sidebar-action-btn" for="file-input-2" title="ファイルを追加">
-                <i class="fas fa-plus"></i>
-              </label>
-              <input type="file" id="file-input-2" accept=".json,.zip" style="display: none;">
-              <a href="/" class="sidebar-action-btn" title="エディタに戻る">
-                <i class="fas fa-arrow-left"></i>
+        <div class="activitybar-bottom">
+          <div class="activitybar-menu-container">
+            <button class="activitybar-item" id="settings-btn" title="設定">
+              <i class="fas fa-gear"></i>
+            </button>
+            <div class="activitybar-dropdown" id="settings-dropdown">
+              <button class="dropdown-item" id="theme-toggle-btn">
+                <i class="fas fa-moon"></i>
+                <span>テーマ切替</span>
+              </button>
+              <div class="dropdown-divider"></div>
+              <a class="dropdown-item" href="/" target="_blank">
+                <i class="fas fa-code"></i>
+                <span>エディタを開く</span>
+                <i class="fas fa-external-link-alt dropdown-external-icon"></i>
+              </a>
+              <a class="dropdown-item" href="https://github.com/shinyaoguri/typedcode" target="_blank">
+                <i class="fab fa-github"></i>
+                <span>GitHub</span>
+                <i class="fas fa-external-link-alt dropdown-external-icon"></i>
               </a>
             </div>
           </div>
-          <div class="verify-file-list" id="verify-file-list"></div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <h3>証明ファイル</h3>
+          <div class="sidebar-actions">
+            <button class="sidebar-action-btn" id="add-file-btn" title="ファイルを追加">
+              <i class="fas fa-file-circle-plus"></i>
+            </button>
+            <button class="sidebar-action-btn" id="add-folder-btn" title="フォルダを追加">
+              <i class="fas fa-folder-plus"></i>
+            </button>
+          </div>
+        </div>
+        <div class="sidebar-content" id="file-list">
+          <div class="sidebar-empty" id="sidebar-empty">
+            <i class="fas fa-file-lines"></i>
+            <p>ファイルを読み込むと<br>ここに表示されます</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resize Handle -->
+      <div class="resize-handle" id="resize-handle"></div>
+
+      <!-- Workbench -->
+      <main class="workbench">
+        <!-- Tab Bar -->
+        <div class="tabbar-container" id="tabbar-container" style="display: none;">
+          <div class="tabbar" id="tabbar"></div>
         </div>
 
-        <!-- リサイズハンドル -->
-        <div class="resize-handle" id="resize-handle"></div>
+        <!-- Content Area -->
+        <div class="content-area" id="content-area">
+          <!-- Welcome Panel -->
+          <div class="welcome-panel" id="welcome-panel">
+            <div class="welcome-content">
+              <div class="welcome-logo">
+                <img src="/icon-192.png" alt="TypedCode Verify">
+              </div>
+              <h1>TypedCode Verify</h1>
+              <p>タイピング証明を検証</p>
 
-        <!-- メインコンテンツエリア -->
-        <div class="verify-content-area">
-          <!-- タブコンテンツパネル -->
-      <div class="tab-content-panel" id="tab-content-panel">
-        <!-- 検証待ち表示 -->
-        <div class="tab-content-loading" id="tab-content-loading" style="display: none;">
-          <div class="loading-spinner"></div>
-          <p>検証中...</p>
-        </div>
+              <div class="drop-zone" id="drop-zone">
+                <div class="drop-zone-icon">
+                  <i class="fas fa-file-import"></i>
+                </div>
+                <p class="drop-zone-text">証明ファイルをドロップ</p>
+                <p class="drop-zone-hint">JSON または ZIP ファイル</p>
+                <button class="drop-zone-btn" id="browse-btn">
+                  <i class="fas fa-folder-open"></i>
+                  ファイルを選択
+                </button>
+              </div>
 
-        <!-- 検証結果: 左右2分割 -->
-        <div class="result-section" id="result-section" style="display: none;">
-          <!-- 左側パネル: 情報 + グラフ -->
-          <div class="left-panel">
-            <!-- ステータス -->
-            <div class="status-bar" id="status-card">
-              <span class="status-icon" id="status-icon"></span>
-              <span class="status-text" id="status-title">検証中...</span>
+              <div class="welcome-shortcuts">
+                <div class="shortcut-item">
+                  <span class="shortcut-key">Ctrl+O</span>
+                  <span>ファイルを開く</span>
+                </div>
+              </div>
             </div>
+          </div>
 
-            <!-- 検証結果テーブル -->
-            <div class="info-section">
-              <table class="result-table">
-                <tbody>
-                  <tr>
-                    <th>タイピング</th>
-                    <td><span class="badge-inline" id="pure-typing-badge">-</span> <span class="text-muted" id="paste-info"></span></td>
-                  </tr>
-                  <tr>
-                    <th>ハッシュ鎖</th>
-                    <td><span class="badge-inline" id="chain-valid-badge">-</span> <span class="text-muted" id="chain-message"></span></td>
-                  </tr>
-                  <tr>
-                    <th>PoSW</th>
-                    <td><span class="badge-inline" id="posw-valid-badge">-</span> <span class="text-muted" id="posw-message"></span></td>
-                  </tr>
-                  <tr id="human-attestation-section" style="display: none;">
-                    <th>人間証明</th>
-                    <td>
-                      <div class="attestation-list">
-                        <!-- 作成時認証 (event #0) -->
-                        <div class="attestation-item" id="create-attestation-item" style="display: none;">
-                          <span class="badge-inline" id="create-attestation-badge">-</span>
-                          <span class="attestation-label">作成時</span>
-                          <span class="attestation-time text-muted" id="create-attestation-time"></span>
-                        </div>
-                        <!-- エクスポート前認証 -->
-                        <div class="attestation-item" id="export-attestation-item" style="display: none;">
-                          <span class="badge-inline" id="export-attestation-badge">-</span>
-                          <span class="attestation-label">エクスポート時</span>
-                          <span class="attestation-time text-muted" id="export-attestation-time"></span>
-                        </div>
-                        <!-- 認証なし or 旧形式 -->
-                        <div class="attestation-item" id="legacy-attestation-item" style="display: none;">
-                          <span class="badge-inline" id="human-attestation-badge">-</span>
-                          <span class="text-muted" id="human-attestation-message"></span>
-                        </div>
+          <!-- Result Container -->
+          <div class="result-container" id="result-container" style="display: none;">
+            <!-- Loading / Verification Progress -->
+            <div class="result-loading" id="result-loading" style="display: none;">
+              <div class="verification-progress">
+                <!-- Header -->
+                <div class="vp-header">
+                  <div class="vp-icon">
+                    <i class="fas fa-shield-halved"></i>
+                  </div>
+                  <div class="vp-title">
+                    <h2>検証中</h2>
+                    <p class="vp-filename" id="vp-filename"></p>
+                  </div>
+                </div>
+
+                <!-- Overall Progress -->
+                <div class="vp-overall">
+                  <div class="vp-overall-bar">
+                    <div class="vp-overall-fill" id="vp-overall-fill"></div>
+                  </div>
+                  <div class="vp-overall-info">
+                    <span class="vp-overall-percent" id="vp-overall-percent">0%</span>
+                    <span class="vp-overall-time" id="vp-overall-time">0:00</span>
+                  </div>
+                </div>
+
+                <!-- Steps -->
+                <div class="vp-steps" id="vp-steps">
+                  <!-- Step 1: Metadata -->
+                  <div class="vp-step" data-step="metadata" id="vp-step-metadata">
+                    <div class="vp-step-indicator">
+                      <div class="vp-step-icon pending">
+                        <i class="fas fa-file-circle-check"></i>
                       </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                      <div class="vp-step-line"></div>
+                    </div>
+                    <div class="vp-step-content">
+                      <div class="vp-step-header">
+                        <span class="vp-step-label">メタデータ検証</span>
+                        <span class="vp-step-status" id="vp-status-metadata"></span>
+                      </div>
+                      <p class="vp-step-desc">ファイルの整合性とハッシュを確認</p>
+                      <div class="vp-step-progress" id="vp-progress-metadata" style="display: none;">
+                        <div class="vp-step-bar">
+                          <div class="vp-step-fill"></div>
+                        </div>
+                        <span class="vp-step-detail"></span>
+                      </div>
+                    </div>
+                  </div>
 
-              <!-- 統計 -->
-              <div class="stats-compact">
-                <span><strong id="total-events">-</strong> events</span>
-                <span><strong id="typing-time">-</strong></span>
-                <span><strong id="typing-speed">-</strong></span>
-              </div>
+                  <!-- Step 2: Hash Chain (フォールバック時のみ表示) -->
+                  <div class="vp-step vp-step-fallback" data-step="chain" id="vp-step-chain" style="display: none;">
+                    <div class="vp-step-indicator">
+                      <div class="vp-step-icon pending">
+                        <i class="fas fa-link"></i>
+                      </div>
+                      <div class="vp-step-line"></div>
+                    </div>
+                    <div class="vp-step-content">
+                      <div class="vp-step-header">
+                        <span class="vp-step-label">全件ハッシュチェーン検証</span>
+                        <span class="vp-step-status" id="vp-status-chain"></span>
+                      </div>
+                      <p class="vp-step-desc">チェックポイントなしのためフォールバック</p>
+                      <div class="vp-step-progress" id="vp-progress-chain" style="display: none;">
+                        <div class="vp-step-bar">
+                          <div class="vp-step-fill"></div>
+                        </div>
+                        <span class="vp-step-detail"></span>
+                      </div>
+                    </div>
+                  </div>
 
-              <!-- メタデータ -->
-              <div class="meta-compact">
-                v<span id="version">-</span> | <span id="language">-</span> | <span id="timestamp">-</span>
-              </div>
+                  <!-- Step 3: Sampling Info -->
+                  <div class="vp-step" data-step="sampling" id="vp-step-sampling">
+                    <div class="vp-step-indicator">
+                      <div class="vp-step-icon pending">
+                        <i class="fas fa-layer-group"></i>
+                      </div>
+                      <div class="vp-step-line"></div>
+                    </div>
+                    <div class="vp-step-content">
+                      <div class="vp-step-header">
+                        <span class="vp-step-label">サンプリング検証</span>
+                        <span class="vp-step-status" id="vp-status-sampling"></span>
+                      </div>
+                      <p class="vp-step-desc">チェックポイント区間の部分検証</p>
+                      <div class="vp-step-progress" id="vp-progress-sampling" style="display: none;">
+                        <div class="vp-step-bar">
+                          <div class="vp-step-fill"></div>
+                        </div>
+                        <span class="vp-step-detail"></span>
+                      </div>
+                    </div>
+                  </div>
 
-              <!-- 非表示要素 -->
-              <div style="display: none;">
-                <span id="insert-events">-</span>
-                <span id="delete-events">-</span>
-                <span id="device-id">-</span>
-                <span id="user-agent">-</span>
-                <span id="posw-iterations">-</span>
-                <span id="posw-avg-time">-</span>
-                <span id="posw-total-time">-</span>
-                <span id="human-attestation-score">-</span>
-                <span id="human-attestation-timestamp">-</span>
-                <span id="human-attestation-hostname">-</span>
-                <div id="sampled-verification"><div id="sampled-summary"></div><div id="sampled-segments"></div></div>
-              </div>
+                  <!-- Step 4: Complete -->
+                  <div class="vp-step" data-step="complete" id="vp-step-complete">
+                    <div class="vp-step-indicator">
+                      <div class="vp-step-icon pending">
+                        <i class="fas fa-check-double"></i>
+                      </div>
+                    </div>
+                    <div class="vp-step-content">
+                      <div class="vp-step-header">
+                        <span class="vp-step-label">完了</span>
+                        <span class="vp-step-status" id="vp-status-complete"></span>
+                      </div>
+                      <p class="vp-step-desc">検証結果の表示</p>
+                    </div>
+                  </div>
+                </div>
 
-              <!-- 外部入力 -->
-              <div class="external-input-section" id="external-input-preview" style="display: none;">
-                <strong>外部入力:</strong>
-                <div id="external-input-list"></div>
+                <!-- Current Step Detail -->
+                <div class="vp-detail" id="vp-detail" style="display: none;">
+                  <div class="vp-detail-content">
+                    <span class="vp-detail-text" id="vp-detail-text"></span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <!-- グラフ: タブ切り替え -->
-            <div class="chart-section">
-              <div class="chart-tabs">
-                <button class="chart-tab active" data-tab="timeline" id="tab-timeline">
-                  <i class="fas fa-keyboard"></i> キー入力
-                </button>
-                <button class="chart-tab" data-tab="mouse" id="tab-mouse">
-                  <i class="fas fa-mouse"></i> マウス軌跡
-                </button>
-              </div>
-              <div class="chart-content">
-                <div class="chart-panel active" id="panel-timeline">
-                  <div class="integrated-timeline" id="integrated-timeline">
-                    <canvas id="integrated-timeline-chart"></canvas>
-                  </div>
+            <!-- Plaintext Content (Read-only file view) -->
+            <div class="plaintext-content" id="plaintext-content" style="display: none;">
+              <div class="plaintext-header">
+                <div class="plaintext-icon">
+                  <i class="fas fa-file-code"></i>
                 </div>
-                <div class="chart-panel" id="panel-mouse">
-                  <div class="mouse-trajectory" id="mouse-trajectory-section">
-                    <canvas id="mouse-trajectory-chart"></canvas>
-                  </div>
+                <div class="plaintext-info">
+                  <div class="plaintext-filename" id="plaintext-filename"></div>
+                  <div class="plaintext-language" id="plaintext-language"></div>
                 </div>
+                <div class="plaintext-badge">読み取り専用</div>
               </div>
-              <!-- 統計情報 -->
-              <div class="chart-stats">
-                <span>キー: <strong id="keydown-count">0</strong></span>
-                <span>Dwell: <strong id="avg-dwell-time">0ms</strong></span>
-                <span>Flight: <strong id="avg-flight-time">0ms</strong></span>
-                <span>マウス: <strong id="mouse-event-count">0</strong></span>
-                <span>フォーカス: <strong id="focus-event-count">0</strong></span>
-                <span>タブ: <strong id="visibility-event-count">0</strong></span>
+              <div class="plaintext-code-container">
+                <pre class="plaintext-code" id="plaintext-code"><code></code></pre>
               </div>
             </div>
-          </div>
 
-          <!-- 右側パネル: コードプレビュー -->
-          <div class="right-panel">
-            <pre id="content-preview"><code></code></pre>
+            <!-- Result Content -->
+            <div class="result-content" id="result-content" style="display: none;">
+              <!-- Left Panel -->
+              <div class="result-left-panel" id="result-left-panel">
+                <!-- Status Card -->
+                <div class="result-status-card" id="result-status-card">
+                  <div class="result-status-icon" id="result-status-icon">
+                    <i class="fas fa-spinner fa-spin"></i>
+                  </div>
+                  <div class="result-status-info">
+                    <div class="result-status-title" id="result-status-title">検証中...</div>
+                    <div class="result-status-filename" id="result-status-filename"></div>
+                  </div>
+                </div>
+
+                <!-- Verification Cards -->
+                <div class="result-cards" id="result-cards">
+                  <!-- Typing Card -->
+                  <div class="result-card" id="card-typing">
+                    <div class="result-card-header">
+                      <div class="result-card-header-left">
+                        <div class="result-card-icon pending" id="typing-icon">
+                          <i class="fas fa-keyboard"></i>
+                        </div>
+                        <span class="result-card-title">タイピング</span>
+                      </div>
+                      <span class="result-card-badge pending" id="typing-badge">-</span>
+                    </div>
+                    <div class="result-card-content" id="typing-content">
+                      <div class="result-row">
+                        <span class="result-row-label">ペースト回数</span>
+                        <span class="result-row-value" id="paste-count">-</span>
+                      </div>
+                      <div class="result-row">
+                        <span class="result-row-label">外部入力</span>
+                        <span class="result-row-value" id="external-input">-</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Hash Chain Card -->
+                  <div class="result-card" id="card-chain">
+                    <div class="result-card-header">
+                      <div class="result-card-header-left">
+                        <div class="result-card-icon pending" id="chain-icon">
+                          <i class="fas fa-link"></i>
+                        </div>
+                        <span class="result-card-title">ハッシュチェーン</span>
+                      </div>
+                      <span class="result-card-badge pending" id="chain-badge">-</span>
+                    </div>
+                    <div class="result-card-content" id="chain-content">
+                      <div class="result-row">
+                        <span class="result-row-label">検証方式</span>
+                        <span class="result-row-value" id="chain-method">-</span>
+                      </div>
+                      <div class="result-row">
+                        <span class="result-row-label">イベント数</span>
+                        <span class="result-row-value" id="chain-events">-</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- PoSW Card -->
+                  <div class="result-card" id="card-posw">
+                    <div class="result-card-header">
+                      <div class="result-card-header-left">
+                        <div class="result-card-icon pending" id="posw-icon">
+                          <i class="fas fa-clock"></i>
+                        </div>
+                        <span class="result-card-title">PoSW</span>
+                      </div>
+                      <span class="result-card-badge pending" id="posw-badge">-</span>
+                    </div>
+                    <div class="result-card-content" id="posw-content">
+                      <div class="result-row">
+                        <span class="result-row-label">反復回数</span>
+                        <span class="result-row-value" id="posw-iterations">-</span>
+                      </div>
+                      <div class="result-row">
+                        <span class="result-row-label">合計時間</span>
+                        <span class="result-row-value" id="posw-total-time">-</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Human Attestation Card -->
+                  <div class="result-card" id="card-attestation" style="display: none;">
+                    <div class="result-card-header">
+                      <div class="result-card-header-left">
+                        <div class="result-card-icon pending" id="attestation-icon">
+                          <i class="fas fa-user-check"></i>
+                        </div>
+                        <span class="result-card-title">人間証明</span>
+                      </div>
+                      <span class="result-card-badge pending" id="attestation-badge">-</span>
+                    </div>
+                    <div class="result-card-content" id="attestation-content">
+                      <div class="result-row" id="attestation-create-row" style="display: none;">
+                        <span class="result-row-label">作成時</span>
+                        <span class="result-row-value" id="attestation-create">-</span>
+                      </div>
+                      <div class="result-row" id="attestation-export-row" style="display: none;">
+                        <span class="result-row-label">エクスポート時</span>
+                        <span class="result-row-value" id="attestation-export">-</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="result-stats" id="result-stats">
+                  <div class="result-stat">
+                    <span class="result-stat-value" id="stat-events">-</span>
+                    <span class="result-stat-label">Events</span>
+                  </div>
+                  <div class="result-stat">
+                    <span class="result-stat-value" id="stat-time">-</span>
+                    <span class="result-stat-label">Time</span>
+                  </div>
+                  <div class="result-stat">
+                    <span class="result-stat-value" id="stat-speed">-</span>
+                    <span class="result-stat-label">Speed</span>
+                  </div>
+                </div>
+
+                <!-- Chart Section -->
+                <div class="chart-section" id="chart-section">
+                  <div class="chart-tabs">
+                    <button class="chart-tab active" data-tab="timeline" id="tab-timeline">
+                      <i class="fas fa-keyboard"></i> タイムライン
+                    </button>
+                    <button class="chart-tab" data-tab="mouse" id="tab-mouse">
+                      <i class="fas fa-mouse"></i> マウス軌跡
+                    </button>
+                  </div>
+                  <div class="chart-content">
+                    <div class="chart-panel active" id="panel-timeline">
+                      <div class="integrated-timeline">
+                        <canvas id="integrated-timeline-chart"></canvas>
+                      </div>
+                    </div>
+                    <div class="chart-panel" id="panel-mouse">
+                      <div class="mouse-trajectory">
+                        <canvas id="mouse-trajectory-chart"></canvas>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="chart-stats" id="chart-stats">
+                    <span>キー: <strong id="keydown-count">0</strong></span>
+                    <span>Dwell: <strong id="avg-dwell-time">0ms</strong></span>
+                    <span>Flight: <strong id="avg-flight-time">0ms</strong></span>
+                    <span>マウス: <strong id="mouse-event-count">0</strong></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right Panel - Code Preview -->
+              <div class="result-right-panel">
+                <pre id="code-preview"><code></code></pre>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-        </div><!-- /verify-content-area -->
-      </div><!-- /verify-main-container -->
-    </section>
+      </main>
+    </div>
 
-    <!-- ステータスバー -->
-    <footer class="verify-statusbar" id="verify-statusbar" style="display: none;">
+    <!-- Status Bar -->
+    <div class="statusbar" id="statusbar">
       <div class="statusbar-left">
-        <span id="queue-status">処理待ち: 0件</span>
-        <span class="status-separator">|</span>
-        <span id="current-status">-</span>
+        <div class="status-item" id="queue-status">
+          <i class="fas fa-check-circle"></i>
+          <span>Ready</span>
+        </div>
       </div>
-    </footer>
+      <div class="statusbar-right">
+        <div class="status-item" id="file-count">
+          <span>0 files</span>
+        </div>
+      </div>
+    </div>
 
-    <!-- フローティングシークバー (QuickTime風) -->
+    <!-- Floating Seekbar -->
     <div class="floating-seekbar" id="floating-seekbar" style="display: none;">
       <button class="seek-btn" id="seekbar-start" title="最初">
         <i class="fas fa-backward-fast"></i>
@@ -225,7 +465,10 @@
     </div>
   </div>
 
-  <!-- 処理中ダイアログ -->
+  <!-- Hidden file input -->
+  <input type="file" id="file-input" accept=".json,.zip" style="display: none;">
+
+  <!-- Processing Dialog -->
   <div class="processing-dialog-overlay" id="processing-dialog" style="display: none;">
     <div class="processing-dialog">
       <div class="dialog-spinner"></div>
@@ -238,17 +481,6 @@
         <span class="progress-text" id="dialog-progress-text"></span>
       </div>
     </div>
-  </div>
-
-  <!-- モーダル用の非表示キャンバス -->
-  <div style="display: none;">
-    <canvas id="modal-timeline-chart"></canvas>
-    <canvas id="modal-mouse-chart"></canvas>
-    <div id="modal-mouse-section"></div>
-    <div id="chart-modal"></div>
-    <div id="chart-modal-backdrop"></div>
-    <button id="chart-modal-close"></button>
-    <div id="chart-thumbnail"></div>
   </div>
 
   <script type="module" src="/src/main.ts"></script>

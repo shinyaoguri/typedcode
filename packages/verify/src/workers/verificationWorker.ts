@@ -30,6 +30,7 @@ interface ProgressResponse {
   current: number;
   total: number;
   phase: string;
+  totalEvents?: number; // 全イベント数
   hashInfo?: { computed: string; expected: string; poswHash?: string };
 }
 
@@ -78,6 +79,7 @@ function sendProgress(
   current: number,
   total: number,
   phase: string,
+  totalEvents?: number,
   hashInfo?: { computed: string; expected: string; poswHash?: string }
 ): void {
   const msg: ProgressResponse = {
@@ -86,6 +88,7 @@ function sendProgress(
     current,
     total,
     phase,
+    totalEvents,
     hashInfo,
   };
   self.postMessage(msg);
@@ -161,8 +164,10 @@ async function verify(request: VerifyRequest): Promise<void> {
     let metadataValid = false;
     let isPureTyping = false;
 
+    const totalEvents = proofData.proof?.events?.length ?? 0;
+
     if (proofData.typingProofHash && proofData.typingProofData && proofData.content) {
-      sendProgress(id, 1, 3, 'metadata');
+      sendProgress(id, 1, 3, 'metadata', totalEvents);
 
       const hashVerification = await typingProof.verifyTypingProofHash(
         proofData.typingProofHash,
@@ -177,7 +182,7 @@ async function verify(request: VerifyRequest): Promise<void> {
       metadataValid = true;
     }
 
-    sendProgress(id, 2, 3, 'metadata');
+    sendProgress(id, 2, 3, 'metadata', totalEvents);
 
     // 2. ハッシュ鎖の検証
     if (!proofData.proof?.events) {
@@ -197,19 +202,19 @@ async function verify(request: VerifyRequest): Promise<void> {
         proofData.checkpoints!,
         3,
         (phase: string, current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash?: string }) => {
-          sendProgress(id, current, total, phase, hashInfo);
+          sendProgress(id, current, total, phase, totalEvents, hashInfo);
         }
       );
     } else {
       // 全件検証（チェックポイントなし）
       chainVerification = await typingProof.verify(
         (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => {
-          sendProgress(id, current, total, 'chain', hashInfo);
+          sendProgress(id, current, total, 'chain', totalEvents, hashInfo);
         }
       );
     }
 
-    sendProgress(id, 3, 3, 'complete');
+    sendProgress(id, 3, 3, 'complete', totalEvents);
 
     // 3. PoSW統計を計算
     const poswStats = calculatePoSWStats(proofData.proof.events);

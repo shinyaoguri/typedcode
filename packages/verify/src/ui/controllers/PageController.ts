@@ -294,7 +294,6 @@ export class PageController {
 
     if (tab.status === 'pending' || tab.status === 'verifying') {
       // 検証中はローディング表示
-      console.log('[Verify] Tab verifying:', tab.id, tab.progress + '%');
       tabContentLoading.style.display = 'flex';
       resultSection.style.display = 'none';
       this.currentDisplayedTabId = null;
@@ -305,17 +304,14 @@ export class PageController {
 
       // 同じタブなら何もしない
       if (this.currentDisplayedTabId === tab.id) {
-        console.log('[Verify] Same tab, skip rendering:', tab.id);
         return;
       }
 
       // 新規レンダリング
-      console.log('[Verify] Rendering tab:', tab.id);
       this.currentDisplayedTabId = tab.id;
       void this.renderVerificationResult(tab, sessionId);
     } else if (tab.status === 'error') {
       // エラーの場合
-      console.log('[Verify] Tab error:', tab.id, tab.error);
       tabContentLoading.style.display = 'none';
       resultSection.style.display = 'flex';
       this.currentDisplayedTabId = null;

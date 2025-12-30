@@ -1,0 +1,166 @@
+/* CSS Variables for theming - Vivid Orange VSCode style */
+:root[data-theme="dark"] {
+  /* Base colors */
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-tertiary: #2d2d2d;
+  --bg-hover: #3c3c3c;
+  --bg-active: #4a4a4a;
+  --bg-input: #3c3c3c;
+  --border-color: #3e3e3e;
+  --border-input: #555555;
+  --text-primary: #cccccc;
+  --text-secondary: #9d9d9d;
+  --text-tertiary: #6e6e6e;
+  --text-quaternary: #505050;
+
+  /* Accent colors - Vivid Orange */
+  --accent-primary: #FF5722;
+  --accent-secondary: #E64A19;
+  --accent-tertiary: #BF360C;
+  --accent-info: #FF7043;
+  --accent-success: #4CAF50;
+  --accent-success-hover: #43A047;
+  --accent-warning: #FFC107;
+  --accent-danger: #f44336;
+  --accent-danger-hover: #d32f2f;
+
+  /* Common semantic colors (for verification progress UI) */
+  --accent-color: #FF5722;
+  --accent-hover: #E64A19;
+  --accent-rgb: 255, 87, 34;
+  --success-color: #4CAF50;
+  --success-rgb: 76, 175, 80;
+  --error-color: #f44336;
+  --error-rgb: 244, 67, 54;
+  --warning-color: #FFC107;
+  --warning-rgb: 255, 193, 7;
+
+  /* Activity Bar */
+  --activitybar-bg: #333333;
+  --activitybar-icon: #858585;
+  --activitybar-icon-hover: #ffffff;
+  --activitybar-icon-active: #FF5722;
+  --activitybar-indicator: #FF5722;
+
+  /* Sidebar */
+  --sidebar-bg: #252526;
+  --sidebar-header-bg: #2d2d2d;
+  --sidebar-item-hover: #2a2a2a;
+  --sidebar-item-active: #37373d;
+  --sidebar-item-indicator: #FF5722;
+
+  /* Tabs */
+  --tab-bg: #2d2d2d;
+  --tab-bg-active: #1e1e1e;
+  --tab-border: #252526;
+  --tab-active-indicator: #FF5722;
+
+  /* Status Bar */
+  --statusbar-bg: #FF5722;
+  --statusbar-text: #ffffff;
+  --statusbar-hover-bg: rgba(255, 255, 255, 0.12);
+
+  /* Welcome Panel */
+  --welcome-bg: #1e1e1e;
+  --dropzone-border: #555555;
+  --dropzone-border-hover: #FF5722;
+  --dropzone-bg-hover: rgba(255, 87, 34, 0.08);
+
+  /* Cards */
+  --card-bg: #252526;
+  --card-border: #3e3e3e;
+  --card-header-bg: #2d2d2d;
+
+  /* Scrollbar */
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(121, 121, 121, 0.4);
+  --scrollbar-thumb-hover: rgba(100, 100, 100, 0.7);
+
+  /* Shadows */
+  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-light: rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme="light"] {
+  /* Base colors */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f3f3;
+  --bg-tertiary: #e8e8e8;
+  --bg-hover: #e0e0e0;
+  --bg-active: #d0d0d0;
+  --bg-input: #ffffff;
+  --border-color: #d4d4d4;
+  --border-input: #c0c0c0;
+  --text-primary: #333333;
+  --text-secondary: #616161;
+  --text-tertiary: #888888;
+  --text-quaternary: #aaaaaa;
+
+  /* Accent colors - Vivid Orange (slightly darker for contrast) */
+  --accent-primary: #E64A19;
+  --accent-secondary: #BF360C;
+  --accent-tertiary: #8D2505;
+  --accent-info: #FF5722;
+  --accent-success: #388E3C;
+  --accent-success-hover: #2E7D32;
+  --accent-warning: #FFA000;
+  --accent-danger: #D32F2F;
+  --accent-danger-hover: #C62828;
+
+  /* Common semantic colors (for verification progress UI) */
+  --accent-color: #E64A19;
+  --accent-hover: #BF360C;
+  --accent-rgb: 230, 74, 25;
+  --success-color: #388E3C;
+  --success-rgb: 56, 142, 60;
+  --error-color: #D32F2F;
+  --error-rgb: 211, 47, 47;
+  --warning-color: #FFA000;
+  --warning-rgb: 255, 160, 0;
+
+  /* Activity Bar */
+  --activitybar-bg: #2c2c2c;
+  --activitybar-icon: #858585;
+  --activitybar-icon-hover: #ffffff;
+  --activitybar-icon-active: #FF5722;
+  --activitybar-indicator: #FF5722;
+
+  /* Sidebar */
+  --sidebar-bg: #f3f3f3;
+  --sidebar-header-bg: #e8e8e8;
+  --sidebar-item-hover: #e0e0e0;
+  --sidebar-item-active: #d0d0d0;
+  --sidebar-item-indicator: #E64A19;
+
+  /* Tabs */
+  --tab-bg: #ececec;
+  --tab-bg-active: #ffffff;
+  --tab-border: #d4d4d4;
+  --tab-active-indicator: #E64A19;
+
+  /* Status Bar */
+  --statusbar-bg: #E64A19;
+  --statusbar-text: #ffffff;
+  --statusbar-hover-bg: rgba(255, 255, 255, 0.12);
+
+  /* Welcome Panel */
+  --welcome-bg: #ffffff;
+  --dropzone-border: #d4d4d4;
+  --dropzone-border-hover: #E64A19;
+  --dropzone-bg-hover: rgba(230, 74, 25, 0.05);
+
+  /* Cards */
+  --card-bg: #ffffff;
+  --card-border: #d4d4d4;
+  --card-header-bg: #f3f3f3;
+
+  /* Scrollbar */
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(100, 100, 100, 0.4);
+  --scrollbar-thumb-hover: rgba(80, 80, 80, 0.6);
+
+  /* Shadows */
+  --shadow: rgba(0, 0, 0, 0.15);
+  --shadow-light: rgba(0, 0, 0, 0.08);
+}

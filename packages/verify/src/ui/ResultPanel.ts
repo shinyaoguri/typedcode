@@ -1,0 +1,653 @@
+/**
+ * ResultPanel - Verification result display with cards
+ */
+import type {
+  VerificationResult,
+  PoswStats,
+  HumanAttestationUI,
+  VerificationStepType,
+  VerificationStepStatus,
+} from '../types';
+import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
+
+export interface ResultData {
+  filename: string;
+  content: string;
+  language: string;
+  result: VerificationResult;
+  poswStats?: PoswStats;
+  attestations?: HumanAttestationUI[];
+  eventCount: number;
+  typingTime: string;
+  typingSpeed: string;
+}
+
+export interface PlaintextData {
+  filename: string;
+  content: string;
+  language: string;
+}
+
+export class ResultPanel {
+  private container: HTMLElement;
+  private loading: HTMLElement;
+  private content: HTMLElement;
+  private plaintextContent: HTMLElement;
+  private plaintextFilename: HTMLElement;
+  private plaintextLanguage: HTMLElement;
+  private plaintextCode: HTMLElement;
+
+  // Status card
+  private statusIcon: HTMLElement;
+  private statusTitle: HTMLElement;
+  private statusFilename: HTMLElement;
+
+  // Verification cards
+  private typingIcon: HTMLElement;
+  private typingBadge: HTMLElement;
+  private pasteCount: HTMLElement;
+  private externalInput: HTMLElement;
+  private cardTyping: HTMLElement;
+
+  private chainIcon: HTMLElement;
+  private chainBadge: HTMLElement;
+  private chainMethod: HTMLElement;
+  private chainEvents: HTMLElement;
+  private cardChain: HTMLElement;
+
+  private poswIcon: HTMLElement;
+  private poswBadge: HTMLElement;
+  private poswIterations: HTMLElement;
+  private poswTotalTime: HTMLElement;
+  private cardPosw: HTMLElement;
+
+  private attestationIcon: HTMLElement;
+  private attestationBadge: HTMLElement;
+  private attestationCreate: HTMLElement;
+  private attestationExport: HTMLElement;
+  private attestationCreateRow: HTMLElement;
+  private attestationExportRow: HTMLElement;
+  private cardAttestation: HTMLElement;
+
+  // Stats
+  private statEvents: HTMLElement;
+  private statTime: HTMLElement;
+  private statSpeed: HTMLElement;
+
+  // Code preview
+  private codePreview: HTMLElement;
+
+  // Chart tabs
+  private tabTimeline: HTMLElement;
+  private tabMouse: HTMLElement;
+  private panelTimeline: HTMLElement;
+  private panelMouse: HTMLElement;
+
+  // Chart stats
+  private keydownCount: HTMLElement;
+  private avgDwellTime: HTMLElement;
+  private avgFlightTime: HTMLElement;
+  private mouseEventCount: HTMLElement;
+
+  // Verification progress elements
+  private vpFilename: HTMLElement;
+  private vpOverallFill: HTMLElement;
+  private vpOverallPercent: HTMLElement;
+  private vpOverallTime: HTMLElement;
+  private vpSteps: HTMLElement;
+  private vpDetail: HTMLElement;
+  private vpDetailText: HTMLElement;
+  private progressStartTime: number = 0;
+  private progressTimerInterval: number | null = null;
+
+  constructor() {
+    this.container = document.getElementById('result-container')!;
+    this.loading = document.getElementById('result-loading')!;
+    this.content = document.getElementById('result-content')!;
+
+    // Plaintext elements
+    this.plaintextContent = document.getElementById('plaintext-content')!;
+    this.plaintextFilename = document.getElementById('plaintext-filename')!;
+    this.plaintextLanguage = document.getElementById('plaintext-language')!;
+    this.plaintextCode = document.getElementById('plaintext-code')!;
+
+    // Status card
+    this.statusIcon = document.getElementById('result-status-icon')!;
+    this.statusTitle = document.getElementById('result-status-title')!;
+    this.statusFilename = document.getElementById('result-status-filename')!;
+
+    // Typing card
+    this.cardTyping = document.getElementById('card-typing')!;
+    this.typingIcon = document.getElementById('typing-icon')!;
+    this.typingBadge = document.getElementById('typing-badge')!;
+    this.pasteCount = document.getElementById('paste-count')!;
+    this.externalInput = document.getElementById('external-input')!;
+
+    // Chain card
+    this.cardChain = document.getElementById('card-chain')!;
+    this.chainIcon = document.getElementById('chain-icon')!;
+    this.chainBadge = document.getElementById('chain-badge')!;
+    this.chainMethod = document.getElementById('chain-method')!;
+    this.chainEvents = document.getElementById('chain-events')!;
+
+    // PoSW card
+    this.cardPosw = document.getElementById('card-posw')!;
+    this.poswIcon = document.getElementById('posw-icon')!;
+    this.poswBadge = document.getElementById('posw-badge')!;
+    this.poswIterations = document.getElementById('posw-iterations')!;
+    this.poswTotalTime = document.getElementById('posw-total-time')!;
+
+    // Attestation card
+    this.cardAttestation = document.getElementById('card-attestation')!;
+    this.attestationIcon = document.getElementById('attestation-icon')!;
+    this.attestationBadge = document.getElementById('attestation-badge')!;
+    this.attestationCreate = document.getElementById('attestation-create')!;
+    this.attestationExport = document.getElementById('attestation-export')!;
+    this.attestationCreateRow = document.getElementById('attestation-create-row')!;
+    this.attestationExportRow = document.getElementById('attestation-export-row')!;
+
+    // Stats
+    this.statEvents = document.getElementById('stat-events')!;
+    this.statTime = document.getElementById('stat-time')!;
+    this.statSpeed = document.getElementById('stat-speed')!;
+
+    // Code preview
+    this.codePreview = document.getElementById('code-preview')!;
+
+    // Chart tabs
+    this.tabTimeline = document.getElementById('tab-timeline')!;
+    this.tabMouse = document.getElementById('tab-mouse')!;
+    this.panelTimeline = document.getElementById('panel-timeline')!;
+    this.panelMouse = document.getElementById('panel-mouse')!;
+
+    // Chart stats
+    this.keydownCount = document.getElementById('keydown-count')!;
+    this.avgDwellTime = document.getElementById('avg-dwell-time')!;
+    this.avgFlightTime = document.getElementById('avg-flight-time')!;
+    this.mouseEventCount = document.getElementById('mouse-event-count')!;
+
+    // Verification progress elements
+    this.vpFilename = document.getElementById('vp-filename')!;
+    this.vpOverallFill = document.getElementById('vp-overall-fill')!;
+    this.vpOverallPercent = document.getElementById('vp-overall-percent')!;
+    this.vpOverallTime = document.getElementById('vp-overall-time')!;
+    this.vpSteps = document.getElementById('vp-steps')!;
+    this.vpDetail = document.getElementById('vp-detail')!;
+    this.vpDetailText = document.getElementById('vp-detail-text')!;
+
+    this.setupEventListeners();
+  }
+
+  private setupEventListeners(): void {
+    // Card expansion toggle
+    const cards = document.querySelectorAll('.result-card-header');
+    cards.forEach((header) => {
+      header.addEventListener('click', () => {
+        const card = header.closest('.result-card');
+        card?.classList.toggle('expanded');
+      });
+    });
+
+    // Chart tabs
+    this.tabTimeline.addEventListener('click', () => {
+      this.setActiveChartTab('timeline');
+    });
+
+    this.tabMouse.addEventListener('click', () => {
+      this.setActiveChartTab('mouse');
+    });
+  }
+
+  private setActiveChartTab(tab: 'timeline' | 'mouse'): void {
+    this.tabTimeline.classList.toggle('active', tab === 'timeline');
+    this.tabMouse.classList.toggle('active', tab === 'mouse');
+    this.panelTimeline.classList.toggle('active', tab === 'timeline');
+    this.panelMouse.classList.toggle('active', tab === 'mouse');
+  }
+
+  show(): void {
+    this.container.style.display = 'flex';
+  }
+
+  hide(): void {
+    this.container.style.display = 'none';
+  }
+
+  showLoading(): void {
+    this.loading.style.display = 'flex';
+    this.content.style.display = 'none';
+    this.plaintextContent.style.display = 'none';
+  }
+
+  showContent(): void {
+    this.loading.style.display = 'none';
+    this.content.style.display = 'flex';
+    this.plaintextContent.style.display = 'none';
+  }
+
+  showPlaintext(): void {
+    this.loading.style.display = 'none';
+    this.content.style.display = 'none';
+    this.plaintextContent.style.display = 'flex';
+  }
+
+  /**
+   * プレーンテキストファイルを表示（読み取り専用）
+   */
+  renderPlaintext(data: PlaintextData): void {
+    this.plaintextFilename.textContent = data.filename;
+    this.plaintextLanguage.textContent = data.language;
+
+    const codeEl = this.plaintextCode.querySelector('code');
+    if (codeEl) {
+      // シンタックスハイライトを適用
+      const highlighted = SyntaxHighlighter.highlight(data.content, data.language);
+      codeEl.innerHTML = highlighted;
+      codeEl.className = `language-${data.language} hljs`;
+    }
+
+    this.show();
+    this.showPlaintext();
+  }
+
+  render(data: ResultData): void {
+    const { filename, content, language, result, poswStats, attestations, eventCount, typingTime, typingSpeed } = data;
+
+    // Overall status
+    const isSuccess = result.chainValid && result.pureTyping;
+    const isWarning = result.chainValid && !result.pureTyping;
+    const statusClass = isSuccess ? 'success' : isWarning ? 'warning' : 'error';
+
+    this.statusIcon.className = `result-status-icon ${statusClass}`;
+    this.statusIcon.innerHTML = `<i class="fas fa-${isSuccess ? 'check-circle' : isWarning ? 'exclamation-triangle' : 'times-circle'}"></i>`;
+    this.statusTitle.textContent = isSuccess ? '検証成功' : isWarning ? '警告あり' : '検証失敗';
+    this.statusFilename.textContent = filename;
+
+    // Typing card
+    this.renderCard(
+      this.typingIcon,
+      this.typingBadge,
+      result.pureTyping,
+      result.pureTyping ? '純粋' : '外部入力あり'
+    );
+    this.pasteCount.textContent = `${result.pasteCount || 0}回`;
+    this.externalInput.textContent = result.pureTyping ? 'なし' : 'あり';
+
+    // Chain card
+    this.renderCard(
+      this.chainIcon,
+      this.chainBadge,
+      result.chainValid,
+      result.chainValid ? '有効' : '無効'
+    );
+    this.chainMethod.textContent = result.verificationMethod || 'standard';
+    this.chainEvents.textContent = `${eventCount.toLocaleString()}件`;
+
+    // PoSW card
+    const hasPoSW = poswStats && poswStats.totalIterations > 0;
+    this.renderCard(
+      this.poswIcon,
+      this.poswBadge,
+      hasPoSW ? true : null,
+      hasPoSW ? '有効' : 'なし'
+    );
+    this.poswIterations.textContent = hasPoSW ? poswStats.totalIterations.toLocaleString() : '-';
+    this.poswTotalTime.textContent = hasPoSW ? `${Math.round(poswStats.totalTime)}ms` : '-';
+
+    // Attestation card
+    if (attestations && attestations.length > 0) {
+      this.cardAttestation.style.display = 'block';
+      const createAttestation = attestations.find((a) => a.type === 'create' || a.eventIndex === 0);
+      const exportAttestation = attestations.find((a) => a.type === 'export' || (a.eventIndex && a.eventIndex > 0));
+
+      let validCount = 0;
+      if (createAttestation?.valid) validCount++;
+      if (exportAttestation?.valid) validCount++;
+
+      this.renderCard(
+        this.attestationIcon,
+        this.attestationBadge,
+        validCount === attestations.length,
+        `${validCount}/${attestations.length} 有効`
+      );
+
+      if (createAttestation) {
+        this.attestationCreateRow.style.display = 'flex';
+        this.attestationCreate.textContent = createAttestation.valid ? '✓ 有効' : '✗ 無効';
+        this.attestationCreate.className = `result-row-value ${createAttestation.valid ? 'text-success' : 'text-danger'}`;
+      } else {
+        this.attestationCreateRow.style.display = 'none';
+      }
+
+      if (exportAttestation) {
+        this.attestationExportRow.style.display = 'flex';
+        this.attestationExport.textContent = exportAttestation.valid ? '✓ 有効' : '✗ 無効';
+        this.attestationExport.className = `result-row-value ${exportAttestation.valid ? 'text-success' : 'text-danger'}`;
+      } else {
+        this.attestationExportRow.style.display = 'none';
+      }
+    } else {
+      this.cardAttestation.style.display = 'none';
+    }
+
+    // Stats
+    this.statEvents.textContent = eventCount.toLocaleString();
+    this.statTime.textContent = typingTime;
+    this.statSpeed.textContent = typingSpeed;
+
+    // Code preview with syntax highlighting and line numbers
+    const codeEl = this.codePreview.querySelector('code');
+    if (codeEl) {
+      const highlighted = SyntaxHighlighter.highlight(content, language);
+      const withLineNumbers = SyntaxHighlighter.addLineNumbers(highlighted);
+      codeEl.innerHTML = withLineNumbers;
+      codeEl.className = `language-${language} hljs with-line-numbers`;
+    }
+
+    this.showContent();
+  }
+
+  private renderCard(
+    iconEl: HTMLElement,
+    badgeEl: HTMLElement,
+    isValid: boolean | null,
+    badgeText: string
+  ): void {
+    const statusClass = isValid === null ? 'pending' : isValid ? 'success' : 'error';
+    iconEl.className = `result-card-icon ${statusClass}`;
+    badgeEl.className = `result-card-badge ${statusClass}`;
+    badgeEl.textContent = badgeText;
+  }
+
+  updateChartStats(stats: {
+    keydownCount: number;
+    avgDwellTime: number;
+    avgFlightTime: number;
+    mouseEventCount: number;
+  }): void {
+    this.keydownCount.textContent = stats.keydownCount.toString();
+    this.avgDwellTime.textContent = `${Math.round(stats.avgDwellTime)}ms`;
+    this.avgFlightTime.textContent = `${Math.round(stats.avgFlightTime)}ms`;
+    this.mouseEventCount.textContent = stats.mouseEventCount.toString();
+  }
+
+  reset(): void {
+    // Reset all cards to pending state
+    const icons = [this.typingIcon, this.chainIcon, this.poswIcon, this.attestationIcon];
+    const badges = [this.typingBadge, this.chainBadge, this.poswBadge, this.attestationBadge];
+
+    icons.forEach((icon) => {
+      icon.className = 'result-card-icon pending';
+    });
+
+    badges.forEach((badge) => {
+      badge.className = 'result-card-badge pending';
+      badge.textContent = '-';
+    });
+
+    // Reset status
+    this.statusIcon.className = 'result-status-icon';
+    this.statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    this.statusTitle.textContent = '検証中...';
+    this.statusFilename.textContent = '';
+
+    // Reset stats
+    this.statEvents.textContent = '-';
+    this.statTime.textContent = '-';
+    this.statSpeed.textContent = '-';
+
+    // Reset code preview
+    const codeEl = this.codePreview.querySelector('code');
+    if (codeEl) {
+      codeEl.textContent = '';
+    }
+
+    // Collapse all cards
+    document.querySelectorAll('.result-card').forEach((card) => {
+      card.classList.remove('expanded');
+    });
+  }
+
+  // ============================================================================
+  // 検証進捗表示メソッド
+  // ============================================================================
+
+  /**
+   * 検証進捗表示を開始（ファイル名を設定してタイマーを開始）
+   */
+  startProgress(filename: string): void {
+    this.vpFilename.textContent = filename;
+    this.vpOverallFill.style.width = '0%';
+    this.vpOverallPercent.textContent = '0%';
+    this.vpOverallTime.textContent = '0:00';
+
+    // 全ステップをペンディング状態にリセット
+    this.resetProgressSteps();
+
+    // タイマー開始
+    this.progressStartTime = Date.now();
+    this.stopProgressTimer();
+    this.progressTimerInterval = window.setInterval(() => {
+      this.updateElapsedTime();
+    }, 100);
+
+    this.show();
+    this.showLoading();
+  }
+
+  /**
+   * 進捗タイマーを停止
+   */
+  stopProgressTimer(): void {
+    if (this.progressTimerInterval !== null) {
+      clearInterval(this.progressTimerInterval);
+      this.progressTimerInterval = null;
+    }
+  }
+
+  /**
+   * 経過時間を更新
+   */
+  private updateElapsedTime(): void {
+    const elapsed = Date.now() - this.progressStartTime;
+    const seconds = Math.floor(elapsed / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    this.vpOverallTime.textContent = `${minutes}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * 全体進捗を更新
+   */
+  updateOverallProgress(percent: number): void {
+    const clampedPercent = Math.max(0, Math.min(100, percent));
+    this.vpOverallFill.style.width = `${clampedPercent}%`;
+    this.vpOverallPercent.textContent = `${Math.round(clampedPercent)}%`;
+  }
+
+  // ステップ状態のキャッシュ（不要な再描画を防止）
+  private stepStatusCache: Map<VerificationStepType, VerificationStepStatus> = new Map();
+
+  /**
+   * ステップの状態を更新（状態が変わった場合のみ再描画）
+   */
+  updateStepStatus(
+    step: VerificationStepType,
+    status: VerificationStepStatus,
+    statusText?: string
+  ): void {
+    // 状態が変わっていない場合はスキップ（チカチカ防止）
+    const cachedStatus = this.stepStatusCache.get(step);
+    if (cachedStatus === status && !statusText) {
+      return;
+    }
+    this.stepStatusCache.set(step, status);
+
+    const stepEl = document.getElementById(`vp-step-${step}`);
+    const iconEl = stepEl?.querySelector('.vp-step-icon');
+    const statusEl = document.getElementById(`vp-status-${step}`);
+
+    if (!stepEl || !iconEl) return;
+
+    // data-status属性を設定（CSS用）
+    stepEl.dataset.status = status;
+
+    // アイコンのクラスを更新
+    iconEl.className = `vp-step-icon ${status}`;
+
+    // アイコンを状態に応じて変更
+    const iconMap: Record<VerificationStepStatus, string> = {
+      pending: this.getStepIcon(step),
+      running: 'fa-spinner fa-spin',
+      success: 'fa-check',
+      error: 'fa-times',
+      skipped: 'fa-minus',
+    };
+    iconEl.innerHTML = `<i class="fas ${iconMap[status]}"></i>`;
+
+    // 完了したステップの接続線を更新
+    if (status === 'success') {
+      stepEl.classList.add('completed');
+    } else {
+      stepEl.classList.remove('completed');
+    }
+
+    // ステータステキストを更新
+    if (statusEl && statusText) {
+      statusEl.textContent = statusText;
+    } else if (statusEl) {
+      const defaultStatusText: Record<VerificationStepStatus, string> = {
+        pending: '',
+        running: '処理中...',
+        success: '完了',
+        error: 'エラー',
+        skipped: 'スキップ',
+      };
+      statusEl.textContent = defaultStatusText[status];
+    }
+  }
+
+  /**
+   * ステップの進捗バーを更新
+   */
+  updateStepProgress(step: VerificationStepType, percent: number, detail?: string): void {
+    const progressEl = document.getElementById(`vp-progress-${step}`);
+    if (!progressEl) return;
+
+    progressEl.style.display = 'flex';
+
+    const fillEl = progressEl.querySelector('.vp-step-fill') as HTMLElement;
+    const detailEl = progressEl.querySelector('.vp-step-detail') as HTMLElement;
+
+    if (fillEl) {
+      fillEl.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    }
+
+    if (detailEl && detail) {
+      detailEl.textContent = detail;
+    }
+  }
+
+  /**
+   * 詳細パネルを表示
+   */
+  showProgressDetail(text: string): void {
+    this.vpDetail.style.display = 'block';
+    this.vpDetailText.textContent = text;
+  }
+
+  /**
+   * 詳細パネルを非表示
+   */
+  hideProgressDetail(): void {
+    this.vpDetail.style.display = 'none';
+  }
+
+  /**
+   * ステップのデフォルトアイコンを取得
+   */
+  private getStepIcon(step: VerificationStepType): string {
+    const iconMap: Record<VerificationStepType, string> = {
+      metadata: 'fa-file-circle-check',
+      chain: 'fa-link',
+      sampling: 'fa-layer-group',
+      complete: 'fa-check-double',
+    };
+    return iconMap[step];
+  }
+
+  /**
+   * 全ステップをペンディング状態にリセット
+   */
+  private resetProgressSteps(): void {
+    // ステータスキャッシュをクリア
+    this.stepStatusCache.clear();
+
+    const steps: VerificationStepType[] = ['metadata', 'chain', 'sampling', 'complete'];
+
+    steps.forEach((step) => {
+      const stepEl = document.getElementById(`vp-step-${step}`);
+      const iconEl = stepEl?.querySelector('.vp-step-icon');
+      const statusEl = document.getElementById(`vp-status-${step}`);
+      const progressEl = document.getElementById(`vp-progress-${step}`);
+
+      if (stepEl) {
+        stepEl.dataset.status = 'pending';
+        stepEl.classList.remove('completed');
+        // chainステップはデフォルト非表示（フォールバック時のみ表示）
+        if (step === 'chain') {
+          stepEl.style.display = 'none';
+        }
+      }
+
+      if (iconEl) {
+        iconEl.className = 'vp-step-icon pending';
+        iconEl.innerHTML = `<i class="fas ${this.getStepIcon(step)}"></i>`;
+      }
+
+      if (statusEl) {
+        statusEl.textContent = '';
+      }
+
+      if (progressEl) {
+        progressEl.style.display = 'none';
+        const fillEl = progressEl.querySelector('.vp-step-fill') as HTMLElement;
+        if (fillEl) {
+          fillEl.style.width = '0%';
+        }
+      }
+    });
+
+    this.hideProgressDetail();
+  }
+
+  /**
+   * フォールバック時にchainステップを表示
+   */
+  showFallbackStep(): void {
+    const chainEl = document.getElementById('vp-step-chain');
+    if (chainEl) {
+      chainEl.style.display = '';
+    }
+  }
+
+  /**
+   * 検証完了時の処理
+   */
+  finishProgress(): void {
+    this.stopProgressTimer();
+    this.updateOverallProgress(100);
+    this.updateStepStatus('complete', 'success', '完了');
+  }
+
+  /**
+   * 検証エラー時の処理
+   */
+  errorProgress(step: VerificationStepType, errorMessage?: string): void {
+    this.stopProgressTimer();
+    this.updateStepStatus(step, 'error', 'エラー');
+    if (errorMessage) {
+      this.showProgressDetail(errorMessage);
+    }
+  }
+}

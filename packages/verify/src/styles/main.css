@@ -1,0 +1,30 @@
+/**
+ * TypedCode Verify - Main CSS Entry Point
+ * Vivid Orange Theme VSCode-like Interface
+ */
+
+/* Variables */
+@import './variables/_colors.css';
+
+/* Base */
+@import './base/_reset.css';
+
+/* Layout */
+@import './layout/_app.css';
+@import './layout/_activitybar.css';
+@import './layout/_sidebar.css';
+@import './layout/_workbench.css';
+
+/* Components */
+@import './components/_tabs.css';
+@import './components/_statusbar.css';
+@import './components/_welcome.css';
+@import './components/_result-panel.css';
+@import './components/_charts.css';
+@import './components/_seekbar.css';
+@import './components/_modals.css';
+@import './components/_syntax-highlight.css';
+@import './components/_verification-progress.css';
+
+/* Utilities */
+@import './utilities/_misc.css';

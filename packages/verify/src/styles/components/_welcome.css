@@ -1,0 +1,139 @@
+/* Welcome panel */
+.welcome-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background-color: var(--welcome-bg);
+}
+
+.welcome-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 480px;
+  padding: 40px;
+  text-align: center;
+}
+
+/* Logo */
+.welcome-logo {
+  margin-bottom: 24px;
+}
+
+.welcome-logo img {
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+}
+
+/* Title */
+.welcome-content h1 {
+  font-size: 28px;
+  font-weight: 400;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.welcome-content > p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+}
+
+/* Drop zone */
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 40px;
+  border: 2px dashed var(--dropzone-border);
+  border-radius: 12px;
+  background-color: transparent;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+  cursor: pointer;
+}
+
+.drop-zone:hover,
+.drop-zone.dragover {
+  border-color: var(--dropzone-border-hover);
+  background-color: var(--dropzone-bg-hover);
+}
+
+.drop-zone-icon {
+  margin-bottom: 16px;
+}
+
+.drop-zone-icon i {
+  font-size: 48px;
+  color: var(--accent-primary);
+  opacity: 0.8;
+}
+
+.drop-zone-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.drop-zone-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+
+/* Browse button */
+.drop-zone-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background-color: var(--accent-primary);
+  color: white;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.15s ease;
+}
+
+.drop-zone-btn:hover {
+  background-color: var(--accent-secondary);
+}
+
+.drop-zone-btn i {
+  font-size: 14px;
+}
+
+/* Keyboard shortcuts */
+.welcome-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 32px;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.shortcut-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 4px 8px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  color: var(--text-primary);
+}

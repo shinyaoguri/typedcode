@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@typedcode/shared": "*",
+    "highlight.js": "^11.11.1",
     "jszip": "^3.10.1"
   },
   "devDependencies": {

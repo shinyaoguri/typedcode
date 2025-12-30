@@ -125,28 +125,38 @@ export class VerificationQueue {
             phase: msg.phase,
             current: msg.current,
             total: msg.total,
+            totalEvents: msg.totalEvents,
           };
-          this.onProgressCallback?.({
-            id: msg.id,
-            progress,
-            details,
-            hashInfo: msg.hashInfo,
-          });
+          try {
+            this.onProgressCallback?.({
+              id: msg.id,
+              progress,
+              details,
+              hashInfo: msg.hashInfo,
+            });
+          } catch (error) {
+            console.error('[VerificationQueue] Error in onProgressCallback:', error);
+          }
         }
         break;
 
       case 'result':
-        if (msg.result) {
-          this.onCompleteCallback?.(msg.id, msg.result);
-        }
         // 処理済みデータをクリーンアップ（メモリ節約）
         // ただしproofDataは結果表示に必要なので残す
+        // processNextを先に呼ぶことでキューの状態を更新してからコールバックを呼ぶ
         this.processNext();
+        if (msg.result) {
+          try {
+            this.onCompleteCallback?.(msg.id, msg.result);
+          } catch (error) {
+            console.error('[VerificationQueue] Error in onCompleteCallback:', error);
+          }
+        }
         break;
 
       case 'error':
-        this.onErrorCallback?.(msg.id, msg.error ?? 'Unknown error');
         this.processNext();
+        this.onErrorCallback?.(msg.id, msg.error ?? 'Unknown error');
         break;
     }
   }

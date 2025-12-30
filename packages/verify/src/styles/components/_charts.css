@@ -1,0 +1,134 @@
+/* Chart section */
+.chart-section {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Chart tabs */
+.chart-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--card-border);
+  background-color: var(--card-header-bg);
+}
+
+.chart-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: color 0.1s ease, border-color 0.1s ease;
+  margin-bottom: -1px;
+}
+
+.chart-tab:hover {
+  color: var(--text-primary);
+}
+
+.chart-tab.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.chart-tab i {
+  font-size: 12px;
+}
+
+/* Chart content */
+.chart-content {
+  padding: 16px;
+}
+
+.chart-panel {
+  display: none;
+}
+
+.chart-panel.active {
+  display: block;
+}
+
+/* Chart canvas containers */
+.chart-canvas-container {
+  position: relative;
+  width: 100%;
+  height: 200px;
+  background-color: var(--bg-primary);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.chart-canvas-container canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* Timeline chart specific */
+.integrated-timeline {
+  position: relative;
+  width: 100%;
+  height: 200px;
+}
+
+#integrated-timeline-chart {
+  width: 100%;
+  height: 100%;
+}
+
+/* Mouse trajectory chart specific */
+.mouse-trajectory {
+  position: relative;
+  width: 100%;
+  height: 200px;
+}
+
+#mouse-trajectory-chart {
+  width: 100%;
+  height: 100%;
+}
+
+/* Chart stats */
+.chart-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--card-border);
+  background-color: var(--card-header-bg);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.chart-stats span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chart-stats strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Chart empty state */
+.chart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-tertiary);
+}
+
+.chart-empty i {
+  font-size: 32px;
+  margin-bottom: 8px;
+  opacity: 0.5;
+}
+
+.chart-empty p {
+  font-size: 13px;
+}

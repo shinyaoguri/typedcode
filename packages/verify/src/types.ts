@@ -131,6 +131,9 @@ export interface VerifyTabState {
     hasAttestation: boolean;
   };
   error?: string;
+  // プレーンテキストファイル（検証対象外）
+  isPlaintext?: boolean;
+  plaintextContent?: string;
 }
 
 /** キューアイテム */
@@ -155,6 +158,7 @@ export interface WorkerResponseMessage {
   current?: number;
   total?: number;
   phase?: string;
+  totalEvents?: number; // 全イベント数
   hashInfo?: { computed: string; expected: string; poswHash?: string };
   // result
   result?: VerificationResultData;
@@ -191,3 +195,143 @@ export const DEFAULT_PANEL_VISIBILITY: PanelVisibility = {
   externalInput: true,
   charts: true,
 };
+
+// ============================================================================
+// UI コンポーネント用の型定義
+// ============================================================================
+
+/** 検証結果（UIコンポーネント用） */
+export interface VerificationResult {
+  chainValid: boolean;
+  pureTyping: boolean;
+  pasteCount?: number;
+  verificationMethod?: string;
+  errorMessage?: string;
+}
+
+/** PoSW統計（UIコンポーネント用） */
+export interface PoswStats {
+  totalIterations: number;
+  totalTime: number;
+  avgTime: number;
+}
+
+/** 人間証明（UIコンポーネント用） */
+export interface HumanAttestationUI {
+  type: 'create' | 'export';
+  eventIndex?: number;
+  valid: boolean;
+  timestamp?: string;
+}
+
+// ============================================================================
+// File System Access API 関連の型定義
+// ============================================================================
+
+/** File System Access API ファイルエントリ */
+export interface FSAccessFileEntry {
+  handle: FileSystemFileHandle;
+  path: string;
+  name: string;
+  lastModified: number;
+}
+
+/** File System Access API フォルダエントリ */
+export interface FSAccessFolderEntry {
+  handle: FileSystemDirectoryHandle;
+  path: string;
+  name: string;
+}
+
+/** ディレクトリ読み取り結果 */
+export interface ReadDirectoryResult {
+  success: boolean;
+  rootName: string;
+  files: FSAccessFileEntry[];
+  folders: FSAccessFolderEntry[];
+  error?: string;
+}
+
+/** 階層フォルダ */
+export interface HierarchicalFolder {
+  id: string;
+  name: string;
+  path: string;
+  parentId: string | null;
+  expanded: boolean;
+  depth: number;
+  sourceType: 'fsaccess' | 'zip' | 'file';
+  directoryHandle?: FileSystemDirectoryHandle;
+}
+
+/** ファイル変更イベント */
+export interface FileChangeEvent {
+  type: 'added' | 'modified' | 'deleted';
+  path: string;
+  entry: FSAccessFileEntry | null;
+}
+
+/** フォルダ変更イベント */
+export interface FolderChangeEvent {
+  type: 'added' | 'deleted';
+  path: string;
+  entry: FSAccessFolderEntry | null;
+}
+
+/** ファイルスナップショット（変更検知用） */
+export interface FileSnapshot {
+  path: string;
+  lastModified: number;
+  handle: FileSystemFileHandle;
+}
+
+/** 同期マネージャー コールバック */
+export interface SyncManagerCallbacks {
+  onFileAdded?: (file: FSAccessFileEntry) => void;
+  onFileModified?: (file: FSAccessFileEntry) => void;
+  onFileDeleted?: (path: string) => void;
+  onFolderAdded?: (path: string, name: string) => void;
+  onFolderDeleted?: (path: string) => void;
+  onSyncComplete?: () => void;
+  onSyncError?: (error: Error) => void;
+}
+
+/** FSAccess サービス コールバック */
+export interface FSAccessCallbacks {
+  onPermissionRequest?: () => void;
+  onPermissionGranted?: () => void;
+  onPermissionDenied?: (error: Error) => void;
+  onReadProgress?: (current: number, total: number) => void;
+  onError?: (error: Error) => void;
+}
+
+// ============================================================================
+// 検証進捗UI用の型定義
+// ============================================================================
+
+/** 検証ステップの種類 */
+export type VerificationStepType = 'metadata' | 'chain' | 'sampling' | 'complete';
+
+/** 検証ステップの状態 */
+export type VerificationStepStatus = 'pending' | 'running' | 'success' | 'error' | 'skipped';
+
+/** 検証ステップの情報 */
+export interface VerificationStep {
+  type: VerificationStepType;
+  status: VerificationStepStatus;
+  label: string;
+  description: string;
+  progress?: number; // 0-100 (ステップ内の進捗)
+  detail?: string; // 追加の詳細情報（例: "1,234 / 5,678 イベント"）
+  error?: string; // エラーメッセージ
+}
+
+/** 検証進捗の全体状態 */
+export interface VerificationProgressState {
+  filename: string;
+  totalProgress: number; // 0-100 (全体の進捗)
+  currentStep: VerificationStepType;
+  steps: VerificationStep[];
+  startTime: number;
+  elapsedTime?: number;
+}

@@ -1,0 +1,96 @@
+/* Status bar */
+.statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+  padding: 0 10px;
+  background-color: var(--statusbar-bg);
+  color: var(--statusbar-text);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.statusbar-left,
+.statusbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Status items */
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px;
+  height: 22px;
+  border-radius: 0;
+  transition: background-color 0.1s ease;
+  cursor: default;
+}
+
+.status-item:hover {
+  background-color: var(--statusbar-hover-bg);
+}
+
+.status-item.clickable {
+  cursor: pointer;
+}
+
+.status-item i {
+  font-size: 12px;
+}
+
+/* Queue status with progress */
+.status-queue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-queue-progress {
+  width: 60px;
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.status-queue-progress-bar {
+  height: 100%;
+  background-color: white;
+  transition: width 0.3s ease;
+}
+
+/* Verification status indicator */
+.status-verification {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-verification-icon {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-verification-icon.success {
+  background-color: #90EE90;
+}
+
+.status-verification-icon.warning {
+  background-color: #FFD700;
+}
+
+.status-verification-icon.error {
+  background-color: #FF6B6B;
+}
+
+/* Separator */
+.status-separator {
+  width: 1px;
+  height: 14px;
+  background-color: rgba(255, 255, 255, 0.3);
+}

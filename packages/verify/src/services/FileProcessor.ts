@@ -12,16 +12,23 @@ import type { ProofFile } from '../types.js';
 // 型定義
 // ============================================================================
 
+/** ファイルの種類 */
+export type FileType = 'proof' | 'plaintext';
+
 /** 解析済みファイルデータ */
 export interface ParsedFileData {
   /** ファイル名 */
   filename: string;
-  /** 言語 */
+  /** ファイルの種類 */
+  type: FileType;
+  /** 言語（proof の場合は検証言語、plaintext の場合はファイル拡張子から推測） */
   language: string;
-  /** 生データ（JSON文字列） */
+  /** 生データ（文字列） */
   rawData: string;
-  /** 解析済みデータ（オプション） */
+  /** 解析済みデータ（proof の場合のみ） */
   proofData?: ProofFile;
+  /** フォルダ内の相対パス */
+  relativePath?: string;
 }
 
 /** ファイル処理結果 */
@@ -34,6 +41,10 @@ export interface FileProcessResult {
   files: ParsedFileData[];
   /** エラーメッセージ（失敗時） */
   error?: string;
+  /** ZIPファイルのルートフォルダ名 */
+  rootFolderName?: string;
+  /** ZIPファイル内のフォルダパス一覧 */
+  folderPaths?: string[];
 }
 
 /** 処理進捗コールバック */
@@ -80,11 +91,69 @@ export class FileProcessor {
     } else if (file.name.endsWith('.json')) {
       return this.processJson(file, forceMultiMode);
     } else {
+      // JSONでもZIPでもない場合はプレーンテキストとして処理
+      return this.processPlaintext(file);
+    }
+  }
+
+  /**
+   * FileSystemFileHandle からファイルを処理
+   */
+  async processFromHandle(
+    handle: FileSystemFileHandle,
+    relativePath: string
+  ): Promise<FileProcessResult> {
+    const file = await handle.getFile();
+    const result = await this.process(file, true);
+
+    // 相対パスを追加
+    if (result.success) {
+      result.files = result.files.map((f) => ({
+        ...f,
+        relativePath,
+      }));
+    }
+
+    return result;
+  }
+
+  /**
+   * プレーンテキストファイルを処理
+   */
+  async processPlaintext(
+    file: File,
+    relativePath?: string
+  ): Promise<FileProcessResult> {
+    this.callbacks.onReadStart?.(file.name);
+
+    try {
+      const text = await file.text();
+      const sizeKb = text.length / 1024;
+      this.callbacks.onReadComplete?.(file.name, sizeKb);
+
+      const language = this.getLanguageFromExtension(file.name);
+
+      return {
+        success: true,
+        mode: 'single',
+        files: [
+          {
+            filename: file.name,
+            type: 'plaintext',
+            language,
+            rawData: text,
+            relativePath,
+          },
+        ],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.callbacks.onError?.(file.name, errorMessage);
       return {
         success: false,
         mode: 'single',
         files: [],
-        error: '対応していないファイル形式です。.json または .zip ファイルを選択してください',
+        error: `ファイル読み込みに失敗しました: ${errorMessage}`,
       };
     }
   }
@@ -126,6 +195,7 @@ export class FileProcessor {
         mode: forceMultiMode ? 'multi' : 'single',
         files: [{
           filename: file.name,
+          type: 'proof',
           language,
           rawData: text,
           proofData,
@@ -156,30 +226,81 @@ export class FileProcessor {
 
       const zip = await JSZip.loadAsync(arrayBuffer);
 
-      // TC_*.json ファイルを抽出
+      // ZIPファイル名をルートフォルダ名として使用
+      const rootFolderName = file.name.replace(/\.zip$/i, '');
+
+      // フォルダ階層情報を収集
+      const folderPathsSet = new Set<string>();
+
+      // 全ファイルを抽出
       const files: ParsedFileData[] = [];
 
       for (const [path, zipEntry] of Object.entries(zip.files)) {
-        if (zipEntry.dir) continue;
+        if (zipEntry.dir) {
+          // ディレクトリエントリを記録
+          folderPathsSet.add(path.replace(/\/$/, ''));
+          continue;
+        }
 
-        // TC_*.json パターンにマッチするか確認
         const filename = path.split('/').pop() ?? path;
-        if (filename.match(/^TC_.*\.json$/)) {
-          const content = await zipEntry.async('string');
 
-          // 言語を取得
+        // パスからフォルダ階層を抽出
+        const parts = path.split('/');
+        for (let i = 1; i < parts.length; i++) {
+          folderPathsSet.add(parts.slice(0, i).join('/'));
+        }
+
+        // バイナリファイルはスキップ（テキストファイルのみ処理）
+        if (this.isBinaryFile(filename)) continue;
+
+        const content = await zipEntry.async('string');
+
+        // JSONファイルの場合、証明ファイルかどうかをチェック
+        if (filename.endsWith('.json')) {
           let language = 'unknown';
+          let isValidProofFile = false;
+          let proofData: ProofFile | undefined;
+
           try {
             const parsed = JSON.parse(content) as ProofFile;
-            language = parsed.language ?? 'unknown';
+            // proof フィールドがあれば証明ファイルとみなす
+            if (parsed.proof) {
+              isValidProofFile = true;
+              proofData = parsed;
+              language = parsed.language ?? 'unknown';
+            }
           } catch {
-            // パース失敗は無視（検証時にエラーになる）
+            // パース失敗は無視（通常のJSONとして扱う）
           }
 
+          if (isValidProofFile) {
+            files.push({
+              filename,
+              type: 'proof',
+              language,
+              rawData: content,
+              proofData,
+              relativePath: path,
+            });
+          } else {
+            // 証明ファイルではない通常のJSONファイル
+            files.push({
+              filename,
+              type: 'plaintext',
+              language: 'json',
+              rawData: content,
+              relativePath: path,
+            });
+          }
+        } else {
+          // JSON以外のファイル（C、TypeScript、Pythonなど）
+          const language = this.getLanguageFromExtension(filename);
           files.push({
             filename,
+            type: 'plaintext',
             language,
             rawData: content,
+            relativePath: path,
           });
         }
       }
@@ -191,7 +312,7 @@ export class FileProcessor {
           success: false,
           mode: 'multi',
           files: [],
-          error: 'ZIPに証明ファイルがありません。TC_*.json パターンのファイルが含まれていません',
+          error: 'ZIPにファイルがありません。',
         };
       }
 
@@ -199,6 +320,8 @@ export class FileProcessor {
         success: true,
         mode: 'multi',
         files,
+        rootFolderName,
+        folderPaths: Array.from(folderPathsSet),
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -223,8 +346,71 @@ export class FileProcessor {
 
   /**
    * 証明ファイルのファイル名パターンにマッチするか
+   * （任意のJSONファイルを許可）
    */
   static isProofFilename(filename: string): boolean {
-    return /^TC_.*\.json$/.test(filename);
+    return filename.endsWith('.json');
+  }
+
+  /**
+   * バイナリファイルかどうかを判定
+   */
+  private isBinaryFile(filename: string): boolean {
+    const binaryExtensions = [
+      '.exe', '.dll', '.so', '.dylib', '.bin',
+      '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp',
+      '.mp3', '.mp4', '.wav', '.avi', '.mov', '.webm',
+      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+      '.zip', '.tar', '.gz', '.rar', '.7z',
+      '.wasm', '.o', '.a', '.lib',
+    ];
+    const ext = filename.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+    return binaryExtensions.includes(ext);
+  }
+
+  /**
+   * ファイル拡張子から言語を推測
+   */
+  public getLanguageFromExtension(filename: string): string {
+    const ext = filename.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+    const languageMap: Record<string, string> = {
+      '.c': 'c',
+      '.h': 'c',
+      '.cpp': 'cpp',
+      '.cc': 'cpp',
+      '.cxx': 'cpp',
+      '.hpp': 'cpp',
+      '.ts': 'typescript',
+      '.tsx': 'typescript',
+      '.js': 'javascript',
+      '.jsx': 'javascript',
+      '.py': 'python',
+      '.rb': 'ruby',
+      '.rs': 'rust',
+      '.go': 'go',
+      '.java': 'java',
+      '.kt': 'kotlin',
+      '.swift': 'swift',
+      '.cs': 'csharp',
+      '.php': 'php',
+      '.html': 'html',
+      '.htm': 'html',
+      '.css': 'css',
+      '.scss': 'scss',
+      '.sass': 'sass',
+      '.less': 'less',
+      '.md': 'markdown',
+      '.json': 'json',
+      '.xml': 'xml',
+      '.yaml': 'yaml',
+      '.yml': 'yaml',
+      '.toml': 'toml',
+      '.sh': 'shell',
+      '.bash': 'shell',
+      '.zsh': 'shell',
+      '.sql': 'sql',
+      '.txt': 'plaintext',
+    };
+    return languageMap[ext] || 'plaintext';
   }
 }

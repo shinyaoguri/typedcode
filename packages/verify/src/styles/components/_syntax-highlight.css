@@ -1,0 +1,255 @@
+/**
+ * Syntax Highlighting Styles
+ * VSCode-like theme for highlight.js
+ */
+
+/* Base code container */
+.code-highlighted {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  tab-size: 4;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* ============================================================================
+   Dark Theme
+   ============================================================================ */
+
+[data-theme='dark'] .hljs {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+/* Keywords: if, else, return, const, let, var, function, class, etc. */
+[data-theme='dark'] .hljs-keyword,
+[data-theme='dark'] .hljs-selector-tag,
+[data-theme='dark'] .hljs-literal,
+[data-theme='dark'] .hljs-section {
+  color: #569cd6;
+}
+
+/* Strings */
+[data-theme='dark'] .hljs-string,
+[data-theme='dark'] .hljs-template-variable {
+  color: #ce9178;
+}
+
+/* Types, Classes, Functions */
+[data-theme='dark'] .hljs-title,
+[data-theme='dark'] .hljs-name,
+[data-theme='dark'] .hljs-type,
+[data-theme='dark'] .hljs-class .hljs-title,
+[data-theme='dark'] .hljs-function .hljs-title {
+  color: #4ec9b0;
+}
+
+/* Variables and Parameters */
+[data-theme='dark'] .hljs-variable,
+[data-theme='dark'] .hljs-params,
+[data-theme='dark'] .hljs-attr {
+  color: #9cdcfe;
+}
+
+/* Built-in functions and constants */
+[data-theme='dark'] .hljs-built_in,
+[data-theme='dark'] .hljs-symbol,
+[data-theme='dark'] .hljs-bullet {
+  color: #dcdcaa;
+}
+
+/* Numbers */
+[data-theme='dark'] .hljs-number {
+  color: #b5cea8;
+}
+
+/* Comments */
+[data-theme='dark'] .hljs-comment,
+[data-theme='dark'] .hljs-quote,
+[data-theme='dark'] .hljs-meta {
+  color: #6a9955;
+  font-style: italic;
+}
+
+/* Operators and Punctuation */
+[data-theme='dark'] .hljs-operator,
+[data-theme='dark'] .hljs-punctuation {
+  color: #d4d4d4;
+}
+
+/* Attributes (HTML/XML) */
+[data-theme='dark'] .hljs-attribute {
+  color: #9cdcfe;
+}
+
+/* Tags (HTML/XML) */
+[data-theme='dark'] .hljs-tag {
+  color: #808080;
+}
+
+[data-theme='dark'] .hljs-tag .hljs-name {
+  color: #569cd6;
+}
+
+[data-theme='dark'] .hljs-tag .hljs-attr {
+  color: #9cdcfe;
+}
+
+/* Regexp */
+[data-theme='dark'] .hljs-regexp {
+  color: #d16969;
+}
+
+/* Addition/Deletion (diff) */
+[data-theme='dark'] .hljs-addition {
+  color: #b5cea8;
+  background-color: rgba(181, 206, 168, 0.1);
+}
+
+[data-theme='dark'] .hljs-deletion {
+  color: #ce9178;
+  background-color: rgba(206, 145, 120, 0.1);
+}
+
+/* ============================================================================
+   Light Theme
+   ============================================================================ */
+
+[data-theme='light'] .hljs {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+/* Keywords */
+[data-theme='light'] .hljs-keyword,
+[data-theme='light'] .hljs-selector-tag,
+[data-theme='light'] .hljs-literal,
+[data-theme='light'] .hljs-section {
+  color: #0000ff;
+}
+
+/* Strings */
+[data-theme='light'] .hljs-string,
+[data-theme='light'] .hljs-template-variable {
+  color: #a31515;
+}
+
+/* Types, Classes, Functions */
+[data-theme='light'] .hljs-title,
+[data-theme='light'] .hljs-name,
+[data-theme='light'] .hljs-type,
+[data-theme='light'] .hljs-class .hljs-title,
+[data-theme='light'] .hljs-function .hljs-title {
+  color: #267f99;
+}
+
+/* Variables and Parameters */
+[data-theme='light'] .hljs-variable,
+[data-theme='light'] .hljs-params,
+[data-theme='light'] .hljs-attr {
+  color: #001080;
+}
+
+/* Built-in functions and constants */
+[data-theme='light'] .hljs-built_in,
+[data-theme='light'] .hljs-symbol,
+[data-theme='light'] .hljs-bullet {
+  color: #795e26;
+}
+
+/* Numbers */
+[data-theme='light'] .hljs-number {
+  color: #098658;
+}
+
+/* Comments */
+[data-theme='light'] .hljs-comment,
+[data-theme='light'] .hljs-quote,
+[data-theme='light'] .hljs-meta {
+  color: #008000;
+  font-style: italic;
+}
+
+/* Operators and Punctuation */
+[data-theme='light'] .hljs-operator,
+[data-theme='light'] .hljs-punctuation {
+  color: #000000;
+}
+
+/* Attributes (HTML/XML) */
+[data-theme='light'] .hljs-attribute {
+  color: #ff0000;
+}
+
+/* Tags (HTML/XML) */
+[data-theme='light'] .hljs-tag {
+  color: #800000;
+}
+
+[data-theme='light'] .hljs-tag .hljs-name {
+  color: #800000;
+}
+
+[data-theme='light'] .hljs-tag .hljs-attr {
+  color: #ff0000;
+}
+
+/* Regexp */
+[data-theme='light'] .hljs-regexp {
+  color: #811f3f;
+}
+
+/* Addition/Deletion (diff) */
+[data-theme='light'] .hljs-addition {
+  color: #098658;
+  background-color: rgba(9, 134, 88, 0.1);
+}
+
+[data-theme='light'] .hljs-deletion {
+  color: #a31515;
+  background-color: rgba(163, 21, 21, 0.1);
+}
+
+/* ============================================================================
+   Line Numbers
+   ============================================================================ */
+
+.line-number {
+  display: inline-block;
+  width: 3.5em;
+  padding-right: 1em;
+  text-align: right;
+  color: var(--text-tertiary);
+  user-select: none;
+  opacity: 0.5;
+  border-right: 1px solid var(--border-subtle);
+  margin-right: 1em;
+}
+
+.line-content {
+  display: inline;
+}
+
+/* ============================================================================
+   Code Preview Container Styles
+   ============================================================================ */
+
+.code-preview-container {
+  background-color: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 12px;
+  overflow: auto;
+  max-height: 400px;
+}
+
+.code-preview-container pre {
+  margin: 0;
+  padding: 0;
+}
+
+.code-preview-container code {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
