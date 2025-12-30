@@ -12,7 +12,7 @@ export default defineConfig({
     port: 5173,
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
     },
     proxy: {
       '/verify': {
@@ -25,7 +25,7 @@ export default defineConfig({
   preview: {
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
     },
   },
   build: {
