@@ -529,11 +529,22 @@ export class TypingProof {
     // タイピング証明ハッシュを生成
     const typingProof = await this.generateTypingProofHash(finalContent);
 
-    // 最終チェックポイントを作成（最後のイベントがチェックポイント間隔でない場合）
+    // チェックポイントをクリーンアップして最終チェックポイントを作成
     const lastEventIndex = this.events.length - 1;
-    if (lastEventIndex >= 0 && this.checkpoints.length === 0 ||
-        (this.checkpoints.length > 0 && this.checkpoints[this.checkpoints.length - 1]!.eventIndex !== lastEventIndex)) {
-      await this.createCheckpoint(lastEventIndex);
+    if (lastEventIndex >= 0) {
+      // 100イベント間隔で作られた正規のチェックポイント以外を削除
+      // （前回のエクスポート試行で作られた中途半端なチェックポイントを除去）
+      this.checkpoints = this.checkpoints.filter(cp => {
+        // eventIndex が CHECKPOINT_INTERVAL の倍数 - 1 の場合は正規のチェックポイント
+        // 例: 99, 199, 299, ... (100イベントごと)
+        return (cp.eventIndex + 1) % TypingProof.CHECKPOINT_INTERVAL === 0;
+      });
+
+      // 最終イベントにチェックポイントを作成（まだ存在しない場合）
+      const lastCheckpoint = this.checkpoints[this.checkpoints.length - 1];
+      if (!lastCheckpoint || lastCheckpoint.eventIndex !== lastEventIndex) {
+        await this.createCheckpoint(lastEventIndex);
+      }
     }
 
     return {
