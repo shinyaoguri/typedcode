@@ -17,3 +17,12 @@ export type {
   FileProcessCallbacks,
 } from './FileProcessor.js';
 
+export {
+  formatTypingTime,
+  calculateTypingSpeed,
+  countPasteEvents,
+  calculateChartStats,
+  buildResultData,
+} from './ResultDataService.js';
+export type { ChartStats } from './ResultDataService.js';
+

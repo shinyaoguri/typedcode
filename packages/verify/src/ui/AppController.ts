@@ -7,19 +7,17 @@ import { Sidebar, type FileStatus } from './Sidebar';
 import { TabBar, type TabStatus } from './TabBar';
 import { StatusBarUI } from './StatusBarUI';
 import { WelcomePanel } from './WelcomePanel';
-import { ResultPanel, type ResultData } from './ResultPanel';
+import { ResultPanel } from './ResultPanel';
 import { VerifyTabManager } from '../state/VerifyTabManager';
 import { VerificationQueue } from '../state/VerificationQueue';
 import { FileProcessor, type ParsedFileData } from '../services/FileProcessor';
 import { FileSystemAccessService } from '../services/FileSystemAccessService';
 import { FolderSyncManager } from '../services/FolderSyncManager';
+import { buildResultData, calculateChartStats } from '../services/ResultDataService';
 import { TimelineChart } from '../charts/TimelineChart';
 import { MouseChart } from '../charts/MouseChart';
 import type {
   ProofFile,
-  VerificationResult,
-  PoswStats,
-  HumanAttestationUI,
   VerifyTabState,
   FSAccessFileEntry,
   HierarchicalFolder,
@@ -692,66 +690,13 @@ export class AppController {
   }
 
   private renderResult(tabState: VerifyTabState): void {
-    if (!tabState.proofData || !tabState.verificationResult) return;
-
-    const { proofData, verificationResult } = tabState;
-    const events = proofData.proof?.events;
-
-    // Calculate stats
-    const eventCount = events?.length || 0;
-    const typingTime = this.formatTypingTime(events);
-    const typingSpeed = this.calculateTypingSpeed(proofData, events);
-
-    // Convert result format
-    const result: VerificationResult = {
-      chainValid: verificationResult.chainValid,
-      pureTyping: verificationResult.isPureTyping,
-      pasteCount: this.countPasteEvents(proofData),
-      verificationMethod: verificationResult.sampledResult ? 'sampled' : 'full',
-    };
-
-    // Convert PoSW stats
-    const poswStats: PoswStats | undefined = verificationResult.poswStats
-      ? {
-          totalIterations: verificationResult.poswStats.iterations,
-          totalTime: verificationResult.poswStats.totalTimeMs,
-          avgTime: verificationResult.poswStats.avgTimeMs,
-        }
-      : undefined;
-
-    // Convert attestations
-    const attestations: HumanAttestationUI[] = [];
-    if (tabState.humanAttestationResult?.hasAttestation) {
-      if (tabState.humanAttestationResult.createValid !== undefined) {
-        attestations.push({
-          type: 'create',
-          eventIndex: 0,
-          valid: tabState.humanAttestationResult.createValid,
-        });
-      }
-      if (tabState.humanAttestationResult.exportValid !== undefined) {
-        attestations.push({
-          type: 'export',
-          valid: tabState.humanAttestationResult.exportValid,
-        });
-      }
-    }
-
-    const resultData: ResultData = {
-      filename: tabState.filename,
-      content: proofData.content || '',
-      language: tabState.language,
-      result,
-      poswStats,
-      attestations: attestations.length > 0 ? attestations : undefined,
-      eventCount,
-      typingTime,
-      typingSpeed,
-    };
+    const resultData = buildResultData(tabState);
+    if (!resultData) return;
 
     this.resultPanel.render(resultData);
 
     // Render charts
+    const events = tabState.proofData?.proof?.events;
     if (events && events.length > 0) {
       this.renderCharts(events);
     }
@@ -767,80 +712,8 @@ export class AppController {
     }
 
     // Update chart stats
-    const stats = this.calculateChartStats(events);
+    const stats = calculateChartStats(events);
     this.resultPanel.updateChartStats(stats);
-  }
-
-  private calculateChartStats(events: any[]): {
-    keydownCount: number;
-    avgDwellTime: number;
-    avgFlightTime: number;
-    mouseEventCount: number;
-  } {
-    let keydownCount = 0;
-    let mouseEventCount = 0;
-    const dwellTimes: number[] = [];
-    const flightTimes: number[] = [];
-    let lastKeyUpTime = 0;
-
-    for (const event of events) {
-      if (event.type === 'keydown') {
-        keydownCount++;
-        if (lastKeyUpTime > 0) {
-          flightTimes.push(event.timestamp - lastKeyUpTime);
-        }
-      } else if (event.type === 'keyup') {
-        lastKeyUpTime = event.timestamp;
-      } else if (event.type === 'mousePositionChange') {
-        mouseEventCount++;
-      }
-    }
-
-    return {
-      keydownCount,
-      avgDwellTime: dwellTimes.length > 0 ? dwellTimes.reduce((a, b) => a + b, 0) / dwellTimes.length : 0,
-      avgFlightTime: flightTimes.length > 0 ? flightTimes.reduce((a, b) => a + b, 0) / flightTimes.length : 0,
-      mouseEventCount,
-    };
-  }
-
-  private formatTypingTime(events?: any[]): string {
-    if (!events || events.length < 2) return '-';
-
-    const firstTime = events[0].timestamp;
-    const lastTime = events[events.length - 1].timestamp;
-    const totalMs = lastTime - firstTime;
-
-    const seconds = Math.floor(totalMs / 1000) % 60;
-    const minutes = Math.floor(totalMs / 60000);
-
-    if (minutes > 0) {
-      return `${minutes}m ${seconds}s`;
-    }
-    return `${seconds}s`;
-  }
-
-  private calculateTypingSpeed(proofData: ProofFile, events?: any[]): string {
-    if (!events || events.length < 2) return '-';
-
-    const contentLength = proofData.content?.length || 0;
-    const firstTime = events[0].timestamp;
-    const lastTime = events[events.length - 1].timestamp;
-    const minutes = (lastTime - firstTime) / 60000;
-
-    if (minutes <= 0) return '-';
-
-    const cpm = Math.round(contentLength / minutes);
-    return `${cpm} CPM`;
-  }
-
-  private countPasteEvents(proofData: ProofFile): number {
-    const events = proofData.proof?.events;
-    if (!events) return 0;
-
-    return events.filter(
-      (e: any) => e.type === 'contentChange' && e.inputType === 'paste'
-    ).length;
   }
 
   private updateStatusBar(): void {

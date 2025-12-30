@@ -4,12 +4,7 @@
 
 import { readFile } from 'node:fs/promises';
 import JSZip from 'jszip';
-import type { ExportedProof } from '@typedcode/shared';
-
-export interface ProofFile extends ExportedProof {
-  content: string;
-  language: string;
-}
+import type { ProofFile } from '@typedcode/shared';
 
 export async function extractProofFromZip(filePath: string): Promise<ProofFile> {
   const buffer = await readFile(filePath);
