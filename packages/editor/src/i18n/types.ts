@@ -53,8 +53,7 @@ export interface TranslationKeys {
     stopExecution: string;
     download: string;
     downloadAll: string;
-    saveCodeOnly: string;
-    exportProofOnly: string;
+    exportCurrentTab: string;
     settings: string;
     newTab: string;
     closeTab: string;

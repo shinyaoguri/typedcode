@@ -375,31 +375,11 @@ function setupStaticEventListeners(): void {
     }
   });
 
-  // ダウンロード機能
-  const downloadBtn = document.getElementById('download-btn');
-  downloadBtn?.addEventListener('click', () => {
+  // 現在のタブをZIPでエクスポート（ファイル + 検証ログ）
+  const exportCurrentTabBtn = document.getElementById('export-current-tab-btn');
+  exportCurrentTabBtn?.addEventListener('click', () => {
     ctx.downloadDropdown.close();
-    const activeTab = ctx.tabManager?.getActiveTab();
-    if (!activeTab) return;
-
-    const content = activeTab.model.getValue();
-    const extension = ctx.tabUIController?.getFileExtension(activeTab.language) ?? 'txt';
-    const filename = `${activeTab.filename}.${extension}`;
-
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-
-  // 証明データのエクスポート機能
-  const exportProofBtn = document.getElementById('export-proof-btn');
-  exportProofBtn?.addEventListener('click', () => {
-    ctx.downloadDropdown.close();
-    void ctx.proofExporter.exportSingleTab();
+    void ctx.proofExporter.exportCurrentTab();
   });
 
   const exportZipBtn = document.getElementById('export-zip-btn');

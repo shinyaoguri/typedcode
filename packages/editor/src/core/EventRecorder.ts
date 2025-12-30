@@ -72,8 +72,13 @@ export class EventRecorder {
       return;
     }
 
-    activeProof
-      .recordEvent(event)
+    // recordEventを呼び出し（内部でqueuedEventCount++が同期的に実行される）
+    const recordPromise = activeProof.recordEvent(event);
+
+    // 記録開始時にステータスを更新（queuedEventCount増加後なのでプログレスリングが表示される）
+    this.onStatusUpdate?.();
+
+    recordPromise
       .then((result) => {
         // ログビューアに追加（非同期）
         if (this.logViewer?.isVisible) {

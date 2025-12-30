@@ -129,9 +129,9 @@ export class ProofExporter {
   }
 
   /**
-   * 単一タブの証明データをエクスポート
+   * 現在のタブをZIPでエクスポート（ソースファイル + 検証ログ）
    */
-  async exportSingleTab(): Promise<void> {
+  async exportCurrentTab(): Promise<void> {
     try {
       const activeTab = this.tabManager?.getActiveTab();
       if (!activeTab) return;
@@ -149,34 +149,51 @@ export class ProofExporter {
         return;
       }
 
-      const proofData = await this.tabManager!.exportSingleTab(activeTab.id);
-      if (!proofData) return;
+      const content = activeTab.model.getValue();
+      const proof = await activeTab.typingProof.exportProof(content);
 
-      const exportData = {
-        ...proofData,
+      // ZIPファイルを作成
+      const zip = new JSZip();
+      const timestamp = this.generateTimestamp();
+      const isoTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+      // ソースファイル名を生成（拡張子付き）
+      let sourceFilename = activeTab.filename;
+      const ext = getLanguageDefinition(activeTab.language)?.fileExtension ?? 'txt';
+      if (!sourceFilename.endsWith(`.${ext}`)) {
+        sourceFilename = `${sourceFilename}.${ext}`;
+      }
+
+      // ソースコードを追加
+      zip.file(sourceFilename, content);
+
+      // ログファイル名を生成
+      const tabFilename = activeTab.filename.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const logFilename = `TC_${tabFilename}_${timestamp}.json`;
+
+      // 証明JSONを追加
+      const proofWithContent = {
+        ...proof,
         filename: activeTab.filename,
-        content: activeTab.model.getValue(),
+        content,
         language: activeTab.language,
       };
+      zip.file(logFilename, JSON.stringify(proofWithContent, null, 2));
 
-      const jsonString = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
+      // ZIPを生成してダウンロード（最大圧縮）
+      const blob = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: {
+          level: 9,
+        },
+      });
       const url = URL.createObjectURL(blob);
-
-      const timestamp = this.generateTimestamp();
-      const tabFilename = activeTab.filename.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const filename = `TC_${tabFilename}_${timestamp}.json`;
-
       const a = document.createElement('a');
       a.href = url;
-      a.download = filename;
+      a.download = `typedcode-${tabFilename}-${isoTimestamp}.zip`;
       a.click();
       URL.revokeObjectURL(url);
-
-      console.log('[TypedCode] Proof exported successfully');
-      console.log('Total events:', proofData.proof.totalEvents);
-      console.log('Final hash:', proofData.proof.finalHash);
-      console.log('Signature:', proofData.proof.signature);
 
       const verification = await activeTab.typingProof.verify();
       console.log('[TypedCode] Verification result:', verification);
