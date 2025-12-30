@@ -155,7 +155,6 @@ export class ProofExporter {
       // ZIPファイルを作成
       const zip = new JSZip();
       const timestamp = this.generateTimestamp();
-      const isoTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
       // ソースファイル名を生成（拡張子付き）
       let sourceFilename = activeTab.filename;
@@ -167,9 +166,9 @@ export class ProofExporter {
       // ソースコードを追加
       zip.file(sourceFilename, content);
 
-      // ログファイル名を生成
-      const tabFilename = activeTab.filename.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const logFilename = `TC_${tabFilename}_${timestamp}.json`;
+      // ログファイル名を生成（ファイル名_proof.json形式）
+      const baseFilename = activeTab.filename.replace(/\.[^.]+$/, ''); // 拡張子を除去
+      const logFilename = `${baseFilename}_proof.json`;
 
       // 証明JSONを追加
       const proofWithContent = {
@@ -191,7 +190,7 @@ export class ProofExporter {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `typedcode-${tabFilename}-${isoTimestamp}.zip`;
+      a.download = `TC${timestamp}.zip`;
       a.click();
       URL.revokeObjectURL(url);
 
@@ -234,7 +233,6 @@ export class ProofExporter {
       // ZIPファイルを作成
       const zip = new JSZip();
       const timestamp = this.generateTimestamp();
-      const isoTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
       // ファイル名の重複を処理するためのマップ
       const usedSourceFilenames = new Map<string, number>();
@@ -269,16 +267,16 @@ export class ProofExporter {
         zip.file(uniqueSourceFilename, content);
         fileList.push(uniqueSourceFilename);
 
-        // ログファイル名を生成（個別出力と同じ形式: TC_{tabFilename}_{timestamp}.json）
-        const tabFilename = tab.filename.replace(/[^a-zA-Z0-9_-]/g, '_');
-        let logFilename = `TC_${tabFilename}_${timestamp}.json`;
+        // ログファイル名を生成（ファイル名_proof.json形式）
+        const baseFilename = tab.filename.replace(/\.[^.]+$/, ''); // 拡張子を除去
+        let logFilename = `${baseFilename}_proof.json`;
 
         // ログファイル名の重複を処理
         const logCount = usedLogFilenames.get(logFilename) ?? 0;
         if (logCount > 0) {
-          logFilename = `TC_${tabFilename}_${timestamp}_${logCount}.json`;
+          logFilename = `${baseFilename}_proof_${logCount}.json`;
         }
-        usedLogFilenames.set(`TC_${tabFilename}_${timestamp}.json`, logCount + 1);
+        usedLogFilenames.set(`${baseFilename}_proof.json`, logCount + 1);
 
         // 証明JSONを追加（フラット）
         const proofWithContent = {
@@ -331,7 +329,7 @@ Total files: ${allTabs.length}
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `typedcode-${isoTimestamp}.zip`;
+      a.download = `TC${timestamp}.zip`;
       a.click();
       URL.revokeObjectURL(url);
 
