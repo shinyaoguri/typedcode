@@ -90,6 +90,7 @@ export class AppController {
       onOpenFile: () => this.openFileDialog(),
       onOpenFolder: () => this.openFolderDialog(),
       onThemeToggle: () => this.themeManager.toggle(),
+      onExplorerToggle: () => this.toggleSidebar(),
     });
 
     this.sidebar = new Sidebar({
@@ -145,6 +146,73 @@ export class AppController {
 
     // ページ離脱時の確認ダイアログ
     this.setupBeforeUnloadHandler();
+
+    // 結果パネルのリサイズ機能
+    this.setupResultPanelResize();
+  }
+
+  /**
+   * サイドバーの表示/非表示を切り替え
+   */
+  private toggleSidebar(): void {
+    const sidebarEl = document.getElementById('sidebar');
+    const resizeHandle = document.getElementById('resize-handle');
+    if (sidebarEl) {
+      sidebarEl.classList.toggle('collapsed');
+    }
+    if (resizeHandle) {
+      resizeHandle.style.display = sidebarEl?.classList.contains('collapsed') ? 'none' : '';
+    }
+  }
+
+  /**
+   * 結果パネルのリサイズ機能を設定
+   */
+  private setupResultPanelResize(): void {
+    const resizeHandle = document.getElementById('result-resize-handle');
+    const leftPanel = document.getElementById('result-left-panel');
+    const resultContent = document.querySelector('.result-content') as HTMLElement;
+
+    if (!resizeHandle || !leftPanel || !resultContent) return;
+
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    resizeHandle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startX = e.clientX;
+      startWidth = leftPanel.offsetWidth;
+      resizeHandle.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+
+      const delta = e.clientX - startX;
+      const newWidth = startWidth + delta;
+      const containerWidth = resultContent.offsetWidth;
+
+      // 最小幅350px、最大70%
+      const minWidth = 350;
+      const maxWidth = containerWidth * 0.7;
+
+      if (newWidth >= minWidth && newWidth <= maxWidth) {
+        leftPanel.style.width = `${newWidth}px`;
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        resizeHandle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
   }
 
   /**

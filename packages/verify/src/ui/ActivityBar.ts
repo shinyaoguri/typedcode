@@ -12,19 +12,25 @@ export class ActivityBar {
   private openFileBtn: HTMLElement;
   private openFolderBtn: HTMLElement | null;
   private themeToggleBtn: HTMLElement;
+  private explorerToggleBtn: HTMLElement;
 
   private onOpenFile: () => void;
   private onOpenFolder: () => void;
   private onThemeToggle: () => void;
+  private onExplorerToggle: () => void;
+
+  private explorerVisible = true;
 
   constructor(callbacks: {
     onOpenFile: () => void;
     onOpenFolder: () => void;
     onThemeToggle: () => void;
+    onExplorerToggle?: () => void;
   }) {
     this.onOpenFile = callbacks.onOpenFile;
     this.onOpenFolder = callbacks.onOpenFolder;
     this.onThemeToggle = callbacks.onThemeToggle;
+    this.onExplorerToggle = callbacks.onExplorerToggle ?? (() => {});
 
     this.mainMenuBtn = document.getElementById('main-menu-btn')!;
     this.mainMenuDropdown = document.getElementById('main-menu-dropdown')!;
@@ -33,6 +39,7 @@ export class ActivityBar {
     this.openFileBtn = document.getElementById('open-file-btn')!;
     this.openFolderBtn = document.getElementById('open-folder-btn');
     this.themeToggleBtn = document.getElementById('theme-toggle-btn')!;
+    this.explorerToggleBtn = document.getElementById('explorer-toggle-btn')!;
 
     // フォルダを開くボタンを動的に追加（存在しない場合）
     if (!this.openFolderBtn) {
@@ -99,6 +106,12 @@ export class ActivityBar {
       this.onThemeToggle();
     });
 
+    // Explorer toggle button
+    this.explorerToggleBtn.addEventListener('click', () => {
+      this.hideAllDropdowns();
+      this.toggleExplorer();
+    });
+
     // Close dropdowns when clicking outside
     document.addEventListener('click', () => {
       this.hideAllDropdowns();
@@ -120,5 +133,40 @@ export class ActivityBar {
   private hideAllDropdowns(): void {
     this.hideDropdown(this.mainMenuDropdown);
     this.hideDropdown(this.settingsDropdown);
+  }
+
+  /**
+   * エクスプローラーの表示/非表示を切り替え
+   */
+  private toggleExplorer(): void {
+    this.explorerVisible = !this.explorerVisible;
+    this.updateExplorerState();
+    this.onExplorerToggle();
+  }
+
+  /**
+   * エクスプローラーの状態を更新
+   */
+  private updateExplorerState(): void {
+    const icon = this.explorerToggleBtn.querySelector('i');
+    if (icon) {
+      icon.className = this.explorerVisible ? 'fas fa-folder-open' : 'fas fa-folder';
+    }
+    this.explorerToggleBtn.classList.toggle('active', this.explorerVisible);
+  }
+
+  /**
+   * エクスプローラーの表示状態を取得
+   */
+  isExplorerVisible(): boolean {
+    return this.explorerVisible;
+  }
+
+  /**
+   * エクスプローラーの表示状態を設定（外部から）
+   */
+  setExplorerVisible(visible: boolean): void {
+    this.explorerVisible = visible;
+    this.updateExplorerState();
   }
 }

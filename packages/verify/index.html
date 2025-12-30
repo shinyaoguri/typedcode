@@ -26,6 +26,9 @@
               </button>
             </div>
           </div>
+          <button class="activitybar-item active" id="explorer-toggle-btn" title="エクスプローラー">
+            <i class="fas fa-folder-open"></i>
+          </button>
         </div>
         <div class="activitybar-bottom">
           <div class="activitybar-menu-container">
@@ -414,8 +417,11 @@
                 </div>
               </div>
 
+              <!-- Result Panel Resize Handle -->
+              <div class="result-resize-handle" id="result-resize-handle"></div>
+
               <!-- Right Panel - Code Preview -->
-              <div class="result-right-panel">
+              <div class="result-right-panel" id="result-right-panel">
                 <pre id="code-preview"><code></code></pre>
               </div>
             </div>

@@ -415,7 +415,7 @@ export class TabBar {
     if (!placeholder) return;
 
     const tabElements = Array.from(
-      this.tabbar.querySelectorAll('.tab')
+      this.tabbar.querySelectorAll('.tab:not(.dragging)')
     ) as HTMLElement[];
 
     // プレースホルダを一旦削除
@@ -429,9 +429,6 @@ export class TabBar {
       const midPoint = rect.left + rect.width / 2;
 
       if (clientX < midPoint) {
-        if (tab === this.dragState.draggedElement) {
-          continue;
-        }
         insertBeforeElement = tab;
         break;
       }

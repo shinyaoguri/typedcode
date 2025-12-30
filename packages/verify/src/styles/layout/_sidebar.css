@@ -10,13 +10,20 @@
   flex-shrink: 0;
   overflow: hidden;
   position: relative;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  transition: width 0.2s ease, min-width 0.2s ease, border-right 0.2s ease,
+    background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .sidebar.collapsed {
   width: 0;
   min-width: 0;
-  border-right: none;
+  border-right-color: transparent;
+}
+
+.sidebar.collapsed .sidebar-header,
+.sidebar.collapsed .sidebar-content {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Sidebar header */

@@ -27,10 +27,14 @@
   max-width: 200px;
   background-color: var(--tab-bg);
   border-right: 1px solid var(--tab-border);
-  cursor: pointer;
+  cursor: grab;
   position: relative;
   transition: background-color 0.1s ease;
   flex-shrink: 0;
+}
+
+.tab:active {
+  cursor: grabbing;
 }
 
 .tab:hover {
@@ -209,13 +213,13 @@
 }
 
 .tab-placeholder {
-  width: 2px;
-  height: 28px;
-  background-color: var(--accent-primary);
+  width: 2px !important;
+  height: 27px;
+  background: var(--accent-info, var(--accent-primary));
   border-radius: 1px;
   flex-shrink: 0;
-  margin: 0 -1px;
-  align-self: center;
+  margin: 4px 0;
+  box-shadow: 0 0 4px var(--accent-info, var(--accent-primary));
 }
 
 body.tab-dragging {
@@ -225,4 +229,9 @@ body.tab-dragging {
 
 body.tab-dragging * {
   cursor: grabbing !important;
+}
+
+/* 他のタブの移動アニメーション */
+.tabbar .tab:not(.dragging) {
+  transition: transform 0.15s ease;
 }
