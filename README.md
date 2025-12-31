@@ -1,17 +1,18 @@
+
+
 # TypedCode
 
-A browser-based editor that cryptographically proves sequential typing by recording all input operations in a tamper-resistant hash chain.
+<img align="right" src="icon.png" alt="TypedCode Logo" height="150">
 
-## What is TypedCode?
+A VSCode-like code editor that records every keystroke into a tamper-resistant hash chain, proving code was typed character-by-character. Runs entirely in your browser with built-in execution for C/C++, Python, and JavaScript/TypeScript via WebAssembly.
 
-TypedCode captures every keystroke, mouse action, and paste operation, then chains them together using SHA-256 with Proof of Sequential Work (PoSW). This creates verifiable proof that code was typed character-by-character rather than copied from external sources.
+**Free, unlimited, no sign-up. No data leaves your browser.**
 
 **Key Features:**
-- No installation or account required
-- Tamper-resistant operation logs (SHA-256 + PoSW hash chain)
+- Tamper-resistant proof logs (SHA-256 + PoSW hash chain)
 - Copy/paste detection and recording
-- Multi-tab editing support
-- In-browser code execution (C/C++, Python, JavaScript/TypeScript)
+- In-browser code execution (no server required)
+- Export code with independently verifiable proof
 
 ## Packages
 
