@@ -11,7 +11,7 @@ A VSCode-like code editor that records every keystroke into a tamper-resistant h
 **Key Features:**
 - Tamper-resistant proof logs (SHA-256 + PoSW hash chain)
 - Using Cloudflare Turnstile to verify whether users are human
-- Copy/paste detection and recording
+- Copy/paste, Key, Mouse, Focus detection and recording
 - In-browser code execution (no server required)
 - Export code with independently verifiable proof
 
