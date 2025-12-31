@@ -104,11 +104,8 @@ export function loadTurnstileScript(): Promise<void> {
   return loadPromise;
 }
 
-/** Timeout for automatic Turnstile verification (5 seconds - short for quick retry) */
-const TURNSTILE_AUTO_TIMEOUT_MS = 5000;
-
-/** Extended timeout when interactive challenge is displayed (60 seconds for user interaction) */
-const TURNSTILE_INTERACTIVE_TIMEOUT_MS = 60000;
+/** Timeout for Turnstile verification (60 seconds for user interaction) */
+const TURNSTILE_TIMEOUT_MS = 60000;
 
 /** Result from getTurnstileToken including failure reason */
 interface TokenResult {
@@ -177,8 +174,7 @@ export async function getTurnstileToken(action: string): Promise<TokenResult> {
 
     let resolved = false;
     let widgetId: string | null = null;
-    let interactiveMode = false;
-    let currentTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const cleanup = () => {
       if (widgetId) {
@@ -202,86 +198,61 @@ export async function getTurnstileToken(action: string): Promise<TokenResult> {
       }
     };
 
-    // Start with auto timeout (short for quick retry if no challenge appears)
-    const startTimeout = (timeoutMs: number, reason: string) => {
-      if (currentTimeoutId) {
-        clearTimeout(currentTimeoutId);
+    // Set timeout for verification
+    timeoutId = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        cleanup();
+        console.warn(`[Turnstile] Challenge timed out after ${TURNSTILE_TIMEOUT_MS}ms`);
+        resolve({ token: null, failureReason: 'timeout', isNetworkError: true });
       }
-      currentTimeoutId = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          cleanup();
-          console.warn(`[Turnstile] Challenge timed out after ${timeoutMs}ms (${reason})`);
-          // Timeout is likely a network issue - should retry
-          resolve({ token: null, failureReason: 'timeout', isNetworkError: true });
-        }
-      }, timeoutMs);
-    };
+    }, TURNSTILE_TIMEOUT_MS);
 
-    // Initial timeout (short for auto-verification)
-    startTimeout(TURNSTILE_AUTO_TIMEOUT_MS, 'auto');
+    // Show challenge container immediately since we're using appearance: 'always'
+    if (challengeContainer) {
+      challengeContainer.classList.remove('hidden');
+    }
 
     try {
+      // Detect current theme from document attribute
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const turnstileTheme = currentTheme === 'light' ? 'light' : 'dark';
+
       widgetId = window.turnstile.render(widgetContainer, {
         sitekey: TURNSTILE_SITE_KEY,
-        size: 'normal',
+        size: 'flexible',
         action,
-        theme: 'dark',
-        appearance: 'interaction-only',  // Show only when interaction needed
+        theme: turnstileTheme,
+        appearance: 'always',  // Always show the official Cloudflare widget
         callback: (token) => {
           if (!resolved) {
             resolved = true;
-            if (currentTimeoutId) clearTimeout(currentTimeoutId);
-            cleanup();
+            if (timeoutId) clearTimeout(timeoutId);
             console.log('[Turnstile] Token acquired for action:', action);
-            resolve({ token, isNetworkError: false });
+            // Wait a moment so user can see the success checkmark
+            setTimeout(() => {
+              cleanup();
+              resolve({ token, isNetworkError: false });
+            }, 1500);
           }
         },
         'error-callback': () => {
           if (!resolved) {
             resolved = true;
-            if (currentTimeoutId) clearTimeout(currentTimeoutId);
+            if (timeoutId) clearTimeout(timeoutId);
             cleanup();
             console.error('[Turnstile] Challenge error (likely network issue)');
-            // error-callback is often triggered by network issues
-            // We treat it as potentially retryable
             resolve({ token: null, failureReason: 'network_error', isNetworkError: true });
           }
         },
       });
     } catch (error) {
       resolved = true;
-      if (currentTimeoutId) clearTimeout(currentTimeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
       cleanup();
       console.error('[Turnstile] Failed to render widget:', error);
       resolve({ token: null, failureReason: 'token_acquisition_failed', isNetworkError: true });
     }
-
-    // Watch for interactive challenge (iframe appears)
-    // When iframe appears, show challenge container and extend timeout
-    const observer = new MutationObserver(() => {
-      const iframe = widgetContainer.querySelector('iframe');
-      if (iframe && !interactiveMode) {
-        interactiveMode = true;
-        console.log('[Turnstile] Interactive challenge detected, extending timeout');
-
-        // Show challenge container in modal
-        if (challengeContainer) {
-          challengeContainer.classList.remove('hidden');
-        }
-
-        // Extend timeout for user interaction
-        startTimeout(TURNSTILE_INTERACTIVE_TIMEOUT_MS, 'interactive');
-
-        observer.disconnect();
-      }
-    });
-    observer.observe(widgetContainer, { childList: true, subtree: true });
-
-    // Auto-disconnect observer after short delay if no iframe appears (auto-pass case)
-    setTimeout(() => {
-      observer.disconnect();
-    }, 2000);
   });
 }
 

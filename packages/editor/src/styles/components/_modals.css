@@ -360,7 +360,8 @@
 }
 
 #verification-dialog {
-  min-width: 320px;
+  min-width: 400px;
+  width: 450px;
 }
 
 #verification-dialog .modal-header {
@@ -462,23 +463,6 @@
   color: var(--text-tertiary);
 }
 
-/* Verification Progress Bar */
-.verification-progress-container {
-  height: 3px;
-  background: var(--bg-tertiary);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-top: 4px;
-}
-
-.verification-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #4fc3f7, #29b6f6);
-  border-radius: 2px;
-  width: 0%;
-  transition: width 0.1s linear;
-}
-
 /* Verification Retry Info */
 .verification-retry-info {
   display: flex;
@@ -535,33 +519,18 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 16px;
-  margin-top: 12px;
-  background: var(--bg-tertiary);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
+  justify-content: center;
+  margin-top: 4px;
+  width: 100%;
 }
 
 .verification-challenge-container.hidden {
   display: none;
 }
 
-.challenge-hint {
-  font-size: 13px;
-  color: var(--text-secondary);
-  text-align: center;
-}
-
 #turnstile-widget-container {
   min-height: 65px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-#turnstile-widget-container iframe {
-  border-radius: 4px;
+  width: 100%;
 }
 
 /* About Dialog */
