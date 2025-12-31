@@ -1,4 +1,4 @@
-import type { SupportedLocale, TranslationRecord } from './types';
+import type { SupportedLocale, TranslationRecord } from './types.js';
 
 const LOCALE_STORAGE_KEY = 'typedcode-locale';
 const DEFAULT_LOCALE: SupportedLocale = 'ja';
@@ -139,10 +139,10 @@ export class I18nService<T extends TranslationRecord = TranslationRecord> {
    * Get display name for a locale
    */
   getLocaleDisplayName(locale: SupportedLocale): string {
-    const names: Record<SupportedLocale, string> = {
+    const names = {
       ja: '日本語',
       en: 'English',
-    };
+    } as const;
     return names[locale];
   }
 }

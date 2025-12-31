@@ -1,5 +1,5 @@
-import type { I18nService } from './I18nService';
-import type { TranslationRecord } from './types';
+import type { I18nService } from './I18nService.js';
+import type { TranslationRecord } from './types.js';
 
 /**
  * DOM updater functions interface
