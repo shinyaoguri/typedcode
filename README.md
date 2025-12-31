@@ -4,7 +4,7 @@
 
 <img align="right" src="icon.png" alt="TypedCode Logo" height="150">
 
-A VSCode-like code editor that records every keystroke into a tamper-resistant hash chain, proving code was typed character-by-character. Runs entirely in your browser with built-in execution for C/C++, Python, and JavaScript/TypeScript via WebAssembly.
+[TypedCode](https://typedcode.dev) is a VSCode-like code editor that records every keystroke into a tamper-resistant hash chain, proving code was typed character-by-character. Runs entirely in your browser with built-in execution for C/C++, Python, and JavaScript/TypeScript via WebAssembly.
 
 **Free, unlimited, no sign-up. No data leaves your browser.**
 
@@ -24,6 +24,11 @@ A VSCode-like code editor that records every keystroke into a tamper-resistant h
 | [@typedcode/verify-cli](packages/verify-cli/) | CLI tool for proof verification |
 | [@typedcode/shared](packages/shared/) | Shared library (types, TypingProof, Fingerprint) |
 | [@typedcode/workers](packages/workers/) | Cloudflare Workers API (Turnstile integration) |
+
+## Live Demo
+
+- Editor [https://typedcode.dev](https://typedcode.dev)
+- VerifyApp [https://typedcode.dev/verify](https://typedcode.dev/verify)
 
 ## Quick Start
 
