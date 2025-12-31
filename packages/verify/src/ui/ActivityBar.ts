@@ -3,6 +3,7 @@
  */
 
 import { FileSystemAccessService } from '../services/FileSystemAccessService.js';
+import { getI18n } from '../i18n/index.js';
 
 export class ActivityBar {
   private mainMenuBtn: HTMLElement;
@@ -12,12 +13,14 @@ export class ActivityBar {
   private openFileBtn: HTMLElement;
   private openFolderBtn: HTMLElement | null;
   private themeToggleBtn: HTMLElement;
+  private languageToggleBtn: HTMLElement | null;
   private explorerToggleBtn: HTMLElement;
 
   private onOpenFile: () => void;
   private onOpenFolder: () => void;
   private onThemeToggle: () => void;
   private onExplorerToggle: () => void;
+  private onLanguageToggle: () => void;
 
   private explorerVisible = true;
 
@@ -26,11 +29,13 @@ export class ActivityBar {
     onOpenFolder: () => void;
     onThemeToggle: () => void;
     onExplorerToggle?: () => void;
+    onLanguageToggle?: () => void;
   }) {
     this.onOpenFile = callbacks.onOpenFile;
     this.onOpenFolder = callbacks.onOpenFolder;
     this.onThemeToggle = callbacks.onThemeToggle;
     this.onExplorerToggle = callbacks.onExplorerToggle ?? (() => {});
+    this.onLanguageToggle = callbacks.onLanguageToggle ?? (() => {});
 
     this.mainMenuBtn = document.getElementById('main-menu-btn')!;
     this.mainMenuDropdown = document.getElementById('main-menu-dropdown')!;
@@ -39,12 +44,16 @@ export class ActivityBar {
     this.openFileBtn = document.getElementById('open-file-btn')!;
     this.openFolderBtn = document.getElementById('open-folder-btn');
     this.themeToggleBtn = document.getElementById('theme-toggle-btn')!;
+    this.languageToggleBtn = document.getElementById('language-toggle-btn');
     this.explorerToggleBtn = document.getElementById('explorer-toggle-btn')!;
 
     // フォルダを開くボタンを動的に追加（存在しない場合）
     if (!this.openFolderBtn) {
       this.createOpenFolderButton();
     }
+
+    // 現在の言語ラベルを更新
+    this.updateLanguageLabel();
 
     this.setupEventListeners();
   }
@@ -105,6 +114,14 @@ export class ActivityBar {
       this.hideAllDropdowns();
       this.onThemeToggle();
     });
+
+    // Language toggle button
+    if (this.languageToggleBtn) {
+      this.languageToggleBtn.addEventListener('click', () => {
+        this.hideAllDropdowns();
+        this.onLanguageToggle();
+      });
+    }
 
     // Explorer toggle button
     this.explorerToggleBtn.addEventListener('click', () => {
@@ -168,5 +185,16 @@ export class ActivityBar {
   setExplorerVisible(visible: boolean): void {
     this.explorerVisible = visible;
     this.updateExplorerState();
+  }
+
+  /**
+   * 現在の言語ラベルを更新
+   */
+  private updateLanguageLabel(): void {
+    const label = document.getElementById('current-language-label');
+    if (label) {
+      const i18n = getI18n();
+      label.textContent = i18n.getLocaleDisplayName(i18n.getLocale());
+    }
   }
 }

@@ -20,7 +20,14 @@ export class ThemeManager {
    */
   private loadTheme(): Theme {
     const savedTheme = localStorage.getItem('typedcode-theme');
-    return (savedTheme === 'light' || savedTheme === 'dark') ? savedTheme : 'dark';
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      return savedTheme;
+    }
+    // Check system preference
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      return 'light';
+    }
+    return 'dark';
   }
 
   /**

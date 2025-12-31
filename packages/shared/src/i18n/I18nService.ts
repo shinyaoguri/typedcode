@@ -1,33 +1,20 @@
-import type { SupportedLocale, TranslationKeys } from './types';
-import { ja } from './translations/ja';
-import { en } from './translations/en';
+import type { SupportedLocale, TranslationRecord } from './types';
 
 const LOCALE_STORAGE_KEY = 'typedcode-locale';
 const DEFAULT_LOCALE: SupportedLocale = 'ja';
 
-const translations: Record<SupportedLocale, TranslationKeys> = { ja, en };
-
 /**
- * Lightweight i18n service for TypedCode editor
+ * Generic i18n service for TypedCode packages
  * Singleton pattern with language detection and persistence
  */
-export class I18nService {
-  private static instance: I18nService | null = null;
+export class I18nService<T extends TranslationRecord = TranslationRecord> {
+  private translations: Record<SupportedLocale, T>;
   private currentLocale: SupportedLocale;
   private listeners: Set<(locale: SupportedLocale) => void> = new Set();
 
-  private constructor() {
+  constructor(translations: Record<SupportedLocale, T>) {
+    this.translations = translations;
     this.currentLocale = this.detectLocale();
-  }
-
-  /**
-   * Get singleton instance
-   */
-  static getInstance(): I18nService {
-    if (!I18nService.instance) {
-      I18nService.instance = new I18nService();
-    }
-    return I18nService.instance;
   }
 
   /**
@@ -96,7 +83,7 @@ export class I18nService {
    */
   t(key: string, params?: Record<string, string | number>): string {
     const keys = key.split('.');
-    let value: unknown = translations[this.currentLocale];
+    let value: unknown = this.translations[this.currentLocale];
 
     for (const k of keys) {
       if (value && typeof value === 'object' && k in value) {
@@ -160,32 +147,17 @@ export class I18nService {
   }
 }
 
-// Singleton instance cache
-let i18nInstance: I18nService | null = null;
+/**
+ * I18n instance interface for type safety
+ */
+export type I18nInstance<T extends TranslationRecord = TranslationRecord> =
+  I18nService<T>;
 
 /**
- * Get I18nService instance
+ * Create a new I18nService instance with the provided translations
  */
-export function getI18n(): I18nService {
-  if (!i18nInstance) {
-    i18nInstance = I18nService.getInstance();
-  }
-  return i18nInstance;
-}
-
-/**
- * Convenience function for translation
- */
-export function t(key: string, params?: Record<string, string | number>): string {
-  return getI18n().t(key, params);
-}
-
-/**
- * Convenience function for message formatting
- */
-export function formatMessage(
-  template: string,
-  params: Record<string, string | number>
-): string {
-  return getI18n().formatMessage(template, params);
+export function createI18nInstance<T extends TranslationRecord>(
+  translations: Record<SupportedLocale, T>
+): I18nService<T> {
+  return new I18nService<T>(translations);
 }

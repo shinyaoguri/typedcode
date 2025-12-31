@@ -27,3 +27,14 @@ export type {
   FullVerificationResult,
   VerificationProgressCallback,
 } from './verification.js';
+
+// i18n (多言語対応)
+export {
+  I18nService,
+  createI18nInstance,
+  type I18nInstance,
+  createDOMUpdater,
+  type DOMUpdater,
+} from './i18n/index.js';
+
+export type { SupportedLocale, TranslationRecord } from './i18n/index.js';

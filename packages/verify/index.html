@@ -16,39 +16,44 @@
       <div class="activitybar">
         <div class="activitybar-top">
           <div class="activitybar-menu-container">
-            <button class="activitybar-item" id="main-menu-btn" title="メニュー">
+            <button class="activitybar-item" id="main-menu-btn" data-i18n-title="activityBar.menu">
               <i class="fas fa-bars"></i>
             </button>
             <div class="activitybar-dropdown" id="main-menu-dropdown">
               <button class="dropdown-item" id="open-file-btn">
                 <i class="fas fa-folder-open"></i>
-                <span>ファイルを開く</span>
+                <span data-i18n="activityBar.openFile">ファイルを開く</span>
               </button>
             </div>
           </div>
-          <button class="activitybar-item active" id="explorer-toggle-btn" title="エクスプローラー">
+          <button class="activitybar-item active" id="explorer-toggle-btn" data-i18n-title="activityBar.explorer">
             <i class="fas fa-folder-open"></i>
           </button>
         </div>
         <div class="activitybar-bottom">
           <div class="activitybar-menu-container">
-            <button class="activitybar-item" id="settings-btn" title="設定">
+            <button class="activitybar-item" id="settings-btn" data-i18n-title="activityBar.settings">
               <i class="fas fa-gear"></i>
             </button>
             <div class="activitybar-dropdown" id="settings-dropdown">
+              <button class="dropdown-item" id="language-toggle-btn">
+                <i class="fas fa-globe"></i>
+                <span data-i18n="settings.language">言語</span>
+                <span class="dropdown-language-label" id="current-language-label"></span>
+              </button>
               <button class="dropdown-item" id="theme-toggle-btn">
                 <i class="fas fa-moon"></i>
-                <span>テーマ切替</span>
+                <span data-i18n="activityBar.themeToggle">テーマ切替</span>
               </button>
               <div class="dropdown-divider"></div>
               <a class="dropdown-item" href="/" target="_blank">
                 <i class="fas fa-code"></i>
-                <span>エディタを開く</span>
+                <span data-i18n="activityBar.openEditor">エディタを開く</span>
                 <i class="fas fa-external-link-alt dropdown-external-icon"></i>
               </a>
               <a class="dropdown-item" href="https://github.com/shinyaoguri/typedcode" target="_blank">
                 <i class="fab fa-github"></i>
-                <span>GitHub</span>
+                <span data-i18n="activityBar.github">GitHub</span>
                 <i class="fas fa-external-link-alt dropdown-external-icon"></i>
               </a>
             </div>
@@ -59,12 +64,12 @@
       <!-- Sidebar -->
       <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
-          <h3>証明ファイル</h3>
+          <h3 data-i18n="sidebar.title">エクスプローラー</h3>
           <div class="sidebar-actions">
-            <button class="sidebar-action-btn" id="add-file-btn" title="ファイルを追加">
+            <button class="sidebar-action-btn" id="add-file-btn" data-i18n-title="sidebar.addFile">
               <i class="fas fa-file-circle-plus"></i>
             </button>
-            <button class="sidebar-action-btn" id="add-folder-btn" title="フォルダを追加">
+            <button class="sidebar-action-btn" id="add-folder-btn" data-i18n-title="sidebar.addFolder">
               <i class="fas fa-folder-plus"></i>
             </button>
           </div>
@@ -72,7 +77,7 @@
         <div class="sidebar-content" id="file-list">
           <div class="sidebar-empty" id="sidebar-empty">
             <i class="fas fa-file-lines"></i>
-            <p>ファイルを読み込むと<br>ここに表示されます</p>
+            <p data-i18n-html="sidebar.emptyMessage">ファイルを読み込むと<br>ここに表示されます</p>
           </div>
         </div>
       </div>
@@ -95,25 +100,25 @@
               <div class="welcome-logo">
                 <img src="/icon-192.png" alt="TypedCode Verify">
               </div>
-              <h1>TypedCode Verify</h1>
-              <p>タイピング証明を検証</p>
+              <h1 data-i18n="welcome.title">TypedCode Verify</h1>
+              <p data-i18n="welcome.subtitle">タイピング証明を検証</p>
 
               <div class="drop-zone" id="drop-zone">
                 <div class="drop-zone-icon">
                   <i class="fas fa-file-import"></i>
                 </div>
-                <p class="drop-zone-text">証明ファイルをドロップ</p>
-                <p class="drop-zone-hint">JSON または ZIP ファイル</p>
+                <p class="drop-zone-text" data-i18n="welcome.dropText">証明ファイルをドロップ</p>
+                <p class="drop-zone-hint" data-i18n="welcome.dropHint">JSON または ZIP ファイル</p>
                 <button class="drop-zone-btn" id="browse-btn">
                   <i class="fas fa-folder-open"></i>
-                  ファイルを選択
+                  <span data-i18n="welcome.browseButton">ファイルを選択</span>
                 </button>
               </div>
 
               <div class="welcome-shortcuts">
                 <div class="shortcut-item">
                   <span class="shortcut-key">Ctrl+O</span>
-                  <span>ファイルを開く</span>
+                  <span data-i18n="welcome.shortcutOpen">ファイルを開く</span>
                 </div>
               </div>
             </div>
@@ -130,7 +135,7 @@
                     <i class="fas fa-shield-halved"></i>
                   </div>
                   <div class="vp-title">
-                    <h2>検証中</h2>
+                    <h2 data-i18n="progress.verifying">検証中</h2>
                     <p class="vp-filename" id="vp-filename"></p>
                   </div>
                 </div>
@@ -158,10 +163,10 @@
                     </div>
                     <div class="vp-step-content">
                       <div class="vp-step-header">
-                        <span class="vp-step-label">メタデータ検証</span>
+                        <span class="vp-step-label" data-i18n="progress.metadataStep">メタデータ検証</span>
                         <span class="vp-step-status" id="vp-status-metadata"></span>
                       </div>
-                      <p class="vp-step-desc">ファイルの整合性とハッシュを確認</p>
+                      <p class="vp-step-desc" data-i18n="progress.metadataDesc">ファイルの整合性とハッシュを確認</p>
                       <div class="vp-step-progress" id="vp-progress-metadata" style="display: none;">
                         <div class="vp-step-bar">
                           <div class="vp-step-fill"></div>
@@ -181,10 +186,10 @@
                     </div>
                     <div class="vp-step-content">
                       <div class="vp-step-header">
-                        <span class="vp-step-label">全件ハッシュチェーン検証</span>
+                        <span class="vp-step-label" data-i18n="progress.chainStep">全件ハッシュチェーン検証</span>
                         <span class="vp-step-status" id="vp-status-chain"></span>
                       </div>
-                      <p class="vp-step-desc">チェックポイントなしのためフォールバック</p>
+                      <p class="vp-step-desc" data-i18n="progress.chainDesc">チェックポイントなしのためフォールバック</p>
                       <div class="vp-step-progress" id="vp-progress-chain" style="display: none;">
                         <div class="vp-step-bar">
                           <div class="vp-step-fill"></div>
@@ -204,10 +209,10 @@
                     </div>
                     <div class="vp-step-content">
                       <div class="vp-step-header">
-                        <span class="vp-step-label">サンプリング検証</span>
+                        <span class="vp-step-label" data-i18n="progress.samplingStep">サンプリング検証</span>
                         <span class="vp-step-status" id="vp-status-sampling"></span>
                       </div>
-                      <p class="vp-step-desc">チェックポイント区間の部分検証</p>
+                      <p class="vp-step-desc" data-i18n="progress.samplingDesc">チェックポイント区間の部分検証</p>
                       <div class="vp-step-progress" id="vp-progress-sampling" style="display: none;">
                         <div class="vp-step-bar">
                           <div class="vp-step-fill"></div>
@@ -226,10 +231,10 @@
                     </div>
                     <div class="vp-step-content">
                       <div class="vp-step-header">
-                        <span class="vp-step-label">完了</span>
+                        <span class="vp-step-label" data-i18n="progress.completeStep">完了</span>
                         <span class="vp-step-status" id="vp-status-complete"></span>
                       </div>
-                      <p class="vp-step-desc">検証結果の表示</p>
+                      <p class="vp-step-desc" data-i18n="progress.completeDesc">検証結果の表示</p>
                     </div>
                   </div>
                 </div>
@@ -253,7 +258,7 @@
                   <div class="plaintext-filename" id="plaintext-filename"></div>
                   <div class="plaintext-language" id="plaintext-language"></div>
                 </div>
-                <div class="plaintext-badge">読み取り専用</div>
+                <div class="plaintext-badge" data-i18n="plaintext.readOnly">読み取り専用</div>
               </div>
               <div class="plaintext-code-container">
                 <pre class="plaintext-code" id="plaintext-code"><code></code></pre>
@@ -270,7 +275,7 @@
                     <i class="fas fa-spinner fa-spin"></i>
                   </div>
                   <div class="result-status-info">
-                    <div class="result-status-title" id="result-status-title">検証中...</div>
+                    <div class="result-status-title" id="result-status-title" data-i18n="result.statusVerifying">検証中...</div>
                     <div class="result-status-filename" id="result-status-filename"></div>
                   </div>
                 </div>
@@ -284,17 +289,17 @@
                         <div class="result-card-icon pending" id="typing-icon">
                           <i class="fas fa-keyboard"></i>
                         </div>
-                        <span class="result-card-title">タイピング</span>
+                        <span class="result-card-title" data-i18n="result.typing">タイピング</span>
                       </div>
                       <span class="result-card-badge pending" id="typing-badge">-</span>
                     </div>
                     <div class="result-card-content" id="typing-content">
                       <div class="result-row">
-                        <span class="result-row-label">ペースト回数</span>
+                        <span class="result-row-label" data-i18n="result.pasteCount">ペースト回数</span>
                         <span class="result-row-value" id="paste-count">-</span>
                       </div>
                       <div class="result-row">
-                        <span class="result-row-label">外部入力</span>
+                        <span class="result-row-label" data-i18n="result.externalInput">外部入力</span>
                         <span class="result-row-value" id="external-input">-</span>
                       </div>
                     </div>
@@ -307,17 +312,17 @@
                         <div class="result-card-icon pending" id="chain-icon">
                           <i class="fas fa-link"></i>
                         </div>
-                        <span class="result-card-title">ハッシュチェーン</span>
+                        <span class="result-card-title" data-i18n="result.hashChain">ハッシュチェーン</span>
                       </div>
                       <span class="result-card-badge pending" id="chain-badge">-</span>
                     </div>
                     <div class="result-card-content" id="chain-content">
                       <div class="result-row">
-                        <span class="result-row-label">検証方式</span>
+                        <span class="result-row-label" data-i18n="result.verificationMethod">検証方式</span>
                         <span class="result-row-value" id="chain-method">-</span>
                       </div>
                       <div class="result-row">
-                        <span class="result-row-label">イベント数</span>
+                        <span class="result-row-label" data-i18n="result.eventCount">イベント数</span>
                         <span class="result-row-value" id="chain-events">-</span>
                       </div>
                     </div>
@@ -330,17 +335,17 @@
                         <div class="result-card-icon pending" id="posw-icon">
                           <i class="fas fa-clock"></i>
                         </div>
-                        <span class="result-card-title">PoSW</span>
+                        <span class="result-card-title" data-i18n="result.posw">PoSW</span>
                       </div>
                       <span class="result-card-badge pending" id="posw-badge">-</span>
                     </div>
                     <div class="result-card-content" id="posw-content">
                       <div class="result-row">
-                        <span class="result-row-label">反復回数</span>
+                        <span class="result-row-label" data-i18n="result.iterations">反復回数</span>
                         <span class="result-row-value" id="posw-iterations">-</span>
                       </div>
                       <div class="result-row">
-                        <span class="result-row-label">合計時間</span>
+                        <span class="result-row-label" data-i18n="result.totalTime">合計時間</span>
                         <span class="result-row-value" id="posw-total-time">-</span>
                       </div>
                     </div>
@@ -353,17 +358,17 @@
                         <div class="result-card-icon pending" id="attestation-icon">
                           <i class="fas fa-user-check"></i>
                         </div>
-                        <span class="result-card-title">人間証明</span>
+                        <span class="result-card-title" data-i18n="result.humanAttestation">人間証明</span>
                       </div>
                       <span class="result-card-badge pending" id="attestation-badge">-</span>
                     </div>
                     <div class="result-card-content" id="attestation-content">
                       <div class="result-row" id="attestation-create-row" style="display: none;">
-                        <span class="result-row-label">作成時</span>
+                        <span class="result-row-label" data-i18n="result.createTime">作成時</span>
                         <span class="result-row-value" id="attestation-create">-</span>
                       </div>
                       <div class="result-row" id="attestation-export-row" style="display: none;">
-                        <span class="result-row-label">エクスポート時</span>
+                        <span class="result-row-label" data-i18n="result.exportTime">エクスポート時</span>
                         <span class="result-row-value" id="attestation-export">-</span>
                       </div>
                     </div>
@@ -390,10 +395,10 @@
                 <div class="chart-section" id="chart-section">
                   <div class="chart-tabs">
                     <button class="chart-tab active" data-tab="timeline" id="tab-timeline">
-                      <i class="fas fa-keyboard"></i> タイムライン
+                      <i class="fas fa-keyboard"></i> <span data-i18n="charts.timeline">タイムライン</span>
                     </button>
                     <button class="chart-tab" data-tab="mouse" id="tab-mouse">
-                      <i class="fas fa-mouse"></i> マウス軌跡
+                      <i class="fas fa-mouse"></i> <span data-i18n="charts.mouseTrajectory">マウス軌跡</span>
                     </button>
                   </div>
                   <div class="chart-content">
@@ -409,10 +414,10 @@
                     </div>
                   </div>
                   <div class="chart-stats" id="chart-stats">
-                    <span>キー: <strong id="keydown-count">0</strong></span>
-                    <span>Dwell: <strong id="avg-dwell-time">0ms</strong></span>
-                    <span>Flight: <strong id="avg-flight-time">0ms</strong></span>
-                    <span>マウス: <strong id="mouse-event-count">0</strong></span>
+                    <span><span data-i18n="charts.keys">キー</span>: <strong id="keydown-count">0</strong></span>
+                    <span><span data-i18n="charts.dwell">Dwell</span>: <strong id="avg-dwell-time">0ms</strong></span>
+                    <span><span data-i18n="charts.flight">Flight</span>: <strong id="avg-flight-time">0ms</strong></span>
+                    <span><span data-i18n="charts.mouse">マウス</span>: <strong id="mouse-event-count">0</strong></span>
                   </div>
                 </div>
               </div>
@@ -447,19 +452,19 @@
 
     <!-- Floating Seekbar -->
     <div class="floating-seekbar" id="floating-seekbar" style="display: none;">
-      <button class="seek-btn" id="seekbar-start" title="最初">
+      <button class="seek-btn" id="seekbar-start" data-i18n-title="seekbar.start">
         <i class="fas fa-backward-fast"></i>
       </button>
-      <button class="seek-btn" id="seekbar-prev" title="前">
+      <button class="seek-btn" id="seekbar-prev" data-i18n-title="seekbar.prev">
         <i class="fas fa-backward-step"></i>
       </button>
-      <button class="seek-btn seek-btn-play" id="seekbar-play" title="再生">
+      <button class="seek-btn seek-btn-play" id="seekbar-play" data-i18n-title="seekbar.play">
         <i class="fas fa-play" id="play-icon"></i>
       </button>
-      <button class="seek-btn" id="seekbar-next" title="次">
+      <button class="seek-btn" id="seekbar-next" data-i18n-title="seekbar.next">
         <i class="fas fa-forward-step"></i>
       </button>
-      <button class="seek-btn" id="seekbar-end" title="最後">
+      <button class="seek-btn" id="seekbar-end" data-i18n-title="seekbar.end">
         <i class="fas fa-forward-fast"></i>
       </button>
       <div class="seek-track">
@@ -478,8 +483,8 @@
   <div class="processing-dialog-overlay" id="processing-dialog" style="display: none;">
     <div class="processing-dialog">
       <div class="dialog-spinner"></div>
-      <h3 class="dialog-title" id="dialog-title">データを読み込み中...</h3>
-      <p class="dialog-message" id="dialog-message">しばらくお待ちください</p>
+      <h3 class="dialog-title" id="dialog-title" data-i18n="dialog.loadingData">データを読み込み中...</h3>
+      <p class="dialog-message" id="dialog-message" data-i18n="dialog.pleaseWait">しばらくお待ちください</p>
       <div class="dialog-progress">
         <div class="progress-bar">
           <div class="progress-fill" id="dialog-progress-fill"></div>

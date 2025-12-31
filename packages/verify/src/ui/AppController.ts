@@ -17,6 +17,7 @@ import { FolderSyncManager } from '../services/FolderSyncManager';
 import { TimelineChart } from '../charts/TimelineChart';
 import { MouseChart } from '../charts/MouseChart';
 import { TabController } from './controllers/TabController';
+import { t, getI18n } from '../i18n/index';
 import type {
   ProofFile,
   FSAccessFileEntry,
@@ -59,7 +60,7 @@ export class AppController {
     // Initialize File System Access API
     this.fsAccessService = new FileSystemAccessService({
       onPermissionDenied: (error) => {
-        this.statusBar.setError(`アクセス拒否: ${error.message}`);
+        this.statusBar.setError(`${t('errors.accessDenied')}: ${error.message}`);
       },
     });
 
@@ -83,6 +84,7 @@ export class AppController {
       onOpenFolder: () => this.openFolderDialog(),
       onThemeToggle: () => this.themeManager.toggle(),
       onExplorerToggle: () => this.toggleSidebar(),
+      onLanguageToggle: () => this.toggleLanguage(),
     });
 
     this.sidebar = new Sidebar({
@@ -168,6 +170,18 @@ export class AppController {
     if (resizeHandle) {
       resizeHandle.style.display = sidebarEl?.classList.contains('collapsed') ? 'none' : '';
     }
+  }
+
+  /**
+   * 言語を切り替え
+   */
+  private toggleLanguage(): void {
+    const i18n = getI18n();
+    const currentLocale = i18n.getLocale();
+    const newLocale = currentLocale === 'ja' ? 'en' : 'ja';
+    i18n.setLocale(newLocale);
+    // ページをリロードして新しい言語を適用
+    window.location.reload();
   }
 
   /**
@@ -264,7 +278,7 @@ export class AppController {
       const result = await this.fileProcessor.process(file);
 
       if (!result.success) {
-        this.statusBar.setError(result.error || 'ファイル読み込みエラー');
+        this.statusBar.setError(result.error || t('errors.fileReadError'));
         return;
       }
 
@@ -283,7 +297,7 @@ export class AppController {
       }
     } catch (error) {
       console.error('Error processing file:', error);
-      this.statusBar.setError(`ファイル読み込みエラー: ${file.name}`);
+      this.statusBar.setError(`${t('errors.fileReadError')}: ${file.name}`);
     }
   }
 
@@ -605,7 +619,7 @@ export class AppController {
     // ディレクトリを読み取り
     const result = await this.fsAccessService.readDirectoryRecursive(handle);
     if (!result.success) {
-      this.statusBar.setError(result.error ?? 'フォルダ読み取りエラー');
+      this.statusBar.setError(result.error ?? t('errors.folderReadError'));
       return;
     }
 
@@ -663,7 +677,7 @@ export class AppController {
     await this.syncManager.startWatching(handle, 3000);
 
     this.updateStatusBar();
-    this.statusBar.setMessage(`フォルダを開きました: ${result.rootName}`);
+    this.statusBar.setMessage(`${t('messages.folderOpened')}: ${result.rootName}`);
   }
 
   /**
@@ -717,7 +731,7 @@ export class AppController {
         }
       }
 
-      this.statusBar.setMessage(`ファイル追加: ${file.name}`);
+      this.statusBar.setMessage(`${t('messages.fileAdded')}: ${file.name}`);
     } catch (error) {
       console.error('Error processing added file:', error);
     }
@@ -769,7 +783,7 @@ export class AppController {
         }
       }
 
-      this.statusBar.setMessage(`ファイル更新: ${file.name}`);
+      this.statusBar.setMessage(`${t('messages.fileUpdated')}: ${file.name}`);
     } catch (error) {
       console.error('Error processing modified file:', error);
     }
@@ -783,7 +797,7 @@ export class AppController {
     if (fileId) {
       this.handleFileRemove(fileId);
       const filename = path.split('/').pop() ?? path;
-      this.statusBar.setMessage(`ファイル削除: ${filename}`);
+      this.statusBar.setMessage(`${t('messages.fileDeleted')}: ${filename}`);
     }
   }
 
@@ -806,7 +820,7 @@ export class AppController {
     };
 
     this.sidebar.addHierarchicalFolder(folder);
-    this.statusBar.setMessage(`フォルダ追加: ${name}`);
+    this.statusBar.setMessage(`${t('messages.folderAdded')}: ${name}`);
   }
 
   /**
@@ -815,7 +829,7 @@ export class AppController {
   private handleExternalFolderDeleted(path: string): void {
     this.sidebar.removeFolderByPath(path);
     const folderName = path.split('/').pop() ?? path;
-    this.statusBar.setMessage(`フォルダ削除: ${folderName}`);
+    this.statusBar.setMessage(`${t('messages.folderDeleted')}: ${folderName}`);
   }
 
   /**
@@ -828,15 +842,14 @@ export class AppController {
       <div class="modal">
         <div class="modal-header">
           <i class="fas fa-exclamation-triangle" style="color: var(--warning-color);"></i>
-          <h3>ブラウザがサポートされていません</h3>
+          <h3>${t('errors.browserNotSupported')}</h3>
         </div>
         <div class="modal-body">
-          <p>File System Access API は Chrome / Edge でのみ利用可能です。</p>
-          <p>代わりにファイル選択またはドラッグ＆ドロップをご利用ください。</p>
+          <p>${t('errors.browserNotSupportedDesc')}</p>
         </div>
         <div class="modal-footer">
           <button class="btn-primary" onclick="this.closest('.modal-overlay').remove()">
-            閉じる
+            ${t('common.close')}
           </button>
         </div>
       </div>

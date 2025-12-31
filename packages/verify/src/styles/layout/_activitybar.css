@@ -137,3 +137,10 @@
   margin: 4px 0;
   background-color: var(--border-color);
 }
+
+.dropdown-language-label {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+  opacity: 0.8;
+}

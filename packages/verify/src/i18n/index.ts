@@ -1,15 +1,15 @@
 /**
- * Editor-specific i18n module
- * Uses shared i18n infrastructure with editor-specific translations
+ * Verify-specific i18n module
+ * Uses shared i18n infrastructure with verify-specific translations
  */
 import { createI18nInstance, createDOMUpdater } from '@typedcode/shared';
 import type { SupportedLocale } from '@typedcode/shared';
-import type { TranslationKeys } from './types.js';
+import type { VerifyTranslationKeys } from './types.js';
 import { ja } from './translations/ja.js';
 import { en } from './translations/en.js';
 
-// Create editor-specific i18n instance
-const i18n = createI18nInstance<TranslationKeys>({ ja, en });
+// Create verify-specific i18n instance
+const i18n = createI18nInstance<VerifyTranslationKeys>({ ja, en });
 
 // Create DOM updater bound to this instance
 const domUpdater = createDOMUpdater(() => i18n);
@@ -46,7 +46,4 @@ export const { updateDOMTranslations, initDOMi18n } = domUpdater;
 
 // Re-export types
 export type { SupportedLocale } from '@typedcode/shared';
-export type { TranslationKeys } from './types.js';
-
-// Re-export I18nService class for type compatibility
-export { I18nService } from '@typedcode/shared';
+export type { VerifyTranslationKeys } from './types.js';

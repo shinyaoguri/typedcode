@@ -1,6 +1,8 @@
 /**
  * StatusBarUI - Bottom status bar
  */
+import { t } from '../i18n/index.js';
+
 export class StatusBarUI {
   private statusbar: HTMLElement;
   private queueStatus: HTMLElement;
@@ -17,14 +19,15 @@ export class StatusBarUI {
   }
 
   setFileCount(count: number): void {
-    this.fileCount.innerHTML = `<span>${count} file${count !== 1 ? 's' : ''}</span>`;
+    const label = count !== 1 ? t('common.files') : t('common.file');
+    this.fileCount.innerHTML = `<span>${count} ${label}</span>`;
   }
 
   setVerifying(current: number, total: number): void {
     const percent = Math.round((current / total) * 100);
     this.queueStatus.innerHTML = `
       <i class="fas fa-spinner fa-spin"></i>
-      <span>検証中 ${current}/${total}</span>
+      <span>${t('statusBar.verifying', { current, total })}</span>
       <div class="status-queue-progress">
         <div class="status-queue-progress-bar" style="width: ${percent}%"></div>
       </div>
@@ -32,7 +35,7 @@ export class StatusBarUI {
   }
 
   setReady(): void {
-    this.setQueueStatus('Ready', 'check-circle');
+    this.setQueueStatus(t('statusBar.ready'), 'check-circle');
   }
 
   setError(message: string): void {
