@@ -10,15 +10,15 @@ import { WelcomePanel } from './WelcomePanel';
 import { ResultPanel } from './ResultPanel';
 import { VerifyTabManager } from '../state/VerifyTabManager';
 import { VerificationQueue } from '../state/VerificationQueue';
+import { UIStateManager } from '../state/UIStateManager';
 import { FileProcessor, type ParsedFileData } from '../services/FileProcessor';
 import { FileSystemAccessService } from '../services/FileSystemAccessService';
 import { FolderSyncManager } from '../services/FolderSyncManager';
-import { buildResultData, calculateChartStats } from '../services/ResultDataService';
 import { TimelineChart } from '../charts/TimelineChart';
 import { MouseChart } from '../charts/MouseChart';
+import { TabController } from './controllers/TabController';
 import type {
   ProofFile,
-  VerifyTabState,
   FSAccessFileEntry,
   HierarchicalFolder,
   ProgressDetails,
@@ -36,6 +36,8 @@ export class AppController {
   private tabManager: VerifyTabManager;
   private verificationQueue: VerificationQueue;
   private fileProcessor: FileProcessor;
+  private uiState: UIStateManager;
+  private tabController: TabController;
 
   // File System Access API
   private fsAccessService: FileSystemAccessService;
@@ -47,14 +49,6 @@ export class AppController {
   private mouseChart: MouseChart | null = null;
 
   private fileInput: HTMLInputElement;
-  private completedCount = 0;
-  private totalCount = 0;
-
-  // ファイル名の重複カウント（表示名の区別用）
-  private filenameCounter: Map<string, number> = new Map();
-
-  // 現在ResultPanelに表示中のタブID（不要な再描画防止）
-  private currentDisplayedTabId: string | null = null;
 
   constructor() {
     this.fileInput = document.getElementById('file-input') as HTMLInputElement;
@@ -112,6 +106,7 @@ export class AppController {
     this.resultPanel = new ResultPanel();
 
     // Initialize state management
+    this.uiState = new UIStateManager();
     this.tabManager = new VerifyTabManager();
     this.tabManager.setOnChange((tab) => {
       this.showTabContent(tab.id);
@@ -130,6 +125,18 @@ export class AppController {
     this.verificationQueue.initialize();
 
     this.fileProcessor = new FileProcessor();
+
+    // Initialize TabController
+    this.tabController = new TabController({
+      tabManager: this.tabManager,
+      uiState: this.uiState,
+      tabBar: this.tabBar,
+      sidebar: this.sidebar,
+      resultPanel: this.resultPanel,
+      welcomePanel: this.welcomePanel,
+      getTimelineChart: () => this.timelineChart,
+      getMouseChart: () => this.mouseChart,
+    });
 
     // File input change handler
     this.fileInput.addEventListener('change', () => {
@@ -295,16 +302,7 @@ export class AppController {
   }
 
   private generateFolderName(baseName: string): string {
-    // 重複カウントを更新
-    const key = `folder:${baseName}`;
-    const count = this.filenameCounter.get(key) || 0;
-    this.filenameCounter.set(key, count + 1);
-
-    // 2つ目以降は番号を付ける
-    if (count > 0) {
-      return `${baseName} (${count + 1})`;
-    }
-    return baseName;
+    return this.uiState.generateFolderName(baseName);
   }
 
   /**
@@ -382,7 +380,7 @@ export class AppController {
       }
 
       // Track counts
-      this.totalCount++;
+      this.uiState.incrementTotal();
 
       // Enqueue for verification
       this.verificationQueue.enqueue({
@@ -400,68 +398,26 @@ export class AppController {
   }
 
   private openTabForFile(id: string): void {
-    const tabState = this.tabManager.getTab(id);
-    if (!tabState) return;
-
-    // タブバーにタブがなければ追加
-    if (!this.tabBar.hasTab(id)) {
-      this.tabBar.addTab({
-        id,
-        filename: tabState.filename,
-        status: tabState.status,
-        progress: tabState.progress,
-      });
-    }
-
-    // タブを選択
-    this.tabBar.setActiveTab(id);
-    this.sidebar.setActiveFile(id);
-
-    // Hide welcome panel, show result container
-    this.welcomePanel.hide();
-    this.resultPanel.show();
-
-    // コンテンツを表示
-    this.showTabContent(id);
+    this.tabController.openTabForFile(id);
   }
 
   private handleFileSelect(id: string): void {
-    // ファイル一覧から選択時、タブを開く（または既存タブを選択）
-    this.openTabForFile(id);
+    this.tabController.handleFileSelect(id);
   }
 
   private handleTabSelect(id: string): void {
-    this.sidebar.setActiveFile(id);
-    this.showTabContent(id);
-  }
-
-  private handleTabSwitch(id: string): void {
-    this.showTabContent(id);
+    this.tabController.handleTabSelect(id);
   }
 
   private handleTabClose(id: string): void {
-    // 閉じるタブが表示中の場合、表示状態をリセット
-    if (this.currentDisplayedTabId === id) {
-      this.currentDisplayedTabId = null;
-    }
-
-    // タブを閉じてもサイドバーのファイル一覧には残す
-    this.tabBar.removeTab(id);
-
-    // タブがなくなった場合、ウェルカムパネルを表示
-    // （ただしサイドバーにはファイルが残っている）
-    if (!this.tabBar.getActiveTabId()) {
-      this.resultPanel.hide();
-      this.welcomePanel.show();
-    }
-
+    this.tabController.handleTabClose(id);
     this.updateStatusBar();
   }
 
   private handleFileRemove(id: string): void {
     // 削除するファイルが表示中の場合、表示状態をリセット
-    if (this.currentDisplayedTabId === id) {
-      this.currentDisplayedTabId = null;
+    if (this.uiState.isDisplayed(id)) {
+      this.uiState.setCurrentDisplayedTabId(null);
     }
 
     // ファイル一覧から削除する場合は、タブとTabManagerからも削除
@@ -485,8 +441,8 @@ export class AppController {
     // フォルダ内のファイルをタブとTabManagerから削除
     for (const fileId of fileIds) {
       // 表示中のファイルの場合、表示状態をリセット
-      if (this.currentDisplayedTabId === fileId) {
-        this.currentDisplayedTabId = null;
+      if (this.uiState.isDisplayed(fileId)) {
+        this.uiState.setCurrentDisplayedTabId(null);
       }
       this.tabManager.removeTab(fileId);
       this.tabBar.removeTab(fileId);
@@ -505,44 +461,7 @@ export class AppController {
   }
 
   private showTabContent(id: string, forceRefresh: boolean = false): void {
-    const tabState = this.tabManager.getTab(id);
-    if (!tabState) return;
-
-    // 同じタブで、強制更新でなければスキップ（チカチカ防止）
-    const isSameTab = this.currentDisplayedTabId === id;
-
-    // プレーンテキストファイルの場合
-    if (tabState.isPlaintext) {
-      if (!isSameTab || forceRefresh) {
-        this.currentDisplayedTabId = id;
-        this.resultPanel.renderPlaintext({
-          filename: tabState.filename,
-          content: tabState.plaintextContent || '',
-          language: tabState.language,
-        });
-      }
-      return;
-    }
-
-    if (tabState.status === 'verifying' || tabState.status === 'pending') {
-      // 検証中/待機中の場合
-      if (!isSameTab) {
-        // 新しいタブの場合のみstartProgressを呼ぶ
-        this.currentDisplayedTabId = id;
-        this.resultPanel.startProgress(tabState.filename);
-      }
-      // 既存の進捗があれば反映（同じタブでも更新）
-      if (tabState.progressDetails) {
-        this.updateVerificationProgressUI(tabState.progressDetails, tabState.progress);
-      }
-    } else if (tabState.verificationResult && tabState.proofData) {
-      // 完了している場合
-      if (!isSameTab || forceRefresh) {
-        this.currentDisplayedTabId = id;
-        this.resultPanel.stopProgressTimer();
-        this.renderResult(tabState);
-      }
-    }
+    this.tabController.showTabContent(id, forceRefresh);
   }
 
   private handleVerificationProgress(id: string, progress: number, details?: ProgressDetails): void {
@@ -571,64 +490,10 @@ export class AppController {
 
     // アクティブタブの場合、詳細な進捗UIを更新
     if (this.tabBar.getActiveTabId() === id && details) {
-      this.updateVerificationProgressUI(details, progress);
+      this.tabController.updateVerificationProgressUI(details, progress);
     }
 
     this.updateStatusBar();
-  }
-
-  /**
-   * 検証進捗UIを更新
-   */
-  private updateVerificationProgressUI(details: ProgressDetails, overallProgress: number): void {
-    const { phase, current, total, totalEvents } = details;
-
-    // 全体進捗を更新
-    this.resultPanel.updateOverallProgress(overallProgress);
-
-    // フェーズに応じてステップを更新
-    if (phase === 'metadata' || phase === 'init') {
-      // メタデータ検証中
-      this.resultPanel.updateStepStatus('metadata', 'running');
-      this.resultPanel.updateStepProgress('metadata', (current / total) * 100);
-    } else if (phase === 'chain' || phase === 'full' || phase === 'fallback') {
-      // 全件検証（チェックポイントなしでフォールバック）
-      this.resultPanel.updateStepStatus('metadata', 'success');
-      // フォールバック時のみchainステップを表示
-      this.resultPanel.showFallbackStep();
-      this.resultPanel.updateStepStatus('chain', 'running', 'フォールバック');
-      // サンプリングはスキップ（チェックポイントなしのため）
-      this.resultPanel.updateStepStatus('sampling', 'skipped', 'チェックポイントなし');
-
-      const chainProgress = (current / total) * 100;
-      const detail = `${current.toLocaleString()} / ${total.toLocaleString()} イベント`;
-      this.resultPanel.updateStepProgress('chain', chainProgress, detail);
-    } else if (phase === 'segment' || phase === 'checkpoint') {
-      // サンプリング検証（チェックポイントあり）
-      this.resultPanel.updateStepStatus('metadata', 'success');
-      // チェックポイントありの場合、chainステップは非表示のまま
-      this.resultPanel.updateStepStatus('sampling', 'running');
-
-      const samplingProgress = (current / total) * 100;
-      // 検証済み / 対象イベント数 (全イベント数) の形式で表示
-      const totalEventsStr = totalEvents ? ` (全${totalEvents.toLocaleString()}イベント)` : '';
-      const detail = `${current.toLocaleString()}イベント検証済み / ${total.toLocaleString()}イベント${totalEventsStr}`;
-      this.resultPanel.updateStepProgress('sampling', samplingProgress, detail);
-    } else if (phase === 'complete') {
-      // 全完了
-      this.resultPanel.updateStepStatus('metadata', 'success');
-      // チェーンとサンプリングの最終状態を確認して更新
-      const chainEl = document.getElementById('vp-step-chain');
-      const samplingEl = document.getElementById('vp-step-sampling');
-      // chainが表示されている（フォールバック）場合のみ成功に
-      if (chainEl && chainEl.style.display !== 'none') {
-        this.resultPanel.updateStepStatus('chain', 'success');
-      }
-      if (samplingEl?.dataset.status !== 'skipped') {
-        this.resultPanel.updateStepStatus('sampling', 'success');
-      }
-      this.resultPanel.finishProgress();
-    }
   }
 
   private handleVerificationComplete(id: string, result: any): void {
@@ -640,8 +505,9 @@ export class AppController {
         : 'warning'
       : 'error';
 
-    this.completedCount++;
-    console.log('[DEBUG] completedCount:', this.completedCount, 'totalCount:', this.totalCount);
+    this.uiState.incrementCompleted();
+    const state = this.uiState.getState();
+    console.log('[DEBUG] completedCount:', state.completedCount, 'totalCount:', state.totalCount);
 
     this.tabManager.updateTab(id, { verificationResult: result, status });
     console.log('[DEBUG] tabManager.updateTab done, new status:', status);
@@ -671,7 +537,7 @@ export class AppController {
   }
 
   private handleVerificationError(id: string, error: string): void {
-    this.completedCount++;
+    this.uiState.incrementCompleted();
     this.tabManager.updateTab(id, { status: 'error', error });
     this.sidebar.updateFileStatus(id, 'error');
     // タブが開いている場合のみ更新
@@ -687,33 +553,6 @@ export class AppController {
 
     // 検証完了後、確実にステータスバーを更新
     setTimeout(() => this.updateStatusBar(), 0);
-  }
-
-  private renderResult(tabState: VerifyTabState): void {
-    const resultData = buildResultData(tabState);
-    if (!resultData) return;
-
-    this.resultPanel.render(resultData);
-
-    // Render charts
-    const events = tabState.proofData?.proof?.events;
-    if (events && events.length > 0) {
-      this.renderCharts(events);
-    }
-  }
-
-  private renderCharts(events: any[]): void {
-    if (this.timelineChart) {
-      this.timelineChart.draw(events, events);
-    }
-
-    if (this.mouseChart) {
-      this.mouseChart.draw(events, events);
-    }
-
-    // Update chart stats
-    const stats = calculateChartStats(events);
-    this.resultPanel.updateChartStats(stats);
   }
 
   private updateStatusBar(): void {
@@ -736,7 +575,8 @@ export class AppController {
 
     if (pendingOrVerifyingCount > 0) {
       console.log('[DEBUG] updateStatusBar - calling setVerifying');
-      this.statusBar.setVerifying(this.completedCount, this.totalCount);
+      const state = this.uiState.getState();
+      this.statusBar.setVerifying(state.completedCount, state.totalCount);
     } else {
       console.log('[DEBUG] updateStatusBar - calling setReady');
       this.statusBar.setReady();
@@ -1014,20 +854,6 @@ export class AppController {
    * @param folderId フォルダID（フォルダに属する場合）
    */
   private generateDisplayName(filename: string, folderId?: string): string {
-    // フォルダ内のファイルはフォルダIDを含めたキーで重複チェック
-    const key = folderId ? `${folderId}:${filename}` : filename;
-
-    // 重複カウントを更新
-    const count = this.filenameCounter.get(key) || 0;
-    this.filenameCounter.set(key, count + 1);
-
-    // 2つ目以降は番号を付ける
-    if (count > 0) {
-      const ext = filename.match(/\.[^.]+$/)?.[0] || '';
-      const nameWithoutExt = filename.replace(/\.[^.]+$/, '');
-      return `${nameWithoutExt} (${count + 1})${ext}`;
-    }
-
-    return filename;
+    return this.uiState.generateDisplayName(filename, folderId);
   }
 }

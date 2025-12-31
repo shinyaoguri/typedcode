@@ -2,5 +2,5 @@
  * UI Controllers module
  */
 
-export { PageController } from './PageController.js';
-export type { PageControllerOptions } from './PageController.js';
+export { TabController } from './TabController.js';
+export type { TabControllerDependencies } from './TabController.js';
