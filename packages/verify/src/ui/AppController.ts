@@ -18,6 +18,7 @@ import { TimelineChart } from '../charts/TimelineChart';
 import { MouseChart } from '../charts/MouseChart';
 import { TabController } from './controllers/TabController';
 import { t, getI18n } from '../i18n/index';
+import { showAboutDialog } from './AboutDialog';
 import type {
   ProofFile,
   FSAccessFileEntry,
@@ -85,6 +86,7 @@ export class AppController {
       onThemeToggle: () => this.themeManager.toggle(),
       onExplorerToggle: () => this.toggleSidebar(),
       onLanguageToggle: () => this.toggleLanguage(),
+      onAbout: () => showAboutDialog(getI18n()),
     });
 
     this.sidebar = new Sidebar({

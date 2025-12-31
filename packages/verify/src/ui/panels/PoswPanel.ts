@@ -81,7 +81,7 @@ export class PoswPanel implements IPanel {
       this.options.badgeEl.className = 'badge warning';
     }
     if (this.options.messageEl) {
-      this.options.messageEl.textContent = 'この証明ファイルにはPoSWが含まれていません（v2.x以前）';
+      this.options.messageEl.textContent = 'この証明ファイルにはPoSWが含まれていません';
     }
     if (this.options.iterationsEl) {
       this.options.iterationsEl.textContent = '-';

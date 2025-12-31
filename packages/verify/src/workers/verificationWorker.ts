@@ -178,8 +178,9 @@ async function verify(request: VerifyRequest): Promise<void> {
       metadataValid = hashVerification.valid;
       isPureTyping = hashVerification.isPureTyping ?? false;
     } else {
-      // メタデータがない場合はスキップ（古いバージョン対応）
-      metadataValid = true;
+      // メタデータがない場合はサポート対象外（v3.0.0以降が必要）
+      sendError(id, 'サポートされていないフォーマット: メタデータがありません（v3.0.0以降が必要）');
+      return;
     }
 
     sendProgress(id, 2, 3, 'metadata', totalEvents);

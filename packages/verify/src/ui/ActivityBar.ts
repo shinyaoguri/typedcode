@@ -14,6 +14,7 @@ export class ActivityBar {
   private openFolderBtn: HTMLElement | null;
   private themeToggleBtn: HTMLElement;
   private languageToggleBtn: HTMLElement | null;
+  private aboutBtn: HTMLElement | null;
   private explorerToggleBtn: HTMLElement;
 
   private onOpenFile: () => void;
@@ -21,6 +22,7 @@ export class ActivityBar {
   private onThemeToggle: () => void;
   private onExplorerToggle: () => void;
   private onLanguageToggle: () => void;
+  private onAbout: () => void;
 
   private explorerVisible = true;
 
@@ -30,12 +32,14 @@ export class ActivityBar {
     onThemeToggle: () => void;
     onExplorerToggle?: () => void;
     onLanguageToggle?: () => void;
+    onAbout?: () => void;
   }) {
     this.onOpenFile = callbacks.onOpenFile;
     this.onOpenFolder = callbacks.onOpenFolder;
     this.onThemeToggle = callbacks.onThemeToggle;
     this.onExplorerToggle = callbacks.onExplorerToggle ?? (() => {});
     this.onLanguageToggle = callbacks.onLanguageToggle ?? (() => {});
+    this.onAbout = callbacks.onAbout ?? (() => {});
 
     this.mainMenuBtn = document.getElementById('main-menu-btn')!;
     this.mainMenuDropdown = document.getElementById('main-menu-dropdown')!;
@@ -45,6 +49,7 @@ export class ActivityBar {
     this.openFolderBtn = document.getElementById('open-folder-btn');
     this.themeToggleBtn = document.getElementById('theme-toggle-btn')!;
     this.languageToggleBtn = document.getElementById('language-toggle-btn');
+    this.aboutBtn = document.getElementById('about-btn');
     this.explorerToggleBtn = document.getElementById('explorer-toggle-btn')!;
 
     // フォルダを開くボタンを動的に追加（存在しない場合）
@@ -120,6 +125,14 @@ export class ActivityBar {
       this.languageToggleBtn.addEventListener('click', () => {
         this.hideAllDropdowns();
         this.onLanguageToggle();
+      });
+    }
+
+    // About button
+    if (this.aboutBtn) {
+      this.aboutBtn.addEventListener('click', () => {
+        this.hideAllDropdowns();
+        this.onAbout();
       });
     }
 

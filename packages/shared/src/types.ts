@@ -578,7 +578,7 @@ export interface MultiFileExportEntry {
 
 /** マルチファイルエクスポート形式 */
 export interface MultiFileExportedProof {
-  version: '3.1.0';
+  version: string;
   type: 'multi-file';
   fingerprint: {
     hash: string;

@@ -29,6 +29,7 @@ export const ja: TranslationKeys = {
     github: 'GitHub',
     toggleTheme: 'Toggle Theme',
     language: '言語',
+    about: 'バージョン情報',
     resetAll: 'Reset All',
   },
 
@@ -253,5 +254,16 @@ export const ja: TranslationKeys = {
     redo: 'やり直し',
     replace: '置換',
     unknown: '不明',
+  },
+
+  about: {
+    title: 'TypedCode について',
+    appVersion: 'アプリバージョン',
+    proofVersion: '証明フォーマット',
+    storageVersion: 'ストレージフォーマット',
+    commit: 'コミット',
+    lastUpdate: '最終更新',
+    buildDate: 'ビルド日時',
+    viewOnGithub: 'GitHub で見る',
   },
 };

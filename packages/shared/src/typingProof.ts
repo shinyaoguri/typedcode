@@ -25,6 +25,7 @@ import type {
   SampledSegmentInfo,
   HumanAttestationEventData,
 } from './types.js';
+import { PROOF_FORMAT_VERSION } from './version.js';
 
 export class TypingProof {
   events: StoredEvent[] = [];
@@ -548,7 +549,7 @@ export class TypingProof {
     }
 
     return {
-      version: '3.2.0',
+      version: PROOF_FORMAT_VERSION,
       typingProofHash: typingProof.typingProofHash,
       typingProofData: typingProof.proofData,
       proof: signature,

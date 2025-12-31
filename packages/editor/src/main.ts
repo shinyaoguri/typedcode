@@ -58,6 +58,7 @@ import { EventRecorder } from './core/EventRecorder.js';
 import type { AppContext } from './core/AppContext.js';
 import { isLanguageExecutable } from './config/SupportedLanguages.js';
 import { t, getI18n, initDOMi18n } from './i18n/index.js';
+import { showAboutDialog } from './ui/components/AboutDialog.js';
 
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
@@ -589,6 +590,15 @@ function initializeTerminal(): void {
       i18n.setLocale(newLocale);
       ctx.settingsDropdown.close();
       window.location.reload();
+    });
+  }
+
+  // About ボタン
+  const aboutBtn = document.getElementById('about-btn');
+  if (aboutBtn) {
+    aboutBtn.addEventListener('click', () => {
+      ctx.settingsDropdown.close();
+      showAboutDialog(getI18n());
     });
   }
 

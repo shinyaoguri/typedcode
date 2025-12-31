@@ -29,6 +29,7 @@ export const en: TranslationKeys = {
     github: 'GitHub',
     toggleTheme: 'Toggle Theme',
     language: 'Language',
+    about: 'About',
     resetAll: 'Reset All',
   },
 
@@ -254,5 +255,16 @@ export const en: TranslationKeys = {
     redo: 'Redo',
     replace: 'Replace',
     unknown: 'Unknown',
+  },
+
+  about: {
+    title: 'About TypedCode',
+    appVersion: 'App Version',
+    proofVersion: 'Proof Format',
+    storageVersion: 'Storage Format',
+    commit: 'Commit',
+    lastUpdate: 'Last Update',
+    buildDate: 'Build Date',
+    viewOnGithub: 'View on GitHub',
   },
 };

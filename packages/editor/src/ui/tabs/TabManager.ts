@@ -4,7 +4,7 @@
  */
 
 import * as monaco from 'monaco-editor';
-import { TypingProof } from '@typedcode/shared';
+import { TypingProof, PROOF_FORMAT_VERSION, STORAGE_FORMAT_VERSION } from '@typedcode/shared';
 import type {
   FingerprintComponents,
   TabSwitchEvent,
@@ -590,7 +590,7 @@ export class TabManager {
    */
   saveToStorage(): void {
     const storage: MultiTabStorage = {
-      version: 3,
+      version: STORAGE_FORMAT_VERSION,
       activeTabId: this.activeTabId ?? '',
       tabs: {},
       tabOrder: this.tabOrder,
@@ -779,7 +779,7 @@ export class TabManager {
     }
 
     return {
-      version: '3.1.0',
+      version: PROOF_FORMAT_VERSION,
       type: 'multi-file',
       fingerprint: {
         hash: this.fingerprint!,

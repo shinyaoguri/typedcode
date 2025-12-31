@@ -563,3 +563,151 @@
 #turnstile-widget-container iframe {
   border-radius: 4px;
 }
+
+/* About Dialog */
+.modal-about {
+  max-width: 380px;
+  padding: 32px;
+  position: relative;
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.modal-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.about-dialog-content {
+  text-align: center;
+}
+
+.about-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.about-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+}
+
+.about-title-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.about-app-name {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.about-version {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+.about-author {
+  margin-bottom: 20px;
+}
+
+.about-author a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  transition: color 0.15s;
+}
+
+.about-author a:hover {
+  color: var(--accent-primary);
+}
+
+.about-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 4px 0;
+  margin-bottom: 16px;
+}
+
+.about-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+.about-info-row:not(:last-child) {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.about-info-label {
+  color: var(--text-tertiary);
+}
+
+.about-info-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.about-info-value a {
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+.about-info-value a:hover {
+  text-decoration: underline;
+}
+
+.about-links {
+  margin-top: 16px;
+}
+
+.about-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+
+.about-github-link:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+}

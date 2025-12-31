@@ -17,6 +17,7 @@ export const ja: VerifyTranslationKeys = {
 
   settings: {
     language: '言語',
+    about: 'バージョン情報',
   },
 
   activityBar: {
@@ -89,7 +90,7 @@ export const ja: VerifyTranslationKeys = {
     none: 'なし',
     allEventsVerified: '全${count}イベントのPoSWが検証されました',
     chainFailedPoswInvalid: 'ハッシュ鎖検証に失敗したためPoSWも無効',
-    noPoswMessage: 'この証明ファイルにはPoSWが含まれていません（v2.x以前）',
+    noPoswMessage: 'この証明ファイルにはPoSWが含まれていません',
     iterationsPerEvent: '回/イベント',
     seconds: '秒',
   },
@@ -159,5 +160,16 @@ export const ja: VerifyTranslationKeys = {
   dialog: {
     loadingData: 'データを読み込み中...',
     pleaseWait: 'しばらくお待ちください',
+  },
+
+  about: {
+    title: 'TypedCode Verify について',
+    appVersion: 'アプリバージョン',
+    proofVersion: '証明フォーマット',
+    storageVersion: 'ストレージフォーマット',
+    commit: 'コミット',
+    lastUpdate: '最終更新',
+    buildDate: 'ビルド日時',
+    viewOnGithub: 'GitHub で見る',
   },
 };

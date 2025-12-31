@@ -38,6 +38,7 @@ export interface TranslationKeys {
     github: string;
     toggleTheme: string;
     language: string;
+    about: string;
     resetAll: string;
   };
 
@@ -267,5 +268,17 @@ export interface TranslationKeys {
     redo: string;
     replace: string;
     unknown: string;
+  };
+
+  // About dialog
+  about: {
+    title: string;
+    appVersion: string;
+    proofVersion: string;
+    storageVersion: string;
+    commit: string;
+    lastUpdate: string;
+    buildDate: string;
+    viewOnGithub: string;
   };
 }

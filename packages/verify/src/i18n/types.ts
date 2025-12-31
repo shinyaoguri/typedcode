@@ -21,6 +21,7 @@ export interface VerifyTranslationKeys {
   // Settings
   settings: {
     language: string;
+    about: string;
   };
 
   // Activity bar
@@ -177,5 +178,17 @@ export interface VerifyTranslationKeys {
   dialog: {
     loadingData: string;
     pleaseWait: string;
+  };
+
+  // About dialog
+  about: {
+    title: string;
+    appVersion: string;
+    proofVersion: string;
+    storageVersion: string;
+    commit: string;
+    lastUpdate: string;
+    buildDate: string;
+    viewOnGithub: string;
   };
 }

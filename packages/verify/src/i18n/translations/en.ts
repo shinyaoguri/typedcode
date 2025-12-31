@@ -17,6 +17,7 @@ export const en: VerifyTranslationKeys = {
 
   settings: {
     language: 'Language',
+    about: 'About',
   },
 
   activityBar: {
@@ -89,7 +90,7 @@ export const en: VerifyTranslationKeys = {
     none: 'None',
     allEventsVerified: 'PoSW verified for all ${count} events',
     chainFailedPoswInvalid: 'PoSW invalid due to hash chain failure',
-    noPoswMessage: 'This proof file does not contain PoSW (v2.x or earlier)',
+    noPoswMessage: 'This proof file does not contain PoSW',
     iterationsPerEvent: 'iter/event',
     seconds: 's',
   },
@@ -159,5 +160,16 @@ export const en: VerifyTranslationKeys = {
   dialog: {
     loadingData: 'Loading data...',
     pleaseWait: 'Please wait',
+  },
+
+  about: {
+    title: 'About TypedCode Verify',
+    appVersion: 'App Version',
+    proofVersion: 'Proof Format',
+    storageVersion: 'Storage Format',
+    commit: 'Commit',
+    lastUpdate: 'Last Update',
+    buildDate: 'Build Date',
+    viewOnGithub: 'View on GitHub',
   },
 };
