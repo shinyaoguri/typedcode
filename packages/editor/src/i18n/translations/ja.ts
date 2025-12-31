@@ -83,7 +83,7 @@ export const ja: TranslationKeys = {
   },
 
   verification: {
-    title: '人間認証',
+    title: '人間検証',
     stepPrepare: '認証システムの準備',
     stepChallenge: '人間であることを確認',
     stepVerify: 'サーバーで検証',
@@ -136,7 +136,7 @@ export const ja: TranslationKeys = {
   },
 
   notifications: {
-    authRunning: '人間認証を実行中...',
+    authRunning: '人間検証を実行中...',
     authFailed: '認証に失敗しました。もう一度お試しください。',
     authFailedReload: '認証に失敗しました。ページをリロードしてください。',
     newTabCreated: '新しいタブを作成しました',
