@@ -37,7 +37,7 @@ export class TypingProof {
 
   // チェックポイント関連
   checkpoints: CheckpointData[] = [];
-  private static readonly CHECKPOINT_INTERVAL = 100;  // 100イベントごとにチェックポイント作成
+  private static readonly CHECKPOINT_INTERVAL = 33;
 
   // PoSW設定（固定値 - セキュリティ上の理由で動的変更は不可）
   private static readonly POSW_ITERATIONS = 10000;
