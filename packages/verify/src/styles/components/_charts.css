@@ -66,6 +66,21 @@
   height: 100%;
 }
 
+/* IntegratedChart (Chart.js) container */
+.integrated-chart-container {
+  position: relative;
+  width: 100%;
+  height: 280px;
+  background-color: var(--bg-primary);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+#integrated-chart {
+  width: 100%;
+  height: 100%;
+}
+
 /* Timeline chart specific */
 .integrated-timeline {
   position: relative;

@@ -7,6 +7,9 @@ import type {
   HumanAttestationUI,
   VerificationStepType,
   VerificationStepStatus,
+  TrustResult,
+  TrustIssue,
+  TrustLevel,
 } from '../types';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
 
@@ -20,12 +23,18 @@ export interface ResultData {
   eventCount: number;
   typingTime: string;
   typingSpeed: string;
+  trustResult?: TrustResult;
 }
 
 export interface PlaintextData {
   filename: string;
   content: string;
   language: string;
+}
+
+export interface ImageData {
+  filename: string;
+  imageBlob?: Blob;
 }
 
 export class ResultPanel {
@@ -54,6 +63,8 @@ export class ResultPanel {
   private chainMethod: HTMLElement;
   private chainEvents: HTMLElement;
   private cardChain: HTMLElement;
+  private screenshotVerificationRow: HTMLElement;
+  private screenshotVerification: HTMLElement;
 
   private poswIcon: HTMLElement;
   private poswBadge: HTMLElement;
@@ -78,8 +89,10 @@ export class ResultPanel {
   private codePreview: HTMLElement;
 
   // Chart tabs
+  private tabIntegrated: HTMLElement;
   private tabTimeline: HTMLElement;
   private tabMouse: HTMLElement;
+  private panelIntegrated: HTMLElement;
   private panelTimeline: HTMLElement;
   private panelMouse: HTMLElement;
 
@@ -129,6 +142,8 @@ export class ResultPanel {
     this.chainBadge = document.getElementById('chain-badge')!;
     this.chainMethod = document.getElementById('chain-method')!;
     this.chainEvents = document.getElementById('chain-events')!;
+    this.screenshotVerificationRow = document.getElementById('screenshot-verification-row')!;
+    this.screenshotVerification = document.getElementById('screenshot-verification')!;
 
     // PoSW card
     this.cardPosw = document.getElementById('card-posw')!;
@@ -155,8 +170,10 @@ export class ResultPanel {
     this.codePreview = document.getElementById('code-preview')!;
 
     // Chart tabs
+    this.tabIntegrated = document.getElementById('tab-integrated')!;
     this.tabTimeline = document.getElementById('tab-timeline')!;
     this.tabMouse = document.getElementById('tab-mouse')!;
+    this.panelIntegrated = document.getElementById('panel-integrated')!;
     this.panelTimeline = document.getElementById('panel-timeline')!;
     this.panelMouse = document.getElementById('panel-mouse')!;
 
@@ -189,6 +206,10 @@ export class ResultPanel {
     });
 
     // Chart tabs
+    this.tabIntegrated.addEventListener('click', () => {
+      this.setActiveChartTab('integrated');
+    });
+
     this.tabTimeline.addEventListener('click', () => {
       this.setActiveChartTab('timeline');
     });
@@ -198,9 +219,11 @@ export class ResultPanel {
     });
   }
 
-  private setActiveChartTab(tab: 'timeline' | 'mouse'): void {
+  private setActiveChartTab(tab: 'integrated' | 'timeline' | 'mouse'): void {
+    this.tabIntegrated.classList.toggle('active', tab === 'integrated');
     this.tabTimeline.classList.toggle('active', tab === 'timeline');
     this.tabMouse.classList.toggle('active', tab === 'mouse');
+    this.panelIntegrated.classList.toggle('active', tab === 'integrated');
     this.panelTimeline.classList.toggle('active', tab === 'timeline');
     this.panelMouse.classList.toggle('active', tab === 'mouse');
   }
@@ -250,17 +273,49 @@ export class ResultPanel {
     this.showPlaintext();
   }
 
+  /**
+   * 画像ファイルを表示
+   */
+  renderImage(data: ImageData): void {
+    this.plaintextFilename.textContent = data.filename;
+    this.plaintextLanguage.textContent = 'IMAGE';
+
+    const codeEl = this.plaintextCode.querySelector('code');
+    if (codeEl) {
+      // 画像プレビューを表示
+      if (data.imageBlob) {
+        const url = URL.createObjectURL(data.imageBlob);
+        codeEl.innerHTML = `
+          <div class="image-preview-container">
+            <img src="${url}" alt="${data.filename}" class="image-preview" onload="URL.revokeObjectURL(this.src)" />
+          </div>
+        `;
+      } else {
+        codeEl.innerHTML = '<p style="color: var(--text-tertiary);">画像を読み込めませんでした</p>';
+      }
+      codeEl.className = '';
+    }
+
+    this.show();
+    this.showPlaintext();
+  }
+
   render(data: ResultData): void {
-    const { filename, content, language, result, poswStats, attestations, eventCount, typingTime, typingSpeed } = data;
+    const { filename, content, language, result, poswStats, attestations, eventCount, typingTime, typingSpeed, trustResult } = data;
 
-    // Overall status
-    const isSuccess = result.chainValid && result.pureTyping;
-    const isWarning = result.chainValid && !result.pureTyping;
-    const statusClass = isSuccess ? 'success' : isWarning ? 'warning' : 'error';
+    // Overall status - TrustResult を優先使用
+    if (trustResult) {
+      this.renderTrustBadge(trustResult);
+    } else {
+      // フォールバック: 従来のロジック
+      const isSuccess = result.chainValid && result.pureTyping;
+      const isWarning = result.chainValid && !result.pureTyping;
+      const statusClass = isSuccess ? 'success' : isWarning ? 'warning' : 'error';
 
-    this.statusIcon.className = `result-status-icon ${statusClass}`;
-    this.statusIcon.innerHTML = `<i class="fas fa-${isSuccess ? 'check-circle' : isWarning ? 'exclamation-triangle' : 'times-circle'}"></i>`;
-    this.statusTitle.textContent = isSuccess ? '検証成功' : isWarning ? '警告あり' : '検証失敗';
+      this.statusIcon.className = `result-status-icon ${statusClass}`;
+      this.statusIcon.innerHTML = `<i class="fas fa-${isSuccess ? 'check-circle' : isWarning ? 'exclamation-triangle' : 'times-circle'}"></i>`;
+      this.statusTitle.textContent = isSuccess ? '検証成功' : isWarning ? '警告あり' : '検証失敗';
+    }
     this.statusFilename.textContent = filename;
 
     // Typing card
@@ -369,6 +424,35 @@ export class ResultPanel {
     this.avgDwellTime.textContent = `${Math.round(stats.avgDwellTime)}ms`;
     this.avgFlightTime.textContent = `${Math.round(stats.avgFlightTime)}ms`;
     this.mouseEventCount.textContent = stats.mouseEventCount.toString();
+  }
+
+  /**
+   * スクリーンショット検証結果を表示
+   */
+  updateScreenshotVerification(screenshots: { total: number; verified: number; missing?: number }): void {
+    if (screenshots.total === 0) {
+      this.screenshotVerificationRow.style.display = 'none';
+      return;
+    }
+
+    this.screenshotVerificationRow.style.display = '';
+
+    const missingCount = screenshots.missing ?? 0;
+    const tamperedCount = screenshots.total - screenshots.verified - missingCount;
+
+    if (missingCount === 0 && tamperedCount === 0) {
+      // 全て検証済み
+      this.screenshotVerification.innerHTML = `<span class="success">✓ ${screenshots.verified}/${screenshots.total}枚検証済み</span>`;
+    } else if (missingCount > 0 && tamperedCount === 0) {
+      // 欠損ファイルあり（改ざんなし）
+      this.screenshotVerification.innerHTML = `<span class="error">✗ ${missingCount}/${screenshots.total}枚が欠損</span>`;
+    } else if (missingCount === 0 && tamperedCount > 0) {
+      // 改ざんの可能性あり
+      this.screenshotVerification.innerHTML = `<span class="warning">⚠ ${tamperedCount}/${screenshots.total}枚が改ざんの可能性</span>`;
+    } else {
+      // 欠損と改ざん両方
+      this.screenshotVerification.innerHTML = `<span class="error">✗ ${missingCount}枚欠損, ${tamperedCount}枚改ざんの可能性</span>`;
+    }
   }
 
   reset(): void {
@@ -649,5 +733,95 @@ export class ResultPanel {
     if (errorMessage) {
       this.showProgressDetail(errorMessage);
     }
+  }
+
+  // ============================================================================
+  // 信頼度表示メソッド
+  // ============================================================================
+
+  /**
+   * 信頼度バッジを描画
+   */
+  private renderTrustBadge(trustResult: TrustResult): void {
+    const colorMap: Record<TrustLevel, string> = {
+      verified: 'success',
+      partial: 'warning',
+      failed: 'error',
+    };
+    const iconMap: Record<TrustLevel, string> = {
+      verified: 'check-circle',
+      partial: 'exclamation-triangle',
+      failed: 'times-circle',
+    };
+
+    const { level, summary, issues } = trustResult;
+
+    this.statusIcon.className = `result-status-icon ${colorMap[level]}`;
+    this.statusIcon.innerHTML = `<i class="fas fa-${iconMap[level]}"></i>`;
+    this.statusTitle.textContent = summary;
+
+    // イシューリストの表示
+    if (issues.length > 0) {
+      this.renderIssuesList(issues);
+    } else {
+      this.clearIssuesList();
+    }
+  }
+
+  /**
+   * イシューリストを描画
+   */
+  private renderIssuesList(issues: TrustIssue[]): void {
+    // 既存のイシューリストを削除
+    this.clearIssuesList();
+
+    // イシューリストコンテナを作成
+    const issuesContainer = document.createElement('div');
+    issuesContainer.className = 'trust-issues';
+    issuesContainer.id = 'trust-issues-list';
+
+    for (const issue of issues) {
+      const issueEl = document.createElement('div');
+      issueEl.className = `trust-issue-item ${issue.severity}`;
+
+      const iconClass = issue.severity === 'error' ? 'fa-times-circle' : 'fa-exclamation-triangle';
+      issueEl.innerHTML = `
+        <i class="fas ${iconClass}"></i>
+        <span class="trust-issue-component">${this.getComponentLabel(issue.component)}</span>
+        <span class="trust-issue-message">${issue.message}</span>
+      `;
+
+      issuesContainer.appendChild(issueEl);
+    }
+
+    // ステータスカードの後に挿入
+    const statusCard = document.getElementById('result-status-card');
+    if (statusCard) {
+      statusCard.after(issuesContainer);
+    }
+  }
+
+  /**
+   * イシューリストをクリア
+   */
+  private clearIssuesList(): void {
+    const existing = document.getElementById('trust-issues-list');
+    if (existing) {
+      existing.remove();
+    }
+  }
+
+  /**
+   * コンポーネント名のラベルを取得
+   */
+  private getComponentLabel(component: string): string {
+    const labels: Record<string, string> = {
+      metadata: 'メタデータ',
+      chain: 'ハッシュチェーン',
+      posw: 'PoSW',
+      attestation: '人間証明',
+      screenshots: 'スクリーンショット',
+    };
+    return labels[component] || component;
   }
 }

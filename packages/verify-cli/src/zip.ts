@@ -1,44 +1,19 @@
 /**
  * ZIP file handling
+ *
+ * Uses shared file processing utilities from @typedcode/shared.
  */
 
 import { readFile } from 'node:fs/promises';
-import JSZip from 'jszip';
-import type { ProofFile } from '@typedcode/shared';
+import { extractFirstProofFromZip, type ProofFile } from '@typedcode/shared';
 
 export async function extractProofFromZip(filePath: string): Promise<ProofFile> {
   const buffer = await readFile(filePath);
-  const zip = await JSZip.loadAsync(buffer);
-
-  const jsonFiles = Object.keys(zip.files).filter(
-    (name) => name.endsWith('.json') && !zip.files[name]?.dir
+  // Convert Buffer to ArrayBuffer
+  const arrayBuffer = buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength
   );
-
-  if (jsonFiles.length === 0) {
-    throw new Error('No JSON proof file found in ZIP');
-  }
-
-  const jsonFileName = jsonFiles[0]!;
-  const jsonFile = zip.files[jsonFileName];
-
-  if (!jsonFile) {
-    throw new Error(`Cannot read file: ${jsonFileName}`);
-  }
-
-  const jsonContent = await jsonFile.async('string');
-
-  try {
-    const proof = JSON.parse(jsonContent) as ProofFile;
-
-    if (!proof.proof || !proof.typingProofHash) {
-      throw new Error('Invalid proof file structure');
-    }
-
-    return proof;
-  } catch (e) {
-    if (e instanceof SyntaxError) {
-      throw new Error(`Invalid JSON in ${jsonFileName}: ${e.message}`);
-    }
-    throw e;
-  }
+  const proof = await extractFirstProofFromZip(arrayBuffer);
+  return proof as ProofFile;
 }

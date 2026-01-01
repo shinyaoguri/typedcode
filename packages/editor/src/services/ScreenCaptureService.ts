@@ -11,12 +11,14 @@ import type {
 
 /** Screen Captureオプション */
 export interface ScreenCaptureOptions {
-  /** JPEG品質 (0-1) デフォルト: 0.6 */
+  /** JPEG品質 (0-1) デフォルト: 0.4 */
   jpegQuality?: number;
-  /** 定期キャプチャ間隔（ミリ秒） デフォルト: 60000 (1分) */
+  /** 定期キャプチャ間隔（ミリ秒） デフォルト: 30000 (30秒) */
   periodicIntervalMs?: number;
-  /** フォーカス喪失後のキャプチャ遅延（ミリ秒） デフォルト: 5000 (5秒) */
+  /** フォーカス喪失後の最初のキャプチャ遅延（ミリ秒） デフォルト: 5000 (5秒) */
   focusLostDelayMs?: number;
+  /** フォーカス喪失中のキャプチャ間隔（ミリ秒） デフォルト: 5000 (5秒) */
+  focusLostIntervalMs?: number;
 }
 
 /** キャプチャ結果 */
@@ -41,9 +43,10 @@ export type StreamEndedCallback = () => void;
 
 /** デフォルト設定 */
 const DEFAULT_OPTIONS: Required<ScreenCaptureOptions> = {
-  jpegQuality: 0.6,
-  periodicIntervalMs: 60000,  // 1分
-  focusLostDelayMs: 5000,     // 5秒
+  jpegQuality: 0.1,            // 容量削減のため圧縮率を高める
+  periodicIntervalMs: 30000,   // 30秒
+  focusLostDelayMs: 5000,      // 5秒後から撮影開始
+  focusLostIntervalMs: 5000,   // フォーカス喪失中は5秒ごとに撮影
 };
 
 // HMRによる複数インスタンス生成を防ぐためのグローバルタイマーID追跡
@@ -74,6 +77,7 @@ export class ScreenCaptureService {
       jpegQuality: options?.jpegQuality ?? DEFAULT_OPTIONS.jpegQuality,
       periodicIntervalMs: options?.periodicIntervalMs ?? DEFAULT_OPTIONS.periodicIntervalMs,
       focusLostDelayMs: options?.focusLostDelayMs ?? DEFAULT_OPTIONS.focusLostDelayMs,
+      focusLostIntervalMs: options?.focusLostIntervalMs ?? DEFAULT_OPTIONS.focusLostIntervalMs,
     };
     console.log('[ScreenCapture] Initialized with options:', this.options);
   }
@@ -233,19 +237,29 @@ export class ScreenCaptureService {
 
   /**
    * フォーカス喪失イベントを処理
-   * 5秒後にキャプチャをスケジュール
+   * 5秒後から5秒ごとにフォーカス復帰までキャプチャを続ける
    */
   handleFocusLost(): void {
     // 既存のタイマーをキャンセル
     if (this.focusLostTimer !== null) {
-      clearTimeout(this.focusLostTimer);
+      clearInterval(this.focusLostTimer);
     }
 
-    console.log(`[ScreenCapture] Focus lost, scheduling capture in ${this.options.focusLostDelayMs}ms`);
+    console.log(
+      `[ScreenCapture] Focus lost, starting capture in ${this.options.focusLostDelayMs}ms, ` +
+        `then every ${this.options.focusLostIntervalMs}ms until focus regained`
+    );
 
+    // 最初のキャプチャを遅延後に実行し、その後は定期的にキャプチャ
     this.focusLostTimer = window.setTimeout(() => {
+      // 最初のキャプチャを実行
       this.captureNow('focusLost').catch(console.error);
-      this.focusLostTimer = null;
+
+      // その後は定期的にキャプチャを続ける
+      this.focusLostTimer = window.setInterval(() => {
+        console.log('[ScreenCapture] Focus lost interval capture');
+        this.captureNow('focusLost').catch(console.error);
+      }, this.options.focusLostIntervalMs);
     }, this.options.focusLostDelayMs);
   }
 
@@ -254,9 +268,10 @@ export class ScreenCaptureService {
    */
   handleFocusRegained(): void {
     if (this.focusLostTimer !== null) {
-      clearTimeout(this.focusLostTimer);
+      // setTimeout または setInterval どちらも clearInterval でクリア可能
+      clearInterval(this.focusLostTimer);
       this.focusLostTimer = null;
-      console.log('[ScreenCapture] Focus regained, cancelled scheduled capture');
+      console.log('[ScreenCapture] Focus regained, stopped focus-lost captures');
     }
   }
 
@@ -436,7 +451,7 @@ export class ScreenCaptureService {
     this.stopPeriodicCapture();
 
     if (this.focusLostTimer !== null) {
-      clearTimeout(this.focusLostTimer);
+      clearInterval(this.focusLostTimer);
       this.focusLostTimer = null;
     }
 

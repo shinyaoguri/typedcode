@@ -12,35 +12,35 @@ export type EventType =
   | 'humanAttestation'  // 人間認証（event #0として記録）
   | 'preExportAttestation'  // エクスポート前認証
   | 'termsAccepted'  // 利用規約同意
-  | 'contentChange'
-  | 'contentSnapshot'
-  | 'cursorPositionChange'
-  | 'selectionChange'
-  | 'externalInput'
-  | 'editorInitialized'
-  | 'mousePositionChange'
-  | 'visibilityChange'
-  | 'focusChange'
-  | 'keyDown'
-  | 'keyUp'
-  | 'windowResize'
-  | 'networkStatusChange'  // ネットワーク状態変更（オンライン/オフライン）
-  | 'codeExecution'  // コード実行（コンパイル＋実行の開始）
-  | 'terminalInput'  // ターミナルへの入力（行単位）
-  | 'screenshotCapture'  // スクリーンショット撮影
-  | 'screenShareStart'  // 画面共有開始
-  | 'screenShareStop';  // 画面共有停止
+  | 'contentChange' // コンテンツ変更
+  | 'contentSnapshot' // コンテンツスナップショット
+  | 'cursorPositionChange' // カーソル位置変更
+  | 'selectionChange' // 選択範囲変更
+  | 'externalInput' // 外部入力
+  | 'editorInitialized' // エディタ初期化
+  | 'mousePositionChange' // マウス位置変更
+  | 'visibilityChange' // 表示状態変更
+  | 'focusChange' // フォーカス状態変更
+  | 'keyDown' // キー押下
+  | 'keyUp' // キー離上
+  | 'windowResize' // ウィンドウサイズ変更
+  | 'networkStatusChange' // ネットワーク状態変更（オンライン/オフライン）
+  | 'codeExecution' // コード実行（コンパイル＋実行の開始）
+  | 'terminalInput' // ターミナルへの入力（行単位）
+  | 'screenshotCapture' // スクリーンショット撮影
+  | 'screenShareStart' // 画面共有開始
+  | 'screenShareStop'; // 画面共有停止
 
-/** 入力タイプ（Monaco Editor準拠 + カスタム） */
+/** 入力タイプ */
 export type InputType =
   // 挿入系
-  | 'insertText'
-  | 'insertLineBreak'
-  | 'insertParagraph'
-  | 'insertTab'
-  | 'insertFromComposition'
-  | 'insertCompositionText'
-  | 'deleteCompositionText'
+  | 'insertText' // テキスト挿入
+  | 'insertLineBreak' // 行ブレーク挿入
+  | 'insertParagraph' // 段落挿入
+  | 'insertTab' // タブ挿入
+  | 'insertFromComposition' // 合成入力からの挿入
+  | 'insertCompositionText' // 合成入力テキスト挿入
+  | 'deleteCompositionText' // 合成入力テキスト削除
   // 削除系
   | 'deleteContentBackward'
   | 'deleteContentForward'

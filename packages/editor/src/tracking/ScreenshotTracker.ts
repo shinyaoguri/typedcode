@@ -71,6 +71,7 @@ export class ScreenshotTracker {
   private attached = false;
   private lastEventSequence = 0;
   private initialized = false;
+  private storageCleared = false; // セッション中に一度だけストレージをクリアするためのフラグ
   private shareStartTimestamp: number | null = null;
   private currentDisplayInfo: DisplayInfo | null = null;
   private currentDisplaySurface: string | null = null;
@@ -151,12 +152,17 @@ export class ScreenshotTracker {
     // ストレージを初期化
     try {
       await this.storageService.initialize();
-      // 新しいセッション開始時は過去のスクリーンショットをクリア
+      // 初回のみ過去のスクリーンショットをクリア（セッション中は保持）
       // (IndexedDBは永続化されるため、過去のセッションのデータが残っている可能性がある)
-      const existingCount = await this.storageService.count();
-      if (existingCount > 0) {
-        console.log(`[ScreenshotTracker] Clearing ${existingCount} screenshots from previous session`);
-        await this.storageService.clear();
+      if (!this.storageCleared) {
+        const existingCount = await this.storageService.count();
+        if (existingCount > 0) {
+          console.log(`[ScreenshotTracker] Clearing ${existingCount} screenshots from previous session`);
+          await this.storageService.clear();
+        }
+        this.storageCleared = true;
+      } else {
+        console.log('[ScreenshotTracker] Resuming screen share - keeping existing screenshots');
       }
     } catch (error) {
       console.error('[ScreenshotTracker] Failed to initialize storage:', error);

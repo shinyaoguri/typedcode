@@ -14,8 +14,13 @@ import { UIStateManager } from '../state/UIStateManager';
 import { FileProcessor, type ParsedFileData } from '../services/FileProcessor';
 import { FileSystemAccessService } from '../services/FileSystemAccessService';
 import { FolderSyncManager } from '../services/FolderSyncManager';
+import { ScreenshotService } from '../services/ScreenshotService';
 import { TimelineChart } from '../charts/TimelineChart';
 import { MouseChart } from '../charts/MouseChart';
+import { IntegratedChart } from '../charts/IntegratedChart';
+import { ScreenshotOverlay } from '../charts/ScreenshotOverlay';
+import { SeekbarController } from '../charts/SeekbarController';
+import { ScreenshotLightbox } from './ScreenshotLightbox';
 import { TabController } from './controllers/TabController';
 import { t, getI18n } from '../i18n/index';
 import { showAboutDialog } from './AboutDialog';
@@ -24,6 +29,7 @@ import type {
   FSAccessFileEntry,
   HierarchicalFolder,
   ProgressDetails,
+  VerifyScreenshot,
 } from '../types';
 
 export class AppController {
@@ -49,6 +55,13 @@ export class AppController {
 
   private timelineChart: TimelineChart | null = null;
   private mouseChart: MouseChart | null = null;
+
+  // IntegratedChart関連
+  private integratedChart: IntegratedChart | null = null;
+  private screenshotOverlay: ScreenshotOverlay | null = null;
+  private screenshotLightbox: ScreenshotLightbox | null = null;
+  private seekbarController: SeekbarController | null = null;
+  private screenshotService: ScreenshotService | null = null;
 
   private fileInput: HTMLInputElement;
 
@@ -140,6 +153,11 @@ export class AppController {
       welcomePanel: this.welcomePanel,
       getTimelineChart: () => this.timelineChart,
       getMouseChart: () => this.mouseChart,
+      // IntegratedChart関連
+      getIntegratedChart: () => this.integratedChart,
+      getScreenshotOverlay: () => this.screenshotOverlay,
+      getScreenshotLightbox: () => this.screenshotLightbox,
+      getSeekbarController: () => this.seekbarController,
     });
 
     // File input change handler
@@ -254,7 +272,9 @@ export class AppController {
   private initializeCharts(): void {
     const timelineCanvas = document.getElementById('integrated-timeline-chart') as HTMLCanvasElement;
     const mouseCanvas = document.getElementById('mouse-trajectory-chart') as HTMLCanvasElement;
+    const integratedCanvas = document.getElementById('integrated-chart') as HTMLCanvasElement;
 
+    // 既存のTimelineChart/MouseChart（後方互換性）
     if (timelineCanvas) {
       this.timelineChart = new TimelineChart({ canvas: timelineCanvas });
     }
@@ -262,6 +282,128 @@ export class AppController {
     if (mouseCanvas) {
       this.mouseChart = new MouseChart({ canvas: mouseCanvas });
     }
+
+    // IntegratedChart (Chart.js) を初期化
+    if (integratedCanvas) {
+      // ScreenshotServiceを先に初期化
+      this.screenshotService = new ScreenshotService();
+
+      // ScreenshotOverlay (ホバープレビュー)
+      this.screenshotOverlay = new ScreenshotOverlay(this.screenshotService);
+
+      // ScreenshotLightbox
+      this.screenshotLightbox = new ScreenshotLightbox({
+        screenshotService: this.screenshotService,
+        onNavigate: (screenshot) => {
+          // ライトボックスでナビゲート時、チャートマーカーを更新
+          if (this.integratedChart) {
+            this.integratedChart.updateMarker(screenshot.timestamp);
+          }
+        },
+      });
+
+      // IntegratedChart
+      this.integratedChart = new IntegratedChart({
+        canvas: integratedCanvas,
+        onScreenshotHover: (screenshot, x, y) => {
+          if (screenshot && this.screenshotOverlay) {
+            this.screenshotOverlay.show(screenshot, x, y);
+          } else if (this.screenshotOverlay) {
+            this.screenshotOverlay.hide();
+          }
+        },
+        onScreenshotClick: (screenshot) => {
+          if (this.screenshotLightbox) {
+            this.screenshotLightbox.open(screenshot);
+          }
+        },
+        onTimeSelect: (timestamp, eventIndex) => {
+          // シークバーと連携
+          if (this.seekbarController) {
+            this.seekbarController.seekToTime(timestamp);
+          }
+        },
+      });
+
+      // SeekbarControllerにIntegratedChartを連携
+      if (this.seekbarController) {
+        this.seekbarController.setIntegratedChart(this.integratedChart);
+      }
+    }
+
+    // SeekbarController を初期化
+    const codePreview = document.querySelector('#code-preview code') as HTMLElement | null;
+    this.seekbarController = new SeekbarController(
+      {
+        floatingSeekbar: document.getElementById('chart-seekbar'),
+        slider: document.getElementById('seekbar-slider') as HTMLInputElement | null,
+        progressBar: document.getElementById('seekbar-progress'),
+        timeDisplay: document.getElementById('seekbar-time'),
+        eventCountDisplay: document.getElementById('seekbar-event-count'),
+        startButton: document.getElementById('seekbar-start'),
+        prevButton: document.getElementById('seekbar-prev'),
+        playButton: document.getElementById('seekbar-play'),
+        playIcon: document.getElementById('play-icon'),
+        nextButton: document.getElementById('seekbar-next'),
+        endButton: document.getElementById('seekbar-end'),
+        contentPreview: codePreview,
+      },
+      {
+        onSeek: (eventIndex) => {
+          // シーク時にコードプレビューを更新
+          this.updateCodePreview(eventIndex);
+        },
+      }
+    );
+    this.seekbarController.setupEventListeners();
+
+    // IntegratedChartが既に存在する場合は連携
+    if (this.integratedChart) {
+      this.seekbarController.setIntegratedChart(this.integratedChart);
+    }
+  }
+
+  /**
+   * スクリーンショットサービスを更新し、関連コンポーネントに伝播
+   * ZIP/フォルダ両方の読み込みパスで一貫した動作を保証
+   */
+  private updateScreenshotService(screenshotService: ScreenshotService): void {
+    // 古いサービスを破棄
+    if (this.screenshotService) {
+      this.screenshotService.dispose();
+    }
+
+    this.screenshotService = screenshotService;
+
+    // ScreenshotOverlay を再作成
+    if (this.screenshotOverlay) {
+      this.screenshotOverlay.destroy();
+    }
+    this.screenshotOverlay = new ScreenshotOverlay(this.screenshotService);
+
+    // ScreenshotLightbox を再作成
+    if (this.screenshotLightbox) {
+      this.screenshotLightbox.destroy();
+    }
+    this.screenshotLightbox = new ScreenshotLightbox({
+      screenshotService: this.screenshotService,
+      onNavigate: (screenshot) => {
+        if (this.integratedChart) {
+          this.integratedChart.updateMarker(screenshot.timestamp);
+        }
+      },
+    });
+  }
+
+  /**
+   * コードプレビューを更新
+   */
+  private updateCodePreview(eventIndex: number): void {
+    const codePreview = document.querySelector('#code-preview code') as HTMLElement | null;
+    if (!codePreview || !this.seekbarController) return;
+
+    const content = this.seekbarController.getContentAtIndex(eventIndex);
+    codePreview.textContent = content;
   }
 
   private openFileDialog(): void {
@@ -284,15 +426,62 @@ export class AppController {
         return;
       }
 
-      // ZIPファイルの場合はフォルダを作成
-      let folderId: string | undefined;
-      if (file.name.endsWith('.zip')) {
-        folderId = this.createFolderForZip(file.name);
+      // ZIPファイルの場合はフォルダ階層を作成
+      let rootFolderId: string | undefined;
+      const folderMap = new Map<string, string>(); // path -> folderId
+
+      if (file.name.endsWith('.zip') && result.folderPaths) {
+        rootFolderId = this.createFolderForZip(file.name);
+        folderMap.set('', rootFolderId);
+
+        // フォルダパスをソート（親フォルダが先に処理されるように）
+        const sortedPaths = result.folderPaths.sort((a, b) => a.localeCompare(b));
+
+        for (const folderPath of sortedPaths) {
+          const folderId = this.generateId();
+          const parts = folderPath.split('/');
+          const folderName = parts[parts.length - 1];
+          const parentPath = parts.slice(0, -1).join('/');
+          const parentId = folderMap.get(parentPath) ?? rootFolderId;
+          const depth = parts.length;
+
+          // screenshotsフォルダはデフォルトで閉じた状態
+          const isScreenshotsFolder = folderName === 'screenshots' || folderPath.startsWith('screenshots/');
+          const expanded = isScreenshotsFolder ? false : depth <= 1;
+
+          this.sidebar.addHierarchicalFolder({
+            id: folderId,
+            name: folderName,
+            path: folderPath,
+            parentId,
+            expanded,
+            depth,
+          });
+          folderMap.set(folderPath, folderId);
+        }
+      } else if (file.name.endsWith('.zip')) {
+        rootFolderId = this.createFolderForZip(file.name);
+        folderMap.set('', rootFolderId);
+      }
+
+      // スクリーンショットサービスを保存（ZIPに含まれている場合）
+      if (result.screenshotService) {
+        this.updateScreenshotService(result.screenshotService);
       }
 
       for (const fileData of result.files) {
+        // ファイルの親フォルダを特定
+        let folderId = rootFolderId;
+        if (fileData.relativePath) {
+          const parts = fileData.relativePath.split('/');
+          const parentPath = parts.slice(0, -1).join('/');
+          folderId = folderMap.get(parentPath) ?? rootFolderId;
+        }
+
         if (fileData.type === 'proof') {
-          this.addFileToVerification(fileData.filename, fileData.rawData, folderId);
+          this.addFileToVerification(fileData.filename, fileData.rawData, folderId, fileData.relativePath, result.screenshots, result.startTimestamp);
+        } else if (fileData.type === 'image') {
+          this.addImageFile(fileData, folderId);
         } else {
           this.addPlaintextFile(fileData, folderId);
         }
@@ -350,22 +539,73 @@ export class AppController {
       isProof: false, // プレーンテキストファイル
     });
 
-    // 最初のファイルの場合は自動的にタブを開く
-    const isFirstFile = this.sidebar.getFileCount() === 1;
-    if (isFirstFile) {
-      this.openTabForFile(id);
-    }
+    // タブは開かない（ユーザがファイル一覧から選択した時に開く）
 
     this.updateStatusBar();
   }
 
-  private addFileToVerification(filename: string, rawData: string, folderId?: string, relativePath?: string): void {
+  /**
+   * 画像ファイルを追加（プレビュー表示用）
+   */
+  private addImageFile(fileData: ParsedFileData, folderId?: string): void {
+    const id = this.generateId();
+    const displayName = this.generateDisplayName(fileData.filename, folderId);
+
+    // Add to tab manager (image file - no verification)
+    this.tabManager.addTab({
+      id,
+      filename: displayName,
+      language: 'image',
+      status: 'success', // 画像ファイルは常に「成功」状態
+      progress: 100,
+      proofData: null,
+      verificationResult: null,
+      isImage: true,
+      imageBlob: fileData.imageBlob,
+    });
+
+    // Add to sidebar (file list)
+    this.sidebar.addFile({
+      id,
+      filename: displayName,
+      status: 'success',
+      folderId,
+      isProof: false,
+      isImage: true, // 画像ファイル
+    });
+
+    this.updateStatusBar();
+  }
+
+  private addFileToVerification(
+    filename: string,
+    rawData: string,
+    folderId?: string,
+    relativePath?: string,
+    screenshots?: VerifyScreenshot[],
+    startTimestamp?: number
+  ): void {
+    console.log('[AppController] addFileToVerification:', {
+      filename,
+      screenshotsCount: screenshots?.length ?? 0,
+      startTimestamp,
+    });
+
     try {
       const proofData = JSON.parse(rawData) as ProofFile;
       const id = this.generateId();
 
       // 表示名を生成（重複がある場合は番号を付ける）
       const displayName = this.generateDisplayName(filename, folderId);
+
+      // startTimestampが渡されていない場合は計算
+      let computedStartTimestamp = startTimestamp;
+      if (!computedStartTimestamp && proofData.metadata?.timestamp && proofData.proof?.events?.length > 0) {
+        const exportedAt = proofData.metadata.timestamp;
+        const totalTime = proofData.proof.events[proofData.proof.events.length - 1]?.timestamp ?? 0;
+        const exportTimestamp = new Date(exportedAt).getTime();
+        computedStartTimestamp = exportTimestamp - totalTime;
+      }
 
       // Add to tab manager (state management)
       this.tabManager.addTab({
@@ -376,6 +616,8 @@ export class AppController {
         progress: 0,
         proofData,
         verificationResult: null,
+        screenshots, // スクリーンショットを保存
+        startTimestamp: computedStartTimestamp,
       });
 
       // Add to sidebar (file list)
@@ -389,11 +631,6 @@ export class AppController {
       });
 
       // タブは開かない（ユーザがファイル一覧から選択した時に開く）
-      // ただし最初のファイルは自動的にタブを開く
-      const isFirstFile = this.sidebar.getFileCount() === 1;
-      if (isFirstFile) {
-        this.openTabForFile(id);
-      }
 
       // Track counts
       this.uiState.incrementTotal();
@@ -625,6 +862,20 @@ export class AppController {
       return;
     }
 
+    // スクリーンショットフォルダを検出して読み込む
+    let folderScreenshots: VerifyScreenshot[] | undefined;
+    let folderStartTimestamp: number | undefined;
+    try {
+      const loadResult = await this.loadScreenshotsFromFolder(handle);
+      if (loadResult) {
+        folderScreenshots = loadResult.screenshots;
+        folderStartTimestamp = loadResult.startTimestamp;
+        console.log(`[AppController] Loaded ${folderScreenshots.length} screenshots from folder`);
+      }
+    } catch (error) {
+      console.log('[AppController] No screenshots folder found or error loading:', error);
+    }
+
     // ルートフォルダを作成
     const rootFolderId = this.generateId();
     const rootFolder: HierarchicalFolder = {
@@ -641,12 +892,13 @@ export class AppController {
     this.sidebar.addHierarchicalFolder(rootFolder);
     this.watchedRootFolderId = rootFolderId;
 
-    // サブフォルダを追加
+    // サブフォルダを追加（screenshotsフォルダも含める）
     const folderMap = new Map<string, string>(); // path -> folderId
     folderMap.set('', rootFolderId);
 
     // フォルダをソートしてから追加（親フォルダが先に処理されるように）
-    const sortedFolders = result.folders.sort((a, b) => a.path.localeCompare(b.path));
+    const sortedFolders = result.folders
+      .sort((a, b) => a.path.localeCompare(b.path));
 
     for (const folder of sortedFolders) {
       const folderId = this.generateId();
@@ -654,12 +906,16 @@ export class AppController {
       const parentId = folderMap.get(parentPath) ?? rootFolderId;
       const depth = folder.path.split('/').length;
 
+      // screenshotsフォルダはデフォルトで閉じた状態
+      const isScreenshotsFolder = folder.name === 'screenshots' || folder.path.startsWith('screenshots/');
+      const expanded = isScreenshotsFolder ? false : depth <= 1;
+
       const hierarchicalFolder: HierarchicalFolder = {
         id: folderId,
         name: folder.name,
         path: folder.path,
         parentId,
-        expanded: depth <= 1, // 1階層目まで展開
+        expanded,
         depth,
         sourceType: 'fsaccess',
         directoryHandle: folder.handle,
@@ -669,9 +925,9 @@ export class AppController {
       folderMap.set(folder.path, folderId);
     }
 
-    // ファイルを処理
+    // ファイルを処理（スクリーンショット情報を渡す）
     for (const fileEntry of result.files) {
-      await this.processFileFromHandle(fileEntry, folderMap);
+      await this.processFileFromHandle(fileEntry, folderMap, folderScreenshots, folderStartTimestamp);
     }
 
     // 監視を開始
@@ -683,14 +939,87 @@ export class AppController {
   }
 
   /**
+   * フォルダからスクリーンショットを読み込む
+   */
+  private async loadScreenshotsFromFolder(
+    rootHandle: FileSystemDirectoryHandle
+  ): Promise<{ screenshots: VerifyScreenshot[]; startTimestamp?: number } | null> {
+    try {
+      // screenshots フォルダを取得
+      const screenshotsFolderHandle = await rootHandle.getDirectoryHandle('screenshots');
+
+      // manifest.json を読み込む
+      const manifestHandle = await screenshotsFolderHandle.getFileHandle('manifest.json');
+      const manifestFile = await manifestHandle.getFile();
+      const manifestText = await manifestFile.text();
+      const manifest = JSON.parse(manifestText) as import('../types').ScreenshotManifest;
+
+      // ScreenshotServiceを作成してスクリーンショットを読み込む
+      const screenshotService = new ScreenshotService();
+      const screenshots = await screenshotService.loadFromFolder(screenshotsFolderHandle, manifest);
+
+      // startTimestampを計算（最初のスクリーンショットのタイムスタンプから）
+      let startTimestamp: number | undefined;
+      if (screenshots.length > 0) {
+        const firstScreenshot = screenshots.reduce((min, s) => (s.timestamp < min.timestamp ? s : min), screenshots[0]);
+        // エクスポート時刻からtimestampを引いてstartTimestampを計算
+        const exportedAt = new Date(manifest.exportedAt).getTime();
+        const lastTimestamp = screenshots.reduce((max, s) => Math.max(max, s.timestamp), 0);
+        startTimestamp = exportedAt - lastTimestamp;
+      }
+
+      // サービスを保持し、UIコンポーネントを更新
+      this.updateScreenshotService(screenshotService);
+
+      return { screenshots, startTimestamp };
+    } catch {
+      // screenshots フォルダが存在しない場合
+      return null;
+    }
+  }
+
+  /**
    * FileSystemFileHandle からファイルを処理
    */
   private async processFileFromHandle(
     fileEntry: FSAccessFileEntry,
-    folderMap: Map<string, string>
+    folderMap: Map<string, string>,
+    folderScreenshots?: VerifyScreenshot[],
+    folderStartTimestamp?: number
   ): Promise<void> {
+    const filename = fileEntry.name;
+
+    // 隠しファイル（.で始まるファイル）はスキップ
+    if (filename.startsWith('.')) return;
+
     const parentPath = fileEntry.path.split('/').slice(0, -1).join('/');
     const folderId = folderMap.get(parentPath);
+
+    // 画像ファイルかどうかを判定
+    const isImage = /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(filename);
+
+    // screenshots フォルダ内のファイルを特別処理
+    if (fileEntry.path.startsWith('screenshots/')) {
+      if (isImage) {
+        // 画像ファイルをファイル一覧に追加（クリックでプレビュー表示）
+        try {
+          const file = await fileEntry.handle.getFile();
+          const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+          this.addImageFile({
+            filename,
+            type: 'image',
+            language: 'image',
+            rawData: '',
+            relativePath: fileEntry.path,
+            imageBlob: blob,
+          }, folderId);
+        } catch (error) {
+          console.error('Error loading image:', fileEntry.path, error);
+        }
+        return;
+      }
+      // manifest.json やその他のテキストファイルは通常処理
+    }
 
     try {
       const result = await this.fileProcessor.processFromHandle(
@@ -704,7 +1033,17 @@ export class AppController {
 
       for (const fileData of result.files) {
         if (fileData.type === 'proof') {
-          this.addFileToVerification(fileData.filename, fileData.rawData, folderId, fileData.relativePath);
+          // フォルダからスクリーンショットが読み込まれている場合は渡す
+          this.addFileToVerification(
+            fileData.filename,
+            fileData.rawData,
+            folderId,
+            fileData.relativePath,
+            folderScreenshots,
+            folderStartTimestamp
+          );
+        } else if (fileData.type === 'image') {
+          this.addImageFile(fileData, folderId);
         } else {
           this.addPlaintextFile(fileData, folderId);
         }

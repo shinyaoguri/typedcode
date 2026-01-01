@@ -25,6 +25,7 @@
 @import './components/_modals.css';
 @import './components/_syntax-highlight.css';
 @import './components/_verification-progress.css';
+@import './components/_lightbox.css';
 
 /* Utilities */
 @import './utilities/_misc.css';

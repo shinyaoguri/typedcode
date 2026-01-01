@@ -15,8 +15,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@typedcode/shared": "*",
-    "jszip": "^3.10.1"
+    "@typedcode/shared": "*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

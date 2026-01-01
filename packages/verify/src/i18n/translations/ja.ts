@@ -66,6 +66,10 @@ export const ja: VerifyTranslationKeys = {
     hashChain: 'ハッシュチェーン',
     verificationMethod: '検証方式',
     eventCount: 'イベント数',
+    screenshotVerification: 'スクリーンショット',
+    screenshotsAllVerified: '✓ ${verified}/${total}枚検証済み',
+    screenshotsSomeInvalid: '⚠ ${invalid}/${total}枚が改ざんされている可能性',
+    screenshotsCount: '${count}枚',
     posw: 'PoSW',
     iterations: '反復回数',
     totalTime: '合計時間',
@@ -117,6 +121,7 @@ export const ja: VerifyTranslationKeys = {
   },
 
   charts: {
+    integrated: '統合チャート',
     timeline: 'タイムライン',
     mouseTrajectory: 'マウス軌跡',
     keys: 'キー',

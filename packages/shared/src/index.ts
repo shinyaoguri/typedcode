@@ -20,12 +20,14 @@ export {
   verifyTypingProofHash,
   verifyChain,
   verifyProofFile,
+  calculatePoswStats,
 } from './verification.js';
 
 export type {
   ProofFile,
   FullVerificationResult,
   VerificationProgressCallback,
+  PoswStats,
 } from './verification.js';
 
 // バージョン定数
@@ -53,3 +55,43 @@ export {
 } from './i18n/index.js';
 
 export type { SupportedLocale, TranslationRecord } from './i18n/index.js';
+
+// 計算ユーティリティ
+export {
+  formatTypingTime,
+  calculateTypingSpeed,
+  countPasteEvents,
+  countDropEvents,
+  calculateChartStats,
+  type ChartStats,
+} from './calculations.js';
+
+// 人間認証サービス
+export {
+  AttestationService,
+  type HumanAttestation,
+  type AttestationVerificationResult,
+  type AttestationVerificationDetails,
+} from './attestation.js';
+
+// ファイル処理
+export {
+  // Types
+  type FileType,
+  type ParsedFileData,
+  type ProofFileCore,
+  type ZipParseResult,
+  type FileParseCallbacks,
+  type ScreenshotManifest,
+  type ScreenshotManifestEntry,
+  // Language detection
+  getLanguageFromExtension,
+  isBinaryFile,
+  getFileType,
+  isProofFilename,
+  // Parser
+  isProofFile,
+  parseJsonString,
+  parseZipBuffer,
+  extractFirstProofFromZip,
+} from './fileProcessing/index.js';

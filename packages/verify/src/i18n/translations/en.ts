@@ -66,6 +66,10 @@ export const en: VerifyTranslationKeys = {
     hashChain: 'Hash Chain',
     verificationMethod: 'Verification Method',
     eventCount: 'Event Count',
+    screenshotVerification: 'Screenshots',
+    screenshotsAllVerified: '✓ ${verified}/${total} verified',
+    screenshotsSomeInvalid: '⚠ ${invalid}/${total} possibly tampered',
+    screenshotsCount: '${count} screenshots',
     posw: 'PoSW',
     iterations: 'Iterations',
     totalTime: 'Total Time',
@@ -117,6 +121,7 @@ export const en: VerifyTranslationKeys = {
   },
 
   charts: {
+    integrated: 'Integrated Chart',
     timeline: 'Timeline',
     mouseTrajectory: 'Mouse Trajectory',
     keys: 'Keys',

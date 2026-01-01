@@ -507,8 +507,14 @@ export class ProofExporter {
         screenshotsFolder.file(filename, blob);
       }
 
-      // マニフェストファイルを追加
-      const manifest = await this.screenshotTracker.getManifestForExport();
+      // マニフェストファイルを追加（ScreenshotManifest形式でラップ）
+      const screenshotEntries = await this.screenshotTracker.getManifestForExport();
+      const manifest = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        totalScreenshots: screenshots.size,
+        screenshots: screenshotEntries,
+      };
       screenshotsFolder.file('manifest.json', JSON.stringify(manifest, null, 2));
 
       console.log(`[Export] Added ${screenshots.size} screenshots to ZIP`);

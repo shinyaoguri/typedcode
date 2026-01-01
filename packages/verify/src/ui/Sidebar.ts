@@ -13,6 +13,7 @@ export interface SidebarFile {
   folderId?: string; // フォルダに属する場合のフォルダID
   relativePath?: string; // フォルダ内の相対パス
   isProof?: boolean; // 検証用ファイル（true）かプレーンテキスト（false）か
+  isImage?: boolean; // 画像ファイルか
 }
 
 export interface SidebarFolder {
@@ -535,10 +536,14 @@ export class Sidebar {
 
     const icon = document.createElement('div');
     icon.className = 'file-item-icon';
-    // 検証用ファイルは盾アイコン、プレーンテキストはファイルアイコン
-    icon.innerHTML = isProof
-      ? '<i class="fas fa-shield-halved"></i>'
-      : '<i class="fas fa-file-code"></i>';
+    // 検証用ファイルは盾アイコン、画像は画像アイコン、その他はファイルアイコン
+    if (isProof) {
+      icon.innerHTML = '<i class="fas fa-shield-halved"></i>';
+    } else if (file.isImage) {
+      icon.innerHTML = '<i class="fas fa-image"></i>';
+    } else {
+      icon.innerHTML = '<i class="fas fa-file-code"></i>';
+    }
 
     const name = document.createElement('div');
     name.className = 'file-item-name';
