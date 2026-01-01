@@ -108,8 +108,28 @@ export const ja: TranslationKeys = {
     dataStorageTitle: 'データ保存',
     dataStorageDesc:
       'すべての操作ログは<strong>ブラウザのローカルストレージにのみ保存</strong>されます。サーバーへの自動送信は一切行いません。',
+    screenCaptureTitle: '画面キャプチャ',
+    screenCaptureDesc: '証明の信頼性向上のため、定期的にスクリーンショットを撮影します。',
+    screenCaptureInterval: '1分ごとに画面全体を撮影',
+    screenCaptureFocus: 'フォーカス喪失時にも撮影',
+    screenCaptureStorage: '画像はローカルにのみ保存',
     agreeCheckbox: '上記の内容を理解し、同意します',
     agreeButton: '同意して開始',
+  },
+
+  screenCapture: {
+    requesting: '画面共有の許可を要求中...',
+    permissionDenied: '画面共有の許可が拒否されました',
+    notSupported: 'このブラウザでは画面キャプチャがサポートされていません',
+    captured: 'スクリーンショットを撮影しました',
+    capturedPeriodic: '定期スクリーンショットを撮影しました',
+    capturedFocusLost: 'フォーカス喪失後にスクリーンショットを撮影しました',
+    capturedManual: '手動でスクリーンショットを撮影しました',
+    lockTitle: '画面共有が停止されました',
+    lockDescription: 'TypedCodeを使用するには画面全体の共有が必要です。',
+    resumeButton: '画面共有を再開',
+    guideText: '下に表示されているダイアログの<br><strong>「非表示」</strong>をクリックしてください',
+    guideHint: 'クリックで閉じる',
   },
 
   statusBar: {
@@ -167,6 +187,16 @@ export const ja: TranslationKeys = {
     failed: 'エクスポートに失敗しました',
     zipSuccess: 'ZIPファイルをダウンロードしました（${count}ファイル）',
     zipFailed: 'ZIPエクスポートに失敗しました',
+    progressTitle: 'ファイルを準備中...',
+    phaseVerification: '人間認証',
+    phasePreparing: 'データを準備中',
+    phaseScreenshots: 'スクリーンショットを取得中',
+    phaseGenerating: 'ZIPファイルを生成中',
+    statusVerification: '人間であることを確認しています...',
+    statusPreparing: 'データを準備しています...',
+    statusScreenshots: 'スクリーンショットを取得しています...',
+    statusGenerating: 'ZIPファイルを生成しています...',
+    statusComplete: '完了',
   },
 
   terminal: {
@@ -233,6 +263,8 @@ export const ja: TranslationKeys = {
     selectionClear: '選択解除',
     selectionCount: '${count}文字選択',
     terminalInput: 'ターミナル入力',
+    screenShareStart: '画面共有を開始しました',
+    screenShareStop: '画面共有が停止されました',
   },
 
   operations: {

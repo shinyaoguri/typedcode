@@ -20,6 +20,8 @@ export class VisibilityTracker {
   private boundHandleFocus: () => void;
   private boundHandleBlur: () => void;
   private attached = false;
+  private focusLostCallback: (() => void) | null = null;
+  private focusRegainedCallback: (() => void) | null = null;
 
   constructor() {
     this.boundHandleVisibilityChange = this.handleVisibilityChange.bind(this);
@@ -32,6 +34,20 @@ export class VisibilityTracker {
    */
   setCallback(callback: VisibilityTrackerCallback): void {
     this.callback = callback;
+  }
+
+  /**
+   * フォーカス喪失時のコールバックを設定
+   */
+  setFocusLostCallback(callback: () => void): void {
+    this.focusLostCallback = callback;
+  }
+
+  /**
+   * フォーカス復帰時のコールバックを設定
+   */
+  setFocusRegainedCallback(callback: () => void): void {
+    this.focusRegainedCallback = callback;
   }
 
   /**
@@ -94,6 +110,9 @@ export class VisibilityTracker {
       description: t('events.windowFocused'),
     });
 
+    // フォーカス復帰コールバックを呼び出し
+    this.focusRegainedCallback?.();
+
     console.log('[TypedCode] Window focused');
   }
 
@@ -111,6 +130,9 @@ export class VisibilityTracker {
       description: t('events.windowBlurred'),
     });
 
+    // フォーカス喪失コールバックを呼び出し
+    this.focusLostCallback?.();
+
     console.log('[TypedCode] Window blurred');
   }
 
@@ -120,5 +142,7 @@ export class VisibilityTracker {
   dispose(): void {
     this.detach();
     this.callback = null;
+    this.focusLostCallback = null;
+    this.focusRegainedCallback = null;
   }
 }

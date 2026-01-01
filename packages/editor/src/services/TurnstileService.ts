@@ -115,13 +115,21 @@ interface TokenResult {
   isNetworkError?: boolean;
 }
 
+/** Options for getTurnstileToken */
+interface GetTurnstileTokenOptions {
+  /** Custom widget container element */
+  widgetContainer?: HTMLElement;
+  /** Custom parent container to show/hide (optional) */
+  parentContainer?: HTMLElement;
+}
+
 /**
  * Get Turnstile token for the specified action (single attempt)
  * Renders challenge widget inside the verification modal's container
  * Extends timeout when interactive challenge is displayed
  * Returns quickly on network errors to allow retry logic at higher level
  */
-export async function getTurnstileToken(action: string): Promise<TokenResult> {
+export async function getTurnstileToken(action: string, options?: GetTurnstileTokenOptions): Promise<TokenResult> {
   if (!TURNSTILE_SITE_KEY) {
     console.warn('[Turnstile] Site key not configured');
     return { token: null, failureReason: 'token_acquisition_failed', isNetworkError: false };
@@ -134,15 +142,21 @@ export async function getTurnstileToken(action: string): Promise<TokenResult> {
   }
 
   return new Promise((resolve) => {
-    // Get the modal's widget container
-    const modalWidgetContainer = document.getElementById('turnstile-widget-container');
-    const challengeContainer = document.getElementById('verification-challenge-container');
+    // Check for custom container from options first
+    const customWidgetContainer = options?.widgetContainer;
+    const customParentContainer = options?.parentContainer;
+
+    // Get the modal's widget container (fallback to default verification modal)
+    const modalWidgetContainer = customWidgetContainer ?? document.getElementById('turnstile-widget-container');
+    const challengeContainer = customParentContainer ?? document.getElementById('verification-challenge-container');
 
     // Use modal container if available, otherwise create a fallback
     let widgetContainer: HTMLElement;
     let fallbackContainer: HTMLElement | null = null;
 
-    if (modalWidgetContainer && challengeContainer) {
+    if (modalWidgetContainer) {
+      // Clear any existing widget in the container before rendering a new one
+      modalWidgetContainer.innerHTML = '';
       widgetContainer = modalWidgetContainer;
     } else {
       // Fallback: create container (for cases where modal isn't shown)
@@ -466,13 +480,22 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
   };
 }
 
+/** Options for performTurnstileVerification */
+export interface TurnstileVerificationOptions {
+  /** Custom widget container element */
+  widgetContainer?: HTMLElement;
+  /** Custom parent container to show/hide (optional) */
+  parentContainer?: HTMLElement;
+}
+
 /**
  * Perform full Turnstile verification flow with retry logic
  * Retries on network errors for both challenge and verification phases
  * @param action The action name for Turnstile (e.g., 'create_tab', 'export_proof')
+ * @param options Optional configuration for custom containers
  * @returns Verification result
  */
-export async function performTurnstileVerification(action: string): Promise<VerificationResult> {
+export async function performTurnstileVerification(action: string, options?: TurnstileVerificationOptions): Promise<VerificationResult> {
   // If Turnstile is not configured, allow the action (development mode)
   if (!isTurnstileConfigured()) {
     console.log('[Turnstile] Not configured, allowing action');
@@ -533,7 +556,7 @@ export async function performTurnstileVerification(action: string): Promise<Veri
   phaseCallback?.('challenge', 'active');
   let tokenResult: TokenResult | null = null;
   for (let attempt = 1; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
-    tokenResult = await getTurnstileToken(action);
+    tokenResult = await getTurnstileToken(action, options);
 
     // Success - got a token
     if (tokenResult.token) {

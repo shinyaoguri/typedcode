@@ -109,8 +109,28 @@ export const en: TranslationKeys = {
     dataStorageTitle: 'Data Storage',
     dataStorageDesc:
       'All operation logs are stored <strong>only in your browser\'s local storage</strong>. No automatic transmission to servers occurs.',
+    screenCaptureTitle: 'Screen Capture',
+    screenCaptureDesc: 'Periodic screenshots are taken to improve proof reliability.',
+    screenCaptureInterval: 'Capture entire screen every minute',
+    screenCaptureFocus: 'Capture on focus loss',
+    screenCaptureStorage: 'Images stored locally only',
     agreeCheckbox: 'I understand and agree to the above',
     agreeButton: 'Agree and Start',
+  },
+
+  screenCapture: {
+    requesting: 'Requesting screen share permission...',
+    permissionDenied: 'Screen share permission denied',
+    notSupported: 'Screen capture is not supported in this browser',
+    captured: 'Screenshot captured',
+    capturedPeriodic: 'Periodic screenshot captured',
+    capturedFocusLost: 'Screenshot captured after focus lost',
+    capturedManual: 'Manual screenshot captured',
+    lockTitle: 'Screen sharing stopped',
+    lockDescription: 'Screen sharing of the entire screen is required to use TypedCode.',
+    resumeButton: 'Resume screen sharing',
+    guideText: 'Click <strong>"Hide"</strong> on the dialog<br>shown below',
+    guideHint: 'Click to dismiss',
   },
 
   statusBar: {
@@ -168,6 +188,16 @@ export const en: TranslationKeys = {
     failed: 'Export failed',
     zipSuccess: 'ZIP file downloaded (${count} files)',
     zipFailed: 'ZIP export failed',
+    progressTitle: 'Preparing files...',
+    phaseVerification: 'Human verification',
+    phasePreparing: 'Preparing data',
+    phaseScreenshots: 'Collecting screenshots',
+    phaseGenerating: 'Generating ZIP file',
+    statusVerification: 'Verifying you are human...',
+    statusPreparing: 'Preparing data...',
+    statusScreenshots: 'Collecting screenshots...',
+    statusGenerating: 'Generating ZIP file...',
+    statusComplete: 'Complete',
   },
 
   terminal: {
@@ -234,6 +264,8 @@ export const en: TranslationKeys = {
     selectionClear: 'Selection cleared',
     selectionCount: '${count} chars selected',
     terminalInput: 'Terminal input',
+    screenShareStart: 'Screen sharing started',
+    screenShareStop: 'Screen sharing stopped',
   },
 
   operations: {

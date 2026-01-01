@@ -28,6 +28,12 @@ export {
   type NetworkTrackerCallback,
 } from './NetworkTracker.js';
 export {
+  ScreenshotTracker,
+  type ScreenshotTrackerEvent,
+  type ScreenshotTrackerCallback,
+  type ScreenshotTrackerOptions,
+} from './ScreenshotTracker.js';
+export {
   initializeTrackers,
   type RecordEventCallback,
 } from './TrackersInitializer.js';

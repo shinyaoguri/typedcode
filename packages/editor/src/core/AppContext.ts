@@ -22,6 +22,7 @@ import type { NetworkTracker } from '../tracking/NetworkTracker.js';
 import type { CursorTracker } from '../editor/CursorTracker.js';
 import type { OperationDetector } from '../tracking/OperationDetector.js';
 import type { EditorController } from '../editor/EditorController.js';
+import type { ScreenshotTracker } from '../tracking/ScreenshotTracker.js';
 
 // UI Components
 import type { ProcessingDialog } from '../ui/components/ProcessingDialog.js';
@@ -50,6 +51,7 @@ export interface Trackers {
   network: NetworkTracker;
   cursor: CursorTracker;
   operation: OperationDetector;
+  screenshot: ScreenshotTracker | null;  // 許可が得られない場合はnull
 }
 
 /**

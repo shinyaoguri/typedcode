@@ -121,8 +121,29 @@ export interface TranslationKeys {
     botDetectionDesc: string;
     dataStorageTitle: string;
     dataStorageDesc: string;
+    screenCaptureTitle: string;
+    screenCaptureDesc: string;
+    screenCaptureInterval: string;
+    screenCaptureFocus: string;
+    screenCaptureStorage: string;
     agreeCheckbox: string;
     agreeButton: string;
+  };
+
+  // Screen capture
+  screenCapture: {
+    requesting: string;
+    permissionDenied: string;
+    notSupported: string;
+    captured: string;
+    capturedPeriodic: string;
+    capturedFocusLost: string;
+    capturedManual: string;
+    lockTitle: string;
+    lockDescription: string;
+    resumeButton: string;
+    guideText: string;
+    guideHint: string;
   };
 
   // Status bar
@@ -183,6 +204,16 @@ export interface TranslationKeys {
     failed: string;
     zipSuccess: string;
     zipFailed: string;
+    progressTitle: string;
+    phaseVerification: string;
+    phasePreparing: string;
+    phaseScreenshots: string;
+    phaseGenerating: string;
+    statusVerification: string;
+    statusPreparing: string;
+    statusScreenshots: string;
+    statusGenerating: string;
+    statusComplete: string;
   };
 
   // Terminal / Runtime
@@ -246,6 +277,8 @@ export interface TranslationKeys {
     selectionClear: string;
     selectionCount: string;
     terminalInput: string;
+    screenShareStart: string;
+    screenShareStop: string;
   };
 
   // Operation types (input detection)
