@@ -4,6 +4,7 @@
  */
 
 // メッセージタイプ定義
+
 interface ComputePoSWRequest {
   type: 'compute-posw';
   requestId: number;
