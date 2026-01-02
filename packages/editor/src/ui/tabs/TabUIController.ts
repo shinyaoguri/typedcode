@@ -139,9 +139,7 @@ export class TabUIController {
       const tabName = targetTab
         ? `${targetTab.filename}.${this.getFileExtension(targetTab.language)}`
         : t('tabs.untitled');
-      if (confirm(t('tabs.closeConfirm', { tabName }))) {
-        this.tabManager.closeTab(tab.id);
-      }
+      this.showTabCloseConfirmDialog(tab.id, tabName);
     });
 
     // ドラッグイベントを設定
@@ -573,6 +571,72 @@ export class TabUIController {
 
     // UIを更新（タブ順序を反映）
     this.updateUI();
+  }
+
+  /**
+   * タブを閉じる確認ダイアログを表示
+   */
+  private showTabCloseConfirmDialog(tabId: string, tabName: string): void {
+    const dialog = document.getElementById('tab-close-dialog');
+    const filenameEl = document.getElementById('tab-close-filename');
+    const cancelBtn = document.getElementById('tab-close-cancel-btn');
+    const confirmBtn = document.getElementById('tab-close-confirm-btn');
+
+    if (!dialog || !cancelBtn || !confirmBtn) {
+      // ダイアログが存在しない場合はフォールバック
+      if (confirm(t('tabs.closeConfirm', { tabName }))) {
+        this.tabManager.closeTab(tabId);
+      }
+      return;
+    }
+
+    // ファイル名を設定
+    if (filenameEl) {
+      filenameEl.textContent = `「${tabName}」`;
+    }
+
+    // ダイアログを表示
+    dialog.classList.remove('hidden');
+
+    // イベントハンドラーをクリーンアップするための参照
+    let handleCancel: () => void;
+    let handleConfirm: () => void;
+    let handleOverlayClick: (e: MouseEvent) => void;
+    let handleEscape: (e: KeyboardEvent) => void;
+
+    const cleanup = (): void => {
+      cancelBtn.removeEventListener('click', handleCancel);
+      confirmBtn.removeEventListener('click', handleConfirm);
+      dialog.removeEventListener('click', handleOverlayClick);
+      document.removeEventListener('keydown', handleEscape);
+      dialog.classList.add('hidden');
+    };
+
+    handleCancel = (): void => {
+      cleanup();
+    };
+
+    handleConfirm = (): void => {
+      cleanup();
+      this.tabManager.closeTab(tabId);
+    };
+
+    handleOverlayClick = (e: MouseEvent): void => {
+      if (e.target === dialog) {
+        cleanup();
+      }
+    };
+
+    handleEscape = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        cleanup();
+      }
+    };
+
+    cancelBtn.addEventListener('click', handleCancel);
+    confirmBtn.addEventListener('click', handleConfirm);
+    dialog.addEventListener('click', handleOverlayClick);
+    document.addEventListener('keydown', handleEscape);
   }
 
   /**

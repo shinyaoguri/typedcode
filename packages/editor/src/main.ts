@@ -1,9 +1,16 @@
 console.log('[DEBUG] ===== main.ts TOP LEVEL LOADING =====');
 
+// デバッグ：sessionStorageの状態を確認
+console.log('[DEBUG main.ts TOP] sessionStorage typedcode-tabs exists:', sessionStorage.getItem('typedcode-tabs') !== null);
+console.log('[DEBUG main.ts TOP] sessionStorage typedcode-tabs length:', sessionStorage.getItem('typedcode-tabs')?.length);
+console.log('[DEBUG main.ts TOP] sessionStorage typedcode-screenshot-session:', sessionStorage.getItem('typedcode-screenshot-session'));
+
 // Check if this is a fresh window request (opened via "New Window" menu)
 // If so, clear sessionStorage to start with a clean state
 const urlParams = new URLSearchParams(window.location.search);
+console.log('[DEBUG main.ts TOP] URL fresh param:', urlParams.get('fresh'));
 if (urlParams.get('fresh') === '1') {
+  console.log('[DEBUG main.ts TOP] Clearing sessionStorage for fresh window');
   sessionStorage.removeItem('typedcode-tabs');
   // Remove the ?fresh=1 from URL without reloading
   const cleanUrl = window.location.origin + window.location.pathname;
@@ -649,6 +656,11 @@ async function initializeTabManager(
   ctx.tabManager.setOnTabChange((tab, previousTab) => {
     console.log('[TypedCode] Tab switched:', previousTab?.filename, '->', tab.filename);
     handleTabChange(tab);
+
+    // ScreenshotTrackerのstartTimeを新しいタブのTypingProofに合わせて更新
+    if (ctx.trackers.screenshot) {
+      ctx.trackers.screenshot.setProofStartTime(tab.typingProof.startTime);
+    }
   });
 
   ctx.tabManager.setOnTabUpdate(() => {
@@ -1107,6 +1119,23 @@ async function initializeApp(): Promise<void> {
   // Phase 7: ターミナルとコード実行の初期化
   initializeTerminal();
   initializeCodeExecution();
+
+  // Phase 8: セッション再開イベントの記録（リロード時）
+  // sessionStorageにタブデータが存在していた場合はリロードによる再開
+  const wasReloaded = sessionStorage.getItem('typedcode-tabs') !== null &&
+                      sessionStorage.getItem('typedcode-screenshot-session') === 'active';
+  if (wasReloaded) {
+    // セッション再開イベントを全タブに記録
+    ctx.eventRecorder?.recordToAllTabs({
+      type: 'sessionResumed',
+      data: {
+        timestamp: performance.now(),
+        previousEventCount: ctx.tabManager?.getActiveProof()?.events.length ?? 0,
+      },
+      description: t('events.sessionResumed'),
+    });
+    console.log('[TypedCode] Session resumed after reload');
+  }
 
   console.log('[TypedCode] App initialized successfully');
 }

@@ -62,6 +62,9 @@ export interface ScreenshotTrackerOptions {
   jpegQuality?: number;
 }
 
+/** セッション状態を永続化するためのストレージキー */
+const SESSION_STATE_KEY = 'typedcode-screenshot-session';
+
 export class ScreenshotTracker {
   private captureService: ScreenCaptureService;
   private storageService: ScreenshotStorageService;
@@ -71,10 +74,10 @@ export class ScreenshotTracker {
   private attached = false;
   private lastEventSequence = 0;
   private initialized = false;
-  private storageCleared = false; // セッション中に一度だけストレージをクリアするためのフラグ
   private shareStartTimestamp: number | null = null;
   private currentDisplayInfo: DisplayInfo | null = null;
   private currentDisplaySurface: string | null = null;
+  private proofStartTime: number = 0; // TypingProofの開始時刻（相対時間計算用）
 
   constructor(options?: ScreenshotTrackerOptions) {
     const captureOptions: ScreenCaptureOptions = {
@@ -86,6 +89,21 @@ export class ScreenshotTracker {
     this.captureService = new ScreenCaptureService(captureOptions);
     this.storageService = new ScreenshotStorageService();
     this.screenShareGuide = new ScreenShareGuide();
+  }
+
+  /**
+   * セッション中にストレージがクリア済みかどうかを確認
+   * sessionStorageを使用してリロード時にも状態を保持
+   */
+  private isStorageCleared(): boolean {
+    return sessionStorage.getItem(SESSION_STATE_KEY) === 'active';
+  }
+
+  /**
+   * ストレージクリア済みフラグを設定
+   */
+  private markStorageCleared(): void {
+    sessionStorage.setItem(SESSION_STATE_KEY, 'active');
   }
 
   // ========================================
@@ -153,16 +171,18 @@ export class ScreenshotTracker {
     try {
       await this.storageService.initialize();
       // 初回のみ過去のスクリーンショットをクリア（セッション中は保持）
+      // sessionStorageを使用してリロード時にも状態を保持
       // (IndexedDBは永続化されるため、過去のセッションのデータが残っている可能性がある)
-      if (!this.storageCleared) {
+      if (!this.isStorageCleared()) {
         const existingCount = await this.storageService.count();
         if (existingCount > 0) {
           console.log(`[ScreenshotTracker] Clearing ${existingCount} screenshots from previous session`);
           await this.storageService.clear();
         }
-        this.storageCleared = true;
+        this.markStorageCleared();
       } else {
-        console.log('[ScreenshotTracker] Resuming screen share - keeping existing screenshots');
+        const existingCount = await this.storageService.count();
+        console.log(`[ScreenshotTracker] Resuming screen share - keeping ${existingCount} existing screenshots`);
       }
     } catch (error) {
       console.error('[ScreenshotTracker] Failed to initialize storage:', error);
@@ -202,6 +222,9 @@ export class ScreenshotTracker {
     // 定期キャプチャを開始
     this.captureService.startPeriodicCapture();
 
+    // 再開（resume）かどうかを判定（既にセッションが開始されていた場合）
+    const isResume = this.initialized;
+
     this.attached = true;
     this.initialized = true;
 
@@ -217,13 +240,17 @@ export class ScreenshotTracker {
       displaySurface: result.displaySurface,
     };
 
-    // 画面共有開始イベントを発火
-    this.emitScreenShareStartEvent();
+    // 画面共有開始/再開イベントを発火
+    if (isResume) {
+      this.emitScreenShareResumedEvent();
+    } else {
+      this.emitScreenShareStartEvent();
+    }
 
     // Chrome共有ダイアログの「非表示」ボタンを押すよう促すガイドを表示
     this.screenShareGuide.show();
 
-    console.log('[ScreenshotTracker] Attached and started');
+    console.log(`[ScreenshotTracker] ${isResume ? 'Resumed' : 'Attached'} and started`);
 
     return { success: true, displaySurface: result.displaySurface };
   }
@@ -280,6 +307,14 @@ export class ScreenshotTracker {
     this.lastEventSequence = sequence;
   }
 
+  /**
+   * TypingProofの開始時刻を設定
+   * スクリーンショットのタイムスタンプをハッシュチェーンと同じ相対時間で記録するため
+   */
+  setProofStartTime(startTime: number): void {
+    this.proofStartTime = startTime;
+  }
+
   // ========================================
   // エクスポート
   // ========================================
@@ -318,7 +353,8 @@ export class ScreenshotTracker {
     captureType: ScreenshotCaptureType,
     displayInfo: DisplayInfo
   ): Promise<void> {
-    const timestamp = performance.now();
+    // TypingProofと同じ相対時間を使用（performance.now() - startTime）
+    const timestamp = performance.now() - this.proofStartTime;
     const createdAt = Date.now();
 
     // ストレージに保存
@@ -383,10 +419,15 @@ export class ScreenshotTracker {
   private emitScreenShareStartEvent(): void {
     if (!this.callback || !this.currentDisplayInfo) return;
 
+    // TypingProofと同じ相対時間を使用
+    const relativeTimestamp = this.shareStartTimestamp !== null
+      ? this.shareStartTimestamp - this.proofStartTime
+      : performance.now() - this.proofStartTime;
+
     const data: ScreenShareStartData = {
       displaySurface: this.currentDisplaySurface ?? 'unknown',
       displayInfo: this.currentDisplayInfo,
-      timestamp: this.shareStartTimestamp ?? performance.now(),
+      timestamp: relativeTimestamp,
     };
 
     const description = t('events.screenShareStart') ?? 'Screen sharing started';
@@ -398,6 +439,34 @@ export class ScreenshotTracker {
     });
 
     console.log('[ScreenshotTracker] Screen share start event emitted');
+  }
+
+  /**
+   * 画面共有再開イベントを発火
+   */
+  private emitScreenShareResumedEvent(): void {
+    if (!this.callback || !this.currentDisplayInfo) return;
+
+    // TypingProofと同じ相対時間を使用
+    const relativeTimestamp = this.shareStartTimestamp !== null
+      ? this.shareStartTimestamp - this.proofStartTime
+      : performance.now() - this.proofStartTime;
+
+    const data: ScreenShareStartData = {
+      displaySurface: this.currentDisplaySurface ?? 'unknown',
+      displayInfo: this.currentDisplayInfo,
+      timestamp: relativeTimestamp,
+    };
+
+    const description = t('events.screenShareResumed') ?? 'Screen sharing resumed';
+
+    this.callback({
+      type: 'screenShareStart', // 既存の型を再利用（データ構造は同じ）
+      data,
+      description,
+    });
+
+    console.log('[ScreenshotTracker] Screen share resumed event emitted');
   }
 
   /**
@@ -413,9 +482,10 @@ export class ScreenshotTracker {
       ? now - this.shareStartTimestamp
       : 0;
 
+    // TypingProofと同じ相対時間を使用
     const data: ScreenShareStopData = {
       reason,
-      timestamp: now,
+      timestamp: now - this.proofStartTime,
       duration,
     };
 

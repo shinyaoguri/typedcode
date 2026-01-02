@@ -422,6 +422,33 @@
       </div>
     </div>
 
+    <!-- Tab Close Confirmation Dialog -->
+    <div id="tab-close-dialog" class="modal-overlay hidden">
+      <div class="modal-dialog modal-danger">
+        <div class="modal-header">
+          <i class="fas fa-triangle-exclamation"></i>
+          <h3 data-i18n="tabCloseDialog.title">タブを閉じる</h3>
+        </div>
+        <div class="modal-body">
+          <p class="modal-warning" data-i18n="tabCloseDialog.warning">この操作は取り消せません！</p>
+          <p id="tab-close-filename" class="tab-close-filename"></p>
+          <p data-i18n="tabCloseDialog.description">以下のデータが完全に削除されます：</p>
+          <ul class="modal-list">
+            <li><i class="fas fa-keyboard"></i> <span data-i18n="tabCloseDialog.itemKeystrokes">記録されたキーストローク</span></li>
+            <li><i class="fas fa-link"></i> <span data-i18n="tabCloseDialog.itemHashChain">ハッシュチェーン（証明データ）</span></li>
+            <li><i class="fas fa-camera"></i> <span data-i18n="tabCloseDialog.itemScreenshots">関連するスクリーンショット</span></li>
+          </ul>
+          <p class="modal-hint" data-i18n="tabCloseDialog.exportHint">証明を保存したい場合は、先にエクスポートしてください。</p>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn modal-btn-cancel" id="tab-close-cancel-btn" data-i18n="common.cancel">キャンセル</button>
+          <button class="modal-btn modal-btn-danger" id="tab-close-confirm-btn">
+            <i class="fas fa-times"></i> <span data-i18n="tabCloseDialog.confirmButton">タブを閉じる</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Terms of Service Modal -->
     <div id="terms-modal" class="modal-overlay hidden">
       <div class="modal-dialog modal-terms">

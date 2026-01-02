@@ -101,6 +101,23 @@
   border-left: 3px solid var(--accent-danger);
 }
 
+.modal-hint {
+  color: var(--text-tertiary) !important;
+  font-size: 12px !important;
+  font-style: italic;
+  margin-top: 12px !important;
+}
+
+.tab-close-filename {
+  font-weight: 600;
+  color: var(--text-primary) !important;
+  font-size: 14px !important;
+  background: var(--bg-tertiary);
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+}
+
 .modal-list {
   list-style: none;
   padding: 0;

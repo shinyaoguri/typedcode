@@ -624,19 +624,25 @@ export class TabManager {
   async loadFromStorage(): Promise<boolean> {
     try {
       const data = sessionStorage.getItem(STORAGE_KEY);
+      console.log('[DEBUG TabManager.loadFromStorage] STORAGE_KEY:', STORAGE_KEY);
+      console.log('[DEBUG TabManager.loadFromStorage] data exists:', data !== null);
+      console.log('[DEBUG TabManager.loadFromStorage] data length:', data?.length);
       if (!data) return false;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawStorage: any = JSON.parse(data);
+      console.log('[DEBUG TabManager.loadFromStorage] rawStorage.version:', rawStorage.version);
+      console.log('[DEBUG TabManager.loadFromStorage] tabs count:', Object.keys(rawStorage.tabs ?? {}).length);
 
       // バージョンチェックとマイグレーション
-      if (rawStorage.version !== 2 && rawStorage.version !== 3) {
-        console.warn('[TabManager] Storage version mismatch, clearing data');
+      // STORAGE_FORMAT_VERSION (現在は1) を使用して互換性を確認
+      if (rawStorage.version !== STORAGE_FORMAT_VERSION) {
+        console.warn(`[TabManager] Storage version mismatch: expected ${STORAGE_FORMAT_VERSION}, got ${rawStorage.version}`);
         sessionStorage.removeItem(STORAGE_KEY);
         return false;
       }
 
-      // v2からv3へのマイグレーション: tabOrderがない場合は生成
+      // tabOrderがない場合は生成（後方互換性のため）
       const tabOrder: string[] = rawStorage.tabOrder ?? Object.keys(rawStorage.tabs);
 
       // タブを復元（tabOrder順に処理）
@@ -689,9 +695,12 @@ export class TabManager {
         await this.switchTab(firstTabId);
       }
 
+      console.log('[DEBUG TabManager.loadFromStorage] SUCCESS - tabs restored:', this.tabs.size);
+      console.log('[DEBUG TabManager.loadFromStorage] activeTabId:', this.activeTabId);
       return true;
     } catch (e) {
       console.error('[TabManager] Failed to load from storage:', e);
+      console.error('[DEBUG TabManager.loadFromStorage] Error details:', e);
       return false;
     }
   }

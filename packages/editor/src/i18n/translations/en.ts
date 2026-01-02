@@ -68,6 +68,17 @@ export const en: TranslationKeys = {
     confirmButton: 'Reset All',
   },
 
+  tabCloseDialog: {
+    title: 'Close Tab',
+    warning: 'This action cannot be undone!',
+    description: 'The following data will be permanently deleted:',
+    itemKeystrokes: 'Recorded keystrokes',
+    itemHashChain: 'Hash chain (proof data)',
+    itemScreenshots: 'Associated screenshots',
+    exportHint: 'If you want to save the proof, please export it first.',
+    confirmButton: 'Close Tab',
+  },
+
   processingDialog: {
     title: 'Generating Hash Chain...',
     description:
@@ -266,6 +277,8 @@ export const en: TranslationKeys = {
     terminalInput: 'Terminal input',
     screenShareStart: 'Screen sharing started',
     screenShareStop: 'Screen sharing stopped',
+    screenShareResumed: 'Screen sharing resumed',
+    sessionResumed: 'Session resumed (after reload)',
   },
 
   operations: {

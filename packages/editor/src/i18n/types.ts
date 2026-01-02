@@ -80,6 +80,18 @@ export interface TranslationKeys {
     confirmButton: string;
   };
 
+  // Tab close confirmation dialog
+  tabCloseDialog: {
+    title: string;
+    warning: string;
+    description: string;
+    itemKeystrokes: string;
+    itemHashChain: string;
+    itemScreenshots: string;
+    exportHint: string;
+    confirmButton: string;
+  };
+
   // Processing dialog (PoSW generation)
   processingDialog: {
     title: string;
@@ -279,6 +291,8 @@ export interface TranslationKeys {
     terminalInput: string;
     screenShareStart: string;
     screenShareStop: string;
+    screenShareResumed: string;
+    sessionResumed: string;
   };
 
   // Operation types (input detection)

@@ -151,6 +151,12 @@ export function initializeTrackers(options: TrackersInitializerOptions): void {
   // ScreenshotTracker - スクリーンショットの追跡
   // スクリーンショット関連イベントはセッション全体に関わるため、全タブに記録
   if (trackers.screenshot) {
+    // TypingProofのstartTimeを設定（タイムスタンプをハッシュチェーンと同期させるため）
+    const activeProof = ctx.tabManager?.getActiveProof();
+    if (activeProof) {
+      trackers.screenshot.setProofStartTime(activeProof.startTime);
+    }
+
     trackers.screenshot.setCallback((event) => {
       recordEventToAllTabs({
         type: event.type,

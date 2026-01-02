@@ -68,6 +68,17 @@ export const ja: TranslationKeys = {
     confirmButton: 'すべてリセット',
   },
 
+  tabCloseDialog: {
+    title: 'タブを閉じる',
+    warning: 'この操作は取り消せません！',
+    description: '以下のデータが完全に削除されます：',
+    itemKeystrokes: '記録されたキーストローク',
+    itemHashChain: 'ハッシュチェーン（証明データ）',
+    itemScreenshots: '関連するスクリーンショット',
+    exportHint: '証明を保存したい場合は、先にエクスポートしてください。',
+    confirmButton: 'タブを閉じる',
+  },
+
   processingDialog: {
     title: 'ハッシュチェーン生成中...',
     description:
@@ -265,6 +276,8 @@ export const ja: TranslationKeys = {
     terminalInput: 'ターミナル入力',
     screenShareStart: '画面共有を開始しました',
     screenShareStop: '画面共有が停止されました',
+    screenShareResumed: '画面共有を再開しました',
+    sessionResumed: 'セッションを再開しました（リロード後）',
   },
 
   operations: {
