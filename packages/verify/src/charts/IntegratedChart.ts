@@ -147,6 +147,9 @@ export class IntegratedChart {
     // 外部入力マーカー
     const externalInputMarkers = this.extractExternalInputMarkers(events);
 
+    // 人間検証イベント（humanAttestation）
+    const humanAttestationEvents = this.extractHumanAttestationEvents(events);
+
     // イベントマッピング
     const eventData = events.map((e, index) => ({
       type: e.type,
@@ -175,6 +178,7 @@ export class IntegratedChart {
       focusEvents,
       visibilityEvents,
       externalInputMarkers,
+      humanAttestationEvents,
       maxSpeed,
       maxKeystrokeTime: Math.ceil(maxKeystrokeTime / 100) * 100,
     };
@@ -275,6 +279,24 @@ export class IntegratedChart {
   }
 
   /**
+   * 人間検証イベントを抽出
+   */
+  private extractHumanAttestationEvents(events: StoredEvent[]): { timestamp: number; eventIndex: number }[] {
+    const attestationEvents: { timestamp: number; eventIndex: number }[] = [];
+
+    events.forEach((event, index) => {
+      if (event.type === 'humanAttestation') {
+        attestationEvents.push({
+          timestamp: event.timestamp,
+          eventIndex: index,
+        });
+      }
+    });
+
+    return attestationEvents;
+  }
+
+  /**
    * データセットを構築
    */
   private buildDatasets(): ChartDataset[] {
@@ -339,7 +361,27 @@ export class IntegratedChart {
       });
     }
 
-    // 5. スクリーンショットポイント（検証状態別に分離）
+    // 5. 人間検証イベント（ファイル作成時のTurnstile認証）
+    if (this.cache.humanAttestationEvents.length > 0) {
+      datasets.push({
+        type: 'scatter',
+        label: '人間検証',
+        data: this.cache.humanAttestationEvents.map((m) => ({
+          x: m.timestamp,
+          y: 0.9, // 上部に配置
+        })),
+        backgroundColor: '#8b5cf6', // 紫色
+        borderColor: '#7c3aed',
+        borderWidth: 2,
+        pointRadius: 10,
+        pointHoverRadius: 14,
+        pointStyle: 'star', // 星形で人間検証を強調
+        yAxisID: 'yTopMarkers',
+        order: 0,
+      });
+    }
+
+    // 6. スクリーンショットポイント（キャプチャタイプ別に分離、上部に配置）
     if (this.cache.screenshots.length > 0) {
       console.log('[IntegratedChart] Building screenshot datasets:', {
         total: this.cache.screenshots.length,
@@ -349,86 +391,123 @@ export class IntegratedChart {
           verified: s.verified,
           missing: s.missing,
           timestamp: s.timestamp,
+          captureType: s.captureType,
         })),
       });
 
-      // 検証済み（正常）
-      const verifiedScreenshots = this.cache.screenshots.filter((s) => s.verified && !s.missing);
-      console.log('[IntegratedChart] Verified screenshots:', verifiedScreenshots.length);
-      if (verifiedScreenshots.length > 0) {
+      // 定期撮影（periodic）- 上部に配置
+      const periodicScreenshots = this.cache.screenshots.filter((s) => s.captureType === 'periodic');
+      if (periodicScreenshots.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: 'スクリーンショット (検証済み)',
-          data: verifiedScreenshots.map((s) => ({
+          label: '定期撮影',
+          data: periodicScreenshots.map((s) => ({
             x: s.timestamp,
-            y: 0,
+            y: 0.6, // 上部に配置
             screenshot: s,
           })) as unknown as Point[],
           backgroundColor: (ctx) => {
             const data = ctx.raw as ScreenshotPointData | undefined;
-            if (!data?.screenshot) return '#22c55e';
-            switch (data.screenshot.captureType) {
-              case 'periodic':
-                return '#3b82f6';
-              case 'focusLost':
-                return '#f59e0b';
-              case 'manual':
-                return '#10b981';
-              default:
-                return '#22c55e';
-            }
+            if (!data?.screenshot) return '#3b82f6';
+            if (data.screenshot.missing) return 'rgba(239, 68, 68, 0.3)';
+            if (!data.screenshot.verified) return 'rgba(251, 191, 36, 0.5)';
+            return '#3b82f6'; // 青
           },
-          borderColor: '#22c55e',
+          borderColor: (ctx) => {
+            const data = ctx.raw as ScreenshotPointData | undefined;
+            if (!data?.screenshot) return '#2563eb';
+            if (data.screenshot.missing) return '#ef4444';
+            if (!data.screenshot.verified) return '#f59e0b';
+            return '#2563eb';
+          },
           borderWidth: 2,
-          pointRadius: 10,
-          pointHoverRadius: 14,
-          yAxisID: 'yScreenshot',
+          pointRadius: 8,
+          pointHoverRadius: 12,
+          pointStyle: (ctx) => {
+            const data = ctx.raw as ScreenshotPointData | undefined;
+            if (data?.screenshot?.missing) return 'crossRot';
+            if (data?.screenshot && !data.screenshot.verified) return 'triangle';
+            return 'circle';
+          },
+          yAxisID: 'yTopMarkers',
           order: 0,
         });
       }
 
-      // 欠損（画像ファイルがない）
-      const missingScreenshots = this.cache.screenshots.filter((s) => s.missing);
-      console.log('[IntegratedChart] Missing screenshots:', missingScreenshots.length);
-      if (missingScreenshots.length > 0) {
+      // フォーカス喪失撮影（focusLost）- 定期撮影より少し下に配置
+      const focusLostScreenshots = this.cache.screenshots.filter((s) => s.captureType === 'focusLost');
+      if (focusLostScreenshots.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: 'スクリーンショット (欠損)',
-          data: missingScreenshots.map((s) => ({
+          label: 'フォーカス喪失撮影',
+          data: focusLostScreenshots.map((s) => ({
             x: s.timestamp,
-            y: 0,
+            y: 0.3, // 定期撮影より下に配置
             screenshot: s,
           })) as unknown as Point[],
-          backgroundColor: 'rgba(239, 68, 68, 0.3)',
-          borderColor: '#ef4444',
-          borderWidth: 3,
-          pointRadius: 10,
-          pointHoverRadius: 14,
-          pointStyle: 'crossRot',
-          yAxisID: 'yScreenshot',
+          backgroundColor: (ctx) => {
+            const data = ctx.raw as ScreenshotPointData | undefined;
+            if (!data?.screenshot) return '#f59e0b';
+            if (data.screenshot.missing) return 'rgba(239, 68, 68, 0.3)';
+            if (!data.screenshot.verified) return 'rgba(251, 191, 36, 0.5)';
+            return '#f59e0b'; // オレンジ
+          },
+          borderColor: (ctx) => {
+            const data = ctx.raw as ScreenshotPointData | undefined;
+            if (!data?.screenshot) return '#d97706';
+            if (data.screenshot.missing) return '#ef4444';
+            if (!data.screenshot.verified) return '#f59e0b';
+            return '#d97706';
+          },
+          borderWidth: 2,
+          pointRadius: 8,
+          pointHoverRadius: 12,
+          pointStyle: (ctx) => {
+            const data = ctx.raw as ScreenshotPointData | undefined;
+            if (data?.screenshot?.missing) return 'crossRot';
+            if (data?.screenshot && !data.screenshot.verified) return 'triangle';
+            return 'rectRot'; // ひし形で区別
+          },
+          yAxisID: 'yTopMarkers',
           order: 0,
         });
       }
 
-      // 改ざんの可能性（画像はあるがハッシュ不一致）
-      const tamperedScreenshots = this.cache.screenshots.filter((s) => !s.verified && !s.missing);
-      console.log('[IntegratedChart] Tampered screenshots:', tamperedScreenshots.length);
-      if (tamperedScreenshots.length > 0) {
+      // 手動撮影（manual）- 最上部に配置
+      const manualScreenshots = this.cache.screenshots.filter((s) => s.captureType === 'manual');
+      if (manualScreenshots.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: 'スクリーンショット (改ざん)',
-          data: tamperedScreenshots.map((s) => ({
+          label: '手動撮影',
+          data: manualScreenshots.map((s) => ({
             x: s.timestamp,
-            y: 0,
+            y: 0.9, // 最上部
             screenshot: s,
           })) as unknown as Point[],
-          backgroundColor: 'rgba(251, 191, 36, 0.5)',
-          borderColor: '#f59e0b',
-          borderWidth: 3,
-          pointRadius: 10,
-          pointHoverRadius: 14,
-          pointStyle: 'triangle',
-          yAxisID: 'yScreenshot',
+          backgroundColor: (ctx) => {
+            const data = ctx.raw as ScreenshotPointData | undefined;
+            if (!data?.screenshot) return '#10b981';
+            if (data.screenshot.missing) return 'rgba(239, 68, 68, 0.3)';
+            if (!data.screenshot.verified) return 'rgba(251, 191, 36, 0.5)';
+            return '#10b981'; // 緑
+          },
+          borderColor: (ctx) => {
+            const data = ctx.raw as ScreenshotPointData | undefined;
+            if (!data?.screenshot) return '#059669';
+            if (data.screenshot.missing) return '#ef4444';
+            if (!data.screenshot.verified) return '#f59e0b';
+            return '#059669';
+          },
+          borderWidth: 2,
+          pointRadius: 8,
+          pointHoverRadius: 12,
+          pointStyle: (ctx) => {
+            const data = ctx.raw as ScreenshotPointData | undefined;
+            if (data?.screenshot?.missing) return 'crossRot';
+            if (data?.screenshot && !data.screenshot.verified) return 'triangle';
+            return 'rect'; // 四角で区別
+          },
+          yAxisID: 'yTopMarkers',
           order: 0,
         });
       }
@@ -477,11 +556,12 @@ export class IntegratedChart {
             display: false,
           },
         },
-        yScreenshot: {
+        yTopMarkers: {
           type: 'linear',
           display: false,
-          min: -1,
+          min: 0,
           max: 1,
+          // 上部に配置するためのスケール
         },
         yEvents: {
           type: 'linear',
@@ -524,20 +604,22 @@ export class IntegratedChart {
   }
 
   /**
-   * アノテーションを構築（フォーカス状態バー）
+   * アノテーションを構築（フォーカス状態・Visibility状態のバー）
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private buildAnnotations(): Record<string, any> {
     if (!this.cache) return {};
 
     const annotations: Record<string, unknown> = {};
+    let annotationIdx = 0;
 
-    // フォーカス喪失期間をハイライト
+    // ============================================
+    // フォーカス喪失期間をハイライト（赤系）
     // focusChange イベントの data.focused:
     //   - false: フォーカスを失った瞬間（この時点からフォーカス喪失期間開始）
     //   - true: フォーカスを取得した瞬間（この時点でフォーカス喪失期間終了）
+    // ============================================
     let unfocusedStartTime: number | null = null;
-    let annotationIdx = 0;
 
     this.cache.focusEvents.forEach((event) => {
       const data = event.data as { focused: boolean } | null;
@@ -552,8 +634,15 @@ export class IntegratedChart {
           type: 'box',
           xMin: unfocusedStartTime,
           xMax: event.timestamp,
-          backgroundColor: 'rgba(254, 226, 226, 0.3)',
-          borderWidth: 0,
+          yMin: 0.85, // 上部に薄いバーとして表示
+          yMax: 0.95,
+          yScaleID: 'yTopMarkers',
+          backgroundColor: 'rgba(239, 68, 68, 0.4)', // 赤系
+          borderColor: 'rgba(239, 68, 68, 0.8)',
+          borderWidth: 1,
+          label: {
+            display: false,
+          },
         };
         unfocusedStartTime = null;
       }
@@ -565,12 +654,65 @@ export class IntegratedChart {
         type: 'box',
         xMin: unfocusedStartTime,
         xMax: this.cache.totalTime,
-        backgroundColor: 'rgba(254, 226, 226, 0.3)',
-        borderWidth: 0,
+        yMin: 0.85,
+        yMax: 0.95,
+        yScaleID: 'yTopMarkers',
+        backgroundColor: 'rgba(239, 68, 68, 0.4)',
+        borderColor: 'rgba(239, 68, 68, 0.8)',
+        borderWidth: 1,
       };
     }
 
+    // ============================================
+    // Visibility喪失期間（タブ非アクティブ）をハイライト（グレー系）
+    // visibilityChange イベントの data.visible:
+    //   - false: タブが非アクティブになった瞬間
+    //   - true: タブがアクティブになった瞬間
+    // ============================================
+    let hiddenStartTime: number | null = null;
+
+    this.cache.visibilityEvents.forEach((event) => {
+      const data = event.data as { visible: boolean } | null;
+      if (!data) return;
+
+      if (data.visible === false) {
+        // タブが非アクティブになった → 非表示期間の開始
+        hiddenStartTime = event.timestamp;
+      } else if (data.visible === true && hiddenStartTime !== null) {
+        // タブがアクティブになった → 非表示期間の終了
+        annotations[`visibility-hidden-${annotationIdx++}`] = {
+          type: 'box',
+          xMin: hiddenStartTime,
+          xMax: event.timestamp,
+          yMin: 0.73, // フォーカスバーの下に配置
+          yMax: 0.83,
+          yScaleID: 'yTopMarkers',
+          backgroundColor: 'rgba(107, 114, 128, 0.4)', // グレー系
+          borderColor: 'rgba(107, 114, 128, 0.8)',
+          borderWidth: 1,
+        };
+        hiddenStartTime = null;
+      }
+    });
+
+    // 最後の状態（非アクティブ状態で終わった場合）
+    if (hiddenStartTime !== null && this.cache.totalTime > hiddenStartTime) {
+      annotations['visibility-hidden-final'] = {
+        type: 'box',
+        xMin: hiddenStartTime,
+        xMax: this.cache.totalTime,
+        yMin: 0.73,
+        yMax: 0.83,
+        yScaleID: 'yTopMarkers',
+        backgroundColor: 'rgba(107, 114, 128, 0.4)',
+        borderColor: 'rgba(107, 114, 128, 0.8)',
+        borderWidth: 1,
+      };
+    }
+
+    // ============================================
     // シークバーマーカー
+    // ============================================
     if (this.currentMarkerTimestamp !== null) {
       annotations['seekbar-marker'] = {
         type: 'line',
@@ -592,8 +734,8 @@ export class IntegratedChart {
     const context = ctx as { dataset: { label: string }; raw: unknown };
     const label = context.dataset.label;
 
-    // スクリーンショット関連のラベル
-    if (label.startsWith('スクリーンショット')) {
+    // スクリーンショット関連のラベル（定期撮影、フォーカス喪失撮影、手動撮影）
+    if (this.isScreenshotDataset(label)) {
       const data = context.raw as ScreenshotPointData;
       const typeMap: Record<string, string> = {
         periodic: '定期',
@@ -610,6 +752,12 @@ export class IntegratedChart {
       } else {
         return `📷 ${captureType} - ${time} [検証済み]`;
       }
+    }
+
+    if (label === '人間検証') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `⭐ 人間検証 (Turnstile) - ${time}`;
     }
 
     if (label === 'タイピング速度 (CPS)') {
@@ -633,7 +781,11 @@ export class IntegratedChart {
    * スクリーンショット関連のデータセットかどうか判定
    */
   private isScreenshotDataset(label: string | undefined): boolean {
-    return label?.startsWith('スクリーンショット') ?? false;
+    if (!label) return false;
+    // 新しいラベル形式（定期撮影、フォーカス喪失撮影、手動撮影）
+    return label === '定期撮影' || label === 'フォーカス喪失撮影' || label === '手動撮影' ||
+           // 後方互換のための旧ラベル
+           label.startsWith('スクリーンショット');
   }
 
   /**

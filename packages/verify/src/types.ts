@@ -399,6 +399,8 @@ export interface IntegratedChartCache {
   focusEvents: StoredEvent[];
   visibilityEvents: StoredEvent[];
   externalInputMarkers: { timestamp: number; type: InputType }[];
+  /** 人間検証イベント（ファイル作成時のTurnstile認証） */
+  humanAttestationEvents: { timestamp: number; eventIndex: number }[];
   maxSpeed: number;
   maxKeystrokeTime: number;
 }
