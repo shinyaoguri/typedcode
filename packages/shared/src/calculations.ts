@@ -75,7 +75,7 @@ export function countPasteEvents(events?: StoredEvent[]): number {
   if (!events) return 0;
 
   return events.filter(
-    (e) => e.type === 'contentChange' && e.inputType === 'insertFromPaste'
+    (e) => (e.type === 'contentChange' || e.type === 'externalInput') && e.inputType === 'insertFromPaste'
   ).length;
 }
 
@@ -88,7 +88,7 @@ export function countDropEvents(events?: StoredEvent[]): number {
   if (!events) return 0;
 
   return events.filter(
-    (e) => e.type === 'contentChange' && e.inputType === 'insertFromDrop'
+    (e) => (e.type === 'contentChange' || e.type === 'externalInput') && e.inputType === 'insertFromDrop'
   ).length;
 }
 
