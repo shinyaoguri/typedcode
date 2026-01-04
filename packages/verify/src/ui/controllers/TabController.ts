@@ -9,8 +9,13 @@ import type { ResultPanel } from '../ResultPanel';
 import type { WelcomePanel } from '../WelcomePanel';
 import type { TimelineChart } from '../../charts/TimelineChart';
 import type { MouseChart } from '../../charts/MouseChart';
-import type { VerifyTabState, ProgressDetails } from '../../types';
+import type { IntegratedChart } from '../../charts/IntegratedChart';
+import type { ScreenshotOverlay } from '../../charts/ScreenshotOverlay';
+import type { ScreenshotLightbox } from '../ScreenshotLightbox';
+import type { SeekbarController } from '../../charts/SeekbarController';
+import type { VerifyTabState, ProgressDetails, VerifyScreenshot, ScreenshotVerificationSummary, VerificationStepType } from '../../types';
 import { buildResultData, calculateChartStats } from '../../services/ResultDataService';
+import { TrustCalculator } from '../../services/TrustCalculator';
 
 export interface TabControllerDependencies {
   tabManager: VerifyTabManager;
@@ -21,6 +26,11 @@ export interface TabControllerDependencies {
   welcomePanel: WelcomePanel;
   getTimelineChart: () => TimelineChart | null;
   getMouseChart: () => MouseChart | null;
+  // IntegratedChart関連（オプショナル - 後方互換性のため）
+  getIntegratedChart?: () => IntegratedChart | null;
+  getScreenshotOverlay?: () => ScreenshotOverlay | null;
+  getScreenshotLightbox?: () => ScreenshotLightbox | null;
+  getSeekbarController?: () => SeekbarController | null;
 }
 
 export class TabController {
@@ -124,6 +134,18 @@ export class TabController {
       return;
     }
 
+    // 画像ファイルの場合
+    if (tabState.isImage) {
+      if (!isSameTab || forceRefresh) {
+        this.deps.uiState.setCurrentDisplayedTabId(id);
+        this.deps.resultPanel.renderImage({
+          filename: tabState.filename,
+          imageBlob: tabState.imageBlob,
+        });
+      }
+      return;
+    }
+
     if (tabState.status === 'verifying' || tabState.status === 'pending') {
       // 検証中/待機中の場合
       if (!isSameTab) {
@@ -203,31 +225,92 @@ export class TabController {
    * 結果をレンダリング
    */
   private renderResult(tabState: VerifyTabState): void {
+    console.log('[TabController] renderResult:', {
+      filename: tabState.filename,
+      screenshotsCount: tabState.screenshots?.length ?? 0,
+      screenshotsDetails: tabState.screenshots?.map((s) => ({
+        id: s.id,
+        verified: s.verified,
+        missing: s.missing,
+        tampered: s.tampered,
+      })),
+      startTimestamp: tabState.startTimestamp,
+    });
+
+    // スクリーンショット検証サマリーを計算
+    const screenshotSummary = this.calculateScreenshotSummary(tabState.screenshots);
+
+    // 信頼度を計算
+    const trustResult = TrustCalculator.calculate(
+      tabState.verificationResult,
+      tabState.humanAttestationResult,
+      screenshotSummary
+    );
+
+    console.log('[TabController] Trust result:', trustResult);
+
     const resultData = buildResultData(tabState);
     if (!resultData) return;
 
-    this.deps.resultPanel.render(resultData);
+    // trustResult を追加してレンダリング
+    this.deps.resultPanel.render({ ...resultData, trustResult });
+
+    // スクリーンショット検証結果を表示
+    if (tabState.screenshots && tabState.screenshots.length > 0) {
+      this.deps.resultPanel.updateScreenshotVerification({
+        total: screenshotSummary.total,
+        verified: screenshotSummary.verified,
+        missing: screenshotSummary.missing,
+      });
+    }
 
     // Render charts
     const events = tabState.proofData?.proof?.events;
     if (events && events.length > 0) {
-      this.renderCharts(events);
+      this.renderCharts(events, tabState.screenshots, tabState.startTimestamp);
     }
   }
 
   /**
    * チャートをレンダリング
    */
-  private renderCharts(events: any[]): void {
+  private renderCharts(events: any[], screenshots?: VerifyScreenshot[], startTimestamp?: number): void {
     const timelineChart = this.deps.getTimelineChart();
     const mouseChart = this.deps.getMouseChart();
+    const integratedChart = this.deps.getIntegratedChart?.();
+    const screenshotLightbox = this.deps.getScreenshotLightbox?.();
+    const seekbarController = this.deps.getSeekbarController?.();
 
-    if (timelineChart) {
-      timelineChart.draw(events, events);
-    }
+    // IntegratedChartが利用可能な場合はそれを使用
+    if (integratedChart) {
+      integratedChart.draw(events, screenshots ?? [], { startTimestamp });
 
-    if (mouseChart) {
-      mouseChart.draw(events, events);
+      // スクリーンショット一覧をライトボックスに設定
+      if (screenshotLightbox && screenshots && screenshots.length > 0) {
+        screenshotLightbox.setScreenshots(screenshots);
+      }
+
+      // SeekbarControllerにIntegratedChartを連携し、イベントで初期化
+      if (seekbarController) {
+        seekbarController.setIntegratedChart(integratedChart);
+        // アクティブなタブのコンテンツを取得してシークバーを初期化
+        const activeTabId = this.deps.tabBar.getActiveTabId();
+        if (activeTabId) {
+          const tabState = this.deps.tabManager.getTab(activeTabId);
+          if (tabState?.proofData?.content) {
+            seekbarController.initialize(events, tabState.proofData.content);
+          }
+        }
+      }
+    } else {
+      // 既存のチャートを使用（後方互換性）
+      if (timelineChart) {
+        timelineChart.draw(events, events);
+      }
+
+      if (mouseChart) {
+        mouseChart.draw(events, events);
+      }
     }
 
     // Update chart stats
@@ -263,9 +346,25 @@ export class TabController {
   /**
    * エラー進捗を表示（アクティブタブの場合）
    */
-  errorProgressIfActive(id: string, step: string, error: string): void {
+  errorProgressIfActive(id: string, step: VerificationStepType, error: string): void {
     if (this.deps.tabBar.getActiveTabId() === id) {
       this.deps.resultPanel.errorProgress(step, error);
     }
+  }
+
+  /**
+   * スクリーンショット検証サマリーを計算
+   */
+  private calculateScreenshotSummary(screenshots?: VerifyScreenshot[]): ScreenshotVerificationSummary {
+    if (!screenshots || screenshots.length === 0) {
+      return TrustCalculator.emptyScreenshotSummary();
+    }
+
+    return {
+      total: screenshots.length,
+      verified: screenshots.filter((s) => s.verified && !s.missing && !s.tampered).length,
+      missing: screenshots.filter((s) => s.missing).length,
+      tampered: screenshots.filter((s) => s.tampered).length,
+    };
   }
 }

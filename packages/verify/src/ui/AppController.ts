@@ -1,30 +1,25 @@
 /**
  * AppController - Main orchestration for the Verify application
+ * ファサードパターンで各コントローラーに処理を委譲
  */
 import { ThemeManager } from './ThemeManager';
 import { ActivityBar } from './ActivityBar';
 import { Sidebar, type FileStatus } from './Sidebar';
-import { TabBar, type TabStatus } from './TabBar';
+import { TabBar } from './TabBar';
 import { StatusBarUI } from './StatusBarUI';
 import { WelcomePanel } from './WelcomePanel';
 import { ResultPanel } from './ResultPanel';
 import { VerifyTabManager } from '../state/VerifyTabManager';
 import { VerificationQueue } from '../state/VerificationQueue';
 import { UIStateManager } from '../state/UIStateManager';
-import { FileProcessor, type ParsedFileData } from '../services/FileProcessor';
-import { FileSystemAccessService } from '../services/FileSystemAccessService';
-import { FolderSyncManager } from '../services/FolderSyncManager';
-import { TimelineChart } from '../charts/TimelineChart';
-import { MouseChart } from '../charts/MouseChart';
+import { FileProcessor } from '../services/FileProcessor';
 import { TabController } from './controllers/TabController';
+import { FileController } from './controllers/FileController';
+import { VerificationController } from './controllers/VerificationController';
+import { ChartController } from './controllers/ChartController';
+import { FolderController } from './controllers/FolderController';
 import { t, getI18n } from '../i18n/index';
 import { showAboutDialog } from './AboutDialog';
-import type {
-  ProofFile,
-  FSAccessFileEntry,
-  HierarchicalFolder,
-  ProgressDetails,
-} from '../types';
 
 export class AppController {
   private themeManager: ThemeManager;
@@ -39,16 +34,13 @@ export class AppController {
   private verificationQueue: VerificationQueue;
   private fileProcessor: FileProcessor;
   private uiState: UIStateManager;
+
+  // Controllers
   private tabController: TabController;
-
-  // File System Access API
-  private fsAccessService: FileSystemAccessService;
-  private syncManager: FolderSyncManager;
-  private watchedRootHandle: FileSystemDirectoryHandle | null = null;
-  private watchedRootFolderId: string | null = null;
-
-  private timelineChart: TimelineChart | null = null;
-  private mouseChart: MouseChart | null = null;
+  private fileController: FileController;
+  private verificationController: VerificationController;
+  private chartController: ChartController;
+  private folderController: FolderController;
 
   private fileInput: HTMLInputElement;
 
@@ -58,31 +50,10 @@ export class AppController {
     // Initialize theme
     this.themeManager = new ThemeManager();
 
-    // Initialize File System Access API
-    this.fsAccessService = new FileSystemAccessService({
-      onPermissionDenied: (error) => {
-        this.statusBar.setError(`${t('errors.accessDenied')}: ${error.message}`);
-      },
-    });
-
-    this.syncManager = new FolderSyncManager({
-      onFileAdded: (file) => this.handleExternalFileAdded(file),
-      onFileModified: (file) => this.handleExternalFileModified(file),
-      onFileDeleted: (path) => this.handleExternalFileDeleted(path),
-      onFolderAdded: (path, name) => this.handleExternalFolderAdded(path, name),
-      onFolderDeleted: (path) => this.handleExternalFolderDeleted(path),
-      onSyncComplete: () => {
-        // 同期完了時の処理（必要に応じて）
-      },
-      onSyncError: (error) => {
-        console.error('Sync error:', error);
-      },
-    });
-
     // Initialize UI components
     this.activityBar = new ActivityBar({
       onOpenFile: () => this.openFileDialog(),
-      onOpenFolder: () => this.openFolderDialog(),
+      onOpenFolder: () => this.folderController.openFolderDialog(),
       onThemeToggle: () => this.themeManager.toggle(),
       onExplorerToggle: () => this.toggleSidebar(),
       onLanguageToggle: () => this.toggleLanguage(),
@@ -92,7 +63,7 @@ export class AppController {
     this.sidebar = new Sidebar({
       onFileSelect: (id) => this.handleFileSelect(id),
       onAddFile: () => this.openFileDialog(),
-      onAddFolder: () => this.openFolderDialog(),
+      onAddFolder: () => this.folderController.openFolderDialog(),
       onFileRemove: (id) => this.handleFileRemove(id),
       onFilesDropped: (files) => this.handleFilesSelected(files),
       onFolderRemove: (folderId) => this.handleFolderRemove(folderId),
@@ -117,18 +88,13 @@ export class AppController {
     });
 
     this.verificationQueue = new VerificationQueue();
-    this.verificationQueue.setOnProgress((params) => {
-      this.handleVerificationProgress(params.id, params.progress, params.details);
-    });
-    this.verificationQueue.setOnComplete((id, result) => {
-      this.handleVerificationComplete(id, result);
-    });
-    this.verificationQueue.setOnError((id, error) => {
-      this.handleVerificationError(id, error);
-    });
-    this.verificationQueue.initialize();
-
     this.fileProcessor = new FileProcessor();
+
+    // Initialize ChartController first (needed by other controllers)
+    this.chartController = new ChartController();
+    this.chartController.initialize({
+      onSeek: (eventIndex) => this.updateCodePreview(eventIndex),
+    });
 
     // Initialize TabController
     this.tabController = new TabController({
@@ -138,8 +104,71 @@ export class AppController {
       sidebar: this.sidebar,
       resultPanel: this.resultPanel,
       welcomePanel: this.welcomePanel,
-      getTimelineChart: () => this.timelineChart,
-      getMouseChart: () => this.mouseChart,
+      getTimelineChart: () => this.chartController.getTimelineChart(),
+      getMouseChart: () => this.chartController.getMouseChart(),
+      getIntegratedChart: () => this.chartController.getIntegratedChart(),
+      getScreenshotOverlay: () => this.chartController.getScreenshotOverlay(),
+      getScreenshotLightbox: () => this.chartController.getScreenshotLightbox(),
+      getSeekbarController: () => this.chartController.getSeekbarController(),
+    });
+
+    // Initialize VerificationController
+    this.verificationController = new VerificationController({
+      tabManager: this.tabManager,
+      uiState: this.uiState,
+      tabBar: this.tabBar,
+      sidebar: this.sidebar,
+      statusBar: this.statusBar,
+      resultPanel: this.resultPanel,
+      tabController: this.tabController,
+    });
+
+    // Setup verification queue callbacks
+    this.verificationQueue.setOnProgress((params) => {
+      this.verificationController.handleProgress(params.id, params.progress, params.details);
+      this.updateStatusBar();
+    });
+    this.verificationQueue.setOnComplete((id, result) => {
+      this.verificationController.handleComplete(id, result);
+      // 検証完了後、確実にステータスバーを更新
+      setTimeout(() => this.updateStatusBar(), 0);
+    });
+    this.verificationQueue.setOnError((id, error) => {
+      this.verificationController.handleError(id, error);
+      setTimeout(() => this.updateStatusBar(), 0);
+    });
+    this.verificationQueue.initialize();
+
+    // Initialize FileController
+    this.fileController = new FileController({
+      fileProcessor: this.fileProcessor,
+      tabManager: this.tabManager,
+      uiState: this.uiState,
+      verificationQueue: this.verificationQueue,
+      sidebar: this.sidebar,
+      statusBar: this.statusBar,
+      generateId: () => this.generateId(),
+      onScreenshotServiceUpdate: (service) => this.chartController.updateScreenshotService(service),
+      onStatusBarUpdate: () => this.updateStatusBar(),
+    });
+
+    // Initialize FolderController
+    this.folderController = new FolderController({
+      fileProcessor: this.fileProcessor,
+      tabManager: this.tabManager,
+      verificationQueue: this.verificationQueue,
+      sidebar: this.sidebar,
+      tabBar: this.tabBar,
+      statusBar: this.statusBar,
+      generateId: () => this.generateId(),
+      addFileToVerification: (filename, rawData, folderId, relativePath, screenshots, startTimestamp) => {
+        this.fileController.addFileToVerification(filename, rawData, folderId, relativePath, screenshots, startTimestamp);
+      },
+      addPlaintextFile: (fileData, folderId) => this.fileController.addPlaintextFile(fileData, folderId),
+      addImageFile: (fileData, folderId) => this.fileController.addImageFile(fileData, folderId),
+      onScreenshotServiceUpdate: (service) => this.chartController.updateScreenshotService(service),
+      onStatusBarUpdate: () => this.updateStatusBar(),
+      onFileRemove: (id) => this.handleFileRemove(id),
     });
 
     // File input change handler
@@ -149,9 +178,6 @@ export class AppController {
         this.fileInput.value = '';
       }
     });
-
-    // Initialize charts (lazy)
-    this.initializeCharts();
 
     // ページ離脱時の確認ダイアログ
     this.setupBeforeUnloadHandler();
@@ -251,17 +277,16 @@ export class AppController {
     });
   }
 
-  private initializeCharts(): void {
-    const timelineCanvas = document.getElementById('integrated-timeline-chart') as HTMLCanvasElement;
-    const mouseCanvas = document.getElementById('mouse-trajectory-chart') as HTMLCanvasElement;
+  /**
+   * コードプレビューを更新
+   */
+  private updateCodePreview(eventIndex: number): void {
+    const codePreview = document.querySelector('#code-preview code') as HTMLElement | null;
+    const seekbarController = this.chartController.getSeekbarController();
+    if (!codePreview || !seekbarController) return;
 
-    if (timelineCanvas) {
-      this.timelineChart = new TimelineChart({ canvas: timelineCanvas });
-    }
-
-    if (mouseCanvas) {
-      this.mouseChart = new MouseChart({ canvas: mouseCanvas });
-    }
+    const content = seekbarController.getContentAtIndex(eventIndex);
+    codePreview.textContent = content;
   }
 
   private openFileDialog(): void {
@@ -271,150 +296,8 @@ export class AppController {
   private async handleFilesSelected(files: FileList): Promise<void> {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      await this.processFile(file);
+      await this.fileController.processFile(file);
     }
-  }
-
-  private async processFile(file: File): Promise<void> {
-    try {
-      const result = await this.fileProcessor.process(file);
-
-      if (!result.success) {
-        this.statusBar.setError(result.error || t('errors.fileReadError'));
-        return;
-      }
-
-      // ZIPファイルの場合はフォルダを作成
-      let folderId: string | undefined;
-      if (file.name.endsWith('.zip')) {
-        folderId = this.createFolderForZip(file.name);
-      }
-
-      for (const fileData of result.files) {
-        if (fileData.type === 'proof') {
-          this.addFileToVerification(fileData.filename, fileData.rawData, folderId);
-        } else {
-          this.addPlaintextFile(fileData, folderId);
-        }
-      }
-    } catch (error) {
-      console.error('Error processing file:', error);
-      this.statusBar.setError(`${t('errors.fileReadError')}: ${file.name}`);
-    }
-  }
-
-  private createFolderForZip(zipFilename: string): string {
-    const folderId = this.generateId();
-    // ZIPファイル名から拡張子を除去してフォルダ名とする
-    const folderName = this.generateFolderName(zipFilename.replace(/\.zip$/i, ''));
-
-    this.sidebar.addFolder({
-      id: folderId,
-      name: folderName,
-      expanded: true, // デフォルトで展開
-    });
-
-    return folderId;
-  }
-
-  private generateFolderName(baseName: string): string {
-    return this.uiState.generateFolderName(baseName);
-  }
-
-  /**
-   * プレーンテキストファイルを追加（読み取り専用）
-   */
-  private addPlaintextFile(fileData: ParsedFileData, folderId?: string): void {
-    const id = this.generateId();
-    const displayName = this.generateDisplayName(fileData.filename, folderId);
-
-    // Add to tab manager (plaintext file - no verification)
-    this.tabManager.addTab({
-      id,
-      filename: displayName,
-      language: fileData.language,
-      status: 'success', // プレーンテキストは常に「成功」状態
-      progress: 100,
-      proofData: null,
-      verificationResult: null,
-      isPlaintext: true, // プレーンテキストフラグ
-      plaintextContent: fileData.rawData,
-    });
-
-    // Add to sidebar (file list)
-    this.sidebar.addFile({
-      id,
-      filename: displayName,
-      status: 'success', // プレーンテキストはグレーアイコン（成功扱い）
-      folderId,
-      isProof: false, // プレーンテキストファイル
-    });
-
-    // 最初のファイルの場合は自動的にタブを開く
-    const isFirstFile = this.sidebar.getFileCount() === 1;
-    if (isFirstFile) {
-      this.openTabForFile(id);
-    }
-
-    this.updateStatusBar();
-  }
-
-  private addFileToVerification(filename: string, rawData: string, folderId?: string, relativePath?: string): void {
-    try {
-      const proofData = JSON.parse(rawData) as ProofFile;
-      const id = this.generateId();
-
-      // 表示名を生成（重複がある場合は番号を付ける）
-      const displayName = this.generateDisplayName(filename, folderId);
-
-      // Add to tab manager (state management)
-      this.tabManager.addTab({
-        id,
-        filename: displayName,
-        language: proofData.language || 'unknown',
-        status: 'pending',
-        progress: 0,
-        proofData,
-        verificationResult: null,
-      });
-
-      // Add to sidebar (file list)
-      this.sidebar.addFile({
-        id,
-        filename: displayName,
-        status: 'pending',
-        folderId, // フォルダに属する場合
-        relativePath, // File System Access API用のパス
-        isProof: true, // 検証用ファイル
-      });
-
-      // タブは開かない（ユーザがファイル一覧から選択した時に開く）
-      // ただし最初のファイルは自動的にタブを開く
-      const isFirstFile = this.sidebar.getFileCount() === 1;
-      if (isFirstFile) {
-        this.openTabForFile(id);
-      }
-
-      // Track counts
-      this.uiState.incrementTotal();
-
-      // Enqueue for verification
-      this.verificationQueue.enqueue({
-        id,
-        filename,
-        rawData,
-      });
-
-      // Update status bar
-      this.updateStatusBar();
-    } catch (error) {
-      console.error('Error parsing JSON:', error);
-      this.statusBar.setError(`JSONパースエラー: ${filename}`);
-    }
-  }
-
-  private openTabForFile(id: string): void {
-    this.tabController.openTabForFile(id);
   }
 
   private handleFileSelect(id: string): void {
@@ -480,103 +363,11 @@ export class AppController {
     this.tabController.showTabContent(id, forceRefresh);
   }
 
-  private handleVerificationProgress(id: string, progress: number, details?: ProgressDetails): void {
-    const tabState = this.tabManager.getTab(id);
-
-    // 既に完了しているタブへの進捗更新はスキップ（遅延メッセージ対策）
-    if (tabState?.status === 'success' || tabState?.status === 'warning' || tabState?.status === 'error') {
-      return;
-    }
-
-    const statusChanged = tabState?.status !== 'verifying';
-
-    this.tabManager.updateTab(id, { progress, status: 'verifying', progressDetails: details });
-
-    // ステータスが変わった場合のみフル更新、そうでなければ進捗のみ更新（チカチカ防止）
-    if (statusChanged) {
-      this.sidebar.updateFileStatus(id, 'verifying', progress);
-    } else {
-      this.sidebar.updateFileProgress(id, progress);
-    }
-
-    // タブが開いている場合のみ更新
-    if (this.tabBar.hasTab(id)) {
-      this.tabBar.updateTabStatus(id, 'verifying', progress);
-    }
-
-    // アクティブタブの場合、詳細な進捗UIを更新
-    if (this.tabBar.getActiveTabId() === id && details) {
-      this.tabController.updateVerificationProgressUI(details, progress);
-    }
-
-    this.updateStatusBar();
-  }
-
-  private handleVerificationComplete(id: string, result: any): void {
-    console.log('[DEBUG] handleVerificationComplete called', { id, chainValid: result.chainValid });
-
-    const status: FileStatus = result.chainValid
-      ? result.isPureTyping
-        ? 'success'
-        : 'warning'
-      : 'error';
-
-    this.uiState.incrementCompleted();
-    const state = this.uiState.getState();
-    console.log('[DEBUG] completedCount:', state.completedCount, 'totalCount:', state.totalCount);
-
-    this.tabManager.updateTab(id, { verificationResult: result, status });
-    console.log('[DEBUG] tabManager.updateTab done, new status:', status);
-
-    this.sidebar.updateFileStatus(id, status);
-
-    // タブが開いている場合のみ更新
-    if (this.tabBar.hasTab(id)) {
-      this.tabBar.updateTabStatus(id, status as TabStatus);
-    }
-
-    // アクティブタブの場合、結果を表示
-    if (this.tabBar.getActiveTabId() === id) {
-      this.resultPanel.finishProgress();
-      // 強制更新フラグを渡して結果を確実に表示
-      this.showTabContent(id, true);
-    }
-
-    // 検証完了後、確実にステータスバーを更新
-    // setTimeout を使って次のイベントループで更新することで
-    // 全ての状態更新が反映された後に実行される
-    console.log('[DEBUG] scheduling updateStatusBar via setTimeout');
-    setTimeout(() => {
-      console.log('[DEBUG] setTimeout callback executing updateStatusBar');
-      this.updateStatusBar();
-    }, 0);
-  }
-
-  private handleVerificationError(id: string, error: string): void {
-    this.uiState.incrementCompleted();
-    this.tabManager.updateTab(id, { status: 'error', error });
-    this.sidebar.updateFileStatus(id, 'error');
-    // タブが開いている場合のみ更新
-    if (this.tabBar.hasTab(id)) {
-      this.tabBar.updateTabStatus(id, 'error');
-    }
-
-    if (this.tabBar.getActiveTabId() === id) {
-      // 進捗UIをエラー状態に
-      this.resultPanel.errorProgress('chain', error);
-      this.statusBar.setError(error);
-    }
-
-    // 検証完了後、確実にステータスバーを更新
-    setTimeout(() => this.updateStatusBar(), 0);
-  }
-
   private updateStatusBar(): void {
     const fileCount = this.sidebar.getFileCount();
     this.statusBar.setFileCount(fileCount);
 
     // TabManagerの状態に基づいて検証中かどうかを判定
-    // （VerificationQueueの状態は非同期で遅延する可能性があるため）
     let pendingOrVerifyingCount = 0;
     const allTabs = this.tabManager.getAllTabs();
     console.log('[DEBUG] updateStatusBar - allTabs:', allTabs.map(t => ({ id: t.id, status: t.status, filename: t.filename })));
@@ -599,276 +390,7 @@ export class AppController {
     }
   }
 
-  // ==========================================================================
-  // File System Access API メソッド
-  // ==========================================================================
-
-  /**
-   * フォルダ選択ダイアログを開く
-   */
-  private async openFolderDialog(): Promise<void> {
-    if (!FileSystemAccessService.isSupported()) {
-      this.showUnsupportedBrowserDialog();
-      return;
-    }
-
-    const handle = await this.fsAccessService.showDirectoryPicker();
-    if (!handle) return;
-
-    // 既存の監視を停止
-    this.syncManager.stopWatching();
-
-    // ディレクトリを読み取り
-    const result = await this.fsAccessService.readDirectoryRecursive(handle);
-    if (!result.success) {
-      this.statusBar.setError(result.error ?? t('errors.folderReadError'));
-      return;
-    }
-
-    // ルートフォルダを作成
-    const rootFolderId = this.generateId();
-    const rootFolder: HierarchicalFolder = {
-      id: rootFolderId,
-      name: result.rootName,
-      path: '',
-      parentId: null,
-      expanded: true,
-      depth: 0,
-      sourceType: 'fsaccess',
-      directoryHandle: handle,
-    };
-
-    this.sidebar.addHierarchicalFolder(rootFolder);
-    this.watchedRootFolderId = rootFolderId;
-
-    // サブフォルダを追加
-    const folderMap = new Map<string, string>(); // path -> folderId
-    folderMap.set('', rootFolderId);
-
-    // フォルダをソートしてから追加（親フォルダが先に処理されるように）
-    const sortedFolders = result.folders.sort((a, b) => a.path.localeCompare(b.path));
-
-    for (const folder of sortedFolders) {
-      const folderId = this.generateId();
-      const parentPath = folder.path.split('/').slice(0, -1).join('/');
-      const parentId = folderMap.get(parentPath) ?? rootFolderId;
-      const depth = folder.path.split('/').length;
-
-      const hierarchicalFolder: HierarchicalFolder = {
-        id: folderId,
-        name: folder.name,
-        path: folder.path,
-        parentId,
-        expanded: depth <= 1, // 1階層目まで展開
-        depth,
-        sourceType: 'fsaccess',
-        directoryHandle: folder.handle,
-      };
-
-      this.sidebar.addHierarchicalFolder(hierarchicalFolder);
-      folderMap.set(folder.path, folderId);
-    }
-
-    // ファイルを処理
-    for (const fileEntry of result.files) {
-      await this.processFileFromHandle(fileEntry, folderMap);
-    }
-
-    // 監視を開始
-    this.watchedRootHandle = handle;
-    await this.syncManager.startWatching(handle, 3000);
-
-    this.updateStatusBar();
-    this.statusBar.setMessage(`${t('messages.folderOpened')}: ${result.rootName}`);
-  }
-
-  /**
-   * FileSystemFileHandle からファイルを処理
-   */
-  private async processFileFromHandle(
-    fileEntry: FSAccessFileEntry,
-    folderMap: Map<string, string>
-  ): Promise<void> {
-    const parentPath = fileEntry.path.split('/').slice(0, -1).join('/');
-    const folderId = folderMap.get(parentPath);
-
-    try {
-      const result = await this.fileProcessor.processFromHandle(
-        fileEntry.handle,
-        fileEntry.path
-      );
-
-      if (!result.success) {
-        return;
-      }
-
-      for (const fileData of result.files) {
-        if (fileData.type === 'proof') {
-          this.addFileToVerification(fileData.filename, fileData.rawData, folderId, fileData.relativePath);
-        } else {
-          this.addPlaintextFile(fileData, folderId);
-        }
-      }
-    } catch (error) {
-      console.error('Error processing file:', fileEntry.path, error);
-    }
-  }
-
-  /**
-   * 外部でファイルが追加された時の処理
-   */
-  private async handleExternalFileAdded(file: FSAccessFileEntry): Promise<void> {
-    const parentPath = file.path.split('/').slice(0, -1).join('/');
-    const folderId = this.sidebar.getFolderIdByPath(parentPath) ?? this.watchedRootFolderId ?? undefined;
-
-    try {
-      const result = await this.fileProcessor.processFromHandle(file.handle, file.path);
-      if (!result.success) return;
-
-      for (const fileData of result.files) {
-        if (fileData.type === 'proof') {
-          this.addFileToVerification(fileData.filename, fileData.rawData, folderId, fileData.relativePath);
-        } else {
-          this.addPlaintextFile(fileData, folderId);
-        }
-      }
-
-      this.statusBar.setMessage(`${t('messages.fileAdded')}: ${file.name}`);
-    } catch (error) {
-      console.error('Error processing added file:', error);
-    }
-  }
-
-  /**
-   * 外部でファイルが変更された時の処理
-   */
-  private async handleExternalFileModified(file: FSAccessFileEntry): Promise<void> {
-    const existingFileId = this.sidebar.getFileIdByPath(file.path);
-    if (!existingFileId) return;
-
-    try {
-      const result = await this.fileProcessor.processFromHandle(file.handle, file.path);
-      if (!result.success || result.files.length === 0) return;
-
-      const fileData = result.files[0];
-      if (!fileData) return;
-
-      const tabState = this.tabManager.getTab(existingFileId);
-
-      if (tabState) {
-        // 既存のタブ状態を更新
-        if (fileData.type === 'proof') {
-          // 検証ファイルの場合、再検証
-          this.tabManager.updateTab(existingFileId, {
-            status: 'pending',
-            progress: 0,
-            verificationResult: null,
-          });
-          this.sidebar.updateFileStatus(existingFileId, 'pending');
-          this.tabBar.updateTabStatus(existingFileId, 'pending', 0);
-
-          this.verificationQueue.enqueue({
-            id: existingFileId,
-            filename: fileData.filename,
-            rawData: fileData.rawData,
-          });
-        } else {
-          // プレーンテキストの場合、内容を更新
-          this.tabManager.updateTab(existingFileId, {
-            plaintextContent: fileData.rawData,
-          });
-
-          // アクティブタブなら再表示
-          if (this.tabBar.getActiveTabId() === existingFileId) {
-            this.showTabContent(existingFileId);
-          }
-        }
-      }
-
-      this.statusBar.setMessage(`${t('messages.fileUpdated')}: ${file.name}`);
-    } catch (error) {
-      console.error('Error processing modified file:', error);
-    }
-  }
-
-  /**
-   * 外部でファイルが削除された時の処理
-   */
-  private handleExternalFileDeleted(path: string): void {
-    const fileId = this.sidebar.getFileIdByPath(path);
-    if (fileId) {
-      this.handleFileRemove(fileId);
-      const filename = path.split('/').pop() ?? path;
-      this.statusBar.setMessage(`${t('messages.fileDeleted')}: ${filename}`);
-    }
-  }
-
-  /**
-   * 外部でフォルダが追加された時の処理
-   */
-  private handleExternalFolderAdded(path: string, name: string): void {
-    const parentPath = path.split('/').slice(0, -1).join('/');
-    const parentId = this.sidebar.getFolderIdByPath(parentPath) ?? this.watchedRootFolderId;
-    const depth = path.split('/').length;
-
-    const folder: HierarchicalFolder = {
-      id: this.generateId(),
-      name,
-      path,
-      parentId,
-      expanded: false,
-      depth,
-      sourceType: 'fsaccess',
-    };
-
-    this.sidebar.addHierarchicalFolder(folder);
-    this.statusBar.setMessage(`${t('messages.folderAdded')}: ${name}`);
-  }
-
-  /**
-   * 外部でフォルダが削除された時の処理
-   */
-  private handleExternalFolderDeleted(path: string): void {
-    this.sidebar.removeFolderByPath(path);
-    const folderName = path.split('/').pop() ?? path;
-    this.statusBar.setMessage(`${t('messages.folderDeleted')}: ${folderName}`);
-  }
-
-  /**
-   * ブラウザ非対応ダイアログを表示
-   */
-  private showUnsupportedBrowserDialog(): void {
-    const dialog = document.createElement('div');
-    dialog.className = 'modal-overlay';
-    dialog.innerHTML = `
-      <div class="modal">
-        <div class="modal-header">
-          <i class="fas fa-exclamation-triangle" style="color: var(--warning-color);"></i>
-          <h3>${t('errors.browserNotSupported')}</h3>
-        </div>
-        <div class="modal-body">
-          <p>${t('errors.browserNotSupportedDesc')}</p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-primary" onclick="this.closest('.modal-overlay').remove()">
-            ${t('common.close')}
-          </button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(dialog);
-  }
-
   private generateId(): string {
     return `verify-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
-   * 表示名を生成（重複ファイル名の場合は番号を付与）
-   * @param filename 元のファイル名
-   * @param folderId フォルダID（フォルダに属する場合）
-   */
-  private generateDisplayName(filename: string, folderId?: string): string {
-    return this.uiState.generateDisplayName(filename, folderId);
   }
 }

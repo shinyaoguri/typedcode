@@ -35,6 +35,10 @@ export default defineConfig({
     target: 'esnext',
     minify: 'esbuild'
   },
+  esbuild: {
+    // 本番ビルド時のみconsole.logを削除
+    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+  },
   define: {
     __APP_VERSION__: JSON.stringify(buildInfo.appVersion),
     __GIT_COMMIT__: JSON.stringify(buildInfo.gitCommit),

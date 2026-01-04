@@ -1,16 +1,7 @@
-import type { ExportedProof, StoredEvent, InputType } from '@typedcode/shared';
+import type { ExportedProof, StoredEvent, InputType, DisplayInfo, ScreenshotCaptureType, HumanAttestation } from '@typedcode/shared';
 
-/**
- * 署名付き人間証明書（サーバーが発行、改竄不可）
- */
-export interface HumanAttestation {
-  verified: boolean;
-  score: number;
-  action: string;
-  timestamp: string;
-  hostname: string;
-  signature: string;
-}
+// Re-export HumanAttestation from shared for backward compatibility
+export type { HumanAttestation } from '@typedcode/shared';
 
 // Extended proof data with content and language
 export interface ProofFile extends ExportedProof {
@@ -134,6 +125,16 @@ export interface VerifyTabState {
   // プレーンテキストファイル（検証対象外）
   isPlaintext?: boolean;
   plaintextContent?: string;
+  // 画像ファイル（プレビュー表示用）
+  isImage?: boolean;
+  imageBlob?: Blob;
+  imageUrl?: string;
+  // スクリーンショットデータ
+  screenshots?: VerifyScreenshot[];
+  // 記録開始時刻（チャートX軸表示用）
+  startTimestamp?: number;
+  // 信頼度計算結果
+  trustResult?: TrustResult;
 }
 
 /** キューアイテム */
@@ -260,7 +261,7 @@ export interface HierarchicalFolder {
   parentId: string | null;
   expanded: boolean;
   depth: number;
-  sourceType: 'fsaccess' | 'zip' | 'file';
+  sourceType?: 'fsaccess' | 'zip' | 'file';
   directoryHandle?: FileSystemDirectoryHandle;
 }
 
@@ -334,4 +335,104 @@ export interface VerificationProgressState {
   steps: VerificationStep[];
   startTime: number;
   elapsedTime?: number;
+}
+
+// ============================================================================
+// スクリーンショット検証用の型定義
+// ============================================================================
+
+/** スクリーンショットマニフェストエントリ（ZIPから読み込み） */
+export interface ScreenshotManifestEntry {
+  index: number;
+  filename: string;
+  imageHash: string;
+  captureType: ScreenshotCaptureType;
+  eventSequence: number;
+  timestamp: number;
+  createdAt: number;
+  displayInfo: DisplayInfo;
+  fileSizeBytes: number;
+}
+
+/** スクリーンショットマニフェスト（screenshots/manifest.json） */
+export interface ScreenshotManifest {
+  version: string;
+  exportedAt: string;
+  totalScreenshots: number;
+  screenshots: ScreenshotManifestEntry[];
+}
+
+/** 検証用スクリーンショットデータ */
+export interface VerifyScreenshot {
+  id: string;
+  filename: string;
+  imageHash: string;
+  captureType: ScreenshotCaptureType;
+  eventSequence: number;
+  timestamp: number;
+  imageUrl: string | null;  // Object URL（遅延読み込み）
+  imageBlob: Blob | null;   // 画像データ
+  verified: boolean;        // ハッシュ検証結果
+  missing?: boolean;        // 画像ファイルが欠損しているか
+  tampered?: boolean;       // ハッシュ不一致（ファイルは存在するが改竄の可能性）
+  displayInfo: DisplayInfo;
+  fileSizeBytes: number;
+}
+
+/** 統合チャートキャッシュ（Chart.js用） */
+export interface IntegratedChartCache {
+  totalTime: number;
+  /** 記録開始時刻（Unix timestamp ms） */
+  startTimestamp: number;
+  events: {
+    type: string;
+    timestamp: number;
+    eventIndex: number;
+    data?: unknown;
+  }[];
+  screenshots: VerifyScreenshot[];
+  typingSpeedData: { x: number; y: number }[];
+  keystrokeData: {
+    dwell: { x: number; y: number; key: string; eventIndex: number }[];
+    flight: { x: number; y: number; key: string; eventIndex: number }[];
+  };
+  focusEvents: StoredEvent[];
+  visibilityEvents: StoredEvent[];
+  externalInputMarkers: { timestamp: number; type: InputType }[];
+  /** 人間検証イベント（ファイル作成時のTurnstile認証） */
+  humanAttestationEvents: { timestamp: number; eventIndex: number }[];
+  maxSpeed: number;
+  maxKeystrokeTime: number;
+}
+
+// ============================================================================
+// 信頼度表示用の型定義
+// ============================================================================
+
+/** 信頼度レベル（3段階） */
+export type TrustLevel = 'verified' | 'partial' | 'failed';
+
+/** 信頼度に影響する問題のコンポーネント */
+export type TrustIssueComponent = 'metadata' | 'chain' | 'posw' | 'attestation' | 'screenshots';
+
+/** 信頼度に影響する問題 */
+export interface TrustIssue {
+  component: TrustIssueComponent;
+  severity: 'error' | 'warning';
+  message: string;
+}
+
+/** 信頼度計算結果 */
+export interface TrustResult {
+  level: TrustLevel;
+  summary: string;
+  issues: TrustIssue[];
+}
+
+/** スクリーンショット検証サマリー */
+export interface ScreenshotVerificationSummary {
+  total: number;
+  verified: number;
+  missing: number;
+  tampered: number;
 }

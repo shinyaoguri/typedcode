@@ -80,6 +80,18 @@ export interface TranslationKeys {
     confirmButton: string;
   };
 
+  // Tab close confirmation dialog
+  tabCloseDialog: {
+    title: string;
+    warning: string;
+    description: string;
+    itemKeystrokes: string;
+    itemHashChain: string;
+    itemScreenshots: string;
+    exportHint: string;
+    confirmButton: string;
+  };
+
   // Processing dialog (PoSW generation)
   processingDialog: {
     title: string;
@@ -111,18 +123,98 @@ export interface TranslationKeys {
   terms: {
     title: string;
     intro: string;
+
+    // Operation Logging
     operationLogTitle: string;
     operationLogDesc: string;
+    operationLogDetailHeading: string;
     operationLogKeystrokes: string;
     operationLogCursor: string;
     operationLogMouse: string;
+    operationLogContent: string;
     operationLogClipboard: string;
+    operationLogWindow: string;
+    operationLogNote: string;
+
+    // Hash Chain and Proof
+    hashChainTitle: string;
+    hashChainDesc: string;
+    hashChainDetailHeading: string;
+    hashChainSha256: string;
+    hashChainCheckpoint: string;
+    hashChainPosw: string;
+    hashChainFingerprint: string;
+    hashChainNote: string;
+
+    // Bot Detection
     botDetectionTitle: string;
     botDetectionDesc: string;
+    botDetectionDetailHeading: string;
+    botDetectionInit: string;
+    botDetectionExport: string;
+    botDetectionNote: string;
+
+    // Data Storage
     dataStorageTitle: string;
     dataStorageDesc: string;
+    dataStorageDetailHeading: string;
+    dataStorageCode: string;
+    dataStorageEvents: string;
+    dataStorageHash: string;
+    dataStorageScreenshots: string;
+    dataStorageSettings: string;
+    dataStorageNote: string;
+
+    // Screen Capture
+    screenCaptureTitle: string;
+    screenCaptureDesc: string;
+    screenCaptureDetailHeading: string;
+    screenCapturePermission: string;
+    screenCaptureInterval: string;
+    screenCaptureFocus: string;
+    screenCaptureHash: string;
+    screenCaptureStorage: string;
+    screenCaptureNote: string;
+
+    // Proof File Export
+    exportTitle: string;
+    exportDesc: string;
+    exportDetailHeading: string;
+    exportJson: string;
+    exportScreenshots: string;
+    exportManifest: string;
+    exportReadme: string;
+    exportNote: string;
+
+    // Privacy and Considerations
+    privacyTitle: string;
+    privacyDesc: string;
+    privacyDetailHeading: string;
+    privacyBrowserInfo: string;
+    privacyTypedContent: string;
+    privacyScreenshots: string;
+    privacyLocalOnly: string;
+    privacyExportWarning: string;
+    privacyNote: string;
+
     agreeCheckbox: string;
     agreeButton: string;
+  };
+
+  // Screen capture
+  screenCapture: {
+    requesting: string;
+    permissionDenied: string;
+    notSupported: string;
+    captured: string;
+    capturedPeriodic: string;
+    capturedFocusLost: string;
+    capturedManual: string;
+    lockTitle: string;
+    lockDescription: string;
+    resumeButton: string;
+    guideText: string;
+    guideHint: string;
   };
 
   // Status bar
@@ -183,6 +275,16 @@ export interface TranslationKeys {
     failed: string;
     zipSuccess: string;
     zipFailed: string;
+    progressTitle: string;
+    phaseVerification: string;
+    phasePreparing: string;
+    phaseScreenshots: string;
+    phaseGenerating: string;
+    statusVerification: string;
+    statusPreparing: string;
+    statusScreenshots: string;
+    statusGenerating: string;
+    statusComplete: string;
   };
 
   // Terminal / Runtime
@@ -246,6 +348,10 @@ export interface TranslationKeys {
     selectionClear: string;
     selectionCount: string;
     terminalInput: string;
+    screenShareStart: string;
+    screenShareStop: string;
+    screenShareResumed: string;
+    sessionResumed: string;
   };
 
   // Operation types (input detection)

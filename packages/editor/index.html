@@ -422,6 +422,33 @@
       </div>
     </div>
 
+    <!-- Tab Close Confirmation Dialog -->
+    <div id="tab-close-dialog" class="modal-overlay hidden">
+      <div class="modal-dialog modal-danger">
+        <div class="modal-header">
+          <i class="fas fa-triangle-exclamation"></i>
+          <h3 data-i18n="tabCloseDialog.title">タブを閉じる</h3>
+        </div>
+        <div class="modal-body">
+          <p class="modal-warning" data-i18n="tabCloseDialog.warning">この操作は取り消せません！</p>
+          <p id="tab-close-filename" class="tab-close-filename"></p>
+          <p data-i18n="tabCloseDialog.description">以下のデータが完全に削除されます：</p>
+          <ul class="modal-list">
+            <li><i class="fas fa-keyboard"></i> <span data-i18n="tabCloseDialog.itemKeystrokes">記録されたキーストローク</span></li>
+            <li><i class="fas fa-link"></i> <span data-i18n="tabCloseDialog.itemHashChain">ハッシュチェーン（証明データ）</span></li>
+            <li><i class="fas fa-camera"></i> <span data-i18n="tabCloseDialog.itemScreenshots">関連するスクリーンショット</span></li>
+          </ul>
+          <p class="modal-hint" data-i18n="tabCloseDialog.exportHint">証明を保存したい場合は、先にエクスポートしてください。</p>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn modal-btn-cancel" id="tab-close-cancel-btn" data-i18n="common.cancel">キャンセル</button>
+          <button class="modal-btn modal-btn-danger" id="tab-close-confirm-btn">
+            <i class="fas fa-times"></i> <span data-i18n="tabCloseDialog.confirmButton">タブを閉じる</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Terms of Service Modal -->
     <div id="terms-modal" class="modal-overlay hidden">
       <div class="modal-dialog modal-terms">
@@ -429,29 +456,151 @@
           <i class="fas fa-file-contract"></i>
           <h3 data-i18n="terms.title">利用規約</h3>
         </div>
-        <div class="modal-body">
+        <div class="modal-body terms-body-scrollable">
           <p class="terms-intro" data-i18n="terms.intro">TypedCodeをご利用いただく前に、以下の内容をご確認ください。</p>
 
-          <div class="terms-section">
-            <h4><i class="fas fa-list-check"></i> <span data-i18n="terms.operationLogTitle">操作ログの記録</span></h4>
-            <p data-i18n="terms.operationLogDesc">タイピング証明のため、以下の操作を記録します：</p>
-            <ul class="terms-list">
-              <li data-i18n="terms.operationLogKeystrokes">キーストローク（タイミング情報含む）</li>
-              <li data-i18n="terms.operationLogCursor">カーソル・選択範囲の変更</li>
-              <li data-i18n="terms.operationLogMouse">マウス移動・ウィンドウ操作</li>
-              <li data-i18n="terms.operationLogClipboard">コピー・ペースト・ドロップ操作</li>
-            </ul>
-          </div>
+          <!-- 操作ログの記録 -->
+          <details class="terms-accordion">
+            <summary class="terms-accordion-header">
+              <i class="fas fa-list-check"></i>
+              <span data-i18n="terms.operationLogTitle">操作ログの記録</span>
+              <i class="fas fa-chevron-down terms-accordion-icon"></i>
+            </summary>
+            <div class="terms-accordion-content">
+              <p data-i18n="terms.operationLogDesc">タイピング証明を生成するため、ブラウザ内でのすべての操作を詳細に記録します。</p>
+              <p class="terms-detail-heading" data-i18n="terms.operationLogDetailHeading">記録される情報：</p>
+              <ul class="terms-detail-list">
+                <li data-i18n="terms.operationLogKeystrokes">キー入力：押下・離上のタイミング、キーコード、修飾キーの状態（Shift、Ctrl、Alt、Meta）、押下時間（ドウェルタイム）</li>
+                <li data-i18n="terms.operationLogCursor">カーソル操作：カーソル位置の移動、テキスト選択範囲の変更、選択方向（左右）</li>
+                <li data-i18n="terms.operationLogMouse">マウス操作：マウスカーソルの座標（200ミリ秒ごとにサンプリング）</li>
+                <li data-i18n="terms.operationLogContent">コンテンツ変更：文字の挿入・削除、変更位置、変更内容</li>
+                <li data-i18n="terms.operationLogClipboard">外部入力：ペースト操作、ドラッグ＆ドロップ、入力された文字数</li>
+                <li data-i18n="terms.operationLogWindow">ウィンドウ状態：ウィンドウサイズ、フォーカス状態、タブのアクティブ状態、ネットワーク接続状態</li>
+              </ul>
+              <p class="terms-detail-note" data-i18n="terms.operationLogNote">これらの操作はタイムスタンプとともに記録され、SHA-256ハッシュチェーンで連結されます。各イベントは前のイベントのハッシュを含むため、改ざんを検知できる構造になっています。</p>
+            </div>
+          </details>
 
-          <div class="terms-section">
-            <h4><i class="fas fa-robot"></i> <span data-i18n="terms.botDetectionTitle">Bot検出</span></h4>
-            <p data-i18n="terms.botDetectionDesc">不正利用防止のため、Cloudflare Turnstileによる人間検証を行います。</p>
-          </div>
+          <!-- ハッシュチェーンと証明 -->
+          <details class="terms-accordion">
+            <summary class="terms-accordion-header">
+              <i class="fas fa-link"></i>
+              <span data-i18n="terms.hashChainTitle">ハッシュチェーンと証明</span>
+              <i class="fas fa-chevron-down terms-accordion-icon"></i>
+            </summary>
+            <div class="terms-accordion-content">
+              <p data-i18n="terms.hashChainDesc">TypedCodeは、操作ログの整合性と順序を証明するため、暗号学的なハッシュチェーンを構築します。</p>
+              <p class="terms-detail-heading" data-i18n="terms.hashChainDetailHeading">証明の仕組み：</p>
+              <ul class="terms-detail-list">
+                <li data-i18n="terms.hashChainSha256">SHA-256ハッシュ：各操作イベントは直前のイベントのハッシュを含めてハッシュ化され、連鎖的につながります</li>
+                <li data-i18n="terms.hashChainCheckpoint">チェックポイント：一定間隔でチェックポイントを作成し、証明の区切りを設けます</li>
+                <li data-i18n="terms.hashChainPosw">Proof of Sequential Work (PoSW)：チェックポイントごとに計算量証明を生成し、時間の経過を証明します。この計算はWeb Workerでバックグラウンド実行されます</li>
+                <li data-i18n="terms.hashChainFingerprint">ブラウザフィンガープリント：証明ファイルにはブラウザ環境情報（言語、タイムゾーン、画面解像度など）が含まれます</li>
+              </ul>
+              <p class="terms-detail-note" data-i18n="terms.hashChainNote">この仕組みにより、コードが一文字ずつタイピングされたことを第三者が検証可能な形で証明できます。</p>
+            </div>
+          </details>
 
-          <div class="terms-section">
-            <h4><i class="fas fa-database"></i> <span data-i18n="terms.dataStorageTitle">データ保存</span></h4>
-            <p data-i18n-html="terms.dataStorageDesc">すべての操作ログは<strong>ブラウザのローカルストレージにのみ保存</strong>されます。サーバーへの自動送信は一切行いません。</p>
-          </div>
+          <!-- Bot検出 -->
+          <details class="terms-accordion">
+            <summary class="terms-accordion-header">
+              <i class="fas fa-robot"></i>
+              <span data-i18n="terms.botDetectionTitle">Bot検出</span>
+              <i class="fas fa-chevron-down terms-accordion-icon"></i>
+            </summary>
+            <div class="terms-accordion-content">
+              <p data-i18n-html="terms.botDetectionDesc">自動化ツールやボットによる不正な証明生成を防止するため、<a href="https://www.cloudflare.com/ja-jp/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a>を使用して人間であることを確認します。</p>
+              <p class="terms-detail-heading" data-i18n="terms.botDetectionDetailHeading">検証タイミング：</p>
+              <ul class="terms-detail-list">
+                <li data-i18n="terms.botDetectionInit">ファイル作成時：新しいタブを作成する際に人間検証を実施</li>
+                <li data-i18n="terms.botDetectionExport">証明エクスポート時：ファイル出力の直前に最終確認を実施</li>
+              </ul>
+              <p class="terms-detail-note" data-i18n="terms.botDetectionNote">Turnstileの検証結果はサーバーでトークンの有効性を確認し、成功した場合のみ証明ファイルに「人間認証済み」として記録されます。</p>
+            </div>
+          </details>
+
+          <!-- データ保存 -->
+          <details class="terms-accordion">
+            <summary class="terms-accordion-header">
+              <i class="fas fa-database"></i>
+              <span data-i18n="terms.dataStorageTitle">データ保存</span>
+              <i class="fas fa-chevron-down terms-accordion-icon"></i>
+            </summary>
+            <div class="terms-accordion-content">
+              <p data-i18n-html="terms.dataStorageDesc"><strong>すべてのデータはブラウザのローカルストレージ（IndexedDB）にのみ保存されます。サーバーへの自動送信は一切行いません。</strong></p>
+              <p class="terms-detail-heading" data-i18n="terms.dataStorageDetailHeading">保存されるデータ：</p>
+              <ul class="terms-detail-list">
+                <li data-i18n="terms.dataStorageCode">エディタの内容：作成したコードのソースファイル</li>
+                <li data-i18n="terms.dataStorageEvents">操作ログ：すべてのキーストローク、カーソル移動、外部入力のイベントデータ</li>
+                <li data-i18n="terms.dataStorageHash">ハッシュチェーン：証明用の暗号学的ハッシュデータ</li>
+                <li data-i18n="terms.dataStorageScreenshots">スクリーンショット：定期的に撮影された画面キャプチャ画像</li>
+                <li data-i18n="terms.dataStorageSettings">設定情報：言語設定、テーマ設定、利用規約への同意状態</li>
+              </ul>
+              <p class="terms-detail-note" data-i18n="terms.dataStorageNote">これらのデータはブラウザを閉じても保持されますが、ブラウザのデータ消去や「Reset All」機能で完全に削除できます。証明データを保存したい場合は、必ずエクスポート機能でファイルをダウンロードしてください。</p>
+            </div>
+          </details>
+
+          <!-- 画面キャプチャ -->
+          <details class="terms-accordion">
+            <summary class="terms-accordion-header">
+              <i class="fas fa-desktop"></i>
+              <span data-i18n="terms.screenCaptureTitle">画面キャプチャ</span>
+              <i class="fas fa-chevron-down terms-accordion-icon"></i>
+            </summary>
+            <div class="terms-accordion-content">
+              <p data-i18n="terms.screenCaptureDesc">タイピング証明の信頼性を高めるため、Screen Capture APIを使用して定期的に画面のスクリーンショットを撮影します。</p>
+              <p class="terms-detail-heading" data-i18n="terms.screenCaptureDetailHeading">撮影について：</p>
+              <ul class="terms-detail-list">
+                <li data-i18n="terms.screenCapturePermission">画面共有の許可：初回起動時にブラウザの画面共有ダイアログが表示されます。「画面全体」を選択してください</li>
+                <li data-i18n="terms.screenCaptureInterval">定期撮影：30秒ごとに自動的にスクリーンショットを撮影します</li>
+                <li data-i18n="terms.screenCaptureFocus">フォーカス喪失時：エディタからフォーカスが外れた際にも撮影されます</li>
+                <li data-i18n="terms.screenCaptureHash">ハッシュ化：撮影した画像はSHA-256でハッシュ化され、証明データと紐づけられます</li>
+                <li data-i18n-html="terms.screenCaptureStorage"><strong>ローカル保存</strong>：画像データはブラウザ内にのみ保存され、サーバーには送信されません</li>
+              </ul>
+              <p class="terms-detail-note" data-i18n="terms.screenCaptureNote">画面共有を停止すると、エディタでの作業を継続できなくなります。再開するには画面共有を再度許可する必要があります。</p>
+            </div>
+          </details>
+
+          <!-- 証明ファイルのエクスポート -->
+          <details class="terms-accordion">
+            <summary class="terms-accordion-header">
+              <i class="fas fa-file-export"></i>
+              <span data-i18n="terms.exportTitle">証明ファイルのエクスポート</span>
+              <i class="fas fa-chevron-down terms-accordion-icon"></i>
+            </summary>
+            <div class="terms-accordion-content">
+              <p data-i18n="terms.exportDesc">作成した証明データは、JSON形式またはZIP形式でダウンロードできます。</p>
+              <p class="terms-detail-heading" data-i18n="terms.exportDetailHeading">エクスポート内容：</p>
+              <ul class="terms-detail-list">
+                <li data-i18n="terms.exportJson">証明ファイル（.json）：操作ログ、ハッシュチェーン、PoSWデータ、ブラウザフィンガープリント、人間認証結果を含む完全な証明データ</li>
+                <li data-i18n="terms.exportScreenshots">スクリーンショット（.png）：撮影された画面キャプチャ画像</li>
+                <li data-i18n="terms.exportManifest">マニフェスト：スクリーンショットのハッシュ値と証明データとの対応情報</li>
+                <li data-i18n="terms.exportReadme">説明ファイル（README）：証明の検証方法についての説明</li>
+              </ul>
+              <p class="terms-detail-note" data-i18n="terms.exportNote">エクスポートされたファイルは、TypedCode Verifyアプリケーションで検証できます。証明データのみのJSON出力か、スクリーンショットを含むZIP出力かを選択できます。</p>
+            </div>
+          </details>
+
+          <!-- プライバシーと注意事項 -->
+          <details class="terms-accordion">
+            <summary class="terms-accordion-header">
+              <i class="fas fa-shield-halved"></i>
+              <span data-i18n="terms.privacyTitle">プライバシーと注意事項</span>
+              <i class="fas fa-chevron-down terms-accordion-icon"></i>
+            </summary>
+            <div class="terms-accordion-content">
+              <p data-i18n="terms.privacyDesc">TypedCodeが取得する情報と、証明データの取り扱いについてご確認ください。</p>
+              <p class="terms-detail-heading" data-i18n="terms.privacyDetailHeading">取得する情報について：</p>
+              <ul class="terms-detail-list">
+                <li data-i18n="terms.privacyBrowserInfo">ブラウザから一般的に取得可能な情報（言語、タイムゾーン、画面解像度など）のみを使用しており、氏名やメールアドレスなどの個人情報は収集しません</li>
+                <li data-i18n="terms.privacyTypedContent">ただし、エディタに入力したコードの内容はすべて記録されます</li>
+                <li data-i18n="terms.privacyScreenshots">画面共有中は画面全体がスクリーンショットとして保存されるため、画面に表示されている他のアプリケーションやウィンドウの内容も記録される可能性があります</li>
+                <li data-i18n-html="terms.privacyLocalOnly"><strong>これらのデータはすべてお使いのブラウザ内にのみ保存され、外部サーバーには送信されません</strong></li>
+                <li data-i18n="terms.privacyExportWarning">証明データをエクスポートして第三者に提出する場合は、ご自身の責任において行ってください。提出先でのデータの取り扱いについては、提出先の規約やプライバシーポリシーをご確認ください</li>
+              </ul>
+              <p class="terms-detail-note" data-i18n="terms.privacyNote">エクスポートされた証明データには、タイピング内容やスクリーンショットが含まれます。提出前に内容を確認し、機密情報が含まれていないかご注意ください。</p>
+            </div>
+          </details>
 
           <div class="terms-checkbox-container">
             <label class="terms-checkbox">

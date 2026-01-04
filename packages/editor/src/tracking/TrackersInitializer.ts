@@ -14,26 +14,38 @@ import type { AppContext } from '../core/AppContext.js';
 export type RecordEventCallback = (event: RecordEventInput) => void;
 
 /**
+ * トラッカー初期化オプション
+ */
+export interface TrackersInitializerOptions {
+  ctx: AppContext;
+  editorContainer: HTMLElement;
+  recordEvent: RecordEventCallback;
+  /** 全タブにイベントを記録するコールバック（スクリーンショット等セッション共通イベント用） */
+  recordEventToAllTabs: RecordEventCallback;
+  onProofStatusUpdate: () => void;
+  onStorageSave: () => void;
+}
+
+/**
  * トラッカーのコールバック設定とアタッチを行う
  *
- * @param ctx - アプリケーションコンテキスト
- * @param editorContainer - エディタのDOM要素
- * @param recordEvent - イベント記録用コールバック
- * @param onProofStatusUpdate - 証明ステータス更新コールバック
- * @param onStorageSave - ストレージ保存コールバック
+ * @param options - 初期化オプション
  */
-export function initializeTrackers(
-  ctx: AppContext,
-  editorContainer: HTMLElement,
-  recordEvent: RecordEventCallback,
-  onProofStatusUpdate: () => void,
-  onStorageSave: () => void
-): void {
+export function initializeTrackers(options: TrackersInitializerOptions): void {
+  const {
+    ctx,
+    editorContainer,
+    recordEvent,
+    recordEventToAllTabs,
+    onProofStatusUpdate,
+    onStorageSave,
+  } = options;
   const { trackers, editorController, editor } = ctx;
 
   // WindowTracker - ウィンドウサイズ変更の追跡
+  // ウィンドウサイズ変更はセッション全体に影響するため、全タブに記録
   trackers.window.setCallback((event) => {
-    recordEvent({
+    recordEventToAllTabs({
       type: event.type,
       data: event.data,
       description: event.description,
@@ -43,8 +55,9 @@ export function initializeTrackers(
   trackers.window.recordInitial();
 
   // NetworkTracker - ネットワーク状態変更の追跡
+  // ネットワーク状態変更はセッション全体に影響するため、全タブに記録
   trackers.network.setCallback((event) => {
-    recordEvent({
+    recordEventToAllTabs({
       type: event.type,
       data: event.data,
       description: event.description,
@@ -54,13 +67,25 @@ export function initializeTrackers(
   trackers.network.recordInitial();
 
   // VisibilityTracker - ページの表示/非表示の追跡
+  // タブの可視性やフォーカス状態はセッション全体に影響するため、全タブに記録
   trackers.visibility.setCallback((event) => {
-    recordEvent({
+    recordEventToAllTabs({
       type: event.type,
       data: event.data,
       description: event.description,
     });
   });
+
+  // ScreenshotTrackerとの連携（フォーカス喪失/復帰時のキャプチャ）
+  if (trackers.screenshot) {
+    trackers.visibility.setFocusLostCallback(() => {
+      trackers.screenshot?.notifyFocusLost();
+    });
+    trackers.visibility.setFocusRegainedCallback(() => {
+      trackers.screenshot?.notifyFocusRegained();
+    });
+  }
+
   trackers.visibility.attach();
 
   // KeystrokeTracker - キーストロークの追跡
@@ -125,4 +150,22 @@ export function initializeTrackers(
     onStorageSave();
   });
   editorController.attach(editor);
+
+  // ScreenshotTracker - スクリーンショットの追跡
+  // スクリーンショット関連イベントはセッション全体に関わるため、全タブに記録
+  if (trackers.screenshot) {
+    // TypingProofのstartTimeを設定（タイムスタンプをハッシュチェーンと同期させるため）
+    const activeProof = ctx.tabManager?.getActiveProof();
+    if (activeProof) {
+      trackers.screenshot.setProofStartTime(activeProof.startTime);
+    }
+
+    trackers.screenshot.setCallback((event) => {
+      recordEventToAllTabs({
+        type: event.type,
+        data: event.data,
+        description: event.description,
+      });
+    });
+  }
 }

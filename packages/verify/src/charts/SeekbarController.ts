@@ -8,6 +8,7 @@
 import type { StoredEvent } from '@typedcode/shared';
 import type { ContentCache } from '../types.js';
 import { ChartUtils } from './ChartUtils.js';
+import type { IntegratedChart } from './IntegratedChart.js';
 
 // ============================================================================
 // 型定義
@@ -68,6 +69,9 @@ export class SeekbarController {
   private finalContent: string = '';
   private contentCache: ContentCache = new Map();
 
+  // Chart.js連携
+  private integratedChart: IntegratedChart | null = null;
+
   // イベントリスナーの参照（クリーンアップ用）
   private boundHandlers: {
     onSliderInput?: (e: Event) => void;
@@ -94,10 +98,9 @@ export class SeekbarController {
     this.currentIndex = events.length;
     this.contentCache.clear();
 
-    // フローティングシークバーを表示
+    // シークバーを表示
     if (this.options.floatingSeekbar) {
-      this.options.floatingSeekbar.style.display = 'block';
-      document.body.classList.add('has-floating-seekbar');
+      this.options.floatingSeekbar.style.display = 'flex';
     }
 
     // スライダーを設定
@@ -175,12 +178,59 @@ export class SeekbarController {
   }
 
   /**
+   * Chart.jsチャートを設定
+   */
+  setIntegratedChart(chart: IntegratedChart | null): void {
+    this.integratedChart = chart;
+  }
+
+  /**
    * 指定位置にシーク
    */
   seekTo(index: number): void {
     this.currentIndex = ChartUtils.clamp(index, 0, this.events.length);
     this.updateUI();
     this.callbacks.onSeek?.(this.currentIndex);
+
+    // Chart.jsマーカーを更新
+    this.updateChartMarker();
+  }
+
+  /**
+   * 時間指定でシーク（Chart.jsからの呼び出し用）
+   */
+  seekToTime(timestamp: number): void {
+    const index = this.findEventIndexAtTime(timestamp);
+    this.seekTo(index);
+  }
+
+  /**
+   * Chart.jsマーカーを更新
+   */
+  private updateChartMarker(): void {
+    if (!this.integratedChart) return;
+
+    if (this.currentIndex > 0 && this.currentIndex <= this.events.length) {
+      const event = this.events[Math.min(this.currentIndex - 1, this.events.length - 1)];
+      if (event) {
+        this.integratedChart.updateMarker(event.timestamp);
+      }
+    } else if (this.currentIndex === 0) {
+      this.integratedChart.clearMarker();
+    }
+  }
+
+  /**
+   * 時間に対応するイベントインデックスを検索
+   */
+  private findEventIndexAtTime(timestamp: number): number {
+    for (let i = 0; i < this.events.length; i++) {
+      const event = this.events[i];
+      if (event && event.timestamp >= timestamp) {
+        return i;
+      }
+    }
+    return this.events.length;
   }
 
   /**
@@ -217,6 +267,7 @@ export class SeekbarController {
 
       this.currentIndex++;
       this.updateUI();
+      this.updateChartMarker();
       this.callbacks.onSeek?.(this.currentIndex);
     }, 50); // 50ms間隔
   }
@@ -281,9 +332,9 @@ export class SeekbarController {
   }
 
   /**
-   * 指定インデックスまでのコンテンツを再構築
+   * 指定インデックスまでのコンテンツを再構築（公開メソッド）
    */
-  private getContentAtIndex(index: number): string {
+  getContentAtIndex(index: number): string {
     if (this.contentCache.has(index)) {
       return this.contentCache.get(index)!;
     }
@@ -372,8 +423,7 @@ export class SeekbarController {
    */
   show(): void {
     if (this.options.floatingSeekbar) {
-      this.options.floatingSeekbar.style.display = 'block';
-      document.body.classList.add('has-floating-seekbar');
+      this.options.floatingSeekbar.style.display = 'flex';
     }
   }
 
@@ -384,7 +434,6 @@ export class SeekbarController {
     this.pause();
     if (this.options.floatingSeekbar) {
       this.options.floatingSeekbar.style.display = 'none';
-      document.body.classList.remove('has-floating-seekbar');
     }
   }
 

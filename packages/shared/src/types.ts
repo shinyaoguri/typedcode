@@ -12,32 +12,35 @@ export type EventType =
   | 'humanAttestation'  // 人間認証（event #0として記録）
   | 'preExportAttestation'  // エクスポート前認証
   | 'termsAccepted'  // 利用規約同意
-  | 'contentChange'
-  | 'contentSnapshot'
-  | 'cursorPositionChange'
-  | 'selectionChange'
-  | 'externalInput'
-  | 'editorInitialized'
-  | 'mousePositionChange'
-  | 'visibilityChange'
-  | 'focusChange'
-  | 'keyDown'
-  | 'keyUp'
-  | 'windowResize'
-  | 'networkStatusChange'  // ネットワーク状態変更（オンライン/オフライン）
-  | 'codeExecution'  // コード実行（コンパイル＋実行の開始）
-  | 'terminalInput';  // ターミナルへの入力（行単位）
+  | 'contentChange' // コンテンツ変更
+  | 'contentSnapshot' // コンテンツスナップショット
+  | 'cursorPositionChange' // カーソル位置変更
+  | 'selectionChange' // 選択範囲変更
+  | 'externalInput' // 外部入力
+  | 'editorInitialized' // エディタ初期化
+  | 'mousePositionChange' // マウス位置変更
+  | 'visibilityChange' // 表示状態変更
+  | 'focusChange' // フォーカス状態変更
+  | 'keyDown' // キー押下
+  | 'keyUp' // キー離上
+  | 'windowResize' // ウィンドウサイズ変更
+  | 'networkStatusChange' // ネットワーク状態変更（オンライン/オフライン）
+  | 'codeExecution' // コード実行（コンパイル＋実行の開始）
+  | 'terminalInput' // ターミナルへの入力（行単位）
+  | 'screenshotCapture' // スクリーンショット撮影
+  | 'screenShareStart' // 画面共有開始
+  | 'screenShareStop'; // 画面共有停止
 
-/** 入力タイプ（Monaco Editor準拠 + カスタム） */
+/** 入力タイプ */
 export type InputType =
   // 挿入系
-  | 'insertText'
-  | 'insertLineBreak'
-  | 'insertParagraph'
-  | 'insertTab'
-  | 'insertFromComposition'
-  | 'insertCompositionText'
-  | 'deleteCompositionText'
+  | 'insertText' // テキスト挿入
+  | 'insertLineBreak' // 行ブレーク挿入
+  | 'insertParagraph' // 段落挿入
+  | 'insertTab' // タブ挿入
+  | 'insertFromComposition' // 合成入力からの挿入
+  | 'insertCompositionText' // 合成入力テキスト挿入
+  | 'deleteCompositionText' // 合成入力テキスト削除
   // 削除系
   | 'deleteContentBackward'
   | 'deleteContentForward'
@@ -121,6 +124,67 @@ export interface NetworkStatusData {
   online: boolean;       // navigator.onLine
 }
 
+// ============================================================================
+// スクリーンショット関連の型定義
+// ============================================================================
+
+/** スクリーンショットキャプチャのトリガータイプ */
+export type ScreenshotCaptureType =
+  | 'periodic'       // 定期ポーリング（1分ごと）
+  | 'focusLost'      // フォーカス喪失後5秒
+  | 'manual';        // 将来の拡張用
+
+/** ディスプレイ情報 */
+export interface DisplayInfo {
+  width: number;
+  height: number;
+  devicePixelRatio: number;
+  displaySurface?: string;  // 'monitor', 'window', 'browser'
+}
+
+/** スクリーンショットイベントデータ（ハッシュチェーン記録用） */
+export interface ScreenshotCaptureData {
+  imageHash: string;           // 画像のSHA-256ハッシュ
+  captureType: ScreenshotCaptureType;
+  timestamp: number;           // キャプチャ時刻（performance.now()）
+  displayInfo: DisplayInfo;
+  storageKey: string;          // IndexedDB内のキー
+  fileSizeBytes: number;       // 圧縮後のファイルサイズ
+}
+
+/** IndexedDBに保存するスクリーンショットレコード */
+export interface StoredScreenshot {
+  id: string;                  // UUID
+  imageHash: string;           // SHA-256ハッシュ
+  imageBlob: Blob;             // JPEG画像データ
+  captureType: ScreenshotCaptureType;
+  timestamp: number;           // キャプチャ時刻
+  createdAt: number;           // Date.now()
+  displayInfo: DisplayInfo;
+  eventSequence: number;       // 対応するハッシュチェーンイベントのsequence
+}
+
+/** Screen Capture許可状態 */
+export type ScreenCapturePermissionState =
+  | 'granted'      // 許可済み
+  | 'denied'       // 拒否
+  | 'prompt'       // 未決定（プロンプト表示待ち）
+  | 'unavailable'; // APIが利用不可
+
+/** 画面共有開始イベントデータ */
+export interface ScreenShareStartData {
+  displaySurface: string;  // 'monitor', 'window', 'browser'
+  displayInfo: DisplayInfo;
+  timestamp: number;  // performance.now()
+}
+
+/** 画面共有停止イベントデータ */
+export interface ScreenShareStopData {
+  reason: 'user_stopped' | 'stream_ended' | 'error';
+  timestamp: number;  // performance.now()
+  duration: number;  // 共有開始からの経過時間（ミリ秒）
+}
+
 /** 認証失敗の理由 */
 export type VerificationFailureReason =
   | 'challenge_failed'
@@ -179,7 +243,7 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -199,7 +263,7 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;
@@ -504,7 +568,7 @@ export interface SeekbarEventInfo {
   type: EventType;
   inputType: InputType | null;
   timestamp: number;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | null;
   dataLength: number;
   dataPreview: string | null;
   rangeOffset: number | null;

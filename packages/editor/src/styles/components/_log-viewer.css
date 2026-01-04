@@ -306,3 +306,74 @@
 .log-content::-webkit-scrollbar-thumb:hover {
   background: var(--bg-active);
 }
+
+/* Screenshot Entry */
+.log-entry-screenshot {
+  border-left-color: #00bcd4;
+  background-color: rgba(0, 188, 212, 0.08);
+}
+
+.log-entry-screenshot:hover {
+  background-color: rgba(0, 188, 212, 0.15);
+}
+
+.log-entry-screenshot-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+/* 展開アイコン */
+.log-entry-expand-icon {
+  font-size: 8px;
+  flex-shrink: 0;
+  margin-right: 4px;
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+}
+
+.log-entry-screenshot.expanded .log-entry-expand-icon {
+  color: var(--accent-primary);
+}
+
+/* Screenshot Preview (展開式) */
+.log-entry-screenshot-preview {
+  display: none;
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.log-entry-screenshot.expanded .log-entry-screenshot-preview {
+  display: block;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 400px;
+  }
+}
+
+.log-entry-screenshot-image {
+  display: block;
+  width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  background: #000;
+  border-radius: 4px;
+}
+
+.log-entry-screenshot-info {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-align: center;
+}

@@ -6,14 +6,15 @@
  */
 
 import JSZip from 'jszip';
-import type { ProofFile } from '../types.js';
+import type { ProofFile, ScreenshotManifest, VerifyScreenshot } from '../types.js';
+import { ScreenshotService } from './ScreenshotService.js';
 
 // ============================================================================
 // 型定義
 // ============================================================================
 
 /** ファイルの種類 */
-export type FileType = 'proof' | 'plaintext';
+export type FileType = 'proof' | 'plaintext' | 'image';
 
 /** 解析済みファイルデータ */
 export interface ParsedFileData {
@@ -23,12 +24,14 @@ export interface ParsedFileData {
   type: FileType;
   /** 言語（proof の場合は検証言語、plaintext の場合はファイル拡張子から推測） */
   language: string;
-  /** 生データ（文字列） */
+  /** 生データ（文字列、画像の場合は空） */
   rawData: string;
   /** 解析済みデータ（proof の場合のみ） */
   proofData?: ProofFile;
   /** フォルダ内の相対パス */
   relativePath?: string;
+  /** 画像Blob（image の場合のみ） */
+  imageBlob?: Blob;
 }
 
 /** ファイル処理結果 */
@@ -45,6 +48,12 @@ export interface FileProcessResult {
   rootFolderName?: string;
   /** ZIPファイル内のフォルダパス一覧 */
   folderPaths?: string[];
+  /** スクリーンショット一覧（ZIPに含まれている場合） */
+  screenshots?: VerifyScreenshot[];
+  /** スクリーンショットサービス（ZIPに含まれている場合） */
+  screenshotService?: ScreenshotService;
+  /** 記録開始時刻（Unix timestamp ms）- チャートX軸表示用 */
+  startTimestamp?: number;
 }
 
 /** 処理進捗コールバック */
@@ -57,6 +66,8 @@ export interface FileProcessCallbacks {
   onParseComplete?: (filename: string, eventCount: number) => void;
   /** ZIP展開進捗 */
   onZipExtract?: (filename: string, fileCount: number) => void;
+  /** スクリーンショット読み込み */
+  onScreenshotLoad?: (count: number, verifiedCount: number) => void;
   /** エラー発生 */
   onError?: (filename: string, error: string) => void;
 }
@@ -169,38 +180,61 @@ export class FileProcessor {
       const sizeKb = text.length / 1024;
       this.callbacks.onReadComplete?.(file.name, sizeKb);
 
-      // 言語を取得
+      // JSONをパースして proof フィールドがあるかどうかを判定
       let language = 'unknown';
       let proofData: ProofFile | undefined;
+      let isValidProofFile = false;
 
       try {
-        proofData = JSON.parse(text) as ProofFile;
-        language = proofData.language ?? 'unknown';
-        const eventCount = proofData.proof?.events?.length ?? 0;
-        this.callbacks.onParseComplete?.(file.name, eventCount);
+        const parsed = JSON.parse(text) as ProofFile;
+        // proof フィールドがあれば証明ファイルとみなす
+        if (parsed.proof) {
+          isValidProofFile = true;
+          proofData = parsed;
+          language = parsed.language ?? 'unknown';
+          const eventCount = parsed.proof?.events?.length ?? 0;
+          this.callbacks.onParseComplete?.(file.name, eventCount);
+        }
       } catch (parseError) {
-        // パース失敗
-        const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
-        this.callbacks.onError?.(file.name, `JSON解析エラー: ${errorMessage}`);
+        // パース失敗 - プレーンテキストとして扱う
+        const lang = this.getLanguageFromExtension(file.name);
         return {
-          success: false,
+          success: true,
           mode: forceMultiMode ? 'multi' : 'single',
-          files: [],
-          error: `JSON解析に失敗しました: ${errorMessage}`,
+          files: [{
+            filename: file.name,
+            type: 'plaintext',
+            language: lang,
+            rawData: text,
+          }],
         };
       }
 
-      return {
-        success: true,
-        mode: forceMultiMode ? 'multi' : 'single',
-        files: [{
-          filename: file.name,
-          type: 'proof',
-          language,
-          rawData: text,
-          proofData,
-        }],
-      };
+      if (isValidProofFile) {
+        return {
+          success: true,
+          mode: forceMultiMode ? 'multi' : 'single',
+          files: [{
+            filename: file.name,
+            type: 'proof',
+            language,
+            rawData: text,
+            proofData,
+          }],
+        };
+      } else {
+        // proof フィールドがない通常のJSONファイル - プレーンテキストとして扱う
+        return {
+          success: true,
+          mode: forceMultiMode ? 'multi' : 'single',
+          files: [{
+            filename: file.name,
+            type: 'plaintext',
+            language: 'json',
+            rawData: text,
+          }],
+        };
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.callbacks.onError?.(file.name, errorMessage);
@@ -244,13 +278,56 @@ export class FileProcessor {
 
         const filename = path.split('/').pop() ?? path;
 
+        // 隠しファイル（.で始まるファイル）はスキップ
+        if (filename.startsWith('.')) continue;
+
         // パスからフォルダ階層を抽出
         const parts = path.split('/');
         for (let i = 1; i < parts.length; i++) {
           folderPathsSet.add(parts.slice(0, i).join('/'));
         }
 
-        // バイナリファイルはスキップ（テキストファイルのみ処理）
+        // screenshots/ フォルダ内のファイルを処理
+        if (path.startsWith('screenshots/')) {
+          if (filename === 'manifest.json') {
+            const content = await zipEntry.async('string');
+            files.push({
+              filename,
+              type: 'plaintext',
+              language: 'json',
+              rawData: content,
+              relativePath: path,
+            });
+          } else if (this.isImageFile(filename)) {
+            // 画像ファイルをファイル一覧に追加
+            const blob = await zipEntry.async('blob');
+            files.push({
+              filename,
+              type: 'image',
+              language: 'image',
+              rawData: '',
+              relativePath: path,
+              imageBlob: blob,
+            });
+          }
+          continue;
+        }
+
+        // 画像ファイルを処理
+        if (this.isImageFile(filename)) {
+          const blob = await zipEntry.async('blob');
+          files.push({
+            filename,
+            type: 'image',
+            language: 'image',
+            rawData: '',
+            relativePath: path,
+            imageBlob: blob,
+          });
+          continue;
+        }
+
+        // その他のバイナリファイルはスキップ（テキストファイルのみ処理）
         if (this.isBinaryFile(filename)) continue;
 
         const content = await zipEntry.async('string');
@@ -307,7 +384,10 @@ export class FileProcessor {
 
       this.callbacks.onZipExtract?.(file.name, files.length);
 
-      if (files.length === 0) {
+      // スクリーンショットを読み込み
+      const { screenshots, screenshotService } = await this.loadScreenshotsFromZip(zip);
+
+      if (files.length === 0 && screenshots.length === 0) {
         return {
           success: false,
           mode: 'multi',
@@ -316,12 +396,28 @@ export class FileProcessor {
         };
       }
 
+      // 最初のプルーフファイルからstartTimestampを計算
+      let startTimestamp: number | undefined;
+      const firstProof = files.find((f) => f.proofData);
+      if (firstProof?.proofData) {
+        const exportedAt = firstProof.proofData.metadata?.timestamp;
+        const events = firstProof.proofData.proof?.events;
+        if (exportedAt && events && events.length > 0) {
+          const totalTime = events[events.length - 1]?.timestamp ?? 0;
+          const exportTimestamp = new Date(exportedAt).getTime();
+          startTimestamp = exportTimestamp - totalTime;
+        }
+      }
+
       return {
         success: true,
         mode: 'multi',
         files,
         rootFolderName,
         folderPaths: Array.from(folderPathsSet),
+        screenshots,
+        screenshotService,
+        startTimestamp,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -353,12 +449,87 @@ export class FileProcessor {
   }
 
   /**
-   * バイナリファイルかどうかを判定
+   * ZIPからスクリーンショットを読み込み
+   */
+  private async loadScreenshotsFromZip(zip: JSZip): Promise<{
+    screenshots: VerifyScreenshot[];
+    screenshotService: ScreenshotService | undefined;
+  }> {
+    // screenshots/manifest.json を探す
+    console.log('[FileProcessor] Looking for screenshots/manifest.json in ZIP...');
+    const manifestFile = zip.file('screenshots/manifest.json');
+    if (!manifestFile) {
+      console.log('[FileProcessor] No manifest.json found in screenshots folder');
+      return { screenshots: [], screenshotService: undefined };
+    }
+
+    try {
+      const manifestText = await manifestFile.async('string');
+      const parsed = JSON.parse(manifestText);
+
+      // 新形式（オブジェクト with version/screenshots）と旧形式（配列）の両方に対応
+      let manifest: ScreenshotManifest;
+      if (Array.isArray(parsed)) {
+        // 旧形式: 配列のみ
+        console.log('[FileProcessor] Legacy manifest format detected (array)');
+        manifest = {
+          version: '1.0',
+          exportedAt: new Date().toISOString(),
+          totalScreenshots: parsed.length,
+          screenshots: parsed,
+        };
+      } else {
+        // 新形式: オブジェクト
+        manifest = parsed as ScreenshotManifest;
+      }
+
+      console.log('[FileProcessor] Manifest loaded:', {
+        version: manifest.version,
+        totalScreenshots: manifest.totalScreenshots,
+        screenshotsCount: manifest.screenshots?.length ?? 0,
+      });
+
+      if (!manifest.screenshots || manifest.screenshots.length === 0) {
+        console.log('[FileProcessor] Manifest has no screenshots');
+        return { screenshots: [], screenshotService: undefined };
+      }
+
+      // スクリーンショットサービスを作成して読み込み
+      const screenshotService = new ScreenshotService();
+      const screenshots = await screenshotService.loadFromZip(zip, manifest);
+      console.log('[FileProcessor] Screenshots loaded:', screenshots.length);
+
+      this.callbacks.onScreenshotLoad?.(
+        screenshotService.count,
+        screenshotService.verifiedCount
+      );
+
+      return { screenshots, screenshotService };
+    } catch (error) {
+      console.error('[FileProcessor] Failed to load screenshots:', error);
+      return { screenshots: [], screenshotService: undefined };
+    }
+  }
+
+  /**
+   * 画像ファイルかどうかを判定
+   */
+  private isImageFile(filename: string): boolean {
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'];
+    const ext = filename.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+    return imageExtensions.includes(ext);
+  }
+
+  /**
+   * バイナリファイルかどうかを判定（画像を除く）
    */
   private isBinaryFile(filename: string): boolean {
+    // 画像ファイルは別途処理するので除外
+    if (this.isImageFile(filename)) return false;
+
     const binaryExtensions = [
       '.exe', '.dll', '.so', '.dylib', '.bin',
-      '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp',
+      '.ico',
       '.mp3', '.mp4', '.wav', '.avi', '.mov', '.webm',
       '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
       '.zip', '.tar', '.gz', '.rar', '.7z',

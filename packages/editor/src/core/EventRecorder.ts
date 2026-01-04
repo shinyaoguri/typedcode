@@ -104,6 +104,60 @@ export class EventRecorder {
   }
 
   /**
+   * 全タブにイベントを記録（fire-and-forget）
+   * スクリーンショット関連などセッション全体に関わるイベント用
+   * タブが削除されてもイベントが失われないようにする
+   */
+  recordToAllTabs(event: RecordEventInput): void {
+    // 無効化されている場合はスキップ
+    if (!this.enabled) {
+      return;
+    }
+
+    // 初期化完了前のイベント記録をスキップ
+    if (!this.initialized) {
+      console.debug('[EventRecorder] Skipping event - not initialized');
+      return;
+    }
+
+    const allTabs = this.tabManager.getAllTabs();
+    if (allTabs.length === 0) {
+      return;
+    }
+
+    console.debug(`[EventRecorder] Recording ${event.type} to ${allTabs.length} tabs`);
+
+    // 全タブに並列で記録
+    for (const tab of allTabs) {
+      const recordPromise = tab.typingProof.recordEvent(event);
+
+      // 記録開始時にステータスを更新
+      this.onStatusUpdate?.();
+
+      recordPromise
+        .then((result) => {
+          // アクティブタブの場合のみログビューアに追加
+          const activeTab = this.tabManager.getActiveTab();
+          if (activeTab && activeTab.id === tab.id && this.logViewer?.isVisible) {
+            const recordedEvent = tab.typingProof.events[result.index];
+            if (recordedEvent) {
+              this.logViewer.addLogEntry(recordedEvent, result.index);
+            }
+          }
+        })
+        .catch((err) => {
+          console.error(`[EventRecorder] Recording to tab ${tab.id} failed:`, err);
+        })
+        .finally(() => {
+          this.onStatusUpdate?.();
+        });
+    }
+
+    // 最後に一度だけ保存
+    this.tabManager.saveToStorage();
+  }
+
+  /**
    * リソースを解放
    */
   dispose(): void {

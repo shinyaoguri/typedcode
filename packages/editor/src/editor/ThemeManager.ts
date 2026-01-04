@@ -1,93 +1,40 @@
 /**
  * ThemeManager - ライト/ダークテーマの切り替え管理
+ * Monaco Editor連携付きのテーママネージャー
  */
 
-import type { Theme } from '@typedcode/shared';
+import { BaseThemeManager, type Theme } from '@typedcode/shared';
 import type { MonacoEditor } from './types.js';
 
-export class ThemeManager {
+export class ThemeManager extends BaseThemeManager {
   private editor: MonacoEditor;
-  private currentTheme: Theme;
 
   constructor(editor: MonacoEditor) {
+    super({
+      storageKey: 'typedcode-theme',
+      lightThemeColor: '#f5f5f5',
+      darkThemeColor: '#1e1e1e',
+    });
     this.editor = editor;
-    this.currentTheme = this.loadTheme();
-    this.applyTheme(this.currentTheme);
+    // コンストラクタで初期テーマが適用済みなので、エディタテーマも適用
+    this.updateEditorTheme(this.currentTheme);
   }
 
   /**
-   * 保存されたテーマを読み込む
+   * テーマを適用（オーバーライド）
    */
-  private loadTheme(): Theme {
-    const savedTheme = localStorage.getItem('typedcode-theme');
-    if (savedTheme === 'light' || savedTheme === 'dark') {
-      return savedTheme;
-    }
-    // Check system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-      return 'light';
-    }
-    return 'dark';
+  override applyTheme(theme: Theme): void {
+    super.applyTheme(theme);
+    this.updateEditorTheme(theme);
   }
 
   /**
-   * テーマを保存
+   * Monaco Editorのテーマを更新
    */
-  private saveTheme(theme: Theme): void {
-    localStorage.setItem('typedcode-theme', theme);
-  }
-
-  /**
-   * テーマを適用
-   */
-  applyTheme(theme: Theme): void {
-    this.currentTheme = theme;
-
-    // HTMLのdata-theme属性を設定
-    document.documentElement.setAttribute('data-theme', theme);
-
-    // Monaco Editorのテーマを変更
+  private updateEditorTheme(theme: Theme): void {
     if (this.editor) {
       const monacoTheme = theme === 'light' ? 'vs' : 'vs-dark';
       this.editor.updateOptions({ theme: monacoTheme });
     }
-
-    // theme-color metaタグを更新
-    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeColorMeta) {
-      themeColorMeta.setAttribute('content', theme === 'light' ? '#f5f5f5' : '#1e1e1e');
-    }
-
-    this.saveTheme(theme);
-  }
-
-  /**
-   * テーマを切り替え
-   */
-  toggle(): Theme {
-    const newTheme: Theme = this.currentTheme === 'dark' ? 'light' : 'dark';
-    this.applyTheme(newTheme);
-    return newTheme;
-  }
-
-  /**
-   * 現在のテーマを取得
-   */
-  getTheme(): Theme {
-    return this.currentTheme;
-  }
-
-  /**
-   * ライトテーマかどうか
-   */
-  isLight(): boolean {
-    return this.currentTheme === 'light';
-  }
-
-  /**
-   * ダークテーマかどうか
-   */
-  isDark(): boolean {
-    return this.currentTheme === 'dark';
   }
 }

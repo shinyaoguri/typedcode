@@ -12,6 +12,9 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage"
   },
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
   "devDependencies": {
     "vitest": "^2.1.0",
     "happy-dom": "^20.0.0",

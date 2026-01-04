@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TypingProof } from '../typingProof.js';
+import { HashChainManager } from '../typingProof/HashChainManager.js';
 import type { FingerprintComponents, InputType } from '../types.js';
 
 // テスト用のモックFingerprintComponents
@@ -182,9 +183,9 @@ describe('TypingProof', () => {
 
   describe('deterministicStringify', () => {
     it('should produce same output regardless of key order', async () => {
-      const proof = new TypingProof();
-      // @ts-expect-error: accessing private method for testing
-      const stringify = proof.deterministicStringify.bind(proof);
+      // HashChainManagerから直接テスト
+      const hashChainManager = new HashChainManager();
+      const stringify = hashChainManager.deterministicStringify.bind(hashChainManager);
 
       const obj1 = { b: 1, a: 2, c: 3 };
       const obj2 = { a: 2, c: 3, b: 1 };
@@ -195,9 +196,8 @@ describe('TypingProof', () => {
     });
 
     it('should handle nested objects with sorted keys', async () => {
-      const proof = new TypingProof();
-      // @ts-expect-error: accessing private method for testing
-      const stringify = proof.deterministicStringify.bind(proof);
+      const hashChainManager = new HashChainManager();
+      const stringify = hashChainManager.deterministicStringify.bind(hashChainManager);
 
       const nested = { z: { b: 1, a: 2 }, a: 1 };
       const result = stringify(nested);
@@ -205,9 +205,8 @@ describe('TypingProof', () => {
     });
 
     it('should handle arrays without sorting', async () => {
-      const proof = new TypingProof();
-      // @ts-expect-error: accessing private method for testing
-      const stringify = proof.deterministicStringify.bind(proof);
+      const hashChainManager = new HashChainManager();
+      const stringify = hashChainManager.deterministicStringify.bind(hashChainManager);
 
       const withArray = { items: [3, 1, 2], name: 'test' };
       const result = stringify(withArray);
@@ -215,9 +214,8 @@ describe('TypingProof', () => {
     });
 
     it('should handle null and undefined', async () => {
-      const proof = new TypingProof();
-      // @ts-expect-error: accessing private method for testing
-      const stringify = proof.deterministicStringify.bind(proof);
+      const hashChainManager = new HashChainManager();
+      const stringify = hashChainManager.deterministicStringify.bind(hashChainManager);
 
       expect(stringify(null)).toBe('null');
       expect(stringify({ a: null })).toBe('{"a":null}');

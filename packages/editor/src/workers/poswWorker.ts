@@ -8,21 +8,6 @@
  */
 
 // メッセージタイプ定義
-interface CalibrationRequest {
-  type: 'calibrate';
-  targetTimeMs: number;
-  minIterations: number;
-  maxIterations: number;
-}
-
-interface CalibrationResponse {
-  type: 'calibration-result';
-  iterations: number;
-  estimatedTimeMs: number;
-  benchmarkTimeMs: number;
-  timePerIteration: number;
-}
-
 interface ComputePoSWRequest {
   type: 'compute-posw';
   requestId: number;
@@ -56,8 +41,8 @@ interface VerifyPoSWResponse {
   valid: boolean;
 }
 
-type WorkerRequest = CalibrationRequest | ComputePoSWRequest | VerifyPoSWRequest;
-type WorkerResponse = CalibrationResponse | ComputePoSWResponse | VerifyPoSWResponse;
+type WorkerRequest = ComputePoSWRequest | VerifyPoSWRequest;
+type WorkerResponse = ComputePoSWResponse | VerifyPoSWResponse;
 
 // ArrayBufferを16進数文字列に変換
 function arrayBufferToHex(buffer: ArrayBuffer): string {
@@ -80,35 +65,6 @@ function generateNonce(): string {
   const nonceData = new Uint8Array(16);
   crypto.getRandomValues(nonceData);
   return arrayBufferToHex(nonceData.buffer);
-}
-
-// キャリブレーション
-async function handleCalibration(request: CalibrationRequest): Promise<CalibrationResponse> {
-  const testIterations = 1000;
-  const testData = 'calibration-test-data-' + Date.now();
-
-  const startTime = performance.now();
-  let hash = await computeHash(testData);
-  for (let i = 1; i < testIterations; i++) {
-    hash = await computeHash(hash);
-  }
-  const elapsed = performance.now() - startTime;
-
-  const timePerIteration = elapsed / testIterations;
-  const targetIterations = Math.round(request.targetTimeMs / timePerIteration);
-  const iterations = Math.max(
-    request.minIterations,
-    Math.min(request.maxIterations, targetIterations)
-  );
-  const estimatedTimeMs = iterations * timePerIteration;
-
-  return {
-    type: 'calibration-result',
-    iterations,
-    estimatedTimeMs,
-    benchmarkTimeMs: elapsed,
-    timePerIteration
-  };
 }
 
 // PoSW計算
@@ -157,9 +113,6 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   let response: WorkerResponse;
 
   switch (request.type) {
-    case 'calibrate':
-      response = await handleCalibration(request);
-      break;
     case 'compute-posw':
       response = await handleComputePoSW(request);
       break;

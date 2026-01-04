@@ -101,6 +101,23 @@
   border-left: 3px solid var(--accent-danger);
 }
 
+.modal-hint {
+  color: var(--text-tertiary) !important;
+  font-size: 12px !important;
+  font-style: italic;
+  margin-top: 12px !important;
+}
+
+.tab-close-filename {
+  font-weight: 600;
+  color: var(--text-primary) !important;
+  font-size: 14px !important;
+  background: var(--bg-tertiary);
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+}
+
 .modal-list {
   list-style: none;
   padding: 0;
@@ -228,12 +245,17 @@
 
 /* Terms of Service Modal */
 .modal-terms {
-  max-width: 520px;
+  max-width: 580px;
   border-top: 3px solid var(--accent-primary);
 }
 
 .modal-terms .modal-header i {
   color: var(--accent-primary);
+}
+
+.terms-body-scrollable {
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
 .terms-intro {
@@ -242,6 +264,138 @@
   color: var(--text-primary);
 }
 
+/* Accordion Styles */
+.terms-accordion {
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.terms-accordion-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  list-style: none;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+
+.terms-accordion-header::-webkit-details-marker {
+  display: none;
+}
+
+.terms-accordion-header:hover {
+  background: var(--bg-hover);
+}
+
+.terms-accordion-header > i:first-child {
+  color: var(--accent-primary);
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.terms-accordion-header > span {
+  flex: 1;
+}
+
+.terms-accordion-icon {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.terms-accordion[open] .terms-accordion-icon {
+  transform: rotate(180deg);
+}
+
+.terms-accordion-content {
+  padding: 0 14px 14px 14px;
+  border-top: 1px solid var(--border-color);
+  animation: accordion-slide-down 0.2s ease;
+}
+
+@keyframes accordion-slide-down {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+  }
+}
+
+.terms-accordion-content > p:first-child {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.terms-detail-heading {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 12px 0 8px 0 !important;
+}
+
+.terms-detail-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.terms-detail-list li {
+  position: relative;
+  padding: 6px 0 6px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  border-bottom: none;
+}
+
+.terms-detail-list li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--accent-primary);
+  font-weight: bold;
+}
+
+.terms-detail-note {
+  margin-top: 12px !important;
+  padding: 10px 12px;
+  background: rgba(0, 120, 212, 0.08);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: 0 4px 4px 0;
+  font-size: 11px !important;
+  color: var(--text-secondary) !important;
+  line-height: 1.5;
+}
+
+/* Terms accordion link styles */
+.terms-accordion-content a {
+  color: var(--accent-primary);
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.terms-accordion-content a:hover {
+  color: var(--accent-hover, #1a8cff);
+  text-decoration: none;
+}
+
+/* Legacy section styles (kept for backwards compatibility) */
 .terms-section {
   margin-bottom: 16px;
   padding: 12px;
@@ -679,4 +833,252 @@
 .about-github-link:hover {
   background: var(--bg-hover);
   border-color: var(--accent-primary);
+}
+
+/* Screen Capture Lock Overlay */
+.screen-capture-lock-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30000;
+  backdrop-filter: blur(8px);
+  animation: modal-fade-in 0.3s ease;
+}
+
+.screen-capture-lock-overlay.hidden {
+  display: none;
+}
+
+.screen-capture-lock-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  max-width: 400px;
+}
+
+.screen-capture-lock-content i.fa-desktop {
+  color: var(--accent-warning);
+  margin-bottom: 8px;
+}
+
+.screen-capture-lock-content h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.screen-capture-lock-content p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.screen-capture-lock-content .btn {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.screen-capture-lock-content .btn-primary {
+  background: var(--accent-primary);
+  color: #ffffff;
+}
+
+.screen-capture-lock-content .btn-primary:hover {
+  background: var(--accent-secondary);
+}
+
+/* Screen Share Guide - Chrome共有ダイアログの非表示ボタンを押すよう促すガイド */
+.screen-share-guide {
+  position: fixed;
+  bottom: 70px; /* Chromeダイアログ(約60px高)の上に配置 */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 999999;
+  cursor: pointer;
+  animation: screen-share-guide-fade-in 0.3s ease;
+}
+
+.screen-share-guide-content {
+  background: rgba(0, 0, 0, 0.92);
+  color: #ffffff;
+  padding: 16px 24px;
+  border-radius: 10px;
+  text-align: center;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.screen-share-guide-arrow {
+  font-size: 28px;
+  color: #4fc3f7;
+  animation: screen-share-guide-bounce 0.6s ease-in-out infinite;
+}
+
+.screen-share-guide-text {
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 10px;
+  font-weight: 500;
+}
+
+.screen-share-guide-text strong {
+  color: #4fc3f7;
+}
+
+.screen-share-guide-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 10px;
+}
+
+@keyframes screen-share-guide-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes screen-share-guide-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+/* Export Progress Dialog */
+.export-progress-modal {
+  min-width: 400px;
+  width: 450px;
+}
+
+.export-progress-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 16px;
+}
+
+.export-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.export-progress-step[data-status="active"] {
+  background: rgba(79, 195, 247, 0.1);
+}
+
+.export-progress-step[data-status="done"] {
+  opacity: 0.7;
+}
+
+.export-progress-step .step-indicator {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.export-progress-step .step-indicator i {
+  font-size: 14px;
+}
+
+/* Step icon visibility based on status */
+.export-progress-step .step-icon-loading,
+.export-progress-step .step-icon-done,
+.export-progress-step .step-icon-pending {
+  display: none;
+}
+
+.export-progress-step[data-status="pending"] .step-icon-pending {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 8px;
+}
+
+.export-progress-step[data-status="active"] .step-icon-loading {
+  display: block;
+  color: #4fc3f7;
+}
+
+.export-progress-step[data-status="done"] .step-icon-done {
+  display: block;
+  color: #4caf50;
+}
+
+.export-progress-step .step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.export-progress-step .step-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+}
+
+.export-progress-step[data-status="active"] .step-label {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.export-progress-step[data-status="done"] .step-label {
+  color: var(--text-tertiary);
+}
+
+/* Export Turnstile Container */
+.export-turnstile-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0 16px 0;
+  width: 100%;
+}
+
+.export-turnstile-container.hidden {
+  display: none;
+}
+
+#export-turnstile-widget {
+  min-height: 65px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }

@@ -329,6 +329,10 @@
                         <span class="result-row-label" data-i18n="result.eventCount">イベント数</span>
                         <span class="result-row-value" id="chain-events">-</span>
                       </div>
+                      <div class="result-row" id="screenshot-verification-row" style="display: none;">
+                        <span class="result-row-label" data-i18n="result.screenshotVerification">スクリーンショット</span>
+                        <span class="result-row-value" id="screenshot-verification">-</span>
+                      </div>
                     </div>
                   </div>
 
@@ -398,7 +402,10 @@
                 <!-- Chart Section -->
                 <div class="chart-section" id="chart-section">
                   <div class="chart-tabs">
-                    <button class="chart-tab active" data-tab="timeline" id="tab-timeline">
+                    <button class="chart-tab active" data-tab="integrated" id="tab-integrated">
+                      <i class="fas fa-chart-line"></i> <span data-i18n="charts.integrated">統合チャート</span>
+                    </button>
+                    <button class="chart-tab" data-tab="timeline" id="tab-timeline">
                       <i class="fas fa-keyboard"></i> <span data-i18n="charts.timeline">タイムライン</span>
                     </button>
                     <button class="chart-tab" data-tab="mouse" id="tab-mouse">
@@ -406,7 +413,12 @@
                     </button>
                   </div>
                   <div class="chart-content">
-                    <div class="chart-panel active" id="panel-timeline">
+                    <div class="chart-panel active" id="panel-integrated">
+                      <div class="integrated-chart-container">
+                        <canvas id="integrated-chart"></canvas>
+                      </div>
+                    </div>
+                    <div class="chart-panel" id="panel-timeline">
                       <div class="integrated-timeline">
                         <canvas id="integrated-timeline-chart"></canvas>
                       </div>
@@ -422,6 +434,36 @@
                     <span><span data-i18n="charts.dwell">Dwell</span>: <strong id="avg-dwell-time">0ms</strong></span>
                     <span><span data-i18n="charts.flight">Flight</span>: <strong id="avg-flight-time">0ms</strong></span>
                     <span><span data-i18n="charts.mouse">マウス</span>: <strong id="mouse-event-count">0</strong></span>
+                  </div>
+                  <!-- Integrated Seekbar -->
+                  <div class="chart-seekbar" id="chart-seekbar" style="display: none;">
+                    <div class="seekbar-controls">
+                      <button class="seek-btn" id="seekbar-start" data-i18n-title="seekbar.start">
+                        <i class="fas fa-backward-fast"></i>
+                      </button>
+                      <button class="seek-btn" id="seekbar-prev" data-i18n-title="seekbar.prev">
+                        <i class="fas fa-backward-step"></i>
+                      </button>
+                      <button class="seek-btn seek-btn-play" id="seekbar-play" data-i18n-title="seekbar.play">
+                        <i class="fas fa-play" id="play-icon"></i>
+                      </button>
+                      <button class="seek-btn" id="seekbar-next" data-i18n-title="seekbar.next">
+                        <i class="fas fa-forward-step"></i>
+                      </button>
+                      <button class="seek-btn" id="seekbar-end" data-i18n-title="seekbar.end">
+                        <i class="fas fa-forward-fast"></i>
+                      </button>
+                    </div>
+                    <div class="seekbar-track-container">
+                      <div class="seek-track">
+                        <input type="range" class="seek-slider" id="seekbar-slider" min="0" max="100" value="100" step="1">
+                        <div class="seek-progress" id="seekbar-progress"></div>
+                      </div>
+                    </div>
+                    <div class="seekbar-info">
+                      <span class="seek-time" id="seekbar-time">0:00</span>
+                      <span class="seek-count" id="seekbar-event-count">0/0</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -454,30 +496,6 @@
       </div>
     </div>
 
-    <!-- Floating Seekbar -->
-    <div class="floating-seekbar" id="floating-seekbar" style="display: none;">
-      <button class="seek-btn" id="seekbar-start" data-i18n-title="seekbar.start">
-        <i class="fas fa-backward-fast"></i>
-      </button>
-      <button class="seek-btn" id="seekbar-prev" data-i18n-title="seekbar.prev">
-        <i class="fas fa-backward-step"></i>
-      </button>
-      <button class="seek-btn seek-btn-play" id="seekbar-play" data-i18n-title="seekbar.play">
-        <i class="fas fa-play" id="play-icon"></i>
-      </button>
-      <button class="seek-btn" id="seekbar-next" data-i18n-title="seekbar.next">
-        <i class="fas fa-forward-step"></i>
-      </button>
-      <button class="seek-btn" id="seekbar-end" data-i18n-title="seekbar.end">
-        <i class="fas fa-forward-fast"></i>
-      </button>
-      <div class="seek-track">
-        <input type="range" class="seek-slider" id="seekbar-slider" min="0" max="100" value="100" step="1">
-        <div class="seek-progress" id="seekbar-progress"></div>
-      </div>
-      <div class="seek-time" id="seekbar-time">0:00</div>
-      <div class="seek-count" id="seekbar-event-count">0/0</div>
-    </div>
   </div>
 
   <!-- Hidden file input -->

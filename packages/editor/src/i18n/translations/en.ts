@@ -68,6 +68,17 @@ export const en: TranslationKeys = {
     confirmButton: 'Reset All',
   },
 
+  tabCloseDialog: {
+    title: 'Close Tab',
+    warning: 'This action cannot be undone!',
+    description: 'The following data will be permanently deleted:',
+    itemKeystrokes: 'Recorded keystrokes',
+    itemHashChain: 'Hash chain (proof data)',
+    itemScreenshots: 'Associated screenshots',
+    exportHint: 'If you want to save the proof, please export it first.',
+    confirmButton: 'Close Tab',
+  },
+
   processingDialog: {
     title: 'Generating Hash Chain...',
     description:
@@ -96,21 +107,97 @@ export const en: TranslationKeys = {
   terms: {
     title: 'Terms of Service',
     intro: 'Please review the following before using TypedCode.',
+
+    // Operation Logging
     operationLogTitle: 'Operation Logging',
-    operationLogDesc:
-      'The following operations are recorded for typing proof:',
-    operationLogKeystrokes: 'Keystroke timing',
-    operationLogCursor: 'Cursor movement',
-    operationLogMouse: 'Mouse operations',
-    operationLogClipboard: 'Copy & paste detection',
+    operationLogDesc: 'The following operations are recorded in detail to generate typing proofs.',
+    operationLogDetailHeading: 'Information recorded:',
+    operationLogKeystrokes: 'Key input: Press/release timing, key codes, modifier key states (Shift, Ctrl, Alt, Meta), dwell time',
+    operationLogCursor: 'Cursor operations: Cursor position movement, text selection range changes, selection direction (left/right)',
+    operationLogMouse: 'Mouse operations: Mouse cursor coordinates (sampled every 100ms)',
+    operationLogContent: 'Content changes: Character insertion/deletion, change position, change content',
+    operationLogClipboard: 'External input: Paste operations, drag & drop, number of characters input',
+    operationLogWindow: 'Window state: Window size, focus state, tab active state, network connection state',
+    operationLogNote: 'These operations are recorded with timestamps and linked via SHA-256 hash chain. Each event includes the hash of the previous event, enabling tamper detection.',
+
+    // Hash Chain and Proof
+    hashChainTitle: 'Hash Chain and Proof',
+    hashChainDesc: 'TypedCode constructs a cryptographic hash chain to prove the integrity and order of operation logs.',
+    hashChainDetailHeading: 'How proof works:',
+    hashChainSha256: 'SHA-256 Hash: Each operation event is hashed together with the previous event\'s hash, creating a chain',
+    hashChainCheckpoint: 'Checkpoints: Checkpoints are created at regular intervals to mark proof segments',
+    hashChainPosw: 'Proof of Sequential Work (PoSW): Computational proof is generated at each checkpoint to prove passage of time. This computation runs in a Web Worker in the background',
+    hashChainFingerprint: 'Browser fingerprint: Proof files include browser environment information (language, timezone, screen resolution, etc.)',
+    hashChainNote: 'This mechanism allows third parties to verify that code was typed character by character.',
+
+    // Bot Detection
     botDetectionTitle: 'Bot Detection',
-    botDetectionDesc:
-      'Cloudflare Turnstile is used for human verification to prevent abuse.',
+    botDetectionDesc: '<a href="https://www.cloudflare.com/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a> is used to verify you are human and prevent fraudulent proof generation by automation tools or bots.',
+    botDetectionDetailHeading: 'Verification timing:',
+    botDetectionInit: 'File creation: Human verification when creating a new tab',
+    botDetectionExport: 'Proof export: Final verification immediately before file output',
+    botDetectionNote: 'Turnstile verification results are validated on the server, and only successful verifications are recorded as "human verified" in proof files.',
+
+    // Data Storage
     dataStorageTitle: 'Data Storage',
-    dataStorageDesc:
-      'All operation logs are stored <strong>only in your browser\'s local storage</strong>. No automatic transmission to servers occurs.',
+    dataStorageDesc: '<strong>All data is stored only in your browser\'s local storage (IndexedDB). No automatic transmission to servers occurs.</strong>',
+    dataStorageDetailHeading: 'Data stored:',
+    dataStorageCode: 'Editor content: Source files of code you create',
+    dataStorageEvents: 'Operation logs: All keystroke, cursor movement, and external input event data',
+    dataStorageHash: 'Hash chain: Cryptographic hash data for proofs',
+    dataStorageScreenshots: 'Screenshots: Periodically captured screen images',
+    dataStorageSettings: 'Settings: Language, theme preferences, and terms acceptance state',
+    dataStorageNote: 'This data persists even when you close the browser, but can be completely deleted by clearing browser data or using the "Reset All" function. To save proof data, be sure to download files using the export function.',
+
+    // Screen Capture
+    screenCaptureTitle: 'Screen Capture',
+    screenCaptureDesc: 'To enhance typing proof reliability, the Screen Capture API is used to periodically take screenshots.',
+    screenCaptureDetailHeading: 'About capture:',
+    screenCapturePermission: 'Screen sharing permission: A browser screen sharing dialog will appear on first launch. Please select "Entire Screen"',
+    screenCaptureInterval: 'Periodic capture: Screenshots are automatically taken every 30 seconds',
+    screenCaptureFocus: 'Focus loss: Screenshots are also taken when focus leaves the editor',
+    screenCaptureHash: 'Hashing: Captured images are hashed with SHA-256 and linked to proof data',
+    screenCaptureStorage: '<strong>Local storage</strong>: Image data is stored only in the browser and never sent to servers',
+    screenCaptureNote: 'If you stop screen sharing, you cannot continue working in the editor. To resume, you must grant screen sharing permission again.',
+
+    // Proof File Export
+    exportTitle: 'Proof File Export',
+    exportDesc: 'Created proof data can be downloaded in JSON or ZIP format.',
+    exportDetailHeading: 'Export contents:',
+    exportJson: 'Proof file (.json): Complete proof data including operation logs, hash chain, PoSW data, browser fingerprint, and human verification results',
+    exportScreenshots: 'Screenshots (.png): Captured screen images',
+    exportManifest: 'Manifest: Hash values of screenshots and correspondence with proof data',
+    exportReadme: 'README file: Instructions for verifying the proof',
+    exportNote: 'Exported files can be verified with the TypedCode Verify application. You can choose between JSON output with proof data only, or ZIP output including screenshots.',
+
+    // Privacy and Considerations
+    privacyTitle: 'Privacy and Considerations',
+    privacyDesc: 'Please review what information TypedCode collects and how proof data is handled.',
+    privacyDetailHeading: 'About collected information:',
+    privacyBrowserInfo: 'Only commonly available browser information (language, timezone, screen resolution, etc.) is used. No personal information such as names or email addresses is collected',
+    privacyTypedContent: 'However, all code content entered in the editor is recorded',
+    privacyScreenshots: 'During screen sharing, the entire screen is saved as screenshots, so content from other applications or windows displayed on screen may also be recorded',
+    privacyLocalOnly: '<strong>All this data is stored only in your browser and is never sent to external servers</strong>',
+    privacyExportWarning: 'If you export and submit proof data to third parties, you do so at your own responsibility. Please check the recipient\'s terms and privacy policy regarding data handling',
+    privacyNote: 'Exported proof data includes your typed content and screenshots. Please review the contents before submission and ensure no confidential information is included.',
+
     agreeCheckbox: 'I understand and agree to the above',
     agreeButton: 'Agree and Start',
+  },
+
+  screenCapture: {
+    requesting: 'Requesting screen share permission...',
+    permissionDenied: 'Screen share permission denied',
+    notSupported: 'Screen capture is not supported in this browser',
+    captured: 'Screenshot captured',
+    capturedPeriodic: 'Periodic screenshot captured',
+    capturedFocusLost: 'Screenshot captured after focus lost',
+    capturedManual: 'Manual screenshot captured',
+    lockTitle: 'Screen sharing stopped',
+    lockDescription: 'Screen sharing of the entire screen is required to use TypedCode.',
+    resumeButton: 'Resume screen sharing',
+    guideText: 'Click <strong>"Hide"</strong> on the dialog<br>shown below',
+    guideHint: 'Click to dismiss',
   },
 
   statusBar: {
@@ -168,6 +255,16 @@ export const en: TranslationKeys = {
     failed: 'Export failed',
     zipSuccess: 'ZIP file downloaded (${count} files)',
     zipFailed: 'ZIP export failed',
+    progressTitle: 'Preparing files...',
+    phaseVerification: 'Human verification',
+    phasePreparing: 'Preparing data',
+    phaseScreenshots: 'Collecting screenshots',
+    phaseGenerating: 'Generating ZIP file',
+    statusVerification: 'Verifying you are human...',
+    statusPreparing: 'Preparing data...',
+    statusScreenshots: 'Collecting screenshots...',
+    statusGenerating: 'Generating ZIP file...',
+    statusComplete: 'Complete',
   },
 
   terminal: {
@@ -234,6 +331,10 @@ export const en: TranslationKeys = {
     selectionClear: 'Selection cleared',
     selectionCount: '${count} chars selected',
     terminalInput: 'Terminal input',
+    screenShareStart: 'Screen sharing started',
+    screenShareStop: 'Screen sharing stopped',
+    screenShareResumed: 'Screen sharing resumed',
+    sessionResumed: 'Session resumed (after reload)',
   },
 
   operations: {

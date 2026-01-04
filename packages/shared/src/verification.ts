@@ -33,6 +33,20 @@ export interface FullVerificationResult {
 }
 
 /**
+ * PoSW (Proof of Sequential Work) statistics
+ */
+export interface PoswStats {
+  /** Number of PoSW events */
+  count: number;
+  /** Average compute time in milliseconds */
+  avgTimeMs: number;
+  /** Total compute time in milliseconds */
+  totalTimeMs: number;
+  /** Iterations per PoSW */
+  iterations: number;
+}
+
+/**
  * Progress callback for verification
  */
 export type VerificationProgressCallback = (current: number, total: number) => void;
@@ -261,5 +275,38 @@ export async function verifyProofFile(
     isPureTyping,
     errorAt: chainResult.errorAt,
     errorMessage: chainResult.message,
+  };
+}
+
+/**
+ * Calculate PoSW statistics from events
+ * @param events - Array of stored events
+ * @returns PoSW statistics or undefined if no PoSW data
+ */
+export function calculatePoswStats(events: StoredEvent[]): PoswStats | undefined {
+  if (!events || events.length === 0) return undefined;
+
+  let count = 0;
+  let totalTimeMs = 0;
+  let iterations = 0;
+
+  for (const event of events) {
+    if (event.posw) {
+      count++;
+      totalTimeMs += event.posw.computeTimeMs || 0;
+      // Use the first event's iterations (should be consistent)
+      if (iterations === 0) {
+        iterations = event.posw.iterations || 0;
+      }
+    }
+  }
+
+  if (count === 0) return undefined;
+
+  return {
+    count,
+    avgTimeMs: totalTimeMs / count,
+    totalTimeMs,
+    iterations,
   };
 }

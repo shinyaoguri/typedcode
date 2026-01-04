@@ -1,8 +1,31 @@
-console.log('[DEBUG] ===== main.ts TOP LEVEL LOADING =====');
+// Check URL parameters for special actions
+const urlParams = new URLSearchParams(window.location.search);
+
+// Handle full reset request
+if (urlParams.get('reset')) {
+  console.log('[TypedCode] Reset parameter detected, clearing all data...');
+  // Clear all storage synchronously before any other code runs
+  try { localStorage.clear(); } catch { /* ignore */ }
+  try { sessionStorage.clear(); } catch { /* ignore */ }
+  try {
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+      const eqPos = cookie.indexOf('=');
+      const name = eqPos > -1 ? cookie.substring(0, eqPos).trim() : cookie.trim();
+      if (name) {
+        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+      }
+    }
+  } catch { /* ignore */ }
+  try { indexedDB.deleteDatabase('typedcode-screenshots'); } catch { /* ignore */ }
+  // Remove the reset parameter from URL
+  const cleanUrl = window.location.origin + window.location.pathname;
+  window.history.replaceState({}, '', cleanUrl);
+  console.log('[TypedCode] All data cleared, URL cleaned');
+}
 
 // Check if this is a fresh window request (opened via "New Window" menu)
 // If so, clear sessionStorage to start with a clean state
-const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get('fresh') === '1') {
   sessionStorage.removeItem('typedcode-tabs');
   // Remove the ?fresh=1 from URL without reloading
@@ -40,6 +63,7 @@ import { configureMonacoWorkers } from './config/MonacoConfig.js';
 import { WindowTracker } from './tracking/WindowTracker.js';
 import { VisibilityTracker } from './tracking/VisibilityTracker.js';
 import { NetworkTracker } from './tracking/NetworkTracker.js';
+import { ScreenshotTracker } from './tracking/ScreenshotTracker.js';
 import { ProcessingDialog } from './ui/components/ProcessingDialog.js';
 import { ProofStatusDisplay } from './ui/components/ProofStatusDisplay.js';
 import { CursorTracker } from './editor/CursorTracker.js';
@@ -119,6 +143,7 @@ const ctx: AppContext = {
       },
     }),
     operation: new OperationDetector(),
+    screenshot: null,  // 許可取得後に初期化
   },
   editorController: new EditorController({
     operationDetector: new OperationDetector(),
@@ -225,6 +250,189 @@ async function showTermsModal(): Promise<void> {
     termsAgreeCheckbox.addEventListener('change', handleCheckboxChange);
     termsAgreeBtn.addEventListener('click', handleAgree);
   });
+}
+
+/**
+ * 画面共有の許可を要求（画面全体が選択されるまで繰り返す）
+ */
+async function requestScreenCaptureWithRetry(tracker: ScreenshotTracker): Promise<boolean> {
+  const maxAttempts = 10; // 無限ループ防止
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    updateInitMessage(t('screenCapture.requesting') ?? 'Requesting screen capture permission...');
+    console.log(`[TypedCode] Requesting screen capture permission (attempt ${attempt})...`);
+
+    const result = await tracker.requestPermissionAndAttach(true); // requireMonitor = true
+
+    if (result.success) {
+      return true;
+    }
+
+    if (result.error === 'monitor_required') {
+      // タブやウィンドウが選択された場合、ユーザーに画面全体を選択するよう促す
+      const surfaceName = result.displaySurface === 'window' ? 'ウィンドウ' : 'タブ';
+      const shouldRetry = await showMonitorRequiredDialog(surfaceName);
+      if (!shouldRetry) {
+        console.log('[TypedCode] User cancelled screen capture');
+        return false;
+      }
+      // ループを続行して再度許可を求める
+      continue;
+    }
+
+    if (result.error === 'User denied screen capture permission') {
+      // ユーザーがキャンセルした場合
+      const shouldRetry = await showScreenCaptureRequiredDialog();
+      if (!shouldRetry) {
+        return false;
+      }
+      continue;
+    }
+
+    // その他のエラー
+    console.error('[TypedCode] Screen capture error:', result.error);
+    return false;
+  }
+
+  console.error('[TypedCode] Max screen capture attempts reached');
+  return false;
+}
+
+/**
+ * 画面全体の選択が必要であることを示すダイアログを表示
+ */
+async function showMonitorRequiredDialog(selectedType: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('monitor-required-dialog');
+    const retryBtn = document.getElementById('monitor-required-retry-btn');
+    const cancelBtn = document.getElementById('monitor-required-cancel-btn');
+    const selectedTypeEl = document.getElementById('monitor-selected-type');
+
+    if (!dialog || !retryBtn || !cancelBtn) {
+      // ダイアログが存在しない場合はalertで代用
+      const retry = confirm(
+        `「${selectedType}」が選択されました。\n\nTypedCodeでは画面全体の共有が必要です。\n「画面全体」または「モニター」を選択してください。\n\n再試行しますか？`
+      );
+      resolve(retry);
+      return;
+    }
+
+    if (selectedTypeEl) {
+      selectedTypeEl.textContent = selectedType;
+    }
+
+    dialog.classList.remove('hidden');
+
+    const handleRetry = (): void => {
+      cleanup();
+      dialog.classList.add('hidden');
+      resolve(true);
+    };
+
+    const handleCancel = (): void => {
+      cleanup();
+      dialog.classList.add('hidden');
+      resolve(false);
+    };
+
+    const cleanup = (): void => {
+      retryBtn.removeEventListener('click', handleRetry);
+      cancelBtn.removeEventListener('click', handleCancel);
+    };
+
+    retryBtn.addEventListener('click', handleRetry);
+    cancelBtn.addEventListener('click', handleCancel);
+  });
+}
+
+/**
+ * 画面共有が必要であることを示すダイアログを表示
+ */
+async function showScreenCaptureRequiredDialog(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('screen-capture-required-dialog');
+    const retryBtn = document.getElementById('screen-capture-retry-btn');
+    const cancelBtn = document.getElementById('screen-capture-cancel-btn');
+
+    if (!dialog || !retryBtn || !cancelBtn) {
+      // ダイアログが存在しない場合はalertで代用
+      const retry = confirm(
+        'TypedCodeを使用するには画面共有の許可が必要です。\n\n再試行しますか？'
+      );
+      resolve(retry);
+      return;
+    }
+
+    dialog.classList.remove('hidden');
+
+    const handleRetry = (): void => {
+      cleanup();
+      dialog.classList.add('hidden');
+      resolve(true);
+    };
+
+    const handleCancel = (): void => {
+      cleanup();
+      dialog.classList.add('hidden');
+      resolve(false);
+    };
+
+    const cleanup = (): void => {
+      retryBtn.removeEventListener('click', handleRetry);
+      cancelBtn.removeEventListener('click', handleCancel);
+    };
+
+    retryBtn.addEventListener('click', handleRetry);
+    cancelBtn.addEventListener('click', handleCancel);
+  });
+}
+
+/**
+ * 画面共有停止時のロックオーバーレイを表示
+ */
+function showScreenCaptureLockOverlay(): void {
+  let overlay = document.getElementById('screen-capture-lock-overlay');
+
+  if (!overlay) {
+    // オーバーレイが存在しない場合は動的に作成
+    overlay = document.createElement('div');
+    overlay.id = 'screen-capture-lock-overlay';
+    overlay.className = 'screen-capture-lock-overlay';
+    overlay.innerHTML = `
+      <div class="screen-capture-lock-content">
+        <i class="fas fa-desktop fa-3x"></i>
+        <h2>${t('screenCapture.lockTitle') ?? '画面共有が停止されました'}</h2>
+        <p>${t('screenCapture.lockDescription') ?? 'TypedCodeを使用するには画面全体の共有が必要です。'}</p>
+        <button id="screen-capture-resume-btn" class="btn btn-primary">
+          <i class="fas fa-play"></i>
+          ${t('screenCapture.resumeButton') ?? '画面共有を再開'}
+        </button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  overlay.classList.remove('hidden');
+
+  // 再開ボタンのイベントリスナー
+  const resumeBtn = document.getElementById('screen-capture-resume-btn');
+  resumeBtn?.addEventListener('click', async () => {
+    const tracker = ctx.trackers.screenshot;
+    if (tracker) {
+      const result = await requestScreenCaptureWithRetry(tracker);
+      if (result) {
+        hideScreenCaptureLockOverlay();
+      }
+    }
+  });
+}
+
+/**
+ * 画面共有ロックオーバーレイを非表示
+ */
+function hideScreenCaptureLockOverlay(): void {
+  const overlay = document.getElementById('screen-capture-lock-overlay');
+  overlay?.classList.add('hidden');
 }
 
 // ========================================
@@ -341,40 +549,73 @@ function setupStaticEventListeners(): void {
     }
   });
 
-  // リセット機能
-  const resetBtn = document.getElementById('reset-btn');
+  // リセット機能 - イベント委任を使用して確実にキャプチャ
   const resetDialog = document.getElementById('reset-dialog');
-  const resetCancelBtn = document.getElementById('reset-cancel-btn');
-  const resetConfirmBtn = document.getElementById('reset-confirm-btn');
 
-  resetBtn?.addEventListener('click', () => {
+  // リセットボタン（設定メニュー内）をクリックしてダイアログを表示
+  document.getElementById('reset-btn')?.addEventListener('click', () => {
     document.getElementById('settings-dropdown')?.classList.remove('visible');
     resetDialog?.classList.remove('hidden');
   });
 
-  resetCancelBtn?.addEventListener('click', () => {
+  // キャンセルボタン
+  document.getElementById('reset-cancel-btn')?.addEventListener('click', () => {
     resetDialog?.classList.add('hidden');
   });
 
+  // オーバーレイクリックで閉じる
   resetDialog?.addEventListener('click', (e) => {
     if (e.target === resetDialog) {
       resetDialog.classList.add('hidden');
     }
   });
 
+  // Escキーで閉じる
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !resetDialog?.classList.contains('hidden')) {
       resetDialog?.classList.add('hidden');
     }
   });
 
-  resetConfirmBtn?.addEventListener('click', () => {
+  // リセット確認ボタン - イベント委任を使用
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    // ボタン自体またはその子要素（アイコン、テキスト）がクリックされた場合
+    const confirmBtn = target.closest('#reset-confirm-btn');
+    if (!confirmBtn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    console.log('[TypedCode] Reset confirmed via event delegation');
+
+    // ダイアログを閉じる
     resetDialog?.classList.add('hidden');
-    // 全てのストレージをクリア
-    localStorage.clear();
-    sessionStorage.clear();
+
+    // beforeunloadイベントをスキップ
     ctx.skipBeforeUnload = true;
-    window.location.reload();
+
+    // ストレージをクリア
+    try { localStorage.clear(); } catch { /* ignore */ }
+    try { sessionStorage.clear(); } catch { /* ignore */ }
+
+    // Cookiesをクリア
+    try {
+      const cookies = document.cookie.split(';');
+      for (const cookie of cookies) {
+        const eqPos = cookie.indexOf('=');
+        const name = eqPos > -1 ? cookie.substring(0, eqPos).trim() : cookie.trim();
+        if (name) {
+          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+        }
+      }
+    } catch { /* ignore */ }
+
+    // IndexedDBを削除
+    try { indexedDB.deleteDatabase('typedcode-screenshots'); } catch { /* ignore */ }
+
+    // リロード（reset パラメータ付き）
+    window.location.href = window.location.origin + window.location.pathname + '?reset=' + Date.now();
   });
 
   // ページ離脱時の確認ダイアログ
@@ -411,12 +652,8 @@ async function initializeDeviceInfo(): Promise<{
 }> {
   updateInitMessage(t('notifications.gettingDeviceInfo'));
   const deviceId = await Fingerprint.getDeviceId();
-  console.log('[DEBUG INIT] Device ID:', deviceId.substring(0, 16) + '...');
-
   const fingerprintComponents = await Fingerprint.collectComponents();
   const fingerprintHash = await Fingerprint.generate();
-  console.log('[DEBUG INIT] Fingerprint collected');
-
   return { deviceId, fingerprintHash, fingerprintComponents };
 }
 
@@ -440,6 +677,9 @@ async function initializeTabManager(
   ctx.proofExporter.setTabManager(ctx.tabManager);
   ctx.proofExporter.setProcessingDialog(ctx.processingDialog);
   ctx.proofExporter.setCallbacks({ onNotification: showNotification });
+  if (ctx.trackers.screenshot) {
+    ctx.proofExporter.setScreenshotTracker(ctx.trackers.screenshot);
+  }
 
   // ProofStatusDisplayのコールバックを設定
   ctx.proofStatusDisplay.setGetStats(() => {
@@ -461,6 +701,11 @@ async function initializeTabManager(
   ctx.tabManager.setOnTabChange((tab, previousTab) => {
     console.log('[TypedCode] Tab switched:', previousTab?.filename, '->', tab.filename);
     handleTabChange(tab);
+
+    // ScreenshotTrackerのstartTimeを新しいタブのTypingProofに合わせて更新
+    if (ctx.trackers.screenshot) {
+      ctx.trackers.screenshot.setProofStartTime(tab.typingProof.startTime);
+    }
   });
 
   ctx.tabManager.setOnTabUpdate(() => {
@@ -476,11 +721,7 @@ async function initializeTabManager(
   });
 
   updateInitMessage(t('notifications.initializingEditor'));
-  console.log('[DEBUG] Before tabManager.initialize()');
-
   const initialized = await ctx.tabManager.initialize(fingerprintHash, fingerprintComponents);
-  console.log('[DEBUG] After tabManager.initialize(), result:', initialized);
-
   return initialized;
 }
 
@@ -492,17 +733,17 @@ function initializeLogViewer(): void {
   }
 
   const initialProof = ctx.tabManager?.getActiveProof();
-  console.log('[DEBUG] initialProof:', initialProof);
   if (initialProof) {
     ctx.logViewer = new LogViewer(logEntriesContainer, initialProof);
-    console.log('[TypedCode] LogViewer initialized');
-  } else {
-    console.warn('[DEBUG] No initialProof - LogViewer NOT initialized');
+
+    // スクリーンショットストレージを設定（プレビュー表示用）
+    if (ctx.trackers.screenshot) {
+      ctx.logViewer.setScreenshotStorage(ctx.trackers.screenshot.getStorageService());
+    }
   }
 }
 
 function initializeEventRecorder(): void {
-  console.log('[DEBUG] Creating EventRecorder...');
   ctx.eventRecorder = new EventRecorder({
     tabManager: ctx.tabManager!,
     logViewer: ctx.logViewer,
@@ -510,7 +751,6 @@ function initializeEventRecorder(): void {
     onError: (msg) => showNotification(msg),
   });
   ctx.eventRecorder.setInitialized(true);
-  console.log('[DEBUG] EventRecorder initialized and set to initialized=true');
 }
 
 function initializeTerminal(): void {
@@ -794,21 +1034,152 @@ function recordTermsAcceptance(): void {
 }
 
 // ========================================
+// データクリア関数
+// ========================================
+
+/**
+ * アプリケーションに関連する全てのデータを完全にクリア
+ * - localStorage
+ * - sessionStorage
+ * - IndexedDB (スクリーンショット等)
+ * - Cookies
+ * - Service Worker Cache
+ */
+async function clearAllAppData(): Promise<void> {
+  console.log('[TypedCode] Clearing all app data...');
+
+  // 1. localStorage をクリア
+  try {
+    localStorage.clear();
+    console.log('[TypedCode] localStorage cleared');
+  } catch (e) {
+    console.warn('[TypedCode] Failed to clear localStorage:', e);
+  }
+
+  // 2. sessionStorage をクリア
+  try {
+    sessionStorage.clear();
+    console.log('[TypedCode] sessionStorage cleared');
+  } catch (e) {
+    console.warn('[TypedCode] Failed to clear sessionStorage:', e);
+  }
+
+  // 3. IndexedDB をクリア（全てのデータベース）
+  try {
+    // 既知のデータベース名
+    const dbNames = ['typedcode-screenshots'];
+
+    for (const dbName of dbNames) {
+      await new Promise<void>((resolve) => {
+        const request = indexedDB.deleteDatabase(dbName);
+        request.onsuccess = () => {
+          console.log(`[TypedCode] IndexedDB "${dbName}" deleted`);
+          resolve();
+        };
+        request.onerror = () => {
+          console.warn(`[TypedCode] Failed to delete IndexedDB "${dbName}"`);
+          resolve();
+        };
+        request.onblocked = () => {
+          console.warn(`[TypedCode] IndexedDB "${dbName}" deletion blocked`);
+          resolve();
+        };
+      });
+    }
+
+    // indexedDB.databases() が利用可能な場合、全てのデータベースを削除
+    if ('databases' in indexedDB) {
+      const databases = await indexedDB.databases();
+      for (const db of databases) {
+        if (db.name && db.name.startsWith('typedcode')) {
+          await new Promise<void>((resolve) => {
+            const request = indexedDB.deleteDatabase(db.name!);
+            request.onsuccess = () => {
+              console.log(`[TypedCode] IndexedDB "${db.name}" deleted`);
+              resolve();
+            };
+            request.onerror = () => resolve();
+            request.onblocked = () => resolve();
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[TypedCode] Failed to clear IndexedDB:', e);
+  }
+
+  // 4. Cookies をクリア（このドメインのもの）
+  try {
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+      const eqPos = cookie.indexOf('=');
+      const name = eqPos > -1 ? cookie.substring(0, eqPos).trim() : cookie.trim();
+      if (name) {
+        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+      }
+    }
+    console.log('[TypedCode] Cookies cleared');
+  } catch (e) {
+    console.warn('[TypedCode] Failed to clear cookies:', e);
+  }
+
+  // 5. Service Worker Cache をクリア
+  try {
+    if ('caches' in window) {
+      const cacheNames = await caches.keys();
+      for (const cacheName of cacheNames) {
+        await caches.delete(cacheName);
+        console.log(`[TypedCode] Cache "${cacheName}" deleted`);
+      }
+    }
+  } catch (e) {
+    console.warn('[TypedCode] Failed to clear caches:', e);
+  }
+
+  // 6. 画面共有を停止
+  try {
+    ctx.trackers.screenshot?.dispose();
+    console.log('[TypedCode] Screenshot tracker disposed');
+  } catch (e) {
+    console.warn('[TypedCode] Failed to dispose screenshot tracker:', e);
+  }
+
+  console.log('[TypedCode] All app data cleared');
+}
+
+// ========================================
 // メイン初期化関数
 // ========================================
 
 async function initializeApp(): Promise<void> {
-  console.log('[DEBUG INIT] ===== initializeApp START =====');
-
   // Phase 1: 利用規約の確認
-  console.log('[DEBUG INIT] hasAcceptedTerms:', hasAcceptedTerms());
   if (!hasAcceptedTerms()) {
     initOverlay?.classList.add('hidden');
-    console.log('[TypedCode] Showing terms modal...');
     await showTermsModal();
     initOverlay?.classList.remove('hidden');
     updateInitMessage(t('app.initializing'));
-    console.log('[DEBUG INIT] Terms accepted, continuing...');
+  }
+
+  // Phase 1.5: Screen Capture許可の取得（画面全体のみ許可）
+  if (ScreenshotTracker.isSupported()) {
+    const screenshotTracker = new ScreenshotTracker();
+    const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker);
+
+    if (!permissionGranted) {
+      // 画面共有が得られなかった場合はアプリを使用不能に
+      showScreenCaptureLockOverlay();
+      return;
+    }
+
+    // ストリーム停止時のコールバックを設定
+    screenshotTracker.setStreamStoppedCallback(() => {
+      showScreenCaptureLockOverlay();
+    });
+
+    ctx.trackers.screenshot = screenshotTracker;
+  } else {
+    // 非対応ブラウザでは続行を許可するが警告を表示
+    showNotification(t('screenCapture.notSupported') ?? 'Screen Capture not supported in this browser');
   }
 
   // Phase 2: バックグラウンド初期化
@@ -823,40 +1194,30 @@ async function initializeApp(): Promise<void> {
     },
   });
 
-  console.log('[DEBUG INIT] Starting background C runtime init...');
-  ctx.runtime.initializeCRuntime().catch((err: unknown) => {
-    console.warn('[TypedCode] Background C runtime initialization failed:', err);
+  ctx.runtime.initializeCRuntime().catch(() => {
+    // Background initialization failed, but continue
   });
 
   if (isTurnstileConfigured()) {
-    preloadTurnstile().catch((err) => {
-      console.warn('[TypedCode] Turnstile preload failed:', err);
+    preloadTurnstile().catch(() => {
+      // Turnstile preload failed, but continue
     });
   }
 
   // Phase 3: デバイス情報取得
-  console.log('[DEBUG INIT] Getting device ID...');
   const { fingerprintHash, fingerprintComponents } = await initializeDeviceInfo();
 
   // Phase 4: TabManager初期化
-  console.log('[DEBUG INIT] Creating TabManager...');
   const initialized = await initializeTabManager(fingerprintHash, fingerprintComponents);
 
   if (!initialized) {
     updateInitMessage(t('notifications.authFailedReload'));
     showNotification(t('notifications.authFailedReload'));
-    console.error('[TypedCode] Initialization failed (Turnstile)');
     return;
   }
 
-  console.log('[DEBUG] Calling hideInitOverlay()');
   hideInitOverlay();
-
-  console.log('[DEBUG] Calling tabUIController.updateUI()');
   ctx.tabUIController?.updateUI();
-
-  console.log('[DEBUG] TabManager initialized, activeTab:', ctx.tabManager?.getActiveTab());
-  console.log('[TypedCode] TabManager initialized');
 
   // 言語セレクタを更新
   const activeTab = ctx.tabManager?.getActiveTab();
@@ -871,13 +1232,14 @@ async function initializeApp(): Promise<void> {
   recordTermsAcceptance();
 
   // Phase 5: トラッカーの初期化
-  initializeTrackers(
+  initializeTrackers({
     ctx,
-    editorContainer!,
-    (event) => ctx.eventRecorder?.record(event),
-    updateProofStatus,
-    () => ctx.tabManager?.saveToStorage()
-  );
+    editorContainer: editorContainer!,
+    recordEvent: (event) => ctx.eventRecorder?.record(event),
+    recordEventToAllTabs: (event) => ctx.eventRecorder?.recordToAllTabs(event),
+    onProofStatusUpdate: updateProofStatus,
+    onStorageSave: () => ctx.tabManager?.saveToStorage(),
+  });
 
   // Phase 6: LogViewerとEventRecorderの初期化
   initializeLogViewer();
@@ -887,16 +1249,36 @@ async function initializeApp(): Promise<void> {
   initializeTerminal();
   initializeCodeExecution();
 
+  // Phase 8: セッション再開イベントの記録（リロード時）
+  // sessionStorageにタブデータが存在していた場合はリロードによる再開
+  const wasReloaded = sessionStorage.getItem('typedcode-tabs') !== null &&
+                      sessionStorage.getItem('typedcode-screenshot-session') === 'active';
+  if (wasReloaded) {
+    // セッション再開イベントを全タブに記録
+    ctx.eventRecorder?.recordToAllTabs({
+      type: 'sessionResumed',
+      data: {
+        timestamp: performance.now(),
+        previousEventCount: ctx.tabManager?.getActiveProof()?.events.length ?? 0,
+      },
+      description: t('events.sessionResumed'),
+    });
+    console.log('[TypedCode] Session resumed after reload');
+  }
+
   console.log('[TypedCode] App initialized successfully');
 }
 
-// 静的イベントリスナーを設定
-setupStaticEventListeners();
-
 // DOMContentLoaded または即座に実行
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => void initializeApp());
+  document.addEventListener('DOMContentLoaded', () => {
+    // 静的イベントリスナーを設定（DOM準備後）
+    setupStaticEventListeners();
+    void initializeApp();
+  });
 } else {
+  // 静的イベントリスナーを設定（DOM準備後）
+  setupStaticEventListeners();
   void initializeApp();
 }
 

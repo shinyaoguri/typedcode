@@ -6,12 +6,17 @@
 import JSZip from 'jszip';
 import type { TabManager, TabState } from '../ui/tabs/TabManager.js';
 import type { ProcessingDialog } from '../ui/components/ProcessingDialog.js';
+import { ExportProgressDialog } from '../ui/components/ExportProgressDialog.js';
+import type { ScreenshotTracker } from '../tracking/ScreenshotTracker.js';
 import {
   isTurnstileConfigured,
   performTurnstileVerification,
+  loadTurnstileScript,
 } from '../services/TurnstileService.js';
 import { getLanguageDefinition } from '../config/SupportedLanguages.js';
 import { t } from '../i18n/index.js';
+import { generateReadmeEn } from './readme-template-en.js';
+import { generateReadmeJa } from './readme-template-ja.js';
 
 export interface ExportCallbacks {
   onNotification?: (message: string) => void;
@@ -20,7 +25,13 @@ export interface ExportCallbacks {
 export class ProofExporter {
   private tabManager: TabManager | null = null;
   private processingDialog: ProcessingDialog | null = null;
+  private exportProgressDialog: ExportProgressDialog;
+  private screenshotTracker: ScreenshotTracker | null = null;
   private callbacks: ExportCallbacks = {};
+
+  constructor() {
+    this.exportProgressDialog = new ExportProgressDialog();
+  }
 
   /**
    * TabManagerを設定
@@ -34,6 +45,13 @@ export class ProofExporter {
    */
   setProcessingDialog(dialog: ProcessingDialog): void {
     this.processingDialog = dialog;
+  }
+
+  /**
+   * ScreenshotTrackerを設定
+   */
+  setScreenshotTracker(tracker: ScreenshotTracker): void {
+    this.screenshotTracker = tracker;
   }
 
   /**
@@ -55,24 +73,54 @@ export class ProofExporter {
 
   /**
    * エクスポート前にTurnstile検証を実行し、attestationを記録
+   * ExportProgressDialogを使用して進行状況を表示
    */
   private async performPreExportVerification(activeTab: TabState): Promise<boolean> {
+    // 進行状況ダイアログを表示（検証フェーズから開始）
+    this.exportProgressDialog.show();
+    this.exportProgressDialog.updatePhase('verification');
+
     if (!isTurnstileConfigured()) {
-      return true; // 開発環境ではスキップ
+      // 開発環境ではスキップ、次のフェーズへ
+      return true;
     }
 
-    this.callbacks.onNotification?.(t('export.preAuthRunning'));
+    // Turnstileスクリプトを読み込む
+    try {
+      await loadTurnstileScript();
+    } catch (error) {
+      console.error('[Export] Failed to load Turnstile script:', error);
+      this.exportProgressDialog.hide();
+      this.callbacks.onNotification?.(t('export.preAuthFailed'));
+      return false;
+    }
 
-    const result = await performTurnstileVerification('export_proof');
+    // ExportProgressDialogのTurnstileコンテナを使用
+    const widgetContainer = this.exportProgressDialog.getTurnstileContainer();
+    const parentContainer = document.getElementById('export-turnstile-container');
+
+    if (!widgetContainer) {
+      console.error('[Export] Turnstile container not found');
+      this.exportProgressDialog.hide();
+      this.callbacks.onNotification?.(t('export.preAuthFailed'));
+      return false;
+    }
+
+    const result = await performTurnstileVerification('export_proof', {
+      widgetContainer,
+      parentContainer: parentContainer ?? undefined,
+    });
 
     if (!result.success || !result.attestation) {
       console.error('[Export] Pre-export verification failed:', result.error);
+      this.exportProgressDialog.hide();
       this.callbacks.onNotification?.(t('export.preAuthFailed'));
       return false;
     }
 
     // アクティブタブのTypingProofにエクスポート前attestationを記録
     await activeTab.typingProof.recordPreExportAttestation({
+      success: true,
       verified: result.attestation.verified,
       score: result.attestation.score,
       action: result.attestation.action,
@@ -87,18 +135,47 @@ export class ProofExporter {
 
   /**
    * 全タブに対してエクスポート前のTurnstile検証を実行
+   * ExportProgressDialogを使用して進行状況を表示
    */
   private async performPreExportVerificationForAllTabs(): Promise<boolean> {
+    // 進行状況ダイアログを表示（検証フェーズから開始）
+    this.exportProgressDialog.show();
+    this.exportProgressDialog.updatePhase('verification');
+
     if (!isTurnstileConfigured() || !this.tabManager) {
+      // 開発環境ではスキップ、次のフェーズへ
       return true;
     }
 
-    this.callbacks.onNotification?.(t('export.preAuthRunning'));
+    // Turnstileスクリプトを読み込む
+    try {
+      await loadTurnstileScript();
+    } catch (error) {
+      console.error('[Export] Failed to load Turnstile script:', error);
+      this.exportProgressDialog.hide();
+      this.callbacks.onNotification?.(t('export.preAuthFailed'));
+      return false;
+    }
 
-    const result = await performTurnstileVerification('export_proof');
+    // ExportProgressDialogのTurnstileコンテナを使用
+    const widgetContainer = this.exportProgressDialog.getTurnstileContainer();
+    const parentContainer = document.getElementById('export-turnstile-container');
+
+    if (!widgetContainer) {
+      console.error('[Export] Turnstile container not found');
+      this.exportProgressDialog.hide();
+      this.callbacks.onNotification?.(t('export.preAuthFailed'));
+      return false;
+    }
+
+    const result = await performTurnstileVerification('export_proof', {
+      widgetContainer,
+      parentContainer: parentContainer ?? undefined,
+    });
 
     if (!result.success || !result.attestation) {
       console.error('[Export] Pre-export verification failed:', result.error);
+      this.exportProgressDialog.hide();
       this.callbacks.onNotification?.(t('export.preAuthFailed'));
       return false;
     }
@@ -107,6 +184,7 @@ export class ProofExporter {
     const allTabs = this.tabManager.getAllTabs();
     for (const tab of allTabs) {
       await tab.typingProof.recordPreExportAttestation({
+        success: true,
         verified: result.attestation.verified,
         score: result.attestation.score,
         action: result.attestation.action,
@@ -132,9 +210,15 @@ export class ProofExporter {
    * 現在のタブをZIPでエクスポート（ソースファイル + 検証ログ）
    */
   async exportCurrentTab(): Promise<void> {
+    console.log('[Export] exportCurrentTab called');
+
     try {
       const activeTab = this.tabManager?.getActiveTab();
-      if (!activeTab) return;
+      console.log('[Export] activeTab:', activeTab?.filename);
+      if (!activeTab) {
+        console.log('[Export] No active tab');
+        return;
+      }
 
       // ハッシュチェーン生成完了を待機
       const completed = await this.waitForProcessingComplete();
@@ -143,11 +227,14 @@ export class ProofExporter {
         return;
       }
 
-      // エクスポート前にTurnstile検証を実行
+      // エクスポート前にTurnstile検証を実行（ダイアログはここで表示される）
       const verified = await this.performPreExportVerification(activeTab);
       if (!verified) {
         return;
       }
+
+      // 準備フェーズへ移行
+      this.exportProgressDialog.updatePhase('preparing');
 
       const content = activeTab.model.getValue();
       const proof = await activeTab.typingProof.exportProof(content);
@@ -179,7 +266,24 @@ export class ProofExporter {
       };
       zip.file(logFilename, JSON.stringify(proofWithContent, null, 2));
 
+      // スクリーンショットを追加
+      this.exportProgressDialog.updatePhase('screenshots');
+      const screenshotCount = await this.addScreenshotsToZip(zip);
+
+      // READMEファイルを追加
+      const readmeParams = {
+        timestamp: new Date().toISOString(),
+        totalFiles: 1,
+        totalScreenshots: screenshotCount,
+        sourceFiles: [sourceFilename],
+        proofFiles: [logFilename],
+      };
+      zip.file('README.md', generateReadmeEn(readmeParams));
+      zip.file('README.ja.md', generateReadmeJa(readmeParams));
+
       // ZIPを生成してダウンロード（最大圧縮）
+      this.exportProgressDialog.updatePhase('generating');
+      console.log('[Export] Generating ZIP...');
       const blob = await zip.generateAsync({
         type: 'blob',
         compression: 'DEFLATE',
@@ -187,12 +291,15 @@ export class ProofExporter {
           level: 9,
         },
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `TC${timestamp}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
+      console.log('[Export] ZIP generated, size:', blob.size);
+
+      // 進行状況ダイアログを非表示
+      this.exportProgressDialog.hide();
+
+      // ダウンロード実行
+      const filename = `TC${timestamp}.zip`;
+      this.downloadBlob(blob, filename);
+      console.log('[Export] Download triggered:', filename);
 
       const verification = await activeTab.typingProof.verify();
       console.log('[TypedCode] Verification result:', verification);
@@ -204,6 +311,7 @@ export class ProofExporter {
       }
     } catch (error) {
       console.error('[TypedCode] Export failed:', error);
+      this.exportProgressDialog.hide();
       this.callbacks.onNotification?.(t('export.failed'));
     }
   }
@@ -222,11 +330,14 @@ export class ProofExporter {
         return;
       }
 
-      // エクスポート前にTurnstile検証を実行（全タブに適用）
+      // エクスポート前にTurnstile検証を実行（ダイアログはここで表示される）
       const verified = await this.performPreExportVerificationForAllTabs();
       if (!verified) {
         return;
       }
+
+      // 準備フェーズへ移行
+      this.exportProgressDialog.updatePhase('preparing');
 
       const allTabs = this.tabManager.getAllTabs();
 
@@ -242,7 +353,15 @@ export class ProofExporter {
       const fileList: string[] = [];
       const logList: string[] = [];
 
-      for (const tab of allTabs) {
+      for (let i = 0; i < allTabs.length; i++) {
+        const tab = allTabs[i];
+        // 進行状況を更新
+        this.exportProgressDialog.updateProgress({
+          phase: 'preparing',
+          current: i + 1,
+          total: allTabs.length,
+        });
+
         const content = tab.model.getValue();
         const proof = await tab.typingProof.exportProof(content);
 
@@ -289,36 +408,24 @@ export class ProofExporter {
         logList.push(logFilename);
       }
 
-      // READMEを追加
-      const filesSection = fileList.map(f => `- ${f}`).join('\n');
-      const logsSection = logList.map(f => `- ${f}`).join('\n');
-      const readme = `TypedCode Multi-File Export
-===========================
+      // スクリーンショットを追加
+      this.exportProgressDialog.updatePhase('screenshots');
+      const screenshotCount = await this.addScreenshotsToZip(zip);
 
-This archive contains:
-
-## Source Files
-${filesSection}
-
-## Typing Proof Logs
-${logsSection}
-
-Each log file contains:
-- typingProofHash: Unique hash of the typing proof
-- proof.events: All recorded events (keystrokes, edits, etc.)
-- fingerprint: Device information
-- metadata: Pure typing status, timestamps
-
-To verify:
-1. Visit the TypedCode verification page
-2. Drop any log JSON file to verify
-
-Generated: ${new Date().toISOString()}
-Total files: ${allTabs.length}
-`;
-      zip.file('README.txt', readme);
+      // READMEファイルを追加
+      const readmeParams = {
+        timestamp: new Date().toISOString(),
+        totalFiles: allTabs.length,
+        totalScreenshots: screenshotCount,
+        sourceFiles: fileList,
+        proofFiles: logList,
+      };
+      zip.file('README.md', generateReadmeEn(readmeParams));
+      zip.file('README.ja.md', generateReadmeJa(readmeParams));
 
       // ZIPを生成してダウンロード（最大圧縮）
+      this.exportProgressDialog.updatePhase('generating');
+      console.log('[Export] Generating ZIP for all tabs...');
       const blob = await zip.generateAsync({
         type: 'blob',
         compression: 'DEFLATE',
@@ -326,17 +433,95 @@ Total files: ${allTabs.length}
           level: 9, // 最大圧縮レベル
         },
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `TC${timestamp}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
+      console.log('[Export] ZIP generated, size:', blob.size);
+
+      // 進行状況ダイアログを非表示
+      this.exportProgressDialog.hide();
+
+      // ダウンロード実行
+      const filename = `TC${timestamp}.zip`;
+      this.downloadBlob(blob, filename);
+      console.log('[Export] Download triggered:', filename);
 
       this.callbacks.onNotification?.(t('export.zipSuccess', { count: allTabs.length }));
     } catch (error) {
       console.error('[TypedCode] ZIP export failed:', error);
+      this.exportProgressDialog.hide();
       this.callbacks.onNotification?.(t('export.zipFailed'));
+    }
+  }
+
+  /**
+   * Blobをダウンロード
+   */
+  private downloadBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
+
+    // アンカー要素を作成してDOMに追加（一部のブラウザで必要）
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+
+    // クリックイベントを発火
+    a.click();
+
+    // クリーンアップ（少し遅延させてダウンロードが開始されるのを待つ）
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  }
+
+  /**
+   * スクリーンショットをZIPに追加
+   * @returns 追加されたスクリーンショット数
+   */
+  private async addScreenshotsToZip(zip: JSZip): Promise<number> {
+    console.log('[Export] addScreenshotsToZip called, screenshotTracker:', !!this.screenshotTracker);
+
+    if (!this.screenshotTracker) {
+      console.log('[Export] No screenshotTracker, skipping screenshots');
+      return 0;
+    }
+
+    try {
+      console.log('[Export] Getting screenshots for export...');
+      const screenshots = await this.screenshotTracker.getScreenshotsForExport();
+      console.log('[Export] Got screenshots:', screenshots.size);
+
+      if (screenshots.size === 0) {
+        console.log('[Export] No screenshots to export');
+        return 0;
+      }
+
+      const screenshotsFolder = zip.folder('screenshots');
+      if (!screenshotsFolder) {
+        console.error('[Export] Failed to create screenshots folder');
+        return 0;
+      }
+
+      // 画像ファイルを追加
+      for (const [filename, blob] of screenshots) {
+        screenshotsFolder.file(filename, blob);
+      }
+
+      // マニフェストファイルを追加（ScreenshotManifest形式でラップ）
+      const screenshotEntries = await this.screenshotTracker.getManifestForExport();
+      const manifest = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        totalScreenshots: screenshots.size,
+        screenshots: screenshotEntries,
+      };
+      screenshotsFolder.file('manifest.json', JSON.stringify(manifest, null, 2));
+
+      console.log(`[Export] Added ${screenshots.size} screenshots to ZIP`);
+      return screenshots.size;
+    } catch (error) {
+      console.error('[Export] Failed to add screenshots:', error);
+      return 0;
     }
   }
 
@@ -346,6 +531,7 @@ Total files: ${allTabs.length}
   dispose(): void {
     this.tabManager = null;
     this.processingDialog = null;
+    this.screenshotTracker = null;
     this.callbacks = {};
   }
 }

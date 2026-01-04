@@ -75,6 +75,10 @@ export interface VerifyTranslationKeys {
     hashChain: string;
     verificationMethod: string;
     eventCount: string;
+    screenshotVerification: string;
+    screenshotsAllVerified: string;
+    screenshotsSomeInvalid: string;
+    screenshotsCount: string;
     posw: string;
     iterations: string;
     totalTime: string;
@@ -132,6 +136,7 @@ export interface VerifyTranslationKeys {
 
   // Charts
   charts: {
+    integrated: string;
     timeline: string;
     mouseTrajectory: string;
     keys: string;
