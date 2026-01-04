@@ -107,23 +107,80 @@ export const ja: TranslationKeys = {
   terms: {
     title: '利用規約',
     intro: 'TypedCodeをご利用いただく前に、以下の内容をご確認ください。',
+
+    // 操作ログの記録
     operationLogTitle: '操作ログの記録',
-    operationLogDesc: 'タイピング証明のため、ブラウザ内での以下の操作を記録します：',
-    operationLogKeystrokes: 'キー入力のタイミング',
-    operationLogCursor: 'カーソルの移動',
-    operationLogMouse: 'マウス操作',
-    operationLogClipboard: 'コピー＆ペーストの検出',
+    operationLogDesc: 'タイピング証明を生成するため、以下の操作を詳細に記録します。',
+    operationLogDetailHeading: '記録される情報：',
+    operationLogKeystrokes: 'キー入力：押下・離上のタイミング、キーコード、修飾キーの状態（Shift、Ctrl、Alt、Meta）、押下時間（ドウェルタイム）',
+    operationLogCursor: 'カーソル操作：カーソル位置の移動、テキスト選択範囲の変更、選択方向（左右）',
+    operationLogMouse: 'マウス操作：マウスカーソルの座標（100ミリ秒ごとにサンプリング）',
+    operationLogContent: 'コンテンツ変更：文字の挿入・削除、変更位置、変更内容',
+    operationLogClipboard: '外部入力：ペースト操作、ドラッグ＆ドロップ、入力された文字数',
+    operationLogWindow: 'ウィンドウ状態：ウィンドウサイズ、フォーカス状態、タブのアクティブ状態、ネットワーク接続状態',
+    operationLogNote: 'これらの操作はタイムスタンプとともに記録され、SHA-256ハッシュチェーンで連結されます。各イベントは前のイベントのハッシュを含むため、改ざんを検知できる構造になっています。',
+
+    // ハッシュチェーンと証明
+    hashChainTitle: 'ハッシュチェーンと証明',
+    hashChainDesc: 'TypedCodeは、操作ログの整合性と順序を証明するため、暗号学的なハッシュチェーンを構築します。',
+    hashChainDetailHeading: '証明の仕組み：',
+    hashChainSha256: 'SHA-256ハッシュ：各操作イベントは直前のイベントのハッシュを含めてハッシュ化され、連鎖的につながります',
+    hashChainCheckpoint: 'チェックポイント：一定間隔でチェックポイントを作成し、証明の区切りを設けます',
+    hashChainPosw: 'Proof of Sequential Work (PoSW)：チェックポイントごとに計算量証明を生成し、時間の経過を証明します。この計算はWeb Workerでバックグラウンド実行されます',
+    hashChainFingerprint: 'ブラウザフィンガープリント：証明ファイルにはブラウザ環境情報（言語、タイムゾーン、画面解像度など）が含まれます',
+    hashChainNote: 'この仕組みにより、コードが一文字ずつタイピングされたことを第三者が検証可能な形で証明できます。',
+
+    // Bot検出
     botDetectionTitle: 'Bot検出',
-    botDetectionDesc:
-      '不正利用防止のため、Cloudflare Turnstileによる人間確認を行います。',
+    botDetectionDesc: '自動化ツールやボットによる不正な証明生成を防止するため、<a href="https://www.cloudflare.com/ja-jp/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a>を使用して人間であることを確認します。',
+    botDetectionDetailHeading: '検証タイミング：',
+    botDetectionInit: 'ファイル作成時：新しいタブを作成する際に人間検証を実施',
+    botDetectionExport: '証明エクスポート時：ファイル出力の直前に最終確認を実施',
+    botDetectionNote: 'Turnstileの検証結果はサーバーでトークンの有効性を確認し、成功した場合のみ証明ファイルに「人間認証済み」として記録されます。',
+
+    // データ保存
     dataStorageTitle: 'データ保存',
-    dataStorageDesc:
-      'すべての操作ログは<strong>ブラウザのローカルストレージにのみ保存</strong>されます。サーバーへの自動送信は一切行いません。',
+    dataStorageDesc: '<strong>すべてのデータはブラウザのローカルストレージ（IndexedDB）にのみ保存されます。サーバーへの自動送信は一切行いません。</strong>',
+    dataStorageDetailHeading: '保存されるデータ：',
+    dataStorageCode: 'エディタの内容：作成したコードのソースファイル',
+    dataStorageEvents: '操作ログ：すべてのキーストローク、カーソル移動、外部入力のイベントデータ',
+    dataStorageHash: 'ハッシュチェーン：証明用の暗号学的ハッシュデータ',
+    dataStorageScreenshots: 'スクリーンショット：定期的に撮影された画面キャプチャ画像',
+    dataStorageSettings: '設定情報：言語設定、テーマ設定、利用規約への同意状態',
+    dataStorageNote: 'これらのデータはブラウザを閉じても保持されますが、ブラウザのデータ消去や「Reset All」機能で完全に削除できます。証明データを保存したい場合は、必ずエクスポート機能でファイルをダウンロードしてください。',
+
+    // 画面キャプチャ
     screenCaptureTitle: '画面キャプチャ',
-    screenCaptureDesc: '証明の信頼性向上のため、定期的にスクリーンショットを撮影します。',
-    screenCaptureInterval: '1分ごとに画面全体を撮影',
-    screenCaptureFocus: 'フォーカス喪失時にも撮影',
-    screenCaptureStorage: '画像はローカルにのみ保存',
+    screenCaptureDesc: 'タイピング証明の信頼性を高めるため、Screen Capture APIを使用して定期的に画面のスクリーンショットを撮影します。',
+    screenCaptureDetailHeading: '撮影について：',
+    screenCapturePermission: '画面共有の許可：初回起動時にブラウザの画面共有ダイアログが表示されます。「画面全体」を選択してください',
+    screenCaptureInterval: '定期撮影：30秒ごとに自動的にスクリーンショットを撮影します',
+    screenCaptureFocus: 'フォーカス喪失時：エディタからフォーカスが外れた際にも撮影されます',
+    screenCaptureHash: 'ハッシュ化：撮影した画像はSHA-256でハッシュ化され、証明データと紐づけられます',
+    screenCaptureStorage: '<strong>ローカル保存</strong>：画像データはブラウザ内にのみ保存され、サーバーには送信されません',
+    screenCaptureNote: '画面共有を停止すると、エディタでの作業を継続できなくなります。再開するには画面共有を再度許可する必要があります。',
+
+    // 証明ファイルのエクスポート
+    exportTitle: '証明ファイルのエクスポート',
+    exportDesc: '作成した証明データは、JSON形式またはZIP形式でダウンロードできます。',
+    exportDetailHeading: 'エクスポート内容：',
+    exportJson: '証明ファイル（.json）：操作ログ、ハッシュチェーン、PoSWデータ、ブラウザフィンガープリント、人間認証結果を含む完全な証明データ',
+    exportScreenshots: 'スクリーンショット（.png）：撮影された画面キャプチャ画像',
+    exportManifest: 'マニフェスト：スクリーンショットのハッシュ値と証明データとの対応情報',
+    exportReadme: '説明ファイル（README）：証明の検証方法についての説明',
+    exportNote: 'エクスポートされたファイルは、TypedCode Verifyアプリケーションで検証できます。証明データのみのJSON出力か、スクリーンショットを含むZIP出力かを選択できます。',
+
+    // プライバシーと注意事項
+    privacyTitle: 'プライバシーと注意事項',
+    privacyDesc: 'TypedCodeが取得する情報と、証明データの取り扱いについてご確認ください。',
+    privacyDetailHeading: '取得する情報について：',
+    privacyBrowserInfo: 'ブラウザから一般的に取得可能な情報（言語、タイムゾーン、画面解像度など）のみを使用しており、氏名やメールアドレスなどの個人情報は収集しません',
+    privacyTypedContent: 'ただし、エディタに入力したコードの内容はすべて記録されます',
+    privacyScreenshots: '画面共有中は画面全体がスクリーンショットとして保存されるため、画面に表示されている他のアプリケーションやウィンドウの内容も記録される可能性があります',
+    privacyLocalOnly: '<strong>これらのデータはすべてお使いのブラウザ内にのみ保存され、外部サーバーには送信されません</strong>',
+    privacyExportWarning: '証明データをエクスポートして第三者に提出する場合は、ご自身の責任において行ってください。提出先でのデータの取り扱いについては、提出先の規約やプライバシーポリシーをご確認ください',
+    privacyNote: 'エクスポートされた証明データには、タイピング内容やスクリーンショットが含まれます。提出前に内容を確認し、機密情報が含まれていないかご注意ください。',
+
     agreeCheckbox: '上記の内容を理解し、同意します',
     agreeButton: '同意して開始',
   },

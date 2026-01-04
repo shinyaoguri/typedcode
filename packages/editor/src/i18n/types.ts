@@ -123,21 +123,80 @@ export interface TranslationKeys {
   terms: {
     title: string;
     intro: string;
+
+    // Operation Logging
     operationLogTitle: string;
     operationLogDesc: string;
+    operationLogDetailHeading: string;
     operationLogKeystrokes: string;
     operationLogCursor: string;
     operationLogMouse: string;
+    operationLogContent: string;
     operationLogClipboard: string;
+    operationLogWindow: string;
+    operationLogNote: string;
+
+    // Hash Chain and Proof
+    hashChainTitle: string;
+    hashChainDesc: string;
+    hashChainDetailHeading: string;
+    hashChainSha256: string;
+    hashChainCheckpoint: string;
+    hashChainPosw: string;
+    hashChainFingerprint: string;
+    hashChainNote: string;
+
+    // Bot Detection
     botDetectionTitle: string;
     botDetectionDesc: string;
+    botDetectionDetailHeading: string;
+    botDetectionInit: string;
+    botDetectionExport: string;
+    botDetectionNote: string;
+
+    // Data Storage
     dataStorageTitle: string;
     dataStorageDesc: string;
+    dataStorageDetailHeading: string;
+    dataStorageCode: string;
+    dataStorageEvents: string;
+    dataStorageHash: string;
+    dataStorageScreenshots: string;
+    dataStorageSettings: string;
+    dataStorageNote: string;
+
+    // Screen Capture
     screenCaptureTitle: string;
     screenCaptureDesc: string;
+    screenCaptureDetailHeading: string;
+    screenCapturePermission: string;
     screenCaptureInterval: string;
     screenCaptureFocus: string;
+    screenCaptureHash: string;
     screenCaptureStorage: string;
+    screenCaptureNote: string;
+
+    // Proof File Export
+    exportTitle: string;
+    exportDesc: string;
+    exportDetailHeading: string;
+    exportJson: string;
+    exportScreenshots: string;
+    exportManifest: string;
+    exportReadme: string;
+    exportNote: string;
+
+    // Privacy and Considerations
+    privacyTitle: string;
+    privacyDesc: string;
+    privacyDetailHeading: string;
+    privacyBrowserInfo: string;
+    privacyTypedContent: string;
+    privacyScreenshots: string;
+    privacyLocalOnly: string;
+    privacyExportWarning: string;
+    privacyNote: string;
+
     agreeCheckbox: string;
     agreeButton: string;
   };
