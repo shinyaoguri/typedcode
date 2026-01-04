@@ -1,34 +1,36 @@
-
-
 # TypedCode
 
 <img align="right" src="icon.png" alt="TypedCode Logo" height="150">
 
-[TypedCode](https://typedcode.dev) is a VSCode-like code editor that records every keystroke into a tamper-resistant hash chain, proving code was typed character-by-character. Runs entirely in your browser with built-in execution for C/C++, Python, and JavaScript/TypeScript via WebAssembly.
+[TypedCode](https://typedcode.dev) is a VSCode-like code editor that records every keystroke into a tamper-resistant SHA-256 hash chain with Proof of Sequential Work (PoSW). It proves code was typed character-by-character without copy/paste. Runs entirely in your browser with built-in execution for C/C++, Python, and JavaScript/TypeScript via WebAssembly.
 
 **Free, unlimited, no sign-up. No data leaves your browser.**
 
-**Key Features:**
-- Tamper-resistant proof logs (SHA-256 + PoSW hash chain)
-- Using Cloudflare Turnstile to verify whether users are human
-- Copy/paste, Key, Mouse, Focus detection and recording
-- In-browser code execution (no server required)
-- Export code with independently verifiable proof
+## Key Features
+
+- **Tamper-Resistant Proof**: SHA-256 hash chain with PoSW (10,000 iterations per event)
+- **Human Verification**: Cloudflare Turnstile integration with HMAC-signed attestations
+- **Comprehensive Event Tracking**: 22 event types including content changes, keystrokes, mouse movements, focus, visibility, and paste/drop detection
+- **Multi-Tab Support**: Edit multiple files simultaneously with tab switch tracking
+- **Screenshot Capture**: Periodic and focus-loss triggered screenshots with hash verification
+- **In-Browser Execution**: C/C++, Python, JavaScript/TypeScript via Wasmer SDK (WebAssembly)
+- **Export Formats**: JSON or ZIP with screenshots and verification guide
+- **Bilingual**: Japanese and English UI
 
 ## Packages
 
 | Package | Description |
 |---------|-------------|
-| [@typedcode/editor](packages/editor/) | Main editor application (Monaco-based) |
-| [@typedcode/verify](packages/verify/) | Web-based proof verification |
-| [@typedcode/verify-cli](packages/verify-cli/) | CLI tool for proof verification |
-| [@typedcode/shared](packages/shared/) | Shared library (types, TypingProof, Fingerprint) |
-| [@typedcode/workers](packages/workers/) | Cloudflare Workers API (Turnstile integration) |
+| [@typedcode/editor](packages/editor/) | Monaco-based editor with keystroke tracking and code execution |
+| [@typedcode/verify](packages/verify/) | Web-based proof verification with VSCode-like UI |
+| [@typedcode/verify-cli](packages/verify-cli/) | CLI tool for proof verification (Node.js ≥22) |
+| [@typedcode/shared](packages/shared/) | Core library: TypingProof, Fingerprint, verification, types |
+| [@typedcode/workers](packages/workers/) | Cloudflare Workers API for Turnstile integration |
 
 ## Live Demo
 
-- Editor [https://typedcode.dev](https://typedcode.dev)
-- VerifyApp [https://typedcode.dev/verify](https://typedcode.dev/verify)
+- **Editor**: [https://typedcode.dev](https://typedcode.dev)
+- **Verify App**: [https://typedcode.dev/verify](https://typedcode.dev/verify)
 
 ## Quick Start
 
@@ -97,12 +99,68 @@ npm run test -w @typedcode/shared
 npm run test:coverage -w @typedcode/shared
 ```
 
+## Architecture
+
+### How It Works
+
+1. **Event Recording**: Every user action (keystroke, cursor move, paste, etc.) is captured as a typed event
+2. **Hash Chain**: Each event is SHA-256 hashed and chained to the previous hash
+3. **PoSW Computation**: Web Worker computes 10,000 iterations of hash for each event (non-blocking)
+4. **Human Attestation**: Turnstile verification at file creation and before export
+5. **Export**: Proof file contains complete event history, hash chain, fingerprint, and optional screenshots
+6. **Verification**: Independent verification of chain integrity, timestamps, and PoSW
+
+### Event Types (22 types)
+
+| Category | Events |
+|----------|--------|
+| Content | `contentChange`, `contentSnapshot`, `externalInput` |
+| Cursor | `cursorPositionChange`, `selectionChange` |
+| Input | `keyDown`, `keyUp`, `mousePositionChange` |
+| Window | `focusChange`, `visibilityChange`, `windowResize` |
+| System | `editorInitialized`, `networkStatusChange` |
+| Auth | `humanAttestation`, `preExportAttestation`, `termsAccepted` |
+| Execution | `codeExecution`, `terminalInput` |
+| Capture | `screenshotCapture`, `screenShareStart`, `screenShareStop` |
+
+### Proof File Format
+
+**JSON Format:**
+```json
+{
+  "version": "1.0.0",
+  "typingProofHash": "sha256...",
+  "typingProofData": { "finalContentHash": "...", "metadata": {...} },
+  "proof": { "events": [...], "finalHash": "..." },
+  "fingerprint": { "deviceId": "...", "components": {...} },
+  "checkpoints": [...]
+}
+```
+
+**ZIP Format:**
+- `proof.json` - Main proof file
+- `screenshots/` - Captured screenshots (JPEG)
+- `manifest.json` - Screenshot metadata and hashes
+- `README.md` - Verification guide
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Editor | Monaco Editor, xterm.js |
+| Execution | Wasmer SDK (WebAssembly) |
+| Verification UI | Chart.js, Highlight.js |
+| Build | Vite, TypeScript 5.9 |
+| Workers | Cloudflare Workers, Wrangler |
+| Testing | Vitest |
+
 ## Use Cases
 
 - Programming exams with paste detection
 - Educational progress tracking
 - Coding assignment transparency
 - Typing behavior research
+- Code authorship verification
 
 ## License
 
