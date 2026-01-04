@@ -1,57 +1,146 @@
 # @typedcode/verify
 
-Web-based proof verification page for TypedCode exported files.
+Web-based proof verification application for TypedCode exported files with VSCode-like UI.
 
 ## Features
 
-- **File upload**: Drag & drop or file selection
-- **Hash chain verification**: Recalculates and verifies all SHA-256 hashes
-- **PoSW verification**: Validates Proof of Sequential Work
-- **Sampled verification**: Fast verification using checkpoints
-- **Timeline**: Seek bar to navigate event history
-- **Visualization**: Mouse trajectory and event distribution charts
+- **File Upload**: Drag & drop, file selection, or folder sync via File System Access API
+- **Hash Chain Verification**: Recalculates and verifies all SHA-256 hashes
+- **PoSW Verification**: Validates Proof of Sequential Work (Web Worker)
+- **Sampled Verification**: Fast verification using checkpoints
+- **Timeline Visualization**: Interactive timeline with event seek bar
+- **Charts**: Mouse trajectory and event distribution (Chart.js)
+- **Screenshot Verification**: Hash verification for captured screenshots
+- **Human Attestation**: Verify Turnstile attestation signatures
+- **Multi-file Support**: Handle ZIP exports with multiple files
+- **i18n**: Japanese and English UI
 
 ## Development
 
 ```bash
 npm run dev      # http://localhost:5174
 npm run build
+npm run preview
+```
+
+## Architecture
+
+```
+src/
+├── main.ts                       # Entry point
+├── core/
+│   ├── VerificationEngine.ts     # Core verification logic (UI-independent)
+│   └── VerifyContext.ts          # Application context
+├── ui/
+│   ├── AppController.ts          # Main application controller
+│   ├── TabBar.ts                 # Tab bar component
+│   ├── ActivityBar.ts            # Activity bar (sidebar icons)
+│   ├── StatusBar.ts              # Status bar
+│   ├── WelcomePanel.ts           # Welcome/drop zone panel
+│   ├── VerifyFileListController.ts  # File list management
+│   └── AboutDialog.ts            # About dialog
+├── ui/panels/
+│   ├── ResultPanel.ts            # Verification result display
+│   ├── MetadataPanel.ts          # Proof metadata display
+│   ├── ChainPanel.ts             # Hash chain visualization
+│   ├── PoswPanel.ts              # PoSW statistics display
+│   └── AttestationPanel.ts       # Human attestation info
+├── state/
+│   ├── VerificationQueue.ts      # Verification queue (Web Worker)
+│   ├── UIStateManager.ts         # UI state management
+│   ├── VerifyTabManager.ts       # Tab state management
+│   └── ChartState.ts             # Chart state
+├── charts/
+│   ├── TimelineChart.ts          # Event timeline (Chart.js)
+│   ├── MouseChart.ts             # Mouse position distribution
+│   └── ChartUtils.ts             # Chart utilities
+├── services/
+│   ├── FileSystemAccessService.ts  # File System Access API
+│   ├── FolderSyncManager.ts      # Folder synchronization
+│   └── SyntaxHighlighter.ts      # Highlight.js wrapper
+├── workers/
+│   └── verificationWorker.ts     # Web Worker for verification
+└── i18n/
+    └── translations/             # ja.ts, en.ts
+```
+
+## Verification Flow
+
+```
+File Selection (drag & drop / File System Access API)
+    ↓
+FileProcessor (JSON parse or ZIP extraction)
+    ↓
+Format Detection (single-file or multi-file)
+    ↓
+VerificationEngine.verify()
+    ↓
+VerificationQueue (Web Worker)
+    ├─ ChainVerifier.verify()
+    │   ├─ Sequence number check
+    │   ├─ Timestamp continuity check
+    │   ├─ Previous hash validation
+    │   └─ Hash recalculation
+    ├─ PoSW verification (10,000 iterations)
+    └─ Metadata validation (isPureTyping)
+    ↓
+AttestationService.verify() (Workers API)
+    ↓
+UI Display (panels, charts)
 ```
 
 ## Supported Formats
 
 ### Single File (JSON)
+
 ```json
 {
-  "version": "3.2.0",
-  "typingProofHash": "...",
-  "proof": { "events": [...] },
-  "fingerprint": {...},
+  "version": "1.0.0",
+  "typingProofHash": "sha256...",
+  "typingProofData": {
+    "finalContentHash": "...",
+    "finalEventChainHash": "...",
+    "metadata": { "isPureTyping": true }
+  },
+  "proof": {
+    "events": [...],
+    "finalHash": "..."
+  },
+  "fingerprint": { "deviceId": "...", "components": {...} },
   "checkpoints": [...]
 }
 ```
 
-### Multi-File (ZIP)
+### Multi-File (JSON)
+
 ```json
 {
-  "version": "3.1.0",
+  "version": "1.0.0",
   "type": "multi-file",
-  "files": { "main.c": {...}, "utils.h": {...} },
+  "files": {
+    "main.c": { /* ExportedProof */ },
+    "utils.h": { /* ExportedProof */ }
+  },
   "tabSwitches": [...],
-  "fingerprint": {...}
+  "fingerprint": {...},
+  "metadata": { "totalFiles": 2, "overallPureTyping": true }
 }
 ```
 
-## Verification Process
+### ZIP Format
 
-1. **File parsing**: JSON parse or ZIP extraction
-2. **Format detection**: `isMultiFileProof()` check
-3. **Hash chain verification**:
-   - Sequence number check
-   - Timestamp continuity check
-   - Previous hash validation
-   - PoSW verification
-   - Hash recalculation
+- `proof.json` - Main proof file
+- `screenshots/` - Captured screenshots (JPEG)
+- `manifest.json` - Screenshot hashes and metadata
+- `README.md` - Verification guide
+
+## Verification Results
+
+| Result | Description |
+|--------|-------------|
+| Verified | All checks passed, pure typing |
+| Partial | Chain valid but contains paste/drop |
+| Failed | Chain integrity compromised |
 
 ## Verification Errors
 
@@ -59,12 +148,46 @@ npm run build
 |-------|-------------|
 | Sequence mismatch | Event order inconsistency |
 | Timestamp violation | Timestamp going backwards |
-| Previous hash mismatch | Previous hash doesn't match |
-| PoSW verification failed | PoSW validation failed |
-| Hash mismatch | Hash value doesn't match |
+| Previous hash mismatch | Chain link broken |
+| PoSW verification failed | Invalid proof of work |
+| Hash mismatch | Computed hash doesn't match |
+
+## File System Access API
+
+The verify app supports folder synchronization using the File System Access API:
+
+```typescript
+// Select folder and auto-sync
+const handle = await showDirectoryPicker();
+// Files are automatically re-verified when changed
+```
+
+This feature allows real-time verification during development.
+
+## Chart Features
+
+### Timeline Chart
+- Event distribution over time
+- Annotations for important events (paste, attestation)
+- Zoom and pan support (chartjs-plugin-zoom)
+
+### Mouse Chart
+- Mouse position distribution
+- Heatmap-style visualization
 
 ## Dependencies
 
-- **@typedcode/shared**: Types, TypingProof
-- **highlight.js**: ^11.11 - Syntax highlighting
-- **jszip**: ^3.10 - ZIP handling
+| Package | Version | Purpose |
+|---------|---------|---------|
+| @typedcode/shared | * | Core types and verification |
+| chart.js | ^4.4 | Chart visualization |
+| chartjs-plugin-annotation | ^3.0 | Chart annotations |
+| chartjs-plugin-zoom | ^2.0 | Chart zoom/pan |
+| highlight.js | ^11.11 | Syntax highlighting |
+| jszip | ^3.10 | ZIP handling |
+
+## Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `VITE_API_URL` | Workers API endpoint | Optional |
