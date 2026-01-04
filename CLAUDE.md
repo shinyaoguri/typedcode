@@ -6,6 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TypedCode is a browser-based code editor that records every keystroke into a tamper-resistant SHA-256 hash chain with Proof of Sequential Work (PoSW). It proves code was typed character-by-character without copy/paste. The project uses npm workspaces with 5 packages.
 
+**Version**: 1.0.0
+**Tech Stack**: TypeScript 5.9, Vite, Monaco Editor, Wasmer SDK, Chart.js, Cloudflare Workers
+
 ## Build and Development Commands
 
 ```bash
@@ -40,40 +43,213 @@ packages/
 ├── shared/     # Core library: TypingProof, Fingerprint, verification, types
 ├── editor/     # Monaco-based editor with keystroke tracking
 ├── verify/     # Web app for proof verification (VSCode-like UI)
-├── verify-cli/ # CLI tool for verification
+├── verify-cli/ # CLI tool for verification (Node.js ≥22)
 └── workers/    # Cloudflare Workers for Turnstile integration
 ```
 
-### Core Concepts
+### Shared Package (`@typedcode/shared`)
 
-**TypingProof** (`shared/src/typingProof.ts`): Central class managing the hash chain. Each event is hashed with SHA-256, chained to the previous hash, and periodically checkpointed. PoSW computation runs in a Web Worker.
+Core library providing:
 
-**Event Types**: All user actions are recorded as typed events (`EventType` in `shared/src/types.ts`): content changes, cursor movements, mouse positions, keystrokes, visibility changes, paste/drop detection, and human attestation.
+| Module | Purpose |
+|--------|---------|
+| `typingProof/TypingProof.ts` | Facade class for hash chain management |
+| `typingProof/HashChainManager.ts` | SHA-256 hash computation and chaining |
+| `typingProof/PoswManager.ts` | PoSW computation via Web Worker |
+| `typingProof/CheckpointManager.ts` | Periodic checkpoint management |
+| `typingProof/ChainVerifier.ts` | Chain verification (full/sampling) |
+| `typingProof/InputTypeValidator.ts` | Input type validation (allowed/blocked) |
+| `typingProof/StatisticsCalculator.ts` | Statistics computation |
+| `fingerprint.ts` | Browser fingerprinting |
+| `verification.ts` | Verification utility functions |
+| `poswWorker.ts` | PoSW calculation Web Worker |
+| `attestation.ts` | Human verification service |
+| `calculations.ts` | Utility calculations (typing speed, etc.) |
+| `fileProcessing/` | ZIP/JSON parsing |
+| `types.ts` | All type definitions |
 
-**Proof File Format**: Exported as JSON containing events array, hash chain, PoSW data, fingerprint, and optional screenshots with manifest.
+### Editor Package (`@typedcode/editor`)
 
-### Key Data Flow
+| Directory | Purpose |
+|-----------|---------|
+| `core/` | `AppContext`, `EventRecorder` |
+| `tracking/` | Event detectors: `InputDetector`, `OperationDetector`, `KeystrokeTracker`, `MouseTracker`, `WindowTracker`, `VisibilityTracker`, `NetworkTracker`, `ScreenshotTracker` |
+| `editor/` | `EditorController`, `CursorTracker`, `ThemeManager` |
+| `execution/` | `CodeExecutionController`, `RuntimeManager` |
+| `executors/` | Language executors: C, C++, JavaScript, TypeScript, Python |
+| `ui/components/` | UI components: Modals, Notifications, Dropdowns, Panels |
+| `export/` | `ProofExporter`, README templates |
+| `services/` | `TurnstileService`, `StorageService`, `ScreenshotStorageService` |
+| `terminal/` | `CTerminal` (xterm.js integration) |
 
-1. **Editor** (`editor/`):
-   - `InputDetector` + `OperationDetector` capture all editor operations
-   - `EventRecorder` queues events to `TypingProof`
-   - `ProofExporter` creates final proof file with PoSW
+### Verify Package (`@typedcode/verify`)
 
-2. **Verification** (`verify/` or `verify-cli/`):
-   - `FileProcessor` parses JSON/ZIP proof files
-   - `VerificationQueue` processes proofs via Web Worker
-   - `TrustCalculator` computes overall trust level (verified/partial/failed)
-   - `ScreenshotService` handles screenshot hash verification
+| Directory | Purpose |
+|-----------|---------|
+| `core/` | `VerificationEngine`, `VerifyContext` |
+| `ui/` | `AppController`, `TabBar`, `ActivityBar`, `StatusBar` |
+| `ui/panels/` | `ResultPanel`, `MetadataPanel`, `ChainPanel`, `PoswPanel`, `AttestationPanel` |
+| `state/` | `VerificationQueue`, `UIStateManager`, `VerifyTabManager` |
+| `charts/` | `TimelineChart`, `MouseChart` (Chart.js) |
+| `services/` | `FileSystemAccessService`, `FolderSyncManager`, `SyntaxHighlighter` |
+| `workers/` | `verificationWorker.ts` |
 
-### Shared Module Exports
+### Workers Package (`@typedcode/workers`)
 
-The `@typedcode/shared` package exports:
-- `TypingProof` - Hash chain management
-- `Fingerprint` - Browser fingerprinting
-- `verifyProofFile`, `verifyChain`, `verifyPoSW` - Verification functions
-- `AttestationService` - Human verification via Turnstile
-- Common types and calculations
+Cloudflare Workers API endpoints:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/verify-captcha` | POST | Turnstile token verification |
+| `/api/verify-attestation` | POST | HMAC signature verification |
+| `/health` | GET | Health check |
+
+## Core Concepts
+
+### Event Types (22 types)
+
+```typescript
+// Content events
+'contentChange' | 'contentSnapshot' | 'externalInput'
+
+// Cursor events
+'cursorPositionChange' | 'selectionChange'
+
+// Input events
+'keyDown' | 'keyUp' | 'mousePositionChange'
+
+// Window events
+'focusChange' | 'visibilityChange' | 'windowResize'
+
+// System events
+'editorInitialized' | 'networkStatusChange'
+
+// Authentication events
+'humanAttestation' | 'preExportAttestation' | 'termsAccepted'
+
+// Execution events
+'codeExecution' | 'terminalInput'
+
+// Capture events
+'screenshotCapture' | 'screenShareStart' | 'screenShareStop'
+```
+
+### Input Types (32 types)
+
+**Allowed**: `insertText`, `insertLineBreak`, `insertParagraph`, `insertTab`, `insertFromComposition`, `deleteContentBackward`, `deleteContentForward`, `deleteWordBackward`, `deleteWordForward`, `historyUndo`, `historyRedo`, etc.
+
+**Blocked (external input)**: `insertFromPaste`, `insertFromDrop`, `insertFromYank`, `insertReplacementText`, `insertFromPasteAsQuotation`
+
+### PoSW (Proof of Sequential Work)
+
+- Fixed 10,000 iterations per event
+- Computed in Web Worker (non-blocking)
+- Includes random nonce (16 bytes)
+- Timeout: 30 seconds
+
+### Hash Chain Verification
+
+1. Initial hash matches fingerprint hash
+2. Sequence numbers are continuous
+3. Timestamps are monotonically increasing
+4. Each event's `previousHash` matches expected value
+5. PoSW is valid for each event
+
+### Proof File Format
+
+**Single File (`ExportedProof`)**:
+```json
+{
+  "version": "1.0.0",
+  "typingProofHash": "sha256...",
+  "typingProofData": {
+    "finalContentHash": "...",
+    "finalEventChainHash": "...",
+    "deviceId": "...",
+    "metadata": { "totalEvents": 123, "isPureTyping": true }
+  },
+  "proof": { "events": [...], "finalHash": "..." },
+  "fingerprint": { "deviceId": "...", "components": {...} },
+  "checkpoints": [...]
+}
+```
+
+**Multi-File (`MultiFileExportedProof`)**:
+```json
+{
+  "type": "multi-file",
+  "files": { "file1.js": {...}, "file2.py": {...} },
+  "tabSwitches": [...],
+  "metadata": { "totalFiles": 2, "overallPureTyping": true }
+}
+```
+
+**ZIP Format**: `proof.json`, `screenshots/`, `manifest.json`, `README.md`
+
+## Key Data Flow
+
+### Editor Flow
+
+```
+User Action → InputDetector → OperationDetector → EventRecorder
+    → TypingProof.recordEvent() → HashChainManager → PoswManager (Worker)
+    → StoredEvent → localStorage
+```
+
+### Export Flow
+
+```
+ProofExporter.export() → performPreExportVerification() (Turnstile)
+    → getProofData() → ScreenshotTracker.getAllScreenshots()
+    → JSZip → Download
+```
+
+### Verification Flow
+
+```
+File Selection → FileProcessor → VerificationEngine.verify()
+    → VerificationQueue (Worker) → ChainVerifier + PoSW verification
+    → AttestationService.verify() (Workers API) → UI Display
+```
 
 ## Environment Configuration
 
-For Turnstile (human verification), see README.md for `.env` and `.dev.vars` setup.
+### Editor (.env)
+```
+VITE_TURNSTILE_SITE_KEY=your_site_key
+VITE_API_URL=http://localhost:8787
+```
+
+### Workers (.dev.vars)
+```
+TURNSTILE_SECRET_KEY=your_secret_key
+ATTESTATION_SECRET_KEY=any_random_string
+```
+
+## Key Files Reference
+
+| File | Purpose |
+|------|---------|
+| `shared/src/types.ts` | All type definitions (22KB) |
+| `shared/src/typingProof/TypingProof.ts` | Main facade class |
+| `editor/src/core/EventRecorder.ts` | Central event recording |
+| `editor/src/tracking/InputDetector.ts` | Paste/drop detection |
+| `editor/src/export/ProofExporter.ts` | Proof file generation |
+| `verify/src/core/VerificationEngine.ts` | Verification logic |
+| `verify/src/workers/verificationWorker.ts` | Worker-based verification |
+| `workers/src/index.ts` | API endpoints |
+
+## Version Constants
+
+```typescript
+export const PROOF_FORMAT_VERSION = '1.0.0';
+export const STORAGE_FORMAT_VERSION = 1;
+export const MIN_SUPPORTED_VERSION = '1.0.0';
+export const POSW_ITERATIONS = 10000;
+```
+
+## i18n
+
+Supported locales: `ja` (Japanese), `en` (English)
+
+Detection order: localStorage → browser language → default (ja)
