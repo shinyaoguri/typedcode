@@ -95,3 +95,10 @@ export {
   parseZipBuffer,
   extractFirstProofFromZip,
 } from './fileProcessing/index.js';
+
+// UI共通コンポーネント
+export {
+  BaseThemeManager,
+  type Theme,
+  type ThemeManagerOptions,
+} from './ui/index.js';
