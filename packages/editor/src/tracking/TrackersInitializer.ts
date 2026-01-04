@@ -43,8 +43,9 @@ export function initializeTrackers(options: TrackersInitializerOptions): void {
   const { trackers, editorController, editor } = ctx;
 
   // WindowTracker - ウィンドウサイズ変更の追跡
+  // ウィンドウサイズ変更はセッション全体に影響するため、全タブに記録
   trackers.window.setCallback((event) => {
-    recordEvent({
+    recordEventToAllTabs({
       type: event.type,
       data: event.data,
       description: event.description,
@@ -54,8 +55,9 @@ export function initializeTrackers(options: TrackersInitializerOptions): void {
   trackers.window.recordInitial();
 
   // NetworkTracker - ネットワーク状態変更の追跡
+  // ネットワーク状態変更はセッション全体に影響するため、全タブに記録
   trackers.network.setCallback((event) => {
-    recordEvent({
+    recordEventToAllTabs({
       type: event.type,
       data: event.data,
       description: event.description,
@@ -65,8 +67,9 @@ export function initializeTrackers(options: TrackersInitializerOptions): void {
   trackers.network.recordInitial();
 
   // VisibilityTracker - ページの表示/非表示の追跡
+  // タブの可視性やフォーカス状態はセッション全体に影響するため、全タブに記録
   trackers.visibility.setCallback((event) => {
-    recordEvent({
+    recordEventToAllTabs({
       type: event.type,
       data: event.data,
       description: event.description,
