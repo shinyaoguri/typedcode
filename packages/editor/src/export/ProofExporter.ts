@@ -324,6 +324,12 @@ export class ProofExporter {
     try {
       if (!this.tabManager) return;
 
+      // タブが存在しない場合は何もしない
+      if (this.tabManager.getAllTabs().length === 0) {
+        console.log('[Export] No tabs to export');
+        return;
+      }
+
       // ハッシュチェーン生成完了を待機
       const completed = await this.waitForProcessingComplete();
       if (!completed) {

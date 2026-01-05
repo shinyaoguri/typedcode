@@ -193,6 +193,19 @@
   background: var(--bg-hover);
 }
 
+.dropdown-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dropdown-item.disabled:hover {
+  background: transparent;
+}
+
+.dropdown-item.disabled:hover i {
+  color: var(--text-secondary);
+}
+
 .dropdown-item i {
   width: 16px;
   text-align: center;

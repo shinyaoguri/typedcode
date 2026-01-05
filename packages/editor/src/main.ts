@@ -945,13 +945,17 @@ function setupStaticEventListeners(): void {
 
   // 現在のタブをZIPでエクスポート（ファイル + 検証ログ）
   const exportCurrentTabBtn = document.getElementById('export-current-tab-btn');
-  exportCurrentTabBtn?.addEventListener('click', () => {
+  exportCurrentTabBtn?.addEventListener('click', (e) => {
+    // 無効時は何もしない
+    if ((e.currentTarget as HTMLElement).classList.contains('disabled')) return;
     ctx.downloadDropdown.close();
     void ctx.proofExporter.exportCurrentTab();
   });
 
   const exportZipBtn = document.getElementById('export-zip-btn');
-  exportZipBtn?.addEventListener('click', () => {
+  exportZipBtn?.addEventListener('click', (e) => {
+    // 無効時は何もしない
+    if ((e.currentTarget as HTMLElement).classList.contains('disabled')) return;
     ctx.downloadDropdown.close();
     void ctx.proofExporter.exportAllTabsAsZip();
   });
@@ -1079,6 +1083,7 @@ function initializeTerminal(): void {
     buttonId: 'download-menu-btn',
     dropdownId: 'download-dropdown',
   });
+  ctx.downloadDropdown.setHasTabsCallback(() => ctx.tabManager?.hasAnyTabs() ?? false);
 
   ctx.mainMenuDropdown.initialize({
     buttonId: 'main-menu-btn',
