@@ -131,10 +131,6 @@ export class TabUIController {
     const closeBtn = tabEl.querySelector('.tab-close-btn');
     closeBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (this.tabManager.getTabCount() === 1) {
-        this.onNotification?.(t('tabs.lastTabWarning'));
-        return;
-      }
       const targetTab = this.tabManager.getTab(tab.id);
       const tabName = targetTab
         ? `${targetTab.filename}.${this.getFileExtension(targetTab.language)}`

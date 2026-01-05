@@ -37,6 +37,7 @@ export const en: TranslationKeys = {
     menu: 'Menu',
     newFile: 'New File',
     newWindow: 'New Window',
+    importTemplate: 'Import Template',
     toggleTerminal: 'Toggle Terminal',
     toggleLogPanel: 'Toggle Log Panel',
     togglePreview: 'Toggle Preview',
@@ -367,5 +368,40 @@ export const en: TranslationKeys = {
     lastUpdate: 'Last Update',
     buildDate: 'Build Date',
     viewOnGithub: 'View on GitHub',
+  },
+
+  duplicateInstance: {
+    title: 'TypedCode is already running',
+    description: 'TypedCode uses screen sharing and cannot run in multiple tabs or windows simultaneously. TypedCode is already running in another tab or window.',
+    hint: 'Please return to the existing tab or close this one.',
+    closeThisTab: 'Close this tab',
+  },
+
+  welcome: {
+    title: 'TypedCode',
+    tagline: 'Typing Proof Editor',
+    startSection: 'Start',
+    newFile: 'New File',
+    importTemplate: 'Import Template',
+  },
+
+  template: {
+    confirmTitle: 'Import Template',
+    templateName: 'Template Name',
+    fileCount: 'File Count',
+    author: 'Author',
+    description: 'Description',
+    filesToCreate: 'Files to Create',
+    warningExistingTabs: 'All existing tabs will be closed. Unsaved data will be lost.',
+    import: 'Import',
+    importing: 'Importing template...',
+    success: 'Created ${count} files',
+    partialSuccess: 'Created ${count} files (with some errors)',
+    error: 'Failed to import template',
+    readError: 'Failed to read file',
+    invalidFormat: 'Invalid template format',
+    unnamedTemplate: 'Unnamed Template',
+    dropTitle: 'Drop Template',
+    dropHint: 'Drop a YAML file here to import',
   },
 };

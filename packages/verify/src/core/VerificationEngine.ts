@@ -171,7 +171,9 @@ export class VerificationEngine {
    * 最終コードとメタデータが改竄されていないかを検証する。
    */
   async verifyMetadata(data: ProofFile): Promise<MetadataVerificationResult> {
-    if (!data.typingProofHash || !data.typingProofData || !data.content) {
+    // content は空文字列を許可（初期化のみのファイル）
+    const hasContent = data.content !== undefined && data.content !== null;
+    if (!data.typingProofHash || !data.typingProofData || !hasContent) {
       return {
         valid: false,
         isPureTyping: false,

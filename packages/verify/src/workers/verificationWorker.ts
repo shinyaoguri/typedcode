@@ -166,7 +166,9 @@ async function verify(request: VerifyRequest): Promise<void> {
 
     const totalEvents = proofData.proof?.events?.length ?? 0;
 
-    if (proofData.typingProofHash && proofData.typingProofData && proofData.content) {
+    // content は空文字列を許可（初期化のみのファイル）
+    const hasContent = proofData.content !== undefined && proofData.content !== null;
+    if (proofData.typingProofHash && proofData.typingProofData && hasContent) {
       sendProgress(id, 1, 3, 'metadata', totalEvents);
 
       const hashVerification = await typingProof.verifyTypingProofHash(

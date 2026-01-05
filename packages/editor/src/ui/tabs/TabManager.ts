@@ -123,21 +123,11 @@ export class TabManager {
     this.clearOldStorageData();
 
     // 保存されたタブデータを読み込む
-    const loaded = await this.loadFromStorage();
+    await this.loadFromStorage();
 
-    // タブがない場合は新規タブを作成
-    console.log('[DEBUG TabManager] loaded:', loaded, 'tabs.size:', this.tabs.size);
-    if (!loaded || this.tabs.size === 0) {
-      console.log('[DEBUG TabManager] Creating initial tab...');
-      const tab = await this.createTab('Untitled-1', 'c', '');
-      console.log('[DEBUG TabManager] createTab result:', tab);
-      if (!tab) {
-        console.error('[TabManager] Failed to create initial tab (verification failed)');
-        return false;
-      }
-    }
-
-    console.log('[DEBUG TabManager] initialize() returning true');
+    // タブがない場合はウェルカム画面を表示するため、デフォルトタブは作成しない
+    // 認証はユーザーが新規ファイル作成またはテンプレート読み込みを選択したタイミングで実行
+    console.log('[TabManager] initialize() completed, tabs.size:', this.tabs.size);
     return true;
   }
 
@@ -172,6 +162,22 @@ export class TabManager {
    */
   setOnVerification(callback: OnVerificationCallback): void {
     this.onVerificationCallback = callback;
+  }
+
+  /**
+   * 全タブ閉じた時のコールバックを設定
+   */
+  private onAllTabsClosedCallback: (() => void) | null = null;
+
+  setOnAllTabsClosed(callback: () => void): void {
+    this.onAllTabsClosedCallback = callback;
+  }
+
+  /**
+   * タブが存在するかどうか
+   */
+  hasAnyTabs(): boolean {
+    return this.tabs.size > 0;
   }
 
   /**
@@ -408,18 +414,21 @@ export class TabManager {
     const tab = this.tabs.get(tabId);
     if (!tab) return false;
 
-    // 最後のタブは閉じない
-    if (this.tabs.size <= 1) {
-      console.warn('[TabManager] Cannot close the last tab');
-      return false;
-    }
-
     // モデルを破棄
     tab.model.dispose();
 
     // タブを削除
     this.tabs.delete(tabId);
     this.tabOrder = this.tabOrder.filter(id => id !== tabId);
+
+    // タブが0になった場合
+    if (this.tabs.size === 0) {
+      this.activeTabId = null;
+      this.saveToStorage();
+      // ウェルカム画面表示のコールバックを呼び出し
+      this.onAllTabsClosedCallback?.();
+      return true;
+    }
 
     // アクティブタブが閉じられた場合、別のタブに切り替え
     if (this.activeTabId === tabId) {
@@ -439,6 +448,81 @@ export class TabManager {
 
     this.saveToStorage();
     return true;
+  }
+
+  /**
+   * すべてのタブを閉じる（テンプレートインポート用）
+   * 通常のcloseTabと異なり、最後の1つも閉じる
+   */
+  async closeAllTabs(): Promise<void> {
+    // すべてのモデルを破棄
+    for (const tab of this.tabs.values()) {
+      tab.model.dispose();
+    }
+
+    // 状態をクリア
+    this.tabs.clear();
+    this.tabOrder = [];
+    this.activeTabId = null;
+    this.tabSwitches = [];
+
+    // ストレージもクリア
+    sessionStorage.removeItem(STORAGE_KEY);
+  }
+
+  /**
+   * テンプレートからタブを作成（Turnstile認証なし）
+   * 最初のファイルの認証結果を共有して使用
+   * @param filename - ファイル名
+   * @param language - 言語ID
+   * @param content - 初期コンテンツ
+   * @param sharedAttestation - 共有する人間認証データ（最初のファイルから）
+   */
+  async createTabFromTemplate(
+    filename: string,
+    language: string,
+    content: string,
+    sharedAttestation: HumanAttestationEventData | null
+  ): Promise<TabState | null> {
+    const id = generateUUID();
+    const createdAt = Date.now();
+
+    // TypingProofインスタンスを作成
+    const typingProof = new TypingProof();
+    const poswWorker = createPoswWorker();
+    await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
+
+    // 共有された認証データがあれば event #0 として記録
+    if (sharedAttestation) {
+      await typingProof.recordHumanAttestation(sharedAttestation);
+    }
+
+    // モデルを作成
+    const model = monaco.editor.createModel(content, language);
+
+    const tab: TabState = {
+      id,
+      filename,
+      language,
+      typingProof,
+      model,
+      createdAt,
+      verificationState: sharedAttestation ? 'verified' : 'skipped',
+      verificationDetails: {
+        timestamp: new Date().toISOString(),
+      },
+    };
+
+    this.tabs.set(id, tab);
+    this.tabOrder.push(id);
+
+    // 最初のタブならアクティブに
+    if (this.activeTabId === null) {
+      await this.switchTab(id);
+    }
+
+    this.saveToStorage();
+    return tab;
   }
 
   /**

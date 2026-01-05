@@ -297,9 +297,10 @@ export class ProofExporter {
       this.exportProgressDialog.hide();
 
       // ダウンロード実行
-      const filename = `TC${timestamp}.zip`;
-      this.downloadBlob(blob, filename);
-      console.log('[Export] Download triggered:', filename);
+      // ファイル名プレフィックス: ファイル名（拡張子なし）- baseFilenameは上で定義済み
+      const zipFilename = `${baseFilename}_TC${timestamp}.zip`;
+      this.downloadBlob(blob, zipFilename);
+      console.log('[Export] Download triggered:', zipFilename);
 
       const verification = await activeTab.typingProof.verify();
       console.log('[TypedCode] Verification result:', verification);
@@ -322,6 +323,12 @@ export class ProofExporter {
   async exportAllTabsAsZip(): Promise<void> {
     try {
       if (!this.tabManager) return;
+
+      // タブが存在しない場合は何もしない
+      if (this.tabManager.getAllTabs().length === 0) {
+        console.log('[Export] No tabs to export');
+        return;
+      }
 
       // ハッシュチェーン生成完了を待機
       const completed = await this.waitForProcessingComplete();
@@ -439,9 +446,10 @@ export class ProofExporter {
       this.exportProgressDialog.hide();
 
       // ダウンロード実行
-      const filename = `TC${timestamp}.zip`;
-      this.downloadBlob(blob, filename);
-      console.log('[Export] Download triggered:', filename);
+      // 全ファイルエクスポート時のプレフィックス: ALL_
+      const zipFilename = `ALL_TC${timestamp}.zip`;
+      this.downloadBlob(blob, zipFilename);
+      console.log('[Export] Download triggered:', zipFilename);
 
       this.callbacks.onNotification?.(t('export.zipSuccess', { count: allTabs.length }));
     } catch (error) {

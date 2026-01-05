@@ -58,8 +58,7 @@ Attestation:
 | Code | Description |
 |------|-------------|
 | 0 | Verification passed |
-| 1 | Verification failed |
-| 2 | File not found or invalid format |
+| 1 | Verification failed or error |
 
 ## Supported Formats
 
@@ -92,10 +91,11 @@ npm run dev        # Watch mode
 
 ```
 src/
-├── cli.ts         # CLI entry point (commander)
+├── cli.ts         # CLI entry point
 ├── verify.ts      # Verification logic
 ├── output.ts      # Result formatting
-└── progress.ts    # Progress display
+├── progress.ts    # Progress display
+└── zip.ts         # ZIP file handling
 ```
 
 ## Requirements
@@ -106,5 +106,4 @@ src/
 
 | Package | Purpose |
 |---------|---------|
-| @typedcode/shared | Core types and verification |
-| jszip | ZIP file handling |
+| @typedcode/shared | Core types and verification (includes ZIP handling) |

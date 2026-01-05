@@ -92,9 +92,7 @@ export class AppController {
 
     // Initialize ChartController first (needed by other controllers)
     this.chartController = new ChartController();
-    this.chartController.initialize({
-      onSeek: (eventIndex) => this.updateCodePreview(eventIndex),
-    });
+    this.chartController.initialize();
 
     // Initialize TabController
     this.tabController = new TabController({
@@ -275,18 +273,6 @@ export class AppController {
         return '';
       }
     });
-  }
-
-  /**
-   * コードプレビューを更新
-   */
-  private updateCodePreview(eventIndex: number): void {
-    const codePreview = document.querySelector('#code-preview code') as HTMLElement | null;
-    const seekbarController = this.chartController.getSeekbarController();
-    if (!codePreview || !seekbarController) return;
-
-    const content = seekbarController.getContentAtIndex(eventIndex);
-    codePreview.textContent = content;
   }
 
   private openFileDialog(): void {

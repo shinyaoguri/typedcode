@@ -29,7 +29,8 @@ export type EventType =
   | 'terminalInput' // ターミナルへの入力（行単位）
   | 'screenshotCapture' // スクリーンショット撮影
   | 'screenShareStart' // 画面共有開始
-  | 'screenShareStop'; // 画面共有停止
+  | 'screenShareStop' // 画面共有停止
+  | 'templateInjection'; // テンプレートコンテンツ注入
 
 /** 入力タイプ */
 export type InputType =
@@ -243,7 +244,7 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | TemplateInjectionEventData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -263,7 +264,7 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | TemplateInjectionEventData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;
@@ -432,6 +433,7 @@ export interface TypingStatistics {
   dropEvents: number;
   insertEvents: number;
   deleteEvents: number;
+  templateEvents: number;  // テンプレート注入イベント数
   duration: number;
   averageWPM: number;
 }
@@ -568,7 +570,7 @@ export interface SeekbarEventInfo {
   type: EventType;
   inputType: InputType | null;
   timestamp: number;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | TemplateInjectionEventData | null;
   dataLength: number;
   dataPreview: string | null;
   rangeOffset: number | null;
@@ -660,6 +662,43 @@ export interface MultiFileExportedProof {
 
 /** エクスポートプルーフの統合型 */
 export type AnyExportedProof = ExportedProof | MultiFileExportedProof;
+
+// ============================================================================
+// テンプレート関連
+// ============================================================================
+
+/** テンプレート内のファイル定義 */
+export interface TemplateFileDefinition {
+  filename: string;
+  language: string;
+  content: string;
+}
+
+/** テンプレートメタデータ */
+export interface TemplateMetadata {
+  name?: string;
+  author?: string;
+  description?: string;
+}
+
+/** パース済みテンプレート */
+export interface ParsedTemplate {
+  version: string;
+  metadata: TemplateMetadata;
+  files: TemplateFileDefinition[];
+}
+
+/** テンプレート注入イベントデータ */
+export interface TemplateInjectionEventData {
+  templateName: string;           // テンプレート名
+  templateHash: string;           // テンプレートファイル全体のSHA-256ハッシュ
+  filename: string;               // 注入されたファイル名
+  content: string;                // 注入されたコンテンツ（verify側での再構築用）
+  contentHash: string;            // 注入されたコンテンツのハッシュ
+  contentLength: number;          // コンテンツの長さ
+  totalFilesInTemplate: number;   // テンプレート内の総ファイル数
+  injectionSource: 'file_import'; // 注入元
+}
 
 /** マルチファイルプルーフかどうかを判定する型ガード */
 export function isMultiFileProof(data: AnyExportedProof): data is MultiFileExportedProof {

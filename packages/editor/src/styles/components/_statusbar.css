@@ -29,6 +29,15 @@
   background: var(--statusbar-hover-bg);
 }
 
+.statusbar .status-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.statusbar .status-item.disabled:hover {
+  background: transparent;
+}
+
 .statusbar .status-item > i {
   font-size: 11px;
 }

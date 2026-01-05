@@ -12,11 +12,11 @@ This tool is primarily designed for programming exams that need to prevent AI-as
 
 - **Tamper-Resistant Proof**: SHA-256 hash chain with PoSW (10,000 iterations per event)
 - **Human Verification**: Cloudflare Turnstile integration with HMAC-signed attestations
-- **Comprehensive Event Tracking**: 22 event types including content changes, keystrokes, mouse movements, focus, visibility, and paste/drop detection
+- **Comprehensive Event Tracking**: 21 event types including content changes, keystrokes, mouse movements, focus, visibility, and paste/drop detection
 - **Multi-Tab Support**: Edit multiple files simultaneously with tab switch tracking
 - **Screenshot Capture**: Periodic and focus-loss triggered screenshots with hash verification
 - **In-Browser Execution**: C/C++, Python, JavaScript/TypeScript via Wasmer SDK (WebAssembly)
-- **Export Formats**: JSON or ZIP with screenshots and verification guide
+- **Export Formats**: ZIP archive containing proof JSON, source code, screenshots, and verification guide
 - **Bilingual**: Japanese and English UI
 
 ## Packages
@@ -24,7 +24,7 @@ This tool is primarily designed for programming exams that need to prevent AI-as
 | Package | Description |
 |---------|-------------|
 | [@typedcode/editor](packages/editor/) | Monaco-based editor with keystroke tracking and code execution |
-| [@typedcode/verify](packages/verify/) | Web-based proof verification with VSCode-like UI |
+| [@typedcode/verify](packages/verify/) | Web-based proof verification |
 | [@typedcode/verify-cli](packages/verify-cli/) | CLI tool for proof verification (Node.js ≥22) |
 | [@typedcode/shared](packages/shared/) | Core library: TypingProof, Fingerprint, verification, types |
 | [@typedcode/workers](packages/workers/) | Cloudflare Workers API for Turnstile integration |
@@ -112,7 +112,7 @@ npm run test:coverage -w @typedcode/shared
 5. **Export**: Proof file contains complete event history, hash chain, fingerprint, and optional screenshots
 6. **Verification**: Independent verification of chain integrity, timestamps, and PoSW
 
-### Event Types (22 types)
+### Event Types (21 types)
 
 | Category | Events |
 |----------|--------|
@@ -125,9 +125,17 @@ npm run test:coverage -w @typedcode/shared
 | Execution | `codeExecution`, `terminalInput` |
 | Capture | `screenshotCapture`, `screenShareStart`, `screenShareStop` |
 
-### Proof File Format
+### Export File Format (ZIP)
 
-**JSON Format:**
+Exported as `TC{timestamp}.zip` containing:
+- `{filename}.{ext}` - Source code file
+- `{filename}_proof.json` - Proof JSON (see structure below)
+- `screenshots/` - Captured screenshots (JPEG)
+- `screenshots/manifest.json` - Screenshot metadata and hashes
+- `README.md` - Verification guide (English)
+- `README.ja.md` - Verification guide (Japanese)
+
+**Proof JSON Structure:**
 ```json
 {
   "version": "1.0.0",
@@ -138,12 +146,6 @@ npm run test:coverage -w @typedcode/shared
   "checkpoints": [...]
 }
 ```
-
-**ZIP Format:**
-- `proof.json` - Main proof file
-- `screenshots/` - Captured screenshots (JPEG)
-- `manifest.json` - Screenshot metadata and hashes
-- `README.md` - Verification guide
 
 ## Tech Stack
 

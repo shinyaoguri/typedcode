@@ -54,6 +54,10 @@ import {
   isTurnstileConfigured,
   loadTurnstileScript as preloadTurnstile,
 } from './services/TurnstileService.js';
+import {
+  SingleInstanceGuard,
+  showDuplicateInstanceOverlay,
+} from './services/SingleInstanceGuard.js';
 import { CTerminal } from './terminal/CTerminal.js';
 import type { ParsedError } from './executors/c/CExecutor.js';
 import '@xterm/xterm/css/xterm.css';
@@ -83,6 +87,7 @@ import type { AppContext } from './core/AppContext.js';
 import { isLanguageExecutable } from './config/SupportedLanguages.js';
 import { t, getI18n, initDOMi18n } from './i18n/index.js';
 import { showAboutDialog } from './ui/components/AboutDialog.js';
+import { WelcomeScreen } from './ui/components/WelcomeScreen.js';
 
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
@@ -170,6 +175,9 @@ const ctx: AppContext = {
 
   // Flags
   skipBeforeUnload: false,
+
+  // Welcome Screen
+  welcomeScreen: null as WelcomeScreen | null,
 };
 
 // ========================================
@@ -184,6 +192,198 @@ function showNotification(message: string): void {
   setTimeout(() => {
     blockNotificationEl?.classList.add('hidden');
   }, 2000);
+}
+
+/**
+ * テンプレートファイルかどうかを判定
+ */
+function isTemplateFile(file: File): boolean {
+  const ext = file.name.toLowerCase().split('.').pop();
+  return ext === 'yaml' || ext === 'yml';
+}
+
+// ========================================
+// ウェルカム画面関連
+// ========================================
+
+/**
+ * ウェルカム画面を表示
+ */
+function showWelcomeScreen(): void {
+  // Monacoエディタを非表示
+  const editorEl = document.getElementById('editor');
+  if (editorEl) editorEl.style.display = 'none';
+
+  // エディタコンテナにウェルカム画面を表示
+  const container = document.querySelector('.editor-container') as HTMLElement | null;
+  if (container && !ctx.welcomeScreen) {
+    ctx.welcomeScreen = new WelcomeScreen({
+      container,
+      onNewFile: handleWelcomeNewFile,
+      onImportTemplate: handleWelcomeImportTemplate,
+    });
+    ctx.welcomeScreen.show();
+  }
+}
+
+/**
+ * ウェルカム画面を非表示
+ */
+function hideWelcomeScreen(): void {
+  if (ctx.welcomeScreen) {
+    ctx.welcomeScreen.hide();
+    ctx.welcomeScreen.dispose();
+    ctx.welcomeScreen = null;
+  }
+
+  // Monacoエディタを表示
+  const editorEl = document.getElementById('editor');
+  if (editorEl) editorEl.style.display = '';
+}
+
+/**
+ * ウェルカム画面から新規ファイル作成
+ */
+async function handleWelcomeNewFile(): Promise<void> {
+  hideWelcomeScreen();
+
+  const num = ctx.tabUIController?.getNextUntitledNumber() ?? 1;
+  const newTab = await ctx.tabManager?.createTab(`Untitled-${num}`, 'c', '');
+
+  if (!newTab) {
+    // 認証失敗時はウェルカム画面に戻る
+    showWelcomeScreen();
+    showNotification(t('notifications.authFailed'));
+    return;
+  }
+
+  // スクリーンショットのキャプチャを再有効化
+  ctx.trackers.screenshot?.setCaptureEnabled(true);
+
+  ctx.tabUIController?.updateUI();
+  showNotification(t('notifications.newTabCreated'));
+}
+
+/**
+ * ウェルカム画面からテンプレート読み込み
+ */
+async function handleWelcomeImportTemplate(): Promise<void> {
+  await handleTemplateImport(ctx);
+
+  // テンプレート読み込み成功時はウェルカム画面を非表示
+  if (ctx.tabManager?.hasAnyTabs()) {
+    hideWelcomeScreen();
+    ctx.tabUIController?.updateUI();
+    // スクリーンショットのキャプチャを再有効化
+    ctx.trackers.screenshot?.setCaptureEnabled(true);
+  }
+}
+
+/**
+ * テンプレートコンテンツをインポート（共通処理）
+ */
+async function importTemplateContent(
+  appContext: typeof ctx,
+  content: string
+): Promise<boolean> {
+  const { templateImportDialog } = await import('./template/TemplateImportDialog.js');
+  const { templateImporter } = await import('./template/TemplateImporter.js');
+  const { TemplateValidationError } = await import('./template/TemplateParser.js');
+
+  if (!appContext.tabManager) return false;
+
+  // 1. テンプレートをパース
+  let template;
+  try {
+    template = templateImporter.parseTemplate(content);
+  } catch (error: unknown) {
+    if (error instanceof TemplateValidationError) {
+      showNotification(error.message);
+    } else {
+      console.error('[TemplateImport] Parse error:', error);
+      showNotification(t('template.invalidFormat'));
+    }
+    return false;
+  }
+
+  // 2. 確認ダイアログ
+  const hasExistingTabs = appContext.tabManager.getAllTabs().length > 0;
+  const confirmed = await templateImportDialog.showConfirmation(template, hasExistingTabs);
+  if (!confirmed) return false;
+
+  // 3. 進捗表示
+  const progress = templateImportDialog.showProgress();
+
+  try {
+    // 4. インポート実行
+    const result = await templateImporter.import(
+      appContext.tabManager,
+      content,
+      (current, total, currentFilename) => {
+        progress.update(current, total, currentFilename);
+      }
+    );
+
+    progress.close();
+
+    // 5. 結果表示
+    if (result.success) {
+      showNotification(t('template.success', { count: result.filesCreated }));
+      appContext.tabUIController?.updateUI();
+    } else {
+      console.error('[TemplateImport] Errors:', result.errors);
+      showNotification(t('template.partialSuccess', { count: result.filesCreated }));
+    }
+
+    return result.success;
+  } catch (error) {
+    progress.close();
+    throw error;
+  }
+}
+
+/**
+ * テンプレートインポート処理（ファイル選択ダイアログから）
+ */
+async function handleTemplateImport(appContext: typeof ctx): Promise<void> {
+  const { templateImportDialog } = await import('./template/TemplateImportDialog.js');
+
+  if (!appContext.tabManager) return;
+
+  // 1. ファイル選択
+  const file = await templateImportDialog.selectFile();
+  if (!file) return;
+
+  // 2. ファイル内容を読み取り
+  let content: string;
+  try {
+    content = await file.text();
+  } catch {
+    showNotification(t('template.readError'));
+    return;
+  }
+
+  // 3. インポート処理
+  await importTemplateContent(appContext, content);
+}
+
+/**
+ * ドラッグ＆ドロップでテンプレートをインポート
+ */
+async function handleTemplateDrop(appContext: typeof ctx, file: File): Promise<void> {
+  if (!appContext.tabManager) return;
+
+  // ファイル内容を読み取り
+  let content: string;
+  try {
+    content = await file.text();
+  } catch {
+    showNotification(t('template.readError'));
+    return;
+  }
+
+  // インポート処理
+  await importTemplateContent(appContext, content);
 }
 
 function showLanguageDescriptionInTerminal(language: string): void {
@@ -485,6 +685,122 @@ function handleTabChange(tab: { filename: string; language: string; typingProof:
 // ========================================
 
 function setupStaticEventListeners(): void {
+  // テンプレートファイルのドラッグ＆ドロップ
+  const editorArea = document.querySelector('.workbench');
+  let dropOverlay: HTMLElement | null = null;
+  let dragCounter = 0; // ネストしたdragenter/dragleaveを正しく処理するためのカウンター
+
+  // ドロップオーバーレイを作成
+  const createDropOverlay = (): HTMLElement => {
+    const overlay = document.createElement('div');
+    overlay.className = 'template-drop-overlay';
+    overlay.innerHTML = `
+      <div class="template-drop-content">
+        <i class="fas fa-file-import"></i>
+        <h3>${t('template.dropTitle') ?? 'テンプレートをドロップ'}</h3>
+        <p>${t('template.dropHint') ?? 'YAMLファイルをここにドロップして読み込み'}</p>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    return overlay;
+  };
+
+  // オーバーレイを表示
+  const showDropOverlay = (): void => {
+    if (!dropOverlay) {
+      dropOverlay = createDropOverlay();
+    }
+    dropOverlay.classList.remove('hidden');
+  };
+
+  // オーバーレイを非表示
+  const hideDropOverlay = (): void => {
+    dropOverlay?.classList.add('hidden');
+  };
+
+  if (editorArea) {
+    // ドラッグ開始時（ウィンドウ全体で検知）
+    document.addEventListener('dragenter', (e) => {
+      const event = e as DragEvent;
+      const items = event.dataTransfer?.items;
+
+      // ファイルがドラッグされている場合のみ
+      if (items && items.length > 0) {
+        for (const item of Array.from(items)) {
+          if (item.kind === 'file') {
+            dragCounter++;
+            if (dragCounter === 1) {
+              showDropOverlay();
+            }
+            break;
+          }
+        }
+      }
+    });
+
+    // ドラッグ終了時（ウィンドウから離れた時）
+    document.addEventListener('dragleave', (e) => {
+      const event = e as DragEvent;
+      // ウィンドウ外に出た場合のみカウンターを減らす
+      if (event.relatedTarget === null || !(event.relatedTarget instanceof Node)) {
+        dragCounter--;
+        if (dragCounter <= 0) {
+          dragCounter = 0;
+          hideDropOverlay();
+        }
+      }
+    });
+
+    // ドラッグオーバー時のデフォルト動作を防止（ドロップを許可）
+    editorArea.addEventListener('dragover', (e) => {
+      const event = e as DragEvent;
+      // ファイルがドラッグされている場合のみドロップを許可
+      const items = event.dataTransfer?.items;
+      if (items && items.length > 0) {
+        for (const item of Array.from(items)) {
+          if (item.kind === 'file') {
+            event.preventDefault();
+            event.dataTransfer!.dropEffect = 'copy';
+            break;
+          }
+        }
+      }
+    });
+
+    // ドロップ時の処理
+    editorArea.addEventListener('drop', async (e) => {
+      const event = e as DragEvent;
+      const files = event.dataTransfer?.files;
+
+      // オーバーレイを非表示
+      dragCounter = 0;
+      hideDropOverlay();
+
+      if (files && files.length > 0) {
+        const file = files[0]!;
+        // テンプレートファイルかチェック
+        if (isTemplateFile(file)) {
+          event.preventDefault();
+          event.stopPropagation();
+
+          try {
+            await handleTemplateDrop(ctx, file);
+          } catch (error) {
+            console.error('[TemplateImport] Drop error:', error);
+            showNotification(t('template.error'));
+          }
+        }
+        // テンプレートファイル以外はデフォルト動作（InputDetectorでexternalInput検出）
+      }
+    });
+
+    // ドロップがキャンセルされた場合（ESCキーなど）
+    document.addEventListener('drop', () => {
+      dragCounter = 0;
+      hideDropOverlay();
+    });
+  }
+
   // 言語切り替え
   const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
   languageSelector?.addEventListener('change', (e) => {
@@ -629,13 +945,17 @@ function setupStaticEventListeners(): void {
 
   // 現在のタブをZIPでエクスポート（ファイル + 検証ログ）
   const exportCurrentTabBtn = document.getElementById('export-current-tab-btn');
-  exportCurrentTabBtn?.addEventListener('click', () => {
+  exportCurrentTabBtn?.addEventListener('click', (e) => {
+    // 無効時は何もしない
+    if ((e.currentTarget as HTMLElement).classList.contains('disabled')) return;
     ctx.downloadDropdown.close();
     void ctx.proofExporter.exportCurrentTab();
   });
 
   const exportZipBtn = document.getElementById('export-zip-btn');
-  exportZipBtn?.addEventListener('click', () => {
+  exportZipBtn?.addEventListener('click', (e) => {
+    // 無効時は何もしない
+    if ((e.currentTarget as HTMLElement).classList.contains('disabled')) return;
     ctx.downloadDropdown.close();
     void ctx.proofExporter.exportAllTabsAsZip();
   });
@@ -763,6 +1083,7 @@ function initializeTerminal(): void {
     buttonId: 'download-menu-btn',
     dropdownId: 'download-dropdown',
   });
+  ctx.downloadDropdown.setHasTabsCallback(() => ctx.tabManager?.hasAnyTabs() ?? false);
 
   ctx.mainMenuDropdown.initialize({
     buttonId: 'main-menu-btn',
@@ -796,6 +1117,20 @@ function initializeTerminal(): void {
     ctx.mainMenuDropdown.close();
     // Open a fresh window with ?fresh=1 to signal that sessionStorage should be cleared
     window.open(window.location.origin + window.location.pathname + '?fresh=1', '_blank');
+  });
+
+  // テンプレートインポートボタン
+  const importTemplateBtn = document.getElementById('import-template-btn');
+  importTemplateBtn?.addEventListener('click', async () => {
+    ctx.mainMenuDropdown.close();
+    if (!ctx.tabManager) return;
+
+    try {
+      await handleTemplateImport(ctx);
+    } catch (error) {
+      console.error('[TemplateImport] Error:', error);
+      showNotification(t('template.error'));
+    }
   });
 
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
@@ -1152,6 +1487,28 @@ async function clearAllAppData(): Promise<void> {
 // ========================================
 
 async function initializeApp(): Promise<void> {
+  // Phase 0: 複数インスタンスの検出
+  const instanceGuard = new SingleInstanceGuard();
+  const hasExistingInstance = await instanceGuard.checkForExistingInstance();
+
+  if (hasExistingInstance) {
+    // 別のタブですでに起動中 - このタブをブロック
+    console.log('[TypedCode] Another instance is already running, blocking this tab');
+    initOverlay?.classList.add('hidden');
+    showDuplicateInstanceOverlay();
+
+    // 「このタブを閉じる」ボタンのイベントリスナー
+    const closeBtn = document.getElementById('duplicate-instance-close-btn');
+    closeBtn?.addEventListener('click', () => {
+      window.close();
+      // window.close() が効かない場合（ユーザーが開いたタブの場合）は空白ページに
+      // リダイレクト
+      window.location.href = 'about:blank';
+    });
+
+    return; // 初期化を中止
+  }
+
   // Phase 1: 利用規約の確認
   if (!hasAcceptedTerms()) {
     initOverlay?.classList.add('hidden');
@@ -1217,19 +1574,41 @@ async function initializeApp(): Promise<void> {
   }
 
   hideInitOverlay();
-  ctx.tabUIController?.updateUI();
 
-  // 言語セレクタを更新
-  const activeTab = ctx.tabManager?.getActiveTab();
-  const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
-  if (activeTab && languageSelector) {
-    languageSelector.value = activeTab.language;
+  // タブがない場合はウェルカム画面を表示、ある場合は通常のエディタ表示
+  if (!ctx.tabManager?.hasAnyTabs()) {
+    showWelcomeScreen();
+    // スクリーンショットのキャプチャを無効化（タブがないので保存先がない）
+    ctx.trackers.screenshot?.setCaptureEnabled(false);
+  } else {
+    ctx.tabUIController?.updateUI();
+
+    // 言語セレクタを更新
+    const activeTab = ctx.tabManager?.getActiveTab();
+    const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
+    if (activeTab && languageSelector) {
+      languageSelector.value = activeTab.language;
+    }
+
+    updateProofStatus();
+
+    // 利用規約同意をハッシュチェーンに記録
+    recordTermsAcceptance();
   }
 
-  updateProofStatus();
-
-  // 利用規約同意をハッシュチェーンに記録
-  recordTermsAcceptance();
+  // 全タブ閉じた時にウェルカム画面を表示するコールバックを設定
+  ctx.tabManager?.setOnAllTabsClosed(() => {
+    showWelcomeScreen();
+    ctx.tabUIController?.updateUI();
+    // ステータスバーをリセット
+    ctx.proofStatusDisplay.reset();
+    // スクリーンショットのキャプチャを無効化（タブがないので保存先がない）
+    ctx.trackers.screenshot?.setCaptureEnabled(false);
+    // 既存のスクリーンショットを全て削除
+    ctx.trackers.screenshot?.clearStorage().catch((err) => {
+      console.error('[TypedCode] Failed to clear screenshots:', err);
+    });
+  });
 
   // Phase 5: トラッカーの初期化
   initializeTrackers({

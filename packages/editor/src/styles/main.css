@@ -25,6 +25,7 @@
 @import './components/_browser-preview.css';
 @import './components/_modals.css';
 @import './components/_notifications.css';
+@import './components/_welcome.css';
 
 /* Utilities */
 @import './utilities/_responsive.css';

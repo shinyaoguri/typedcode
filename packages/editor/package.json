@@ -15,7 +15,8 @@
     "jszip": "^3.10.1",
     "monaco-editor": "^0.55.1",
     "vite-plugin-top-level-await": "^1.6.0",
-    "vite-plugin-wasm": "^3.5.0"
+    "vite-plugin-wasm": "^3.5.0",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@types/jszip": "^3.4.1",

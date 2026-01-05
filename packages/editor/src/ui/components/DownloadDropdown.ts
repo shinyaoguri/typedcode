@@ -8,11 +8,14 @@ export interface DownloadDropdownOptions {
   dropdownId: string;
 }
 
+export type HasTabsCallback = () => boolean;
+
 export class DownloadDropdown {
   private button: HTMLElement | null = null;
   private dropdown: HTMLElement | null = null;
   private boundHandleOutsideClick: (e: MouseEvent) => void;
   private initialized = false;
+  private hasTabsCallback: HasTabsCallback | null = null;
 
   constructor() {
     this.boundHandleOutsideClick = this.handleOutsideClick.bind(this);
@@ -33,6 +36,13 @@ export class DownloadDropdown {
     this.attach();
     this.initialized = true;
     return true;
+  }
+
+  /**
+   * タブ存在確認コールバックを設定
+   */
+  setHasTabsCallback(callback: HasTabsCallback): void {
+    this.hasTabsCallback = callback;
   }
 
   /**
@@ -65,6 +75,7 @@ export class DownloadDropdown {
    * ドロップダウンを開く
    */
   open(): void {
+    this.updateItemsState();
     this.dropdown?.classList.add('visible');
   }
 
@@ -79,7 +90,11 @@ export class DownloadDropdown {
    * ドロップダウンの表示/非表示を切り替え
    */
   toggle(): void {
-    this.dropdown?.classList.toggle('visible');
+    if (this.isVisible) {
+      this.close();
+    } else {
+      this.open();
+    }
   }
 
   /**
@@ -90,6 +105,26 @@ export class DownloadDropdown {
   }
 
   /**
+   * ドロップダウン内のアイテムの有効/無効状態を更新
+   */
+  private updateItemsState(): void {
+    if (!this.dropdown) return;
+
+    const hasTabs = this.hasTabsCallback?.() ?? true;
+    const items = this.dropdown.querySelectorAll('.dropdown-item');
+
+    items.forEach((item) => {
+      if (hasTabs) {
+        item.classList.remove('disabled');
+        item.removeAttribute('aria-disabled');
+      } else {
+        item.classList.add('disabled');
+        item.setAttribute('aria-disabled', 'true');
+      }
+    });
+  }
+
+  /**
    * リソースを解放
    */
   dispose(): void {
@@ -97,5 +132,6 @@ export class DownloadDropdown {
     this.button = null;
     this.dropdown = null;
     this.initialized = false;
+    this.hasTabsCallback = null;
   }
 }

@@ -39,12 +39,14 @@ export class StatisticsCalculator {
     let dropEvents = 0;
     let insertEvents = 0;
     let deleteEvents = 0;
+    let templateEvents = 0;
 
     for (const event of events) {
       if (event.inputType === 'insertFromPaste') pasteEvents++;
       if (event.inputType === 'insertFromDrop') dropEvents++;
       if (event.type === 'contentChange' && event.data) insertEvents++;
       if (event.inputType?.startsWith('delete')) deleteEvents++;
+      if (event.type === 'templateInjection') templateEvents++;
     }
 
     const duration = performance.now() - startTime;
@@ -56,6 +58,7 @@ export class StatisticsCalculator {
       dropEvents,
       insertEvents,
       deleteEvents,
+      templateEvents,
       duration,
       averageWPM: Math.round(averageWPM * 10) / 10
     };

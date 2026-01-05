@@ -47,6 +47,7 @@ export interface TranslationKeys {
     menu: string;
     newFile: string;
     newWindow: string;
+    importTemplate: string;
     toggleTerminal: string;
     toggleLogPanel: string;
     togglePreview: string;
@@ -386,5 +387,43 @@ export interface TranslationKeys {
     lastUpdate: string;
     buildDate: string;
     viewOnGithub: string;
+  };
+
+  // Duplicate instance detection
+  duplicateInstance: {
+    title: string;
+    description: string;
+    hint: string;
+    closeThisTab: string;
+  };
+
+  // Welcome screen
+  welcome: {
+    title: string;
+    tagline: string;
+    startSection: string;
+    newFile: string;
+    importTemplate: string;
+  };
+
+  // Template import
+  template: {
+    confirmTitle: string;
+    templateName: string;
+    fileCount: string;
+    author: string;
+    description: string;
+    filesToCreate: string;
+    warningExistingTabs: string;
+    import: string;
+    importing: string;
+    success: string;
+    partialSuccess: string;
+    error: string;
+    readError: string;
+    invalidFormat: string;
+    unnamedTemplate: string;
+    dropTitle: string;
+    dropHint: string;
   };
 }
