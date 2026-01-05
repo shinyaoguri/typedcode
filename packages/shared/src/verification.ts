@@ -12,6 +12,15 @@ import type {
   ExportedProof,
 } from './types.js';
 
+// Re-export hash utilities for backward compatibility
+export {
+  deterministicStringify,
+  arrayBufferToHex,
+  computeHash,
+} from './utils/hashUtils.js';
+
+import { deterministicStringify, computeHash } from './utils/hashUtils.js';
+
 /**
  * Proof file with content (extends ExportedProof)
  */
@@ -50,47 +59,6 @@ export interface PoswStats {
  * Progress callback for verification
  */
 export type VerificationProgressCallback = (current: number, total: number) => void;
-
-/**
- * Deterministic JSON stringify (sorted keys)
- * Ensures consistent hash calculation across platforms
- */
-export function deterministicStringify(obj: unknown): string {
-  return JSON.stringify(obj, (_key, value) => {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      return Object.keys(value as Record<string, unknown>)
-        .sort()
-        .reduce(
-          (sorted, k) => {
-            sorted[k] = (value as Record<string, unknown>)[k];
-            return sorted;
-          },
-          {} as Record<string, unknown>
-        );
-    }
-    return value;
-  });
-}
-
-/**
- * Convert ArrayBuffer to hex string
- */
-export function arrayBufferToHex(buffer: ArrayBuffer | Uint8Array): string {
-  const uint8Array = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  return Array.from(uint8Array)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-/**
- * Compute SHA-256 hash
- */
-export async function computeHash(data: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const dataBuffer = encoder.encode(data);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-  return arrayBufferToHex(hashBuffer);
-}
 
 /**
  * Verify PoSW (Proof of Sequential Work)

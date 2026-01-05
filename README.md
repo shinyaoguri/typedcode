@@ -12,7 +12,7 @@ This tool is primarily designed for programming exams that need to prevent AI-as
 
 - **Tamper-Resistant Proof**: SHA-256 hash chain with PoSW (10,000 iterations per event)
 - **Human Verification**: Cloudflare Turnstile integration with HMAC-signed attestations
-- **Comprehensive Event Tracking**: 21 event types including content changes, keystrokes, mouse movements, focus, visibility, and paste/drop detection
+- **Comprehensive Event Tracking**: 22 event types including content changes, keystrokes, mouse movements, focus, visibility, paste/drop detection, and template injection
 - **Multi-Tab Support**: Edit multiple files simultaneously with tab switch tracking
 - **Screenshot Capture**: Periodic and focus-loss triggered screenshots with hash verification
 - **In-Browser Execution**: C/C++, Python, JavaScript/TypeScript via Wasmer SDK (WebAssembly)
@@ -112,11 +112,11 @@ npm run test:coverage -w @typedcode/shared
 5. **Export**: Proof file contains complete event history, hash chain, fingerprint, and optional screenshots
 6. **Verification**: Independent verification of chain integrity, timestamps, and PoSW
 
-### Event Types (21 types)
+### Event Types (22 types)
 
 | Category | Events |
 |----------|--------|
-| Content | `contentChange`, `contentSnapshot`, `externalInput` |
+| Content | `contentChange`, `contentSnapshot`, `externalInput`, `templateInjection` |
 | Cursor | `cursorPositionChange`, `selectionChange` |
 | Input | `keyDown`, `keyUp`, `mousePositionChange` |
 | Window | `focusChange`, `visibilityChange`, `windowResize` |
