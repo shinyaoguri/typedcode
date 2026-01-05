@@ -19,12 +19,9 @@ import type {
 } from '@typedcode/shared';
 import {
   isTurnstileConfigured,
-  performTurnstileVerification,
-  setPhaseCallback,
-  setRetryStatusCallback,
   type VerificationResult,
-  type VerificationPhase,
 } from '../../services/TurnstileService.js';
+import { performVerificationWithUI } from './TabVerificationUI.js';
 import { t } from '../../i18n/index.js';
 
 // PoSW Workerのファクトリ関数
@@ -207,176 +204,16 @@ export class TabManager {
     if (!options?.skipAttestation && isTurnstileConfigured()) {
       console.log('[TabManager] Performing Turnstile verification for new tab...');
 
-      // ローディングモーダル要素を取得
-      const loadingModal = document.getElementById('verification-loading-modal');
-      const modalDialog = document.getElementById('verification-dialog');
-      const progressBar = document.getElementById('verification-timeout-progress');
-      const retryInfo = document.getElementById('verification-retry-info');
-      const retryAttempt = document.getElementById('verification-retry-attempt');
-      const retryCountdown = document.getElementById('verification-retry-countdown');
+      const uiResult = await performVerificationWithUI('create_tab', t);
 
-      // ステップ要素を取得
-      const stepPrepare = document.getElementById('step-prepare');
-      const stepChallenge = document.getElementById('step-challenge');
-      const stepVerify = document.getElementById('step-verify');
-
-      // ステップ状態を更新するヘルパー関数
-      const updateStepStatus = (phase: VerificationPhase, status: 'pending' | 'active' | 'done' | 'error') => {
-        const stepMap: Record<VerificationPhase, HTMLElement | null> = {
-          prepare: stepPrepare,
-          challenge: stepChallenge,
-          verify: stepVerify,
-        };
-        const step = stepMap[phase];
-        if (step) {
-          step.dataset.status = status;
-        }
-      };
-
-      // 初期状態にリセット
-      loadingModal?.classList.remove('hidden');
-      modalDialog?.classList.remove('verification-warning');
-      retryInfo?.classList.add('hidden');
-      updateStepStatus('prepare', 'pending');
-      updateStepStatus('challenge', 'pending');
-      updateStepStatus('verify', 'pending');
-
-      // リトライカウントダウン用のインターバル
-      let countdownInterval: number | null = null;
-
-      // フェーズコールバックを設定
-      setPhaseCallback((phase, status) => {
-        updateStepStatus(phase, status);
-      });
-
-      // リトライ状況のコールバックを設定
-      setRetryStatusCallback((status) => {
-        if (status.isRetrying) {
-          // リトライ中の表示
-          modalDialog?.classList.add('verification-warning');
-          retryInfo?.classList.remove('hidden');
-          if (retryAttempt) {
-            retryAttempt.textContent = t('verification.retryAttempt', { current: String(status.attempt), max: String(status.maxRetries) });
-          }
-
-          // カウントダウン表示
-          if (retryCountdown) {
-            let remainingMs = status.nextDelayMs;
-            const updateCountdown = () => {
-              const seconds = Math.ceil(remainingMs / 1000);
-              retryCountdown.textContent = t('verification.retryCountdown', { seconds: String(seconds) });
-            };
-            updateCountdown();
-
-            // 既存のインターバルをクリア
-            if (countdownInterval !== null) {
-              clearInterval(countdownInterval);
-            }
-
-            countdownInterval = window.setInterval(() => {
-              remainingMs -= 100;
-              if (remainingMs <= 0) {
-                if (countdownInterval !== null) {
-                  clearInterval(countdownInterval);
-                  countdownInterval = null;
-                }
-                if (retryCountdown) retryCountdown.textContent = t('common.retrying');
-              } else {
-                updateCountdown();
-              }
-            }, 100);
-          }
-        } else {
-          // リトライ終了（成功または全リトライ失敗）
-          if (countdownInterval !== null) {
-            clearInterval(countdownInterval);
-            countdownInterval = null;
-          }
-          retryInfo?.classList.add('hidden');
-          modalDialog?.classList.remove('verification-warning');
-        }
-      });
-
-      // 総タイムアウト計算（チャレンジ20秒 + リトライ待機 1+2+4=7秒 = 約27秒）
-      const TIMEOUT_MS = 27000;
-      const startTime = Date.now();
-      let animationFrame: number | null = null;
-
-      const updateProgress = () => {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min((elapsed / TIMEOUT_MS) * 100, 100);
-        if (progressBar) {
-          progressBar.style.width = `${progress}%`;
-        }
-        if (elapsed < TIMEOUT_MS) {
-          animationFrame = requestAnimationFrame(updateProgress);
-        }
-      };
-      animationFrame = requestAnimationFrame(updateProgress);
-
-      let result: VerificationResult;
-      try {
-        // 認証実行（TurnstileService内でフェーズ・リトライ処理）
-        result = await performTurnstileVerification('create_tab');
-      } catch (error) {
-        // エラー時（ネットワークエラー等）はタイムアウトとして扱う
-        console.error('[TabManager] Verification error:', error);
-        result = {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          failureReason: 'network_error',
-        };
-      } finally {
-        // コールバックをクリア
-        setPhaseCallback(null);
-        setRetryStatusCallback(null);
-
-        // カウントダウンインターバルをクリア
-        if (countdownInterval !== null) {
-          clearInterval(countdownInterval);
-        }
-
-        // アニメーション停止
-        if (animationFrame !== null) {
-          cancelAnimationFrame(animationFrame);
-        }
-        // プログレスバーをリセット
-        if (progressBar) {
-          progressBar.style.width = '0%';
-        }
-        // ローディングモーダルを非表示
-        loadingModal?.classList.add('hidden');
-        // モーダルの状態をリセット
-        modalDialog?.classList.remove('verification-warning');
-        retryInfo?.classList.add('hidden');
-      }
-
-      // 認証状態を設定
-      verificationState = result.success ? 'verified' : 'failed';
-      verificationDetails = {
-        timestamp: new Date().toISOString(),
-        failureReason: result.failureReason,
-      };
+      verificationState = uiResult.verificationState;
+      verificationDetails = uiResult.verificationDetails;
 
       // 認証結果をハッシュチェーンに記録（成功・失敗問わず）
-      const attestationData: HumanAttestationEventData = {
-        verified: result.attestation?.verified ?? false,
-        score: result.attestation?.score ?? 0,
-        action: result.attestation?.action ?? 'create_tab',
-        timestamp: result.attestation?.timestamp ?? new Date().toISOString(),
-        hostname: result.attestation?.hostname ?? window.location.hostname,
-        signature: result.attestation?.signature ?? 'unsigned',
-        success: result.success,
-        failureReason: result.failureReason,
-      };
-
-      await typingProof.recordHumanAttestation(attestationData);
+      await typingProof.recordHumanAttestation(uiResult.attestationData);
 
       // コールバックで通知
-      this.onVerificationCallback?.(result);
-
-      console.log('[TabManager] Human attestation recorded:',
-        result.success ? 'verified' : `failed (${result.failureReason ?? result.error})`);
+      this.onVerificationCallback?.(uiResult.result);
 
       // 注意: 認証失敗でもタブ作成は続行（ブロックしない）
     }
