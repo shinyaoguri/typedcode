@@ -617,6 +617,26 @@
       </div>
     </div>
   </div>
+
+  <!-- Duplicate Instance Overlay (shown when app is already running in another tab) -->
+  <div id="duplicate-instance-overlay" class="modal-overlay hidden" style="z-index: 100000;">
+    <div class="modal-dialog modal-info">
+      <div class="modal-header">
+        <i class="fas fa-window-restore"></i>
+        <h3 data-i18n="duplicateInstance.title">TypedCode は既に起動中です</h3>
+      </div>
+      <div class="modal-body">
+        <p data-i18n="duplicateInstance.description">TypedCode は画面共有を使用するため、複数のタブやウィンドウで同時に使用することはできません。既に別のタブまたはウィンドウで TypedCode が起動しています。</p>
+        <p class="modal-hint" data-i18n="duplicateInstance.hint">既存のタブに戻るか、このタブを閉じてください。</p>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-primary" id="duplicate-instance-close-btn">
+          <i class="fas fa-times"></i> <span data-i18n="duplicateInstance.closeThisTab">このタブを閉じる</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

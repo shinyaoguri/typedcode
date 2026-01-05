@@ -368,4 +368,11 @@ export const en: TranslationKeys = {
     buildDate: 'Build Date',
     viewOnGithub: 'View on GitHub',
   },
+
+  duplicateInstance: {
+    title: 'TypedCode is already running',
+    description: 'TypedCode uses screen sharing and cannot run in multiple tabs or windows simultaneously. TypedCode is already running in another tab or window.',
+    hint: 'Please return to the existing tab or close this one.',
+    closeThisTab: 'Close this tab',
+  },
 };

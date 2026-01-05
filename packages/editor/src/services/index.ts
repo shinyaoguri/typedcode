@@ -12,3 +12,9 @@ export {
   generateFilename,
   type DownloadOptions,
 } from './DownloadService.js';
+
+export {
+  SingleInstanceGuard,
+  showDuplicateInstanceOverlay,
+  hideDuplicateInstanceOverlay,
+} from './SingleInstanceGuard.js';

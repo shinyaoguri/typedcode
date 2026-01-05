@@ -387,4 +387,12 @@ export interface TranslationKeys {
     buildDate: string;
     viewOnGithub: string;
   };
+
+  // Duplicate instance detection
+  duplicateInstance: {
+    title: string;
+    description: string;
+    hint: string;
+    closeThisTab: string;
+  };
 }

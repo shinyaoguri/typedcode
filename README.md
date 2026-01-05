@@ -24,7 +24,7 @@ This tool is primarily designed for programming exams that need to prevent AI-as
 | Package | Description |
 |---------|-------------|
 | [@typedcode/editor](packages/editor/) | Monaco-based editor with keystroke tracking and code execution |
-| [@typedcode/verify](packages/verify/) | Web-based proof verification with VSCode-like UI |
+| [@typedcode/verify](packages/verify/) | Web-based proof verification |
 | [@typedcode/verify-cli](packages/verify-cli/) | CLI tool for proof verification (Node.js ≥22) |
 | [@typedcode/shared](packages/shared/) | Core library: TypingProof, Fingerprint, verification, types |
 | [@typedcode/workers](packages/workers/) | Cloudflare Workers API for Turnstile integration |

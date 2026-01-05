@@ -54,6 +54,10 @@ import {
   isTurnstileConfigured,
   loadTurnstileScript as preloadTurnstile,
 } from './services/TurnstileService.js';
+import {
+  SingleInstanceGuard,
+  showDuplicateInstanceOverlay,
+} from './services/SingleInstanceGuard.js';
 import { CTerminal } from './terminal/CTerminal.js';
 import type { ParsedError } from './executors/c/CExecutor.js';
 import '@xterm/xterm/css/xterm.css';
@@ -1152,6 +1156,28 @@ async function clearAllAppData(): Promise<void> {
 // ========================================
 
 async function initializeApp(): Promise<void> {
+  // Phase 0: 複数インスタンスの検出
+  const instanceGuard = new SingleInstanceGuard();
+  const hasExistingInstance = await instanceGuard.checkForExistingInstance();
+
+  if (hasExistingInstance) {
+    // 別のタブですでに起動中 - このタブをブロック
+    console.log('[TypedCode] Another instance is already running, blocking this tab');
+    initOverlay?.classList.add('hidden');
+    showDuplicateInstanceOverlay();
+
+    // 「このタブを閉じる」ボタンのイベントリスナー
+    const closeBtn = document.getElementById('duplicate-instance-close-btn');
+    closeBtn?.addEventListener('click', () => {
+      window.close();
+      // window.close() が効かない場合（ユーザーが開いたタブの場合）は空白ページに
+      // リダイレクト
+      window.location.href = 'about:blank';
+    });
+
+    return; // 初期化を中止
+  }
+
   // Phase 1: 利用規約の確認
   if (!hasAcceptedTerms()) {
     initOverlay?.classList.add('hidden');

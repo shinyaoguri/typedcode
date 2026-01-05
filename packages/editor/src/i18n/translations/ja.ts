@@ -368,4 +368,11 @@ export const ja: TranslationKeys = {
     buildDate: 'ビルド日時',
     viewOnGithub: 'GitHub で見る',
   },
+
+  duplicateInstance: {
+    title: 'TypedCode は既に起動中です',
+    description: 'TypedCode は画面共有を使用するため、複数のタブやウィンドウで同時に使用することはできません。既に別のタブまたはウィンドウで TypedCode が起動しています。',
+    hint: '既存のタブに戻るか、このタブを閉じてください。',
+    closeThisTab: 'このタブを閉じる',
+  },
 };
