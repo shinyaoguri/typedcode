@@ -19,7 +19,7 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
-    "@types/jszip": "^3.4.0",
+    "@types/jszip": "^3.4.1",
     "@types/node": "^25.0.3",
     "typescript": "^5.9.3",
     "vite": "^7.3.0"

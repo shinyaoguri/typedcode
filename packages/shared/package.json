@@ -16,8 +16,8 @@
     "jszip": "^3.10.1"
   },
   "devDependencies": {
-    "vitest": "^2.1.0",
+    "vitest": "^4.0.16",
     "happy-dom": "^20.0.0",
-    "@vitest/coverage-v8": "^2.1.0"
+    "@vitest/coverage-v8": "^4.0.16"
   }
 }
