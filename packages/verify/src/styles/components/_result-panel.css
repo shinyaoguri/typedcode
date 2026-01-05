@@ -357,6 +357,11 @@
   /* content stays inline */
 }
 
+#code-preview code.with-line-numbers .code-line {
+  display: block;
+  min-height: 1.5em;
+}
+
 /* Plaintext content (read-only file view) */
 .plaintext-content {
   display: flex;

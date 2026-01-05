@@ -190,6 +190,121 @@ function showNotification(message: string): void {
   }, 2000);
 }
 
+/**
+ * テンプレートファイルかどうかを判定
+ */
+function isTemplateFile(file: File): boolean {
+  const ext = file.name.toLowerCase().split('.').pop();
+  return ext === 'yaml' || ext === 'yml';
+}
+
+/**
+ * テンプレートコンテンツをインポート（共通処理）
+ */
+async function importTemplateContent(
+  appContext: typeof ctx,
+  content: string
+): Promise<boolean> {
+  const { templateImportDialog } = await import('./template/TemplateImportDialog.js');
+  const { templateImporter } = await import('./template/TemplateImporter.js');
+  const { TemplateValidationError } = await import('./template/TemplateParser.js');
+
+  if (!appContext.tabManager) return false;
+
+  // 1. テンプレートをパース
+  let template;
+  try {
+    template = templateImporter.parseTemplate(content);
+  } catch (error: unknown) {
+    if (error instanceof TemplateValidationError) {
+      showNotification(error.message);
+    } else {
+      console.error('[TemplateImport] Parse error:', error);
+      showNotification(t('template.invalidFormat'));
+    }
+    return false;
+  }
+
+  // 2. 確認ダイアログ
+  const hasExistingTabs = appContext.tabManager.getAllTabs().length > 0;
+  const confirmed = await templateImportDialog.showConfirmation(template, hasExistingTabs);
+  if (!confirmed) return false;
+
+  // 3. 進捗表示
+  const progress = templateImportDialog.showProgress();
+
+  try {
+    // 4. インポート実行
+    const result = await templateImporter.import(
+      appContext.tabManager,
+      content,
+      (current, total, currentFilename) => {
+        progress.update(current, total, currentFilename);
+      }
+    );
+
+    progress.close();
+
+    // 5. 結果表示
+    if (result.success) {
+      showNotification(t('template.success', { count: result.filesCreated }));
+      appContext.tabUIController?.updateUI();
+    } else {
+      console.error('[TemplateImport] Errors:', result.errors);
+      showNotification(t('template.partialSuccess', { count: result.filesCreated }));
+    }
+
+    return result.success;
+  } catch (error) {
+    progress.close();
+    throw error;
+  }
+}
+
+/**
+ * テンプレートインポート処理（ファイル選択ダイアログから）
+ */
+async function handleTemplateImport(appContext: typeof ctx): Promise<void> {
+  const { templateImportDialog } = await import('./template/TemplateImportDialog.js');
+
+  if (!appContext.tabManager) return;
+
+  // 1. ファイル選択
+  const file = await templateImportDialog.selectFile();
+  if (!file) return;
+
+  // 2. ファイル内容を読み取り
+  let content: string;
+  try {
+    content = await file.text();
+  } catch {
+    showNotification(t('template.readError'));
+    return;
+  }
+
+  // 3. インポート処理
+  await importTemplateContent(appContext, content);
+}
+
+/**
+ * ドラッグ＆ドロップでテンプレートをインポート
+ */
+async function handleTemplateDrop(appContext: typeof ctx, file: File): Promise<void> {
+  if (!appContext.tabManager) return;
+
+  // ファイル内容を読み取り
+  let content: string;
+  try {
+    content = await file.text();
+  } catch {
+    showNotification(t('template.readError'));
+    return;
+  }
+
+  // インポート処理
+  await importTemplateContent(appContext, content);
+}
+
 function showLanguageDescriptionInTerminal(language: string): void {
   if (!ctx.terminal) return;
   ctx.terminal.clear();
@@ -489,6 +604,122 @@ function handleTabChange(tab: { filename: string; language: string; typingProof:
 // ========================================
 
 function setupStaticEventListeners(): void {
+  // テンプレートファイルのドラッグ＆ドロップ
+  const editorArea = document.querySelector('.workbench');
+  let dropOverlay: HTMLElement | null = null;
+  let dragCounter = 0; // ネストしたdragenter/dragleaveを正しく処理するためのカウンター
+
+  // ドロップオーバーレイを作成
+  const createDropOverlay = (): HTMLElement => {
+    const overlay = document.createElement('div');
+    overlay.className = 'template-drop-overlay';
+    overlay.innerHTML = `
+      <div class="template-drop-content">
+        <i class="fas fa-file-import"></i>
+        <h3>${t('template.dropTitle') ?? 'テンプレートをドロップ'}</h3>
+        <p>${t('template.dropHint') ?? 'YAMLファイルをここにドロップして読み込み'}</p>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    return overlay;
+  };
+
+  // オーバーレイを表示
+  const showDropOverlay = (): void => {
+    if (!dropOverlay) {
+      dropOverlay = createDropOverlay();
+    }
+    dropOverlay.classList.remove('hidden');
+  };
+
+  // オーバーレイを非表示
+  const hideDropOverlay = (): void => {
+    dropOverlay?.classList.add('hidden');
+  };
+
+  if (editorArea) {
+    // ドラッグ開始時（ウィンドウ全体で検知）
+    document.addEventListener('dragenter', (e) => {
+      const event = e as DragEvent;
+      const items = event.dataTransfer?.items;
+
+      // ファイルがドラッグされている場合のみ
+      if (items && items.length > 0) {
+        for (const item of Array.from(items)) {
+          if (item.kind === 'file') {
+            dragCounter++;
+            if (dragCounter === 1) {
+              showDropOverlay();
+            }
+            break;
+          }
+        }
+      }
+    });
+
+    // ドラッグ終了時（ウィンドウから離れた時）
+    document.addEventListener('dragleave', (e) => {
+      const event = e as DragEvent;
+      // ウィンドウ外に出た場合のみカウンターを減らす
+      if (event.relatedTarget === null || !(event.relatedTarget instanceof Node)) {
+        dragCounter--;
+        if (dragCounter <= 0) {
+          dragCounter = 0;
+          hideDropOverlay();
+        }
+      }
+    });
+
+    // ドラッグオーバー時のデフォルト動作を防止（ドロップを許可）
+    editorArea.addEventListener('dragover', (e) => {
+      const event = e as DragEvent;
+      // ファイルがドラッグされている場合のみドロップを許可
+      const items = event.dataTransfer?.items;
+      if (items && items.length > 0) {
+        for (const item of Array.from(items)) {
+          if (item.kind === 'file') {
+            event.preventDefault();
+            event.dataTransfer!.dropEffect = 'copy';
+            break;
+          }
+        }
+      }
+    });
+
+    // ドロップ時の処理
+    editorArea.addEventListener('drop', async (e) => {
+      const event = e as DragEvent;
+      const files = event.dataTransfer?.files;
+
+      // オーバーレイを非表示
+      dragCounter = 0;
+      hideDropOverlay();
+
+      if (files && files.length > 0) {
+        const file = files[0]!;
+        // テンプレートファイルかチェック
+        if (isTemplateFile(file)) {
+          event.preventDefault();
+          event.stopPropagation();
+
+          try {
+            await handleTemplateDrop(ctx, file);
+          } catch (error) {
+            console.error('[TemplateImport] Drop error:', error);
+            showNotification(t('template.error'));
+          }
+        }
+        // テンプレートファイル以外はデフォルト動作（InputDetectorでexternalInput検出）
+      }
+    });
+
+    // ドロップがキャンセルされた場合（ESCキーなど）
+    document.addEventListener('drop', () => {
+      dragCounter = 0;
+      hideDropOverlay();
+    });
+  }
+
   // 言語切り替え
   const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
   languageSelector?.addEventListener('change', (e) => {
@@ -800,6 +1031,20 @@ function initializeTerminal(): void {
     ctx.mainMenuDropdown.close();
     // Open a fresh window with ?fresh=1 to signal that sessionStorage should be cleared
     window.open(window.location.origin + window.location.pathname + '?fresh=1', '_blank');
+  });
+
+  // テンプレートインポートボタン
+  const importTemplateBtn = document.getElementById('import-template-btn');
+  importTemplateBtn?.addEventListener('click', async () => {
+    ctx.mainMenuDropdown.close();
+    if (!ctx.tabManager) return;
+
+    try {
+      await handleTemplateImport(ctx);
+    } catch (error) {
+      console.error('[TemplateImport] Error:', error);
+      showNotification(t('template.error'));
+    }
   });
 
   const themeToggleBtn = document.getElementById('theme-toggle-btn');

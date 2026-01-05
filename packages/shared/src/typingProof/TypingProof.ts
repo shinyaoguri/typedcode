@@ -25,6 +25,7 @@ import type {
   SerializedProofState,
   CheckpointData,
   HumanAttestationEventData,
+  TemplateInjectionEventData,
 } from '../types.js';
 import { PROOF_FORMAT_VERSION } from '../version.js';
 import { HashChainManager } from './HashChainManager.js';
@@ -152,6 +153,19 @@ export class TypingProof {
       type: 'preExportAttestation',
       data: attestation,
       description: `Pre-export verification (score: ${attestation.score.toFixed(2)}, action: ${attestation.action})`,
+    });
+  }
+
+  /**
+   * テンプレート注入イベントを記録
+   * paste/dropとは異なり、isPureTypingには影響しない
+   * @param injectionData - テンプレート注入データ
+   */
+  async recordTemplateInjection(injectionData: TemplateInjectionEventData): Promise<RecordEventResult> {
+    return await this.recordEvent({
+      type: 'templateInjection',
+      data: injectionData,
+      description: `Template "${injectionData.templateName}" - ${injectionData.filename} (${injectionData.contentLength} chars)`,
     });
   }
 

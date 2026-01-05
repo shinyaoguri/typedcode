@@ -5,7 +5,7 @@
  * seekbar.ts から抽出。
  */
 
-import type { StoredEvent } from '@typedcode/shared';
+import type { StoredEvent, TemplateInjectionEventData } from '@typedcode/shared';
 import type { ContentCache } from '../types.js';
 import { ChartUtils } from './ChartUtils.js';
 import type { IntegratedChart } from './IntegratedChart.js';
@@ -315,10 +315,12 @@ export class SeekbarController {
       this.options.eventCountDisplay.textContent = `${this.currentIndex} / ${this.events.length}`;
     }
 
-    // コンテンツプレビュー
+    // コンテンツプレビュー（行番号付き）
     if (this.options.contentPreview) {
       const content = this.getContentAtIndex(this.currentIndex);
-      this.options.contentPreview.textContent = content;
+      const withLineNumbers = this.addLineNumbers(content);
+      this.options.contentPreview.innerHTML = withLineNumbers;
+      this.options.contentPreview.classList.add('with-line-numbers');
     }
   }
 
@@ -332,45 +334,62 @@ export class SeekbarController {
   }
 
   /**
-   * 指定インデックスまでのコンテンツを再構築（公開メソッド）
+   * 指定インデックスまでのイベントを処理した後のコンテンツを再構築（公開メソッド）
+   *
+   * インデックスの意味:
+   * - index=0: 何もイベントが処理されていない状態（空文字列）
+   * - index=1: イベント[0]が処理された後の状態
+   * - index=N: イベント[0]〜[N-1]が処理された後の状態
+   * - index=events.length: 全イベントが処理された後の状態（最終状態）
    */
   getContentAtIndex(index: number): string {
-    if (this.contentCache.has(index)) {
-      return this.contentCache.get(index)!;
+    // キャッシュキー
+    const cacheKey = index;
+    if (this.contentCache.has(cacheKey)) {
+      return this.contentCache.get(cacheKey)!;
     }
 
-    if (index === 0) {
-      this.contentCache.set(index, '');
+    // インデックス0は開始状態（空）
+    if (index <= 0) {
+      this.contentCache.set(0, '');
       return '';
     }
 
+    // インデックスがイベント数以上なら最終状態
     if (index >= this.events.length) {
       return this.finalContent;
     }
 
-    // 近いキャッシュを探す
+    // 近いキャッシュを探す（index未満で最大のもの）
     let nearestCacheIndex = 0;
     let nearestContent = '';
 
     for (const [cachedIndex, cachedContent] of this.contentCache.entries()) {
-      if (cachedIndex <= index && cachedIndex > nearestCacheIndex) {
+      if (cachedIndex < index && cachedIndex >= nearestCacheIndex) {
         nearestCacheIndex = cachedIndex;
         nearestContent = cachedContent;
       }
     }
 
     // キャッシュから構築
+    // nearestCacheIndex個のイベントが処理された状態から、index個のイベントが処理された状態まで
+    // つまり、イベント[nearestCacheIndex]〜[index-1]を適用
     let content = nearestContent;
     for (let i = nearestCacheIndex; i < index; i++) {
       const event = this.events[i];
-      if (event && event.type === 'contentChange') {
-        content = this.applyContentChange(content, event);
+      if (event) {
+        if (event.type === 'contentChange') {
+          content = this.applyContentChange(content, event);
+        } else if (event.type === 'templateInjection') {
+          // テンプレート注入: コンテンツを置き換え
+          content = this.applyTemplateInjection(event);
+        }
       }
     }
 
     // 定期的にキャッシュ
     if (index % 100 === 0) {
-      this.contentCache.set(index, content);
+      this.contentCache.set(cacheKey, content);
     }
 
     return content;
@@ -395,6 +414,52 @@ export class SeekbarController {
     }
 
     return content;
+  }
+
+  /**
+   * コンテンツに行番号を追加
+   */
+  private addLineNumbers(content: string): string {
+    const lines = content.split('\n');
+    return lines
+      .map((line, i) => {
+        const escapedLine = this.escapeHtml(line);
+        return `<div class="code-line"><span class="line-number">${i + 1}</span><span class="line-content">${escapedLine}</span></div>`;
+      })
+      .join('');
+  }
+
+  /**
+   * HTML特殊文字をエスケープ
+   */
+  private escapeHtml(text: string): string {
+    const map: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;',
+    };
+    return text.replace(/[&<>"']/g, (m) => map[m] ?? m);
+  }
+
+  /**
+   * テンプレート注入を適用（コンテンツを置き換え）
+   */
+  private applyTemplateInjection(event: StoredEvent): string {
+    const data = event.data as TemplateInjectionEventData | null;
+    if (data && typeof data === 'object' && 'content' in data && typeof data.content === 'string') {
+      console.log('[SeekbarController] Applied templateInjection:', {
+        filename: data.filename,
+        contentLength: data.content.length,
+        contentPreview: data.content.substring(0, 50),
+      });
+      return data.content;
+    }
+    // 古い形式のイベント（contentがない場合）
+    // 新しいプルーフを作成し直す必要があります
+    console.warn('[SeekbarController] templateInjection event has no content field. This proof was created before the fix. Please re-import the template and export again.', data);
+    return '';
   }
 
   /**

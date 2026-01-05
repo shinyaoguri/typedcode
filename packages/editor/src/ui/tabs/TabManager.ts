@@ -442,6 +442,81 @@ export class TabManager {
   }
 
   /**
+   * すべてのタブを閉じる（テンプレートインポート用）
+   * 通常のcloseTabと異なり、最後の1つも閉じる
+   */
+  async closeAllTabs(): Promise<void> {
+    // すべてのモデルを破棄
+    for (const tab of this.tabs.values()) {
+      tab.model.dispose();
+    }
+
+    // 状態をクリア
+    this.tabs.clear();
+    this.tabOrder = [];
+    this.activeTabId = null;
+    this.tabSwitches = [];
+
+    // ストレージもクリア
+    sessionStorage.removeItem(STORAGE_KEY);
+  }
+
+  /**
+   * テンプレートからタブを作成（Turnstile認証なし）
+   * 最初のファイルの認証結果を共有して使用
+   * @param filename - ファイル名
+   * @param language - 言語ID
+   * @param content - 初期コンテンツ
+   * @param sharedAttestation - 共有する人間認証データ（最初のファイルから）
+   */
+  async createTabFromTemplate(
+    filename: string,
+    language: string,
+    content: string,
+    sharedAttestation: HumanAttestationEventData | null
+  ): Promise<TabState | null> {
+    const id = generateUUID();
+    const createdAt = Date.now();
+
+    // TypingProofインスタンスを作成
+    const typingProof = new TypingProof();
+    const poswWorker = createPoswWorker();
+    await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
+
+    // 共有された認証データがあれば event #0 として記録
+    if (sharedAttestation) {
+      await typingProof.recordHumanAttestation(sharedAttestation);
+    }
+
+    // モデルを作成
+    const model = monaco.editor.createModel(content, language);
+
+    const tab: TabState = {
+      id,
+      filename,
+      language,
+      typingProof,
+      model,
+      createdAt,
+      verificationState: sharedAttestation ? 'verified' : 'skipped',
+      verificationDetails: {
+        timestamp: new Date().toISOString(),
+      },
+    };
+
+    this.tabs.set(id, tab);
+    this.tabOrder.push(id);
+
+    // 最初のタブならアクティブに
+    if (this.activeTabId === null) {
+      await this.switchTab(id);
+    }
+
+    this.saveToStorage();
+    return tab;
+  }
+
+  /**
    * タブを切り替え
    */
   async switchTab(tabId: string): Promise<boolean> {

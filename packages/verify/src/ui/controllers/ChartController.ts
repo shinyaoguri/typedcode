@@ -31,9 +31,7 @@ export class ChartController {
   /**
    * チャートを初期化
    */
-  initialize(callbacks?: {
-    onSeek?: (eventIndex: number) => void;
-  }): void {
+  initialize(): void {
     const timelineCanvas = document.getElementById('integrated-timeline-chart') as HTMLCanvasElement;
     const mouseCanvas = document.getElementById('mouse-trajectory-chart') as HTMLCanvasElement;
     const integratedCanvas = document.getElementById('integrated-chart') as HTMLCanvasElement;
@@ -112,11 +110,6 @@ export class ChartController {
         endButton: document.getElementById('seekbar-end'),
         contentPreview: codePreview,
       },
-      {
-        onSeek: (eventIndex) => {
-          callbacks?.onSeek?.(eventIndex);
-        },
-      }
     );
     this.seekbarController.setupEventListeners();
 

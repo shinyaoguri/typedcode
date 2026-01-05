@@ -1082,3 +1082,80 @@
   align-items: center;
   justify-content: center;
 }
+
+/* ================================================
+   Template Drag & Drop Overlay
+   ================================================ */
+
+.template-drop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(14, 99, 156, 0.15);
+  border: 3px dashed var(--accent-color, #0e639c);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: drop-overlay-fade-in 0.15s ease;
+}
+
+.template-drop-overlay.hidden {
+  display: none;
+}
+
+@keyframes drop-overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.template-drop-content {
+  background: var(--bg-secondary, #252526);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-radius: 12px;
+  padding: 32px 48px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: drop-content-bounce 0.2s ease;
+}
+
+@keyframes drop-content-bounce {
+  0% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.template-drop-content i {
+  font-size: 48px;
+  color: var(--accent-color, #0e639c);
+  margin-bottom: 16px;
+  display: block;
+}
+
+.template-drop-content h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #cccccc);
+}
+
+.template-drop-content p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary, #858585);
+}

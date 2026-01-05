@@ -47,6 +47,7 @@ export interface TranslationKeys {
     menu: string;
     newFile: string;
     newWindow: string;
+    importTemplate: string;
     toggleTerminal: string;
     toggleLogPanel: string;
     togglePreview: string;
@@ -394,5 +395,26 @@ export interface TranslationKeys {
     description: string;
     hint: string;
     closeThisTab: string;
+  };
+
+  // Template import
+  template: {
+    confirmTitle: string;
+    templateName: string;
+    fileCount: string;
+    author: string;
+    description: string;
+    filesToCreate: string;
+    warningExistingTabs: string;
+    import: string;
+    importing: string;
+    success: string;
+    partialSuccess: string;
+    error: string;
+    readError: string;
+    invalidFormat: string;
+    unnamedTemplate: string;
+    dropTitle: string;
+    dropHint: string;
   };
 }
