@@ -31,13 +31,20 @@ src/
 ├── core/
 │   ├── VerificationEngine.ts     # Core verification logic (UI-independent)
 │   └── VerifyContext.ts          # Application context
+├── config/
+│   └── VerificationTypes.ts      # Verification type definitions
 ├── ui/
 │   ├── AppController.ts          # Main application controller
 │   ├── TabBar.ts                 # Tab bar component
 │   ├── ActivityBar.ts            # Activity bar (sidebar icons)
-│   ├── StatusBar.ts              # Status bar
+│   ├── StatusBar.ts              # Status bar (VerifyStatusBar class)
+│   ├── StatusBarUI.ts            # Status bar UI rendering
 │   ├── WelcomePanel.ts           # Welcome/drop zone panel
 │   ├── VerifyFileListController.ts  # File list management
+│   ├── ResultPanel.ts            # Result panel UI layer
+│   ├── Sidebar.ts                # File explorer sidebar
+│   ├── ScreenshotLightbox.ts     # Screenshot viewer
+│   ├── ThemeManager.ts           # Theme management
 │   └── AboutDialog.ts            # About dialog
 ├── ui/panels/
 │   ├── ResultPanel.ts            # Verification result display
@@ -45,6 +52,12 @@ src/
 │   ├── ChainPanel.ts             # Hash chain visualization
 │   ├── PoswPanel.ts              # PoSW statistics display
 │   └── AttestationPanel.ts       # Human attestation info
+├── ui/controllers/
+│   ├── VerificationController.ts # Verification flow controller
+│   ├── TabController.ts          # Tab management controller
+│   ├── FileController.ts         # File handling controller
+│   ├── FolderController.ts       # Folder handling controller
+│   └── ChartController.ts        # Chart management controller
 ├── state/
 │   ├── VerificationQueue.ts      # Verification queue (Web Worker)
 │   ├── UIStateManager.ts         # UI state management
@@ -53,13 +66,24 @@ src/
 ├── charts/
 │   ├── TimelineChart.ts          # Event timeline (Chart.js)
 │   ├── MouseChart.ts             # Mouse position distribution
+│   ├── IntegratedChart.ts        # Integrated chart with typing speed, focus, keystrokes
+│   ├── SeekbarController.ts      # Timeline seekbar controller
+│   ├── ScreenshotOverlay.ts      # Screenshot overlay on chart
 │   └── ChartUtils.ts             # Chart utilities
 ├── services/
+│   ├── FileProcessor.ts          # JSON/ZIP file parsing
 │   ├── FileSystemAccessService.ts  # File System Access API
 │   ├── FolderSyncManager.ts      # Folder synchronization
-│   └── SyntaxHighlighter.ts      # Highlight.js wrapper
+│   ├── SyntaxHighlighter.ts      # Highlight.js wrapper
+│   ├── AttestationService.ts     # Attestation verification (re-export from shared)
+│   ├── TrustCalculator.ts        # Trust level calculation
+│   ├── ScreenshotService.ts      # Screenshot handling
+│   └── ResultDataService.ts      # Result data processing
 ├── workers/
 │   └── verificationWorker.ts     # Web Worker for verification
+├── types/
+│   └── file-system-access.d.ts   # File System Access API types
+├── styles/                       # CSS stylesheets
 └── i18n/
     └── translations/             # ja.ts, en.ts
 ```
@@ -76,7 +100,7 @@ Format Detection (single-file or multi-file)
 VerificationEngine.verify()
     ↓
 VerificationQueue (Web Worker)
-    ├─ ChainVerifier.verify()
+    ├─ VerificationEngine.verifyChain()
     │   ├─ Sequence number check
     │   ├─ Timestamp continuity check
     │   ├─ Previous hash validation
@@ -84,7 +108,7 @@ VerificationQueue (Web Worker)
     ├─ PoSW verification (10,000 iterations)
     └─ Metadata validation (isPureTyping)
     ↓
-AttestationService.verify() (Workers API)
+AttestationService.verify() (Workers API, @typedcode/shared)
     ↓
 UI Display (panels, charts)
 ```
@@ -190,4 +214,4 @@ This feature allows real-time verification during development.
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `VITE_API_URL` | Workers API endpoint | Optional |
+| `VITE_API_URL` | Workers API endpoint (for attestation verification) | Optional |

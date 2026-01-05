@@ -45,7 +45,8 @@ const exported = await proof.exportProof(finalContent);
 | `exportProof(content)` | Export proof data |
 | `isAllowedInputType(type)` | Check if input type is allowed |
 | `isProhibitedInputType(type)` | Check if input type is prohibited |
-| `getStatistics()` | Get event statistics |
+| `getStats()` | Get event statistics |
+| `getTypingStatistics()` | Get typing-specific statistics |
 | `reset()` | Reset chain and storage |
 
 **Internal Modules:**
@@ -101,7 +102,8 @@ import {
   parseJsonString,
   parseZipBuffer,
   isMultiFileProof,
-  detectProofFormat
+  isProofFile,
+  extractFirstProofFromZip
 } from '@typedcode/shared';
 
 // Parse JSON proof
@@ -110,8 +112,10 @@ const proof = parseJsonString(jsonContent);
 // Parse ZIP proof
 const proof = await parseZipBuffer(arrayBuffer);
 
-// Detect format
-const format = detectProofFormat(proof); // 'single' | 'multi-file'
+// Check if data is multi-file proof
+if (isMultiFileProof(proof)) {
+  // Handle multi-file proof
+}
 ```
 
 ### Verification Functions
@@ -131,7 +135,7 @@ const poswResult = await verifyPoSW(event);
 
 ## Types
 
-### Event Types (22 types)
+### Event Types (21 types)
 
 ```typescript
 type EventType =
@@ -153,10 +157,10 @@ type EventType =
   | 'screenshotCapture' | 'screenShareStart' | 'screenShareStop';
 ```
 
-### Input Types (32 types)
+### Input Types (22 types)
 
 ```typescript
-// Allowed input types
+// Allowed input types (17 types)
 type AllowedInputType =
   | 'insertText' | 'insertLineBreak' | 'insertParagraph' | 'insertTab'
   | 'insertFromComposition' | 'insertCompositionText' | 'deleteCompositionText'
@@ -164,13 +168,14 @@ type AllowedInputType =
   | 'deleteWordBackward' | 'deleteWordForward'
   | 'deleteSoftLineBackward' | 'deleteSoftLineForward'
   | 'deleteHardLineBackward' | 'deleteHardLineForward'
-  | 'deleteByDrag' | 'deleteByCut'
-  | 'historyUndo' | 'historyRedo' | 'replaceContent';
+  | 'deleteByDrag' | 'deleteByCut';
 
-// Blocked input types (external input)
+// Blocked input types (external input, 5 types)
 type BlockedInputType =
   | 'insertFromPaste' | 'insertFromDrop' | 'insertFromYank'
   | 'insertReplacementText' | 'insertFromPasteAsQuotation';
+
+// Other types: 'historyUndo' | 'historyRedo' | 'replaceContent'
 ```
 
 ### Core Types
@@ -206,7 +211,7 @@ h_i = SHA-256(h_{i-1} || JSON(event_i) || PoSW_i)
 ```
 
 - PoSW: 10,000 sequential hash iterations (runs in Web Worker)
-- Checkpoints: Created every 100 events for efficient sampling verification
+- Checkpoints: Created every 33 events for efficient sampling verification
 - Timeout: 30 seconds per PoSW computation
 
 ### Verification Steps
@@ -224,7 +229,7 @@ export const PROOF_FORMAT_VERSION = '1.0.0';
 export const STORAGE_FORMAT_VERSION = 1;
 export const MIN_SUPPORTED_VERSION = '1.0.0';
 export const POSW_ITERATIONS = 10000;
-export const CHECKPOINT_INTERVAL = 100;
+export const CHECKPOINT_INTERVAL = 33;
 ```
 
 ## i18n
@@ -234,7 +239,7 @@ Provides `I18nService` for internationalization with Japanese and English suppor
 ```typescript
 import { I18nService, type SupportedLocale } from '@typedcode/shared';
 
-const i18n = new I18nService(translations, 'ja');
+const i18n = new I18nService(translations);  // Auto-detects locale
 const text = i18n.t('common.cancel');
 i18n.setLocale('en');
 ```

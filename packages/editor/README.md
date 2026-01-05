@@ -7,11 +7,11 @@ Main editor application - Monaco Editor-based sequential typing proof editor wit
 - **Multi-tab Editing**: Independent proof chain per tab with tab switch tracking
 - **Language Support**: C, C++, Python, JavaScript, TypeScript
 - **Theme**: Light/Dark mode with system preference detection
-- **Event Tracking**: 22 event types including keystrokes, cursor, paste/drop, window, focus, visibility
+- **Event Tracking**: 21 event types including keystrokes, cursor, paste/drop, window, focus, visibility
 - **PoSW**: Proof of Sequential Work (10,000 sequential hashes per event via Web Worker)
 - **Screenshot Capture**: Periodic and focus-loss triggered screenshots with hash verification
 - **Human Verification**: Cloudflare Turnstile integration at file creation and export
-- **Export**: JSON (single file) or ZIP (with screenshots and README)
+- **Export**: ZIP archive containing proof JSON, source code, screenshots, and README
 - **i18n**: Japanese and English UI
 
 ## In-Browser Code Execution
@@ -37,6 +37,10 @@ npm run preview
 ```
 src/
 ├── main.ts                    # Entry point
+├── app/
+│   ├── DataCleaner.ts         # Data cleanup utilities
+│   ├── TermsHandler.ts        # Terms of service handling
+│   └── UrlParamHandler.ts     # URL parameter processing
 ├── core/
 │   ├── AppContext.ts          # Application context and state
 │   └── EventRecorder.ts       # Central event dispatcher
@@ -59,6 +63,7 @@ src/
 │   └── RuntimeManager.ts           # Wasmer SDK management
 ├── executors/
 │   ├── base/BaseExecutor.ts        # Base executor class
+│   ├── interfaces/ILanguageExecutor.ts  # Executor interface
 │   ├── c/CExecutor.ts              # C language executor
 │   ├── cpp/CppExecutor.ts          # C++ executor
 │   ├── javascript/JavaScriptExecutor.ts
@@ -68,6 +73,11 @@ src/
 ├── terminal/
 │   └── CTerminal.ts           # xterm.js wrapper
 ├── ui/
+│   ├── tabs/
+│   │   ├── TabManager.ts      # Tab state management
+│   │   └── TabUIController.ts # Tab UI rendering
+│   ├── dialogs/
+│   │   └── ScreenCaptureDialogs.ts  # Screen capture dialogs
 │   └── components/
 │       ├── Modal.ts           # Modal dialogs
 │       ├── NotificationManager.ts
@@ -77,19 +87,28 @@ src/
 │       ├── ProofStatusDisplay.ts
 │       ├── TerminalPanel.ts
 │       ├── LogViewerPanel.ts
+│       ├── LogViewer.ts       # Log viewer component
 │       ├── BrowserPreviewPanel.ts
-│       └── ProcessingDialog.ts    # Hash calculation progress
+│       ├── ProcessingDialog.ts     # Hash calculation progress
+│       ├── ExportProgressDialog.ts # Export progress display
+│       ├── AboutDialog.ts          # About dialog
+│       └── ScreenShareGuide.ts     # Screen share guide
 ├── export/
 │   ├── ProofExporter.ts       # Proof export (JSON/ZIP)
-│   └── readme-template-*.ts   # README templates (ja/en)
+│   ├── readme-template-en.ts  # README template (English)
+│   └── readme-template-ja.ts  # README template (Japanese)
 ├── services/
 │   ├── TurnstileService.ts    # Cloudflare Turnstile integration
 │   ├── StorageService.ts      # localStorage/sessionStorage
 │   ├── ScreenshotStorageService.ts  # IndexedDB for screenshots
+│   ├── ScreenCaptureService.ts     # Screen capture API
 │   └── DownloadService.ts     # File download
+├── workers/
+│   └── poswWorker.ts          # PoSW computation Web Worker
 ├── config/
 │   ├── MonacoConfig.ts        # Monaco worker configuration
 │   └── SupportedLanguages.ts  # Supported language definitions
+├── styles/                    # CSS stylesheets
 └── i18n/
     └── translations/          # ja.ts, en.ts
 ```
@@ -107,13 +126,13 @@ KeystrokeTracker / MouseTracker / etc.
     ↓
 EventRecorder (event queuing)
     ↓
-TypingProof.recordEvent()
+TypingProof.recordEvent() (@typedcode/shared)
     ↓
-HashChainManager (SHA-256 hash computation)
+HashChainManager (SHA-256 hash computation, @typedcode/shared)
     ↓
-PoswManager (Web Worker: 10,000 iterations)
+PoswManager (Web Worker: 10,000 iterations, @typedcode/shared)
     ↓
-StoredEvent (event array storage)
+StoredEvent (event array storage, @typedcode/shared)
     ↓
 localStorage (tab state persistence)
 ```

@@ -170,15 +170,14 @@ vars = { ENVIRONMENT = "production" }
 
 ```
 src/
-├── index.ts           # Main entry point and router
-├── handlers/
-│   ├── verifyCaptcha.ts    # Turnstile verification
-│   ├── verifyAttestation.ts # Attestation verification
-│   └── health.ts           # Health check
-├── utils/
-│   ├── cors.ts             # CORS handling
-│   └── crypto.ts           # HMAC signing
-└── types.ts               # Type definitions
+└── index.ts           # Single-file implementation containing:
+                       # - Router and request handling
+                       # - Turnstile verification handler
+                       # - Attestation verification handler
+                       # - Health check handler
+                       # - CORS handling
+                       # - HMAC signing utilities
+                       # - Type definitions
 ```
 
 ## Environment Variables
