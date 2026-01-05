@@ -377,6 +377,14 @@ export const en: TranslationKeys = {
     closeThisTab: 'Close this tab',
   },
 
+  welcome: {
+    title: 'TypedCode',
+    tagline: 'Typing Proof Editor',
+    startSection: 'Start',
+    newFile: 'New File',
+    importTemplate: 'Import Template',
+  },
+
   template: {
     confirmTitle: 'Import Template',
     templateName: 'Template Name',

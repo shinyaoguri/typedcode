@@ -78,6 +78,7 @@ export class ScreenshotTracker {
   private currentDisplayInfo: DisplayInfo | null = null;
   private currentDisplaySurface: string | null = null;
   private proofStartTime: number = 0; // TypingProofの開始時刻（相対時間計算用）
+  private captureEnabled = true; // キャプチャ保存が有効かどうか（タブがない場合は無効）
 
   constructor(options?: ScreenshotTrackerOptions) {
     const captureOptions: ScreenCaptureOptions = {
@@ -147,6 +148,15 @@ export class ScreenshotTracker {
       this.attached = false;
       callback();
     });
+  }
+
+  /**
+   * キャプチャ保存の有効/無効を設定
+   * タブがない場合は無効にして、不要なスクリーンショット保存を防ぐ
+   */
+  setCaptureEnabled(enabled: boolean): void {
+    this.captureEnabled = enabled;
+    console.log(`[ScreenshotTracker] Capture ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   // ========================================
@@ -353,6 +363,12 @@ export class ScreenshotTracker {
     captureType: ScreenshotCaptureType,
     displayInfo: DisplayInfo
   ): Promise<void> {
+    // キャプチャ保存が無効の場合はスキップ（タブがない場合など）
+    if (!this.captureEnabled) {
+      console.debug('[ScreenshotTracker] Capture skipped - capture disabled');
+      return;
+    }
+
     // TypingProofと同じ相対時間を使用（performance.now() - startTime）
     const timestamp = performance.now() - this.proofStartTime;
     const createdAt = Date.now();

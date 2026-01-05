@@ -377,6 +377,14 @@ export const ja: TranslationKeys = {
     closeThisTab: 'このタブを閉じる',
   },
 
+  welcome: {
+    title: 'TypedCode',
+    tagline: 'タイピング証明エディタ',
+    startSection: 'スタート',
+    newFile: '新規ファイル',
+    importTemplate: 'テンプレート読込',
+  },
+
   template: {
     confirmTitle: 'テンプレートの読み込み',
     templateName: 'テンプレート名',

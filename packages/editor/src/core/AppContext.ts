@@ -32,6 +32,7 @@ import type { DownloadDropdown } from '../ui/components/DownloadDropdown.js';
 import type { MainMenuDropdown } from '../ui/components/MainMenuDropdown.js';
 import type { TerminalPanel } from '../ui/components/TerminalPanel.js';
 import type { BrowserPreviewPanel } from '../ui/components/BrowserPreviewPanel.js';
+import type { WelcomeScreen } from '../ui/components/WelcomeScreen.js';
 
 // Execution
 import type { CodeExecutionController } from '../execution/CodeExecutionController.js';
@@ -93,4 +94,7 @@ export interface AppContext {
 
   // Flags
   skipBeforeUnload: boolean;
+
+  // Welcome Screen
+  welcomeScreen: WelcomeScreen | null;
 }

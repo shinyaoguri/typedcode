@@ -87,6 +87,7 @@ import type { AppContext } from './core/AppContext.js';
 import { isLanguageExecutable } from './config/SupportedLanguages.js';
 import { t, getI18n, initDOMi18n } from './i18n/index.js';
 import { showAboutDialog } from './ui/components/AboutDialog.js';
+import { WelcomeScreen } from './ui/components/WelcomeScreen.js';
 
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
@@ -174,6 +175,9 @@ const ctx: AppContext = {
 
   // Flags
   skipBeforeUnload: false,
+
+  // Welcome Screen
+  welcomeScreen: null as WelcomeScreen | null,
 };
 
 // ========================================
@@ -196,6 +200,83 @@ function showNotification(message: string): void {
 function isTemplateFile(file: File): boolean {
   const ext = file.name.toLowerCase().split('.').pop();
   return ext === 'yaml' || ext === 'yml';
+}
+
+// ========================================
+// ウェルカム画面関連
+// ========================================
+
+/**
+ * ウェルカム画面を表示
+ */
+function showWelcomeScreen(): void {
+  // Monacoエディタを非表示
+  const editorEl = document.getElementById('editor');
+  if (editorEl) editorEl.style.display = 'none';
+
+  // エディタコンテナにウェルカム画面を表示
+  const container = document.querySelector('.editor-container') as HTMLElement | null;
+  if (container && !ctx.welcomeScreen) {
+    ctx.welcomeScreen = new WelcomeScreen({
+      container,
+      onNewFile: handleWelcomeNewFile,
+      onImportTemplate: handleWelcomeImportTemplate,
+    });
+    ctx.welcomeScreen.show();
+  }
+}
+
+/**
+ * ウェルカム画面を非表示
+ */
+function hideWelcomeScreen(): void {
+  if (ctx.welcomeScreen) {
+    ctx.welcomeScreen.hide();
+    ctx.welcomeScreen.dispose();
+    ctx.welcomeScreen = null;
+  }
+
+  // Monacoエディタを表示
+  const editorEl = document.getElementById('editor');
+  if (editorEl) editorEl.style.display = '';
+}
+
+/**
+ * ウェルカム画面から新規ファイル作成
+ */
+async function handleWelcomeNewFile(): Promise<void> {
+  hideWelcomeScreen();
+
+  const num = ctx.tabUIController?.getNextUntitledNumber() ?? 1;
+  const newTab = await ctx.tabManager?.createTab(`Untitled-${num}`, 'c', '');
+
+  if (!newTab) {
+    // 認証失敗時はウェルカム画面に戻る
+    showWelcomeScreen();
+    showNotification(t('notifications.authFailed'));
+    return;
+  }
+
+  // スクリーンショットのキャプチャを再有効化
+  ctx.trackers.screenshot?.setCaptureEnabled(true);
+
+  ctx.tabUIController?.updateUI();
+  showNotification(t('notifications.newTabCreated'));
+}
+
+/**
+ * ウェルカム画面からテンプレート読み込み
+ */
+async function handleWelcomeImportTemplate(): Promise<void> {
+  await handleTemplateImport(ctx);
+
+  // テンプレート読み込み成功時はウェルカム画面を非表示
+  if (ctx.tabManager?.hasAnyTabs()) {
+    hideWelcomeScreen();
+    ctx.tabUIController?.updateUI();
+    // スクリーンショットのキャプチャを再有効化
+    ctx.trackers.screenshot?.setCaptureEnabled(true);
+  }
 }
 
 /**
@@ -1488,19 +1569,41 @@ async function initializeApp(): Promise<void> {
   }
 
   hideInitOverlay();
-  ctx.tabUIController?.updateUI();
 
-  // 言語セレクタを更新
-  const activeTab = ctx.tabManager?.getActiveTab();
-  const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
-  if (activeTab && languageSelector) {
-    languageSelector.value = activeTab.language;
+  // タブがない場合はウェルカム画面を表示、ある場合は通常のエディタ表示
+  if (!ctx.tabManager?.hasAnyTabs()) {
+    showWelcomeScreen();
+    // スクリーンショットのキャプチャを無効化（タブがないので保存先がない）
+    ctx.trackers.screenshot?.setCaptureEnabled(false);
+  } else {
+    ctx.tabUIController?.updateUI();
+
+    // 言語セレクタを更新
+    const activeTab = ctx.tabManager?.getActiveTab();
+    const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
+    if (activeTab && languageSelector) {
+      languageSelector.value = activeTab.language;
+    }
+
+    updateProofStatus();
+
+    // 利用規約同意をハッシュチェーンに記録
+    recordTermsAcceptance();
   }
 
-  updateProofStatus();
-
-  // 利用規約同意をハッシュチェーンに記録
-  recordTermsAcceptance();
+  // 全タブ閉じた時にウェルカム画面を表示するコールバックを設定
+  ctx.tabManager?.setOnAllTabsClosed(() => {
+    showWelcomeScreen();
+    ctx.tabUIController?.updateUI();
+    // ステータスバーをリセット
+    ctx.proofStatusDisplay.reset();
+    // スクリーンショットのキャプチャを無効化（タブがないので保存先がない）
+    ctx.trackers.screenshot?.setCaptureEnabled(false);
+    // 既存のスクリーンショットを全て削除
+    ctx.trackers.screenshot?.clearStorage().catch((err) => {
+      console.error('[TypedCode] Failed to clear screenshots:', err);
+    });
+  });
 
   // Phase 5: トラッカーの初期化
   initializeTrackers({

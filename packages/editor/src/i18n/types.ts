@@ -397,6 +397,15 @@ export interface TranslationKeys {
     closeThisTab: string;
   };
 
+  // Welcome screen
+  welcome: {
+    title: string;
+    tagline: string;
+    startSection: string;
+    newFile: string;
+    importTemplate: string;
+  };
+
   // Template import
   template: {
     confirmTitle: string;

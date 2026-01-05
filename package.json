@@ -16,6 +16,9 @@
     "build:verify": "npm run build -w @typedcode/verify",
     "build:verify-cli": "npm run build -w @typedcode/verify-cli"
   },
+  "engines": {
+    "node": ">=24"
+  },
   "devDependencies": {
     "concurrently": "^9.1.2"
   }

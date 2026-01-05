@@ -123,21 +123,11 @@ export class TabManager {
     this.clearOldStorageData();
 
     // 保存されたタブデータを読み込む
-    const loaded = await this.loadFromStorage();
+    await this.loadFromStorage();
 
-    // タブがない場合は新規タブを作成
-    console.log('[DEBUG TabManager] loaded:', loaded, 'tabs.size:', this.tabs.size);
-    if (!loaded || this.tabs.size === 0) {
-      console.log('[DEBUG TabManager] Creating initial tab...');
-      const tab = await this.createTab('Untitled-1', 'c', '');
-      console.log('[DEBUG TabManager] createTab result:', tab);
-      if (!tab) {
-        console.error('[TabManager] Failed to create initial tab (verification failed)');
-        return false;
-      }
-    }
-
-    console.log('[DEBUG TabManager] initialize() returning true');
+    // タブがない場合はウェルカム画面を表示するため、デフォルトタブは作成しない
+    // 認証はユーザーが新規ファイル作成またはテンプレート読み込みを選択したタイミングで実行
+    console.log('[TabManager] initialize() completed, tabs.size:', this.tabs.size);
     return true;
   }
 
@@ -172,6 +162,22 @@ export class TabManager {
    */
   setOnVerification(callback: OnVerificationCallback): void {
     this.onVerificationCallback = callback;
+  }
+
+  /**
+   * 全タブ閉じた時のコールバックを設定
+   */
+  private onAllTabsClosedCallback: (() => void) | null = null;
+
+  setOnAllTabsClosed(callback: () => void): void {
+    this.onAllTabsClosedCallback = callback;
+  }
+
+  /**
+   * タブが存在するかどうか
+   */
+  hasAnyTabs(): boolean {
+    return this.tabs.size > 0;
   }
 
   /**
@@ -408,18 +414,21 @@ export class TabManager {
     const tab = this.tabs.get(tabId);
     if (!tab) return false;
 
-    // 最後のタブは閉じない
-    if (this.tabs.size <= 1) {
-      console.warn('[TabManager] Cannot close the last tab');
-      return false;
-    }
-
     // モデルを破棄
     tab.model.dispose();
 
     // タブを削除
     this.tabs.delete(tabId);
     this.tabOrder = this.tabOrder.filter(id => id !== tabId);
+
+    // タブが0になった場合
+    if (this.tabs.size === 0) {
+      this.activeTabId = null;
+      this.saveToStorage();
+      // ウェルカム画面表示のコールバックを呼び出し
+      this.onAllTabsClosedCallback?.();
+      return true;
+    }
 
     // アクティブタブが閉じられた場合、別のタブに切り替え
     if (this.activeTabId === tabId) {
