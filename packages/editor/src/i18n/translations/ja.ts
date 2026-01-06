@@ -166,7 +166,7 @@ export const ja: TranslationKeys = {
     exportDesc: '作成した証明データは、JSON形式またはZIP形式でダウンロードできます。',
     exportDetailHeading: 'エクスポート内容：',
     exportJson: '証明ファイル（.json）：操作ログ、ハッシュチェーン、PoSWデータ、ブラウザフィンガープリント、人間認証結果を含む完全な証明データ',
-    exportScreenshots: 'スクリーンショット（.png）：撮影された画面キャプチャ画像',
+    exportScreenshots: 'スクリーンショット（.jpg）：撮影された画面キャプチャ画像',
     exportManifest: 'マニフェスト：スクリーンショットのハッシュ値と証明データとの対応情報',
     exportReadme: '説明ファイル（README）：証明の検証方法についての説明',
     exportNote: 'エクスポートされたファイルは、TypedCode Verifyアプリケーションで検証できます。証明データのみのJSON出力か、スクリーンショットを含むZIP出力かを選択できます。',

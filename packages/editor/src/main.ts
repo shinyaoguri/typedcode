@@ -218,6 +218,10 @@ function showWelcomeScreen(): void {
   const editorEl = document.getElementById('editor');
   if (editorEl) editorEl.style.display = 'none';
 
+  // コピーボタンを非表示（ファイルがないため）
+  const copyCodeBtn = document.getElementById('copy-code-btn');
+  if (copyCodeBtn) copyCodeBtn.style.display = 'none';
+
   // エディタコンテナにウェルカム画面を表示
   const container = document.querySelector('.editor-container') as HTMLElement | null;
   if (container && !ctx.welcomeScreen) {
@@ -243,6 +247,10 @@ function hideWelcomeScreen(): void {
   // Monacoエディタを表示
   const editorEl = document.getElementById('editor');
   if (editorEl) editorEl.style.display = '';
+
+  // コピーボタンを表示（ファイルが存在するため）
+  const copyCodeBtn = document.getElementById('copy-code-btn');
+  if (copyCodeBtn) copyCodeBtn.style.display = '';
 }
 
 /**
