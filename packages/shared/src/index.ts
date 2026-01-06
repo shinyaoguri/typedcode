@@ -102,3 +102,6 @@ export {
   type Theme,
   type ThemeManagerOptions,
 } from './ui/index.js';
+
+// タイピングパターン分析
+export { TypingPatternAnalyzer } from './typingPattern/index.js';

@@ -21,8 +21,10 @@ import {
 } from 'chart.js';
 import annotationPlugin from 'chartjs-plugin-annotation';
 import zoomPlugin from 'chartjs-plugin-zoom';
-import type { StoredEvent, KeystrokeDynamicsData, InputType } from '@typedcode/shared';
+import type { StoredEvent, KeystrokeDynamicsData, InputType, EventType } from '@typedcode/shared';
 import type { VerifyScreenshot, IntegratedChartCache } from '../types.js';
+import type { ChartEventVisibility } from '../types/chartVisibility.js';
+import { DEFAULT_CHART_EVENT_VISIBILITY, isEventTypeVisible } from '../types/chartVisibility.js';
 
 // Chart.js登録
 Chart.register(
@@ -77,9 +79,53 @@ export class IntegratedChart {
   private options: IntegratedChartOptions;
   private cache: IntegratedChartCache | null = null;
   private currentMarkerTimestamp: number | null = null;
+  private eventVisibility: ChartEventVisibility = { ...DEFAULT_CHART_EVENT_VISIBILITY };
 
   constructor(options: IntegratedChartOptions) {
     this.options = options;
+  }
+
+  /**
+   * イベント可視性設定を更新
+   */
+  setEventVisibility(visibility: ChartEventVisibility): void {
+    this.eventVisibility = visibility;
+    // キャッシュとチャートが存在する場合は再描画
+    if (this.cache && this.chart) {
+      this.rebuildChart();
+    }
+  }
+
+  /**
+   * 現在のイベント可視性設定を取得
+   */
+  getEventVisibility(): ChartEventVisibility {
+    return this.eventVisibility;
+  }
+
+  /**
+   * チャートを再構築（可視性変更時など）
+   */
+  private rebuildChart(): void {
+    if (!this.chart || !this.cache) return;
+
+    // データセットを再構築
+    this.chart.data.datasets = this.buildDatasets();
+
+    // アノテーションを再構築
+    const options = this.chart.options;
+    if (options?.plugins?.annotation) {
+      (options.plugins.annotation as { annotations: Record<string, unknown> }).annotations = this.buildAnnotations();
+    }
+
+    this.chart.update();
+  }
+
+  /**
+   * イベントタイプが表示対象かどうかをチェック
+   */
+  private isVisible(eventType: EventType): boolean {
+    return isEventTypeVisible(eventType, this.eventVisibility);
   }
 
   /**
@@ -150,6 +196,24 @@ export class IntegratedChart {
     // 人間検証イベント（humanAttestation）
     const humanAttestationEvents = this.extractHumanAttestationEvents(events);
 
+    // 認証系イベント（termsAccepted, preExportAttestation）
+    const authEvents = this.extractAuthEvents(events);
+
+    // システムイベント（editorInitialized, networkStatusChange）
+    const systemEvents = this.extractSystemEvents(events);
+
+    // 実行イベント（codeExecution, terminalInput）
+    const executionEvents = this.extractExecutionEvents(events);
+
+    // キャプチャイベント（screenShareStart/Stop, templateInjection）
+    const captureEvents = this.extractCaptureEvents(events);
+
+    // ウィンドウイベント（windowResize）
+    const windowResizeEvents = this.extractWindowResizeEvents(events);
+
+    // コンテンツスナップショット
+    const contentSnapshotEvents = this.extractContentSnapshotEvents(events);
+
     // イベントマッピング
     const eventData = events.map((e, index) => ({
       type: e.type,
@@ -179,6 +243,12 @@ export class IntegratedChart {
       visibilityEvents,
       externalInputMarkers,
       humanAttestationEvents,
+      authEvents,
+      systemEvents,
+      executionEvents,
+      captureEvents,
+      windowResizeEvents,
+      contentSnapshotEvents,
       maxSpeed,
       maxKeystrokeTime: Math.ceil(maxKeystrokeTime / 100) * 100,
     };
@@ -297,6 +367,118 @@ export class IntegratedChart {
   }
 
   /**
+   * 認証系イベントを抽出（termsAccepted, preExportAttestation）
+   */
+  private extractAuthEvents(events: StoredEvent[]): { timestamp: number; eventIndex: number; type: string }[] {
+    const authEvents: { timestamp: number; eventIndex: number; type: string }[] = [];
+
+    events.forEach((event, index) => {
+      if (event.type === 'termsAccepted' || event.type === 'preExportAttestation') {
+        authEvents.push({
+          timestamp: event.timestamp,
+          eventIndex: index,
+          type: event.type,
+        });
+      }
+    });
+
+    return authEvents;
+  }
+
+  /**
+   * システムイベントを抽出（editorInitialized, networkStatusChange）
+   */
+  private extractSystemEvents(events: StoredEvent[]): { timestamp: number; eventIndex: number; type: string }[] {
+    const systemEvents: { timestamp: number; eventIndex: number; type: string }[] = [];
+
+    events.forEach((event, index) => {
+      if (event.type === 'editorInitialized' || event.type === 'networkStatusChange') {
+        systemEvents.push({
+          timestamp: event.timestamp,
+          eventIndex: index,
+          type: event.type,
+        });
+      }
+    });
+
+    return systemEvents;
+  }
+
+  /**
+   * 実行イベントを抽出（codeExecution, terminalInput）
+   */
+  private extractExecutionEvents(events: StoredEvent[]): { timestamp: number; eventIndex: number; type: string }[] {
+    const executionEvents: { timestamp: number; eventIndex: number; type: string }[] = [];
+
+    events.forEach((event, index) => {
+      if (event.type === 'codeExecution' || event.type === 'terminalInput') {
+        executionEvents.push({
+          timestamp: event.timestamp,
+          eventIndex: index,
+          type: event.type,
+        });
+      }
+    });
+
+    return executionEvents;
+  }
+
+  /**
+   * キャプチャイベントを抽出（screenShareStart/Stop, templateInjection）
+   */
+  private extractCaptureEvents(events: StoredEvent[]): { timestamp: number; eventIndex: number; type: string }[] {
+    const captureEvents: { timestamp: number; eventIndex: number; type: string }[] = [];
+
+    events.forEach((event, index) => {
+      if (event.type === 'screenShareStart' || event.type === 'screenShareStop' || event.type === 'templateInjection') {
+        captureEvents.push({
+          timestamp: event.timestamp,
+          eventIndex: index,
+          type: event.type,
+        });
+      }
+    });
+
+    return captureEvents;
+  }
+
+  /**
+   * ウィンドウリサイズイベントを抽出
+   */
+  private extractWindowResizeEvents(events: StoredEvent[]): { timestamp: number; eventIndex: number }[] {
+    const resizeEvents: { timestamp: number; eventIndex: number }[] = [];
+
+    events.forEach((event, index) => {
+      if (event.type === 'windowResize') {
+        resizeEvents.push({
+          timestamp: event.timestamp,
+          eventIndex: index,
+        });
+      }
+    });
+
+    return resizeEvents;
+  }
+
+  /**
+   * コンテンツスナップショットイベントを抽出
+   */
+  private extractContentSnapshotEvents(events: StoredEvent[]): { timestamp: number; eventIndex: number }[] {
+    const snapshotEvents: { timestamp: number; eventIndex: number }[] = [];
+
+    events.forEach((event, index) => {
+      if (event.type === 'contentSnapshot') {
+        snapshotEvents.push({
+          timestamp: event.timestamp,
+          eventIndex: index,
+        });
+      }
+    });
+
+    return snapshotEvents;
+  }
+
+  /**
    * データセットを構築
    */
   private buildDatasets(): ChartDataset[] {
@@ -304,47 +486,53 @@ export class IntegratedChart {
 
     const datasets: ChartDataset[] = [];
 
-    // 1. タイピング速度ライン
-    datasets.push({
-      type: 'line',
-      label: 'タイピング速度 (CPS)',
-      data: this.cache.typingSpeedData,
-      borderColor: '#667eea',
-      backgroundColor: 'rgba(102, 126, 234, 0.1)',
-      fill: true,
-      tension: 0.4,
-      yAxisID: 'ySpeed',
-      order: 3,
-      pointRadius: 0,
-      pointHoverRadius: 4,
-    });
+    // 1. タイピング速度ライン（contentChangeに関連）
+    if (this.isVisible('contentChange')) {
+      datasets.push({
+        type: 'line',
+        label: 'タイピング速度 (CPS)',
+        data: this.cache.typingSpeedData,
+        borderColor: '#667eea',
+        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        fill: true,
+        tension: 0.4,
+        yAxisID: 'ySpeed',
+        order: 3,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+      });
+    }
 
-    // 2. Dwell Time散布図
-    datasets.push({
-      type: 'scatter',
-      label: 'Dwell Time',
-      data: this.cache.keystrokeData.dwell,
-      backgroundColor: 'rgba(102, 126, 234, 0.6)',
-      pointRadius: 2,
-      pointHoverRadius: 4,
-      yAxisID: 'yKeystroke',
-      order: 4,
-    });
+    // 2. Dwell Time散布図（keyUpに関連）
+    if (this.isVisible('keyUp')) {
+      datasets.push({
+        type: 'scatter',
+        label: 'Dwell Time',
+        data: this.cache.keystrokeData.dwell,
+        backgroundColor: 'rgba(102, 126, 234, 0.6)',
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        yAxisID: 'yKeystroke',
+        order: 4,
+      });
+    }
 
-    // 3. Flight Time散布図
-    datasets.push({
-      type: 'scatter',
-      label: 'Flight Time',
-      data: this.cache.keystrokeData.flight,
-      backgroundColor: 'rgba(237, 100, 166, 0.6)',
-      pointRadius: 2,
-      pointHoverRadius: 4,
-      yAxisID: 'yKeystroke',
-      order: 4,
-    });
+    // 3. Flight Time散布図（keyDownに関連）
+    if (this.isVisible('keyDown')) {
+      datasets.push({
+        type: 'scatter',
+        label: 'Flight Time',
+        data: this.cache.keystrokeData.flight,
+        backgroundColor: 'rgba(237, 100, 166, 0.6)',
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        yAxisID: 'yKeystroke',
+        order: 4,
+      });
+    }
 
-    // 4. 外部入力マーカー
-    if (this.cache.externalInputMarkers.length > 0) {
+    // 4. 外部入力マーカー（externalInputに関連）
+    if (this.isVisible('externalInput') && this.cache.externalInputMarkers.length > 0) {
       datasets.push({
         type: 'scatter',
         label: '外部入力',
@@ -361,8 +549,8 @@ export class IntegratedChart {
       });
     }
 
-    // 5. 人間検証イベント（ファイル作成時のTurnstile認証）
-    if (this.cache.humanAttestationEvents.length > 0) {
+    // 5. 人間検証イベント（humanAttestationに関連）
+    if (this.isVisible('humanAttestation') && this.cache.humanAttestationEvents.length > 0) {
       datasets.push({
         type: 'scatter',
         label: '人間検証',
@@ -381,8 +569,8 @@ export class IntegratedChart {
       });
     }
 
-    // 6. スクリーンショットポイント（キャプチャタイプ別に分離、上部に配置）
-    if (this.cache.screenshots.length > 0) {
+    // 6. スクリーンショットポイント（screenshotCaptureに関連）
+    if (this.isVisible('screenshotCapture') && this.cache.screenshots.length > 0) {
       console.log('[IntegratedChart] Building screenshot datasets:', {
         total: this.cache.screenshots.length,
         details: this.cache.screenshots.map((s) => ({
@@ -513,6 +701,247 @@ export class IntegratedChart {
       }
     }
 
+    // 7. 認証系イベント（termsAccepted, preExportAttestation）
+    if (this.cache.authEvents && this.cache.authEvents.length > 0) {
+      // termsAccepted
+      const termsEvents = this.cache.authEvents.filter((e) => e.type === 'termsAccepted');
+      if (this.isVisible('termsAccepted') && termsEvents.length > 0) {
+        datasets.push({
+          type: 'scatter',
+          label: '利用規約同意',
+          data: termsEvents.map((m) => ({
+            x: m.timestamp,
+            y: 0.75,
+          })),
+          backgroundColor: '#22c55e', // 緑色
+          borderColor: '#16a34a',
+          borderWidth: 2,
+          pointRadius: 8,
+          pointHoverRadius: 12,
+          pointStyle: 'rectRounded',
+          yAxisID: 'yTopMarkers',
+          order: 0,
+        });
+      }
+
+      // preExportAttestation
+      const preExportEvents = this.cache.authEvents.filter((e) => e.type === 'preExportAttestation');
+      if (this.isVisible('preExportAttestation') && preExportEvents.length > 0) {
+        datasets.push({
+          type: 'scatter',
+          label: 'エクスポート認証',
+          data: preExportEvents.map((m) => ({
+            x: m.timestamp,
+            y: 0.85,
+          })),
+          backgroundColor: '#a855f7', // 紫色
+          borderColor: '#9333ea',
+          borderWidth: 2,
+          pointRadius: 10,
+          pointHoverRadius: 14,
+          pointStyle: 'star',
+          yAxisID: 'yTopMarkers',
+          order: 0,
+        });
+      }
+    }
+
+    // 8. システムイベント（editorInitialized, networkStatusChange）
+    if (this.cache.systemEvents && this.cache.systemEvents.length > 0) {
+      // editorInitialized
+      const initEvents = this.cache.systemEvents.filter((e) => e.type === 'editorInitialized');
+      if (this.isVisible('editorInitialized') && initEvents.length > 0) {
+        datasets.push({
+          type: 'scatter',
+          label: 'エディタ初期化',
+          data: initEvents.map((m) => ({
+            x: m.timestamp,
+            y: 0.1,
+          })),
+          backgroundColor: '#6b7280', // グレー
+          borderColor: '#4b5563',
+          borderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 10,
+          pointStyle: 'circle',
+          yAxisID: 'yTopMarkers',
+          order: 0,
+        });
+      }
+
+      // networkStatusChange
+      const networkEvents = this.cache.systemEvents.filter((e) => e.type === 'networkStatusChange');
+      if (this.isVisible('networkStatusChange') && networkEvents.length > 0) {
+        datasets.push({
+          type: 'scatter',
+          label: 'ネットワーク変更',
+          data: networkEvents.map((m) => ({
+            x: m.timestamp,
+            y: 0.15,
+          })),
+          backgroundColor: '#0ea5e9', // スカイブルー
+          borderColor: '#0284c7',
+          borderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 10,
+          pointStyle: 'triangle',
+          yAxisID: 'yTopMarkers',
+          order: 0,
+        });
+      }
+    }
+
+    // 9. 実行イベント（codeExecution, terminalInput）
+    if (this.cache.executionEvents && this.cache.executionEvents.length > 0) {
+      // codeExecution
+      const codeEvents = this.cache.executionEvents.filter((e) => e.type === 'codeExecution');
+      if (this.isVisible('codeExecution') && codeEvents.length > 0) {
+        datasets.push({
+          type: 'scatter',
+          label: 'コード実行',
+          data: codeEvents.map((m) => ({
+            x: m.timestamp,
+            y: 0.5,
+          })),
+          backgroundColor: '#f97316', // オレンジ
+          borderColor: '#ea580c',
+          borderWidth: 2,
+          pointRadius: 8,
+          pointHoverRadius: 12,
+          pointStyle: 'triangle',
+          yAxisID: 'yTopMarkers',
+          order: 0,
+        });
+      }
+
+      // terminalInput
+      const terminalEvents = this.cache.executionEvents.filter((e) => e.type === 'terminalInput');
+      if (this.isVisible('terminalInput') && terminalEvents.length > 0) {
+        datasets.push({
+          type: 'scatter',
+          label: 'ターミナル入力',
+          data: terminalEvents.map((m) => ({
+            x: m.timestamp,
+            y: 0.45,
+          })),
+          backgroundColor: '#14b8a6', // ティール
+          borderColor: '#0d9488',
+          borderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 10,
+          pointStyle: 'rect',
+          yAxisID: 'yTopMarkers',
+          order: 0,
+        });
+      }
+    }
+
+    // 10. キャプチャイベント（screenShareStart/Stop, templateInjection）
+    if (this.cache.captureEvents && this.cache.captureEvents.length > 0) {
+      // screenShareStart
+      const shareStartEvents = this.cache.captureEvents.filter((e) => e.type === 'screenShareStart');
+      if (this.isVisible('screenShareStart') && shareStartEvents.length > 0) {
+        datasets.push({
+          type: 'scatter',
+          label: '画面共有開始',
+          data: shareStartEvents.map((m) => ({
+            x: m.timestamp,
+            y: 0.55,
+          })),
+          backgroundColor: '#22c55e', // 緑
+          borderColor: '#16a34a',
+          borderWidth: 2,
+          pointRadius: 8,
+          pointHoverRadius: 12,
+          pointStyle: 'rectRot',
+          yAxisID: 'yTopMarkers',
+          order: 0,
+        });
+      }
+
+      // screenShareStop
+      const shareStopEvents = this.cache.captureEvents.filter((e) => e.type === 'screenShareStop');
+      if (this.isVisible('screenShareStop') && shareStopEvents.length > 0) {
+        datasets.push({
+          type: 'scatter',
+          label: '画面共有終了',
+          data: shareStopEvents.map((m) => ({
+            x: m.timestamp,
+            y: 0.55,
+          })),
+          backgroundColor: '#ef4444', // 赤
+          borderColor: '#dc2626',
+          borderWidth: 2,
+          pointRadius: 8,
+          pointHoverRadius: 12,
+          pointStyle: 'crossRot',
+          yAxisID: 'yTopMarkers',
+          order: 0,
+        });
+      }
+
+      // templateInjection
+      const templateEvents = this.cache.captureEvents.filter((e) => e.type === 'templateInjection');
+      if (this.isVisible('templateInjection') && templateEvents.length > 0) {
+        datasets.push({
+          type: 'scatter',
+          label: 'テンプレート挿入',
+          data: templateEvents.map((m) => ({
+            x: m.timestamp,
+            y: 0.4,
+          })),
+          backgroundColor: '#f59e0b', // アンバー
+          borderColor: '#d97706',
+          borderWidth: 2,
+          pointRadius: 8,
+          pointHoverRadius: 12,
+          pointStyle: 'rectRounded',
+          yAxisID: 'yTopMarkers',
+          order: 0,
+        });
+      }
+    }
+
+    // 11. ウィンドウリサイズ
+    if (this.isVisible('windowResize') && this.cache.windowResizeEvents && this.cache.windowResizeEvents.length > 0) {
+      datasets.push({
+        type: 'scatter',
+        label: 'ウィンドウリサイズ',
+        data: this.cache.windowResizeEvents.map((m) => ({
+          x: m.timestamp,
+          y: 0.2,
+        })),
+        backgroundColor: 'rgba(156, 163, 175, 0.6)', // グレー
+        borderColor: '#9ca3af',
+        borderWidth: 1,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointStyle: 'rect',
+        yAxisID: 'yTopMarkers',
+        order: 1,
+      });
+    }
+
+    // 12. コンテンツスナップショット
+    if (this.isVisible('contentSnapshot') && this.cache.contentSnapshotEvents && this.cache.contentSnapshotEvents.length > 0) {
+      datasets.push({
+        type: 'scatter',
+        label: 'スナップショット',
+        data: this.cache.contentSnapshotEvents.map((m) => ({
+          x: m.timestamp,
+          y: 0.25,
+        })),
+        backgroundColor: 'rgba(139, 92, 246, 0.6)', // 薄い紫
+        borderColor: '#8b5cf6',
+        borderWidth: 1,
+        pointRadius: 5,
+        pointHoverRadius: 8,
+        pointStyle: 'circle',
+        yAxisID: 'yTopMarkers',
+        order: 1,
+      });
+    }
+
     return datasets;
   }
 
@@ -614,100 +1043,104 @@ export class IntegratedChart {
     let annotationIdx = 0;
 
     // ============================================
-    // フォーカス喪失期間をハイライト（赤系）
+    // フォーカス喪失期間をハイライト（赤系）（focusChangeに関連）
     // focusChange イベントの data.focused:
     //   - false: フォーカスを失った瞬間（この時点からフォーカス喪失期間開始）
     //   - true: フォーカスを取得した瞬間（この時点でフォーカス喪失期間終了）
     // ============================================
-    let unfocusedStartTime: number | null = null;
+    if (this.isVisible('focusChange')) {
+      let unfocusedStartTime: number | null = null;
 
-    this.cache.focusEvents.forEach((event) => {
-      const data = event.data as { focused: boolean } | null;
-      if (!data) return;
+      this.cache.focusEvents.forEach((event) => {
+        const data = event.data as { focused: boolean } | null;
+        if (!data) return;
 
-      if (data.focused === false) {
-        // フォーカスを失った → 喪失期間の開始
-        unfocusedStartTime = event.timestamp;
-      } else if (data.focused === true && unfocusedStartTime !== null) {
-        // フォーカスを取得した → 喪失期間の終了
-        annotations[`focus-lost-${annotationIdx++}`] = {
+        if (data.focused === false) {
+          // フォーカスを失った → 喪失期間の開始
+          unfocusedStartTime = event.timestamp;
+        } else if (data.focused === true && unfocusedStartTime !== null) {
+          // フォーカスを取得した → 喪失期間の終了
+          annotations[`focus-lost-${annotationIdx++}`] = {
+            type: 'box',
+            xMin: unfocusedStartTime,
+            xMax: event.timestamp,
+            yMin: 0.85, // 上部に薄いバーとして表示
+            yMax: 0.95,
+            yScaleID: 'yTopMarkers',
+            backgroundColor: 'rgba(239, 68, 68, 0.4)', // 赤系
+            borderColor: 'rgba(239, 68, 68, 0.8)',
+            borderWidth: 1,
+            label: {
+              display: false,
+            },
+          };
+          unfocusedStartTime = null;
+        }
+      });
+
+      // 最後の状態（フォーカスを失った状態で終わった場合）
+      if (unfocusedStartTime !== null && this.cache.totalTime > unfocusedStartTime) {
+        annotations['focus-lost-final'] = {
           type: 'box',
           xMin: unfocusedStartTime,
-          xMax: event.timestamp,
-          yMin: 0.85, // 上部に薄いバーとして表示
+          xMax: this.cache.totalTime,
+          yMin: 0.85,
           yMax: 0.95,
           yScaleID: 'yTopMarkers',
-          backgroundColor: 'rgba(239, 68, 68, 0.4)', // 赤系
+          backgroundColor: 'rgba(239, 68, 68, 0.4)',
           borderColor: 'rgba(239, 68, 68, 0.8)',
           borderWidth: 1,
-          label: {
-            display: false,
-          },
         };
-        unfocusedStartTime = null;
       }
-    });
-
-    // 最後の状態（フォーカスを失った状態で終わった場合）
-    if (unfocusedStartTime !== null && this.cache.totalTime > unfocusedStartTime) {
-      annotations['focus-lost-final'] = {
-        type: 'box',
-        xMin: unfocusedStartTime,
-        xMax: this.cache.totalTime,
-        yMin: 0.85,
-        yMax: 0.95,
-        yScaleID: 'yTopMarkers',
-        backgroundColor: 'rgba(239, 68, 68, 0.4)',
-        borderColor: 'rgba(239, 68, 68, 0.8)',
-        borderWidth: 1,
-      };
     }
 
     // ============================================
-    // Visibility喪失期間（タブ非アクティブ）をハイライト（グレー系）
+    // Visibility喪失期間（タブ非アクティブ）をハイライト（グレー系）（visibilityChangeに関連）
     // visibilityChange イベントの data.visible:
     //   - false: タブが非アクティブになった瞬間
     //   - true: タブがアクティブになった瞬間
     // ============================================
-    let hiddenStartTime: number | null = null;
+    if (this.isVisible('visibilityChange')) {
+      let hiddenStartTime: number | null = null;
 
-    this.cache.visibilityEvents.forEach((event) => {
-      const data = event.data as { visible: boolean } | null;
-      if (!data) return;
+      this.cache.visibilityEvents.forEach((event) => {
+        const data = event.data as { visible: boolean } | null;
+        if (!data) return;
 
-      if (data.visible === false) {
-        // タブが非アクティブになった → 非表示期間の開始
-        hiddenStartTime = event.timestamp;
-      } else if (data.visible === true && hiddenStartTime !== null) {
-        // タブがアクティブになった → 非表示期間の終了
-        annotations[`visibility-hidden-${annotationIdx++}`] = {
+        if (data.visible === false) {
+          // タブが非アクティブになった → 非表示期間の開始
+          hiddenStartTime = event.timestamp;
+        } else if (data.visible === true && hiddenStartTime !== null) {
+          // タブがアクティブになった → 非表示期間の終了
+          annotations[`visibility-hidden-${annotationIdx++}`] = {
+            type: 'box',
+            xMin: hiddenStartTime,
+            xMax: event.timestamp,
+            yMin: 0.73, // フォーカスバーの下に配置
+            yMax: 0.83,
+            yScaleID: 'yTopMarkers',
+            backgroundColor: 'rgba(107, 114, 128, 0.4)', // グレー系
+            borderColor: 'rgba(107, 114, 128, 0.8)',
+            borderWidth: 1,
+          };
+          hiddenStartTime = null;
+        }
+      });
+
+      // 最後の状態（非アクティブ状態で終わった場合）
+      if (hiddenStartTime !== null && this.cache.totalTime > hiddenStartTime) {
+        annotations['visibility-hidden-final'] = {
           type: 'box',
           xMin: hiddenStartTime,
-          xMax: event.timestamp,
-          yMin: 0.73, // フォーカスバーの下に配置
+          xMax: this.cache.totalTime,
+          yMin: 0.73,
           yMax: 0.83,
           yScaleID: 'yTopMarkers',
-          backgroundColor: 'rgba(107, 114, 128, 0.4)', // グレー系
+          backgroundColor: 'rgba(107, 114, 128, 0.4)',
           borderColor: 'rgba(107, 114, 128, 0.8)',
           borderWidth: 1,
         };
-        hiddenStartTime = null;
       }
-    });
-
-    // 最後の状態（非アクティブ状態で終わった場合）
-    if (hiddenStartTime !== null && this.cache.totalTime > hiddenStartTime) {
-      annotations['visibility-hidden-final'] = {
-        type: 'box',
-        xMin: hiddenStartTime,
-        xMax: this.cache.totalTime,
-        yMin: 0.73,
-        yMax: 0.83,
-        yScaleID: 'yTopMarkers',
-        backgroundColor: 'rgba(107, 114, 128, 0.4)',
-        borderColor: 'rgba(107, 114, 128, 0.8)',
-        borderWidth: 1,
-      };
     }
 
     // ============================================
@@ -772,6 +1205,78 @@ export class IntegratedChart {
 
     if (label === '外部入力') {
       return 'ペースト/ドロップ';
+    }
+
+    // Auth events
+    if (label === '利用規約同意') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `📜 利用規約同意 - ${time}`;
+    }
+
+    if (label === 'エクスポート前検証') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `🔐 エクスポート前検証 (Turnstile) - ${time}`;
+    }
+
+    // System events
+    if (label === 'エディタ初期化') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `🚀 エディタ初期化 - ${time}`;
+    }
+
+    if (label === 'ネットワーク変更') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `🌐 ネットワーク状態変更 - ${time}`;
+    }
+
+    // Execution events
+    if (label === 'コード実行') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `▶️ コード実行 - ${time}`;
+    }
+
+    if (label === 'ターミナル入力') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `💻 ターミナル入力 - ${time}`;
+    }
+
+    // Capture events
+    if (label === '画面共有開始') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `🎬 画面共有開始 - ${time}`;
+    }
+
+    if (label === '画面共有終了') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `🛑 画面共有終了 - ${time}`;
+    }
+
+    if (label === 'テンプレート挿入') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `📝 テンプレート挿入 - ${time}`;
+    }
+
+    // Window events
+    if (label === 'ウィンドウリサイズ') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `📐 ウィンドウリサイズ - ${time}`;
+    }
+
+    // Content events
+    if (label === 'コンテンツスナップショット') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `📋 コンテンツスナップショット - ${time}`;
     }
 
     return label;

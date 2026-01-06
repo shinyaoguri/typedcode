@@ -21,11 +21,13 @@
 @import './components/_welcome.css';
 @import './components/_result-panel.css';
 @import './components/_charts.css';
+@import './components/_chart-selector.css';
 @import './components/_seekbar.css';
 @import './components/_modals.css';
 @import './components/_syntax-highlight.css';
 @import './components/_verification-progress.css';
 @import './components/_lightbox.css';
+@import './components/_typing-pattern.css';
 
 /* Utilities */
 @import './utilities/_misc.css';

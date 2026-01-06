@@ -23,6 +23,7 @@ import {
   formatTypingTime,
   calculateTypingSpeed as calculateTypingSpeedShared,
   countPasteEvents as countPasteEventsShared,
+  TypingPatternAnalyzer,
 } from '@typedcode/shared';
 
 /**
@@ -79,6 +80,12 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     }
   }
 
+  // Analyze typing patterns
+  const typingPatternAnalyzer = new TypingPatternAnalyzer();
+  const typingPatternAnalysis = events && events.length > 0
+    ? typingPatternAnalyzer.analyze(events)
+    : undefined;
+
   return {
     filename: tabState.filename,
     content: proofData.content || '',
@@ -89,5 +96,6 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     eventCount,
     typingTime,
     typingSpeed,
+    typingPatternAnalysis,
   };
 }

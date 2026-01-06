@@ -292,12 +292,21 @@
               <div class="result-left-panel" id="result-left-panel">
                 <!-- Status Card -->
                 <div class="result-status-card" id="result-status-card">
-                  <div class="result-status-icon" id="result-status-icon">
-                    <i class="fas fa-spinner fa-spin"></i>
+                  <div class="result-status-main">
+                    <div class="result-status-icon" id="result-status-icon">
+                      <i class="fas fa-spinner fa-spin"></i>
+                    </div>
+                    <div class="result-status-info">
+                      <div class="result-status-title" id="result-status-title" data-i18n="result.statusVerifying">検証中...</div>
+                      <div class="result-status-filename" id="result-status-filename"></div>
+                    </div>
                   </div>
-                  <div class="result-status-info">
-                    <div class="result-status-title" id="result-status-title" data-i18n="result.statusVerifying">検証中...</div>
-                    <div class="result-status-filename" id="result-status-filename"></div>
+                  <div class="result-status-pattern" id="result-status-pattern" style="display: none;">
+                    <div class="pattern-mini-gauge" id="pattern-mini-gauge"></div>
+                    <div class="pattern-mini-info">
+                      <div class="pattern-mini-label" data-i18n="pattern.title">タイピングパターン</div>
+                      <div class="pattern-mini-judgment" id="pattern-mini-judgment">-</div>
+                    </div>
                   </div>
                 </div>
 
@@ -398,6 +407,22 @@
                       </div>
                     </div>
                   </div>
+
+                  <!-- Typing Pattern Analysis Card -->
+                  <div class="result-card" id="card-typing-pattern" style="display: none;">
+                    <div class="result-card-header">
+                      <div class="result-card-header-left">
+                        <div class="result-card-icon pending" id="pattern-icon">
+                          <i class="fas fa-brain"></i>
+                        </div>
+                        <span class="result-card-title" data-i18n="result.typingPattern">タイピングパターン</span>
+                      </div>
+                      <span class="result-card-badge pending" id="pattern-badge">-</span>
+                    </div>
+                    <div class="result-card-content" id="pattern-content">
+                      <!-- Rendered by TypingPatternCard.ts -->
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Stats -->
@@ -428,6 +453,13 @@
                     <button class="chart-tab" data-tab="mouse" id="tab-mouse">
                       <i class="fas fa-mouse"></i> <span data-i18n="charts.mouseTrajectory">マウス軌跡</span>
                     </button>
+                    <!-- Event Filter -->
+                    <div class="chart-event-selector-container" id="chart-event-selector-container">
+                      <button class="chart-event-selector-btn" id="chart-event-selector-btn" data-i18n-title="charts.eventFilter">
+                        <i class="fas fa-filter"></i>
+                      </button>
+                      <div class="chart-event-selector-dropdown" id="chart-event-selector-dropdown"></div>
+                    </div>
                   </div>
                   <div class="chart-content">
                     <div class="chart-panel active" id="panel-integrated">

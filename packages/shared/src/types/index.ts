@@ -94,6 +94,20 @@ export type {
   LogStats,
 } from './statistics.js';
 
+// タイピングパターン分析関連
+export type {
+  PatternJudgment,
+  IssueSeverity,
+  MetricKey,
+  MetricScore,
+  MetricAnalysis,
+  TypingPatternIssue,
+  TypingPatternRawStats,
+  TypingPatternAnalysis,
+  TypingPatternAnalyzerConfig,
+} from './typingPattern.js';
+export { DEFAULT_TYPING_PATTERN_ANALYZER_CONFIG } from './typingPattern.js';
+
 // ストレージ・マルチタブ関連
 export type {
   TabSwitchEvent,

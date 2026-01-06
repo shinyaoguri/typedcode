@@ -8,6 +8,8 @@ import { ScreenshotOverlay } from '../../charts/ScreenshotOverlay';
 import { SeekbarController } from '../../charts/SeekbarController';
 import { ScreenshotLightbox } from '../ScreenshotLightbox';
 import { ScreenshotService } from '../../services/ScreenshotService';
+import { ChartEventSelector } from '../ChartEventSelector';
+import { ChartPreferencesService } from '../../services/ChartPreferencesService';
 
 export interface ChartControllerState {
   timelineChart: TimelineChart | null;
@@ -17,6 +19,7 @@ export interface ChartControllerState {
   screenshotLightbox: ScreenshotLightbox | null;
   seekbarController: SeekbarController | null;
   screenshotService: ScreenshotService | null;
+  eventSelector: ChartEventSelector | null;
 }
 
 export class ChartController {
@@ -27,6 +30,7 @@ export class ChartController {
   private screenshotLightbox: ScreenshotLightbox | null = null;
   private seekbarController: SeekbarController | null = null;
   private screenshotService: ScreenshotService | null = null;
+  private eventSelector: ChartEventSelector | null = null;
 
   /**
    * チャートを初期化
@@ -117,6 +121,27 @@ export class ChartController {
     if (this.integratedChart) {
       this.seekbarController.setIntegratedChart(this.integratedChart);
     }
+
+    // ChartEventSelector を初期化
+    const selectorButton = document.getElementById('chart-event-selector-btn');
+    const selectorDropdown = document.getElementById('chart-event-selector-dropdown');
+    if (selectorButton && selectorDropdown) {
+      // 保存された設定を読み込んでIntegratedChartに適用
+      const prefs = ChartPreferencesService.load();
+      if (this.integratedChart) {
+        this.integratedChart.setEventVisibility(prefs.eventVisibility);
+      }
+
+      this.eventSelector = new ChartEventSelector({
+        button: selectorButton,
+        dropdown: selectorDropdown,
+        onVisibilityChange: (visibility) => {
+          if (this.integratedChart) {
+            this.integratedChart.setEventVisibility(visibility);
+          }
+        },
+      });
+    }
   }
 
   /**
@@ -178,5 +203,9 @@ export class ChartController {
 
   getScreenshotService(): ScreenshotService | null {
     return this.screenshotService;
+  }
+
+  getEventSelector(): ChartEventSelector | null {
+    return this.eventSelector;
   }
 }

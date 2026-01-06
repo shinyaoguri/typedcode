@@ -11,7 +11,9 @@ import type {
   TrustIssue,
   TrustLevel,
 } from '../types';
+import type { TypingPatternAnalysis } from '@typedcode/shared';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
+import { TypingPatternCard } from './TypingPatternCard.js';
 
 export interface ResultData {
   filename: string;
@@ -24,6 +26,7 @@ export interface ResultData {
   typingTime: string;
   typingSpeed: string;
   trustResult?: TrustResult;
+  typingPatternAnalysis?: TypingPatternAnalysis;
 }
 
 export interface PlaintextData {
@@ -50,6 +53,9 @@ export class ResultPanel {
   private statusIcon: HTMLElement;
   private statusTitle: HTMLElement;
   private statusFilename: HTMLElement;
+  private statusPattern: HTMLElement;
+  private patternMiniGauge: HTMLElement;
+  private patternMiniJudgment: HTMLElement;
 
   // Verification cards
   private typingIcon: HTMLElement;
@@ -87,6 +93,9 @@ export class ResultPanel {
 
   // Code preview
   private codePreview: HTMLElement;
+
+  // Typing pattern card
+  private typingPatternCard: TypingPatternCard;
 
   // Chart tabs
   private tabIntegrated: HTMLElement;
@@ -128,6 +137,9 @@ export class ResultPanel {
     this.statusIcon = document.getElementById('result-status-icon')!;
     this.statusTitle = document.getElementById('result-status-title')!;
     this.statusFilename = document.getElementById('result-status-filename')!;
+    this.statusPattern = document.getElementById('result-status-pattern')!;
+    this.patternMiniGauge = document.getElementById('pattern-mini-gauge')!;
+    this.patternMiniJudgment = document.getElementById('pattern-mini-judgment')!;
 
     // Typing card
     this.cardTyping = document.getElementById('card-typing')!;
@@ -168,6 +180,9 @@ export class ResultPanel {
 
     // Code preview
     this.codePreview = document.getElementById('code-preview')!;
+
+    // Typing pattern card
+    this.typingPatternCard = new TypingPatternCard();
 
     // Chart tabs
     this.tabIntegrated = document.getElementById('tab-integrated')!;
@@ -383,6 +398,15 @@ export class ResultPanel {
       }
     } else {
       this.cardAttestation.style.display = 'none';
+    }
+
+    // Typing pattern - mini gauge in status card and full card
+    if (data.typingPatternAnalysis) {
+      this.renderPatternMiniGauge(data.typingPatternAnalysis);
+      this.typingPatternCard.render(data.typingPatternAnalysis);
+    } else {
+      this.statusPattern.style.display = 'none';
+      this.typingPatternCard.hide();
     }
 
     // Stats
@@ -823,5 +847,62 @@ export class ResultPanel {
       screenshots: 'スクリーンショット',
     };
     return labels[component] || component;
+  }
+
+  // ============================================================================
+  // タイピングパターンミニゲージ
+  // ============================================================================
+
+  /**
+   * ステータスカードにタイピングパターンのミニゲージを表示
+   */
+  private renderPatternMiniGauge(analysis: TypingPatternAnalysis): void {
+    this.statusPattern.style.display = 'flex';
+
+    const { overallScore, overallJudgment } = analysis;
+
+    // 判定に応じた色クラス
+    const colorClass = this.getPatternJudgmentClass(overallJudgment);
+
+    // ミニゲージ（SVG）
+    const radius = 20;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (overallScore / 100) * circumference;
+
+    this.patternMiniGauge.innerHTML = `
+      <svg class="pattern-mini-svg" viewBox="0 0 50 50">
+        <circle class="gauge-bg" cx="25" cy="25" r="${radius}" />
+        <circle class="gauge-fill ${colorClass}"
+                cx="25" cy="25" r="${radius}"
+                stroke-dasharray="${circumference}"
+                stroke-dashoffset="${offset}" />
+        <text x="25" y="28" text-anchor="middle" class="gauge-score">${overallScore}</text>
+      </svg>
+    `;
+
+    // 判定ラベル
+    const judgmentLabels: Record<string, string> = {
+      human: '人間らしい',
+      uncertain: '不明確',
+      suspicious: '疑わしい',
+    };
+    this.patternMiniJudgment.textContent = judgmentLabels[overallJudgment] || '-';
+    this.patternMiniJudgment.className = `pattern-mini-judgment ${colorClass}`;
+  }
+
+  /**
+   * タイピングパターンの判定に応じたCSSクラスを取得
+   */
+  private getPatternJudgmentClass(judgment: string): string {
+    switch (judgment) {
+      case 'human':
+        return 'success';
+      case 'uncertain':
+        return 'warning';
+      case 'suspicious':
+        return 'error';
+      default:
+        return 'pending';
+    }
   }
 }

@@ -10,6 +10,7 @@ export interface VerifyTranslationKeys {
     verifying: string;
     files: string;
     file: string;
+    reset: string;
   };
 
   // App-level
@@ -85,6 +86,7 @@ export interface VerifyTranslationKeys {
     humanAttestation: string;
     createTime: string;
     exportTime: string;
+    typingPattern: string;
   };
 
   // Chain panel
@@ -143,6 +145,101 @@ export interface VerifyTranslationKeys {
     dwell: string;
     flight: string;
     mouse: string;
+    eventFilter: string;
+    categories: {
+      content: string;
+      cursor: string;
+      input: string;
+      window: string;
+      system: string;
+      auth: string;
+      execution: string;
+      capture: string;
+    };
+    events: {
+      contentChange: string;
+      contentSnapshot: string;
+      externalInput: string;
+      cursorPositionChange: string;
+      selectionChange: string;
+      keyDown: string;
+      keyUp: string;
+      mousePositionChange: string;
+      focusChange: string;
+      visibilityChange: string;
+      windowResize: string;
+      editorInitialized: string;
+      networkStatusChange: string;
+      humanAttestation: string;
+      preExportAttestation: string;
+      termsAccepted: string;
+      codeExecution: string;
+      terminalInput: string;
+      screenshotCapture: string;
+      screenShareStart: string;
+      screenShareStop: string;
+      templateInjection: string;
+    };
+  };
+
+  // Typing pattern analysis
+  pattern: {
+    title: string;
+    score: string;
+    confidence: string;
+    detailedAnalysis: string;
+    human: string;
+    uncertain: string;
+    suspicious: string;
+    criticalIssues: string;
+    warnings: string;
+    summary: {
+      human: string;
+      suspicious: string;
+      uncertain: string;
+      insufficientData: string;
+    };
+    insufficient: string;
+    dwellConsistency: {
+      normal: string;
+      tooConsistent: string;
+      highVariation: string;
+    };
+    flightTime: {
+      normal: string;
+      tooUniform: string;
+      unusual: string;
+    };
+    rhythm: {
+      normal: string;
+      tooConsistent: string;
+      periodic: string;
+      highVariation: string;
+    };
+    speed: {
+      normal: string;
+      tooConsistent: string;
+      highVariation: string;
+    };
+    pause: {
+      normal: string;
+      noPauses: string;
+      tooMany: string;
+    };
+    burst: {
+      normal: string;
+      tooUniform: string;
+      tooLong: string;
+    };
+    error: {
+      normal: string;
+      noCorrections: string;
+      tooMany: string;
+    };
+    charTiming: {
+      normal: string;
+      tooUniform: string;
+    };
   };
 
   // Seekbar
