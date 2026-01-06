@@ -166,7 +166,7 @@ export const en: TranslationKeys = {
     exportDesc: 'Created proof data can be downloaded in JSON or ZIP format.',
     exportDetailHeading: 'Export contents:',
     exportJson: 'Proof file (.json): Complete proof data including operation logs, hash chain, PoSW data, browser fingerprint, and human verification results',
-    exportScreenshots: 'Screenshots (.png): Captured screen images',
+    exportScreenshots: 'Screenshots (.jpg): Captured screen images',
     exportManifest: 'Manifest: Hash values of screenshots and correspondence with proof data',
     exportReadme: 'README file: Instructions for verifying the proof',
     exportNote: 'Exported files can be verified with the TypedCode Verify application. You can choose between JSON output with proof data only, or ZIP output including screenshots.',

@@ -88,6 +88,7 @@ import { isLanguageExecutable } from './config/SupportedLanguages.js';
 import { t, getI18n, initDOMi18n } from './i18n/index.js';
 import { showAboutDialog } from './ui/components/AboutDialog.js';
 import { WelcomeScreen } from './ui/components/WelcomeScreen.js';
+import { TitlebarClock } from './ui/components/TitlebarClock.js';
 
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
@@ -178,6 +179,9 @@ const ctx: AppContext = {
 
   // Welcome Screen
   welcomeScreen: null as WelcomeScreen | null,
+
+  // Titlebar Clock
+  titlebarClock: new TitlebarClock(),
 };
 
 // ========================================
@@ -214,6 +218,10 @@ function showWelcomeScreen(): void {
   const editorEl = document.getElementById('editor');
   if (editorEl) editorEl.style.display = 'none';
 
+  // コピーボタンを非表示（ファイルがないため）
+  const copyCodeBtn = document.getElementById('copy-code-btn');
+  if (copyCodeBtn) copyCodeBtn.style.display = 'none';
+
   // エディタコンテナにウェルカム画面を表示
   const container = document.querySelector('.editor-container') as HTMLElement | null;
   if (container && !ctx.welcomeScreen) {
@@ -239,6 +247,10 @@ function hideWelcomeScreen(): void {
   // Monacoエディタを表示
   const editorEl = document.getElementById('editor');
   if (editorEl) editorEl.style.display = '';
+
+  // コピーボタンを表示（ファイルが存在するため）
+  const copyCodeBtn = document.getElementById('copy-code-btn');
+  if (copyCodeBtn) copyCodeBtn.style.display = '';
 }
 
 /**
@@ -260,6 +272,9 @@ async function handleWelcomeNewFile(): Promise<void> {
   // スクリーンショットのキャプチャを再有効化
   ctx.trackers.screenshot?.setCaptureEnabled(true);
 
+  // LogViewerが未初期化の場合は初期化
+  initializeLogViewer();
+
   ctx.tabUIController?.updateUI();
   showNotification(t('notifications.newTabCreated'));
 }
@@ -276,6 +291,8 @@ async function handleWelcomeImportTemplate(): Promise<void> {
     ctx.tabUIController?.updateUI();
     // スクリーンショットのキャプチャを再有効化
     ctx.trackers.screenshot?.setCaptureEnabled(true);
+    // LogViewerが未初期化の場合は初期化
+    initializeLogViewer();
   }
 }
 
@@ -934,9 +951,20 @@ function setupStaticEventListeners(): void {
     window.location.href = window.location.origin + window.location.pathname + '?reset=' + Date.now();
   });
 
-  // ページ離脱時の確認ダイアログ
+  // ページ離脱時の確認ダイアログとIndexedDBクリア
   window.addEventListener('beforeunload', (e) => {
     if (ctx.skipBeforeUnload) return;
+
+    // IndexedDBを削除（sessionStorageと同様にタブを閉じたら消える）
+    // 注: beforeunloadでは非同期処理を待てないが、deleteDatabase()は
+    // リクエストを発行するだけなのでページ離脱後もバックグラウンドで実行される
+    try {
+      indexedDB.deleteDatabase('typedcode-screenshots');
+      console.log('[TypedCode] IndexedDB deletion requested on beforeunload');
+    } catch {
+      // ignore
+    }
+
     const activeProof = ctx.tabManager?.getActiveProof();
     if (activeProof && activeProof.events.length > 0) {
       e.preventDefault();
@@ -1046,6 +1074,9 @@ async function initializeTabManager(
 }
 
 function initializeLogViewer(): void {
+  // すでに初期化済みの場合はスキップ
+  if (ctx.logViewer) return;
+
   const logEntriesContainer = document.getElementById('log-entries');
   if (!logEntriesContainer) {
     console.error('[TypedCode] log-entries not found!');
@@ -1644,6 +1675,9 @@ async function initializeApp(): Promise<void> {
     });
     console.log('[TypedCode] Session resumed after reload');
   }
+
+  // Phase 9: タイトルバー時計の開始
+  ctx.titlebarClock.start();
 
   console.log('[TypedCode] App initialized successfully');
 }

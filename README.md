@@ -2,6 +2,10 @@
 
 <img align="right" src="icon.png" alt="TypedCode Logo" height="150">
 
+> **🚧 Work in Progress**
+>
+> This project is under active development. Expect breaking changes, bugs, and incomplete features. Your feedback is invaluable—please [open an issue](https://github.com/shinyaoguri/typedcode/issues) if you encounter problems or have suggestions!
+
 [TypedCode](https://typedcode.dev) is a VSCode-like code editor that records every keystroke into a tamper-resistant SHA-256 hash chain with Proof of Sequential Work (PoSW). It proves code was typed character-by-character without copy/paste. Runs entirely in your browser with built-in execution for C/C++, Python, and JavaScript/TypeScript via WebAssembly.
 
 This tool is primarily designed for programming exams that need to prevent AI-assisted copying and automated code generation, and for educators who want to verify programming processes for educational purposes.

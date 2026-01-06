@@ -33,6 +33,7 @@ import type { MainMenuDropdown } from '../ui/components/MainMenuDropdown.js';
 import type { TerminalPanel } from '../ui/components/TerminalPanel.js';
 import type { BrowserPreviewPanel } from '../ui/components/BrowserPreviewPanel.js';
 import type { WelcomeScreen } from '../ui/components/WelcomeScreen.js';
+import type { TitlebarClock } from '../ui/components/TitlebarClock.js';
 
 // Execution
 import type { CodeExecutionController } from '../execution/CodeExecutionController.js';
@@ -97,4 +98,7 @@ export interface AppContext {
 
   // Welcome Screen
   welcomeScreen: WelcomeScreen | null;
+
+  // Titlebar Clock
+  titlebarClock: TitlebarClock;
 }
