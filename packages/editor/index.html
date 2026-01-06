@@ -660,6 +660,25 @@
     </div>
   </div>
 
+  <!-- Unsupported Browser Overlay (shown for Safari and other unsupported browsers) -->
+  <div id="unsupported-browser-overlay" class="modal-overlay hidden" style="z-index: 100000;">
+    <div class="modal-dialog modal-warning">
+      <div class="modal-header">
+        <i class="fab fa-chrome"></i>
+        <h3 data-i18n="unsupportedBrowser.title">サポートされていないブラウザです</h3>
+      </div>
+      <div class="modal-body">
+        <p data-i18n="unsupportedBrowser.description">TypedCode は画面キャプチャ機能（Screen Capture API）を使用するため、Chrome または Edge ブラウザでのみ動作します。</p>
+        <p data-i18n="unsupportedBrowser.safariNote">Safari では Screen Capture API が十分にサポートされていないため、ご利用いただけません。</p>
+        <p class="modal-hint" data-i18n="unsupportedBrowser.hint">以下のブラウザでアクセスしてください：</p>
+        <ul class="modal-list">
+          <li><i class="fab fa-chrome"></i> <span>Google Chrome</span></li>
+          <li><i class="fab fa-edge"></i> <span>Microsoft Edge</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

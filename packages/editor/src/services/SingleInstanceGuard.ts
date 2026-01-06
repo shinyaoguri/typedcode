@@ -146,3 +146,13 @@ export function hideDuplicateInstanceOverlay(): void {
     overlay.classList.add('hidden');
   }
 }
+
+/**
+ * 未対応ブラウザ（Safari等）用のオーバーレイを表示
+ */
+export function showUnsupportedBrowserOverlay(): void {
+  const overlay = document.getElementById('unsupported-browser-overlay');
+  if (overlay) {
+    overlay.classList.remove('hidden');
+  }
+}
