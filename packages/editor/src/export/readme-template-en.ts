@@ -178,7 +178,7 @@ Each \`*_proof.json\` file contains:
 
 \`\`\`json
 {
-  "version": "3.x.x",
+  "version": "1.0.0",
   "typingProofHash": "final_proof_hash...",
   "typingProofData": {
     "finalContentHash": "content_hash...",
@@ -208,7 +208,7 @@ Each \`*_proof.json\` file contains:
         "hash": "event_0_hash...",
         "previousHash": null,
         "posw": {
-          "iterations": 1000,
+          "iterations": 10000,
           "nonce": "random_nonce...",
           "intermediateHash": "...",
           "computeTimeMs": 50
@@ -285,7 +285,7 @@ Visit the TypedCode verification page and upload the proof JSON file for automat
 | Component | Specification |
 |-----------|---------------|
 | Hash Algorithm | SHA-256 |
-| PoSW Iterations | 1000 (configurable) |
+| PoSW Iterations | 10,000 |
 | Screenshot Format | JPEG, 60% quality |
 | Screenshot Interval | 60 seconds |
 | Focus Lost Delay | 5 seconds |
