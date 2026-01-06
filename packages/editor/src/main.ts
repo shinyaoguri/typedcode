@@ -88,6 +88,7 @@ import { isLanguageExecutable } from './config/SupportedLanguages.js';
 import { t, getI18n, initDOMi18n } from './i18n/index.js';
 import { showAboutDialog } from './ui/components/AboutDialog.js';
 import { WelcomeScreen } from './ui/components/WelcomeScreen.js';
+import { TitlebarClock } from './ui/components/TitlebarClock.js';
 
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
@@ -178,6 +179,9 @@ const ctx: AppContext = {
 
   // Welcome Screen
   welcomeScreen: null as WelcomeScreen | null,
+
+  // Titlebar Clock
+  titlebarClock: new TitlebarClock(),
 };
 
 // ========================================
@@ -1663,6 +1667,9 @@ async function initializeApp(): Promise<void> {
     });
     console.log('[TypedCode] Session resumed after reload');
   }
+
+  // Phase 9: タイトルバー時計の開始
+  ctx.titlebarClock.start();
 
   console.log('[TypedCode] App initialized successfully');
 }
