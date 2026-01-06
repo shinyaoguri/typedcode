@@ -1159,3 +1159,115 @@
   font-size: 13px;
   color: var(--text-secondary, #858585);
 }
+
+/* ================================================
+   Idle Timeout Warning Dialog
+   ================================================ */
+
+.idle-warning-dialog {
+  max-width: 400px;
+}
+
+.idle-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 20px 0;
+  padding: 20px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+}
+
+.idle-countdown-time {
+  font-size: 48px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--accent-warning);
+  line-height: 1;
+}
+
+.idle-countdown-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ================================================
+   Idle Suspended Overlay
+   ================================================ */
+
+.idle-suspended-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30000;
+  backdrop-filter: blur(8px);
+  animation: modal-fade-in 0.3s ease;
+}
+
+.idle-suspended-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 48px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  max-width: 450px;
+}
+
+.idle-suspended-content i.fa-pause-circle {
+  color: var(--accent-warning);
+}
+
+.idle-suspended-content h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.idle-suspended-content p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.idle-suspended-hint {
+  font-size: 13px !important;
+  color: var(--text-tertiary) !important;
+}
+
+.idle-suspended-content .btn {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.idle-suspended-content .btn-primary {
+  background: var(--accent-primary);
+  color: #ffffff;
+}
+
+.idle-suspended-content .btn-primary:hover {
+  background: var(--accent-secondary);
+  transform: translateY(-1px);
+}

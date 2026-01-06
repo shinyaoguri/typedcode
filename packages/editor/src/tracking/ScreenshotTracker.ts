@@ -399,6 +399,7 @@ export class ScreenshotTracker {
       const description = this.generateDescription(captureType);
 
       // コールバックを呼び出し
+      console.log(`[ScreenshotTracker] callback is ${this.callback ? 'set' : 'null'}`);
       if (this.callback) {
         this.callback({
           type: 'screenshotCapture',

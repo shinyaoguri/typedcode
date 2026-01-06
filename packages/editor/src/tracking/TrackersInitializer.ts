@@ -14,6 +14,11 @@ import type { AppContext } from '../core/AppContext.js';
 export type RecordEventCallback = (event: RecordEventInput) => void;
 
 /**
+ * 全タブへのイベント記録用コールバック（Promise返却）
+ */
+export type RecordEventToAllTabsCallback = (event: RecordEventInput) => Promise<void>;
+
+/**
  * トラッカー初期化オプション
  */
 export interface TrackersInitializerOptions {
@@ -21,9 +26,11 @@ export interface TrackersInitializerOptions {
   editorContainer: HTMLElement;
   recordEvent: RecordEventCallback;
   /** 全タブにイベントを記録するコールバック（スクリーンショット等セッション共通イベント用） */
-  recordEventToAllTabs: RecordEventCallback;
+  recordEventToAllTabs: RecordEventToAllTabsCallback;
   onProofStatusUpdate: () => void;
   onStorageSave: () => void;
+  /** フォーカス復帰時のコールバック（LogViewer更新等） */
+  onFocusRegained?: () => void;
 }
 
 /**
@@ -39,6 +46,7 @@ export function initializeTrackers(options: TrackersInitializerOptions): void {
     recordEventToAllTabs,
     onProofStatusUpdate,
     onStorageSave,
+    onFocusRegained,
   } = options;
   const { trackers, editorController, editor } = ctx;
 
@@ -76,15 +84,21 @@ export function initializeTrackers(options: TrackersInitializerOptions): void {
     });
   });
 
-  // ScreenshotTrackerとの連携（フォーカス喪失/復帰時のキャプチャ）
-  if (trackers.screenshot) {
-    trackers.visibility.setFocusLostCallback(() => {
-      trackers.screenshot?.notifyFocusLost();
-    });
-    trackers.visibility.setFocusRegainedCallback(() => {
-      trackers.screenshot?.notifyFocusRegained();
-    });
-  }
+  // ScreenshotTrackerおよびIdleTimeoutManagerとの連携
+  trackers.visibility.setFocusLostCallback(() => {
+    // スクリーンショット撮影通知
+    trackers.screenshot?.notifyFocusLost();
+    // アイドルタイムアウト監視開始
+    ctx.idleTimeoutManager?.handleFocusLost();
+  });
+  trackers.visibility.setFocusRegainedCallback(() => {
+    // スクリーンショット撮影通知
+    trackers.screenshot?.notifyFocusRegained();
+    // アイドルタイムアウトタイマーリセット
+    ctx.idleTimeoutManager?.handleFocusRegained();
+    // LogViewer更新等のコールバック
+    onFocusRegained?.();
+  });
 
   trackers.visibility.attach();
 
@@ -153,6 +167,7 @@ export function initializeTrackers(options: TrackersInitializerOptions): void {
 
   // ScreenshotTracker - スクリーンショットの追跡
   // スクリーンショット関連イベントはセッション全体に関わるため、全タブに記録
+  console.debug(`[TrackersInitializer] trackers.screenshot is ${trackers.screenshot ? 'set' : 'null'}`);
   if (trackers.screenshot) {
     // TypingProofのstartTimeを設定（タイムスタンプをハッシュチェーンと同期させるため）
     const activeProof = ctx.tabManager?.getActiveProof();
@@ -160,7 +175,9 @@ export function initializeTrackers(options: TrackersInitializerOptions): void {
       trackers.screenshot.setProofStartTime(activeProof.startTime);
     }
 
+    console.debug('[TrackersInitializer] Setting screenshot callback');
     trackers.screenshot.setCallback((event) => {
+      console.debug(`[TrackersInitializer] Screenshot callback called: ${event.type}`);
       recordEventToAllTabs({
         type: event.type,
         data: event.data,

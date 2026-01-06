@@ -134,6 +134,7 @@ export class LogViewer {
    */
   refreshLogs(): void {
     const events = this.typingProof.events;
+    console.debug(`[LogViewer] refreshLogs: ${events.length} events, last type: ${events[events.length - 1]?.type ?? 'none'}`);
     this.container.innerHTML = '';
     this.lastGroupedEntry = null;
 

@@ -23,6 +23,7 @@ import type { CursorTracker } from '../editor/CursorTracker.js';
 import type { OperationDetector } from '../tracking/OperationDetector.js';
 import type { EditorController } from '../editor/EditorController.js';
 import type { ScreenshotTracker } from '../tracking/ScreenshotTracker.js';
+import type { IdleTimeoutManager } from '../tracking/IdleTimeoutManager.js';
 
 // UI Components
 import type { ProcessingDialog } from '../ui/components/ProcessingDialog.js';
@@ -101,4 +102,7 @@ export interface AppContext {
 
   // Titlebar Clock
   titlebarClock: TitlebarClock;
+
+  // Idle Timeout Manager
+  idleTimeoutManager: IdleTimeoutManager | null;
 }

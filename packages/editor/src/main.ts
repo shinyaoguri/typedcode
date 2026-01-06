@@ -89,6 +89,12 @@ import { t, getI18n, initDOMi18n } from './i18n/index.js';
 import { showAboutDialog } from './ui/components/AboutDialog.js';
 import { WelcomeScreen } from './ui/components/WelcomeScreen.js';
 import { TitlebarClock } from './ui/components/TitlebarClock.js';
+import { IdleTimeoutManager } from './tracking/IdleTimeoutManager.js';
+import {
+  showIdleWarningDialog,
+  showIdleSuspendedOverlay,
+  hideIdleSuspendedOverlay,
+} from './ui/dialogs/IdleTimeoutDialogs.js';
 
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
@@ -182,6 +188,9 @@ const ctx: AppContext = {
 
   // Titlebar Clock
   titlebarClock: new TitlebarClock(),
+
+  // Idle Timeout Manager
+  idleTimeoutManager: null,
 };
 
 // ========================================
@@ -1104,6 +1113,52 @@ function initializeEventRecorder(): void {
   ctx.eventRecorder.setInitialized(true);
 }
 
+function initializeIdleTimeoutManager(): void {
+  // 開発モードでは短いタイムアウトでテスト可能
+  const DEBUG_MODE = import.meta.env.DEV && false; // 必要に応じてtrueに変更
+
+  ctx.idleTimeoutManager = new IdleTimeoutManager({
+    idleTimeoutMs: DEBUG_MODE ? 10 * 1000 : 60 * 60 * 1000, // 10秒 vs 1時間
+    warningTimeoutMs: DEBUG_MODE ? 30 * 1000 : 5 * 60 * 1000, // 30秒 vs 5分
+  });
+
+  // UIコールバック設定
+  ctx.idleTimeoutManager.setUICallbacks({
+    showWarningDialog: () =>
+      showIdleWarningDialog(DEBUG_MODE ? 30 * 1000 : 5 * 60 * 1000),
+    showSuspendedOverlay: () =>
+      showIdleSuspendedOverlay(() => {
+        ctx.idleTimeoutManager?.resume();
+      }),
+    hideSuspendedOverlay: hideIdleSuspendedOverlay,
+  });
+
+  // 記録制御コールバック設定
+  ctx.idleTimeoutManager.setCallbacks({
+    onSuspend: () => {
+      // 記録を一時停止
+      ctx.eventRecorder?.setEnabled(false);
+      // スクリーンショット撮影を停止
+      ctx.trackers.screenshot?.setCaptureEnabled(false);
+      console.log('[TypedCode] Recording suspended due to idle timeout');
+    },
+    onResume: () => {
+      // 記録を再開
+      ctx.eventRecorder?.setEnabled(true);
+      // スクリーンショット撮影を再開（タブがある場合のみ）
+      if (ctx.tabManager?.hasAnyTabs()) {
+        ctx.trackers.screenshot?.setCaptureEnabled(true);
+      }
+      console.log('[TypedCode] Recording resumed');
+    },
+    onStateChange: (state) => {
+      console.log('[TypedCode] Idle state changed:', state);
+    },
+  });
+
+  console.log('[TypedCode] IdleTimeoutManager initialized');
+}
+
 function initializeTerminal(): void {
   ctx.settingsDropdown.initialize({
     buttonId: 'settings-btn',
@@ -1646,9 +1701,18 @@ async function initializeApp(): Promise<void> {
     ctx,
     editorContainer: editorContainer!,
     recordEvent: (event) => ctx.eventRecorder?.record(event),
-    recordEventToAllTabs: (event) => ctx.eventRecorder?.recordToAllTabs(event),
+    recordEventToAllTabs: (event) => ctx.eventRecorder?.recordToAllTabs(event) ?? Promise.resolve(),
     onProofStatusUpdate: updateProofStatus,
     onStorageSave: () => ctx.tabManager?.saveToStorage(),
+    onFocusRegained: () => {
+      // フォーカス復帰時にLogViewerを更新（フォーカス喪失中に記録されたイベントを反映）
+      // focusChangeイベントの記録完了後に呼ばれるので、即座にrefresh可能
+      console.debug(`[main] onFocusRegained: logViewer=${ctx.logViewer ? 'set' : 'null'}, isVisible=${ctx.logViewer?.isVisible}`);
+      if (ctx.logViewer?.isVisible) {
+        console.debug('[main] Refreshing LogViewer');
+        ctx.logViewer.refreshLogs();
+      }
+    },
   });
 
   // Phase 6: LogViewerとEventRecorderの初期化
@@ -1678,6 +1742,9 @@ async function initializeApp(): Promise<void> {
 
   // Phase 9: タイトルバー時計の開始
   ctx.titlebarClock.start();
+
+  // Phase 10: IdleTimeoutManagerの初期化
+  initializeIdleTimeoutManager();
 
   console.log('[TypedCode] App initialized successfully');
 }
