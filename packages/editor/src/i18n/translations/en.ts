@@ -385,6 +385,19 @@ export const en: TranslationKeys = {
     importTemplate: 'Import Template',
   },
 
+  idleTimeout: {
+    warningTitle: 'Continue working?',
+    warningMessage:
+      'The window has been out of focus for a while. Recording will be paused if there is no response.',
+    countdownLabel: 'until recording pauses',
+    continueButton: 'Continue working',
+    suspendedTitle: 'Recording Paused',
+    suspendedMessage:
+      'Keystroke and screenshot recording has been paused due to extended inactivity.',
+    suspendedHint: 'Click the button below to resume recording.',
+    resumeButton: 'Resume Recording',
+  },
+
   template: {
     confirmTitle: 'Import Template',
     templateName: 'Template Name',

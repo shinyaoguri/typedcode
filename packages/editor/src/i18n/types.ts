@@ -406,6 +406,18 @@ export interface TranslationKeys {
     importTemplate: string;
   };
 
+  // Idle timeout
+  idleTimeout: {
+    warningTitle: string;
+    warningMessage: string;
+    countdownLabel: string;
+    continueButton: string;
+    suspendedTitle: string;
+    suspendedMessage: string;
+    suspendedHint: string;
+    resumeButton: string;
+  };
+
   // Template import
   template: {
     confirmTitle: string;

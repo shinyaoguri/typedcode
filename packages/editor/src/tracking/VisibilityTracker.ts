@@ -12,12 +12,12 @@ export interface VisibilityTrackerEvent {
   description: string;
 }
 
-export type VisibilityTrackerCallback = (event: VisibilityTrackerEvent) => void;
+export type VisibilityTrackerCallback = (event: VisibilityTrackerEvent) => void | Promise<void>;
 
 export class VisibilityTracker {
   private callback: VisibilityTrackerCallback | null = null;
   private boundHandleVisibilityChange: () => void;
-  private boundHandleFocus: () => void;
+  private boundHandleFocus: () => Promise<void>;
   private boundHandleBlur: () => void;
   private attached = false;
   private focusLostCallback: (() => void) | null = null;
@@ -98,19 +98,21 @@ export class VisibilityTracker {
 
   /**
    * フォーカス取得イベントハンドラ
+   * イベント記録完了を待ってからfocusRegainedCallbackを呼び出す
    */
-  private handleFocus(): void {
+  private async handleFocus(): Promise<void> {
     const focusData: FocusChangeData = {
       focused: true,
     };
 
-    this.callback?.({
+    // イベント記録の完了を待つ
+    await this.callback?.({
       type: 'focusChange',
       data: focusData,
       description: t('events.windowFocused'),
     });
 
-    // フォーカス復帰コールバックを呼び出し
+    // フォーカス復帰コールバックを呼び出し（イベント記録完了後）
     this.focusRegainedCallback?.();
 
     console.log('[TypedCode] Window focused');

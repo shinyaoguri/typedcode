@@ -385,6 +385,19 @@ export const ja: TranslationKeys = {
     importTemplate: 'テンプレート読込',
   },
 
+  idleTimeout: {
+    warningTitle: '作業を継続しますか？',
+    warningMessage:
+      '長時間フォーカスが外れています。応答がない場合、記録を一時停止します。',
+    countdownLabel: '後に記録を停止',
+    continueButton: '作業を継続',
+    suspendedTitle: '記録を一時停止中',
+    suspendedMessage:
+      '長時間の非アクティブ状態により、キーストロークとスクリーンショットの記録を一時停止しました。',
+    suspendedHint: '作業を再開するには下のボタンをクリックしてください。',
+    resumeButton: '記録を再開',
+  },
+
   template: {
     confirmTitle: 'テンプレートの読み込み',
     templateName: 'テンプレート名',

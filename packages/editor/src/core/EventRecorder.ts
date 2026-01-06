@@ -104,44 +104,54 @@ export class EventRecorder {
   }
 
   /**
-   * 全タブにイベントを記録（fire-and-forget）
+   * 全タブにイベントを記録
    * スクリーンショット関連などセッション全体に関わるイベント用
    * タブが削除されてもイベントが失われないようにする
+   * @returns 全タブへの記録が完了したらresolveするPromise
    */
-  recordToAllTabs(event: RecordEventInput): void {
+  recordToAllTabs(event: RecordEventInput): Promise<void> {
+    console.debug(`[EventRecorder] recordToAllTabs called: ${event.type}, enabled=${this.enabled}, initialized=${this.initialized}`);
+
     // 無効化されている場合はスキップ
     if (!this.enabled) {
-      return;
+      console.debug('[EventRecorder] Skipping - not enabled');
+      return Promise.resolve();
     }
 
     // 初期化完了前のイベント記録をスキップ
     if (!this.initialized) {
       console.debug('[EventRecorder] Skipping event - not initialized');
-      return;
+      return Promise.resolve();
     }
 
     const allTabs = this.tabManager.getAllTabs();
     if (allTabs.length === 0) {
-      return;
+      console.debug('[EventRecorder] Skipping - no tabs');
+      return Promise.resolve();
     }
 
     console.debug(`[EventRecorder] Recording ${event.type} to ${allTabs.length} tabs`);
 
     // 全タブに並列で記録
-    for (const tab of allTabs) {
+    const promises = allTabs.map((tab) => {
       const recordPromise = tab.typingProof.recordEvent(event);
 
       // 記録開始時にステータスを更新
       this.onStatusUpdate?.();
 
-      recordPromise
+      return recordPromise
         .then((result) => {
           // アクティブタブの場合のみログビューアに追加
           const activeTab = this.tabManager.getActiveTab();
-          if (activeTab && activeTab.id === tab.id && this.logViewer?.isVisible) {
+          const isActive = activeTab && activeTab.id === tab.id;
+          const logViewerVisible = this.logViewer?.isVisible ?? false;
+
+          console.debug(`[EventRecorder] recordToAllTabs result: isActive=${isActive}, logViewerVisible=${logViewerVisible}, eventType=${event.type}`);
+
+          if (isActive && logViewerVisible) {
             const recordedEvent = tab.typingProof.events[result.index];
             if (recordedEvent) {
-              this.logViewer.addLogEntry(recordedEvent, result.index);
+              this.logViewer!.addLogEntry(recordedEvent, result.index);
             }
           }
         })
@@ -151,10 +161,12 @@ export class EventRecorder {
         .finally(() => {
           this.onStatusUpdate?.();
         });
-    }
+    });
 
     // 最後に一度だけ保存
     this.tabManager.saveToStorage();
+
+    return Promise.all(promises).then(() => {});
   }
 
   /**
