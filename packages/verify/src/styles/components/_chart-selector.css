@@ -1,0 +1,208 @@
+/**
+ * Chart Event Selector Styles
+ */
+
+/* Container */
+.chart-event-selector-container {
+  position: relative;
+  margin-left: auto;
+  padding-right: 4px;
+}
+
+/* Button */
+.chart-event-selector-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 4px;
+  background-color: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.chart-event-selector-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chart-event-selector-btn.active {
+  background-color: var(--accent-primary);
+  color: white;
+}
+
+/* Dropdown */
+.chart-event-selector-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 100;
+  min-width: 260px;
+  max-height: 420px;
+  overflow-y: auto;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.chart-event-selector-dropdown.show {
+  display: block;
+}
+
+/* Header */
+.event-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.event-selector-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background-color: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.event-selector-reset:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Category List */
+.event-selector-list {
+  padding: 4px 0;
+}
+
+/* Category */
+.event-category {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.event-category:last-child {
+  border-bottom: none;
+}
+
+.event-category-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+  user-select: none;
+}
+
+.event-category-header:hover {
+  background-color: var(--bg-hover);
+}
+
+.event-category-checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-primary);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.event-category-icon {
+  width: 16px;
+  color: var(--text-tertiary);
+  text-align: center;
+  font-size: 12px;
+}
+
+.event-category-label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.event-category-count {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  background-color: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.event-category-expand {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.event-category.expanded .event-category-expand {
+  transform: rotate(180deg);
+}
+
+/* Event Items */
+.event-items {
+  display: none;
+  padding: 4px 0 8px 36px;
+  background-color: var(--bg-secondary);
+}
+
+.event-category.expanded .event-items {
+  display: block;
+}
+
+.event-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.event-item:hover {
+  background-color: var(--bg-hover);
+}
+
+.event-item-checkbox {
+  width: 12px;
+  height: 12px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.event-item-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Scrollbar */
+.chart-event-selector-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chart-event-selector-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chart-event-selector-dropdown::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+.chart-event-selector-dropdown::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}

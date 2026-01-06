@@ -302,15 +302,15 @@ export class TabController {
           }
         }
       }
-    } else {
-      // 既存のチャートを使用（後方互換性）
-      if (timelineChart) {
-        timelineChart.draw(events, events);
-      }
+    }
 
-      if (mouseChart) {
-        mouseChart.draw(events, events);
-      }
+    // TimelineChartとMouseChartは常に描画（別キャンバスのため）
+    if (timelineChart) {
+      timelineChart.draw(events, events);
+    }
+
+    if (mouseChart) {
+      mouseChart.draw(events, events);
     }
 
     // Update chart stats

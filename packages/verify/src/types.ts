@@ -401,6 +401,18 @@ export interface IntegratedChartCache {
   externalInputMarkers: { timestamp: number; type: InputType }[];
   /** 人間検証イベント（ファイル作成時のTurnstile認証） */
   humanAttestationEvents: { timestamp: number; eventIndex: number }[];
+  /** 認証系イベント（termsAccepted, preExportAttestation） */
+  authEvents: { timestamp: number; eventIndex: number; type: string }[];
+  /** システムイベント（editorInitialized, networkStatusChange） */
+  systemEvents: { timestamp: number; eventIndex: number; type: string }[];
+  /** 実行イベント（codeExecution, terminalInput） */
+  executionEvents: { timestamp: number; eventIndex: number; type: string }[];
+  /** キャプチャイベント（screenShareStart/Stop, templateInjection） */
+  captureEvents: { timestamp: number; eventIndex: number; type: string }[];
+  /** ウィンドウリサイズイベント */
+  windowResizeEvents: { timestamp: number; eventIndex: number }[];
+  /** コンテンツスナップショットイベント */
+  contentSnapshotEvents: { timestamp: number; eventIndex: number }[];
   maxSpeed: number;
   maxKeystrokeTime: number;
 }

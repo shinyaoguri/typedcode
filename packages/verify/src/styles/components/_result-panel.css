@@ -77,12 +77,103 @@
 .result-status-card {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   padding: 16px;
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: 8px;
   margin-bottom: 16px;
+}
+
+.result-status-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Typing pattern mini gauge in status card */
+.result-status-pattern {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 16px;
+  border-left: 1px solid var(--border-color);
+}
+
+.pattern-mini-gauge {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.pattern-mini-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.pattern-mini-svg .gauge-bg {
+  fill: none;
+  stroke: var(--bg-tertiary);
+  stroke-width: 4;
+}
+
+.pattern-mini-svg .gauge-fill {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s ease;
+}
+
+.pattern-mini-svg .gauge-fill.success {
+  stroke: var(--accent-success);
+}
+
+.pattern-mini-svg .gauge-fill.warning {
+  stroke: var(--accent-warning);
+}
+
+.pattern-mini-svg .gauge-fill.error {
+  stroke: var(--accent-danger);
+}
+
+.pattern-mini-svg .gauge-score {
+  fill: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  transform: rotate(90deg);
+  transform-origin: 25px 28px;
+}
+
+.pattern-mini-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pattern-mini-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.pattern-mini-judgment {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pattern-mini-judgment.success {
+  color: var(--accent-success);
+}
+
+.pattern-mini-judgment.warning {
+  color: var(--accent-warning);
+}
+
+.pattern-mini-judgment.error {
+  color: var(--accent-danger);
 }
 
 .result-status-icon {
