@@ -8,6 +8,7 @@ import type {
   TrustIssueComponent,
   VerificationResultData,
   ScreenshotVerificationSummary,
+  ContentMismatchInfo,
 } from '../types';
 
 export interface AttestationResult {
@@ -19,11 +20,16 @@ export interface AttestationResult {
 export class TrustCalculator {
   /**
    * 検証結果から信頼度を計算
+   * @param verificationResult - 検証結果
+   * @param attestationResult - 人間証明結果
+   * @param screenshots - スクリーンショット検証サマリー
+   * @param contentMismatches - ソースファイル不一致情報（オプション）
    */
   static calculate(
     verificationResult: VerificationResultData | null,
     attestationResult: AttestationResult | undefined,
-    screenshots: ScreenshotVerificationSummary
+    screenshots: ScreenshotVerificationSummary,
+    contentMismatches?: ContentMismatchInfo[]
   ): TrustResult {
     const issues: TrustIssue[] = [];
 
@@ -83,6 +89,17 @@ export class TrustCalculator {
           component: 'attestation',
           severity: 'warning',
           message: 'エクスポート時の人間証明が無効',
+        });
+      }
+    }
+
+    // 5. ソースファイル不一致検証
+    if (contentMismatches && contentMismatches.length > 0) {
+      for (const mismatch of contentMismatches) {
+        issues.push({
+          component: 'source',
+          severity: 'warning',
+          message: `${mismatch.filename}: ソースファイルと証明内容が異なります (+${mismatch.additions}/-${mismatch.deletions}行)`,
         });
       }
     }

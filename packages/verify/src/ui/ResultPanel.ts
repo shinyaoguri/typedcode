@@ -10,6 +10,7 @@ import type {
   TrustResult,
   TrustIssue,
   TrustLevel,
+  DiffResult,
 } from '../types';
 import type { TypingPatternAnalysis } from '@typedcode/shared';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
@@ -33,6 +34,10 @@ export interface PlaintextData {
   filename: string;
   content: string;
   language: string;
+  /** 差分計算結果 */
+  diffResult?: DiffResult;
+  /** ソースファイルと証明内容が異なるかどうか */
+  hasContentMismatch?: boolean;
 }
 
 export interface ImageData {
@@ -271,21 +276,100 @@ export class ResultPanel {
 
   /**
    * プレーンテキストファイルを表示（読み取り専用）
+   * 差分がある場合はGitHub風の差分表示を行う
    */
   renderPlaintext(data: PlaintextData): void {
     this.plaintextFilename.textContent = data.filename;
     this.plaintextLanguage.textContent = data.language;
 
+    // 既存の警告バナーをクリア
+    this.clearDiffWarningBanner();
+
     const codeEl = this.plaintextCode.querySelector('code');
     if (codeEl) {
-      // シンタックスハイライトを適用
-      const highlighted = SyntaxHighlighter.highlight(data.content, data.language);
-      codeEl.innerHTML = highlighted;
-      codeEl.className = `language-${data.language} hljs`;
+      if (data.hasContentMismatch && data.diffResult) {
+        // 差分がある場合: 警告バナー + 差分ビュー
+        this.showDiffWarningBanner(data.diffResult.stats);
+        codeEl.innerHTML = this.renderDiffView(data.diffResult);
+        codeEl.className = 'diff-view';
+      } else {
+        // 差分がない場合: 通常のシンタックスハイライト
+        const highlighted = SyntaxHighlighter.highlight(data.content, data.language);
+        codeEl.innerHTML = highlighted;
+        codeEl.className = `language-${data.language} hljs`;
+      }
     }
 
     this.show();
     this.showPlaintext();
+  }
+
+  /**
+   * 差分警告バナーを表示
+   */
+  private showDiffWarningBanner(stats: { additions: number; deletions: number }): void {
+    const banner = document.createElement('div');
+    banner.className = 'diff-warning-banner';
+    banner.id = 'diff-warning-banner';
+    banner.innerHTML = `
+      <i class="fas fa-exclamation-triangle"></i>
+      <span>ソースファイルと証明内容が一致しません</span>
+      <span class="diff-stats">
+        <span class="diff-additions">+${stats.additions}</span>
+        <span class="diff-deletions">-${stats.deletions}</span>
+      </span>
+    `;
+
+    // ヘッダーの後に挿入
+    const header = this.plaintextContent.querySelector('.plaintext-header');
+    if (header) {
+      header.after(banner);
+    }
+  }
+
+  /**
+   * 差分警告バナーをクリア
+   */
+  private clearDiffWarningBanner(): void {
+    const existing = document.getElementById('diff-warning-banner');
+    if (existing) {
+      existing.remove();
+    }
+  }
+
+  /**
+   * 差分ビューをHTML形式でレンダリング
+   */
+  private renderDiffView(diffResult: DiffResult): string {
+    const lines: string[] = [];
+
+    for (const hunk of diffResult.hunks) {
+      for (const line of hunk.lines) {
+        const lineNum = line.type === 'removed'
+          ? (line.oldLineNumber?.toString().padStart(4, ' ') || '    ')
+          : (line.newLineNumber?.toString().padStart(4, ' ') || '    ');
+
+        const prefix = line.type === 'added' ? '+'
+          : line.type === 'removed' ? '-'
+          : ' ';
+
+        const className = `diff-line diff-${line.type}`;
+        const escapedContent = this.escapeHtml(line.content);
+
+        lines.push(`<div class="${className}"><span class="diff-line-number">${lineNum}</span><span class="diff-prefix">${prefix}</span><span class="diff-content">${escapedContent}</span></div>`);
+      }
+    }
+
+    return lines.join('');
+  }
+
+  /**
+   * HTMLエスケープ
+   */
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
   /**
@@ -845,6 +929,7 @@ export class ResultPanel {
       posw: 'PoSW',
       attestation: '人間証明',
       screenshots: 'スクリーンショット',
+      source: 'ソースファイル',
     };
     return labels[component] || component;
   }

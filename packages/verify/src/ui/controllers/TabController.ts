@@ -121,6 +121,17 @@ export class TabController {
     // 同じタブで、強制更新でなければスキップ（チカチカ防止）
     const isSameTab = this.deps.uiState.isDisplayed(id);
 
+    console.log('[DEBUG] showTabContent:', {
+      id,
+      forceRefresh,
+      isSameTab,
+      status: tabState.status,
+      hasVerificationResult: !!tabState.verificationResult,
+      hasProofData: !!tabState.proofData,
+      isPlaintext: tabState.isPlaintext,
+      isImage: tabState.isImage,
+    });
+
     // プレーンテキストファイルの場合
     if (tabState.isPlaintext) {
       if (!isSameTab || forceRefresh) {
@@ -129,6 +140,8 @@ export class TabController {
           filename: tabState.filename,
           content: tabState.plaintextContent || '',
           language: tabState.language,
+          diffResult: tabState.diffResult,
+          hasContentMismatch: tabState.hasContentMismatch,
         });
       }
       return;
@@ -184,6 +197,7 @@ export class TabController {
     } else if (phase === 'chain' || phase === 'full' || phase === 'fallback') {
       // 全件検証（チェックポイントなしでフォールバック）
       this.deps.resultPanel.updateStepStatus('metadata', 'success');
+      this.deps.resultPanel.updateStepProgress('metadata', 100); // メタデータ完了
       // フォールバック時のみchainステップを表示
       this.deps.resultPanel.showFallbackStep();
       this.deps.resultPanel.updateStepStatus('chain', 'running', 'フォールバック');
@@ -196,6 +210,7 @@ export class TabController {
     } else if (phase === 'segment' || phase === 'checkpoint') {
       // サンプリング検証（チェックポイントあり）
       this.deps.resultPanel.updateStepStatus('metadata', 'success');
+      this.deps.resultPanel.updateStepProgress('metadata', 100); // メタデータ完了
       // チェックポイントありの場合、chainステップは非表示のまま
       this.deps.resultPanel.updateStepStatus('sampling', 'running');
 
@@ -207,15 +222,18 @@ export class TabController {
     } else if (phase === 'complete') {
       // 全完了
       this.deps.resultPanel.updateStepStatus('metadata', 'success');
+      this.deps.resultPanel.updateStepProgress('metadata', 100); // メタデータ完了
       // チェーンとサンプリングの最終状態を確認して更新
       const chainEl = document.getElementById('vp-step-chain');
       const samplingEl = document.getElementById('vp-step-sampling');
       // chainが表示されている（フォールバック）場合のみ成功に
       if (chainEl && chainEl.style.display !== 'none') {
         this.deps.resultPanel.updateStepStatus('chain', 'success');
+        this.deps.resultPanel.updateStepProgress('chain', 100);
       }
       if (samplingEl?.dataset.status !== 'skipped') {
         this.deps.resultPanel.updateStepStatus('sampling', 'success');
+        this.deps.resultPanel.updateStepProgress('sampling', 100);
       }
       this.deps.resultPanel.finishProgress();
     }
@@ -235,16 +253,23 @@ export class TabController {
         tampered: s.tampered,
       })),
       startTimestamp: tabState.startTimestamp,
+      associatedSourceMismatch: tabState.associatedSourceMismatch,
     });
 
     // スクリーンショット検証サマリーを計算
     const screenshotSummary = this.calculateScreenshotSummary(tabState.screenshots);
 
+    // ソースファイル不一致情報を準備（proofファイルに関連付けられたソースファイルの不一致）
+    const contentMismatches = tabState.associatedSourceMismatch
+      ? [tabState.associatedSourceMismatch]
+      : undefined;
+
     // 信頼度を計算
     const trustResult = TrustCalculator.calculate(
       tabState.verificationResult,
       tabState.humanAttestationResult,
-      screenshotSummary
+      screenshotSummary,
+      contentMismatches
     );
 
     console.log('[TabController] Trust result:', trustResult);

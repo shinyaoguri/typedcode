@@ -66,18 +66,26 @@ export class VerificationController {
   handleComplete(id: string, result: VerificationResult): void {
     console.log('[DEBUG] handleVerificationComplete called', { id, chainValid: result.chainValid });
 
-    const status: FileStatus = result.chainValid
-      ? result.isPureTyping
-        ? 'success'
-        : 'warning'
-      : 'error';
+    // 現在のタブ状態を取得（ソースファイル不一致情報を確認するため）
+    const currentTabState = this.deps.tabManager.getTab(id);
+    const hasSourceMismatch = !!currentTabState?.associatedSourceMismatch;
+
+    // ステータス判定: エラー > 警告（外部入力/ソース不一致） > 成功
+    let status: FileStatus;
+    if (!result.chainValid) {
+      status = 'error';
+    } else if (!result.isPureTyping || hasSourceMismatch) {
+      status = 'warning';
+    } else {
+      status = 'success';
+    }
 
     this.deps.uiState.incrementCompleted();
     const state = this.deps.uiState.getState();
     console.log('[DEBUG] completedCount:', state.completedCount, 'totalCount:', state.totalCount);
 
     this.deps.tabManager.updateTab(id, { verificationResult: result, status });
-    console.log('[DEBUG] tabManager.updateTab done, new status:', status);
+    console.log('[DEBUG] tabManager.updateTab done, new status:', status, 'hasSourceMismatch:', hasSourceMismatch);
 
     this.deps.sidebar.updateFileStatus(id, status);
 
