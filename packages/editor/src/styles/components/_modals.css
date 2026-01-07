@@ -1271,3 +1271,71 @@
   background: var(--accent-secondary);
   transform: translateY(-1px);
 }
+
+/* ================================================
+   Unsupported Browser Overlay
+   ================================================ */
+
+#unsupported-browser-overlay .modal-dialog {
+  border-top: 3px solid #ff9800;
+  max-width: 480px;
+}
+
+#unsupported-browser-overlay .modal-header {
+  background: rgba(255, 152, 0, 0.08);
+}
+
+#unsupported-browser-overlay .modal-header i {
+  color: #ff9800;
+  font-size: 28px;
+}
+
+#unsupported-browser-overlay .modal-header h3 {
+  color: var(--text-primary);
+  font-size: 18px;
+}
+
+#unsupported-browser-overlay .modal-body {
+  padding: 24px;
+}
+
+#unsupported-browser-overlay .modal-body p {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.7;
+  margin-bottom: 16px;
+}
+
+#unsupported-browser-overlay .modal-hint {
+  color: var(--text-secondary) !important;
+  font-size: 13px !important;
+  font-style: normal;
+  font-weight: 500;
+  margin-top: 20px !important;
+  margin-bottom: 12px !important;
+}
+
+#unsupported-browser-overlay .modal-list {
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+#unsupported-browser-overlay .modal-list li {
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+#unsupported-browser-overlay .modal-list li i {
+  font-size: 18px;
+  width: 24px;
+}
+
+#unsupported-browser-overlay .modal-list li i.fa-chrome {
+  color: #4285f4;
+}
+
+#unsupported-browser-overlay .modal-list li i.fa-edge {
+  color: #0078d4;
+}
