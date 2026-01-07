@@ -377,6 +377,13 @@ export const en: TranslationKeys = {
     closeThisTab: 'Close this tab',
   },
 
+  unsupportedBrowser: {
+    title: 'Unsupported Browser',
+    description: 'TypedCode uses the Screen Capture API and only works in Chrome or Edge browsers.',
+    safariNote: 'Safari does not fully support the Screen Capture API, so it cannot be used.',
+    hint: 'Please access using one of the following browsers:',
+  },
+
   welcome: {
     title: 'TypedCode',
     tagline: 'Typing Proof Editor',

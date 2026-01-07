@@ -17,4 +17,5 @@ export {
   SingleInstanceGuard,
   showDuplicateInstanceOverlay,
   hideDuplicateInstanceOverlay,
+  showUnsupportedBrowserOverlay,
 } from './SingleInstanceGuard.js';

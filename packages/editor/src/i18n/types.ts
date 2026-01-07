@@ -397,6 +397,14 @@ export interface TranslationKeys {
     closeThisTab: string;
   };
 
+  // Unsupported browser detection
+  unsupportedBrowser: {
+    title: string;
+    description: string;
+    safariNote: string;
+    hint: string;
+  };
+
   // Welcome screen
   welcome: {
     title: string;

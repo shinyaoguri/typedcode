@@ -377,6 +377,13 @@ export const ja: TranslationKeys = {
     closeThisTab: 'このタブを閉じる',
   },
 
+  unsupportedBrowser: {
+    title: 'サポートされていないブラウザです',
+    description: 'TypedCode は画面キャプチャ機能（Screen Capture API）を使用するため、Chrome または Edge ブラウザでのみ動作します。',
+    safariNote: 'Safari では Screen Capture API が十分にサポートされていないため、ご利用いただけません。',
+    hint: '以下のブラウザでアクセスしてください：',
+  },
+
   welcome: {
     title: 'TypedCode',
     tagline: 'タイピング証明エディタ',

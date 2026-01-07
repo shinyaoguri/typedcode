@@ -57,6 +57,7 @@ import {
 import {
   SingleInstanceGuard,
   showDuplicateInstanceOverlay,
+  showUnsupportedBrowserOverlay,
 } from './services/SingleInstanceGuard.js';
 import { CTerminal } from './terminal/CTerminal.js';
 import type { ParsedError } from './executors/c/CExecutor.js';
@@ -1592,6 +1593,18 @@ async function initializeApp(): Promise<void> {
       window.location.href = 'about:blank';
     });
 
+    return; // 初期化を中止
+  }
+
+  // Phase 0.5: 未対応ブラウザの検出（Safari等）
+  // Safari/WebKitベースブラウザはScreen Capture APIのサポートが不十分なためブロック
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const isWebKit = /AppleWebKit/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+
+  if (isSafari || isWebKit) {
+    console.log('[TypedCode] Unsupported browser detected (Safari/WebKit), blocking');
+    initOverlay?.classList.add('hidden');
+    showUnsupportedBrowserOverlay();
     return; // 初期化を中止
   }
 
