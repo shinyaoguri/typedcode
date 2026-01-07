@@ -135,6 +135,16 @@ export interface VerifyTabState {
   startTimestamp?: number;
   // 信頼度計算結果
   trustResult?: TrustResult;
+  // 差分比較用フィールド（plaintextファイル専用）
+  /** 関連するproofファイルの最終コンテンツ */
+  associatedProofContent?: string;
+  /** 差分計算結果 */
+  diffResult?: DiffResult;
+  /** ソースファイルと証明内容が異なるかどうか */
+  hasContentMismatch?: boolean;
+  // proofファイルに関連付けられたソースファイルの不一致情報
+  /** 関連するソースファイルの不一致情報（proofファイル専用） */
+  associatedSourceMismatch?: ContentMismatchInfo;
 }
 
 /** キューアイテム */
@@ -425,7 +435,7 @@ export interface IntegratedChartCache {
 export type TrustLevel = 'verified' | 'partial' | 'failed';
 
 /** 信頼度に影響する問題のコンポーネント */
-export type TrustIssueComponent = 'metadata' | 'chain' | 'posw' | 'attestation' | 'screenshots';
+export type TrustIssueComponent = 'metadata' | 'chain' | 'posw' | 'attestation' | 'screenshots' | 'source';
 
 /** 信頼度に影響する問題 */
 export interface TrustIssue {
@@ -447,4 +457,46 @@ export interface ScreenshotVerificationSummary {
   verified: number;
   missing: number;
   tampered: number;
+}
+
+// ============================================================================
+// 差分比較用の型定義
+// ============================================================================
+
+/** 差分結果 */
+export interface DiffResult {
+  /** ファイルが同一かどうか */
+  isIdentical: boolean;
+  /** 差分ハンク */
+  hunks: DiffHunk[];
+  /** 統計情報 */
+  stats: {
+    additions: number;
+    deletions: number;
+    unchanged: number;
+  };
+}
+
+/** 差分ハンク */
+export interface DiffHunk {
+  lines: DiffLine[];
+}
+
+/** 差分行 */
+export interface DiffLine {
+  /** 行の種類 */
+  type: 'added' | 'removed' | 'unchanged';
+  /** 行の内容 */
+  content: string;
+  /** 元ファイルの行番号（removed/unchanged） */
+  oldLineNumber?: number;
+  /** 新ファイルの行番号（added/unchanged） */
+  newLineNumber?: number;
+}
+
+/** ソースファイル不一致情報 */
+export interface ContentMismatchInfo {
+  filename: string;
+  additions: number;
+  deletions: number;
 }

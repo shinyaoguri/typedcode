@@ -633,3 +633,106 @@
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
+
+/* ============================================================================
+ * 差分表示 (Diff View)
+ * ============================================================================ */
+
+/* 警告バナー */
+.diff-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background-color: rgba(255, 193, 7, 0.15);
+  border-bottom: 1px solid rgba(255, 193, 7, 0.3);
+  color: var(--accent-warning);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.diff-warning-banner i {
+  font-size: 14px;
+}
+
+.diff-warning-banner .diff-stats {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.diff-warning-banner .diff-additions {
+  color: var(--accent-success);
+}
+
+.diff-warning-banner .diff-deletions {
+  color: var(--accent-danger);
+}
+
+/* 差分ビューコンテナ */
+.diff-view {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.diff-line {
+  display: flex;
+  min-height: 1.5em;
+  white-space: pre;
+}
+
+.diff-line.diff-added {
+  background-color: rgba(76, 175, 80, 0.15);
+}
+
+.diff-line.diff-removed {
+  background-color: rgba(244, 67, 54, 0.15);
+}
+
+.diff-line.diff-unchanged {
+  background-color: transparent;
+}
+
+.diff-line-number {
+  display: inline-block;
+  width: 4em;
+  padding-right: 1em;
+  color: var(--text-tertiary);
+  text-align: right;
+  user-select: none;
+  border-right: 1px solid var(--border-color);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.diff-prefix {
+  display: inline-block;
+  width: 2em;
+  padding: 0 0.5em;
+  text-align: center;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.diff-added .diff-prefix {
+  color: var(--accent-success);
+  font-weight: 600;
+}
+
+.diff-removed .diff-prefix {
+  color: var(--accent-danger);
+  font-weight: 600;
+}
+
+.diff-unchanged .diff-prefix {
+  color: var(--text-tertiary);
+}
+
+.diff-content {
+  flex: 1;
+  padding-left: 0.5em;
+}

@@ -256,6 +256,19 @@ export class FolderController {
       // manifest.json やその他のテキストファイルは通常処理
     }
 
+    // ZIPファイルを階層的に処理
+    if (filename.endsWith('.zip')) {
+      await this.processZipWithinFolder(
+        fileEntry,
+        parentPath,
+        folderId,
+        folderMap,
+        folderScreenshots,
+        folderStartTimestamp
+      );
+      return;
+    }
+
     try {
       const result = await this.deps.fileProcessor.processFromHandle(
         fileEntry.handle,
@@ -295,6 +308,13 @@ export class FolderController {
     const parentPath = file.path.split('/').slice(0, -1).join('/');
     const folderId = this.deps.sidebar.getFolderIdByPath(parentPath) ?? this.watchedRootFolderId ?? undefined;
 
+    // ZIPファイルを階層的に処理
+    if (file.name.endsWith('.zip')) {
+      const folderMap = this.buildFolderMapFromSidebar();
+      await this.processZipWithinFolder(file, parentPath, folderId, folderMap);
+      return;
+    }
+
     try {
       const result = await this.deps.fileProcessor.processFromHandle(file.handle, file.path);
       if (!result.success) return;
@@ -302,6 +322,8 @@ export class FolderController {
       for (const fileData of result.files) {
         if (fileData.type === 'proof') {
           this.deps.addFileToVerification(fileData.filename, fileData.rawData, folderId, fileData.relativePath);
+        } else if (fileData.type === 'image') {
+          this.deps.addImageFile(fileData, folderId);
         } else {
           this.deps.addPlaintextFile(fileData, folderId);
         }
@@ -428,6 +450,143 @@ export class FolderController {
       </div>
     `;
     document.body.appendChild(dialog);
+  }
+
+  /**
+   * フォルダ内のZIPファイルを階層的に処理
+   */
+  private async processZipWithinFolder(
+    fileEntry: FSAccessFileEntry,
+    parentPath: string,
+    parentFolderId: string | undefined,
+    folderMap: Map<string, string>,
+    folderScreenshots?: VerifyScreenshot[],
+    folderStartTimestamp?: number
+  ): Promise<void> {
+    const file = await fileEntry.handle.getFile();
+    const result = await this.deps.fileProcessor.process(file);
+
+    if (!result.success) {
+      console.error('[FolderController] Failed to process ZIP:', result.error);
+      return;
+    }
+
+    // ZIPファイル名から拡張子を除去してフォルダ名を作成
+    const zipFolderName = fileEntry.name.replace(/\.zip$/i, '');
+
+    // 階層内でのZIPフォルダのフルパスを計算
+    const zipFolderPath = parentPath ? `${parentPath}/${zipFolderName}` : zipFolderName;
+
+    // ZIPフォルダを親フォルダの子として作成
+    const zipFolderId = this.deps.generateId();
+    const zipFolder: HierarchicalFolder = {
+      id: zipFolderId,
+      name: zipFolderName,
+      path: zipFolderPath,
+      parentId: parentFolderId ?? null,
+      expanded: true,
+      depth: zipFolderPath.split('/').length,
+      sourceType: 'zip',
+    };
+
+    this.deps.sidebar.addHierarchicalFolder(zipFolder);
+    folderMap.set(zipFolderPath, zipFolderId);
+
+    // ZIP内のフォルダ構造を作成
+    if (result.folderPaths) {
+      const sortedPaths = result.folderPaths.sort((a, b) => a.localeCompare(b));
+
+      for (const internalPath of sortedPaths) {
+        const fullPath = `${zipFolderPath}/${internalPath}`;
+        const parts = fullPath.split('/');
+        const folderName = parts[parts.length - 1];
+        const folderParentPath = parts.slice(0, -1).join('/');
+        const folderParentId = folderMap.get(folderParentPath) ?? zipFolderId;
+        const depth = parts.length;
+
+        // screenshotsフォルダはデフォルトで閉じた状態
+        const isScreenshotsFolder = folderName === 'screenshots' || internalPath.startsWith('screenshots/');
+        const expanded = isScreenshotsFolder ? false : depth <= 2;
+
+        const subFolder: HierarchicalFolder = {
+          id: this.deps.generateId(),
+          name: folderName,
+          path: fullPath,
+          parentId: folderParentId,
+          expanded,
+          depth,
+          sourceType: 'zip',
+        };
+
+        this.deps.sidebar.addHierarchicalFolder(subFolder);
+        folderMap.set(fullPath, subFolder.id);
+      }
+    }
+
+    // ZIPからスクリーンショットを読み込む
+    let zipScreenshots = folderScreenshots;
+    let zipStartTimestamp = folderStartTimestamp;
+
+    if (result.screenshots && result.screenshots.length > 0) {
+      zipScreenshots = result.screenshots;
+      zipStartTimestamp = result.startTimestamp;
+
+      if (result.screenshotService) {
+        this.deps.onScreenshotServiceUpdate?.(result.screenshotService);
+      }
+    }
+
+    // ZIPからファイルを処理
+    for (const fileData of result.files) {
+      // 階層内でのフルパスを計算
+      const fullRelativePath = fileData.relativePath
+        ? `${zipFolderPath}/${fileData.relativePath}`
+        : `${zipFolderPath}/${fileData.filename}`;
+
+      // 親フォルダIDを検索
+      const fileParts = fullRelativePath.split('/');
+      const fileParentPath = fileParts.slice(0, -1).join('/');
+      const fileFolderId = folderMap.get(fileParentPath) ?? zipFolderId;
+
+      if (fileData.type === 'proof') {
+        this.deps.addFileToVerification(
+          fileData.filename,
+          fileData.rawData,
+          fileFolderId,
+          fullRelativePath,
+          zipScreenshots,
+          zipStartTimestamp
+        );
+      } else if (fileData.type === 'image') {
+        this.deps.addImageFile({ ...fileData, relativePath: fullRelativePath }, fileFolderId);
+      } else {
+        this.deps.addPlaintextFile({ ...fileData, relativePath: fullRelativePath }, fileFolderId);
+      }
+    }
+
+    this.deps.statusBar.setMessage(`${t('messages.folderOpened')}: ${zipFolderName}`);
+  }
+
+  /**
+   * 既存のサイドバー状態からfolderMapを構築
+   */
+  private buildFolderMapFromSidebar(): Map<string, string> {
+    const folderMap = new Map<string, string>();
+
+    // ルートフォルダ
+    if (this.watchedRootFolderId) {
+      folderMap.set('', this.watchedRootFolderId);
+    }
+
+    // サイドバーの全フォルダからpath -> idマッピングを構築
+    const folders = this.deps.sidebar.getAllFolders();
+    for (const folder of folders) {
+      if (folder.path !== undefined) {
+        folderMap.set(folder.path, folder.id);
+      }
+    }
+
+    return folderMap;
   }
 
   /**

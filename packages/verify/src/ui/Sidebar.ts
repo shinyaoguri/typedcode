@@ -23,6 +23,7 @@ export interface SidebarFolder {
   parentId?: string; // 親フォルダID（階層対応）
   path?: string; // フォルダパス
   depth?: number; // ネストの深さ
+  sourceType?: 'fsaccess' | 'zip' | 'file'; // フォルダのソースタイプ
 }
 
 export class Sidebar {
@@ -175,6 +176,7 @@ export class Sidebar {
       parentId: folder.parentId ?? undefined,
       path: folder.path,
       depth: folder.depth,
+      sourceType: folder.sourceType,
     };
     this.folders.set(folder.id, sidebarFolder);
     if (folder.path) {
@@ -193,6 +195,7 @@ export class Sidebar {
         parentId: folder.parentId ?? undefined,
         path: folder.path,
         depth: folder.depth,
+        sourceType: folder.sourceType,
       };
       this.folders.set(folder.id, sidebarFolder);
       if (folder.path) {
@@ -374,6 +377,11 @@ export class Sidebar {
 
   getFolderCount(): number {
     return this.folders.size;
+  }
+
+  // 全フォルダを取得（folderMap構築用）
+  getAllFolders(): SidebarFolder[] {
+    return Array.from(this.folders.values());
   }
 
   // フォルダ内のファイルIDを取得

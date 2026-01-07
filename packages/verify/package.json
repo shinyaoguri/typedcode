@@ -12,10 +12,12 @@
     "chart.js": "^4.4.1",
     "chartjs-plugin-annotation": "^3.0.1",
     "chartjs-plugin-zoom": "^2.0.1",
+    "diff": "^8.0.2",
     "highlight.js": "^11.11.1",
     "jszip": "^3.10.1"
   },
   "devDependencies": {
+    "@types/diff": "^7.0.2",
     "@types/node": "^25.0.3",
     "typescript": "^5.9.3",
     "vite": "^7.3.0"
