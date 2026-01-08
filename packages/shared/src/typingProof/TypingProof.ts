@@ -321,7 +321,15 @@ export class TypingProof {
     event: RecordEventInput,
     pendingEvent: PendingEventData
   ): Promise<RecordEventResult> {
-    const sequence = this.events.length; // 実際のsequenceはevents配列の長さ
+    // シーケンス番号は events 配列の長さを使用
+    // リロード後の復旧時にシーケンス番号の不整合が発生する可能性があるため、
+    // pendingEvent.sequence と this.events.length が一致しない場合は警告を出してevents.lengthを使用
+    const expectedSequence = this.events.length;
+    if (pendingEvent.sequence !== expectedSequence) {
+      console.warn(`[TypingProof] Sequence mismatch: pending.sequence=${pendingEvent.sequence}, expected=${expectedSequence}. Using expected value.`);
+      pendingEvent.sequence = expectedSequence; // pendingEvent も更新
+    }
+    const sequence = expectedSequence;
 
     // タイムスタンプの単調増加を保証
     // 最後のイベントのタイムスタンプより大きくなるように調整
@@ -337,6 +345,16 @@ export class TypingProof {
       pendingEvent.timestamp = adjustedTimestamp; // pendingEvent も更新
     }
 
+    // previousHashの整合性チェック
+    // Pending Eventが保存された時点のpreviousHashと現在のcurrentHashが一致しない場合、
+    // 現在のcurrentHashを使用する（リロード後の再処理時に発生する可能性がある）
+    const previousHashForEvent = this.currentHash;
+    if (pendingEvent.previousHash !== null && pendingEvent.previousHash !== previousHashForEvent) {
+      console.log(`[TypingProof] previousHash mismatch detected, using current hash. pending: ${pendingEvent.previousHash?.substring(0, 16)}..., current: ${previousHashForEvent?.substring(0, 16)}...`);
+      // pendingEventのpreviousHashも更新（一貫性のため）
+      pendingEvent.previousHash = previousHashForEvent;
+    }
+
     // PoSW計算前のイベントデータ（poswフィールドなし）
     const eventDataWithoutPoSW = {
       sequence,
@@ -347,7 +365,7 @@ export class TypingProof {
       rangeOffset: event.rangeOffset ?? null,
       rangeLength: event.rangeLength ?? null,
       range: event.range ?? null,
-      previousHash: this.currentHash
+      previousHash: previousHashForEvent
     };
 
     // PoSW計算（前のハッシュに依存 → 逐次計算を強制）
@@ -661,7 +679,17 @@ export class TypingProof {
       this.startTime = state.startTime;
     }
 
-    this.pendingEvents = state.pendingEvents ?? [];
+    // Pending Eventsを復元
+    // ただし、既にevents配列に含まれているシーケンス番号のイベントは除外
+    // （リロード時のタイミングによっては、同じイベントがeventsとpendingEventsの両方に存在する可能性がある）
+    const pendingEvents = state.pendingEvents ?? [];
+    const lastEventSequence = this.events.length > 0 ? this.events[this.events.length - 1]!.sequence : -1;
+    this.pendingEvents = pendingEvents.filter(pe => pe.sequence > lastEventSequence);
+
+    if (pendingEvents.length !== this.pendingEvents.length) {
+      console.log(`[TypingProof] Filtered ${pendingEvents.length - this.pendingEvents.length} duplicate pending events (already in events array)`);
+    }
+
     // チェックポイントを復元（サンプリング検証用）
     if (state.checkpoints && state.checkpoints.length > 0) {
       this.checkpointManager.setCheckpoints([...state.checkpoints]);
