@@ -424,4 +424,17 @@ export const en: TranslationKeys = {
     dropTitle: 'Drop Template',
     dropHint: 'Drop a YAML file here to import',
   },
+
+  sessionRecovery: {
+    title: 'Previous Session Found',
+    message: 'Your previous session data has been saved. Would you like to resume?',
+    lastActive: 'Last Active',
+    tabs: 'Files',
+    eventCount: '${count} events',
+    warning: 'Selecting "New Session" will delete all data from your previous session.',
+    resume: 'Resume',
+    startFresh: 'New Session',
+    resuming: 'Resuming session...',
+    clearing: 'Clearing data...',
+  },
 };

@@ -29,7 +29,8 @@ export type EventType =
   | 'screenshotCapture' // スクリーンショット撮影
   | 'screenShareStart' // 画面共有開始
   | 'screenShareStop' // 画面共有停止
-  | 'templateInjection'; // テンプレートコンテンツ注入
+  | 'templateInjection' // テンプレートコンテンツ注入
+  | 'sessionResumed'; // セッション再開（リロードまたはIndexedDBからの復旧）
 
 /** 入力タイプ */
 export type InputType =
@@ -122,6 +123,13 @@ export interface WindowSizeData {
 /** ネットワーク状態データ */
 export interface NetworkStatusData {
   online: boolean;       // navigator.onLine
+}
+
+/** セッション再開データ */
+export interface SessionResumedData {
+  timestamp: number;           // 再開時のタイムスタンプ
+  previousEventCount: number;  // 再開前のイベント数
+  recoveredFromIndexedDB?: boolean;  // IndexedDBからの復旧かどうか
 }
 
 /** キーストロークダイナミクスデータ */

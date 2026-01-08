@@ -1,12 +1,16 @@
 /**
  * EventRecorder - 中央イベント記録システム
  * 各種トラッカーからのイベントを受け取り、TypingProofに記録
+ *
+ * イベントはIndexedDBにインクリメンタルに保存され、
+ * ブラウザタブを閉じた後も復旧可能
  */
 
 import type { RecordEventInput } from '@typedcode/shared';
 import type { TabManager } from '../ui/tabs/TabManager.js';
 import type { LogViewer } from '../ui/components/LogViewer.js';
 import { t } from '../i18n/index.js';
+import { getSessionStorageService } from '../services/SessionStorageService.js';
 
 export interface EventRecorderOptions {
   tabManager: TabManager;
@@ -79,15 +83,28 @@ export class EventRecorder {
     this.onStatusUpdate?.();
 
     recordPromise
-      .then((result) => {
+      .then(async (result) => {
+        const recordedEvent = activeProof.events[result.index];
+
         // ログビューアに追加（非同期）
-        if (this.logViewer?.isVisible) {
-          const recordedEvent = activeProof.events[result.index];
-          if (recordedEvent) {
-            this.logViewer.addLogEntry(recordedEvent, result.index);
+        if (this.logViewer?.isVisible && recordedEvent) {
+          this.logViewer.addLogEntry(recordedEvent, result.index);
+        }
+
+        // IndexedDBにイベントをインクリメンタルに保存
+        const activeTab = this.tabManager.getActiveTab();
+        if (recordedEvent && activeTab) {
+          try {
+            const sessionService = getSessionStorageService();
+            if (sessionService.isInitialized() && sessionService.getCurrentSessionId()) {
+              await sessionService.appendEvent(activeTab.id, recordedEvent);
+            }
+          } catch (e) {
+            console.error('[EventRecorder] Failed to save event to IndexedDB:', e);
           }
         }
-        // タブデータを保存
+
+        // タブデータを保存（sessionStorage用）
         this.tabManager.saveToStorage();
       })
       .catch((err) => {
@@ -163,10 +180,10 @@ export class EventRecorder {
         });
     });
 
-    // 最後に一度だけ保存
-    this.tabManager.saveToStorage();
-
-    return Promise.all(promises).then(() => {});
+    // 全タブへの記録が完了してから保存（PoSW計算完了後）
+    return Promise.all(promises).then(() => {
+      this.tabManager.saveToStorage();
+    });
   }
 
   /**

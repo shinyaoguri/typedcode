@@ -1339,3 +1339,144 @@
 #unsupported-browser-overlay .modal-list li i.fa-edge {
   color: #0078d4;
 }
+
+/* ================================================
+   Session Recovery Dialog
+   ================================================ */
+
+.session-recovery-dialog {
+  max-width: 480px;
+}
+
+.session-recovery-message {
+  color: var(--text-primary) !important;
+  font-size: 14px !important;
+  margin-bottom: 20px !important;
+}
+
+.session-recovery-details {
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.session-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.session-info-label {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.session-info-value {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.session-tabs-section {
+  margin-bottom: 12px;
+}
+
+.session-tabs-section .session-info-label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.session-tab-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 150px;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.session-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.session-tab-item:last-child {
+  border-bottom: none;
+}
+
+.session-tab-item i {
+  color: var(--accent-primary);
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.session-tab-name {
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.session-tab-events {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.session-tab-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.session-total-events {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.session-total-events i {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.session-recovery-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 152, 0, 0.1);
+  border-radius: 6px;
+  border-left: 3px solid #ff9800;
+}
+
+.session-recovery-warning i {
+  color: #ff9800;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.session-recovery-warning span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}

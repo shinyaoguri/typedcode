@@ -424,4 +424,17 @@ export const ja: TranslationKeys = {
     dropTitle: 'テンプレートをドロップ',
     dropHint: 'YAMLファイルをここにドロップして読み込み',
   },
+
+  sessionRecovery: {
+    title: '前回のセッションが見つかりました',
+    message: '前回のセッションのデータが保存されています。続きから再開しますか？',
+    lastActive: '最終アクティブ',
+    tabs: 'ファイル',
+    eventCount: '${count}件のイベント',
+    warning: '「新規セッション」を選択すると、前回のセッションのすべてのデータが削除されます。',
+    resume: '再開する',
+    startFresh: '新規セッション',
+    resuming: 'セッションを再開中...',
+    clearing: 'データをクリア中...',
+  },
 };

@@ -359,6 +359,72 @@
                         <span class="result-row-label" data-i18n="result.screenshotVerification">スクリーンショット</span>
                         <span class="result-row-value" id="screenshot-verification">-</span>
                       </div>
+                      <!-- Chain Error Details (shown only when verification fails) -->
+                      <div class="chain-error-details" id="chain-error-details" style="display: none;">
+                        <div class="chain-error-header">
+                          <i class="fas fa-exclamation-triangle"></i>
+                          <span data-i18n="chain.errorDetails.header">エラー詳細</span>
+                        </div>
+                        <div class="chain-error-content">
+                          <div class="chain-error-row">
+                            <span class="chain-error-label" data-i18n="chain.errorDetails.position">エラー位置</span>
+                            <span class="chain-error-value" id="chain-error-position">-</span>
+                          </div>
+                          <div class="chain-error-row">
+                            <span class="chain-error-label" data-i18n="chain.errorDetails.type">エラー種別</span>
+                            <span class="chain-error-value" id="chain-error-type">-</span>
+                          </div>
+                          <div class="chain-error-row chain-error-message-row">
+                            <span class="chain-error-label" data-i18n="chain.errorDetails.message">メッセージ</span>
+                            <span class="chain-error-value chain-error-message" id="chain-error-message">-</span>
+                          </div>
+                          <div class="chain-error-row" id="chain-error-expected-row" style="display: none;">
+                            <span class="chain-error-label" data-i18n="chain.errorDetails.expectedHash">期待値</span>
+                            <span class="chain-error-value chain-error-hash" id="chain-error-expected">-</span>
+                          </div>
+                          <div class="chain-error-row" id="chain-error-computed-row" style="display: none;">
+                            <span class="chain-error-label" data-i18n="chain.errorDetails.computedHash">計算値</span>
+                            <span class="chain-error-value chain-error-hash" id="chain-error-computed">-</span>
+                          </div>
+                          <div class="chain-error-row" id="chain-error-timestamp-row" style="display: none;">
+                            <span class="chain-error-label" data-i18n="chain.errorDetails.timestampDetail">タイムスタンプ</span>
+                            <span class="chain-error-value" id="chain-error-timestamp">-</span>
+                          </div>
+                        </div>
+                      </div>
+                      <!-- Sampling Segment Visualization -->
+                      <div class="chain-segment-viz" id="chain-segment-viz" style="display: none;">
+                        <div class="chain-segment-header">
+                          <i class="fas fa-chart-bar"></i>
+                          <span data-i18n="chain.segmentViz.header">検証区間</span>
+                        </div>
+                        <div class="chain-segment-bar-container">
+                          <div class="chain-segment-bar" id="chain-segment-bar">
+                            <!-- Segments will be rendered dynamically -->
+                          </div>
+                          <div class="chain-segment-labels">
+                            <span class="chain-segment-label-start">0</span>
+                            <span class="chain-segment-label-end" id="chain-segment-total">-</span>
+                          </div>
+                        </div>
+                        <div class="chain-segment-legend">
+                          <div class="chain-segment-legend-item">
+                            <span class="chain-segment-legend-color verified"></span>
+                            <span data-i18n="chain.segmentViz.verified">検証済み</span>
+                          </div>
+                          <div class="chain-segment-legend-item">
+                            <span class="chain-segment-legend-color unverified"></span>
+                            <span data-i18n="chain.segmentViz.unverified">未検証</span>
+                          </div>
+                          <div class="chain-segment-legend-item">
+                            <span class="chain-segment-legend-color error"></span>
+                            <span data-i18n="chain.segmentViz.error">エラー</span>
+                          </div>
+                        </div>
+                        <div class="chain-segment-info" id="chain-segment-info">
+                          <!-- Segment info will be rendered dynamically -->
+                        </div>
+                      </div>
                     </div>
                   </div>
 

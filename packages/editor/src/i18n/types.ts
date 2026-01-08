@@ -446,4 +446,18 @@ export interface TranslationKeys {
     dropTitle: string;
     dropHint: string;
   };
+
+  // Session recovery dialog
+  sessionRecovery: {
+    title: string;
+    message: string;
+    lastActive: string;
+    tabs: string;
+    eventCount: string;
+    warning: string;
+    resume: string;
+    startFresh: string;
+    resuming: string;
+    clearing: string;
+  };
 }

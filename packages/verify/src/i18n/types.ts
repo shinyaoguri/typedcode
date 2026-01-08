@@ -98,6 +98,34 @@ export interface VerifyTranslationKeys {
     verifiedSuccessfully: string;
     verificationFailed: string;
     events: string;
+    errorDetails: {
+      header: string;
+      position: string;
+      type: string;
+      message: string;
+      expectedHash: string;
+      computedHash: string;
+      timestampDetail: string;
+      errorTypes: {
+        sequence: string;
+        timestamp: string;
+        previousHash: string;
+        posw: string;
+        hash: string;
+        segmentEnd: string;
+        unknown: string;
+      };
+    };
+    segmentViz: {
+      header: string;
+      verified: string;
+      unverified: string;
+      error: string;
+      segmentInfo: string;
+      totalEvents: string;
+      verifiedEvents: string;
+      sampledSegments: string;
+    };
   };
 
   // PoSW panel

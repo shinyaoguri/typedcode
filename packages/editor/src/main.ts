@@ -18,6 +18,7 @@ if (urlParams.get('reset')) {
     }
   } catch { /* ignore */ }
   try { indexedDB.deleteDatabase('typedcode-screenshots'); } catch { /* ignore */ }
+  try { indexedDB.deleteDatabase('typedcode-session'); } catch { /* ignore */ }
   // Remove the reset parameter from URL
   const cleanUrl = window.location.origin + window.location.pathname;
   window.history.replaceState({}, '', cleanUrl);
@@ -96,6 +97,11 @@ import {
   showIdleSuspendedOverlay,
   hideIdleSuspendedOverlay,
 } from './ui/dialogs/IdleTimeoutDialogs.js';
+import {
+  initSessionStorageService,
+  getSessionStorageService,
+} from './services/SessionStorageService.js';
+import { showSessionRecoveryDialog } from './ui/dialogs/SessionRecoveryDialog.js';
 
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
@@ -954,23 +960,34 @@ function setupStaticEventListeners(): void {
       }
     } catch { /* ignore */ }
 
-    // IndexedDBを削除
+    // IndexedDBを削除（スクリーンショットとセッションの両方）
     try { indexedDB.deleteDatabase('typedcode-screenshots'); } catch { /* ignore */ }
+    try { indexedDB.deleteDatabase('typedcode-session'); } catch { /* ignore */ }
 
     // リロード（reset パラメータ付き）
     window.location.href = window.location.origin + window.location.pathname + '?reset=' + Date.now();
   });
 
-  // ページ離脱時の確認ダイアログとIndexedDBクリア
+  // ページ離脱時の確認ダイアログ
+  // セッションの非アクティブ化は visibilitychange + document.hidden で行う
   window.addEventListener('beforeunload', (e) => {
     if (ctx.skipBeforeUnload) return;
 
-    // IndexedDBを削除（sessionStorageと同様にタブを閉じたら消える）
+    // スクリーンショットのIndexedDBを削除（sessionStorageと同様にタブを閉じたら消える）
     // 注: beforeunloadでは非同期処理を待てないが、deleteDatabase()は
     // リクエストを発行するだけなのでページ離脱後もバックグラウンドで実行される
     try {
       indexedDB.deleteDatabase('typedcode-screenshots');
-      console.log('[TypedCode] IndexedDB deletion requested on beforeunload');
+      console.log('[TypedCode] Screenshots IndexedDB deletion requested on beforeunload');
+    } catch {
+      // ignore
+    }
+
+    // セッションをアクティブとしてマーク（リロード検出用）
+    // sessionStorageはリロード時は保持され、タブを閉じると消える
+    // 次回起動時にこのフラグがあればリロード、なければタブを閉じた後の再開
+    try {
+      sessionStorage.setItem('typedcode-session-active', 'true');
     } catch {
       // ignore
     }
@@ -1489,7 +1506,7 @@ async function clearAllAppData(): Promise<void> {
   // 3. IndexedDB をクリア（全てのデータベース）
   try {
     // 既知のデータベース名
-    const dbNames = ['typedcode-screenshots'];
+    const dbNames = ['typedcode-screenshots', 'typedcode-session'];
 
     for (const dbName of dbNames) {
       await new Promise<void>((resolve) => {
@@ -1660,11 +1677,136 @@ async function initializeApp(): Promise<void> {
     });
   }
 
+  // Phase 2.5: SessionStorageServiceの初期化とセッション復旧チェック
+  updateInitMessage(t('app.initializing'));
+  const sessionService = await initSessionStorageService();
+  let sessionRecovered = false;
+  let sessionId: string | null = null;
+
+  // リロード検出: sessionStorageのフラグで判断
+  // sessionStorageはリロード時は保持され、タブを閉じると消える
+  const isReload = sessionStorage.getItem('typedcode-session-active') === 'true';
+  // フラグをクリア（次回のためにリセット）
+  sessionStorage.removeItem('typedcode-session-active');
+
+  if (await sessionService.hasExistingSession()) {
+    const sessionSummary = await sessionService.getSessionSummary();
+
+    if (sessionSummary && sessionSummary.tabs.length > 0) {
+      if (isReload) {
+        // リロード - sessionStorageから復元（IndexedDBより確実に最新）
+        // sessionRecoveredをfalseのままにしてsessionStorageから読み込む
+        const session = await sessionService.resumeSession(sessionSummary.sessionId);
+        sessionId = session.sessionId;
+        // sessionRecovered = false のままで、initializeTabManager()を使う
+        console.log('[TypedCode] Session will be restored from sessionStorage (reload):', sessionId);
+      } else {
+        // タブを閉じた後の再開 - ダイアログを表示
+        initOverlay?.classList.add('hidden');
+        const result = await showSessionRecoveryDialog(sessionSummary);
+        initOverlay?.classList.remove('hidden');
+        updateInitMessage(t('app.initializing'));
+
+        if (result.choice === 'resume') {
+          // セッションを再開
+          const session = await sessionService.resumeSession(sessionSummary.sessionId);
+          sessionId = session.sessionId;
+          sessionRecovered = true;
+          console.log('[TypedCode] Session recovered:', sessionId);
+        } else {
+          // 新規セッションを開始
+          await sessionService.clearSession();
+          const newSession = await sessionService.createSession();
+          sessionId = newSession.sessionId;
+          console.log('[TypedCode] Fresh session started:', sessionId);
+        }
+      }
+    } else {
+      // タブがない場合は自動的に新規セッション
+      await sessionService.clearSession();
+      const newSession = await sessionService.createSession();
+      sessionId = newSession.sessionId;
+    }
+  } else {
+    // 既存セッションなし - 新規セッション作成
+    const newSession = await sessionService.createSession();
+    sessionId = newSession.sessionId;
+    console.log('[TypedCode] New session created:', sessionId);
+  }
+
   // Phase 3: デバイス情報取得
   const { fingerprintHash, fingerprintComponents } = await initializeDeviceInfo();
 
   // Phase 4: TabManager初期化
-  const initialized = await initializeTabManager(fingerprintHash, fingerprintComponents);
+  let initialized: boolean;
+  if (sessionRecovered && sessionId) {
+    // セッション復旧モード: IndexedDBからタブを読み込む
+    ctx.tabManager = new TabManager(ctx.editor);
+
+    const editorTabsContainer = document.getElementById('editor-tabs');
+    if (editorTabsContainer) {
+      ctx.tabUIController = new TabUIController({
+        container: editorTabsContainer,
+        tabManager: ctx.tabManager,
+        basePath: import.meta.env.BASE_URL,
+        onNotification: showNotification,
+      });
+    }
+
+    // ProofExporterの初期化
+    ctx.proofExporter.setTabManager(ctx.tabManager);
+    ctx.proofExporter.setProcessingDialog(ctx.processingDialog);
+    ctx.proofExporter.setCallbacks({ onNotification: showNotification });
+    if (ctx.trackers.screenshot) {
+      ctx.proofExporter.setScreenshotTracker(ctx.trackers.screenshot);
+    }
+
+    // ProofStatusDisplayのコールバックを設定
+    ctx.proofStatusDisplay.setGetStats(() => {
+      const activeProof = ctx.tabManager?.getActiveProof();
+      if (!activeProof) return null;
+      return activeProof.getStats();
+    });
+
+    ctx.proofStatusDisplay.setSnapshotCallback(
+      (content) => {
+        const activeProof = ctx.tabManager?.getActiveProof();
+        if (!activeProof) return Promise.reject(new Error('No active proof'));
+        return activeProof.recordContentSnapshot(content);
+      },
+      () => ctx.editor.getValue()
+    );
+
+    // タブ変更コールバックを設定
+    ctx.tabManager.setOnTabChange((tab, previousTab) => {
+      console.log('[TypedCode] Tab switched:', previousTab?.filename, '->', tab.filename);
+      handleTabChange(tab);
+
+      // ScreenshotTrackerのstartTimeを新しいタブのTypingProofに合わせて更新
+      if (ctx.trackers.screenshot) {
+        ctx.trackers.screenshot.setProofStartTime(tab.typingProof.startTime);
+      }
+    });
+
+    ctx.tabManager.setOnTabUpdate(() => {
+      ctx.tabUIController?.updateUI();
+      const activeTab = ctx.tabManager?.getActiveTab();
+      if (activeTab) {
+        document.title = `${activeTab.filename} - TypedCode`;
+      }
+    });
+
+    ctx.tabManager.setOnVerification(() => {
+      ctx.tabUIController?.updateUI();
+    });
+
+    // IndexedDBからタブを読み込む
+    updateInitMessage(t('sessionRecovery.resuming'));
+    initialized = await ctx.tabManager.loadFromIndexedDB(sessionId, fingerprintHash, fingerprintComponents);
+  } else {
+    // 通常モード: sessionStorageから読み込み or 新規作成
+    initialized = await initializeTabManager(fingerprintHash, fingerprintComponents);
+  }
 
   if (!initialized) {
     updateInitMessage(t('notifications.authFailedReload'));
@@ -1736,21 +1878,23 @@ async function initializeApp(): Promise<void> {
   initializeTerminal();
   initializeCodeExecution();
 
-  // Phase 8: セッション再開イベントの記録（リロード時）
+  // Phase 8: セッション再開イベントの記録（リロード時またはIndexedDBからの復旧時）
   // sessionStorageにタブデータが存在していた場合はリロードによる再開
+  // または、IndexedDBからセッションを復旧した場合
   const wasReloaded = sessionStorage.getItem('typedcode-tabs') !== null &&
                       sessionStorage.getItem('typedcode-screenshot-session') === 'active';
-  if (wasReloaded) {
+  if (wasReloaded || sessionRecovered) {
     // セッション再開イベントを全タブに記録
     ctx.eventRecorder?.recordToAllTabs({
       type: 'sessionResumed',
       data: {
         timestamp: performance.now(),
         previousEventCount: ctx.tabManager?.getActiveProof()?.events.length ?? 0,
+        recoveredFromIndexedDB: sessionRecovered,
       },
       description: t('events.sessionResumed'),
     });
-    console.log('[TypedCode] Session resumed after reload');
+    console.log('[TypedCode] Session resumed', sessionRecovered ? 'from IndexedDB' : 'after reload');
   }
 
   // Phase 9: タイトルバー時計の開始
