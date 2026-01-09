@@ -286,6 +286,10 @@ export const en: TranslationKeys = {
     runHint: 'Press Ctrl+Enter or click Run to execute code',
     cDisclaimer: '* Some standard library functions are limited in WebAssembly environment.',
     cppDisclaimer: '* Some C++ features are limited in WebAssembly environment.',
+    resetRuntime: 'Reset Runtime',
+    runtimeResetComplete: 'Runtime reset complete.',
+    runtimeCorruptionDetected: 'Runtime error detected. Will auto-reset on next execution.',
+    runtimeResetting: 'Resetting runtime...',
   },
 
   logViewer: {

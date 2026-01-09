@@ -301,6 +301,10 @@ export interface TranslationKeys {
     runHint: string;
     cDisclaimer: string;
     cppDisclaimer: string;
+    resetRuntime: string;
+    runtimeResetComplete: string;
+    runtimeCorruptionDetected: string;
+    runtimeResetting: string;
   };
 
   // Log viewer

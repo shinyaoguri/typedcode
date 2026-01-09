@@ -1285,10 +1285,26 @@ function initializeTerminal(): void {
     panelId: 'terminal-panel',
     toggleButtonId: 'toggle-terminal-btn',
     closeButtonId: 'close-terminal-btn',
+    resetButtonId: 'reset-runtime-btn',
     resizeHandleId: 'terminal-resize-handle',
     workbenchUpperSelector: '.workbench-upper',
     workbenchSelector: '.workbench',
     onFit: () => ctx.terminal?.fit(),
+    onResetRuntime: async () => {
+      const activeTab = ctx.tabManager?.getActiveTab();
+      if (activeTab && (activeTab.language === 'c' || activeTab.language === 'cpp')) {
+        ctx.terminal?.writeInfo(t('terminal.runtimeResetting') + '\n');
+        try {
+          await ctx.runtime.resetCRuntime();
+          ctx.terminal?.writeSuccess(t('terminal.runtimeResetComplete') + '\n');
+          ctx.runtime.updateIndicator(activeTab.language);
+        } catch (error) {
+          ctx.terminal?.writeError(`Reset failed: ${error}\n`);
+        }
+      } else {
+        ctx.terminal?.writeInfo('No runtime reset needed for this language.\n');
+      }
+    },
   });
 
   const xtermContainer = document.getElementById('xterm-container');
