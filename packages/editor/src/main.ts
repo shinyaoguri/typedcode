@@ -37,17 +37,10 @@ if (urlParams.get('fresh') === '1') {
 import * as monaco from 'monaco-editor';
 import './styles/main.css';
 import { Fingerprint } from '@typedcode/shared';
-import type {
-  CursorPosition,
-  RecordEventInput,
-  DetectedEvent,
-} from '@typedcode/shared';
-import { InputDetector } from './tracking/InputDetector.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
 import { initializeTrackers } from './tracking/TrackersInitializer.js';
-import { LogViewer } from './ui/components/LogViewer.js';
 import { ThemeManager } from './editor/ThemeManager.js';
 import { TabManager } from './ui/tabs/TabManager.js';
 import type { MonacoEditor } from './editor/types.js';
@@ -86,10 +79,8 @@ import { LogViewerPanel } from './ui/components/LogViewerPanel.js';
 import { BrowserPreviewPanel } from './ui/components/BrowserPreviewPanel.js';
 import { EventRecorder } from './core/EventRecorder.js';
 import type { AppContext } from './core/AppContext.js';
-import { isLanguageExecutable } from './config/SupportedLanguages.js';
 import { t, getI18n, initDOMi18n } from './i18n/index.js';
 import { showAboutDialog } from './ui/components/AboutDialog.js';
-import { WelcomeScreen } from './ui/components/WelcomeScreen.js';
 import { TitlebarClock } from './ui/components/TitlebarClock.js';
 import { IdleTimeoutManager } from './tracking/IdleTimeoutManager.js';
 import {
@@ -100,18 +91,26 @@ import {
 import {
   requestScreenCaptureWithRetry,
   showScreenCaptureLockOverlay,
-  hideScreenCaptureLockOverlay,
 } from './ui/dialogs/ScreenCaptureDialogs.js';
-import {
-  initSessionStorageService,
-  getSessionStorageService,
-} from './services/SessionStorageService.js';
+import { initSessionStorageService } from './services/SessionStorageService.js';
 import { showSessionRecoveryDialog } from './ui/dialogs/SessionRecoveryDialog.js';
+import { clearStorageAsync } from './utils/StorageClearHelper.js';
+
+// App モジュールからのインポート
 import {
-  clearStorageSync,
-  clearStorageAsync,
-  deleteScreenshotsDB,
-} from './utils/StorageClearHelper.js';
+  showNotification,
+  initializeLogViewer,
+  updateProofStatus,
+  showLanguageDescriptionInTerminal,
+  handleTabChange,
+  setupStaticEventListeners,
+  showWelcomeScreen,
+  hideWelcomeScreen,
+  hasAcceptedTerms,
+  showTermsModal,
+  getTermsAcceptanceData,
+  TERMS_CONSTANTS,
+} from './app/index.js';
 
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
@@ -211,291 +210,6 @@ const ctx: AppContext = {
 };
 
 // ========================================
-// ユーティリティ関数
-// ========================================
-
-function showNotification(message: string): void {
-  const blockNotificationEl = document.getElementById('block-notification');
-  const blockMessageEl = document.getElementById('block-message');
-  if (blockMessageEl) blockMessageEl.textContent = message;
-  blockNotificationEl?.classList.remove('hidden');
-  setTimeout(() => {
-    blockNotificationEl?.classList.add('hidden');
-  }, 2000);
-}
-
-/**
- * テンプレートファイルかどうかを判定
- */
-function isTemplateFile(file: File): boolean {
-  const ext = file.name.toLowerCase().split('.').pop();
-  return ext === 'yaml' || ext === 'yml';
-}
-
-// ========================================
-// ウェルカム画面関連
-// ========================================
-
-/**
- * ウェルカム画面を表示
- */
-function showWelcomeScreen(): void {
-  // Monacoエディタを非表示
-  const editorEl = document.getElementById('editor');
-  if (editorEl) editorEl.style.display = 'none';
-
-  // コピーボタンを非表示（ファイルがないため）
-  const copyCodeBtn = document.getElementById('copy-code-btn');
-  if (copyCodeBtn) copyCodeBtn.style.display = 'none';
-
-  // エディタコンテナにウェルカム画面を表示
-  const container = document.querySelector('.editor-container') as HTMLElement | null;
-  if (container && !ctx.welcomeScreen) {
-    ctx.welcomeScreen = new WelcomeScreen({
-      container,
-      onNewFile: handleWelcomeNewFile,
-      onImportTemplate: handleWelcomeImportTemplate,
-    });
-    ctx.welcomeScreen.show();
-  }
-}
-
-/**
- * ウェルカム画面を非表示
- */
-function hideWelcomeScreen(): void {
-  if (ctx.welcomeScreen) {
-    ctx.welcomeScreen.hide();
-    ctx.welcomeScreen.dispose();
-    ctx.welcomeScreen = null;
-  }
-
-  // Monacoエディタを表示
-  const editorEl = document.getElementById('editor');
-  if (editorEl) editorEl.style.display = '';
-
-  // コピーボタンを表示（ファイルが存在するため）
-  const copyCodeBtn = document.getElementById('copy-code-btn');
-  if (copyCodeBtn) copyCodeBtn.style.display = '';
-}
-
-/**
- * ウェルカム画面から新規ファイル作成
- */
-async function handleWelcomeNewFile(): Promise<void> {
-  hideWelcomeScreen();
-
-  const num = ctx.tabUIController?.getNextUntitledNumber() ?? 1;
-  const newTab = await ctx.tabManager?.createTab(`Untitled-${num}`, 'c', '');
-
-  if (!newTab) {
-    // 認証失敗時はウェルカム画面に戻る
-    showWelcomeScreen();
-    showNotification(t('notifications.authFailed'));
-    return;
-  }
-
-  // スクリーンショットのキャプチャを再有効化
-  ctx.trackers.screenshot?.setCaptureEnabled(true);
-
-  // LogViewerが未初期化の場合は初期化
-  initializeLogViewer();
-
-  ctx.tabUIController?.updateUI();
-  showNotification(t('notifications.newTabCreated'));
-}
-
-/**
- * ウェルカム画面からテンプレート読み込み
- */
-async function handleWelcomeImportTemplate(): Promise<void> {
-  await handleTemplateImport(ctx);
-
-  // テンプレート読み込み成功時はウェルカム画面を非表示
-  if (ctx.tabManager?.hasAnyTabs()) {
-    hideWelcomeScreen();
-    ctx.tabUIController?.updateUI();
-    // スクリーンショットのキャプチャを再有効化
-    ctx.trackers.screenshot?.setCaptureEnabled(true);
-    // LogViewerが未初期化の場合は初期化
-    initializeLogViewer();
-  }
-}
-
-/**
- * テンプレートコンテンツをインポート（共通処理）
- */
-async function importTemplateContent(
-  appContext: typeof ctx,
-  content: string
-): Promise<boolean> {
-  const { templateImportDialog } = await import('./template/TemplateImportDialog.js');
-  const { templateImporter } = await import('./template/TemplateImporter.js');
-  const { TemplateValidationError } = await import('./template/TemplateParser.js');
-
-  if (!appContext.tabManager) return false;
-
-  // 1. テンプレートをパース
-  let template;
-  try {
-    template = templateImporter.parseTemplate(content);
-  } catch (error: unknown) {
-    if (error instanceof TemplateValidationError) {
-      showNotification(error.message);
-    } else {
-      console.error('[TemplateImport] Parse error:', error);
-      showNotification(t('template.invalidFormat'));
-    }
-    return false;
-  }
-
-  // 2. 確認ダイアログ
-  const hasExistingTabs = appContext.tabManager.getAllTabs().length > 0;
-  const confirmed = await templateImportDialog.showConfirmation(template, hasExistingTabs);
-  if (!confirmed) return false;
-
-  // 3. 進捗表示
-  const progress = templateImportDialog.showProgress();
-
-  try {
-    // 4. インポート実行
-    const result = await templateImporter.import(
-      appContext.tabManager,
-      content,
-      (current, total, currentFilename) => {
-        progress.update(current, total, currentFilename);
-      }
-    );
-
-    progress.close();
-
-    // 5. 結果表示
-    if (result.success) {
-      showNotification(t('template.success', { count: result.filesCreated }));
-      appContext.tabUIController?.updateUI();
-    } else {
-      console.error('[TemplateImport] Errors:', result.errors);
-      showNotification(t('template.partialSuccess', { count: result.filesCreated }));
-    }
-
-    return result.success;
-  } catch (error) {
-    progress.close();
-    throw error;
-  }
-}
-
-/**
- * テンプレートインポート処理（ファイル選択ダイアログから）
- */
-async function handleTemplateImport(appContext: typeof ctx): Promise<void> {
-  const { templateImportDialog } = await import('./template/TemplateImportDialog.js');
-
-  if (!appContext.tabManager) return;
-
-  // 1. ファイル選択
-  const file = await templateImportDialog.selectFile();
-  if (!file) return;
-
-  // 2. ファイル内容を読み取り
-  let content: string;
-  try {
-    content = await file.text();
-  } catch {
-    showNotification(t('template.readError'));
-    return;
-  }
-
-  // 3. インポート処理
-  await importTemplateContent(appContext, content);
-}
-
-/**
- * ドラッグ＆ドロップでテンプレートをインポート
- */
-async function handleTemplateDrop(appContext: typeof ctx, file: File): Promise<void> {
-  if (!appContext.tabManager) return;
-
-  // ファイル内容を読み取り
-  let content: string;
-  try {
-    content = await file.text();
-  } catch {
-    showNotification(t('template.readError'));
-    return;
-  }
-
-  // インポート処理
-  await importTemplateContent(appContext, content);
-}
-
-function showLanguageDescriptionInTerminal(language: string): void {
-  if (!ctx.terminal) return;
-  ctx.terminal.clear();
-
-  // 言語の実行可否に応じてターミナルパネルの状態を更新
-  const executable = isLanguageExecutable(language);
-  ctx.terminalPanel.setTerminalAvailable(executable);
-
-  const langDesc = ctx.runtime.getLanguageDescription(language);
-  for (const line of langDesc) {
-    ctx.terminal.writeLine(line);
-  }
-  ctx.terminal.writeLine('');
-}
-
-function updateProofStatus(): void {
-  ctx.proofStatusDisplay.update();
-}
-
-function hasAcceptedTerms(): boolean {
-  const accepted = localStorage.getItem(TERMS_ACCEPTED_KEY);
-  if (!accepted) return false;
-  try {
-    const data = JSON.parse(accepted);
-    return data.version === TERMS_VERSION;
-  } catch {
-    return false;
-  }
-}
-
-async function showTermsModal(): Promise<void> {
-  const termsModal = document.getElementById('terms-modal');
-  const termsAgreeCheckbox = document.getElementById('terms-agree-checkbox') as HTMLInputElement | null;
-  const termsAgreeBtn = document.getElementById('terms-agree-btn') as HTMLButtonElement | null;
-
-  if (!termsModal || !termsAgreeCheckbox || !termsAgreeBtn) {
-    console.error('[TypedCode] Terms modal elements not found');
-    return;
-  }
-
-  return new Promise((resolve) => {
-    termsModal.classList.remove('hidden');
-
-    const handleCheckboxChange = (): void => {
-      termsAgreeBtn.disabled = !termsAgreeCheckbox.checked;
-    };
-
-    const handleAgree = (): void => {
-      const timestamp = Date.now();
-      localStorage.setItem(TERMS_ACCEPTED_KEY, JSON.stringify({
-        version: TERMS_VERSION,
-        timestamp,
-        agreedAt: new Date(timestamp).toISOString(),
-      }));
-      termsAgreeCheckbox.removeEventListener('change', handleCheckboxChange);
-      termsAgreeBtn.removeEventListener('click', handleAgree);
-      termsModal.classList.add('hidden');
-      console.log('[TypedCode] Terms accepted at', new Date(timestamp).toISOString());
-      resolve();
-    };
-
-    termsAgreeCheckbox.addEventListener('change', handleCheckboxChange);
-    termsAgreeBtn.addEventListener('click', handleAgree);
-  });
-}
-
-// ========================================
 // 初期化オーバーレイ
 // ========================================
 
@@ -513,310 +227,6 @@ function hideInitOverlay(): void {
     initOverlay.classList.add('hidden');
     setTimeout(() => initOverlay.remove(), 300);
   }
-}
-
-// ========================================
-// タブ変更ハンドラ
-// ========================================
-
-function handleTabChange(tab: { filename: string; language: string; typingProof: unknown }): void {
-  ctx.tabUIController?.updateUI();
-  updateProofStatus();
-  document.title = `${tab.filename} - TypedCode`;
-
-  const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
-  if (languageSelector) {
-    languageSelector.value = tab.language;
-  }
-
-  showLanguageDescriptionInTerminal(tab.language);
-  ctx.runtime.updateIndicator(tab.language);
-
-  if (ctx.logViewer && ctx.tabManager) {
-    const activeTab = ctx.tabManager.getActiveTab();
-    if (activeTab) {
-      ctx.logViewer.setTypingProof(activeTab.typingProof);
-    }
-  }
-}
-
-// ========================================
-// イベントリスナーの設定
-// ========================================
-
-function setupStaticEventListeners(): void {
-  // テンプレートファイルのドラッグ＆ドロップ
-  const editorArea = document.querySelector('.workbench');
-  let dropOverlay: HTMLElement | null = null;
-  let dragCounter = 0; // ネストしたdragenter/dragleaveを正しく処理するためのカウンター
-
-  // ドロップオーバーレイを作成
-  const createDropOverlay = (): HTMLElement => {
-    const overlay = document.createElement('div');
-    overlay.className = 'template-drop-overlay';
-    overlay.innerHTML = `
-      <div class="template-drop-content">
-        <i class="fas fa-file-import"></i>
-        <h3>${t('template.dropTitle') ?? 'テンプレートをドロップ'}</h3>
-        <p>${t('template.dropHint') ?? 'YAMLファイルをここにドロップして読み込み'}</p>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    return overlay;
-  };
-
-  // オーバーレイを表示
-  const showDropOverlay = (): void => {
-    if (!dropOverlay) {
-      dropOverlay = createDropOverlay();
-    }
-    dropOverlay.classList.remove('hidden');
-  };
-
-  // オーバーレイを非表示
-  const hideDropOverlay = (): void => {
-    dropOverlay?.classList.add('hidden');
-  };
-
-  if (editorArea) {
-    // ドラッグ開始時（ウィンドウ全体で検知）
-    document.addEventListener('dragenter', (e) => {
-      const event = e as DragEvent;
-      const items = event.dataTransfer?.items;
-
-      // ファイルがドラッグされている場合のみ
-      if (items && items.length > 0) {
-        for (const item of Array.from(items)) {
-          if (item.kind === 'file') {
-            dragCounter++;
-            if (dragCounter === 1) {
-              showDropOverlay();
-            }
-            break;
-          }
-        }
-      }
-    });
-
-    // ドラッグ終了時（ウィンドウから離れた時）
-    document.addEventListener('dragleave', (e) => {
-      const event = e as DragEvent;
-      // ウィンドウ外に出た場合のみカウンターを減らす
-      if (event.relatedTarget === null || !(event.relatedTarget instanceof Node)) {
-        dragCounter--;
-        if (dragCounter <= 0) {
-          dragCounter = 0;
-          hideDropOverlay();
-        }
-      }
-    });
-
-    // ドラッグオーバー時のデフォルト動作を防止（ドロップを許可）
-    editorArea.addEventListener('dragover', (e) => {
-      const event = e as DragEvent;
-      // ファイルがドラッグされている場合のみドロップを許可
-      const items = event.dataTransfer?.items;
-      if (items && items.length > 0) {
-        for (const item of Array.from(items)) {
-          if (item.kind === 'file') {
-            event.preventDefault();
-            event.dataTransfer!.dropEffect = 'copy';
-            break;
-          }
-        }
-      }
-    });
-
-    // ドロップ時の処理
-    editorArea.addEventListener('drop', async (e) => {
-      const event = e as DragEvent;
-      const files = event.dataTransfer?.files;
-
-      // オーバーレイを非表示
-      dragCounter = 0;
-      hideDropOverlay();
-
-      if (files && files.length > 0) {
-        const file = files[0]!;
-        // テンプレートファイルかチェック
-        if (isTemplateFile(file)) {
-          event.preventDefault();
-          event.stopPropagation();
-
-          try {
-            await handleTemplateDrop(ctx, file);
-          } catch (error) {
-            console.error('[TemplateImport] Drop error:', error);
-            showNotification(t('template.error'));
-          }
-        }
-        // テンプレートファイル以外はデフォルト動作（InputDetectorでexternalInput検出）
-      }
-    });
-
-    // ドロップがキャンセルされた場合（ESCキーなど）
-    document.addEventListener('drop', () => {
-      dragCounter = 0;
-      hideDropOverlay();
-    });
-  }
-
-  // 言語切り替え
-  const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
-  languageSelector?.addEventListener('change', (e) => {
-    const target = e.target as HTMLSelectElement;
-    const activeTab = ctx.tabManager?.getActiveTab();
-    if (activeTab) {
-      ctx.tabManager?.setTabLanguage(activeTab.id, target.value);
-      ctx.tabUIController?.updateUI();
-      showLanguageDescriptionInTerminal(target.value);
-      ctx.runtime.updateIndicator(target.value);
-    }
-  });
-
-  // 新規タブ追加ボタン
-  const addTabBtn = document.getElementById('add-tab-btn');
-  addTabBtn?.addEventListener('click', async () => {
-    if (!ctx.tabManager) return;
-
-    if (isTurnstileConfigured()) {
-      showNotification(t('notifications.authRunning'));
-    }
-
-    const num = ctx.tabUIController?.getNextUntitledNumber() ?? 1;
-    const newTab = await ctx.tabManager.createTab(`Untitled-${num}`, 'c', '');
-
-    if (!newTab) {
-      showNotification(t('notifications.authFailed'));
-      return;
-    }
-
-    await ctx.tabManager.switchTab(newTab.id);
-    showNotification(t('notifications.newTabCreated'));
-  });
-
-  // 入力検出器の初期化
-  new InputDetector(document.body, async (detectedEvent: DetectedEvent) => {
-    showNotification(detectedEvent.message);
-    console.log('[TypedCode] Detected operation:', detectedEvent);
-
-    if (detectedEvent.type === 'paste' || detectedEvent.type === 'drop') {
-      const position: CursorPosition | null = ctx.editor.getPosition();
-
-      if (position) {
-        const event: RecordEventInput = {
-          type: 'externalInput',
-          inputType: detectedEvent.type === 'paste' ? 'insertFromPaste' : 'insertFromDrop',
-          data: detectedEvent.data.text,
-          rangeLength: detectedEvent.data.length,
-          range: {
-            startLineNumber: position.lineNumber,
-            startColumn: position.column,
-            endLineNumber: position.lineNumber,
-            endColumn: position.column,
-          },
-          description: detectedEvent.type === 'paste' ?
-            t('notifications.pasteDetected', { length: detectedEvent.data.length }) :
-            t('notifications.dropDetected', { length: detectedEvent.data.length }),
-        };
-
-        ctx.eventRecorder?.record(event);
-      }
-    }
-  });
-
-  // リセット機能 - イベント委任を使用して確実にキャプチャ
-  const resetDialog = document.getElementById('reset-dialog');
-
-  // リセットボタン（設定メニュー内）をクリックしてダイアログを表示
-  document.getElementById('reset-btn')?.addEventListener('click', () => {
-    document.getElementById('settings-dropdown')?.classList.remove('visible');
-    resetDialog?.classList.remove('hidden');
-  });
-
-  // キャンセルボタン
-  document.getElementById('reset-cancel-btn')?.addEventListener('click', () => {
-    resetDialog?.classList.add('hidden');
-  });
-
-  // オーバーレイクリックで閉じる
-  resetDialog?.addEventListener('click', (e) => {
-    if (e.target === resetDialog) {
-      resetDialog.classList.add('hidden');
-    }
-  });
-
-  // Escキーで閉じる
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !resetDialog?.classList.contains('hidden')) {
-      resetDialog?.classList.add('hidden');
-    }
-  });
-
-  // リセット確認ボタン - イベント委任を使用
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    // ボタン自体またはその子要素（アイコン、テキスト）がクリックされた場合
-    const confirmBtn = target.closest('#reset-confirm-btn');
-    if (!confirmBtn) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    console.log('[TypedCode] Reset confirmed via event delegation');
-
-    // ダイアログを閉じる
-    resetDialog?.classList.add('hidden');
-
-    // beforeunloadイベントをスキップ
-    ctx.skipBeforeUnload = true;
-
-    // ストレージをクリア（同期版）
-    clearStorageSync();
-
-    // リロード（reset パラメータ付き）
-    window.location.href = window.location.origin + window.location.pathname + '?reset=' + Date.now();
-  });
-
-  // ページ離脱時の確認ダイアログ
-  // セッションの非アクティブ化は visibilitychange + document.hidden で行う
-  window.addEventListener('beforeunload', (e) => {
-    if (ctx.skipBeforeUnload) return;
-
-    // スクリーンショットのIndexedDBを削除（sessionStorageと同様にタブを閉じたら消える）
-    deleteScreenshotsDB();
-
-    // セッションをアクティブとしてマーク（リロード検出用）
-    // sessionStorageはリロード時は保持され、タブを閉じると消える
-    // 次回起動時にこのフラグがあればリロード、なければタブを閉じた後の再開
-    try {
-      sessionStorage.setItem('typedcode-session-active', 'true');
-    } catch {
-      // ignore
-    }
-
-    const activeProof = ctx.tabManager?.getActiveProof();
-    if (activeProof && activeProof.events.length > 0) {
-      e.preventDefault();
-    }
-  });
-
-  // 現在のタブをZIPでエクスポート（ファイル + 検証ログ）
-  const exportCurrentTabBtn = document.getElementById('export-current-tab-btn');
-  exportCurrentTabBtn?.addEventListener('click', (e) => {
-    // 無効時は何もしない
-    if ((e.currentTarget as HTMLElement).classList.contains('disabled')) return;
-    ctx.downloadDropdown.close();
-    void ctx.proofExporter.exportCurrentTab();
-  });
-
-  const exportZipBtn = document.getElementById('export-zip-btn');
-  exportZipBtn?.addEventListener('click', (e) => {
-    // 無効時は何もしない
-    if ((e.currentTarget as HTMLElement).classList.contains('disabled')) return;
-    ctx.downloadDropdown.close();
-    void ctx.proofExporter.exportAllTabsAsZip();
-  });
 }
 
 // ========================================
@@ -878,7 +288,7 @@ async function initializeTabManager(
   // タブ変更コールバックを設定
   ctx.tabManager.setOnTabChange((tab, previousTab) => {
     console.log('[TypedCode] Tab switched:', previousTab?.filename, '->', tab.filename);
-    handleTabChange(tab);
+    handleTabChange(ctx, tab);
 
     // ScreenshotTrackerのstartTimeを新しいタブのTypingProofに合わせて更新
     if (ctx.trackers.screenshot) {
@@ -903,32 +313,11 @@ async function initializeTabManager(
   return initialized;
 }
 
-function initializeLogViewer(): void {
-  // すでに初期化済みの場合はスキップ
-  if (ctx.logViewer) return;
-
-  const logEntriesContainer = document.getElementById('log-entries');
-  if (!logEntriesContainer) {
-    console.error('[TypedCode] log-entries not found!');
-    return;
-  }
-
-  const initialProof = ctx.tabManager?.getActiveProof();
-  if (initialProof) {
-    ctx.logViewer = new LogViewer(logEntriesContainer, initialProof);
-
-    // スクリーンショットストレージを設定（プレビュー表示用）
-    if (ctx.trackers.screenshot) {
-      ctx.logViewer.setScreenshotStorage(ctx.trackers.screenshot.getStorageService());
-    }
-  }
-}
-
 function initializeEventRecorder(): void {
   ctx.eventRecorder = new EventRecorder({
     tabManager: ctx.tabManager!,
     logViewer: ctx.logViewer,
-    onStatusUpdate: () => updateProofStatus(),
+    onStatusUpdate: () => updateProofStatus(ctx),
     onError: (msg) => showNotification(msg),
   });
   ctx.eventRecorder.setInitialized(true);
@@ -1116,7 +505,7 @@ function initializeTerminal(): void {
 
     const initialTab = ctx.tabManager?.getActiveTab();
     const initialLanguage = initialTab?.language ?? 'c';
-    showLanguageDescriptionInTerminal(initialLanguage);
+    showLanguageDescriptionInTerminal(ctx, initialLanguage);
     ctx.runtime.updateIndicator(initialLanguage);
 
     ctx.terminal.setInputCallback((input: string) => {
@@ -1533,7 +922,7 @@ async function initializeApp(): Promise<void> {
     // タブ変更コールバックを設定
     ctx.tabManager.setOnTabChange((tab, previousTab) => {
       console.log('[TypedCode] Tab switched:', previousTab?.filename, '->', tab.filename);
-      handleTabChange(tab);
+      handleTabChange(ctx, tab);
 
       // ScreenshotTrackerのstartTimeを新しいタブのTypingProofに合わせて更新
       if (ctx.trackers.screenshot) {
@@ -1571,7 +960,7 @@ async function initializeApp(): Promise<void> {
 
   // タブがない場合はウェルカム画面を表示、ある場合は通常のエディタ表示
   if (!ctx.tabManager?.hasAnyTabs()) {
-    showWelcomeScreen();
+    showWelcomeScreen(ctx);
     // スクリーンショットのキャプチャを無効化（タブがないので保存先がない）
     ctx.trackers.screenshot?.setCaptureEnabled(false);
   } else {
@@ -1584,7 +973,7 @@ async function initializeApp(): Promise<void> {
       languageSelector.value = activeTab.language;
     }
 
-    updateProofStatus();
+    updateProofStatus(ctx);
 
     // 利用規約同意をハッシュチェーンに記録
     recordTermsAcceptance();
@@ -1592,7 +981,7 @@ async function initializeApp(): Promise<void> {
 
   // 全タブ閉じた時にウェルカム画面を表示するコールバックを設定
   ctx.tabManager?.setOnAllTabsClosed(() => {
-    showWelcomeScreen();
+    showWelcomeScreen(ctx);
     ctx.tabUIController?.updateUI();
     // ステータスバーをリセット
     ctx.proofStatusDisplay.reset();
@@ -1624,7 +1013,7 @@ async function initializeApp(): Promise<void> {
   });
 
   // Phase 6: LogViewerとEventRecorderの初期化
-  initializeLogViewer();
+  initializeLogViewer(ctx);
   initializeEventRecorder();
 
   // Phase 7: ターミナルとコード実行の初期化
@@ -1663,12 +1052,12 @@ async function initializeApp(): Promise<void> {
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     // 静的イベントリスナーを設定（DOM準備後）
-    setupStaticEventListeners();
+    setupStaticEventListeners(ctx);
     void initializeApp();
   });
 } else {
   // 静的イベントリスナーを設定（DOM準備後）
-  setupStaticEventListeners();
+  setupStaticEventListeners(ctx);
   void initializeApp();
 }
 
