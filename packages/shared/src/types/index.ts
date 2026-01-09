@@ -34,6 +34,7 @@ export type {
   DisplayInfo,
   ScreenshotCaptureData,
   StoredScreenshot,
+  StoredScreenshotData,
   ScreenCapturePermissionState,
   ScreenShareStartData,
   ScreenShareStopData,

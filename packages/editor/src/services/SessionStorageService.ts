@@ -4,7 +4,6 @@
  */
 
 import {
-  INDEXEDDB_SESSION_VERSION,
   type StoredEvent,
   type TabSwitchEvent,
   type SessionMetadata,
@@ -13,6 +12,7 @@ import {
   type StoredTabSwitchData,
   type SessionSummary,
   type TabSummary,
+  type StoredScreenshotData,
 } from '@typedcode/shared';
 
 // Re-export types for convenience
@@ -26,13 +26,14 @@ export type {
 };
 
 const DB_NAME = 'typedcode-session';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 // Object Store Names
 const STORE_SESSIONS = 'sessions';
 const STORE_TABS = 'tabs';
 const STORE_EVENTS = 'events';
 const STORE_TAB_SWITCHES = 'tabSwitches';
+const STORE_SCREENSHOTS = 'screenshots';
 
 // Schema version for data format (use the shared constant)
 export const SESSION_STORAGE_VERSION = 1;
@@ -74,7 +75,17 @@ export class SessionStorageService {
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
-        this.createObjectStores(db);
+        const oldVersion = event.oldVersion;
+
+        // Version 0 → 1: 初期構造作成
+        if (oldVersion < 1) {
+          this.createObjectStores(db);
+        }
+
+        // Version 1 → 2: Screenshots ストア追加
+        if (oldVersion >= 1 && oldVersion < 2) {
+          this.createScreenshotsStore(db);
+        }
       };
     });
   }
@@ -115,6 +126,22 @@ export class SessionStorageService {
       switchesStore.createIndex('sessionId', 'sessionId', { unique: false });
       switchesStore.createIndex('timestamp', 'switchEvent.timestamp', { unique: false });
       console.log('[SessionStorage] Tab switches store created');
+    }
+
+    // Screenshots store (Version 2で追加、新規DBでも作成)
+    this.createScreenshotsStore(db);
+  }
+
+  /**
+   * Screenshots Object Storeを作成（マイグレーション用）
+   */
+  private createScreenshotsStore(db: IDBDatabase): void {
+    if (!db.objectStoreNames.contains(STORE_SCREENSHOTS)) {
+      const screenshotsStore = db.createObjectStore(STORE_SCREENSHOTS, { keyPath: 'id' });
+      screenshotsStore.createIndex('sessionId', 'sessionId', { unique: false });
+      screenshotsStore.createIndex('timestamp', 'timestamp', { unique: false });
+      screenshotsStore.createIndex('eventSequence', 'eventSequence', { unique: false });
+      console.log('[SessionStorage] Screenshots store created');
     }
   }
 
@@ -372,7 +399,7 @@ export class SessionStorageService {
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(
-        [STORE_SESSIONS, STORE_TABS, STORE_EVENTS, STORE_TAB_SWITCHES],
+        [STORE_SESSIONS, STORE_TABS, STORE_EVENTS, STORE_TAB_SWITCHES, STORE_SCREENSHOTS],
         'readwrite'
       );
 
@@ -392,6 +419,7 @@ export class SessionStorageService {
       transaction.objectStore(STORE_TABS).clear();
       transaction.objectStore(STORE_EVENTS).clear();
       transaction.objectStore(STORE_TAB_SWITCHES).clear();
+      transaction.objectStore(STORE_SCREENSHOTS).clear();
     });
   }
 
@@ -574,6 +602,7 @@ export class SessionStorageService {
 
   /**
    * イベントを追加（インクリメンタル書き込み）
+   * 既に同じシーケンス番号のイベントが存在する場合はスキップ（リロード時の重複防止）
    */
   async appendEvent(tabId: string, event: StoredEvent): Promise<void> {
     if (!this.db || !this.sessionId) throw new Error('Database or session not initialized');
@@ -589,7 +618,15 @@ export class SessionStorageService {
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([STORE_EVENTS, STORE_TABS], 'readwrite');
 
+      let eventAddFailed = false;
+
       transaction.onerror = () => {
+        // ConstraintErrorの場合は重複イベントなのでスキップ
+        if (eventAddFailed) {
+          // イベント追加は失敗したが、それ以外は成功 - 正常終了扱い
+          resolve();
+          return;
+        }
         console.error('[SessionStorage] Failed to append event:', transaction.error);
         reject(new Error('Failed to append event'));
       };
@@ -599,7 +636,19 @@ export class SessionStorageService {
       };
 
       // イベントを追加
-      transaction.objectStore(STORE_EVENTS).add(eventData);
+      const addRequest = transaction.objectStore(STORE_EVENTS).add(eventData);
+
+      addRequest.onerror = (e) => {
+        // ConstraintError（重複）の場合はエラーを無視
+        const error = (e.target as IDBRequest).error;
+        if (error?.name === 'ConstraintError') {
+          // 重複イベントはスキップ（リロード時に発生する正常なケース）
+          eventAddFailed = true;
+          e.preventDefault(); // トランザクションの中止を防ぐ
+          e.stopPropagation();
+          return;
+        }
+      };
 
       // タブの最終書き込みインデックスを更新
       const tabsStore = transaction.objectStore(STORE_TABS);
@@ -762,6 +811,165 @@ export class SessionStorageService {
   }
 
   // ============================================================================
+  // Screenshot Operations
+  // ============================================================================
+
+  /**
+   * スクリーンショットを保存
+   */
+  async saveScreenshot(screenshot: StoredScreenshotData): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readwrite');
+      const store = transaction.objectStore(STORE_SCREENSHOTS);
+      const request = store.put(screenshot);
+
+      request.onerror = () => {
+        console.error('[SessionStorage] Failed to save screenshot:', request.error);
+        reject(new Error('Failed to save screenshot'));
+      };
+
+      request.onsuccess = () => {
+        console.log('[SessionStorage] Screenshot saved:', screenshot.id);
+        resolve();
+      };
+    });
+  }
+
+  /**
+   * IDでスクリーンショットを取得
+   */
+  async getScreenshotById(id: string): Promise<StoredScreenshotData | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readonly');
+      const store = transaction.objectStore(STORE_SCREENSHOTS);
+      const request = store.get(id);
+
+      request.onerror = () => {
+        console.error('[SessionStorage] Failed to get screenshot:', request.error);
+        reject(new Error('Failed to get screenshot'));
+      };
+
+      request.onsuccess = () => {
+        resolve(request.result ?? null);
+      };
+    });
+  }
+
+  /**
+   * セッションの全スクリーンショットを取得
+   */
+  async getScreenshotsBySession(sessionId: string): Promise<StoredScreenshotData[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readonly');
+      const store = transaction.objectStore(STORE_SCREENSHOTS);
+      const index = store.index('sessionId');
+      const request = index.getAll(sessionId);
+
+      request.onerror = () => {
+        console.error('[SessionStorage] Failed to get screenshots:', request.error);
+        reject(new Error('Failed to get screenshots'));
+      };
+
+      request.onsuccess = () => {
+        const screenshots = request.result as StoredScreenshotData[];
+        // タイムスタンプでソート
+        screenshots.sort((a, b) => a.timestamp - b.timestamp);
+        resolve(screenshots);
+      };
+    });
+  }
+
+  /**
+   * スクリーンショットを削除
+   */
+  async deleteScreenshot(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readwrite');
+      const store = transaction.objectStore(STORE_SCREENSHOTS);
+      const request = store.delete(id);
+
+      request.onerror = () => {
+        console.error('[SessionStorage] Failed to delete screenshot:', request.error);
+        reject(new Error('Failed to delete screenshot'));
+      };
+
+      request.onsuccess = () => {
+        console.log('[SessionStorage] Screenshot deleted:', id);
+        resolve();
+      };
+    });
+  }
+
+  /**
+   * セッションの全スクリーンショットを削除
+   */
+  async clearScreenshotsBySession(sessionId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readwrite');
+      const store = transaction.objectStore(STORE_SCREENSHOTS);
+      const index = store.index('sessionId');
+      const request = index.openCursor(sessionId);
+
+      transaction.onerror = () => {
+        console.error('[SessionStorage] Failed to clear screenshots:', transaction.error);
+        reject(new Error('Failed to clear screenshots'));
+      };
+
+      transaction.oncomplete = () => {
+        console.log('[SessionStorage] Screenshots cleared for session:', sessionId);
+        resolve();
+      };
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        }
+      };
+    });
+  }
+
+  /**
+   * スクリーンショット数を取得
+   */
+  async getScreenshotCount(sessionId?: string): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readonly');
+      const store = transaction.objectStore(STORE_SCREENSHOTS);
+
+      let request: IDBRequest<number>;
+      if (sessionId) {
+        const index = store.index('sessionId');
+        request = index.count(sessionId);
+      } else {
+        request = store.count();
+      }
+
+      request.onerror = () => {
+        console.error('[SessionStorage] Failed to count screenshots:', request.error);
+        reject(new Error('Failed to count screenshots'));
+      };
+
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
+    });
+  }
+
+  // ============================================================================
   // Utility Operations
   // ============================================================================
 
@@ -817,7 +1025,7 @@ export class SessionStorageService {
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(
-        [STORE_SESSIONS, STORE_TABS, STORE_EVENTS, STORE_TAB_SWITCHES],
+        [STORE_SESSIONS, STORE_TABS, STORE_EVENTS, STORE_TAB_SWITCHES, STORE_SCREENSHOTS],
         'readwrite'
       );
 
@@ -865,6 +1073,19 @@ export class SessionStorageService {
 
       switchesRequest.onsuccess = () => {
         const cursor = switchesRequest.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        }
+      };
+
+      // 関連するスクリーンショットを削除
+      const screenshotsStore = transaction.objectStore(STORE_SCREENSHOTS);
+      const screenshotsIndex = screenshotsStore.index('sessionId');
+      const screenshotsRequest = screenshotsIndex.openCursor(sessionId);
+
+      screenshotsRequest.onsuccess = () => {
+        const cursor = screenshotsRequest.result;
         if (cursor) {
           cursor.delete();
           cursor.continue();

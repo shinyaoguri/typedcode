@@ -1650,8 +1650,15 @@ async function initializeApp(): Promise<void> {
   }
 
   // Phase 1.5: Screen Capture許可の取得（画面全体のみ許可）
+  // セッション復旧の可能性を事前にチェック（IndexedDBにセッションが存在する場合、またはリロードの場合）
+  const sessionService = await initSessionStorageService();
+  const isReload = sessionStorage.getItem('typedcode-session-active') === 'true';
+  const hasExistingSession = await sessionService.hasExistingSession();
+
   if (ScreenshotTracker.isSupported()) {
-    const screenshotTracker = new ScreenshotTracker();
+    // ScreenshotTrackerはSessionStorageServiceを使用してスクリーンショットを保存
+    const screenshotTracker = new ScreenshotTracker(sessionService);
+
     const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker);
 
     if (!permissionGranted) {
@@ -1693,19 +1700,17 @@ async function initializeApp(): Promise<void> {
     });
   }
 
-  // Phase 2.5: SessionStorageServiceの初期化とセッション復旧チェック
+  // Phase 2.5: セッション復旧チェック
+  // sessionServiceは Phase 1.5 で初期化済み
+  // isReload, hasExistingSession も Phase 1.5 で取得済み
   updateInitMessage(t('app.initializing'));
-  const sessionService = await initSessionStorageService();
   let sessionRecovered = false;
   let sessionId: string | null = null;
 
-  // リロード検出: sessionStorageのフラグで判断
-  // sessionStorageはリロード時は保持され、タブを閉じると消える
-  const isReload = sessionStorage.getItem('typedcode-session-active') === 'true';
   // フラグをクリア（次回のためにリセット）
   sessionStorage.removeItem('typedcode-session-active');
 
-  if (await sessionService.hasExistingSession()) {
+  if (hasExistingSession) {
     const sessionSummary = await sessionService.getSessionSummary();
 
     if (sessionSummary && sessionSummary.tabs.length > 0) {
@@ -1730,7 +1735,7 @@ async function initializeApp(): Promise<void> {
           sessionRecovered = true;
           console.log('[TypedCode] Session recovered:', sessionId);
         } else {
-          // 新規セッションを開始
+          // 新規セッションを開始 - sessionService.clearSession()で古いスクリーンショットも削除される
           await sessionService.clearSession();
           const newSession = await sessionService.createSession();
           sessionId = newSession.sessionId;
@@ -1738,7 +1743,7 @@ async function initializeApp(): Promise<void> {
         }
       }
     } else {
-      // タブがない場合は自動的に新規セッション
+      // タブがない場合は自動的に新規セッション - sessionService.clearSession()でスクリーンショットも削除
       await sessionService.clearSession();
       const newSession = await sessionService.createSession();
       sessionId = newSession.sessionId;
@@ -1748,6 +1753,11 @@ async function initializeApp(): Promise<void> {
     const newSession = await sessionService.createSession();
     sessionId = newSession.sessionId;
     console.log('[TypedCode] New session created:', sessionId);
+  }
+
+  // ScreenshotTrackerにセッションIDを設定
+  if (ctx.trackers.screenshot && sessionId) {
+    ctx.trackers.screenshot.setSessionId(sessionId);
   }
 
   // Phase 3: デバイス情報取得

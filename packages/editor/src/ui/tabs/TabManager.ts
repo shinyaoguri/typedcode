@@ -579,14 +579,15 @@ export class TabManager {
     for (const [id, tab] of this.tabs) {
       const proofState = tab.typingProof.serializeState();
 
-      // 既存のイベント数を取得（IndexedDBに保存済みのイベント数）
+      // 既存イベントの最大シーケンス番号を取得
       const existingEvents = await this.sessionService.getEvents(id);
-      const lastSavedIndex = existingEvents.length - 1;
+      const maxExistingSequence = existingEvents.length > 0
+        ? Math.max(...existingEvents.map(e => e.sequence))
+        : -1;
 
-      // 未保存のイベントをIndexedDBに追加
-      for (let i = lastSavedIndex + 1; i < proofState.events.length; i++) {
-        const event = proofState.events[i];
-        if (event) {
+      // 未保存のイベントをIndexedDBに追加（シーケンス番号が既存より大きいもののみ）
+      for (const event of proofState.events) {
+        if (event && event.sequence > maxExistingSequence) {
           await this.sessionService.appendEvent(id, event);
         }
       }
