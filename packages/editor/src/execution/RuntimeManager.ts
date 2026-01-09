@@ -186,6 +186,26 @@ export class RuntimeManager {
   }
 
   /**
+   * C言語実行環境をリセット
+   * ランタイムエラー後の復旧に使用
+   */
+  async resetCRuntime(): Promise<void> {
+    console.log('[RuntimeManager] Resetting C runtime...');
+
+    // Set status to not-ready during reset
+    this.setStatus('c', 'not-ready');
+
+    try {
+      const executor = getCExecutor();
+      await executor.resetRuntime();
+      console.log('[RuntimeManager] C runtime reset complete');
+    } catch (error) {
+      console.error('[RuntimeManager] C runtime reset failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * リソースを解放
    */
   dispose(): void {

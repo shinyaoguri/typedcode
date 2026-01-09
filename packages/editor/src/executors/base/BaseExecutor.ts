@@ -20,6 +20,7 @@ export abstract class BaseExecutor implements ILanguageExecutor {
   protected _initialized: boolean = false;
   protected _initializing: boolean = false;
   protected _abortRequested: boolean = false;
+  protected _runtimeCorrupted: boolean = false;
 
   get isInitialized(): boolean {
     return this._initialized;
@@ -27,6 +28,29 @@ export abstract class BaseExecutor implements ILanguageExecutor {
 
   get isInitializing(): boolean {
     return this._initializing;
+  }
+
+  /**
+   * Check if runtime is corrupted and needs reset
+   */
+  isRuntimeCorrupted(): boolean {
+    return this._runtimeCorrupted;
+  }
+
+  /**
+   * Mark runtime as corrupted (to be reset on next execution)
+   */
+  protected markRuntimeCorrupted(): void {
+    this._runtimeCorrupted = true;
+  }
+
+  /**
+   * Reset the runtime to initial state
+   * Subclasses should override this for language-specific reset
+   */
+  async resetRuntime(): Promise<void> {
+    this._initialized = false;
+    this._runtimeCorrupted = false;
   }
 
   /**
@@ -104,6 +128,7 @@ export abstract class BaseExecutor implements ILanguageExecutor {
     this._initialized = false;
     this._initializing = false;
     this._abortRequested = false;
+    this._runtimeCorrupted = false;
   }
 
   /**

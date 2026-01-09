@@ -27,6 +27,27 @@ int main() {
 }
 `;
 
+/**
+ * Error patterns that indicate runtime corruption requiring reset
+ */
+const RUNTIME_ERROR_PATTERNS = [
+  'runtimeerror',
+  'memory access out of bounds',
+  'unreachable executed',
+  'call stack exhausted',
+  'integer overflow',
+  'integer divide by zero',
+  'stack overflow',
+  'out of memory',
+  'null function',
+  'function signature mismatch',
+  'table index is out of bounds',
+  'invalid conversion to integer',
+  'indirect call type mismatch',
+  'wasm trap',
+  'aborted',
+];
+
 /** Options for compiling with different settings */
 export interface CompileOptions {
   sourceFile?: string;
@@ -90,6 +111,13 @@ export class CExecutor extends BaseExecutor {
     callbacks: ExecutionCallbacks,
     options: CompileOptions
   ): Promise<ExecutionResult> {
+    // Auto-reset if runtime was corrupted
+    if (this._runtimeCorrupted) {
+      console.log('[CExecutor] Runtime was corrupted, performing auto-reset...');
+      callbacks.onProgress?.('Resetting runtime due to previous error...');
+      await this.resetRuntime();
+    }
+
     if (!this._initialized || !this.clangPkg) {
       throw new Error('Executor not initialized. Call initialize() first.');
     }
@@ -199,7 +227,17 @@ export class CExecutor extends BaseExecutor {
     } catch (error) {
       console.error('[CExecutor] Execution error:', error);
       const errorMsg = error instanceof Error ? error.message : String(error);
-      callbacks.onStderr(`Error: ${errorMsg}\n`);
+
+      // Check if this is a runtime corruption error
+      if (this.isRuntimeCorruptionError(error)) {
+        console.warn('[CExecutor] Runtime corruption detected, marking for reset');
+        this.markRuntimeCorrupted();
+        callbacks.onStderr(`Error: ${errorMsg}\n`);
+        callbacks.onStderr('Runtime error detected. Will auto-reset on next execution.\n');
+      } else {
+        callbacks.onStderr(`Error: ${errorMsg}\n`);
+      }
+
       return {
         success: false,
         exitCode: 1,
@@ -213,6 +251,25 @@ export class CExecutor extends BaseExecutor {
   protected _onAbort(): void {
     console.log('[CExecutor] Abort requested');
     // TODO: Implement proper abort mechanism for WASI programs
+  }
+
+  /**
+   * Check if an error indicates runtime corruption
+   */
+  private isRuntimeCorruptionError(error: unknown): boolean {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const lowerMsg = errorMsg.toLowerCase();
+    return RUNTIME_ERROR_PATTERNS.some(pattern => lowerMsg.includes(pattern));
+  }
+
+  /**
+   * Reset the Wasmer runtime to a clean state
+   */
+  override async resetRuntime(): Promise<void> {
+    console.log('[CExecutor] Resetting Wasmer runtime...');
+    this.clangPkg = null;
+    await super.resetRuntime();
+    console.log('[CExecutor] Runtime reset complete');
   }
 
   parseErrors(stderr: string): ParsedError[] {

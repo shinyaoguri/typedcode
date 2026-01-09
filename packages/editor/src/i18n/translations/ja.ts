@@ -286,6 +286,10 @@ export const ja: TranslationKeys = {
     runHint: 'Ctrl+Enter または Run ボタンでコードを実行',
     cDisclaimer: '※ WebAssembly環境のため、一部の標準ライブラリ機能に制限があります。',
     cppDisclaimer: '※ WebAssembly環境のため、一部のC++機能に制限があります。',
+    resetRuntime: 'ランタイムをリセット',
+    runtimeResetComplete: 'ランタイムのリセットが完了しました。',
+    runtimeCorruptionDetected: 'ランタイムエラーを検出しました。次回実行時に自動リセットします。',
+    runtimeResetting: 'ランタイムをリセット中...',
   },
 
   logViewer: {

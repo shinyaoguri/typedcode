@@ -448,11 +448,48 @@ export class TypingProof {
     const signatureData = JSON.stringify(finalData);
     const signature = await this.hashChainManager.computeHash(signatureData);
 
+    // エクスポート用にメタデータのnullフィールドを省略
+    const compactEvents = this.events.map(event => this.compactEventForExport(event));
+
     return {
       ...finalData,
       signature,
-      events: this.events
+      events: compactEvents
     };
+  }
+
+  /**
+   * エクスポート用にイベントを最適化
+   * ハッシュ計算に使用されないメタデータフィールドのみnullを省略
+   * @private
+   */
+  private compactEventForExport(event: StoredEvent): StoredEvent {
+    // メタデータフィールド（ハッシュ計算に使用されない）のnullを省略
+    const compact: Partial<StoredEvent> = {
+      // ハッシュ計算フィールド（必須）
+      sequence: event.sequence,
+      timestamp: event.timestamp,
+      type: event.type,
+      inputType: event.inputType,
+      data: event.data,
+      rangeOffset: event.rangeOffset,
+      rangeLength: event.rangeLength,
+      range: event.range,
+      previousHash: event.previousHash,
+      posw: event.posw,
+      hash: event.hash,
+    };
+
+    // メタデータフィールド（nullでなければ追加）
+    if (event.description !== null) compact.description = event.description;
+    if (event.isMultiLine !== null) compact.isMultiLine = event.isMultiLine;
+    if (event.deletedLength !== null) compact.deletedLength = event.deletedLength;
+    if (event.insertedText !== null) compact.insertedText = event.insertedText;
+    if (event.insertLength !== null) compact.insertLength = event.insertLength;
+    if (event.deleteDirection !== null) compact.deleteDirection = event.deleteDirection;
+    if (event.selectedText !== null) compact.selectedText = event.selectedText;
+
+    return compact as StoredEvent;
   }
 
   /**
