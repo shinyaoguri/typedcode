@@ -10,8 +10,9 @@ import type {
   HumanAttestationEventData,
   HashChainCheckpoint,
   SampledVerificationResult,
+  PoswStats,
 } from '@typedcode/shared';
-import { TypingProof } from '@typedcode/shared';
+import { TypingProof, calculatePoswStats } from '@typedcode/shared';
 import type { ProofFile, HumanAttestation, VerificationResultData } from '../types.js';
 
 // ============================================================================
@@ -43,20 +44,12 @@ export interface AttestationInfo {
   legacyAttestation: HumanAttestation | undefined;
 }
 
-/** PoSW統計 */
-export interface PoswStats {
-  count: number;
-  avgTimeMs: number;
-  totalTimeMs: number;
-  iterations: number;
-}
-
 /** 検証エンジン全体の結果 */
 export interface VerificationEngineResult {
   metadataValid: boolean;
   chainValid: boolean;
   isPureTyping: boolean;
-  poswStats: PoswStats | null;
+  poswStats: PoswStats | undefined;
   sampledResult?: SampledVerificationResult;
   attestationInfo: AttestationInfo;
   message?: string;
@@ -276,47 +269,6 @@ export class VerificationEngine {
   }
 
   // ==========================================================================
-  // PoSW統計
-  // ==========================================================================
-
-  /**
-   * PoSW統計を計算
-   */
-  calculatePoswStats(events: StoredEvent[]): PoswStats | null {
-    const eventsWithPoSW = events.filter(event => {
-      return 'posw' in event && event.posw && typeof event.posw === 'object';
-    });
-
-    if (eventsWithPoSW.length === 0) {
-      return null;
-    }
-
-    let totalComputeTime = 0;
-    const computeTimes: number[] = [];
-    let iterations = 0;
-
-    eventsWithPoSW.forEach(event => {
-      const posw = (event as StoredEvent & { posw: { iterations: number; computeTimeMs: number } }).posw;
-      totalComputeTime += posw.computeTimeMs;
-      computeTimes.push(posw.computeTimeMs);
-      if (iterations === 0) {
-        iterations = posw.iterations;
-      }
-    });
-
-    const avgComputeTime = computeTimes.length > 0
-      ? computeTimes.reduce((a, b) => a + b, 0) / computeTimes.length
-      : 0;
-
-    return {
-      count: eventsWithPoSW.length,
-      avgTimeMs: avgComputeTime,
-      totalTimeMs: totalComputeTime,
-      iterations,
-    };
-  }
-
-  // ==========================================================================
   // 統合検証
   // ==========================================================================
 
@@ -346,10 +298,10 @@ export class VerificationEngine {
       options?.onSampledProgress
     );
 
-    // 4. PoSW統計計算
+    // 4. PoSW統計計算（shared版を使用）
     const poswStats = data.proof?.events
-      ? this.calculatePoswStats(data.proof.events)
-      : null;
+      ? calculatePoswStats(data.proof.events)
+      : undefined;
 
     return {
       metadataValid: metadataResult.valid,
@@ -373,7 +325,7 @@ export class VerificationEngine {
       isPureTyping: result.isPureTyping,
       message: result.message,
       errorAt: result.errorAt,
-      poswStats: result.poswStats ?? undefined,
+      poswStats: result.poswStats,
       sampledResult: result.sampledResult,
     };
   }

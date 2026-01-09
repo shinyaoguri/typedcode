@@ -256,8 +256,8 @@ export interface VerificationResult {
   sampledVerification?: SampledVerificationInfo;  // サンプリング検証の詳細
 }
 
-/** PoSW統計（UIコンポーネント用） */
-export interface PoswStats {
+/** PoSW統計（UIコンポーネント用・表示形式） */
+export interface PoswStatsDisplay {
   totalIterations: number;
   totalTime: number;
   avgTime: number;

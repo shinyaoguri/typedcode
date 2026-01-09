@@ -6,7 +6,7 @@
  * UI-specific functions for the verify package.
  */
 
-import type { PoswStats, HumanAttestationUI, VerifyTabState, ChainErrorDetails, SampledVerificationInfo } from '../types';
+import type { PoswStatsDisplay, HumanAttestationUI, VerifyTabState, ChainErrorDetails, SampledVerificationInfo } from '../types';
 import type { ResultData, VerificationResult } from '../ui/ResultPanel';
 
 // Re-export from shared for backward compatibility
@@ -101,8 +101,8 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     sampledVerification,
   };
 
-  // Convert PoSW stats
-  const poswStats: PoswStats | undefined = verificationResult.poswStats
+  // Convert PoSW stats (from shared PoswStats to UI PoswStatsDisplay)
+  const poswStats: PoswStatsDisplay | undefined = verificationResult.poswStats
     ? {
         totalIterations: verificationResult.poswStats.iterations,
         totalTime: verificationResult.poswStats.totalTimeMs,

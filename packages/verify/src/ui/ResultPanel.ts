@@ -3,7 +3,7 @@
  */
 import type {
   VerificationResult,
-  PoswStats,
+  PoswStatsDisplay,
   HumanAttestationUI,
   VerificationStepType,
   VerificationStepStatus,
@@ -24,7 +24,7 @@ export interface ResultData {
   content: string;
   language: string;
   result: VerificationResult;
-  poswStats?: PoswStats;
+  poswStats?: PoswStatsDisplay;
   attestations?: HumanAttestationUI[];
   eventCount: number;
   typingTime: string;
