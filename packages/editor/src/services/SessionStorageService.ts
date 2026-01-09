@@ -14,6 +14,7 @@ import {
   type TabSummary,
   type StoredScreenshotData,
 } from '@typedcode/shared';
+import { IndexedDBHelper } from './IndexedDBHelper.js';
 
 // Re-export types for convenience
 export type {
@@ -180,23 +181,7 @@ export class SessionStorageService {
    */
   async getLatestSession(): Promise<SessionMetadata | null> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_SESSIONS], 'readonly');
-      const store = transaction.objectStore(STORE_SESSIONS);
-      const index = store.index('createdAt');
-      const request = index.openCursor(null, 'prev'); // 降順で最新を取得
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to get latest session:', request.error);
-        reject(new Error('Failed to get latest session'));
-      };
-
-      request.onsuccess = () => {
-        const cursor = request.result;
-        resolve(cursor ? cursor.value : null);
-      };
-    });
+    return IndexedDBHelper.getLatestByIndex<SessionMetadata>(this.db, STORE_SESSIONS, 'createdAt');
   }
 
   /**
@@ -292,21 +277,7 @@ export class SessionStorageService {
    */
   private async getSessionById(sessionId: string): Promise<SessionMetadata | null> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_SESSIONS], 'readonly');
-      const store = transaction.objectStore(STORE_SESSIONS);
-      const request = store.get(sessionId);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to get session:', request.error);
-        reject(new Error('Failed to get session'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result ?? null);
-      };
-    });
+    return IndexedDBHelper.get<SessionMetadata>(this.db, STORE_SESSIONS, sessionId);
   }
 
   /**
@@ -314,21 +285,7 @@ export class SessionStorageService {
    */
   async updateSession(session: SessionMetadata): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_SESSIONS], 'readwrite');
-      const store = transaction.objectStore(STORE_SESSIONS);
-      const request = store.put(session);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to update session:', request.error);
-        reject(new Error('Failed to update session'));
-      };
-
-      request.onsuccess = () => {
-        resolve();
-      };
-    });
+    await IndexedDBHelper.put(this.db, STORE_SESSIONS, session);
   }
 
   /**
@@ -446,22 +403,8 @@ export class SessionStorageService {
    */
   async saveTab(tab: StoredTabData): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_TABS], 'readwrite');
-      const store = transaction.objectStore(STORE_TABS);
-      const request = store.put(tab);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to save tab:', request.error);
-        reject(new Error('Failed to save tab'));
-      };
-
-      request.onsuccess = () => {
-        console.log('[SessionStorage] Tab saved:', tab.id);
-        resolve();
-      };
-    });
+    await IndexedDBHelper.put(this.db, STORE_TABS, tab);
+    console.log('[SessionStorage] Tab saved:', tab.id);
   }
 
   /**
@@ -469,21 +412,7 @@ export class SessionStorageService {
    */
   async getTab(tabId: string): Promise<StoredTabData | null> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_TABS], 'readonly');
-      const store = transaction.objectStore(STORE_TABS);
-      const request = store.get(tabId);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to get tab:', request.error);
-        reject(new Error('Failed to get tab'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result ?? null);
-      };
-    });
+    return IndexedDBHelper.get<StoredTabData>(this.db, STORE_TABS, tabId);
   }
 
   /**
@@ -491,22 +420,7 @@ export class SessionStorageService {
    */
   async loadTabs(sessionId: string): Promise<StoredTabData[]> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_TABS], 'readonly');
-      const store = transaction.objectStore(STORE_TABS);
-      const index = store.index('sessionId');
-      const request = index.getAll(sessionId);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to load tabs:', request.error);
-        reject(new Error('Failed to load tabs'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result ?? []);
-      };
-    });
+    return IndexedDBHelper.getAllByIndex<StoredTabData>(this.db, STORE_TABS, 'sessionId', sessionId);
   }
 
   /**
@@ -551,22 +465,7 @@ export class SessionStorageService {
    */
   async getTabCount(sessionId: string): Promise<number> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_TABS], 'readonly');
-      const store = transaction.objectStore(STORE_TABS);
-      const index = store.index('sessionId');
-      const request = index.count(sessionId);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to count tabs:', request.error);
-        reject(new Error('Failed to count tabs'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-    });
+    return IndexedDBHelper.countByIndex(this.db, STORE_TABS, 'sessionId', sessionId);
   }
 
   /**
@@ -671,27 +570,13 @@ export class SessionStorageService {
    */
   async getEvents(tabId: string): Promise<StoredEvent[]> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_EVENTS], 'readonly');
-      const store = transaction.objectStore(STORE_EVENTS);
-      const index = store.index('tabId');
-      const request = index.getAll(tabId);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to get events:', request.error);
-        reject(new Error('Failed to get events'));
-      };
-
-      request.onsuccess = () => {
-        const storedEvents = request.result as StoredEventData[];
-        // eventIndexでソートしてeventDataを抽出
-        const events = storedEvents
-          .sort((a, b) => a.eventIndex - b.eventIndex)
-          .map(e => e.eventData);
-        resolve(events);
-      };
-    });
+    const storedEvents = await IndexedDBHelper.getAllByIndex<StoredEventData>(
+      this.db, STORE_EVENTS, 'tabId', tabId
+    );
+    // eventIndexでソートしてeventDataを抽出
+    return storedEvents
+      .sort((a, b) => a.eventIndex - b.eventIndex)
+      .map(e => e.eventData);
   }
 
   /**
@@ -699,22 +584,7 @@ export class SessionStorageService {
    */
   async getEventCount(tabId: string): Promise<number> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_EVENTS], 'readonly');
-      const store = transaction.objectStore(STORE_EVENTS);
-      const index = store.index('tabId');
-      const request = index.count(tabId);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to count events:', request.error);
-        reject(new Error('Failed to count events'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-    });
+    return IndexedDBHelper.countByIndex(this.db, STORE_EVENTS, 'tabId', tabId);
   }
 
   /**
@@ -767,20 +637,7 @@ export class SessionStorageService {
       switchEvent,
     };
 
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_TAB_SWITCHES], 'readwrite');
-      const store = transaction.objectStore(STORE_TAB_SWITCHES);
-      const request = store.add(data);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to save tab switch:', request.error);
-        reject(new Error('Failed to save tab switch'));
-      };
-
-      request.onsuccess = () => {
-        resolve();
-      };
-    });
+    await IndexedDBHelper.add(this.db, STORE_TAB_SWITCHES, data);
   }
 
   /**
@@ -788,26 +645,12 @@ export class SessionStorageService {
    */
   async getTabSwitches(sessionId: string): Promise<TabSwitchEvent[]> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_TAB_SWITCHES], 'readonly');
-      const store = transaction.objectStore(STORE_TAB_SWITCHES);
-      const index = store.index('sessionId');
-      const request = index.getAll(sessionId);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to get tab switches:', request.error);
-        reject(new Error('Failed to get tab switches'));
-      };
-
-      request.onsuccess = () => {
-        const stored = request.result as StoredTabSwitchData[];
-        const switches = stored
-          .map(s => s.switchEvent)
-          .sort((a, b) => a.timestamp - b.timestamp);
-        resolve(switches);
-      };
-    });
+    const stored = await IndexedDBHelper.getAllByIndex<StoredTabSwitchData>(
+      this.db, STORE_TAB_SWITCHES, 'sessionId', sessionId
+    );
+    return stored
+      .map(s => s.switchEvent)
+      .sort((a, b) => a.timestamp - b.timestamp);
   }
 
   // ============================================================================
@@ -819,22 +662,8 @@ export class SessionStorageService {
    */
   async saveScreenshot(screenshot: StoredScreenshotData): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readwrite');
-      const store = transaction.objectStore(STORE_SCREENSHOTS);
-      const request = store.put(screenshot);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to save screenshot:', request.error);
-        reject(new Error('Failed to save screenshot'));
-      };
-
-      request.onsuccess = () => {
-        console.log('[SessionStorage] Screenshot saved:', screenshot.id);
-        resolve();
-      };
-    });
+    await IndexedDBHelper.put(this.db, STORE_SCREENSHOTS, screenshot);
+    console.log('[SessionStorage] Screenshot saved:', screenshot.id);
   }
 
   /**
@@ -842,21 +671,7 @@ export class SessionStorageService {
    */
   async getScreenshotById(id: string): Promise<StoredScreenshotData | null> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readonly');
-      const store = transaction.objectStore(STORE_SCREENSHOTS);
-      const request = store.get(id);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to get screenshot:', request.error);
-        reject(new Error('Failed to get screenshot'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result ?? null);
-      };
-    });
+    return IndexedDBHelper.get<StoredScreenshotData>(this.db, STORE_SCREENSHOTS, id);
   }
 
   /**
@@ -864,25 +679,12 @@ export class SessionStorageService {
    */
   async getScreenshotsBySession(sessionId: string): Promise<StoredScreenshotData[]> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readonly');
-      const store = transaction.objectStore(STORE_SCREENSHOTS);
-      const index = store.index('sessionId');
-      const request = index.getAll(sessionId);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to get screenshots:', request.error);
-        reject(new Error('Failed to get screenshots'));
-      };
-
-      request.onsuccess = () => {
-        const screenshots = request.result as StoredScreenshotData[];
-        // タイムスタンプでソート
-        screenshots.sort((a, b) => a.timestamp - b.timestamp);
-        resolve(screenshots);
-      };
-    });
+    const screenshots = await IndexedDBHelper.getAllByIndex<StoredScreenshotData>(
+      this.db, STORE_SCREENSHOTS, 'sessionId', sessionId
+    );
+    // タイムスタンプでソート
+    screenshots.sort((a, b) => a.timestamp - b.timestamp);
+    return screenshots;
   }
 
   /**
@@ -890,22 +692,8 @@ export class SessionStorageService {
    */
   async deleteScreenshot(id: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readwrite');
-      const store = transaction.objectStore(STORE_SCREENSHOTS);
-      const request = store.delete(id);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to delete screenshot:', request.error);
-        reject(new Error('Failed to delete screenshot'));
-      };
-
-      request.onsuccess = () => {
-        console.log('[SessionStorage] Screenshot deleted:', id);
-        resolve();
-      };
-    });
+    await IndexedDBHelper.delete(this.db, STORE_SCREENSHOTS, id);
+    console.log('[SessionStorage] Screenshot deleted:', id);
   }
 
   /**
@@ -913,31 +701,8 @@ export class SessionStorageService {
    */
   async clearScreenshotsBySession(sessionId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readwrite');
-      const store = transaction.objectStore(STORE_SCREENSHOTS);
-      const index = store.index('sessionId');
-      const request = index.openCursor(sessionId);
-
-      transaction.onerror = () => {
-        console.error('[SessionStorage] Failed to clear screenshots:', transaction.error);
-        reject(new Error('Failed to clear screenshots'));
-      };
-
-      transaction.oncomplete = () => {
-        console.log('[SessionStorage] Screenshots cleared for session:', sessionId);
-        resolve();
-      };
-
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
-    });
+    await IndexedDBHelper.deleteByIndex(this.db, STORE_SCREENSHOTS, 'sessionId', sessionId);
+    console.log('[SessionStorage] Screenshots cleared for session:', sessionId);
   }
 
   /**
@@ -945,28 +710,10 @@ export class SessionStorageService {
    */
   async getScreenshotCount(sessionId?: string): Promise<number> {
     if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_SCREENSHOTS], 'readonly');
-      const store = transaction.objectStore(STORE_SCREENSHOTS);
-
-      let request: IDBRequest<number>;
-      if (sessionId) {
-        const index = store.index('sessionId');
-        request = index.count(sessionId);
-      } else {
-        request = store.count();
-      }
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to count screenshots:', request.error);
-        reject(new Error('Failed to count screenshots'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-    });
+    if (sessionId) {
+      return IndexedDBHelper.countByIndex(this.db, STORE_SCREENSHOTS, 'sessionId', sessionId);
+    }
+    return IndexedDBHelper.count(this.db, STORE_SCREENSHOTS);
   }
 
   // ============================================================================
@@ -979,42 +726,29 @@ export class SessionStorageService {
   async pruneOldSessions(keepCount: number = 1): Promise<number> {
     if (!this.db) throw new Error('Database not initialized');
 
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_SESSIONS], 'readonly');
-      const store = transaction.objectStore(STORE_SESSIONS);
-      const index = store.index('createdAt');
-      const request = index.getAll();
+    const sessions = await IndexedDBHelper.getAll<SessionMetadata>(this.db, STORE_SESSIONS);
 
-      request.onerror = () => {
-        reject(new Error('Failed to get sessions for pruning'));
-      };
+    // 古い順にソート
+    sessions.sort((a, b) => a.createdAt - b.createdAt);
 
-      request.onsuccess = async () => {
-        const sessions = request.result as SessionMetadata[];
+    // 削除対象を決定
+    const toDelete = sessions.slice(0, Math.max(0, sessions.length - keepCount));
+    let deletedCount = 0;
 
-        // 古い順にソート
-        sessions.sort((a, b) => a.createdAt - b.createdAt);
+    for (const session of toDelete) {
+      // 現在のセッションはスキップ
+      if (session.sessionId === this.sessionId) continue;
 
-        // 削除対象を決定
-        const toDelete = sessions.slice(0, Math.max(0, sessions.length - keepCount));
-        let deletedCount = 0;
+      try {
+        await this.deleteSessionById(session.sessionId);
+        deletedCount++;
+      } catch (error) {
+        console.error(`[SessionStorage] Failed to delete session ${session.sessionId}:`, error);
+      }
+    }
 
-        for (const session of toDelete) {
-          // 現在のセッションはスキップ
-          if (session.sessionId === this.sessionId) continue;
-
-          try {
-            await this.deleteSessionById(session.sessionId);
-            deletedCount++;
-          } catch (error) {
-            console.error(`[SessionStorage] Failed to delete session ${session.sessionId}:`, error);
-          }
-        }
-
-        console.log(`[SessionStorage] Pruned ${deletedCount} old sessions`);
-        resolve(deletedCount);
-      };
-    });
+    console.log(`[SessionStorage] Pruned ${deletedCount} old sessions`);
+    return deletedCount;
   }
 
   /**

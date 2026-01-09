@@ -144,4 +144,35 @@ export abstract class BaseExecutor implements ILanguageExecutor {
   protected resetAbort(): void {
     this._abortRequested = false;
   }
+
+  /**
+   * Execute a promise with timeout support
+   *
+   * @param promise The promise to execute
+   * @param timeoutMs Timeout in milliseconds
+   * @param timeoutMessage Optional custom timeout message
+   * @returns The resolved value of the promise
+   * @throws Error if the promise times out
+   */
+  protected executeWithTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    timeoutMessage?: string
+  ): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(timeoutMessage ?? `Execution timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      promise
+        .then((result) => {
+          clearTimeout(timer);
+          resolve(result);
+        })
+        .catch((error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+    });
+  }
 }

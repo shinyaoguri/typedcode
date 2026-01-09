@@ -321,30 +321,6 @@ ${code}
   }
 
   /**
-   * Execute with timeout support
-   */
-  private executeWithTimeout<T>(
-    promise: Promise<T>,
-    timeoutMs: number
-  ): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error(`Execution timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-
-      promise
-        .then((result) => {
-          clearTimeout(timer);
-          resolve(result);
-        })
-        .catch((error) => {
-          clearTimeout(timer);
-          reject(error);
-        });
-    });
-  }
-
-  /**
    * Format error for display
    */
   private formatError(error: unknown): { message: string; line?: number; column?: number } {

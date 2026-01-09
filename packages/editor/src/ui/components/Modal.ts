@@ -309,6 +309,212 @@ export class TermsModalManager {
   }
 }
 
+// ============================================================================
+// Countdown Dialog
+// ============================================================================
+
+export interface CountdownDialogOptions {
+  /** Dialog title */
+  title: string;
+  /** Message to show (above countdown) */
+  message: string;
+  /** Initial countdown in seconds */
+  seconds: number;
+  /** Button text for continue action */
+  continueButtonText: string;
+  /** Optional header icon */
+  icon?: string;
+  /** Optional dialog ID for uniqueness */
+  dialogId?: string;
+  /** Optional countdown label */
+  countdownLabel?: string;
+}
+
+/**
+ * Show a countdown dialog
+ *
+ * @returns true if continue button clicked, false if timeout
+ */
+export function showCountdownDialog(options: CountdownDialogOptions): Promise<boolean> {
+  const {
+    title,
+    message,
+    seconds,
+    continueButtonText,
+    icon = 'fa-clock',
+    dialogId = 'countdown-dialog-overlay',
+    countdownLabel = '',
+  } = options;
+
+  return new Promise((resolve) => {
+    // Remove existing dialog
+    const existing = document.getElementById(dialogId);
+    existing?.remove();
+
+    let remainingSeconds = seconds;
+    let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+    const formatTime = (secs: number): string => {
+      const min = Math.floor(secs / 60);
+      const sec = secs % 60;
+      return `${min}:${sec.toString().padStart(2, '0')}`;
+    };
+
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.id = dialogId;
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-dialog modal-info countdown-dialog">
+        <div class="modal-header">
+          <i class="fas ${icon}"></i>
+          <h3>${title}</h3>
+        </div>
+        <div class="modal-body">
+          <p>${message}</p>
+          <div class="countdown-display">
+            <span class="countdown-time">${formatTime(remainingSeconds)}</span>
+            ${countdownLabel ? `<span class="countdown-label">${countdownLabel}</span>` : ''}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn modal-btn-primary countdown-continue-btn">
+            <i class="fas fa-play"></i>
+            ${continueButtonText}
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const countdownTimeEl = overlay.querySelector('.countdown-time');
+    const continueBtn = overlay.querySelector('.countdown-continue-btn');
+
+    const cleanup = (): void => {
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+      overlay.classList.add('hidden');
+      setTimeout(() => overlay.remove(), 200);
+    };
+
+    // Start countdown
+    countdownInterval = setInterval(() => {
+      remainingSeconds--;
+      if (countdownTimeEl) {
+        countdownTimeEl.textContent = formatTime(remainingSeconds);
+      }
+
+      if (remainingSeconds <= 0) {
+        cleanup();
+        resolve(false); // Timeout
+      }
+    }, 1000);
+
+    // Continue button click
+    continueBtn?.addEventListener('click', () => {
+      cleanup();
+      resolve(true);
+    });
+  });
+}
+
+// ============================================================================
+// Lock Overlay
+// ============================================================================
+
+export interface LockOverlayOptions {
+  /** Overlay ID */
+  overlayId: string;
+  /** Main title */
+  title: string;
+  /** Description message */
+  description: string;
+  /** Optional hint text */
+  hint?: string;
+  /** Button text */
+  buttonText: string;
+  /** Icon class (without fa- prefix) */
+  icon?: string;
+  /** Callback when button is clicked */
+  onResume: () => void | Promise<boolean | void>;
+  /** Custom class name */
+  className?: string;
+}
+
+/**
+ * Show a fullscreen lock overlay
+ *
+ * @returns Object with hide method to remove the overlay
+ */
+export function showLockOverlay(options: LockOverlayOptions): { hide: () => void } {
+  const {
+    overlayId,
+    title,
+    description,
+    hint,
+    buttonText,
+    icon = 'pause-circle',
+    onResume,
+    className = 'lock-overlay',
+  } = options;
+
+  // Remove existing overlay
+  const existing = document.getElementById(overlayId);
+  existing?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = overlayId;
+  overlay.className = className;
+  overlay.innerHTML = `
+    <div class="lock-overlay-content">
+      <i class="fas fa-${icon} fa-4x"></i>
+      <h2>${title}</h2>
+      <p>${description}</p>
+      ${hint ? `<p class="lock-overlay-hint">${hint}</p>` : ''}
+      <button class="btn btn-primary lock-overlay-btn">
+        <i class="fas fa-play"></i>
+        ${buttonText}
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const resumeBtn = overlay.querySelector('.lock-overlay-btn');
+  resumeBtn?.addEventListener('click', async () => {
+    const result = await onResume();
+    // If callback returns true or void, hide the overlay
+    if (result !== false) {
+      hide();
+    }
+  });
+
+  const hide = (): void => {
+    overlay.classList.add('hidden');
+    setTimeout(() => overlay.remove(), 200);
+  };
+
+  return { hide };
+}
+
+/**
+ * Hide a lock overlay by ID
+ */
+export function hideLockOverlay(overlayId: string): void {
+  const overlay = document.getElementById(overlayId);
+  if (overlay) {
+    overlay.classList.add('hidden');
+    setTimeout(() => overlay.remove(), 200);
+  }
+}
+
+// ============================================================================
+// Terms Modal Manager
+// ============================================================================
+
 // Singleton instance
 let termsModalManager: TermsModalManager | null = null;
 

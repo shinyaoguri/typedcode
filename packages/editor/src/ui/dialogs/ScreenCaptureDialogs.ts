@@ -5,7 +5,10 @@
 
 import type { ScreenshotTracker } from '../../tracking/ScreenshotTracker.js';
 import { showScreenShareErrorDialog } from '../components/ScreenShareErrorDialog.js';
+import { showLockOverlay, hideLockOverlay } from '../components/Modal.js';
 import { t } from '../../i18n/index.js';
+
+const SCREEN_CAPTURE_LOCK_OVERLAY_ID = 'screen-capture-lock-overlay';
 
 /**
  * 画面共有の許可を要求（画面全体が選択されるまで繰り返す）
@@ -84,36 +87,17 @@ export async function showScreenCaptureRequiredDialog(): Promise<boolean> {
 export function showScreenCaptureLockOverlay(
   onResume: () => Promise<boolean>
 ): void {
-  let overlay = document.getElementById('screen-capture-lock-overlay');
-
-  if (!overlay) {
-    // オーバーレイが存在しない場合は動的に作成
-    overlay = document.createElement('div');
-    overlay.id = 'screen-capture-lock-overlay';
-    overlay.className = 'screen-capture-lock-overlay';
-    overlay.innerHTML = `
-      <div class="screen-capture-lock-content">
-        <i class="fas fa-desktop fa-3x"></i>
-        <h2>${t('screenCapture.lockTitle') ?? '画面共有が停止されました'}</h2>
-        <p>${t('screenCapture.lockDescription') ?? 'TypedCodeを使用するには画面全体の共有が必要です。'}</p>
-        <button id="screen-capture-resume-btn" class="btn btn-primary">
-          <i class="fas fa-play"></i>
-          ${t('screenCapture.resumeButton') ?? '画面共有を再開'}
-        </button>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-  }
-
-  overlay.classList.remove('hidden');
-
-  // 再開ボタンのイベントリスナー
-  const resumeBtn = document.getElementById('screen-capture-resume-btn');
-  resumeBtn?.addEventListener('click', async () => {
-    const result = await onResume();
-    if (result) {
-      hideScreenCaptureLockOverlay();
-    }
+  showLockOverlay({
+    overlayId: SCREEN_CAPTURE_LOCK_OVERLAY_ID,
+    title: t('screenCapture.lockTitle') ?? '画面共有が停止されました',
+    description: t('screenCapture.lockDescription') ?? 'TypedCodeを使用するには画面全体の共有が必要です。',
+    buttonText: t('screenCapture.resumeButton') ?? '画面共有を再開',
+    icon: 'desktop',
+    className: 'screen-capture-lock-overlay',
+    onResume: async () => {
+      const result = await onResume();
+      return result; // false を返すとオーバーレイが閉じない
+    },
   });
 }
 
@@ -121,6 +105,5 @@ export function showScreenCaptureLockOverlay(
  * 画面共有ロックオーバーレイを非表示
  */
 export function hideScreenCaptureLockOverlay(): void {
-  const overlay = document.getElementById('screen-capture-lock-overlay');
-  overlay?.classList.add('hidden');
+  hideLockOverlay(SCREEN_CAPTURE_LOCK_OVERLAY_ID);
 }
