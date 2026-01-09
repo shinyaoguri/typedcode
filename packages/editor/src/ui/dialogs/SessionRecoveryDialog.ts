@@ -6,7 +6,7 @@
  */
 
 import { t } from '../../i18n/index.js';
-import type { SessionSummary, TabSummary } from '@typedcode/shared';
+import { escapeHtml, type SessionSummary, type TabSummary } from '@typedcode/shared';
 
 export type SessionRecoveryChoice = 'resume' | 'fresh';
 
@@ -64,15 +64,6 @@ function generateTabListHtml(tabs: TabSummary[]): string {
       `;
     })
     .join('');
-}
-
-/**
- * HTMLエスケープ
- */
-function escapeHtml(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 /**

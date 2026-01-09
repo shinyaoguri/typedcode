@@ -6,6 +6,7 @@
  */
 
 import hljs from 'highlight.js/lib/core';
+import { escapeHtml } from '@typedcode/shared';
 
 // 必要な言語のみインポート
 import javascript from 'highlight.js/lib/languages/javascript';
@@ -74,14 +75,14 @@ export class SyntaxHighlighter {
 
     // plaintext または未登録の言語はエスケープのみ
     if (lang === 'plaintext' || lang === 'unknown' || !hljs.getLanguage(lang)) {
-      return SyntaxHighlighter.escapeHtml(code);
+      return escapeHtml(code);
     }
 
     try {
       const result = hljs.highlight(code, { language: lang });
       return result.value;
     } catch {
-      return SyntaxHighlighter.escapeHtml(code);
+      return escapeHtml(code);
     }
   }
 
@@ -97,24 +98,10 @@ export class SyntaxHighlighter {
       };
     } catch {
       return {
-        value: SyntaxHighlighter.escapeHtml(code),
+        value: escapeHtml(code),
         language: 'plaintext',
       };
     }
-  }
-
-  /**
-   * HTML特殊文字をエスケープ
-   */
-  static escapeHtml(text: string): string {
-    const map: Record<string, string> = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#039;',
-    };
-    return text.replace(/[&<>"']/g, (m) => map[m] ?? m);
   }
 
   /**

@@ -5,6 +5,7 @@
 
 import type { TabManager, TabState } from '../tabs/TabManager.js';
 import type * as monaco from 'monaco-editor';
+import { escapeHtml } from '@typedcode/shared';
 
 export interface BrowserPreviewPanelOptions {
   /** パネルID */
@@ -344,7 +345,7 @@ export class BrowserPreviewPanel {
     for (const cssRef of referencedCss) {
       const tab = this.findMatchingTab(cssRef, tabMap, 'css');
       if (tab) {
-        const styleContent = `<style data-source="${this.escapeHtml(cssRef)}">\n${tab.model.getValue()}\n</style>`;
+        const styleContent = `<style data-source="${escapeHtml(cssRef)}">\n${tab.model.getValue()}\n</style>`;
         // <link>タグを<style>タグに置換
         html = this.replaceLinkTag(html, cssRef, styleContent);
       }
@@ -354,7 +355,7 @@ export class BrowserPreviewPanel {
     for (const jsRef of referencedJs) {
       const tab = this.findMatchingTab(jsRef, tabMap, 'javascript');
       if (tab) {
-        const scriptContent = `<script data-source="${this.escapeHtml(jsRef)}">\n${tab.model.getValue()}\n</script>`;
+        const scriptContent = `<script data-source="${escapeHtml(jsRef)}">\n${tab.model.getValue()}\n</script>`;
         // <script src>タグをインラインスクリプトに置換
         html = this.replaceScriptTag(html, jsRef, scriptContent);
       }
@@ -456,18 +457,6 @@ export class BrowserPreviewPanel {
       'gi'
     );
     return html.replace(scriptRegex, replacement);
-  }
-
-  /**
-   * HTMLエスケープ
-   */
-  private escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
   }
 
   /**

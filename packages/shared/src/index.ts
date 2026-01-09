@@ -105,3 +105,6 @@ export {
 
 // タイピングパターン分析
 export { TypingPatternAnalyzer } from './typingPattern/index.js';
+
+// ユーティリティ関数
+export { escapeHtml } from './utils/index.js';

@@ -10,6 +10,7 @@ import type {
   WebGLInfo,
   DetailedFingerprint,
 } from './types.js';
+import { computeHash } from './utils/hashUtils.js';
 
 export class Fingerprint {
   static readonly STORAGE_KEY = 'typedcode-device-id';
@@ -39,14 +40,7 @@ export class Fingerprint {
     const stableInfo = await this.getStableInfo();
 
     const combined = `${uuid}-${timestamp}-${JSON.stringify(stableInfo)}`;
-
-    const encoder = new TextEncoder();
-    const data = encoder.encode(combined);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer)); // バイト配列を生成
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join(''); // 16進数文字列に変換
-
-    return hashHex;
+    return computeHash(combined);
   }
 
   /**
@@ -88,14 +82,7 @@ export class Fingerprint {
   static async generate(): Promise<string> {
     const components = await this.collectComponents();
     const fingerprintString = JSON.stringify(components, null, 0);
-
-    const encoder = new TextEncoder();
-    const data = encoder.encode(fingerprintString);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-    return hashHex;
+    return computeHash(fingerprintString);
   }
 
   /**

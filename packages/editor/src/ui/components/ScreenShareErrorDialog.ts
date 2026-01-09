@@ -6,6 +6,7 @@
 
 import { showModal } from './Modal.js';
 import { t } from '../../i18n/index.js';
+import { escapeHtml } from '@typedcode/shared';
 
 /** 画面共有エラーの種類 */
 export type ScreenShareErrorType =
@@ -284,13 +285,4 @@ export async function showScreenShareErrorDialog(
   });
 
   return shouldRetry;
-}
-
-/**
- * HTMLエスケープ
- */
-function escapeHtml(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }

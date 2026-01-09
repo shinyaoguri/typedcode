@@ -3,7 +3,7 @@
  * ファイル選択と確認ダイアログを提供
  */
 
-import type { ParsedTemplate } from '@typedcode/shared';
+import { escapeHtml, type ParsedTemplate } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
 
 /** ダイアログ結果 */
@@ -79,16 +79,16 @@ export class TemplateImportDialog {
 
       // ファイルリストを生成
       const fileList = template.files
-        .map(f => `<li style="margin: 4px 0; font-family: monospace;">${this.escapeHtml(f.filename)} (${f.language})</li>`)
+        .map(f => `<li style="margin: 4px 0; font-family: monospace;">${escapeHtml(f.filename)} (${f.language})</li>`)
         .join('');
 
       modal.innerHTML = `
         <h3 style="margin: 0 0 16px 0; font-size: 16px;">${t('template.confirmTitle')}</h3>
         <div style="margin-bottom: 16px;">
-          <p style="margin: 0 0 8px 0;"><strong>${t('template.templateName')}:</strong> ${this.escapeHtml(templateName)}</p>
+          <p style="margin: 0 0 8px 0;"><strong>${t('template.templateName')}:</strong> ${escapeHtml(templateName)}</p>
           <p style="margin: 0 0 8px 0;"><strong>${t('template.fileCount')}:</strong> ${fileCount}</p>
-          ${template.metadata.author ? `<p style="margin: 0 0 8px 0;"><strong>${t('template.author')}:</strong> ${this.escapeHtml(template.metadata.author)}</p>` : ''}
-          ${template.metadata.description ? `<p style="margin: 0 0 8px 0;"><strong>${t('template.description')}:</strong> ${this.escapeHtml(template.metadata.description)}</p>` : ''}
+          ${template.metadata.author ? `<p style="margin: 0 0 8px 0;"><strong>${t('template.author')}:</strong> ${escapeHtml(template.metadata.author)}</p>` : ''}
+          ${template.metadata.description ? `<p style="margin: 0 0 8px 0;"><strong>${t('template.description')}:</strong> ${escapeHtml(template.metadata.description)}</p>` : ''}
         </div>
         <div style="margin-bottom: 16px;">
           <p style="margin: 0 0 8px 0; font-weight: bold;">${t('template.filesToCreate')}:</p>
@@ -229,15 +229,6 @@ export class TemplateImportDialog {
         }
       },
     };
-  }
-
-  /**
-   * HTMLエスケープ
-   */
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 }
 

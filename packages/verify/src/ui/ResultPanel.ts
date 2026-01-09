@@ -14,7 +14,7 @@ import type {
   ChainErrorDetails,
   SampledVerificationInfo,
 } from '../types';
-import type { TypingPatternAnalysis } from '@typedcode/shared';
+import { escapeHtml, type TypingPatternAnalysis } from '@typedcode/shared';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
 import { TypingPatternCard } from './TypingPatternCard.js';
 import { t } from '../i18n/index.js';
@@ -389,22 +389,13 @@ export class ResultPanel {
           : ' ';
 
         const className = `diff-line diff-${line.type}`;
-        const escapedContent = this.escapeHtml(line.content);
+        const escapedContent = escapeHtml(line.content);
 
         lines.push(`<div class="${className}"><span class="diff-line-number">${lineNum}</span><span class="diff-prefix">${prefix}</span><span class="diff-content">${escapedContent}</span></div>`);
       }
     }
 
     return lines.join('');
-  }
-
-  /**
-   * HTMLエスケープ
-   */
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 
   /**
