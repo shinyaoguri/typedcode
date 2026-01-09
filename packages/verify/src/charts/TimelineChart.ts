@@ -4,21 +4,20 @@
  * タイピング速度、フォーカス状態、キーストロークダイナミクスを
  * 統合して表示するチャートコンポーネント。
  *
- * charts.ts から抽出。現在は後方互換のために既存関数を委譲。
+ * charts.ts から抽出。BaseCanvasChart を継承。
  */
 
 import type { StoredEvent, KeystrokeDynamicsData, InputType } from '@typedcode/shared';
 import type { IntegratedTimelineCache } from '../types.js';
-import { ChartUtils, type CanvasContext } from './ChartUtils.js';
+import { ChartUtils } from './ChartUtils.js';
+import { BaseCanvasChart, type BaseChartOptions } from './BaseCanvasChart.js';
 
 // ============================================================================
 // 型定義
 // ============================================================================
 
 /** TimelineChart の設定 */
-export interface TimelineChartOptions {
-  /** メインキャンバス要素 */
-  canvas: HTMLCanvasElement | null;
+export interface TimelineChartOptions extends BaseChartOptions {
   /** モーダル用キャンバス要素 */
   modalCanvas?: HTMLCanvasElement | null;
   /** 統計要素 */
@@ -53,27 +52,13 @@ interface ChartLayout {
 /**
  * 統合タイムラインチャート
  */
-export class TimelineChart {
-  private options: TimelineChartOptions;
-  private cache: IntegratedTimelineCache | null = null;
-  private canvasContext: CanvasContext | null = null;
-
-  constructor(options: TimelineChartOptions) {
-    this.options = options;
-  }
-
+export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, TimelineChartOptions> {
   /**
-   * キャッシュを取得
+   * 表示/非表示対象のコンテナ要素を取得
+   * TimelineChart は canvas.parentElement を使用
    */
-  getCache(): IntegratedTimelineCache | null {
-    return this.cache;
-  }
-
-  /**
-   * キャッシュを設定
-   */
-  setCache(cache: IntegratedTimelineCache): void {
-    this.cache = cache;
+  protected override getDisplayContainer(): HTMLElement | null {
+    return this.options.canvas?.parentElement ?? null;
   }
 
   /**
@@ -95,9 +80,8 @@ export class TimelineChart {
     this.updateStats(mouseEvents, focusEvents, visibilityEvents, keyDownEvents, keyUpEvents);
 
     // キャンバスを初期化
-    const canvasInit = ChartUtils.initCanvas(this.options.canvas);
+    const canvasInit = this.initCanvas();
     if (!canvasInit) return;
-    this.canvasContext = canvasInit;
 
     const { ctx, width, height } = canvasInit;
     const padding = { top: 30, right: 20, bottom: 50, left: 60 };
@@ -130,7 +114,7 @@ export class TimelineChart {
     };
 
     // 描画
-    this.drawBackground(ctx, width, height);
+    super.drawBackground(ctx, width, height);
     const layout = this.calculateLayout(padding, chartHeight);
     this.drawFocusBars(ctx, focusEvents, visibilityEvents, padding.left, chartWidth, totalTime, layout);
     this.drawTypingSpeed(ctx, typingSpeedData, externalInputMarkers, padding, chartWidth, totalTime, maxSpeed, layout);
@@ -290,14 +274,6 @@ export class TimelineChart {
     maxKeystrokeTime = Math.ceil(maxKeystrokeTime / 100) * 100 || 300;
 
     return { keyUpData, keyDownData, maxKeystrokeTime };
-  }
-
-  /**
-   * 背景を描画
-   */
-  private drawBackground(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
   }
 
   /**
@@ -557,28 +533,8 @@ export class TimelineChart {
   /**
    * マーカー付きで再描画
    */
-  private redrawWithMarker(eventIndex: number, events: StoredEvent[]): void {
+  private redrawWithMarker(_eventIndex: number, _events: StoredEvent[]): void {
     // 完全な再実装は後のフェーズで行う
     // 現在は既存の charts.ts 関数を使用
-  }
-
-  /**
-   * チャートを表示
-   */
-  show(): void {
-    if (this.options.canvas) {
-      const parent = this.options.canvas.parentElement;
-      if (parent) parent.style.display = 'block';
-    }
-  }
-
-  /**
-   * チャートを非表示
-   */
-  hide(): void {
-    if (this.options.canvas) {
-      const parent = this.options.canvas.parentElement;
-      if (parent) parent.style.display = 'none';
-    }
   }
 }

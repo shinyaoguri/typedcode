@@ -3,21 +3,19 @@
  *
  * マウスの移動軌跡とウィンドウ枠を表示するチャートコンポーネント。
  *
- * charts.ts から抽出。
+ * charts.ts から抽出。BaseCanvasChart を継承。
  */
 
 import type { StoredEvent, MousePositionData, WindowSizeData } from '@typedcode/shared';
 import type { MouseTrajectoryCache } from '../types.js';
-import { ChartUtils, type CanvasContext } from './ChartUtils.js';
+import { BaseCanvasChart, type BaseChartOptions } from './BaseCanvasChart.js';
 
 // ============================================================================
 // 型定義
 // ============================================================================
 
 /** MouseChart の設定 */
-export interface MouseChartOptions {
-  /** メインキャンバス要素 */
-  canvas: HTMLCanvasElement | null;
+export interface MouseChartOptions extends BaseChartOptions {
   /** セクション要素 */
   section?: HTMLElement | null;
   /** モーダル用キャンバス要素 */
@@ -33,26 +31,20 @@ export interface MouseChartOptions {
 /**
  * マウス軌跡チャート
  */
-export class MouseChart {
-  private options: MouseChartOptions;
-  private cache: MouseTrajectoryCache | null = null;
-
-  constructor(options: MouseChartOptions) {
-    this.options = options;
+export class MouseChart extends BaseCanvasChart<MouseTrajectoryCache, MouseChartOptions> {
+  /**
+   * 背景色を取得（薄いグレー）
+   */
+  protected override getBackgroundColor(): string {
+    return '#f8f9fa';
   }
 
   /**
-   * キャッシュを取得
+   * 表示/非表示対象のコンテナ要素を取得
+   * MouseChart は section 要素を使用
    */
-  getCache(): MouseTrajectoryCache | null {
-    return this.cache;
-  }
-
-  /**
-   * キャッシュを設定
-   */
-  setCache(cache: MouseTrajectoryCache): void {
-    this.cache = cache;
+  protected override getDisplayContainer(): HTMLElement | null {
+    return this.options.section ?? null;
   }
 
   /**
@@ -69,7 +61,7 @@ export class MouseChart {
 
     this.show();
 
-    const canvasInit = ChartUtils.initCanvas(this.options.canvas);
+    const canvasInit = this.initCanvas();
     if (!canvasInit) return;
 
     const { ctx, width, height } = canvasInit;
@@ -146,7 +138,7 @@ export class MouseChart {
     };
 
     // 描画
-    this.drawBackground(ctx, width, height);
+    super.drawBackground(ctx, width, height);
     this.drawWindowRects(ctx, windowRects, padding, scale, minScreenX, minScreenY);
     this.drawTrajectory(ctx, positions, padding, scale);
   }
@@ -154,18 +146,18 @@ export class MouseChart {
   /**
    * マーカーを更新
    */
-  updateMarker(eventIndex: number, events: StoredEvent[]): void {
+  updateMarker(eventIndex: number, _events: StoredEvent[]): void {
     if (!this.cache || !this.options.canvas) return;
 
     // キャンバスを再初期化
-    const canvasInit = ChartUtils.initCanvas(this.options.canvas);
+    const canvasInit = this.initCanvas();
     if (!canvasInit) return;
 
     const { ctx, width, height } = canvasInit;
     const { positions, scale, padding, windowRects, minScreenX, minScreenY } = this.cache;
 
     // 背景とウィンドウ枠を再描画
-    this.drawBackground(ctx, width, height);
+    super.drawBackground(ctx, width, height);
     this.drawWindowRects(ctx, windowRects, padding, scale, minScreenX, minScreenY);
 
     // 軌跡を描画（現在位置までハイライト）
@@ -178,23 +170,15 @@ export class MouseChart {
   redraw(eventIndex: number): void {
     if (!this.cache || !this.options.canvas) return;
 
-    const canvasInit = ChartUtils.initCanvas(this.options.canvas);
+    const canvasInit = this.initCanvas();
     if (!canvasInit) return;
 
     const { ctx, width, height } = canvasInit;
     const { positions, scale, padding, windowRects, minScreenX, minScreenY } = this.cache;
 
-    this.drawBackground(ctx, width, height);
+    super.drawBackground(ctx, width, height);
     this.drawWindowRects(ctx, windowRects, padding, scale, minScreenX, minScreenY);
     this.drawTrajectoryWithMarker(ctx, positions, padding, scale, eventIndex);
-  }
-
-  /**
-   * 背景を描画
-   */
-  private drawBackground(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-    ctx.fillStyle = '#f8f9fa';
-    ctx.fillRect(0, 0, width, height);
   }
 
   /**
@@ -322,24 +306,6 @@ export class MouseChart {
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.stroke();
-    }
-  }
-
-  /**
-   * チャートを表示
-   */
-  show(): void {
-    if (this.options.section) {
-      this.options.section.style.display = 'block';
-    }
-  }
-
-  /**
-   * チャートを非表示
-   */
-  hide(): void {
-    if (this.options.section) {
-      this.options.section.style.display = 'none';
     }
   }
 }
