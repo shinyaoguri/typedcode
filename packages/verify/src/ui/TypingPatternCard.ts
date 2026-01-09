@@ -2,13 +2,14 @@
  * TypingPatternCard - タイピングパターン分析結果を表示するUIコンポーネント
  */
 
-import type {
-  TypingPatternAnalysis,
-  MetricScore,
-  MetricKey,
-  TypingPatternIssue,
-  PatternJudgment,
-  IssueSeverity,
+import {
+  escapeHtml,
+  type TypingPatternAnalysis,
+  type MetricScore,
+  type MetricKey,
+  type TypingPatternIssue,
+  type PatternJudgment,
+  type IssueSeverity,
 } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
 
@@ -195,7 +196,7 @@ export class TypingPatternCard {
         <div class="metric-header">
           <span class="metric-name">
             ${metric.name}
-            <span class="metric-info-icon" data-tooltip="${this.escapeHtml(description)}">
+            <span class="metric-info-icon" data-tooltip="${escapeHtml(description)}">
               <i class="fas fa-info-circle"></i>
               <div class="metric-tooltip">${description}</div>
             </span>
@@ -216,18 +217,6 @@ export class TypingPatternCard {
         </div>
       </div>
     `;
-  }
-
-  /**
-   * HTMLエスケープ
-   */
-  private escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
   }
 
   /**

@@ -3,7 +3,7 @@
  */
 import type {
   VerificationResult,
-  PoswStats,
+  PoswStatsDisplay,
   HumanAttestationUI,
   VerificationStepType,
   VerificationStepStatus,
@@ -11,17 +11,20 @@ import type {
   TrustIssue,
   TrustLevel,
   DiffResult,
+  ChainErrorDetails,
+  SampledVerificationInfo,
 } from '../types';
-import type { TypingPatternAnalysis } from '@typedcode/shared';
+import { escapeHtml, type TypingPatternAnalysis } from '@typedcode/shared';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
 import { TypingPatternCard } from './TypingPatternCard.js';
+import { t } from '../i18n/index.js';
 
 export interface ResultData {
   filename: string;
   content: string;
   language: string;
   result: VerificationResult;
-  poswStats?: PoswStats;
+  poswStats?: PoswStatsDisplay;
   attestations?: HumanAttestationUI[];
   eventCount: number;
   typingTime: string;
@@ -76,6 +79,22 @@ export class ResultPanel {
   private cardChain: HTMLElement;
   private screenshotVerificationRow: HTMLElement;
   private screenshotVerification: HTMLElement;
+  // Chain error details
+  private chainErrorDetails: HTMLElement;
+  private chainErrorPosition: HTMLElement;
+  private chainErrorType: HTMLElement;
+  private chainErrorMessage: HTMLElement;
+  private chainErrorExpectedRow: HTMLElement;
+  private chainErrorExpected: HTMLElement;
+  private chainErrorComputedRow: HTMLElement;
+  private chainErrorComputed: HTMLElement;
+  private chainErrorTimestampRow: HTMLElement;
+  private chainErrorTimestamp: HTMLElement;
+  // Chain segment visualization
+  private chainSegmentViz: HTMLElement;
+  private chainSegmentBar: HTMLElement;
+  private chainSegmentTotal: HTMLElement;
+  private chainSegmentInfo: HTMLElement;
 
   private poswIcon: HTMLElement;
   private poswBadge: HTMLElement;
@@ -161,6 +180,22 @@ export class ResultPanel {
     this.chainEvents = document.getElementById('chain-events')!;
     this.screenshotVerificationRow = document.getElementById('screenshot-verification-row')!;
     this.screenshotVerification = document.getElementById('screenshot-verification')!;
+    // Chain error details
+    this.chainErrorDetails = document.getElementById('chain-error-details')!;
+    this.chainErrorPosition = document.getElementById('chain-error-position')!;
+    this.chainErrorType = document.getElementById('chain-error-type')!;
+    this.chainErrorMessage = document.getElementById('chain-error-message')!;
+    this.chainErrorExpectedRow = document.getElementById('chain-error-expected-row')!;
+    this.chainErrorExpected = document.getElementById('chain-error-expected')!;
+    this.chainErrorComputedRow = document.getElementById('chain-error-computed-row')!;
+    this.chainErrorComputed = document.getElementById('chain-error-computed')!;
+    this.chainErrorTimestampRow = document.getElementById('chain-error-timestamp-row')!;
+    this.chainErrorTimestamp = document.getElementById('chain-error-timestamp')!;
+    // Chain segment visualization
+    this.chainSegmentViz = document.getElementById('chain-segment-viz')!;
+    this.chainSegmentBar = document.getElementById('chain-segment-bar')!;
+    this.chainSegmentTotal = document.getElementById('chain-segment-total')!;
+    this.chainSegmentInfo = document.getElementById('chain-segment-info')!;
 
     // PoSW card
     this.cardPosw = document.getElementById('card-posw')!;
@@ -354,22 +389,13 @@ export class ResultPanel {
           : ' ';
 
         const className = `diff-line diff-${line.type}`;
-        const escapedContent = this.escapeHtml(line.content);
+        const escapedContent = escapeHtml(line.content);
 
         lines.push(`<div class="${className}"><span class="diff-line-number">${lineNum}</span><span class="diff-prefix">${prefix}</span><span class="diff-content">${escapedContent}</span></div>`);
       }
     }
 
     return lines.join('');
-  }
-
-  /**
-   * HTMLエスケープ
-   */
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 
   /**
@@ -436,6 +462,12 @@ export class ResultPanel {
     );
     this.chainMethod.textContent = result.verificationMethod || 'standard';
     this.chainEvents.textContent = `${eventCount.toLocaleString()}件`;
+
+    // Chain error details (show only when verification fails)
+    this.renderChainErrorDetails(result.chainErrorDetails);
+
+    // Chain segment visualization (show for sampled verification)
+    this.renderChainSegmentViz(result.sampledVerification, eventCount, result.chainErrorDetails);
 
     // PoSW card
     const hasPoSW = poswStats && poswStats.totalIterations > 0;
@@ -932,6 +964,149 @@ export class ResultPanel {
       source: 'ソースファイル',
     };
     return labels[component] || component;
+  }
+
+  /**
+   * チェーン検証エラー詳細を表示
+   */
+  private renderChainErrorDetails(details?: ChainErrorDetails): void {
+    if (!details) {
+      this.chainErrorDetails.style.display = 'none';
+      return;
+    }
+
+    this.chainErrorDetails.style.display = 'block';
+
+    // エラー位置
+    const position = `${details.errorAt.toLocaleString()} / ${details.totalEvents.toLocaleString()} (${((details.errorAt / details.totalEvents) * 100).toFixed(1)}%)`;
+    this.chainErrorPosition.textContent = position;
+
+    // エラー種別 (use i18n translations)
+    const errorTypeKey = `chain.errorDetails.errorTypes.${details.errorType}` as const;
+    const errorTypeLabel = t(errorTypeKey) || details.errorType;
+    this.chainErrorType.textContent = errorTypeLabel;
+
+    // エラーメッセージ
+    this.chainErrorMessage.textContent = details.message;
+
+    // ハッシュ値（存在する場合のみ表示）
+    if (details.expectedHash) {
+      this.chainErrorExpectedRow.style.display = 'flex';
+      this.chainErrorExpected.textContent = details.expectedHash;
+    } else {
+      this.chainErrorExpectedRow.style.display = 'none';
+    }
+
+    if (details.computedHash) {
+      this.chainErrorComputedRow.style.display = 'flex';
+      this.chainErrorComputed.textContent = details.computedHash;
+    } else {
+      this.chainErrorComputedRow.style.display = 'none';
+    }
+
+    // タイムスタンプ詳細（タイムスタンプエラーの場合のみ）
+    if (details.errorType === 'timestamp' && details.previousTimestamp !== undefined && details.currentTimestamp !== undefined) {
+      this.chainErrorTimestampRow.style.display = 'flex';
+      this.chainErrorTimestamp.textContent = `${details.previousTimestamp.toFixed(2)}ms → ${details.currentTimestamp.toFixed(2)}ms`;
+    } else {
+      this.chainErrorTimestampRow.style.display = 'none';
+    }
+  }
+
+  /**
+   * サンプリング区間を視覚化
+   */
+  private renderChainSegmentViz(
+    sampledInfo?: SampledVerificationInfo,
+    totalEvents?: number,
+    errorDetails?: ChainErrorDetails
+  ): void {
+    // サンプリング検証がない場合は非表示
+    if (!sampledInfo || sampledInfo.segments.length === 0) {
+      this.chainSegmentViz.style.display = 'none';
+      return;
+    }
+
+    this.chainSegmentViz.style.display = 'block';
+
+    const total = sampledInfo.totalEvents || totalEvents || 1;
+    this.chainSegmentTotal.textContent = total.toLocaleString();
+
+    // セグメントバーをクリア
+    this.chainSegmentBar.innerHTML = '';
+
+    // 検証済み区間とそれ以外を描画
+    const segments = sampledInfo.segments;
+    let lastEndIndex = 0;
+
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+
+      // 前の区間との隙間（未検証区間）を描画
+      if (segment.startIndex > lastEndIndex) {
+        const gapStart = (lastEndIndex / total) * 100;
+        const gapWidth = ((segment.startIndex - lastEndIndex) / total) * 100;
+        const gapEl = document.createElement('div');
+        gapEl.className = 'chain-segment unverified';
+        gapEl.style.left = `${gapStart}%`;
+        gapEl.style.width = `${gapWidth}%`;
+        this.chainSegmentBar.appendChild(gapEl);
+      }
+
+      // サンプリング区間を描画
+      const startPercent = (segment.startIndex / total) * 100;
+      const widthPercent = ((segment.endIndex - segment.startIndex) / total) * 100;
+
+      const segmentEl = document.createElement('div');
+      segmentEl.className = `chain-segment ${segment.verified ? 'verified' : 'error'}`;
+      segmentEl.style.left = `${startPercent}%`;
+      segmentEl.style.width = `${Math.max(widthPercent, 0.5)}%`; // 最小幅を確保
+
+      // ツールチップを追加
+      const tooltipEl = document.createElement('div');
+      tooltipEl.className = 'chain-segment-tooltip';
+      tooltipEl.textContent = `${segment.startIndex.toLocaleString()} - ${segment.endIndex.toLocaleString()} (${segment.eventCount.toLocaleString()})`;
+      segmentEl.appendChild(tooltipEl);
+
+      this.chainSegmentBar.appendChild(segmentEl);
+      lastEndIndex = segment.endIndex;
+    }
+
+    // 最後の区間の後の隙間（未検証区間）を描画
+    if (lastEndIndex < total) {
+      const gapStart = (lastEndIndex / total) * 100;
+      const gapWidth = ((total - lastEndIndex) / total) * 100;
+      const gapEl = document.createElement('div');
+      gapEl.className = 'chain-segment unverified';
+      gapEl.style.left = `${gapStart}%`;
+      gapEl.style.width = `${gapWidth}%`;
+      this.chainSegmentBar.appendChild(gapEl);
+    }
+
+    // エラー位置のマーカーを追加
+    if (errorDetails && errorDetails.errorAt !== undefined) {
+      const errorPercent = (errorDetails.errorAt / total) * 100;
+      const errorMarker = document.createElement('div');
+      errorMarker.className = 'chain-segment-error-marker';
+      errorMarker.style.left = `${errorPercent}%`;
+      errorMarker.title = `Error at event ${errorDetails.errorAt.toLocaleString()}`;
+      this.chainSegmentBar.appendChild(errorMarker);
+    }
+
+    // サマリー情報を表示
+    this.chainSegmentInfo.innerHTML = `
+      <div class="chain-segment-info-summary">
+        <span class="chain-segment-info-item">
+          <strong>${sampledInfo.totalEventsVerified.toLocaleString()}</strong> / ${sampledInfo.totalEvents.toLocaleString()} ${t('chain.events') || 'events'}
+        </span>
+        <span class="chain-segment-info-item">
+          ${t('chain.segmentViz.sampledSegments', {
+            count: sampledInfo.segments.length.toString(),
+            total: sampledInfo.totalSegments.toString(),
+          }) || `${sampledInfo.segments.length}/${sampledInfo.totalSegments} segments`}
+        </span>
+      </div>
+    `;
   }
 
   // ============================================================================

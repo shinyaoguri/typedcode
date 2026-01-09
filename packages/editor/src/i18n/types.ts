@@ -216,6 +216,38 @@ export interface TranslationKeys {
     resumeButton: string;
     guideText: string;
     guideHint: string;
+    // Error dialog
+    errorTitle: string;
+    errorUnknown: string;
+    errorNotAllowed: string;
+    errorNotAllowedDesc: string;
+    errorNotSupported: string;
+    errorNotSupportedDesc: string;
+    errorNotReadable: string;
+    errorNotReadableDesc: string;
+    errorOverconstrained: string;
+    errorOverconstrainedDesc: string;
+    errorAborted: string;
+    errorAbortedDesc: string;
+    errorSecurityError: string;
+    errorSecurityErrorDesc: string;
+    errorOutOfMemory: string;
+    errorOutOfMemoryDesc: string;
+    errorMonitorRequired: string;
+    errorMonitorRequiredDesc: string;
+    errorStorageInitFailed: string;
+    errorStorageInitFailedDesc: string;
+    // Error solutions
+    solutionTitle: string;
+    solutionRefresh: string;
+    solutionCloseOtherTabs: string;
+    solutionCheckPermissions: string;
+    solutionUseChrome: string;
+    solutionSelectMonitor: string;
+    solutionClearBrowserData: string;
+    solutionRestartBrowser: string;
+    solutionCheckHttps: string;
+    solutionFreeMemory: string;
   };
 
   // Status bar
@@ -301,6 +333,10 @@ export interface TranslationKeys {
     runHint: string;
     cDisclaimer: string;
     cppDisclaimer: string;
+    resetRuntime: string;
+    runtimeResetComplete: string;
+    runtimeCorruptionDetected: string;
+    runtimeResetting: string;
   };
 
   // Log viewer
@@ -445,5 +481,19 @@ export interface TranslationKeys {
     unnamedTemplate: string;
     dropTitle: string;
     dropHint: string;
+  };
+
+  // Session recovery dialog
+  sessionRecovery: {
+    title: string;
+    message: string;
+    lastActive: string;
+    tabs: string;
+    eventCount: string;
+    warning: string;
+    resume: string;
+    startFresh: string;
+    resuming: string;
+    clearing: string;
   };
 }

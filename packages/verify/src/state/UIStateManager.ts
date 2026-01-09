@@ -7,6 +7,7 @@ export interface UIState {
   completedCount: number;
   totalCount: number;
   currentDisplayedTabId: string | null;
+  currentDisplayedTabStatus: string | null;
 }
 
 export type UIStateChangeCallback = (state: UIState) => void;
@@ -15,6 +16,7 @@ export class UIStateManager {
   private completedCount = 0;
   private totalCount = 0;
   private currentDisplayedTabId: string | null = null;
+  private currentDisplayedTabStatus: string | null = null;
   private filenameCounter: Map<string, number> = new Map();
   private onChangeCallback: UIStateChangeCallback | null = null;
 
@@ -33,6 +35,7 @@ export class UIStateManager {
       completedCount: this.completedCount,
       totalCount: this.totalCount,
       currentDisplayedTabId: this.currentDisplayedTabId,
+      currentDisplayedTabStatus: this.currentDisplayedTabStatus,
     };
   }
 
@@ -60,10 +63,18 @@ export class UIStateManager {
   }
 
   /**
-   * Set current displayed tab ID
+   * Set current displayed tab ID and status
    */
-  setCurrentDisplayedTabId(id: string | null): void {
+  setCurrentDisplayedTabId(id: string | null, status?: string | null): void {
     this.currentDisplayedTabId = id;
+    this.currentDisplayedTabStatus = status ?? null;
+  }
+
+  /**
+   * Get current displayed tab status
+   */
+  getCurrentDisplayedTabStatus(): string | null {
+    return this.currentDisplayedTabStatus;
   }
 
   /**
@@ -127,6 +138,7 @@ export class UIStateManager {
     this.completedCount = 0;
     this.totalCount = 0;
     this.currentDisplayedTabId = null;
+    this.currentDisplayedTabStatus = null;
     this.filenameCounter.clear();
     this.notifyChange();
   }

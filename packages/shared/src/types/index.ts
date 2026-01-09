@@ -19,6 +19,7 @@ export type {
   FocusChangeData,
   WindowSizeData,
   NetworkStatusData,
+  SessionResumedData,
   KeystrokeDynamicsData,
   DetectedEventType,
   DetectedEventData,
@@ -33,6 +34,7 @@ export type {
   DisplayInfo,
   ScreenshotCaptureData,
   StoredScreenshot,
+  StoredScreenshotData,
   ScreenCapturePermissionState,
   ScreenShareStartData,
   ScreenShareStopData,
@@ -120,7 +122,18 @@ export type {
   MultiFileExportedProof,
   SeekbarEventInfo,
   ContentCache,
+  // IndexedDB セッション永続化関連
+  SessionMetadata,
+  StoredTabData,
+  StoredEventData,
+  StoredTabSwitchData,
+  SessionSummary,
+  TabSummary,
+  // Pending Event（PoSW未完了イベント）
+  PendingEventData,
+  PendingEventDataType,
 } from './storage.js';
+export { INDEXEDDB_SESSION_VERSION } from './storage.js';
 
 // 共通
 export type { Theme } from './common.js';

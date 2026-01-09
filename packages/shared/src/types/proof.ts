@@ -15,6 +15,7 @@ import type {
   KeystrokeDynamicsData,
   WindowSizeData,
   NetworkStatusData,
+  SessionResumedData,
 } from './events.js';
 import type {
   ScreenshotCaptureData,
@@ -45,7 +46,7 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | TemplateInjectionEventData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | TemplateInjectionEventData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -65,7 +66,7 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | TemplateInjectionEventData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | TemplateInjectionEventData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;

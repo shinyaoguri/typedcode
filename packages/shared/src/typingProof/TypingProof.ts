@@ -26,6 +26,7 @@ import type {
   CheckpointData,
   HumanAttestationEventData,
   TemplateInjectionEventData,
+  PendingEventData,
 } from '../types.js';
 import { PROOF_FORMAT_VERSION } from '../version.js';
 import { HashChainManager } from './HashChainManager.js';
@@ -43,6 +44,18 @@ export class TypingProof {
   initialized: boolean = false;
   private recordQueue: Promise<RecordEventResult> = Promise.resolve({ hash: '', index: -1 });
   private queuedEventCount: number = 0;
+
+  /**
+   * PoSW計算が完了していないイベント
+   * リロード時に保存され、復旧時にPoSW計算を完了させる
+   */
+  private pendingEvents: PendingEventData[] = [];
+
+  /**
+   * Pending Eventが変更されたときに呼ばれるコールバック
+   * sessionStorageへの即時保存に使用
+   */
+  private onPendingEventChange: ((pending: PendingEventData[]) => void) | null = null;
 
   // 内部マネージャー
   private hashChainManager: HashChainManager;
@@ -214,10 +227,17 @@ export class TypingProof {
   /**
    * イベントを記録してハッシュ鎖を更新（排他制御付き）
    * エラーが発生しても可能な限りチェーンを継続し、部分的な検証を可能にする
+   *
+   * 2段階記録方式:
+   * 1. イベントをpendingEventsに追加（即時、同期的）→ コールバックでsessionStorage保存
+   * 2. PoSW計算後にevents配列に追加、pendingEventsから削除
+   *
+   * @param event イベント入力データ
+   * @param tabId タブID（Pending Event保存用、省略時は空文字）
    * @returns ハッシュと配列のインデックス
    * @throws 初期化前に呼び出された場合はエラー
    */
-  async recordEvent(event: RecordEventInput): Promise<RecordEventResult> {
+  async recordEvent(event: RecordEventInput, tabId: string = ''): Promise<RecordEventResult> {
     // 初期化チェック
     if (!this.initialized) {
       throw new Error('TypingProof not initialized. Call initialize() first.');
@@ -226,6 +246,38 @@ export class TypingProof {
     // キュー待ち数を増加
     this.queuedEventCount++;
 
+    // Phase 1: Pending Eventを即座に作成・保存（同期的）
+    const timestamp = performance.now() - this.startTime;
+    const sequence = this.events.length + this.pendingEvents.length;
+    const pendingEvent: PendingEventData = {
+      input: {
+        type: event.type,
+        inputType: event.inputType,
+        data: event.data,
+        rangeOffset: event.rangeOffset,
+        rangeLength: event.rangeLength,
+        range: event.range,
+        description: event.description,
+        isMultiLine: event.isMultiLine,
+        deletedLength: event.deletedLength,
+        insertedText: event.insertedText,
+        insertLength: event.insertLength,
+        deleteDirection: event.deleteDirection,
+        selectedText: event.selectedText,
+      },
+      timestamp,
+      sequence,
+      previousHash: this.currentHash,
+      tabId,
+      createdAt: Date.now(),
+    };
+
+    this.pendingEvents.push(pendingEvent);
+
+    // コールバックで即時保存（sessionStorage）
+    this.onPendingEventChange?.(this.pendingEvents);
+
+    // Phase 2: PoSW計算（非同期）
     // 前のイベント記録が完了するまで待つ（排他制御）
     // エラーが発生してもチェーンを継続させる
     this.recordQueue = this.recordQueue
@@ -234,10 +286,23 @@ export class TypingProof {
       })
       .then(async () => {
         try {
-          return await this._recordEventInternal(event);
+          const result = await this._recordEventInternal(event, pendingEvent);
+          // PoSW計算完了後、pendingEventsから削除
+          const idx = this.pendingEvents.indexOf(pendingEvent);
+          if (idx >= 0) {
+            this.pendingEvents.splice(idx, 1);
+            this.onPendingEventChange?.(this.pendingEvents);
+          }
+          return result;
         } catch (error) {
           // エラー発生時もログを出力するがチェーンは継続
           console.error('[TypingProof] Event recording error (chain continues):', error);
+          // pendingEventsから削除（エラー時も）
+          const idx = this.pendingEvents.indexOf(pendingEvent);
+          if (idx >= 0) {
+            this.pendingEvents.splice(idx, 1);
+            this.onPendingEventChange?.(this.pendingEvents);
+          }
           // エラー時は現在の状態を返す（チェーンは途切れない）
           return { hash: this.currentHash ?? '', index: this.events.length - 1 };
         } finally {
@@ -252,9 +317,43 @@ export class TypingProof {
    * イベントを記録する内部実装
    * @private
    */
-  private async _recordEventInternal(event: RecordEventInput): Promise<RecordEventResult> {
-    const timestamp = performance.now() - this.startTime;
-    const sequence = this.events.length;
+  private async _recordEventInternal(
+    event: RecordEventInput,
+    pendingEvent: PendingEventData
+  ): Promise<RecordEventResult> {
+    // シーケンス番号は events 配列の長さを使用
+    // リロード後の復旧時にシーケンス番号の不整合が発生する可能性があるため、
+    // pendingEvent.sequence と this.events.length が一致しない場合は警告を出してevents.lengthを使用
+    const expectedSequence = this.events.length;
+    if (pendingEvent.sequence !== expectedSequence) {
+      console.warn(`[TypingProof] Sequence mismatch: pending.sequence=${pendingEvent.sequence}, expected=${expectedSequence}. Using expected value.`);
+      pendingEvent.sequence = expectedSequence; // pendingEvent も更新
+    }
+    const sequence = expectedSequence;
+
+    // タイムスタンプの単調増加を保証
+    // 最後のイベントのタイムスタンプより大きくなるように調整
+    const lastEvent = this.events[this.events.length - 1];
+    const lastTimestamp = lastEvent?.timestamp ?? -Infinity;
+    let timestamp = pendingEvent.timestamp;
+
+    if (timestamp <= lastTimestamp) {
+      // タイムスタンプが後退している場合、最後のタイムスタンプ + マージンに調整
+      const adjustedTimestamp = lastTimestamp + 10; // 10ms のマージン
+      console.log(`[TypingProof] Adjusting timestamp for monotonicity: ${timestamp.toFixed(2)} -> ${adjustedTimestamp.toFixed(2)} (last: ${lastTimestamp.toFixed(2)})`);
+      timestamp = adjustedTimestamp;
+      pendingEvent.timestamp = adjustedTimestamp; // pendingEvent も更新
+    }
+
+    // previousHashの整合性チェック
+    // Pending Eventが保存された時点のpreviousHashと現在のcurrentHashが一致しない場合、
+    // 現在のcurrentHashを使用する（リロード後の再処理時に発生する可能性がある）
+    const previousHashForEvent = this.currentHash;
+    if (pendingEvent.previousHash !== null && pendingEvent.previousHash !== previousHashForEvent) {
+      console.log(`[TypingProof] previousHash mismatch detected, using current hash. pending: ${pendingEvent.previousHash?.substring(0, 16)}..., current: ${previousHashForEvent?.substring(0, 16)}...`);
+      // pendingEventのpreviousHashも更新（一貫性のため）
+      pendingEvent.previousHash = previousHashForEvent;
+    }
 
     // PoSW計算前のイベントデータ（poswフィールドなし）
     const eventDataWithoutPoSW = {
@@ -266,7 +365,7 @@ export class TypingProof {
       rangeOffset: event.rangeOffset ?? null,
       rangeLength: event.rangeLength ?? null,
       range: event.range ?? null,
-      previousHash: this.currentHash
+      previousHash: previousHashForEvent
     };
 
     // PoSW計算（前のハッシュに依存 → 逐次計算を強制）
@@ -349,11 +448,48 @@ export class TypingProof {
     const signatureData = JSON.stringify(finalData);
     const signature = await this.hashChainManager.computeHash(signatureData);
 
+    // エクスポート用にメタデータのnullフィールドを省略
+    const compactEvents = this.events.map(event => this.compactEventForExport(event));
+
     return {
       ...finalData,
       signature,
-      events: this.events
+      events: compactEvents
     };
+  }
+
+  /**
+   * エクスポート用にイベントを最適化
+   * ハッシュ計算に使用されないメタデータフィールドのみnullを省略
+   * @private
+   */
+  private compactEventForExport(event: StoredEvent): StoredEvent {
+    // メタデータフィールド（ハッシュ計算に使用されない）のnullを省略
+    const compact: Partial<StoredEvent> = {
+      // ハッシュ計算フィールド（必須）
+      sequence: event.sequence,
+      timestamp: event.timestamp,
+      type: event.type,
+      inputType: event.inputType,
+      data: event.data,
+      rangeOffset: event.rangeOffset,
+      rangeLength: event.rangeLength,
+      range: event.range,
+      previousHash: event.previousHash,
+      posw: event.posw,
+      hash: event.hash,
+    };
+
+    // メタデータフィールド（nullでなければ追加）
+    if (event.description !== null) compact.description = event.description;
+    if (event.isMultiLine !== null) compact.isMultiLine = event.isMultiLine;
+    if (event.deletedLength !== null) compact.deletedLength = event.deletedLength;
+    if (event.insertedText !== null) compact.insertedText = event.insertedText;
+    if (event.insertLength !== null) compact.insertLength = event.insertLength;
+    if (event.deleteDirection !== null) compact.deleteDirection = event.deleteDirection;
+    if (event.selectedText !== null) compact.selectedText = event.selectedText;
+
+    return compact as StoredEvent;
   }
 
   /**
@@ -552,7 +688,9 @@ export class TypingProof {
     return {
       events: this.events,
       currentHash: this.currentHash,
-      startTime: this.startTime
+      startTime: this.startTime,
+      pendingEvents: [...this.pendingEvents],
+      checkpoints: [...this.checkpointManager.getCheckpoints()],
     };
   }
 
@@ -563,7 +701,130 @@ export class TypingProof {
   restoreState(state: SerializedProofState): void {
     this.events = state.events;
     this.hashChainManager.setCurrentHash(state.currentHash);
-    this.startTime = state.startTime;
+
+    // タイムスタンプの単調増加を保証するためにstartTimeを調整
+    // 最後のイベントのタイムスタンプを取得し、次のイベントがそれより大きくなるようにする
+    const lastEvent = this.events[this.events.length - 1];
+    if (lastEvent) {
+      // 現在の performance.now() から、最後のイベントのタイムスタンプ + マージンを引いた値を startTime とする
+      // これにより、次のイベントのタイムスタンプは lastTimestamp + マージン 以上になる
+      const lastTimestamp = lastEvent.timestamp;
+      const margin = 10; // 10ms のマージンを追加
+      this.startTime = performance.now() - (lastTimestamp + margin);
+      console.log(`[TypingProof] Adjusted startTime for session resume: lastTimestamp=${lastTimestamp.toFixed(2)}, newStartTime=${this.startTime.toFixed(2)}`);
+    } else {
+      this.startTime = state.startTime;
+    }
+
+    // Pending Eventsを復元
+    // ただし、既にevents配列に含まれているシーケンス番号のイベントは除外
+    // （リロード時のタイミングによっては、同じイベントがeventsとpendingEventsの両方に存在する可能性がある）
+    const pendingEvents = state.pendingEvents ?? [];
+    const lastEventSequence = this.events.length > 0 ? this.events[this.events.length - 1]!.sequence : -1;
+    this.pendingEvents = pendingEvents.filter(pe => pe.sequence > lastEventSequence);
+
+    if (pendingEvents.length !== this.pendingEvents.length) {
+      console.log(`[TypingProof] Filtered ${pendingEvents.length - this.pendingEvents.length} duplicate pending events (already in events array)`);
+    }
+
+    // チェックポイントを復元（サンプリング検証用）
+    if (state.checkpoints && state.checkpoints.length > 0) {
+      this.checkpointManager.setCheckpoints([...state.checkpoints]);
+    }
+  }
+
+  /**
+   * Pending Eventsを取得
+   */
+  getPendingEvents(): PendingEventData[] {
+    return [...this.pendingEvents];
+  }
+
+  /**
+   * Pending Eventsを設定（復旧用）
+   */
+  setPendingEvents(events: PendingEventData[]): void {
+    this.pendingEvents = [...events];
+  }
+
+  /**
+   * Pending Event変更コールバックを設定
+   */
+  setOnPendingEventChange(callback: ((pending: PendingEventData[]) => void) | null): void {
+    this.onPendingEventChange = callback;
+  }
+
+  /**
+   * Pending Eventがあるかどうか
+   */
+  hasPendingEvents(): boolean {
+    return this.pendingEvents.length > 0;
+  }
+
+  /**
+   * Pending Eventsを処理してevents配列に追加
+   * リロード後のPoSW計算復旧に使用
+   * @returns 処理したイベント数
+   */
+  async processPendingEvents(): Promise<number> {
+    if (this.pendingEvents.length === 0) {
+      return 0;
+    }
+
+    console.log(`[TypingProof] Processing ${this.pendingEvents.length} pending events...`);
+
+    // pendingEventsをコピーしてからクリア（処理中に新しいイベントが来ても安全に）
+    const eventsToProcess = [...this.pendingEvents];
+    this.pendingEvents = [];
+
+    // タイムスタンプの単調増加を保証するため、最後のイベントのタイムスタンプを取得
+    const lastEvent = this.events[this.events.length - 1];
+    let lastTimestamp = lastEvent?.timestamp ?? -Infinity;
+    const timestampMargin = 10; // 10ms のマージン
+
+    let processedCount = 0;
+
+    for (const pending of eventsToProcess) {
+      try {
+        // タイムスタンプを調整（最後のイベントより後になるように）
+        // ページリロード後は pending.timestamp が古い値を持っている可能性があるため
+        if (pending.timestamp <= lastTimestamp) {
+          const newTimestamp = lastTimestamp + timestampMargin;
+          console.log(`[TypingProof] Adjusting pending event timestamp: ${pending.timestamp.toFixed(2)} -> ${newTimestamp.toFixed(2)} (after last: ${lastTimestamp.toFixed(2)})`);
+          pending.timestamp = newTimestamp;
+        }
+
+        // RecordEventInputを再構成
+        const eventInput: RecordEventInput = {
+          type: pending.input.type,
+          inputType: pending.input.inputType,
+          data: pending.input.data,
+          rangeOffset: pending.input.rangeOffset,
+          rangeLength: pending.input.rangeLength,
+          range: pending.input.range,
+          description: pending.input.description,
+          isMultiLine: pending.input.isMultiLine,
+          deletedLength: pending.input.deletedLength,
+          insertedText: pending.input.insertedText,
+          insertLength: pending.input.insertLength,
+          deleteDirection: pending.input.deleteDirection,
+          selectedText: pending.input.selectedText,
+        };
+
+        // _recordEventInternalを直接呼び出し（キューを通さない）
+        await this._recordEventInternal(eventInput, pending);
+        processedCount++;
+
+        // 次のイベントのために lastTimestamp を更新
+        lastTimestamp = pending.timestamp;
+      } catch (error) {
+        console.error('[TypingProof] Failed to process pending event:', error);
+        // エラーが発生しても続行
+      }
+    }
+
+    console.log(`[TypingProof] Processed ${processedCount}/${eventsToProcess.length} pending events`);
+    return processedCount;
   }
 
   /**
@@ -572,12 +833,14 @@ export class TypingProof {
    * @param fingerprintHash - フィンガープリントハッシュ
    * @param fingerprintComponents - フィンガープリント構成要素
    * @param externalWorker - 外部から提供されたWorker（symlinkedパッケージ対応）
+   * @param processPending - Pending Eventsを処理するかどうか（デフォルト: true）
    */
   static async fromSerializedState(
     state: SerializedProofState,
     fingerprintHash: string,
     fingerprintComponents: FingerprintComponents,
-    externalWorker?: Worker
+    externalWorker?: Worker,
+    processPending: boolean = true
   ): Promise<TypingProof> {
     const proof = new TypingProof();
     proof.fingerprint = fingerprintHash;
@@ -585,6 +848,12 @@ export class TypingProof {
     proof.restoreState(state);
     proof.initWorker(externalWorker);
     proof.initialized = true;
+
+    // Pending Eventsがあれば処理
+    if (processPending && proof.hasPendingEvents()) {
+      await proof.processPendingEvents();
+    }
+
     return proof;
   }
 }

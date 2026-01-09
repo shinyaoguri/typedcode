@@ -736,3 +736,291 @@
   flex: 1;
   padding-left: 0.5em;
 }
+
+/* ============================================================================
+   Chain Error Details
+   ============================================================================ */
+
+.chain-error-details {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: rgba(244, 67, 54, 0.08);
+  border: 1px solid rgba(244, 67, 54, 0.25);
+  border-radius: 6px;
+}
+
+.chain-error-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(244, 67, 54, 0.2);
+  color: var(--accent-danger);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chain-error-header i {
+  font-size: 14px;
+}
+
+.chain-error-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chain-error-row {
+  display: flex;
+  align-items: flex-start;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.chain-error-label {
+  flex-shrink: 0;
+  width: 80px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.chain-error-value {
+  flex: 1;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.chain-error-message {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent-danger);
+  background-color: rgba(244, 67, 54, 0.1);
+  padding: 4px 6px;
+  border-radius: 3px;
+}
+
+.chain-error-hash {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  word-break: break-all;
+  background-color: var(--bg-tertiary);
+  padding: 3px 6px;
+  border-radius: 3px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.chain-error-message-row {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chain-error-message-row .chain-error-label {
+  width: auto;
+  margin-bottom: 2px;
+}
+
+/* ============================================================================
+   Chain Segment Visualization
+   ============================================================================ */
+
+.chain-segment-viz {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.chain-segment-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chain-segment-header i {
+  font-size: 14px;
+  color: var(--accent-primary);
+}
+
+.chain-segment-bar-container {
+  margin-bottom: 10px;
+}
+
+.chain-segment-bar {
+  position: relative;
+  height: 24px;
+  background-color: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+}
+
+.chain-segment {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  transition: opacity 0.2s ease;
+}
+
+.chain-segment.verified {
+  background-color: var(--accent-success);
+  opacity: 0.8;
+}
+
+.chain-segment.unverified {
+  background-color: var(--bg-primary);
+  opacity: 0.5;
+}
+
+.chain-segment.error {
+  background-color: var(--accent-danger);
+  opacity: 0.9;
+}
+
+.chain-segment:hover {
+  opacity: 1;
+}
+
+/* Error marker - shows where the error occurred */
+.chain-segment-error-marker {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  background-color: var(--accent-danger);
+  z-index: 10;
+  box-shadow: 0 0 4px rgba(244, 67, 54, 0.6);
+}
+
+.chain-segment-error-marker::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--accent-danger);
+}
+
+.chain-segment-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+.chain-segment-legend {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.chain-segment-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.chain-segment-legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.chain-segment-legend-color.verified {
+  background-color: var(--accent-success);
+}
+
+.chain-segment-legend-color.unverified {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+}
+
+.chain-segment-legend-color.error {
+  background-color: var(--accent-danger);
+}
+
+.chain-segment-info {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.chain-segment-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.chain-segment-info-row.error {
+  color: var(--accent-danger);
+  font-weight: 500;
+}
+
+.chain-segment-info-summary {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-color);
+  margin-top: 8px;
+}
+
+.chain-segment-info-item {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.chain-segment-info-item strong {
+  color: var(--text-primary);
+}
+
+/* Tooltip for segment hover */
+.chain-segment-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.chain-segment:hover .chain-segment-tooltip {
+  opacity: 1;
+}
+
+.chain-segment-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--border-color);
+}

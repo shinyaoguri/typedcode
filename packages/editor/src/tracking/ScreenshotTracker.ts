@@ -16,6 +16,7 @@ import {
   type ScreenCaptureOptions,
 } from '../services/ScreenCaptureService.js';
 import { ScreenshotStorageService } from '../services/ScreenshotStorageService.js';
+import type { SessionStorageService } from '../services/SessionStorageService.js';
 import { ScreenShareGuide } from '../ui/components/ScreenShareGuide.js';
 import { t } from '../i18n/index.js';
 
@@ -62,9 +63,6 @@ export interface ScreenshotTrackerOptions {
   jpegQuality?: number;
 }
 
-/** セッション状態を永続化するためのストレージキー */
-const SESSION_STATE_KEY = 'typedcode-screenshot-session';
-
 export class ScreenshotTracker {
   private captureService: ScreenCaptureService;
   private storageService: ScreenshotStorageService;
@@ -80,7 +78,7 @@ export class ScreenshotTracker {
   private proofStartTime: number = 0; // TypingProofの開始時刻（相対時間計算用）
   private captureEnabled = true; // キャプチャ保存が有効かどうか（タブがない場合は無効）
 
-  constructor(options?: ScreenshotTrackerOptions) {
+  constructor(sessionService: SessionStorageService, options?: ScreenshotTrackerOptions) {
     const captureOptions: ScreenCaptureOptions = {
       periodicIntervalMs: options?.periodicIntervalMs,
       focusLostDelayMs: options?.focusLostDelayMs,
@@ -88,23 +86,15 @@ export class ScreenshotTracker {
     };
 
     this.captureService = new ScreenCaptureService(captureOptions);
-    this.storageService = new ScreenshotStorageService();
+    this.storageService = new ScreenshotStorageService(sessionService);
     this.screenShareGuide = new ScreenShareGuide();
   }
 
   /**
-   * セッション中にストレージがクリア済みかどうかを確認
-   * sessionStorageを使用してリロード時にも状態を保持
+   * セッションIDを設定（ScreenshotStorageServiceに委譲）
    */
-  private isStorageCleared(): boolean {
-    return sessionStorage.getItem(SESSION_STATE_KEY) === 'active';
-  }
-
-  /**
-   * ストレージクリア済みフラグを設定
-   */
-  private markStorageCleared(): void {
-    sessionStorage.setItem(SESSION_STATE_KEY, 'active');
+  setSessionId(sessionId: string): void {
+    this.storageService.setSessionId(sessionId);
   }
 
   // ========================================
@@ -178,22 +168,12 @@ export class ScreenshotTracker {
     }
 
     // ストレージを初期化
+    // 注: スクリーンショットはセッションDBに統合されているため、
+    // sessionIdでフィルタリングされ、セッションごとに分離されている
     try {
       await this.storageService.initialize();
-      // 初回のみ過去のスクリーンショットをクリア（セッション中は保持）
-      // sessionStorageを使用してリロード時にも状態を保持
-      // (IndexedDBは永続化されるため、過去のセッションのデータが残っている可能性がある)
-      if (!this.isStorageCleared()) {
-        const existingCount = await this.storageService.count();
-        if (existingCount > 0) {
-          console.log(`[ScreenshotTracker] Clearing ${existingCount} screenshots from previous session`);
-          await this.storageService.clear();
-        }
-        this.markStorageCleared();
-      } else {
-        const existingCount = await this.storageService.count();
-        console.log(`[ScreenshotTracker] Resuming screen share - keeping ${existingCount} existing screenshots`);
-      }
+      const existingCount = await this.storageService.count();
+      console.log(`[ScreenshotTracker] Storage initialized, ${existingCount} existing screenshots`);
     } catch (error) {
       console.error('[ScreenshotTracker] Failed to initialize storage:', error);
       return { success: false, error: 'storage_init_failed' };
@@ -203,6 +183,7 @@ export class ScreenshotTracker {
     const result = await this.captureService.requestPermission(requireMonitor);
     if (!result.granted) {
       console.warn('[ScreenshotTracker] Permission not granted:', result.error);
+      // エラーダイアログは呼び出し元(ScreenCaptureDialogs)で表示される
       return {
         success: false,
         error: result.error,

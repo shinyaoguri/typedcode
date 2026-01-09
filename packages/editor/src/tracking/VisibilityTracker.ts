@@ -5,6 +5,7 @@
 
 import type { VisibilityChangeData, FocusChangeData } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
+import { BaseTracker } from './BaseTracker.js';
 
 export interface VisibilityTrackerEvent {
   type: 'visibilityChange' | 'focusChange';
@@ -14,26 +15,18 @@ export interface VisibilityTrackerEvent {
 
 export type VisibilityTrackerCallback = (event: VisibilityTrackerEvent) => void | Promise<void>;
 
-export class VisibilityTracker {
-  private callback: VisibilityTrackerCallback | null = null;
+export class VisibilityTracker extends BaseTracker<VisibilityTrackerEvent, VisibilityTrackerCallback> {
   private boundHandleVisibilityChange: () => void;
   private boundHandleFocus: () => Promise<void>;
   private boundHandleBlur: () => void;
-  private attached = false;
   private focusLostCallback: (() => void) | null = null;
   private focusRegainedCallback: (() => void) | null = null;
 
   constructor() {
+    super();
     this.boundHandleVisibilityChange = this.handleVisibilityChange.bind(this);
     this.boundHandleFocus = this.handleFocus.bind(this);
     this.boundHandleBlur = this.handleBlur.bind(this);
-  }
-
-  /**
-   * コールバックを設定
-   */
-  setCallback(callback: VisibilityTrackerCallback): void {
-    this.callback = callback;
   }
 
   /**
@@ -50,30 +43,16 @@ export class VisibilityTracker {
     this.focusRegainedCallback = callback;
   }
 
-  /**
-   * イベントリスナーをアタッチ
-   */
-  attach(): void {
-    if (this.attached) return;
-
+  protected attachListeners(): void {
     document.addEventListener('visibilitychange', this.boundHandleVisibilityChange);
     window.addEventListener('focus', this.boundHandleFocus);
     window.addEventListener('blur', this.boundHandleBlur);
-
-    this.attached = true;
   }
 
-  /**
-   * イベントリスナーをデタッチ
-   */
-  detach(): void {
-    if (!this.attached) return;
-
+  protected detachListeners(): void {
     document.removeEventListener('visibilitychange', this.boundHandleVisibilityChange);
     window.removeEventListener('focus', this.boundHandleFocus);
     window.removeEventListener('blur', this.boundHandleBlur);
-
-    this.attached = false;
   }
 
   /**
@@ -138,12 +117,8 @@ export class VisibilityTracker {
     console.log('[TypedCode] Window blurred');
   }
 
-  /**
-   * リソースを解放
-   */
-  dispose(): void {
-    this.detach();
-    this.callback = null;
+  override dispose(): void {
+    super.dispose();
     this.focusLostCallback = null;
     this.focusRegainedCallback = null;
   }

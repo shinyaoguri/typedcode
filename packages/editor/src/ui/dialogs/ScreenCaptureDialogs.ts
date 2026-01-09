@@ -4,7 +4,11 @@
  */
 
 import type { ScreenshotTracker } from '../../tracking/ScreenshotTracker.js';
+import { showScreenShareErrorDialog } from '../components/ScreenShareErrorDialog.js';
+import { showLockOverlay, hideLockOverlay } from '../components/Modal.js';
 import { t } from '../../i18n/index.js';
+
+const SCREEN_CAPTURE_LOCK_OVERLAY_ID = 'screen-capture-lock-overlay';
 
 /**
  * 画面共有の許可を要求（画面全体が選択されるまで繰り返す）
@@ -20,6 +24,8 @@ export async function requestScreenCaptureWithRetry(
     console.log(`[TypedCode] Requesting screen capture permission (attempt ${attempt})...`);
 
     const result = await tracker.requestPermissionAndAttach(true); // requireMonitor = true
+
+    console.log('[TypedCode] Screen capture result:', result);
 
     if (result.success) {
       return true;
@@ -46,9 +52,13 @@ export async function requestScreenCaptureWithRetry(
       continue;
     }
 
-    // その他のエラー
+    // その他のエラー（storage_init_failed、NotSupportedError など）
     console.error('[TypedCode] Screen capture error:', result.error);
-    return false;
+    const shouldRetry = await showScreenShareErrorDialog(result.error, undefined, { showRetry: true });
+    if (!shouldRetry) {
+      return false;
+    }
+    continue;
   }
 
   console.error('[TypedCode] Max screen capture attempts reached');
@@ -58,90 +68,17 @@ export async function requestScreenCaptureWithRetry(
 /**
  * 画面全体の選択が必要であることを示すダイアログを表示
  */
-export async function showMonitorRequiredDialog(selectedType: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const dialog = document.getElementById('monitor-required-dialog');
-    const retryBtn = document.getElementById('monitor-required-retry-btn');
-    const cancelBtn = document.getElementById('monitor-required-cancel-btn');
-    const selectedTypeEl = document.getElementById('monitor-selected-type');
-
-    if (!dialog || !retryBtn || !cancelBtn) {
-      // ダイアログが存在しない場合はalertで代用
-      const retry = confirm(
-        `「${selectedType}」が選択されました。\n\nTypedCodeでは画面全体の共有が必要です。\n「画面全体」または「モニター」を選択してください。\n\n再試行しますか？`
-      );
-      resolve(retry);
-      return;
-    }
-
-    if (selectedTypeEl) {
-      selectedTypeEl.textContent = selectedType;
-    }
-
-    dialog.classList.remove('hidden');
-
-    const handleRetry = (): void => {
-      cleanup();
-      dialog.classList.add('hidden');
-      resolve(true);
-    };
-
-    const handleCancel = (): void => {
-      cleanup();
-      dialog.classList.add('hidden');
-      resolve(false);
-    };
-
-    const cleanup = (): void => {
-      retryBtn.removeEventListener('click', handleRetry);
-      cancelBtn.removeEventListener('click', handleCancel);
-    };
-
-    retryBtn.addEventListener('click', handleRetry);
-    cancelBtn.addEventListener('click', handleCancel);
-  });
+export async function showMonitorRequiredDialog(_selectedType: string): Promise<boolean> {
+  // 新しいエラーダイアログを使用（再試行ボタン付き）
+  return showScreenShareErrorDialog('monitor_required', undefined, { showRetry: true });
 }
 
 /**
  * 画面共有が必要であることを示すダイアログを表示
  */
 export async function showScreenCaptureRequiredDialog(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const dialog = document.getElementById('screen-capture-required-dialog');
-    const retryBtn = document.getElementById('screen-capture-retry-btn');
-    const cancelBtn = document.getElementById('screen-capture-cancel-btn');
-
-    if (!dialog || !retryBtn || !cancelBtn) {
-      // ダイアログが存在しない場合はalertで代用
-      const retry = confirm(
-        'TypedCodeを使用するには画面共有の許可が必要です。\n\n再試行しますか？'
-      );
-      resolve(retry);
-      return;
-    }
-
-    dialog.classList.remove('hidden');
-
-    const handleRetry = (): void => {
-      cleanup();
-      dialog.classList.add('hidden');
-      resolve(true);
-    };
-
-    const handleCancel = (): void => {
-      cleanup();
-      dialog.classList.add('hidden');
-      resolve(false);
-    };
-
-    const cleanup = (): void => {
-      retryBtn.removeEventListener('click', handleRetry);
-      cancelBtn.removeEventListener('click', handleCancel);
-    };
-
-    retryBtn.addEventListener('click', handleRetry);
-    cancelBtn.addEventListener('click', handleCancel);
-  });
+  // 新しいエラーダイアログを使用（再試行ボタン付き）
+  return showScreenShareErrorDialog('NotAllowedError', undefined, { showRetry: true });
 }
 
 /**
@@ -150,36 +87,17 @@ export async function showScreenCaptureRequiredDialog(): Promise<boolean> {
 export function showScreenCaptureLockOverlay(
   onResume: () => Promise<boolean>
 ): void {
-  let overlay = document.getElementById('screen-capture-lock-overlay');
-
-  if (!overlay) {
-    // オーバーレイが存在しない場合は動的に作成
-    overlay = document.createElement('div');
-    overlay.id = 'screen-capture-lock-overlay';
-    overlay.className = 'screen-capture-lock-overlay';
-    overlay.innerHTML = `
-      <div class="screen-capture-lock-content">
-        <i class="fas fa-desktop fa-3x"></i>
-        <h2>${t('screenCapture.lockTitle') ?? '画面共有が停止されました'}</h2>
-        <p>${t('screenCapture.lockDescription') ?? 'TypedCodeを使用するには画面全体の共有が必要です。'}</p>
-        <button id="screen-capture-resume-btn" class="btn btn-primary">
-          <i class="fas fa-play"></i>
-          ${t('screenCapture.resumeButton') ?? '画面共有を再開'}
-        </button>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-  }
-
-  overlay.classList.remove('hidden');
-
-  // 再開ボタンのイベントリスナー
-  const resumeBtn = document.getElementById('screen-capture-resume-btn');
-  resumeBtn?.addEventListener('click', async () => {
-    const result = await onResume();
-    if (result) {
-      hideScreenCaptureLockOverlay();
-    }
+  showLockOverlay({
+    overlayId: SCREEN_CAPTURE_LOCK_OVERLAY_ID,
+    title: t('screenCapture.lockTitle') ?? '画面共有が停止されました',
+    description: t('screenCapture.lockDescription') ?? 'TypedCodeを使用するには画面全体の共有が必要です。',
+    buttonText: t('screenCapture.resumeButton') ?? '画面共有を再開',
+    icon: 'desktop',
+    className: 'screen-capture-lock-overlay',
+    onResume: async () => {
+      const result = await onResume();
+      return result; // false を返すとオーバーレイが閉じない
+    },
   });
 }
 
@@ -187,6 +105,5 @@ export function showScreenCaptureLockOverlay(
  * 画面共有ロックオーバーレイを非表示
  */
 export function hideScreenCaptureLockOverlay(): void {
-  const overlay = document.getElementById('screen-capture-lock-overlay');
-  overlay?.classList.add('hidden');
+  hideLockOverlay(SCREEN_CAPTURE_LOCK_OVERLAY_ID);
 }

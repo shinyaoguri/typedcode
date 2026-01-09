@@ -69,6 +69,12 @@ export interface VerificationResultData {
   isPureTyping: boolean;
   message?: string;
   errorAt?: number;
+  // チェーン検証エラーの詳細
+  expectedHash?: string;
+  computedHash?: string;
+  previousTimestamp?: number;
+  currentTimestamp?: number;
+  totalEvents?: number;
   // PoSW統計
   poswStats?: {
     count: number;
@@ -211,6 +217,34 @@ export const DEFAULT_PANEL_VISIBILITY: PanelVisibility = {
 // UI コンポーネント用の型定義
 // ============================================================================
 
+/** チェーン検証エラー詳細 */
+export interface ChainErrorDetails {
+  errorAt: number;              // エラーが発生したイベントインデックス
+  errorType: 'sequence' | 'timestamp' | 'previousHash' | 'posw' | 'hash' | 'segmentEnd' | 'unknown';
+  message: string;              // エラーメッセージ
+  expectedHash?: string;        // 期待されたハッシュ値
+  computedHash?: string;        // 計算されたハッシュ値
+  previousTimestamp?: number;   // 前のタイムスタンプ（timestamp errorの場合）
+  currentTimestamp?: number;    // 現在のタイムスタンプ（timestamp errorの場合）
+  totalEvents: number;          // 全イベント数
+}
+
+/** サンプリング区間情報（UI表示用） */
+export interface SampledSegmentInfo {
+  startIndex: number;
+  endIndex: number;
+  eventCount: number;
+  verified: boolean;
+}
+
+/** サンプリング検証結果（UI表示用） */
+export interface SampledVerificationInfo {
+  segments: SampledSegmentInfo[];
+  totalSegments: number;
+  totalEventsVerified: number;
+  totalEvents: number;
+}
+
 /** 検証結果（UIコンポーネント用） */
 export interface VerificationResult {
   chainValid: boolean;
@@ -218,10 +252,12 @@ export interface VerificationResult {
   pasteCount?: number;
   verificationMethod?: string;
   errorMessage?: string;
+  chainErrorDetails?: ChainErrorDetails;  // チェーン検証エラーの詳細
+  sampledVerification?: SampledVerificationInfo;  // サンプリング検証の詳細
 }
 
-/** PoSW統計（UIコンポーネント用） */
-export interface PoswStats {
+/** PoSW統計（UIコンポーネント用・表示形式） */
+export interface PoswStatsDisplay {
   totalIterations: number;
   totalTime: number;
   avgTime: number;

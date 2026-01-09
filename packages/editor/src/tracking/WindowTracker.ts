@@ -5,6 +5,7 @@
 
 import type { WindowSizeData } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
+import { BaseTracker } from './BaseTracker.js';
 
 export interface WindowTrackerEvent {
   type: 'windowResize';
@@ -16,44 +17,26 @@ export type WindowTrackerCallback = (event: WindowTrackerEvent, isInitial: boole
 
 const WINDOW_RESIZE_DEBOUNCE_MS = 500;
 
-export class WindowTracker {
+export class WindowTracker extends BaseTracker<WindowTrackerEvent, WindowTrackerCallback> {
   private lastWindowSize: WindowSizeData | null = null;
   private resizeTimeout: ReturnType<typeof setTimeout> | null = null;
-  private callback: WindowTrackerCallback | null = null;
   private boundHandleResize: () => void;
-  private attached = false;
 
   constructor() {
+    super();
     this.boundHandleResize = this.handleResize.bind(this);
   }
 
-  /**
-   * コールバックを設定
-   */
-  setCallback(callback: WindowTrackerCallback): void {
-    this.callback = callback;
-  }
-
-  /**
-   * ウィンドウイベントリスナーをアタッチ
-   */
-  attach(): void {
-    if (this.attached) return;
+  protected attachListeners(): void {
     window.addEventListener('resize', this.boundHandleResize);
-    this.attached = true;
   }
 
-  /**
-   * ウィンドウイベントリスナーをデタッチ
-   */
-  detach(): void {
-    if (!this.attached) return;
+  protected detachListeners(): void {
     window.removeEventListener('resize', this.boundHandleResize);
     if (this.resizeTimeout) {
       clearTimeout(this.resizeTimeout);
       this.resizeTimeout = null;
     }
-    this.attached = false;
   }
 
   /**
@@ -126,12 +109,8 @@ export class WindowTracker {
     }, WINDOW_RESIZE_DEBOUNCE_MS);
   }
 
-  /**
-   * リソースを解放
-   */
-  dispose(): void {
-    this.detach();
-    this.callback = null;
+  override dispose(): void {
+    super.dispose();
     this.lastWindowSize = null;
   }
 }

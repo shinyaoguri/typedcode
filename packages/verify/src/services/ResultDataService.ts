@@ -6,7 +6,7 @@
  * UI-specific functions for the verify package.
  */
 
-import type { PoswStats, HumanAttestationUI, VerifyTabState } from '../types';
+import type { PoswStatsDisplay, HumanAttestationUI, VerifyTabState, ChainErrorDetails, SampledVerificationInfo } from '../types';
 import type { ResultData, VerificationResult } from '../ui/ResultPanel';
 
 // Re-export from shared for backward compatibility
@@ -25,6 +25,21 @@ import {
   countPasteEvents as countPasteEventsShared,
   TypingPatternAnalyzer,
 } from '@typedcode/shared';
+
+/**
+ * エラーメッセージからエラータイプを判定
+ */
+function parseErrorType(message?: string): ChainErrorDetails['errorType'] {
+  if (!message) return 'unknown';
+  const lowerMessage = message.toLowerCase();
+  if (lowerMessage.includes('sequence')) return 'sequence';
+  if (lowerMessage.includes('timestamp')) return 'timestamp';
+  if (lowerMessage.includes('previous hash')) return 'previousHash';
+  if (lowerMessage.includes('posw')) return 'posw';
+  if (lowerMessage.includes('segment end hash')) return 'segmentEnd';
+  if (lowerMessage.includes('hash')) return 'hash';
+  return 'unknown';
+}
 
 /**
  * Build ResultData from tab state
@@ -46,15 +61,48 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
   // メタデータがない場合はイベントからカウント
   const pasteCount = proofData.metadata?.pasteEvents ?? countPasteEventsShared(events);
 
+  // Build chain error details if verification failed
+  let chainErrorDetails: ChainErrorDetails | undefined;
+  if (!verificationResult.chainValid && verificationResult.errorAt !== undefined) {
+    chainErrorDetails = {
+      errorAt: verificationResult.errorAt,
+      errorType: parseErrorType(verificationResult.message),
+      message: verificationResult.message || 'Unknown error',
+      expectedHash: verificationResult.expectedHash,
+      computedHash: verificationResult.computedHash,
+      previousTimestamp: verificationResult.previousTimestamp,
+      currentTimestamp: verificationResult.currentTimestamp,
+      totalEvents: verificationResult.totalEvents ?? eventCount,
+    };
+  }
+
+  // Build sampled verification info if available
+  let sampledVerification: SampledVerificationInfo | undefined;
+  if (verificationResult.sampledResult) {
+    sampledVerification = {
+      segments: verificationResult.sampledResult.sampledSegments.map((seg) => ({
+        startIndex: seg.startIndex,
+        endIndex: seg.endIndex,
+        eventCount: seg.eventCount,
+        verified: seg.verified,
+      })),
+      totalSegments: verificationResult.sampledResult.totalSegments,
+      totalEventsVerified: verificationResult.sampledResult.totalEventsVerified,
+      totalEvents: verificationResult.sampledResult.totalEvents,
+    };
+  }
+
   const result: VerificationResult = {
     chainValid: verificationResult.chainValid,
     pureTyping: verificationResult.isPureTyping,
     pasteCount,
     verificationMethod: verificationResult.sampledResult ? 'sampled' : 'full',
+    chainErrorDetails,
+    sampledVerification,
   };
 
-  // Convert PoSW stats
-  const poswStats: PoswStats | undefined = verificationResult.poswStats
+  // Convert PoSW stats (from shared PoswStats to UI PoswStatsDisplay)
+  const poswStats: PoswStatsDisplay | undefined = verificationResult.poswStats
     ? {
         totalIterations: verificationResult.poswStats.iterations,
         totalTime: verificationResult.poswStats.totalTimeMs,

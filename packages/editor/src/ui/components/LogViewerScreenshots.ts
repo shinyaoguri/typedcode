@@ -153,7 +153,12 @@ async function toggleScreenshotPreview(
     try {
       const screenshot = await screenshotStorage.getById(storageKey);
       if (!screenshot) {
-        console.warn('[LogViewerScreenshots] Screenshot not found:', storageKey);
+        // スクリーンショットが見つからない場合（リロード等でIndexedDBがクリアされた）
+        // エラーメッセージを表示
+        infoEl.textContent = 'Screenshot unavailable (data lost after reload)';
+        infoEl.style.color = 'var(--vscode-errorForeground, #f48771)';
+        entry.classList.add('expanded');
+        expandIcon.textContent = '▼';
         return;
       }
 

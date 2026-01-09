@@ -127,7 +127,7 @@ export class ScreenCaptureService {
       const settings = track?.getSettings();
       const displaySurface = settings?.displaySurface as string | undefined;
 
-      console.log('[ScreenCapture] Selected displaySurface:', displaySurface);
+      console.log('[ScreenCapture] Selected displaySurface:', displaySurface, 'settings:', settings);
 
       // 画面全体(monitor)が必須の場合、それ以外を拒否
       if (requireMonitor && displaySurface !== 'monitor') {

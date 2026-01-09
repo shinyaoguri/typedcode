@@ -1,61 +1,42 @@
 /**
- * ScreenshotStorageService - IndexedDBを使用したスクリーンショット保存
+ * ScreenshotStorageService - SessionStorageServiceへの委譲ラッパー
  * スクリーンショット画像のCRUD操作とエクスポート機能を提供
+ *
+ * 注: スクリーンショットはセッションDBに統合されています
  */
 
-import type { StoredScreenshot, ScreenshotCaptureType, DisplayInfo } from '@typedcode/shared';
-
-const DB_NAME = 'typedcode-screenshots';
-const DB_VERSION = 1;
-const STORE_NAME = 'screenshots';
+import type { StoredScreenshot } from '@typedcode/shared';
+import type { SessionStorageService } from './SessionStorageService.js';
 
 export class ScreenshotStorageService {
-  private db: IDBDatabase | null = null;
-  private initialized = false;
+  private sessionService: SessionStorageService;
+  private sessionId: string | null = null;
 
-  /**
-   * IndexedDBを初期化
-   */
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
-
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onerror = () => {
-        console.error('[ScreenshotStorage] Failed to open database:', request.error);
-        reject(new Error('Failed to open IndexedDB'));
-      };
-
-      request.onsuccess = () => {
-        this.db = request.result;
-        this.initialized = true;
-        console.log('[ScreenshotStorage] Database initialized');
-        resolve();
-      };
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-
-          // インデックス作成
-          store.createIndex('timestamp', 'timestamp', { unique: false });
-          store.createIndex('eventSequence', 'eventSequence', { unique: false });
-          store.createIndex('imageHash', 'imageHash', { unique: false });
-
-          console.log('[ScreenshotStorage] Object store created');
-        }
-      };
-    });
+  constructor(sessionService: SessionStorageService) {
+    this.sessionService = sessionService;
   }
 
   /**
-   * UUIDを生成
+   * セッションIDを設定
    */
-  private generateId(): string {
-    return crypto.randomUUID();
+  setSessionId(sessionId: string): void {
+    this.sessionId = sessionId;
+    console.log('[ScreenshotStorage] Session ID set:', sessionId);
+  }
+
+  /**
+   * 現在のセッションIDを取得
+   */
+  getSessionId(): string | null {
+    return this.sessionId;
+  }
+
+  /**
+   * 初期化（SessionStorageServiceは既に初期化済みのため何もしない）
+   */
+  async initialize(): Promise<void> {
+    // SessionStorageServiceは既に初期化されているはず
+    console.log('[ScreenshotStorage] Initialized (delegating to SessionStorageService)');
   }
 
   /**
@@ -63,77 +44,36 @@ export class ScreenshotStorageService {
    * @returns 保存されたレコードのID
    */
   async save(screenshot: Omit<StoredScreenshot, 'id'>): Promise<string> {
-    if (!this.db) {
-      throw new Error('Database not initialized');
+    if (!this.sessionId) {
+      throw new Error('Session ID not set');
     }
 
-    const id = this.generateId();
-    const record: StoredScreenshot = { id, ...screenshot };
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.add(record);
-
-      request.onerror = () => {
-        console.error('[ScreenshotStorage] Failed to save screenshot:', request.error);
-        reject(new Error('Failed to save screenshot'));
-      };
-
-      request.onsuccess = () => {
-        console.log('[ScreenshotStorage] Screenshot saved:', id);
-        resolve(id);
-      };
+    const id = crypto.randomUUID();
+    await this.sessionService.saveScreenshot({
+      id,
+      sessionId: this.sessionId,
+      ...screenshot,
     });
+
+    return id;
   }
 
   /**
    * IDでスクリーンショットを取得
    */
   async getById(id: string): Promise<StoredScreenshot | null> {
-    if (!this.db) {
-      throw new Error('Database not initialized');
-    }
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readonly');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.get(id);
-
-      request.onerror = () => {
-        console.error('[ScreenshotStorage] Failed to get screenshot:', request.error);
-        reject(new Error('Failed to get screenshot'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result ?? null);
-      };
-    });
+    const screenshot = await this.sessionService.getScreenshotById(id);
+    return screenshot;
   }
 
   /**
    * 全スクリーンショットを取得（タイムスタンプ順）
    */
   async getAll(): Promise<StoredScreenshot[]> {
-    if (!this.db) {
-      throw new Error('Database not initialized');
+    if (!this.sessionId) {
+      return [];
     }
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readonly');
-      const store = transaction.objectStore(STORE_NAME);
-      const index = store.index('timestamp');
-      const request = index.getAll();
-
-      request.onerror = () => {
-        console.error('[ScreenshotStorage] Failed to get all screenshots:', request.error);
-        reject(new Error('Failed to get all screenshots'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result ?? []);
-      };
-    });
+    return this.sessionService.getScreenshotsBySession(this.sessionId);
   }
 
   /**
@@ -143,29 +83,11 @@ export class ScreenshotStorageService {
     startSequence: number,
     endSequence?: number
   ): Promise<StoredScreenshot[]> {
-    if (!this.db) {
-      throw new Error('Database not initialized');
-    }
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readonly');
-      const store = transaction.objectStore(STORE_NAME);
-      const index = store.index('eventSequence');
-
-      const range = endSequence !== undefined
-        ? IDBKeyRange.bound(startSequence, endSequence)
-        : IDBKeyRange.lowerBound(startSequence);
-
-      const request = index.getAll(range);
-
-      request.onerror = () => {
-        console.error('[ScreenshotStorage] Failed to get screenshots by sequence:', request.error);
-        reject(new Error('Failed to get screenshots by sequence'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result ?? []);
-      };
+    const all = await this.getAll();
+    return all.filter(s => {
+      if (s.eventSequence < startSequence) return false;
+      if (endSequence !== undefined && s.eventSequence > endSequence) return false;
+      return true;
     });
   }
 
@@ -173,50 +95,17 @@ export class ScreenshotStorageService {
    * スクリーンショットを削除
    */
   async delete(id: string): Promise<void> {
-    if (!this.db) {
-      throw new Error('Database not initialized');
-    }
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.delete(id);
-
-      request.onerror = () => {
-        console.error('[ScreenshotStorage] Failed to delete screenshot:', request.error);
-        reject(new Error('Failed to delete screenshot'));
-      };
-
-      request.onsuccess = () => {
-        console.log('[ScreenshotStorage] Screenshot deleted:', id);
-        resolve();
-      };
-    });
+    await this.sessionService.deleteScreenshot(id);
   }
 
   /**
    * 全スクリーンショットを削除
    */
   async clear(): Promise<void> {
-    if (!this.db) {
-      throw new Error('Database not initialized');
+    if (!this.sessionId) {
+      return;
     }
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.clear();
-
-      request.onerror = () => {
-        console.error('[ScreenshotStorage] Failed to clear screenshots:', request.error);
-        reject(new Error('Failed to clear screenshots'));
-      };
-
-      request.onsuccess = () => {
-        console.log('[ScreenshotStorage] All screenshots cleared');
-        resolve();
-      };
-    });
+    await this.sessionService.clearScreenshotsBySession(this.sessionId);
   }
 
   /**
@@ -225,10 +114,6 @@ export class ScreenshotStorageService {
    * @returns 削除された件数
    */
   async pruneOld(maxCount: number): Promise<number> {
-    if (!this.db) {
-      throw new Error('Database not initialized');
-    }
-
     const all = await this.getAll();
     if (all.length <= maxCount) {
       return 0;
@@ -250,24 +135,7 @@ export class ScreenshotStorageService {
    * スクリーンショット数を取得
    */
   async count(): Promise<number> {
-    if (!this.db) {
-      throw new Error('Database not initialized');
-    }
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readonly');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.count();
-
-      request.onerror = () => {
-        console.error('[ScreenshotStorage] Failed to count screenshots:', request.error);
-        reject(new Error('Failed to count screenshots'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-    });
+    return this.sessionService.getScreenshotCount(this.sessionId ?? undefined);
   }
 
   /**
@@ -313,14 +181,10 @@ export class ScreenshotStorageService {
   }
 
   /**
-   * データベース接続を閉じる
+   * データベース接続を閉じる（何もしない - SessionStorageServiceが管理）
    */
   close(): void {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-      this.initialized = false;
-      console.log('[ScreenshotStorage] Database closed');
-    }
+    // SessionStorageServiceが管理するため何もしない
+    console.log('[ScreenshotStorage] Close called (no-op, managed by SessionStorageService)');
   }
 }

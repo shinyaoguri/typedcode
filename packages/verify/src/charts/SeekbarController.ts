@@ -5,7 +5,7 @@
  * seekbar.ts から抽出。
  */
 
-import type { StoredEvent, TemplateInjectionEventData } from '@typedcode/shared';
+import { escapeHtml, type StoredEvent, type TemplateInjectionEventData } from '@typedcode/shared';
 import type { ContentCache } from '../types.js';
 import { ChartUtils } from './ChartUtils.js';
 import type { IntegratedChart } from './IntegratedChart.js';
@@ -423,24 +423,10 @@ export class SeekbarController {
     const lines = content.split('\n');
     return lines
       .map((line, i) => {
-        const escapedLine = this.escapeHtml(line);
+        const escapedLine = escapeHtml(line);
         return `<div class="code-line"><span class="line-number">${i + 1}</span><span class="line-content">${escapedLine}</span></div>`;
       })
       .join('');
-  }
-
-  /**
-   * HTML特殊文字をエスケープ
-   */
-  private escapeHtml(text: string): string {
-    const map: Record<string, string> = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#039;',
-    };
-    return text.replace(/[&<>"']/g, (m) => map[m] ?? m);
   }
 
   /**

@@ -65,8 +65,8 @@ export class TabController {
     this.deps.welcomePanel.hide();
     this.deps.resultPanel.show();
 
-    // コンテンツを表示
-    this.showTabContent(id);
+    // VerifyTabManagerのアクティブタブも更新（onChangeCallbackでshowTabContentが呼ばれる）
+    this.deps.tabManager.switchTab(id);
   }
 
   /**
@@ -81,7 +81,8 @@ export class TabController {
    */
   handleTabSelect(id: string): void {
     this.deps.sidebar.setActiveFile(id);
-    this.showTabContent(id);
+    // VerifyTabManagerのアクティブタブも更新
+    this.deps.tabManager.switchTab(id);
   }
 
   /**
@@ -120,11 +121,16 @@ export class TabController {
 
     // 同じタブで、強制更新でなければスキップ（チカチカ防止）
     const isSameTab = this.deps.uiState.isDisplayed(id);
+    // ステータスが変わった場合は再レンダリングが必要
+    const previousStatus = this.deps.uiState.getCurrentDisplayedTabStatus();
+    const statusChanged = isSameTab && previousStatus !== tabState.status;
 
     console.log('[DEBUG] showTabContent:', {
       id,
       forceRefresh,
       isSameTab,
+      statusChanged,
+      previousStatus,
       status: tabState.status,
       hasVerificationResult: !!tabState.verificationResult,
       hasProofData: !!tabState.proofData,
@@ -134,8 +140,8 @@ export class TabController {
 
     // プレーンテキストファイルの場合
     if (tabState.isPlaintext) {
-      if (!isSameTab || forceRefresh) {
-        this.deps.uiState.setCurrentDisplayedTabId(id);
+      if (!isSameTab || forceRefresh || statusChanged) {
+        this.deps.uiState.setCurrentDisplayedTabId(id, tabState.status);
         this.deps.resultPanel.renderPlaintext({
           filename: tabState.filename,
           content: tabState.plaintextContent || '',
@@ -149,8 +155,8 @@ export class TabController {
 
     // 画像ファイルの場合
     if (tabState.isImage) {
-      if (!isSameTab || forceRefresh) {
-        this.deps.uiState.setCurrentDisplayedTabId(id);
+      if (!isSameTab || forceRefresh || statusChanged) {
+        this.deps.uiState.setCurrentDisplayedTabId(id, tabState.status);
         this.deps.resultPanel.renderImage({
           filename: tabState.filename,
           imageBlob: tabState.imageBlob,
@@ -161,9 +167,9 @@ export class TabController {
 
     if (tabState.status === 'verifying' || tabState.status === 'pending') {
       // 検証中/待機中の場合
-      if (!isSameTab) {
-        // 新しいタブの場合のみstartProgressを呼ぶ
-        this.deps.uiState.setCurrentDisplayedTabId(id);
+      if (!isSameTab || statusChanged) {
+        // 新しいタブの場合、またはステータスが変わった場合のみstartProgressを呼ぶ
+        this.deps.uiState.setCurrentDisplayedTabId(id, tabState.status);
         this.deps.resultPanel.startProgress(tabState.filename);
       }
       // 既存の進捗があれば反映（同じタブでも更新）
@@ -172,8 +178,8 @@ export class TabController {
       }
     } else if (tabState.verificationResult && tabState.proofData) {
       // 完了している場合
-      if (!isSameTab || forceRefresh) {
-        this.deps.uiState.setCurrentDisplayedTabId(id);
+      if (!isSameTab || forceRefresh || statusChanged) {
+        this.deps.uiState.setCurrentDisplayedTabId(id, tabState.status);
         this.deps.resultPanel.stopProgressTimer();
         this.renderResult(tabState);
       }

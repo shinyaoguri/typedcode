@@ -7,22 +7,26 @@ export interface TerminalPanelOptions {
   panelId: string;
   toggleButtonId: string;
   closeButtonId: string;
+  resetButtonId?: string;
   resizeHandleId?: string;
   workbenchUpperSelector?: string;
   workbenchSelector?: string;
   onVisibilityChange?: (visible: boolean) => void;
   onFit?: () => void;
+  onResetRuntime?: () => Promise<void>;
 }
 
 export class TerminalPanel {
   private panel: HTMLElement | null = null;
   private toggleButton: HTMLElement | null = null;
   private closeButton: HTMLElement | null = null;
+  private resetButton: HTMLElement | null = null;
   private resizeHandle: HTMLElement | null = null;
   private workbenchUpperEl: HTMLElement | null = null;
   private workbenchSelector: string | null = null;
   private onVisibilityChange: ((visible: boolean) => void) | null = null;
   private onFit: (() => void) | null = null;
+  private onResetRuntime: (() => Promise<void>) | null = null;
   private initialized = false;
   private _isTerminalAvailable = true;
 
@@ -42,8 +46,12 @@ export class TerminalPanel {
     this.panel = document.getElementById(options.panelId);
     this.toggleButton = document.getElementById(options.toggleButtonId);
     this.closeButton = document.getElementById(options.closeButtonId);
+    if (options.resetButtonId) {
+      this.resetButton = document.getElementById(options.resetButtonId);
+    }
     this.onVisibilityChange = options.onVisibilityChange ?? null;
     this.onFit = options.onFit ?? null;
+    this.onResetRuntime = options.onResetRuntime ?? null;
 
     // リサイズ関連
     if (options.resizeHandleId) {
@@ -78,6 +86,12 @@ export class TerminalPanel {
     if (this.closeButton && this.panel) {
       this.closeButton.addEventListener('click', () => {
         this.hide();
+      });
+    }
+
+    if (this.resetButton && this.onResetRuntime) {
+      this.resetButton.addEventListener('click', () => {
+        this.onResetRuntime?.();
       });
     }
   }
@@ -236,10 +250,12 @@ export class TerminalPanel {
     this.panel = null;
     this.toggleButton = null;
     this.closeButton = null;
+    this.resetButton = null;
     this.resizeHandle = null;
     this.workbenchUpperEl = null;
     this.onVisibilityChange = null;
     this.onFit = null;
+    this.onResetRuntime = null;
     this.initialized = false;
   }
 }

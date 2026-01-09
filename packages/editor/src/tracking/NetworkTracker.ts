@@ -5,6 +5,7 @@
 
 import type { NetworkStatusData } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
+import { BaseTracker } from './BaseTracker.js';
 
 export interface NetworkTrackerEvent {
   type: 'networkStatusChange';
@@ -14,42 +15,24 @@ export interface NetworkTrackerEvent {
 
 export type NetworkTrackerCallback = (event: NetworkTrackerEvent, isInitial: boolean) => void;
 
-export class NetworkTracker {
-  private callback: NetworkTrackerCallback | null = null;
+export class NetworkTracker extends BaseTracker<NetworkTrackerEvent, NetworkTrackerCallback> {
   private boundHandleOnline: () => void;
   private boundHandleOffline: () => void;
-  private attached = false;
 
   constructor() {
+    super();
     this.boundHandleOnline = this.handleOnline.bind(this);
     this.boundHandleOffline = this.handleOffline.bind(this);
   }
 
-  /**
-   * コールバックを設定
-   */
-  setCallback(callback: NetworkTrackerCallback): void {
-    this.callback = callback;
-  }
-
-  /**
-   * ネットワークイベントリスナーをアタッチ
-   */
-  attach(): void {
-    if (this.attached) return;
+  protected attachListeners(): void {
     window.addEventListener('online', this.boundHandleOnline);
     window.addEventListener('offline', this.boundHandleOffline);
-    this.attached = true;
   }
 
-  /**
-   * ネットワークイベントリスナーをデタッチ
-   */
-  detach(): void {
-    if (!this.attached) return;
+  protected detachListeners(): void {
     window.removeEventListener('online', this.boundHandleOnline);
     window.removeEventListener('offline', this.boundHandleOffline);
-    this.attached = false;
   }
 
   /**
@@ -65,9 +48,6 @@ export class NetworkTracker {
     }, true);
   }
 
-  /**
-   * オンラインイベントハンドラ
-   */
   private handleOnline(): void {
     this.callback?.({
       type: 'networkStatusChange',
@@ -76,22 +56,11 @@ export class NetworkTracker {
     }, false);
   }
 
-  /**
-   * オフラインイベントハンドラ
-   */
   private handleOffline(): void {
     this.callback?.({
       type: 'networkStatusChange',
       data: { online: false },
       description: t('events.networkOffline'),
     }, false);
-  }
-
-  /**
-   * リソースを解放
-   */
-  dispose(): void {
-    this.detach();
-    this.callback = null;
   }
 }

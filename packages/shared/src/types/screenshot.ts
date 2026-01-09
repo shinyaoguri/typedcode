@@ -42,6 +42,11 @@ export interface StoredScreenshot {
   eventSequence: number;       // 対応するハッシュチェーンイベントのsequence
 }
 
+/** SessionStorageService用スクリーンショットレコード（sessionId付き） */
+export interface StoredScreenshotData extends StoredScreenshot {
+  sessionId: string;           // セッションID
+}
+
 /** Screen Capture許可状態 */
 export type ScreenCapturePermissionState =
   | 'granted'      // 許可済み
