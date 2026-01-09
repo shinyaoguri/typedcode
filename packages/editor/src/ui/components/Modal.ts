@@ -468,13 +468,15 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
   const overlay = document.createElement('div');
   overlay.id = overlayId;
   overlay.className = className;
+  // Use content class based on overlay class (e.g., screen-capture-lock-overlay -> screen-capture-lock-content)
+  const contentClass = className.replace('-overlay', '-content');
   overlay.innerHTML = `
-    <div class="lock-overlay-content">
+    <div class="${contentClass}">
       <i class="fas fa-${icon} fa-4x"></i>
       <h2>${title}</h2>
       <p>${description}</p>
-      ${hint ? `<p class="lock-overlay-hint">${hint}</p>` : ''}
-      <button class="btn btn-primary lock-overlay-btn">
+      ${hint ? `<p class="${contentClass}-hint">${hint}</p>` : ''}
+      <button class="btn btn-primary ${contentClass}-btn">
         <i class="fas fa-play"></i>
         ${buttonText}
       </button>
@@ -483,7 +485,7 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
 
   document.body.appendChild(overlay);
 
-  const resumeBtn = overlay.querySelector('.lock-overlay-btn');
+  const resumeBtn = overlay.querySelector(`.${contentClass}-btn`);
   resumeBtn?.addEventListener('click', async () => {
     const result = await onResume();
     // If callback returns true or void, hide the overlay
