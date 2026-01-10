@@ -16,7 +16,7 @@ This tool is primarily designed for programming exams that need to prevent AI-as
 
 - **Tamper-Resistant Proof**: SHA-256 hash chain with PoSW (10,000 iterations per event)
 - **Human Verification**: Cloudflare Turnstile integration with HMAC-signed attestations
-- **Comprehensive Event Tracking**: 22 event types including content changes, keystrokes, mouse movements, focus, visibility, paste/drop detection, and template injection
+- **Comprehensive Event Tracking**: 24 event types including content changes, keystrokes, mouse movements, focus, visibility, paste/drop detection, template injection, and session recovery
 - **Multi-Tab Support**: Edit multiple files simultaneously with tab switch tracking
 - **Screenshot Capture**: Periodic and focus-loss triggered screenshots with hash verification
 - **In-Browser Execution**: C/C++, Python, JavaScript/TypeScript via Wasmer SDK (WebAssembly)
@@ -116,7 +116,7 @@ npm run test:coverage -w @typedcode/shared
 5. **Export**: Proof file contains complete event history, hash chain, fingerprint, and optional screenshots
 6. **Verification**: Independent verification of chain integrity, timestamps, and PoSW
 
-### Event Types (22 types)
+### Event Types (24 types)
 
 | Category | Events |
 |----------|--------|
@@ -128,6 +128,7 @@ npm run test:coverage -w @typedcode/shared
 | Auth | `humanAttestation`, `preExportAttestation`, `termsAccepted` |
 | Execution | `codeExecution`, `terminalInput` |
 | Capture | `screenshotCapture`, `screenShareStart`, `screenShareStop` |
+| Session | `sessionResumed`, `copyOperation` |
 
 ### Export File Format (ZIP)
 

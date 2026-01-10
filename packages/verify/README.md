@@ -23,72 +23,9 @@ npm run build
 npm run preview
 ```
 
-## Architecture
+## Key Concepts
 
-```
-src/
-├── main.ts                       # Entry point
-├── core/
-│   ├── VerificationEngine.ts     # Core verification logic (UI-independent)
-│   └── VerifyContext.ts          # Application context
-├── config/
-│   └── VerificationTypes.ts      # Verification type definitions
-├── ui/
-│   ├── AppController.ts          # Main application controller
-│   ├── TabBar.ts                 # Tab bar component
-│   ├── ActivityBar.ts            # Activity bar (sidebar icons)
-│   ├── StatusBar.ts              # Status bar (VerifyStatusBar class)
-│   ├── StatusBarUI.ts            # Status bar UI rendering
-│   ├── WelcomePanel.ts           # Welcome/drop zone panel
-│   ├── VerifyFileListController.ts  # File list management
-│   ├── ResultPanel.ts            # Result panel UI layer
-│   ├── Sidebar.ts                # File explorer sidebar
-│   ├── ScreenshotLightbox.ts     # Screenshot viewer
-│   ├── ThemeManager.ts           # Theme management
-│   └── AboutDialog.ts            # About dialog
-├── ui/panels/
-│   ├── ResultPanel.ts            # Verification result display
-│   ├── MetadataPanel.ts          # Proof metadata display
-│   ├── ChainPanel.ts             # Hash chain visualization
-│   ├── PoswPanel.ts              # PoSW statistics display
-│   └── AttestationPanel.ts       # Human attestation info
-├── ui/controllers/
-│   ├── VerificationController.ts # Verification flow controller
-│   ├── TabController.ts          # Tab management controller
-│   ├── FileController.ts         # File handling controller
-│   ├── FolderController.ts       # Folder handling controller
-│   └── ChartController.ts        # Chart management controller
-├── state/
-│   ├── VerificationQueue.ts      # Verification queue (Web Worker)
-│   ├── UIStateManager.ts         # UI state management
-│   ├── VerifyTabManager.ts       # Tab state management
-│   └── ChartState.ts             # Chart state
-├── charts/
-│   ├── TimelineChart.ts          # Event timeline (Chart.js)
-│   ├── MouseChart.ts             # Mouse position distribution
-│   ├── IntegratedChart.ts        # Integrated chart with typing speed, focus, keystrokes
-│   ├── SeekbarController.ts      # Timeline seekbar controller
-│   ├── ScreenshotOverlay.ts      # Screenshot overlay on chart
-│   └── ChartUtils.ts             # Chart utilities
-├── services/
-│   ├── FileProcessor.ts          # JSON/ZIP file parsing
-│   ├── FileSystemAccessService.ts  # File System Access API
-│   ├── FolderSyncManager.ts      # Folder synchronization
-│   ├── SyntaxHighlighter.ts      # Highlight.js wrapper
-│   ├── AttestationService.ts     # Attestation verification (re-export from shared)
-│   ├── TrustCalculator.ts        # Trust level calculation
-│   ├── ScreenshotService.ts      # Screenshot handling
-│   └── ResultDataService.ts      # Result data processing
-├── workers/
-│   └── verificationWorker.ts     # Web Worker for verification
-├── types/
-│   └── file-system-access.d.ts   # File System Access API types
-├── styles/                       # CSS stylesheets
-└── i18n/
-    └── translations/             # ja.ts, en.ts
-```
-
-## Verification Flow
+### Verification Flow
 
 ```
 File Selection (drag & drop / File System Access API)
@@ -100,18 +37,66 @@ Format Detection (single-file or multi-file)
 VerificationEngine.verify()
     ↓
 VerificationQueue (Web Worker)
-    ├─ VerificationEngine.verifyChain()
-    │   ├─ Sequence number check
-    │   ├─ Timestamp continuity check
-    │   ├─ Previous hash validation
-    │   └─ Hash recalculation
-    ├─ PoSW verification (10,000 iterations)
-    └─ Metadata validation (isPureTyping)
+    ├─ Sequence number check
+    ├─ Timestamp continuity check
+    ├─ Previous hash validation
+    ├─ Hash recalculation
+    └─ PoSW verification (10,000 iterations)
     ↓
-AttestationService.verify() (Workers API, @typedcode/shared)
+AttestationService.verify() (Workers API)
     ↓
-UI Display (panels, charts)
+UI Display (ResultPanel, charts)
 ```
+
+### Sampled vs Full Verification
+
+| Mode | When Used | Speed | Accuracy |
+|------|-----------|-------|----------|
+| **Sampled** | Checkpoints available | Fast (O(samples)) | Statistical guarantee |
+| **Full** | No checkpoints | Slow (O(n)) | 100% verification |
+
+**Sampled verification** randomly selects checkpoint segments and verifies:
+1. First segment (initial hash → first checkpoint)
+2. Last segment (last checkpoint → final hash)
+3. Random intermediate segments
+
+This provides statistical assurance while enabling fast verification of large proof files.
+
+### Trust Level Calculation
+
+The `TrustCalculator` computes a trust score based on:
+
+| Factor | Impact |
+|--------|--------|
+| Pure typing | High trust |
+| Human attestation verified | +Trust |
+| Timestamps consistent | Required |
+| Hash chain valid | Required |
+| Paste/drop events | -Trust |
+| Template injection | Noted but allowed |
+
+### Typing Pattern Analysis
+
+The `TypingPatternCard` analyzes:
+- Typing speed (WPM) over time
+- Key press intervals
+- Pause patterns
+- Focus/blur frequency
+
+These metrics help identify unusual patterns that might indicate automated input.
+
+### Chart Visualization
+
+| Chart | Purpose |
+|-------|---------|
+| **IntegratedChart** | Typing speed, focus state, keystrokes over time |
+| **TimelineChart** | Event distribution with annotations |
+| **MouseChart** | Mouse position heatmap |
+
+Charts support:
+- Zoom and pan (chartjs-plugin-zoom)
+- Screenshot overlay at capture points
+- Event filtering via `ChartEventSelector`
 
 ## Supported Formats
 
@@ -187,17 +172,6 @@ const handle = await showDirectoryPicker();
 ```
 
 This feature allows real-time verification during development.
-
-## Chart Features
-
-### Timeline Chart
-- Event distribution over time
-- Annotations for important events (paste, attestation)
-- Zoom and pan support (chartjs-plugin-zoom)
-
-### Mouse Chart
-- Mouse position distribution
-- Heatmap-style visualization
 
 ## Dependencies
 

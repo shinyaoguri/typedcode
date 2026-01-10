@@ -87,11 +87,11 @@ Core library providing:
 | Directory | Purpose |
 |-----------|---------|
 | `core/` | `VerificationEngine`, `VerifyContext` |
-| `ui/` | `AppController`, `TabBar`, `ActivityBar`, `StatusBar` |
-| `ui/panels/` | `ResultPanel`, `MetadataPanel`, `ChainPanel`, `PoswPanel`, `AttestationPanel` |
-| `state/` | `VerificationQueue`, `UIStateManager`, `VerifyTabManager` |
-| `charts/` | `TimelineChart`, `MouseChart` (Chart.js) |
-| `services/` | `FileSystemAccessService`, `FolderSyncManager`, `SyntaxHighlighter` |
+| `ui/` | `AppController`, `TabBar`, `ActivityBar`, `StatusBar`, `ResultPanel`, `Sidebar`, `TypingPatternCard`, `ChartEventSelector` |
+| `ui/controllers/` | `VerificationController`, `TabController`, `FileController`, `FolderController`, `ChartController` |
+| `state/` | `VerificationQueue`, `UIStateManager`, `VerifyTabManager`, `ChartState` |
+| `charts/` | `TimelineChart`, `MouseChart`, `IntegratedChart`, `SeekbarController` (Chart.js) |
+| `services/` | `FileSystemAccessService`, `FolderSyncManager`, `SyntaxHighlighter`, `TrustCalculator`, `DiffService`, `ChartPreferencesService` |
 | `workers/` | `verificationWorker.ts` |
 
 ### Workers Package (`@typedcode/workers`)
@@ -106,11 +106,11 @@ Cloudflare Workers API endpoints:
 
 ## Core Concepts
 
-### Event Types (22 types)
+### Event Types (24 types)
 
 ```typescript
 // Content events
-'contentChange' | 'contentSnapshot' | 'externalInput'
+'contentChange' | 'contentSnapshot' | 'externalInput' | 'templateInjection'
 
 // Cursor events
 'cursorPositionChange' | 'selectionChange'
@@ -132,13 +132,20 @@ Cloudflare Workers API endpoints:
 
 // Capture events
 'screenshotCapture' | 'screenShareStart' | 'screenShareStop'
+
+// Session events
+'sessionResumed' | 'copyOperation'
 ```
 
-### Input Types (32 types)
+### Input Types (27 types)
 
-**Allowed**: `insertText`, `insertLineBreak`, `insertParagraph`, `insertTab`, `insertFromComposition`, `deleteContentBackward`, `deleteContentForward`, `deleteWordBackward`, `deleteWordForward`, `historyUndo`, `historyRedo`, etc.
+**Allowed (18 types)**: `insertText`, `insertLineBreak`, `insertParagraph`, `insertTab`, `insertFromComposition`, `insertCompositionText`, `deleteCompositionText`, `deleteContentBackward`, `deleteContentForward`, `deleteWordBackward`, `deleteWordForward`, `deleteSoftLineBackward`, `deleteSoftLineForward`, `deleteHardLineBackward`, `deleteHardLineForward`, `deleteByDrag`, `deleteByCut`, `insertFromInternalPaste`
 
-**Blocked (external input)**: `insertFromPaste`, `insertFromDrop`, `insertFromYank`, `insertReplacementText`, `insertFromPasteAsQuotation`
+**Blocked (external input, 5 types)**: `insertFromPaste`, `insertFromDrop`, `insertFromYank`, `insertReplacementText`, `insertFromPasteAsQuotation`
+
+**Other (4 types)**: `historyUndo`, `historyRedo`, `replaceContent`, `insertTab`
+
+Note: `insertFromInternalPaste` is allowed - it detects when users copy/paste within the same editor session.
 
 ### PoSW (Proof of Sequential Work)
 

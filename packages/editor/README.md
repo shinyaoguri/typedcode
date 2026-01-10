@@ -7,7 +7,7 @@ Main editor application - Monaco Editor-based sequential typing proof editor wit
 - **Multi-tab Editing**: Independent proof chain per tab with tab switch tracking
 - **Language Support**: C, C++, Python, JavaScript, TypeScript
 - **Theme**: Light/Dark mode with system preference detection
-- **Event Tracking**: 21 event types including keystrokes, cursor, paste/drop, window, focus, visibility
+- **Event Tracking**: 24 event types including keystrokes, cursor, paste/drop, window, focus, visibility
 - **PoSW**: Proof of Sequential Work (10,000 sequential hashes per event via Web Worker)
 - **Screenshot Capture**: Periodic and focus-loss triggered screenshots with hash verification
 - **Human Verification**: Cloudflare Turnstile integration at file creation and export
@@ -32,88 +32,9 @@ npm run build
 npm run preview
 ```
 
-## Architecture
+## Key Concepts
 
-```
-src/
-├── main.ts                    # Entry point
-├── app/
-│   ├── DataCleaner.ts         # Data cleanup utilities
-│   ├── TermsHandler.ts        # Terms of service handling
-│   └── UrlParamHandler.ts     # URL parameter processing
-├── core/
-│   ├── AppContext.ts          # Application context and state
-│   └── EventRecorder.ts       # Central event dispatcher
-├── editor/
-│   ├── EditorController.ts    # Monaco change tracking
-│   ├── CursorTracker.ts       # Cursor/selection events
-│   └── ThemeManager.ts        # Theme switching
-├── tracking/
-│   ├── OperationDetector.ts   # Operation type detection from Monaco
-│   ├── InputDetector.ts       # Paste/drop detection
-│   ├── KeystrokeTracker.ts    # Keyboard events (keyDown/keyUp)
-│   ├── MouseTracker.ts        # Mouse position tracking
-│   ├── WindowTracker.ts       # Window resize events
-│   ├── VisibilityTracker.ts   # Tab visibility changes
-│   ├── NetworkTracker.ts      # Network status changes
-│   ├── ScreenshotTracker.ts   # Screenshot capture (IndexedDB storage)
-│   └── TrackersInitializer.ts # Initialize all trackers
-├── execution/
-│   ├── CodeExecutionController.ts  # Code execution orchestration
-│   └── RuntimeManager.ts           # Wasmer SDK management
-├── executors/
-│   ├── base/BaseExecutor.ts        # Base executor class
-│   ├── interfaces/ILanguageExecutor.ts  # Executor interface
-│   ├── c/CExecutor.ts              # C language executor
-│   ├── cpp/CppExecutor.ts          # C++ executor
-│   ├── javascript/JavaScriptExecutor.ts
-│   ├── typescript/TypeScriptExecutor.ts
-│   ├── python/PythonExecutor.ts
-│   └── registry/ExecutorRegistry.ts
-├── terminal/
-│   └── CTerminal.ts           # xterm.js wrapper
-├── ui/
-│   ├── tabs/
-│   │   ├── TabManager.ts      # Tab state management
-│   │   └── TabUIController.ts # Tab UI rendering
-│   ├── dialogs/
-│   │   └── ScreenCaptureDialogs.ts  # Screen capture dialogs
-│   └── components/
-│       ├── Modal.ts           # Modal dialogs
-│       ├── NotificationManager.ts
-│       ├── SettingsDropdown.ts
-│       ├── DownloadDropdown.ts
-│       ├── MainMenuDropdown.ts
-│       ├── ProofStatusDisplay.ts
-│       ├── TerminalPanel.ts
-│       ├── LogViewerPanel.ts
-│       ├── LogViewer.ts       # Log viewer component
-│       ├── BrowserPreviewPanel.ts
-│       ├── ProcessingDialog.ts     # Hash calculation progress
-│       ├── ExportProgressDialog.ts # Export progress display
-│       ├── AboutDialog.ts          # About dialog
-│       └── ScreenShareGuide.ts     # Screen share guide
-├── export/
-│   ├── ProofExporter.ts       # Proof export (JSON/ZIP)
-│   ├── readme-template-en.ts  # README template (English)
-│   └── readme-template-ja.ts  # README template (Japanese)
-├── services/
-│   ├── TurnstileService.ts    # Cloudflare Turnstile integration
-│   ├── StorageService.ts      # localStorage/sessionStorage
-│   ├── ScreenshotStorageService.ts  # IndexedDB for screenshots
-│   ├── ScreenCaptureService.ts     # Screen capture API
-│   └── DownloadService.ts     # File download
-├── workers/
-│   └── poswWorker.ts          # PoSW computation Web Worker
-├── config/
-│   ├── MonacoConfig.ts        # Monaco worker configuration
-│   └── SupportedLanguages.ts  # Supported language definitions
-├── styles/                    # CSS stylesheets
-└── i18n/
-    └── translations/          # ja.ts, en.ts
-```
-
-## Event Flow
+### Event Recording Flow
 
 ```
 User Action
@@ -124,18 +45,53 @@ OperationDetector (Monaco change events → operation type)
     ↓
 KeystrokeTracker / MouseTracker / etc.
     ↓
-EventRecorder (event queuing)
+EventRecorder (event queuing, fire-and-forget)
     ↓
 TypingProof.recordEvent() (@typedcode/shared)
     ↓
-HashChainManager (SHA-256 hash computation, @typedcode/shared)
+HashChainManager → PoswManager (Web Worker)
     ↓
-PoswManager (Web Worker: 10,000 iterations, @typedcode/shared)
-    ↓
-StoredEvent (event array storage, @typedcode/shared)
-    ↓
-localStorage (tab state persistence)
+StoredEvent → localStorage + IndexedDB
 ```
+
+### Fire-and-Forget Recording
+
+Events are recorded asynchronously without blocking the UI:
+
+1. `record(event)` returns immediately
+2. PoSW computation runs in Web Worker (10,000 iterations)
+3. UI shows `queuedEventCount` for pending PoSW
+4. Events are incrementally saved to IndexedDB
+
+This ensures typing responsiveness even with cryptographic overhead.
+
+### Internal Paste Detection
+
+TypedCode distinguishes between external paste (Ctrl+V from outside) and internal paste (copy/paste within the same session):
+
+1. When content is generated (typed), it's registered in `SessionContentRegistry`
+2. On paste event, the pasted text is compared against registered content
+3. Match → `insertFromInternalPaste` (allowed, doesn't break pure typing)
+4. No match → `insertFromPaste` (blocked, marks as external input)
+
+This allows users to copy/paste their own typed code without penalty.
+
+### Session Recovery
+
+When the browser is refreshed or closed unexpectedly:
+
+1. Events are saved incrementally to IndexedDB
+2. On reload, `sessionResumed` event is recorded
+3. The hash chain continues from the last saved state
+4. Pending PoSW computations are resumed
+
+### Template Injection
+
+When a template is loaded (e.g., starter code for an exam):
+
+1. `templateInjection` event is recorded
+2. The injected content is tracked separately from typed content
+3. Pure typing status accounts for template vs user-typed content
 
 ## Environment Variables
 
