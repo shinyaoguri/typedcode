@@ -6,8 +6,8 @@
  * UI-specific functions for the verify package.
  */
 
-import type { PoswStatsDisplay, HumanAttestationUI, VerifyTabState, ChainErrorDetails, SampledVerificationInfo } from '../types';
-import type { ResultData, VerificationResult } from '../ui/ResultPanel';
+import type { PoswStatsDisplay, HumanAttestationUI, VerifyTabState, ChainErrorDetails, SampledVerificationInfo, VerificationResult } from '../types';
+import type { ResultData } from '../ui/ResultPanel';
 
 // Re-export from shared for backward compatibility
 export {
@@ -59,9 +59,12 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
   // Convert result format
   // pasteCountはメタデータから取得（イベントからカウントするよりも正確）
   // メタデータがない場合はイベントからカウント
-  const pasteCount = proofData.metadata?.pasteEvents ?? countPasteEventsShared(events);
+  // ExportedProof.typingProofData.metadata が ProofMetadata（正確な統計情報）
+  // ExportedProof.metadata は { userAgent, timestamp, isPureTyping } のみ
+  const proofMetadata = proofData.typingProofData?.metadata;
+  const pasteCount = proofMetadata?.pasteEvents ?? countPasteEventsShared(events);
   // 内部ペーストカウント（後方互換性のため、存在しない場合は0）
-  const internalPasteCount = proofData.metadata?.internalPasteEvents ?? 0;
+  const internalPasteCount = proofMetadata?.internalPasteEvents ?? 0;
 
   // Build chain error details if verification failed
   let chainErrorDetails: ChainErrorDetails | undefined;

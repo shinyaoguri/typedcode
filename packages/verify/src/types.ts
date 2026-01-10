@@ -446,6 +446,8 @@ export interface IntegratedChartCache {
   focusEvents: StoredEvent[];
   visibilityEvents: StoredEvent[];
   externalInputMarkers: { timestamp: number; type: InputType }[];
+  /** 内部ペーストマーカー */
+  internalPasteMarkers: { timestamp: number; eventIndex: number }[];
   /** 人間検証イベント（ファイル作成時のTurnstile認証） */
   humanAttestationEvents: { timestamp: number; eventIndex: number }[];
   /** 認証系イベント（termsAccepted, preExportAttestation） */

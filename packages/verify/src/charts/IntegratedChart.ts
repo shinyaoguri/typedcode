@@ -193,6 +193,9 @@ export class IntegratedChart {
     // 外部入力マーカー
     const externalInputMarkers = this.extractExternalInputMarkers(events);
 
+    // 内部ペーストマーカー
+    const internalPasteMarkers = this.extractInternalPasteMarkers(events);
+
     // 人間検証イベント（humanAttestation）
     const humanAttestationEvents = this.extractHumanAttestationEvents(events);
 
@@ -242,6 +245,7 @@ export class IntegratedChart {
       focusEvents,
       visibilityEvents,
       externalInputMarkers,
+      internalPasteMarkers,
       humanAttestationEvents,
       authEvents,
       systemEvents,
@@ -341,6 +345,24 @@ export class IntegratedChart {
         markers.push({
           timestamp: event.timestamp,
           type: event.inputType,
+        });
+      }
+    });
+
+    return markers;
+  }
+
+  /**
+   * 内部ペーストマーカーを抽出
+   */
+  private extractInternalPasteMarkers(events: StoredEvent[]): { timestamp: number; eventIndex: number }[] {
+    const markers: { timestamp: number; eventIndex: number }[] = [];
+
+    events.forEach((event, index) => {
+      if (event.inputType === 'insertFromInternalPaste') {
+        markers.push({
+          timestamp: event.timestamp,
+          eventIndex: index,
         });
       }
     });
@@ -545,6 +567,26 @@ export class IntegratedChart {
         pointHoverRadius: 10,
         pointStyle: 'triangle',
         yAxisID: 'yEvents',
+        order: 1,
+      });
+    }
+
+    // 4.5. 内部ペーストマーカー（contentChangeに関連）
+    if (this.isVisible('contentChange') && this.cache.internalPasteMarkers.length > 0) {
+      datasets.push({
+        type: 'scatter',
+        label: '内部ペースト',
+        data: this.cache.internalPasteMarkers.map((m) => ({
+          x: m.timestamp,
+          y: 0.35, // 外部入力マーカーより上、他のイベントより下に配置
+        })),
+        backgroundColor: '#22c55e', // 緑色（許可されたペースト）
+        borderColor: '#16a34a',
+        borderWidth: 2,
+        pointRadius: 7,
+        pointHoverRadius: 10,
+        pointStyle: 'rectRounded', // 角丸四角で区別
+        yAxisID: 'yTopMarkers',
         order: 1,
       });
     }
@@ -1017,6 +1059,12 @@ export class IntegratedChart {
             enabled: true,
             mode: 'x',
           },
+          limits: {
+            x: {
+              min: 0,
+              max: this.cache?.totalTime ?? 0,
+            },
+          },
         },
         annotation: {
           annotations: this.buildAnnotations(),
@@ -1204,7 +1252,13 @@ export class IntegratedChart {
     }
 
     if (label === '外部入力') {
-      return 'ペースト/ドロップ';
+      return '⚠️ 外部ペースト/ドロップ';
+    }
+
+    if (label === '内部ペースト') {
+      const data = context.raw as { x: number; y: number };
+      const time = this.formatAxisTime(data.x);
+      return `✅ 内部ペースト（許可） - ${time}`;
     }
 
     // Auth events
