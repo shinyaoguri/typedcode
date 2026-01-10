@@ -31,7 +31,8 @@ export type EventType =
   | 'screenShareStop' // 画面共有停止
   | 'templateInjection' // テンプレートコンテンツ注入
   | 'sessionResumed' // セッション再開（リロードまたはIndexedDBからの復旧）
-  | 'copyOperation'; // コピー操作（監査用）
+  | 'copyOperation' // コピー操作（監査用）
+  | 'screenShareOptOut'; // 画面共有オプトアウト
 
 /** 入力タイプ */
 export type InputType =

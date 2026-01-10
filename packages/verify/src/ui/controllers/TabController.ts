@@ -270,12 +270,19 @@ export class TabController {
       ? [tabState.associatedSourceMismatch]
       : undefined;
 
+    // 画面共有オプトアウトイベントの検出
+    const events = tabState.proofData?.proof?.events ?? [];
+    const hasScreenShareOptOut = events.some(
+      (e: { type: string }) => e.type === 'screenShareOptOut'
+    );
+
     // 信頼度を計算
     const trustResult = TrustCalculator.calculate(
       tabState.verificationResult,
       tabState.humanAttestationResult,
       screenshotSummary,
-      contentMismatches
+      contentMismatches,
+      { hasScreenShareOptOut }
     );
 
     console.log('[TabController] Trust result:', trustResult);
@@ -296,8 +303,7 @@ export class TabController {
     }
 
     // Render charts
-    const events = tabState.proofData?.proof?.events;
-    if (events && events.length > 0) {
+    if (events.length > 0) {
       this.renderCharts(events, tabState.screenshots, tabState.startTimestamp);
     }
   }

@@ -192,8 +192,15 @@ export const en: VerifyTranslationKeys = {
       screenshotCapture: 'Screenshot Capture',
       screenShareStart: 'Screen Share Start',
       screenShareStop: 'Screen Share Stop',
+      screenShareOptOut: 'Screen Share Opt-Out',
       templateInjection: 'Template Injection',
+      copyOperation: 'Copy Operation',
+      sessionResumed: 'Session Resumed',
     },
+  },
+
+  trust: {
+    screenShareOptOut: 'Recorded without screen sharing',
   },
 
   pattern: {

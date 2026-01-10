@@ -192,8 +192,15 @@ export const ja: VerifyTranslationKeys = {
       screenshotCapture: 'スクリーンショット',
       screenShareStart: '画面共有開始',
       screenShareStop: '画面共有終了',
+      screenShareOptOut: '画面共有オプトアウト',
       templateInjection: 'テンプレート挿入',
+      copyOperation: 'コピー操作',
+      sessionResumed: 'セッション再開',
     },
+  },
+
+  trust: {
+    screenShareOptOut: '画面共有なしモードで記録されました',
   },
 
   pattern: {

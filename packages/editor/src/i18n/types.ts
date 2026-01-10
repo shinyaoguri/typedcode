@@ -248,6 +248,23 @@ export interface TranslationKeys {
     solutionRestartBrowser: string;
     solutionCheckHttps: string;
     solutionFreeMemory: string;
+    // Screen share choice dialog
+    choiceTitle: string;
+    choiceDescription: string;
+    startScreenShare: string;
+    startScreenShareDesc: string;
+    useWithoutScreenShare: string;
+    useWithoutScreenShareDesc: string;
+    // Opt-out confirmation dialog
+    optOutConfirmTitle: string;
+    optOutConfirmDescription: string;
+    optOutWarning1: string;
+    optOutWarning2: string;
+    optOutWarning3: string;
+    optOutConfirm: string;
+    // Opt-out banner
+    optedOutBanner: string;
+    enableScreenShare: string;
   };
 
   // Status bar
@@ -392,6 +409,7 @@ export interface TranslationKeys {
     screenShareStart: string;
     screenShareStop: string;
     screenShareResumed: string;
+    screenShareOptOut: string;
     sessionResumed: string;
   };
 

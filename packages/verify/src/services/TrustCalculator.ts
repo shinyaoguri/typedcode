@@ -17,6 +17,11 @@ export interface AttestationResult {
   hasAttestation: boolean;
 }
 
+export interface TrustCalculatorOptions {
+  /** 画面共有をオプトアウトしたかどうか */
+  hasScreenShareOptOut?: boolean;
+}
+
 export class TrustCalculator {
   /**
    * 検証結果から信頼度を計算
@@ -24,12 +29,14 @@ export class TrustCalculator {
    * @param attestationResult - 人間証明結果
    * @param screenshots - スクリーンショット検証サマリー
    * @param contentMismatches - ソースファイル不一致情報（オプション）
+   * @param options - 追加オプション
    */
   static calculate(
     verificationResult: VerificationResultData | null,
     attestationResult: AttestationResult | undefined,
     screenshots: ScreenshotVerificationSummary,
-    contentMismatches?: ContentMismatchInfo[]
+    contentMismatches?: ContentMismatchInfo[],
+    options?: TrustCalculatorOptions
   ): TrustResult {
     const issues: TrustIssue[] = [];
 
@@ -102,6 +109,15 @@ export class TrustCalculator {
           message: `${mismatch.filename}: ソースファイルと証明内容が異なります (+${mismatch.additions}/-${mismatch.deletions}行)`,
         });
       }
+    }
+
+    // 6. 画面共有オプトアウト検証
+    if (options?.hasScreenShareOptOut) {
+      issues.push({
+        component: 'screenshots',
+        severity: 'warning',
+        message: '画面共有なしモードで記録されました',
+      });
     }
 
     // レベル判定

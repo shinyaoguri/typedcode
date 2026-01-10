@@ -59,7 +59,10 @@ export const EVENT_CATEGORY_MAP: Record<EventType, EventCategory> = {
   screenshotCapture: 'capture',
   screenShareStart: 'capture',
   screenShareStop: 'capture',
+  screenShareOptOut: 'capture',
   templateInjection: 'capture',
+  // Copy
+  copyOperation: 'content',
 };
 
 /** カテゴリ定義（UI表示用） */
@@ -68,7 +71,7 @@ export const EVENT_CATEGORIES: CategoryInfo[] = [
     id: 'content',
     labelKey: 'charts.categories.content',
     icon: 'fa-file-lines',
-    events: ['contentChange', 'contentSnapshot', 'externalInput'],
+    events: ['contentChange', 'contentSnapshot', 'externalInput', 'copyOperation'],
   },
   {
     id: 'cursor',
@@ -110,7 +113,7 @@ export const EVENT_CATEGORIES: CategoryInfo[] = [
     id: 'capture',
     labelKey: 'charts.categories.capture',
     icon: 'fa-camera',
-    events: ['screenshotCapture', 'screenShareStart', 'screenShareStop', 'templateInjection'],
+    events: ['screenshotCapture', 'screenShareStart', 'screenShareStop', 'screenShareOptOut', 'templateInjection'],
   },
 ];
 

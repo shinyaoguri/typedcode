@@ -91,6 +91,10 @@ import {
 import {
   requestScreenCaptureWithRetry,
   showScreenCaptureLockOverlay,
+  showScreenShareChoiceDialog,
+  showScreenShareOptOutConfirmDialog,
+  showScreenShareOptOutBanner,
+  hideScreenShareOptOutBanner,
 } from './ui/dialogs/ScreenCaptureDialogs.js';
 import { initSessionStorageService } from './services/SessionStorageService.js';
 import { showSessionRecoveryDialog } from './ui/dialogs/SessionRecoveryDialog.js';
@@ -778,27 +782,76 @@ async function initializeApp(): Promise<void> {
     // ScreenshotTrackerはSessionStorageServiceを使用してスクリーンショットを保存
     const screenshotTracker = new ScreenshotTracker(sessionService);
 
-    const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
+    // 選択ダイアログを表示：「画面共有を開始」または「画面共有なしで使用」
+    initOverlay?.classList.add('hidden');
+    const choice = await showScreenShareChoiceDialog();
+    initOverlay?.classList.remove('hidden');
+    updateInitMessage(t('app.initializing'));
 
-    // onResume コールバック: 画面共有を再開
+    // onResume コールバック: 画面共有を再開（または初めて有効化）
     const onResume = async (): Promise<boolean> => {
       const tracker = ctx.trackers.screenshot;
       if (tracker) {
-        return requestScreenCaptureWithRetry(tracker);
+        const success = await requestScreenCaptureWithRetry(tracker);
+        if (success) {
+          // オプトアウトから画面共有に切り替え成功
+          tracker.setOptedOut(false);
+          hideScreenShareOptOutBanner();
+        }
+        return success;
       }
       return false;
     };
 
-    if (!permissionGranted) {
-      // 画面共有が得られなかった場合はアプリを使用不能に
-      showScreenCaptureLockOverlay(onResume);
-      return;
-    }
+    if (choice === 'cancelled') {
+      // キャンセルされた場合は画面共有を要求（従来の動作）
+      const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
+      if (!permissionGranted) {
+        showScreenCaptureLockOverlay(onResume);
+        return;
+      }
+      // ストリーム停止時のコールバックを設定
+      screenshotTracker.setStreamStoppedCallback(() => {
+        showScreenCaptureLockOverlay(onResume);
+      });
+    } else if (choice === 'optOut') {
+      // オプトアウトの確認ダイアログを表示
+      initOverlay?.classList.add('hidden');
+      const confirmed = await showScreenShareOptOutConfirmDialog();
+      initOverlay?.classList.remove('hidden');
+      updateInitMessage(t('app.initializing'));
 
-    // ストリーム停止時のコールバックを設定
-    screenshotTracker.setStreamStoppedCallback(() => {
-      showScreenCaptureLockOverlay(onResume);
-    });
+      if (!confirmed) {
+        // キャンセルされた場合は画面共有を要求
+        const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
+        if (!permissionGranted) {
+          showScreenCaptureLockOverlay(onResume);
+          return;
+        }
+        // ストリーム停止時のコールバックを設定
+        screenshotTracker.setStreamStoppedCallback(() => {
+          showScreenCaptureLockOverlay(onResume);
+        });
+      } else {
+        // オプトアウト確定
+        screenshotTracker.setOptedOut(true);
+        // 注: オプトアウトイベントはTrackersInitializer後にコールバックが設定されてから発火される
+        // バナーを表示（途中から画面共有を有効にするボタン付き）
+        showScreenShareOptOutBanner(onResume);
+        console.log('[TypedCode] Screen sharing opted out');
+      }
+    } else {
+      // 「画面共有を開始」を選択
+      const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
+      if (!permissionGranted) {
+        showScreenCaptureLockOverlay(onResume);
+        return;
+      }
+      // ストリーム停止時のコールバックを設定
+      screenshotTracker.setStreamStoppedCallback(() => {
+        showScreenCaptureLockOverlay(onResume);
+      });
+    }
 
     ctx.trackers.screenshot = screenshotTracker;
   } else {
@@ -1023,6 +1076,12 @@ async function initializeApp(): Promise<void> {
       }
     },
   });
+
+  // Phase 5.5: 画面共有オプトアウトイベントの発火（コールバック設定後）
+  // オプトアウトを選択した場合、ここでイベントを発火する
+  if (ctx.trackers.screenshot?.isOptedOut()) {
+    ctx.trackers.screenshot.emitScreenShareOptOutEvent();
+  }
 
   // Phase 6: LogViewerとEventRecorderの初期化
   initializeLogViewer(ctx);

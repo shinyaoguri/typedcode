@@ -38,6 +38,7 @@ export type {
   ScreenCapturePermissionState,
   ScreenShareStartData,
   ScreenShareStopData,
+  ScreenShareOptOutData,
 } from './screenshot.js';
 
 // 認証関連

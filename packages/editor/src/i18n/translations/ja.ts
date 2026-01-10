@@ -231,6 +231,23 @@ export const ja: TranslationKeys = {
     solutionRestartBrowser: 'ブラウザを再起動してください',
     solutionCheckHttps: 'HTTPS接続であることを確認してください',
     solutionFreeMemory: '使用していないアプリケーションを閉じてメモリを解放してください',
+    // Screen share choice dialog
+    choiceTitle: '画面共有の設定',
+    choiceDescription: 'TypedCodeは画面キャプチャを使用して証明の信頼性を高めます。',
+    startScreenShare: '画面共有を開始',
+    startScreenShareDesc: '推奨：最高の信頼度を確保',
+    useWithoutScreenShare: '画面共有なしで使用',
+    useWithoutScreenShareDesc: '警告：証明の信頼度が低下します',
+    // Opt-out confirmation dialog
+    optOutConfirmTitle: '画面共有なしで続行',
+    optOutConfirmDescription: '画面共有なしで使用すると：',
+    optOutWarning1: '証明の信頼度が低下します（検証時に警告が表示されます）',
+    optOutWarning2: '画面共有なしであることがハッシュチェーンに記録されます',
+    optOutWarning3: '後から画面共有を有効にすることも可能です',
+    optOutConfirm: '理解しました',
+    // Opt-out banner
+    optedOutBanner: '画面共有なしモードで動作中',
+    enableScreenShare: '画面共有を有効にする',
   },
 
   statusBar: {
@@ -375,6 +392,7 @@ export const ja: TranslationKeys = {
     screenShareStart: '画面共有を開始しました',
     screenShareStop: '画面共有が停止されました',
     screenShareResumed: '画面共有を再開しました',
+    screenShareOptOut: '画面共有なしモードを選択しました',
     sessionResumed: 'セッションを再開しました（リロード後）',
   },
 
