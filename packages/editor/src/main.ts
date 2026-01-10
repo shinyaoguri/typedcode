@@ -316,7 +316,7 @@ async function initializeTabManager(
 function initializeEventRecorder(): void {
   ctx.eventRecorder = new EventRecorder({
     tabManager: ctx.tabManager!,
-    logViewer: ctx.logViewer,
+    getLogViewer: () => ctx.logViewer,
     onStatusUpdate: () => updateProofStatus(ctx),
     onError: (msg) => showNotification(msg),
   });
