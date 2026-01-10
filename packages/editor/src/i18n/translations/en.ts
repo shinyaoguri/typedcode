@@ -231,6 +231,23 @@ export const en: TranslationKeys = {
     solutionRestartBrowser: 'Restart your browser',
     solutionCheckHttps: 'Ensure you are using HTTPS connection',
     solutionFreeMemory: 'Close unused applications to free up memory',
+    // Screen share choice dialog
+    choiceTitle: 'Screen Sharing Settings',
+    choiceDescription: 'TypedCode uses screen capture to enhance proof reliability.',
+    startScreenShare: 'Start Screen Sharing',
+    startScreenShareDesc: 'Recommended: Ensures highest trust level',
+    useWithoutScreenShare: 'Use Without Screen Sharing',
+    useWithoutScreenShareDesc: 'Warning: Proof trust level will be reduced',
+    // Opt-out confirmation dialog
+    optOutConfirmTitle: 'Continue Without Screen Sharing',
+    optOutConfirmDescription: 'Using without screen sharing means:',
+    optOutWarning1: 'Proof trust level will be reduced (warnings shown during verification)',
+    optOutWarning2: 'The opt-out will be recorded in the hash chain',
+    optOutWarning3: 'You can enable screen sharing later',
+    optOutConfirm: 'I Understand',
+    // Opt-out banner
+    optedOutBanner: 'Running without screen sharing',
+    enableScreenShare: 'Enable Screen Sharing',
   },
 
   statusBar: {
@@ -375,6 +392,7 @@ export const en: TranslationKeys = {
     screenShareStart: 'Screen sharing started',
     screenShareStop: 'Screen sharing stopped',
     screenShareResumed: 'Screen sharing resumed',
+    screenShareOptOut: 'Screen sharing opt-out selected',
     sessionResumed: 'Session resumed (after reload)',
   },
 

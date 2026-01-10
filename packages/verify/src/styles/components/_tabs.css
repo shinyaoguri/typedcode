@@ -112,11 +112,6 @@
   background-color: var(--accent-danger);
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
 /* Tab close button */
 .tab-close {
   display: flex;

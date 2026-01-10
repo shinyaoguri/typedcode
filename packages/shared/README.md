@@ -49,16 +49,6 @@ const exported = await proof.exportProof(finalContent);
 | `getTypingStatistics()` | Get typing-specific statistics |
 | `reset()` | Reset chain and storage |
 
-**Internal Modules:**
-| Module | Purpose |
-|--------|---------|
-| `HashChainManager` | SHA-256 hash computation and chaining |
-| `PoswManager` | PoSW computation via Web Worker |
-| `CheckpointManager` | Periodic checkpoint management |
-| `ChainVerifier` | Chain verification (full/sampling) |
-| `InputTypeValidator` | Input type validation |
-| `StatisticsCalculator` | Statistics computation |
-
 ### Fingerprint
 
 Browser fingerprinting and device ID management.
@@ -135,12 +125,12 @@ const poswResult = await verifyPoSW(event);
 
 ## Types
 
-### Event Types (21 types)
+### Event Types (24 types)
 
 ```typescript
 type EventType =
   // Content
-  | 'contentChange' | 'contentSnapshot' | 'externalInput'
+  | 'contentChange' | 'contentSnapshot' | 'externalInput' | 'templateInjection'
   // Cursor
   | 'cursorPositionChange' | 'selectionChange'
   // Input
@@ -154,13 +144,15 @@ type EventType =
   // Execution
   | 'codeExecution' | 'terminalInput'
   // Capture
-  | 'screenshotCapture' | 'screenShareStart' | 'screenShareStop';
+  | 'screenshotCapture' | 'screenShareStart' | 'screenShareStop'
+  // Session
+  | 'sessionResumed' | 'copyOperation';
 ```
 
-### Input Types (22 types)
+### Input Types (27 types)
 
 ```typescript
-// Allowed input types (17 types)
+// Allowed input types (18 types)
 type AllowedInputType =
   | 'insertText' | 'insertLineBreak' | 'insertParagraph' | 'insertTab'
   | 'insertFromComposition' | 'insertCompositionText' | 'deleteCompositionText'
@@ -168,14 +160,16 @@ type AllowedInputType =
   | 'deleteWordBackward' | 'deleteWordForward'
   | 'deleteSoftLineBackward' | 'deleteSoftLineForward'
   | 'deleteHardLineBackward' | 'deleteHardLineForward'
-  | 'deleteByDrag' | 'deleteByCut';
+  | 'deleteByDrag' | 'deleteByCut'
+  | 'insertFromInternalPaste';  // Internal paste (allowed)
 
 // Blocked input types (external input, 5 types)
 type BlockedInputType =
   | 'insertFromPaste' | 'insertFromDrop' | 'insertFromYank'
   | 'insertReplacementText' | 'insertFromPasteAsQuotation';
 
-// Other types: 'historyUndo' | 'historyRedo' | 'replaceContent'
+// Other types (4 types)
+// 'historyUndo' | 'historyRedo' | 'replaceContent' | 'insertTab'
 ```
 
 ### Core Types
@@ -200,9 +194,9 @@ npm run test
 npm run test:coverage
 ```
 
-## Technical Details
+## Technical Specifications
 
-### Hash Chain
+### Hash Chain Algorithm
 
 ```
 h_0 = SHA-256(fingerprint || random)
@@ -210,17 +204,46 @@ PoSW_i = iterate(SHA-256, h_{i-1} || event_i, 10000)
 h_i = SHA-256(h_{i-1} || JSON(event_i) || PoSW_i)
 ```
 
-- PoSW: 10,000 sequential hash iterations (runs in Web Worker)
-- Checkpoints: Created every 33 events for efficient sampling verification
-- Timeout: 30 seconds per PoSW computation
+- Each event's hash includes the previous hash, creating an unbreakable chain
+- JSON serialization uses deterministic key ordering for reproducibility
+
+### Proof of Sequential Work (PoSW)
+
+| Property | Value |
+|----------|-------|
+| Iterations | 10,000 per event |
+| Nonce | 16 bytes random |
+| Timeout | 30 seconds |
+| Execution | Web Worker (non-blocking) |
+
+PoSW ensures that events cannot be bulk-generated or back-dated, as each event requires sequential computation.
+
+### Checkpoint System
+
+| Property | Value |
+|----------|-------|
+| Interval | Every 33 events |
+| Purpose | Enable sampled verification |
+| Contents | eventIndex, hash, timestamp, contentHash |
+
+Checkpoints allow efficient verification of large proof files by sampling random segments instead of verifying all events.
 
 ### Verification Steps
 
-1. Initial hash matches fingerprint hash
-2. Sequence numbers are continuous (0, 1, 2, ...)
-3. Timestamps are monotonically increasing
-4. Each event's `previousHash` matches expected value
-5. PoSW is valid for each event
+1. **Initial hash** matches fingerprint hash
+2. **Sequence numbers** are continuous (0, 1, 2, ...)
+3. **Timestamps** are monotonically increasing
+4. **Previous hash** of each event matches computed value
+5. **PoSW** is valid for each event (10,000 iterations)
+
+### Pure Typing Detection
+
+A proof is considered "pure typing" when:
+- No `insertFromPaste` events
+- No `insertFromDrop` events
+- No other blocked input types
+
+Note: `insertFromInternalPaste` (copying within the same editor session) does NOT break pure typing status.
 
 ### Constants
 

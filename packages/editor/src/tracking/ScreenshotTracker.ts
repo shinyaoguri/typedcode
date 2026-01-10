@@ -10,6 +10,7 @@ import type {
   DisplayInfo,
   ScreenShareStartData,
   ScreenShareStopData,
+  ScreenShareOptOutData,
 } from '@typedcode/shared';
 import {
   ScreenCaptureService,
@@ -41,11 +42,19 @@ export interface ScreenShareStopEvent {
   description: string;
 }
 
+/** 画面共有オプトアウトイベント */
+export interface ScreenShareOptOutEvent {
+  type: 'screenShareOptOut';
+  data: ScreenShareOptOutData;
+  description: string;
+}
+
 /** スクリーンショットトラッカーイベント（全種類） */
 export type ScreenshotTrackerEvent =
   | ScreenshotCaptureEvent
   | ScreenShareStartEvent
-  | ScreenShareStopEvent;
+  | ScreenShareStopEvent
+  | ScreenShareOptOutEvent;
 
 /** スクリーンショットトラッカーコールバック */
 export type ScreenshotTrackerCallback = (event: ScreenshotTrackerEvent) => void;
@@ -77,6 +86,7 @@ export class ScreenshotTracker {
   private currentDisplaySurface: string | null = null;
   private proofStartTime: number = 0; // TypingProofの開始時刻（相対時間計算用）
   private captureEnabled = true; // キャプチャ保存が有効かどうか（タブがない場合は無効）
+  private optedOut = false; // 画面共有をオプトアウトしたかどうか
 
   constructor(sessionService: SessionStorageService, options?: ScreenshotTrackerOptions) {
     const captureOptions: ScreenCaptureOptions = {
@@ -147,6 +157,52 @@ export class ScreenshotTracker {
   setCaptureEnabled(enabled: boolean): void {
     this.captureEnabled = enabled;
     console.log(`[ScreenshotTracker] Capture ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  // ========================================
+  // オプトアウト管理
+  // ========================================
+
+  /**
+   * 画面共有オプトアウト状態を取得
+   */
+  isOptedOut(): boolean {
+    return this.optedOut;
+  }
+
+  /**
+   * 画面共有オプトアウト状態を設定
+   */
+  setOptedOut(value: boolean): void {
+    this.optedOut = value;
+    console.log(`[ScreenshotTracker] Opted out: ${value}`);
+  }
+
+  /**
+   * 画面共有オプトアウトイベントを発火
+   */
+  emitScreenShareOptOutEvent(): void {
+    if (!this.callback) {
+      console.warn('[ScreenshotTracker] Cannot emit opt-out event: no callback set');
+      return;
+    }
+
+    const data: ScreenShareOptOutData = {
+      timestamp: performance.now() - this.proofStartTime,
+      reason: 'user_choice',
+      acknowledged: true,
+    };
+
+    const description = t('events.screenShareOptOut') ?? 'Screen sharing opt-out selected';
+
+    this.callback({
+      type: 'screenShareOptOut',
+      data,
+      description,
+    });
+
+    this.optedOut = true;
+    console.log('[ScreenshotTracker] Screen share opt-out event emitted');
   }
 
   // ========================================

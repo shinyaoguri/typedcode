@@ -30,6 +30,7 @@ const VALID_EVENT_TYPES: ReadonlySet<string> = new Set([
   'screenShareStop',
   'sessionResumed',
   'copyOperation',
+  'screenShareOptOut',
 ]);
 
 // 有効な入力タイプ（実行時検証用）

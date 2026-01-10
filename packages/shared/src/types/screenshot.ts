@@ -67,3 +67,10 @@ export interface ScreenShareStopData {
   timestamp: number;  // performance.now()
   duration: number;  // 共有開始からの経過時間（ミリ秒）
 }
+
+/** 画面共有オプトアウトイベントデータ */
+export interface ScreenShareOptOutData {
+  timestamp: number;  // performance.now()
+  reason: 'user_choice';  // 将来の拡張用
+  acknowledged: boolean;  // ユーザーが確認ダイアログに同意したか
+}

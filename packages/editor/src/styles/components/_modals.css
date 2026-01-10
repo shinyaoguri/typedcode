@@ -1578,3 +1578,233 @@
   word-break: break-all;
   white-space: pre-wrap;
 }
+
+/* ================================================
+   Screen Share Choice Dialog
+   ================================================ */
+
+.screen-share-choice-dialog {
+  max-width: 420px;
+  border-top: 3px solid var(--accent-primary);
+}
+
+.screen-share-choice-dialog .modal-header i {
+  color: var(--accent-primary);
+}
+
+.screen-share-choice-dialog .choice-description {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.screen-share-choice-dialog .choice-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.screen-share-choice-dialog .choice-option {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.screen-share-choice-dialog .choice-option:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+}
+
+.screen-share-choice-dialog .choice-option-primary {
+  border-color: var(--accent-primary);
+  background: rgba(0, 120, 212, 0.08);
+}
+
+.screen-share-choice-dialog .choice-option-primary:hover {
+  background: rgba(0, 120, 212, 0.15);
+}
+
+.screen-share-choice-dialog .choice-option-secondary:hover {
+  border-color: #ff9800;
+}
+
+.screen-share-choice-dialog .choice-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.screen-share-choice-dialog .choice-option-primary .choice-icon {
+  background: rgba(0, 120, 212, 0.15);
+}
+
+.screen-share-choice-dialog .choice-option-primary .choice-icon i {
+  color: var(--accent-primary);
+  font-size: 18px;
+}
+
+.screen-share-choice-dialog .choice-option-secondary .choice-icon {
+  background: rgba(255, 152, 0, 0.15);
+}
+
+.screen-share-choice-dialog .choice-option-secondary .choice-icon i {
+  color: #ff9800;
+  font-size: 18px;
+}
+
+.screen-share-choice-dialog .choice-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.screen-share-choice-dialog .choice-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.screen-share-choice-dialog .choice-subtitle {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.screen-share-choice-dialog .choice-option-primary .choice-subtitle {
+  color: var(--accent-primary);
+}
+
+.screen-share-choice-dialog .choice-option-secondary .choice-subtitle {
+  color: #ff9800;
+}
+
+/* ================================================
+   Screen Share Opt-Out Confirm Dialog
+   ================================================ */
+
+.screen-share-optout-confirm-dialog {
+  max-width: 420px;
+  border-top: 3px solid #ff9800;
+}
+
+.screen-share-optout-confirm-dialog .modal-header i {
+  color: #ff9800;
+}
+
+.screen-share-optout-confirm-dialog .optout-warnings {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0 0;
+}
+
+.screen-share-optout-confirm-dialog .optout-warnings li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.screen-share-optout-confirm-dialog .optout-warnings li:last-child {
+  border-bottom: none;
+}
+
+.screen-share-optout-confirm-dialog .optout-warnings li i {
+  font-size: 14px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+
+.screen-share-optout-confirm-dialog .optout-warnings li i.fa-exclamation-circle {
+  color: #ff9800;
+}
+
+.screen-share-optout-confirm-dialog .optout-warnings li i.fa-link {
+  color: var(--accent-primary);
+}
+
+.screen-share-optout-confirm-dialog .optout-warnings li i.fa-check-circle {
+  color: #4caf50;
+}
+
+/* ================================================
+   Screen Share Opt-Out Banner
+   ================================================ */
+
+.screen-share-opt-out-banner {
+  flex-shrink: 0;
+  width: 100%;
+  background: linear-gradient(90deg, rgba(255, 152, 0, 0.95) 0%, rgba(255, 183, 77, 0.95) 100%);
+  color: #000;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  animation: banner-slide-down 0.3s ease;
+}
+
+@keyframes banner-slide-down {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.screen-share-opt-out-banner .banner-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.screen-share-opt-out-banner .banner-content i {
+  font-size: 16px;
+}
+
+.screen-share-opt-out-banner .banner-text {
+  flex-shrink: 0;
+}
+
+.screen-share-opt-out-banner .banner-btn {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: rgba(0, 0, 0, 0.15);
+  color: #000;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.screen-share-opt-out-banner .banner-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.screen-share-opt-out-banner .banner-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

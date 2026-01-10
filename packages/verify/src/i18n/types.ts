@@ -207,8 +207,16 @@ export interface VerifyTranslationKeys {
       screenshotCapture: string;
       screenShareStart: string;
       screenShareStop: string;
+      screenShareOptOut: string;
       templateInjection: string;
+      copyOperation: string;
+      sessionResumed: string;
     };
+  };
+
+  // Trust calculation
+  trust: {
+    screenShareOptOut: string;
   };
 
   // Typing pattern analysis

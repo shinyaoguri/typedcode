@@ -1,4 +1,21 @@
 /* CSS Variables for theming - VSCode style */
+
+/* Theme-independent variables */
+:root {
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+
 :root[data-theme="dark"] {
   /* Base colors */
   --bg-primary: #1e1e1e;
@@ -44,6 +61,9 @@
   /* Shadows */
   --shadow: rgba(0, 0, 0, 0.5);
   --shadow-light: rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 8px var(--shadow);
+  --shadow-md: 0 4px 12px var(--shadow);
+  --shadow-lg: 0 8px 32px var(--shadow);
 }
 
 :root[data-theme="light"] {
@@ -91,4 +111,7 @@
   /* Shadows */
   --shadow: rgba(0, 0, 0, 0.15);
   --shadow-light: rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0 2px 8px var(--shadow);
+  --shadow-md: 0 4px 12px var(--shadow);
+  --shadow-lg: 0 8px 32px var(--shadow);
 }
