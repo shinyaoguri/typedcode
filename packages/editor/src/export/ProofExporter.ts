@@ -290,6 +290,7 @@ export class ProofExporter {
         compressionOptions: {
           level: 9,
         },
+        streamFiles: true,
       });
       console.log('[Export] ZIP generated, size:', blob.size);
 
@@ -439,6 +440,7 @@ export class ProofExporter {
         compressionOptions: {
           level: 9, // 最大圧縮レベル
         },
+        streamFiles: true,
       });
       console.log('[Export] ZIP generated, size:', blob.size);
 
