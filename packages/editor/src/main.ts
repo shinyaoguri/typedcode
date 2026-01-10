@@ -91,6 +91,7 @@ import {
 import {
   requestScreenCaptureWithRetry,
   showScreenCaptureLockOverlay,
+  hideScreenCaptureLockOverlay,
   showScreenShareChoiceDialog,
   showScreenShareOptOutConfirmDialog,
   showScreenShareOptOutBanner,
@@ -788,6 +789,27 @@ async function initializeApp(): Promise<void> {
     initOverlay?.classList.remove('hidden');
     updateInitMessage(t('app.initializing'));
 
+    // onContinueWithout コールバック: 画面共有なしで継続（オプトアウトに切り替え）
+    const onContinueWithout = async (): Promise<boolean> => {
+      const tracker = ctx.trackers.screenshot;
+      if (tracker) {
+        // ロックオーバーレイを一時的に非表示にして確認ダイアログを表示
+        hideScreenCaptureLockOverlay();
+        const confirmed = await showScreenShareOptOutConfirmDialog();
+        if (confirmed) {
+          tracker.setOptedOut(true);
+          tracker.emitScreenShareOptOutEvent();
+          showScreenShareOptOutBanner(onResume);
+          return true; // オーバーレイは既に非表示
+        } else {
+          // キャンセルされた場合はロックオーバーレイを再表示
+          showScreenCaptureLockOverlay(onResume, onContinueWithout);
+          return false;
+        }
+      }
+      return false; // オーバーレイを閉じない
+    };
+
     // onResume コールバック: 画面共有を再開（または初めて有効化）
     const onResume = async (): Promise<boolean> => {
       const tracker = ctx.trackers.screenshot;
@@ -797,6 +819,10 @@ async function initializeApp(): Promise<void> {
           // オプトアウトから画面共有に切り替え成功
           tracker.setOptedOut(false);
           hideScreenShareOptOutBanner();
+          // ストリーム停止時のコールバックを設定（重要：再開後もストリーム停止を検知）
+          tracker.setStreamStoppedCallback(() => {
+            showScreenCaptureLockOverlay(onResume, onContinueWithout);
+          });
         }
         return success;
       }
@@ -807,12 +833,12 @@ async function initializeApp(): Promise<void> {
       // キャンセルされた場合は画面共有を要求（従来の動作）
       const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
       if (!permissionGranted) {
-        showScreenCaptureLockOverlay(onResume);
+        showScreenCaptureLockOverlay(onResume, onContinueWithout);
         return;
       }
       // ストリーム停止時のコールバックを設定
       screenshotTracker.setStreamStoppedCallback(() => {
-        showScreenCaptureLockOverlay(onResume);
+        showScreenCaptureLockOverlay(onResume, onContinueWithout);
       });
     } else if (choice === 'optOut') {
       // オプトアウトの確認ダイアログを表示
@@ -825,12 +851,12 @@ async function initializeApp(): Promise<void> {
         // キャンセルされた場合は画面共有を要求
         const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
         if (!permissionGranted) {
-          showScreenCaptureLockOverlay(onResume);
+          showScreenCaptureLockOverlay(onResume, onContinueWithout);
           return;
         }
         // ストリーム停止時のコールバックを設定
         screenshotTracker.setStreamStoppedCallback(() => {
-          showScreenCaptureLockOverlay(onResume);
+          showScreenCaptureLockOverlay(onResume, onContinueWithout);
         });
       } else {
         // オプトアウト確定
@@ -844,12 +870,12 @@ async function initializeApp(): Promise<void> {
       // 「画面共有を開始」を選択
       const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
       if (!permissionGranted) {
-        showScreenCaptureLockOverlay(onResume);
+        showScreenCaptureLockOverlay(onResume, onContinueWithout);
         return;
       }
       // ストリーム停止時のコールバックを設定
       screenshotTracker.setStreamStoppedCallback(() => {
-        showScreenCaptureLockOverlay(onResume);
+        showScreenCaptureLockOverlay(onResume, onContinueWithout);
       });
     }
 

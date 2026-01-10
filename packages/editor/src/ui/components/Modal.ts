@@ -442,6 +442,10 @@ export interface LockOverlayOptions {
   onResume: () => void | Promise<boolean | void>;
   /** Custom class name */
   className?: string;
+  /** Secondary button text (optional) */
+  secondaryButtonText?: string;
+  /** Callback when secondary button is clicked */
+  onSecondaryAction?: () => void | Promise<boolean | void>;
 }
 
 /**
@@ -459,6 +463,8 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
     icon = 'pause-circle',
     onResume,
     className = 'lock-overlay',
+    secondaryButtonText,
+    onSecondaryAction,
   } = options;
 
   // Remove existing overlay
@@ -470,16 +476,33 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
   overlay.className = className;
   // Use content class based on overlay class (e.g., screen-capture-lock-overlay -> screen-capture-lock-content)
   const contentClass = className.replace('-overlay', '-content');
+
+  // Build buttons HTML
+  let buttonsHtml = `
+    <button class="btn btn-primary ${contentClass}-btn">
+      <i class="fas fa-play"></i>
+      ${buttonText}
+    </button>
+  `;
+
+  if (secondaryButtonText && onSecondaryAction) {
+    buttonsHtml += `
+      <button class="btn btn-secondary ${contentClass}-btn-secondary">
+        <i class="fas fa-eye-slash"></i>
+        ${secondaryButtonText}
+      </button>
+    `;
+  }
+
   overlay.innerHTML = `
     <div class="${contentClass}">
       <i class="fas fa-${icon} fa-4x"></i>
       <h2>${title}</h2>
       <p>${description}</p>
       ${hint ? `<p class="${contentClass}-hint">${hint}</p>` : ''}
-      <button class="btn btn-primary ${contentClass}-btn">
-        <i class="fas fa-play"></i>
-        ${buttonText}
-      </button>
+      <div class="${contentClass}-buttons">
+        ${buttonsHtml}
+      </div>
     </div>
   `;
 
@@ -493,6 +516,18 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
       hide();
     }
   });
+
+  // Secondary button handler
+  if (secondaryButtonText && onSecondaryAction) {
+    const secondaryBtn = overlay.querySelector(`.${contentClass}-btn-secondary`);
+    secondaryBtn?.addEventListener('click', async () => {
+      const result = await onSecondaryAction();
+      // If callback returns true or void, hide the overlay
+      if (result !== false) {
+        hide();
+      }
+    });
+  }
 
   const hide = (): void => {
     overlay.classList.add('hidden');

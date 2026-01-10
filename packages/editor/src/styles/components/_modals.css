@@ -911,6 +911,30 @@
   background: var(--accent-secondary);
 }
 
+.screen-capture-lock-content .btn-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.screen-capture-lock-content .btn-secondary:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.screen-capture-lock-content-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.screen-capture-lock-content-buttons .btn {
+  width: 100%;
+  justify-content: center;
+}
+
 /* Screen Share Guide - Chrome共有ダイアログの非表示ボタンを押すよう促すガイド */
 .screen-share-guide {
   position: fixed;

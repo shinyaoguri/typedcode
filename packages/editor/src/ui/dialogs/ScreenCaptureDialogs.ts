@@ -272,9 +272,12 @@ export async function showScreenCaptureRequiredDialog(): Promise<boolean> {
 
 /**
  * 画面共有停止時のロックオーバーレイを表示
+ * @param onResume 画面共有を再開するコールバック
+ * @param onContinueWithout 画面共有なしで継続するコールバック（オプション）
  */
 export function showScreenCaptureLockOverlay(
-  onResume: () => Promise<boolean>
+  onResume: () => Promise<boolean>,
+  onContinueWithout?: () => Promise<boolean>
 ): void {
   showLockOverlay({
     overlayId: SCREEN_CAPTURE_LOCK_OVERLAY_ID,
@@ -287,6 +290,15 @@ export function showScreenCaptureLockOverlay(
       const result = await onResume();
       return result; // false を返すとオーバーレイが閉じない
     },
+    secondaryButtonText: onContinueWithout
+      ? (t('screenCapture.continueWithoutButton') ?? '画面共有なしで継続')
+      : undefined,
+    onSecondaryAction: onContinueWithout
+      ? async () => {
+          const result = await onContinueWithout();
+          return result;
+        }
+      : undefined,
   });
 }
 
