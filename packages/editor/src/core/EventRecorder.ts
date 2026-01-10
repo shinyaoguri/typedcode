@@ -9,19 +9,22 @@
 import type { RecordEventInput } from '@typedcode/shared';
 import type { TabManager } from '../ui/tabs/TabManager.js';
 import type { LogViewer } from '../ui/components/LogViewer.js';
+import type { SessionContentRegistry } from './SessionContentRegistry.js';
 import { t } from '../i18n/index.js';
 import { getSessionStorageService } from '../services/SessionStorageService.js';
 
 export interface EventRecorderOptions {
   tabManager: TabManager;
-  logViewer: LogViewer | null;
+  getLogViewer: () => LogViewer | null;
+  contentRegistry?: SessionContentRegistry;
   onStatusUpdate?: () => void;
   onError?: (message: string) => void;
 }
 
 export class EventRecorder {
   private tabManager: TabManager;
-  private logViewer: LogViewer | null;
+  private getLogViewer: () => LogViewer | null;
+  private contentRegistry: SessionContentRegistry | null;
   private onStatusUpdate: (() => void) | null;
   private onError: ((message: string) => void) | null;
   private enabled = true;
@@ -29,7 +32,8 @@ export class EventRecorder {
 
   constructor(options: EventRecorderOptions) {
     this.tabManager = options.tabManager;
-    this.logViewer = options.logViewer;
+    this.getLogViewer = options.getLogViewer;
+    this.contentRegistry = options.contentRegistry ?? null;
     this.onStatusUpdate = options.onStatusUpdate ?? null;
     this.onError = options.onError ?? null;
   }
@@ -48,12 +52,6 @@ export class EventRecorder {
     this.initialized = initialized;
   }
 
-  /**
-   * LogViewerを設定（遅延初期化用）
-   */
-  setLogViewer(logViewer: LogViewer | null): void {
-    this.logViewer = logViewer;
-  }
 
   /**
    * イベントを記録（fire-and-forget）
@@ -76,6 +74,12 @@ export class EventRecorder {
       return;
     }
 
+    // contentChange イベントの場合、入力されたコンテンツをレジストリに登録
+    // これにより、後でペーストされた時に内部コンテンツかどうかを判定できる
+    if (event.type === 'contentChange' && typeof event.data === 'string' && this.contentRegistry) {
+      this.contentRegistry.registerContent(event.data);
+    }
+
     // recordEventを呼び出し（内部でqueuedEventCount++が同期的に実行される）
     const recordPromise = activeProof.recordEvent(event);
 
@@ -87,8 +91,9 @@ export class EventRecorder {
         const recordedEvent = activeProof.events[result.index];
 
         // ログビューアに追加（非同期）
-        if (this.logViewer?.isVisible && recordedEvent) {
-          this.logViewer.addLogEntry(recordedEvent, result.index);
+        const logViewer = this.getLogViewer();
+        if (logViewer?.isVisible && recordedEvent) {
+          logViewer.addLogEntry(recordedEvent, result.index);
         }
 
         // IndexedDBにイベントをインクリメンタルに保存
@@ -161,14 +166,15 @@ export class EventRecorder {
           // アクティブタブの場合のみログビューアに追加
           const activeTab = this.tabManager.getActiveTab();
           const isActive = activeTab && activeTab.id === tab.id;
-          const logViewerVisible = this.logViewer?.isVisible ?? false;
+          const logViewer = this.getLogViewer();
+          const logViewerVisible = logViewer?.isVisible ?? false;
 
           console.debug(`[EventRecorder] recordToAllTabs result: isActive=${isActive}, logViewerVisible=${logViewerVisible}, eventType=${event.type}`);
 
-          if (isActive && logViewerVisible) {
+          if (isActive && logViewerVisible && logViewer) {
             const recordedEvent = tab.typingProof.events[result.index];
             if (recordedEvent) {
-              this.logViewer!.addLogEntry(recordedEvent, result.index);
+              logViewer.addLogEntry(recordedEvent, result.index);
             }
           }
         })
@@ -192,6 +198,5 @@ export class EventRecorder {
   dispose(): void {
     this.onStatusUpdate = null;
     this.onError = null;
-    this.logViewer = null;
   }
 }

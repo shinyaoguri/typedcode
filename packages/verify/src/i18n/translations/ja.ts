@@ -62,7 +62,8 @@ export const ja: VerifyTranslationKeys = {
   result: {
     statusVerifying: '検証中...',
     typing: 'タイピング',
-    pasteCount: 'ペースト回数',
+    pasteCount: '外部ペースト',
+    internalPasteCount: '内部ペースト',
     externalInput: '外部入力',
     hashChain: 'ハッシュチェーン',
     verificationMethod: '検証方式',

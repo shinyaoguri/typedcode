@@ -12,6 +12,7 @@ import type { LogViewer } from '../ui/components/LogViewer.js';
 import type { ThemeManager } from '../editor/ThemeManager.js';
 import type { CTerminal } from '../terminal/CTerminal.js';
 import type { EventRecorder } from './EventRecorder.js';
+import type { SessionContentRegistry } from './SessionContentRegistry.js';
 
 // Trackers
 import type { WindowTracker } from '../tracking/WindowTracker.js';
@@ -105,4 +106,7 @@ export interface AppContext {
 
   // Idle Timeout Manager
   idleTimeoutManager: IdleTimeoutManager | null;
+
+  // Session Content Registry (for internal paste detection)
+  contentRegistry: SessionContentRegistry;
 }

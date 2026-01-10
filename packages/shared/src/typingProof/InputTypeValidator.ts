@@ -29,6 +29,7 @@ const VALID_EVENT_TYPES: ReadonlySet<string> = new Set([
   'screenShareStart',
   'screenShareStop',
   'sessionResumed',
+  'copyOperation',
 ]);
 
 // 有効な入力タイプ（実行時検証用）
@@ -57,6 +58,7 @@ const VALID_INPUT_TYPES: ReadonlySet<string> = new Set([
   'insertFromYank',
   'insertReplacementText',
   'insertFromPasteAsQuotation',
+  'insertFromInternalPaste',
   'replaceContent',
 ]);
 
@@ -78,7 +80,8 @@ const ALLOWED_INPUT_TYPES: readonly InputType[] = [
   'historyRedo',
   'insertCompositionText',
   'deleteCompositionText',
-  'insertFromComposition'
+  'insertFromComposition',
+  'insertFromInternalPaste'
 ] as const;
 
 // 禁止される入力タイプ

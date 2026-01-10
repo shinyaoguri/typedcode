@@ -48,12 +48,15 @@ export class InputDetector {
       });
     }, true);
 
-    // copy イベント（読み取り専用なので記録のみ）
+    // copy イベント（監査用に記録）
     this.element.addEventListener('copy', () => {
       const selection = window.getSelection();
       const copiedText = selection?.toString() ?? '';
 
-      console.log('[InputDetector] Copy detected:', copiedText.substring(0, 50));
+      this.notifyDetected('copy', t('events.copy', { length: String(copiedText.length) }), {
+        text: copiedText,
+        length: copiedText.length
+      });
     }, true);
   }
 

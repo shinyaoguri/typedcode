@@ -62,7 +62,8 @@ export const en: VerifyTranslationKeys = {
   result: {
     statusVerifying: 'Verifying...',
     typing: 'Typing',
-    pasteCount: 'Paste Count',
+    pasteCount: 'External Paste',
+    internalPasteCount: 'Internal Paste',
     externalInput: 'External Input',
     hashChain: 'Hash Chain',
     verificationMethod: 'Verification Method',

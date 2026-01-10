@@ -72,6 +72,7 @@ export interface VerifyTranslationKeys {
     statusVerifying: string;
     typing: string;
     pasteCount: string;
+    internalPasteCount: string;
     externalInput: string;
     hashChain: string;
     verificationMethod: string;

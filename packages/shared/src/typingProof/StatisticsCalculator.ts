@@ -36,6 +36,7 @@ export class StatisticsCalculator {
    */
   getTypingStatistics(events: StoredEvent[], startTime: number): TypingStatistics {
     let pasteEvents = 0;
+    let internalPasteEvents = 0;
     let dropEvents = 0;
     let insertEvents = 0;
     let deleteEvents = 0;
@@ -43,6 +44,7 @@ export class StatisticsCalculator {
 
     for (const event of events) {
       if (event.inputType === 'insertFromPaste') pasteEvents++;
+      if (event.inputType === 'insertFromInternalPaste') internalPasteEvents++;
       if (event.inputType === 'insertFromDrop') dropEvents++;
       if (event.type === 'contentChange' && event.data) insertEvents++;
       if (event.inputType?.startsWith('delete')) deleteEvents++;
@@ -55,6 +57,7 @@ export class StatisticsCalculator {
     return {
       totalEvents: events.length,
       pasteEvents,
+      internalPasteEvents,
       dropEvents,
       insertEvents,
       deleteEvents,

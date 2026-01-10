@@ -100,6 +100,7 @@ export interface RecordEventResult {
 export interface ProofMetadata {
   totalEvents: number;
   pasteEvents: number;
+  internalPasteEvents: number;
   dropEvents: number;
   insertEvents: number;
   deleteEvents: number;

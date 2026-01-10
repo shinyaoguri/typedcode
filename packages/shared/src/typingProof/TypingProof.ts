@@ -615,6 +615,7 @@ export class TypingProof {
       metadata: {
         totalEvents: stats.totalEvents,
         pasteEvents: stats.pasteEvents,
+        internalPasteEvents: stats.internalPasteEvents,
         dropEvents: stats.dropEvents,
         insertEvents: stats.insertEvents,
         deleteEvents: stats.deleteEvents,
@@ -626,13 +627,17 @@ export class TypingProof {
     const proofString = JSON.stringify(proofData);
     const typingProofHash = await this.hashChainManager.computeHash(proofString);
 
+    // isPureTyping: 外部ペースト/ドロップがない場合はtrue
+    // 内部ペーストは許可されているため、isPureTypingには影響しない
+    const isPureTyping = stats.pasteEvents === 0 && stats.dropEvents === 0;
+
     return {
       typingProofHash,
       proofData,
       compact: {
         hash: typingProofHash,
         content: finalContent,
-        isPureTyping: stats.pasteEvents === 0 && stats.dropEvents === 0,
+        isPureTyping,
         deviceId: this.fingerprint!,
         totalEvents: stats.totalEvents
       }
