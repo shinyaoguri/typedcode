@@ -248,6 +248,8 @@ export const en: TranslationKeys = {
     // Opt-out banner
     optedOutBanner: 'Running without screen sharing',
     enableScreenShare: 'Enable Screen Sharing',
+    // Continue without screen share (lock overlay)
+    continueWithoutButton: 'Continue Without Screen Sharing',
   },
 
   statusBar: {

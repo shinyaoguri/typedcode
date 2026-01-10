@@ -248,6 +248,8 @@ export const ja: TranslationKeys = {
     // Opt-out banner
     optedOutBanner: '画面共有なしモードで動作中',
     enableScreenShare: '画面共有を有効にする',
+    // Continue without screen share (lock overlay)
+    continueWithoutButton: '画面共有なしで継続',
   },
 
   statusBar: {
