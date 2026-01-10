@@ -30,7 +30,8 @@ export type EventType =
   | 'screenShareStart' // 画面共有開始
   | 'screenShareStop' // 画面共有停止
   | 'templateInjection' // テンプレートコンテンツ注入
-  | 'sessionResumed'; // セッション再開（リロードまたはIndexedDBからの復旧）
+  | 'sessionResumed' // セッション再開（リロードまたはIndexedDBからの復旧）
+  | 'copyOperation'; // コピー操作（監査用）
 
 /** 入力タイプ */
 export type InputType =
@@ -62,6 +63,8 @@ export type InputType =
   | 'insertFromYank'
   | 'insertReplacementText'
   | 'insertFromPasteAsQuotation'
+  // 内部ペースト（許可）
+  | 'insertFromInternalPaste'
   // その他
   | 'replaceContent';
 

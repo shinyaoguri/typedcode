@@ -250,6 +250,7 @@ export interface VerificationResult {
   chainValid: boolean;
   pureTyping: boolean;
   pasteCount?: number;
+  internalPasteCount?: number;
   verificationMethod?: string;
   errorMessage?: string;
   chainErrorDetails?: ChainErrorDetails;  // チェーン検証エラーの詳細

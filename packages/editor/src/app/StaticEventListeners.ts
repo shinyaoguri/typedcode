@@ -169,16 +169,67 @@ export function setupStaticEventListeners(ctx: AppContext): void {
 
   // 入力検出器の初期化
   new InputDetector(document.body, async (detectedEvent: DetectedEvent) => {
-    showNotification(detectedEvent.message);
     console.log('[TypedCode] Detected operation:', detectedEvent);
 
-    if (detectedEvent.type === 'paste' || detectedEvent.type === 'drop') {
+    if (detectedEvent.type === 'paste') {
       const position: CursorPosition | null = ctx.editor.getPosition();
+      const pastedText = detectedEvent.data.text;
 
+      // 内部コンテンツかどうかをチェック
+      const isInternal = ctx.contentRegistry.isInternalContent(pastedText);
+
+      if (isInternal) {
+        // 内部ペースト - 許可される
+        showNotification(t('notifications.internalPasteDetected', { length: detectedEvent.data.length }));
+
+        if (position) {
+          const event: RecordEventInput = {
+            type: 'contentChange',
+            inputType: 'insertFromInternalPaste',
+            data: pastedText,
+            rangeLength: detectedEvent.data.length,
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: position.column,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column,
+            },
+            description: t('notifications.internalPasteDetected', { length: detectedEvent.data.length }),
+          };
+
+          ctx.eventRecorder?.record(event);
+        }
+      } else {
+        // 外部ペースト - 禁止される
+        showNotification(detectedEvent.message);
+
+        if (position) {
+          const event: RecordEventInput = {
+            type: 'externalInput',
+            inputType: 'insertFromPaste',
+            data: pastedText,
+            rangeLength: detectedEvent.data.length,
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: position.column,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column,
+            },
+            description: t('notifications.pasteDetected', { length: detectedEvent.data.length }),
+          };
+
+          ctx.eventRecorder?.record(event);
+        }
+      }
+    } else if (detectedEvent.type === 'drop') {
+      // ドロップは常に外部入力として扱う
+      showNotification(detectedEvent.message);
+
+      const position: CursorPosition | null = ctx.editor.getPosition();
       if (position) {
         const event: RecordEventInput = {
           type: 'externalInput',
-          inputType: detectedEvent.type === 'paste' ? 'insertFromPaste' : 'insertFromDrop',
+          inputType: 'insertFromDrop',
           data: detectedEvent.data.text,
           rangeLength: detectedEvent.data.length,
           range: {
@@ -187,9 +238,29 @@ export function setupStaticEventListeners(ctx: AppContext): void {
             endLineNumber: position.lineNumber,
             endColumn: position.column,
           },
-          description: detectedEvent.type === 'paste' ?
-            t('notifications.pasteDetected', { length: detectedEvent.data.length }) :
-            t('notifications.dropDetected', { length: detectedEvent.data.length }),
+          description: t('notifications.dropDetected', { length: detectedEvent.data.length }),
+        };
+
+        ctx.eventRecorder?.record(event);
+      }
+    } else if (detectedEvent.type === 'copy') {
+      // コピーされたコンテンツをレジストリに登録（内部ペースト判定用）
+      ctx.contentRegistry.registerCopiedContent(detectedEvent.data.text);
+
+      // コピーイベントを記録（監査用）
+      const position: CursorPosition | null = ctx.editor.getPosition();
+      if (position) {
+        const event: RecordEventInput = {
+          type: 'copyOperation',
+          data: detectedEvent.data.text,
+          rangeLength: detectedEvent.data.length,
+          range: {
+            startLineNumber: position.lineNumber,
+            startColumn: position.column,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column,
+          },
+          description: t('notifications.copyDetected', { length: detectedEvent.data.length }),
         };
 
         ctx.eventRecorder?.record(event);

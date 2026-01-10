@@ -60,6 +60,8 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
   // pasteCountはメタデータから取得（イベントからカウントするよりも正確）
   // メタデータがない場合はイベントからカウント
   const pasteCount = proofData.metadata?.pasteEvents ?? countPasteEventsShared(events);
+  // 内部ペーストカウント（後方互換性のため、存在しない場合は0）
+  const internalPasteCount = proofData.metadata?.internalPasteEvents ?? 0;
 
   // Build chain error details if verification failed
   let chainErrorDetails: ChainErrorDetails | undefined;
@@ -96,6 +98,7 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     chainValid: verificationResult.chainValid,
     pureTyping: verificationResult.isPureTyping,
     pasteCount,
+    internalPasteCount,
     verificationMethod: verificationResult.sampledResult ? 'sampled' : 'full',
     chainErrorDetails,
     sampledVerification,

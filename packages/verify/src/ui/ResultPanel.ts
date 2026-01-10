@@ -69,6 +69,7 @@ export class ResultPanel {
   private typingIcon: HTMLElement;
   private typingBadge: HTMLElement;
   private pasteCount: HTMLElement;
+  private internalPasteCount: HTMLElement;
   private externalInput: HTMLElement;
   private cardTyping: HTMLElement;
 
@@ -170,6 +171,7 @@ export class ResultPanel {
     this.typingIcon = document.getElementById('typing-icon')!;
     this.typingBadge = document.getElementById('typing-badge')!;
     this.pasteCount = document.getElementById('paste-count')!;
+    this.internalPasteCount = document.getElementById('internal-paste-count')!;
     this.externalInput = document.getElementById('external-input')!;
 
     // Chain card
@@ -451,6 +453,7 @@ export class ResultPanel {
       result.pureTyping ? '純粋' : '外部入力あり'
     );
     this.pasteCount.textContent = `${result.pasteCount || 0}回`;
+    this.internalPasteCount.textContent = `${result.internalPasteCount || 0}回`;
     this.externalInput.textContent = result.pureTyping ? 'なし' : 'あり';
 
     // Chain card

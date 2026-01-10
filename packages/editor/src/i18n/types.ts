@@ -283,7 +283,9 @@ export interface TranslationKeys {
     codeCopied: string;
     copyFailed: string;
     pasteDetected: string;
+    internalPasteDetected: string;
     dropDetected: string;
+    copyDetected: string;
     gettingDeviceInfo: string;
     initializingEditor: string;
     noActiveTab: string;
@@ -381,7 +383,9 @@ export interface TranslationKeys {
     offline: string;
     mousePosition: string;
     paste: string;
+    internalPaste: string;
     drop: string;
+    copy: string;
     selectionClear: string;
     selectionCount: string;
     terminalInput: string;

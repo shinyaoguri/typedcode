@@ -77,7 +77,7 @@ import { RuntimeManager } from './execution/RuntimeManager.js';
 import { TabUIController } from './ui/tabs/TabUIController.js';
 import { LogViewerPanel } from './ui/components/LogViewerPanel.js';
 import { BrowserPreviewPanel } from './ui/components/BrowserPreviewPanel.js';
-import { EventRecorder } from './core/EventRecorder.js';
+import { EventRecorder, SessionContentRegistry } from './core/index.js';
 import type { AppContext } from './core/AppContext.js';
 import { t, getI18n, initDOMi18n } from './i18n/index.js';
 import { showAboutDialog } from './ui/components/AboutDialog.js';
@@ -207,6 +207,9 @@ const ctx: AppContext = {
 
   // Idle Timeout Manager
   idleTimeoutManager: null,
+
+  // Session Content Registry (for internal paste detection)
+  contentRegistry: new SessionContentRegistry(),
 };
 
 // ========================================
@@ -310,6 +313,14 @@ async function initializeTabManager(
 
   updateInitMessage(t('notifications.initializingEditor'));
   const initialized = await ctx.tabManager.initialize(fingerprintHash, fingerprintComponents);
+
+  // ContentRegistryに全タブのコンテンツ取得コールバックを設定
+  // これにより、ペースト時に全タブのコンテンツから内部ペーストを判定できる
+  ctx.contentRegistry.setGetAllContentsCallback(() => {
+    const tabs = ctx.tabManager?.getAllTabs() ?? [];
+    return tabs.map(tab => tab.model.getValue());
+  });
+
   return initialized;
 }
 
@@ -317,6 +328,7 @@ function initializeEventRecorder(): void {
   ctx.eventRecorder = new EventRecorder({
     tabManager: ctx.tabManager!,
     getLogViewer: () => ctx.logViewer,
+    contentRegistry: ctx.contentRegistry,
     onStatusUpdate: () => updateProofStatus(ctx),
     onError: (msg) => showNotification(msg),
   });

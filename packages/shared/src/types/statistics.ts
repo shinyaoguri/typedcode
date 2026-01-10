@@ -23,6 +23,7 @@ export interface TypingStats {
 export interface TypingStatistics {
   totalEvents: number;
   pasteEvents: number;
+  internalPasteEvents: number;
   dropEvents: number;
   insertEvents: number;
   deleteEvents: number;

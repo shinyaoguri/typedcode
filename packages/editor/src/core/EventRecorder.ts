@@ -9,12 +9,14 @@
 import type { RecordEventInput } from '@typedcode/shared';
 import type { TabManager } from '../ui/tabs/TabManager.js';
 import type { LogViewer } from '../ui/components/LogViewer.js';
+import type { SessionContentRegistry } from './SessionContentRegistry.js';
 import { t } from '../i18n/index.js';
 import { getSessionStorageService } from '../services/SessionStorageService.js';
 
 export interface EventRecorderOptions {
   tabManager: TabManager;
   getLogViewer: () => LogViewer | null;
+  contentRegistry?: SessionContentRegistry;
   onStatusUpdate?: () => void;
   onError?: (message: string) => void;
 }
@@ -22,6 +24,7 @@ export interface EventRecorderOptions {
 export class EventRecorder {
   private tabManager: TabManager;
   private getLogViewer: () => LogViewer | null;
+  private contentRegistry: SessionContentRegistry | null;
   private onStatusUpdate: (() => void) | null;
   private onError: ((message: string) => void) | null;
   private enabled = true;
@@ -30,6 +33,7 @@ export class EventRecorder {
   constructor(options: EventRecorderOptions) {
     this.tabManager = options.tabManager;
     this.getLogViewer = options.getLogViewer;
+    this.contentRegistry = options.contentRegistry ?? null;
     this.onStatusUpdate = options.onStatusUpdate ?? null;
     this.onError = options.onError ?? null;
   }
@@ -68,6 +72,12 @@ export class EventRecorder {
     const activeProof = this.tabManager.getActiveProof();
     if (!activeProof) {
       return;
+    }
+
+    // contentChange イベントの場合、入力されたコンテンツをレジストリに登録
+    // これにより、後でペーストされた時に内部コンテンツかどうかを判定できる
+    if (event.type === 'contentChange' && typeof event.data === 'string' && this.contentRegistry) {
+      this.contentRegistry.registerContent(event.data);
     }
 
     // recordEventを呼び出し（内部でqueuedEventCount++が同期的に実行される）
