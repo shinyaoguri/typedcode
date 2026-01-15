@@ -338,6 +338,16 @@ export function setupStaticEventListeners(ctx: AppContext): void {
       // ignore
     }
 
+    // 最新のタブ状態をsessionStorageに保存
+    // - リロード時：sessionStorageは保持されるため、最新状態が復元可能になる
+    // - タブ閉じ時：sessionStorageは消えるため効果なし（IndexedDBから復元）
+    // PoSW計算中でもMonacoモデルから最新コンテンツを取得して保存
+    try {
+      ctx.tabManager?.saveToStorage();
+    } catch {
+      // ignore - beforeunloadでは非同期処理が制限される
+    }
+
     const activeProof = ctx.tabManager?.getActiveProof();
     if (activeProof && activeProof.events.length > 0) {
       e.preventDefault();

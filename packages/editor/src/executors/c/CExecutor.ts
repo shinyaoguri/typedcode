@@ -66,6 +66,16 @@ export class CExecutor extends BaseExecutor {
 
   protected clangPkg: Wasmer | null = null;
 
+  /** Currently running instance (for abort support) */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private runningInstance: any = null;
+
+  /** Stdin stream of the running instance (for sending SIGINT) */
+  private runningStdin: WritableStream<Uint8Array> | null = null;
+
+  /** Callbacks for the current execution (for abort messaging) */
+  private currentCallbacks: ExecutionCallbacks | null = null;
+
   protected async _doInitialize(
     onProgress?: (progress: InitializationProgress) => void
   ): Promise<void> {
@@ -195,6 +205,8 @@ static void __typedcode_init_stdout(void) {
 
       // Start the program
       const runInstance = await programEntrypoint.run();
+      this.runningInstance = runInstance;
+      this.currentCallbacks = callbacks;
 
       const decoder = new TextDecoder();
 
@@ -224,11 +236,19 @@ static void __typedcode_init_stdout(void) {
       // Notify caller that stdin is ready for connection
       const stdinStream = runInstance.stdin;
       if (stdinStream) {
+        this.runningStdin = stdinStream;
         callbacks.onStdinReady?.(stdinStream);
       }
 
       // Wait for the program to finish
-      const runResult = await runInstance.wait();
+      let runResult;
+      try {
+        runResult = await runInstance.wait();
+      } finally {
+        this.runningInstance = null;
+        this.runningStdin = null;
+        this.currentCallbacks = null;
+      }
 
       // Wait for output streams to flush with a timeout
       // pipeTo() may hang if the stream doesn't close properly
@@ -252,8 +272,10 @@ static void __typedcode_init_stdout(void) {
       if (this.isRuntimeCorruptionError(error)) {
         console.warn('[CExecutor] Runtime corruption detected, marking for reset');
         this.markRuntimeCorrupted();
-        callbacks.onStderr(`Error: ${errorMsg}\n`);
-        callbacks.onStderr('Runtime error detected. Will auto-reset on next execution.\n');
+
+        // Provide user-friendly error message for common runtime errors
+        const userMessage = this.getRuntimeErrorMessage(errorMsg);
+        callbacks.onStderr(`Runtime Error: ${userMessage}\n`);
       } else {
         callbacks.onStderr(`Error: ${errorMsg}\n`);
       }
@@ -270,7 +292,45 @@ static void __typedcode_init_stdout(void) {
 
   protected _onAbort(): void {
     console.log('[CExecutor] Abort requested');
-    // TODO: Implement proper abort mechanism for WASI programs
+    if (this.runningInstance) {
+      // Try to send SIGINT (Ctrl+C) via stdin
+      // ASCII 3 (ETX) is the character sent when Ctrl+C is pressed
+      if (this.runningStdin) {
+        this.sendSigint().catch((error) => {
+          console.error('[CExecutor] Failed to send SIGINT:', error);
+        });
+      }
+
+      // Notify user that the program cannot be stopped immediately
+      this.currentCallbacks?.onStderr(
+        '\n[System] Program stop requested. If the program does not stop, please reload the page.\n'
+      );
+
+      // Mark runtime for reset as a fallback
+      // Programs that don't handle SIGINT will continue running,
+      // but the runtime will be reset on the next execution
+      this.markRuntimeCorrupted();
+      this.runningInstance = null;
+      this.runningStdin = null;
+      this.currentCallbacks = null;
+      console.log('[CExecutor] SIGINT sent, runtime marked for reset');
+    }
+  }
+
+  /**
+   * Send SIGINT (Ctrl+C) to the running program via stdin
+   */
+  private async sendSigint(): Promise<void> {
+    if (!this.runningStdin) return;
+
+    try {
+      const writer = this.runningStdin.getWriter();
+      // ASCII 3 (ETX) = Ctrl+C
+      await writer.write(new Uint8Array([3]));
+      writer.releaseLock();
+    } catch {
+      // Stream may already be closed
+    }
   }
 
   /**
@@ -280,6 +340,37 @@ static void __typedcode_init_stdout(void) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     const lowerMsg = errorMsg.toLowerCase();
     return RUNTIME_ERROR_PATTERNS.some(pattern => lowerMsg.includes(pattern));
+  }
+
+  /**
+   * Get user-friendly error message for runtime errors
+   */
+  private getRuntimeErrorMessage(errorMsg: string): string {
+    const lowerMsg = errorMsg.toLowerCase();
+
+    if (lowerMsg.includes('unreachable')) {
+      return 'Program crashed (likely null pointer dereference or invalid memory access)';
+    }
+    if (lowerMsg.includes('memory access out of bounds')) {
+      return 'Memory access out of bounds (array index out of range or invalid pointer)';
+    }
+    if (lowerMsg.includes('stack overflow')) {
+      return 'Stack overflow (possibly infinite recursion)';
+    }
+    if (lowerMsg.includes('integer divide by zero')) {
+      return 'Division by zero';
+    }
+    if (lowerMsg.includes('integer overflow')) {
+      return 'Integer overflow';
+    }
+    if (lowerMsg.includes('out of memory')) {
+      return 'Out of memory';
+    }
+    if (lowerMsg.includes('call stack exhausted')) {
+      return 'Call stack exhausted (too deep recursion)';
+    }
+
+    return errorMsg;
   }
 
   /**
