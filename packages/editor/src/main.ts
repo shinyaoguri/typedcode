@@ -1090,7 +1090,7 @@ async function initializeApp(): Promise<void> {
     editorContainer: editorContainer!,
     recordEvent: (event) => ctx.eventRecorder?.record(event),
     recordEventToAllTabs: (event) => ctx.eventRecorder?.recordToAllTabs(event) ?? Promise.resolve(),
-    onProofStatusUpdate: updateProofStatus,
+    onProofStatusUpdate: () => updateProofStatus(ctx),
     onStorageSave: () => ctx.tabManager?.saveToStorage(),
     onFocusRegained: () => {
       // フォーカス復帰時にLogViewerを更新（フォーカス喪失中に記録されたイベントを反映）
