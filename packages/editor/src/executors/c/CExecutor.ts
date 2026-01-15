@@ -130,9 +130,20 @@ export class CExecutor extends BaseExecutor {
     try {
       callbacks.onProgress?.('Compiling...');
 
+      // Inject unbuffered stdout setup at the beginning of the code
+      // This ensures stdout behaves like a local terminal (line-buffered → unbuffered)
+      const preamble = `#include <stdio.h>
+/* TypedCode: Force unbuffered stdout for immediate output */
+__attribute__((constructor))
+static void __typedcode_init_stdout(void) {
+    setvbuf(stdout, (char *)0, _IONBF, 0);
+}
+`;
+      const modifiedCode = preamble + code;
+
       // Create virtual filesystem with source file
       const project = new Directory();
-      await project.writeFile(sourceFile, code);
+      await project.writeFile(sourceFile, modifiedCode);
 
       const entrypoint = this.clangPkg.entrypoint;
       if (!entrypoint) {
@@ -188,7 +199,8 @@ export class CExecutor extends BaseExecutor {
       const decoder = new TextDecoder();
 
       // Connect stdout using pipeTo() for direct streaming
-      runInstance.stdout.pipeTo(
+      // Keep the promise to ensure all output is flushed before returning
+      const stdoutPromise = runInstance.stdout.pipeTo(
         new WritableStream({
           write: (chunk) => {
             callbacks.onStdout(decoder.decode(chunk));
@@ -199,7 +211,7 @@ export class CExecutor extends BaseExecutor {
       });
 
       // Connect stderr using pipeTo() for direct streaming
-      runInstance.stderr.pipeTo(
+      const stderrPromise = runInstance.stderr.pipeTo(
         new WritableStream({
           write: (chunk) => {
             callbacks.onStderr(decoder.decode(chunk));
@@ -217,6 +229,14 @@ export class CExecutor extends BaseExecutor {
 
       // Wait for the program to finish
       const runResult = await runInstance.wait();
+
+      // Wait for output streams to flush with a timeout
+      // pipeTo() may hang if the stream doesn't close properly
+      const flushTimeout = new Promise<void>((resolve) => setTimeout(resolve, 100));
+      await Promise.race([
+        Promise.all([stdoutPromise, stderrPromise]),
+        flushTimeout,
+      ]);
 
       return {
         success: runResult.code === 0,
