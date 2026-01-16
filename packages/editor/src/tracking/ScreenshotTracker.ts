@@ -20,6 +20,7 @@ import { ScreenshotStorageService } from '../services/ScreenshotStorageService.j
 import type { SessionStorageService } from '../services/SessionStorageService.js';
 import { ScreenShareGuide } from '../ui/components/ScreenShareGuide.js';
 import { t } from '../i18n/index.js';
+import { ScreenshotTrackerState } from './ScreenshotTrackerState.js';
 
 /** スクリーンショット撮影イベント */
 export interface ScreenshotCaptureEvent {
@@ -78,15 +79,7 @@ export class ScreenshotTracker {
   private screenShareGuide: ScreenShareGuide;
   private callback: ScreenshotTrackerCallback | null = null;
   private streamStoppedCallback: StreamStoppedCallback | null = null;
-  private attached = false;
-  private lastEventSequence = 0;
-  private initialized = false;
-  private shareStartTimestamp: number | null = null;
-  private currentDisplayInfo: DisplayInfo | null = null;
-  private currentDisplaySurface: string | null = null;
-  private proofStartTime: number = 0; // TypingProofの開始時刻（相対時間計算用）
-  private captureEnabled = true; // キャプチャ保存が有効かどうか（タブがない場合は無効）
-  private optedOut = false; // 画面共有をオプトアウトしたかどうか
+  private state: ScreenshotTrackerState;
 
   constructor(sessionService: SessionStorageService, options?: ScreenshotTrackerOptions) {
     const captureOptions: ScreenCaptureOptions = {
@@ -98,6 +91,7 @@ export class ScreenshotTracker {
     this.captureService = new ScreenCaptureService(captureOptions);
     this.storageService = new ScreenshotStorageService(sessionService);
     this.screenShareGuide = new ScreenShareGuide();
+    this.state = new ScreenshotTrackerState();
   }
 
   /**
@@ -145,7 +139,7 @@ export class ScreenshotTracker {
     this.captureService.setStreamEndedCallback(() => {
       // 停止イベントを発火
       this.emitScreenShareStopEvent('stream_ended');
-      this.attached = false;
+      this.state.attached = false;
       callback();
     });
   }
@@ -155,7 +149,7 @@ export class ScreenshotTracker {
    * タブがない場合は無効にして、不要なスクリーンショット保存を防ぐ
    */
   setCaptureEnabled(enabled: boolean): void {
-    this.captureEnabled = enabled;
+    this.state.captureEnabled = enabled;
     console.log(`[ScreenshotTracker] Capture ${enabled ? 'enabled' : 'disabled'}`);
   }
 
@@ -167,14 +161,14 @@ export class ScreenshotTracker {
    * 画面共有オプトアウト状態を取得
    */
   isOptedOut(): boolean {
-    return this.optedOut;
+    return this.state.optedOut;
   }
 
   /**
    * 画面共有オプトアウト状態を設定
    */
   setOptedOut(value: boolean): void {
-    this.optedOut = value;
+    this.state.optedOut = value;
     console.log(`[ScreenshotTracker] Opted out: ${value}`);
   }
 
@@ -188,7 +182,7 @@ export class ScreenshotTracker {
     }
 
     const data: ScreenShareOptOutData = {
-      timestamp: performance.now() - this.proofStartTime,
+      timestamp: this.state.getRelativeTimestamp(),
       reason: 'user_choice',
       acknowledged: true,
     };
@@ -201,7 +195,7 @@ export class ScreenshotTracker {
       description,
     });
 
-    this.optedOut = true;
+    this.state.optedOut = true;
     console.log('[ScreenshotTracker] Screen share opt-out event emitted');
   }
 
@@ -219,7 +213,7 @@ export class ScreenshotTracker {
     error?: string;
     displaySurface?: string;
   }> {
-    if (this.attached) {
+    if (this.state.attached) {
       return { success: true };
     }
 
@@ -251,7 +245,7 @@ export class ScreenshotTracker {
     this.captureService.setCallback(
       (imageBlob, imageHash, captureType, displayInfo) => {
         // displayInfoを保存（停止イベント用）
-        this.currentDisplayInfo = displayInfo;
+        this.state.currentDisplayInfo = displayInfo;
         this.handleCapture(imageBlob, imageHash, captureType, displayInfo);
       }
     );
@@ -261,7 +255,7 @@ export class ScreenshotTracker {
       this.captureService.setStreamEndedCallback(() => {
         // 停止イベントを発火
         this.emitScreenShareStopEvent('stream_ended');
-        this.attached = false;
+        this.state.attached = false;
         this.streamStoppedCallback?.();
       });
     }
@@ -270,22 +264,18 @@ export class ScreenshotTracker {
     this.captureService.startPeriodicCapture();
 
     // 再開（resume）かどうかを判定（既にセッションが開始されていた場合）
-    const isResume = this.initialized;
-
-    this.attached = true;
-    this.initialized = true;
-
-    // 画面共有開始時刻とdisplaySurfaceを記録
-    this.shareStartTimestamp = performance.now();
-    this.currentDisplaySurface = result.displaySurface ?? 'unknown';
+    const isResume = this.state.initialized;
 
     // 初期displayInfoを設定（キャプチャ前に開始イベントを発火するため）
-    this.currentDisplayInfo = {
+    const displayInfo: DisplayInfo = {
       width: window.screen.width,
       height: window.screen.height,
       devicePixelRatio: window.devicePixelRatio,
       displaySurface: result.displaySurface,
     };
+
+    // 状態を更新
+    this.state.setShareStarted(result.displaySurface ?? 'unknown', displayInfo);
 
     // 画面共有開始/再開イベントを発火
     if (isResume) {
@@ -306,10 +296,10 @@ export class ScreenshotTracker {
    * トラッキングを停止
    */
   detach(): void {
-    if (!this.attached) return;
+    if (!this.state.attached) return;
 
     this.captureService.stopPeriodicCapture();
-    this.attached = false;
+    this.state.attached = false;
     console.log('[ScreenshotTracker] Detached');
   }
 
@@ -328,7 +318,7 @@ export class ScreenshotTracker {
    * フォーカス喪失を通知（VisibilityTrackerから呼び出される）
    */
   notifyFocusLost(): void {
-    if (this.attached) {
+    if (this.state.attached) {
       this.captureService.handleFocusLost();
     }
   }
@@ -337,7 +327,7 @@ export class ScreenshotTracker {
    * フォーカス復帰を通知
    */
   notifyFocusRegained(): void {
-    if (this.attached) {
+    if (this.state.attached) {
       this.captureService.handleFocusRegained();
     }
   }
@@ -351,7 +341,7 @@ export class ScreenshotTracker {
    * キャプチャ時に対応するハッシュチェーンイベントと紐付けるため
    */
   setLastEventSequence(sequence: number): void {
-    this.lastEventSequence = sequence;
+    this.state.lastEventSequence = sequence;
   }
 
   /**
@@ -359,7 +349,7 @@ export class ScreenshotTracker {
    * スクリーンショットのタイムスタンプをハッシュチェーンと同じ相対時間で記録するため
    */
   setProofStartTime(startTime: number): void {
-    this.proofStartTime = startTime;
+    this.state.proofStartTime = startTime;
   }
 
   // ========================================
@@ -401,13 +391,13 @@ export class ScreenshotTracker {
     displayInfo: DisplayInfo
   ): Promise<void> {
     // キャプチャ保存が無効の場合はスキップ（タブがない場合など）
-    if (!this.captureEnabled) {
+    if (!this.state.captureEnabled) {
       console.debug('[ScreenshotTracker] Capture skipped - capture disabled');
       return;
     }
 
     // TypingProofと同じ相対時間を使用（performance.now() - startTime）
-    const timestamp = performance.now() - this.proofStartTime;
+    const timestamp = this.state.getRelativeTimestamp();
     const createdAt = Date.now();
 
     // ストレージに保存
@@ -419,7 +409,7 @@ export class ScreenshotTracker {
         timestamp,
         createdAt,
         displayInfo,
-        eventSequence: this.lastEventSequence,
+        eventSequence: this.state.lastEventSequence,
       });
 
       // イベントデータを作成
@@ -471,17 +461,12 @@ export class ScreenshotTracker {
    * 画面共有開始イベントを発火
    */
   private emitScreenShareStartEvent(): void {
-    if (!this.callback || !this.currentDisplayInfo) return;
-
-    // TypingProofと同じ相対時間を使用
-    const relativeTimestamp = this.shareStartTimestamp !== null
-      ? this.shareStartTimestamp - this.proofStartTime
-      : performance.now() - this.proofStartTime;
+    if (!this.callback || !this.state.currentDisplayInfo) return;
 
     const data: ScreenShareStartData = {
-      displaySurface: this.currentDisplaySurface ?? 'unknown',
-      displayInfo: this.currentDisplayInfo,
-      timestamp: relativeTimestamp,
+      displaySurface: this.state.currentDisplaySurface ?? 'unknown',
+      displayInfo: this.state.currentDisplayInfo,
+      timestamp: this.state.getShareStartRelativeTimestamp(),
     };
 
     const description = t('events.screenShareStart') ?? 'Screen sharing started';
@@ -499,17 +484,12 @@ export class ScreenshotTracker {
    * 画面共有再開イベントを発火
    */
   private emitScreenShareResumedEvent(): void {
-    if (!this.callback || !this.currentDisplayInfo) return;
-
-    // TypingProofと同じ相対時間を使用
-    const relativeTimestamp = this.shareStartTimestamp !== null
-      ? this.shareStartTimestamp - this.proofStartTime
-      : performance.now() - this.proofStartTime;
+    if (!this.callback || !this.state.currentDisplayInfo) return;
 
     const data: ScreenShareStartData = {
-      displaySurface: this.currentDisplaySurface ?? 'unknown',
-      displayInfo: this.currentDisplayInfo,
-      timestamp: relativeTimestamp,
+      displaySurface: this.state.currentDisplaySurface ?? 'unknown',
+      displayInfo: this.state.currentDisplayInfo,
+      timestamp: this.state.getShareStartRelativeTimestamp(),
     };
 
     const description = t('events.screenShareResumed') ?? 'Screen sharing resumed';
@@ -531,15 +511,11 @@ export class ScreenshotTracker {
   ): void {
     if (!this.callback) return;
 
-    const now = performance.now();
-    const duration = this.shareStartTimestamp
-      ? now - this.shareStartTimestamp
-      : 0;
+    const duration = this.state.getShareDuration();
 
-    // TypingProofと同じ相対時間を使用
     const data: ScreenShareStopData = {
       reason,
-      timestamp: now - this.proofStartTime,
+      timestamp: this.state.getRelativeTimestamp(),
       duration,
     };
 
@@ -552,7 +528,7 @@ export class ScreenshotTracker {
     });
 
     // 状態をリセット
-    this.shareStartTimestamp = null;
+    this.state.resetShareState();
 
     console.log(`[ScreenshotTracker] Screen share stop event emitted: ${reason}, duration: ${duration}ms`);
   }
@@ -577,7 +553,7 @@ export class ScreenshotTracker {
     this.storageService.close();
     this.screenShareGuide.hide();
     this.callback = null;
-    this.initialized = false;
+    this.state.reset();
     console.log('[ScreenshotTracker] Disposed');
   }
 }

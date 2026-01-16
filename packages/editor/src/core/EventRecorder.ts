@@ -11,7 +11,7 @@ import type { TabManager } from '../ui/tabs/TabManager.js';
 import type { LogViewer } from '../ui/components/LogViewer.js';
 import type { SessionContentRegistry } from './SessionContentRegistry.js';
 import { t } from '../i18n/index.js';
-import { getSessionStorageService } from '../services/SessionStorageService.js';
+import { EventPersistence } from './EventPersistence.js';
 
 export interface EventRecorderOptions {
   tabManager: TabManager;
@@ -29,6 +29,7 @@ export class EventRecorder {
   private onError: ((message: string) => void) | null;
   private enabled = true;
   private initialized = false;
+  private persistence: EventPersistence;
 
   constructor(options: EventRecorderOptions) {
     this.tabManager = options.tabManager;
@@ -36,6 +37,7 @@ export class EventRecorder {
     this.contentRegistry = options.contentRegistry ?? null;
     this.onStatusUpdate = options.onStatusUpdate ?? null;
     this.onError = options.onError ?? null;
+    this.persistence = new EventPersistence();
   }
 
   /**
@@ -100,17 +102,14 @@ export class EventRecorder {
         const activeTab = this.tabManager.getActiveTab();
         if (recordedEvent && activeTab) {
           try {
-            const sessionService = getSessionStorageService();
-            if (sessionService.isInitialized() && sessionService.getCurrentSessionId()) {
-              await sessionService.appendEvent(activeTab.id, recordedEvent);
-            }
-          } catch (e) {
-            console.error('[EventRecorder] Failed to save event to IndexedDB:', e);
+            await this.persistence.saveEventToIndexedDB(activeTab.id, recordedEvent);
+          } catch {
+            // エラーはEventPersistence内でログ出力済み
           }
         }
 
         // タブデータを保存（sessionStorage用）
-        this.tabManager.saveToStorage();
+        this.persistence.saveTabsToSessionStorage(this.tabManager);
       })
       .catch((err) => {
         console.error('[EventRecorder] Recording failed:', err);
@@ -188,7 +187,7 @@ export class EventRecorder {
 
     // 全タブへの記録が完了してから保存（PoSW計算完了後）
     return Promise.all(promises).then(() => {
-      this.tabManager.saveToStorage();
+      this.persistence.saveTabsToSessionStorage(this.tabManager);
     });
   }
 
