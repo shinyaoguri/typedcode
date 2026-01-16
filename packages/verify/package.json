@@ -17,8 +17,8 @@
     "jszip": "^3.10.1"
   },
   "devDependencies": {
-    "@types/diff": "^7.0.2",
-    "@types/node": "^25.0.3",
+    "@types/diff": "^8.0.0",
+    "@types/node": "^25.0.8",
     "typescript": "^5.9.3",
     "vite": "^7.3.0"
   }
