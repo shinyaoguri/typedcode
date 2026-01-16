@@ -236,6 +236,11 @@ export class ProofExporter {
       // 準備フェーズへ移行
       this.exportProgressDialog.updatePhase('preparing');
 
+      // エクスポート前にIndexedDBへの保存を完了させる
+      // V2フォーマットではsessionStorageとIndexedDBの同期が非同期のため、
+      // エクスポート前に明示的に同期を取る必要がある
+      await this.tabManager?.flushToIndexedDB();
+
       const content = activeTab.model.getValue();
       const proof = await activeTab.typingProof.exportProof(content);
 
@@ -346,6 +351,11 @@ export class ProofExporter {
 
       // 準備フェーズへ移行
       this.exportProgressDialog.updatePhase('preparing');
+
+      // エクスポート前にIndexedDBへの保存を完了させる
+      // V2フォーマットではsessionStorageとIndexedDBの同期が非同期のため、
+      // エクスポート前に明示的に同期を取る必要がある
+      await this.tabManager.flushToIndexedDB();
 
       const allTabs = this.tabManager.getAllTabs();
 

@@ -23,6 +23,7 @@ import type {
   InputType,
   PoSWData,
   SerializedProofState,
+  LightweightProofState,
   CheckpointData,
   HumanAttestationEventData,
   TemplateInjectionEventData,
@@ -681,6 +682,21 @@ export class TypingProof {
   serializeState(): SerializedProofState {
     return {
       events: this.events,
+      currentHash: this.currentHash,
+      startTime: this.startTime,
+      pendingEvents: [...this.pendingEvents],
+      checkpoints: [...this.checkpointManager.getCheckpoints()],
+    };
+  }
+
+  /**
+   * 軽量状態をシリアライズ（sessionStorage用、eventsなし）
+   * V2フォーマット用：イベントはIndexedDBに保存されるため、
+   * sessionStorageにはメタデータのみ保存する
+   */
+  serializeLightweightState(): LightweightProofState {
+    return {
+      lastEventSequence: this.events.length - 1,
       currentHash: this.currentHash,
       startTime: this.startTime,
       pendingEvents: [...this.pendingEvents],

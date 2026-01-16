@@ -228,6 +228,49 @@ export interface TabSummary {
 }
 
 // ============================================================================
+// 軽量ストレージ（sessionStorage用、eventsなし、V2フォーマット）
+// ============================================================================
+
+/** 軽量プルーフ状態（sessionStorage用、eventsなし） */
+export interface LightweightProofState {
+  /** 最後のイベントのシーケンス番号 */
+  lastEventSequence: number;
+  /** 現在のハッシュ */
+  currentHash: string | null;
+  /** 開始時間 */
+  startTime: number;
+  /** PoSW計算中のイベント（通常は空か数件） */
+  pendingEvents: PendingEventData[];
+  /** チェックポイントデータ（サンプリング検証用） */
+  checkpoints?: CheckpointData[];
+}
+
+/** 軽量タブ状態（sessionStorage用） */
+export interface LightweightTabState {
+  id: string;
+  filename: string;
+  language: string;
+  /** ファイル内容は保持 */
+  content: string;
+  /** 軽量プルーフ状態（eventsなし） */
+  proofState: LightweightProofState;
+  createdAt: number;
+  verificationState?: VerificationState;
+  verificationDetails?: VerificationDetails;
+}
+
+/** 軽量マルチタブストレージ（V2フォーマット） */
+export interface LightweightMultiTabStorage {
+  version: 2;
+  activeTabId: string;
+  tabs: Record<string, LightweightTabState>;
+  tabOrder: string[];
+  tabSwitches: TabSwitchEvent[];
+  /** セッションID（IndexedDBとの紐付け用） */
+  sessionId: string;
+}
+
+// ============================================================================
 // Pending Event（PoSW未完了イベント）
 // ============================================================================
 

@@ -7,12 +7,14 @@
  */
 
 import * as monaco from 'monaco-editor';
-import { TypingProof, PROOF_FORMAT_VERSION, STORAGE_FORMAT_VERSION } from '@typedcode/shared';
+import { TypingProof, PROOF_FORMAT_VERSION } from '@typedcode/shared';
 import type {
   FingerprintComponents,
   TabSwitchEvent,
-  SerializedTabState,
+  SerializedProofState,
   MultiTabStorage,
+  LightweightTabState,
+  LightweightMultiTabStorage,
   ExportedProof,
   MultiFileExportedProof,
   MultiFileExportEntry,
@@ -525,43 +527,67 @@ export class TabManager {
 
   /**
    * ストレージに保存
-   * - sessionStorage: リロード時の高速復旧用（V2フォーマット、Pending Event含む）
-   * - IndexedDB: ブラウザタブ終了後の復旧用
+   * - IndexedDB: eventsを含む完全版（先に保存）
+   * - sessionStorage: V2フォーマット、eventsなし軽量版（IndexedDB保存後に更新）
+   *
+   * 重要: IndexedDBへの保存が完了してからsessionStorageを更新する。
+   * これにより、リロード時にsessionStorageとIndexedDBの状態が一致する。
    */
   saveToStorage(): void {
-    const storage: MultiTabStorage = {
-      version: STORAGE_FORMAT_VERSION,
+    // IndexedDBに保存し、完了後にsessionStorageを更新
+    this.saveToIndexedDB()
+      .then(() => {
+        this.saveToSessionStorage();
+      })
+      .catch(e => {
+        console.error('[TabManager] Failed to save to IndexedDB:', e);
+        // IndexedDBの保存に失敗しても、sessionStorageには保存する
+        // （V1フォーマットへのフォールバックを検討する場合はここで対応）
+        this.saveToSessionStorage();
+      });
+  }
+
+  /**
+   * sessionStorageに軽量版を保存
+   * @private
+   */
+  private saveToSessionStorage(): void {
+    const sessionId = this.sessionService.getCurrentSessionId() ?? '';
+
+    // V2フォーマット: 軽量版（eventsなし）
+    const storage: LightweightMultiTabStorage = {
+      version: 2,
       activeTabId: this.activeTabId ?? '',
       tabs: {},
       tabOrder: this.tabOrder,
-      tabSwitches: this.tabSwitches
+      tabSwitches: this.tabSwitches,
+      sessionId,
     };
 
     for (const [id, tab] of this.tabs) {
-      const serializedTab: SerializedTabState = {
+      const lightweightTab: LightweightTabState = {
         id,
         filename: tab.filename,
         language: tab.language,
         content: tab.model.getValue(),
-        proofState: tab.typingProof.serializeState(),
+        proofState: tab.typingProof.serializeLightweightState(),
         createdAt: tab.createdAt,
         verificationState: tab.verificationState,
         verificationDetails: tab.verificationDetails,
       };
-      storage.tabs[id] = serializedTab;
+      storage.tabs[id] = lightweightTab;
     }
 
-    // sessionStorageに保存（リロード用）
+    // sessionStorageに保存（リロード用、軽量版）
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(storage));
     } catch (e) {
-      console.error('[TabManager] Failed to save to sessionStorage:', e);
+      if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+        console.warn('[TabManager] sessionStorage quota exceeded - content may be too large');
+      } else {
+        console.error('[TabManager] Failed to save to sessionStorage:', e);
+      }
     }
-
-    // IndexedDBに保存（永続化用、非同期）
-    this.saveToIndexedDB().catch(e => {
-      console.error('[TabManager] Failed to save to IndexedDB:', e);
-    });
   }
 
   /**
@@ -616,8 +642,19 @@ export class TabManager {
   }
 
   /**
+   * IndexedDBへの保存を完了させる（エクスポート前に呼び出す）
+   * sessionStorageへの保存とIndexedDBへの保存の同期を取る
+   */
+  async flushToIndexedDB(): Promise<void> {
+    console.log('[TabManager] Flushing to IndexedDB...');
+    await this.saveToIndexedDB();
+    console.log('[TabManager] IndexedDB flush complete');
+  }
+
+  /**
    * sessionStorageから読み込み
-   * V2フォーマット対応：Pending Eventsがあれば復旧時にPoSW計算を実行
+   * V1フォーマット: eventsあり（従来形式）
+   * V2フォーマット: eventsなし（軽量版）→ IndexedDBからevents取得
    */
   async loadFromStorage(): Promise<boolean> {
     try {
@@ -641,100 +678,227 @@ export class TabManager {
       console.log('[DEBUG TabManager.loadFromStorage] rawStorage.version:', rawStorage.version);
       console.log('[DEBUG TabManager.loadFromStorage] tabs count:', Object.keys(rawStorage.tabs ?? {}).length);
 
-      // バージョンチェックとマイグレーション
-      // STORAGE_FORMAT_VERSION (現在は1) を使用して互換性を確認
-      if (rawStorage.version !== STORAGE_FORMAT_VERSION) {
-        console.warn(`[TabManager] Storage version mismatch: expected ${STORAGE_FORMAT_VERSION}, got ${rawStorage.version}`);
+      // バージョン別に処理を分岐
+      if (rawStorage.version === 1) {
+        // V1: 従来形式（eventsあり）→ そのまま読み込み、次回保存でV2に移行
+        console.log('[TabManager] Loading V1 format (will migrate to V2 on next save)');
+        return await this.loadFromStorageV1(rawStorage);
+      } else if (rawStorage.version === 2) {
+        // V2: 軽量形式（eventsなし）→ IndexedDBからevents取得
+        console.log('[TabManager] Loading V2 format (lightweight)');
+        return await this.loadFromStorageV2(rawStorage);
+      } else {
+        console.warn(`[TabManager] Unknown storage version: ${rawStorage.version}`);
         sessionStorage.removeItem(STORAGE_KEY);
         return false;
       }
-
-      // tabOrderがない場合は生成（後方互換性のため）
-      const tabOrder: string[] = rawStorage.tabOrder ?? Object.keys(rawStorage.tabs);
-
-      // Pending Eventsの処理を追跡
-      let totalPendingEvents = 0;
-      let processedPendingEvents = 0;
-
-      // タブを復元（tabOrder順に処理）
-      for (const id of tabOrder) {
-        const serializedTab = rawStorage.tabs[id];
-        if (!serializedTab) continue;
-
-        let typingProof: TypingProof;
-
-        // Workerをeditorパッケージから作成
-        const poswWorker = createPoswWorker();
-
-        if (serializedTab.proofState) {
-          const pendingCount = serializedTab.proofState.pendingEvents?.length ?? 0;
-          totalPendingEvents += pendingCount;
-
-          if (pendingCount > 0) {
-            console.log(`[TabManager] Tab ${id} has ${pendingCount} pending events to process`);
-          }
-
-          typingProof = await TypingProof.fromSerializedState(
-            serializedTab.proofState,
-            this.fingerprint!,
-            this.fingerprintComponents!,
-            poswWorker,
-            true // processPending = true
-          );
-
-          // 処理されたPending Eventsをカウント
-          processedPendingEvents += pendingCount - typingProof.getPendingEvents().length;
-        } else {
-          typingProof = new TypingProof();
-          await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
-        }
-
-        // Pending Event変更コールバックを設定（即時保存用）
-        typingProof.setOnPendingEventChange(() => {
-          this.saveToStorage();
-        });
-
-        const model = monaco.editor.createModel(serializedTab.content, serializedTab.language);
-
-        const tab: TabState = {
-          id,
-          filename: serializedTab.filename,
-          language: serializedTab.language,
-          typingProof,
-          model,
-          createdAt: serializedTab.createdAt,
-          verificationState: serializedTab.verificationState ?? 'skipped',
-          verificationDetails: serializedTab.verificationDetails,
-        };
-
-        this.tabs.set(id, tab);
-        this.tabOrder.push(id);
-      }
-
-      // タブ切り替え履歴を復元
-      this.tabSwitches = rawStorage.tabSwitches ?? [];
-
-      // アクティブタブを復元
-      if (rawStorage.activeTabId && this.tabs.has(rawStorage.activeTabId)) {
-        await this.switchTab(rawStorage.activeTabId);
-      } else if (this.tabs.size > 0) {
-        const firstTabId = Array.from(this.tabs.keys())[0]!;
-        await this.switchTab(firstTabId);
-      }
-
-      console.log('[DEBUG TabManager.loadFromStorage] SUCCESS - tabs restored:', this.tabs.size);
-      console.log('[DEBUG TabManager.loadFromStorage] activeTabId:', this.activeTabId);
-
-      if (totalPendingEvents > 0) {
-        console.log(`[TabManager] Processed ${processedPendingEvents}/${totalPendingEvents} pending events during restore`);
-      }
-
-      return true;
     } catch (e) {
       console.error('[TabManager] Failed to load from storage:', e);
       console.error('[DEBUG TabManager.loadFromStorage] Error details:', e);
       return false;
     }
+  }
+
+  /**
+   * V1フォーマット（従来形式）からの読み込み
+   * eventsがsessionStorageに含まれている
+   * @private
+   */
+  private async loadFromStorageV1(rawStorage: MultiTabStorage): Promise<boolean> {
+    // tabOrderがない場合は生成（後方互換性のため）
+    const tabOrder: string[] = rawStorage.tabOrder ?? Object.keys(rawStorage.tabs);
+
+    // Pending Eventsの処理を追跡
+    let totalPendingEvents = 0;
+    let processedPendingEvents = 0;
+
+    // タブを復元（tabOrder順に処理）
+    for (const id of tabOrder) {
+      const serializedTab = rawStorage.tabs[id];
+      if (!serializedTab) continue;
+
+      let typingProof: TypingProof;
+
+      // Workerをeditorパッケージから作成
+      const poswWorker = createPoswWorker();
+
+      if (serializedTab.proofState) {
+        const pendingCount = serializedTab.proofState.pendingEvents?.length ?? 0;
+        totalPendingEvents += pendingCount;
+
+        if (pendingCount > 0) {
+          console.log(`[TabManager] Tab ${id} has ${pendingCount} pending events to process`);
+        }
+
+        typingProof = await TypingProof.fromSerializedState(
+          serializedTab.proofState,
+          this.fingerprint!,
+          this.fingerprintComponents!,
+          poswWorker,
+          true // processPending = true
+        );
+
+        // 処理されたPending Eventsをカウント
+        processedPendingEvents += pendingCount - typingProof.getPendingEvents().length;
+      } else {
+        typingProof = new TypingProof();
+        await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
+      }
+
+      // Pending Event変更コールバックを設定（即時保存用）
+      typingProof.setOnPendingEventChange(() => {
+        this.saveToStorage();
+      });
+
+      const model = monaco.editor.createModel(serializedTab.content, serializedTab.language);
+
+      const tab: TabState = {
+        id,
+        filename: serializedTab.filename,
+        language: serializedTab.language,
+        typingProof,
+        model,
+        createdAt: serializedTab.createdAt,
+        verificationState: serializedTab.verificationState ?? 'skipped',
+        verificationDetails: serializedTab.verificationDetails,
+      };
+
+      this.tabs.set(id, tab);
+      this.tabOrder.push(id);
+    }
+
+    // タブ切り替え履歴を復元
+    this.tabSwitches = rawStorage.tabSwitches ?? [];
+
+    // アクティブタブを復元
+    if (rawStorage.activeTabId && this.tabs.has(rawStorage.activeTabId)) {
+      await this.switchTab(rawStorage.activeTabId);
+    } else if (this.tabs.size > 0) {
+      const firstTabId = Array.from(this.tabs.keys())[0]!;
+      await this.switchTab(firstTabId);
+    }
+
+    console.log('[DEBUG TabManager.loadFromStorageV1] SUCCESS - tabs restored:', this.tabs.size);
+    console.log('[DEBUG TabManager.loadFromStorageV1] activeTabId:', this.activeTabId);
+
+    if (totalPendingEvents > 0) {
+      console.log(`[TabManager] Processed ${processedPendingEvents}/${totalPendingEvents} pending events during restore`);
+    }
+
+    console.log('[TabManager] V1 format loaded, will migrate to V2 on next save');
+    return true;
+  }
+
+  /**
+   * V2フォーマット（軽量版）からの読み込み
+   * eventsはIndexedDBから取得
+   * @private
+   */
+  private async loadFromStorageV2(storage: LightweightMultiTabStorage): Promise<boolean> {
+    // Pending Eventsの処理を追跡
+    let totalPendingEvents = 0;
+    let processedPendingEvents = 0;
+
+    // タブを復元（tabOrder順に処理）
+    for (const id of storage.tabOrder) {
+      const lightweightTab = storage.tabs[id];
+      if (!lightweightTab) continue;
+
+      // 1. IndexedDBからイベントを読み込み
+      const events = await this.sessionService.getEvents(id);
+
+      // 2. 同期確認と currentHash の決定
+      // IMPORTANT: sessionStorageのcurrentHashではなく、IndexedDBから取得したイベントの
+      // 最後のhashを使用する。これにより、IndexedDBへの保存が遅延した場合でも
+      // 整合性が保たれる。
+      const expectedSequence = lightweightTab.proofState.lastEventSequence;
+      const actualSequence = events.length - 1;
+      const lastEvent = events[events.length - 1];
+
+      // IndexedDBの最後のイベントのhashをcurrentHashとして使用
+      // sessionStorageのcurrentHashは信頼できない（非同期保存の遅延により不一致の可能性）
+      const currentHash = lastEvent?.hash ?? null;
+
+      if (actualSequence < expectedSequence) {
+        console.warn(`[TabManager] Event sync mismatch for tab ${id}: expected seq ${expectedSequence}, got ${actualSequence}. Using IndexedDB hash as currentHash.`);
+        // 一部イベントが未保存の可能性があるが、IndexedDBのデータを正とする
+      }
+
+      // 3. SerializedProofStateを構築
+      const proofState: SerializedProofState = {
+        events,
+        currentHash,  // IndexedDBから取得したイベントの最後のhashを使用
+        startTime: lightweightTab.proofState.startTime,
+        pendingEvents: lightweightTab.proofState.pendingEvents ?? [],
+        checkpoints: lightweightTab.proofState.checkpoints,
+      };
+
+      const pendingCount = proofState.pendingEvents?.length ?? 0;
+      totalPendingEvents += pendingCount;
+
+      if (pendingCount > 0) {
+        console.log(`[TabManager] Tab ${id} has ${pendingCount} pending events to process`);
+      }
+
+      // 4. TypingProofを復元
+      const poswWorker = createPoswWorker();
+      const typingProof = await TypingProof.fromSerializedState(
+        proofState,
+        this.fingerprint!,
+        this.fingerprintComponents!,
+        poswWorker,
+        true // processPending = true
+      );
+
+      // 処理されたPending Eventsをカウント
+      processedPendingEvents += pendingCount - typingProof.getPendingEvents().length;
+
+      // 5. コールバック設定
+      typingProof.setOnPendingEventChange(() => {
+        this.saveToStorage();
+      });
+
+      // 6. Monacoモデル作成（contentはsessionStorageから）
+      const model = monaco.editor.createModel(
+        lightweightTab.content,
+        lightweightTab.language
+      );
+
+      // 7. タブ作成
+      const tab: TabState = {
+        id,
+        filename: lightweightTab.filename,
+        language: lightweightTab.language,
+        typingProof,
+        model,
+        createdAt: lightweightTab.createdAt,
+        verificationState: lightweightTab.verificationState ?? 'skipped',
+        verificationDetails: lightweightTab.verificationDetails,
+      };
+
+      this.tabs.set(id, tab);
+      this.tabOrder.push(id);
+    }
+
+    // タブ切り替え履歴を復元
+    this.tabSwitches = storage.tabSwitches ?? [];
+
+    // アクティブタブを復元
+    if (storage.activeTabId && this.tabs.has(storage.activeTabId)) {
+      await this.switchTab(storage.activeTabId);
+    } else if (this.tabs.size > 0) {
+      const firstTabId = Array.from(this.tabs.keys())[0]!;
+      await this.switchTab(firstTabId);
+    }
+
+    console.log('[DEBUG TabManager.loadFromStorageV2] SUCCESS - tabs restored:', this.tabs.size);
+    console.log('[DEBUG TabManager.loadFromStorageV2] activeTabId:', this.activeTabId);
+
+    if (totalPendingEvents > 0) {
+      console.log(`[TabManager] Processed ${processedPendingEvents}/${totalPendingEvents} pending events during restore`);
+    }
+
+    return true;
   }
 
   /**
