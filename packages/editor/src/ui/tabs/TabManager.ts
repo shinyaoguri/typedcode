@@ -112,6 +112,15 @@ export class TabManager {
   private startTime: number = performance.now();
   private sessionService: SessionStorageService;
 
+  /** 現在実行中の保存処理 */
+  private currentSavePromise: Promise<void> | null = null;
+  /** 次の保存が必要かどうか */
+  private needsSave: boolean = false;
+  /** デバウンス用タイマー */
+  private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** デバウンス待ち時間（ミリ秒） */
+  private static readonly SAVE_DEBOUNCE_MS = 100;
+
   constructor(editor: monaco.editor.IStandaloneCodeEditor) {
     this.editor = editor;
     this.sessionService = getSessionStorageService();
@@ -526,24 +535,92 @@ export class TabManager {
   }
 
   /**
-   * ストレージに保存
-   * - IndexedDB: eventsを含む完全版（先に保存）
-   * - sessionStorage: V2フォーマット、eventsなし軽量版（IndexedDB保存後に更新）
+   * sessionStorageに同期的に保存（beforeunload用）
    *
-   * 重要: IndexedDBへの保存が完了してからsessionStorageを更新する。
-   * これにより、リロード時にsessionStorageとIndexedDBの状態が一致する。
+   * beforeunloadではasync処理が完了しないため、
+   * sessionStorageのみに同期的に保存する。
+   * IndexedDBとの整合性はリロード時にsessionStorageを優先して復元することで保証。
+   */
+  saveToStorageSync(): void {
+    console.log('[TabManager] saveToStorageSync called');
+
+    // デバウンスタイマーがあればキャンセル
+    if (this.saveDebounceTimer) {
+      clearTimeout(this.saveDebounceTimer);
+      this.saveDebounceTimer = null;
+    }
+
+    // sessionStorageに即座に保存
+    this.saveToSessionStorage();
+
+    // needsSaveをクリア（この保存で最新状態が保存された）
+    this.needsSave = false;
+
+    console.log('[TabManager] saveToStorageSync complete');
+  }
+
+  /**
+   * ストレージに保存
+   * - IndexedDB: 先に保存（完了を待機）
+   * - sessionStorage: IndexedDB保存後に更新
+   *
+   * 重要:
+   * 1. IndexedDBへの保存が完了してからsessionStorageを更新する（データ整合性保証）
+   * 2. 高頻度呼び出し時はデバウンスして最新の状態のみを保存
+   * 3. beforeunloadではsaveToStorageSync()を使用して同期的にsessionStorageに保存
    */
   saveToStorage(): void {
-    // IndexedDBに保存し、完了後にsessionStorageを更新
-    this.saveToIndexedDB()
-      .then(() => {
+    // 次の保存が必要であることをマーク
+    this.needsSave = true;
+
+    // デバウンス：短時間に複数回呼ばれた場合は最後の呼び出しのみ実行
+    if (this.saveDebounceTimer) {
+      clearTimeout(this.saveDebounceTimer);
+    }
+
+    this.saveDebounceTimer = setTimeout(() => {
+      this.saveDebounceTimer = null;
+
+      // 既に保存処理が実行中なら、完了後に再度保存される
+      if (this.currentSavePromise) {
+        return;
+      }
+
+      // 保存処理を開始
+      this.executeSave();
+    }, TabManager.SAVE_DEBOUNCE_MS);
+  }
+
+  /**
+   * 実際の保存処理を実行
+   * @private
+   */
+  private executeSave(): void {
+    // needsSaveをクリアしてから保存開始
+    // 保存中に新しいsaveToStorage()が呼ばれたらneedsSaveが再度trueになる
+    this.needsSave = false;
+
+    this.currentSavePromise = (async () => {
+      try {
+        // IndexedDBに先に保存
+        await this.saveToIndexedDB();
+        // IndexedDB保存完了後にsessionStorageを更新
         this.saveToSessionStorage();
-      })
-      .catch(e => {
+      } catch (e) {
         console.error('[TabManager] Failed to save to IndexedDB:', e);
         // IndexedDBの保存に失敗しても、sessionStorageには保存する
-        // （V1フォーマットへのフォールバックを検討する場合はここで対応）
         this.saveToSessionStorage();
+      }
+    })();
+
+    this.currentSavePromise
+      .finally(() => {
+        this.currentSavePromise = null;
+
+        // 保存中に新しい保存要求があった場合、最新状態で再保存
+        if (this.needsSave) {
+          this.executeSave();
+        }
       });
   }
 
@@ -642,12 +719,38 @@ export class TabManager {
   }
 
   /**
-   * IndexedDBへの保存を完了させる（エクスポート前に呼び出す）
-   * sessionStorageへの保存とIndexedDBへの保存の同期を取る
+   * IndexedDBへの保存を完了させる（エクスポート前やbeforeunloadで呼び出す）
+   *
+   * 以下の処理を行う：
+   * 1. デバウンスタイマーが動作中ならキャンセル
+   * 2. 現在実行中の保存処理があれば完了を待機
+   * 3. needsSaveがtrueなら（保存待ちの変更があれば）最新状態を保存
+   * 4. 最新の状態を確実にIndexedDBに保存
    */
   async flushToIndexedDB(): Promise<void> {
     console.log('[TabManager] Flushing to IndexedDB...');
+
+    // 1. デバウンスタイマーがあればキャンセル（即座に保存するため）
+    if (this.saveDebounceTimer) {
+      clearTimeout(this.saveDebounceTimer);
+      this.saveDebounceTimer = null;
+    }
+
+    // 2. 現在実行中の保存処理があれば完了を待機
+    if (this.currentSavePromise) {
+      console.log('[TabManager] Waiting for current save to complete...');
+      await this.currentSavePromise;
+    }
+
+    // 3. needsSaveがtrue（デバウンス中に変更があった）、または
+    //    念のため最新状態を保存
+    console.log('[TabManager] Saving latest state to IndexedDB...');
     await this.saveToIndexedDB();
+    this.saveToSessionStorage();
+
+    // needsSaveをクリア
+    this.needsSave = false;
+
     console.log('[TabManager] IndexedDB flush complete');
   }
 
