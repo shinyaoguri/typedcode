@@ -14,7 +14,6 @@ export class DownloadDropdown {
   private button: HTMLElement | null = null;
   private dropdown: HTMLElement | null = null;
   private boundHandleOutsideClick: (e: MouseEvent) => void;
-  private initialized = false;
   private hasTabsCallback: HasTabsCallback | null = null;
 
   constructor() {
@@ -34,7 +33,6 @@ export class DownloadDropdown {
     }
 
     this.attach();
-    this.initialized = true;
     return true;
   }
 
@@ -131,7 +129,6 @@ export class DownloadDropdown {
     document.removeEventListener('click', this.boundHandleOutsideClick);
     this.button = null;
     this.dropdown = null;
-    this.initialized = false;
     this.hasTabsCallback = null;
   }
 }

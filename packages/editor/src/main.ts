@@ -110,12 +110,11 @@ import {
   handleTabChange,
   setupStaticEventListeners,
   showWelcomeScreen,
-  hideWelcomeScreen,
   hasAcceptedTerms,
   showTermsModal,
-  getTermsAcceptanceData,
-  TERMS_CONSTANTS,
+  handleTemplateImport,
 } from './app/index.js';
+import type { WelcomeScreen } from './ui/components/WelcomeScreen.js';
 
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
@@ -125,7 +124,6 @@ configureMonacoWorkers();
 
 // 利用規約関連の定数
 const TERMS_ACCEPTED_KEY = 'typedcode-terms-accepted';
-const TERMS_VERSION = '1.0';
 
 // DOM要素の取得
 const editorContainer = document.getElementById('editor');
@@ -709,7 +707,7 @@ function recordTermsAcceptance(): void {
  * - Cookies
  * - Service Worker Cache
  */
-async function clearAllAppData(): Promise<void> {
+async function _clearAllAppData(): Promise<void> {
   console.log('[TypedCode] Clearing all app data...');
 
   // ストレージをクリア（非同期版）

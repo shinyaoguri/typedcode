@@ -10,7 +10,7 @@ import { isTurnstileConfigured } from '../services/TurnstileService.js';
 import { clearStorageSync, deleteScreenshotsDB } from '../utils/StorageClearHelper.js';
 import { t } from '../i18n/index.js';
 import { showNotification } from './AppHelpers.js';
-import { handleTemplateImport, handleTemplateDrop, isTemplateFile } from './TemplateHandler.js';
+import { handleTemplateDrop, isTemplateFile } from './TemplateHandler.js';
 import { showLanguageDescriptionInTerminal } from './TerminalHandler.js';
 
 /**

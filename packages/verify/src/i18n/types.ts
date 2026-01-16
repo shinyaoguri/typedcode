@@ -2,6 +2,9 @@
  * Translation keys for Verify application
  */
 export interface VerifyTranslationKeys {
+  // Index signature for dynamic key access
+  [key: string]: unknown;
+
   // Common
   common: {
     cancel: string;

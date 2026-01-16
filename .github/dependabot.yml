@@ -4,16 +4,24 @@ updates:
     directory: "/"
     target-branch: "develop"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 5
     ignore:
       # happy-dom causes Dependabot errors due to its package structure
       # Update manually when needed
       - dependency-name: "happy-dom"
     groups:
-      # Group minor and patch updates together
-      npm-dependencies:
-        patterns:
-          - "*"
+      # Group all production dependencies together
+      production-dependencies:
+        dependency-type: "production"
         update-types:
+          - "major"
+          - "minor"
+          - "patch"
+      # Group all dev dependencies together
+      dev-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "major"
           - "minor"
           - "patch"

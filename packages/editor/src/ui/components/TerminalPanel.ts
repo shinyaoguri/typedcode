@@ -27,8 +27,7 @@ export class TerminalPanel {
   private onVisibilityChange: ((visible: boolean) => void) | null = null;
   private onFit: (() => void) | null = null;
   private onResetRuntime: (() => Promise<void>) | null = null;
-  private initialized = false;
-  private _isTerminalAvailable = true;
+    private _isTerminalAvailable = true;
 
   // リサイズ状態
   private isResizing = false;
@@ -69,8 +68,7 @@ export class TerminalPanel {
 
     this.attach();
     this.setupResize();
-    this.initialized = true;
-    return true;
+        return true;
   }
 
   /**
@@ -256,6 +254,5 @@ export class TerminalPanel {
     this.onVisibilityChange = null;
     this.onFit = null;
     this.onResetRuntime = null;
-    this.initialized = false;
-  }
+      }
 }

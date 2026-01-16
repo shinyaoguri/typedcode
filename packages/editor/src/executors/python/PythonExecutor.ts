@@ -286,6 +286,7 @@ await micropip.install([${packageList.map((p) => `'${p}'`).join(', ')}])
 
     let lineMatch;
     while ((lineMatch = lineRegex.exec(stderr)) !== null) {
+      if (!lineMatch[1]) continue;
       const line = parseInt(lineMatch[1], 10);
       const errorMatch = stderr.match(errorTypeRegex);
       const message = errorMatch

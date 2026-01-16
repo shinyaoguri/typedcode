@@ -20,7 +20,6 @@ import type {
   VerificationState,
   VerificationDetails,
   StoredTabData,
-  PendingEventData,
 } from '@typedcode/shared';
 import {
   isTurnstileConfigured,
@@ -31,7 +30,6 @@ import { t } from '../../i18n/index.js';
 import {
   SessionStorageService,
   getSessionStorageService,
-  type SessionMetadata,
 } from '../../services/SessionStorageService.js';
 
 // PoSW Workerのファクトリ関数

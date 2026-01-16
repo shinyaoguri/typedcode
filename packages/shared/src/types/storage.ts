@@ -20,6 +20,7 @@ import type {
   ScreenshotCaptureData,
   ScreenShareStartData,
   ScreenShareStopData,
+  ScreenShareOptOutData,
 } from './screenshot.js';
 import type { HumanAttestationEventData, TermsAcceptedData } from './attestation.js';
 import type { FingerprintComponents } from './fingerprint.js';
@@ -48,6 +49,7 @@ export type PendingEventDataType =
   | ScreenshotCaptureData
   | ScreenShareStartData
   | ScreenShareStopData
+  | ScreenShareOptOutData
   | TemplateInjectionEventData
   | null;
 

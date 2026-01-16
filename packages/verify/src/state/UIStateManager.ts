@@ -1,12 +1,19 @@
 /**
- * UIStateManager - Centralized UI state management
- * Tracks verification counts, filename counters, and current display state
+ * UIStateManager - 検証進捗状態管理
+ *
+ * 検証の進捗（完了数/総数）を一元管理
+ * 表示タブIDは VerifyTabManager に委譲
+ * ファイル名生成は FileNameGenerator に委譲
  */
+
+import { FileNameGenerator } from './FileNameGenerator.js';
 
 export interface UIState {
   completedCount: number;
   totalCount: number;
+  /** @deprecated Use VerifyTabManager.getActiveTabId() instead */
   currentDisplayedTabId: string | null;
+  /** @deprecated Use VerifyTabManager.getActiveTab()?.status instead */
   currentDisplayedTabStatus: string | null;
 }
 
@@ -15,10 +22,16 @@ export type UIStateChangeCallback = (state: UIState) => void;
 export class UIStateManager {
   private completedCount = 0;
   private totalCount = 0;
+  private onChangeCallback: UIStateChangeCallback | null = null;
+  private fileNameGenerator: FileNameGenerator;
+
+  // 後方互換性のため維持（VerifyTabManager への移行を推奨）
   private currentDisplayedTabId: string | null = null;
   private currentDisplayedTabStatus: string | null = null;
-  private filenameCounter: Map<string, number> = new Map();
-  private onChangeCallback: UIStateChangeCallback | null = null;
+
+  constructor() {
+    this.fileNameGenerator = new FileNameGenerator();
+  }
 
   /**
    * Set callback for state changes
@@ -57,6 +70,7 @@ export class UIStateManager {
 
   /**
    * Get current displayed tab ID
+   * @deprecated Use VerifyTabManager.getActiveTabId() instead
    */
   getCurrentDisplayedTabId(): string | null {
     return this.currentDisplayedTabId;
@@ -64,6 +78,7 @@ export class UIStateManager {
 
   /**
    * Set current displayed tab ID and status
+   * @deprecated Use VerifyTabManager.switchTab() instead
    */
   setCurrentDisplayedTabId(id: string | null, status?: string | null): void {
     this.currentDisplayedTabId = id;
@@ -72,6 +87,7 @@ export class UIStateManager {
 
   /**
    * Get current displayed tab status
+   * @deprecated Use VerifyTabManager.getActiveTab()?.status instead
    */
   getCurrentDisplayedTabStatus(): string | null {
     return this.currentDisplayedTabStatus;
@@ -79,6 +95,7 @@ export class UIStateManager {
 
   /**
    * Check if a specific tab is currently displayed
+   * @deprecated Use VerifyTabManager.getActiveTabId() === id instead
    */
   isDisplayed(id: string): boolean {
     return this.currentDisplayedTabId === id;
@@ -86,42 +103,24 @@ export class UIStateManager {
 
   /**
    * Get next filename number for duplicate handling
+   * @deprecated Use FileNameGenerator.getNextNumber() instead
    */
   getNextFilenameNumber(key: string): number {
-    const count = this.filenameCounter.get(key) || 0;
-    this.filenameCounter.set(key, count + 1);
-    return count;
+    return this.fileNameGenerator.getNextNumber(key);
   }
 
   /**
    * Generate display name with duplicate handling
-   * @param filename Original filename
-   * @param folderId Folder ID (optional)
    */
   generateDisplayName(filename: string, folderId?: string): string {
-    const key = folderId ? `${folderId}:${filename}` : filename;
-    const count = this.getNextFilenameNumber(key);
-
-    if (count > 0) {
-      const ext = filename.match(/\.[^.]+$/)?.[0] || '';
-      const nameWithoutExt = filename.replace(/\.[^.]+$/, '');
-      return `${nameWithoutExt} (${count + 1})${ext}`;
-    }
-
-    return filename;
+    return this.fileNameGenerator.generateDisplayName(filename, folderId);
   }
 
   /**
    * Generate folder name with duplicate handling
    */
   generateFolderName(baseName: string): string {
-    const key = `folder:${baseName}`;
-    const count = this.getNextFilenameNumber(key);
-
-    if (count > 0) {
-      return `${baseName} (${count + 1})`;
-    }
-    return baseName;
+    return this.fileNameGenerator.generateFolderName(baseName);
   }
 
   /**
@@ -139,7 +138,7 @@ export class UIStateManager {
     this.totalCount = 0;
     this.currentDisplayedTabId = null;
     this.currentDisplayedTabStatus = null;
-    this.filenameCounter.clear();
+    this.fileNameGenerator.reset();
     this.notifyChange();
   }
 

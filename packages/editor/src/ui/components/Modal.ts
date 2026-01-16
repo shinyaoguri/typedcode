@@ -77,7 +77,7 @@ export async function showModal(options: ModalOptions): Promise<void> {
 
     // Add buttons
     const footer = dialog.querySelector('.modal-footer')!;
-    buttons.forEach((btn, index) => {
+    buttons.forEach((btn) => {
       const button = document.createElement('button');
       button.className = `modal-btn modal-btn-${btn.type}`;
       if (btn.disabled) {

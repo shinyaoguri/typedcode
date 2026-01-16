@@ -7,6 +7,9 @@ export type SupportedLocale = 'ja' | 'en';
  * Translation structure - organized by feature/component
  */
 export interface TranslationKeys {
+  // Index signature for dynamic key access
+  [key: string]: unknown;
+
   // Common UI elements
   common: {
     cancel: string;
@@ -265,6 +268,8 @@ export interface TranslationKeys {
     // Opt-out banner
     optedOutBanner: string;
     enableScreenShare: string;
+    // Continue without screen share (lock overlay)
+    continueWithoutButton: string;
   };
 
   // Status bar
@@ -433,6 +438,7 @@ export interface TranslationKeys {
     redo: string;
     replace: string;
     unknown: string;
+    internalPaste: string;
   };
 
   // About dialog

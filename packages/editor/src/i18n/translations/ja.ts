@@ -417,6 +417,7 @@ export const ja: TranslationKeys = {
     redo: 'やり直し',
     replace: '置換',
     unknown: '不明',
+    internalPaste: '内部ペースト',
   },
 
   about: {

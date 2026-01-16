@@ -21,6 +21,7 @@ import type {
   ScreenshotCaptureData,
   ScreenShareStartData,
   ScreenShareStopData,
+  ScreenShareOptOutData,
 } from './screenshot.js';
 import type { HumanAttestationEventData, TermsAcceptedData } from './attestation.js';
 import type { FingerprintComponents } from './fingerprint.js';
@@ -46,7 +47,7 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | TemplateInjectionEventData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -66,7 +67,7 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | TemplateInjectionEventData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;

@@ -8,7 +8,7 @@
 import type {
   StoredEvent,
   HumanAttestationEventData,
-  HashChainCheckpoint,
+  CheckpointData,
   SampledVerificationResult,
   PoswStats,
 } from '@typedcode/shared';
@@ -249,7 +249,7 @@ export class VerificationEngine {
    * サンプリング検証
    */
   private async verifySampled(
-    checkpoints: HashChainCheckpoint[],
+    checkpoints: CheckpointData[],
     onProgress?: SampledProgressCallback
   ): Promise<ChainVerificationResult> {
     try {

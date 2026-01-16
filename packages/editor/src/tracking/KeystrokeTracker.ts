@@ -9,6 +9,7 @@
 
 import type { KeystrokeDynamicsData } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
+import { ElementTracker } from './BaseTracker.js';
 
 export interface KeystrokeThresholds {
   /** Maximum valid flight time in ms (default: 2000) */
@@ -36,36 +37,20 @@ const DEFAULT_THRESHOLDS: KeystrokeThresholds = {
   minFlightTime: 0,
 };
 
-export class KeystrokeTracker {
+export class KeystrokeTracker extends ElementTracker<KeystrokeEvent, KeystrokeEventCallback> {
   private keyDownTimes: Map<string, number> = new Map();
   private lastKeyUpTime: number = 0;
   private thresholds: KeystrokeThresholds;
-  private enabled: boolean = true;
-  private callback: KeystrokeEventCallback | null = null;
+
+  // バインドされたハンドラー（detach時に必要）
+  private boundHandleKeyDown: (e: KeyboardEvent) => void;
+  private boundHandleKeyUp: (e: KeyboardEvent) => void;
 
   constructor(thresholds?: Partial<KeystrokeThresholds>) {
+    super();
     this.thresholds = { ...DEFAULT_THRESHOLDS, ...thresholds };
-  }
-
-  /**
-   * Set the callback for keystroke events
-   */
-  setCallback(callback: KeystrokeEventCallback): void {
-    this.callback = callback;
-  }
-
-  /**
-   * Enable or disable tracking
-   */
-  setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
-  }
-
-  /**
-   * Check if tracking is enabled
-   */
-  isEnabled(): boolean {
-    return this.enabled;
+    this.boundHandleKeyDown = this.handleKeyDown.bind(this);
+    this.boundHandleKeyUp = this.handleKeyUp.bind(this);
   }
 
   /**
@@ -108,7 +93,7 @@ export class KeystrokeTracker {
     };
 
     const modifierStr = this.getModifierString(e);
-    this.callback({
+    this.emit({
       type: 'keyDown',
       data: keystrokeData,
       description: t('events.keyDown', { key: `${e.key}${modifierStr}` }),
@@ -156,7 +141,7 @@ export class KeystrokeTracker {
     };
 
     const dwellStr = dwellTime !== undefined ? ` (${t('events.dwellTime', { time: dwellTime.toFixed(0) })})` : '';
-    this.callback({
+    this.emit({
       type: 'keyUp',
       data: keystrokeData,
       description: t('events.keyUp', { key: `${e.key}${dwellStr}` }),
@@ -164,19 +149,34 @@ export class KeystrokeTracker {
   }
 
   /**
-   * Attach event listeners to an element
+   * Attach event listeners to an element (後方互換性のため維持)
    */
-  attach(element: HTMLElement): void {
-    element.addEventListener('keydown', this.handleKeyDown.bind(this), { capture: true });
-    element.addEventListener('keyup', this.handleKeyUp.bind(this), { capture: true });
+  attach(element?: HTMLElement): void {
+    if (element) {
+      this.attachTo(element);
+    } else {
+      super.attach();
+    }
   }
 
   /**
    * Reset tracking state
    */
-  reset(): void {
+  override reset(): void {
     this.keyDownTimes.clear();
     this.lastKeyUpTime = 0;
+  }
+
+  protected attachListeners(): void {
+    if (!this.element) return;
+    this.element.addEventListener('keydown', this.boundHandleKeyDown, { capture: true });
+    this.element.addEventListener('keyup', this.boundHandleKeyUp, { capture: true });
+  }
+
+  protected detachListeners(): void {
+    if (!this.element) return;
+    this.element.removeEventListener('keydown', this.boundHandleKeyDown, { capture: true });
+    this.element.removeEventListener('keyup', this.boundHandleKeyUp, { capture: true });
   }
 
   private getModifierString(e: KeyboardEvent): string {

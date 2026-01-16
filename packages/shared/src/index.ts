@@ -108,3 +108,14 @@ export { TypingPatternAnalyzer } from './typingPattern/index.js';
 
 // ユーティリティ関数
 export { escapeHtml } from './utils/index.js';
+
+// カスタムエラークラス
+export {
+  TypingProofError,
+  ChainVerificationError,
+  PoswError,
+  WorkerError,
+  isTypingProofError,
+  hasErrorCode,
+} from './errors.js';
+export type { TypingProofErrorCode } from './errors.js';

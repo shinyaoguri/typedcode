@@ -20,6 +20,17 @@ interface SegmentInfo {
   expectedEndHash: string;
 }
 
+/**
+ * 単一イベント検証の結果
+ */
+interface EventVerificationResult {
+  valid: boolean;
+  error?: VerificationResult;
+  newHash?: string;
+  newTimestamp?: number;
+  hashInfo?: { computed: string; expected: string; poswHash: string };
+}
+
 export class ChainVerifier {
   private hashChainManager: HashChainManager;
   private poswManager: PoswManager;
@@ -27,6 +38,145 @@ export class ChainVerifier {
   constructor(hashChainManager: HashChainManager, poswManager: PoswManager) {
     this.hashChainManager = hashChainManager;
     this.poswManager = poswManager;
+  }
+
+  /**
+   * 単一イベントを検証
+   * シーケンス番号、タイムスタンプ、previousHash、PoSW、ハッシュを検証
+   * @param event - 検証するイベント
+   * @param index - イベントのインデックス
+   * @param expectedPreviousHash - 期待されるpreviousHash
+   * @param lastTimestamp - 前のイベントのタイムスタンプ
+   * @param checkPreviousHash - previousHashのチェックを行うか（セグメント検証時はfalse）
+   * @private
+   */
+  private async verifyEvent(
+    event: StoredEvent,
+    index: number,
+    expectedPreviousHash: string | null,
+    lastTimestamp: number,
+    checkPreviousHash: boolean = true
+  ): Promise<EventVerificationResult> {
+    // シーケンス番号チェック
+    if (event.sequence !== index) {
+      return {
+        valid: false,
+        error: {
+          valid: false,
+          errorAt: index,
+          message: `Sequence mismatch at event ${index}: expected ${index}, got ${event.sequence}`,
+          event
+        }
+      };
+    }
+
+    // タイムスタンプ連続性チェック
+    if (event.timestamp < lastTimestamp) {
+      return {
+        valid: false,
+        error: {
+          valid: false,
+          errorAt: index,
+          message: `Timestamp violation at event ${index}: time moved backward from ${lastTimestamp.toFixed(2)}ms to ${event.timestamp.toFixed(2)}ms`,
+          event,
+          previousTimestamp: lastTimestamp,
+          currentTimestamp: event.timestamp
+        }
+      };
+    }
+
+    // previousHashチェック（保存されたpreviousHashが期待値と一致するか）
+    if (checkPreviousHash && event.previousHash !== expectedPreviousHash) {
+      return {
+        valid: false,
+        error: {
+          valid: false,
+          errorAt: index,
+          message: `Previous hash mismatch at event ${index}: stored previousHash doesn't match computed chain`,
+          event,
+          expectedHash: expectedPreviousHash ?? undefined,
+          computedHash: event.previousHash ?? undefined
+        }
+      };
+    }
+
+    // PoSW検証のためのデータ（poswフィールドなし）
+    const eventDataWithoutPoSW = {
+      sequence: event.sequence,
+      timestamp: event.timestamp,
+      type: event.type,
+      inputType: event.inputType,
+      data: event.data,
+      rangeOffset: event.rangeOffset,
+      rangeLength: event.rangeLength,
+      range: event.range,
+      previousHash: event.previousHash
+    };
+
+    // PoSW検証（決定的なJSON文字列化を使用）
+    const eventDataStringForPoSW = this.hashChainManager.deterministicStringify(eventDataWithoutPoSW);
+    const poswValid = await this.poswManager.verifyPoSW(expectedPreviousHash ?? '', eventDataStringForPoSW, event.posw);
+
+    if (!poswValid) {
+      console.error(`[ChainVerifier] PoSW verification failed at event ${index}:`, {
+        posw: event.posw,
+        previousHash: expectedPreviousHash
+      });
+      return {
+        valid: false,
+        error: {
+          valid: false,
+          errorAt: index,
+          message: `PoSW verification failed at event ${index}: invalid proof of work`,
+          event
+        }
+      };
+    }
+
+    // recordEvent()で使用したのと同じフィールドを再構築（PoSW含む）
+    const eventData: EventHashData = {
+      ...eventDataWithoutPoSW,
+      posw: event.posw
+    };
+
+    // 決定的なJSON文字列化を使用
+    const eventString = this.hashChainManager.deterministicStringify(eventData);
+    const combinedData = expectedPreviousHash + eventString;
+    const computedHash = await this.hashChainManager.computeHash(combinedData);
+
+    if (computedHash !== event.hash) {
+      console.error(`[ChainVerifier] Hash mismatch at event ${index}:`, {
+        event,
+        eventData,
+        eventStringLength: eventString.length,
+        previousHash: expectedPreviousHash,
+        expectedHash: event.hash,
+        computedHash
+      });
+      return {
+        valid: false,
+        error: {
+          valid: false,
+          errorAt: index,
+          message: `Hash mismatch at event ${index}`,
+          event,
+          eventData,
+          expectedHash: event.hash,
+          computedHash
+        }
+      };
+    }
+
+    return {
+      valid: true,
+      newHash: computedHash,
+      newTimestamp: event.timestamp,
+      hashInfo: {
+        computed: computedHash,
+        expected: event.hash,
+        poswHash: event.posw.intermediateHash
+      }
+    };
   }
 
   /**
@@ -46,111 +196,18 @@ export class ChainVerifier {
       const event = events[i];
       if (!event) continue;
 
-      // シーケンス番号チェック
-      if (event.sequence !== i) {
-        return {
-          valid: false,
-          errorAt: i,
-          message: `Sequence mismatch at event ${i}: expected ${i}, got ${event.sequence}`,
-          event
-        };
+      const result = await this.verifyEvent(event, i, hash, lastTimestamp, true);
+
+      if (!result.valid) {
+        return result.error!;
       }
 
-      // タイムスタンプ連続性チェック
-      if (event.timestamp < lastTimestamp) {
-        return {
-          valid: false,
-          errorAt: i,
-          message: `Timestamp violation at event ${i}: time moved backward from ${lastTimestamp.toFixed(2)}ms to ${event.timestamp.toFixed(2)}ms`,
-          event,
-          previousTimestamp: lastTimestamp,
-          currentTimestamp: event.timestamp
-        };
-      }
-      lastTimestamp = event.timestamp;
-
-      // previousHashチェック（保存されたpreviousHashが期待値と一致するか）
-      if (event.previousHash !== hash) {
-        return {
-          valid: false,
-          errorAt: i,
-          message: `Previous hash mismatch at event ${i}: stored previousHash doesn't match computed chain`,
-          event,
-          expectedHash: hash ?? undefined,
-          computedHash: event.previousHash ?? undefined
-        };
-      }
-
-      // PoSW検証のためのデータ（poswフィールドなし）
-      const eventDataWithoutPoSW = {
-        sequence: event.sequence,
-        timestamp: event.timestamp,
-        type: event.type,
-        inputType: event.inputType,
-        data: event.data,
-        rangeOffset: event.rangeOffset,
-        rangeLength: event.rangeLength,
-        range: event.range,
-        previousHash: event.previousHash
-      };
-
-      // PoSW検証（決定的なJSON文字列化を使用）
-      const eventDataStringForPoSW = this.hashChainManager.deterministicStringify(eventDataWithoutPoSW);
-      const poswValid = await this.poswManager.verifyPoSW(hash ?? '', eventDataStringForPoSW, event.posw);
-
-      if (!poswValid) {
-        console.error(`[ChainVerifier] PoSW verification failed at event ${i}:`, {
-          posw: event.posw,
-          previousHash: hash
-        });
-        return {
-          valid: false,
-          errorAt: i,
-          message: `PoSW verification failed at event ${i}: invalid proof of work`,
-          event
-        };
-      }
-
-      // recordEvent()で使用したのと同じフィールドを再構築（PoSW含む）
-      const eventData: EventHashData = {
-        ...eventDataWithoutPoSW,
-        posw: event.posw
-      };
-
-      // 決定的なJSON文字列化を使用
-      const eventString = this.hashChainManager.deterministicStringify(eventData);
-      const combinedData = hash + eventString;
-      const computedHash = await this.hashChainManager.computeHash(combinedData);
-
-      if (computedHash !== event.hash) {
-        console.error(`[ChainVerifier] Hash mismatch at event ${i}:`, {
-          event,
-          eventData,
-          eventStringLength: eventString.length,
-          previousHash: hash,
-          expectedHash: event.hash,
-          computedHash
-        });
-        return {
-          valid: false,
-          errorAt: i,
-          message: `Hash mismatch at event ${i}`,
-          event,
-          eventData,
-          expectedHash: event.hash,
-          computedHash
-        };
-      }
-
-      hash = event.hash;
+      hash = result.newHash!;
+      lastTimestamp = result.newTimestamp!;
 
       // 進捗を報告（UIスレッドに制御を戻すためにyield）
-      if (onProgress) {
-        onProgress(i + 1, total, {
-          computed: computedHash,
-          expected: event.hash,
-          poswHash: event.posw.intermediateHash
-        });
+      if (onProgress && result.hashInfo) {
+        onProgress(i + 1, total, result.hashInfo);
         // 毎回UIスレッドに制御を戻す（ハッシュ表示をリアルタイム更新）
         await new Promise(r => setTimeout(r, 0));
       }
@@ -364,73 +421,18 @@ export class ChainVerifier {
       const event = events[i];
       if (!event) continue;
 
-      // シーケンス番号チェック
-      if (event.sequence !== i) {
-        return {
-          valid: false,
-          errorAt: i,
-          message: `Sequence mismatch at event ${i}: expected ${i}, got ${event.sequence}`,
-          event
-        };
+      // セグメント検証ではpreviousHashのチェックをスキップ（開始ハッシュから再計算するため）
+      const result = await this.verifyEvent(event, i, hash, lastTimestamp, false);
+
+      if (!result.valid) {
+        return result.error!;
       }
 
-      // タイムスタンプ連続性チェック
-      if (event.timestamp < lastTimestamp) {
-        return {
-          valid: false,
-          errorAt: i,
-          message: `Timestamp violation at event ${i}`,
-          event,
-          previousTimestamp: lastTimestamp,
-          currentTimestamp: event.timestamp
-        };
-      }
-      lastTimestamp = event.timestamp;
+      hash = result.newHash!;
+      lastTimestamp = result.newTimestamp!;
 
-      // PoSW検証のためのデータ
-      const eventDataWithoutPoSW = {
-        sequence: event.sequence,
-        timestamp: event.timestamp,
-        type: event.type,
-        inputType: event.inputType,
-        data: event.data,
-        rangeOffset: event.rangeOffset,
-        rangeLength: event.rangeLength,
-        range: event.range,
-        previousHash: event.previousHash
-      };
-
-      // PoSW検証（決定的なJSON文字列化を使用）
-      const eventDataStringForPoSW = this.hashChainManager.deterministicStringify(eventDataWithoutPoSW);
-      const poswValid = await this.poswManager.verifyPoSW(hash ?? '', eventDataStringForPoSW, event.posw);
-
-      if (!poswValid) {
-        return {
-          valid: false,
-          errorAt: i,
-          message: `PoSW verification failed at event ${i}`,
-          event
-        };
-      }
-
-      // ハッシュ計算（決定的なJSON文字列化を使用）
-      const eventData: EventHashData = {
-        ...eventDataWithoutPoSW,
-        posw: event.posw
-      };
-
-      const eventString = this.hashChainManager.deterministicStringify(eventData);
-      const combinedData = hash + eventString;
-      const computedHash = await this.hashChainManager.computeHash(combinedData);
-
-      hash = computedHash;
-
-      if (onProgress) {
-        onProgress(i - startIndex + 1, total, {
-          computed: computedHash,
-          expected: event.hash,
-          poswHash: event.posw.intermediateHash
-        });
+      if (onProgress && result.hashInfo) {
+        onProgress(i - startIndex + 1, total, result.hashInfo);
         await new Promise(r => setTimeout(r, 0));
       }
     }

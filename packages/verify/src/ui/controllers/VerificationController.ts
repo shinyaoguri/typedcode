@@ -74,7 +74,7 @@ export class VerificationController {
     let status: FileStatus;
     if (!result.chainValid) {
       status = 'error';
-    } else if (!result.isPureTyping || hasSourceMismatch) {
+    } else if (!result.pureTyping || hasSourceMismatch) {
       status = 'warning';
     } else {
       status = 'success';
