@@ -627,7 +627,16 @@ export class TabManager {
       console.log('[DEBUG TabManager.loadFromStorage] STORAGE_KEY:', STORAGE_KEY);
       console.log('[DEBUG TabManager.loadFromStorage] data exists:', data !== null);
       console.log('[DEBUG TabManager.loadFromStorage] data length:', data?.length);
-      if (!data) return false;
+      if (!data) {
+        // sessionStorageが空の場合、IndexedDBからのフォールバックを試みる
+        console.log('[TabManager] sessionStorage is empty, trying IndexedDB fallback');
+        const sessionId = this.sessionService.getCurrentSessionId();
+        if (sessionId && this.fingerprint && this.fingerprintComponents) {
+          console.log('[TabManager] Falling back to IndexedDB, sessionId:', sessionId);
+          return await this.loadFromIndexedDB(sessionId, this.fingerprint, this.fingerprintComponents);
+        }
+        return false;
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawStorage: any = JSON.parse(data);
