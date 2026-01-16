@@ -48,7 +48,7 @@ jobs:
           command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }}
 
       - name: Deploy to Cloudflare Pages (Preview)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
         id: preview-deploy
         uses: cloudflare/wrangler-action@v3
         with:
@@ -57,7 +57,7 @@ jobs:
           command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=${{ github.head_ref }}
 
       - name: Comment PR with preview URL
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
         uses: actions/github-script@v7
         with:
           script: |
