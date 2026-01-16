@@ -321,41 +321,37 @@ export class TypingProof {
     event: RecordEventInput,
     pendingEvent: PendingEventData
   ): Promise<RecordEventResult> {
-    // シーケンス番号は events 配列の長さを使用
-    // リロード後の復旧時にシーケンス番号の不整合が発生する可能性があるため、
-    // pendingEvent.sequence と this.events.length が一致しない場合は警告を出してevents.lengthを使用
-    const expectedSequence = this.events.length;
-    if (pendingEvent.sequence !== expectedSequence) {
-      console.warn(`[TypingProof] Sequence mismatch: pending.sequence=${pendingEvent.sequence}, expected=${expectedSequence}. Using expected value.`);
-      pendingEvent.sequence = expectedSequence; // pendingEvent も更新
-    }
-    const sequence = expectedSequence;
-
-    // タイムスタンプの単調増加を保証
-    // 最後のイベントのタイムスタンプより大きくなるように調整
-    const lastEvent = this.events[this.events.length - 1];
-    const lastTimestamp = lastEvent?.timestamp ?? -Infinity;
-    let timestamp = pendingEvent.timestamp;
-
-    if (timestamp <= lastTimestamp) {
-      // タイムスタンプが後退している場合、最後のタイムスタンプ + マージンに調整
-      const adjustedTimestamp = lastTimestamp + 10; // 10ms のマージン
-      console.log(`[TypingProof] Adjusting timestamp for monotonicity: ${timestamp.toFixed(2)} -> ${adjustedTimestamp.toFixed(2)} (last: ${lastTimestamp.toFixed(2)})`);
-      timestamp = adjustedTimestamp;
-      pendingEvent.timestamp = adjustedTimestamp; // pendingEvent も更新
+    // 1. シーケンス番号の検証・修正
+    const sequenceResult = this.hashChainManager.validateSequence(
+      pendingEvent.sequence,
+      this.events.length
+    );
+    const sequence = sequenceResult.sequence;
+    if (sequenceResult.wasCorrected) {
+      pendingEvent.sequence = sequence;
     }
 
-    // previousHashの整合性チェック
-    // Pending Eventが保存された時点のpreviousHashと現在のcurrentHashが一致しない場合、
-    // 現在のcurrentHashを使用する（リロード後の再処理時に発生する可能性がある）
-    const previousHashForEvent = this.currentHash;
-    if (pendingEvent.previousHash !== null && pendingEvent.previousHash !== previousHashForEvent) {
-      console.log(`[TypingProof] previousHash mismatch detected, using current hash. pending: ${pendingEvent.previousHash?.substring(0, 16)}..., current: ${previousHashForEvent?.substring(0, 16)}...`);
-      // pendingEventのpreviousHashも更新（一貫性のため）
-      pendingEvent.previousHash = previousHashForEvent;
+    // 2. タイムスタンプの単調増加保証
+    const lastTimestamp = this.events[this.events.length - 1]?.timestamp ?? -Infinity;
+    const timestampResult = this.hashChainManager.ensureMonotonicTimestamp(
+      pendingEvent.timestamp,
+      lastTimestamp
+    );
+    const timestamp = timestampResult.timestamp;
+    if (timestampResult.wasAdjusted) {
+      pendingEvent.timestamp = timestamp;
     }
 
-    // PoSW計算前のイベントデータ（poswフィールドなし）
+    // 3. previousHashの整合性検証
+    const previousHash = this.hashChainManager.validatePreviousHash(
+      pendingEvent.previousHash,
+      this.currentHash
+    );
+    if (pendingEvent.previousHash !== previousHash) {
+      pendingEvent.previousHash = previousHash;
+    }
+
+    // 4. イベントデータの構築（PoSW計算前）
     const eventDataWithoutPoSW = {
       sequence,
       timestamp,
@@ -365,27 +361,20 @@ export class TypingProof {
       rangeOffset: event.rangeOffset ?? null,
       rangeLength: event.rangeLength ?? null,
       range: event.range ?? null,
-      previousHash: previousHashForEvent
+      previousHash
     };
 
-    // PoSW計算（前のハッシュに依存 → 逐次計算を強制）
-    // 決定的なJSON文字列化を使用（キー順序を保証）
+    // 5. PoSW計算
     const eventDataString = this.hashChainManager.deterministicStringify(eventDataWithoutPoSW);
     const posw = await this.poswManager.computePoSW(this.currentHash ?? '', eventDataString);
 
-    // ハッシュ計算に使用するフィールド（PoSW含む）
-    const eventData: EventHashData = {
-      ...eventDataWithoutPoSW,
-      posw
-    };
-
-    // イベントデータを決定的に文字列化してハッシュ計算
+    // 6. ハッシュ計算
+    const eventData: EventHashData = { ...eventDataWithoutPoSW, posw };
     const eventString = this.hashChainManager.deterministicStringify(eventData);
-    const combinedData = this.currentHash + eventString;
-    const newHash = await this.hashChainManager.computeHash(combinedData);
+    const newHash = await this.hashChainManager.computeHash(this.currentHash + eventString);
     this.hashChainManager.setCurrentHash(newHash);
 
-    // デバッグ: ハッシュ計算に使用したデータをログ出力
+    // 7. デバッグログ（最初の10イベントのみ）
     if (this.events.length < 10) {
       console.log(`[Record] Event ${this.events.length}:`, {
         type: event.type,
@@ -397,7 +386,7 @@ export class TypingProof {
       });
     }
 
-    // イベントを保存（ハッシュ計算に使用したフィールド + 追加のメタデータ）
+    // 8. イベントの保存
     const eventIndex = this.events.length;
     const storedEvent: StoredEvent = {
       ...eventData,
@@ -412,7 +401,7 @@ export class TypingProof {
     };
     this.events.push(storedEvent);
 
-    // チェックポイントの自動作成（CHECKPOINT_INTERVALイベントごと）
+    // 9. チェックポイントの自動作成
     if (this.checkpointManager.shouldCreateCheckpoint(eventIndex)) {
       await this.checkpointManager.createCheckpoint(eventIndex, this.events);
     }

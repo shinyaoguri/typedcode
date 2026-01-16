@@ -6,6 +6,7 @@
 
 import type { MousePositionData } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
+import { ElementTracker } from './BaseTracker.js';
 
 export interface MouseEvent {
   type: 'mousePositionChange';
@@ -20,36 +21,18 @@ export interface MouseTrackerOptions {
   throttleMs?: number;
 }
 
-export class MouseTracker {
+export class MouseTracker extends ElementTracker<MouseEvent, MouseEventCallback> {
   private lastPosition: MousePositionData | null = null;
   private lastTime: number = 0;
   private throttleMs: number;
-  private enabled: boolean = true;
-  private callback: MouseEventCallback | null = null;
+
+  // バインドされたハンドラー（detach時に必要）
+  private boundHandleMouseMove: (e: globalThis.MouseEvent) => void;
 
   constructor(options: MouseTrackerOptions = {}) {
+    super();
     this.throttleMs = options.throttleMs ?? 100;
-  }
-
-  /**
-   * Set the callback for mouse events
-   */
-  setCallback(callback: MouseEventCallback): void {
-    this.callback = callback;
-  }
-
-  /**
-   * Enable or disable tracking
-   */
-  setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
-  }
-
-  /**
-   * Check if tracking is enabled
-   */
-  isEnabled(): boolean {
-    return this.enabled;
+    this.boundHandleMouseMove = this.handleMouseMove.bind(this);
   }
 
   /**
@@ -86,7 +69,7 @@ export class MouseTracker {
     this.lastPosition = mouseData;
     this.lastTime = currentTime;
 
-    this.callback({
+    this.emit({
       type: 'mousePositionChange',
       data: mouseData,
       description: t('events.mousePosition', { x: String(mouseData.x), y: String(mouseData.y) }),
@@ -94,17 +77,31 @@ export class MouseTracker {
   }
 
   /**
-   * Attach event listeners to an element
+   * Attach event listeners to an element (後方互換性のため維持)
    */
-  attach(element: HTMLElement): void {
-    element.addEventListener('mousemove', this.handleMouseMove.bind(this));
+  attach(element?: HTMLElement): void {
+    if (element) {
+      this.attachTo(element);
+    } else {
+      super.attach();
+    }
   }
 
   /**
    * Reset tracking state
    */
-  reset(): void {
+  override reset(): void {
     this.lastPosition = null;
     this.lastTime = 0;
+  }
+
+  protected attachListeners(): void {
+    if (!this.element) return;
+    this.element.addEventListener('mousemove', this.boundHandleMouseMove);
+  }
+
+  protected detachListeners(): void {
+    if (!this.element) return;
+    this.element.removeEventListener('mousemove', this.boundHandleMouseMove);
   }
 }

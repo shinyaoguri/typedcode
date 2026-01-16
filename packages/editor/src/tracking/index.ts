@@ -4,6 +4,8 @@
  * Provides user behavior tracking components for the editor.
  */
 
+export { BaseTracker, ElementTracker } from './BaseTracker.js';
+
 export {
   KeystrokeTracker,
   type KeystrokeThresholds,
