@@ -98,7 +98,7 @@ export interface SerializedTabState {
 
 /** マルチタブストレージ構造 */
 export interface MultiTabStorage {
-  version: 3;
+  version: 1;
   activeTabId: string;
   tabs: Record<string, SerializedTabState>;
   tabOrder: string[];
