@@ -133,6 +133,10 @@ export type {
   // Pending Event（PoSW未完了イベント）
   PendingEventData,
   PendingEventDataType,
+  // 軽量ストレージ（V2フォーマット）
+  LightweightProofState,
+  LightweightTabState,
+  LightweightMultiTabStorage,
 } from './storage.js';
 export { INDEXEDDB_SESSION_VERSION } from './storage.js';
 
