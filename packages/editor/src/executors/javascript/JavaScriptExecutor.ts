@@ -329,7 +329,7 @@ ${code}
       const match = stack.match(/<anonymous>:(\d+):(\d+)/);
 
       let message = `${error.name}: ${error.message}`;
-      if (match) {
+      if (match && match[1] && match[2]) {
         const line = Math.max(1, parseInt(match[1], 10) - this.getWrapperLineCount());
         const column = parseInt(match[2], 10);
         message += ` (at line ${line}, column ${column})`;

@@ -174,7 +174,7 @@ async function verify(request: VerifyRequest): Promise<void> {
       const hashVerification = await typingProof.verifyTypingProofHash(
         proofData.typingProofHash,
         proofData.typingProofData,
-        proofData.content
+        proofData.content ?? ''
       );
 
       metadataValid = hashVerification.valid;
@@ -229,11 +229,6 @@ async function verify(request: VerifyRequest): Promise<void> {
       isPureTyping,
       message: chainVerification.message,
       errorAt: chainVerification.errorAt,
-      // チェーン検証エラーの詳細情報
-      expectedHash: chainVerification.expectedHash,
-      computedHash: chainVerification.computedHash,
-      previousTimestamp: chainVerification.previousTimestamp,
-      currentTimestamp: chainVerification.currentTimestamp,
       totalEvents,
       poswStats,
       sampledResult: chainVerification.sampledResult

@@ -82,7 +82,7 @@ export class FileController {
 
           this.deps.sidebar.addHierarchicalFolder({
             id: folderId,
-            name: folderName,
+            name: folderName ?? '',
             path: folderPath,
             parentId,
             expanded,

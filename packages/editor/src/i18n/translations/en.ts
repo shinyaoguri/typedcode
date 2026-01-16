@@ -417,6 +417,7 @@ export const en: TranslationKeys = {
     redo: 'Redo',
     replace: 'Replace',
     unknown: 'Unknown',
+    internalPaste: 'Internal Paste',
   },
 
   about: {

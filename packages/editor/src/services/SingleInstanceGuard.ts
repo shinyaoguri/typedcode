@@ -7,7 +7,6 @@
 
 const CHANNEL_NAME = 'typedcode-instance-guard';
 const HEARTBEAT_INTERVAL = 1000; // 1秒ごとにハートビート
-const HEARTBEAT_TIMEOUT = 3000; // 3秒応答がなければタイムアウト
 
 type MessageType =
   | { type: 'ping'; senderId: string }

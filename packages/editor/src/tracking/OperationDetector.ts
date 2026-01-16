@@ -220,7 +220,8 @@ export class OperationDetector {
       'insertFromDrop': t('operations.drop'),
       'insertFromYank': t('operations.paste'),
       'insertReplacementText': t('operations.replace'),
-      'insertFromPasteAsQuotation': t('operations.paste')
+      'insertFromPasteAsQuotation': t('operations.paste'),
+      'insertFromInternalPaste': t('operations.internalPaste')
     };
 
     return descriptions[operation.inputType] ?? operation.inputType;

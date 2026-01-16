@@ -35,7 +35,7 @@ export class BrowserPreviewPanel {
   private placeholder: HTMLElement | null = null;
   private filenameEl: HTMLElement | null = null;
   private editorContainer: HTMLElement | null = null;
-  private mainEl: HTMLElement | null = null;
+  private _mainEl: HTMLElement | null = null;
 
   // 表示状態
   private _isVisible = false;
@@ -75,7 +75,7 @@ export class BrowserPreviewPanel {
     this.iframe = document.getElementById('preview-iframe') as HTMLIFrameElement;
     this.placeholder = document.getElementById('preview-placeholder');
     this.filenameEl = document.getElementById('preview-filename');
-    this.mainEl = document.querySelector('main');
+    this._mainEl = document.querySelector('main');
 
     if (!this.panelEl) {
       console.error('[BrowserPreviewPanel] Panel element not found');
@@ -377,7 +377,7 @@ export class BrowserPreviewPanel {
       const fullTag = match[0];
       const href = match[1];
       // rel="stylesheet" を含むかチェック
-      if (/rel\s*=\s*["']stylesheet["']/i.test(fullTag)) {
+      if (href && /rel\s*=\s*["']stylesheet["']/i.test(fullTag)) {
         results.push(href);
       }
     }
@@ -395,7 +395,9 @@ export class BrowserPreviewPanel {
     let match;
 
     while ((match = scriptRegex.exec(html)) !== null) {
-      results.push(match[1]);
+      if (match[1]) {
+        results.push(match[1]);
+      }
     }
 
     return results;
@@ -631,6 +633,6 @@ export class BrowserPreviewPanel {
     this.placeholder = null;
     this.filenameEl = null;
     this.editorContainer = null;
-    this.mainEl = null;
+    this._mainEl = null;
   }
 }

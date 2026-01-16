@@ -196,10 +196,11 @@ export class FolderController {
       // startTimestampを計算（最初のスクリーンショットのタイムスタンプから）
       let startTimestamp: number | undefined;
       if (screenshots.length > 0) {
-        const firstScreenshot = screenshots.reduce((min, s) => (s.timestamp < min.timestamp ? s : min), screenshots[0]);
+        const firstScreenshot = screenshots[0]!;
+        const minTimestamp = screenshots.reduce((min, s) => Math.min(min, s.timestamp), firstScreenshot.timestamp);
         // エクスポート時刻からtimestampを引いてstartTimestampを計算
         const exportedAt = new Date(manifest.exportedAt).getTime();
-        const lastTimestamp = screenshots.reduce((max, s) => Math.max(max, s.timestamp), 0);
+        const lastTimestamp = screenshots.reduce((max, s) => Math.max(max, s.timestamp), minTimestamp);
         startTimestamp = exportedAt - lastTimestamp;
       }
 
@@ -510,7 +511,7 @@ export class FolderController {
 
         const subFolder: HierarchicalFolder = {
           id: this.deps.generateId(),
-          name: folderName,
+          name: folderName ?? '',
           path: fullPath,
           parentId: folderParentId,
           expanded,

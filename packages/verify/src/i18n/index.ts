@@ -3,7 +3,6 @@
  * Uses shared i18n infrastructure with verify-specific translations
  */
 import { createI18nInstance, createDOMUpdater } from '@typedcode/shared';
-import type { SupportedLocale } from '@typedcode/shared';
 import type { VerifyTranslationKeys } from './types.js';
 import { ja } from './translations/ja.js';
 import { en } from './translations/en.js';

@@ -118,7 +118,7 @@ export class ScreenCaptureService {
         video: {
           displaySurface: 'monitor', // 画面全体を推奨
           cursor: 'always',          // カーソルも含める
-        },
+        } as MediaTrackConstraints,
         audio: false,
       });
 

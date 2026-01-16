@@ -38,7 +38,7 @@ export class TabUIController {
   private container: HTMLElement;
   private tabManager: TabManager;
   private basePath: string;
-  private onNotification: ((message: string) => void) | null = null;
+  private _onNotification: ((message: string) => void) | null = null;
 
   // ドラッグ&ドロップ関連
   private dragState: DragState = {
@@ -70,7 +70,7 @@ export class TabUIController {
     this.container = options.container;
     this.tabManager = options.tabManager;
     this.basePath = options.basePath;
-    this.onNotification = options.onNotification ?? null;
+    this._onNotification = options.onNotification ?? null;
   }
 
   /**
@@ -641,6 +641,6 @@ export class TabUIController {
   dispose(): void {
     this.cleanupDrag();
     this.container.innerHTML = '';
-    this.onNotification = null;
+    this._onNotification = null;
   }
 }

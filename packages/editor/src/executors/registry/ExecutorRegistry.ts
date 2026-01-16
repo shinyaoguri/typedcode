@@ -95,7 +95,7 @@ export class ExecutorRegistry {
   static getSupportedLanguages(): ExecutorConfig[] {
     const configs: ExecutorConfig[] = [];
 
-    for (const [id, factory] of this.factories) {
+    for (const [id] of this.factories) {
       // Use stored config if available
       if (this.configs.has(id)) {
         configs.push(this.configs.get(id)!);

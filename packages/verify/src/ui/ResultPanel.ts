@@ -1042,9 +1042,7 @@ export class ResultPanel {
     const segments = sampledInfo.segments;
     let lastEndIndex = 0;
 
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-
+    for (const segment of segments) {
       // 前の区間との隙間（未検証区間）を描画
       if (segment.startIndex > lastEndIndex) {
         const gapStart = (lastEndIndex / total) * 100;

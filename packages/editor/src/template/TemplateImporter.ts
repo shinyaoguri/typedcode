@@ -3,11 +3,10 @@
  * テンプレートファイルを読み込み、複数タブを作成してtemplateInjectionイベントを記録
  */
 
-import type { TabManager, TabState } from '../ui/tabs/TabManager.js';
+import type { TabManager } from '../ui/tabs/TabManager.js';
 import type {
   ParsedTemplate,
   TemplateInjectionEventData,
-  HumanAttestationEventData,
 } from '@typedcode/shared';
 import { TemplateParser, TemplateValidationError } from './TemplateParser.js';
 

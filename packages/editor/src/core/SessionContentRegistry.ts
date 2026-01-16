@@ -29,7 +29,7 @@ export class SessionContentRegistry {
    * @param content - 入力されたテキスト
    * @deprecated No longer needed - content is checked via getAllContents callback
    */
-  registerContent(content: string): void {
+  registerContent(_content: string): void {
     // 後方互換性のため空実装として残す
     // 実際のチェックはgetAllContentsコールバックを通じて行う
   }

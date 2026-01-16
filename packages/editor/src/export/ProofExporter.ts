@@ -361,12 +361,12 @@ export class ProofExporter {
       const fileList: string[] = [];
       const logList: string[] = [];
 
-      for (let i = 0; i < allTabs.length; i++) {
-        const tab = allTabs[i];
+      let tabIndex = 0;
+      for (const tab of allTabs) {
         // 進行状況を更新
         this.exportProgressDialog.updateProgress({
           phase: 'preparing',
-          current: i + 1,
+          current: tabIndex + 1,
           total: allTabs.length,
         });
 
@@ -414,6 +414,7 @@ export class ProofExporter {
         };
         zip.file(logFilename, JSON.stringify(proofWithContent, null, 2));
         logList.push(logFilename);
+        tabIndex++;
       }
 
       // スクリーンショットを追加
