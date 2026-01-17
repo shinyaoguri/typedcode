@@ -257,6 +257,9 @@ export const en: TranslationKeys = {
     events: 'events',
     line: 'Ln',
     column: 'Col',
+    synced: 'Synced',
+    syncing: 'Syncing...',
+    pending: 'Pending',
   },
 
   tabs: {

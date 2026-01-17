@@ -104,6 +104,37 @@
   white-space: nowrap;
 }
 
+/* Sync status indicator */
+.statusbar .sync-status {
+  font-size: 11px;
+}
+
+.statusbar .sync-status.synced {
+  color: var(--statusbar-text);
+  opacity: 0.7;
+}
+
+.statusbar .sync-status.synced i {
+  color: #6fdc6f;
+}
+
+.statusbar .sync-status.syncing {
+  color: #4fc3f7;
+}
+
+.statusbar .sync-status.syncing i {
+  animation: sync-pulse 1s ease-in-out infinite;
+}
+
+.statusbar .sync-status.pending {
+  color: #ffd54f;
+}
+
+@keyframes sync-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
 /* Language selector in status bar */
 .statusbar #language-selector {
   background: transparent;

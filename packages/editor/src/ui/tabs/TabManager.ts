@@ -67,6 +67,12 @@ export type OnTabUpdateCallback = (tab: TabState) => void;
 /** 認証結果コールバック */
 export type OnVerificationCallback = (result: VerificationResult) => void;
 
+/** 同期状態 */
+export type SyncStatus = 'synced' | 'syncing' | 'pending';
+
+/** 同期状態変更コールバック */
+export type OnSyncStatusChangeCallback = (status: SyncStatus) => void;
+
 /** タブ作成オプション */
 export interface CreateTabOptions {
   /** sessionStorageからの復元時はtrue（認証不要） */
@@ -109,6 +115,7 @@ export class TabManager {
   private onTabChangeCallback: OnTabChangeCallback | null = null;
   private onTabUpdateCallback: OnTabUpdateCallback | null = null;
   private onVerificationCallback: OnVerificationCallback | null = null;
+  private onSyncStatusChangeCallback: OnSyncStatusChangeCallback | null = null;
   private startTime: number = performance.now();
   private sessionService: SessionStorageService;
 
@@ -120,6 +127,8 @@ export class TabManager {
   private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   /** デバウンス待ち時間（ミリ秒） */
   private static readonly SAVE_DEBOUNCE_MS = 100;
+  /** 現在の同期状態 */
+  private currentSyncStatus: SyncStatus = 'synced';
 
   constructor(editor: monaco.editor.IStandaloneCodeEditor) {
     this.editor = editor;
@@ -180,6 +189,30 @@ export class TabManager {
    */
   setOnVerification(callback: OnVerificationCallback): void {
     this.onVerificationCallback = callback;
+  }
+
+  /**
+   * 同期状態変更コールバックを設定
+   */
+  setOnSyncStatusChange(callback: OnSyncStatusChangeCallback): void {
+    this.onSyncStatusChangeCallback = callback;
+  }
+
+  /**
+   * 現在の同期状態を取得
+   */
+  getSyncStatus(): SyncStatus {
+    return this.currentSyncStatus;
+  }
+
+  /**
+   * 同期状態を更新し、コールバックを呼び出す
+   */
+  private updateSyncStatus(status: SyncStatus): void {
+    if (this.currentSyncStatus !== status) {
+      this.currentSyncStatus = status;
+      this.onSyncStatusChangeCallback?.(status);
+    }
   }
 
   /**
@@ -573,6 +606,9 @@ export class TabManager {
     // 次の保存が必要であることをマーク
     this.needsSave = true;
 
+    // 保存待ち状態を通知
+    this.updateSyncStatus('pending');
+
     // デバウンス：短時間に複数回呼ばれた場合は最後の呼び出しのみ実行
     if (this.saveDebounceTimer) {
       clearTimeout(this.saveDebounceTimer);
@@ -600,6 +636,9 @@ export class TabManager {
     // 保存中に新しいsaveToStorage()が呼ばれたらneedsSaveが再度trueになる
     this.needsSave = false;
 
+    // 同期中状態を通知
+    this.updateSyncStatus('syncing');
+
     this.currentSavePromise = (async () => {
       try {
         // IndexedDBに先に保存
@@ -613,15 +652,30 @@ export class TabManager {
       }
     })();
 
-    this.currentSavePromise
-      .finally(() => {
+    this.currentSavePromise.then(() => {
         this.currentSavePromise = null;
 
         // 保存中に新しい保存要求があった場合、最新状態で再保存
         if (this.needsSave) {
           this.executeSave();
+        } else {
+          // pendingEventsがあるかチェック
+          const hasPending = this.hasPendingEvents();
+          this.updateSyncStatus(hasPending ? 'pending' : 'synced');
         }
       });
+  }
+
+  /**
+   * いずれかのタブにpendingEventsがあるかチェック
+   */
+  private hasPendingEvents(): boolean {
+    for (const [, tab] of this.tabs) {
+      if (tab.typingProof.getPendingEvents().length > 0) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -680,17 +734,29 @@ export class TabManager {
     for (const [id, tab] of this.tabs) {
       const proofState = tab.typingProof.serializeState();
 
-      // 既存イベントの最大シーケンス番号を取得
-      const existingEvents = await this.sessionService.getEvents(id);
-      const maxExistingSequence = existingEvents.length > 0
-        ? Math.max(...existingEvents.map(e => e.sequence))
-        : -1;
-
-      // 未保存のイベントをIndexedDBに追加（シーケンス番号が既存より大きいもののみ）
-      for (const event of proofState.events) {
-        if (event && event.sequence > maxExistingSequence) {
-          await this.sessionService.appendEvent(id, event);
+      // メモリ内イベントの整合性チェック
+      if (proofState.events.length > 0) {
+        const firstEvent = proofState.events[0];
+        if (firstEvent && firstEvent.sequence !== 0) {
+          console.error(`[TabManager] SAVE: Memory event chain broken for tab ${id}: first event has sequence ${firstEvent.sequence}`);
         }
+      }
+
+      // 既存イベントのシーケンス番号をSetで取得（欠落検出用）
+      const existingEvents = await this.sessionService.getEvents(id);
+      const existingSequences = new Set(existingEvents.map(e => e.sequence));
+
+      // 未保存のイベントをIndexedDBに追加（存在しないシーケンス番号のみ）
+      let newEventsCount = 0;
+      for (const event of proofState.events) {
+        if (event && !existingSequences.has(event.sequence)) {
+          await this.sessionService.appendEvent(id, event);
+          newEventsCount++;
+        }
+      }
+
+      if (newEventsCount > 0) {
+        console.log(`[TabManager] SAVE: Tab ${id}: saved ${newEventsCount} new events (total: ${proofState.events.length})`);
       }
 
       const tabData: StoredTabData = {
@@ -811,10 +877,6 @@ export class TabManager {
     // tabOrderがない場合は生成（後方互換性のため）
     const tabOrder: string[] = rawStorage.tabOrder ?? Object.keys(rawStorage.tabs);
 
-    // Pending Eventsの処理を追跡
-    let totalPendingEvents = 0;
-    let processedPendingEvents = 0;
-
     // タブを復元（tabOrder順に処理）
     for (const id of tabOrder) {
       const serializedTab = rawStorage.tabs[id];
@@ -826,23 +888,12 @@ export class TabManager {
       const poswWorker = createPoswWorker();
 
       if (serializedTab.proofState) {
-        const pendingCount = serializedTab.proofState.pendingEvents?.length ?? 0;
-        totalPendingEvents += pendingCount;
-
-        if (pendingCount > 0) {
-          console.log(`[TabManager] Tab ${id} has ${pendingCount} pending events to process`);
-        }
-
         typingProof = await TypingProof.fromSerializedState(
           serializedTab.proofState,
           this.fingerprint!,
           this.fingerprintComponents!,
-          poswWorker,
-          true // processPending = true
+          poswWorker
         );
-
-        // 処理されたPending Eventsをカウント
-        processedPendingEvents += pendingCount - typingProof.getPendingEvents().length;
       } else {
         typingProof = new TypingProof();
         await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
@@ -883,11 +934,6 @@ export class TabManager {
 
     console.log('[DEBUG TabManager.loadFromStorageV1] SUCCESS - tabs restored:', this.tabs.size);
     console.log('[DEBUG TabManager.loadFromStorageV1] activeTabId:', this.activeTabId);
-
-    if (totalPendingEvents > 0) {
-      console.log(`[TabManager] Processed ${processedPendingEvents}/${totalPendingEvents} pending events during restore`);
-    }
-
     console.log('[TabManager] V1 format loaded, will migrate to V2 on next save');
     return true;
   }
@@ -898,10 +944,6 @@ export class TabManager {
    * @private
    */
   private async loadFromStorageV2(storage: LightweightMultiTabStorage): Promise<boolean> {
-    // Pending Eventsの処理を追跡
-    let totalPendingEvents = 0;
-    let processedPendingEvents = 0;
-
     // タブを復元（tabOrder順に処理）
     for (const id of storage.tabOrder) {
       const lightweightTab = storage.tabs[id];
@@ -909,6 +951,23 @@ export class TabManager {
 
       // 1. IndexedDBからイベントを読み込み
       const events = await this.sessionService.getEvents(id);
+
+      // イベントの整合性チェック
+      if (events.length > 0) {
+        const firstEvent = events[0];
+        if (firstEvent && firstEvent.sequence !== 0) {
+          console.error(`[TabManager] Event chain broken for tab ${id}: first event has sequence ${firstEvent.sequence}, expected 0`);
+        }
+        // シーケンス番号の連続性をチェック
+        for (let i = 1; i < events.length; i++) {
+          const prev = events[i - 1];
+          const curr = events[i];
+          if (prev && curr && curr.sequence !== prev.sequence + 1) {
+            console.error(`[TabManager] Event sequence gap at tab ${id}: event ${i} has sequence ${curr.sequence}, expected ${prev.sequence + 1}`);
+          }
+        }
+      }
+      console.log(`[TabManager] Tab ${id}: loaded ${events.length} events from IndexedDB`);
 
       // 2. 同期確認と currentHash の決定
       // IMPORTANT: sessionStorageのcurrentHashではなく、IndexedDBから取得したイベントの
@@ -927,21 +986,13 @@ export class TabManager {
         // 一部イベントが未保存の可能性があるが、IndexedDBのデータを正とする
       }
 
-      // 3. SerializedProofStateを構築
+      // 3. SerializedProofStateを構築（pendingEventsは復元しない）
       const proofState: SerializedProofState = {
         events,
         currentHash,  // IndexedDBから取得したイベントの最後のhashを使用
         startTime: lightweightTab.proofState.startTime,
-        pendingEvents: lightweightTab.proofState.pendingEvents ?? [],
         checkpoints: lightweightTab.proofState.checkpoints,
       };
-
-      const pendingCount = proofState.pendingEvents?.length ?? 0;
-      totalPendingEvents += pendingCount;
-
-      if (pendingCount > 0) {
-        console.log(`[TabManager] Tab ${id} has ${pendingCount} pending events to process`);
-      }
 
       // 4. TypingProofを復元
       const poswWorker = createPoswWorker();
@@ -949,12 +1000,8 @@ export class TabManager {
         proofState,
         this.fingerprint!,
         this.fingerprintComponents!,
-        poswWorker,
-        true // processPending = true
+        poswWorker
       );
-
-      // 処理されたPending Eventsをカウント
-      processedPendingEvents += pendingCount - typingProof.getPendingEvents().length;
 
       // 5. コールバック設定
       typingProof.setOnPendingEventChange(() => {
@@ -996,10 +1043,6 @@ export class TabManager {
 
     console.log('[DEBUG TabManager.loadFromStorageV2] SUCCESS - tabs restored:', this.tabs.size);
     console.log('[DEBUG TabManager.loadFromStorageV2] activeTabId:', this.activeTabId);
-
-    if (totalPendingEvents > 0) {
-      console.log(`[TabManager] Processed ${processedPendingEvents}/${totalPendingEvents} pending events during restore`);
-    }
 
     return true;
   }

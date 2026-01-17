@@ -278,6 +278,9 @@ export interface TranslationKeys {
     events: string;
     line: string;
     column: string;
+    synced: string;
+    syncing: string;
+    pending: string;
   };
 
   // Tab management

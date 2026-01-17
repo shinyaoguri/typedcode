@@ -71,8 +71,8 @@ export interface SerializedProofState {
   events: StoredEvent[];
   currentHash: string | null;
   startTime: number;
-  /** PoSW計算が完了していないイベント */
-  pendingEvents: PendingEventData[];
+  /** PoSW計算が完了していないイベント（後方互換性のためオプショナル） */
+  pendingEvents?: PendingEventData[];
   /** チェックポイントデータ（サンプリング検証用） */
   checkpoints?: CheckpointData[];
 }
@@ -239,8 +239,8 @@ export interface LightweightProofState {
   currentHash: string | null;
   /** 開始時間 */
   startTime: number;
-  /** PoSW計算中のイベント（通常は空か数件） */
-  pendingEvents: PendingEventData[];
+  /** PoSW計算中のイベント（後方互換性のためオプショナル、復元時は使用しない） */
+  pendingEvents?: PendingEventData[];
   /** チェックポイントデータ（サンプリング検証用） */
   checkpoints?: CheckpointData[];
 }
