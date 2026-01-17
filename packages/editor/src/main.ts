@@ -42,7 +42,7 @@ import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
 import { initializeTrackers } from './tracking/TrackersInitializer.js';
 import { ThemeManager } from './editor/ThemeManager.js';
-import { TabManager } from './ui/tabs/TabManager.js';
+import { TabManager, type SyncStatus } from './ui/tabs/TabManager.js';
 import type { MonacoEditor } from './editor/types.js';
 import {
   isTurnstileConfigured,
@@ -121,6 +121,28 @@ initDOMi18n();
 
 // Monaco Editor の Worker 設定
 configureMonacoWorkers();
+
+/**
+ * IndexedDB同期状態のUIを更新
+ */
+function updateSyncStatusUI(status: SyncStatus): void {
+  const syncStatusItem = document.getElementById('sync-status-item');
+  const syncStatusText = document.getElementById('sync-status');
+
+  if (!syncStatusItem || !syncStatusText) return;
+
+  // クラスをリセット
+  syncStatusItem.classList.remove('synced', 'syncing', 'pending');
+  syncStatusItem.classList.add(status);
+
+  // テキストを更新
+  const statusTexts: Record<SyncStatus, string> = {
+    synced: t('statusBar.synced'),
+    syncing: t('statusBar.syncing'),
+    pending: t('statusBar.pending'),
+  };
+  syncStatusText.textContent = statusTexts[status];
+}
 
 // 利用規約関連の定数
 const TERMS_ACCEPTED_KEY = 'typedcode-terms-accepted';
@@ -312,6 +334,11 @@ async function initializeTabManager(
 
   ctx.tabManager.setOnVerification(() => {
     ctx.tabUIController?.updateUI();
+  });
+
+  // 同期状態変更コールバックを設定
+  ctx.tabManager.setOnSyncStatusChange((status: SyncStatus) => {
+    updateSyncStatusUI(status);
   });
 
   updateInitMessage(t('notifications.initializingEditor'));

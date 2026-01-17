@@ -699,7 +699,7 @@ export class TypingProof {
       lastEventSequence: this.events.length - 1,
       currentHash: this.currentHash,
       startTime: this.startTime,
-      pendingEvents: [...this.pendingEvents],
+      // pendingEventsは復元時に使用しないため保存しない
       checkpoints: [...this.checkpointManager.getCheckpoints()],
     };
   }
@@ -726,16 +726,10 @@ export class TypingProof {
       this.startTime = state.startTime;
     }
 
-    // Pending Eventsを復元
-    // ただし、既にevents配列に含まれているシーケンス番号のイベントは除外
-    // （リロード時のタイミングによっては、同じイベントがeventsとpendingEventsの両方に存在する可能性がある）
-    const pendingEvents = state.pendingEvents ?? [];
-    const lastEventSequence = this.events.length > 0 ? this.events[this.events.length - 1]!.sequence : -1;
-    this.pendingEvents = pendingEvents.filter(pe => pe.sequence > lastEventSequence);
-
-    if (pendingEvents.length !== this.pendingEvents.length) {
-      console.log(`[TypingProof] Filtered ${pendingEvents.length - this.pendingEvents.length} duplicate pending events (already in events array)`);
-    }
+    // Pending Eventsは復元しない（リロード時に失われる）
+    // PoSW計算中だったイベントはリロードで失われるが、エクスポート時には
+    // waitForProcessingComplete()でPoSW計算完了を待機するため整合性は保証される
+    this.pendingEvents = [];
 
     // チェックポイントを復元（サンプリング検証用）
     if (state.checkpoints && state.checkpoints.length > 0) {
@@ -751,90 +745,10 @@ export class TypingProof {
   }
 
   /**
-   * Pending Eventsを設定（復旧用）
-   */
-  setPendingEvents(events: PendingEventData[]): void {
-    this.pendingEvents = [...events];
-  }
-
-  /**
    * Pending Event変更コールバックを設定
    */
   setOnPendingEventChange(callback: ((pending: PendingEventData[]) => void) | null): void {
     this.onPendingEventChange = callback;
-  }
-
-  /**
-   * Pending Eventがあるかどうか
-   */
-  hasPendingEvents(): boolean {
-    return this.pendingEvents.length > 0;
-  }
-
-  /**
-   * Pending Eventsを処理してevents配列に追加
-   * リロード後のPoSW計算復旧に使用
-   * @returns 処理したイベント数
-   */
-  async processPendingEvents(): Promise<number> {
-    if (this.pendingEvents.length === 0) {
-      return 0;
-    }
-
-    console.log(`[TypingProof] Processing ${this.pendingEvents.length} pending events...`);
-
-    // pendingEventsをコピーしてからクリア（処理中に新しいイベントが来ても安全に）
-    const eventsToProcess = [...this.pendingEvents];
-    this.pendingEvents = [];
-
-    // タイムスタンプの単調増加を保証するため、最後のイベントのタイムスタンプを取得
-    const lastEvent = this.events[this.events.length - 1];
-    let lastTimestamp = lastEvent?.timestamp ?? -Infinity;
-    const timestampMargin = 10; // 10ms のマージン
-
-    let processedCount = 0;
-
-    for (const pending of eventsToProcess) {
-      try {
-        // タイムスタンプを調整（最後のイベントより後になるように）
-        // ページリロード後は pending.timestamp が古い値を持っている可能性があるため
-        if (pending.timestamp <= lastTimestamp) {
-          const newTimestamp = lastTimestamp + timestampMargin;
-          console.log(`[TypingProof] Adjusting pending event timestamp: ${pending.timestamp.toFixed(2)} -> ${newTimestamp.toFixed(2)} (after last: ${lastTimestamp.toFixed(2)})`);
-          pending.timestamp = newTimestamp;
-        }
-
-        // RecordEventInputを再構成
-        const eventInput: RecordEventInput = {
-          type: pending.input.type,
-          inputType: pending.input.inputType,
-          data: pending.input.data,
-          rangeOffset: pending.input.rangeOffset,
-          rangeLength: pending.input.rangeLength,
-          range: pending.input.range,
-          description: pending.input.description,
-          isMultiLine: pending.input.isMultiLine,
-          deletedLength: pending.input.deletedLength,
-          insertedText: pending.input.insertedText,
-          insertLength: pending.input.insertLength,
-          deleteDirection: pending.input.deleteDirection,
-          selectedText: pending.input.selectedText,
-        };
-
-        // _recordEventInternalを直接呼び出し（キューを通さない）
-        await this._recordEventInternal(eventInput, pending);
-        processedCount++;
-
-        // 次のイベントのために lastTimestamp を更新
-        lastTimestamp = pending.timestamp;
-      } catch (error) {
-        console.error('[TypingProof] Failed to process pending event:', error);
-        // エラーが発生しても続行
-      }
-    }
-
-    console.log(`[TypingProof] Processed ${processedCount}/${eventsToProcess.length} pending events`);
-    return processedCount;
   }
 
   /**
@@ -843,14 +757,12 @@ export class TypingProof {
    * @param fingerprintHash - フィンガープリントハッシュ
    * @param fingerprintComponents - フィンガープリント構成要素
    * @param externalWorker - 外部から提供されたWorker（symlinkedパッケージ対応）
-   * @param processPending - Pending Eventsを処理するかどうか（デフォルト: true）
    */
   static async fromSerializedState(
     state: SerializedProofState,
     fingerprintHash: string,
     fingerprintComponents: FingerprintComponents,
-    externalWorker?: Worker,
-    processPending: boolean = true
+    externalWorker?: Worker
   ): Promise<TypingProof> {
     const proof = new TypingProof();
     proof.fingerprint = fingerprintHash;
@@ -859,10 +771,7 @@ export class TypingProof {
     proof.initWorker(externalWorker);
     proof.initialized = true;
 
-    // Pending Eventsがあれば処理
-    if (processPending && proof.hasPendingEvents()) {
-      await proof.processPendingEvents();
-    }
+    // Pending Eventsは復元しない（restoreStateで空配列に設定済み）
 
     return proof;
   }

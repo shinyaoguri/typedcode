@@ -71,10 +71,16 @@ export class EventRecorder {
       return;
     }
 
+    const activeTab = this.tabManager.getActiveTab();
     const activeProof = this.tabManager.getActiveProof();
-    if (!activeProof) {
+    if (!activeProof || !activeTab) {
       return;
     }
+
+    // イベント発生時のtabIdをキャプチャ
+    // PoSW計算完了後にアクティブタブが変わっている可能性があるため、
+    // ここでtabIdを保存しておく（クロージャでキャプチャ）
+    const capturedTabId = activeTab.id;
 
     // contentChange イベントの場合、入力されたコンテンツをレジストリに登録
     // これにより、後でペーストされた時に内部コンテンツかどうかを判定できる
@@ -99,10 +105,10 @@ export class EventRecorder {
         }
 
         // IndexedDBにイベントをインクリメンタルに保存
-        const activeTab = this.tabManager.getActiveTab();
-        if (recordedEvent && activeTab) {
+        // イベント発生時にキャプチャしたtabIdを使用（現在のアクティブタブではなく）
+        if (recordedEvent) {
           try {
-            await this.persistence.saveEventToIndexedDB(activeTab.id, recordedEvent);
+            await this.persistence.saveEventToIndexedDB(capturedTabId, recordedEvent);
           } catch {
             // エラーはEventPersistence内でログ出力済み
           }

@@ -257,6 +257,9 @@ export const ja: TranslationKeys = {
     events: 'events',
     line: '行',
     column: '列',
+    synced: '同期済み',
+    syncing: '同期中...',
+    pending: '保存待ち',
   },
 
   tabs: {
