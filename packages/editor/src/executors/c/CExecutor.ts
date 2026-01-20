@@ -90,13 +90,19 @@ export class CExecutor extends BaseExecutor {
 
       onProgress?.({
         stage: 'compiler',
-        message: 'Downloading C compiler (this may take a while)...',
+        message: 'Loading C compiler...',
         percentage: 30,
       });
 
-      // Use clang package from Wasmer registry
-      // See: https://wasmer.io/syrusakbary/clang
-      this.clangPkg = await Wasmer.fromRegistry('syrusakbary/clang');
+      // Load clang package from local file to avoid CORS issues with Wasmer CDN
+      // The webc file is bundled in public/wasm/clang.webc
+      const clangWebcUrl = new URL('/wasm/clang.webc', window.location.origin).href;
+      const response = await fetch(clangWebcUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch clang.webc: ${response.status} ${response.statusText}`);
+      }
+      const clangBinary = new Uint8Array(await response.arrayBuffer());
+      this.clangPkg = await Wasmer.fromFile(clangBinary);
 
       onProgress?.({
         stage: 'ready',
