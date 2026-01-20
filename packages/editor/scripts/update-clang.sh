@@ -81,6 +81,6 @@ npx wrangler r2 object put "$R2_BUCKET/$R2_PATH" \
 echo ""
 echo "✓ Upload complete!"
 echo ""
-echo "R2 URL: https://pub-cdc33247a76e4568911cc6c537996476.r2.dev/$R2_PATH"
+echo "R2 URL: https://assets.typedcode.dev/$R2_PATH"
 echo ""
 echo "Note: If you set up a custom domain, update the URL in CExecutor.ts"
