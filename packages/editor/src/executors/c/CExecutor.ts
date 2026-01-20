@@ -30,6 +30,12 @@ int main() {
 /**
  * Error patterns that indicate runtime corruption requiring reset
  */
+/**
+ * Clang compiler version hosted on Cloudflare R2
+ * Update this when uploading a new version via scripts/update-clang.sh
+ */
+const CLANG_VERSION = '0.1.1';
+
 const RUNTIME_ERROR_PATTERNS = [
   'runtimeerror',
   'memory access out of bounds',
@@ -97,7 +103,8 @@ export class CExecutor extends BaseExecutor {
       // Load clang package from Cloudflare R2 to avoid:
       // 1. CORS issues with Wasmer CDN
       // 2. Cloudflare Pages 25MB file size limit
-      const clangWebcUrl = 'https://assets.typedcode.dev/wasm/clang.webc';
+      // Version in filename ensures cache busting when updated
+      const clangWebcUrl = `https://assets.typedcode.dev/wasm/clang-${CLANG_VERSION}.webc`;
       const response = await fetch(clangWebcUrl);
       if (!response.ok) {
         throw new Error(`Failed to fetch clang.webc: ${response.status} ${response.statusText}`);

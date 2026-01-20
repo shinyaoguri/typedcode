@@ -3,8 +3,10 @@
 #
 # Usage: ./scripts/update-clang.sh
 #
-# This script downloads the latest clang package from Wasmer CDN
-# and uploads it to Cloudflare R2.
+# This script:
+# 1. Downloads the latest clang package from Wasmer CDN
+# 2. Uploads it to Cloudflare R2 with version in filename
+# 3. Updates CLANG_VERSION in CExecutor.ts
 #
 # Prerequisites:
 #   - wrangler CLI installed and authenticated
@@ -13,10 +15,10 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXECUTOR_FILE="$SCRIPT_DIR/../src/executors/c/CExecutor.ts"
 TEMP_DIR=$(mktemp -d)
 CLANG_WEBC="$TEMP_DIR/clang.webc"
 R2_BUCKET="typedcode-assets"
-R2_PATH="wasm/clang.webc"
 
 cleanup() {
     rm -rf "$TEMP_DIR"
@@ -41,11 +43,27 @@ VERSION_INFO=$(curl -s "https://registry.wasmer.io/graphql" -X POST \
 VERSION=$(echo "$VERSION_INFO" | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
 CREATED_AT=$(echo "$VERSION_INFO" | grep -o '"createdAt":"[^"]*"' | cut -d'"' -f4)
 
+if [ -z "$VERSION" ]; then
+    echo "Error: Could not get version from Wasmer registry"
+    exit 1
+fi
+
 echo "Latest version: $VERSION"
 echo "Created at: $CREATED_AT"
 echo ""
 
+# Check current version in CExecutor.ts
+CURRENT_VERSION=$(grep "const CLANG_VERSION = " "$EXECUTOR_FILE" | grep -o "'[^']*'" | tr -d "'")
+echo "Current version in CExecutor.ts: $CURRENT_VERSION"
+
+if [ "$VERSION" = "$CURRENT_VERSION" ]; then
+    echo ""
+    echo "Already up to date!"
+    exit 0
+fi
+
 # Get the webc hash
+echo ""
 echo "To download, you need to find the webc hash from:"
 echo "  https://wasmer.io/syrusakbary/clang"
 echo ""
@@ -71,8 +89,9 @@ FILE_SIZE=$(ls -lh "$CLANG_WEBC" | awk '{print $5}')
 echo "Downloaded: $FILE_SIZE"
 echo ""
 
-# Upload to R2
-echo "Uploading to Cloudflare R2..."
+# Upload to R2 with version in filename
+R2_PATH="wasm/clang-${VERSION}.webc"
+echo "Uploading to Cloudflare R2 as $R2_PATH..."
 npx wrangler r2 object put "$R2_BUCKET/$R2_PATH" \
     --file="$CLANG_WEBC" \
     --content-type="application/octet-stream" \
@@ -80,7 +99,27 @@ npx wrangler r2 object put "$R2_BUCKET/$R2_PATH" \
 
 echo ""
 echo "✓ Upload complete!"
+
+# Update CExecutor.ts
 echo ""
+echo "Updating CExecutor.ts..."
+sed -i '' "s/const CLANG_VERSION = '.*'/const CLANG_VERSION = '${VERSION}'/" "$EXECUTOR_FILE"
+
+# Verify the update
+NEW_VERSION=$(grep "const CLANG_VERSION = " "$EXECUTOR_FILE" | grep -o "'[^']*'" | tr -d "'")
+if [ "$NEW_VERSION" = "$VERSION" ]; then
+    echo "✓ CExecutor.ts updated to version $VERSION"
+else
+    echo "Error: Failed to update CExecutor.ts"
+    exit 1
+fi
+
+echo ""
+echo "=== Summary ==="
 echo "R2 URL: https://assets.typedcode.dev/$R2_PATH"
+echo "Version: $CURRENT_VERSION -> $VERSION"
 echo ""
-echo "Note: If you set up a custom domain, update the URL in CExecutor.ts"
+echo "Next steps:"
+echo "  1. Test locally: npm run dev:editor"
+echo "  2. Commit the change: git add src/executors/c/CExecutor.ts"
+echo "  3. Push and deploy"
