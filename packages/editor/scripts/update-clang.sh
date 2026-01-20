@@ -1,13 +1,13 @@
 #!/bin/bash
-# Script to update the clang.webc file in GitHub Releases
+# Script to update the clang.webc file in Cloudflare R2
 #
 # Usage: ./scripts/update-clang.sh
 #
 # This script downloads the latest clang package from Wasmer CDN
-# and uploads it to GitHub Releases.
+# and uploads it to Cloudflare R2.
 #
 # Prerequisites:
-#   - gh CLI installed and authenticated
+#   - wrangler CLI installed and authenticated
 #   - curl installed
 
 set -e
@@ -15,25 +15,20 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_DIR=$(mktemp -d)
 CLANG_WEBC="$TEMP_DIR/clang.webc"
-REPO="shinyaoguri/typedcode"
-RELEASE_TAG="wasm-assets"
+R2_BUCKET="typedcode-assets"
+R2_PATH="wasm/clang.webc"
 
 cleanup() {
     rm -rf "$TEMP_DIR"
 }
 trap cleanup EXIT
 
-echo "=== Clang WebC Updater ==="
+echo "=== Clang WebC Updater (Cloudflare R2) ==="
 echo ""
 
 # Check prerequisites
-if ! command -v gh &> /dev/null; then
-    echo "Error: gh CLI is not installed. Install it with: brew install gh"
-    exit 1
-fi
-
-if ! gh auth status &> /dev/null; then
-    echo "Error: gh CLI is not authenticated. Run: gh auth login"
+if ! command -v npx &> /dev/null; then
+    echo "Error: npx is not installed."
     exit 1
 fi
 
@@ -76,26 +71,16 @@ FILE_SIZE=$(ls -lh "$CLANG_WEBC" | awk '{print $5}')
 echo "Downloaded: $FILE_SIZE"
 echo ""
 
-# Check if release exists
-if gh release view "$RELEASE_TAG" --repo "$REPO" &> /dev/null; then
-    echo "Updating existing release: $RELEASE_TAG"
-
-    # Delete old asset if exists
-    gh release delete-asset "$RELEASE_TAG" clang.webc --repo "$REPO" --yes 2>/dev/null || true
-
-    # Upload new asset
-    gh release upload "$RELEASE_TAG" "$CLANG_WEBC" --repo "$REPO"
-else
-    echo "Creating new release: $RELEASE_TAG"
-    gh release create "$RELEASE_TAG" \
-        --title "WASM Assets" \
-        --notes "Static WASM assets for the editor (clang compiler v$VERSION)" \
-        --repo "$REPO" \
-        "$CLANG_WEBC"
-fi
+# Upload to R2
+echo "Uploading to Cloudflare R2..."
+npx wrangler r2 object put "$R2_BUCKET/$R2_PATH" \
+    --file="$CLANG_WEBC" \
+    --content-type="application/octet-stream" \
+    --remote
 
 echo ""
 echo "✓ Upload complete!"
 echo ""
-echo "Release URL: https://github.com/$REPO/releases/tag/$RELEASE_TAG"
-echo "Download URL: https://github.com/$REPO/releases/download/$RELEASE_TAG/clang.webc"
+echo "R2 URL: https://pub-cdc33247a76e4568911cc6c537996476.r2.dev/$R2_PATH"
+echo ""
+echo "Note: If you set up a custom domain, update the URL in CExecutor.ts"

@@ -94,11 +94,11 @@ export class CExecutor extends BaseExecutor {
         percentage: 30,
       });
 
-      // Load clang package from GitHub Releases to avoid:
+      // Load clang package from Cloudflare R2 to avoid:
       // 1. CORS issues with Wasmer CDN
       // 2. Cloudflare Pages 25MB file size limit
       const clangWebcUrl =
-        'https://github.com/shinyaoguri/typedcode/releases/download/wasm-assets/clang.webc';
+        'https://pub-cdc33247a76e4568911cc6c537996476.r2.dev/wasm/clang.webc';
       const response = await fetch(clangWebcUrl);
       if (!response.ok) {
         throw new Error(`Failed to fetch clang.webc: ${response.status} ${response.statusText}`);
