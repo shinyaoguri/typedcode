@@ -6,7 +6,7 @@
 import type { ILanguageExecutor, ParsedError } from '../executors/interfaces/ILanguageExecutor.js';
 import type { CTerminal } from '../terminal/CTerminal.js';
 import type { EventType } from '@typedcode/shared';
-import { getCExecutor } from '../executors/c/CExecutor.js';
+import { getCExecutor, WasmerSdkCorruptedError } from '../executors/c/CExecutor.js';
 import { getCppExecutor } from '../executors/cpp/CppExecutor.js';
 import { getJavaScriptExecutor } from '../executors/javascript/JavaScriptExecutor.js';
 import { getTypeScriptExecutor } from '../executors/typescript/TypeScriptExecutor.js';
@@ -122,6 +122,9 @@ export class CodeExecutionController {
       return;
     }
 
+    // Check if runtime needs recovery (for C/C++ after forced stop)
+    const needsRecovery = executor.isRuntimeCorrupted?.() ?? false;
+
     this.currentExecutor = executor;
     this.isRunning = true;
     this.callbacks.onRunStart?.();
@@ -131,6 +134,12 @@ export class CodeExecutionController {
     const langName = executor.config.name;
 
     this.terminal?.clear();
+
+    // Show recovery message if needed
+    if (needsRecovery) {
+      this.terminal?.writeInfo('$ Recovering from previous error...\n');
+      this.callbacks.onRuntimeStatusChange?.(target.language, 'loading');
+    }
 
     if (isCompiled) {
       this.terminal?.writeInfo(`$ Compiling ${langName} program (${target.filename})...\n`);
@@ -190,7 +199,17 @@ export class CodeExecutionController {
     } catch (error) {
       console.error('[CodeExecutionController] Execution error:', error);
       this.callbacks.onHideClangLoading?.();
-      this.terminal?.writeError('Execution error: ' + error + '\n');
+
+      // Handle unrecoverable Wasmer SDK corruption
+      if (error instanceof WasmerSdkCorruptedError) {
+        this.terminal?.writeError(
+          '\n[System] The WebAssembly runtime is corrupted and cannot be recovered.\n' +
+          '[System] Please reload the page to continue using the C/C++ compiler.\n'
+        );
+        this.callbacks.onRuntimeStatusChange?.(target.language, 'not-ready');
+      } else {
+        this.terminal?.writeError('Execution error: ' + error + '\n');
+      }
       this.callbacks.onNotification?.(t('notifications.executionFailed'));
     } finally {
       this.isRunning = false;
