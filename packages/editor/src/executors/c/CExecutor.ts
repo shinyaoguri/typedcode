@@ -40,6 +40,7 @@ const RUNTIME_ERROR_PATTERNS = [
   'runtimeerror',
   'memory access out of bounds',
   'unreachable executed',
+  'unreachable',
   'call stack exhausted',
   'integer overflow',
   'integer divide by zero',
@@ -52,7 +53,19 @@ const RUNTIME_ERROR_PATTERNS = [
   'indirect call type mismatch',
   'wasm trap',
   'aborted',
+  'atomics.wait',
 ];
+
+/**
+ * Error class for unrecoverable Wasmer SDK corruption
+ * When this error is thrown, user must reload the page
+ */
+export class WasmerSdkCorruptedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WasmerSdkCorruptedError';
+  }
+}
 
 /** Options for compiling with different settings */
 export interface CompileOptions {
@@ -71,6 +84,9 @@ export class CExecutor extends BaseExecutor {
   };
 
   protected clangPkg: Wasmer | null = null;
+
+  /** Cached Clang binary to avoid re-downloading on reset */
+  private clangBinary: Uint8Array | null = null;
 
   /** Currently running instance (for abort support) */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,23 +110,33 @@ export class CExecutor extends BaseExecutor {
 
       await init({ module: wasmUrl });
 
-      onProgress?.({
-        stage: 'compiler',
-        message: 'Downloading C compiler...',
-        percentage: 30,
-      });
+      // Cache Clang binary to avoid re-downloading on reset
+      if (!this.clangBinary) {
+        onProgress?.({
+          stage: 'compiler',
+          message: 'Downloading C compiler...',
+          percentage: 30,
+        });
 
-      // Load clang package from Cloudflare R2 to avoid:
-      // 1. CORS issues with Wasmer CDN
-      // 2. Cloudflare Pages 25MB file size limit
-      // Version in filename ensures cache busting when updated
-      const clangWebcUrl = `https://assets.typedcode.dev/wasm/clang-${CLANG_VERSION}.webc`;
-      const response = await fetch(clangWebcUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch clang.webc: ${response.status} ${response.statusText}`);
+        // Load clang package from Cloudflare R2 to avoid:
+        // 1. CORS issues with Wasmer CDN
+        // 2. Cloudflare Pages 25MB file size limit
+        // Version in filename ensures cache busting when updated
+        const clangWebcUrl = `https://assets.typedcode.dev/wasm/clang-${CLANG_VERSION}.webc`;
+        const response = await fetch(clangWebcUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch clang.webc: ${response.status} ${response.statusText}`);
+        }
+        this.clangBinary = new Uint8Array(await response.arrayBuffer());
+      } else {
+        onProgress?.({
+          stage: 'compiler',
+          message: 'Loading C compiler from cache...',
+          percentage: 30,
+        });
       }
-      const clangBinary = new Uint8Array(await response.arrayBuffer());
-      this.clangPkg = await Wasmer.fromFile(clangBinary);
+
+      this.clangPkg = await Wasmer.fromFile(this.clangBinary);
 
       onProgress?.({
         stage: 'ready',
@@ -119,7 +145,18 @@ export class CExecutor extends BaseExecutor {
       });
     } catch (error) {
       console.error('[CExecutor] Initialization failed:', error);
-      throw new Error(`Failed to initialize C compiler: ${error}`);
+
+      // Check if this is an unrecoverable Wasmer SDK corruption
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      if (this.isRuntimeCorruptionError(error)) {
+        // Mark as corrupted so we don't keep trying
+        this.markRuntimeCorrupted();
+        throw new WasmerSdkCorruptedError(
+          'The WebAssembly runtime is corrupted. Please reload the page to continue using the C/C++ compiler.'
+        );
+      }
+
+      throw new Error(`Failed to initialize C compiler: ${errorMsg}`);
     }
   }
 
@@ -135,11 +172,34 @@ export class CExecutor extends BaseExecutor {
     callbacks: ExecutionCallbacks,
     options: CompileOptions
   ): Promise<ExecutionResult> {
-    // Auto-reset if runtime was corrupted
+    // Auto-reset and reinitialize if runtime was corrupted
     if (this._runtimeCorrupted) {
-      console.log('[CExecutor] Runtime was corrupted, performing auto-reset...');
+      console.log('[CExecutor] Runtime was corrupted, attempting recovery...');
       callbacks.onProgress?.('Resetting runtime due to previous error...');
       await this.resetRuntime();
+
+      try {
+        // Reinitialize after reset (uses cached binary, so no re-download needed)
+        await this.initialize((progress) => {
+          callbacks.onProgress?.(progress.message);
+        });
+      } catch (error) {
+        // If reinitialization fails with SDK corruption, inform user to reload
+        if (error instanceof WasmerSdkCorruptedError) {
+          callbacks.onStderr(
+            '\n[System] The WebAssembly runtime is corrupted and cannot be recovered.\n' +
+            '[System] Please reload the page to continue using the C/C++ compiler.\n'
+          );
+          return {
+            success: false,
+            exitCode: 1,
+            stdout: '',
+            stderr: error.message,
+            error: error.message,
+          };
+        }
+        throw error;
+      }
     }
 
     if (!this._initialized || !this.clangPkg) {
@@ -310,14 +370,15 @@ static void __typedcode_init_stdout(void) {
       // Try to send SIGINT (Ctrl+C) via stdin
       // ASCII 3 (ETX) is the character sent when Ctrl+C is pressed
       if (this.runningStdin) {
-        this.sendSigint().catch((error) => {
-          console.error('[CExecutor] Failed to send SIGINT:', error);
+        this.sendSigint().catch(() => {
+          // Ignore errors - stream may already be closed
         });
       }
 
-      // Notify user that the program cannot be stopped immediately
+      // Notify user with improved message
       this.currentCallbacks?.onStderr(
-        '\n[System] Program stop requested. If the program does not stop, please reload the page.\n'
+        '\n[System] Stop requested. The program may not respond to interrupts.\n' +
+        '[System] Runtime will be automatically reset on next execution.\n'
       );
 
       // Mark runtime for reset as a fallback
@@ -327,7 +388,7 @@ static void __typedcode_init_stdout(void) {
       this.runningInstance = null;
       this.runningStdin = null;
       this.currentCallbacks = null;
-      console.log('[CExecutor] SIGINT sent, runtime marked for reset');
+      console.log('[CExecutor] Runtime marked for reset');
     }
   }
 
@@ -389,12 +450,23 @@ static void __typedcode_init_stdout(void) {
 
   /**
    * Reset the Wasmer runtime to a clean state
+   * Clears all instance references but keeps cached binary for fast reinitialization
    */
   override async resetRuntime(): Promise<void> {
-    console.log('[CExecutor] Resetting Wasmer runtime...');
+    console.log('[CExecutor] Performing full runtime reset...');
+
+    // Clear running instance references
+    this.runningInstance = null;
+    this.runningStdin = null;
+    this.currentCallbacks = null;
+
+    // Clear Clang package (but keep binary cached for fast reload)
     this.clangPkg = null;
+
+    // Reset base class state
     await super.resetRuntime();
-    console.log('[CExecutor] Runtime reset complete');
+
+    console.log('[CExecutor] Runtime reset complete, will reinitialize on next run');
   }
 
   parseErrors(stderr: string): ParsedError[] {
@@ -425,6 +497,10 @@ static void __typedcode_init_stdout(void) {
   override dispose(): void {
     super.dispose();
     this.clangPkg = null;
+    this.clangBinary = null; // Release cached binary on dispose
+    this.runningInstance = null;
+    this.runningStdin = null;
+    this.currentCallbacks = null;
   }
 }
 
