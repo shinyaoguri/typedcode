@@ -18,8 +18,8 @@
     "@typedcode/shared": "*"
   },
   "devDependencies": {
-    "@types/node": "^25.3.3",
-    "typescript": "^5.9.3"
+    "@types/node": "^25.5.0",
+    "typescript": "^6.0.2"
   },
   "engines": {
     "node": ">=22.0.0"
