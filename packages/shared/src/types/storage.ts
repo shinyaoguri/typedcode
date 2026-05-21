@@ -138,30 +138,12 @@ export interface MultiFileExportedProof {
 // 検証ページ関連
 // ============================================================================
 
-/** シークバー用イベント情報 */
-export interface SeekbarEventInfo {
-  type: EventType;
-  inputType: InputType | null;
-  timestamp: number;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | HumanAttestationEventData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | TemplateInjectionEventData | null;
-  dataLength: number;
-  dataPreview: string | null;
-  rangeOffset: number | null;
-  rangeLength: number | null;
-  range: TextRange | null;
-  description: string | null;
-  hash: string;
-}
-
 /** コンテンツキャッシュ */
 export type ContentCache = Map<number, string>;
 
 // ============================================================================
 // IndexedDB セッション永続化関連
 // ============================================================================
-
-/** IndexedDBセッションストレージのスキーマバージョン */
-export const INDEXEDDB_SESSION_VERSION = 1;
 
 /** セッションメタデータ（IndexedDB格納用） */
 export interface SessionMetadata {

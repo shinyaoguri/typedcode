@@ -828,9 +828,6 @@ export class TabManager {
   async loadFromStorage(): Promise<boolean> {
     try {
       const data = sessionStorage.getItem(STORAGE_KEY);
-      console.log('[DEBUG TabManager.loadFromStorage] STORAGE_KEY:', STORAGE_KEY);
-      console.log('[DEBUG TabManager.loadFromStorage] data exists:', data !== null);
-      console.log('[DEBUG TabManager.loadFromStorage] data length:', data?.length);
       if (!data) {
         // sessionStorageが空の場合、IndexedDBからのフォールバックを試みる
         console.log('[TabManager] sessionStorage is empty, trying IndexedDB fallback');
@@ -844,8 +841,6 @@ export class TabManager {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawStorage: any = JSON.parse(data);
-      console.log('[DEBUG TabManager.loadFromStorage] rawStorage.version:', rawStorage.version);
-      console.log('[DEBUG TabManager.loadFromStorage] tabs count:', Object.keys(rawStorage.tabs ?? {}).length);
 
       // バージョン別に処理を分岐
       if (rawStorage.version === 1) {
@@ -863,7 +858,6 @@ export class TabManager {
       }
     } catch (e) {
       console.error('[TabManager] Failed to load from storage:', e);
-      console.error('[DEBUG TabManager.loadFromStorage] Error details:', e);
       return false;
     }
   }
@@ -932,8 +926,6 @@ export class TabManager {
       await this.switchTab(firstTabId);
     }
 
-    console.log('[DEBUG TabManager.loadFromStorageV1] SUCCESS - tabs restored:', this.tabs.size);
-    console.log('[DEBUG TabManager.loadFromStorageV1] activeTabId:', this.activeTabId);
     console.log('[TabManager] V1 format loaded, will migrate to V2 on next save');
     return true;
   }
@@ -1040,9 +1032,6 @@ export class TabManager {
       const firstTabId = Array.from(this.tabs.keys())[0]!;
       await this.switchTab(firstTabId);
     }
-
-    console.log('[DEBUG TabManager.loadFromStorageV2] SUCCESS - tabs restored:', this.tabs.size);
-    console.log('[DEBUG TabManager.loadFromStorageV2] activeTabId:', this.activeTabId);
 
     return true;
   }

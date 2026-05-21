@@ -14,7 +14,6 @@ export interface TabUIControllerOptions {
   container: HTMLElement;
   tabManager: TabManager;
   basePath: string;
-  onNotification?: (message: string) => void;
 }
 
 /** ドラッグ状態 */
@@ -38,7 +37,6 @@ export class TabUIController {
   private container: HTMLElement;
   private tabManager: TabManager;
   private basePath: string;
-  private _onNotification: ((message: string) => void) | null = null;
 
   // ドラッグ&ドロップ関連
   private dragState: DragState = {
@@ -70,7 +68,6 @@ export class TabUIController {
     this.container = options.container;
     this.tabManager = options.tabManager;
     this.basePath = options.basePath;
-    this._onNotification = options.onNotification ?? null;
   }
 
   /**
@@ -641,6 +638,5 @@ export class TabUIController {
   dispose(): void {
     this.cleanupDrag();
     this.container.innerHTML = '';
-    this._onNotification = null;
   }
 }

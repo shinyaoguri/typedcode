@@ -872,13 +872,3 @@ export async function initSessionStorageService(): Promise<SessionStorageService
   }
   return service;
 }
-
-/**
- * SessionStorageServiceをリセット（テスト用）
- */
-export function resetSessionStorageService(): void {
-  if (sessionStorageServiceInstance) {
-    sessionStorageServiceInstance.close();
-    sessionStorageServiceInstance = null;
-  }
-}

@@ -125,19 +125,6 @@ export class TabController {
     const previousStatus = this.deps.uiState.getCurrentDisplayedTabStatus();
     const statusChanged = isSameTab && previousStatus !== tabState.status;
 
-    console.log('[DEBUG] showTabContent:', {
-      id,
-      forceRefresh,
-      isSameTab,
-      statusChanged,
-      previousStatus,
-      status: tabState.status,
-      hasVerificationResult: !!tabState.verificationResult,
-      hasProofData: !!tabState.proofData,
-      isPlaintext: tabState.isPlaintext,
-      isImage: tabState.isImage,
-    });
-
     // プレーンテキストファイルの場合
     if (tabState.isPlaintext) {
       if (!isSameTab || forceRefresh || statusChanged) {

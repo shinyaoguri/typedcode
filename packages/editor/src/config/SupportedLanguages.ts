@@ -103,22 +103,6 @@ export function getLanguageDefinition(id: string): LanguageDefinition | undefine
   return SUPPORTED_LANGUAGES.find((lang) => lang.id === id);
 }
 
-/** 実行可能な言語のみを取得 */
-export function getExecutableLanguages(): LanguageDefinition[] {
-  return SUPPORTED_LANGUAGES.filter((lang) => lang.executable);
-}
-
-/** 全言語IDのリスト */
-export function getAllLanguageIds(): LanguageId[] {
-  return SUPPORTED_LANGUAGES.map((lang) => lang.id);
-}
-
-/** ファイル拡張子から言語IDを取得 */
-export function getLanguageIdByExtension(extension: string): LanguageId | undefined {
-  const ext = extension.startsWith('.') ? extension.slice(1) : extension;
-  return SUPPORTED_LANGUAGES.find((lang) => lang.fileExtension === ext)?.id;
-}
-
 /** ファイル拡張子マッピング (後方互換性のため) */
 export const FILE_EXTENSIONS: Record<string, string> = Object.fromEntries(
   SUPPORTED_LANGUAGES.map((lang) => [lang.id, lang.fileExtension])

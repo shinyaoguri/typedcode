@@ -131,6 +131,12 @@ export interface ILanguageExecutor {
   parseErrors(stderr: string): ParsedError[];
 
   /**
+   * Whether the runtime has become corrupted and needs to be reset before the
+   * next execution. Optional: executors extending BaseExecutor inherit this.
+   */
+  isRuntimeCorrupted?(): boolean;
+
+  /**
    * Clean up resources used by the executor
    */
   dispose(): void;

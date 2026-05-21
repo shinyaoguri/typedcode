@@ -40,7 +40,6 @@ export class FolderController {
   private deps: FolderControllerDependencies;
   private fsAccessService: FileSystemAccessService;
   private syncManager: FolderSyncManager;
-  private watchedRootHandle: FileSystemDirectoryHandle | null = null;
   private watchedRootFolderId: string | null = null;
 
   constructor(deps: FolderControllerDependencies) {
@@ -166,7 +165,6 @@ export class FolderController {
     }
 
     // 監視を開始
-    this.watchedRootHandle = handle;
     await this.syncManager.startWatching(handle, 3000);
 
     this.deps.onStatusBarUpdate?.();

@@ -35,7 +35,6 @@ export class BrowserPreviewPanel {
   private placeholder: HTMLElement | null = null;
   private filenameEl: HTMLElement | null = null;
   private editorContainer: HTMLElement | null = null;
-  private _mainEl: HTMLElement | null = null;
 
   // 表示状態
   private _isVisible = false;
@@ -75,7 +74,6 @@ export class BrowserPreviewPanel {
     this.iframe = document.getElementById('preview-iframe') as HTMLIFrameElement;
     this.placeholder = document.getElementById('preview-placeholder');
     this.filenameEl = document.getElementById('preview-filename');
-    this._mainEl = document.querySelector('main');
 
     if (!this.panelEl) {
       console.error('[BrowserPreviewPanel] Panel element not found');
@@ -633,6 +631,5 @@ export class BrowserPreviewPanel {
     this.placeholder = null;
     this.filenameEl = null;
     this.editorContainer = null;
-    this._mainEl = null;
   }
 }

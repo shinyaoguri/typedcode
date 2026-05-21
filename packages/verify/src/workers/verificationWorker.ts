@@ -43,6 +43,7 @@ interface ResultResponse {
     isPureTyping: boolean;
     message?: string;
     errorAt?: number;
+    totalEvents?: number;
     poswStats?: {
       count: number;
       avgTimeMs: number;

@@ -4,12 +4,10 @@
 import { t } from '../i18n/index.js';
 
 export class StatusBarUI {
-  private statusbar: HTMLElement;
   private queueStatus: HTMLElement;
   private fileCount: HTMLElement;
 
   constructor() {
-    this.statusbar = document.getElementById('statusbar')!;
     this.queueStatus = document.getElementById('queue-status')!;
     this.fileCount = document.getElementById('file-count')!;
   }

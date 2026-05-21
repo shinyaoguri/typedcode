@@ -176,14 +176,3 @@ export function showSessionRecoveryDialog(
     }
   });
 }
-
-/**
- * セッション復旧ダイアログを非表示
- */
-export function hideSessionRecoveryDialog(): void {
-  const overlay = document.getElementById('session-recovery-overlay');
-  if (overlay) {
-    overlay.classList.add('hidden');
-    setTimeout(() => overlay.remove(), 200);
-  }
-}

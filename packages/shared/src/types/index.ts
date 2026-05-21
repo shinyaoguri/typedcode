@@ -121,7 +121,6 @@ export type {
   MultiTabStorage,
   MultiFileExportEntry,
   MultiFileExportedProof,
-  SeekbarEventInfo,
   ContentCache,
   // IndexedDB セッション永続化関連
   SessionMetadata,
@@ -138,7 +137,6 @@ export type {
   LightweightTabState,
   LightweightMultiTabStorage,
 } from './storage.js';
-export { INDEXEDDB_SESSION_VERSION } from './storage.js';
 
 // 共通
 export type { Theme } from './common.js';

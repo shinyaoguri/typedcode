@@ -4,7 +4,7 @@
  */
 import { ThemeManager } from './ThemeManager';
 import { ActivityBar } from './ActivityBar';
-import { Sidebar, type FileStatus } from './Sidebar';
+import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 import { StatusBarUI } from './StatusBarUI';
 import { WelcomePanel } from './WelcomePanel';
@@ -18,12 +18,11 @@ import { FileController } from './controllers/FileController';
 import { VerificationController } from './controllers/VerificationController';
 import { ChartController } from './controllers/ChartController';
 import { FolderController } from './controllers/FolderController';
-import { t, getI18n } from '../i18n/index';
+import { getI18n } from '../i18n/index';
 import { showAboutDialog } from './AboutDialog';
 
 export class AppController {
   private themeManager: ThemeManager;
-  private activityBar: ActivityBar;
   private sidebar: Sidebar;
   private tabBar: TabBar;
   private statusBar: StatusBarUI;
@@ -50,8 +49,8 @@ export class AppController {
     // Initialize theme
     this.themeManager = new ThemeManager();
 
-    // Initialize UI components
-    this.activityBar = new ActivityBar({
+    // Initialize UI components (registers its own DOM listeners; no reference needed)
+    new ActivityBar({
       onOpenFile: () => this.openFileDialog(),
       onOpenFolder: () => this.folderController.openFolderDialog(),
       onThemeToggle: () => this.themeManager.toggle(),
@@ -272,6 +271,7 @@ export class AppController {
         event.returnValue = '';
         return '';
       }
+      return undefined;
     });
   }
 
@@ -280,8 +280,7 @@ export class AppController {
   }
 
   private async handleFilesSelected(files: FileList): Promise<void> {
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    for (const file of Array.from(files)) {
       await this.fileController.processFile(file);
     }
   }
@@ -356,7 +355,6 @@ export class AppController {
     // TabManagerの状態に基づいて検証中かどうかを判定
     let pendingOrVerifyingCount = 0;
     const allTabs = this.tabManager.getAllTabs();
-    console.log('[DEBUG] updateStatusBar - allTabs:', allTabs.map(t => ({ id: t.id, status: t.status, filename: t.filename })));
 
     for (const tab of allTabs) {
       if (tab.status === 'pending' || tab.status === 'verifying') {
@@ -364,14 +362,10 @@ export class AppController {
       }
     }
 
-    console.log('[DEBUG] updateStatusBar - pendingOrVerifyingCount:', pendingOrVerifyingCount);
-
     if (pendingOrVerifyingCount > 0) {
-      console.log('[DEBUG] updateStatusBar - calling setVerifying');
       const state = this.uiState.getState();
       this.statusBar.setVerifying(state.completedCount, state.totalCount);
     } else {
-      console.log('[DEBUG] updateStatusBar - calling setReady');
       this.statusBar.setReady();
     }
   }

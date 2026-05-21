@@ -9,7 +9,6 @@ import {
   type MetricKey,
   type TypingPatternIssue,
   type PatternJudgment,
-  type IssueSeverity,
 } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
 

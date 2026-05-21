@@ -99,7 +99,6 @@ import {
 } from './ui/dialogs/ScreenCaptureDialogs.js';
 import { initSessionStorageService } from './services/SessionStorageService.js';
 import { showSessionRecoveryDialog } from './ui/dialogs/SessionRecoveryDialog.js';
-import { clearStorageAsync } from './utils/StorageClearHelper.js';
 
 // App モジュールからのインポート
 import {
@@ -285,7 +284,6 @@ async function initializeTabManager(
       container: editorTabsContainer,
       tabManager: ctx.tabManager,
       basePath: import.meta.env.BASE_URL,
-      onNotification: showNotification,
     });
   }
 
@@ -358,7 +356,6 @@ function initializeEventRecorder(): void {
   ctx.eventRecorder = new EventRecorder({
     tabManager: ctx.tabManager!,
     getLogViewer: () => ctx.logViewer,
-    contentRegistry: ctx.contentRegistry,
     onStatusUpdate: () => updateProofStatus(ctx),
     onError: (msg) => showNotification(msg),
   });
@@ -723,35 +720,6 @@ function recordTermsAcceptance(): void {
 }
 
 // ========================================
-// データクリア関数
-// ========================================
-
-/**
- * アプリケーションに関連する全てのデータを完全にクリア
- * - localStorage
- * - sessionStorage
- * - IndexedDB (スクリーンショット等)
- * - Cookies
- * - Service Worker Cache
- */
-async function _clearAllAppData(): Promise<void> {
-  console.log('[TypedCode] Clearing all app data...');
-
-  // ストレージをクリア（非同期版）
-  await clearStorageAsync();
-
-  // 画面共有を停止
-  try {
-    ctx.trackers.screenshot?.dispose();
-    console.log('[TypedCode] Screenshot tracker disposed');
-  } catch (e) {
-    console.warn('[TypedCode] Failed to dispose screenshot tracker:', e);
-  }
-
-  console.log('[TypedCode] All app data cleared');
-}
-
-// ========================================
 // メイン初期化関数
 // ========================================
 
@@ -1007,7 +975,6 @@ async function initializeApp(): Promise<void> {
         container: editorTabsContainer,
         tabManager: ctx.tabManager,
         basePath: import.meta.env.BASE_URL,
-        onNotification: showNotification,
       });
     }
 

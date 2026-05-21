@@ -4,7 +4,7 @@
  * Platform-agnostic (works in browser and Node.js)
  */
 
-import type { StoredEvent } from './types.js';
+import type { StoredEvent, KeystrokeDynamicsData } from './types.js';
 
 // ============================================================================
 // 型定義
@@ -102,20 +102,35 @@ export function countDropEvents(events?: StoredEvent[]): number {
  * @returns Chart statistics (keydown count, avg dwell/flight times, mouse event count)
  */
 export function calculateChartStats(events: StoredEvent[]): ChartStats {
+  // Upper bound for a plausible dwell/flight time; matches TimelineChart filtering.
+  const MAX_VALID_TIME = 10000;
   let keydownCount = 0;
   let mouseEventCount = 0;
   const dwellTimes: number[] = [];
   const flightTimes: number[] = [];
-  let lastKeyUpTime = 0;
+
+  // dwellTime/flightTime are measured at capture time and stored on the keystroke
+  // events (dwellTime on keyUp, flightTime on keyDown). Read the recorded values so
+  // these stats stay consistent with the timeline chart.
+  const extractValidTime = (value: number | undefined): number | null =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_VALID_TIME
+      ? value
+      : null;
 
   for (const event of events) {
     if (event.type === 'keyDown') {
       keydownCount++;
-      if (lastKeyUpTime > 0) {
-        flightTimes.push(event.timestamp - lastKeyUpTime);
+      const data = event.data as KeystrokeDynamicsData | null;
+      const flight = data && typeof data === 'object' ? extractValidTime(data.flightTime) : null;
+      if (flight !== null) {
+        flightTimes.push(flight);
       }
     } else if (event.type === 'keyUp') {
-      lastKeyUpTime = event.timestamp;
+      const data = event.data as KeystrokeDynamicsData | null;
+      const dwell = data && typeof data === 'object' ? extractValidTime(data.dwellTime) : null;
+      if (dwell !== null) {
+        dwellTimes.push(dwell);
+      }
     } else if (event.type === 'mousePositionChange') {
       mouseEventCount++;
     }

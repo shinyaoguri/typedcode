@@ -509,7 +509,6 @@ let executorInstance: CExecutor | null = null;
 
 /**
  * Get the singleton CExecutor instance
- * @deprecated Use ExecutorRegistry.get('c') instead
  */
 export function getCExecutor(): CExecutor {
   if (!executorInstance) {

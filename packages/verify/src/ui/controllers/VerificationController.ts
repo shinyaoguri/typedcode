@@ -8,7 +8,7 @@ import type { Sidebar, FileStatus } from '../Sidebar';
 import type { StatusBarUI } from '../StatusBarUI';
 import type { ResultPanel } from '../ResultPanel';
 import type { TabController } from './TabController';
-import type { ProgressDetails, VerificationResult } from '../../types';
+import type { ProgressDetails, VerificationResultData } from '../../types';
 
 export interface VerificationControllerDependencies {
   tabManager: VerifyTabManager;
@@ -63,9 +63,7 @@ export class VerificationController {
   /**
    * 検証完了を処理
    */
-  handleComplete(id: string, result: VerificationResult): void {
-    console.log('[DEBUG] handleVerificationComplete called', { id, chainValid: result.chainValid });
-
+  handleComplete(id: string, result: VerificationResultData): void {
     // 現在のタブ状態を取得（ソースファイル不一致情報を確認するため）
     const currentTabState = this.deps.tabManager.getTab(id);
     const hasSourceMismatch = !!currentTabState?.associatedSourceMismatch;
@@ -74,18 +72,15 @@ export class VerificationController {
     let status: FileStatus;
     if (!result.chainValid) {
       status = 'error';
-    } else if (!result.pureTyping || hasSourceMismatch) {
+    } else if (!result.isPureTyping || hasSourceMismatch) {
       status = 'warning';
     } else {
       status = 'success';
     }
 
     this.deps.uiState.incrementCompleted();
-    const state = this.deps.uiState.getState();
-    console.log('[DEBUG] completedCount:', state.completedCount, 'totalCount:', state.totalCount);
 
     this.deps.tabManager.updateTab(id, { verificationResult: result, status });
-    console.log('[DEBUG] tabManager.updateTab done, new status:', status, 'hasSourceMismatch:', hasSourceMismatch);
 
     this.deps.sidebar.updateFileStatus(id, status);
 

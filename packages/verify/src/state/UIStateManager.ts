@@ -69,14 +69,6 @@ export class UIStateManager {
   }
 
   /**
-   * Get current displayed tab ID
-   * @deprecated Use VerifyTabManager.getActiveTabId() instead
-   */
-  getCurrentDisplayedTabId(): string | null {
-    return this.currentDisplayedTabId;
-  }
-
-  /**
    * Set current displayed tab ID and status
    * @deprecated Use VerifyTabManager.switchTab() instead
    */
@@ -99,14 +91,6 @@ export class UIStateManager {
    */
   isDisplayed(id: string): boolean {
     return this.currentDisplayedTabId === id;
-  }
-
-  /**
-   * Get next filename number for duplicate handling
-   * @deprecated Use FileNameGenerator.getNextNumber() instead
-   */
-  getNextFilenameNumber(key: string): number {
-    return this.fileNameGenerator.getNextNumber(key);
   }
 
   /**

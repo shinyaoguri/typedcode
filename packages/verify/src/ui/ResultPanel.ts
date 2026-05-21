@@ -71,13 +71,11 @@ export class ResultPanel {
   private pasteCount: HTMLElement;
   private internalPasteCount: HTMLElement;
   private externalInput: HTMLElement;
-  private cardTyping: HTMLElement;
 
   private chainIcon: HTMLElement;
   private chainBadge: HTMLElement;
   private chainMethod: HTMLElement;
   private chainEvents: HTMLElement;
-  private cardChain: HTMLElement;
   private screenshotVerificationRow: HTMLElement;
   private screenshotVerification: HTMLElement;
   // Chain error details
@@ -101,7 +99,6 @@ export class ResultPanel {
   private poswBadge: HTMLElement;
   private poswIterations: HTMLElement;
   private poswTotalTime: HTMLElement;
-  private cardPosw: HTMLElement;
 
   private attestationIcon: HTMLElement;
   private attestationBadge: HTMLElement;
@@ -141,7 +138,6 @@ export class ResultPanel {
   private vpOverallFill: HTMLElement;
   private vpOverallPercent: HTMLElement;
   private vpOverallTime: HTMLElement;
-  private vpSteps: HTMLElement;
   private vpDetail: HTMLElement;
   private vpDetailText: HTMLElement;
   private progressStartTime: number = 0;
@@ -167,7 +163,6 @@ export class ResultPanel {
     this.patternMiniJudgment = document.getElementById('pattern-mini-judgment')!;
 
     // Typing card
-    this.cardTyping = document.getElementById('card-typing')!;
     this.typingIcon = document.getElementById('typing-icon')!;
     this.typingBadge = document.getElementById('typing-badge')!;
     this.pasteCount = document.getElementById('paste-count')!;
@@ -175,7 +170,6 @@ export class ResultPanel {
     this.externalInput = document.getElementById('external-input')!;
 
     // Chain card
-    this.cardChain = document.getElementById('card-chain')!;
     this.chainIcon = document.getElementById('chain-icon')!;
     this.chainBadge = document.getElementById('chain-badge')!;
     this.chainMethod = document.getElementById('chain-method')!;
@@ -200,7 +194,6 @@ export class ResultPanel {
     this.chainSegmentInfo = document.getElementById('chain-segment-info')!;
 
     // PoSW card
-    this.cardPosw = document.getElementById('card-posw')!;
     this.poswIcon = document.getElementById('posw-icon')!;
     this.poswBadge = document.getElementById('posw-badge')!;
     this.poswIterations = document.getElementById('posw-iterations')!;
@@ -245,7 +238,6 @@ export class ResultPanel {
     this.vpOverallFill = document.getElementById('vp-overall-fill')!;
     this.vpOverallPercent = document.getElementById('vp-overall-percent')!;
     this.vpOverallTime = document.getElementById('vp-overall-time')!;
-    this.vpSteps = document.getElementById('vp-steps')!;
     this.vpDetail = document.getElementById('vp-detail')!;
     this.vpDetailText = document.getElementById('vp-detail-text')!;
 

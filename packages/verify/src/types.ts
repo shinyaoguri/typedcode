@@ -13,13 +13,6 @@ export interface ProofFile extends ExportedProof {
 // Content cache type
 export type ContentCache = Map<number, string>;
 
-// Loading log state
-export interface LoadingLog {
-  container: HTMLElement | null;
-  logList: HTMLElement | null;
-  startTime: number;
-}
-
 // Mouse trajectory cache
 export interface MouseTrajectoryCache {
   positions: { x: number; y: number; time: number; eventIndex: number }[];
@@ -47,12 +40,6 @@ export interface IntegratedTimelineCache {
   keyDownData: { time: number; flightTime: number; key: string; eventIndex: number }[];
   maxSpeed: number;
   maxKeystrokeTime: number;
-}
-
-// External input marker
-export interface ExternalInputMarker {
-  time: number;
-  type: InputType;
 }
 
 // ============================================================================
@@ -182,36 +169,6 @@ export interface WorkerResponseMessage {
   // error
   error?: string;
 }
-
-// ============================================================================
-// 新規追加: リファクタリング用の型定義
-// ============================================================================
-
-/** ファイル処理モード */
-export type FileProcessMode = 'single' | 'multi';
-
-/** UI表示状態 */
-export type UIDisplayState = 'dropzone' | 'loading' | 'result' | 'error';
-
-/** パネル表示設定 */
-export interface PanelVisibility {
-  metadata: boolean;
-  chain: boolean;
-  posw: boolean;
-  attestation: boolean;
-  externalInput: boolean;
-  charts: boolean;
-}
-
-/** デフォルトのパネル表示設定 */
-export const DEFAULT_PANEL_VISIBILITY: PanelVisibility = {
-  metadata: true,
-  chain: true,
-  posw: true,
-  attestation: true,
-  externalInput: true,
-  charts: true,
-};
 
 // ============================================================================
 // UI コンポーネント用の型定義

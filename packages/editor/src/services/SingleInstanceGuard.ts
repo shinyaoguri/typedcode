@@ -137,16 +137,6 @@ export function showDuplicateInstanceOverlay(): void {
 }
 
 /**
- * 重複インスタンスブロック用のオーバーレイを非表示
- */
-export function hideDuplicateInstanceOverlay(): void {
-  const overlay = document.getElementById('duplicate-instance-overlay');
-  if (overlay) {
-    overlay.classList.add('hidden');
-  }
-}
-
-/**
  * 未対応ブラウザ（Safari等）用のオーバーレイを表示
  */
 export function showUnsupportedBrowserOverlay(): void {

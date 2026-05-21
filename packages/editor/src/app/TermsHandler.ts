@@ -59,29 +59,3 @@ export async function showTermsModal(): Promise<void> {
     termsAgreeBtn.addEventListener('click', handleAgree);
   });
 }
-
-/**
- * 利用規約の承諾データを取得
- */
-export function getTermsAcceptanceData(): {
-  version: string;
-  timestamp: number;
-  agreedAt: string;
-} | null {
-  const termsData = localStorage.getItem(TERMS_ACCEPTED_KEY);
-  if (!termsData) return null;
-
-  try {
-    return JSON.parse(termsData);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 利用規約関連の定数をエクスポート
- */
-export const TERMS_CONSTANTS = {
-  ACCEPTED_KEY: TERMS_ACCEPTED_KEY,
-  VERSION: TERMS_VERSION,
-} as const;

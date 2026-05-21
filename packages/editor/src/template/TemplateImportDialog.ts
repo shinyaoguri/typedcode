@@ -6,14 +6,6 @@
 import { escapeHtml, type ParsedTemplate } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
 
-/** ダイアログ結果 */
-export interface TemplateImportDialogResult {
-  confirmed: boolean;
-  file: File | null;
-  content: string | null;
-  template: ParsedTemplate | null;
-}
-
 export class TemplateImportDialog {
   /**
    * ファイル選択ダイアログを表示

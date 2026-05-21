@@ -25,16 +25,6 @@ export class SessionContentRegistry {
   }
 
   /**
-   * 入力されたコンテンツを登録（後方互換性のため残す）
-   * @param content - 入力されたテキスト
-   * @deprecated No longer needed - content is checked via getAllContents callback
-   */
-  registerContent(_content: string): void {
-    // 後方互換性のため空実装として残す
-    // 実際のチェックはgetAllContentsコールバックを通じて行う
-  }
-
-  /**
    * コピーされたコンテンツを登録
    * コピー操作時に呼び出され、ペースト判定の補助に使用
    * @param content - コピーされたテキスト
@@ -83,12 +73,5 @@ export class SessionContentRegistry {
    */
   clear(): void {
     this.copiedContent.clear();
-  }
-
-  /**
-   * 登録されているコピー済みコンテンツ数を取得
-   */
-  get copiedCount(): number {
-    return this.copiedContent.size;
   }
 }
