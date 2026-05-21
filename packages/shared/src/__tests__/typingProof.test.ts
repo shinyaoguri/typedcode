@@ -49,6 +49,7 @@ describe('TypingProof', () => {
       'insertText',
       'insertLineBreak',
       'insertParagraph',
+      'insertTab',
       'deleteContentBackward',
       'deleteContentForward',
       'deleteWordBackward',
@@ -58,11 +59,13 @@ describe('TypingProof', () => {
       'deleteHardLineBackward',
       'deleteHardLineForward',
       'deleteByDrag',
+      'deleteByCut',
       'historyUndo',
       'historyRedo',
       'insertCompositionText',
       'deleteCompositionText',
       'insertFromComposition',
+      'insertFromInternalPaste',
     ];
 
     it.each(allowedTypes)('should return true for allowed type: %s', (type) => {
@@ -75,8 +78,6 @@ describe('TypingProof', () => {
       'insertFromYank',
       'insertReplacementText',
       'insertFromPasteAsQuotation',
-      'insertTab',
-      'deleteByCut',
       'replaceContent',
     ];
 

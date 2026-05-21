@@ -106,7 +106,7 @@ Cloudflare Workers API endpoints:
 
 ## Core Concepts
 
-### Event Types (24 types)
+### Event Types (25 types)
 
 ```typescript
 // Content events
@@ -131,19 +131,19 @@ Cloudflare Workers API endpoints:
 'codeExecution' | 'terminalInput'
 
 // Capture events
-'screenshotCapture' | 'screenShareStart' | 'screenShareStop'
+'screenshotCapture' | 'screenShareStart' | 'screenShareStop' | 'screenShareOptOut'
 
 // Session events
 'sessionResumed' | 'copyOperation'
 ```
 
-### Input Types (27 types)
+### Input Types (26 types)
 
-**Allowed (18 types)**: `insertText`, `insertLineBreak`, `insertParagraph`, `insertTab`, `insertFromComposition`, `insertCompositionText`, `deleteCompositionText`, `deleteContentBackward`, `deleteContentForward`, `deleteWordBackward`, `deleteWordForward`, `deleteSoftLineBackward`, `deleteSoftLineForward`, `deleteHardLineBackward`, `deleteHardLineForward`, `deleteByDrag`, `deleteByCut`, `insertFromInternalPaste`
+**Allowed (20 types)**: `insertText`, `insertLineBreak`, `insertParagraph`, `insertTab`, `insertFromComposition`, `insertCompositionText`, `deleteCompositionText`, `deleteContentBackward`, `deleteContentForward`, `deleteWordBackward`, `deleteWordForward`, `deleteSoftLineBackward`, `deleteSoftLineForward`, `deleteHardLineBackward`, `deleteHardLineForward`, `deleteByDrag`, `deleteByCut`, `historyUndo`, `historyRedo`, `insertFromInternalPaste`
 
 **Blocked (external input, 5 types)**: `insertFromPaste`, `insertFromDrop`, `insertFromYank`, `insertReplacementText`, `insertFromPasteAsQuotation`
 
-**Other (4 types)**: `historyUndo`, `historyRedo`, `replaceContent`, `insertTab`
+**Other (1 type)**: `replaceContent`
 
 Note: `insertFromInternalPaste` is allowed - it detects when users copy/paste within the same editor session.
 
