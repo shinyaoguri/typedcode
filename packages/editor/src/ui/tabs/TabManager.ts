@@ -33,6 +33,10 @@ import {
   SessionStorageService,
   getSessionStorageService,
 } from '../../services/SessionStorageService.js';
+import {
+  SignedCheckpointService,
+  createSignedCheckpointServiceIfEnabled,
+} from '../../services/SignedCheckpointService.js';
 
 // PoSW Workerのファクトリ関数
 // Viteがsymlinkedパッケージ内のWorkerを正しく解決できないため、editorパッケージ内から読み込む
@@ -56,6 +60,8 @@ export interface TabState {
   createdAt: number;
   verificationState: VerificationState;
   verificationDetails?: VerificationDetails;
+  /** Workers 署名サービス (VITE_API_URL 未設定時は null) */
+  signedCheckpointService?: SignedCheckpointService | null;
 }
 
 /** タブ変更コールバック */
@@ -255,6 +261,10 @@ export class TabManager {
       this.saveToStorage();
     });
 
+    // Signed checkpoint service を tab 毎に作成して hook を配線。
+    // VITE_API_URL 未設定なら null (graceful degradation)。
+    const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof);
+
     // 認証状態を追跡
     let verificationState: VerificationState = 'skipped';
     let verificationDetails: VerificationDetails | undefined;
@@ -289,6 +299,7 @@ export class TabManager {
       createdAt,
       verificationState,
       verificationDetails,
+      signedCheckpointService,
     };
 
     this.tabs.set(id, tab);
@@ -304,6 +315,38 @@ export class TabManager {
   }
 
   /**
+   * Signed checkpoint service を tab に attach する共通処理。
+   * - VITE_API_URL 未設定なら null を返す
+   * - typingProof に onCheckpointCreated hook を仕掛け、新規 checkpoint を service へ流す
+   * - 既存 checkpoints (restore 時に流入) があれば restore() で chain state を復元
+   */
+  private attachSignedCheckpointService(
+    tabId: string,
+    typingProof: TypingProof,
+    existingCheckpoints?: readonly import('@typedcode/shared').CheckpointData[]
+  ): SignedCheckpointService | null {
+    const sessionId = this.sessionService.getCurrentSessionId();
+    if (!sessionId) return null;
+
+    const service = createSignedCheckpointServiceIfEnabled({
+      sessionId,
+      tabId,
+      getInitialEventChainHash: () => typingProof.getInitialEventChainHash(),
+      attachSignature: (eventIndex, envelope) => typingProof.attachSignedCheckpoint(eventIndex, envelope),
+    });
+    if (!service) return null;
+
+    typingProof.setOnCheckpointCreated((checkpoint) => {
+      service.handleNewCheckpoint(checkpoint);
+    });
+
+    if (existingCheckpoints && existingCheckpoints.length > 0) {
+      void service.restore(existingCheckpoints);
+    }
+    return service;
+  }
+
+  /**
    * タブを閉じる
    */
   closeTab(tabId: string): boolean {
@@ -312,6 +355,8 @@ export class TabManager {
 
     // モデルを破棄
     tab.model.dispose();
+    // 署名サービスのリスナを解除
+    tab.signedCheckpointService?.dispose();
 
     // タブを削除
     this.tabs.delete(tabId);
@@ -351,9 +396,10 @@ export class TabManager {
    * 通常のcloseTabと異なり、最後の1つも閉じる
    */
   async closeAllTabs(): Promise<void> {
-    // すべてのモデルを破棄
+    // すべてのモデルと署名サービスを破棄
     for (const tab of this.tabs.values()) {
       tab.model.dispose();
+      tab.signedCheckpointService?.dispose();
     }
 
     // 状態をクリア
@@ -398,6 +444,9 @@ export class TabManager {
       await typingProof.recordHumanAttestation(sharedAttestation);
     }
 
+    // 署名サービス attach
+    const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof);
+
     // モデルを作成
     const model = monaco.editor.createModel(content, language);
 
@@ -412,6 +461,7 @@ export class TabManager {
       verificationDetails: {
         timestamp: new Date().toISOString(),
       },
+      signedCheckpointService,
     };
 
     this.tabs.set(id, tab);
@@ -899,6 +949,13 @@ export class TabManager {
         this.saveToStorage();
       });
 
+      // 既存 checkpoints を渡して signing service を attach (chain state を復元)
+      const signedCheckpointService = this.attachSignedCheckpointService(
+        id,
+        typingProof,
+        typingProof.checkpoints
+      );
+
       const model = monaco.editor.createModel(serializedTab.content, serializedTab.language);
 
       const tab: TabState = {
@@ -910,6 +967,7 @@ export class TabManager {
         createdAt: serializedTab.createdAt,
         verificationState: serializedTab.verificationState ?? 'skipped',
         verificationDetails: serializedTab.verificationDetails,
+        signedCheckpointService,
       };
 
       this.tabs.set(id, tab);
@@ -1003,6 +1061,12 @@ export class TabManager {
         this.saveToStorage();
       });
 
+      const signedCheckpointService = this.attachSignedCheckpointService(
+        id,
+        typingProof,
+        typingProof.checkpoints
+      );
+
       // 6. Monacoモデル作成（contentはsessionStorageから）
       const model = monaco.editor.createModel(
         lightweightTab.content,
@@ -1019,6 +1083,7 @@ export class TabManager {
         createdAt: lightweightTab.createdAt,
         verificationState: lightweightTab.verificationState ?? 'skipped',
         verificationDetails: lightweightTab.verificationDetails,
+        signedCheckpointService,
       };
 
       this.tabs.set(id, tab);
@@ -1109,6 +1174,12 @@ export class TabManager {
           this.saveToStorage();
         });
 
+        const signedCheckpointService = this.attachSignedCheckpointService(
+          storedTab.id,
+          typingProof,
+          typingProof.checkpoints
+        );
+
         // Monacoモデルを作成
         const model = monaco.editor.createModel(storedTab.content, storedTab.language);
 
@@ -1121,6 +1192,7 @@ export class TabManager {
           createdAt: storedTab.createdAt,
           verificationState: storedTab.verificationState,
           verificationDetails: storedTab.verificationDetails,
+          signedCheckpointService,
         };
 
         this.tabs.set(storedTab.id, tab);

@@ -34,6 +34,8 @@ import { HashChainManager } from './HashChainManager.js';
 import { PoswManager } from './PoswManager.js';
 import { CheckpointManager } from './CheckpointManager.js';
 import { ChainVerifier, type ChainVerifyOptions } from './ChainVerifier.js';
+import type { CheckpointCreatedHook } from './CheckpointManager.js';
+import type { SignedCheckpointEnvelope } from '../types.js';
 import { StatisticsCalculator } from './StatisticsCalculator.js';
 import { isAllowedInputType, isProhibitedInputType } from './InputTypeValidator.js';
 
@@ -768,6 +770,32 @@ export class TypingProof {
    */
   setOnPendingEventChange(callback: ((pending: PendingEventData[]) => void) | null): void {
     this.onPendingEventChange = callback;
+  }
+
+  /**
+   * 新規 checkpoint 作成時のフックを設定。
+   * SignedCheckpointService から購読され、署名 API に payload を送るのに使う。
+   */
+  setOnCheckpointCreated(hook: CheckpointCreatedHook | null): void {
+    this.checkpointManager.setOnCheckpointCreated(hook);
+  }
+
+  /**
+   * 非同期に取得した署名 envelope を該当 checkpoint に書き戻す。
+   * 該当が無ければ false (例: checkpoint が cleanup 済み)。
+   */
+  attachSignedCheckpoint(eventIndex: number, envelope: SignedCheckpointEnvelope): boolean {
+    return this.checkpointManager.updateSignature(eventIndex, envelope);
+  }
+
+  /**
+   * 初期チェーンハッシュ (= proof root) を返す。
+   * - events が存在すれば events[0].previousHash
+   * - そうでなければ HashChainManager の currentHash
+   * 署名 payload の initialEventChainHash に使う。
+   */
+  getInitialEventChainHash(): string | null {
+    return this.events[0]?.previousHash ?? this.currentHash;
   }
 
   /**

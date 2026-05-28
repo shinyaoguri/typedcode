@@ -3,8 +3,10 @@
  * チェックポイントの作成と管理を担当
  */
 
-import type { CheckpointData, StoredEvent } from '../types.js';
+import type { CheckpointData, SignedCheckpointEnvelope, StoredEvent } from '../types.js';
 import { HashChainManager } from './HashChainManager.js';
+
+export type CheckpointCreatedHook = (checkpoint: CheckpointData) => void | Promise<void>;
 
 export class CheckpointManager {
   // チェックポイント間隔
@@ -12,9 +14,31 @@ export class CheckpointManager {
 
   private checkpoints: CheckpointData[] = [];
   private hashChainManager: HashChainManager;
+  private onCheckpointCreated: CheckpointCreatedHook | null = null;
 
   constructor(hashChainManager: HashChainManager) {
     this.hashChainManager = hashChainManager;
+  }
+
+  /**
+   * 新しいチェックポイント作成直後に呼ばれるフックを登録。
+   * 失敗時 (signing API 例外など) は呼び出し側でハンドルする。
+   * 引数: 直前に push された CheckpointData (まだ未署名)。
+   */
+  setOnCheckpointCreated(hook: CheckpointCreatedHook | null): void {
+    this.onCheckpointCreated = hook;
+  }
+
+  /**
+   * 既存 checkpoint (event のインデックス一致) に signature を反映。
+   * 非同期で署名が返ってきたタイミングで SignedCheckpointService から呼ばれる。
+   * 該当 checkpoint が存在しなければ silent no-op。
+   */
+  updateSignature(eventIndex: number, envelope: SignedCheckpointEnvelope): boolean {
+    const checkpoint = this.checkpoints.find((cp) => cp.eventIndex === eventIndex);
+    if (!checkpoint) return false;
+    checkpoint.signature = envelope;
+    return true;
   }
 
   /**
@@ -68,6 +92,20 @@ export class CheckpointManager {
 
     this.checkpoints.push(checkpoint);
     console.log(`[CheckpointManager] Checkpoint created at event ${eventIndex}, hash: ${event.hash.substring(0, 16)}...`);
+
+    // hook を発火。失敗してもチェーンを止めない。
+    if (this.onCheckpointCreated) {
+      try {
+        const result = this.onCheckpointCreated(checkpoint);
+        if (result && typeof (result as Promise<void>).catch === 'function') {
+          (result as Promise<void>).catch((err: unknown) => {
+            console.warn('[CheckpointManager] onCheckpointCreated hook rejected:', err);
+          });
+        }
+      } catch (err) {
+        console.warn('[CheckpointManager] onCheckpointCreated hook threw:', err);
+      }
+    }
   }
 
   /**
