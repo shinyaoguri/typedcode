@@ -12,14 +12,20 @@
  */
 
 import type {
-  CheckpointData,
-  ExportedProof,
   SignedCheckpointEnvelope,
   SignedCheckpointPayload,
   SignedCheckpointVerificationDetail,
   SignedCheckpointsVerificationResult,
+} from './types/signedCheckpoint.js';
+// CheckpointData / StoredEvent / ExportedProof は proof データ全体を扱う型なので
+// types/proof.ts (browser 依存) から取ってくる。Workers から import される
+// checkpointEntry.ts は verifyProofSignedCheckpoints を再エクスポートするが、
+// 関数本体は CheckpointData の構造しか触らないので browser 実装は要らない。
+import type {
+  CheckpointData,
+  ExportedProof,
   StoredEvent,
-} from './types.js';
+} from './types/proof.js';
 import { POSW_ITERATIONS, SIGNED_CHECKPOINT_FORMAT_VERSION } from './version.js';
 import { computeHash, deterministicStringify } from './utils/hashUtils.js';
 import {
@@ -31,6 +37,152 @@ import {
 const POST_HOC_RATIO_THRESHOLD = 0.1;
 const POST_HOC_MIN_SERVER_SPAN_MS = 60 * 1000;
 const POST_HOC_MIN_CLIENT_SPAN_MS = 10 * 60 * 1000;
+
+/**
+ * Signed checkpoint 作成時に編集側 (またはサーバ側エンドポイント) が提供する入力。
+ * `serverTimestamp` / `firstSeenAt` / `poswIterations` / `version` は
+ * サーバ/ライブラリ側で確定するためここには含めない。
+ */
+export interface SignedCheckpointInput {
+  sessionId: string;
+  tabId: string;
+  checkpointIndex: number;
+  eventIndex: number;
+  initialEventChainHash: string;
+  chainHash: string;
+  contentHash: string;
+  previousSignedCheckpointHash: string | null;
+  totalEventsSincePrevious: number;
+  clientTimestamp: string;
+}
+
+export interface SignedCheckpointServerContext {
+  serverTimestamp: string;
+  firstSeenAt: string;
+}
+
+export interface SignedCheckpointSigner {
+  keyId: string;
+  privateKey: CryptoKey;
+  /** 任意で同梱する公開鍵 (long-term verifiability) */
+  publicKeyJwk?: JsonWebKey;
+  publicKeyValidFrom?: string;
+  publicKeyValidUntil?: string;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) {
+    out += bytes[i]!.toString(16).padStart(2, '0');
+  }
+  return out;
+}
+
+/**
+ * Signed checkpoint envelope を作成 (canonical form で署名).
+ *
+ * 検証ロジックとシリアライズ規約を共有するために shared に置く。
+ * Workers の signing endpoint、editor 側のローカル test fixture、verify-cli の
+ * 全てから同一関数を呼ぶことで「同じ envelope 形式」を保証する。
+ */
+export async function createSignedCheckpointEnvelope(
+  input: SignedCheckpointInput,
+  serverContext: SignedCheckpointServerContext,
+  signer: SignedCheckpointSigner
+): Promise<SignedCheckpointEnvelope> {
+  const payload: SignedCheckpointPayload = {
+    version: SIGNED_CHECKPOINT_FORMAT_VERSION,
+    sessionId: input.sessionId,
+    tabId: input.tabId,
+    checkpointIndex: input.checkpointIndex,
+    eventIndex: input.eventIndex,
+    initialEventChainHash: input.initialEventChainHash,
+    chainHash: input.chainHash,
+    contentHash: input.contentHash,
+    previousSignedCheckpointHash: input.previousSignedCheckpointHash,
+    totalEventsSincePrevious: input.totalEventsSincePrevious,
+    poswIterations: POSW_ITERATIONS,
+    clientTimestamp: input.clientTimestamp,
+    serverTimestamp: serverContext.serverTimestamp,
+    firstSeenAt: serverContext.firstSeenAt,
+  };
+
+  const signingInput = new TextEncoder().encode(deterministicStringify(payload));
+  const sigBuffer = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    signer.privateKey,
+    signingInput as unknown as ArrayBuffer
+  );
+
+  const envelope: SignedCheckpointEnvelope = {
+    payload,
+    signature: bytesToHex(new Uint8Array(sigBuffer)),
+    keyId: signer.keyId,
+    algorithm: 'ECDSA-P256',
+  };
+  if (signer.publicKeyJwk) envelope.publicKeyJwk = signer.publicKeyJwk;
+  if (signer.publicKeyValidFrom) envelope.publicKeyValidFrom = signer.publicKeyValidFrom;
+  if (signer.publicKeyValidUntil) envelope.publicKeyValidUntil = signer.publicKeyValidUntil;
+  return envelope;
+}
+
+/**
+ * untrusted な SignedCheckpointInput を検証する。
+ * Workers の入力バリデーションでも使用。
+ */
+export function validateSignedCheckpointInput(
+  raw: unknown
+): { ok: true; input: SignedCheckpointInput } | { ok: false; reason: string } {
+  if (!raw || typeof raw !== 'object') {
+    return { ok: false, reason: 'Input must be an object' };
+  }
+  const obj = raw as Record<string, unknown>;
+  const strFields = [
+    'sessionId',
+    'tabId',
+    'initialEventChainHash',
+    'chainHash',
+    'contentHash',
+    'clientTimestamp',
+  ] as const;
+  for (const k of strFields) {
+    if (typeof obj[k] !== 'string' || (obj[k] as string).length === 0) {
+      return { ok: false, reason: `Missing or invalid ${k}` };
+    }
+  }
+  const intFields = ['checkpointIndex', 'eventIndex', 'totalEventsSincePrevious'] as const;
+  for (const k of intFields) {
+    const v = obj[k];
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) {
+      return { ok: false, reason: `Missing or invalid ${k}` };
+    }
+  }
+  if (
+    obj.previousSignedCheckpointHash !== null &&
+    (typeof obj.previousSignedCheckpointHash !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(obj.previousSignedCheckpointHash as string))
+  ) {
+    return { ok: false, reason: 'previousSignedCheckpointHash must be null or 64-hex string' };
+  }
+  if (Number.isNaN(Date.parse(obj.clientTimestamp as string))) {
+    return { ok: false, reason: 'clientTimestamp must be a valid ISO date' };
+  }
+  return {
+    ok: true,
+    input: {
+      sessionId: obj.sessionId as string,
+      tabId: obj.tabId as string,
+      checkpointIndex: obj.checkpointIndex as number,
+      eventIndex: obj.eventIndex as number,
+      initialEventChainHash: obj.initialEventChainHash as string,
+      chainHash: obj.chainHash as string,
+      contentHash: obj.contentHash as string,
+      previousSignedCheckpointHash: obj.previousSignedCheckpointHash as string | null,
+      totalEventsSincePrevious: obj.totalEventsSincePrevious as number,
+      clientTimestamp: obj.clientTimestamp as string,
+    },
+  };
+}
 
 /**
  * Signed checkpoint payload の決定的ハッシュ。

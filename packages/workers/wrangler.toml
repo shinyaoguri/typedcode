@@ -5,5 +5,18 @@ compatibility_date = "2025-12-26"
 [vars]
 ENVIRONMENT = "development"
 
+# Signed checkpoint session state (best-effort anti-replay book-keeping).
+# Replace placeholder IDs after running:
+#   wrangler kv namespace create CHECKPOINT_SESSIONS
+#   wrangler kv namespace create CHECKPOINT_SESSIONS --preview
+[[kv_namespaces]]
+binding = "CHECKPOINT_SESSIONS"
+id = "REPLACE_WITH_PRODUCTION_ID"
+preview_id = "REPLACE_WITH_PREVIEW_ID"
+
 [env.production]
 vars = { ENVIRONMENT = "production" }
+
+[[env.production.kv_namespaces]]
+binding = "CHECKPOINT_SESSIONS"
+id = "REPLACE_WITH_PRODUCTION_ID"

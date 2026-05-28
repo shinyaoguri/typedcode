@@ -44,6 +44,14 @@ export {
   verifyCheckpointSignature,
   verifySignedCheckpoints,
   verifyProofSignedCheckpoints,
+  createSignedCheckpointEnvelope,
+  validateSignedCheckpointInput,
+} from './signedCheckpoints.js';
+
+export type {
+  SignedCheckpointInput,
+  SignedCheckpointServerContext,
+  SignedCheckpointSigner,
 } from './signedCheckpoints.js';
 
 export {

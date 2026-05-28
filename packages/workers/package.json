@@ -5,7 +5,11 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "deploy:prod": "wrangler deploy --env production"
+    "deploy:prod": "wrangler deploy --env production",
+    "gen-checkpoint-key": "node scripts/generate-checkpoint-key.mjs"
+  },
+  "dependencies": {
+    "@typedcode/shared": "*"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260517.1",
