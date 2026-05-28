@@ -9,6 +9,9 @@ export const PROOF_FORMAT_VERSION = '1.0.0';
 /** ストレージフォーマットバージョン (localStorage用、整数) */
 export const STORAGE_FORMAT_VERSION = 1 as const;
 
+/** Proof of Sequential Work の必須反復回数 */
+export const POSW_ITERATIONS = 10000;
+
 /** 最小サポートバージョン */
 export const MIN_SUPPORTED_VERSION = '1.0.0';
 

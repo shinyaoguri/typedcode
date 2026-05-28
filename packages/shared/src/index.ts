@@ -38,6 +38,7 @@ export type {
 export {
   PROOF_FORMAT_VERSION,
   STORAGE_FORMAT_VERSION,
+  POSW_ITERATIONS,
   MIN_SUPPORTED_VERSION,
   parseVersion,
   compareVersions,

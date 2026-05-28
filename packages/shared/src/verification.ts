@@ -21,6 +21,7 @@ export {
 } from './utils/hashUtils.js';
 
 import { deterministicStringify, computeHash } from './utils/hashUtils.js';
+import { POSW_ITERATIONS } from './version.js';
 
 /**
  * Proof file with content (extends ExportedProof)
@@ -331,6 +332,10 @@ export async function verifyPoSW(
   eventDataString: string,
   posw: PoSWData
 ): Promise<boolean> {
+  if (posw.iterations !== POSW_ITERATIONS) {
+    return false;
+  }
+
   let hash = await computeHash(previousHash + eventDataString + posw.nonce);
 
   for (let i = 1; i < posw.iterations; i++) {
@@ -427,6 +432,15 @@ export async function verifyChain(
     };
 
     // PoSW verification
+    if (event.posw.iterations !== POSW_ITERATIONS) {
+      return {
+        valid: false,
+        errorAt: i,
+        message: `PoSW iterations mismatch at event ${i}: expected ${POSW_ITERATIONS}, got ${event.posw.iterations}`,
+        event,
+      };
+    }
+
     const eventDataStringForPoSW = deterministicStringify(eventDataWithoutPoSW);
     const poswValid = await verifyPoSW(hash ?? '', eventDataStringForPoSW, event.posw);
 

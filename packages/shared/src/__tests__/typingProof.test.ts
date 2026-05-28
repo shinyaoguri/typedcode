@@ -313,6 +313,16 @@ describe('TypingProof', () => {
       expect(proof.events[1]?.previousHash).toBe(firstEventHash);
     });
 
+    it('should reject events with tampered PoSW iterations', async () => {
+      await proof.recordEvent({ type: 'contentChange', data: 'a' });
+      proof.events[0]!.posw.iterations = 1;
+
+      const result = await proof.verify();
+
+      expect(result.valid).toBe(false);
+      expect(result.message).toContain('PoSW iterations mismatch');
+    });
+
     it('should handle concurrent calls with queue', async () => {
       // Record multiple events concurrently
       const promises = [
