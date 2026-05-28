@@ -35,11 +35,31 @@ export type {
   PoswStats,
 } from './verification.js';
 
+// Signed checkpoints (long-term verifiability)
+export {
+  hashSignedCheckpointPayload,
+  resolveCheckpointPublicKey,
+  verifyCheckpointSignature,
+  verifySignedCheckpoints,
+  verifyProofSignedCheckpoints,
+} from './signedCheckpoints.js';
+
+export {
+  CHECKPOINT_PUBLIC_KEYS,
+  findCheckpointPublicKey,
+} from './checkpointKeys/index.js';
+
+export type {
+  CheckpointPublicKey,
+  CheckpointPublicKeyStatus,
+} from './checkpointKeys/index.js';
+
 // バージョン定数
 export {
   PROOF_FORMAT_VERSION,
   STORAGE_FORMAT_VERSION,
   POSW_ITERATIONS,
+  SIGNED_CHECKPOINT_FORMAT_VERSION,
   MIN_SUPPORTED_VERSION,
   parseVersion,
   compareVersions,

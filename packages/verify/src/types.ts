@@ -1,4 +1,4 @@
-import type { ExportedProof, StoredEvent, InputType, DisplayInfo, ScreenshotCaptureType, HumanAttestation } from '@typedcode/shared';
+import type { ExportedProof, StoredEvent, InputType, DisplayInfo, ScreenshotCaptureType, HumanAttestation, SignedCheckpointsVerificationResult } from '@typedcode/shared';
 
 // Re-export HumanAttestation from shared for backward compatibility
 export type { HumanAttestation } from '@typedcode/shared';
@@ -49,6 +49,12 @@ export interface IntegratedTimelineCache {
 /** 検証ステータス */
 export type VerificationStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error';
 
+/** 検証モード */
+export type VerificationMode = 'fast' | 'audit' | 'full';
+
+/** PoSW の検証モード */
+export type PoswMode = 'skipped' | 'sampled' | 'full';
+
 /** 検証結果データ（Worker→メインスレッドへ渡すデータ） */
 export interface VerificationResultData {
   metadataValid: boolean;
@@ -87,6 +93,15 @@ export interface VerificationResultData {
     totalEventsVerified: number;
     totalEvents: number;
   };
+  // 検証モード (Phase 2 で worker から設定される)
+  verificationMode?: VerificationMode;
+  poswMode?: PoswMode;
+  // Signed checkpoint 検証結果 (Phase 1.5)
+  signedCheckpointValid?: boolean;
+  signedCheckpointCoverage?: SignedCheckpointsVerificationResult['coverage'];
+  signedCheckpointTemporal?: SignedCheckpointsVerificationResult['temporal'];
+  signedCheckpointReason?: string;
+  signedCheckpointAnchored?: boolean;
 }
 
 /** 詳細な進捗情報 */
