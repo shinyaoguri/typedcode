@@ -6,6 +6,7 @@
 import type {
   StoredEvent,
   VerificationResult,
+  ContentReplayVerificationResult,
   ProofData,
   PoSWData,
   EventHashData,
@@ -37,6 +38,8 @@ export interface FullVerificationResult {
   metadataValid: boolean;
   rootValid?: boolean;
   chainValid: boolean;
+  finalHashValid?: boolean;
+  contentValid?: boolean;
   isPureTyping: boolean;
   errorAt?: number;
   errorMessage?: string;
@@ -119,6 +122,138 @@ export async function verifyInitialHashRoot(
   }
 
   return { valid: true, computedInitialHash, expectedInitialHash };
+}
+
+function isTemplateInjectionData(data: unknown): data is { content: string } {
+  return typeof data === 'object' && data !== null && typeof (data as { content?: unknown }).content === 'string';
+}
+
+function offsetFromRange(content: string, event: StoredEvent): number | null {
+  if (typeof event.rangeOffset === 'number') {
+    return event.rangeOffset;
+  }
+
+  const range = event.range;
+  if (!range) return null;
+
+  const lines = content.split('\n');
+  const lineIndex = range.startLineNumber - 1;
+  if (lineIndex < 0 || lineIndex >= lines.length) return null;
+
+  const columnIndex = range.startColumn - 1;
+  const line = lines[lineIndex] ?? '';
+  if (columnIndex < 0 || columnIndex > line.length) return null;
+
+  let offset = columnIndex;
+  for (let i = 0; i < lineIndex; i++) {
+    offset += (lines[i]?.length ?? 0) + 1;
+  }
+  return offset;
+}
+
+function firstMismatchIndex(left: string, right: string): number {
+  const length = Math.min(left.length, right.length);
+  for (let i = 0; i < length; i++) {
+    if (left[i] !== right[i]) return i;
+  }
+  return length;
+}
+
+/**
+ * Replay content-affecting events and compare them with the exported final content.
+ */
+export function verifyContentReplay(
+  events: StoredEvent[],
+  finalContent: string
+): ContentReplayVerificationResult {
+  let content = '';
+
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    if (!event) continue;
+
+    if (event.type === 'templateInjection') {
+      if (!isTemplateInjectionData(event.data)) {
+        return { valid: false, reason: `Invalid template injection data at event ${i}`, errorAt: i };
+      }
+      content = event.data.content;
+      continue;
+    }
+
+    if (event.type === 'contentSnapshot') {
+      if (typeof event.data !== 'string') {
+        return { valid: false, reason: `Invalid content snapshot data at event ${i}`, errorAt: i };
+      }
+      content = event.data;
+      continue;
+    }
+
+    if (event.type !== 'contentChange') {
+      continue;
+    }
+
+    if (event.inputType === 'insertFromInternalPaste' && event.rangeOffset == null) {
+      continue;
+    }
+
+    if (typeof event.data !== 'string') {
+      return { valid: false, reason: `Invalid content change data at event ${i}`, errorAt: i };
+    }
+
+    const offset = offsetFromRange(content, event);
+    const rangeLength = event.rangeLength ?? 0;
+    if (offset === null || rangeLength < 0 || offset < 0 || offset + rangeLength > content.length) {
+      return { valid: false, reason: `Content change range is out of bounds at event ${i}`, errorAt: i };
+    }
+
+    content = content.slice(0, offset) + event.data + content.slice(offset + rangeLength);
+  }
+
+  if (content !== finalContent) {
+    return {
+      valid: false,
+      reason: 'Replayed content does not match exported final content',
+      reconstructedContent: content,
+      mismatchIndex: firstMismatchIndex(content, finalContent),
+    };
+  }
+
+  return { valid: true, reconstructedContent: content };
+}
+
+/**
+ * Compare the verified terminal chain hash with all exported final hash fields.
+ */
+export function verifyFinalChainHash(
+  proof: Pick<ExportedProof, 'typingProofData' | 'proof'>,
+  computedFinalHash?: string
+): { valid: boolean; reason?: string; computedFinalHash?: string; expectedFinalHash?: string | null } {
+  const events = proof.proof.events;
+  const finalHash = computedFinalHash ?? (events.length === 0 ? proof.typingProofData.initialEventChainHash ?? undefined : undefined);
+
+  if (!finalHash) {
+    return { valid: false, reason: 'Computed final chain hash is missing' };
+  }
+
+  if (proof.proof.finalHash !== finalHash) {
+    return {
+      valid: false,
+      reason: 'Signature final hash does not match verified chain hash',
+      computedFinalHash: finalHash,
+      expectedFinalHash: proof.proof.finalHash,
+    };
+  }
+
+  if (proof.typingProofData.finalEventChainHash !== finalHash) {
+    return {
+      valid: false,
+      reason: 'Typing proof final chain hash does not match verified chain hash',
+      computedFinalHash: finalHash,
+      expectedFinalHash: proof.typingProofData.finalEventChainHash,
+    };
+  }
+
+  return { valid: true, computedFinalHash: finalHash, expectedFinalHash: finalHash };
 }
 
 /**
@@ -268,6 +403,7 @@ export async function verifyChain(
   return {
     valid: true,
     message: 'All hashes verified successfully',
+    computedHash: hash ?? undefined,
   };
 }
 
@@ -303,15 +439,33 @@ export async function verifyProofFile(
 
   // 2. Verify hash chain
   const chainResult = await verifyChain(events, onProgress);
+  const finalHashResult = chainResult.valid
+    ? verifyFinalChainHash(proof, chainResult.computedHash)
+    : { valid: false, reason: chainResult.message };
+  const contentResult = proof.content !== undefined && proof.content !== null
+    ? verifyContentReplay(events, proof.content)
+    : { valid: false, reason: 'Final content is missing' };
+  const chainValid = chainResult.valid && finalHashResult.valid && contentResult.valid;
+  const verificationError = !metadataValid
+    ? metadataError
+    : !chainResult.valid
+      ? chainResult.message
+      : !finalHashResult.valid
+        ? finalHashResult.reason
+        : !contentResult.valid
+          ? contentResult.reason
+          : chainResult.message;
 
   return {
-    valid: metadataValid && chainResult.valid,
+    valid: metadataValid && chainValid,
     metadataValid,
     rootValid,
-    chainValid: chainResult.valid,
+    chainValid,
+    finalHashValid: finalHashResult.valid,
+    contentValid: contentResult.valid,
     isPureTyping,
     errorAt: chainResult.errorAt,
-    errorMessage: !metadataValid ? metadataError : chainResult.message,
+    errorMessage: verificationError,
   };
 }
 

@@ -18,6 +18,8 @@ export {
   computeHash,
   verifyPoSW,
   verifyInitialHashRoot,
+  verifyFinalChainHash,
+  verifyContentReplay,
   verifyTypingProofHash,
   verifyChain,
   verifyProofFile,

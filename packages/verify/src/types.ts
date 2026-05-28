@@ -54,6 +54,8 @@ export interface VerificationResultData {
   metadataValid: boolean;
   rootValid?: boolean;
   chainValid: boolean;
+  finalHashValid?: boolean;
+  contentValid?: boolean;
   isPureTyping: boolean;
   message?: string;
   errorAt?: number;

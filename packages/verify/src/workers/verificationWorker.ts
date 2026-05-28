@@ -3,7 +3,12 @@
  * メインスレッドをブロックせずにハッシュ鎖とPoSWの検証を行う
  */
 
-import { TypingProof, verifyInitialHashRoot } from '@typedcode/shared';
+import {
+  TypingProof,
+  verifyContentReplay,
+  verifyFinalChainHash,
+  verifyInitialHashRoot,
+} from '@typedcode/shared';
 import type { StoredEvent, CheckpointData, ProofData, FingerprintComponents } from '@typedcode/shared';
 
 // Worker内で使用するメッセージ型
@@ -45,6 +50,8 @@ interface ResultResponse {
     metadataValid: boolean;
     rootValid?: boolean;
     chainValid: boolean;
+    finalHashValid?: boolean;
+    contentValid?: boolean;
     isPureTyping: boolean;
     message?: string;
     errorAt?: number;
@@ -233,6 +240,23 @@ async function verify(request: VerifyRequest): Promise<void> {
     }
 
     sendProgress(id, 3, 3, 'complete', totalEvents);
+    const finalHashVerification = chainVerification.valid
+      ? verifyFinalChainHash(proofData, chainVerification.computedHash)
+      : { valid: false, reason: chainVerification.message };
+    const contentVerification = verifyContentReplay(
+      proofData.proof.events,
+      proofData.content ?? ''
+    );
+    const chainValid = chainVerification.valid && finalHashVerification.valid && contentVerification.valid;
+    const verificationMessage = !metadataValid
+      ? metadataMessage
+      : !chainVerification.valid
+        ? chainVerification.message
+        : !finalHashVerification.valid
+          ? finalHashVerification.reason
+          : !contentVerification.valid
+            ? contentVerification.reason
+            : chainVerification.message;
 
     // 3. PoSW統計を計算
     const poswStats = calculatePoSWStats(proofData.proof.events);
@@ -241,9 +265,11 @@ async function verify(request: VerifyRequest): Promise<void> {
     sendResult(id, {
       metadataValid,
       rootValid,
-      chainValid: chainVerification.valid,
+      chainValid,
+      finalHashValid: finalHashVerification.valid,
+      contentValid: contentVerification.valid,
       isPureTyping,
-      message: metadataValid ? chainVerification.message : metadataMessage,
+      message: verificationMessage,
       errorAt: chainVerification.errorAt,
       totalEvents,
       poswStats,

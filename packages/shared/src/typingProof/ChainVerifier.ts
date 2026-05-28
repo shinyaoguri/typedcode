@@ -215,7 +215,8 @@ export class ChainVerifier {
 
     return {
       valid: true,
-      message: 'All hashes verified successfully (including PoSW)'
+      message: 'All hashes verified successfully (including PoSW)',
+      computedHash: hash ?? undefined
     };
   }
 

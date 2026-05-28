@@ -85,6 +85,7 @@ export type {
   SampledSegmentInfo,
   SampledVerificationResult,
   VerificationResult,
+  ContentReplayVerificationResult,
   TypingProofVerificationResult,
 } from './verification.js';
 
