@@ -70,7 +70,7 @@ export class VerificationController {
 
     // ステータス判定: エラー > 警告（外部入力/ソース不一致） > 成功
     let status: FileStatus;
-    if (!result.chainValid) {
+    if (!result.metadataValid || !result.chainValid) {
       status = 'error';
     } else if (!result.isPureTyping || hasSourceMismatch) {
       status = 'warning';

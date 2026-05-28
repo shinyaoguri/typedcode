@@ -769,6 +769,7 @@ export class TabManager {
         lastModifiedAt: Date.now(),
         lastWrittenEventIndex: proofState.events.length - 1,
         currentHash: proofState.currentHash,
+        initialHashNonce: proofState.initialHashNonce,
         startTime: proofState.startTime,
         verificationState: tab.verificationState,
         verificationDetails: tab.verificationDetails,
@@ -970,8 +971,9 @@ export class TabManager {
       const lastEvent = events[events.length - 1];
 
       // IndexedDBの最後のイベントのhashをcurrentHashとして使用
+      // イベントがない場合のみ、初期ハッシュを保持しているsessionStorageを使用する。
       // sessionStorageのcurrentHashは信頼できない（非同期保存の遅延により不一致の可能性）
-      const currentHash = lastEvent?.hash ?? null;
+      const currentHash = lastEvent?.hash ?? lightweightTab.proofState.currentHash;
 
       if (actualSequence < expectedSequence) {
         console.warn(`[TabManager] Event sync mismatch for tab ${id}: expected seq ${expectedSequence}, got ${actualSequence}. Using IndexedDB hash as currentHash.`);
@@ -981,7 +983,8 @@ export class TabManager {
       // 3. SerializedProofStateを構築（pendingEventsは復元しない）
       const proofState: SerializedProofState = {
         events,
-        currentHash,  // IndexedDBから取得したイベントの最後のhashを使用
+        currentHash,
+        initialHashNonce: lightweightTab.proofState.initialHashNonce,
         startTime: lightweightTab.proofState.startTime,
         checkpoints: lightweightTab.proofState.checkpoints,
       };
@@ -1091,6 +1094,7 @@ export class TabManager {
           {
             events,
             currentHash: storedTab.currentHash,
+            initialHashNonce: storedTab.initialHashNonce,
             startTime: storedTab.startTime,
             pendingEvents: [], // IndexedDB復元時はpendingEventsなし
             checkpoints: storedTab.checkpoints,

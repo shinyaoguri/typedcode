@@ -12,6 +12,7 @@ import type {
 } from '../types.js';
 import { HashChainManager } from './HashChainManager.js';
 import { PoswManager } from './PoswManager.js';
+import { POSW_ITERATIONS } from '../version.js';
 
 interface SegmentInfo {
   startIndex: number;
@@ -114,6 +115,18 @@ export class ChainVerifier {
     };
 
     // PoSW検証（決定的なJSON文字列化を使用）
+    if (event.posw.iterations !== POSW_ITERATIONS) {
+      return {
+        valid: false,
+        error: {
+          valid: false,
+          errorAt: index,
+          message: `PoSW iterations mismatch at event ${index}: expected ${POSW_ITERATIONS}, got ${event.posw.iterations}`,
+          event
+        }
+      };
+    }
+
     const eventDataStringForPoSW = this.hashChainManager.deterministicStringify(eventDataWithoutPoSW);
     const poswValid = await this.poswManager.verifyPoSW(expectedPreviousHash ?? '', eventDataStringForPoSW, event.posw);
 
@@ -215,7 +228,8 @@ export class ChainVerifier {
 
     return {
       valid: true,
-      message: 'All hashes verified successfully (including PoSW)'
+      message: 'All hashes verified successfully (including PoSW)',
+      computedHash: hash ?? undefined
     };
   }
 

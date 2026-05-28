@@ -70,6 +70,8 @@ export interface TabSwitchEvent {
 export interface SerializedProofState {
   events: StoredEvent[];
   currentHash: string | null;
+  /** 初期ハッシュ再検証用nonce */
+  initialHashNonce?: string | null;
   startTime: number;
   /** PoSW計算が完了していないイベント（後方互換性のためオプショナル） */
   pendingEvents?: PendingEventData[];
@@ -168,6 +170,8 @@ export interface StoredTabData {
   lastModifiedAt: number;
   lastWrittenEventIndex: number;
   currentHash: string | null;
+  /** 初期ハッシュ再検証用nonce */
+  initialHashNonce?: string | null;
   startTime: number;
   verificationState: VerificationState;
   verificationDetails?: VerificationDetails;
@@ -219,6 +223,8 @@ export interface LightweightProofState {
   lastEventSequence: number;
   /** 現在のハッシュ */
   currentHash: string | null;
+  /** 初期ハッシュ再検証用nonce */
+  initialHashNonce?: string | null;
   /** 開始時間 */
   startTime: number;
   /** PoSW計算中のイベント（後方互換性のためオプショナル、復元時は使用しない） */
@@ -285,4 +291,3 @@ export interface PendingEventData {
   /** 作成日時（Date.now()） */
   createdAt: number;
 }
-

@@ -3,8 +3,15 @@
  * メインスレッドをブロックせずにハッシュ鎖とPoSWの検証を行う
  */
 
-import { TypingProof } from '@typedcode/shared';
-import type { StoredEvent, CheckpointData, ProofData } from '@typedcode/shared';
+import {
+  TypingProof,
+  verifyCheckpoints,
+  verifyContentReplay,
+  verifyFinalChainHash,
+  verifyInitialHashRoot,
+  verifyProofMetadata,
+} from '@typedcode/shared';
+import type { StoredEvent, CheckpointData, ProofData, FingerprintComponents } from '@typedcode/shared';
 
 // Worker内で使用するメッセージ型
 interface VerifyRequest {
@@ -18,6 +25,10 @@ interface VerifyRequest {
     proof: {
       events: StoredEvent[];
       finalHash: string | null;
+    };
+    fingerprint: {
+      hash: string;
+      components: FingerprintComponents;
     };
     checkpoints?: CheckpointData[];
     language?: string;
@@ -39,7 +50,11 @@ interface ResultResponse {
   id: string;
   result: {
     metadataValid: boolean;
+    rootValid?: boolean;
     chainValid: boolean;
+    finalHashValid?: boolean;
+    contentValid?: boolean;
+    checkpointValid?: boolean;
     isPureTyping: boolean;
     message?: string;
     errorAt?: number;
@@ -163,7 +178,9 @@ async function verify(request: VerifyRequest): Promise<void> {
 
     // 1. メタデータ整合性の検証
     let metadataValid = false;
+    let rootValid = false;
     let isPureTyping = false;
+    let metadataMessage: string | undefined;
 
     const totalEvents = proofData.proof?.events?.length ?? 0;
 
@@ -178,8 +195,19 @@ async function verify(request: VerifyRequest): Promise<void> {
         proofData.content ?? ''
       );
 
-      metadataValid = hashVerification.valid;
-      isPureTyping = hashVerification.isPureTyping ?? false;
+      const rootVerification = await verifyInitialHashRoot(proofData);
+      const eventMetadataVerification = verifyProofMetadata(
+        proofData.typingProofData,
+        proofData.proof?.events ?? []
+      );
+      rootValid = rootVerification.valid;
+      metadataValid = hashVerification.valid && rootValid && eventMetadataVerification.valid;
+      metadataMessage = !hashVerification.valid
+        ? hashVerification.reason
+        : !rootVerification.valid
+          ? rootVerification.reason
+          : eventMetadataVerification.reason;
+      isPureTyping = eventMetadataVerification.isPureTyping;
     } else {
       // メタデータがない場合はサポート対象外（v3.0.0以降が必要）
       sendError(id, 'サポートされていないフォーマット: メタデータがありません（v3.0.0以降が必要）');
@@ -197,28 +225,38 @@ async function verify(request: VerifyRequest): Promise<void> {
     typingProof.events = proofData.proof.events;
     typingProof.currentHash = proofData.proof.finalHash;
 
-    const hasCheckpoints = proofData.checkpoints && proofData.checkpoints.length > 0;
-    let chainVerification;
-
-    if (hasCheckpoints) {
-      // サンプリング検証（チェックポイントあり）
-      chainVerification = await typingProof.verifySampled(
-        proofData.checkpoints!,
-        3,
-        (phase: string, current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash?: string }) => {
-          sendProgress(id, current, total, phase, totalEvents, hashInfo);
-        }
-      );
-    } else {
-      // 全件検証（チェックポイントなし）
-      chainVerification = await typingProof.verify(
-        (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => {
-          sendProgress(id, current, total, 'chain', totalEvents, hashInfo);
-        }
-      );
-    }
+    // チェックポイントは未署名の補助情報なので、成功判定には常に全件検証を使う
+    const chainVerification = await typingProof.verify(
+      (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => {
+        sendProgress(id, current, total, 'chain', totalEvents, hashInfo);
+      }
+    );
 
     sendProgress(id, 3, 3, 'complete', totalEvents);
+    const finalHashVerification = chainVerification.valid
+      ? verifyFinalChainHash(proofData, chainVerification.computedHash)
+      : { valid: false, reason: chainVerification.message };
+    const contentVerification = verifyContentReplay(
+      proofData.proof.events,
+      proofData.content ?? ''
+    );
+    const checkpointVerification = await verifyCheckpoints(proofData.proof.events, proofData.checkpoints);
+    const chainValid =
+      chainVerification.valid &&
+      finalHashVerification.valid &&
+      checkpointVerification.valid &&
+      contentVerification.valid;
+    const verificationMessage = !metadataValid
+      ? metadataMessage
+      : !chainVerification.valid
+        ? chainVerification.message
+        : !finalHashVerification.valid
+        ? finalHashVerification.reason
+          : !checkpointVerification.valid
+            ? checkpointVerification.reason
+            : !contentVerification.valid
+              ? contentVerification.reason
+              : chainVerification.message;
 
     // 3. PoSW統計を計算
     const poswStats = calculatePoSWStats(proofData.proof.events);
@@ -226,27 +264,16 @@ async function verify(request: VerifyRequest): Promise<void> {
     // 4. 結果を送信
     sendResult(id, {
       metadataValid,
-      chainValid: chainVerification.valid,
+      rootValid,
+      chainValid,
+      finalHashValid: finalHashVerification.valid,
+      contentValid: contentVerification.valid,
+      checkpointValid: checkpointVerification.valid,
       isPureTyping,
-      message: chainVerification.message,
-      errorAt: chainVerification.errorAt,
+      message: verificationMessage,
+      errorAt: chainVerification.errorAt ?? checkpointVerification.errorAt,
       totalEvents,
       poswStats,
-      sampledResult: chainVerification.sampledResult
-        ? {
-            sampledSegments: chainVerification.sampledResult.sampledSegments.map((seg) => ({
-              startIndex: seg.startIndex,
-              endIndex: seg.endIndex,
-              eventCount: seg.eventCount,
-              startHash: seg.startHash,
-              endHash: seg.endHash,
-              verified: seg.verified,
-            })),
-            totalSegments: chainVerification.sampledResult.totalSegments,
-            totalEventsVerified: chainVerification.sampledResult.totalEventsVerified,
-            totalEvents: chainVerification.sampledResult.totalEvents,
-          }
-        : undefined,
     });
   } catch (error) {
     sendError(id, error instanceof Error ? error.message : String(error));

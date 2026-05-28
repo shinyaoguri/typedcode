@@ -52,7 +52,11 @@ export type VerificationStatus = 'pending' | 'verifying' | 'success' | 'warning'
 /** 検証結果データ（Worker→メインスレッドへ渡すデータ） */
 export interface VerificationResultData {
   metadataValid: boolean;
+  rootValid?: boolean;
   chainValid: boolean;
+  finalHashValid?: boolean;
+  contentValid?: boolean;
+  checkpointValid?: boolean;
   isPureTyping: boolean;
   message?: string;
   errorAt?: number;

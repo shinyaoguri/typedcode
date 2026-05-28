@@ -6,6 +6,8 @@
 import type {
   StoredEvent,
   VerificationResult,
+  ContentReplayVerificationResult,
+  ProofMetadataVerificationResult,
   ProofData,
   PoSWData,
   EventHashData,
@@ -20,6 +22,7 @@ export {
 } from './utils/hashUtils.js';
 
 import { deterministicStringify, computeHash } from './utils/hashUtils.js';
+import { POSW_ITERATIONS } from './version.js';
 
 /**
  * Proof file with content (extends ExportedProof)
@@ -35,7 +38,11 @@ export interface ProofFile extends ExportedProof {
 export interface FullVerificationResult {
   valid: boolean;
   metadataValid: boolean;
+  rootValid?: boolean;
   chainValid: boolean;
+  finalHashValid?: boolean;
+  contentValid?: boolean;
+  checkpointValid?: boolean;
   isPureTyping: boolean;
   errorAt?: number;
   errorMessage?: string;
@@ -61,6 +68,373 @@ export interface PoswStats {
 export type VerificationProgressCallback = (current: number, total: number) => void;
 
 /**
+ * Verify that the hash chain starts from the exported fingerprint and nonce.
+ */
+export async function verifyInitialHashRoot(
+  proof: Pick<ExportedProof, 'typingProofData' | 'proof' | 'fingerprint'>
+): Promise<{ valid: boolean; reason?: string; computedInitialHash?: string; expectedInitialHash?: string }> {
+  const fingerprintHash = proof.fingerprint?.hash;
+  const fingerprintComponents = proof.fingerprint?.components;
+  const proofData = proof.typingProofData;
+
+  if (!fingerprintHash || !fingerprintComponents) {
+    return { valid: false, reason: 'Fingerprint data is missing' };
+  }
+
+  if (proofData.deviceId !== fingerprintHash) {
+    return { valid: false, reason: 'Proof deviceId does not match fingerprint hash' };
+  }
+
+  const fingerprintHashCandidates = new Set<string>([
+    await computeHash(JSON.stringify(fingerprintComponents, null, 0)),
+    await computeHash(deterministicStringify(fingerprintComponents)),
+  ]);
+
+  if (!fingerprintHashCandidates.has(fingerprintHash)) {
+    return { valid: false, reason: 'Fingerprint components do not match fingerprint hash' };
+  }
+
+  const nonce = proofData.initialHashNonce;
+  if (!nonce || !/^[0-9a-f]{64}$/i.test(nonce)) {
+    return { valid: false, reason: 'Initial hash nonce is missing or invalid' };
+  }
+
+  const expectedInitialHash = proofData.initialEventChainHash;
+  if (!expectedInitialHash) {
+    return { valid: false, reason: 'Initial event chain hash is missing' };
+  }
+
+  const computedInitialHash = await computeHash(fingerprintHash + nonce);
+  if (computedInitialHash !== expectedInitialHash) {
+    return {
+      valid: false,
+      reason: 'Initial event chain hash does not match fingerprint and nonce',
+      computedInitialHash,
+      expectedInitialHash,
+    };
+  }
+
+  const rootUsedByEvents = proof.proof.events[0]?.previousHash ?? proof.proof.finalHash;
+  if (rootUsedByEvents !== expectedInitialHash) {
+    return {
+      valid: false,
+      reason: 'First event does not start from the declared initial chain hash',
+      computedInitialHash: rootUsedByEvents ?? undefined,
+      expectedInitialHash,
+    };
+  }
+
+  return { valid: true, computedInitialHash, expectedInitialHash };
+}
+
+function isTemplateInjectionData(data: unknown): data is { content: string } {
+  return typeof data === 'object' && data !== null && typeof (data as { content?: unknown }).content === 'string';
+}
+
+function offsetFromRange(content: string, event: StoredEvent): number | null {
+  if (typeof event.rangeOffset === 'number') {
+    return event.rangeOffset;
+  }
+
+  const range = event.range;
+  if (!range) return null;
+
+  const lines = content.split('\n');
+  const lineIndex = range.startLineNumber - 1;
+  if (lineIndex < 0 || lineIndex >= lines.length) return null;
+
+  const columnIndex = range.startColumn - 1;
+  const line = lines[lineIndex] ?? '';
+  if (columnIndex < 0 || columnIndex > line.length) return null;
+
+  let offset = columnIndex;
+  for (let i = 0; i < lineIndex; i++) {
+    offset += (lines[i]?.length ?? 0) + 1;
+  }
+  return offset;
+}
+
+function firstMismatchIndex(left: string, right: string): number {
+  const length = Math.min(left.length, right.length);
+  for (let i = 0; i < length; i++) {
+    if (left[i] !== right[i]) return i;
+  }
+  return length;
+}
+
+/**
+ * Replay content-affecting events and compare them with the exported final content.
+ */
+export function verifyContentReplay(
+  events: StoredEvent[],
+  finalContent: string
+): ContentReplayVerificationResult {
+  let content = '';
+
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    if (!event) continue;
+
+    if (event.type === 'templateInjection') {
+      if (!isTemplateInjectionData(event.data)) {
+        return { valid: false, reason: `Invalid template injection data at event ${i}`, errorAt: i };
+      }
+      content = event.data.content;
+      continue;
+    }
+
+    if (event.type === 'contentSnapshot') {
+      if (typeof event.data !== 'string') {
+        return { valid: false, reason: `Invalid content snapshot data at event ${i}`, errorAt: i };
+      }
+      content = event.data;
+      continue;
+    }
+
+    if (event.type !== 'contentChange') {
+      continue;
+    }
+
+    if (event.inputType === 'insertFromInternalPaste' && event.rangeOffset == null) {
+      continue;
+    }
+
+    if (typeof event.data !== 'string') {
+      return { valid: false, reason: `Invalid content change data at event ${i}`, errorAt: i };
+    }
+
+    const offset = offsetFromRange(content, event);
+    const rangeLength = event.rangeLength ?? 0;
+    if (offset === null || rangeLength < 0 || offset < 0 || offset + rangeLength > content.length) {
+      return { valid: false, reason: `Content change range is out of bounds at event ${i}`, errorAt: i };
+    }
+
+    content = content.slice(0, offset) + event.data + content.slice(offset + rangeLength);
+  }
+
+  if (content !== finalContent) {
+    return {
+      valid: false,
+      reason: 'Replayed content does not match exported final content',
+      reconstructedContent: content,
+      mismatchIndex: firstMismatchIndex(content, finalContent),
+    };
+  }
+
+  return { valid: true, reconstructedContent: content };
+}
+
+/**
+ * Compare the verified terminal chain hash with all exported final hash fields.
+ */
+export function verifyFinalChainHash(
+  proof: Pick<ExportedProof, 'typingProofData' | 'proof'>,
+  computedFinalHash?: string
+): { valid: boolean; reason?: string; computedFinalHash?: string; expectedFinalHash?: string | null } {
+  const events = proof.proof.events;
+  const finalHash = computedFinalHash ?? (events.length === 0 ? proof.typingProofData.initialEventChainHash ?? undefined : undefined);
+
+  if (!finalHash) {
+    return { valid: false, reason: 'Computed final chain hash is missing' };
+  }
+
+  if (proof.proof.finalHash !== finalHash) {
+    return {
+      valid: false,
+      reason: 'Signature final hash does not match verified chain hash',
+      computedFinalHash: finalHash,
+      expectedFinalHash: proof.proof.finalHash,
+    };
+  }
+
+  if (proof.typingProofData.finalEventChainHash !== finalHash) {
+    return {
+      valid: false,
+      reason: 'Typing proof final chain hash does not match verified chain hash',
+      computedFinalHash: finalHash,
+      expectedFinalHash: proof.typingProofData.finalEventChainHash,
+    };
+  }
+
+  return { valid: true, computedFinalHash: finalHash, expectedFinalHash: finalHash };
+}
+
+function isSuspiciousBulkInsert(event: StoredEvent): boolean {
+  if (event.type !== 'contentChange') return false;
+
+  if (event.inputType === 'replaceContent' || event.inputType === 'insertReplacementText') {
+    return true;
+  }
+
+  return (
+    event.inputType === 'insertText' &&
+    typeof event.data === 'string' &&
+    event.data.length > 1
+  );
+}
+
+function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificationResult {
+  let pasteEvents = 0;
+  let internalPasteEvents = 0;
+  let dropEvents = 0;
+  let insertEvents = 0;
+  let deleteEvents = 0;
+  const suspiciousBulkInsertEventIndexes: number[] = [];
+
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    if (!event) continue;
+
+    if (event.inputType === 'insertFromPaste') pasteEvents++;
+    if (event.inputType === 'insertFromInternalPaste') internalPasteEvents++;
+    if (event.inputType === 'insertFromDrop') dropEvents++;
+    if (event.type === 'contentChange' && event.data) insertEvents++;
+    if (event.inputType?.startsWith('delete')) deleteEvents++;
+    if (isSuspiciousBulkInsert(event)) {
+      suspiciousBulkInsertEventIndexes.push(i);
+    }
+  }
+
+  const totalTypingTime = events[events.length - 1]?.timestamp ?? 0;
+  const averageTypingSpeed = totalTypingTime > 0
+    ? Math.round((insertEvents / (totalTypingTime / 60000)) * 10) / 10
+    : 0;
+
+  const recomputedMetadata = {
+    totalEvents: events.length,
+    pasteEvents,
+    internalPasteEvents,
+    dropEvents,
+    insertEvents,
+    deleteEvents,
+    bulkInsertEvents: suspiciousBulkInsertEventIndexes.length,
+    totalTypingTime,
+    averageTypingSpeed,
+  };
+
+  return {
+    valid: true,
+    isPureTyping: pasteEvents === 0 && dropEvents === 0 && suspiciousBulkInsertEventIndexes.length === 0,
+    recomputedMetadata,
+    suspiciousBulkInsertEventIndexes,
+  };
+}
+
+/**
+ * Recompute proof metadata from events and compare self-reported counts.
+ */
+export function verifyProofMetadata(
+  proofData: ProofData,
+  events: StoredEvent[]
+): ProofMetadataVerificationResult {
+  const result = recomputeProofMetadata(events);
+  const claimed = proofData.metadata;
+  const recomputed = result.recomputedMetadata;
+  const countKeys = [
+    'totalEvents',
+    'pasteEvents',
+    'internalPasteEvents',
+    'dropEvents',
+    'insertEvents',
+    'deleteEvents',
+  ] as const;
+
+  for (const key of countKeys) {
+    if (claimed[key] !== recomputed[key]) {
+      return {
+        ...result,
+        valid: false,
+        reason: `Proof metadata mismatch for ${key}: expected ${recomputed[key]}, got ${claimed[key]}`,
+      };
+    }
+  }
+
+  if ((claimed.bulkInsertEvents ?? 0) !== (recomputed.bulkInsertEvents ?? 0)) {
+    return {
+      ...result,
+      valid: false,
+      reason: `Proof metadata mismatch for bulkInsertEvents: expected ${recomputed.bulkInsertEvents ?? 0}, got ${claimed.bulkInsertEvents ?? 0}`,
+    };
+  }
+
+  if (claimed.totalTypingTime < recomputed.totalTypingTime) {
+    return {
+      ...result,
+      valid: false,
+      reason: 'Proof metadata totalTypingTime is shorter than the event timeline',
+    };
+  }
+
+  return result;
+}
+
+/**
+ * Verify that exported checkpoints match the fully verified event list.
+ * Checkpoints are not a substitute for full verification because they are
+ * exported with the proof and are not independently signed.
+ */
+export async function verifyCheckpoints(
+  events: StoredEvent[],
+  checkpoints?: ExportedProof['checkpoints']
+): Promise<{ valid: boolean; reason?: string; errorAt?: number }> {
+  if (!checkpoints || checkpoints.length === 0) {
+    return { valid: true };
+  }
+
+  let lastIndex = -1;
+  for (const checkpoint of checkpoints) {
+    if (!Number.isInteger(checkpoint.eventIndex) || checkpoint.eventIndex <= lastIndex) {
+      return {
+        valid: false,
+        reason: `Checkpoint index is invalid or unsorted at event ${checkpoint.eventIndex}`,
+        errorAt: checkpoint.eventIndex,
+      };
+    }
+
+    const event = events[checkpoint.eventIndex];
+    if (!event) {
+      return {
+        valid: false,
+        reason: `Checkpoint points to missing event ${checkpoint.eventIndex}`,
+        errorAt: checkpoint.eventIndex,
+      };
+    }
+
+    if (checkpoint.hash !== event.hash) {
+      return {
+        valid: false,
+        reason: `Checkpoint hash mismatch at event ${checkpoint.eventIndex}`,
+        errorAt: checkpoint.eventIndex,
+      };
+    }
+
+    if (checkpoint.timestamp !== event.timestamp) {
+      return {
+        valid: false,
+        reason: `Checkpoint timestamp mismatch at event ${checkpoint.eventIndex}`,
+        errorAt: checkpoint.eventIndex,
+      };
+    }
+
+    const expectedContentHash = event.data
+      ? await computeHash(typeof event.data === 'string' ? event.data : JSON.stringify(event.data))
+      : '';
+
+    if (checkpoint.contentHash !== expectedContentHash) {
+      return {
+        valid: false,
+        reason: `Checkpoint content hash mismatch at event ${checkpoint.eventIndex}`,
+        errorAt: checkpoint.eventIndex,
+      };
+    }
+
+    lastIndex = checkpoint.eventIndex;
+  }
+
+  return { valid: true };
+}
+
+/**
  * Verify PoSW (Proof of Sequential Work)
  */
 export async function verifyPoSW(
@@ -68,6 +442,10 @@ export async function verifyPoSW(
   eventDataString: string,
   posw: PoSWData
 ): Promise<boolean> {
+  if (posw.iterations !== POSW_ITERATIONS) {
+    return false;
+  }
+
   let hash = await computeHash(previousHash + eventDataString + posw.nonce);
 
   for (let i = 1; i < posw.iterations; i++) {
@@ -164,6 +542,15 @@ export async function verifyChain(
     };
 
     // PoSW verification
+    if (event.posw.iterations !== POSW_ITERATIONS) {
+      return {
+        valid: false,
+        errorAt: i,
+        message: `PoSW iterations mismatch at event ${i}: expected ${POSW_ITERATIONS}, got ${event.posw.iterations}`,
+        event,
+      };
+    }
+
     const eventDataStringForPoSW = deterministicStringify(eventDataWithoutPoSW);
     const poswValid = await verifyPoSW(hash ?? '', eventDataStringForPoSW, event.posw);
 
@@ -207,6 +594,7 @@ export async function verifyChain(
   return {
     valid: true,
     message: 'All hashes verified successfully',
+    computedHash: hash ?? undefined,
   };
 }
 
@@ -221,28 +609,64 @@ export async function verifyProofFile(
 
   // 1. Verify metadata
   let metadataValid = false;
+  let rootValid = false;
   let isPureTyping = false;
+  let metadataError: string | undefined;
+  let eventMetadataResult: ProofMetadataVerificationResult | undefined;
 
-  if (proof.typingProofHash && proof.typingProofData && proof.content) {
+  if (proof.typingProofHash && proof.typingProofData && proof.content !== undefined && proof.content !== null) {
     const metaResult = await verifyTypingProofHash(
       proof.typingProofHash,
       proof.typingProofData,
       proof.content
     );
-    metadataValid = metaResult.valid;
-    isPureTyping = metaResult.isPureTyping;
+    const rootResult = await verifyInitialHashRoot(proof);
+    eventMetadataResult = verifyProofMetadata(proof.typingProofData, events);
+    rootValid = rootResult.valid;
+    metadataValid = metaResult.valid && rootValid && eventMetadataResult.valid;
+    metadataError = !metaResult.valid
+      ? 'Typing proof hash does not match metadata'
+      : !rootResult.valid
+        ? rootResult.reason
+        : eventMetadataResult.reason;
+    isPureTyping = eventMetadataResult.isPureTyping;
+  } else {
+    metadataError = 'Typing proof metadata is missing';
   }
 
   // 2. Verify hash chain
   const chainResult = await verifyChain(events, onProgress);
+  const finalHashResult = chainResult.valid
+    ? verifyFinalChainHash(proof, chainResult.computedHash)
+    : { valid: false, reason: chainResult.message };
+  const checkpointResult = await verifyCheckpoints(events, proof.checkpoints);
+  const contentResult = proof.content !== undefined && proof.content !== null
+    ? verifyContentReplay(events, proof.content)
+    : { valid: false, reason: 'Final content is missing' };
+  const chainValid = chainResult.valid && finalHashResult.valid && checkpointResult.valid && contentResult.valid;
+  const verificationError = !metadataValid
+    ? metadataError
+    : !chainResult.valid
+      ? chainResult.message
+      : !finalHashResult.valid
+        ? finalHashResult.reason
+        : !checkpointResult.valid
+          ? checkpointResult.reason
+          : !contentResult.valid
+            ? contentResult.reason
+            : chainResult.message;
 
   return {
-    valid: metadataValid && chainResult.valid,
+    valid: metadataValid && chainValid,
     metadataValid,
-    chainValid: chainResult.valid,
+    rootValid,
+    chainValid,
+    finalHashValid: finalHashResult.valid,
+    contentValid: contentResult.valid,
+    checkpointValid: checkpointResult.valid,
     isPureTyping,
-    errorAt: chainResult.errorAt,
-    errorMessage: chainResult.message,
+    errorAt: chainResult.errorAt ?? checkpointResult.errorAt,
+    errorMessage: verificationError,
   };
 }
 
