@@ -7,6 +7,7 @@ import type {
   StoredEvent,
   VerificationResult,
   ContentReplayVerificationResult,
+  ProofMetadataVerificationResult,
   ProofData,
   PoSWData,
   EventHashData,
@@ -258,6 +259,115 @@ export function verifyFinalChainHash(
   return { valid: true, computedFinalHash: finalHash, expectedFinalHash: finalHash };
 }
 
+function isSuspiciousBulkInsert(event: StoredEvent): boolean {
+  if (event.type !== 'contentChange') return false;
+
+  if (event.inputType === 'replaceContent' || event.inputType === 'insertReplacementText') {
+    return true;
+  }
+
+  return (
+    event.inputType === 'insertText' &&
+    typeof event.data === 'string' &&
+    event.data.length > 1
+  );
+}
+
+function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificationResult {
+  let pasteEvents = 0;
+  let internalPasteEvents = 0;
+  let dropEvents = 0;
+  let insertEvents = 0;
+  let deleteEvents = 0;
+  const suspiciousBulkInsertEventIndexes: number[] = [];
+
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    if (!event) continue;
+
+    if (event.inputType === 'insertFromPaste') pasteEvents++;
+    if (event.inputType === 'insertFromInternalPaste') internalPasteEvents++;
+    if (event.inputType === 'insertFromDrop') dropEvents++;
+    if (event.type === 'contentChange' && event.data) insertEvents++;
+    if (event.inputType?.startsWith('delete')) deleteEvents++;
+    if (isSuspiciousBulkInsert(event)) {
+      suspiciousBulkInsertEventIndexes.push(i);
+    }
+  }
+
+  const totalTypingTime = events[events.length - 1]?.timestamp ?? 0;
+  const averageTypingSpeed = totalTypingTime > 0
+    ? Math.round((insertEvents / (totalTypingTime / 60000)) * 10) / 10
+    : 0;
+
+  const recomputedMetadata = {
+    totalEvents: events.length,
+    pasteEvents,
+    internalPasteEvents,
+    dropEvents,
+    insertEvents,
+    deleteEvents,
+    bulkInsertEvents: suspiciousBulkInsertEventIndexes.length,
+    totalTypingTime,
+    averageTypingSpeed,
+  };
+
+  return {
+    valid: true,
+    isPureTyping: pasteEvents === 0 && dropEvents === 0 && suspiciousBulkInsertEventIndexes.length === 0,
+    recomputedMetadata,
+    suspiciousBulkInsertEventIndexes,
+  };
+}
+
+/**
+ * Recompute proof metadata from events and compare self-reported counts.
+ */
+export function verifyProofMetadata(
+  proofData: ProofData,
+  events: StoredEvent[]
+): ProofMetadataVerificationResult {
+  const result = recomputeProofMetadata(events);
+  const claimed = proofData.metadata;
+  const recomputed = result.recomputedMetadata;
+  const countKeys = [
+    'totalEvents',
+    'pasteEvents',
+    'internalPasteEvents',
+    'dropEvents',
+    'insertEvents',
+    'deleteEvents',
+  ] as const;
+
+  for (const key of countKeys) {
+    if (claimed[key] !== recomputed[key]) {
+      return {
+        ...result,
+        valid: false,
+        reason: `Proof metadata mismatch for ${key}: expected ${recomputed[key]}, got ${claimed[key]}`,
+      };
+    }
+  }
+
+  if ((claimed.bulkInsertEvents ?? 0) !== (recomputed.bulkInsertEvents ?? 0)) {
+    return {
+      ...result,
+      valid: false,
+      reason: `Proof metadata mismatch for bulkInsertEvents: expected ${recomputed.bulkInsertEvents ?? 0}, got ${claimed.bulkInsertEvents ?? 0}`,
+    };
+  }
+
+  if (claimed.totalTypingTime < recomputed.totalTypingTime) {
+    return {
+      ...result,
+      valid: false,
+      reason: 'Proof metadata totalTypingTime is shorter than the event timeline',
+    };
+  }
+
+  return result;
+}
+
 /**
  * Verify that exported checkpoints match the fully verified event list.
  * Checkpoints are not a substitute for full verification because they are
@@ -502,6 +612,7 @@ export async function verifyProofFile(
   let rootValid = false;
   let isPureTyping = false;
   let metadataError: string | undefined;
+  let eventMetadataResult: ProofMetadataVerificationResult | undefined;
 
   if (proof.typingProofHash && proof.typingProofData && proof.content !== undefined && proof.content !== null) {
     const metaResult = await verifyTypingProofHash(
@@ -510,10 +621,15 @@ export async function verifyProofFile(
       proof.content
     );
     const rootResult = await verifyInitialHashRoot(proof);
+    eventMetadataResult = verifyProofMetadata(proof.typingProofData, events);
     rootValid = rootResult.valid;
-    metadataValid = metaResult.valid && rootValid;
-    metadataError = metaResult.valid ? rootResult.reason : 'Typing proof hash does not match metadata';
-    isPureTyping = metaResult.isPureTyping;
+    metadataValid = metaResult.valid && rootValid && eventMetadataResult.valid;
+    metadataError = !metaResult.valid
+      ? 'Typing proof hash does not match metadata'
+      : !rootResult.valid
+        ? rootResult.reason
+        : eventMetadataResult.reason;
+    isPureTyping = eventMetadataResult.isPureTyping;
   } else {
     metadataError = 'Typing proof metadata is missing';
   }

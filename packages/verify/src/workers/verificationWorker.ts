@@ -9,6 +9,7 @@ import {
   verifyContentReplay,
   verifyFinalChainHash,
   verifyInitialHashRoot,
+  verifyProofMetadata,
 } from '@typedcode/shared';
 import type { StoredEvent, CheckpointData, ProofData, FingerprintComponents } from '@typedcode/shared';
 
@@ -194,15 +195,19 @@ async function verify(request: VerifyRequest): Promise<void> {
         proofData.content ?? ''
       );
 
-      metadataValid = hashVerification.valid;
-      isPureTyping = hashVerification.isPureTyping ?? false;
-
       const rootVerification = await verifyInitialHashRoot(proofData);
+      const eventMetadataVerification = verifyProofMetadata(
+        proofData.typingProofData,
+        proofData.proof?.events ?? []
+      );
       rootValid = rootVerification.valid;
-      metadataValid = metadataValid && rootValid;
-      metadataMessage = hashVerification.valid
-        ? rootVerification.reason
-        : hashVerification.reason;
+      metadataValid = hashVerification.valid && rootValid && eventMetadataVerification.valid;
+      metadataMessage = !hashVerification.valid
+        ? hashVerification.reason
+        : !rootVerification.valid
+          ? rootVerification.reason
+          : eventMetadataVerification.reason;
+      isPureTyping = eventMetadataVerification.isPureTyping;
     } else {
       // メタデータがない場合はサポート対象外（v3.0.0以降が必要）
       sendError(id, 'サポートされていないフォーマット: メタデータがありません（v3.0.0以降が必要）');

@@ -619,6 +619,7 @@ export class TypingProof {
         dropEvents: stats.dropEvents,
         insertEvents: stats.insertEvents,
         deleteEvents: stats.deleteEvents,
+        bulkInsertEvents: stats.bulkInsertEvents,
         totalTypingTime: stats.duration,
         averageTypingSpeed: stats.averageWPM
       }
@@ -629,7 +630,7 @@ export class TypingProof {
 
     // isPureTyping: 外部ペースト/ドロップがない場合はtrue
     // 内部ペーストは許可されているため、isPureTypingには影響しない
-    const isPureTyping = stats.pasteEvents === 0 && stats.dropEvents === 0;
+    const isPureTyping = stats.pasteEvents === 0 && stats.dropEvents === 0 && stats.bulkInsertEvents === 0;
 
     return {
       typingProofHash,
@@ -676,7 +677,8 @@ export class TypingProof {
 
     const isPureTyping =
       proofData.metadata.pasteEvents === 0 &&
-      proofData.metadata.dropEvents === 0;
+      proofData.metadata.dropEvents === 0 &&
+      (proofData.metadata.bulkInsertEvents ?? 0) === 0;
 
     return {
       valid: true,

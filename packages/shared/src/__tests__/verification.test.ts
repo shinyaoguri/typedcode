@@ -10,8 +10,9 @@ import {
   verifyContentReplay,
   verifyFinalChainHash,
   verifyInitialHashRoot,
+  verifyProofMetadata,
 } from '../index.js';
-import type { ExportedProof, FingerprintComponents, StoredEvent } from '../types.js';
+import type { ExportedProof, FingerprintComponents, ProofData, StoredEvent } from '../types.js';
 
 const createMockFingerprintComponents = (): FingerprintComponents => ({
   userAgent: 'Mozilla/5.0 (Verification Test)',
@@ -164,6 +165,42 @@ describe('verification utilities', () => {
     ).resolves.toMatchObject({
       valid: false,
       reason: 'Checkpoint hash mismatch at event 0',
+    });
+  });
+
+  it('recomputes metadata from events and flags bulk insertText events', () => {
+    const events = [
+      {
+        type: 'contentChange',
+        inputType: 'insertText',
+        data: 'ab',
+        timestamp: 10,
+      },
+    ] as StoredEvent[];
+    const proofData = {
+      metadata: {
+        totalEvents: 1,
+        pasteEvents: 0,
+        internalPasteEvents: 0,
+        dropEvents: 0,
+        insertEvents: 1,
+        deleteEvents: 0,
+        bulkInsertEvents: 1,
+        totalTypingTime: 10,
+        averageTypingSpeed: 0,
+      },
+    } as ProofData;
+
+    expect(verifyProofMetadata(proofData, events)).toMatchObject({
+      valid: true,
+      isPureTyping: false,
+      suspiciousBulkInsertEventIndexes: [0],
+    });
+
+    proofData.metadata.bulkInsertEvents = 0;
+    expect(verifyProofMetadata(proofData, events)).toMatchObject({
+      valid: false,
+      reason: 'Proof metadata mismatch for bulkInsertEvents: expected 1, got 0',
     });
   });
 });

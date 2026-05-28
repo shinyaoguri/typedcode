@@ -21,6 +21,7 @@ export {
   verifyFinalChainHash,
   verifyContentReplay,
   verifyCheckpoints,
+  verifyProofMetadata,
   verifyTypingProofHash,
   verifyChain,
   verifyProofFile,

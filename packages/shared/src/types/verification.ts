@@ -45,6 +45,15 @@ export interface ContentReplayVerificationResult {
   errorAt?: number;
 }
 
+/** proof metadata とイベント列の照合結果 */
+export interface ProofMetadataVerificationResult {
+  valid: boolean;
+  reason?: string;
+  isPureTyping: boolean;
+  recomputedMetadata: ProofMetadata;
+  suspiciousBulkInsertEventIndexes: number[];
+}
+
 /** タイピング証明ハッシュ検証結果 */
 export interface TypingProofVerificationResult {
   valid: boolean;

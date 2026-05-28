@@ -86,6 +86,7 @@ export type {
   SampledVerificationResult,
   VerificationResult,
   ContentReplayVerificationResult,
+  ProofMetadataVerificationResult,
   TypingProofVerificationResult,
 } from './verification.js';
 

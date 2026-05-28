@@ -105,6 +105,8 @@ export interface ProofMetadata {
   dropEvents: number;
   insertEvents: number;
   deleteEvents: number;
+  /** insertTextなどに紛れた複数文字挿入・一括置換の件数 */
+  bulkInsertEvents?: number;
   totalTypingTime: number;
   averageTypingSpeed: number;
 }
