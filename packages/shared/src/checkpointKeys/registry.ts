@@ -42,14 +42,19 @@ export interface CheckpointPublicKey {
  * - 過去 proof の検証可能性を維持するため historical commit から鍵を辿れることが重要
  */
 export const CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [
-  // 本番鍵が発行され次第ここに append:
-  // {
-  //   keyId: 'tcp-2026-08-xxxxxx',
-  //   algorithm: 'ECDSA-P256',
-  //   publicKeyJwk: { kty: 'EC', crv: 'P-256', x: '...', y: '...' },
-  //   status: 'active',
-  //   validFrom: '2026-08-01T00:00:00Z',
-  // },
+  {
+    keyId: 'tcp-202605-fd6d42',
+    algorithm: 'ECDSA-P256',
+    publicKeyJwk: {
+      kty: 'EC',
+      crv: 'P-256',
+      x: 'tq1WL46ZTs2X2f1afNe8m-icdz9G7w5NUZX7QzY2doU',
+      y: 'kNtc3gG0fcDeL44naUx0TVUV3wKqupWKXLoNZjU5u8A',
+    },
+    status: 'active',
+    validFrom: '2026-05-28T14:43:43.346Z',
+    description: 'Initial signing key. Private half lives in the Workers secret CHECKPOINT_SIGNING_KEY_JWK.',
+  },
 ] as const;
 
 /**
