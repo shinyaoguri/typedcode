@@ -106,7 +106,17 @@ export class SignedCheckpointService {
     this.getInitialEventChainHash = options.getInitialEventChainHash;
     this.attachSignature = options.attachSignature;
     this.isOnline = options.isOnline ?? (() => (typeof navigator === 'undefined' ? true : navigator.onLine));
-    this.fetchImpl = options.fetchImpl ?? ((typeof fetch !== 'undefined' ? fetch : null) as typeof fetch);
+    // fetch は this===window バインディングを要求するので、参照を渡しただけだと
+    // Illegal invocation になる。明示的に bind しておく。
+    if (options.fetchImpl) {
+      this.fetchImpl = options.fetchImpl;
+    } else if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+      this.fetchImpl = window.fetch.bind(window);
+    } else if (typeof globalThis !== 'undefined' && typeof globalThis.fetch === 'function') {
+      this.fetchImpl = globalThis.fetch.bind(globalThis);
+    } else {
+      this.fetchImpl = null as unknown as typeof fetch;
+    }
     this.backoffSchedule = options.backoffSchedule ?? DEFAULT_BACKOFF_MS;
     this.maxAttempts = options.maxAttemptsPerCheckpoint ?? DEFAULT_MAX_ATTEMPTS;
 
