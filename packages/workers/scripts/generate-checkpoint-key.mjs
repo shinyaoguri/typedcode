@@ -4,17 +4,17 @@
  *
  * 出力:
  * - 私的 JWK (Worker 環境変数 CHECKPOINT_SIGNING_KEY_JWK 用)
- * - 公開 JWK (packages/shared/src/checkpointKeys/registry.ts に append 用)
+ * - 公開鍵 entry (CheckpointPublicKey 形式)
  * - 推奨 keyId
  *
  * 使い方:
  *   node packages/workers/scripts/generate-checkpoint-key.mjs > new-key.txt
  *
- * 注: このスクリプト自体は Cloudflare KV や Workers と通信しない。
- * 鍵を発行したら:
- * 1) 公開鍵を registry.ts に append (status:'active', validFrom: now)
- * 2) 私的 JWK を `wrangler secret put CHECKPOINT_SIGNING_KEY_JWK` で投入
- * 3) keyId を `wrangler secret put CHECKPOINT_SIGNING_KEY_ID` で投入
+ * 鍵の置き場所:
+ * - **ローカル dev 鍵**: 公開鍵を packages/shared/src/checkpointKeys/localKeys.ts に
+ *   append し、`git update-index --skip-worktree` で git status から隠す
+ * - **本番運用鍵**: 公開鍵を packages/shared/src/checkpointKeys/registry.ts に
+ *   append して PR レビュー、私的 JWK は `wrangler secret put` で本番に投入
  */
 
 import { webcrypto } from 'node:crypto';
@@ -40,7 +40,11 @@ async function main() {
   console.log('=== validFrom (ISO) ===');
   console.log(validFrom);
   console.log('');
-  console.log('=== Append to packages/shared/src/checkpointKeys/registry.ts ===');
+  console.log('=== Public key entry ===');
+  console.log('For LOCAL dev: append to packages/shared/src/checkpointKeys/localKeys.ts');
+  console.log('  then run: git update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts');
+  console.log('For PRODUCTION: append to packages/shared/src/checkpointKeys/registry.ts and open a PR');
+  console.log('');
   console.log(JSON.stringify(
     {
       keyId,
@@ -54,6 +58,9 @@ async function main() {
   ));
   console.log('');
   console.log('=== Wrangler secrets (DO NOT COMMIT) ===');
+  console.log('For LOCAL dev: paste into packages/workers/.dev.vars');
+  console.log('For PRODUCTION: `wrangler secret put CHECKPOINT_SIGNING_KEY_ID` and `wrangler secret put CHECKPOINT_SIGNING_KEY_JWK`');
+  console.log('');
   console.log('CHECKPOINT_SIGNING_KEY_ID:');
   console.log(keyId);
   console.log('');

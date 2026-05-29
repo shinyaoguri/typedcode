@@ -30,22 +30,27 @@ TURNSTILE_SECRET_KEY=your_secret_key_here
 ATTESTATION_SECRET_KEY=any_random_string_for_signing
 ```
 
-### 3. Generate Signed Checkpoint Key (one-time)
+### 3. Generate Signed Checkpoint Key (one-time, per developer)
 
 ```bash
 npm run gen-checkpoint-key -w @typedcode/workers
 ```
 
 This prints:
-- A ready-to-paste public key entry. Append it to
-  `packages/shared/src/checkpointKeys/registry.ts`.
+- A `CheckpointPublicKey` entry. Append it to
+  `packages/shared/src/checkpointKeys/localKeys.ts`, then run:
+  ```bash
+  git update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts
+  ```
+  so your personal dev key never lands in a commit. (Production keys go
+  in `registry.ts` via a normal PR.)
 - The matching `CHECKPOINT_SIGNING_KEY_ID` and `CHECKPOINT_SIGNING_KEY_JWK`.
   Paste both into `.dev.vars`.
 
 Without these values the `/api/checkpoint/sign` endpoint returns
 `SIGNING_KEY_NOT_CONFIGURED` (500). The rest of the API still works.
 
-### 4. Create KV Namespace (one-time)
+### 4. Create KV Namespace (one-time, per developer)
 
 ```bash
 wrangler kv namespace create CHECKPOINT_SESSIONS
@@ -53,7 +58,15 @@ wrangler kv namespace create CHECKPOINT_SESSIONS --preview
 ```
 
 Replace the two `REPLACE_WITH_*_ID` placeholders in `wrangler.toml` with
-the IDs the command prints.
+the IDs the command prints, then hide the file from accidental commits:
+
+```bash
+git update-index --skip-worktree packages/workers/wrangler.toml
+```
+
+(Undo with `--no-skip-worktree` if you ever need to edit the shared
+parts of `wrangler.toml` and commit them. After committing, re-apply
+skip-worktree.)
 
 ### 5. Start Development Server
 

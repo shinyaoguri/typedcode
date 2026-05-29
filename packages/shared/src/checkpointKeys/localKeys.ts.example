@@ -1,0 +1,26 @@
+/**
+ * ローカル開発用の追加公開鍵 (gitignored).
+ *
+ * このファイルをコピー:
+ *   cp localKeys.ts.example localKeys.ts
+ *
+ * 次に `npm run gen-checkpoint-key -w @typedcode/workers` を実行し、
+ * 出力された公開鍵エントリを LOCAL_CHECKPOINT_PUBLIC_KEYS に append する。
+ * `registry.ts` の本番鍵リストとマージして使われる。
+ *
+ * gitignored なので、各開発者の dev 鍵が他人と共有されることはない。
+ */
+
+import type { CheckpointPublicKey } from './registry.js';
+
+export const LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [
+  // 例 (gen-checkpoint-key の出力をそのまま貼る):
+  // {
+  //   keyId: 'tcp-202605-xxxxxx',
+  //   algorithm: 'ECDSA-P256',
+  //   publicKeyJwk: { kty: 'EC', crv: 'P-256', x: '...', y: '...' },
+  //   status: 'active',
+  //   validFrom: '2026-05-28T00:00:00Z',
+  //   description: 'My dev key (do not use in production)',
+  // },
+] as const;

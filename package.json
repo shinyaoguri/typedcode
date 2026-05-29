@@ -20,7 +20,8 @@
     "node": ">=24"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "wrangler": "^4.95.0"
   },
   "overrides": {
     "vite": "^8.0.5",
