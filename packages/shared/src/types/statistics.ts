@@ -27,6 +27,7 @@ export interface TypingStatistics {
   dropEvents: number;
   insertEvents: number;
   deleteEvents: number;
+  bulkInsertEvents: number;
   templateEvents: number;  // テンプレート注入イベント数
   duration: number;
   averageWPM: number;

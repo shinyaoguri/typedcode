@@ -26,6 +26,7 @@ export interface VerifyTranslationKeys {
   settings: {
     language: string;
     about: string;
+    verifyMode: string;
   };
 
   // Activity bar
@@ -85,12 +86,60 @@ export interface VerifyTranslationKeys {
     screenshotsSomeInvalid: string;
     screenshotsCount: string;
     posw: string;
+    poswMode: string;
+    poswSkipped: string;
+    poswSampled: string;
+    poswFull: string;
+    poswNone: string;
     iterations: string;
     totalTime: string;
     humanAttestation: string;
     createTime: string;
     exportTime: string;
     typingPattern: string;
+    anchoring: string;
+    anchoringStatus: string;
+    anchoringCoverage: string;
+    anchoringTemporal: string;
+    anchoringVerified: string;
+    anchoringInvalid: string;
+    anchoringUnavailable: string;
+    anchoringNone: string;
+    anchoringPostHoc: string;
+    // 詳細展開セクション
+    anchoringDetailsToggle: string;
+    anchoringSectionKeys: string;
+    anchoringSectionRange: string;
+    anchoringSectionTemporal: string;
+    anchoringSectionChecks: string;
+    anchoringSectionFailures: string;
+    anchoringKeyStatus: string;
+    anchoringKeyStatusActive: string;
+    anchoringKeyStatusRevoked: string;
+    anchoringKeyStatusUnknown: string;
+    anchoringKeyAlgorithm: string;
+    anchoringKeyDescription: string;
+    anchoringKeyValidFrom: string;
+    anchoringKeyValidUntil: string;
+    anchoringKeyRevokedAt: string;
+    anchoringFirstSeenAt: string;
+    anchoringInitialChainHash: string;
+    anchoringFirstAnchor: string;
+    anchoringLastAnchor: string;
+    anchoringAnchorAt: string;
+    anchoringAnchorTimestamp: string;
+    anchoringServerSpan: string;
+    anchoringClientSpan: string;
+    anchoringRatio: string;
+    anchoringPostHocCriteria: string;
+    anchoringPostHocFlagged: string;
+    anchoringPostHocClear: string;
+    anchoringTotalCheckpoints: string;
+    anchoringSignedCount: string;
+    anchoringValidCount: string;
+    anchoringNoFailures: string;
+    anchoringFailedAt: string;
+    anchoringWarningRevoked: string;
   };
 
   // Chain panel

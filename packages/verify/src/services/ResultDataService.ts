@@ -151,5 +151,22 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     typingTime,
     typingSpeed,
     typingPatternAnalysis,
+    verificationMode: verificationResult.verificationMode,
+    poswMode: verificationResult.poswMode,
+    signedCheckpoint:
+      verificationResult.signedCheckpointAnchored !== undefined
+        ? {
+            anchored: verificationResult.signedCheckpointAnchored,
+            valid: verificationResult.signedCheckpointValid ?? false,
+            coverage: verificationResult.signedCheckpointCoverage ?? {
+              signedCount: 0,
+              lastSignedEventIndex: null,
+              coverageRatio: 0,
+            },
+            temporal: verificationResult.signedCheckpointTemporal ?? null,
+            reason: verificationResult.signedCheckpointReason,
+            report: verificationResult.signedCheckpointReport,
+          }
+        : undefined,
   };
 }

@@ -19,11 +19,15 @@
   "engines": {
     "node": ">=24"
   },
-  "overrides": {
-    "dompurify": "^3.4.5",
-    "ws": "^8.20.1"
-  },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "wrangler": "^4.95.0"
+  },
+  "overrides": {
+    "vite": "^8.0.5",
+    "rollup": "^4.59.0",
+    "dompurify": "^3.4.5",
+    "ws": "^8.20.1",
+    "uuid": "^11.1.1"
   }
 }

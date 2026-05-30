@@ -7,6 +7,7 @@ import type {
   QueueItem,
   ProofFile,
   VerificationResultData,
+  VerificationMode,
   WorkerRequestMessage,
   WorkerResponseMessage,
   ProgressDetails,
@@ -28,6 +29,7 @@ export class VerificationQueue {
   private processing: QueueItem | null = null;
   private worker: Worker | null = null;
   private isProcessing = false;
+  private mode: VerificationMode = 'full';
 
   private onProgressCallback: ProgressCallback | null = null;
   private onCompleteCallback: CompleteCallback | null = null;
@@ -35,6 +37,7 @@ export class VerificationQueue {
 
   // 各アイテムのパース済みデータを保持
   private parsedDataMap: Map<string, ProofFile> = new Map();
+  private modeMap: Map<string, VerificationMode> = new Map();
 
   /**
    * Workerを初期化
@@ -61,13 +64,21 @@ export class VerificationQueue {
   }
 
   /**
-   * キューにアイテムを追加
+   * デフォルト検証モードを設定 (個別 enqueue で上書き可)
    */
-  enqueue(item: QueueItem): void {
+  setMode(mode: VerificationMode): void {
+    this.mode = mode;
+  }
+
+  /**
+   * キューにアイテムを追加。modeOverride で個別アイテムのモードを指定可
+   */
+  enqueue(item: QueueItem, modeOverride?: VerificationMode): void {
     // JSONをパースして保存
     try {
       const proofData = JSON.parse(item.rawData) as ProofFile;
       this.parsedDataMap.set(item.id, proofData);
+      this.modeMap.set(item.id, modeOverride ?? this.mode);
       this.queue.push(item);
 
       // 処理中でなければ開始
@@ -108,6 +119,7 @@ export class VerificationQueue {
       type: 'verify',
       id: this.processing.id,
       proofData,
+      mode: this.modeMap.get(this.processing.id) ?? this.mode,
     };
 
     this.worker!.postMessage(message);
@@ -216,6 +228,7 @@ export class VerificationQueue {
   clear(): void {
     this.queue = [];
     this.parsedDataMap.clear();
+    this.modeMap.clear();
     // 処理中のアイテムはそのまま完了を待つ
   }
 
@@ -229,6 +242,7 @@ export class VerificationQueue {
     }
     this.queue = [];
     this.parsedDataMap.clear();
+    this.modeMap.clear();
     this.processing = null;
     this.isProcessing = false;
   }

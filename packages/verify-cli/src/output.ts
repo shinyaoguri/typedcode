@@ -18,6 +18,8 @@ function c(color: keyof typeof COLORS, text: string): string {
   return useColors ? `${COLORS[color]}${text}${COLORS.reset}` : text;
 }
 
+import type { VerificationMode, SignedCheckpointsVerificationResult } from '@typedcode/shared';
+
 export interface VerificationOutput {
   valid: boolean;
   metadataValid: boolean;
@@ -31,6 +33,9 @@ export interface VerificationOutput {
   errorAt?: number;
   errorMessage?: string;
   language?: string;
+  mode?: VerificationMode;
+  poswSkipped?: boolean;
+  signedCheckpoints?: SignedCheckpointsVerificationResult;
 }
 
 export function formatResult(result: VerificationOutput): string {
@@ -78,7 +83,31 @@ export function formatResult(result: VerificationOutput): string {
   }
 
   if (result.poswIterations) {
-    lines.push(`PoSW:        ${result.poswIterations.toLocaleString()} iterations/event`);
+    const poswStatus = result.poswSkipped ? c('yellow', 'SKIPPED (fast mode)') : c('green', 'VERIFIED');
+    lines.push(`PoSW:        ${result.poswIterations.toLocaleString()} iterations/event — ${poswStatus}`);
+  }
+
+  if (result.mode) {
+    lines.push(`Mode:        ${result.mode}`);
+  }
+
+  const sc = result.signedCheckpoints;
+  if (sc) {
+    if (!sc.anchored) {
+      lines.push(`Anchoring:   ${c('yellow', 'unavailable')} (no signed checkpoints)`);
+    } else if (sc.valid) {
+      const cov = sc.coverage;
+      const pct = (cov.coverageRatio * 100).toFixed(1);
+      lines.push(`Anchoring:   ${c('green', 'VERIFIED')} (${cov.signedCount} signed checkpoints, ${pct}% coverage)`);
+      if (sc.temporal?.postHocSuspected) {
+        lines.push(c('yellow', '  ! Post-hoc batch signing suspected (server span << client span)'));
+      }
+      if (sc.details.some((d) => d.warning === 'key-revoked-but-trusted-by-time')) {
+        lines.push(c('yellow', '  ! Some envelopes signed with a key that was later revoked'));
+      }
+    } else {
+      lines.push(`Anchoring:   ${c('red', 'FAILED')} ${sc.reason ?? ''}`);
+    }
   }
 
   lines.push('');
@@ -95,14 +124,20 @@ export function printUsage(): void {
 ${c('bold', 'typedcode-verify')} - Verify TypedCode proof files
 
 ${c('cyan', 'Usage:')}
-  typedcode-verify <file.json|file.zip>
+  typedcode-verify <file.json|file.zip> [--mode <fast|audit|full>]
 
 ${c('cyan', 'Arguments:')}
   file    Path to proof file (.json) or exported archive (.zip)
 
+${c('cyan', 'Options:')}
+  --mode  Verification mode (default: full)
+          fast  - Skip PoSW recompute (tamper resistance only)
+          audit - fast + deterministic PoSW sampling (placeholder)
+          full  - Full PoSW verification
+
 ${c('cyan', 'Examples:')}
   typedcode-verify proof.json
-  typedcode-verify my-code.zip
+  typedcode-verify my-code.zip --mode fast
 
 ${c('cyan', 'Exit codes:')}
   0 - Verification passed

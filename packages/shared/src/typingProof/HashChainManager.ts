@@ -21,6 +21,12 @@ interface SequenceValidation {
   wasCorrected: boolean;
 }
 
+/** 初期ハッシュ生成結果 */
+interface InitialHashResult {
+  hash: string;
+  nonce: string;
+}
+
 export class HashChainManager {
   private currentHash: string | null = null;
 
@@ -44,13 +50,29 @@ export class HashChainManager {
   /**
    * 初期ハッシュを生成（フィンガープリント + ランダム値）
    */
-  async initialHash(fingerprintHash: string): Promise<string> {
+  async generateInitialHash(fingerprintHash: string): Promise<InitialHashResult> {
     const randomData = new Uint8Array(32);
     crypto.getRandomValues(randomData);
     const randomHex = this.arrayBufferToHex(randomData);
 
-    const combined = fingerprintHash + randomHex;
-    return await this.computeHash(combined);
+    return {
+      hash: await this.computeInitialHash(fingerprintHash, randomHex),
+      nonce: randomHex,
+    };
+  }
+
+  /**
+   * 保存済みnonceから初期ハッシュを再計算
+   */
+  async computeInitialHash(fingerprintHash: string, nonce: string): Promise<string> {
+    return await this.computeHash(fingerprintHash + nonce);
+  }
+
+  /**
+   * 初期ハッシュを生成（後方互換API）
+   */
+  async initialHash(fingerprintHash: string): Promise<string> {
+    return (await this.generateInitialHash(fingerprintHash)).hash;
   }
 
   /**

@@ -43,7 +43,7 @@ packages/
 ├── shared/     # Core library: TypingProof, Fingerprint, verification, types
 ├── editor/     # Monaco-based editor with keystroke tracking
 ├── verify/     # Web app for proof verification (VSCode-like UI)
-├── verify-cli/ # CLI tool for verification (Node.js ≥22)
+├── verify-cli/ # CLI tool for verification (Node.js ≥24)
 └── workers/    # Cloudflare Workers for Turnstile integration
 ```
 

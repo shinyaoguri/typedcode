@@ -36,6 +36,24 @@ export interface VerificationResult {
   sampledResult?: SampledVerificationResult;
 }
 
+/** 最終コンテンツ再構築検証結果 */
+export interface ContentReplayVerificationResult {
+  valid: boolean;
+  reason?: string;
+  reconstructedContent?: string;
+  mismatchIndex?: number;
+  errorAt?: number;
+}
+
+/** proof metadata とイベント列の照合結果 */
+export interface ProofMetadataVerificationResult {
+  valid: boolean;
+  reason?: string;
+  isPureTyping: boolean;
+  recomputedMetadata: ProofMetadata;
+  suspiciousBulkInsertEventIndexes: number[];
+}
+
 /** タイピング証明ハッシュ検証結果 */
 export interface TypingProofVerificationResult {
   valid: boolean;

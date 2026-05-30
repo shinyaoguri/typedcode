@@ -12,6 +12,7 @@ import type {
 } from '../types.js';
 import { HashChainManager } from './HashChainManager.js';
 import { PoswManager } from './PoswManager.js';
+import { POSW_ITERATIONS } from '../version.js';
 
 interface SegmentInfo {
   startIndex: number;
@@ -29,6 +30,18 @@ interface EventVerificationResult {
   newHash?: string;
   newTimestamp?: number;
   hashInfo?: { computed: string; expected: string; poswHash: string };
+}
+
+/**
+ * チェーン検証オプション
+ *
+ * `skipPosw: true` の場合、各 event の PoSW 反復再計算 (10000 回 SHA-256) をスキップする。
+ * シーケンス番号・タイムスタンプ・previousHash 連鎖・hash 再計算は通常通り行うため、
+ * 改ざんは検出される。ただし PoSW intermediateHash が「正しい sequential work の結果か」は
+ * 検証されない。事前申告された iterations 値の正しさだけは引き続き検査する。
+ */
+export interface ChainVerifyOptions {
+  skipPosw?: boolean;
 }
 
 export class ChainVerifier {
@@ -55,7 +68,8 @@ export class ChainVerifier {
     index: number,
     expectedPreviousHash: string | null,
     lastTimestamp: number,
-    checkPreviousHash: boolean = true
+    checkPreviousHash: boolean = true,
+    options: ChainVerifyOptions = {}
   ): Promise<EventVerificationResult> {
     // シーケンス番号チェック
     if (event.sequence !== index) {
@@ -114,23 +128,37 @@ export class ChainVerifier {
     };
 
     // PoSW検証（決定的なJSON文字列化を使用）
-    const eventDataStringForPoSW = this.hashChainManager.deterministicStringify(eventDataWithoutPoSW);
-    const poswValid = await this.poswManager.verifyPoSW(expectedPreviousHash ?? '', eventDataStringForPoSW, event.posw);
-
-    if (!poswValid) {
-      console.error(`[ChainVerifier] PoSW verification failed at event ${index}:`, {
-        posw: event.posw,
-        previousHash: expectedPreviousHash
-      });
+    if (event.posw.iterations !== POSW_ITERATIONS) {
       return {
         valid: false,
         error: {
           valid: false,
           errorAt: index,
-          message: `PoSW verification failed at event ${index}: invalid proof of work`,
+          message: `PoSW iterations mismatch at event ${index}: expected ${POSW_ITERATIONS}, got ${event.posw.iterations}`,
           event
         }
       };
+    }
+
+    if (!options.skipPosw) {
+      const eventDataStringForPoSW = this.hashChainManager.deterministicStringify(eventDataWithoutPoSW);
+      const poswValid = await this.poswManager.verifyPoSW(expectedPreviousHash ?? '', eventDataStringForPoSW, event.posw);
+
+      if (!poswValid) {
+        console.error(`[ChainVerifier] PoSW verification failed at event ${index}:`, {
+          posw: event.posw,
+          previousHash: expectedPreviousHash
+        });
+        return {
+          valid: false,
+          error: {
+            valid: false,
+            errorAt: index,
+            message: `PoSW verification failed at event ${index}: invalid proof of work`,
+            event
+          }
+        };
+      }
     }
 
     // recordEvent()で使用したのと同じフィールドを再構築（PoSW含む）
@@ -183,10 +211,12 @@ export class ChainVerifier {
    * ハッシュ鎖を検証（PoSW検証含む）
    * @param events - 検証するイベント配列
    * @param onProgress - 進捗コールバック (current, total, hashInfo?) => void
+   * @param options - 検証オプション (skipPosw 等)
    */
   async verify(
     events: StoredEvent[],
-    onProgress?: (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => void
+    onProgress?: (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => void,
+    options: ChainVerifyOptions = {}
   ): Promise<VerificationResult> {
     let hash = events[0]?.previousHash ?? null;
     let lastTimestamp = -Infinity;
@@ -196,7 +226,7 @@ export class ChainVerifier {
       const event = events[i];
       if (!event) continue;
 
-      const result = await this.verifyEvent(event, i, hash, lastTimestamp, true);
+      const result = await this.verifyEvent(event, i, hash, lastTimestamp, true, options);
 
       if (!result.valid) {
         return result.error!;
@@ -215,7 +245,10 @@ export class ChainVerifier {
 
     return {
       valid: true,
-      message: 'All hashes verified successfully (including PoSW)'
+      message: options.skipPosw
+        ? 'All hashes verified successfully (PoSW skipped)'
+        : 'All hashes verified successfully (including PoSW)',
+      computedHash: hash ?? undefined
     };
   }
 

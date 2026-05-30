@@ -242,7 +242,18 @@ export class ProofExporter {
       await this.tabManager?.flushToIndexedDB();
 
       const content = activeTab.model.getValue();
+      // exportProof() は最終 checkpoint を作成して onCheckpointCreated フックを発火する。
+      // 戻り値の checkpoints は CheckpointManager 内部配列への参照なので、後段で
+      // waitForFlush している間に signature が attach される。
       const proof = await activeTab.typingProof.exportProof(content);
+
+      // Signed checkpoint の pending リクエストを最大 5 秒待機 (オンライン時のみ意味あり)
+      const flushResult = await activeTab.signedCheckpointService?.waitForFlush(5000);
+      if (flushResult && !flushResult.flushed) {
+        console.warn(
+          `[ProofExporter] ${flushResult.remaining} signed checkpoint(s) remain unsigned at export time`
+        );
+      }
 
       // ZIPファイルを作成
       const zip = new JSZip();
@@ -359,6 +370,10 @@ export class ProofExporter {
 
       const allTabs = this.tabManager.getAllTabs();
 
+      // マルチタブ: 各 tab.typingProof.exportProof() が最終 checkpoint を作って
+      // フックを起こす → その後に並列 flush。先に各 exportProof を走らせ proof を作り、
+      // 最後に全タブの signing flush を待ってからシリアライズする。
+
       // ZIPファイルを作成
       const zip = new JSZip();
       const timestamp = this.generateTimestamp();
@@ -382,6 +397,15 @@ export class ProofExporter {
 
         const content = tab.model.getValue();
         const proof = await tab.typingProof.exportProof(content);
+
+        // 最終 checkpoint が作成された直後で signing が pending な可能性がある。
+        // JSON シリアライズ前に最大 5 秒待機して envelope を反映させる。
+        const flushResult = await tab.signedCheckpointService?.waitForFlush(5000);
+        if (flushResult && !flushResult.flushed) {
+          console.warn(
+            `[ProofExporter] tab ${tab.id}: ${flushResult.remaining} unsigned checkpoint(s) at export time`
+          );
+        }
 
         // ソースファイル名を生成（拡張子付き）
         let sourceFilename = tab.filename;

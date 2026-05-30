@@ -8,3 +8,13 @@ TURNSTILE_SECRET_KEY=your_turnstile_secret_key_here
 
 # Attestation signing secret (any random string, must match production)
 ATTESTATION_SECRET_KEY=your_attestation_secret_key_here
+
+# Signed checkpoint signing key (ECDSA-P256, JWK)
+# Setup:
+#   1. Run `npm run gen-checkpoint-key -w @typedcode/workers`
+#   2. Append the printed public key entry to
+#      packages/shared/src/checkpointKeys/registry.ts (status:'active', validFrom: now)
+#   3. Paste the printed CHECKPOINT_SIGNING_KEY_ID and CHECKPOINT_SIGNING_KEY_JWK below
+# DO NOT commit .dev.vars (gitignored). For production use `wrangler secret put`.
+CHECKPOINT_SIGNING_KEY_ID=
+CHECKPOINT_SIGNING_KEY_JWK=

@@ -105,6 +105,8 @@ export interface ProofMetadata {
   dropEvents: number;
   insertEvents: number;
   deleteEvents: number;
+  /** insertTextなどに紛れた複数文字挿入・一括置換の件数 */
+  bulkInsertEvents?: number;
   totalTypingTime: number;
   averageTypingSpeed: number;
 }
@@ -112,6 +114,10 @@ export interface ProofMetadata {
 /** 証明データ */
 export interface ProofData {
   finalContentHash: string;
+  /** fingerprint hash と組み合わせて initialEventChainHash を再計算するためのnonce */
+  initialHashNonce?: string;
+  /** イベント列の信頼根。イベントがある場合は event #0.previousHash と一致する */
+  initialEventChainHash?: string | null;
   finalEventChainHash: string;
   deviceId: string;
   metadata: ProofMetadata;
@@ -146,7 +152,24 @@ export interface CheckpointData {
   hash: string;           // その時点のハッシュ値
   timestamp: number;      // その時点のタイムスタンプ
   contentHash: string;    // その時点のコンテンツハッシュ（オプショナル検証用）
+  /** 署名済みチェックポイント (Workers 署名サービス由来)。任意 */
+  signature?: SignedCheckpointEnvelope;
 }
+
+// ============================================================================
+// Signed checkpoints
+// ============================================================================
+
+// 型本体は types/signedCheckpoint.ts に切り出し済み (browser/DOM 非依存にするため)
+export type {
+  SignedCheckpointPayload,
+  SignedCheckpointAlgorithm,
+  SignedCheckpointEnvelope,
+  SignedCheckpointVerificationDetail,
+  SignedCheckpointsVerificationResult,
+} from './signedCheckpoint.js';
+
+import type { SignedCheckpointEnvelope } from './signedCheckpoint.js';
 
 /** エクスポートされる証明ファイル */
 export interface ExportedProof {

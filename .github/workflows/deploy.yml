@@ -26,7 +26,10 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install --frozen-lockfile
+        # --include=optional は npm の optional-deps バグの回避策。
+        # rolldown のような platform-specific native binding (linux-x64-gnu 等) を
+        # 確実に解決させるために必要。--frozen-lockfile は npm では未対応なので削除。
+        run: npm ci --include=optional
 
       - name: Build project
         run: npm run build

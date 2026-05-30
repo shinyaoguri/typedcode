@@ -241,6 +241,7 @@ describe('TypingProof', () => {
       expect(proof.fingerprint).toBe('test-fingerprint-hash');
       expect(proof.fingerprintComponents).toEqual(mockComponents);
       expect(proof.currentHash).not.toBeNull();
+      expect(proof.initialHashNonce).toMatch(/^[0-9a-f]{64}$/);
     });
 
     it('should generate initial hash based on fingerprint', async () => {
@@ -310,6 +311,16 @@ describe('TypingProof', () => {
 
       // Second event's previousHash should be first event's hash
       expect(proof.events[1]?.previousHash).toBe(firstEventHash);
+    });
+
+    it('should reject events with tampered PoSW iterations', async () => {
+      await proof.recordEvent({ type: 'contentChange', data: 'a' });
+      proof.events[0]!.posw.iterations = 1;
+
+      const result = await proof.verify();
+
+      expect(result.valid).toBe(false);
+      expect(result.message).toContain('PoSW iterations mismatch');
     });
 
     it('should handle concurrent calls with queue', async () => {
@@ -555,12 +566,14 @@ describe('TypingProof', () => {
 
       expect(serialized.events).toHaveLength(1);
       expect(serialized.currentHash).toBe(proof.currentHash);
+      expect(serialized.initialHashNonce).toBe(proof.initialHashNonce);
 
       const newProof = new TypingProof();
       newProof.restoreState(serialized);
 
       expect(newProof.events).toHaveLength(1);
       expect(newProof.currentHash).toBe(serialized.currentHash);
+      expect(newProof.initialHashNonce).toBe(serialized.initialHashNonce);
     });
   });
 
@@ -582,6 +595,7 @@ describe('TypingProof', () => {
       expect(restored.initialized).toBe(true);
       expect(restored.events).toHaveLength(1);
       expect(restored.currentHash).toBe(serialized.currentHash);
+      expect(restored.initialHashNonce).toBe(serialized.initialHashNonce);
       expect(restored.fingerprint).toBe('test-fingerprint');
     });
   });
