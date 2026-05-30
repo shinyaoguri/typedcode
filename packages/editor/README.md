@@ -1,30 +1,31 @@
 # @typedcode/editor
 
-Main editor application - Monaco Editor-based sequential typing proof editor with in-browser code execution.
+エディタ本体アプリケーション。Monaco Editor をベースにした、連続タイピングを証明するエディタです。ブラウザ内でコード実行まで完結します。
 
-## Features
+## 機能
 
-- **Multi-tab Editing**: Independent proof chain per tab with tab switch tracking
-- **Language Support**: C, C++, Python, JavaScript, TypeScript
-- **Theme**: Light/Dark mode with system preference detection
-- **Event Tracking**: 24 event types including keystrokes, cursor, paste/drop, window, focus, visibility
-- **PoSW**: Proof of Sequential Work (10,000 sequential hashes per event via Web Worker)
-- **Screenshot Capture**: Periodic and focus-loss triggered screenshots with hash verification
-- **Human Verification**: Cloudflare Turnstile integration at file creation and export
-- **Export**: ZIP archive containing proof JSON, source code, screenshots, and README
-- **i18n**: Japanese and English UI
+- **マルチタブ編集**: タブごとに独立した証明チェーン、タブ切替も追跡
+- **対応言語**: C, C++, Python, JavaScript, TypeScript
+- **テーマ**: ライト/ダークモード (システム設定の自動検出)
+- **イベント追跡**: キーストローク・カーソル・ペースト/ドロップ・ウィンドウ・フォーカス・可視性などを含む **25 種類のイベント**
+- **PoSW**: 1 イベントあたり 10,000 反復のシーケンシャルハッシュを Web Worker で計算
+- **スクリーンショット**: 定期撮影とフォーカス喪失時の撮影、ハッシュ検証付き
+- **時刻アンカリング**: チェックポイントを Workers で ECDSA-P256 署名し、サーバ時刻と結びつける
+- **人間認証**: ファイル作成時とエクスポート前に Cloudflare Turnstile を実行
+- **エクスポート**: 証明 JSON・ソースコード・スクリーンショット・README を含む ZIP アーカイブ
+- **i18n**: 日本語と英語の UI
 
-## In-Browser Code Execution
+## ブラウザ内コード実行
 
-| Language | Runtime | Details |
+| 言語 | ランタイム | 補足 |
 |----------|---------|---------|
-| C | Wasmer SDK | Clang WASM, stdin/stdout support |
+| C | Wasmer SDK | Clang WASM、stdin/stdout 対応 |
 | C++ | Wasmer SDK | Clang++ WASM |
-| Python | Wasmer SDK | Python WASM runtime |
-| JavaScript | Native | Browser eval with console capture |
-| TypeScript | SWC | Transpile to JS then eval |
+| Python | Wasmer SDK | Python WASM ランタイム |
+| JavaScript | ネイティブ | ブラウザ eval + console キャプチャ |
+| TypeScript | SWC | JS にトランスパイルしてから eval |
 
-## Development
+## 開発
 
 ```bash
 npm run dev      # http://localhost:5173
@@ -32,20 +33,20 @@ npm run build
 npm run preview
 ```
 
-## Key Concepts
+## 主要な仕組み
 
-### Event Recording Flow
+### イベント記録の流れ
 
 ```
 User Action
     ↓
-InputDetector (paste/drop detection)
+InputDetector (paste/drop 検出)
     ↓
-OperationDetector (Monaco change events → operation type)
+OperationDetector (Monaco 変更イベント → 操作種別)
     ↓
-KeystrokeTracker / MouseTracker / etc.
+KeystrokeTracker / MouseTracker など
     ↓
-EventRecorder (event queuing, fire-and-forget)
+EventRecorder (キューイング、fire-and-forget)
     ↓
 TypingProof.recordEvent() (@typedcode/shared)
     ↓
@@ -54,82 +55,92 @@ HashChainManager → PoswManager (Web Worker)
 StoredEvent → localStorage + IndexedDB
 ```
 
-### Fire-and-Forget Recording
+### Fire-and-Forget 記録
 
-Events are recorded asynchronously without blocking the UI:
+UI をブロックせずにイベントを記録します。
 
-1. `record(event)` returns immediately
-2. PoSW computation runs in Web Worker (10,000 iterations)
-3. UI shows `queuedEventCount` for pending PoSW
-4. Events are incrementally saved to IndexedDB
+1. `record(event)` は即座に返る
+2. PoSW 計算は Web Worker で実行 (10,000 反復)
+3. UI は処理中の件数を `queuedEventCount` で表示
+4. イベントは IndexedDB へ逐次保存
 
-This ensures typing responsiveness even with cryptographic overhead.
+これにより暗号処理の負荷があってもタイピングの応答性が保たれます。
 
-### Internal Paste Detection
+### 内部ペースト検出
 
-TypedCode distinguishes between external paste (Ctrl+V from outside) and internal paste (copy/paste within the same session):
+外部からの貼り付け (Ctrl+V) と、同一セッション内の自己コピーを区別します。
 
-1. When content is generated (typed), it's registered in `SessionContentRegistry`
-2. On paste event, the pasted text is compared against registered content
-3. Match → `insertFromInternalPaste` (allowed, doesn't break pure typing)
-4. No match → `insertFromPaste` (blocked, marks as external input)
+1. タイプされたコンテンツは `SessionContentRegistry` に登録
+2. ペースト発生時、貼り付けテキストを登録済みコンテンツと照合
+3. 一致 → `insertFromInternalPaste` (許可、ピュアタイピングを破らない)
+4. 不一致 → `insertFromPaste` (禁止、外部入力としてマーク)
 
-This allows users to copy/paste their own typed code without penalty.
+これにより、自身がタイプしたコードのコピー＆ペーストはペナルティなしで許容されます。
 
-### Session Recovery
+### 署名付きチェックポイント (時刻アンカリング)
 
-When the browser is refreshed or closed unexpectedly:
+直前のチェックポイントから **100 イベント** または **10 秒** のいずれかが先に成立した時点でチェックポイントを生成し、Workers の `/api/checkpoint/sign` で ECDSA-P256 署名と `serverTimestamp` を付与します。
 
-1. Events are saved incrementally to IndexedDB
-2. On reload, `sessionResumed` event is recorded
-3. The hash chain continues from the last saved state
-4. Pending PoSW computations are resumed
+- ネットワーク不安定下でも堅牢なよう、`SignedCheckpointService` はシングルフライトで順次フラッシュ
+- 同一内容の再送はサーバ側の冪等処理 (`isIdempotentSigningRetry`) で吸収
+- 署名失敗してもチェーン本体は継続 (best-effort)
 
-### Template Injection
+### セッション復旧
 
-When a template is loaded (e.g., starter code for an exam):
+ブラウザの再読み込みや予期せぬ終了に備えます。
 
-1. `templateInjection` event is recorded
-2. The injected content is tracked separately from typed content
-3. Pure typing status accounts for template vs user-typed content
+1. イベントは IndexedDB へ逐次保存
+2. リロード時に `sessionResumed` イベントを記録
+3. 直前の保存状態からハッシュチェーンを継続
+4. 未完了の PoSW 計算を再開
 
-## Environment Variables
+### テンプレート注入
 
-| Variable | Description | Required |
+試験のスターターコードなどテンプレートをロードする場合の扱い。
+
+1. `templateInjection` イベントを記録
+2. 注入されたコンテンツはユーザータイプ分とは別に追跡
+3. ピュアタイピング判定はテンプレートとユーザー入力を区別して評価
+
+## 環境変数
+
+| 変数 | 説明 | 必須 |
 |----------|-------------|----------|
-| `VITE_TURNSTILE_SITE_KEY` | Turnstile site key | Optional |
-| `VITE_API_URL` | Workers API endpoint | Optional |
+| `VITE_TURNSTILE_SITE_KEY` | Turnstile サイトキー | 任意 |
+| `VITE_API_URL` | Workers API のエンドポイント | 任意 |
 
-## Build Info Injection
+## ビルド時に注入される情報
 
-The build process injects the following variables:
+ビルドプロセスは以下の変数をソースに注入します。
 
 ```typescript
-__APP_VERSION__      // package.json version
+__APP_VERSION__      // package.json の version
 __GIT_COMMIT__       // Git commit hash
-__GIT_COMMIT_DATE__  // Git commit date
-__BUILD_DATE__       // Build timestamp
+__GIT_COMMIT_DATE__  // Git commit の日付
+__BUILD_DATE__       // ビルド時刻
 ```
 
-## Dependencies
+## 依存関係
 
-| Package | Version | Purpose |
+| パッケージ | バージョン | 用途 |
 |---------|---------|---------|
-| monaco-editor | ^0.55 | Code editor engine |
-| @xterm/xterm | ^6.0 | Terminal emulator |
-| @xterm/addon-fit | ^0.11 | Terminal auto-resize |
-| @wasmer/sdk | ^0.10 | WebAssembly runtime |
-| jszip | ^3.10 | ZIP export |
-| vite | ^7.3 | Build tool |
-| vite-plugin-wasm | ^3.5 | WASM support |
-| vite-plugin-top-level-await | ^1.6 | Top-level await support |
+| monaco-editor | ^0.55 | コードエディタ本体 |
+| @xterm/xterm | ^6.0 | ターミナルエミュレータ |
+| @xterm/addon-fit | ^0.11 | ターミナルの自動リサイズ |
+| @wasmer/sdk | ^0.10 | WebAssembly ランタイム |
+| jszip | ^3.10 | ZIP エクスポート |
+| yaml | ^2.9 | テンプレート YAML 解析 |
+| vite | ^8.0 | ビルドツール (rolldown) |
+| vite-plugin-wasm | ^3.6 | WASM サポート |
+| vite-plugin-top-level-await | ^1.6 | トップレベル await のサポート |
 
-## Screenshot Feature
+## スクリーンショット機能
 
-Screenshots are captured:
-- Periodically (configurable interval)
-- On focus loss (window blur)
-- Manually (user triggered)
+スクリーンショットは以下のタイミングで取得されます。
 
-Storage: IndexedDB with SHA-256 hash verification
-Export: Included in ZIP with manifest.json
+- 定期取得 (間隔は設定可能)
+- フォーカス喪失時 (window blur)
+- 手動操作
+
+ストレージ: IndexedDB + SHA-256 ハッシュ検証
+エクスポート: ZIP 内 `screenshots/` ディレクトリ + `manifest.json`

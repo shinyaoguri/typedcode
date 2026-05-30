@@ -1,84 +1,78 @@
 # @typedcode/workers
 
-Cloudflare Workers API for TypedCode - Turnstile human verification and attestation signing.
+TypedCode 向けの Cloudflare Workers API。Turnstile 人間認証とアテステーション署名、署名済みチェックポイントの発行を担当します。
 
-## Features
+## 機能
 
-- **Turnstile Verification**: Validate Cloudflare Turnstile tokens
-- **Attestation Signing**: HMAC-SHA256 signed attestations
-- **Attestation Verification**: Verify signed attestation integrity
-- **Signed Checkpoint Service**: ECDSA-P256 timestamped signatures for proof checkpoints, with KV-backed per-session `firstSeenAt`
-- **CORS Support**: Configurable CORS for editor and verify apps
+- **Turnstile 検証**: Cloudflare Turnstile トークンを検証
+- **アテステーション署名**: HMAC-SHA256 で署名付きアテステーションを発行
+- **アテステーション検証**: 署名の整合性を検証
+- **署名済みチェックポイントサービス**: 証明チェックポイントへの ECDSA-P256 + サーバ時刻署名。KV による per-session の `firstSeenAt` 管理を含む
+- **CORS サポート**: エディタ・検証アプリ向けに CORS を設定可能
 
-## Setup
+## セットアップ
 
-### 1. Get Turnstile Keys
+### 1. Turnstile キーを取得
 
-1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/?to=/:account/turnstile)
-2. Create a new Turnstile widget
-3. Note your **Site Key** (for editor) and **Secret Key** (for workers)
+1. [Cloudflare ダッシュボード](https://dash.cloudflare.com/?to=/:account/turnstile)を開く
+2. Turnstile ウィジェットを作成
+3. **Site Key** (エディタ用) と **Secret Key** (Workers 用) をメモ
 
-### 2. Configure Local Development
+### 2. ローカル開発の設定
 
 ```bash
 cp .dev.vars.example .dev.vars
 ```
 
-Edit `.dev.vars`:
+`.dev.vars` を編集:
 ```
 TURNSTILE_SECRET_KEY=your_secret_key_here
 ATTESTATION_SECRET_KEY=any_random_string_for_signing
 ```
 
-### 3. Generate Signed Checkpoint Key (one-time, per developer)
+### 3. チェックポイント署名鍵の生成 (開発者ごとに 1 回)
 
 ```bash
 npm run gen-checkpoint-key -w @typedcode/workers
 ```
 
-This prints:
-- A `CheckpointPublicKey` entry. Append it to
-  `packages/shared/src/checkpointKeys/localKeys.ts`, then run:
+実行すると以下が出力されます。
+
+- `CheckpointPublicKey` エントリ: 開発用の鍵は `packages/shared/src/checkpointKeys/localKeys.ts` に追記し、コミット汚染を避けるため次のコマンドを実行:
   ```bash
   git update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts
   ```
-  so your personal dev key never lands in a commit. (Production keys go
-  in `registry.ts` via a normal PR.)
-- The matching `CHECKPOINT_SIGNING_KEY_ID` and `CHECKPOINT_SIGNING_KEY_JWK`.
-  Paste both into `.dev.vars`.
+  本番鍵は通常の PR で `packages/shared/src/checkpointKeys/registry.ts` に登録します。
+- 対応する `CHECKPOINT_SIGNING_KEY_ID` と `CHECKPOINT_SIGNING_KEY_JWK`: `.dev.vars` に貼り付け。
 
-Without these values the `/api/checkpoint/sign` endpoint returns
-`SIGNING_KEY_NOT_CONFIGURED` (500). The rest of the API still works.
+これらが未設定の場合、`/api/checkpoint/sign` は `SIGNING_KEY_NOT_CONFIGURED` (500) を返します。それ以外のエンドポイントは動作します。
 
-### 4. Create KV Namespace (one-time, per developer)
+### 4. KV ネームスペースの作成 (開発者ごとに 1 回)
 
 ```bash
 wrangler kv namespace create CHECKPOINT_SESSIONS
 wrangler kv namespace create CHECKPOINT_SESSIONS --preview
 ```
 
-Replace the two `REPLACE_WITH_*_ID` placeholders in `wrangler.toml` with
-the IDs the command prints, then hide the file from accidental commits:
+`wrangler.toml` の `REPLACE_WITH_*_ID` を、コマンドが出力した ID で置き換え、誤コミット防止のために skip-worktree を付与:
 
 ```bash
 git update-index --skip-worktree packages/workers/wrangler.toml
 ```
 
-(Undo with `--no-skip-worktree` if you ever need to edit the shared
-parts of `wrangler.toml` and commit them. After committing, re-apply
-skip-worktree.)
+(共有部分を編集してコミットしたい場合は `--no-skip-worktree` で解除。コミット後に再度 skip-worktree を付け直してください。)
 
-### 5. Start Development Server
+### 5. 開発サーバを起動
 
 ```bash
 npm run dev  # http://localhost:8787
 ```
 
-## API Endpoints
+## API エンドポイント
 
 ### POST `/api/verify-captcha`
 
-Verify Turnstile token and return signed attestation.
+Turnstile トークンを検証し、署名付きアテステーションを返却します。
 
 **Request:**
 ```json
@@ -87,7 +81,7 @@ Verify Turnstile token and return signed attestation.
 }
 ```
 
-**Response (success):**
+**Response (成功):**
 ```json
 {
   "success": true,
@@ -104,7 +98,7 @@ Verify Turnstile token and return signed attestation.
 }
 ```
 
-**Response (failure):**
+**Response (失敗):**
 ```json
 {
   "success": false,
@@ -115,7 +109,7 @@ Verify Turnstile token and return signed attestation.
 
 ### POST `/api/verify-attestation`
 
-Verify signed attestation integrity.
+署名付きアテステーションの整合性を検証します。
 
 **Request:**
 ```json
@@ -141,10 +135,9 @@ Verify signed attestation integrity.
 
 ### POST `/api/checkpoint/sign`
 
-Sign an unsigned checkpoint payload from the editor with the server's
-ECDSA-P256 key and an authoritative `serverTimestamp` / `firstSeenAt`.
+エディタからの未署名チェックポイントを、サーバの ECDSA-P256 鍵と `serverTimestamp` / `firstSeenAt` で署名します。
 
-**Request body** (see `SignedCheckpointInput` in `@typedcode/shared`):
+**Request body** (`@typedcode/shared` の `SignedCheckpointInput` 参照):
 ```json
 {
   "sessionId": "...",
@@ -160,19 +153,20 @@ ECDSA-P256 key and an authoritative `serverTimestamp` / `firstSeenAt`.
 }
 ```
 
-**Response (success):**
+**Response (成功):**
 ```json
 { "envelope": { "payload": { ... }, "signature": "...", "keyId": "...", "algorithm": "ECDSA-P256" } }
 ```
 
-**Error codes**: `SCHEMA_INVALID` (400), `NON_MONOTONIC` (409),
+**冪等性**: 同一 `sessionId` / `checkpointIndex` で `clientTimestamp` 以外が完全一致するリクエストは、前回の envelope をそのまま返します (ネットワーク不安定下での再送に対応)。
+
+**エラーコード**: `SCHEMA_INVALID` (400), `NON_MONOTONIC` / `CHECKPOINT_CONFLICT` (409),
 `SESSION_LIMIT_EXCEEDED` (429), `SIGNING_KEY_NOT_CONFIGURED` /
 `SIGNING_KEY_UNKNOWN` / `SIGNING_ERROR` (500).
 
 ### GET `/api/checkpoint/public-keys`
 
-Returns the git-managed registry of public keys for offline / cached
-signature verification.
+オフライン/キャッシュでの署名検証用に、git 管理されている公開鍵レジストリを返します。
 
 **Response:**
 ```json
@@ -192,7 +186,7 @@ signature verification.
 
 ### GET `/health`
 
-Health check endpoint.
+ヘルスチェック。
 
 **Response:**
 ```json
@@ -202,9 +196,9 @@ Health check endpoint.
 }
 ```
 
-## Signature Algorithm
+## 署名アルゴリズム (アテステーション)
 
-The attestation signature is computed using HMAC-SHA256:
+HMAC-SHA256 で署名を計算します。
 
 ```typescript
 const payload = JSON.stringify({
@@ -218,22 +212,22 @@ const payload = JSON.stringify({
 const signature = HMAC_SHA256(payload, ATTESTATION_SECRET_KEY);
 ```
 
-## Deploy
+## デプロイ
 
-### Development
-
-```bash
-npm run dev       # Start local server
-```
-
-### Production
+### 開発
 
 ```bash
-npm run deploy       # Deploy to Cloudflare
-npm run deploy:prod  # Deploy to production environment
+npm run dev       # ローカルサーバ起動
 ```
 
-### Set Production Secrets
+### 本番
+
+```bash
+npm run deploy       # Cloudflare にデプロイ
+npm run deploy:prod  # 本番環境にデプロイ
+```
+
+### 本番シークレットの設定
 
 ```bash
 wrangler secret put TURNSTILE_SECRET_KEY
@@ -242,7 +236,7 @@ wrangler secret put CHECKPOINT_SIGNING_KEY_ID
 wrangler secret put CHECKPOINT_SIGNING_KEY_JWK
 ```
 
-## Configuration
+## 設定
 
 ### wrangler.toml
 
@@ -254,50 +248,61 @@ compatibility_date = "2025-12-26"
 [vars]
 ENVIRONMENT = "development"
 
+[[kv_namespaces]]
+binding = "CHECKPOINT_SESSIONS"
+id = "..."
+preview_id = "..."
+
 [env.production]
 vars = { ENVIRONMENT = "production" }
 ```
 
-## Architecture
+## アーキテクチャ
 
 ```
 src/
-└── index.ts           # Single-file implementation containing:
-                       # - Router and request handling
-                       # - Turnstile verification handler
-                       # - Attestation verification handler
-                       # - Health check handler
-                       # - CORS handling
-                       # - HMAC signing utilities
-                       # - Type definitions
+├── index.ts        # エントリポイント:
+│                   #   - ルーティングとリクエスト処理
+│                   #   - Turnstile 検証ハンドラ
+│                   #   - アテステーション検証ハンドラ
+│                   #   - ヘルスチェック
+│                   #   - CORS ハンドリング
+│                   #   - HMAC 署名ユーティリティ
+└── checkpoint.ts   # 署名済みチェックポイント:
+                    #   - /api/checkpoint/sign (handleSignCheckpoint)
+                    #   - /api/checkpoint/public-keys (handlePublicKeys)
+                    #   - 冪等チェック・KV セッション管理
+                    #   - ECDSA-P256 署名鍵のロード
 ```
 
-## Environment Variables
+## 環境変数
 
-| Variable | Description | Required |
+| 変数 | 説明 | 必須 |
 |----------|-------------|----------|
-| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile secret | Yes |
-| `ATTESTATION_SECRET_KEY` | HMAC signing key | Yes |
-| `CHECKPOINT_SIGNING_KEY_ID` | keyId for signed checkpoints (must exist in `CHECKPOINT_PUBLIC_KEYS` registry) | For `/api/checkpoint/sign` |
-| `CHECKPOINT_SIGNING_KEY_JWK` | ECDSA-P256 private key JWK as a JSON string | For `/api/checkpoint/sign` |
-| `ENVIRONMENT` | Environment name | No |
+| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile のシークレット | はい |
+| `ATTESTATION_SECRET_KEY` | HMAC 署名鍵 | はい |
+| `CHECKPOINT_SIGNING_KEY_ID` | 署名済みチェックポイント用の keyId (`CHECKPOINT_PUBLIC_KEYS` レジストリに存在する必要あり) | `/api/checkpoint/sign` 用 |
+| `CHECKPOINT_SIGNING_KEY_JWK` | ECDSA-P256 秘密鍵 (JWK の JSON 文字列) | `/api/checkpoint/sign` 用 |
+| `ENVIRONMENT` | 環境名 | 任意 |
 
-## KV Namespaces
+## KV ネームスペース
 
-| Binding | Purpose | TTL |
+| Binding | 用途 | TTL |
 |---------|---------|-----|
-| `CHECKPOINT_SESSIONS` | Per-session `firstSeenAt`, `lastCheckpointIndex`, `lastServerTimestamp`, `signedCount` (best-effort anti-replay; not required for verification) | 7 days |
+| `CHECKPOINT_SESSIONS` | per-session の `firstSeenAt`, `lastCheckpointIndex`, `lastServerTimestamp`, `signedCount`, 直前 envelope (best-effort のリプレイ防止と冪等処理用) | 7 日 |
 
-## Dependencies
+## 依存関係
 
-| Package | Version | Purpose |
+| パッケージ | バージョン | 用途 |
 |---------|---------|---------|
-| wrangler | ^4.54 | Cloudflare Workers CLI |
-| @cloudflare/workers-types | * | TypeScript types |
+| @typedcode/shared | * | 共有型と検証ロジック |
+| wrangler | ^4.92 | Cloudflare Workers CLI |
+| @cloudflare/workers-types | * | TypeScript の型定義 |
 
-## Security Considerations
+## セキュリティ上の注意
 
-1. **Secret Keys**: Never commit `.dev.vars` or expose secrets
-2. **CORS**: Configure allowed origins appropriately
-3. **Rate Limiting**: Consider adding rate limiting for production
-4. **Signature Verification**: Always verify attestation signatures server-side
+1. **シークレット**: `.dev.vars` を絶対にコミットしない。本番では `wrangler secret put` を使う
+2. **CORS**: 許可するオリジンを適切に設定する
+3. **レートリミット**: 本番では追加のレートリミットを検討
+4. **署名検証**: アテステーション署名はサーバ側でも必ず検証する
+5. **公開鍵管理**: 本番鍵は `packages/shared/src/checkpointKeys/registry.ts` に append-only で追加し、`status: 'revoked'` で失効管理する
