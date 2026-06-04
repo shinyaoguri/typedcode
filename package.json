@@ -14,7 +14,8 @@
     "build": "npm run build --workspaces --if-present",
     "build:editor": "npm run build -w @typedcode/editor",
     "build:verify": "npm run build -w @typedcode/verify",
-    "build:verify-cli": "npm run build -w @typedcode/verify-cli"
+    "build:verify-cli": "npm run build -w @typedcode/verify-cli",
+    "check-docs": "node scripts/check-doc-drift.mjs"
   },
   "engines": {
     "node": ">=24"

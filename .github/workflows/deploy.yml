@@ -31,6 +31,12 @@ jobs:
         # 確実に解決させるために必要。--frozen-lockfile は npm では未対応なので削除。
         run: npm ci --include=optional
 
+      - name: Check documentation drift
+        # ソースコード (定数値・型の数) とドキュメント (CLAUDE.md / README /
+        # system-spec.md) が乖離していないかを検証する。詳細は
+        # scripts/check-doc-drift.mjs を参照。
+        run: npm run check-docs
+
       - name: Build project
         run: npm run build
         env:
