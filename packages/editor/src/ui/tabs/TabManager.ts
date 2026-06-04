@@ -115,6 +115,9 @@ export class TabManager {
   private tabOrder: string[] = [];
   private activeTabId: string | null = null;
   private tabSwitches: TabSwitchEvent[] = [];
+  /** 復元中フラグ。復元時に switchTab が発火する合成スイッチイベントを
+   *  IndexedDB に二重永続化しないために使う。 */
+  private isRestoring = false;
   private fingerprint: string | null = null;
   private fingerprintComponents: FingerprintComponents | null = null;
   private editor: monaco.editor.IStandaloneCodeEditor;
@@ -496,6 +499,12 @@ export class TabManager {
         toFilename: tab.filename
       };
       this.tabSwitches.push(switchEvent);
+      // sessionStorage は saveToStorage() 経由で保存されるが、IndexedDB には
+      // 別途 append しないと sessionStorage が消えた復旧で履歴が失われる。
+      // 復元中の合成スイッチ (isRestoring) は二重保存になるので除外。
+      if (!this.isRestoring) {
+        void this.persistTabSwitch(switchEvent);
+      }
     }
 
     this.activeTabId = tabId;
@@ -588,6 +597,21 @@ export class TabManager {
    */
   getTabSwitches(): TabSwitchEvent[] {
     return [...this.tabSwitches];
+  }
+
+  /**
+   * タブ切り替えイベントを IndexedDB に永続化する (fire-and-forget)。
+   * sessionStorage が消えた状態 (タブを閉じた後など) からの復旧で履歴を
+   * 失わないために必要。UI をブロックしないよう await せず、失敗はログのみ。
+   * @private
+   */
+  private async persistTabSwitch(switchEvent: TabSwitchEvent): Promise<void> {
+    if (!this.sessionService.isInitialized()) return;
+    try {
+      await this.sessionService.saveTabSwitch(switchEvent);
+    } catch (e) {
+      console.error('[TabManager] Failed to persist tab switch to IndexedDB:', e);
+    }
   }
 
   /**
@@ -977,12 +1001,17 @@ export class TabManager {
     // タブ切り替え履歴を復元
     this.tabSwitches = rawStorage.tabSwitches ?? [];
 
-    // アクティブタブを復元
-    if (rawStorage.activeTabId && this.tabs.has(rawStorage.activeTabId)) {
-      await this.switchTab(rawStorage.activeTabId);
-    } else if (this.tabs.size > 0) {
-      const firstTabId = Array.from(this.tabs.keys())[0]!;
-      await this.switchTab(firstTabId);
+    // アクティブタブを復元 (復元中フラグ: 合成スイッチを IndexedDB に再保存しない)
+    this.isRestoring = true;
+    try {
+      if (rawStorage.activeTabId && this.tabs.has(rawStorage.activeTabId)) {
+        await this.switchTab(rawStorage.activeTabId);
+      } else if (this.tabs.size > 0) {
+        const firstTabId = Array.from(this.tabs.keys())[0]!;
+        await this.switchTab(firstTabId);
+      }
+    } finally {
+      this.isRestoring = false;
     }
 
     console.log('[TabManager] V1 format loaded, will migrate to V2 on next save');
@@ -1093,12 +1122,17 @@ export class TabManager {
     // タブ切り替え履歴を復元
     this.tabSwitches = storage.tabSwitches ?? [];
 
-    // アクティブタブを復元
-    if (storage.activeTabId && this.tabs.has(storage.activeTabId)) {
-      await this.switchTab(storage.activeTabId);
-    } else if (this.tabs.size > 0) {
-      const firstTabId = Array.from(this.tabs.keys())[0]!;
-      await this.switchTab(firstTabId);
+    // アクティブタブを復元 (復元中フラグ: 合成スイッチを IndexedDB に再保存しない)
+    this.isRestoring = true;
+    try {
+      if (storage.activeTabId && this.tabs.has(storage.activeTabId)) {
+        await this.switchTab(storage.activeTabId);
+      } else if (this.tabs.size > 0) {
+        const firstTabId = Array.from(this.tabs.keys())[0]!;
+        await this.switchTab(firstTabId);
+      }
+    } finally {
+      this.isRestoring = false;
     }
 
     return true;
@@ -1202,12 +1236,17 @@ export class TabManager {
       // タブ切り替え履歴を復元
       this.tabSwitches = await this.sessionService.getTabSwitches(sessionId);
 
-      // アクティブタブを復元
-      if (activeTabId && this.tabs.has(activeTabId)) {
-        await this.switchTab(activeTabId);
-      } else if (this.tabs.size > 0) {
-        const firstTabId = Array.from(this.tabs.keys())[0]!;
-        await this.switchTab(firstTabId);
+      // アクティブタブを復元 (復元中フラグ: 合成スイッチを IndexedDB に再保存しない)
+      this.isRestoring = true;
+      try {
+        if (activeTabId && this.tabs.has(activeTabId)) {
+          await this.switchTab(activeTabId);
+        } else if (this.tabs.size > 0) {
+          const firstTabId = Array.from(this.tabs.keys())[0]!;
+          await this.switchTab(firstTabId);
+        }
+      } finally {
+        this.isRestoring = false;
       }
 
       console.log('[TabManager] Session restored from IndexedDB, tabs:', this.tabs.size);
