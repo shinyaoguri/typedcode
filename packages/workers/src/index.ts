@@ -98,6 +98,23 @@ async function createHmacSignature(data: string, secret: string): Promise<string
 }
 
 /**
+ * 文字列の定数時間比較。HMAC 署名のような秘密値の比較に使う。
+ *
+ * 通常の `===` は最初に異なる文字で early-return するため、比較にかかる時間から
+ * 「正解 prefix の長さ」が漏れ得る (timing attack)。ここでは長さが一致する限り
+ * 全文字を XOR で畳み込み、early-return しないことで内容に依存しない時間にする。
+ * (期待値 = HMAC-SHA256 hex は常に固定長 128 文字なので、長さの早期判定は秘密を漏らさない)
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
+/**
  * Turnstile検証を実行
  */
 async function verifyTurnstile(
@@ -262,7 +279,8 @@ async function handleVerifyAttestation(
     const dataToSign = JSON.stringify(attestationData);
     const expectedSignature = await createHmacSignature(dataToSign, env.ATTESTATION_SECRET_KEY);
 
-    const isValid = signature === expectedSignature;
+    const isValid =
+      typeof signature === 'string' && timingSafeEqual(signature, expectedSignature);
 
     return new Response(
       JSON.stringify({
