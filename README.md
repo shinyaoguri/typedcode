@@ -47,33 +47,16 @@
 npm install
 ```
 
-### 2. Turnstile を設定 (任意・人間認証を使う場合のみ)
+### 2. 環境セットアップ
 
-人間認証には [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/) が必要です。不要なら本ステップは省略可能です。
+詳細手順とチェックリストは [docs/setup.md](docs/setup.md) を参照。**動作確認は doctor で**:
 
-**エディタ側:**
 ```bash
-cp packages/editor/.env.example packages/editor/.env
+npm run doctor          # ローカル設定をチェック
+npm run doctor -- --cf  # Cloudflare 側 (KV / wrangler 認証) も検証
 ```
 
-`packages/editor/.env` を編集:
-```
-VITE_TURNSTILE_SITE_KEY=your_site_key
-VITE_API_URL=http://localhost:8787
-```
-
-**Workers 側:**
-```bash
-cp packages/workers/.dev.vars.example packages/workers/.dev.vars
-```
-
-`packages/workers/.dev.vars` を編集:
-```
-TURNSTILE_SECRET_KEY=your_secret_key
-ATTESTATION_SECRET_KEY=any_random_string
-```
-
-Turnstile キーの取得: https://dash.cloudflare.com/?to=/:account/turnstile
+未設定のものは「**何を、どこに、どう書くか**」が出力されるので、それに沿って 1 つずつ潰していきます。
 
 ### 3. 開発サーバを起動
 
