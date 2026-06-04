@@ -1,0 +1,25 @@
+# Staging 環境用 Wrangler 設定。
+#
+# 使い方:
+#   wrangler deploy --config wrangler.staging.toml
+#
+# CI からは develop ブランチ push 時に自動デプロイされる
+# (.github/workflows/deploy.yml の deploy-staging ジョブ)。
+#
+# KV ID は CI で sed 置換される:
+#   REPLACE_WITH_STAGING_ID  ← secrets.CLOUDFLARE_KV_STAGING_ID
+#
+# シークレット (TURNSTILE_SECRET_KEY, ATTESTATION_SECRET_KEY,
+# CHECKPOINT_SIGNING_KEY_*) は事前に `wrangler secret put ... --env staging`
+# または GitHub Environment "staging" の Secrets で別途設定すること。
+
+name = "typedcode-api-staging"
+main = "src/index.ts"
+compatibility_date = "2025-12-26"
+
+[vars]
+ENVIRONMENT = "staging"
+
+[[kv_namespaces]]
+binding = "CHECKPOINT_SESSIONS"
+id = "REPLACE_WITH_STAGING_ID"

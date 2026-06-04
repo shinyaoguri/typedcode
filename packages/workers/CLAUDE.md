@@ -72,6 +72,91 @@ src/
 
 詳細は [packages/workers/README.md](README.md) を参照。
 
+## デプロイ環境 (3 系統)
+
+| 環境 | wrangler 設定 | トリガ | Worker 名 |
+|---|---|---|---|
+| dev (ローカル) | `wrangler.toml` (skip-worktree) | `npm run dev` | (local) |
+| staging | `wrangler.staging.toml` | **develop push → CI 自動** | `typedcode-api-staging` |
+| production | `wrangler.production.toml` | **main push → CI 承認待ち** | `typedcode-api` |
+
+- staging / production の wrangler config は HEAD に commit され、KV ID は **placeholder**。CI が secrets から sed 注入する
+- ローカル `wrangler.toml` は各開発者の dev KV ID を保持 (skip-worktree のため commit されない)
+- staging Worker は別名 (`typedcode-api-staging`) として登録され、production と完全独立
+
+### CI デプロイの前提 (GitHub Environments + Secrets)
+
+GitHub repo の Settings → Environments に **2 つの環境** を作成:
+
+**Environment `staging`** (承認なし、自動デプロイ)
+- Secrets:
+  - `CLOUDFLARE_KV_STAGING_ID` — staging KV namespace ID
+  - `VITE_API_URL` — staging Workers の URL
+  - `VITE_TURNSTILE_SITE_KEY` — staging 用 Turnstile site key
+  - `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_PROJECT_NAME`
+
+**Environment `production`** (Required reviewers 設定推奨 = 承認待ち)
+- Secrets:
+  - `CLOUDFLARE_KV_PRODUCTION_ID` — 本番 KV namespace ID
+  - `VITE_API_URL` — 本番 Workers の URL
+  - `VITE_TURNSTILE_SITE_KEY` — 本番 Turnstile site key
+  - `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_PROJECT_NAME`
+- **Protection rule**: Required reviewers に 1 名以上 (自分でもよい) → main push 時に Actions タブで手動承認が必要になる
+
+### Workers 個別 secrets (Wrangler 経由)
+
+`wrangler secret put` は Worker 名ごとに別管理。staging と production で別々に投入:
+
+```bash
+# staging Worker (typedcode-api-staging)
+cd packages/workers
+wrangler secret put TURNSTILE_SECRET_KEY --config wrangler.staging.toml
+wrangler secret put ATTESTATION_SECRET_KEY --config wrangler.staging.toml
+wrangler secret put CHECKPOINT_SIGNING_KEY_ID --config wrangler.staging.toml
+wrangler secret put CHECKPOINT_SIGNING_KEY_JWK --config wrangler.staging.toml
+
+# production Worker (typedcode-api)
+wrangler secret put TURNSTILE_SECRET_KEY --config wrangler.production.toml
+# ... 同様
+```
+
+### 初回セットアップ手順
+
+```bash
+# 1. KV ネームスペース作成 (staging + production)
+wrangler kv namespace create CHECKPOINT_SESSIONS_STAGING
+wrangler kv namespace create CHECKPOINT_SESSIONS_PRODUCTION
+# → 出力された 2 つの ID を GitHub Environment Secrets に投入
+
+# 2. 署名鍵生成 (環境ごとに別鍵を推奨)
+npm run gen-checkpoint-key -w @typedcode/workers   # staging 用
+npm run gen-checkpoint-key -w @typedcode/workers   # production 用
+# → 各 keyId を packages/shared/src/checkpointKeys/registry.ts に append (永続)
+# → JWK は対応 Worker に wrangler secret put
+
+# 3. 各 Worker に他のシークレット (TURNSTILE_SECRET_KEY 等) を投入
+
+# 4. GitHub Environment "production" に Required reviewers を 1 名以上設定
+```
+
+### デプロイの流れ (運用)
+
+```
+ローカル開発 (npm run dev)
+   ↓ commit & push to develop
+develop ブランチ push
+   ↓
+[CI] test → deploy-staging (auto)
+   ↓
+staging URL で動作確認 (develop.<project>.pages.dev)
+   ↓ PR develop → main → merge
+main ブランチ push
+   ↓
+[CI] test → deploy-production (承認待ち)
+   ↓ Actions タブで Approve
+本番デプロイ実行
+```
+
 ## よくある罠
 
 - **`.dev.vars` を git に入れない**: `.gitignore` に登録済み。`wrangler.toml` の KV ID は skip-worktree で隠す

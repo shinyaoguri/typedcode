@@ -1,45 +1,74 @@
-name: Deploy to Cloudflare Pages
+name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
     branches: [main, develop]
 
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      deployments: write
-      pull-requests: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          lfs: true
+# 構成:
+#   test                   — どのトリガでも必ず走る (tsc + テスト)
+#   deploy-preview         — PR で Pages のプレビュー URL を発行 (Workers staging 向け)
+#   deploy-staging         — develop push で Workers staging + Pages staging を更新
+#   deploy-production      — main  push で Workers production + Pages production を更新
+#                            (GitHub Environment "production" の Required reviewers で承認待ち)
+#
+# 設計判断:
+#   - 本番は手動承認ゲート前提。develop で動作確認 → main マージ → 承認 → 本番。
+#   - Pages の Cloudflare バンドルは VITE_API_URL が baked-in なので、
+#     ターゲットごとに build を回す (staging build と production build が別物)。
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+jobs:
+  # --------------------------------------------------------------------
+  # 共通テスト
+  # --------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
-        # --include=optional は npm の optional-deps バグの回避策。
-        # rolldown のような platform-specific native binding (linux-x64-gnu 等) を
-        # 確実に解決させるために必要。--frozen-lockfile は npm では未対応なので削除。
         run: npm ci --include=optional
 
       - name: Run tests (shared)
-        # shared の暗号証明エンジンと型バリデータ。
         run: npm run test:run -w @typedcode/shared
 
       - name: Run tests (workers)
-        # Workers のチェックポイント署名ハンドラ (冪等性 / NON_MONOTONIC / 鍵未設定 等)。
         run: npm run test:run -w @typedcode/workers
 
-      - name: Build project
+  # --------------------------------------------------------------------
+  # PR: Pages プレビューデプロイ (Workers は触らない)
+  # PR ビルドは staging API を指す。
+  # --------------------------------------------------------------------
+  deploy-preview:
+    needs: test
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      - name: Build (staging API)
         run: npm run build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
@@ -52,39 +81,7 @@ jobs:
           cp -r ./packages/editor/dist/* ./dist/
           cp -r ./packages/verify/dist ./dist/verify
 
-      - name: Configure production wrangler.toml
-        # 本番 KV ID を secrets から差し込む。HEAD の wrangler.toml は placeholder
-        # (REPLACE_WITH_PRODUCTION_ID 等) で公開されているため、デプロイ前に置換する。
-        # 必要な secrets:
-        #   - CLOUDFLARE_KV_PRODUCTION_ID  (本番 KV ネームスペース ID)
-        #   - CLOUDFLARE_KV_PREVIEW_ID     (preview KV ネームスペース ID)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          sed -i "s|REPLACE_WITH_PRODUCTION_ID|${{ secrets.CLOUDFLARE_KV_PRODUCTION_ID }}|g" packages/workers/wrangler.toml
-          sed -i "s|REPLACE_WITH_PREVIEW_ID|${{ secrets.CLOUDFLARE_KV_PREVIEW_ID }}|g" packages/workers/wrangler.toml
-
-      - name: Deploy Workers (Production)
-        # Worker のみデプロイ。Pages とは別エンドポイント (api.typedcode.dev 等) で動作。
-        # シークレット (TURNSTILE_SECRET_KEY, ATTESTATION_SECRET_KEY,
-        # CHECKPOINT_SIGNING_KEY_*) は `wrangler secret put` で別途事前設定が必要。
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: packages/workers
-          command: deploy --env production
-
-      - name: Deploy to Cloudflare Pages (Production)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }}
-
       - name: Deploy to Cloudflare Pages (Preview)
-        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
         id: preview-deploy
         uses: cloudflare/wrangler-action@v3
         with:
@@ -93,7 +90,6 @@ jobs:
           command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=${{ github.head_ref }}
 
       - name: Comment PR with preview URL
-        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
         uses: actions/github-script@v7
         with:
           script: |
@@ -112,20 +108,18 @@ jobs:
             |------|-----|
             | Preview | ${previewUrl} |
 
-            *Deployed from commit ${context.sha.substring(0, 7)}*`;
+            *Deployed from commit ${context.sha.substring(0, 7)}*
+            *API: staging Workers*`;
 
-            // Find existing comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
-
             const botComment = comments.find(comment =>
               comment.user.type === 'Bot' &&
               comment.body.includes('## 🚀 Preview Deployment')
             );
-
             if (botComment) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
@@ -141,3 +135,124 @@ jobs:
                 body: body
               });
             }
+
+  # --------------------------------------------------------------------
+  # develop push: staging 環境 (Workers + Pages) を更新
+  # 自動デプロイ。承認ゲートなし。
+  # --------------------------------------------------------------------
+  deploy-staging:
+    needs: test
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      - name: Build (staging API)
+        run: npm run build
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+          VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      - name: Merge build outputs
+        run: |
+          mkdir -p ./dist
+          cp -r ./packages/editor/dist/* ./dist/
+          cp -r ./packages/verify/dist ./dist/verify
+
+      - name: Configure staging wrangler.toml
+        # staging KV ID を secrets から差し込む。
+        # 必要な secrets: CLOUDFLARE_KV_STAGING_ID
+        run: |
+          sed -i "s|REPLACE_WITH_STAGING_ID|${{ secrets.CLOUDFLARE_KV_STAGING_ID }}|g" packages/workers/wrangler.staging.toml
+
+      - name: Deploy Workers (Staging)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: packages/workers
+          command: deploy --config wrangler.staging.toml
+
+      - name: Deploy to Cloudflare Pages (Staging)
+        # --branch=develop で develop.<project>.pages.dev という stable URL になる
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=develop
+
+  # --------------------------------------------------------------------
+  # main push: production 環境 (Workers + Pages) を更新
+  # GitHub Environment "production" の Required reviewers で承認待ち。
+  # --------------------------------------------------------------------
+  deploy-production:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      - name: Build (production API)
+        run: npm run build
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+          VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      - name: Merge build outputs
+        run: |
+          mkdir -p ./dist
+          cp -r ./packages/editor/dist/* ./dist/
+          cp -r ./packages/verify/dist ./dist/verify
+
+      - name: Configure production wrangler.toml
+        # 本番 KV ID を secrets から差し込む。
+        # 必要な secrets: CLOUDFLARE_KV_PRODUCTION_ID
+        run: |
+          sed -i "s|REPLACE_WITH_PRODUCTION_ID|${{ secrets.CLOUDFLARE_KV_PRODUCTION_ID }}|g" packages/workers/wrangler.production.toml
+
+      - name: Deploy Workers (Production)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: packages/workers
+          command: deploy --config wrangler.production.toml
+
+      - name: Deploy to Cloudflare Pages (Production)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }}
