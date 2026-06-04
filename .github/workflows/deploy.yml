@@ -47,7 +47,11 @@ jobs:
   # --------------------------------------------------------------------
   deploy-preview:
     needs: test
-    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    # head_ref != 'develop' で `develop → main` の PR (= PR #60 など) を除外する。
+    # この種類の PR では develop push 起因の deploy-staging が `develop.<project>.pages.dev`
+    # にデプロイするのと URL が衝突するため、PR 側の preview は走らせない。
+    # 通常の feature/* → develop PR では head_ref が feature 名になるので衝突しない。
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && github.head_ref != 'develop'
     runs-on: ubuntu-latest
     environment:
       name: staging
