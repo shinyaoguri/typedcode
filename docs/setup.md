@@ -158,13 +158,178 @@ wrangler login
 
 サーバ (Worker) と検証側 (verify) の鍵対が一致していない可能性。Step 5 を再度実行して鍵対を作り直す。
 
-## CI / 本番デプロイの設定 (メンテナ向け)
+---
 
-メンテナとして CI 経由で staging / production デプロイを enable したい場合は [packages/workers/CLAUDE.md](../packages/workers/CLAUDE.md) を参照。GitHub Environments と secrets の設定が別途必要です。
+# CI / 本番デプロイの設定 (メンテナ向け)
+
+メンテナとして GitHub Actions から自動でデプロイを enable する場合、以下を 1 回設定すれば以降は `develop` push → staging 自動、`main` push → production 承認待ちのフローで回ります。
+
+## M1. Cloudflare API トークンの発行
+
+CI が `wrangler` を使ってデプロイするので、適切な権限の API トークンが必要です。**権限が足りないと CI が `Authentication error [code: 10000]` で落ちます** (実際に踏みました)。
+
+### 手順
+
+1. [Cloudflare ダッシュボード → My Profile → API Tokens](https://dash.cloudflare.com/profile/api-tokens) を開く
+2. **Create Token** → **Custom token**
+3. **必要な権限** (4 つ全部必要):
+
+   | 種類 | リソース | 権限 |
+   |---|---|---|
+   | Account | Cloudflare Pages | **Edit** |
+   | Account | Workers Scripts | **Edit** |
+   | Account | Workers KV Storage | **Edit** |
+   | User | User Details | Read |
+
+   - Pages の Edit が無いと Pages デプロイで落ちる
+   - Workers Scripts の Edit が無いと Workers デプロイで落ちる
+   - Workers KV Storage の Edit が無いと KV bindings が作れず落ちる
+   - User Details Read は account ID 取得用
+
+4. **Account Resources**: `Include` → 自アカウントを選択 (`All accounts` でも可)
+5. **Zone Resources**: `Include` → `All zones`
+6. **Client IP Address Filtering / TTL**: 空欄で OK
+7. **Create Token** → 出力される文字列を控える (**一度しか見られない**)
+
+### account ID の取得
+
+ダッシュボード右側 (またはトップページ右下) に **Account ID** が表示されているのでコピーする。
+
+## M2. GitHub repo に Secrets を投入
+
+### Repo level (Settings → Secrets and variables → Actions → New repository secret)
+
+| Secret | 値 |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | M1 で控えた token 文字列 |
+| `CLOUDFLARE_ACCOUNT_ID` | account ID |
+| `CLOUDFLARE_PROJECT_NAME` | Cloudflare Pages のプロジェクト名 (例: `typedcode`) |
+
+### GitHub Environments の作成
+
+Settings → Environments → **New environment**:
+
+#### Environment `staging` (承認不要、develop push で自動デプロイ)
+- Secrets (Add secret):
+
+  | Secret | 値 |
+  |---|---|
+  | `VITE_API_URL` | staging Worker の URL (`https://typedcode-api-staging.<your-subdomain>.workers.dev`) |
+  | `VITE_TURNSTILE_SITE_KEY` | staging 用 Turnstile widget の Site Key |
+
+#### Environment `production` (承認ゲート付き、main push でのみ動作)
+- Secrets:
+
+  | Secret | 値 |
+  |---|---|
+  | `VITE_API_URL` | 本番 Worker の URL |
+  | `VITE_TURNSTILE_SITE_KEY` | 本番 Turnstile Site Key |
+
+- **Deployment protection rules** → **Required reviewers** を ON にして自分 (またはチーム) を 1 名以上追加
+  → これで `main` push 時に Actions タブで Approve を押すまで本番デプロイが保留される
+
+## M3. Cloudflare 側の準備
+
+### 環境ごとの KV ネームスペース作成
+
+```bash
+cd packages/workers
+wrangler kv namespace create CHECKPOINT_SESSIONS_STAGING
+wrangler kv namespace create CHECKPOINT_SESSIONS_PRODUCTION
+```
+
+出力された 2 つの ID を [packages/workers/wrangler.staging.toml](../packages/workers/wrangler.staging.toml) / [packages/workers/wrangler.production.toml](../packages/workers/wrangler.production.toml) の `id = "..."` に貼り付け commit する (KV ID は秘密情報ではない)。
+
+### Turnstile widget (staging / production 別に作成推奨)
+
+[Turnstile dashboard](https://dash.cloudflare.com/?to=/:account/turnstile) で:
+
+- **staging widget**: Domain に staging Pages URL (例: `develop.typedcode.pages.dev`) を許可
+- **production widget**: Domain に本番ドメインを許可
+
+それぞれの **Site Key** を GitHub Environment Secrets (M2 で投入)、**Secret Key** を後で wrangler secret で投入する。
+
+### Worker 個別シークレット投入
+
+Pages bundle の `VITE_API_URL` 等は GitHub Secrets で済みますが、Worker 内で動くシークレット (`TURNSTILE_SECRET_KEY` 等) は **`wrangler secret put` で Worker に直接** 投入します。
+
+```bash
+cd packages/workers
+
+# staging Worker
+wrangler secret put TURNSTILE_SECRET_KEY --config wrangler.staging.toml
+wrangler secret put ATTESTATION_SECRET_KEY --config wrangler.staging.toml      # openssl rand -hex 32
+wrangler secret put CHECKPOINT_SIGNING_KEY_ID --config wrangler.staging.toml   # M4 で生成
+wrangler secret put CHECKPOINT_SIGNING_KEY_JWK --config wrangler.staging.toml  # M4 で生成
+
+# production Worker (同じ 4 件、値は別物にする)
+wrangler secret put TURNSTILE_SECRET_KEY --config wrangler.production.toml
+wrangler secret put ATTESTATION_SECRET_KEY --config wrangler.production.toml
+wrangler secret put CHECKPOINT_SIGNING_KEY_ID --config wrangler.production.toml
+wrangler secret put CHECKPOINT_SIGNING_KEY_JWK --config wrangler.production.toml
+```
+
+## M4. 環境ごとの署名鍵を登録
+
+staging と production で別の ECDSA-P256 鍵対を使うのが安全 (片方が漏れても他方が無事)。
+
+```bash
+# staging 鍵
+npm run gen-checkpoint-key -w @typedcode/workers
+# → 出力された keyId / publicKey entry / privateKey JWK を控える
+
+# production 鍵
+npm run gen-checkpoint-key -w @typedcode/workers
+# → 同上
+```
+
+それぞれ:
+
+1. **公開鍵 entry** を [packages/shared/src/checkpointKeys/registry.ts](../packages/shared/src/checkpointKeys/registry.ts) の `CHECKPOINT_PUBLIC_KEYS` 配列に **append** (既存エントリは削除しない、`status: 'active'` で追加)
+2. **keyId** と **privateKey JWK** を M3 の `wrangler secret put` で対応 Worker に投入
+3. commit & push (registry.ts 変更)
+
+## M5. 動作確認
+
+`develop` ブランチに空 commit を push:
+
+```bash
+git commit --allow-empty -m "trigger CI smoke test"
+git push origin develop
+```
+
+GitHub Actions タブで:
+
+- ✓ `test` (shared 177 + workers 12 件のテスト)
+- ✓ `deploy-staging` (Workers + Pages の develop branch)
+- ⊘ `deploy-preview` (skipped, push event のため)
+- ⊘ `deploy-production` (skipped, develop なため)
+
+すべて green なら、本番リリースは `develop → main` のマージで自動的に承認待ちになります。
+
+## トラブルシューティング (CI)
+
+### `Authentication error [code: 10000]`
+
+CF API token の権限不足。M1 の権限 4 種類が全部設定されているか確認。
+
+### `Pages API failed: Invalid commit message [code: 8000111]`
+
+CF Pages API が非 ASCII コミットメッセージを弾くケース。`deploy.yml` で `--commit-message="${{ github.sha }}"` を渡しているはずなので、ここを削っていないか確認。
+
+### `deploy-staging` と `deploy-preview` が両方走る
+
+`develop` を head にした PR (例: `develop → main`) を開いていると起きる。`deploy-preview` の if 条件に `github.head_ref != 'develop'` が入っているか確認。
+
+### 本番デプロイが承認待ちにならず即実行される
+
+`production` Environment に Required reviewers が設定されていない。M2 を再確認。
+
+---
 
 ## 関連ドキュメント
 
 - [README.md](../README.md) — プロジェクト概要
 - [CLAUDE.md](../CLAUDE.md) — リポジトリ全体の玄関口
-- [packages/workers/CLAUDE.md](../packages/workers/CLAUDE.md) — Workers と CI deploy 設定
+- [packages/workers/CLAUDE.md](../packages/workers/CLAUDE.md) — Workers サブシステムの責務と不変条件
 - [docs/system-spec.md](system-spec.md) — システム仕様
