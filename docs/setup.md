@@ -2,38 +2,65 @@
 
 このドキュメントはローカル開発環境を 0 から構築する手順です。`npm run doctor` で各ステップの完了状況を確認できます。
 
-## 必要なもの
+## 0. 前提 (絶対必要なもの)
 
-- **Node.js 24+** (`.node-version` に `24.4.1`、`engines.node: >=24`)
-- **npm 10+**
-- **Cloudflare アカウント** (Workers + Pages 無料枠で十分)
-- **Wrangler CLI** (npm install で同梱されるので追加インストール不要)
+これだけあれば doctor が動きます。残りは doctor が順に案内します。
 
-## 手順
+| ツール | バージョン | インストール |
+|---|---|---|
+| **Node.js** | 24+ | macOS: `brew install node` / Linux: nvm or apt / Windows: [nodejs.org](https://nodejs.org/) |
+| **npm** | 10+ | Node に同梱 |
+| **git** | 任意 | macOS: `xcode-select --install` / Linux: `apt install git` / Windows: [git-scm.com](https://git-scm.com/) |
 
-### Step 1: clone と install
+**Cloudflare アカウントは Step 3 で作成**します (無料、決済情報不要)。clone してすぐ doctor を走らせれば、必要なタイミングで「Cloudflare 登録 + `wrangler login` してください」と案内が出ます。
+
+> **Cloudflare 抜きで試したい場合**: editor のタイピング + ハッシュチェーン + ローカル検証は Workers 無しでも動作します。ただし時刻アンカリング (signed checkpoints) と人間認証 (Turnstile) は無効。`packages/editor/.env` の `VITE_API_URL` を空にして `npm run dev:editor` だけ起動すれば最小限の動作確認が可能です。
+
+## 1. clone と install
 
 ```bash
-git clone git@github.com:shinyaoguri/typedcode.git
+git clone git@github.com:shinyaoguri/typedcode.git   # https クローンでも可
 cd typedcode
 npm install
 ```
 
-### Step 2: 設定状況を確認
+これで **wrangler CLI もこのリポジトリ内に install** されます (グローバルインストール不要、すべて `npx wrangler ...` で呼べる)。
+
+## 2. 設定状況を確認
 
 ```bash
 npm run doctor
 ```
 
-未設定のものが一覧表示されます。以降の Step は doctor の出力に従って実施してください。
+doctor は 6 セクションを順に検査します:
 
-### Step 3: Cloudflare のリソース作成
+1. 基礎ツール (Node / npm / git)
+2. ワークスペース (npm install 済か、wrangler が見つかるか)
+3. **Cloudflare アカウント** (`wrangler whoami` で認証状態を確認 ← ここで未認証なら登録 + login 案内が出ます)
+4. ローカル設定ファイル (`.env`, `.dev.vars`, `wrangler.toml`)
+5. 署名鍵 (`localKeys.ts`, `.dev.vars` の keyId/JWK)
+6. Cloudflare リソース突合 (`--cf` フラグで KV の実在確認)
 
-[Cloudflare dashboard](https://dash.cloudflare.com/) にログインして以下を作成します:
+各 fail / warn に「何を、どこで、どう書くか」が出ます。以降の Step はその出力に沿って実施してください。
+
+### Step 3: Cloudflare アカウント作成 + ログイン
+
+doctor の Section 3 で「Cloudflare に未認証」と出たら以下を実行:
+
+```bash
+# (1) アカウント未作成なら https://dash.cloudflare.com/sign-up で無料登録
+#     Email + パスワードのみ、決済情報は不要
+# (2) wrangler を CF と接続
+npx wrangler login
+```
+
+ブラウザが開いて「TypedCode が Cloudflare アカウントにアクセスすることを許可」というプロンプトが出るので Allow。完了後 `npx wrangler whoami` で確認 (account ID が返れば OK)。
+
+### Step 4: Cloudflare のリソース作成
 
 **(a) Turnstile widget** (人間認証用、任意)
 
-[Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile) → Add Site:
+[Turnstile dashboard](https://dash.cloudflare.com/?to=/:account/turnstile) → Add Site:
 - Domain: `localhost` (ローカル開発のみなら)
 - Mode: Managed
 - 作成後、**Site Key** (公開) と **Secret Key** (Worker 用) を控える
@@ -42,13 +69,13 @@ npm run doctor
 
 ```bash
 cd packages/workers
-wrangler kv namespace create CHECKPOINT_SESSIONS
-wrangler kv namespace create CHECKPOINT_SESSIONS --preview
+npx wrangler kv namespace create CHECKPOINT_SESSIONS
+npx wrangler kv namespace create CHECKPOINT_SESSIONS --preview
 ```
 
 出力された 2 つの ID を控える。
 
-### Step 4: ローカル設定ファイル
+### Step 5: ローカル設定ファイル
 
 **(a) editor**
 
@@ -58,7 +85,7 @@ cp packages/editor/.env.example packages/editor/.env
 
 [packages/editor/.env](../packages/editor/.env) を編集:
 ```
-VITE_TURNSTILE_SITE_KEY=<Step 3a の Site Key、なくても可>
+VITE_TURNSTILE_SITE_KEY=<Step 4a の Site Key、なくても可>
 VITE_API_URL=http://localhost:8787
 ```
 
@@ -70,10 +97,17 @@ cp packages/workers/.dev.vars.example packages/workers/.dev.vars
 
 [packages/workers/.dev.vars](../packages/workers/.dev.vars) を編集:
 ```
-TURNSTILE_SECRET_KEY=<Step 3a の Secret Key、なくても可>
-ATTESTATION_SECRET_KEY=<openssl rand -hex 32 の出力など、任意の文字列>
-CHECKPOINT_SIGNING_KEY_ID=<Step 5 で生成>
-CHECKPOINT_SIGNING_KEY_JWK=<Step 5 で生成>
+TURNSTILE_SECRET_KEY=<Step 4a の Secret Key、なくても可>
+ATTESTATION_SECRET_KEY=<次の Node ワンライナーの出力など、任意の文字列>
+CHECKPOINT_SIGNING_KEY_ID=<Step 6 で生成>
+CHECKPOINT_SIGNING_KEY_JWK=<Step 6 で生成>
+```
+
+`ATTESTATION_SECRET_KEY` の生成 (どちらでも OK):
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# または openssl があれば
+openssl rand -hex 32
 ```
 
 **(c) workers (KV ID)**
@@ -82,8 +116,8 @@ CHECKPOINT_SIGNING_KEY_JWK=<Step 5 で生成>
 ```toml
 [[kv_namespaces]]
 binding = "CHECKPOINT_SESSIONS"
-id = "<Step 3b の id>"
-preview_id = "<Step 3b の preview id>"
+id = "<Step 4b の id>"
+preview_id = "<Step 4b の preview id>"
 ```
 
 (env.* ブロックは触らない。あれは CI deploy 用)
@@ -93,7 +127,7 @@ skip-worktree を当てて git status に出ないようにする:
 git update-index --skip-worktree packages/workers/wrangler.toml
 ```
 
-### Step 5: 署名鍵を生成
+### Step 6: 署名鍵を生成
 
 ローカル開発用に **ECDSA-P256 鍵対**を 1 つ作る。本番/staging 鍵とは別物にすること (登録済鍵を流用すると、ローカルが本番鍵対と区別不能になる)。
 
@@ -110,7 +144,7 @@ npm run gen-checkpoint-key -w @typedcode/workers
 2. `CHECKPOINT_SIGNING_KEY_ID=...` → `packages/workers/.dev.vars` の対応行
 3. `CHECKPOINT_SIGNING_KEY_JWK={...}` → `packages/workers/.dev.vars` の対応行 (JWK の 1 行 JSON)
 
-### Step 6: 確認
+### Step 7: 確認
 
 ```bash
 npm run doctor
@@ -125,13 +159,13 @@ npm run dev
 # http://localhost:8787 が workers
 ```
 
-### Step 7 (任意): Cloudflare 側の検証
+### Step 8 (任意): Cloudflare リソースの突合
 
 ```bash
 npm run doctor -- --cf
 ```
 
-`wrangler whoami` と KV namespace 突合を実施します。
+`wrangler.toml` に書いた KV ID が Cloudflare 上の実 KV と一致しているかを確認します。
 
 ## トラブルシューティング
 

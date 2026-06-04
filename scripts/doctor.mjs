@@ -4,16 +4,18 @@
  *
  * 設計方針:
  *   - 読み取り専用 (何も書き換えない、何も削除しない)
- *   - 不足があれば「何を、どこに、どうやって」直すかを具体的に表示
+ *   - **新規ユーザー前提**: wrangler / gh / openssl が無くても doctor 本体は動く
+ *   - 不足があれば「何を、どこで、どうやって」直すかを具体的に表示
+ *   - 段階的: ツール無 → npm install → wrangler → Cloudflare 登録 → 設定ファイル → 鍵
  *   - exit 0 = ok / 1 = blocking issue / 2 = ランタイムエラー
  *
  * 使い方:
- *   npm run doctor              # 通常チェック
+ *   npm run doctor              # 通常チェック (Node のみ必須)
  *   npm run doctor -- --strict  # warning も blocking 扱い
- *   npm run doctor -- --cf      # Cloudflare 側 (wrangler whoami / KV) もチェック
+ *   npm run doctor -- --cf      # Cloudflare 側 (KV 突合) もチェック
  */
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync, spawnSync } from 'node:child_process';
@@ -84,12 +86,37 @@ function isPlaceholder(value) {
   return /^(your_|REPLACE_WITH_|<.*>|placeholder|TODO|xxx)/i.test(value);
 }
 
-// ============================================================================
-// Section: ツール
-// ============================================================================
-function checkTooling() {
-  section('1. ツール (Node / npm / wrangler)');
+/** コマンドが存在するか (PATH 上で見つかるか) */
+function commandExists(cmd) {
+  const result = spawnSync(process.platform === 'win32' ? 'where' : 'which', [cmd], {
+    encoding: 'utf-8',
+  });
+  return result.status === 0;
+}
 
+/** 安全に execSync。失敗時は null を返す */
+function tryExec(cmd, opts = {}) {
+  try {
+    return execSync(cmd, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], ...opts }).trim();
+  } catch {
+    return null;
+  }
+}
+
+// 状態 (後のセクションで前のセクションの結果を参照)
+const state = {
+  hasNodeModules: false,
+  hasWrangler: false,
+  isCloudflareAuthed: false,
+};
+
+// ============================================================================
+// Section 1: 基礎ツール (Node / npm / git のみ必須)
+// ============================================================================
+function checkBasicTooling() {
+  section('1. 基礎ツール (Node / npm / git)');
+
+  // Node.js
   const nodeMajor = Number(process.version.match(/v(\d+)/)?.[1] ?? 0);
   if (nodeMajor >= 24) {
     report('ok', `Node.js ${process.version}`);
@@ -97,52 +124,54 @@ function checkTooling() {
     report(
       'fail',
       `Node.js ${process.version}: バージョン 24 以上が必要`,
-      `fnm install 24 && fnm use 24\n# または nvm install 24`
+      `インストール方法:\n  macOS:    brew install node (または fnm/nvm)\n  Linux:    nvm install 24\n  Windows:  https://nodejs.org/ から LTS インストーラ`
     );
   }
 
-  try {
-    const npmV = execSync('npm --version', { encoding: 'utf-8' }).trim();
+  // npm
+  const npmV = tryExec('npm --version');
+  if (npmV) {
     const npmMajor = Number(npmV.split('.')[0]);
     if (npmMajor >= 10) {
       report('ok', `npm ${npmV}`);
     } else {
       report('warn', `npm ${npmV}: 10 以上を推奨`, `npm install -g npm@latest`);
     }
-  } catch {
-    report('fail', 'npm が見つからない', `Node.js の再インストールを推奨`);
+  } else {
+    report('fail', 'npm が見つからない', `Node.js を再インストール (通常 Node に同梱)`);
   }
 
-  // wrangler は dev 用に必須ではないが、Workers を触るなら必要
-  try {
-    const wranglerV = execSync('npx --no-install wrangler --version 2>&1', {
-      encoding: 'utf-8',
-      cwd: REPO_ROOT,
-    }).trim();
-    report('ok', `wrangler: ${wranglerV.split('\n').pop()}`);
-  } catch {
+  // git
+  const gitV = tryExec('git --version');
+  if (gitV) {
+    report('ok', gitV);
+  } else {
     report(
-      'warn',
-      'wrangler が npm install 後にも見つからない',
-      `npm install を実行してください`
+      'fail',
+      'git が見つからない',
+      `インストール:\n  macOS:    xcode-select --install (または brew install git)\n  Linux:    apt install git / dnf install git\n  Windows:  https://git-scm.com/download/win`
     );
   }
 }
 
 // ============================================================================
-// Section: ワークスペース
+// Section 2: ワークスペース (npm install 済か)
 // ============================================================================
 function checkWorkspace() {
-  section('2. ワークスペース (依存関係)');
+  section('2. ワークスペース (npm install)');
 
   if (existsSync(resolve(REPO_ROOT, 'node_modules'))) {
     report('ok', 'node_modules が存在');
+    state.hasNodeModules = true;
   } else {
-    report('fail', 'node_modules がない', `npm install --include=optional`);
+    report(
+      'fail',
+      'node_modules がない — まずは依存関係をインストール',
+      `npm install --include=optional`
+    );
     return;
   }
 
-  // 主要パッケージの link 確認
   for (const pkg of ['shared', 'editor', 'verify', 'verify-cli', 'workers']) {
     if (existsSync(resolve(REPO_ROOT, `node_modules/@typedcode/${pkg}`))) {
       report('ok', `@typedcode/${pkg} がリンクされている`);
@@ -150,13 +179,60 @@ function checkWorkspace() {
       report('fail', `@typedcode/${pkg} がリンクされていない`, `npm install`);
     }
   }
+
+  // wrangler (devDep として install 済のはず)
+  const wranglerV = tryExec('npx --no-install wrangler --version', { cwd: REPO_ROOT });
+  if (wranglerV) {
+    report('ok', `wrangler: ${wranglerV.split('\n').pop()}`);
+    state.hasWrangler = true;
+  } else {
+    report(
+      'warn',
+      'wrangler が見つからない (npm install で同梱されるはず)',
+      `npm install を再実行してください`
+    );
+  }
 }
 
 // ============================================================================
-// Section: ローカル設定ファイル
+// Section 3: Cloudflare アカウント (wrangler 認証)
+// ============================================================================
+function checkCloudflareAccount() {
+  section('3. Cloudflare アカウント');
+
+  if (!state.hasWrangler) {
+    report('skip', 'wrangler 未インストールのため判定スキップ');
+    return;
+  }
+
+  // wrangler whoami は CLOUDFLARE_API_TOKEN もしくは ~/.config/.wrangler の認証を見る
+  const result = spawnSync('npx', ['--no-install', 'wrangler', 'whoami'], {
+    encoding: 'utf-8',
+    cwd: REPO_ROOT,
+  });
+
+  if (result.status === 0 && /You are logged in|Account ID/.test(result.stdout)) {
+    const account = result.stdout.match(/Account ID:\s*(\w+)/i);
+    if (account) {
+      report('ok', `Cloudflare 認証済 (Account: ${account[1].slice(0, 8)}...)`);
+    } else {
+      report('ok', 'Cloudflare 認証済');
+    }
+    state.isCloudflareAuthed = true;
+  } else {
+    report(
+      'warn',
+      'Cloudflare に未認証',
+      `本プロジェクトは Cloudflare Workers + Pages を使うため、無料アカウントが必要です。\n\n手順:\n  1. https://dash.cloudflare.com/sign-up で無料登録 (Email + パスワードのみ、決済情報不要)\n  2. ターミナルで: npx wrangler login\n     → ブラウザが開いて Cloudflare で認可\n  3. 完了したら再度 npm run doctor\n\n備考:\n  - Cloudflare 抜きで editor のタイピング部分のみ試したい場合、\n    ローカル開発 (npm run dev) で Workers を起動しなくても editor は\n    動作しますが、時刻アンカリング (signed checkpoints) は機能しません`
+    );
+  }
+}
+
+// ============================================================================
+// Section 4: ローカル設定ファイル
 // ============================================================================
 function checkLocalConfig() {
-  section('3. ローカル設定ファイル');
+  section('4. ローカル設定ファイル');
 
   // ---- editor/.env ----
   const editorEnv = readFileOrNull('packages/editor/.env');
@@ -172,16 +248,16 @@ function checkLocalConfig() {
       report(
         'warn',
         'packages/editor/.env: VITE_TURNSTILE_SITE_KEY が placeholder',
-        `Turnstile 認証を使わないなら空欄 / 使うなら https://dash.cloudflare.com/?to=/:account/turnstile から取得`
+        `Turnstile (人間認証) を使わないなら空欄でも動作する。使うなら\n  https://dash.cloudflare.com/?to=/:account/turnstile → Add Site\n  Domain: localhost (ローカル開発のみなら)\n  作成後の "Site Key" を貼り付け`
       );
     } else {
-      report('ok', `packages/editor/.env: VITE_TURNSTILE_SITE_KEY 設定済`);
+      report('ok', 'packages/editor/.env: VITE_TURNSTILE_SITE_KEY 設定済');
     }
     if (isPlaceholder(env.VITE_API_URL)) {
       report(
         'warn',
         'packages/editor/.env: VITE_API_URL が placeholder',
-        `ローカル開発なら http://localhost:8787 / staging なら staging Worker URL`
+        `ローカル開発なら: http://localhost:8787`
       );
     } else {
       report('ok', `packages/editor/.env: VITE_API_URL = ${env.VITE_API_URL}`);
@@ -194,23 +270,31 @@ function checkLocalConfig() {
     report(
       'fail',
       'packages/workers/.dev.vars がない',
-      `cp packages/workers/.dev.vars.example packages/workers/.dev.vars\n各キーを設定`
+      `cp packages/workers/.dev.vars.example packages/workers/.dev.vars\n以下の 4 つを設定 (詳細は doctor の続くチェックで個別に案内)`
     );
   } else {
     const vars = envOf(devVars);
     const checks = [
-      ['TURNSTILE_SECRET_KEY', 'Turnstile widget の Secret Key'],
-      ['ATTESTATION_SECRET_KEY', '任意のランダム 32 byte hex (openssl rand -hex 32)'],
-      ['CHECKPOINT_SIGNING_KEY_ID', 'gen-checkpoint-key の出力'],
-      ['CHECKPOINT_SIGNING_KEY_JWK', 'gen-checkpoint-key の出力 (JWK の 1 行 JSON)'],
+      [
+        'TURNSTILE_SECRET_KEY',
+        `Turnstile widget の "Secret Key" (Site Key の対)\n人間認証を使わないなら空欄可 (Worker 側でフォールバック)`,
+      ],
+      [
+        'ATTESTATION_SECRET_KEY',
+        `任意のランダム文字列 32 byte 以上。生成例:\n  node -e "console.log(crypto.randomBytes(32).toString('hex'))"\n  (openssl があれば: openssl rand -hex 32)`,
+      ],
+      [
+        'CHECKPOINT_SIGNING_KEY_ID',
+        `npm run gen-checkpoint-key -w @typedcode/workers の出力 (tcp-YYYYMM-xxxxxx)`,
+      ],
+      [
+        'CHECKPOINT_SIGNING_KEY_JWK',
+        `npm run gen-checkpoint-key -w @typedcode/workers の出力 (1 行 JSON)`,
+      ],
     ];
     for (const [key, hint] of checks) {
       if (!vars[key] || isPlaceholder(vars[key])) {
-        report(
-          'fail',
-          `packages/workers/.dev.vars: ${key} 未設定`,
-          hint
-        );
+        report('fail', `packages/workers/.dev.vars: ${key} 未設定`, hint);
       } else {
         report('ok', `packages/workers/.dev.vars: ${key} 設定済`);
       }
@@ -218,74 +302,72 @@ function checkLocalConfig() {
   }
 
   // ---- workers/wrangler.toml (ローカル dev KV) ----
-  // env.* ブロックは別環境用 (production deploy 等) なので、トップレベルの
-  // [[kv_namespaces]] のみを見てローカル dev 用 ID が設定済かを判定する。
   const wranglerToml = readFileOrNull('packages/workers/wrangler.toml');
   if (!wranglerToml) {
     report('fail', 'packages/workers/wrangler.toml がない', `git checkout が壊れているかも`);
   } else {
-    // 最初の [env.* のあたりまでを「トップレベル」として切り出す
     const envIdx = wranglerToml.search(/\[env\.[a-z]/);
     const topLevel = envIdx > 0 ? wranglerToml.slice(0, envIdx) : wranglerToml;
     if (topLevel.includes('REPLACE_WITH_')) {
+      const cfNote = state.isCloudflareAuthed
+        ? `wrangler kv namespace create CHECKPOINT_SESSIONS\nwrangler kv namespace create CHECKPOINT_SESSIONS --preview\n出力された id / preview_id をトップレベル [[kv_namespaces]] に貼り付け`
+        : `先に Cloudflare アカウントを作成 + wrangler login が必要 (Section 3 参照)`;
       report(
         'warn',
         'packages/workers/wrangler.toml: ローカル dev KV ID が placeholder',
-        `wrangler kv namespace create CHECKPOINT_SESSIONS\nwrangler kv namespace create CHECKPOINT_SESSIONS --preview\n出力された id と preview_id をトップレベル [[kv_namespaces]] の REPLACE_WITH_* に貼り付け\ngit update-index --skip-worktree packages/workers/wrangler.toml`
+        `${cfNote}\n設定後:\n  git update-index --skip-worktree packages/workers/wrangler.toml`
       );
     } else {
       report('ok', 'packages/workers/wrangler.toml: ローカル dev KV ID 設定済');
     }
 
-    // skip-worktree が当たっているか (placeholder/設定済どちらでも確認すべき)
     try {
-      const out = execSync(
-        'git ls-files -v packages/workers/wrangler.toml',
-        { cwd: REPO_ROOT, encoding: 'utf-8' }
-      );
+      const out = execSync('git ls-files -v packages/workers/wrangler.toml', {
+        cwd: REPO_ROOT,
+        encoding: 'utf-8',
+      });
       if (out.startsWith('S ')) {
-        report('ok', 'packages/workers/wrangler.toml: skip-worktree 適用済 (commit から保護)');
+        report('ok', 'packages/workers/wrangler.toml: skip-worktree 適用済');
       } else {
         report(
           'warn',
-          'packages/workers/wrangler.toml: skip-worktree が未適用',
-          `dev KV ID を設定したら次を実行:\ngit update-index --skip-worktree packages/workers/wrangler.toml`
+          'packages/workers/wrangler.toml: skip-worktree 未適用',
+          `dev KV ID 設定後に:\n  git update-index --skip-worktree packages/workers/wrangler.toml`
         );
       }
     } catch {
-      report('skip', 'packages/workers/wrangler.toml: skip-worktree 確認できず (git 配下外?)');
+      report('skip', 'packages/workers/wrangler.toml: skip-worktree 確認できず');
     }
   }
 }
 
 // ============================================================================
-// Section: 署名鍵
+// Section 5: 署名鍵
 // ============================================================================
 function checkSigningKey() {
-  section('4. 署名鍵 (signed checkpoints)');
+  section('5. 署名鍵 (signed checkpoints)');
 
   const localKeys = readFileOrNull('packages/shared/src/checkpointKeys/localKeys.ts');
   if (!localKeys) {
     report(
       'fail',
       'packages/shared/src/checkpointKeys/localKeys.ts がない',
-      `cp packages/shared/src/checkpointKeys/localKeys.ts.example packages/shared/src/checkpointKeys/localKeys.ts`
+      `cp packages/shared/src/checkpointKeys/localKeys.ts.example packages/shared/src/checkpointKeys/localKeys.ts\ngit update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts`
     );
     return;
   }
 
-  // skip-worktree 確認
   try {
-    const out = execSync(
-      'git ls-files -v packages/shared/src/checkpointKeys/localKeys.ts',
-      { cwd: REPO_ROOT, encoding: 'utf-8' }
-    );
+    const out = execSync('git ls-files -v packages/shared/src/checkpointKeys/localKeys.ts', {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+    });
     if (out.startsWith('S ')) {
-      report('ok', 'localKeys.ts: skip-worktree 適用済 (commit から保護)');
+      report('ok', 'localKeys.ts: skip-worktree 適用済');
     } else {
       report(
         'warn',
-        'localKeys.ts: skip-worktree が未適用',
+        'localKeys.ts: skip-worktree 未適用',
         `git update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts`
       );
     }
@@ -293,26 +375,23 @@ function checkSigningKey() {
     report('skip', 'localKeys.ts: skip-worktree 確認できず');
   }
 
-  // 中身に dev 鍵 entry があるか
   const hasEntry = /keyId\s*:\s*['"]tcp-/.test(localKeys);
   const devVars = readFileOrNull('packages/workers/.dev.vars');
   const devKeyId = devVars ? envOf(devVars).CHECKPOINT_SIGNING_KEY_ID : '';
 
   if (!hasEntry && devKeyId && !isPlaceholder(devKeyId)) {
-    // .dev.vars に keyId はあるが localKeys.ts に entry がない場合、registry に
-    // 既にあるか確認 (本番鍵を流用しているかもしれない)
     const registry = readFileOrNull('packages/shared/src/checkpointKeys/registry.ts');
     if (registry && registry.includes(devKeyId)) {
       report(
         'warn',
         `localKeys.ts に dev 鍵 entry なし。.dev.vars の keyId (${devKeyId}) は registry.ts に存在`,
-        `本番/staging 鍵をローカルにも流用している状態。安全ではないので別鍵を生成推奨\nnpm run gen-checkpoint-key -w @typedcode/workers`
+        `本番/staging 鍵をローカルに流用している状態。\n別 dev 鍵を生成推奨:\n  npm run gen-checkpoint-key -w @typedcode/workers`
       );
     } else {
       report(
         'fail',
-        `.dev.vars に keyId (${devKeyId}) があるが localKeys.ts にも registry.ts にも未登録`,
-        `localKeys.ts に対応する公開鍵 entry を append してください`
+        `.dev.vars の keyId (${devKeyId}) が registry.ts にも localKeys.ts にもない`,
+        `gen-checkpoint-key を再実行して localKeys.ts に append、ID/JWK を .dev.vars に貼り直す`
       );
     }
   } else if (hasEntry) {
@@ -321,43 +400,30 @@ function checkSigningKey() {
     report(
       'warn',
       'localKeys.ts に dev 鍵 entry なし、.dev.vars にも keyId なし',
-      `npm run gen-checkpoint-key -w @typedcode/workers\n出力された公開鍵を localKeys.ts に append、KEY_ID と KEY_JWK を .dev.vars に貼り付け`
+      `署名鍵を生成:\n  npm run gen-checkpoint-key -w @typedcode/workers\n出力の手順に従って localKeys.ts と .dev.vars を埋める`
     );
   }
 }
 
 // ============================================================================
-// Section: Cloudflare (任意)
+// Section 6: Cloudflare リソース突合 (--cf 指定時のみ)
 // ============================================================================
-function checkCloudflare() {
-  section('5. Cloudflare 側 (--cf 指定時のみ)');
+function checkCloudflareResources() {
+  section('6. Cloudflare リソース突合 (--cf 指定時のみ)');
 
   if (!CHECK_CF) {
-    report('skip', '--cf を付けると Cloudflare 側の検証も実施します');
+    report('skip', '--cf を付けると KV ID と CF アカウントの突合を実施');
+    return;
+  }
+  if (!state.hasWrangler) {
+    report('skip', 'wrangler 未インストールのため判定スキップ');
+    return;
+  }
+  if (!state.isCloudflareAuthed) {
+    report('skip', 'Cloudflare 未認証のため判定スキップ');
     return;
   }
 
-  // wrangler whoami
-  const whoami = spawnSync('npx', ['--no-install', 'wrangler', 'whoami'], {
-    encoding: 'utf-8',
-    cwd: REPO_ROOT,
-  });
-  if (whoami.status !== 0) {
-    report(
-      'fail',
-      'wrangler whoami 失敗',
-      `wrangler login\n# または CLOUDFLARE_API_TOKEN を環境変数で設定`
-    );
-    return;
-  }
-  const account = whoami.stdout.match(/Account ID:\s*(\w+)/i);
-  if (account) {
-    report('ok', `wrangler 認証済 (Account ID: ${account[1].slice(0, 8)}...)`);
-  } else {
-    report('ok', 'wrangler 認証済');
-  }
-
-  // KV 一覧と wrangler.toml の ID 突合
   const kvList = spawnSync('npx', ['--no-install', 'wrangler', 'kv', 'namespace', 'list'], {
     encoding: 'utf-8',
     cwd: resolve(REPO_ROOT, 'packages/workers'),
@@ -366,10 +432,11 @@ function checkCloudflare() {
     try {
       const namespaces = JSON.parse(kvList.stdout);
       const wranglerToml = readFileOrNull('packages/workers/wrangler.toml') ?? '';
-      const idsInToml = [...wranglerToml.matchAll(/id\s*=\s*"([0-9a-f]{32})"/gi)].map(
-        (m) => m[1]
-      );
+      const idsInToml = [...wranglerToml.matchAll(/id\s*=\s*"([0-9a-f]{32})"/gi)].map((m) => m[1]);
       const idsOnCf = new Set(namespaces.map((n) => n.id));
+      if (idsInToml.length === 0) {
+        report('warn', 'wrangler.toml に有効な KV ID なし', `Section 4 を再確認`);
+      }
       for (const id of idsInToml) {
         if (idsOnCf.has(id)) {
           report('ok', `KV id ${id.slice(0, 10)}... は CF 上に存在`);
@@ -377,7 +444,7 @@ function checkCloudflare() {
           report(
             'fail',
             `KV id ${id.slice(0, 10)}... が CF 上に存在しない`,
-            `wrangler kv namespace list で実際の ID を確認、wrangler.toml を更新`
+            `wrangler kv namespace list で実 ID を確認し wrangler.toml を更新`
           );
         }
       }
@@ -392,16 +459,15 @@ function checkCloudflare() {
 // ============================================================================
 // 実行
 // ============================================================================
-console.log(
-  `${C.bold}TypedCode setup doctor${C.reset} ${C.dim}(${REPO_ROOT})${C.reset}`
-);
+console.log(`${C.bold}TypedCode setup doctor${C.reset} ${C.dim}(${REPO_ROOT})${C.reset}`);
 if (STRICT) console.log(`${C.dim}strict mode: warnings も blocking 扱い${C.reset}`);
 
-checkTooling();
+checkBasicTooling();
 checkWorkspace();
+checkCloudflareAccount();
 checkLocalConfig();
 checkSigningKey();
-checkCloudflare();
+checkCloudflareResources();
 
 // ----- 結果サマリ -----
 console.log('');
@@ -416,6 +482,7 @@ if (blocking > 0) {
   console.log(`${C.red}${C.bold}セットアップが完了していません。${C.reset}`);
   console.log(`上記の指示に従って ${blocking} 件の問題を解消してください。`);
   console.log(`完了後、再度 ${C.cyan}npm run doctor${C.reset} を実行。`);
+  console.log(`詳しい手順: ${C.cyan}docs/setup.md${C.reset}`);
   process.exit(1);
 }
 
