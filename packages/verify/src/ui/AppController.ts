@@ -57,6 +57,12 @@ export class AppController {
       onExplorerToggle: () => this.toggleSidebar(),
       onLanguageToggle: () => this.toggleLanguage(),
       onAbout: () => showAboutDialog(getI18n()),
+      onVerifyModeChange: (mode) => {
+        this.verificationQueue.setMode(mode);
+        // モード変更を視覚的に伝えるためのみ。既に表示中の結果は再検証しないが、
+        // 次の検証から新モードが使われる。
+      },
+      initialVerifyMode: 'full',
     });
 
     this.sidebar = new Sidebar({

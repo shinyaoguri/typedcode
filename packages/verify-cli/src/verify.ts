@@ -7,6 +7,8 @@ import {
   verifyProofFile,
   type ProofFile,
   type VerificationProgressCallback,
+  type VerificationMode,
+  type FullVerificationResult,
 } from '@typedcode/shared';
 import { ProgressBar } from './progress.js';
 
@@ -26,9 +28,16 @@ export interface CLIVerificationResult {
   errorAt?: number;
   errorMessage?: string;
   language: string;
+  mode: VerificationMode;
+  poswSkipped: boolean;
+  signedCheckpoints: FullVerificationResult['signedCheckpoints'];
 }
 
-export async function verifyProof(proof: ProofFile): Promise<CLIVerificationResult> {
+export async function verifyProof(
+  proof: ProofFile,
+  options: { mode?: VerificationMode } = {}
+): Promise<CLIVerificationResult> {
+  const mode: VerificationMode = options.mode ?? 'full';
   const startTime = performance.now();
   const events = proof.proof.events;
   const eventCount = events.length;
@@ -42,7 +51,7 @@ export async function verifyProof(proof: ProofFile): Promise<CLIVerificationResu
   };
 
   // Run verification using shared utilities
-  const result = await verifyProofFile(proof, onProgress);
+  const result = await verifyProofFile(proof, onProgress, { mode });
 
   progressBar.complete();
 
@@ -68,5 +77,8 @@ export async function verifyProof(proof: ProofFile): Promise<CLIVerificationResu
     errorAt: result.errorAt,
     errorMessage: result.errorMessage,
     language: proof.language,
+    mode,
+    poswSkipped: result.poswSkipped ?? false,
+    signedCheckpoints: result.signedCheckpoints,
   };
 }

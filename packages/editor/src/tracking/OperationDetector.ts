@@ -139,7 +139,7 @@ export class OperationDetector {
       if (this.isLikelyIMEInput(text)) {
         return 'insertFromComposition';
       }
-      return 'insertText';
+      return 'insertReplacementText';
     }
 
     return 'insertText';

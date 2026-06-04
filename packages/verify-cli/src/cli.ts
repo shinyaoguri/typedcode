@@ -11,6 +11,30 @@ import { verifyProof, type ProofFile } from './verify.js';
 import { extractProofFromZip } from './zip.js';
 import { formatResult, printError, printUsage } from './output.js';
 import { Spinner } from './progress.js';
+import type { VerificationMode } from '@typedcode/shared';
+
+function parseModeFlag(args: string[]): VerificationMode {
+  const modeIndex = args.findIndex((a) => a === '--mode' || a.startsWith('--mode='));
+  if (modeIndex === -1) return 'full';
+  const arg = args[modeIndex]!;
+  const value = arg.startsWith('--mode=') ? arg.slice('--mode='.length) : args[modeIndex + 1];
+  if (value === 'fast' || value === 'audit' || value === 'full') return value;
+  throw new Error(`Invalid --mode value: ${value}. Use fast | audit | full.`);
+}
+
+function nonFlagArgs(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === '--mode') {
+      i++; // skip value
+      continue;
+    }
+    if (arg.startsWith('--')) continue;
+    out.push(arg);
+  }
+  return out;
+}
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -20,7 +44,9 @@ async function main(): Promise<void> {
     process.exit(args.length === 0 ? 1 : 0);
   }
 
-  const filePath = resolve(args[0]!);
+  const mode = parseModeFlag(args);
+  const positional = nonFlagArgs(args);
+  const filePath = resolve(positional[0]!);
   const ext = extname(filePath).toLowerCase();
 
   try {
@@ -46,7 +72,7 @@ async function main(): Promise<void> {
 
     spinner.stop();
 
-    const result = await verifyProof(proofData);
+    const result = await verifyProof(proofData, { mode });
 
     console.log(formatResult(result));
 

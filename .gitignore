@@ -32,3 +32,7 @@ yarn-error.log*
 .cache/
 .parcel-cache/
 .vite/
+
+# Working docs (引き継ぎ用スクラッチパッド。残したい設計判断は
+# system-spec.md か ADR に統合する)
+docs/plans/

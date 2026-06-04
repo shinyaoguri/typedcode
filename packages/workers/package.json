@@ -5,11 +5,18 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "deploy:prod": "wrangler deploy --env production"
+    "deploy:prod": "wrangler deploy --env production",
+    "gen-checkpoint-key": "node scripts/generate-checkpoint-key.mjs",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "dependencies": {
+    "@typedcode/shared": "*"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260401.1",
+    "@cloudflare/workers-types": "^4.20260601.1",
     "typescript": "^6.0.2",
-    "wrangler": "^4.79.0"
+    "vitest": "^4.1.8",
+    "wrangler": "^4.92.0"
   }
 }

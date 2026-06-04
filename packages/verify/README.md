@@ -1,21 +1,23 @@
 # @typedcode/verify
 
-Web-based proof verification application for TypedCode exported files with VSCode-like UI.
+TypedCode のエクスポートファイルを検証する Web アプリ。VSCode 風 UI で証明の妥当性を確認できます。
 
-## Features
+## 機能
 
-- **File Upload**: Drag & drop, file selection, or folder sync via File System Access API
-- **Hash Chain Verification**: Recalculates and verifies all SHA-256 hashes
-- **PoSW Verification**: Validates Proof of Sequential Work (Web Worker)
-- **Sampled Verification**: Fast verification using checkpoints
-- **Timeline Visualization**: Interactive timeline with event seek bar
-- **Charts**: Mouse trajectory and event distribution (Chart.js)
-- **Screenshot Verification**: Hash verification for captured screenshots
-- **Human Attestation**: Verify Turnstile attestation signatures
-- **Multi-file Support**: Handle ZIP exports with multiple files
-- **i18n**: Japanese and English UI
+- **ファイル投入**: ドラッグ＆ドロップ、ファイル選択、File System Access API によるフォルダ同期
+- **ハッシュチェーン検証**: すべての SHA-256 ハッシュを再計算して検証
+- **PoSW 検証**: Web Worker で Proof of Sequential Work を検証
+- **サンプリング検証**: チェックポイントを利用した高速検証
+- **時刻アンカリングの検証**: 署名済みチェックポイントの ECDSA-P256 署名・連結ハッシュ・サーバ時刻整合性を検証 (詳細展開対応)
+- **タイムライン可視化**: シークバー付きのインタラクティブなタイムライン
+- **チャート**: マウス軌跡・イベント分布などを Chart.js で描画
+- **スクリーンショット検証**: 撮影画像のハッシュ検証
+- **人間認証の検証**: Turnstile アテステーション署名を検証
+- **マルチファイル**: ZIP 形式に含まれる複数ファイルの証明に対応
+- **差分表示**: タブ切替や session 復旧をまたいだ差分の可視化
+- **i18n**: 日本語と英語の UI
 
-## Development
+## 開発
 
 ```bash
 npm run dev      # http://localhost:5174
@@ -23,84 +25,88 @@ npm run build
 npm run preview
 ```
 
-## Key Concepts
+## 主要な仕組み
 
-### Verification Flow
+### 検証の流れ
 
 ```
-File Selection (drag & drop / File System Access API)
+File Selection (ドラッグ＆ドロップ / File System Access API)
     ↓
-FileProcessor (JSON parse or ZIP extraction)
+FileProcessor (JSON パース or ZIP 展開)
     ↓
-Format Detection (single-file or multi-file)
+形式判定 (single-file / multi-file)
     ↓
 VerificationEngine.verify()
     ↓
 VerificationQueue (Web Worker)
-    ├─ Sequence number check
-    ├─ Timestamp continuity check
-    ├─ Previous hash validation
-    ├─ Hash recalculation
-    └─ PoSW verification (10,000 iterations)
+    ├─ シーケンス番号チェック
+    ├─ タイムスタンプ連続性チェック
+    ├─ previousHash 検証
+    ├─ ハッシュ再計算
+    ├─ PoSW 検証 (POSW_ITERATIONS 反復)
+    └─ 署名済みチェックポイントの検証
     ↓
 AttestationService.verify() (Workers API)
     ↓
-UI Display (ResultPanel, charts)
+UI 表示 (ResultPanel, charts)
 ```
 
-### Sampled vs Full Verification
+### サンプリング検証 vs フル検証
 
-| Mode | When Used | Speed | Accuracy |
+| モード | 適用条件 | 速度 | 精度 |
 |------|-----------|-------|----------|
-| **Sampled** | Checkpoints available | Fast (O(samples)) | Statistical guarantee |
-| **Full** | No checkpoints | Slow (O(n)) | 100% verification |
+| **サンプリング** | チェックポイントあり | 高速 (O(samples)) | 統計的保証 |
+| **フル** | チェックポイントなし | 低速 (O(n)) | 100% 検証 |
 
-**Sampled verification** randomly selects checkpoint segments and verifies:
-1. First segment (initial hash → first checkpoint)
-2. Last segment (last checkpoint → final hash)
-3. Random intermediate segments
+サンプリング検証では、以下のセグメントを必須に含めつつランダムに選択して検証します。
 
-This provides statistical assurance while enabling fast verification of large proof files.
+1. 先頭セグメント (初期ハッシュ → 最初のチェックポイント)
+2. 末尾セグメント (最後のチェックポイント → 最終ハッシュ)
+3. 中間セグメントをランダムに選択
 
-### Trust Level Calculation
+これにより大規模な証明ファイルでも高速かつ統計的に保証された検証ができます。
 
-The `TrustCalculator` computes a trust score based on:
+### 信頼スコアの計算
 
-| Factor | Impact |
+`TrustCalculator` は以下の要素から信頼スコアを算出します。
+
+| 要素 | 影響 |
 |--------|--------|
-| Pure typing | High trust |
-| Human attestation verified | +Trust |
-| Timestamps consistent | Required |
-| Hash chain valid | Required |
-| Paste/drop events | -Trust |
-| Template injection | Noted but allowed |
+| ピュアタイピング | 信頼度+ |
+| 人間認証あり | 信頼度+ |
+| タイムスタンプ整合 | 必須 |
+| ハッシュチェーン有効 | 必須 |
+| ペースト/ドロップ存在 | 信頼度- |
+| テンプレート注入 | 注記対象、許可 |
+| 画面共有のオプトアウト | 注記対象 |
 
-### Typing Pattern Analysis
+### タイピングパターン分析
 
-The `TypingPatternCard` analyzes:
-- Typing speed (WPM) over time
-- Key press intervals
-- Pause patterns
-- Focus/blur frequency
+`TypingPatternCard` で以下を分析します。
 
-These metrics help identify unusual patterns that might indicate automated input.
+- 時間あたりのタイピング速度 (WPM)
+- キー押下間隔 (dwell / flight time)
+- ポーズパターン
+- フォーカス/ブラー頻度
 
-### Chart Visualization
+自動入力の疑いがある不自然なパターンを検出する助けになります。
 
-| Chart | Purpose |
+### チャート可視化
+
+| チャート | 用途 |
 |-------|---------|
-| **IntegratedChart** | Typing speed, focus state, keystrokes over time |
-| **TimelineChart** | Event distribution with annotations |
-| **MouseChart** | Mouse position heatmap |
+| **IntegratedChart** | 時間軸上のタイピング速度・フォーカス状態・キーストローク |
+| **TimelineChart** | アノテーション付きイベント分布 |
+| **MouseChart** | マウス位置ヒートマップ |
 
-Charts support:
-- Zoom and pan (chartjs-plugin-zoom)
-- Screenshot overlay at capture points
-- Event filtering via `ChartEventSelector`
+チャートは以下に対応:
+- ズーム / パン (chartjs-plugin-zoom)
+- 撮影時刻にスクリーンショットをオーバーレイ
+- `ChartEventSelector` によるイベントフィルタ
 
-## Supported Formats
+## 対応形式
 
-### Single File (JSON)
+### 単一ファイル (JSON)
 
 ```json
 {
@@ -120,15 +126,15 @@ Charts support:
 }
 ```
 
-### Multi-File (JSON)
+### マルチファイル (JSON)
 
 ```json
 {
   "version": "1.0.0",
   "type": "multi-file",
   "files": {
-    "main.c": { /* ExportedProof */ },
-    "utils.h": { /* ExportedProof */ }
+    "main.c": { /* MultiFileExportEntry */ },
+    "utils.h": { /* MultiFileExportEntry */ }
   },
   "tabSwitches": [...],
   "fingerprint": {...},
@@ -136,56 +142,59 @@ Charts support:
 }
 ```
 
-### ZIP Format
+### ZIP 形式
 
-- `proof.json` - Main proof file
-- `screenshots/` - Captured screenshots (JPEG)
-- `manifest.json` - Screenshot hashes and metadata
-- `README.md` - Verification guide
+- `proof.json` — 証明本体
+- `screenshots/` — スクリーンショット (JPEG)
+- `screenshots/manifest.json` — ハッシュとメタデータ
+- `README.md`, `README.ja.md` — 検証手順
 
-## Verification Results
+## 検証結果
 
-| Result | Description |
+| 結果 | 説明 |
 |--------|-------------|
-| Verified | All checks passed, pure typing |
-| Partial | Chain valid but contains paste/drop |
-| Failed | Chain integrity compromised |
+| Verified | すべての検査を通過、ピュアタイピング |
+| Partial | チェーン有効だがペースト/ドロップを含む |
+| Failed | チェーン整合性が破綻 |
 
-## Verification Errors
+## 検証エラー
 
-| Error | Description |
+| エラー | 説明 |
 |-------|-------------|
-| Sequence mismatch | Event order inconsistency |
-| Timestamp violation | Timestamp going backwards |
-| Previous hash mismatch | Chain link broken |
-| PoSW verification failed | Invalid proof of work |
-| Hash mismatch | Computed hash doesn't match |
+| Sequence mismatch | イベント順序が不整合 |
+| Timestamp violation | タイムスタンプが逆行 |
+| Previous hash mismatch | チェーンの連結が破綻 |
+| PoSW verification failed | PoSW 値が不正 |
+| Hash mismatch | 計算ハッシュと記録ハッシュが不一致 |
+| Signed checkpoint mismatch | 署名済みチェックポイントの連結ハッシュが不一致 |
 
 ## File System Access API
 
-The verify app supports folder synchronization using the File System Access API:
+verify アプリは File System Access API によるフォルダ同期に対応します。
 
 ```typescript
-// Select folder and auto-sync
+// フォルダを選択して自動同期
 const handle = await showDirectoryPicker();
-// Files are automatically re-verified when changed
+// 変更時に自動で再検証
 ```
 
-This feature allows real-time verification during development.
+開発中のリアルタイム検証に便利です。
 
-## Dependencies
+## 依存関係
 
-| Package | Version | Purpose |
+| パッケージ | バージョン | 用途 |
 |---------|---------|---------|
-| @typedcode/shared | * | Core types and verification |
-| chart.js | ^4.4 | Chart visualization |
-| chartjs-plugin-annotation | ^3.0 | Chart annotations |
-| chartjs-plugin-zoom | ^2.0 | Chart zoom/pan |
-| highlight.js | ^11.11 | Syntax highlighting |
-| jszip | ^3.10 | ZIP handling |
+| @typedcode/shared | * | コア型と検証ロジック |
+| chart.js | ^4.4 | チャート描画 |
+| chartjs-plugin-annotation | ^3.0 | チャートのアノテーション |
+| chartjs-plugin-zoom | ^2.0 | チャートのズーム/パン |
+| diff | ^9.0 | 差分計算 |
+| highlight.js | ^11.11 | シンタックスハイライト |
+| jszip | ^3.10 | ZIP の解凍 |
+| vite | ^8.0 | ビルドツール |
 
-## Environment Variables
+## 環境変数
 
-| Variable | Description | Required |
+| 変数 | 説明 | 必須 |
 |----------|-------------|----------|
-| `VITE_API_URL` | Workers API endpoint (for attestation verification) | Optional |
+| `VITE_API_URL` | Workers API のエンドポイント (アテステーション検証用) | 任意 |

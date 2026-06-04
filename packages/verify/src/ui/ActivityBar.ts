@@ -4,6 +4,9 @@
 
 import { FileSystemAccessService } from '../services/FileSystemAccessService.js';
 import { getI18n } from '../i18n/index.js';
+import type { VerificationMode } from '../types';
+
+const VERIFY_MODE_CYCLE: VerificationMode[] = ['fast', 'audit', 'full'];
 
 export class ActivityBar {
   private mainMenuBtn: HTMLElement;
@@ -16,6 +19,8 @@ export class ActivityBar {
   private languageToggleBtn: HTMLElement | null;
   private aboutBtn: HTMLElement | null;
   private explorerToggleBtn: HTMLElement;
+  private verifyModeBtn: HTMLElement | null;
+  private verifyModeLabel: HTMLElement | null;
 
   private onOpenFile: () => void;
   private onOpenFolder: () => void;
@@ -23,8 +28,10 @@ export class ActivityBar {
   private onExplorerToggle: () => void;
   private onLanguageToggle: () => void;
   private onAbout: () => void;
+  private onVerifyModeChange: (mode: VerificationMode) => void;
 
   private explorerVisible = true;
+  private verifyMode: VerificationMode = 'full';
 
   constructor(callbacks: {
     onOpenFile: () => void;
@@ -33,6 +40,8 @@ export class ActivityBar {
     onExplorerToggle?: () => void;
     onLanguageToggle?: () => void;
     onAbout?: () => void;
+    onVerifyModeChange?: (mode: VerificationMode) => void;
+    initialVerifyMode?: VerificationMode;
   }) {
     this.onOpenFile = callbacks.onOpenFile;
     this.onOpenFolder = callbacks.onOpenFolder;
@@ -40,6 +49,8 @@ export class ActivityBar {
     this.onExplorerToggle = callbacks.onExplorerToggle ?? (() => {});
     this.onLanguageToggle = callbacks.onLanguageToggle ?? (() => {});
     this.onAbout = callbacks.onAbout ?? (() => {});
+    this.onVerifyModeChange = callbacks.onVerifyModeChange ?? (() => {});
+    this.verifyMode = callbacks.initialVerifyMode ?? 'full';
 
     this.mainMenuBtn = document.getElementById('main-menu-btn')!;
     this.mainMenuDropdown = document.getElementById('main-menu-dropdown')!;
@@ -51,6 +62,9 @@ export class ActivityBar {
     this.languageToggleBtn = document.getElementById('language-toggle-btn');
     this.aboutBtn = document.getElementById('about-btn');
     this.explorerToggleBtn = document.getElementById('explorer-toggle-btn')!;
+    this.verifyModeBtn = document.getElementById('verify-mode-btn');
+    this.verifyModeLabel = document.getElementById('current-verify-mode-label');
+    this.updateVerifyModeLabel();
 
     // フォルダを開くボタンを動的に追加（存在しない場合）
     if (!this.openFolderBtn) {
@@ -142,6 +156,18 @@ export class ActivityBar {
       this.toggleExplorer();
     });
 
+    // Verify mode toggle (rotate fast → audit → full → fast)
+    if (this.verifyModeBtn) {
+      this.verifyModeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const currentIdx = VERIFY_MODE_CYCLE.indexOf(this.verifyMode);
+        const nextIdx = (currentIdx + 1) % VERIFY_MODE_CYCLE.length;
+        this.verifyMode = VERIFY_MODE_CYCLE[nextIdx]!;
+        this.updateVerifyModeLabel();
+        this.onVerifyModeChange(this.verifyMode);
+      });
+    }
+
     // Close dropdowns when clicking outside
     document.addEventListener('click', () => {
       this.hideAllDropdowns();
@@ -209,5 +235,21 @@ export class ActivityBar {
       const i18n = getI18n();
       label.textContent = i18n.getLocaleDisplayName(i18n.getLocale());
     }
+  }
+
+  /**
+   * 現在の検証モードラベルを更新
+   */
+  private updateVerifyModeLabel(): void {
+    if (this.verifyModeLabel) {
+      this.verifyModeLabel.textContent = this.verifyMode;
+    }
+  }
+
+  /**
+   * 現在の検証モードを取得 (外部から)
+   */
+  getVerifyMode(): VerificationMode {
+    return this.verifyMode;
   }
 }

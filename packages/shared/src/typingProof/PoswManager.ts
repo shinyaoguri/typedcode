@@ -4,6 +4,7 @@
  */
 
 import type { PoSWData } from '../types.js';
+import { POSW_ITERATIONS as REQUIRED_POSW_ITERATIONS } from '../version.js';
 import { HashChainManager } from './HashChainManager.js';
 
 interface PendingRequest {
@@ -13,7 +14,7 @@ interface PendingRequest {
 
 export class PoswManager {
   // PoSW設定（固定値 - セキュリティ上の理由で動的変更は不可）
-  private static readonly POSW_ITERATIONS = 10000;
+  private static readonly POSW_ITERATIONS = REQUIRED_POSW_ITERATIONS;
 
   // ワーカーリクエストのタイムアウト（30秒）
   private static readonly WORKER_REQUEST_TIMEOUT_MS = 30000;
@@ -144,6 +145,10 @@ export class PoswManager {
    * PoSWを検証（Worker使用、フォールバックあり）
    */
   async verifyPoSW(previousHash: string, eventDataString: string, posw: PoSWData): Promise<boolean> {
+    if (posw.iterations !== PoswManager.POSW_ITERATIONS) {
+      return false;
+    }
+
     // Workerが初期化されている場合はWorkerを使用
     if (this.worker) {
       const response = await this.sendWorkerRequest<{

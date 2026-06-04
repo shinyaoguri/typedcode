@@ -8,7 +8,10 @@
     "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "lib": ["ES2022"],
+    // DOM lib は型解決のためだけに含める。Workers ランタイムは DOM API を提供しないが、
+    // shared パッケージ経由で transitively 型参照される DocumentVisibilityState / DataTransfer
+    // 等の型定義を引き当てるためにのみ必要。実行時バンドルは tree-shaking でこれらの実装を含まない。
+    "lib": ["ES2022", "DOM"],
     "types": ["@cloudflare/workers-types"]
   },
   "include": ["src/**/*.ts"]

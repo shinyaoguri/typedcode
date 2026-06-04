@@ -1024,3 +1024,188 @@
   border: 5px solid transparent;
   border-top-color: var(--border-color);
 }
+
+/* =========================================================================
+   Anchoring (signed checkpoints) details — 「検証の根拠」展開セクション
+   ========================================================================= */
+
+.anchoring-details {
+  margin-top: 10px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 8px;
+}
+
+.anchoring-details-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 4px 0;
+}
+
+.anchoring-details-summary:hover {
+  color: var(--text-primary);
+}
+
+.anchoring-details-summary::-webkit-details-marker {
+  display: none;
+}
+.anchoring-details-summary::marker {
+  content: '';
+}
+
+.anchoring-details-chevron {
+  font-size: 9px;
+  transition: transform 0.15s ease;
+  width: 10px;
+}
+
+.anchoring-details[open] > .anchoring-details-summary .anchoring-details-chevron {
+  transform: rotate(90deg);
+}
+
+.anchoring-details-content {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.anchoring-detail-section {
+  padding: 8px 10px;
+  background-color: var(--bg-tertiary);
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.anchoring-detail-heading {
+  margin: 0 0 6px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.anchoring-detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 2px 0;
+}
+
+.anchoring-detail-label {
+  flex-shrink: 0;
+  width: 140px;
+  color: var(--text-secondary);
+}
+
+.anchoring-detail-value {
+  flex: 1;
+  color: var(--text-primary);
+  word-break: break-word;
+  white-space: pre-line;
+}
+
+.anchoring-detail-hash {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  word-break: break-all;
+}
+
+.anchoring-detail-note {
+  margin: 6px 0 0 0;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+.anchoring-detail-success {
+  margin: 0;
+  font-size: 11px;
+  color: var(--success-color);
+}
+
+.anchoring-verdict {
+  margin: 6px 0 0 0;
+  font-size: 11px;
+  font-weight: 600;
+}
+.anchoring-verdict.success { color: var(--success-color); }
+.anchoring-verdict.warning { color: var(--warning-color); }
+
+/* 鍵カード (Section: 署名鍵) */
+
+.anchoring-key-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.anchoring-key-card {
+  padding: 6px 8px;
+  background-color: var(--bg-secondary);
+  border-radius: 3px;
+  border-left: 2px solid var(--text-secondary);
+}
+
+.anchoring-key-id {
+  margin-bottom: 4px;
+}
+
+.anchoring-key-status {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.anchoring-key-status.success {
+  background-color: rgba(var(--success-rgb), 0.15);
+  color: var(--success-color);
+}
+.anchoring-key-status.error {
+  background-color: rgba(var(--error-rgb), 0.15);
+  color: var(--error-color);
+}
+.anchoring-key-status.warning {
+  background-color: rgba(var(--warning-rgb), 0.15);
+  color: var(--warning-color);
+}
+
+/* 失敗 / 警告リスト */
+
+.anchoring-failure-list,
+.anchoring-warning-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.anchoring-failure-item {
+  font-size: 11px;
+  color: var(--error-color);
+  font-family: var(--font-mono);
+  padding: 4px 6px;
+  background-color: rgba(var(--error-rgb), 0.08);
+  border-radius: 3px;
+  word-break: break-word;
+}
+
+.anchoring-warning-item {
+  font-size: 11px;
+  color: var(--warning-color);
+  padding: 4px 6px;
+  background-color: rgba(var(--warning-rgb), 0.08);
+  border-radius: 3px;
+  word-break: break-word;
+}

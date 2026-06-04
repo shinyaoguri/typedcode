@@ -4,143 +4,138 @@
 
 > **🚧 Work in Progress**
 >
-> This project is under active development. Expect breaking changes, bugs, and incomplete features. Your feedback is invaluable—please [open an issue](https://github.com/shinyaoguri/typedcode/issues) if you encounter problems or have suggestions!
+> このプロジェクトは活発に開発中です。破壊的変更・バグ・未完成の機能があり得ます。問題や提案があれば [Issue](https://github.com/shinyaoguri/typedcode/issues) でお知らせください。
 
-[TypedCode](https://typedcode.dev) is a VSCode-like code editor that records every keystroke into a tamper-resistant SHA-256 hash chain with Proof of Sequential Work (PoSW). It proves code was typed character-by-character without copy/paste. Runs entirely in your browser with built-in execution for C/C++, Python, and JavaScript/TypeScript via WebAssembly.
+[TypedCode](https://typedcode.dev) は、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録する、改ざん耐性を備えた VSCode 風のコードエディタです。コピー＆ペーストを使わずに 1 文字ずつタイプされたことを証明できます。すべてブラウザ内で動作し、C / C++ / Python / JavaScript / TypeScript の実行も WebAssembly 経由で行えます。
 
-This tool is primarily designed for programming exams that need to prevent AI-assisted copying and automated code generation, and for educators who want to verify programming processes for educational purposes.
+主たる用途は、AI 生成や自動コピーを防ぎたいプログラミング試験、および学習プロセスを検証したい教育現場です。
 
-**Free, unlimited, no sign-up. No data leaves your browser.**
+**無料・無制限・サインアップ不要。データはブラウザ外に出ません。**
 
-## Key Features
+## 主な機能
 
-- **Tamper-Resistant Proof**: SHA-256 hash chain with PoSW (10,000 iterations per event)
-- **Human Verification**: Cloudflare Turnstile integration with HMAC-signed attestations
-- **Comprehensive Event Tracking**: 24 event types including content changes, keystrokes, mouse movements, focus, visibility, paste/drop detection, template injection, and session recovery
-- **Multi-Tab Support**: Edit multiple files simultaneously with tab switch tracking
-- **Screenshot Capture**: Periodic and focus-loss triggered screenshots with hash verification
-- **In-Browser Execution**: C/C++, Python, JavaScript/TypeScript via Wasmer SDK (WebAssembly)
-- **Export Formats**: ZIP archive containing proof JSON, source code, screenshots, and verification guide
-- **Bilingual**: Japanese and English UI
+- **改ざん耐性のある証明**: SHA-256 ハッシュチェーン + Proof of Sequential Work (PoSW)
+- **時刻アンカリング**: サーバ署名済みチェックポイント (ECDSA-P256) による、後付け改ざんに強い時刻バインディング
+- **人間認証**: Cloudflare Turnstile と HMAC 署名済みアテステーション
+- **網羅的なイベント追跡**: コンテンツ変更・キーストローク・マウス・フォーカス・可視性・ペースト/ドロップ検出・テンプレート注入・セッション復旧などを記録 (一覧は [`events.ts`](packages/shared/src/types/events.ts))
+- **マルチタブ**: 複数ファイルを同時に編集し、タブ切替も追跡
+- **スクリーンショット**: 定期撮影とフォーカス喪失時の撮影、ハッシュ検証付き
+- **ブラウザ内実行**: Wasmer SDK (WebAssembly) で C / C++ / Python / JavaScript / TypeScript を実行
+- **エクスポート形式**: 証明 JSON・ソースコード・スクリーンショット・検証手順を含む ZIP アーカイブ
+- **日英バイリンガル UI**
 
-## Packages
+## パッケージ構成
 
-| Package | Description |
+| パッケージ | 説明 |
 |---------|-------------|
-| [@typedcode/editor](packages/editor/) | Monaco-based editor with keystroke tracking and code execution |
-| [@typedcode/verify](packages/verify/) | Web-based proof verification |
-| [@typedcode/verify-cli](packages/verify-cli/) | CLI tool for proof verification (Node.js ≥22) |
-| [@typedcode/shared](packages/shared/) | Core library: TypingProof, Fingerprint, verification, types |
-| [@typedcode/workers](packages/workers/) | Cloudflare Workers API for Turnstile integration |
+| [@typedcode/editor](packages/editor/) | Monaco ベースのエディタ。キーストローク追跡とコード実行を担当 |
+| [@typedcode/verify](packages/verify/) | Web ベースの証明検証アプリ |
+| [@typedcode/verify-cli](packages/verify-cli/) | CLI 検証ツール (Node.js ≥24) |
+| [@typedcode/shared](packages/shared/) | コアライブラリ: TypingProof / Fingerprint / 検証 / 型定義 |
+| [@typedcode/workers](packages/workers/) | Cloudflare Workers API (Turnstile 連携・チェックポイント署名) |
 
-## Live Demo
+## ライブデモ
 
-- **Editor**: [https://typedcode.dev](https://typedcode.dev)
-- **Verify App**: [https://typedcode.dev/verify](https://typedcode.dev/verify)
+- **エディタ**: [https://typedcode.dev](https://typedcode.dev)
+- **検証アプリ**: [https://typedcode.dev/verify](https://typedcode.dev/verify)
 
-## Quick Start
+## クイックスタート
 
-### 1. Install dependencies
+### 1. 依存関係をインストール
 
 ```bash
 npm install
 ```
 
-### 2. Configure Turnstile (optional but recommended)
+### 2. Turnstile を設定 (任意・人間認証を使う場合のみ)
 
-Human verification requires [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/). Skip this step if you don't need human verification.
+人間認証には [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/) が必要です。不要なら本ステップは省略可能です。
 
-**Editor configuration:**
+**エディタ側:**
 ```bash
 cp packages/editor/.env.example packages/editor/.env
 ```
 
-Edit `packages/editor/.env`:
+`packages/editor/.env` を編集:
 ```
 VITE_TURNSTILE_SITE_KEY=your_site_key
 VITE_API_URL=http://localhost:8787
 ```
 
-**Workers configuration:**
+**Workers 側:**
 ```bash
 cp packages/workers/.dev.vars.example packages/workers/.dev.vars
 ```
 
-Edit `packages/workers/.dev.vars`:
+`packages/workers/.dev.vars` を編集:
 ```
 TURNSTILE_SECRET_KEY=your_secret_key
 ATTESTATION_SECRET_KEY=any_random_string
 ```
 
-Get your Turnstile keys from: https://dash.cloudflare.com/?to=/:account/turnstile
+Turnstile キーの取得: https://dash.cloudflare.com/?to=/:account/turnstile
 
-### 3. Start development servers
+### 3. 開発サーバを起動
 
 ```bash
-# Start all packages (editor + verify + workers)
+# 全パッケージを同時起動 (editor + verify + workers)
 npm run dev
 
-# Or start individually
+# 個別起動
 npm run dev:editor    # http://localhost:5173
 npm run dev:verify    # http://localhost:5174
 npm run dev:workers   # http://localhost:8787
 ```
 
-## Build
+## ビルド
 
 ```bash
-# Build all packages
+# 全パッケージ
 npm run build
 
-# Build individually
+# 個別ビルド
 npm run build:editor
 npm run build:verify
 npm run build:verify-cli
 ```
 
-## Test
+## テスト
+
+テストは shared パッケージで定義されています。
 
 ```bash
 npm run test -w @typedcode/shared
 npm run test:coverage -w @typedcode/shared
 ```
 
-## Architecture
+## アーキテクチャ
 
-### How It Works
+### 動作の流れ
 
-1. **Event Recording**: Every user action (keystroke, cursor move, paste, etc.) is captured as a typed event
-2. **Hash Chain**: Each event is SHA-256 hashed and chained to the previous hash
-3. **PoSW Computation**: Web Worker computes 10,000 iterations of hash for each event (non-blocking)
-4. **Human Attestation**: Turnstile verification at file creation and before export
-5. **Export**: Proof file contains complete event history, hash chain, fingerprint, and optional screenshots
-6. **Verification**: Independent verification of chain integrity, timestamps, and PoSW
+1. **イベント記録**: ユーザー操作 (キーストローク・カーソル移動・ペーストなど) を型付きイベントとして捕捉
+2. **ハッシュチェーン**: 各イベントを SHA-256 でハッシュ化し、前イベントのハッシュへ連結
+3. **PoSW 計算**: Web Worker で各イベントごとに反復ハッシュ計算 (UI ブロックなし、反復数は `POSW_ITERATIONS` 固定)
+4. **時刻アンカリング**: チェックポイントを Workers で署名 (ECDSA-P256) し、サーバ時刻を結びつける
+5. **人間認証**: ファイル作成時とエクスポート前に Turnstile で人間確認
+6. **エクスポート**: 全イベント履歴・ハッシュチェーン・フィンガープリント・スクリーンショットを含む証明ファイルを出力
+7. **検証**: チェーン整合性・タイムスタンプ・PoSW・署名済みチェックポイントを独立に検証
 
-### Event Types (24 types)
+### イベントタイプ
 
-| Category | Events |
-|----------|--------|
-| Content | `contentChange`, `contentSnapshot`, `externalInput`, `templateInjection` |
-| Cursor | `cursorPositionChange`, `selectionChange` |
-| Input | `keyDown`, `keyUp`, `mousePositionChange` |
-| Window | `focusChange`, `visibilityChange`, `windowResize` |
-| System | `editorInitialized`, `networkStatusChange` |
-| Auth | `humanAttestation`, `preExportAttestation`, `termsAccepted` |
-| Execution | `codeExecution`, `terminalInput` |
-| Capture | `screenshotCapture`, `screenShareStart`, `screenShareStop` |
-| Session | `sessionResumed`, `copyOperation` |
+カテゴリ分けされた union 型として定義されています。一覧と分類は [`packages/shared/src/types/events.ts`](packages/shared/src/types/events.ts)、許可/禁止の方針は [docs/adr/0005-input-type-policy.md](docs/adr/0005-input-type-policy.md) を参照してください。
 
-### Export File Format (ZIP)
+### エクスポートファイル形式 (ZIP)
 
-Exported as `TC{timestamp}.zip` containing:
-- `{filename}.{ext}` - Source code file
-- `{filename}_proof.json` - Proof JSON (see structure below)
-- `screenshots/` - Captured screenshots (JPEG)
-- `screenshots/manifest.json` - Screenshot metadata and hashes
-- `README.md` - Verification guide (English)
-- `README.ja.md` - Verification guide (Japanese)
+`TC{timestamp}.zip` として出力され、以下を含みます:
 
-**Proof JSON Structure:**
+- `{filename}.{ext}` — ソースコード
+- `{filename}_proof.json` — 証明 JSON (下記構造)
+- `screenshots/` — 撮影された画面 (JPEG)
+- `screenshots/manifest.json` — スクリーンショットのハッシュとメタデータ
+- `README.md` — 検証手順 (英語)
+- `README.ja.md` — 検証手順 (日本語)
+
+**証明 JSON の構造:**
 ```json
 {
   "version": "1.0.0",
@@ -152,17 +147,22 @@ Exported as `TC{timestamp}.zip` containing:
 }
 ```
 
-## Tech Stack
+## 技術スタック
 
-| Layer | Technology |
+| レイヤー | 技術 |
 |-------|------------|
-| Editor | Monaco Editor, xterm.js |
-| Execution | Wasmer SDK (WebAssembly) |
-| Verification UI | Chart.js, Highlight.js |
-| Build | Vite, TypeScript 5.9 |
+| エディタ | Monaco Editor, xterm.js |
+| 実行環境 | Wasmer SDK (WebAssembly) |
+| 検証 UI | Chart.js, Highlight.js |
+| ビルド | Vite 8, TypeScript 5/6 |
 | Workers | Cloudflare Workers, Wrangler |
-| Testing | Vitest |
+| テスト | Vitest |
 
-## License
+## 関連ドキュメント
+
+- [docs/system-spec.md](docs/system-spec.md) — システム仕様書 (詳細)
+- [CLAUDE.md](CLAUDE.md) — プロジェクト概要 (Claude Code 用)
+
+## ライセンス
 
 MIT License

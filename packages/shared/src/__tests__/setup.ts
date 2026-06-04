@@ -7,7 +7,10 @@ import { vi } from 'vitest';
 import * as nodeCrypto from 'crypto';
 
 // ===== crypto.subtle モック =====
-// happy-dom does not support crypto.subtle, so we use Node.js crypto
+// happy-dom does not support crypto.subtle. SHA-256 だけは独自実装で軽量に提供しつつ、
+// ECDSA など重い処理は Node.js の webcrypto に委譲する。
+const nodeSubtle = nodeCrypto.webcrypto.subtle as SubtleCrypto;
+
 const cryptoMock = {
   subtle: {
     digest: async (_algorithm: string, data: ArrayBuffer): Promise<ArrayBuffer> => {
@@ -17,6 +20,11 @@ const cryptoMock = {
       const result = hash.digest();
       return result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength);
     },
+    generateKey: nodeSubtle.generateKey.bind(nodeSubtle),
+    importKey: nodeSubtle.importKey.bind(nodeSubtle),
+    exportKey: nodeSubtle.exportKey.bind(nodeSubtle),
+    sign: nodeSubtle.sign.bind(nodeSubtle),
+    verify: nodeSubtle.verify.bind(nodeSubtle),
   },
   getRandomValues: <T extends ArrayBufferView>(array: T): T => {
     const bytes = nodeCrypto.randomBytes(array.byteLength);
@@ -131,3 +139,31 @@ if (typeof performance === 'undefined' || typeof performance.now !== 'function')
     now: () => Date.now() - startTime,
   });
 }
+
+// ===== localStorage モック =====
+// happy-dom 20 は localStorage を提供するが file-backed モードの初期化が不安定で
+// `.clear()` が undefined になることがある。Storage 互換の最小モックで置き換えて
+// テストを決定的にする。
+function createStorageMock(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear: () => store.clear(),
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(String(key), String(value));
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    key: (index: number) => {
+      const keys = [...store.keys()];
+      return keys[index] ?? null;
+    },
+  } satisfies Storage;
+}
+
+vi.stubGlobal('localStorage', createStorageMock());
+vi.stubGlobal('sessionStorage', createStorageMock());

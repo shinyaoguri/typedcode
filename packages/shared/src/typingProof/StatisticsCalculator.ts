@@ -40,6 +40,7 @@ export class StatisticsCalculator {
     let dropEvents = 0;
     let insertEvents = 0;
     let deleteEvents = 0;
+    let bulkInsertEvents = 0;
     let templateEvents = 0;
 
     for (const event of events) {
@@ -48,6 +49,7 @@ export class StatisticsCalculator {
       if (event.inputType === 'insertFromDrop') dropEvents++;
       if (event.type === 'contentChange' && event.data) insertEvents++;
       if (event.inputType?.startsWith('delete')) deleteEvents++;
+      if (this.isSuspiciousBulkInsert(event)) bulkInsertEvents++;
       if (event.type === 'templateInjection') templateEvents++;
     }
 
@@ -61,9 +63,24 @@ export class StatisticsCalculator {
       dropEvents,
       insertEvents,
       deleteEvents,
+      bulkInsertEvents,
       templateEvents,
       duration,
       averageWPM: Math.round(averageWPM * 10) / 10
     };
+  }
+
+  private isSuspiciousBulkInsert(event: StoredEvent): boolean {
+    if (event.type !== 'contentChange') return false;
+
+    if (event.inputType === 'replaceContent' || event.inputType === 'insertReplacementText') {
+      return true;
+    }
+
+    return (
+      event.inputType === 'insertText' &&
+      typeof event.data === 'string' &&
+      event.data.length > 1
+    );
   }
 }

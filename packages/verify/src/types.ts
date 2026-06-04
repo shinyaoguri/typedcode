@@ -1,4 +1,4 @@
-import type { ExportedProof, StoredEvent, InputType, DisplayInfo, ScreenshotCaptureType, HumanAttestation } from '@typedcode/shared';
+import type { ExportedProof, StoredEvent, InputType, DisplayInfo, ScreenshotCaptureType, HumanAttestation, SignedCheckpointsVerificationResult } from '@typedcode/shared';
 
 // Re-export HumanAttestation from shared for backward compatibility
 export type { HumanAttestation } from '@typedcode/shared';
@@ -49,10 +49,20 @@ export interface IntegratedTimelineCache {
 /** 検証ステータス */
 export type VerificationStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error';
 
+/** 検証モード */
+export type VerificationMode = 'fast' | 'audit' | 'full';
+
+/** PoSW の検証モード */
+export type PoswMode = 'skipped' | 'sampled' | 'full';
+
 /** 検証結果データ（Worker→メインスレッドへ渡すデータ） */
 export interface VerificationResultData {
   metadataValid: boolean;
+  rootValid?: boolean;
   chainValid: boolean;
+  finalHashValid?: boolean;
+  contentValid?: boolean;
+  checkpointValid?: boolean;
   isPureTyping: boolean;
   message?: string;
   errorAt?: number;
@@ -83,6 +93,72 @@ export interface VerificationResultData {
     totalEventsVerified: number;
     totalEvents: number;
   };
+  // 検証モード (Phase 2 で worker から設定される)
+  verificationMode?: VerificationMode;
+  poswMode?: PoswMode;
+  // Signed checkpoint 検証結果 (Phase 1.5)
+  signedCheckpointValid?: boolean;
+  signedCheckpointCoverage?: SignedCheckpointsVerificationResult['coverage'];
+  signedCheckpointTemporal?: SignedCheckpointsVerificationResult['temporal'];
+  signedCheckpointReason?: string;
+  signedCheckpointAnchored?: boolean;
+  /**
+   * 「時刻アンカー」カードの展開ビュー用の追加情報。
+   * - 検証に用いた公開鍵の registry エントリ
+   * - 署名された envelope の最初/最後 (eventIndex, serverTimestamp)
+   * - 失敗した envelope の特定 (エラー位置の根拠)
+   * - 元データに含まれる checkpoint 総数 / セッション初確認時刻
+   */
+  signedCheckpointReport?: SignedCheckpointReport;
+}
+
+/** UI が「根拠」を示すために worker が組み立てる詳細情報。 */
+export interface SignedCheckpointReport {
+  /** proof に含まれる checkpoint の総数 (署名なしも含む) */
+  totalCheckpoints: number;
+  /** 署名された checkpoint の総数 (coverage.signedCount と同じ値だが UI 上の便宜) */
+  signedCount: number;
+  /** 検証に通った envelope 数 */
+  validCount: number;
+  /** firstSeenAt — worker 側で初回 KV 書込時に確定する。同一セッション乗っ取り防御の根拠 */
+  firstSeenAt?: string;
+  /** 全 envelope の initialEventChainHash (proof root) */
+  initialEventChainHash?: string;
+  /** 最初に署名された checkpoint の概要 */
+  firstAnchor?: AnchorPoint;
+  /** 最後に署名された checkpoint の概要 */
+  lastAnchor?: AnchorPoint;
+  /** envelope で使用された鍵 (重複なし) と registry での扱い */
+  keys: AnchorKeyInfo[];
+  /** 失敗 (valid=false) した envelope の要約。verify=true の時は空配列。 */
+  failedEnvelopes: AnchorEnvelopeIssue[];
+  /** 警告 (鍵 revoke 後の trust など) が付いた envelope */
+  warningEnvelopes: AnchorEnvelopeIssue[];
+}
+
+export interface AnchorPoint {
+  checkpointIndex: number;
+  eventIndex: number;
+  serverTimestamp: string;
+  clientTimestamp: string;
+}
+
+export interface AnchorKeyInfo {
+  keyId: string;
+  /** registry に存在しない場合 'unknown' */
+  status: 'active' | 'revoked' | 'unknown';
+  algorithm?: string;
+  description?: string;
+  validFrom?: string;
+  validUntil?: string;
+  revokedAt?: string;
+}
+
+export interface AnchorEnvelopeIssue {
+  checkpointIndex: number;
+  eventIndex: number;
+  /** 失敗または警告の理由 */
+  reason: string;
 }
 
 /** 詳細な進捗情報 */
@@ -152,6 +228,8 @@ export interface WorkerRequestMessage {
   type: 'verify';
   id: string;
   proofData: ProofFile;
+  /** 検証モード。省略時はサーバ側のデフォルト ('full') を使う */
+  mode?: VerificationMode;
 }
 
 /** Worker メッセージ: Worker→メインスレッド */

@@ -3,7 +3,13 @@
  * Turnstile 検証エンドポイント with 署名付き証明書
  */
 
-interface Env {
+import {
+  handleSignCheckpoint,
+  handlePublicKeys,
+  type CheckpointEnv,
+} from './checkpoint.js';
+
+interface Env extends CheckpointEnv {
   TURNSTILE_SECRET_KEY: string;
   ATTESTATION_SECRET_KEY: string; // 証明書署名用の秘密鍵
   ENVIRONMENT: string;
@@ -43,7 +49,7 @@ interface VerifyResponse {
 function corsHeaders(origin: string | null): HeadersInit {
   return {
     'Access-Control-Allow-Origin': origin ?? '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
   };
@@ -58,6 +64,15 @@ function handleCORS(request: Request): Response {
     status: 204,
     headers: corsHeaders(origin),
   });
+}
+
+/** /api/checkpoint/* で使う CORS レスポンダ */
+function checkpointResponder(origin: string | null): { cors(extra?: Record<string, string>): HeadersInit } {
+  return {
+    cors(extra: Record<string, string> = {}) {
+      return { ...corsHeaders(origin), ...extra };
+    },
+  };
 }
 
 /**
@@ -294,6 +309,16 @@ export default {
     // 証明書検証エンドポイント
     if (url.pathname === '/api/verify-attestation' && request.method === 'POST') {
       return handleVerifyAttestation(request, env);
+    }
+
+    // Signed checkpoint endpoints
+    if (url.pathname === '/api/checkpoint/sign' && request.method === 'POST') {
+      const origin = request.headers.get('Origin');
+      return handleSignCheckpoint(request, env, checkpointResponder(origin));
+    }
+    if (url.pathname === '/api/checkpoint/public-keys' && request.method === 'GET') {
+      const origin = request.headers.get('Origin');
+      return handlePublicKeys(checkpointResponder(origin));
     }
 
     // ヘルスチェック

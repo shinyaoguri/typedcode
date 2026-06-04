@@ -1,262 +1,93 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+このファイルは Claude Code (claude.ai/code) と Claude Agent SDK が本リポジトリで作業するときの起点となるガイドです。詳細はサブシステムの `CLAUDE.md` と `docs/` に委譲しています。
 
-## Project Overview
+## プロジェクト概要
 
-TypedCode is a browser-based code editor that records every keystroke into a tamper-resistant SHA-256 hash chain with Proof of Sequential Work (PoSW). It proves code was typed character-by-character without copy/paste. The project uses npm workspaces with 5 packages.
+TypedCode はブラウザベースのコードエディタで、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録し、改ざん耐性のあるタイピング証明を生成します。さらに Cloudflare Workers による ECDSA-P256 署名付きチェックポイントで時刻アンカリングを行います。
 
 **Version**: 1.0.0
-**Tech Stack**: TypeScript 5.9, Vite, Monaco Editor, Wasmer SDK, Chart.js, Cloudflare Workers
+**Tech Stack**: TypeScript 5/6, Vite 8 (rolldown), Monaco Editor, Wasmer SDK, Chart.js, Cloudflare Workers
+**Node.js**: ≥24
 
-## Build and Development Commands
+## パッケージ構成
+
+```
+packages/
+├── shared/     # コアライブラリ: TypingProof, Fingerprint, 検証, 型定義
+├── editor/     # Monaco ベースのエディタ
+├── verify/     # 証明検証用 Web アプリ
+├── verify-cli/ # CLI 検証ツール (Node.js ≥24)
+└── workers/    # Cloudflare Workers (Turnstile + 署名チェックポイント)
+```
+
+サブシステムを触る場合は **必ず該当パッケージの `CLAUDE.md`** を読むこと。各パッケージの責務 / 境界 / 不変条件 / 罠が記述されています。
+
+| パッケージ | CLAUDE.md | 主な責務 |
+|---|---|---|
+| shared | [packages/shared/CLAUDE.md](packages/shared/CLAUDE.md) | 暗号証明エンジン、型定義の単一ソース |
+| editor | [packages/editor/CLAUDE.md](packages/editor/CLAUDE.md) | キーストローク記録、エクスポート |
+| verify | [packages/verify/CLAUDE.md](packages/verify/CLAUDE.md) | 証明検証 UI、Worker ベースの検証 |
+| verify-cli | [packages/verify-cli/CLAUDE.md](packages/verify-cli/CLAUDE.md) | CLI 検証ツール |
+| workers | [packages/workers/CLAUDE.md](packages/workers/CLAUDE.md) | Turnstile + 署名チェックポイントの API |
+
+## ビルド・開発コマンド
 
 ```bash
-# Install dependencies
+# 依存関係のインストール
 npm install
 
-# Development (all packages concurrently)
+# 開発 (全パッケージ同時)
 npm run dev
 
-# Development (individual packages)
+# 開発 (個別)
 npm run dev:editor    # http://localhost:5173
 npm run dev:verify    # http://localhost:5174
 npm run dev:workers   # http://localhost:8787
 
-# Build
-npm run build              # All packages
+# ビルド
+npm run build              # 全パッケージ
 npm run build:editor
 npm run build:verify
 npm run build:verify-cli
 
-# Test (only shared package has tests)
+# テスト (shared のみテストあり)
 npm run test -w @typedcode/shared
 npm run test:coverage -w @typedcode/shared
 ```
 
-## Architecture
+## ドキュメント階層
 
-### Package Structure
+- **CLAUDE.md (本ファイル)**: 玄関口 / ナビゲーション
+- **`packages/*/CLAUDE.md`**: サブシステム固有の責務・不変条件・罠
+- **[docs/system-spec.md](docs/system-spec.md)**: クロスカット仕様 (定数、アルゴリズム、用語集)
+- **[docs/adr/](docs/adr/)**: 設計判断の蓄積 (Architecture Decision Records)
+- **`packages/*/README.md`**: ユーザー視点のドキュメント (API、使い方)
 
-```
-packages/
-├── shared/     # Core library: TypingProof, Fingerprint, verification, types
-├── editor/     # Monaco-based editor with keystroke tracking
-├── verify/     # Web app for proof verification (VSCode-like UI)
-├── verify-cli/ # CLI tool for verification (Node.js ≥22)
-└── workers/    # Cloudflare Workers for Turnstile integration
-```
+仕様は `docs/system-spec.md`、判断の根拠は `docs/adr/`、コードの触り方は `CLAUDE.md` が真実の在処です。
 
-### Shared Package (`@typedcode/shared`)
+## 環境設定
 
-Core library providing:
-
-| Module | Purpose |
-|--------|---------|
-| `typingProof/TypingProof.ts` | Facade class for hash chain management |
-| `typingProof/HashChainManager.ts` | SHA-256 hash computation and chaining |
-| `typingProof/PoswManager.ts` | PoSW computation via Web Worker |
-| `typingProof/CheckpointManager.ts` | Periodic checkpoint management |
-| `typingProof/ChainVerifier.ts` | Chain verification (full/sampling) |
-| `typingProof/InputTypeValidator.ts` | Input type validation (allowed/blocked) |
-| `typingProof/StatisticsCalculator.ts` | Statistics computation |
-| `fingerprint.ts` | Browser fingerprinting |
-| `verification.ts` | Verification utility functions |
-| `poswWorker.ts` | PoSW calculation Web Worker |
-| `attestation.ts` | Human verification service |
-| `calculations.ts` | Utility calculations (typing speed, etc.) |
-| `fileProcessing/` | ZIP/JSON parsing |
-| `types.ts` | All type definitions |
-
-### Editor Package (`@typedcode/editor`)
-
-| Directory | Purpose |
-|-----------|---------|
-| `core/` | `AppContext`, `EventRecorder` |
-| `tracking/` | Event detectors: `InputDetector`, `OperationDetector`, `KeystrokeTracker`, `MouseTracker`, `WindowTracker`, `VisibilityTracker`, `NetworkTracker`, `ScreenshotTracker` |
-| `editor/` | `EditorController`, `CursorTracker`, `ThemeManager` |
-| `execution/` | `CodeExecutionController`, `RuntimeManager` |
-| `executors/` | Language executors: C, C++, JavaScript, TypeScript, Python |
-| `ui/components/` | UI components: Modals, Notifications, Dropdowns, Panels |
-| `export/` | `ProofExporter`, README templates |
-| `services/` | `TurnstileService`, `StorageService`, `ScreenshotStorageService` |
-| `terminal/` | `CTerminal` (xterm.js integration) |
-
-### Verify Package (`@typedcode/verify`)
-
-| Directory | Purpose |
-|-----------|---------|
-| `core/` | `VerificationEngine`, `VerifyContext` |
-| `ui/` | `AppController`, `TabBar`, `ActivityBar`, `StatusBar`, `ResultPanel`, `Sidebar`, `TypingPatternCard`, `ChartEventSelector` |
-| `ui/controllers/` | `VerificationController`, `TabController`, `FileController`, `FolderController`, `ChartController` |
-| `state/` | `VerificationQueue`, `UIStateManager`, `VerifyTabManager`, `ChartState` |
-| `charts/` | `TimelineChart`, `MouseChart`, `IntegratedChart`, `SeekbarController` (Chart.js) |
-| `services/` | `FileSystemAccessService`, `FolderSyncManager`, `SyntaxHighlighter`, `TrustCalculator`, `DiffService`, `ChartPreferencesService` |
-| `workers/` | `verificationWorker.ts` |
-
-### Workers Package (`@typedcode/workers`)
-
-Cloudflare Workers API endpoints:
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/verify-captcha` | POST | Turnstile token verification |
-| `/api/verify-attestation` | POST | HMAC signature verification |
-| `/health` | GET | Health check |
-
-## Core Concepts
-
-### Event Types (25 types)
-
-```typescript
-// Content events
-'contentChange' | 'contentSnapshot' | 'externalInput' | 'templateInjection'
-
-// Cursor events
-'cursorPositionChange' | 'selectionChange'
-
-// Input events
-'keyDown' | 'keyUp' | 'mousePositionChange'
-
-// Window events
-'focusChange' | 'visibilityChange' | 'windowResize'
-
-// System events
-'editorInitialized' | 'networkStatusChange'
-
-// Authentication events
-'humanAttestation' | 'preExportAttestation' | 'termsAccepted'
-
-// Execution events
-'codeExecution' | 'terminalInput'
-
-// Capture events
-'screenshotCapture' | 'screenShareStart' | 'screenShareStop' | 'screenShareOptOut'
-
-// Session events
-'sessionResumed' | 'copyOperation'
-```
-
-### Input Types (26 types)
-
-**Allowed (20 types)**: `insertText`, `insertLineBreak`, `insertParagraph`, `insertTab`, `insertFromComposition`, `insertCompositionText`, `deleteCompositionText`, `deleteContentBackward`, `deleteContentForward`, `deleteWordBackward`, `deleteWordForward`, `deleteSoftLineBackward`, `deleteSoftLineForward`, `deleteHardLineBackward`, `deleteHardLineForward`, `deleteByDrag`, `deleteByCut`, `historyUndo`, `historyRedo`, `insertFromInternalPaste`
-
-**Blocked (external input, 5 types)**: `insertFromPaste`, `insertFromDrop`, `insertFromYank`, `insertReplacementText`, `insertFromPasteAsQuotation`
-
-**Other (1 type)**: `replaceContent`
-
-Note: `insertFromInternalPaste` is allowed - it detects when users copy/paste within the same editor session.
-
-### PoSW (Proof of Sequential Work)
-
-- Fixed 10,000 iterations per event
-- Computed in Web Worker (non-blocking)
-- Includes random nonce (16 bytes)
-- Timeout: 30 seconds
-
-### Hash Chain Verification
-
-1. Initial hash matches fingerprint hash
-2. Sequence numbers are continuous
-3. Timestamps are monotonically increasing
-4. Each event's `previousHash` matches expected value
-5. PoSW is valid for each event
-
-### Proof File Format
-
-**Single File (`ExportedProof`)**:
-```json
-{
-  "version": "1.0.0",
-  "typingProofHash": "sha256...",
-  "typingProofData": {
-    "finalContentHash": "...",
-    "finalEventChainHash": "...",
-    "deviceId": "...",
-    "metadata": { "totalEvents": 123, "isPureTyping": true }
-  },
-  "proof": { "events": [...], "finalHash": "..." },
-  "fingerprint": { "deviceId": "...", "components": {...} },
-  "checkpoints": [...]
-}
-```
-
-**Multi-File (`MultiFileExportedProof`)**:
-```json
-{
-  "type": "multi-file",
-  "files": { "file1.js": {...}, "file2.py": {...} },
-  "tabSwitches": [...],
-  "metadata": { "totalFiles": 2, "overallPureTyping": true }
-}
-```
-
-**ZIP Format**: `proof.json`, `screenshots/`, `manifest.json`, `README.md`
-
-## Key Data Flow
-
-### Editor Flow
-
-```
-User Action → InputDetector → OperationDetector → EventRecorder
-    → TypingProof.recordEvent() → HashChainManager → PoswManager (Worker)
-    → StoredEvent → localStorage
-```
-
-### Export Flow
-
-```
-ProofExporter.export() → performPreExportVerification() (Turnstile)
-    → getProofData() → ScreenshotTracker.getAllScreenshots()
-    → JSZip → Download
-```
-
-### Verification Flow
-
-```
-File Selection → FileProcessor → VerificationEngine.verify()
-    → VerificationQueue (Worker) → ChainVerifier + PoSW verification
-    → AttestationService.verify() (Workers API) → UI Display
-```
-
-## Environment Configuration
-
-### Editor (.env)
+### Editor (`packages/editor/.env`)
 ```
 VITE_TURNSTILE_SITE_KEY=your_site_key
 VITE_API_URL=http://localhost:8787
 ```
 
-### Workers (.dev.vars)
+### Workers (`packages/workers/.dev.vars`)
 ```
 TURNSTILE_SECRET_KEY=your_secret_key
 ATTESTATION_SECRET_KEY=any_random_string
+CHECKPOINT_SIGNING_KEY_ID=...        # gen-checkpoint-key で生成
+CHECKPOINT_SIGNING_KEY_JWK={...}     # gen-checkpoint-key で生成
 ```
 
-## Key Files Reference
-
-| File | Purpose |
-|------|---------|
-| `shared/src/types.ts` | All type definitions (22KB) |
-| `shared/src/typingProof/TypingProof.ts` | Main facade class |
-| `editor/src/core/EventRecorder.ts` | Central event recording |
-| `editor/src/tracking/InputDetector.ts` | Paste/drop detection |
-| `editor/src/export/ProofExporter.ts` | Proof file generation |
-| `verify/src/core/VerificationEngine.ts` | Verification logic |
-| `verify/src/workers/verificationWorker.ts` | Worker-based verification |
-| `workers/src/index.ts` | API endpoints |
-
-## Version Constants
-
-```typescript
-export const PROOF_FORMAT_VERSION = '1.0.0';
-export const STORAGE_FORMAT_VERSION = 1;
-export const MIN_SUPPORTED_VERSION = '1.0.0';
-export const POSW_ITERATIONS = 10000;
-```
+詳細は [packages/workers/CLAUDE.md](packages/workers/CLAUDE.md) を参照。
 
 ## i18n
 
-Supported locales: `ja` (Japanese), `en` (English)
+対応ロケール: `ja` (日本語), `en` (English)
+検出順序: localStorage → ブラウザ言語 → 既定 (`ja`)
 
-Detection order: localStorage → browser language → default (ja)
+翻訳ファイル: `packages/{editor,verify}/src/i18n/translations/{ja,en}.ts`
+型: `packages/{editor,verify}/src/i18n/types.ts` (新キー追加時は型も同時更新)

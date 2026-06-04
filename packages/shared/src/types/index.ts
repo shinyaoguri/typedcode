@@ -70,6 +70,11 @@ export type {
   TypingProofHashResult,
   CheckpointData,
   ExportedProof,
+  SignedCheckpointPayload,
+  SignedCheckpointAlgorithm,
+  SignedCheckpointEnvelope,
+  SignedCheckpointVerificationDetail,
+  SignedCheckpointsVerificationResult,
 } from './proof.js';
 
 // テンプレート関連
@@ -85,6 +90,8 @@ export type {
   SampledSegmentInfo,
   SampledVerificationResult,
   VerificationResult,
+  ContentReplayVerificationResult,
+  ProofMetadataVerificationResult,
   TypingProofVerificationResult,
 } from './verification.js';
 

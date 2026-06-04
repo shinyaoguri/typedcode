@@ -62,6 +62,11 @@
                 <i class="fas fa-moon"></i>
                 <span data-i18n="activityBar.themeToggle">テーマ切替</span>
               </button>
+              <button class="dropdown-item" id="verify-mode-btn">
+                <i class="fas fa-gauge-high"></i>
+                <span data-i18n="settings.verifyMode">検証モード</span>
+                <span class="dropdown-language-label" id="current-verify-mode-label">full</span>
+              </button>
               <button class="dropdown-item" id="about-btn">
                 <i class="fas fa-info-circle"></i>
                 <span data-i18n="settings.about">バージョン情報</span>
@@ -444,6 +449,10 @@
                       <span class="result-card-badge pending" id="posw-badge">-</span>
                     </div>
                     <div class="result-card-content" id="posw-content">
+                      <div class="result-row" id="posw-mode-row" style="display: none;">
+                        <span class="result-row-label" data-i18n="result.poswMode">モード</span>
+                        <span class="result-row-value" id="posw-mode">-</span>
+                      </div>
                       <div class="result-row">
                         <span class="result-row-label" data-i18n="result.iterations">反復回数</span>
                         <span class="result-row-value" id="posw-iterations">-</span>
@@ -452,6 +461,46 @@
                         <span class="result-row-label" data-i18n="result.totalTime">合計時間</span>
                         <span class="result-row-value" id="posw-total-time">-</span>
                       </div>
+                    </div>
+                  </div>
+
+                  <!-- Temporal Anchoring Card (Signed checkpoints) -->
+                  <div class="result-card" id="card-anchoring">
+                    <div class="result-card-header">
+                      <div class="result-card-header-left">
+                        <div class="result-card-icon pending" id="anchoring-icon">
+                          <i class="fas fa-anchor"></i>
+                        </div>
+                        <span class="result-card-title" data-i18n="result.anchoring">時刻アンカー</span>
+                      </div>
+                      <span class="result-card-badge pending" id="anchoring-badge">-</span>
+                    </div>
+                    <div class="result-card-content" id="anchoring-content">
+                      <div class="result-row" id="anchoring-status-row">
+                        <span class="result-row-label" data-i18n="result.anchoringStatus">状態</span>
+                        <span class="result-row-value" id="anchoring-status">-</span>
+                      </div>
+                      <div class="result-row" id="anchoring-coverage-row">
+                        <span class="result-row-label" data-i18n="result.anchoringCoverage">カバレッジ</span>
+                        <span class="result-row-value" id="anchoring-coverage">-</span>
+                      </div>
+                      <div class="result-row" id="anchoring-temporal-row" style="display: none;">
+                        <span class="result-row-label" data-i18n="result.anchoringTemporal">時間スパン比</span>
+                        <span class="result-row-value" id="anchoring-temporal">-</span>
+                      </div>
+                      <div class="result-row" id="anchoring-warning-row" style="display: none;">
+                        <span class="result-row-value text-warning" id="anchoring-warning">-</span>
+                      </div>
+                      <div class="result-row" id="anchoring-reason-row" style="display: none;">
+                        <span class="result-row-value text-danger" id="anchoring-reason">-</span>
+                      </div>
+                      <details class="anchoring-details" id="anchoring-details" style="display: none;">
+                        <summary class="anchoring-details-summary">
+                          <i class="fas fa-chevron-right anchoring-details-chevron"></i>
+                          <span data-i18n="result.anchoringDetailsToggle">検証の根拠を表示</span>
+                        </summary>
+                        <div class="anchoring-details-content" id="anchoring-details-content"></div>
+                      </details>
                     </div>
                   </div>
 

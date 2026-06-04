@@ -1,35 +1,35 @@
 # @typedcode/verify-cli
 
-Command-line tool for verifying TypedCode typing proof files.
+TypedCode のタイピング証明ファイルを検証するコマンドラインツールです。
 
-## Installation
+## インストール
 
-### Global Install
+### グローバルインストール
 
 ```bash
 npm install -g @typedcode/verify-cli
 ```
 
-### npx (no install)
+### npx (インストールなし)
 
 ```bash
 npx typedcode-verify <proof-file>
 ```
 
-## Usage
+## 使い方
 
 ```bash
-# Verify a single JSON file
+# 単一の JSON ファイルを検証
 typedcode-verify proof.json
 
-# Verify a ZIP file with screenshots
+# スクリーンショット付き ZIP を検証
 typedcode-verify proof.zip
 
-# Verify multiple files
+# 複数ファイルを指定
 typedcode-verify file1.json file2.zip
 ```
 
-## Output
+## 出力例
 
 ```
 Verifying: proof.json
@@ -53,57 +53,58 @@ Attestation:
   Timestamp: 2026-01-05T10:30:00Z
 ```
 
-## Exit Codes
+## 終了コード
 
-| Code | Description |
+| Code | 説明 |
 |------|-------------|
-| 0 | Verification passed |
-| 1 | Verification failed or error |
+| 0 | 検証成功 |
+| 1 | 検証失敗 / エラー |
 
-## Supported Formats
+## 対応形式
 
-| Format | Extension | Description |
+| 形式 | 拡張子 | 説明 |
 |--------|-----------|-------------|
-| Single File | `.json` | Single proof file |
-| Multi-File | `.json` | Multiple files in one proof |
-| ZIP | `.zip` | Proof with screenshots |
+| 単一ファイル | `.json` | 1 ファイルの証明 |
+| マルチファイル | `.json` | 複数ファイルを 1 つにまとめた証明 |
+| ZIP | `.zip` | スクリーンショット付きの証明 |
 
-## Verification Process
+## 検証ステップ
 
-1. **File Parsing**: Read and parse JSON/ZIP
-2. **Format Detection**: Detect single-file or multi-file format
-3. **Chain Verification**:
-   - Sequence number continuity
-   - Timestamp monotonicity
-   - Previous hash validation
-   - Hash recalculation
-4. **PoSW Verification**: Validate 10,000 iteration proofs
-5. **Attestation Check**: Verify human attestation if present
+1. **ファイル解析**: JSON / ZIP を読み込み
+2. **形式判定**: single-file か multi-file かを判定
+3. **チェーン検証**:
+   - シーケンス番号の連続性
+   - タイムスタンプの単調性
+   - previousHash の整合
+   - ハッシュの再計算
+4. **PoSW 検証**: シーケンシャル証明を `POSW_ITERATIONS` 反復で検証
+5. **アテステーション検証**: 人間認証がある場合は署名検証
+6. **署名済みチェックポイント検証**: 任意。サーバ署名と連結ハッシュを検証
 
-## Build
+## ビルド
 
 ```bash
-npm run build      # Build CLI
-npm run dev        # Watch mode
+npm run build      # ビルド
+npm run dev        # watch モード
 ```
 
-## Architecture
+## アーキテクチャ
 
 ```
 src/
-├── cli.ts         # CLI entry point
-├── verify.ts      # Verification logic
-├── output.ts      # Result formatting
-├── progress.ts    # Progress display
-└── zip.ts         # ZIP file handling
+├── cli.ts         # CLI エントリポイント
+├── verify.ts      # 検証ロジック
+├── output.ts      # 結果の整形
+├── progress.ts    # 進捗表示
+└── zip.ts         # ZIP ファイル処理
 ```
 
-## Requirements
+## 動作要件
 
-- Node.js >= 22.0.0
+- Node.js >= 24.0.0
 
-## Dependencies
+## 依存関係
 
-| Package | Purpose |
+| パッケージ | 用途 |
 |---------|---------|
-| @typedcode/shared | Core types and verification (includes ZIP handling) |
+| @typedcode/shared | コア型と検証ロジック (ZIP 処理を含む) |

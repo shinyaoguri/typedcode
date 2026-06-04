@@ -33,7 +33,9 @@ import { PROOF_FORMAT_VERSION } from '../version.js';
 import { HashChainManager } from './HashChainManager.js';
 import { PoswManager } from './PoswManager.js';
 import { CheckpointManager } from './CheckpointManager.js';
-import { ChainVerifier } from './ChainVerifier.js';
+import { ChainVerifier, type ChainVerifyOptions } from './ChainVerifier.js';
+import type { CheckpointCreatedHook } from './CheckpointManager.js';
+import type { SignedCheckpointEnvelope } from '../types.js';
 import { StatisticsCalculator } from './StatisticsCalculator.js';
 import { isAllowedInputType, isProhibitedInputType } from './InputTypeValidator.js';
 
@@ -41,6 +43,7 @@ export class TypingProof {
   events: StoredEvent[] = [];
   fingerprint: string | null = null;
   fingerprintComponents: FingerprintComponents | null = null;
+  initialHashNonce: string | null = null;
   startTime: number = performance.now();
   initialized: boolean = false;
   private recordQueue: Promise<RecordEventResult> = Promise.resolve({ hash: '', index: -1 });
@@ -113,7 +116,9 @@ export class TypingProof {
   ): Promise<void> {
     this.fingerprint = fingerprintHash;
     this.fingerprintComponents = fingerprintComponents;
-    this.hashChainManager.setCurrentHash(await this.hashChainManager.initialHash(fingerprintHash));
+    const initial = await this.hashChainManager.generateInitialHash(fingerprintHash);
+    this.initialHashNonce = initial.nonce;
+    this.hashChainManager.setCurrentHash(initial.hash);
 
     // Web Workerを初期化
     this.poswManager.initWorker(externalWorker);
@@ -536,11 +541,15 @@ export class TypingProof {
   }
 
   /**
-   * ハッシュ鎖を検証（PoSW検証含む）
+   * ハッシュ鎖を検証（デフォルトで PoSW 含む）
    * @param onProgress - 進捗コールバック (current, total, hashInfo?) => void
+   * @param options - 検証オプション (skipPosw 等)
    */
-  async verify(onProgress?: (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => void): Promise<VerificationResult> {
-    return await this.chainVerifier.verify(this.events, onProgress);
+  async verify(
+    onProgress?: (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => void,
+    options?: ChainVerifyOptions
+  ): Promise<VerificationResult> {
+    return await this.chainVerifier.verify(this.events, onProgress, options);
   }
 
   /**
@@ -550,7 +559,12 @@ export class TypingProof {
     this.events = [];
     this.checkpointManager.clearCheckpoints();
     if (this.fingerprint) {
-      this.hashChainManager.setCurrentHash(await this.hashChainManager.initialHash(this.fingerprint));
+      const initial = await this.hashChainManager.generateInitialHash(this.fingerprint);
+      this.initialHashNonce = initial.nonce;
+      this.hashChainManager.setCurrentHash(initial.hash);
+    } else {
+      this.initialHashNonce = null;
+      this.hashChainManager.setCurrentHash(null);
     }
     this.startTime = performance.now();
   }
@@ -600,6 +614,8 @@ export class TypingProof {
 
     const proofData: ProofData = {
       finalContentHash,
+      initialHashNonce: this.initialHashNonce ?? undefined,
+      initialEventChainHash: this.events[0]?.previousHash ?? this.currentHash,
       finalEventChainHash: this.currentHash!,
       deviceId: this.fingerprint!,
       metadata: {
@@ -609,6 +625,7 @@ export class TypingProof {
         dropEvents: stats.dropEvents,
         insertEvents: stats.insertEvents,
         deleteEvents: stats.deleteEvents,
+        bulkInsertEvents: stats.bulkInsertEvents,
         totalTypingTime: stats.duration,
         averageTypingSpeed: stats.averageWPM
       }
@@ -619,7 +636,7 @@ export class TypingProof {
 
     // isPureTyping: 外部ペースト/ドロップがない場合はtrue
     // 内部ペーストは許可されているため、isPureTypingには影響しない
-    const isPureTyping = stats.pasteEvents === 0 && stats.dropEvents === 0;
+    const isPureTyping = stats.pasteEvents === 0 && stats.dropEvents === 0 && stats.bulkInsertEvents === 0;
 
     return {
       typingProofHash,
@@ -666,7 +683,8 @@ export class TypingProof {
 
     const isPureTyping =
       proofData.metadata.pasteEvents === 0 &&
-      proofData.metadata.dropEvents === 0;
+      proofData.metadata.dropEvents === 0 &&
+      (proofData.metadata.bulkInsertEvents ?? 0) === 0;
 
     return {
       valid: true,
@@ -683,6 +701,7 @@ export class TypingProof {
     return {
       events: this.events,
       currentHash: this.currentHash,
+      initialHashNonce: this.initialHashNonce,
       startTime: this.startTime,
       pendingEvents: [...this.pendingEvents],
       checkpoints: [...this.checkpointManager.getCheckpoints()],
@@ -698,6 +717,7 @@ export class TypingProof {
     return {
       lastEventSequence: this.events.length - 1,
       currentHash: this.currentHash,
+      initialHashNonce: this.initialHashNonce,
       startTime: this.startTime,
       // pendingEventsは復元時に使用しないため保存しない
       checkpoints: [...this.checkpointManager.getCheckpoints()],
@@ -711,6 +731,7 @@ export class TypingProof {
   restoreState(state: SerializedProofState): void {
     this.events = state.events;
     this.hashChainManager.setCurrentHash(state.currentHash);
+    this.initialHashNonce = state.initialHashNonce ?? null;
 
     // タイムスタンプの単調増加を保証するためにstartTimeを調整
     // 最後のイベントのタイムスタンプを取得し、次のイベントがそれより大きくなるようにする
@@ -749,6 +770,32 @@ export class TypingProof {
    */
   setOnPendingEventChange(callback: ((pending: PendingEventData[]) => void) | null): void {
     this.onPendingEventChange = callback;
+  }
+
+  /**
+   * 新規 checkpoint 作成時のフックを設定。
+   * SignedCheckpointService から購読され、署名 API に payload を送るのに使う。
+   */
+  setOnCheckpointCreated(hook: CheckpointCreatedHook | null): void {
+    this.checkpointManager.setOnCheckpointCreated(hook);
+  }
+
+  /**
+   * 非同期に取得した署名 envelope を該当 checkpoint に書き戻す。
+   * 該当が無ければ false (例: checkpoint が cleanup 済み)。
+   */
+  attachSignedCheckpoint(eventIndex: number, envelope: SignedCheckpointEnvelope): boolean {
+    return this.checkpointManager.updateSignature(eventIndex, envelope);
+  }
+
+  /**
+   * 初期チェーンハッシュ (= proof root) を返す。
+   * - events が存在すれば events[0].previousHash
+   * - そうでなければ HashChainManager の currentHash
+   * 署名 payload の initialEventChainHash に使う。
+   */
+  getInitialEventChainHash(): string | null {
+    return this.events[0]?.previousHash ?? this.currentHash;
   }
 
   /**
