@@ -320,15 +320,31 @@ export async function verifyCheckpointSignature(
     return { valid: false, reason: resolved.reason };
   }
 
-  const signingInput = new TextEncoder().encode(deterministicStringify(envelope.payload));
-  const signatureBytes = hexToUint8Array(envelope.signature);
+  // signature が不正な hex (奇数長など) でも throw せず valid:false を返す。
+  // これがないと hexToUint8Array が throw し、verifyProofFile (CLI) のように
+  // 例外を握らない呼び出し側で検証全体がクラッシュする (Web worker は try/catch
+  // で握っており挙動が分かれていた)。ここで吸収して両経路の挙動を揃える。
+  let signatureBytes: Uint8Array;
+  try {
+    signatureBytes = hexToUint8Array(envelope.signature);
+  } catch {
+    return { valid: false, reason: 'Malformed signature hex', registryEntry: resolved.registryEntry };
+  }
 
-  const valid = await crypto.subtle.verify(
-    { name: 'ECDSA', hash: 'SHA-256' },
-    resolved.cryptoKey,
-    signatureBytes as unknown as ArrayBuffer,
-    signingInput as unknown as ArrayBuffer
-  );
+  const signingInput = new TextEncoder().encode(deterministicStringify(envelope.payload));
+
+  let valid = false;
+  try {
+    valid = await crypto.subtle.verify(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      resolved.cryptoKey,
+      signatureBytes as unknown as ArrayBuffer,
+      signingInput as unknown as ArrayBuffer
+    );
+  } catch {
+    // 鍵長と signature 長の不整合などで verify 自体が throw するケースも吸収
+    return { valid: false, reason: 'Signature verification error', registryEntry: resolved.registryEntry };
+  }
 
   return { valid, registryEntry: resolved.registryEntry };
 }

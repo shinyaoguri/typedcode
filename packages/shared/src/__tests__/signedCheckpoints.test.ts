@@ -332,6 +332,24 @@ describe('verifySignedCheckpoints', () => {
     expect(result.reason).toMatch(/chainHash disagrees with its enclosing/);
   });
 
+  it('returns valid=false (without throwing) for a malformed signature hex', async () => {
+    // 奇数長の不正な hex 署名は hexToUint8Array が throw する入力。
+    // verifyProofFile (CLI) は例外を握らないため、ここで吸収しないと検証全体が
+    // クラッシュする。verifyCheckpointSignature が valid:false を返すことを保証する。
+    const { events, initialEventChainHash } = await buildSmallProof(2);
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash,
+      key: testKey,
+    });
+    checkpoints[0]!.signature!.signature = 'abc'; // 奇数長 hex
+    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.anchored).toBe(true);
+  });
+
   it('fails when an event hash is tampered after signing', async () => {
     const { events, initialEventChainHash } = await buildSmallProof(3);
     const checkpoints = await buildSignedCheckpoints({
