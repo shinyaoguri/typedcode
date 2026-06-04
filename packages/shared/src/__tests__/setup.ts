@@ -139,3 +139,31 @@ if (typeof performance === 'undefined' || typeof performance.now !== 'function')
     now: () => Date.now() - startTime,
   });
 }
+
+// ===== localStorage モック =====
+// happy-dom 20 は localStorage を提供するが file-backed モードの初期化が不安定で
+// `.clear()` が undefined になることがある。Storage 互換の最小モックで置き換えて
+// テストを決定的にする。
+function createStorageMock(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear: () => store.clear(),
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(String(key), String(value));
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    key: (index: number) => {
+      const keys = [...store.keys()];
+      return keys[index] ?? null;
+    },
+  } satisfies Storage;
+}
+
+vi.stubGlobal('localStorage', createStorageMock());
+vi.stubGlobal('sessionStorage', createStorageMock());

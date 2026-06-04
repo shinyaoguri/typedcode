@@ -31,6 +31,14 @@ jobs:
         # 確実に解決させるために必要。--frozen-lockfile は npm では未対応なので削除。
         run: npm ci --include=optional
 
+      - name: Run tests (shared)
+        # shared の暗号証明エンジンと型バリデータ。
+        run: npm run test:run -w @typedcode/shared
+
+      - name: Run tests (workers)
+        # Workers のチェックポイント署名ハンドラ (冪等性 / NON_MONOTONIC / 鍵未設定 等)。
+        run: npm run test:run -w @typedcode/workers
+
       - name: Build project
         run: npm run build
         env:
@@ -43,6 +51,29 @@ jobs:
           mkdir -p ./dist
           cp -r ./packages/editor/dist/* ./dist/
           cp -r ./packages/verify/dist ./dist/verify
+
+      - name: Configure production wrangler.toml
+        # 本番 KV ID を secrets から差し込む。HEAD の wrangler.toml は placeholder
+        # (REPLACE_WITH_PRODUCTION_ID 等) で公開されているため、デプロイ前に置換する。
+        # 必要な secrets:
+        #   - CLOUDFLARE_KV_PRODUCTION_ID  (本番 KV ネームスペース ID)
+        #   - CLOUDFLARE_KV_PREVIEW_ID     (preview KV ネームスペース ID)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          sed -i "s|REPLACE_WITH_PRODUCTION_ID|${{ secrets.CLOUDFLARE_KV_PRODUCTION_ID }}|g" packages/workers/wrangler.toml
+          sed -i "s|REPLACE_WITH_PREVIEW_ID|${{ secrets.CLOUDFLARE_KV_PREVIEW_ID }}|g" packages/workers/wrangler.toml
+
+      - name: Deploy Workers (Production)
+        # Worker のみデプロイ。Pages とは別エンドポイント (api.typedcode.dev 等) で動作。
+        # シークレット (TURNSTILE_SECRET_KEY, ATTESTATION_SECRET_KEY,
+        # CHECKPOINT_SIGNING_KEY_*) は `wrangler secret put` で別途事前設定が必要。
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: packages/workers
+          command: deploy --env production
 
       - name: Deploy to Cloudflare Pages (Production)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
