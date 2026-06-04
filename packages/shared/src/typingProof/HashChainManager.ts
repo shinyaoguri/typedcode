@@ -8,6 +8,7 @@ import {
   arrayBufferToHex as arrayBufferToHexUtil,
   computeHash as computeHashUtil,
 } from '../utils/hashUtils.js';
+import { sharedDebugLog } from '../utils/debug.js';
 
 /** タイムスタンプ調整の結果 */
 interface TimestampAdjustment {
@@ -120,7 +121,7 @@ export class HashChainManager {
   ensureMonotonicTimestamp(timestamp: number, lastTimestamp: number): TimestampAdjustment {
     if (timestamp <= lastTimestamp) {
       const adjustedTimestamp = lastTimestamp + HashChainManager.TIMESTAMP_MARGIN;
-      console.log(`[HashChainManager] Adjusting timestamp: ${timestamp.toFixed(2)} -> ${adjustedTimestamp.toFixed(2)} (last: ${lastTimestamp.toFixed(2)})`);
+      sharedDebugLog(`[HashChainManager] Adjusting timestamp: ${timestamp.toFixed(2)} -> ${adjustedTimestamp.toFixed(2)} (last: ${lastTimestamp.toFixed(2)})`);
       return { timestamp: adjustedTimestamp, wasAdjusted: true };
     }
     return { timestamp, wasAdjusted: false };
@@ -134,7 +135,7 @@ export class HashChainManager {
    */
   validatePreviousHash(storedPreviousHash: string | null, currentHash: string | null): string | null {
     if (storedPreviousHash !== null && storedPreviousHash !== currentHash) {
-      console.log(`[HashChainManager] previousHash mismatch, using current. stored: ${storedPreviousHash?.substring(0, 16)}..., current: ${currentHash?.substring(0, 16)}...`);
+      sharedDebugLog(`[HashChainManager] previousHash mismatch, using current. stored: ${storedPreviousHash?.substring(0, 16)}..., current: ${currentHash?.substring(0, 16)}...`);
     }
     return currentHash;
   }

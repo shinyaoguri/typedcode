@@ -36,7 +36,7 @@ if (urlParams.get('fresh') === '1') {
 
 import * as monaco from 'monaco-editor';
 import './styles/main.css';
-import { Fingerprint } from '@typedcode/shared';
+import { Fingerprint, setSharedDebug } from '@typedcode/shared';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
@@ -99,6 +99,9 @@ import {
 } from './ui/dialogs/ScreenCaptureDialogs.js';
 import { initSessionStorageService } from './services/SessionStorageService.js';
 import { showSessionRecoveryDialog } from './ui/dialogs/SessionRecoveryDialog.js';
+
+// shared ライブラリのトレースログは dev サーバ時のみ有効化 (本番は no-op)。
+setSharedDebug(import.meta.env.DEV);
 
 // App モジュールからのインポート
 import {

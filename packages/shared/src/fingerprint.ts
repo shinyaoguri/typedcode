@@ -10,6 +10,7 @@ import type {
   WebGLInfo,
   DetailedFingerprint,
 } from './types.js';
+import { sharedDebugLog } from './utils/debug.js';
 import { computeHash } from './utils/hashUtils.js';
 
 export class Fingerprint {
@@ -21,11 +22,11 @@ export class Fingerprint {
   static async getDeviceId(): Promise<string> {
     const existingId = localStorage.getItem(this.STORAGE_KEY);
     if (existingId) {
-      console.log('[Fingerprint] Using existing device ID');
+      sharedDebugLog('[Fingerprint] Using existing device ID');
       return existingId;
     }
 
-    console.log('[Fingerprint] Generating new device ID');
+    sharedDebugLog('[Fingerprint] Generating new device ID');
     const deviceId = await this.generateDeviceId();
     localStorage.setItem(this.STORAGE_KEY, deviceId);
     return deviceId;

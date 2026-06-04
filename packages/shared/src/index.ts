@@ -11,6 +11,9 @@ export { TypingProof } from './typingProof.js';
 // フィンガープリント
 export { Fingerprint } from './fingerprint.js';
 
+// デバッグログ制御 (デフォルト off。ホスト側が dev で有効化する)
+export { setSharedDebug, isSharedDebugEnabled } from './utils/debug.js';
+
 // 検証ユーティリティ
 export {
   deterministicStringify,

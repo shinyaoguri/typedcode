@@ -38,6 +38,7 @@ import type { CheckpointCreatedHook } from './CheckpointManager.js';
 import type { SignedCheckpointEnvelope } from '../types.js';
 import { StatisticsCalculator } from './StatisticsCalculator.js';
 import { isAllowedInputType, isProhibitedInputType } from './InputTypeValidator.js';
+import { sharedDebugLog } from '../utils/debug.js';
 
 export class TypingProof {
   events: StoredEvent[] = [];
@@ -123,7 +124,7 @@ export class TypingProof {
     // Web Workerを初期化
     this.poswManager.initWorker(externalWorker);
 
-    console.log('[TypingProof] Initialized with fixed PoSW iterations:', this.poswManager.getPoSWIterations());
+    sharedDebugLog('[TypingProof] Initialized with fixed PoSW iterations:', this.poswManager.getPoSWIterations());
 
     this.initialized = true;
   }
@@ -382,7 +383,7 @@ export class TypingProof {
 
     // 7. デバッグログ（最初の10イベントのみ）
     if (this.events.length < 10) {
-      console.log(`[Record] Event ${this.events.length}:`, {
+      sharedDebugLog(`[Record] Event ${this.events.length}:`, {
         type: event.type,
         sequence,
         timestamp: timestamp.toFixed(2),
@@ -742,7 +743,7 @@ export class TypingProof {
       const lastTimestamp = lastEvent.timestamp;
       const margin = 10; // 10ms のマージンを追加
       this.startTime = performance.now() - (lastTimestamp + margin);
-      console.log(`[TypingProof] Adjusted startTime for session resume: lastTimestamp=${lastTimestamp.toFixed(2)}, newStartTime=${this.startTime.toFixed(2)}`);
+      sharedDebugLog(`[TypingProof] Adjusted startTime for session resume: lastTimestamp=${lastTimestamp.toFixed(2)}, newStartTime=${this.startTime.toFixed(2)}`);
     } else {
       this.startTime = state.startTime;
     }

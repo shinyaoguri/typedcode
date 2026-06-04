@@ -5,6 +5,7 @@
 
 import type { CheckpointData, SignedCheckpointEnvelope, StoredEvent } from '../types.js';
 import { HashChainManager } from './HashChainManager.js';
+import { sharedDebugLog } from '../utils/debug.js';
 
 export type CheckpointCreatedHook = (checkpoint: CheckpointData) => void | Promise<void>;
 
@@ -140,7 +141,7 @@ export class CheckpointManager {
     this.checkpoints.push(checkpoint);
     this.lastCheckpointEventIndex = eventIndex;
     this.lastCheckpointAt = this.now();
-    console.log(`[CheckpointManager] Checkpoint created at event ${eventIndex}, hash: ${event.hash.substring(0, 16)}...`);
+    sharedDebugLog(`[CheckpointManager] Checkpoint created at event ${eventIndex}, hash: ${event.hash.substring(0, 16)}...`);
 
     // hook を発火。失敗してもチェーンを止めない。
     if (this.onCheckpointCreated) {
