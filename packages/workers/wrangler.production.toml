@@ -7,11 +7,13 @@
 # GitHub Environment "production" の Required reviewers により承認待ちになる
 # (.github/workflows/deploy.yml の deploy-production ジョブ)。
 #
-# KV ID は CI で sed 置換される:
-#   REPLACE_WITH_PRODUCTION_ID  ← secrets.CLOUDFLARE_KV_PRODUCTION_ID
+# KV namespace ID はシークレットではない (Cloudflare API token なしでは
+# アクセス不能) ため、直接 commit している。新しい production KV を
+# 切り直す場合はこのファイルを編集して PR を出す。
 #
-# シークレット (TURNSTILE_SECRET_KEY, ATTESTATION_SECRET_KEY,
-# CHECKPOINT_SIGNING_KEY_*) は事前に `wrangler secret put ...` で本番に設定すること。
+# Worker のシークレット (TURNSTILE_SECRET_KEY, ATTESTATION_SECRET_KEY,
+# CHECKPOINT_SIGNING_KEY_*) は `wrangler secret put --config wrangler.production.toml`
+# で production Worker に直接投入する。
 
 name = "typedcode-api"
 main = "src/index.ts"

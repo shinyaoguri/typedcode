@@ -175,12 +175,6 @@ jobs:
           cp -r ./packages/editor/dist/* ./dist/
           cp -r ./packages/verify/dist ./dist/verify
 
-      - name: Configure staging wrangler.toml
-        # staging KV ID を secrets から差し込む。
-        # 必要な secrets: CLOUDFLARE_KV_STAGING_ID
-        run: |
-          sed -i "s|REPLACE_WITH_STAGING_ID|${{ secrets.CLOUDFLARE_KV_STAGING_ID }}|g" packages/workers/wrangler.staging.toml
-
       - name: Deploy Workers (Staging)
         uses: cloudflare/wrangler-action@v3
         with:
@@ -235,12 +229,6 @@ jobs:
           mkdir -p ./dist
           cp -r ./packages/editor/dist/* ./dist/
           cp -r ./packages/verify/dist ./dist/verify
-
-      - name: Configure production wrangler.toml
-        # 本番 KV ID を secrets から差し込む。
-        # 必要な secrets: CLOUDFLARE_KV_PRODUCTION_ID
-        run: |
-          sed -i "s|REPLACE_WITH_PRODUCTION_ID|${{ secrets.CLOUDFLARE_KV_PRODUCTION_ID }}|g" packages/workers/wrangler.production.toml
 
       - name: Deploy Workers (Production)
         uses: cloudflare/wrangler-action@v3

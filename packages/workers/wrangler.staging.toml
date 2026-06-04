@@ -6,12 +6,13 @@
 # CI からは develop ブランチ push 時に自動デプロイされる
 # (.github/workflows/deploy.yml の deploy-staging ジョブ)。
 #
-# KV ID は CI で sed 置換される:
-#   REPLACE_WITH_STAGING_ID  ← secrets.CLOUDFLARE_KV_STAGING_ID
+# KV namespace ID はシークレットではない (Cloudflare API token なしでは
+# アクセス不能) ため、直接 commit している。新しい staging KV を切り直す
+# 場合はこのファイルを編集して PR を出す。
 #
-# シークレット (TURNSTILE_SECRET_KEY, ATTESTATION_SECRET_KEY,
-# CHECKPOINT_SIGNING_KEY_*) は事前に `wrangler secret put ... --env staging`
-# または GitHub Environment "staging" の Secrets で別途設定すること。
+# Worker のシークレット (TURNSTILE_SECRET_KEY, ATTESTATION_SECRET_KEY,
+# CHECKPOINT_SIGNING_KEY_*) は `wrangler secret put --config wrangler.staging.toml`
+# で staging Worker に直接投入する。
 
 name = "typedcode-api-staging"
 main = "src/index.ts"

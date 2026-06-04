@@ -80,7 +80,7 @@ src/
 | staging | `wrangler.staging.toml` | **develop push → CI 自動** | `typedcode-api-staging` |
 | production | `wrangler.production.toml` | **main push → CI 承認待ち** | `typedcode-api` |
 
-- staging / production の wrangler config は HEAD に commit され、KV ID は **placeholder**。CI が secrets から sed 注入する
+- staging / production の wrangler config は KV ID も含めて HEAD に直接 commit されている (KV namespace ID は CF API token なしではアクセス不能なので実質的にシークレットではない)
 - ローカル `wrangler.toml` は各開発者の dev KV ID を保持 (skip-worktree のため commit されない)
 - staging Worker は別名 (`typedcode-api-staging`) として登録され、production と完全独立
 
@@ -88,20 +88,22 @@ src/
 
 GitHub repo の Settings → Environments に **2 つの環境** を作成:
 
+**Repo level (Settings → Secrets and variables → Actions)**
+- `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_PROJECT_NAME`
+  (環境共通の Cloudflare 認証情報)
+
 **Environment `staging`** (承認なし、自動デプロイ)
 - Secrets:
-  - `CLOUDFLARE_KV_STAGING_ID` — staging KV namespace ID
-  - `VITE_API_URL` — staging Workers の URL
+  - `VITE_API_URL` — staging Workers の URL (ビルド時に bundle に baked-in)
   - `VITE_TURNSTILE_SITE_KEY` — staging 用 Turnstile site key
-  - `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_PROJECT_NAME`
 
 **Environment `production`** (Required reviewers 設定推奨 = 承認待ち)
 - Secrets:
-  - `CLOUDFLARE_KV_PRODUCTION_ID` — 本番 KV namespace ID
   - `VITE_API_URL` — 本番 Workers の URL
   - `VITE_TURNSTILE_SITE_KEY` — 本番 Turnstile site key
-  - `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_PROJECT_NAME`
 - **Protection rule**: Required reviewers に 1 名以上 (自分でもよい) → main push 時に Actions タブで手動承認が必要になる
+
+(KV namespace ID は wrangler.{staging,production}.toml に直接 commit するので環境 secret には入れない)
 
 ### Workers 個別 secrets (Wrangler 経由)
 
