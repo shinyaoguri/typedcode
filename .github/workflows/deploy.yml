@@ -25,9 +25,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -60,11 +60,11 @@ jobs:
       deployments: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           lfs: true
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -87,7 +87,7 @@ jobs:
 
       - name: Deploy to Cloudflare Pages (Preview)
         id: preview-deploy
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -97,7 +97,7 @@ jobs:
           command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=${{ github.head_ref }} --commit-hash=${{ github.sha }} --commit-message="${{ github.sha }}"
 
       - name: Comment PR with preview URL
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const output = `${{ steps.preview-deploy.outputs.command-output }}`;
@@ -157,11 +157,11 @@ jobs:
       contents: read
       deployments: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           lfs: true
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -183,7 +183,7 @@ jobs:
           cp -r ./packages/verify/dist ./dist/verify
 
       - name: Deploy Workers (Staging)
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -192,7 +192,7 @@ jobs:
 
       - name: Deploy to Cloudflare Pages (Staging)
         # --branch=develop で develop.<project>.pages.dev という stable URL になる
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -212,11 +212,11 @@ jobs:
       contents: read
       deployments: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           lfs: true
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -238,7 +238,7 @@ jobs:
           cp -r ./packages/verify/dist ./dist/verify
 
       - name: Deploy Workers (Production)
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -246,7 +246,7 @@ jobs:
           command: deploy --config wrangler.production.toml
 
       - name: Deploy to Cloudflare Pages (Production)
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

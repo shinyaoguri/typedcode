@@ -25,3 +25,16 @@ updates:
           - "major"
           - "minor"
           - "patch"
+
+  # GitHub Actions のバージョン自動更新 (action 本体が古い Node ランタイムで
+  # 動いている問題などを検出できる)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
