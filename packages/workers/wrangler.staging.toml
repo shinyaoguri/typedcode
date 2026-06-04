@@ -22,4 +22,4 @@ ENVIRONMENT = "staging"
 
 [[kv_namespaces]]
 binding = "CHECKPOINT_SESSIONS"
-id = "REPLACE_WITH_STAGING_ID"
+id = "712009e2e71949ebb7cc24ed77dfa5d1"
