@@ -15,6 +15,7 @@
     "build:editor": "npm run build -w @typedcode/editor",
     "build:verify": "npm run build -w @typedcode/verify",
     "build:verify-cli": "npm run build -w @typedcode/verify-cli",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "doctor": "node scripts/doctor.mjs"
   },
   "engines": {
