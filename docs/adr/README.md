@@ -38,6 +38,7 @@
 | [0005](0005-input-type-policy.md) | Accepted | 許可/禁止 InputType の方針 |
 | [0006](0006-exam-mode-sealed-problem-binding.md) | Proposed | 試験モードは封印問題パッケージで proof を試験にバインドする |
 | [0007](0007-maximal-signal-capture.md) | Proposed | 記録/試験モードで捕捉する生信号を最大化し確定する |
+| [0008](0008-exam-fullscreen-request-not-enforce.md) | Proposed | 試験モードはフルスクリーンを要求するが強制せず状態を記録する |
 
 ## 参考
 
