@@ -19,12 +19,28 @@ name = "typedcode-api"
 main = "src/index.ts"
 compatibility_date = "2025-12-26"
 
+# Workers Logs を有効化 (運用時の観測性)。head_sampling_rate=1 は低トラフィックな
+# 署名 API 向けに全リクエストを記録する。トラフィックが増えたら下げる。
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [vars]
 ENVIRONMENT = "production"
 # CORS 許可オリジン (カンマ区切り)。editor / verify は同一 Pages プロジェクト
 # (editor=/, verify=/verify) なので origin は 1 つ。カスタムドメインと既定の
 # pages.dev の両方を許可する。シークレットではない公開ドメインなので直接 commit してよい。
 ALLOWED_ORIGINS = "https://typedcode.dev,https://typedcode.pages.dev"
+
+# 必須シークレットを宣言 (wrangler secret put で投入)。未設定のままデプロイすると
+# wrangler が deploy 時にエラーにするので、設定漏れによる本番事故を防げる。
+[secrets]
+required = [
+  "TURNSTILE_SECRET_KEY",
+  "ATTESTATION_SECRET_KEY",
+  "CHECKPOINT_SIGNING_KEY_ID",
+  "CHECKPOINT_SIGNING_KEY_JWK",
+]
 
 [[kv_namespaces]]
 binding = "CHECKPOINT_SESSIONS"

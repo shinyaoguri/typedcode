@@ -8,6 +8,7 @@
     "deploy:staging": "wrangler deploy --config wrangler.staging.toml",
     "deploy:production": "wrangler deploy --config wrangler.production.toml",
     "typecheck": "tsc --noEmit",
+    "cf-typegen": "wrangler types --config wrangler.staging.toml",
     "gen-checkpoint-key": "node scripts/generate-checkpoint-key.mjs",
     "test": "vitest",
     "test:run": "vitest run"

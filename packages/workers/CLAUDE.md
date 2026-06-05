@@ -91,6 +91,15 @@ CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リス
 |---|---|---|
 | `CHECKPOINT_SESSIONS` | `firstSeenAt`, `lastCheckpointIndex`, `lastServerTimestamp`, `signedCount`, `lastEnvelope` (冪等用) | 7 日 |
 
+## 観測性・シークレット宣言・型 (運用)
+
+`wrangler.{staging,production}.toml` に以下を宣言している (dev の `wrangler.toml` は skip-worktree なので対象外):
+
+- **`[observability] enabled = true`**: Workers Logs を有効化。`head_sampling_rate = 1` は低トラフィックな署名 API 向けに全リクエスト記録。トラフィックが増えたら下げる。
+- **`[secrets] required = [...]`**: `TURNSTILE_SECRET_KEY` / `ATTESTATION_SECRET_KEY` / `CHECKPOINT_SIGNING_KEY_ID` / `CHECKPOINT_SIGNING_KEY_JWK` を必須宣言。`wrangler secret put` 漏れがあると **deploy 時にエラー**になり、設定漏れによる本番事故を防ぐ。`--dry-run` (CI の config 検証) では secret の存在チェックは走らない。
+
+**Env の型**: 現状 `src/index.ts` の `Env` / `checkpoint.ts` の `CheckpointEnv` は手書き。`npm run cf-typegen` (= `wrangler types`) で config から `worker-configuration.d.ts` を生成できる (gitignore 済み・commit しない)。生成された runtime types へ完全移行 (= `@cloudflare/workers-types` を外し tsconfig を更新、手書き `Env` を撤去) は**別途の follow-up**。今は手書き `Env` が source of truth なので、binding を増やしたら手書き側も更新すること。
+
 ## ローカル開発のフロー
 
 1. `cp .dev.vars.example .dev.vars` で雛形コピー
