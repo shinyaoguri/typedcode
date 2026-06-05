@@ -17,7 +17,8 @@ concurrency:
 # 構成:
 #   test                   — どのトリガでも必ず走る (shared / workers のユニットテスト)
 #   check                  — どのトリガでも必ず走る (全 package typecheck/build + Worker config dry-run)
-#   deploy-preview         — PR で Pages のプレビュー URL を発行 (Workers staging 向け)
+#   deploy-preview         — feature → develop PR で Pages のプレビュー URL を発行 (Workers staging 向け)
+#   comment-staging-preview— develop → main PR に staging URL をコメント (新規 preview は作らない)
 #   deploy-staging         — develop push で Workers staging + Pages staging を更新
 #   deploy-production      — main  push で Workers production + Pages production を更新
 #                            (GitHub Environment "production" の Required reviewers で承認待ち)
@@ -182,6 +183,57 @@ jobs:
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
                 body: body
+              });
+            }
+
+  # --------------------------------------------------------------------
+  # develop → main PR: 新規プレビューは作らない (develop push の deploy-staging が
+  # develop.<project>.pages.dev に出すのと URL が衝突するため)。代わりに、その
+  # staging URL を PR にコメントする。本番昇格前に確認すべき成果物がこれ。
+  # --------------------------------------------------------------------
+  comment-staging-preview:
+    needs: [test, check]
+    if: github.event_name == 'pull_request' && github.head_ref == 'develop' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Comment staging preview URL on the PR
+        uses: actions/github-script@v9
+        env:
+          PROJECT_NAME: ${{ secrets.CLOUDFLARE_PROJECT_NAME }}
+        with:
+          script: |
+            const url = `https://develop.${process.env.PROJECT_NAME}.pages.dev`;
+            const marker = '## 🔍 Staging Preview (develop → main)';
+            const body = `${marker}
+
+            | Name | URL |
+            |------|-----|
+            | Staging | ${url} |
+
+            この PR は develop を main に昇格します。develop の最新ビルドは常時この staging URL にデプロイされています (API: **staging** Workers)。本番デプロイ前の動作確認はここで行ってください。
+            *Promotion candidate: ${context.sha.substring(0, 7)}*`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const botComment = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
               });
             }
 
