@@ -146,6 +146,18 @@ export {
 // タイピングパターン分析
 export { TypingPatternAnalyzer } from './typingPattern/index.js';
 
+// 分析層 (ADR-0009): 検証と直交する pluggable な分析フレームワーク (器のみ)
+export { runAnalysis, defaultAnalyzers } from './analysis/index.js';
+export type {
+  AnalysisDimension,
+  AnalysisSeverity,
+  EvidenceRef,
+  AnalysisSignal,
+  AnalysisInput,
+  Analyzer,
+  AnalysisReport,
+} from './analysis/index.js';
+
 // ユーティリティ関数
 export { escapeHtml } from './utils/index.js';
 
