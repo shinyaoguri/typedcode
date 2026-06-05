@@ -120,19 +120,23 @@ CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リス
 GitHub repo の Settings → Environments に **2 つの環境** を作成:
 
 **Repo level (Settings → Secrets and variables → Actions)**
-- `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_PROJECT_NAME`
-  (環境共通の Cloudflare 認証情報)
+- `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_PROJECT_NAME` (環境共通)
+- **`CLOUDFLARE_API_TOKEN` は repo level に置かない** — 後述の通り Environment ごとに分ける (preview/staging で本番デプロイ権限の token を露出させない)
 
-**Environment `staging`** (承認なし、自動デプロイ)
+**Environment `staging`** (承認なし、自動デプロイ。preview もこの環境)
 - Secrets:
+  - `CLOUDFLARE_API_TOKEN` — **staging/preview 専用** (Pages:Edit + staging Worker のみ。本番 Worker 権限なし)
   - `VITE_API_URL` — staging Workers の URL (ビルド時に bundle に baked-in)
   - `VITE_TURNSTILE_SITE_KEY` — staging 用 Turnstile site key
 
 **Environment `production`** (Required reviewers 設定推奨 = 承認待ち)
 - Secrets:
+  - `CLOUDFLARE_API_TOKEN` — **本番専用** (承認ゲート配下なので Approve を経ないと使われない)
   - `VITE_API_URL` — 本番 Workers の URL
   - `VITE_TURNSTILE_SITE_KEY` — 本番 Turnstile site key
 - **Protection rule**: Required reviewers に 1 名以上 (自分でもよい) → main push 時に Actions タブで手動承認が必要になる
+
+> deploy job は全て `environment:` を宣言済みなので、Environment secret は同名 repo secret を**自動上書き**する。ワークフロー変更は不要。
 
 (KV namespace ID は wrangler.{staging,production}.toml に直接 commit するので環境 secret には入れない)
 
