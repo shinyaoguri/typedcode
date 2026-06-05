@@ -37,6 +37,7 @@
 | [0004](0004-verifier-checkpoint-stance.md) | Accepted | 検証側は未署名 cp の sampling を成功条件にしない |
 | [0005](0005-input-type-policy.md) | Accepted | 許可/禁止 InputType の方針 |
 | [0006](0006-exam-mode-sealed-problem-binding.md) | Proposed | 試験モードは封印問題パッケージで proof を試験にバインドする |
+| [0007](0007-maximal-signal-capture.md) | Proposed | 記録/試験モードで捕捉する生信号を最大化し確定する |
 
 ## 参考
 
