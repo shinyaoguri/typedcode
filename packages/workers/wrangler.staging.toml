@@ -18,6 +18,11 @@ name = "typedcode-api-staging"
 main = "src/index.ts"
 compatibility_date = "2025-12-26"
 
+# Workers Logs を有効化 (運用時の観測性)。head_sampling_rate=1 で全リクエスト記録。
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [vars]
 ENVIRONMENT = "staging"
 # CORS 許可オリジン。staging Worker は develop デプロイ (develop.typedcode.pages.dev)
@@ -25,6 +30,15 @@ ENVIRONMENT = "staging"
 # サブドメイン wildcard で自プロジェクト配下の pages.dev を許可する
 # (*.pages.dev のように広げないこと: 自プロジェクトの branch alias に限定される)。
 ALLOWED_ORIGINS = "https://*.typedcode.pages.dev"
+
+# 必須シークレット宣言 (wrangler secret put で投入)。未設定だと deploy 時にエラー。
+[secrets]
+required = [
+  "TURNSTILE_SECRET_KEY",
+  "ATTESTATION_SECRET_KEY",
+  "CHECKPOINT_SIGNING_KEY_ID",
+  "CHECKPOINT_SIGNING_KEY_JWK",
+]
 
 [[kv_namespaces]]
 binding = "CHECKPOINT_SESSIONS"

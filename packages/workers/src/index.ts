@@ -89,11 +89,14 @@ function originMatchesPattern(origin: string, pattern: string): boolean {
  * リクエスト Origin を許可リストに照合し、許可するときのみその Origin を返す。
  * 返り値を `Access-Control-Allow-Origin` にそのまま入れる (reflect)。許可しないときは null。
  *
- * 優先順位:
+ * 優先順位 (**fail-closed**):
  *  1. `ALLOWED_ORIGINS` に一致 (完全一致 or `*.domain` サブドメイン wildcard) → 許可
  *  2. `ENVIRONMENT === 'development'` のとき localhost / 127.0.0.1 → 許可 (開発体験)
- *  3. `ALLOWED_ORIGINS` 未設定 → 後方互換で reflect (デプロイ破壊回避。production では設定必須)
- *  4. それ以外 → 拒否 (ヘッダを付与しない)
+ *  3. それ以外 → 拒否 (ヘッダを付与しない)
+ *
+ * 旧実装は `ALLOWED_ORIGINS` 未設定時に任意 Origin を reflect する fail-open
+ * だったが、staging/production の wrangler config に値を commit したため廃止。
+ * 非 development で許可リストが空 / 不一致なら拒否する (新環境では設定必須)。
  *
  * なお CORS はブラウザのクロスオリジン**読み取り**のみを制限するもので、
  * サーバ間アクセス (curl 等) は防げない。署名 API の濫用は per-session 上限
@@ -104,8 +107,7 @@ function resolveCorsOrigin(origin: string | null, env: CorsEnv): string | null {
   const allowed = parseAllowedOrigins(env);
   if (allowed.some(pattern => originMatchesPattern(origin, pattern))) return origin;
   if (env.ENVIRONMENT === 'development' && isLocalhostOrigin(origin)) return origin;
-  if (allowed.length === 0) return origin; // 未設定時のみ後方互換 reflect
-  return null;
+  return null; // fail-closed: 許可リストに無い (or 未設定の) Origin は拒否
 }
 
 /**

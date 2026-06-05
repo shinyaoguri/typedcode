@@ -9,6 +9,7 @@
     "./checkpoint": "./src/checkpointEntry.ts"
   },
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage"

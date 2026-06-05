@@ -4,8 +4,11 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "deploy:prod": "wrangler deploy --env production",
+    "deploy": "echo 'Refusing bare deploy: it would target the production Worker name with the local dev config. Use deploy:staging or deploy:production (each pins --config).' && exit 1",
+    "deploy:staging": "wrangler deploy --config wrangler.staging.toml",
+    "deploy:production": "wrangler deploy --config wrangler.production.toml",
+    "typecheck": "tsc --noEmit",
+    "cf-typegen": "wrangler types --config wrangler.staging.toml",
     "gen-checkpoint-key": "node scripts/generate-checkpoint-key.mjs",
     "test": "vitest",
     "test:run": "vitest run"

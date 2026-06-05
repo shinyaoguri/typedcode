@@ -245,19 +245,23 @@ CI が `wrangler` を使ってデプロイするので、適切な権限の API 
 
 | Secret | 値 |
 |---|---|
-| `CLOUDFLARE_API_TOKEN` | M1 で控えた token 文字列 |
 | `CLOUDFLARE_ACCOUNT_ID` | account ID |
 | `CLOUDFLARE_PROJECT_NAME` | Cloudflare Pages のプロジェクト名 (**M3 で作成**したもの) |
+
+> **`CLOUDFLARE_API_TOKEN` は repo level に置かない**。preview / staging / production で同一 token を共用すると、PR プレビュー (= fork や任意ブランチから走り得る) でも本番デプロイ権限を持つ token が露出する。**Environment secret として環境ごとに分け**、production token は production Environment (承認ゲート配下) に置く。
+>
+> deploy job はすべて `environment:` を宣言しているので、**Environment secret は同名の repo secret を自動的に上書き**する。ワークフロー側 (`${{ secrets.CLOUDFLARE_API_TOKEN }}`) は変更不要。
 
 ### GitHub Environments の作成
 
 Settings → Environments → **New environment**:
 
-#### Environment `staging` (承認不要、develop push で自動デプロイ)
+#### Environment `staging` (承認不要、develop push で自動デプロイ。preview もこの環境を使う)
 - Secrets (Add secret):
 
   | Secret | 値 |
   |---|---|
+  | `CLOUDFLARE_API_TOKEN` | **staging/preview 専用 token**。Pages:Edit + 対象 staging Worker への権限に絞る (本番 Worker 編集権限は付けない) |
   | `VITE_API_URL` | staging Worker の URL (`https://typedcode-api-staging.<your-subdomain>.workers.dev`) |
   | `VITE_TURNSTILE_SITE_KEY` | staging 用 Turnstile widget の Site Key |
 
@@ -266,11 +270,13 @@ Settings → Environments → **New environment**:
 
   | Secret | 値 |
   |---|---|
+  | `CLOUDFLARE_API_TOKEN` | **本番専用 token**。承認ゲート配下なので Approve を経ないと使われない |
   | `VITE_API_URL` | 本番 Worker の URL |
   | `VITE_TURNSTILE_SITE_KEY` | 本番 Turnstile Site Key |
 
 - **Deployment protection rules** → **Required reviewers** を ON にして自分 (またはチーム) を 1 名以上追加
   → これで `main` push 時に Actions タブで Approve を押すまで本番デプロイが保留される
+  → 本番 `CLOUDFLARE_API_TOKEN` もこのゲートの内側にあるため、承認なしには使われない
 
 ## M3. Cloudflare 側の準備
 

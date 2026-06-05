@@ -51,10 +51,16 @@ describe('CORS allowed-origin policy', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
   });
 
-  it('falls back to reflecting the origin when ALLOWED_ORIGINS is unset (backward compat)', async () => {
+  it('fail-closed: rejects any origin when ALLOWED_ORIGINS is unset in a non-dev environment', async () => {
     const env = baseEnv({ ALLOWED_ORIGINS: undefined });
     const res = await worker.fetch(preflight('https://anything.example.com'), env);
-    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://anything.example.com');
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
+
+  it('development still allows localhost even when ALLOWED_ORIGINS is unset', async () => {
+    const env = baseEnv({ ENVIRONMENT: 'development', ALLOWED_ORIGINS: undefined });
+    const res = await worker.fetch(preflight('http://localhost:5173'), env);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
   });
 
   it('never emits a wildcard "*" Access-Control-Allow-Origin', async () => {

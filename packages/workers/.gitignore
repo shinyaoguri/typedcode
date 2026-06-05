@@ -1,6 +1,8 @@
 # Cloudflare Workers
 .wrangler/
 .dev.vars
+# wrangler types で生成 (cf-typegen)。手書き Env と同期確認用、commit はしない
+worker-configuration.d.ts
 
 # Dependencies
 node_modules/
