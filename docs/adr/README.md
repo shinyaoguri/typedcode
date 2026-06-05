@@ -36,6 +36,7 @@
 | [0003](0003-idempotent-signing-retry.md) | Accepted | 署名 API は内容ベースの冪等性で再送を吸収する |
 | [0004](0004-verifier-checkpoint-stance.md) | Accepted | 検証側は未署名 cp の sampling を成功条件にしない |
 | [0005](0005-input-type-policy.md) | Accepted | 許可/禁止 InputType の方針 |
+| [0006](0006-exam-mode-sealed-problem-binding.md) | Proposed | 試験モードは封印問題パッケージで proof を試験にバインドする |
 
 ## 参考
 
