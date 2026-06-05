@@ -2,6 +2,13 @@
 
 <img align="right" src="icon.png" alt="TypedCode Logo" height="150">
 
+[![CI](https://img.shields.io/github/actions/workflow/status/shinyaoguri/typedcode/deploy.yml?branch=develop&label=CI)](https://github.com/shinyaoguri/typedcode/actions/workflows/deploy.yml)
+[![Live](https://img.shields.io/website?url=https%3A%2F%2Ftypedcode.dev&label=typedcode.dev)](https://typedcode.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=white)
+![Node](https://img.shields.io/badge/Node-%E2%89%A524-339933?logo=node.js&logoColor=white)
+
 > **🚧 Work in Progress**
 >
 > このプロジェクトは活発に開発中です。破壊的変更・バグ・未完成の機能があり得ます。問題や提案があれば [Issue](https://github.com/shinyaoguri/typedcode/issues) でお知らせください。
