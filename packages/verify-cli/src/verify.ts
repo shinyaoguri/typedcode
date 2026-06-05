@@ -5,10 +5,12 @@
 
 import {
   verifyProofFile,
+  runAnalysis,
   type ProofFile,
   type VerificationProgressCallback,
   type VerificationMode,
   type FullVerificationResult,
+  type AnalysisReport,
 } from '@typedcode/shared';
 import { ProgressBar } from './progress.js';
 
@@ -31,6 +33,8 @@ export interface CLIVerificationResult {
   mode: VerificationMode;
   poswSkipped: boolean;
   signedCheckpoints: FullVerificationResult['signedCheckpoints'];
+  /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
+  analysis: AnalysisReport;
 }
 
 export async function verifyProof(
@@ -54,6 +58,10 @@ export async function verifyProof(
   const result = await verifyProofFile(proof, onProgress, { mode });
 
   progressBar.complete();
+
+  // 分析層 (ADR-0009): 検証と直交する post-hoc 分析。既定の分析器は方向性を示す
+  // プレースホルダのみ。advisory であって判定ではない (verifyProofFile の valid とは別軸)。
+  const analysis = await runAnalysis({ proof, verification: result });
 
   // Calculate statistics
   const pasteEvents = events.filter((e) => e.inputType === 'insertFromPaste').length;
@@ -80,5 +88,6 @@ export async function verifyProof(
     mode,
     poswSkipped: result.poswSkipped ?? false,
     signedCheckpoints: result.signedCheckpoints,
+    analysis,
   };
 }

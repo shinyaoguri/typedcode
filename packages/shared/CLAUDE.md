@@ -36,6 +36,7 @@
 | `attestation.ts` | 人間認証クライアント |
 | `fileProcessing/` | ZIP / JSON 解析 |
 | `types.ts` (実体は `types/`) | 全公開型 |
+| `analysis/` | 分析層フレームワーク (ADR-0009)。`runAnalysis` + 差し替え可能な `Analyzer`。検証と**直交**する advisory のみ。器のみで中身はプレースホルダ |
 
 ## 型定義の運用
 

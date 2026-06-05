@@ -18,7 +18,11 @@ function c(color: keyof typeof COLORS, text: string): string {
   return useColors ? `${COLORS[color]}${text}${COLORS.reset}` : text;
 }
 
-import type { VerificationMode, SignedCheckpointsVerificationResult } from '@typedcode/shared';
+import type {
+  VerificationMode,
+  SignedCheckpointsVerificationResult,
+  AnalysisReport,
+} from '@typedcode/shared';
 
 export interface VerificationOutput {
   valid: boolean;
@@ -36,6 +40,8 @@ export interface VerificationOutput {
   mode?: VerificationMode;
   poswSkipped?: boolean;
   signedCheckpoints?: SignedCheckpointsVerificationResult;
+  /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
+  analysis?: AnalysisReport;
 }
 
 export function formatResult(result: VerificationOutput): string {
@@ -107,6 +113,29 @@ export function formatResult(result: VerificationOutput): string {
       }
     } else {
       lines.push(`Anchoring:   ${c('red', 'FAILED')} ${sc.reason ?? ''}`);
+    }
+  }
+
+  // 分析層 (ADR-0009): 検証とは別軸の advisory。判定ではないことを明示する。
+  const analysis = result.analysis;
+  if (analysis) {
+    lines.push('');
+    lines.push(c('cyan', '--- Analysis (advisory) ---'));
+    lines.push(c('dim', 'Heuristic, not a verdict — for human review only.'));
+    if (analysis.signals.length === 0) {
+      lines.push('No analysis signals.');
+    } else {
+      const pct = (analysis.reviewPriority * 100).toFixed(0);
+      lines.push(`Review priority: ${pct}%`);
+      for (const s of analysis.signals) {
+        const tag =
+          s.severity === 'review'
+            ? c('yellow', 'REVIEW')
+            : s.severity === 'notice'
+              ? c('yellow', 'NOTICE')
+              : c('dim', 'INFO');
+        lines.push(`  [${tag}] ${s.dimension}: ${s.summary}`);
+      }
     }
   }
 
