@@ -503,9 +503,15 @@ export const ja: TranslationKeys = {
     clearing: 'データをクリア中...',
   },
 
-  // 試験モード (ADR-0006)
+  // 試験モード (ADR-0006 / ADR-0008)
   exam: {
     title: '試験モード',
     problemPlaceholder: '試験モードです。問題はこの欄に表示されます（問題の配布は今後実装予定）。',
+    fullscreenWarning: '⚠ フルスクリーン外で受験中です。記録は継続されますが、この状態は試験ログに残ります。',
+    enterFullscreen: 'フルスクリーンで受験',
+    fsEntered: 'フルスクリーン開始',
+    fsExited: 'フルスクリーン解除',
+    fsDenied: 'フルスクリーン要求が拒否されました',
+    fsUnavailable: 'フルスクリーン非対応',
   },
 };

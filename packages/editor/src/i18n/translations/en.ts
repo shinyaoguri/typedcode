@@ -503,9 +503,15 @@ export const en: TranslationKeys = {
     clearing: 'Clearing data...',
   },
 
-  // Exam mode (ADR-0006)
+  // Exam mode (ADR-0006 / ADR-0008)
   exam: {
     title: 'Exam Mode',
     problemPlaceholder: 'Exam mode. The problem will appear in this panel (problem distribution coming later).',
+    fullscreenWarning: '⚠ You are outside fullscreen. Recording continues, but this state is logged in your exam record.',
+    enterFullscreen: 'Enter fullscreen',
+    fsEntered: 'Entered fullscreen',
+    fsExited: 'Exited fullscreen',
+    fsDenied: 'Fullscreen request denied',
+    fsUnavailable: 'Fullscreen unavailable',
   },
 };

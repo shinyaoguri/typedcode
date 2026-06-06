@@ -52,3 +52,40 @@ body.exam-mode .add-tab-btn,
 body.exam-mode .tab-close-btn {
   display: none !important;
 }
+
+/* フルスクリーン警告バナー (ADR-0008) — 非ブロッキングの常時帯。
+   非フルスクリーン時のみ .visible が付く。 */
+#fullscreen-warning-banner {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  flex: 0 0 auto;
+  background: #6b4a00;
+  color: #ffe8a3;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+#fullscreen-warning-banner.visible {
+  display: flex;
+}
+
+.fullscreen-warning-text {
+  flex: 1 1 auto;
+}
+
+.fullscreen-warning-btn {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  background: #ffce54;
+  color: #3a2a00;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fullscreen-warning-btn:hover {
+  background: #ffd874;
+}

@@ -33,7 +33,8 @@ export type EventType =
   | 'sessionResumed' // セッション再開（リロードまたはIndexedDBからの復旧）
   | 'copyOperation' // コピー操作（監査用）
   | 'screenShareOptOut' // 画面共有オプトアウト
-  | 'environmentProbe'; // 環境/自動化プローブ（起動時ワンショット, ADR-0007）
+  | 'environmentProbe' // 環境/自動化プローブ（起動時ワンショット, ADR-0007）
+  | 'fullscreenChange'; // フルスクリーン状態変化（試験モード, ADR-0008）
 
 /** 入力タイプ */
 export type InputType =
@@ -142,6 +143,24 @@ export interface EnvironmentProbeData {
   webdriver: boolean | null;
   /** 検出した自動化由来のグローバル名（cdc_*, __playwright 等）。無ければ空配列。 */
   automationGlobals: string[];
+}
+
+/**
+ * フルスクリーン状態変化データ（試験モード, ADR-0008）。
+ *
+ * exam モードは fullscreen を要求するが強制しない (非フルスクリーンでも使える)。
+ * grant/deny・enter/exit・unavailable を本イベントで全部表現する。非フルスクリーン
+ * 滞在時間などは連続イベントのタイムスタンプ差で派生計算する (本体には持たない)。
+ */
+export interface FullscreenChangeData {
+  /** 遷移後の現在状態 (document.fullscreenElement !== null)。 */
+  fullscreen: boolean;
+  /** Fullscreen API が利用可能か (document.fullscreenEnabled)。graceful absence の事実記録。 */
+  available: boolean;
+  /** きっかけ: initial=開始時プローブ / request=requestFullscreen()結果 / change=自発遷移(Esc等)。 */
+  reason: 'initial' | 'request' | 'change';
+  /** reason==='request' のとき grant/deny。それ以外は null。 */
+  requestGranted: boolean | null;
 }
 
 /** セッション再開データ */

@@ -92,13 +92,13 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
 
 ### 4.1. イベント (Event) の収集
 
-エディタ上の操作はすべて「イベント」として記録される。26 種類のイベントタイプがある:
+エディタ上の操作はすべて「イベント」として記録される。27 種類のイベントタイプがある:
 
 **カテゴリ別**:
 - **コンテンツ変更**: `contentChange`, `contentSnapshot`, `externalInput`, `templateInjection`
 - **カーソル/選択**: `cursorPositionChange`, `selectionChange`
 - **キー入力**: `keyDown`, `keyUp`, `mousePositionChange`
-- **ウィンドウ**: `focusChange`, `visibilityChange`, `windowResize`
+- **ウィンドウ**: `focusChange`, `visibilityChange`, `windowResize`, `fullscreenChange` (試験モードのフルスクリーン状態。ADR-0008)
 - **システム**: `editorInitialized`, `networkStatusChange`
 - **環境/自動化**: `environmentProbe` (起動時ワンショット。`navigator.webdriver` と自動化グローバル痕跡。ADR-0007 / ADR-0009 の automation 分析器が消費)
 - **認証**: `humanAttestation`, `preExportAttestation`, `termsAccepted`

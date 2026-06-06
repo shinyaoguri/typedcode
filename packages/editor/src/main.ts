@@ -96,6 +96,7 @@ import { TabUIController } from './ui/tabs/TabUIController.js';
 import { LogViewerPanel } from './ui/components/LogViewerPanel.js';
 import { BrowserPreviewPanel } from './ui/components/BrowserPreviewPanel.js';
 import { ProblemPanel } from './ui/components/ProblemPanel.js';
+import { FullscreenTracker } from './tracking/FullscreenTracker.js';
 import { EventRecorder, SessionContentRegistry } from './core/index.js';
 import type { AppContext } from './core/AppContext.js';
 import { t, getI18n, initDOMi18n } from './i18n/index.js';
@@ -243,6 +244,7 @@ const ctx: AppContext = {
   terminalPanel: new TerminalPanel(),
   browserPreviewPanel: new BrowserPreviewPanel(),
   problemPanel: new ProblemPanel(),
+  fullscreenTracker: new FullscreenTracker(),
 
   // Flags
   skipBeforeUnload: false,
@@ -1150,6 +1152,15 @@ async function initializeApp(): Promise<void> {
   // Phase 6: LogViewerとEventRecorderの初期化
   initializeLogViewer(ctx);
   initializeEventRecorder();
+
+  // 試験モード: フルスクリーン追跡 + 警告バナー (ADR-0008)。eventRecorder 準備後に配線する。
+  // 警告バナーの「フルスクリーンで受験」ボタンが開始ジェスチャ (requestFullscreen は要 user gesture)。
+  if (ctx.examMode) {
+    ctx.fullscreenTracker.setRecordCallback((event) => {
+      void ctx.eventRecorder?.recordToAllTabs(event);
+    });
+    ctx.fullscreenTracker.initialize();
+  }
 
   // Phase 7: ターミナルとコード実行の初期化
   initializeTerminal();

@@ -529,9 +529,15 @@ export interface TranslationKeys {
     clearing: string;
   };
 
-  // Exam mode (ADR-0006)
+  // Exam mode (ADR-0006 / ADR-0008)
   exam: {
     title: string;
     problemPlaceholder: string;
+    fullscreenWarning: string;
+    enterFullscreen: string;
+    fsEntered: string;
+    fsExited: string;
+    fsDenied: string;
+    fsUnavailable: string;
   };
 }
