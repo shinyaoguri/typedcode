@@ -17,6 +17,7 @@ import type {
   NetworkStatusData,
   SessionResumedData,
   EnvironmentProbeData,
+  FullscreenChangeData,
 } from './events.js';
 import type {
   ScreenshotCaptureData,
@@ -48,7 +49,7 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -68,7 +69,7 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;

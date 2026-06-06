@@ -21,6 +21,7 @@ export type {
   NetworkStatusData,
   SessionResumedData,
   EnvironmentProbeData,
+  FullscreenChangeData,
   KeystrokeDynamicsData,
   DetectedEventType,
   DetectedEventData,

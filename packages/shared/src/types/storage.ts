@@ -16,6 +16,7 @@ import type {
   NetworkStatusData,
   SessionResumedData,
   EnvironmentProbeData,
+  FullscreenChangeData,
 } from './events.js';
 import type {
   ScreenshotCaptureData,
@@ -53,6 +54,7 @@ export type PendingEventDataType =
   | ScreenShareOptOutData
   | TemplateInjectionEventData
   | EnvironmentProbeData
+  | FullscreenChangeData
   | null;
 
 // ============================================================================

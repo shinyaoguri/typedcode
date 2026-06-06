@@ -44,6 +44,7 @@ export const EVENT_CATEGORY_MAP: Record<EventType, EventCategory> = {
   focusChange: 'window',
   visibilityChange: 'window',
   windowResize: 'window',
+  fullscreenChange: 'window',
   // System
   editorInitialized: 'system',
   networkStatusChange: 'system',
@@ -90,7 +91,7 @@ export const EVENT_CATEGORIES: CategoryInfo[] = [
     id: 'window',
     labelKey: 'charts.categories.window',
     icon: 'fa-window-maximize',
-    events: ['focusChange', 'visibilityChange', 'windowResize'],
+    events: ['focusChange', 'visibilityChange', 'windowResize', 'fullscreenChange'],
   },
   {
     id: 'system',

@@ -36,6 +36,7 @@ import type { MainMenuDropdown } from '../ui/components/MainMenuDropdown.js';
 import type { TerminalPanel } from '../ui/components/TerminalPanel.js';
 import type { BrowserPreviewPanel } from '../ui/components/BrowserPreviewPanel.js';
 import type { ProblemPanel } from '../ui/components/ProblemPanel.js';
+import type { FullscreenTracker } from '../tracking/FullscreenTracker.js';
 import type { WelcomeScreen } from '../ui/components/WelcomeScreen.js';
 import type { TitlebarClock } from '../ui/components/TitlebarClock.js';
 
@@ -99,6 +100,8 @@ export interface AppContext {
   browserPreviewPanel: BrowserPreviewPanel;
   /** 試験モードの問題表示パネル (ADR-0006 最小骨組み・スタブ) */
   problemPanel: ProblemPanel;
+  /** 試験モードのフルスクリーン追跡・警告バナー (ADR-0008) */
+  fullscreenTracker: FullscreenTracker;
 
   // Flags
   skipBeforeUnload: boolean;
