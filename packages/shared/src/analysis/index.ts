@@ -19,5 +19,7 @@ export { runAnalysis } from './orchestrator.js';
 export {
   defaultAnalyzers,
   automationAnalyzer,
+  transcriptionTopologyAnalyzer,
+  focusBurstAnalyzer,
   pureTypingAnalyzer,
 } from './analyzers/index.js';
