@@ -32,7 +32,8 @@ export type EventType =
   | 'templateInjection' // テンプレートコンテンツ注入
   | 'sessionResumed' // セッション再開（リロードまたはIndexedDBからの復旧）
   | 'copyOperation' // コピー操作（監査用）
-  | 'screenShareOptOut'; // 画面共有オプトアウト
+  | 'screenShareOptOut' // 画面共有オプトアウト
+  | 'environmentProbe'; // 環境/自動化プローブ（起動時ワンショット, ADR-0007）
 
 /** 入力タイプ */
 export type InputType =
@@ -127,6 +128,20 @@ export interface WindowSizeData {
 /** ネットワーク状態データ */
 export interface NetworkStatusData {
   online: boolean;       // navigator.onLine
+}
+
+/**
+ * 環境/自動化プローブデータ（起動時ワンショット, ADR-0007 Tier 0 B 群の自動化 tell）。
+ *
+ * fingerprint が既に持つ環境値 (WebGL renderer / hardwareConcurrency 等) は重複させず、
+ * fingerprint に無い自動化特化のシグナルだけを捕捉する。分析器 (automation) が本イベントと
+ * fingerprint の両方を読む。
+ */
+export interface EnvironmentProbeData {
+  /** navigator.webdriver（自動化ブラウザの強いシグナル）。取得不可は null。 */
+  webdriver: boolean | null;
+  /** 検出した自動化由来のグローバル名（cdc_*, __playwright 等）。無ければ空配列。 */
+  automationGlobals: string[];
 }
 
 /** セッション再開データ */

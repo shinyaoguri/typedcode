@@ -48,6 +48,7 @@ export const EVENT_CATEGORY_MAP: Record<EventType, EventCategory> = {
   editorInitialized: 'system',
   networkStatusChange: 'system',
   sessionResumed: 'system',
+  environmentProbe: 'system',
   // Auth
   humanAttestation: 'auth',
   preExportAttestation: 'auth',
@@ -95,7 +96,7 @@ export const EVENT_CATEGORIES: CategoryInfo[] = [
     id: 'system',
     labelKey: 'charts.categories.system',
     icon: 'fa-cog',
-    events: ['editorInitialized', 'networkStatusChange', 'sessionResumed'],
+    events: ['editorInitialized', 'networkStatusChange', 'sessionResumed', 'environmentProbe'],
   },
   {
     id: 'auth',

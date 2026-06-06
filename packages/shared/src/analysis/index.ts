@@ -18,6 +18,6 @@ export type {
 export { runAnalysis } from './orchestrator.js';
 export {
   defaultAnalyzers,
-  largestGapAnalyzer,
+  automationAnalyzer,
   pureTypingAnalyzer,
 } from './analyzers/index.js';

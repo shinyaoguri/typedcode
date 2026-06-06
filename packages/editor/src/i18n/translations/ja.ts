@@ -384,6 +384,7 @@ export const ja: TranslationKeys = {
     networkOnline: 'ネットワーク状態変更: オンライン',
     networkOffline: 'ネットワーク状態変更: オフライン',
     initialNetworkState: '初期ネットワーク状態: ${state}',
+    environmentProbe: '環境プローブ (webdriver: ${webdriver})',
     online: 'オンライン',
     offline: 'オフライン',
     mousePosition: 'マウス位置: (${x}, ${y})',
