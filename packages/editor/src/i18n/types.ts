@@ -539,5 +539,8 @@ export interface TranslationKeys {
     fsExited: string;
     fsDenied: string;
     fsUnavailable: string;
+    submitNote: string;
+    downloadButton: string;
+    toggleProblem: string;
   };
 }
