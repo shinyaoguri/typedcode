@@ -400,6 +400,7 @@ export const ja: TranslationKeys = {
     screenShareResumed: '画面共有を再開しました',
     screenShareOptOut: '画面共有なしモードを選択しました',
     sessionResumed: 'セッションを再開しました（リロード後）',
+    examOpened: '封印問題を開封しました（試験開始）',
   },
 
   operations: {
@@ -516,5 +517,21 @@ export const ja: TranslationKeys = {
     submitNote: '解答が終わったら ① 下のボタンでログ（ZIP）をダウンロード → ② Moodle に提出してください。',
     downloadButton: 'ログをダウンロード',
     toggleProblem: '問題パネルの表示切替',
+    gate: {
+      title: '試験を開始',
+      description: '配布された問題パッケージ（.tcexam）を読み込み、監督が知らせる監督コードを入力してください。',
+      packageLabel: '問題パッケージ（.tcexam）',
+      dropHint: 'ファイルを選択、またはここにドロップ',
+      codeLabel: '監督コード',
+      startButton: '開始',
+      unlocking: '解錠中…',
+      resetHint: '※ 試験モードの解除は URL の ?reset でのみ可能です。',
+      errorNoFile: '問題パッケージを選択してください。',
+      errorNoCode: '監督コードを入力してください。',
+      errorInvalidFile: '問題パッケージの形式が不正です（.tcexam を選択してください）。',
+      errorUntrusted: 'この問題パッケージは信頼できる出題者の署名で検証できませんでした。',
+      errorWrongCode: '監督コードが違います。もう一度入力してください。',
+      errorUnlockFailed: '解錠に失敗しました。パッケージとコードを確認してください。',
+    },
   },
 };

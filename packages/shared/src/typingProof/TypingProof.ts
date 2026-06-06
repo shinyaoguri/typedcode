@@ -797,6 +797,7 @@ export class TypingProof {
       startTime: this.startTime,
       // pendingEventsは復元時に使用しないため保存しない
       checkpoints: [...this.checkpointManager.getCheckpoints()],
+      examContext: this.examContext,
     };
   }
 

@@ -96,6 +96,8 @@ import { TabUIController } from './ui/tabs/TabUIController.js';
 import { LogViewerPanel } from './ui/components/LogViewerPanel.js';
 import { BrowserPreviewPanel } from './ui/components/BrowserPreviewPanel.js';
 import { ProblemPanel } from './ui/components/ProblemPanel.js';
+import { ExamStartGate } from './ui/components/ExamStartGate.js';
+import { ExamPackageStore } from './services/ExamPackageStore.js';
 import { FullscreenTracker } from './tracking/FullscreenTracker.js';
 import { EventRecorder, SessionContentRegistry } from './core/index.js';
 import type { AppContext } from './core/AppContext.js';
@@ -763,6 +765,48 @@ function recordTermsAcceptance(): void {
 }
 
 // ========================================
+// 試験モード (ADR-0006) の解錠フロー
+// ========================================
+
+/** 言語 ID → ファイル拡張子 (exam タブのファイル名生成用) */
+function examFileExtension(language: string): string {
+  const map: Record<string, string> = {
+    c: 'c', cpp: 'cpp', python: 'py', javascript: 'js', typescript: 'ts',
+  };
+  return map[language] ?? language;
+}
+
+/**
+ * 初回入場: ブロック型ゲートで封印問題を開封し、exam タブ (examContext で root 束縛) を生成、
+ * 問題本文を ProblemPanel に表示し、リロード再表示用に ExamPackageStore へ保存する。
+ */
+async function runExamUnlock(appCtx: AppContext): Promise<void> {
+  const gate = new ExamStartGate();
+  const result = await gate.prompt(); // 解錠まで block (sticky, キャンセル不可)
+
+  const language = result.manifest.allowed.languages[0] ?? 'c';
+  const filename = `answer.${examFileExtension(language)}`;
+  await appCtx.tabManager?.createTab(filename, language, '', { examContext: result.examContext });
+
+  appCtx.problemPanel.setProblemText(result.plaintext);
+  if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
+
+  ExamPackageStore.save(result.examContext.problemId, {
+    manifest: result.manifest,
+    plaintext: result.plaintext,
+  });
+}
+
+/** リロード時: 復元タブの examContext に対応する問題本文を ExamPackageStore から再表示する。 */
+function restoreExamProblemDisplay(appCtx: AppContext): void {
+  const problemId = appCtx.tabManager?.getActiveTab()?.typingProof.examContext?.problemId;
+  const pkg = problemId ? ExamPackageStore.get(problemId) : ExamPackageStore.getAny();
+  if (!pkg) return;
+  appCtx.problemPanel.setProblemText(pkg.plaintext);
+  if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
+}
+
+// ========================================
 // メイン初期化関数
 // ========================================
 
@@ -1084,10 +1128,15 @@ async function initializeApp(): Promise<void> {
 
   hideInitOverlay();
 
-  // 試験モード: タブが無ければ welcome の代わりに問題タブを 1 つ生成する (ADR-0010, 1問1タブ)。
-  // リロード時は復元済みタブがあるためここは走らない。問題ソースの実体は full ADR-0006 で。
-  if (ctx.examMode && !ctx.tabManager?.hasAnyTabs()) {
-    await ctx.tabManager?.createTab('answer.c', 'c', '');
+  // 試験モード (ADR-0006): 初回入場 (タブ無し) は解錠ゲートで封印問題を開封してから
+  // exam タブを 1 つ生成する (1問1タブ, ADR-0010)。genesis = 監督コード入力の瞬間。
+  // リロード時は復元済みタブ (examContext 付き) があるので、問題本文だけ再表示する。
+  if (ctx.examMode) {
+    if (!ctx.tabManager?.hasAnyTabs()) {
+      await runExamUnlock(ctx);
+    } else {
+      restoreExamProblemDisplay(ctx);
+    }
   }
 
   // タブがない場合はウェルカム画面を表示、ある場合は通常のエディタ表示

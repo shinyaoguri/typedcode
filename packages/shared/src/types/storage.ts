@@ -186,6 +186,8 @@ export interface StoredTabData {
   verificationDetails?: VerificationDetails;
   /** チェックポイントデータ（サンプリング検証用） */
   checkpoints?: CheckpointData[];
+  /** 試験モード (ADR-0006) の束縛コンテキスト。exam モードのみ */
+  examContext?: ExamSessionContext | null;
 }
 
 /** イベントデータ（IndexedDB格納用） */
@@ -240,6 +242,8 @@ export interface LightweightProofState {
   pendingEvents?: PendingEventData[];
   /** チェックポイントデータ（サンプリング検証用） */
   checkpoints?: CheckpointData[];
+  /** 試験モード (ADR-0006) の束縛コンテキスト。exam モードのみ */
+  examContext?: ExamSessionContext | null;
 }
 
 /** 軽量タブ状態（sessionStorage用） */

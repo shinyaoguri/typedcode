@@ -400,6 +400,7 @@ export const en: TranslationKeys = {
     screenShareResumed: 'Screen sharing resumed',
     screenShareOptOut: 'Screen sharing opt-out selected',
     sessionResumed: 'Session resumed (after reload)',
+    examOpened: 'Sealed problem opened (exam started)',
   },
 
   operations: {
@@ -516,5 +517,21 @@ export const en: TranslationKeys = {
     submitNote: 'When you finish: 1) download the log (ZIP) with the button below, then 2) submit it in Moodle.',
     downloadButton: 'Download log',
     toggleProblem: 'Toggle Problem Panel',
+    gate: {
+      title: 'Start Exam',
+      description: 'Load the distributed problem package (.tcexam) and enter the proctor code announced by your invigilator.',
+      packageLabel: 'Problem package (.tcexam)',
+      dropHint: 'Choose a file or drop it here',
+      codeLabel: 'Proctor code',
+      startButton: 'Start',
+      unlocking: 'Unlocking…',
+      resetHint: 'Note: exam mode can only be cleared via ?reset in the URL.',
+      errorNoFile: 'Please select a problem package.',
+      errorNoCode: 'Please enter the proctor code.',
+      errorInvalidFile: 'Invalid package format (please select a .tcexam file).',
+      errorUntrusted: 'This problem package could not be verified against a trusted exam authority signature.',
+      errorWrongCode: 'Wrong proctor code. Please try again.',
+      errorUnlockFailed: 'Unlock failed. Please check the package and the code.',
+    },
   },
 };

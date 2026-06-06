@@ -22,6 +22,7 @@ import type {
   VerificationState,
   VerificationDetails,
   StoredTabData,
+  ExamSessionContext,
 } from '@typedcode/shared';
 import {
   isTurnstileConfigured,
@@ -84,6 +85,13 @@ export type OnSyncStatusChangeCallback = (status: SyncStatus) => void;
 export interface CreateTabOptions {
   /** sessionStorageからの復元時はtrue（認証不要） */
   skipAttestation?: boolean;
+  /**
+   * 試験モード (ADR-0006) の束縛コンテキスト。指定されると:
+   * - チェーン根を initialize ではなく initializeExam で確定 (genesis = 監督コード入力)
+   * - #0 humanAttestation を best-effort で記録した直後に #1 examOpened を記録
+   * - exam ロックを跨いで作るのは解錠フロー (setExamLock 前) のみ
+   */
+  examContext?: ExamSessionContext;
 }
 
 /** 言語IDから拡張子を取得 */
@@ -267,9 +275,20 @@ export class TabManager {
     const createdAt = Date.now();
 
     // TypingProofインスタンスを作成（Workerをeditorパッケージから注入）
+    // 試験モード (ADR-0006): examContext があれば root を packageHash + startToken に束縛する
+    // (genesis = 監督コード入力)。casual は fingerprint + nonce のみ。
     const typingProof = new TypingProof();
     const poswWorker = createPoswWorker();
-    await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
+    if (options?.examContext) {
+      await typingProof.initializeExam(
+        this.fingerprint!,
+        this.fingerprintComponents!,
+        options.examContext,
+        poswWorker
+      );
+    } else {
+      await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
+    }
 
     // Pending Event変更コールバックを設定（即時保存用）
     typingProof.setOnPendingEventChange(() => {
@@ -300,6 +319,23 @@ export class TabManager {
       this.onVerificationCallback?.(uiResult.result);
 
       // 注意: 認証失敗でもタブ作成は続行（ブロックしない）
+    } else if (options?.examContext && !options?.skipAttestation) {
+      // 試験モードで Turnstile 未設定: ネット非依存の合成 best-effort attestation を #0 に記録し、
+      // 「#0 = humanAttestation」不変条件を保つ (100名・不安定網で開始を止めない＝ADR 絶対条件)。
+      await typingProof.recordHumanAttestation(this.bestEffortExamAttestation());
+    }
+
+    // 試験モード: 封印問題の開封を #1 examOpened として記録 (#0 humanAttestation の直後)。
+    if (options?.examContext) {
+      const ctx = options.examContext;
+      await typingProof.recordExamOpened({
+        examId: ctx.examId,
+        problemId: ctx.problemId,
+        variant: ctx.variant,
+        packageHash: ctx.packageHash,
+        problemContentHash: ctx.problemContentHash,
+        openedAt: new Date().toISOString(),
+      });
     }
 
     // Monacoモデルを作成
@@ -327,6 +363,23 @@ export class TabManager {
 
     this.saveToStorage();
     return tab;
+  }
+
+  /**
+   * 試験モードで Turnstile が無いときの合成 best-effort attestation (ADR-0006)。
+   * ネット非依存で #0 humanAttestation を必ず置けるようにし、開始をブロックしない。
+   * verified=false / signature='unsigned' で「人間性は未検証」を正直に表す。
+   */
+  private bestEffortExamAttestation(): HumanAttestationEventData {
+    return {
+      verified: false,
+      score: 0,
+      action: 'exam_start',
+      timestamp: new Date().toISOString(),
+      hostname: window.location.hostname,
+      signature: 'unsigned',
+      success: false,
+    };
   }
 
   /**
@@ -864,6 +917,7 @@ export class TabManager {
         verificationState: tab.verificationState,
         verificationDetails: tab.verificationDetails,
         checkpoints: proofState.checkpoints,
+        examContext: proofState.examContext,
       };
       await this.sessionService.saveTab(tabData);
     }
@@ -1090,6 +1144,7 @@ export class TabManager {
         initialHashNonce: lightweightTab.proofState.initialHashNonce,
         startTime: lightweightTab.proofState.startTime,
         checkpoints: lightweightTab.proofState.checkpoints,
+        examContext: lightweightTab.proofState.examContext,
       };
 
       // 4. TypingProofを復元
@@ -1213,6 +1268,7 @@ export class TabManager {
             startTime: storedTab.startTime,
             pendingEvents: [], // IndexedDB復元時はpendingEventsなし
             checkpoints: storedTab.checkpoints,
+            examContext: storedTab.examContext,
           },
           this.fingerprint,
           this.fingerprintComponents,
