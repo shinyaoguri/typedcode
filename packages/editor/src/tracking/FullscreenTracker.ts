@@ -7,6 +7,11 @@
  *
  * requestFullscreen() はユーザー操作 (transient activation) を要するため、警告バナーの
  * 「フルスクリーンで受験」ボタンが開始ジェスチャを兼ねる (ADR-0008「開始ボタンに紐付け」)。
+ *
+ * macOS の注意: ネイティブ全画面 (緑ボタン / メニューバーの全画面解除) は HTML Fullscreen API の
+ * `fullscreenchange` を発火せず `document.fullscreenElement` が残留することがある。そのため
+ * (1) `(display-mode: fullscreen)` メディアクエリ (2) `resize` も併せて監視し、(3) 残留時は実寸で
+ * 全画面かを確認する、という多重検出で「全画面を抜けたのにバナーが出ない」を防ぐ。
  */
 
 import type { FullscreenChangeData, RecordEventInput } from '@typedcode/shared';
@@ -18,13 +23,16 @@ export class FullscreenTracker {
   private record: FullscreenRecordCallback | null = null;
   private banner: HTMLElement | null = null;
   private enterBtn: HTMLElement | null = null;
-  /** requestFullscreen() 起因の fullscreenchange を 'request' として区別するためのフラグ。 */
+  private displayModeMql: MediaQueryList | null = null;
+  /** requestFullscreen() 起因の遷移を 'request' として区別するためのフラグ。 */
   private pendingRequest = false;
+  /** 直近に確定した実効フルスクリーン状態 (二重記録の抑止に使う)。 */
+  private currentFs = false;
   private boundOnChange: () => void;
   private boundOnClick: () => void;
 
   constructor() {
-    this.boundOnChange = this.onFullscreenChange.bind(this);
+    this.boundOnChange = this.handleStateChange.bind(this);
     this.boundOnClick = () => {
       void this.requestFullscreen();
     };
@@ -39,71 +47,93 @@ export class FullscreenTracker {
     this.banner = document.getElementById('fullscreen-warning-banner');
     this.enterBtn = document.getElementById('enter-fullscreen-btn');
     this.enterBtn?.addEventListener('click', this.boundOnClick);
-    document.addEventListener('fullscreenchange', this.boundOnChange);
-    this.recordInitial();
-    this.updateBanner();
-  }
 
-  /** 開始時プローブ (現在状態と可用性を記録)。 */
-  recordInitial(): void {
-    this.emit('initial', null);
+    // (1) HTML Fullscreen API。(2) ネイティブ全画面も拾う表示モード変化。(3) 取りこぼし対策の resize。
+    document.addEventListener('fullscreenchange', this.boundOnChange);
+    this.displayModeMql = window.matchMedia('(display-mode: fullscreen)');
+    this.displayModeMql.addEventListener('change', this.boundOnChange);
+    window.addEventListener('resize', this.boundOnChange);
+
+    this.currentFs = this.isFullscreen();
+    this.emit('initial', null, this.currentFs);
+    this.updateBanner();
   }
 
   /** ユーザー操作からフルスクリーンを要求する (バナーのボタン)。 */
   async requestFullscreen(): Promise<void> {
     if (!this.isAvailable()) {
-      this.emit('request', false);
+      this.emit('request', false, false);
       return;
     }
     if (this.isFullscreen()) return;
     this.pendingRequest = true;
     try {
       await document.documentElement.requestFullscreen();
-      // 成功時は fullscreenchange が発火し、そこで reason='request' granted=true を記録する。
+      // 成功時は状態変化ハンドラ側で reason='request' granted=true を記録する。
     } catch {
       this.pendingRequest = false;
-      this.emit('request', false); // 拒否 / 失敗
+      this.emit('request', false, false); // 拒否 / 失敗
       this.updateBanner();
     }
   }
 
   dispose(): void {
     document.removeEventListener('fullscreenchange', this.boundOnChange);
+    this.displayModeMql?.removeEventListener('change', this.boundOnChange);
+    window.removeEventListener('resize', this.boundOnChange);
     this.enterBtn?.removeEventListener('click', this.boundOnClick);
-  }
-
-  private isFullscreen(): boolean {
-    return document.fullscreenElement !== null;
   }
 
   private isAvailable(): boolean {
     return document.fullscreenEnabled;
   }
 
-  private onFullscreenChange(): void {
-    if (this.pendingRequest) {
-      this.pendingRequest = false;
-      this.emit('request', this.isFullscreen());
-    } else {
-      this.emit('change', null);
+  /**
+   * 実効フルスクリーン判定。HTML API / 表示モード / 実寸を組み合わせ、macOS の
+   * `fullscreenElement` 残留にも耐える。
+   */
+  private isFullscreen(): boolean {
+    if (this.displayModeMql?.matches) return true;
+    if (document.fullscreenElement !== null) {
+      // fullscreenElement が残留しても、実寸が全画面でなければ「抜けた」とみなす。
+      return this.looksFullscreenBySize();
+    }
+    return false;
+  }
+
+  /** ウィンドウが画面全体を覆っているか (CSS px 同士の比較なので DPR の影響は受けない)。 */
+  private looksFullscreenBySize(): boolean {
+    return (
+      window.innerWidth >= screen.width - 2 && window.innerHeight >= screen.height - 2
+    );
+  }
+
+  private handleStateChange(): void {
+    const fs = this.isFullscreen();
+    if (fs !== this.currentFs) {
+      this.currentFs = fs;
+      if (this.pendingRequest) {
+        this.pendingRequest = false;
+        this.emit('request', fs, fs);
+      } else {
+        this.emit('change', null, fs);
+      }
     }
     this.updateBanner();
   }
 
   /** 非フルスクリーン中はバナーを表示、フルスクリーン中は隠す。 */
   private updateBanner(): void {
-    if (!this.banner) return;
-    if (this.isFullscreen()) {
-      this.banner.classList.remove('visible');
-    } else {
-      this.banner.classList.add('visible');
-    }
+    this.banner?.classList.toggle('visible', !this.currentFs);
   }
 
-  private emit(reason: FullscreenChangeData['reason'], requestGranted: boolean | null): void {
-    const denied = reason === 'request' && requestGranted === false;
+  private emit(
+    reason: FullscreenChangeData['reason'],
+    requestGranted: boolean | null,
+    fullscreen: boolean
+  ): void {
     const data: FullscreenChangeData = {
-      fullscreen: denied ? false : this.isFullscreen(),
+      fullscreen,
       available: this.isAvailable(),
       reason,
       requestGranted,
