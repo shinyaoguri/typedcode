@@ -28,8 +28,11 @@ import type {
   HumanAttestationEventData,
   TemplateInjectionEventData,
   PendingEventData,
+  ExamOpenedEventData,
+  ExamSessionContext,
 } from '../types.js';
 import { PROOF_FORMAT_VERSION } from '../version.js';
+import { buildExamProofBlock } from '../exam/examPackage.js';
 import { HashChainManager } from './HashChainManager.js';
 import { PoswManager } from './PoswManager.js';
 import { CheckpointManager } from './CheckpointManager.js';
@@ -47,6 +50,12 @@ export class TypingProof {
   initialHashNonce: string | null = null;
   startTime: number = performance.now();
   initialized: boolean = false;
+
+  /**
+   * 試験モード (ADR-0006) の束縛コンテキスト。`initializeExam` で確定し、
+   * `exportProof` で proof の `exam` ブロックを組み立てるのに使う。casual では null。
+   */
+  examContext: ExamSessionContext | null = null;
   private recordQueue: Promise<RecordEventResult> = Promise.resolve({ hash: '', index: -1 });
   private queuedEventCount: number = 0;
 
@@ -130,6 +139,39 @@ export class TypingProof {
   }
 
   /**
+   * 試験モード (ADR-0006) の初期化。casual の `initialize` と異なり、チェーン根を
+   *   SHA-256(fingerprintHash ‖ nonce ‖ packageHash ‖ startToken)
+   * で確定する。**genesis は監督コード入力の瞬間 (= T0)** なので、セッション初期化ではなく
+   * 復号が成立した時点でこれを呼ぶ。以降の #0 humanAttestation / #1 examOpened はこの root に連なる。
+   *
+   * @param examContext 復号で確定した束縛 (examId / problemId / variant / packageHash /
+   *   startToken<正準形> / problemContentHash)。`exportProof` で proof.exam を組み立てる。
+   */
+  async initializeExam(
+    fingerprintHash: string,
+    fingerprintComponents: FingerprintComponents,
+    examContext: ExamSessionContext,
+    externalWorker?: Worker
+  ): Promise<void> {
+    this.fingerprint = fingerprintHash;
+    this.fingerprintComponents = fingerprintComponents;
+    const initial = await this.hashChainManager.generateExamInitialHash(
+      fingerprintHash,
+      examContext.packageHash,
+      examContext.startToken
+    );
+    this.initialHashNonce = initial.nonce;
+    this.hashChainManager.setCurrentHash(initial.hash);
+    this.examContext = examContext;
+
+    this.poswManager.initWorker(externalWorker);
+
+    sharedDebugLog('[TypingProof] Initialized in exam mode (root bound to packageHash + startToken)');
+
+    this.initialized = true;
+  }
+
+  /**
    * 人間認証をevent #0として記録
    * reCAPTCHA attestationをハッシュチェーンの最初のイベントとして記録し、
    * 「人間がファイルを作り始めた」ことを証明する
@@ -145,6 +187,30 @@ export class TypingProof {
       type: 'humanAttestation',
       data: attestation,
       description: `Human verified (score: ${attestation.score.toFixed(2)}, action: ${attestation.action})`,
+    });
+  }
+
+  /**
+   * 封印問題パッケージの開封を `examOpened` イベントとして記録する (ADR-0006)。
+   * 監督コード入力で genesis を確定し #0 humanAttestation を記録した直後、**#1** として記録する。
+   *
+   * 権威ある束縛は root + proof.exam が担うため、event index が厳密に #1 でなくても束縛の
+   * 健全性は損なわれない (本イベントはタイムライン上の可読な監査印)。ただし #0 humanAttestation の
+   * 不在は根の信頼性に関わるため、その場合のみ throw する。
+   */
+  async recordExamOpened(data: ExamOpenedEventData): Promise<RecordEventResult> {
+    if (!this.hasHumanAttestation()) {
+      throw new Error('examOpened must follow #0 humanAttestation (none recorded yet)');
+    }
+    if (this.events.length !== 1) {
+      console.warn(
+        `[TypingProof] examOpened expected at #1 but recording at #${this.events.length} (binding still valid via root + proof.exam)`
+      );
+    }
+    return await this.recordEvent({
+      type: 'examOpened',
+      data,
+      description: `Exam opened: ${data.examId}/${data.problemId}`,
     });
   }
 
@@ -511,7 +577,7 @@ export class TypingProof {
       }
     }
 
-    return {
+    const exported: ExportedProof = {
       version: PROOF_FORMAT_VERSION,
       typingProofHash: typingProof.typingProofHash,
       typingProofData: typingProof.proofData,
@@ -527,6 +593,14 @@ export class TypingProof {
       },
       checkpoints: this.checkpointManager.getCheckpoints()
     };
+
+    // 試験モード (ADR-0006): 束縛ブロックを焼き込む。grader はこのブロック + 公開 package
+    // だけで self-contained に検証できる (startToken も同梱)。
+    if (this.examContext) {
+      exported.exam = buildExamProofBlock(this.examContext);
+    }
+
+    return exported;
   }
 
   /**
@@ -706,6 +780,7 @@ export class TypingProof {
       startTime: this.startTime,
       pendingEvents: [...this.pendingEvents],
       checkpoints: [...this.checkpointManager.getCheckpoints()],
+      examContext: this.examContext,
     };
   }
 
@@ -733,6 +808,7 @@ export class TypingProof {
     this.events = state.events;
     this.hashChainManager.setCurrentHash(state.currentHash);
     this.initialHashNonce = state.initialHashNonce ?? null;
+    this.examContext = state.examContext ?? null;
 
     // タイムスタンプの単調増加を保証するためにstartTimeを調整
     // 最後のイベントのタイムスタンプを取得し、次のイベントがそれより大きくなるようにする

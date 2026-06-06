@@ -25,6 +25,9 @@ const cryptoMock = {
     exportKey: nodeSubtle.exportKey.bind(nodeSubtle),
     sign: nodeSubtle.sign.bind(nodeSubtle),
     verify: nodeSubtle.verify.bind(nodeSubtle),
+    // AES-256-GCM (ADR-0006 試験パッケージの暗号/復号)
+    encrypt: nodeSubtle.encrypt.bind(nodeSubtle),
+    decrypt: nodeSubtle.decrypt.bind(nodeSubtle),
   },
   getRandomValues: <T extends ArrayBufferView>(array: T): T => {
     const bytes = nodeCrypto.randomBytes(array.byteLength);

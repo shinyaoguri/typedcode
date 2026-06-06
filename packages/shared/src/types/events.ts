@@ -34,7 +34,8 @@ export type EventType =
   | 'copyOperation' // コピー操作（監査用）
   | 'screenShareOptOut' // 画面共有オプトアウト
   | 'environmentProbe' // 環境/自動化プローブ（起動時ワンショット, ADR-0007）
-  | 'fullscreenChange'; // フルスクリーン状態変化（試験モード, ADR-0008）
+  | 'fullscreenChange' // フルスクリーン状態変化（試験モード, ADR-0008）
+  | 'examOpened'; // 封印問題パッケージの開封（試験モード, ADR-0006。#1 として記録）
 
 /** 入力タイプ */
 export type InputType =
@@ -161,6 +162,26 @@ export interface FullscreenChangeData {
   reason: 'initial' | 'request' | 'change';
   /** reason==='request' のとき grant/deny。それ以外は null。 */
   requestGranted: boolean | null;
+}
+
+/**
+ * 封印問題パッケージの開封データ（試験モード, ADR-0006 §3）。
+ *
+ * 監督コード入力 (= T0) で genesis を確定した直後、`humanAttestation` (#0) に続く
+ * **#1** として記録する、タイムライン上の可読な監査印。権威ある束縛は proof の root +
+ * `proof.exam` が担い、本イベントは「いつ・どの問題を開封したか」を人が読むための印。
+ */
+export interface ExamOpenedEventData {
+  examId: string;
+  problemId: string;
+  /** per-student variant。v1 運用は単一問題 (null) */
+  variant: string | null;
+  /** SHA-256(deterministicStringify(signing core)) */
+  packageHash: string;
+  /** 復号後**平文**問題の SHA-256 */
+  problemContentHash: string;
+  /** 開封 (= T0) の ISO 時刻 */
+  openedAt: string;
 }
 
 /** セッション再開データ */

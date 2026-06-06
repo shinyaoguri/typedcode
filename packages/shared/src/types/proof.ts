@@ -18,7 +18,9 @@ import type {
   SessionResumedData,
   EnvironmentProbeData,
   FullscreenChangeData,
+  ExamOpenedEventData,
 } from './events.js';
+import type { ExamProofBlock } from './exam.js';
 import type {
   ScreenshotCaptureData,
   ScreenShareStartData,
@@ -49,7 +51,7 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | ExamOpenedEventData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -69,7 +71,7 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | ExamOpenedEventData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;
@@ -189,4 +191,6 @@ export interface ExportedProof {
     isPureTyping: boolean;
   };
   checkpoints?: CheckpointData[];  // チェックポイント（v3.2.0以降）
+  /** 試験モード (ADR-0006) の束縛ブロック。exam モードで生成された proof のみ持つ */
+  exam?: ExamProofBlock;
 }

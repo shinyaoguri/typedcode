@@ -68,12 +68,52 @@ export type {
   CheckpointPublicKeyStatus,
 } from './checkpointKeys/index.js';
 
+// 試験モード (ADR-0006): 封印問題パッケージ + 監督コード束縛
+export {
+  EXAM_AUTHORITY_KEYS,
+  findExamAuthorityKey,
+} from './examAuthorityKeys/index.js';
+
+export type {
+  ExamAuthorityKey,
+  ExamAuthorityKeyStatus,
+} from './examAuthorityKeys/index.js';
+
+export {
+  canonicalizeStartToken,
+  examPackageSigningCore,
+  computeExamPackageHash,
+  computeProblemContentHash,
+  computeExamChainRoot,
+  deriveExamKey,
+  decryptExamPackage,
+  buildExamPackage,
+  verifyExamPackageSignature,
+  verifyExamBinding,
+  buildExamProofBlock,
+  DEFAULT_EXAM_KDF_PARAMS,
+} from './exam/index.js';
+
+export type {
+  ExamDecryptResult,
+  ExamPackageSigner,
+  ExamPackageBuildInput,
+  ExamPackageSignatureResult,
+  ExamTimeBox,
+  ExamBindingVerificationResult,
+  VerifyExamBindingOptions,
+  BuildExamProofBlockInput,
+} from './exam/index.js';
+
 // バージョン定数
 export {
   PROOF_FORMAT_VERSION,
   STORAGE_FORMAT_VERSION,
   POSW_ITERATIONS,
   SIGNED_CHECKPOINT_FORMAT_VERSION,
+  EXAM_PACKAGE_FORMAT_VERSION,
+  EXAM_PROOF_VERSION,
+  EXAM_ROOT_BINDING,
   MIN_SUPPORTED_VERSION,
   parseVersion,
   compareVersions,

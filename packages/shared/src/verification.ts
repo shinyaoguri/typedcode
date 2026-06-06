@@ -22,6 +22,7 @@ export {
 } from './utils/hashUtils.js';
 
 import { deterministicStringify, computeHash } from './utils/hashUtils.js';
+import { computeExamChainRoot } from './exam/examPackage.js';
 import { POSW_ITERATIONS } from './version.js';
 import {
   verifyProofSignedCheckpoints,
@@ -90,9 +91,13 @@ export type VerificationProgressCallback = (current: number, total: number) => v
 
 /**
  * Verify that the hash chain starts from the exported fingerprint and nonce.
+ *
+ * 試験モード (ADR-0006) の proof は `exam` ブロックを持ち、root 式が
+ *   SHA-256(fingerprintHash ‖ nonce ‖ packageHash ‖ startToken)
+ * に変わる。`proof.exam` の有無で root の期待値を分岐する (casual proof は従来式)。
  */
 export async function verifyInitialHashRoot(
-  proof: Pick<ExportedProof, 'typingProofData' | 'proof' | 'fingerprint'>
+  proof: Pick<ExportedProof, 'typingProofData' | 'proof' | 'fingerprint' | 'exam'>
 ): Promise<{ valid: boolean; reason?: string; computedInitialHash?: string; expectedInitialHash?: string }> {
   const fingerprintHash = proof.fingerprint?.hash;
   const fingerprintComponents = proof.fingerprint?.components;
@@ -125,11 +130,23 @@ export async function verifyInitialHashRoot(
     return { valid: false, reason: 'Initial event chain hash is missing' };
   }
 
-  const computedInitialHash = await computeHash(fingerprintHash + nonce);
+  // 試験モード: root に packageHash と startToken を束ねる (ADR-0006 §3)。
+  // package 自体の署名・復号・内容ハッシュ照合は verifyExamBinding が担う。ここでは
+  // proof 自己完結で「root が宣言された packageHash + startToken から計算されている」ことだけ確認する。
+  const computedInitialHash = proof.exam
+    ? await computeExamChainRoot(
+        fingerprintHash,
+        nonce,
+        proof.exam.packageHash,
+        proof.exam.startToken
+      )
+    : await computeHash(fingerprintHash + nonce);
   if (computedInitialHash !== expectedInitialHash) {
     return {
       valid: false,
-      reason: 'Initial event chain hash does not match fingerprint and nonce',
+      reason: proof.exam
+        ? 'Initial event chain hash does not match exam binding (fingerprint, nonce, packageHash, startToken)'
+        : 'Initial event chain hash does not match fingerprint and nonce',
       computedInitialHash,
       expectedInitialHash,
     };

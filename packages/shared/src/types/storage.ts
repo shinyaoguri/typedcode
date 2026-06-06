@@ -17,6 +17,7 @@ import type {
   SessionResumedData,
   EnvironmentProbeData,
   FullscreenChangeData,
+  ExamOpenedEventData,
 } from './events.js';
 import type {
   ScreenshotCaptureData,
@@ -33,6 +34,7 @@ import type {
   CheckpointData,
 } from './proof.js';
 import type { TemplateInjectionEventData } from './template.js';
+import type { ExamSessionContext } from './exam.js';
 
 /** PendingEvent用のデータ型（RecordEventInput.dataと同等） */
 export type PendingEventDataType =
@@ -55,6 +57,7 @@ export type PendingEventDataType =
   | TemplateInjectionEventData
   | EnvironmentProbeData
   | FullscreenChangeData
+  | ExamOpenedEventData
   | null;
 
 // ============================================================================
@@ -81,6 +84,8 @@ export interface SerializedProofState {
   pendingEvents?: PendingEventData[];
   /** チェックポイントデータ（サンプリング検証用） */
   checkpoints?: CheckpointData[];
+  /** 試験モード (ADR-0006) の束縛コンテキスト。exam モードのみ */
+  examContext?: ExamSessionContext | null;
 }
 
 /** 認証状態 */
