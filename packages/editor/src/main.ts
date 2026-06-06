@@ -34,6 +34,11 @@ if (urlParams.get('fresh') === '1') {
   window.history.replaceState({}, '', cleanUrl);
 }
 
+// Exam mode (ADR-0006 最小骨組み): ?exam=1 で試験モードに入る。
+// 現状は問題パネル (スタブ) を出すだけ。封印問題パッケージ / 監督コード / チェーン束縛は
+// full ADR-0006 で実装する。URL は意図的にクリーンにしない (リロードで試験モードを維持)。
+const examMode = urlParams.get('exam') === '1' || urlParams.get('exam') === 'true';
+
 import * as monaco from 'monaco-editor';
 import './styles/main.css';
 import { Fingerprint, setSharedDebug } from '@typedcode/shared';
@@ -78,6 +83,7 @@ import { RuntimeManager } from './execution/RuntimeManager.js';
 import { TabUIController } from './ui/tabs/TabUIController.js';
 import { LogViewerPanel } from './ui/components/LogViewerPanel.js';
 import { BrowserPreviewPanel } from './ui/components/BrowserPreviewPanel.js';
+import { ProblemPanel } from './ui/components/ProblemPanel.js';
 import { EventRecorder, SessionContentRegistry } from './core/index.js';
 import type { AppContext } from './core/AppContext.js';
 import { t, getI18n, initDOMi18n } from './i18n/index.js';
@@ -224,9 +230,11 @@ const ctx: AppContext = {
   mainMenuDropdown: new MainMenuDropdown(),
   terminalPanel: new TerminalPanel(),
   browserPreviewPanel: new BrowserPreviewPanel(),
+  problemPanel: new ProblemPanel(),
 
   // Flags
   skipBeforeUnload: false,
+  examMode,
 
   // Welcome Screen
   welcomeScreen: null as WelcomeScreen | null,
@@ -240,6 +248,15 @@ const ctx: AppContext = {
   // Session Content Registry (for internal paste detection)
   contentRegistry: new SessionContentRegistry(),
 };
+
+// 試験モード: 問題パネル (スタブ) を表示する。casual モードでは何もしない。
+// Monaco は automaticLayout: true なのでパネル出現に伴う再レイアウトは自動。
+if (ctx.examMode) {
+  document.body.classList.add('exam-mode');
+  if (ctx.problemPanel.initialize()) {
+    ctx.problemPanel.show();
+  }
+}
 
 // ========================================
 // 初期化オーバーレイ

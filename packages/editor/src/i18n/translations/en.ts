@@ -502,4 +502,10 @@ export const en: TranslationKeys = {
     resuming: 'Resuming session...',
     clearing: 'Clearing data...',
   },
+
+  // Exam mode (ADR-0006)
+  exam: {
+    title: 'Exam Mode',
+    problemPlaceholder: 'Exam mode. The problem will appear in this panel (problem distribution coming later).',
+  },
 };

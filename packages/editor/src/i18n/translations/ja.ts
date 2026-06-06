@@ -502,4 +502,10 @@ export const ja: TranslationKeys = {
     resuming: 'セッションを再開中...',
     clearing: 'データをクリア中...',
   },
+
+  // 試験モード (ADR-0006)
+  exam: {
+    title: '試験モード',
+    problemPlaceholder: '試験モードです。問題はこの欄に表示されます（問題の配布は今後実装予定）。',
+  },
 };

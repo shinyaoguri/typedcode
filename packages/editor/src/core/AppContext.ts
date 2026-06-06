@@ -35,6 +35,7 @@ import type { DownloadDropdown } from '../ui/components/DownloadDropdown.js';
 import type { MainMenuDropdown } from '../ui/components/MainMenuDropdown.js';
 import type { TerminalPanel } from '../ui/components/TerminalPanel.js';
 import type { BrowserPreviewPanel } from '../ui/components/BrowserPreviewPanel.js';
+import type { ProblemPanel } from '../ui/components/ProblemPanel.js';
 import type { WelcomeScreen } from '../ui/components/WelcomeScreen.js';
 import type { TitlebarClock } from '../ui/components/TitlebarClock.js';
 
@@ -96,9 +97,13 @@ export interface AppContext {
   mainMenuDropdown: MainMenuDropdown;
   terminalPanel: TerminalPanel;
   browserPreviewPanel: BrowserPreviewPanel;
+  /** 試験モードの問題表示パネル (ADR-0006 最小骨組み・スタブ) */
+  problemPanel: ProblemPanel;
 
   // Flags
   skipBeforeUnload: boolean;
+  /** 試験モードか (?exam=1)。casual との差は機能のみ (ADR-0006/0007)。 */
+  examMode: boolean;
 
   // Welcome Screen
   welcomeScreen: WelcomeScreen | null;
