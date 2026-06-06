@@ -267,9 +267,15 @@ const ctx: AppContext = {
 // Monaco は automaticLayout: true なのでパネル出現に伴う再レイアウトは自動。
 if (ctx.examMode) {
   document.body.classList.add('exam-mode');
+  // ProblemPanel.initialize() がリサイズ/クローズ/トグルを内部で配線する。
   if (ctx.problemPanel.initialize()) {
     ctx.problemPanel.show();
   }
+  // 提出用ログのダウンロード導線を問題パネルのボタンに一本化する (左の汎用DLメニューは exam で非表示)。
+  // 提出は Moodle で行うため TypedCode 側に「提出」操作は持たない。全タブ ZIP (証明 + コード) を出すだけ。
+  document.getElementById('download-log-btn')?.addEventListener('click', () => {
+    void ctx.proofExporter.exportAllTabsAsZip();
+  });
 }
 
 // ========================================

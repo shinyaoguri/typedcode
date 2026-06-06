@@ -513,5 +513,8 @@ export const en: TranslationKeys = {
     fsExited: 'Exited fullscreen',
     fsDenied: 'Fullscreen request denied',
     fsUnavailable: 'Fullscreen unavailable',
+    submitNote: 'When you finish: 1) download the log (ZIP) with the button below, then 2) submit it in Moodle.',
+    downloadButton: 'Download log',
+    toggleProblem: 'Toggle Problem Panel',
   },
 };

@@ -60,7 +60,7 @@ ProofExporter.export()
 - **Monaco の `onDidChangeModelContent` イベントは ICustomEvent ではない**: `InputDetector` で paste を判定するときの DOM event は `editor.onDidPaste` 経由で取る (Monaco の paste は contentChange と paste の 2 段)
 - **IndexedDB のバージョンマイグレーション**: スキーマを変えるときは `STORAGE_FORMAT_VERSION` を bump し、`shared` のマイグレーション関数を更新する
 - **ビルド時に注入される `__GIT_COMMIT__` 等**: dev サーバでは undefined になることがあるので、参照側でフォールバックを持つ
-- **試験モードは sticky (ADR-0010)**: `?exam=1` で入ると `localStorage['typedcode-exam-mode']` に保存され、**URL から `?exam` が消えても・リロードしても試験モードのまま**。`ctx.examMode` が真の間は問題タブを 1 つ生成し、`TabManager.setExamLock(true)` で `createTab`/`closeTab` を源流ロック (add-tab/close ボタンは CSS で非表示)。**確実な解除は `?reset`** (localStorage.clear)。提出時の解除は full ADR-0006 で実装予定
+- **試験モードは sticky (ADR-0010)**: `?exam=1` で入ると `localStorage['typedcode-exam-mode']` に保存され、**URL から `?exam` が消えても・リロードしても試験モードのまま**。`ctx.examMode` が真の間は問題タブを 1 つ生成し、`TabManager.setExamLock(true)` で `createTab`/`closeTab` を源流ロック (add-tab/close ボタンは CSS で非表示)。提出は **Moodle で行うため TypedCode 側に「提出」操作は持たない**。ダウンロードは**問題パネルの「ログをダウンロード」ボタンに一本化** (`#download-log-btn` → `proofExporter.exportAllTabsAsZip()`、証明 + コードの ZIP) し、受験者がそれを Moodle に提出する。一本化のため**左の汎用 DL メニュー `#download-menu-btn` は exam モードで CSS 非表示**。問題パネルは右端ドラッグでリサイズ・× で閉じる・**左 Activity Bar** の `#toggle-problem-btn` で再表示 (VSCode 風。トグルは exam モードのみ表示)。**sticky の解除は `?reset`** (全 localStorage.clear)
 
 ## i18n
 

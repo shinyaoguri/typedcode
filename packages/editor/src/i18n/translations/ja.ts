@@ -513,5 +513,8 @@ export const ja: TranslationKeys = {
     fsExited: 'フルスクリーン解除',
     fsDenied: 'フルスクリーン要求が拒否されました',
     fsUnavailable: 'フルスクリーン非対応',
+    submitNote: '解答が終わったら ① 下のボタンでログ（ZIP）をダウンロード → ② Moodle に提出してください。',
+    downloadButton: 'ログをダウンロード',
+    toggleProblem: '問題パネルの表示切替',
   },
 };
