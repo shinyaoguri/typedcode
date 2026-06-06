@@ -116,6 +116,8 @@ export class TabManager {
   private tabOrder: string[] = [];
   private activeTabId: string | null = null;
   private tabSwitches: TabSwitchEvent[] = [];
+  /** 試験モードのタブロック (ADR-0010): true の間 createTab/closeTab を源流で拒否する。 */
+  private examLocked = false;
   /** 復元中フラグ。復元時に switchTab が発火する合成スイッチイベントを
    *  IndexedDB に二重永続化しないために使う。 */
   private isRestoring = false;
@@ -246,12 +248,21 @@ export class TabManager {
    * Turnstileが設定されている場合、認証結果をevent #0として記録（成功・失敗問わず）
    * @returns 常にTabState（認証失敗でもタブ作成は続行）
    */
+  /** 試験モードのタブロックを設定する (ADR-0010)。初期問題タブ生成後に有効化する。 */
+  setExamLock(locked: boolean): void {
+    this.examLocked = locked;
+  }
+
   async createTab(
     filename: string = 'untitled',
     language: string = 'c',
     content: string = '',
     options?: CreateTabOptions
   ): Promise<TabState | null> {
+    if (this.examLocked) {
+      console.warn('[TypedCode] Tab creation is locked (exam mode)');
+      return null;
+    }
     const id = generateUUID();
     const createdAt = Date.now();
 
@@ -354,6 +365,10 @@ export class TabManager {
    * タブを閉じる
    */
   closeTab(tabId: string): boolean {
+    if (this.examLocked) {
+      console.warn('[TypedCode] Tab close is locked (exam mode)');
+      return false;
+    }
     const tab = this.tabs.get(tabId);
     if (!tab) return false;
 

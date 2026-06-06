@@ -34,10 +34,22 @@ if (urlParams.get('fresh') === '1') {
   window.history.replaceState({}, '', cleanUrl);
 }
 
-// Exam mode (ADR-0006 最小骨組み): ?exam=1 で試験モードに入る。
-// 現状は問題パネル (スタブ) を出すだけ。封印問題パッケージ / 監督コード / チェーン束縛は
-// full ADR-0006 で実装する。URL は意図的にクリーンにしない (リロードで試験モードを維持)。
-const examMode = urlParams.get('exam') === '1' || urlParams.get('exam') === 'true';
+// Exam mode (ADR-0006 / ADR-0010): ?exam=1 で試験モードに入る。
+// sticky: 一度入ったら localStorage に保存し、リロードや URL から ?exam が消えても維持する
+// (ADR-0010 — URL 改竄で抜けられないようにする)。?reset での localStorage.clear() が確実な解除経路。
+// 封印問題パッケージ / 監督コード / チェーン束縛 / 提出時の解除は full ADR-0006 で実装する。
+const EXAM_MODE_STORAGE_KEY = 'typedcode-exam-mode';
+const examFromUrl = urlParams.get('exam') === '1' || urlParams.get('exam') === 'true';
+let examMode = examFromUrl;
+try {
+  if (examFromUrl) {
+    localStorage.setItem(EXAM_MODE_STORAGE_KEY, '1');
+  } else if (localStorage.getItem(EXAM_MODE_STORAGE_KEY) === '1') {
+    examMode = true;
+  }
+} catch {
+  /* localStorage 不可環境では URL のみで判定 */
+}
 
 import * as monaco from 'monaco-editor';
 import './styles/main.css';
@@ -451,6 +463,7 @@ function initializeTerminal(): void {
   const newFileBtn = document.getElementById('new-file-btn');
   newFileBtn?.addEventListener('click', async () => {
     ctx.mainMenuDropdown.close();
+    if (ctx.examMode) return; // 試験モードでは新規ファイル不可 (ADR-0010)
     if (!ctx.tabManager) return;
 
     if (isTurnstileConfigured()) {
@@ -1063,6 +1076,12 @@ async function initializeApp(): Promise<void> {
 
   hideInitOverlay();
 
+  // 試験モード: タブが無ければ welcome の代わりに問題タブを 1 つ生成する (ADR-0010, 1問1タブ)。
+  // リロード時は復元済みタブがあるためここは走らない。問題ソースの実体は full ADR-0006 で。
+  if (ctx.examMode && !ctx.tabManager?.hasAnyTabs()) {
+    await ctx.tabManager?.createTab('answer.c', 'c', '');
+  }
+
   // タブがない場合はウェルカム画面を表示、ある場合は通常のエディタ表示
   if (!ctx.tabManager?.hasAnyTabs()) {
     showWelcomeScreen(ctx);
@@ -1082,6 +1101,11 @@ async function initializeApp(): Promise<void> {
 
     // 利用規約同意をハッシュチェーンに記録
     recordTermsAcceptance();
+  }
+
+  // 試験モード: 初期問題タブ確定後、タブの追加・削除を源流でロックする (ADR-0010)。
+  if (ctx.examMode) {
+    ctx.tabManager?.setExamLock(true);
   }
 
   // 全タブ閉じた時にウェルカム画面を表示するコールバックを設定
