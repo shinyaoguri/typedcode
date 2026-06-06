@@ -1,19 +1,21 @@
 /**
- * 既定で公開してよい (= 開示しても evasion を大きく助けない) サンプル分析器。
+ * 既定で公開してよい (= 開示しても evasion を大きく助けない) 分析器。
  *
- * いずれも **方向性を示すプレースホルダ** であり、実用的な判定ロジックではない
- * (ADR-0009)。感度の高い本物の分析器は採点者側に private で足す想定。
- * 差し替え方: `runAnalysis(input, [myAnalyzer, ...defaultAnalyzers])`。
+ * - `automation`: 自動化ブラウザの環境 tell を見る最初の本物の分析器 (ADR-0009)。
+ * - `pureTyping`: 既存 advisory (`isPureTyping`) を signal に折り込むプレースホルダ。
+ *
+ * 感度の高い本物の分析器 (転写トポロジー / keystroke↔content 等) は採点者側に private で
+ * 足す想定。差し替え方: `runAnalysis(input, [myAnalyzer, ...defaultAnalyzers])`。
  */
 
 import type { Analyzer } from '../types.js';
-import { largestGapAnalyzer } from './largestGapAnalyzer.js';
+import { automationAnalyzer } from './automationAnalyzer.js';
 import { pureTypingAnalyzer } from './pureTypingAnalyzer.js';
 
 export const defaultAnalyzers: readonly Analyzer[] = [
-  largestGapAnalyzer,
+  automationAnalyzer,
   pureTypingAnalyzer,
 ];
 
-export { largestGapAnalyzer } from './largestGapAnalyzer.js';
+export { automationAnalyzer } from './automationAnalyzer.js';
 export { pureTypingAnalyzer } from './pureTypingAnalyzer.js';

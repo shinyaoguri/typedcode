@@ -74,6 +74,18 @@ export function initializeTrackers(options: TrackersInitializerOptions): void {
   trackers.network.attach();
   trackers.network.recordInitial();
 
+  // EnvironmentTracker - 環境/自動化プローブ (ADR-0007 Tier 0)
+  // 起動時ワンショット。環境シグナルはセッション全体に関わるため全タブに記録
+  trackers.environment.setCallback((event) => {
+    recordEventToAllTabs({
+      type: event.type,
+      data: event.data,
+      description: event.description,
+    });
+  });
+  trackers.environment.attach();
+  trackers.environment.recordInitial();
+
   // VisibilityTracker - ページの表示/非表示の追跡
   // タブの可視性やフォーカス状態はセッション全体に影響するため、全タブに記録
   trackers.visibility.setCallback((event) => {

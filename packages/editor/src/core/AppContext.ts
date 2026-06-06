@@ -20,6 +20,7 @@ import type { VisibilityTracker } from '../tracking/VisibilityTracker.js';
 import type { KeystrokeTracker } from '../tracking/KeystrokeTracker.js';
 import type { MouseTracker } from '../tracking/MouseTracker.js';
 import type { NetworkTracker } from '../tracking/NetworkTracker.js';
+import type { EnvironmentTracker } from '../tracking/EnvironmentTracker.js';
 import type { CursorTracker } from '../editor/CursorTracker.js';
 import type { OperationDetector } from '../tracking/OperationDetector.js';
 import type { EditorController } from '../editor/EditorController.js';
@@ -53,6 +54,7 @@ export interface Trackers {
   keystroke: KeystrokeTracker;
   mouse: MouseTracker;
   network: NetworkTracker;
+  environment: EnvironmentTracker;
   cursor: CursorTracker;
   operation: OperationDetector;
   screenshot: ScreenshotTracker | null;  // 許可が得られない場合はnull

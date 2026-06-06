@@ -62,6 +62,7 @@ import { configureMonacoWorkers } from './config/MonacoConfig.js';
 import { WindowTracker } from './tracking/WindowTracker.js';
 import { VisibilityTracker } from './tracking/VisibilityTracker.js';
 import { NetworkTracker } from './tracking/NetworkTracker.js';
+import { EnvironmentTracker } from './tracking/EnvironmentTracker.js';
 import { ScreenshotTracker } from './tracking/ScreenshotTracker.js';
 import { ProcessingDialog } from './ui/components/ProcessingDialog.js';
 import { ProofStatusDisplay } from './ui/components/ProofStatusDisplay.js';
@@ -189,6 +190,7 @@ const ctx: AppContext = {
     keystroke: new KeystrokeTracker(),
     mouse: new MouseTracker({ throttleMs: 100 }),
     network: new NetworkTracker(),
+    environment: new EnvironmentTracker(),
     cursor: new CursorTracker({
       onCursorPositionUpdate: (lineNumber, column) => {
         const lineEl = document.getElementById('cursor-line');

@@ -384,6 +384,7 @@ export const en: TranslationKeys = {
     networkOnline: 'Network status changed: Online',
     networkOffline: 'Network status changed: Offline',
     initialNetworkState: 'Initial network state: ${state}',
+    environmentProbe: 'Environment probe (webdriver: ${webdriver})',
     online: 'Online',
     offline: 'Offline',
     mousePosition: 'Mouse position: (${x}, ${y})',

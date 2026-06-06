@@ -404,6 +404,7 @@ export interface TranslationKeys {
     networkOnline: string;
     networkOffline: string;
     initialNetworkState: string;
+    environmentProbe: string;
     online: string;
     offline: string;
     mousePosition: string;
