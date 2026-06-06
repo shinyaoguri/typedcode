@@ -45,3 +45,10 @@
   word-break: break-word;
   opacity: 0.85;
 }
+
+/* 試験モード: タブの追加・削除 UI を隠す (ADR-0010, 1問1タブ固定)。
+   源流の TabManager ロックが本体で、これは UI アフォーダンスを消すため。 */
+body.exam-mode .add-tab-btn,
+body.exam-mode .tab-close-btn {
+  display: none !important;
+}
