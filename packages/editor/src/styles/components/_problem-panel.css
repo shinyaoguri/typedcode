@@ -1,0 +1,47 @@
+/* Problem Panel (試験モード / ADR-0006 最小骨組み)
+   左サイドの問題表示パネル。casual モードでは非表示 (.visible が付かない)。 */
+#problem-panel {
+  display: none;
+  flex: 0 0 340px;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--border-color, #333);
+  background: var(--bg-secondary, #1e1e1e);
+}
+
+#problem-panel.visible {
+  display: flex;
+}
+
+.problem-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+.problem-header h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.problem-content {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px;
+}
+
+.problem-body {
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  opacity: 0.85;
+}

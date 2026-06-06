@@ -528,4 +528,10 @@ export interface TranslationKeys {
     resuming: string;
     clearing: string;
   };
+
+  // Exam mode (ADR-0006)
+  exam: {
+    title: string;
+    problemPlaceholder: string;
+  };
 }
