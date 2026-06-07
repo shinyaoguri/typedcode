@@ -49,7 +49,28 @@ export interface ExamAuthorityKey {
  * - 過去の答案 proof / 問題パッケージの検証可能性を維持するため historical commit から鍵を辿れることが重要
  */
 export const EXAM_AUTHORITY_KEYS: readonly ExamAuthorityKey[] = [
-  // 本番鍵はここに append する (初期は空)。
+  // 本番鍵はここに append する。
+  //
+  // ── プレビュー/staging 検証用鍵 (ADR-0006 e2e) ───────────────────────────
+  // CI クリーンビルド (Pages preview / staging) で ExamStartGate の解錠フローを
+  // 実機確認するための鍵。秘密鍵は maintainer がローカル保管し、配布サンプル
+  // `.tcexam` の署名にのみ使う。本番運用の試験問題には使わない。
+  // 過去 proof を束縛していないため、検証が済めば (本番鍵と違い) このエントリは
+  // 安全に削除できる。
+  {
+    keyId: 'exam-202606-preview',
+    algorithm: 'ECDSA-P256',
+    publicKeyJwk: {
+      kty: 'EC',
+      crv: 'P-256',
+      x: 'ngCgvkUMSi4lz8X5qtvrVffFOu1KawHTV2AUUd3LRS8',
+      y: 'CwzBS7YUXi6_Re9hFZPTLlmAp7vRqjwtaFBxQA0JpGA',
+    },
+    status: 'active',
+    validFrom: '2026-01-01T00:00:00.000Z',
+    description:
+      'プレビュー/staging 検証用 (ADR-0006 e2e)。秘密鍵は maintainer がローカル保管。本番試験には使わない',
+  },
 ] as const;
 
 /**
