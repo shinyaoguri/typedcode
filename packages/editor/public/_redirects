@@ -1,9 +1,0 @@
-# Mode routes (ADR-0011): SPA フォールバック。パス方式のモード (/exam /class /assignment)
-# で editor の index.html を返す。**明示プレフィックスのみ** — /verify (別アプリ) や
-# /assets 等の静的資産は Cloudflare Pages が静的優先で先に解決するため触れない。
-/exam            /index.html   200
-/exam/*          /index.html   200
-/class           /index.html   200
-/class/*         /index.html   200
-/assignment      /index.html   200
-/assignment/*    /index.html   200
