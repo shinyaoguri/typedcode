@@ -269,6 +269,9 @@ const ctx: AppContext = {
 // Monaco は automaticLayout: true なのでパネル出現に伴う再レイアウトは自動。
 if (ctx.examMode) {
   document.body.classList.add('exam-mode');
+  // 試験モードでは export 前認証を best-effort 化 (ADR-0006: サーバを critical path に
+  // 置かない。Workers 不達でも提出 ZIP を生成できるようにする)。
+  ctx.proofExporter.setExamMode(true);
   // ProblemPanel.initialize() がリサイズ/クローズ/トグルを内部で配線する。
   if (ctx.problemPanel.initialize()) {
     ctx.problemPanel.show();

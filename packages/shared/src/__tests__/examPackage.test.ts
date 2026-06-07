@@ -15,7 +15,6 @@ import {
   decryptExamPackage,
   verifyExamPackageSignature,
   findExamAuthorityKey,
-  EXAM_AUTHORITY_KEYS,
   computeHash,
   deterministicStringify,
   PROOF_FORMAT_VERSION,
@@ -24,6 +23,9 @@ import {
   EXAM_ROOT_BINDING,
 } from '../index.js';
 import { HashChainManager } from '../typingProof/HashChainManager.js';
+// 本番レジストリ (registry.ts) を直接見る。`index.js` 経由の merged 版は各開発者の
+// localKeys (skip-worktree) を含み得るため、本番鍵の空判定にはこちらを使う。
+import { EXAM_AUTHORITY_KEYS as PRODUCTION_EXAM_AUTHORITY_KEYS } from '../examAuthorityKeys/registry.js';
 import { makeExamAuthority, buildSamplePackage } from './fixtures/examFixtures.js';
 
 describe('canonicalizeStartToken', () => {
@@ -188,7 +190,8 @@ describe('exam authority registry', () => {
   });
 
   it('ships an empty production registry by default (append-only, none yet)', () => {
-    expect(EXAM_AUTHORITY_KEYS).toEqual([]);
+    // localKeys (dev) は除外。本番 registry.ts のみを検査する (誤って本番鍵を commit した検出)。
+    expect(PRODUCTION_EXAM_AUTHORITY_KEYS).toEqual([]);
   });
 });
 

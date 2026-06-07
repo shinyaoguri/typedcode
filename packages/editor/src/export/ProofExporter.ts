@@ -28,9 +28,20 @@ export class ProofExporter {
   private exportProgressDialog: ExportProgressDialog;
   private screenshotTracker: ScreenshotTracker | null = null;
   private callbacks: ExportCallbacks = {};
+  /** 試験モードか。true のときエクスポート前認証を best-effort 化する (ADR-0006) */
+  private examMode = false;
 
   constructor() {
     this.exportProgressDialog = new ExportProgressDialog();
+  }
+
+  /**
+   * 試験モードを設定。試験モードではエクスポート前 Turnstile 認証を best-effort 化し、
+   * 失敗/不達でも提出 ZIP をブロックしない (ADR-0006: サーバを critical path に置かない。
+   * 不安定網・100名同時でも受験者が Moodle 提出物を作れるようにする)。casual は従来どおり必須。
+   */
+  setExamMode(examMode: boolean): void {
+    this.examMode = examMode;
   }
 
   /**
@@ -147,14 +158,25 @@ export class ProofExporter {
       return true;
     }
 
+    // 試験モードでは認証を best-effort 化: 試行して結果を記録するが、失敗/不達でも
+    // 提出 ZIP をブロックしない (ADR-0006: サーバを critical path に置かない)。
+    // 失敗時は best-effort の失敗 attestation を記録してエクスポートを続行する。
+    const failOrBestEffort = async (reason: string): Promise<boolean> => {
+      console.error('[Export] Pre-export verification failed:', reason);
+      if (this.examMode) {
+        await this.recordBestEffortPreExportAttestation(reason);
+        return true; // 提出をブロックしない
+      }
+      this.exportProgressDialog.hide();
+      this.callbacks.onNotification?.(t('export.preAuthFailed'));
+      return false;
+    };
+
     // Turnstileスクリプトを読み込む
     try {
       await loadTurnstileScript();
     } catch (error) {
-      console.error('[Export] Failed to load Turnstile script:', error);
-      this.exportProgressDialog.hide();
-      this.callbacks.onNotification?.(t('export.preAuthFailed'));
-      return false;
+      return failOrBestEffort(`script_load_failed: ${String(error)}`);
     }
 
     // ExportProgressDialogのTurnstileコンテナを使用
@@ -162,10 +184,7 @@ export class ProofExporter {
     const parentContainer = document.getElementById('export-turnstile-container');
 
     if (!widgetContainer) {
-      console.error('[Export] Turnstile container not found');
-      this.exportProgressDialog.hide();
-      this.callbacks.onNotification?.(t('export.preAuthFailed'));
-      return false;
+      return failOrBestEffort('turnstile_container_missing');
     }
 
     const result = await performTurnstileVerification('export_proof', {
@@ -174,10 +193,7 @@ export class ProofExporter {
     });
 
     if (!result.success || !result.attestation) {
-      console.error('[Export] Pre-export verification failed:', result.error);
-      this.exportProgressDialog.hide();
-      this.callbacks.onNotification?.(t('export.preAuthFailed'));
-      return false;
+      return failOrBestEffort(result.error ?? 'verification_failed');
     }
 
     // 全タブのTypingProofにエクスポート前attestationを記録
@@ -196,6 +212,30 @@ export class ProofExporter {
     console.log(`[Export] Pre-export attestation recorded for ${allTabs.length} tabs`);
 
     return true;
+  }
+
+  /**
+   * 試験モードで Turnstile 認証が失敗/不達のとき、全タブに best-effort の失敗
+   * attestation を記録する (ADR-0006)。これにより「認証を試みたが取得できなかった」
+   * 事実がチェーンに残りつつ、提出 ZIP の生成はブロックされない。
+   */
+  private async recordBestEffortPreExportAttestation(reason: string): Promise<void> {
+    if (!this.tabManager) return;
+    const allTabs = this.tabManager.getAllTabs();
+    for (const tab of allTabs) {
+      await tab.typingProof.recordPreExportAttestation({
+        success: false,
+        verified: false,
+        score: 0,
+        action: 'export_proof',
+        timestamp: new Date().toISOString(),
+        hostname: window.location.hostname,
+        signature: '',
+      });
+    }
+    console.warn(
+      `[Export] Exam mode: pre-export attestation best-effort (recorded failure, not blocking): ${reason}`
+    );
   }
 
   /**
