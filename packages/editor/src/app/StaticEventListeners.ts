@@ -8,6 +8,7 @@ import type { CursorPosition, RecordEventInput, DetectedEvent } from '@typedcode
 import { InputDetector } from '../tracking/InputDetector.js';
 import { isTurnstileConfigured } from '../services/TurnstileService.js';
 import { clearStorageSync, deleteScreenshotsDB } from '../utils/StorageClearHelper.js';
+import { sessionActiveKey } from '../core/storageKeys.js';
 import { t } from '../i18n/index.js';
 import { showNotification } from './AppHelpers.js';
 import { handleTemplateDrop, isTemplateFile } from './TemplateHandler.js';
@@ -334,7 +335,7 @@ export function setupStaticEventListeners(ctx: AppContext): void {
     // sessionStorageはリロード時は保持され、タブを閉じると消える
     // 次回起動時にこのフラグがあればリロード、なければタブを閉じた後の再開
     try {
-      sessionStorage.setItem('typedcode-session-active', 'true');
+      sessionStorage.setItem(sessionActiveKey(), 'true');
     } catch {
       // ignore
     }

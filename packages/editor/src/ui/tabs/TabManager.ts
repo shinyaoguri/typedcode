@@ -8,6 +8,7 @@
 
 import * as monaco from 'monaco-editor';
 import { TypingProof, PROOF_FORMAT_VERSION } from '@typedcode/shared';
+import { tabsKey } from '../../core/storageKeys.js';
 import type {
   FingerprintComponents,
   TabSwitchEvent,
@@ -115,8 +116,7 @@ function generateUUID(): string {
   return crypto.randomUUID();
 }
 
-/** ストレージキー */
-const STORAGE_KEY = 'typedcode-tabs';
+/** タブ状態の sessionStorage キーは storageKeys.tabsKey() (モード別名前空間。ADR-0011 PR3)。 */
 const OLD_STORAGE_KEYS = ['editorContent', 'editorLanguage', 'editorFilename', 'typingProof'];
 
 export class TabManager {
@@ -481,7 +481,7 @@ export class TabManager {
     this.tabSwitches = [];
 
     // ストレージもクリア
-    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(tabsKey());
   }
 
   /**
@@ -854,7 +854,7 @@ export class TabManager {
 
     // sessionStorageに保存（リロード用、軽量版）
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(storage));
+      sessionStorage.setItem(tabsKey(), JSON.stringify(storage));
     } catch (e) {
       if (e instanceof DOMException && e.name === 'QuotaExceededError') {
         console.warn('[TabManager] sessionStorage quota exceeded - content may be too large');
@@ -972,7 +972,7 @@ export class TabManager {
    */
   async loadFromStorage(): Promise<boolean> {
     try {
-      const data = sessionStorage.getItem(STORAGE_KEY);
+      const data = sessionStorage.getItem(tabsKey());
       if (!data) {
         // sessionStorageが空の場合、IndexedDBからのフォールバックを試みる
         debugLog('[TabManager] sessionStorage is empty, trying IndexedDB fallback');
@@ -998,7 +998,7 @@ export class TabManager {
         return await this.loadFromStorageV2(rawStorage);
       } else {
         console.warn(`[TabManager] Unknown storage version: ${rawStorage.version}`);
-        sessionStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(tabsKey());
         return false;
       }
     } catch (e) {
@@ -1354,7 +1354,7 @@ export class TabManager {
     this.startTime = performance.now();
 
     // ストレージをクリア（sessionStorage + IndexedDB）
-    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(tabsKey());
     try {
       await this.sessionService.clearSession();
     } catch (e) {

@@ -10,8 +10,9 @@
  */
 
 import type { ExamPackageManifest } from '@typedcode/shared';
+import { examPackagesKey } from '../core/storageKeys.js';
 
-const STORAGE_KEY = 'typedcode-exam-packages';
+// 封印問題キャッシュの localStorage キーは storageKeys.examPackagesKey() (モード別。ADR-0011 PR3)。
 
 export interface StoredExamPackage {
   manifest: ExamPackageManifest;
@@ -23,7 +24,7 @@ type PackageMap = Record<string, StoredExamPackage>;
 
 function readAll(): PackageMap {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(examPackagesKey());
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === 'object') return parsed as PackageMap;
@@ -35,7 +36,7 @@ function readAll(): PackageMap {
 
 function writeAll(map: PackageMap): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    localStorage.setItem(examPackagesKey(), JSON.stringify(map));
   } catch {
     /* 保存不可環境では諦める (表示用キャッシュなので致命ではない) */
   }
@@ -63,7 +64,7 @@ export const ExamPackageStore = {
   /** すべて消す (テスト/明示クリア用。通常の解除は ?reset の localStorage.clear に委ねる) */
   clear(): void {
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(examPackagesKey());
     } catch {
       /* noop */
     }
