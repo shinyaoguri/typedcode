@@ -1,10 +1,18 @@
 // Check URL parameters for special actions
 const urlParams = new URLSearchParams(window.location.search);
 
-// Handle full reset request
+// モード (ADR-0011): URL パスでモードを確定する (`/exam` `/class` `/assignment`、他は casual)。
+// sticky は持たない — path はリロードで永続し、試験の整合性は封印の暗号束縛 (ADR-0006) が担保する。
+// ストレージはモード別に名前空間化する (PR3) ので、モード間でセッションが混ざらず共存できる
+// (PR1/PR2 の「モード切替時 auto-clear」を置換)。**NS は最初期に確定**させる — 以降の storage
+// 参照 (?reset/?fresh 含む) が storageKeys の getter を使うため。
+const mode = resolveModeFromPath(window.location.pathname);
+setStorageNamespace(mode);
+const examMode = mode === 'exam';
+
+// 全消去リクエスト (?reset): 全モードのデータを消す手動ユーティリティ (sticky 解除用ではない)。
 if (urlParams.get('reset')) {
   console.log('[TypedCode] Reset parameter detected, clearing all data...');
-  // Clear all storage synchronously before any other code runs
   try { localStorage.clear(); } catch { /* ignore */ }
   try { sessionStorage.clear(); } catch { /* ignore */ }
   try {
@@ -17,52 +25,26 @@ if (urlParams.get('reset')) {
       }
     }
   } catch { /* ignore */ }
-  try { indexedDB.deleteDatabase('typedcode-screenshots'); } catch { /* ignore */ }
-  try { indexedDB.deleteDatabase('typedcode-session'); } catch { /* ignore */ }
-  // Remove the reset parameter from URL
+  for (const db of allSessionDbNames()) {
+    try { indexedDB.deleteDatabase(db); } catch { /* ignore */ }
+  }
   const cleanUrl = window.location.origin + window.location.pathname;
   window.history.replaceState({}, '', cleanUrl);
   console.log('[TypedCode] All data cleared, URL cleaned');
 }
 
-// Check if this is a fresh window request (opened via "New Window" menu)
-// If so, clear sessionStorage to start with a clean state
+// 新規ウィンドウ (?fresh=1): 現モードのタブ状態だけクリアして clean に始める。
 if (urlParams.get('fresh') === '1') {
-  sessionStorage.removeItem('typedcode-tabs');
-  // Remove the ?fresh=1 from URL without reloading
+  sessionStorage.removeItem(tabsKey());
   const cleanUrl = window.location.origin + window.location.pathname;
   window.history.replaceState({}, '', cleanUrl);
-}
-
-// モード (ADR-0011): URL パスでモードを確定する (`/exam` `/class` `/assignment`、他は casual)。
-// sticky は持たない — path はリロードで永続し、試験の整合性は封印の暗号束縛 (ADR-0006) が担保する
-// ので、モードに「閉じ込める」必要がない (旧 ?exam=1 + sticky localStorage + ?reset 解除を置換)。
-const mode = resolveModeFromPath(window.location.pathname);
-const examMode = mode === 'exam';
-
-// モード切替時は前モードのセッション (タブ/イベント/スクショ) を引き継がない。PR1 はストレージ
-// 共有のままなので、混在と「casual タブが残って exam がゲートを飛ばす」事故を auto-clear で防ぐ
-// (per-mode 名前空間化で共存可能にするのは後続 PR)。?reset は手動の全消去として残す。
-try {
-  const LAST_MODE_KEY = 'typedcode-last-mode';
-  const lastMode = localStorage.getItem(LAST_MODE_KEY);
-  if (lastMode !== null && lastMode !== mode) {
-    sessionStorage.removeItem('typedcode-tabs');
-    sessionStorage.removeItem('typedcode-session-active');
-    sessionStorage.removeItem('typedcode-screenshot-session');
-    localStorage.removeItem('typedcode-exam-packages');
-    try { indexedDB.deleteDatabase('typedcode-session'); } catch { /* ignore */ }
-    try { indexedDB.deleteDatabase('typedcode-screenshots'); } catch { /* ignore */ }
-  }
-  localStorage.setItem(LAST_MODE_KEY, mode);
-} catch {
-  /* localStorage 不可環境では path のみで判定 */
 }
 
 import * as monaco from 'monaco-editor';
 import './styles/main.css';
 import { Fingerprint, setSharedDebug } from '@typedcode/shared';
 import { resolveModeFromPath, capabilitiesFor } from './core/mode.js';
+import { setStorageNamespace, tabsKey, sessionActiveKey, screenshotSessionKey, allSessionDbNames } from './core/storageKeys.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
@@ -872,7 +854,7 @@ async function initializeApp(): Promise<void> {
   // Phase 1.5: Screen Capture許可の取得（画面全体のみ許可）
   // セッション復旧の可能性を事前にチェック（IndexedDBにセッションが存在する場合、またはリロードの場合）
   const sessionService = await initSessionStorageService();
-  const isReload = sessionStorage.getItem('typedcode-session-active') === 'true';
+  const isReload = sessionStorage.getItem(sessionActiveKey()) === 'true';
   const hasExistingSession = await sessionService.hasExistingSession();
 
   if (!ctx.capabilities.screenshots) {
@@ -1015,7 +997,7 @@ async function initializeApp(): Promise<void> {
   let sessionId: string | null = null;
 
   // フラグをクリア（次回のためにリセット）
-  sessionStorage.removeItem('typedcode-session-active');
+  sessionStorage.removeItem(sessionActiveKey());
 
   if (hasExistingSession) {
     const sessionSummary = await sessionService.getSessionSummary();
@@ -1244,8 +1226,8 @@ async function initializeApp(): Promise<void> {
   // Phase 8: セッション再開イベントの記録（リロード時またはIndexedDBからの復旧時）
   // sessionStorageにタブデータが存在していた場合はリロードによる再開
   // または、IndexedDBからセッションを復旧した場合
-  const wasReloaded = sessionStorage.getItem('typedcode-tabs') !== null &&
-                      sessionStorage.getItem('typedcode-screenshot-session') === 'active';
+  const wasReloaded = sessionStorage.getItem(tabsKey()) !== null &&
+                      sessionStorage.getItem(screenshotSessionKey()) === 'active';
   if (wasReloaded || sessionRecovered) {
     // セッション再開イベントを全タブに記録
     ctx.eventRecorder?.recordToAllTabs({

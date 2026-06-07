@@ -5,8 +5,7 @@
  * クリアするための共通ユーティリティ関数を提供
  */
 
-/** 既知のIndexedDBデータベース名 */
-const INDEXED_DB_NAMES = ['typedcode-screenshots', 'typedcode-session'] as const;
+import { allSessionDbNames } from '../core/storageKeys.js';
 
 /**
  * Cookiesをクリア
@@ -50,8 +49,8 @@ export function clearStorageSync(): void {
   // Cookies
   clearCookies();
 
-  // IndexedDB（削除リクエストを発行、完了は待たない）
-  for (const dbName of INDEXED_DB_NAMES) {
+  // IndexedDB（全モードの session DB + legacy screenshots。削除リクエストを発行、完了は待たない）
+  for (const dbName of allSessionDbNames()) {
     try {
       indexedDB.deleteDatabase(dbName);
     } catch {

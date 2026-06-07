@@ -15,6 +15,7 @@ import {
   type StoredScreenshotData,
 } from '@typedcode/shared';
 import { IndexedDBHelper } from './IndexedDBHelper.js';
+import { sessionDbName } from '../core/storageKeys.js';
 
 // Re-export types for convenience
 export type {
@@ -26,7 +27,8 @@ export type {
   TabSummary,
 };
 
-const DB_NAME = 'typedcode-session';
+// DB 名はモード別に名前空間化する (ADR-0011 PR3): casual=typedcode-session、他は -<mode>。
+// storageKeys.sessionDbName() を使用時 (initialize) に呼ぶ — main.ts が最初期に NS を確定する。
 const DB_VERSION = 2;
 
 // Object Store Names
@@ -60,7 +62,7 @@ export class SessionStorageService {
     if (this.initialized) return;
 
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      const request = indexedDB.open(sessionDbName(), DB_VERSION);
 
       request.onerror = () => {
         console.error('[SessionStorage] Failed to open database:', request.error);
