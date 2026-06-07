@@ -1,4 +1,4 @@
-import type { ExportedProof, StoredEvent, InputType, DisplayInfo, ScreenshotCaptureType, HumanAttestation, SignedCheckpointsVerificationResult } from '@typedcode/shared';
+import type { ExportedProof, StoredEvent, InputType, DisplayInfo, ScreenshotCaptureType, HumanAttestation, SignedCheckpointsVerificationResult, ExamPackageManifest, ExamBindingVerificationResult } from '@typedcode/shared';
 
 // Re-export HumanAttestation from shared for backward compatibility
 export type { HumanAttestation } from '@typedcode/shared';
@@ -110,6 +110,18 @@ export interface VerificationResultData {
    * - 元データに含まれる checkpoint 総数 / セッション初確認時刻
    */
   signedCheckpointReport?: SignedCheckpointReport;
+  /**
+   * 試験モード (ADR-0006) の束縛検証結果。proof に exam ブロックがあるときのみ。
+   * - rootValid: proof 自己完結の exam root 束縛 (rootValid と同値・package 不要)
+   * - packageProvided: `.tcexam` が渡されたか
+   * - binding: package 提供時のみ。署名→packageHash→root→内容ハッシュ→time-box
+   */
+  exam?: {
+    present: boolean;
+    rootValid: boolean;
+    packageProvided: boolean;
+    binding?: ExamBindingVerificationResult;
+  };
 }
 
 /** UI が「根拠」を示すために worker が組み立てる詳細情報。 */
@@ -214,6 +226,8 @@ export interface VerifyTabState {
   // proofファイルに関連付けられたソースファイルの不一致情報
   /** 関連するソースファイルの不一致情報（proofファイル専用） */
   associatedSourceMismatch?: ContentMismatchInfo;
+  /** 試験モード (ADR-0006): grader が読み込んだ問題パッケージ (.tcexam)。完全束縛検証に使う。 */
+  examManifest?: ExamPackageManifest;
 }
 
 /** キューアイテム */
@@ -230,6 +244,8 @@ export interface WorkerRequestMessage {
   proofData: ProofFile;
   /** 検証モード。省略時はサーバ側のデフォルト ('full') を使う */
   mode?: VerificationMode;
+  /** 試験モード (ADR-0006): 問題パッケージ (.tcexam)。あれば exam 束縛を完全検証する。 */
+  manifest?: ExamPackageManifest;
 }
 
 /** Worker メッセージ: Worker→メインスレッド */

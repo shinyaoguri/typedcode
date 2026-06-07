@@ -13,10 +13,13 @@ import {
   verifyInitialHashRoot,
   verifyProofMetadata,
   verifyProofSignedCheckpoints,
+  verifyExamBinding,
 } from '@typedcode/shared';
 import type {
   CheckpointData,
   ExportedProof,
+  ExamPackageManifest,
+  ExamProofBlock,
   FingerprintComponents,
   ProofData,
   SignedCheckpointsVerificationResult,
@@ -37,6 +40,8 @@ interface VerifyRequest {
   type: 'verify';
   id: string;
   mode?: VerificationMode;
+  /** 試験モード (ADR-0006): 問題パッケージ。あれば exam 束縛を完全検証する。 */
+  manifest?: ExamPackageManifest;
   proofData: {
     version?: string;
     typingProofHash?: string;
@@ -52,6 +57,8 @@ interface VerifyRequest {
     };
     checkpoints?: CheckpointData[];
     language?: string;
+    /** 試験モード (ADR-0006) の proof のみ持つ。root 式の分岐と exam 束縛検証に使う。 */
+    exam?: ExamProofBlock;
   };
 }
 
@@ -304,6 +311,38 @@ async function verify(request: VerifyRequest): Promise<void> {
       signedCheckpointResult
     );
 
+    // 5.5 試験モード (ADR-0006): exam ブロックがあれば束縛検証結果を組み立てる。
+    // root 束縛は rootValid (verifyInitialHashRoot の exam 分岐) で既に検証済み・package 不要。
+    // manifest が渡されたときのみ署名→packageHash→root→内容ハッシュ→time-box まで完全検証する。
+    let examResult: VerificationResultData['exam'];
+    if (proofData.exam) {
+      let examBinding: NonNullable<VerificationResultData['exam']>['binding'];
+      if (request.manifest) {
+        try {
+          examBinding = await verifyExamBinding(
+            proofData as unknown as ExportedProof,
+            request.manifest
+          );
+        } catch (err) {
+          examBinding = {
+            valid: false,
+            packageSignatureValid: false,
+            packageHashMatches: false,
+            rootMatches: false,
+            problemContentHashMatches: false,
+            timeBox: null,
+            reason: `Exam binding verification threw: ${err instanceof Error ? err.message : String(err)}`,
+          };
+        }
+      }
+      examResult = {
+        present: true,
+        rootValid,
+        packageProvided: !!request.manifest,
+        binding: examBinding,
+      };
+    }
+
     // 6. 結果を送信
     sendResult(id, {
       metadataValid,
@@ -325,6 +364,7 @@ async function verify(request: VerifyRequest): Promise<void> {
       signedCheckpointTemporal: signedCheckpointResult.temporal,
       signedCheckpointReason: signedCheckpointResult.reason,
       signedCheckpointReport,
+      exam: examResult,
     });
   } catch (error) {
     sendError(id, error instanceof Error ? error.message : String(error));

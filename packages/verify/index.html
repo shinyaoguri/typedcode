@@ -504,6 +504,54 @@
                     </div>
                   </div>
 
+                  <!-- Exam binding Card (ADR-0006) -->
+                  <div class="result-card" id="card-exam-binding" style="display: none;">
+                    <div class="result-card-header">
+                      <div class="result-card-header-left">
+                        <div class="result-card-icon pending" id="exam-icon">
+                          <i class="fas fa-file-shield"></i>
+                        </div>
+                        <span class="result-card-title" data-i18n="result.examBinding">試験束縛</span>
+                      </div>
+                      <span class="result-card-badge pending" id="exam-badge">-</span>
+                    </div>
+                    <div class="result-card-content" id="exam-content">
+                      <div class="result-row">
+                        <span class="result-row-label" data-i18n="result.examProblem">問題</span>
+                        <span class="result-row-value" id="exam-problem">-</span>
+                      </div>
+                      <div class="result-row">
+                        <span class="result-row-label" data-i18n="result.examRootBinding">root 束縛</span>
+                        <span class="result-row-value" id="exam-root">-</span>
+                      </div>
+                      <div class="result-row" id="exam-signature-row" style="display: none;">
+                        <span class="result-row-label" data-i18n="result.examSignature">パッケージ署名</span>
+                        <span class="result-row-value" id="exam-signature">-</span>
+                      </div>
+                      <div class="result-row" id="exam-packagehash-row" style="display: none;">
+                        <span class="result-row-label" data-i18n="result.examPackageHash">パッケージハッシュ</span>
+                        <span class="result-row-value" id="exam-packagehash">-</span>
+                      </div>
+                      <div class="result-row" id="exam-contenthash-row" style="display: none;">
+                        <span class="result-row-label" data-i18n="result.examContentHash">問題内容ハッシュ</span>
+                        <span class="result-row-value" id="exam-contenthash">-</span>
+                      </div>
+                      <div class="result-row" id="exam-timebox-row" style="display: none;">
+                        <span class="result-row-label" data-i18n="result.examTimeBox">提出期間</span>
+                        <span class="result-row-value" id="exam-timebox">-</span>
+                      </div>
+                      <div class="result-row" id="exam-reason-row" style="display: none;">
+                        <span class="result-row-value text-danger" id="exam-reason">-</span>
+                      </div>
+                      <div class="result-row" id="exam-note-row" style="display: none;">
+                        <span class="result-row-value text-muted" data-i18n="result.examPackageNote">問題パッケージ未提供 — 署名/内容の検証はスキップされています。</span>
+                      </div>
+                      <div class="result-row">
+                        <button class="exam-load-btn" id="exam-load-btn" data-i18n="result.examLoadPackage">問題パッケージ (.tcexam) を読み込む</button>
+                      </div>
+                    </div>
+                  </div>
+
                   <!-- Human Attestation Card -->
                   <div class="result-card" id="card-attestation" style="display: none;">
                     <div class="result-card-header">

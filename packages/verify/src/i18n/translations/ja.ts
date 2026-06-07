@@ -128,6 +128,22 @@ export const ja: VerifyTranslationKeys = {
     anchoringNoFailures: '全 envelope が個別検証を通過',
     anchoringFailedAt: 'cp #{cpIdx} / event {eventIdx}: {reason}',
     anchoringWarningRevoked: '⚠ revoke 後の鍵だが revokedAt より前の署名のため警告止まり',
+    // 試験束縛 (ADR-0006)
+    examBinding: '試験束縛',
+    examProblem: '問題',
+    examRootBinding: 'root 束縛',
+    examSignature: 'パッケージ署名',
+    examPackageHash: 'パッケージハッシュ',
+    examContentHash: '問題内容ハッシュ',
+    examTimeBox: '提出期間',
+    examPackageNote: '問題パッケージ未提供 — 署名・内容の検証はスキップされています。完全検証には .tcexam を読み込んでください。',
+    examLoadPackage: '問題パッケージ (.tcexam) を読み込む',
+    examPass: 'PASS',
+    examFail: 'FAIL',
+    examRootBound: '束縛 OK (package 未提供)',
+    examRootUnbound: 'root 不一致',
+    examBound: '束縛 OK',
+    examFailed: '束縛 NG',
   },
 
   chain: {
@@ -328,6 +344,7 @@ export const ja: VerifyTranslationKeys = {
       'File System Access API は Chrome / Edge でのみ利用可能です',
     browserNotSupportedDesc:
       '代わりにファイル選択またはドラッグ＆ドロップをご利用ください',
+    examInvalidPackage: '問題パッケージ (.tcexam) が不正です',
   },
 
   messages: {

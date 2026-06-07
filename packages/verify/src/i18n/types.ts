@@ -140,6 +140,22 @@ export interface VerifyTranslationKeys {
     anchoringNoFailures: string;
     anchoringFailedAt: string;
     anchoringWarningRevoked: string;
+    // 試験束縛 (ADR-0006)
+    examBinding: string;
+    examProblem: string;
+    examRootBinding: string;
+    examSignature: string;
+    examPackageHash: string;
+    examContentHash: string;
+    examTimeBox: string;
+    examPackageNote: string;
+    examLoadPackage: string;
+    examPass: string;
+    examFail: string;
+    examRootBound: string;
+    examRootUnbound: string;
+    examBound: string;
+    examFailed: string;
   };
 
   // Chain panel
@@ -348,6 +364,7 @@ export interface VerifyTranslationKeys {
     folderReadError: string;
     browserNotSupported: string;
     browserNotSupportedDesc: string;
+    examInvalidPackage: string;
   };
 
   // Messages

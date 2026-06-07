@@ -155,6 +155,12 @@ export class AppController {
       onStatusBarUpdate: () => this.updateStatusBar(),
     });
 
+    // 試験束縛カード (ADR-0006) の「問題パッケージを読み込む」: アクティブタブに .tcexam を読み込み再検証。
+    this.resultPanel.onExamManifestRequested = () => {
+      const tab = this.tabManager.getActiveTab();
+      if (tab) void this.fileController.loadExamManifestForTab(tab.id);
+    };
+
     // Initialize FolderController
     this.folderController = new FolderController({
       fileProcessor: this.fileProcessor,
