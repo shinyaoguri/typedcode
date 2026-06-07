@@ -525,7 +525,7 @@ export const ja: TranslationKeys = {
       codeLabel: '監督コード',
       startButton: '開始',
       unlocking: '解錠中…',
-      resetHint: '※ 試験モードの解除は URL の ?reset でのみ可能です。',
+      resetHint: '※ データを全消去してやり直すには URL に ?reset を付けます。',
       errorNoFile: '問題パッケージを選択してください。',
       errorNoCode: '監督コードを入力してください。',
       errorInvalidFile: '問題パッケージの形式が不正です（.tcexam を選択してください）。',

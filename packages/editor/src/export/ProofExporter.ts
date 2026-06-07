@@ -5,6 +5,7 @@
 
 import JSZip from 'jszip';
 import type { TabManager, TabState } from '../ui/tabs/TabManager.js';
+import type { EditorMode } from '../core/mode.js';
 import type { ProcessingDialog } from '../ui/components/ProcessingDialog.js';
 import { ExportProgressDialog } from '../ui/components/ExportProgressDialog.js';
 import type { ScreenshotTracker } from '../tracking/ScreenshotTracker.js';
@@ -30,9 +31,16 @@ export class ProofExporter {
   private callbacks: ExportCallbacks = {};
   /** 試験モードか。true のときエクスポート前認証を best-effort 化する (ADR-0006) */
   private examMode = false;
+  /** 生成時のモード (ADR-0011)。proof に自己申告ラベルとして記録する。 */
+  private mode: EditorMode = 'casual';
 
   constructor() {
     this.exportProgressDialog = new ExportProgressDialog();
+  }
+
+  /** 生成時のモードを設定する (ADR-0011)。proof.mode に記録される。 */
+  setMode(mode: EditorMode): void {
+    this.mode = mode;
   }
 
   /**
@@ -316,6 +324,7 @@ export class ProofExporter {
       // 証明JSONを追加
       const proofWithContent = {
         ...proof,
+        mode: this.mode,
         filename: activeTab.filename,
         content,
         language: activeTab.language,
@@ -482,6 +491,7 @@ export class ProofExporter {
         // 証明JSONを追加（フラット）
         const proofWithContent = {
           ...proof,
+          mode: this.mode,
           filename: tab.filename,
           content,
           language: tab.language,

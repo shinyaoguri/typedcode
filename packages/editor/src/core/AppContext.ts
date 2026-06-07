@@ -12,6 +12,7 @@ import type { LogViewer } from '../ui/components/LogViewer.js';
 import type { ThemeManager } from '../editor/ThemeManager.js';
 import type { CTerminal } from '../terminal/CTerminal.js';
 import type { EventRecorder } from './EventRecorder.js';
+import type { EditorMode, ModeCapabilities } from './mode.js';
 import type { SessionContentRegistry } from './SessionContentRegistry.js';
 
 // Trackers
@@ -105,7 +106,11 @@ export interface AppContext {
 
   // Flags
   skipBeforeUnload: boolean;
-  /** 試験モードか (?exam=1)。casual との差は機能のみ (ADR-0006/0007)。 */
+  /** 現在のモード (ADR-0011): URL パスで確定する (casual/class/assignment/exam)。 */
+  mode: EditorMode;
+  /** mode に対応する能力集合 (単一の真実源)。 */
+  capabilities: ModeCapabilities;
+  /** 試験モードか (= mode === 'exam')。既存の試験専用分岐が使う派生フラグ。 */
   examMode: boolean;
 
   // Welcome Screen
