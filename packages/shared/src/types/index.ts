@@ -22,6 +22,7 @@ export type {
   SessionResumedData,
   EnvironmentProbeData,
   FullscreenChangeData,
+  ExamOpenedEventData,
   KeystrokeDynamicsData,
   DetectedEventType,
   DetectedEventData,
@@ -78,6 +79,17 @@ export type {
   SignedCheckpointVerificationDetail,
   SignedCheckpointsVerificationResult,
 } from './proof.js';
+
+// 試験モード関連 (ADR-0006)
+export type {
+  ExamKdfParams,
+  ExamKdf,
+  ExamCipher,
+  ExamPackageManifest,
+  ExamPackageSigningCore,
+  ExamSessionContext,
+  ExamProofBlock,
+} from './exam.js';
 
 // テンプレート関連
 export type {

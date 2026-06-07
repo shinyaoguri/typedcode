@@ -2,7 +2,7 @@
 
 タイピングの全過程を改ざん耐性のある形で記録し、後から第三者が「このコードは確かにキー打鍵で書かれた」ことを検証できるシステムの設計仕様。
 
-このドキュメントは、署名済みチェックポイント (Phase 1〜5) 統合後の最新状態を反映する。
+このドキュメントは、署名済みチェックポイント (Phase 1〜5) と**試験モード** (ADR-0006〜0010) 統合後の最新状態を反映する。
 
 ---
 
@@ -15,6 +15,7 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
 - 教育目的: コーディング能力の客観的記録
 - 採用試験: ライブコーディング課題の事後検証
 - AI 生成物との分別: 「全部 LLM に書かせていない」ことの根拠提示
+- **試験モード** (ADR-0006〜0010): 大学試験で生成 AI / 自動入力の不正を抑止する。封印された問題を監督コードで解錠し、解答チェーンを「その問題・試験開始 (T0) 以降」に暗号学的に束縛する。ローカル完結・サーバ非依存・匿名で、本人性は外部 (Moodle 提出) が担う。詳細は後述「試験モード」節。
 
 ### スコープ外
 - 思考内容の証明 (内容のロジック品質や正しさは扱わない)
@@ -30,6 +31,7 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
 - LLM/別エディタで書いたコードを、あたかも自分が打鍵したかのように proof を捏造したい
 - 過去の他人の proof を流用したい
 - Workers 署名サーバが将来停止した後に proof を改ざんしたい
+- **(試験モード)** 試験開始 (T0) 前に問題を読んで事前 solve したい / 配布と異なる別問題の解答をすり替えたい / 過去回・他人の試験 proof を流用したい / 提出後に改ざんしたい
 
 ### 想定信頼境界
 | 構成要素 | 信頼度 |
@@ -39,6 +41,9 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
 | Cloudflare KV | 高信頼 (eventual consistent を許容) |
 | 公開鍵レジストリ (`registry.ts`) | 信頼 (git 履歴で追跡、PR レビュー) |
 | 検証者 (verify ページ / verify-cli) | 自由 (誰でも実行可能、決定的な検証ロジック) |
+| **(試験モード)** 出題者鍵レジストリ (`examAuthorityKeys/registry.ts`) | 信頼 (問題パッケージ署名鍵。cp 署名鍵とは別系統。git 永続管理) |
+| **(試験モード)** 試験監督 (proctor) | 信頼 (唯一の真の air gap。同一マシン・窓内の不正の最終防衛線。T0 に監督コードを口頭/板書で解禁) |
+| **(試験モード)** Moodle 提出 | 信頼 (本人性と提出時刻の上限を外側で担う。TypedCode は本人同定をしない) |
 
 ### 守れる性質
 - 過去に発行された proof の **後追い改ざん検出** (本仕様の主目的)
@@ -92,7 +97,7 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
 
 ### 4.1. イベント (Event) の収集
 
-エディタ上の操作はすべて「イベント」として記録される。27 種類のイベントタイプがある:
+エディタ上の操作はすべて「イベント」として記録される。28 種類のイベントタイプがある:
 
 **カテゴリ別**:
 - **コンテンツ変更**: `contentChange`, `contentSnapshot`, `externalInput`, `templateInjection`
@@ -100,6 +105,7 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
 - **キー入力**: `keyDown`, `keyUp`, `mousePositionChange`
 - **ウィンドウ**: `focusChange`, `visibilityChange`, `windowResize`, `fullscreenChange` (試験モードのフルスクリーン状態。ADR-0008)
 - **システム**: `editorInitialized`, `networkStatusChange`
+- **試験**: `examOpened` (試験モードで封印問題を開封した瞬間 = T0 を記録。`#1` として記録される可読な監査印。権威ある束縛は root + `proof.exam`。ADR-0006)
 - **環境/自動化**: `environmentProbe` (起動時ワンショット。`navigator.webdriver` と自動化グローバル痕跡。ADR-0007 / ADR-0009 の automation 分析器が消費)
 - **認証**: `humanAttestation`, `preExportAttestation`, `termsAccepted`
 - **実行**: `codeExecution`, `terminalInput`
@@ -111,7 +117,7 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
 interface EventHashData {
   sequence: number;        // 連続インデックス (0, 1, 2, ...)
   timestamp: number;       // performance.now() ベースの相対 ms
-  type: EventType;         // 上記 25 種類
+  type: EventType;         // 上記 28 種類
   inputType: InputType | null;  // contentChange 系の詳細 (insertText, deleteContentBackward など 26 種)
   data: string | object | null; // type 別の本体
   rangeOffset: number | null;
@@ -142,6 +148,13 @@ initialEventChainHash = SHA256(fingerprintHash + nonce)
 - 同じ環境でも nonce が違えばルートが異なる → セッションごとに一意
 - nonce + fingerprint の両方が proof に含まれ、検証時に「fingerprint → ルート」を再構成して照合 → **fingerprint 改ざん検出**
 - 異なる proof からのイベント流用も nonce が違うので検出される
+
+**試験モードのルート (ADR-0006)**: 試験モードでは root 式が変わり、問題パッケージと監督コードを焼き込む:
+```typescript
+packageHash = SHA256(deterministicStringify(signing core))  // signing core = manifest − {signature, publicKeyJwk}
+initialEventChainHash = SHA256(fingerprintHash + nonce + packageHash + startToken)
+```
+genesis は **監督コード入力の瞬間 (= T0)**。root が `startToken` を含むためコード入力まで計算できず、セッション初期化ではなくコード入力時にルートを確定する。検証器は **`proof.exam` の有無で root 式を分岐**する (casual proof は従来式)。`PROOF_FORMAT_VERSION` は 1.1.0 (詳細は「試験モード」節)。
 
 ### 4.3. ハッシュチェーン (Hash Chain)
 
@@ -263,6 +276,37 @@ interface SignedCheckpointEnvelope {
 - `firstSeenAt` は KV 初回書込時に確定し、**それ以降同じ sessionId に対して不変** → sessionId 流用攻撃を検出可能
 - ECDSA-P256 署名により外部検証可能 (公開鍵は git で永続管理)
 
+### 4.7. 試験モード: 封印問題パッケージとチェーン根束縛 (ADR-0006)
+
+試験モードは **三者分業** で「紙の試験」に近づける: **TypedCode = 改ざん耐性のある答案 + 記録するペン / 試験監督 (proctor) = air gap の担い手 / Moodle = 本人性と提出時刻**。決めるのは「解答が、配布された“その問題”に、“試験開始 (T0) 以降”に紐づく」ことを **ライブサーバ依存ゼロ・匿名** で proof に焼き込むこと。事前 solve・別問題すり替え・過去回流用・提出後改ざんを構造的に閉じる (窓内・同一マシンの忠実な転写は proctor + 後段分析に委ねる)。
+
+**(1) 封印問題パッケージ (`*.tcexam`, JSON)**: 出題者が問題平文を封印して Moodle で事前配布する。
+```jsonc
+{
+  "formatVersion": 1, "examId": "...", "problemId": "p1", "variant": null,
+  "kdf":    { "algorithm": "argon2id", "salt": "<hex16B>", "params": { "memKiB": 65536, "iterations": 3, "parallelism": 1 } },
+  "cipher": { "algorithm": "AES-256-GCM", "iv": "<hex12B>", "ciphertext": "<base64>" },
+  "releaseTime": "<ISO T0>", "deadline": "<ISO T1>", "allowed": { "languages": ["c", "python"] },
+  "keyId": "exam-...", "algorithm": "ECDSA-P256", "publicKeyJwk": { /* 任意同梱 */ }, "signature": "<hex>"
+}
+```
+- **署名 / packageHash の対象は同一の canonical core** = manifest から `{signature, publicKeyJwk}` を除いたもの (`deterministicStringify`)。任意同梱の publicKeyJwk・署名値そのものに packageHash が依存しない。
+- KDF は **Argon2id** (純 JS の `@noble/hashes`、メモリハードで GPU 並列耐性)、暗号は **AES-256-GCM**。
+
+**(2) 監督コード (`startToken`)**: **8 文字 Crockford Base32 (`I L O U` 除外, 40 bit)**。CSPRNG 生成、T0 に監督が口頭/板書で解禁。入力は正準化 (大文字化 + 区切り除去) して KDF / root / `proof.exam` の全経路で一致させる。**コードの正しさは AES-GCM 認証タグで判定** (誤コード → 復号失敗)。平文 manifest に token のコミットメント (`H(token)`) は**置かない** (低エントロピーゆえ総当たりで漏れる)。封印は「T0 までの数分だけ確実に持つ消費期限つき」であり永続金庫ではない。
+
+**(3) 解錠とチェーン根束縛**: 受験者は事前に `.tcexam` をローカル取込し、T0 に監督コードを入力する。
+1. `examAuthorityKeys` で **package 署名を検証** (本物の問題)。
+2. Argon2id で監督コードから鍵を導出し **AES-256-GCM 復号** (誤コードは GCM で失敗)。
+3. **genesis = この瞬間**。root を `SHA256(fingerprintHash + nonce + packageHash + startToken)` で確定 (§4.2)。
+4. `#0 = humanAttestation` を **best-effort** で記録 (Turnstile は T0 前に取得・不達でも合成して #0 を残す = サーバを critical path に置かない)。`#1 = examOpened` を記録。問題を表示。
+
+**(4) `proof.exam` ブロック / 検証**: 復号後平文の SHA-256・packageHash・startToken 等を proof に保存し、grader が提出物 (+ 公開 package) だけで self-contained に検証する。形式は §5.3、検証フローは §6.4 を参照。
+
+**(5) 出題者鍵レジストリ** (`examAuthorityKeys/registry.ts`): cp 署名鍵 (`checkpointKeys`) とは**別系統**だが同型 (append-only、`status: 'active'|'revoked'`、git 永続)。問題パッケージ署名の真正性を担う。生成は `generate-exam-authority-key.mjs`、パッケージ生成は `make-exam-package.mjs`。
+
+**(6) サーバ非依存**: T0 に必要なのは監督コードのみ (100 名同時・不安定網でもサーバゼロ)。署名 cp や Turnstile は best-effort、**export 前認証も試験モードでは best-effort 化** (Workers 不達でも提出 ZIP を生成できる)。
+
 ---
 
 ## 5. 保存形式
@@ -290,7 +334,7 @@ my-code.zip
 
 ```typescript
 interface ExportedProof {
-  version: '1.0.0';
+  version: '1.0.0' | '1.1.0';       // 1.1.0 = 試験モードの root 式に対応したビルド (ADR-0006)
   typingProofHash: string;          // proofData 全体の SHA-256
   typingProofData: {
     finalContentHash: string;       // SHA256(最終コンテンツ)
@@ -317,9 +361,22 @@ interface ExportedProof {
     timestamp: string;
     isPureTyping: boolean;
   };
-  checkpoints?: CheckpointData[];   // 33 event 間隔、各 signature? 付き
+  checkpoints?: CheckpointData[];   // 各 signature? 付き
+  exam?: ExamProofBlock;            // 試験モード時のみ (ADR-0006)
+}
+
+// 試験モード proof のみ持つ。grader が self-contained に束縛を検証するための値 (ADR-0006)
+interface ExamProofBlock {
+  examProofVersion: 1;
+  examId: string; problemId: string; variant: string | null;
+  packageHash: string;          // SHA256(deterministicStringify(signing core))
+  problemContentHash: string;   // 復号後**平文**問題の SHA-256 (事前公開しない)
+  startToken: string;           // 監督コード (正準形)。T0 後は公開値なので保存して self-contained 化
+  rootBinding: 'v1';
 }
 ```
+
+`startToken` を保存しても、束縛の価値 (「T0 前に知り得ない」) は損なわれない (公開は T0 後)。保存により grader はコードを out-of-band に受け取る運用が不要になり、コード紛失で root 検証不能になるリスクも消える。
 
 ### 5.4. マルチファイル形式
 
@@ -354,7 +411,7 @@ interface ExportedProof {
 - `typingProofHash === SHA256(typingProofData)` を再計算照合
 - `finalContentHash === SHA256(content)` を再計算照合
 - fingerprint components から hash を再計算 → 申告 hash と一致
-- `initialEventChainHash === SHA256(fingerprintHash + nonce)` を照合
+- `initialEventChainHash === SHA256(fingerprintHash + nonce)` を照合。**`proof.exam` がある場合は試験モードの root 式** `SHA256(fingerprintHash + nonce + packageHash + startToken)` で照合する (proof 自己完結・package 不要、ADR-0006)
 - `metadata` (pasteEvents, dropEvents, insertEvents, ...) を全イベント走査で再カウントして照合
 
 **Layer 2: ハッシュチェーン整合性**
@@ -414,6 +471,18 @@ interface ExportedProof {
 - レイヤ間優先順位: metadata → chain → finalHash → checkpoint → content → signedCheckpoint
 - いずれかが false なら、エラー位置 (event index) とメッセージを返す
 
+### 6.4. 試験束縛検証 (grader, ADR-0006)
+
+試験モード proof には上記 6 レイヤに加え `verifyExamBinding` がある。**完全オフライン**で動く。root 束縛 (上記 Layer 1 の exam 分岐) は proof 自己完結なので package 不要だが、**真正性 (本物の問題か) と内容束縛は問題パッケージ (`.tcexam`) を grader に渡したときのみ**検証できる。
+
+1. package 署名を `examAuthorityKeys` で検証 → 本物の問題。**信頼は registry 登録鍵に限る** (未登録 keyId は同梱公開鍵があっても untrusted = 自己署名を排除)。鍵の有効期間/失効も `releaseTime` を anchor に判定 (validFrom 前・validUntil 後・失効後 release は reject、失効前 release は warning 付き trust)。anchor が出題者自己申告な点の限界は [ADR-0006 セキュリティ硬化](adr/0006-exam-mode-sealed-problem-binding.md) 参照
+2. `packageHash` 再計算 = `proof.exam.packageHash` → この問題に束縛
+3. root 再計算 (`fingerprintHash, nonce, packageHash, proof.exam.startToken`) = `initialEventChainHash` → **T0 以降に開始** (token は proof 同梱なので out-of-band 不要)
+4. `startToken` で package を復号 → 平文 `problemContentHash` = `proof.exam.problemContentHash` → 答案はこの問題のもの
+5. **time-box** (advisory): `releaseTime ≤ 提出時刻 ≤ deadline`。実際の提出時刻は外部 (Moodle)。verify-cli は `--submitted-at` で渡せ、未指定なら window 表示のみ (`withinWindow=null`)
+
+配線: **verify-cli** は `--exam-package <file.tcexam>` で渡す (任意、未指定なら root 束縛のみ表示し「package 未提供」を明示)。**verify(web)** は試験束縛カードで root 束縛を常時表示し、「問題パッケージを読み込む」で `.tcexam` を取り込み当該タブを再検証して完全束縛を表示する。package 指定で束縛が失敗すれば全体を invalid とする。
+
 ---
 
 ## 7. 耐改ざん性 (Defense in Depth)
@@ -436,6 +505,11 @@ interface ExportedProof {
 | **sessionId 流用** で別人の checkpoint chain 末尾に自分の envelope を append | Layer 6 (`firstSeenAt` 不一致 → KV 由来の不変値で防御) |
 | 全 envelope を proof 完成後にバッチで署名取得 (post-hoc) | Layer 6 (serverSpan が clientSpan と乖離 → warning フラグ) |
 | Workers サーバを将来停止させた後に proof 改ざん | Layer 6 (公開鍵 registry が git 永続管理、envelope 同梱で完全オフライン検証可能) |
+| **(試験)** T0 前に問題を読んで事前 solve | 封印 (Argon2id + 監督コード)。T0 まで復号不可 (消費期限つき; 配布窓は数分) |
+| **(試験)** 配布と異なる別問題の解答にすり替え | §6.4 (packageHash 不一致 / 復号後 problemContentHash 不一致) |
+| **(試験)** T0 より前に開始したのに後に見せかける | §6.4 (root に `startToken` が焼かれる。T0 前は監督コードを知り得ないため root を作れない) |
+| **(試験)** 過去回 / 他人の試験 proof を流用 | Layer 1 (fingerprint/nonce 不一致) + §6.4 (packageHash 不一致) |
+| **(試験)** 出題者を詐称した偽問題パッケージ | §6.4 (`examAuthorityKeys` での署名検証に失敗) |
 
 **多層性 (defense in depth)**: 一つのレイヤを攻撃者が突破しても、他レイヤが直交的に検出する。たとえば event の data 改ざんは Layer 2 の hash 不一致と Layer 4 の content 不一致と Layer 6 の chainHash 不一致の **3 経路で検出される**。
 
@@ -451,6 +525,7 @@ interface ExportedProof {
 - **流用検出**: 別の fingerprint / sessionId / initialEventChainHash 由来のデータ流用は決定的に検出される
 - **時刻アンカリング (signed checkpoints 利用時)**: 各 envelope の `serverTimestamp` は「サーバが署名要求を受け取った時刻」を証明する → proof は最古の `serverTimestamp` 以降に存在していたことが証明される
 - **長期検証可能性**: 公開鍵 registry が git で永続管理され、envelope に公開鍵を同梱可能 → Cloudflare Workers が停止しても verify-cli で永続的に検証可能
+- **(試験モード) 問題・T0 束縛**: `proof.exam` のある proof は、答案チェーンの root が「配布された問題 (`packageHash`) + 監督コード (`startToken`)」に焼かれている。出題者署名が破られない限り、別問題すり替え・T0 前開始・偽問題は §6.4 で決定的に検出される (root 束縛は package 無しでも検証可能)
 
 ### 8.2. 弱い保証 (Probabilistic / Heuristic)
 
@@ -469,6 +544,7 @@ interface ExportedProof {
   - といった補助情報が proof に含まれるが、これらは proof valid 判定とは独立した「読み手の判断材料」である
 - **個人同定**: fingerprint は環境同定であってユーザ個人を識別するものではない
 - **コード品質保証**: タイピングしたという事実のみを証明する。書かれたコードが正しい/良いという保証は一切しない
+- **(試験モード) 窓内・同一マシンの忠実な転写**: T0 以降に正規エディタで AI 出力を手で書き写す等は proof として valid になる。封印は「T0 までの数分」を守るだけで永続金庫ではない (短コードゆえ「絶対割れない」とは喧伝しない)。本人性も TypedCode は担わない (Moodle)。これらの残差は **proctor (唯一の真の air gap) + 後段の挙動分析** (別 ADR、pluggable) が担う
 
 ### 8.4. 鍵管理の前提
 
@@ -540,7 +616,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 用語 | 意味 |
 |------|------|
 | **proof** | ExportedProof または MultiFileExportedProof。エクスポートされた検証可能な記録 |
-| **event** | エディタ操作 1 つを表す最小単位。25 種類 |
+| **event** | エディタ操作 1 つを表す最小単位。28 種類 |
 | **chain hash** | event.hash。previousHash + eventData の SHA-256 |
 | **PoSW** | Proof of Sequential Work。10000 回 SHA-256 反復 |
 | **checkpoint** | 直前 cp から 100 event か 10 秒のいずれかが先に到達した時点で作られる「中間スナップショット」 |
@@ -549,6 +625,12 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **firstSeenAt** | サーバが initial に sessionId を見た時刻。KV 由来で不変 |
 | **anchored** | proof に signed checkpoint が 1 つ以上含まれている状態 |
 | **post-hoc batch signing** | proof 完成後に複数 envelope を短時間で一括取得する攻撃。temporal ratio で検出試行 |
+| **(試験) 試験モード** | `?exam=1` で入る anti-AI-cheating モード (sticky)。封印問題 + 監督コード + チェーン根束縛。ADR-0006〜0010 |
+| **(試験) 封印問題パッケージ / `.tcexam`** | 出題者が Argon2id + AES-256-GCM で封印し ECDSA-P256 署名した問題ファイル。Moodle で事前配布 |
+| **(試験) 監督コード / `startToken`** | T0 に監督が解禁する 8 文字 Crockford Base32 (40bit)。封印を解錠しチェーン根に焼かれる |
+| **(試験) packageHash** | manifest の canonical core (− `{signature, publicKeyJwk}`) の SHA-256。root と `proof.exam` に束縛 |
+| **(試験) 出題者鍵 / `examAuthorityKeys`** | 問題パッケージ署名鍵のレジストリ。cp 署名鍵 (`checkpointKeys`) と別系統・同型 |
+| **(試験) genesis** | 試験モードでチェーン根を確定する瞬間 = 監督コード入力 = T0 |
 
 ### 定数一覧
 
@@ -563,8 +645,14 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `POST_HOC_RATIO_THRESHOLD` | 0.1 | `signedCheckpoints.ts` |
 | `POST_HOC_MIN_SERVER_SPAN_MS` | 60_000 | `signedCheckpoints.ts` |
 | `POST_HOC_MIN_CLIENT_SPAN_MS` | 600_000 | `signedCheckpoints.ts` |
-| `PROOF_FORMAT_VERSION` | '1.0.0' | `version.ts` |
+| `PROOF_FORMAT_VERSION` | '1.1.0' | `version.ts` (1.1.0 = 試験モードの root 式対応。casual proof も 1.1.0 を刻むが構造は不変) |
 | `STORAGE_FORMAT_VERSION` | 1 | `version.ts` |
+| `MIN_SUPPORTED_VERSION` | '1.0.0' | `version.ts` (旧 proof も検証可) |
+| `EXAM_PACKAGE_FORMAT_VERSION` | 1 | `version.ts` (`.tcexam` の formatVersion) |
+| `EXAM_PROOF_VERSION` | 1 | `version.ts` (`proof.exam.examProofVersion`) |
+| `EXAM_ROOT_BINDING` | 'v1' | `version.ts` (`proof.exam.rootBinding`) |
+| Argon2id params (試験) | memKiB=65536 / iterations=3 / parallelism=1 | `make-exam-package.mjs` 既定 (manifest に保持し出題者が調整可) |
+| 監督コード | 8 文字 Crockford Base32 (`I L O U` 除外, 40 bit) | ADR-0006 |
 
 注: `CheckpointManager.CHECKPOINT_INTERVAL` は `DEFAULT_MAX_EVENTS_PER_CHECKPOINT` の値を持つ deprecated エイリアスとして維持される。
 
@@ -579,6 +667,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 - [CLAUDE.md](../CLAUDE.md) — リポジトリ全体の玄関口 (Claude Code / Agent SDK 用)
 - [packages/*/CLAUDE.md](../packages/) — 各サブシステムの責務 / 不変条件 / 罠
 - [docs/adr/](adr/) — Architecture Decision Records (なぜそうしたかの蓄積)
+- 試験モード ADR: [0006](adr/0006-exam-mode-sealed-problem-binding.md) (封印問題 + 根束縛, Accepted) / [0007](adr/0007-maximal-signal-capture.md) (生信号捕捉) / [0008](adr/0008-exam-fullscreen-request-not-enforce.md) (フルスクリーン要求) / [0009](adr/0009-pluggable-analysis-layer.md) (分析層) / [0010](adr/0010-exam-session-model.md) (セッションモデル)
 
 ---
 
@@ -593,3 +682,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-05-28 | Phase 4 | Editor の SignedCheckpointService + TabManager 配線 |
 | 2026-05-28 | Phase 5 | 検証 UI (Anchoring カード、モードセレクタ) |
 | 2026-05-29 | follow-up | fetch bind / dropdown UI / localKeys split |
+| 2026-06-07 | 試験モード (ADR-0006, PR1–4) | 封印問題パッケージ (`.tcexam`, Argon2id + AES-256-GCM + ECDSA-P256) + 監督コードによるチェーン根束縛。`PROOF_FORMAT_VERSION` 1.0.0→1.1.0、`proof.exam` ブロック、`examOpened` イベント、`examAuthorityKeys` レジストリ、`verifyExamBinding` を verify-cli / verify(web) に配線。本仕様に「試験モード」(§4.7) + 検証 (§6.4) を反映 |

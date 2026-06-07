@@ -27,7 +27,19 @@ typedcode-verify proof.zip
 
 # 複数ファイルを指定
 typedcode-verify file1.json file2.zip
+
+# 検証モード (既定 full。fast は PoSW 反復をスキップ)
+typedcode-verify proof.zip --mode fast
+
+# 試験モード (ADR-0006): 問題パッケージ (.tcexam) を渡して束縛を完全検証
+typedcode-verify ALL_TC.zip --exam-package p1.tcexam
+# 提出時刻を渡すと time-box (提出期間内か) も判定
+typedcode-verify ALL_TC.zip --exam-package p1.tcexam --submitted-at 2026-06-06T01:00:00Z
 ```
+
+### 試験モード (ADR-0006)
+
+`proof.exam` を持つ答案は、`--exam-package` を**指定しなくても** root 束縛 (答案が「その問題・試験開始以降」に紐づくこと) を検証します。`--exam-package <file.tcexam>` を渡すと、問題の真正性 (出題者署名)・packageHash・復号した問題内容ハッシュ・提出期間まで完全に検証します (`--submitted-at` で提出時刻を指定)。
 
 ## 出力例
 
@@ -80,6 +92,7 @@ Attestation:
 4. **PoSW 検証**: シーケンシャル証明を `POSW_ITERATIONS` 反復で検証
 5. **アテステーション検証**: 人間認証がある場合は署名検証
 6. **署名済みチェックポイント検証**: 任意。サーバ署名と連結ハッシュを検証
+7. **試験束縛検証** (ADR-0006、`proof.exam` がある場合): root 束縛 (自己完結) +、`--exam-package` 指定時は署名・packageHash・問題内容ハッシュ・time-box
 
 ## ビルド
 

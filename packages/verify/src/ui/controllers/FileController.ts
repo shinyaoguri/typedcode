@@ -11,6 +11,29 @@ import type { StatusBarUI } from '../StatusBarUI';
 import type { ProofFile, VerifyScreenshot, DiffResult, ContentMismatchInfo } from '../../types';
 import { t } from '../../i18n/index';
 import { DiffService } from '../../services/DiffService';
+import { parseExamPackageManifest, type ExamPackageManifest } from '@typedcode/shared';
+
+/** 隠し file input を開いて 1 ファイルを返す (キャンセルは null)。 */
+function pickFile(accept: string): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    input.style.display = 'none';
+    let settled = false;
+    const done = (f: File | null): void => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(f);
+    };
+    input.addEventListener('change', () => done(input.files?.[0] ?? null));
+    // キャンセル検出 (フォーカス復帰時に change が来なければ null)
+    window.addEventListener('focus', () => setTimeout(() => done(null), 300), { once: true });
+    document.body.appendChild(input);
+    input.click();
+  });
+}
 
 export interface FileControllerDependencies {
   fileProcessor: FileProcessor;
@@ -43,6 +66,38 @@ export class FileController {
 
   constructor(deps: FileControllerDependencies) {
     this.deps = deps;
+  }
+
+  /**
+   * 試験モード (ADR-0006): 当該タブの exam proof に問題パッケージ (.tcexam) を読み込み、
+   * 完全束縛検証 (署名/復号/内容) を含めて再検証する。grader 用。
+   */
+  async loadExamManifestForTab(tabId: string): Promise<void> {
+    const tab = this.deps.tabManager.getTab(tabId);
+    if (!tab || !tab.proofData?.exam) return;
+
+    const file = await pickFile('.tcexam,application/json');
+    if (!file) return;
+
+    let manifest: ExamPackageManifest | null = null;
+    try {
+      manifest = parseExamPackageManifest(JSON.parse(await file.text()));
+    } catch {
+      manifest = null;
+    }
+    if (!manifest) {
+      this.deps.statusBar.setError(t('errors.examInvalidPackage'));
+      return;
+    }
+
+    // タブを再検証状態にして、問題パッケージ付きで再検証する。
+    this.deps.tabManager.updateTab(tabId, {
+      examManifest: manifest,
+      status: 'pending',
+      progress: 0,
+      verificationResult: null,
+    });
+    this.deps.verificationQueue.reverifyWithManifest(tabId, manifest);
   }
 
   /**

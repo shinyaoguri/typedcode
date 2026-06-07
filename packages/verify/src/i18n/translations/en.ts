@@ -128,6 +128,22 @@ export const en: VerifyTranslationKeys = {
     anchoringNoFailures: 'All envelopes passed individual verification',
     anchoringFailedAt: 'cp #{cpIdx} / event {eventIdx}: {reason}',
     anchoringWarningRevoked: '⚠ Key was revoked, but the signature predates revokedAt, so we trust it with a warning',
+    // Exam binding (ADR-0006)
+    examBinding: 'Exam binding',
+    examProblem: 'Problem',
+    examRootBinding: 'Root binding',
+    examSignature: 'Package signature',
+    examPackageHash: 'Package hash',
+    examContentHash: 'Problem content hash',
+    examTimeBox: 'Submission window',
+    examPackageNote: 'Problem package not provided — signature/content checks skipped. Load the .tcexam to fully verify.',
+    examLoadPackage: 'Load problem package (.tcexam)',
+    examPass: 'PASS',
+    examFail: 'FAIL',
+    examRootBound: 'Bound (no package)',
+    examRootUnbound: 'Root mismatch',
+    examBound: 'Bound',
+    examFailed: 'Binding failed',
   },
 
   chain: {
@@ -328,6 +344,7 @@ export const en: VerifyTranslationKeys = {
       'File System Access API is only available in Chrome / Edge',
     browserNotSupportedDesc:
       'Please use file selection or drag and drop instead',
+    examInvalidPackage: 'Invalid problem package (.tcexam)',
   },
 
   messages: {

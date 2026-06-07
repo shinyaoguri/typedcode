@@ -34,3 +34,10 @@ src/
 - **`@typedcode/shared` の `main` は `src/index.ts` (raw TypeScript)**: tsc コンパイル後の `dist/cli.js` を `node` で直接実行すると `ERR_MODULE_NOT_FOUND` が出る。これは pre-existing でモノレポ内ローカル実行時の構成課題。**Node のバージョンとは無関係**。公開時にはバンドルが必要 (将来課題)
 - **新しい proof フォーマットへの対応**: shared 側で `parseJsonString` / `parseZipBuffer` を拡張すれば CLI もそのまま追従する。CLI 側に判定ロジックを書かない
 - **進捗表示は TTY 検出**: パイプ先や CI ログでは ANSI エスケープを抑制する
+
+## 試験モード (ADR-0006) の検証
+
+- `--exam-package <file.tcexam>` (任意): 指定すると shared の `verifyExamBinding` で署名→packageHash→root→内容ハッシュ→time-box まで完全検証する。**未指定でも** `proof.exam` のある proof は root 束縛 (自己完結) を検証し「package 未提供」を明示する
+- `--submitted-at <ISO>` (任意): time-box の `withinWindow` 判定 (Moodle 提出時刻)。未指定なら window 表示のみ
+- package 指定で束縛失敗は **exit 1**。exam 束縛のみ失敗時は出力ヘッダに束縛理由を出す (chain の成功メッセージを誤表示しない)
+- ロジックは全て shared (`verifyExamBinding` / `parseExamPackageManifest`) に委譲。CLI は薄いラッパに留める

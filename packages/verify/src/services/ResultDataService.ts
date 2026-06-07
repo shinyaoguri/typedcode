@@ -168,5 +168,17 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
             report: verificationResult.signedCheckpointReport,
           }
         : undefined,
+    // 試験モード (ADR-0006): exam proof のときのみ束縛検証結果を渡す。
+    examBinding:
+      proofData.exam && verificationResult.exam
+        ? {
+            examId: proofData.exam.examId,
+            problemId: proofData.exam.problemId,
+            variant: proofData.exam.variant,
+            rootValid: verificationResult.exam.rootValid,
+            packageProvided: verificationResult.exam.packageProvided,
+            binding: verificationResult.exam.binding,
+          }
+        : undefined,
   };
 }

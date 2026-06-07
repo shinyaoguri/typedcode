@@ -420,6 +420,7 @@ export interface TranslationKeys {
     screenShareResumed: string;
     screenShareOptOut: string;
     sessionResumed: string;
+    examOpened: string;
   };
 
   // Operation types (input detection)
@@ -542,5 +543,21 @@ export interface TranslationKeys {
     submitNote: string;
     downloadButton: string;
     toggleProblem: string;
+    gate: {
+      title: string;
+      description: string;
+      packageLabel: string;
+      dropHint: string;
+      codeLabel: string;
+      startButton: string;
+      unlocking: string;
+      resetHint: string;
+      errorNoFile: string;
+      errorNoCode: string;
+      errorInvalidFile: string;
+      errorUntrusted: string;
+      errorWrongCode: string;
+      errorUnlockFailed: string;
+    };
   };
 }

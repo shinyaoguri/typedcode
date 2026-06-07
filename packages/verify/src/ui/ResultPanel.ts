@@ -16,7 +16,7 @@ import type {
   VerificationMode,
   PoswMode,
 } from '../types';
-import type { SignedCheckpointsVerificationResult } from '@typedcode/shared';
+import type { SignedCheckpointsVerificationResult, ExamBindingVerificationResult } from '@typedcode/shared';
 import type { SignedCheckpointReport } from '../types';
 import { escapeHtml, type TypingPatternAnalysis } from '@typedcode/shared';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
@@ -48,6 +48,18 @@ export interface ResultData {
     reason?: string;
     /** 「展開時の根拠」表示用の追加情報 */
     report?: SignedCheckpointReport;
+  };
+  /** 試験モード (ADR-0006) の束縛検証結果。exam proof のときのみ。 */
+  examBinding?: {
+    examId: string;
+    problemId: string;
+    variant: string | null;
+    /** proof 自己完結の exam root 束縛 (package 不要) */
+    rootValid: boolean;
+    /** 問題パッケージ (.tcexam) が読み込まれたか */
+    packageProvided: boolean;
+    /** package 提供時のみ。署名→packageHash→root→内容ハッシュ→time-box */
+    binding?: ExamBindingVerificationResult;
   };
 }
 
@@ -133,6 +145,26 @@ export class ResultPanel {
   private anchoringReason: HTMLElement;
   private anchoringDetails: HTMLElement;
   private anchoringDetailsContent: HTMLElement;
+  // 試験束縛カード (ADR-0006)
+  private cardExamBinding: HTMLElement;
+  private examIcon: HTMLElement;
+  private examBadge: HTMLElement;
+  private examProblem: HTMLElement;
+  private examRoot: HTMLElement;
+  private examSignatureRow: HTMLElement;
+  private examSignature: HTMLElement;
+  private examPackageHashRow: HTMLElement;
+  private examPackageHash: HTMLElement;
+  private examContentRow: HTMLElement;
+  private examContentHash: HTMLElement;
+  private examTimeboxRow: HTMLElement;
+  private examTimebox: HTMLElement;
+  private examReasonRow: HTMLElement;
+  private examReason: HTMLElement;
+  private examNoteRow: HTMLElement;
+  private examLoadBtn: HTMLElement;
+  /** 試験束縛カードの「問題パッケージを読み込む」要求コールバック (AppController が配線) */
+  onExamManifestRequested?: () => void;
 
   private attestationIcon: HTMLElement;
   private attestationBadge: HTMLElement;
@@ -248,6 +280,26 @@ export class ResultPanel {
     this.anchoringReason = document.getElementById('anchoring-reason')!;
     this.anchoringDetails = document.getElementById('anchoring-details')!;
     this.anchoringDetailsContent = document.getElementById('anchoring-details-content')!;
+
+    // 試験束縛カード (ADR-0006)
+    this.cardExamBinding = document.getElementById('card-exam-binding')!;
+    this.examIcon = document.getElementById('exam-icon')!;
+    this.examBadge = document.getElementById('exam-badge')!;
+    this.examProblem = document.getElementById('exam-problem')!;
+    this.examRoot = document.getElementById('exam-root')!;
+    this.examSignatureRow = document.getElementById('exam-signature-row')!;
+    this.examSignature = document.getElementById('exam-signature')!;
+    this.examPackageHashRow = document.getElementById('exam-packagehash-row')!;
+    this.examPackageHash = document.getElementById('exam-packagehash')!;
+    this.examContentRow = document.getElementById('exam-contenthash-row')!;
+    this.examContentHash = document.getElementById('exam-contenthash')!;
+    this.examTimeboxRow = document.getElementById('exam-timebox-row')!;
+    this.examTimebox = document.getElementById('exam-timebox')!;
+    this.examReasonRow = document.getElementById('exam-reason-row')!;
+    this.examReason = document.getElementById('exam-reason')!;
+    this.examNoteRow = document.getElementById('exam-note-row')!;
+    this.examLoadBtn = document.getElementById('exam-load-btn')!;
+    this.examLoadBtn.addEventListener('click', () => this.onExamManifestRequested?.());
 
     // Attestation card
     this.cardAttestation = document.getElementById('card-attestation')!;
@@ -548,6 +600,9 @@ export class ResultPanel {
     // Anchoring card (signed checkpoints)
     this.renderAnchoringCard(data.signedCheckpoint);
 
+    // Exam binding card (ADR-0006)
+    this.renderExamBindingCard(data.examBinding);
+
     // Attestation card
     if (attestations && attestations.length > 0) {
       this.cardAttestation.style.display = 'block';
@@ -685,6 +740,73 @@ export class ResultPanel {
     }
 
     this.renderAnchoringDetails(sc);
+  }
+
+  /** PASS/FAIL の行値を色付きで設定する。 */
+  private setExamPassFail(el: HTMLElement, ok: boolean): void {
+    el.textContent = ok ? t('result.examPass') : t('result.examFail');
+    el.className = `result-row-value ${ok ? 'text-success' : 'text-danger'}`;
+  }
+
+  /**
+   * 試験束縛 (ADR-0006) カードを描画する。
+   * - exam proof でなければ非表示。
+   * - root 束縛は常時表示 (proof 自己完結・package 不要)。
+   * - 問題パッケージ未提供なら「読み込む」を促し、署名/内容行は隠す。
+   * - パッケージ提供時は署名/packageHash/内容/time-box を表示。
+   */
+  private renderExamBindingCard(eb?: ResultData['examBinding']): void {
+    if (!eb) {
+      this.cardExamBinding.style.display = 'none';
+      return;
+    }
+    this.cardExamBinding.style.display = 'block';
+    const variant = eb.variant ? ` / ${eb.variant}` : '';
+    this.examProblem.textContent = `${eb.examId} / ${eb.problemId}${variant}`;
+    this.setExamPassFail(this.examRoot, eb.rootValid);
+
+    const b = eb.binding;
+    const pkgRows = [this.examSignatureRow, this.examPackageHashRow, this.examContentRow, this.examTimeboxRow];
+    if (!b) {
+      // 問題パッケージ未提供: root 束縛のみ。署名/内容はスキップ。
+      for (const r of pkgRows) r.style.display = 'none';
+      this.examReasonRow.style.display = 'none';
+      this.examNoteRow.style.display = 'flex';
+      this.renderCard(
+        this.examIcon,
+        this.examBadge,
+        eb.rootValid,
+        eb.rootValid ? t('result.examRootBound') : t('result.examRootUnbound')
+      );
+      return;
+    }
+
+    // パッケージ提供: 完全束縛検証。
+    this.examNoteRow.style.display = 'none';
+    this.examSignatureRow.style.display = 'flex';
+    this.examPackageHashRow.style.display = 'flex';
+    this.examContentRow.style.display = 'flex';
+    this.setExamPassFail(this.examSignature, b.packageSignatureValid);
+    this.setExamPassFail(this.examPackageHash, b.packageHashMatches);
+    this.setExamPassFail(this.examContentHash, b.problemContentHashMatches);
+    if (b.timeBox) {
+      this.examTimeboxRow.style.display = 'flex';
+      this.examTimebox.textContent = `${b.timeBox.releaseTime} … ${b.timeBox.deadline}`;
+    } else {
+      this.examTimeboxRow.style.display = 'none';
+    }
+    if (!b.valid && b.reason) {
+      this.examReasonRow.style.display = 'flex';
+      this.examReason.textContent = b.reason;
+    } else {
+      this.examReasonRow.style.display = 'none';
+    }
+    this.renderCard(
+      this.examIcon,
+      this.examBadge,
+      b.valid,
+      b.valid ? t('result.examBound') : t('result.examFailed')
+    );
   }
 
   /**

@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types --config wrangler.staging.toml",
     "gen-checkpoint-key": "node scripts/generate-checkpoint-key.mjs",
+    "gen-exam-authority-key": "node scripts/generate-exam-authority-key.mjs",
+    "make-exam-package": "node scripts/make-exam-package.mjs",
     "test": "vitest",
     "test:run": "vitest run"
   },

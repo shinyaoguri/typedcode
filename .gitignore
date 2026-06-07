@@ -36,3 +36,6 @@ yarn-error.log*
 # Working docs (引き継ぎ用スクラッチパッド。残したい設計判断は
 # system-spec.md か ADR に統合する)
 docs/plans/
+
+# Playwright MCP output (screenshots, snapshots, e2e fixtures)
+.playwright-mcp/

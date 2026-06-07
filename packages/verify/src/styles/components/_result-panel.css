@@ -1209,3 +1209,18 @@
   border-radius: 3px;
   word-break: break-word;
 }
+
+/* 試験束縛カード (ADR-0006) の「問題パッケージを読み込む」ボタン */
+.exam-load-btn {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  background-color: transparent;
+  color: var(--accent-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.exam-load-btn:hover {
+  background-color: var(--bg-hover);
+}
