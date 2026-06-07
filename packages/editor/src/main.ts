@@ -278,14 +278,13 @@ const ctx: AppContext = {
 
 // proof に生成時のモードを記録する (ADR-0011: 自己申告ラベル、全モード共通)。
 ctx.proofExporter.setMode(ctx.mode);
+// export 前認証の best-effort 化はモード能力で決まる (ADR-0006: exam のみ。サーバを critical path に置かない)。
+ctx.proofExporter.setExamMode(ctx.capabilities.preExportBestEffort);
 
-// 試験モード: 問題パネル (スタブ) を表示する。casual モードでは何もしない。
+// 封印問題モード (exam): 問題パネルを表示し DL を一本化する。他モードでは何もしない。
 // Monaco は automaticLayout: true なのでパネル出現に伴う再レイアウトは自動。
 if (ctx.examMode) {
   document.body.classList.add('exam-mode');
-  // 試験モードでは export 前認証を best-effort 化 (ADR-0006: サーバを critical path に
-  // 置かない。Workers 不達でも提出 ZIP を生成できるようにする)。
-  ctx.proofExporter.setExamMode(true);
   // ProblemPanel.initialize() がリサイズ/クローズ/トグルを内部で配線する。
   if (ctx.problemPanel.initialize()) {
     ctx.problemPanel.show();
@@ -490,7 +489,7 @@ function initializeTerminal(): void {
   const newFileBtn = document.getElementById('new-file-btn');
   newFileBtn?.addEventListener('click', async () => {
     ctx.mainMenuDropdown.close();
-    if (ctx.examMode) return; // 試験モードでは新規ファイル不可 (ADR-0010)
+    if (ctx.capabilities.tabLock) return; // タブ固定モード (試験) では新規ファイル不可 (ADR-0010/0011)
     if (!ctx.tabManager) return;
 
     if (isTurnstileConfigured()) {
@@ -876,7 +875,11 @@ async function initializeApp(): Promise<void> {
   const isReload = sessionStorage.getItem('typedcode-session-active') === 'true';
   const hasExistingSession = await sessionService.hasExistingSession();
 
-  if (ScreenshotTracker.isSupported()) {
+  if (!ctx.capabilities.screenshots) {
+    // このモードでは画面キャプチャを使わない (課題モード = 自宅・プライバシー。ADR-0011)。
+    // 画面共有の選択ダイアログも出さず、screenshot tracker を作らない。
+    console.log('[TypedCode] Screenshots disabled for mode:', ctx.mode);
+  } else if (ScreenshotTracker.isSupported()) {
     // ScreenshotTrackerはSessionStorageServiceを使用してスクリーンショットを保存
     const screenshotTracker = new ScreenshotTracker(sessionService);
 
@@ -1177,8 +1180,8 @@ async function initializeApp(): Promise<void> {
     recordTermsAcceptance();
   }
 
-  // 試験モード: 初期問題タブ確定後、タブの追加・削除を源流でロックする (ADR-0010)。
-  if (ctx.examMode) {
+  // タブ固定モード (試験): 初期問題タブ確定後、タブの追加・削除を源流でロックする (ADR-0010/0011)。
+  if (ctx.capabilities.tabLock) {
     ctx.tabManager?.setExamLock(true);
   }
 
@@ -1225,9 +1228,9 @@ async function initializeApp(): Promise<void> {
   initializeLogViewer(ctx);
   initializeEventRecorder();
 
-  // 試験モード: フルスクリーン追跡 + 警告バナー (ADR-0008)。eventRecorder 準備後に配線する。
+  // フルスクリーン追跡 + 警告バナー (ADR-0008、能力 fullscreenTracking)。eventRecorder 準備後に配線する。
   // 警告バナーの「フルスクリーンで受験」ボタンが開始ジェスチャ (requestFullscreen は要 user gesture)。
-  if (ctx.examMode) {
+  if (ctx.capabilities.fullscreenTracking) {
     ctx.fullscreenTracker.setRecordCallback((event) => {
       void ctx.eventRecorder?.recordToAllTabs(event);
     });
