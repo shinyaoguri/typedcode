@@ -525,7 +525,7 @@ export const en: TranslationKeys = {
       codeLabel: 'Proctor code',
       startButton: 'Start',
       unlocking: 'Unlocking…',
-      resetHint: 'Note: exam mode can only be cleared via ?reset in the URL.',
+      resetHint: 'Note: append ?reset to the URL to clear all data and start over.',
       errorNoFile: 'Please select a problem package.',
       errorNoCode: 'Please enter the proctor code.',
       errorInvalidFile: 'Invalid package format (please select a .tcexam file).',

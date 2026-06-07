@@ -34,26 +34,35 @@ if (urlParams.get('fresh') === '1') {
   window.history.replaceState({}, '', cleanUrl);
 }
 
-// Exam mode (ADR-0006 / ADR-0010): ?exam=1 で試験モードに入る。
-// sticky: 一度入ったら localStorage に保存し、リロードや URL から ?exam が消えても維持する
-// (ADR-0010 — URL 改竄で抜けられないようにする)。?reset での localStorage.clear() が確実な解除経路。
-// 封印問題パッケージ / 監督コード / チェーン束縛 / 提出時の解除は full ADR-0006 で実装する。
-const EXAM_MODE_STORAGE_KEY = 'typedcode-exam-mode';
-const examFromUrl = urlParams.get('exam') === '1' || urlParams.get('exam') === 'true';
-let examMode = examFromUrl;
+// モード (ADR-0011): URL パスでモードを確定する (`/exam` `/class` `/assignment`、他は casual)。
+// sticky は持たない — path はリロードで永続し、試験の整合性は封印の暗号束縛 (ADR-0006) が担保する
+// ので、モードに「閉じ込める」必要がない (旧 ?exam=1 + sticky localStorage + ?reset 解除を置換)。
+const mode = resolveModeFromPath(window.location.pathname);
+const examMode = mode === 'exam';
+
+// モード切替時は前モードのセッション (タブ/イベント/スクショ) を引き継がない。PR1 はストレージ
+// 共有のままなので、混在と「casual タブが残って exam がゲートを飛ばす」事故を auto-clear で防ぐ
+// (per-mode 名前空間化で共存可能にするのは後続 PR)。?reset は手動の全消去として残す。
 try {
-  if (examFromUrl) {
-    localStorage.setItem(EXAM_MODE_STORAGE_KEY, '1');
-  } else if (localStorage.getItem(EXAM_MODE_STORAGE_KEY) === '1') {
-    examMode = true;
+  const LAST_MODE_KEY = 'typedcode-last-mode';
+  const lastMode = localStorage.getItem(LAST_MODE_KEY);
+  if (lastMode !== null && lastMode !== mode) {
+    sessionStorage.removeItem('typedcode-tabs');
+    sessionStorage.removeItem('typedcode-session-active');
+    sessionStorage.removeItem('typedcode-screenshot-session');
+    localStorage.removeItem('typedcode-exam-packages');
+    try { indexedDB.deleteDatabase('typedcode-session'); } catch { /* ignore */ }
+    try { indexedDB.deleteDatabase('typedcode-screenshots'); } catch { /* ignore */ }
   }
+  localStorage.setItem(LAST_MODE_KEY, mode);
 } catch {
-  /* localStorage 不可環境では URL のみで判定 */
+  /* localStorage 不可環境では path のみで判定 */
 }
 
 import * as monaco from 'monaco-editor';
 import './styles/main.css';
 import { Fingerprint, setSharedDebug } from '@typedcode/shared';
+import { resolveModeFromPath, capabilitiesFor } from './core/mode.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
@@ -251,6 +260,8 @@ const ctx: AppContext = {
   // Flags
   skipBeforeUnload: false,
   examMode,
+  mode,
+  capabilities: capabilitiesFor(mode),
 
   // Welcome Screen
   welcomeScreen: null as WelcomeScreen | null,
@@ -264,6 +275,9 @@ const ctx: AppContext = {
   // Session Content Registry (for internal paste detection)
   contentRegistry: new SessionContentRegistry(),
 };
+
+// proof に生成時のモードを記録する (ADR-0011: 自己申告ラベル、全モード共通)。
+ctx.proofExporter.setMode(ctx.mode);
 
 // 試験モード: 問題パネル (スタブ) を表示する。casual モードでは何もしない。
 // Monaco は automaticLayout: true なのでパネル出現に伴う再レイアウトは自動。
