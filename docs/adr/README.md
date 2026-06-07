@@ -36,11 +36,12 @@
 | [0003](0003-idempotent-signing-retry.md) | Accepted | 署名 API は内容ベースの冪等性で再送を吸収する |
 | [0004](0004-verifier-checkpoint-stance.md) | Accepted | 検証側は未署名 cp の sampling を成功条件にしない |
 | [0005](0005-input-type-policy.md) | Accepted | 許可/禁止 InputType の方針 |
-| [0006](0006-exam-mode-sealed-problem-binding.md) | Proposed | 試験モードは封印問題パッケージで proof を試験にバインドする |
+| [0006](0006-exam-mode-sealed-problem-binding.md) | Accepted | 試験モードは封印問題パッケージで proof を試験にバインドする |
 | [0007](0007-maximal-signal-capture.md) | Proposed | 記録/試験モードで捕捉する生信号を最大化し確定する |
 | [0008](0008-exam-fullscreen-request-not-enforce.md) | Proposed | 試験モードはフルスクリーンを要求するが強制せず状態を記録する |
 | [0009](0009-pluggable-analysis-layer.md) | Proposed | 改ざん検証と直交する pluggable な分析層フレームワークを定義する |
 | [0010](0010-exam-session-model.md) | Proposed | 試験モードのセッション構造 (1問1タブ・固定・リロード復帰可能) |
+| [0011](0011-course-modes-and-path-routing.md) | Proposed | 授業・課題・試験を1ドメインのパスで分岐し能力プリセットでモデル化する |
 
 ## 参考
 
