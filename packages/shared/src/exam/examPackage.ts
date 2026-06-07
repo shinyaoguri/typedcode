@@ -339,13 +339,24 @@ export interface ExamPackageSignatureResult {
   valid: boolean;
   reason?: string;
   registryEntry?: ExamAuthorityKey | null;
+  /** trust はするが注意を要する場合の警告 (例: 失効前に署名された package を時刻で trust) */
+  warning?: string;
 }
 
 /**
- * 出題者鍵レジストリで package 署名を検証する。
- * 鍵解決は signedCheckpoints の resolveCheckpointPublicKey と同方針:
- *   1. 同梱 publicKeyJwk があればそれ (keyId が registry にあれば JWK 一致が必須)
- *   2. registry から keyId で引いた公開鍵
+ * 出題者鍵レジストリで package 署名を検証する (ADR-0006)。
+ *
+ * **信頼アンカーは常に registry**。keyId が registry に解決できない鍵は信頼しない:
+ *   - 同梱 `publicKeyJwk` は long-term verifiability 用の控えであって信頼の源ではない。
+ *     これを信頼源にすると攻撃者が自分の鍵を同梱して自己署名でき (出題者署名の意味が消える)。
+ *     よって registry 未登録の埋め込み鍵は untrusted として弾き、registry にある場合のみ
+ *     JWK 一致を必須にする (すり替え検出)。署名は常に registry の公開鍵で検証する。
+ *   - 鍵の有効期間 / 失効は package の `releaseTime` (= 出題者が署名・配布した時点の代理) で
+ *     判定する。signedCheckpoints のキー有効性判定と同型だが、checkpoint は server 署名時刻
+ *     (信頼できる) を anchor にするのに対し exam は releaseTime (出題者の自己申告)。よって鍵漏洩
+ *     時に releaseTime を遡らせれば失効/期限切れ判定を回避し得る — 完全な失効には独立した信頼
+ *     時刻 (proof の署名 cp の serverTimestamp 等) が要る (将来課題)。ここでは正直に申告された
+ *     鍵の期限切れ/失効を弾く defense-in-depth に留める。
  */
 export async function verifyExamPackageSignature(
   manifest: ExamPackageManifest,
@@ -355,25 +366,26 @@ export async function verifyExamPackageSignature(
     return { valid: false, reason: `Unsupported algorithm: ${manifest.algorithm}` };
   }
 
+  // 信頼アンカーは registry。未登録 keyId は (埋め込み鍵があっても) 信頼しない。
   const registryEntry = findExamAuthorityKey(manifest.keyId, registry) ?? null;
-  let jwk: JsonWebKey | undefined;
-
-  if (manifest.publicKeyJwk) {
-    if (registryEntry) {
-      const sameJwk =
-        deterministicStringify(manifest.publicKeyJwk) ===
-        deterministicStringify(registryEntry.publicKeyJwk);
-      if (!sameJwk) {
-        return { valid: false, reason: 'Embedded public key does not match registry entry', registryEntry };
-      }
-    }
-    jwk = manifest.publicKeyJwk;
-  } else if (registryEntry) {
-    jwk = registryEntry.publicKeyJwk;
+  if (!registryEntry) {
+    return { valid: false, reason: `Unknown keyId: ${manifest.keyId}`, registryEntry: null };
   }
 
-  if (!jwk) {
-    return { valid: false, reason: `Unknown keyId: ${manifest.keyId}`, registryEntry };
+  // 同梱 publicKeyJwk があれば registry エントリと一致必須 (埋め込み鍵すり替えの検出)。
+  if (manifest.publicKeyJwk) {
+    const sameJwk =
+      deterministicStringify(manifest.publicKeyJwk) ===
+      deterministicStringify(registryEntry.publicKeyJwk);
+    if (!sameJwk) {
+      return { valid: false, reason: 'Embedded public key does not match registry entry', registryEntry };
+    }
+  }
+
+  // 鍵の有効期間 / 失効を releaseTime で判定 (期限切れ・失効鍵での署名を弾く)。
+  const validity = checkExamKeyValidityAtRelease(registryEntry, manifest.releaseTime);
+  if (!validity.ok) {
+    return { valid: false, reason: validity.reason, registryEntry };
   }
 
   let signatureBytes: Uint8Array;
@@ -387,7 +399,7 @@ export async function verifyExamPackageSignature(
   try {
     cryptoKey = await crypto.subtle.importKey(
       'jwk',
-      jwk,
+      registryEntry.publicKeyJwk,
       { name: 'ECDSA', namedCurve: 'P-256' },
       false,
       ['verify']
@@ -410,7 +422,50 @@ export async function verifyExamPackageSignature(
     return { valid: false, reason: 'Signature verification error', registryEntry };
   }
 
-  return { valid, registryEntry };
+  if (!valid) {
+    return { valid: false, registryEntry };
+  }
+  return { valid: true, registryEntry, warning: validity.warning };
+}
+
+/**
+ * 出題者鍵が package の `releaseTime` 時点で有効かを判定する (ADR-0006)。
+ * signedCheckpoints のキー有効性判定をミラー (anchor が serverTimestamp ではなく releaseTime)。
+ *   - validFrom より前 / validUntil より後の release → 期限外で reject
+ *   - revokedAt 以降の release → 失効後署名で reject、revokedAt より前 → trust + warning
+ *   - status='revoked' で revokedAt 無し → 安全側で reject
+ */
+function checkExamKeyValidityAtRelease(
+  entry: ExamAuthorityKey,
+  releaseTime: string
+): { ok: true; warning?: string } | { ok: false; reason: string } {
+  const releaseTs = Date.parse(releaseTime);
+  if (!Number.isFinite(releaseTs)) {
+    return { ok: false, reason: 'Package releaseTime is not a valid date' };
+  }
+  const fromTs = Date.parse(entry.validFrom);
+  if (Number.isFinite(fromTs) && releaseTs < fromTs) {
+    return { ok: false, reason: `Authority key ${entry.keyId} was not yet valid at package release time` };
+  }
+  if (entry.validUntil) {
+    const untilTs = Date.parse(entry.validUntil);
+    if (Number.isFinite(untilTs) && releaseTs > untilTs) {
+      return { ok: false, reason: `Authority key ${entry.keyId} had expired by package release time` };
+    }
+  }
+  if (entry.revokedAt) {
+    const revokedTs = Date.parse(entry.revokedAt);
+    if (Number.isFinite(revokedTs) && releaseTs >= revokedTs) {
+      return { ok: false, reason: `Authority key ${entry.keyId} was revoked at or before package release time` };
+    }
+    // 失効前に署名された package は trust するが警告 (registry の運用方針)。
+    return { ok: true, warning: `Authority key ${entry.keyId} was revoked after this package was released` };
+  }
+  if (entry.status === 'revoked') {
+    // revokedAt が無いまま status='revoked' は安全側で reject (signedCheckpoints と同方針)。
+    return { ok: false, reason: `Authority key ${entry.keyId} is revoked (status) without revokedAt` };
+  }
+  return { ok: true };
 }
 
 // ============================================================================
@@ -440,6 +495,8 @@ export interface ExamBindingVerificationResult {
   /** 時間窓 (advisory)。submission 時刻が無い PR1 では withinWindow=null */
   timeBox: ExamTimeBox | null;
   reason?: string;
+  /** trust はするが注意を要する警告 (例: 失効前に署名された package を時刻で trust) */
+  warning?: string;
   registryEntry?: ExamAuthorityKey | null;
 }
 
@@ -484,6 +541,7 @@ export async function verifyExamBinding(
   const result: ExamBindingVerificationResult = {
     ...base,
     packageSignatureValid: sig.valid,
+    warning: sig.warning,
     registryEntry: sig.registryEntry ?? null,
   };
   if (!sig.valid) {

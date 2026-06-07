@@ -67,7 +67,7 @@ export const EXAM_AUTHORITY_KEYS: readonly ExamAuthorityKey[] = [
       y: 'CwzBS7YUXi6_Re9hFZPTLlmAp7vRqjwtaFBxQA0JpGA',
     },
     status: 'active',
-    validFrom: '2026-01-01T00:00:00.000Z',
+    validFrom: '2025-09-01T00:00:00.000Z',
     description:
       'プレビュー/staging 検証用 (ADR-0006 e2e)。秘密鍵は maintainer がローカル保管。本番試験には使わない',
   },

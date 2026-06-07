@@ -123,12 +123,15 @@ describe('exam package signature', () => {
     expect(result.reason).toContain('Unknown keyId');
   });
 
-  it('verifies via the embedded public key even against an empty registry', async () => {
+  it('does not trust an embedded public key whose keyId is absent from the registry (no self-cert)', async () => {
     const { signer } = await makeExamAuthority();
     const { manifest } = await buildSamplePackage(signer, { embedPubkey: true });
 
+    // 埋め込み鍵は信頼の源ではない。registry 未登録の keyId は untrusted で弾く
+    // (さもないと攻撃者が自分の鍵を同梱して自己署名できてしまう)。
     const result = await verifyExamPackageSignature(manifest, []);
-    expect(result.valid).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('Unknown keyId');
   });
 
   it('rejects when the embedded public key disagrees with the registry entry', async () => {
@@ -140,6 +143,51 @@ describe('exam package signature', () => {
     const result = await verifyExamPackageSignature(manifest, b.registry);
     expect(result.valid).toBe(false);
     expect(result.reason).toContain('does not match registry');
+  });
+
+  it('rejects a package whose releaseTime is after the key validUntil (expired)', async () => {
+    const { signer, entry } = await makeExamAuthority();
+    const { manifest } = await buildSamplePackage(signer); // releaseTime 2026-06-06
+    const expired = [{ ...entry, validUntil: '2026-03-01T00:00:00.000Z' }];
+    const result = await verifyExamPackageSignature(manifest, expired);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('expired');
+  });
+
+  it('rejects a package whose releaseTime precedes the key validFrom', async () => {
+    const { signer, entry } = await makeExamAuthority();
+    const { manifest } = await buildSamplePackage(signer); // releaseTime 2026-06-06
+    const future = [{ ...entry, validFrom: '2026-09-01T00:00:00.000Z' }];
+    const result = await verifyExamPackageSignature(manifest, future);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('not yet valid');
+  });
+
+  it('rejects a revoked key that has no revokedAt', async () => {
+    const { signer, entry } = await makeExamAuthority();
+    const { manifest } = await buildSamplePackage(signer);
+    const revoked = [{ ...entry, status: 'revoked' as const }];
+    const result = await verifyExamPackageSignature(manifest, revoked);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('revoked');
+  });
+
+  it('rejects a package released at or after the key revokedAt', async () => {
+    const { signer, entry } = await makeExamAuthority();
+    const { manifest } = await buildSamplePackage(signer); // releaseTime 2026-06-06
+    const revoked = [{ ...entry, status: 'revoked' as const, revokedAt: '2026-03-01T00:00:00.000Z' }];
+    const result = await verifyExamPackageSignature(manifest, revoked);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('revoked');
+  });
+
+  it('trusts a package released before revokedAt but surfaces a warning', async () => {
+    const { signer, entry } = await makeExamAuthority();
+    const { manifest } = await buildSamplePackage(signer); // releaseTime 2026-06-06
+    const revoked = [{ ...entry, status: 'revoked' as const, revokedAt: '2026-09-01T00:00:00.000Z' }];
+    const result = await verifyExamPackageSignature(manifest, revoked);
+    expect(result.valid).toBe(true);
+    expect(result.warning).toContain('revoked after');
   });
 });
 
