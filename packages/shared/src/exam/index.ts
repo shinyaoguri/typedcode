@@ -4,6 +4,7 @@
 
 export {
   canonicalizeStartToken,
+  parseExamPackageManifest,
   examPackageSigningCore,
   computeExamPackageHash,
   computeProblemContentHash,

@@ -23,6 +23,7 @@ import type {
   SignedCheckpointsVerificationResult,
   AnalysisReport,
 } from '@typedcode/shared';
+import type { CLIExamResult } from './verify.js';
 
 export interface VerificationOutput {
   valid: boolean;
@@ -42,6 +43,47 @@ export interface VerificationOutput {
   signedCheckpoints?: SignedCheckpointsVerificationResult;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
   analysis?: AnalysisReport;
+  /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
+  exam?: CLIExamResult;
+}
+
+function passFail(ok: boolean): string {
+  return ok ? c('green', 'PASS') : c('red', 'FAIL');
+}
+
+/** 試験モード (ADR-0006) の束縛検証セクションを描画する。 */
+function formatExamSection(exam: CLIExamResult, lines: string[]): void {
+  lines.push('');
+  lines.push(c('cyan', '--- Exam binding (ADR-0006) ---'));
+  const variant = exam.variant ? ` / ${exam.variant}` : '';
+  lines.push(`Exam:         ${exam.examId} / ${exam.problemId}${variant}`);
+  // root 束縛は proof 自己完結 (package 不要)。
+  lines.push(`Root binding: ${passFail(exam.rootBindingValid)}  ${c('dim', '(answer bound to package + T0)')}`);
+
+  const b = exam.binding;
+  if (!b) {
+    lines.push(
+      c('yellow', '  ! Package not provided — signature/content checks skipped')
+    );
+    lines.push(c('dim', '    Pass --exam-package <file.tcexam> to fully verify authenticity.'));
+    return;
+  }
+
+  lines.push(`Signature:    ${passFail(b.packageSignatureValid)}`);
+  lines.push(`Package hash: ${passFail(b.packageHashMatches)}`);
+  lines.push(`Content hash: ${passFail(b.problemContentHashMatches)}`);
+  if (b.timeBox) {
+    const tb = b.timeBox;
+    lines.push(`Time-box:     ${tb.releaseTime} … ${tb.deadline}`);
+    if (tb.withinWindow === null) {
+      lines.push(c('dim', '    (submission time not provided — pass --submitted-at to check the window)'));
+    } else {
+      lines.push(`  Submitted within window: ${passFail(tb.withinWindow)}`);
+    }
+  }
+  if (!b.valid && b.reason) {
+    lines.push(c('red', `  Reason: ${b.reason}`));
+  }
 }
 
 export function formatResult(result: VerificationOutput): string {
@@ -55,11 +97,24 @@ export function formatResult(result: VerificationOutput): string {
     lines.push(c('green', '\u2713 Verification PASSED'));
   } else {
     lines.push(c('red', '\u2717 Verification FAILED'));
-    if (result.errorMessage) {
-      lines.push(c('red', `  Error: ${result.errorMessage}`));
-    }
-    if (result.errorAt !== undefined) {
-      lines.push(c('red', `  Failed at event: ${result.errorAt}`));
+    // proof \u81ea\u4f53\u306f\u5065\u5168\u3067 exam \u675f\u7e1b\u3060\u3051\u304c\u5931\u6557\u3057\u305f\u3068\u304d\u3001\u30c1\u30a7\u30fc\u30f3\u306e (\u6210\u529f) \u30e1\u30c3\u30bb\u30fc\u30b8\u3092
+    // \u300cError:\u300d\u3068\u3057\u3066\u51fa\u3059\u3068\u8aa4\u89e3\u3092\u62db\u304f\u3002\u305d\u306e\u5834\u5408\u306f exam \u675f\u7e1b\u306e\u7406\u7531\u3092\u51fa\u3059\u3002
+    const examBindingFailedOnly =
+      result.metadataValid &&
+      result.chainValid &&
+      !!result.exam?.binding &&
+      !result.exam.binding.valid;
+    if (examBindingFailedOnly) {
+      lines.push(
+        c('red', `  Exam binding failed: ${result.exam!.binding!.reason ?? 'see section below'}`)
+      );
+    } else {
+      if (result.errorMessage) {
+        lines.push(c('red', `  Error: ${result.errorMessage}`));
+      }
+      if (result.errorAt !== undefined) {
+        lines.push(c('red', `  Failed at event: ${result.errorAt}`));
+      }
     }
   }
   lines.push('');
@@ -116,6 +171,11 @@ export function formatResult(result: VerificationOutput): string {
     }
   }
 
+  // 試験モード (ADR-0006): exam ブロックがあれば束縛検証セクションを出す。
+  if (result.exam) {
+    formatExamSection(result.exam, lines);
+  }
+
   // 分析層 (ADR-0009): 検証とは別軸の advisory。判定ではないことを明示する。
   const analysis = result.analysis;
   if (analysis) {
@@ -154,19 +214,27 @@ ${c('bold', 'typedcode-verify')} - Verify TypedCode proof files
 
 ${c('cyan', 'Usage:')}
   typedcode-verify <file.json|file.zip> [--mode <fast|audit|full>]
+                   [--exam-package <file.tcexam>] [--submitted-at <ISO>]
 
 ${c('cyan', 'Arguments:')}
   file    Path to proof file (.json) or exported archive (.zip)
 
 ${c('cyan', 'Options:')}
-  --mode  Verification mode (default: full)
-          fast  - Skip PoSW recompute (tamper resistance only)
-          audit - fast + deterministic PoSW sampling (placeholder)
-          full  - Full PoSW verification
+  --mode           Verification mode (default: full)
+                   fast  - Skip PoSW recompute (tamper resistance only)
+                   audit - fast + deterministic PoSW sampling (placeholder)
+                   full  - Full PoSW verification
+  --exam-package   Exam mode (ADR-0006): sealed problem package (.tcexam) to fully
+                   verify the binding (signature, package hash, decrypted content).
+                   Without it, only the self-contained exam root binding is checked.
+  --submitted-at   Exam mode: submission timestamp (ISO 8601, e.g. Moodle submit time)
+                   to evaluate the [releaseTime, deadline] time-box.
 
 ${c('cyan', 'Examples:')}
   typedcode-verify proof.json
   typedcode-verify my-code.zip --mode fast
+  typedcode-verify ALL_TC.zip --exam-package p1.tcexam
+  typedcode-verify ALL_TC.zip --exam-package p1.tcexam --submitted-at 2026-06-06T01:00:00Z
 
 ${c('cyan', 'Exit codes:')}
   0 - Verification passed

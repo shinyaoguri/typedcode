@@ -87,6 +87,60 @@ export function canonicalizeStartToken(raw: string): string {
 }
 
 // ============================================================================
+// manifest パース / バリデーション (untrusted JSON → ExamPackageManifest)
+// ============================================================================
+
+/**
+ * untrusted な JSON (`.tcexam` ファイル) を ExamPackageManifest として最低限の構造検証つきで
+ * パースする。形が不正なら null。真正性は `verifyExamPackageSignature`、復号可否は
+ * `decryptExamPackage` が担う (ここは「形が揃っているか」だけを見る)。editor の取込ゲートと
+ * verify-cli / verify(web) の grader が同じ判定を共有するために shared に置く。
+ */
+export function parseExamPackageManifest(input: unknown): ExamPackageManifest | null {
+  if (!input || typeof input !== 'object') return null;
+  const m = input as Record<string, unknown>;
+  const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+  const isObj = (v: unknown): v is Record<string, unknown> =>
+    !!v && typeof v === 'object' && !Array.isArray(v);
+
+  if (typeof m.formatVersion !== 'number') return null;
+  if (!isStr(m.examId) || !isStr(m.problemId)) return null;
+  if (!(m.variant === null || isStr(m.variant))) return null;
+  if (!isStr(m.releaseTime) || !isStr(m.deadline)) return null;
+  if (!isStr(m.keyId) || !isStr(m.algorithm) || !isStr(m.signature)) return null;
+
+  const kdf = m.kdf;
+  if (!isObj(kdf) || kdf.algorithm !== 'argon2id' || !isStr(kdf.salt) || !isObj(kdf.params)) return null;
+  const p = kdf.params;
+  if (
+    typeof p.memKiB !== 'number' ||
+    typeof p.iterations !== 'number' ||
+    typeof p.parallelism !== 'number'
+  ) {
+    return null;
+  }
+
+  const cipher = m.cipher;
+  if (
+    !isObj(cipher) ||
+    cipher.algorithm !== 'AES-256-GCM' ||
+    !isStr(cipher.iv) ||
+    !isStr(cipher.ciphertext)
+  ) {
+    return null;
+  }
+
+  const allowed = m.allowed;
+  if (!isObj(allowed) || !Array.isArray(allowed.languages)) return null;
+  if (!allowed.languages.every((l) => typeof l === 'string')) return null;
+
+  // publicKeyJwk は任意 (long-term verifiability の同梱)。あれば object。
+  if (m.publicKeyJwk !== undefined && !isObj(m.publicKeyJwk)) return null;
+
+  return input as ExamPackageManifest;
+}
+
+// ============================================================================
 // canonical core / ハッシュ
 // ============================================================================
 

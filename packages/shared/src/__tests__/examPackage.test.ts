@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canonicalizeStartToken,
+  parseExamPackageManifest,
   examPackageSigningCore,
   computeExamPackageHash,
   computeProblemContentHash,
@@ -35,6 +36,51 @@ describe('canonicalizeStartToken', () => {
 
   it('removes spaces and characters outside the Crockford alphabet', () => {
     expect(canonicalizeStartToken(' ab cd 12 34 ')).toBe('ABCD1234');
+  });
+});
+
+describe('parseExamPackageManifest', () => {
+  it('accepts a well-formed manifest and returns it', async () => {
+    const { signer } = await makeExamAuthority('exam-parse-ok');
+    const { manifest } = await buildSamplePackage(signer);
+    const parsed = parseExamPackageManifest(JSON.parse(JSON.stringify(manifest)));
+    expect(parsed).not.toBeNull();
+    expect(parsed?.keyId).toBe(manifest.keyId);
+  });
+
+  it('rejects non-objects', () => {
+    expect(parseExamPackageManifest(null)).toBeNull();
+    expect(parseExamPackageManifest('{}')).toBeNull();
+    expect(parseExamPackageManifest(42)).toBeNull();
+    expect(parseExamPackageManifest([])).toBeNull();
+  });
+
+  it('rejects manifests missing required string fields', async () => {
+    const { signer } = await makeExamAuthority('exam-parse-missing');
+    const { manifest } = await buildSamplePackage(signer);
+    for (const field of ['examId', 'problemId', 'keyId', 'algorithm', 'signature', 'releaseTime']) {
+      const broken: Record<string, unknown> = { ...manifest };
+      delete broken[field];
+      expect(parseExamPackageManifest(broken)).toBeNull();
+    }
+  });
+
+  it('rejects malformed kdf / cipher / allowed blocks', async () => {
+    const { signer } = await makeExamAuthority('exam-parse-blocks');
+    const { manifest } = await buildSamplePackage(signer);
+    expect(parseExamPackageManifest({ ...manifest, kdf: { algorithm: 'pbkdf2' } })).toBeNull();
+    expect(parseExamPackageManifest({ ...manifest, cipher: { algorithm: 'AES-128-CBC' } })).toBeNull();
+    expect(parseExamPackageManifest({ ...manifest, allowed: { languages: 'c' } })).toBeNull();
+    expect(
+      parseExamPackageManifest({ ...manifest, kdf: { ...manifest.kdf, params: { memKiB: 1 } } })
+    ).toBeNull();
+  });
+
+  it('accepts a null variant but rejects a non-string non-null variant', async () => {
+    const { signer } = await makeExamAuthority('exam-parse-variant');
+    const { manifest } = await buildSamplePackage(signer);
+    expect(parseExamPackageManifest({ ...manifest, variant: null })).not.toBeNull();
+    expect(parseExamPackageManifest({ ...manifest, variant: 7 })).toBeNull();
   });
 });
 

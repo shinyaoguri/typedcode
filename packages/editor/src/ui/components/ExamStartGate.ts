@@ -18,6 +18,7 @@ import {
   canonicalizeStartToken,
   computeExamPackageHash,
   computeProblemContentHash,
+  parseExamPackageManifest,
   escapeHtml,
   type ExamPackageManifest,
   type ExamSessionContext,
@@ -28,18 +29,6 @@ export interface ExamUnlockResult {
   manifest: ExamPackageManifest;
   plaintext: string;
   examContext: ExamSessionContext;
-}
-
-/** .tcexam の最低限の形状チェック (詳細は署名 + 復号で確定する) */
-function looksLikeManifest(v: unknown): v is ExamPackageManifest {
-  if (!v || typeof v !== 'object') return false;
-  const m = v as Record<string, unknown>;
-  return (
-    typeof m.keyId === 'string' &&
-    typeof m.signature === 'string' &&
-    typeof m.kdf === 'object' &&
-    typeof m.cipher === 'object'
-  );
 }
 
 export class ExamStartGate {
@@ -79,8 +68,8 @@ export class ExamStartGate {
         const reader = new FileReader();
         reader.onload = () => {
           try {
-            const parsed = JSON.parse(String(reader.result)) as unknown;
-            if (!looksLikeManifest(parsed)) {
+            const parsed = parseExamPackageManifest(JSON.parse(String(reader.result)));
+            if (!parsed) {
               throw new Error('not a manifest');
             }
             this.manifest = parsed;

@@ -81,6 +81,7 @@ export type {
 
 export {
   canonicalizeStartToken,
+  parseExamPackageManifest,
   examPackageSigningCore,
   computeExamPackageHash,
   computeProblemContentHash,
