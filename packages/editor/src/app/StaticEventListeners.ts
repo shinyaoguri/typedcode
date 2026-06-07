@@ -149,7 +149,7 @@ export function setupStaticEventListeners(ctx: AppContext): void {
   // 新規タブ追加ボタン
   const addTabBtn = document.getElementById('add-tab-btn');
   addTabBtn?.addEventListener('click', async () => {
-    if (ctx.examMode) return; // 試験モードでは新規タブ不可 (ADR-0010)
+    if (ctx.capabilities.tabLock) return; // タブ固定モード (試験) では新規タブ不可 (ADR-0010/0011)
     if (!ctx.tabManager) return;
 
     if (isTurnstileConfigured()) {

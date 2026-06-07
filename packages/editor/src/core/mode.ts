@@ -56,17 +56,22 @@ const EXAM: ModeCapabilities = {
 };
 
 /**
+ * 課題モード (assignment): 持ち帰り・プライバシー重視。CASUAL から **screenshots を off** に
+ * する (自宅画面のキャプチャを避ける。ADR-0011)。封印なし・問題配布 UX は後続 PR。
+ */
+const ASSIGNMENT: ModeCapabilities = { ...CASUAL, screenshots: false };
+
+/**
  * 能力マトリクス (ADR-0011)。
  *
- * **class/assignment の値は当面 casual と同一 (PR1 では非アクティブ)**。PR2 で授業/課題の
- * 能力に差し替える予定:
- *   - class      → 監督下・封印なし (screenshots 任意, fullscreen 任意, tabLock 緩, problemPanel)
- *   - assignment → 持ち帰り (screenshots:false=スクショ off, fullscreen:false, problemPanel, preExportBestEffort)
+ * - **class は当面 casual と同一** (監督は教室の物理的在室で担保。fullscreen 任意・問題表示は後続 PR)。
+ * - **assignment は screenshots off** (上記)。
+ * - **exam** だけが封印問題・根束縛・厳格な能力 (tabLock/fullscreen/preExport best-effort) を持つ。
  */
 export const MODE_CAPABILITIES: Record<EditorMode, ModeCapabilities> = {
   casual: CASUAL,
   class: CASUAL,
-  assignment: CASUAL,
+  assignment: ASSIGNMENT,
   exam: EXAM,
 };
 
