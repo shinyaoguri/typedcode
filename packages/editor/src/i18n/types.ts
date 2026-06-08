@@ -576,6 +576,7 @@ export interface TranslationKeys {
       generateIntro: string;
       generateButton: string;
       generateFailed: string;
+      settings: string;
       privateWarning: string;
       registryEntryLabel: string;
       registryHint: string;
@@ -596,6 +597,8 @@ export interface TranslationKeys {
       starterFilename: string;
       starterLanguage: string;
       starterContent: string;
+      starterPane: string;
+      renameHint: string;
     };
     token: {
       heading: string;

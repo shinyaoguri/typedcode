@@ -549,6 +549,7 @@ export const en: TranslationKeys = {
       generateIntro: 'Generate an ECDSA-P256 key pair in your browser. Keep the private key safe and register the public entry into the registry (via PR).',
       generateButton: 'Generate key pair',
       generateFailed: 'Key generation failed.',
+      settings: 'Signing key',
       privateWarning: 'The private key is shown only once. Store it safely and never share or commit it.',
       registryEntryLabel: 'Public key entry (append to registry)',
       registryHint: 'Append this entry to packages/shared/src/examAuthorityKeys/registry.ts and open a PR to make it verifiable in production.',
@@ -569,6 +570,8 @@ export const en: TranslationKeys = {
       starterFilename: 'Filename',
       starterLanguage: 'Language',
       starterContent: 'Starter code',
+      starterPane: 'Starter code (skeleton)',
+      renameHint: 'Double-click to rename the file',
     },
     token: {
       heading: 'Proctor code',

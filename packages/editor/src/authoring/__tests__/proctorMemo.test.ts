@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CreatedExamPackage } from '../examPackageAuthoring.js';
-import { buildProctorMemo } from '../AuthorPage.js';
+import { buildProctorMemo } from '../proctorMemo.js';
 
 function fakeResult(): CreatedExamPackage {
   return {

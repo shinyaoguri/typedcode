@@ -549,6 +549,7 @@ export const ja: TranslationKeys = {
       generateIntro: 'その場で ECDSA-P256 鍵ペアを生成します。私的鍵は安全に保管し、公開鍵 entry は別途 registry へ登録（PR）してください。',
       generateButton: '鍵ペアを生成',
       generateFailed: '鍵の生成に失敗しました。',
+      settings: '鍵設定',
       privateWarning: '私的鍵は一度きりの表示です。安全に保管し、絶対に共有・コミットしないでください。',
       registryEntryLabel: '公開鍵 entry（registry へ追記）',
       registryHint: 'この entry を packages/shared/src/examAuthorityKeys/registry.ts に追記して PR を出すと、本番で検証可能になります。',
@@ -569,6 +570,8 @@ export const ja: TranslationKeys = {
       starterFilename: 'ファイル名',
       starterLanguage: '言語',
       starterContent: 'スターターコード',
+      starterPane: 'スターターコード（雛形）',
+      renameHint: 'ダブルクリックでファイル名を変更',
     },
     token: {
       heading: '監督コード',
