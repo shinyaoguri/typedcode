@@ -292,6 +292,7 @@ interface SignedCheckpointEnvelope {
 ```
 - **署名 / packageHash の対象は同一の canonical core** = manifest から `{signature, publicKeyJwk}` を除いたもの (`deterministicStringify`)。任意同梱の publicKeyJwk・署名値そのものに packageHash が依存しない。
 - KDF は **Argon2id** (純 JS の `@noble/hashes`、メモリハードで GPU 並列耐性)、暗号は **AES-256-GCM**。
+- **`releaseTime` / `deadline` の意味 (ADR-0013)**: `releaseTime` は **パッケージ発行時刻 (issued-at) かつ出題者鍵有効性アンカー** (`checkExamKeyValidityAtRelease` が `releaseTime` 時点の鍵 validFrom/validUntil/revokedAt を判定する)。`deadline` は **advisory な提出窓の上限**で、`verifyExamBinding` の time-box は失格条件にしない。**実際の開始/締切の管理は Moodle が唯一の正**で、TypedCode 側は「いつ解いたか」(イベントのタイムスタンプ・署名 cp の serverTimestamp) を記録するに留まる。`/author` はスケジュールを尋ねず、`releaseTime`=生成時刻・`deadline`=オープン (遠い未来 `2999-12-31`) を入れる。manifest フォーマットは据え置き (ADR-0013)。
 
 **(2) 監督コード (`startToken`)**: **8 文字 Crockford Base32 (`I L O U` 除外, 40 bit)**。CSPRNG 生成、T0 に監督が口頭/板書で解禁。入力は正準化 (大文字化 + 区切り除去) して KDF / root / `proof.exam` の全経路で一致させる。**コードの正しさは AES-GCM 認証タグで判定** (誤コード → 復号失敗)。平文 manifest に token のコミットメント (`H(token)`) は**置かない** (低エントロピーゆえ総当たりで漏れる)。封印は「T0 までの数分だけ確実に持つ消費期限つき」であり永続金庫ではない。
 
