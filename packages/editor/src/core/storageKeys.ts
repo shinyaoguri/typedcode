@@ -38,11 +38,6 @@ export function sessionActiveKey(): string {
   return `typedcode-session-active${ns}`;
 }
 
-/** スクショセッション有効フラグの sessionStorage キー。 */
-export function screenshotSessionKey(): string {
-  return `typedcode-screenshot-session${ns}`;
-}
-
 /** 封印問題キャッシュ (localStorage) のキー。 */
 export function examPackagesKey(): string {
   return `typedcode-exam-packages${ns}`;

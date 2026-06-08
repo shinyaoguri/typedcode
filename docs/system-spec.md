@@ -2,7 +2,7 @@
 
 タイピングの全過程を改ざん耐性のある形で記録し、後から第三者が「このコードは確かにキー打鍵で書かれた」ことを検証できるシステムの設計仕様。
 
-このドキュメントは、署名済みチェックポイント (Phase 1〜5) と**試験モード** (ADR-0006〜0010) 統合後の最新状態を反映する。
+このドキュメントは、署名済みチェックポイント (Phase 1〜5) と**試験モード** (ADR-0006〜0011) 統合後の最新状態を反映する。試験を含む動作モード (casual/class/assignment/exam) は URL パスで分岐する (ADR-0011)。
 
 ---
 
@@ -15,7 +15,7 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
 - 教育目的: コーディング能力の客観的記録
 - 採用試験: ライブコーディング課題の事後検証
 - AI 生成物との分別: 「全部 LLM に書かせていない」ことの根拠提示
-- **試験モード** (ADR-0006〜0010): 大学試験で生成 AI / 自動入力の不正を抑止する。封印された問題を監督コードで解錠し、解答チェーンを「その問題・試験開始 (T0) 以降」に暗号学的に束縛する。ローカル完結・サーバ非依存・匿名で、本人性は外部 (Moodle 提出) が担う。詳細は後述「試験モード」節。
+- **試験モード** (ADR-0006〜0011): 大学試験で生成 AI / 自動入力の不正を抑止する。封印された問題を監督コードで解錠し、解答チェーンを「その問題・試験開始 (T0) 以降」に暗号学的に束縛する。ローカル完結・サーバ非依存・匿名で、本人性は外部 (Moodle 提出) が担う。試験は動作モードの 1 つ (`/exam`) で、モードは URL パスで確定する (ADR-0011)。詳細は後述「試験モード」節。
 
 ### スコープ外
 - 思考内容の証明 (内容のロジック品質や正しさは扱わない)
@@ -625,7 +625,8 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **firstSeenAt** | サーバが initial に sessionId を見た時刻。KV 由来で不変 |
 | **anchored** | proof に signed checkpoint が 1 つ以上含まれている状態 |
 | **post-hoc batch signing** | proof 完成後に複数 envelope を短時間で一括取得する攻撃。temporal ratio で検出試行 |
-| **(試験) 試験モード** | `?exam=1` で入る anti-AI-cheating モード (sticky)。封印問題 + 監督コード + チェーン根束縛。ADR-0006〜0010 |
+| **(試験) 試験モード** | URL パス `/exam` で入る anti-AI-cheating モード (ADR-0011 でモードを path 分岐化、旧 `?exam=1` sticky を置換)。封印問題 + 監督コード + チェーン根束縛。ADR-0006〜0011 |
+| **モード (casual/class/assignment/exam)** | URL パスで確定する動作モード (ADR-0011)。`/exam` `/class` `/assignment`、他は casual。能力 (スクショ/封印/フルスクリーン等) と storage 名前空間がモード別。proof に自己申告 `mode` を記録 |
 | **(試験) 封印問題パッケージ / `.tcexam`** | 出題者が Argon2id + AES-256-GCM で封印し ECDSA-P256 署名した問題ファイル。Moodle で事前配布 |
 | **(試験) 監督コード / `startToken`** | T0 に監督が解禁する 8 文字 Crockford Base32 (40bit)。封印を解錠しチェーン根に焼かれる |
 | **(試験) packageHash** | manifest の canonical core (− `{signature, publicKeyJwk}`) の SHA-256。root と `proof.exam` に束縛 |
@@ -667,7 +668,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 - [CLAUDE.md](../CLAUDE.md) — リポジトリ全体の玄関口 (Claude Code / Agent SDK 用)
 - [packages/*/CLAUDE.md](../packages/) — 各サブシステムの責務 / 不変条件 / 罠
 - [docs/adr/](adr/) — Architecture Decision Records (なぜそうしたかの蓄積)
-- 試験モード ADR: [0006](adr/0006-exam-mode-sealed-problem-binding.md) (封印問題 + 根束縛, Accepted) / [0007](adr/0007-maximal-signal-capture.md) (生信号捕捉) / [0008](adr/0008-exam-fullscreen-request-not-enforce.md) (フルスクリーン要求) / [0009](adr/0009-pluggable-analysis-layer.md) (分析層) / [0010](adr/0010-exam-session-model.md) (セッションモデル)
+- 試験モード ADR: [0006](adr/0006-exam-mode-sealed-problem-binding.md) (封印問題 + 根束縛) / [0007](adr/0007-maximal-signal-capture.md) (生信号捕捉) / [0008](adr/0008-exam-fullscreen-request-not-enforce.md) (フルスクリーン要求) / [0009](adr/0009-pluggable-analysis-layer.md) (分析層) / [0010](adr/0010-exam-session-model.md) (セッションモデル, ADR-0011 で sticky を置換) / [0011](adr/0011-course-modes-and-path-routing.md) (授業/課題/試験のモードと path 分岐)
 
 ---
 

@@ -283,10 +283,10 @@ describe('exam authority registry', () => {
     expect(findExamAuthorityKey('does-not-exist', [])).toBeUndefined();
   });
 
-  it('ships only the known preview/staging verification key in the production registry', () => {
-    // localKeys (dev) は除外。本番 registry.ts のみを検査する (誤って本番鍵を commit した検出)。
-    // ADR-0006 e2e のプレビュー検証鍵だけを許容し、それ以外の鍵が混入したら検出する。
-    expect(PRODUCTION_EXAM_AUTHORITY_KEYS.map((k) => k.keyId)).toEqual(['exam-202606-preview']);
+  it('ships no keys in the production registry until a real exam key is onboarded', () => {
+    // localKeys (dev) は除外。本番 registry.ts のみを検査する (誤って dev/preview 鍵を commit した検出)。
+    // dev/preview 検証鍵は localKeys.ts に置く規約なので、本番 registry は実鍵オンボードまで空。
+    expect(PRODUCTION_EXAM_AUTHORITY_KEYS.map((k) => k.keyId)).toEqual([]);
   });
 });
 

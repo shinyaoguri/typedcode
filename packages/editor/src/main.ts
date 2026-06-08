@@ -44,7 +44,7 @@ import * as monaco from 'monaco-editor';
 import './styles/main.css';
 import { Fingerprint, setSharedDebug } from '@typedcode/shared';
 import { resolveModeFromPath, capabilitiesFor } from './core/mode.js';
-import { setStorageNamespace, tabsKey, sessionActiveKey, screenshotSessionKey, allSessionDbNames } from './core/storageKeys.js';
+import { setStorageNamespace, tabsKey, sessionActiveKey, allSessionDbNames } from './core/storageKeys.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
@@ -261,7 +261,7 @@ const ctx: AppContext = {
 // proof に生成時のモードを記録する (ADR-0011: 自己申告ラベル、全モード共通)。
 ctx.proofExporter.setMode(ctx.mode);
 // export 前認証の best-effort 化はモード能力で決まる (ADR-0006: exam のみ。サーバを critical path に置かない)。
-ctx.proofExporter.setExamMode(ctx.capabilities.preExportBestEffort);
+ctx.proofExporter.setPreExportBestEffort(ctx.capabilities.preExportBestEffort);
 
 // 封印問題モード (exam): 問題パネルを表示し DL を一本化する。他モードでは何もしない。
 // Monaco は automaticLayout: true なのでパネル出現に伴う再レイアウトは自動。
@@ -1224,10 +1224,10 @@ async function initializeApp(): Promise<void> {
   initializeCodeExecution();
 
   // Phase 8: セッション再開イベントの記録（リロード時またはIndexedDBからの復旧時）
-  // sessionStorageにタブデータが存在していた場合はリロードによる再開
-  // または、IndexedDBからセッションを復旧した場合
-  const wasReloaded = sessionStorage.getItem(tabsKey()) !== null &&
-                      sessionStorage.getItem(screenshotSessionKey()) === 'active';
+  // リロード検出は Phase 1.5 で取得済みの isReload (sessionActiveKey 由来、beforeunload で
+  // 'true' を立てる) を使う。タブデータが sessionStorage に残っていればリロードによる再開。
+  // (旧実装は未 set の screenshot-session フラグを見ていて常に false だった — ADR-0011 後の修正)
+  const wasReloaded = isReload && sessionStorage.getItem(tabsKey()) !== null;
   if (wasReloaded || sessionRecovered) {
     // セッション再開イベントを全タブに記録
     ctx.eventRecorder?.recordToAllTabs({

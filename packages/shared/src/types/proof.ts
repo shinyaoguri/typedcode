@@ -197,6 +197,11 @@ export interface ExportedProof {
    * 生成時のモード (ADR-0011)。**自己申告ラベル**であり信頼判定の根拠にはしない
    * (採点側は実証拠 — exam なら束縛・スクショ有無等 — から保証度を導く)。後方互換のため
    * optional (旧 proof は持たない)。editor の EditorMode と同じ union。
+   *
+   * 注: exam proof は `mode:'exam'` と `exam` ブロックの両方を持つ (mode は exam ブロック
+   * 有無から導出可能で**冗長**)。これは意図的 — `mode` は全モード共通の自己申告ラベルとして
+   * 一貫させ、`exam` だけ欠落させて非対称にしない。信頼すべきは `exam` ブロック (暗号束縛) であり
+   * `mode` ではない。
    */
   mode?: 'casual' | 'class' | 'assignment' | 'exam';
 }

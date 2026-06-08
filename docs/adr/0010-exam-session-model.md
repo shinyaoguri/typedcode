@@ -1,9 +1,10 @@
 # ADR-0010: 試験モードのセッション構造 — 1問1タブ・固定・リロード復帰可能にする
 
-- **Status**: Proposed
-- **Date**: 2026-06-06
+- **Status**: Accepted (実装済み・develop マージ済み)。ただし**入場機構 (`?exam=1` + localStorage sticky + `?reset` 解除) は ADR-0011 で置換済み** — モードは URL パス (`/exam`) で確定し、storage はモード別名前空間化された。本 ADR のセッション構造 (1問1タブ・固定・リロード復帰) 自体は有効。
+- **Date**: 2026-06-06 (Accepted: 2026-06-08)
+- **Superseded-by**: [ADR-0011](0011-course-modes-and-path-routing.md) (sticky セッション部分のみ。`?exam=1` + localStorage → path 分岐 + storage 名前空間)
 - **Deciders**: (PR 上の合意者 / レビュアー)
-- **PR / Commit**: (this PR)
+- **PR / Commit**: #78 (develop マージ済み)
 
 > ADR-0006 (封印問題束縛) / ADR-0008 (fullscreen 記録) に続き、試験モードの **セッション構造**=タブとリロード復帰の振る舞いを確定する。最小骨組み (`?exam=1` + 問題パネルスタブ) は別 PR で実装済み。本 ADR は **問題ソースの実体 (封印パッケージ) を ADR-0006 に委ね**、その上に乗る「試験セッションとしての振る舞い」を決める。
 
