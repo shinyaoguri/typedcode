@@ -27,7 +27,23 @@ function getBuildInfo() {
 const buildInfo = getBuildInfo();
 
 export default defineConfig({
-  plugins: [wasm(), topLevelAwait()],
+  plugins: [
+    wasm(),
+    topLevelAwait(),
+    // dev サーバで `/author` (拡張子なし) を `/author.html` に解決する。
+    // 本番 (Cloudflare Pages) は clean URL で `/author` → `author.html` を自動配信するため不要。
+    {
+      name: 'author-clean-url',
+      configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          if (req.url === '/author' || req.url === '/author/') {
+            req.url = '/author.html';
+          }
+          next();
+        });
+      },
+    },
+  ],
   base: '/',
   worker: {
     format: 'es',
@@ -55,6 +71,14 @@ export default defineConfig({
   build: {
     target: 'esnext',
     minify: 'esbuild',
+    rollupOptions: {
+      // マルチページ: 編集アプリ (index.html) と出題者ツール (author.html) を別エントリで出力。
+      // author.html は Monaco を読まない軽量ページ。
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        author: resolve(__dirname, 'author.html'),
+      },
+    },
   },
   define: {
     __APP_VERSION__: JSON.stringify(buildInfo.appVersion),
