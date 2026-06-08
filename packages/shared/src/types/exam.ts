@@ -9,6 +9,7 @@
  */
 
 import type { SignedCheckpointAlgorithm } from './signedCheckpoint.js';
+import type { TemplateFileDefinition } from './template.js';
 
 /** Argon2id KDF パラメータ */
 export interface ExamKdfParams {
@@ -86,6 +87,43 @@ export interface ExamSessionContext {
   /** 監督コード (正準形) */
   startToken: string;
 }
+
+// ============================================================================
+// 封印平文の構造化版 — N問バンドル (ADR-0012)
+// ============================================================================
+
+/** 封印平文の構造化 schema 識別子 (ADR-0012)。`problems[]` を持つ試験バンドル。 */
+export type ExamBundleSchema = 'tcexam-exam/1';
+
+/**
+ * バンドル内の1問 (ADR-0012)。**1問 = 1タブ**で展開される。
+ * `starter` は任意の単一スターターコードファイル (無ければ空タブ)。1問複数ファイルは現状非対応。
+ */
+export interface ExamBundleProblem {
+  problemId: string;
+  /** 問題文 (Markdown) */
+  statement: string;
+  /** スターターコード (任意)。`TemplateFileDefinition` を再利用 (テンプレート機能と共通)。 */
+  starter?: TemplateFileDefinition;
+}
+
+/**
+ * 封印される平文の構造化版 (ADR-0012)。1つの `.tcexam` に N 問をバンドルし、
+ * 解錠時に各 `problems[i]` を1タブへ展開する。`packageHash`(署名) が全体を覆い、
+ * 各タブの束縛は per-problem `problemContentHash` (root v2) が担う。
+ */
+export interface ExamBundle {
+  schema: ExamBundleSchema;
+  problems: ExamBundleProblem[];
+}
+
+/**
+ * 復号後平文を解釈した結果 (ADR-0012)。後方互換のため、構造化されていない平文は
+ * 旧来の単一 Markdown 問題 (`legacy`) として扱う。
+ */
+export type DecodedExamPlaintext =
+  | { kind: 'bundle'; bundle: ExamBundle }
+  | { kind: 'legacy'; statement: string };
 
 /**
  * proof の `exam` ブロック (exam モード時のみ、ADR-0006 §4)。

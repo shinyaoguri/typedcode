@@ -23,7 +23,7 @@ export {
 
 import { deterministicStringify, computeHash } from './utils/hashUtils.js';
 import { computeExamChainRoot } from './exam/examPackage.js';
-import { POSW_ITERATIONS } from './version.js';
+import { POSW_ITERATIONS, EXAM_ROOT_BINDING_V2 } from './version.js';
 import {
   verifyProofSignedCheckpoints,
 } from './signedCheckpoints.js';
@@ -132,13 +132,15 @@ export async function verifyInitialHashRoot(
 
   // 試験モード: root に packageHash と startToken を束ねる (ADR-0006 §3)。
   // package 自体の署名・復号・内容ハッシュ照合は verifyExamBinding が担う。ここでは
-  // proof 自己完結で「root が宣言された packageHash + startToken から計算されている」ことだけ確認する。
+  // proof 自己完結で「root が宣言された packageHash + startToken (v2 は + problemContentHash)
+  // から計算されている」ことだけ確認する。v2 = N問バンドル (ADR-0012 B-2)、それ以外は v1。
   const computedInitialHash = proof.exam
     ? await computeExamChainRoot(
         fingerprintHash,
         nonce,
         proof.exam.packageHash,
-        proof.exam.startToken
+        proof.exam.startToken,
+        proof.exam.rootBinding === EXAM_ROOT_BINDING_V2 ? proof.exam.problemContentHash : undefined
       )
     : await computeHash(fingerprintHash + nonce);
   if (computedInitialHash !== expectedInitialHash) {
