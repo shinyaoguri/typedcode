@@ -21,6 +21,13 @@ export const EXAM_PROOF_VERSION = 1 as const;
 /** チェーン根束縛の方式バージョン (ADR-0006)。root = SHA256(fp ‖ nonce ‖ packageHash ‖ startToken) */
 export const EXAM_ROOT_BINDING = 'v1' as const;
 
+/**
+ * N問バンドル (ADR-0012 B-2) の root 束縛バージョン。
+ * root = SHA256(fp ‖ nonce ‖ packageHash ‖ startToken ‖ problemContentHash)。
+ * v1 の末尾に per-problem ハッシュを連結し、各タブを「この封印の・この問題」に束縛する。
+ */
+export const EXAM_ROOT_BINDING_V2 = 'v2' as const;
+
 /** ストレージフォーマットバージョン (localStorage用、整数) */
 export const STORAGE_FORMAT_VERSION = 1 as const;
 

@@ -93,6 +93,11 @@ export {
   verifyExamBinding,
   buildExamProofBlock,
   DEFAULT_EXAM_KDF_PARAMS,
+  EXAM_BUNDLE_SCHEMA,
+  parseExamBundle,
+  decodeExamPlaintext,
+  encodeExamBundle,
+  computeBundleProblemHash,
 } from './exam/index.js';
 
 export type {
@@ -115,6 +120,7 @@ export {
   EXAM_PACKAGE_FORMAT_VERSION,
   EXAM_PROOF_VERSION,
   EXAM_ROOT_BINDING,
+  EXAM_ROOT_BINDING_V2,
   MIN_SUPPORTED_VERSION,
   parseVersion,
   compareVersions,

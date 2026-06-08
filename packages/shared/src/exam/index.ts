@@ -18,6 +18,14 @@ export {
   DEFAULT_EXAM_KDF_PARAMS,
 } from './examPackage.js';
 
+export {
+  EXAM_BUNDLE_SCHEMA,
+  parseExamBundle,
+  decodeExamPlaintext,
+  encodeExamBundle,
+  computeBundleProblemHash,
+} from './examBundle.js';
+
 export type {
   ExamDecryptResult,
   ExamPackageSigner,

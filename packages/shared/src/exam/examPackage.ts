@@ -176,18 +176,26 @@ export async function computeProblemContentHash(plaintext: string): Promise<stri
 }
 
 /**
- * exam モードのチェーン根 (genesis = 監督コード入力 = T0)。
- * root = SHA-256(fingerprintHash ‖ localNonce ‖ packageHash ‖ startToken)。
- * casual の `SHA-256(fingerprintHash + nonce)` と同じ平文連結スタイル
- * (各値は固定長 hex / Crockford トークンで境界の曖昧さはない)。editor と verifier 共有の唯一の root ヘルパ。
+ * exam モードのチェーン根 (genesis = 監督コード入力 = T0)。editor と verifier 共有の唯一の root ヘルパ。
+ *
+ * - **v1** (単一問題、ADR-0006): root = SHA-256(fingerprintHash ‖ localNonce ‖ packageHash ‖ startToken)。
+ * - **v2** (N問バンドル、ADR-0012 B-2): 末尾に per-problem `problemContentHash` を連結し、
+ *   各タブの genesis を「この封印の・この問題」に束縛する。
+ *   root = SHA-256(… ‖ startToken ‖ problemContentHash)。
+ *
+ * `problemContentHash` 省略時は **v1 とバイト一致**する (後方互換)。各値は固定長 hex /
+ * Crockford トークンなので連結の境界は曖昧にならない (startToken は大文字 Crockford、
+ * problemContentHash は小文字 hex で、同じ連結は同じ (token, hash) からしか生じない)。
  */
 export async function computeExamChainRoot(
   fingerprintHash: string,
   localNonce: string,
   packageHash: string,
-  startToken: string
+  startToken: string,
+  problemContentHash?: string
 ): Promise<string> {
-  return computeHash(fingerprintHash + localNonce + packageHash + startToken);
+  const suffix = problemContentHash ?? '';
+  return computeHash(fingerprintHash + localNonce + packageHash + startToken + suffix);
 }
 
 // ============================================================================
