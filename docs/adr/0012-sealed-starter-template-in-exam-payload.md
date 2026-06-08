@@ -1,80 +1,110 @@
-# ADR-0012: 封印問題の平文を構造化し、スターターコード（テンプレート）を同梱する
+# ADR-0012: 封印問題の平文を構造化し、N問バンドル＋問題ごとのスターターコードを同梱する
 
 - **Status**: Proposed
 - **Date**: 2026-06-08
 - **Deciders**: (PR 上の合意者 / レビュアー)
-- **PR / Commit**: #NN (ADR) / 後続実装 PR
+- **PR / Commit**: #89 (ADR) / 後続実装 PR
 
 ## Context
 
-TypedCode には独立した2つの機能があり、いまは**直交**している。
+TypedCode には独立した2機能があり、いまは**直交**している。
 
-- **テンプレート機能**（`packages/editor/src/template/`）: `.yaml` を**ローカル取込**して `files[]{filename, language, content}` を**ファイルごとのタブに流し込む**（content = スターターコード）。取込時に `templateInjectionEvent`（templateHash / contentHash）を proof チェーンに記録する。**配布の仕組みは無い**（URL も署名も無いローカルファイル取込のみ）。`metadata.description` は確認モーダルに出るだけで永続表示しない。
-- **問題配布（`.tcexam`、ADR-0006）**: 出題者が署名・封印した問題を T0（監督コード）で解錠して配布する。だが**封印される平文は「問題文（純テキスト）」だけ**で、解錠時に作るのは**空のタブ1つ**（[main.ts](../../packages/editor/src/main.ts) の exam 解錠分岐は content=`''`）。問題文は ProblemPanel に表示するのみ。
+- **テンプレート機能**（`packages/editor/src/template/`）: `.yaml` を**ローカル取込**して `files[]{filename, language, content}` を**ファイルごとのタブ**に流し込む（content = スターターコード）。取込時に `templateInjectionEvent`（templateHash / contentHash）を proof チェーンに記録する。**配布の仕組みは無い**（URL も署名も無いローカルファイル取込のみ）。
+- **問題配布（`.tcexam`、ADR-0006）**: 出題者が署名・封印した問題を T0（監督コード）で解錠して配る。だが**封印される平文は「1問の問題文（純テキスト）」だけ**で、解錠時に作るのは**空のタブ1つ**。問題文は ProblemPanel に表示するのみ。
 
-実際の演習・試験では「関数シグネチャ・I/O 定型・`// TODO` だけ書いた骨組み」を配り、学生に**ゼロから書かせず穴埋めさせる**ことが多い。これは概念的に **テンプレート = 問題のスターターコード**であり、配布チャネルを持つ `.tcexam` に同梱できれば「テンプレートに配布手段」「問題にスターターコード」が同時に成立する。
+実際の演習・試験では「関数シグネチャ・I/O 定型・`// TODO` だけ書いた骨組み」を配り、学生に**ゼロから書かせず穴埋めさせる**ことが多い。これは概念的に **スターターコード = 問題に同梱して配る雛形**であり、配布チャネルを持つ `.tcexam` に同梱できれば「テンプレートに配布手段」「問題にスターターコード」が同時に成立する。
+
+加えて議論で**運用モデルが2点確定**した:
+
+- **タブの単位 = 問題（1問1タブ厳守）**。1回の試験に独立した N 問があれば **N タブ**開く（ADR-0010 の「1問1タブ」を保ったまま N に増やす）。**1問が複数ファイル**になるケース（main.c + util.h …）は当面**非対応**（後回し）。
+- **配布は1つの `.tcexam` に N 問をバンドル**する（解錠1回で全問展開。教員は1ファイル配布）。
 
 制約:
 
-- **スターターコードは問題の一部であり T0 まで秘匿すべき**。先に漏れると問題構造が読めてしまう（air-gap 前提の意味が薄れる）。
-- 既存の `.tcexam`（平文 = 生 markdown）との**後方互換**を壊さない。
-- 暗号束縛（ADR-0006）の不変条件—`packageHash`（署名対象 canonical core）と `problemContentHash = SHA-256(平文)`—を**壊さない / 再実装しない**。
-- 試験モードのセッション構造は ADR-0010 で **「1問1タブ・源流ロック」** と定めている。
+- **問題本文もスターターコードも T0 まで秘匿**（先に漏れると問題が読める）。
+- 既存の単一問題 `.tcexam`（平文 = 生 markdown）との**後方互換**を壊さない。
+- **暗号コア（Argon2id KDF / AES-256-GCM / ECDSA-P256 署名 / `packageHash`）は無改変・再実装しない**。変えるのは「何を平文に詰めるか」と「束縛の意味論を1問→N問へ広げる」ところだけ。
+- ADR-0006 の束縛: `packageHash = SHA-256(canonical core)`、`problemContentHash = SHA-256(平文)`、`root = SHA-256(fingerprintHash ‖ localNonce ‖ packageHash ‖ startToken)`。
 
 ## Considered Options
 
-スターターコードを**どこに置くか**の比較（A〜C）。
+### スターターコードと N 問を**どこに置くか**
 
-### Option A: manifest の平文（cleartext）フィールドに `files[]` を足す
-- Pros: 実装が単純（解錠不要で読める）。
-- Cons: **T0 前にスターターコードが漏れる**（封印の意味を破る）。`files` を canonical core に入れるか否かで `packageHash`/署名の意味論を再設計する羽目になる。**却下**。
+#### Option A: manifest の平文（cleartext）フィールドに置く
+- Cons: **T0 前に漏れる**（封印破り）。canonical core に入れると署名意味論の再設計が要る。**却下**。
 
-### Option B: 封印される**平文ペイロードを構造化ドキュメントにする**（★採用）
-平文を「生 markdown 文字列」から、バージョン付き JSON へ拡張する:
+#### Option B: 封印される**平文ペイロードを構造化する**（★採用）
+平文を「生 markdown 文字列」から、バージョン付き JSON の**試験バンドル**へ拡張する:
 ```jsonc
-{ "schema": "tcexam-problem/1",
-  "statement": "# 問題1 …(markdown)…",
-  "files": [ { "filename": "main.c", "language": "c", "content": "/* TODO */" } ] }
+{ "schema": "tcexam-exam/1",
+  "problems": [
+    { "problemId": "p1", "statement": "# 問題1 …md…",
+      "starter": { "filename": "p1.c", "language": "c", "content": "/* TODO */" } },
+    { "problemId": "p2", "statement": "…", "starter": { "filename": "p2.c", "language": "c", "content": "" } }
+  ] }
 ```
-- Pros: スターターコードが**封印の内側**に入り T0 まで秘匿。**暗号コアは無改変**で、`packageHash`（署名）と `problemContentHash` が平文文字列を覆うので**スターターコードまで自動的に署名・内容束縛**される。既存の `TemplateFileDefinition` と `TemplateImporter`（多タブ生成 + 注入イベント記録）を**再利用**でき、2機能がコードレベルで1本化する。後方互換は schema 判別で担保（非 JSON / schema 無し → 従来の生 markdown 問題文、files=[]）。
-- Cons: 平文の符号化契約（encode/decode）を**単一真実源**として shared に置き、authoring（封印）と editor（解錠）で一致させ続ける必要がある。`problemContentHash` がコード整形（空白・改行）に敏感になる（正準化方針が要る）。
+各 `problems[i]` が **1タブ**になる（problem = tab）。`starter` は任意（無ければ空タブ＝現状同等）。
+- Pros: 問題文もスターターコードも**封印の内側**で T0 まで秘匿。**暗号コア無改変**で、`packageHash`（署名）が平文全体（=全 N 問）を覆う。テンプレート機能の「N 件 → N タブ生成 + 注入イベント記録」機構を**そのまま再利用**できる（"files→tabs" が "problems→tabs" になるだけ）。後方互換は schema 判別（非 JSON / schema 無し → 従来の単一 markdown 問題）。
+- Cons: 平文符号化（encode/decode）と**正準化**を単一真実源として shared に置き、authoring/editor/grader で一致させ続ける必要がある。**束縛を1問→N問へ拡張**する設計が要る（下記）。
 
-### Option C: 第2の封印 blob を別に持つ（問題文とは別に template を独立封印）
-- Pros: 問題文とテンプレートを別鍵/別タイミングで扱える。
-- Cons: 暗号面が二重になり KDF/IV/署名対象が増える。単一 T0・単一問題の運用では**冗長**。**却下**。
+#### Option C: 問題ごとに別 `.tcexam`（N ファイル配布）
+- Pros: 1パッケージ=1問=1タブで ADR-0006 を**完全無改変**。
+- Cons: 教員が N ファイル配る。**「1ファイルにバンドル」の運用決定に反する**ため却下。
+
+### N問の束縛をどう担保するか（Option B 採用前提のサブ判断）
+
+バンドルでは1つの `packageHash`・1つの監督コードに全 N 問がぶら下がる。各タブ（問題 i）の proof を「この封印の・この問題 i」に束縛したい。
+
+#### B-1: root は据え置き、問題の同定は `proof.exam` で行う
+- `root_i = SHA-256(fp ‖ nonce_i ‖ packageHash ‖ token)`（**現行式のまま**。各タブの nonce が違うので root は一意、全タブが同一 packageHash+token に束縛）。
+- 各タブの `proof.exam` に **その問題の `problemId` と per-problem `problemContentHash`**（= `SHA-256(canonical(problems[i]))`）を記録。grader は復号 → `problemId` で問題を引き当て → 内容ハッシュ一致を確認。
+- Pros: **root 式・`EXAM_ROOT_BINDING` を変えない**（実装・リロード復帰が軽い）。
+- Cons: 「タブ↔特定問題」の結びは proof.exam の自己申告＋grader 照合（暗号的な genesis 束縛は bundle 単位）。
+
+#### B-2: root に per-problem ハッシュを焼く（★推奨）
+- `root_i = SHA-256(fp ‖ nonce_i ‖ packageHash ‖ token ‖ problemContentHash_i)`。
+- Pros: 各タブの **genesis が「この封印の・この問題 i」に暗号的に束縛**され、問題ラベルの付け替えが root 不一致で露見する。バンドルのために format を上げるなら束縛も最初から airtight にできる。
+- Cons: `computeExamChainRoot` 署名拡張＋`EXAM_ROOT_BINDING` のバージョン bump。単一問題 legacy 経路（problemContentHash を root に含めない v1）と分岐させる。
 
 ## Decision
 
-**Option B を採用する。**封印される平文を、バージョン付き構造化ドキュメント `tcexam-problem/1`（`statement` markdown + `files[]`）にし、後方互換のため schema 未判別の平文は従来の生 markdown 問題文として扱う。決め手は **暗号コアを一切変えずに（`packageHash` 署名 + `problemContentHash` 内容束縛がそのまま全ペイロードを覆う）**、既存テンプレート機構を再利用して2機能を統合できること。
+**Option B を採用し、封印平文を試験バンドル `tcexam-exam/1`（`problems[]`、problem=tab）にする。** スターターコードと全 N 問は封印の内側に同梱され、`packageHash`（署名）が全体を覆う。**暗号コアは無改変**で、変更は (1) 平文 schema、(2) 束縛意味論の1問→N問拡張、(3) editor の N タブ生成（テンプレート機構の再利用）に限る。
+
+束縛は **B-2（root に per-problem `problemContentHash_i` を焼く）を推奨**として採る。バンドルのために format を上げる以上、各タブの genesis を「この封印の・この問題」に airtight に束縛しておく。`EXAM_ROOT_BINDING` をバージョン bump し、単一問題 legacy（v1 root）と分岐する。
 
 確定する設計点:
 
-1. **平文符号化は shared の単一真実源**。`exam/` に `encodeExamProblemPayload` / `decodeExamProblemPayload` を置き（`buildExamPackage` と同じ「authoring と verifier が共有する唯一の実装」方針）、authoring の封印前と editor の解錠後が同じ符号化を使う。`decode` は **untrusted JSON → 構造検証 or legacy fallback**。
-2. **テンプレートモデルを再利用**。`files[]` は既存 `TemplateFileDefinition`（filename / language / content）。解錠後、`files` があれば `TemplateImporter` 相当の多タブ生成を **examContext 束縛つき**で回し、各タブに `templateInjectionEvent` を記録する。
-3. **多タブの exam 束縛**。各テンプレートファイルは**編集可能な exam 束縛タブ**になる（各タブが自分のチェーンを持ち、genesis 根 = `SHA-256(fingerprintHash ‖ localNonce ‖ packageHash ‖ startToken)` で**同一 packageHash + 監督コード**に束縛）。`localNonce` はタブ毎に異なるので根は各タブで一意だが、全タブが同一封印に束縛される。grader（`verifyExamBinding`）は ZIP 内の各 proof を従来どおり検証する。これは ADR-0010 の「1問1タブ」を **「1問 N タブ（テンプレート由来）」へ拡張**する（源流ロックは N タブ生成後に施錠）。
-4. **authoring（`/author`）の拡張**。AuthorPage にスターターコード入力（最小: 単一ファイル、フル: 複数ファイル / 既存 `.yaml` テンプレートの取込→封印）を足す。`allowed.languages` は `files` の言語と整合させる（少なくとも矛盾を弾く）。
-5. **段階導入**。schema は最初から `files[]`（複数）を表現できる**上位互換**で固定し、実装は「単一ファイル → 複数ファイル」へ段階的に進めてよい（schema 変更を伴わない）。
+1. **平文符号化は shared の単一真実源**。`exam/` に `encodeExamBundle` / `decodeExamBundle`（untrusted JSON → 構造検証 or legacy fallback）と `computeProblemContentHash(problem)`（per-problem 正準ハッシュ）を置く。正準化（決定的 JSON シリアライズ・改行正規化）を定義し authoring/editor/grader で一致させる。
+2. **problem = tab（1問1タブ厳守）**。各 `problems[i]` が1タブ。N 問 → N タブ。1問複数ファイルは非対応（schema に将来 `files[]` を足す余地は残すが今回は `starter` 単一ファイルのみ）。
+3. **N タブ生成はテンプレート機構を再利用**。解錠後、`TemplateImporter` 相当のループで problems→tabs を **examContext 束縛つき**生成し、各タブに注入イベントを記録。`humanAttestation` は先頭タブで取り全タブ共有（現テンプレート実装と同じ）。
+4. **束縛拡張**: 各タブの `proof.exam` に per-problem `problemId` / `problemContentHash_i`、root は B-2。grader（`verifyExamBinding`）は per-tab に「署名 → packageHash → root_i（per-problem 込み） → 復号 → problems[problemId] の内容ハッシュ一致」を検証。
+5. **ProblemPanel は per-active-tab** 表示（アクティブな問題の `statement` を出す）。
+6. **manifest**: `examId` は据え置き。バンドルである旨は平文 schema で表す（manifest 上の `problemId` はバンドル/試験ラベルとして残すか `*`）。format 識別が要るなら `formatVersion` を bump。
+7. **後方互換**: 旧 `.tcexam`（単一 markdown・v1 root）は従来どおり1タブ解錠・表示。decode は schema/formatVersion で legacy 分岐。
+8. **authoring（`/author`）**: N 問入力（各問: `problemId` + `statement` + 任意の `starter` ファイル）。既存 `.yaml` テンプレート取込→封印は将来導線。
 
 ## Consequences
 
 ### Positive
-- スターターコードが**封印・署名・内容束縛**の内側に入り、追加の暗号設計なしで配布できる。
-- テンプレート機能に**配布チャネル**（署名付き `.tcexam`）が生まれ、問題機能に**スターターコード**が入る。コードも `TemplateImporter` 再利用で重複が減る。
-- 後方互換：既存の生 markdown `.tcexam` はそのまま解錠・表示できる。
+- 1試験 = 1署名付き `.tcexam` で **N 問＋各問スターターコードを秘匿配布**できる（教員は1ファイル配布、学生は解錠で N タブ）。
+- スターターコードが署名・内容束縛の内側に入り、追加の暗号設計なしで守られる。
+- テンプレート機能に**配布チャネル**が、問題に**スターターコード**が入り、タブ生成コードも再利用で重複減。
+- **1問1タブの不変条件（ADR-0010）を保つ**。
 
 ### Negative / Trade-offs
-- 平文符号化（encode/decode）が新たな**単一真実源**になり、ズレると解錠・検証が壊れる（`buildExamPackage` と同じ運用規律で守る）。
-- `problemContentHash` がコード整形に敏感。**符号化前に正準化**（例: JSON の決定的シリアライズ、改行コード正規化）を定義し、authoring/editor/grader で一致させる。
-- ADR-0010 の「1問1タブ」前提に触れるコード（タブ生成・源流ロック・リロード復帰）を N タブへ一般化する必要がある。
+- 平文 codec / 正準化 / per-problem ハッシュ / B-2 root が新たな**束縛契約**になり、ズレると解錠・検証が壊れる（`buildExamPackage` 同様の運用規律で守る）。
+- `EXAM_ROOT_BINDING` と（必要なら）`formatVersion` の bump。legacy 経路の分岐保守。
+- ADR-0010 のタブ生成・源流ロック・リロード復帰を **N タブへ一般化**（源流ロックは N タブ生成後に施錠）。
+- `problemContentHash` がコード整形に敏感 → 正準化必須。
 
 ### Follow-ups / 残課題
-- 実装フェーズ: (1) shared に payload codec + 後方互換 + 正準化 + テスト → (2) editor 解錠を `TemplateImporter` 再利用へ（多タブ exam 束縛・リロード復帰・源流ロックの N タブ化） → (3) `/author` にスターター入力（最小→フル）。
-- `.yaml` テンプレート ↔ `tcexam-problem` payload の相互変換（教員が既存テンプレートをそのまま封印できる導線）。
-- ProblemPanel は `statement` を表示（現状の plaintext 表示を構造化 payload に対応させる）。
-- system-spec.md と shared/editor の CLAUDE.md に payload schema を明記。
+- 実装フェーズ: (1) shared に bundle codec + per-problem ハッシュ + B-2 root + 後方互換 + テスト → (2) editor 解錠を `TemplateImporter` 再利用で N タブ exam 束縛（ProblemPanel per-tab・リロード復帰・源流ロック N タブ化） → (3) `/author` に N 問入力。
+- 1問複数ファイル（軸: 1問 N ファイル）は別 ADR / 将来 schema 拡張（`problems[i].files[]`）。
+- `.yaml` テンプレート ↔ bundle payload 相互変換。
+- system-spec.md と shared/editor の CLAUDE.md に payload schema / 束縛式を明記。
 
 ## References
 
-- 関連コード: [packages/shared/src/exam/examPackage.ts](../../packages/shared/src/exam/examPackage.ts)（`buildExamPackage` / `decryptExamPackage` / `computeProblemContentHash`）、[packages/shared/src/types/exam.ts](../../packages/shared/src/types/exam.ts)、[packages/shared/src/types/template.ts](../../packages/shared/src/types/template.ts)、[packages/editor/src/template/TemplateImporter.ts](../../packages/editor/src/template/TemplateImporter.ts)、[packages/editor/src/ui/components/ExamStartGate.ts](../../packages/editor/src/ui/components/ExamStartGate.ts)、[packages/editor/src/authoring/](../../packages/editor/src/authoring/)
-- 関連 ADR: [ADR-0006](0006-exam-mode-sealed-problem-binding.md)（封印・束縛）、[ADR-0010](0010-exam-session-model.md)（1問1タブ → 本 ADR で N タブへ拡張）、[ADR-0011](0011-course-modes-and-path-routing.md)（モード体系）
+- 関連コード: [packages/shared/src/exam/examPackage.ts](../../packages/shared/src/exam/examPackage.ts)（`buildExamPackage` / `decryptExamPackage` / `computeProblemContentHash` / `computeExamChainRoot`）、[packages/shared/src/types/exam.ts](../../packages/shared/src/types/exam.ts)、[packages/shared/src/types/template.ts](../../packages/shared/src/types/template.ts)、[packages/editor/src/template/TemplateImporter.ts](../../packages/editor/src/template/TemplateImporter.ts)、[packages/editor/src/ui/components/ExamStartGate.ts](../../packages/editor/src/ui/components/ExamStartGate.ts)、[packages/editor/src/ui/components/ProblemPanel.ts](../../packages/editor/src/ui/components/ProblemPanel.ts)、[packages/editor/src/authoring/](../../packages/editor/src/authoring/)
+- 関連 ADR: [ADR-0006](0006-exam-mode-sealed-problem-binding.md)（封印・束縛 — 本 ADR で1問→N問へ拡張）、[ADR-0010](0010-exam-session-model.md)（1問1タブ — N タブへ一般化）、[ADR-0011](0011-course-modes-and-path-routing.md)（モード体系）
 - 関連 issue / PR: #80（出題者オーサリング）、#87 / #88（authoring seam / UI）
