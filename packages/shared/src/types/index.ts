@@ -80,7 +80,7 @@ export type {
   SignedCheckpointsVerificationResult,
 } from './proof.js';
 
-// 試験モード関連 (ADR-0006)
+// 試験モード関連 (ADR-0006, ADR-0012)
 export type {
   ExamKdfParams,
   ExamKdf,
@@ -89,6 +89,10 @@ export type {
   ExamPackageSigningCore,
   ExamSessionContext,
   ExamProofBlock,
+  ExamBundleSchema,
+  ExamBundleProblem,
+  ExamBundle,
+  DecodedExamPlaintext,
 } from './exam.js';
 
 // テンプレート関連

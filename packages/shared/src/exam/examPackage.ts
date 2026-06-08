@@ -33,7 +33,8 @@ import {
   findExamAuthorityKey,
   type ExamAuthorityKey,
 } from '../examAuthorityKeys/index.js';
-import { EXAM_PACKAGE_FORMAT_VERSION, EXAM_PROOF_VERSION, EXAM_ROOT_BINDING } from '../version.js';
+import { EXAM_PACKAGE_FORMAT_VERSION, EXAM_PROOF_VERSION, EXAM_ROOT_BINDING, EXAM_ROOT_BINDING_V2 } from '../version.js';
+import { decodeExamPlaintext, computeBundleProblemHash } from './examBundle.js';
 
 // ============================================================================
 // バイト列ユーティリティ (DOM/Node 非依存)
@@ -563,19 +564,46 @@ export async function verifyExamBinding(
     return { ...result, reason: 'Recomputed packageHash does not match proof.exam.packageHash' };
   }
 
-  // 3. root 再計算 (fp, nonce, packageHash, startToken) = initialEventChainHash → T0 以降に開始
-  const recomputedRoot = await computeExamChainRoot(fingerprintHash, nonce, packageHash, exam.startToken);
+  // root 束縛バージョン: v2 (ADR-0012, N問バンドル) は root と内容ハッシュを per-problem で検証する。
+  // 旧 proof は rootBinding 未設定 = v1 とみなし、従来どおり (whole-plaintext) で検証する。
+  const isV2 = exam.rootBinding === EXAM_ROOT_BINDING_V2;
+
+  // 3. root 再計算 → initialEventChainHash → T0 以降に開始。
+  //    v1: SHA256(fp ‖ nonce ‖ packageHash ‖ startToken)。
+  //    v2: 末尾に per-problem problemContentHash を連結し「この封印の・この問題」に束縛 (B-2)。
+  const recomputedRoot = await computeExamChainRoot(
+    fingerprintHash,
+    nonce,
+    packageHash,
+    exam.startToken,
+    isV2 ? exam.problemContentHash : undefined
+  );
   result.rootMatches = recomputedRoot === expectedRoot;
   if (!result.rootMatches) {
     return { ...result, reason: 'Recomputed exam chain root does not match proof initialEventChainHash' };
   }
 
-  // 4. startToken で復号 → 平文 SHA-256 = proof.exam.problemContentHash → 答案はこの問題のもの
+  // 4. startToken で復号 → 内容ハッシュ = proof.exam.problemContentHash → 答案はこの問題のもの。
+  //    v2: バンドルを decode し proof.exam.problemId で該当問題を引いて per-problem ハッシュを照合。
+  //    v1: 平文全体の SHA-256 (従来挙動)。
   const decrypted = await decryptExamPackage(manifest, exam.startToken);
   if (!decrypted.ok) {
     return { ...result, reason: `Decryption failed: ${decrypted.reason}` };
   }
-  const contentHash = await computeProblemContentHash(decrypted.plaintext);
+  let contentHash: string;
+  if (isV2) {
+    const decoded = decodeExamPlaintext(decrypted.plaintext);
+    if (decoded.kind !== 'bundle') {
+      return { ...result, reason: 'Proof claims v2 root binding but decrypted plaintext is not an exam bundle' };
+    }
+    const problem = decoded.bundle.problems.find((p) => p.problemId === exam.problemId);
+    if (!problem) {
+      return { ...result, reason: `Bundle has no problem with id ${exam.problemId}` };
+    }
+    contentHash = await computeBundleProblemHash(problem);
+  } else {
+    contentHash = await computeProblemContentHash(decrypted.plaintext);
+  }
   result.problemContentHashMatches = contentHash === exam.problemContentHash;
   if (!result.problemContentHashMatches) {
     return { ...result, reason: 'Decrypted problemContentHash does not match proof.exam.problemContentHash' };
