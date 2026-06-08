@@ -236,6 +236,7 @@ body {
   color: var(--accent-info);
   margin-bottom: var(--spacing-md);
 }
+.author-token-actions { justify-content: center; }
 
 .author-meta {
   display: grid;

@@ -613,12 +613,21 @@ export interface TranslationKeys {
     result: {
       title: string;
       redownload: string;
+      downloadMemo: string;
       proctorCodeLabel: string;
       proctorWarning: string;
       keyId: string;
       packageHash: string;
       release: string;
       deadline: string;
+    };
+    memo: {
+      title: string;
+      generatedAt: string;
+      problemFile: string;
+      note1: string;
+      note2: string;
+      note3: string;
     };
   };
 }

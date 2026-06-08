@@ -586,12 +586,21 @@ export const ja: TranslationKeys = {
     result: {
       title: '生成しました',
       redownload: '再ダウンロード',
+      downloadMemo: '控えを保存',
       proctorCodeLabel: '監督コード',
       proctorWarning: 'このコードを確実に控えてください。平文に含まれないため、失うと問題を復号できなくなります。',
       keyId: 'keyId',
       packageHash: 'packageHash',
       release: '開始',
       deadline: '期限',
+    },
+    memo: {
+      title: 'TypedCode 試験問題 — 監督コード控え（教員用・学生に配布しない）',
+      generatedAt: '生成日時',
+      problemFile: '問題ファイル',
+      note1: 'この監督コードは平文パッケージに含まれません。紛失すると問題を復号できません。',
+      note2: 'T0（開始時刻）に学生へ口頭・板書で解禁してください。',
+      note3: 'このファイルは教員用です。学生には .tcexam のみを配布してください。',
     },
   },
 };

@@ -586,12 +586,21 @@ export const en: TranslationKeys = {
     result: {
       title: 'Package created',
       redownload: 'Download again',
+      downloadMemo: 'Save record',
       proctorCodeLabel: 'Proctor code',
       proctorWarning: 'Record this code now. It is not contained in the plaintext, so losing it makes the problem undecryptable.',
       keyId: 'keyId',
       packageHash: 'packageHash',
       release: 'Start',
       deadline: 'Deadline',
+    },
+    memo: {
+      title: 'TypedCode exam problem — proctor code record (for teachers; do NOT distribute to students)',
+      generatedAt: 'Generated at',
+      problemFile: 'Problem file',
+      note1: 'This proctor code is not contained in the plaintext package. If lost, the problem cannot be decrypted.',
+      note2: 'Reveal it to students verbally / on the board at T0 (start time).',
+      note3: 'This file is for teachers. Distribute only the .tcexam file to students.',
     },
   },
 };

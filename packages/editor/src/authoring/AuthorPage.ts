@@ -37,6 +37,36 @@ function toLocalInputValue(date: Date): string {
   );
 }
 
+/**
+ * 監督コードの控え (教員用・学生に配布しない) のテキストを組み立てる純関数。
+ * コードは平文 manifest に含まれず紛失すると復号不能なので、画面表示に加えて
+ * 教員が durable に保存できるようにする。`now` は注入してテスト可能にする。
+ */
+export function buildProctorMemo(result: CreatedExamPackage, filename: string, now: Date): string {
+  const m = result.manifest;
+  return [
+    t('author.memo.title'),
+    '='.repeat(56),
+    `${t('author.memo.generatedAt')}: ${now.toISOString()}`,
+    '',
+    `${t('author.result.proctorCodeLabel')}: ${formatProctorTokenForDisplay(result.proctorToken)}`,
+    '',
+    `${t('author.memo.problemFile')}: ${filename}`,
+    `examId:      ${m.examId}`,
+    `problemId:   ${m.problemId}`,
+    `variant:     ${m.variant ?? '(none)'}`,
+    `keyId:       ${m.keyId}`,
+    `packageHash: ${result.packageHash}`,
+    `${t('author.result.release')} (T0): ${m.releaseTime}`,
+    `${t('author.result.deadline')} (T1): ${m.deadline}`,
+    '',
+    `- ${t('author.memo.note1')}`,
+    `- ${t('author.memo.note2')}`,
+    `- ${t('author.memo.note3')}`,
+    '',
+  ].join('\n');
+}
+
 /** Blob をファイル名つきでダウンロードさせる。 */
 function downloadBlob(filename: string, content: string, mime: string): void {
   const blob = new Blob([content], { type: mime });
@@ -233,9 +263,14 @@ export class AuthorPage {
       <div class="author-token-box">
         <div class="author-token-label">${escapeHtml(t('author.result.proctorCodeLabel'))}</div>
         <div class="author-token-value" id="author-token-value">${escapeHtml(displayToken)}</div>
-        <button class="author-btn author-btn-primary" id="author-copy-token-btn">
-          <i class="fas fa-copy"></i> ${escapeHtml(t('author.copy'))}
-        </button>
+        <div class="author-btn-row author-token-actions">
+          <button class="author-btn author-btn-primary" id="author-copy-token-btn">
+            <i class="fas fa-copy"></i> ${escapeHtml(t('author.copy'))}
+          </button>
+          <button class="author-btn" id="author-dl-memo-btn">
+            <i class="fas fa-file-lines"></i> ${escapeHtml(t('author.result.downloadMemo'))}
+          </button>
+        </div>
       </div>
       <div class="author-note author-note-warn">
         <i class="fas fa-triangle-exclamation"></i>
@@ -250,6 +285,10 @@ export class AuthorPage {
     `;
     this.el('author-copy-token-btn').addEventListener('click', () => {
       void navigator.clipboard?.writeText(result.proctorToken);
+    });
+    this.el('author-dl-memo-btn').addEventListener('click', () => {
+      const memoName = `${result.manifest.problemId || 'problem'}-proctor-code.txt`;
+      downloadBlob(memoName, buildProctorMemo(result, filename, new Date()), 'text/plain');
     });
     this.el('author-redownload-btn').addEventListener('click', () => {
       downloadBlob(filename, JSON.stringify(result.manifest, null, 2) + '\n', 'application/json');
