@@ -70,22 +70,26 @@ export class HashChainManager {
   }
 
   /**
-   * 試験モード (ADR-0006) の初期ハッシュ (= チェーン根) を生成。
-   * root = SHA-256(fingerprintHash ‖ nonce ‖ packageHash ‖ startToken)。
+   * 試験モード (ADR-0006/0012) の初期ハッシュ (= チェーン根) を生成。
+   * - v1: root = SHA-256(fingerprintHash ‖ nonce ‖ packageHash ‖ startToken)。
+   * - v2 (N問バンドル, ADR-0012 B-2): 末尾に per-problem `problemContentHash` を連結。
    * genesis は監督コード入力 (= T0)。casual の generateInitialHash と対をなす。
    *
    * 注: この連結式は exam/examPackage.ts の `computeExamChainRoot` と**必ず一致**させること
    * (verifier はそちらで root を再計算する)。両者の一致はテストで担保している。
+   * `problemContentHash` 省略時は v1 とバイト一致する。
    */
   async generateExamInitialHash(
     fingerprintHash: string,
     packageHash: string,
-    startToken: string
+    startToken: string,
+    problemContentHash?: string
   ): Promise<InitialHashResult> {
     const randomData = new Uint8Array(32);
     crypto.getRandomValues(randomData);
     const nonce = this.arrayBufferToHex(randomData);
-    const hash = await this.computeHash(fingerprintHash + nonce + packageHash + startToken);
+    const suffix = problemContentHash ?? '';
+    const hash = await this.computeHash(fingerprintHash + nonce + packageHash + startToken + suffix);
     return { hash, nonce };
   }
 

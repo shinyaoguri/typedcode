@@ -5,6 +5,7 @@
 import type { AppContext } from '../core/AppContext.js';
 import { showLanguageDescriptionInTerminal } from './TerminalHandler.js';
 import { updateProofStatus } from './AppHelpers.js';
+import { ExamPackageStore } from '../services/ExamPackageStore.js';
 
 interface TabInfo {
   filename: string;
@@ -33,5 +34,13 @@ export function handleTabChange(ctx: AppContext, tab: TabInfo): void {
     if (activeTab) {
       ctx.logViewer.setTypingProof(activeTab.typingProof);
     }
+  }
+
+  // 試験モード (ADR-0012): N問バンドルは 1問1タブなので、アクティブタブの問題文を
+  // ProblemPanel に出し分ける。problemId → ExamPackageStore で問題文を引く。
+  if (ctx.examMode && ctx.tabManager) {
+    const problemId = ctx.tabManager.getActiveTab()?.typingProof.examContext?.problemId;
+    const pkg = problemId ? ExamPackageStore.get(problemId) : null;
+    if (pkg) ctx.problemPanel.setProblemText(pkg.plaintext);
   }
 }

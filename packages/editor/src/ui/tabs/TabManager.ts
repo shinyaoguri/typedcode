@@ -93,6 +93,12 @@ export interface CreateTabOptions {
    * - exam ロックを跨いで作るのは解錠フロー (setExamLock 前) のみ
    */
   examContext?: ExamSessionContext;
+  /**
+   * 先頭タブの humanAttestation を共有する (ADR-0012 N問バンドルの 2 番目以降のタブ用)。
+   * 指定すると Turnstile / best-effort をやり直さず、この attestation を #0 に記録する
+   * (TemplateImporter の共有 attestation と同じ発想)。
+   */
+  sharedAttestation?: HumanAttestationEventData;
 }
 
 /** 言語IDから拡張子を取得 */
@@ -303,8 +309,14 @@ export class TabManager {
     let verificationState: VerificationState = 'skipped';
     let verificationDetails: VerificationDetails | undefined;
 
-    // Turnstile認証（skipAttestationでない場合のみ）
-    if (!options?.skipAttestation && isTurnstileConfigured()) {
+    // 共有 attestation (ADR-0012 バンドルの 2 番目以降のタブ): 先頭タブの #0 を再利用し
+    // Turnstile を再実行しない。examContext と併用する。
+    if (options?.sharedAttestation) {
+      await typingProof.recordHumanAttestation(options.sharedAttestation);
+      verificationState = 'verified';
+      verificationDetails = { timestamp: new Date().toISOString() };
+    } else if (!options?.skipAttestation && isTurnstileConfigured()) {
+      // Turnstile認証（skipAttestationでない場合のみ）
       debugLog('[TabManager] Performing Turnstile verification for new tab...');
 
       const uiResult = await performVerificationWithUI('create_tab', t);

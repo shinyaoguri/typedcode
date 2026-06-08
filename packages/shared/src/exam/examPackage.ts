@@ -650,7 +650,8 @@ export function buildExamProofBlock(input: BuildExamProofBlockInput): ExamProofB
     packageHash: input.packageHash,
     problemContentHash: input.problemContentHash,
     startToken: input.startToken,
-    rootBinding: EXAM_ROOT_BINDING,
+    // v2 (N問バンドル, ADR-0012) は context が指定。省略時は単一問題 v1 (ADR-0006)。
+    rootBinding: input.rootBinding ?? EXAM_ROOT_BINDING,
   };
 }
 

@@ -17,18 +17,24 @@ import {
   decryptExamPackage,
   canonicalizeStartToken,
   computeExamPackageHash,
-  computeProblemContentHash,
   parseExamPackageManifest,
   escapeHtml,
   type ExamPackageManifest,
-  type ExamSessionContext,
 } from '@typedcode/shared';
 import { t } from '../../i18n/index.js';
 
+/**
+ * 解錠結果 (ADR-0006/0012)。ゲートは署名検証 + 復号までを担い、セッション構築
+ * (問題=タブの分解 / examContext の組み立て) は呼び出し側 (runExamUnlock) に委ねる。
+ * 平文は単一 markdown (v1) か N問バンドル (v2) で、呼び出し側が decodeExamPlaintext で分岐する。
+ */
 export interface ExamUnlockResult {
   manifest: ExamPackageManifest;
   plaintext: string;
-  examContext: ExamSessionContext;
+  /** SHA-256(signing core)。各タブの束縛で共有する。 */
+  packageHash: string;
+  /** 監督コード (正準形)。 */
+  startToken: string;
 }
 
 export class ExamStartGate {
@@ -168,18 +174,10 @@ export class ExamStartGate {
         showError(t('exam.gate.errorWrongCode'));
         return;
       }
-      // 3. 束縛コンテキストを構築
+      // 3. packageHash を確定し、セッション構築は呼び出し側へ渡す
+      //    (問題=タブの分解と examContext 組み立ては runExamUnlock が decodeExamPlaintext で行う)。
       const packageHash = await computeExamPackageHash(manifest);
-      const problemContentHash = await computeProblemContentHash(dec.plaintext);
-      const examContext: ExamSessionContext = {
-        examId: manifest.examId,
-        problemId: manifest.problemId,
-        variant: manifest.variant,
-        packageHash,
-        problemContentHash,
-        startToken: token,
-      };
-      onSuccess({ manifest, plaintext: dec.plaintext, examContext });
+      onSuccess({ manifest, plaintext: dec.plaintext, packageHash, startToken: token });
     } catch {
       showError(t('exam.gate.errorUnlockFailed'));
     } finally {

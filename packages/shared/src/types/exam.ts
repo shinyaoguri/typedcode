@@ -82,10 +82,18 @@ export interface ExamSessionContext {
   variant: string | null;
   /** SHA-256(deterministicStringify(signing core)) */
   packageHash: string;
-  /** 復号後**平文**問題の SHA-256 */
+  /**
+   * 内容ハッシュ。v1(単一問題)は復号後平文全体の SHA-256、
+   * v2(N問バンドル, ADR-0012)は per-problem の `computeBundleProblemHash`。
+   */
   problemContentHash: string;
   /** 監督コード (正準形) */
   startToken: string;
+  /**
+   * root 束縛バージョン (ADR-0012)。`'v2'` のとき root に problemContentHash を連結する。
+   * 省略/`'v1'` は単一問題 (ADR-0006) で従来どおり。
+   */
+  rootBinding?: string;
 }
 
 // ============================================================================
