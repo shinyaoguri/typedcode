@@ -99,7 +99,7 @@ export interface AppContext {
   mainMenuDropdown: MainMenuDropdown;
   terminalPanel: TerminalPanel;
   browserPreviewPanel: BrowserPreviewPanel;
-  /** 試験モードの問題表示パネル (ADR-0006 最小骨組み・スタブ) */
+  /** 試験モードの問題表示パネル (ADR-0006: 復号した問題本文の表示 + ログ DL を担う) */
   problemPanel: ProblemPanel;
   /** 試験モードのフルスクリーン追跡・警告バナー (ADR-0008) */
   fullscreenTracker: FullscreenTracker;

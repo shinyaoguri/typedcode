@@ -1,9 +1,9 @@
 # ADR-0009: 改ざん検証と直交する pluggable な分析層フレームワークを定義する
 
-- **Status**: Proposed
-- **Date**: 2026-06-06
+- **Status**: Accepted (実装済み・develop マージ済み)
+- **Date**: 2026-06-06 (Accepted: 2026-06-08)
 - **Deciders**: (PR 上の合意者 / レビュアー)
-- **PR / Commit**: (this PR)
+- **PR / Commit**: develop マージ済み
 
 > ADR-0007 が「**分析ロジックは別 ADR・後段で pluggable**」と明記した、その別 ADR。捕捉済み信号を消費して**生成 AI 利用を間接判定する分析層**の枠組みを確定する。本 ADR は **framework（差し込み口・出力モデル・実行場所・配置/開示・evasion 方針）を確定**し、**4 分析器それぞれのアルゴリズムは後続 spec/ADR に委ねる**（進化＆evasion 感度が高いため）。
 

@@ -29,8 +29,9 @@ export class ProofExporter {
   private exportProgressDialog: ExportProgressDialog;
   private screenshotTracker: ScreenshotTracker | null = null;
   private callbacks: ExportCallbacks = {};
-  /** 試験モードか。true のときエクスポート前認証を best-effort 化する (ADR-0006) */
-  private examMode = false;
+  /** エクスポート前認証を best-effort 化するか (ADR-0006/0011: `capabilities.preExportBestEffort`)。
+   *  true のとき Turnstile 不達/失敗でも提出 ZIP をブロックしない。exam 等で有効。 */
+  private preExportBestEffort = false;
   /** 生成時のモード (ADR-0011)。proof に自己申告ラベルとして記録する。 */
   private mode: EditorMode = 'casual';
 
@@ -44,12 +45,13 @@ export class ProofExporter {
   }
 
   /**
-   * 試験モードを設定。試験モードではエクスポート前 Turnstile 認証を best-effort 化し、
-   * 失敗/不達でも提出 ZIP をブロックしない (ADR-0006: サーバを critical path に置かない。
-   * 不安定網・100名同時でも受験者が Moodle 提出物を作れるようにする)。casual は従来どおり必須。
+   * エクスポート前認証の best-effort 化を設定 (`capabilities.preExportBestEffort` で駆動)。
+   * 有効時は Turnstile 認証が失敗/不達でも提出 ZIP をブロックしない (ADR-0006: サーバを
+   * critical path に置かない。不安定網・100名同時でも受験者が Moodle 提出物を作れるように
+   * する)。casual は従来どおり必須 (false)。
    */
-  setExamMode(examMode: boolean): void {
-    this.examMode = examMode;
+  setPreExportBestEffort(bestEffort: boolean): void {
+    this.preExportBestEffort = bestEffort;
   }
 
   /**
@@ -171,7 +173,7 @@ export class ProofExporter {
     // 失敗時は best-effort の失敗 attestation を記録してエクスポートを続行する。
     const failOrBestEffort = async (reason: string): Promise<boolean> => {
       console.error('[Export] Pre-export verification failed:', reason);
-      if (this.examMode) {
+      if (this.preExportBestEffort) {
         await this.recordBestEffortPreExportAttestation(reason);
         return true; // 提出をブロックしない
       }

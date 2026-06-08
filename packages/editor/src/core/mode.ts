@@ -7,9 +7,11 @@
  * (path はリロードで永続するため)。試験の整合性は封印パッケージの暗号束縛 (ADR-0006)
  * が担保するので、モードに「閉じ込める」必要はない。
  *
- * PR1 (本コミット): routing + モデル + exam を path 化 + proof に mode 記録。
- * **class/assignment はルーティングと能力定義のみ (挙動は当面 casual 同等)**。能力差の
- * 実配線 (課題スクショ off 等) と per-mode storage 名前空間化は後続 PR。
+ * 実装状況 (ADR-0011 PR1–3, develop マージ済み): routing + 能力モデル + exam の path 化 +
+ * proof への mode 記録、能力差の実配線 (assignment はスクショ off 等)、storage のモード別
+ * 名前空間化 (core/storageKeys.ts) まで完了。
+ * **未実装の繰り越し**: class 固有の能力 (fullscreen 任意・問題表示) と class/assignment の
+ * 問題配布 UX。現状 class は casual と同一能力 (監督は教室の物理在室で担保)。
  */
 
 export type EditorMode = 'casual' | 'class' | 'assignment' | 'exam';
@@ -17,7 +19,7 @@ export type EditorMode = 'casual' | 'class' | 'assignment' | 'exam';
 /** proof に記録する mode 文字列 (shared の ExportedProof.mode と一致させる) */
 export const ALL_EDITOR_MODES: readonly EditorMode[] = ['casual', 'class', 'assignment', 'exam'];
 
-/** モードごとの能力 (単一の真実源)。PR1 では exam の差分のみ実配線。 */
+/** モードごとの能力 (単一の真実源)。全フラグが各消費者で実配線済み (ADR-0011 PR2)。 */
 export interface ModeCapabilities {
   /** 封印問題 + 監督コード + 根束縛 (ExamStartGate)。exam のみ。 */
   sealedProblem: boolean;
@@ -57,14 +59,14 @@ const EXAM: ModeCapabilities = {
 
 /**
  * 課題モード (assignment): 持ち帰り・プライバシー重視。CASUAL から **screenshots を off** に
- * する (自宅画面のキャプチャを避ける。ADR-0011)。封印なし・問題配布 UX は後続 PR。
+ * する (自宅画面のキャプチャを避ける。ADR-0011)。封印なし。問題配布 UX は繰り越し。
  */
 const ASSIGNMENT: ModeCapabilities = { ...CASUAL, screenshots: false };
 
 /**
  * 能力マトリクス (ADR-0011)。
  *
- * - **class は当面 casual と同一** (監督は教室の物理的在室で担保。fullscreen 任意・問題表示は後続 PR)。
+ * - **class は casual と同一能力** (監督は教室の物理的在室で担保。fullscreen 任意・問題表示は繰り越し)。
  * - **assignment は screenshots off** (上記)。
  * - **exam** だけが封印問題・根束縛・厳格な能力 (tabLock/fullscreen/preExport best-effort) を持つ。
  */
