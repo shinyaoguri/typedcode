@@ -42,7 +42,18 @@ if (urlParams.get('fresh') === '1') {
 
 import * as monaco from 'monaco-editor';
 import './styles/main.css';
-import { Fingerprint, setSharedDebug } from '@typedcode/shared';
+import {
+  Fingerprint,
+  setSharedDebug,
+  decodeExamPlaintext,
+  computeProblemContentHash,
+  computeBundleProblemHash,
+  computeHash,
+  type ExamSessionContext,
+  type ExamBundleProblem,
+  type ExamPackageManifest,
+  type HumanAttestationEventData,
+} from '@typedcode/shared';
 import { resolveModeFromPath, capabilitiesFor } from './core/mode.js';
 import { setStorageNamespace, tabsKey, sessionActiveKey, allSessionDbNames } from './core/storageKeys.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
@@ -50,7 +61,7 @@ import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
 import { initializeTrackers } from './tracking/TrackersInitializer.js';
 import { ThemeManager } from './editor/ThemeManager.js';
-import { TabManager, type SyncStatus } from './ui/tabs/TabManager.js';
+import { TabManager, type SyncStatus, type TabState } from './ui/tabs/TabManager.js';
 import type { MonacoEditor } from './editor/types.js';
 import {
   isTurnstileConfigured,
@@ -775,24 +786,113 @@ function examFileExtension(language: string): string {
 }
 
 /**
- * 初回入場: ブロック型ゲートで封印問題を開封し、exam タブ (examContext で root 束縛) を生成、
- * 問題本文を ProblemPanel に表示し、リロード再表示用に ExamPackageStore へ保存する。
+ * 初回入場: ブロック型ゲートで封印問題を開封し、exam タブを生成する。
+ * 平文を decode し、N問バンドル (ADR-0012) なら **1問 = 1タブ**で N タブを v2 束縛で開く。
+ * 旧来の単一 markdown は 1 タブ (v1) で従来どおり。問題本文は ProblemPanel に表示し、
+ * リロード再表示用に ExamPackageStore へ (problemId キーで) 保存する。
  */
 async function runExamUnlock(appCtx: AppContext): Promise<void> {
   const gate = new ExamStartGate();
-  const result = await gate.prompt(); // 解錠まで block (sticky, キャンセル不可)
+  const { manifest, plaintext, packageHash, startToken } = await gate.prompt(); // 解錠まで block
 
-  const language = result.manifest.allowed.languages[0] ?? 'c';
+  const decoded = decodeExamPlaintext(plaintext);
+  if (decoded.kind === 'bundle') {
+    await openBundleTabs(appCtx, manifest, packageHash, startToken, decoded.bundle.problems);
+  } else {
+    await openLegacyExamTab(appCtx, manifest, packageHash, startToken, decoded.statement);
+  }
+}
+
+/** 旧来の単一問題 (v1): 1 タブ・root は packageHash + startToken のみ。 */
+async function openLegacyExamTab(
+  appCtx: AppContext,
+  manifest: ExamPackageManifest,
+  packageHash: string,
+  startToken: string,
+  statement: string
+): Promise<void> {
+  const language = manifest.allowed.languages[0] ?? 'c';
   const filename = `answer.${examFileExtension(language)}`;
-  await appCtx.tabManager?.createTab(filename, language, '', { examContext: result.examContext });
-
-  appCtx.problemPanel.setProblemText(result.plaintext);
+  const problemContentHash = await computeProblemContentHash(statement);
+  const examContext: ExamSessionContext = {
+    examId: manifest.examId,
+    problemId: manifest.problemId,
+    variant: manifest.variant,
+    packageHash,
+    problemContentHash,
+    startToken,
+  };
+  await appCtx.tabManager?.createTab(filename, language, '', { examContext });
+  appCtx.problemPanel.setProblemText(statement);
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
+  ExamPackageStore.save(manifest.problemId, { manifest, plaintext: statement });
+}
 
-  ExamPackageStore.save(result.examContext.problemId, {
-    manifest: result.manifest,
-    plaintext: result.plaintext,
-  });
+/**
+ * N問バンドル (v2): 各問を 1 タブで開く。先頭タブで humanAttestation を確定し、
+ * 2 番目以降は共有して Turnstile を再実行しない (TemplateImporter と同じ発想)。
+ * 各タブは per-problem hash で root v2 束縛し、starter があれば注入してイベント記録する。
+ */
+async function openBundleTabs(
+  appCtx: AppContext,
+  manifest: ExamPackageManifest,
+  packageHash: string,
+  startToken: string,
+  problems: ExamBundleProblem[]
+): Promise<void> {
+  let sharedAttestation: HumanAttestationEventData | null = null;
+
+  for (let i = 0; i < problems.length; i++) {
+    const problem = problems[i]!;
+    const language = problem.starter?.language ?? manifest.allowed.languages[0] ?? 'c';
+    const filename = problem.starter?.filename ?? `${problem.problemId}.${examFileExtension(language)}`;
+    const starterContent = problem.starter?.content ?? '';
+    const problemContentHash = await computeBundleProblemHash(problem);
+
+    const examContext: ExamSessionContext = {
+      examId: manifest.examId,
+      problemId: problem.problemId,
+      variant: manifest.variant,
+      packageHash,
+      problemContentHash,
+      startToken,
+      rootBinding: 'v2',
+    };
+
+    const tab: TabState | null =
+      (await appCtx.tabManager?.createTab(filename, language, starterContent, {
+        examContext,
+        ...(i > 0 && sharedAttestation ? { sharedAttestation } : {}),
+      })) ?? null;
+
+    if (i === 0 && tab) {
+      sharedAttestation = tab.typingProof.getHumanAttestation();
+    }
+
+    // starter コードは「与えられた雛形 (タイプされていない)」なので注入イベントで明示し、
+    // verifier の純タイピング判定が starter を異常としないようにする (テンプレート機能と同じ)。
+    if (tab && starterContent.length > 0) {
+      const contentHash = await computeHash(starterContent);
+      await tab.typingProof.recordTemplateInjection({
+        templateName: `${manifest.examId}/${problem.problemId}`,
+        templateHash: problemContentHash,
+        filename,
+        content: starterContent,
+        contentHash,
+        contentLength: starterContent.length,
+        totalFilesInTemplate: 1,
+        injectionSource: 'file_import',
+      });
+    }
+
+    ExamPackageStore.save(problem.problemId, { manifest, plaintext: problem.statement });
+  }
+
+  // 先頭タブをアクティブにし、その問題文を表示する。
+  const first = appCtx.tabManager?.getAllTabs()[0];
+  if (first) await appCtx.tabManager?.switchTab(first.id);
+  appCtx.problemPanel.setProblemText(problems[0]?.statement ?? '');
+  if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
 }
 
 /** リロード時: 復元タブの examContext に対応する問題本文を ExamPackageStore から再表示する。 */

@@ -264,6 +264,14 @@ describe('exam chain root', () => {
     const expected = await computeExamChainRoot(fp, initial.nonce, pkgHash, token);
     expect(initial.hash).toBe(expected);
   });
+
+  it('matches generateExamInitialHash for v2 (per-problem hash) — editor genesis ↔ grader root', async () => {
+    const pch = 'd'.repeat(64);
+    const hcm = new HashChainManager();
+    const initial = await hcm.generateExamInitialHash(fp, pkgHash, token, pch);
+    const expected = await computeExamChainRoot(fp, initial.nonce, pkgHash, token, pch);
+    expect(initial.hash).toBe(expected);
+  });
 });
 
 describe('problem content hash', () => {

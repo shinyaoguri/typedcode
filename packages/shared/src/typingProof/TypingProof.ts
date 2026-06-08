@@ -158,7 +158,9 @@ export class TypingProof {
     const initial = await this.hashChainManager.generateExamInitialHash(
       fingerprintHash,
       examContext.packageHash,
-      examContext.startToken
+      examContext.startToken,
+      // v2 (N問バンドル, ADR-0012): root に per-problem hash を焼く。v1 は undefined で従来式。
+      examContext.rootBinding === 'v2' ? examContext.problemContentHash : undefined
     );
     this.initialHashNonce = initial.nonce;
     this.hashChainManager.setCurrentHash(initial.hash);
