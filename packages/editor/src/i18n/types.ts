@@ -585,11 +585,17 @@ export interface TranslationKeys {
       heading: string;
       examId: string;
       problemId: string;
-      variant: string;
-      variantPlaceholder: string;
       languages: string;
       body: string;
       bodyPlaceholder: string;
+      bundleHint: string;
+      addProblem: string;
+      removeProblem: string;
+      problemLabel: string;
+      starterToggle: string;
+      starterFilename: string;
+      starterLanguage: string;
+      starterContent: string;
     };
     schedule: {
       heading: string;

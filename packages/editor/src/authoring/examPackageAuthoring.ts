@@ -18,6 +18,8 @@ import {
   computeExamPackageHash,
   canonicalizeStartToken,
   arrayBufferToHex,
+  encodeExamBundle,
+  EXAM_BUNDLE_SCHEMA,
   DEFAULT_EXAM_KDF_PARAMS,
   EXAM_PACKAGE_FORMAT_VERSION,
   type ExamKdf,
@@ -25,6 +27,8 @@ import {
   type ExamPackageBuildInput,
   type ExamPackageManifest,
   type ExamPackageSigner,
+  type ExamBundle,
+  type ExamBundleProblem,
 } from '@typedcode/shared';
 
 /** Crockford Base32 アルファベット (I L O U を除外 = 32 文字)。監督コード生成に使う。 */
@@ -200,4 +204,70 @@ export async function createExamPackage(
   const manifest = await buildExamPackage(input, problemText, proctorToken, signer);
   const packageHash = await computeExamPackageHash(manifest);
   return { manifest, packageHash, proctorToken };
+}
+
+/** `createExamBundlePackage` の入力。1つの `.tcexam` に N 問をバンドルする (ADR-0012)。 */
+export interface CreateExamBundleParams {
+  examId: string;
+  /** N 問。各問: problemId + statement + 任意の starter (単一ファイル)。 */
+  problems: ExamBundleProblem[];
+  /** 許可言語 (グローバル allow-list)。 */
+  languages: string[];
+  releaseTime: string;
+  deadline: string;
+  proctorToken: string;
+  kdfParams?: ExamKdfParams;
+}
+
+/**
+ * N問バンドル (`tcexam-exam/1`) を封印して署名済み `.tcexam` を作る (ADR-0012)。
+ * 平文は `encodeExamBundle` で組み立て、封印・署名・packageHash は `createExamPackage` に委譲する
+ * (= 単一導線の再利用)。manifest.problemId はバンドルラベル `'bundle'`、個々の problemId は平文内。
+ *
+ * @throws 問題が空 / problemId 重複・空 / statement 空 / starter 不備、および createExamPackage の検証。
+ */
+export async function createExamBundlePackage(
+  params: CreateExamBundleParams,
+  signer: ExamPackageSigner
+): Promise<CreatedExamPackage> {
+  if (!params.problems || params.problems.length === 0) {
+    throw new Error('At least one problem is required');
+  }
+  const seen = new Set<string>();
+  const problems: ExamBundleProblem[] = [];
+  for (const p of params.problems) {
+    const problemId = p.problemId.trim();
+    if (!problemId) throw new Error('Each problem needs a problemId');
+    if (seen.has(problemId)) throw new Error(`Duplicate problemId: ${problemId}`);
+    seen.add(problemId);
+    if (!p.statement || p.statement.trim().length === 0) {
+      throw new Error(`Problem "${problemId}" has an empty statement`);
+    }
+    const cleaned: ExamBundleProblem = { problemId, statement: p.statement };
+    if (p.starter && p.starter.content.length > 0) {
+      const filename = p.starter.filename.trim();
+      const language = p.starter.language.trim();
+      if (!filename || !language) {
+        throw new Error(`Problem "${problemId}" starter needs a filename and language`);
+      }
+      cleaned.starter = { filename, language, content: p.starter.content };
+    }
+    problems.push(cleaned);
+  }
+
+  const bundle: ExamBundle = { schema: EXAM_BUNDLE_SCHEMA, problems };
+  return createExamPackage(
+    {
+      problemText: encodeExamBundle(bundle),
+      examId: params.examId,
+      problemId: 'bundle',
+      variant: null,
+      languages: params.languages,
+      releaseTime: params.releaseTime,
+      deadline: params.deadline,
+      proctorToken: params.proctorToken,
+      kdfParams: params.kdfParams,
+    },
+    signer
+  );
 }

@@ -238,6 +238,30 @@ body {
 }
 .author-token-actions { justify-content: center; }
 
+/* 問題カード (N問バンドル, ADR-0012) */
+.author-problem-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-md);
+  background: var(--bg-primary);
+}
+.author-problem-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+}
+.author-problem-title { font-weight: 600; }
+.author-problem-remove { padding: 4px 8px; color: var(--accent-danger); }
+.author-problem-remove:disabled { opacity: 0.35; }
+.author-starter-fields {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px dashed var(--border-color);
+}
+#author-add-problem { margin-top: var(--spacing-xs); }
+
 .author-meta {
   display: grid;
   grid-template-columns: max-content 1fr;

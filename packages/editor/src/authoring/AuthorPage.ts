@@ -10,10 +10,10 @@
  * 鍵・問題はこのページの外 (ストレージ/ネットワーク) に一切出さない。
  */
 
-import { escapeHtml } from '@typedcode/shared';
+import { escapeHtml, type ExamBundleProblem } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
 import {
-  createExamPackage,
+  createExamBundlePackage,
   formatProctorTokenForDisplay,
   generateProctorToken,
   importAuthoritySigner,
@@ -82,6 +82,8 @@ function downloadBlob(filename: string, content: string, mime: string): void {
 
 export class AuthorPage {
   private root: HTMLElement;
+  /** 問題カードの一意 id 採番 (削除しても番号は再利用しない)。 */
+  private problemSeq = 0;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -97,6 +99,8 @@ export class AuthorPage {
     this.input('author-deadline').value = toLocalInputValue(in3h);
     // 既定の監督コードを自動生成。
     this.input('author-token').value = generateProctorToken();
+    // 最初の問題カードを1枚置く。
+    this.addProblemCard();
   }
 
   private input(id: string): HTMLInputElement {
@@ -130,6 +134,9 @@ export class AuthorPage {
       void this.handleGenerateKey();
     });
 
+    // --- 問題を追加 ---
+    this.el('author-add-problem').addEventListener('click', () => this.addProblemCard());
+
     // --- 監督コード再生成 ---
     this.el('author-regen-token-btn').addEventListener('click', () => {
       this.input('author-token').value = generateProctorToken();
@@ -138,6 +145,97 @@ export class AuthorPage {
     // --- パッケージ生成 ---
     this.el('author-build-btn').addEventListener('click', () => {
       void this.handleBuild();
+    });
+  }
+
+  /** 1枚の問題カードを #author-problems に追加し、トグル/削除を配線する (ADR-0012)。 */
+  private addProblemCard(): void {
+    const seq = this.problemSeq++;
+    const container = this.el('author-problems');
+    const card = document.createElement('div');
+    card.className = 'author-problem-card';
+    card.dataset.seq = String(seq);
+    card.innerHTML = `
+      <div class="author-problem-head">
+        <span class="author-problem-title"></span>
+        <button class="author-btn author-problem-remove" type="button" title="${escapeHtml(t('author.problem.removeProblem'))}">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+      <div class="author-field">
+        <label>${escapeHtml(t('author.problem.problemId'))}</label>
+        <input type="text" class="author-input author-problem-id" placeholder="p${seq + 1}" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="author-field">
+        <label>${escapeHtml(t('author.problem.body'))}</label>
+        <textarea class="author-textarea author-problem-statement" rows="6" placeholder="${escapeHtml(t('author.problem.bodyPlaceholder'))}"></textarea>
+      </div>
+      <label class="author-check">
+        <input type="checkbox" class="author-starter-toggle">
+        <span>${escapeHtml(t('author.problem.starterToggle'))}</span>
+      </label>
+      <div class="author-starter-fields" hidden>
+        <div class="author-grid">
+          <div class="author-field">
+            <label>${escapeHtml(t('author.problem.starterFilename'))}</label>
+            <input type="text" class="author-input author-starter-filename" placeholder="p${seq + 1}.c" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="author-field">
+            <label>${escapeHtml(t('author.problem.starterLanguage'))}</label>
+            <input type="text" class="author-input author-starter-language" value="c" placeholder="c" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <div class="author-field">
+          <label>${escapeHtml(t('author.problem.starterContent'))}</label>
+          <textarea class="author-textarea author-mono author-starter-content" rows="6" placeholder="#include <stdio.h>\n\nint main(void) {\n  // TODO\n  return 0;\n}"></textarea>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+
+    const toggle = card.querySelector<HTMLInputElement>('.author-starter-toggle')!;
+    const starterFields = card.querySelector<HTMLElement>('.author-starter-fields')!;
+    toggle.addEventListener('change', () => {
+      starterFields.hidden = !toggle.checked;
+    });
+    card.querySelector<HTMLButtonElement>('.author-problem-remove')!.addEventListener('click', () => {
+      // 最低 1 枚は残す。
+      if (container.querySelectorAll('.author-problem-card').length <= 1) return;
+      card.remove();
+      this.renumberProblems();
+    });
+
+    this.renumberProblems();
+  }
+
+  /** カードのタイトルを「問題 N」に振り直す (追加/削除後)。 */
+  private renumberProblems(): void {
+    const cards = this.root.querySelectorAll<HTMLElement>('.author-problem-card');
+    cards.forEach((card, i) => {
+      const title = card.querySelector<HTMLElement>('.author-problem-title');
+      if (title) title.textContent = t('author.problem.problemLabel', { n: i + 1 });
+      // 1 枚だけのとき削除ボタンを無効化 (最低 1 問は要る)。
+      const removeBtn = card.querySelector<HTMLButtonElement>('.author-problem-remove');
+      if (removeBtn) removeBtn.disabled = cards.length <= 1;
+    });
+  }
+
+  /** 問題カードを ExamBundleProblem[] に収集する (空 statement は弾かず seam に委ねる)。 */
+  private collectProblems(): ExamBundleProblem[] {
+    const cards = this.root.querySelectorAll<HTMLElement>('.author-problem-card');
+    return Array.from(cards).map((card) => {
+      const problemId = card.querySelector<HTMLInputElement>('.author-problem-id')!.value.trim();
+      const statement = card.querySelector<HTMLTextAreaElement>('.author-problem-statement')!.value;
+      const problem: ExamBundleProblem = { problemId, statement };
+      const toggle = card.querySelector<HTMLInputElement>('.author-starter-toggle')!;
+      if (toggle.checked) {
+        problem.starter = {
+          filename: card.querySelector<HTMLInputElement>('.author-starter-filename')!.value.trim(),
+          language: card.querySelector<HTMLInputElement>('.author-starter-language')!.value.trim(),
+          content: card.querySelector<HTMLTextAreaElement>('.author-starter-content')!.value,
+        };
+      }
+      return problem;
     });
   }
 
@@ -207,7 +305,7 @@ export class AuthorPage {
       .filter(Boolean);
     const releaseTime = localInputToIso(this.input('author-release').value);
     const deadline = localInputToIso(this.input('author-deadline').value);
-    const variantRaw = this.input('author-variant').value.trim();
+    const examId = this.input('author-exam-id').value.trim();
 
     const buildBtn = this.el('author-build-btn') as HTMLButtonElement;
     const originalLabel = buildBtn.innerHTML;
@@ -218,12 +316,10 @@ export class AuthorPage {
       const signer = await importAuthoritySigner(jwkRaw, keyId, {
         embedPublicKey: this.input('author-embed-pubkey').checked,
       });
-      const result = await createExamPackage(
+      const result = await createExamBundlePackage(
         {
-          problemText: this.textarea('author-problem').value,
-          examId: this.input('author-exam-id').value.trim(),
-          problemId: this.input('author-problem-id').value.trim(),
-          variant: variantRaw.length > 0 ? variantRaw : null,
+          examId,
+          problems: this.collectProblems(),
           languages,
           releaseTime,
           deadline,
@@ -231,7 +327,7 @@ export class AuthorPage {
         },
         signer
       );
-      const filename = `${result.manifest.problemId || 'problem'}.tcexam`;
+      const filename = `${examId || 'exam'}.tcexam`;
       downloadBlob(filename, JSON.stringify(result.manifest, null, 2) + '\n', 'application/json');
       this.showResult(result, filename);
     } catch (err) {
@@ -340,22 +436,15 @@ export class AuthorPage {
               <input type="text" id="author-exam-id" class="author-input" placeholder="2026-spring-cs101-final" autocomplete="off" spellcheck="false">
             </div>
             <div class="author-field">
-              <label for="author-problem-id">${escapeHtml(t('author.problem.problemId'))}</label>
-              <input type="text" id="author-problem-id" class="author-input" placeholder="p1" autocomplete="off" spellcheck="false">
-            </div>
-            <div class="author-field">
-              <label for="author-variant">${escapeHtml(t('author.problem.variant'))}</label>
-              <input type="text" id="author-variant" class="author-input" placeholder="${escapeHtml(t('author.problem.variantPlaceholder'))}" autocomplete="off" spellcheck="false">
-            </div>
-            <div class="author-field">
               <label for="author-languages">${escapeHtml(t('author.problem.languages'))}</label>
               <input type="text" id="author-languages" class="author-input" value="c" placeholder="c, python" autocomplete="off" spellcheck="false">
             </div>
           </div>
-          <div class="author-field">
-            <label for="author-problem">${escapeHtml(t('author.problem.body'))}</label>
-            <textarea id="author-problem" class="author-textarea" rows="10" placeholder="${escapeHtml(t('author.problem.bodyPlaceholder'))}"></textarea>
-          </div>
+          <p class="author-hint">${escapeHtml(t('author.problem.bundleHint'))}</p>
+          <div id="author-problems"></div>
+          <button class="author-btn" id="author-add-problem">
+            <i class="fas fa-plus"></i> ${escapeHtml(t('author.problem.addProblem'))}
+          </button>
         </section>
 
         <section class="author-section">
