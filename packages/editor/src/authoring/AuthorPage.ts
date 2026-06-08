@@ -21,21 +21,11 @@ import {
 } from './examPackageAuthoring.js';
 import { generateAuthorityKey } from './authorityKey.js';
 
-/** datetime-local の値 (ローカル時刻) を ISO 文字列へ。空/不正なら空文字。 */
-function localInputToIso(value: string): string {
-  if (!value) return '';
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? new Date(ms).toISOString() : '';
-}
-
-/** Date を datetime-local の value 形式 (ローカル時刻 `YYYY-MM-DDTHH:mm`) へ。 */
-function toLocalInputValue(date: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
-  );
-}
+/**
+ * オープンな締切 (ADR-0012 改良: スケジュールは Moodle 管理)。manifest 仕様上 deadline は
+ * 必須なので、実質「窓を設けない」意味の遠い未来を入れる。releaseTime(=生成時刻) < deadline を満たす。
+ */
+const OPEN_DEADLINE = '2999-12-31T23:59:59.999Z';
 
 /**
  * 監督コードの控え (教員用・学生に配布しない) のテキストを組み立てる純関数。
@@ -57,8 +47,6 @@ export function buildProctorMemo(result: CreatedExamPackage, filename: string, n
     `variant:     ${m.variant ?? '(none)'}`,
     `keyId:       ${m.keyId}`,
     `packageHash: ${result.packageHash}`,
-    `${t('author.result.release')} (T0): ${m.releaseTime}`,
-    `${t('author.result.deadline')} (T1): ${m.deadline}`,
     '',
     `- ${t('author.memo.note1')}`,
     `- ${t('author.memo.note2')}`,
@@ -92,11 +80,6 @@ export class AuthorPage {
   mount(): void {
     this.root.innerHTML = this.render();
     this.wire();
-    // 既定スケジュール: release = 今, deadline = +3h。
-    const now = new Date();
-    const in3h = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-    this.input('author-release').value = toLocalInputValue(now);
-    this.input('author-deadline').value = toLocalInputValue(in3h);
     // 既定の監督コードを自動生成。
     this.input('author-token').value = generateProctorToken();
     // 最初の問題カードを1枚置く。
@@ -303,8 +286,12 @@ export class AuthorPage {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-    const releaseTime = localInputToIso(this.input('author-release').value);
-    const deadline = localInputToIso(this.input('author-deadline').value);
+    // スケジュールは UI から廃止 (ADR-0012 改良)。実際の開始/締切は Moodle が管理し、
+    // 「いつ解いたか」は proof のタイムスタンプ/署名 cp に記録される。manifest 仕様上
+    // release/deadline は必須なので、releaseTime=生成時刻 (鍵有効性の anchor)・deadline=オープン
+    // (遠い未来) を内部既定にする。
+    const releaseTime = new Date().toISOString();
+    const deadline = OPEN_DEADLINE;
     const examId = this.input('author-exam-id').value.trim();
 
     const buildBtn = this.el('author-build-btn') as HTMLButtonElement;
@@ -375,8 +362,6 @@ export class AuthorPage {
       <dl class="author-meta">
         <dt>${escapeHtml(t('author.result.keyId'))}</dt><dd><code>${escapeHtml(result.manifest.keyId)}</code></dd>
         <dt>${escapeHtml(t('author.result.packageHash'))}</dt><dd><code class="author-hash">${escapeHtml(result.packageHash)}</code></dd>
-        <dt>${escapeHtml(t('author.result.release'))}</dt><dd>${escapeHtml(result.manifest.releaseTime)}</dd>
-        <dt>${escapeHtml(t('author.result.deadline'))}</dt><dd>${escapeHtml(result.manifest.deadline)}</dd>
       </dl>
     `;
     this.el('author-copy-token-btn').addEventListener('click', () => {
@@ -448,22 +433,7 @@ export class AuthorPage {
         </section>
 
         <section class="author-section">
-          <h2><span class="author-step">3</span> ${escapeHtml(t('author.schedule.heading'))}</h2>
-          <div class="author-grid">
-            <div class="author-field">
-              <label for="author-release">${escapeHtml(t('author.schedule.release'))}</label>
-              <input type="datetime-local" id="author-release" class="author-input">
-            </div>
-            <div class="author-field">
-              <label for="author-deadline">${escapeHtml(t('author.schedule.deadline'))}</label>
-              <input type="datetime-local" id="author-deadline" class="author-input">
-            </div>
-          </div>
-          <p class="author-hint">${escapeHtml(t('author.schedule.hint'))}</p>
-        </section>
-
-        <section class="author-section">
-          <h2><span class="author-step">4</span> ${escapeHtml(t('author.token.heading'))}</h2>
+          <h2><span class="author-step">3</span> ${escapeHtml(t('author.token.heading'))}</h2>
           <div class="author-field">
             <label for="author-token">${escapeHtml(t('author.token.label'))}</label>
             <div class="author-btn-row">

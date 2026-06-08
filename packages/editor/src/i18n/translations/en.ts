@@ -570,12 +570,6 @@ export const en: TranslationKeys = {
       starterLanguage: 'Language',
       starterContent: 'Starter code',
     },
-    schedule: {
-      heading: 'Schedule',
-      release: 'Start time (T0 / releaseTime)',
-      deadline: 'Deadline (T1 / deadline)',
-      hint: 'Times are entered in your local time zone. The start must be before the deadline.',
-    },
     token: {
       heading: 'Proctor code',
       label: 'Proctor code (reveal verbally / on the board at T0)',
@@ -597,8 +591,6 @@ export const en: TranslationKeys = {
       proctorWarning: 'Record this code now. It is not contained in the plaintext, so losing it makes the problem undecryptable.',
       keyId: 'keyId',
       packageHash: 'packageHash',
-      release: 'Start',
-      deadline: 'Deadline',
     },
     memo: {
       title: 'TypedCode exam problem — proctor code record (for teachers; do NOT distribute to students)',

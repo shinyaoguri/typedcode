@@ -34,12 +34,16 @@ describe('buildProctorMemo', () => {
     expect(memo).toContain('8da5e05b4b2d6ee2b3d86d9998395bc1e60e9df23bb3d4b312f787d999756a58');
   });
 
-  it('records the problem file name, examId, problemId, keyId and schedule', () => {
+  it('records the problem file name, examId, problemId and keyId', () => {
     expect(memo).toContain('p1.tcexam');
     expect(memo).toContain('2026-spring-cs101-final');
     expect(memo).toContain('exam-202606-26021f');
-    expect(memo).toContain('2026-06-10T01:00:00.000Z');
-    expect(memo).toContain('2026-06-10T04:00:00.000Z');
+  });
+
+  it('does not include a schedule (timing is managed by Moodle)', () => {
+    // releaseTime/deadline は UI から廃止したので控えにも出さない。
+    expect(memo).not.toContain('2026-06-10T01:00:00.000Z');
+    expect(memo).not.toContain('2026-06-10T04:00:00.000Z');
   });
 
   it('stamps the injected generation time', () => {

@@ -597,12 +597,6 @@ export interface TranslationKeys {
       starterLanguage: string;
       starterContent: string;
     };
-    schedule: {
-      heading: string;
-      release: string;
-      deadline: string;
-      hint: string;
-    };
     token: {
       heading: string;
       label: string;
@@ -624,8 +618,6 @@ export interface TranslationKeys {
       proctorWarning: string;
       keyId: string;
       packageHash: string;
-      release: string;
-      deadline: string;
     };
     memo: {
       title: string;

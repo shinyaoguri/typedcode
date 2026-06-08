@@ -570,12 +570,6 @@ export const ja: TranslationKeys = {
       starterLanguage: '言語',
       starterContent: 'スターターコード',
     },
-    schedule: {
-      heading: 'スケジュール',
-      release: '開始時刻（T0 / releaseTime）',
-      deadline: '提出期限（T1 / deadline）',
-      hint: '時刻は端末のローカルタイムで入力します。開始は期限より前である必要があります。',
-    },
     token: {
       heading: '監督コード',
       label: '監督コード（T0 に口頭・板書で解禁）',
@@ -597,8 +591,6 @@ export const ja: TranslationKeys = {
       proctorWarning: 'このコードを確実に控えてください。平文に含まれないため、失うと問題を復号できなくなります。',
       keyId: 'keyId',
       packageHash: 'packageHash',
-      release: '開始',
-      deadline: '期限',
     },
     memo: {
       title: 'TypedCode 試験問題 — 監督コード控え（教員用・学生に配布しない）',
