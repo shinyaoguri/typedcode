@@ -560,4 +560,65 @@ export interface TranslationKeys {
       errorUnlockFailed: string;
     };
   };
+
+  // 試験問題オーサリング (/author, #80)
+  author: {
+    title: string;
+    subtitle: string;
+    copy: string;
+    key: {
+      heading: string;
+      tabExisting: string;
+      tabGenerate: string;
+      keyIdLabel: string;
+      jwkLabel: string;
+      jwkHint: string;
+      generateIntro: string;
+      generateButton: string;
+      generateFailed: string;
+      privateWarning: string;
+      registryEntryLabel: string;
+      registryHint: string;
+      downloadPrivate: string;
+    };
+    problem: {
+      heading: string;
+      examId: string;
+      problemId: string;
+      variant: string;
+      variantPlaceholder: string;
+      languages: string;
+      body: string;
+      bodyPlaceholder: string;
+    };
+    schedule: {
+      heading: string;
+      release: string;
+      deadline: string;
+      hint: string;
+    };
+    token: {
+      heading: string;
+      label: string;
+      regenerate: string;
+      hint: string;
+      embedPubkey: string;
+    };
+    build: {
+      button: string;
+      working: string;
+      errorNoKey: string;
+      errorGeneric: string;
+    };
+    result: {
+      title: string;
+      redownload: string;
+      proctorCodeLabel: string;
+      proctorWarning: string;
+      keyId: string;
+      packageHash: string;
+      release: string;
+      deadline: string;
+    };
+  };
 }
