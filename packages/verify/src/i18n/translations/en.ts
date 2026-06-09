@@ -16,6 +16,10 @@ export const en: VerifyTranslationKeys = {
     subtitle: 'Verify typing proofs',
   },
 
+  feature: {
+    verify: 'Verify',
+  },
+
   settings: {
     language: 'Language',
     about: 'About',

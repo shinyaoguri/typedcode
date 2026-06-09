@@ -10,6 +10,10 @@ const mode = resolveModeFromPath(window.location.pathname);
 setStorageNamespace(mode);
 const examMode = mode === 'exam';
 
+// 機能別アクセント (要望): 作成アプリは data-feature=editor、色はモードで切替 (data-mode)。
+document.documentElement.setAttribute('data-feature', 'editor');
+document.documentElement.setAttribute('data-mode', mode);
+
 // 全消去リクエスト (?reset): 全モードのデータを消す手動ユーティリティ (sticky 解除用ではない)。
 if (urlParams.get('reset')) {
   console.log('[TypedCode] Reset parameter detected, clearing all data...');
@@ -144,6 +148,17 @@ import type { WelcomeScreen } from './ui/components/WelcomeScreen.js';
 
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
+
+// 機能バッジ (ぱっと見で機能/モードを判別): titlebar にモード名のピルを挿入。
+{
+  const icon: Record<string, string> = {
+    casual: 'fa-pen', class: 'fa-chalkboard-user', assignment: 'fa-house-laptop', exam: 'fa-lock',
+  };
+  const badge = document.createElement('span');
+  badge.className = 'feature-badge';
+  badge.innerHTML = `<i class="fas ${icon[mode] ?? 'fa-pen'}"></i> ${t(`feature.${mode}`)}`;
+  document.querySelector('.titlebar-left')?.appendChild(badge);
+}
 
 // Monaco Editor の Worker 設定
 configureMonacoWorkers();

@@ -23,6 +23,14 @@ export const en: TranslationKeys = {
     initializing: 'Initializing...',
   },
 
+  feature: {
+    casual: 'Create',
+    class: 'Class',
+    assignment: 'Assignment',
+    exam: 'Exam',
+    author: 'Author',
+  },
+
   settings: {
     title: 'Settings',
     verifyProof: 'Verify Proof',

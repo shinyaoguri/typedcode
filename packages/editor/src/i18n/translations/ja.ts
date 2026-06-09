@@ -23,6 +23,14 @@ export const ja: TranslationKeys = {
     initializing: '初期化中...',
   },
 
+  feature: {
+    casual: '作成',
+    class: '授業',
+    assignment: '課題',
+    exam: '試験',
+    author: '出題',
+  },
+
   settings: {
     title: '設定',
     verifyProof: 'Verify Proof',
