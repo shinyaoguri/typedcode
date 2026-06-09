@@ -7,6 +7,7 @@
  * (proof 密結合の TabManager / EditorController は使わない)。
  */
 
+import '@xterm/xterm/css/xterm.css';
 import '../styles/author.css';
 import { configureMonacoWorkers } from '../config/MonacoConfig.js';
 import { initDOMi18n } from '../i18n/index.js';

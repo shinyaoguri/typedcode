@@ -26,6 +26,10 @@ import {
 } from './examPackageAuthoring.js';
 import { generateAuthorityKey } from './authorityKey.js';
 import { buildProctorMemo } from './proctorMemo.js';
+import { renderMarkdown } from '../utils/markdown.js';
+// 実行系は重い (Wasmer/xterm) ので**初回実行時に動的 import** する (型のみ静的)。
+import type { CodeExecutionController } from '../execution/CodeExecutionController.js';
+import type { CTerminal } from '../terminal/CTerminal.js';
 
 /** オープンな締切 (ADR-0013: スケジュールは Moodle 管理)。manifest 仕様上 deadline は必須。 */
 const OPEN_DEADLINE = '2999-12-31T23:59:59.999Z';
@@ -69,6 +73,8 @@ export class AuthorPage {
   private seq = 0;
   private statementEditor!: monaco.editor.IStandaloneCodeEditor;
   private starterEditor!: monaco.editor.IStandaloneCodeEditor;
+  private exec: CodeExecutionController | null = null;
+  private terminal: CTerminal | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -138,6 +144,17 @@ export class AuthorPage {
     this.input('author-exam-id').addEventListener('input', () => this.updateStatusbar());
     this.input('author-token').addEventListener('input', () => this.updateStatusbar());
 
+    // 問題文の 編集 / プレビュー 切替。
+    this.el('author-stmt-edit').addEventListener('click', () => this.setStatementPreview(false));
+    this.el('author-stmt-preview').addEventListener('click', () => this.setStatementPreview(true));
+
+    // スターターコードの 実行 / ターミナル。
+    this.el('author-run-btn').addEventListener('click', () => void this.handleRun());
+    this.el('author-term-toggle').addEventListener('click', () => {
+      const w = this.el('author-terminal-wrap');
+      this.showTerminal(w.hidden !== false);
+    });
+
     // アプリ設定: テーマ / 言語。
     this.el('author-theme-toggle').addEventListener('click', () => this.toggleTheme());
     this.el('author-lang-toggle').addEventListener('click', () => this.toggleLocale());
@@ -145,6 +162,68 @@ export class AuthorPage {
     // 結果モーダルを閉じる。
     this.el('author-result-close').addEventListener('click', () => {
       this.el('author-result-overlay').hidden = true;
+    });
+  }
+
+  /** 問題文ペインを 編集(Monaco) / プレビュー(レンダリング) で切り替える。 */
+  private setStatementPreview(preview: boolean): void {
+    this.el('author-stmt-edit').classList.toggle('active', !preview);
+    this.el('author-stmt-preview').classList.toggle('active', preview);
+    const editor = this.el('author-statement-editor');
+    const previewEl = this.el('author-statement-preview');
+    if (preview) {
+      previewEl.innerHTML = renderMarkdown(this.statementEditor.getModel()?.getValue() ?? '');
+      editor.hidden = true;
+      previewEl.hidden = false;
+    } else {
+      previewEl.hidden = true;
+      editor.hidden = false;
+      this.statementEditor.layout();
+    }
+  }
+
+  /** ターミナル領域の表示/非表示。表示時は fit して xterm を再計算する。 */
+  private showTerminal(show: boolean): void {
+    this.el('author-terminal-wrap').hidden = !show;
+    this.el('author-term-toggle').classList.toggle('active', show);
+    if (show && this.terminal) setTimeout(() => this.terminal?.fit(), 0);
+  }
+
+  /** 実行系 (Wasmer C executor + xterm) を初回のみ動的 import で用意する。 */
+  private async ensureRuntime(): Promise<{ exec: CodeExecutionController; terminal: CTerminal }> {
+    if (this.exec && this.terminal) return { exec: this.exec, terminal: this.terminal };
+    const [{ CodeExecutionController }, { CTerminal }] = await Promise.all([
+      import('../execution/CodeExecutionController.js'),
+      import('../terminal/CTerminal.js'),
+    ]);
+    const terminal = new CTerminal(this.el('author-terminal'));
+    const exec = new CodeExecutionController();
+    exec.setTerminal(terminal);
+    const runBtn = this.el('author-run-btn') as HTMLButtonElement;
+    exec.setCallbacks({
+      onRunStart: () => { runBtn.disabled = true; runBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(t('author.run.running'))}`; },
+      onRunEnd: () => { runBtn.disabled = false; runBtn.innerHTML = `<i class="fas fa-play"></i> ${escapeHtml(t('author.run.label'))}`; },
+      onNotification: (m) => terminal.writeLine(m),
+      onShowClangLoading: () => terminal.writeInfo(t('author.run.compilerLoading')),
+      onUpdateClangStatus: (m) => terminal.writeInfo(m),
+    });
+    this.exec = exec;
+    this.terminal = terminal;
+    return { exec, terminal };
+  }
+
+  /** アクティブ問題のスターターコードを editor と同じ実行系で動かす (Cコンパイラ等)。 */
+  private async handleRun(): Promise<void> {
+    const active = this.problems.find((p) => p.id === this.activeId);
+    if (!active) return;
+    this.showTerminal(true);
+    const { exec, terminal } = await this.ensureRuntime();
+    terminal.clear();
+    terminal.fit();
+    await exec.run({
+      language: extensionToLanguage(active.filename),
+      filename: active.filename,
+      code: active.starterModel.getValue(),
     });
   }
 
@@ -189,6 +268,7 @@ export class AuthorPage {
     this.statementEditor.setModel(problem.statementModel);
     this.starterEditor.setModel(problem.starterModel);
     this.input('author-active-problemid').value = problem.problemId;
+    this.setStatementPreview(false); // タブ切替時は編集に戻す (プレビューの取り違え防止)
     this.renderTabs();
     this.updateStatusbar();
   }
@@ -422,14 +502,31 @@ export class AuthorPage {
             <div class="author-editor-split">
               <div class="author-pane">
                 <div class="author-pane-header">
-                  <span>${escapeHtml(t('author.problem.body'))}</span>
+                  <span class="author-seg">
+                    <button class="author-seg-btn active" id="author-stmt-edit">${escapeHtml(t('author.preview.edit'))}</button>
+                    <button class="author-seg-btn" id="author-stmt-preview">${escapeHtml(t('author.preview.preview'))}</button>
+                  </span>
                   <span class="author-pane-sub">problemId: <input type="text" id="author-active-problemid" class="author-inline-input" autocomplete="off" spellcheck="false"></span>
                 </div>
-                <div class="author-monaco" id="author-statement-editor"></div>
+                <div class="author-pane-body">
+                  <div class="author-monaco" id="author-statement-editor"></div>
+                  <div class="markdown-rendered author-preview" id="author-statement-preview" hidden></div>
+                </div>
               </div>
               <div class="author-pane">
-                <div class="author-pane-header"><span>${escapeHtml(t('author.problem.starterPane'))}</span></div>
-                <div class="author-monaco" id="author-starter-editor"></div>
+                <div class="author-pane-header">
+                  <span>${escapeHtml(t('author.problem.starterPane'))}</span>
+                  <span class="author-pane-tools">
+                    <button class="author-pane-btn" id="author-run-btn"><i class="fas fa-play"></i> ${escapeHtml(t('author.run.label'))}</button>
+                    <button class="author-pane-btn" id="author-term-toggle" title="${escapeHtml(t('author.run.terminal'))}"><i class="fas fa-terminal"></i></button>
+                  </span>
+                </div>
+                <div class="author-pane-body author-starter-body">
+                  <div class="author-monaco" id="author-starter-editor"></div>
+                  <div class="author-terminal-wrap" id="author-terminal-wrap" hidden>
+                    <div class="author-terminal" id="author-terminal"></div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

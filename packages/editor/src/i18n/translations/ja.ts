@@ -550,6 +550,8 @@ export const ja: TranslationKeys = {
     reloadForLocale: '言語を切り替えるとページを再読み込みします。編集中の内容は失われます。続けますか？',
     settings: { heading: 'パッケージ設定' },
     statusbar: { noExamId: '（試験ID 未設定）', problems: '問' },
+    preview: { edit: '編集', preview: 'プレビュー' },
+    run: { label: '実行', running: '実行中…', terminal: 'ターミナル', compilerLoading: 'Cコンパイラを準備中（初回のみ・少し時間がかかります）…' },
     key: {
       heading: '出題者署名鍵',
       tabExisting: '既存の鍵を使う',

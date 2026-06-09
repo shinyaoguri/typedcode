@@ -578,6 +578,8 @@ export interface TranslationKeys {
     reloadForLocale: string;
     settings: { heading: string };
     statusbar: { noExamId: string; problems: string };
+    preview: { edit: string; preview: string };
+    run: { label: string; running: string; terminal: string; compilerLoading: string };
     key: {
       heading: string;
       tabExisting: string;

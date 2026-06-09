@@ -1,12 +1,14 @@
 /**
- * ProblemPanel - 試験モードの問題表示パネル (ADR-0006 最小骨組み + ADR-0010 詰め)
+ * ProblemPanel - 試験モードの問題表示パネル (ADR-0006 + ADR-0010 + ADR-0012)
  *
- * 現状はスタブ。問題の配布元 (封印問題パッケージ + 監督コードによる復号・チェーン束縛) は
- * full ADR-0006 で実装する。casual モードでは生成も表示もされない (モード差は機能のみ)。
+ * 復号した問題文 (Markdown) を**レンダリングして**表示する。出題プレビュー (AuthorPage) と
+ * 同じ `renderMarkdown` を使い「教員が見たプレビュー == 受験者が見る表示」を保証する。
  *
  * UX: 既存の preview/log パネルと同じ作法で、右端ドラッグで幅をリサイズ・×で閉じる・
  * タイトルバーのトグルで再表示できる。
  */
+import { renderMarkdown } from '../../utils/markdown.js';
+
 export class ProblemPanel {
   private panel: HTMLElement | null = null;
   private body: HTMLElement | null = null;
@@ -70,11 +72,13 @@ export class ProblemPanel {
   }
 
   /**
-   * 問題本文を設定する。将来は封印パッケージの復号結果を渡す。
-   * 現状はスタブのため text として安全に挿入する (HTML 注入はしない)。
+   * 問題本文 (Markdown) を設定する。`renderMarkdown` で sanitize 済み HTML に変換して表示する
+   * (出題プレビューと同一レンダラ)。
    */
-  setProblemText(text: string): void {
-    if (this.body) this.body.textContent = text;
+  setProblemText(markdown: string): void {
+    if (!this.body) return;
+    this.body.classList.add('markdown-rendered');
+    this.body.innerHTML = renderMarkdown(markdown);
   }
 
   private setupResizeHandle(): void {
