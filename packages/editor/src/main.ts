@@ -66,6 +66,7 @@ import {
 } from '@typedcode/shared';
 import { resolveRoute, capabilitiesFor, type EditorMode } from './core/mode.js';
 import { LandingPage } from './ui/components/LandingPage.js';
+import { ModeSwitcher } from './ui/components/ModeSwitcher.js';
 import { setStorageNamespace, tabsKey, sessionActiveKey, allSessionDbNames } from './core/storageKeys.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
@@ -158,16 +159,10 @@ import type { WelcomeScreen } from './ui/components/WelcomeScreen.js';
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
 
-// 機能バッジ (ぱっと見で機能/モードを判別): titlebar にモード名のピルを挿入。
-// ランディングはエディタシェルを使わないので挿入しない。
+// モード切替ピル (ADR-0015): titlebar に現在モードを表示し、クリックで 4 モードへ切り替えられる。
+// 以前の静的バッジ (feature-badge) を置き換える。ランディングはエディタシェルを使わないので挿入しない。
 if (!isLanding) {
-  const icon: Record<string, string> = {
-    casual: 'fa-pen', class: 'fa-chalkboard-user', assignment: 'fa-house-laptop', exam: 'fa-lock',
-  };
-  const badge = document.createElement('span');
-  badge.className = 'feature-badge';
-  badge.innerHTML = `<i class="fas ${icon[mode] ?? 'fa-pen'}"></i> ${t(`feature.${mode}`)}`;
-  document.querySelector('.titlebar-left')?.appendChild(badge);
+  new ModeSwitcher(mode);
 }
 
 // Monaco Editor の Worker 設定

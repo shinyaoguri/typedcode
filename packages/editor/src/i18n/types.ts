@@ -54,6 +54,33 @@ export interface TranslationKeys {
     classDesc: string;
     assignmentDesc: string;
     examDesc: string;
+    resumeSession: string; // 進行中セッションのバッジ「続きから」
+    switchMode: string; // エディタ内モード切替の見出し/ツールチップ
+    // 比較表の行ラベル
+    feat: {
+      purpose: string;
+      problem: string;
+      screenshot: string;
+      seal: string;
+      assurance: string;
+    };
+    // 比較表のテキスト値 (モード別)
+    val: {
+      purposeCasual: string;
+      purposeClass: string;
+      purposeAssignment: string;
+      purposeExam: string;
+      problemClass: string;
+      problemExam: string;
+      screenshotCasual: string;
+      screenshotClass: string;
+      screenshotAssignment: string;
+      screenshotExam: string;
+      assuranceCasual: string;
+      assuranceClass: string;
+      assuranceAssignment: string;
+      assuranceExam: string;
+    };
   };
 
   // Settings menu

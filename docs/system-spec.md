@@ -638,8 +638,9 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **post-hoc batch signing** | proof 完成後に複数 envelope を短時間で一括取得する攻撃。temporal ratio で検出試行 |
 | **(試験) 試験モード** | URL パス `/exam` で入る anti-AI-cheating モード (ADR-0011 でモードを path 分岐化、旧 `?exam=1` sticky を置換)。封印問題 + 監督コード + チェーン根束縛。ADR-0006〜0011 |
 | **モード (casual/class/assignment/exam)** | URL パスで確定する動作モード (ADR-0011/0015)。`/casual` `/class` `/assignment` `/exam`。能力 (スクショ/封印/フルスクリーン等) と storage 名前空間がモード別。proof に自己申告 `mode` を記録 |
-| **ランディング / `/`** | ルート `/` と未知パスはモード選択の入口 (ADR-0015)。4モードをカードで選び `/<mode>` へ遷移。エディタは初期化せず DOM のみ描画。タイポ (`/exsm` 等) を黙って casual にせず入口へ落とす |
-| **(通常) 通常モード / `/casual`** | 素のエディタ・個人/デモ・最低保証 (ADR-0015)。利用規約モーダルなし (同意は入口で一度)・画面共有は既定オフでバナーからオプトイン。Turnstile `#0` は維持。proof 整合は不変 |
+| **ランディング / `/`** | ルート `/` と未知パスはモード選択の入口 (ADR-0015)。4モードを**比較カード**で横並びに見せ能力差を一覧化、`/<mode>` へ遷移。エディタは初期化せず DOM のみ描画。進行中セッションは「続きから (N)」バッジで表示 (`SessionDetector`、空 DB を作らない read-only 検出)。タイポ (`/exsm` 等) を黙って casual にせず入口へ落とす |
+| **(練習) 練習モード / `/casual`** | 素のエディタ・お試し/個人・最低保証 (ADR-0015。表示名「練習/Demo」、内部 id/ルートは `casual`)。利用規約モーダルなし (同意は入口で一度)・画面共有は既定オフでバナーからオプトイン。Turnstile `#0` は維持。proof 整合は不変 |
+| **モード切替ピル** | エディタ titlebar の現モード表示+ドロップダウン (ADR-0015、`ModeSwitcher`)。別モード選択で `/<mode>` へ遷移。storage がモード別名前空間なので現モードの作業は保持される |
 | **(授業) 授業モード / `.tcclass`** | URL パス `/class` で入る封印なしモード (ADR-0014)。平文問題ファイル `.tcclass` (`{schema:'tcclass/1', classId, allowed, bundle}`、暗号・署名なし) を読み込み問題表示 + N タブ展開。tier ① 自己申告 (root 束縛なし)。fullscreen は受動記録 (要求バナーなし) |
 | **(試験) 封印問題パッケージ / `.tcexam`** | 出題者が Argon2id + AES-256-GCM で封印し ECDSA-P256 署名した問題ファイル。Moodle で事前配布 |
 | **(試験) 監督コード / `startToken`** | T0 に監督が解禁する 8 文字 Crockford Base32 (40bit)。封印を解錠しチェーン根に焼かれる |
@@ -699,4 +700,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-05-29 | follow-up | fetch bind / dropdown UI / localKeys split |
 | 2026-06-07 | 試験モード (ADR-0006, PR1–4) | 封印問題パッケージ (`.tcexam`, Argon2id + AES-256-GCM + ECDSA-P256) + 監督コードによるチェーン根束縛。`PROOF_FORMAT_VERSION` 1.0.0→1.1.0、`proof.exam` ブロック、`examOpened` イベント、`examAuthorityKeys` レジストリ、`verifyExamBinding` を verify-cli / verify(web) に配線。本仕様に「試験モード」(§4.7) + 検証 (§6.4) を反映 |
 | 2026-06-09 | 授業モード (ADR-0014) | 平文 `.tcclass` (`tcclass/1`、暗号・署名なし) で問題を配布し `/class` で表示 + N タブ展開 (tier ① 自己申告、root 束縛なし)。受動的 fullscreen 記録 (要求バナーなし)。`/author` に未封印 `.tcclass` 生成を追加。proof 互換 (`PROOF_FORMAT_VERSION` 据え置き)。本仕様に「授業モード」(§4.8) を反映 |
-| 2026-06-09 | 導線整理 (ADR-0015) | ルート `/` をモード選択ランディングに (`/casual` を明示ルート化、未知パスも入口へ → 黙 casual 事故を解消)。通常モード (casual) は利用規約モーダルなし + 画面共有オプトイン (既定オフ、バナーから有効化)、Turnstile `#0` は維持。`resolveRoute` / 能力 `promptScreenShareAtStart` を追加。proof 整合は不変 |
+| 2026-06-09 | 導線整理 (ADR-0015) | ルート `/` をモード選択ランディングに (`/casual` を明示ルート化、未知パスも入口へ → 黙 casual 事故を解消)。**4モードの比較カード** + 進行中セッションバッジ (`SessionDetector`) + **エディタ内モード切替ピル** (`ModeSwitcher`)。casual は利用規約モーダルなし + 画面共有オプトイン (既定オフ)、Turnstile `#0` 維持、表示名を「練習/Demo」に (id/ルートは不変)。`resolveRoute` / 能力 `promptScreenShareAtStart` を追加。proof 整合は不変 |
