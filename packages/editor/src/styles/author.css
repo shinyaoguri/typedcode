@@ -5,6 +5,31 @@
 
 * { box-sizing: border-box; }
 
+/* 機能別アクセント (要望: ぱっと見で機能を判別)。出題アプリ = 紫 (--feature-accent)。 */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; height: 3px;
+  background: var(--feature-accent);
+  z-index: 10000;
+  pointer-events: none;
+}
+.feature-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--feature-accent);
+  color: var(--feature-accent-fg);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  user-select: none;
+}
+.feature-badge i { font-size: 10px; }
+
 body {
   margin: 0;
   background: var(--bg-primary);
@@ -144,7 +169,7 @@ html, body { height: 100%; }
   flex-shrink: 0;
 }
 .author-toolbar-brand { font-weight: 600; white-space: nowrap; margin-right: var(--spacing-sm); }
-.author-toolbar-brand i { color: var(--accent-info); }
+.author-toolbar-brand i { color: var(--feature-accent); }
 .author-toolbar-input { width: 220px; }
 .author-toolbar-narrow { width: 120px; }
 .author-toolbar-spacer { flex: 1; }
@@ -250,11 +275,11 @@ html, body { height: 100%; }
 .author-btn:hover:not(:disabled) { background: var(--bg-hover); }
 .author-btn:disabled { opacity: 0.6; cursor: default; }
 .author-btn-primary {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-  color: #fff;
+  background: var(--feature-accent);
+  border-color: var(--feature-accent);
+  color: var(--feature-accent-fg);
 }
-.author-btn-primary:hover:not(:disabled) { background: var(--accent-secondary); }
+.author-btn-primary:hover:not(:disabled) { filter: brightness(1.12); }
 .author-btn-build { width: 100%; justify-content: center; padding: 12px; font-size: 15px; font-weight: 600; }
 
 .author-btn-row { display: flex; gap: var(--spacing-sm); align-items: center; }

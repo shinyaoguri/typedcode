@@ -16,6 +16,10 @@ export const ja: VerifyTranslationKeys = {
     subtitle: 'タイピング証明を検証',
   },
 
+  feature: {
+    verify: '検証',
+  },
+
   settings: {
     language: '言語',
     about: 'バージョン情報',

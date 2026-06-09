@@ -22,6 +22,11 @@ export interface VerifyTranslationKeys {
     subtitle: string;
   };
 
+  // 機能バッジ (ぱっと見で機能を判別)
+  feature: {
+    verify: string;
+  };
+
   // Settings
   settings: {
     language: string;

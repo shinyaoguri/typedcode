@@ -1,0 +1,37 @@
+/* 機能別アクセント — 上端ストリップ + 機能バッジ (要望: ぱっと見で機能を判別)。
+   色は --feature-accent (variables/_colors.css、data-feature/data-mode で切替)。 */
+
+/* 全機能共通: 画面上端の細いアクセントストリップ (レイアウトを崩さない overlay)。 */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--feature-accent);
+  z-index: 10000;
+  pointer-events: none;
+}
+
+/* 機能バッジ (機能/モード名のピル)。各アプリのヘッダに JS で挿入する。 */
+.feature-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--feature-accent);
+  color: var(--feature-accent-fg);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  white-space: nowrap;
+  user-select: none;
+}
+.feature-badge i { font-size: 10px; }
+
+/* editor: titlebar 下端をアクセントに、statusbar 全体をアクセント色に。 */
+.titlebar { border-bottom: 1px solid var(--feature-accent); }
+.statusbar { background: var(--feature-accent); }

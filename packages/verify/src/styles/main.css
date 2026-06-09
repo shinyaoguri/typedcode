@@ -18,6 +18,7 @@
 /* Components */
 @import './components/_tabs.css';
 @import './components/_statusbar.css';
+@import './components/_feature-accent.css';
 @import './components/_welcome.css';
 @import './components/_result-panel.css';
 @import './components/_charts.css';

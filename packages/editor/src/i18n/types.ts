@@ -34,6 +34,15 @@ export interface TranslationKeys {
     initializing: string;
   };
 
+  // 機能バッジ (ぱっと見で機能/モードを判別)
+  feature: {
+    casual: string;
+    class: string;
+    assignment: string;
+    exam: string;
+    author: string;
+  };
+
   // Settings menu
   settings: {
     title: string;

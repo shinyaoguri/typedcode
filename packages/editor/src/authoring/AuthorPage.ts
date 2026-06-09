@@ -407,6 +407,7 @@ export class AuthorPage {
       <div class="author-app">
         <header class="author-toolbar">
           <div class="author-toolbar-brand"><i class="fas fa-feather-pointed"></i> ${escapeHtml(t('author.title'))}</div>
+          <span class="feature-badge"><i class="fas fa-feather-pointed"></i> ${escapeHtml(t('feature.author'))}</span>
           <input type="text" id="author-exam-id" class="author-input author-toolbar-input" placeholder="${escapeHtml(t('author.problem.examId'))}" autocomplete="off" spellcheck="false">
           <input type="text" id="author-languages" class="author-input author-toolbar-input author-toolbar-narrow" value="c" placeholder="${escapeHtml(t('author.problem.languages'))}" autocomplete="off" spellcheck="false">
           <input type="text" id="author-token" class="author-input author-mono author-toolbar-narrow" autocomplete="off" autocapitalize="characters" spellcheck="false" title="${escapeHtml(t('author.token.label'))}">
