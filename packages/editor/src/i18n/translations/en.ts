@@ -547,6 +547,9 @@ export const en: TranslationKeys = {
     title: 'Create Exam Problem',
     subtitle: 'Build a signed, sealed problem package (.tcexam) and its proctor code. Keys and problems never leave this device.',
     copy: 'Copy',
+    reloadForLocale: 'Switching language reloads the page. Unsaved edits will be lost. Continue?',
+    settings: { heading: 'Package settings' },
+    statusbar: { noExamId: '(no exam ID)', problems: 'problems' },
     key: {
       heading: 'Exam authority signing key',
       tabExisting: 'Use an existing key',

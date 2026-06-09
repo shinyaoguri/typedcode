@@ -575,6 +575,9 @@ export interface TranslationKeys {
     title: string;
     subtitle: string;
     copy: string;
+    reloadForLocale: string;
+    settings: { heading: string };
+    statusbar: { noExamId: string; problems: string };
     key: {
       heading: string;
       tabExisting: string;
