@@ -43,6 +43,7 @@
 | [0010](0010-exam-session-model.md) | Accepted (sticky 部分は ADR-0011 で置換) | 試験モードのセッション構造 (1問1タブ・固定・リロード復帰可能) |
 | [0011](0011-course-modes-and-path-routing.md) | Accepted | 授業・課題・試験を1ドメインのパスで分岐し能力プリセットでモデル化する |
 | [0012](0012-sealed-starter-template-in-exam-payload.md) | Proposed | 封印問題の平文を構造化し N問バンドル＋問題ごとのスターターコードを同梱する |
+| [0013](0013-exam-schedule-advisory-keep-manifest-format.md) | Accepted | 試験スケジュールを advisory とし manifest フォーマットは据え置く |
 
 ## 参考
 
