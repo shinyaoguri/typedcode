@@ -104,14 +104,14 @@ body {
   font-size: 12px;
 }
 
-/* タブ (既存鍵 / 新規生成) */
+/* 鍵設定パネルの内部タブ (既存鍵 / 新規生成) */
 .author-tabs {
   display: flex;
   gap: var(--spacing-xs);
   margin-bottom: var(--spacing-lg);
   border-bottom: 1px solid var(--border-color);
 }
-.author-tab {
+.author-tab-btn {
   padding: 8px 14px;
   background: none;
   border: none;
@@ -120,8 +120,118 @@ body {
   font-size: 14px;
   cursor: pointer;
 }
-.author-tab:hover { color: var(--text-primary); }
-.author-tab.active { color: var(--text-primary); border-bottom-color: var(--accent-info); }
+.author-tab-btn:hover { color: var(--text-primary); }
+.author-tab-btn.active { color: var(--text-primary); border-bottom-color: var(--accent-info); }
+
+/* ===== editor ライクなレイアウト (ADR-0012 改良) ===== */
+html, body { height: 100%; }
+#author-root { height: 100vh; }
+.author-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 上部ツールバー */
+.author-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--titlebar-bg);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.author-toolbar-brand { font-weight: 600; white-space: nowrap; margin-right: var(--spacing-sm); }
+.author-toolbar-brand i { color: var(--accent-info); }
+.author-toolbar-input { width: 220px; }
+.author-toolbar-narrow { width: 120px; }
+.author-toolbar-spacer { flex: 1; }
+
+/* 鍵設定パネル (トグル) */
+.author-key-panel {
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  max-height: 45vh;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+/* 問題タブ (= スターターファイル) */
+.author-tabstrip {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.author-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 14px;
+  border-right: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  background: var(--bg-tertiary);
+}
+.author-tab:hover { background: var(--bg-hover); }
+.author-tab.active { background: var(--bg-primary); color: var(--text-primary); }
+.author-tab-label { font-family: 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace; }
+.author-tab-close {
+  background: none; border: none; color: var(--text-tertiary);
+  cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px;
+}
+.author-tab-close:hover:not(:disabled) { color: var(--accent-danger); }
+.author-tab-close:disabled { opacity: 0.25; cursor: default; }
+.author-tab-rename {
+  width: 110px; font-size: 13px; padding: 1px 4px;
+  background: var(--bg-input); color: var(--text-primary);
+  border: 1px solid var(--accent-info); border-radius: var(--radius-sm);
+  font-family: 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+}
+.author-add-tab {
+  background: none; border: none; color: var(--text-secondary);
+  cursor: pointer; padding: 0 12px; font-size: 14px;
+}
+.author-add-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+/* 左右分割エディタ */
+.author-editor-split { display: flex; flex: 1; min-height: 0; }
+.author-pane {
+  display: flex; flex-direction: column;
+  flex: 1; min-width: 0;
+  border-right: 1px solid var(--border-color);
+}
+.author-pane:last-child { border-right: none; }
+.author-pane-header {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-sm);
+  padding: 4px 12px;
+  font-size: 12px; color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+.author-pane-sub { font-size: 12px; }
+.author-inline-input {
+  width: 120px; padding: 1px 6px; font-size: 12px;
+  background: var(--bg-input); color: var(--text-primary);
+  border: 1px solid var(--border-input); border-radius: var(--radius-sm);
+}
+.author-monaco { flex: 1; min-height: 0; }
+
+/* ツールバー下のエラー/結果はスクロール領域に重ねず下部に固定表示 */
+.author-app > .author-error,
+.author-app > .author-result {
+  margin: var(--spacing-md) var(--spacing-lg);
+  flex-shrink: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+}
 
 /* ボタン */
 .author-btn {
@@ -237,6 +347,30 @@ body {
   margin-bottom: var(--spacing-md);
 }
 .author-token-actions { justify-content: center; }
+
+/* 問題カード (N問バンドル, ADR-0012) */
+.author-problem-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-md);
+  background: var(--bg-primary);
+}
+.author-problem-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+}
+.author-problem-title { font-weight: 600; }
+.author-problem-remove { padding: 4px 8px; color: var(--accent-danger); }
+.author-problem-remove:disabled { opacity: 0.35; }
+.author-starter-fields {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px dashed var(--border-color);
+}
+#author-add-problem { margin-top: var(--spacing-xs); }
 
 .author-meta {
   display: grid;

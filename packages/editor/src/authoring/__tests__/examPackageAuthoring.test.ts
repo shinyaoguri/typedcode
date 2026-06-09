@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   canonicalizeStartToken,
   computeExamPackageHash,
+  decodeExamPlaintext,
   decryptExamPackage,
   verifyExamPackageSignature,
   type ExamAuthorityKey,
@@ -9,6 +10,7 @@ import {
 } from '@typedcode/shared';
 import {
   createExamPackage,
+  createExamBundlePackage,
   formatProctorTokenForDisplay,
   generateProctorToken,
   importAuthoritySigner,
@@ -183,5 +185,72 @@ describe('createExamPackage', () => {
 
   it('rejects a proctor token with no Crockford characters', async () => {
     await expect(createExamPackage(baseParams({ proctorToken: '---' }), signer)).rejects.toThrow();
+  });
+});
+
+describe('createExamBundlePackage', () => {
+  let signer: ExamPackageSigner;
+  let registry: readonly ExamAuthorityKey[];
+
+  beforeAll(async () => {
+    const { privateJwk, publicJwk } = await generateAuthorityKeyPair();
+    signer = await importAuthoritySigner(privateJwk, KEY_ID);
+    registry = [
+      { keyId: KEY_ID, algorithm: 'ECDSA-P256', publicKeyJwk: publicJwk, status: 'active', validFrom: '2026-01-01T00:00:00.000Z' },
+    ];
+  });
+
+  function bundleParams() {
+    return {
+      examId: '2026-spring-cs101-final',
+      languages: ['c'],
+      releaseTime: '2026-06-10T01:00:00.000Z',
+      deadline: '2026-06-10T04:00:00.000Z',
+      proctorToken: 'ABCD1234',
+      problems: [
+        { problemId: 'p1', statement: '# 問題1\n和を出力せよ。', starter: { filename: 'p1.c', language: 'c', content: '/* TODO */\n' } },
+        { problemId: 'p2', statement: '# 問題2\n積を出力せよ。' },
+      ],
+    };
+  }
+
+  it('seals a tcexam-exam/1 bundle whose signature verifies against the registry', async () => {
+    const { manifest } = await createExamBundlePackage(bundleParams(), signer);
+    expect((await verifyExamPackageSignature(manifest, registry)).valid).toBe(true);
+  });
+
+  it('decrypts to a bundle payload with the authored problems and starter', async () => {
+    const { manifest, proctorToken } = await createExamBundlePackage(bundleParams(), signer);
+    const dec = await decryptExamPackage(manifest, proctorToken);
+    expect(dec.ok).toBe(true);
+    if (!dec.ok) return;
+    const decoded = decodeExamPlaintext(dec.plaintext);
+    expect(decoded.kind).toBe('bundle');
+    if (decoded.kind !== 'bundle') return;
+    expect(decoded.bundle.problems.map((p) => p.problemId)).toEqual(['p1', 'p2']);
+    expect(decoded.bundle.problems[0]!.starter?.content).toBe('/* TODO */\n');
+    expect(decoded.bundle.problems[1]!.starter).toBeUndefined();
+  });
+
+  it('labels the manifest problemId as "bundle" (per-problem ids live in the payload)', async () => {
+    const { manifest } = await createExamBundlePackage(bundleParams(), signer);
+    expect(manifest.problemId).toBe('bundle');
+  });
+
+  it('rejects an empty problem list', async () => {
+    await expect(createExamBundlePackage({ ...bundleParams(), problems: [] }, signer)).rejects.toThrow();
+  });
+
+  it('rejects duplicate problemIds', async () => {
+    const dup = { ...bundleParams(), problems: [
+      { problemId: 'p1', statement: 'a' },
+      { problemId: 'p1', statement: 'b' },
+    ] };
+    await expect(createExamBundlePackage(dup, signer)).rejects.toThrow();
+  });
+
+  it('rejects a problem with an empty statement', async () => {
+    const bad = { ...bundleParams(), problems: [{ problemId: 'p1', statement: '   ' }] };
+    await expect(createExamBundlePackage(bad, signer)).rejects.toThrow();
   });
 });

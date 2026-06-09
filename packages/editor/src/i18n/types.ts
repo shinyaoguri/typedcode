@@ -576,6 +576,7 @@ export interface TranslationKeys {
       generateIntro: string;
       generateButton: string;
       generateFailed: string;
+      settings: string;
       privateWarning: string;
       registryEntryLabel: string;
       registryHint: string;
@@ -585,17 +586,19 @@ export interface TranslationKeys {
       heading: string;
       examId: string;
       problemId: string;
-      variant: string;
-      variantPlaceholder: string;
       languages: string;
       body: string;
       bodyPlaceholder: string;
-    };
-    schedule: {
-      heading: string;
-      release: string;
-      deadline: string;
-      hint: string;
+      bundleHint: string;
+      addProblem: string;
+      removeProblem: string;
+      problemLabel: string;
+      starterToggle: string;
+      starterFilename: string;
+      starterLanguage: string;
+      starterContent: string;
+      starterPane: string;
+      renameHint: string;
     };
     token: {
       heading: string;
@@ -618,8 +621,6 @@ export interface TranslationKeys {
       proctorWarning: string;
       keyId: string;
       packageHash: string;
-      release: string;
-      deadline: string;
     };
     memo: {
       title: string;
