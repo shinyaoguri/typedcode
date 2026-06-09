@@ -436,7 +436,6 @@ export class AuthorPage {
     const errorEl = this.el('author-build-error');
     errorEl.textContent = msg;
     errorEl.hidden = false;
-    setTimeout(() => { errorEl.hidden = true; }, 6000);
   }
 
   private showResult(result: CreatedExamPackage, filename: string): void {
@@ -476,9 +475,6 @@ export class AuthorPage {
           <div class="titlebar-left">
             <div class="titlebar-title"><i class="fas fa-feather-pointed"></i> ${escapeHtml(t('author.title'))}</div>
             <span class="feature-badge"><i class="fas fa-feather-pointed"></i> ${escapeHtml(t('feature.author'))}</span>
-          </div>
-          <div class="titlebar-actions">
-            <button class="author-btn author-btn-primary" id="author-build-btn"><i class="fas fa-box-archive"></i> ${escapeHtml(t('author.build.button'))}</button>
           </div>
         </header>
 
@@ -581,6 +577,10 @@ export class AuthorPage {
                 <span>${escapeHtml(t('author.token.embedPubkey'))}</span>
               </label>
             </div>
+            <div class="author-settings-foot">
+              <p class="author-error" id="author-build-error" hidden></p>
+              <button class="author-btn author-btn-primary author-btn-block" id="author-build-btn"><i class="fas fa-box-archive"></i> ${escapeHtml(t('author.build.button'))}</button>
+            </div>
           </aside>
         </div>
 
@@ -593,8 +593,6 @@ export class AuthorPage {
             <div class="status-item"><i class="fas fa-key"></i> <span id="author-sb-token" class="author-mono"></span></div>
           </div>
         </footer>
-
-        <p class="author-error author-error-toast" id="author-build-error" hidden></p>
 
         <div class="author-result-overlay" id="author-result-overlay" hidden>
           <div class="author-result">

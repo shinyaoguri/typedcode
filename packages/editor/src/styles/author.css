@@ -72,10 +72,14 @@ body::before {
 .author-monaco { flex: 1; min-height: 0; }
 .author-pane-tools { display: inline-flex; align-items: center; gap: var(--spacing-xs); }
 .author-pane-btn {
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  height: 24px; padding: 0 9px; box-sizing: border-box;
   background: var(--bg-tertiary); border: 1px solid var(--border-input); border-radius: var(--radius-sm);
-  color: var(--text-primary); font-size: 12px; padding: 2px 9px; cursor: pointer;
+  color: var(--text-primary); font-size: 12px; line-height: 1; cursor: pointer;
 }
+.author-pane-btn i { font-size: 12px; line-height: 1; }
+/* アイコンのみのボタン (ターミナルトグル) は正方形に揃える */
+#author-term-toggle { width: 24px; padding: 0; }
 .author-pane-btn:hover:not(:disabled) { background: var(--bg-hover); }
 .author-pane-btn:disabled { opacity: 0.6; cursor: default; }
 .author-pane-btn.active { background: var(--feature-accent); border-color: var(--feature-accent); color: var(--feature-accent-fg); }
@@ -108,8 +112,10 @@ body::before {
   padding: 8px 14px; font-weight: 600; font-size: 13px;
   border-bottom: 1px solid var(--border-color); flex-shrink: 0;
 }
-.author-settings-body { padding: var(--spacing-lg); overflow-y: auto; }
+.author-settings-body { flex: 1; padding: var(--spacing-lg); overflow-y: auto; }
 .author-settings-divider { height: 1px; background: var(--border-color); margin: var(--spacing-lg) 0; }
+.author-settings-foot { padding: var(--spacing-md) var(--spacing-lg); border-top: 1px solid var(--border-color); flex-shrink: 0; }
+.author-btn-block { width: 100%; justify-content: center; padding: 10px; font-size: 14px; font-weight: 600; }
 
 /* ===== フォーム部品 ===== */
 .author-field { margin-bottom: var(--spacing-lg); }
@@ -158,14 +164,7 @@ body::before {
 /* ===== statusbar の中身 ===== */
 .statusbar .status-item .author-mono { letter-spacing: 0.08em; }
 
-/* ===== エラートースト ===== */
-.author-error { color: var(--accent-danger); font-size: 13px; }
-.author-error-toast {
-  position: fixed; bottom: 34px; left: 50%; transform: translateX(-50%);
-  background: var(--bg-secondary); border: 1px solid var(--accent-danger);
-  padding: 10px 16px; border-radius: var(--radius-md); box-shadow: var(--shadow-md);
-  z-index: 10001; max-width: 80vw;
-}
+.author-error { color: var(--accent-danger); font-size: 13px; margin: 0 0 var(--spacing-sm); }
 
 /* ===== 結果モーダル ===== */
 .author-result-overlay {
