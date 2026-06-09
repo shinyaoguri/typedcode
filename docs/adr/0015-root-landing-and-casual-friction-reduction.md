@@ -1,0 +1,69 @@
+# ADR-0015: ルート `/` をモード選択ランディングにし、通常モードの起動摩擦を下げる
+
+- **Status**: Proposed
+- **Date**: 2026-06-09
+- **Deciders**: (PR 上の合意者 / レビュアー)
+- **PR / Commit**: (このPR)
+
+## Context
+
+ADR-0011 でモードを URL パスに分岐したが、導線に2つの曖昧さが残った:
+
+- `resolveModeFromPath` は `exam/class/assignment` 以外を**全部 default→casual** にする。`/`・`/casual`・**タイポ `/exsm`** がすべて黙って casual になり、「試験のつもりが casual で記録」という**非対称な事故**を生む。`/casual` は正規ルートでなく未知パスが落ちているだけ。
+- `/`(ルート) に入口/案内がなく、いきなり casual エディタが開く。さらに casual(個人・デモ・**最低保証**)に**利用規約モーダル + 画面共有ダイアログ**が出るのは、「ただ書きたい」人への過剰な摩擦。
+
+一方、本番の主な入口は **Moodle からの直リンク (`/exam` 等)** で、ランディングを経由しない経路も維持する必要がある。
+
+思想面の確認(ユーザーと議論):casual の摩擦低減は既存原則と**衝突しない**。ADR-0007 の「全モードで同一に capture」は**ハッシュチェーンの生信号**の話で、画面共有(スクショ)・利用規約は consent/feature レイヤ(スクショは ADR-0011 で既にモード別能力)。ADR-0011 の「保証はモードでスケール」を踏まえれば、**consent は入口で一度・assurance はモードでスケール**という方向で一貫性が増す。
+
+## Considered Options
+
+### ルート `/` をどうするか
+- **A. `/` = casual エディタのまま(現状)**: 個人利用は0クリックだが、他モードへの案内がなく、未知パスの黙 casual も残る。
+- **B. `/` = モード選択ランディング(★採用)**: 4モードをカードで選ぶ。casual は明示ルート `/casual` に。未知パスもランディングへ → 黙 casual 事故が消える。
+- **C. 非ブロッキングのモード切替のみ**: バッジをメニュー化。実装は軽いが「同意/画面共有がいきなり出て意味不明」という casual の摩擦は残る。
+
+### casual の起動摩擦
+- **D. 利用規約 + 画面共有を維持**: 一貫するが、最低保証モードに過剰。
+- **E. casual は同意モーダルなし・画面共有オプトイン(★採用)**: 入口(ランディング)で一度同意。画面共有は**既定オフ + バナーから後でオプトイン**(既存の opt-out バナー/`onResume` を流用)。
+
+## Decision
+
+**`/` をモード選択ランディング(Option B)にし、casual の起動摩擦を下げる(Option E)。**
+
+- **ルーティング**: 新 `resolveRoute(pathname): 'landing' | EditorMode`。`/casual|class|assignment|exam`→該当 mode、**`/` と未知パス→`'landing'`**。`/casual` を**明示ルート化**し、タイポは黙 casual せず入口へ。
+- **ランディング**: `LandingPage` が**重いエディタ初期化をせず DOM だけ描画**(main.ts が `route==='landing'` で `initializeApp()` を短絡)。4モードカード(アイコン+アクセント色+一行説明)。カードクリックで利用規約同意フラグ (`typedcode-terms-accepted`) を set し `/<mode>` へ遷移。利用規約は**受動表示**(「利用を開始すると同意したものとみなします」)。
+- **通常モード (casual) の摩擦低減**:
+  - **利用規約モーダルを出さない**(`ctx.mode !== 'casual' && !hasAcceptedTerms()` のときだけ表示)。`termsAccepted` **イベントは従来どおり後段で記録**され provenance は維持。同意はランディングで一度。
+  - 新能力 `promptScreenShareAtStart`(class/exam=true、casual=false)。casual は `screenshots:true`(tracker は作る)だが**起動時に勧誘せず opt-out 状態で開始**し、「画面共有を有効にする」バナーから後でオプトインできる。
+  - **Turnstile `#0` humanAttestation は維持**(チェーン根整合の核)。
+- バッジ `feature.casual` を「作成」→**「通常」**に(モードを区別するため明確化)。
+
+決め手: 本番は Moodle 直リンク主体だが、`/` に入口を置くと**導線が自己説明的**になり、**未知パスの黙 casual 事故**も同時に消える。casual の摩擦低減は consent を入口に集約し assurance をモードでスケールさせる既存思想の延長で、proof 整合(`#0`・ハッシュチェーン)には一切触れない。
+
+## Consequences
+
+### Positive
+- 導線が明快(`/` で場面を選ぶ)。**タイポが黙って casual にならない**(`/exsm`→ランディング)。
+- casual が「開いてすぐ書ける」: 同意モーダルなし・画面共有なしで起動、必要なら後でオプトイン。
+- proof 整合は不変(`#0` Turnstile・ハッシュチェーン・`PROOF_FORMAT_VERSION` 据え置き)。`termsAccepted` イベントは casual でも残る。
+- Moodle 直リンク (`/exam` 等) はランディングを経由せず従来どおり(未同意なら利用規約モーダルを出す既存ロジックを維持)。
+
+### Negative / Trade-offs
+- **`/` の意味が「エディタ」→「ランディング」に変わる**。casual の正規 URL は `/casual`。storage は casual=名前空間なし (`ns=''`) のままなので**互換**(既存セッションは `/casual` で見える)。
+- casual proof は既定でスクショ無し=**低保証の明示**(grader は label でなく実証拠から保証度を導く、ADR-0011 §4)。
+- ランディングは Monaco を mount しないが、現状 top-level 生成ぶんのチャンクは読む(完全 lazy-split は将来最適化)。
+
+### Follow-ups / 残課題
+- ランディングの完全 lazy-split(エディタチャンクを landing で読まない)。
+- 利用規約を受動表示→明示チェックボックスに強化するかは運用判断。
+
+## References
+
+- `packages/editor/src/core/mode.ts` — `resolveRoute` / `promptScreenShareAtStart`
+- `packages/editor/src/ui/components/LandingPage.ts` — ランディング
+- `packages/editor/src/main.ts` — landing 短絡 / casual の terms 省略・画面共有 opt-out 分岐
+- `packages/editor/src/app/TermsHandler.ts` — `markTermsAccepted` / `hasAcceptedTerms`
+- [ADR-0011](0011-course-modes-and-path-routing.md) — モード体系・パス分岐(本 ADR が `/` 入口を補う)
+- [ADR-0007](0007-maximal-signal-capture.md) — 生信号 capture(本 ADR は触れない)
+- [ADR-0014](0014-class-mode-unsealed-problem-distribution.md) — 授業モード

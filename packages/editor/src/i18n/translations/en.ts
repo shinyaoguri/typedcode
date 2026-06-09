@@ -24,11 +24,23 @@ export const en: TranslationKeys = {
   },
 
   feature: {
-    casual: 'Create',
+    casual: 'Normal',
     class: 'Class',
     assignment: 'Assignment',
     exam: 'Exam',
     author: 'Author',
+  },
+
+  landing: {
+    title: 'TypedCode',
+    subtitle: 'Choose how you want to use it. Every keystroke is recorded as a tamper-evident proof.',
+    termsNotice: 'By starting, you agree to the Terms of Use.',
+    termsLink: 'Terms of Use',
+    start: 'Open',
+    casualDesc: 'Plain editor for personal use and trying it out. No consent dialog or screen share — just type.',
+    classDesc: 'In-class work. Load a problem and work under the instructor in the room (no seal).',
+    assignmentDesc: 'Take-home assignment. Privacy-first — no screenshots are taken.',
+    examDesc: 'Exam. Unlock a sealed problem with a proctor code; answers are cryptographically bound to the exam.',
   },
 
   settings: {

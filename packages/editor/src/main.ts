@@ -6,7 +6,12 @@ const urlParams = new URLSearchParams(window.location.search);
 // ストレージはモード別に名前空間化する (PR3) ので、モード間でセッションが混ざらず共存できる
 // (PR1/PR2 の「モード切替時 auto-clear」を置換)。**NS は最初期に確定**させる — 以降の storage
 // 参照 (?reset/?fresh 含む) が storageKeys の getter を使うため。
-const mode = resolveModeFromPath(window.location.pathname);
+// ルート (ADR-0015): `/` と未知パスは 'landing' (モード選択の入口)。`/casual` 等は該当 mode。
+// landing のときは重いエディタ初期化をせず LandingPage の DOM だけ描画する (末尾の boot で分岐)。
+const route = resolveRoute(window.location.pathname);
+const isLanding = route === 'landing';
+// landing はモードを持たない。storage/アクセント色は casual を既定に置く (landing は storage 非使用)。
+const mode: EditorMode = isLanding ? 'casual' : route;
 setStorageNamespace(mode);
 const examMode = mode === 'exam';
 
@@ -59,7 +64,8 @@ import {
   type HumanAttestationEventData,
   type ClassPackage,
 } from '@typedcode/shared';
-import { resolveModeFromPath, capabilitiesFor } from './core/mode.js';
+import { resolveRoute, capabilitiesFor, type EditorMode } from './core/mode.js';
+import { LandingPage } from './ui/components/LandingPage.js';
 import { setStorageNamespace, tabsKey, sessionActiveKey, allSessionDbNames } from './core/storageKeys.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
@@ -153,7 +159,8 @@ import type { WelcomeScreen } from './ui/components/WelcomeScreen.js';
 initDOMi18n();
 
 // 機能バッジ (ぱっと見で機能/モードを判別): titlebar にモード名のピルを挿入。
-{
+// ランディングはエディタシェルを使わないので挿入しない。
+if (!isLanding) {
   const icon: Record<string, string> = {
     casual: 'fa-pen', class: 'fa-chalkboard-user', assignment: 'fa-house-laptop', exam: 'fa-lock',
   };
@@ -1040,8 +1047,11 @@ async function initializeApp(): Promise<void> {
     return; // 初期化を中止
   }
 
-  // Phase 1: 利用規約の確認
-  if (!hasAcceptedTerms()) {
+  // Phase 1: 利用規約の確認 (ADR-0015)。
+  // casual は「すぐ書ける」入口なので**モーダルを出さない** (同意はランディングで一度行う)。
+  // 直リンク `/casual` で未同意でも、provenance 用の `termsAccepted` イベントは後段で記録される。
+  // 他モード (class/assignment/exam) は従来どおり未同意ならモーダルを出す。
+  if (ctx.mode !== 'casual' && !hasAcceptedTerms()) {
     initOverlay?.classList.add('hidden');
     await showTermsModal();
     initOverlay?.classList.remove('hidden');
@@ -1061,12 +1071,6 @@ async function initializeApp(): Promise<void> {
   } else if (ScreenshotTracker.isSupported()) {
     // ScreenshotTrackerはSessionStorageServiceを使用してスクリーンショットを保存
     const screenshotTracker = new ScreenshotTracker(sessionService);
-
-    // 選択ダイアログを表示：「画面共有を開始」または「画面共有なしで使用」
-    initOverlay?.classList.add('hidden');
-    const choice = await showScreenShareChoiceDialog();
-    initOverlay?.classList.remove('hidden');
-    updateInitMessage(t('app.initializing'));
 
     // onContinueWithout コールバック: 画面共有なしで継続（オプトアウトに切り替え）
     const onContinueWithout = async (): Promise<boolean> => {
@@ -1107,6 +1111,20 @@ async function initializeApp(): Promise<void> {
       }
       return false;
     };
+
+    if (!ctx.capabilities.promptScreenShareAtStart) {
+      // 通常モード (casual, ADR-0015): 起動時に画面共有を**勧誘しない**。opt-out 状態で始め、
+      // 「画面共有を有効にする」バナー (onResume) から後でオプトインできる。ダイアログは一切出さない。
+      // opt-out イベントは後段 (コールバック設定後) に emitScreenShareOptOutEvent で記録される。
+      screenshotTracker.setOptedOut(true);
+      showScreenShareOptOutBanner(onResume);
+      console.log('[TypedCode] Screen-share not prompted at start (opt-in via banner) for mode:', ctx.mode);
+    } else {
+    // 選択ダイアログを表示：「画面共有を開始」または「画面共有なしで使用」
+    initOverlay?.classList.add('hidden');
+    const choice = await showScreenShareChoiceDialog();
+    initOverlay?.classList.remove('hidden');
+    updateInitMessage(t('app.initializing'));
 
     if (choice === 'cancelled') {
       // キャンセルされた場合は画面共有を要求（従来の動作）
@@ -1157,6 +1175,7 @@ async function initializeApp(): Promise<void> {
         showScreenCaptureLockOverlay(onResume, onContinueWithout);
       });
     }
+    } // end: promptScreenShareAtStart の選択ダイアログ分岐 (ADR-0015)
 
     ctx.trackers.screenshot = screenshotTracker;
   } else {
@@ -1458,17 +1477,22 @@ async function initializeApp(): Promise<void> {
   console.log('[TypedCode] App initialized successfully');
 }
 
-// DOMContentLoaded または即座に実行
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    // 静的イベントリスナーを設定（DOM準備後）
-    setupStaticEventListeners(ctx);
-    void initializeApp();
-  });
-} else {
+// ブート: ランディング (ADR-0015) なら重いエディタ初期化をせず DOM だけ描画する。
+function boot(): void {
+  if (isLanding) {
+    new LandingPage().render();
+    return;
+  }
   // 静的イベントリスナーを設定（DOM準備後）
   setupStaticEventListeners(ctx);
   void initializeApp();
+}
+
+// DOMContentLoaded または即座に実行
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
 }
 
 // エディタインスタンスをエクスポート（拡張用）

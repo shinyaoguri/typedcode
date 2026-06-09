@@ -4,6 +4,7 @@ import {
   capabilitiesFor,
   MODE_CAPABILITIES,
   resolveModeFromPath,
+  resolveRoute,
   type EditorMode,
 } from '../mode.js';
 
@@ -49,6 +50,35 @@ describe('resolveModeFromPath', () => {
   });
 });
 
+describe('resolveRoute', () => {
+  it('routes the bare root path to the landing chooser', () => {
+    expect(resolveRoute('/')).toBe('landing');
+  });
+
+  it('routes an empty path to the landing chooser', () => {
+    expect(resolveRoute('')).toBe('landing');
+  });
+
+  it('routes an unknown/typo path to the landing instead of silently casual', () => {
+    expect(resolveRoute('/exsm')).toBe('landing');
+    expect(resolveRoute('/playground')).toBe('landing');
+  });
+
+  it('routes /casual explicitly to casual (no longer a default fall-through)', () => {
+    expect(resolveRoute('/casual')).toBe('casual');
+  });
+
+  it('routes each editor mode path to its mode', () => {
+    expect(resolveRoute('/class')).toBe('class');
+    expect(resolveRoute('/assignment')).toBe('assignment');
+    expect(resolveRoute('/exam')).toBe('exam');
+  });
+
+  it('uses only the first path segment', () => {
+    expect(resolveRoute('/exam/problem-1')).toBe('exam');
+  });
+});
+
 describe('capabilitiesFor', () => {
   it('grants exam the sealed-problem capability', () => {
     expect(capabilitiesFor('exam').sealedProblem).toBe(true);
@@ -83,6 +113,16 @@ describe('capabilitiesFor', () => {
   it('shows the fullscreen request banner only for exam', () => {
     const withBanner = ALL_EDITOR_MODES.filter((m) => capabilitiesFor(m).fullscreenBanner);
     expect(withBanner).toEqual(['exam']);
+  });
+
+  it('does not prompt screen-share at start for casual (opt-in via banner)', () => {
+    expect(capabilitiesFor('casual').promptScreenShareAtStart).toBe(false);
+    expect(capabilitiesFor('casual').screenshots).toBe(true);
+  });
+
+  it('prompts screen-share at start for the proctored modes (class, exam)', () => {
+    const prompts = ALL_EDITOR_MODES.filter((m) => capabilitiesFor(m).promptScreenShareAtStart);
+    expect(prompts).toEqual(['class', 'exam']);
   });
 
   it('keeps tabs unlocked for class (looser than exam)', () => {

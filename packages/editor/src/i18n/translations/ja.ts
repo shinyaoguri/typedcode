@@ -24,11 +24,23 @@ export const ja: TranslationKeys = {
   },
 
   feature: {
-    casual: '作成',
+    casual: '通常',
     class: '授業',
     assignment: '課題',
     exam: '試験',
     author: '出題',
+  },
+
+  landing: {
+    title: 'TypedCode',
+    subtitle: '使う場面を選んでください。すべての打鍵を改ざん耐性のある証明として記録します。',
+    termsNotice: '利用を開始すると、利用規約に同意したものとみなします。',
+    termsLink: '利用規約',
+    start: '開く',
+    casualDesc: '素のエディタ。個人利用・お試し。同意画面や画面共有なしですぐ書けます。',
+    classDesc: '授業中ワーク。問題を読み込み、教員の監督下で取り組みます（封印なし）。',
+    assignmentDesc: '持ち帰り課題。プライバシー重視でスクリーンショットは取りません。',
+    examDesc: '試験。封印問題を監督コードで解錠し、解答を試験に暗号学的に束縛します。',
   },
 
   settings: {

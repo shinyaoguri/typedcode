@@ -27,6 +27,9 @@ export interface ModeCapabilities {
   sealedProblem: boolean;
   /** スクリーンショット捕捉を許すか。 */
   screenshots: boolean;
+  /** スクリーンショットを起動時に勧誘 (画面共有ダイアログ) するか。
+   *  false でも screenshots が真なら tracker は作られ、後からバナーでオプトイン可能 (ADR-0015)。 */
+  promptScreenShareAtStart: boolean;
   /** フルスクリーン状態を記録するか (ADR-0008)。 */
   fullscreenTracking: boolean;
   /**
@@ -44,9 +47,15 @@ export interface ModeCapabilities {
   preExportBestEffort: boolean;
 }
 
+/**
+ * 通常モード (casual): 素のエディタ・個人/デモ・**最低保証** (ADR-0015)。
+ * スクショは使える (screenshots:true) が**起動時に勧誘しない** (promptScreenShareAtStart:false) —
+ * オプトアウト状態で始まり、バナーから後で有効化できる。利用規約モーダルも出さない (main.ts 側で分岐)。
+ */
 const CASUAL: ModeCapabilities = {
   sealedProblem: false,
   screenshots: true,
+  promptScreenShareAtStart: false,
   fullscreenTracking: false,
   fullscreenBanner: false,
   tabLock: false,
@@ -58,6 +67,7 @@ const CASUAL: ModeCapabilities = {
 const EXAM: ModeCapabilities = {
   sealedProblem: true,
   screenshots: true,
+  promptScreenShareAtStart: true,
   fullscreenTracking: true,
   fullscreenBanner: true,
   tabLock: true,
@@ -76,6 +86,7 @@ const EXAM: ModeCapabilities = {
 const CLASS: ModeCapabilities = {
   sealedProblem: false,
   screenshots: true,
+  promptScreenShareAtStart: true,
   fullscreenTracking: true,
   fullscreenBanner: false,
   tabLock: false,
@@ -104,7 +115,7 @@ export const MODE_CAPABILITIES: Record<EditorMode, ModeCapabilities> = {
   exam: EXAM,
 };
 
-/** URL パスの先頭セグメントからモードを確定する。 */
+/** URL パスの先頭セグメントからモードを確定する (editor mode 解決用)。 */
 export function resolveModeFromPath(pathname: string): EditorMode {
   const seg = pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase() ?? '';
   switch (seg) {
@@ -116,6 +127,30 @@ export function resolveModeFromPath(pathname: string): EditorMode {
       return 'assignment';
     default:
       return 'casual';
+  }
+}
+
+/**
+ * ルート (ADR-0015): エディタモードに加え `'landing'` を持つ。`/` と**未知パス**は
+ * `'landing'`(モードを選ぶ入口)に落とす — 黙って casual にせず、タイポ (`/exsm` 等) で
+ * 「試験のつもりが casual」事故を防ぐ。casual は明示ルート `/casual` でのみ入る。
+ */
+export type Route = 'landing' | EditorMode;
+
+/** URL パスの先頭セグメントからルートを確定する。`/`・未知 → 'landing'。 */
+export function resolveRoute(pathname: string): Route {
+  const seg = pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase() ?? '';
+  switch (seg) {
+    case 'casual':
+      return 'casual';
+    case 'class':
+      return 'class';
+    case 'assignment':
+      return 'assignment';
+    case 'exam':
+      return 'exam';
+    default:
+      return 'landing'; // 空 (ルート /) と未知パスは入口へ
   }
 }
 

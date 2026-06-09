@@ -43,6 +43,19 @@ export interface TranslationKeys {
     author: string;
   };
 
+  // ルートのモード選択 (ランディング、ADR-0015)
+  landing: {
+    title: string;
+    subtitle: string;
+    termsNotice: string; // 「利用を開始すると規約に同意したものとみなします」
+    termsLink: string;
+    start: string;
+    casualDesc: string;
+    classDesc: string;
+    assignmentDesc: string;
+    examDesc: string;
+  };
+
   // Settings menu
   settings: {
     title: string;

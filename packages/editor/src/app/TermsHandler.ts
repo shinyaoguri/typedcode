@@ -22,6 +22,23 @@ export function hasAcceptedTerms(): boolean {
 }
 
 /**
+ * 利用規約への同意フラグを localStorage に記録する (ADR-0015)。
+ * ランディングでカードを選んだ時の暗黙同意でも使う (モーダルの handleAgree と同じ形)。
+ */
+export function markTermsAccepted(): void {
+  const timestamp = Date.now();
+  try {
+    localStorage.setItem(TERMS_ACCEPTED_KEY, JSON.stringify({
+      version: TERMS_VERSION,
+      timestamp,
+      agreedAt: new Date(timestamp).toISOString(),
+    }));
+  } catch {
+    /* 保存不可環境では諦める (同意フラグなしでも続行できる) */
+  }
+}
+
+/**
  * 利用規約モーダルを表示
  */
 export async function showTermsModal(): Promise<void> {
