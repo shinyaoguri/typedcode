@@ -570,6 +570,20 @@ export interface TranslationKeys {
     };
   };
 
+  // 授業モード (/class, ADR-0014)
+  class: {
+    loader: {
+      title: string;
+      description: string;
+      packageLabel: string;
+      dropHint: string;
+      loadButton: string;
+      skipButton: string;
+      loading: string;
+      errorInvalidFile: string;
+    };
+  };
+
   // 試験問題オーサリング (/author, #80)
   author: {
     title: string;
@@ -643,6 +657,11 @@ export interface TranslationKeys {
       note1: string;
       note2: string;
       note3: string;
+    };
+    classExport: {
+      button: string;
+      hint: string;
+      errorNoProblems: string;
     };
   };
 }

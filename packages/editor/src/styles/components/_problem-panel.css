@@ -132,8 +132,9 @@ body.exam-mode #download-menu-btn {
   display: none !important;
 }
 
-/* 問題パネルのトグルは試験モードのみ表示 (casual には問題パネルが無い)。 */
-body:not(.exam-mode) #toggle-problem-btn {
+/* 問題パネルのトグルは問題表示モード (exam / class) のみ表示。capabilities.problemPanel が
+   真のとき body.has-problem-panel が付く (casual/assignment にはパネルが無い)。 */
+body:not(.has-problem-panel) #toggle-problem-btn {
   display: none;
 }
 

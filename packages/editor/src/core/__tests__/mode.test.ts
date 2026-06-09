@@ -68,13 +68,30 @@ describe('capabilitiesFor', () => {
     expect(assignment).toEqual({ ...casual, screenshots: false });
   });
 
-  it('treats class as identical to casual capabilities', () => {
-    expect(capabilitiesFor('class')).toEqual(capabilitiesFor('casual'));
+  it('gives class the problem panel without the sealed-problem crypto (ADR-0014)', () => {
+    const cls = capabilitiesFor('class');
+    expect(cls.problemPanel).toBe(true);
+    expect(cls.sealedProblem).toBe(false);
   });
 
-  it('enables best-effort pre-export only for exam', () => {
+  it('tracks fullscreen passively for class (no request banner)', () => {
+    const cls = capabilitiesFor('class');
+    expect(cls.fullscreenTracking).toBe(true);
+    expect(cls.fullscreenBanner).toBe(false);
+  });
+
+  it('shows the fullscreen request banner only for exam', () => {
+    const withBanner = ALL_EDITOR_MODES.filter((m) => capabilitiesFor(m).fullscreenBanner);
+    expect(withBanner).toEqual(['exam']);
+  });
+
+  it('keeps tabs unlocked for class (looser than exam)', () => {
+    expect(capabilitiesFor('class').tabLock).toBe(false);
+  });
+
+  it('enables best-effort pre-export for the proctored in-room modes (class, exam)', () => {
     const withBestEffort = ALL_EDITOR_MODES.filter((m) => capabilitiesFor(m).preExportBestEffort);
-    expect(withBestEffort).toEqual(['exam']);
+    expect(withBestEffort).toEqual(['class', 'exam']);
   });
 });
 

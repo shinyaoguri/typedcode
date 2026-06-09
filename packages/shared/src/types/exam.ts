@@ -133,6 +133,30 @@ export type DecodedExamPlaintext =
   | { kind: 'bundle'; bundle: ExamBundle }
   | { kind: 'legacy'; statement: string };
 
+// ============================================================================
+// class モードの平文配布パッケージ (ADR-0014, tier ①)
+// ============================================================================
+
+/** class 配布パッケージ (`*.tcclass`) の schema 識別子 (ADR-0014)。 */
+export type ClassPackageSchema = 'tcclass/1';
+
+/**
+ * class モード (授業) の**平文・未封印**配布パッケージ (`*.tcclass`, JSON, ADR-0014)。
+ *
+ * exam の `.tcexam` と異なり**暗号化も署名も持たない** (tier ① 自己申告)。問題は公開前提で、
+ * 監督は教室の物理在室が担保する。配布される `bundle` は exam と**同一の `ExamBundle` 構造**
+ * (`tcexam-exam/1`) を平文のまま内包し、`parseExamBundle` を共有する。受講者は `/class` で
+ * これを読み込み、各 `problems[i]` を1タブへ展開する (root 束縛なし)。
+ */
+export interface ClassPackage {
+  schema: ClassPackageSchema;
+  /** 授業/課題の識別子 (自己申告ラベル)。 */
+  classId: string;
+  allowed: { languages: string[] };
+  /** 問題バンドル (exam と共通の平文構造)。 */
+  bundle: ExamBundle;
+}
+
 /**
  * proof の `exam` ブロック (exam モード時のみ、ADR-0006 §4)。
  * grader がこのブロック + 公開 package だけで self-contained に検証できる。

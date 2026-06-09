@@ -93,6 +93,8 @@ export type {
   ExamBundleProblem,
   ExamBundle,
   DecodedExamPlaintext,
+  ClassPackageSchema,
+  ClassPackage,
 } from './exam.js';
 
 // テンプレート関連

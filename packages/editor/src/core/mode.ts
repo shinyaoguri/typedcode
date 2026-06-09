@@ -10,8 +10,10 @@
  * 実装状況 (ADR-0011 PR1–3, develop マージ済み): routing + 能力モデル + exam の path 化 +
  * proof への mode 記録、能力差の実配線 (assignment はスクショ off 等)、storage のモード別
  * 名前空間化 (core/storageKeys.ts) まで完了。
- * **未実装の繰り越し**: class 固有の能力 (fullscreen 任意・問題表示) と class/assignment の
- * 問題配布 UX。現状 class は casual と同一能力 (監督は教室の物理在室で担保)。
+ * **class 固有の能力 (ADR-0014)**: 問題表示 (problemPanel) + 受動的 fullscreen 記録
+ * (fullscreenTracking + fullscreenBanner=false) を実装。問題は平文 `.tcclass` で配布
+ * (tier ① 自己申告、封印なし・root 束縛なし)。監督は教室の物理在室で担保。
+ * **未実装の繰り越し**: assignment 固有の問題配布 UX、per-student variant (tier ② 署名記述子)。
  */
 
 export type EditorMode = 'casual' | 'class' | 'assignment' | 'exam';
@@ -25,8 +27,13 @@ export interface ModeCapabilities {
   sealedProblem: boolean;
   /** スクリーンショット捕捉を許すか。 */
   screenshots: boolean;
-  /** フルスクリーン要求/記録 (ADR-0008)。 */
+  /** フルスクリーン状態を記録するか (ADR-0008)。 */
   fullscreenTracking: boolean;
+  /**
+   * 非フルスクリーン時に警告バナー + 「フルスクリーンで受験」要求ボタンを出すか。
+   * exam は要求 (true)、class は受動記録のみ (false, ADR-0014)。
+   */
+  fullscreenBanner: boolean;
   /** タブの追加/削除を源流ロック (ADR-0010)。 */
   tabLock: boolean;
   /** 左の汎用 DL メニューを隠し、問題パネルの DL に一本化する。 */
@@ -41,6 +48,7 @@ const CASUAL: ModeCapabilities = {
   sealedProblem: false,
   screenshots: true,
   fullscreenTracking: false,
+  fullscreenBanner: false,
   tabLock: false,
   unifyDownloadToProblemPanel: false,
   problemPanel: false,
@@ -51,8 +59,27 @@ const EXAM: ModeCapabilities = {
   sealedProblem: true,
   screenshots: true,
   fullscreenTracking: true,
+  fullscreenBanner: true,
   tabLock: true,
   unifyDownloadToProblemPanel: true,
+  problemPanel: true,
+  preExportBestEffort: true,
+};
+
+/**
+ * 授業モード (class): 監督下だが**封印しない** (問題は公開。ADR-0011 §3 / ADR-0014)。
+ * casual に対し **問題表示** (problemPanel) と **受動的 fullscreen 記録** (fullscreenTracking、
+ * ただし要求バナーは出さない = fullscreenBanner:false) を足す。タブは緩 (tabLock:false)、
+ * 汎用 DL も残す (unify:false)。教室・多人数・不安定網ゆえ export は best-effort 化する。
+ * 問題は平文 `.tcclass` で配布し root 束縛は持たない (tier ① 自己申告)。
+ */
+const CLASS: ModeCapabilities = {
+  sealedProblem: false,
+  screenshots: true,
+  fullscreenTracking: true,
+  fullscreenBanner: false,
+  tabLock: false,
+  unifyDownloadToProblemPanel: false,
   problemPanel: true,
   preExportBestEffort: true,
 };
@@ -64,15 +91,15 @@ const EXAM: ModeCapabilities = {
 const ASSIGNMENT: ModeCapabilities = { ...CASUAL, screenshots: false };
 
 /**
- * 能力マトリクス (ADR-0011)。
+ * 能力マトリクス (ADR-0011 / ADR-0014)。
  *
- * - **class は casual と同一能力** (監督は教室の物理的在室で担保。fullscreen 任意・問題表示は繰り越し)。
- * - **assignment は screenshots off** (上記)。
- * - **exam** だけが封印問題・根束縛・厳格な能力 (tabLock/fullscreen/preExport best-effort) を持つ。
+ * - **class は問題表示 + 受動 fullscreen** を持つ (監督は教室の物理在室で担保。封印なし)。
+ * - **assignment は screenshots off** (プライバシー)。
+ * - **exam** だけが封印問題・根束縛・厳格な能力 (tabLock/fullscreen 要求/preExport best-effort) を持つ。
  */
 export const MODE_CAPABILITIES: Record<EditorMode, ModeCapabilities> = {
   casual: CASUAL,
-  class: CASUAL,
+  class: CLASS,
   assignment: ASSIGNMENT,
   exam: EXAM,
 };

@@ -24,6 +24,7 @@ import {
   importAuthoritySigner,
   type CreatedExamPackage,
 } from './examPackageAuthoring.js';
+import { buildClassPackage } from './classPackageAuthoring.js';
 import { generateAuthorityKey } from './authorityKey.js';
 import { buildProctorMemo } from './proctorMemo.js';
 import { renderMarkdown } from '../utils/markdown.js';
@@ -139,6 +140,7 @@ export class AuthorPage {
       this.updateStatusbar();
     });
     this.el('author-build-btn').addEventListener('click', () => void this.handleBuild());
+    this.el('author-build-class-btn').addEventListener('click', () => this.handleBuildClass());
 
     // examId / token 変更で statusbar を更新。
     this.input('author-exam-id').addEventListener('input', () => this.updateStatusbar());
@@ -432,6 +434,23 @@ export class AuthorPage {
     }
   }
 
+  /**
+   * 授業モード用の**未封印**配布物 (`.tcclass`) を生成する (ADR-0014)。
+   * 鍵も監督コードも使わず、examId を classId として平文バンドルを出力する。
+   */
+  private handleBuildClass(): void {
+    this.el('author-build-error').hidden = true;
+    const languages = this.input('author-languages').value.split(',').map((s) => s.trim()).filter(Boolean);
+    const classId = this.input('author-exam-id').value.trim();
+    try {
+      const content = buildClassPackage({ classId, problems: this.collectProblems(), languages });
+      downloadBlob(`${classId || 'class'}.tcclass`, content + '\n', 'application/json');
+    } catch (err) {
+      this.el('author-settings-panel').hidden = false;
+      this.showBuildError(err instanceof Error ? err.message : t('author.classExport.errorNoProblems'));
+    }
+  }
+
   private showBuildError(msg: string): void {
     const errorEl = this.el('author-build-error');
     errorEl.textContent = msg;
@@ -580,6 +599,9 @@ export class AuthorPage {
             <div class="author-settings-foot">
               <p class="author-error" id="author-build-error" hidden></p>
               <button class="author-btn author-btn-primary author-btn-block" id="author-build-btn"><i class="fas fa-box-archive"></i> ${escapeHtml(t('author.build.button'))}</button>
+              <div class="author-settings-divider"></div>
+              <button class="author-btn author-btn-block" id="author-build-class-btn"><i class="fas fa-book-open"></i> ${escapeHtml(t('author.classExport.button'))}</button>
+              <p class="author-hint">${escapeHtml(t('author.classExport.hint'))}</p>
             </div>
           </aside>
         </div>

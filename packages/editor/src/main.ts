@@ -57,6 +57,7 @@ import {
   type ExamBundleProblem,
   type ExamPackageManifest,
   type HumanAttestationEventData,
+  type ClassPackage,
 } from '@typedcode/shared';
 import { resolveModeFromPath, capabilitiesFor } from './core/mode.js';
 import { setStorageNamespace, tabsKey, sessionActiveKey, allSessionDbNames } from './core/storageKeys.js';
@@ -104,6 +105,8 @@ import { BrowserPreviewPanel } from './ui/components/BrowserPreviewPanel.js';
 import { ProblemPanel } from './ui/components/ProblemPanel.js';
 import { ExamStartGate } from './ui/components/ExamStartGate.js';
 import { ExamPackageStore } from './services/ExamPackageStore.js';
+import { ClassProblemLoader } from './ui/components/ClassProblemLoader.js';
+import { ClassProblemStore } from './services/ClassProblemStore.js';
 import { FullscreenTracker } from './tracking/FullscreenTracker.js';
 import { EventRecorder, SessionContentRegistry } from './core/index.js';
 import type { AppContext } from './core/AppContext.js';
@@ -289,16 +292,23 @@ ctx.proofExporter.setMode(ctx.mode);
 // export 前認証の best-effort 化はモード能力で決まる (ADR-0006: exam のみ。サーバを critical path に置かない)。
 ctx.proofExporter.setPreExportBestEffort(ctx.capabilities.preExportBestEffort);
 
-// 封印問題モード (exam): 問題パネルを表示し DL を一本化する。他モードでは何もしない。
-// Monaco は automaticLayout: true なのでパネル出現に伴う再レイアウトは自動。
+// exam 固有のクロム (タブ追加/削除・汎用DLメニューの非表示、unify) は body.exam-mode が駆動する。
 if (ctx.examMode) {
   document.body.classList.add('exam-mode');
+}
+
+// 問題表示モード (exam / class): 問題パネルを表示し、ログDLボタンを配線する。
+// Monaco は automaticLayout: true なのでパネル出現に伴う再レイアウトは自動。
+// class は封印を持たない平文配布 (ADR-0014) だが、表示・DL の UI は exam と共通。
+if (ctx.capabilities.problemPanel) {
+  // 問題パネルのトグルボタン (左 Activity Bar) を出すための CSS フック。
+  document.body.classList.add('has-problem-panel');
   // ProblemPanel.initialize() がリサイズ/クローズ/トグルを内部で配線する。
   if (ctx.problemPanel.initialize()) {
     ctx.problemPanel.show();
   }
-  // 提出用ログのダウンロード導線を問題パネルのボタンに一本化する (左の汎用DLメニューは exam で非表示)。
-  // 提出は Moodle で行うため TypedCode 側に「提出」操作は持たない。全タブ ZIP (証明 + コード) を出すだけ。
+  // 提出用ログのダウンロード導線 (全タブ ZIP = 証明 + コード)。提出は Moodle で行うため
+  // TypedCode 側に「提出」操作は持たない。exam では unify で左の汎用DLメニューを隠し一本化する。
   document.getElementById('download-log-btn')?.addEventListener('click', () => {
     void ctx.proofExporter.exportAllTabsAsZip();
   });
@@ -919,6 +929,78 @@ function restoreExamProblemDisplay(appCtx: AppContext): void {
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
 }
 
+/**
+ * 授業モード初回入場 (ADR-0014): 非ブロッキングの問題ローダで平文 `.tcclass` を取り込み、
+ * 各問を 1 タブで展開する。スキップ時 (resolve(null)) は何もしない (後段でウェルカム画面)。
+ */
+async function runClassLoad(appCtx: AppContext): Promise<void> {
+  const loader = new ClassProblemLoader();
+  const pkg = await loader.prompt();
+  if (!pkg) return; // スキップ = 素のエディタで開始
+  await openClassTabs(appCtx, pkg);
+}
+
+/**
+ * 授業モード (ADR-0014): バンドル各問を 1 タブで開く (封印・root 束縛なし = casual genesis)。
+ * exam の openBundleTabs と同じ `sharedAttestation` で先頭タブの #0 を共有し Turnstile storm を避ける。
+ * starter は templateInjection で「与えられた雛形」として記録し、`templateName='tcclass/${problemId}'`
+ * が **self-asserted problemId を proof に残す** (tier ①)。問題本文は ProblemPanel + ClassProblemStore。
+ * タブは固定しない (tabLock なし) ので受講者は自由にタブを足せる。
+ */
+async function openClassTabs(appCtx: AppContext, pkg: ClassPackage): Promise<void> {
+  const problems = pkg.bundle.problems;
+  let sharedAttestation: HumanAttestationEventData | null = null;
+
+  for (let i = 0; i < problems.length; i++) {
+    const problem = problems[i]!;
+    const language = problem.starter?.language ?? pkg.allowed.languages[0] ?? 'c';
+    const filename = problem.starter?.filename ?? `${problem.problemId}.${examFileExtension(language)}`;
+    const starterContent = problem.starter?.content ?? '';
+
+    const tab: TabState | null =
+      (await appCtx.tabManager?.createTab(filename, language, starterContent, {
+        ...(i > 0 && sharedAttestation ? { sharedAttestation } : {}),
+      })) ?? null;
+
+    if (i === 0 && tab) {
+      sharedAttestation = tab.typingProof.getHumanAttestation();
+    }
+
+    // starter は「タイプされていない雛形」なので注入イベントで明示する (純タイピング判定を汚さない)。
+    // templateName に classId/problemId を入れて self-asserted ラベルを残す (tier ①)。
+    if (tab && starterContent.length > 0) {
+      const contentHash = await computeHash(starterContent);
+      await tab.typingProof.recordTemplateInjection({
+        templateName: `tcclass/${pkg.classId}/${problem.problemId}`,
+        templateHash: contentHash,
+        filename,
+        content: starterContent,
+        contentHash,
+        contentLength: starterContent.length,
+        totalFilesInTemplate: 1,
+        injectionSource: 'file_import',
+      });
+    }
+
+    ClassProblemStore.save(filename, { problemId: problem.problemId, statement: problem.statement });
+  }
+
+  // 先頭タブをアクティブにし、その問題文を表示する。
+  const first = appCtx.tabManager?.getAllTabs()[0];
+  if (first) await appCtx.tabManager?.switchTab(first.id);
+  appCtx.problemPanel.setProblemText(problems[0]?.statement ?? '');
+  if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
+}
+
+/** リロード時: 復元タブの filename に対応する問題本文を ClassProblemStore から再表示する。 */
+function restoreClassProblemDisplay(appCtx: AppContext): void {
+  const filename = appCtx.tabManager?.getActiveTab()?.filename;
+  const problem = filename ? ClassProblemStore.get(filename) : ClassProblemStore.getAny();
+  if (!problem) return;
+  appCtx.problemPanel.setProblemText(problem.statement);
+  if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
+}
+
 // ========================================
 // メイン初期化関数
 // ========================================
@@ -1254,6 +1336,15 @@ async function initializeApp(): Promise<void> {
     } else {
       restoreExamProblemDisplay(ctx);
     }
+  } else if (ctx.mode === 'class') {
+    // 授業モード (ADR-0014): 初回入場は非ブロッキングの問題ローダで平文 `.tcclass` を取り込み、
+    // 各問を 1 タブで展開する (封印なし・root 束縛なし)。スキップ可 (素のエディタになる)。
+    // リロード時は復元済みタブの filename に対応する問題本文を再表示する。
+    if (!ctx.tabManager?.hasAnyTabs()) {
+      await runClassLoad(ctx);
+    } else {
+      restoreClassProblemDisplay(ctx);
+    }
   }
 
   // タブがない場合はウェルカム画面を表示、ある場合は通常のエディタ表示
@@ -1325,13 +1416,14 @@ async function initializeApp(): Promise<void> {
   initializeLogViewer(ctx);
   initializeEventRecorder();
 
-  // フルスクリーン追跡 + 警告バナー (ADR-0008、能力 fullscreenTracking)。eventRecorder 準備後に配線する。
-  // 警告バナーの「フルスクリーンで受験」ボタンが開始ジェスチャ (requestFullscreen は要 user gesture)。
+  // フルスクリーン追跡 (ADR-0008/0014、能力 fullscreenTracking)。eventRecorder 準備後に配線する。
+  // exam は警告バナー + 要求ボタン (fullscreenBanner=true、ボタンが開始ジェスチャ)。
+  // class は受動記録のみ (fullscreenBanner=false、状態は記録するがバナーは出さない)。
   if (ctx.capabilities.fullscreenTracking) {
     ctx.fullscreenTracker.setRecordCallback((event) => {
       void ctx.eventRecorder?.recordToAllTabs(event);
     });
-    ctx.fullscreenTracker.initialize();
+    ctx.fullscreenTracker.initialize(ctx.capabilities.fullscreenBanner);
   }
 
   // Phase 7: ターミナルとコード実行の初期化

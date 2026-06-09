@@ -543,6 +543,19 @@ export const ja: TranslationKeys = {
     },
   },
 
+  class: {
+    loader: {
+      title: '授業問題を読み込む',
+      description: '配布された問題ファイル（.tcclass）を読み込みます。封印・監督コードはありません。スキップして素のエディタで始めることもできます。',
+      packageLabel: '問題ファイル（.tcclass）',
+      dropHint: 'ファイルを選択、またはここにドロップ',
+      loadButton: '読み込む',
+      skipButton: 'スキップ',
+      loading: '読み込み中…',
+      errorInvalidFile: '問題ファイルの形式が不正です（.tcclass を選択してください）。',
+    },
+  },
+
   author: {
     title: '試験問題の作成',
     subtitle: '署名済みの封印問題（.tcexam）と監督コードを作成します。鍵・問題はこの端末から外部に送信されません。',
@@ -615,6 +628,11 @@ export const ja: TranslationKeys = {
       note1: 'この監督コードは平文パッケージに含まれません。紛失すると問題を復号できません。',
       note2: 'T0（開始時刻）に学生へ口頭・板書で解禁してください。',
       note3: 'このファイルは教員用です。学生には .tcexam のみを配布してください。',
+    },
+    classExport: {
+      button: 'class 用（未封印）を生成',
+      hint: '授業モード用に、封印・署名なしの平文 .tcclass を出力します。問題は公開前提で監督コードは不要です（試験 ID を授業 ID として使います）。',
+      errorNoProblems: '問題がありません。少なくとも1問入力してください。',
     },
   },
 };

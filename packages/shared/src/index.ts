@@ -98,6 +98,9 @@ export {
   decodeExamPlaintext,
   encodeExamBundle,
   computeBundleProblemHash,
+  CLASS_PACKAGE_SCHEMA,
+  parseClassPackage,
+  encodeClassPackage,
 } from './exam/index.js';
 
 export type {

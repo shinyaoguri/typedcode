@@ -543,6 +543,19 @@ export const en: TranslationKeys = {
     },
   },
 
+  class: {
+    loader: {
+      title: 'Load Class Problem',
+      description: 'Load the distributed problem file (.tcclass). There is no seal or proctor code. You can also skip and start with a blank editor.',
+      packageLabel: 'Problem file (.tcclass)',
+      dropHint: 'Choose a file or drop it here',
+      loadButton: 'Load',
+      skipButton: 'Skip',
+      loading: 'Loading…',
+      errorInvalidFile: 'The problem file is malformed (please select a .tcclass file).',
+    },
+  },
+
   author: {
     title: 'Create Exam Problem',
     subtitle: 'Build a signed, sealed problem package (.tcexam) and its proctor code. Keys and problems never leave this device.',
@@ -615,6 +628,11 @@ export const en: TranslationKeys = {
       note1: 'This proctor code is not contained in the plaintext package. If lost, the problem cannot be decrypted.',
       note2: 'Reveal it to students verbally / on the board at T0 (start time).',
       note3: 'This file is for teachers. Distribute only the .tcexam file to students.',
+    },
+    classExport: {
+      button: 'Generate for class (unsealed)',
+      hint: 'Outputs a plaintext .tcclass with no seal or signature, for class mode. Problems are public and need no proctor code (the exam ID is reused as the class ID).',
+      errorNoProblems: 'No problems. Enter at least one problem.',
     },
   },
 };

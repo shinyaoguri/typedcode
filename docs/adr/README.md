@@ -44,6 +44,7 @@
 | [0011](0011-course-modes-and-path-routing.md) | Accepted | 授業・課題・試験を1ドメインのパスで分岐し能力プリセットでモデル化する |
 | [0012](0012-sealed-starter-template-in-exam-payload.md) | Accepted | 封印問題の平文を構造化し N問バンドル＋問題ごとのスターターコードを同梱する |
 | [0013](0013-exam-schedule-advisory-keep-manifest-format.md) | Accepted | 試験スケジュールを advisory とし manifest フォーマットは据え置く |
+| [0014](0014-class-mode-unsealed-problem-distribution.md) | Proposed | 授業モードは平文 `.tcclass` で問題を配布し受動 fullscreen を記録する (tier ①) |
 
 ## 参考
 
