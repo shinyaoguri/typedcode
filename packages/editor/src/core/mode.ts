@@ -97,9 +97,10 @@ const CLASS: ModeCapabilities = {
 
 /**
  * 課題モード (assignment): 持ち帰り・プライバシー重視。CASUAL から **screenshots を off** に
- * する (自宅画面のキャプチャを避ける。ADR-0011)。封印なし。問題配布 UX は繰り越し。
+ * する (自宅画面のキャプチャを避ける。ADR-0011)。封印なし。**問題パネルは持つ** (ADR-0015) —
+ * 平文 `.tcclass` を「問題を読み込む」からいつでも取り込める (class と同じ非封印 tier ①)。
  */
-const ASSIGNMENT: ModeCapabilities = { ...CASUAL, screenshots: false };
+const ASSIGNMENT: ModeCapabilities = { ...CASUAL, screenshots: false, problemPanel: true };
 
 /**
  * 能力マトリクス (ADR-0011 / ADR-0014)。

@@ -132,9 +132,15 @@ body.exam-mode #download-menu-btn {
   display: none !important;
 }
 
-/* 問題パネルのトグルは問題表示モード (exam / class) のみ表示。capabilities.problemPanel が
-   真のとき body.has-problem-panel が付く (casual/assignment にはパネルが無い)。 */
+/* 問題パネルのトグルは問題表示モード (exam / class / assignment) のみ表示。
+   capabilities.problemPanel が真のとき body.has-problem-panel が付く (casual にはパネルが無い)。 */
 body:not(.has-problem-panel) #toggle-problem-btn {
+  display: none;
+}
+
+/* 「問題を読み込む」は非封印の問題モード (授業/課題) のみ表示。capabilities.problemPanel &&
+   !sealedProblem のとき body.can-load-problem が付く (exam は封印ゲートで入るので出さない。ADR-0015)。 */
+body:not(.can-load-problem) #load-problem-btn {
   display: none;
 }
 

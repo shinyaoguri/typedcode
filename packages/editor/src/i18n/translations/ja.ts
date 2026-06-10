@@ -95,6 +95,7 @@ export const ja: TranslationKeys = {
     newTab: '新しいタブ',
     closeTab: '閉じる',
     copyCode: 'コードをコピー',
+    loadProblem: '問題を読み込む',
   },
 
   preview: {

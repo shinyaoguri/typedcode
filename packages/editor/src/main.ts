@@ -150,6 +150,7 @@ import {
   handleTabChange,
   setupStaticEventListeners,
   showWelcomeScreen,
+  hideWelcomeScreen,
   hasAcceptedTerms,
   showTermsModal,
   handleTemplateImport,
@@ -299,21 +300,30 @@ if (ctx.examMode) {
   document.body.classList.add('exam-mode');
 }
 
-// 問題表示モード (exam / class): 問題パネルを表示し、ログDLボタンを配線する。
-// Monaco は automaticLayout: true なのでパネル出現に伴う再レイアウトは自動。
-// class は封印を持たない平文配布 (ADR-0014) だが、表示・DL の UI は exam と共通。
+// 問題表示モード (exam / class / assignment): 問題パネルを配線する。Monaco は automaticLayout: true
+// なのでパネル出現に伴う再レイアウトは自動。class/assignment は封印なしの平文配布 (ADR-0014/0015)。
 if (ctx.capabilities.problemPanel) {
   // 問題パネルのトグルボタン (左 Activity Bar) を出すための CSS フック。
   document.body.classList.add('has-problem-panel');
   // ProblemPanel.initialize() がリサイズ/クローズ/トグルを内部で配線する。
+  // **パネルはここでは開かない** — 問題が読み込まれた時だけ開く (ADR-0015。授業で未読込なのに
+  // exam の見た目で出る不具合を解消)。見出しはモードに合わせる (試験/授業/課題)。
   if (ctx.problemPanel.initialize()) {
-    ctx.problemPanel.show();
+    ctx.problemPanel.setTitle(t(`feature.${ctx.mode}`));
   }
   // 提出用ログのダウンロード導線 (全タブ ZIP = 証明 + コード)。提出は Moodle で行うため
   // TypedCode 側に「提出」操作は持たない。exam では unify で左の汎用DLメニューを隠し一本化する。
   document.getElementById('download-log-btn')?.addEventListener('click', () => {
     void ctx.proofExporter.exportAllTabsAsZip();
   });
+  // 非封印モード (授業/課題) は「問題を読み込む」でいつでも平文 `.tcclass` を取り込める (ADR-0015)。
+  // exam は封印ゲートで入るのでこのボタンは出さない (sealedProblem で判別)。
+  if (!ctx.capabilities.sealedProblem) {
+    document.body.classList.add('can-load-problem');
+    document.getElementById('load-problem-btn')?.addEventListener('click', () => {
+      void runClassLoad(ctx);
+    });
+  }
 }
 
 // ========================================
@@ -932,14 +942,20 @@ function restoreExamProblemDisplay(appCtx: AppContext): void {
 }
 
 /**
- * 授業モード初回入場 (ADR-0014): 非ブロッキングの問題ローダで平文 `.tcclass` を取り込み、
- * 各問を 1 タブで展開する。スキップ時 (resolve(null)) は何もしない (後段でウェルカム画面)。
+ * 授業/課題モードの問題読み込み (ADR-0014/0015)。左の「問題を読み込む」からいつでも呼べる。
+ * 非ブロッキングの問題ローダで平文 `.tcclass` を取り込み、各問を 1 タブで展開する。
+ * スキップ時 (resolve(null)) は何もしない。ウェルカム画面が出ていれば閉じてエディタへ切り替える。
  */
 async function runClassLoad(appCtx: AppContext): Promise<void> {
   const loader = new ClassProblemLoader();
   const pkg = await loader.prompt();
-  if (!pkg) return; // スキップ = 素のエディタで開始
+  if (!pkg) return; // スキップ = 素のエディタ / 現状維持
+  hideWelcomeScreen(appCtx);
   await openClassTabs(appCtx, pkg);
+  // 問題タブができたのでキャプチャ再有効化・LogViewer 初期化・UI 更新 (welcome 経由の取込に対応)。
+  appCtx.trackers.screenshot?.setCaptureEnabled(true);
+  initializeLogViewer(appCtx);
+  appCtx.tabUIController?.updateUI();
 }
 
 /**
@@ -1350,15 +1366,16 @@ async function initializeApp(): Promise<void> {
     } else {
       restoreExamProblemDisplay(ctx);
     }
-  } else if (ctx.mode === 'class') {
-    // 授業モード (ADR-0014): 初回入場は非ブロッキングの問題ローダで平文 `.tcclass` を取り込み、
-    // 各問を 1 タブで展開する (封印なし・root 束縛なし)。スキップ可 (素のエディタになる)。
-    // リロード時は復元済みタブの filename に対応する問題本文を再表示する。
-    if (!ctx.tabManager?.hasAnyTabs()) {
-      await runClassLoad(ctx);
-    } else {
+  } else if (ctx.mode === 'class' || ctx.mode === 'assignment') {
+    // 授業/課題モード (ADR-0014/0015): 起動時に問題ローダを**強制しない**。問題は左の
+    // 「問題を読み込む」(`#load-problem-btn`) からいつでも平文 `.tcclass` を取り込める。
+    // リロード時は復元済みタブの filename に対応する問題本文を再表示する (未読込なら何もしない)。
+    if (ctx.tabManager?.hasAnyTabs()) {
       restoreClassProblemDisplay(ctx);
     }
+  } else if (ctx.mode === 'casual' && !ctx.tabManager?.hasAnyTabs()) {
+    // 通常モード (ADR-0015): ウェルカム画面を出さず、既定タブを 1 つ開いて即編集できるようにする。
+    await ctx.tabManager?.createTab('Untitled-1', 'c', '');
   }
 
   // タブがない場合はウェルカム画面を表示、ある場合は通常のエディタ表示

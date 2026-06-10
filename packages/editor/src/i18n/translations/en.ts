@@ -95,6 +95,7 @@ export const en: TranslationKeys = {
     newTab: 'New Tab',
     closeTab: 'Close',
     copyCode: 'Copy Code',
+    loadProblem: 'Load problem',
   },
 
   preview: {

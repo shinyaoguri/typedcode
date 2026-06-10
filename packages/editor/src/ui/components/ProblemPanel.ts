@@ -71,6 +71,12 @@ export class ProblemPanel {
     this.toggleBtn?.classList.toggle('active', this.isVisible);
   }
 
+  /** パネル見出しをモードに合わせて設定する (試験/授業/課題。ADR-0015)。 */
+  setTitle(text: string): void {
+    const el = document.getElementById('problem-panel-title');
+    if (el) el.textContent = text;
+  }
+
   /**
    * 問題本文 (Markdown) を設定する。`renderMarkdown` で sanitize 済み HTML に変換して表示する
    * (出題プレビューと同一レンダラ)。

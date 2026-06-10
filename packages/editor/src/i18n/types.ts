@@ -112,6 +112,7 @@ export interface TranslationKeys {
     newTab: string;
     closeTab: string;
     copyCode: string;
+    loadProblem: string;
   };
 
   // Browser preview panel

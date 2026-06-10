@@ -92,10 +92,18 @@ describe('capabilitiesFor', () => {
     expect(capabilitiesFor('assignment').screenshots).toBe(false);
   });
 
-  it('keeps assignment identical to casual apart from screenshots', () => {
+  it('keeps assignment like casual but with screenshots off and a problem panel (ADR-0015)', () => {
     const casual = capabilitiesFor('casual');
     const assignment = capabilitiesFor('assignment');
-    expect(assignment).toEqual({ ...casual, screenshots: false });
+    expect(assignment).toEqual({ ...casual, screenshots: false, problemPanel: true });
+  });
+
+  it('lets class and assignment load an unsealed problem (problemPanel without a seal)', () => {
+    for (const mode of ['class', 'assignment'] as const) {
+      const caps = capabilitiesFor(mode);
+      expect(caps.problemPanel).toBe(true);
+      expect(caps.sealedProblem).toBe(false);
+    }
   });
 
   it('gives class the problem panel without the sealed-problem crypto (ADR-0014)', () => {
