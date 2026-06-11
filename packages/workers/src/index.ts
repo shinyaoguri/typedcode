@@ -64,6 +64,36 @@ function isLocalhostOrigin(origin: string): boolean {
 }
 
 /**
+ * Turnstile siteverify が返す `hostname` を許可ドメインと照合する。
+ *
+ * Cloudflare は同一 sitekey/secret を使う別プロパティで解かれたトークンを弾くため、
+ * siteverify の hostname を検証することを推奨している。`ALLOWED_ORIGINS` の host 部分
+ * (CORS と同じ source of truth) と比較する。
+ * - `ALLOWED_ORIGINS` 未設定の環境では強制をスキップ (origin 制限は CORS が担うので
+ *   fail-open にはならない。development の localhost 等)。
+ * - 完全一致のほか `*.domain` は **1 段以上のサブドメイン** を要求 (CORS と同方針)。
+ */
+function isTurnstileHostnameAllowed(hostname: string, env: CorsEnv): boolean {
+  const allowed = parseAllowedOrigins(env);
+  if (allowed.length === 0) return true;
+  if (env.ENVIRONMENT === 'development' && /^(localhost|127\.0\.0\.1)$/.test(hostname)) {
+    return true;
+  }
+  for (const pattern of allowed) {
+    const m = /^https?:\/\/(.+)$/.exec(pattern);
+    if (!m) continue;
+    const host = m[1]!.replace(/:\d+$/, ''); // ポートを除去
+    if (host.startsWith('*.')) {
+      const base = host.slice(2);
+      if (hostname.length > base.length + 1 && hostname.endsWith(`.${base}`)) return true;
+    } else if (hostname === host) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Origin を許可パターンと照合する。完全一致のほか、`https://*.example.com`
  * 形式のサブドメイン wildcard に対応する。
  *
@@ -204,6 +234,16 @@ async function verifyTurnstile(
     }),
   });
 
+  // siteverify が非 200 / HTML を返したケースを成功と誤判定しない (汎用 500 への fall-through 防止)。
+  if (!response.ok) {
+    return {
+      success: false,
+      challenge_ts: '',
+      hostname: '',
+      'error-codes': ['siteverify-http-error'],
+    };
+  }
+
   return response.json();
 }
 
@@ -263,7 +303,16 @@ async function handleVerifyCaptcha(
     }
 
     const result = await verifyTurnstile(token, env.TURNSTILE_SECRET_KEY);
-    const isVerified = result.success;
+    // siteverify 成功でも、解かれた hostname が許可ドメインでなければ拒否する
+    // (同一 sitekey を使う別プロパティで解かれたトークンの流用を防ぐ)。
+    // action はアプリ定義で多様 (create_tab / export_proof 等) なため allowlist 強制はしない
+    // (attestation に記録はするが、proof 検証側でも信頼の主軸ではない)。
+    const hostnameOk = isTurnstileHostnameAllowed(result.hostname, env);
+    const isVerified = result.success && hostnameOk;
+
+    if (result.success && !hostnameOk) {
+      console.warn('[verify-captcha] Turnstile solved on disallowed hostname:', result.hostname);
+    }
 
     // 署名付き証明書を生成（検証成功時のみ）
     let attestation: HumanAttestation | undefined;
@@ -274,9 +323,11 @@ async function handleVerifyCaptcha(
     const response: VerifyResponse = {
       success: isVerified,
       score: isVerified ? 1.0 : 0,
-      message: result.success
+      message: isVerified
         ? 'Verified'
-        : `Verification failed: ${result['error-codes']?.join(', ') ?? 'Unknown error'}`,
+        : !result.success
+          ? `Verification failed: ${result['error-codes']?.join(', ') ?? 'Unknown error'}`
+          : 'Verification failed: hostname not allowed',
       attestation,
     };
 

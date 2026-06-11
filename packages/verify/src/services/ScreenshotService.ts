@@ -24,7 +24,13 @@ export class ScreenshotService {
    */
   async loadFromZip(
     zip: JSZip,
-    manifest: ScreenshotManifest
+    manifest: ScreenshotManifest,
+    /**
+     * 検証済みチェーンが記録した screenshotCapture の imageHash 集合 (全 proof 横断)。
+     * 与えると、manifest だけが指す (チェーンに無い) ハッシュを改ざんとして検出する。
+     * manifest と画像は未署名なのでセットで差し替え可能 — 改ざん不能なチェーンが唯一の真正記録。
+     */
+    chainImageHashes?: ReadonlySet<string>
   ): Promise<VerifyScreenshot[]> {
     const screenshots: VerifyScreenshot[] = [];
 
@@ -43,9 +49,10 @@ export class ScreenshotService {
         try {
           const blob = await imageFile.async('blob');
 
-          // ハッシュ検証
+          // ハッシュ検証: 画像とハッシュが一致しても、そのハッシュがチェーンに無ければ
+          // manifest+画像が揃って差し替えられた疑い (manifest は未署名・チェーンは改ざん不能)。
           const verified = await this.verifyImageHash(blob, entry.imageHash);
-          const tampered = !verified; // ファイルは存在するがハッシュ不一致 = 改竄の可能性
+          const tampered = !verified || !this.isChainBacked(entry.imageHash, chainImageHashes);
           console.log(`[ScreenshotService] Image ${entry.filename}: verified=${verified}, tampered=${tampered}`);
 
           // ユニークIDとしてマニフェストのindexを使用（eventSequenceは重複の可能性あり）
@@ -112,7 +119,9 @@ export class ScreenshotService {
    */
   async loadFromFolder(
     screenshotsFolderHandle: FileSystemDirectoryHandle,
-    manifest: ScreenshotManifest
+    manifest: ScreenshotManifest,
+    /** loadFromZip と同じ。検証済みチェーンが記録した imageHash 集合 (任意)。 */
+    chainImageHashes?: ReadonlySet<string>
   ): Promise<VerifyScreenshot[]> {
     const screenshots: VerifyScreenshot[] = [];
 
@@ -124,9 +133,9 @@ export class ScreenshotService {
         const file = await fileHandle.getFile();
         const blob = new Blob([await file.arrayBuffer()], { type: file.type });
 
-        // ハッシュ検証
+        // ハッシュ検証 (チェーン突合は loadFromZip と同じ。集合未提供時は従来どおり画像照合のみ)
         const verified = await this.verifyImageHash(blob, entry.imageHash);
-        const tampered = !verified;
+        const tampered = !verified || !this.isChainBacked(entry.imageHash, chainImageHashes);
         console.log(`[ScreenshotService] Image ${entry.filename}: verified=${verified}, tampered=${tampered}`);
 
         const screenshot: VerifyScreenshot = {
@@ -220,6 +229,15 @@ export class ScreenshotService {
         screenshot.imageUrl = URL.createObjectURL(screenshot.imageBlob);
       }
     }
+  }
+
+  /**
+   * entry の imageHash が検証済みチェーンに記録されているか。集合が未提供 or 空 (旧 proof /
+   * screenshotCapture イベントを持たない proof 等) なら対象外とみなし true を返す (false-positive 回避)。
+   */
+  private isChainBacked(imageHash: string, chainImageHashes?: ReadonlySet<string>): boolean {
+    if (!chainImageHashes || chainImageHashes.size === 0) return true;
+    return chainImageHashes.has(imageHash);
   }
 
   /**

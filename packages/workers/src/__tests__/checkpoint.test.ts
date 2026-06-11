@@ -268,6 +268,20 @@ describe('handleSignCheckpoint', () => {
     expect(body.code).toBe('SCHEMA_INVALID');
   });
 
+  it('rejects an oversized body even when Content-Length is understated (real-byte guard)', async () => {
+    // Content-Length を小さく詐称しても、実バイト長で上限を強制する。
+    const oversized = JSON.stringify({ ...makeInput(), pad: 'x'.repeat(9000) });
+    const req = new Request('https://workers.test/api/checkpoint/sign', {
+      method: 'POST',
+      body: oversized,
+      headers: { 'Content-Type': 'application/json', 'Content-Length': '10' },
+    });
+    const res = await handleSignCheckpoint(req, env, responder);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ErrorResponseBody;
+    expect(body.code).toBe('SCHEMA_INVALID');
+  });
+
   it('returns SESSION_LIMIT_EXCEEDED when signedCount is at cap', async () => {
     // signedCount を上限に達した状態で事前注入
     kv.store.set(

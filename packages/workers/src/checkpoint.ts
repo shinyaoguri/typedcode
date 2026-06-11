@@ -118,7 +118,7 @@ export async function handleSignCheckpoint(
   env: CheckpointEnv,
   responder: CorsResponder
 ): Promise<Response> {
-  // body サイズ上限: Content-Length があればパース前に弾く (巨大 body の DoS 対策)
+  // body サイズ上限: まず Content-Length があればパース前に弾く (巨大 body の DoS 対策)。
   const contentLength = Number(request.headers.get('Content-Length') ?? '');
   if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
     return jsonResponse(
@@ -128,9 +128,29 @@ export async function handleSignCheckpoint(
     );
   }
 
+  // 本文を読み、Content-Length が欠落/詐称/chunked でも **実バイト長** で上限を強制する。
+  // (Number('') === 0 や NaN で上の事前チェックを擦り抜けるケースの保険。)
+  let bodyText: string;
+  try {
+    bodyText = await request.text();
+  } catch {
+    return jsonResponse(
+      { error: 'Invalid request body', code: 'SCHEMA_INVALID' } satisfies ErrorBody,
+      400,
+      responder.cors()
+    );
+  }
+  if (new TextEncoder().encode(bodyText).length > MAX_BODY_BYTES) {
+    return jsonResponse(
+      { error: `Request body exceeds ${MAX_BODY_BYTES} bytes`, code: 'SCHEMA_INVALID' } satisfies ErrorBody,
+      400,
+      responder.cors()
+    );
+  }
+
   let parsed: unknown;
   try {
-    parsed = await request.json();
+    parsed = JSON.parse(bodyText);
   } catch {
     return jsonResponse(
       { error: 'Invalid JSON body', code: 'SCHEMA_INVALID' } satisfies ErrorBody,
@@ -155,9 +175,12 @@ export async function handleSignCheckpoint(
     signer = await getSigningKey(env);
   } catch (err) {
     const code = (err as { code?: ErrorBody['code'] }).code ?? 'SIGNING_ERROR';
+    // 内部例外メッセージ (keyId / JWK パーサのテキスト等) はクライアントに返さず、
+    // 固定文言を返す。詳細はサーバログにのみ出す。
+    console.error('[checkpoint] signing key resolution failed:', err);
     return jsonResponse(
-      { error: err instanceof Error ? err.message : String(err), code } satisfies ErrorBody,
-      code === 'SIGNING_KEY_NOT_CONFIGURED' || code === 'SIGNING_KEY_UNKNOWN' ? 500 : 500,
+      { error: 'Signing key is not available', code } satisfies ErrorBody,
+      500,
       responder.cors()
     );
   }
@@ -230,11 +253,10 @@ export async function handleSignCheckpoint(
       { keyId: signer.keyId, privateKey: signer.key }
     );
   } catch (err) {
+    // 内部例外メッセージはクライアントに返さず固定文言にする。詳細はサーバログのみ。
+    console.error('[checkpoint] signing failed:', err);
     return jsonResponse(
-      {
-        error: err instanceof Error ? err.message : String(err),
-        code: 'SIGNING_ERROR',
-      } satisfies ErrorBody,
+      { error: 'Failed to sign checkpoint', code: 'SIGNING_ERROR' } satisfies ErrorBody,
       500,
       responder.cors()
     );
