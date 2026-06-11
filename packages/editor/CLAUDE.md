@@ -14,7 +14,7 @@
 3. **`SignedCheckpointService` は単一フライト**: 並列 `flush()` を許すと同一 cp の二重署名で `previousSignedCheckpointHash` チェーンが破綻する ([docs/adr/0003-idempotent-signing-retry.md](../../docs/adr/0003-idempotent-signing-retry.md))
 4. **`InputDetector` の paste 検出**: `SessionContentRegistry` と照合して `insertFromPaste` (禁止) と `insertFromInternalPaste` (許可) を分ける。この判定がピュアタイピング判定の入口
 5. **IndexedDB の書き込みは逐次**: イベント記録順序が崩れると復元時のチェーンが壊れる
-6. **エクスポート前 attestation**: `ProofExporter.export` は Turnstile 検証 (`performPreExportAttestation`) を **必ず** 通す。バイパスしない
+6. **エクスポート前 attestation**: `ProofExporter` の export (`exportCurrentTab` / `exportAllTabsAsZip`) は Turnstile 検証 (`performPreExportVerification` / `…ForAllTabs`) を通す。ただし **exam/class/assignment は `preExportBestEffort=true`** (capabilities) で、Turnstile 不達/失敗でも失敗 attestation を記録して提出 ZIP を出す (ADR-0006/0011。教室の不安定網で受験者を締め出さない)。casual は従来どおりブロックする
 
 ## ディレクトリ一覧
 
@@ -49,7 +49,7 @@ User Action
 
 ```
 ProofExporter.export()
-  → performPreExportAttestation() (Turnstile)
+  → performPreExportVerification() (Turnstile。exam/class/assignment は best-effort)
   → getProofData() → ScreenshotTracker.getAllScreenshots()
   → JSZip → ダウンロード
 ```
@@ -69,5 +69,5 @@ ProofExporter.export()
 ## i18n
 
 - `src/i18n/translations/{ja,en}.ts` に翻訳を追加
-- `src/i18n/types.ts` の `EditorTranslationKeys` に **必ず** 同じキーを追加 (型エラーで漏れを検出)
+- `src/i18n/types.ts` の `TranslationKeys` に **必ず** 同じキーを追加 (宣言済みセクション内のキーは型エラーで漏れを検出。ただし index signature があるため**新規トップレベルセクション**の追加漏れは型では拾えない点に注意)
 - ロケール検出: localStorage → ブラウザ言語 → `ja`

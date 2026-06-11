@@ -51,9 +51,12 @@ npm run build:editor
 npm run build:verify
 npm run build:verify-cli
 
-# テスト (shared のみテストあり)
-npm run test -w @typedcode/shared
+# テスト (shared / workers / editor にテストあり。verify / verify-cli は未整備)
+npm run test:run -w @typedcode/shared
+npm run test:run -w @typedcode/workers
+npm run test:run -w @typedcode/editor
 npm run test:coverage -w @typedcode/shared
+# 注: CI が回すのは shared / workers (editor のテストは CI 未組込み)
 ```
 
 ## ドキュメント階層

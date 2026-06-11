@@ -1,9 +1,9 @@
 # ADR-0014: 授業モードは平文 `.tcclass` で問題を配布し、受動的に fullscreen を記録する (tier ①)
 
-- **Status**: Proposed
+- **Status**: Accepted (実装済み・develop マージ済み)
 - **Date**: 2026-06-09
 - **Deciders**: (PR 上の合意者 / レビュアー)
-- **PR / Commit**: (このPR)
+- **PR / Commit**: PR #97 (feat/class-mode-capabilities)
 
 ## Context
 

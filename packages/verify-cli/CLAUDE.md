@@ -16,7 +16,8 @@
 
 1. **`shared` の検証ロジックを再実装しない**: バグや暗号アルゴリズムの修正は shared 側で行う。CLI 側で差分があると 「Web で OK / CLI で NG」 のような不整合事故が起きる
 2. **終了コード**: 0 = 成功、1 = 失敗 / エラー。これが CI で利用されるので変えない
-3. **stdout は人間向け、stderr はエラーログ**: パイプして grep される可能性を考慮
+3. **ZIP 内の proof は全件検証する**: exam/class はタブ毎に独立した `<name>_proof.json` を N 個出力するので、`shared` の `extractAllProofsFromZip` で全件を取り出し、**1 件でも fail なら exit 1**。最初の 1 件だけ見ると未検証タブが exit 0 で通る (proof 判定は構造 `isProofFile` で、ファイル名順や `screenshots/manifest.json` に依存しない)
+4. **stdout は人間向け、stderr はエラーログ**: パイプして grep される可能性を考慮
 
 ## ファイル構成
 
