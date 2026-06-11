@@ -164,6 +164,7 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
               coverageRatio: 0,
             },
             temporal: verificationResult.signedCheckpointTemporal ?? null,
+            density: verificationResult.signedCheckpointDensity ?? null,
             reason: verificationResult.signedCheckpointReason,
             report: verificationResult.signedCheckpointReport,
           }

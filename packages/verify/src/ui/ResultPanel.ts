@@ -45,6 +45,8 @@ export interface ResultData {
     valid: boolean;
     coverage: SignedCheckpointsVerificationResult['coverage'];
     temporal: SignedCheckpointsVerificationResult['temporal'];
+    /** anchoring 密度メトリクス (ADR-0016)。sparse なら警告行に出す。 */
+    density: SignedCheckpointsVerificationResult['density'];
     reason?: string;
     /** 「展開時の根拠」表示用の追加情報 */
     report?: SignedCheckpointReport;
@@ -722,20 +724,23 @@ export class ResultPanel {
     this.anchoringCoverage.textContent = `${sc.coverage.signedCount} (${pct}%)`;
     this.anchoringReasonRow.style.display = 'none';
 
+    // 警告行は post-hoc 疑いと anchoring 密度 (ADR-0016) の両方を集約する (どちらも valid のまま出る)。
+    const warnings: string[] = [];
     if (sc.temporal) {
       this.anchoringTemporalRow.style.display = 'flex';
       const serverMin = Math.round(sc.temporal.serverSpanMs / 60000);
       const clientMin = Math.round(sc.temporal.clientSpanMs / 60000);
       const ratioStr = sc.temporal.ratio !== null ? sc.temporal.ratio.toFixed(2) : 'n/a';
       this.anchoringTemporal.textContent = `${ratioStr} (server ${serverMin}min / client ${clientMin}min)`;
-      if (sc.temporal.postHocSuspected) {
-        this.anchoringWarningRow.style.display = 'flex';
-        this.anchoringWarning.textContent = t('result.anchoringPostHoc');
-      } else {
-        this.anchoringWarningRow.style.display = 'none';
-      }
+      if (sc.temporal.postHocSuspected) warnings.push(t('result.anchoringPostHoc'));
     } else {
       this.anchoringTemporalRow.style.display = 'none';
+    }
+    if (sc.density?.sparse) warnings.push(t('result.anchoringSparse'));
+    if (warnings.length > 0) {
+      this.anchoringWarningRow.style.display = 'flex';
+      this.anchoringWarning.textContent = warnings.join(' / ');
+    } else {
       this.anchoringWarningRow.style.display = 'none';
     }
 

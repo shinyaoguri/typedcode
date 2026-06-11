@@ -138,12 +138,23 @@ export class TrustCalculator {
           severity: 'warning',
           message: '時刻アンカー（署名チェックポイント）がありません',
         });
-      } else if (verificationResult.signedCheckpointTemporal?.postHocSuspected) {
-        issues.push({
-          component: 'anchoring',
-          severity: 'warning',
-          message: 'post-hoc 一括署名の疑いがあります（サーバ時刻が申告時間より極端に短い）',
-        });
+      } else {
+        // anchored かつ valid。補助的な疑い指標（post-hoc / 密度）は併存しうるので個別に積む。
+        if (verificationResult.signedCheckpointTemporal?.postHocSuspected) {
+          issues.push({
+            component: 'anchoring',
+            severity: 'warning',
+            message: 'post-hoc 一括署名の疑いがあります（サーバ時刻が申告時間より極端に短い）',
+          });
+        }
+        // ADR-0016: 署名 cp が主張イベント数/時間に対して疎（末尾 1 個で長い鎖をアンカー等）。
+        if (verificationResult.signedCheckpointDensity?.sparse) {
+          issues.push({
+            component: 'anchoring',
+            severity: 'warning',
+            message: 'アンカー密度が疎です（署名チェックポイントが申告セッションに対し少ない/遅い）',
+          });
+        }
       }
     }
 

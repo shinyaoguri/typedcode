@@ -480,11 +480,24 @@ interface ExamProofBlock {
   - `clientSpan = lastClientTimestamp - firstClientTimestamp`
   - `ratio = serverSpan / clientSpan`
   - `ratio < 0.1` または `serverSpan < 60s` かつ `clientSpan > 600s` の時、**post-hoc batch signing 疑い** フラグ
+- アンカー密度分析 (ADR-0016、warning レベル / 任意で strict-fail):
+  - `coverageRatio` (= 最終署名 cp の eventIndex / 全 event 数) は **末尾 1 点でも 1.0** になり薄いアンカーを見逃すため、
+    署名 cp が指す **eventIndex / serverTimestamp のギャップ**を別途見る。
+  - `maxGapEvents` = 連続署名 cp 間の eventIndex 最大ギャップ (先頭=event0 境界 / 末尾=最終 event 境界 を含む)。
+    末尾 1 点なら先頭ギャップ大、先頭 1 点なら末尾ギャップ大で、どちらの偏りも捕捉する。
+  - `maxGapServerMs` = 連続署名 cp 間 serverTimestamp の最大ギャップ (先頭は firstSeenAt 起点)。
+  - `firstAnchorLatencyEvents` = 最初の署名 cp までの未アンカー event 数。
+  - `firstAnchorLatencyServerMs` = firstSeenAt → 初アンカーの ms。現アーキでは構造的に ~0 (session/start アンカー = ADR-0017 で意味化)。計測のみで gate には使わない。
+  - **疎判定 `sparse`**: `maxGapEvents > 500` または `maxGapServerMs > 50s` または `firstAnchorLatencyEvents > 500`
+    (= ハイブリッドトリガ 100 events / 10,000 ms の 5 倍。保守的な置きで実ログ調整待ち)。
+  - 既定は **warning のみ** (valid は true)。`requireAnchorDensity` opt-in (exam/採点) のとき `sparse` で `valid=false`。
+    `signedCount === 0` (未アンカー) は対象外 = `density=null` で、ADR-0004「未アンカーは valid のまま」を維持。
 
 ### 6.3. 検証成功判定
 
 - `verifyProofFile` 全レイヤを `&&` で組み合わせる
 - 署名済み checkpoint は `anchored=true` のとき必須レイヤ。`anchored=false` (旧 proof など) では他レイヤで成立すれば valid
+- **アンカー密度 (ADR-0016)** は既定 warning。`requireAnchorDensity` (verify-cli の `--require-anchor-density` 等) を渡したときのみ `sparse` を signed checkpoint レイヤの fail に合流させる (exam/採点で opt-in)
 - レイヤ間優先順位: metadata → chain → finalHash → checkpoint → content → signedCheckpoint
 - いずれかが false なら、エラー位置 (event index) とメッセージを返す
 
@@ -642,6 +655,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **firstSeenAt** | サーバが initial に sessionId を見た時刻。KV 由来で不変 |
 | **anchored** | proof に signed checkpoint が 1 つ以上含まれている状態 |
 | **post-hoc batch signing** | proof 完成後に複数 envelope を短時間で一括取得する攻撃。temporal ratio で検出試行 |
+| **anchor density / sparse (ADR-0016)** | 署名 cp が主張イベント数/時間に対し十分密かを見る指標。`maxGapEvents>500` / `maxGapServerMs>50s` / `firstAnchorLatencyEvents>500` で `sparse`。末尾 1 点アンカー (coverageRatio=1.0 でも疎) を検出。既定 warning、`requireAnchorDensity` で strict-fail |
 | **(試験) 試験モード** | URL パス `/exam` で入る anti-AI-cheating モード (ADR-0011 でモードを path 分岐化、旧 `?exam=1` sticky を置換)。封印問題 + 監督コード + チェーン根束縛。ADR-0006〜0011 |
 | **モード (casual/class/assignment/exam)** | URL パスで確定する動作モード (ADR-0011/0015)。`/casual` `/class` `/assignment` `/exam`。能力 (スクショ/封印/フルスクリーン等) と storage 名前空間がモード別。proof に自己申告 `mode` を記録 |
 | **ランディング / `/`** | ルート `/` と未知パスはモード選択の入口 (ADR-0015)。4モードを**比較カード**で横並びに見せ能力差を一覧化、`/<mode>` へ遷移。エディタは初期化せず DOM のみ描画。進行中セッションは「続きから (N)」バッジで表示 (`SessionDetector`、空 DB を作らない read-only 検出)。タイポ (`/exsm` 等) を黙って casual にせず入口へ落とす |
@@ -708,3 +722,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-06-07 | 試験モード (ADR-0006, PR1–4) | 封印問題パッケージ (`.tcexam`, Argon2id + AES-256-GCM + ECDSA-P256) + 監督コードによるチェーン根束縛。`PROOF_FORMAT_VERSION` 1.0.0→1.1.0、`proof.exam` ブロック、`examOpened` イベント、`examAuthorityKeys` レジストリ、`verifyExamBinding` を verify-cli / verify(web) に配線。本仕様に「試験モード」(§4.7) + 検証 (§6.4) を反映 |
 | 2026-06-09 | 授業モード (ADR-0014) | 平文 `.tcclass` (`tcclass/1`、暗号・署名なし) で問題を配布し `/class` で表示 + N タブ展開 (tier ① 自己申告、root 束縛なし)。受動的 fullscreen 記録 (要求バナーなし)。`/author` に未封印 `.tcclass` 生成を追加。proof 互換 (`PROOF_FORMAT_VERSION` 据え置き)。本仕様に「授業モード」(§4.8) を反映 |
 | 2026-06-09 | 導線整理 (ADR-0015) | ルート `/` をモード選択ランディングに (`/casual` を明示ルート化、未知パスも入口へ → 黙 casual 事故を解消)。**4モードの比較カード** + 進行中セッションバッジ (`SessionDetector`) + **エディタ内モード切替ピル** (`ModeSwitcher`)。casual は利用規約モーダルなし + 画面共有オプトイン (既定オフ)、Turnstile `#0` 維持、表示名を「練習/Demo」に (id/ルートは不変)。`resolveRoute` / 能力 `promptScreenShareAtStart` を追加。proof 整合は不変 |
+| 2026-06-12 | アンカー密度 (ADR-0016, Phase 7-B) | 署名 cp の **アンカー密度**を検証器のメトリクス化 (`SignedCheckpointsVerificationResult.density`)。`maxGapEvents` / `maxGapServerMs` / `firstAnchorLatency*` を計量し、保守的閾値 (cadence×5) 超で `sparse`。末尾 1 点アンカー (coverageRatio=1.0 でも偽造可) を検出。既定 warning、verify-cli `--require-anchor-density` で strict-fail。**非破壊** (proof フォーマット不変)。§6.2/§6.3/§10 を反映 |

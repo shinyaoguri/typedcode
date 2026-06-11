@@ -274,6 +274,7 @@ async function verify(request: VerifyRequest): Promise<void> {
         details: [],
         coverage: { signedCount: 0, lastSignedEventIndex: null, coverageRatio: 0 },
         temporal: null,
+        density: null,
         reason: `Signed checkpoint verification threw: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
@@ -362,6 +363,7 @@ async function verify(request: VerifyRequest): Promise<void> {
       signedCheckpointAnchored: signedCheckpointResult.anchored,
       signedCheckpointCoverage: signedCheckpointResult.coverage,
       signedCheckpointTemporal: signedCheckpointResult.temporal,
+      signedCheckpointDensity: signedCheckpointResult.density,
       signedCheckpointReason: signedCheckpointResult.reason,
       signedCheckpointReport,
       exam: examResult,

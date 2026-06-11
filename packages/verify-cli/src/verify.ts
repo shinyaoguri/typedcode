@@ -64,6 +64,8 @@ export interface VerifyProofOptions {
   examPackageManifest?: ExamPackageManifest;
   /** Moodle 提出時刻 (epoch ms, 任意)。time-box の withinWindow 判定に使う。 */
   submittedAtMs?: number;
+  /** anchoring 密度 gate (ADR-0016)。true で密度が疎な proof を fail させる (採点 opt-in)。 */
+  requireAnchorDensity?: boolean;
 }
 
 export async function verifyProof(
@@ -84,7 +86,10 @@ export async function verifyProof(
   };
 
   // Run verification using shared utilities
-  const result = await verifyProofFile(proof, onProgress, { mode });
+  const result = await verifyProofFile(proof, onProgress, {
+    mode,
+    requireAnchorDensity: options.requireAnchorDensity,
+  });
 
   progressBar.complete();
 

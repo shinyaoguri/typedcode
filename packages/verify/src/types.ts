@@ -100,6 +100,8 @@ export interface VerificationResultData {
   signedCheckpointValid?: boolean;
   signedCheckpointCoverage?: SignedCheckpointsVerificationResult['coverage'];
   signedCheckpointTemporal?: SignedCheckpointsVerificationResult['temporal'];
+  /** anchoring 密度メトリクス (ADR-0016)。疎なら sparse=true で warning 表示の根拠になる。 */
+  signedCheckpointDensity?: SignedCheckpointsVerificationResult['density'];
   signedCheckpointReason?: string;
   signedCheckpointAnchored?: boolean;
   /**

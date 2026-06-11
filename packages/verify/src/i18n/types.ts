@@ -111,6 +111,7 @@ export interface VerifyTranslationKeys {
     anchoringUnavailable: string;
     anchoringNone: string;
     anchoringPostHoc: string;
+    anchoringSparse: string;
     // 詳細展開セクション
     anchoringDetailsToggle: string;
     anchoringSectionKeys: string;

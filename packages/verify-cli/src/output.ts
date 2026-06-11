@@ -163,6 +163,16 @@ export function formatResult(result: VerificationOutput): string {
       if (sc.temporal?.postHocSuspected) {
         lines.push(c('yellow', '  ! Post-hoc batch signing suspected (server span << client span)'));
       }
+      // anchoring 密度 (ADR-0016): 主張イベント数/時間に対する署名 cp の間隔。
+      if (sc.density) {
+        const gapServerSec = (sc.density.maxGapServerMs / 1000).toFixed(0);
+        lines.push(
+          c('dim', `  Density: max gap ${sc.density.maxGapEvents} events / ${gapServerSec}s, first anchor @ event ${sc.density.firstAnchorEventIndex}`)
+        );
+        if (sc.density.sparse) {
+          lines.push(c('yellow', '  ! Anchoring is sparse for the claimed session (few/late signed checkpoints)'));
+        }
+      }
       if (sc.details.some((d) => d.warning === 'key-revoked-but-trusted-by-time')) {
         lines.push(c('yellow', '  ! Some envelopes signed with a key that was later revoked'));
       }
@@ -215,6 +225,7 @@ ${c('bold', 'typedcode-verify')} - Verify TypedCode proof files
 ${c('cyan', 'Usage:')}
   typedcode-verify <file.json|file.zip> [--mode <fast|audit|full>]
                    [--exam-package <file.tcexam>] [--submitted-at <ISO>]
+                   [--require-anchor-density]
 
 ${c('cyan', 'Arguments:')}
   file    Path to proof file (.json) or exported archive (.zip)
@@ -229,6 +240,10 @@ ${c('cyan', 'Options:')}
                    Without it, only the self-contained exam root binding is checked.
   --submitted-at   Exam mode: submission timestamp (ISO 8601, e.g. Moodle submit time)
                    to evaluate the [releaseTime, deadline] time-box.
+  --require-anchor-density
+                   Fail (exit 1) when signed checkpoints are too sparse for the claimed
+                   session (ADR-0016) — e.g. a single end checkpoint anchoring a long
+                   chain. Off by default (sparse anchoring is only a warning).
 
 ${c('cyan', 'Examples:')}
   typedcode-verify proof.json

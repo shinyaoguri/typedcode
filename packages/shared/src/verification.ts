@@ -68,6 +68,12 @@ export interface VerifyProofFileOptions {
   mode?: VerificationMode;
   /** 公開鍵レジストリ (テスト/CLI から注入) */
   signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
+  /**
+   * anchoring 密度 gate (ADR-0016)。true のとき、署名 cp が「主張したイベント数 / 時間」に対して
+   * 疎すぎる proof を signed checkpoint 検証で fail させる (signedCheckpointBlocks 経由で全体 invalid)。
+   * 既定 false = 密度は計測のみ (warning は呼び出し側が表示)。exam / 採点ポリシーで opt-in する。
+   */
+  requireAnchorDensity?: boolean;
 }
 
 /**
@@ -721,6 +727,7 @@ export async function verifyProofFile(
   // 3. Verify signed checkpoints (mode independent; only affects "anchored" axis)
   const signedCheckpointResult = await verifyProofSignedCheckpoints(proof, {
     registry: options.signedCheckpointKeyRegistry,
+    requireAnchorDensity: options.requireAnchorDensity,
   });
 
   const verificationError = !metadataValid

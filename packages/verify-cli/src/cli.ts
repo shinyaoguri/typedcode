@@ -66,6 +66,9 @@ async function main(): Promise<void> {
   const filePath = resolve(positional[0]!);
   const ext = extname(filePath).toLowerCase();
 
+  // anchoring 密度 gate (ADR-0016): boolean フラグ。指定すると密度が疎な proof を fail させる。
+  const requireAnchorDensity = args.includes('--require-anchor-density');
+
   // 試験モード (ADR-0006): 任意の問題パッケージ + 提出時刻
   const examPackagePath = flagValue(args, '--exam-package');
   const submittedAtRaw = flagValue(args, '--submitted-at');
@@ -123,7 +126,7 @@ async function main(): Promise<void> {
     const summary: Array<{ filename: string; valid: boolean }> = [];
     for (const { filename, proof } of proofs) {
       if (multi) console.log(`\n=== ${filename} ===`);
-      const result = await verifyProof(proof, { mode, examPackageManifest, submittedAtMs });
+      const result = await verifyProof(proof, { mode, examPackageManifest, submittedAtMs, requireAnchorDensity });
       console.log(formatResult(result));
       summary.push({ filename, valid: result.valid });
     }

@@ -38,6 +38,16 @@ const POST_HOC_RATIO_THRESHOLD = 0.1;
 const POST_HOC_MIN_SERVER_SPAN_MS = 60 * 1000;
 const POST_HOC_MIN_CLIENT_SPAN_MS = 10 * 60 * 1000;
 
+// --- ADR-0016: anchoring 密度の保守的閾値 ---
+// cadence は CheckpointManager のハイブリッドトリガ (100 events OR 10,000 ms) に同期させる。
+// 正規セッションでは時間トリガにより署名 cp が最大でも ~100 events / ~10s 間隔で打たれるはずなので、
+// その 5 倍を「疎」と判定する保守的下限に採る。5 倍未満のギャップは正規の signing 失敗 (ネットワーク瞬断)
+// と区別しにくいため罰さない。閾値はサンプルログが無い現状の安全側の置きで、実ログ収集後に要調整。
+// TODO(ADR-0016): tune MAX_ANCHOR_GAP_* with real session logs.
+const MAX_ANCHOR_GAP_EVENTS = 5 * 100; // 500 events
+const MAX_ANCHOR_GAP_SERVER_MS = 5 * 10_000; // 50s
+const MAX_FIRST_ANCHOR_LATENCY_EVENTS = 500; // events before the first signed checkpoint
+
 /** SHA-256 を hex 文字列で表したときの正規表現 (64 桁の小文字 hex) */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** sessionId / tabId の許容最大長 (UUID 等で十分。署名 API の濫用対策) */
@@ -352,6 +362,13 @@ export async function verifyCheckpointSignature(
 
 interface VerifySignedCheckpointsOptions {
   registry?: readonly CheckpointPublicKey[];
+  /**
+   * true のとき anchoring 密度が保守的閾値を下回る (density.sparse) 場合に valid=false にする (ADR-0016)。
+   * 既定 false = density は計測のみで、warning 表示は呼び出し側の責務。exam / 採点ポリシーで opt-in する。
+   * 未アンカー (anchored=false) のときは density=null なので、この gate は影響しない
+   * (ADR-0004「未アンカーは valid のまま」を維持する)。
+   */
+  requireAnchorDensity?: boolean;
 }
 
 /**
@@ -384,6 +401,7 @@ export async function verifySignedCheckpoints(
     details: [],
     coverage: { signedCount: 0, lastSignedEventIndex: null, coverageRatio: 0 },
     temporal: null,
+    density: null,
   };
 
   if (signedCheckpoints.length === 0) {
@@ -417,6 +435,7 @@ export async function verifySignedCheckpoints(
       details,
       coverage: computeCoverage(events, signedCheckpoints),
       temporal: computeTemporal(firstClientTs, lastClientTs, firstServerTs, lastServerTs),
+      density: computeDensity(events, signedCheckpoints),
       valid: false,
       reason,
       errorAt,
@@ -613,12 +632,32 @@ export async function verifySignedCheckpoints(
     previousServerTimestamp = serverTs;
   }
 
+  const density = computeDensity(events, signedCheckpoints);
+  const coverage = computeCoverage(events, signedCheckpoints);
+  const temporal = computeTemporal(firstClientTs, lastClientTs, firstServerTs, lastServerTs);
+
+  // 全 envelope は署名・連鎖整合とも合格。ここで anchoring 密度 gate を任意適用する (ADR-0016)。
+  // strict (exam/採点で opt-in) のときだけ、疎な anchoring を valid=false に落とす。
+  // 既定は valid=true のまま density を返し、呼び出し側が warning として表示する。
+  if (options.requireAnchorDensity && density?.sparse) {
+    return {
+      valid: false,
+      anchored: true,
+      details,
+      coverage,
+      temporal,
+      density,
+      reason: 'Signed checkpoint anchoring is too sparse for the claimed session (density gate)',
+    };
+  }
+
   return {
     valid: true,
     anchored: true,
     details,
-    coverage: computeCoverage(events, signedCheckpoints),
-    temporal: computeTemporal(firstClientTs, lastClientTs, firstServerTs, lastServerTs),
+    coverage,
+    temporal,
+    density,
   };
 }
 
@@ -634,6 +673,88 @@ function computeCoverage(
   const total = events.length;
   const coverageRatio = total > 0 ? Math.min(1, (lastSignedEventIndex + 1) / total) : 0;
   return { signedCount, lastSignedEventIndex, coverageRatio };
+}
+
+/**
+ * anchoring 密度 (ADR-0016) を計量する。
+ *
+ * 「末尾 1 個の署名 cp で長いチェーンをアンカー済みに見せる」手口は coverageRatio / postHoc では
+ * 捕まらない (単一 cp は coverageRatio 最大 1.0・postHocSuspected=false)。そこで署名 cp が指す
+ * eventIndex / serverTimestamp の **間隔** を見る。
+ *
+ * - event ギャップ: 先頭 (event0 → 初アンカー) / 連続アンカー間 / 末尾 (最終アンカー → 最終 event)。
+ *   単一末尾 cp は先頭ギャップが、単一先頭 cp は末尾ギャップが大きくなり、どちらの偏りも検出できる。
+ * - server ギャップ: 先頭 (firstSeenAt → 初アンカー、現状 ~0) / 連続アンカー間。
+ *   末尾は最終 event のサーバ時刻が無いため評価しない (event ギャップでカバーする)。
+ *
+ * 誤検知回避: signedCount===0 は対象外 (null を返す)。閾値は cadence の 5 倍に置き、短い正規
+ * セッション (例 50 events / 数分) は時間トリガで密に打たれるため sparse にならない。
+ */
+function computeDensity(
+  events: StoredEvent[],
+  signedCheckpoints: Array<CheckpointData & { signature: SignedCheckpointEnvelope }>
+): SignedCheckpointsVerificationResult['density'] {
+  if (signedCheckpoints.length === 0) return null;
+
+  // 署名 cp の (eventIndex, serverTimestamp) を eventIndex 昇順で取り出す。
+  // 成功パスでは検証器が厳密増加を保証済みだが、fail パスからも呼ばれるため防御的にソートする。
+  const anchors = signedCheckpoints
+    .map((cp) => ({
+      eventIndex: cp.signature.payload.eventIndex,
+      serverMs: Date.parse(cp.signature.payload.serverTimestamp),
+    }))
+    .filter((a) => Number.isInteger(a.eventIndex) && a.eventIndex >= 0)
+    .sort((a, b) => a.eventIndex - b.eventIndex);
+
+  if (anchors.length === 0) return null;
+
+  const n = events.length;
+  const firstAnchorEventIndex = anchors[0]!.eventIndex;
+  const firstAnchorLatencyEvents = firstAnchorEventIndex;
+
+  // firstSeenAt は全 envelope で一致する (検証器が要求)。先頭の署名 cp から読む。
+  const firstSeenRaw = signedCheckpoints[0]!.signature.payload.firstSeenAt;
+  const firstSeenMs = firstSeenRaw ? Date.parse(firstSeenRaw) : NaN;
+  const firstAnchorServerMs = anchors[0]!.serverMs;
+  const firstAnchorLatencyServerMs =
+    Number.isFinite(firstSeenMs) && Number.isFinite(firstAnchorServerMs)
+      ? Math.max(0, firstAnchorServerMs - firstSeenMs)
+      : null;
+
+  // event ギャップ: 先頭 / 連続アンカー間 / 末尾。
+  let maxGapEvents = firstAnchorEventIndex; // 先頭ギャップ (event0 → 初アンカー)
+  for (let i = 1; i < anchors.length; i++) {
+    maxGapEvents = Math.max(maxGapEvents, anchors[i]!.eventIndex - anchors[i - 1]!.eventIndex);
+  }
+  const lastAnchorEventIndex = anchors[anchors.length - 1]!.eventIndex;
+  maxGapEvents = Math.max(maxGapEvents, Math.max(0, n - 1 - lastAnchorEventIndex)); // 末尾ギャップ
+
+  // server ギャップ: 先頭 (firstSeenAt → 初アンカー) / 連続アンカー間。
+  let maxGapServerMs = 0;
+  if (Number.isFinite(firstSeenMs) && Number.isFinite(firstAnchorServerMs)) {
+    maxGapServerMs = Math.max(maxGapServerMs, firstAnchorServerMs - firstSeenMs);
+  }
+  for (let i = 1; i < anchors.length; i++) {
+    const prev = anchors[i - 1]!.serverMs;
+    const cur = anchors[i]!.serverMs;
+    if (Number.isFinite(prev) && Number.isFinite(cur)) {
+      maxGapServerMs = Math.max(maxGapServerMs, cur - prev);
+    }
+  }
+
+  const sparse =
+    maxGapEvents > MAX_ANCHOR_GAP_EVENTS ||
+    maxGapServerMs > MAX_ANCHOR_GAP_SERVER_MS ||
+    firstAnchorLatencyEvents > MAX_FIRST_ANCHOR_LATENCY_EVENTS;
+
+  return {
+    firstAnchorEventIndex,
+    firstAnchorLatencyEvents,
+    firstAnchorLatencyServerMs,
+    maxGapEvents,
+    maxGapServerMs,
+    sparse,
+  };
 }
 
 function computeTemporal(

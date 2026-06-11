@@ -46,6 +46,7 @@
 | [0013](0013-exam-schedule-advisory-keep-manifest-format.md) | Accepted | 試験スケジュールを advisory とし manifest フォーマットは据え置く |
 | [0014](0014-class-mode-unsealed-problem-distribution.md) | Accepted | 授業モードは平文 `.tcclass` で問題を配布し受動 fullscreen を記録する (tier ①) |
 | [0015](0015-root-landing-and-casual-friction-reduction.md) | Accepted | ルート `/` をモード選択ランディングにし、通常モードの起動摩擦を下げる |
+| [0016](0016-anchoring-density-signal.md) | Accepted | 署名 cp の「アンカー密度」をシグナル化し任意で gate する (末尾 1 点アンカー検出) |
 
 ## 参考
 
