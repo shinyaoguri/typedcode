@@ -6,7 +6,12 @@ const urlParams = new URLSearchParams(window.location.search);
 // ストレージはモード別に名前空間化する (PR3) ので、モード間でセッションが混ざらず共存できる
 // (PR1/PR2 の「モード切替時 auto-clear」を置換)。**NS は最初期に確定**させる — 以降の storage
 // 参照 (?reset/?fresh 含む) が storageKeys の getter を使うため。
-const mode = resolveModeFromPath(window.location.pathname);
+// ルート (ADR-0015): `/` と未知パスは 'landing' (モード選択の入口)。`/casual` 等は該当 mode。
+// landing のときは重いエディタ初期化をせず LandingPage の DOM だけ描画する (末尾の boot で分岐)。
+const route = resolveRoute(window.location.pathname);
+const isLanding = route === 'landing';
+// landing はモードを持たない。storage/アクセント色は casual を既定に置く (landing は storage 非使用)。
+const mode: EditorMode = isLanding ? 'casual' : route;
 setStorageNamespace(mode);
 const examMode = mode === 'exam';
 
@@ -57,8 +62,11 @@ import {
   type ExamBundleProblem,
   type ExamPackageManifest,
   type HumanAttestationEventData,
+  type ClassPackage,
 } from '@typedcode/shared';
-import { resolveModeFromPath, capabilitiesFor } from './core/mode.js';
+import { resolveRoute, capabilitiesFor, type EditorMode } from './core/mode.js';
+import { LandingPage } from './ui/components/LandingPage.js';
+import { ModeSwitcher } from './ui/components/ModeSwitcher.js';
 import { setStorageNamespace, tabsKey, sessionActiveKey, allSessionDbNames } from './core/storageKeys.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
@@ -104,6 +112,8 @@ import { BrowserPreviewPanel } from './ui/components/BrowserPreviewPanel.js';
 import { ProblemPanel } from './ui/components/ProblemPanel.js';
 import { ExamStartGate } from './ui/components/ExamStartGate.js';
 import { ExamPackageStore } from './services/ExamPackageStore.js';
+import { ClassProblemLoader } from './ui/components/ClassProblemLoader.js';
+import { ClassProblemStore } from './services/ClassProblemStore.js';
 import { FullscreenTracker } from './tracking/FullscreenTracker.js';
 import { EventRecorder, SessionContentRegistry } from './core/index.js';
 import type { AppContext } from './core/AppContext.js';
@@ -140,6 +150,7 @@ import {
   handleTabChange,
   setupStaticEventListeners,
   showWelcomeScreen,
+  hideWelcomeScreen,
   hasAcceptedTerms,
   showTermsModal,
   handleTemplateImport,
@@ -149,15 +160,10 @@ import type { WelcomeScreen } from './ui/components/WelcomeScreen.js';
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
 
-// 機能バッジ (ぱっと見で機能/モードを判別): titlebar にモード名のピルを挿入。
-{
-  const icon: Record<string, string> = {
-    casual: 'fa-pen', class: 'fa-chalkboard-user', assignment: 'fa-house-laptop', exam: 'fa-lock',
-  };
-  const badge = document.createElement('span');
-  badge.className = 'feature-badge';
-  badge.innerHTML = `<i class="fas ${icon[mode] ?? 'fa-pen'}"></i> ${t(`feature.${mode}`)}`;
-  document.querySelector('.titlebar-left')?.appendChild(badge);
+// モード切替ピル (ADR-0015): titlebar に現在モードを表示し、クリックで 4 モードへ切り替えられる。
+// 以前の静的バッジ (feature-badge) を置き換える。ランディングはエディタシェルを使わないので挿入しない。
+if (!isLanding) {
+  new ModeSwitcher(mode);
 }
 
 // Monaco Editor の Worker 設定
@@ -289,19 +295,35 @@ ctx.proofExporter.setMode(ctx.mode);
 // export 前認証の best-effort 化はモード能力で決まる (ADR-0006: exam のみ。サーバを critical path に置かない)。
 ctx.proofExporter.setPreExportBestEffort(ctx.capabilities.preExportBestEffort);
 
-// 封印問題モード (exam): 問題パネルを表示し DL を一本化する。他モードでは何もしない。
-// Monaco は automaticLayout: true なのでパネル出現に伴う再レイアウトは自動。
+// exam 固有のクロム (タブ追加/削除・汎用DLメニューの非表示、unify) は body.exam-mode が駆動する。
 if (ctx.examMode) {
   document.body.classList.add('exam-mode');
+}
+
+// 問題表示モード (exam / class / assignment): 問題パネルを配線する。Monaco は automaticLayout: true
+// なのでパネル出現に伴う再レイアウトは自動。class/assignment は封印なしの平文配布 (ADR-0014/0015)。
+if (ctx.capabilities.problemPanel) {
+  // 問題パネルのトグルボタン (左 Activity Bar) を出すための CSS フック。
+  document.body.classList.add('has-problem-panel');
   // ProblemPanel.initialize() がリサイズ/クローズ/トグルを内部で配線する。
+  // **パネルはここでは開かない** — 問題が読み込まれた時だけ開く (ADR-0015。授業で未読込なのに
+  // exam の見た目で出る不具合を解消)。見出しはモードに合わせる (試験/授業/課題)。
   if (ctx.problemPanel.initialize()) {
-    ctx.problemPanel.show();
+    ctx.problemPanel.setTitle(t(`feature.${ctx.mode}`));
   }
-  // 提出用ログのダウンロード導線を問題パネルのボタンに一本化する (左の汎用DLメニューは exam で非表示)。
-  // 提出は Moodle で行うため TypedCode 側に「提出」操作は持たない。全タブ ZIP (証明 + コード) を出すだけ。
+  // 提出用ログのダウンロード導線 (全タブ ZIP = 証明 + コード)。提出は Moodle で行うため
+  // TypedCode 側に「提出」操作は持たない。exam では unify で左の汎用DLメニューを隠し一本化する。
   document.getElementById('download-log-btn')?.addEventListener('click', () => {
     void ctx.proofExporter.exportAllTabsAsZip();
   });
+  // 非封印モード (授業/課題) は「問題を読み込む」でいつでも平文 `.tcclass` を取り込める (ADR-0015)。
+  // exam は封印ゲートで入るのでこのボタンは出さない (sealedProblem で判別)。
+  if (!ctx.capabilities.sealedProblem) {
+    document.body.classList.add('can-load-problem');
+    document.getElementById('load-problem-btn')?.addEventListener('click', () => {
+      void runClassLoad(ctx);
+    });
+  }
 }
 
 // ========================================
@@ -919,6 +941,84 @@ function restoreExamProblemDisplay(appCtx: AppContext): void {
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
 }
 
+/**
+ * 授業/課題モードの問題読み込み (ADR-0014/0015)。左の「問題を読み込む」からいつでも呼べる。
+ * 非ブロッキングの問題ローダで平文 `.tcclass` を取り込み、各問を 1 タブで展開する。
+ * スキップ時 (resolve(null)) は何もしない。ウェルカム画面が出ていれば閉じてエディタへ切り替える。
+ */
+async function runClassLoad(appCtx: AppContext): Promise<void> {
+  const loader = new ClassProblemLoader();
+  const pkg = await loader.prompt();
+  if (!pkg) return; // スキップ = 素のエディタ / 現状維持
+  hideWelcomeScreen(appCtx);
+  await openClassTabs(appCtx, pkg);
+  // 問題タブができたのでキャプチャ再有効化・LogViewer 初期化・UI 更新 (welcome 経由の取込に対応)。
+  appCtx.trackers.screenshot?.setCaptureEnabled(true);
+  initializeLogViewer(appCtx);
+  appCtx.tabUIController?.updateUI();
+}
+
+/**
+ * 授業モード (ADR-0014): バンドル各問を 1 タブで開く (封印・root 束縛なし = casual genesis)。
+ * exam の openBundleTabs と同じ `sharedAttestation` で先頭タブの #0 を共有し Turnstile storm を避ける。
+ * starter は templateInjection で「与えられた雛形」として記録し、`templateName='tcclass/${problemId}'`
+ * が **self-asserted problemId を proof に残す** (tier ①)。問題本文は ProblemPanel + ClassProblemStore。
+ * タブは固定しない (tabLock なし) ので受講者は自由にタブを足せる。
+ */
+async function openClassTabs(appCtx: AppContext, pkg: ClassPackage): Promise<void> {
+  const problems = pkg.bundle.problems;
+  let sharedAttestation: HumanAttestationEventData | null = null;
+
+  for (let i = 0; i < problems.length; i++) {
+    const problem = problems[i]!;
+    const language = problem.starter?.language ?? pkg.allowed.languages[0] ?? 'c';
+    const filename = problem.starter?.filename ?? `${problem.problemId}.${examFileExtension(language)}`;
+    const starterContent = problem.starter?.content ?? '';
+
+    const tab: TabState | null =
+      (await appCtx.tabManager?.createTab(filename, language, starterContent, {
+        ...(i > 0 && sharedAttestation ? { sharedAttestation } : {}),
+      })) ?? null;
+
+    if (i === 0 && tab) {
+      sharedAttestation = tab.typingProof.getHumanAttestation();
+    }
+
+    // starter は「タイプされていない雛形」なので注入イベントで明示する (純タイピング判定を汚さない)。
+    // templateName に classId/problemId を入れて self-asserted ラベルを残す (tier ①)。
+    if (tab && starterContent.length > 0) {
+      const contentHash = await computeHash(starterContent);
+      await tab.typingProof.recordTemplateInjection({
+        templateName: `tcclass/${pkg.classId}/${problem.problemId}`,
+        templateHash: contentHash,
+        filename,
+        content: starterContent,
+        contentHash,
+        contentLength: starterContent.length,
+        totalFilesInTemplate: 1,
+        injectionSource: 'file_import',
+      });
+    }
+
+    ClassProblemStore.save(filename, { problemId: problem.problemId, statement: problem.statement });
+  }
+
+  // 先頭タブをアクティブにし、その問題文を表示する。
+  const first = appCtx.tabManager?.getAllTabs()[0];
+  if (first) await appCtx.tabManager?.switchTab(first.id);
+  appCtx.problemPanel.setProblemText(problems[0]?.statement ?? '');
+  if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
+}
+
+/** リロード時: 復元タブの filename に対応する問題本文を ClassProblemStore から再表示する。 */
+function restoreClassProblemDisplay(appCtx: AppContext): void {
+  const filename = appCtx.tabManager?.getActiveTab()?.filename;
+  const problem = filename ? ClassProblemStore.get(filename) : ClassProblemStore.getAny();
+  if (!problem) return;
+  appCtx.problemPanel.setProblemText(problem.statement);
+  if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
+}
+
 // ========================================
 // メイン初期化関数
 // ========================================
@@ -958,8 +1058,11 @@ async function initializeApp(): Promise<void> {
     return; // 初期化を中止
   }
 
-  // Phase 1: 利用規約の確認
-  if (!hasAcceptedTerms()) {
+  // Phase 1: 利用規約の確認 (ADR-0015)。
+  // casual は「すぐ書ける」入口なので**モーダルを出さない** (同意はランディングで一度行う)。
+  // 直リンク `/casual` で未同意でも、provenance 用の `termsAccepted` イベントは後段で記録される。
+  // 他モード (class/assignment/exam) は従来どおり未同意ならモーダルを出す。
+  if (ctx.mode !== 'casual' && !hasAcceptedTerms()) {
     initOverlay?.classList.add('hidden');
     await showTermsModal();
     initOverlay?.classList.remove('hidden');
@@ -979,12 +1082,6 @@ async function initializeApp(): Promise<void> {
   } else if (ScreenshotTracker.isSupported()) {
     // ScreenshotTrackerはSessionStorageServiceを使用してスクリーンショットを保存
     const screenshotTracker = new ScreenshotTracker(sessionService);
-
-    // 選択ダイアログを表示：「画面共有を開始」または「画面共有なしで使用」
-    initOverlay?.classList.add('hidden');
-    const choice = await showScreenShareChoiceDialog();
-    initOverlay?.classList.remove('hidden');
-    updateInitMessage(t('app.initializing'));
 
     // onContinueWithout コールバック: 画面共有なしで継続（オプトアウトに切り替え）
     const onContinueWithout = async (): Promise<boolean> => {
@@ -1025,6 +1122,20 @@ async function initializeApp(): Promise<void> {
       }
       return false;
     };
+
+    if (!ctx.capabilities.promptScreenShareAtStart) {
+      // 通常モード (casual, ADR-0015): 起動時に画面共有を**勧誘しない**。opt-out 状態で始め、
+      // 「画面共有を有効にする」バナー (onResume) から後でオプトインできる。ダイアログは一切出さない。
+      // opt-out イベントは後段 (コールバック設定後) に emitScreenShareOptOutEvent で記録される。
+      screenshotTracker.setOptedOut(true);
+      showScreenShareOptOutBanner(onResume);
+      console.log('[TypedCode] Screen-share not prompted at start (opt-in via banner) for mode:', ctx.mode);
+    } else {
+    // 選択ダイアログを表示：「画面共有を開始」または「画面共有なしで使用」
+    initOverlay?.classList.add('hidden');
+    const choice = await showScreenShareChoiceDialog();
+    initOverlay?.classList.remove('hidden');
+    updateInitMessage(t('app.initializing'));
 
     if (choice === 'cancelled') {
       // キャンセルされた場合は画面共有を要求（従来の動作）
@@ -1075,6 +1186,7 @@ async function initializeApp(): Promise<void> {
         showScreenCaptureLockOverlay(onResume, onContinueWithout);
       });
     }
+    } // end: promptScreenShareAtStart の選択ダイアログ分岐 (ADR-0015)
 
     ctx.trackers.screenshot = screenshotTracker;
   } else {
@@ -1254,6 +1366,16 @@ async function initializeApp(): Promise<void> {
     } else {
       restoreExamProblemDisplay(ctx);
     }
+  } else if (ctx.mode === 'class' || ctx.mode === 'assignment') {
+    // 授業/課題モード (ADR-0014/0015): 起動時に問題ローダを**強制しない**。問題は左の
+    // 「問題を読み込む」(`#load-problem-btn`) からいつでも平文 `.tcclass` を取り込める。
+    // リロード時は復元済みタブの filename に対応する問題本文を再表示する (未読込なら何もしない)。
+    if (ctx.tabManager?.hasAnyTabs()) {
+      restoreClassProblemDisplay(ctx);
+    }
+  } else if (ctx.mode === 'casual' && !ctx.tabManager?.hasAnyTabs()) {
+    // 通常モード (ADR-0015): ウェルカム画面を出さず、既定タブを 1 つ開いて即編集できるようにする。
+    await ctx.tabManager?.createTab('Untitled-1', 'c', '');
   }
 
   // タブがない場合はウェルカム画面を表示、ある場合は通常のエディタ表示
@@ -1325,13 +1447,14 @@ async function initializeApp(): Promise<void> {
   initializeLogViewer(ctx);
   initializeEventRecorder();
 
-  // フルスクリーン追跡 + 警告バナー (ADR-0008、能力 fullscreenTracking)。eventRecorder 準備後に配線する。
-  // 警告バナーの「フルスクリーンで受験」ボタンが開始ジェスチャ (requestFullscreen は要 user gesture)。
+  // フルスクリーン追跡 (ADR-0008/0014、能力 fullscreenTracking)。eventRecorder 準備後に配線する。
+  // exam は警告バナー + 要求ボタン (fullscreenBanner=true、ボタンが開始ジェスチャ)。
+  // class は受動記録のみ (fullscreenBanner=false、状態は記録するがバナーは出さない)。
   if (ctx.capabilities.fullscreenTracking) {
     ctx.fullscreenTracker.setRecordCallback((event) => {
       void ctx.eventRecorder?.recordToAllTabs(event);
     });
-    ctx.fullscreenTracker.initialize();
+    ctx.fullscreenTracker.initialize(ctx.capabilities.fullscreenBanner);
   }
 
   // Phase 7: ターミナルとコード実行の初期化
@@ -1366,17 +1489,22 @@ async function initializeApp(): Promise<void> {
   console.log('[TypedCode] App initialized successfully');
 }
 
-// DOMContentLoaded または即座に実行
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    // 静的イベントリスナーを設定（DOM準備後）
-    setupStaticEventListeners(ctx);
-    void initializeApp();
-  });
-} else {
+// ブート: ランディング (ADR-0015) なら重いエディタ初期化をせず DOM だけ描画する。
+function boot(): void {
+  if (isLanding) {
+    new LandingPage().render();
+    return;
+  }
   // 静的イベントリスナーを設定（DOM準備後）
   setupStaticEventListeners(ctx);
   void initializeApp();
+}
+
+// DOMContentLoaded または即座に実行
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
 }
 
 // エディタインスタンスをエクスポート（拡張用）

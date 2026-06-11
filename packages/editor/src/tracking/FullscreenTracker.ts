@@ -42,11 +42,18 @@ export class FullscreenTracker {
     this.record = cb;
   }
 
-  /** DOM 捕捉 + リスナ配線 + 初期状態記録。試験モード開始時に呼ぶ。 */
-  initialize(): void {
-    this.banner = document.getElementById('fullscreen-warning-banner');
-    this.enterBtn = document.getElementById('enter-fullscreen-btn');
-    this.enterBtn?.addEventListener('click', this.boundOnClick);
+  /**
+   * DOM 捕捉 + リスナ配線 + 初期状態記録。fullscreen を記録するモードの開始時に呼ぶ。
+   *
+   * @param showBanner exam は警告バナー + 要求ボタンを出す (true)。class は**受動記録のみ**で
+   *   バナー/ボタンの DOM を取得しない (false, ADR-0014)。状態記録 (`fullscreenChange`) は両者共通。
+   */
+  initialize(showBanner = true): void {
+    if (showBanner) {
+      this.banner = document.getElementById('fullscreen-warning-banner');
+      this.enterBtn = document.getElementById('enter-fullscreen-btn');
+      this.enterBtn?.addEventListener('click', this.boundOnClick);
+    }
 
     // (1) HTML Fullscreen API。(2) ネイティブ全画面も拾う表示モード変化。(3) 取りこぼし対策の resize。
     document.addEventListener('fullscreenchange', this.boundOnChange);

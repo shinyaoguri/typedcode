@@ -37,7 +37,13 @@ describe('generateAuthorityKey', () => {
   });
 
   it('yields a key pair that actually signs a verifiable package end to end', async () => {
-    const key = await generateAuthorityKey({ keyId: 'exam-test-e2e' });
+    // 鍵の validFrom は package の releaseTime **以前**でなければ、署名は正しくても
+    // checkExamKeyValidityAtRelease が「release 時点で鍵が未有効」として弾く (ADR-0006 の硬化)。
+    // `now` を固定し validFrom を releaseTime より前に置く (実時計に依存しない決定的テストにする)。
+    const key = await generateAuthorityKey({
+      keyId: 'exam-test-e2e',
+      now: new Date('2026-06-10T00:00:00.000Z'),
+    });
     const signer = await importAuthoritySigner(key.privateJwk, key.keyId);
     const { manifest } = await createExamPackage(
       {

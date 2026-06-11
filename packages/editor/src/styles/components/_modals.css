@@ -1082,6 +1082,16 @@
   cursor: not-allowed;
 }
 
+/* 授業モードの問題ローダ (ADR-0014): 読み込む / スキップ の 2 ボタン横並び。 */
+.class-loader-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.class-loader-actions .exam-gate-start {
+  flex: 1;
+}
+
 .exam-gate-hint {
   margin: 0;
   font-size: 11px;

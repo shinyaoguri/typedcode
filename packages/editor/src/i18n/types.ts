@@ -43,6 +43,46 @@ export interface TranslationKeys {
     author: string;
   };
 
+  // ルートのモード選択 (ランディング、ADR-0015)
+  landing: {
+    title: string;
+    subtitle: string;
+    termsNotice: string; // 「利用を開始すると規約に同意したものとみなします」
+    termsLink: string;
+    start: string;
+    casualDesc: string;
+    classDesc: string;
+    assignmentDesc: string;
+    examDesc: string;
+    resumeSession: string; // 進行中セッションのバッジ「続きから」
+    switchMode: string; // エディタ内モード切替の見出し/ツールチップ
+    // 比較表の行ラベル
+    feat: {
+      purpose: string;
+      problem: string;
+      screenshot: string;
+      seal: string;
+      assurance: string;
+    };
+    // 比較表のテキスト値 (モード別)
+    val: {
+      purposeCasual: string;
+      purposeClass: string;
+      purposeAssignment: string;
+      purposeExam: string;
+      problemClass: string;
+      problemExam: string;
+      screenshotCasual: string;
+      screenshotClass: string;
+      screenshotAssignment: string;
+      screenshotExam: string;
+      assuranceCasual: string;
+      assuranceClass: string;
+      assuranceAssignment: string;
+      assuranceExam: string;
+    };
+  };
+
   // Settings menu
   settings: {
     title: string;
@@ -72,6 +112,7 @@ export interface TranslationKeys {
     newTab: string;
     closeTab: string;
     copyCode: string;
+    loadProblem: string;
   };
 
   // Browser preview panel
@@ -570,6 +611,20 @@ export interface TranslationKeys {
     };
   };
 
+  // 授業モード (/class, ADR-0014)
+  class: {
+    loader: {
+      title: string;
+      description: string;
+      packageLabel: string;
+      dropHint: string;
+      loadButton: string;
+      skipButton: string;
+      loading: string;
+      errorInvalidFile: string;
+    };
+  };
+
   // 試験問題オーサリング (/author, #80)
   author: {
     title: string;
@@ -643,6 +698,11 @@ export interface TranslationKeys {
       note1: string;
       note2: string;
       note3: string;
+    };
+    classExport: {
+      button: string;
+      hint: string;
+      errorNoProblems: string;
     };
   };
 }

@@ -156,7 +156,11 @@
             </div>
           </div>
           <div class="activitybar-divider"></div>
-          <!-- 問題パネルのトグル (試験モードのみ表示。CSS で casual 非表示) -->
+          <!-- 問題を読み込む (授業/課題のみ表示。CSS で body.can-load-problem 以外は非表示。ADR-0015) -->
+          <button class="activitybar-item" id="load-problem-btn" data-i18n-title="activityBar.loadProblem" title="Load Problem">
+            <i class="fas fa-file-arrow-up"></i>
+          </button>
+          <!-- 問題パネルのトグル (問題表示モードのみ表示。CSS で has-problem-panel 以外は非表示) -->
           <button class="activitybar-item" id="toggle-problem-btn" data-i18n-title="exam.toggleProblem" title="Toggle Problem">
             <i class="fas fa-book-open"></i>
           </button>
@@ -209,7 +213,7 @@
           <div id="problem-panel">
             <div id="problem-resize-handle" class="problem-resize-handle"></div>
             <div class="problem-header">
-              <h2><i class="fas fa-graduation-cap"></i> <span data-i18n="exam.title">Exam Mode</span></h2>
+              <h2><i class="fas fa-graduation-cap"></i> <span id="problem-panel-title">Problem</span></h2>
               <button id="close-problem-btn" class="problem-control-btn" data-i18n-title="common.close" title="Close">
                 <i class="fas fa-times"></i>
               </button>

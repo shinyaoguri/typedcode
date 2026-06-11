@@ -24,11 +24,48 @@ export const ja: TranslationKeys = {
   },
 
   feature: {
-    casual: '作成',
+    casual: '練習',
     class: '授業',
     assignment: '課題',
     exam: '試験',
     author: '出題',
+  },
+
+  landing: {
+    title: 'TypedCode',
+    subtitle: '使う場面を選んでください。すべての打鍵を改ざん耐性のある証明として記録します。',
+    termsNotice: '利用を開始すると、利用規約に同意したものとみなします。',
+    termsLink: '利用規約',
+    start: '開く',
+    casualDesc: 'お試し・個人利用。同意画面も画面共有もなしですぐ書けます。',
+    classDesc: '授業中ワーク。問題を読み込み、教員の監督下で取り組みます。',
+    assignmentDesc: '持ち帰り課題。プライバシー重視でスクショは取りません。',
+    examDesc: '試験。封印問題を監督コードで解錠し暗号学的に束縛します。',
+    resumeSession: '続きから',
+    switchMode: 'モード切替',
+    feat: {
+      purpose: '用途',
+      problem: '問題配布',
+      screenshot: 'スクショ',
+      seal: '封印・根束縛',
+      assurance: '証明保証',
+    },
+    val: {
+      purposeCasual: 'お試し・個人',
+      purposeClass: '授業中ワーク',
+      purposeAssignment: '持ち帰り課題',
+      purposeExam: '試験',
+      problemClass: '平文 (.tcclass)',
+      problemExam: '封印 (.tcexam)',
+      screenshotCasual: '任意（後から）',
+      screenshotClass: 'あり',
+      screenshotAssignment: 'なし',
+      screenshotExam: 'あり',
+      assuranceCasual: '最低',
+      assuranceClass: '中',
+      assuranceAssignment: '中',
+      assuranceExam: '最高',
+    },
   },
 
   settings: {
@@ -58,6 +95,7 @@ export const ja: TranslationKeys = {
     newTab: '新しいタブ',
     closeTab: '閉じる',
     copyCode: 'コードをコピー',
+    loadProblem: '問題を読み込む',
   },
 
   preview: {
@@ -543,6 +581,19 @@ export const ja: TranslationKeys = {
     },
   },
 
+  class: {
+    loader: {
+      title: '授業問題を読み込む',
+      description: '配布された問題ファイル（.tcclass）を読み込みます。封印・監督コードはありません。スキップして素のエディタで始めることもできます。',
+      packageLabel: '問題ファイル（.tcclass）',
+      dropHint: 'ファイルを選択、またはここにドロップ',
+      loadButton: '読み込む',
+      skipButton: 'スキップ',
+      loading: '読み込み中…',
+      errorInvalidFile: '問題ファイルの形式が不正です（.tcclass を選択してください）。',
+    },
+  },
+
   author: {
     title: '試験問題の作成',
     subtitle: '署名済みの封印問題（.tcexam）と監督コードを作成します。鍵・問題はこの端末から外部に送信されません。',
@@ -615,6 +666,11 @@ export const ja: TranslationKeys = {
       note1: 'この監督コードは平文パッケージに含まれません。紛失すると問題を復号できません。',
       note2: 'T0（開始時刻）に学生へ口頭・板書で解禁してください。',
       note3: 'このファイルは教員用です。学生には .tcexam のみを配布してください。',
+    },
+    classExport: {
+      button: 'class 用（未封印）を生成',
+      hint: '授業モード用に、封印・署名なしの平文 .tcclass を出力します。問題は公開前提で監督コードは不要です（試験 ID を授業 ID として使います）。',
+      errorNoProblems: '問題がありません。少なくとも1問入力してください。',
     },
   },
 };

@@ -4,6 +4,7 @@ import {
   capabilitiesFor,
   MODE_CAPABILITIES,
   resolveModeFromPath,
+  resolveRoute,
   type EditorMode,
 } from '../mode.js';
 
@@ -49,6 +50,35 @@ describe('resolveModeFromPath', () => {
   });
 });
 
+describe('resolveRoute', () => {
+  it('routes the bare root path to the landing chooser', () => {
+    expect(resolveRoute('/')).toBe('landing');
+  });
+
+  it('routes an empty path to the landing chooser', () => {
+    expect(resolveRoute('')).toBe('landing');
+  });
+
+  it('routes an unknown/typo path to the landing instead of silently casual', () => {
+    expect(resolveRoute('/exsm')).toBe('landing');
+    expect(resolveRoute('/playground')).toBe('landing');
+  });
+
+  it('routes /casual explicitly to casual (no longer a default fall-through)', () => {
+    expect(resolveRoute('/casual')).toBe('casual');
+  });
+
+  it('routes each editor mode path to its mode', () => {
+    expect(resolveRoute('/class')).toBe('class');
+    expect(resolveRoute('/assignment')).toBe('assignment');
+    expect(resolveRoute('/exam')).toBe('exam');
+  });
+
+  it('uses only the first path segment', () => {
+    expect(resolveRoute('/exam/problem-1')).toBe('exam');
+  });
+});
+
 describe('capabilitiesFor', () => {
   it('grants exam the sealed-problem capability', () => {
     expect(capabilitiesFor('exam').sealedProblem).toBe(true);
@@ -62,19 +92,54 @@ describe('capabilitiesFor', () => {
     expect(capabilitiesFor('assignment').screenshots).toBe(false);
   });
 
-  it('keeps assignment identical to casual apart from screenshots', () => {
+  it('keeps assignment like casual but with screenshots off and a problem panel (ADR-0015)', () => {
     const casual = capabilitiesFor('casual');
     const assignment = capabilitiesFor('assignment');
-    expect(assignment).toEqual({ ...casual, screenshots: false });
+    expect(assignment).toEqual({ ...casual, screenshots: false, problemPanel: true });
   });
 
-  it('treats class as identical to casual capabilities', () => {
-    expect(capabilitiesFor('class')).toEqual(capabilitiesFor('casual'));
+  it('lets class and assignment load an unsealed problem (problemPanel without a seal)', () => {
+    for (const mode of ['class', 'assignment'] as const) {
+      const caps = capabilitiesFor(mode);
+      expect(caps.problemPanel).toBe(true);
+      expect(caps.sealedProblem).toBe(false);
+    }
   });
 
-  it('enables best-effort pre-export only for exam', () => {
+  it('gives class the problem panel without the sealed-problem crypto (ADR-0014)', () => {
+    const cls = capabilitiesFor('class');
+    expect(cls.problemPanel).toBe(true);
+    expect(cls.sealedProblem).toBe(false);
+  });
+
+  it('tracks fullscreen passively for class (no request banner)', () => {
+    const cls = capabilitiesFor('class');
+    expect(cls.fullscreenTracking).toBe(true);
+    expect(cls.fullscreenBanner).toBe(false);
+  });
+
+  it('shows the fullscreen request banner only for exam', () => {
+    const withBanner = ALL_EDITOR_MODES.filter((m) => capabilitiesFor(m).fullscreenBanner);
+    expect(withBanner).toEqual(['exam']);
+  });
+
+  it('does not prompt screen-share at start for casual (opt-in via banner)', () => {
+    expect(capabilitiesFor('casual').promptScreenShareAtStart).toBe(false);
+    expect(capabilitiesFor('casual').screenshots).toBe(true);
+  });
+
+  it('prompts screen-share at start for the proctored modes (class, exam)', () => {
+    const prompts = ALL_EDITOR_MODES.filter((m) => capabilitiesFor(m).promptScreenShareAtStart);
+    expect(prompts).toEqual(['class', 'exam']);
+  });
+
+  it('keeps tabs unlocked for class (looser than exam)', () => {
+    expect(capabilitiesFor('class').tabLock).toBe(false);
+  });
+
+  it('enables best-effort pre-export for the proctored in-room modes (class, exam)', () => {
     const withBestEffort = ALL_EDITOR_MODES.filter((m) => capabilitiesFor(m).preExportBestEffort);
-    expect(withBestEffort).toEqual(['exam']);
+    expect(withBestEffort).toEqual(['class', 'exam']);
   });
 });
 

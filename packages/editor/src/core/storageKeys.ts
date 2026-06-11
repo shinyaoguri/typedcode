@@ -43,6 +43,11 @@ export function examPackagesKey(): string {
   return `typedcode-exam-packages${ns}`;
 }
 
+/** class 問題キャッシュ (localStorage) のキー (ADR-0014、リロード再表示用)。 */
+export function classProblemsKey(): string {
+  return `typedcode-class-problems${ns}`;
+}
+
 /**
  * 全モードのセッション IndexedDB 名 (?reset の全消去用)。legacy `typedcode-screenshots`
  * も含める。新しいモードを足したらここにも追加すること。

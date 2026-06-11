@@ -37,7 +37,7 @@
 | `fileProcessing/` | ZIP / JSON 解析 |
 | `types.ts` (実体は `types/`) | 全公開型 |
 | `analysis/` | 分析層フレームワーク (ADR-0009)。`runAnalysis` + 差し替え可能な `Analyzer` 群 (automation / transcription-topology / focus-burst の第一次ヒューリスティック + pureTyping)。検証と**直交**する advisory のみ・判定しない |
-| `exam/` | 試験モードの暗号コア (ADR-0006)。封印 `.tcexam` の build/verify(署名)/decrypt(Argon2id+AES-256-GCM)、`computeExamChainRoot`、`parseExamPackageManifest`、grader 用 `verifyExamBinding`。root 式は `proof.exam` 有無で分岐 |
+| `exam/` | 試験モードの暗号コア (ADR-0006)。封印 `.tcexam` の build/verify(署名)/decrypt(Argon2id+AES-256-GCM)、`computeExamChainRoot`、`parseExamPackageManifest`、grader 用 `verifyExamBinding`。root 式は `proof.exam` 有無で分岐。N問バンドル codec は `examBundle.ts` (`tcexam-exam/1`)。**授業モードの平文配布 `classPackage.ts` (ADR-0014, `tcclass/1`) も同居** — 暗号を持たず `parseExamBundle` を平文で再利用する `parseClassPackage`/`encodeClassPackage` |
 | `examAuthorityKeys/` | 出題者 (問題署名) 公開鍵レジストリ (ADR-0006)。`checkpointKeys/` と**別系統・同型** (append-only、`registry.ts` 本番 + skip-worktree な `localKeys.ts`) |
 
 ## 型定義の運用

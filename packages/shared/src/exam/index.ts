@@ -26,6 +26,12 @@ export {
   computeBundleProblemHash,
 } from './examBundle.js';
 
+export {
+  CLASS_PACKAGE_SCHEMA,
+  parseClassPackage,
+  encodeClassPackage,
+} from './classPackage.js';
+
 export type {
   ExamDecryptResult,
   ExamPackageSigner,
