@@ -120,6 +120,62 @@ export class TrustCalculator {
       });
     }
 
+    // 7. 時刻アンカー（署名チェックポイント）— サーバ署名による唯一の偽造不能要素。
+    //    無ければ proof は完全オフライン捏造が可能なので警告として明示する。
+    if (verificationResult) {
+      if (
+        verificationResult.signedCheckpointAnchored &&
+        verificationResult.signedCheckpointValid === false
+      ) {
+        issues.push({
+          component: 'anchoring',
+          severity: 'error',
+          message: '署名チェックポイントが無効です',
+        });
+      } else if (!verificationResult.signedCheckpointAnchored) {
+        issues.push({
+          component: 'anchoring',
+          severity: 'warning',
+          message: '時刻アンカー（署名チェックポイント）がありません',
+        });
+      } else if (verificationResult.signedCheckpointTemporal?.postHocSuspected) {
+        issues.push({
+          component: 'anchoring',
+          severity: 'warning',
+          message: 'post-hoc 一括署名の疑いがあります（サーバ時刻が申告時間より極端に短い）',
+        });
+      }
+    }
+
+    // 8. ピュアタイピング（ペースト/バルク挿入の有無）
+    if (verificationResult && !verificationResult.isPureTyping) {
+      issues.push({
+        component: 'typing',
+        severity: 'warning',
+        message: 'ピュアタイピングではありません（ペースト/バルク挿入あり）',
+      });
+    }
+
+    // 9. 試験束縛（ADR-0006）。package 提供下で失敗なら error、未提供なら真正性未確認の警告。
+    if (verificationResult?.exam?.present) {
+      if (
+        verificationResult.exam.packageProvided &&
+        verificationResult.exam.binding?.valid === false
+      ) {
+        issues.push({
+          component: 'exam',
+          severity: 'error',
+          message: '問題束縛（署名/内容ハッシュ）の検証に失敗しました',
+        });
+      } else if (!verificationResult.exam.packageProvided) {
+        issues.push({
+          component: 'exam',
+          severity: 'warning',
+          message: '問題パッケージ未読込のため真正性は未確認です',
+        });
+      }
+    }
+
     // レベル判定
     const level = this.determineLevel(issues);
     const summary = this.generateSummary(level, issues);

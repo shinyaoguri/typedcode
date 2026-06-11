@@ -1420,6 +1420,9 @@ export class ResultPanel {
       attestation: '人間証明',
       screenshots: 'スクリーンショット',
       source: 'ソースファイル',
+      anchoring: '時刻アンカー',
+      exam: '試験束縛',
+      typing: 'タイピング',
     };
     return labels[component] || component;
   }
