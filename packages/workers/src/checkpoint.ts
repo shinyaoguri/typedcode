@@ -2,7 +2,7 @@
  * /api/checkpoint/sign + /api/checkpoint/public-keys ハンドラ。
  *
  * 設計:
- * - サーバは最小限の KV 状態 (session:{sessionId}) のみ保持する。
+ * - サーバは最小限の KV 状態 (session:{sessionId}:{tabId}) のみ保持する (タブ毎)。
  * - 厳密な単調性は verifier 側の連鎖チェックで保証。サーバ側は best-effort で
  *   非単調 / セッション上限超過を弾く。
  * - firstSeenAt は KV 初回書込時に確定し、それ以降は固定。verifier はすべての
@@ -162,8 +162,13 @@ export async function handleSignCheckpoint(
     );
   }
 
-  // KV からセッション状態を取得 (best-effort: eventual consistent)
-  const sessionKey = `session:${input.sessionId}`;
+  // KV からセッション状態を取得 (best-effort: eventual consistent)。
+  // **tabId 込みでキーイングする**: checkpointIndex はタブ毎に 0 から振られ、sessionId は
+  // ブラウザセッション全体で共有される。sessionId だけでキーイングすると、複数タブ
+  // (class モードの N 問タブ等) で 2 枚目以降のタブが checkpointIndex 衝突 → CHECKPOINT_CONFLICT /
+  // NON_MONOTONIC となり 1 つも署名されない。verifier は firstSeenAt をタブ間で共有要求しない
+  // (proof = 1 タブ) ので、firstSeenAt がタブ毎に確定するのは安全。
+  const sessionKey = `session:${input.sessionId}:${input.tabId}`;
   const existing = await env.CHECKPOINT_SESSIONS.get<SessionRecord>(sessionKey, 'json');
 
   // このセッションで初めて署名する checkpoint か。初回は firstSeenAt が

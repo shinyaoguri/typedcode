@@ -113,7 +113,26 @@ describe('handleSignCheckpoint', () => {
     const body = (await res.json()) as SignResponseBody;
     expect(body.envelope.keyId).toBe(REGISTERED_KEY_ID);
     expect(body.envelope.signature).toMatch(/^[0-9a-f]+$/);
-    expect(kv.store.has('session:test-session')).toBe(true);
+    expect(kv.store.has('session:test-session:tab-1')).toBe(true);
+  });
+
+  it('signs checkpointIndex 0 independently for two tabs in the same session (multi-tab, H4)', async () => {
+    // 同一 sessionId・別 tabId・同じ checkpointIndex 0。タブ毎に KV をキーイングするので
+    // どちらも CHECKPOINT_CONFLICT / NON_MONOTONIC にならず署名される (class モードの N 問タブ対策)。
+    const resA = await handleSignCheckpoint(
+      makeRequest(makeInput({ tabId: 'tab-1', checkpointIndex: 0 })),
+      env,
+      responder
+    );
+    const resB = await handleSignCheckpoint(
+      makeRequest(makeInput({ tabId: 'tab-2', checkpointIndex: 0 })),
+      env,
+      responder
+    );
+    expect(resA.status).toBe(200);
+    expect(resB.status).toBe(200);
+    expect(kv.store.has('session:test-session:tab-1')).toBe(true);
+    expect(kv.store.has('session:test-session:tab-2')).toBe(true);
   });
 
   it('returns CACHED envelope on identical retry (idempotency, ADR-0003)', async () => {
@@ -252,7 +271,7 @@ describe('handleSignCheckpoint', () => {
   it('returns SESSION_LIMIT_EXCEEDED when signedCount is at cap', async () => {
     // signedCount を上限に達した状態で事前注入
     kv.store.set(
-      'session:test-session',
+      'session:test-session:tab-1',
       JSON.stringify({
         firstSeenAt: '2026-01-01T00:00:00.000Z',
         lastCheckpointIndex: 100,
@@ -280,7 +299,7 @@ describe('handleSignCheckpoint', () => {
     const body = (await res.json()) as ErrorResponseBody;
     expect(body.code).toBe('SESSION_PERSIST_FAILED');
     // 状態は永続化されていない
-    expect(kv.store.has('session:test-session')).toBe(false);
+    expect(kv.store.has('session:test-session:tab-1')).toBe(false);
   });
 
   it('still returns envelope when a LATER KV write fails (firstSeenAt already locked)', async () => {
@@ -291,7 +310,7 @@ describe('handleSignCheckpoint', () => {
       responder
     );
     expect(res1.status).toBe(200);
-    expect(kv.store.has('session:test-session')).toBe(true);
+    expect(kv.store.has('session:test-session:tab-1')).toBe(true);
 
     // 2 回目の書き込みだけ失敗させる。firstSeenAt は既に固定済みなので
     // best-effort で envelope を返してよい (graceful degradation)。
