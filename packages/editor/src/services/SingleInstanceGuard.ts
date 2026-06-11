@@ -5,7 +5,7 @@
  * 後から開いた方をブロックする。
  */
 
-const CHANNEL_NAME = 'typedcode-instance-guard';
+const CHANNEL_NAME_BASE = 'typedcode-instance-guard';
 const HEARTBEAT_INTERVAL = 1000; // 1秒ごとにハートビート
 
 type MessageType =
@@ -16,11 +16,18 @@ type MessageType =
 export class SingleInstanceGuard {
   private channel: BroadcastChannel | null = null;
   private instanceId: string;
+  private readonly channelName: string;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private isActive = false;
 
-  constructor() {
+  /**
+   * @param namespace モード等の名前空間。指定するとチャンネルを分離し、別モードのタブ
+   *   (例: /casual を開いた状態で /exam を別タブで開く) を「重複インスタンス」と誤判定しない。
+   *   storage は既にモード別名前空間化されているので共存して問題ない。
+   */
+  constructor(namespace?: string) {
     this.instanceId = crypto.randomUUID();
+    this.channelName = namespace ? `${CHANNEL_NAME_BASE}:${namespace}` : CHANNEL_NAME_BASE;
   }
 
   /**
@@ -35,17 +42,28 @@ export class SingleInstanceGuard {
     }
 
     return new Promise((resolve) => {
-      this.channel = new BroadcastChannel(CHANNEL_NAME);
+      this.channel = new BroadcastChannel(this.channelName);
 
       let responded = false;
+      // 起動レース対策: 2 タブがほぼ同時に起動すると、どちらもまだ becomeActive しておらず
+      // pong を返さないため両方が active になり得る。チェック窓の間に届いた他インスタンスの
+      // ping を検出し、instanceId の大小で決定的に片方だけ譲る (大きい id 側が譲る)。
+      let yieldToCompetitor = false;
 
       const handleMessage = (event: MessageEvent<MessageType>) => {
         const message = event.data;
+        if (message.senderId === this.instanceId) return;
 
-        if (message.type === 'pong' && message.senderId !== this.instanceId) {
-          // 他のインスタンスが応答した
+        if (message.type === 'pong') {
+          // 既に active な他インスタンスが応答した
           responded = true;
           console.log('[SingleInstanceGuard] Another instance responded:', message.senderId);
+        } else if (message.type === 'ping') {
+          // 同時起動中の競合。双方が相手の ping を見るので、id が大きい側だけが譲る。
+          if (this.instanceId > message.senderId) {
+            yieldToCompetitor = true;
+            console.log('[SingleInstanceGuard] Yielding to concurrent instance:', message.senderId);
+          }
         }
       };
 
@@ -58,8 +76,8 @@ export class SingleInstanceGuard {
       setTimeout(() => {
         this.channel?.removeEventListener('message', handleMessage);
 
-        if (responded) {
-          // 他のインスタンスが存在する - このインスタンスをブロック
+        if (responded || yieldToCompetitor) {
+          // 他のインスタンスが存在する / 競合に譲る - このインスタンスをブロック
           this.dispose();
           resolve(true);
         } else {
