@@ -18,9 +18,8 @@ import type {
 } from '../types';
 import type { SignedCheckpointsVerificationResult, ExamBindingVerificationResult } from '@typedcode/shared';
 import type { SignedCheckpointReport } from '../types';
-import { escapeHtml, type TypingPatternAnalysis, type AnalysisReport, type AssuranceResult, type ProcessSummary } from '@typedcode/shared';
+import { escapeHtml, type AnalysisReport, type AssuranceResult, type ProcessSummary } from '@typedcode/shared';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
-import { TypingPatternCard } from './TypingPatternCard.js';
 import { AnalysisReportCard } from './AnalysisReportCard.js';
 import { ProcessSummaryCard } from './ProcessSummaryCard.js';
 import { t } from '../i18n/index.js';
@@ -36,7 +35,6 @@ export interface ResultData {
   typingTime: string;
   typingSpeed: string;
   trustResult?: TrustResult;
-  typingPatternAnalysis?: TypingPatternAnalysis;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない (検証結果とは独立軸)。 */
   analysis?: AnalysisReport;
   /** 三層保証語彙 (ADR-0020)。実証拠から機械導出 (自己申告 mode は不使用)。 */
@@ -103,10 +101,7 @@ export class ResultPanel {
   private statusIcon: HTMLElement;
   private statusTitle: HTMLElement;
   private statusFilename: HTMLElement;
-  private statusPattern: HTMLElement;
   private assuranceStrip: HTMLElement;
-  private patternMiniGauge: HTMLElement;
-  private patternMiniJudgment: HTMLElement;
 
   // Verification cards
   private typingIcon: HTMLElement;
@@ -195,8 +190,7 @@ export class ResultPanel {
   // Code preview
   private codePreview: HTMLElement;
 
-  // Typing pattern card
-  private typingPatternCard: TypingPatternCard;
+  // Analysis cards
   private analysisReportCard: AnalysisReportCard;
   private processSummaryCard: ProcessSummaryCard;
 
@@ -239,10 +233,7 @@ export class ResultPanel {
     this.statusIcon = document.getElementById('result-status-icon')!;
     this.statusTitle = document.getElementById('result-status-title')!;
     this.statusFilename = document.getElementById('result-status-filename')!;
-    this.statusPattern = document.getElementById('result-status-pattern')!;
     this.assuranceStrip = document.getElementById('assurance-strip')!;
-    this.patternMiniGauge = document.getElementById('pattern-mini-gauge')!;
-    this.patternMiniJudgment = document.getElementById('pattern-mini-judgment')!;
 
     // Typing card
     this.typingIcon = document.getElementById('typing-icon')!;
@@ -334,10 +325,7 @@ export class ResultPanel {
     // Code preview
     this.codePreview = document.getElementById('code-preview')!;
 
-    // Typing pattern card
-    this.typingPatternCard = new TypingPatternCard();
-
-    // Analysis layer card (ADR-0009)
+    // Analysis layer card (ADR-0009) — 旧 TypingPatternCard はここに統合済み
     this.analysisReportCard = new AnalysisReportCard();
 
     // Process summary card (Phase 8 W3)
@@ -661,16 +649,8 @@ export class ResultPanel {
       this.cardAttestation.style.display = 'none';
     }
 
-    // Typing pattern - mini gauge in status card and full card
-    if (data.typingPatternAnalysis) {
-      this.renderPatternMiniGauge(data.typingPatternAnalysis);
-      this.typingPatternCard.render(data.typingPatternAnalysis);
-    } else {
-      this.statusPattern.style.display = 'none';
-      this.typingPatternCard.hide();
-    }
-
     // Analysis layer (ADR-0009) - advisory のみ。検証の valid とは独立軸。
+    // 打鍵動態 (旧 TypingPatternCard) も typing-pattern アナライザ経由でここに統合済み。
     if (data.analysis) {
       this.analysisReportCard.render(data.analysis);
     } else {
@@ -1679,60 +1659,4 @@ export class ResultPanel {
     `;
   }
 
-  // ============================================================================
-  // タイピングパターンミニゲージ
-  // ============================================================================
-
-  /**
-   * ステータスカードにタイピングパターンのミニゲージを表示
-   */
-  private renderPatternMiniGauge(analysis: TypingPatternAnalysis): void {
-    this.statusPattern.style.display = 'flex';
-
-    const { overallScore, overallJudgment } = analysis;
-
-    // 判定に応じた色クラス
-    const colorClass = this.getPatternJudgmentClass(overallJudgment);
-
-    // ミニゲージ（SVG）
-    const radius = 20;
-    const circumference = 2 * Math.PI * radius;
-    const offset = circumference - (overallScore / 100) * circumference;
-
-    this.patternMiniGauge.innerHTML = `
-      <svg class="pattern-mini-svg" viewBox="0 0 50 50">
-        <circle class="gauge-bg" cx="25" cy="25" r="${radius}" />
-        <circle class="gauge-fill ${colorClass}"
-                cx="25" cy="25" r="${radius}"
-                stroke-dasharray="${circumference}"
-                stroke-dashoffset="${offset}" />
-        <text x="25" y="28" text-anchor="middle" class="gauge-score">${overallScore}</text>
-      </svg>
-    `;
-
-    // 判定ラベル
-    const judgmentLabels: Record<string, string> = {
-      human: '人間らしい',
-      uncertain: '不明確',
-      suspicious: '疑わしい',
-    };
-    this.patternMiniJudgment.textContent = judgmentLabels[overallJudgment] || '-';
-    this.patternMiniJudgment.className = `pattern-mini-judgment ${colorClass}`;
-  }
-
-  /**
-   * タイピングパターンの判定に応じたCSSクラスを取得
-   */
-  private getPatternJudgmentClass(judgment: string): string {
-    switch (judgment) {
-      case 'human':
-        return 'success';
-      case 'uncertain':
-        return 'warning';
-      case 'suspicious':
-        return 'error';
-      default:
-        return 'pending';
-    }
-  }
 }
