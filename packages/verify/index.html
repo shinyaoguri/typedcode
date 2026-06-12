@@ -307,13 +307,6 @@
                         <div class="result-status-filename" id="result-status-filename"></div>
                       </div>
                     </div>
-                    <div class="result-status-pattern" id="result-status-pattern" style="display: none;">
-                      <div class="pattern-mini-gauge" id="pattern-mini-gauge"></div>
-                      <div class="pattern-mini-info">
-                        <div class="pattern-mini-label" data-i18n="pattern.title">タイピングパターン</div>
-                        <div class="pattern-mini-judgment" id="pattern-mini-judgment">-</div>
-                      </div>
-                    </div>
                   </div>
                   <!-- 三層保証語彙 (ADR-0020): 整合性 × 時刻アンカー × 著述性(advisory)。全幅で下段に置く -->
                   <div class="assurance-strip" id="assurance-strip" style="display: none;">
@@ -674,21 +667,8 @@
                     </div>
                   </div>
 
-                  <!-- Typing Pattern Analysis Card -->
-                  <div class="result-card" id="card-typing-pattern" style="display: none;">
-                    <div class="result-card-header">
-                      <div class="result-card-header-left">
-                        <div class="result-card-icon pending" id="pattern-icon">
-                          <i class="fas fa-brain"></i>
-                        </div>
-                        <span class="result-card-title" data-i18n="result.typingPattern">タイピングパターン</span>
-                      </div>
-                      <span class="result-card-badge pending" id="pattern-badge">-</span>
-                    </div>
-                    <div class="result-card-content" id="pattern-content">
-                      <!-- Rendered by TypingPatternCard.ts -->
-                    </div>
-                  </div>
+                  <!-- 打鍵動態 (旧 Typing Pattern Card) は typing-pattern アナライザ経由で
+                       下の Analysis Layer Card (ADR-0009) に統合済み。 -->
 
                   <!-- Analysis Layer Card (ADR-0009, advisory) -->
                   <div class="result-card" id="card-analysis" style="display: none;">

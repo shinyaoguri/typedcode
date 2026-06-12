@@ -19,7 +19,7 @@
 
 | ディレクトリ | 役割 |
 |---|---|
-| `ui/` | `AppController`, `TabBar`, `ActivityBar`, `StatusBarUI`, `ResultPanel`, `Sidebar`, `TypingPatternCard`, `AnalysisReportCard` (ADR-0009 の advisory 表示), `ProcessSummaryCard` (W3 プロセス要約), `ChartEventSelector` |
+| `ui/` | `AppController`, `TabBar`, `ActivityBar`, `StatusBarUI`, `ResultPanel`, `Sidebar`, `AnalysisReportCard` (ADR-0009 の advisory 表示。打鍵動態の旧 `TypingPatternCard` はここに統合済み), `ProcessSummaryCard` (W3 プロセス要約), `ChartEventSelector` |
 | `ui/controllers/` | `VerificationController`, `TabController`, `FileController`, `FolderController`, `ChartController` |
 | `state/` | `VerificationQueue`, `UIStateManager`, `VerifyTabManager`, `ChartState` |
 | `charts/` | `TimelineChart`, `MouseChart`, `IntegratedChart`, `SeekbarController` (Chart.js) |
@@ -90,4 +90,4 @@ File Selection (drag&drop / FSA API)
 - **読込直後の自動オープン**: `VerificationController.handleComplete` が「アクティブタブが null なら最初に完了した proof を `openTabForFile`」する。ウェルカム画面のまま放置しない
 - **ステータスカードは縦 2 段**: 上段 `.result-status-row` (アイコン+タイトル+ミニゲージ)、下段 `#assurance-strip` (三層バッジ全幅)。横 1 列に詰めると三層チップとタイトルが重なって縦書き崩れする
 - **分析シグナルの文言は `summaryKey` 優先**: `AnalysisSignal.summaryKey` があれば verify 側で `t()` ローカライズ (shared は i18n を持たないため)。`summary` は英語フォールバック。analyzer に生英語を直書きしない
-- **TypingPatternCard は advisory 表示**: 冒頭に `analysis.advisory` 注記。issue 見出しは断定 (「重大な問題」) を避け「特に確認したい点 / 気になる点」。ADR-0020 の「advisory を判定に見せない」を旧カードにも適用 (ADR-0009 への完全統合は follow-up)
+- **打鍵動態は AnalysisReportCard に統合済み (ADR-0009)**: 旧 `TypingPatternCard` (human/uncertain/suspicious の判定スコアゲージ) は ADR-0023 の非判定方針と緊張するため廃止し、shared の `typingPatternAnalyzer` が `TypingPatternAnalyzer` の所見を `keystroke-content-consistency` 次元の **advisory signal** として `runAnalysis` に折り込む。判定ゲージは持ち込まず issue ベースの手掛かりのみ。**W5 ゲートで `review` には上げない** (critical も notice 止まり)。打鍵動態サンプルが乏しい proof では黙る (★6b 配慮)。verify 側に分析器を書かない原則どおりロジックは shared。

@@ -23,7 +23,6 @@ import {
   formatTypingTime,
   calculateTypingSpeed as calculateTypingSpeedShared,
   countPasteEvents as countPasteEventsShared,
-  TypingPatternAnalyzer,
   summarizeProcess,
 } from '@typedcode/shared';
 
@@ -135,11 +134,8 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     }
   }
 
-  // Analyze typing patterns
-  const typingPatternAnalyzer = new TypingPatternAnalyzer();
-  const typingPatternAnalysis = events && events.length > 0
-    ? typingPatternAnalyzer.analyze(events)
-    : undefined;
+  // 打鍵動態の分析は typing-pattern アナライザ (shared) 経由で worker の runAnalysis に統合済み。
+  // ここで個別に TypingPatternAnalyzer を呼ぶ旧経路 (TypingPatternCard 用) は廃止した (ADR-0009)。
 
   return {
     filename: tabState.filename,
@@ -153,7 +149,6 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     eventCount,
     typingTime,
     typingSpeed,
-    typingPatternAnalysis,
     // プロセス要約 (Phase 8 W3): 制作過程の中立な記述 (疑い指標ではない)。
     processSummary: events && events.length > 0 ? summarizeProcess(events) : undefined,
     // 分析層 (ADR-0009): worker が runAnalysis で生成した advisory レポート (判定ではない)。
