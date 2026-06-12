@@ -1,0 +1,118 @@
+/* AnalysisReportCard (ADR-0009) — 分析層の advisory レポート表示 */
+
+.analysis-advisory-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.04));
+  color: var(--text-secondary, #9da5b4);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.analysis-advisory-note i {
+  margin-top: 2px;
+}
+
+.analysis-no-signals {
+  color: var(--text-secondary, #9da5b4);
+  font-size: 13px;
+  padding: 4px 2px;
+}
+
+.analysis-signal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analysis-signal {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border-left: 3px solid var(--text-secondary, #9da5b4);
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.03));
+}
+
+.analysis-signal.warning {
+  border-left-color: #fbbf24;
+}
+
+.analysis-signal-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.analysis-severity {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(157, 165, 180, 0.2);
+  color: var(--text-secondary, #9da5b4);
+}
+
+.analysis-severity.warning {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.analysis-dimension {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.analysis-scores {
+  font-size: 11px;
+  color: var(--text-secondary, #9da5b4);
+  margin-left: auto;
+}
+
+.analysis-summary {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.analysis-evidence-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.analysis-evidence-label {
+  font-size: 11px;
+  color: var(--text-secondary, #9da5b4);
+}
+
+.analysis-evidence-link {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  background: transparent;
+  color: var(--accent-color, #4fc1ff);
+  cursor: pointer;
+}
+
+.analysis-evidence-link:hover {
+  background: rgba(79, 193, 255, 0.12);
+}
+
+.analysis-versions {
+  margin-top: 10px;
+  font-size: 10px;
+  color: var(--text-secondary, #9da5b4);
+  opacity: 0.7;
+}

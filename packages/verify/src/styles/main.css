@@ -29,6 +29,7 @@
 @import './components/_verification-progress.css';
 @import './components/_lightbox.css';
 @import './components/_typing-pattern.css';
+@import './components/_analysis-card.css';
 
 /* Utilities */
 @import './utilities/_misc.css';

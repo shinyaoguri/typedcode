@@ -102,6 +102,7 @@ export interface VerifyTranslationKeys {
     createTime: string;
     exportTime: string;
     typingPattern: string;
+    analysis: string;
     anchoring: string;
     anchoringStatus: string;
     anchoringCoverage: string;
@@ -294,6 +295,24 @@ export interface VerifyTranslationKeys {
   };
 
   // Typing pattern analysis
+  // 分析層 (ADR-0009) — advisory レポートカード
+  analysis: {
+    advisory: string;
+    noSignals: string;
+    reviewPriority: string;
+    evidence: string;
+    score: string;
+    confidence: string;
+    analyzers: string;
+    severityInfo: string;
+    severityNotice: string;
+    severityReview: string;
+    dimensionAutomation: string;
+    dimensionKeystrokeContent: string;
+    dimensionTranscriptionTopology: string;
+    dimensionFocusBurst: string;
+  };
+
   pattern: {
     title: string;
     score: string;

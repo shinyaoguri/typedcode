@@ -1,4 +1,4 @@
-import type { ExportedProof, StoredEvent, InputType, DisplayInfo, ScreenshotCaptureType, HumanAttestation, SignedCheckpointsVerificationResult, ExamPackageManifest, ExamBindingVerificationResult } from '@typedcode/shared';
+import type { ExportedProof, StoredEvent, InputType, DisplayInfo, ScreenshotCaptureType, HumanAttestation, SignedCheckpointsVerificationResult, ExamPackageManifest, ExamBindingVerificationResult, AnalysisReport } from '@typedcode/shared';
 
 // Re-export HumanAttestation from shared for backward compatibility
 export type { HumanAttestation } from '@typedcode/shared';
@@ -106,6 +106,8 @@ export interface VerificationResultData {
   signedCheckpointDensity?: SignedCheckpointsVerificationResult['density'];
   signedCheckpointReason?: string;
   signedCheckpointAnchored?: boolean;
+  /** 分析層 (ADR-0009) の advisory レポート。判定ではない (valid とは独立軸)。 */
+  analysis?: AnalysisReport;
   /**
    * 「時刻アンカー」カードの展開ビュー用の追加情報。
    * - 検証に用いた公開鍵の registry エントリ

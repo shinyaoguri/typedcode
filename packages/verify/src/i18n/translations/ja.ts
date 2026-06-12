@@ -89,6 +89,7 @@ export const ja: VerifyTranslationKeys = {
     createTime: '作成時',
     exportTime: 'エクスポート時',
     typingPattern: 'タイピングパターン',
+    analysis: 'プロセス分析',
     anchoring: '時刻アンカー',
     anchoringStatus: '状態',
     anchoringCoverage: 'カバレッジ',
@@ -271,6 +272,23 @@ export const ja: VerifyTranslationKeys = {
 
   trust: {
     screenShareOptOut: '画面共有なしモードで記録されました',
+  },
+
+  analysis: {
+    advisory: 'ヒューリスティックな参考情報です。判定ではなく、人間によるレビューの手掛かりです (検証結果とは独立)。',
+    noSignals: '分析シグナルなし',
+    reviewPriority: '要確認度',
+    evidence: '証拠',
+    score: '異常度',
+    confidence: '確信度',
+    analyzers: '分析器',
+    severityInfo: '情報',
+    severityNotice: '注意',
+    severityReview: '要確認',
+    dimensionAutomation: '自動化検出',
+    dimensionKeystrokeContent: '打鍵と内容の整合',
+    dimensionTranscriptionTopology: '構築の形 (転写/著述)',
+    dimensionFocusBurst: '離脱とバーストの相関',
   },
 
   pattern: {
