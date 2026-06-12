@@ -15,6 +15,7 @@ import {
   type VerificationProgressCallback,
   type VerificationMode,
   type FullVerificationResult,
+  type Analyzer,
   type AnalysisReport,
   type AssuranceResult,
   type ProcessSummary,
@@ -79,6 +80,12 @@ export interface VerifyProofOptions {
   requireAnchorDensity?: boolean;
   /** root アンカー必須 (ADR-0017)。true で root 未アンカー (serverNonce トークン無し) を fail させる (採点 opt-in)。 */
   requireRootAnchor?: boolean;
+  /**
+   * 分析に使う Analyzer 群 (ADR-0009 / プラットフォーム方針)。未指定なら shared の
+   * `defaultAnalyzers`。採点者/研究者の外部アナライザを CLI が読み込んで差し込むための口。
+   * advisory のまま — valid / exit code には一切影響しない (直交性維持)。
+   */
+  analyzers?: readonly Analyzer[];
 }
 
 export async function verifyProof(
@@ -109,7 +116,8 @@ export async function verifyProof(
 
   // 分析層 (ADR-0009): 検証と直交する post-hoc 分析。既定の分析器は方向性を示す
   // プレースホルダのみ。advisory であって判定ではない (verifyProofFile の valid とは別軸)。
-  const analysis = await runAnalysis({ proof, verification: result });
+  // options.analyzers が渡れば (採点者/研究者の外部アナライザ) それを使う。未指定なら shared 既定。
+  const analysis = await runAnalysis({ proof, verification: result }, options.analyzers);
 
   // 試験モード (ADR-0006): exam ブロックがあれば束縛を検証する。
   // root 束縛は proof 自己完結 (verifyProofFile が rootValid で既に検証済み)。

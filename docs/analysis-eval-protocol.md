@@ -1,16 +1,17 @@
-# 分析器 実証評価プロトコル (W5)
+# 分析器 実証評価プロトコル (参照手順 + ハーネス)
 
-分析層 (ADR-0009) の各アナライザを **severity `review` に昇格してよいか**を、思いつきや直感ではなく**ラベル付きコーパスでの実測**で判断するための収集・評価手順。
+分析層 (ADR-0009) のアナライザが、ラベル付きコーパスでどれだけ「当てる/誤る」かを**自分の現場のデータで測る**ための参照プロトコルと評価ハーネス。
 
-> **位置づけ**: 分析は常に advisory (ADR-0009)。この評価は「ある手掛かりを `review` 扱いにしたとき、本物の人間タイピングをどれだけ巻き込む (偽陽性) か」「自動制作をどれだけ取りこぼす (偽陰性) か」を測るだけで、**分析器を判定器に変えるものではない**。最終判断は常に監督者・採点者にある。
+> **位置づけ (ADR-0023)**: **TypedCode は判定器ではない**。我々はデータを収集して既定分析器に「正解の閾値」を焼き込むことはしない。本書は、**採点者・研究者が自分のデータと自分の分析器**で「ある手掛かりを `review` 扱いにしたとき本物をどれだけ巻き込むか (偽陽性) / 自動制作をどれだけ取りこぼすか (偽陰性)」を測るための手順とツール。最終判断は常に採点者・研究者にある。自前の分析器は verify-cli の `--analyzer <module>` で差し込める (フォーク不要)。
 
 ---
 
-## 0. 運用ゲート (これが目的)
+## 0. 何のための評価か
 
-**実測で偽陽性率が許容内だと示されるまで、heuristic アナライザ (`transcription-topology` / `focus-burst-correlation` / 将来の打鍵動態系) を `severity: 'review'` に昇格させない。** 現状はすべて `notice` 据え置き。`automation` アナライザの環境シグナル (`navigator.webdriver` / 自動化グローバル / `isTrusted=false`) は heuristic ではなく決定的な tell なので別扱い (既に `review`) だが、これも本プロトコルで偽陽性ゼロを確認する。
+ある手掛かりを採点者の注意に値する `review` に上げてよいか (= 偽陽性率が許容内か) は、打鍵分布・IME 挙動・転写癖に依存し**現場ごとに違う**。だから:
 
-昇格の可否は §4 の基準で判断する。
+- **TypedCode 同梱の既定分析器は advisory プレースホルダのまま** (`notice` 止まり)。我々は実測で閾値を焼いて `review` に昇格しない (ADR-0023)。`automation` の環境シグナル (`navigator.webdriver` / 自動化グローバル / `isTrusted=false`) のみ既に `review` だが、これはヒューリスティックではなく決定的な事実 tell。
+- **昇格の判断は分析器を運用する側 (採点者/研究者) が、自分のコーパスで行う**。本ハーネスはそのための測定器。自前分析器を `--analyzer` で載せ、本書の手順で FP/FN を測り、§4 の基準で閾値を決める。
 
 ---
 
@@ -85,6 +86,17 @@ EVAL_CORPUS=/path/to/corpus npx vitest run analysisEvalCorpus -w @typedcode/shar
 
 集計ロジックは shared の純粋関数 `evaluateAnalysis` (`packages/shared/src/analysis/eval.ts`)。proof → `runAnalysis` → `LabeledAnalysis[]` → `evaluateAnalysis`。CI 対象の単体テストは `analysisEval.test.ts`。
 
+### 3.4 自前の分析器を測る (ADR-0023)
+
+既定分析器ではなく**自分の手法**を評価したい場合、verify-cli で外部分析器を proof / コーパスに走らせて `--analysis-json` で出力を取り、自前の集計に渡す:
+
+```bash
+typedcode-verify proof.json --analyzer ./my-analyzer.mjs --analysis-json out.json
+# 既定を外して自前だけ: --no-default-analyzers --analyzer ./my-analyzer.mjs
+```
+
+外部モジュールは ADR-0009 の `Analyzer` 契約 (`{ id, version, analyze(input) }`) を default / `analyzer` / `analyzers` で export する。`analyze` には検証済み proof の全イベント列・fingerprint・`FullVerificationResult` が渡る (§References)。**注意**: `--analyzer` は任意モジュールを動的 import するため、信頼できるモジュールだけを渡すこと。
+
 ---
 
 ## 4. 指標と昇格基準
@@ -121,8 +133,11 @@ EVAL_CORPUS=/path/to/corpus npx vitest run analysisEvalCorpus -w @typedcode/shar
 
 ## 6. 関連
 
-- ADR-0009 (分析層の直交性・advisory 原則)
+- ADR-0023 (分析を判定器ではなく差込み基盤として位置づける — 本書の前提)
+- ADR-0009 (分析層の直交性・advisory 原則・private 分析器)
 - ADR-0018 (`isTrusted` 合成打鍵捕捉とその限界)
 - ADR-0020 (三層保証語彙: 著述性は常に advisory)
+- `Analyzer` / `AnalysisInput` / `AnalysisSignal` 契約 (`packages/shared/src/analysis/types.ts`)
 - `packages/shared/src/analysis/eval.ts` (`evaluateAnalysis`)
 - `packages/shared/src/__tests__/analysisEvalCorpus.test.ts` (合成生成 + 実データ評価ランナー)
+- `packages/verify-cli/src/analyzers.ts` (`--analyzer` 外部分析器読込)

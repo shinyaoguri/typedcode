@@ -53,6 +53,7 @@
 | [0020](0020-three-layer-assurance-vocabulary.md) | Accepted | 保証を三層語彙 (整合性 × 時刻アンカー × 著述性[advisory]) で実証拠から機械導出し表示する |
 | [0021](0021-code-execution-result-capture.md) | Accepted | コード実行の結果 (成功/失敗/exit code) を start/result の 2 イベントで加算的に捕捉する |
 | [0022](0022-pre-export-self-review.md) | Accepted | 提出前セルフレビュー: 自分の過程要約を確認し任意の振り返り `reflectionNote` をチェーンへ記録する (exam は off) |
+| [0023](0023-analysis-platform-not-judge.md) | Accepted | 分析を判定器ではなく多様な分析手法の差込み基盤として位置づける (verify-cli `--analyzer` 外部分析器・既定は advisory 据え置き) |
 
 ## 参考
 
