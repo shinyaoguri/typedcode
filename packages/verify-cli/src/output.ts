@@ -41,6 +41,8 @@ export interface VerificationOutput {
   mode?: VerificationMode;
   poswSkipped?: boolean;
   signedCheckpoints?: SignedCheckpointsVerificationResult;
+  /** root がサーバアンカーされているか (ADR-0017) */
+  rootAnchored?: boolean;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
   analysis?: AnalysisReport;
   /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
@@ -152,6 +154,15 @@ export function formatResult(result: VerificationOutput): string {
     lines.push(`Mode:        ${result.mode}`);
   }
 
+  // root のサーバアンカー (ADR-0017)。exam は独自の T0 束縛を持つため表示しない。
+  if (!result.exam?.present) {
+    if (result.rootAnchored) {
+      lines.push(`Root anchor: ${c('green', 'VERIFIED')} (server-anchored chain root)`);
+    } else {
+      lines.push(`Root anchor: ${c('yellow', 'unanchored')} (no session start token — offline fabrication possible)`);
+    }
+  }
+
   const sc = result.signedCheckpoints;
   if (sc) {
     if (!sc.anchored) {
@@ -225,7 +236,7 @@ ${c('bold', 'typedcode-verify')} - Verify TypedCode proof files
 ${c('cyan', 'Usage:')}
   typedcode-verify <file.json|file.zip> [--mode <fast|audit|full>]
                    [--exam-package <file.tcexam>] [--submitted-at <ISO>]
-                   [--require-anchor-density]
+                   [--require-anchor-density] [--require-root-anchor]
 
 ${c('cyan', 'Arguments:')}
   file    Path to proof file (.json) or exported archive (.zip)
@@ -244,6 +255,10 @@ ${c('cyan', 'Options:')}
                    Fail (exit 1) when signed checkpoints are too sparse for the claimed
                    session (ADR-0016) — e.g. a single end checkpoint anchoring a long
                    chain. Off by default (sparse anchoring is only a warning).
+  --require-root-anchor
+                   Fail (exit 1) when the chain root is not server-anchored (ADR-0017) —
+                   i.e. no session start token (offline/degraded or old proof). Off by
+                   default (unanchored root is only a warning). exam proofs are exempt.
 
 ${c('cyan', 'Examples:')}
   typedcode-verify proof.json

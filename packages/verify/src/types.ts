@@ -59,6 +59,8 @@ export type PoswMode = 'skipped' | 'sampled' | 'full';
 export interface VerificationResultData {
   metadataValid: boolean;
   rootValid?: boolean;
+  /** root がサーバアンカーされているか (ADR-0017)。`sessionStartToken` で root がアンカーされていれば true。 */
+  rootAnchored?: boolean;
   chainValid: boolean;
   finalHashValid?: boolean;
   contentValid?: boolean;

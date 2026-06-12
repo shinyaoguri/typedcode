@@ -9,7 +9,7 @@
 
 ## 重要な不変条件
 
-1. **Event #0 は `humanAttestation`**: ファイル作成時の Turnstile 認証をチェーンの根として固定する。**他のイベントを #0 にしてはいけない** (チェーン根の信頼性が崩れる)
+1. **Event #0 は `humanAttestation`**: ファイル作成時の Turnstile 認証をチェーンの根として固定する。**他のイベントを #0 にしてはいけない** (チェーン根の信頼性が崩れる)。**ADR-0017**: casual/class では Turnstile を `/api/session/start` に統合し、**initialize より先に**実行して `serverNonce` 入り ECDSA トークンを得て `TypingProof.initializeAnchored` で root をサーバアンカーする (`SHA256(fp ‖ localNonce ‖ serverNonce)`)。`#0 humanAttestation` は引き続き記録するが暗号的束縛は proof 同梱の `sessionStartToken` が担う。session/start の `sessionId` は **`sessionService.getCurrentSessionId()`** (署名 cp と同じ) を使う (verifier が token↔cp の sessionId 一致を要求)。不達時は従来 `initialize` にフォールバック (`rootAnchored:false`、開始はブロックしない)。`createTabFromTemplate` のバンドルタブは現状非アンカー (follow-up)
 2. **`EventRecorder` は fire-and-forget**: PoSW 待ちで UI をブロックしない。代わりに `queuedEventCount` を露出して UI が表示する
 3. **`SignedCheckpointService` は単一フライト**: 並列 `flush()` を許すと同一 cp の二重署名で `previousSignedCheckpointHash` チェーンが破綻する ([docs/adr/0003-idempotent-signing-retry.md](../../docs/adr/0003-idempotent-signing-retry.md))
 4. **`InputDetector` の paste 検出**: `SessionContentRegistry` と照合して `insertFromPaste` (禁止) と `insertFromInternalPaste` (許可) を分ける。この判定がピュアタイピング判定の入口

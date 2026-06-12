@@ -35,6 +35,7 @@ import type {
 } from './proof.js';
 import type { TemplateInjectionEventData } from './template.js';
 import type { ExamSessionContext } from './exam.js';
+import type { SessionStartToken } from './sessionStartToken.js';
 
 /** PendingEvent用のデータ型（RecordEventInput.dataと同等） */
 export type PendingEventDataType =
@@ -86,6 +87,8 @@ export interface SerializedProofState {
   checkpoints?: CheckpointData[];
   /** 試験モード (ADR-0006) の束縛コンテキスト。exam モードのみ */
   examContext?: ExamSessionContext | null;
+  /** セッション開始トークン (ADR-0017)。casual/class で session/start 成功時のみ。リロード復帰で保持 */
+  sessionStartToken?: SessionStartToken | null;
 }
 
 /** 認証状態 */
@@ -188,6 +191,8 @@ export interface StoredTabData {
   checkpoints?: CheckpointData[];
   /** 試験モード (ADR-0006) の束縛コンテキスト。exam モードのみ */
   examContext?: ExamSessionContext | null;
+  /** セッション開始トークン (ADR-0017)。casual/class で session/start 成功時のみ。リロード復帰で保持 */
+  sessionStartToken?: SessionStartToken | null;
 }
 
 /** イベントデータ（IndexedDB格納用） */
@@ -244,6 +249,8 @@ export interface LightweightProofState {
   checkpoints?: CheckpointData[];
   /** 試験モード (ADR-0006) の束縛コンテキスト。exam モードのみ */
   examContext?: ExamSessionContext | null;
+  /** セッション開始トークン (ADR-0017)。casual/class で session/start 成功時のみ。リロード復帰で保持 */
+  sessionStartToken?: SessionStartToken | null;
 }
 
 /** 軽量タブ状態（sessionStorage用） */

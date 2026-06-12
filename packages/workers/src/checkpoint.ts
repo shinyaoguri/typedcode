@@ -87,7 +87,11 @@ function jsonResponse(
 
 let cachedPrivateKey: { keyId: string; key: CryptoKey } | null = null;
 
-async function getSigningKey(env: CheckpointEnv): Promise<{ keyId: string; key: CryptoKey }> {
+/**
+ * checkpoint 署名鍵 (ECDSA-P256 private) をロードする。キャッシュあり。
+ * ADR-0017 の session/start トークン署名もこの鍵を流用する (運用一系統)。
+ */
+export async function getSigningKey(env: CheckpointEnv): Promise<{ keyId: string; key: CryptoKey }> {
   if (!env.CHECKPOINT_SIGNING_KEY_JWK || !env.CHECKPOINT_SIGNING_KEY_ID) {
     throw Object.assign(new Error('Signing key not configured'), {
       code: 'SIGNING_KEY_NOT_CONFIGURED',

@@ -280,16 +280,45 @@ export class TabManager {
     const id = generateUUID();
     const createdAt = Date.now();
 
-    // TypingProofインスタンスを作成（Workerをeditorパッケージから注入）
-    // 試験モード (ADR-0006): examContext があれば root を packageHash + startToken に束縛する
-    // (genesis = 監督コード入力)。casual は fingerprint + nonce のみ。
     const typingProof = new TypingProof();
     const poswWorker = createPoswWorker();
+
+    // 認証状態を追跡
+    let verificationState: VerificationState = 'skipped';
+    let verificationDetails: VerificationDetails | undefined;
+
+    // ADR-0017: casual/class は session/start で root をサーバアンカーする。
+    // exam は独自束縛 (initializeExam)、sharedAttestation (バンドル 2 番目以降) は再認証しない。
+    // root は serverNonce に依存するため、Turnstile を **initialize より先に** 実行する。
+    // session/start の sessionId は署名 cp と一致させる必要があるので getCurrentSessionId() を使う
+    // (verifier が token.sessionId ↔ 署名 cp sessionId の一致を要求する)。失敗時は非アンカーで継続。
+    let interactiveAuth: Awaited<ReturnType<typeof performVerificationWithUI>> | null = null;
+    if (!options?.examContext && !options?.sharedAttestation && !options?.skipAttestation && isTurnstileConfigured()) {
+      debugLog('[TabManager] Performing Turnstile + session/start for new tab...');
+      const apiSessionId = this.sessionService.getCurrentSessionId();
+      const sessionStart =
+        apiSessionId && this.fingerprint
+          ? { sessionId: apiSessionId, fingerprintHash: this.fingerprint }
+          : undefined;
+      interactiveAuth = await performVerificationWithUI('create_tab', t, sessionStart);
+    }
+
+    // TypingProofインスタンスの root を確定する。
+    // 試験モード (ADR-0006): examContext があれば root を packageHash + startToken に束縛する。
+    // ADR-0017: session/start トークンがあれば serverNonce 込みでアンカー。無ければ従来式。
     if (options?.examContext) {
       await typingProof.initializeExam(
         this.fingerprint!,
         this.fingerprintComponents!,
         options.examContext,
+        poswWorker
+      );
+    } else if (interactiveAuth?.sessionToken) {
+      await typingProof.initializeAnchored(
+        this.fingerprint!,
+        this.fingerprintComponents!,
+        interactiveAuth.sessionToken.payload.serverNonce,
+        interactiveAuth.sessionToken,
         poswWorker
       );
     } else {
@@ -305,30 +334,22 @@ export class TabManager {
     // VITE_API_URL 未設定なら null (graceful degradation)。
     const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof);
 
-    // 認証状態を追跡
-    let verificationState: VerificationState = 'skipped';
-    let verificationDetails: VerificationDetails | undefined;
-
+    // #0 humanAttestation を記録する。
     // 共有 attestation (ADR-0012 バンドルの 2 番目以降のタブ): 先頭タブの #0 を再利用し
     // Turnstile を再実行しない。examContext と併用する。
     if (options?.sharedAttestation) {
       await typingProof.recordHumanAttestation(options.sharedAttestation);
       verificationState = 'verified';
       verificationDetails = { timestamp: new Date().toISOString() };
-    } else if (!options?.skipAttestation && isTurnstileConfigured()) {
-      // Turnstile認証（skipAttestationでない場合のみ）
-      debugLog('[TabManager] Performing Turnstile verification for new tab...');
-
-      const uiResult = await performVerificationWithUI('create_tab', t);
-
-      verificationState = uiResult.verificationState;
-      verificationDetails = uiResult.verificationDetails;
+    } else if (interactiveAuth) {
+      verificationState = interactiveAuth.verificationState;
+      verificationDetails = interactiveAuth.verificationDetails;
 
       // 認証結果をハッシュチェーンに記録（成功・失敗問わず）
-      await typingProof.recordHumanAttestation(uiResult.attestationData);
+      await typingProof.recordHumanAttestation(interactiveAuth.attestationData);
 
       // コールバックで通知
-      this.onVerificationCallback?.(uiResult.result);
+      this.onVerificationCallback?.(interactiveAuth.result);
 
       // 注意: 認証失敗でもタブ作成は続行（ブロックしない）
     } else if (options?.examContext && !options?.skipAttestation) {

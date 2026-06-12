@@ -299,8 +299,10 @@ describe('exam authority registry', () => {
 });
 
 describe('exam version constants', () => {
-  it('bumps the proof format version to 1.1.0 for the exam root change', () => {
-    expect(PROOF_FORMAT_VERSION).toBe('1.1.0');
+  it('tracks the current proof format version (1.2.0 after the ADR-0017 session anchor)', () => {
+    // 1.1.0 = exam root 束縛 (ADR-0006)、1.2.0 = セッション開始トークンによる root アンカー (ADR-0017)。
+    // どちらも加算的で MIN_SUPPORTED は 1.0.0 据え置き。
+    expect(PROOF_FORMAT_VERSION).toBe('1.2.0');
   });
 
   it('exposes the exam package/proof/root-binding versions', () => {

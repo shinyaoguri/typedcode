@@ -36,11 +36,14 @@ src/
 
 | Endpoint | Method | 用途 |
 |---|---|---|
-| `/api/verify-captcha` | POST | Turnstile トークン検証 + アテステーション発行 |
-| `/api/verify-attestation` | POST | アテステーション署名の整合性検証 |
+| `/api/verify-captcha` | POST | Turnstile トークン検証 + アテステーション発行 (ADR-0017 で **作成時 #0 経路は session/start に統合**。pre-export 等で残置) |
+| `/api/verify-attestation` | POST | アテステーション署名の整合性検証 (**dead** — クライアント呼出なし。ADR-0017 で deprecate 注記) |
+| `/api/session/start` | POST | **ADR-0017**: Turnstile 検証 → `serverNonce` 入り ECDSA-P256 署名トークンを発行。クライアントは serverNonce を chain root に焼く。署名鍵は checkpoint と同一系統 (`getSigningKey`) |
 | `/api/checkpoint/sign` | POST | 未署名 cp に ECDSA-P256 署名 + `serverTimestamp` 付与 |
 | `/api/checkpoint/public-keys` | GET | 公開鍵レジストリ取得 (検証側のキャッシュ用) |
 | `/health` | GET | ヘルスチェック |
+
+`/api/session/start` (ADR-0017) は **Turnstile ゲート + root アンカー + 人間ゲート**を 1 リクエストで兼ねる。`handleSessionStart` (`src/index.ts`) が `verifyTurnstile` + hostname 照合 → `getSigningKey` (checkpoint.ts から export、鍵流用) で `createSessionStartToken` を署名発行。**KV を使わない** (ステートレス・冪等不要)。入力検証は shared の `validateSessionStartInput` (sessionId / fingerprintHash)。トークン検証 (registry-only) は shared の `verifySessionStartToken`。
 
 ## エラーコード (`/api/checkpoint/sign`)
 

@@ -158,6 +158,21 @@ export class TrustCalculator {
       }
     }
 
+    // 7.5 root のサーバアンカー（ADR-0017）。serverNonce 付きトークンで root がアンカーされていない
+    //     (= 完全オフライン捏造の余地) なら警告。exam は独自の T0 束縛を持つため対象外。
+    if (
+      verificationResult &&
+      verificationResult.metadataValid &&
+      !verificationResult.rootAnchored &&
+      !verificationResult.exam?.present
+    ) {
+      issues.push({
+        component: 'anchoring',
+        severity: 'warning',
+        message: 'チェーン根がサーバアンカーされていません（開始時刻が未固定・オフライン捏造の余地）',
+      });
+    }
+
     // 8. ピュアタイピング（ペースト/バルク挿入の有無）
     if (verificationResult && !verificationResult.isPureTyping) {
       issues.push({

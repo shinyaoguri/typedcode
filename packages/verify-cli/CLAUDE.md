@@ -48,3 +48,8 @@ src/
 - `--require-anchor-density` (任意・boolean): 署名 cp が「主張したイベント数 / 経過時間」に対して**疎**な proof を **exit 1** にする (採点向け opt-in)。既定は warning のみで `Anchoring` 行の下に `! Anchoring is sparse …` を出す
 - 判定は shared の `verifySignedCheckpoints` (`requireAnchorDensity`) に委譲。CLI は `verifyProofFile` にフラグを通すだけ。閾値 (cadence×5) も shared 側が単一ソース
 - 末尾 1 個の署名 cp で長いチェーンをアンカーする手口を捕捉する (`coverageRatio` は 1.0 でも疎)。**非破壊** (proof フォーマット不変)
+
+## root アンカー gate (ADR-0017)
+
+- `--require-root-anchor` (任意・boolean): root がサーバアンカーされていない (`sessionStartToken` 無し = オフライン劣化 / 旧 proof) proof を **exit 1** にする (採点向け opt-in)。既定は warning のみで `Root anchor: unanchored` を出す。**exam proof は対象外** (独自の T0 束縛を持つ)
+- 判定は shared の `verifyProofFile` (`requireRootAnchor`) に委譲。CLI はフラグを通すだけ。proof は `PROOF_FORMAT_VERSION` 1.2.0 (`MIN_SUPPORTED` 1.0.0 据置) なので **旧 proof もそのまま検証**でき、`rootAnchored:false` で受理 (後方互換)

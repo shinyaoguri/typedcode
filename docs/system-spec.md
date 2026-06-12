@@ -425,7 +425,10 @@ interface ExamProofBlock {
 - `typingProofHash === SHA256(typingProofData)` を再計算照合
 - `finalContentHash === SHA256(content)` を再計算照合
 - fingerprint components から hash を再計算 → 申告 hash と一致
-- `initialEventChainHash === SHA256(fingerprintHash + nonce)` を照合。**`proof.exam` がある場合は試験モードの root 式**で照合する (v1 = `…+ packageHash + startToken`、v2 = 末尾に `+ problemContentHash`。`proof.exam.rootBinding` で分岐。§4.2)。proof 自己完結・package 不要
+- `initialEventChainHash` の照合。root 式は proof の種別で分岐 (`verifyInitialHashRoot`):
+  - **exam** (`proof.exam` あり): 試験モードの root 式 (v1 = `SHA256(fp ‖ nonce ‖ packageHash ‖ startToken)`、v2 = 末尾に `‖ problemContentHash`。`proof.exam.rootBinding` で分岐。§4.2)。proof 自己完結・package 不要
+  - **anchored casual/class** (`proof.sessionStartToken` あり, ADR-0017): `SHA256(fp ‖ nonce ‖ serverNonce)`。加えてトークンの ECDSA を **registry で検証** (registry-only = C1。未登録 keyId は拒否)、鍵の有効期間/失効を `issuedAt` を anchor に判定、`token.fingerprintHash === proof.fingerprint.hash` (端末束縛)。成立で `rootAnchored=true`
+  - **従来 casual/class**: `SHA256(fp ‖ nonce)`。`rootAnchored=false`
 - `metadata` (pasteEvents, dropEvents, insertEvents, ...) を全イベント走査で再カウントして照合
 
 **Layer 2: ハッシュチェーン整合性**
@@ -498,6 +501,7 @@ interface ExamProofBlock {
 - `verifyProofFile` 全レイヤを `&&` で組み合わせる
 - 署名済み checkpoint は `anchored=true` のとき必須レイヤ。`anchored=false` (旧 proof など) では他レイヤで成立すれば valid
 - **アンカー密度 (ADR-0016)** は既定 warning。`requireAnchorDensity` (verify-cli の `--require-anchor-density` 等) を渡したときのみ `sparse` を signed checkpoint レイヤの fail に合流させる (exam/採点で opt-in)
+- **root サーバアンカー (ADR-0017)**: `sessionStartToken` があるとき token↔署名 cp の `sessionId` 一致も要求する (アンカーとチェーンの結びつき)。`rootAnchored=false` (token 無し = オフライン劣化 / 旧 proof) は既定 warning。`requireRootAnchor` (verify-cli の `--require-root-anchor`) を渡したときのみ fail に合流させる (exam は独自束縛のため対象外。high-stakes 採点で opt-in)
 - レイヤ間優先順位: metadata → chain → finalHash → checkpoint → content → signedCheckpoint
 - いずれかが false なら、エラー位置 (event index) とメッセージを返す
 
@@ -656,6 +660,8 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **anchored** | proof に signed checkpoint が 1 つ以上含まれている状態 |
 | **post-hoc batch signing** | proof 完成後に複数 envelope を短時間で一括取得する攻撃。temporal ratio で検出試行 |
 | **anchor density / sparse (ADR-0016)** | 署名 cp が主張イベント数/時間に対し十分密かを見る指標。`maxGapEvents>500` / `maxGapServerMs>50s` / `firstAnchorLatencyEvents>500` で `sparse`。末尾 1 点アンカー (coverageRatio=1.0 でも疎) を検出。既定 warning、`requireAnchorDensity` で strict-fail |
+| **session start token / serverNonce (ADR-0017)** | session/start が Turnstile 後に発行する ECDSA 署名トークン。`serverNonce` を root (`SHA256(fp ‖ localNonce ‖ serverNonce)`) に焼き、開始時刻をサーバアンカーする。完全オフライン捏造を封じる。Turnstile ゲート + root アンカー + 人間ゲートを兼ね、HMAC attestation の作成経路を置換 |
+| **rootAnchored (ADR-0017)** | proof の root が serverNonce トークンでアンカーされているか。`sessionStartToken` 同梱で true。false (旧 proof / オフライン劣化) は warning、`requireRootAnchor` で strict-fail。exam は対象外 |
 | **(試験) 試験モード** | URL パス `/exam` で入る anti-AI-cheating モード (ADR-0011 でモードを path 分岐化、旧 `?exam=1` sticky を置換)。封印問題 + 監督コード + チェーン根束縛。ADR-0006〜0011 |
 | **モード (casual/class/assignment/exam)** | URL パスで確定する動作モード (ADR-0011/0015)。`/casual` `/class` `/assignment` `/exam`。能力 (スクショ/封印/フルスクリーン等) と storage 名前空間がモード別。proof に自己申告 `mode` を記録 |
 | **ランディング / `/`** | ルート `/` と未知パスはモード選択の入口 (ADR-0015)。4モードを**比較カード**で横並びに見せ能力差を一覧化、`/<mode>` へ遷移。エディタは初期化せず DOM のみ描画。進行中セッションは「続きから (N)」バッジで表示 (`SessionDetector`、空 DB を作らない read-only 検出)。タイポ (`/exsm` 等) を黙って casual にせず入口へ落とす |
@@ -723,3 +729,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-06-09 | 授業モード (ADR-0014) | 平文 `.tcclass` (`tcclass/1`、暗号・署名なし) で問題を配布し `/class` で表示 + N タブ展開 (tier ① 自己申告、root 束縛なし)。受動的 fullscreen 記録 (要求バナーなし)。`/author` に未封印 `.tcclass` 生成を追加。proof 互換 (`PROOF_FORMAT_VERSION` 据え置き)。本仕様に「授業モード」(§4.8) を反映 |
 | 2026-06-09 | 導線整理 (ADR-0015) | ルート `/` をモード選択ランディングに (`/casual` を明示ルート化、未知パスも入口へ → 黙 casual 事故を解消)。**4モードの比較カード** + 進行中セッションバッジ (`SessionDetector`) + **エディタ内モード切替ピル** (`ModeSwitcher`)。casual は利用規約モーダルなし + 画面共有オプトイン (既定オフ)、Turnstile `#0` 維持、表示名を「練習/Demo」に (id/ルートは不変)。`resolveRoute` / 能力 `promptScreenShareAtStart` を追加。proof 整合は不変 |
 | 2026-06-12 | アンカー密度 (ADR-0016, Phase 7-B) | 署名 cp の **アンカー密度**を検証器のメトリクス化 (`SignedCheckpointsVerificationResult.density`)。`maxGapEvents` / `maxGapServerMs` / `firstAnchorLatency*` を計量し、保守的閾値 (cadence×5) 超で `sparse`。末尾 1 点アンカー (coverageRatio=1.0 でも偽造可) を検出。既定 warning、verify-cli `--require-anchor-density` で strict-fail。**非破壊** (proof フォーマット不変)。§6.2/§6.3/§10 を反映 |
+| 2026-06-12 | root サーバアンカー (ADR-0017, Phase 7-A) | **`PROOF_FORMAT_VERSION` 1.1.0→1.2.0** (MIN_SUPPORTED 1.0.0 据置・後方互換)。session/start (Turnstile→ECDSA トークン) で casual/class の root を `SHA256(fp ‖ localNonce ‖ serverNonce)` にサーバアンカーし、完全オフライン捏造を封じる。proof に `sessionStartToken` + `rootAnchored` を加算。検証器は registry-only でトークン検証→serverNonce 込み root 再計算→token↔cp sessionId 突合。フォールバック (b): 不達なら `rootAnchored:false` で継続 (warning)。`requireRootAnchor` で strict-fail (exam 除外)。HMAC attestation の作成経路を session/start に統合。§4/§6.2/§6.3/§10 を反映 |

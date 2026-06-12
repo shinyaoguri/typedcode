@@ -35,6 +35,9 @@ typedcode-verify ALL_TC.zip --exam-package p1.tcexam --submitted-at 2026-06-06T0
 
 # アンカー密度 gate (ADR-0016): 署名 cp が疎な proof を fail させる (採点向け opt-in)
 typedcode-verify ALL_TC.zip --require-anchor-density
+
+# root アンカー gate (ADR-0017): root 未アンカー (serverNonce トークン無し) を fail させる (採点向け opt-in)
+typedcode-verify ALL_TC.zip --require-root-anchor
 ```
 
 ### 試験モード (ADR-0006)

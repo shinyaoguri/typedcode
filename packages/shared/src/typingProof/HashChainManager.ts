@@ -94,6 +94,26 @@ export class HashChainManager {
   }
 
   /**
+   * セッション開始トークン (ADR-0017) による anchored 初期ハッシュ (= チェーン根) を生成。
+   *   root = SHA-256(fingerprintHash ‖ localNonce ‖ serverNonce)
+   * serverNonce は session/start でサーバが署名トークンに焼いた 32 バイト hex。これを root に
+   * 連結することで「完全オフライン捏造」を封じる (localNonce のみの generateInitialHash と対をなす)。
+   *
+   * 注: この連結式は sessionStartToken.ts の `computeAnchoredChainRoot` と**必ず一致**させること
+   * (verifier はそちらで root を再計算する)。両者の一致はテストで担保する。
+   */
+  async generateAnchoredInitialHash(
+    fingerprintHash: string,
+    serverNonce: string
+  ): Promise<InitialHashResult> {
+    const randomData = new Uint8Array(32);
+    crypto.getRandomValues(randomData);
+    const localNonce = this.arrayBufferToHex(randomData);
+    const hash = await this.computeHash(fingerprintHash + localNonce + serverNonce);
+    return { hash, nonce: localNonce };
+  }
+
+  /**
    * 初期ハッシュを生成（後方互換API）
    */
   async initialHash(fingerprintHash: string): Promise<string> {

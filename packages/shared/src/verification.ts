@@ -27,6 +27,11 @@ import { POSW_ITERATIONS, EXAM_ROOT_BINDING_V2 } from './version.js';
 import {
   verifyProofSignedCheckpoints,
 } from './signedCheckpoints.js';
+import {
+  verifySessionStartToken,
+  computeAnchoredChainRoot,
+} from './sessionStartToken.js';
+import { CHECKPOINT_PUBLIC_KEYS } from './checkpointKeys/index.js';
 import type { SignedCheckpointsVerificationResult } from './types.js';
 import type { CheckpointPublicKey } from './checkpointKeys/index.js';
 
@@ -54,6 +59,11 @@ export interface FullVerificationResult {
   errorMessage?: string;
   poswSkipped?: boolean;
   signedCheckpoints?: SignedCheckpointsVerificationResult;
+  /**
+   * root がサーバアンカーされているか (ADR-0017)。`sessionStartToken` で root がアンカーされていれば true。
+   * exam / 旧 proof / オフライン劣化では false。warning 判定は呼び出し側 (exam は除外)。
+   */
+  rootAnchored?: boolean;
 }
 
 /**
@@ -74,6 +84,12 @@ export interface VerifyProofFileOptions {
    * 既定 false = 密度は計測のみ (warning は呼び出し側が表示)。exam / 採点ポリシーで opt-in する。
    */
   requireAnchorDensity?: boolean;
+  /**
+   * root アンカー必須 (ADR-0017)。true のとき、casual/class で root がサーバアンカーされていない
+   * (`sessionStartToken` 無し = オフライン劣化 / 旧 proof) proof を fail させる。既定 false = warning のみ。
+   * exam proof は独自の root 束縛を持つため、この gate の対象外 (常に通す)。high-stakes 採点で opt-in。
+   */
+  requireRootAnchor?: boolean;
 }
 
 /**
@@ -95,26 +111,47 @@ export interface PoswStats {
  */
 export type VerificationProgressCallback = (current: number, total: number) => void;
 
+export interface VerifyInitialHashRootOptions {
+  /** セッション開始トークン (ADR-0017) の署名検証に使う公開鍵 registry */
+  signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
+}
+
+export interface VerifyInitialHashRootResult {
+  valid: boolean;
+  reason?: string;
+  computedInitialHash?: string;
+  expectedInitialHash?: string;
+  /**
+   * root がサーバアンカーされているか (ADR-0017)。casual/class で有効な `sessionStartToken` が
+   * serverNonce 込みで root を成立させたとき true。exam / 旧 proof / オフライン劣化では false。
+   * (exam は独自の T0 束縛を持つため、warning 判定では `proof.exam` を別途考慮すること。)
+   */
+  rootAnchored: boolean;
+}
+
 /**
  * Verify that the hash chain starts from the exported fingerprint and nonce.
  *
- * 試験モード (ADR-0006) の proof は `exam` ブロックを持ち、root 式が
- *   SHA-256(fingerprintHash ‖ nonce ‖ packageHash ‖ startToken)
- * に変わる。`proof.exam` の有無で root の期待値を分岐する (casual proof は従来式)。
+ * root 式は proof の種別で分岐する:
+ * - exam (ADR-0006): SHA-256(fingerprintHash ‖ nonce ‖ packageHash ‖ startToken [‖ problemContentHash])
+ * - anchored casual/class (ADR-0017, `sessionStartToken` あり): SHA-256(fingerprintHash ‖ nonce ‖ serverNonce)
+ *   かつトークンの ECDSA を registry で検証 (registry-only = C1)
+ * - 従来 casual/class: SHA-256(fingerprintHash ‖ nonce)
  */
 export async function verifyInitialHashRoot(
-  proof: Pick<ExportedProof, 'typingProofData' | 'proof' | 'fingerprint' | 'exam'>
-): Promise<{ valid: boolean; reason?: string; computedInitialHash?: string; expectedInitialHash?: string }> {
+  proof: Pick<ExportedProof, 'typingProofData' | 'proof' | 'fingerprint' | 'exam' | 'sessionStartToken'>,
+  options: VerifyInitialHashRootOptions = {}
+): Promise<VerifyInitialHashRootResult> {
   const fingerprintHash = proof.fingerprint?.hash;
   const fingerprintComponents = proof.fingerprint?.components;
   const proofData = proof.typingProofData;
 
   if (!fingerprintHash || !fingerprintComponents) {
-    return { valid: false, reason: 'Fingerprint data is missing' };
+    return { valid: false, reason: 'Fingerprint data is missing', rootAnchored: false };
   }
 
   if (proofData.deviceId !== fingerprintHash) {
-    return { valid: false, reason: 'Proof deviceId does not match fingerprint hash' };
+    return { valid: false, reason: 'Proof deviceId does not match fingerprint hash', rootAnchored: false };
   }
 
   const fingerprintHashCandidates = new Set<string>([
@@ -123,40 +160,81 @@ export async function verifyInitialHashRoot(
   ]);
 
   if (!fingerprintHashCandidates.has(fingerprintHash)) {
-    return { valid: false, reason: 'Fingerprint components do not match fingerprint hash' };
+    return { valid: false, reason: 'Fingerprint components do not match fingerprint hash', rootAnchored: false };
   }
 
   const nonce = proofData.initialHashNonce;
   if (!nonce || !/^[0-9a-f]{64}$/i.test(nonce)) {
-    return { valid: false, reason: 'Initial hash nonce is missing or invalid' };
+    return { valid: false, reason: 'Initial hash nonce is missing or invalid', rootAnchored: false };
   }
 
   const expectedInitialHash = proofData.initialEventChainHash;
   if (!expectedInitialHash) {
-    return { valid: false, reason: 'Initial event chain hash is missing' };
+    return { valid: false, reason: 'Initial event chain hash is missing', rootAnchored: false };
   }
 
-  // 試験モード: root に packageHash と startToken を束ねる (ADR-0006 §3)。
-  // package 自体の署名・復号・内容ハッシュ照合は verifyExamBinding が担う。ここでは
-  // proof 自己完結で「root が宣言された packageHash + startToken (v2 は + problemContentHash)
-  // から計算されている」ことだけ確認する。v2 = N問バンドル (ADR-0012 B-2)、それ以外は v1。
-  const computedInitialHash = proof.exam
-    ? await computeExamChainRoot(
-        fingerprintHash,
-        nonce,
-        proof.exam.packageHash,
-        proof.exam.startToken,
-        proof.exam.rootBinding === EXAM_ROOT_BINDING_V2 ? proof.exam.problemContentHash : undefined
-      )
-    : await computeHash(fingerprintHash + nonce);
+  // root 式を分岐して期待値を計算する。
+  let computedInitialHash: string;
+  let rootAnchored = false;
+  let rootMismatchReason: string;
+
+  if (proof.exam) {
+    // 試験モード: root に packageHash と startToken を束ねる (ADR-0006 §3)。
+    // package 自体の署名・復号・内容ハッシュ照合は verifyExamBinding が担う。ここでは
+    // proof 自己完結で「root が宣言された packageHash + startToken (v2 は + problemContentHash)
+    // から計算されている」ことだけ確認する。v2 = N問バンドル (ADR-0012 B-2)、それ以外は v1。
+    computedInitialHash = await computeExamChainRoot(
+      fingerprintHash,
+      nonce,
+      proof.exam.packageHash,
+      proof.exam.startToken,
+      proof.exam.rootBinding === EXAM_ROOT_BINDING_V2 ? proof.exam.problemContentHash : undefined
+    );
+    rootMismatchReason =
+      'Initial event chain hash does not match exam binding (fingerprint, nonce, packageHash, startToken)';
+  } else if (proof.sessionStartToken) {
+    // ADR-0017: セッション開始トークンの serverNonce で root をサーバアンカーする。
+    // まずトークンの ECDSA を registry で検証 (未登録 keyId は拒否 = 自己署名トークンを信頼しない)。
+    const registry = options.signedCheckpointKeyRegistry ?? CHECKPOINT_PUBLIC_KEYS;
+    const tokenResult = await verifySessionStartToken(proof.sessionStartToken, registry);
+    if (!tokenResult.valid) {
+      return {
+        valid: false,
+        reason: `Session start token invalid: ${tokenResult.reason ?? 'unknown'}`,
+        expectedInitialHash,
+        rootAnchored: false,
+      };
+    }
+    // トークンの fingerprintHash が proof の fingerprint と一致すること (端末束縛)。
+    if (proof.sessionStartToken.payload.fingerprintHash !== fingerprintHash) {
+      return {
+        valid: false,
+        reason: 'Session start token fingerprintHash does not match proof fingerprint',
+        expectedInitialHash,
+        rootAnchored: false,
+      };
+    }
+    computedInitialHash = await computeAnchoredChainRoot(
+      fingerprintHash,
+      nonce,
+      proof.sessionStartToken.payload.serverNonce
+    );
+    rootAnchored = true;
+    rootMismatchReason =
+      'Initial event chain hash does not match server-anchored root (fingerprint, nonce, serverNonce)';
+  } else {
+    // 従来 casual/class: server アンカーなし。
+    computedInitialHash = await computeHash(fingerprintHash + nonce);
+    rootMismatchReason = 'Initial event chain hash does not match fingerprint and nonce';
+  }
+
   if (computedInitialHash !== expectedInitialHash) {
     return {
       valid: false,
-      reason: proof.exam
-        ? 'Initial event chain hash does not match exam binding (fingerprint, nonce, packageHash, startToken)'
-        : 'Initial event chain hash does not match fingerprint and nonce',
+      reason: rootMismatchReason,
       computedInitialHash,
       expectedInitialHash,
+      rootAnchored: false,
     };
   }
 
@@ -167,10 +245,11 @@ export async function verifyInitialHashRoot(
       reason: 'First event does not start from the declared initial chain hash',
       computedInitialHash: rootUsedByEvents ?? undefined,
       expectedInitialHash,
+      rootAnchored: false,
     };
   }
 
-  return { valid: true, computedInitialHash, expectedInitialHash };
+  return { valid: true, computedInitialHash, expectedInitialHash, rootAnchored };
 }
 
 function isTemplateInjectionData(data: unknown): data is { content: string } {
@@ -689,6 +768,7 @@ export async function verifyProofFile(
   // 1. Verify metadata
   let metadataValid = false;
   let rootValid = false;
+  let rootAnchored = false;
   let isPureTyping = false;
   let metadataError: string | undefined;
   let eventMetadataResult: ProofMetadataVerificationResult | undefined;
@@ -699,9 +779,13 @@ export async function verifyProofFile(
       proof.typingProofData,
       proof.content
     );
-    const rootResult = await verifyInitialHashRoot(proof);
+    // ADR-0017: root の token 検証に署名鍵 registry を渡す (registry-only = C1)。
+    const rootResult = await verifyInitialHashRoot(proof, {
+      signedCheckpointKeyRegistry: options.signedCheckpointKeyRegistry,
+    });
     eventMetadataResult = verifyProofMetadata(proof.typingProofData, events);
     rootValid = rootResult.valid;
+    rootAnchored = rootResult.rootAnchored;
     metadataValid = metaResult.valid && rootValid && eventMetadataResult.valid;
     metadataError = !metaResult.valid
       ? 'Typing proof hash does not match metadata'
@@ -730,6 +814,26 @@ export async function verifyProofFile(
     requireAnchorDensity: options.requireAnchorDensity,
   });
 
+  // 4. ADR-0017: セッション開始トークンと署名 cp の sessionId 突合 (アンカーとチェーンの結びつき)。
+  //    token の serverNonce は既に root に焼かれ root 一致で束縛済みだが、sessionId も一致を要求して
+  //    「別セッションのトークンを流用」を弾く。署名 cp が無いときはスキップ (突合相手がない)。
+  let tokenSessionMismatch: string | undefined;
+  if (proof.sessionStartToken && rootValid) {
+    const signedCp = (proof.checkpoints ?? []).find((cp) => cp.signature);
+    const cpSessionId = signedCp?.signature?.payload.sessionId;
+    if (cpSessionId && cpSessionId !== proof.sessionStartToken.payload.sessionId) {
+      tokenSessionMismatch = 'Session start token sessionId does not match signed checkpoint sessionId';
+    }
+  }
+
+  // 5. ADR-0017: root アンカー必須 (strict, opt-in)。exam は独自束縛のため対象外。
+  const rootAnchorBlocks =
+    !!options.requireRootAnchor && !proof.exam && metadataValid && !rootAnchored;
+
+  // signed checkpoint が存在しつつ無効なら全体も無効。存在しない (anchored=false) のは
+  // 「補助情報が無い」だけで、tamper resistance は他レイヤで担保される。
+  const signedCheckpointBlocks = signedCheckpointResult.anchored && !signedCheckpointResult.valid;
+
   const verificationError = !metadataValid
     ? metadataError
     : !chainResult.valid
@@ -740,18 +844,24 @@ export async function verifyProofFile(
           ? checkpointResult.reason
           : !contentResult.valid
             ? contentResult.reason
-            : signedCheckpointResult.anchored && !signedCheckpointResult.valid
-              ? signedCheckpointResult.reason
-              : chainResult.message;
-
-  // signed checkpoint が存在しつつ無効なら全体も無効。存在しない (anchored=false) のは
-  // 「補助情報が無い」だけで、tamper resistance は他レイヤで担保される。
-  const signedCheckpointBlocks = signedCheckpointResult.anchored && !signedCheckpointResult.valid;
+            : tokenSessionMismatch
+              ? tokenSessionMismatch
+              : signedCheckpointBlocks
+                ? signedCheckpointResult.reason
+                : rootAnchorBlocks
+                  ? 'Root is not server-anchored (ADR-0017) but root anchoring is required'
+                  : chainResult.message;
 
   return {
-    valid: metadataValid && chainValid && !signedCheckpointBlocks,
+    valid:
+      metadataValid &&
+      chainValid &&
+      !signedCheckpointBlocks &&
+      !tokenSessionMismatch &&
+      !rootAnchorBlocks,
     metadataValid,
     rootValid,
+    rootAnchored,
     chainValid,
     finalHashValid: finalHashResult.valid,
     contentValid: contentResult.valid,

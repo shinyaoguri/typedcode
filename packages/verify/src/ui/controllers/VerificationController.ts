@@ -78,6 +78,8 @@ export class VerificationController {
       !!result.signedCheckpointAnchored && result.signedCheckpointValid === false;
     const examPresentButUnverified =
       !!result.exam?.present && !result.exam.packageProvided;
+    // ADR-0017: root 未アンカー (serverNonce トークン無し) は警告。exam は独自束縛のため対象外。
+    const rootNotAnchored = !result.rootAnchored && !result.exam?.present;
     let status: FileStatus;
     if (!result.metadataValid || !result.chainValid || examBindingFailed || anchoredButInvalid) {
       status = 'error';
@@ -87,6 +89,7 @@ export class VerificationController {
       !result.signedCheckpointAnchored ||
       result.signedCheckpointTemporal?.postHocSuspected ||
       result.signedCheckpointDensity?.sparse ||
+      rootNotAnchored ||
       examPresentButUnverified
     ) {
       status = 'warning';

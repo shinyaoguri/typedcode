@@ -22,7 +22,7 @@
 ## 主な機能
 
 - **改ざん耐性のある証明**: SHA-256 ハッシュチェーン + Proof of Sequential Work (PoSW)
-- **時刻アンカリング**: サーバ署名済みチェックポイント (ECDSA-P256) による、後付け改ざんに強い時刻バインディング
+- **時刻アンカリング**: サーバ署名済みチェックポイント (ECDSA-P256) による、後付け改ざんに強い時刻バインディング。さらに**セッション開始トークン** (ADR-0017) でチェーン根の開始時刻もサーバアンカーし、オフライン捏造を封じる
 - **人間認証**: Cloudflare Turnstile と HMAC 署名済みアテステーション
 - **網羅的なイベント追跡**: コンテンツ変更・キーストローク・マウス・フォーカス・可視性・ペースト/ドロップ検出・テンプレート注入・セッション復旧などを記録 (一覧は [`events.ts`](packages/shared/src/types/events.ts))
 - **マルチタブ**: 複数ファイルを同時に編集し、タブ切替も追跡
@@ -128,14 +128,18 @@ npm run test:coverage -w @typedcode/shared
 **証明 JSON の構造:**
 ```json
 {
-  "version": "1.0.0",
+  "version": "1.2.0",
   "typingProofHash": "sha256...",
   "typingProofData": { "finalContentHash": "...", "metadata": {...} },
   "proof": { "events": [...], "finalHash": "..." },
   "fingerprint": { "deviceId": "...", "components": {...} },
-  "checkpoints": [...]
+  "checkpoints": [...],
+  "sessionStartToken": { "payload": {...}, "signature": "...", "keyId": "..." },
+  "rootAnchored": true
 }
 ```
+
+> `sessionStartToken` / `rootAnchored` は ADR-0017 (casual/class の root サーバアンカー) で加わった任意フィールド。session/start が成功したときのみ付き、無くても (旧 proof / オフライン) 検証は通る (後方互換、`MIN_SUPPORTED_VERSION` 1.0.0 据え置き)。
 
 ## 技術スタック
 
