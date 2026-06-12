@@ -48,6 +48,7 @@
 | [0015](0015-root-landing-and-casual-friction-reduction.md) | Accepted | ルート `/` をモード選択ランディングにし、通常モードの起動摩擦を下げる |
 | [0016](0016-anchoring-density-signal.md) | Accepted | 署名 cp の「アンカー密度」をシグナル化し任意で gate する (末尾 1 点アンカー検出) |
 | [0017](0017-server-anchored-chain-root.md) | Accepted | セッション開始 ECDSA トークンで casual/class の root をサーバアンカーする (format 1.2.0) |
+| [0018](0018-istrusted-capture.md) | Accepted | 合成打鍵を `isTrusted` で捕捉し advisory シグナル化する (keystroke data に hashed・加算的) |
 
 ## 参考
 

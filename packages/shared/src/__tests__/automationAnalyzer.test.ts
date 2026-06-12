@@ -6,10 +6,17 @@ import type { AnalysisInput } from '../analysis/types.js';
 function inputWith(opts: {
   probe?: { webdriver: boolean | null; automationGlobals: string[] };
   renderer?: string;
+  /** keyDown/keyUp イベントを足す。isTrusted=false が untrusted 合成打鍵 (ADR-0018)。 */
+  keystrokes?: Array<{ type: 'keyDown' | 'keyUp'; isTrusted?: boolean }>;
 }): AnalysisInput {
   const events: unknown[] = [];
   if (opts.probe) {
     events.push({ sequence: 0, timestamp: 0, type: 'environmentProbe', data: opts.probe });
+  }
+  for (const k of opts.keystrokes ?? []) {
+    const data: Record<string, unknown> = { key: 'a', code: 'KeyA', modifiers: {} };
+    if (k.isTrusted === false) data.isTrusted = false;
+    events.push({ sequence: events.length, timestamp: events.length, type: k.type, data });
   }
   return {
     proof: {
@@ -65,6 +72,30 @@ describe('automationAnalyzer', () => {
 
   it('stays silent when no environment probe was captured', async () => {
     const signals = await automationAnalyzer.analyze(inputWith({ renderer: 'Apple M1 Pro' }));
+    expect(signals).toHaveLength(0);
+  });
+
+  // ADR-0018: untrusted (合成) 打鍵の検出
+  it('raises a review signal when untrusted (isTrusted=false) keystrokes are present', async () => {
+    const signals = await automationAnalyzer.analyze(
+      inputWith({
+        keystrokes: [
+          { type: 'keyDown', isTrusted: false },
+          { type: 'keyUp', isTrusted: false },
+          { type: 'keyDown' }, // trusted (省略) は数えない
+        ],
+      })
+    );
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.severity).toBe('review');
+    expect(signals[0]?.summary).toContain('2 event');
+    expect(signals[0]?.evidence[0]?.fromEventIndex).toBe(0);
+  });
+
+  it('stays silent when all keystrokes are trusted (no isTrusted field)', async () => {
+    const signals = await automationAnalyzer.analyze(
+      inputWith({ keystrokes: [{ type: 'keyDown' }, { type: 'keyUp' }, { type: 'keyDown' }] })
+    );
     expect(signals).toHaveLength(0);
   });
 });

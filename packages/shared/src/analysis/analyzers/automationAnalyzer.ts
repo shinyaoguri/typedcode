@@ -12,7 +12,7 @@
  */
 
 import type { AnalysisInput, AnalysisSignal, Analyzer } from '../types.js';
-import type { EnvironmentProbeData } from '../../types/events.js';
+import type { EnvironmentProbeData, KeystrokeDynamicsData } from '../../types/events.js';
 
 const ID = 'automation';
 
@@ -57,6 +57,32 @@ export const automationAnalyzer: Analyzer = {
           });
         }
       }
+    }
+
+    // 1.5) untrusted な合成打鍵 (ADR-0018)。keyDown/keyUp の data.isTrusted === false を数える。
+    // = 拡張 / ページスクリプトが dispatch した KeyboardEvent。isTrusted は keystroke event の data
+    // 経由で hash chain に焼かれるため改ざん耐性がある。**限界**: CDP / ハード注入は isTrusted=true で
+    // 捕捉できない (部分的・advisory)。
+    let untrustedKeystrokes = 0;
+    let firstUntrustedIndex = -1;
+    for (let i = 0; i < events.length; i++) {
+      const ev = events[i]!;
+      if (ev.type !== 'keyDown' && ev.type !== 'keyUp') continue;
+      if ((ev.data as KeystrokeDynamicsData | null)?.isTrusted === false) {
+        untrustedKeystrokes++;
+        if (firstUntrustedIndex < 0) firstUntrustedIndex = i;
+      }
+    }
+    if (untrustedKeystrokes > 0) {
+      signals.push({
+        analyzerId: ID,
+        dimension: 'automation',
+        score: 0.8,
+        confidence: 0.85,
+        severity: 'review',
+        evidence: [{ fromEventIndex: firstUntrustedIndex, note: `${untrustedKeystrokes} untrusted keystroke event(s)` }],
+        summary: `Synthetic (untrusted) keystrokes detected: ${untrustedKeystrokes} event(s) with isTrusted=false`,
+      });
     }
 
     // 2) fingerprint の WebGL renderer (ヘッドレス tell)。重複捕捉せず fingerprint を読む。

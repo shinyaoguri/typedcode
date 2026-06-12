@@ -21,7 +21,7 @@
 | ディレクトリ | 役割 |
 |---|---|
 | `core/` | `AppContext`, `EventRecorder` (中央イベント記録) |
-| `tracking/` | イベント検出器: `InputDetector`, `OperationDetector`, `KeystrokeTracker`, `MouseTracker`, `WindowTracker`, `VisibilityTracker`, `NetworkTracker`, `ScreenshotTracker` |
+| `tracking/` | イベント検出器: `InputDetector`, `OperationDetector`, `KeystrokeTracker` (keyDown/keyUp。**合成打鍵は `data.isTrusted=false` を載せる** = ADR-0018。信頼打鍵は省略し hash 不変)、`MouseTracker`, `WindowTracker`, `VisibilityTracker`, `NetworkTracker`, `ScreenshotTracker` |
 | `editor/` | `EditorController`, `CursorTracker`, `ThemeManager` |
 | `execution/` | `CodeExecutionController`, `RuntimeManager` |
 | `executors/` | 言語別実行: C, C++, JavaScript, TypeScript, Python (Wasmer SDK) |
