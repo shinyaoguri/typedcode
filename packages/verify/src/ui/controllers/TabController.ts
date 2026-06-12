@@ -16,7 +16,7 @@ import type { SeekbarController } from '../../charts/SeekbarController';
 import type { VerifyTabState, ProgressDetails, VerifyScreenshot, ScreenshotVerificationSummary, VerificationStepType } from '../../types';
 import { buildResultData, calculateChartStats } from '../../services/ResultDataService';
 import { TrustCalculator } from '../../services/TrustCalculator';
-import { deriveAssurance, summarizeAnalysisForAssurance, type AssuranceResult } from '@typedcode/shared';
+import { deriveAssurance, summarizeAnalysisForAssurance, summarizeProcess, type AssuranceResult } from '@typedcode/shared';
 
 export interface TabControllerDependencies {
   tabManager: VerifyTabManager;
@@ -354,6 +354,8 @@ export class TabController {
           const tabState = this.deps.tabManager.getTab(activeTabId);
           if (tabState?.proofData?.content) {
             seekbarController.initialize(events, tabState.proofData.content);
+            // 見どころマーカー (W3-C): プロセス要約の moments をトラックに重ねる。
+            seekbarController.setKeyMoments(summarizeProcess(events).moments);
           }
         }
       }

@@ -81,3 +81,4 @@ File Selection (drag&drop / FSA API)
 - shared の `summarizeProcess` (純関数) を `buildResultData` で実行し、カード列の先頭 `#card-process-summary` に表示。**中立な記述であって疑い表示ではない** (疑いは AnalysisReportCard)
 - 見どころ (初回実行 / 最長停止 / 最大書き直し / 復帰直後バースト / 外部入力) は `verify:seek-to-event` で当該イベントへジャンプ (分析カードと同じ経路)
 - 抽出ロジックは shared に置く (テストは shared 側)。閾値も shared の `PROCESS_*` 定数が単一ソース
+- **再生 (W3-C)**: `SeekbarController` は再生モード `steps` (50ms/イベント・従来) と `x1/x10/x60` (イベント timestamp に比例 — 停止やバーストの緩急が見える) を持つ。`#seekbar-speed` で巡回。**見どころマーカー** は `setKeyMoments(moments)` で `#seekbar-markers` に描画 (kind 別の色・クリックでシーク)。moments は TabController が `summarizeProcess(events)` から渡す

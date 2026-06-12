@@ -112,6 +112,8 @@ export class ChartController {
         playIcon: document.getElementById('play-icon'),
         nextButton: document.getElementById('seekbar-next'),
         endButton: document.getElementById('seekbar-end'),
+        speedButton: document.getElementById('seekbar-speed'),
+        markersContainer: document.getElementById('seekbar-markers'),
         contentPreview: codePreview,
       },
     );

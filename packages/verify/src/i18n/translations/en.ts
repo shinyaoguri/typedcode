@@ -397,6 +397,7 @@ export const en: VerifyTranslationKeys = {
   },
 
   seekbar: {
+    speed: 'Playback speed (= uniform / ×1 ×10 ×60 proportional)',
     start: 'Start',
     prev: 'Previous',
     play: 'Play',

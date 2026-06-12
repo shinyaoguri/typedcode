@@ -422,6 +422,7 @@ export interface VerifyTranslationKeys {
 
   // Seekbar
   seekbar: {
+    speed: string;
     start: string;
     prev: string;
     play: string;

@@ -397,6 +397,7 @@ export const ja: VerifyTranslationKeys = {
   },
 
   seekbar: {
+    speed: '再生速度 (= 等間隔 / ×1 ×10 ×60 実時間比例)',
     start: '最初',
     prev: '前',
     play: '再生',
