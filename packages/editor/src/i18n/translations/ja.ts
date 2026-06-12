@@ -430,6 +430,16 @@ export const ja: TranslationKeys = {
     mouseOperation: 'マウス操作',
     rangeSelection: '範囲選択',
     characterInput: '文字入力',
+    codeExecStart: 'コード実行 (開始)',
+    codeExecResult: 'コード実行: ${outcome}',
+    outcomeSuccess: '成功',
+    outcomeFailure: '失敗',
+    outcomeError: 'エラー',
+    outcomeAborted: '中止',
+    codeExecFile: 'ファイル: ${file}',
+    codeExecExit: 'exit: ${code}',
+    codeExecElapsed: '所要: ${ms}ms',
+    reflectionNote: '振り返りノート',
   },
 
   events: {

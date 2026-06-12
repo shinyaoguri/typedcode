@@ -7,6 +7,8 @@ import type {
   StoredEvent,
   LogStats,
   EventType,
+  CodeExecutionEventData,
+  ReflectionNoteData,
 } from '@typedcode/shared';
 import { t } from '../../i18n/index.js';
 import type { ScreenshotStorageService } from '../../services/ScreenshotStorageService.js';
@@ -751,8 +753,33 @@ export class LogViewer {
         return t('logViewer.editorInit');
       case 'contentSnapshot':
         return t('logViewer.snapshot');
+      case 'codeExecution': {
+        const data = event.data as CodeExecutionEventData | null;
+        if (data?.phase === 'result') {
+          return t('logViewer.codeExecResult', { outcome: this.outcomeLabel(data.outcome) });
+        }
+        return t('logViewer.codeExecStart');
+      }
+      case 'reflectionNote':
+        return t('logViewer.reflectionNote');
       default:
         return event.type;
+    }
+  }
+
+  /** codeExecution の result outcome をローカライズ (ADR-0021)。 */
+  private outcomeLabel(outcome: CodeExecutionEventData['outcome']): string {
+    switch (outcome) {
+      case 'success':
+        return t('logViewer.outcomeSuccess');
+      case 'failure':
+        return t('logViewer.outcomeFailure');
+      case 'error':
+        return t('logViewer.outcomeError');
+      case 'aborted':
+        return t('logViewer.outcomeAborted');
+      default:
+        return '-';
     }
   }
 
@@ -761,6 +788,30 @@ export class LogViewer {
    */
   private getEventDetails(event: StoredEvent): string | null {
     const details: string[] = [];
+
+    // codeExecution (ADR-0021): ファイル + (result なら) exit code / 所要時間。
+    if (event.type === 'codeExecution') {
+      const data = event.data as CodeExecutionEventData | null;
+      if (data) {
+        details.push(t('logViewer.codeExecFile', { file: data.filename ?? '-' }));
+        if (data.phase === 'result') {
+          if (data.exitCode !== undefined && data.exitCode !== null) {
+            details.push(t('logViewer.codeExecExit', { code: String(data.exitCode) }));
+          }
+          if (data.elapsedMs !== undefined && data.elapsedMs !== null) {
+            details.push(t('logViewer.codeExecElapsed', { ms: String(data.elapsedMs) }));
+          }
+        }
+      }
+      return details.length > 0 ? details.join(' | ') : null;
+    }
+
+    // reflectionNote (ADR-0022): 本人の振り返りテキスト (切り詰めて表示)。
+    if (event.type === 'reflectionNote') {
+      const data = event.data as ReflectionNoteData | null;
+      if (data?.text) return this.formatData(data.text);
+      return null;
+    }
 
     if (event.range) {
       details.push(
