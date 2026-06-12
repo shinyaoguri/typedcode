@@ -285,6 +285,7 @@ export const ja: VerifyTranslationKeys = {
     focusLosses: '離脱',
     externalInputs: '外部入力',
     moments: '見どころ',
+    reflectionNotes: '本人の振り返り (提出時に記録)',
     chars: '文字',
     kindFirstRun: '初回実行',
     kindFirstFailedRun: '初の失敗した実行',

@@ -18,6 +18,8 @@ import { getLanguageDefinition } from '../config/SupportedLanguages.js';
 import { t } from '../i18n/index.js';
 import { generateReadmeEn } from './readme-template-en.js';
 import { generateReadmeJa } from './readme-template-ja.js';
+import { summarizeProcess } from '@typedcode/shared';
+import { SelfReviewDialog } from '../ui/components/SelfReviewDialog.js';
 
 export interface ExportCallbacks {
   onNotification?: (message: string) => void;
@@ -37,6 +39,9 @@ export class ProofExporter {
   /** 多重 export ガード。ダウンロードボタン連打での二重 export (attestation 二重記録 /
    *  Turnstile 二重描画 / 二重ダウンロード) を防ぐ。 */
   private isExporting = false;
+  /** 提出前セルフレビュー (ADR-0022, `capabilities.selfReview` で駆動)。 */
+  private selfReviewEnabled = false;
+  private selfReviewDialog = new SelfReviewDialog();
 
   constructor() {
     this.exportProgressDialog = new ExportProgressDialog();
@@ -55,6 +60,35 @@ export class ProofExporter {
    */
   setPreExportBestEffort(bestEffort: boolean): void {
     this.preExportBestEffort = bestEffort;
+  }
+
+  /** 提出前セルフレビュー (ADR-0022) の有効化 (`capabilities.selfReview` で駆動)。 */
+  setSelfReviewEnabled(enabled: boolean): void {
+    this.selfReviewEnabled = enabled;
+  }
+
+  /**
+   * 提出前セルフレビュー (ADR-0022): アクティブタブのプロセス要約を見せ、任意の
+   * 振り返りノートを reflectionNote イベントとしてチェーンへ記録する。
+   * @returns export を続行するか (false = ユーザがキャンセル)
+   */
+  private async performSelfReview(activeTab: TabState): Promise<boolean> {
+    if (!this.selfReviewEnabled) return true;
+
+    const summary = summarizeProcess(activeTab.typingProof.events);
+    const result = await this.selfReviewDialog.show(summary);
+    if (!result.proceed) return false;
+
+    if (result.note.length > 0) {
+      // ノートはチェーンに焼かれる (改ざん耐性)。exportProof が後段でチェーン完了を
+      // 待つため、ここは fire-and-forget でよい (preExportAttestation と同じ経路特性)。
+      await activeTab.typingProof.recordEvent({
+        type: 'reflectionNote',
+        data: { text: result.note },
+        description: t('selfReview.recorded'),
+      });
+    }
+    return true;
   }
 
   /**
@@ -279,6 +313,14 @@ export class ProofExporter {
         return;
       }
 
+      // 提出前セルフレビュー (ADR-0022): チェーン完了待ちより前に行い、
+      // 記録した reflectionNote も後段の待機/最終 checkpoint に含める。
+      const reviewOk = await this.performSelfReview(activeTab);
+      if (!reviewOk) {
+        this.callbacks.onNotification?.(t('export.cancelled'));
+        return;
+      }
+
       // ハッシュチェーン生成完了を待機
       const completed = await this.waitForProcessingComplete();
       if (!completed) {
@@ -413,6 +455,17 @@ export class ProofExporter {
       if (this.tabManager.getAllTabs().length === 0) {
         console.log('[Export] No tabs to export');
         return;
+      }
+
+      // 提出前セルフレビュー (ADR-0022): 一括 export では 1 回だけ表示し、
+      // ノートはアクティブタブのチェーンへ記録する (タブ毎 N 回は摩擦過多)。
+      const activeTabForReview = this.tabManager.getActiveTab();
+      if (activeTabForReview) {
+        const reviewOk = await this.performSelfReview(activeTabForReview);
+        if (!reviewOk) {
+          this.callbacks.onNotification?.(t('export.cancelled'));
+          return;
+        }
       }
 
       // ハッシュチェーン生成完了を待機

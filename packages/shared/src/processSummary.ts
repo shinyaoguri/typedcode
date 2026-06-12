@@ -8,12 +8,12 @@
  * - **中立な記述**であって疑いの指標ではない (疑いは分析層 = AnalysisSignal の責務)。
  *   pause や書き直しは著述の自然な痕跡として「教育的に見るべき場所」を指す。
  * - 純関数・決定的 (同じイベント列 → 同じ要約)。proof には焼かない (後付け再計算可能)。
- * - 既知の捕捉ギャップ: `codeExecution` は実行開始のみ記録され**結果 (成功/失敗) を持たない**
- *   ため、「失敗 → 成功」遷移は抽出できない (捕捉の加算的拡張は別 ADR 候補)。
+ * - 実行結果 (成功/失敗) は ADR-0021 の result イベントから導出する。それ以前の proof は
+ *   `hasRunResults=false` (結果不明であって 0 回ではない)。
  */
 
 import type { StoredEvent } from './types/proof.js';
-import type { CodeExecutionEventData, FocusChangeData } from './types/events.js';
+import type { CodeExecutionEventData, FocusChangeData, ReflectionNoteData } from './types/events.js';
 import { isProhibitedInputType } from './typingProof/InputTypeValidator.js';
 
 /** 編集の停止 (考え中) とみなす contentChange 間ギャップの下限。 */
@@ -69,6 +69,8 @@ export interface ProcessSummary {
   longestPauseMs: number | null;
   focusLossCount: number;
   externalInputCount: number;
+  /** 提出前セルフレビューの振り返りノート (ADR-0022)。チェーン由来で改ざん耐性あり。 */
+  reflectionNotes: string[];
   moments: ProcessKeyMoment[];
 }
 
@@ -88,6 +90,7 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
   let pauseCount = 0;
   let focusLossCount = 0;
   let externalInputCount = 0;
+  const reflectionNotes: string[] = [];
 
   let firstRun: ProcessKeyMoment | null = null;
   let firstFailedRun: ProcessKeyMoment | null = null;
@@ -214,6 +217,13 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
         }
         break;
       }
+      case 'reflectionNote': {
+        const data = event.data as ReflectionNoteData | null;
+        if (data && typeof data === 'object' && typeof data.text === 'string' && data.text.length > 0) {
+          reflectionNotes.push(data.text);
+        }
+        break;
+      }
       case 'focusChange': {
         const data = event.data as FocusChangeData | null;
         if (data && typeof data === 'object' && 'focused' in data) {
@@ -284,6 +294,7 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
     longestPauseMs: longestPause?.value ?? null,
     focusLossCount,
     externalInputCount,
+    reflectionNotes,
     moments,
   };
 }

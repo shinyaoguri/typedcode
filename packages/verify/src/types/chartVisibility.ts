@@ -52,6 +52,7 @@ export const EVENT_CATEGORY_MAP: Record<EventType, EventCategory> = {
   environmentProbe: 'system',
   examOpened: 'system',
   // Auth
+  reflectionNote: 'auth',
   humanAttestation: 'auth',
   preExportAttestation: 'auth',
   termsAccepted: 'auth',

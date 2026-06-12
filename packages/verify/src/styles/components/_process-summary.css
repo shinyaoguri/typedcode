@@ -71,3 +71,19 @@
 .process-moment-jump:hover {
   background: rgba(79, 193, 255, 0.12);
 }
+
+.process-reflection-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+}
+
+.process-reflection-note {
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 8px 10px;
+  border-left: 3px solid #4fc1ff;
+  border-radius: 4px;
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.03));
+  white-space: pre-wrap;
+}

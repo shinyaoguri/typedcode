@@ -19,6 +19,7 @@ import type {
   FullscreenChangeData,
   ExamOpenedEventData,
   CodeExecutionEventData,
+  ReflectionNoteData,
 } from './events.js';
 import type {
   ScreenshotCaptureData,
@@ -61,6 +62,7 @@ export type PendingEventDataType =
   | FullscreenChangeData
   | ExamOpenedEventData
   | CodeExecutionEventData
+  | ReflectionNoteData
   | null;
 
 // ============================================================================

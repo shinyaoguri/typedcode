@@ -45,6 +45,12 @@ export interface ModeCapabilities {
   problemPanel: boolean;
   /** export 前 Turnstile を best-effort 化 (サーバを critical path に置かない)。 */
   preExportBestEffort: boolean;
+  /**
+   * 提出前セルフレビュー (ADR-0022): export 時に自分のプロセス要約を確認し、
+   * 任意の振り返りノートをチェーンへ記録するステップを出すか。
+   * exam は時間圧迫を避けて off (記録自体は他モードと同一フォーマット)。
+   */
+  selfReview: boolean;
 }
 
 /**
@@ -62,6 +68,7 @@ const CASUAL: ModeCapabilities = {
   unifyDownloadToProblemPanel: false,
   problemPanel: false,
   preExportBestEffort: false,
+  selfReview: true,
 };
 
 const EXAM: ModeCapabilities = {
@@ -74,6 +81,7 @@ const EXAM: ModeCapabilities = {
   unifyDownloadToProblemPanel: true,
   problemPanel: true,
   preExportBestEffort: true,
+  selfReview: false,
 };
 
 /**
@@ -93,6 +101,7 @@ const CLASS: ModeCapabilities = {
   unifyDownloadToProblemPanel: false,
   problemPanel: true,
   preExportBestEffort: true,
+  selfReview: true,
 };
 
 /**

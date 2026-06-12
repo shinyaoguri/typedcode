@@ -62,6 +62,13 @@ export class ProcessSummaryCard {
       </div>
     `;
 
+    const notes = summary.reflectionNotes.length
+      ? `<div class="process-moments-title">${t('process.reflectionNotes')}</div>
+         <ul class="process-reflection-list">
+           ${summary.reflectionNotes.map((n) => `<li class="process-reflection-note">${escapeHtml(n)}</li>`).join('')}
+         </ul>`
+      : '';
+
     const moments = summary.moments.length
       ? `<div class="process-moments-title">${t('process.moments')}</div>
          <ul class="process-moment-list">
@@ -69,7 +76,7 @@ export class ProcessSummaryCard {
          </ul>`
       : '';
 
-    return stats + moments;
+    return stats + notes + moments;
   }
 
   private stat(label: string, value: string): string {

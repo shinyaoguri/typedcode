@@ -375,6 +375,22 @@ export interface TranslationKeys {
   };
 
   // Export
+  // 提出前セルフレビュー (ADR-0022)
+  selfReview: {
+    title: string;
+    lead: string;
+    duration: string;
+    edits: string;
+    runs: string;
+    pauses: string;
+    noteLabel: string;
+    notePlaceholder: string;
+    noteHint: string;
+    cancel: string;
+    proceed: string;
+    recorded: string;
+  };
+
   export: {
     preAuthRunning: string;
     preAuthFailed: string;

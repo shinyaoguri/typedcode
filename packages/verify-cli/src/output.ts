@@ -171,6 +171,9 @@ function formatProcessSummary(p: ProcessSummary): string[] {
   lines.push(
     `Activity:    ${runs}, ${p.pauseCount} long pause(s), ${p.focusLossCount} focus loss(es), ${p.externalInputCount} external input(s)`
   );
+  for (const note of p.reflectionNotes) {
+    lines.push(`Reflection:  ${note.replace(/\n/g, ' / ')}`);
+  }
   for (const m of p.moments) {
     const range =
       m.toEventIndex !== undefined && m.toEventIndex !== m.fromEventIndex

@@ -285,6 +285,7 @@ export const en: VerifyTranslationKeys = {
     focusLosses: 'Focus losses',
     externalInputs: 'External input',
     moments: 'Key moments',
+    reflectionNotes: "Author's reflection (recorded at submission)",
     chars: 'chars',
     kindFirstRun: 'First run',
     kindFirstFailedRun: 'First failed run',

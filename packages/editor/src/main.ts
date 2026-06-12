@@ -320,6 +320,8 @@ ctx.trackers.environment.setAssistDeclarationProvider(() => {
 ctx.proofExporter.setMode(ctx.mode);
 // export 前認証の best-effort 化はモード能力で決まる (ADR-0006: exam のみ。サーバを critical path に置かない)。
 ctx.proofExporter.setPreExportBestEffort(ctx.capabilities.preExportBestEffort);
+// 提出前セルフレビュー (ADR-0022): 自分の過程を確認し任意の振り返りを残す (exam は off)。
+ctx.proofExporter.setSelfReviewEnabled(ctx.capabilities.selfReview);
 
 // exam 固有のクロム (タブ追加/削除・汎用DLメニューの非表示、unify) は body.exam-mode が駆動する。
 if (ctx.examMode) {

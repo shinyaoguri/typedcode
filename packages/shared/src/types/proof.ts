@@ -20,6 +20,7 @@ import type {
   FullscreenChangeData,
   ExamOpenedEventData,
   CodeExecutionEventData,
+  ReflectionNoteData,
 } from './events.js';
 import type { ExamProofBlock } from './exam.js';
 import type { SessionStartToken } from './sessionStartToken.js';
@@ -53,7 +54,7 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | ExamOpenedEventData | CodeExecutionEventData | null;
+  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | ExamOpenedEventData | CodeExecutionEventData | ReflectionNoteData | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -73,7 +74,7 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | ExamOpenedEventData | CodeExecutionEventData | null;
+  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | ExamOpenedEventData | CodeExecutionEventData | ReflectionNoteData | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;
