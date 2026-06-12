@@ -348,6 +348,21 @@ export const ja: TranslationKeys = {
     clearLogConfirm: 'ログをクリアしますか？（証明データは保持されます）',
   },
 
+  selfReview: {
+    title: '提出前の振り返り',
+    lead: 'あなたの制作過程の要約です。提出物には全編集履歴が含まれ、採点者も同じ要約を見ます。',
+    duration: '作業時間',
+    edits: '編集 (挿入/削除)',
+    runs: '実行',
+    pauses: '長い停止',
+    noteLabel: '振り返りノート (任意)',
+    notePlaceholder: '工夫した点・詰まった所・参考にしたもの など',
+    noteHint: 'ノートは編集履歴と同じく改ざん検出つきで記録され、採点者に表示されます。空欄のままでも提出できます。',
+    cancel: 'キャンセル',
+    proceed: '書き出しへ進む',
+    recorded: '振り返りノートを記録しました',
+  },
+
   export: {
     preAuthRunning: 'エクスポート前の認証を実行中...',
     preAuthFailed: 'エクスポート前の認証に失敗しました',

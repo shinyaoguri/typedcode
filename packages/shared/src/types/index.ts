@@ -21,6 +21,7 @@ export type {
   NetworkStatusData,
   SessionResumedData,
   CodeExecutionEventData,
+  ReflectionNoteData,
   EditorAssistDeclaration,
   EnvironmentProbeData,
   FullscreenChangeData,

@@ -348,6 +348,21 @@ export const en: TranslationKeys = {
     clearLogConfirm: 'Clear logs? (Proof data will be preserved)',
   },
 
+  selfReview: {
+    title: 'Pre-submission review',
+    lead: 'A summary of your working process. The export contains your full edit history, and graders see this same summary.',
+    duration: 'Duration',
+    edits: 'Edits (+/-)',
+    runs: 'Runs',
+    pauses: 'Long pauses',
+    noteLabel: 'Reflection note (optional)',
+    notePlaceholder: 'What you tried, where you got stuck, what you referenced…',
+    noteHint: 'The note is recorded tamper-evidently like your edit history and shown to graders. You can submit without one.',
+    cancel: 'Cancel',
+    proceed: 'Continue to export',
+    recorded: 'Reflection note recorded',
+  },
+
   export: {
     preAuthRunning: 'Running pre-export verification...',
     preAuthFailed: 'Pre-export verification failed',

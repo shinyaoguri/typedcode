@@ -49,6 +49,7 @@ User Action
 
 ```
 ProofExporter.export()
+  → performSelfReview() (ADR-0022。capabilities.selfReview、exam は off。任意の reflectionNote をチェーンへ)
   → performPreExportVerification() (Turnstile。exam/class/assignment は best-effort)
   → getProofData() → ScreenshotTracker.getAllScreenshots()
   → JSZip → ダウンロード

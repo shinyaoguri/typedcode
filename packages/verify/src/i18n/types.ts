@@ -307,6 +307,7 @@ export interface VerifyTranslationKeys {
     focusLosses: string;
     externalInputs: string;
     moments: string;
+    reflectionNotes: string;
     chars: string;
     kindFirstRun: string;
     kindFirstFailedRun: string;

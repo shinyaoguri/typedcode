@@ -179,6 +179,21 @@ describe('summarizeProcess — moments', () => {
     expect(s.runFailureCount).toBe(0);
   });
 
+  it('collects reflection notes from reflectionNote events (ADR-0022)', () => {
+    const s = summarizeProcess([
+      insert(0, 'a'),
+      makeEvent({ type: 'reflectionNote', timestamp: 100, data: { text: '再帰で詰まったので紙に書いた' } }),
+    ]);
+    expect(s.reflectionNotes).toEqual(['再帰で詰まったので紙に書いた']);
+  });
+
+  it('ignores empty reflection notes', () => {
+    const s = summarizeProcess([
+      makeEvent({ type: 'reflectionNote', timestamp: 0, data: { text: '' } }),
+    ]);
+    expect(s.reflectionNotes).toEqual([]);
+  });
+
   it('does not count internal paste (allowed input) as external input', () => {
     const s = summarizeProcess([
       makeEvent({ type: 'contentChange', timestamp: 0, inputType: 'insertFromInternalPaste', data: 'own code', rangeLength: 0 }),

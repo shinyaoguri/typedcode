@@ -33,6 +33,7 @@ export type EventType =
   | 'sessionResumed' // セッション再開（リロードまたはIndexedDBからの復旧）
   | 'copyOperation' // コピー操作（監査用）
   | 'screenShareOptOut' // 画面共有オプトアウト
+  | 'reflectionNote' // 提出前セルフレビューの振り返りノート（ADR-0022）
   | 'environmentProbe' // 環境/自動化プローブ（起動時ワンショット, ADR-0007）
   | 'fullscreenChange' // フルスクリーン状態変化（試験モード, ADR-0008）
   | 'examOpened'; // 封印問題パッケージの開封（試験モード, ADR-0006。#1 として記録）
@@ -170,6 +171,17 @@ export interface EditorAssistDeclaration {
   formatOnType: boolean | null;
   /** ペースト時の自動フォーマット。 */
   formatOnPaste: boolean | null;
+}
+
+/**
+ * 振り返りノート（ADR-0022）。
+ *
+ * 提出前セルフレビューで学生が任意に書く振り返り。チェーンに焼かれるため
+ * 改ざん耐性があり、採点者は「本人が提出時に何を述べたか」を信頼できる。
+ * 空文字は記録しない（イベント自体を作らない）。
+ */
+export interface ReflectionNoteData {
+  text: string;
 }
 
 /**
