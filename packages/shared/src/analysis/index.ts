@@ -24,6 +24,9 @@ export {
   pureTypingAnalyzer,
 } from './analyzers/index.js';
 
+export { buildAnalysisBundle, ANALYSIS_BUNDLE_SCHEMA } from './bundle.js';
+export type { AnalysisBundle } from './bundle.js';
+
 export { evaluateAnalysis, formatEvalReportMarkdown } from './eval.js';
 export type {
   EvalLabel,

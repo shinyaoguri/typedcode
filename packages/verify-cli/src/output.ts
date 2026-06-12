@@ -358,7 +358,7 @@ ${c('cyan', 'Usage:')}
   typedcode-verify <file.json|file.zip> [--mode <fast|audit|full>]
                    [--exam-package <file.tcexam>] [--submitted-at <ISO>]
                    [--require-anchor-density] [--require-root-anchor]
-                   [--analysis-json <out.json>]
+                   [--analysis-json <out.json>] [--analysis-bundle <out.json>]
                    [--analyzer <module>]... [--no-default-analyzers]
 
 ${c('cyan', 'Arguments:')}
@@ -385,6 +385,11 @@ ${c('cyan', 'Options:')}
   --analysis-json  Write the advisory analysis report (ADR-0009) for every verified
                    proof to the given file as JSON, for aggregation / evaluation
                    tooling. Advisory only — never affects the exit code.
+  --analysis-bundle
+                   Write the Tier A analysis bundle (ADR-0024) for every proof:
+                   content-free { processSummary, analysis, assurance } with NO
+                   events / source / fingerprint. The input format for cohort
+                   baselines (ADR-0025). Advisory — never affects the exit code.
   --analyzer       Load a custom analyzer (ADR-0009 / platform): an ES module that
                    exports a default / "analyzer" / "analyzers" Analyzer. Repeatable.
                    Runs alongside the built-in analyzers. Lets graders/researchers plug

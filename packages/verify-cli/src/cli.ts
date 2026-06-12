@@ -15,13 +15,15 @@ import { Spinner } from './progress.js';
 import {
   parseExamPackageManifest,
   defaultAnalyzers,
+  buildAnalysisBundle,
   type VerificationMode,
   type ExamPackageManifest,
   type Analyzer,
+  type AnalysisBundle,
 } from '@typedcode/shared';
 
 /** value を取る flag。`--name value` と `--name=value` の両方を許す。`--analyzer` は反復可。 */
-const VALUE_FLAGS = new Set(['--mode', '--exam-package', '--submitted-at', '--analysis-json', '--analyzer']);
+const VALUE_FLAGS = new Set(['--mode', '--exam-package', '--submitted-at', '--analysis-json', '--analysis-bundle', '--analyzer']);
 
 function flagValue(args: string[], name: string): string | undefined {
   const i = args.findIndex((a) => a === name || a.startsWith(`${name}=`));
@@ -94,6 +96,10 @@ async function main(): Promise<void> {
   // 分析レポートの JSON 出力 (ADR-0009): 評価ハーネス/集計スクリプトの機械可読な入口。
   // advisory であって判定ではない — exit code には一切影響しない。
   const analysisJsonPath = flagValue(args, '--analysis-json');
+
+  // Tier A バンドル出力 (ADR-0024): content-free な {ProcessSummary, Analysis, Assurance}
+  // をファイルへ。コホート基準 (ADR-0025) の入力フォーマット。advisory・exit code 非干渉。
+  const analysisBundlePath = flagValue(args, '--analysis-bundle');
 
   // 外部アナライザ (ADR-0009 / プラットフォーム方針): 採点者/研究者が自前の Analyzer を
   // フォークせず差し込む口。`--analyzer <path>` 反復可、`--no-default-analyzers` で既定を外す。
@@ -174,18 +180,36 @@ async function main(): Promise<void> {
     const multi = proofs.length > 1;
     const summary: Array<{ filename: string; valid: boolean }> = [];
     const analysisDump: Array<{ filename: string; valid: boolean; analysis: unknown }> = [];
+    const bundleDump: Array<{ filename: string } & AnalysisBundle> = [];
     for (const { filename, proof } of proofs) {
       if (multi) console.log(`\n=== ${filename} ===`);
       const result = await verifyProof(proof, { mode, examPackageManifest, submittedAtMs, requireAnchorDensity, requireRootAnchor, analyzers });
       console.log(formatResult(result));
       summary.push({ filename, valid: result.valid });
       analysisDump.push({ filename, valid: result.valid, analysis: result.analysis });
+      // Tier A バンドル (ADR-0024): content-free な派生ビュー。--analysis-bundle 指定時のみ集める。
+      if (analysisBundlePath !== undefined) {
+        const bundle = buildAnalysisBundle({
+          integrityValid: result.valid,
+          processSummary: result.processSummary,
+          analysis: result.analysis,
+          assurance: result.assurance,
+        });
+        bundleDump.push({ filename, ...bundle });
+      }
     }
 
     // --analysis-json: AnalysisReport を機械可読でファイルへ (advisory、exit code 非干渉)。
     if (analysisJsonPath !== undefined) {
       await writeFile(resolve(analysisJsonPath), JSON.stringify(analysisDump, null, 2), 'utf-8');
       console.log(`\nAnalysis report written to ${analysisJsonPath}`);
+    }
+
+    // --analysis-bundle: Tier A バンドル群 (ProcessSummary + Analysis + Assurance、content-free)
+    // を機械可読でファイルへ。コホート基準 (ADR-0025) の入力。advisory・exit code 非干渉。
+    if (analysisBundlePath !== undefined) {
+      await writeFile(resolve(analysisBundlePath), JSON.stringify(bundleDump, null, 2), 'utf-8');
+      console.log(`\nAnalysis bundle (Tier A) written to ${analysisBundlePath}`);
     }
 
     if (multi) {
