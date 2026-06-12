@@ -39,3 +39,4 @@ docs/plans/
 
 # Playwright MCP output (screenshots, snapshots, e2e fixtures)
 .playwright-mcp/
+fix-*.png

@@ -11,11 +11,15 @@ import type {
 function makeInput(opts: {
   isPureTyping?: boolean;
   timestamps?: number[];
+  /** paste/drop など禁止 InputType のイベントを混ぜる (pureTypingAnalyzer の証拠源)。 */
+  prohibitedInputs?: import('../types/events.js').InputType[];
 }): AnalysisInput {
-  const events = (opts.timestamps ?? []).map((t, i) => ({
-    sequence: i,
-    timestamp: t,
-  }));
+  const events: Array<{ sequence: number; timestamp: number; inputType?: string }> = (
+    opts.timestamps ?? []
+  ).map((t, i) => ({ sequence: i, timestamp: t }));
+  (opts.prohibitedInputs ?? []).forEach((inputType, k) => {
+    events.push({ sequence: events.length, timestamp: 1000 + k, inputType });
+  });
   return {
     proof: { proof: { events } } as unknown as AnalysisInput['proof'],
     verification: {
@@ -95,9 +99,14 @@ describe('runAnalysis orchestrator', () => {
 });
 
 describe('pureTypingAnalyzer (placeholder)', () => {
-  it('emits a notice when verification reports non-pure typing', async () => {
-    const report = await runAnalysis(makeInput({ isPureTyping: false }), [pureTypingAnalyzer]);
+  it('emits a notice with evidence when non-pure typing has prohibited inputs', async () => {
+    const report = await runAnalysis(
+      makeInput({ isPureTyping: false, prohibitedInputs: ['insertFromPaste', 'insertFromDrop'] }),
+      [pureTypingAnalyzer]
+    );
     expect(report.signals).toHaveLength(1);
+    expect(report.signals[0]!.evidence.length).toBe(2); // paste + drop の event index
+    expect(report.signals[0]!.summaryParams).toMatchObject({ paste: 1, drop: 1 });
     expect(report.signals[0]?.severity).toBe('notice');
     expect(report.signals[0]?.dimension).toBe('transcription-topology');
   });

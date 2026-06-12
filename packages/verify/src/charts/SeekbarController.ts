@@ -124,9 +124,11 @@ export class SeekbarController {
     if (!events || events.length === 0) return;
 
     this.events = events;
-    this.finalContent = finalContent;
-    this.currentIndex = events.length;
     this.contentCache.clear();
+    // content が渡されない (proof.json 単体 = ソースファイルなし) ときは events から
+    // 最終状態を再構成する。これがないと最終インデックスの再生が空になる。
+    this.finalContent = finalContent || this.reconstructFinalContent(events);
+    this.currentIndex = events.length;
 
     // シークバーを表示
     if (this.options.floatingSeekbar) {
@@ -495,6 +497,21 @@ export class SeekbarController {
       this.contentCache.set(cacheKey, content);
     }
 
+    return content;
+  }
+
+  /**
+   * 全イベントを順に適用して最終コンテンツを再構成する (content 未提供時のフォールバック)。
+   */
+  private reconstructFinalContent(events: StoredEvent[]): string {
+    let content = '';
+    for (const event of events) {
+      if (event.type === 'contentChange') {
+        content = this.applyContentChange(content, event);
+      } else if (event.type === 'templateInjection') {
+        content = this.applyTemplateInjection(event);
+      }
+    }
     return content;
   }
 

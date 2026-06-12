@@ -44,11 +44,15 @@
   letter-spacing: 0.5px;
   color: var(--text-secondary);
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-actions {
   display: flex;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .sidebar-action-btn {

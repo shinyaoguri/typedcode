@@ -113,6 +113,10 @@ export class VerificationController {
       this.deps.resultPanel.finishProgress();
       // 強制更新フラグを渡して結果を確実に表示
       this.deps.tabController.showTabContent(id, true);
+    } else if (this.deps.tabBar.getActiveTabId() === null) {
+      // まだ何も開いていなければ最初に完了した proof を自動で開く。
+      // 以降は別タブがアクティブになるのでフォーカスを奪わない (UX: 読込直後の空白を解消)。
+      this.deps.tabController.openTabForFile(id);
     }
   }
 

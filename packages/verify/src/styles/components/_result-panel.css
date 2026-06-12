@@ -46,7 +46,7 @@
   width: 50%;
   min-width: 350px;
   max-width: 70%;
-  padding: 16px;
+  padding: 16px 16px 32px;
   overflow-y: auto;
   flex-shrink: 0;
 }
@@ -76,14 +76,23 @@
 /* Status header card */
 .result-status-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
   padding: 16px;
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: 8px;
   margin-bottom: 16px;
+}
+
+/* 上段: アイコン+タイトル と ミニゲージ を横並び */
+.result-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
 }
 
 .result-status-main {
@@ -101,6 +110,13 @@
   gap: 10px;
   padding-left: 16px;
   border-left: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+/* 三層保証バッジは下段に全幅。上段とは区切り線で分ける (表示時のみ) */
+#assurance-strip {
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border-color);
 }
 
 .pattern-mini-gauge {

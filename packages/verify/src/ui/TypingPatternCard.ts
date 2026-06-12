@@ -73,6 +73,10 @@ export class TypingPatternCard {
    */
   private renderContent(analysis: TypingPatternAnalysis): string {
     return `
+      <div class="analysis-advisory-note">
+        <i class="fas fa-info-circle"></i>
+        <span>${t('analysis.advisory')}</span>
+      </div>
       <div class="pattern-overview">
         <div class="pattern-gauge-container">
           ${this.renderGauge(analysis.overallScore, analysis.overallJudgment)}
