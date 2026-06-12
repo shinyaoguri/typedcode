@@ -430,6 +430,16 @@ export const en: TranslationKeys = {
     mouseOperation: 'Mouse Operation',
     rangeSelection: 'Range Selection',
     characterInput: 'Character Input',
+    codeExecStart: 'Run (start)',
+    codeExecResult: 'Run: ${outcome}',
+    outcomeSuccess: 'success',
+    outcomeFailure: 'failure',
+    outcomeError: 'error',
+    outcomeAborted: 'aborted',
+    codeExecFile: 'file: ${file}',
+    codeExecExit: 'exit: ${code}',
+    codeExecElapsed: 'elapsed: ${ms}ms',
+    reflectionNote: 'Reflection note',
   },
 
   events: {

@@ -454,6 +454,16 @@ export interface TranslationKeys {
     mouseOperation: string;
     rangeSelection: string;
     characterInput: string;
+    codeExecStart: string;
+    codeExecResult: string;
+    outcomeSuccess: string;
+    outcomeFailure: string;
+    outcomeError: string;
+    outcomeAborted: string;
+    codeExecFile: string;
+    codeExecExit: string;
+    codeExecElapsed: string;
+    reflectionNote: string;
   };
 
   // Event descriptions (for tracking)
