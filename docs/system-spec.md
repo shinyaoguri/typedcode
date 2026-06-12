@@ -106,7 +106,7 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
 - **ウィンドウ**: `focusChange`, `visibilityChange`, `windowResize`, `fullscreenChange` (試験モードのフルスクリーン状態。ADR-0008)
 - **システム**: `editorInitialized`, `networkStatusChange`
 - **試験**: `examOpened` (試験モードで封印問題を開封した瞬間 = T0 を記録。`#1` として記録される可読な監査印。権威ある束縛は root + `proof.exam`。ADR-0006)
-- **環境/自動化**: `environmentProbe` (起動時ワンショット。`navigator.webdriver` と自動化グローバル痕跡。ADR-0007 / ADR-0009 の automation 分析器が消費)
+- **環境/自動化**: `environmentProbe` (起動時ワンショット。`navigator.webdriver` と自動化グローバル痕跡。ADR-0007 / ADR-0009 の automation 分析器が消費。加えて **editor-assist 宣言** `editorAssist` = Monaco 支援機能 (補完/スニペット/括弧自動閉じ/inlineSuggest 等) の解決済み実効状態を `editor-assist/1` スキーマで宣言する。取得不可は null。ADR-0019)
 - **認証**: `humanAttestation`, `preExportAttestation`, `termsAccepted`
 - **実行**: `codeExecution`, `terminalInput`
 - **キャプチャ**: `screenshotCapture`, `screenShareStart`, `screenShareStop`, `screenShareOptOut`
@@ -732,3 +732,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-06-12 | アンカー密度 (ADR-0016, Phase 7-B) | 署名 cp の **アンカー密度**を検証器のメトリクス化 (`SignedCheckpointsVerificationResult.density`)。`maxGapEvents` / `maxGapServerMs` / `firstAnchorLatency*` を計量し、保守的閾値 (cadence×5) 超で `sparse`。末尾 1 点アンカー (coverageRatio=1.0 でも偽造可) を検出。既定 warning、verify-cli `--require-anchor-density` で strict-fail。**非破壊** (proof フォーマット不変)。§6.2/§6.3/§10 を反映 |
 | 2026-06-12 | root サーバアンカー (ADR-0017, Phase 7-A) | **`PROOF_FORMAT_VERSION` 1.1.0→1.2.0** (MIN_SUPPORTED 1.0.0 据置・後方互換)。session/start (Turnstile→ECDSA トークン) で casual/class の root を `SHA256(fp ‖ localNonce ‖ serverNonce)` にサーバアンカーし、完全オフライン捏造を封じる。proof に `sessionStartToken` + `rootAnchored` を加算。検証器は registry-only でトークン検証→serverNonce 込み root 再計算→token↔cp sessionId 突合。フォールバック (b): 不達なら `rootAnchored:false` で継続 (warning)。`requireRootAnchor` で strict-fail (exam 除外)。HMAC attestation の作成経路を session/start に統合。§4/§6.2/§6.3/§10 を反映 |
 | 2026-06-12 | isTrusted 捕捉 (ADR-0018, Phase 7-C) | keyDown/keyUp の `KeystrokeDynamicsData.isTrusted` に**合成打鍵 (`!e.isTrusted`) のときだけ** `false` を載せる (keystroke data 経由で hash 済・**加算的**・honest 打鍵はバイト一致で hash 不変)。`automationAnalyzer` が untrusted 打鍵数を数えて advisory signal。**限界**: CDP/ハード注入は isTrusted=true で捕捉不可 (部分的)。§10 を反映 |
+| 2026-06-12 | editor-assist 宣言 (ADR-0019, Phase 8-W0) | `environmentProbe` に **`editorAssist` 宣言** (`editor-assist/1`) を加算的に追加。Monaco の**解決済み**支援オプション (quickSuggestions / inlineSuggest / snippet / 括弧自動閉じ 等 13 項目) を起動時に正規化して焼き、「どの支援が有効な環境での記録か」をセッション間で比較可能にする。記録のみでポリシー判断はしない (別 ADR)。取得不可は null (graceful absence)。proof フォーマット非破壊・新イベント型なし。§4.1 を反映 |

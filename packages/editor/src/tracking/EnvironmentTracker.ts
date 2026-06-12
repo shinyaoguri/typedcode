@@ -6,7 +6,7 @@
  * 両モード同一とする)。fingerprint が既に持つ環境値は重複させない。
  */
 
-import type { EnvironmentProbeData } from '@typedcode/shared';
+import type { EditorAssistDeclaration, EnvironmentProbeData } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
 import { BaseTracker } from './BaseTracker.js';
 
@@ -43,6 +43,16 @@ export class EnvironmentTracker extends BaseTracker<
   EnvironmentTrackerEvent,
   EnvironmentTrackerCallback
 > {
+  private assistDeclarationProvider: (() => EditorAssistDeclaration) | null = null;
+
+  /**
+   * editor-assist 宣言のプロバイダを設定する (ADR-0019)。
+   * `recordInitial()` より前に呼ぶこと。未設定・取得失敗は editorAssist: null で記録する。
+   */
+  setAssistDeclarationProvider(provider: () => EditorAssistDeclaration): void {
+    this.assistDeclarationProvider = provider;
+  }
+
   protected attachListeners(): void {
     // ワンショットのためリスナーは無い
   }
@@ -77,6 +87,14 @@ export class EnvironmentTracker extends BaseTracker<
       if (key.startsWith('cdc_') || key.startsWith('$cdc_')) automationGlobals.push(key);
     }
 
-    return { webdriver, automationGlobals };
+    let editorAssist: EditorAssistDeclaration | null = null;
+    try {
+      editorAssist = this.assistDeclarationProvider?.() ?? null;
+    } catch {
+      // graceful absence: 取得失敗は値を捏造せず null を事実として記録する
+      editorAssist = null;
+    }
+
+    return { webdriver, automationGlobals, editorAssist };
   }
 }

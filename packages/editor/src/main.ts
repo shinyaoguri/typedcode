@@ -94,6 +94,7 @@ import { WindowTracker } from './tracking/WindowTracker.js';
 import { VisibilityTracker } from './tracking/VisibilityTracker.js';
 import { NetworkTracker } from './tracking/NetworkTracker.js';
 import { EnvironmentTracker } from './tracking/EnvironmentTracker.js';
+import { buildEditorAssistDeclaration } from './tracking/editorAssist.js';
 import { ScreenshotTracker } from './tracking/ScreenshotTracker.js';
 import { ProcessingDialog } from './ui/components/ProcessingDialog.js';
 import { ProofStatusDisplay } from './ui/components/ProofStatusDisplay.js';
@@ -289,6 +290,31 @@ const ctx: AppContext = {
   // Session Content Registry (for internal paste detection)
   contentRegistry: new SessionContentRegistry(),
 };
+
+// editor-assist 宣言 (ADR-0019): Monaco の解決済みオプションから支援機能の実効状態を
+// environmentProbe (起動時ワンショット) に焼く。recordInitial より前に provider を設定する。
+ctx.trackers.environment.setAssistDeclarationProvider(() => {
+  const opts = editor.getOptions();
+  const EO = monaco.editor.EditorOption;
+  return buildEditorAssistDeclaration({
+    quickSuggestions: opts.get(EO.quickSuggestions),
+    suggestOnTriggerCharacters: opts.get(EO.suggestOnTriggerCharacters),
+    // wordBasedSuggestions は IGlobalEditorOptions 所属で、実行時に実効値を読み出す API が
+    // Monaco に無い。読めない値は捏造しない (graceful absence) — 明示設定する日が来たら
+    // その設定値をここに渡す。
+    wordBasedSuggestions: undefined,
+    snippetSuggestions: opts.get(EO.snippetSuggestions),
+    inlineSuggest: opts.get(EO.inlineSuggest),
+    tabCompletion: opts.get(EO.tabCompletion),
+    acceptSuggestionOnEnter: opts.get(EO.acceptSuggestionOnEnter),
+    parameterHints: opts.get(EO.parameterHints),
+    autoClosingBrackets: opts.get(EO.autoClosingBrackets),
+    autoClosingQuotes: opts.get(EO.autoClosingQuotes),
+    autoSurround: opts.get(EO.autoSurround),
+    formatOnType: opts.get(EO.formatOnType),
+    formatOnPaste: opts.get(EO.formatOnPaste),
+  });
+});
 
 // proof に生成時のモードを記録する (ADR-0011: 自己申告ラベル、全モード共通)。
 ctx.proofExporter.setMode(ctx.mode);
