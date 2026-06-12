@@ -14,6 +14,16 @@ export { Fingerprint } from './fingerprint.js';
 // デバッグログ制御 (デフォルト off。ホスト側が dev で有効化する)
 export { setSharedDebug, isSharedDebugEnabled } from './utils/debug.js';
 
+// 三層保証語彙 (ADR-0020) — 実証拠から integrity / temporal / provenance を機械導出
+export { deriveAssurance, summarizeAnalysisForAssurance } from './assurance.js';
+export type {
+  AssuranceInput,
+  AssuranceResult,
+  IntegrityLevel,
+  TemporalLevel,
+  ProvenanceAdvisory,
+} from './assurance.js';
+
 // 検証ユーティリティ
 export {
   deterministicStringify,

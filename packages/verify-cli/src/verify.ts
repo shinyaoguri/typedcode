@@ -7,12 +7,15 @@ import {
   verifyProofFile,
   runAnalysis,
   verifyExamBinding,
+  deriveAssurance,
+  summarizeAnalysisForAssurance,
   EXAM_AUTHORITY_KEYS,
   type ProofFile,
   type VerificationProgressCallback,
   type VerificationMode,
   type FullVerificationResult,
   type AnalysisReport,
+  type AssuranceResult,
   type ExamPackageManifest,
   type ExamBindingVerificationResult,
 } from '@typedcode/shared';
@@ -56,6 +59,8 @@ export interface CLIVerificationResult {
   rootAnchored: boolean;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
   analysis: AnalysisReport;
+  /** 三層保証語彙 (ADR-0020)。実証拠から機械導出した表示用語彙 (valid の置換ではない)。 */
+  assurance: AssuranceResult;
   /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
   exam?: CLIExamResult;
 }
@@ -136,6 +141,30 @@ export async function verifyProof(
   // package が渡されたとき、束縛失敗は全体を fail にする (proof 自己整合とは別軸の真正性)。
   const examValid = exam?.binding ? exam.binding.valid : true;
 
+  // 三層保証語彙 (ADR-0020): 実証拠のみから導出 (自己申告 mode は使わない)。
+  const assurance = deriveAssurance({
+    metadataValid: result.metadataValid,
+    chainValid: result.chainValid,
+    exam: exam
+      ? {
+          present: true,
+          packageProvided: exam.packageProvided,
+          bindingValid: exam.binding?.valid,
+        }
+      : undefined,
+    rootAnchored: result.rootAnchored ?? false,
+    signedCheckpoints: result.signedCheckpoints
+      ? {
+          anchored: result.signedCheckpoints.anchored,
+          valid: result.signedCheckpoints.valid,
+          sparse: result.signedCheckpoints.density?.sparse,
+          postHocSuspected: result.signedCheckpoints.temporal?.postHocSuspected,
+        }
+      : undefined,
+    isPureTyping: result.isPureTyping,
+    analysis: summarizeAnalysisForAssurance(analysis),
+  });
+
   return {
     valid: result.valid && examValid,
     metadataValid: result.metadataValid,
@@ -154,6 +183,7 @@ export async function verifyProof(
     signedCheckpoints: result.signedCheckpoints,
     rootAnchored: result.rootAnchored ?? false,
     analysis,
+    assurance,
     exam,
   };
 }

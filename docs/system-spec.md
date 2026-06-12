@@ -8,7 +8,13 @@
 
 ## 1. システム目的
 
-TypedCode は、ブラウザ上のコードエディタにおける編集操作 (キーストローク、貼り付け、選択、削除など) を **逐次** ハッシュチェーンに記録し、その記録を後から **暗号学的に検証可能** にすることを目的とする。最終的に「このソースコードは copy/paste ではなく、人間がキー打鍵で順番に入力した」という主張を、外部の検証者が再現可能な手順で確認できる。
+TypedCode は、ブラウザ上のコードエディタにおける編集操作 (キーストローク、貼り付け、選択、削除など) を **逐次** ハッシュチェーンに記録し、その記録を後から **暗号学的に検証可能** にすることを目的とする。外部の検証者が再現可能な手順で確認できる主張は、強度の異なる**三層** (ADR-0020) に分かれる:
+
+- **整合性 (決定的)**: この編集列はこのエディタ内でこの順序で記録され、エクスポート後 1 bit も改変されていない
+- **時刻アンカー (決定的)**: 記録はサーバ署名された時間窓の中に存在した (試験は T0 束縛が regime を担う)
+- **著述性 (advisory)**: 打鍵列が転写でなく著述に見えるか — **確率的な参考情報であり「人間が書いた」ことの証明ではない** (分析層 = ADR-0009 と読み手の判断に委ねる)
+
+「人間がキー打鍵で順番に入力した」という素朴な一文は上記三層の合成であり、検証 UI / CLI はこれを 1 つの PASS/FAIL に圧縮せず三層で併記する (overclaim の構造的抑止)。
 
 ### 想定ユースケース
 - 学習目的: タイピング演習・コーディング試験
@@ -733,3 +739,5 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-06-12 | root サーバアンカー (ADR-0017, Phase 7-A) | **`PROOF_FORMAT_VERSION` 1.1.0→1.2.0** (MIN_SUPPORTED 1.0.0 据置・後方互換)。session/start (Turnstile→ECDSA トークン) で casual/class の root を `SHA256(fp ‖ localNonce ‖ serverNonce)` にサーバアンカーし、完全オフライン捏造を封じる。proof に `sessionStartToken` + `rootAnchored` を加算。検証器は registry-only でトークン検証→serverNonce 込み root 再計算→token↔cp sessionId 突合。フォールバック (b): 不達なら `rootAnchored:false` で継続 (warning)。`requireRootAnchor` で strict-fail (exam 除外)。HMAC attestation の作成経路を session/start に統合。§4/§6.2/§6.3/§10 を反映 |
 | 2026-06-12 | isTrusted 捕捉 (ADR-0018, Phase 7-C) | keyDown/keyUp の `KeystrokeDynamicsData.isTrusted` に**合成打鍵 (`!e.isTrusted`) のときだけ** `false` を載せる (keystroke data 経由で hash 済・**加算的**・honest 打鍵はバイト一致で hash 不変)。`automationAnalyzer` が untrusted 打鍵数を数えて advisory signal。**限界**: CDP/ハード注入は isTrusted=true で捕捉不可 (部分的)。§10 を反映 |
 | 2026-06-12 | editor-assist 宣言 (ADR-0019, Phase 8-W0) | `environmentProbe` に **`editorAssist` 宣言** (`editor-assist/1`) を加算的に追加。Monaco の**解決済み**支援オプション (quickSuggestions / inlineSuggest / snippet / 括弧自動閉じ 等 13 項目) を起動時に正規化して焼き、「どの支援が有効な環境での記録か」をセッション間で比較可能にする。記録のみでポリシー判断はしない (別 ADR)。取得不可は null (graceful absence)。proof フォーマット非破壊・新イベント型なし。§4.1 を反映 |
+| 2026-06-12 | 分析層の配線 (ADR-0009, Phase 8-W1) | shared の分析フレームワーク (`runAnalysis`) を **verify(web) と verify-cli の両方に配線**。verify は verificationWorker が検証後に実行し `AnalysisReportCard` で表示、**evidence (event index) クリックでシークバーの当該イベントへジャンプ**。CLI は evidence 表示 + `--analysis-json` (評価ハーネスの機械可読入口) を追加。すべて advisory で valid / exit code には不反映 (直交性維持)。proof フォーマット不変 |
+| 2026-06-12 | 三層保証語彙 (ADR-0020, Phase 8-W2) | 保証を **整合性 (proven/failed) × 時刻アンカー (anchored/partial/unanchored/exam-t0) × 著述性 (常に advisory)** の三層として shared `deriveAssurance` で**実証拠のみから機械導出** (自己申告 `mode` 不使用 = ADR-0011 §6 消化)。verify は結果最上部にバッジ列 (+ mode 参考表示)、CLI は `--- Assurance ---` を出力。§1 の主張文言を三層に精密化 (overclaim 是正)。判定 (`verifyProofFile` の valid) は不変・proof フォーマット不変 |

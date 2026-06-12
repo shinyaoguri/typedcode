@@ -16,6 +16,7 @@ import type { SeekbarController } from '../../charts/SeekbarController';
 import type { VerifyTabState, ProgressDetails, VerifyScreenshot, ScreenshotVerificationSummary, VerificationStepType } from '../../types';
 import { buildResultData, calculateChartStats } from '../../services/ResultDataService';
 import { TrustCalculator } from '../../services/TrustCalculator';
+import { deriveAssurance, summarizeAnalysisForAssurance, type AssuranceResult } from '@typedcode/shared';
 
 export interface TabControllerDependencies {
   tabManager: VerifyTabManager;
@@ -277,8 +278,38 @@ export class TabController {
     const resultData = buildResultData(tabState);
     if (!resultData) return;
 
+    // 三層保証語彙 (ADR-0020): 実証拠のみから導出 (自己申告 mode は使わない)。
+    // スクショ改竄数を持つのはここだけなので導出はこの層で行う。
+    const vr = tabState.verificationResult;
+    const assurance: AssuranceResult | undefined = vr
+      ? deriveAssurance({
+          metadataValid: vr.metadataValid,
+          chainValid: vr.chainValid,
+          screenshotsTampered: screenshotSummary.tampered,
+          exam: vr.exam
+            ? {
+                present: true,
+                packageProvided: vr.exam.packageProvided,
+                bindingValid: vr.exam.binding?.valid,
+              }
+            : undefined,
+          rootAnchored: vr.rootAnchored ?? false,
+          signedCheckpoints:
+            vr.signedCheckpointAnchored !== undefined
+              ? {
+                  anchored: vr.signedCheckpointAnchored,
+                  valid: vr.signedCheckpointValid,
+                  sparse: vr.signedCheckpointDensity?.sparse,
+                  postHocSuspected: vr.signedCheckpointTemporal?.postHocSuspected,
+                }
+              : undefined,
+          isPureTyping: vr.isPureTyping,
+          analysis: vr.analysis ? summarizeAnalysisForAssurance(vr.analysis) : undefined,
+        })
+      : undefined;
+
     // trustResult を追加してレンダリング
-    this.deps.resultPanel.render({ ...resultData, trustResult });
+    this.deps.resultPanel.render({ ...resultData, trustResult, assurance });
 
     // スクリーンショット検証結果を表示
     if (tabState.screenshots && tabState.screenshots.length > 0) {
