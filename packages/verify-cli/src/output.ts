@@ -216,6 +216,14 @@ export function formatResult(result: VerificationOutput): string {
               ? c('yellow', 'NOTICE')
               : c('dim', 'INFO');
         lines.push(`  [${tag}] ${s.dimension}: ${s.summary}`);
+        // 証拠リンク (ADR-0009 で必須): 人間が当該イベントを検分できるよう event index を出す。
+        for (const ev of s.evidence) {
+          const range =
+            ev.toEventIndex !== undefined && ev.toEventIndex !== ev.fromEventIndex
+              ? `events ${ev.fromEventIndex}–${ev.toEventIndex}`
+              : `event ${ev.fromEventIndex}`;
+          lines.push(c('dim', `      evidence: ${range}${ev.note ? ` (${ev.note})` : ''}`));
+        }
       }
     }
   }
@@ -237,6 +245,7 @@ ${c('cyan', 'Usage:')}
   typedcode-verify <file.json|file.zip> [--mode <fast|audit|full>]
                    [--exam-package <file.tcexam>] [--submitted-at <ISO>]
                    [--require-anchor-density] [--require-root-anchor]
+                   [--analysis-json <out.json>]
 
 ${c('cyan', 'Arguments:')}
   file    Path to proof file (.json) or exported archive (.zip)
@@ -259,6 +268,9 @@ ${c('cyan', 'Options:')}
                    Fail (exit 1) when the chain root is not server-anchored (ADR-0017) —
                    i.e. no session start token (offline/degraded or old proof). Off by
                    default (unanchored root is only a warning). exam proofs are exempt.
+  --analysis-json  Write the advisory analysis report (ADR-0009) for every verified
+                   proof to the given file as JSON, for aggregation / evaluation
+                   tooling. Advisory only — never affects the exit code.
 
 ${c('cyan', 'Examples:')}
   typedcode-verify proof.json
