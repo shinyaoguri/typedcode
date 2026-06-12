@@ -148,6 +148,37 @@ describe('summarizeProcess — moments', () => {
     expect(m?.value).toBe(7);
   });
 
+  it('extracts the debug cycle: first failed run and first success after failure (ADR-0021)', () => {
+    const run = (timestamp: number, outcome: 'success' | 'failure'): StoredEvent[] => [
+      makeEvent({ type: 'codeExecution', timestamp, data: { phase: 'start', filename: 'a.c', language: 'c' } }),
+      makeEvent({ type: 'codeExecution', timestamp: timestamp + 100, data: { phase: 'result', filename: 'a.c', language: 'c', outcome, exitCode: outcome === 'success' ? 0 : 1, elapsedMs: 100 } }),
+    ];
+    const s = summarizeProcess([...run(0, 'failure'), ...run(1000, 'failure'), ...run(2000, 'success')]);
+    expect(s.executionCount).toBe(3);
+    expect(s.hasRunResults).toBe(true);
+    expect(s.runFailureCount).toBe(2);
+    expect(s.runSuccessCount).toBe(1);
+    expect(s.moments.find((m) => m.kind === 'first-failed-run')?.fromEventIndex).toBe(1);
+    expect(s.moments.find((m) => m.kind === 'first-success-after-failure')?.fromEventIndex).toBe(5);
+  });
+
+  it('does not flag success-after-failure when the first run already succeeds', () => {
+    const s = summarizeProcess([
+      makeEvent({ type: 'codeExecution', timestamp: 0, data: { phase: 'start', filename: 'a.c', language: 'c' } }),
+      makeEvent({ type: 'codeExecution', timestamp: 100, data: { phase: 'result', filename: 'a.c', language: 'c', outcome: 'success', exitCode: 0 } }),
+    ]);
+    expect(s.moments.find((m) => m.kind === 'first-success-after-failure')).toBeUndefined();
+    expect(s.runSuccessCount).toBe(1);
+  });
+
+  it('treats legacy codeExecution events without data as run starts with unknown results', () => {
+    const s = summarizeProcess([makeEvent({ type: 'codeExecution', timestamp: 0 })]);
+    expect(s.executionCount).toBe(1);
+    expect(s.hasRunResults).toBe(false);
+    expect(s.runSuccessCount).toBe(0);
+    expect(s.runFailureCount).toBe(0);
+  });
+
   it('does not count internal paste (allowed input) as external input', () => {
     const s = summarizeProcess([
       makeEvent({ type: 'contentChange', timestamp: 0, inputType: 'insertFromInternalPaste', data: 'own code', rangeLength: 0 }),

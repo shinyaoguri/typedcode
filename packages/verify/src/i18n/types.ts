@@ -309,6 +309,8 @@ export interface VerifyTranslationKeys {
     moments: string;
     chars: string;
     kindFirstRun: string;
+    kindFirstFailedRun: string;
+    kindFirstSuccessAfterFailure: string;
     kindLongestPause: string;
     kindLargestDeletion: string;
     kindLargestInsertion: string;

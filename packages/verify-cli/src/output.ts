@@ -147,6 +147,8 @@ function formatDurationMs(ms: number): string {
 
 const MOMENT_LABELS: Record<ProcessKeyMoment['kind'], string> = {
   'first-run': 'First run',
+  'first-failed-run': 'First failed run',
+  'first-success-after-failure': 'First success after failure',
   'longest-pause': 'Longest pause',
   'largest-deletion': 'Largest rewrite',
   'largest-insertion': 'Largest bulk insert',
@@ -163,8 +165,11 @@ function formatProcessSummary(p: ProcessSummary): string[] {
   lines.push(
     `Work:        ${formatDurationMs(p.durationMs)}, +${p.insertedChars.toLocaleString()} / -${p.deletedChars.toLocaleString()} chars (deletion ratio ${ratio})`
   );
+  const runs = p.hasRunResults
+    ? `${p.executionCount} run(s) [${p.runSuccessCount} ok / ${p.runFailureCount} failed]`
+    : `${p.executionCount} run(s)`;
   lines.push(
-    `Activity:    ${p.executionCount} run(s), ${p.pauseCount} long pause(s), ${p.focusLossCount} focus loss(es), ${p.externalInputCount} external input(s)`
+    `Activity:    ${runs}, ${p.pauseCount} long pause(s), ${p.focusLossCount} focus loss(es), ${p.externalInputCount} external input(s)`
   );
   for (const m of p.moments) {
     const range =

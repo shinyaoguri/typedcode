@@ -13,7 +13,7 @@
  */
 
 import type { StoredEvent } from './types/proof.js';
-import type { FocusChangeData } from './types/events.js';
+import type { CodeExecutionEventData, FocusChangeData } from './types/events.js';
 import { isProhibitedInputType } from './typingProof/InputTypeValidator.js';
 
 /** 編集の停止 (考え中) とみなす contentChange 間ギャップの下限。 */
@@ -27,6 +27,8 @@ export const PROCESS_MAX_EXTERNAL_INPUT_MOMENTS = 20;
 
 export type ProcessMomentKind =
   | 'first-run' // 最初のコード実行
+  | 'first-failed-run' // 最初の失敗した実行 (ADR-0021 の result データが要る)
+  | 'first-success-after-failure' // 失敗を経た後の最初の成功 = デバッグサイクルの結実
   | 'longest-pause' // 最長の編集停止 (考え中)
   | 'largest-deletion' // 最大の削除 (書き直し)
   | 'largest-insertion' // 最大の一括挿入
@@ -54,6 +56,14 @@ export interface ProcessSummary {
   /** 削除文字数 / 挿入文字数。挿入 0 なら null。試行錯誤の粗い指標 (中立)。 */
   deletionRatio: number | null;
   executionCount: number;
+  /**
+   * 実行結果 (ADR-0021) が記録されているか。false なら旧ビルドの proof で
+   * runSuccessCount / runFailureCount は常に 0 (結果不明であって 0 回ではない)。
+   */
+  hasRunResults: boolean;
+  runSuccessCount: number;
+  /** failure (非 0 exit) + error (実行基盤例外)。aborted は数えない。 */
+  runFailureCount: number;
   /** PROCESS_PAUSE_THRESHOLD_MS を超えた編集停止の回数。 */
   pauseCount: number;
   longestPauseMs: number | null;
@@ -72,11 +82,16 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
   let insertedChars = 0;
   let deletedChars = 0;
   let executionCount = 0;
+  let runSuccessCount = 0;
+  let runFailureCount = 0;
+  let hasRunResults = false;
   let pauseCount = 0;
   let focusLossCount = 0;
   let externalInputCount = 0;
 
   let firstRun: ProcessKeyMoment | null = null;
+  let firstFailedRun: ProcessKeyMoment | null = null;
+  let firstSuccessAfterFailure: ProcessKeyMoment | null = null;
   let longestPause: ProcessKeyMoment | null = null;
   let largestDeletion: ProcessKeyMoment | null = null;
   let largestInsertion: ProcessKeyMoment | null = null;
@@ -171,9 +186,31 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
         break;
       }
       case 'codeExecution': {
-        executionCount++;
-        if (!firstRun) {
-          firstRun = { kind: 'first-run', fromEventIndex: i, timestamp: event.timestamp };
+        const data = event.data as CodeExecutionEventData | null;
+        if (data && typeof data === 'object' && data.phase === 'result') {
+          // ADR-0021: 実行結果イベント。実行回数には数えない (start 側で数える)。
+          hasRunResults = true;
+          if (data.outcome === 'success') {
+            runSuccessCount++;
+            if (runFailureCount > 0 && !firstSuccessAfterFailure) {
+              firstSuccessAfterFailure = {
+                kind: 'first-success-after-failure',
+                fromEventIndex: i,
+                timestamp: event.timestamp,
+              };
+            }
+          } else if (data.outcome === 'failure' || data.outcome === 'error') {
+            runFailureCount++;
+            if (!firstFailedRun) {
+              firstFailedRun = { kind: 'first-failed-run', fromEventIndex: i, timestamp: event.timestamp };
+            }
+          }
+        } else {
+          // start (ADR-0021) または旧ビルドの data 無し codeExecution
+          executionCount++;
+          if (!firstRun) {
+            firstRun = { kind: 'first-run', fromEventIndex: i, timestamp: event.timestamp };
+          }
         }
         break;
       }
@@ -218,6 +255,8 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
   largestFocusBurst = promoteBurst(pendingBurst, largestFocusBurst);
 
   if (firstRun) moments.push(firstRun);
+  if (firstFailedRun) moments.push(firstFailedRun);
+  if (firstSuccessAfterFailure) moments.push(firstSuccessAfterFailure);
   if (longestPause) moments.push(longestPause);
   if (largestDeletion) moments.push(largestDeletion);
   if (largestInsertion) moments.push(largestInsertion);
@@ -238,6 +277,9 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
     deletedChars,
     deletionRatio: insertedChars > 0 ? deletedChars / insertedChars : null,
     executionCount,
+    hasRunResults,
+    runSuccessCount,
+    runFailureCount,
     pauseCount,
     longestPauseMs: longestPause?.value ?? null,
     focusLossCount,

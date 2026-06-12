@@ -179,3 +179,5 @@
 .seek-marker-largest-insertion { background: #a78bfa; }
 .seek-marker-focus-return-burst { background: #fbbf24; }
 .seek-marker-external-input { background: #ef4444; }
+.seek-marker-first-failed-run { background: #dc2626; }
+.seek-marker-first-success-after-failure { background: #16a34a; }

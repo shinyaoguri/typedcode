@@ -287,6 +287,8 @@ export const en: VerifyTranslationKeys = {
     moments: 'Key moments',
     chars: 'chars',
     kindFirstRun: 'First run',
+    kindFirstFailedRun: 'First failed run',
+    kindFirstSuccessAfterFailure: 'First success after failure',
     kindLongestPause: 'Longest pause',
     kindLargestDeletion: 'Largest rewrite',
     kindLargestInsertion: 'Largest bulk insert',
