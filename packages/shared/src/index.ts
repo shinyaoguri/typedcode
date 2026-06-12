@@ -243,6 +243,18 @@ export type {
   AnalysisReport,
 } from './analysis/index.js';
 
+// 分析器の実証評価 (W5): ラベル付きコーパス → 混同行列/閾値スイープ (純粋関数)
+export { evaluateAnalysis, formatEvalReportMarkdown } from './analysis/index.js';
+export type {
+  EvalLabel,
+  LabeledAnalysis,
+  ConfusionPoint,
+  DimensionEval,
+  GenuineSignalRate,
+  EvalReport,
+  EvaluateOptions,
+} from './analysis/index.js';
+
 // ユーティリティ関数
 export { escapeHtml } from './utils/index.js';
 
