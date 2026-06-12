@@ -22,6 +22,7 @@ import type {
   VerificationMode,
   SignedCheckpointsVerificationResult,
   AnalysisReport,
+  AssuranceResult,
 } from '@typedcode/shared';
 import type { CLIExamResult } from './verify.js';
 
@@ -45,12 +46,53 @@ export interface VerificationOutput {
   rootAnchored?: boolean;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
   analysis?: AnalysisReport;
+  /** 三層保証語彙 (ADR-0020)。 */
+  assurance?: AssuranceResult;
   /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
   exam?: CLIExamResult;
 }
 
 function passFail(ok: boolean): string {
   return ok ? c('green', 'PASS') : c('red', 'FAIL');
+}
+
+/**
+ * 三層保証語彙 (ADR-0020) の 1 行サマリ。
+ * 整合性 / 時刻アンカーは決定的、著述性は常に advisory (判定ではない) として併記する。
+ */
+function formatAssurance(a: AssuranceResult): string[] {
+  const integrity =
+    a.integrity === 'proven' ? c('green', 'PROVEN') : c('red', 'FAILED');
+
+  let temporal: string;
+  switch (a.temporal) {
+    case 'anchored':
+      temporal = c('green', 'ANCHORED');
+      break;
+    case 'partial':
+      temporal = c('yellow', 'PARTIAL');
+      break;
+    case 'exam-t0':
+      temporal = c('green', 'EXAM-T0');
+      break;
+    default:
+      temporal = c('yellow', 'UNANCHORED');
+  }
+
+  const parts: string[] = [a.provenance.pureTyping ? 'pure typing' : 'external input present'];
+  if (a.provenance.notableSignals !== null) {
+    parts.push(`${a.provenance.notableSignals} signal(s)`);
+  }
+  if (a.provenance.reviewPriority !== null) {
+    parts.push(`review ${(a.provenance.reviewPriority * 100).toFixed(0)}%`);
+  }
+
+  return [
+    c('cyan', '--- Assurance (ADR-0020) ---'),
+    `Integrity:  ${integrity}  ${c('dim', '(tamper evidence — cryptographic, deterministic)')}`,
+    `Timeline:   ${temporal}  ${c('dim', '(when it existed — server-signed / exam T0)')}`,
+    `Authorship: ${c('yellow', 'ADVISORY')}  ${c('dim', `(${parts.join(', ')} — human judgment required)`)}`,
+  ];
 }
 
 /** 試験モード (ADR-0006) の束縛検証セクションを描画する。 */
@@ -120,6 +162,12 @@ export function formatResult(result: VerificationOutput): string {
     }
   }
   lines.push('');
+
+  // 三層保証語彙 (ADR-0020): PASS/FAIL の直下で「何がどの強さで保証されているか」を先に示す。
+  if (result.assurance) {
+    lines.push(...formatAssurance(result.assurance));
+    lines.push('');
+  }
 
   lines.push(c('cyan', '--- Details ---'));
   if (result.language) {

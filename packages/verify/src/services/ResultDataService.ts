@@ -144,6 +144,8 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     filename: tabState.filename,
     content: proofData.content || '',
     language: tabState.language,
+    // 自己申告モードラベル (ADR-0011)。参考表示のみ — 保証導出には使わない (ADR-0020)。
+    mode: proofData.mode,
     result,
     poswStats,
     attestations: attestations.length > 0 ? attestations : undefined,

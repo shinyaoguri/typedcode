@@ -18,7 +18,7 @@ import type {
 } from '../types';
 import type { SignedCheckpointsVerificationResult, ExamBindingVerificationResult } from '@typedcode/shared';
 import type { SignedCheckpointReport } from '../types';
-import { escapeHtml, type TypingPatternAnalysis, type AnalysisReport } from '@typedcode/shared';
+import { escapeHtml, type TypingPatternAnalysis, type AnalysisReport, type AssuranceResult } from '@typedcode/shared';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
 import { TypingPatternCard } from './TypingPatternCard.js';
 import { AnalysisReportCard } from './AnalysisReportCard.js';
@@ -38,6 +38,10 @@ export interface ResultData {
   typingPatternAnalysis?: TypingPatternAnalysis;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない (検証結果とは独立軸)。 */
   analysis?: AnalysisReport;
+  /** 三層保証語彙 (ADR-0020)。実証拠から機械導出 (自己申告 mode は不使用)。 */
+  assurance?: AssuranceResult;
+  /** proof の自己申告モード (ADR-0011)。参考表示のみで保証導出には使わない。 */
+  mode?: 'casual' | 'class' | 'assignment' | 'exam';
   /** 検証モード (Phase 5) */
   verificationMode?: VerificationMode;
   /** PoSW の実行モード (skipped / sampled / full) */
@@ -97,6 +101,7 @@ export class ResultPanel {
   private statusTitle: HTMLElement;
   private statusFilename: HTMLElement;
   private statusPattern: HTMLElement;
+  private assuranceStrip: HTMLElement;
   private patternMiniGauge: HTMLElement;
   private patternMiniJudgment: HTMLElement;
 
@@ -231,6 +236,7 @@ export class ResultPanel {
     this.statusTitle = document.getElementById('result-status-title')!;
     this.statusFilename = document.getElementById('result-status-filename')!;
     this.statusPattern = document.getElementById('result-status-pattern')!;
+    this.assuranceStrip = document.getElementById('assurance-strip')!;
     this.patternMiniGauge = document.getElementById('pattern-mini-gauge')!;
     this.patternMiniJudgment = document.getElementById('pattern-mini-judgment')!;
 
@@ -664,6 +670,9 @@ export class ResultPanel {
       this.analysisReportCard.hide();
     }
 
+    // 三層保証語彙 (ADR-0020) - 結果画面最上部に整合性/時刻アンカー/著述性を併記。
+    this.renderAssurance(data.assurance, data.mode);
+
     // Stats
     this.statEvents.textContent = eventCount.toLocaleString();
     this.statTime.textContent = typingTime;
@@ -679,6 +688,75 @@ export class ResultPanel {
     }
 
     this.showContent();
+  }
+
+  /**
+   * 三層保証語彙 (ADR-0020) のバッジ列を描画する。
+   * - 整合性 / 時刻アンカー = 決定的 (実証拠から導出)
+   * - 著述性 = 常に advisory (判定に見えない中立色で出す)
+   * - mode は自己申告ラベルなので「(自己申告)」を明記して参考表示のみ
+   */
+  private renderAssurance(assurance: AssuranceResult | undefined, mode?: ResultData['mode']): void {
+    if (!assurance) {
+      this.assuranceStrip.style.display = 'none';
+      return;
+    }
+    this.assuranceStrip.style.display = '';
+
+    const integrityClass = assurance.integrity === 'proven' ? 'success' : 'error';
+    const integrityValue =
+      assurance.integrity === 'proven' ? t('assurance.integrityProven') : t('assurance.integrityFailed');
+
+    let temporalClass: string;
+    let temporalValue: string;
+    switch (assurance.temporal) {
+      case 'anchored':
+        temporalClass = 'success';
+        temporalValue = t('assurance.temporalAnchored');
+        break;
+      case 'exam-t0':
+        temporalClass = 'success';
+        temporalValue = t('assurance.temporalExamT0');
+        break;
+      case 'partial':
+        temporalClass = 'warning';
+        temporalValue = t('assurance.temporalPartial');
+        break;
+      default:
+        temporalClass = 'warning';
+        temporalValue = t('assurance.temporalUnanchored');
+    }
+
+    const p = assurance.provenance;
+    const provenanceParts: string[] = [
+      p.pureTyping ? t('assurance.pureTypingYes') : t('assurance.pureTypingNo'),
+    ];
+    if (p.notableSignals !== null) {
+      provenanceParts.push(`${t('assurance.signals')} ${p.notableSignals}`);
+    }
+
+    const modeChip = mode
+      ? `<span class="assurance-chip neutral" title="${escapeHtml(t('assurance.modeSelfAsserted'))}">
+           <span class="assurance-chip-label">${t('assurance.modeLabel')}</span>
+           <span class="assurance-chip-value">${t(`assurance.mode.${mode}`)}</span>
+         </span>`
+      : '';
+
+    this.assuranceStrip.innerHTML = `
+      <span class="assurance-chip ${integrityClass}" title="${escapeHtml(t('assurance.integrityHint'))}">
+        <span class="assurance-chip-label">${t('assurance.integrity')}</span>
+        <span class="assurance-chip-value">${integrityValue}</span>
+      </span>
+      <span class="assurance-chip ${temporalClass}" title="${escapeHtml(t('assurance.temporalHint'))}">
+        <span class="assurance-chip-label">${t('assurance.temporal')}</span>
+        <span class="assurance-chip-value">${temporalValue}</span>
+      </span>
+      <span class="assurance-chip advisory" title="${escapeHtml(t('assurance.provenanceHint'))}">
+        <span class="assurance-chip-label">${t('assurance.provenance')}</span>
+        <span class="assurance-chip-value">${provenanceParts.map((x) => escapeHtml(x)).join(' · ')}</span>
+      </span>
+      ${modeChip}
+    `;
   }
 
   private renderCard(

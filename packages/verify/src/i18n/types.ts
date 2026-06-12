@@ -295,6 +295,33 @@ export interface VerifyTranslationKeys {
   };
 
   // Typing pattern analysis
+  // 三層保証語彙 (ADR-0020)
+  assurance: {
+    integrity: string;
+    temporal: string;
+    provenance: string;
+    integrityProven: string;
+    integrityFailed: string;
+    temporalAnchored: string;
+    temporalPartial: string;
+    temporalUnanchored: string;
+    temporalExamT0: string;
+    pureTypingYes: string;
+    pureTypingNo: string;
+    signals: string;
+    modeLabel: string;
+    modeSelfAsserted: string;
+    integrityHint: string;
+    temporalHint: string;
+    provenanceHint: string;
+    mode: {
+      casual: string;
+      class: string;
+      assignment: string;
+      exam: string;
+    };
+  };
+
   // 分析層 (ADR-0009) — advisory レポートカード
   analysis: {
     advisory: string;

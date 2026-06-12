@@ -274,6 +274,32 @@ export const ja: VerifyTranslationKeys = {
     screenShareOptOut: '画面共有なしモードで記録されました',
   },
 
+  assurance: {
+    integrity: '整合性',
+    temporal: '時刻アンカー',
+    provenance: '著述性',
+    integrityProven: '証明済み',
+    integrityFailed: '失敗',
+    temporalAnchored: 'アンカー済み',
+    temporalPartial: '部分的',
+    temporalUnanchored: '未アンカー',
+    temporalExamT0: 'T0 束縛 (試験)',
+    pureTypingYes: 'ピュアタイピング',
+    pureTypingNo: '外部入力あり',
+    signals: 'シグナル',
+    modeLabel: 'モード',
+    modeSelfAsserted: '自己申告ラベルです。保証の判定には使われません',
+    integrityHint: '記録が事後改変されていないか — 暗号検証 (決定的)',
+    temporalHint: '記録がいつ存在したか — サーバ署名 / 試験 T0 束縛 (決定的)',
+    provenanceHint: '打鍵が著述に見えるか — 参考情報であり判定ではありません。最終判断は人間が行います',
+    mode: {
+      casual: '練習',
+      class: '授業',
+      assignment: '課題',
+      exam: '試験',
+    },
+  },
+
   analysis: {
     advisory: 'ヒューリスティックな参考情報です。判定ではなく、人間によるレビューの手掛かりです (検証結果とは独立)。',
     noSignals: '分析シグナルなし',

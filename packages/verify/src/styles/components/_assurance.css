@@ -1,0 +1,67 @@
+/* 三層保証語彙 (ADR-0020) — 整合性 × 時刻アンカー × 著述性 (advisory) のバッジ列 */
+
+.assurance-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px 10px;
+}
+
+.assurance-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  cursor: help;
+}
+
+.assurance-chip-label {
+  color: var(--text-secondary, #9da5b4);
+}
+
+.assurance-chip-value {
+  font-weight: 700;
+}
+
+.assurance-chip.success {
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+.assurance-chip.success .assurance-chip-value {
+  color: #22c55e;
+}
+
+.assurance-chip.warning {
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
+.assurance-chip.warning .assurance-chip-value {
+  color: #fbbf24;
+}
+
+.assurance-chip.error {
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.assurance-chip.error .assurance-chip-value {
+  color: #ef4444;
+}
+
+/* 著述性は advisory — 判定色 (緑/赤) を使わず中立に保つ (ADR-0020) */
+.assurance-chip.advisory {
+  border-style: dashed;
+}
+
+.assurance-chip.advisory .assurance-chip-value {
+  color: var(--text-primary, #d4d4d4);
+  font-weight: 500;
+}
+
+.assurance-chip.neutral .assurance-chip-value {
+  color: var(--text-primary, #d4d4d4);
+  font-weight: 500;
+}

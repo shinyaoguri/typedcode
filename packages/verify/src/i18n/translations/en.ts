@@ -274,6 +274,32 @@ export const en: VerifyTranslationKeys = {
     screenShareOptOut: 'Recorded without screen sharing',
   },
 
+  assurance: {
+    integrity: 'Integrity',
+    temporal: 'Time anchor',
+    provenance: 'Authorship',
+    integrityProven: 'Proven',
+    integrityFailed: 'Failed',
+    temporalAnchored: 'Anchored',
+    temporalPartial: 'Partial',
+    temporalUnanchored: 'Unanchored',
+    temporalExamT0: 'T0-bound (exam)',
+    pureTypingYes: 'Pure typing',
+    pureTypingNo: 'External input present',
+    signals: 'signals',
+    modeLabel: 'Mode',
+    modeSelfAsserted: 'Self-asserted label — never used for assurance derivation',
+    integrityHint: 'Has the record been tampered with — cryptographic verification (deterministic)',
+    temporalHint: 'When did the record exist — server signatures / exam T0 binding (deterministic)',
+    provenanceHint: 'Does the typing look authored — advisory only, not a verdict. Final judgment is human',
+    mode: {
+      casual: 'Practice',
+      class: 'Class',
+      assignment: 'Assignment',
+      exam: 'Exam',
+    },
+  },
+
   analysis: {
     advisory: 'Heuristic, advisory information — clues for human review, not a verdict (independent of verification).',
     noSignals: 'No analysis signals',
