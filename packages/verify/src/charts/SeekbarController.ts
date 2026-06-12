@@ -5,10 +5,31 @@
  * seekbar.ts から抽出。
  */
 
-import { escapeHtml, type StoredEvent, type TemplateInjectionEventData } from '@typedcode/shared';
+import { escapeHtml, type StoredEvent, type TemplateInjectionEventData, type ProcessKeyMoment } from '@typedcode/shared';
 import type { ContentCache } from '../types.js';
 import { ChartUtils } from './ChartUtils.js';
 import type { IntegratedChart } from './IntegratedChart.js';
+
+/**
+ * 再生モード (Phase 8 W3-C)。
+ * - steps: 50ms ごとに 1 イベント (等間隔・従来挙動)
+ * - x1/x10/x60: イベントの実 timestamp に比例した再生 (停止・バーストの緩急が見える)
+ */
+export type PlaybackMode = 'steps' | 'x1' | 'x10' | 'x60';
+
+const PLAYBACK_MODE_ORDER: PlaybackMode[] = ['steps', 'x1', 'x10', 'x60'];
+const PLAYBACK_MODE_LABEL: Record<PlaybackMode, string> = {
+  steps: '=',
+  x1: '×1',
+  x10: '×10',
+  x60: '×60',
+};
+const PLAYBACK_SPEED: Record<Exclude<PlaybackMode, 'steps'>, number> = {
+  x1: 1,
+  x10: 10,
+  x60: 60,
+};
+const PLAY_TICK_MS = 50;
 
 // ============================================================================
 // 型定義
@@ -38,6 +59,10 @@ export interface SeekbarControllerOptions {
   nextButton: HTMLElement | null;
   /** 終端ボタン */
   endButton: HTMLElement | null;
+  /** 再生速度ボタン (W3-C。クリックでモード巡回) */
+  speedButton?: HTMLElement | null;
+  /** 見どころマーカーのコンテナ (W3-C。トラック上に重ねる) */
+  markersContainer?: HTMLElement | null;
   /** コンテンツプレビュー要素 */
   contentPreview: HTMLElement | null;
 }
@@ -68,6 +93,10 @@ export class SeekbarController {
   private playInterval: ReturnType<typeof setInterval> | null = null;
   private finalContent: string = '';
   private contentCache: ContentCache = new Map();
+  /** 再生モード (W3-C)。既定は従来挙動の等間隔。 */
+  private playbackMode: PlaybackMode = 'steps';
+  /** 実時間比例再生の仮想時刻 (イベント timestamp 系の ms)。 */
+  private virtualTimeMs = 0;
 
   // Chart.js連携
   private integratedChart: IntegratedChart | null = null;
@@ -80,6 +109,7 @@ export class SeekbarController {
     onPlayClick?: () => void;
     onNextClick?: () => void;
     onEndClick?: () => void;
+    onSpeedClick?: () => void;
   } = {};
 
   constructor(options: SeekbarControllerOptions, callbacks: SeekbarCallbacks = {}) {
@@ -150,6 +180,12 @@ export class SeekbarController {
       this.boundHandlers.onEndClick = () => this.seekTo(this.events.length);
       this.options.endButton.addEventListener('click', this.boundHandlers.onEndClick);
     }
+
+    if (this.options.speedButton) {
+      this.boundHandlers.onSpeedClick = () => this.cyclePlaybackMode();
+      this.options.speedButton.addEventListener('click', this.boundHandlers.onSpeedClick);
+      this.updateSpeedButton();
+    }
   }
 
   /**
@@ -173,6 +209,9 @@ export class SeekbarController {
     }
     if (this.options.endButton && this.boundHandlers.onEndClick) {
       this.options.endButton.removeEventListener('click', this.boundHandlers.onEndClick);
+    }
+    if (this.options.speedButton && this.boundHandlers.onSpeedClick) {
+      this.options.speedButton.removeEventListener('click', this.boundHandlers.onSpeedClick);
     }
     this.boundHandlers = {};
   }
@@ -258,6 +297,7 @@ export class SeekbarController {
     this.isPlaying = true;
     this.updatePlayIcon();
     this.callbacks.onPlayStateChange?.(true);
+    this.resetVirtualClock();
 
     this.playInterval = setInterval(() => {
       if (this.currentIndex >= this.events.length) {
@@ -265,11 +305,74 @@ export class SeekbarController {
         return;
       }
 
-      this.currentIndex++;
+      if (this.playbackMode === 'steps') {
+        // 従来挙動: tick ごとに 1 イベント (等間隔)
+        this.currentIndex++;
+      } else {
+        // 実時間比例: 仮想時刻を speed 倍で進め、追い越したイベントを適用する。
+        // 長い停止は ×1 では実際に待たされる (それが見どころ)。×10/×60 で早送り。
+        this.virtualTimeMs += PLAY_TICK_MS * PLAYBACK_SPEED[this.playbackMode];
+        while (
+          this.currentIndex < this.events.length &&
+          this.events[this.currentIndex]!.timestamp <= this.virtualTimeMs
+        ) {
+          this.currentIndex++;
+        }
+      }
+
       this.updateUI();
       this.updateChartMarker();
       this.callbacks.onSeek?.(this.currentIndex);
-    }, 50); // 50ms間隔
+    }, PLAY_TICK_MS);
+  }
+
+  /** 現在位置から実時間比例再生の仮想時刻を引き直す。 */
+  private resetVirtualClock(): void {
+    if (this.events.length === 0) return;
+    this.virtualTimeMs =
+      this.currentIndex > 0
+        ? this.events[Math.min(this.currentIndex, this.events.length) - 1]!.timestamp
+        : this.events[0]!.timestamp - PLAY_TICK_MS;
+  }
+
+  /** 再生モードを巡回 (W3-C)。再生中は仮想時刻を引き直して滑らかに切替。 */
+  cyclePlaybackMode(): void {
+    const i = PLAYBACK_MODE_ORDER.indexOf(this.playbackMode);
+    this.playbackMode = PLAYBACK_MODE_ORDER[(i + 1) % PLAYBACK_MODE_ORDER.length]!;
+    this.resetVirtualClock();
+    this.updateSpeedButton();
+  }
+
+  getPlaybackMode(): PlaybackMode {
+    return this.playbackMode;
+  }
+
+  private updateSpeedButton(): void {
+    if (this.options.speedButton) {
+      this.options.speedButton.textContent = PLAYBACK_MODE_LABEL[this.playbackMode];
+    }
+  }
+
+  /**
+   * 見どころマーカー (W3-C) をトラック上に描画する。
+   * ProcessSummary.moments を受け、クリックで当該イベント適用後の状態へシークする。
+   */
+  setKeyMoments(moments: readonly ProcessKeyMoment[]): void {
+    const container = this.options.markersContainer;
+    if (!container) return;
+    container.innerHTML = '';
+    if (this.events.length === 0) return;
+
+    for (const moment of moments) {
+      const marker = document.createElement('button');
+      marker.type = 'button';
+      marker.className = `seek-marker seek-marker-${moment.kind}`;
+      const position = ((moment.fromEventIndex + 1) / this.events.length) * 100;
+      marker.style.left = `${Math.min(100, position)}%`;
+      marker.title = `${moment.kind} @ #${moment.fromEventIndex}`;
+      marker.addEventListener('click', () => this.seekTo(moment.fromEventIndex + 1));
+      container.appendChild(marker);
+    }
   }
 
   /**

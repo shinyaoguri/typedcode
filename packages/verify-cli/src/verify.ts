@@ -9,6 +9,7 @@ import {
   verifyExamBinding,
   deriveAssurance,
   summarizeAnalysisForAssurance,
+  summarizeProcess,
   EXAM_AUTHORITY_KEYS,
   type ProofFile,
   type VerificationProgressCallback,
@@ -16,6 +17,7 @@ import {
   type FullVerificationResult,
   type AnalysisReport,
   type AssuranceResult,
+  type ProcessSummary,
   type ExamPackageManifest,
   type ExamBindingVerificationResult,
 } from '@typedcode/shared';
@@ -61,6 +63,8 @@ export interface CLIVerificationResult {
   analysis: AnalysisReport;
   /** 三層保証語彙 (ADR-0020)。実証拠から機械導出した表示用語彙 (valid の置換ではない)。 */
   assurance: AssuranceResult;
+  /** プロセス要約 (Phase 8 W3)。制作過程の中立な記述。 */
+  processSummary: ProcessSummary;
   /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
   exam?: CLIExamResult;
 }
@@ -184,6 +188,7 @@ export async function verifyProof(
     rootAnchored: result.rootAnchored ?? false,
     analysis,
     assurance,
+    processSummary: summarizeProcess(events),
     exam,
   };
 }

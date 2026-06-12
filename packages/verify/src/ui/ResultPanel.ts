@@ -18,10 +18,11 @@ import type {
 } from '../types';
 import type { SignedCheckpointsVerificationResult, ExamBindingVerificationResult } from '@typedcode/shared';
 import type { SignedCheckpointReport } from '../types';
-import { escapeHtml, type TypingPatternAnalysis, type AnalysisReport, type AssuranceResult } from '@typedcode/shared';
+import { escapeHtml, type TypingPatternAnalysis, type AnalysisReport, type AssuranceResult, type ProcessSummary } from '@typedcode/shared';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
 import { TypingPatternCard } from './TypingPatternCard.js';
 import { AnalysisReportCard } from './AnalysisReportCard.js';
+import { ProcessSummaryCard } from './ProcessSummaryCard.js';
 import { t } from '../i18n/index.js';
 
 export interface ResultData {
@@ -40,6 +41,8 @@ export interface ResultData {
   analysis?: AnalysisReport;
   /** 三層保証語彙 (ADR-0020)。実証拠から機械導出 (自己申告 mode は不使用)。 */
   assurance?: AssuranceResult;
+  /** プロセス要約 (Phase 8 W3)。制作過程の中立な記述 (疑い指標ではない)。 */
+  processSummary?: ProcessSummary;
   /** proof の自己申告モード (ADR-0011)。参考表示のみで保証導出には使わない。 */
   mode?: 'casual' | 'class' | 'assignment' | 'exam';
   /** 検証モード (Phase 5) */
@@ -195,6 +198,7 @@ export class ResultPanel {
   // Typing pattern card
   private typingPatternCard: TypingPatternCard;
   private analysisReportCard: AnalysisReportCard;
+  private processSummaryCard: ProcessSummaryCard;
 
   // Chart tabs
   private tabIntegrated: HTMLElement;
@@ -335,6 +339,9 @@ export class ResultPanel {
 
     // Analysis layer card (ADR-0009)
     this.analysisReportCard = new AnalysisReportCard();
+
+    // Process summary card (Phase 8 W3)
+    this.processSummaryCard = new ProcessSummaryCard();
 
     // Chart tabs
     this.tabIntegrated = document.getElementById('tab-integrated')!;
@@ -672,6 +679,13 @@ export class ResultPanel {
 
     // 三層保証語彙 (ADR-0020) - 結果画面最上部に整合性/時刻アンカー/著述性を併記。
     this.renderAssurance(data.assurance, data.mode);
+
+    // プロセス要約 (Phase 8 W3) - 制作過程の中立な記述。見どころ→シークバージャンプ。
+    if (data.processSummary) {
+      this.processSummaryCard.render(data.processSummary);
+    } else {
+      this.processSummaryCard.hide();
+    }
 
     // Stats
     this.statEvents.textContent = eventCount.toLocaleString();

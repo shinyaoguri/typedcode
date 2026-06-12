@@ -274,6 +274,26 @@ export const en: VerifyTranslationKeys = {
     screenShareOptOut: 'Recorded without screen sharing',
   },
 
+  process: {
+    title: 'Process Summary',
+    duration: 'Duration',
+    inserted: 'Inserted',
+    deleted: 'Deleted',
+    deletionRatio: 'Deletion ratio',
+    executions: 'Runs',
+    pauses: 'Long pauses',
+    focusLosses: 'Focus losses',
+    externalInputs: 'External input',
+    moments: 'Key moments',
+    chars: 'chars',
+    kindFirstRun: 'First run',
+    kindLongestPause: 'Longest pause',
+    kindLargestDeletion: 'Largest rewrite',
+    kindLargestInsertion: 'Largest bulk insert',
+    kindFocusBurst: 'Burst after refocus',
+    kindExternalInput: 'External input',
+  },
+
   assurance: {
     integrity: 'Integrity',
     temporal: 'Time anchor',
@@ -377,6 +397,7 @@ export const en: VerifyTranslationKeys = {
   },
 
   seekbar: {
+    speed: 'Playback speed (= uniform / ×1 ×10 ×60 proportional)',
     start: 'Start',
     prev: 'Previous',
     play: 'Play',

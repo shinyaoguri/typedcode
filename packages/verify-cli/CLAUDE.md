@@ -65,3 +65,8 @@ src/
 
 - ヘッダ直下に `--- Assurance ---` (Integrity / Timeline / Authorship) を出す。導出は shared の `deriveAssurance` に委譲 (CLI 側で再実装しない)
 - Authorship は常に `ADVISORY` 表記 — 判定に見せない (ADR-0009/0020)。exit code にも不干渉
+
+## プロセス要約 (Phase 8 W3)
+
+- `--- Process summary ---` に作業時間・挿入/削除・実行/停止/離脱/外部入力と見どころ (event index 付き) を出す。中立な記述で判定に影響しない
+- 抽出は shared の `summarizeProcess` に委譲 (CLI 側で再実装しない)

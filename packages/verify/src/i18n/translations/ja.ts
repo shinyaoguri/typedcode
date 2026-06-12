@@ -274,6 +274,26 @@ export const ja: VerifyTranslationKeys = {
     screenShareOptOut: '画面共有なしモードで記録されました',
   },
 
+  process: {
+    title: 'プロセス要約',
+    duration: '作業時間',
+    inserted: '挿入',
+    deleted: '削除',
+    deletionRatio: '削除比',
+    executions: '実行',
+    pauses: '長い停止',
+    focusLosses: '離脱',
+    externalInputs: '外部入力',
+    moments: '見どころ',
+    chars: '文字',
+    kindFirstRun: '初回実行',
+    kindLongestPause: '最長の停止',
+    kindLargestDeletion: '最大の書き直し',
+    kindLargestInsertion: '最大の一括挿入',
+    kindFocusBurst: '復帰直後の大量入力',
+    kindExternalInput: '外部入力',
+  },
+
   assurance: {
     integrity: '整合性',
     temporal: '時刻アンカー',
@@ -377,6 +397,7 @@ export const ja: VerifyTranslationKeys = {
   },
 
   seekbar: {
+    speed: '再生速度 (= 等間隔 / ×1 ×10 ×60 実時間比例)',
     start: '最初',
     prev: '前',
     play: '再生',

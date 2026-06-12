@@ -321,6 +321,22 @@
 
                 <!-- Verification Cards -->
                 <div class="result-cards" id="result-cards">
+                  <!-- Process Summary Card (Phase 8 W3) -->
+                  <div class="result-card" id="card-process-summary" style="display: none;">
+                    <div class="result-card-header">
+                      <div class="result-card-header-left">
+                        <div class="result-card-icon success" id="process-summary-icon">
+                          <i class="fas fa-route"></i>
+                        </div>
+                        <span class="result-card-title" data-i18n="process.title">プロセス要約</span>
+                      </div>
+                      <span class="result-card-badge pending" id="process-summary-badge">-</span>
+                    </div>
+                    <div class="result-card-content" id="process-summary-content">
+                      <!-- Rendered by ProcessSummaryCard.ts -->
+                    </div>
+                  </div>
+
                   <!-- Typing Card -->
                   <div class="result-card" id="card-typing">
                     <div class="result-card-header">
@@ -689,11 +705,13 @@
                       <button class="seek-btn" id="seekbar-end" data-i18n-title="seekbar.end">
                         <i class="fas fa-forward-fast"></i>
                       </button>
+                      <button class="seek-btn seek-btn-speed" id="seekbar-speed" data-i18n-title="seekbar.speed">=</button>
                     </div>
                     <div class="seekbar-track-container">
                       <div class="seek-track">
                         <input type="range" class="seek-slider" id="seekbar-slider" min="0" max="100" value="100" step="1">
                         <div class="seek-progress" id="seekbar-progress"></div>
+                        <div class="seek-markers" id="seekbar-markers"></div>
                       </div>
                     </div>
                     <div class="seekbar-info">
