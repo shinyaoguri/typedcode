@@ -247,6 +247,22 @@ export type {
 export { buildAnalysisBundle, ANALYSIS_BUNDLE_SCHEMA } from './analysis/index.js';
 export type { AnalysisBundle } from './analysis/index.js';
 
+// コホート基準 (ADR-0025): Tier A 群 → 頑健分布 + 提出物の位置 (advisory triage・純粋関数)
+export {
+  computeCohortBaseline,
+  positionInCohort,
+  COHORT_MIN_N,
+  COHORT_BASELINE_SCHEMA,
+  COHORT_POSITION_SCHEMA,
+} from './analysis/index.js';
+export type {
+  CohortMetricKey,
+  MetricDistribution,
+  CohortBaseline,
+  MetricPosition,
+  CohortPosition,
+} from './analysis/index.js';
+
 // 分析器の実証評価 (W5): ラベル付きコーパス → 混同行列/閾値スイープ (純粋関数)
 export { evaluateAnalysis, formatEvalReportMarkdown } from './analysis/index.js';
 export type {
