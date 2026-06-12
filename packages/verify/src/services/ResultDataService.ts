@@ -151,6 +151,8 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     typingTime,
     typingSpeed,
     typingPatternAnalysis,
+    // 分析層 (ADR-0009): worker が runAnalysis で生成した advisory レポート (判定ではない)。
+    analysis: verificationResult.analysis,
     verificationMode: verificationResult.verificationMode,
     poswMode: verificationResult.poswMode,
     signedCheckpoint:

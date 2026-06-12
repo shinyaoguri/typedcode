@@ -19,7 +19,7 @@
 
 | ディレクトリ | 役割 |
 |---|---|
-| `ui/` | `AppController`, `TabBar`, `ActivityBar`, `StatusBarUI`, `ResultPanel`, `Sidebar`, `TypingPatternCard`, `ChartEventSelector` |
+| `ui/` | `AppController`, `TabBar`, `ActivityBar`, `StatusBarUI`, `ResultPanel`, `Sidebar`, `TypingPatternCard`, `AnalysisReportCard` (ADR-0009 の advisory 表示), `ChartEventSelector` |
 | `ui/controllers/` | `VerificationController`, `TabController`, `FileController`, `FolderController`, `ChartController` |
 | `state/` | `VerificationQueue`, `UIStateManager`, `VerifyTabManager`, `ChartState` |
 | `charts/` | `TimelineChart`, `MouseChart`, `IntegratedChart`, `SeekbarController` (Chart.js) |
@@ -39,7 +39,8 @@ File Selection (drag&drop / FSA API)
      ├─ previousHash 検証
      ├─ ハッシュ再計算
      ├─ PoSW (POSW_ITERATIONS 反復)
-     └─ 署名済み cp の連結検証 (任意)
+     ├─ 署名済み cp の連結検証 (任意)
+     └─ runAnalysis (ADR-0009。advisory のみ・valid に不反映・失敗しても検証結果を落とさない)
   → AttestationService.verify() (Workers API)
   → ResultPanel + charts
 ```
@@ -60,3 +61,10 @@ File Selection (drag&drop / FSA API)
 - **チャートのズーム / パン状態は `ChartPreferencesService` で永続化**: 検証結果のリセット時にクリアするか、ユーザー設定として残すかの線引きに注意
 - **マルチファイル proof の `tabSwitches`**: タブごとの最終ハッシュとつながっている。タブの順序を変えるとチェーンが切れる
 - **試験束縛カード (ADR-0006)**: `proof.exam` がある proof は root 束縛を worker が runtime で検証済み (`verifyInitialHashRoot` の exam 分岐。worker は proofData 全体を受け取る)。完全束縛 (署名/復号/内容) は **`.tcexam` を「問題パッケージを読み込む」で取り込んだとき** `verifyExamBinding` で検証 → `VerificationQueue.reverifyWithManifest` で当該タブのみ再検証。result-card は**折りたたみ式** (`.result-card-content` は既定 `display:none`、ヘッダクリックで展開) なので、ボタンは展開後に現れる
+
+## 分析カード (ADR-0009)
+
+- worker が検証後に shared の `runAnalysis` を実行し `VerificationResultData.analysis` で返す。**advisory であって判定ではない** — `valid` / TrustCalculator / タブ status には一切反映しない (ここを破ると ADR-0009 の直交性が壊れる)
+- 表示は `AnalysisReportCard` (`#card-analysis`)。severity (`info`/`notice`/`review`)・score/confidence・summary に加え **evidence (event index) をボタンで出す**
+- evidence クリックは `document` に `verify:seek-to-event` CustomEvent を dispatch し、`ChartController` が `SeekbarController.seekTo(eventIndex + 1)` で当該イベント適用後の状態へジャンプする (「シグナルを見る → 現場を検分」の 1 クリック化)
+- 分析ロジックは shared に置く。verify 側に分析器を書かない (verify はテスト未整備のため)

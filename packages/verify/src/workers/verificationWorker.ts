@@ -7,6 +7,7 @@ import {
   CHECKPOINT_PUBLIC_KEYS,
   TypingProof,
   findCheckpointPublicKey,
+  runAnalysis,
   verifyCheckpoints,
   verifyContentReplay,
   verifyFinalChainHash,
@@ -16,6 +17,7 @@ import {
   verifyExamBinding,
 } from '@typedcode/shared';
 import type {
+  AnalysisReport,
   CheckpointData,
   ExportedProof,
   ExamPackageManifest,
@@ -346,6 +348,30 @@ async function verify(request: VerifyRequest): Promise<void> {
       };
     }
 
+    // 5.7 分析層 (ADR-0009): 検証と直交する post-hoc 分析。advisory であって判定ではない
+    // (valid には一切反映しない)。分析の失敗は検証結果を落とさない。
+    let analysis: AnalysisReport | undefined;
+    try {
+      analysis = await runAnalysis({
+        proof: proofData as unknown as ExportedProof,
+        verification: {
+          valid: metadataValid && chainValid,
+          metadataValid,
+          rootValid,
+          rootAnchored,
+          chainValid,
+          finalHashValid: finalHashVerification.valid,
+          contentValid: contentVerification.valid,
+          checkpointValid: checkpointVerification.valid,
+          isPureTyping,
+          poswSkipped: skipPosw,
+          signedCheckpoints: signedCheckpointResult,
+        },
+      });
+    } catch {
+      analysis = undefined;
+    }
+
     // 6. 結果を送信
     sendResult(id, {
       metadataValid,
@@ -369,6 +395,7 @@ async function verify(request: VerifyRequest): Promise<void> {
       signedCheckpointDensity: signedCheckpointResult.density,
       signedCheckpointReason: signedCheckpointResult.reason,
       signedCheckpointReport,
+      analysis,
       exam: examResult,
     });
   } catch (error) {

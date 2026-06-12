@@ -5,7 +5,7 @@
  * Usage: typedcode-verify <file.json|file.zip> [--mode <m>] [--exam-package <f>] [--submitted-at <ISO>]
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { verifyProof, type ProofFile } from './verify.js';
 import { extractAllProofs } from './zip.js';
@@ -18,7 +18,7 @@ import {
 } from '@typedcode/shared';
 
 /** value を取る flag。`--name value` と `--name=value` の両方を許す。 */
-const VALUE_FLAGS = new Set(['--mode', '--exam-package', '--submitted-at']);
+const VALUE_FLAGS = new Set(['--mode', '--exam-package', '--submitted-at', '--analysis-json']);
 
 function flagValue(args: string[], name: string): string | undefined {
   const i = args.findIndex((a) => a === name || a.startsWith(`${name}=`));
@@ -71,6 +71,10 @@ async function main(): Promise<void> {
 
   // root アンカー gate (ADR-0017): boolean フラグ。指定すると root 未アンカー proof を fail させる。
   const requireRootAnchor = args.includes('--require-root-anchor');
+
+  // 分析レポートの JSON 出力 (ADR-0009): 評価ハーネス/集計スクリプトの機械可読な入口。
+  // advisory であって判定ではない — exit code には一切影響しない。
+  const analysisJsonPath = flagValue(args, '--analysis-json');
 
   // 試験モード (ADR-0006): 任意の問題パッケージ + 提出時刻
   const examPackagePath = flagValue(args, '--exam-package');
@@ -127,11 +131,19 @@ async function main(): Promise<void> {
     // 全 proof を検証。1 件でも fail なら exit 1 (CI が部分合格を成功と誤読しないように)。
     const multi = proofs.length > 1;
     const summary: Array<{ filename: string; valid: boolean }> = [];
+    const analysisDump: Array<{ filename: string; valid: boolean; analysis: unknown }> = [];
     for (const { filename, proof } of proofs) {
       if (multi) console.log(`\n=== ${filename} ===`);
       const result = await verifyProof(proof, { mode, examPackageManifest, submittedAtMs, requireAnchorDensity, requireRootAnchor });
       console.log(formatResult(result));
       summary.push({ filename, valid: result.valid });
+      analysisDump.push({ filename, valid: result.valid, analysis: result.analysis });
+    }
+
+    // --analysis-json: AnalysisReport を機械可読でファイルへ (advisory、exit code 非干渉)。
+    if (analysisJsonPath !== undefined) {
+      await writeFile(resolve(analysisJsonPath), JSON.stringify(analysisDump, null, 2), 'utf-8');
+      console.log(`\nAnalysis report written to ${analysisJsonPath}`);
     }
 
     if (multi) {

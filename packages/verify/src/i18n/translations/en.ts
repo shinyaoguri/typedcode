@@ -89,6 +89,7 @@ export const en: VerifyTranslationKeys = {
     createTime: 'Created',
     exportTime: 'Exported',
     typingPattern: 'Typing Pattern',
+    analysis: 'Process Analysis',
     anchoring: 'Temporal Anchoring',
     anchoringStatus: 'Status',
     anchoringCoverage: 'Coverage',
@@ -271,6 +272,23 @@ export const en: VerifyTranslationKeys = {
 
   trust: {
     screenShareOptOut: 'Recorded without screen sharing',
+  },
+
+  analysis: {
+    advisory: 'Heuristic, advisory information — clues for human review, not a verdict (independent of verification).',
+    noSignals: 'No analysis signals',
+    reviewPriority: 'Review priority',
+    evidence: 'Evidence',
+    score: 'Anomaly',
+    confidence: 'Confidence',
+    analyzers: 'Analyzers',
+    severityInfo: 'INFO',
+    severityNotice: 'NOTICE',
+    severityReview: 'REVIEW',
+    dimensionAutomation: 'Automation detection',
+    dimensionKeystrokeContent: 'Keystroke–content consistency',
+    dimensionTranscriptionTopology: 'Construction shape (transcription/authoring)',
+    dimensionFocusBurst: 'Focus-loss / burst correlation',
   },
 
   pattern: {

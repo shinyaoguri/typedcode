@@ -18,9 +18,10 @@ import type {
 } from '../types';
 import type { SignedCheckpointsVerificationResult, ExamBindingVerificationResult } from '@typedcode/shared';
 import type { SignedCheckpointReport } from '../types';
-import { escapeHtml, type TypingPatternAnalysis } from '@typedcode/shared';
+import { escapeHtml, type TypingPatternAnalysis, type AnalysisReport } from '@typedcode/shared';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
 import { TypingPatternCard } from './TypingPatternCard.js';
+import { AnalysisReportCard } from './AnalysisReportCard.js';
 import { t } from '../i18n/index.js';
 
 export interface ResultData {
@@ -35,6 +36,8 @@ export interface ResultData {
   typingSpeed: string;
   trustResult?: TrustResult;
   typingPatternAnalysis?: TypingPatternAnalysis;
+  /** 分析層 (ADR-0009) の advisory レポート。判定ではない (検証結果とは独立軸)。 */
+  analysis?: AnalysisReport;
   /** 検証モード (Phase 5) */
   verificationMode?: VerificationMode;
   /** PoSW の実行モード (skipped / sampled / full) */
@@ -186,6 +189,7 @@ export class ResultPanel {
 
   // Typing pattern card
   private typingPatternCard: TypingPatternCard;
+  private analysisReportCard: AnalysisReportCard;
 
   // Chart tabs
   private tabIntegrated: HTMLElement;
@@ -322,6 +326,9 @@ export class ResultPanel {
 
     // Typing pattern card
     this.typingPatternCard = new TypingPatternCard();
+
+    // Analysis layer card (ADR-0009)
+    this.analysisReportCard = new AnalysisReportCard();
 
     // Chart tabs
     this.tabIntegrated = document.getElementById('tab-integrated')!;
@@ -648,6 +655,13 @@ export class ResultPanel {
     } else {
       this.statusPattern.style.display = 'none';
       this.typingPatternCard.hide();
+    }
+
+    // Analysis layer (ADR-0009) - advisory のみ。検証の valid とは独立軸。
+    if (data.analysis) {
+      this.analysisReportCard.render(data.analysis);
+    } else {
+      this.analysisReportCard.hide();
     }
 
     // Stats
