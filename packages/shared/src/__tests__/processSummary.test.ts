@@ -96,7 +96,11 @@ describe('summarizeProcess — moments', () => {
     const gap = PROCESS_PAUSE_THRESHOLD_MS + 1_000;
     const s = summarizeProcess([
       insert(0, 'a'),
-      makeEvent({ type: 'mousePositionChange', timestamp: gap / 2, data: { x: 1, y: 1 } }),
+      makeEvent({
+        type: 'mousePositionChange',
+        timestamp: gap / 2,
+        data: { x: 1, y: 1, clientX: 1, clientY: 1, screenX: 1, screenY: 1 },
+      }),
       insert(gap, 'b'),
     ]);
     expect(s.pauseCount).toBe(1);

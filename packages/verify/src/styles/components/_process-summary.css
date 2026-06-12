@@ -1,0 +1,73 @@
+/* ProcessSummaryCard (Phase 8 W3) — 制作過程の要約と見どころ */
+
+.process-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.process-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.03));
+}
+
+.process-stat-label {
+  font-size: 10px;
+  color: var(--text-secondary, #9da5b4);
+}
+
+.process-stat-value {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.process-moments-title {
+  font-size: 11px;
+  color: var(--text-secondary, #9da5b4);
+  margin: 8px 0 6px;
+}
+
+.process-moment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.process-moment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.process-moment-kind {
+  font-weight: 600;
+}
+
+.process-moment-value {
+  color: var(--text-secondary, #9da5b4);
+}
+
+.process-moment-jump {
+  margin-left: auto;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  background: transparent;
+  color: var(--accent-color, #4fc1ff);
+  cursor: pointer;
+}
+
+.process-moment-jump:hover {
+  background: rgba(79, 193, 255, 0.12);
+}

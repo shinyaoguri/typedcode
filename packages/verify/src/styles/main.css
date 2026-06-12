@@ -31,6 +31,7 @@
 @import './components/_typing-pattern.css';
 @import './components/_analysis-card.css';
 @import './components/_assurance.css';
+@import './components/_process-summary.css';
 
 /* Utilities */
 @import './utilities/_misc.css';

@@ -295,6 +295,27 @@ export interface VerifyTranslationKeys {
   };
 
   // Typing pattern analysis
+  // プロセス要約 (Phase 8 W3)
+  process: {
+    title: string;
+    duration: string;
+    inserted: string;
+    deleted: string;
+    deletionRatio: string;
+    executions: string;
+    pauses: string;
+    focusLosses: string;
+    externalInputs: string;
+    moments: string;
+    chars: string;
+    kindFirstRun: string;
+    kindLongestPause: string;
+    kindLargestDeletion: string;
+    kindLargestInsertion: string;
+    kindFocusBurst: string;
+    kindExternalInput: string;
+  };
+
   // 三層保証語彙 (ADR-0020)
   assurance: {
     integrity: string;

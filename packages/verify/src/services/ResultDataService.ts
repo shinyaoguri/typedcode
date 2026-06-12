@@ -24,6 +24,7 @@ import {
   calculateTypingSpeed as calculateTypingSpeedShared,
   countPasteEvents as countPasteEventsShared,
   TypingPatternAnalyzer,
+  summarizeProcess,
 } from '@typedcode/shared';
 
 /**
@@ -153,6 +154,8 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     typingTime,
     typingSpeed,
     typingPatternAnalysis,
+    // プロセス要約 (Phase 8 W3): 制作過程の中立な記述 (疑い指標ではない)。
+    processSummary: events && events.length > 0 ? summarizeProcess(events) : undefined,
     // 分析層 (ADR-0009): worker が runAnalysis で生成した advisory レポート (判定ではない)。
     analysis: verificationResult.analysis,
     verificationMode: verificationResult.verificationMode,

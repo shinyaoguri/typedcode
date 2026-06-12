@@ -93,20 +93,21 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
   } | null = null;
   let focusLost = false;
 
-  const promoteBurst = (): void => {
-    if (
-      pendingBurst &&
-      pendingBurst.chars >= PROCESS_FOCUS_BURST_MIN_CHARS &&
-      pendingBurst.chars > (largestFocusBurst?.value ?? 0)
-    ) {
-      largestFocusBurst = {
+  // 閉じたバースト窓を見どころへ昇格させる (閾値以上かつ現最大を超えたときのみ)。
+  const promoteBurst = (
+    burst: typeof pendingBurst,
+    current: ProcessKeyMoment | null
+  ): ProcessKeyMoment | null => {
+    if (burst && burst.chars >= PROCESS_FOCUS_BURST_MIN_CHARS && burst.chars > (current?.value ?? 0)) {
+      return {
         kind: 'focus-return-burst',
-        fromEventIndex: pendingBurst.refocusIndex,
-        toEventIndex: pendingBurst.lastIndex,
-        timestamp: pendingBurst.refocusTimestamp,
-        value: pendingBurst.chars,
+        fromEventIndex: burst.refocusIndex,
+        toEventIndex: burst.lastIndex,
+        timestamp: burst.refocusTimestamp,
+        value: burst.chars,
       };
     }
+    return current;
   };
 
   for (let i = 0; i < events.length; i++) {
@@ -163,7 +164,7 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
             pendingBurst.chars += inserted;
             pendingBurst.lastIndex = i;
           } else {
-            promoteBurst();
+            largestFocusBurst = promoteBurst(pendingBurst, largestFocusBurst);
             pendingBurst = null;
           }
         }
@@ -182,7 +183,7 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
           if (data.focused === false) {
             focusLossCount++;
             focusLost = true;
-            promoteBurst();
+            largestFocusBurst = promoteBurst(pendingBurst, largestFocusBurst);
             pendingBurst = null;
           } else if (data.focused === true && focusLost) {
             pendingBurst = {
@@ -214,7 +215,7 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
   }
 
   // 末尾までバースト窓が開いていた場合の昇格判定
-  promoteBurst();
+  largestFocusBurst = promoteBurst(pendingBurst, largestFocusBurst);
 
   if (firstRun) moments.push(firstRun);
   if (longestPause) moments.push(longestPause);

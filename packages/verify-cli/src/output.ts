@@ -23,6 +23,8 @@ import type {
   SignedCheckpointsVerificationResult,
   AnalysisReport,
   AssuranceResult,
+  ProcessSummary,
+  ProcessKeyMoment,
 } from '@typedcode/shared';
 import type { CLIExamResult } from './verify.js';
 
@@ -48,6 +50,8 @@ export interface VerificationOutput {
   analysis?: AnalysisReport;
   /** 三層保証語彙 (ADR-0020)。 */
   assurance?: AssuranceResult;
+  /** プロセス要約 (Phase 8 W3)。 */
+  processSummary?: ProcessSummary;
   /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
   exam?: CLIExamResult;
 }
@@ -128,6 +132,54 @@ function formatExamSection(exam: CLIExamResult, lines: string[]): void {
   if (!b.valid && b.reason) {
     lines.push(c('red', `  Reason: ${b.reason}`));
   }
+}
+
+/** ms を「1h 23m」「4m 05s」「12s」形式へ。 */
+function formatDurationMs(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+  return `${s}s`;
+}
+
+const MOMENT_LABELS: Record<ProcessKeyMoment['kind'], string> = {
+  'first-run': 'First run',
+  'longest-pause': 'Longest pause',
+  'largest-deletion': 'Largest rewrite',
+  'largest-insertion': 'Largest bulk insert',
+  'focus-return-burst': 'Burst after refocus',
+  'external-input': 'External input',
+};
+
+/** プロセス要約 (Phase 8 W3) のセクション。中立な記述であって疑い表示ではない。 */
+function formatProcessSummary(p: ProcessSummary): string[] {
+  const lines: string[] = [];
+  lines.push('');
+  lines.push(c('cyan', '--- Process summary ---'));
+  const ratio = p.deletionRatio !== null ? `${(p.deletionRatio * 100).toFixed(0)}%` : '—';
+  lines.push(
+    `Work:        ${formatDurationMs(p.durationMs)}, +${p.insertedChars.toLocaleString()} / -${p.deletedChars.toLocaleString()} chars (deletion ratio ${ratio})`
+  );
+  lines.push(
+    `Activity:    ${p.executionCount} run(s), ${p.pauseCount} long pause(s), ${p.focusLossCount} focus loss(es), ${p.externalInputCount} external input(s)`
+  );
+  for (const m of p.moments) {
+    const range =
+      m.toEventIndex !== undefined && m.toEventIndex !== m.fromEventIndex
+        ? `events ${m.fromEventIndex}–${m.toEventIndex}`
+        : `event ${m.fromEventIndex}`;
+    const value =
+      m.value === undefined
+        ? ''
+        : m.kind === 'longest-pause'
+          ? ` (${formatDurationMs(m.value)})`
+          : ` (${m.value.toLocaleString()} chars)`;
+    lines.push(c('dim', `  ${MOMENT_LABELS[m.kind]}${value} @ ${range}`));
+  }
+  return lines;
 }
 
 export function formatResult(result: VerificationOutput): string {
@@ -243,6 +295,11 @@ export function formatResult(result: VerificationOutput): string {
   // 試験モード (ADR-0006): exam ブロックがあれば束縛検証セクションを出す。
   if (result.exam) {
     formatExamSection(result.exam, lines);
+  }
+
+  // プロセス要約 (Phase 8 W3): 制作過程の中立な記述。採点者が 30 秒で掴むための要約。
+  if (result.processSummary) {
+    lines.push(...formatProcessSummary(result.processSummary));
   }
 
   // 分析層 (ADR-0009): 検証とは別軸の advisory。判定ではないことを明示する。

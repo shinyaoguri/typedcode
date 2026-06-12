@@ -19,7 +19,7 @@
 
 | ディレクトリ | 役割 |
 |---|---|
-| `ui/` | `AppController`, `TabBar`, `ActivityBar`, `StatusBarUI`, `ResultPanel`, `Sidebar`, `TypingPatternCard`, `AnalysisReportCard` (ADR-0009 の advisory 表示), `ChartEventSelector` |
+| `ui/` | `AppController`, `TabBar`, `ActivityBar`, `StatusBarUI`, `ResultPanel`, `Sidebar`, `TypingPatternCard`, `AnalysisReportCard` (ADR-0009 の advisory 表示), `ProcessSummaryCard` (W3 プロセス要約), `ChartEventSelector` |
 | `ui/controllers/` | `VerificationController`, `TabController`, `FileController`, `FolderController`, `ChartController` |
 | `state/` | `VerificationQueue`, `UIStateManager`, `VerifyTabManager`, `ChartState` |
 | `charts/` | `TimelineChart`, `MouseChart`, `IntegratedChart`, `SeekbarController` (Chart.js) |
@@ -75,3 +75,9 @@ File Selection (drag&drop / FSA API)
 - 導出は `TabController.renderResult` で行う (スクショ改竄数を持つのがこの層だけのため)。入力は実証拠のみで **自己申告 `proof.mode` は使わない**
 - **著述性チップは常に advisory**: 判定色 (緑/赤) を使わず破線・中立色。pureTyping + シグナル数の事実併記のみ。ここを判定に見せる変更は ADR-0009/0020 違反
 - 既存の TrustCalculator (issue リスト) とタブ status は詳細表示として併存。三層バッジは語彙、issue は根拠の列挙という役割分担
+
+## プロセス要約カード (Phase 8 W3)
+
+- shared の `summarizeProcess` (純関数) を `buildResultData` で実行し、カード列の先頭 `#card-process-summary` に表示。**中立な記述であって疑い表示ではない** (疑いは AnalysisReportCard)
+- 見どころ (初回実行 / 最長停止 / 最大書き直し / 復帰直後バースト / 外部入力) は `verify:seek-to-event` で当該イベントへジャンプ (分析カードと同じ経路)
+- 抽出ロジックは shared に置く (テストは shared 側)。閾値も shared の `PROCESS_*` 定数が単一ソース
