@@ -9,22 +9,41 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { verifyProof, type ProofFile } from './verify.js';
 import { extractAllProofs } from './zip.js';
+import { loadExternalAnalyzers } from './analyzers.js';
 import { formatResult, printError, printUsage } from './output.js';
 import { Spinner } from './progress.js';
 import {
   parseExamPackageManifest,
+  defaultAnalyzers,
   type VerificationMode,
   type ExamPackageManifest,
+  type Analyzer,
 } from '@typedcode/shared';
 
-/** value を取る flag。`--name value` と `--name=value` の両方を許す。 */
-const VALUE_FLAGS = new Set(['--mode', '--exam-package', '--submitted-at', '--analysis-json']);
+/** value を取る flag。`--name value` と `--name=value` の両方を許す。`--analyzer` は反復可。 */
+const VALUE_FLAGS = new Set(['--mode', '--exam-package', '--submitted-at', '--analysis-json', '--analyzer']);
 
 function flagValue(args: string[], name: string): string | undefined {
   const i = args.findIndex((a) => a === name || a.startsWith(`${name}=`));
   if (i === -1) return undefined;
   const arg = args[i]!;
   return arg.startsWith(`${name}=`) ? arg.slice(name.length + 1) : args[i + 1];
+}
+
+/** 反復可能な value flag の値をすべて集める (`--analyzer a --analyzer b`)。 */
+function flagValues(args: string[], name: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === name) {
+      const v = args[i + 1];
+      if (v !== undefined) out.push(v);
+      i++;
+    } else if (arg.startsWith(`${name}=`)) {
+      out.push(arg.slice(name.length + 1));
+    }
+  }
+  return out;
 }
 
 function parseModeFlag(args: string[]): VerificationMode {
@@ -75,6 +94,29 @@ async function main(): Promise<void> {
   // 分析レポートの JSON 出力 (ADR-0009): 評価ハーネス/集計スクリプトの機械可読な入口。
   // advisory であって判定ではない — exit code には一切影響しない。
   const analysisJsonPath = flagValue(args, '--analysis-json');
+
+  // 外部アナライザ (ADR-0009 / プラットフォーム方針): 採点者/研究者が自前の Analyzer を
+  // フォークせず差し込む口。`--analyzer <path>` 反復可、`--no-default-analyzers` で既定を外す。
+  // すべて advisory — exit code には一切影響しない。
+  const analyzerPaths = flagValues(args, '--analyzer');
+  const noDefaultAnalyzers = args.includes('--no-default-analyzers');
+  let analyzers: readonly Analyzer[] | undefined;
+  if (analyzerPaths.length > 0 || noDefaultAnalyzers) {
+    if (noDefaultAnalyzers && analyzerPaths.length === 0) {
+      printError('--no-default-analyzers requires at least one --analyzer <path>.');
+      process.exit(1);
+    }
+    let external: Analyzer[];
+    try {
+      external = await loadExternalAnalyzers(analyzerPaths);
+    } catch (err) {
+      printError(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+    analyzers = noDefaultAnalyzers ? external : [...defaultAnalyzers, ...external];
+    const names = analyzers.map((a) => `${a.id}@${a.version}`).join(', ');
+    console.log(`Analyzers: ${names}${noDefaultAnalyzers ? ' (defaults disabled)' : ''}`);
+  }
 
   // 試験モード (ADR-0006): 任意の問題パッケージ + 提出時刻
   const examPackagePath = flagValue(args, '--exam-package');
@@ -134,7 +176,7 @@ async function main(): Promise<void> {
     const analysisDump: Array<{ filename: string; valid: boolean; analysis: unknown }> = [];
     for (const { filename, proof } of proofs) {
       if (multi) console.log(`\n=== ${filename} ===`);
-      const result = await verifyProof(proof, { mode, examPackageManifest, submittedAtMs, requireAnchorDensity, requireRootAnchor });
+      const result = await verifyProof(proof, { mode, examPackageManifest, submittedAtMs, requireAnchorDensity, requireRootAnchor, analyzers });
       console.log(formatResult(result));
       summary.push({ filename, valid: result.valid });
       analysisDump.push({ filename, valid: result.valid, analysis: result.analysis });

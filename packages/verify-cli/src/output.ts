@@ -359,6 +359,7 @@ ${c('cyan', 'Usage:')}
                    [--exam-package <file.tcexam>] [--submitted-at <ISO>]
                    [--require-anchor-density] [--require-root-anchor]
                    [--analysis-json <out.json>]
+                   [--analyzer <module>]... [--no-default-analyzers]
 
 ${c('cyan', 'Arguments:')}
   file    Path to proof file (.json) or exported archive (.zip)
@@ -384,12 +385,20 @@ ${c('cyan', 'Options:')}
   --analysis-json  Write the advisory analysis report (ADR-0009) for every verified
                    proof to the given file as JSON, for aggregation / evaluation
                    tooling. Advisory only — never affects the exit code.
+  --analyzer       Load a custom analyzer (ADR-0009 / platform): an ES module that
+                   exports a default / "analyzer" / "analyzers" Analyzer. Repeatable.
+                   Runs alongside the built-in analyzers. Lets graders/researchers plug
+                   their own analysis methods without forking. Advisory — never affects
+                   the exit code.
+  --no-default-analyzers
+                   Disable the built-in analyzers and run only the --analyzer ones.
 
 ${c('cyan', 'Examples:')}
   typedcode-verify proof.json
   typedcode-verify my-code.zip --mode fast
   typedcode-verify ALL_TC.zip --exam-package p1.tcexam
   typedcode-verify ALL_TC.zip --exam-package p1.tcexam --submitted-at 2026-06-06T01:00:00Z
+  typedcode-verify proof.json --analyzer ./my-analyzer.mjs --analysis-json out.json
 
 ${c('cyan', 'Exit codes:')}
   0 - Verification passed
