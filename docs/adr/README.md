@@ -55,6 +55,7 @@
 | [0022](0022-pre-export-self-review.md) | Accepted | 提出前セルフレビュー: 自分の過程要約を確認し任意の振り返り `reflectionNote` をチェーンへ記録する (exam は off) |
 | [0023](0023-analysis-platform-not-judge.md) | Accepted | 分析を判定器ではなく多様な分析手法の差込み基盤として位置づける (verify-cli `--analyzer` 外部分析器・既定は advisory 据え置き) |
 | [0024](0024-data-minimization-tiers.md) | Accepted | 目的別データ最小化ティア: 整合性は全イベント (Tier F)・分析/共有は content-free 派生物 (Tier A/S)。proof は redact しない |
+| [0025](0025-grader-cohort-baseline.md) | Accepted | 採点者向けコホート基準を content-free な分布として定義 (外れ値は triage であって違反ではない・norms は配らない) |
 
 ## 参考
 
