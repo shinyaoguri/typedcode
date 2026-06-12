@@ -243,6 +243,10 @@ export type {
   AnalysisReport,
 } from './analysis/index.js';
 
+// Tier A 分析バンドル (ADR-0024): content-free な派生ビュー (events/content/fingerprint なし)
+export { buildAnalysisBundle, ANALYSIS_BUNDLE_SCHEMA } from './analysis/index.js';
+export type { AnalysisBundle } from './analysis/index.js';
+
 // 分析器の実証評価 (W5): ラベル付きコーパス → 混同行列/閾値スイープ (純粋関数)
 export { evaluateAnalysis, formatEvalReportMarkdown } from './analysis/index.js';
 export type {
