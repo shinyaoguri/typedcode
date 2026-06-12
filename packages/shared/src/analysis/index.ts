@@ -27,6 +27,21 @@ export {
 export { buildAnalysisBundle, ANALYSIS_BUNDLE_SCHEMA } from './bundle.js';
 export type { AnalysisBundle } from './bundle.js';
 
+export {
+  computeCohortBaseline,
+  positionInCohort,
+  COHORT_MIN_N,
+  COHORT_BASELINE_SCHEMA,
+  COHORT_POSITION_SCHEMA,
+} from './cohort.js';
+export type {
+  CohortMetricKey,
+  MetricDistribution,
+  CohortBaseline,
+  MetricPosition,
+  CohortPosition,
+} from './cohort.js';
+
 export { evaluateAnalysis, formatEvalReportMarkdown } from './eval.js';
 export type {
   EvalLabel,
