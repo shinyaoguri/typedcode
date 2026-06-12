@@ -51,6 +51,7 @@
 | [0018](0018-istrusted-capture.md) | Accepted | 合成打鍵を `isTrusted` で捕捉し advisory シグナル化する (keystroke data に hashed・加算的) |
 | [0019](0019-editor-assist-declaration.md) | Accepted | エディタ支援機能 (補完等) の実効状態を `environmentProbe` に宣言として焼く (記録のみ・ポリシーは別 ADR) |
 | [0020](0020-three-layer-assurance-vocabulary.md) | Accepted | 保証を三層語彙 (整合性 × 時刻アンカー × 著述性[advisory]) で実証拠から機械導出し表示する |
+| [0021](0021-code-execution-result-capture.md) | Accepted | コード実行の結果 (成功/失敗/exit code) を start/result の 2 イベントで加算的に捕捉する |
 
 ## 参考
 

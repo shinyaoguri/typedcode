@@ -173,6 +173,32 @@ export interface EditorAssistDeclaration {
 }
 
 /**
+ * コード実行イベントのデータ（ADR-0021）。
+ *
+ * 実行は start / result の 2 イベントで記録する（イベントは追記専用のため、開始時に
+ * 結果を知り得ない）。旧ビルドの proof は data: null の codeExecution 1 件のみ
+ * （= start 相当、結果なし）。「失敗 → 修正 → 成功」のデバッグサイクルは
+ * プロセス要約・分析層がこのデータから導出する。
+ */
+export interface CodeExecutionEventData {
+  phase: 'start' | 'result';
+  filename: string | null;
+  language: string | null;
+  /**
+   * phase 'result' のみ。
+   * - success: 正常終了 (exitCode 0)
+   * - failure: 非 0 終了 (コンパイルエラー / 実行時エラーの exit)
+   * - error: 実行基盤の例外 (ランタイム破損等)
+   * - aborted: ユーザ中断
+   */
+  outcome?: 'success' | 'failure' | 'error' | 'aborted';
+  /** phase 'result' のみ。exit code が得られない経路 (error/aborted) は null。 */
+  exitCode?: number | null;
+  /** phase 'result' のみ。start からの経過 ms。 */
+  elapsedMs?: number;
+}
+
+/**
  * 環境/自動化プローブデータ（起動時ワンショット, ADR-0007 Tier 0 B 群の自動化 tell）。
  *
  * fingerprint が既に持つ環境値 (WebGL renderer / hardwareConcurrency 等) は重複させず、

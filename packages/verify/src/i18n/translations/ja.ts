@@ -287,6 +287,8 @@ export const ja: VerifyTranslationKeys = {
     moments: '見どころ',
     chars: '文字',
     kindFirstRun: '初回実行',
+    kindFirstFailedRun: '初の失敗した実行',
+    kindFirstSuccessAfterFailure: '失敗からの初成功',
     kindLongestPause: '最長の停止',
     kindLargestDeletion: '最大の書き直し',
     kindLargestInsertion: '最大の一括挿入',

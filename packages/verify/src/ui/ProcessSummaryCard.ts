@@ -50,7 +50,12 @@ export class ProcessSummaryCard {
         ${this.stat(t('process.inserted'), `${summary.insertedChars.toLocaleString()} ${t('process.chars')}`)}
         ${this.stat(t('process.deleted'), `${summary.deletedChars.toLocaleString()} ${t('process.chars')}`)}
         ${this.stat(t('process.deletionRatio'), ratio)}
-        ${this.stat(t('process.executions'), String(summary.executionCount))}
+        ${this.stat(
+          t('process.executions'),
+          summary.hasRunResults
+            ? `${summary.executionCount} (✓${summary.runSuccessCount} ✗${summary.runFailureCount})`
+            : String(summary.executionCount)
+        )}
         ${this.stat(t('process.pauses'), String(summary.pauseCount))}
         ${this.stat(t('process.focusLosses'), String(summary.focusLossCount))}
         ${this.stat(t('process.externalInputs'), String(summary.externalInputCount))}
@@ -98,6 +103,10 @@ export class ProcessSummaryCard {
     switch (kind) {
       case 'first-run':
         return t('process.kindFirstRun');
+      case 'first-failed-run':
+        return t('process.kindFirstFailedRun');
+      case 'first-success-after-failure':
+        return t('process.kindFirstSuccessAfterFailure');
       case 'longest-pause':
         return t('process.kindLongestPause');
       case 'largest-deletion':
