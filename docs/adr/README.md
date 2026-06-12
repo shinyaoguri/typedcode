@@ -49,6 +49,7 @@
 | [0016](0016-anchoring-density-signal.md) | Accepted | 署名 cp の「アンカー密度」をシグナル化し任意で gate する (末尾 1 点アンカー検出) |
 | [0017](0017-server-anchored-chain-root.md) | Accepted | セッション開始 ECDSA トークンで casual/class の root をサーバアンカーする (format 1.2.0) |
 | [0018](0018-istrusted-capture.md) | Accepted | 合成打鍵を `isTrusted` で捕捉し advisory シグナル化する (keystroke data に hashed・加算的) |
+| [0019](0019-editor-assist-declaration.md) | Accepted | エディタ支援機能 (補完等) の実効状態を `environmentProbe` に宣言として焼く (記録のみ・ポリシーは別 ADR) |
 
 ## 参考
 

@@ -133,6 +133,46 @@ export interface NetworkStatusData {
 }
 
 /**
+ * editor-assist 宣言（ADR-0019）。
+ *
+ * 記録セッションでエディタの支援機能（補完・スニペット・括弧自動補完等）が実効的に
+ * どう構成されていたかを proof に宣言する。「打鍵で書いた」の境界はエディタ支援の
+ * 有効状態に依存するため、検証者がセッション間の前提を比較できるよう事実として残す。
+ * 値は Monaco の解決済みオプションから正規化する。取得不可・未知の値は null
+ * （graceful absence — 捏造せず「取れなかった」を事実として記録する, ADR-0007）。
+ */
+export interface EditorAssistDeclaration {
+  /** 宣言スキーマ版。将来フィールドを足すときは版を上げる。 */
+  schema: 'editor-assist/1';
+  /** 入力中の自動候補表示（other/comments/strings のいずれかが有効なら true）。 */
+  quickSuggestions: boolean | null;
+  /** トリガ文字（`.` 等）での候補表示。 */
+  suggestOnTriggerCharacters: boolean | null;
+  /** 単語ベース補完（'off' | 'currentDocument' | 'matchingDocuments' | 'allDocuments'）。 */
+  wordBasedSuggestions: string | null;
+  /** スニペット候補の扱い（'top' | 'bottom' | 'inline' | 'none'）。 */
+  snippetSuggestions: string | null;
+  /** ゴーストテキスト型のインライン補完（AI 補完系はこの経路に乗る）。 */
+  inlineSuggest: boolean | null;
+  /** Tab キーでの補完確定（'on' | 'off' | 'onlySnippets'）。 */
+  tabCompletion: string | null;
+  /** Enter キーでの候補確定（'on' | 'smart' | 'off'）。 */
+  acceptSuggestionOnEnter: string | null;
+  /** 引数ヒント表示。 */
+  parameterHints: boolean | null;
+  /** 括弧の自動閉じ（'always' | 'languageDefined' | 'beforeWhitespace' | 'never'）。 */
+  autoClosingBrackets: string | null;
+  /** クォートの自動閉じ（同上の語彙）。 */
+  autoClosingQuotes: string | null;
+  /** 選択範囲の自動囲み（'languageDefined' | 'quotes' | 'brackets' | 'never'）。 */
+  autoSurround: string | null;
+  /** 入力時の自動フォーマット。 */
+  formatOnType: boolean | null;
+  /** ペースト時の自動フォーマット。 */
+  formatOnPaste: boolean | null;
+}
+
+/**
  * 環境/自動化プローブデータ（起動時ワンショット, ADR-0007 Tier 0 B 群の自動化 tell）。
  *
  * fingerprint が既に持つ環境値 (WebGL renderer / hardwareConcurrency 等) は重複させず、
@@ -144,6 +184,11 @@ export interface EnvironmentProbeData {
   webdriver: boolean | null;
   /** 検出した自動化由来のグローバル名（cdc_*, __playwright 等）。無ければ空配列。 */
   automationGlobals: string[];
+  /**
+   * editor-assist 宣言（ADR-0019、加算的フィールド）。
+   * 旧ビルドの proof には存在しない。プロバイダ未設定・取得失敗は null。
+   */
+  editorAssist?: EditorAssistDeclaration | null;
 }
 
 /**

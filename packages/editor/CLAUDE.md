@@ -21,7 +21,7 @@
 | ディレクトリ | 役割 |
 |---|---|
 | `core/` | `AppContext`, `EventRecorder` (中央イベント記録) |
-| `tracking/` | イベント検出器: `InputDetector`, `OperationDetector`, `KeystrokeTracker` (keyDown/keyUp。**合成打鍵は `data.isTrusted=false` を載せる** = ADR-0018。信頼打鍵は省略し hash 不変)、`MouseTracker`, `WindowTracker`, `VisibilityTracker`, `NetworkTracker`, `ScreenshotTracker` |
+| `tracking/` | イベント検出器: `InputDetector`, `OperationDetector`, `KeystrokeTracker` (keyDown/keyUp。**合成打鍵は `data.isTrusted=false` を載せる** = ADR-0018。信頼打鍵は省略し hash 不変)、`MouseTracker`, `WindowTracker`, `VisibilityTracker`, `NetworkTracker`, `ScreenshotTracker`, `EnvironmentTracker` (起動時ワンショット `environmentProbe`。**editor-assist 宣言** = Monaco 解決済み支援オプションを `editorAssist` に焼く = ADR-0019。provider は main.ts が `recordInitial` 前に注入、正規化は `editorAssist.ts` の純関数) |
 | `editor/` | `EditorController`, `CursorTracker`, `ThemeManager` |
 | `execution/` | `CodeExecutionController`, `RuntimeManager` |
 | `executors/` | 言語別実行: C, C++, JavaScript, TypeScript, Python (Wasmer SDK) |

@@ -20,6 +20,7 @@ export type {
   WindowSizeData,
   NetworkStatusData,
   SessionResumedData,
+  EditorAssistDeclaration,
   EnvironmentProbeData,
   FullscreenChangeData,
   ExamOpenedEventData,
