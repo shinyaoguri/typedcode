@@ -184,6 +184,7 @@ export {
   parseJsonString,
   parseZipBuffer,
   extractFirstProofFromZip,
+  extractAllProofsFromZip,
 } from './fileProcessing/index.js';
 
 // UI共通コンポーネント

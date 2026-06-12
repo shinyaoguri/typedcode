@@ -112,32 +112,68 @@ export class PoswManager {
   }
 
   /**
-   * Proof of Sequential Work を計算（Worker使用）
+   * Proof of Sequential Work を計算（Worker使用、フォールバックあり）。
+   *
+   * Worker が落ちている / タイムアウトしても **throw せずメインスレッドで計算する**。
+   * これがないと、Worker 一時障害 (タブ非アクティブ時のスロットリング、OOM 等) で
+   * computePoSW が throw → TypingProof.recordEvent の catch がイベントを push せずに脱落させ、
+   * チェーンは gapless のまま content replay (検証 Layer 4) が最終内容と一致せず、正規の答案でも
+   * proof 全体が無効になる。メインスレッド計算は遅い (UI が一時的にもたつく) が、脱落より遥かに良い。
+   * verifyPoSW のフォールバックと対称。
    */
   async computePoSW(previousHash: string, eventDataString: string): Promise<PoSWData> {
-    if (!this.worker) {
-      throw new Error('Worker not initialized');
+    if (this.worker) {
+      try {
+        const response = await this.sendWorkerRequest<{
+          type: string;
+          requestId: number;
+          iterations: number;
+          nonce: string;
+          intermediateHash: string;
+          computeTimeMs: number;
+        }>({
+          type: 'compute-posw',
+          previousHash,
+          eventDataString,
+          iterations: PoswManager.POSW_ITERATIONS
+        });
+
+        return {
+          iterations: response.iterations,
+          nonce: response.nonce,
+          intermediateHash: response.intermediateHash,
+          computeTimeMs: response.computeTimeMs
+        };
+      } catch (err) {
+        console.warn('[PoswManager] Worker compute-posw failed; falling back to main-thread compute (event is preserved):', err);
+        // フォールバックへ
+      }
     }
 
-    const response = await this.sendWorkerRequest<{
-      type: string;
-      requestId: number;
-      iterations: number;
-      nonce: string;
-      intermediateHash: string;
-      computeTimeMs: number;
-    }>({
-      type: 'compute-posw',
-      previousHash,
-      eventDataString,
-      iterations: PoswManager.POSW_ITERATIONS
-    });
+    return this.computePoSWMainThread(previousHash, eventDataString);
+  }
+
+  /**
+   * メインスレッドで PoSW を計算するフォールバック (poswWorker.handleComputePoSW と同一手順)。
+   * Worker 未初期化 (検証ページ等) / Worker 障害時に使う。10000 回反復ぶん main thread を
+   * 専有するため通常は Worker 経路を使う。
+   */
+  private async computePoSWMainThread(previousHash: string, eventDataString: string): Promise<PoSWData> {
+    const startTime = performance.now();
+    const nonceData = new Uint8Array(16);
+    crypto.getRandomValues(nonceData);
+    const nonce = this.hashChainManager.arrayBufferToHex(nonceData);
+
+    let hash = await this.hashChainManager.computeHash(previousHash + eventDataString + nonce);
+    for (let i = 1; i < PoswManager.POSW_ITERATIONS; i++) {
+      hash = await this.hashChainManager.computeHash(hash);
+    }
 
     return {
-      iterations: response.iterations,
-      nonce: response.nonce,
-      intermediateHash: response.intermediateHash,
-      computeTimeMs: response.computeTimeMs
+      iterations: PoswManager.POSW_ITERATIONS,
+      nonce,
+      intermediateHash: hash,
+      computeTimeMs: performance.now() - startTime,
     };
   }
 

@@ -306,6 +306,19 @@ function isSuspiciousBulkInsert(event: StoredEvent): boolean {
     return true;
   }
 
+  // 内容を実際に挿入する大きな insertFromInternalPaste は怪しい。手製 proof がバルク挿入を
+  // 「内部ペースト」と偽装して isPureTyping 判定を回避するのを防ぐ (verifier は inputType ラベルを
+  // 信用するしかないため)。editor が出す正規の内部ペースト監査イベントは rangeOffset==null で
+  // verifyContentReplay 上スキップされる (内容を挿入しない) ので、ここには該当しない。
+  if (
+    event.inputType === 'insertFromInternalPaste' &&
+    event.rangeOffset != null &&
+    typeof event.data === 'string' &&
+    event.data.length > 1
+  ) {
+    return true;
+  }
+
   return (
     event.inputType === 'insertText' &&
     typeof event.data === 'string' &&

@@ -13,7 +13,7 @@
 >
 > このプロジェクトは活発に開発中です。破壊的変更・バグ・未完成の機能があり得ます。問題や提案があれば [Issue](https://github.com/shinyaoguri/typedcode/issues) でお知らせください。
 
-[TypedCode](https://typedcode.dev) は、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録する、改ざん耐性を備えた VSCode 風のコードエディタです。コピー＆ペーストを使わずに 1 文字ずつタイプされたことを証明できます。すべてブラウザ内で動作し、C / C++ / Python / JavaScript / TypeScript の実行も WebAssembly 経由で行えます。
+[TypedCode](https://typedcode.dev) は、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録する、改ざん耐性を備えた VSCode 風のコードエディタです。記録された編集列は改ざん耐性があり（署名チェックポイントがある場合は時刻アンカリングも付く）、エクスポート後の改変を検出できます。すべてブラウザ内で動作し、C / C++ / Python は WebAssembly (Wasmer)、JavaScript / TypeScript はブラウザ内で実行します。
 
 主たる用途は、AI 生成や自動コピーを防ぎたいプログラミング試験、および学習プロセスを検証したい教育現場です。
 
@@ -91,7 +91,7 @@ npm run build:verify-cli
 
 ## テスト
 
-テストは shared パッケージで定義されています。
+テストは shared / workers / editor パッケージにあります（verify / verify-cli は未整備）。CI が回すのは shared / workers です。
 
 ```bash
 npm run test -w @typedcode/shared
@@ -116,7 +116,7 @@ npm run test:coverage -w @typedcode/shared
 
 ### エクスポートファイル形式 (ZIP)
 
-`TC{timestamp}.zip` として出力され、以下を含みます:
+単一タブは `{filename}_TC{timestamp}.zip`、全タブ一括は `ALL_TC{timestamp}.zip` として出力され、以下を含みます:
 
 - `{filename}.{ext}` — ソースコード
 - `{filename}_proof.json` — 証明 JSON (下記構造)

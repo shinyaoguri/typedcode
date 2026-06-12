@@ -34,6 +34,9 @@ export class ProofExporter {
   private preExportBestEffort = false;
   /** 生成時のモード (ADR-0011)。proof に自己申告ラベルとして記録する。 */
   private mode: EditorMode = 'casual';
+  /** 多重 export ガード。ダウンロードボタン連打での二重 export (attestation 二重記録 /
+   *  Turnstile 二重描画 / 二重ダウンロード) を防ぐ。 */
+  private isExporting = false;
 
   constructor() {
     this.exportProgressDialog = new ExportProgressDialog();
@@ -262,6 +265,12 @@ export class ProofExporter {
   async exportCurrentTab(): Promise<void> {
     console.log('[Export] exportCurrentTab called');
 
+    if (this.isExporting) {
+      console.warn('[Export] Export already in progress; ignoring re-entrant call');
+      return;
+    }
+    this.isExporting = true;
+
     try {
       const activeTab = this.tabManager?.getActiveTab();
       console.log('[Export] activeTab:', activeTab?.filename);
@@ -382,6 +391,8 @@ export class ProofExporter {
       console.error('[TypedCode] Export failed:', error);
       this.exportProgressDialog.hide();
       this.callbacks.onNotification?.(t('export.failed'));
+    } finally {
+      this.isExporting = false;
     }
   }
 
@@ -389,6 +400,12 @@ export class ProofExporter {
    * 全タブをZIPでエクスポート
    */
   async exportAllTabsAsZip(): Promise<void> {
+    if (this.isExporting) {
+      console.warn('[Export] Export already in progress; ignoring re-entrant call');
+      return;
+    }
+    this.isExporting = true;
+
     try {
       if (!this.tabManager) return;
 
@@ -518,6 +535,13 @@ export class ProofExporter {
       zip.file('README.md', generateReadmeEn(readmeParams));
       zip.file('README.ja.md', generateReadmeJa(readmeParams));
 
+      // タブ間切替の監査証跡 (ADR-0007/0010)。複数タブ提出 (exam/class) で「いつどの問題に
+      // 移ったか」を残す。各タブ proof は独立しているため、この情報は別ファイルで同梱する。
+      const tabSwitches = this.tabManager?.getTabSwitches() ?? [];
+      if (tabSwitches.length > 0) {
+        zip.file('tab-switches.json', JSON.stringify(tabSwitches, null, 2));
+      }
+
       // ZIPを生成してダウンロード（最大圧縮）
       this.exportProgressDialog.updatePhase('generating');
       console.log('[Export] Generating ZIP for all tabs...');
@@ -545,6 +569,8 @@ export class ProofExporter {
       console.error('[TypedCode] ZIP export failed:', error);
       this.exportProgressDialog.hide();
       this.callbacks.onNotification?.(t('export.zipFailed'));
+    } finally {
+      this.isExporting = false;
     }
   }
 

@@ -8,7 +8,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { verifyProof, type ProofFile } from './verify.js';
-import { extractProofFromZip } from './zip.js';
+import { extractAllProofs } from './zip.js';
 import { formatResult, printError, printUsage } from './output.js';
 import { Spinner } from './progress.js';
 import {
@@ -82,17 +82,21 @@ async function main(): Promise<void> {
     const spinner = new Spinner('Loading proof file...');
     spinner.start();
 
-    let proofData: ProofFile;
+    // 検証対象の proof 群 (ZIP は全タブ分、JSON は 1 件)
+    let proofs: Array<{ filename: string; proof: ProofFile }>;
 
     if (ext === '.zip') {
-      proofData = await extractProofFromZip(filePath);
+      proofs = await extractAllProofs(filePath);
+      if (proofs.length === 0) {
+        throw new Error('No proof file found in ZIP');
+      }
     } else if (ext === '.json') {
       const content = await readFile(filePath, 'utf-8');
-      proofData = JSON.parse(content) as ProofFile;
-
-      if (!proofData.proof || !proofData.typingProofHash) {
+      const proof = JSON.parse(content) as ProofFile;
+      if (!proof.proof || !proof.typingProofHash) {
         throw new Error('Invalid proof file structure');
       }
+      proofs = [{ filename: positional[0]!, proof }];
     } else {
       spinner.stop();
       printError(`Unsupported file type: ${ext}. Use .json or .zip`);
@@ -114,11 +118,25 @@ async function main(): Promise<void> {
 
     spinner.stop();
 
-    const result = await verifyProof(proofData, { mode, examPackageManifest, submittedAtMs });
+    // 全 proof を検証。1 件でも fail なら exit 1 (CI が部分合格を成功と誤読しないように)。
+    const multi = proofs.length > 1;
+    const summary: Array<{ filename: string; valid: boolean }> = [];
+    for (const { filename, proof } of proofs) {
+      if (multi) console.log(`\n=== ${filename} ===`);
+      const result = await verifyProof(proof, { mode, examPackageManifest, submittedAtMs });
+      console.log(formatResult(result));
+      summary.push({ filename, valid: result.valid });
+    }
 
-    console.log(formatResult(result));
+    if (multi) {
+      const passed = summary.filter((s) => s.valid).length;
+      console.log(`\n=== Summary: ${passed}/${summary.length} proofs passed ===`);
+      for (const s of summary) {
+        console.log(`  ${s.valid ? '✓' : '✗'} ${s.filename}`);
+      }
+    }
 
-    process.exit(result.valid ? 0 : 1);
+    process.exit(summary.every((s) => s.valid) ? 0 : 1);
   } catch (error) {
     printError(error instanceof Error ? error.message : String(error));
     process.exit(1);

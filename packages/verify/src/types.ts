@@ -525,7 +525,7 @@ export interface IntegratedChartCache {
 export type TrustLevel = 'verified' | 'partial' | 'failed';
 
 /** 信頼度に影響する問題のコンポーネント */
-export type TrustIssueComponent = 'metadata' | 'chain' | 'posw' | 'attestation' | 'screenshots' | 'source';
+export type TrustIssueComponent = 'metadata' | 'chain' | 'posw' | 'attestation' | 'screenshots' | 'source' | 'anchoring' | 'exam' | 'typing';
 
 /** 信頼度に影響する問題 */
 export interface TrustIssue {

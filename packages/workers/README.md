@@ -223,8 +223,9 @@ npm run dev       # ローカルサーバ起動
 ### 本番
 
 ```bash
-npm run deploy       # Cloudflare にデプロイ
-npm run deploy:prod  # 本番環境にデプロイ
+npm run deploy:staging     # staging Worker にデプロイ (wrangler.staging.toml)
+npm run deploy:production  # 本番 Worker にデプロイ (wrangler.production.toml。通常は CI 経由・承認ゲートあり)
+# `npm run deploy` 単体は dev config で本番名を上書きしないよう誤実行防止でエラー終了する
 ```
 
 ### 本番シークレットの設定

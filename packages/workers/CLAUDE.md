@@ -87,6 +87,8 @@ CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リス
 
 ## KV ネームスペース
 
+キーは **`session:{sessionId}:{tabId}`** (タブ毎)。`checkpointIndex` はタブ毎に 0 始まりで sessionId はブラウザセッション共有のため、sessionId だけでキーイングすると複数タブ (class の N 問タブ等) で 2 枚目以降が衝突して 1 つも署名されない。verifier は `firstSeenAt` をタブ間で共有要求しない (proof = 1 タブ) ので per-tab で安全。
+
 | Binding | 内容 | TTL |
 |---|---|---|
 | `CHECKPOINT_SESSIONS` | `firstSeenAt`, `lastCheckpointIndex`, `lastServerTimestamp`, `signedCount`, `lastEnvelope` (冪等用) | 7 日 |

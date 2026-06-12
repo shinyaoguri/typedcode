@@ -44,8 +44,12 @@ export class ZipFileProcessor {
 
       this.callbacks.onZipExtract?.(file.name, files.length);
 
+      // 検証済みチェーンが記録した screenshot ハッシュ集合 (全 proof 横断)。manifest だけが
+      // 指す画像 (チェーンに無い) を改ざんとして検出するため screenshot 読込へ渡す。
+      const chainImageHashes = this.collectChainScreenshotHashes(files);
+
       // スクリーンショットを読み込み
-      const { screenshots, screenshotService } = await this.loadScreenshots(zip);
+      const { screenshots, screenshotService } = await this.loadScreenshots(zip, chainImageHashes);
 
       if (files.length === 0 && screenshots.length === 0) {
         return {
@@ -229,7 +233,10 @@ export class ZipFileProcessor {
   /**
    * ZIP からスクリーンショットを読み込み
    */
-  private async loadScreenshots(zip: JSZip): Promise<{
+  private async loadScreenshots(
+    zip: JSZip,
+    chainImageHashes?: ReadonlySet<string>
+  ): Promise<{
     screenshots: VerifyScreenshot[];
     screenshotService: ScreenshotService | undefined;
   }> {
@@ -273,7 +280,7 @@ export class ZipFileProcessor {
 
       // スクリーンショットサービスを作成して読み込み
       const screenshotService = new ScreenshotService();
-      const screenshots = await screenshotService.loadFromZip(zip, manifest);
+      const screenshots = await screenshotService.loadFromZip(zip, manifest, chainImageHashes);
       console.log('[ZipFileProcessor] Screenshots loaded:', screenshots.length);
 
       this.callbacks.onScreenshotLoad?.(
@@ -286,6 +293,26 @@ export class ZipFileProcessor {
       console.error('[ZipFileProcessor] Failed to load screenshots:', error);
       return { screenshots: [], screenshotService: undefined };
     }
+  }
+
+  /**
+   * 全 proof の screenshotCapture イベントから imageHash を収集する。チェーンは検証済み・
+   * 改ざん不能なので、これが screenshot の真正なハッシュ集合になる (manifest は未署名なので
+   * 画像とセットで差し替え可能)。
+   */
+  private collectChainScreenshotHashes(files: ParsedFileData[]): Set<string> {
+    const hashes = new Set<string>();
+    for (const f of files) {
+      const events = f.proofData?.proof?.events;
+      if (!events) continue;
+      for (const e of events) {
+        if (e.type === 'screenshotCapture') {
+          const h = (e.data as { imageHash?: string } | null | undefined)?.imageHash;
+          if (typeof h === 'string' && h.length > 0) hashes.add(h);
+        }
+      }
+    }
+    return hashes;
   }
 
   /**

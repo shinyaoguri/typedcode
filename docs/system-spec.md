@@ -149,12 +149,15 @@ initialEventChainHash = SHA256(fingerprintHash + nonce)
 - nonce + fingerprint の両方が proof に含まれ、検証時に「fingerprint → ルート」を再構成して照合 → **fingerprint 改ざん検出**
 - 異なる proof からのイベント流用も nonce が違うので検出される
 
-**試験モードのルート (ADR-0006)**: 試験モードでは root 式が変わり、問題パッケージと監督コードを焼き込む:
+**試験モードのルート (ADR-0006 / ADR-0012)**: 試験モードでは root 式が変わり、問題パッケージと監督コードを焼き込む。**`rootBinding` で v1/v2 を分岐**する:
 ```typescript
 packageHash = SHA256(deterministicStringify(signing core))  // signing core = manifest − {signature, publicKeyJwk}
+// v1 (単一問題, ADR-0006):
 initialEventChainHash = SHA256(fingerprintHash + nonce + packageHash + startToken)
+// v2 (N問バンドル, ADR-0012 B-2): 末尾に per-problem の problemContentHash を連結
+initialEventChainHash = SHA256(fingerprintHash + nonce + packageHash + startToken + problemContentHash)
 ```
-genesis は **監督コード入力の瞬間 (= T0)**。root が `startToken` を含むためコード入力まで計算できず、セッション初期化ではなくコード入力時にルートを確定する。検証器は **`proof.exam` の有無で root 式を分岐**する (casual proof は従来式)。`PROOF_FORMAT_VERSION` は 1.1.0 (詳細は「試験モード」節)。
+`problemContentHash` 省略時 (v1) は v1 とバイト一致。**現行 editor は新規 exam セッションを v2 で焼く** (旧 proof は rootBinding 未設定 = v1 とみなす)。genesis は **監督コード入力の瞬間 (= T0)**。root が `startToken` を含むためコード入力まで計算できず、セッション初期化ではなくコード入力時にルートを確定する。検証器は **`proof.exam` の有無で root 式を分岐**し、`proof.exam.rootBinding` で v1/v2 を分岐する (casual proof は従来式)。`PROOF_FORMAT_VERSION` は 1.1.0 (詳細は「試験モード」節)。
 
 ### 4.3. ハッシュチェーン (Hash Chain)
 
@@ -262,10 +265,10 @@ interface CheckpointData {
 ```typescript
 interface SignedCheckpointEnvelope {
   payload: SignedCheckpointPayload;  // 上記 v1
-  signature: string;                  // hex (ECDSA-P256, ASN.1 DER, ~70-72 bytes → 140-144 hex)
+  signature: string;                  // hex (ECDSA-P256, raw r‖s = IEEE P1363, 64 bytes → 128 hex。ASN.1 DER ではない)
   keyId: string;                      // 例: "tcp-202608-xxxxxx"
   algorithm: 'ECDSA-P256';
-  publicKeyJwk?: JsonWebKey;          // optional 同梱 (long-term verifiability)
+  publicKeyJwk?: JsonWebKey;          // optional 同梱。registry 一致の cross-check 用であって信頼の源ではない
   publicKeyValidFrom?: string;
   publicKeyValidUntil?: string;
 }
@@ -299,7 +302,7 @@ interface SignedCheckpointEnvelope {
 **(3) 解錠とチェーン根束縛**: 受験者は事前に `.tcexam` をローカル取込し、T0 に監督コードを入力する。
 1. `examAuthorityKeys` で **package 署名を検証** (本物の問題)。
 2. Argon2id で監督コードから鍵を導出し **AES-256-GCM 復号** (誤コードは GCM で失敗)。
-3. **genesis = この瞬間**。root を `SHA256(fingerprintHash + nonce + packageHash + startToken)` で確定 (§4.2)。
+3. **genesis = この瞬間**。root を v1=`SHA256(… + packageHash + startToken)` / v2=末尾に `+ problemContentHash` で確定 (現行 editor は v2、§4.2)。
 4. `#0 = humanAttestation` を **best-effort** で記録 (Turnstile は T0 前に取得・不達でも合成して #0 を残す = サーバを critical path に置かない)。`#1 = examOpened` を記録。問題を表示。
 
 **(4) `proof.exam` ブロック / 検証**: 復号後平文の SHA-256・packageHash・startToken 等を proof に保存し、grader が提出物 (+ 公開 package) だけで self-contained に検証する。形式は §5.3、検証フローは §6.4 を参照。
@@ -383,7 +386,7 @@ interface ExamProofBlock {
   packageHash: string;          // SHA256(deterministicStringify(signing core))
   problemContentHash: string;   // 復号後**平文**問題の SHA-256 (事前公開しない)
   startToken: string;           // 監督コード (正準形)。T0 後は公開値なので保存して self-contained 化
-  rootBinding: 'v1';
+  rootBinding: 'v1' | 'v2';     // v1=単一(ADR-0006), v2=N問バンドルで problemContentHash も root に連結(ADR-0012)。現行 editor は v2。未設定は v1 とみなす
 }
 ```
 
@@ -422,7 +425,7 @@ interface ExamProofBlock {
 - `typingProofHash === SHA256(typingProofData)` を再計算照合
 - `finalContentHash === SHA256(content)` を再計算照合
 - fingerprint components から hash を再計算 → 申告 hash と一致
-- `initialEventChainHash === SHA256(fingerprintHash + nonce)` を照合。**`proof.exam` がある場合は試験モードの root 式** `SHA256(fingerprintHash + nonce + packageHash + startToken)` で照合する (proof 自己完結・package 不要、ADR-0006)
+- `initialEventChainHash === SHA256(fingerprintHash + nonce)` を照合。**`proof.exam` がある場合は試験モードの root 式**で照合する (v1 = `…+ packageHash + startToken`、v2 = 末尾に `+ problemContentHash`。`proof.exam.rootBinding` で分岐。§4.2)。proof 自己完結・package 不要
 - `metadata` (pasteEvents, dropEvents, insertEvents, ...) を全イベント走査で再カウントして照合
 
 **Layer 2: ハッシュチェーン整合性**
@@ -458,8 +461,11 @@ interface ExamProofBlock {
   - payload.initialEventChainHash === proof root
   - payload.chainHash === events[eventIndex].hash
   - payload.contentHash === enclosing checkpoint の contentHash
-  - keyId 解決 (envelope 同梱 publicKeyJwk → registry → fail)
+  - keyId 解決: **信頼アンカーは registry のみ**。未登録 keyId は (envelope に publicKeyJwk が
+    同梱されていても) fail。registry にある場合のみ同梱 JWK の一致を必須にする (すり替え検出)。
+    署名は常に registry の公開鍵で検証する (攻撃者の自己署名 envelope を valid にしない)
   - `crypto.subtle.verify` で署名検証
+  - 鍵 validFrom > serverTimestamp なら fail (未来鍵)
   - 鍵 revoked かつ serverTimestamp >= revokedAt なら fail。前なら warning 付き通過
   - 鍵 validUntil < serverTimestamp なら fail
 - envelope 配列全体:
@@ -535,7 +541,7 @@ interface ExamProofBlock {
 - **改ざん検出**: 過去に発行された proof の任意 1 ビットの改ざんは、Layer 2/4/6 のいずれかで決定的に検出される
 - **流用検出**: 別の fingerprint / sessionId / initialEventChainHash 由来のデータ流用は決定的に検出される
 - **時刻アンカリング (signed checkpoints 利用時)**: 各 envelope の `serverTimestamp` は「サーバが署名要求を受け取った時刻」を証明する → proof は最古の `serverTimestamp` 以降に存在していたことが証明される
-- **長期検証可能性**: 公開鍵 registry が git で永続管理され、envelope に公開鍵を同梱可能 → Cloudflare Workers が停止しても verify-cli で永続的に検証可能
+- **長期検証可能性**: 公開鍵 registry が git で永続管理され verify-cli にバンドルされる → Cloudflare Workers が停止しても永続的に検証可能。**信頼アンカーは常に registry**。envelope 同梱の公開鍵は registry 一致の cross-check 用であって信頼の源ではない (未登録 keyId は埋め込み鍵があっても拒否)
 - **(試験モード) 問題・T0 束縛**: `proof.exam` のある proof は、答案チェーンの root が「配布された問題 (`packageHash`) + 監督コード (`startToken`)」に焼かれている。出題者署名が破られない限り、別問題すり替え・T0 前開始・偽問題は §6.4 で決定的に検出される (root 束縛は package 無しでも検証可能)
 
 ### 8.2. 弱い保証 (Probabilistic / Heuristic)
@@ -579,7 +585,7 @@ interface ExamProofBlock {
    - 出力された公開鍵 entry を `packages/shared/src/checkpointKeys/registry.ts` に append、PR レビュー
    - 秘密鍵 JWK を `wrangler secret put CHECKPOINT_SIGNING_KEY_JWK`
    - keyId を `wrangler secret put CHECKPOINT_SIGNING_KEY_ID`
-3. **デプロイ**: `npm run deploy:prod -w @typedcode/workers`
+3. **デプロイ**: `npm run deploy:production -w @typedcode/workers` (staging は `deploy:staging`。通常は CI 経由。`deploy` 単体は誤実行防止でエラー終了する)
 
 ### 9.2. ローカル開発セットアップ (各開発者)
 
@@ -666,7 +672,8 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `MIN_SUPPORTED_VERSION` | '1.0.0' | `version.ts` (旧 proof も検証可) |
 | `EXAM_PACKAGE_FORMAT_VERSION` | 1 | `version.ts` (`.tcexam` の formatVersion) |
 | `EXAM_PROOF_VERSION` | 1 | `version.ts` (`proof.exam.examProofVersion`) |
-| `EXAM_ROOT_BINDING` | 'v1' | `version.ts` (`proof.exam.rootBinding`) |
+| `EXAM_ROOT_BINDING` | 'v1' | `version.ts` (単一問題, ADR-0006) |
+| `EXAM_ROOT_BINDING_V2` | 'v2' | `version.ts` (N問バンドル, root に problemContentHash を連結, ADR-0012)。現行 editor は新規 exam を v2 で焼く |
 | Argon2id params (試験) | memKiB=65536 / iterations=3 / parallelism=1 | `make-exam-package.mjs` 既定 (manifest に保持し出題者が調整可) |
 | 監督コード | 8 文字 Crockford Base32 (`I L O U` 除外, 40 bit) | ADR-0006 |
 

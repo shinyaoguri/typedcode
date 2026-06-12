@@ -479,11 +479,16 @@ function initializeIdleTimeoutManager(): void {
       ctx.eventRecorder?.setEnabled(false);
       // スクリーンショット撮影を停止
       ctx.trackers.screenshot?.setCaptureEnabled(false);
+      // エディタを read-only にして「記録されない編集」を防ぐ。記録停止中に打鍵されると
+      // content replay が最終内容と一致せず proof が無効化されるため (overlay の裏で打てる穴を塞ぐ)。
+      editor.updateOptions({ readOnly: true });
       console.log('[TypedCode] Recording suspended due to idle timeout');
     },
     onResume: () => {
       // 記録を再開
       ctx.eventRecorder?.setEnabled(true);
+      // エディタの編集を再開
+      editor.updateOptions({ readOnly: false });
       // スクリーンショット撮影を再開（タブがある場合のみ）
       if (ctx.tabManager?.hasAnyTabs()) {
         ctx.trackers.screenshot?.setCaptureEnabled(true);
@@ -1024,8 +1029,8 @@ function restoreClassProblemDisplay(appCtx: AppContext): void {
 // ========================================
 
 async function initializeApp(): Promise<void> {
-  // Phase 0: 複数インスタンスの検出
-  const instanceGuard = new SingleInstanceGuard();
+  // Phase 0: 複数インスタンスの検出 (モード別名前空間: 別モードのタブを誤ブロックしない)
+  const instanceGuard = new SingleInstanceGuard(mode);
   const hasExistingInstance = await instanceGuard.checkForExistingInstance();
 
   if (hasExistingInstance) {

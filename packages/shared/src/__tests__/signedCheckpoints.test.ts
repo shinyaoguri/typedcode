@@ -226,7 +226,7 @@ describe('signed checkpoint helpers', () => {
     ).resolves.toMatchObject({ ok: false, reason: 'Embedded public key does not match registry entry' });
   });
 
-  it('resolveCheckpointPublicKey succeeds with embedded key alone when registry has no entry', async () => {
+  it('resolveCheckpointPublicKey rejects an embedded key whose keyId is not in the registry (no self-signed trust)', async () => {
     const payload: SignedCheckpointPayload = {
       version: SIGNED_CHECKPOINT_FORMAT_VERSION,
       sessionId: 's',
@@ -243,9 +243,12 @@ describe('signed checkpoint helpers', () => {
       serverTimestamp: '2026-05-28T12:00:01.000Z',
       firstSeenAt: '2026-05-28T12:00:00.000Z',
     };
+    // 攻撃者は自分の鍵ペアで署名し、未登録 keyId の下に自分の公開鍵を同梱できる。
+    // 信頼アンカーは registry のみなので、これは valid にしてはならない (時刻アンカー偽造の防止)。
     const envelope = await signCheckpoint(payload, testKey, { embedPublicKey: true });
     const resolved = await resolveCheckpointPublicKey(envelope, []);
-    expect(resolved).toMatchObject({ ok: true });
+    expect(resolved.ok).toBe(false);
+    expect((resolved as { ok: false; reason: string }).reason).toMatch(/^Unknown keyId:/);
   });
 
   it('resolveCheckpointPublicKey fails for unknown keyId without embedded key', async () => {
@@ -555,7 +558,7 @@ describe('verifySignedCheckpoints', () => {
     expect(result.reason).toMatch(/Unknown keyId/);
   });
 
-  it('passes with embedded public key even when registry is empty (offline scenario)', async () => {
+  it('rejects an embedded public key when the keyId is not in the registry (no offline self-signed trust)', async () => {
     const { events, initialEventChainHash } = await buildSmallProof(2);
     const checkpoints = await buildSignedCheckpoints({
       events,
@@ -563,11 +566,16 @@ describe('verifySignedCheckpoints', () => {
       key: testKey,
       embedPublicKey: true,
     });
+    // 攻撃者は自分の鍵ペアで署名し、その公開鍵を envelope に同梱できる。信頼アンカーは
+    // registry のみとし、未登録 keyId は (埋め込み鍵があっても) 拒否する。さもないと
+    // 署名 cp の serverTimestamp を任意に偽造できてしまう。
+    // 長期検証可能性は「git 永続管理の registry が verify-cli にバンドルされる」ことで担保され、
+    // 埋め込み鍵に依存しない。
     const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
       registry: [],
     });
-    expect(result.valid).toBe(true);
-    expect(result.anchored).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/Unknown keyId/);
   });
 
   it('flags post-hoc batch signing when serverSpan is tiny compared to clientSpan', async () => {

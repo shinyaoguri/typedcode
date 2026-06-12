@@ -1,9 +1,9 @@
 # ADR-0015: ルート `/` をモード選択ランディングにし、通常モードの起動摩擦を下げる
 
-- **Status**: Proposed
+- **Status**: Accepted (実装済み・develop マージ済み)
 - **Date**: 2026-06-09
 - **Deciders**: (PR 上の合意者 / レビュアー)
-- **PR / Commit**: (このPR)
+- **PR / Commit**: PR #97 (feat/class-mode-capabilities)
 
 ## Context
 

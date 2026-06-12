@@ -16,6 +16,38 @@ import type {
 import { getLanguageFromExtension, isBinaryFile } from './languageDetection.js';
 
 // ============================================================================
+// ZIP 展開の DoS ガード (zip bomb)
+// ============================================================================
+
+/** 全エントリの解凍後合計サイズ上限 (bytes)。正規 proof (スクショ込み) でも十分余裕がある。 */
+const MAX_ZIP_TOTAL_UNCOMPRESSED = 256 * 1024 * 1024; // 256 MB
+/** エントリ数上限。 */
+const MAX_ZIP_ENTRIES = 5000;
+
+/**
+ * 高圧縮率の悪意ある ZIP (zip bomb) で grader / 検証 UI を OOM/ハングさせないための事前ガード。
+ * `JSZip.loadAsync` は解凍前のメタデータを持つので、エントリの解凍後サイズ合計を**展開前に**
+ * 検査して上限超過なら throw する。
+ */
+function assertZipWithinBudget(zip: JSZip): void {
+  const names = Object.keys(zip.files);
+  if (names.length > MAX_ZIP_ENTRIES) {
+    throw new Error(`ZIP has too many entries (${names.length} > ${MAX_ZIP_ENTRIES})`);
+  }
+  let total = 0;
+  for (const name of names) {
+    // `_data.uncompressedSize` は JSZip 内部だが安定。未取得なら 0 として扱う (エントリ数で別途上限)。
+    const f = zip.files[name] as unknown as { _data?: { uncompressedSize?: number } };
+    total += f?._data?.uncompressedSize ?? 0;
+    if (total > MAX_ZIP_TOTAL_UNCOMPRESSED) {
+      throw new Error(
+        `ZIP uncompressed size exceeds limit (${MAX_ZIP_TOTAL_UNCOMPRESSED} bytes)`
+      );
+    }
+  }
+}
+
+// ============================================================================
 // Type guards
 // ============================================================================
 
@@ -86,6 +118,7 @@ export async function parseZipBuffer(
 ): Promise<ZipParseResult> {
   try {
     const zip = await JSZip.loadAsync(buffer);
+    assertZipWithinBudget(zip);
 
     // Use ZIP filename as root folder name
     const rootFolderName = zipFilename.replace(/\.zip$/i, '');
@@ -271,6 +304,7 @@ export async function extractFirstProofFromZip(
   buffer: ArrayBuffer
 ): Promise<ProofFileCore> {
   const zip = await JSZip.loadAsync(buffer);
+  assertZipWithinBudget(zip);
 
   const jsonFiles = Object.keys(zip.files).filter(
     (name) => name.endsWith('.json') && !zip.files[name]?.dir
@@ -303,4 +337,48 @@ export async function extractFirstProofFromZip(
     }
     throw e;
   }
+}
+
+/**
+ * ZIP 内の **すべて** の proof JSON を構造で選別して返す (verify-cli の offline grader 用)。
+ *
+ * exam/class モードはタブ毎に独立した `<name>_proof.json` を N 個出力するため、grader は
+ * 全件を検証しなければならない。最初の 1 件だけ見る `extractFirstProofFromZip` では、
+ * 残りのタブ (AI 貼付・偽造され得る) が未検証のまま exit 0 で通ってしまう。
+ *
+ * - proof 判定は **構造** (`isProofFile`) で行う (ファイル名順や位置に依存しない。
+ *   `screenshots/manifest.json` のような非 proof JSON が先頭に来ても誤選択しない)。
+ * - `screenshots/` 配下は除外する。
+ * - ファイル名昇順で決定的に返す。
+ */
+export async function extractAllProofsFromZip(
+  buffer: ArrayBuffer
+): Promise<Array<{ filename: string; proof: ProofFileCore }>> {
+  const zip = await JSZip.loadAsync(buffer);
+  assertZipWithinBudget(zip);
+  const jsonNames = Object.keys(zip.files)
+    .filter(
+      (name) =>
+        name.endsWith('.json') &&
+        !zip.files[name]?.dir &&
+        !name.startsWith('screenshots/')
+    )
+    .sort();
+
+  const proofs: Array<{ filename: string; proof: ProofFileCore }> = [];
+  for (const name of jsonNames) {
+    const file = zip.files[name];
+    if (!file) continue;
+    const content = await file.async('string');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      continue; // 壊れた / 非 JSON はスキップ (proof ではない)
+    }
+    if (isProofFile(parsed)) {
+      proofs.push({ filename: name, proof: parsed as ProofFileCore });
+    }
+  }
+  return proofs;
 }

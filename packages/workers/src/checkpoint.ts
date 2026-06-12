@@ -2,7 +2,7 @@
  * /api/checkpoint/sign + /api/checkpoint/public-keys ハンドラ。
  *
  * 設計:
- * - サーバは最小限の KV 状態 (session:{sessionId}) のみ保持する。
+ * - サーバは最小限の KV 状態 (session:{sessionId}:{tabId}) のみ保持する (タブ毎)。
  * - 厳密な単調性は verifier 側の連鎖チェックで保証。サーバ側は best-effort で
  *   非単調 / セッション上限超過を弾く。
  * - firstSeenAt は KV 初回書込時に確定し、それ以降は固定。verifier はすべての
@@ -118,7 +118,7 @@ export async function handleSignCheckpoint(
   env: CheckpointEnv,
   responder: CorsResponder
 ): Promise<Response> {
-  // body サイズ上限: Content-Length があればパース前に弾く (巨大 body の DoS 対策)
+  // body サイズ上限: まず Content-Length があればパース前に弾く (巨大 body の DoS 対策)。
   const contentLength = Number(request.headers.get('Content-Length') ?? '');
   if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
     return jsonResponse(
@@ -128,9 +128,29 @@ export async function handleSignCheckpoint(
     );
   }
 
+  // 本文を読み、Content-Length が欠落/詐称/chunked でも **実バイト長** で上限を強制する。
+  // (Number('') === 0 や NaN で上の事前チェックを擦り抜けるケースの保険。)
+  let bodyText: string;
+  try {
+    bodyText = await request.text();
+  } catch {
+    return jsonResponse(
+      { error: 'Invalid request body', code: 'SCHEMA_INVALID' } satisfies ErrorBody,
+      400,
+      responder.cors()
+    );
+  }
+  if (new TextEncoder().encode(bodyText).length > MAX_BODY_BYTES) {
+    return jsonResponse(
+      { error: `Request body exceeds ${MAX_BODY_BYTES} bytes`, code: 'SCHEMA_INVALID' } satisfies ErrorBody,
+      400,
+      responder.cors()
+    );
+  }
+
   let parsed: unknown;
   try {
-    parsed = await request.json();
+    parsed = JSON.parse(bodyText);
   } catch {
     return jsonResponse(
       { error: 'Invalid JSON body', code: 'SCHEMA_INVALID' } satisfies ErrorBody,
@@ -155,15 +175,23 @@ export async function handleSignCheckpoint(
     signer = await getSigningKey(env);
   } catch (err) {
     const code = (err as { code?: ErrorBody['code'] }).code ?? 'SIGNING_ERROR';
+    // 内部例外メッセージ (keyId / JWK パーサのテキスト等) はクライアントに返さず、
+    // 固定文言を返す。詳細はサーバログにのみ出す。
+    console.error('[checkpoint] signing key resolution failed:', err);
     return jsonResponse(
-      { error: err instanceof Error ? err.message : String(err), code } satisfies ErrorBody,
-      code === 'SIGNING_KEY_NOT_CONFIGURED' || code === 'SIGNING_KEY_UNKNOWN' ? 500 : 500,
+      { error: 'Signing key is not available', code } satisfies ErrorBody,
+      500,
       responder.cors()
     );
   }
 
-  // KV からセッション状態を取得 (best-effort: eventual consistent)
-  const sessionKey = `session:${input.sessionId}`;
+  // KV からセッション状態を取得 (best-effort: eventual consistent)。
+  // **tabId 込みでキーイングする**: checkpointIndex はタブ毎に 0 から振られ、sessionId は
+  // ブラウザセッション全体で共有される。sessionId だけでキーイングすると、複数タブ
+  // (class モードの N 問タブ等) で 2 枚目以降のタブが checkpointIndex 衝突 → CHECKPOINT_CONFLICT /
+  // NON_MONOTONIC となり 1 つも署名されない。verifier は firstSeenAt をタブ間で共有要求しない
+  // (proof = 1 タブ) ので、firstSeenAt がタブ毎に確定するのは安全。
+  const sessionKey = `session:${input.sessionId}:${input.tabId}`;
   const existing = await env.CHECKPOINT_SESSIONS.get<SessionRecord>(sessionKey, 'json');
 
   // このセッションで初めて署名する checkpoint か。初回は firstSeenAt が
@@ -225,11 +253,10 @@ export async function handleSignCheckpoint(
       { keyId: signer.keyId, privateKey: signer.key }
     );
   } catch (err) {
+    // 内部例外メッセージはクライアントに返さず固定文言にする。詳細はサーバログのみ。
+    console.error('[checkpoint] signing failed:', err);
     return jsonResponse(
-      {
-        error: err instanceof Error ? err.message : String(err),
-        code: 'SIGNING_ERROR',
-      } satisfies ErrorBody,
+      { error: 'Failed to sign checkpoint', code: 'SIGNING_ERROR' } satisfies ErrorBody,
       500,
       responder.cors()
     );

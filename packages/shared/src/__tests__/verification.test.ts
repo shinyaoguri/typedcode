@@ -203,4 +203,50 @@ describe('verification utilities', () => {
       reason: 'Proof metadata mismatch for bulkInsertEvents: expected 1, got 0',
     });
   });
+
+  it('flags a content-bearing insertFromInternalPaste as a bulk insert (forgery guard) but not the rangeOffset==null audit marker', () => {
+    // 手製 proof が大きな挿入を「内部ペースト」と偽装するケース (rangeOffset あり = 実挿入)。
+    const forged = [
+      {
+        type: 'contentChange',
+        inputType: 'insertFromInternalPaste',
+        data: 'AI generated solution',
+        rangeOffset: 0,
+        timestamp: 10,
+      },
+    ] as StoredEvent[];
+    expect(
+      verifyProofMetadata(
+        {
+          metadata: {
+            totalEvents: 1, pasteEvents: 0, internalPasteEvents: 1, dropEvents: 0,
+            insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 1, totalTypingTime: 10, averageTypingSpeed: 0,
+          },
+        } as ProofData,
+        forged
+      )
+    ).toMatchObject({ valid: true, isPureTyping: false, suspiciousBulkInsertEventIndexes: [0] });
+
+    // editor が出す正規の内部ペースト監査イベント (rangeOffset==null、replay 上スキップ) は flag しない。
+    const auditMarker = [
+      {
+        type: 'contentChange',
+        inputType: 'insertFromInternalPaste',
+        data: 'copied',
+        rangeOffset: null,
+        timestamp: 10,
+      },
+    ] as StoredEvent[];
+    expect(
+      verifyProofMetadata(
+        {
+          metadata: {
+            totalEvents: 1, pasteEvents: 0, internalPasteEvents: 1, dropEvents: 0,
+            insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 0, totalTypingTime: 10, averageTypingSpeed: 0,
+          },
+        } as ProofData,
+        auditMarker
+      )
+    ).toMatchObject({ valid: true, isPureTyping: true, suspiciousBulkInsertEventIndexes: [] });
+  });
 });
