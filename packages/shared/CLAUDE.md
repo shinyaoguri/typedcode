@@ -39,7 +39,7 @@
 | `fileProcessing/` | ZIP / JSON 解析 |
 | `types.ts` (実体は `types/`) | 全公開型 |
 | `assurance.ts` | 三層保証語彙 (ADR-0020)。`deriveAssurance` が実証拠のみから整合性/時刻アンカー/著述性(advisory) を導出。verify(web)/verify-cli が同一実装を使う (表示の食い違い防止)。**自己申告 `proof.mode` を入力に使わない・provenance を判定に昇格させない** |
-| `analysis/` | 分析層フレームワーク (ADR-0009)。`runAnalysis` + 差し替え可能な `Analyzer` 群 (automation / transcription-topology / focus-burst の第一次ヒューリスティック + pureTyping)。検証と**直交**する advisory のみ・判定しない。`automationAnalyzer` は webdriver/headless GPU に加え **合成打鍵 (`KeystrokeDynamicsData.isTrusted===false`, ADR-0018)** も数える |
+| `analysis/` | 分析層フレームワーク (ADR-0009)。`runAnalysis` + 差し替え可能な `Analyzer` 群 (automation / transcription-topology / focus-burst の第一次ヒューリスティック + pureTyping)。検証と**直交**する advisory のみ・判定しない。`automationAnalyzer` は webdriver/headless GPU に加え **合成打鍵 (`KeystrokeDynamicsData.isTrusted===false`, ADR-0018)** も数える。`analysis/eval.ts` は **実証評価** (W5): ラベル付きコーパス → `evaluateAnalysis` が混同行列/閾値スイープ/genuineSignalRate を純粋関数で算出。**ゲート: 実測まで heuristic を `review` に昇格しない** (収集手順は docs/analysis-eval-protocol.md、ランナーは `__tests__/analysisEvalCorpus.test.ts`) |
 | `exam/` | 試験モードの暗号コア (ADR-0006)。封印 `.tcexam` の build/verify(署名)/decrypt(Argon2id+AES-256-GCM)、`computeExamChainRoot`、`parseExamPackageManifest`、grader 用 `verifyExamBinding`。root 式は `proof.exam` 有無で分岐。N問バンドル codec は `examBundle.ts` (`tcexam-exam/1`)。**授業モードの平文配布 `classPackage.ts` (ADR-0014, `tcclass/1`) も同居** — 暗号を持たず `parseExamBundle` を平文で再利用する `parseClassPackage`/`encodeClassPackage` |
 | `examAuthorityKeys/` | 出題者 (問題署名) 公開鍵レジストリ (ADR-0006)。`checkpointKeys/` と**別系統・同型** (append-only、`registry.ts` 本番 + skip-worktree な `localKeys.ts`) |
 

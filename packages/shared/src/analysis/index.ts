@@ -23,3 +23,14 @@ export {
   focusBurstAnalyzer,
   pureTypingAnalyzer,
 } from './analyzers/index.js';
+
+export { evaluateAnalysis, formatEvalReportMarkdown } from './eval.js';
+export type {
+  EvalLabel,
+  LabeledAnalysis,
+  ConfusionPoint,
+  DimensionEval,
+  GenuineSignalRate,
+  EvalReport,
+  EvaluateOptions,
+} from './eval.js';
