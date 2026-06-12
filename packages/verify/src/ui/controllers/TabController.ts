@@ -348,16 +348,14 @@ export class TabController {
       // SeekbarControllerにIntegratedChartを連携し、イベントで初期化
       if (seekbarController) {
         seekbarController.setIntegratedChart(integratedChart);
-        // アクティブなタブのコンテンツを取得してシークバーを初期化
+        // content の有無に関わらず常に初期化する。proof.json 単体 (ソースファイルなし =
+        // 標準エクスポートの proof.json) では content が無いが、再生は events から再構成できる。
+        // content を初期化のガードにすると JSON 単体読込で再生/マーカーが死ぬ (回帰修正)。
         const activeTabId = this.deps.tabBar.getActiveTabId();
-        if (activeTabId) {
-          const tabState = this.deps.tabManager.getTab(activeTabId);
-          if (tabState?.proofData?.content) {
-            seekbarController.initialize(events, tabState.proofData.content);
-            // 見どころマーカー (W3-C): プロセス要約の moments をトラックに重ねる。
-            seekbarController.setKeyMoments(summarizeProcess(events).moments);
-          }
-        }
+        const tabState = activeTabId ? this.deps.tabManager.getTab(activeTabId) : null;
+        seekbarController.initialize(events, tabState?.proofData?.content ?? '');
+        // 見どころマーカー (W3-C): プロセス要約の moments をトラックに重ねる。
+        seekbarController.setKeyMoments(summarizeProcess(events).moments);
       }
     }
 

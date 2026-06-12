@@ -82,3 +82,12 @@ File Selection (drag&drop / FSA API)
 - 見どころ (初回実行 / 最長停止 / 最大書き直し / 復帰直後バースト / 外部入力) は `verify:seek-to-event` で当該イベントへジャンプ (分析カードと同じ経路)
 - 抽出ロジックは shared に置く (テストは shared 側)。閾値も shared の `PROCESS_*` 定数が単一ソース
 - **再生 (W3-C)**: `SeekbarController` は再生モード `steps` (50ms/イベント・従来) と `x1/x10/x60` (イベント timestamp に比例 — 停止やバーストの緩急が見える) を持つ。`#seekbar-speed` で巡回。**見どころマーカー** は `setKeyMoments(moments)` で `#seekbar-markers` に描画 (kind 別の色・クリックでシーク)。moments は TabController が `summarizeProcess(events)` から渡す
+
+## UI レイアウトの不変条件 (UI レビュー 2026-06-12)
+
+- **チャート/シークバーはステータスカード直後 (result-cards の前)** に置く。採点の主要ツールなので 9 枚のカードの下に埋めない (index.html の `#chart-section` 位置)。戻さないこと
+- **シークバー初期化は content をガードにしない**: `TabController.renderCharts` は `proofData.content` の有無に関わらず `seekbarController.initialize` を呼ぶ。proof.json 単体 (ソースファイルなし) では content が無く、`SeekbarController` が events から最終状態を再構成する。content ガードを戻すと JSON 単体で再生/マーカーが死ぬ
+- **読込直後の自動オープン**: `VerificationController.handleComplete` が「アクティブタブが null なら最初に完了した proof を `openTabForFile`」する。ウェルカム画面のまま放置しない
+- **ステータスカードは縦 2 段**: 上段 `.result-status-row` (アイコン+タイトル+ミニゲージ)、下段 `#assurance-strip` (三層バッジ全幅)。横 1 列に詰めると三層チップとタイトルが重なって縦書き崩れする
+- **分析シグナルの文言は `summaryKey` 優先**: `AnalysisSignal.summaryKey` があれば verify 側で `t()` ローカライズ (shared は i18n を持たないため)。`summary` は英語フォールバック。analyzer に生英語を直書きしない
+- **TypingPatternCard は advisory 表示**: 冒頭に `analysis.advisory` 注記。issue 見出しは断定 (「重大な問題」) を避け「特に確認したい点 / 気になる点」。ADR-0020 の「advisory を判定に見せない」を旧カードにも適用 (ADR-0009 への完全統合は follow-up)

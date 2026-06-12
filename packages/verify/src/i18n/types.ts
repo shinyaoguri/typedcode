@@ -362,6 +362,9 @@ export interface VerifyTranslationKeys {
     dimensionKeystrokeContent: string;
     dimensionTranscriptionTopology: string;
     dimensionFocusBurst: string;
+    summary: {
+      externalInput: string;
+    };
   };
 
   pattern: {

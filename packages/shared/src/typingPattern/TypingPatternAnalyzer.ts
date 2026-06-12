@@ -606,6 +606,9 @@ export class TypingPatternAnalyzer {
     const issues: TypingPatternIssue[] = [];
 
     for (const [key, metric] of Object.entries(metrics)) {
+      // データ不足は「計算できなかった」事実であって所見ではない。issue にすると
+      // 「データ不足」警告が羅列してノイズになる (UI レビュー指摘)。除外する。
+      if (metric.reasonKey === 'pattern.insufficient') continue;
       if (metric.judgment === 'suspicious') {
         issues.push({
           severity: 'critical',

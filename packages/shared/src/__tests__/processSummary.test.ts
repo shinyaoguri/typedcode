@@ -106,11 +106,33 @@ describe('summarizeProcess — moments', () => {
     expect(s.pauseCount).toBe(1);
   });
 
-  it('records the largest deletion as a rewrite moment', () => {
-    const s = summarizeProcess([insert(0, 'abcdef'), del(100, 3), del(200, 5)]);
+  it('aggregates consecutive deletions into one rewrite run (not a single char)', () => {
+    // Backspace 連打 = 1 文字ずつの削除イベント。これを 1 つの書き直しとして束ねる。
+    const s = summarizeProcess([
+      insert(0, 'abcdefghij'),
+      del(100, 1),
+      del(200, 1),
+      del(300, 1),
+      del(400, 1),
+      insert(500, 'X'), // 純挿入で削除ランが締まる
+    ]);
     const m = s.moments.find((x) => x.kind === 'largest-deletion');
-    expect(m?.fromEventIndex).toBe(2);
-    expect(m?.value).toBe(5);
+    expect(m?.fromEventIndex).toBe(1);
+    expect(m?.toEventIndex).toBe(4);
+    expect(m?.value).toBe(4); // 1+1+1+1 = 4 文字を 1 ランとして集計
+  });
+
+  it('keeps separate deletion runs apart when broken by an insert', () => {
+    const s = summarizeProcess([
+      insert(0, 'abcdef'),
+      del(100, 2),
+      insert(200, 'x'),
+      del(300, 5), // 別ラン (こちらが最大)
+      del(400, 1),
+    ]);
+    const m = s.moments.find((x) => x.kind === 'largest-deletion');
+    expect(m?.fromEventIndex).toBe(3);
+    expect(m?.value).toBe(6); // 5+1
   });
 
   it('records a focus-return burst when enough characters follow a refocus', () => {

@@ -338,6 +338,9 @@ export const ja: VerifyTranslationKeys = {
     dimensionKeystrokeContent: '打鍵と内容の整合',
     dimensionTranscriptionTopology: '構築の形 (転写/著述)',
     dimensionFocusBurst: '離脱とバーストの相関',
+    summary: {
+      externalInput: '外部入力あり: ペースト ${paste} 件 / ドロップ ${drop} 件',
+    },
   },
 
   pattern: {
@@ -348,8 +351,8 @@ export const ja: VerifyTranslationKeys = {
     human: '人間らしい',
     uncertain: '不明確',
     suspicious: '疑わしい',
-    criticalIssues: '重大な問題',
-    warnings: '警告',
+    criticalIssues: '特に確認したい点',
+    warnings: '気になる点',
     summary: {
       human: 'タイピングパターンは人間らしい特徴を示しています',
       suspicious: '自動入力や不正入力の可能性があります',

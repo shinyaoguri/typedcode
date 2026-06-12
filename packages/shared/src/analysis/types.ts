@@ -43,8 +43,15 @@ export interface AnalysisSignal {
   severity: AnalysisSeverity;
   /** 証拠の event 参照。空配列も可だが付けることを推奨。 */
   evidence: EvidenceRef[];
-  /** 人間向けの一文サマリ。 */
+  /** 人間向けの一文サマリ (フォールバック / 非ローカライズ環境用)。 */
   summary: string;
+  /**
+   * ローカライズ用の翻訳キー (任意)。表示側が summaryKey を解決できれば summary より優先する。
+   * shared は i18n を持たないため、文言の最終形は消費側 (verify/CLI) が決める。
+   */
+  summaryKey?: string;
+  /** summaryKey の補間パラメータ。 */
+  summaryParams?: Record<string, string | number>;
 }
 
 /** Analyzer への入力: 検証済み proof と暗号判定 (直交) の組。 */

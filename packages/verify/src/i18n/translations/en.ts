@@ -338,6 +338,9 @@ export const en: VerifyTranslationKeys = {
     dimensionKeystrokeContent: 'Keystroke–content consistency',
     dimensionTranscriptionTopology: 'Construction shape (transcription/authoring)',
     dimensionFocusBurst: 'Focus-loss / burst correlation',
+    summary: {
+      externalInput: 'External input present: ${paste} paste, ${drop} drop',
+    },
   },
 
   pattern: {
@@ -348,8 +351,8 @@ export const en: VerifyTranslationKeys = {
     human: 'Human-like',
     uncertain: 'Uncertain',
     suspicious: 'Suspicious',
-    criticalIssues: 'Critical Issues',
-    warnings: 'Warnings',
+    criticalIssues: 'Points to review',
+    warnings: 'Notes',
     summary: {
       human: 'Typing pattern shows human-like characteristics',
       suspicious: 'Possible automated or fraudulent input detected',

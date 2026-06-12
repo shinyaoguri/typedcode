@@ -102,6 +102,21 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
   const externalMoments: ProcessKeyMoment[] = [];
 
   let lastContentChange: { index: number; timestamp: number } | null = null;
+  // 連続削除ラン (Backspace 連打は 1 文字ずつの contentChange で来るため束ねる)。
+  // 純挿入イベントで締める。最大の書き直しはこのラン合計で測る (単発 1 文字ではなく)。
+  let delRun: { fromIndex: number; lastIndex: number; chars: number; timestamp: number } | null = null;
+  const finalizeDelRun = (): void => {
+    if (delRun && delRun.chars > (largestDeletion?.value ?? 0)) {
+      largestDeletion = {
+        kind: 'largest-deletion',
+        fromEventIndex: delRun.fromIndex,
+        toEventIndex: delRun.lastIndex !== delRun.fromIndex ? delRun.lastIndex : undefined,
+        timestamp: delRun.timestamp,
+        value: delRun.chars,
+      };
+    }
+    delRun = null;
+  };
   /** フォーカス復帰直後のバースト積算 (復帰イベントごとに 1 つ)。 */
   let pendingBurst: {
     refocusIndex: number;
@@ -140,13 +155,16 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
         insertedChars += inserted;
         deletedChars += deleted;
 
-        if (deleted > 0 && deleted > (largestDeletion?.value ?? 0)) {
-          largestDeletion = {
-            kind: 'largest-deletion',
-            fromEventIndex: i,
-            timestamp: event.timestamp,
-            value: deleted,
-          };
+        // 削除ランの蓄積: 削除を含むイベントで伸ばし、純挿入 (削除なし) で締める。
+        if (deleted > 0) {
+          if (delRun) {
+            delRun.chars += deleted;
+            delRun.lastIndex = i;
+          } else {
+            delRun = { fromIndex: i, lastIndex: i, chars: deleted, timestamp: event.timestamp };
+          }
+        } else if (inserted > 0) {
+          finalizeDelRun();
         }
         if (inserted > 1 && inserted > (largestInsertion?.value ?? 0)) {
           largestInsertion = {
@@ -261,8 +279,9 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
     }
   }
 
-  // 末尾までバースト窓が開いていた場合の昇格判定
+  // 末尾までバースト窓 / 削除ランが開いていた場合の確定
   largestFocusBurst = promoteBurst(pendingBurst, largestFocusBurst);
+  finalizeDelRun();
 
   if (firstRun) moments.push(firstRun);
   if (firstFailedRun) moments.push(firstFailedRun);

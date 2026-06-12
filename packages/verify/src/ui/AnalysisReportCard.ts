@@ -88,10 +88,20 @@ export class AnalysisReportCard {
             ${t('analysis.confidence')} ${(signal.confidence * 100).toFixed(0)}%
           </span>
         </div>
-        <div class="analysis-summary">${escapeHtml(signal.summary)}</div>
+        <div class="analysis-summary">${escapeHtml(this.summaryText(signal))}</div>
         ${evidence ? `<div class="analysis-evidence-row"><span class="analysis-evidence-label">${t('analysis.evidence')}:</span>${evidence}</div>` : ''}
       </li>
     `;
+  }
+
+  /** summaryKey があればローカライズし、無ければ summary をそのまま使う。 */
+  private summaryText(signal: AnalysisSignal): string {
+    if (signal.summaryKey) {
+      const localized = t(signal.summaryKey, signal.summaryParams);
+      // t() はキー未登録だとキー文字列をそのまま返すので、その場合は summary にフォールバック。
+      if (localized && localized !== signal.summaryKey) return localized;
+    }
+    return signal.summary;
   }
 
   private renderEvidence(ev: EvidenceRef): string {
