@@ -78,6 +78,10 @@ export type {
   SignedCheckpointEnvelope,
   SignedCheckpointVerificationDetail,
   SignedCheckpointsVerificationResult,
+  SessionStartTokenPayload,
+  SessionStartTokenAlgorithm,
+  SessionStartToken,
+  SessionStartTokenVerificationResult,
 } from './proof.js';
 
 // 試験モード関連 (ADR-0006, ADR-0012)

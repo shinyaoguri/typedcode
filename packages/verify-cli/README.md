@@ -32,6 +32,12 @@ typedcode-verify proof.zip --mode fast
 typedcode-verify ALL_TC.zip --exam-package p1.tcexam
 # 提出時刻を渡すと time-box (提出期間内か) も判定
 typedcode-verify ALL_TC.zip --exam-package p1.tcexam --submitted-at 2026-06-06T01:00:00Z
+
+# アンカー密度 gate (ADR-0016): 署名 cp が疎な proof を fail させる (採点向け opt-in)
+typedcode-verify ALL_TC.zip --require-anchor-density
+
+# root アンカー gate (ADR-0017): root 未アンカー (serverNonce トークン無し) を fail させる (採点向け opt-in)
+typedcode-verify ALL_TC.zip --require-root-anchor
 ```
 
 ### 試験モード (ADR-0006)
@@ -60,6 +66,8 @@ Anchoring:   VERIFIED (12 signed checkpoints, 100.0% coverage)
 ```
 
 複数 proof を含む ZIP では各 `*_proof.json` を順に検証し、末尾に `=== Summary: N/M proofs passed ===` を出します (1 件でも失敗すれば exit 1)。`--mode fast` のときは PoSW 行が `SKIPPED (fast mode)`、署名 cp が無いときは `Anchoring: unavailable` になります。
+
+`Anchoring` 行の下には**アンカー密度** (ADR-0016) の `Density: max gap … events / …s, first anchor @ event …` が出ます。署名 cp が主張セッションに対して疎な場合 (例: 末尾 1 個だけで長いチェーンをアンカー) は `! Anchoring is sparse …` の警告が付きます。既定は警告のみですが、`--require-anchor-density` を付けると疎な proof を **exit 1** にできます (採点向け opt-in)。
 
 ## 終了コード
 

@@ -98,6 +98,7 @@ export const ja: VerifyTranslationKeys = {
     anchoringUnavailable: '未アンカー',
     anchoringNone: '署名なし',
     anchoringPostHoc: '⚠ 後付け一括署名の疑い (server span / client span が極端に小さい)',
+    anchoringSparse: '⚠ アンカー密度が疎です (署名チェックポイントが申告セッションに対し少ない/遅い)',
     // 詳細展開セクション
     anchoringDetailsToggle: '検証の根拠を表示',
     anchoringSectionKeys: '署名鍵',

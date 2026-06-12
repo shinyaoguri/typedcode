@@ -191,6 +191,7 @@ async function verify(request: VerifyRequest): Promise<void> {
     // 1. メタデータ整合性の検証
     let metadataValid = false;
     let rootValid = false;
+    let rootAnchored = false;
     let isPureTyping = false;
     let metadataMessage: string | undefined;
 
@@ -216,6 +217,7 @@ async function verify(request: VerifyRequest): Promise<void> {
         proofData.proof?.events ?? []
       );
       rootValid = rootVerification.valid;
+      rootAnchored = rootVerification.rootAnchored; // ADR-0017: serverNonce 付きトークンで root がアンカーされたか
       metadataValid = hashVerification.valid && rootValid && eventMetadataVerification.valid;
       metadataMessage = !hashVerification.valid
         ? hashVerification.reason
@@ -274,6 +276,7 @@ async function verify(request: VerifyRequest): Promise<void> {
         details: [],
         coverage: { signedCount: 0, lastSignedEventIndex: null, coverageRatio: 0 },
         temporal: null,
+        density: null,
         reason: `Signed checkpoint verification threw: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
@@ -347,6 +350,7 @@ async function verify(request: VerifyRequest): Promise<void> {
     sendResult(id, {
       metadataValid,
       rootValid,
+      rootAnchored,
       chainValid,
       finalHashValid: finalHashVerification.valid,
       contentValid: contentVerification.valid,
@@ -362,6 +366,7 @@ async function verify(request: VerifyRequest): Promise<void> {
       signedCheckpointAnchored: signedCheckpointResult.anchored,
       signedCheckpointCoverage: signedCheckpointResult.coverage,
       signedCheckpointTemporal: signedCheckpointResult.temporal,
+      signedCheckpointDensity: signedCheckpointResult.density,
       signedCheckpointReason: signedCheckpointResult.reason,
       signedCheckpointReport,
       exam: examResult,

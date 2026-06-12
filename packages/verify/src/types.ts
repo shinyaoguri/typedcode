@@ -59,6 +59,8 @@ export type PoswMode = 'skipped' | 'sampled' | 'full';
 export interface VerificationResultData {
   metadataValid: boolean;
   rootValid?: boolean;
+  /** root がサーバアンカーされているか (ADR-0017)。`sessionStartToken` で root がアンカーされていれば true。 */
+  rootAnchored?: boolean;
   chainValid: boolean;
   finalHashValid?: boolean;
   contentValid?: boolean;
@@ -100,6 +102,8 @@ export interface VerificationResultData {
   signedCheckpointValid?: boolean;
   signedCheckpointCoverage?: SignedCheckpointsVerificationResult['coverage'];
   signedCheckpointTemporal?: SignedCheckpointsVerificationResult['temporal'];
+  /** anchoring 密度メトリクス (ADR-0016)。疎なら sparse=true で warning 表示の根拠になる。 */
+  signedCheckpointDensity?: SignedCheckpointsVerificationResult['density'];
   signedCheckpointReason?: string;
   signedCheckpointAnchored?: boolean;
   /**

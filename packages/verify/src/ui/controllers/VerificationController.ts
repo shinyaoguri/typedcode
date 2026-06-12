@@ -71,13 +71,15 @@ export class VerificationController {
     // ステータス判定: エラー > 警告 > 成功。
     // - error: チェーン/メタデータ破綻、署名 cp があるのに無効、package 提供下で exam 束縛失敗 (spec §6.4)
     // - warning: 非ピュアタイピング / ソース不一致 / 時刻アンカー無し (偽造不能要素が無い) /
-    //            post-hoc 一括署名疑い / exam だが問題パッケージ未検証 (真正性未確認)
+    //            post-hoc 一括署名疑い / anchoring 密度が疎 (ADR-0016) / exam だが問題パッケージ未検証 (真正性未確認)
     const examBindingFailed =
       !!result.exam?.packageProvided && result.exam.binding?.valid === false;
     const anchoredButInvalid =
       !!result.signedCheckpointAnchored && result.signedCheckpointValid === false;
     const examPresentButUnverified =
       !!result.exam?.present && !result.exam.packageProvided;
+    // ADR-0017: root 未アンカー (serverNonce トークン無し) は警告。exam は独自束縛のため対象外。
+    const rootNotAnchored = !result.rootAnchored && !result.exam?.present;
     let status: FileStatus;
     if (!result.metadataValid || !result.chainValid || examBindingFailed || anchoredButInvalid) {
       status = 'error';
@@ -86,6 +88,8 @@ export class VerificationController {
       hasSourceMismatch ||
       !result.signedCheckpointAnchored ||
       result.signedCheckpointTemporal?.postHocSuspected ||
+      result.signedCheckpointDensity?.sparse ||
+      rootNotAnchored ||
       examPresentButUnverified
     ) {
       status = 'warning';

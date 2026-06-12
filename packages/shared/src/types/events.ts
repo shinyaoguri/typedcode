@@ -204,6 +204,14 @@ export interface KeystrokeDynamicsData {
     alt: boolean;
     meta: boolean;
   };
+  /**
+   * `KeyboardEvent.isTrusted === false` のとき **だけ** `false` を入れる (ADR-0018)。
+   * = JS dispatch (拡張 / ページスクリプト) による合成打鍵。信頼された打鍵では省略するので、
+   * 通常タイピングのイベント data は従来とバイト一致する (hash 不変・加算的)。本フィールドは
+   * keystroke event の `data` 経由で hash chain に焼かれるため改ざん耐性がある (剥がせない)。
+   * **限界**: CDP `Input.dispatchKeyEvent` やハード注入は isTrusted=true なので捕捉できない (部分的)。
+   */
+  isTrusted?: boolean;
 }
 
 // ============================================================================

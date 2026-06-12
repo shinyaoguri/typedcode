@@ -1,6 +1,6 @@
 # ADR-0007: 記録/試験モードで捕捉する生信号を最大化し確定する
 
-- **Status**: Accepted (実装済み・develop マージ済み)
+- **Status**: Accepted (実装済み・develop マージ済み。捕捉信号に合成打鍵の `isTrusted` を追補 = ADR-0018)
 - **Date**: 2026-06-05 (Accepted: 2026-06-08)
 - **Deciders**: (PR 上の合意者 / レビュアー)
 - **PR / Commit**: develop マージ済み

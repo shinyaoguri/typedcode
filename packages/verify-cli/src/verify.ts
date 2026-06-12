@@ -52,6 +52,8 @@ export interface CLIVerificationResult {
   mode: VerificationMode;
   poswSkipped: boolean;
   signedCheckpoints: FullVerificationResult['signedCheckpoints'];
+  /** root がサーバアンカーされているか (ADR-0017) */
+  rootAnchored: boolean;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
   analysis: AnalysisReport;
   /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
@@ -64,6 +66,10 @@ export interface VerifyProofOptions {
   examPackageManifest?: ExamPackageManifest;
   /** Moodle 提出時刻 (epoch ms, 任意)。time-box の withinWindow 判定に使う。 */
   submittedAtMs?: number;
+  /** anchoring 密度 gate (ADR-0016)。true で密度が疎な proof を fail させる (採点 opt-in)。 */
+  requireAnchorDensity?: boolean;
+  /** root アンカー必須 (ADR-0017)。true で root 未アンカー (serverNonce トークン無し) を fail させる (採点 opt-in)。 */
+  requireRootAnchor?: boolean;
 }
 
 export async function verifyProof(
@@ -84,7 +90,11 @@ export async function verifyProof(
   };
 
   // Run verification using shared utilities
-  const result = await verifyProofFile(proof, onProgress, { mode });
+  const result = await verifyProofFile(proof, onProgress, {
+    mode,
+    requireAnchorDensity: options.requireAnchorDensity,
+    requireRootAnchor: options.requireRootAnchor,
+  });
 
   progressBar.complete();
 
@@ -142,6 +152,7 @@ export async function verifyProof(
     mode,
     poswSkipped: result.poswSkipped ?? false,
     signedCheckpoints: result.signedCheckpoints,
+    rootAnchored: result.rootAnchored ?? false,
     analysis,
     exam,
   };

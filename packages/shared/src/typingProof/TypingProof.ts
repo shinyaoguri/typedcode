@@ -30,6 +30,7 @@ import type {
   PendingEventData,
   ExamOpenedEventData,
   ExamSessionContext,
+  SessionStartToken,
 } from '../types.js';
 import { PROOF_FORMAT_VERSION } from '../version.js';
 import { buildExamProofBlock } from '../exam/examPackage.js';
@@ -56,6 +57,13 @@ export class TypingProof {
    * `exportProof` で proof の `exam` ブロックを組み立てるのに使う。casual では null。
    */
   examContext: ExamSessionContext | null = null;
+
+  /**
+   * セッション開始トークン (ADR-0017)。casual/class で session/start が成功し
+   * `initializeAnchored` で root をアンカーしたときに確定する。`exportProof` で proof に焼く。
+   * 未取得 (オフライン劣化 / exam / 旧経路) では null。
+   */
+  sessionStartToken: SessionStartToken | null = null;
   private recordQueue: Promise<RecordEventResult> = Promise.resolve({ hash: '', index: -1 });
   private queuedEventCount: number = 0;
 
@@ -169,6 +177,39 @@ export class TypingProof {
     this.poswManager.initWorker(externalWorker);
 
     sharedDebugLog('[TypingProof] Initialized in exam mode (root bound to packageHash + startToken)');
+
+    this.initialized = true;
+  }
+
+  /**
+   * セッション開始トークン (ADR-0017) でチェーン根をサーバアンカーして初期化する (casual/class)。
+   * casual の `initialize` と異なり root を
+   *   SHA-256(fingerprintHash ‖ localNonce ‖ serverNonce)
+   * で確定する。serverNonce は session/start でサーバが署名トークンに焼いた値。exam の
+   * `initializeExam` と同じ「**サーバトークン取得後に root 確定**」フロー。
+   *
+   * session/start が不達なら呼び出し側は従来の `initialize` にフォールバックする (root 未アンカー)。
+   *
+   * @param serverNonce session/start トークンの payload.serverNonce
+   * @param sessionStartToken proof に同梱する署名済みトークン (検証器が registry で検証する)
+   */
+  async initializeAnchored(
+    fingerprintHash: string,
+    fingerprintComponents: FingerprintComponents,
+    serverNonce: string,
+    sessionStartToken: SessionStartToken,
+    externalWorker?: Worker
+  ): Promise<void> {
+    this.fingerprint = fingerprintHash;
+    this.fingerprintComponents = fingerprintComponents;
+    const initial = await this.hashChainManager.generateAnchoredInitialHash(fingerprintHash, serverNonce);
+    this.initialHashNonce = initial.nonce;
+    this.hashChainManager.setCurrentHash(initial.hash);
+    this.sessionStartToken = sessionStartToken;
+
+    this.poswManager.initWorker(externalWorker);
+
+    sharedDebugLog('[TypingProof] Initialized with server-anchored root (ADR-0017)');
 
     this.initialized = true;
   }
@@ -602,6 +643,17 @@ export class TypingProof {
       exported.exam = buildExamProofBlock(this.examContext);
     }
 
+    // セッション開始トークン (ADR-0017): casual/class で session/start が成功していれば焼き込む。
+    // 検証器は registry でトークンを検証し serverNonce 込みで root を再計算する。
+    // exam は独自の root 束縛 (T0) を持つため rootAnchored は付けない (概念が異なる)。
+    if (this.sessionStartToken) {
+      exported.sessionStartToken = this.sessionStartToken;
+      exported.rootAnchored = true;
+    } else if (!this.examContext) {
+      // casual/class でトークン未取得 (オフライン劣化) = root 未アンカーを明示する。
+      exported.rootAnchored = false;
+    }
+
     return exported;
   }
 
@@ -783,6 +835,7 @@ export class TypingProof {
       pendingEvents: [...this.pendingEvents],
       checkpoints: [...this.checkpointManager.getCheckpoints()],
       examContext: this.examContext,
+      sessionStartToken: this.sessionStartToken,
     };
   }
 
@@ -800,6 +853,7 @@ export class TypingProof {
       // pendingEventsは復元時に使用しないため保存しない
       checkpoints: [...this.checkpointManager.getCheckpoints()],
       examContext: this.examContext,
+      sessionStartToken: this.sessionStartToken,
     };
   }
 
@@ -812,6 +866,7 @@ export class TypingProof {
     this.hashChainManager.setCurrentHash(state.currentHash);
     this.initialHashNonce = state.initialHashNonce ?? null;
     this.examContext = state.examContext ?? null;
+    this.sessionStartToken = state.sessionStartToken ?? null;
 
     // タイムスタンプの単調増加を保証するためにstartTimeを調整
     // 最後のイベントのタイムスタンプを取得し、次のイベントがそれより大きくなるようにする

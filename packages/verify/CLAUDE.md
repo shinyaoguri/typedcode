@@ -49,7 +49,7 @@ File Selection (drag&drop / FSA API)
 `TrustCalculator.calculate` は加減点スコアではなく **issue リスト** を組み立て、`determineLevel` で `failed`(error あり) / `partial`(warning あり) / `verified`(issue なし) に落とす。issue を上げる要素:
 
 - **error**: metadata 不正、ハッシュチェーン不正、スクショ改竄、署名 cp が anchored だが invalid、exam 束縛失敗 (package 提供時)
-- **warning**: 未アンカー (署名 cp なし)、post-hoc 一括署名疑い、非ピュアタイピング (ペースト/バルク挿入)、ソース不一致、attestation 検証失敗、`screenShareOptOut`、exam だが問題パッケージ未読込、スクショ欠損
+- **warning**: 未アンカー (署名 cp なし)、post-hoc 一括署名疑い、**アンカー密度が疎 (ADR-0016, `signedCheckpointDensity.sparse`)**、**root 未サーバアンカー (ADR-0017, `!rootAnchored` かつ非 exam)**、非ピュアタイピング (ペースト/バルク挿入)、ソース不一致、attestation 検証失敗、`screenShareOptOut`、exam だが問題パッケージ未読込、スクショ欠損
 
 `VerificationController.handleComplete` のタブ status 判定と **同じ軸** を見るので、両者を揃えて変更すること (タブが緑なのに信頼バッジが警告、のような不整合を避ける)。`component` を増やしたら `ResultPanel.getComponentLabel` にラベルも追加する。
 

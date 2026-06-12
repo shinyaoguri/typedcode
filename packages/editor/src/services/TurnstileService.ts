@@ -4,6 +4,7 @@
  */
 
 import { t } from '../i18n/index.js';
+import type { SessionStartToken } from '@typedcode/shared';
 
 declare global {
   interface Window {
@@ -301,6 +302,11 @@ export interface VerificationResult {
   error?: string;
   attestation?: HumanAttestation;
   failureReason?: VerificationFailureReason;
+  /**
+   * セッション開始トークン (ADR-0017)。`options.sessionStart` を渡したとき、Turnstile 成功で
+   * サーバが発行する ECDSA 署名トークン。クライアントは serverNonce を root に焼く。
+   */
+  sessionToken?: SessionStartToken | null;
 }
 
 /** Retry configuration for network errors */
@@ -486,6 +492,59 @@ export interface TurnstileVerificationOptions {
   widgetContainer?: HTMLElement;
   /** Custom parent container to show/hide (optional) */
   parentContainer?: HTMLElement;
+  /**
+   * 指定すると Phase 3 (verify) で `/api/verify-captcha` の代わりに `/api/session/start` を呼び、
+   * serverNonce 入りの ECDSA 署名トークンを取得する (ADR-0017)。Turnstile ゲートと root アンカーと
+   * 人間ゲートを 1 リクエストで兼ねる。casual/class の作成フローで使う。
+   */
+  sessionStart?: { sessionId: string; fingerprintHash: string };
+}
+
+/**
+ * Turnstile トークンを `/api/session/start` に送り、ECDSA 署名トークンを取得する (ADR-0017)。
+ * single attempt: 失敗時は呼び出し側が degraded fallback (root 未アンカー) する (ADR-0017 (b))。
+ */
+async function requestSessionStart(
+  turnstileToken: string,
+  input: { sessionId: string; fingerprintHash: string }
+): Promise<VerificationResult> {
+  if (!API_URL) {
+    return { success: false, error: 'API not configured', failureReason: 'network_error' };
+  }
+  try {
+    const response = await fetch(`${API_URL}/api/session/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        turnstileToken,
+        sessionId: input.sessionId,
+        fingerprintHash: input.fingerprintHash,
+      }),
+    });
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `HTTP ${response.status}`,
+        failureReason: response.status === 403 || response.status === 429 ? 'challenge_failed' : 'network_error',
+      };
+    }
+    const data = (await response.json()) as { success?: boolean; token?: SessionStartToken };
+    if (!data?.success || !data.token) {
+      return { success: false, error: 'session/start did not return a token', failureReason: 'network_error' };
+    }
+    return {
+      success: true,
+      score: 1.0,
+      action: data.token.payload.action ?? undefined,
+      sessionToken: data.token,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      failureReason: 'network_error',
+    };
+  }
 }
 
 /**
@@ -607,8 +666,11 @@ export async function performTurnstileVerification(action: string, options?: Tur
   });
 
   // Phase 3: Verify - Verify token via backend (already has retry logic inside)
+  // ADR-0017: sessionStart 指定時は session/start を呼び ECDSA トークンを取得する (root アンカー)。
   phaseCallback?.('verify', 'active');
-  const result = await verifyTurnstileToken(tokenResult.token);
+  const result = options?.sessionStart
+    ? await requestSessionStart(tokenResult.token, options.sessionStart)
+    : await verifyTurnstileToken(tokenResult.token);
   phaseCallback?.('verify', result.success ? 'done' : 'error');
 
   return result;

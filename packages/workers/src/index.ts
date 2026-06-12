@@ -6,8 +6,14 @@
 import {
   handleSignCheckpoint,
   handlePublicKeys,
+  getSigningKey,
   type CheckpointEnv,
 } from './checkpoint.js';
+import {
+  createSessionStartToken,
+  validateSessionStartInput,
+  arrayBufferToHex,
+} from '@typedcode/shared/checkpoint';
 
 interface Env extends CheckpointEnv {
   TURNSTILE_SECRET_KEY: string;
@@ -433,6 +439,88 @@ async function handleVerifyAttestation(
   }
 }
 
+/**
+ * セッション開始エンドポイント (ADR-0017)。
+ *
+ * Turnstile を検証し、成功したら serverNonce を焼いた ECDSA-P256 署名トークンを発行する。
+ * クライアントは serverNonce を chain root (`SHA256(fp ‖ localNonce ‖ serverNonce)`) に焼き、
+ * proof にトークンを同梱する (検証器が registry でオフライン検証する)。これにより
+ * **Turnstile ゲート + root アンカー + 人間ゲート**を 1 リクエストで兼ね、HMAC attestation の
+ * 作成経路を置換する。署名鍵は checkpoint と同一系統 (getSigningKey)。
+ */
+async function handleSessionStart(request: Request, env: Env): Promise<Response> {
+  const origin = request.headers.get('Origin');
+  const json = (body: unknown, status: number): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin, env) },
+    });
+
+  let parsed: unknown;
+  try {
+    parsed = await request.json();
+  } catch {
+    return json({ success: false, message: 'Invalid JSON body' }, 400);
+  }
+
+  const turnstileToken = (parsed as { turnstileToken?: unknown })?.turnstileToken;
+  if (typeof turnstileToken !== 'string' || turnstileToken.length === 0) {
+    return json({ success: false, message: 'turnstileToken is required' }, 400);
+  }
+
+  // sessionId / fingerprintHash の検証 (shared の入力バリデーション)。
+  const validation = validateSessionStartInput(parsed);
+  if (!validation.ok) {
+    return json({ success: false, message: validation.reason }, 400);
+  }
+  const input = validation.input;
+
+  // Turnstile 検証 + hostname 照合 (verify-captcha と同方針)。
+  const result = await verifyTurnstile(turnstileToken, env.TURNSTILE_SECRET_KEY);
+  const hostnameOk = isTurnstileHostnameAllowed(result.hostname, env);
+  if (!result.success || !hostnameOk) {
+    if (result.success && !hostnameOk) {
+      console.warn('[session/start] Turnstile solved on disallowed hostname:', result.hostname);
+    }
+    return json({ success: false, message: 'Turnstile verification failed' }, 403);
+  }
+
+  // 署名鍵をロード (checkpoint と同一系統)。失敗詳細はサーバログのみ。
+  let signer: { keyId: string; key: CryptoKey };
+  try {
+    signer = await getSigningKey(env);
+  } catch (err) {
+    console.error('[session/start] signing key resolution failed:', err);
+    return json({ success: false, message: 'Signing key is not available' }, 500);
+  }
+
+  // serverNonce を生成し、ECDSA-P256 でトークンを署名発行。
+  const nonceBytes = new Uint8Array(32);
+  crypto.getRandomValues(nonceBytes);
+  const serverNonce = arrayBufferToHex(nonceBytes);
+  const issuedAt = new Date().toISOString();
+
+  let token;
+  try {
+    token = await createSessionStartToken(
+      input,
+      {
+        serverNonce,
+        issuedAt,
+        turnstileVerified: true,
+        hostname: result.hostname || null,
+        action: result.action ?? null,
+      },
+      { keyId: signer.keyId, privateKey: signer.key }
+    );
+  } catch (err) {
+    console.error('[session/start] token signing failed:', err);
+    return json({ success: false, message: 'Failed to issue session token' }, 500);
+  }
+
+  return json({ success: true, token }, 200);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -445,6 +533,11 @@ export default {
     // ルーティング
     if (url.pathname === '/api/verify-captcha' && request.method === 'POST') {
       return handleVerifyCaptcha(request, env);
+    }
+
+    // セッション開始トークン発行 (ADR-0017)
+    if (url.pathname === '/api/session/start' && request.method === 'POST') {
+      return handleSessionStart(request, env);
     }
 
     // 証明書検証エンドポイント

@@ -41,6 +41,8 @@ export interface VerificationOutput {
   mode?: VerificationMode;
   poswSkipped?: boolean;
   signedCheckpoints?: SignedCheckpointsVerificationResult;
+  /** root がサーバアンカーされているか (ADR-0017) */
+  rootAnchored?: boolean;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
   analysis?: AnalysisReport;
   /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
@@ -152,6 +154,15 @@ export function formatResult(result: VerificationOutput): string {
     lines.push(`Mode:        ${result.mode}`);
   }
 
+  // root のサーバアンカー (ADR-0017)。exam は独自の T0 束縛を持つため表示しない。
+  if (!result.exam?.present) {
+    if (result.rootAnchored) {
+      lines.push(`Root anchor: ${c('green', 'VERIFIED')} (server-anchored chain root)`);
+    } else {
+      lines.push(`Root anchor: ${c('yellow', 'unanchored')} (no session start token — offline fabrication possible)`);
+    }
+  }
+
   const sc = result.signedCheckpoints;
   if (sc) {
     if (!sc.anchored) {
@@ -162,6 +173,16 @@ export function formatResult(result: VerificationOutput): string {
       lines.push(`Anchoring:   ${c('green', 'VERIFIED')} (${cov.signedCount} signed checkpoints, ${pct}% coverage)`);
       if (sc.temporal?.postHocSuspected) {
         lines.push(c('yellow', '  ! Post-hoc batch signing suspected (server span << client span)'));
+      }
+      // anchoring 密度 (ADR-0016): 主張イベント数/時間に対する署名 cp の間隔。
+      if (sc.density) {
+        const gapServerSec = (sc.density.maxGapServerMs / 1000).toFixed(0);
+        lines.push(
+          c('dim', `  Density: max gap ${sc.density.maxGapEvents} events / ${gapServerSec}s, first anchor @ event ${sc.density.firstAnchorEventIndex}`)
+        );
+        if (sc.density.sparse) {
+          lines.push(c('yellow', '  ! Anchoring is sparse for the claimed session (few/late signed checkpoints)'));
+        }
       }
       if (sc.details.some((d) => d.warning === 'key-revoked-but-trusted-by-time')) {
         lines.push(c('yellow', '  ! Some envelopes signed with a key that was later revoked'));
@@ -215,6 +236,7 @@ ${c('bold', 'typedcode-verify')} - Verify TypedCode proof files
 ${c('cyan', 'Usage:')}
   typedcode-verify <file.json|file.zip> [--mode <fast|audit|full>]
                    [--exam-package <file.tcexam>] [--submitted-at <ISO>]
+                   [--require-anchor-density] [--require-root-anchor]
 
 ${c('cyan', 'Arguments:')}
   file    Path to proof file (.json) or exported archive (.zip)
@@ -229,6 +251,14 @@ ${c('cyan', 'Options:')}
                    Without it, only the self-contained exam root binding is checked.
   --submitted-at   Exam mode: submission timestamp (ISO 8601, e.g. Moodle submit time)
                    to evaluate the [releaseTime, deadline] time-box.
+  --require-anchor-density
+                   Fail (exit 1) when signed checkpoints are too sparse for the claimed
+                   session (ADR-0016) — e.g. a single end checkpoint anchoring a long
+                   chain. Off by default (sparse anchoring is only a warning).
+  --require-root-anchor
+                   Fail (exit 1) when the chain root is not server-anchored (ADR-0017) —
+                   i.e. no session start token (offline/degraded or old proof). Off by
+                   default (unanchored root is only a warning). exam proofs are exempt.
 
 ${c('cyan', 'Examples:')}
   typedcode-verify proof.json

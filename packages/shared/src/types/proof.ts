@@ -21,6 +21,7 @@ import type {
   ExamOpenedEventData,
 } from './events.js';
 import type { ExamProofBlock } from './exam.js';
+import type { SessionStartToken } from './sessionStartToken.js';
 import type {
   ScreenshotCaptureData,
   ScreenShareStartData,
@@ -173,6 +174,14 @@ export type {
   SignedCheckpointsVerificationResult,
 } from './signedCheckpoint.js';
 
+// セッション開始トークン (ADR-0017)。型本体は types/sessionStartToken.ts (browser/DOM 非依存)。
+export type {
+  SessionStartTokenPayload,
+  SessionStartTokenAlgorithm,
+  SessionStartToken,
+  SessionStartTokenVerificationResult,
+} from './sessionStartToken.js';
+
 import type { SignedCheckpointEnvelope } from './signedCheckpoint.js';
 
 /** エクスポートされる証明ファイル */
@@ -193,6 +202,16 @@ export interface ExportedProof {
   checkpoints?: CheckpointData[];  // チェックポイント（v3.2.0以降）
   /** 試験モード (ADR-0006) の束縛ブロック。exam モードで生成された proof のみ持つ */
   exam?: ExamProofBlock;
+  /**
+   * セッション開始トークン (ADR-0017)。casual/class で session/start が成功したときのみ持つ。
+   * `serverNonce` が root に焼かれ、検証器はこれを registry で検証して root をサーバアンカーする。
+   */
+  sessionStartToken?: SessionStartToken;
+  /**
+   * root がサーバアンカーされているか (ADR-0017)。`sessionStartToken` 同梱時 true。
+   * オフライン劣化 (session/start 不達) や旧 proof では false / 省略 = 検証器が「root 未アンカー」warning。
+   */
+  rootAnchored?: boolean;
   /**
    * 生成時のモード (ADR-0011)。**自己申告ラベル**であり信頼判定の根拠にはしない
    * (採点側は実証拠 — exam なら束縛・スクショ有無等 — から保証度を導く)。後方互換のため
