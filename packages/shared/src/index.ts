@@ -14,6 +14,16 @@ export { Fingerprint } from './fingerprint.js';
 // デバッグログ制御 (デフォルト off。ホスト側が dev で有効化する)
 export { setSharedDebug, isSharedDebugEnabled } from './utils/debug.js';
 
+// プロセス要約 (Phase 8 W3) — 制作過程の見どころを決定的に抽出 (中立な記述、疑い指標ではない)
+export {
+  summarizeProcess,
+  PROCESS_PAUSE_THRESHOLD_MS,
+  PROCESS_FOCUS_BURST_WINDOW_MS,
+  PROCESS_FOCUS_BURST_MIN_CHARS,
+  PROCESS_MAX_EXTERNAL_INPUT_MOMENTS,
+} from './processSummary.js';
+export type { ProcessSummary, ProcessKeyMoment, ProcessMomentKind } from './processSummary.js';
+
 // 三層保証語彙 (ADR-0020) — 実証拠から integrity / temporal / provenance を機械導出
 export { deriveAssurance, summarizeAnalysisForAssurance } from './assurance.js';
 export type {
