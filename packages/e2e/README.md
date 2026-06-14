@@ -39,6 +39,21 @@ npm run report -w @typedcode/e2e        # 直近の HTML レポート (trace 付
 ローカルで既に `npm run dev` を回している場合は `reuseExistingServer` でその
 サーバを再利用する (CI では毎回新規起動)。
 
+## CI / 環境の用意
+
+CI には `.dev.vars` も `editor/.env` も存在しない (gitignore)。`npm run setup`
+([scripts/setup-env.mjs](scripts/setup-env.mjs)) が:
+
+- Turnstile の Cloudflare **公開テストキー** (常に pass) を `editor/.env` に配置
+- checkpoint 署名鍵を**実行時に新規生成**し、秘密 JWK を `workers/.dev.vars`、
+  公開鍵を `shared/.../checkpointKeys/localKeys.ts` に書く (verifier が keyId 解決)
+
+秘密情報は一切コミットしない。**ローカルに既存の `.dev.vars` があれば何もしない**
+ので、開発者の skip-worktree な checkpoint 鍵 / Turnstile 設定を壊さない。
+
+CI ジョブは `.github/workflows/deploy.yml` の `e2e`。`deploy-preview` /
+`deploy-staging` / `deploy-production` は `[test, check, e2e]` でゲートされる。
+
 ## verify-cli の起動
 
 shared の main が raw TypeScript のため `node dist/cli.js` は動かない
