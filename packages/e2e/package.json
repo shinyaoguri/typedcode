@@ -5,6 +5,7 @@
   "type": "module",
   "description": "End-to-end browser tests: drive the real editor, export proofs, and verify them with verify-cli (round-trip oracle).",
   "scripts": {
+    "setup": "node scripts/setup-env.mjs",
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
