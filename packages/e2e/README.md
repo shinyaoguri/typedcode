@@ -90,6 +90,18 @@ shared の main が raw TypeScript のため `node dist/cli.js` は動かない
 > reload-recovery は実装の **sessionStartToken 喪失バグ** (リロードで root アンカーが落ち
 > proof が検証不能になる) を発見し、`editor` 側で修正した (editor↔shared をまたぐ統合バグ)。
 
-Phase D で敵対的パック (複数行 AI 一括投入など) / フルスクリーン (exam ゲート + .tcexam fixture) /
-Turnstile 失敗分岐 / staging カナリア / ブラウザマトリクスを追加予定。
-macOS ネイティブ全画面・実 Turnstile チャレンジ・実ディスプレイの画面共有ピッカーは手動スモーク。
+**Phase D (敵対的パック)**
+
+| ファイル | 検証内容 |
+|---|---|
+| ai-bulk-insert.spec.ts | Copilot/snippet 相当の単一編集での複数行コード投入 → Pure Typing: NO / 外部入力 / bulk として検出。打鍵は YES (区別) |
+| proof-forgery.spec.ts | export 済み proof への 5 種の偽造 (nonce/fingerprint/複製/順序入替/切り詰め) を verify-cli が全て exit 1 で拒否 |
+
+> ai-bulk-insert は実装の **検出漏れ** (executeEdits の複数行投入が insertParagraph で記録され
+> bulk 検出を素通り) を発見し `shared` で修正した。内部ペースト (自分のコード) は監査マーカーと
+> 同一内容を許可リスト化して誤検知を回避。AI 一括投入を実ブラウザで再現するため editor に
+> dev 限定フック `__tcTestInsertBlock` (本番ビルドで除去) を追加。
+
+残り (フルスクリーン = exam ゲート + .tcexam fixture / Turnstile 失敗分岐 / staging カナリア /
+ブラウザマトリクス) は今後。macOS ネイティブ全画面・実 Turnstile チャレンジ・実ディスプレイの
+画面共有ピッカーは手動スモーク。
