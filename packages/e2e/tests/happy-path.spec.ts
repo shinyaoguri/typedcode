@@ -12,14 +12,15 @@ test('casual: 打鍵→export→CLI 検証が pass する', async ({ page }) => 
   await app.openCasualFresh();
 
   const initialCount = await app.eventCount();
-  // 括弧/クォートを含む普通のコードを打鍵する。Monaco の自動閉じが 2 文字挿入を
-  // 起こすが、shared 側で editorAssist 宣言を見て auto-close の空ペアを外部入力から
-  // 除外する (autoCloseInsert.ts)。全打鍵が自分の手なら Pure Typing: YES になるべき。
-  const code = 'int add(int a, int b) {\n  return a + b;\n}\n';
+  // 括弧 `()` `{}` を含む普通のコードを打鍵する。Monaco の自動閉じ等が複数文字挿入を
+  // 起こすが、shared 側で「1 キー入力→複数文字」の正規入力を benign 扱いするので
+  // (structuralEdit.ts)、全打鍵が自分の手なら Pure Typing: YES になるべき。
+  // 短めの本体にして CI での full PoSW 再計算コストを抑える (回帰観点は括弧の有無)。
+  const code = 'int f() {\n  return 0;\n}\n';
   await app.typeCode(code);
 
   // 打鍵がエディタとイベントチェーンに反映されている。
-  expect(await app.editorValue()).toContain('int add(int a, int b)');
+  expect(await app.editorValue()).toContain('int f()');
   expect(await app.eventCount()).toBeGreaterThan(initialCount);
 
   const zipPath = await app.exportCurrentTab();

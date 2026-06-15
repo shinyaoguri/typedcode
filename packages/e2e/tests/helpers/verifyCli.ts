@@ -44,7 +44,9 @@ export function runVerifyCli(file: string, extraArgs: string[] = []): CliResult 
   const res = spawnSync(TSX_BIN, [CLI_ENTRY, file, ...extraArgs], {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
-    timeout: 90_000,
+    // full PoSW 再計算 (10,000 iter/event) は遅い CI ランナー (2 コア・他プロセスと競合) で
+    // 数分かかりうる。ローカルの数倍を見込んで余裕を取る。
+    timeout: 240_000,
   });
   if (res.error) {
     throw new Error(`verify-cli failed to spawn: ${res.error.message}`);

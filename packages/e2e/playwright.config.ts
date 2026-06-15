@@ -20,8 +20,9 @@ const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: './tests',
-  // PoSW (Web Worker でのハッシュ計算) と export が絡むためテストは重め。
-  timeout: 120_000,
+  // PoSW (Web Worker でのハッシュ計算) と export + verify-cli の full 再計算が絡むため重い。
+  // 遅い CI ランナーでも収まるよう長めに取る。
+  timeout: 300_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
   forbidOnly: isCI,
