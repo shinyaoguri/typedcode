@@ -10,7 +10,7 @@
 
 import type { AnalysisInput, AnalysisSignal, Analyzer, EvidenceRef } from '../types.js';
 import { isProhibitedInputType } from '../../typingProof/InputTypeValidator.js';
-import { isStructuralEditInsert } from '../../typingProof/structuralEdit.js';
+import { isBenignEditorInsert, isMultiLineBulkInsert } from '../../typingProof/structuralEdit.js';
 
 const ID = 'example-pure-typing';
 
@@ -20,36 +20,44 @@ export const pureTypingAnalyzer: Analyzer = {
   analyze(input: AnalysisInput): AnalysisSignal[] {
     if (input.verification.isPureTyping) return [];
 
-    // 禁止 InputType (paste/drop/yank 等) の event index を証拠として集める。
+    // 外部入力の event index を証拠として集める。
+    // - paste/drop 等の禁止 InputType (正規な editor 補完は除く)
+    // - AI/スニペットによる複数行の一括投入 (replaceContent/insertText は禁止型でないので明示的に拾う)
     const evidence: EvidenceRef[] = [];
     let pasteCount = 0;
     let dropCount = 0;
+    let bulkCount = 0;
     const events = input.proof.proof?.events ?? [];
     for (let i = 0; i < events.length; i++) {
       const event = events[i];
-      const inputType = event?.inputType;
-      // editor 整形由来の構造的編集 (括弧自動閉じ等) は外部入力の証拠に数えない (誤検知回避)。
-      if (inputType && isProhibitedInputType(inputType) && !(event && isStructuralEditInsert(event))) {
+      if (!event) continue;
+      const inputType = event.inputType;
+      if (isMultiLineBulkInsert(event)) {
+        // 複数行のコード一括投入 (Copilot/Cursor が Tab で全体投入する類)。最も注視すべき痕跡。
+        bulkCount++;
+        evidence.push({ fromEventIndex: i, note: `multiline-bulk:${inputType ?? 'insert'}` });
+      } else if (inputType && isProhibitedInputType(inputType) && !isBenignEditorInsert(event)) {
         if (inputType === 'insertFromDrop') dropCount++;
         else pasteCount++;
         evidence.push({ fromEventIndex: i, note: inputType });
       }
     }
 
-    const total = pasteCount + dropCount;
-    if (total === 0) return []; // isPureTyping=false だが禁止入力が見つからない (保守的に黙る)
+    const total = pasteCount + dropCount + bulkCount;
+    if (total === 0) return []; // isPureTyping=false だが外部入力が見つからない (保守的に黙る)
 
     return [
       {
         analyzerId: ID,
         dimension: 'transcription-topology',
-        score: 0.3, // paste/drop の存在は弱い手掛かり (判定ではない)
+        // 複数行の一括投入は強めの手掛かり、単発 paste/drop は弱い手掛かり (いずれも判定ではない)。
+        score: bulkCount > 0 ? 0.5 : 0.3,
         confidence: 0.5,
         severity: 'notice',
         evidence,
-        summary: `External input present: ${pasteCount} paste, ${dropCount} drop`,
+        summary: `External input present: ${pasteCount} paste, ${dropCount} drop, ${bulkCount} bulk insertion(s)`,
         summaryKey: 'analysis.summary.externalInput',
-        summaryParams: { paste: pasteCount, drop: dropCount },
+        summaryParams: { paste: pasteCount, drop: dropCount, bulk: bulkCount },
       },
     ];
   },

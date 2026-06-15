@@ -1,50 +1,72 @@
 import { describe, it, expect } from 'vitest';
-import { getEditorAssistDeclaration, isStructuralEditInsert } from '../structuralEdit.js';
+import {
+  getEditorAssistDeclaration,
+  isBenignEditorInsert,
+  isMultiLineBulkInsert,
+} from '../structuralEdit.js';
 import type { StoredEvent, EditorAssistDeclaration } from '../../types.js';
 
 function insert(data: unknown, inputType: string, rangeLength = 0): StoredEvent {
   return { type: 'contentChange', inputType, data, rangeLength } as unknown as StoredEvent;
 }
 
-describe('isStructuralEditInsert', () => {
-  it('discounts an auto-closed bracket pair (insertReplacementText "()")', () => {
-    expect(isStructuralEditInsert(insert('()', 'insertReplacementText'))).toBe(true);
+describe('isBenignEditorInsert', () => {
+  it('accepts an auto-closed bracket pair (insertReplacementText "()")', () => {
+    expect(isBenignEditorInsert(insert('()', 'insertReplacementText'))).toBe(true);
   });
 
-  it('discounts an auto-closed quote pair (insertReplacementText \'""\')', () => {
-    expect(isStructuralEditInsert(insert('""', 'insertReplacementText'))).toBe(true);
+  it('accepts a type-over of a single closing bracket (replaceContent ")")', () => {
+    expect(isBenignEditorInsert(insert(')', 'replaceContent', 1))).toBe(true);
   });
 
-  it('discounts a type-over of a single closing bracket (replaceContent ")")', () => {
-    expect(isStructuralEditInsert(insert(')', 'replaceContent', 1))).toBe(true);
+  it('accepts an auto-dedent that re-inserts a single brace (replaceContent "}")', () => {
+    expect(isBenignEditorInsert(insert('}', 'replaceContent', 6))).toBe(true);
   });
 
-  it('discounts an auto-dedent that re-inserts a single brace (replaceContent "}")', () => {
-    expect(isStructuralEditInsert(insert('}', 'replaceContent', 6))).toBe(true);
+  it('accepts a single-line identifier completion (Tab/IntelliSense)', () => {
+    expect(isBenignEditorInsert(insert('printf', 'insertReplacementText'))).toBe(true);
   });
 
-  it('discounts whitespace-only structural inserts', () => {
-    expect(isStructuralEditInsert(insert('\r\n    ', 'insertText'))).toBe(true);
+  it('accepts a single-line completion that contains operators and spaces', () => {
+    expect(isBenignEditorInsert(insert('result = a + b;', 'insertReplacementText'))).toBe(true);
   });
 
-  it('does NOT discount an insert that contains code (identifier)', () => {
-    expect(isStructuralEditInsert(insert('foo()', 'insertReplacementText'))).toBe(false);
+  it('accepts whitespace-only multi-line auto-indent', () => {
+    expect(isBenignEditorInsert(insert('\r\n    \r\n', 'insertText'))).toBe(true);
   });
 
-  it('does NOT discount a real paste even of pure brackets (paste is not editor-internal)', () => {
-    expect(isStructuralEditInsert(insert('()', 'insertFromPaste'))).toBe(false);
+  it('rejects a multi-line code block (AI/snippet bulk insertion)', () => {
+    expect(isBenignEditorInsert(insert('int f() {\n  return 0;\n}', 'insertReplacementText'))).toBe(false);
   });
 
-  it('does NOT discount an internal paste (handled as its own allowed type)', () => {
-    expect(isStructuralEditInsert(insert('()', 'insertFromInternalPaste'))).toBe(false);
+  it('rejects a real paste (paste is not an editor-internal insert)', () => {
+    expect(isBenignEditorInsert(insert('printf', 'insertFromPaste'))).toBe(false);
   });
 
-  it('does NOT discount an empty insert', () => {
-    expect(isStructuralEditInsert(insert('', 'insertText'))).toBe(false);
+  it('rejects an empty insert', () => {
+    expect(isBenignEditorInsert(insert('', 'insertText'))).toBe(false);
+  });
+});
+
+describe('isMultiLineBulkInsert', () => {
+  it('flags a multi-line code block inserted at once (the AI-via-Tab vector)', () => {
+    expect(isMultiLineBulkInsert(insert('int f() {\n  return 0;\n}', 'insertReplacementText'))).toBe(true);
   });
 
-  it('does NOT discount non-contentChange events', () => {
-    expect(isStructuralEditInsert({ type: 'keyDown', inputType: null, data: null } as unknown as StoredEvent)).toBe(false);
+  it('flags a multi-line replaceContent with code content', () => {
+    expect(isMultiLineBulkInsert(insert('a;\nb;', 'replaceContent', 3))).toBe(true);
+  });
+
+  it('does NOT flag whitespace-only multi-line auto-indent (no code content)', () => {
+    expect(isMultiLineBulkInsert(insert('\r\n    \r\n', 'insertText'))).toBe(false);
+  });
+
+  it('does NOT flag a single-line completion', () => {
+    expect(isMultiLineBulkInsert(insert('result = a + b;', 'insertReplacementText'))).toBe(false);
+  });
+
+  it('does NOT flag a real multi-line paste (handled as paste, not editor-internal)', () => {
+    expect(isMultiLineBulkInsert(insert('a;\nb;', 'insertFromPaste'))).toBe(false);
   });
 });
 

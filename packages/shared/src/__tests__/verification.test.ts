@@ -168,12 +168,14 @@ describe('verification utilities', () => {
     });
   });
 
-  it('recomputes metadata from events and flags bulk insertText events', () => {
+  it('recomputes metadata and flags a multi-line bulk insertText as non-pure-typing', () => {
+    // 複数行のコード一括投入 (AI/snippet) は bulk insert として数え、Pure Typing を崩す。
+    // (単一行の補完は benign 扱いになったので、ここでは複数行で検出経路を検証する。)
     const events = [
       {
         type: 'contentChange',
         inputType: 'insertText',
-        data: 'ab',
+        data: 'a\nb',
         timestamp: 10,
       },
     ] as StoredEvent[];
@@ -201,6 +203,25 @@ describe('verification utilities', () => {
     expect(verifyProofMetadata(proofData, events)).toMatchObject({
       valid: false,
       reason: 'Proof metadata mismatch for bulkInsertEvents: expected 1, got 0',
+    });
+  });
+
+  it('treats a single-line editor completion as pure typing while still counting it in bulkInsertEvents', () => {
+    // 1 キー入力 → 複数文字の正規な補完 (括弧自動閉じ・Tab 補完)。Pure Typing を崩さないが、
+    // bulkInsertEvents の申告メタデータ照合は従来どおり数える (既存 proof と後方互換)。
+    const events = [
+      { type: 'contentChange', inputType: 'insertReplacementText', data: '()', timestamp: 10 },
+    ] as StoredEvent[];
+    const proofData = {
+      metadata: {
+        totalEvents: 1, pasteEvents: 0, internalPasteEvents: 0, dropEvents: 0,
+        insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 1, totalTypingTime: 10, averageTypingSpeed: 0,
+      },
+    } as ProofData;
+    expect(verifyProofMetadata(proofData, events)).toMatchObject({
+      valid: true,
+      isPureTyping: true,
+      suspiciousBulkInsertEventIndexes: [0],
     });
   });
 

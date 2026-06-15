@@ -339,7 +339,7 @@ export const en: VerifyTranslationKeys = {
     dimensionTranscriptionTopology: 'Construction shape (transcription/authoring)',
     dimensionFocusBurst: 'Focus-loss / burst correlation',
     summary: {
-      externalInput: 'External input present: ${paste} paste, ${drop} drop',
+      externalInput: 'External input present: ${paste} paste, ${drop} drop, ${bulk} bulk insertion(s)',
     },
   },
 
