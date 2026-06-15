@@ -10,6 +10,7 @@
 
 import type { AnalysisInput, AnalysisSignal, Analyzer, EvidenceRef } from '../types.js';
 import { isProhibitedInputType } from '../../typingProof/InputTypeValidator.js';
+import { isStructuralEditInsert } from '../../typingProof/structuralEdit.js';
 
 const ID = 'example-pure-typing';
 
@@ -25,8 +26,10 @@ export const pureTypingAnalyzer: Analyzer = {
     let dropCount = 0;
     const events = input.proof.proof?.events ?? [];
     for (let i = 0; i < events.length; i++) {
-      const inputType = events[i]?.inputType;
-      if (inputType && isProhibitedInputType(inputType)) {
+      const event = events[i];
+      const inputType = event?.inputType;
+      // editor 整形由来の構造的編集 (括弧自動閉じ等) は外部入力の証拠に数えない (誤検知回避)。
+      if (inputType && isProhibitedInputType(inputType) && !(event && isStructuralEditInsert(event))) {
         if (inputType === 'insertFromDrop') dropCount++;
         else pasteCount++;
         evidence.push({ fromEventIndex: i, note: inputType });

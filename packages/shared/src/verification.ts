@@ -23,6 +23,7 @@ export {
 
 import { deterministicStringify, computeHash } from './utils/hashUtils.js';
 import { computeExamChainRoot } from './exam/examPackage.js';
+import { isStructuralEditInsert } from './typingProof/structuralEdit.js';
 import { POSW_ITERATIONS, EXAM_ROOT_BINDING_V2 } from './version.js';
 import {
   verifyProofSignedCheckpoints,
@@ -418,6 +419,11 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
   let insertEvents = 0;
   let deleteEvents = 0;
   const suspiciousBulkInsertEventIndexes: number[] = [];
+  // editor の整形挙動 (括弧自動閉じ・type-over・auto-indent) 由来の構造的編集を除いた
+  // bulk insert 数。isPureTyping の導出だけに使う (構造文字のみの挿入はコードを運べず偽造に
+  // 使えないので誤検知だけを正す)。bulkInsertEvents の申告メタデータ照合 (verifyProofMetadata)
+  // は従来どおり全 bulk を数えるので、既存 proof との後方互換と整合性チェックは保たれる。
+  let nonStructuralBulkInsertCount = 0;
 
   for (let i = 0; i < events.length; i++) {
     const event = events[i];
@@ -430,6 +436,7 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
     if (event.inputType?.startsWith('delete')) deleteEvents++;
     if (isSuspiciousBulkInsert(event)) {
       suspiciousBulkInsertEventIndexes.push(i);
+      if (!isStructuralEditInsert(event)) nonStructuralBulkInsertCount++;
     }
   }
 
@@ -452,7 +459,7 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
 
   return {
     valid: true,
-    isPureTyping: pasteEvents === 0 && dropEvents === 0 && suspiciousBulkInsertEventIndexes.length === 0,
+    isPureTyping: pasteEvents === 0 && dropEvents === 0 && nonStructuralBulkInsertCount === 0,
     recomputedMetadata,
     suspiciousBulkInsertEventIndexes,
   };

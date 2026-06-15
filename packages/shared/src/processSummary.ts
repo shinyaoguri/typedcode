@@ -15,6 +15,7 @@
 import type { StoredEvent } from './types/proof.js';
 import type { CodeExecutionEventData, FocusChangeData, ReflectionNoteData } from './types/events.js';
 import { isProhibitedInputType } from './typingProof/InputTypeValidator.js';
+import { isStructuralEditInsert } from './typingProof/structuralEdit.js';
 
 /** 編集の停止 (考え中) とみなす contentChange 間ギャップの下限。 */
 export const PROCESS_PAUSE_THRESHOLD_MS = 10_000;
@@ -266,7 +267,11 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
         break;
     }
 
-    if (event.inputType && isProhibitedInputType(event.inputType)) {
+    if (
+      event.inputType &&
+      isProhibitedInputType(event.inputType) &&
+      !isStructuralEditInsert(event)
+    ) {
       externalInputCount++;
       if (externalMoments.length < PROCESS_MAX_EXTERNAL_INPUT_MOMENTS) {
         externalMoments.push({
