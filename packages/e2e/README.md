@@ -79,6 +79,17 @@ shared の main が raw TypeScript のため `node dist/cli.js` は動かない
 | 4 | tab-switch.spec.ts | フォーカス喪失→復帰 → focusChange 記録・focus loss 計上 |
 | 7 | synthetic-keystroke.spec.ts | 合成打鍵に isTrusted=false が付く (ADR-0018)・信頼打鍵には付かない |
 
-Phase C 以降でフルスクリーン/画面共有/Turnstile 分岐/リロード復元/モードルーティング、
-Phase D で敵対的パック (複数行 AI 一括投入など) / staging カナリア / ブラウザマトリクスを追加予定
-(設計の全体像は本リポジトリの方針メモを参照)。
+**Phase C (モード/復元/メディア)**
+
+| ファイル | 検証内容 |
+|---|---|
+| mode-routing.spec.ts | `/`・未知パスはランディング (エディタ非初期化・4カード)、`/casual` は明示ルート、カードから遷移 |
+| reload-recovery.spec.ts | 編集→リロード→復元→追記→export、チェーンがリロードをまたいで検証 pass |
+| screen-share.spec.ts | 画面共有有効化 → screenShareStart + スクショ記録 → ZIP に screenshots/ → 検証 pass |
+
+> reload-recovery は実装の **sessionStartToken 喪失バグ** (リロードで root アンカーが落ち
+> proof が検証不能になる) を発見し、`editor` 側で修正した (editor↔shared をまたぐ統合バグ)。
+
+Phase D で敵対的パック (複数行 AI 一括投入など) / フルスクリーン (exam ゲート + .tcexam fixture) /
+Turnstile 失敗分岐 / staging カナリア / ブラウザマトリクスを追加予定。
+macOS ネイティブ全画面・実 Turnstile チャレンジ・実ディスプレイの画面共有ピッカーは手動スモーク。

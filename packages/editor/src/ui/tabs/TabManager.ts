@@ -1171,6 +1171,8 @@ export class TabManager {
       }
 
       // 3. SerializedProofStateを構築（pendingEventsは復元しない）
+      // sessionStartToken (ADR-0017) を必ず引き継ぐ。落とすと casual/class の
+      // サーバアンカーが失われ、リロード後の proof が root 不一致で検証不能になる。
       const proofState: SerializedProofState = {
         events,
         currentHash,
@@ -1178,6 +1180,7 @@ export class TabManager {
         startTime: lightweightTab.proofState.startTime,
         checkpoints: lightweightTab.proofState.checkpoints,
         examContext: lightweightTab.proofState.examContext,
+        sessionStartToken: lightweightTab.proofState.sessionStartToken ?? null,
       };
 
       // 4. TypingProofを復元

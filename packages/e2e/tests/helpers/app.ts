@@ -42,6 +42,41 @@ export class EditorApp {
   }
 
   /**
+   * IndexedDB 同期と PoSW キューの掃けを待つ。リロード前に呼ぶことで、未 flush の
+   * イベントが取り残されてチェーンが途切れるのを防ぐ (打鍵直後の即リロード対策)。
+   */
+  async waitForSynced(): Promise<void> {
+    await expect(this.page.locator('#sync-status-item')).toHaveClass(/synced/, { timeout: 30_000 });
+    // event-count が 2 回連続で同じ = PoSW キューが掃けてチェーン確定。
+    let prev = -1;
+    for (let i = 0; i < 30; i++) {
+      const c = await this.eventCount();
+      if (c === prev) return;
+      prev = c;
+      await this.page.waitForTimeout(300);
+    }
+  }
+
+  /**
+   * ページをリロードして前回セッションを復元する。リロード時は通常 sessionStorage 経由で
+   * 自動復元されるが、復元モーダル (#session-recovery-overlay) が出た場合は「再開する」を押す。
+   * リロード前に同期完了を待ち、未 flush イベントの取り残しを防ぐ。
+   */
+  async reloadAndResume(): Promise<void> {
+    await this.waitForSynced();
+    await this.page.reload();
+    const resume = this.page.locator('#session-resume-btn');
+    try {
+      await resume.waitFor({ state: 'visible', timeout: 5_000 });
+      await resume.click();
+    } catch {
+      /* 自動復元 (モーダル無し) */
+    }
+    await this.page.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible' });
+    await expect.poll(() => this.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
+  }
+
+  /**
    * エディタに実キーストロークで入力する。Playwright の keyboard は CDP 経由で
    * isTrusted=true の本物のイベントを発火するので、信頼打鍵として記録される。
    */
@@ -113,6 +148,17 @@ export class EditorApp {
     await this.page.waitForTimeout(200);
   }
 
+  /**
+   * casual の「画面共有を有効にする」バナーを押して画面共有を開始する。
+   * fake-media フラグ (playwright.config) により getDisplayMedia は monitor の
+   * fake ストリームを返すので、ピッカー無しで本物のキャプチャ経路が回る。
+   */
+  async enableScreenShare(): Promise<void> {
+    const btn = this.page.locator('#screen-share-opt-out-banner .banner-btn');
+    await btn.waitFor({ state: 'visible', timeout: 10_000 });
+    await btn.click();
+  }
+
   /** 新規タブを追加する。 */
   async addTab(): Promise<void> {
     const before = await this.page.locator('#editor-tabs .editor-tab, #editor-tabs [role="tab"]').count();
@@ -167,6 +213,13 @@ export async function listProofEntries(zipPath: string): Promise<string[]> {
   const buf = await readFileBuffer(zipPath);
   const zip = await JSZip.loadAsync(buf);
   return Object.keys(zip.files).filter((n) => n.endsWith('_proof.json'));
+}
+
+/** ZIP 内の全エントリ名一覧 (screenshots/ の有無確認などに使う)。 */
+export async function listZipEntries(zipPath: string): Promise<string[]> {
+  const buf = await readFileBuffer(zipPath);
+  const zip = await JSZip.loadAsync(buf);
+  return Object.keys(zip.files);
 }
 
 /**
