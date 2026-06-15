@@ -23,7 +23,7 @@ export {
 
 import { deterministicStringify, computeHash } from './utils/hashUtils.js';
 import { computeExamChainRoot } from './exam/examPackage.js';
-import { isBenignEditorInsert } from './typingProof/structuralEdit.js';
+import { isBenignEditorInsert, isFlaggedBulkInsert, collectInternalPasteContents } from './typingProof/structuralEdit.js';
 import { POSW_ITERATIONS, EXAM_ROOT_BINDING_V2 } from './version.js';
 import {
   verifyProofSignedCheckpoints,
@@ -419,12 +419,15 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
   let insertEvents = 0;
   let deleteEvents = 0;
   const suspiciousBulkInsertEventIndexes: number[] = [];
-  // 「1 キー入力 → 複数文字」の正規な editor 挿入 (括弧自動閉じ・type-over・auto-indent・
-  // 単一行補完) を除いた bulk insert 数。isPureTyping の導出だけに使う。AI による複数行の
-  // 一括投入はここに残るので Pure Typing を崩す (= 検出される)。bulkInsertEvents の申告
-  // メタデータ照合 (verifyProofMetadata) は従来どおり全 bulk を数えるので、既存 proof との
-  // 後方互換と整合性チェックは保たれる。
+  // isPureTyping を崩す「正規でない bulk 挿入」の数。2 種を拾う:
+  //  (a) 従来の suspicious bulk (insertReplacementText/replaceContent/insertText>1/大内部ペースト)
+  //      のうち、括弧自動閉じ・単一行補完などの benign を除いたもの。
+  //  (b) 複数行の実コード一括投入 (AI/snippet)。Monaco は insertParagraph で記録するため
+  //      (a) の suspicious 判定には載らないので別途拾う。空白のみの auto-indent は除外。
+  // bulkInsertEvents の申告メタデータ照合 (verifyProofMetadata) は従来どおり suspicious のみ
+  // 数えるので、既存 proof との後方互換と整合性チェックは保たれる。
   let nonBenignBulkInsertCount = 0;
+  const internalPasteContents = collectInternalPasteContents(events);
 
   for (let i = 0; i < events.length; i++) {
     const event = events[i];
@@ -435,9 +438,11 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
     if (event.inputType === 'insertFromDrop') dropEvents++;
     if (event.type === 'contentChange' && event.data) insertEvents++;
     if (event.inputType?.startsWith('delete')) deleteEvents++;
-    if (isSuspiciousBulkInsert(event)) {
-      suspiciousBulkInsertEventIndexes.push(i);
-      if (!isBenignEditorInsert(event)) nonBenignBulkInsertCount++;
+
+    const suspicious = isSuspiciousBulkInsert(event);
+    if (suspicious) suspiciousBulkInsertEventIndexes.push(i);
+    if ((suspicious && !isBenignEditorInsert(event)) || isFlaggedBulkInsert(event, internalPasteContents)) {
+      nonBenignBulkInsertCount++;
     }
   }
 

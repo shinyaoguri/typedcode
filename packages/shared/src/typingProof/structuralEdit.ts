@@ -25,11 +25,16 @@ import type { StoredEvent, EditorAssistDeclaration } from '../types.js';
 /** 構造文字: 括弧・クォート・空白。これらだけなら「内容 (コード)」を運べない。 */
 const STRUCTURAL_CHARS = /^[()\[\]{}<>"'`\s]+$/;
 
-/** editor 内部由来の挿入/置換 inputType (実ペースト/ドロップは含めない)。 */
+/**
+ * editor 内部由来の挿入/置換 inputType (実ペースト/ドロップは含めない)。
+ * `insertParagraph` は Monaco が「複数行テキストの単一挿入」(auto-indent 展開・AI/snippet の
+ * 一括投入・programmatic insertText) に付ける。空白のみなら benign、コードを含めば bulk。
+ */
 const EDITOR_INTERNAL_INSERT: ReadonlySet<string> = new Set([
   'insertText',
   'insertReplacementText',
   'replaceContent',
+  'insertParagraph',
 ]);
 
 function isEditorInternalInsert(event: StoredEvent): boolean {
@@ -80,4 +85,34 @@ export function isMultiLineBulkInsert(event: StoredEvent): boolean {
   const data = event.data;
   if (typeof data !== 'string') return false;
   return /[\r\n]/.test(data) && /\S/.test(data);
+}
+
+/**
+ * events から内部ペースト (自分のコードのコピペ = 許可) の挿入内容を集める。
+ * 内部ペーストは `insertFromInternalPaste` の監査マーカー (rangeOffset==null) を伴い、
+ * 実際の挿入は別途 contentChange (複数行なら insertParagraph) として記録される。後者を
+ * AI 一括投入と取り違えないよう、監査マーカーと同一内容を許可リスト化する。
+ */
+export function collectInternalPasteContents(events: readonly StoredEvent[]): Set<string> {
+  const out = new Set<string>();
+  for (const event of events) {
+    if (event?.inputType === 'insertFromInternalPaste' && typeof event.data === 'string') {
+      out.add(event.data);
+    }
+  }
+  return out;
+}
+
+/**
+ * 複数行 bulk 挿入のうち「記録・検出すべきもの」か (内部ペーストの実挿入は除外する)。
+ * `internalPasteContents` は collectInternalPasteContents の結果を渡す。
+ */
+export function isFlaggedBulkInsert(
+  event: StoredEvent,
+  internalPasteContents: ReadonlySet<string>,
+): boolean {
+  if (!isMultiLineBulkInsert(event)) return false;
+  // 内部ペースト (自分のコード) の実挿入は許可。AI/外部の一括投入だけ残す。
+  if (typeof event.data === 'string' && internalPasteContents.has(event.data)) return false;
+  return true;
 }
