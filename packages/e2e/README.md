@@ -62,11 +62,23 @@ shared の main が raw TypeScript のため `node dist/cli.js` は動かない
 
 ## シナリオ (段階的に拡充)
 
+**Phase A (基盤 + round-trip)**
+
 | # | ファイル | 検証内容 |
 |---|---|---|
-| 1 | happy-path.spec.ts | /casual で入力 → export → CLI 検証 pass、イベント数一致 |
+| 1 | happy-path.spec.ts | /casual で入力 (括弧含む) → export → CLI 検証 pass、Pure Typing: YES |
 | 9 | multi-tab-export.spec.ts | 複数タブ ZIP export → CLI が全 proof を検証 |
 | 10 | tamper-detection.spec.ts | export 済み proof を改ざん → CLI が exit 1 (負のオラクル) |
 
-Phase B 以降でコピペ/isTrusted/フルスクリーン/画面共有/敵対的パックを追加予定
+**Phase B (入力完全性)**
+
+| # | ファイル | 検証内容 |
+|---|---|---|
+| 2 | external-paste.spec.ts | 外部クリップボードを実ペースト → insertFromPaste 記録・Pure Typing: NO |
+| 3 | internal-paste.spec.ts | 自分のコードを内部コピペ → insertFromInternalPaste (許可)・Pure Typing: YES |
+| 4 | tab-switch.spec.ts | フォーカス喪失→復帰 → focusChange 記録・focus loss 計上 |
+| 7 | synthetic-keystroke.spec.ts | 合成打鍵に isTrusted=false が付く (ADR-0018)・信頼打鍵には付かない |
+
+Phase C 以降でフルスクリーン/画面共有/Turnstile 分岐/リロード復元/モードルーティング、
+Phase D で敵対的パック (複数行 AI 一括投入など) / staging カナリア / ブラウザマトリクスを追加予定
 (設計の全体像は本リポジトリの方針メモを参照)。

@@ -60,6 +60,59 @@ export class EditorApp {
     return text.replace(/[\u00a0\u200b]/g, " ");
   }
 
+  /** OS 依存のコピペ修飾キー (mac=Meta, それ以外=Control)。 */
+  private get modifier(): 'Meta' | 'Control' {
+    return process.platform === 'darwin' ? 'Meta' : 'Control';
+  }
+
+  /**
+   * 外部由来テキストをクリップボードに置き、エディタに実ペースト (Cmd/Ctrl+V) する。
+   * Monaco/InputDetector は DOM の paste イベントで検出するので insertFromPaste として記録される。
+   */
+  async pasteExternalText(text: string): Promise<void> {
+    await this.page.evaluate((t) => navigator.clipboard.writeText(t), text);
+    await this.focusEditor();
+    await this.page.keyboard.press(`${this.modifier}+V`);
+  }
+
+  /** 全選択 → コピー → 末尾へ移動 → ペースト (内部ペースト = insertFromInternalPaste 経路)。 */
+  async selectAllCopyPaste(): Promise<void> {
+    await this.focusEditor();
+    await this.page.keyboard.press(`${this.modifier}+A`);
+    await this.page.keyboard.press(`${this.modifier}+C`);
+    await this.page.keyboard.press(`${this.modifier}+ArrowDown`);
+    await this.page.keyboard.press('End');
+    await this.page.keyboard.press('Enter');
+    await this.page.keyboard.press(`${this.modifier}+V`);
+  }
+
+  /**
+   * 合成キーストローク (ADR-0018) を注入する。`page.evaluate` で `dispatchEvent` する
+   * KeyboardEvent は `isTrusted=false` になるので、KeystrokeTracker が `data.isTrusted=false`
+   * を載せて記録する。実際の文字入力は起きない (合成イベントは値を変えない)。
+   */
+  async injectSyntheticKeystroke(key: string): Promise<void> {
+    await this.focusEditor();
+    await this.page.evaluate((k) => {
+      const target = document.querySelector('.monaco-editor textarea') ?? document.activeElement ?? document.body;
+      for (const type of ['keydown', 'keyup'] as const) {
+        target.dispatchEvent(new KeyboardEvent(type, { key: k, bubbles: true, cancelable: true }));
+      }
+    }, key);
+  }
+
+  /**
+   * タブ切替によるフォーカス喪失→復帰を再現する。headless では別タブを前面化しても
+   * window blur が発火しないため、ブラウザがタブ切替時に出すのと同じ `blur`/`focus`
+   * イベントを window に発火させて VisibilityTracker の記録経路を検証する。
+   */
+  async simulateFocusLossAndReturn(): Promise<void> {
+    await this.page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await this.page.waitForTimeout(200);
+    await this.page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await this.page.waitForTimeout(200);
+  }
+
   /** 新規タブを追加する。 */
   async addTab(): Promise<void> {
     const before = await this.page.locator('#editor-tabs .editor-tab, #editor-tabs [role="tab"]').count();
@@ -136,6 +189,26 @@ export async function extractProofJson(
   const dest = join(dir, mutate ? 'tampered_proof.json' : 'clean_proof.json');
   await writeFile(dest, JSON.stringify(proof));
   return dest;
+}
+
+/** proof イベント 1 件 (ホワイトボックス assert 用の緩い型)。 */
+export interface ProofEvent {
+  type: string;
+  inputType?: string | null;
+  data?: unknown;
+  [k: string]: unknown;
+}
+
+/** ZIP 内の最初の proof.json から events 配列を読み出す (イベント種別/isTrusted の検証用)。 */
+export async function readProofEvents(zipPath: string): Promise<ProofEvent[]> {
+  const buf = await readFileBuffer(zipPath);
+  const zip = await JSZip.loadAsync(buf);
+  const entryName = Object.keys(zip.files).find((n) => n.endsWith('_proof.json'));
+  if (!entryName) throw new Error(`no *_proof.json in ${zipPath}`);
+  const proof = JSON.parse(await zip.files[entryName]!.async('string')) as {
+    proof?: { events?: ProofEvent[] };
+  };
+  return proof.proof?.events ?? [];
 }
 
 async function readFileBuffer(path: string): Promise<Buffer> {
