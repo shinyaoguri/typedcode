@@ -216,6 +216,23 @@ describe('summarizeProcess — moments', () => {
     expect(s.reflectionNotes).toEqual([]);
   });
 
+  it('counts a multi-line bulk insertion (AI/snippet via Tab) as external input', () => {
+    const s = summarizeProcess([
+      insert(0, 'a'),
+      makeEvent({ type: 'contentChange', timestamp: 100, inputType: 'insertReplacementText', data: 'int f() {\n  return 0;\n}', rangeLength: 0 }),
+    ]);
+    expect(s.externalInputCount).toBe(1);
+    expect(s.moments.find((x) => x.kind === 'external-input')?.fromEventIndex).toBe(1);
+  });
+
+  it('does not count single-line editor completions (brackets / Tab) as external input', () => {
+    const s = summarizeProcess([
+      makeEvent({ type: 'contentChange', timestamp: 0, inputType: 'insertReplacementText', data: '()', rangeLength: 0 }),
+      makeEvent({ type: 'contentChange', timestamp: 50, inputType: 'insertReplacementText', data: 'printf', rangeLength: 0 }),
+    ]);
+    expect(s.externalInputCount).toBe(0);
+  });
+
   it('does not count internal paste (allowed input) as external input', () => {
     const s = summarizeProcess([
       makeEvent({ type: 'contentChange', timestamp: 0, inputType: 'insertFromInternalPaste', data: 'own code', rangeLength: 0 }),

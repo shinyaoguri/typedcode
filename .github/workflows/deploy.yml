@@ -85,11 +85,49 @@ jobs:
         run: npm run deploy:production -w @typedcode/workers -- --dry-run --outdir /tmp/wrangler-dryrun-production
 
   # --------------------------------------------------------------------
+  # E2E (ブラウザ round-trip): 実物のエディタを動かして証明を出力し verify-cli で検証する。
+  # workers(wrangler dev) + editor(vite dev) を Playwright が起動。Turnstile は
+  # Cloudflare 公開テストキー、checkpoint 署名鍵は実行時に新規生成 (秘密はコミットしない)。
+  # コピペ/フルスクリーン等のブラウザ依存挙動もここで自動検証していく。
+  # --------------------------------------------------------------------
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      - name: Provision E2E env (test keys + 生成 checkpoint 鍵)
+        run: npm run setup -w @typedcode/e2e
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E (editor → export → verify-cli round-trip)
+        run: npm run test -w @typedcode/e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            packages/e2e/playwright-report/
+            packages/e2e/test-results/
+          retention-days: 7
+
+  # --------------------------------------------------------------------
   # PR: Pages プレビューデプロイ (Workers は触らない)
   # PR ビルドは staging API を指す。
   # --------------------------------------------------------------------
   deploy-preview:
-    needs: [test, check]
+    needs: [test, check, e2e]
     # head_ref != 'develop' で `develop → main` の PR (= PR #60 など) を除外する。
     # この種類の PR では develop push 起因の deploy-staging が `develop.<project>.pages.dev`
     # にデプロイするのと URL が衝突するため、PR 側の preview は走らせない。
@@ -242,7 +280,7 @@ jobs:
   # 自動デプロイ。承認ゲートなし。
   # --------------------------------------------------------------------
   deploy-staging:
-    needs: [test, check]
+    needs: [test, check, e2e]
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
@@ -297,7 +335,7 @@ jobs:
   # GitHub Environment "production" の Required reviewers で承認待ち。
   # --------------------------------------------------------------------
   deploy-production:
-    needs: [test, check]
+    needs: [test, check, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
