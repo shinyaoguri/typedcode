@@ -148,6 +148,17 @@ export class EditorApp {
     await this.page.waitForTimeout(200);
   }
 
+  /**
+   * casual の「画面共有を有効にする」バナーを押して画面共有を開始する。
+   * fake-media フラグ (playwright.config) により getDisplayMedia は monitor の
+   * fake ストリームを返すので、ピッカー無しで本物のキャプチャ経路が回る。
+   */
+  async enableScreenShare(): Promise<void> {
+    const btn = this.page.locator('#screen-share-opt-out-banner .banner-btn');
+    await btn.waitFor({ state: 'visible', timeout: 10_000 });
+    await btn.click();
+  }
+
   /** 新規タブを追加する。 */
   async addTab(): Promise<void> {
     const before = await this.page.locator('#editor-tabs .editor-tab, #editor-tabs [role="tab"]').count();
@@ -202,6 +213,13 @@ export async function listProofEntries(zipPath: string): Promise<string[]> {
   const buf = await readFileBuffer(zipPath);
   const zip = await JSZip.loadAsync(buf);
   return Object.keys(zip.files).filter((n) => n.endsWith('_proof.json'));
+}
+
+/** ZIP 内の全エントリ名一覧 (screenshots/ の有無確認などに使う)。 */
+export async function listZipEntries(zipPath: string): Promise<string[]> {
+  const buf = await readFileBuffer(zipPath);
+  const zip = await JSZip.loadAsync(buf);
+  return Object.keys(zip.files);
 }
 
 /**

@@ -45,7 +45,18 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: [
+            // getDisplayMedia (画面共有) を headless でも自動許可・自動ソース選択する。
+            // ピッカー UI を出さず本物の MediaStream を得てキャプチャ経路を検証する。
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
+            '--auto-select-desktop-capture-source=Entire screen',
+          ],
+        },
+      },
     },
   ],
 
