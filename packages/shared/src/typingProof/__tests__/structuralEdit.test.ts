@@ -3,6 +3,8 @@ import {
   getEditorAssistDeclaration,
   isBenignEditorInsert,
   isMultiLineBulkInsert,
+  isFlaggedBulkInsert,
+  collectInternalPasteContents,
 } from '../structuralEdit.js';
 import type { StoredEvent, EditorAssistDeclaration } from '../../types.js';
 
@@ -43,6 +45,14 @@ describe('isBenignEditorInsert', () => {
     expect(isBenignEditorInsert(insert('printf', 'insertFromPaste'))).toBe(false);
   });
 
+  it('accepts a whitespace-only insertParagraph (auto-indent expansion)', () => {
+    expect(isBenignEditorInsert(insert('\r\n      ', 'insertParagraph'))).toBe(true);
+  });
+
+  it('rejects a code-bearing insertParagraph (AI/snippet multi-line block)', () => {
+    expect(isBenignEditorInsert(insert('x = 1;\n  y = 2;', 'insertParagraph'))).toBe(false);
+  });
+
   it('rejects an empty insert', () => {
     expect(isBenignEditorInsert(insert('', 'insertText'))).toBe(false);
   });
@@ -67,6 +77,37 @@ describe('isMultiLineBulkInsert', () => {
 
   it('does NOT flag a real multi-line paste (handled as paste, not editor-internal)', () => {
     expect(isMultiLineBulkInsert(insert('a;\nb;', 'insertFromPaste'))).toBe(false);
+  });
+
+  it('flags a code-bearing insertParagraph (programmatic / AI multi-line insertion)', () => {
+    expect(isMultiLineBulkInsert(insert('int r = a * b;\n  return r;', 'insertParagraph'))).toBe(true);
+  });
+
+  it('does NOT flag a whitespace-only insertParagraph (auto-indent has no code)', () => {
+    expect(isMultiLineBulkInsert(insert('\r\n    \r\n', 'insertParagraph'))).toBe(false);
+  });
+});
+
+describe('isFlaggedBulkInsert (内部ペースト除外)', () => {
+  const code = 'int helper = 7;\r\n';
+
+  it('flags an AI/external multi-line block when no internal-paste audit matches', () => {
+    expect(isFlaggedBulkInsert(insert(code, 'insertParagraph'), new Set())).toBe(true);
+  });
+
+  it('does NOT flag a multi-line insert whose content matches an internal-paste audit', () => {
+    const internal = new Set([code]);
+    expect(isFlaggedBulkInsert(insert(code, 'insertParagraph'), internal)).toBe(false);
+  });
+
+  it('collectInternalPasteContents gathers insertFromInternalPaste data', () => {
+    const events = [
+      insert('a', 'insertText'),
+      insert(code, 'insertFromInternalPaste'),
+    ];
+    const set = collectInternalPasteContents(events as never);
+    expect(set.has(code)).toBe(true);
+    expect(set.size).toBe(1);
   });
 });
 

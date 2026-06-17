@@ -159,6 +159,21 @@ export class EditorApp {
     await btn.click();
   }
 
+  /**
+   * Copilot/Cursor や snippet 展開のように「1 つの編集でコード全体を一気に投入する」挙動を
+   * 再現する。dev 限定テストフック (__tcTestInsertBlock) 経由で Monaco の executeEdits を
+   * 1 回だけ適用するので、複数行が単一の contentChange (insertParagraph) として記録される。
+   * 通常のキー入力では Monaco が 1 文字ずつに分解してしまい再現できない。
+   */
+  async injectCodeBlock(code: string): Promise<void> {
+    await this.focusEditor();
+    await this.page.evaluate((text) => {
+      const fn = (window as unknown as { __tcTestInsertBlock?: (t: string) => void }).__tcTestInsertBlock;
+      if (!fn) throw new Error('__tcTestInsertBlock not available (dev hook missing)');
+      fn(text);
+    }, code);
+  }
+
   /** 新規タブを追加する。 */
   async addTab(): Promise<void> {
     const before = await this.page.locator('#editor-tabs .editor-tab, #editor-tabs [role="tab"]').count();

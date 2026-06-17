@@ -215,6 +215,21 @@ const editor: MonacoEditor = monaco.editor.create(editorContainer, {
   wrappingIndent: 'indent',
 });
 
+// E2E テスト専用フック (dev ビルドのみ。本番では import.meta.env.DEV=false で除去される)。
+// Copilot/Cursor や snippet 展開のように「1 つの編集でコード全体を一気に投入する」挙動を
+// 再現するため、現在の選択位置に単一の executeEdits を適用する。通常のキー入力 API では
+// Monaco が 1 文字ずつに分解してしまい、この一括投入経路を E2E で再現できないため用意する。
+if (import.meta.env.DEV) {
+  (window as unknown as { __tcTestInsertBlock?: (text: string) => void }).__tcTestInsertBlock = (
+    text: string,
+  ) => {
+    const selection = editor.getSelection();
+    if (!selection) return;
+    editor.focus();
+    editor.executeEdits('e2e-bulk-insert', [{ range: selection, text, forceMoveMarkers: true }]);
+  };
+}
+
 // アプリケーションコンテキストの初期化
 const ctx: AppContext = {
   // Monaco Editor
