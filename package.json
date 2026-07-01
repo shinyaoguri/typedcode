@@ -22,9 +22,9 @@
     "node": ">=24"
   },
   "devDependencies": {
-    "concurrently": "^10.0.1",
+    "concurrently": "^10.0.3",
     "esbuild": "^0.28.1",
-    "wrangler": "^4.95.0"
+    "wrangler": "^4.106.0"
   },
   "overrides": {
     "vite": "^8.0.5",
