@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "concurrently": "^10.0.1",
+    "esbuild": "^0.28.1",
     "wrangler": "^4.95.0"
   },
   "overrides": {
