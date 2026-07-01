@@ -63,6 +63,15 @@
 
 → この使い分けがあるため、GitHub のマージ許可は **3 方式とも有効のまま・デフォルトのみ squash** に設定する (squash 強制にすると develop→main の merge commit ができなくなる)。
 
+### GitHub 既定ブランチ = `develop` (2026-07-02 追記)
+
+依存更新を develop に集約する運用を徹底するため、GitHub の**既定ブランチを `main` から `develop` に変更**した。理由:
+
+- **Dependabot のセキュリティ更新は常に既定ブランチへ PR を起票**し、`dependabot.yml` の `target-branch` (version update 用) では対象を変えられない。既定が `main` のままだと undici / esbuild 等のセキュリティ更新が `main` 直撃で飛び、「依存更新は develop へ」という本 ADR の方針と噛み合わなかった。
+- 既定を `develop` にすることで、**version update (`target-branch: develop`) も security update (既定ブランチ) も develop に集約**される。新規 PR の base 既定や `git clone` の初期チェックアウトも develop に揃い、「普段の着地先は develop」という実態と一致する。
+- **この変更はリリース昇格ポリシーを変えない**。`main` は依然リリース専用で、`develop → main` は merge commit + タグでのみ更新する ([[release-strategy]])。既定ブランチは Dependabot / PR / clone の初期値にすぎず、本番昇格の保留方針とは独立。
+- `dependabot.yml` 側の `target-branch: develop` (version update 用の明示ピン) は既定と一致して冗長になるが、将来既定を戻しても version update が develop に留まる保険として残置する。
+
 ## Consequences
 
 ### Positive
@@ -76,7 +85,7 @@
 
 ### Follow-ups / 残課題
 - **CONTRIBUTING.md** に日々のコマンド手順 (feature の切り方・PR・リリース・hotfix) を記述する (本 ADR の実務面)。
-- GitHub リポジトリ設定: マージ許可を 3 方式有効・デフォルト squash・squash 後 head ブランチ自動削除に揃える。
+- GitHub リポジトリ設定: マージ許可を 3 方式有効・デフォルト squash・squash 後 head ブランチ自動削除に揃える。**既定ブランチは develop に変更済み (2026-07-02、上記「GitHub 既定ブランチ」節)**。
 - branch protection (develop/main への直 push 禁止・CI 必須) の明文化は別途検討余地。
 
 ## References
