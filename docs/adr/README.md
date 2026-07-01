@@ -56,6 +56,7 @@
 | [0023](0023-analysis-platform-not-judge.md) | Accepted | 分析を判定器ではなく多様な分析手法の差込み基盤として位置づける (verify-cli `--analyzer` 外部分析器・既定は advisory 据え置き) |
 | [0024](0024-data-minimization-tiers.md) | Accepted | 目的別データ最小化ティア: 整合性は全イベント (Tier F)・分析/共有は content-free 派生物 (Tier A/S)。proof は redact しない |
 | [0025](0025-grader-cohort-baseline.md) | Accepted | 採点者向けコホート基準を content-free な分布として定義 (外れ値は triage であって違反ではない・norms は配らない) |
+| [0026](0026-lightweight-git-flow-branching.md) | Accepted | ブランチ運用を軽量 Git Flow にする (release/* を省き develop→main は merge commit・feature→develop は squash) |
 
 ## 参考
 
