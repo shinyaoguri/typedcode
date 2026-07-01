@@ -19,7 +19,7 @@
     "@typedcode/shared": "*"
   },
   "devDependencies": {
-    "@types/node": "^25.8.0",
+    "@types/node": "^26.1.0",
     "typescript": "^6.0.2"
   },
   "engines": {
