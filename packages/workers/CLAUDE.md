@@ -108,6 +108,8 @@ CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リス
 |---|---|---|
 | `CHECKPOINT_SESSIONS` | `firstSeenAt`, `lastCheckpointIndex`, `lastServerTimestamp`, `signedCount`, `lastEnvelope` (冪等用) | 7 日 |
 
+**firstSeenAt の分裂 (#151)**: KV は結果整合で他コロへの伝播に最大 ~60 秒かかる。cp 周期 (~10s) 内にコロ切替 (モバイル網等) が起きると、切替先では `existing=null` と誤認して**別の `firstSeenAt`** で署名しうる。verifier は全 envelope の firstSeenAt 完全一致を要求するため、そのまま proof に載ると正直な提出が丸ごと fail する。**緩和はクライアント側** — editor の `SignedCheckpointService` が既知の firstSeenAt と食い違う envelope を破棄してバックオフ再送する (伝播後のリトライは正しい値で署名される)。恒久対策 (Durable Object での per-session 逐次化) は W5 の ADR 課題。
+
 ## 観測性・シークレット宣言・型 (運用)
 
 `wrangler.{staging,production}.toml` に以下を宣言している (dev の `wrangler.toml` は skip-worktree なので対象外):
