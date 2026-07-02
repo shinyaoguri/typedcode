@@ -4,6 +4,7 @@
  */
 
 import type { TabManager, TabState } from './TabManager.js';
+import { escapeHtml } from '@typedcode/shared';
 import {
   getLanguageDefinition,
   FILE_EXTENSIONS,
@@ -118,7 +119,7 @@ export class TabUIController {
 
     tabEl.innerHTML = `
       ${iconHtml}
-      <span class="tab-filename">${tab.filename}</span>
+      <span class="tab-filename">${escapeHtml(tab.filename)}</span>
       <span class="tab-extension">${ext}</span>
       ${verificationIndicator}
       <button class="tab-close-btn" title="Close Tab"><i class="fas fa-times"></i></button>
