@@ -102,6 +102,18 @@ describe('handleSessionStart (POST /api/session/start)', () => {
     expect(body.token!.algorithm).toBe('ECDSA-P256');
   });
 
+  it('returns JSON 503 when the Turnstile upstream is unreachable (no uncaught 1101)', async () => {
+    // siteverify への fetch が reject する一時障害。未捕捉例外 (1101) にせず 503 で返し、
+    // editor が明示的なエラー経路 (非アンカーへのフォールバック) に乗れるようにする (#153)。
+    globalThis.fetch = (async () => {
+      throw new Error('network unreachable');
+    }) as typeof fetch;
+    const res = await worker.fetch(sessionStartReq(validBody), makeEnv());
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as SessionStartResponse;
+    expect(body.success).toBe(false);
+  });
+
   it('issues a different serverNonce on each call (nonce is server-random)', async () => {
     const a = (await (await worker.fetch(sessionStartReq(validBody), makeEnv())).json()) as SessionStartResponse;
     const b = (await (await worker.fetch(sessionStartReq(validBody), makeEnv())).json()) as SessionStartResponse;

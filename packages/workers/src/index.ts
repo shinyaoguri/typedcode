@@ -476,7 +476,16 @@ async function handleSessionStart(request: Request, env: Env): Promise<Response>
   const input = validation.input;
 
   // Turnstile 検証 + hostname 照合 (verify-captcha と同方針)。
-  const result = await verifyTurnstile(turnstileToken, env.TURNSTILE_SECRET_KEY);
+  // 上流 (Turnstile API) の fetch reject / 非 JSON 応答は未捕捉例外 (1101) にせず 503 で返す (#153)。
+  // editor は失敗時に非アンカーへフォールバックするため、一時障害を不透明な 1101 にすると
+  // 不必要にアンカーを失う。
+  let result: Awaited<ReturnType<typeof verifyTurnstile>>;
+  try {
+    result = await verifyTurnstile(turnstileToken, env.TURNSTILE_SECRET_KEY);
+  } catch (err) {
+    console.error('[session/start] Turnstile verification unavailable:', err);
+    return json({ success: false, message: 'Turnstile verification temporarily unavailable' }, 503);
+  }
   const hostnameOk = isTurnstileHostnameAllowed(result.hostname, env);
   if (!result.success || !hostnameOk) {
     if (result.success && !hostnameOk) {
@@ -521,47 +530,70 @@ async function handleSessionStart(request: Request, env: Env): Promise<Response>
   return json({ success: true, token }, 200);
 }
 
+async function route(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+
+  // CORS preflight
+  if (request.method === 'OPTIONS') {
+    return handleCORS(request, env);
+  }
+
+  // ルーティング
+  if (url.pathname === '/api/verify-captcha' && request.method === 'POST') {
+    return handleVerifyCaptcha(request, env);
+  }
+
+  // セッション開始トークン発行 (ADR-0017)
+  if (url.pathname === '/api/session/start' && request.method === 'POST') {
+    return handleSessionStart(request, env);
+  }
+
+  // 証明書検証エンドポイント
+  if (url.pathname === '/api/verify-attestation' && request.method === 'POST') {
+    return handleVerifyAttestation(request, env);
+  }
+
+  // Signed checkpoint endpoints
+  if (url.pathname === '/api/checkpoint/sign' && request.method === 'POST') {
+    const origin = request.headers.get('Origin');
+    return handleSignCheckpoint(request, env, checkpointResponder(origin, env));
+  }
+  if (url.pathname === '/api/checkpoint/public-keys' && request.method === 'GET') {
+    const origin = request.headers.get('Origin');
+    return handlePublicKeys(checkpointResponder(origin, env));
+  }
+
+  // ヘルスチェック
+  if (url.pathname === '/health') {
+    return new Response(JSON.stringify({ status: 'ok', environment: env.ENVIRONMENT }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  return new Response('Not Found', { status: 404 });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-
-    // CORS preflight
-    if (request.method === 'OPTIONS') {
-      return handleCORS(request, env);
+    // 最終防衛 (#153): 未捕捉例外を Workers の 1101 (CORS/JSON なし) に落とさない。
+    // ブラウザからは 1101 が不透明な CORS エラーに見え、意図したエラー経路に乗らない。
+    try {
+      return await route(request, env);
+    } catch (err) {
+      console.error('[worker] unhandled exception:', err);
+      // 最終防衛は絶対に throw しない: CORS ヘッダ計算 (env 参照) 自体が失敗しても
+      // JSON 500 を返す (ヘッダなしのフォールバック)。
+      let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      try {
+        const origin = request.headers.get('Origin');
+        headers = { ...headers, ...(corsHeaders(origin, env) as Record<string, string>) };
+      } catch {
+        /* env が壊れていても応答は返す */
+      }
+      return new Response(
+        JSON.stringify({ success: false, message: 'Internal server error' }),
+        { status: 500, headers }
+      );
     }
-
-    // ルーティング
-    if (url.pathname === '/api/verify-captcha' && request.method === 'POST') {
-      return handleVerifyCaptcha(request, env);
-    }
-
-    // セッション開始トークン発行 (ADR-0017)
-    if (url.pathname === '/api/session/start' && request.method === 'POST') {
-      return handleSessionStart(request, env);
-    }
-
-    // 証明書検証エンドポイント
-    if (url.pathname === '/api/verify-attestation' && request.method === 'POST') {
-      return handleVerifyAttestation(request, env);
-    }
-
-    // Signed checkpoint endpoints
-    if (url.pathname === '/api/checkpoint/sign' && request.method === 'POST') {
-      const origin = request.headers.get('Origin');
-      return handleSignCheckpoint(request, env, checkpointResponder(origin, env));
-    }
-    if (url.pathname === '/api/checkpoint/public-keys' && request.method === 'GET') {
-      const origin = request.headers.get('Origin');
-      return handlePublicKeys(checkpointResponder(origin, env));
-    }
-
-    // ヘルスチェック
-    if (url.pathname === '/health') {
-      return new Response(JSON.stringify({ status: 'ok', environment: env.ENVIRONMENT }), {
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    return new Response('Not Found', { status: 404 });
   },
 };
