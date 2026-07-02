@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { EditorApp } from './helpers/app.js';
+import { EditorApp, readProofEvents } from './helpers/app.js';
 import { runVerifyCliWithAnalysis } from './helpers/verifyCli.js';
 
 /**
@@ -35,4 +35,20 @@ test('casual: 打鍵→export→CLI 検証が pass する', async ({ page }) => 
   // ② analysis レポート (advisory) も valid を返し、ペースト由来の指摘がない。
   expect(result.analysis.length).toBeGreaterThan(0);
   expect(result.analysis[0]!.valid).toBe(true);
+
+  // ③ 起動時ワンショット信号 (#132): environmentProbe (ADR-0007 Tier0 + ADR-0019 の
+  // editorAssist 宣言) と screenShareOptOut (casual は既定オプトアウト = ADR-0015) が
+  // チェーンに載っている。EventRecorder 生成 (Phase 4.9) より前に発火して無音ドロップ
+  // していた回帰の検出器。
+  const events = await readProofEvents(zipPath);
+  const probe = events.find((e) => e.type === 'environmentProbe');
+  expect(probe, 'environmentProbe recorded at startup').toBeDefined();
+  expect(
+    (probe!.data as { editorAssist?: unknown } | undefined)?.editorAssist,
+    'editorAssist declaration present in environmentProbe',
+  ).toBeTruthy();
+  expect(
+    events.some((e) => e.type === 'screenShareOptOut'),
+    'screenShareOptOut recorded at startup (casual defaults to opt-out)',
+  ).toBe(true);
 });

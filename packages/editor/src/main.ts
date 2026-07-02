@@ -1422,6 +1422,15 @@ async function initializeApp(): Promise<void> {
     });
   });
 
+  // Phase 4.9: EventRecorder の初期化 (#132)。
+  // 必ず Phase 5 (initializeTrackers) より前に生成する。Phase 5 の recordInitial 群
+  // (environmentProbe = ADR-0007 Tier0 / editorAssist = ADR-0019 / 初期 windowResize /
+  // networkStatusChange) と Phase 5.5 の screenShareOptOut は起動時ワンショットで、
+  // recorder 未生成だと optional chaining により**無音でドロップ**し、全 proof から
+  // 永久に欠落する (「捕捉は不可逆」原則への違反)。EventRecorder は tabManager が
+  // あれば生成できるので、ここまで前倒しして問題ない (logViewer は lazy getter)。
+  initializeEventRecorder();
+
   // Phase 5: トラッカーの初期化
   initializeTrackers({
     ctx,
@@ -1447,9 +1456,8 @@ async function initializeApp(): Promise<void> {
     ctx.trackers.screenshot.emitScreenShareOptOutEvent();
   }
 
-  // Phase 6: LogViewerとEventRecorderの初期化
+  // Phase 6: LogViewerの初期化 (EventRecorder は Phase 4.9 で生成済み #132)
   initializeLogViewer(ctx);
-  initializeEventRecorder();
 
   // フルスクリーン追跡 (ADR-0008/0014、能力 fullscreenTracking)。eventRecorder 準備後に配線する。
   // exam は警告バナー + 要求ボタン (fullscreenBanner=true、ボタンが開始ジェスチャ)。
