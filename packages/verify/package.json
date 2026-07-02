@@ -6,7 +6,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@typedcode/shared": "*",
@@ -21,6 +23,7 @@
     "@types/diff": "^8.0.0",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.2",
-    "vite": "^8.1.2"
+    "vite": "^8.1.2",
+    "vitest": "^4.1.9"
   }
 }

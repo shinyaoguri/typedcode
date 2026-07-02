@@ -69,7 +69,7 @@ File Selection (drag&drop / FSA API)
 - worker が検証後に shared の `runAnalysis` を実行し `VerificationResultData.analysis` で返す。**advisory であって判定ではない** — `valid` / TrustCalculator / タブ status には一切反映しない (ここを破ると ADR-0009 の直交性が壊れる)
 - 表示は `AnalysisReportCard` (`#card-analysis`)。severity (`info`/`notice`/`review`)・score/confidence・summary に加え **evidence (event index) をボタンで出す**
 - evidence クリックは `document` に `verify:seek-to-event` CustomEvent を dispatch し、`ChartController` が `SeekbarController.seekTo(eventIndex + 1)` で当該イベント適用後の状態へジャンプする (「シグナルを見る → 現場を検分」の 1 クリック化)
-- 分析ロジックは shared に置く。verify 側に分析器を書かない (verify はテスト未整備のため)
+- 分析ロジックは shared に置く。verify 側に分析器を書かない (テストの厚みが shared 側にあるため。verify のユニットテストは #135 で導入済みだが純関数中心)
 
 ## 三層保証バッジ (ADR-0020)
 
