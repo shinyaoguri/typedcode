@@ -164,7 +164,7 @@ initialEventChainHash = SHA256(fingerprintHash + nonce + packageHash + startToke
 // v2 (N問バンドル, ADR-0012 B-2): 末尾に per-problem の problemContentHash を連結
 initialEventChainHash = SHA256(fingerprintHash + nonce + packageHash + startToken + problemContentHash)
 ```
-`problemContentHash` 省略時 (v1) は v1 とバイト一致。**現行 editor は新規 exam セッションを v2 で焼く** (旧 proof は rootBinding 未設定 = v1 とみなす)。genesis は **監督コード入力の瞬間 (= T0)**。root が `startToken` を含むためコード入力まで計算できず、セッション初期化ではなくコード入力時にルートを確定する。検証器は **`proof.exam` の有無で root 式を分岐**し、`proof.exam.rootBinding` で v1/v2 を分岐する (casual proof は従来式)。`PROOF_FORMAT_VERSION` は 1.1.0 (詳細は「試験モード」節)。
+`problemContentHash` 省略時 (v1) は v1 とバイト一致。**現行 editor は新規 exam セッションを v2 で焼く** (旧 proof は rootBinding 未設定 = v1 とみなす)。genesis は **監督コード入力の瞬間 (= T0)**。root が `startToken` を含むためコード入力まで計算できず、セッション初期化ではなくコード入力時にルートを確定する。検証器は **`proof.exam` の有無で root 式を分岐**し、`proof.exam.rootBinding` で v1/v2 を分岐する (casual proof は ADR-0017 のサーバアンカー式または従来式)。`PROOF_FORMAT_VERSION` は 1.2.0 (詳細は「試験モード」節と ADR-0017)。
 
 ### 4.3. ハッシュチェーン (Hash Chain)
 
@@ -355,7 +355,8 @@ my-code.zip
 
 ```typescript
 interface ExportedProof {
-  version: '1.0.0' | '1.1.0';       // 1.1.0 = 試験モードの root 式に対応したビルド (ADR-0006)
+  version: string;                  // 実型は string。歴代の値: 1.0.0 / 1.1.0 (exam root 式, ADR-0006) /
+                                    // 1.2.0 (session アンカー, ADR-0017)。現行ビルドは 1.2.0 を刻む
   typingProofHash: string;          // proofData 全体の SHA-256
   typingProofData: {
     finalContentHash: string;       // SHA256(最終コンテンツ)
@@ -695,7 +696,9 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `POST_HOC_RATIO_THRESHOLD` | 0.1 | `signedCheckpoints.ts` |
 | `POST_HOC_MIN_SERVER_SPAN_MS` | 60_000 | `signedCheckpoints.ts` |
 | `POST_HOC_MIN_CLIENT_SPAN_MS` | 600_000 | `signedCheckpoints.ts` |
-| `PROOF_FORMAT_VERSION` | '1.1.0' | `version.ts` (1.1.0 = 試験モードの root 式対応。casual proof も 1.1.0 を刻むが構造は不変) |
+| `PROOF_FORMAT_VERSION` | '1.2.0' | `version.ts` (1.1.0 = exam root 式 ADR-0006、1.2.0 = session アンカー ADR-0017。いずれも加算的で後方互換) |
+| `SESSION_TOKEN_FORMAT_VERSION` | 1 | `version.ts` (セッション開始トークン payload, ADR-0017) |
+| `COHORT_MIN_N` | 5 | `analysis/cohort.ts` (コホート基準の小 N ガード, ADR-0025) |
 | `STORAGE_FORMAT_VERSION` | 1 | `version.ts` |
 | `MIN_SUPPORTED_VERSION` | '1.0.0' | `version.ts` (旧 proof も検証可) |
 | `EXAM_PACKAGE_FORMAT_VERSION` | 1 | `version.ts` (`.tcexam` の formatVersion) |
