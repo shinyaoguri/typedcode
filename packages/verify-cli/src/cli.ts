@@ -22,31 +22,7 @@ import {
   type AnalysisBundle,
 } from '@typedcode/shared';
 
-/** value を取る flag。`--name value` と `--name=value` の両方を許す。`--analyzer` は反復可。 */
-const VALUE_FLAGS = new Set(['--mode', '--exam-package', '--submitted-at', '--analysis-json', '--analysis-bundle', '--analyzer']);
-
-function flagValue(args: string[], name: string): string | undefined {
-  const i = args.findIndex((a) => a === name || a.startsWith(`${name}=`));
-  if (i === -1) return undefined;
-  const arg = args[i]!;
-  return arg.startsWith(`${name}=`) ? arg.slice(name.length + 1) : args[i + 1];
-}
-
-/** 反復可能な value flag の値をすべて集める (`--analyzer a --analyzer b`)。 */
-function flagValues(args: string[], name: string): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    if (arg === name) {
-      const v = args[i + 1];
-      if (v !== undefined) out.push(v);
-      i++;
-    } else if (arg.startsWith(`${name}=`)) {
-      out.push(arg.slice(name.length + 1));
-    }
-  }
-  return out;
-}
+import { findFlagError, flagValue, flagValues, nonFlagArgs } from './args.js';
 
 function parseModeFlag(args: string[]): VerificationMode {
   const value = flagValue(args, '--mode');
@@ -55,26 +31,21 @@ function parseModeFlag(args: string[]): VerificationMode {
   throw new Error(`Invalid --mode value: ${value}. Use fast | audit | full.`);
 }
 
-function nonFlagArgs(args: string[]): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    if (VALUE_FLAGS.has(arg)) {
-      i++; // skip the flag's value
-      continue;
-    }
-    if (arg.startsWith('--')) continue; // --flag=value or boolean flag
-    out.push(arg);
-  }
-  return out;
-}
-
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
     printUsage();
     process.exit(args.length === 0 ? 1 : 0);
+  }
+
+  // 未知フラグ・タイポ・値欠落は黙殺せず usage error (#148)。
+  // タイポでセキュリティゲート (--require-root-anchor 等) が無効のまま exit 0 になるのを防ぐ。
+  const flagError = findFlagError(args);
+  if (flagError !== null) {
+    printError(flagError);
+    printUsage();
+    process.exit(1);
   }
 
   const mode = parseModeFlag(args);

@@ -13,14 +13,17 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@typedcode/shared": "*"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.9"
   },
   "engines": {
     "node": ">=24.0.0"
