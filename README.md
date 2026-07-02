@@ -40,6 +40,7 @@
 | [@typedcode/verify-cli](packages/verify-cli/) | CLI 検証ツール (Node.js ≥24) |
 | [@typedcode/shared](packages/shared/) | コアライブラリ: TypingProof / Fingerprint / 検証 / 型定義 |
 | [@typedcode/workers](packages/workers/) | Cloudflare Workers API (Turnstile 連携・チェックポイント署名) |
+| [@typedcode/e2e](packages/e2e/) | Playwright E2E テスト (実エディタで証明を生成し verify-cli で round-trip 検証) |
 
 ## ライブデモ
 

@@ -18,7 +18,8 @@ packages/
 ├── editor/     # Monaco ベースのエディタ
 ├── verify/     # 証明検証用 Web アプリ
 ├── verify-cli/ # CLI 検証ツール (Node.js ≥24)
-└── workers/    # Cloudflare Workers (Turnstile + 署名チェックポイント)
+├── workers/    # Cloudflare Workers (Turnstile + 署名チェックポイント)
+└── e2e/        # Playwright E2E (編集→export→verify-cli round-trip、CI deploy ゲート)
 ```
 
 サブシステムを触る場合は **必ず該当パッケージの `CLAUDE.md`** を読むこと。各パッケージの責務 / 境界 / 不変条件 / 罠が記述されています。
@@ -30,6 +31,7 @@ packages/
 | verify | [packages/verify/CLAUDE.md](packages/verify/CLAUDE.md) | 証明検証 UI、Worker ベースの検証 |
 | verify-cli | [packages/verify-cli/CLAUDE.md](packages/verify-cli/CLAUDE.md) | CLI 検証ツール |
 | workers | [packages/workers/CLAUDE.md](packages/workers/CLAUDE.md) | Turnstile + 署名チェックポイントの API |
+| e2e | [packages/e2e/CLAUDE.md](packages/e2e/CLAUDE.md) | ブラウザ E2E (実エディタ → 証明 export → verify-cli 検証) |
 
 ## ビルド・開発コマンド
 
@@ -51,12 +53,14 @@ npm run build:editor
 npm run build:verify
 npm run build:verify-cli
 
-# テスト (shared / workers / editor にテストあり。verify / verify-cli は未整備)
-npm run test:run -w @typedcode/shared
-npm run test:run -w @typedcode/workers
-npm run test:run -w @typedcode/editor
+# ユニットテスト (test:run を持つ全パッケージ。CI の test job も同じコマンド)
+npm run test:run --workspaces --if-present
+npm run test:run -w @typedcode/shared      # 個別実行
 npm run test:coverage -w @typedcode/shared
-# 注: CI が回すのは shared / workers (editor のテストは CI 未組込み)
+
+# E2E (Playwright。workers + editor の dev サーバを自動起動して round-trip 検証)
+npm run test -w @typedcode/e2e
+# 注: CI は「ユニット (test job) + e2e (e2e job)」を全 deploy のゲートにしている
 ```
 
 ## ドキュメント階層

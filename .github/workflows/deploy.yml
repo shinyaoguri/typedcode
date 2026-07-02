@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # 構成:
-#   test                   — どのトリガでも必ず走る (shared / workers のユニットテスト)
+#   test                   — どのトリガでも必ず走る (test:run を持つ全 workspace のユニットテスト)
 #   check                  — どのトリガでも必ず走る (全 package typecheck/build + Worker config dry-run)
 #   deploy-preview         — feature → develop PR で Pages のプレビュー URL を発行 (Workers staging 向け)
 #   comment-staging-preview— develop → main PR に staging URL をコメント (新規 preview は作らない)
@@ -34,6 +34,7 @@ jobs:
   # --------------------------------------------------------------------
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -45,11 +46,11 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=optional
 
-      - name: Run tests (shared)
-        run: npm run test:run -w @typedcode/shared
-
-      - name: Run tests (workers)
-        run: npm run test:run -w @typedcode/workers
+      # `test:run` script を持つ全 workspace を回す (#156)。パッケージ名の個別列挙だと
+      # 新パッケージのテストが CI 外に取り残される (editor がそうなっていた)。
+      # e2e は `test` のみで `test:run` を持たないため誤って拾わない。
+      - name: Run unit tests (all workspaces with test:run)
+        run: npm run test:run --workspaces --if-present
 
   # --------------------------------------------------------------------
   # 品質ゲート (merge 前に全 package を typecheck/build + Worker config 検証)
@@ -59,6 +60,7 @@ jobs:
   # --------------------------------------------------------------------
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -92,6 +94,9 @@ jobs:
   # --------------------------------------------------------------------
   e2e:
     runs-on: ubuntu-latest
+    # e2e は wrangler dev + vite dev を Playwright が起動する構成でハングの余地があり、
+    # 過去に PoSW full 検証でタイムアウト間際になった実績もある (a6079d0)。実測 ~18 分。
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -134,6 +139,7 @@ jobs:
     # 通常の feature/* → develop PR では head_ref が feature 名になるので衝突しない。
     if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && github.head_ref != 'develop'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment:
       name: staging
     permissions:
@@ -233,6 +239,7 @@ jobs:
     needs: [test, check]
     if: github.event_name == 'pull_request' && github.head_ref == 'develop' && github.base_ref == 'main'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       pull-requests: write
     steps:
@@ -283,6 +290,7 @@ jobs:
     needs: [test, check, e2e]
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment:
       name: staging
     permissions:
@@ -338,6 +346,9 @@ jobs:
     needs: [test, check, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    # 注: Environment "production" の承認待ち時間は timeout-minutes に含まれない
+    # (job 開始 = 承認後)。実行時間のみの上限。
+    timeout-minutes: 20
     environment:
       name: production
     permissions:
