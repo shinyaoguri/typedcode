@@ -219,8 +219,21 @@ export {
   parseZipBuffer,
   extractFirstProofFromZip,
   extractAllProofsFromZip,
+  extractScreenshotArtifactsFromZip,
   assertZipWithinBudget,
 } from './fileProcessing/index.js';
+
+// スクリーンショット検証 (#146/#147): verify (web) / verify-cli が同じ結論を出すための単一実装
+export {
+  sha256HexOfBytes,
+  collectChainImageHashes,
+  isChainBackedImageHash,
+  checkScreenshotImage,
+  summarizeScreenshotArtifacts,
+  type ScreenshotManifestEntryLike,
+  type ScreenshotImageCheck,
+  type ScreenshotVerificationSummary,
+} from './screenshotVerification.js';
 
 // UI共通コンポーネント
 export {

@@ -52,7 +52,9 @@ File Selection (drag&drop / FSA API)
 - **error**: metadata 不正、ハッシュチェーン不正、スクショ改竄、署名 cp が anchored だが invalid、exam 束縛失敗 (package 提供時)
 - **warning**: 未アンカー (署名 cp なし)、post-hoc 一括署名疑い、**アンカー密度が疎 (ADR-0016, `signedCheckpointDensity.sparse`)**、**root 未サーバアンカー (ADR-0017, `!rootAnchored` かつ非 exam)**、非ピュアタイピング (ペースト/バルク挿入)、ソース不一致、attestation 検証失敗、`screenShareOptOut`、exam だが問題パッケージ未読込、スクショ欠損
 
-`VerificationController.handleComplete` のタブ status 判定と **同じ軸** を見るので、両者を揃えて変更すること (タブが緑なのに信頼バッジが警告、のような不整合を避ける)。`component` を増やしたら `ResultPanel.getComponentLabel` にラベルも追加する。
+`VerificationController.handleComplete` のタブ status 判定と **同じ軸** を見るので、両者を揃えて変更すること (タブが緑なのに信頼バッジが警告、のような不整合を避ける)。`component` を増やしたら `ResultPanel.getComponentLabel` にラベルも追加する。#146 で handleComplete にスクショ改竄 (error)・スクショ欠損・`screenShareOptOut` (warning) を合流済み。attestation 失敗は `humanAttestationResult` の書き込み元が現状無い (dead) ため status 軸に入れていない。
+
+スクショの per-image 判定 (ハッシュ突合 + チェーン裏付け) の実体は **shared の `checkScreenshotImage`** (#147)。verify 側で再実装しない — verify-cli と結論が食い違うため。
 
 ## よくある罠
 

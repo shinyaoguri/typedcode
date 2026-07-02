@@ -5,6 +5,7 @@
  */
 
 import type JSZip from 'jszip';
+import { checkScreenshotImage } from '@typedcode/shared';
 import type {
   VerifyScreenshot,
   ScreenshotManifest,
@@ -51,8 +52,10 @@ export class ScreenshotService {
 
           // ハッシュ検証: 画像とハッシュが一致しても、そのハッシュがチェーンに無ければ
           // manifest+画像が揃って差し替えられた疑い (manifest は未署名・チェーンは改ざん不能)。
-          const verified = await this.verifyImageHash(blob, entry.imageHash);
-          const tampered = !verified || !this.isChainBacked(entry.imageHash, chainImageHashes);
+          // 判定は shared の単一実装 (#147: verify-cli と結論を揃える)。
+          const { verified, tampered } = await checkScreenshotImage(
+            await blob.arrayBuffer(), entry.imageHash, chainImageHashes
+          );
           console.log(`[ScreenshotService] Image ${entry.filename}: verified=${verified}, tampered=${tampered}`);
 
           // ユニークIDとしてマニフェストのindexを使用（eventSequenceは重複の可能性あり）
@@ -133,9 +136,10 @@ export class ScreenshotService {
         const file = await fileHandle.getFile();
         const blob = new Blob([await file.arrayBuffer()], { type: file.type });
 
-        // ハッシュ検証 (チェーン突合は loadFromZip と同じ。集合未提供時は従来どおり画像照合のみ)
-        const verified = await this.verifyImageHash(blob, entry.imageHash);
-        const tampered = !verified || !this.isChainBacked(entry.imageHash, chainImageHashes);
+        // ハッシュ検証 (チェーン突合は loadFromZip と同じ。判定は shared の単一実装 #147)
+        const { verified, tampered } = await checkScreenshotImage(
+          await blob.arrayBuffer(), entry.imageHash, chainImageHashes
+        );
         console.log(`[ScreenshotService] Image ${entry.filename}: verified=${verified}, tampered=${tampered}`);
 
         const screenshot: VerifyScreenshot = {
@@ -228,31 +232,6 @@ export class ScreenshotService {
       if (screenshot.imageBlob && !screenshot.imageUrl) {
         screenshot.imageUrl = URL.createObjectURL(screenshot.imageBlob);
       }
-    }
-  }
-
-  /**
-   * entry の imageHash が検証済みチェーンに記録されているか。集合が未提供 or 空 (旧 proof /
-   * screenshotCapture イベントを持たない proof 等) なら対象外とみなし true を返す (false-positive 回避)。
-   */
-  private isChainBacked(imageHash: string, chainImageHashes?: ReadonlySet<string>): boolean {
-    if (!chainImageHashes || chainImageHashes.size === 0) return true;
-    return chainImageHashes.has(imageHash);
-  }
-
-  /**
-   * 画像ハッシュを検証
-   */
-  async verifyImageHash(blob: Blob, expectedHash: string): Promise<boolean> {
-    try {
-      const buffer = await blob.arrayBuffer();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-      return hash === expectedHash;
-    } catch (error) {
-      console.error('Hash verification failed:', error);
-      return false;
     }
   }
 
