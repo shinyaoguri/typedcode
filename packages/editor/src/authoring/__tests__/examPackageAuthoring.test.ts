@@ -1,4 +1,9 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+
+// Argon2id (メモリハード KDF) を実際に回す封印/復号テストは 1 件あたり 2.5〜5 秒超かかり、
+// CI ランナーでは vitest 既定の 5000ms を恒常的に跨いでしまう (editor テストの CI 組込み
+// #155 で顕在化)。KDF の遅さは仕様 (総当たり耐性) なので、このファイルだけ余裕を持たせる。
+vi.setConfig({ testTimeout: 60_000 });
 import {
   canonicalizeStartToken,
   computeExamPackageHash,
