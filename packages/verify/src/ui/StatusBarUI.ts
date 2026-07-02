@@ -1,6 +1,7 @@
 /**
  * StatusBarUI - Bottom status bar
  */
+import { escapeHtml } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
 
 export class StatusBarUI {
@@ -13,7 +14,8 @@ export class StatusBarUI {
   }
 
   setQueueStatus(text: string, icon: string = 'check-circle'): void {
-    this.queueStatus.innerHTML = `<i class="fas fa-${icon}"></i><span>${text}</span>`;
+    // text には ZIP エントリ名やパースエラーメッセージ (攻撃者制御文字列) が入りうるため必ずエスケープする
+    this.queueStatus.innerHTML = `<i class="fas fa-${icon}"></i><span>${escapeHtml(text)}</span>`;
   }
 
   setFileCount(count: number): void {

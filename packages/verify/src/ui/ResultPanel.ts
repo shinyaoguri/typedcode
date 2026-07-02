@@ -518,7 +518,7 @@ export class ResultPanel {
         const url = URL.createObjectURL(data.imageBlob);
         codeEl.innerHTML = `
           <div class="image-preview-container">
-            <img src="${url}" alt="${data.filename}" class="image-preview" onload="URL.revokeObjectURL(this.src)" />
+            <img src="${url}" alt="${escapeHtml(data.filename)}" class="image-preview" onload="URL.revokeObjectURL(this.src)" />
           </div>
         `;
       } else {
@@ -1476,8 +1476,8 @@ export class ResultPanel {
       const iconClass = issue.severity === 'error' ? 'fa-times-circle' : 'fa-exclamation-triangle';
       issueEl.innerHTML = `
         <i class="fas ${iconClass}"></i>
-        <span class="trust-issue-component">${this.getComponentLabel(issue.component)}</span>
-        <span class="trust-issue-message">${issue.message}</span>
+        <span class="trust-issue-component">${escapeHtml(this.getComponentLabel(issue.component))}</span>
+        <span class="trust-issue-message">${escapeHtml(issue.message)}</span>
       `;
 
       issuesContainer.appendChild(issueEl);
