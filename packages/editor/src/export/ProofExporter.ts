@@ -342,10 +342,17 @@ export class ProofExporter {
       // エクスポート前に明示的に同期を取る必要がある
       await this.tabManager?.flushToIndexedDB();
 
+      // #143: 直前の打鍵がまだ PoSW キューにあると「content には載っているのに
+      // チェーンに無い」export になり content replay で fail する。先に排出を待つ。
+      const drained = await activeTab.typingProof.waitForQueueDrain(5000);
+      if (!drained) {
+        console.warn('[ProofExporter] event queue did not drain within 5s; exporting the chain-consistent snapshot');
+      }
       const content = activeTab.model.getValue();
       // exportProof() は最終 checkpoint を作成して onCheckpointCreated フックを発火する。
-      // 戻り値の checkpoints は CheckpointManager 内部配列への参照なので、後段で
-      // waitForFlush している間に signature が attach される。
+      // 戻り値の checkpoints は要素オブジェクトを CheckpointManager と共有するので、後段で
+      // waitForFlush している間に signature が attach される (#143 でスナップショット外の
+      // checkpoint は同梱されなくなったが、要素共有は変わらない)。
       const proof = await activeTab.typingProof.exportProof(content);
 
       // Signed checkpoint の pending リクエストを最大 5 秒待機 (オンライン時のみ意味あり)
@@ -516,6 +523,13 @@ export class ProofExporter {
           total: allTabs.length,
         });
 
+        // #143: waitForProcessingComplete はアクティブタブしか待たない。タブ毎に
+        // キュー排出を待ってから content を確定する (排出しきれなくてもスナップショット
+        // 一貫性で proof 自体は整合するが、直前の打鍵が export に載らない)。
+        const drained = await tab.typingProof.waitForQueueDrain(5000);
+        if (!drained) {
+          console.warn(`[ProofExporter] tab ${tab.id}: event queue did not drain within 5s`);
+        }
         const content = tab.model.getValue();
         const proof = await tab.typingProof.exportProof(content);
 
