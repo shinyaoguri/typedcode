@@ -94,6 +94,15 @@ export class SignedCheckpointService {
   private lastCheckpointIndex = -1;
   /** 直近に署名要求した eventIndex (totalEventsSincePrevious 計算用) */
   private lastEventIndex = -1;
+  /**
+   * このセッション(タブ)で確定した firstSeenAt (#151)。
+   * KV は結果整合で他コロへの伝播に最大 ~60s かかるため、cp 周期 (~10s) 内のコロ切替で
+   * サーバが existing=null と誤認し**別の firstSeenAt** で署名して返すことがある。
+   * verifier は全 envelope の firstSeenAt 完全一致を要求するので、不一致 envelope を
+   * attach すると正直な proof が丸ごと fail する。既知値と食い違う envelope は破棄して
+   * バックオフ再送する (伝播後のリトライは正しい firstSeenAt で署名される)。
+   */
+  private knownFirstSeenAt: string | null = null;
   /** online/offline リスナのデタッチ用 */
   private onlineListener: (() => void) | null = null;
   /**
@@ -161,6 +170,7 @@ export class SignedCheckpointService {
       this.previousSignedCheckpointHash = await hashSignedCheckpointPayload(last.payload);
       this.lastCheckpointIndex = last.payload.checkpointIndex;
       this.lastEventIndex = last.payload.eventIndex;
+      this.knownFirstSeenAt = last.payload.firstSeenAt;
     }
 
     // 未署名 checkpoint を queue に再投入
@@ -307,6 +317,15 @@ export class SignedCheckpointService {
         return this.handleFailure(eventIndex, entry, 'response missing envelope');
       }
       const envelope = body.envelope;
+      // #151: 既知の firstSeenAt と食い違う envelope は KV 伝播遅延の疑い。attach すると
+      // verifier の完全一致要求で proof 丸ごと fail するため、破棄して再送に回す。
+      if (this.knownFirstSeenAt !== null && envelope.payload.firstSeenAt !== this.knownFirstSeenAt) {
+        return this.handleFailure(
+          eventIndex,
+          entry,
+          `firstSeenAt mismatch (expected ${this.knownFirstSeenAt}, got ${envelope.payload.firstSeenAt}) — KV propagation lag suspected (#151), discarding envelope`
+        );
+      }
       const attached = this.attachSignature(eventIndex, envelope);
       if (!attached) {
         // checkpoint が cleanup 済み等で見つからない場合は queue から外すだけ
@@ -318,6 +337,7 @@ export class SignedCheckpointService {
       this.previousSignedCheckpointHash = await hashSignedCheckpointPayload(envelope.payload);
       this.lastCheckpointIndex = envelope.payload.checkpointIndex;
       this.lastEventIndex = envelope.payload.eventIndex;
+      if (this.knownFirstSeenAt === null) this.knownFirstSeenAt = envelope.payload.firstSeenAt;
       this.queue.delete(eventIndex);
       return true;
     } catch (err) {
