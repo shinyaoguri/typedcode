@@ -25,8 +25,13 @@ const REGISTERED_KEY_ID = 'tcp-202605-fd6d42';
 class MockKV {
   store = new Map<string, string>();
   failNextPut = false;
+  failNextGet = false;
 
   async get<T = unknown>(key: string, type?: 'json' | 'text'): Promise<T | null> {
+    if (this.failNextGet) {
+      this.failNextGet = false;
+      throw new Error('simulated KV read failure');
+    }
     const v = this.store.get(key);
     if (v === undefined) return null;
     return (type === 'json' ? (JSON.parse(v) as T) : (v as unknown as T));
@@ -301,6 +306,23 @@ describe('handleSignCheckpoint', () => {
     expect(res.status).toBe(429);
     const body = (await res.json()) as ErrorResponseBody;
     expect(body.code).toBe('SESSION_LIMIT_EXCEEDED');
+  });
+
+  it('rejects with SESSION_STATE_UNAVAILABLE when the KV read fails (must not fork firstSeenAt)', async () => {
+    // 既存セッションを固定してから read を失敗させる。read 失敗を「existing = null」と
+    // 混同すると既存セッションに別の firstSeenAt で署名し proof 全体が無効化される (#151/#153)。
+    const res1 = await handleSignCheckpoint(makeRequest(makeInput()), env, responder);
+    expect(res1.status).toBe(200);
+
+    kv.failNextGet = true;
+    const res2 = await handleSignCheckpoint(
+      makeRequest(makeInput({ checkpointIndex: 1, previousSignedCheckpointHash: 'e'.repeat(64) })),
+      env,
+      responder
+    );
+    expect(res2.status).toBe(503);
+    const body = (await res2.json()) as ErrorResponseBody;
+    expect(body.code).toBe('SESSION_STATE_UNAVAILABLE');
   });
 
   it('rejects with SESSION_PERSIST_FAILED when the FIRST KV write fails', async () => {

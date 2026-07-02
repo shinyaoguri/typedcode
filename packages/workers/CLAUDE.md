@@ -57,6 +57,7 @@ src/
 | `SIGNING_KEY_UNKNOWN` | 500 | `keyId` がレジストリに存在しない |
 | `SIGNING_ERROR` | 500 | 署名計算で予期しない失敗 |
 | `SESSION_PERSIST_FAILED` | 503 | **初回** checkpoint の KV 書き込み失敗。`firstSeenAt` が固定されないため署名済み envelope は返さずクライアントにリトライさせる (2 回目以降の書き込み失敗は best-effort で 200) |
+| `SESSION_STATE_UNAVAILABLE` | 503 | KV の**読み取り**失敗。「existing = null」と混同すると既存セッションに別の `firstSeenAt` で署名してしまう (#151/#153) ため、署名せずリトライさせる |
 
 ## CORS と濫用防止の設計
 
@@ -212,5 +213,6 @@ main ブランチ push
 
 - **`.dev.vars` を git に入れない**: `.gitignore` に登録済み。`wrangler.toml` の KV ID は skip-worktree で隠す
 - **`compatibility_date` を勝手に動かさない**: 後方互換性のために固定。新機能のために動かす必要があるときは ADR を書く
-- **本番 / preview の KV ID 分離**: `wrangler.toml` の `[env.production]` ブロックで本番用 ID を別途指定
+- **環境ごとの KV ID 分離**: 3 ファイル方式。dev は `wrangler.toml` (skip-worktree)、staging / production は `wrangler.staging.toml` / `wrangler.production.toml` に直接 commit。旧 `[env.production]` ブロック方式は廃止済み (#152)
+- **dev の Worker 名は `typedcode-api-dev`**: 本番と同名にすると素の `npx wrangler deploy` が本番を dev 設定で上書きする (#152)。ローカルの skip-worktree 版 `wrangler.toml` も `typedcode-api-dev` に揃えること
 - **`gen-checkpoint-key` で出る秘密鍵は JWK の JSON 文字列**: `.dev.vars` に貼るときは改行を含めず 1 行に

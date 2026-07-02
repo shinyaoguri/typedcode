@@ -68,7 +68,8 @@ interface ErrorBody {
     | 'SIGNING_KEY_NOT_CONFIGURED'
     | 'SIGNING_KEY_UNKNOWN'
     | 'SIGNING_ERROR'
-    | 'SESSION_PERSIST_FAILED';
+    | 'SESSION_PERSIST_FAILED'
+    | 'SESSION_STATE_UNAVAILABLE';
 }
 
 function jsonResponse(
@@ -196,7 +197,23 @@ export async function handleSignCheckpoint(
   // NON_MONOTONIC となり 1 つも署名されない。verifier は firstSeenAt をタブ間で共有要求しない
   // (proof = 1 タブ) ので、firstSeenAt がタブ毎に確定するのは安全。
   const sessionKey = `session:${input.sessionId}:${input.tabId}`;
-  const existing = await env.CHECKPOINT_SESSIONS.get<SessionRecord>(sessionKey, 'json');
+  // KV read の失敗は「existing = null」と混同してはいけない (#153/#151): null 扱いにすると
+  // 既存セッションに新しい firstSeenAt で署名してしまい、verifier の firstSeenAt 完全一致
+  // 要求により proof 全体が検証不能になる。必ず 503 でクライアントにリトライさせる。
+  let existing: SessionRecord | null;
+  try {
+    existing = await env.CHECKPOINT_SESSIONS.get<SessionRecord>(sessionKey, 'json');
+  } catch (err) {
+    console.error('[checkpoint] KV read failed:', err);
+    return jsonResponse(
+      {
+        error: 'Failed to read session state; retry the signing request',
+        code: 'SESSION_STATE_UNAVAILABLE',
+      } satisfies ErrorBody,
+      503,
+      responder.cors()
+    );
+  }
 
   // このセッションで初めて署名する checkpoint か。初回は firstSeenAt が
   // まだ KV に固定されていないため、KV 永続化を「成功条件」として扱う必要がある。
