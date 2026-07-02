@@ -155,6 +155,14 @@ export class TabManager {
   private static readonly SAVE_DEBOUNCE_MS = 100;
   /** 現在の同期状態 */
   private currentSyncStatus: SyncStatus = 'synced';
+  /**
+   * IndexedDB へ保存済みのイベント数 (タブ毎、メモリ内配列先頭からの個数)。
+   * 保存のたびに全イベントを IDB から読み直して差分計算すると長セッションで保存が
+   * 線形に重くなる (#144) ため、初回だけ IDB と突合してカーソルを確定し、以降は
+   * カーソル以降のみを append する。重複は events store の unique index が弾くので
+   * カーソルが遅れていても二重保存にはならない。
+   */
+  private savedEventCursor: Map<string, number> = new Map();
 
   constructor(editor: monaco.editor.IStandaloneCodeEditor) {
     this.editor = editor;
@@ -466,6 +474,12 @@ export class TabManager {
     // タブを削除
     this.tabs.delete(tabId);
     this.tabOrder = this.tabOrder.filter(id => id !== tabId);
+    this.savedEventCursor.delete(tabId);
+
+    // IndexedDB の行とイベントも削除する (#145)。残すと復旧ダイアログに閉じたタブが
+    // ゴースト表示され、tabOrder フォールバック復元で復活もしうる。実行中の保存処理が
+    // このタブを書き戻さないよう、完了を待ってから消す (fire-and-forget)。
+    this.deleteTabFromIndexedDB(tabId);
 
     // タブが0になった場合
     if (this.tabs.size === 0) {
@@ -497,10 +511,26 @@ export class TabManager {
   }
 
   /**
+   * 閉じたタブの IndexedDB 行とイベントを削除する (#145)。
+   * 実行中の保存処理がタブを書き戻す競合を避けるため、完了を待ってから消す。
+   * 削除は best-effort (失敗しても UI は既に閉じている)。
+   */
+  private deleteTabFromIndexedDB(tabId: string): void {
+    if (!this.sessionService.isInitialized()) return;
+    const pendingSave = this.currentSavePromise ?? Promise.resolve();
+    void pendingSave
+      .catch(() => undefined)
+      .then(() => this.sessionService.deleteTab(tabId))
+      .catch((e) => console.warn('[TabManager] Failed to delete closed tab from IndexedDB:', e));
+  }
+
+  /**
    * すべてのタブを閉じる（テンプレートインポート用）
    * 通常のcloseTabと異なり、最後の1つも閉じる
    */
   async closeAllTabs(): Promise<void> {
+    const closedTabIds = Array.from(this.tabs.keys());
+
     // すべてのモデルと署名サービスを破棄
     for (const tab of this.tabs.values()) {
       tab.model.dispose();
@@ -512,9 +542,14 @@ export class TabManager {
     this.tabOrder = [];
     this.activeTabId = null;
     this.tabSwitches = [];
+    this.savedEventCursor.clear();
 
     // ストレージもクリア
     sessionStorage.removeItem(tabsKey());
+    // IndexedDB の行とイベントも削除 (#145: 残すと復旧ダイアログにゴースト表示される)
+    for (const tabId of closedTabIds) {
+      this.deleteTabFromIndexedDB(tabId);
+    }
   }
 
   /**
@@ -918,18 +953,32 @@ export class TabManager {
         }
       }
 
-      // 既存イベントのシーケンス番号をSetで取得（欠落検出用）
-      const existingEvents = await this.sessionService.getEvents(id);
-      const existingSequences = new Set(existingEvents.map(e => e.sequence));
-
-      // 未保存のイベントをIndexedDBに追加（存在しないシーケンス番号のみ）
+      // 未保存のイベントを IndexedDB に追加 (#144)。
+      // 初回のみ既存イベントを全読みして欠落込みで突合し、以降はカーソル以降だけを
+      // append する (保存は 100ms デバウンスで頻発するため、毎回の全読みは長セッションで
+      // 保存を線形に重くする)。
       let newEventsCount = 0;
-      for (const event of proofState.events) {
-        if (event && !existingSequences.has(event.sequence)) {
-          await this.sessionService.appendEvent(id, event);
-          newEventsCount++;
+      const cursor = this.savedEventCursor.get(id);
+      if (cursor === undefined) {
+        // 初回 (リロード復旧直後など): 既存シーケンスと突合して欠落も補修する (従来挙動)
+        const existingEvents = await this.sessionService.getEvents(id);
+        const existingSequences = new Set(existingEvents.map(e => e.sequence));
+        for (const event of proofState.events) {
+          if (event && !existingSequences.has(event.sequence)) {
+            await this.sessionService.appendEvent(id, event);
+            newEventsCount++;
+          }
+        }
+      } else {
+        for (let i = cursor; i < proofState.events.length; i++) {
+          const event = proofState.events[i];
+          if (event) {
+            await this.sessionService.appendEvent(id, event);
+            newEventsCount++;
+          }
         }
       }
+      this.savedEventCursor.set(id, proofState.events.length);
 
       if (newEventsCount > 0) {
         debugLog(`[TabManager] SAVE: Tab ${id}: saved ${newEventsCount} new events (total: ${proofState.events.length})`);
