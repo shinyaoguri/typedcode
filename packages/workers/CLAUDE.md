@@ -85,9 +85,20 @@ CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リス
 
 **CORS の限界と濫用防止**: CORS はブラウザのクロスオリジン**読み取り**のみを制限し、サーバ間アクセス (curl 等) は防げない。`/api/checkpoint/sign` は「任意 content への serverTimestamp 付き署名」を返すだけで、それ自体は何の権限も与えない (署名は『この内容がこのサーバ時刻に提示された』ことしか証明しない)。署名 API の濫用に対する実際の防御線は:
 
-- **per-session 上限**: `SESSION_MAX_CHECKPOINTS` (50,000) と `SESSION_TTL_SECONDS` (7 日)
+- **per-session 上限**: `SESSION_MAX_CHECKPOINTS` (50,000) と `SESSION_TTL_SECONDS` (7 日)。ただし `sessionId`/`tabId` はクライアント任意文字列なので**新規 sessionId を連打されると効かない** (per-key 上限のため)
 - **入力サイズ上限**: `MAX_BODY_BYTES` (8KB) + スキーマ厳格化 (64-hex / 最大長)
-- **IP / グローバル rate limit**: Cloudflare の WAF / Rate Limiting Rules に委譲 (Worker コード外。必要に応じてダッシュボードで設定)
+- **IP / グローバル rate limit**: Cloudflare の WAF / Rate Limiting Rules に委譲 (Worker コード外。下記の通り**必ず設定する**)
+
+### Rate Limiting の設定 (#136・必須の運用対応)
+
+`/api/checkpoint/sign` は無認証で、1 リクエストごとに KV read 1 + ECDSA 署名 1 + KV write 1 を消費する。新規 `sessionId` を連打すると per-session 上限を回避して **KV write を増幅させる DoS** になり、初回 checkpoint が `SESSION_PERSIST_FAILED` (503) を返して全新規セッションの時刻アンカリングが止まりうる。恒久対策 (session/start トークンの sign 前提化) は別途の設計課題 (ADR 要) だが、それまでの防御線として **Cloudflare Rate Limiting Rule を必ず入れる**:
+
+1. Cloudflare ダッシュボード → 対象 Worker のゾーン → Security → WAF → Rate limiting rules
+2. Rule: `URI Path eq "/api/checkpoint/sign"` かつ method POST に対し、**同一 IP から 60 秒あたり N リクエスト** (署名 API の実利用は 1 セッション数秒〜十数秒に 1 回程度なので N=60 程度から始め、正規利用のログを見て調整) を超えたら `Block` (または `Managed Challenge`)
+3. `/api/session/start` にも同様の Rule を推奨 (Turnstile ゲートはあるが署名を伴う)
+4. 設定後、正規の連続 checkpoint (長時間セッション) が誤ブロックされないことを staging で確認する
+
+> この Rule は Worker コード外 (ダッシュボード管理) なのでリポジトリに設定証跡が残らない。**新環境 (staging/production) を立てるたびに手動で入れること。** 未設定だと上記 DoS に開いたままになる。
 
 ## KV ネームスペース
 
