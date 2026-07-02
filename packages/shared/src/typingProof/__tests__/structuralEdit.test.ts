@@ -6,6 +6,7 @@ import {
   isFlaggedBulkInsert,
   isSuspiciousBulkInsert,
   collectInternalPasteContents,
+  MAX_BENIGN_SINGLE_LINE_INSERT_CHARS,
 } from '../structuralEdit.js';
 import { StatisticsCalculator } from '../StatisticsCalculator.js';
 import type { StoredEvent, EditorAssistDeclaration } from '../../types.js';
@@ -33,6 +34,21 @@ describe('isBenignEditorInsert', () => {
 
   it('accepts a single-line completion that contains operators and spaces', () => {
     expect(isBenignEditorInsert(insert('result = a + b;', 'insertReplacementText'))).toBe(true);
+  });
+
+  it('accepts a single-line completion up to the length cap (#139)', () => {
+    const atCap = 'x'.repeat(MAX_BENIGN_SINGLE_LINE_INSERT_CHARS);
+    expect(isBenignEditorInsert(insert(atCap, 'insertReplacementText'))).toBe(true);
+  });
+
+  it('rejects a single-line insert longer than the cap (minified one-liner laundering, #139)', () => {
+    const oneLiner = 'const f=(n)=>n<2?n:f(n-1)+f(n-2);'.repeat(10); // 330 chars, no newline
+    expect(isBenignEditorInsert(insert(oneLiner, 'insertText'))).toBe(false);
+    expect(isBenignEditorInsert(insert('y'.repeat(MAX_BENIGN_SINGLE_LINE_INSERT_CHARS + 1), 'insertReplacementText'))).toBe(false);
+  });
+
+  it('keeps structural-only inserts benign regardless of length (they cannot carry code)', () => {
+    expect(isBenignEditorInsert(insert(' '.repeat(500), 'insertText'))).toBe(true);
   });
 
   it('accepts whitespace-only multi-line auto-indent', () => {

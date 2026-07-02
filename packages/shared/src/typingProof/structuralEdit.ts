@@ -13,7 +13,8 @@
  * TypedCode 自身はインライン AI 補完を無効化している前提だが、万一混入しても捕捉する。
  *
  * 区別の基準は **複数行かどうか** (ユーザ確認済み):
- *   - benign  = editor 内部の挿入/置換で「構造文字のみ」または「単一行」
+ *   - benign  = editor 内部の挿入/置換で「構造文字のみ」または「上限長以内の単一行」
+ *               (単一行にも長さ上限を置く (#139)。minify した 1 行プログラムの laundering 対策)
  *   - bulk    = 改行＋実コードを含む複数行の挿入 (AI/スニペットの一括投入。記録・検出対象)
  *
  * いずれも `valid` (暗号的合否) や `bulkInsertEvents` の申告メタデータ照合には影響しない。
@@ -65,15 +66,24 @@ export function getEditorAssistDeclaration(
 }
 
 /**
+ * 単一行 benign (補完) とみなす最大文字数 (#139)。現実の補完は識別子〜1 式程度で、これで
+ * 十分収まる。上限が無いと minify した 1 行のプログラム全体 (数千文字) を `insertText`
+ * 1 イベントで投入しても isPureTyping を保ててしまう (laundering 口)。
+ * 構造文字のみ (内容を運べない) の挿入には適用しない。
+ */
+export const MAX_BENIGN_SINGLE_LINE_INSERT_CHARS = 120;
+
+/**
  * 「1 キー入力 → 複数文字」の正規な editor 挿入か (括弧自動閉じ・type-over・auto-indent・
- * 単一行の補完)。構造文字のみ、または単一行 (改行を含まない) の editor 内部挿入。
+ * 単一行の補完)。構造文字のみ、または上限長以内の単一行 (改行を含まない) の editor 内部挿入。
+ * 上限を超える単一行挿入は補完として現実的でないため benign にしない (#139)。
  */
 export function isBenignEditorInsert(event: StoredEvent): boolean {
   if (!isEditorInternalInsert(event)) return false;
   const data = event.data;
   if (typeof data !== 'string' || data.length === 0) return false;
   if (STRUCTURAL_CHARS.test(data)) return true; // 括弧/クォート/空白のみ (内容を運べない)
-  return !/[\r\n]/.test(data); // 単一行 = 補完
+  return !/[\r\n]/.test(data) && data.length <= MAX_BENIGN_SINGLE_LINE_INSERT_CHARS; // 単一行 = 補完 (上限つき)
 }
 
 /**
