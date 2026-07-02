@@ -5,6 +5,7 @@
  */
 
 import JSZip from 'jszip';
+import { assertZipWithinBudget } from '@typedcode/shared';
 import type { ProofFile, ScreenshotManifest, VerifyScreenshot } from '../types.js';
 import type { ParsedFileData, FileProcessResult, FileProcessCallbacks } from './FileProcessor.js';
 import { ScreenshotService } from './ScreenshotService.js';
@@ -35,6 +36,10 @@ export class ZipFileProcessor {
       this.callbacks.onReadComplete?.(file.name, sizeKb);
 
       const zip = await JSZip.loadAsync(arrayBuffer);
+
+      // zip 爆弾ガード (#149): shared の parser 経由ではなく JSZip を直接使うため、
+      // 展開 (extractFiles) 前に解凍後サイズ・エントリ数の上限を検査する。
+      assertZipWithinBudget(zip);
 
       // ZIPファイル名をルートフォルダ名として使用
       const rootFolderName = file.name.replace(/\.zip$/i, '');
