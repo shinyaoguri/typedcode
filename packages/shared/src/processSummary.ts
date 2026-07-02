@@ -15,7 +15,7 @@
 import type { StoredEvent } from './types/proof.js';
 import type { CodeExecutionEventData, FocusChangeData, ReflectionNoteData } from './types/events.js';
 import { isProhibitedInputType } from './typingProof/InputTypeValidator.js';
-import { isBenignEditorInsert, isFlaggedBulkInsert, collectInternalPasteContents } from './typingProof/structuralEdit.js';
+import { isBenignEditorInsert, isFlaggedBulkInsert, SessionProvenanceLedger } from './typingProof/structuralEdit.js';
 
 /** 編集の停止 (考え中) とみなす contentChange 間ギャップの下限。 */
 export const PROCESS_PAUSE_THRESHOLD_MS = 10_000;
@@ -80,8 +80,8 @@ export interface ProcessSummary {
  */
 export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary {
   const moments: ProcessKeyMoment[] = [];
-  // 内部ペースト (自分のコード) の実挿入を AI 一括投入と取り違えないための許可リスト。
-  const internalPasteContents = collectInternalPasteContents(events);
+  // 内部ペースト (自分のコード) の実挿入を AI 一括投入と取り違えないための逐次台帳 (#138)。
+  const ledger = new SessionProvenanceLedger();
 
   let contentChangeCount = 0;
   let insertedChars = 0;
@@ -148,6 +148,8 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
 
   for (let i = 0; i < events.length; i++) {
     const event = events[i]!;
+    // 逐次判定 (イベント適用前の状態に対して)。全イベントを記録順に通す必要がある。
+    const sessionDerived = ledger.checkAndApply(event);
 
     switch (event.type) {
       case 'contentChange': {
@@ -274,7 +276,7 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
     // 明示的に拾う)。後者は「コード全体を Tab で一気に入れる」類を記録・検出するため。
     if (
       (event.inputType && isProhibitedInputType(event.inputType) && !isBenignEditorInsert(event)) ||
-      isFlaggedBulkInsert(event, internalPasteContents)
+      isFlaggedBulkInsert(event, sessionDerived)
     ) {
       externalInputCount++;
       if (externalMoments.length < PROCESS_MAX_EXTERNAL_INPUT_MOMENTS) {
