@@ -2,6 +2,7 @@
  * Sidebar - File tree with verification status (VSCode-like)
  */
 import type { HierarchicalFolder } from '../types.js';
+import { t } from '../i18n/index.js';
 
 export type FileStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error';
 
@@ -511,7 +512,7 @@ export class Sidebar {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'folder-remove';
     removeBtn.innerHTML = '<i class="fas fa-times"></i>';
-    removeBtn.title = 'フォルダを削除';
+    removeBtn.title = t('sidebar.removeFolder');
 
     item.appendChild(chevron);
     item.appendChild(icon);
@@ -565,7 +566,7 @@ export class Sidebar {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'file-item-remove';
     removeBtn.innerHTML = '<i class="fas fa-times"></i>';
-    removeBtn.title = '削除';
+    removeBtn.title = t('sidebar.removeFile');
 
     item.appendChild(icon);
     item.appendChild(name);
@@ -616,18 +617,18 @@ export class Sidebar {
 
     const message = document.createElement('p');
     message.className = 'remove-confirm-message';
-    message.textContent = `「${file.filename}」をリストから削除しますか？`;
+    message.textContent = t('sidebar.removeConfirm', { filename: file.filename });
 
     const buttons = document.createElement('div');
     buttons.className = 'remove-confirm-buttons';
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'remove-confirm-btn cancel';
-    cancelBtn.textContent = 'キャンセル';
+    cancelBtn.textContent = t('common.cancel');
 
     const confirmBtn = document.createElement('button');
     confirmBtn.className = 'remove-confirm-btn confirm';
-    confirmBtn.textContent = '削除';
+    confirmBtn.textContent = t('common.delete');
 
     buttons.appendChild(cancelBtn);
     buttons.appendChild(confirmBtn);

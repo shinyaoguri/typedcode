@@ -9,6 +9,7 @@ import type { StatusBarUI } from '../StatusBarUI';
 import type { ResultPanel } from '../ResultPanel';
 import type { TabController } from './TabController';
 import type { ProgressDetails, VerificationResultData } from '../../types';
+import { t } from '../../i18n/index';
 
 export interface VerificationControllerDependencies {
   tabManager: VerifyTabManager;
@@ -146,7 +147,11 @@ export class VerificationController {
   /**
    * 検証エラーを処理
    */
-  handleError(id: string, error: string): void {
+  handleError(id: string, rawError: string): void {
+    // Worker はロケール設定 (localStorage) にアクセスできないため翻訳キーを
+    // そのまま送ってくることがある。ここでメインスレッドのロケールで解決する
+    // (t() は未知のキーをそのまま返すので通常のエラーメッセージには無害)。
+    const error = rawError.startsWith('errors.') ? t(rawError) : rawError;
     this.deps.uiState.incrementCompleted();
     this.deps.tabManager.updateTab(id, { status: 'error', error });
     this.deps.sidebar.updateFileStatus(id, 'error');

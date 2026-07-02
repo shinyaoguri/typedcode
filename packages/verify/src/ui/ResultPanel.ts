@@ -454,7 +454,7 @@ export class ResultPanel {
     banner.id = 'diff-warning-banner';
     banner.innerHTML = `
       <i class="fas fa-exclamation-triangle"></i>
-      <span>ソースファイルと証明内容が一致しません</span>
+      <span>${escapeHtml(t('result.sourceMismatchBanner'))}</span>
       <span class="diff-stats">
         <span class="diff-additions">+${stats.additions}</span>
         <span class="diff-deletions">-${stats.deletions}</span>
@@ -522,7 +522,7 @@ export class ResultPanel {
           </div>
         `;
       } else {
-        codeEl.innerHTML = '<p style="color: var(--text-tertiary);">画像を読み込めませんでした</p>';
+        codeEl.innerHTML = `<p style="color: var(--text-tertiary);">${escapeHtml(t('result.imageLoadFailed'))}</p>`;
       }
       codeEl.className = '';
     }
@@ -545,7 +545,11 @@ export class ResultPanel {
 
       this.statusIcon.className = `result-status-icon ${statusClass}`;
       this.statusIcon.innerHTML = `<i class="fas fa-${isSuccess ? 'check-circle' : isWarning ? 'exclamation-triangle' : 'times-circle'}"></i>`;
-      this.statusTitle.textContent = isSuccess ? '検証成功' : isWarning ? '警告あり' : '検証失敗';
+      this.statusTitle.textContent = isSuccess
+        ? t('result.statusSuccess')
+        : isWarning
+          ? t('result.statusWarning')
+          : t('result.statusFailed');
     }
     this.statusFilename.textContent = filename;
 
@@ -554,21 +558,27 @@ export class ResultPanel {
       this.typingIcon,
       this.typingBadge,
       result.pureTyping,
-      result.pureTyping ? '純粋' : '外部入力あり'
+      result.pureTyping ? t('result.typingPure') : t('result.typingExternal')
     );
-    this.pasteCount.textContent = `${result.pasteCount || 0}回`;
-    this.internalPasteCount.textContent = `${result.internalPasteCount || 0}回`;
-    this.externalInput.textContent = result.pureTyping ? 'なし' : 'あり';
+    this.pasteCount.textContent = t('result.timesCount', { count: result.pasteCount || 0 });
+    this.internalPasteCount.textContent = t('result.timesCount', {
+      count: result.internalPasteCount || 0,
+    });
+    this.externalInput.textContent = result.pureTyping
+      ? t('result.externalInputNo')
+      : t('result.externalInputYes');
 
     // Chain card
     this.renderCard(
       this.chainIcon,
       this.chainBadge,
       result.chainValid,
-      result.chainValid ? '有効' : '無効'
+      result.chainValid ? t('chain.valid') : t('chain.invalid')
     );
     this.chainMethod.textContent = result.verificationMethod || 'standard';
-    this.chainEvents.textContent = `${eventCount.toLocaleString()}件`;
+    this.chainEvents.textContent = t('result.eventsUnit', {
+      count: eventCount.toLocaleString(),
+    });
 
     // Chain error details (show only when verification fails)
     this.renderChainErrorDetails(result.chainErrorDetails);
@@ -627,12 +637,14 @@ export class ResultPanel {
         this.attestationIcon,
         this.attestationBadge,
         validCount === attestations.length,
-        `${validCount}/${attestations.length} 有効`
+        t('attestation.validCount', { valid: validCount, total: attestations.length })
       );
 
       if (createAttestation) {
         this.attestationCreateRow.style.display = 'flex';
-        this.attestationCreate.textContent = createAttestation.valid ? '✓ 有効' : '✗ 無効';
+        this.attestationCreate.textContent = createAttestation.valid
+          ? `✓ ${t('attestation.valid')}`
+          : `✗ ${t('attestation.invalid')}`;
         this.attestationCreate.className = `result-row-value ${createAttestation.valid ? 'text-success' : 'text-danger'}`;
       } else {
         this.attestationCreateRow.style.display = 'none';
@@ -640,7 +652,9 @@ export class ResultPanel {
 
       if (exportAttestation) {
         this.attestationExportRow.style.display = 'flex';
-        this.attestationExport.textContent = exportAttestation.valid ? '✓ 有効' : '✗ 無効';
+        this.attestationExport.textContent = exportAttestation.valid
+          ? `✓ ${t('attestation.valid')}`
+          : `✗ ${t('attestation.invalid')}`;
         this.attestationExport.className = `result-row-value ${exportAttestation.valid ? 'text-success' : 'text-danger'}`;
       } else {
         this.attestationExportRow.style.display = 'none';
@@ -1131,16 +1145,30 @@ export class ResultPanel {
 
     if (missingCount === 0 && tamperedCount === 0) {
       // 全て検証済み
-      this.screenshotVerification.innerHTML = `<span class="success">✓ ${screenshots.verified}/${screenshots.total}枚検証済み</span>`;
+      this.screenshotVerification.innerHTML = `<span class="success">${escapeHtml(
+        t('result.screenshotsAllVerified', {
+          verified: screenshots.verified,
+          total: screenshots.total,
+        })
+      )}</span>`;
     } else if (missingCount > 0 && tamperedCount === 0) {
       // 欠損ファイルあり（改ざんなし）
-      this.screenshotVerification.innerHTML = `<span class="error">✗ ${missingCount}/${screenshots.total}枚が欠損</span>`;
+      this.screenshotVerification.innerHTML = `<span class="error">${escapeHtml(
+        t('result.screenshotsMissing', { missing: missingCount, total: screenshots.total })
+      )}</span>`;
     } else if (missingCount === 0 && tamperedCount > 0) {
       // 改ざんの可能性あり
-      this.screenshotVerification.innerHTML = `<span class="warning">⚠ ${tamperedCount}/${screenshots.total}枚が改ざんの可能性</span>`;
+      this.screenshotVerification.innerHTML = `<span class="warning">${escapeHtml(
+        t('result.screenshotsSomeInvalid', { invalid: tamperedCount, total: screenshots.total })
+      )}</span>`;
     } else {
       // 欠損と改ざん両方
-      this.screenshotVerification.innerHTML = `<span class="error">✗ ${missingCount}枚欠損, ${tamperedCount}枚改ざんの可能性</span>`;
+      this.screenshotVerification.innerHTML = `<span class="error">${escapeHtml(
+        t('result.screenshotsMissingAndTampered', {
+          missing: missingCount,
+          tampered: tamperedCount,
+        })
+      )}</span>`;
     }
   }
 
@@ -1161,7 +1189,7 @@ export class ResultPanel {
     // Reset status
     this.statusIcon.className = 'result-status-icon';
     this.statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-    this.statusTitle.textContent = '検証中...';
+    this.statusTitle.textContent = t('result.statusVerifying');
     this.statusFilename.textContent = '';
 
     // Reset stats
@@ -1291,10 +1319,10 @@ export class ResultPanel {
     } else if (statusEl) {
       const defaultStatusText: Record<VerificationStepStatus, string> = {
         pending: '',
-        running: '処理中...',
-        success: '完了',
-        error: 'エラー',
-        skipped: 'スキップ',
+        running: t('progress.statusRunning'),
+        success: t('progress.statusDone'),
+        error: t('progress.statusError'),
+        skipped: t('progress.statusSkipped'),
       };
       statusEl.textContent = defaultStatusText[status];
     }
@@ -1410,7 +1438,7 @@ export class ResultPanel {
   finishProgress(): void {
     this.stopProgressTimer();
     this.updateOverallProgress(100);
-    this.updateStepStatus('complete', 'success', '完了');
+    this.updateStepStatus('complete', 'success', t('progress.statusDone'));
   }
 
   /**
@@ -1418,7 +1446,7 @@ export class ResultPanel {
    */
   errorProgress(step: VerificationStepType, errorMessage?: string): void {
     this.stopProgressTimer();
-    this.updateStepStatus(step, 'error', 'エラー');
+    this.updateStepStatus(step, 'error', t('progress.statusError'));
     if (errorMessage) {
       this.showProgressDetail(errorMessage);
     }
@@ -1505,15 +1533,15 @@ export class ResultPanel {
    */
   private getComponentLabel(component: string): string {
     const labels: Record<string, string> = {
-      metadata: 'メタデータ',
-      chain: 'ハッシュチェーン',
-      posw: 'PoSW',
-      attestation: '人間証明',
-      screenshots: 'スクリーンショット',
-      source: 'ソースファイル',
-      anchoring: '時刻アンカー',
-      exam: '試験束縛',
-      typing: 'タイピング',
+      metadata: t('trust.components.metadata'),
+      chain: t('trust.components.chain'),
+      posw: t('trust.components.posw'),
+      attestation: t('trust.components.attestation'),
+      screenshots: t('trust.components.screenshots'),
+      source: t('trust.components.source'),
+      anchoring: t('trust.components.anchoring'),
+      exam: t('trust.components.exam'),
+      typing: t('trust.components.typing'),
     };
     return labels[component] || component;
   }

@@ -4,6 +4,7 @@ export const en: VerifyTranslationKeys = {
   common: {
     cancel: 'Cancel',
     close: 'Close',
+    delete: 'Delete',
     ready: 'Ready',
     verifying: 'Verifying',
     files: 'files',
@@ -29,6 +30,7 @@ export const en: VerifyTranslationKeys = {
   activityBar: {
     menu: 'Menu',
     openFile: 'Open File',
+    openFolder: 'Open Folder',
     explorer: 'Explorer',
     settings: 'Settings',
     themeToggle: 'Toggle Theme',
@@ -41,6 +43,9 @@ export const en: VerifyTranslationKeys = {
     addFile: 'Add File',
     addFolder: 'Add Folder',
     emptyMessage: 'Files will appear here\nwhen loaded',
+    removeFile: 'Remove',
+    removeFolder: 'Remove Folder',
+    removeConfirm: 'Remove "${filename}" from the list?',
   },
 
   welcome: {
@@ -62,10 +67,33 @@ export const en: VerifyTranslationKeys = {
     samplingDesc: 'Partial verification of checkpoint segments',
     completeStep: 'Complete',
     completeDesc: 'Displaying verification results',
+    statusRunning: 'Processing...',
+    statusDone: 'Done',
+    statusError: 'Error',
+    statusSkipped: 'Skipped',
+    statusFallback: 'Fallback',
+    statusNoCheckpoints: 'No checkpoints',
+    chainDetail: '${current} / ${total} events',
+    samplingDetail: '${current} events verified / ${total} events',
+    samplingDetailWithTotal:
+      '${current} events verified / ${total} events (${totalEvents} total)',
   },
 
   result: {
     statusVerifying: 'Verifying...',
+    statusSuccess: 'Verification Successful',
+    statusWarning: 'Warnings Found',
+    statusFailed: 'Verification Failed',
+    typingPure: 'Pure',
+    typingExternal: 'External input',
+    timesCount: '${count}',
+    externalInputYes: 'Detected',
+    externalInputNo: 'None',
+    eventsUnit: '${count}',
+    screenshotsMissing: '✗ ${missing}/${total} missing',
+    screenshotsMissingAndTampered: '✗ ${missing} missing, ${tampered} possibly tampered',
+    imageLoadFailed: 'Failed to load image',
+    sourceMismatchBanner: 'Source file does not match proof content',
     typing: 'Typing',
     pasteCount: 'External Paste',
     internalPasteCount: 'Internal Paste',
@@ -212,9 +240,28 @@ export const en: VerifyTranslationKeys = {
     valid: 'Valid',
     invalid: 'Invalid',
     none: 'None',
+    validCount: '${valid}/${total} valid',
     verifiedLegacy: 'Verified (legacy)',
     exportTimeAuth: 'Authenticated at export',
     noAttestation: 'No human attestation',
+  },
+
+  screenshot: {
+    typePeriodic: 'Periodic capture',
+    typeFocusLost: 'Focus lost',
+    typeManual: 'Manual',
+  },
+
+  lightbox: {
+    close: 'Close (Esc)',
+    prev: 'Previous (←)',
+    next: 'Next (→)',
+    type: 'Type',
+    time: 'Time',
+    resolution: 'Resolution',
+    hashVerification: 'Hash Verification',
+    verified: '✓ Verified',
+    unverified: 'Unverified',
   },
 
   statusBar: {
@@ -231,6 +278,38 @@ export const en: VerifyTranslationKeys = {
     flight: 'Flight',
     mouse: 'Mouse',
     eventFilter: 'Event Filter',
+    axisTime: 'Time',
+    secondsShort: '${seconds}s',
+    datasets: {
+      typingSpeed: 'Typing Speed (CPS)',
+      internalPaste: 'Internal Paste',
+      periodicCapture: 'Periodic Capture',
+      focusLostCapture: 'Focus-Lost Capture',
+      manualCapture: 'Manual Capture',
+      humanAttestation: 'Human Attestation',
+      preExportAttestation: 'Export Attestation',
+      networkStatusChange: 'Network Change',
+      contentSnapshot: 'Snapshot',
+    },
+    tooltips: {
+      screenshotMissing: '❌ ${type} - ${time} [image missing]',
+      screenshotTampered: '⚠️ ${type} - ${time} [possibly tampered]',
+      screenshotVerified: '📷 ${type} - ${time} [verified]',
+      humanAttestation: '⭐ Human attestation (Turnstile) - ${time}',
+      externalInput: '⚠️ External paste/drop',
+      internalPaste: '✅ Internal paste (allowed) - ${time}',
+      termsAccepted: '📜 Terms accepted - ${time}',
+      preExportAttestation: '🔐 Pre-export attestation (Turnstile) - ${time}',
+      editorInitialized: '🚀 Editor initialized - ${time}',
+      networkStatusChange: '🌐 Network status change - ${time}',
+      codeExecution: '▶️ Code execution - ${time}',
+      terminalInput: '💻 Terminal input - ${time}',
+      screenShareStart: '🎬 Screen share started - ${time}',
+      screenShareStop: '🛑 Screen share stopped - ${time}',
+      templateInjection: '📝 Template injected - ${time}',
+      windowResize: '📐 Window resized - ${time}',
+      contentSnapshot: '📋 Content snapshot - ${time}',
+    },
     categories: {
       content: 'Content',
       cursor: 'Cursor',
@@ -272,6 +351,40 @@ export const en: VerifyTranslationKeys = {
 
   trust: {
     screenShareOptOut: 'Recorded without screen sharing',
+    summaryVerified: 'Verification successful',
+    summaryPartial: 'Warnings (${count})',
+    summaryFailed: 'Verification failed (${count} errors)',
+    issueMetadataInvalid: 'Metadata verification failed',
+    issueChainInvalid: 'Hash chain verification failed',
+    issueScreenshotsTampered: '${count} screenshots possibly tampered',
+    issueScreenshotsMissing: '${count} screenshots missing',
+    issueAttestationBoth: 'Human attestation verification failed',
+    issueAttestationCreate: 'Human attestation at creation is invalid',
+    issueAttestationExport: 'Human attestation at export is invalid',
+    issueSourceMismatch:
+      '${filename}: source file differs from proof content (+${additions}/-${deletions} lines)',
+    issueAnchoringInvalid: 'Signed checkpoints are invalid',
+    issueAnchoringMissing: 'No temporal anchor (signed checkpoints)',
+    issueAnchoringPostHoc:
+      'Post-hoc batch signing suspected (server span is far shorter than the claimed session)',
+    issueAnchoringSparse:
+      'Anchor density is sparse (signed checkpoints are too few / too late for the claimed session)',
+    issueRootNotAnchored:
+      'Chain root is not server-anchored (start time unfixed; offline forgery possible)',
+    issueNotPureTyping: 'Not pure typing (paste / bulk insertion detected)',
+    issueExamBindingFailed: 'Exam binding (signature / content hash) verification failed',
+    issueExamUnverified: 'Problem package not loaded; authenticity unverified',
+    components: {
+      metadata: 'Metadata',
+      chain: 'Hash Chain',
+      posw: 'PoSW',
+      attestation: 'Human Attestation',
+      screenshots: 'Screenshots',
+      source: 'Source File',
+      anchoring: 'Temporal Anchoring',
+      exam: 'Exam Binding',
+      typing: 'Typing',
+    },
   },
 
   process: {
@@ -421,6 +534,13 @@ export const en: VerifyTranslationKeys = {
     browserNotSupportedDesc:
       'Please use file selection or drag and drop instead',
     examInvalidPackage: 'Invalid problem package (.tcexam)',
+    jsonParseError: 'JSON parse error: ${filename}',
+    fileLoadFailed: 'Failed to read file: ${message}',
+    zipEmpty: 'No files found in the ZIP.',
+    zipLoadFailed: 'Failed to read ZIP file: ${message}',
+    unsupportedFormat:
+      'Unsupported format: metadata is missing (v3.0.0 or later required)',
+    noEvents: 'No events found in proof data',
   },
 
   messages: {

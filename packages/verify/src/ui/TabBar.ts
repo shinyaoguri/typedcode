@@ -1,6 +1,8 @@
 /**
  * TabBar - VSCode-like tab management with drag & drop
  */
+import { t } from '../i18n/index.js';
+
 export type TabStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error';
 
 export interface Tab {
@@ -204,7 +206,7 @@ export class TabBar {
     const closeBtn = document.createElement('button');
     closeBtn.className = 'tab-close';
     closeBtn.innerHTML = '<i class="fas fa-times"></i>';
-    closeBtn.title = '閉じる';
+    closeBtn.title = t('common.close');
 
     tabEl.appendChild(icon);
     tabEl.appendChild(title);

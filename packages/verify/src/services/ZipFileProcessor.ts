@@ -10,6 +10,7 @@ import type { ProofFile, ScreenshotManifest, VerifyScreenshot } from '../types.j
 import type { ParsedFileData, FileProcessResult, FileProcessCallbacks } from './FileProcessor.js';
 import { ScreenshotService } from './ScreenshotService.js';
 import { isImageFile, isBinaryFile, getLanguageFromExtension } from './fileUtils.js';
+import { t } from '../i18n/index.js';
 
 /**
  * ZIP ファイル処理クラス
@@ -61,7 +62,7 @@ export class ZipFileProcessor {
           success: false,
           mode: 'multi',
           files: [],
-          error: 'ZIPにファイルがありません。',
+          error: t('errors.zipEmpty'),
         };
       }
 
@@ -85,7 +86,7 @@ export class ZipFileProcessor {
         success: false,
         mode: 'multi',
         files: [],
-        error: `ZIPファイルの読み込みに失敗しました: ${errorMessage}`,
+        error: t('errors.zipLoadFailed', { message: errorMessage }),
       };
     }
   }

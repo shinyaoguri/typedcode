@@ -1,6 +1,10 @@
 /**
  * TrustCalculator - 検証結果から信頼度を計算するサービス
+ *
+ * 注意: メインスレッド専用 (TabController から呼ばれる)。
+ * t() を使うため Web Worker 内では使用しないこと。
  */
+import { t } from '../i18n/index';
 import type {
   TrustLevel,
   TrustIssue,
@@ -45,7 +49,7 @@ export class TrustCalculator {
       issues.push({
         component: 'metadata',
         severity: 'error',
-        message: 'メタデータ検証失敗',
+        message: t('trust.issueMetadataInvalid'),
       });
     }
 
@@ -54,7 +58,7 @@ export class TrustCalculator {
       issues.push({
         component: 'chain',
         severity: 'error',
-        message: verificationResult.message || 'ハッシュチェーン検証失敗',
+        message: verificationResult.message || t('trust.issueChainInvalid'),
       });
     }
 
@@ -63,14 +67,14 @@ export class TrustCalculator {
       issues.push({
         component: 'screenshots',
         severity: 'error',
-        message: `${screenshots.tampered}枚に改竄の可能性`,
+        message: t('trust.issueScreenshotsTampered', { count: screenshots.tampered }),
       });
     }
     if (screenshots.missing > 0) {
       issues.push({
         component: 'screenshots',
         severity: 'warning',
-        message: `${screenshots.missing}枚が欠損`,
+        message: t('trust.issueScreenshotsMissing', { count: screenshots.missing }),
       });
     }
 
@@ -83,19 +87,19 @@ export class TrustCalculator {
         issues.push({
           component: 'attestation',
           severity: 'warning',
-          message: '人間証明の検証に失敗',
+          message: t('trust.issueAttestationBoth'),
         });
       } else if (createFailed) {
         issues.push({
           component: 'attestation',
           severity: 'warning',
-          message: '作成時の人間証明が無効',
+          message: t('trust.issueAttestationCreate'),
         });
       } else if (exportFailed) {
         issues.push({
           component: 'attestation',
           severity: 'warning',
-          message: 'エクスポート時の人間証明が無効',
+          message: t('trust.issueAttestationExport'),
         });
       }
     }
@@ -106,7 +110,11 @@ export class TrustCalculator {
         issues.push({
           component: 'source',
           severity: 'warning',
-          message: `${mismatch.filename}: ソースファイルと証明内容が異なります (+${mismatch.additions}/-${mismatch.deletions}行)`,
+          message: t('trust.issueSourceMismatch', {
+            filename: mismatch.filename,
+            additions: mismatch.additions,
+            deletions: mismatch.deletions,
+          }),
         });
       }
     }
@@ -116,7 +124,7 @@ export class TrustCalculator {
       issues.push({
         component: 'screenshots',
         severity: 'warning',
-        message: '画面共有なしモードで記録されました',
+        message: t('trust.screenShareOptOut'),
       });
     }
 
@@ -130,13 +138,13 @@ export class TrustCalculator {
         issues.push({
           component: 'anchoring',
           severity: 'error',
-          message: '署名チェックポイントが無効です',
+          message: t('trust.issueAnchoringInvalid'),
         });
       } else if (!verificationResult.signedCheckpointAnchored) {
         issues.push({
           component: 'anchoring',
           severity: 'warning',
-          message: '時刻アンカー（署名チェックポイント）がありません',
+          message: t('trust.issueAnchoringMissing'),
         });
       } else {
         // anchored かつ valid。補助的な疑い指標（post-hoc / 密度）は併存しうるので個別に積む。
@@ -144,7 +152,7 @@ export class TrustCalculator {
           issues.push({
             component: 'anchoring',
             severity: 'warning',
-            message: 'post-hoc 一括署名の疑いがあります（サーバ時刻が申告時間より極端に短い）',
+            message: t('trust.issueAnchoringPostHoc'),
           });
         }
         // ADR-0016: 署名 cp が主張イベント数/時間に対して疎（末尾 1 個で長い鎖をアンカー等）。
@@ -152,7 +160,7 @@ export class TrustCalculator {
           issues.push({
             component: 'anchoring',
             severity: 'warning',
-            message: 'アンカー密度が疎です（署名チェックポイントが申告セッションに対し少ない/遅い）',
+            message: t('trust.issueAnchoringSparse'),
           });
         }
       }
@@ -169,7 +177,7 @@ export class TrustCalculator {
       issues.push({
         component: 'anchoring',
         severity: 'warning',
-        message: 'チェーン根がサーバアンカーされていません（開始時刻が未固定・オフライン捏造の余地）',
+        message: t('trust.issueRootNotAnchored'),
       });
     }
 
@@ -178,7 +186,7 @@ export class TrustCalculator {
       issues.push({
         component: 'typing',
         severity: 'warning',
-        message: 'ピュアタイピングではありません（ペースト/バルク挿入あり）',
+        message: t('trust.issueNotPureTyping'),
       });
     }
 
@@ -191,13 +199,13 @@ export class TrustCalculator {
         issues.push({
           component: 'exam',
           severity: 'error',
-          message: '問題束縛（署名/内容ハッシュ）の検証に失敗しました',
+          message: t('trust.issueExamBindingFailed'),
         });
       } else if (!verificationResult.exam.packageProvided) {
         issues.push({
           component: 'exam',
           severity: 'warning',
-          message: '問題パッケージ未読込のため真正性は未確認です',
+          message: t('trust.issueExamUnverified'),
         });
       }
     }
@@ -227,14 +235,14 @@ export class TrustCalculator {
   private static generateSummary(level: TrustLevel, issues: TrustIssue[]): string {
     switch (level) {
       case 'verified':
-        return '検証成功';
+        return t('trust.summaryVerified');
       case 'partial': {
         const warningCount = issues.filter((i) => i.severity === 'warning').length;
-        return `警告あり（${warningCount}件）`;
+        return t('trust.summaryPartial', { count: warningCount });
       }
       case 'failed': {
         const errorCount = issues.filter((i) => i.severity === 'error').length;
-        return `検証失敗（${errorCount}件のエラー）`;
+        return t('trust.summaryFailed', { count: errorCount });
       }
     }
   }

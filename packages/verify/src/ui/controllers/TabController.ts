@@ -17,6 +17,7 @@ import type { VerifyTabState, ProgressDetails, VerifyScreenshot, ScreenshotVerif
 import { buildResultData, calculateChartStats } from '../../services/ResultDataService';
 import { TrustCalculator } from '../../services/TrustCalculator';
 import { deriveAssurance, summarizeAnalysisForAssurance, summarizeProcess, type AssuranceResult } from '@typedcode/shared';
+import { t } from '../../i18n/index';
 
 export interface TabControllerDependencies {
   tabManager: VerifyTabManager;
@@ -194,12 +195,19 @@ export class TabController {
       this.deps.resultPanel.updateStepProgress('metadata', 100); // メタデータ完了
       // フォールバック時のみchainステップを表示
       this.deps.resultPanel.showFallbackStep();
-      this.deps.resultPanel.updateStepStatus('chain', 'running', 'フォールバック');
+      this.deps.resultPanel.updateStepStatus('chain', 'running', t('progress.statusFallback'));
       // サンプリングはスキップ（チェックポイントなしのため）
-      this.deps.resultPanel.updateStepStatus('sampling', 'skipped', 'チェックポイントなし');
+      this.deps.resultPanel.updateStepStatus(
+        'sampling',
+        'skipped',
+        t('progress.statusNoCheckpoints')
+      );
 
       const chainProgress = (current / total) * 100;
-      const detail = `${current.toLocaleString()} / ${total.toLocaleString()} イベント`;
+      const detail = t('progress.chainDetail', {
+        current: current.toLocaleString(),
+        total: total.toLocaleString(),
+      });
       this.deps.resultPanel.updateStepProgress('chain', chainProgress, detail);
     } else if (phase === 'segment' || phase === 'checkpoint') {
       // サンプリング検証（チェックポイントあり）
@@ -210,8 +218,16 @@ export class TabController {
 
       const samplingProgress = (current / total) * 100;
       // 検証済み / 対象イベント数 (全イベント数) の形式で表示
-      const totalEventsStr = totalEvents ? ` (全${totalEvents.toLocaleString()}イベント)` : '';
-      const detail = `${current.toLocaleString()}イベント検証済み / ${total.toLocaleString()}イベント${totalEventsStr}`;
+      const detail = totalEvents
+        ? t('progress.samplingDetailWithTotal', {
+            current: current.toLocaleString(),
+            total: total.toLocaleString(),
+            totalEvents: totalEvents.toLocaleString(),
+          })
+        : t('progress.samplingDetail', {
+            current: current.toLocaleString(),
+            total: total.toLocaleString(),
+          });
       this.deps.resultPanel.updateStepProgress('sampling', samplingProgress, detail);
     } else if (phase === 'complete') {
       // 全完了

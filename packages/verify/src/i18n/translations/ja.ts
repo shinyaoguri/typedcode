@@ -4,6 +4,7 @@ export const ja: VerifyTranslationKeys = {
   common: {
     cancel: 'キャンセル',
     close: '閉じる',
+    delete: '削除',
     ready: 'Ready',
     verifying: '検証中',
     files: 'ファイル',
@@ -29,6 +30,7 @@ export const ja: VerifyTranslationKeys = {
   activityBar: {
     menu: 'メニュー',
     openFile: 'ファイルを開く',
+    openFolder: 'フォルダを開く',
     explorer: 'エクスプローラー',
     settings: '設定',
     themeToggle: 'テーマ切替',
@@ -41,6 +43,9 @@ export const ja: VerifyTranslationKeys = {
     addFile: 'ファイルを追加',
     addFolder: 'フォルダを追加',
     emptyMessage: 'ファイルを読み込むと\nここに表示されます',
+    removeFile: '削除',
+    removeFolder: 'フォルダを削除',
+    removeConfirm: '「${filename}」をリストから削除しますか？',
   },
 
   welcome: {
@@ -62,10 +67,33 @@ export const ja: VerifyTranslationKeys = {
     samplingDesc: 'チェックポイント区間の部分検証',
     completeStep: '完了',
     completeDesc: '検証結果の表示',
+    statusRunning: '処理中...',
+    statusDone: '完了',
+    statusError: 'エラー',
+    statusSkipped: 'スキップ',
+    statusFallback: 'フォールバック',
+    statusNoCheckpoints: 'チェックポイントなし',
+    chainDetail: '${current} / ${total} イベント',
+    samplingDetail: '${current}イベント検証済み / ${total}イベント',
+    samplingDetailWithTotal:
+      '${current}イベント検証済み / ${total}イベント (全${totalEvents}イベント)',
   },
 
   result: {
     statusVerifying: '検証中...',
+    statusSuccess: '検証成功',
+    statusWarning: '警告あり',
+    statusFailed: '検証失敗',
+    typingPure: '純粋',
+    typingExternal: '外部入力あり',
+    timesCount: '${count}回',
+    externalInputYes: 'あり',
+    externalInputNo: 'なし',
+    eventsUnit: '${count}件',
+    screenshotsMissing: '✗ ${missing}/${total}枚が欠損',
+    screenshotsMissingAndTampered: '✗ ${missing}枚欠損, ${tampered}枚改ざんの可能性',
+    imageLoadFailed: '画像を読み込めませんでした',
+    sourceMismatchBanner: 'ソースファイルと証明内容が一致しません',
     typing: 'タイピング',
     pasteCount: '外部ペースト',
     internalPasteCount: '内部ペースト',
@@ -212,9 +240,28 @@ export const ja: VerifyTranslationKeys = {
     valid: '有効',
     invalid: '無効',
     none: 'なし',
+    validCount: '${valid}/${total} 有効',
     verifiedLegacy: '検証済み（旧形式）',
     exportTimeAuth: 'エクスポート時に認証',
     noAttestation: '人間証明なし',
+  },
+
+  screenshot: {
+    typePeriodic: '定期キャプチャ',
+    typeFocusLost: 'フォーカス喪失',
+    typeManual: '手動',
+  },
+
+  lightbox: {
+    close: '閉じる (Esc)',
+    prev: '前へ (←)',
+    next: '次へ (→)',
+    type: 'タイプ',
+    time: '時刻',
+    resolution: '解像度',
+    hashVerification: 'ハッシュ検証',
+    verified: '✓ 検証済み',
+    unverified: '未検証',
   },
 
   statusBar: {
@@ -231,6 +278,38 @@ export const ja: VerifyTranslationKeys = {
     flight: 'Flight',
     mouse: 'マウス',
     eventFilter: 'イベントフィルター',
+    axisTime: '時刻',
+    secondsShort: '${seconds}秒',
+    datasets: {
+      typingSpeed: 'タイピング速度 (CPS)',
+      internalPaste: '内部ペースト',
+      periodicCapture: '定期撮影',
+      focusLostCapture: 'フォーカス喪失撮影',
+      manualCapture: '手動撮影',
+      humanAttestation: '人間検証',
+      preExportAttestation: 'エクスポート認証',
+      networkStatusChange: 'ネットワーク変更',
+      contentSnapshot: 'スナップショット',
+    },
+    tooltips: {
+      screenshotMissing: '❌ ${type} - ${time} [画像欠損]',
+      screenshotTampered: '⚠️ ${type} - ${time} [改ざんの可能性]',
+      screenshotVerified: '📷 ${type} - ${time} [検証済み]',
+      humanAttestation: '⭐ 人間検証 (Turnstile) - ${time}',
+      externalInput: '⚠️ 外部ペースト/ドロップ',
+      internalPaste: '✅ 内部ペースト（許可） - ${time}',
+      termsAccepted: '📜 利用規約同意 - ${time}',
+      preExportAttestation: '🔐 エクスポート前検証 (Turnstile) - ${time}',
+      editorInitialized: '🚀 エディタ初期化 - ${time}',
+      networkStatusChange: '🌐 ネットワーク状態変更 - ${time}',
+      codeExecution: '▶️ コード実行 - ${time}',
+      terminalInput: '💻 ターミナル入力 - ${time}',
+      screenShareStart: '🎬 画面共有開始 - ${time}',
+      screenShareStop: '🛑 画面共有終了 - ${time}',
+      templateInjection: '📝 テンプレート挿入 - ${time}',
+      windowResize: '📐 ウィンドウリサイズ - ${time}',
+      contentSnapshot: '📋 コンテンツスナップショット - ${time}',
+    },
     categories: {
       content: 'コンテンツ',
       cursor: 'カーソル',
@@ -272,6 +351,40 @@ export const ja: VerifyTranslationKeys = {
 
   trust: {
     screenShareOptOut: '画面共有なしモードで記録されました',
+    summaryVerified: '検証成功',
+    summaryPartial: '警告あり（${count}件）',
+    summaryFailed: '検証失敗（${count}件のエラー）',
+    issueMetadataInvalid: 'メタデータ検証失敗',
+    issueChainInvalid: 'ハッシュチェーン検証失敗',
+    issueScreenshotsTampered: '${count}枚に改竄の可能性',
+    issueScreenshotsMissing: '${count}枚が欠損',
+    issueAttestationBoth: '人間証明の検証に失敗',
+    issueAttestationCreate: '作成時の人間証明が無効',
+    issueAttestationExport: 'エクスポート時の人間証明が無効',
+    issueSourceMismatch:
+      '${filename}: ソースファイルと証明内容が異なります (+${additions}/-${deletions}行)',
+    issueAnchoringInvalid: '署名チェックポイントが無効です',
+    issueAnchoringMissing: '時刻アンカー（署名チェックポイント）がありません',
+    issueAnchoringPostHoc:
+      'post-hoc 一括署名の疑いがあります（サーバ時刻が申告時間より極端に短い）',
+    issueAnchoringSparse:
+      'アンカー密度が疎です（署名チェックポイントが申告セッションに対し少ない/遅い）',
+    issueRootNotAnchored:
+      'チェーン根がサーバアンカーされていません（開始時刻が未固定・オフライン捏造の余地）',
+    issueNotPureTyping: 'ピュアタイピングではありません（ペースト/バルク挿入あり）',
+    issueExamBindingFailed: '問題束縛（署名/内容ハッシュ）の検証に失敗しました',
+    issueExamUnverified: '問題パッケージ未読込のため真正性は未確認です',
+    components: {
+      metadata: 'メタデータ',
+      chain: 'ハッシュチェーン',
+      posw: 'PoSW',
+      attestation: '人間証明',
+      screenshots: 'スクリーンショット',
+      source: 'ソースファイル',
+      anchoring: '時刻アンカー',
+      exam: '試験束縛',
+      typing: 'タイピング',
+    },
   },
 
   process: {
@@ -421,6 +534,13 @@ export const ja: VerifyTranslationKeys = {
     browserNotSupportedDesc:
       '代わりにファイル選択またはドラッグ＆ドロップをご利用ください',
     examInvalidPackage: '問題パッケージ (.tcexam) が不正です',
+    jsonParseError: 'JSONパースエラー: ${filename}',
+    fileLoadFailed: 'ファイル読み込みに失敗しました: ${message}',
+    zipEmpty: 'ZIPにファイルがありません。',
+    zipLoadFailed: 'ZIPファイルの読み込みに失敗しました: ${message}',
+    unsupportedFormat:
+      'サポートされていないフォーマット: メタデータがありません（v3.0.0以降が必要）',
+    noEvents: '証明データにイベントがありません',
   },
 
   messages: {

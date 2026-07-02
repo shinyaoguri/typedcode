@@ -4,6 +4,8 @@
  * キャンバス初期化や共通の描画関数を提供します。
  */
 
+import { t } from '../i18n/index.js';
+
 // ============================================================================
 // 型定義
 // ============================================================================
@@ -55,7 +57,7 @@ export class ChartUtils {
    * 時間を短いフォーマットに（秒.ms）
    */
   static formatTimeShort(ms: number): string {
-    return `${(ms / 1000).toFixed(2)}秒`;
+    return t('charts.secondsShort', { seconds: (ms / 1000).toFixed(2) });
   }
 
   /**

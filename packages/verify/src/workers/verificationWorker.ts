@@ -229,7 +229,9 @@ async function verify(request: VerifyRequest): Promise<void> {
       isPureTyping = eventMetadataVerification.isPureTyping;
     } else {
       // メタデータがない場合はサポート対象外（v3.0.0以降が必要）
-      sendError(id, 'サポートされていないフォーマット: メタデータがありません（v3.0.0以降が必要）');
+      // Worker 内ではユーザーのロケール設定 (localStorage) を参照できないため、
+      // 翻訳キーをそのまま送り、メインスレッド側 (VerificationController) で t() 解決する
+      sendError(id, 'errors.unsupportedFormat');
       return;
     }
 
@@ -237,7 +239,7 @@ async function verify(request: VerifyRequest): Promise<void> {
 
     // 2. ハッシュ鎖の検証
     if (!proofData.proof?.events) {
-      sendError(id, 'No events found in proof data');
+      sendError(id, 'errors.noEvents');
       return;
     }
 
