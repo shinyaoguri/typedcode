@@ -4,8 +4,10 @@ import {
   isBenignEditorInsert,
   isMultiLineBulkInsert,
   isFlaggedBulkInsert,
+  isSuspiciousBulkInsert,
   collectInternalPasteContents,
 } from '../structuralEdit.js';
+import { StatisticsCalculator } from '../StatisticsCalculator.js';
 import type { StoredEvent, EditorAssistDeclaration } from '../../types.js';
 
 function insert(data: unknown, inputType: string, rangeLength = 0): StoredEvent {
@@ -143,5 +145,48 @@ describe('getEditorAssistDeclaration', () => {
   it('returns null when no environmentProbe event is present', () => {
     const events = [{ type: 'contentChange', inputType: 'insertText', data: 'a' } as unknown as StoredEvent];
     expect(getEditorAssistDeclaration(events)).toBeNull();
+  });
+});
+
+describe('isSuspiciousBulkInsert (#140: verifier/editor 単一定義)', () => {
+  it('flags replaceContent / insertReplacementText / multi-char insertText', () => {
+    expect(isSuspiciousBulkInsert(insert(')', 'replaceContent'))).toBe(true);
+    expect(isSuspiciousBulkInsert(insert('foo', 'insertReplacementText'))).toBe(true);
+    expect(isSuspiciousBulkInsert(insert('ab', 'insertText'))).toBe(true);
+  });
+
+  it('does not flag a single-char insertText', () => {
+    expect(isSuspiciousBulkInsert(insert('a', 'insertText'))).toBe(false);
+  });
+
+  it('flags a rangeOffset-bearing internal paste that actually inserts content', () => {
+    // #140 のドリフト源。editor がこれを出したとき申告と再計算が一致する必要がある。
+    const ev = { type: 'contentChange', inputType: 'insertFromInternalPaste', data: 'pasted', rangeOffset: 5 } as unknown as StoredEvent;
+    expect(isSuspiciousBulkInsert(ev)).toBe(true);
+  });
+
+  it('does not flag the internal-paste audit marker (rangeOffset == null)', () => {
+    const marker = { type: 'contentChange', inputType: 'insertFromInternalPaste', data: 'pasted', rangeOffset: null } as unknown as StoredEvent;
+    expect(isSuspiciousBulkInsert(marker)).toBe(false);
+  });
+});
+
+describe('bulkInsertEvents parity: StatisticsCalculator (editor 申告) と isSuspiciousBulkInsert (verifier 再計算)', () => {
+  // editor の申告 (StatisticsCalculator.bulkInsertEvents) と verifier の再計算が
+  // 同じ定義から出ることを固定する。ズレると verifyProofMetadata の完全一致照合で
+  // 正規 proof が invalid になる (#140)。
+  it('StatisticsCalculator counts exactly the events isSuspiciousBulkInsert flags', () => {
+    const events: StoredEvent[] = [
+      insert('a', 'insertText'),                    // single char → not bulk
+      insert('foo()', 'insertReplacementText'),     // completion → bulk
+      insert(')', 'replaceContent'),                // type-over → bulk
+      insert('xy', 'insertText'),                   // multi char → bulk
+      { type: 'contentChange', inputType: 'insertFromInternalPaste', data: 'block', rangeOffset: 3 } as unknown as StoredEvent, // rangeOffset paste → bulk
+      { type: 'contentChange', inputType: 'insertFromInternalPaste', data: 'block', rangeOffset: null } as unknown as StoredEvent, // marker → not bulk
+    ];
+    const expected = events.filter((e) => isSuspiciousBulkInsert(e)).length;
+    const stats = new StatisticsCalculator().getTypingStatistics(events, 0);
+    expect(stats.bulkInsertEvents).toBe(expected);
+    expect(stats.bulkInsertEvents).toBe(4);
   });
 });
