@@ -270,4 +270,47 @@ describe('verification utilities', () => {
       )
     ).toMatchObject({ valid: true, isPureTyping: true, suspiciousBulkInsertEventIndexes: [] });
   });
+
+  it('does not launder an AI bulk insert through an internal-paste audit marker (#138)', () => {
+    // 手製 proof で「マーカー(data=AI コード) + insertParagraph(同一 data)」のペアを作る手口。
+    // マーカーは自己申告なので根拠にせず、内容がセッション内に実在した replay 証拠を要求する。
+    const ai = 'int solve() {\n  return 42;\n}\n';
+    const events = [
+      { type: 'contentChange', inputType: 'insertFromInternalPaste', data: ai, rangeOffset: null, rangeLength: 0, timestamp: 5 },
+      { type: 'contentChange', inputType: 'insertParagraph', data: ai, rangeOffset: 0, rangeLength: 0, timestamp: 10 },
+    ] as StoredEvent[];
+    const proofData = {
+      metadata: {
+        totalEvents: 2, pasteEvents: 0, internalPasteEvents: 1, dropEvents: 0,
+        insertEvents: 2, deleteEvents: 0, bulkInsertEvents: 0, totalTypingTime: 10, averageTypingSpeed: 0,
+      },
+    } as ProofData;
+    expect(verifyProofMetadata(proofData, events)).toMatchObject({
+      valid: true,
+      isPureTyping: false,
+    });
+  });
+
+  it('keeps a genuine internal paste of session-typed content as pure typing (#138)', () => {
+    // 実際にセッション内で 1 文字ずつ打った内容をコピーして貼り直す正規フロー。
+    // copyOperation がコピー時点の文書と突合され、複数行の実挿入が許可される。
+    const events = [
+      { type: 'contentChange', inputType: 'insertText', data: 'a', rangeOffset: 0, rangeLength: 0, timestamp: 1 },
+      { type: 'contentChange', inputType: 'insertText', data: '\n', rangeOffset: 1, rangeLength: 0, timestamp: 2 },
+      { type: 'contentChange', inputType: 'insertText', data: 'b', rangeOffset: 2, rangeLength: 0, timestamp: 3 },
+      { type: 'copyOperation', inputType: null, data: 'a\nb', rangeLength: 3, timestamp: 4 },
+      { type: 'contentChange', inputType: 'insertFromInternalPaste', data: 'a\nb', rangeOffset: null, rangeLength: 0, timestamp: 5 },
+      { type: 'contentChange', inputType: 'insertParagraph', data: 'a\nb', rangeOffset: 3, rangeLength: 0, timestamp: 6 },
+    ] as StoredEvent[];
+    const proofData = {
+      metadata: {
+        totalEvents: 6, pasteEvents: 0, internalPasteEvents: 1, dropEvents: 0,
+        insertEvents: 5, deleteEvents: 0, bulkInsertEvents: 0, totalTypingTime: 6, averageTypingSpeed: 0,
+      },
+    } as ProofData;
+    expect(verifyProofMetadata(proofData, events)).toMatchObject({
+      valid: true,
+      isPureTyping: true,
+    });
+  });
 });

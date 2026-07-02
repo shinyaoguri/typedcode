@@ -10,7 +10,7 @@
 
 import type { AnalysisInput, AnalysisSignal, Analyzer, EvidenceRef } from '../types.js';
 import { isProhibitedInputType } from '../../typingProof/InputTypeValidator.js';
-import { isBenignEditorInsert, isFlaggedBulkInsert, collectInternalPasteContents } from '../../typingProof/structuralEdit.js';
+import { isBenignEditorInsert, isFlaggedBulkInsert, SessionProvenanceLedger } from '../../typingProof/structuralEdit.js';
 
 const ID = 'example-pure-typing';
 
@@ -28,12 +28,13 @@ export const pureTypingAnalyzer: Analyzer = {
     let dropCount = 0;
     let bulkCount = 0;
     const events = input.proof.proof?.events ?? [];
-    const internalPasteContents = collectInternalPasteContents(events);
+    const ledger = new SessionProvenanceLedger();
     for (let i = 0; i < events.length; i++) {
       const event = events[i];
       if (!event) continue;
+      const sessionDerived = ledger.checkAndApply(event);
       const inputType = event.inputType;
-      if (isFlaggedBulkInsert(event, internalPasteContents)) {
+      if (isFlaggedBulkInsert(event, sessionDerived)) {
         // 複数行のコード一括投入 (Copilot/Cursor が Tab で全体投入する類)。最も注視すべき痕跡。
         bulkCount++;
         evidence.push({ fromEventIndex: i, note: `multiline-bulk:${inputType ?? 'insert'}` });

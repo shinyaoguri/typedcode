@@ -23,7 +23,8 @@ export {
 
 import { deterministicStringify, computeHash } from './utils/hashUtils.js';
 import { computeExamChainRoot } from './exam/examPackage.js';
-import { isBenignEditorInsert, isFlaggedBulkInsert, collectInternalPasteContents } from './typingProof/structuralEdit.js';
+import { isBenignEditorInsert, isFlaggedBulkInsert, SessionProvenanceLedger } from './typingProof/structuralEdit.js';
+import { isTemplateInjectionData, offsetFromRange } from './typingProof/replay.js';
 import { POSW_ITERATIONS, EXAM_ROOT_BINDING_V2 } from './version.js';
 import {
   verifyProofSignedCheckpoints,
@@ -253,33 +254,6 @@ export async function verifyInitialHashRoot(
   return { valid: true, computedInitialHash, expectedInitialHash, rootAnchored };
 }
 
-function isTemplateInjectionData(data: unknown): data is { content: string } {
-  return typeof data === 'object' && data !== null && typeof (data as { content?: unknown }).content === 'string';
-}
-
-function offsetFromRange(content: string, event: StoredEvent): number | null {
-  if (typeof event.rangeOffset === 'number') {
-    return event.rangeOffset;
-  }
-
-  const range = event.range;
-  if (!range) return null;
-
-  const lines = content.split('\n');
-  const lineIndex = range.startLineNumber - 1;
-  if (lineIndex < 0 || lineIndex >= lines.length) return null;
-
-  const columnIndex = range.startColumn - 1;
-  const line = lines[lineIndex] ?? '';
-  if (columnIndex < 0 || columnIndex > line.length) return null;
-
-  let offset = columnIndex;
-  for (let i = 0; i < lineIndex; i++) {
-    offset += (lines[i]?.length ?? 0) + 1;
-  }
-  return offset;
-}
-
 function firstMismatchIndex(left: string, right: string): number {
   const length = Math.min(left.length, right.length);
   for (let i = 0; i < length; i++) {
@@ -421,13 +395,16 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
   const suspiciousBulkInsertEventIndexes: number[] = [];
   // isPureTyping を崩す「正規でない bulk 挿入」の数。2 種を拾う:
   //  (a) 従来の suspicious bulk (insertReplacementText/replaceContent/insertText>1/大内部ペースト)
-  //      のうち、括弧自動閉じ・単一行補完などの benign を除いたもの。
+  //      のうち、括弧自動閉じ・単一行補完などの benign と、検証済み内部ペースト (自分の
+  //      コードのコピペ = 許可。#138 の replay 検証に合格したもの) を除いたもの。
   //  (b) 複数行の実コード一括投入 (AI/snippet)。Monaco は insertParagraph で記録するため
-  //      (a) の suspicious 判定には載らないので別途拾う。空白のみの auto-indent は除外。
+  //      (a) の suspicious 判定には載らないので別途拾う。空白のみの auto-indent と
+  //      検証済み内部ペーストの実挿入は除外。
   // bulkInsertEvents の申告メタデータ照合 (verifyProofMetadata) は従来どおり suspicious のみ
   // 数えるので、既存 proof との後方互換と整合性チェックは保たれる。
   let nonBenignBulkInsertCount = 0;
-  const internalPasteContents = collectInternalPasteContents(events);
+  // #138: 内部ペーストの許可はマーカー (自己申告) でなく、replay で検証したセッション内在性。
+  const ledger = new SessionProvenanceLedger();
 
   for (let i = 0; i < events.length; i++) {
     const event = events[i];
@@ -439,9 +416,13 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
     if (event.type === 'contentChange' && event.data) insertEvents++;
     if (event.inputType?.startsWith('delete')) deleteEvents++;
 
+    const sessionDerived = ledger.checkAndApply(event);
     const suspicious = isSuspiciousBulkInsert(event);
     if (suspicious) suspiciousBulkInsertEventIndexes.push(i);
-    if ((suspicious && !isBenignEditorInsert(event)) || isFlaggedBulkInsert(event, internalPasteContents)) {
+    if (
+      (suspicious && !isBenignEditorInsert(event) && !sessionDerived) ||
+      isFlaggedBulkInsert(event, sessionDerived)
+    ) {
       nonBenignBulkInsertCount++;
     }
   }

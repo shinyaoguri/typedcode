@@ -21,6 +21,7 @@
  */
 
 import type { StoredEvent, EditorAssistDeclaration } from '../types.js';
+import { applyReplayEventTolerant } from './replay.js';
 
 /** 構造文字: 括弧・クォート・空白。これらだけなら「内容 (コード)」を運べない。 */
 const STRUCTURAL_CHARS = /^[()\[\]{}<>"'`\s]+$/;
@@ -88,31 +89,61 @@ export function isMultiLineBulkInsert(event: StoredEvent): boolean {
 }
 
 /**
- * events から内部ペースト (自分のコードのコピペ = 許可) の挿入内容を集める。
- * 内部ペーストは `insertFromInternalPaste` の監査マーカー (rangeOffset==null) を伴い、
- * 実際の挿入は別途 contentChange (複数行なら insertParagraph) として記録される。後者を
- * AI 一括投入と取り違えないよう、監査マーカーと同一内容を許可リスト化する。
+ * セッション内在性 (session provenance) の逐次台帳 (#138)。
+ *
+ * 内部ペースト (自分のコードのコピペ = 許可) の実挿入を AI 一括投入と区別するために使う。
+ * 従来は `insertFromInternalPaste` の監査マーカーの data を**無条件に**許可リスト化していた
+ * ため、手製 proof で「マーカー(data=AI コード) + insertParagraph(同一 data)」のペアを
+ * 作るだけで isPureTyping を保てる laundering 口だった (#138)。マーカーは自己申告であり、
+ * 判定の入力にしない (ADR-0020)。
+ *
+ * 代わりに、editor 側 `SessionContentRegistry` の判定 (コピー登録 or 現文書の部分文字列)
+ * を verifier 側で replay により再現する。events を記録順に 1 度ずつ `checkAndApply` へ
+ * 通すと、イベント適用**前**の状態に対して「このイベントの内容はセッション由来か」を返す:
+ *   (a) それ以前の `copyOperation` の data と完全一致し、かつその data がコピー時点の
+ *       replay 文書の部分文字列だった (捏造 copyOperation ごと持ち込む偽装も塞ぐ)。
+ *       コピー済み内容は編集で消えても有効 (editor の copiedContent と同じ)
+ *   (b) 適用前の replay 文書の部分文字列である
+ * 「適用前」が重要 — 事前パスの許可リスト方式だと「実挿入 → マーカー」と並べ替えるだけで
+ * 挿入後の文書を根拠に自己検証できてしまう。
+ *
+ * 限界: 別タブからのコピペは正規でもこの proof (= 1 タブ) 内では検証できず、bulk 扱いに
+ * なる (advisory の isPureTyping が崩れるだけで valid は不変)。タブ横断の突合は ZIP 全体を
+ * 見る呼び出し側の将来課題。
  */
-export function collectInternalPasteContents(events: readonly StoredEvent[]): Set<string> {
-  const out = new Set<string>();
-  for (const event of events) {
-    if (event?.inputType === 'insertFromInternalPaste' && typeof event.data === 'string') {
-      out.add(event.data);
+export class SessionProvenanceLedger {
+  private content = '';
+  private verifiedCopies = new Set<string>();
+
+  /**
+   * イベントを 1 つ進める。返り値は「このイベントの data がセッション由来か」
+   * (適用前の文書 or 検証済みコピーに対する判定)。events の記録順に全イベントを通すこと。
+   */
+  checkAndApply(event: StoredEvent): boolean {
+    const data = typeof event.data === 'string' ? event.data : null;
+    const sessionDerived =
+      data !== null &&
+      data.length > 0 &&
+      (this.verifiedCopies.has(data) || this.content.includes(data));
+
+    if (event.type === 'copyOperation') {
+      // コピー内容が当時の文書に実在したときだけ「セッション由来」と認める。
+      if (sessionDerived && data !== null) this.verifiedCopies.add(data);
+      return sessionDerived;
     }
+
+    this.content = applyReplayEventTolerant(this.content, event);
+    return sessionDerived;
   }
-  return out;
 }
 
 /**
  * 複数行 bulk 挿入のうち「記録・検出すべきもの」か (内部ペーストの実挿入は除外する)。
- * `internalPasteContents` は collectInternalPasteContents の結果を渡す。
+ * `sessionDerived` は `SessionProvenanceLedger.checkAndApply` が当該イベントに返した値
+ * (#138: マーカー由来の許可リストではなく、replay で検証したセッション内在性)。
  */
-export function isFlaggedBulkInsert(
-  event: StoredEvent,
-  internalPasteContents: ReadonlySet<string>,
-): boolean {
+export function isFlaggedBulkInsert(event: StoredEvent, sessionDerived: boolean): boolean {
   if (!isMultiLineBulkInsert(event)) return false;
   // 内部ペースト (自分のコード) の実挿入は許可。AI/外部の一括投入だけ残す。
-  if (typeof event.data === 'string' && internalPasteContents.has(event.data)) return false;
-  return true;
+  return !sessionDerived;
 }

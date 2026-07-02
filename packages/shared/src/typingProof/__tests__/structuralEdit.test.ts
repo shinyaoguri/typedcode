@@ -4,7 +4,7 @@ import {
   isBenignEditorInsert,
   isMultiLineBulkInsert,
   isFlaggedBulkInsert,
-  collectInternalPasteContents,
+  SessionProvenanceLedger,
 } from '../structuralEdit.js';
 import type { StoredEvent, EditorAssistDeclaration } from '../../types.js';
 
@@ -91,23 +91,65 @@ describe('isMultiLineBulkInsert', () => {
 describe('isFlaggedBulkInsert (内部ペースト除外)', () => {
   const code = 'int helper = 7;\r\n';
 
-  it('flags an AI/external multi-line block when no internal-paste audit matches', () => {
-    expect(isFlaggedBulkInsert(insert(code, 'insertParagraph'), new Set())).toBe(true);
+  it('flags an AI/external multi-line block that is not session-derived', () => {
+    expect(isFlaggedBulkInsert(insert(code, 'insertParagraph'), false)).toBe(true);
   });
 
-  it('does NOT flag a multi-line insert whose content matches an internal-paste audit', () => {
-    const internal = new Set([code]);
-    expect(isFlaggedBulkInsert(insert(code, 'insertParagraph'), internal)).toBe(false);
+  it('does NOT flag a multi-line insert verified as session-derived', () => {
+    expect(isFlaggedBulkInsert(insert(code, 'insertParagraph'), true)).toBe(false);
+  });
+});
+
+describe('SessionProvenanceLedger (#138: 内部ペーストの内容はセッション由来を replay で検証する)', () => {
+  const code = 'int helper = 7;\n';
+
+  function typed(data: string, rangeOffset: number, rangeLength = 0): StoredEvent {
+    return { type: 'contentChange', inputType: 'insertText', data, rangeOffset, rangeLength } as unknown as StoredEvent;
+  }
+  function copyOp(data: string): StoredEvent {
+    return { type: 'copyOperation', inputType: null, data } as unknown as StoredEvent;
+  }
+  function run(events: StoredEvent[]): boolean[] {
+    const ledger = new SessionProvenanceLedger();
+    return events.map((e) => ledger.checkAndApply(e));
+  }
+
+  it('accepts a re-insertion of content present in the document before the event', () => {
+    const results = run([typed(code, 0), typed(code, code.length)]);
+    expect(results[1]).toBe(true);
   });
 
-  it('collectInternalPasteContents gathers insertFromInternalPaste data', () => {
-    const events = [
-      insert('a', 'insertText'),
-      insert(code, 'insertFromInternalPaste'),
-    ];
-    const set = collectInternalPasteContents(events as never);
-    expect(set.has(code)).toBe(true);
-    expect(set.size).toBe(1);
+  it('accepts content matching a verified copyOperation even after the original was deleted', () => {
+    const deleteAll = { type: 'contentChange', inputType: 'deleteContentBackward', data: '', rangeOffset: 0, rangeLength: code.length } as unknown as StoredEvent;
+    const results = run([typed(code, 0), copyOp(code), deleteAll, typed(code, 0)]);
+    expect(results[1]).toBe(true); // copy 時点で文書に実在 → 検証済みコピー
+    expect(results[3]).toBe(true); // 削除後でもコピー由来として許可 (editor の copiedContent と同じ)
+  });
+
+  it('rejects content that never existed in the session (marker laundering, #138)', () => {
+    const ai = 'int ai() {\n  return 42;\n}\n';
+    const marker = { type: 'contentChange', inputType: 'insertFromInternalPaste', data: ai, rangeOffset: null, rangeLength: 0 } as unknown as StoredEvent;
+    const insertion = { type: 'contentChange', inputType: 'insertParagraph', data: ai, rangeOffset: 9, rangeLength: 0 } as unknown as StoredEvent;
+    const results = run([typed('unrelated', 0), marker, insertion]);
+    expect(results[1]).toBe(false); // マーカー (自己申告) は根拠にならない
+    expect(results[2]).toBe(false); // 実挿入もセッション由来と認めない
+  });
+
+  it('rejects an insertion whose only evidence is the insertion itself (insertion-then-marker reordering)', () => {
+    // 事前パスの許可リスト方式だと「実挿入 → マーカー」の並べ替えで挿入後の文書を根拠に
+    // 自己検証できた。逐次判定 (適用前の状態) はこれを塞ぐ。
+    const ai = 'int ai() {\n  return 42;\n}\n';
+    const insertion = { type: 'contentChange', inputType: 'insertParagraph', data: ai, rangeOffset: 0, rangeLength: 0 } as unknown as StoredEvent;
+    const marker = { type: 'contentChange', inputType: 'insertFromInternalPaste', data: ai, rangeOffset: null, rangeLength: 0 } as unknown as StoredEvent;
+    const results = run([insertion, marker]);
+    expect(results[0]).toBe(false);
+  });
+
+  it('does not trust a fabricated copyOperation whose content was not in the document', () => {
+    const ai = 'int ai() {\n  return 42;\n}\n';
+    const results = run([typed('unrelated', 0), copyOp(ai), typed(ai, 9)]);
+    expect(results[1]).toBe(false);
+    expect(results[2]).toBe(false);
   });
 });
 
