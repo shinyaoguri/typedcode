@@ -23,7 +23,9 @@ export type IntegrityLevel = 'proven' | 'failed';
  * - anchored:   root サーバアンカー + 署名 cp が密 (申告セッション全体が時刻固定)
  * - partial:    何らかのサーバアンカーはあるが弱い (疎 / post-hoc 疑い / root か cp の片方のみ)
  * - unanchored: サーバ由来の時刻証拠なし (完全オフライン捏造の余地)
- * - exam-t0:    試験 proof。T0 束縛 (封印 + 監督コード) が時刻の regime を担う (ADR-0006)
+ * - exam-t0:    試験 proof。T0 束縛 (封印 + 監督コード) が時刻の regime を担う (ADR-0006)。
+ *               **束縛が実際に検証済み (package 提供 + verifyExamBinding 合格) のときのみ** —
+ *               自己申告の exam ブロックだけでは名乗れない (#131、ADR-0020)
  */
 export type TemporalLevel = 'anchored' | 'partial' | 'unanchored' | 'exam-t0';
 
@@ -109,7 +111,11 @@ export function deriveAssurance(input: AssuranceInput): AssuranceResult {
 function deriveTemporal(input: AssuranceInput): TemporalLevel {
   // 試験 proof は T0 束縛 (封印 + 監督コード = proctor) が時刻 regime を担う (ADR-0006)。
   // 署名 cp は best-effort の補強であり、有無で regime は変わらない。
-  if (input.exam?.present) {
+  // ただし exam-t0 を名乗れるのは束縛が**実際に検証済み**のときだけ (#131)。exam ブロックは
+  // 自己申告で root が自己整合するため、存在だけで昇格させると捏造 proof が時刻 regime を
+  // 詐称できる (ADR-0020「自己申告を判定に昇格させない」)。未検証 (package 未提供含む) は
+  // 通常のサーバ時刻証拠の導出に落とす。
+  if (input.exam?.present && input.exam.packageProvided && input.exam.bindingValid === true) {
     return 'exam-t0';
   }
 

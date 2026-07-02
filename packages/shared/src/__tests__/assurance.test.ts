@@ -106,6 +106,36 @@ describe('deriveAssurance — temporal', () => {
     };
     expect(deriveAssurance(input).temporal).toBe('exam-t0');
   });
+
+  it('does not grant exam-t0 to a self-declared exam block without the package (#131)', () => {
+    const input: AssuranceInput = {
+      ...healthyInput(),
+      rootAnchored: false,
+      signedCheckpoints: undefined,
+      exam: { present: true, packageProvided: false },
+    };
+    expect(deriveAssurance(input).temporal).toBe('unanchored');
+  });
+
+  it('does not grant exam-t0 when the provided exam package fails binding verification (#131)', () => {
+    const input: AssuranceInput = {
+      ...healthyInput(),
+      rootAnchored: false,
+      signedCheckpoints: undefined,
+      exam: { present: true, packageProvided: true, bindingValid: false },
+    };
+    expect(deriveAssurance(input).temporal).toBe('unanchored');
+  });
+
+  it('still derives server time evidence for an unverified exam claim (#131)', () => {
+    // 未検証 exam でも実在するサーバ時刻証拠 (有効な署名 cp) は通常どおり数える。
+    const input: AssuranceInput = {
+      ...healthyInput(),
+      rootAnchored: false,
+      exam: { present: true, packageProvided: false },
+    };
+    expect(deriveAssurance(input).temporal).toBe('partial');
+  });
 });
 
 describe('deriveAssurance — provenance (advisory)', () => {

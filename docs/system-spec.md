@@ -509,7 +509,7 @@ interface ExamProofBlock {
 - `verifyProofFile` 全レイヤを `&&` で組み合わせる
 - 署名済み checkpoint は `anchored=true` のとき必須レイヤ。`anchored=false` (旧 proof など) では他レイヤで成立すれば valid
 - **アンカー密度 (ADR-0016)** は既定 warning。`requireAnchorDensity` (verify-cli の `--require-anchor-density` 等) を渡したときのみ `sparse` を signed checkpoint レイヤの fail に合流させる (exam/採点で opt-in)
-- **root サーバアンカー (ADR-0017)**: `sessionStartToken` があるとき token↔署名 cp の `sessionId` 一致も要求する (アンカーとチェーンの結びつき)。`rootAnchored=false` (token 無し = オフライン劣化 / 旧 proof) は既定 warning。`requireRootAnchor` (verify-cli の `--require-root-anchor`) を渡したときのみ fail に合流させる (exam は独自束縛のため対象外。high-stakes 採点で opt-in)
+- **root サーバアンカー (ADR-0017)**: `sessionStartToken` があるとき token↔署名 cp の `sessionId` 一致も要求する (アンカーとチェーンの結びつき)。`rootAnchored=false` (token 無し = オフライン劣化 / 旧 proof) は既定 warning。`requireRootAnchor` (verify-cli の `--require-root-anchor`) を渡したときのみ fail に合流させる (exam の免除は `examBindingVerified` = 束縛検証合格が条件。自己申告の exam ブロックだけでは免除しない #131。high-stakes 採点で opt-in)
 - レイヤ間優先順位: metadata → chain → finalHash → checkpoint → content → signedCheckpoint
 - いずれかが false なら、エラー位置 (event index) とメッセージを返す
 
@@ -669,7 +669,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **post-hoc batch signing** | proof 完成後に複数 envelope を短時間で一括取得する攻撃。temporal ratio で検出試行 |
 | **anchor density / sparse (ADR-0016)** | 署名 cp が主張イベント数/時間に対し十分密かを見る指標。`maxGapEvents>500` / `maxGapServerMs>50s` / `firstAnchorLatencyEvents>500` で `sparse`。末尾 1 点アンカー (coverageRatio=1.0 でも疎) を検出。既定 warning、`requireAnchorDensity` で strict-fail |
 | **session start token / serverNonce (ADR-0017)** | session/start が Turnstile 後に発行する ECDSA 署名トークン。`serverNonce` を root (`SHA256(fp ‖ localNonce ‖ serverNonce)`) に焼き、開始時刻をサーバアンカーする。完全オフライン捏造を封じる。Turnstile ゲート + root アンカー + 人間ゲートを兼ね、HMAC attestation の作成経路を置換 |
-| **rootAnchored (ADR-0017)** | proof の root が serverNonce トークンでアンカーされているか。`sessionStartToken` 同梱で true。false (旧 proof / オフライン劣化) は warning、`requireRootAnchor` で strict-fail。exam は対象外 |
+| **rootAnchored (ADR-0017)** | proof の root が serverNonce トークンでアンカーされているか。`sessionStartToken` 同梱で true。false (旧 proof / オフライン劣化) は warning、`requireRootAnchor` で strict-fail。exam の免除は束縛検証合格 (`examBindingVerified`) が条件 (#131) |
 | **isTrusted / 合成打鍵 (ADR-0018)** | keyDown/keyUp の `data.isTrusted===false` = JS dispatch (拡張/ページスクリプト) の合成打鍵。keystroke data 経由で hash chain に焼かれ改ざん耐性あり。`automationAnalyzer` が数えて advisory signal。**限界**: CDP/ハード注入は isTrusted=true で捕捉不可 (部分的) |
 | **(試験) 試験モード** | URL パス `/exam` で入る anti-AI-cheating モード (ADR-0011 でモードを path 分岐化、旧 `?exam=1` sticky を置換)。封印問題 + 監督コード + チェーン根束縛。ADR-0006〜0011 |
 | **モード (casual/class/assignment/exam)** | URL パスで確定する動作モード (ADR-0011/0015)。`/casual` `/class` `/assignment` `/exam`。能力 (スクショ/封印/フルスクリーン等) と storage 名前空間がモード別。proof に自己申告 `mode` を記録 |
