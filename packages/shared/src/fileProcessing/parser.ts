@@ -28,8 +28,11 @@ const MAX_ZIP_ENTRIES = 5000;
  * 高圧縮率の悪意ある ZIP (zip bomb) で grader / 検証 UI を OOM/ハングさせないための事前ガード。
  * `JSZip.loadAsync` は解凍前のメタデータを持つので、エントリの解凍後サイズ合計を**展開前に**
  * 検査して上限超過なら throw する。
+ *
+ * parser 内の各エントリポイントが呼ぶほか、shared を経由せず JSZip を直接使う消費者
+ * (verify の ZipFileProcessor 等) も loadAsync 直後に必ず呼ぶこと (#149)。
  */
-function assertZipWithinBudget(zip: JSZip): void {
+export function assertZipWithinBudget(zip: JSZip): void {
   const names = Object.keys(zip.files);
   if (names.length > MAX_ZIP_ENTRIES) {
     throw new Error(`ZIP has too many entries (${names.length} > ${MAX_ZIP_ENTRIES})`);

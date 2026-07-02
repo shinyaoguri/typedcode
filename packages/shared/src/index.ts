@@ -219,6 +219,7 @@ export {
   parseZipBuffer,
   extractFirstProofFromZip,
   extractAllProofsFromZip,
+  assertZipWithinBudget,
 } from './fileProcessing/index.js';
 
 // UI共通コンポーネント

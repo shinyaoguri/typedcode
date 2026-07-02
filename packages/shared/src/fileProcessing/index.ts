@@ -29,4 +29,5 @@ export {
   parseZipBuffer,
   extractFirstProofFromZip,
   extractAllProofsFromZip,
+  assertZipWithinBudget,
 } from './parser.js';
