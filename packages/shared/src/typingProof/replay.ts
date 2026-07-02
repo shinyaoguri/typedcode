@@ -18,6 +18,26 @@ export function isTemplateInjectionData(data: unknown): data is { content: strin
   );
 }
 
+/**
+ * contentSnapshot が replay 文書と乖離しているか (#175)。
+ *
+ * editor の正規 snapshot (100 イベント毎、`ProofStatusDisplay.checkSnapshot`) は取得時の
+ * エディタ内容そのものなので、忠実な replay とは常に完全一致する (= replay 上 no-op)。
+ * 乖離する snapshot は replay 文書を挿入イベント無しで丸ごと差し替えられる唯一の口であり、
+ * 手製 proof が AI 解答全体を 1 イベントで持ち込む laundering に使える。
+ * 判定は advisory のみ (isPureTyping / 分析シグナル / processSummary)。`valid` には影響させない。
+ */
+export function isDivergentContentSnapshot(
+  event: StoredEvent,
+  replayContentBeforeApply: string
+): boolean {
+  return (
+    event.type === 'contentSnapshot' &&
+    typeof event.data === 'string' &&
+    event.data !== replayContentBeforeApply
+  );
+}
+
 /** Monaco の range (1-origin 行/列) を文書内 offset へ変換する。範囲外なら null。 */
 export function offsetFromRange(content: string, event: StoredEvent): number | null {
   if (typeof event.rangeOffset === 'number') {

@@ -169,6 +169,21 @@ describe('SessionProvenanceLedger (#138: 内部ペーストの内容はセッシ
     expect(results[1]).toBe(false);
     expect(results[2]).toBe(false);
   });
+
+  it('does not absorb a divergent contentSnapshot, so smuggled content is never session-derived (#175)', () => {
+    // 乖離 snapshot で AI 解答を持ち込み、その部分文字列を「内部ペースト」として挿入する迂回路。
+    const ai = 'int ai() {\n  return 42;\n}\n';
+    const snapshot = { type: 'contentSnapshot', inputType: null, data: ai } as unknown as StoredEvent;
+    const insertion = { type: 'contentChange', inputType: 'insertParagraph', data: ai, rangeOffset: 0, rangeLength: 0 } as unknown as StoredEvent;
+    const results = run([snapshot, insertion]);
+    expect(results[1]).toBe(false);
+  });
+
+  it('treats a matching contentSnapshot as a provenance no-op (the regular 100-event snapshot)', () => {
+    const snapshot = { type: 'contentSnapshot', inputType: null, data: code } as unknown as StoredEvent;
+    const results = run([typed(code, 0), snapshot, typed(code, code.length)]);
+    expect(results[2]).toBe(true); // snapshot を挟んでも文書由来の再挿入は引き続き許可
+  });
 });
 
 describe('getEditorAssistDeclaration', () => {

@@ -115,4 +115,28 @@ describe('pureTypingAnalyzer (placeholder)', () => {
     const report = await runAnalysis(makeInput({ isPureTyping: true }), [pureTypingAnalyzer]);
     expect(report.signals).toHaveLength(0);
   });
+
+  it('flags a divergent contentSnapshot as bulk evidence (#175)', async () => {
+    // 挿入イベント無しで replay 文書を丸ごと差し替える持ち込み口。bulk として数え、
+    // evidence の note で snapshot 由来だと分かるようにする。
+    const input = {
+      proof: {
+        proof: {
+          events: [
+            { sequence: 0, timestamp: 0, type: 'contentSnapshot', data: 'int ai() {\n  return 42;\n}\n' },
+          ],
+        },
+      },
+      verification: {
+        valid: true,
+        metadataValid: true,
+        chainValid: true,
+        isPureTyping: false,
+      },
+    } as unknown as AnalysisInput;
+    const report = await runAnalysis(input, [pureTypingAnalyzer]);
+    expect(report.signals).toHaveLength(1);
+    expect(report.signals[0]!.summaryParams).toMatchObject({ paste: 0, drop: 0, bulk: 1 });
+    expect(report.signals[0]!.evidence[0]?.note).toBe('divergent-content-snapshot');
+  });
 });

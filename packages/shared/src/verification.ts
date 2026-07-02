@@ -24,7 +24,7 @@ export {
 import { deterministicStringify, computeHash } from './utils/hashUtils.js';
 import { computeExamChainRoot } from './exam/examPackage.js';
 import { isBenignEditorInsert, isFlaggedBulkInsert, isSuspiciousBulkInsert, SessionProvenanceLedger } from './typingProof/structuralEdit.js';
-import { isTemplateInjectionData, offsetFromRange } from './typingProof/replay.js';
+import { isDivergentContentSnapshot, isTemplateInjectionData, offsetFromRange } from './typingProof/replay.js';
 import { POSW_ITERATIONS, EXAM_ROOT_BINDING_V2 } from './version.js';
 import {
   verifyProofSignedCheckpoints,
@@ -383,6 +383,11 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
   // bulkInsertEvents の申告メタデータ照合 (verifyProofMetadata) は従来どおり suspicious のみ
   // 数えるので、既存 proof との後方互換と整合性チェックは保たれる。
   let nonBenignBulkInsertCount = 0;
+  // #175: replay 文書と乖離した contentSnapshot。挿入イベント無しで文書を丸ごと差し替え
+  // られる唯一の口なので、外部入力相当として isPureTyping を崩す (正規 snapshot は常に
+  // 一致する no-op なので既存 proof に影響しない)。claimed metadata との照合カウントには
+  // 含めない (後方互換)。
+  const divergentContentSnapshotEventIndexes: number[] = [];
   // #138: 内部ペーストの許可はマーカー (自己申告) でなく、replay で検証したセッション内在性。
   const ledger = new SessionProvenanceLedger();
 
@@ -396,6 +401,9 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
     if (event.type === 'contentChange' && event.data) insertEvents++;
     if (event.inputType?.startsWith('delete')) deleteEvents++;
 
+    if (isDivergentContentSnapshot(event, ledger.currentContent)) {
+      divergentContentSnapshotEventIndexes.push(i);
+    }
     const sessionDerived = ledger.checkAndApply(event);
     const suspicious = isSuspiciousBulkInsert(event);
     if (suspicious) suspiciousBulkInsertEventIndexes.push(i);
@@ -426,9 +434,14 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
 
   return {
     valid: true,
-    isPureTyping: pasteEvents === 0 && dropEvents === 0 && nonBenignBulkInsertCount === 0,
+    isPureTyping:
+      pasteEvents === 0 &&
+      dropEvents === 0 &&
+      nonBenignBulkInsertCount === 0 &&
+      divergentContentSnapshotEventIndexes.length === 0,
     recomputedMetadata,
     suspiciousBulkInsertEventIndexes,
+    divergentContentSnapshotEventIndexes,
   };
 }
 

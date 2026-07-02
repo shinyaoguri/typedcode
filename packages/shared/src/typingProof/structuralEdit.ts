@@ -22,7 +22,7 @@
  */
 
 import type { StoredEvent, EditorAssistDeclaration } from '../types.js';
-import { applyReplayEventTolerant } from './replay.js';
+import { applyReplayEventTolerant, isDivergentContentSnapshot } from './replay.js';
 
 /** 構造文字: 括弧・クォート・空白。これらだけなら「内容 (コード)」を運べない。 */
 const STRUCTURAL_CHARS = /^[()\[\]{}<>"'`\s]+$/;
@@ -165,6 +165,14 @@ export class SessionProvenanceLedger {
   private verifiedCopies = new Set<string>();
 
   /**
+   * 適用済みイベントまでの replay 文書 (読み取り専用)。
+   * 呼び出し側が `checkAndApply` の**前**に snapshot 乖離判定 (#175) へ渡すために公開する。
+   */
+  get currentContent(): string {
+    return this.content;
+  }
+
+  /**
    * イベントを 1 つ進める。返り値は「このイベントの data がセッション由来か」
    * (適用前の文書 or 検証済みコピーに対する判定)。events の記録順に全イベントを通すこと。
    */
@@ -179,6 +187,13 @@ export class SessionProvenanceLedger {
       // コピー内容が当時の文書に実在したときだけ「セッション由来」と認める。
       if (sessionDerived && data !== null) this.verifiedCopies.add(data);
       return sessionDerived;
+    }
+
+    // #175: 乖離した contentSnapshot は台帳に取り込まない。取り込むと持ち込んだ内容の
+    // 部分文字列が以後「セッション由来」と誤認され、内部ペースト検証の迂回路になる。
+    // 正規 snapshot は replay と常に一致する no-op なので、この分岐は正直な proof に影響しない。
+    if (isDivergentContentSnapshot(event, this.content)) {
+      return false;
     }
 
     this.content = applyReplayEventTolerant(this.content, event);
