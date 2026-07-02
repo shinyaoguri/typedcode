@@ -5,7 +5,7 @@
  */
 
 import JSZip from 'jszip';
-import { assertZipWithinBudget } from '@typedcode/shared';
+import { assertZipWithinBudget, collectChainImageHashes } from '@typedcode/shared';
 import type { ProofFile, ScreenshotManifest, VerifyScreenshot } from '../types.js';
 import type { ParsedFileData, FileProcessResult, FileProcessCallbacks } from './FileProcessor.js';
 import { ScreenshotService } from './ScreenshotService.js';
@@ -303,21 +303,12 @@ export class ZipFileProcessor {
   /**
    * 全 proof の screenshotCapture イベントから imageHash を収集する。チェーンは検証済み・
    * 改ざん不能なので、これが screenshot の真正なハッシュ集合になる (manifest は未署名なので
-   * 画像とセットで差し替え可能)。
+   * 画像とセットで差し替え可能)。実体は shared (#147: verify-cli と同一実装)。
    */
   private collectChainScreenshotHashes(files: ParsedFileData[]): Set<string> {
-    const hashes = new Set<string>();
-    for (const f of files) {
-      const events = f.proofData?.proof?.events;
-      if (!events) continue;
-      for (const e of events) {
-        if (e.type === 'screenshotCapture') {
-          const h = (e.data as { imageHash?: string } | null | undefined)?.imageHash;
-          if (typeof h === 'string' && h.length > 0) hashes.add(h);
-        }
-      }
-    }
-    return hashes;
+    return collectChainImageHashes(
+      files.map((f) => f.proofData?.proof?.events).filter((e): e is NonNullable<typeof e> => !!e)
+    );
   }
 
   /**

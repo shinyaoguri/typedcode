@@ -298,6 +298,56 @@ async function loadScreenshotsFromZip(
 }
 
 /**
+ * ZIP から `screenshots/manifest.json` の entry 群と画像バイト列を取り出す (#147)。
+ *
+ * ここでは**検証しない** — 判定 (ハッシュ突合・チェーン裏付け) は
+ * `screenshotVerification.ts` の `summarizeScreenshotArtifacts` に委譲する。
+ * - manifest 自体が無い → null (スクショ無しセッション / 旧 export / JSON 単体)
+ * - manifest が壊れている / 形式不正 → `entries: []` (チェーンに記録があれば
+ *   chainOnly として浮くように、「無かった」と同一視しない)
+ */
+export async function extractScreenshotArtifactsFromZip(buffer: ArrayBuffer): Promise<{
+  entries: Array<{ filename: string; imageHash: string }>;
+  images: Map<string, ArrayBuffer>;
+} | null> {
+  const zip = await JSZip.loadAsync(buffer);
+  assertZipWithinBudget(zip);
+
+  const manifestFile = zip.file('screenshots/manifest.json');
+  if (!manifestFile) return null;
+
+  let rawEntries: unknown = [];
+  try {
+    const parsed: unknown = JSON.parse(await manifestFile.async('string'));
+    rawEntries = Array.isArray(parsed)
+      ? parsed
+      : ((parsed as { screenshots?: unknown } | null)?.screenshots ?? []);
+  } catch {
+    rawEntries = [];
+  }
+
+  const entries: Array<{ filename: string; imageHash: string }> = [];
+  if (Array.isArray(rawEntries)) {
+    for (const e of rawEntries) {
+      const filename = (e as { filename?: unknown } | null)?.filename;
+      const imageHash = (e as { imageHash?: unknown } | null)?.imageHash;
+      if (typeof filename === 'string' && typeof imageHash === 'string') {
+        entries.push({ filename, imageHash });
+      }
+    }
+  }
+
+  const images = new Map<string, ArrayBuffer>();
+  for (const entry of entries) {
+    const file = zip.file(`screenshots/${entry.filename}`);
+    if (!file) continue;
+    images.set(entry.filename, await file.async('arraybuffer'));
+  }
+
+  return { entries, images };
+}
+
+/**
  * Extract first proof file from ZIP buffer
  * Simplified function for CLI use
  * @param buffer - ZIP file as ArrayBuffer

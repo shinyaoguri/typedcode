@@ -8,7 +8,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { verifyProof, type ProofFile } from './verify.js';
-import { extractAllProofs } from './zip.js';
+import { extractAllProofs, extractScreenshotArtifacts } from './zip.js';
 import { loadExternalAnalyzers } from './analyzers.js';
 import { formatResult, printError, printUsage } from './output.js';
 import { Spinner } from './progress.js';
@@ -16,10 +16,13 @@ import {
   parseExamPackageManifest,
   defaultAnalyzers,
   buildAnalysisBundle,
+  collectChainImageHashes,
+  summarizeScreenshotArtifacts,
   type VerificationMode,
   type ExamPackageManifest,
   type Analyzer,
   type AnalysisBundle,
+  type ScreenshotVerificationSummary,
 } from '@typedcode/shared';
 
 import { findFlagError, flagValue, flagValues, nonFlagArgs } from './args.js';
@@ -145,6 +148,22 @@ async function main(): Promise<void> {
       examPackageManifest = parsed;
     }
 
+    // スクリーンショット検証 (#147): ZIP 入力のとき一度だけ計算して全 proof に渡す
+    // (スクショはセッション単位で proof 横断)。真正記録は各チェーンの screenshotCapture.imageHash。
+    // JSON 単体入力は画像が無いので未検査 (undefined) — 出力で明示する (overclaim 防止)。
+    let screenshotSummary: ScreenshotVerificationSummary | undefined;
+    if (ext === '.zip') {
+      const chainImageHashes = collectChainImageHashes(proofs.map((p) => p.proof.proof.events));
+      const artifacts = await extractScreenshotArtifacts(filePath);
+      // スクショ無しセッション (manifest もチェーン記録も無し) は全ゼロの summary になり
+      // 出力上は沈黙する。undefined は「検査できない」(JSON 単体入力) の意味に限定する。
+      screenshotSummary = await summarizeScreenshotArtifacts({
+        entries: artifacts?.entries ?? [],
+        getImageBytes: async (filename) => artifacts?.images.get(filename) ?? null,
+        chainImageHashes,
+      });
+    }
+
     spinner.stop();
 
     // 全 proof を検証。1 件でも fail なら exit 1 (CI が部分合格を成功と誤読しないように)。
@@ -154,7 +173,7 @@ async function main(): Promise<void> {
     const bundleDump: Array<{ filename: string } & AnalysisBundle> = [];
     for (const { filename, proof } of proofs) {
       if (multi) console.log(`\n=== ${filename} ===`);
-      const result = await verifyProof(proof, { mode, examPackageManifest, submittedAtMs, requireAnchorDensity, requireRootAnchor, analyzers });
+      const result = await verifyProof(proof, { mode, examPackageManifest, submittedAtMs, requireAnchorDensity, requireRootAnchor, analyzers, screenshotSummary });
       console.log(formatResult(result));
       summary.push({ filename, valid: result.valid });
       analysisDump.push({ filename, valid: result.valid, analysis: result.analysis });

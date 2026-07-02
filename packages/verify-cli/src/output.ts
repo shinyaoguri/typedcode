@@ -25,6 +25,7 @@ import type {
   AssuranceResult,
   ProcessSummary,
   ProcessKeyMoment,
+  ScreenshotVerificationSummary,
 } from '@typedcode/shared';
 import type { CLIExamResult } from './verify.js';
 
@@ -54,6 +55,8 @@ export interface VerificationOutput {
   processSummary?: ProcessSummary;
   /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
   exam?: CLIExamResult;
+  /** スクリーンショット検証 (#147)。undefined = 未検査 (JSON 単体入力)。 */
+  screenshots?: ScreenshotVerificationSummary;
 }
 
 function passFail(ok: boolean): string {
@@ -298,6 +301,26 @@ export function formatResult(result: VerificationOutput): string {
     } else {
       lines.push(`Anchoring:   ${c('red', 'FAILED')} ${sc.reason ?? ''}`);
     }
+  }
+
+  // スクリーンショット検証 (#147): Web と同一の shared 実装で突合した結果。
+  // 未検査 (JSON 単体入力) は明示して overclaim を防ぐ。
+  const ss = result.screenshots;
+  if (ss) {
+    if (ss.tampered > 0) {
+      lines.push(`Screenshots: ${c('red', 'FAILED')} (${ss.tampered}/${ss.total} tampered — hash mismatch or not backed by the chain)`);
+    } else if (ss.total > 0 || ss.chainOnly > 0) {
+      const ok = ss.missing === 0 && ss.chainOnly === 0;
+      lines.push(`Screenshots: ${ok ? c('green', 'VERIFIED') : c('yellow', 'PARTIAL')} (${ss.verified}/${ss.total} verified)`);
+    }
+    if (ss.missing > 0) {
+      lines.push(c('yellow', `  ! ${ss.missing} image(s) listed in the manifest are missing from the ZIP`));
+    }
+    if (ss.chainOnly > 0) {
+      lines.push(c('yellow', `  ! ${ss.chainOnly} screenshot hash(es) recorded in the chain have no manifest entry (screenshots may have been stripped)`));
+    }
+  } else {
+    lines.push(c('dim', 'Screenshots: not checked (provide the export ZIP to verify screenshots)'));
   }
 
   // 試験モード (ADR-0006): exam ブロックがあれば束縛検証セクションを出す。

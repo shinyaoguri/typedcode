@@ -21,6 +21,7 @@ import {
   type ProcessSummary,
   type ExamPackageManifest,
   type ExamBindingVerificationResult,
+  type ScreenshotVerificationSummary,
 } from '@typedcode/shared';
 import { ProgressBar } from './progress.js';
 
@@ -68,6 +69,11 @@ export interface CLIVerificationResult {
   processSummary: ProcessSummary;
   /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
   exam?: CLIExamResult;
+  /**
+   * スクリーンショット検証 (#147)。ZIP 入力で計算されたときのみ。undefined = 未検査
+   * (JSON 単体入力など)。判定は shared の summarizeScreenshotArtifacts (verify web と同一実装)。
+   */
+  screenshots?: ScreenshotVerificationSummary;
 }
 
 export interface VerifyProofOptions {
@@ -86,6 +92,12 @@ export interface VerifyProofOptions {
    * advisory のまま — valid / exit code には一切影響しない (直交性維持)。
    */
   analyzers?: readonly Analyzer[];
+  /**
+   * ZIP 全体のスクリーンショット検証サマリ (#147)。呼び出し側 (cli.ts) が ZIP から
+   * 一度だけ計算して全 proof に渡す (スクショはセッション単位で proof 横断のため)。
+   * tampered > 0 は verify (web) の error 軸と同じく valid を落とす。未指定 = 未検査。
+   */
+  screenshotSummary?: ScreenshotVerificationSummary;
 }
 
 export async function verifyProof(
@@ -157,6 +169,10 @@ export async function verifyProof(
   // package が渡されたとき、束縛失敗は全体を fail にする (proof 自己整合とは別軸の真正性)。
   const examValid = exam?.binding ? exam.binding.valid : true;
 
+  // #147: スクショ改ざんは verify (web) の error 軸 (TrustCalculator/integrity failed) と同じく
+  // 全体 fail = exit 1 に合流させる。欠損/chainOnly は warning (web と同じ) で exit 非干渉。
+  const screenshotsValid = (options.screenshotSummary?.tampered ?? 0) === 0;
+
   // 三層保証語彙 (ADR-0020): 実証拠のみから導出 (自己申告 mode は使わない)。
   const assurance = deriveAssurance({
     metadataValid: result.metadataValid,
@@ -179,10 +195,12 @@ export async function verifyProof(
       : undefined,
     isPureTyping: result.isPureTyping,
     analysis: summarizeAnalysisForAssurance(analysis),
+    // #147: ZIP 入力で検査したときのみ渡す (undefined = 未検査は integrity に影響しない)。
+    screenshotsTampered: options.screenshotSummary?.tampered,
   });
 
   return {
-    valid: result.valid && examValid,
+    valid: result.valid && examValid && screenshotsValid,
     metadataValid: result.metadataValid,
     chainValid: result.chainValid,
     isPureTyping: result.isPureTyping,
@@ -202,5 +220,6 @@ export async function verifyProof(
     assurance,
     processSummary: summarizeProcess(events),
     exam,
+    screenshots: options.screenshotSummary,
   };
 }
