@@ -88,6 +88,45 @@ export function isMultiLineBulkInsert(event: StoredEvent): boolean {
 }
 
 /**
+ * 「疑わしい一括挿入」か (bulkInsertEvents メタデータのカウント対象)。
+ *
+ * verifier (`verification.ts` の再計算) と editor (`StatisticsCalculator` の申告) の
+ * **単一の真実源**。過去に両者へ別実装で置かれ、verifier だけが `insertFromInternalPaste`
+ * (rangeOffset 付き・実挿入) を数える分岐を持ってドリフトしていた (#140)。editor が
+ * rangeOffset 付き内部ペーストを出し始めた瞬間、申告 < 再計算で `verifyProofMetadata` の
+ * bulkInsertEvents 照合が失敗し、正規 proof が invalid になる時限バグだった。
+ *
+ * **この定義を変えると既存 proof の bulkInsertEvents 照合が壊れ後方互換を失う** (verifier の
+ * 再計算値が変わるため)。変更時は proof フォーマット互換性を必ず検討すること。
+ */
+export function isSuspiciousBulkInsert(event: StoredEvent): boolean {
+  if (event.type !== 'contentChange') return false;
+
+  if (event.inputType === 'replaceContent' || event.inputType === 'insertReplacementText') {
+    return true;
+  }
+
+  // 内容を実際に挿入する大きな insertFromInternalPaste は怪しい。手製 proof がバルク挿入を
+  // 「内部ペースト」と偽装して isPureTyping 判定を回避するのを防ぐ (verifier は inputType ラベルを
+  // 信用するしかないため)。editor が出す正規の内部ペースト監査イベントは rangeOffset==null で
+  // verifyContentReplay 上スキップされる (内容を挿入しない) ので、ここには該当しない。
+  if (
+    event.inputType === 'insertFromInternalPaste' &&
+    event.rangeOffset != null &&
+    typeof event.data === 'string' &&
+    event.data.length > 1
+  ) {
+    return true;
+  }
+
+  return (
+    event.inputType === 'insertText' &&
+    typeof event.data === 'string' &&
+    event.data.length > 1
+  );
+}
+
+/**
  * events から内部ペースト (自分のコードのコピペ = 許可) の挿入内容を集める。
  * 内部ペーストは `insertFromInternalPaste` の監査マーカー (rangeOffset==null) を伴い、
  * 実際の挿入は別途 contentChange (複数行なら insertParagraph) として記録される。後者を

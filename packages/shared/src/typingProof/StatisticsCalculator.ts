@@ -4,6 +4,7 @@
  */
 
 import type { StoredEvent, TypingStats, TypingStatistics, EventType } from '../types.js';
+import { isSuspiciousBulkInsert } from './structuralEdit.js';
 
 export class StatisticsCalculator {
   /**
@@ -49,7 +50,9 @@ export class StatisticsCalculator {
       if (event.inputType === 'insertFromDrop') dropEvents++;
       if (event.type === 'contentChange' && event.data) insertEvents++;
       if (event.inputType?.startsWith('delete')) deleteEvents++;
-      if (this.isSuspiciousBulkInsert(event)) bulkInsertEvents++;
+      // bulkInsertEvents は verifier (verifyProofMetadata) が完全一致を要求するため、
+      // 判定は必ず structuralEdit の単一定義を使う (#140。二重実装のドリフト防止)。
+      if (isSuspiciousBulkInsert(event)) bulkInsertEvents++;
       if (event.type === 'templateInjection') templateEvents++;
     }
 
@@ -70,17 +73,4 @@ export class StatisticsCalculator {
     };
   }
 
-  private isSuspiciousBulkInsert(event: StoredEvent): boolean {
-    if (event.type !== 'contentChange') return false;
-
-    if (event.inputType === 'replaceContent' || event.inputType === 'insertReplacementText') {
-      return true;
-    }
-
-    return (
-      event.inputType === 'insertText' &&
-      typeof event.data === 'string' &&
-      event.data.length > 1
-    );
-  }
 }
