@@ -405,9 +405,15 @@ async function initializeDeviceInfo(): Promise<{
   return { deviceId, fingerprintHash, fingerprintComponents };
 }
 
+/**
+ * TabManager と関連 UI/コールバックの配線を行う。
+ * recoverySessionId が渡された場合は IndexedDB からのセッション復旧として読み込む。
+ * 通常初期化と復旧で配線を共有する (分岐をコピペすると #141 のような配線漏れが再発する)。
+ */
 async function initializeTabManager(
   fingerprintHash: string,
-  fingerprintComponents: Awaited<ReturnType<typeof Fingerprint.collectComponents>>
+  fingerprintComponents: Awaited<ReturnType<typeof Fingerprint.collectComponents>>,
+  recoverySessionId?: string
 ): Promise<boolean> {
   ctx.tabManager = new TabManager(ctx.editor);
 
@@ -472,8 +478,19 @@ async function initializeTabManager(
     updateSyncStatusUI(status);
   });
 
-  updateInitMessage(t('notifications.initializingEditor'));
-  const initialized = await ctx.tabManager.initialize(fingerprintHash, fingerprintComponents);
+  let initialized: boolean;
+  if (recoverySessionId) {
+    // セッション復旧モード: IndexedDBからタブを読み込む
+    updateInitMessage(t('sessionRecovery.resuming'));
+    initialized = await ctx.tabManager.loadFromIndexedDB(
+      recoverySessionId,
+      fingerprintHash,
+      fingerprintComponents
+    );
+  } else {
+    updateInitMessage(t('notifications.initializingEditor'));
+    initialized = await ctx.tabManager.initialize(fingerprintHash, fingerprintComponents);
+  }
 
   // ContentRegistryに全タブのコンテンツ取得コールバックを設定
   // これにより、ペースト時に全タブのコンテンツから内部ペーストを判定できる
@@ -1328,74 +1345,13 @@ async function initializeApp(): Promise<void> {
   const { fingerprintHash, fingerprintComponents } = await initializeDeviceInfo();
 
   // Phase 4: TabManager初期化
-  let initialized: boolean;
-  if (sessionRecovered && sessionId) {
-    // セッション復旧モード: IndexedDBからタブを読み込む
-    ctx.tabManager = new TabManager(ctx.editor);
-
-    const editorTabsContainer = document.getElementById('editor-tabs');
-    if (editorTabsContainer) {
-      ctx.tabUIController = new TabUIController({
-        container: editorTabsContainer,
-        tabManager: ctx.tabManager,
-        basePath: import.meta.env.BASE_URL,
-      });
-    }
-
-    // ProofExporterの初期化
-    ctx.proofExporter.setTabManager(ctx.tabManager);
-    ctx.proofExporter.setProcessingDialog(ctx.processingDialog);
-    ctx.proofExporter.setCallbacks({ onNotification: showNotification });
-    if (ctx.trackers.screenshot) {
-      ctx.proofExporter.setScreenshotTracker(ctx.trackers.screenshot);
-    }
-
-    // ProofStatusDisplayのコールバックを設定
-    ctx.proofStatusDisplay.setGetStats(() => {
-      const activeProof = ctx.tabManager?.getActiveProof();
-      if (!activeProof) return null;
-      return activeProof.getStats();
-    });
-
-    ctx.proofStatusDisplay.setSnapshotCallback(
-      (content) => {
-        const activeProof = ctx.tabManager?.getActiveProof();
-        if (!activeProof) return Promise.reject(new Error('No active proof'));
-        return activeProof.recordContentSnapshot(content);
-      },
-      () => ctx.editor.getValue()
-    );
-
-    // タブ変更コールバックを設定
-    ctx.tabManager.setOnTabChange((tab, previousTab) => {
-      console.log('[TypedCode] Tab switched:', previousTab?.filename, '->', tab.filename);
-      handleTabChange(ctx, tab);
-
-      // ScreenshotTrackerのstartTimeを新しいタブのTypingProofに合わせて更新
-      if (ctx.trackers.screenshot) {
-        ctx.trackers.screenshot.setProofStartTime(tab.typingProof.startTime);
-      }
-    });
-
-    ctx.tabManager.setOnTabUpdate(() => {
-      ctx.tabUIController?.updateUI();
-      const activeTab = ctx.tabManager?.getActiveTab();
-      if (activeTab) {
-        document.title = `${activeTab.filename} - TypedCode`;
-      }
-    });
-
-    ctx.tabManager.setOnVerification(() => {
-      ctx.tabUIController?.updateUI();
-    });
-
-    // IndexedDBからタブを読み込む
-    updateInitMessage(t('sessionRecovery.resuming'));
-    initialized = await ctx.tabManager.loadFromIndexedDB(sessionId, fingerprintHash, fingerprintComponents);
-  } else {
-    // 通常モード: sessionStorageから読み込み or 新規作成
-    initialized = await initializeTabManager(fingerprintHash, fingerprintComponents);
-  }
+  // セッション復旧時は IndexedDB から読み込み、通常時は sessionStorage から読み込み or 新規作成。
+  // 配線は initializeTabManager に共通化 (復旧分岐のコピペは #141 の配線漏れを生んだ)
+  const initialized = await initializeTabManager(
+    fingerprintHash,
+    fingerprintComponents,
+    sessionRecovered && sessionId ? sessionId : undefined
+  );
 
   if (!initialized) {
     updateInitMessage(t('notifications.authFailedReload'));
