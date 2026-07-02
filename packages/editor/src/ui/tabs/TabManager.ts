@@ -951,6 +951,7 @@ export class TabManager {
         verificationDetails: tab.verificationDetails,
         checkpoints: proofState.checkpoints,
         examContext: proofState.examContext,
+        sessionStartToken: proofState.sessionStartToken,
       };
       await this.sessionService.saveTab(tabData);
     }
@@ -1305,6 +1306,9 @@ export class TabManager {
             pendingEvents: [], // IndexedDB復元時はpendingEventsなし
             checkpoints: storedTab.checkpoints,
             examContext: storedTab.examContext,
+            // sessionStartToken (ADR-0017) を必ず引き継ぐ。落とすと casual/class の
+            // サーバアンカーが失われ、復旧後の proof が root 不一致で検証不能になる。
+            sessionStartToken: storedTab.sessionStartToken ?? null,
           },
           this.fingerprint,
           this.fingerprintComponents,

@@ -267,6 +267,15 @@ export interface ProofEvent {
   [k: string]: unknown;
 }
 
+/** ZIP 内の最初の proof.json 全体を読み出す (rootAnchored / sessionStartToken 等のトップレベル assert 用)。 */
+export async function readProofJson(zipPath: string): Promise<Record<string, unknown>> {
+  const buf = await readFileBuffer(zipPath);
+  const zip = await JSZip.loadAsync(buf);
+  const entryName = Object.keys(zip.files).find((n) => n.endsWith('_proof.json'));
+  if (!entryName) throw new Error(`no *_proof.json in ${zipPath}`);
+  return JSON.parse(await zip.files[entryName]!.async('string')) as Record<string, unknown>;
+}
+
 /** ZIP 内の最初の proof.json から events 配列を読み出す (イベント種別/isTrusted の検証用)。 */
 export async function readProofEvents(zipPath: string): Promise<ProofEvent[]> {
   const buf = await readFileBuffer(zipPath);
