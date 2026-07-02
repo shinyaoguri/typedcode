@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { verifyExamPackageSignature, type ExamAuthorityKey } from '@typedcode/shared';
 import { generateAuthorityKey, suggestKeyId } from '../authorityKey.js';
 import { createExamPackage, importAuthoritySigner } from '../examPackageAuthoring.js';
+
+// end-to-end ケースは Argon2id 封印 (createExamPackage) を実際に回すため CI ランナーで
+// vitest 既定 5000ms に迫る。examPackageAuthoring.test.ts と同じ理由で余裕を持たせる。
+vi.setConfig({ testTimeout: 60_000 });
 
 describe('suggestKeyId', () => {
   it('formats as exam-YYYYMM-xxxxxx from the given date and random hex', () => {
