@@ -7,7 +7,8 @@
  */
 
 import * as monaco from 'monaco-editor';
-import { TypingProof, PROOF_FORMAT_VERSION } from '@typedcode/shared';
+import { TypingProof, PROOF_FORMAT_VERSION, verifyContentReplay } from '@typedcode/shared';
+import type { StoredEvent } from '@typedcode/shared';
 import { tabsKey } from '../../core/storageKeys.js';
 import type {
   FingerprintComponents,
@@ -1049,6 +1050,35 @@ export class TabManager {
   }
 
   /**
+   * 復元 content をチェーン replay に整合させる (#142)。
+   *
+   * クラッシュ/強制終了がイベントキュー処理中に起きると、打鍵はチェーンに載らないのに
+   * 直近の debounced 保存で content にだけ残る。その content のまま完成させて export
+   * すると Layer 4 の content replay が不一致で proof 全体が invalid になる (学生無過失)。
+   * 打鍵はチェーンに戻せないので、buffer 側を replay 結果へ切り詰めるのが唯一の整合化。
+   * replay 自体が途中で失敗する (より深い破損) 場合は触らない — 他レイヤが検出する。
+   */
+  private reconcileRestoredContent(
+    tabId: string,
+    savedContent: string,
+    events: readonly StoredEvent[]
+  ): string {
+    if (events.length === 0) return savedContent; // 整合先が無い (別種の破損はここで判断しない)
+    const replay = verifyContentReplay(events as StoredEvent[], savedContent);
+    if (replay.valid) return savedContent;
+    if (replay.reconstructedContent !== undefined) {
+      console.warn(
+        `[TabManager] Tab ${tabId}: restored content is ahead of the event chain ` +
+        `(crash window). Truncating ${savedContent.length} -> ${replay.reconstructedContent.length} chars ` +
+        `to keep the proof verifiable (#142).`
+      );
+      return replay.reconstructedContent;
+    }
+    console.error(`[TabManager] Tab ${tabId}: content replay failed during restore: ${replay.reason}`);
+    return savedContent;
+  }
+
+  /**
    * sessionStorageから読み込み
    * V1フォーマット: eventsあり（従来形式）
    * V2フォーマット: eventsなし（軽量版）→ IndexedDBからevents取得
@@ -1133,7 +1163,11 @@ export class TabManager {
         typingProof.checkpoints
       );
 
-      const model = monaco.editor.createModel(serializedTab.content, serializedTab.language);
+      // #142: クラッシュ窓で content がチェーンより先行していたら replay 結果へ整合させる
+      const content = serializedTab.proofState
+        ? this.reconcileRestoredContent(id, serializedTab.content, serializedTab.proofState.events)
+        : serializedTab.content;
+      const model = monaco.editor.createModel(content, serializedTab.language);
 
       const tab: TabState = {
         id,
@@ -1254,8 +1288,9 @@ export class TabManager {
       );
 
       // 6. Monacoモデル作成（contentはsessionStorageから）
+      // #142: クラッシュ窓で content がチェーンより先行していたら replay 結果へ整合させる
       const model = monaco.editor.createModel(
-        lightweightTab.content,
+        this.reconcileRestoredContent(id, lightweightTab.content, events),
         lightweightTab.language
       );
 
@@ -1376,7 +1411,11 @@ export class TabManager {
         );
 
         // Monacoモデルを作成
-        const model = monaco.editor.createModel(storedTab.content, storedTab.language);
+        // #142: クラッシュ窓で content がチェーンより先行していたら replay 結果へ整合させる
+        const model = monaco.editor.createModel(
+          this.reconcileRestoredContent(storedTab.id, storedTab.content, events),
+          storedTab.language
+        );
 
         const tab: TabState = {
           id: storedTab.id,
