@@ -206,7 +206,7 @@ describe('verification utilities', () => {
     });
   });
 
-  it('treats a single-line editor completion as pure typing while still counting it in bulkInsertEvents', () => {
+  it('treats a single-line editor completion up to the length cap as pure typing while still counting it in bulkInsertEvents', () => {
     // 1 キー入力 → 複数文字の正規な補完 (括弧自動閉じ・Tab 補完)。Pure Typing を崩さないが、
     // bulkInsertEvents の申告メタデータ照合は従来どおり数える (既存 proof と後方互換)。
     const events = [
@@ -221,6 +221,27 @@ describe('verification utilities', () => {
     expect(verifyProofMetadata(proofData, events)).toMatchObject({
       valid: true,
       isPureTyping: true,
+      suspiciousBulkInsertEventIndexes: [0],
+    });
+  });
+
+  it('breaks pure typing for a single-line insert beyond the benign length cap (#139)', () => {
+    // minify した 1 行のプログラム全体を insertText 1 イベントで投入する laundering。
+    // 改行を含まないため従来は「補完」扱いで isPureTyping=true を保てていた。
+    // metadata 照合 (bulkInsertEvents=1) は従来どおり一致し valid は保つ (advisory のみの変化)。
+    const oneLiner = 'const f=(n)=>n<2?n:f(n-1)+f(n-2);console.log(f(30));'.repeat(8); // 416 chars
+    const events = [
+      { type: 'contentChange', inputType: 'insertText', data: oneLiner, timestamp: 10 },
+    ] as StoredEvent[];
+    const proofData = {
+      metadata: {
+        totalEvents: 1, pasteEvents: 0, internalPasteEvents: 0, dropEvents: 0,
+        insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 1, totalTypingTime: 10, averageTypingSpeed: 0,
+      },
+    } as ProofData;
+    expect(verifyProofMetadata(proofData, events)).toMatchObject({
+      valid: true,
+      isPureTyping: false,
       suspiciousBulkInsertEventIndexes: [0],
     });
   });
