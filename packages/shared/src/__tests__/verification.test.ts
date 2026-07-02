@@ -334,4 +334,45 @@ describe('verification utilities', () => {
       isPureTyping: true,
     });
   });
+
+  it('breaks pure typing for a contentSnapshot that diverges from the replayed document (#175)', () => {
+    // 手製 proof が contentSnapshot 1 イベントで AI 解答全体を持ち込む laundering。
+    // 挿入イベントが無いので paste/drop/bulk のどのカウントにも載らず、従来は
+    // isPureTyping=true のまま通った。metadata 照合カウントは従来どおり (valid 不変)。
+    const events = [
+      { type: 'contentChange', inputType: 'insertText', data: 'a', rangeOffset: 0, rangeLength: 0, timestamp: 10 },
+      { type: 'contentSnapshot', inputType: null, data: 'int solve() {\n  return 42;\n}\n', timestamp: 20 },
+    ] as StoredEvent[];
+    const proofData = {
+      metadata: {
+        totalEvents: 2, pasteEvents: 0, internalPasteEvents: 0, dropEvents: 0,
+        insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 0, totalTypingTime: 20, averageTypingSpeed: 0,
+      },
+    } as ProofData;
+    expect(verifyProofMetadata(proofData, events)).toMatchObject({
+      valid: true,
+      isPureTyping: false,
+      divergentContentSnapshotEventIndexes: [1],
+    });
+  });
+
+  it('keeps pure typing for the regular contentSnapshot that matches the replayed document (#175)', () => {
+    // editor が 100 イベント毎に出す正規 snapshot は取得時のエディタ内容 = replay 文書と
+    // 常に一致する no-op。既存 proof の isPureTyping を変えない (後方互換)。
+    const events = [
+      { type: 'contentChange', inputType: 'insertText', data: 'a', rangeOffset: 0, rangeLength: 0, timestamp: 10 },
+      { type: 'contentSnapshot', inputType: null, data: 'a', timestamp: 20 },
+    ] as StoredEvent[];
+    const proofData = {
+      metadata: {
+        totalEvents: 2, pasteEvents: 0, internalPasteEvents: 0, dropEvents: 0,
+        insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 0, totalTypingTime: 20, averageTypingSpeed: 0,
+      },
+    } as ProofData;
+    expect(verifyProofMetadata(proofData, events)).toMatchObject({
+      valid: true,
+      isPureTyping: true,
+      divergentContentSnapshotEventIndexes: [],
+    });
+  });
 });

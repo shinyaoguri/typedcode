@@ -240,6 +240,23 @@ describe('summarizeProcess — moments', () => {
     expect(s.externalInputCount).toBe(0);
   });
 
+  it('counts a contentSnapshot that diverges from the replayed document as external input (#175)', () => {
+    const s = summarizeProcess([
+      makeEvent({ type: 'contentChange', timestamp: 0, inputType: 'insertText', data: 'a', rangeOffset: 0, rangeLength: 0 }),
+      makeEvent({ type: 'contentSnapshot', timestamp: 100, data: 'int ai() {\n  return 42;\n}\n' }),
+    ]);
+    expect(s.externalInputCount).toBe(1);
+    expect(s.moments.find((x) => x.kind === 'external-input')?.fromEventIndex).toBe(1);
+  });
+
+  it('does not count the regular contentSnapshot that matches the replayed document (#175)', () => {
+    const s = summarizeProcess([
+      makeEvent({ type: 'contentChange', timestamp: 0, inputType: 'insertText', data: 'a', rangeOffset: 0, rangeLength: 0 }),
+      makeEvent({ type: 'contentSnapshot', timestamp: 100, data: 'a' }),
+    ]);
+    expect(s.externalInputCount).toBe(0);
+  });
+
   it('sorts moments by event index', () => {
     const gap = PROCESS_PAUSE_THRESHOLD_MS + 1_000;
     const s = summarizeProcess([

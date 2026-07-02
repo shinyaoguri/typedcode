@@ -11,6 +11,7 @@
 import type { AnalysisInput, AnalysisSignal, Analyzer, EvidenceRef } from '../types.js';
 import { isProhibitedInputType } from '../../typingProof/InputTypeValidator.js';
 import { isBenignEditorInsert, isFlaggedBulkInsert, SessionProvenanceLedger } from '../../typingProof/structuralEdit.js';
+import { isDivergentContentSnapshot } from '../../typingProof/replay.js';
 
 const ID = 'example-pure-typing';
 
@@ -23,6 +24,7 @@ export const pureTypingAnalyzer: Analyzer = {
     // 外部入力の event index を証拠として集める。
     // - paste/drop 等の禁止 InputType (正規な editor 補完は除く)
     // - AI/スニペットによる複数行の一括投入 (replaceContent/insertText は禁止型でないので明示的に拾う)
+    // - replay 文書と乖離した contentSnapshot (#175: 挿入イベント無しの全文差し替え。bulk に含める)
     const evidence: EvidenceRef[] = [];
     let pasteCount = 0;
     let dropCount = 0;
@@ -32,9 +34,13 @@ export const pureTypingAnalyzer: Analyzer = {
     for (let i = 0; i < events.length; i++) {
       const event = events[i];
       if (!event) continue;
+      const divergentSnapshot = isDivergentContentSnapshot(event, ledger.currentContent);
       const sessionDerived = ledger.checkAndApply(event);
       const inputType = event.inputType;
-      if (isFlaggedBulkInsert(event, sessionDerived)) {
+      if (divergentSnapshot) {
+        bulkCount++;
+        evidence.push({ fromEventIndex: i, note: 'divergent-content-snapshot' });
+      } else if (isFlaggedBulkInsert(event, sessionDerived)) {
         // 複数行のコード一括投入 (Copilot/Cursor が Tab で全体投入する類)。最も注視すべき痕跡。
         bulkCount++;
         evidence.push({ fromEventIndex: i, note: `multiline-bulk:${inputType ?? 'insert'}` });
