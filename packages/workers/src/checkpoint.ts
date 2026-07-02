@@ -16,8 +16,13 @@ import {
   findCheckpointPublicKey,
   isIdempotentSigningRetry,
   validateSignedCheckpointInput,
+  verifySessionStartToken,
 } from '@typedcode/shared/checkpoint';
-import type { SignedCheckpointEnvelope } from '@typedcode/shared/checkpoint';
+import type {
+  CheckpointPublicKey,
+  SessionStartToken,
+  SignedCheckpointEnvelope,
+} from '@typedcode/shared/checkpoint';
 
 export interface CheckpointEnv {
   CHECKPOINT_SESSIONS: KVNamespace;
@@ -50,6 +55,15 @@ const SESSION_TTL_SECONDS = 7 * 24 * 3600;
 /** 1 セッションあたり許容する最大 checkpoint 数 (DoS 防御の最後の砦) */
 const SESSION_MAX_CHECKPOINTS = 50_000;
 
+/**
+ * 1 セッションあたり許容する最大タブ数 (ADR-0027)。
+ * sessionStartToken 前提化で sessionId は Turnstile 1 回に束縛されるが、tabId は
+ * クライアント任意文字列のまま (class の N 問タブは token 発行時点で数が確定しない)。
+ * tabId 連打による KV キー増幅を「1 Turnstile → 最大 N キー」に抑える蓋。
+ * class バンドルの現実的な問題数 (≤30 程度) に大きく余裕を持たせた値。
+ */
+const MAX_TABS_PER_SESSION = 64;
+
 /** 署名リクエスト body の最大サイズ (bytes)。固定スキーマの cp 1 件は ~1KB 程度。
  *  署名 API なので余裕を見つつ上限を設けて巨大 body をパース前に弾く。 */
 const MAX_BODY_BYTES = 8 * 1024;
@@ -62,9 +76,13 @@ interface ErrorBody {
   error: string;
   code:
     | 'SCHEMA_INVALID'
+    | 'TOKEN_REQUIRED'
+    | 'TOKEN_INVALID'
+    | 'TOKEN_SESSION_MISMATCH'
     | 'NON_MONOTONIC'
     | 'CHECKPOINT_CONFLICT'
     | 'SESSION_LIMIT_EXCEEDED'
+    | 'TAB_LIMIT_EXCEEDED'
     | 'SIGNING_KEY_NOT_CONFIGURED'
     | 'SIGNING_KEY_UNKNOWN'
     | 'SIGNING_ERROR'
@@ -118,10 +136,26 @@ export async function getSigningKey(env: CheckpointEnv): Promise<{ keyId: string
   return cachedPrivateKey;
 }
 
+/**
+ * リクエスト body から sessionStartToken を取り出す (形だけの緩い検査)。
+ * 署名・registry・payload の実検証は shared の verifySessionStartToken が行う。
+ */
+function extractSessionStartToken(parsed: unknown): SessionStartToken | null {
+  if (!parsed || typeof parsed !== 'object') return null;
+  const raw = (parsed as Record<string, unknown>).sessionStartToken;
+  if (!raw || typeof raw !== 'object') return null;
+  const token = raw as Record<string, unknown>;
+  if (!token.payload || typeof token.payload !== 'object') return null;
+  if (typeof token.signature !== 'string' || typeof token.keyId !== 'string') return null;
+  return raw as SessionStartToken;
+}
+
 export async function handleSignCheckpoint(
   request: Request,
   env: CheckpointEnv,
-  responder: CorsResponder
+  responder: CorsResponder,
+  /** テスト用: token 検証に使う公開鍵 registry の差し替え (既定は本番 registry)。 */
+  tokenKeyRegistry: readonly CheckpointPublicKey[] = CHECKPOINT_PUBLIC_KEYS
 ): Promise<Response> {
   // body サイズ上限: まず Content-Length があればパース前に弾く (巨大 body の DoS 対策)。
   const contentLength = Number(request.headers.get('Content-Length') ?? '');
@@ -174,6 +208,48 @@ export async function handleSignCheckpoint(
   }
   const input = validation.input;
 
+  // ADR-0027 (#136): 署名は sessionStartToken 前提。sessionId はクライアント任意文字列
+  // なので、新規 sessionId 連打で per-session 上限を回避する KV write 増幅 DoS に開いていた。
+  // token は ECDSA でステートレス検証でき、sessionId を「Turnstile 1 回」に束縛する
+  // (KV read より前に検証し、無認証リクエストには KV コストを一切払わない)。
+  const sessionStartToken = extractSessionStartToken(parsed);
+  if (!sessionStartToken) {
+    return jsonResponse(
+      {
+        error: 'sessionStartToken is required to sign checkpoints (ADR-0027)',
+        code: 'TOKEN_REQUIRED',
+      } satisfies ErrorBody,
+      401,
+      responder.cors()
+    );
+  }
+  let tokenResult: Awaited<ReturnType<typeof verifySessionStartToken>>;
+  try {
+    tokenResult = await verifySessionStartToken(sessionStartToken, tokenKeyRegistry);
+  } catch (err) {
+    console.error('[checkpoint] session token verification threw:', err);
+    tokenResult = { valid: false, reason: 'Malformed session token' };
+  }
+  if (!tokenResult.valid) {
+    // 検証失敗の内部理由 (registry の keyId 等) は返さず固定文言。詳細はサーバログのみ。
+    console.warn('[checkpoint] session token rejected:', tokenResult.reason);
+    return jsonResponse(
+      { error: 'Session start token is invalid', code: 'TOKEN_INVALID' } satisfies ErrorBody,
+      401,
+      responder.cors()
+    );
+  }
+  if (sessionStartToken.payload.sessionId !== input.sessionId) {
+    return jsonResponse(
+      {
+        error: 'Session start token does not match the request sessionId',
+        code: 'TOKEN_SESSION_MISMATCH',
+      } satisfies ErrorBody,
+      401,
+      responder.cors()
+    );
+  }
+
   // 鍵を解決 (キャッシュあり)
   let signer: { keyId: string; key: CryptoKey };
   try {
@@ -218,6 +294,38 @@ export async function handleSignCheckpoint(
   // このセッションで初めて署名する checkpoint か。初回は firstSeenAt が
   // まだ KV に固定されていないため、KV 永続化を「成功条件」として扱う必要がある。
   const isFirstCheckpoint = !existing;
+
+  // ADR-0027: tabId 増幅の蓋。token で sessionId は Turnstile 1 回に束縛されるが、
+  // tabId は任意文字列のまま (class の N 問タブは token 発行時点で数が不定なため
+  // token に焼けない)。新規タブの初回署名時のみ per-session のタブ台帳を見て上限を
+  // 強制し、「1 Turnstile → 無制限の KV キー」を塞ぐ。KV は結果整合なので同時開始
+  // タブで多少の over-admission はありうる (厳密化は DO 化 = ADR-0027 の再評価条件)。
+  const tabsKey = `session:${input.sessionId}:tabs`;
+  let knownTabs: string[] | null = null;
+  if (isFirstCheckpoint) {
+    try {
+      knownTabs = (await env.CHECKPOINT_SESSIONS.get<string[]>(tabsKey, 'json')) ?? [];
+    } catch (err) {
+      // タブ台帳は best-effort の防御線: 読めないときは cap 判定をスキップして署名は通す
+      // (KV 障害で正規ユーザーを締め出さない。session record 側の read 失敗は上で 503 済み)。
+      console.error('[checkpoint] tab registry read failed:', err);
+      knownTabs = null;
+    }
+    if (
+      knownTabs &&
+      !knownTabs.includes(input.tabId) &&
+      knownTabs.length >= MAX_TABS_PER_SESSION
+    ) {
+      return jsonResponse(
+        {
+          error: `Session tab count exceeds limit (${MAX_TABS_PER_SESSION})`,
+          code: 'TAB_LIMIT_EXCEEDED',
+        } satisfies ErrorBody,
+        429,
+        responder.cors()
+      );
+    }
+  }
 
   const nowIso = new Date().toISOString();
   const firstSeenAt = existing?.firstSeenAt ?? nowIso;
@@ -313,6 +421,18 @@ export async function handleSignCheckpoint(
     }
     // 2 回目以降は firstSeenAt が既に KV 上で確定済みなので best-effort で良い
     // (失敗しても次回の書き込みで lastCheckpointIndex / lastEnvelope が追従する)。
+  }
+
+  // タブ台帳への登録 (best-effort)。書けなくても署名は成立させる — 台帳は cap 判定の
+  // ための防御線であり、欠けても under-count (= cap が甘くなる) 側にしか倒れない。
+  if (isFirstCheckpoint && knownTabs && !knownTabs.includes(input.tabId)) {
+    try {
+      await env.CHECKPOINT_SESSIONS.put(tabsKey, JSON.stringify([...knownTabs, input.tabId]), {
+        expirationTtl: SESSION_TTL_SECONDS,
+      });
+    } catch (err) {
+      console.error('[checkpoint] tab registry write failed:', err);
+    }
   }
 
   return jsonResponse({ envelope }, 200, responder.cors());

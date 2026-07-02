@@ -8,7 +8,7 @@
 
 import * as monaco from 'monaco-editor';
 import { TypingProof, PROOF_FORMAT_VERSION, verifyContentReplay } from '@typedcode/shared';
-import type { StoredEvent } from '@typedcode/shared';
+import type { SessionStartToken, StoredEvent } from '@typedcode/shared';
 import { tabsKey } from '../../core/storageKeys.js';
 import type {
   FingerprintComponents,
@@ -28,6 +28,7 @@ import type {
 } from '@typedcode/shared';
 import {
   isTurnstileConfigured,
+  performTurnstileVerification,
   type VerificationResult,
 } from '../../services/TurnstileService.js';
 import { performVerificationWithUI } from './TabVerificationUI.js';
@@ -138,6 +139,13 @@ export class TabManager {
   private isRestoring = false;
   private fingerprint: string | null = null;
   private fingerprintComponents: FingerprintComponents | null = null;
+  /**
+   * exam 用の署名専用 sessionStartToken (ADR-0027)。root には焼かず proof にも同梱しない。
+   * casual/class/assignment はタブの TypingProof が持つ token を使うのでここには入らない。
+   */
+  private signingOnlyToken: SessionStartToken | null = null;
+  /** acquireSigningTokenBestEffort の単一フライトガード */
+  private acquiringSigningToken = false;
   private editor: monaco.editor.IStandaloneCodeEditor;
   private onTabChangeCallback: OnTabChangeCallback | null = null;
   private onTabUpdateCallback: OnTabUpdateCallback | null = null;
@@ -442,6 +450,9 @@ export class TabManager {
       sessionId,
       tabId,
       getInitialEventChainHash: () => typingProof.getInitialEventChainHash(),
+      // ADR-0027: sign は sessionStartToken 前提。token はセッション単位 (タブ横断) なので
+      // 毎回セッションレベルで解決する (exam の best-effort 取得で後から届くケースに対応)。
+      getSessionStartToken: () => this.findSigningToken(),
       attachSignature: (eventIndex, envelope) => typingProof.attachSignedCheckpoint(eventIndex, envelope),
     });
     if (!service) return null;
@@ -453,7 +464,63 @@ export class TabManager {
     if (existingCheckpoints && existingCheckpoints.length > 0) {
       void service.restore(existingCheckpoints);
     }
+
+    // exam は root を exam 式で束縛するため session/start を通らず、token を持たない。
+    // 署名クレデンシャルとしてだけ best-effort で取得する (ADR-0027。root には焼かない)。
+    // 復元経路でも呼ばれるので、リロード後の exam セッションもここで回復する。
+    if (typingProof.examContext && !this.findSigningToken()) {
+      void this.acquireSigningTokenBestEffort();
+    }
     return service;
+  }
+
+  /**
+   * このセッションの署名クレデンシャル (sessionStartToken) を解決する (ADR-0027)。
+   * casual/class/assignment は root アンカー時に取得した token が先頭タブの TypingProof に
+   * あるのでそれを流用し、exam は best-effort 取得の signingOnlyToken を使う。
+   * いずれも現在の sessionId と一致するものだけ返す (別セッションの遺物を送らない)。
+   */
+  private findSigningToken(): SessionStartToken | null {
+    const sessionId = this.sessionService.getCurrentSessionId();
+    if (!sessionId) return null;
+    if (this.signingOnlyToken?.payload.sessionId === sessionId) return this.signingOnlyToken;
+    for (const tab of this.tabs.values()) {
+      const token = tab.typingProof.sessionStartToken;
+      if (token?.payload.sessionId === sessionId) return token;
+    }
+    return null;
+  }
+
+  /**
+   * exam 用の署名専用 token を非ブロッキングで取得する (ADR-0027)。
+   * - UI は出さない (performTurnstileVerification を直接呼ぶ)。試験開始をブロックしない
+   *   (ADR-0006 の絶対条件)。失敗したら署名なしで劣化する (オフライン exam と同等)。
+   * - root には焼かない (exam の root は封印束縛 = initializeExam)。proof にも同梱しない。
+   */
+  private async acquireSigningTokenBestEffort(): Promise<void> {
+    if (this.acquiringSigningToken || this.findSigningToken()) return;
+    if (!isTurnstileConfigured()) return;
+    const sessionId = this.sessionService.getCurrentSessionId();
+    if (!sessionId || !this.fingerprint) return;
+    this.acquiringSigningToken = true;
+    try {
+      const result = await performTurnstileVerification('checkpoint_signing', {
+        sessionStart: { sessionId, fingerprintHash: this.fingerprint },
+      });
+      if (result.success && result.sessionToken) {
+        this.signingOnlyToken = result.sessionToken;
+        debugLog('[TabManager] Signing-only session token acquired (exam best-effort)');
+        for (const tab of this.tabs.values()) {
+          tab.signedCheckpointService?.retryPendingSignatures();
+        }
+      } else {
+        console.warn('[TabManager] Signing-only token acquisition failed; checkpoints stay unsigned:', result.error ?? result.failureReason);
+      }
+    } catch (err) {
+      console.warn('[TabManager] Signing-only token acquisition threw; checkpoints stay unsigned:', err);
+    } finally {
+      this.acquiringSigningToken = false;
+    }
   }
 
   /**
