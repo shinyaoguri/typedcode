@@ -53,6 +53,10 @@ npm run build:editor
 npm run build:verify
 npm run build:verify-cli
 
+# Lint / Format (Biome, #157。CI の check job も同じコマンド)
+npm run lint        # biome ci . (チェックのみ)
+npm run lint:fix    # biome check --write . (安全な自動修正 + format)
+
 # ユニットテスト (test:run を持つ全パッケージ。CI の test job も同じコマンド)
 npm run test:run --workspaces --if-present
 npm run test:run -w @typedcode/shared      # 個別実行
