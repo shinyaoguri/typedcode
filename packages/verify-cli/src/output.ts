@@ -381,7 +381,9 @@ ${c('cyan', 'Options:')}
   --require-root-anchor
                    Fail (exit 1) when the chain root is not server-anchored (ADR-0017) —
                    i.e. no session start token (offline/degraded or old proof). Off by
-                   default (unanchored root is only a warning). exam proofs are exempt.
+                   default (unanchored root is only a warning). Exam proofs are exempt
+                   ONLY when their binding is verified via --exam-package (#131); a
+                   self-declared exam block alone does not bypass the gate.
   --analysis-json  Write the advisory analysis report (ADR-0009) for every verified
                    proof to the given file as JSON, for aggregation / evaluation
                    tooling. Advisory only — never affects the exit code.

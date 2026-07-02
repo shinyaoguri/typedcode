@@ -88,9 +88,16 @@ export interface VerifyProofFileOptions {
   /**
    * root アンカー必須 (ADR-0017)。true のとき、casual/class で root がサーバアンカーされていない
    * (`sessionStartToken` 無し = オフライン劣化 / 旧 proof) proof を fail させる。既定 false = warning のみ。
-   * exam proof は独自の root 束縛を持つため、この gate の対象外 (常に通す)。high-stakes 採点で opt-in。
+   * exam proof の免除は `examBindingVerified` に基づく (下記)。high-stakes 採点で opt-in。
    */
   requireRootAnchor?: boolean;
+  /**
+   * exam 束縛が実際に検証済みか (#131)。呼び出し側が `verifyExamBinding` (署名→packageHash→root→
+   * 内容ハッシュ) に合格したときのみ true を渡す。`requireRootAnchor` の exam 免除はこのフラグに
+   * 基づく — `proof.exam` の**存在だけ**では免除しない (架空の exam ブロックを付けるだけで gate を
+   * 回避できてしまうため。ADR-0020「自己申告を判定に昇格させない」)。
+   */
+  examBindingVerified?: boolean;
 }
 
 /**
@@ -812,9 +819,12 @@ export async function verifyProofFile(
     }
   }
 
-  // 5. ADR-0017: root アンカー必須 (strict, opt-in)。exam は独自束縛のため対象外。
+  // 5. ADR-0017: root アンカー必須 (strict, opt-in)。exam の免除は「束縛が実際に検証済み」の
+  //    ときだけ (#131)。exam ブロックの存在だけで免除すると、架空の exam ブロック (root は exam 式で
+  //    自己整合する) を付けるだけで gate を回避できてしまう。
+  const examExempt = !!proof.exam && options.examBindingVerified === true;
   const rootAnchorBlocks =
-    !!options.requireRootAnchor && !proof.exam && metadataValid && !rootAnchored;
+    !!options.requireRootAnchor && !examExempt && metadataValid && !rootAnchored;
 
   // signed checkpoint が存在しつつ無効なら全体も無効。存在しない (anchored=false) のは
   // 「補助情報が無い」だけで、tamper resistance は他レイヤで担保される。
@@ -835,7 +845,9 @@ export async function verifyProofFile(
               : signedCheckpointBlocks
                 ? signedCheckpointResult.reason
                 : rootAnchorBlocks
-                  ? 'Root is not server-anchored (ADR-0017) but root anchoring is required'
+                  ? proof.exam
+                    ? 'Root anchoring is required and the exam binding is not verified (provide and verify the exam package to exempt an exam proof)'
+                    : 'Root is not server-anchored (ADR-0017) but root anchoring is required'
                   : chainResult.message;
 
   return {

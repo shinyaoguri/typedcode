@@ -105,11 +105,22 @@ export async function verifyProof(
     progressBar.update(current);
   };
 
+  // 試験モード (ADR-0006): exam ブロックがあれば束縛を先に検証する。
+  // root アンカー gate (#131) の exam 免除は「検証済み束縛」に基づくため verifyProofFile より前に計算する。
+  const binding = proof.exam && options.examPackageManifest
+    ? await verifyExamBinding(proof, options.examPackageManifest, {
+        examAuthorityRegistry: EXAM_AUTHORITY_KEYS,
+        submissionTimeMs: options.submittedAtMs,
+      })
+    : undefined;
+
   // Run verification using shared utilities
   const result = await verifyProofFile(proof, onProgress, {
     mode,
     requireAnchorDensity: options.requireAnchorDensity,
     requireRootAnchor: options.requireRootAnchor,
+    // 免除は検証済み束縛のみ。package 未提供 (binding=undefined) の exam proof は gate 対象。
+    examBindingVerified: binding?.valid === true,
   });
 
   progressBar.complete();
@@ -119,17 +130,10 @@ export async function verifyProof(
   // options.analyzers が渡れば (採点者/研究者の外部アナライザ) それを使う。未指定なら shared 既定。
   const analysis = await runAnalysis({ proof, verification: result }, options.analyzers);
 
-  // 試験モード (ADR-0006): exam ブロックがあれば束縛を検証する。
-  // root 束縛は proof 自己完結 (verifyProofFile が rootValid で既に検証済み)。
-  // package が渡されたときのみ署名/復号/内容まで完全検証する。
+  // 試験モード (ADR-0006): root 束縛は proof 自己完結 (verifyProofFile が rootValid で検証済み)。
+  // package が渡されたときのみ署名/復号/内容まで完全検証する (binding は上で計算済み)。
   let exam: CLIExamResult | undefined;
   if (proof.exam) {
-    const binding = options.examPackageManifest
-      ? await verifyExamBinding(proof, options.examPackageManifest, {
-          examAuthorityRegistry: EXAM_AUTHORITY_KEYS,
-          submissionTimeMs: options.submittedAtMs,
-        })
-      : undefined;
     exam = {
       present: true,
       examId: proof.exam.examId,
