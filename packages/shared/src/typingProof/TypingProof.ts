@@ -541,11 +541,17 @@ export class TypingProof {
 
   /**
    * 最終署名を生成
+   * @param events - 対象イベント (省略時は現時点の this.events)。#143: exportProof は
+   *   スナップショットを渡し、署名とメタデータと checkpoint が同じ配列を見るようにする
+   * @param finalHash - events 末尾のハッシュ (省略時は this.currentHash)
    */
-  async generateSignature(): Promise<SignatureData> {
+  async generateSignature(
+    events: readonly StoredEvent[] = this.events,
+    finalHash: string | null = this.currentHash
+  ): Promise<SignatureData> {
     const finalData = {
-      totalEvents: this.events.length,
-      finalHash: this.currentHash,
+      totalEvents: events.length,
+      finalHash,
       startTime: this.startTime,
       endTime: performance.now()
     };
@@ -554,7 +560,7 @@ export class TypingProof {
     const signature = await this.hashChainManager.computeHash(signatureData);
 
     // エクスポート用にメタデータのnullフィールドを省略
-    const compactEvents = this.events.map(event => this.compactEventForExport(event));
+    const compactEvents = events.map(event => this.compactEventForExport(event));
 
     return {
       ...finalData,
@@ -600,25 +606,42 @@ export class TypingProof {
   /**
    * 証明データをエクスポート
    * @param finalContent - 最終的なコード
+   *
+   * #143: export は原子的でない — export 中も broadcast (スクショ/visibility 等) の記録で
+   * `this.events` が伸びうる。署名・メタデータ・checkpoint が別々の時点の配列を見ると、
+   * 「totalEvents が同梱 events と食い違う」「同梱 events に無い eventIndex を指す checkpoint」
+   * を持つ proof ができ、verifier (verifyProofMetadata / verifyCheckpoints) で丸ごと invalid
+   * になる。冒頭で 1 度だけスナップショットし、以降すべて同じ配列に対して計算する。
+   * スナップショット後に記録されたイベントはこの export に含まれない (チェーンには残る)。
    */
   async exportProof(finalContent: string): Promise<ExportedProof> {
-    const signature = await this.generateSignature();
+    const events = this.events.slice();
+    const lastEventIndex = events.length - 1;
+    const finalHash = lastEventIndex >= 0 ? events[lastEventIndex]!.hash : this.currentHash;
 
-    // タイピング証明ハッシュを生成
-    const typingProof = await this.generateTypingProofHash(finalContent);
+    const signature = await this.generateSignature(events, finalHash);
+
+    // タイピング証明ハッシュを生成 (メタデータ再カウントも同じスナップショットから)
+    const typingProof = await this.generateTypingProofHash(finalContent, events, finalHash);
 
     // チェックポイントをクリーンアップして最終チェックポイントを作成
-    const lastEventIndex = this.events.length - 1;
     if (lastEventIndex >= 0) {
       // 正規のチェックポイント以外を削除
       this.checkpointManager.cleanupForExport();
 
-      // 最終イベントにチェックポイントを作成（まだ存在しない場合）
-      const lastCheckpoint = this.checkpointManager.getLastCheckpoint();
-      if (!lastCheckpoint || lastCheckpoint.eventIndex !== lastEventIndex) {
-        await this.checkpointManager.createCheckpoint(lastEventIndex, this.events);
+      // スナップショット最終イベントにチェックポイントを作成（まだ存在しない場合）
+      const hasFinalCheckpoint = this.checkpointManager
+        .getCheckpoints()
+        .some((cp) => cp.eventIndex === lastEventIndex);
+      if (!hasFinalCheckpoint) {
+        await this.checkpointManager.createCheckpoint(lastEventIndex, events);
       }
     }
+
+    // スナップショット外 (export 開始後に伸びた分) を指す checkpoint は同梱しない
+    const checkpoints = this.checkpointManager
+      .getCheckpoints()
+      .filter((cp) => cp.eventIndex <= lastEventIndex);
 
     const exported: ExportedProof = {
       version: PROOF_FORMAT_VERSION,
@@ -634,7 +657,7 @@ export class TypingProof {
         timestamp: new Date().toISOString(),
         isPureTyping: typingProof.compact.isPureTyping
       },
-      checkpoints: this.checkpointManager.getCheckpoints()
+      checkpoints
     };
 
     // 試験モード (ADR-0006): 束縛ブロックを焼き込む。grader はこのブロック + 公開 package
@@ -655,6 +678,26 @@ export class TypingProof {
     }
 
     return exported;
+  }
+
+  /**
+   * 記録キュー (pendingEvents / PoSW 計算待ち) が空になるまで待つ (#143)。
+   *
+   * exportProof はスナップショット一貫だが、直前の打鍵がまだキューにあると
+   * 「content (エディタ buffer) には載っているのにチェーンに無い」export になり、
+   * content replay (Layer 4) で fail する。exporter は**タブ毎に**これを待ってから
+   * model 内容を確定して exportProof を呼ぶこと (アクティブタブだけ待つのでは不足)。
+   *
+   * @returns 排出しきれば true、timeout なら false (呼び出し側は警告して続行してよい —
+   *   その場合もスナップショット一貫性により proof 自体は整合する)
+   */
+  async waitForQueueDrain(timeoutMs = 5000): Promise<boolean> {
+    const start = performance.now();
+    while (this.pendingEvents.length > 0 || this.queuedEventCount > 0) {
+      if (performance.now() - start > timeoutMs) return false;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return true;
   }
 
   /**
@@ -737,15 +780,21 @@ export class TypingProof {
    * タイピング証明ハッシュを生成
    * @param finalContent - 最終的なコード
    */
-  async generateTypingProofHash(finalContent: string): Promise<TypingProofHashResult> {
+  async generateTypingProofHash(
+    finalContent: string,
+    events: readonly StoredEvent[] = this.events,
+    finalHash: string | null = this.currentHash
+  ): Promise<TypingProofHashResult> {
     const finalContentHash = await this.hashChainManager.computeHash(finalContent);
-    const stats = this.getTypingStatistics();
+    // #143: exportProof はスナップショットを渡す。this.events を直接見ると export 中の
+    // 追記でメタデータの再カウントが同梱 events と食い違い、verifyProofMetadata で fail する。
+    const stats = this.statisticsCalculator.getTypingStatistics(events as StoredEvent[], this.startTime);
 
     const proofData: ProofData = {
       finalContentHash,
       initialHashNonce: this.initialHashNonce ?? undefined,
-      initialEventChainHash: this.events[0]?.previousHash ?? this.currentHash,
-      finalEventChainHash: this.currentHash!,
+      initialEventChainHash: events[0]?.previousHash ?? finalHash,
+      finalEventChainHash: finalHash!,
       deviceId: this.fingerprint!,
       metadata: {
         totalEvents: stats.totalEvents,
