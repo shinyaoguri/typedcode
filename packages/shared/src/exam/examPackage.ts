@@ -602,6 +602,14 @@ export async function verifyExamBinding(
     }
     contentHash = await computeBundleProblemHash(problem);
   } else {
+    // ダウングレード拒否 (#137): バンドル封印された package は per-problem 束縛 (v2) でしか
+    // 検証させない。rootBinding を落とした proof が平文全体ハッシュで problemId 束縛を
+    // 回避できてしまう (上の「v2 主張 + 非バンドル平文」拒否と対称のガード)。
+    // 旧 v1 単一問題 package の平文は legacy (非バンドル) なので後方互換は保たれる。
+    const decoded = decodeExamPlaintext(decrypted.plaintext);
+    if (decoded.kind === 'bundle') {
+      return { ...result, reason: 'Package plaintext is an exam bundle; proof must use v2 per-problem root binding' };
+    }
     contentHash = await computeProblemContentHash(decrypted.plaintext);
   }
   result.problemContentHashMatches = contentHash === exam.problemContentHash;

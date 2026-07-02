@@ -141,6 +141,38 @@ describe('verifyExamBinding (v2 bundle)', () => {
     expect(result.reason).toContain('does-not-exist');
   });
 
+  it('rejects a v1-claiming proof over a bundle-sealed package (downgrade forgery)', async () => {
+    // バンドル封印 package に対し rootBinding 未設定 (v1) の proof を捏造する:
+    // problemContentHash = 平文全体ハッシュ、root = v1 式。#137 のダウングレード攻撃。
+    const { signer, registry } = await makeExamAuthority();
+    const bundle = sampleBundle();
+    const plaintext = encodeExamBundle(bundle);
+    const { manifest, token } = await buildSamplePackage(signer, { plaintext });
+    const packageHash = await computeExamPackageHash(manifest);
+    // v1 経路の内容ハッシュ = 平文全体の SHA-256 を proof に自己申告する。
+    const wholePlaintextHash = await computeHash(plaintext);
+    const components = { lang: 'en-US', tz: 'UTC' };
+    const fpHash = await computeHash(deterministicStringify(components));
+    const nonce = '7'.repeat(64);
+    // v1 root: per-problem ハッシュを連結しない。
+    const root = await computeExamChainRoot(fpHash, nonce, packageHash, token);
+    const exam: ExamProofBlock = buildExamProofBlock({
+      examId: manifest.examId, problemId: 'anything-i-like', variant: null,
+      packageHash, problemContentHash: wholePlaintextHash, startToken: token,
+    });
+    const proof = {
+      typingProofData: { deviceId: fpHash, initialHashNonce: nonce, initialEventChainHash: root },
+      proof: { events: [{ previousHash: root }], finalHash: root },
+      fingerprint: { hash: fpHash, components },
+      exam,
+    };
+    const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('must use v2');
+  });
+
   it('rejects a v2 proof when the decrypted plaintext is not a bundle (legacy markdown)', async () => {
     // 平文を生 markdown にして封印するが、proof は v2 を主張する。
     const { signer, registry } = await makeExamAuthority();
