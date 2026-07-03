@@ -27,15 +27,8 @@ export function isTemplateInjectionData(data: unknown): data is { content: strin
  * 手製 proof が AI 解答全体を 1 イベントで持ち込む laundering に使える。
  * 判定は advisory のみ (isPureTyping / 分析シグナル / processSummary)。`valid` には影響させない。
  */
-export function isDivergentContentSnapshot(
-  event: StoredEvent,
-  replayContentBeforeApply: string
-): boolean {
-  return (
-    event.type === 'contentSnapshot' &&
-    typeof event.data === 'string' &&
-    event.data !== replayContentBeforeApply
-  );
+export function isDivergentContentSnapshot(event: StoredEvent, replayContentBeforeApply: string): boolean {
+  return event.type === 'contentSnapshot' && typeof event.data === 'string' && event.data !== replayContentBeforeApply;
 }
 
 /** Monaco の range (1-origin 行/列) を文書内 offset へ変換する。範囲外なら null。 */

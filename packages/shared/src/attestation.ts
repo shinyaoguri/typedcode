@@ -69,7 +69,7 @@ export class AttestationService {
         return { valid: false, message: `HTTP ${response.status}` };
       }
 
-      const result = await response.json() as { valid: boolean; message: string };
+      const result = (await response.json()) as { valid: boolean; message: string };
       return result;
     } catch (error) {
       console.error('[AttestationService] Verification failed:', error);

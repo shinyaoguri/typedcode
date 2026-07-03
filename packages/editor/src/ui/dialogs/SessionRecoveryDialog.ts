@@ -72,9 +72,7 @@ function generateTabListHtml(tabs: TabSummary[]): string {
  * @param sessionSummary セッションサマリー
  * @returns ユーザーの選択結果
  */
-export function showSessionRecoveryDialog(
-  sessionSummary: SessionSummary
-): Promise<SessionRecoveryDialogResult> {
+export function showSessionRecoveryDialog(sessionSummary: SessionSummary): Promise<SessionRecoveryDialogResult> {
   return new Promise((resolve) => {
     // 既存のダイアログがあれば削除
     const existing = document.getElementById('session-recovery-overlay');

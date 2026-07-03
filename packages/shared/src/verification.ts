@@ -23,16 +23,16 @@ export {
 
 import { deterministicStringify, computeHash } from './utils/hashUtils.js';
 import { computeExamChainRoot } from './exam/examPackage.js';
-import { isBenignEditorInsert, isFlaggedBulkInsert, isSuspiciousBulkInsert, SessionProvenanceLedger } from './typingProof/structuralEdit.js';
+import {
+  isBenignEditorInsert,
+  isFlaggedBulkInsert,
+  isSuspiciousBulkInsert,
+  SessionProvenanceLedger,
+} from './typingProof/structuralEdit.js';
 import { isDivergentContentSnapshot, isTemplateInjectionData, offsetFromRange } from './typingProof/replay.js';
 import { POSW_ITERATIONS, EXAM_ROOT_BINDING_V2 } from './version.js';
-import {
-  verifyProofSignedCheckpoints,
-} from './signedCheckpoints.js';
-import {
-  verifySessionStartToken,
-  computeAnchoredChainRoot,
-} from './sessionStartToken.js';
+import { verifyProofSignedCheckpoints } from './signedCheckpoints.js';
+import { verifySessionStartToken, computeAnchoredChainRoot } from './sessionStartToken.js';
 import { CHECKPOINT_PUBLIC_KEYS } from './checkpointKeys/index.js';
 import type { SignedCheckpointsVerificationResult } from './types.js';
 import type { CheckpointPublicKey } from './checkpointKeys/index.js';
@@ -272,10 +272,7 @@ function firstMismatchIndex(left: string, right: string): number {
 /**
  * Replay content-affecting events and compare them with the exported final content.
  */
-export function verifyContentReplay(
-  events: StoredEvent[],
-  finalContent: string
-): ContentReplayVerificationResult {
+export function verifyContentReplay(events: StoredEvent[], finalContent: string): ContentReplayVerificationResult {
   let content = '';
 
   for (let i = 0; i < events.length; i++) {
@@ -339,7 +336,8 @@ export function verifyFinalChainHash(
   computedFinalHash?: string
 ): { valid: boolean; reason?: string; computedFinalHash?: string; expectedFinalHash?: string | null } {
   const events = proof.proof.events;
-  const finalHash = computedFinalHash ?? (events.length === 0 ? proof.typingProofData.initialEventChainHash ?? undefined : undefined);
+  const finalHash =
+    computedFinalHash ?? (events.length === 0 ? (proof.typingProofData.initialEventChainHash ?? undefined) : undefined);
 
   if (!finalHash) {
     return { valid: false, reason: 'Computed final chain hash is missing' };
@@ -407,18 +405,13 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
     const sessionDerived = ledger.checkAndApply(event);
     const suspicious = isSuspiciousBulkInsert(event);
     if (suspicious) suspiciousBulkInsertEventIndexes.push(i);
-    if (
-      (suspicious && !isBenignEditorInsert(event) && !sessionDerived) ||
-      isFlaggedBulkInsert(event, sessionDerived)
-    ) {
+    if ((suspicious && !isBenignEditorInsert(event) && !sessionDerived) || isFlaggedBulkInsert(event, sessionDerived)) {
       nonBenignBulkInsertCount++;
     }
   }
 
   const totalTypingTime = events[events.length - 1]?.timestamp ?? 0;
-  const averageTypingSpeed = totalTypingTime > 0
-    ? Math.round((insertEvents / (totalTypingTime / 60000)) * 10) / 10
-    : 0;
+  const averageTypingSpeed = totalTypingTime > 0 ? Math.round((insertEvents / (totalTypingTime / 60000)) * 10) / 10 : 0;
 
   const recomputedMetadata = {
     totalEvents: events.length,
@@ -448,10 +441,7 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
 /**
  * Recompute proof metadata from events and compare self-reported counts.
  */
-export function verifyProofMetadata(
-  proofData: ProofData,
-  events: StoredEvent[]
-): ProofMetadataVerificationResult {
+export function verifyProofMetadata(proofData: ProofData, events: StoredEvent[]): ProofMetadataVerificationResult {
   const result = recomputeProofMetadata(events);
   const claimed = proofData.metadata;
   const recomputed = result.recomputedMetadata;
@@ -562,11 +552,7 @@ export async function verifyCheckpoints(
 /**
  * Verify PoSW (Proof of Sequential Work)
  */
-export async function verifyPoSW(
-  previousHash: string,
-  eventDataString: string,
-  posw: PoSWData
-): Promise<boolean> {
+export async function verifyPoSW(previousHash: string, eventDataString: string, posw: PoSWData): Promise<boolean> {
   if (posw.iterations !== POSW_ITERATIONS) {
     return false;
   }
@@ -601,8 +587,7 @@ export async function verifyTypingProofHash(
     return { valid: false, isPureTyping: false };
   }
 
-  const isPureTyping =
-    proofData.metadata.pasteEvents === 0 && proofData.metadata.dropEvents === 0;
+  const isPureTyping = proofData.metadata.pasteEvents === 0 && proofData.metadata.dropEvents === 0;
 
   return { valid: true, isPureTyping };
 }
@@ -724,9 +709,7 @@ export async function verifyChain(
 
   return {
     valid: true,
-    message: options.skipPosw
-      ? 'All hashes verified successfully (PoSW skipped)'
-      : 'All hashes verified successfully',
+    message: options.skipPosw ? 'All hashes verified successfully (PoSW skipped)' : 'All hashes verified successfully',
     computedHash: hash ?? undefined,
   };
 }
@@ -761,11 +744,7 @@ export async function verifyProofFile(
   let eventMetadataResult: ProofMetadataVerificationResult | undefined;
 
   if (proof.typingProofHash && proof.typingProofData && proof.content !== undefined && proof.content !== null) {
-    const metaResult = await verifyTypingProofHash(
-      proof.typingProofHash,
-      proof.typingProofData,
-      proof.content
-    );
+    const metaResult = await verifyTypingProofHash(proof.typingProofHash, proof.typingProofData, proof.content);
     // ADR-0017: root の token 検証に署名鍵 registry を渡す (registry-only = C1)。
     const rootResult = await verifyInitialHashRoot(proof, {
       signedCheckpointKeyRegistry: options.signedCheckpointKeyRegistry,
@@ -790,9 +769,10 @@ export async function verifyProofFile(
     ? verifyFinalChainHash(proof, chainResult.computedHash)
     : { valid: false, reason: chainResult.message };
   const checkpointResult = await verifyCheckpoints(events, proof.checkpoints);
-  const contentResult = proof.content !== undefined && proof.content !== null
-    ? verifyContentReplay(events, proof.content)
-    : { valid: false, reason: 'Final content is missing' };
+  const contentResult =
+    proof.content !== undefined && proof.content !== null
+      ? verifyContentReplay(events, proof.content)
+      : { valid: false, reason: 'Final content is missing' };
   const chainValid = chainResult.valid && finalHashResult.valid && checkpointResult.valid && contentResult.valid;
 
   // 3. Verify signed checkpoints (mode independent; only affects "anchored" axis)
@@ -817,8 +797,7 @@ export async function verifyProofFile(
   //    ときだけ (#131)。exam ブロックの存在だけで免除すると、架空の exam ブロック (root は exam 式で
   //    自己整合する) を付けるだけで gate を回避できてしまう。
   const examExempt = !!proof.exam && options.examBindingVerified === true;
-  const rootAnchorBlocks =
-    !!options.requireRootAnchor && !examExempt && metadataValid && !rootAnchored;
+  const rootAnchorBlocks = !!options.requireRootAnchor && !examExempt && metadataValid && !rootAnchored;
 
   // signed checkpoint が存在しつつ無効なら全体も無効。存在しない (anchored=false) のは
   // 「補助情報が無い」だけで、tamper resistance は他レイヤで担保される。
@@ -845,12 +824,7 @@ export async function verifyProofFile(
                   : chainResult.message;
 
   return {
-    valid:
-      metadataValid &&
-      chainValid &&
-      !signedCheckpointBlocks &&
-      !tokenSessionMismatch &&
-      !rootAnchorBlocks,
+    valid: metadataValid && chainValid && !signedCheckpointBlocks && !tokenSessionMismatch && !rootAnchorBlocks,
     metadataValid,
     rootValid,
     rootAnchored,

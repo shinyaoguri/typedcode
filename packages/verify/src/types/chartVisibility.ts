@@ -9,15 +9,7 @@ import type { EventType } from '@typedcode/shared';
 // ============================================================================
 
 /** イベントカテゴリ */
-export type EventCategory =
-  | 'content'
-  | 'cursor'
-  | 'input'
-  | 'window'
-  | 'system'
-  | 'auth'
-  | 'execution'
-  | 'capture';
+export type EventCategory = 'content' | 'cursor' | 'input' | 'window' | 'system' | 'auth' | 'execution' | 'capture';
 
 /** カテゴリ情報 */
 export interface CategoryInfo {
@@ -155,10 +147,7 @@ export const DEFAULT_CHART_EVENT_VISIBILITY: ChartEventVisibility = {
 /**
  * イベントタイプが表示対象かどうかを判定
  */
-export function isEventTypeVisible(
-  eventType: EventType,
-  visibility: ChartEventVisibility
-): boolean {
+export function isEventTypeVisible(eventType: EventType, visibility: ChartEventVisibility): boolean {
   // 個別オーバーライドがあればそれを使用
   if (eventType in visibility.events) {
     return visibility.events[eventType] ?? false;
@@ -171,10 +160,7 @@ export function isEventTypeVisible(
 /**
  * カテゴリ内の全イベントが表示対象かどうかを判定
  */
-export function isCategoryFullyVisible(
-  category: EventCategory,
-  visibility: ChartEventVisibility
-): boolean {
+export function isCategoryFullyVisible(category: EventCategory, visibility: ChartEventVisibility): boolean {
   const categoryInfo = EVENT_CATEGORIES.find((c) => c.id === category);
   if (!categoryInfo) return false;
 
@@ -184,16 +170,11 @@ export function isCategoryFullyVisible(
 /**
  * カテゴリ内の一部イベントが表示対象かどうかを判定（部分選択状態）
  */
-export function isCategoryPartiallyVisible(
-  category: EventCategory,
-  visibility: ChartEventVisibility
-): boolean {
+export function isCategoryPartiallyVisible(category: EventCategory, visibility: ChartEventVisibility): boolean {
   const categoryInfo = EVENT_CATEGORIES.find((c) => c.id === category);
   if (!categoryInfo) return false;
 
-  const visibleCount = categoryInfo.events.filter((event) =>
-    isEventTypeVisible(event, visibility)
-  ).length;
+  const visibleCount = categoryInfo.events.filter((event) => isEventTypeVisible(event, visibility)).length;
 
   return visibleCount > 0 && visibleCount < categoryInfo.events.length;
 }

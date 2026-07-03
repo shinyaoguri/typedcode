@@ -34,9 +34,7 @@ function inputWith(opts: {
 
 describe('automationAnalyzer', () => {
   it('raises a review signal when navigator.webdriver is true', async () => {
-    const signals = await automationAnalyzer.analyze(
-      inputWith({ probe: { webdriver: true, automationGlobals: [] } })
-    );
+    const signals = await automationAnalyzer.analyze(inputWith({ probe: { webdriver: true, automationGlobals: [] } }));
     expect(signals).toHaveLength(1);
     expect(signals[0]?.severity).toBe('review');
     expect(signals[0]?.dimension).toBe('automation');

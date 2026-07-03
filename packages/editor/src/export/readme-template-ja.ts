@@ -14,8 +14,8 @@ export interface ReadmeTemplateParams {
 export function generateReadmeJa(params: ReadmeTemplateParams): string {
   const { timestamp, totalFiles, totalScreenshots, sourceFiles, proofFiles } = params;
 
-  const sourceFilesList = sourceFiles.map(f => `- \`${f}\``).join('\n');
-  const proofFilesList = proofFiles.map(f => `- \`${f}\``).join('\n');
+  const sourceFilesList = sourceFiles.map((f) => `- \`${f}\``).join('\n');
+  const proofFilesList = proofFiles.map((f) => `- \`${f}\``).join('\n');
 
   return `# TypedCode 証明アーカイブ
 

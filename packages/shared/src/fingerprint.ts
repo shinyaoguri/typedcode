@@ -3,13 +3,7 @@
  * 端末とブラウザの固有情報を収集して識別子を生成
  */
 
-import type {
-  FingerprintComponents,
-  StableInfo,
-  ScreenInfo,
-  WebGLInfo,
-  DetailedFingerprint,
-} from './types.js';
+import type { FingerprintComponents, StableInfo, ScreenInfo, WebGLInfo, DetailedFingerprint } from './types.js';
 import { sharedDebugLog } from './utils/debug.js';
 import { computeHash } from './utils/hashUtils.js';
 
@@ -54,7 +48,7 @@ export class Fingerprint {
       language: navigator.language,
       hardwareConcurrency: navigator.hardwareConcurrency ?? 0,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      webglVendor: this.getWebGLVendor()
+      webglVendor: this.getWebGLVendor(),
     };
   }
 
@@ -64,7 +58,8 @@ export class Fingerprint {
   static getWebGLVendor(): string {
     try {
       const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl') ?? canvas.getContext('experimental-webgl') as WebGLRenderingContext | null;
+      const gl =
+        canvas.getContext('webgl') ?? (canvas.getContext('experimental-webgl') as WebGLRenderingContext | null);
       if (!gl) return 'unknown';
 
       const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
@@ -97,7 +92,7 @@ export class Fingerprint {
       availHeight: screen.availHeight,
       colorDepth: screen.colorDepth,
       pixelDepth: screen.pixelDepth,
-      devicePixelRatio: window.devicePixelRatio ?? 1
+      devicePixelRatio: window.devicePixelRatio ?? 1,
     };
 
     const components: FingerprintComponents = {
@@ -115,7 +110,7 @@ export class Fingerprint {
       fonts: this.getAvailableFonts(),
       cookieEnabled: navigator.cookieEnabled,
       doNotTrack: navigator.doNotTrack ?? 'unknown',
-      maxTouchPoints: navigator.maxTouchPoints ?? 0
+      maxTouchPoints: navigator.maxTouchPoints ?? 0,
     };
 
     return components;
@@ -153,7 +148,8 @@ export class Fingerprint {
   static getWebGLFingerprint(): WebGLInfo {
     try {
       const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl') ?? canvas.getContext('experimental-webgl') as WebGLRenderingContext | null;
+      const gl =
+        canvas.getContext('webgl') ?? (canvas.getContext('experimental-webgl') as WebGLRenderingContext | null);
 
       if (!gl) {
         return { error: 'WebGL not supported' };
@@ -166,8 +162,8 @@ export class Fingerprint {
         renderer: gl.getParameter(gl.RENDERER) as string,
         version: gl.getParameter(gl.VERSION) as string,
         shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION) as string,
-        unmaskedVendor: debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) as string : 'unknown',
-        unmaskedRenderer: debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) as string : 'unknown'
+        unmaskedVendor: debugInfo ? (gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) as string) : 'unknown',
+        unmaskedRenderer: debugInfo ? (gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) as string) : 'unknown',
       };
     } catch {
       return { error: 'WebGL error' };
@@ -180,11 +176,24 @@ export class Fingerprint {
   static getAvailableFonts(): string[] {
     const baseFonts = ['monospace', 'sans-serif', 'serif'] as const;
     const testFonts = [
-      'Arial', 'Verdana', 'Times New Roman', 'Courier New',
-      'Georgia', 'Palatino', 'Garamond', 'Bookman',
-      'Comic Sans MS', 'Trebuchet MS', 'Impact',
-      'Helvetica', 'Lucida Console', 'Monaco',
-      'Consolas', 'Menlo', 'MS Gothic', 'Yu Gothic'
+      'Arial',
+      'Verdana',
+      'Times New Roman',
+      'Courier New',
+      'Georgia',
+      'Palatino',
+      'Garamond',
+      'Bookman',
+      'Comic Sans MS',
+      'Trebuchet MS',
+      'Impact',
+      'Helvetica',
+      'Lucida Console',
+      'Monaco',
+      'Consolas',
+      'Menlo',
+      'MS Gothic',
+      'Yu Gothic',
     ];
 
     const canvas = document.createElement('canvas');
@@ -195,15 +204,15 @@ export class Fingerprint {
     const testSize = '72px';
 
     const baseWidths: Record<string, number> = {};
-    baseFonts.forEach(baseFont => {
+    baseFonts.forEach((baseFont) => {
       ctx.font = `${testSize} ${baseFont}`;
       baseWidths[baseFont] = ctx.measureText(testString).width;
     });
 
     const availableFonts: string[] = [];
-    testFonts.forEach(font => {
+    testFonts.forEach((font) => {
       let detected = false;
-      baseFonts.forEach(baseFont => {
+      baseFonts.forEach((baseFont) => {
         ctx.font = `${testSize} '${font}', ${baseFont}`;
         const width = ctx.measureText(testString).width;
         if (width !== baseWidths[baseFont]) {
@@ -228,7 +237,7 @@ export class Fingerprint {
     return {
       hash,
       components,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 }

@@ -21,18 +21,10 @@ import type {
 // types/proof.ts (browser 依存) から取ってくる。Workers から import される
 // checkpointEntry.ts は verifyProofSignedCheckpoints を再エクスポートするが、
 // 関数本体は CheckpointData の構造しか触らないので browser 実装は要らない。
-import type {
-  CheckpointData,
-  ExportedProof,
-  StoredEvent,
-} from './types/proof.js';
+import type { CheckpointData, ExportedProof, StoredEvent } from './types/proof.js';
 import { POSW_ITERATIONS, SIGNED_CHECKPOINT_FORMAT_VERSION } from './version.js';
 import { computeHash, deterministicStringify } from './utils/hashUtils.js';
-import {
-  CHECKPOINT_PUBLIC_KEYS,
-  findCheckpointPublicKey,
-  type CheckpointPublicKey,
-} from './checkpointKeys/index.js';
+import { CHECKPOINT_PUBLIC_KEYS, findCheckpointPublicKey, type CheckpointPublicKey } from './checkpointKeys/index.js';
 
 const POST_HOC_RATIO_THRESHOLD = 0.1;
 const POST_HOC_MIN_SERVER_SPAN_MS = 60 * 1000;
@@ -220,9 +212,7 @@ export function validateSignedCheckpointInput(
  * Signed checkpoint payload の決定的ハッシュ。
  * `previousSignedCheckpointHash` 連鎖の計算と、配列内一意性の特定に用いる。
  */
-export async function hashSignedCheckpointPayload(
-  payload: SignedCheckpointPayload
-): Promise<string> {
+export async function hashSignedCheckpointPayload(payload: SignedCheckpointPayload): Promise<string> {
   return computeHash(deterministicStringify(payload));
 }
 
@@ -239,10 +229,7 @@ export async function hashSignedCheckpointPayload(
  * clientTimestamp で再エンキューされ得るが、連鎖検証性には影響しないため、
  * 内容として同一なら救済する方が運用上望ましい。
  */
-export function isIdempotentSigningRetry(
-  input: SignedCheckpointInput,
-  cached: SignedCheckpointPayload
-): boolean {
+export function isIdempotentSigningRetry(input: SignedCheckpointInput, cached: SignedCheckpointPayload): boolean {
   return (
     input.sessionId === cached.sessionId &&
     input.tabId === cached.tabId &&
@@ -282,10 +269,7 @@ function hexToUint8Array(hex: string): Uint8Array {
 export async function resolveCheckpointPublicKey(
   envelope: SignedCheckpointEnvelope,
   registry: readonly CheckpointPublicKey[] = CHECKPOINT_PUBLIC_KEYS
-): Promise<
-  | { ok: true; cryptoKey: CryptoKey; registryEntry: CheckpointPublicKey }
-  | { ok: false; reason: string }
-> {
+): Promise<{ ok: true; cryptoKey: CryptoKey; registryEntry: CheckpointPublicKey } | { ok: false; reason: string }> {
   // 信頼アンカーは registry。未登録 keyId は (埋め込み鍵があっても) 信頼しない。
   const registryEntry = findCheckpointPublicKey(envelope.keyId, registry) ?? null;
   if (!registryEntry) {
@@ -296,8 +280,7 @@ export async function resolveCheckpointPublicKey(
   // 一致チェック専用であって信頼の源にはしない。署名は常に registry の公開鍵で検証する。
   if (envelope.publicKeyJwk) {
     const sameJwk =
-      deterministicStringify(envelope.publicKeyJwk) ===
-      deterministicStringify(registryEntry.publicKeyJwk);
+      deterministicStringify(envelope.publicKeyJwk) === deterministicStringify(registryEntry.publicKeyJwk);
     if (!sameJwk) {
       return { ok: false, reason: 'Embedded public key does not match registry entry' };
     }
@@ -763,12 +746,7 @@ function computeTemporal(
   firstServerTs: number | null,
   lastServerTs: number | null
 ): SignedCheckpointsVerificationResult['temporal'] {
-  if (
-    firstClientTs === null ||
-    lastClientTs === null ||
-    firstServerTs === null ||
-    lastServerTs === null
-  ) {
+  if (firstClientTs === null || lastClientTs === null || firstServerTs === null || lastServerTs === null) {
     return null;
   }
   const serverSpanMs = Math.max(0, lastServerTs - firstServerTs);

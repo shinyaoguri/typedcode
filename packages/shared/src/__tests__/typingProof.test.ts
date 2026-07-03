@@ -101,12 +101,7 @@ describe('TypingProof', () => {
       expect(proof.isProhibitedInputType(type)).toBe(true);
     });
 
-    const notProhibitedTypes: InputType[] = [
-      'insertText',
-      'deleteContentBackward',
-      'historyUndo',
-      'insertTab',
-    ];
+    const notProhibitedTypes: InputType[] = ['insertText', 'deleteContentBackward', 'historyUndo', 'insertTab'];
 
     it.each(notProhibitedTypes)('should return false for non-prohibited type: %s', (type) => {
       expect(proof.isProhibitedInputType(type)).toBe(false);
@@ -273,9 +268,9 @@ describe('TypingProof', () => {
 
     it('should throw error if not initialized', async () => {
       const uninitializedProof = new TypingProof();
-      await expect(
-        uninitializedProof.recordEvent({ type: 'contentChange', data: 'x' })
-      ).rejects.toThrow('not initialized');
+      await expect(uninitializedProof.recordEvent({ type: 'contentChange', data: 'x' })).rejects.toThrow(
+        'not initialized'
+      );
     });
 
     it('should record event and update hash chain', async () => {
@@ -383,9 +378,7 @@ describe('TypingProof', () => {
         success: true,
       };
 
-      await expect(proof.recordHumanAttestation(attestation)).rejects.toThrow(
-        'must be event #0'
-      );
+      await expect(proof.recordHumanAttestation(attestation)).rejects.toThrow('must be event #0');
     });
   });
 
@@ -586,11 +579,7 @@ describe('TypingProof', () => {
 
       const serialized = original.serializeState();
 
-      const restored = await TypingProof.fromSerializedState(
-        serialized,
-        'test-fingerprint',
-        mockComponents
-      );
+      const restored = await TypingProof.fromSerializedState(serialized, 'test-fingerprint', mockComponents);
 
       expect(restored.initialized).toBe(true);
       expect(restored.events).toHaveLength(1);

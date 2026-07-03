@@ -110,9 +110,7 @@ export class FullscreenTracker {
 
   /** ウィンドウが画面全体を覆っているか (CSS px 同士の比較なので DPR の影響は受けない)。 */
   private looksFullscreenBySize(): boolean {
-    return (
-      window.innerWidth >= screen.width - 2 && window.innerHeight >= screen.height - 2
-    );
+    return window.innerWidth >= screen.width - 2 && window.innerHeight >= screen.height - 2;
   }
 
   private handleStateChange(): void {
@@ -134,11 +132,7 @@ export class FullscreenTracker {
     this.banner?.classList.toggle('visible', !this.currentFs);
   }
 
-  private emit(
-    reason: FullscreenChangeData['reason'],
-    requestGranted: boolean | null,
-    fullscreen: boolean
-  ): void {
+  private emit(reason: FullscreenChangeData['reason'], requestGranted: boolean | null, fullscreen: boolean): void {
     const data: FullscreenChangeData = {
       fullscreen,
       available: this.isAvailable(),

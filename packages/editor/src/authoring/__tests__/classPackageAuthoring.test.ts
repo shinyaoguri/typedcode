@@ -4,7 +4,11 @@ import { buildClassPackage } from '../classPackageAuthoring.js';
 
 function sampleProblems(): ExamBundleProblem[] {
   return [
-    { problemId: 'p1', statement: '# 問題1\n和を出力せよ。', starter: { filename: 'p1.c', language: 'c', content: '/* TODO */\n' } },
+    {
+      problemId: 'p1',
+      statement: '# 問題1\n和を出力せよ。',
+      starter: { filename: 'p1.c', language: 'c', content: '/* TODO */\n' },
+    },
     { problemId: 'p2', statement: '# 問題2\n積を出力せよ。' },
   ];
 }
@@ -37,7 +41,9 @@ describe('buildClassPackage', () => {
   });
 
   it('rejects an empty statement', () => {
-    expect(() => buildClassPackage({ classId: 'x', problems: [{ problemId: 'p1', statement: '   ' }], languages: ['c'] })).toThrow();
+    expect(() =>
+      buildClassPackage({ classId: 'x', problems: [{ problemId: 'p1', statement: '   ' }], languages: ['c'] })
+    ).toThrow();
   });
 
   it('rejects when no languages are allowed', () => {

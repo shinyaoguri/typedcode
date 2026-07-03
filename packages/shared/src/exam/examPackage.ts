@@ -28,12 +28,13 @@ import type {
 } from '../types/exam.js';
 import type { ExportedProof } from '../types/proof.js';
 import { computeHash, deterministicStringify, arrayBufferToHex } from '../utils/hashUtils.js';
+import { EXAM_AUTHORITY_KEYS, findExamAuthorityKey, type ExamAuthorityKey } from '../examAuthorityKeys/index.js';
 import {
-  EXAM_AUTHORITY_KEYS,
-  findExamAuthorityKey,
-  type ExamAuthorityKey,
-} from '../examAuthorityKeys/index.js';
-import { EXAM_PACKAGE_FORMAT_VERSION, EXAM_PROOF_VERSION, EXAM_ROOT_BINDING, EXAM_ROOT_BINDING_V2 } from '../version.js';
+  EXAM_PACKAGE_FORMAT_VERSION,
+  EXAM_PROOF_VERSION,
+  EXAM_ROOT_BINDING,
+  EXAM_ROOT_BINDING_V2,
+} from '../version.js';
 import { decodeExamPlaintext, computeBundleProblemHash } from './examBundle.js';
 
 // ============================================================================
@@ -101,8 +102,7 @@ export function parseExamPackageManifest(input: unknown): ExamPackageManifest | 
   if (!input || typeof input !== 'object') return null;
   const m = input as Record<string, unknown>;
   const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
-  const isObj = (v: unknown): v is Record<string, unknown> =>
-    !!v && typeof v === 'object' && !Array.isArray(v);
+  const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
   if (typeof m.formatVersion !== 'number') return null;
   if (!isStr(m.examId) || !isStr(m.problemId)) return null;
@@ -113,21 +113,12 @@ export function parseExamPackageManifest(input: unknown): ExamPackageManifest | 
   const kdf = m.kdf;
   if (!isObj(kdf) || kdf.algorithm !== 'argon2id' || !isStr(kdf.salt) || !isObj(kdf.params)) return null;
   const p = kdf.params;
-  if (
-    typeof p.memKiB !== 'number' ||
-    typeof p.iterations !== 'number' ||
-    typeof p.parallelism !== 'number'
-  ) {
+  if (typeof p.memKiB !== 'number' || typeof p.iterations !== 'number' || typeof p.parallelism !== 'number') {
     return null;
   }
 
   const cipher = m.cipher;
-  if (
-    !isObj(cipher) ||
-    cipher.algorithm !== 'AES-256-GCM' ||
-    !isStr(cipher.iv) ||
-    !isStr(cipher.ciphertext)
-  ) {
+  if (!isObj(cipher) || cipher.algorithm !== 'AES-256-GCM' || !isStr(cipher.iv) || !isStr(cipher.ciphertext)) {
     return null;
   }
 
@@ -218,9 +209,7 @@ export function deriveExamKey(startToken: string, kdf: ExamKdf): Uint8Array {
   });
 }
 
-export type ExamDecryptResult =
-  | { ok: true; plaintext: string }
-  | { ok: false; reason: string };
+export type ExamDecryptResult = { ok: true; plaintext: string } | { ok: false; reason: string };
 
 /**
  * 監督コードで package を復号する。誤コードは AES-GCM の認証タグで弾かれる
@@ -239,13 +228,7 @@ export async function decryptExamPackage(
   let plaintext: string;
   try {
     const keyBytes = deriveExamKey(startToken, manifest.kdf);
-    const key = await crypto.subtle.importKey(
-      'raw',
-      asArrayBuffer(keyBytes),
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    );
+    const key = await crypto.subtle.importKey('raw', asArrayBuffer(keyBytes), { name: 'AES-GCM' }, false, ['decrypt']);
     const iv = hexToBytes(manifest.cipher.iv);
     const ciphertext = base64ToBytes(manifest.cipher.ciphertext);
     const decrypted = await crypto.subtle.decrypt(
@@ -288,13 +271,7 @@ export async function buildExamPackage(
 ): Promise<ExamPackageManifest> {
   // 1. KDF で鍵導出
   const keyBytes = deriveExamKey(startToken, input.kdf);
-  const key = await crypto.subtle.importKey(
-    'raw',
-    asArrayBuffer(keyBytes),
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt']
-  );
+  const key = await crypto.subtle.importKey('raw', asArrayBuffer(keyBytes), { name: 'AES-GCM' }, false, ['encrypt']);
 
   // 2. AES-256-GCM 暗号化 (IV は毎回ランダム 12 byte)
   const iv = new Uint8Array(12);
@@ -384,8 +361,7 @@ export async function verifyExamPackageSignature(
   // 同梱 publicKeyJwk があれば registry エントリと一致必須 (埋め込み鍵すり替えの検出)。
   if (manifest.publicKeyJwk) {
     const sameJwk =
-      deterministicStringify(manifest.publicKeyJwk) ===
-      deterministicStringify(registryEntry.publicKeyJwk);
+      deterministicStringify(manifest.publicKeyJwk) === deterministicStringify(registryEntry.publicKeyJwk);
     if (!sameJwk) {
       return { valid: false, reason: 'Embedded public key does not match registry entry', registryEntry };
     }

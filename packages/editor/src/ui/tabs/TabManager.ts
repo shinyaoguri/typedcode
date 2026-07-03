@@ -33,12 +33,9 @@ import {
 } from '../../services/TurnstileService.js';
 import { performVerificationWithUI } from './TabVerificationUI.js';
 import { t } from '../../i18n/index.js';
+import { type SessionStorageService, getSessionStorageService } from '../../services/SessionStorageService.js';
 import {
-  SessionStorageService,
-  getSessionStorageService,
-} from '../../services/SessionStorageService.js';
-import {
-  SignedCheckpointService,
+  type SignedCheckpointService,
   createSignedCheckpointServiceIfEnabled,
 } from '../../services/SignedCheckpointService.js';
 import { debugLog } from '../../utils/logger.js';
@@ -46,10 +43,7 @@ import { debugLog } from '../../utils/logger.js';
 // PoSW Workerのファクトリ関数
 // Viteがsymlinkedパッケージ内のWorkerを正しく解決できないため、editorパッケージ内から読み込む
 function createPoswWorker(): Worker {
-  return new Worker(
-    new URL('../../workers/poswWorker.ts', import.meta.url),
-    { type: 'module' }
-  );
+  return new Worker(new URL('../../workers/poswWorker.ts', import.meta.url), { type: 'module' });
 }
 
 // Re-export for convenience
@@ -106,15 +100,15 @@ export interface CreateTabOptions {
 /** 言語IDから拡張子を取得 */
 function getFileExtension(language: string): string {
   const extensionMap: Record<string, string> = {
-    'c': 'c',
-    'cpp': 'cpp',
-    'javascript': 'js',
-    'typescript': 'ts',
-    'html': 'html',
-    'css': 'css',
-    'json': 'json',
-    'markdown': 'md',
-    'python': 'py'
+    c: 'c',
+    cpp: 'cpp',
+    javascript: 'js',
+    typescript: 'ts',
+    html: 'html',
+    css: 'css',
+    json: 'json',
+    markdown: 'md',
+    python: 'py',
   };
   return extensionMap[language] ?? 'txt';
 }
@@ -182,10 +176,7 @@ export class TabManager {
    * TabManagerを初期化
    * @returns 初期化成功時はtrue、reCAPTCHA失敗時はfalse
    */
-  async initialize(
-    fingerprintHash: string,
-    fingerprintComponents: FingerprintComponents
-  ): Promise<boolean> {
+  async initialize(fingerprintHash: string, fingerprintComponents: FingerprintComponents): Promise<boolean> {
     this.fingerprint = fingerprintHash;
     this.fingerprintComponents = fingerprintComponents;
 
@@ -314,9 +305,7 @@ export class TabManager {
       debugLog('[TabManager] Performing Turnstile + session/start for new tab...');
       const apiSessionId = this.sessionService.getCurrentSessionId();
       const sessionStart =
-        apiSessionId && this.fingerprint
-          ? { sessionId: apiSessionId, fingerprintHash: this.fingerprint }
-          : undefined;
+        apiSessionId && this.fingerprint ? { sessionId: apiSessionId, fingerprintHash: this.fingerprint } : undefined;
       interactiveAuth = await performVerificationWithUI('create_tab', t, sessionStart);
     }
 
@@ -324,12 +313,7 @@ export class TabManager {
     // 試験モード (ADR-0006): examContext があれば root を packageHash + startToken に束縛する。
     // ADR-0017: session/start トークンがあれば serverNonce 込みでアンカー。無ければ従来式。
     if (options?.examContext) {
-      await typingProof.initializeExam(
-        this.fingerprint!,
-        this.fingerprintComponents!,
-        options.examContext,
-        poswWorker
-      );
+      await typingProof.initializeExam(this.fingerprint!, this.fingerprintComponents!, options.examContext, poswWorker);
     } else if (interactiveAuth?.sessionToken) {
       await typingProof.initializeAnchored(
         this.fingerprint!,
@@ -514,7 +498,10 @@ export class TabManager {
           tab.signedCheckpointService?.retryPendingSignatures();
         }
       } else {
-        console.warn('[TabManager] Signing-only token acquisition failed; checkpoints stay unsigned:', result.error ?? result.failureReason);
+        console.warn(
+          '[TabManager] Signing-only token acquisition failed; checkpoints stay unsigned:',
+          result.error ?? result.failureReason
+        );
       }
     } catch (err) {
       console.warn('[TabManager] Signing-only token acquisition threw; checkpoints stay unsigned:', err);
@@ -541,7 +528,7 @@ export class TabManager {
 
     // タブを削除
     this.tabs.delete(tabId);
-    this.tabOrder = this.tabOrder.filter(id => id !== tabId);
+    this.tabOrder = this.tabOrder.filter((id) => id !== tabId);
     this.savedEventCursor.delete(tabId);
 
     // IndexedDB の行とイベントも削除する (#145)。残すと復旧ダイアログに閉じたタブが
@@ -692,7 +679,7 @@ export class TabManager {
     if (!tab) return false;
 
     const previousTabId = this.activeTabId;
-    const previousTab = previousTabId ? this.tabs.get(previousTabId) ?? null : null;
+    const previousTab = previousTabId ? (this.tabs.get(previousTabId) ?? null) : null;
 
     // タブ切り替えイベントを記録
     if (previousTabId !== tabId) {
@@ -701,7 +688,7 @@ export class TabManager {
         fromTabId: previousTabId,
         toTabId: tabId,
         fromFilename: previousTab?.filename ?? null,
-        toFilename: tab.filename
+        toFilename: tab.filename,
       };
       this.tabSwitches.push(switchEvent);
       // sessionStorage は saveToStorage() 経由で保存されるが、IndexedDB には
@@ -764,7 +751,6 @@ export class TabManager {
     return true;
   }
 
-
   /**
    * アクティブなタブを取得
    */
@@ -785,9 +771,7 @@ export class TabManager {
    * 全タブを取得（tabOrder順）
    */
   getAllTabs(): TabState[] {
-    return this.tabOrder
-      .map(id => this.tabs.get(id))
-      .filter((tab): tab is TabState => tab !== undefined);
+    return this.tabOrder.map((id) => this.tabs.get(id)).filter((tab): tab is TabState => tab !== undefined);
   }
 
   /**
@@ -825,9 +809,13 @@ export class TabManager {
    * @param toIndex 移動先インデックス
    */
   reorderTab(fromIndex: number, toIndex: number): boolean {
-    if (fromIndex < 0 || fromIndex >= this.tabOrder.length ||
-        toIndex < 0 || toIndex >= this.tabOrder.length ||
-        fromIndex === toIndex) {
+    if (
+      fromIndex < 0 ||
+      fromIndex >= this.tabOrder.length ||
+      toIndex < 0 ||
+      toIndex >= this.tabOrder.length ||
+      fromIndex === toIndex
+    ) {
       return false;
     }
 
@@ -932,17 +920,17 @@ export class TabManager {
     })();
 
     this.currentSavePromise.then(() => {
-        this.currentSavePromise = null;
+      this.currentSavePromise = null;
 
-        // 保存中に新しい保存要求があった場合、最新状態で再保存
-        if (this.needsSave) {
-          this.executeSave();
-        } else {
-          // pendingEventsがあるかチェック
-          const hasPending = this.hasPendingEvents();
-          this.updateSyncStatus(hasPending ? 'pending' : 'synced');
-        }
-      });
+      // 保存中に新しい保存要求があった場合、最新状態で再保存
+      if (this.needsSave) {
+        this.executeSave();
+      } else {
+        // pendingEventsがあるかチェック
+        const hasPending = this.hasPendingEvents();
+        this.updateSyncStatus(hasPending ? 'pending' : 'synced');
+      }
+    });
   }
 
   /**
@@ -1017,7 +1005,9 @@ export class TabManager {
       if (proofState.events.length > 0) {
         const firstEvent = proofState.events[0];
         if (firstEvent && firstEvent.sequence !== 0) {
-          console.error(`[TabManager] SAVE: Memory event chain broken for tab ${id}: first event has sequence ${firstEvent.sequence}`);
+          console.error(
+            `[TabManager] SAVE: Memory event chain broken for tab ${id}: first event has sequence ${firstEvent.sequence}`
+          );
         }
       }
 
@@ -1030,7 +1020,7 @@ export class TabManager {
       if (cursor === undefined) {
         // 初回 (リロード復旧直後など): 既存シーケンスと突合して欠落も補修する (従来挙動)
         const existingEvents = await this.sessionService.getEvents(id);
-        const existingSequences = new Set(existingEvents.map(e => e.sequence));
+        const existingSequences = new Set(existingEvents.map((e) => e.sequence));
         for (const event of proofState.events) {
           if (event && !existingSequences.has(event.sequence)) {
             await this.sessionService.appendEvent(id, event);
@@ -1049,7 +1039,9 @@ export class TabManager {
       this.savedEventCursor.set(id, proofState.events.length);
 
       if (newEventsCount > 0) {
-        debugLog(`[TabManager] SAVE: Tab ${id}: saved ${newEventsCount} new events (total: ${proofState.events.length})`);
+        debugLog(
+          `[TabManager] SAVE: Tab ${id}: saved ${newEventsCount} new events (total: ${proofState.events.length})`
+        );
       }
 
       const tabData: StoredTabData = {
@@ -1125,19 +1117,15 @@ export class TabManager {
    * 打鍵はチェーンに戻せないので、buffer 側を replay 結果へ切り詰めるのが唯一の整合化。
    * replay 自体が途中で失敗する (より深い破損) 場合は触らない — 他レイヤが検出する。
    */
-  private reconcileRestoredContent(
-    tabId: string,
-    savedContent: string,
-    events: readonly StoredEvent[]
-  ): string {
+  private reconcileRestoredContent(tabId: string, savedContent: string, events: readonly StoredEvent[]): string {
     if (events.length === 0) return savedContent; // 整合先が無い (別種の破損はここで判断しない)
     const replay = verifyContentReplay(events as StoredEvent[], savedContent);
     if (replay.valid) return savedContent;
     if (replay.reconstructedContent !== undefined) {
       console.warn(
         `[TabManager] Tab ${tabId}: restored content is ahead of the event chain ` +
-        `(crash window). Truncating ${savedContent.length} -> ${replay.reconstructedContent.length} chars ` +
-        `to keep the proof verifiable (#142).`
+          `(crash window). Truncating ${savedContent.length} -> ${replay.reconstructedContent.length} chars ` +
+          `to keep the proof verifiable (#142).`
       );
       return replay.reconstructedContent;
     }
@@ -1224,11 +1212,7 @@ export class TabManager {
       });
 
       // 既存 checkpoints を渡して signing service を attach (chain state を復元)
-      const signedCheckpointService = this.attachSignedCheckpointService(
-        id,
-        typingProof,
-        typingProof.checkpoints
-      );
+      const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof, typingProof.checkpoints);
 
       // #142: クラッシュ窓で content がチェーンより先行していたら replay 結果へ整合させる
       const content = serializedTab.proofState
@@ -1290,14 +1274,18 @@ export class TabManager {
       if (events.length > 0) {
         const firstEvent = events[0];
         if (firstEvent && firstEvent.sequence !== 0) {
-          console.error(`[TabManager] Event chain broken for tab ${id}: first event has sequence ${firstEvent.sequence}, expected 0`);
+          console.error(
+            `[TabManager] Event chain broken for tab ${id}: first event has sequence ${firstEvent.sequence}, expected 0`
+          );
         }
         // シーケンス番号の連続性をチェック
         for (let i = 1; i < events.length; i++) {
           const prev = events[i - 1];
           const curr = events[i];
           if (prev && curr && curr.sequence !== prev.sequence + 1) {
-            console.error(`[TabManager] Event sequence gap at tab ${id}: event ${i} has sequence ${curr.sequence}, expected ${prev.sequence + 1}`);
+            console.error(
+              `[TabManager] Event sequence gap at tab ${id}: event ${i} has sequence ${curr.sequence}, expected ${prev.sequence + 1}`
+            );
           }
         }
       }
@@ -1317,7 +1305,9 @@ export class TabManager {
       const currentHash = lastEvent?.hash ?? lightweightTab.proofState.currentHash;
 
       if (actualSequence < expectedSequence) {
-        console.warn(`[TabManager] Event sync mismatch for tab ${id}: expected seq ${expectedSequence}, got ${actualSequence}. Using IndexedDB hash as currentHash.`);
+        console.warn(
+          `[TabManager] Event sync mismatch for tab ${id}: expected seq ${expectedSequence}, got ${actualSequence}. Using IndexedDB hash as currentHash.`
+        );
         // 一部イベントが未保存の可能性があるが、IndexedDBのデータを正とする
       }
 
@@ -1348,11 +1338,7 @@ export class TabManager {
         this.saveToStorage();
       });
 
-      const signedCheckpointService = this.attachSignedCheckpointService(
-        id,
-        typingProof,
-        typingProof.checkpoints
-      );
+      const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof, typingProof.checkpoints);
 
       // 6. Monacoモデル作成（contentはsessionStorageから）
       // #142: クラッシュ窓で content がチェーンより先行していたら replay 結果へ整合させる
@@ -1434,12 +1420,12 @@ export class TabManager {
 
       // セッションメタデータからタブ順序を取得
       const session = await this.sessionService.getLatestSession();
-      const tabOrder = session?.tabOrder ?? storedTabs.map(t => t.id);
+      const tabOrder = session?.tabOrder ?? storedTabs.map((t) => t.id);
       const activeTabId = session?.activeTabId ?? storedTabs[0]?.id;
 
       // タブを復元（tabOrder順に処理）
       for (const tabId of tabOrder) {
-        const storedTab = storedTabs.find(t => t.id === tabId);
+        const storedTab = storedTabs.find((t) => t.id === tabId);
         if (!storedTab) continue;
 
         // イベントを読み込み
@@ -1610,7 +1596,7 @@ export class TabManager {
         language: tab.language,
         typingProofHash: proof.typingProofHash,
         typingProofData: proof.typingProofData,
-        proof: proof.proof
+        proof: proof.proof,
       };
 
       if (!proof.metadata.isPureTyping) {
@@ -1623,7 +1609,7 @@ export class TabManager {
       type: 'multi-file',
       fingerprint: {
         hash: this.fingerprint!,
-        components: this.fingerprintComponents!
+        components: this.fingerprintComponents!,
       },
       files,
       tabSwitches: this.tabSwitches,
@@ -1631,8 +1617,8 @@ export class TabManager {
         userAgent: navigator.userAgent,
         timestamp: new Date().toISOString(),
         totalFiles: Object.keys(files).length,
-        overallPureTyping
-      }
+        overallPureTyping,
+      },
     };
   }
 

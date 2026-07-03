@@ -9,7 +9,11 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: flex 0.3s ease, width 0.3s ease, opacity 0.3s ease, visibility 0.3s ease;
+  transition:
+    flex 0.3s ease,
+    width 0.3s ease,
+    opacity 0.3s ease,
+    visibility 0.3s ease;
   opacity: 0;
   visibility: hidden;
 }

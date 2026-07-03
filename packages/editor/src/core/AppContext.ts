@@ -60,7 +60,7 @@ export interface Trackers {
   environment: EnvironmentTracker;
   cursor: CursorTracker;
   operation: OperationDetector;
-  screenshot: ScreenshotTracker | null;  // 許可が得られない場合はnull
+  screenshot: ScreenshotTracker | null; // 許可が得られない場合はnull
 }
 
 /**

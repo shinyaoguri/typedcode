@@ -147,9 +147,7 @@ describe('signed checkpoint helpers', () => {
       firstSeenAt: '2026-05-28T12:00:00.000Z',
     };
     const envelope = await signCheckpoint(payload, testKey);
-    await expect(
-      verifyCheckpointSignature(envelope, [testKey.registryEntry])
-    ).resolves.toMatchObject({ valid: true });
+    await expect(verifyCheckpointSignature(envelope, [testKey.registryEntry])).resolves.toMatchObject({ valid: true });
   });
 
   it('verifyCheckpointSignature fails when payload is tampered', async () => {
@@ -174,9 +172,7 @@ describe('signed checkpoint helpers', () => {
       ...envelope,
       payload: { ...payload, chainHash: 'tampered' },
     };
-    await expect(
-      verifyCheckpointSignature(tampered, [testKey.registryEntry])
-    ).resolves.toMatchObject({ valid: false });
+    await expect(verifyCheckpointSignature(tampered, [testKey.registryEntry])).resolves.toMatchObject({ valid: false });
   });
 
   it('resolveCheckpointPublicKey prefers embedded key when it matches registry', async () => {
@@ -221,9 +217,10 @@ describe('signed checkpoint helpers', () => {
     const envelope = await signCheckpoint(payload, testKey, { embedPublicKey: true });
     // 別の鍵を registry に置くと、embedded JWK と一致しないので fail するはず
     const other = await createTestKey({ keyId: testKey.keyId });
-    await expect(
-      resolveCheckpointPublicKey(envelope, [other.registryEntry])
-    ).resolves.toMatchObject({ ok: false, reason: 'Embedded public key does not match registry entry' });
+    await expect(resolveCheckpointPublicKey(envelope, [other.registryEntry])).resolves.toMatchObject({
+      ok: false,
+      reason: 'Embedded public key does not match registry entry',
+    });
   });
 
   it('resolveCheckpointPublicKey rejects an embedded key whose keyId is not in the registry (no self-signed trust)', async () => {
@@ -384,7 +381,9 @@ describe('verifySignedCheckpoints', () => {
       registry: [testKey.registryEntry],
     });
     expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/checkpointIndex not strictly increasing|previousSignedCheckpointHash does not chain/);
+    expect(result.reason).toMatch(
+      /checkpointIndex not strictly increasing|previousSignedCheckpointHash does not chain/
+    );
   });
 
   it('fails when previousSignedCheckpointHash chain is broken', async () => {

@@ -78,9 +78,7 @@ export class VerificationController {
     const screenshotsMissing = screenshots.filter((s) => s.missing).length;
     // 画面共有オプトアウト (TrustCalculator と同じく warning 軸)
     const events = currentTabState?.proofData?.proof?.events ?? [];
-    const hasScreenShareOptOut = events.some(
-      (e: { type: string }) => e.type === 'screenShareOptOut'
-    );
+    const hasScreenShareOptOut = events.some((e: { type: string }) => e.type === 'screenShareOptOut');
 
     // ステータス判定: エラー > 警告 > 成功。
     // - error: チェーン/メタデータ破綻、署名 cp があるのに無効、package 提供下で exam 束縛失敗 (spec §6.4)、
@@ -88,12 +86,9 @@ export class VerificationController {
     // - warning: 非ピュアタイピング / ソース不一致 / 時刻アンカー無し (偽造不能要素が無い) /
     //            post-hoc 一括署名疑い / anchoring 密度が疎 (ADR-0016) / exam だが問題パッケージ未検証 (真正性未確認) /
     //            スクショ欠損 / 画面共有オプトアウト (#146)
-    const examBindingFailed =
-      !!result.exam?.packageProvided && result.exam.binding?.valid === false;
-    const anchoredButInvalid =
-      !!result.signedCheckpointAnchored && result.signedCheckpointValid === false;
-    const examPresentButUnverified =
-      !!result.exam?.present && !result.exam.packageProvided;
+    const examBindingFailed = !!result.exam?.packageProvided && result.exam.binding?.valid === false;
+    const anchoredButInvalid = !!result.signedCheckpointAnchored && result.signedCheckpointValid === false;
+    const examPresentButUnverified = !!result.exam?.present && !result.exam.packageProvided;
     // ADR-0017: root 未アンカー (serverNonce トークン無し) は警告。exam は独自束縛のため対象外。
     const rootNotAnchored = !result.rootAnchored && !result.exam?.present;
     let status: FileStatus;

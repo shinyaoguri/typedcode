@@ -29,12 +29,7 @@ import type {
 } from './screenshot.js';
 import type { HumanAttestationEventData, TermsAcceptedData } from './attestation.js';
 import type { FingerprintComponents } from './fingerprint.js';
-import type {
-  StoredEvent,
-  ProofData,
-  SignatureData,
-  CheckpointData,
-} from './proof.js';
+import type { StoredEvent, ProofData, SignatureData, CheckpointData } from './proof.js';
 import type { TemplateInjectionEventData } from './template.js';
 import type { ExamSessionContext } from './exam.js';
 import type { SessionStartToken } from './sessionStartToken.js';

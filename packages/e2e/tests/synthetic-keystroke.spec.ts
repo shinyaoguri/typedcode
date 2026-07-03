@@ -25,7 +25,10 @@ test('合成打鍵には isTrusted=false が付き、信頼打鍵には付かな
     (e.data as { isTrusted?: boolean })?.isTrusted;
 
   // 合成打鍵: isTrusted=false が載っている。
-  expect(keyEvents.some((e) => isTrusted(e) === false), 'synthetic key must carry isTrusted=false').toBe(true);
+  expect(
+    keyEvents.some((e) => isTrusted(e) === false),
+    'synthetic key must carry isTrusted=false'
+  ).toBe(true);
   // 信頼打鍵: isTrusted フィールドを省略する (hash バイト不変のため)。false が付かない。
   const realKeys = keyEvents.filter((e) => (e.data as { key?: string })?.key === 'a');
   expect(realKeys.length).toBeGreaterThan(0);

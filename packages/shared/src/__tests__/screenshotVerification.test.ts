@@ -24,9 +24,7 @@ async function hashOf(text: string): Promise<string> {
 describe('sha256HexOfBytes', () => {
   it('computes the SHA-256 of raw bytes as lowercase hex', async () => {
     // 既知ベクトル: SHA-256("abc")
-    expect(await hashOf('abc')).toBe(
-      'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
-    );
+    expect(await hashOf('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
   });
 });
 

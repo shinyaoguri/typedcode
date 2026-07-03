@@ -151,7 +151,7 @@
   flex-direction: column;
   gap: 2px;
   padding: 8px 12px;
-  font-family: 'Courier New', Consolas, 'Monaco', monospace;
+  font-family: "Courier New", Consolas, "Monaco", monospace;
   font-size: 13px;
   line-height: 1.4;
 }
@@ -181,8 +181,14 @@
 }
 
 @keyframes terminal-blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
 }
 
 /* Terminal Scrollbar */

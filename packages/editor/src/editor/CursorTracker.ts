@@ -105,9 +105,7 @@ export class CursorTracker {
   /**
    * カーソル位置変更ハンドラ
    */
-  private handleCursorPositionChange(
-    e: monaco.editor.ICursorPositionChangedEvent
-  ): void {
+  private handleCursorPositionChange(e: monaco.editor.ICursorPositionChangedEvent): void {
     // ステータスバー更新は常に実行（デバウンスなし）
     this.onCursorPositionUpdate?.(e.position.lineNumber, e.position.column);
 
@@ -115,10 +113,7 @@ export class CursorTracker {
     const currentTime = performance.now();
 
     // デバウンス：同じ位置への連続イベントをスキップ
-    if (
-      this.lastCursorPosition === currentPos &&
-      currentTime - this.lastCursorTime < this.debounceMs
-    ) {
+    if (this.lastCursorPosition === currentPos && currentTime - this.lastCursorTime < this.debounceMs) {
       return;
     }
 
@@ -145,10 +140,7 @@ export class CursorTracker {
     const currentTime = performance.now();
 
     // デバウンス：同じ範囲への連続イベントをスキップ
-    if (
-      this.lastSelectionRange === currentRange &&
-      currentTime - this.lastSelectionTime < this.debounceMs
-    ) {
+    if (this.lastSelectionRange === currentRange && currentTime - this.lastSelectionTime < this.debounceMs) {
       return;
     }
 
@@ -160,8 +152,7 @@ export class CursorTracker {
     const selectionLength = selectedText.length;
 
     const isEmpty =
-      e.selection.startLineNumber === e.selection.endLineNumber &&
-      e.selection.startColumn === e.selection.endColumn;
+      e.selection.startLineNumber === e.selection.endLineNumber && e.selection.startColumn === e.selection.endColumn;
 
     const range: SelectionRange = {
       startLineNumber: e.selection.startLineNumber,
@@ -176,7 +167,9 @@ export class CursorTracker {
       range,
       rangeLength: selectionLength,
       selectedText: isEmpty ? null : selectedText,
-      description: isEmpty ? t('events.selectionClear') : t('events.selectionCount', { count: String(selectionLength) }),
+      description: isEmpty
+        ? t('events.selectionClear')
+        : t('events.selectionCount', { count: String(selectionLength) }),
     });
   }
 

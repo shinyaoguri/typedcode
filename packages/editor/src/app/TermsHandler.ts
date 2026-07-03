@@ -28,11 +28,14 @@ export function hasAcceptedTerms(): boolean {
 export function markTermsAccepted(): void {
   const timestamp = Date.now();
   try {
-    localStorage.setItem(TERMS_ACCEPTED_KEY, JSON.stringify({
-      version: TERMS_VERSION,
-      timestamp,
-      agreedAt: new Date(timestamp).toISOString(),
-    }));
+    localStorage.setItem(
+      TERMS_ACCEPTED_KEY,
+      JSON.stringify({
+        version: TERMS_VERSION,
+        timestamp,
+        agreedAt: new Date(timestamp).toISOString(),
+      })
+    );
   } catch {
     /* 保存不可環境では諦める (同意フラグなしでも続行できる) */
   }
@@ -60,11 +63,14 @@ export async function showTermsModal(): Promise<void> {
 
     const handleAgree = (): void => {
       const timestamp = Date.now();
-      localStorage.setItem(TERMS_ACCEPTED_KEY, JSON.stringify({
-        version: TERMS_VERSION,
-        timestamp,
-        agreedAt: new Date(timestamp).toISOString(),
-      }));
+      localStorage.setItem(
+        TERMS_ACCEPTED_KEY,
+        JSON.stringify({
+          version: TERMS_VERSION,
+          timestamp,
+          agreedAt: new Date(timestamp).toISOString(),
+        })
+      );
       termsAgreeCheckbox.removeEventListener('change', handleCheckboxChange);
       termsAgreeBtn.removeEventListener('click', handleAgree);
       termsModal.classList.add('hidden');

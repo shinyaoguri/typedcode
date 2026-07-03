@@ -24,11 +24,10 @@
 import { webcrypto } from 'node:crypto';
 
 async function main() {
-  const { publicKey, privateKey } = await webcrypto.subtle.generateKey(
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    true,
-    ['sign', 'verify']
-  );
+  const { publicKey, privateKey } = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+    'sign',
+    'verify',
+  ]);
 
   const publicJwk = await webcrypto.subtle.exportKey('jwk', publicKey);
   const privateJwk = await webcrypto.subtle.exportKey('jwk', privateKey);

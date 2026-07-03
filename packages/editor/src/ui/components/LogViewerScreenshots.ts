@@ -2,10 +2,7 @@
  * LogViewerScreenshots - スクリーンショットプレビュー機能
  */
 
-import type {
-  StoredEvent,
-  ScreenshotCaptureData,
-} from '@typedcode/shared';
+import type { StoredEvent, ScreenshotCaptureData } from '@typedcode/shared';
 import type { ScreenshotStorageService } from '../../services/ScreenshotStorageService.js';
 
 /**

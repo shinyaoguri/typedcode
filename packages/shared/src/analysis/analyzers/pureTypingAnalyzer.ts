@@ -10,7 +10,11 @@
 
 import type { AnalysisInput, AnalysisSignal, Analyzer, EvidenceRef } from '../types.js';
 import { isProhibitedInputType } from '../../typingProof/InputTypeValidator.js';
-import { isBenignEditorInsert, isFlaggedBulkInsert, SessionProvenanceLedger } from '../../typingProof/structuralEdit.js';
+import {
+  isBenignEditorInsert,
+  isFlaggedBulkInsert,
+  SessionProvenanceLedger,
+} from '../../typingProof/structuralEdit.js';
 import { isDivergentContentSnapshot } from '../../typingProof/replay.js';
 
 const ID = 'example-pure-typing';

@@ -1,11 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { runAnalysis } from '../analysis/orchestrator.js';
 import { pureTypingAnalyzer } from '../analysis/analyzers/pureTypingAnalyzer.js';
-import type {
-  AnalysisInput,
-  AnalysisSignal,
-  Analyzer,
-} from '../analysis/types.js';
+import type { AnalysisInput, AnalysisSignal, Analyzer } from '../analysis/types.js';
 
 /** 分析器が触る最小フィールドだけを持つ AnalysisInput を組む (残りは未使用)。 */
 function makeInput(opts: {
@@ -14,9 +10,9 @@ function makeInput(opts: {
   /** paste/drop など禁止 InputType のイベントを混ぜる (pureTypingAnalyzer の証拠源)。 */
   prohibitedInputs?: import('../types/events.js').InputType[];
 }): AnalysisInput {
-  const events: Array<{ sequence: number; timestamp: number; inputType?: string }> = (
-    opts.timestamps ?? []
-  ).map((t, i) => ({ sequence: i, timestamp: t }));
+  const events: Array<{ sequence: number; timestamp: number; inputType?: string }> = (opts.timestamps ?? []).map(
+    (t, i) => ({ sequence: i, timestamp: t })
+  );
   (opts.prohibitedInputs ?? []).forEach((inputType, k) => {
     events.push({ sequence: events.length, timestamp: 1000 + k, inputType });
   });
@@ -31,10 +27,7 @@ function makeInput(opts: {
   };
 }
 
-function fixedAnalyzer(
-  id: string,
-  signals: AnalysisSignal[]
-): Analyzer {
+function fixedAnalyzer(id: string, signals: AnalysisSignal[]): Analyzer {
   return { id, version: '1.0.0', analyze: () => signals };
 }
 
@@ -60,10 +53,7 @@ describe('runAnalysis orchestrator', () => {
   });
 
   it('records each analyzer id to its version for provenance', async () => {
-    const report = await runAnalysis(makeInput({}), [
-      fixedAnalyzer('a', []),
-      fixedAnalyzer('b', []),
-    ]);
+    const report = await runAnalysis(makeInput({}), [fixedAnalyzer('a', []), fixedAnalyzer('b', [])]);
     expect(report.analyzerVersions).toEqual({ a: '1.0.0', b: '1.0.0' });
   });
 
@@ -89,10 +79,7 @@ describe('runAnalysis orchestrator', () => {
         throw new Error('analyzer failure');
       },
     };
-    const report = await runAnalysis(makeInput({}), [
-      throwing,
-      fixedAnalyzer('ok', [signal({ analyzerId: 'ok' })]),
-    ]);
+    const report = await runAnalysis(makeInput({}), [throwing, fixedAnalyzer('ok', [signal({ analyzerId: 'ok' })])]);
     expect(report.signals.map((s) => s.analyzerId)).toEqual(['ok']);
     expect(report.analyzerVersions['boom']).toBe('1.0.0');
   });
@@ -122,9 +109,7 @@ describe('pureTypingAnalyzer (placeholder)', () => {
     const input = {
       proof: {
         proof: {
-          events: [
-            { sequence: 0, timestamp: 0, type: 'contentSnapshot', data: 'int ai() {\n  return 42;\n}\n' },
-          ],
+          events: [{ sequence: 0, timestamp: 0, type: 'contentSnapshot', data: 'int ai() {\n  return 42;\n}\n' }],
         },
       },
       verification: {

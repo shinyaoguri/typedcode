@@ -27,7 +27,7 @@ export class TerminalPanel {
   private onVisibilityChange: ((visible: boolean) => void) | null = null;
   private onFit: (() => void) | null = null;
   private onResetRuntime: (() => Promise<void>) | null = null;
-    private _isTerminalAvailable = true;
+  private _isTerminalAvailable = true;
 
   // リサイズ状態
   private isResizing = false;
@@ -68,7 +68,7 @@ export class TerminalPanel {
 
     this.attach();
     this.setupResize();
-        return true;
+    return true;
   }
 
   /**
@@ -130,7 +130,7 @@ export class TerminalPanel {
     if (!this.isResizing || !this.panel) return;
 
     const workbenchEl = this.workbenchSelector
-      ? document.querySelector(this.workbenchSelector) as HTMLElement | null
+      ? (document.querySelector(this.workbenchSelector) as HTMLElement | null)
       : null;
     if (!workbenchEl) return;
 
@@ -254,5 +254,5 @@ export class TerminalPanel {
     this.onVisibilityChange = null;
     this.onFit = null;
     this.onResetRuntime = null;
-      }
+  }
 }

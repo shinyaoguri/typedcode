@@ -98,9 +98,7 @@ export class CExecutor extends BaseExecutor {
   /** Callbacks for the current execution (for abort messaging) */
   private currentCallbacks: ExecutionCallbacks | null = null;
 
-  protected async _doInitialize(
-    onProgress?: (progress: InitializationProgress) => void
-  ): Promise<void> {
+  protected async _doInitialize(onProgress?: (progress: InitializationProgress) => void): Promise<void> {
     try {
       onProgress?.({
         stage: 'sdk',
@@ -188,7 +186,7 @@ export class CExecutor extends BaseExecutor {
         if (error instanceof WasmerSdkCorruptedError) {
           callbacks.onStderr(
             '\n[System] The WebAssembly runtime is corrupted and cannot be recovered.\n' +
-            '[System] Please reload the page to continue using the C/C++ compiler.\n'
+              '[System] Please reload the page to continue using the C/C++ compiler.\n'
           );
           return {
             success: false,
@@ -236,13 +234,7 @@ static void __typedcode_init_stdout(void) {
 
       // Compile the code
       const compileOptions: SpawnOptions = {
-        args: [
-          `/project/${sourceFile}`,
-          '-o', '/project/main.wasm',
-          '-target', 'wasm32-wasi',
-          '-O2',
-          ...extraArgs,
-        ],
+        args: [`/project/${sourceFile}`, '-o', '/project/main.wasm', '-target', 'wasm32-wasi', '-O2', ...extraArgs],
         mount: {
           '/project': project,
         },
@@ -286,26 +278,30 @@ static void __typedcode_init_stdout(void) {
 
       // Connect stdout using pipeTo() for direct streaming
       // Keep the promise to ensure all output is flushed before returning
-      const stdoutPromise = runInstance.stdout.pipeTo(
-        new WritableStream({
-          write: (chunk) => {
-            callbacks.onStdout(decoder.decode(chunk));
-          },
-        })
-      ).catch(() => {
-        // Ignore pipe errors (e.g., when program ends)
-      });
+      const stdoutPromise = runInstance.stdout
+        .pipeTo(
+          new WritableStream({
+            write: (chunk) => {
+              callbacks.onStdout(decoder.decode(chunk));
+            },
+          })
+        )
+        .catch(() => {
+          // Ignore pipe errors (e.g., when program ends)
+        });
 
       // Connect stderr using pipeTo() for direct streaming
-      const stderrPromise = runInstance.stderr.pipeTo(
-        new WritableStream({
-          write: (chunk) => {
-            callbacks.onStderr(decoder.decode(chunk));
-          },
-        })
-      ).catch(() => {
-        // Ignore pipe errors
-      });
+      const stderrPromise = runInstance.stderr
+        .pipeTo(
+          new WritableStream({
+            write: (chunk) => {
+              callbacks.onStderr(decoder.decode(chunk));
+            },
+          })
+        )
+        .catch(() => {
+          // Ignore pipe errors
+        });
 
       // Notify caller that stdin is ready for connection
       const stdinStream = runInstance.stdin;
@@ -327,10 +323,7 @@ static void __typedcode_init_stdout(void) {
       // Wait for output streams to flush with a timeout
       // pipeTo() may hang if the stream doesn't close properly
       const flushTimeout = new Promise<void>((resolve) => setTimeout(resolve, 100));
-      await Promise.race([
-        Promise.all([stdoutPromise, stderrPromise]),
-        flushTimeout,
-      ]);
+      await Promise.race([Promise.all([stdoutPromise, stderrPromise]), flushTimeout]);
 
       return {
         success: runResult.code === 0,
@@ -378,7 +371,7 @@ static void __typedcode_init_stdout(void) {
       // Notify user with improved message
       this.currentCallbacks?.onStderr(
         '\n[System] Stop requested. The program may not respond to interrupts.\n' +
-        '[System] Runtime will be automatically reset on next execution.\n'
+          '[System] Runtime will be automatically reset on next execution.\n'
       );
 
       // Mark runtime for reset as a fallback
@@ -414,7 +407,7 @@ static void __typedcode_init_stdout(void) {
   private isRuntimeCorruptionError(error: unknown): boolean {
     const errorMsg = error instanceof Error ? error.message : String(error);
     const lowerMsg = errorMsg.toLowerCase();
-    return RUNTIME_ERROR_PATTERNS.some(pattern => lowerMsg.includes(pattern));
+    return RUNTIME_ERROR_PATTERNS.some((pattern) => lowerMsg.includes(pattern));
   }
 
   /**

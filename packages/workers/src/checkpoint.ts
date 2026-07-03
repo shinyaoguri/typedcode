@@ -18,11 +18,7 @@ import {
   validateSignedCheckpointInput,
   verifySessionStartToken,
 } from '@typedcode/shared/checkpoint';
-import type {
-  CheckpointPublicKey,
-  SessionStartToken,
-  SignedCheckpointEnvelope,
-} from '@typedcode/shared/checkpoint';
+import type { CheckpointPublicKey, SessionStartToken, SignedCheckpointEnvelope } from '@typedcode/shared/checkpoint';
 
 export interface CheckpointEnv {
   CHECKPOINT_SESSIONS: KVNamespace;
@@ -90,11 +86,7 @@ interface ErrorBody {
     | 'SESSION_STATE_UNAVAILABLE';
 }
 
-function jsonResponse(
-  body: unknown,
-  status: number,
-  cors: HeadersInit
-): Response {
+function jsonResponse(body: unknown, status: number, cors: HeadersInit): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -125,13 +117,7 @@ export async function getSigningKey(env: CheckpointEnv): Promise<{ keyId: string
     });
   }
   const jwk = JSON.parse(env.CHECKPOINT_SIGNING_KEY_JWK) as JsonWebKey;
-  const key = await crypto.subtle.importKey(
-    'jwk',
-    jwk,
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
-    ['sign']
-  );
+  const key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
   cachedPrivateKey = { keyId: env.CHECKPOINT_SIGNING_KEY_ID, key };
   return cachedPrivateKey;
 }
@@ -259,11 +245,7 @@ export async function handleSignCheckpoint(
     // 内部例外メッセージ (keyId / JWK パーサのテキスト等) はクライアントに返さず、
     // 固定文言を返す。詳細はサーバログにのみ出す。
     console.error('[checkpoint] signing key resolution failed:', err);
-    return jsonResponse(
-      { error: 'Signing key is not available', code } satisfies ErrorBody,
-      500,
-      responder.cors()
-    );
+    return jsonResponse({ error: 'Signing key is not available', code } satisfies ErrorBody, 500, responder.cors());
   }
 
   // KV からセッション状態を取得 (best-effort: eventual consistent)。
@@ -311,11 +293,7 @@ export async function handleSignCheckpoint(
       console.error('[checkpoint] tab registry read failed:', err);
       knownTabs = null;
     }
-    if (
-      knownTabs &&
-      !knownTabs.includes(input.tabId) &&
-      knownTabs.length >= MAX_TABS_PER_SESSION
-    ) {
+    if (knownTabs && !knownTabs.includes(input.tabId) && knownTabs.length >= MAX_TABS_PER_SESSION) {
       return jsonResponse(
         {
           error: `Session tab count exceeds limit (${MAX_TABS_PER_SESSION})`,
@@ -334,10 +312,7 @@ export async function handleSignCheckpoint(
     // 冪等性チェック: クライアントが「応答喪失からのリトライ」で同じ checkpointIndex
     // を再送してきた場合、内容一致なら新たに署名せず前回の envelope をそのまま返す。
     // これがないと NON_MONOTONIC 扱いでクライアントが詰む。
-    if (
-      input.checkpointIndex === existing.lastCheckpointIndex &&
-      existing.lastEnvelope
-    ) {
+    if (input.checkpointIndex === existing.lastCheckpointIndex && existing.lastEnvelope) {
       if (isIdempotentSigningRetry(input, existing.lastEnvelope.payload)) {
         return jsonResponse({ envelope: existing.lastEnvelope }, 200, responder.cors());
       }
@@ -441,9 +416,5 @@ export async function handleSignCheckpoint(
 export function handlePublicKeys(responder: CorsResponder): Response {
   // 公開鍵 registry はビルド時に git から固定 (削除しないので長期検証可能)。
   const keys = CHECKPOINT_PUBLIC_KEYS.map(({ description, ...rest }) => rest);
-  return jsonResponse(
-    { keys, cacheTtlSec: 86400 },
-    200,
-    responder.cors({ 'Cache-Control': 'public, max-age=3600' })
-  );
+  return jsonResponse({ keys, cacheTtlSec: 86400 }, 200, responder.cors({ 'Cache-Control': 'public, max-age=3600' }));
 }

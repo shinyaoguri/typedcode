@@ -438,10 +438,7 @@ export class TypingProof {
     pendingEvent: PendingEventData
   ): Promise<RecordEventResult> {
     // 1. シーケンス番号の検証・修正
-    const sequenceResult = this.hashChainManager.validateSequence(
-      pendingEvent.sequence,
-      this.events.length
-    );
+    const sequenceResult = this.hashChainManager.validateSequence(pendingEvent.sequence, this.events.length);
     const sequence = sequenceResult.sequence;
     if (sequenceResult.wasCorrected) {
       pendingEvent.sequence = sequence;
@@ -449,20 +446,14 @@ export class TypingProof {
 
     // 2. タイムスタンプの単調増加保証
     const lastTimestamp = this.events[this.events.length - 1]?.timestamp ?? -Infinity;
-    const timestampResult = this.hashChainManager.ensureMonotonicTimestamp(
-      pendingEvent.timestamp,
-      lastTimestamp
-    );
+    const timestampResult = this.hashChainManager.ensureMonotonicTimestamp(pendingEvent.timestamp, lastTimestamp);
     const timestamp = timestampResult.timestamp;
     if (timestampResult.wasAdjusted) {
       pendingEvent.timestamp = timestamp;
     }
 
     // 3. previousHashの整合性検証
-    const previousHash = this.hashChainManager.validatePreviousHash(
-      pendingEvent.previousHash,
-      this.currentHash
-    );
+    const previousHash = this.hashChainManager.validatePreviousHash(pendingEvent.previousHash, this.currentHash);
     if (pendingEvent.previousHash !== previousHash) {
       pendingEvent.previousHash = previousHash;
     }
@@ -477,7 +468,7 @@ export class TypingProof {
       rangeOffset: event.rangeOffset ?? null,
       rangeLength: event.rangeLength ?? null,
       range: event.range ?? null,
-      previousHash
+      previousHash,
     };
 
     // 5. PoSW計算
@@ -498,7 +489,7 @@ export class TypingProof {
         timestamp: timestamp.toFixed(2),
         poswIterations: posw.iterations,
         poswTimeMs: posw.computeTimeMs.toFixed(2),
-        hash: newHash
+        hash: newHash,
       });
     }
 
@@ -513,7 +504,7 @@ export class TypingProof {
       insertedText: event.insertedText ?? null,
       insertLength: event.insertLength ?? null,
       deleteDirection: event.deleteDirection ?? null,
-      selectedText: event.selectedText ?? null
+      selectedText: event.selectedText ?? null,
     };
     this.events.push(storedEvent);
 
@@ -553,19 +544,19 @@ export class TypingProof {
       totalEvents: events.length,
       finalHash,
       startTime: this.startTime,
-      endTime: performance.now()
+      endTime: performance.now(),
     };
 
     const signatureData = JSON.stringify(finalData);
     const signature = await this.hashChainManager.computeHash(signatureData);
 
     // エクスポート用にメタデータのnullフィールドを省略
-    const compactEvents = events.map(event => this.compactEventForExport(event));
+    const compactEvents = events.map((event) => this.compactEventForExport(event));
 
     return {
       ...finalData,
       signature,
-      events: compactEvents
+      events: compactEvents,
     };
   }
 
@@ -630,18 +621,14 @@ export class TypingProof {
       this.checkpointManager.cleanupForExport();
 
       // スナップショット最終イベントにチェックポイントを作成（まだ存在しない場合）
-      const hasFinalCheckpoint = this.checkpointManager
-        .getCheckpoints()
-        .some((cp) => cp.eventIndex === lastEventIndex);
+      const hasFinalCheckpoint = this.checkpointManager.getCheckpoints().some((cp) => cp.eventIndex === lastEventIndex);
       if (!hasFinalCheckpoint) {
         await this.checkpointManager.createCheckpoint(lastEventIndex, events);
       }
     }
 
     // スナップショット外 (export 開始後に伸びた分) を指す checkpoint は同梱しない
-    const checkpoints = this.checkpointManager
-      .getCheckpoints()
-      .filter((cp) => cp.eventIndex <= lastEventIndex);
+    const checkpoints = this.checkpointManager.getCheckpoints().filter((cp) => cp.eventIndex <= lastEventIndex);
 
     const exported: ExportedProof = {
       version: PROOF_FORMAT_VERSION,
@@ -650,14 +637,14 @@ export class TypingProof {
       proof: signature,
       fingerprint: {
         hash: this.fingerprint!,
-        components: this.fingerprintComponents!
+        components: this.fingerprintComponents!,
       },
       metadata: {
         userAgent: navigator.userAgent,
         timestamp: new Date().toISOString(),
-        isPureTyping: typingProof.compact.isPureTyping
+        isPureTyping: typingProof.compact.isPureTyping,
       },
-      checkpoints
+      checkpoints,
     };
 
     // 試験モード (ADR-0006): 束縛ブロックを焼き込む。grader はこのブロック + 公開 package
@@ -704,12 +691,7 @@ export class TypingProof {
    * 統計情報を取得
    */
   getStats(): TypingStats {
-    return this.statisticsCalculator.getStats(
-      this.events,
-      this.startTime,
-      this.currentHash,
-      this.queuedEventCount
-    );
+    return this.statisticsCalculator.getStats(this.events, this.startTime, this.currentHash, this.queuedEventCount);
   }
 
   /**
@@ -718,7 +700,11 @@ export class TypingProof {
    * @param options - 検証オプション (skipPosw 等)
    */
   async verify(
-    onProgress?: (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => void,
+    onProgress?: (
+      current: number,
+      total: number,
+      hashInfo?: { computed: string; expected: string; poswHash: string }
+    ) => void,
     options?: ChainVerifyOptions
   ): Promise<VerificationResult> {
     return await this.chainVerifier.verify(this.events, onProgress, options);
@@ -751,7 +737,12 @@ export class TypingProof {
   async verifySampled(
     checkpoints: CheckpointData[],
     sampleCount: number = 3,
-    onProgress?: (phase: string, current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash?: string }) => void
+    onProgress?: (
+      phase: string,
+      current: number,
+      total: number,
+      hashInfo?: { computed: string; expected: string; poswHash?: string }
+    ) => void
   ): Promise<VerificationResult> {
     return await this.chainVerifier.verifySampled(this.events, checkpoints, sampleCount, onProgress);
   }
@@ -765,7 +756,7 @@ export class TypingProof {
       type: 'contentSnapshot',
       data: editorContent,
       description: `スナップショット（イベント${this.events.length}）`,
-      isSnapshot: true
+      isSnapshot: true,
     });
   }
 
@@ -805,8 +796,8 @@ export class TypingProof {
         deleteEvents: stats.deleteEvents,
         bulkInsertEvents: stats.bulkInsertEvents,
         totalTypingTime: stats.duration,
-        averageTypingSpeed: stats.averageWPM
-      }
+        averageTypingSpeed: stats.averageWPM,
+      },
     };
 
     const proofString = JSON.stringify(proofData);
@@ -824,8 +815,8 @@ export class TypingProof {
         content: finalContent,
         isPureTyping,
         deviceId: this.fingerprint!,
-        totalEvents: stats.totalEvents
-      }
+        totalEvents: stats.totalEvents,
+      },
     };
   }
 
@@ -845,7 +836,7 @@ export class TypingProof {
     if (computedContentHash !== proofData.finalContentHash) {
       return {
         valid: false,
-        reason: 'Final content does not match the proof'
+        reason: 'Final content does not match the proof',
       };
     }
 
@@ -855,7 +846,7 @@ export class TypingProof {
     if (computedProofHash !== typingProofHash) {
       return {
         valid: false,
-        reason: 'Proof hash does not match'
+        reason: 'Proof hash does not match',
       };
     }
 
@@ -868,7 +859,7 @@ export class TypingProof {
       valid: true,
       isPureTyping,
       deviceId: proofData.deviceId,
-      metadata: proofData.metadata
+      metadata: proofData.metadata,
     };
   }
 
@@ -926,7 +917,9 @@ export class TypingProof {
       const lastTimestamp = lastEvent.timestamp;
       const margin = 10; // 10ms のマージンを追加
       this.startTime = performance.now() - (lastTimestamp + margin);
-      sharedDebugLog(`[TypingProof] Adjusted startTime for session resume: lastTimestamp=${lastTimestamp.toFixed(2)}, newStartTime=${this.startTime.toFixed(2)}`);
+      sharedDebugLog(
+        `[TypingProof] Adjusted startTime for session resume: lastTimestamp=${lastTimestamp.toFixed(2)}, newStartTime=${this.startTime.toFixed(2)}`
+      );
     } else {
       this.startTime = state.startTime;
     }

@@ -102,7 +102,10 @@ async function main() {
   const examId = args['exam-id'] ?? 'exam';
   const problemId = args['problem-id'] ?? 'p1';
   const variant = args.variant ?? null;
-  const languages = (args.languages ?? 'c').split(',').map((s) => s.trim()).filter(Boolean);
+  const languages = (args.languages ?? 'c')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   const now = new Date();
   const releaseTime = args.release ?? now.toISOString();
   const deadline = args.deadline ?? new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString();

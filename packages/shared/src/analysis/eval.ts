@@ -131,11 +131,7 @@ function maxSeverityRank(report: AnalysisReport): number {
   return rank;
 }
 
-function confusionAt(
-  items: LabeledAnalysis[],
-  axis: AnalysisDimension | 'overall',
-  threshold: number
-): ConfusionPoint {
+function confusionAt(items: LabeledAnalysis[], axis: AnalysisDimension | 'overall', threshold: number): ConfusionPoint {
   let tp = 0;
   let fp = 0;
   let tn = 0;
@@ -240,18 +236,24 @@ export function formatEvalReportMarkdown(report: EvalReport): string {
 
   lines.push('# 分析器 実証評価レポート (ADR-0009 / W5)');
   lines.push('');
-  lines.push('> 分析は advisory。この評価は「手掛かりを review 扱いにしたとき本物の人間をどれだけ巻き込むか」を測るもので、分析器を判定器に変えるものではない。');
+  lines.push(
+    '> 分析は advisory。この評価は「手掛かりを review 扱いにしたとき本物の人間をどれだけ巻き込むか」を測るもので、分析器を判定器に変えるものではない。'
+  );
   lines.push('');
   lines.push('## コーパス構成');
   lines.push('');
-  lines.push(`- 総数: ${report.corpus.total} (genuine ${report.corpus.genuine} / automated ${report.corpus.automated})`);
+  lines.push(
+    `- 総数: ${report.corpus.total} (genuine ${report.corpus.genuine} / automated ${report.corpus.automated})`
+  );
   for (const [cond, c] of Object.entries(report.corpus.byCondition)) {
     lines.push(`  - ${cond}: genuine ${c.genuine}, automated ${c.automated}`);
   }
   lines.push('');
   lines.push('## genuine コーパスの偽陽性圧 (headline)');
   lines.push('');
-  lines.push('本物の人間タイピングが各 severity 以上の signal を出してしまった割合。**review が 0% でない手掛かりは、その閾値で review へ昇格してはならない。**');
+  lines.push(
+    '本物の人間タイピングが各 severity 以上の signal を出してしまった割合。**review が 0% でない手掛かりは、その閾値で review へ昇格してはならない。**'
+  );
   lines.push('');
   lines.push(`- 何らかの signal: ${pct(report.genuineSignalRate.anySignal)}`);
   lines.push(`- notice 以上: ${pct(report.genuineSignalRate.notice)}`);
@@ -262,8 +264,12 @@ export function formatEvalReportMarkdown(report: EvalReport): string {
   for (const axis of report.axes) {
     lines.push(`### ${axis.axis}`);
     lines.push('');
-    lines.push(`- 最良 F1: 閾値 ${axis.bestF1.threshold} → P ${pct(axis.bestF1.precision)} / R ${pct(axis.bestF1.recall)} / F1 ${pct(axis.bestF1.f1)} / FPR ${pct(axis.bestF1.fpr)}`);
-    lines.push(`- 推奨閾値 (FPR≤${pct(report.maxFpr)}): ${axis.recommended.threshold} → R ${pct(axis.recommended.recall)} / FPR ${pct(axis.recommended.fpr)} (tp ${axis.recommended.tp}, fp ${axis.recommended.fp}, fn ${axis.recommended.fn}, tn ${axis.recommended.tn})`);
+    lines.push(
+      `- 最良 F1: 閾値 ${axis.bestF1.threshold} → P ${pct(axis.bestF1.precision)} / R ${pct(axis.bestF1.recall)} / F1 ${pct(axis.bestF1.f1)} / FPR ${pct(axis.bestF1.fpr)}`
+    );
+    lines.push(
+      `- 推奨閾値 (FPR≤${pct(report.maxFpr)}): ${axis.recommended.threshold} → R ${pct(axis.recommended.recall)} / FPR ${pct(axis.recommended.fpr)} (tp ${axis.recommended.tp}, fp ${axis.recommended.fp}, fn ${axis.recommended.fn}, tn ${axis.recommended.tn})`
+    );
     lines.push('');
   }
   return lines.join('\n');

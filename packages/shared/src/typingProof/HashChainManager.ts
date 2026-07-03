@@ -102,10 +102,7 @@ export class HashChainManager {
    * 注: この連結式は sessionStartToken.ts の `computeAnchoredChainRoot` と**必ず一致**させること
    * (verifier はそちらで root を再計算する)。両者の一致はテストで担保する。
    */
-  async generateAnchoredInitialHash(
-    fingerprintHash: string,
-    serverNonce: string
-  ): Promise<InitialHashResult> {
+  async generateAnchoredInitialHash(fingerprintHash: string, serverNonce: string): Promise<InitialHashResult> {
     const randomData = new Uint8Array(32);
     crypto.getRandomValues(randomData);
     const localNonce = this.arrayBufferToHex(randomData);
@@ -150,7 +147,9 @@ export class HashChainManager {
    */
   validateSequence(pendingSequence: number, expectedSequence: number): SequenceValidation {
     if (pendingSequence !== expectedSequence) {
-      console.warn(`[HashChainManager] Sequence mismatch: pending=${pendingSequence}, expected=${expectedSequence}. Using expected value.`);
+      console.warn(
+        `[HashChainManager] Sequence mismatch: pending=${pendingSequence}, expected=${expectedSequence}. Using expected value.`
+      );
       return { sequence: expectedSequence, wasCorrected: true };
     }
     return { sequence: expectedSequence, wasCorrected: false };
@@ -165,7 +164,9 @@ export class HashChainManager {
   ensureMonotonicTimestamp(timestamp: number, lastTimestamp: number): TimestampAdjustment {
     if (timestamp <= lastTimestamp) {
       const adjustedTimestamp = lastTimestamp + HashChainManager.TIMESTAMP_MARGIN;
-      sharedDebugLog(`[HashChainManager] Adjusting timestamp: ${timestamp.toFixed(2)} -> ${adjustedTimestamp.toFixed(2)} (last: ${lastTimestamp.toFixed(2)})`);
+      sharedDebugLog(
+        `[HashChainManager] Adjusting timestamp: ${timestamp.toFixed(2)} -> ${adjustedTimestamp.toFixed(2)} (last: ${lastTimestamp.toFixed(2)})`
+      );
       return { timestamp: adjustedTimestamp, wasAdjusted: true };
     }
     return { timestamp, wasAdjusted: false };
@@ -179,7 +180,9 @@ export class HashChainManager {
    */
   validatePreviousHash(storedPreviousHash: string | null, currentHash: string | null): string | null {
     if (storedPreviousHash !== null && storedPreviousHash !== currentHash) {
-      sharedDebugLog(`[HashChainManager] previousHash mismatch, using current. stored: ${storedPreviousHash?.substring(0, 16)}..., current: ${currentHash?.substring(0, 16)}...`);
+      sharedDebugLog(
+        `[HashChainManager] previousHash mismatch, using current. stored: ${storedPreviousHash?.substring(0, 16)}..., current: ${currentHash?.substring(0, 16)}...`
+      );
     }
     return currentHash;
   }

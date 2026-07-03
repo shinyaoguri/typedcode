@@ -5,7 +5,12 @@
  * seekbar.ts から抽出。
  */
 
-import { escapeHtml, type StoredEvent, type TemplateInjectionEventData, type ProcessKeyMoment } from '@typedcode/shared';
+import {
+  escapeHtml,
+  type StoredEvent,
+  type TemplateInjectionEventData,
+  type ProcessKeyMoment,
+} from '@typedcode/shared';
 import type { ContentCache } from '../types.js';
 import { ChartUtils } from './ChartUtils.js';
 import type { IntegratedChart } from './IntegratedChart.js';
@@ -564,7 +569,10 @@ export class SeekbarController {
     }
     // 古い形式のイベント（contentがない場合）
     // 新しいプルーフを作成し直す必要があります
-    console.warn('[SeekbarController] templateInjection event has no content field. This proof was created before the fix. Please re-import the template and export again.', data);
+    console.warn(
+      '[SeekbarController] templateInjection event has no content field. This proof was created before the fix. Please re-import the template and export again.',
+      data
+    );
     return '';
   }
 

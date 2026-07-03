@@ -37,7 +37,9 @@
   height: 28px;
   border-radius: 50%;
   color: var(--text-secondary);
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
 }
 
 .seek-btn:hover {
@@ -127,7 +129,7 @@
 /* Seek time display */
 .seek-time {
   font-size: 12px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: "Consolas", "Monaco", monospace;
   color: var(--text-secondary);
   min-width: 40px;
   text-align: center;
@@ -173,11 +175,27 @@
   transform: translate(-50%, -50%) scale(1.4);
 }
 
-.seek-marker-first-run { background: #22c55e; }
-.seek-marker-longest-pause { background: #9da5b4; }
-.seek-marker-largest-deletion { background: #f97316; }
-.seek-marker-largest-insertion { background: #a78bfa; }
-.seek-marker-focus-return-burst { background: #fbbf24; }
-.seek-marker-external-input { background: #ef4444; }
-.seek-marker-first-failed-run { background: #dc2626; }
-.seek-marker-first-success-after-failure { background: #16a34a; }
+.seek-marker-first-run {
+  background: #22c55e;
+}
+.seek-marker-longest-pause {
+  background: #9da5b4;
+}
+.seek-marker-largest-deletion {
+  background: #f97316;
+}
+.seek-marker-largest-insertion {
+  background: #a78bfa;
+}
+.seek-marker-focus-return-burst {
+  background: #fbbf24;
+}
+.seek-marker-external-input {
+  background: #ef4444;
+}
+.seek-marker-first-failed-run {
+  background: #dc2626;
+}
+.seek-marker-first-success-after-failure {
+  background: #16a34a;
+}

@@ -3,15 +3,9 @@
  * 完全検証/サンプリング検証ロジックを担当
  */
 
-import type {
-  StoredEvent,
-  VerificationResult,
-  EventHashData,
-  CheckpointData,
-  SampledSegmentInfo
-} from '../types.js';
-import { HashChainManager } from './HashChainManager.js';
-import { PoswManager } from './PoswManager.js';
+import type { StoredEvent, VerificationResult, EventHashData, CheckpointData, SampledSegmentInfo } from '../types.js';
+import type { HashChainManager } from './HashChainManager.js';
+import type { PoswManager } from './PoswManager.js';
 import { POSW_ITERATIONS } from '../version.js';
 
 interface SegmentInfo {
@@ -79,8 +73,8 @@ export class ChainVerifier {
           valid: false,
           errorAt: index,
           message: `Sequence mismatch at event ${index}: expected ${index}, got ${event.sequence}`,
-          event
-        }
+          event,
+        },
       };
     }
 
@@ -94,8 +88,8 @@ export class ChainVerifier {
           message: `Timestamp violation at event ${index}: time moved backward from ${lastTimestamp.toFixed(2)}ms to ${event.timestamp.toFixed(2)}ms`,
           event,
           previousTimestamp: lastTimestamp,
-          currentTimestamp: event.timestamp
-        }
+          currentTimestamp: event.timestamp,
+        },
       };
     }
 
@@ -109,8 +103,8 @@ export class ChainVerifier {
           message: `Previous hash mismatch at event ${index}: stored previousHash doesn't match computed chain`,
           event,
           expectedHash: expectedPreviousHash ?? undefined,
-          computedHash: event.previousHash ?? undefined
-        }
+          computedHash: event.previousHash ?? undefined,
+        },
       };
     }
 
@@ -124,7 +118,7 @@ export class ChainVerifier {
       rangeOffset: event.rangeOffset,
       rangeLength: event.rangeLength,
       range: event.range,
-      previousHash: event.previousHash
+      previousHash: event.previousHash,
     };
 
     // PoSW検証（決定的なJSON文字列化を使用）
@@ -135,19 +129,23 @@ export class ChainVerifier {
           valid: false,
           errorAt: index,
           message: `PoSW iterations mismatch at event ${index}: expected ${POSW_ITERATIONS}, got ${event.posw.iterations}`,
-          event
-        }
+          event,
+        },
       };
     }
 
     if (!options.skipPosw) {
       const eventDataStringForPoSW = this.hashChainManager.deterministicStringify(eventDataWithoutPoSW);
-      const poswValid = await this.poswManager.verifyPoSW(expectedPreviousHash ?? '', eventDataStringForPoSW, event.posw);
+      const poswValid = await this.poswManager.verifyPoSW(
+        expectedPreviousHash ?? '',
+        eventDataStringForPoSW,
+        event.posw
+      );
 
       if (!poswValid) {
         console.error(`[ChainVerifier] PoSW verification failed at event ${index}:`, {
           posw: event.posw,
-          previousHash: expectedPreviousHash
+          previousHash: expectedPreviousHash,
         });
         return {
           valid: false,
@@ -155,8 +153,8 @@ export class ChainVerifier {
             valid: false,
             errorAt: index,
             message: `PoSW verification failed at event ${index}: invalid proof of work`,
-            event
-          }
+            event,
+          },
         };
       }
     }
@@ -164,7 +162,7 @@ export class ChainVerifier {
     // recordEvent()で使用したのと同じフィールドを再構築（PoSW含む）
     const eventData: EventHashData = {
       ...eventDataWithoutPoSW,
-      posw: event.posw
+      posw: event.posw,
     };
 
     // 決定的なJSON文字列化を使用
@@ -179,7 +177,7 @@ export class ChainVerifier {
         eventStringLength: eventString.length,
         previousHash: expectedPreviousHash,
         expectedHash: event.hash,
-        computedHash
+        computedHash,
       });
       return {
         valid: false,
@@ -190,8 +188,8 @@ export class ChainVerifier {
           event,
           eventData,
           expectedHash: event.hash,
-          computedHash
-        }
+          computedHash,
+        },
       };
     }
 
@@ -202,8 +200,8 @@ export class ChainVerifier {
       hashInfo: {
         computed: computedHash,
         expected: event.hash,
-        poswHash: event.posw.intermediateHash
-      }
+        poswHash: event.posw.intermediateHash,
+      },
     };
   }
 
@@ -215,7 +213,11 @@ export class ChainVerifier {
    */
   async verify(
     events: StoredEvent[],
-    onProgress?: (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => void,
+    onProgress?: (
+      current: number,
+      total: number,
+      hashInfo?: { computed: string; expected: string; poswHash: string }
+    ) => void,
     options: ChainVerifyOptions = {}
   ): Promise<VerificationResult> {
     let hash = events[0]?.previousHash ?? null;
@@ -239,7 +241,7 @@ export class ChainVerifier {
       if (onProgress && result.hashInfo) {
         onProgress(i + 1, total, result.hashInfo);
         // 毎回UIスレッドに制御を戻す（ハッシュ表示をリアルタイム更新）
-        await new Promise(r => setTimeout(r, 0));
+        await new Promise((r) => setTimeout(r, 0));
       }
     }
 
@@ -248,7 +250,7 @@ export class ChainVerifier {
       message: options.skipPosw
         ? 'All hashes verified successfully (PoSW skipped)'
         : 'All hashes verified successfully (including PoSW)',
-      computedHash: hash ?? undefined
+      computedHash: hash ?? undefined,
     };
   }
 
@@ -264,7 +266,12 @@ export class ChainVerifier {
     events: StoredEvent[],
     checkpoints: CheckpointData[],
     sampleCount: number = 3,
-    onProgress?: (phase: string, current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash?: string }) => void
+    onProgress?: (
+      phase: string,
+      current: number,
+      total: number,
+      hashInfo?: { computed: string; expected: string; poswHash?: string }
+    ) => void
   ): Promise<VerificationResult> {
     // チェックポイントがない場合は全検証にフォールバック
     if (!checkpoints || checkpoints.length === 0) {
@@ -319,7 +326,7 @@ export class ChainVerifier {
         eventCount: segment.endIndex - segment.startIndex + 1,
         startHash: segment.startHash,
         endHash: segment.expectedEndHash,
-        verified: result.valid
+        verified: result.valid,
       });
 
       if (!result.valid) {
@@ -329,14 +336,14 @@ export class ChainVerifier {
             sampledSegments: sampledSegmentInfos,
             totalSegments: allSegments.length,
             totalEventsVerified: verifiedCount,
-            totalEvents: events.length
-          }
+            totalEvents: events.length,
+          },
         };
       }
 
       onProgress?.('checkpoint', segIdx + 1, selectedSegments.length, {
         computed: result.computedHash ?? '',
-        expected: segment.expectedEndHash
+        expected: segment.expectedEndHash,
       });
     }
 
@@ -347,8 +354,8 @@ export class ChainVerifier {
         sampledSegments: sampledSegmentInfos,
         totalSegments: allSegments.length,
         totalEventsVerified: verifiedCount,
-        totalEvents: events.length
-      }
+        totalEvents: events.length,
+      },
     };
   }
 
@@ -356,10 +363,7 @@ export class ChainVerifier {
    * チェックポイント間の区間を構築
    * 各区間は開始ハッシュと期待される終了ハッシュを持つ
    */
-  private buildCheckpointSegments(
-    checkpoints: CheckpointData[],
-    events: StoredEvent[]
-  ): SegmentInfo[] {
+  private buildCheckpointSegments(checkpoints: CheckpointData[], events: StoredEvent[]): SegmentInfo[] {
     const segments: SegmentInfo[] = [];
 
     // 最初の区間: イベント0 から 最初のチェックポイントまで
@@ -369,7 +373,7 @@ export class ChainVerifier {
         startIndex: 0,
         endIndex: firstCp.eventIndex,
         startHash: events[0]?.previousHash ?? '',
-        expectedEndHash: firstCp.hash
+        expectedEndHash: firstCp.hash,
       });
     }
 
@@ -383,7 +387,7 @@ export class ChainVerifier {
         startIndex: currentCp.eventIndex + 1,
         endIndex: nextCp.eventIndex,
         startHash: currentCp.hash,
-        expectedEndHash: nextCp.hash
+        expectedEndHash: nextCp.hash,
       });
     }
 
@@ -395,7 +399,7 @@ export class ChainVerifier {
         startIndex: lastCp.eventIndex + 1,
         endIndex: events.length - 1,
         startHash: lastCp.hash,
-        expectedEndHash: lastEvent?.hash ?? ''
+        expectedEndHash: lastEvent?.hash ?? '',
       });
     }
 
@@ -406,10 +410,7 @@ export class ChainVerifier {
    * 区間からランダムにサンプリング
    * 必ず最初と最後の区間を含め、残りはランダム選択
    */
-  private selectRandomSegments(
-    segments: SegmentInfo[],
-    sampleCount: number
-  ): SegmentInfo[] {
+  private selectRandomSegments(segments: SegmentInfo[], sampleCount: number): SegmentInfo[] {
     if (segments.length <= sampleCount) {
       return segments;
     }
@@ -444,7 +445,11 @@ export class ChainVerifier {
     endIndex: number,
     startHash: string,
     expectedEndHash: string,
-    onProgress?: (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => void
+    onProgress?: (
+      current: number,
+      total: number,
+      hashInfo?: { computed: string; expected: string; poswHash: string }
+    ) => void
   ): Promise<VerificationResult & { computedHash?: string }> {
     let hash: string | null = startIndex === 0 ? (events[0]?.previousHash ?? null) : startHash;
     let lastTimestamp = startIndex > 0 ? (events[startIndex - 1]?.timestamp ?? -Infinity) : -Infinity;
@@ -466,7 +471,7 @@ export class ChainVerifier {
 
       if (onProgress && result.hashInfo) {
         onProgress(i - startIndex + 1, total, result.hashInfo);
-        await new Promise(r => setTimeout(r, 0));
+        await new Promise((r) => setTimeout(r, 0));
       }
     }
 
@@ -477,14 +482,14 @@ export class ChainVerifier {
         errorAt: endIndex,
         message: `Segment end hash mismatch at event ${endIndex}: computed ${hash?.substring(0, 16)}..., expected ${expectedEndHash.substring(0, 16)}...`,
         expectedHash: expectedEndHash,
-        computedHash: hash ?? undefined
+        computedHash: hash ?? undefined,
       };
     }
 
     return {
       valid: true,
       message: `Segment ${startIndex}-${endIndex} verified successfully`,
-      computedHash: hash ?? undefined
+      computedHash: hash ?? undefined,
     };
   }
 }

@@ -58,21 +58,19 @@ export const CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [
   },
   // staging環境
   {
-    keyId: "tcp-202606-0e46c9",
-    algorithm: "ECDSA-P256",
+    keyId: 'tcp-202606-0e46c9',
+    algorithm: 'ECDSA-P256',
     publicKeyJwk: {
-      "key_ops": [
-        "verify"
-      ],
+      key_ops: ['verify'],
       ext: true,
-      kty: "EC",
-      x: "Qi_DZKeKuvs20YHtIJ3xV_qPpBCFC0MjOVKmh8UhWD8",
-      y: "uzyGor_TS-hggx7TSm7k127NC8mJ4oPuDD1BwDuxnks",
-      crv: "P-256"
+      kty: 'EC',
+      x: 'Qi_DZKeKuvs20YHtIJ3xV_qPpBCFC0MjOVKmh8UhWD8',
+      y: 'uzyGor_TS-hggx7TSm7k127NC8mJ4oPuDD1BwDuxnks',
+      crv: 'P-256',
     },
-    status: "active",
-    validFrom: "2026-06-04T16:09:16.485Z"
-  }
+    status: 'active',
+    validFrom: '2026-06-04T16:09:16.485Z',
+  },
 ] as const;
 
 /**

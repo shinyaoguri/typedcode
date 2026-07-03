@@ -72,9 +72,7 @@ function asQuickSuggestions(value: unknown): boolean | null {
 /**
  * 解決済みオプションの生値から editor-assist 宣言を構築する。
  */
-export function buildEditorAssistDeclaration(
-  raw: Partial<RawAssistOptionValues>
-): EditorAssistDeclaration {
+export function buildEditorAssistDeclaration(raw: Partial<RawAssistOptionValues>): EditorAssistDeclaration {
   return {
     schema: 'editor-assist/1',
     quickSuggestions: asQuickSuggestions(raw.quickSuggestions),

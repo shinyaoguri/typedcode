@@ -80,7 +80,9 @@ export const automationAnalyzer: Analyzer = {
         score: 0.8,
         confidence: 0.85,
         severity: 'review',
-        evidence: [{ fromEventIndex: firstUntrustedIndex, note: `${untrustedKeystrokes} untrusted keystroke event(s)` }],
+        evidence: [
+          { fromEventIndex: firstUntrustedIndex, note: `${untrustedKeystrokes} untrusted keystroke event(s)` },
+        ],
         summary: `Synthetic (untrusted) keystrokes detected: ${untrustedKeystrokes} event(s) with isTrusted=false`,
       });
     }

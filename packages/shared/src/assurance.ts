@@ -84,14 +84,9 @@ export interface AssuranceInput {
 export function deriveAssurance(input: AssuranceInput): AssuranceResult {
   // --- 整合性: 暗号検証はどれか 1 つでも破れたら failed (二値・決定的)。
   const examBindingFailed =
-    input.exam?.present === true &&
-    input.exam.packageProvided &&
-    input.exam.bindingValid === false;
+    input.exam?.present === true && input.exam.packageProvided && input.exam.bindingValid === false;
   const integrity: IntegrityLevel =
-    input.metadataValid &&
-    input.chainValid &&
-    (input.screenshotsTampered ?? 0) === 0 &&
-    !examBindingFailed
+    input.metadataValid && input.chainValid && (input.screenshotsTampered ?? 0) === 0 && !examBindingFailed
       ? 'proven'
       : 'failed';
 
@@ -122,8 +117,7 @@ function deriveTemporal(input: AssuranceInput): TemporalLevel {
   const sc = input.signedCheckpoints;
   // 有効な署名 cp 連鎖があるか (anchored だが invalid は時刻証拠として数えない)
   const hasValidCheckpoints = sc?.anchored === true && sc.valid !== false;
-  const checkpointsClean =
-    hasValidCheckpoints && sc?.sparse !== true && sc?.postHocSuspected !== true;
+  const checkpointsClean = hasValidCheckpoints && sc?.sparse !== true && sc?.postHocSuspected !== true;
 
   if (input.rootAnchored && checkpointsClean) {
     return 'anchored';

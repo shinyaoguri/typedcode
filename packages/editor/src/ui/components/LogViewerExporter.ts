@@ -2,12 +2,7 @@
  * LogViewerExporter - ログのエクスポート機能
  */
 
-import type {
-  StoredEvent,
-  LogStats,
-  EventType,
-  InputType,
-} from '@typedcode/shared';
+import type { StoredEvent, LogStats, EventType, InputType } from '@typedcode/shared';
 
 /**
  * イベントの説明を生成
@@ -71,10 +66,7 @@ function formatData(data: string): string {
   if (!data) return '';
 
   // 改行を可視化
-  let formatted = data
-    .replace(/\n/g, '↵')
-    .replace(/\t/g, '→')
-    .replace(/\r/g, '');
+  let formatted = data.replace(/\n/g, '↵').replace(/\t/g, '→').replace(/\r/g, '');
 
   // 長すぎる場合は切り詰め
   if (formatted.length > 100) {
@@ -126,10 +118,10 @@ export function getStats(events: StoredEvent[]): LogStats {
   const stats: LogStats = {
     total: events.length,
     byType: {},
-    byInputType: {}
+    byInputType: {},
   };
 
-  events.forEach(event => {
+  events.forEach((event) => {
     const eventType = event.type as EventType;
     stats.byType[eventType] = (stats.byType[eventType] ?? 0) + 1;
 

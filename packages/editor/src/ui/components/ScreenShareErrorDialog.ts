@@ -217,9 +217,7 @@ export async function showScreenShareErrorDialog(
   const solutionTitle = t('screenCapture.solutionTitle') ?? 'Solutions';
 
   // 解決策リストを生成
-  const solutions = errorInfo.solutionKeys
-    .map((key) => t(`screenCapture.${key}`))
-    .filter((s): s is string => !!s);
+  const solutions = errorInfo.solutionKeys.map((key) => t(`screenCapture.${key}`)).filter((s): s is string => !!s);
 
   // HTMLコンテンツを構築
   let content = `

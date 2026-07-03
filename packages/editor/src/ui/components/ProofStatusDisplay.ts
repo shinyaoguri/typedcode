@@ -119,11 +119,7 @@ export class ProofStatusDisplay {
 
     // 100イベントごとにスナップショット記録
     const snapshotThreshold = Math.floor(stats.totalEvents / 100) * 100;
-    if (
-      stats.totalEvents > 0 &&
-      stats.totalEvents % 100 === 0 &&
-      snapshotThreshold > this.lastSnapshotEventCount
-    ) {
+    if (stats.totalEvents > 0 && stats.totalEvents % 100 === 0 && snapshotThreshold > this.lastSnapshotEventCount) {
       this.lastSnapshotEventCount = snapshotThreshold;
       const editorContent = this.getEditorContent();
 

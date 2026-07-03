@@ -16,10 +16,7 @@ export interface EnvironmentTrackerEvent {
   description: string;
 }
 
-export type EnvironmentTrackerCallback = (
-  event: EnvironmentTrackerEvent,
-  isInitial: boolean
-) => void;
+export type EnvironmentTrackerCallback = (event: EnvironmentTrackerEvent, isInitial: boolean) => void;
 
 /** 既知の自動化由来グローバル名 (存在すれば自動化ブラウザの痕跡)。 */
 const AUTOMATION_GLOBAL_HINTS = [
@@ -39,10 +36,7 @@ const AUTOMATION_GLOBAL_HINTS = [
   '_Selenium_IDE_Recorder',
 ] as const;
 
-export class EnvironmentTracker extends BaseTracker<
-  EnvironmentTrackerEvent,
-  EnvironmentTrackerCallback
-> {
+export class EnvironmentTracker extends BaseTracker<EnvironmentTrackerEvent, EnvironmentTrackerCallback> {
   private assistDeclarationProvider: (() => EditorAssistDeclaration) | null = null;
 
   /**
@@ -75,8 +69,7 @@ export class EnvironmentTracker extends BaseTracker<
   }
 
   private capture(): EnvironmentProbeData {
-    const webdriver: boolean | null =
-      typeof navigator.webdriver === 'boolean' ? navigator.webdriver : null;
+    const webdriver: boolean | null = typeof navigator.webdriver === 'boolean' ? navigator.webdriver : null;
 
     const automationGlobals: string[] = [];
     const w = window as unknown as Record<string, unknown>;

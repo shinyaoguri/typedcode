@@ -131,10 +131,7 @@ export class TrustCalculator {
     // 7. 時刻アンカー（署名チェックポイント）— サーバ署名による唯一の偽造不能要素。
     //    無ければ proof は完全オフライン捏造が可能なので警告として明示する。
     if (verificationResult) {
-      if (
-        verificationResult.signedCheckpointAnchored &&
-        verificationResult.signedCheckpointValid === false
-      ) {
+      if (verificationResult.signedCheckpointAnchored && verificationResult.signedCheckpointValid === false) {
         issues.push({
           component: 'anchoring',
           severity: 'error',
@@ -192,10 +189,7 @@ export class TrustCalculator {
 
     // 9. 試験束縛（ADR-0006）。package 提供下で失敗なら error、未提供なら真正性未確認の警告。
     if (verificationResult?.exam?.present) {
-      if (
-        verificationResult.exam.packageProvided &&
-        verificationResult.exam.binding?.valid === false
-      ) {
+      if (verificationResult.exam.packageProvided && verificationResult.exam.binding?.valid === false) {
         issues.push({
           component: 'exam',
           severity: 'error',
@@ -250,10 +244,7 @@ export class TrustCalculator {
   /**
    * コンポーネント別に問題を取得
    */
-  static getIssuesByComponent(
-    issues: TrustIssue[],
-    component: TrustIssueComponent
-  ): TrustIssue[] {
+  static getIssuesByComponent(issues: TrustIssue[], component: TrustIssueComponent): TrustIssue[] {
     return issues.filter((i) => i.component === component);
   }
 

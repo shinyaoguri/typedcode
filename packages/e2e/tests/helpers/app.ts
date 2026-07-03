@@ -92,7 +92,7 @@ export class EditorApp {
   async editorValue(): Promise<string> {
     const text = await this.page.locator('.monaco-editor .view-lines').first().innerText();
     // Monaco は空白を non-breaking space でレンダリングするので通常スペースに正規化する。
-    return text.replace(/[\u00a0\u200b]/g, " ");
+    return text.replace(/[\u00a0\u200b]/g, ' ');
   }
 
   /** OS 依存のコピペ修飾キー (mac=Meta, それ以外=Control)。 */
@@ -244,7 +244,7 @@ export async function listZipEntries(zipPath: string): Promise<string[]> {
  */
 export async function extractProofJson(
   zipPath: string,
-  mutate?: (proof: Record<string, unknown>) => void,
+  mutate?: (proof: Record<string, unknown>) => void
 ): Promise<string> {
   const buf = await readFileBuffer(zipPath);
   const zip = await JSZip.loadAsync(buf);

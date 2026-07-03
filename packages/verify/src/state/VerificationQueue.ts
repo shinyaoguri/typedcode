@@ -48,10 +48,7 @@ export class VerificationQueue {
   initialize(): void {
     if (this.worker) return;
 
-    this.worker = new Worker(
-      new URL('../workers/verificationWorker.ts', import.meta.url),
-      { type: 'module' }
-    );
+    this.worker = new Worker(new URL('../workers/verificationWorker.ts', import.meta.url), { type: 'module' });
 
     this.worker.onmessage = (event: MessageEvent<WorkerResponseMessage>) => {
       this.handleWorkerMessage(event.data);

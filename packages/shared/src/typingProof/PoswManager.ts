@@ -5,7 +5,7 @@
 
 import type { PoSWData } from '../types.js';
 import { POSW_ITERATIONS as REQUIRED_POSW_ITERATIONS } from '../version.js';
-import { HashChainManager } from './HashChainManager.js';
+import type { HashChainManager } from './HashChainManager.js';
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -38,10 +38,7 @@ export class PoswManager {
     if (externalWorker) {
       this.worker = externalWorker;
     } else {
-      this.worker = new Worker(
-        new URL('../poswWorker.ts', import.meta.url),
-        { type: 'module' }
-      );
+      this.worker = new Worker(new URL('../poswWorker.ts', import.meta.url), { type: 'module' });
     }
 
     this.worker.onmessage = (event) => {
@@ -104,7 +101,7 @@ export class PoswManager {
         reject: (error: unknown) => {
           clearTimeout(timeout);
           reject(error);
-        }
+        },
       });
 
       this.worker.postMessage({ ...request, requestId });
@@ -135,17 +132,20 @@ export class PoswManager {
           type: 'compute-posw',
           previousHash,
           eventDataString,
-          iterations: PoswManager.POSW_ITERATIONS
+          iterations: PoswManager.POSW_ITERATIONS,
         });
 
         return {
           iterations: response.iterations,
           nonce: response.nonce,
           intermediateHash: response.intermediateHash,
-          computeTimeMs: response.computeTimeMs
+          computeTimeMs: response.computeTimeMs,
         };
       } catch (err) {
-        console.warn('[PoswManager] Worker compute-posw failed; falling back to main-thread compute (event is preserved):', err);
+        console.warn(
+          '[PoswManager] Worker compute-posw failed; falling back to main-thread compute (event is preserved):',
+          err
+        );
         // フォールバックへ
       }
     }
@@ -197,7 +197,7 @@ export class PoswManager {
         eventDataString,
         nonce: posw.nonce,
         iterations: posw.iterations,
-        expectedHash: posw.intermediateHash
+        expectedHash: posw.intermediateHash,
       });
 
       return response.valid;

@@ -67,9 +67,7 @@ export class VisibilityTracker extends BaseTracker<VisibilityTrackerEvent, Visib
     this.callback?.({
       type: 'visibilityChange',
       data: visibilityData,
-      description: visibilityData.visible
-        ? t('events.tabActive')
-        : t('events.tabInactive'),
+      description: visibilityData.visible ? t('events.tabActive') : t('events.tabInactive'),
     });
 
     console.log('[TypedCode] Visibility changed:', visibilityData.visibilityState);

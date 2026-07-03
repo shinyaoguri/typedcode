@@ -45,10 +45,10 @@ test('casual: 打鍵→export→CLI 検証が pass する', async ({ page }) => 
   expect(probe, 'environmentProbe recorded at startup').toBeDefined();
   expect(
     (probe!.data as { editorAssist?: unknown } | undefined)?.editorAssist,
-    'editorAssist declaration present in environmentProbe',
+    'editorAssist declaration present in environmentProbe'
   ).toBeTruthy();
   expect(
     events.some((e) => e.type === 'screenShareOptOut'),
-    'screenShareOptOut recorded at startup (casual defaults to opt-out)',
+    'screenShareOptOut recorded at startup (casual defaults to opt-out)'
   ).toBe(true);
 });

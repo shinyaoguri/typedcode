@@ -171,7 +171,14 @@ export class AppController {
       statusBar: this.statusBar,
       generateId: () => this.generateId(),
       addFileToVerification: (filename, rawData, folderId, relativePath, screenshots, startTimestamp) => {
-        this.fileController.addFileToVerification(filename, rawData, folderId, relativePath, screenshots, startTimestamp);
+        this.fileController.addFileToVerification(
+          filename,
+          rawData,
+          folderId,
+          relativePath,
+          screenshots,
+          startTimestamp
+        );
       },
       addPlaintextFile: (fileData, folderId) => this.fileController.addPlaintextFile(fileData, folderId),
       addImageFile: (fileData, folderId) => this.fileController.addImageFile(fileData, folderId),

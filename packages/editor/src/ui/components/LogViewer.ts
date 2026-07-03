@@ -3,23 +3,14 @@
  */
 
 import type { TypingProof } from '@typedcode/shared';
-import type {
-  StoredEvent,
-  LogStats,
-  EventType,
-  CodeExecutionEventData,
-  ReflectionNoteData,
-} from '@typedcode/shared';
+import type { StoredEvent, LogStats, EventType, CodeExecutionEventData, ReflectionNoteData } from '@typedcode/shared';
 import { t } from '../../i18n/index.js';
 import type { ScreenshotStorageService } from '../../services/ScreenshotStorageService.js';
 import { createScreenshotEntry, disposeScreenshotPreviews } from './LogViewerScreenshots.js';
 import { exportAsJSON, exportAsText, getStats } from './LogViewerExporter.js';
 
 /** 同種イベントのグループ化（フォーカス変更など） */
-const SAME_TYPE_GROUPABLE: EventType[] = [
-  'visibilityChange',
-  'focusChange',
-];
+const SAME_TYPE_GROUPABLE: EventType[] = ['visibilityChange', 'focusChange'];
 
 /** キー入力グループ（keyDown, keyUp, contentChange, cursorPositionChange, selectionChange を1つにまとめる） */
 const KEY_INPUT_GROUP_TYPES: EventType[] = [
@@ -31,11 +22,7 @@ const KEY_INPUT_GROUP_TYPES: EventType[] = [
 ];
 
 /** マウス操作グループ（mousePositionChange, cursorPositionChange, selectionChange を1つにまとめる） */
-const MOUSE_INPUT_GROUP_TYPES: EventType[] = [
-  'mousePositionChange',
-  'cursorPositionChange',
-  'selectionChange',
-];
+const MOUSE_INPUT_GROUP_TYPES: EventType[] = ['mousePositionChange', 'cursorPositionChange', 'selectionChange'];
 
 /** キー入力グループの種類 */
 type KeyInputGroupKind = 'normal' | 'enter' | 'delete';
@@ -44,13 +31,13 @@ type KeyInputGroupKind = 'normal' | 'enter' | 'delete';
 interface GroupedEntry {
   element: HTMLElement;
   groupType: 'sameType' | 'keyInput' | 'mouseInput';
-  eventType: EventType;  // 代表イベントタイプ
+  eventType: EventType; // 代表イベントタイプ
   count: number;
-  subCounts: Record<string, number>;  // サブカウント（keyDown: 1, keyUp: 1, contentChange: 1 など）
+  subCounts: Record<string, number>; // サブカウント（keyDown: 1, keyUp: 1, contentChange: 1 など）
   lastEvent: StoredEvent;
   firstIndex: number;
   lastIndex: number;
-  keyInputKind?: KeyInputGroupKind;  // キー入力グループの種類
+  keyInputKind?: KeyInputGroupKind; // キー入力グループの種類
 }
 
 export class LogViewer {
@@ -136,7 +123,9 @@ export class LogViewer {
    */
   refreshLogs(): void {
     const events = this.typingProof.events;
-    console.debug(`[LogViewer] refreshLogs: ${events.length} events, last type: ${events[events.length - 1]?.type ?? 'none'}`);
+    console.debug(
+      `[LogViewer] refreshLogs: ${events.length} events, last type: ${events[events.length - 1]?.type ?? 'none'}`
+    );
     this.container.innerHTML = '';
     this.lastGroupedEntry = null;
 
@@ -160,8 +149,12 @@ export class LogViewer {
    * イベントからキー名を取得
    */
   private getKeyFromEvent(event: StoredEvent): string | null {
-    if ((event.type === 'keyDown' || event.type === 'keyUp') &&
-        event.data && typeof event.data === 'object' && 'key' in event.data) {
+    if (
+      (event.type === 'keyDown' || event.type === 'keyUp') &&
+      event.data &&
+      typeof event.data === 'object' &&
+      'key' in event.data
+    ) {
       return event.data.key as string;
     }
     return null;
@@ -198,8 +191,7 @@ export class LogViewer {
     if (!this.lastGroupedEntry) return false;
 
     if (this.lastGroupedEntry.groupType === 'sameType') {
-      return this.isSameTypeGroupable(event) &&
-             this.lastGroupedEntry.eventType === event.type;
+      return this.isSameTypeGroupable(event) && this.lastGroupedEntry.eventType === event.type;
     } else if (this.lastGroupedEntry.groupType === 'keyInput') {
       // キー入力グループの場合、種類（normal/enter/delete）が一致するかチェック
       if (!this.isKeyInputGroupable(event)) return false;
@@ -263,7 +255,7 @@ export class LogViewer {
       this.lastGroupedEntry = {
         element: entry,
         groupType: 'keyInput',
-        eventType: 'contentChange',  // 代表タイプ
+        eventType: 'contentChange', // 代表タイプ
         count: 1,
         subCounts: { [event.type]: 1 },
         lastEvent: event,
@@ -280,7 +272,7 @@ export class LogViewer {
       this.lastGroupedEntry = {
         element: entry,
         groupType: 'mouseInput',
-        eventType: 'mousePositionChange',  // 代表タイプ
+        eventType: 'mousePositionChange', // 代表タイプ
         count: 1,
         subCounts: { [event.type]: 1 },
         lastEvent: event,
@@ -313,8 +305,7 @@ export class LogViewer {
     if (!this.lastGroupedEntry) return;
 
     this.lastGroupedEntry.count++;
-    this.lastGroupedEntry.subCounts[event.type] =
-      (this.lastGroupedEntry.subCounts[event.type] ?? 0) + 1;
+    this.lastGroupedEntry.subCounts[event.type] = (this.lastGroupedEntry.subCounts[event.type] ?? 0) + 1;
     this.lastGroupedEntry.lastEvent = event;
     this.lastGroupedEntry.lastIndex = index;
 
@@ -849,10 +840,7 @@ export class LogViewer {
     if (!data) return '';
 
     // 改行を可視化
-    let formatted = data
-      .replace(/\n/g, '↵')
-      .replace(/\t/g, '→')
-      .replace(/\r/g, '');
+    let formatted = data.replace(/\n/g, '↵').replace(/\t/g, '→').replace(/\r/g, '');
 
     // 長すぎる場合は切り詰め
     if (formatted.length > 100) {

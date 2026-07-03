@@ -25,7 +25,7 @@ import type { StoredEvent, EditorAssistDeclaration } from '../types.js';
 import { applyReplayEventTolerant, isDivergentContentSnapshot } from './replay.js';
 
 /** 構造文字: 括弧・クォート・空白。これらだけなら「内容 (コード)」を運べない。 */
-const STRUCTURAL_CHARS = /^[()\[\]{}<>"'`\s]+$/;
+const STRUCTURAL_CHARS = /^[()[\]{}<>"'`\s]+$/;
 
 /**
  * editor 内部由来の挿入/置換 inputType (実ペースト/ドロップは含めない)。
@@ -41,9 +41,7 @@ const EDITOR_INTERNAL_INSERT: ReadonlySet<string> = new Set([
 
 function isEditorInternalInsert(event: StoredEvent): boolean {
   return (
-    event.type === 'contentChange' &&
-    typeof event.inputType === 'string' &&
-    EDITOR_INTERNAL_INSERT.has(event.inputType)
+    event.type === 'contentChange' && typeof event.inputType === 'string' && EDITOR_INTERNAL_INSERT.has(event.inputType)
   );
 }
 
@@ -52,9 +50,7 @@ function isEditorInternalInsert(event: StoredEvent): boolean {
  * editorAssist は proof の独立フィールドではなく environmentProbe イベント内にある (ADR-0019)。
  * 現状の判定では使わないが、宣言を参照したい将来の分析器のために公開しておく。
  */
-export function getEditorAssistDeclaration(
-  events: readonly StoredEvent[],
-): EditorAssistDeclaration | null {
+export function getEditorAssistDeclaration(events: readonly StoredEvent[]): EditorAssistDeclaration | null {
   for (const event of events) {
     if (event?.type === 'environmentProbe') {
       const data = event.data;
@@ -130,11 +126,7 @@ export function isSuspiciousBulkInsert(event: StoredEvent): boolean {
     return true;
   }
 
-  return (
-    event.inputType === 'insertText' &&
-    typeof event.data === 'string' &&
-    event.data.length > 1
-  );
+  return event.inputType === 'insertText' && typeof event.data === 'string' && event.data.length > 1;
 }
 
 /**
@@ -179,9 +171,7 @@ export class SessionProvenanceLedger {
   checkAndApply(event: StoredEvent): boolean {
     const data = typeof event.data === 'string' ? event.data : null;
     const sessionDerived =
-      data !== null &&
-      data.length > 0 &&
-      (this.verifiedCopies.has(data) || this.content.includes(data));
+      data !== null && data.length > 0 && (this.verifiedCopies.has(data) || this.content.includes(data));
 
     if (event.type === 'copyOperation') {
       // コピー内容が当時の文書に実在したときだけ「セッション由来」と認める。

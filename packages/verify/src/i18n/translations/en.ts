@@ -75,8 +75,7 @@ export const en: VerifyTranslationKeys = {
     statusNoCheckpoints: 'No checkpoints',
     chainDetail: '${current} / ${total} events',
     samplingDetail: '${current} events verified / ${total} events',
-    samplingDetailWithTotal:
-      '${current} events verified / ${total} events (${totalEvents} total)',
+    samplingDetailWithTotal: '${current} events verified / ${total} events (${totalEvents} total)',
   },
 
   result: {
@@ -170,7 +169,8 @@ export const en: VerifyTranslationKeys = {
     examPackageHash: 'Package hash',
     examContentHash: 'Problem content hash',
     examTimeBox: 'Submission window',
-    examPackageNote: 'Problem package not provided — signature/content checks skipped. Load the .tcexam to fully verify.',
+    examPackageNote:
+      'Problem package not provided — signature/content checks skipped. Load the .tcexam to fully verify.',
     examLoadPackage: 'Load problem package (.tcexam)',
     examPass: 'PASS',
     examFail: 'FAIL',
@@ -361,16 +361,13 @@ export const en: VerifyTranslationKeys = {
     issueAttestationBoth: 'Human attestation verification failed',
     issueAttestationCreate: 'Human attestation at creation is invalid',
     issueAttestationExport: 'Human attestation at export is invalid',
-    issueSourceMismatch:
-      '${filename}: source file differs from proof content (+${additions}/-${deletions} lines)',
+    issueSourceMismatch: '${filename}: source file differs from proof content (+${additions}/-${deletions} lines)',
     issueAnchoringInvalid: 'Signed checkpoints are invalid',
     issueAnchoringMissing: 'No temporal anchor (signed checkpoints)',
-    issueAnchoringPostHoc:
-      'Post-hoc batch signing suspected (server span is far shorter than the claimed session)',
+    issueAnchoringPostHoc: 'Post-hoc batch signing suspected (server span is far shorter than the claimed session)',
     issueAnchoringSparse:
       'Anchor density is sparse (signed checkpoints are too few / too late for the claimed session)',
-    issueRootNotAnchored:
-      'Chain root is not server-anchored (start time unfixed; offline forgery possible)',
+    issueRootNotAnchored: 'Chain root is not server-anchored (start time unfixed; offline forgery possible)',
     issueNotPureTyping: 'Not pure typing (paste / bulk insertion detected)',
     issueExamBindingFailed: 'Exam binding (signature / content hash) verification failed',
     issueExamUnverified: 'Problem package not loaded; authenticity unverified',
@@ -529,17 +526,14 @@ export const en: VerifyTranslationKeys = {
     accessDenied: 'Access Denied',
     fileReadError: 'File read error',
     folderReadError: 'Folder read error',
-    browserNotSupported:
-      'File System Access API is only available in Chrome / Edge',
-    browserNotSupportedDesc:
-      'Please use file selection or drag and drop instead',
+    browserNotSupported: 'File System Access API is only available in Chrome / Edge',
+    browserNotSupportedDesc: 'Please use file selection or drag and drop instead',
     examInvalidPackage: 'Invalid problem package (.tcexam)',
     jsonParseError: 'JSON parse error: ${filename}',
     fileLoadFailed: 'Failed to read file: ${message}',
     zipEmpty: 'No files found in the ZIP.',
     zipLoadFailed: 'Failed to read ZIP file: ${message}',
-    unsupportedFormat:
-      'Unsupported format: metadata is missing (v3.0.0 or later required)',
+    unsupportedFormat: 'Unsupported format: metadata is missing (v3.0.0 or later required)',
     noEvents: 'No events found in proof data',
   },
 

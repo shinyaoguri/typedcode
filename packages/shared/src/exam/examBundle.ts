@@ -15,11 +15,7 @@
  * 暗号コア (KDF/AES/署名/packageHash) には触れない。封印・署名は examPackage.ts のまま。
  */
 
-import type {
-  ExamBundle,
-  ExamBundleProblem,
-  DecodedExamPlaintext,
-} from '../types/exam.js';
+import type { ExamBundle, ExamBundleProblem, DecodedExamPlaintext } from '../types/exam.js';
 import type { TemplateFileDefinition } from '../types/template.js';
 import { computeHash, deterministicStringify } from '../utils/hashUtils.js';
 
@@ -33,8 +29,7 @@ function normalizeNewlines(s: string): string {
 
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isNonEmptyStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
-const isObj = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === 'object' && !Array.isArray(v);
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** untrusted な starter (任意) を検証する。形が不正なら null、未指定なら undefined を返す。 */
 function parseStarter(input: unknown): TemplateFileDefinition | null | undefined {

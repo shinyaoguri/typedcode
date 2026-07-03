@@ -113,9 +113,7 @@ export function calculateChartStats(events: StoredEvent[]): ChartStats {
   // events (dwellTime on keyUp, flightTime on keyDown). Read the recorded values so
   // these stats stay consistent with the timeline chart.
   const extractValidTime = (value: number | undefined): number | null =>
-    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_VALID_TIME
-      ? value
-      : null;
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_VALID_TIME ? value : null;
 
   for (const event of events) {
     if (event.type === 'keyDown') {

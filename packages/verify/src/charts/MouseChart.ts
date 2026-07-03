@@ -53,7 +53,7 @@ export class MouseChart extends BaseCanvasChart<MouseTrajectoryCache, MouseChart
   draw(events: StoredEvent[], currentEvents: StoredEvent[]): void {
     if (!this.options.canvas) return;
 
-    const mouseEvents = events.filter(e => e.type === 'mousePositionChange');
+    const mouseEvents = events.filter((e) => e.type === 'mousePositionChange');
     if (mouseEvents.length === 0) {
       this.hide();
       return;
@@ -75,15 +75,15 @@ export class MouseChart extends BaseCanvasChart<MouseTrajectoryCache, MouseChart
     let maxX = 0;
     let maxY = 0;
 
-    mouseEvents.forEach(event => {
+    mouseEvents.forEach((event) => {
       const data = event.data as MousePositionData | null;
       if (data && typeof data === 'object' && 'x' in data && 'y' in data) {
-        const eventIndex = currentEvents.findIndex(e => e.sequence === event.sequence);
+        const eventIndex = currentEvents.findIndex((e) => e.sequence === event.sequence);
         positions.push({
           x: data.x,
           y: data.y,
           time: event.timestamp,
-          eventIndex
+          eventIndex,
         });
         maxX = Math.max(maxX, data.x);
         maxY = Math.max(maxY, data.y);
@@ -97,8 +97,8 @@ export class MouseChart extends BaseCanvasChart<MouseTrajectoryCache, MouseChart
     });
 
     // ウィンドウリサイズイベントを抽出
-    const resizeEvents = events.filter(e => e.type === 'windowResize');
-    resizeEvents.forEach(event => {
+    const resizeEvents = events.filter((e) => e.type === 'windowResize');
+    resizeEvents.forEach((event) => {
       const data = event.data as WindowSizeData | null;
       if (data && typeof data === 'object' && 'width' in data && 'height' in data) {
         windowRects.push({
@@ -106,7 +106,7 @@ export class MouseChart extends BaseCanvasChart<MouseTrajectoryCache, MouseChart
           y: data.screenY ?? 0,
           width: data.width,
           height: data.height,
-          time: event.timestamp
+          time: event.timestamp,
         });
       }
     });
@@ -236,11 +236,7 @@ export class MouseChart extends BaseCanvasChart<MouseTrajectoryCache, MouseChart
     const lastPos = positions[positions.length - 1]!;
     ctx.fillStyle = '#667eea';
     ctx.beginPath();
-    ctx.arc(
-      padding.left + lastPos.x * scale,
-      padding.top + lastPos.y * scale,
-      6, 0, Math.PI * 2
-    );
+    ctx.arc(padding.left + lastPos.x * scale, padding.top + lastPos.y * scale, 6, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -295,11 +291,7 @@ export class MouseChart extends BaseCanvasChart<MouseTrajectoryCache, MouseChart
       const pos = positions[currentPosIndex]!;
       ctx.fillStyle = '#ef4444';
       ctx.beginPath();
-      ctx.arc(
-        padding.left + pos.x * scale,
-        padding.top + pos.y * scale,
-        8, 0, Math.PI * 2
-      );
+      ctx.arc(padding.left + pos.x * scale, padding.top + pos.y * scale, 8, 0, Math.PI * 2);
       ctx.fill();
 
       // 白い縁取り

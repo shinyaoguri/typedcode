@@ -41,8 +41,7 @@ export class ProcessSummaryCard {
   }
 
   private renderContent(summary: ProcessSummary): string {
-    const ratio =
-      summary.deletionRatio !== null ? `${(summary.deletionRatio * 100).toFixed(0)}%` : '—';
+    const ratio = summary.deletionRatio !== null ? `${(summary.deletionRatio * 100).toFixed(0)}%` : '—';
 
     const stats = `
       <div class="process-stats">
@@ -132,9 +131,7 @@ export class ProcessSummaryCard {
       button.addEventListener('click', () => {
         const eventIndex = Number(button.dataset['eventIndex']);
         if (!Number.isFinite(eventIndex)) return;
-        document.dispatchEvent(
-          new CustomEvent('verify:seek-to-event', { detail: { eventIndex } })
-        );
+        document.dispatchEvent(new CustomEvent('verify:seek-to-event', { detail: { eventIndex } }));
       });
     }
   }

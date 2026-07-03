@@ -10,25 +10,23 @@ export class StatisticsCalculator {
   /**
    * 基本統計情報を取得
    */
-  getStats(
-    events: StoredEvent[],
-    startTime: number,
-    currentHash: string | null,
-    pendingCount: number
-  ): TypingStats {
+  getStats(events: StoredEvent[], startTime: number, currentHash: string | null, pendingCount: number): TypingStats {
     const duration = performance.now() - startTime;
-    const eventTypes = events.reduce((acc, event) => {
-      const eventType = event.type as EventType;
-      acc[eventType] = (acc[eventType] ?? 0) + 1;
-      return acc;
-    }, {} as Record<EventType, number>);
+    const eventTypes = events.reduce(
+      (acc, event) => {
+        const eventType = event.type as EventType;
+        acc[eventType] = (acc[eventType] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<EventType, number>
+    );
 
     return {
       totalEvents: events.length,
       duration: duration / 1000,
       eventTypes,
       currentHash,
-      pendingCount
+      pendingCount,
     };
   }
 
@@ -69,8 +67,7 @@ export class StatisticsCalculator {
       bulkInsertEvents,
       templateEvents,
       duration,
-      averageWPM: Math.round(averageWPM * 10) / 10
+      averageWPM: Math.round(averageWPM * 10) / 10,
     };
   }
-
 }

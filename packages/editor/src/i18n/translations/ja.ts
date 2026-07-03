@@ -128,8 +128,7 @@ export const ja: TranslationKeys = {
 
   processingDialog: {
     title: 'ハッシュチェーン生成中...',
-    description:
-      'PoSW（Proof of Sequential Work）の計算が完了するまでお待ちください。',
+    description: 'PoSW（Proof of Sequential Work）の計算が完了するまでお待ちください。',
     status: '処理中: ${count} 件待機中',
     statusWithProgress: '処理中: ${count} 件待機中 (${processed}/${total} 完了)',
   },
@@ -159,74 +158,94 @@ export const ja: TranslationKeys = {
     operationLogTitle: '操作ログの記録',
     operationLogDesc: 'タイピング証明を生成するため、以下の操作を詳細に記録します。',
     operationLogDetailHeading: '記録される情報：',
-    operationLogKeystrokes: 'キー入力：押下・離上のタイミング、キーコード、修飾キーの状態（Shift、Ctrl、Alt、Meta）、押下時間（ドウェルタイム）',
+    operationLogKeystrokes:
+      'キー入力：押下・離上のタイミング、キーコード、修飾キーの状態（Shift、Ctrl、Alt、Meta）、押下時間（ドウェルタイム）',
     operationLogCursor: 'カーソル操作：カーソル位置の移動、テキスト選択範囲の変更、選択方向（左右）',
     operationLogMouse: 'マウス操作：マウスカーソルの座標（100ミリ秒ごとにサンプリング）',
     operationLogContent: 'コンテンツ変更：文字の挿入・削除、変更位置、変更内容',
     operationLogClipboard: '外部入力：ペースト操作、ドラッグ＆ドロップ、入力された文字数',
     operationLogWindow: 'ウィンドウ状態：ウィンドウサイズ、フォーカス状態、タブのアクティブ状態、ネットワーク接続状態',
-    operationLogNote: 'これらの操作はタイムスタンプとともに記録され、SHA-256ハッシュチェーンで連結されます。各イベントは前のイベントのハッシュを含むため、改ざんを検知できる構造になっています。',
+    operationLogNote:
+      'これらの操作はタイムスタンプとともに記録され、SHA-256ハッシュチェーンで連結されます。各イベントは前のイベントのハッシュを含むため、改ざんを検知できる構造になっています。',
 
     // ハッシュチェーンと証明
     hashChainTitle: 'ハッシュチェーンと証明',
     hashChainDesc: 'TypedCodeは、操作ログの整合性と順序を証明するため、暗号学的なハッシュチェーンを構築します。',
     hashChainDetailHeading: '証明の仕組み：',
-    hashChainSha256: 'SHA-256ハッシュ：各操作イベントは直前のイベントのハッシュを含めてハッシュ化され、連鎖的につながります',
+    hashChainSha256:
+      'SHA-256ハッシュ：各操作イベントは直前のイベントのハッシュを含めてハッシュ化され、連鎖的につながります',
     hashChainCheckpoint: 'チェックポイント：一定間隔でチェックポイントを作成し、証明の区切りを設けます',
-    hashChainPosw: 'Proof of Sequential Work (PoSW)：チェックポイントごとに計算量証明を生成し、時間の経過を証明します。この計算はWeb Workerでバックグラウンド実行されます',
-    hashChainFingerprint: 'ブラウザフィンガープリント：証明ファイルにはブラウザ環境情報（言語、タイムゾーン、画面解像度など）が含まれます',
+    hashChainPosw:
+      'Proof of Sequential Work (PoSW)：チェックポイントごとに計算量証明を生成し、時間の経過を証明します。この計算はWeb Workerでバックグラウンド実行されます',
+    hashChainFingerprint:
+      'ブラウザフィンガープリント：証明ファイルにはブラウザ環境情報（言語、タイムゾーン、画面解像度など）が含まれます',
     hashChainNote: 'この仕組みにより、コードが一文字ずつタイピングされたことを第三者が検証可能な形で証明できます。',
 
     // Bot検出
     botDetectionTitle: 'Bot検出',
-    botDetectionDesc: '自動化ツールやボットによる不正な証明生成を防止するため、<a href="https://www.cloudflare.com/ja-jp/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a>を使用して人間であることを確認します。',
+    botDetectionDesc:
+      '自動化ツールやボットによる不正な証明生成を防止するため、<a href="https://www.cloudflare.com/ja-jp/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a>を使用して人間であることを確認します。',
     botDetectionDetailHeading: '検証タイミング：',
     botDetectionInit: 'ファイル作成時：新しいタブを作成する際に人間検証を実施',
     botDetectionExport: '証明エクスポート時：ファイル出力の直前に最終確認を実施',
-    botDetectionNote: 'Turnstileの検証結果はサーバーでトークンの有効性を確認し、成功した場合のみ証明ファイルに「人間認証済み」として記録されます。',
+    botDetectionNote:
+      'Turnstileの検証結果はサーバーでトークンの有効性を確認し、成功した場合のみ証明ファイルに「人間認証済み」として記録されます。',
 
     // データ保存
     dataStorageTitle: 'データ保存',
-    dataStorageDesc: '<strong>すべてのデータはブラウザのローカルストレージ（IndexedDB）にのみ保存されます。サーバーへの自動送信は一切行いません。</strong>',
+    dataStorageDesc:
+      '<strong>すべてのデータはブラウザのローカルストレージ（IndexedDB）にのみ保存されます。サーバーへの自動送信は一切行いません。</strong>',
     dataStorageDetailHeading: '保存されるデータ：',
     dataStorageCode: 'エディタの内容：作成したコードのソースファイル',
     dataStorageEvents: '操作ログ：すべてのキーストローク、カーソル移動、外部入力のイベントデータ',
     dataStorageHash: 'ハッシュチェーン：証明用の暗号学的ハッシュデータ',
     dataStorageScreenshots: 'スクリーンショット：定期的に撮影された画面キャプチャ画像',
     dataStorageSettings: '設定情報：言語設定、テーマ設定、利用規約への同意状態',
-    dataStorageNote: 'これらのデータはブラウザを閉じても保持されますが、ブラウザのデータ消去や「Reset All」機能で完全に削除できます。証明データを保存したい場合は、必ずエクスポート機能でファイルをダウンロードしてください。',
+    dataStorageNote:
+      'これらのデータはブラウザを閉じても保持されますが、ブラウザのデータ消去や「Reset All」機能で完全に削除できます。証明データを保存したい場合は、必ずエクスポート機能でファイルをダウンロードしてください。',
 
     // 画面キャプチャ
     screenCaptureTitle: '画面キャプチャ',
-    screenCaptureDesc: 'タイピング証明の信頼性を高めるため、Screen Capture APIを使用して定期的に画面のスクリーンショットを撮影します。',
+    screenCaptureDesc:
+      'タイピング証明の信頼性を高めるため、Screen Capture APIを使用して定期的に画面のスクリーンショットを撮影します。',
     screenCaptureDetailHeading: '撮影について：',
-    screenCapturePermission: '画面共有の許可：初回起動時にブラウザの画面共有ダイアログが表示されます。「画面全体」を選択してください',
+    screenCapturePermission:
+      '画面共有の許可：初回起動時にブラウザの画面共有ダイアログが表示されます。「画面全体」を選択してください',
     screenCaptureInterval: '定期撮影：30秒ごとに自動的にスクリーンショットを撮影します',
     screenCaptureFocus: 'フォーカス喪失時：エディタからフォーカスが外れた際にも撮影されます',
     screenCaptureHash: 'ハッシュ化：撮影した画像はSHA-256でハッシュ化され、証明データと紐づけられます',
-    screenCaptureStorage: '<strong>ローカル保存</strong>：画像データはブラウザ内にのみ保存され、サーバーには送信されません',
-    screenCaptureNote: '画面共有を停止すると、エディタでの作業を継続できなくなります。再開するには画面共有を再度許可する必要があります。',
+    screenCaptureStorage:
+      '<strong>ローカル保存</strong>：画像データはブラウザ内にのみ保存され、サーバーには送信されません',
+    screenCaptureNote:
+      '画面共有を停止すると、エディタでの作業を継続できなくなります。再開するには画面共有を再度許可する必要があります。',
 
     // 証明ファイルのエクスポート
     exportTitle: '証明ファイルのエクスポート',
     exportDesc: '作成した証明データは、JSON形式またはZIP形式でダウンロードできます。',
     exportDetailHeading: 'エクスポート内容：',
-    exportJson: '証明ファイル（.json）：操作ログ、ハッシュチェーン、PoSWデータ、ブラウザフィンガープリント、人間認証結果を含む完全な証明データ',
+    exportJson:
+      '証明ファイル（.json）：操作ログ、ハッシュチェーン、PoSWデータ、ブラウザフィンガープリント、人間認証結果を含む完全な証明データ',
     exportScreenshots: 'スクリーンショット（.jpg）：撮影された画面キャプチャ画像',
     exportManifest: 'マニフェスト：スクリーンショットのハッシュ値と証明データとの対応情報',
     exportReadme: '説明ファイル（README）：証明の検証方法についての説明',
-    exportNote: 'エクスポートされたファイルは、TypedCode Verifyアプリケーションで検証できます。証明データのみのJSON出力か、スクリーンショットを含むZIP出力かを選択できます。',
+    exportNote:
+      'エクスポートされたファイルは、TypedCode Verifyアプリケーションで検証できます。証明データのみのJSON出力か、スクリーンショットを含むZIP出力かを選択できます。',
 
     // プライバシーと注意事項
     privacyTitle: 'プライバシーと注意事項',
     privacyDesc: 'TypedCodeが取得する情報と、証明データの取り扱いについてご確認ください。',
     privacyDetailHeading: '取得する情報について：',
-    privacyBrowserInfo: 'ブラウザから一般的に取得可能な情報（言語、タイムゾーン、画面解像度など）のみを使用しており、氏名やメールアドレスなどの個人情報は収集しません',
+    privacyBrowserInfo:
+      'ブラウザから一般的に取得可能な情報（言語、タイムゾーン、画面解像度など）のみを使用しており、氏名やメールアドレスなどの個人情報は収集しません',
     privacyTypedContent: 'ただし、エディタに入力したコードの内容はすべて記録されます',
-    privacyScreenshots: '画面共有中は画面全体がスクリーンショットとして保存されるため、画面に表示されている他のアプリケーションやウィンドウの内容も記録される可能性があります',
-    privacyLocalOnly: '<strong>これらのデータはすべてお使いのブラウザ内にのみ保存され、外部サーバーには送信されません</strong>',
-    privacyExportWarning: '証明データをエクスポートして第三者に提出する場合は、ご自身の責任において行ってください。提出先でのデータの取り扱いについては、提出先の規約やプライバシーポリシーをご確認ください',
-    privacyNote: 'エクスポートされた証明データには、タイピング内容やスクリーンショットが含まれます。提出前に内容を確認し、機密情報が含まれていないかご注意ください。',
+    privacyScreenshots:
+      '画面共有中は画面全体がスクリーンショットとして保存されるため、画面に表示されている他のアプリケーションやウィンドウの内容も記録される可能性があります',
+    privacyLocalOnly:
+      '<strong>これらのデータはすべてお使いのブラウザ内にのみ保存され、外部サーバーには送信されません</strong>',
+    privacyExportWarning:
+      '証明データをエクスポートして第三者に提出する場合は、ご自身の責任において行ってください。提出先でのデータの取り扱いについては、提出先の規約やプライバシーポリシーをご確認ください',
+    privacyNote:
+      'エクスポートされた証明データには、タイピング内容やスクリーンショットが含まれます。提出前に内容を確認し、機密情報が含まれていないかご注意ください。',
 
     agreeCheckbox: '上記の内容を理解し、同意します',
     agreeButton: '同意して開始',
@@ -259,13 +278,16 @@ export const ja: TranslationKeys = {
     errorAborted: '画面共有が中断されました',
     errorAbortedDesc: '画面共有の処理中に予期せぬエラーが発生しました。',
     errorSecurityError: 'セキュリティエラー',
-    errorSecurityErrorDesc: 'セキュリティポリシーにより画面共有がブロックされました。HTTPSで接続しているか確認してください。',
+    errorSecurityErrorDesc:
+      'セキュリティポリシーにより画面共有がブロックされました。HTTPSで接続しているか確認してください。',
     errorOutOfMemory: 'メモリ不足',
     errorOutOfMemoryDesc: 'ブラウザのメモリが不足しているため、画面共有を開始できませんでした。',
     errorMonitorRequired: '画面全体を選択してください',
-    errorMonitorRequiredDesc: 'TypedCodeでは「画面全体」の共有が必要です。ウィンドウやタブではなく、画面全体を選択してください。',
+    errorMonitorRequiredDesc:
+      'TypedCodeでは「画面全体」の共有が必要です。ウィンドウやタブではなく、画面全体を選択してください。',
     errorStorageInitFailed: 'ストレージの初期化に失敗しました',
-    errorStorageInitFailedDesc: 'スクリーンショットの保存領域を準備できませんでした。ブラウザのストレージ容量を確認してください。',
+    errorStorageInitFailedDesc:
+      'スクリーンショットの保存領域を準備できませんでした。ブラウザのストレージ容量を確認してください。',
     // Error solutions
     solutionTitle: '解決方法',
     solutionRefresh: 'ページを再読み込みしてください',
@@ -313,8 +335,7 @@ export const ja: TranslationKeys = {
     newTab: '新しいタブ',
     closeTab: 'Close Tab',
     lastTabWarning: '最後のタブは閉じられません',
-    closeConfirm:
-      '「${tabName}」を閉じますか？\n記録された操作ログも削除されます。',
+    closeConfirm: '「${tabName}」を閉じますか？\n記録された操作ログも削除されます。',
     verifiedTooltip: '認証済み',
     failedTooltip: '認証失敗',
     failureTimeout: 'タイムアウト',
@@ -391,14 +412,12 @@ export const ja: TranslationKeys = {
       'C 実行環境 (Clang/WASM)\nWebAssembly上で動作するClangコンパイラを使用。\n標準ライブラリの一部機能に制限があります。',
     cppRuntime:
       'C++ 実行環境 (Clang/WASM)\nWebAssembly上で動作するClangコンパイラを使用。\nC++17準拠。一部のSTL機能に制限があります。',
-    jsRuntime:
-      'JavaScript 実行環境\nブラウザのJavaScriptエンジンで直接実行。\nWeb API（DOM等）は使用できません。',
+    jsRuntime: 'JavaScript 実行環境\nブラウザのJavaScriptエンジンで直接実行。\nWeb API（DOM等）は使用できません。',
     tsRuntime:
       'TypeScript 実行環境\nTypeScriptをリアルタイムでトランスパイルして実行。\nブラウザのJavaScriptエンジンで動作。',
     pythonRuntime:
       'Python 実行環境 (Pyodide)\nWebAssembly上で動作するPythonインタプリタ。\nNumPy等の主要パッケージが利用可能。',
-    notAvailable:
-      'この言語のターミナルは利用できません。\n対応言語: C, C++, JavaScript, TypeScript, Python',
+    notAvailable: 'この言語のターミナルは利用できません。\n対応言語: C, C++, JavaScript, TypeScript, Python',
     supportedLanguages: 'C, C++, JavaScript, TypeScript, Python',
     runHint: 'Ctrl+Enter または Run ボタンでコードを実行',
     cDisclaimer: '※ WebAssembly環境のため、一部の標準ライブラリ機能に制限があります。',
@@ -509,14 +528,16 @@ export const ja: TranslationKeys = {
 
   duplicateInstance: {
     title: 'TypedCode は既に起動中です',
-    description: 'TypedCode は画面共有を使用するため、複数のタブやウィンドウで同時に使用することはできません。既に別のタブまたはウィンドウで TypedCode が起動しています。',
+    description:
+      'TypedCode は画面共有を使用するため、複数のタブやウィンドウで同時に使用することはできません。既に別のタブまたはウィンドウで TypedCode が起動しています。',
     hint: '既存のタブに戻るか、このタブを閉じてください。',
     closeThisTab: 'このタブを閉じる',
   },
 
   unsupportedBrowser: {
     title: 'サポートされていないブラウザです',
-    description: 'TypedCode は画面キャプチャ機能（Screen Capture API）を使用するため、Chrome または Edge ブラウザでのみ動作します。',
+    description:
+      'TypedCode は画面キャプチャ機能（Screen Capture API）を使用するため、Chrome または Edge ブラウザでのみ動作します。',
     safariNote: 'Safari では Screen Capture API が十分にサポートされていないため、ご利用いただけません。',
     hint: '以下のブラウザでアクセスしてください：',
   },
@@ -531,13 +552,11 @@ export const ja: TranslationKeys = {
 
   idleTimeout: {
     warningTitle: '作業を継続しますか？',
-    warningMessage:
-      '長時間フォーカスが外れています。応答がない場合、記録を一時停止します。',
+    warningMessage: '長時間フォーカスが外れています。応答がない場合、記録を一時停止します。',
     countdownLabel: '後に記録を停止',
     continueButton: '作業を継続',
     suspendedTitle: '記録を一時停止中',
-    suspendedMessage:
-      '長時間の非アクティブ状態により、キーストロークとスクリーンショットの記録を一時停止しました。',
+    suspendedMessage: '長時間の非アクティブ状態により、キーストロークとスクリーンショットの記録を一時停止しました。',
     suspendedHint: '作業を再開するには下のボタンをクリックしてください。',
     resumeButton: '記録を再開',
   },
@@ -609,7 +628,8 @@ export const ja: TranslationKeys = {
   class: {
     loader: {
       title: '授業問題を読み込む',
-      description: '配布された問題ファイル（.tcclass）を読み込みます。封印・監督コードはありません。スキップして素のエディタで始めることもできます。',
+      description:
+        '配布された問題ファイル（.tcclass）を読み込みます。封印・監督コードはありません。スキップして素のエディタで始めることもできます。',
       packageLabel: '問題ファイル（.tcclass）',
       dropHint: 'ファイルを選択、またはここにドロップ',
       loadButton: '読み込む',
@@ -627,21 +647,29 @@ export const ja: TranslationKeys = {
     settings: { heading: 'パッケージ設定' },
     statusbar: { noExamId: '（試験ID 未設定）', problems: '問' },
     preview: { edit: '編集', preview: 'プレビュー' },
-    run: { label: '実行', running: '実行中…', terminal: 'ターミナル', compilerLoading: 'Cコンパイラを準備中（初回のみ・少し時間がかかります）…' },
+    run: {
+      label: '実行',
+      running: '実行中…',
+      terminal: 'ターミナル',
+      compilerLoading: 'Cコンパイラを準備中（初回のみ・少し時間がかかります）…',
+    },
     key: {
       heading: '出題者署名鍵',
       tabExisting: '既存の鍵を使う',
       tabGenerate: '新しい鍵を生成',
       keyIdLabel: 'keyId',
       jwkLabel: '私的署名鍵（JWK）',
-      jwkHint: 'generate-exam-authority-key で発行した私的 JWK を1行で貼り付けます。鍵はこの端末から外部へ送信されません。',
-      generateIntro: 'その場で ECDSA-P256 鍵ペアを生成します。私的鍵は安全に保管し、公開鍵 entry は別途 registry へ登録（PR）してください。',
+      jwkHint:
+        'generate-exam-authority-key で発行した私的 JWK を1行で貼り付けます。鍵はこの端末から外部へ送信されません。',
+      generateIntro:
+        'その場で ECDSA-P256 鍵ペアを生成します。私的鍵は安全に保管し、公開鍵 entry は別途 registry へ登録（PR）してください。',
       generateButton: '鍵ペアを生成',
       generateFailed: '鍵の生成に失敗しました。',
       settings: '鍵設定',
       privateWarning: '私的鍵は一度きりの表示です。安全に保管し、絶対に共有・コミットしないでください。',
       registryEntryLabel: '公開鍵 entry（registry へ追記）',
-      registryHint: 'この entry を packages/shared/src/examAuthorityKeys/registry.ts に追記して PR を出すと、本番で検証可能になります。',
+      registryHint:
+        'この entry を packages/shared/src/examAuthorityKeys/registry.ts に追記して PR を出すと、本番で検証可能になります。',
       downloadPrivate: '私的鍵を保存',
     },
     problem: {
@@ -651,7 +679,8 @@ export const ja: TranslationKeys = {
       languages: '許可言語（カンマ区切り）',
       body: '問題本文（Markdown）',
       bodyPlaceholder: '# 問題1\n\n標準入力から…',
-      bundleHint: '1つの試験に複数問を入れられます。各問が受験者側で1タブになります。スターターコード（雛形）も任意で同梱できます。',
+      bundleHint:
+        '1つの試験に複数問を入れられます。各問が受験者側で1タブになります。スターターコード（雛形）も任意で同梱できます。',
       addProblem: '問題を追加',
       removeProblem: 'この問題を削除',
       problemLabel: '問題 ${n}',

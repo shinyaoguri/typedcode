@@ -85,10 +85,7 @@ export class SignedCheckpointService {
   private readonly tabId: string;
   private readonly getInitialEventChainHash: () => string | null;
   private readonly getSessionStartToken: () => SessionStartToken | null;
-  private readonly attachSignature: (
-    eventIndex: number,
-    envelope: SignedCheckpointEnvelope
-  ) => boolean;
+  private readonly attachSignature: (eventIndex: number, envelope: SignedCheckpointEnvelope) => boolean;
   private readonly isOnline: () => boolean;
   private readonly fetchImpl: typeof fetch;
   private readonly backoffSchedule: number[];
@@ -174,9 +171,7 @@ export class SignedCheckpointService {
     // 取り込む (他セッションの遺物は無視)
     const ourSigned = checkpoints.filter(
       (cp) =>
-        cp.signature &&
-        cp.signature.payload.sessionId === this.sessionId &&
-        cp.signature.payload.tabId === this.tabId
+        cp.signature && cp.signature.payload.sessionId === this.sessionId && cp.signature.payload.tabId === this.tabId
     );
 
     if (ourSigned.length > 0) {
@@ -340,7 +335,7 @@ export class SignedCheckpointService {
         body: JSON.stringify({ ...input, sessionStartToken }),
       });
       if (!res.ok) {
-        const errBody = await res.json().catch(() => ({})) as { code?: string; error?: string };
+        const errBody = (await res.json().catch(() => ({}))) as { code?: string; error?: string };
         // token の恒久拒否はリトライで回復しない: 以降の署名を諦め queue を空にする。
         if (errBody.code === 'TOKEN_INVALID' || errBody.code === 'TOKEN_SESSION_MISMATCH') {
           console.warn(
@@ -353,7 +348,11 @@ export class SignedCheckpointService {
           this.queue.clear();
           return false;
         }
-        return this.handleFailure(eventIndex, entry, `HTTP ${res.status} ${errBody.code ?? ''} ${errBody.error ?? ''}`.trim());
+        return this.handleFailure(
+          eventIndex,
+          entry,
+          `HTTP ${res.status} ${errBody.code ?? ''} ${errBody.error ?? ''}`.trim()
+        );
       }
       const body = (await res.json()) as { envelope: SignedCheckpointEnvelope };
       if (!body?.envelope) {

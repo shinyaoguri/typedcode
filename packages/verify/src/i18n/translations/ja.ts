@@ -75,8 +75,7 @@ export const ja: VerifyTranslationKeys = {
     statusNoCheckpoints: 'チェックポイントなし',
     chainDetail: '${current} / ${total} イベント',
     samplingDetail: '${current}イベント検証済み / ${total}イベント',
-    samplingDetailWithTotal:
-      '${current}イベント検証済み / ${total}イベント (全${totalEvents}イベント)',
+    samplingDetailWithTotal: '${current}イベント検証済み / ${total}イベント (全${totalEvents}イベント)',
   },
 
   result: {
@@ -170,7 +169,8 @@ export const ja: VerifyTranslationKeys = {
     examPackageHash: 'パッケージハッシュ',
     examContentHash: '問題内容ハッシュ',
     examTimeBox: '提出期間',
-    examPackageNote: '問題パッケージ未提供 — 署名・内容の検証はスキップされています。完全検証には .tcexam を読み込んでください。',
+    examPackageNote:
+      '問題パッケージ未提供 — 署名・内容の検証はスキップされています。完全検証には .tcexam を読み込んでください。',
     examLoadPackage: '問題パッケージ (.tcexam) を読み込む',
     examPass: 'PASS',
     examFail: 'FAIL',
@@ -361,16 +361,12 @@ export const ja: VerifyTranslationKeys = {
     issueAttestationBoth: '人間証明の検証に失敗',
     issueAttestationCreate: '作成時の人間証明が無効',
     issueAttestationExport: 'エクスポート時の人間証明が無効',
-    issueSourceMismatch:
-      '${filename}: ソースファイルと証明内容が異なります (+${additions}/-${deletions}行)',
+    issueSourceMismatch: '${filename}: ソースファイルと証明内容が異なります (+${additions}/-${deletions}行)',
     issueAnchoringInvalid: '署名チェックポイントが無効です',
     issueAnchoringMissing: '時刻アンカー（署名チェックポイント）がありません',
-    issueAnchoringPostHoc:
-      'post-hoc 一括署名の疑いがあります（サーバ時刻が申告時間より極端に短い）',
-    issueAnchoringSparse:
-      'アンカー密度が疎です（署名チェックポイントが申告セッションに対し少ない/遅い）',
-    issueRootNotAnchored:
-      'チェーン根がサーバアンカーされていません（開始時刻が未固定・オフライン捏造の余地）',
+    issueAnchoringPostHoc: 'post-hoc 一括署名の疑いがあります（サーバ時刻が申告時間より極端に短い）',
+    issueAnchoringSparse: 'アンカー密度が疎です（署名チェックポイントが申告セッションに対し少ない/遅い）',
+    issueRootNotAnchored: 'チェーン根がサーバアンカーされていません（開始時刻が未固定・オフライン捏造の余地）',
     issueNotPureTyping: 'ピュアタイピングではありません（ペースト/バルク挿入あり）',
     issueExamBindingFailed: '問題束縛（署名/内容ハッシュ）の検証に失敗しました',
     issueExamUnverified: '問題パッケージ未読込のため真正性は未確認です',
@@ -529,17 +525,14 @@ export const ja: VerifyTranslationKeys = {
     accessDenied: 'アクセス拒否',
     fileReadError: 'ファイル読み込みエラー',
     folderReadError: 'フォルダ読み取りエラー',
-    browserNotSupported:
-      'File System Access API は Chrome / Edge でのみ利用可能です',
-    browserNotSupportedDesc:
-      '代わりにファイル選択またはドラッグ＆ドロップをご利用ください',
+    browserNotSupported: 'File System Access API は Chrome / Edge でのみ利用可能です',
+    browserNotSupportedDesc: '代わりにファイル選択またはドラッグ＆ドロップをご利用ください',
     examInvalidPackage: '問題パッケージ (.tcexam) が不正です',
     jsonParseError: 'JSONパースエラー: ${filename}',
     fileLoadFailed: 'ファイル読み込みに失敗しました: ${message}',
     zipEmpty: 'ZIPにファイルがありません。',
     zipLoadFailed: 'ZIPファイルの読み込みに失敗しました: ${message}',
-    unsupportedFormat:
-      'サポートされていないフォーマット: メタデータがありません（v3.0.0以降が必要）',
+    unsupportedFormat: 'サポートされていないフォーマット: メタデータがありません（v3.0.0以降が必要）',
     noEvents: '証明データにイベントがありません',
   },
 

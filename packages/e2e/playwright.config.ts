@@ -29,9 +29,7 @@ export default defineConfig({
   retries: isCI ? 1 : 0,
   // PoSW Worker はタブ間で CPU を食い合うので E2E は直列寄りにして安定させる。
   workers: 1,
-  reporter: isCI
-    ? [['list'], ['html', { open: 'never' }], ['github']]
-    : [['list'], ['html', { open: 'never' }]],
+  reporter: isCI ? [['list'], ['html', { open: 'never' }], ['github']] : [['list'], ['html', { open: 'never' }]],
 
   use: {
     baseURL: BASE_URL,

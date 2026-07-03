@@ -11,11 +11,7 @@ export class IndexedDBHelper {
   /**
    * 単一のキーでレコードを取得
    */
-  static get<T>(
-    db: IDBDatabase,
-    storeName: string,
-    key: IDBValidKey
-  ): Promise<T | null> {
+  static get<T>(db: IDBDatabase, storeName: string, key: IDBValidKey): Promise<T | null> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readonly');
       const store = transaction.objectStore(storeName);
@@ -34,11 +30,7 @@ export class IndexedDBHelper {
   /**
    * レコードを追加（キーが存在する場合はエラー）
    */
-  static add<T>(
-    db: IDBDatabase,
-    storeName: string,
-    value: T
-  ): Promise<IDBValidKey> {
+  static add<T>(db: IDBDatabase, storeName: string, value: T): Promise<IDBValidKey> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readwrite');
       const store = transaction.objectStore(storeName);
@@ -57,11 +49,7 @@ export class IndexedDBHelper {
   /**
    * レコードを追加または更新
    */
-  static put<T>(
-    db: IDBDatabase,
-    storeName: string,
-    value: T
-  ): Promise<IDBValidKey> {
+  static put<T>(db: IDBDatabase, storeName: string, value: T): Promise<IDBValidKey> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readwrite');
       const store = transaction.objectStore(storeName);
@@ -80,11 +68,7 @@ export class IndexedDBHelper {
   /**
    * レコードを削除
    */
-  static delete(
-    db: IDBDatabase,
-    storeName: string,
-    key: IDBValidKey
-  ): Promise<void> {
+  static delete(db: IDBDatabase, storeName: string, key: IDBValidKey): Promise<void> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readwrite');
       const store = transaction.objectStore(storeName);
@@ -103,10 +87,7 @@ export class IndexedDBHelper {
   /**
    * ストア内の全レコードを取得
    */
-  static getAll<T>(
-    db: IDBDatabase,
-    storeName: string
-  ): Promise<T[]> {
+  static getAll<T>(db: IDBDatabase, storeName: string): Promise<T[]> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readonly');
       const store = transaction.objectStore(storeName);
@@ -125,12 +106,7 @@ export class IndexedDBHelper {
   /**
    * インデックスを使用して全レコードを取得
    */
-  static getAllByIndex<T>(
-    db: IDBDatabase,
-    storeName: string,
-    indexName: string,
-    key: IDBValidKey
-  ): Promise<T[]> {
+  static getAllByIndex<T>(db: IDBDatabase, storeName: string, indexName: string, key: IDBValidKey): Promise<T[]> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readonly');
       const store = transaction.objectStore(storeName);
@@ -150,12 +126,7 @@ export class IndexedDBHelper {
   /**
    * インデックスを使用してレコード数を取得
    */
-  static countByIndex(
-    db: IDBDatabase,
-    storeName: string,
-    indexName: string,
-    key: IDBValidKey
-  ): Promise<number> {
+  static countByIndex(db: IDBDatabase, storeName: string, indexName: string, key: IDBValidKey): Promise<number> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readonly');
       const store = transaction.objectStore(storeName);
@@ -175,10 +146,7 @@ export class IndexedDBHelper {
   /**
    * ストア内の全レコード数を取得
    */
-  static count(
-    db: IDBDatabase,
-    storeName: string
-  ): Promise<number> {
+  static count(db: IDBDatabase, storeName: string): Promise<number> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readonly');
       const store = transaction.objectStore(storeName);
@@ -197,10 +165,7 @@ export class IndexedDBHelper {
   /**
    * ストア内の全レコードを削除
    */
-  static clear(
-    db: IDBDatabase,
-    storeName: string
-  ): Promise<void> {
+  static clear(db: IDBDatabase, storeName: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readwrite');
       const store = transaction.objectStore(storeName);
@@ -251,11 +216,7 @@ export class IndexedDBHelper {
   /**
    * インデックスの最新（降順で最初）のレコードを取得
    */
-  static getLatestByIndex<T>(
-    db: IDBDatabase,
-    storeName: string,
-    indexName: string
-  ): Promise<T | null> {
+  static getLatestByIndex<T>(db: IDBDatabase, storeName: string, indexName: string): Promise<T | null> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readonly');
       const store = transaction.objectStore(storeName);
@@ -276,11 +237,7 @@ export class IndexedDBHelper {
   /**
    * 複数のレコードを一括追加（同一トランザクション内）
    */
-  static addBatch<T>(
-    db: IDBDatabase,
-    storeName: string,
-    values: T[]
-  ): Promise<void> {
+  static addBatch<T>(db: IDBDatabase, storeName: string, values: T[]): Promise<void> {
     if (values.length === 0) return Promise.resolve();
 
     return new Promise((resolve, reject) => {
@@ -304,12 +261,7 @@ export class IndexedDBHelper {
   /**
    * インデックスを使用して該当するレコードを全て削除
    */
-  static deleteByIndex(
-    db: IDBDatabase,
-    storeName: string,
-    indexName: string,
-    key: IDBValidKey
-  ): Promise<number> {
+  static deleteByIndex(db: IDBDatabase, storeName: string, indexName: string, key: IDBValidKey): Promise<number> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readwrite');
       const store = transaction.objectStore(storeName);

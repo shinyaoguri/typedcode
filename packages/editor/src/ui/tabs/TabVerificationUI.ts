@@ -86,7 +86,10 @@ export async function performVerificationWithUI(
       modalDialog?.classList.add('verification-warning');
       retryInfo?.classList.remove('hidden');
       if (retryAttempt) {
-        retryAttempt.textContent = t('verification.retryAttempt', { current: String(status.attempt), max: String(status.maxRetries) });
+        retryAttempt.textContent = t('verification.retryAttempt', {
+          current: String(status.attempt),
+          max: String(status.maxRetries),
+        });
       }
 
       // カウントダウン表示
@@ -216,8 +219,10 @@ export async function performVerificationWithUI(
         failureReason: result.failureReason,
       };
 
-  console.log('[TabVerificationUI] Human attestation recorded:',
-    result.success ? `verified${token ? ' (server-anchored)' : ''}` : `failed (${result.failureReason ?? result.error})`);
+  console.log(
+    '[TabVerificationUI] Human attestation recorded:',
+    result.success ? `verified${token ? ' (server-anchored)' : ''}` : `failed (${result.failureReason ?? result.error})`
+  );
 
   return {
     verificationState,

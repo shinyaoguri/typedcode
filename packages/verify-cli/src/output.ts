@@ -68,8 +68,7 @@ function passFail(ok: boolean): string {
  * 整合性 / 時刻アンカーは決定的、著述性は常に advisory (判定ではない) として併記する。
  */
 function formatAssurance(a: AssuranceResult): string[] {
-  const integrity =
-    a.integrity === 'proven' ? c('green', 'PROVEN') : c('red', 'FAILED');
+  const integrity = a.integrity === 'proven' ? c('green', 'PROVEN') : c('red', 'FAILED');
 
   let temporal: string;
   switch (a.temporal) {
@@ -113,9 +112,7 @@ function formatExamSection(exam: CLIExamResult, lines: string[]): void {
 
   const b = exam.binding;
   if (!b) {
-    lines.push(
-      c('yellow', '  ! Package not provided — signature/content checks skipped')
-    );
+    lines.push(c('yellow', '  ! Package not provided — signature/content checks skipped'));
     lines.push(c('dim', '    Pass --exam-package <file.tcexam> to fully verify authenticity.'));
     return;
   }
@@ -207,14 +204,9 @@ export function formatResult(result: VerificationOutput): string {
     // proof \u81ea\u4f53\u306f\u5065\u5168\u3067 exam \u675f\u7e1b\u3060\u3051\u304c\u5931\u6557\u3057\u305f\u3068\u304d\u3001\u30c1\u30a7\u30fc\u30f3\u306e (\u6210\u529f) \u30e1\u30c3\u30bb\u30fc\u30b8\u3092
     // \u300cError:\u300d\u3068\u3057\u3066\u51fa\u3059\u3068\u8aa4\u89e3\u3092\u62db\u304f\u3002\u305d\u306e\u5834\u5408\u306f exam \u675f\u7e1b\u306e\u7406\u7531\u3092\u51fa\u3059\u3002
     const examBindingFailedOnly =
-      result.metadataValid &&
-      result.chainValid &&
-      !!result.exam?.binding &&
-      !result.exam.binding.valid;
+      result.metadataValid && result.chainValid && !!result.exam?.binding && !result.exam.binding.valid;
     if (examBindingFailedOnly) {
-      lines.push(
-        c('red', `  Exam binding failed: ${result.exam!.binding!.reason ?? 'see section below'}`)
-      );
+      lines.push(c('red', `  Exam binding failed: ${result.exam!.binding!.reason ?? 'see section below'}`));
     } else {
       if (result.errorMessage) {
         lines.push(c('red', `  Error: ${result.errorMessage}`));
@@ -289,7 +281,10 @@ export function formatResult(result: VerificationOutput): string {
       if (sc.density) {
         const gapServerSec = (sc.density.maxGapServerMs / 1000).toFixed(0);
         lines.push(
-          c('dim', `  Density: max gap ${sc.density.maxGapEvents} events / ${gapServerSec}s, first anchor @ event ${sc.density.firstAnchorEventIndex}`)
+          c(
+            'dim',
+            `  Density: max gap ${sc.density.maxGapEvents} events / ${gapServerSec}s, first anchor @ event ${sc.density.firstAnchorEventIndex}`
+          )
         );
         if (sc.density.sparse) {
           lines.push(c('yellow', '  ! Anchoring is sparse for the claimed session (few/late signed checkpoints)'));
@@ -308,16 +303,25 @@ export function formatResult(result: VerificationOutput): string {
   const ss = result.screenshots;
   if (ss) {
     if (ss.tampered > 0) {
-      lines.push(`Screenshots: ${c('red', 'FAILED')} (${ss.tampered}/${ss.total} tampered — hash mismatch or not backed by the chain)`);
+      lines.push(
+        `Screenshots: ${c('red', 'FAILED')} (${ss.tampered}/${ss.total} tampered — hash mismatch or not backed by the chain)`
+      );
     } else if (ss.total > 0 || ss.chainOnly > 0) {
       const ok = ss.missing === 0 && ss.chainOnly === 0;
-      lines.push(`Screenshots: ${ok ? c('green', 'VERIFIED') : c('yellow', 'PARTIAL')} (${ss.verified}/${ss.total} verified)`);
+      lines.push(
+        `Screenshots: ${ok ? c('green', 'VERIFIED') : c('yellow', 'PARTIAL')} (${ss.verified}/${ss.total} verified)`
+      );
     }
     if (ss.missing > 0) {
       lines.push(c('yellow', `  ! ${ss.missing} image(s) listed in the manifest are missing from the ZIP`));
     }
     if (ss.chainOnly > 0) {
-      lines.push(c('yellow', `  ! ${ss.chainOnly} screenshot hash(es) recorded in the chain have no manifest entry (screenshots may have been stripped)`));
+      lines.push(
+        c(
+          'yellow',
+          `  ! ${ss.chainOnly} screenshot hash(es) recorded in the chain have no manifest entry (screenshots may have been stripped)`
+        )
+      );
     }
   } else {
     lines.push(c('dim', 'Screenshots: not checked (provide the export ZIP to verify screenshots)'));

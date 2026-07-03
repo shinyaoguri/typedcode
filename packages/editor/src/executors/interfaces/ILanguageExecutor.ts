@@ -104,9 +104,7 @@ export interface ILanguageExecutor {
    *
    * @param onProgress - Optional callback for progress updates
    */
-  initialize(
-    onProgress?: (progress: InitializationProgress) => void
-  ): Promise<void>;
+  initialize(onProgress?: (progress: InitializationProgress) => void): Promise<void>;
 
   /**
    * Compile and run the provided code

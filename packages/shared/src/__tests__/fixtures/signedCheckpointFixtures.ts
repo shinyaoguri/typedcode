@@ -29,14 +29,11 @@ export interface TestKey {
   registryEntry: CheckpointPublicKey;
 }
 
-export async function createTestKey(
-  overrides: Partial<CheckpointPublicKey> = {}
-): Promise<TestKey> {
-  const keyPair = (await crypto.subtle.generateKey(
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    true,
-    ['sign', 'verify']
-  )) as CryptoKeyPair;
+export async function createTestKey(overrides: Partial<CheckpointPublicKey> = {}): Promise<TestKey> {
+  const keyPair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+    'sign',
+    'verify',
+  ])) as CryptoKeyPair;
   const publicKeyJwk = (await crypto.subtle.exportKey('jwk', keyPair.publicKey)) as JsonWebKey;
   const keyId = overrides.keyId ?? `test-key-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const registryEntry: CheckpointPublicKey = {
@@ -115,9 +112,7 @@ export interface BuildSignedCheckpointsOptions {
  * 指定 event 列に対して整合のとれた signed checkpoint データを構築。
  * 戻り値の CheckpointData をそのまま ExportedProof.checkpoints に入れて使える。
  */
-export async function buildSignedCheckpoints(
-  options: BuildSignedCheckpointsOptions
-): Promise<CheckpointData[]> {
+export async function buildSignedCheckpoints(options: BuildSignedCheckpointsOptions): Promise<CheckpointData[]> {
   const {
     events,
     initialEventChainHash,

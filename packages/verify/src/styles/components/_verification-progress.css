@@ -40,7 +40,8 @@
 }
 
 @keyframes vp-pulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }
@@ -91,18 +92,13 @@
 }
 
 .vp-overall-fill::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.2),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
   animation: vp-shimmer 1.5s ease-in-out infinite;
 }
 
@@ -181,7 +177,8 @@
 }
 
 @keyframes vp-icon-pulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.4);
   }
   50% {

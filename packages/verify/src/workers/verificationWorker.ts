@@ -137,9 +137,7 @@ function sendError(id: string, error: string): void {
  * PoSW統計を計算
  */
 function calculatePoSWStats(events: StoredEvent[]): VerificationResultData['poswStats'] {
-  const eventsWithPoSW = events.filter(
-    (event) => 'posw' in event && event.posw && typeof event.posw === 'object'
-  );
+  const eventsWithPoSW = events.filter((event) => 'posw' in event && event.posw && typeof event.posw === 'object');
 
   if (eventsWithPoSW.length === 0) {
     return undefined;
@@ -214,10 +212,7 @@ async function verify(request: VerifyRequest): Promise<void> {
       // 明示的に narrowed 型として渡す。
       const narrowedProof = proofData as unknown as ExportedProof;
       const rootVerification = await verifyInitialHashRoot(narrowedProof);
-      const eventMetadataVerification = verifyProofMetadata(
-        proofData.typingProofData,
-        proofData.proof?.events ?? []
-      );
+      const eventMetadataVerification = verifyProofMetadata(proofData.typingProofData, proofData.proof?.events ?? []);
       rootValid = rootVerification.valid;
       rootAnchored = rootVerification.rootAnchored; // ADR-0017: serverNonce 付きトークンで root がアンカーされたか
       metadataValid = hashVerification.valid && rootValid && eventMetadataVerification.valid;
@@ -260,10 +255,7 @@ async function verify(request: VerifyRequest): Promise<void> {
     const finalHashVerification = chainVerification.valid
       ? verifyFinalChainHash(proofData as unknown as ExportedProof, chainVerification.computedHash)
       : { valid: false, reason: chainVerification.message };
-    const contentVerification = verifyContentReplay(
-      proofData.proof.events,
-      proofData.content ?? ''
-    );
+    const contentVerification = verifyContentReplay(proofData.proof.events, proofData.content ?? '');
     const checkpointVerification = await verifyCheckpoints(proofData.proof.events, proofData.checkpoints);
 
     // 3. Signed checkpoint 検証 (モード非依存)
@@ -285,8 +277,7 @@ async function verify(request: VerifyRequest): Promise<void> {
       };
     }
 
-    const signedCheckpointBlocks =
-      signedCheckpointResult.anchored && !signedCheckpointResult.valid;
+    const signedCheckpointBlocks = signedCheckpointResult.anchored && !signedCheckpointResult.valid;
 
     const chainValid =
       chainVerification.valid &&
@@ -313,10 +304,7 @@ async function verify(request: VerifyRequest): Promise<void> {
     const poswStats = calculatePoSWStats(proofData.proof.events);
 
     // 5. 「時刻アンカー」カードの根拠表示用の詳細情報を組み立てる
-    const signedCheckpointReport = buildSignedCheckpointReport(
-      proofData.checkpoints ?? [],
-      signedCheckpointResult
-    );
+    const signedCheckpointReport = buildSignedCheckpointReport(proofData.checkpoints ?? [], signedCheckpointResult);
 
     // 5.5 試験モード (ADR-0006): exam ブロックがあれば束縛検証結果を組み立てる。
     // root 束縛は rootValid (verifyInitialHashRoot の exam 分岐) で既に検証済み・package 不要。
@@ -326,10 +314,7 @@ async function verify(request: VerifyRequest): Promise<void> {
       let examBinding: NonNullable<VerificationResultData['exam']>['binding'];
       if (request.manifest) {
         try {
-          examBinding = await verifyExamBinding(
-            proofData as unknown as ExportedProof,
-            request.manifest
-          );
+          examBinding = await verifyExamBinding(proofData as unknown as ExportedProof, request.manifest);
         } catch (err) {
           examBinding = {
             valid: false,
@@ -427,7 +412,11 @@ function buildSignedCheckpointReport(
   const firstEnvelope = signed[0]?.signature;
   const lastEnvelope = signed[signed.length - 1]?.signature;
 
-  const toAnchor = (env: { payload: { checkpointIndex: number; eventIndex: number; serverTimestamp: string; clientTimestamp: string } } | undefined): AnchorPoint | undefined =>
+  const toAnchor = (
+    env:
+      | { payload: { checkpointIndex: number; eventIndex: number; serverTimestamp: string; clientTimestamp: string } }
+      | undefined
+  ): AnchorPoint | undefined =>
     env
       ? {
           checkpointIndex: env.payload.checkpointIndex,

@@ -46,11 +46,17 @@ export class WindowTracker extends BaseTracker<WindowTrackerEvent, WindowTracker
     const currentSize = this.getCurrentWindowSize();
     this.lastWindowSize = currentSize;
 
-    this.callback?.({
-      type: 'windowResize',
-      data: currentSize,
-      description: t('events.initialWindowSize', { width: String(currentSize.innerWidth), height: String(currentSize.innerHeight) }),
-    }, true);
+    this.callback?.(
+      {
+        type: 'windowResize',
+        data: currentSize,
+        description: t('events.initialWindowSize', {
+          width: String(currentSize.innerWidth),
+          height: String(currentSize.innerHeight),
+        }),
+      },
+      true
+    );
   }
 
   /**
@@ -101,11 +107,17 @@ export class WindowTracker extends BaseTracker<WindowTrackerEvent, WindowTracker
 
       this.lastWindowSize = currentSize;
 
-      this.callback?.({
-        type: 'windowResize',
-        data: currentSize,
-        description: t('events.windowResize', { width: String(currentSize.innerWidth), height: String(currentSize.innerHeight) }),
-      }, false);
+      this.callback?.(
+        {
+          type: 'windowResize',
+          data: currentSize,
+          description: t('events.windowResize', {
+            width: String(currentSize.innerWidth),
+            height: String(currentSize.innerHeight),
+          }),
+        },
+        false
+      );
     }, WINDOW_RESIZE_DEBOUNCE_MS);
   }
 

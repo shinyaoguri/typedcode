@@ -22,11 +22,7 @@ describe('loadExternalAnalyzers', () => {
 
   it('collects named "analyzer" and "analyzers" exports from one module', async () => {
     const analyzers = await loadExternalAnalyzers([fx('valid-named.mjs')]);
-    expect(analyzers.map((a) => a.id)).toEqual([
-      'fixture-named-single',
-      'fixture-named-a',
-      'fixture-named-b',
-    ]);
+    expect(analyzers.map((a) => a.id)).toEqual(['fixture-named-single', 'fixture-named-a', 'fixture-named-b']);
   });
 
   it('accumulates analyzers across multiple modules in argument order', async () => {
@@ -36,20 +32,16 @@ describe('loadExternalAnalyzers', () => {
   });
 
   it('rejects a module whose exports do not satisfy the Analyzer contract', async () => {
-    await expect(loadExternalAnalyzers([fx('invalid-shape.mjs')])).rejects.toThrow(
-      /no valid Analyzer export/
-    );
+    await expect(loadExternalAnalyzers([fx('invalid-shape.mjs')])).rejects.toThrow(/no valid Analyzer export/);
   });
 
   it('rejects a module that cannot be imported', async () => {
-    await expect(loadExternalAnalyzers([fx('does-not-exist.mjs')])).rejects.toThrow(
-      /Failed to load external analyzer/
-    );
+    await expect(loadExternalAnalyzers([fx('does-not-exist.mjs')])).rejects.toThrow(/Failed to load external analyzer/);
   });
 
   it('rejects duplicate analyzer ids across modules', async () => {
-    await expect(
-      loadExternalAnalyzers([fx('valid-default.mjs'), fx('duplicate-of-default.mjs')])
-    ).rejects.toThrow(/Duplicate analyzer id "fixture-default"/);
+    await expect(loadExternalAnalyzers([fx('valid-default.mjs'), fx('duplicate-of-default.mjs')])).rejects.toThrow(
+      /Duplicate analyzer id "fixture-default"/
+    );
   });
 });

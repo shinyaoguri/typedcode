@@ -1013,7 +1013,10 @@
   color: var(--text-tertiary);
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s;
 }
 
 .exam-gate-dropzone i {
@@ -1070,7 +1073,9 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: background 0.15s, opacity 0.15s;
+  transition:
+    background 0.15s,
+    opacity 0.15s;
 }
 
 .exam-gate-start:hover:not(:disabled) {
@@ -1154,7 +1159,8 @@
 }
 
 @keyframes screen-share-guide-bounce {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0);
   }
   50% {

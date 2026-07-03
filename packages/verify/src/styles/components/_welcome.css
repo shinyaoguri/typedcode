@@ -53,7 +53,9 @@
   border: 2px dashed var(--dropzone-border);
   border-radius: 12px;
   background-color: transparent;
-  transition: border-color 0.2s ease, background-color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
   cursor: pointer;
 }
 
@@ -133,7 +135,7 @@
   background-color: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: "Consolas", "Monaco", monospace;
   font-size: 11px;
   color: var(--text-primary);
 }

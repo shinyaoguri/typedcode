@@ -173,7 +173,15 @@ async function main(): Promise<void> {
     const bundleDump: Array<{ filename: string } & AnalysisBundle> = [];
     for (const { filename, proof } of proofs) {
       if (multi) console.log(`\n=== ${filename} ===`);
-      const result = await verifyProof(proof, { mode, examPackageManifest, submittedAtMs, requireAnchorDensity, requireRootAnchor, analyzers, screenshotSummary });
+      const result = await verifyProof(proof, {
+        mode,
+        examPackageManifest,
+        submittedAtMs,
+        requireAnchorDensity,
+        requireRootAnchor,
+        analyzers,
+        screenshotSummary,
+      });
       console.log(formatResult(result));
       summary.push({ filename, valid: result.valid });
       analysisDump.push({ filename, valid: result.valid, analysis: result.analysis });

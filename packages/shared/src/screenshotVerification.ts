@@ -53,9 +53,7 @@ export async function sha256HexOfBytes(bytes: ArrayBuffer | Uint8Array): Promise
  * proof (複数可) の `screenshotCapture` イベントから imageHash を収集する。
  * チェーンは検証済み・改ざん不能なので、これがスクショの真正なハッシュ集合になる。
  */
-export function collectChainImageHashes(
-  eventsList: ReadonlyArray<readonly StoredEvent[]>
-): Set<string> {
+export function collectChainImageHashes(eventsList: ReadonlyArray<readonly StoredEvent[]>): Set<string> {
   const hashes = new Set<string>();
   for (const events of eventsList) {
     for (const e of events) {
@@ -72,10 +70,7 @@ export function collectChainImageHashes(
  * entry の imageHash が検証済みチェーンに記録されているか。集合が未提供 or 空 (旧 proof /
  * screenshotCapture イベントを持たない proof 等) なら対象外とみなし true (false-positive 回避)。
  */
-export function isChainBackedImageHash(
-  imageHash: string,
-  chainImageHashes?: ReadonlySet<string>
-): boolean {
+export function isChainBackedImageHash(imageHash: string, chainImageHashes?: ReadonlySet<string>): boolean {
   if (!chainImageHashes || chainImageHashes.size === 0) return true;
   return chainImageHashes.has(imageHash);
 }

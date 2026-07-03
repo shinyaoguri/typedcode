@@ -171,7 +171,13 @@ describe('verifyInitialHashRoot with session start token (ADR-0017)', () => {
     let content = '';
     for (let i = 0; i < 3; i++) {
       const ch = String.fromCharCode('a'.charCodeAt(0) + i);
-      await proof.recordEvent({ type: 'contentChange', inputType: 'insertText', data: ch, rangeOffset: content.length, rangeLength: 0 });
+      await proof.recordEvent({
+        type: 'contentChange',
+        inputType: 'insertText',
+        data: ch,
+        rangeOffset: content.length,
+        rangeLength: 0,
+      });
       content += ch;
     }
     const exported = await proof.exportProof(content);
@@ -230,7 +236,13 @@ describe('verifyInitialHashRoot with session start token (ADR-0017)', () => {
     const fingerprintHash = await computeHash(JSON.stringify(components, null, 0));
     const proof = new TypingProof();
     await proof.initialize(fingerprintHash, components); // 非アンカー (従来式)
-    await proof.recordEvent({ type: 'contentChange', inputType: 'insertText', data: 'a', rangeOffset: 0, rangeLength: 0 });
+    await proof.recordEvent({
+      type: 'contentChange',
+      inputType: 'insertText',
+      data: 'a',
+      rangeOffset: 0,
+      rangeLength: 0,
+    });
     const exported = await proof.exportProof('a');
 
     expect(exported.rootAnchored).toBe(false);

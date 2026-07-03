@@ -107,12 +107,7 @@ export class Sidebar {
       e.preventDefault();
       e.stopPropagation();
       const rect = this.sidebar.getBoundingClientRect();
-      if (
-        e.clientX < rect.left ||
-        e.clientX > rect.right ||
-        e.clientY < rect.top ||
-        e.clientY > rect.bottom
-      ) {
+      if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
         this.isDragOver = false;
         this.sidebar.classList.remove('drag-over');
       }
@@ -419,9 +414,7 @@ export class Sidebar {
     const fragment = document.createDocumentFragment();
 
     // ルートフォルダ（親なし）を取得してレンダリング
-    const rootFolders = Array.from(this.folders.values()).filter(
-      (f) => !f.parentId
-    );
+    const rootFolders = Array.from(this.folders.values()).filter((f) => !f.parentId);
 
     // フォルダをソートして表示（名前順）
     rootFolders.sort((a, b) => a.name.localeCompare(b.name));
@@ -444,20 +437,14 @@ export class Sidebar {
   }
 
   // フォルダを再帰的にレンダリング
-  private renderFolderRecursive(
-    folder: SidebarFolder,
-    container: DocumentFragment | HTMLElement,
-    depth: number
-  ): void {
+  private renderFolderRecursive(folder: SidebarFolder, container: DocumentFragment | HTMLElement, depth: number): void {
     const folderEl = this.createFolderItem(folder, depth);
     container.appendChild(folderEl);
 
     // フォルダが展開されている場合
     if (folder.expanded) {
       // 子フォルダをレンダリング
-      const childFolders = Array.from(this.folders.values()).filter(
-        (f) => f.parentId === folder.id
-      );
+      const childFolders = Array.from(this.folders.values()).filter((f) => f.parentId === folder.id);
       childFolders.sort((a, b) => a.name.localeCompare(b.name));
 
       for (const childFolder of childFolders) {
@@ -465,9 +452,7 @@ export class Sidebar {
       }
 
       // フォルダ内のファイルをレンダリング
-      const filesInFolder = Array.from(this.files.values()).filter(
-        (f) => f.folderId === folder.id
-      );
+      const filesInFolder = Array.from(this.files.values()).filter((f) => f.folderId === folder.id);
       filesInFolder.sort((a, b) => a.filename.localeCompare(b.filename));
 
       for (const file of filesInFolder) {
@@ -489,9 +474,7 @@ export class Sidebar {
 
     const icon = document.createElement('div');
     icon.className = 'folder-icon';
-    icon.innerHTML = folder.expanded
-      ? '<i class="fas fa-folder-open"></i>'
-      : '<i class="fas fa-folder"></i>';
+    icon.innerHTML = folder.expanded ? '<i class="fas fa-folder-open"></i>' : '<i class="fas fa-folder"></i>';
 
     const name = document.createElement('div');
     name.className = 'folder-name';
@@ -500,9 +483,7 @@ export class Sidebar {
 
     // フォルダ内のファイル数と子フォルダ数を計算
     const fileCount = this.getFilesInFolder(folder.id).length;
-    const childFolderCount = Array.from(this.folders.values()).filter(
-      (f) => f.parentId === folder.id
-    ).length;
+    const childFolderCount = Array.from(this.folders.values()).filter((f) => f.parentId === folder.id).length;
     const totalCount = fileCount + childFolderCount;
 
     const count = document.createElement('div');
