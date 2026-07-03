@@ -113,7 +113,9 @@ describe('SignedCheckpointService firstSeenAt consistency (#151)', () => {
 
     // 不一致 envelope (t1) は attach されず、最終的に t0 の envelope だけが載る
     expect(attached.map((a) => a.firstSeenAt)).toEqual([t0, t0]);
-    expect(service.pendingCount()).toBe(0);
+    // attach 後、実装は動的 import を await してから queue を削る。attached 起点の
+    // waitFor 直後に同期で見ると 1 が返る瞬間がある (CI で顕在化した flake) ため待つ。
+    await vi.waitFor(() => expect(service.pendingCount()).toBe(0), { timeout: 2000 });
     service.dispose();
   });
 
@@ -178,7 +180,8 @@ describe('SignedCheckpointService session token gate (ADR-0027 / #136)', () => {
     token = makeToken(); // exam の best-effort 取得が後から成功したケース
     service.retryPendingSignatures();
     await vi.waitFor(() => expect(attached).toHaveLength(1), { timeout: 2000 });
-    expect(service.pendingCount()).toBe(0);
+    // attach → queue 削除の間に動的 import の await が挟まるため同期 assert しない (flake 対策)
+    await vi.waitFor(() => expect(service.pendingCount()).toBe(0), { timeout: 2000 });
     service.dispose();
   });
 
