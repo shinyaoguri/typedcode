@@ -424,7 +424,7 @@ export class FileController {
       this.deps.onStatusBarUpdate?.();
     } catch (error) {
       console.error('Error parsing JSON:', error);
-      this.deps.statusBar.setError(`JSONパースエラー: ${filename}`);
+      this.deps.statusBar.setError(t('errors.jsonParseError', { filename }));
     }
   }
 }

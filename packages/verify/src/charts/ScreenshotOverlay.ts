@@ -7,6 +7,7 @@
 
 import type { VerifyScreenshot } from '../types.js';
 import type { ScreenshotService } from '../services/ScreenshotService.js';
+import { t } from '../i18n/index.js';
 
 /**
  * スクリーンショットプレビューオーバーレイ
@@ -85,9 +86,9 @@ export class ScreenshotOverlay {
 
     // 情報を更新
     const typeMap: Record<string, string> = {
-      periodic: '定期',
-      focusLost: 'フォーカス喪失',
-      manual: '手動',
+      periodic: t('screenshot.typePeriodic'),
+      focusLost: t('screenshot.typeFocusLost'),
+      manual: t('screenshot.typeManual'),
     };
 
     this.typeEl.textContent = typeMap[screenshot.captureType] ?? screenshot.captureType;

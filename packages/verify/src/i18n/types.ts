@@ -9,6 +9,7 @@ export interface VerifyTranslationKeys {
   common: {
     cancel: string;
     close: string;
+    delete: string;
     ready: string;
     verifying: string;
     files: string;
@@ -38,6 +39,7 @@ export interface VerifyTranslationKeys {
   activityBar: {
     menu: string;
     openFile: string;
+    openFolder: string;
     explorer: string;
     settings: string;
     themeToggle: string;
@@ -51,6 +53,9 @@ export interface VerifyTranslationKeys {
     addFile: string;
     addFolder: string;
     emptyMessage: string;
+    removeFile: string;
+    removeFolder: string;
+    removeConfirm: string;
   };
 
   // Welcome panel
@@ -74,11 +79,33 @@ export interface VerifyTranslationKeys {
     samplingDesc: string;
     completeStep: string;
     completeDesc: string;
+    statusRunning: string;
+    statusDone: string;
+    statusError: string;
+    statusSkipped: string;
+    statusFallback: string;
+    statusNoCheckpoints: string;
+    chainDetail: string;
+    samplingDetail: string;
+    samplingDetailWithTotal: string;
   };
 
   // Result panels
   result: {
     statusVerifying: string;
+    statusSuccess: string;
+    statusWarning: string;
+    statusFailed: string;
+    typingPure: string;
+    typingExternal: string;
+    timesCount: string;
+    externalInputYes: string;
+    externalInputNo: string;
+    eventsUnit: string;
+    screenshotsMissing: string;
+    screenshotsMissingAndTampered: string;
+    imageLoadFailed: string;
+    sourceMismatchBanner: string;
     typing: string;
     pasteCount: string;
     internalPasteCount: string;
@@ -229,9 +256,30 @@ export interface VerifyTranslationKeys {
     valid: string;
     invalid: string;
     none: string;
+    validCount: string;
     verifiedLegacy: string;
     exportTimeAuth: string;
     noAttestation: string;
+  };
+
+  // Screenshot capture type labels (lightbox / overlay / chart tooltips)
+  screenshot: {
+    typePeriodic: string;
+    typeFocusLost: string;
+    typeManual: string;
+  };
+
+  // Screenshot lightbox
+  lightbox: {
+    close: string;
+    prev: string;
+    next: string;
+    type: string;
+    time: string;
+    resolution: string;
+    hashVerification: string;
+    verified: string;
+    unverified: string;
   };
 
   // Status bar
@@ -250,6 +298,38 @@ export interface VerifyTranslationKeys {
     flight: string;
     mouse: string;
     eventFilter: string;
+    axisTime: string;
+    secondsShort: string;
+    datasets: {
+      typingSpeed: string;
+      internalPaste: string;
+      periodicCapture: string;
+      focusLostCapture: string;
+      manualCapture: string;
+      humanAttestation: string;
+      preExportAttestation: string;
+      networkStatusChange: string;
+      contentSnapshot: string;
+    };
+    tooltips: {
+      screenshotMissing: string;
+      screenshotTampered: string;
+      screenshotVerified: string;
+      humanAttestation: string;
+      externalInput: string;
+      internalPaste: string;
+      termsAccepted: string;
+      preExportAttestation: string;
+      editorInitialized: string;
+      networkStatusChange: string;
+      codeExecution: string;
+      terminalInput: string;
+      screenShareStart: string;
+      screenShareStop: string;
+      templateInjection: string;
+      windowResize: string;
+      contentSnapshot: string;
+    };
     categories: {
       content: string;
       cursor: string;
@@ -292,6 +372,36 @@ export interface VerifyTranslationKeys {
   // Trust calculation
   trust: {
     screenShareOptOut: string;
+    summaryVerified: string;
+    summaryPartial: string;
+    summaryFailed: string;
+    issueMetadataInvalid: string;
+    issueChainInvalid: string;
+    issueScreenshotsTampered: string;
+    issueScreenshotsMissing: string;
+    issueAttestationBoth: string;
+    issueAttestationCreate: string;
+    issueAttestationExport: string;
+    issueSourceMismatch: string;
+    issueAnchoringInvalid: string;
+    issueAnchoringMissing: string;
+    issueAnchoringPostHoc: string;
+    issueAnchoringSparse: string;
+    issueRootNotAnchored: string;
+    issueNotPureTyping: string;
+    issueExamBindingFailed: string;
+    issueExamUnverified: string;
+    components: {
+      metadata: string;
+      chain: string;
+      posw: string;
+      attestation: string;
+      screenshots: string;
+      source: string;
+      anchoring: string;
+      exam: string;
+      typing: string;
+    };
   };
 
   // Typing pattern analysis
@@ -445,6 +555,12 @@ export interface VerifyTranslationKeys {
     browserNotSupported: string;
     browserNotSupportedDesc: string;
     examInvalidPackage: string;
+    jsonParseError: string;
+    fileLoadFailed: string;
+    zipEmpty: string;
+    zipLoadFailed: string;
+    unsupportedFormat: string;
+    noEvents: string;
   };
 
   // Messages

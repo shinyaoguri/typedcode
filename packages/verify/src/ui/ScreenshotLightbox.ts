@@ -7,6 +7,7 @@
 
 import type { VerifyScreenshot } from '../types.js';
 import type { ScreenshotService } from '../services/ScreenshotService.js';
+import { t } from '../i18n/index.js';
 
 /** ライトボックス設定 */
 export interface LightboxOptions {
@@ -66,11 +67,11 @@ export class ScreenshotLightbox {
     overlay.className = 'lightbox-overlay';
     overlay.innerHTML = `
       <div class="lightbox-container">
-        <button class="lightbox-close" title="閉じる (Esc)">
+        <button class="lightbox-close" title="${t('lightbox.close')}">
           <i class="fas fa-times"></i>
         </button>
 
-        <button class="lightbox-nav lightbox-prev" title="前へ (←)">
+        <button class="lightbox-nav lightbox-prev" title="${t('lightbox.prev')}">
           <i class="fas fa-chevron-left"></i>
         </button>
 
@@ -81,25 +82,25 @@ export class ScreenshotLightbox {
           </div>
         </div>
 
-        <button class="lightbox-nav lightbox-next" title="次へ (→)">
+        <button class="lightbox-nav lightbox-next" title="${t('lightbox.next')}">
           <i class="fas fa-chevron-right"></i>
         </button>
 
         <div class="lightbox-info">
           <div class="lightbox-info-row">
-            <span class="lightbox-info-label">タイプ:</span>
+            <span class="lightbox-info-label">${t('lightbox.type')}:</span>
             <span class="lightbox-info-value" id="lb-type"></span>
           </div>
           <div class="lightbox-info-row">
-            <span class="lightbox-info-label">時刻:</span>
+            <span class="lightbox-info-label">${t('lightbox.time')}:</span>
             <span class="lightbox-info-value" id="lb-time"></span>
           </div>
           <div class="lightbox-info-row">
-            <span class="lightbox-info-label">解像度:</span>
+            <span class="lightbox-info-label">${t('lightbox.resolution')}:</span>
             <span class="lightbox-info-value" id="lb-resolution"></span>
           </div>
           <div class="lightbox-info-row">
-            <span class="lightbox-info-label">ハッシュ検証:</span>
+            <span class="lightbox-info-label">${t('lightbox.hashVerification')}:</span>
             <span class="lightbox-info-value" id="lb-verified"></span>
           </div>
           <div class="lightbox-counter">
@@ -283,9 +284,9 @@ export class ScreenshotLightbox {
 
     // 情報を更新
     const typeMap: Record<string, string> = {
-      periodic: '定期キャプチャ',
-      focusLost: 'フォーカス喪失',
-      manual: '手動',
+      periodic: t('screenshot.typePeriodic'),
+      focusLost: t('screenshot.typeFocusLost'),
+      manual: t('screenshot.typeManual'),
     };
 
     this.typeEl.textContent = typeMap[screenshot.captureType] ?? screenshot.captureType;
@@ -294,10 +295,10 @@ export class ScreenshotLightbox {
 
     // 検証状態
     if (screenshot.verified) {
-      this.verifiedEl.textContent = '✓ 検証済み';
+      this.verifiedEl.textContent = t('lightbox.verified');
       this.verifiedEl.className = 'lightbox-info-value verified';
     } else {
-      this.verifiedEl.textContent = '未検証';
+      this.verifiedEl.textContent = t('lightbox.unverified');
       this.verifiedEl.className = 'lightbox-info-value unverified';
     }
 

@@ -7,6 +7,7 @@
 import type { ProofFile } from '../types.js';
 import type { ParsedFileData, FileProcessResult, FileProcessCallbacks } from './FileProcessor.js';
 import { getLanguageFromExtension } from './fileUtils.js';
+import { t } from '../i18n/index.js';
 
 /**
  * JSON ファイル処理クラス
@@ -94,7 +95,7 @@ export class JsonFileProcessor {
         success: false,
         mode: forceMultiMode ? 'multi' : 'single',
         files: [],
-        error: `ファイル読み込みに失敗しました: ${errorMessage}`,
+        error: t('errors.fileLoadFailed', { message: errorMessage }),
       };
     }
   }

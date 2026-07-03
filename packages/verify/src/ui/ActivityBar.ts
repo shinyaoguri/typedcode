@@ -3,7 +3,7 @@
  */
 
 import { FileSystemAccessService } from '../services/FileSystemAccessService.js';
-import { getI18n } from '../i18n/index.js';
+import { getI18n, t } from '../i18n/index.js';
 import type { VerificationMode } from '../types';
 
 const VERIFY_MODE_CYCLE: VerificationMode[] = ['fast', 'audit', 'full'];
@@ -91,7 +91,7 @@ export class ActivityBar {
     openFolderBtn.className = 'dropdown-item';
     openFolderBtn.innerHTML = `
       <i class="fas fa-folder-tree"></i>
-      <span>フォルダを開く</span>
+      <span>${t('activityBar.openFolder')}</span>
     `;
 
     // open-file-btn の後に挿入

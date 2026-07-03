@@ -10,6 +10,7 @@ import { ScreenshotService } from './ScreenshotService.js';
 import { JsonFileProcessor } from './JsonFileProcessor.js';
 import { ZipFileProcessor } from './ZipFileProcessor.js';
 import { getFileType, isProofFilename, getLanguageFromExtension } from './fileUtils.js';
+import { t } from '../i18n/index.js';
 
 // 再エクスポート（利用側の互換性のため）
 export { JsonFileProcessor } from './JsonFileProcessor.js';
@@ -179,7 +180,7 @@ export class FileProcessor {
         success: false,
         mode: 'single',
         files: [],
-        error: `ファイル読み込みに失敗しました: ${errorMessage}`,
+        error: t('errors.fileLoadFailed', { message: errorMessage }),
       };
     }
   }
