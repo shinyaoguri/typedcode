@@ -9,10 +9,20 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { SignedCheckpointService } from '../SignedCheckpointService.js';
-import type { CheckpointData, SignedCheckpointEnvelope } from '@typedcode/shared';
+import type { CheckpointData, SessionStartToken, SignedCheckpointEnvelope } from '@typedcode/shared';
 
 const SESSION = 'session-1';
 const TAB = 'tab-1';
+
+/** ADR-0027: sign は token 前提。ここでは送出ゲートの検証だけなので形だけの token で足りる。 */
+function makeToken(sessionId = SESSION): SessionStartToken {
+  return {
+    payload: { sessionId },
+    signature: 'sig',
+    keyId: 'test-key',
+    algorithm: 'ECDSA-P256',
+  } as unknown as SessionStartToken;
+}
 
 function makeEnvelope(params: {
   checkpointIndex: number;
@@ -51,7 +61,10 @@ function makeCheckpoint(eventIndex: number): CheckpointData {
   };
 }
 
-function createService(responses: SignedCheckpointEnvelope[]) {
+function createService(
+  responses: SignedCheckpointEnvelope[],
+  options: { getSessionStartToken?: () => SessionStartToken | null } = {}
+) {
   const fetchCalls: number[] = [];
   const attached: Array<{ eventIndex: number; firstSeenAt: string }> = [];
   const fetchImpl = vi.fn(async () => {
@@ -68,6 +81,7 @@ function createService(responses: SignedCheckpointEnvelope[]) {
     sessionId: SESSION,
     tabId: TAB,
     getInitialEventChainHash: () => 'a'.repeat(64),
+    getSessionStartToken: options.getSessionStartToken ?? (() => makeToken()),
     attachSignature: (eventIndex, envelope) => {
       attached.push({ eventIndex, firstSeenAt: envelope.payload.firstSeenAt });
       return true;
@@ -134,6 +148,97 @@ describe('SignedCheckpointService firstSeenAt consistency (#151)', () => {
 
     await vi.waitFor(() => expect(attached).toHaveLength(1), { timeout: 2000 });
     expect(attached[0]!.firstSeenAt).toBe(t0);
+    service.dispose();
+  });
+});
+
+describe('SignedCheckpointService session token gate (ADR-0027 / #136)', () => {
+  it('does not send sign requests while no session token is available', async () => {
+    const { service, fetchImpl } = createService(
+      [makeEnvelope({ checkpointIndex: 0, eventIndex: 0, firstSeenAt: '2026-07-02T00:00:00.000Z' })],
+      { getSessionStartToken: () => null }
+    );
+    service.handleNewCheckpoint(makeCheckpoint(0));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(service.pendingCount()).toBe(1); // 破棄せず待機 (token 到着で再開できる)
+    service.dispose();
+  });
+
+  it('resumes pending signatures once a token arrives (retryPendingSignatures)', async () => {
+    let token: SessionStartToken | null = null;
+    const { service, attached } = createService(
+      [makeEnvelope({ checkpointIndex: 0, eventIndex: 0, firstSeenAt: '2026-07-02T00:00:00.000Z' })],
+      { getSessionStartToken: () => token }
+    );
+    service.handleNewCheckpoint(makeCheckpoint(0));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(attached).toHaveLength(0);
+
+    token = makeToken(); // exam の best-effort 取得が後から成功したケース
+    service.retryPendingSignatures();
+    await vi.waitFor(() => expect(attached).toHaveLength(1), { timeout: 2000 });
+    expect(service.pendingCount()).toBe(0);
+    service.dispose();
+  });
+
+  it('sends the session token alongside the checkpoint input', async () => {
+    const bodies: unknown[] = [];
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return {
+        ok: true,
+        json: async () => ({
+          envelope: makeEnvelope({ checkpointIndex: 0, eventIndex: 0, firstSeenAt: '2026-07-02T00:00:00.000Z' }),
+        }),
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const service = new SignedCheckpointService({
+      apiUrl: 'http://localhost:9999',
+      sessionId: SESSION,
+      tabId: TAB,
+      getInitialEventChainHash: () => 'a'.repeat(64),
+      getSessionStartToken: () => makeToken(),
+      attachSignature: () => true,
+      isOnline: () => true,
+      fetchImpl,
+      backoffSchedule: [10],
+      maxAttemptsPerCheckpoint: 5,
+    });
+    service.handleNewCheckpoint(makeCheckpoint(0));
+    await vi.waitFor(() => expect(bodies).toHaveLength(1), { timeout: 2000 });
+    expect((bodies[0] as { sessionStartToken?: unknown }).sessionStartToken).toMatchObject({
+      payload: { sessionId: SESSION },
+    });
+    service.dispose();
+  });
+
+  it('gives up permanently and drains the queue when the server rejects the token as invalid', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: 'TOKEN_INVALID', error: 'Session start token is invalid' }),
+    })) as unknown as typeof fetch;
+    const service = new SignedCheckpointService({
+      apiUrl: 'http://localhost:9999',
+      sessionId: SESSION,
+      tabId: TAB,
+      getInitialEventChainHash: () => 'a'.repeat(64),
+      getSessionStartToken: () => makeToken(),
+      attachSignature: () => true,
+      isOnline: () => true,
+      fetchImpl,
+      backoffSchedule: [10],
+      maxAttemptsPerCheckpoint: 5,
+    });
+    service.handleNewCheckpoint(makeCheckpoint(0));
+    await vi.waitFor(() => expect(service.pendingCount()).toBe(0), { timeout: 2000 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1); // 恒久拒否はリトライしない
+    // 後続の checkpoint も送らない (export の waitForFlush も空回りしない)
+    service.handleNewCheckpoint(makeCheckpoint(5));
+    const wait = await service.waitForFlush(500);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(wait.flushed).toBe(false);
     service.dispose();
   });
 });

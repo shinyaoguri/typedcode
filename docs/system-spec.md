@@ -259,14 +259,16 @@ interface CheckpointData {
 
 **Workers 側処理** (`/api/checkpoint/sign`):
 1. スキーマ検証
-2. KV から `session:{sessionId}` を取得
-3. **firstSeenAt 確定**: 既存があればその値、なければ `now` で初回書込
-4. checkpointIndex 単調性チェック (best-effort)
-5. signedCount セッション上限チェック (50,000)
-6. `payload = { ...input, serverTimestamp: now, firstSeenAt, poswIterations: 10000, version: 1 }` を構築
-7. `signature = ECDSA-P256.sign(privateKey, deterministicStringify(payload))`
-8. KV 更新 (TTL **7 日**)
-9. envelope を返却
+2. **sessionStartToken 検証 (ADR-0027)**: 同送された token の ECDSA 署名を registry で検証し、`token.payload.sessionId === input.sessionId` を要求 (KV read より前。無認証リクエストに KV コストを払わない)
+3. KV から `session:{sessionId}:{tabId}` を取得
+4. **firstSeenAt 確定**: 既存があればその値、なければ `now` で初回書込
+5. 新規タブなら per-session タブ台帳 (`session:{sessionId}:tabs`) の上限チェック (`MAX_TABS_PER_SESSION` = 64、best-effort)
+6. checkpointIndex 単調性チェック (best-effort)
+7. signedCount セッション上限チェック (50,000)
+8. `payload = { ...input, serverTimestamp: now, firstSeenAt, poswIterations: 10000, version: 1 }` を構築
+9. `signature = ECDSA-P256.sign(privateKey, deterministicStringify(payload))`
+10. KV 更新 (TTL **7 日**)
+11. envelope を返却
 
 **Envelope 形式**:
 ```typescript
@@ -693,6 +695,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `SIGNED_CHECKPOINT_FORMAT_VERSION` | 1 | `version.ts` |
 | `SESSION_TTL_SECONDS` | 604800 (7日) | `workers/src/checkpoint.ts` |
 | `SESSION_MAX_CHECKPOINTS` | 50000 | `workers/src/checkpoint.ts` |
+| `MAX_TABS_PER_SESSION` | 64 | `workers/src/checkpoint.ts` (ADR-0027) |
 | `POST_HOC_RATIO_THRESHOLD` | 0.1 | `signedCheckpoints.ts` |
 | `POST_HOC_MIN_SERVER_SPAN_MS` | 60_000 | `signedCheckpoints.ts` |
 | `POST_HOC_MIN_CLIENT_SPAN_MS` | 600_000 | `signedCheckpoints.ts` |

@@ -16,6 +16,7 @@
 
 import type {
   CheckpointData,
+  SessionStartToken,
   SignedCheckpointEnvelope,
   SignedCheckpointInput,
 } from '@typedcode/shared';
@@ -26,6 +27,12 @@ export interface SignedCheckpointServiceOptions {
   tabId: string;
   /** 現在の typingProof から initialEventChainHash を取り出す関数 */
   getInitialEventChainHash: () => string | null;
+  /**
+   * 署名クレデンシャル (ADR-0027)。/api/checkpoint/sign は sessionStartToken 前提なので、
+   * null の間は送信せず待機する (トークンが後から届く exam の best-effort 取得に対応するため
+   * 毎回引く)。sessionId が token.payload.sessionId と一致している必要がある。
+   */
+  getSessionStartToken: () => SessionStartToken | null;
   /** 署名取得後、checkpoint に envelope を反映する callback */
   attachSignature: (eventIndex: number, envelope: SignedCheckpointEnvelope) => boolean;
   /** デフォルト: navigator.onLine 連動 */
@@ -77,6 +84,7 @@ export class SignedCheckpointService {
   private readonly sessionId: string;
   private readonly tabId: string;
   private readonly getInitialEventChainHash: () => string | null;
+  private readonly getSessionStartToken: () => SessionStartToken | null;
   private readonly attachSignature: (
     eventIndex: number,
     envelope: SignedCheckpointEnvelope
@@ -103,6 +111,12 @@ export class SignedCheckpointService {
    * バックオフ再送する (伝播後のリトライは正しい firstSeenAt で署名される)。
    */
   private knownFirstSeenAt: string | null = null;
+  /**
+   * サーバがこのセッションの token を恒久拒否した (TOKEN_INVALID / TOKEN_SESSION_MISMATCH)。
+   * リトライで回復しない失敗なので、以降の署名は諦めて queue を空にする
+   * (export の waitForFlush を timeout まで空回りさせないため)。
+   */
+  private tokenRejected = false;
   /** online/offline リスナのデタッチ用 */
   private onlineListener: (() => void) | null = null;
   /**
@@ -124,6 +138,7 @@ export class SignedCheckpointService {
     this.sessionId = options.sessionId;
     this.tabId = options.tabId;
     this.getInitialEventChainHash = options.getInitialEventChainHash;
+    this.getSessionStartToken = options.getSessionStartToken;
     this.attachSignature = options.attachSignature;
     this.isOnline = options.isOnline ?? (() => (typeof navigator === 'undefined' ? true : navigator.onLine));
     // fetch は this===window バインディングを要求するので、参照を渡しただけだと
@@ -206,6 +221,9 @@ export class SignedCheckpointService {
   async waitForFlush(timeoutMs: number): Promise<{ flushed: boolean; remaining: number }> {
     const startedAt = Date.now();
     while (this.queue.size > 0 && Date.now() - startedAt < timeoutMs) {
+      // 署名クレデンシャルが無い / 恒久拒否された間は進展しないので timeout まで待たない
+      // (ADR-0027 の劣化モード: 署名なしで export を続行する)。
+      if (this.tokenRejected || !this.getSessionStartToken()) break;
       // online であれば即時 flush を試みる
       if (this.isOnline()) {
         await this.flush();
@@ -213,6 +231,13 @@ export class SignedCheckpointService {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     return { flushed: this.queue.size === 0, remaining: this.queue.size };
+  }
+
+  /**
+   * 署名クレデンシャルが後から届いたときに pending を再送する (exam の best-effort 取得)。
+   */
+  retryPendingSignatures(): void {
+    void this.flush();
   }
 
   /**
@@ -277,6 +302,9 @@ export class SignedCheckpointService {
     try {
       while (!this.disposed && this.queue.size > 0) {
         if (!this.isOnline()) return;
+        // ADR-0027: sign は sessionStartToken 前提。token が無い間は送っても 401 なので
+        // 待機する (次の handleNewCheckpoint / retryPendingSignatures で再開)。
+        if (this.tokenRejected || !this.getSessionStartToken()) return;
         // 連鎖整合を保つため eventIndex の昇順で処理
         let nextEventIndex: number | null = null;
         for (const k of this.queue.keys()) {
@@ -301,15 +329,30 @@ export class SignedCheckpointService {
       console.warn('[SignedCheckpointService] initialEventChainHash unavailable, skipping sign');
       return false;
     }
+    const sessionStartToken = this.getSessionStartToken();
+    if (!sessionStartToken) return false; // flush 側のガードと同じ待機 (token 到着で再開)
     entry.attempts++;
     try {
       const res = await this.fetchImpl(`${this.apiUrl}/api/checkpoint/sign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        // ADR-0027: token は署名 payload には含まれない認証情報なので body に同送する。
+        body: JSON.stringify({ ...input, sessionStartToken }),
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({})) as { code?: string; error?: string };
+        // token の恒久拒否はリトライで回復しない: 以降の署名を諦め queue を空にする。
+        if (errBody.code === 'TOKEN_INVALID' || errBody.code === 'TOKEN_SESSION_MISMATCH') {
+          console.warn(
+            `[SignedCheckpointService] session token permanently rejected (${errBody.code}); disabling signing for this session`
+          );
+          this.tokenRejected = true;
+          for (const e of this.queue.values()) {
+            if (e.retryTimer) clearTimeout(e.retryTimer);
+          }
+          this.queue.clear();
+          return false;
+        }
         return this.handleFailure(eventIndex, entry, `HTTP ${res.status} ${errBody.code ?? ''} ${errBody.error ?? ''}`.trim());
       }
       const body = (await res.json()) as { envelope: SignedCheckpointEnvelope };
