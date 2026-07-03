@@ -4,11 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  summarizeProcess,
-  PROCESS_PAUSE_THRESHOLD_MS,
-  PROCESS_FOCUS_BURST_MIN_CHARS,
-} from '../processSummary.js';
+import { summarizeProcess, PROCESS_PAUSE_THRESHOLD_MS, PROCESS_FOCUS_BURST_MIN_CHARS } from '../processSummary.js';
 import type { StoredEvent } from '../types/proof.js';
 
 let seq = 0;
@@ -40,7 +36,13 @@ function insert(timestamp: number, text: string): StoredEvent {
 }
 
 function del(timestamp: number, length: number): StoredEvent {
-  return makeEvent({ type: 'contentChange', timestamp, inputType: 'deleteContentBackward', data: '', rangeLength: length });
+  return makeEvent({
+    type: 'contentChange',
+    timestamp,
+    inputType: 'deleteContentBackward',
+    data: '',
+    rangeLength: length,
+  });
 }
 
 function focus(timestamp: number, focused: boolean): StoredEvent {
@@ -137,12 +139,7 @@ describe('summarizeProcess — moments', () => {
 
   it('records a focus-return burst when enough characters follow a refocus', () => {
     const burstText = 'x'.repeat(PROCESS_FOCUS_BURST_MIN_CHARS);
-    const s = summarizeProcess([
-      insert(0, 'a'),
-      focus(1_000, false),
-      focus(60_000, true),
-      insert(61_000, burstText),
-    ]);
+    const s = summarizeProcess([insert(0, 'a'), focus(1_000, false), focus(60_000, true), insert(61_000, burstText)]);
     expect(s.focusLossCount).toBe(1);
     const m = s.moments.find((x) => x.kind === 'focus-return-burst');
     expect(m?.fromEventIndex).toBe(2);
@@ -150,19 +147,20 @@ describe('summarizeProcess — moments', () => {
   });
 
   it('does not record a focus-return burst below the threshold', () => {
-    const s = summarizeProcess([
-      insert(0, 'a'),
-      focus(1_000, false),
-      focus(60_000, true),
-      insert(61_000, 'short'),
-    ]);
+    const s = summarizeProcess([insert(0, 'a'), focus(1_000, false), focus(60_000, true), insert(61_000, 'short')]);
     expect(s.moments.find((x) => x.kind === 'focus-return-burst')).toBeUndefined();
   });
 
   it('records prohibited external input as moments with character counts', () => {
     const s = summarizeProcess([
       insert(0, 'a'),
-      makeEvent({ type: 'contentChange', timestamp: 100, inputType: 'insertFromPaste', data: 'pasted!', rangeLength: 0 }),
+      makeEvent({
+        type: 'contentChange',
+        timestamp: 100,
+        inputType: 'insertFromPaste',
+        data: 'pasted!',
+        rangeLength: 0,
+      }),
     ]);
     expect(s.externalInputCount).toBe(1);
     const m = s.moments.find((x) => x.kind === 'external-input');
@@ -173,7 +171,18 @@ describe('summarizeProcess — moments', () => {
   it('extracts the debug cycle: first failed run and first success after failure (ADR-0021)', () => {
     const run = (timestamp: number, outcome: 'success' | 'failure'): StoredEvent[] => [
       makeEvent({ type: 'codeExecution', timestamp, data: { phase: 'start', filename: 'a.c', language: 'c' } }),
-      makeEvent({ type: 'codeExecution', timestamp: timestamp + 100, data: { phase: 'result', filename: 'a.c', language: 'c', outcome, exitCode: outcome === 'success' ? 0 : 1, elapsedMs: 100 } }),
+      makeEvent({
+        type: 'codeExecution',
+        timestamp: timestamp + 100,
+        data: {
+          phase: 'result',
+          filename: 'a.c',
+          language: 'c',
+          outcome,
+          exitCode: outcome === 'success' ? 0 : 1,
+          elapsedMs: 100,
+        },
+      }),
     ];
     const s = summarizeProcess([...run(0, 'failure'), ...run(1000, 'failure'), ...run(2000, 'success')]);
     expect(s.executionCount).toBe(3);
@@ -187,7 +196,11 @@ describe('summarizeProcess — moments', () => {
   it('does not flag success-after-failure when the first run already succeeds', () => {
     const s = summarizeProcess([
       makeEvent({ type: 'codeExecution', timestamp: 0, data: { phase: 'start', filename: 'a.c', language: 'c' } }),
-      makeEvent({ type: 'codeExecution', timestamp: 100, data: { phase: 'result', filename: 'a.c', language: 'c', outcome: 'success', exitCode: 0 } }),
+      makeEvent({
+        type: 'codeExecution',
+        timestamp: 100,
+        data: { phase: 'result', filename: 'a.c', language: 'c', outcome: 'success', exitCode: 0 },
+      }),
     ]);
     expect(s.moments.find((m) => m.kind === 'first-success-after-failure')).toBeUndefined();
     expect(s.runSuccessCount).toBe(1);
@@ -210,16 +223,20 @@ describe('summarizeProcess — moments', () => {
   });
 
   it('ignores empty reflection notes', () => {
-    const s = summarizeProcess([
-      makeEvent({ type: 'reflectionNote', timestamp: 0, data: { text: '' } }),
-    ]);
+    const s = summarizeProcess([makeEvent({ type: 'reflectionNote', timestamp: 0, data: { text: '' } })]);
     expect(s.reflectionNotes).toEqual([]);
   });
 
   it('counts a multi-line bulk insertion (AI/snippet via Tab) as external input', () => {
     const s = summarizeProcess([
       insert(0, 'a'),
-      makeEvent({ type: 'contentChange', timestamp: 100, inputType: 'insertReplacementText', data: 'int f() {\n  return 0;\n}', rangeLength: 0 }),
+      makeEvent({
+        type: 'contentChange',
+        timestamp: 100,
+        inputType: 'insertReplacementText',
+        data: 'int f() {\n  return 0;\n}',
+        rangeLength: 0,
+      }),
     ]);
     expect(s.externalInputCount).toBe(1);
     expect(s.moments.find((x) => x.kind === 'external-input')?.fromEventIndex).toBe(1);
@@ -227,22 +244,47 @@ describe('summarizeProcess — moments', () => {
 
   it('does not count single-line editor completions (brackets / Tab) as external input', () => {
     const s = summarizeProcess([
-      makeEvent({ type: 'contentChange', timestamp: 0, inputType: 'insertReplacementText', data: '()', rangeLength: 0 }),
-      makeEvent({ type: 'contentChange', timestamp: 50, inputType: 'insertReplacementText', data: 'printf', rangeLength: 0 }),
+      makeEvent({
+        type: 'contentChange',
+        timestamp: 0,
+        inputType: 'insertReplacementText',
+        data: '()',
+        rangeLength: 0,
+      }),
+      makeEvent({
+        type: 'contentChange',
+        timestamp: 50,
+        inputType: 'insertReplacementText',
+        data: 'printf',
+        rangeLength: 0,
+      }),
     ]);
     expect(s.externalInputCount).toBe(0);
   });
 
   it('does not count internal paste (allowed input) as external input', () => {
     const s = summarizeProcess([
-      makeEvent({ type: 'contentChange', timestamp: 0, inputType: 'insertFromInternalPaste', data: 'own code', rangeLength: 0 }),
+      makeEvent({
+        type: 'contentChange',
+        timestamp: 0,
+        inputType: 'insertFromInternalPaste',
+        data: 'own code',
+        rangeLength: 0,
+      }),
     ]);
     expect(s.externalInputCount).toBe(0);
   });
 
   it('counts a contentSnapshot that diverges from the replayed document as external input (#175)', () => {
     const s = summarizeProcess([
-      makeEvent({ type: 'contentChange', timestamp: 0, inputType: 'insertText', data: 'a', rangeOffset: 0, rangeLength: 0 }),
+      makeEvent({
+        type: 'contentChange',
+        timestamp: 0,
+        inputType: 'insertText',
+        data: 'a',
+        rangeOffset: 0,
+        rangeLength: 0,
+      }),
       makeEvent({ type: 'contentSnapshot', timestamp: 100, data: 'int ai() {\n  return 42;\n}\n' }),
     ]);
     expect(s.externalInputCount).toBe(1);
@@ -251,7 +293,14 @@ describe('summarizeProcess — moments', () => {
 
   it('does not count the regular contentSnapshot that matches the replayed document (#175)', () => {
     const s = summarizeProcess([
-      makeEvent({ type: 'contentChange', timestamp: 0, inputType: 'insertText', data: 'a', rangeOffset: 0, rangeLength: 0 }),
+      makeEvent({
+        type: 'contentChange',
+        timestamp: 0,
+        inputType: 'insertText',
+        data: 'a',
+        rangeOffset: 0,
+        rangeLength: 0,
+      }),
       makeEvent({ type: 'contentSnapshot', timestamp: 100, data: 'a' }),
     ]);
     expect(s.externalInputCount).toBe(0);

@@ -36,15 +36,17 @@ if (existsSync(DEV_VARS)) {
 
 console.log('[e2e setup] .dev.vars が無いので E2E 用の環境を生成します (CI 想定)');
 
-const { publicKey, privateKey } = await webcrypto.subtle.generateKey(
-  { name: 'ECDSA', namedCurve: 'P-256' },
-  true,
-  ['sign', 'verify'],
-);
+const { publicKey, privateKey } = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+  'sign',
+  'verify',
+]);
 const publicJwk = await webcrypto.subtle.exportKey('jwk', publicKey);
 const privateJwk = await webcrypto.subtle.exportKey('jwk', privateKey);
 // keyId は公開鍵 x 座標から決定的に作る (Date/乱数に依存しない)。
-const keyId = `tcp-e2e-${(publicJwk.x ?? '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase()}`;
+const keyId = `tcp-e2e-${(publicJwk.x ?? '')
+  .replace(/[^a-zA-Z0-9]/g, '')
+  .slice(0, 8)
+  .toLowerCase()}`;
 
 writeFileSync(
   DEV_VARS,
@@ -55,7 +57,7 @@ writeFileSync(
     `CHECKPOINT_SIGNING_KEY_ID=${keyId}`,
     `CHECKPOINT_SIGNING_KEY_JWK=${JSON.stringify(privateJwk)}`,
     '',
-  ].join('\n'),
+  ].join('\n')
 );
 console.log(`[e2e setup] .dev.vars を生成 (keyId=${keyId})`);
 
@@ -77,7 +79,7 @@ writeFileSync(
     `  ${JSON.stringify(publicEntry)} as CheckpointPublicKey,`,
     '];',
     '',
-  ].join('\n'),
+  ].join('\n')
 );
 console.log('[e2e setup] localKeys.ts に E2E 公開鍵を書き込み');
 
@@ -89,7 +91,7 @@ if (!existsSync(EDITOR_ENV)) {
       `VITE_TURNSTILE_SITE_KEY=${TURNSTILE_SITE_KEY}`,
       'VITE_API_URL=http://localhost:8787',
       '',
-    ].join('\n'),
+    ].join('\n')
   );
   console.log('[e2e setup] packages/editor/.env を生成');
 } else {

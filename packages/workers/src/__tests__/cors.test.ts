@@ -71,8 +71,7 @@ describe('CORS allowed-origin policy', () => {
 
   // ---- production の実設定 ----
   describe('with production ALLOWED_ORIGINS', () => {
-    const prod = () =>
-      baseEnv({ ALLOWED_ORIGINS: 'https://typedcode.dev,https://typedcode.pages.dev' });
+    const prod = () => baseEnv({ ALLOWED_ORIGINS: 'https://typedcode.dev,https://typedcode.pages.dev' });
 
     it('allows the custom domain', async () => {
       const res = await worker.fetch(preflight('https://typedcode.dev'), prod());

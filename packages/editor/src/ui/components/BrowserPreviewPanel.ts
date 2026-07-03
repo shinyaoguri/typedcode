@@ -290,10 +290,7 @@ export class BrowserPreviewPanel {
     if (!this.iframe?.contentWindow) return;
 
     try {
-      this.iframe.contentWindow.scrollTo(
-        this.lastScrollPosition.x,
-        this.lastScrollPosition.y
-      );
+      this.iframe.contentWindow.scrollTo(this.lastScrollPosition.x, this.lastScrollPosition.y);
     } catch {
       // cross-origin制限でアクセスできない場合は無視
     }
@@ -316,7 +313,7 @@ export class BrowserPreviewPanel {
     if (activeTab?.language === 'html') {
       htmlTab = activeTab;
     } else {
-      htmlTab = tabs.find(t => t.language === 'html');
+      htmlTab = tabs.find((t) => t.language === 'html');
     }
 
     if (!htmlTab) return null;
@@ -404,11 +401,7 @@ export class BrowserPreviewPanel {
   /**
    * 参照パスに一致するタブを探す
    */
-  private findMatchingTab(
-    refPath: string,
-    tabMap: Map<string, TabState>,
-    language: string
-  ): TabState | undefined {
+  private findMatchingTab(refPath: string, tabMap: Map<string, TabState>, language: string): TabState | undefined {
     // 直接マッチ
     if (tabMap.has(refPath)) {
       const tab = tabMap.get(refPath);
@@ -438,10 +431,7 @@ export class BrowserPreviewPanel {
   private replaceLinkTag(html: string, href: string, replacement: string): string {
     // href属性をエスケープして正規表現を作成
     const escapedHref = href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const linkRegex = new RegExp(
-      `<link\\s+[^>]*href\\s*=\\s*["']${escapedHref}["'][^>]*>`,
-      'gi'
-    );
+    const linkRegex = new RegExp(`<link\\s+[^>]*href\\s*=\\s*["']${escapedHref}["'][^>]*>`, 'gi');
     return html.replace(linkRegex, replacement);
   }
 
@@ -452,10 +442,7 @@ export class BrowserPreviewPanel {
     // src属性をエスケープして正規表現を作成
     const escapedSrc = src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // <script src="..."></script> または <script src="..." /> をマッチ
-    const scriptRegex = new RegExp(
-      `<script\\s+[^>]*src\\s*=\\s*["']${escapedSrc}["'][^>]*>\\s*</script>`,
-      'gi'
-    );
+    const scriptRegex = new RegExp(`<script\\s+[^>]*src\\s*=\\s*["']${escapedSrc}["'][^>]*>\\s*</script>`, 'gi');
     return html.replace(scriptRegex, replacement);
   }
 

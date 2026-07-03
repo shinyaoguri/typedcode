@@ -24,11 +24,10 @@ export interface ExamAuthorityFixture {
 
 /** ECDSA-P256 の出題者鍵ペアを生成し、registry エントリと signer を返す */
 export async function makeExamAuthority(keyId = 'exam-test-0001'): Promise<ExamAuthorityFixture> {
-  const pair = (await crypto.subtle.generateKey(
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    true,
-    ['sign', 'verify']
-  )) as CryptoKeyPair;
+  const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+    'sign',
+    'verify',
+  ])) as CryptoKeyPair;
   const publicKeyJwk = (await crypto.subtle.exportKey('jwk', pair.publicKey)) as JsonWebKey;
   const entry: ExamAuthorityKey = {
     keyId,

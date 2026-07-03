@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  EXAM_BUNDLE_SCHEMA,
-  CLASS_PACKAGE_SCHEMA,
-  parseClassPackage,
-  encodeClassPackage,
-} from '../exam/index.js';
+import { EXAM_BUNDLE_SCHEMA, CLASS_PACKAGE_SCHEMA, parseClassPackage, encodeClassPackage } from '../exam/index.js';
 import type { ClassPackage } from '../types/exam.js';
 
 function samplePackage(): ClassPackage {
@@ -15,7 +10,11 @@ function samplePackage(): ClassPackage {
     bundle: {
       schema: EXAM_BUNDLE_SCHEMA,
       problems: [
-        { problemId: 'p1', statement: '# 問題1\n和を出力せよ。', starter: { filename: 'p1.c', language: 'c', content: '/* TODO */\n' } },
+        {
+          problemId: 'p1',
+          statement: '# 問題1\n和を出力せよ。',
+          starter: { filename: 'p1.c', language: 'c', content: '/* TODO */\n' },
+        },
         { problemId: 'p2', statement: '# 問題2\n積を出力せよ。' },
       ],
     },
@@ -48,7 +47,9 @@ describe('parseClassPackage', () => {
 
   it('rejects an invalid bundle (delegates structure to parseExamBundle)', () => {
     expect(parseClassPackage({ ...samplePackage(), bundle: { schema: EXAM_BUNDLE_SCHEMA, problems: [] } })).toBeNull();
-    expect(parseClassPackage({ ...samplePackage(), bundle: { problems: [{ problemId: 'p1', statement: 'x' }] } })).toBeNull();
+    expect(
+      parseClassPackage({ ...samplePackage(), bundle: { problems: [{ problemId: 'p1', statement: 'x' }] } })
+    ).toBeNull();
   });
 
   it('rejects a non-object input', () => {

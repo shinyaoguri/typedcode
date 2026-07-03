@@ -4,7 +4,7 @@
  */
 
 import type { CheckpointData, SignedCheckpointEnvelope, StoredEvent } from '../types.js';
-import { HashChainManager } from './HashChainManager.js';
+import type { HashChainManager } from './HashChainManager.js';
 import { sharedDebugLog } from '../utils/debug.js';
 
 export type CheckpointCreatedHook = (checkpoint: CheckpointData) => void | Promise<void>;
@@ -43,15 +43,10 @@ export class CheckpointManager {
   private lastCheckpointEventIndex = -1;
   private lastCheckpointAt: number | null = null;
 
-  constructor(
-    hashChainManager: HashChainManager,
-    options: CheckpointManagerOptions = {}
-  ) {
+  constructor(hashChainManager: HashChainManager, options: CheckpointManagerOptions = {}) {
     this.hashChainManager = hashChainManager;
-    this.maxEventsPerCheckpoint =
-      options.maxEventsPerCheckpoint ?? DEFAULT_MAX_EVENTS_PER_CHECKPOINT;
-    this.maxIntervalMs =
-      options.maxIntervalMs ?? DEFAULT_MAX_CHECKPOINT_INTERVAL_MS;
+    this.maxEventsPerCheckpoint = options.maxEventsPerCheckpoint ?? DEFAULT_MAX_EVENTS_PER_CHECKPOINT;
+    this.maxIntervalMs = options.maxIntervalMs ?? DEFAULT_MAX_CHECKPOINT_INTERVAL_MS;
     this.now = options.now ?? Date.now;
   }
 
@@ -128,20 +123,24 @@ export class CheckpointManager {
 
     // イベントのデータからコンテンツハッシュを計算
     const contentHash = event.data
-      ? await this.hashChainManager.computeHash(typeof event.data === 'string' ? event.data : JSON.stringify(event.data))
+      ? await this.hashChainManager.computeHash(
+          typeof event.data === 'string' ? event.data : JSON.stringify(event.data)
+        )
       : '';
 
     const checkpoint: CheckpointData = {
       eventIndex,
       hash: event.hash,
       timestamp: event.timestamp,
-      contentHash
+      contentHash,
     };
 
     this.checkpoints.push(checkpoint);
     this.lastCheckpointEventIndex = eventIndex;
     this.lastCheckpointAt = this.now();
-    sharedDebugLog(`[CheckpointManager] Checkpoint created at event ${eventIndex}, hash: ${event.hash.substring(0, 16)}...`);
+    sharedDebugLog(
+      `[CheckpointManager] Checkpoint created at event ${eventIndex}, hash: ${event.hash.substring(0, 16)}...`
+    );
 
     // hook を発火。失敗してもチェーンを止めない。
     if (this.onCheckpointCreated) {
@@ -166,9 +165,7 @@ export class CheckpointManager {
    */
   shouldCreateCheckpoint(eventIndex: number): boolean {
     const eventsSinceLast =
-      this.lastCheckpointEventIndex < 0
-        ? eventIndex + 1
-        : eventIndex - this.lastCheckpointEventIndex;
+      this.lastCheckpointEventIndex < 0 ? eventIndex + 1 : eventIndex - this.lastCheckpointEventIndex;
     if (eventsSinceLast >= this.maxEventsPerCheckpoint) return true;
     if (this.lastCheckpointAt !== null) {
       const elapsed = Math.max(0, this.now() - this.lastCheckpointAt);

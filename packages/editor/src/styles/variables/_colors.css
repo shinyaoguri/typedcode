@@ -18,14 +18,24 @@
   /* 機能別アクセント — ぱっと見で機能/モードを判別する (要望)。
      既定 = 作成(editor/casual) の青。editor のモードは data-mode が、
      verify/author は data-feature が <html> 上で上書きする。 */
-  --feature-accent: #0078d4;       /* 作成 (casual) = 青 */
+  --feature-accent: #0078d4; /* 作成 (casual) = 青 */
   --feature-accent-fg: #ffffff;
 }
-:root[data-mode="class"]      { --feature-accent: #1f9d9d; } /* 授業 = ティール */
-:root[data-mode="assignment"] { --feature-accent: #bf8700; } /* 課題 = アンバー */
-:root[data-mode="exam"]       { --feature-accent: #cf222e; } /* 試験 = 赤 */
-:root[data-feature="verify"]  { --feature-accent: #2ea043; } /* 検証 = 緑 */
-:root[data-feature="author"]  { --feature-accent: #8957e5; } /* 出題 = 紫 */
+:root[data-mode="class"] {
+  --feature-accent: #1f9d9d;
+} /* 授業 = ティール */
+:root[data-mode="assignment"] {
+  --feature-accent: #bf8700;
+} /* 課題 = アンバー */
+:root[data-mode="exam"] {
+  --feature-accent: #cf222e;
+} /* 試験 = 赤 */
+:root[data-feature="verify"] {
+  --feature-accent: #2ea043;
+} /* 検証 = 緑 */
+:root[data-feature="author"] {
+  --feature-accent: #8957e5;
+} /* 出題 = 紫 */
 
 :root[data-theme="dark"] {
   /* Base colors */

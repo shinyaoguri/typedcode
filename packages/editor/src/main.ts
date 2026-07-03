@@ -22,8 +22,16 @@ document.documentElement.setAttribute('data-mode', mode);
 // 全消去リクエスト (?reset): 全モードのデータを消す手動ユーティリティ (sticky 解除用ではない)。
 if (urlParams.get('reset')) {
   console.log('[TypedCode] Reset parameter detected, clearing all data...');
-  try { localStorage.clear(); } catch { /* ignore */ }
-  try { sessionStorage.clear(); } catch { /* ignore */ }
+  try {
+    localStorage.clear();
+  } catch {
+    /* ignore */
+  }
+  try {
+    sessionStorage.clear();
+  } catch {
+    /* ignore */
+  }
   try {
     const cookies = document.cookie.split(';');
     for (const cookie of cookies) {
@@ -33,9 +41,15 @@ if (urlParams.get('reset')) {
         document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   for (const db of allSessionDbNames()) {
-    try { indexedDB.deleteDatabase(db); } catch { /* ignore */ }
+    try {
+      indexedDB.deleteDatabase(db);
+    } catch {
+      /* ignore */
+    }
   }
   const cleanUrl = window.location.origin + window.location.pathname;
   window.history.replaceState({}, '', cleanUrl);
@@ -75,10 +89,7 @@ import { initializeTrackers } from './tracking/TrackersInitializer.js';
 import { ThemeManager } from './editor/ThemeManager.js';
 import { TabManager, type SyncStatus, type TabState } from './ui/tabs/TabManager.js';
 import type { MonacoEditor } from './editor/types.js';
-import {
-  isTurnstileConfigured,
-  loadTurnstileScript as preloadTurnstile,
-} from './services/TurnstileService.js';
+import { isTurnstileConfigured, loadTurnstileScript as preloadTurnstile } from './services/TurnstileService.js';
 import {
   SingleInstanceGuard,
   showDuplicateInstanceOverlay,
@@ -220,9 +231,7 @@ const editor: MonacoEditor = monaco.editor.create(editorContainer, {
 // 再現するため、現在の選択位置に単一の executeEdits を適用する。通常のキー入力 API では
 // Monaco が 1 文字ずつに分解してしまい、この一括投入経路を E2E で再現できないため用意する。
 if (import.meta.env.DEV) {
-  (window as unknown as { __tcTestInsertBlock?: (text: string) => void }).__tcTestInsertBlock = (
-    text: string,
-  ) => {
+  (window as unknown as { __tcTestInsertBlock?: (text: string) => void }).__tcTestInsertBlock = (text: string) => {
     const selection = editor.getSelection();
     if (!selection) return;
     editor.focus();
@@ -260,7 +269,7 @@ const ctx: AppContext = {
       },
     }),
     operation: new OperationDetector(),
-    screenshot: null,  // 許可取得後に初期化
+    screenshot: null, // 許可取得後に初期化
   },
   editorController: new EditorController({
     operationDetector: new OperationDetector(),
@@ -482,11 +491,7 @@ async function initializeTabManager(
   if (recoverySessionId) {
     // セッション復旧モード: IndexedDBからタブを読み込む
     updateInitMessage(t('sessionRecovery.resuming'));
-    initialized = await ctx.tabManager.loadFromIndexedDB(
-      recoverySessionId,
-      fingerprintHash,
-      fingerprintComponents
-    );
+    initialized = await ctx.tabManager.loadFromIndexedDB(recoverySessionId, fingerprintHash, fingerprintComponents);
   } else {
     updateInitMessage(t('notifications.initializingEditor'));
     initialized = await ctx.tabManager.initialize(fingerprintHash, fingerprintComponents);
@@ -496,7 +501,7 @@ async function initializeTabManager(
   // これにより、ペースト時に全タブのコンテンツから内部ペーストを判定できる
   ctx.contentRegistry.setGetAllContentsCallback(() => {
     const tabs = ctx.tabManager?.getAllTabs() ?? [];
-    return tabs.map(tab => tab.model.getValue());
+    return tabs.map((tab) => tab.model.getValue());
   });
 
   return initialized;
@@ -523,8 +528,7 @@ function initializeIdleTimeoutManager(): void {
 
   // UIコールバック設定
   ctx.idleTimeoutManager.setUICallbacks({
-    showWarningDialog: () =>
-      showIdleWarningDialog(DEBUG_MODE ? 30 * 1000 : 5 * 60 * 1000),
+    showWarningDialog: () => showIdleWarningDialog(DEBUG_MODE ? 30 * 1000 : 5 * 60 * 1000),
     showSuspendedOverlay: () =>
       showIdleSuspendedOverlay(() => {
         ctx.idleTimeoutManager?.resume();
@@ -734,11 +738,12 @@ function initializeCodeExecution(): void {
       endLineNumber: err.line,
       endColumn: activeTab.model.getLineMaxColumn(err.line),
       message: err.message,
-      severity: err.severity === 'error'
-        ? monaco.MarkerSeverity.Error
-        : err.severity === 'warning'
-          ? monaco.MarkerSeverity.Warning
-          : monaco.MarkerSeverity.Info,
+      severity:
+        err.severity === 'error'
+          ? monaco.MarkerSeverity.Error
+          : err.severity === 'warning'
+            ? monaco.MarkerSeverity.Warning
+            : monaco.MarkerSeverity.Info,
     }));
 
     monaco.editor.setModelMarkers(activeTab.model, 'c-compiler', markers);
@@ -855,20 +860,23 @@ function recordTermsAcceptance(): void {
     const parsed = JSON.parse(termsData);
     const hasTermsEvent = activeProofForTerms.events.some((e: { type: string }) => e.type === 'termsAccepted');
     if (!hasTermsEvent) {
-      activeProofForTerms.recordEvent({
-        type: 'termsAccepted',
-        data: {
-          version: parsed.version,
-          timestamp: parsed.timestamp,
-          agreedAt: parsed.agreedAt,
-        },
-        description: `Terms v${parsed.version} accepted`,
-      }).then(() => {
-        console.log('[TypedCode] Terms acceptance recorded to hash chain');
-        ctx.tabManager?.saveToStorage();
-      }).catch((err: unknown) => {
-        console.error('[TypedCode] Failed to record terms acceptance:', err);
-      });
+      activeProofForTerms
+        .recordEvent({
+          type: 'termsAccepted',
+          data: {
+            version: parsed.version,
+            timestamp: parsed.timestamp,
+            agreedAt: parsed.agreedAt,
+          },
+          description: `Terms v${parsed.version} accepted`,
+        })
+        .then(() => {
+          console.log('[TypedCode] Terms acceptance recorded to hash chain');
+          ctx.tabManager?.saveToStorage();
+        })
+        .catch((err: unknown) => {
+          console.error('[TypedCode] Failed to record terms acceptance:', err);
+        });
     }
   } catch (err) {
     console.error('[TypedCode] Failed to parse terms data:', err);
@@ -882,7 +890,11 @@ function recordTermsAcceptance(): void {
 /** 言語 ID → ファイル拡張子 (exam タブのファイル名生成用) */
 function examFileExtension(language: string): string {
   const map: Record<string, string> = {
-    c: 'c', cpp: 'cpp', python: 'py', javascript: 'js', typescript: 'ts',
+    c: 'c',
+    cpp: 'cpp',
+    python: 'py',
+    javascript: 'js',
+    typescript: 'ts',
   };
   return map[language] ?? language;
 }
@@ -1196,32 +1208,14 @@ async function initializeApp(): Promise<void> {
       showScreenShareOptOutBanner(onResume);
       console.log('[TypedCode] Screen-share not prompted at start (opt-in via banner) for mode:', ctx.mode);
     } else {
-    // 選択ダイアログを表示：「画面共有を開始」または「画面共有なしで使用」
-    initOverlay?.classList.add('hidden');
-    const choice = await showScreenShareChoiceDialog();
-    initOverlay?.classList.remove('hidden');
-    updateInitMessage(t('app.initializing'));
-
-    if (choice === 'cancelled') {
-      // キャンセルされた場合は画面共有を要求（従来の動作）
-      const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
-      if (!permissionGranted) {
-        showScreenCaptureLockOverlay(onResume, onContinueWithout);
-        return;
-      }
-      // ストリーム停止時のコールバックを設定
-      screenshotTracker.setStreamStoppedCallback(() => {
-        showScreenCaptureLockOverlay(onResume, onContinueWithout);
-      });
-    } else if (choice === 'optOut') {
-      // オプトアウトの確認ダイアログを表示
+      // 選択ダイアログを表示：「画面共有を開始」または「画面共有なしで使用」
       initOverlay?.classList.add('hidden');
-      const confirmed = await showScreenShareOptOutConfirmDialog();
+      const choice = await showScreenShareChoiceDialog();
       initOverlay?.classList.remove('hidden');
       updateInitMessage(t('app.initializing'));
 
-      if (!confirmed) {
-        // キャンセルされた場合は画面共有を要求
+      if (choice === 'cancelled') {
+        // キャンセルされた場合は画面共有を要求（従来の動作）
         const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
         if (!permissionGranted) {
           showScreenCaptureLockOverlay(onResume, onContinueWithout);
@@ -1231,26 +1225,44 @@ async function initializeApp(): Promise<void> {
         screenshotTracker.setStreamStoppedCallback(() => {
           showScreenCaptureLockOverlay(onResume, onContinueWithout);
         });
+      } else if (choice === 'optOut') {
+        // オプトアウトの確認ダイアログを表示
+        initOverlay?.classList.add('hidden');
+        const confirmed = await showScreenShareOptOutConfirmDialog();
+        initOverlay?.classList.remove('hidden');
+        updateInitMessage(t('app.initializing'));
+
+        if (!confirmed) {
+          // キャンセルされた場合は画面共有を要求
+          const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
+          if (!permissionGranted) {
+            showScreenCaptureLockOverlay(onResume, onContinueWithout);
+            return;
+          }
+          // ストリーム停止時のコールバックを設定
+          screenshotTracker.setStreamStoppedCallback(() => {
+            showScreenCaptureLockOverlay(onResume, onContinueWithout);
+          });
+        } else {
+          // オプトアウト確定
+          screenshotTracker.setOptedOut(true);
+          // 注: オプトアウトイベントはTrackersInitializer後にコールバックが設定されてから発火される
+          // バナーを表示（途中から画面共有を有効にするボタン付き）
+          showScreenShareOptOutBanner(onResume);
+          console.log('[TypedCode] Screen sharing opted out');
+        }
       } else {
-        // オプトアウト確定
-        screenshotTracker.setOptedOut(true);
-        // 注: オプトアウトイベントはTrackersInitializer後にコールバックが設定されてから発火される
-        // バナーを表示（途中から画面共有を有効にするボタン付き）
-        showScreenShareOptOutBanner(onResume);
-        console.log('[TypedCode] Screen sharing opted out');
+        // 「画面共有を開始」を選択
+        const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
+        if (!permissionGranted) {
+          showScreenCaptureLockOverlay(onResume, onContinueWithout);
+          return;
+        }
+        // ストリーム停止時のコールバックを設定
+        screenshotTracker.setStreamStoppedCallback(() => {
+          showScreenCaptureLockOverlay(onResume, onContinueWithout);
+        });
       }
-    } else {
-      // 「画面共有を開始」を選択
-      const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
-      if (!permissionGranted) {
-        showScreenCaptureLockOverlay(onResume, onContinueWithout);
-        return;
-      }
-      // ストリーム停止時のコールバックを設定
-      screenshotTracker.setStreamStoppedCallback(() => {
-        showScreenCaptureLockOverlay(onResume, onContinueWithout);
-      });
-    }
     } // end: promptScreenShareAtStart の選択ダイアログ分岐 (ADR-0015)
 
     ctx.trackers.screenshot = screenshotTracker;
@@ -1442,7 +1454,9 @@ async function initializeApp(): Promise<void> {
     onFocusRegained: () => {
       // フォーカス復帰時にLogViewerを更新（フォーカス喪失中に記録されたイベントを反映）
       // focusChangeイベントの記録完了後に呼ばれるので、即座にrefresh可能
-      console.debug(`[main] onFocusRegained: logViewer=${ctx.logViewer ? 'set' : 'null'}, isVisible=${ctx.logViewer?.isVisible}`);
+      console.debug(
+        `[main] onFocusRegained: logViewer=${ctx.logViewer ? 'set' : 'null'}, isVisible=${ctx.logViewer?.isVisible}`
+      );
       if (ctx.logViewer?.isVisible) {
         console.debug('[main] Refreshing LogViewer');
         ctx.logViewer.refreshLogs();

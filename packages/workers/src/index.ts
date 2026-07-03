@@ -3,17 +3,8 @@
  * Turnstile 検証エンドポイント with 署名付き証明書
  */
 
-import {
-  handleSignCheckpoint,
-  handlePublicKeys,
-  getSigningKey,
-  type CheckpointEnv,
-} from './checkpoint.js';
-import {
-  createSessionStartToken,
-  validateSessionStartInput,
-  arrayBufferToHex,
-} from '@typedcode/shared/checkpoint';
+import { handleSignCheckpoint, handlePublicKeys, getSigningKey, type CheckpointEnv } from './checkpoint.js';
+import { createSessionStartToken, validateSessionStartInput, arrayBufferToHex } from '@typedcode/shared/checkpoint';
 
 interface Env extends CheckpointEnv {
   TURNSTILE_SECRET_KEY: string;
@@ -61,8 +52,8 @@ interface VerifyResponse {
 function parseAllowedOrigins(env: CorsEnv): string[] {
   return (env.ALLOWED_ORIGINS ?? '')
     .split(',')
-    .map(o => o.trim())
-    .filter(o => o.length > 0);
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
 }
 
 function isLocalhostOrigin(origin: string): boolean {
@@ -141,7 +132,7 @@ function originMatchesPattern(origin: string, pattern: string): boolean {
 function resolveCorsOrigin(origin: string | null, env: CorsEnv): string | null {
   if (!origin) return null;
   const allowed = parseAllowedOrigins(env);
-  if (allowed.some(pattern => originMatchesPattern(origin, pattern))) return origin;
+  if (allowed.some((pattern) => originMatchesPattern(origin, pattern))) return origin;
   if (env.ENVIRONMENT === 'development' && isLocalhostOrigin(origin)) return origin;
   return null; // fail-closed: 許可リストに無い (or 未設定の) Origin は拒否
 }
@@ -175,7 +166,10 @@ function handleCORS(request: Request, env: CorsEnv): Response {
 }
 
 /** /api/checkpoint/* で使う CORS レスポンダ */
-function checkpointResponder(origin: string | null, env: CorsEnv): { cors(extra?: Record<string, string>): HeadersInit } {
+function checkpointResponder(
+  origin: string | null,
+  env: CorsEnv
+): { cors(extra?: Record<string, string>): HeadersInit } {
   return {
     cors(extra: Record<string, string> = {}) {
       return { ...corsHeaders(origin, env), ...extra };
@@ -191,17 +185,11 @@ async function createHmacSignature(data: string, secret: string): Promise<string
   const keyData = encoder.encode(secret);
   const messageData = encoder.encode(data);
 
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
+  const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
 
   const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
   return Array.from(new Uint8Array(signature))
-    .map(b => b.toString(16).padStart(2, '0'))
+    .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 }
 
@@ -225,10 +213,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 /**
  * Turnstile検証を実行
  */
-async function verifyTurnstile(
-  token: string,
-  secretKey: string
-): Promise<TurnstileResponse> {
+async function verifyTurnstile(token: string, secretKey: string): Promise<TurnstileResponse> {
   const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
     method: 'POST',
     headers: {
@@ -256,10 +241,7 @@ async function verifyTurnstile(
 /**
  * 署名付き証明書を生成
  */
-async function createAttestation(
-  result: TurnstileResponse,
-  attestationSecret: string
-): Promise<HumanAttestation> {
+async function createAttestation(result: TurnstileResponse, attestationSecret: string): Promise<HumanAttestation> {
   const attestationData = {
     verified: result.success,
     score: 1.0, // Turnstile has no score, always 1.0 on success
@@ -281,10 +263,7 @@ async function createAttestation(
 /**
  * Turnstile検証エンドポイント
  */
-async function handleVerifyCaptcha(
-  request: Request,
-  env: Env
-): Promise<Response> {
+async function handleVerifyCaptcha(request: Request, env: Env): Promise<Response> {
   const origin = request.headers.get('Origin');
 
   try {
@@ -373,10 +352,7 @@ interface AttestationWithExtras extends HumanAttestation {
 /**
  * 証明書検証エンドポイント（検証ページから呼び出される）
  */
-async function handleVerifyAttestation(
-  request: Request,
-  env: Env
-): Promise<Response> {
+async function handleVerifyAttestation(request: Request, env: Env): Promise<Response> {
   const origin = request.headers.get('Origin');
 
   try {
@@ -384,16 +360,13 @@ async function handleVerifyAttestation(
     const { attestation } = body;
 
     if (!attestation) {
-      return new Response(
-        JSON.stringify({ valid: false, message: 'Attestation is required' }),
-        {
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            ...corsHeaders(origin, env),
-          },
-        }
-      );
+      return new Response(JSON.stringify({ valid: false, message: 'Attestation is required' }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders(origin, env),
+        },
+      });
     }
 
     // 署名対象フィールドのみを抽出（success, failureReason, signatureは除外）
@@ -408,8 +381,7 @@ async function handleVerifyAttestation(
     const dataToSign = JSON.stringify(attestationData);
     const expectedSignature = await createHmacSignature(dataToSign, env.ATTESTATION_SECRET_KEY);
 
-    const isValid =
-      typeof signature === 'string' && timingSafeEqual(signature, expectedSignature);
+    const isValid = typeof signature === 'string' && timingSafeEqual(signature, expectedSignature);
 
     return new Response(
       JSON.stringify({
@@ -426,16 +398,13 @@ async function handleVerifyAttestation(
       }
     );
   } catch (error) {
-    return new Response(
-      JSON.stringify({ valid: false, message: 'Internal server error' }),
-      {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          ...corsHeaders(origin, env),
-        },
-      }
-    );
+    return new Response(JSON.stringify({ valid: false, message: 'Internal server error' }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders(origin, env),
+      },
+    });
   }
 }
 
@@ -590,10 +559,10 @@ export default {
       } catch {
         /* env が壊れていても応答は返す */
       }
-      return new Response(
-        JSON.stringify({ success: false, message: 'Internal server error' }),
-        { status: 500, headers }
-      );
+      return new Response(JSON.stringify({ success: false, message: 'Internal server error' }), {
+        status: 500,
+        headers,
+      });
     }
   },
 };

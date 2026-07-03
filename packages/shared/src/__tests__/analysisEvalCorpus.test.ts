@@ -126,12 +126,16 @@ async function buildSession(components: FingerprintComponents): Promise<Session>
       const modifiers = { shift: false, ctrl: false, alt: false, meta: false };
       await proof.recordEvent({
         type: 'keyDown',
-        data: isTrusted ? { key, code: `Key${key.toUpperCase()}`, modifiers } : { key, code: `Key${key.toUpperCase()}`, modifiers, isTrusted: false },
+        data: isTrusted
+          ? { key, code: `Key${key.toUpperCase()}`, modifiers }
+          : { key, code: `Key${key.toUpperCase()}`, modifiers, isTrusted: false },
       });
       now += 40;
       await proof.recordEvent({
         type: 'keyUp',
-        data: isTrusted ? { key, code: `Key${key.toUpperCase()}`, modifiers } : { key, code: `Key${key.toUpperCase()}`, modifiers, isTrusted: false },
+        data: isTrusted
+          ? { key, code: `Key${key.toUpperCase()}`, modifiers }
+          : { key, code: `Key${key.toUpperCase()}`, modifiers, isTrusted: false },
       });
     },
     async probe(data) {
@@ -169,93 +173,97 @@ interface CorpusEntry {
 async function generateSyntheticCorpus(): Promise<CorpusEntry[]> {
   const entries: CorpusEntry[] = [];
 
-    // --- genuine #1: clean (短く・修正あり・手掛かりゼロ) ---
-    {
-      const s = await buildSession(baseComponents());
-      await s.type('#include <stdio.h>\n\nint main(void) {\n  printf("hi");\n');
-      await s.del(4);
-      await s.type('hello");\n  return 0;\n}\n');
-      entries.push({ id: 'genuine-clean', label: 'genuine', condition: 'genuine-noime', ...(await s.finish()) });
-    }
+  // --- genuine #1: clean (短く・修正あり・手掛かりゼロ) ---
+  {
+    const s = await buildSession(baseComponents());
+    await s.type('#include <stdio.h>\n\nint main(void) {\n  printf("hi");\n');
+    await s.del(4);
+    await s.type('hello");\n  return 0;\n}\n');
+    entries.push({ id: 'genuine-clean', label: 'genuine', condition: 'genuine-noime', ...(await s.finish()) });
+  }
 
-    // --- genuine #2: revising (>100 編集・十分な削除率 → transcription 発火しない) ---
-    {
-      const s = await buildSession(baseComponents());
-      await s.type('// iterative solution with trial and error and several rewrites along the way\n');
-      await s.type('int add(int a, int b) {\n  int r = a - b;\n');
-      await s.del(8); // 間違いを直す
-      await s.type('a + b;\n  return r;\n}\n');
-      await s.type('int main(void){ printf("%d", add(2,3)); return 0; }\n');
-      await s.del(12);
-      await s.type('add(20, 22)); return 0; }\n');
-      entries.push({ id: 'genuine-revising', label: 'genuine', condition: 'genuine-noime', ...(await s.finish()) });
-    }
+  // --- genuine #2: revising (>100 編集・十分な削除率 → transcription 発火しない) ---
+  {
+    const s = await buildSession(baseComponents());
+    await s.type('// iterative solution with trial and error and several rewrites along the way\n');
+    await s.type('int add(int a, int b) {\n  int r = a - b;\n');
+    await s.del(8); // 間違いを直す
+    await s.type('a + b;\n  return r;\n}\n');
+    await s.type('int main(void){ printf("%d", add(2,3)); return 0; }\n');
+    await s.del(12);
+    await s.type('add(20, 22)); return 0; }\n');
+    entries.push({ id: 'genuine-revising', label: 'genuine', condition: 'genuine-noime', ...(await s.finish()) });
+  }
 
-    // --- genuine #3: IME っぽい入力 (日本語コメント混じり・修正あり) ---
-    {
-      const s = await buildSession(baseComponents());
-      await s.type('// 二分探索を実装する。境界条件に注意しながら書き直していく。\n');
-      await s.type('int bsearch(int* a, int n, int key) {\n  int lo = 0, hi = n;\n');
-      await s.del(6);
-      await s.type('n - 1;\n  while (lo <= hi) {\n    int mid = (lo + hi) / 2;\n');
-      await s.type('    if (a[mid] == key) return mid;\n  }\n  return -1;\n}\n');
-      entries.push({ id: 'genuine-ime', label: 'genuine', condition: 'genuine-ime', ...(await s.finish()) });
-    }
+  // --- genuine #3: IME っぽい入力 (日本語コメント混じり・修正あり) ---
+  {
+    const s = await buildSession(baseComponents());
+    await s.type('// 二分探索を実装する。境界条件に注意しながら書き直していく。\n');
+    await s.type('int bsearch(int* a, int n, int key) {\n  int lo = 0, hi = n;\n');
+    await s.del(6);
+    await s.type('n - 1;\n  while (lo <= hi) {\n    int mid = (lo + hi) / 2;\n');
+    await s.type('    if (a[mid] == key) return mid;\n  }\n  return -1;\n}\n');
+    entries.push({ id: 'genuine-ime', label: 'genuine', condition: 'genuine-ime', ...(await s.finish()) });
+  }
 
-    // --- genuine #4: think-burst (離席して考え、戻って一気に書く正規ケース) ---
-    //     → focus-burst が発火する **正直な偽陽性**。削除を入れて transcription は避ける。
-    {
-      const s = await buildSession(baseComponents());
-      await s.type('int main(void) {\n');
-      s.wait(60_000); // 1 分離席して設計を考える
-      await s.blur();
-      s.wait(60_000);
-      await s.focus();
-      // 復帰後 20s 窓内に 200+ 文字を高速入力 (考えがまとまって一気に書く)。30ms/char × 240 ≈ 7.2s < 20s。
-      await s.type(
-        '  // worked out the whole algorithm in my head while away, now i am writing it all at once in one focused burst because the design finally clicked and i can type the full implementation straight through\n  for (int i = 0; i < n; i++) { total += weights[i] * values[i]; }\n',
-        30
-      );
-      await s.del(12);
-      await s.type('; return 0;\n}\n', 30);
-      entries.push({ id: 'genuine-think-burst', label: 'genuine', condition: 'genuine-noime', ...(await s.finish()) });
-    }
+  // --- genuine #4: think-burst (離席して考え、戻って一気に書く正規ケース) ---
+  //     → focus-burst が発火する **正直な偽陽性**。削除を入れて transcription は避ける。
+  {
+    const s = await buildSession(baseComponents());
+    await s.type('int main(void) {\n');
+    s.wait(60_000); // 1 分離席して設計を考える
+    await s.blur();
+    s.wait(60_000);
+    await s.focus();
+    // 復帰後 20s 窓内に 200+ 文字を高速入力 (考えがまとまって一気に書く)。30ms/char × 240 ≈ 7.2s < 20s。
+    await s.type(
+      '  // worked out the whole algorithm in my head while away, now i am writing it all at once in one focused burst because the design finally clicked and i can type the full implementation straight through\n  for (int i = 0; i < n; i++) { total += weights[i] * values[i]; }\n',
+      30
+    );
+    await s.del(12);
+    await s.type('; return 0;\n}\n', 30);
+    entries.push({ id: 'genuine-think-burst', label: 'genuine', condition: 'genuine-noime', ...(await s.finish()) });
+  }
 
-    // --- automated #1: AI paste (禁止 InputType → pureTyping 発火) ---
-    {
-      const s = await buildSession(baseComponents());
-      await s.type('// my solution\n');
-      await s.paste('#include <stdio.h>\nint main(void){\n  int n; scanf("%d",&n);\n  printf("%d", n*n);\n  return 0;\n}\n');
-      entries.push({ id: 'ai-paste', label: 'automated', condition: 'ai-paste', ...(await s.finish()) });
-    }
+  // --- automated #1: AI paste (禁止 InputType → pureTyping 発火) ---
+  {
+    const s = await buildSession(baseComponents());
+    await s.type('// my solution\n');
+    await s.paste(
+      '#include <stdio.h>\nint main(void){\n  int n; scanf("%d",&n);\n  printf("%d", n*n);\n  return 0;\n}\n'
+    );
+    entries.push({ id: 'ai-paste', label: 'automated', condition: 'ai-paste', ...(await s.finish()) });
+  }
 
-    // --- automated #2: 逐語転写 (>100 編集・削除ほぼ無し → transcription 発火) ---
-    {
-      const s = await buildSession(baseComponents());
-      // AI 出力を見ながら一切間違えずに打ち直す: 修正イベントが出ない。
-      await s.type('#include <stdio.h>\n#include <stdlib.h>\nint compare(const void* a, const void* b) {\n  return (*(int*)a - *(int*)b);\n}\nint main(void) {\n  int n; scanf("%d", &n);\n  int* arr = malloc(n * sizeof(int));\n  for (int i = 0; i < n; i++) scanf("%d", &arr[i]);\n  qsort(arr, n, sizeof(int), compare);\n  return 0;\n}\n');
-      entries.push({ id: 'transcribe', label: 'automated', condition: 'transcribe-noime', ...(await s.finish()) });
-    }
+  // --- automated #2: 逐語転写 (>100 編集・削除ほぼ無し → transcription 発火) ---
+  {
+    const s = await buildSession(baseComponents());
+    // AI 出力を見ながら一切間違えずに打ち直す: 修正イベントが出ない。
+    await s.type(
+      '#include <stdio.h>\n#include <stdlib.h>\nint compare(const void* a, const void* b) {\n  return (*(int*)a - *(int*)b);\n}\nint main(void) {\n  int n; scanf("%d", &n);\n  int* arr = malloc(n * sizeof(int));\n  for (int i = 0; i < n; i++) scanf("%d", &arr[i]);\n  qsort(arr, n, sizeof(int), compare);\n  return 0;\n}\n'
+    );
+    entries.push({ id: 'transcribe', label: 'automated', condition: 'transcribe-noime', ...(await s.finish()) });
+  }
 
-    // --- automated #3: 合成打鍵 (isTrusted=false → automation review) ---
-    {
-      const s = await buildSession(baseComponents());
-      for (const ch of 'int main(){return 0;}') {
-        await s.keystroke(ch, false);
-        await s.type(ch, 5);
-      }
-      entries.push({ id: 'synthetic-keys', label: 'automated', condition: 'synthetic-keystroke', ...(await s.finish()) });
+  // --- automated #3: 合成打鍵 (isTrusted=false → automation review) ---
+  {
+    const s = await buildSession(baseComponents());
+    for (const ch of 'int main(){return 0;}') {
+      await s.keystroke(ch, false);
+      await s.type(ch, 5);
     }
+    entries.push({ id: 'synthetic-keys', label: 'automated', condition: 'synthetic-keystroke', ...(await s.finish()) });
+  }
 
-    // --- automated #4: 自動化ブラウザ (webdriver + headless GPU → automation review/notice) ---
-    {
-      const comps = baseComponents();
-      comps.webgl = { vendor: 'Google Inc.', renderer: 'ANGLE', unmaskedRenderer: 'Google SwiftShader' };
-      const s = await buildSession(comps);
-      await s.probe({ webdriver: true, automationGlobals: ['cdc_adoQpoasnfa76pfcZLmcfl_Array', '__playwright'] });
-      await s.type('int main(void){ return 0; }\n', 20);
-      entries.push({ id: 'webdriver', label: 'automated', condition: 'webdriver-headless', ...(await s.finish()) });
-    }
+  // --- automated #4: 自動化ブラウザ (webdriver + headless GPU → automation review/notice) ---
+  {
+    const comps = baseComponents();
+    comps.webgl = { vendor: 'Google Inc.', renderer: 'ANGLE', unmaskedRenderer: 'Google SwiftShader' };
+    const s = await buildSession(comps);
+    await s.probe({ webdriver: true, automationGlobals: ['cdc_adoQpoasnfa76pfcZLmcfl_Array', '__playwright'] });
+    await s.type('int main(void){ return 0; }\n', 20);
+    entries.push({ id: 'webdriver', label: 'automated', condition: 'webdriver-headless', ...(await s.finish()) });
+  }
 
   return entries;
 }
@@ -277,7 +285,17 @@ async function runCorpusEval(entries: CorpusEntry[]): Promise<LabeledAnalysis[]>
   // 個々の signal も診断用に残す。
   writeFileSync(
     join(OUT_DIR, 'eval-signals.json'),
-    JSON.stringify(labeled.map((l) => ({ id: l.id, label: l.label, condition: l.condition, signals: l.report.signals, reviewPriority: l.report.reviewPriority })), null, 2)
+    JSON.stringify(
+      labeled.map((l) => ({
+        id: l.id,
+        label: l.label,
+        condition: l.condition,
+        signals: l.report.signals,
+        reviewPriority: l.report.reviewPriority,
+      })),
+      null,
+      2
+    )
   );
   console.log(`\n${formatEvalReportMarkdown(evalReport)}\n→ ${OUT_DIR}/eval-report.{json,md}`);
   return labeled;
@@ -313,25 +331,28 @@ describe.runIf(process.env['GEN_FIXTURES'] === '1')('synthetic analysis-eval cor
   }, 120_000);
 });
 
-describe.runIf(typeof process.env['EVAL_CORPUS'] === 'string' && process.env['EVAL_CORPUS'] !== '')('real analysis-eval corpus', () => {
-  it('reads labeled proofs from EVAL_CORPUS and evaluates them', async () => {
-    const dir = process.env['EVAL_CORPUS']!;
-    const labels = JSON.parse(readFileSync(join(dir, 'labels.json'), 'utf-8')) as Record<
-      string,
-      { label: EvalLabel; condition?: string }
-    >;
-    const entries: CorpusEntry[] = [];
-    for (const file of readdirSync(dir)) {
-      if (file === 'labels.json' || !file.endsWith('.json')) continue;
-      const meta = labels[file];
-      if (!meta) {
-        console.warn(`skip (no label): ${file}`);
-        continue;
+describe.runIf(typeof process.env['EVAL_CORPUS'] === 'string' && process.env['EVAL_CORPUS'] !== '')(
+  'real analysis-eval corpus',
+  () => {
+    it('reads labeled proofs from EVAL_CORPUS and evaluates them', async () => {
+      const dir = process.env['EVAL_CORPUS']!;
+      const labels = JSON.parse(readFileSync(join(dir, 'labels.json'), 'utf-8')) as Record<
+        string,
+        { label: EvalLabel; condition?: string }
+      >;
+      const entries: CorpusEntry[] = [];
+      for (const file of readdirSync(dir)) {
+        if (file === 'labels.json' || !file.endsWith('.json')) continue;
+        const meta = labels[file];
+        if (!meta) {
+          console.warn(`skip (no label): ${file}`);
+          continue;
+        }
+        const proof = JSON.parse(readFileSync(join(dir, file), 'utf-8'));
+        entries.push({ id: file, label: meta.label, condition: meta.condition ?? '(none)', proof });
       }
-      const proof = JSON.parse(readFileSync(join(dir, file), 'utf-8'));
-      entries.push({ id: file, label: meta.label, condition: meta.condition ?? '(none)', proof });
-    }
-    expect(entries.length, 'corpus has labeled proofs').toBeGreaterThan(0);
-    await runCorpusEval(entries);
-  }, 600_000);
-});
+      expect(entries.length, 'corpus has labeled proofs').toBeGreaterThan(0);
+      await runCorpusEval(entries);
+    }, 600_000);
+  }
+);

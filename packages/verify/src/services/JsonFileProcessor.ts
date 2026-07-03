@@ -54,12 +54,14 @@ export class JsonFileProcessor {
         return {
           success: true,
           mode: forceMultiMode ? 'multi' : 'single',
-          files: [{
-            filename: file.name,
-            type: 'plaintext',
-            language: lang,
-            rawData: text,
-          }],
+          files: [
+            {
+              filename: file.name,
+              type: 'plaintext',
+              language: lang,
+              rawData: text,
+            },
+          ],
         };
       }
 
@@ -67,25 +69,29 @@ export class JsonFileProcessor {
         return {
           success: true,
           mode: forceMultiMode ? 'multi' : 'single',
-          files: [{
-            filename: file.name,
-            type: 'proof',
-            language,
-            rawData: text,
-            proofData,
-          }],
+          files: [
+            {
+              filename: file.name,
+              type: 'proof',
+              language,
+              rawData: text,
+              proofData,
+            },
+          ],
         };
       } else {
         // proof フィールドがない通常のJSONファイル - プレーンテキストとして扱う
         return {
           success: true,
           mode: forceMultiMode ? 'multi' : 'single',
-          files: [{
-            filename: file.name,
-            type: 'plaintext',
-            language: 'json',
-            rawData: text,
-          }],
+          files: [
+            {
+              filename: file.name,
+              type: 'plaintext',
+              language: 'json',
+              rawData: text,
+            },
+          ],
         };
       }
     } catch (error) {

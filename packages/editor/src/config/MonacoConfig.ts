@@ -3,7 +3,7 @@
  * Monacoエディタのワーカー設定を一元管理
  */
 
-import * as monaco from 'monaco-editor';
+import type * as monaco from 'monaco-editor';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
 import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
@@ -32,6 +32,6 @@ export function configureMonacoWorkers(): void {
         return new tsWorker();
       }
       return new editorWorker();
-    }
+    },
   };
 }

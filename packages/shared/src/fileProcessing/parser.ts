@@ -43,9 +43,7 @@ export function assertZipWithinBudget(zip: JSZip): void {
     const f = zip.files[name] as unknown as { _data?: { uncompressedSize?: number } };
     total += f?._data?.uncompressedSize ?? 0;
     if (total > MAX_ZIP_TOTAL_UNCOMPRESSED) {
-      throw new Error(
-        `ZIP uncompressed size exceeds limit (${MAX_ZIP_TOTAL_UNCOMPRESSED} bytes)`
-      );
+      throw new Error(`ZIP uncompressed size exceeds limit (${MAX_ZIP_TOTAL_UNCOMPRESSED} bytes)`);
     }
   }
 }
@@ -73,10 +71,7 @@ export function isProofFile(data: unknown): data is ProofFileCore {
  * @param filename - Filename for language detection
  * @returns Parsed file data or null if not a valid proof file
  */
-export function parseJsonString(
-  content: string,
-  filename: string
-): ParsedFileData | null {
+export function parseJsonString(content: string, filename: string): ParsedFileData | null {
   try {
     const parsed = JSON.parse(content) as unknown;
 
@@ -180,8 +175,7 @@ export async function parseZipBuffer(
     callbacks?.onZipExtract?.(zipFilename, files.length);
 
     // Load screenshots
-    const { screenshotManifest, screenshotBlobs } =
-      await loadScreenshotsFromZip(zip, callbacks);
+    const { screenshotManifest, screenshotBlobs } = await loadScreenshotsFromZip(zip, callbacks);
 
     if (files.length === 0 && (!screenshotManifest || screenshotManifest.screenshots.length === 0)) {
       return {
@@ -319,9 +313,7 @@ export async function extractScreenshotArtifactsFromZip(buffer: ArrayBuffer): Pr
   let rawEntries: unknown = [];
   try {
     const parsed: unknown = JSON.parse(await manifestFile.async('string'));
-    rawEntries = Array.isArray(parsed)
-      ? parsed
-      : ((parsed as { screenshots?: unknown } | null)?.screenshots ?? []);
+    rawEntries = Array.isArray(parsed) ? parsed : ((parsed as { screenshots?: unknown } | null)?.screenshots ?? []);
   } catch {
     rawEntries = [];
   }
@@ -353,15 +345,11 @@ export async function extractScreenshotArtifactsFromZip(buffer: ArrayBuffer): Pr
  * @param buffer - ZIP file as ArrayBuffer
  * @returns Proof file data
  */
-export async function extractFirstProofFromZip(
-  buffer: ArrayBuffer
-): Promise<ProofFileCore> {
+export async function extractFirstProofFromZip(buffer: ArrayBuffer): Promise<ProofFileCore> {
   const zip = await JSZip.loadAsync(buffer);
   assertZipWithinBudget(zip);
 
-  const jsonFiles = Object.keys(zip.files).filter(
-    (name) => name.endsWith('.json') && !zip.files[name]?.dir
-  );
+  const jsonFiles = Object.keys(zip.files).filter((name) => name.endsWith('.json') && !zip.files[name]?.dir);
 
   if (jsonFiles.length === 0) {
     throw new Error('No JSON proof file found in ZIP');
@@ -410,12 +398,7 @@ export async function extractAllProofsFromZip(
   const zip = await JSZip.loadAsync(buffer);
   assertZipWithinBudget(zip);
   const jsonNames = Object.keys(zip.files)
-    .filter(
-      (name) =>
-        name.endsWith('.json') &&
-        !zip.files[name]?.dir &&
-        !name.startsWith('screenshots/')
-    )
+    .filter((name) => name.endsWith('.json') && !zip.files[name]?.dir && !name.startsWith('screenshots/'))
     .sort();
 
   const proofs: Array<{ filename: string; proof: ProofFileCore }> = [];

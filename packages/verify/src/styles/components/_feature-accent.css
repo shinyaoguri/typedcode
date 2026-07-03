@@ -2,7 +2,7 @@
    検証アプリ = 緑 (--feature-accent, variables/_colors.css)。 */
 
 body::before {
-  content: '';
+  content: "";
   position: fixed;
   top: 0;
   left: 0;
@@ -28,7 +28,11 @@ body::before {
   white-space: nowrap;
   user-select: none;
 }
-.feature-badge i { font-size: 10px; }
+.feature-badge i {
+  font-size: 10px;
+}
 
 /* verify: statusbar を機能色 (緑) に揃える (editor の statusbar=機能色パターンと一致)。 */
-.statusbar { background: var(--feature-accent); }
+.statusbar {
+  background: var(--feature-accent);
+}

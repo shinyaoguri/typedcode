@@ -25,16 +25,12 @@ describe('findFlagError', () => {
   });
 
   it('rejects equals form on a boolean flag instead of silently ignoring it', () => {
-    expect(findFlagError(['proof.zip', '--require-anchor-density=true'])).toContain(
-      'does not take a value'
-    );
+    expect(findFlagError(['proof.zip', '--require-anchor-density=true'])).toContain('does not take a value');
   });
 
   it('rejects a value flag with a missing value', () => {
     expect(findFlagError(['proof.zip', '--mode'])).toContain('requires a value');
-    expect(findFlagError(['proof.zip', '--mode', '--require-root-anchor'])).toContain(
-      'requires a value'
-    );
+    expect(findFlagError(['proof.zip', '--mode', '--require-root-anchor'])).toContain('requires a value');
   });
 });
 
@@ -46,17 +42,14 @@ describe('flagValue / flagValues', () => {
   });
 
   it('collects repeated values across both forms', () => {
-    expect(flagValues(['--analyzer', 'a.mjs', '--analyzer=b.mjs'], '--analyzer')).toEqual([
-      'a.mjs',
-      'b.mjs',
-    ]);
+    expect(flagValues(['--analyzer', 'a.mjs', '--analyzer=b.mjs'], '--analyzer')).toEqual(['a.mjs', 'b.mjs']);
   });
 });
 
 describe('nonFlagArgs', () => {
   it('keeps positionals and skips flags together with their values', () => {
-    expect(
-      nonFlagArgs(['proof.zip', '--mode', 'fast', '--require-root-anchor', '--analysis-json=o.json'])
-    ).toEqual(['proof.zip']);
+    expect(nonFlagArgs(['proof.zip', '--mode', 'fast', '--require-root-anchor', '--analysis-json=o.json'])).toEqual([
+      'proof.zip',
+    ]);
   });
 });

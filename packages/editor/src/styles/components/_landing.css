@@ -50,10 +50,18 @@
 
 /* モード別アクセント (variables/_colors.css と同値を card 単位=要素スコープで割り当てる。
    :root[data-mode] は landing では casual 固定になり全列同色になるので使わない)。 */
-.landing-card-mode[data-mode="casual"]     { --card-accent: #0078d4; }
-.landing-card-mode[data-mode="class"]      { --card-accent: #1f9d9d; }
-.landing-card-mode[data-mode="assignment"] { --card-accent: #bf8700; }
-.landing-card-mode[data-mode="exam"]       { --card-accent: #cf222e; }
+.landing-card-mode[data-mode="casual"] {
+  --card-accent: #0078d4;
+}
+.landing-card-mode[data-mode="class"] {
+  --card-accent: #1f9d9d;
+}
+.landing-card-mode[data-mode="assignment"] {
+  --card-accent: #bf8700;
+}
+.landing-card-mode[data-mode="exam"] {
+  --card-accent: #cf222e;
+}
 
 .landing-card-mode {
   display: flex;
@@ -64,7 +72,11 @@
   border-top: 3px solid var(--card-accent, #0078d4);
   border-radius: var(--radius-lg, 8px);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, transform 0.05s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.05s,
+    box-shadow 0.15s;
 }
 
 .landing-card-mode:hover {

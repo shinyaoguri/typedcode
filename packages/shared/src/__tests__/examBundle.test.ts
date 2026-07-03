@@ -13,7 +13,11 @@ function sampleBundle(): ExamBundle {
   return {
     schema: EXAM_BUNDLE_SCHEMA,
     problems: [
-      { problemId: 'p1', statement: '# 問題1\n和を出力せよ。', starter: { filename: 'p1.c', language: 'c', content: '/* TODO */\n' } },
+      {
+        problemId: 'p1',
+        statement: '# 問題1\n和を出力せよ。',
+        starter: { filename: 'p1.c', language: 'c', content: '/* TODO */\n' },
+      },
       { problemId: 'p2', statement: '# 問題2\n積を出力せよ。' },
     ],
   };
@@ -35,10 +39,13 @@ describe('parseExamBundle', () => {
   });
 
   it('rejects duplicate problemIds within a bundle', () => {
-    const dup = { schema: EXAM_BUNDLE_SCHEMA, problems: [
-      { problemId: 'p1', statement: 'a' },
-      { problemId: 'p1', statement: 'b' },
-    ] };
+    const dup = {
+      schema: EXAM_BUNDLE_SCHEMA,
+      problems: [
+        { problemId: 'p1', statement: 'a' },
+        { problemId: 'p1', statement: 'b' },
+      ],
+    };
     expect(parseExamBundle(dup)).toBeNull();
   });
 
@@ -48,7 +55,10 @@ describe('parseExamBundle', () => {
   });
 
   it('rejects a malformed starter', () => {
-    const bad = { schema: EXAM_BUNDLE_SCHEMA, problems: [{ problemId: 'p1', statement: 'x', starter: { filename: 'a.c' } }] };
+    const bad = {
+      schema: EXAM_BUNDLE_SCHEMA,
+      problems: [{ problemId: 'p1', statement: 'x', starter: { filename: 'a.c' } }],
+    };
     expect(parseExamBundle(bad)).toBeNull();
   });
 });

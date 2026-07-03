@@ -20,5 +20,5 @@ export {
   getAllowedInputTypes,
   getProhibitedInputTypes,
   validateEventType,
-  validateInputType
+  validateInputType,
 } from './InputTypeValidator.js';

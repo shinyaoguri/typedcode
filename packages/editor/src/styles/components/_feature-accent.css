@@ -3,7 +3,7 @@
 
 /* 全機能共通: 画面上端の細いアクセントストリップ (レイアウトを崩さない overlay)。 */
 body::before {
-  content: '';
+  content: "";
   position: fixed;
   top: 0;
   left: 0;
@@ -30,8 +30,14 @@ body::before {
   white-space: nowrap;
   user-select: none;
 }
-.feature-badge i { font-size: 10px; }
+.feature-badge i {
+  font-size: 10px;
+}
 
 /* editor: titlebar 下端をアクセントに、statusbar 全体をアクセント色に。 */
-.titlebar { border-bottom: 1px solid var(--feature-accent); }
-.statusbar { background: var(--feature-accent); }
+.titlebar {
+  border-bottom: 1px solid var(--feature-accent);
+}
+.statusbar {
+  background: var(--feature-accent);
+}

@@ -46,7 +46,7 @@
 }
 
 .tab.active::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;
@@ -122,7 +122,10 @@
   border-radius: 4px;
   color: var(--text-tertiary);
   opacity: 0;
-  transition: opacity 0.1s ease, background-color 0.1s ease, color 0.1s ease;
+  transition:
+    opacity 0.1s ease,
+    background-color 0.1s ease,
+    color 0.1s ease;
   flex-shrink: 0;
 }
 

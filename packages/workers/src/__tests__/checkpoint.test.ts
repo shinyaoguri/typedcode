@@ -16,11 +16,7 @@
 
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { createSessionStartToken } from '@typedcode/shared/checkpoint';
-import type {
-  CheckpointPublicKey,
-  SessionStartToken,
-  SignedCheckpointInput,
-} from '@typedcode/shared/checkpoint';
+import type { CheckpointPublicKey, SessionStartToken, SignedCheckpointInput } from '@typedcode/shared/checkpoint';
 import { handleSignCheckpoint, type CheckpointEnv } from '../checkpoint.js';
 
 // ---------- 共通ヘルパ ----------
@@ -39,10 +35,7 @@ let foreignSessionToken: SessionStartToken; // 別 sessionId に発行された 
 let forgedToken: SessionStartToken; // registry に居ない鍵で署名された token
 
 beforeAll(async () => {
-  const keyPair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
-    'sign',
-    'verify',
-  ]);
+  const keyPair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   tokenRegistry = [
     {
       keyId: TOKEN_KEY_ID,
@@ -71,10 +64,7 @@ beforeAll(async () => {
     signer
   );
 
-  const forgedPair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
-    'sign',
-    'verify',
-  ]);
+  const forgedPair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   forgedToken = await createSessionStartToken(
     { sessionId: 'test-session', fingerprintHash: 'f'.repeat(64) },
     serverContext,
@@ -95,7 +85,7 @@ class MockKV {
     }
     const v = this.store.get(key);
     if (v === undefined) return null;
-    return (type === 'json' ? (JSON.parse(v) as T) : (v as unknown as T));
+    return type === 'json' ? (JSON.parse(v) as T) : (v as unknown as T);
   }
   async put(key: string, value: string): Promise<void> {
     if (this.failNextPut) {
@@ -112,11 +102,7 @@ class MockKV {
 const responder = { cors: () => ({}) };
 
 async function freshSigningKey(): Promise<string> {
-  const keyPair = await crypto.subtle.generateKey(
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    true,
-    ['sign', 'verify']
-  );
+  const keyPair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const jwk = await crypto.subtle.exportKey('jwk', keyPair.privateKey);
   return JSON.stringify(jwk);
 }
@@ -197,10 +183,8 @@ describe('handleSignCheckpoint', () => {
   it('signs checkpointIndex 0 independently for two tabs in the same session (multi-tab, H4)', async () => {
     // 同一 sessionId・別 tabId・同じ checkpointIndex 0。タブ毎に KV をキーイングするので
     // どちらも CHECKPOINT_CONFLICT / NON_MONOTONIC にならず署名される (class モードの N 問タブ対策)。
-    const resA = await sign(
-      makeRequest(makeInput({ tabId: 'tab-1', checkpointIndex: 0 })));
-    const resB = await sign(
-      makeRequest(makeInput({ tabId: 'tab-2', checkpointIndex: 0 })));
+    const resA = await sign(makeRequest(makeInput({ tabId: 'tab-1', checkpointIndex: 0 })));
+    const resB = await sign(makeRequest(makeInput({ tabId: 'tab-2', checkpointIndex: 0 })));
     expect(resA.status).toBe(200);
     expect(resB.status).toBe(200);
     expect(kv.store.has('session:test-session:tab-1')).toBe(true);
@@ -237,8 +221,7 @@ describe('handleSignCheckpoint', () => {
   it('rejects non-monotonic checkpointIndex with NON_MONOTONIC', async () => {
     await sign(makeRequest(makeInput({ checkpointIndex: 5 })));
 
-    const res = await sign(
-      makeRequest(makeInput({ checkpointIndex: 3 })));
+    const res = await sign(makeRequest(makeInput({ checkpointIndex: 3 })));
     expect(res.status).toBe(409);
     const body = (await res.json()) as ErrorResponseBody;
     expect(body.code).toBe('NON_MONOTONIC');
@@ -253,21 +236,20 @@ describe('handleSignCheckpoint', () => {
           checkpointIndex: 1,
           previousSignedCheckpointHash: 'e'.repeat(64),
         })
-      ));
+      )
+    );
     expect(res.status).toBe(200);
     const body = (await res.json()) as SignResponseBody;
     expect(body.envelope.signature).toMatch(/^[0-9a-f]+$/);
   });
 
   it('preserves firstSeenAt across multiple checkpoints (anti-replay anchor)', async () => {
-    const res1 = await sign(
-      makeRequest(makeInput({ checkpointIndex: 0 })));
+    const res1 = await sign(makeRequest(makeInput({ checkpointIndex: 0 })));
     const body1 = (await res1.json()) as SignResponseBody;
 
     const res2 = await sign(
-      makeRequest(
-        makeInput({ checkpointIndex: 1, previousSignedCheckpointHash: 'f'.repeat(64) })
-      ));
+      makeRequest(makeInput({ checkpointIndex: 1, previousSignedCheckpointHash: 'f'.repeat(64) }))
+    );
     const body2 = (await res2.json()) as SignResponseBody;
 
     expect(body2.envelope.payload.firstSeenAt).toBe(body1.envelope.payload.firstSeenAt);
@@ -304,8 +286,7 @@ describe('handleSignCheckpoint', () => {
   });
 
   it('returns SCHEMA_INVALID for a non-hex chainHash', async () => {
-    const res = await sign(
-      makeRequest(makeInput({ chainHash: 'not-a-valid-sha256' })));
+    const res = await sign(makeRequest(makeInput({ chainHash: 'not-a-valid-sha256' })));
     expect(res.status).toBe(400);
     const body = (await res.json()) as ErrorResponseBody;
     expect(body.code).toBe('SCHEMA_INVALID');
@@ -348,8 +329,7 @@ describe('handleSignCheckpoint', () => {
         signedCount: 50_000,
       })
     );
-    const res = await sign(
-      makeRequest(makeInput({ checkpointIndex: 101 })));
+    const res = await sign(makeRequest(makeInput({ checkpointIndex: 101 })));
     expect(res.status).toBe(429);
     const body = (await res.json()) as ErrorResponseBody;
     expect(body.code).toBe('SESSION_LIMIT_EXCEEDED');
@@ -363,7 +343,8 @@ describe('handleSignCheckpoint', () => {
 
     kv.failNextGet = true;
     const res2 = await sign(
-      makeRequest(makeInput({ checkpointIndex: 1, previousSignedCheckpointHash: 'e'.repeat(64) })));
+      makeRequest(makeInput({ checkpointIndex: 1, previousSignedCheckpointHash: 'e'.repeat(64) }))
+    );
     expect(res2.status).toBe(503);
     const body = (await res2.json()) as ErrorResponseBody;
     expect(body.code).toBe('SESSION_STATE_UNAVAILABLE');
@@ -384,8 +365,7 @@ describe('handleSignCheckpoint', () => {
 
   it('still returns envelope when a LATER KV write fails (firstSeenAt already locked)', async () => {
     // 初回は成功させて firstSeenAt を KV に固定する
-    const res1 = await sign(
-      makeRequest(makeInput({ checkpointIndex: 0 })));
+    const res1 = await sign(makeRequest(makeInput({ checkpointIndex: 0 })));
     expect(res1.status).toBe(200);
     expect(kv.store.has('session:test-session:tab-1')).toBe(true);
 
@@ -393,7 +373,8 @@ describe('handleSignCheckpoint', () => {
     // best-effort で envelope を返してよい (graceful degradation)。
     kv.failNextPut = true;
     const res2 = await sign(
-      makeRequest(makeInput({ checkpointIndex: 1, previousSignedCheckpointHash: 'e'.repeat(64) })));
+      makeRequest(makeInput({ checkpointIndex: 1, previousSignedCheckpointHash: 'e'.repeat(64) }))
+    );
     expect(res2.status).toBe(200);
     const body = (await res2.json()) as SignResponseBody;
     expect(body.envelope.signature).toMatch(/^[0-9a-f]+$/);

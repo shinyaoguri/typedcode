@@ -34,9 +34,7 @@ export class JavaScriptExecutor extends BaseExecutor {
   // For abort handling
   private abortController: AbortController | null = null;
 
-  protected async _doInitialize(
-    onProgress?: (progress: InitializationProgress) => void
-  ): Promise<void> {
+  protected async _doInitialize(onProgress?: (progress: InitializationProgress) => void): Promise<void> {
     // JavaScript requires no initialization - the engine is built into the browser
     onProgress?.({
       stage: 'ready',
@@ -45,10 +43,7 @@ export class JavaScriptExecutor extends BaseExecutor {
     });
   }
 
-  async run(
-    code: string,
-    callbacks: ExecutionCallbacks
-  ): Promise<ExecutionResult> {
+  async run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult> {
     if (!this._initialized) {
       throw new Error('JavaScriptExecutor not initialized. Call initialize() first.');
     }
@@ -72,15 +67,11 @@ export class JavaScriptExecutor extends BaseExecutor {
 
       // Create async function with custom scope
       // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const AsyncFunction = Object.getPrototypeOf(
-        async function () {}
-      ).constructor as new (...args: string[]) => (...args: unknown[]) => Promise<unknown>;
+      const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
+        ...args: string[]
+      ) => (...args: unknown[]) => Promise<unknown>;
 
-      const fn = new AsyncFunction(
-        'console',
-        '__abortSignal__',
-        wrappedCode
-      );
+      const fn = new AsyncFunction('console', '__abortSignal__', wrappedCode);
 
       // Execute with timeout and abort support
       const result = await this.executeWithTimeout(
@@ -137,9 +128,7 @@ export class JavaScriptExecutor extends BaseExecutor {
       if (line && column) {
         // Extract error message from the beginning
         const errorMatch = stderr.match(/^(\w+Error):\s*(.+?)(?:\n|$)/);
-        const message = errorMatch
-          ? `${errorMatch[1]}: ${errorMatch[2]}`
-          : 'JavaScript Error';
+        const message = errorMatch ? `${errorMatch[1]}: ${errorMatch[2]}` : 'JavaScript Error';
 
         errors.push({
           line: Math.max(1, parseInt(line, 10) - this.getWrapperLineCount()),
@@ -174,10 +163,7 @@ export class JavaScriptExecutor extends BaseExecutor {
   /**
    * Create a proxy console that intercepts all console methods
    */
-  private createConsoleProxy(
-    callbacks: ExecutionCallbacks,
-    appendStdout: (text: string) => void
-  ): Console {
+  private createConsoleProxy(callbacks: ExecutionCallbacks, appendStdout: (text: string) => void): Console {
     const formatArgs = (...args: unknown[]): string => {
       return args.map((arg) => this.formatValue(arg)).join(' ');
     };

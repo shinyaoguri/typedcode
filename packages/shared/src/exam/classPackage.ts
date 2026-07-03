@@ -18,8 +18,7 @@ import { encodeExamBundle, parseExamBundle } from './examBundle.js';
 export const CLASS_PACKAGE_SCHEMA = 'tcclass/1' as const;
 
 const isNonEmptyStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
-const isObj = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === 'object' && !Array.isArray(v);
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** untrusted な `allowed.languages` を検証する。形が不正なら null。 */
 function parseAllowed(input: unknown): { languages: string[] } | null {

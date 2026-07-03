@@ -26,9 +26,7 @@ export async function extractProofFromZip(filePath: string): Promise<ProofFile> 
  * ZIP 内の **すべて** の proof JSON を返す (exam/class はタブ毎に N 個出力されるため)。
  * grader は全件を検証して初めて exit 0 にできる。
  */
-export async function extractAllProofs(
-  filePath: string
-): Promise<Array<{ filename: string; proof: ProofFile }>> {
+export async function extractAllProofs(filePath: string): Promise<Array<{ filename: string; proof: ProofFile }>> {
   const arrayBuffer = toArrayBuffer(await readFile(filePath));
   const proofs = await extractAllProofsFromZip(arrayBuffer);
   return proofs.map((p) => ({ filename: p.filename, proof: p.proof as ProofFile }));

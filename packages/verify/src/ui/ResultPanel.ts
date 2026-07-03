@@ -486,18 +486,19 @@ export class ResultPanel {
 
     for (const hunk of diffResult.hunks) {
       for (const line of hunk.lines) {
-        const lineNum = line.type === 'removed'
-          ? (line.oldLineNumber?.toString().padStart(4, ' ') || '    ')
-          : (line.newLineNumber?.toString().padStart(4, ' ') || '    ');
+        const lineNum =
+          line.type === 'removed'
+            ? line.oldLineNumber?.toString().padStart(4, ' ') || '    '
+            : line.newLineNumber?.toString().padStart(4, ' ') || '    ';
 
-        const prefix = line.type === 'added' ? '+'
-          : line.type === 'removed' ? '-'
-          : ' ';
+        const prefix = line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ';
 
         const className = `diff-line diff-${line.type}`;
         const escapedContent = escapeHtml(line.content);
 
-        lines.push(`<div class="${className}"><span class="diff-line-number">${lineNum}</span><span class="diff-prefix">${prefix}</span><span class="diff-content">${escapedContent}</span></div>`);
+        lines.push(
+          `<div class="${className}"><span class="diff-line-number">${lineNum}</span><span class="diff-prefix">${prefix}</span><span class="diff-content">${escapedContent}</span></div>`
+        );
       }
     }
 
@@ -532,7 +533,18 @@ export class ResultPanel {
   }
 
   render(data: ResultData): void {
-    const { filename, content, language, result, poswStats, attestations, eventCount, typingTime, typingSpeed, trustResult } = data;
+    const {
+      filename,
+      content,
+      language,
+      result,
+      poswStats,
+      attestations,
+      eventCount,
+      typingTime,
+      typingSpeed,
+      trustResult,
+    } = data;
 
     // Overall status - TrustResult を優先使用
     if (trustResult) {
@@ -564,9 +576,7 @@ export class ResultPanel {
     this.internalPasteCount.textContent = t('result.timesCount', {
       count: result.internalPasteCount || 0,
     });
-    this.externalInput.textContent = result.pureTyping
-      ? t('result.externalInputNo')
-      : t('result.externalInputYes');
+    this.externalInput.textContent = result.pureTyping ? t('result.externalInputNo') : t('result.externalInputYes');
 
     // Chain card
     this.renderCard(
@@ -597,12 +607,7 @@ export class ResultPanel {
           ? t('result.poswSampled')
           : t('result.poswFull');
     const poswStatus = !hasPoSW ? null : poswMode === 'skipped' ? 'warning' : 'success';
-    this.renderCard(
-      this.poswIcon,
-      this.poswBadge,
-      hasPoSW ? poswStatus === 'success' : null,
-      poswBadgeText
-    );
+    this.renderCard(this.poswIcon, this.poswBadge, hasPoSW ? poswStatus === 'success' : null, poswBadgeText);
     if (hasPoSW && poswMode === 'skipped') {
       // skipped 時は警告色で表示
       this.poswBadge.className = 'result-card-badge warning';
@@ -736,9 +741,7 @@ export class ResultPanel {
     }
 
     const p = assurance.provenance;
-    const provenanceParts: string[] = [
-      p.pureTyping ? t('assurance.pureTypingYes') : t('assurance.pureTypingNo'),
-    ];
+    const provenanceParts: string[] = [p.pureTyping ? t('assurance.pureTypingYes') : t('assurance.pureTypingNo')];
     if (p.notableSignals !== null) {
       provenanceParts.push(`${t('assurance.signals')} ${p.notableSignals}`);
     }
@@ -767,12 +770,7 @@ export class ResultPanel {
     `;
   }
 
-  private renderCard(
-    iconEl: HTMLElement,
-    badgeEl: HTMLElement,
-    isValid: boolean | null,
-    badgeText: string
-  ): void {
+  private renderCard(iconEl: HTMLElement, badgeEl: HTMLElement, isValid: boolean | null, badgeText: string): void {
     const statusClass = isValid === null ? 'pending' : isValid ? 'success' : 'error';
     iconEl.className = `result-card-icon ${statusClass}`;
     badgeEl.className = `result-card-badge ${statusClass}`;
@@ -906,12 +904,7 @@ export class ResultPanel {
     } else {
       this.examReasonRow.style.display = 'none';
     }
-    this.renderCard(
-      this.examIcon,
-      this.examBadge,
-      b.valid,
-      b.valid ? t('result.examBound') : t('result.examFailed')
-    );
+    this.renderCard(this.examIcon, this.examBadge, b.valid, b.valid ? t('result.examBound') : t('result.examFailed'));
   }
 
   /**
@@ -975,11 +968,7 @@ export class ResultPanel {
     }
     if (report.initialEventChainHash) {
       rangeRows.push(
-        this.detailRow(
-          t('result.anchoringInitialChainHash'),
-          report.initialEventChainHash,
-          'anchoring-detail-hash'
-        )
+        this.detailRow(t('result.anchoringInitialChainHash'), report.initialEventChainHash, 'anchoring-detail-hash')
       );
     }
     sections.push(
@@ -994,12 +983,8 @@ export class ResultPanel {
       const serverSec = (temporal.serverSpanMs / 1000).toFixed(1);
       const clientSec = (temporal.clientSpanMs / 1000).toFixed(1);
       const ratioStr = temporal.ratio !== null ? temporal.ratio.toFixed(3) : 'n/a';
-      const verdictKey = temporal.postHocSuspected
-        ? 'result.anchoringPostHocFlagged'
-        : 'result.anchoringPostHocClear';
-      const verdictClass = temporal.postHocSuspected
-        ? 'anchoring-verdict warning'
-        : 'anchoring-verdict success';
+      const verdictKey = temporal.postHocSuspected ? 'result.anchoringPostHocFlagged' : 'result.anchoringPostHocClear';
+      const verdictClass = temporal.postHocSuspected ? 'anchoring-verdict warning' : 'anchoring-verdict success';
       sections.push(
         `<div class="anchoring-detail-section">
           <h4 class="anchoring-detail-heading">${escapeHtml(t('result.anchoringSectionTemporal'))}</h4>
@@ -1022,18 +1007,17 @@ export class ResultPanel {
       );
     } else {
       const failures = report.failedEnvelopes
-        .map((e) =>
-          `<li class="anchoring-failure-item">${escapeHtml(
-            this.formatFailureLine(e.checkpointIndex, e.eventIndex, e.reason)
-          )}</li>`
+        .map(
+          (e) =>
+            `<li class="anchoring-failure-item">${escapeHtml(
+              this.formatFailureLine(e.checkpointIndex, e.eventIndex, e.reason)
+            )}</li>`
         )
         .join('');
       const warnings = report.warningEnvelopes
         .map((e) => {
           const reason =
-            e.reason === 'key-revoked-but-trusted-by-time'
-              ? t('result.anchoringWarningRevoked')
-              : e.reason;
+            e.reason === 'key-revoked-but-trusted-by-time' ? t('result.anchoringWarningRevoked') : e.reason;
           return `<li class="anchoring-warning-item">${escapeHtml(
             this.formatFailureLine(e.checkpointIndex, e.eventIndex, reason)
           )}</li>`;
@@ -1051,24 +1035,23 @@ export class ResultPanel {
     return sections.join('');
   }
 
-  private buildKeyRowHtml(k: NonNullable<ResultData['signedCheckpoint']>['report'] extends infer R
-    ? R extends { keys: Array<infer K> } ? K : never
-    : never): string {
+  private buildKeyRowHtml(
+    k: NonNullable<ResultData['signedCheckpoint']>['report'] extends infer R
+      ? R extends { keys: Array<infer K> }
+        ? K
+        : never
+      : never
+  ): string {
     const statusKey =
       k.status === 'active'
         ? 'result.anchoringKeyStatusActive'
         : k.status === 'revoked'
           ? 'result.anchoringKeyStatusRevoked'
           : 'result.anchoringKeyStatusUnknown';
-    const statusClass =
-      k.status === 'active' ? 'success' : k.status === 'revoked' ? 'error' : 'warning';
+    const statusClass = k.status === 'active' ? 'success' : k.status === 'revoked' ? 'error' : 'warning';
     const rows: string[] = [];
-    rows.push(
-      `<div class="anchoring-key-id"><span class="anchoring-detail-hash">${escapeHtml(k.keyId)}</span></div>`
-    );
-    rows.push(
-      `<div class="anchoring-key-status ${statusClass}">${escapeHtml(t(statusKey))}</div>`
-    );
+    rows.push(`<div class="anchoring-key-id"><span class="anchoring-detail-hash">${escapeHtml(k.keyId)}</span></div>`);
+    rows.push(`<div class="anchoring-key-status ${statusClass}">${escapeHtml(t(statusKey))}</div>`);
     if (k.description) {
       rows.push(this.detailRow(t('result.anchoringKeyDescription'), k.description));
     }
@@ -1272,11 +1255,7 @@ export class ResultPanel {
   /**
    * ステップの状態を更新（状態が変わった場合のみ再描画）
    */
-  updateStepStatus(
-    step: VerificationStepType,
-    status: VerificationStepStatus,
-    statusText?: string
-  ): void {
+  updateStepStatus(step: VerificationStepType, status: VerificationStepStatus, statusText?: string): void {
     // 状態が変わっていない場合はスキップ（チカチカ防止）
     const cachedStatus = this.stepStatusCache.get(step);
     if (cachedStatus === status && !statusText) {
@@ -1585,7 +1564,11 @@ export class ResultPanel {
     }
 
     // タイムスタンプ詳細（タイムスタンプエラーの場合のみ）
-    if (details.errorType === 'timestamp' && details.previousTimestamp !== undefined && details.currentTimestamp !== undefined) {
+    if (
+      details.errorType === 'timestamp' &&
+      details.previousTimestamp !== undefined &&
+      details.currentTimestamp !== undefined
+    ) {
       this.chainErrorTimestampRow.style.display = 'flex';
       this.chainErrorTimestamp.textContent = `${details.previousTimestamp.toFixed(2)}ms → ${details.currentTimestamp.toFixed(2)}ms`;
     } else {
@@ -1678,13 +1661,14 @@ export class ResultPanel {
           <strong>${sampledInfo.totalEventsVerified.toLocaleString()}</strong> / ${sampledInfo.totalEvents.toLocaleString()} ${t('chain.events') || 'events'}
         </span>
         <span class="chain-segment-info-item">
-          ${t('chain.segmentViz.sampledSegments', {
-            count: sampledInfo.segments.length.toString(),
-            total: sampledInfo.totalSegments.toString(),
-          }) || `${sampledInfo.segments.length}/${sampledInfo.totalSegments} segments`}
+          ${
+            t('chain.segmentViz.sampledSegments', {
+              count: sampledInfo.segments.length.toString(),
+              total: sampledInfo.totalSegments.toString(),
+            }) || `${sampledInfo.segments.length}/${sampledInfo.totalSegments} segments`
+          }
         </span>
       </div>
     `;
   }
-
 }

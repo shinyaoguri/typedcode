@@ -12,10 +12,7 @@ import type {
   ScreenShareStopData,
   ScreenShareOptOutData,
 } from '@typedcode/shared';
-import {
-  ScreenCaptureService,
-  type ScreenCaptureOptions,
-} from '../services/ScreenCaptureService.js';
+import { ScreenCaptureService, type ScreenCaptureOptions } from '../services/ScreenCaptureService.js';
 import { ScreenshotStorageService } from '../services/ScreenshotStorageService.js';
 import type { SessionStorageService } from '../services/SessionStorageService.js';
 import { ScreenShareGuide } from '../ui/components/ScreenShareGuide.js';
@@ -242,13 +239,11 @@ export class ScreenshotTracker {
     }
 
     // キャプチャコールバックを設定
-    this.captureService.setCallback(
-      (imageBlob, imageHash, captureType, displayInfo) => {
-        // displayInfoを保存（停止イベント用）
-        this.state.currentDisplayInfo = displayInfo;
-        this.handleCapture(imageBlob, imageHash, captureType, displayInfo);
-      }
-    );
+    this.captureService.setCallback((imageBlob, imageHash, captureType, displayInfo) => {
+      // displayInfoを保存（停止イベント用）
+      this.state.currentDisplayInfo = displayInfo;
+      this.handleCapture(imageBlob, imageHash, captureType, displayInfo);
+    });
 
     // ストリーム停止コールバックを再設定（requestPermission後に必要）
     if (this.streamStoppedCallback) {
@@ -506,9 +501,7 @@ export class ScreenshotTracker {
   /**
    * 画面共有停止イベントを発火
    */
-  private emitScreenShareStopEvent(
-    reason: 'user_stopped' | 'stream_ended' | 'error'
-  ): void {
+  private emitScreenShareStopEvent(reason: 'user_stopped' | 'stream_ended' | 'error'): void {
     if (!this.callback) return;
 
     const duration = this.state.getShareDuration();

@@ -92,7 +92,7 @@ vi.stubGlobal('Worker', MockWorker);
 
 // ===== Canvas モック強化 =====
 // happy-dom's Canvas implementation is limited
-HTMLCanvasElement.prototype.getContext = function (contextId: string) {
+HTMLCanvasElement.prototype.getContext = ((contextId: string) => {
   if (contextId === '2d') {
     return {
       fillStyle: '',
@@ -128,11 +128,9 @@ HTMLCanvasElement.prototype.getContext = function (contextId: string) {
     } as unknown as WebGLRenderingContext;
   }
   return null;
-} as typeof HTMLCanvasElement.prototype.getContext;
+}) as typeof HTMLCanvasElement.prototype.getContext;
 
-HTMLCanvasElement.prototype.toDataURL = function () {
-  return 'data:image/png;base64,mockCanvasDataForTesting';
-};
+HTMLCanvasElement.prototype.toDataURL = () => 'data:image/png;base64,mockCanvasDataForTesting';
 
 // ===== performance.now モック（必要に応じて） =====
 // happy-dom should provide this, but ensure it's available

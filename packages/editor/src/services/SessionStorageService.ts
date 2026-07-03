@@ -3,29 +3,22 @@
  * タブデータ、イベント、セッションメタデータのCRUD操作を提供
  */
 
-import {
-  type StoredEvent,
-  type TabSwitchEvent,
-  type SessionMetadata,
-  type StoredTabData,
-  type StoredEventData,
-  type StoredTabSwitchData,
-  type SessionSummary,
-  type TabSummary,
-  type StoredScreenshotData,
-} from '@typedcode/shared';
-import { IndexedDBHelper } from './IndexedDBHelper.js';
-import { sessionDbName } from '../core/storageKeys.js';
-
-// Re-export types for convenience
-export type {
+import type {
+  StoredEvent,
+  TabSwitchEvent,
   SessionMetadata,
   StoredTabData,
   StoredEventData,
   StoredTabSwitchData,
   SessionSummary,
   TabSummary,
-};
+  StoredScreenshotData,
+} from '@typedcode/shared';
+import { IndexedDBHelper } from './IndexedDBHelper.js';
+import { sessionDbName } from '../core/storageKeys.js';
+
+// Re-export types for convenience
+export type { SessionMetadata, StoredTabData, StoredEventData, StoredTabSwitchData, SessionSummary, TabSummary };
 
 // DB 名はモード別に名前空間化する (ADR-0011 PR3): casual=typedcode-session、他は -<mode>。
 // storageKeys.sessionDbName() を使用時 (initialize) に呼ぶ — main.ts が最初期に NS を確定する。
@@ -572,13 +565,9 @@ export class SessionStorageService {
    */
   async getEvents(tabId: string): Promise<StoredEvent[]> {
     if (!this.db) throw new Error('Database not initialized');
-    const storedEvents = await IndexedDBHelper.getAllByIndex<StoredEventData>(
-      this.db, STORE_EVENTS, 'tabId', tabId
-    );
+    const storedEvents = await IndexedDBHelper.getAllByIndex<StoredEventData>(this.db, STORE_EVENTS, 'tabId', tabId);
     // eventIndexでソートしてeventDataを抽出
-    return storedEvents
-      .sort((a, b) => a.eventIndex - b.eventIndex)
-      .map(e => e.eventData);
+    return storedEvents.sort((a, b) => a.eventIndex - b.eventIndex).map((e) => e.eventData);
   }
 
   /**
@@ -648,11 +637,12 @@ export class SessionStorageService {
   async getTabSwitches(sessionId: string): Promise<TabSwitchEvent[]> {
     if (!this.db) throw new Error('Database not initialized');
     const stored = await IndexedDBHelper.getAllByIndex<StoredTabSwitchData>(
-      this.db, STORE_TAB_SWITCHES, 'sessionId', sessionId
+      this.db,
+      STORE_TAB_SWITCHES,
+      'sessionId',
+      sessionId
     );
-    return stored
-      .map(s => s.switchEvent)
-      .sort((a, b) => a.timestamp - b.timestamp);
+    return stored.map((s) => s.switchEvent).sort((a, b) => a.timestamp - b.timestamp);
   }
 
   // ============================================================================
@@ -682,7 +672,10 @@ export class SessionStorageService {
   async getScreenshotsBySession(sessionId: string): Promise<StoredScreenshotData[]> {
     if (!this.db) throw new Error('Database not initialized');
     const screenshots = await IndexedDBHelper.getAllByIndex<StoredScreenshotData>(
-      this.db, STORE_SCREENSHOTS, 'sessionId', sessionId
+      this.db,
+      STORE_SCREENSHOTS,
+      'sessionId',
+      sessionId
     );
     // タイムスタンプでソート
     screenshots.sort((a, b) => a.timestamp - b.timestamp);

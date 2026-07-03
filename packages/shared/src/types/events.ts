@@ -8,9 +8,9 @@
 
 /** イベントタイプ */
 export type EventType =
-  | 'humanAttestation'  // 人間認証（event #0として記録）
-  | 'preExportAttestation'  // エクスポート前認証
-  | 'termsAccepted'  // 利用規約同意
+  | 'humanAttestation' // 人間認証（event #0として記録）
+  | 'preExportAttestation' // エクスポート前認証
+  | 'termsAccepted' // 利用規約同意
   | 'contentChange' // コンテンツ変更
   | 'contentSnapshot' // コンテンツスナップショット
   | 'cursorPositionChange' // カーソル位置変更
@@ -102,8 +102,8 @@ export interface MousePositionData {
   y: number;
   clientX: number;
   clientY: number;
-  screenX: number;       // スクリーン座標
-  screenY: number;       // スクリーン座標
+  screenX: number; // スクリーン座標
+  screenY: number; // スクリーン座標
 }
 
 /** Visibility変更データ */
@@ -119,18 +119,18 @@ export interface FocusChangeData {
 
 /** ウィンドウサイズデータ */
 export interface WindowSizeData {
-  width: number;         // window.outerWidth
-  height: number;        // window.outerHeight
-  innerWidth: number;    // window.innerWidth
-  innerHeight: number;   // window.innerHeight
+  width: number; // window.outerWidth
+  height: number; // window.outerHeight
+  innerWidth: number; // window.innerWidth
+  innerHeight: number; // window.innerHeight
   devicePixelRatio: number;
-  screenX: number;       // window.screenX（スクリーン上の位置）
-  screenY: number;       // window.screenY（スクリーン上の位置）
+  screenX: number; // window.screenX（スクリーン上の位置）
+  screenY: number; // window.screenY（スクリーン上の位置）
 }
 
 /** ネットワーク状態データ */
 export interface NetworkStatusData {
-  online: boolean;       // navigator.onLine
+  online: boolean; // navigator.onLine
 }
 
 /**
@@ -269,19 +269,20 @@ export interface ExamOpenedEventData {
 
 /** セッション再開データ */
 export interface SessionResumedData {
-  timestamp: number;           // 再開時のタイムスタンプ
-  previousEventCount: number;  // 再開前のイベント数
-  recoveredFromIndexedDB?: boolean;  // IndexedDBからの復旧かどうか
+  timestamp: number; // 再開時のタイムスタンプ
+  previousEventCount: number; // 再開前のイベント数
+  recoveredFromIndexedDB?: boolean; // IndexedDBからの復旧かどうか
 }
 
 /** キーストロークダイナミクスデータ */
 export interface KeystrokeDynamicsData {
-  key: string;              // キー名（'a', 'Enter', 'Shift'など）
-  code: string;             // 物理キーコード（'KeyA', 'Enter', 'ShiftLeft'など）
-  keyDownTime?: number;     // keydown時刻（performance.now()）
-  dwellTime?: number;       // キー押下時間（keyUpで設定）
-  flightTime?: number;      // 前のキーからの経過時間
-  modifiers: {              // 修飾キー状態
+  key: string; // キー名（'a', 'Enter', 'Shift'など）
+  code: string; // 物理キーコード（'KeyA', 'Enter', 'ShiftLeft'など）
+  keyDownTime?: number; // keydown時刻（performance.now()）
+  dwellTime?: number; // キー押下時間（keyUpで設定）
+  flightTime?: number; // 前のキーからの経過時間
+  modifiers: {
+    // 修飾キー状態
     shift: boolean;
     ctrl: boolean;
     alt: boolean;

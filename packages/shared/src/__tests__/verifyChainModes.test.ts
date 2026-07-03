@@ -20,11 +20,7 @@ import {
   type FingerprintComponents,
   type StoredEvent,
 } from '../index.js';
-import {
-  buildSignedCheckpoints,
-  createTestKey,
-  type TestKey,
-} from './fixtures/signedCheckpointFixtures.js';
+import { buildSignedCheckpoints, createTestKey, type TestKey } from './fixtures/signedCheckpointFixtures.js';
 
 const createMockFingerprintComponents = (): FingerprintComponents => ({
   userAgent: 'Mozilla/5.0 (Phase2 Test)',

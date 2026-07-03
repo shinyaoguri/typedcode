@@ -5,13 +5,7 @@
  * 分析器を差し替えれば分析内容を丸ごと入れ替えられる (既定は `defaultAnalyzers`)。
  */
 
-import type {
-  AnalysisInput,
-  AnalysisReport,
-  AnalysisSeverity,
-  AnalysisSignal,
-  Analyzer,
-} from './types.js';
+import type { AnalysisInput, AnalysisReport, AnalysisSeverity, AnalysisSignal, Analyzer } from './types.js';
 import { defaultAnalyzers } from './analyzers/index.js';
 
 /** severity 別の要確認寄与の重み。`info` は寄与しない。 */
@@ -33,11 +27,7 @@ function clamp01(n: number): number {
  * (暫定の集約式。本格的な重み付けは後続。)
  */
 function signalContribution(signal: AnalysisSignal): number {
-  return (
-    SEVERITY_WEIGHT[signal.severity] *
-    clamp01(signal.score) *
-    clamp01(signal.confidence)
-  );
+  return SEVERITY_WEIGHT[signal.severity] * clamp01(signal.score) * clamp01(signal.confidence);
 }
 
 /**
@@ -66,10 +56,7 @@ export async function runAnalysis(
     }
   }
 
-  const reviewPriority = signals.reduce(
-    (max, signal) => Math.max(max, signalContribution(signal)),
-    0
-  );
+  const reviewPriority = signals.reduce((max, signal) => Math.max(max, signalContribution(signal)), 0);
 
   return { analyzerVersions, signals, reviewPriority };
 }

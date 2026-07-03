@@ -153,15 +153,11 @@ describe('verification utilities', () => {
     const contentHash = await computeHash('a');
 
     await expect(
-      verifyCheckpoints([event], [
-        { eventIndex: 0, hash: 'event-hash', timestamp: 12, contentHash },
-      ])
+      verifyCheckpoints([event], [{ eventIndex: 0, hash: 'event-hash', timestamp: 12, contentHash }])
     ).resolves.toMatchObject({ valid: true });
 
     await expect(
-      verifyCheckpoints([event], [
-        { eventIndex: 0, hash: 'tampered', timestamp: 12, contentHash },
-      ])
+      verifyCheckpoints([event], [{ eventIndex: 0, hash: 'tampered', timestamp: 12, contentHash }])
     ).resolves.toMatchObject({
       valid: false,
       reason: 'Checkpoint hash mismatch at event 0',
@@ -214,8 +210,15 @@ describe('verification utilities', () => {
     ] as StoredEvent[];
     const proofData = {
       metadata: {
-        totalEvents: 1, pasteEvents: 0, internalPasteEvents: 0, dropEvents: 0,
-        insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 1, totalTypingTime: 10, averageTypingSpeed: 0,
+        totalEvents: 1,
+        pasteEvents: 0,
+        internalPasteEvents: 0,
+        dropEvents: 0,
+        insertEvents: 1,
+        deleteEvents: 0,
+        bulkInsertEvents: 1,
+        totalTypingTime: 10,
+        averageTypingSpeed: 0,
       },
     } as ProofData;
     expect(verifyProofMetadata(proofData, events)).toMatchObject({
@@ -230,13 +233,18 @@ describe('verification utilities', () => {
     // 改行を含まないため従来は「補完」扱いで isPureTyping=true を保てていた。
     // metadata 照合 (bulkInsertEvents=1) は従来どおり一致し valid は保つ (advisory のみの変化)。
     const oneLiner = 'const f=(n)=>n<2?n:f(n-1)+f(n-2);console.log(f(30));'.repeat(8); // 416 chars
-    const events = [
-      { type: 'contentChange', inputType: 'insertText', data: oneLiner, timestamp: 10 },
-    ] as StoredEvent[];
+    const events = [{ type: 'contentChange', inputType: 'insertText', data: oneLiner, timestamp: 10 }] as StoredEvent[];
     const proofData = {
       metadata: {
-        totalEvents: 1, pasteEvents: 0, internalPasteEvents: 0, dropEvents: 0,
-        insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 1, totalTypingTime: 10, averageTypingSpeed: 0,
+        totalEvents: 1,
+        pasteEvents: 0,
+        internalPasteEvents: 0,
+        dropEvents: 0,
+        insertEvents: 1,
+        deleteEvents: 0,
+        bulkInsertEvents: 1,
+        totalTypingTime: 10,
+        averageTypingSpeed: 0,
       },
     } as ProofData;
     expect(verifyProofMetadata(proofData, events)).toMatchObject({
@@ -261,8 +269,15 @@ describe('verification utilities', () => {
       verifyProofMetadata(
         {
           metadata: {
-            totalEvents: 1, pasteEvents: 0, internalPasteEvents: 1, dropEvents: 0,
-            insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 1, totalTypingTime: 10, averageTypingSpeed: 0,
+            totalEvents: 1,
+            pasteEvents: 0,
+            internalPasteEvents: 1,
+            dropEvents: 0,
+            insertEvents: 1,
+            deleteEvents: 0,
+            bulkInsertEvents: 1,
+            totalTypingTime: 10,
+            averageTypingSpeed: 0,
           },
         } as ProofData,
         forged
@@ -283,8 +298,15 @@ describe('verification utilities', () => {
       verifyProofMetadata(
         {
           metadata: {
-            totalEvents: 1, pasteEvents: 0, internalPasteEvents: 1, dropEvents: 0,
-            insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 0, totalTypingTime: 10, averageTypingSpeed: 0,
+            totalEvents: 1,
+            pasteEvents: 0,
+            internalPasteEvents: 1,
+            dropEvents: 0,
+            insertEvents: 1,
+            deleteEvents: 0,
+            bulkInsertEvents: 0,
+            totalTypingTime: 10,
+            averageTypingSpeed: 0,
           },
         } as ProofData,
         auditMarker
@@ -297,13 +319,27 @@ describe('verification utilities', () => {
     // マーカーは自己申告なので根拠にせず、内容がセッション内に実在した replay 証拠を要求する。
     const ai = 'int solve() {\n  return 42;\n}\n';
     const events = [
-      { type: 'contentChange', inputType: 'insertFromInternalPaste', data: ai, rangeOffset: null, rangeLength: 0, timestamp: 5 },
+      {
+        type: 'contentChange',
+        inputType: 'insertFromInternalPaste',
+        data: ai,
+        rangeOffset: null,
+        rangeLength: 0,
+        timestamp: 5,
+      },
       { type: 'contentChange', inputType: 'insertParagraph', data: ai, rangeOffset: 0, rangeLength: 0, timestamp: 10 },
     ] as StoredEvent[];
     const proofData = {
       metadata: {
-        totalEvents: 2, pasteEvents: 0, internalPasteEvents: 1, dropEvents: 0,
-        insertEvents: 2, deleteEvents: 0, bulkInsertEvents: 0, totalTypingTime: 10, averageTypingSpeed: 0,
+        totalEvents: 2,
+        pasteEvents: 0,
+        internalPasteEvents: 1,
+        dropEvents: 0,
+        insertEvents: 2,
+        deleteEvents: 0,
+        bulkInsertEvents: 0,
+        totalTypingTime: 10,
+        averageTypingSpeed: 0,
       },
     } as ProofData;
     expect(verifyProofMetadata(proofData, events)).toMatchObject({
@@ -320,13 +356,34 @@ describe('verification utilities', () => {
       { type: 'contentChange', inputType: 'insertText', data: '\n', rangeOffset: 1, rangeLength: 0, timestamp: 2 },
       { type: 'contentChange', inputType: 'insertText', data: 'b', rangeOffset: 2, rangeLength: 0, timestamp: 3 },
       { type: 'copyOperation', inputType: null, data: 'a\nb', rangeLength: 3, timestamp: 4 },
-      { type: 'contentChange', inputType: 'insertFromInternalPaste', data: 'a\nb', rangeOffset: null, rangeLength: 0, timestamp: 5 },
-      { type: 'contentChange', inputType: 'insertParagraph', data: 'a\nb', rangeOffset: 3, rangeLength: 0, timestamp: 6 },
+      {
+        type: 'contentChange',
+        inputType: 'insertFromInternalPaste',
+        data: 'a\nb',
+        rangeOffset: null,
+        rangeLength: 0,
+        timestamp: 5,
+      },
+      {
+        type: 'contentChange',
+        inputType: 'insertParagraph',
+        data: 'a\nb',
+        rangeOffset: 3,
+        rangeLength: 0,
+        timestamp: 6,
+      },
     ] as StoredEvent[];
     const proofData = {
       metadata: {
-        totalEvents: 6, pasteEvents: 0, internalPasteEvents: 1, dropEvents: 0,
-        insertEvents: 5, deleteEvents: 0, bulkInsertEvents: 0, totalTypingTime: 6, averageTypingSpeed: 0,
+        totalEvents: 6,
+        pasteEvents: 0,
+        internalPasteEvents: 1,
+        dropEvents: 0,
+        insertEvents: 5,
+        deleteEvents: 0,
+        bulkInsertEvents: 0,
+        totalTypingTime: 6,
+        averageTypingSpeed: 0,
       },
     } as ProofData;
     expect(verifyProofMetadata(proofData, events)).toMatchObject({
@@ -345,8 +402,15 @@ describe('verification utilities', () => {
     ] as StoredEvent[];
     const proofData = {
       metadata: {
-        totalEvents: 2, pasteEvents: 0, internalPasteEvents: 0, dropEvents: 0,
-        insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 0, totalTypingTime: 20, averageTypingSpeed: 0,
+        totalEvents: 2,
+        pasteEvents: 0,
+        internalPasteEvents: 0,
+        dropEvents: 0,
+        insertEvents: 1,
+        deleteEvents: 0,
+        bulkInsertEvents: 0,
+        totalTypingTime: 20,
+        averageTypingSpeed: 0,
       },
     } as ProofData;
     expect(verifyProofMetadata(proofData, events)).toMatchObject({
@@ -365,8 +429,15 @@ describe('verification utilities', () => {
     ] as StoredEvent[];
     const proofData = {
       metadata: {
-        totalEvents: 2, pasteEvents: 0, internalPasteEvents: 0, dropEvents: 0,
-        insertEvents: 1, deleteEvents: 0, bulkInsertEvents: 0, totalTypingTime: 20, averageTypingSpeed: 0,
+        totalEvents: 2,
+        pasteEvents: 0,
+        internalPasteEvents: 0,
+        dropEvents: 0,
+        insertEvents: 1,
+        deleteEvents: 0,
+        bulkInsertEvents: 0,
+        totalTypingTime: 20,
+        averageTypingSpeed: 0,
       },
     } as ProofData;
     expect(verifyProofMetadata(proofData, events)).toMatchObject({

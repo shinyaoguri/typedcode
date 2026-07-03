@@ -1,7 +1,4 @@
-import {
-  EXAM_AUTHORITY_KEYS as REGISTRY_KEYS,
-  findExamAuthorityKey as findInRegistry,
-} from './registry.js';
+import { EXAM_AUTHORITY_KEYS as REGISTRY_KEYS, findExamAuthorityKey as findInRegistry } from './registry.js';
 import { LOCAL_EXAM_AUTHORITY_KEYS } from './localKeys.js';
 import type { ExamAuthorityKey } from './registry.js';
 
@@ -12,10 +9,7 @@ import type { ExamAuthorityKey } from './registry.js';
  * `registry.ts` はレビュー必須の公式鍵リスト。
  * `localKeys.ts` は各出題者が自分の dev 鍵を追加する場所 (skip-worktree 推奨)。
  */
-export const EXAM_AUTHORITY_KEYS: readonly ExamAuthorityKey[] = [
-  ...REGISTRY_KEYS,
-  ...LOCAL_EXAM_AUTHORITY_KEYS,
-];
+export const EXAM_AUTHORITY_KEYS: readonly ExamAuthorityKey[] = [...REGISTRY_KEYS, ...LOCAL_EXAM_AUTHORITY_KEYS];
 
 export function findExamAuthorityKey(
   keyId: string,

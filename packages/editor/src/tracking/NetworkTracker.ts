@@ -41,26 +41,35 @@ export class NetworkTracker extends BaseTracker<NetworkTrackerEvent, NetworkTrac
   recordInitial(): void {
     const online = navigator.onLine;
 
-    this.callback?.({
-      type: 'networkStatusChange',
-      data: { online },
-      description: t('events.initialNetworkState', { state: online ? t('events.online') : t('events.offline') }),
-    }, true);
+    this.callback?.(
+      {
+        type: 'networkStatusChange',
+        data: { online },
+        description: t('events.initialNetworkState', { state: online ? t('events.online') : t('events.offline') }),
+      },
+      true
+    );
   }
 
   private handleOnline(): void {
-    this.callback?.({
-      type: 'networkStatusChange',
-      data: { online: true },
-      description: t('events.networkOnline'),
-    }, false);
+    this.callback?.(
+      {
+        type: 'networkStatusChange',
+        data: { online: true },
+        description: t('events.networkOnline'),
+      },
+      false
+    );
   }
 
   private handleOffline(): void {
-    this.callback?.({
-      type: 'networkStatusChange',
-      data: { online: false },
-      description: t('events.networkOffline'),
-    }, false);
+    this.callback?.(
+      {
+        type: 'networkStatusChange',
+        data: { online: false },
+        description: t('events.networkOffline'),
+      },
+      false
+    );
   }
 }

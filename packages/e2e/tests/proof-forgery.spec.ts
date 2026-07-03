@@ -25,7 +25,7 @@ interface Ev {
 }
 
 function events(p: Proof): Ev[] {
-  return ((p.proof as { events?: Ev[] })?.events ?? []);
+  return (p.proof as { events?: Ev[] })?.events ?? [];
 }
 function tp(p: Proof): Tp {
   return (p.typingProofData as Tp) ?? {};
@@ -39,7 +39,7 @@ test('export した proof への各種偽造を verify-cli がすべて拒否す
   const zipPath = await app.exportCurrentTab();
 
   // positive control: 無改ざんは pass。
-  const clean = runVerifyCli(await extractProofJson(zipPath), ["--mode", "fast"]);
+  const clean = runVerifyCli(await extractProofJson(zipPath), ['--mode', 'fast']);
   expect(clean.passed, 'unmodified proof should pass\n' + clean.stdout).toBe(true);
 
   // ① root 偽造: 初期ハッシュ nonce を 1 文字書き換える → root がどちらの式にも一致しない。
@@ -48,7 +48,7 @@ test('export した proof への各種偽造を verify-cli がすべて拒否す
     if (typeof t.initialHashNonce !== 'string') throw new Error('no initialHashNonce');
     t.initialHashNonce = flip(t.initialHashNonce);
   });
-  expect(runVerifyCli(nonceForged, ["--mode", "fast"]).exitCode, 'forged nonce must be rejected').toBe(1);
+  expect(runVerifyCli(nonceForged, ['--mode', 'fast']).exitCode, 'forged nonce must be rejected').toBe(1);
 
   // ② fingerprint 偽造: deviceId と紐づく fingerprint.hash を書き換える。
   const fpForged = await extractProofJson(zipPath, (p) => {
@@ -56,7 +56,7 @@ test('export した proof への各種偽造を verify-cli がすべて拒否す
     if (!fp || typeof fp.hash !== 'string') throw new Error('no fingerprint.hash');
     fp.hash = flip(fp.hash);
   });
-  expect(runVerifyCli(fpForged, ["--mode", "fast"]).exitCode, 'forged fingerprint must be rejected').toBe(1);
+  expect(runVerifyCli(fpForged, ['--mode', 'fast']).exitCode, 'forged fingerprint must be rejected').toBe(1);
 
   // ③ リプレイ (イベント複製): 中ほどのイベントを複製挿入 → sequence/チェーンが破綻。
   const replayed = await extractProofJson(zipPath, (p) => {
@@ -65,7 +65,7 @@ test('export した proof への各種偽造を verify-cli がすべて拒否す
     if (ev.length < 4) throw new Error('too few events');
     ev.splice(mid, 0, JSON.parse(JSON.stringify(ev[mid])));
   });
-  expect(runVerifyCli(replayed, ["--mode", "fast"]).exitCode, 'duplicated/replayed event must be rejected').toBe(1);
+  expect(runVerifyCli(replayed, ['--mode', 'fast']).exitCode, 'duplicated/replayed event must be rejected').toBe(1);
 
   // ④ 切り貼り (イベント順序入替): 隣接する 2 イベントを入れ替える → previousHash チェーンが切れる。
   const reordered = await extractProofJson(zipPath, (p) => {
@@ -76,7 +76,7 @@ test('export した proof への各種偽造を verify-cli がすべて拒否す
     ev[i] = ev[i + 1]!;
     ev[i + 1] = tmp;
   });
-  expect(runVerifyCli(reordered, ["--mode", "fast"]).exitCode, 'reordered/spliced events must be rejected').toBe(1);
+  expect(runVerifyCli(reordered, ['--mode', 'fast']).exitCode, 'reordered/spliced events must be rejected').toBe(1);
 
   // ⑤ 末尾イベント削除 (切り詰め): finalEventChainHash と最終ハッシュが食い違う。
   const truncated = await extractProofJson(zipPath, (p) => {
@@ -84,7 +84,7 @@ test('export した proof への各種偽造を verify-cli がすべて拒否す
     if (ev.length < 2) throw new Error('too few events');
     ev.pop();
   });
-  expect(runVerifyCli(truncated, ["--mode", "fast"]).exitCode, 'truncated chain must be rejected').toBe(1);
+  expect(runVerifyCli(truncated, ['--mode', 'fast']).exitCode, 'truncated chain must be rejected').toBe(1);
 });
 
 /** 16 進文字列の先頭 1 文字を別の値へ反転する。 */

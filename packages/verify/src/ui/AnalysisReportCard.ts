@@ -7,7 +7,14 @@
  *   採点者が現場を検分できるようにする (ADR-0009 の証拠リンク必須要件)
  */
 
-import { escapeHtml, type AnalysisReport, type AnalysisSignal, type AnalysisDimension, type AnalysisSeverity, type EvidenceRef } from '@typedcode/shared';
+import {
+  escapeHtml,
+  type AnalysisReport,
+  type AnalysisSignal,
+  type AnalysisDimension,
+  type AnalysisSeverity,
+  type EvidenceRef,
+} from '@typedcode/shared';
 import { t } from '../i18n/index.js';
 
 export class AnalysisReportCard {
@@ -119,9 +126,7 @@ export class AnalysisReportCard {
         const eventIndex = Number(button.dataset['eventIndex']);
         if (!Number.isFinite(eventIndex)) return;
         // ChartController が listen し、シークバーを当該イベントへ移動する。
-        document.dispatchEvent(
-          new CustomEvent('verify:seek-to-event', { detail: { eventIndex } })
-        );
+        document.dispatchEvent(new CustomEvent('verify:seek-to-event', { detail: { eventIndex } }));
       });
     }
   }

@@ -70,11 +70,11 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
     }
 
     // イベントを抽出
-    const mouseEvents = events.filter(e => e.type === 'mousePositionChange');
-    const focusEvents = events.filter(e => e.type === 'focusChange');
-    const visibilityEvents = events.filter(e => e.type === 'visibilityChange');
-    const keyDownEvents = events.filter(e => e.type === 'keyDown');
-    const keyUpEvents = events.filter(e => e.type === 'keyUp');
+    const mouseEvents = events.filter((e) => e.type === 'mousePositionChange');
+    const focusEvents = events.filter((e) => e.type === 'focusChange');
+    const visibilityEvents = events.filter((e) => e.type === 'visibilityChange');
+    const keyDownEvents = events.filter((e) => e.type === 'keyDown');
+    const keyUpEvents = events.filter((e) => e.type === 'keyUp');
 
     // 統計情報を更新
     this.updateStats(mouseEvents, focusEvents, visibilityEvents, keyDownEvents, keyUpEvents);
@@ -94,7 +94,9 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
     // データを準備
     const { typingSpeedData, externalInputMarkers, maxSpeed } = this.prepareTypingSpeedData(events, totalTime);
     const { keyUpData, keyDownData, maxKeystrokeTime } = this.prepareKeystrokeData(
-      keyUpEvents, keyDownEvents, currentEvents
+      keyUpEvents,
+      keyDownEvents,
+      currentEvents
     );
 
     // キャッシュを保存
@@ -155,12 +157,8 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
     const dwellTimes = this.extractValidTimes(keyUpEvents, 'dwellTime', MAX_VALID_TIME);
     const flightTimes = this.extractValidTimes(keyDownEvents, 'flightTime', MAX_VALID_TIME);
 
-    const avgDwellTime = dwellTimes.length > 0
-      ? dwellTimes.reduce((a, b) => a + b, 0) / dwellTimes.length
-      : 0;
-    const avgFlightTime = flightTimes.length > 0
-      ? flightTimes.reduce((a, b) => a + b, 0) / flightTimes.length
-      : 0;
+    const avgDwellTime = dwellTimes.length > 0 ? dwellTimes.reduce((a, b) => a + b, 0) / dwellTimes.length : 0;
+    const avgFlightTime = flightTimes.length > 0 ? flightTimes.reduce((a, b) => a + b, 0) / flightTimes.length : 0;
 
     if (stats.avgDwellTime) stats.avgDwellTime.textContent = `${avgDwellTime.toFixed(1)}ms`;
     if (stats.avgFlightTime) stats.avgFlightTime.textContent = `${avgFlightTime.toFixed(1)}ms`;
@@ -171,7 +169,7 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
    */
   private extractValidTimes(events: StoredEvent[], field: 'dwellTime' | 'flightTime', maxTime: number): number[] {
     const times: number[] = [];
-    events.forEach(event => {
+    events.forEach((event) => {
       const data = event.data as KeystrokeDynamicsData | null;
       if (data && typeof data === 'object' && field in data) {
         const time = data[field];
@@ -186,7 +184,10 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
   /**
    * タイピング速度データを準備
    */
-  private prepareTypingSpeedData(events: StoredEvent[], totalTime: number): {
+  private prepareTypingSpeedData(
+    events: StoredEvent[],
+    totalTime: number
+  ): {
     typingSpeedData: { time: number; speed: number }[];
     externalInputMarkers: { time: number; type: InputType }[];
     maxSpeed: number;
@@ -200,11 +201,15 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
       const windowEnd = time;
 
       let charCount = 0;
-      events.forEach(event => {
+      events.forEach((event) => {
         if (event.timestamp >= windowStart && event.timestamp <= windowEnd) {
-          if (event.type === 'contentChange' && event.data &&
-              event.inputType !== 'insertFromPaste' && event.inputType !== 'insertFromDrop') {
-            charCount += (typeof event.data === 'string' ? event.data.length : 0);
+          if (
+            event.type === 'contentChange' &&
+            event.data &&
+            event.inputType !== 'insertFromPaste' &&
+            event.inputType !== 'insertFromDrop'
+          ) {
+            charCount += typeof event.data === 'string' ? event.data.length : 0;
           }
         }
       });
@@ -213,16 +218,16 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
       typingSpeedData.push({ time: time / 1000, speed });
     }
 
-    events.forEach(event => {
+    events.forEach((event) => {
       if (event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop') {
         externalInputMarkers.push({
           time: event.timestamp / 1000,
-          type: event.inputType
+          type: event.inputType,
         });
       }
     });
 
-    const maxSpeed = Math.ceil(Math.max(...typingSpeedData.map(d => d.speed), 1) * 1.2);
+    const maxSpeed = Math.ceil(Math.max(...typingSpeedData.map((d) => d.speed), 1) * 1.2);
 
     return { typingSpeedData, externalInputMarkers, maxSpeed };
   }
@@ -243,29 +248,29 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
     const keyDownData: { time: number; flightTime: number; key: string; eventIndex: number }[] = [];
     let maxKeystrokeTime = 0;
 
-    keyUpEvents.forEach(event => {
+    keyUpEvents.forEach((event) => {
       const data = event.data as KeystrokeDynamicsData | null;
       if (data && typeof data === 'object' && 'dwellTime' in data && data.dwellTime !== undefined) {
-        const eventIndex = currentEvents.findIndex(e => e.sequence === event.sequence);
+        const eventIndex = currentEvents.findIndex((e) => e.sequence === event.sequence);
         keyUpData.push({
           time: event.timestamp,
           dwellTime: data.dwellTime,
           key: data.key,
-          eventIndex
+          eventIndex,
         });
         maxKeystrokeTime = Math.max(maxKeystrokeTime, data.dwellTime);
       }
     });
 
-    keyDownEvents.forEach(event => {
+    keyDownEvents.forEach((event) => {
       const data = event.data as KeystrokeDynamicsData | null;
       if (data && typeof data === 'object' && 'flightTime' in data && data.flightTime !== undefined) {
-        const eventIndex = currentEvents.findIndex(e => e.sequence === event.sequence);
+        const eventIndex = currentEvents.findIndex((e) => e.sequence === event.sequence);
         keyDownData.push({
           time: event.timestamp,
           flightTime: data.flightTime,
           key: data.key,
-          eventIndex
+          eventIndex,
         });
         maxKeystrokeTime = Math.max(maxKeystrokeTime, data.flightTime);
       }
@@ -319,9 +324,27 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
     layout: ChartLayout
   ): void {
     // フォーカスバー
-    this.drawSingleFocusBar(ctx, focusEvents, paddingLeft, layout.focusY, chartWidth, layout.focusBarHeight, totalTime, true);
+    this.drawSingleFocusBar(
+      ctx,
+      focusEvents,
+      paddingLeft,
+      layout.focusY,
+      chartWidth,
+      layout.focusBarHeight,
+      totalTime,
+      true
+    );
     // Visibilityバー
-    this.drawSingleFocusBar(ctx, visibilityEvents, paddingLeft, layout.visibilityY, chartWidth, layout.visibilityBarHeight, totalTime, false);
+    this.drawSingleFocusBar(
+      ctx,
+      visibilityEvents,
+      paddingLeft,
+      layout.visibilityY,
+      chartWidth,
+      layout.visibilityBarHeight,
+      totalTime,
+      false
+    );
 
     // ラベル
     ctx.fillStyle = '#666';
@@ -354,7 +377,7 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
     let currentState = true;
     let lastTime = 0;
 
-    events.forEach(event => {
+    events.forEach((event) => {
       const eventTime = event.timestamp;
       const eventX = x + (lastTime / totalTime) * width;
       const eventWidth = ((eventTime - lastTime) / totalTime) * width;
@@ -421,7 +444,7 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
     }
 
     // 外部入力マーカー
-    externalInputMarkers.forEach(marker => {
+    externalInputMarkers.forEach((marker) => {
       const markerX = padding.left + (marker.time / (totalTime / 1000)) * chartWidth;
       ctx.fillStyle = 'rgba(255, 193, 7, 0.3)';
       ctx.fillRect(markerX - 2, speedChartY, 4, speedChartHeight);
@@ -484,7 +507,7 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
     }
 
     // Dwell Time（上半分）
-    keyUpData.forEach(point => {
+    keyUpData.forEach((point) => {
       const pointX = padding.left + (point.time / totalTime) * chartWidth;
       const normalizedDwell = Math.min(point.dwellTime / maxKeystrokeTime, 1);
       const pointY = keystrokeY + keystrokeChartHeight * 0.5 - normalizedDwell * keystrokeChartHeight * 0.4;
@@ -495,7 +518,7 @@ export class TimelineChart extends BaseCanvasChart<IntegratedTimelineCache, Time
     });
 
     // Flight Time（下半分）
-    keyDownData.forEach(point => {
+    keyDownData.forEach((point) => {
       const pointX = padding.left + (point.time / totalTime) * chartWidth;
       const normalizedFlight = Math.min(point.flightTime / maxKeystrokeTime, 1);
       const pointY = keystrokeY + keystrokeChartHeight * 0.5 + normalizedFlight * keystrokeChartHeight * 0.4;

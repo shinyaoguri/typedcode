@@ -24,7 +24,7 @@ const stubEvent = (eventIndex: number): StoredEvent =>
     data: `e${eventIndex}`,
     hash: `hash-${eventIndex}`,
     previousHash: eventIndex === 0 ? null : `hash-${eventIndex - 1}`,
-  } as unknown as StoredEvent);
+  }) as unknown as StoredEvent;
 
 const stubCheckpoint = (eventIndex: number): CheckpointData => ({
   eventIndex,
@@ -33,8 +33,7 @@ const stubCheckpoint = (eventIndex: number): CheckpointData => ({
   contentHash: `content-${eventIndex}`,
 });
 
-const eventsUpTo = (n: number): StoredEvent[] =>
-  Array.from({ length: n + 1 }, (_, i) => stubEvent(i));
+const eventsUpTo = (n: number): StoredEvent[] => Array.from({ length: n + 1 }, (_, i) => stubEvent(i));
 
 describe('CheckpointManager hybrid trigger', () => {
   it('fires when default N (100) events have accumulated', () => {

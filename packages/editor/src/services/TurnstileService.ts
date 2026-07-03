@@ -238,7 +238,7 @@ export async function getTurnstileToken(action: string, options?: GetTurnstileTo
         size: 'flexible',
         action,
         theme: turnstileTheme,
-        appearance: 'always',  // Always show the official Cloudflare widget
+        appearance: 'always', // Always show the official Cloudflare widget
         callback: (token) => {
           if (!resolved) {
             resolved = true;
@@ -286,11 +286,7 @@ export interface HumanAttestation {
 /**
  * Failure reason for verification
  */
-export type VerificationFailureReason =
-  | 'challenge_failed'
-  | 'timeout'
-  | 'network_error'
-  | 'token_acquisition_failed';
+export type VerificationFailureReason = 'challenge_failed' | 'timeout' | 'network_error' | 'token_acquisition_failed';
 
 /**
  * Verification result from the backend
@@ -385,7 +381,7 @@ function isNetworkError(response: Response | null, error: Error | null): boolean
  * Sleep for specified milliseconds
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -414,7 +410,7 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
       lastResponse = response;
 
       if (response.ok) {
-        const result = await response.json() as VerificationResult;
+        const result = (await response.json()) as VerificationResult;
         console.log('[Turnstile] Verification result:', result);
         // Notify success (no more retrying)
         retryStatusCallback?.({
@@ -446,7 +442,6 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
 
       // Network error - will retry if attempts remain
       console.warn(`[Turnstile] Attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed with status ${response.status}`);
-
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       lastResponse = null;
@@ -455,7 +450,7 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
 
     // Retry with exponential backoff if attempts remain
     if (attempt < RETRY_CONFIG.maxRetries) {
-      const delayMs = RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt - 1);
+      const delayMs = RETRY_CONFIG.initialDelayMs * 2 ** (attempt - 1);
       console.log(`[Turnstile] Retrying in ${delayMs}ms...`);
 
       // Notify about retry
@@ -554,7 +549,10 @@ async function requestSessionStart(
  * @param options Optional configuration for custom containers
  * @returns Verification result
  */
-export async function performTurnstileVerification(action: string, options?: TurnstileVerificationOptions): Promise<VerificationResult> {
+export async function performTurnstileVerification(
+  action: string,
+  options?: TurnstileVerificationOptions
+): Promise<VerificationResult> {
   // If Turnstile is not configured, allow the action (development mode)
   if (!isTurnstileConfigured()) {
     console.log('[Turnstile] Not configured, allowing action');
@@ -576,7 +574,7 @@ export async function performTurnstileVerification(action: string, options?: Tur
     } catch (error) {
       console.warn(`[Turnstile] Script load attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed`);
       if (attempt < RETRY_CONFIG.maxRetries) {
-        const delayMs = RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt - 1);
+        const delayMs = RETRY_CONFIG.initialDelayMs * 2 ** (attempt - 1);
         retryStatusCallback?.({
           attempt,
           maxRetries: RETRY_CONFIG.maxRetries,
@@ -631,7 +629,7 @@ export async function performTurnstileVerification(action: string, options?: Tur
     // Network error - retry if attempts remain
     console.warn(`[Turnstile] Challenge attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed (network error)`);
     if (attempt < RETRY_CONFIG.maxRetries) {
-      const delayMs = RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt - 1);
+      const delayMs = RETRY_CONFIG.initialDelayMs * 2 ** (attempt - 1);
       retryStatusCallback?.({
         attempt,
         maxRetries: RETRY_CONFIG.maxRetries,

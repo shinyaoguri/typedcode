@@ -13,10 +13,21 @@ import type { IntegratedChart } from '../../charts/IntegratedChart';
 import type { ScreenshotOverlay } from '../../charts/ScreenshotOverlay';
 import type { ScreenshotLightbox } from '../ScreenshotLightbox';
 import type { SeekbarController } from '../../charts/SeekbarController';
-import type { VerifyTabState, ProgressDetails, VerifyScreenshot, ScreenshotVerificationSummary, VerificationStepType } from '../../types';
+import type {
+  VerifyTabState,
+  ProgressDetails,
+  VerifyScreenshot,
+  ScreenshotVerificationSummary,
+  VerificationStepType,
+} from '../../types';
 import { buildResultData, calculateChartStats } from '../../services/ResultDataService';
 import { TrustCalculator } from '../../services/TrustCalculator';
-import { deriveAssurance, summarizeAnalysisForAssurance, summarizeProcess, type AssuranceResult } from '@typedcode/shared';
+import {
+  deriveAssurance,
+  summarizeAnalysisForAssurance,
+  summarizeProcess,
+  type AssuranceResult,
+} from '@typedcode/shared';
 import { t } from '../../i18n/index';
 
 export interface TabControllerDependencies {
@@ -197,11 +208,7 @@ export class TabController {
       this.deps.resultPanel.showFallbackStep();
       this.deps.resultPanel.updateStepStatus('chain', 'running', t('progress.statusFallback'));
       // サンプリングはスキップ（チェックポイントなしのため）
-      this.deps.resultPanel.updateStepStatus(
-        'sampling',
-        'skipped',
-        t('progress.statusNoCheckpoints')
-      );
+      this.deps.resultPanel.updateStepStatus('sampling', 'skipped', t('progress.statusNoCheckpoints'));
 
       const chainProgress = (current / total) * 100;
       const detail = t('progress.chainDetail', {
@@ -270,15 +277,11 @@ export class TabController {
     const screenshotSummary = this.calculateScreenshotSummary(tabState.screenshots);
 
     // ソースファイル不一致情報を準備（proofファイルに関連付けられたソースファイルの不一致）
-    const contentMismatches = tabState.associatedSourceMismatch
-      ? [tabState.associatedSourceMismatch]
-      : undefined;
+    const contentMismatches = tabState.associatedSourceMismatch ? [tabState.associatedSourceMismatch] : undefined;
 
     // 画面共有オプトアウトイベントの検出
     const events = tabState.proofData?.proof?.events ?? [];
-    const hasScreenShareOptOut = events.some(
-      (e: { type: string }) => e.type === 'screenShareOptOut'
-    );
+    const hasScreenShareOptOut = events.some((e: { type: string }) => e.type === 'screenShareOptOut');
 
     // 信頼度を計算
     const trustResult = TrustCalculator.calculate(

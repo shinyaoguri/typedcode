@@ -6,7 +6,14 @@
  * UI-specific functions for the verify package.
  */
 
-import type { PoswStatsDisplay, HumanAttestationUI, VerifyTabState, ChainErrorDetails, SampledVerificationInfo, VerificationResult } from '../types';
+import type {
+  PoswStatsDisplay,
+  HumanAttestationUI,
+  VerifyTabState,
+  ChainErrorDetails,
+  SampledVerificationInfo,
+  VerificationResult,
+} from '../types';
 import type { ResultData } from '../ui/ResultPanel';
 
 // Re-export from shared for backward compatibility

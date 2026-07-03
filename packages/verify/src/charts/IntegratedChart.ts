@@ -227,9 +227,7 @@ export class IntegratedChart {
     }));
 
     // 最大値を計算
-    const maxSpeed = Math.ceil(
-      Math.max(...typingSpeedData.map((d) => d.y), 1) * 1.2
-    );
+    const maxSpeed = Math.ceil(Math.max(...typingSpeedData.map((d) => d.y), 1) * 1.2);
     const maxKeystrokeTime = Math.max(
       ...keystrokeData.dwell.map((d) => d.y),
       ...keystrokeData.flight.map((d) => d.y),
@@ -262,10 +260,7 @@ export class IntegratedChart {
   /**
    * タイピング速度を計算
    */
-  private calculateTypingSpeed(
-    events: StoredEvent[],
-    totalTime: number
-  ): { x: number; y: number }[] {
+  private calculateTypingSpeed(events: StoredEvent[], totalTime: number): { x: number; y: number }[] {
     const windowSize = 5000; // 5秒ウィンドウ
     const data: { x: number; y: number }[] = [];
 
@@ -966,7 +961,11 @@ export class IntegratedChart {
     }
 
     // 12. コンテンツスナップショット
-    if (this.isVisible('contentSnapshot') && this.cache.contentSnapshotEvents && this.cache.contentSnapshotEvents.length > 0) {
+    if (
+      this.isVisible('contentSnapshot') &&
+      this.cache.contentSnapshotEvents &&
+      this.cache.contentSnapshotEvents.length > 0
+    ) {
       datasets.push({
         type: 'scatter',
         label: t('charts.datasets.contentSnapshot'),
@@ -1330,22 +1329,16 @@ export class IntegratedChart {
    */
   private handleHover(event: unknown, elements: unknown[]): void {
     const nativeEvent = event as { native: MouseEvent };
-    const screenshotElement = (elements as { datasetIndex: number; index: number }[]).find(
-      (el) => {
-        const dataset = this.chart?.data.datasets[el.datasetIndex];
-        return this.isScreenshotDataset(dataset?.label);
-      }
-    );
+    const screenshotElement = (elements as { datasetIndex: number; index: number }[]).find((el) => {
+      const dataset = this.chart?.data.datasets[el.datasetIndex];
+      return this.isScreenshotDataset(dataset?.label);
+    });
 
     if (screenshotElement && this.options.onScreenshotHover) {
       const dataset = this.chart?.data.datasets[screenshotElement.datasetIndex];
       const dataPoint = dataset?.data[screenshotElement.index] as ScreenshotPointData | undefined;
       if (dataPoint?.screenshot) {
-        this.options.onScreenshotHover(
-          dataPoint.screenshot,
-          nativeEvent.native.clientX,
-          nativeEvent.native.clientY
-        );
+        this.options.onScreenshotHover(dataPoint.screenshot, nativeEvent.native.clientX, nativeEvent.native.clientY);
       }
     } else if (this.options.onScreenshotHover) {
       this.options.onScreenshotHover(null, 0, 0);
@@ -1405,8 +1398,7 @@ export class IntegratedChart {
     // アノテーションを更新
     const annotationPlugin = this.chart.options.plugins?.annotation;
     if (annotationPlugin) {
-      (annotationPlugin as { annotations: Record<string, unknown> }).annotations =
-        this.buildAnnotations();
+      (annotationPlugin as { annotations: Record<string, unknown> }).annotations = this.buildAnnotations();
       this.chart.update('none');
     }
   }
@@ -1419,8 +1411,7 @@ export class IntegratedChart {
     if (this.chart) {
       const annotationPlugin = this.chart.options.plugins?.annotation;
       if (annotationPlugin) {
-        (annotationPlugin as { annotations: Record<string, unknown> }).annotations =
-          this.buildAnnotations();
+        (annotationPlugin as { annotations: Record<string, unknown> }).annotations = this.buildAnnotations();
         this.chart.update('none');
       }
     }

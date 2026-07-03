@@ -7,11 +7,11 @@ import { t } from '../../i18n/index.js';
 
 /** エクスポートのフェーズ */
 export type ExportPhase =
-  | 'verification'    // Turnstile検証
-  | 'preparing'       // データ準備中
-  | 'screenshots'     // スクリーンショット取得
-  | 'generating'      // ZIP生成
-  | 'complete';       // 完了
+  | 'verification' // Turnstile検証
+  | 'preparing' // データ準備中
+  | 'screenshots' // スクリーンショット取得
+  | 'generating' // ZIP生成
+  | 'complete'; // 完了
 
 /** 進行状況 */
 export interface ExportProgress {

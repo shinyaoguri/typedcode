@@ -122,9 +122,7 @@ export class LandingPage {
       for (const mode of ALL_EDITOR_MODES) {
         const info = sessions[mode];
         if (!info) continue;
-        const badge = overlay.querySelector<HTMLElement>(
-          `.landing-card-mode[data-mode="${mode}"] .session-badge`
-        );
+        const badge = overlay.querySelector<HTMLElement>(`.landing-card-mode[data-mode="${mode}"] .session-badge`);
         if (!badge) continue;
         badge.textContent = `${t('landing.resumeSession')} (${info.tabCount})`;
         badge.hidden = false;

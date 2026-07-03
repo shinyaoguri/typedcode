@@ -174,7 +174,14 @@ export class FileController {
           const parentPath = parts.slice(0, -1).join('/');
           folderId = folderMap.get(parentPath) ?? rootFolderId;
         }
-        this.addFileToVerification(fileData.filename, fileData.rawData, folderId, fileData.relativePath, result.screenshots, result.startTimestamp);
+        this.addFileToVerification(
+          fileData.filename,
+          fileData.rawData,
+          folderId,
+          fileData.relativePath,
+          result.screenshots,
+          result.startTimestamp
+        );
       }
 
       // パス2: plaintext/imageファイルを処理

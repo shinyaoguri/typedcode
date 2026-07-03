@@ -73,9 +73,9 @@ describe('exportProof snapshot consistency (#143)', () => {
       expect(cp.eventIndex).toBeLessThanOrEqual(maxIndex);
     }
     // 同梱 events に対する checkpoint 検証が通る (範囲外 cp が残ると即 fail する層)
-    await expect(
-      verifyCheckpoints(exported.proof.events, exported.checkpoints)
-    ).resolves.toMatchObject({ valid: true });
+    await expect(verifyCheckpoints(exported.proof.events, exported.checkpoints)).resolves.toMatchObject({
+      valid: true,
+    });
   });
 
   it('creates the final checkpoint at the last exported event', async () => {
@@ -89,13 +89,9 @@ describe('exportProof snapshot consistency (#143)', () => {
     const { proof, content } = await buildProof('abc');
     const exported = await proof.exportProof(content);
     expect(exported.proof.totalEvents).toBe(exported.proof.events.length);
-    expect(exported.proof.finalHash).toBe(
-      exported.proof.events[exported.proof.events.length - 1]!.hash
-    );
+    expect(exported.proof.finalHash).toBe(exported.proof.events[exported.proof.events.length - 1]!.hash);
     // メタデータ再カウント (verifyProofMetadata) が同梱 events と一致する
-    expect(
-      verifyProofMetadata(exported.typingProofData, exported.proof.events)
-    ).toMatchObject({ valid: true });
+    expect(verifyProofMetadata(exported.typingProofData, exported.proof.events)).toMatchObject({ valid: true });
   });
 
   it('waitForQueueDrain resolves once all recorded events are on the chain', async () => {

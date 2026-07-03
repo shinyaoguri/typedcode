@@ -17,7 +17,10 @@ import type { ExamAuthorityKey } from '@typedcode/shared';
  */
 export function suggestKeyId(now: Date, randomHex: string): string {
   const yyyymm = now.toISOString().slice(0, 7).replace('-', '');
-  const suffix = randomHex.replace(/[^0-9a-f]/gi, '').slice(0, 6).toLowerCase();
+  const suffix = randomHex
+    .replace(/[^0-9a-f]/gi, '')
+    .slice(0, 6)
+    .toLowerCase();
   return `exam-${yyyymm}-${suffix}`;
 }
 
@@ -45,15 +48,10 @@ export interface GeneratedAuthorityKey {
  * 取り出す (教員がローカル保管できるように)。`keyId` / `validFrom` は呼び出し側で
  * 上書きしても良い (学期入りの keyId など)。
  */
-export async function generateAuthorityKey(options: {
-  keyId?: string;
-  now?: Date;
-} = {}): Promise<GeneratedAuthorityKey> {
-  const pair = await crypto.subtle.generateKey(
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    true,
-    ['sign', 'verify']
-  );
+export async function generateAuthorityKey(
+  options: { keyId?: string; now?: Date } = {}
+): Promise<GeneratedAuthorityKey> {
+  const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const privateJwk = await crypto.subtle.exportKey('jwk', pair.privateKey);
   const publicJwk = await crypto.subtle.exportKey('jwk', pair.publicKey);
 

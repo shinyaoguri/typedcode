@@ -23,20 +23,14 @@ export function getI18n() {
 /**
  * Convenience function for translation
  */
-export function t(
-  key: string,
-  params?: Record<string, string | number>
-): string {
+export function t(key: string, params?: Record<string, string | number>): string {
   return i18n.t(key, params);
 }
 
 /**
  * Convenience function for message formatting
  */
-export function formatMessage(
-  template: string,
-  params: Record<string, string | number>
-): string {
+export function formatMessage(template: string, params: Record<string, string | number>): string {
   return i18n.formatMessage(template, params);
 }
 

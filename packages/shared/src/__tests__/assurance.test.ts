@@ -164,11 +164,7 @@ describe('summarizeAnalysisForAssurance', () => {
   it('counts only signals above info severity as notable', () => {
     const summary = summarizeAnalysisForAssurance({
       reviewPriority: 0.4,
-      signals: [
-        { severity: 'info' },
-        { severity: 'notice' },
-        { severity: 'review' },
-      ],
+      signals: [{ severity: 'info' }, { severity: 'notice' }, { severity: 'review' }],
     });
     expect(summary.notableSignals).toBe(2);
     expect(summary.reviewPriority).toBe(0.4);

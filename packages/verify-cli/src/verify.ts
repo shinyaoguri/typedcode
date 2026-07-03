@@ -100,10 +100,7 @@ export interface VerifyProofOptions {
   screenshotSummary?: ScreenshotVerificationSummary;
 }
 
-export async function verifyProof(
-  proof: ProofFile,
-  options: VerifyProofOptions = {}
-): Promise<CLIVerificationResult> {
+export async function verifyProof(proof: ProofFile, options: VerifyProofOptions = {}): Promise<CLIVerificationResult> {
   const mode: VerificationMode = options.mode ?? 'full';
   const startTime = performance.now();
   const events = proof.proof.events;
@@ -119,12 +116,13 @@ export async function verifyProof(
 
   // 試験モード (ADR-0006): exam ブロックがあれば束縛を先に検証する。
   // root アンカー gate (#131) の exam 免除は「検証済み束縛」に基づくため verifyProofFile より前に計算する。
-  const binding = proof.exam && options.examPackageManifest
-    ? await verifyExamBinding(proof, options.examPackageManifest, {
-        examAuthorityRegistry: EXAM_AUTHORITY_KEYS,
-        submissionTimeMs: options.submittedAtMs,
-      })
-    : undefined;
+  const binding =
+    proof.exam && options.examPackageManifest
+      ? await verifyExamBinding(proof, options.examPackageManifest, {
+          examAuthorityRegistry: EXAM_AUTHORITY_KEYS,
+          submissionTimeMs: options.submittedAtMs,
+        })
+      : undefined;
 
   // Run verification using shared utilities
   const result = await verifyProofFile(proof, onProgress, {

@@ -40,10 +40,10 @@ import type { TemplateInjectionEventData } from './template.js';
 
 /** Proof of Sequential Work データ */
 export interface PoSWData {
-  iterations: number;       // 反復回数
-  nonce: string;            // 計算で使用したnonce
+  iterations: number; // 反復回数
+  nonce: string; // 計算で使用したnonce
   intermediateHash: string; // 中間ハッシュ（検証用）
-  computeTimeMs: number;    // 計算時間（参考値、ミリ秒）
+  computeTimeMs: number; // 計算時間（参考値、ミリ秒）
 }
 
 // ============================================================================
@@ -54,7 +54,30 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | ExamOpenedEventData | CodeExecutionEventData | ReflectionNoteData | null;
+  data?:
+    | string
+    | CursorPositionData
+    | SelectionData
+    | MousePositionData
+    | VisibilityChangeData
+    | FocusChangeData
+    | KeystrokeDynamicsData
+    | WindowSizeData
+    | NetworkStatusData
+    | SessionResumedData
+    | HumanAttestationEventData
+    | TermsAcceptedData
+    | ScreenshotCaptureData
+    | ScreenShareStartData
+    | ScreenShareStopData
+    | ScreenShareOptOutData
+    | TemplateInjectionEventData
+    | EnvironmentProbeData
+    | FullscreenChangeData
+    | ExamOpenedEventData
+    | CodeExecutionEventData
+    | ReflectionNoteData
+    | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -74,12 +97,35 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | EnvironmentProbeData | FullscreenChangeData | ExamOpenedEventData | CodeExecutionEventData | ReflectionNoteData | null;
+  data:
+    | string
+    | CursorPositionData
+    | SelectionData
+    | MousePositionData
+    | VisibilityChangeData
+    | FocusChangeData
+    | KeystrokeDynamicsData
+    | WindowSizeData
+    | NetworkStatusData
+    | SessionResumedData
+    | HumanAttestationEventData
+    | TermsAcceptedData
+    | ScreenshotCaptureData
+    | ScreenShareStartData
+    | ScreenShareStopData
+    | ScreenShareOptOutData
+    | TemplateInjectionEventData
+    | EnvironmentProbeData
+    | FullscreenChangeData
+    | ExamOpenedEventData
+    | CodeExecutionEventData
+    | ReflectionNoteData
+    | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;
   previousHash: string | null;
-  posw: PoSWData;  // Proof of Sequential Work
+  posw: PoSWData; // Proof of Sequential Work
 }
 
 /** 保存されるイベントデータ（ハッシュデータ + メタデータ） */
@@ -155,10 +201,10 @@ export interface TypingProofHashResult {
 
 /** チェックポイントデータ */
 export interface CheckpointData {
-  eventIndex: number;     // チェックポイント時点のイベントインデックス
-  hash: string;           // その時点のハッシュ値
-  timestamp: number;      // その時点のタイムスタンプ
-  contentHash: string;    // その時点のコンテンツハッシュ（オプショナル検証用）
+  eventIndex: number; // チェックポイント時点のイベントインデックス
+  hash: string; // その時点のハッシュ値
+  timestamp: number; // その時点のタイムスタンプ
+  contentHash: string; // その時点のコンテンツハッシュ（オプショナル検証用）
   /** 署名済みチェックポイント (Workers 署名サービス由来)。任意 */
   signature?: SignedCheckpointEnvelope;
 }
@@ -201,7 +247,7 @@ export interface ExportedProof {
     timestamp: string;
     isPureTyping: boolean;
   };
-  checkpoints?: CheckpointData[];  // チェックポイント（v3.2.0以降）
+  checkpoints?: CheckpointData[]; // チェックポイント（v3.2.0以降）
   /** 試験モード (ADR-0006) の束縛ブロック。exam モードで生成された proof のみ持つ */
   exam?: ExamProofBlock;
   /**

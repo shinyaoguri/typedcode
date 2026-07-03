@@ -54,7 +54,9 @@ export class ScreenshotService {
           // manifest+画像が揃って差し替えられた疑い (manifest は未署名・チェーンは改ざん不能)。
           // 判定は shared の単一実装 (#147: verify-cli と結論を揃える)。
           const { verified, tampered } = await checkScreenshotImage(
-            await blob.arrayBuffer(), entry.imageHash, chainImageHashes
+            await blob.arrayBuffer(),
+            entry.imageHash,
+            chainImageHashes
           );
           console.log(`[ScreenshotService] Image ${entry.filename}: verified=${verified}, tampered=${tampered}`);
 
@@ -93,7 +95,12 @@ export class ScreenshotService {
       }
     }
 
-    console.log('[ScreenshotService] Total loaded:', screenshots.length, 'missing:', screenshots.filter(s => s.missing).length);
+    console.log(
+      '[ScreenshotService] Total loaded:',
+      screenshots.length,
+      'missing:',
+      screenshots.filter((s) => s.missing).length
+    );
     return screenshots;
   }
 
@@ -138,7 +145,9 @@ export class ScreenshotService {
 
         // ハッシュ検証 (チェーン突合は loadFromZip と同じ。判定は shared の単一実装 #147)
         const { verified, tampered } = await checkScreenshotImage(
-          await blob.arrayBuffer(), entry.imageHash, chainImageHashes
+          await blob.arrayBuffer(),
+          entry.imageHash,
+          chainImageHashes
         );
         console.log(`[ScreenshotService] Image ${entry.filename}: verified=${verified}, tampered=${tampered}`);
 
@@ -169,7 +178,12 @@ export class ScreenshotService {
       }
     }
 
-    console.log('[ScreenshotService] Total loaded from folder:', screenshots.length, 'missing:', screenshots.filter(s => s.missing).length);
+    console.log(
+      '[ScreenshotService] Total loaded from folder:',
+      screenshots.length,
+      'missing:',
+      screenshots.filter((s) => s.missing).length
+    );
     return screenshots;
   }
 
@@ -187,7 +201,7 @@ export class ScreenshotService {
       imageUrl: null,
       imageBlob: null,
       verified: false, // 画像がないので検証不可
-      missing: true,   // 画像なしで作成
+      missing: true, // 画像なしで作成
       displayInfo: entry.displayInfo,
       fileSizeBytes: entry.fileSizeBytes,
     };
@@ -257,9 +271,7 @@ export class ScreenshotService {
    * 指定時間範囲のスクリーンショットを取得
    */
   getScreenshotsInRange(startTime: number, endTime: number): VerifyScreenshot[] {
-    return Array.from(this.screenshots.values()).filter(
-      (s) => s.timestamp >= startTime && s.timestamp <= endTime
-    );
+    return Array.from(this.screenshots.values()).filter((s) => s.timestamp >= startTime && s.timestamp <= endTime);
   }
 
   /**

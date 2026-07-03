@@ -29,11 +29,7 @@ async function generateAuthorityKeyPair(): Promise<{
   privateJwk: JsonWebKey;
   publicJwk: JsonWebKey;
 }> {
-  const pair = await crypto.subtle.generateKey(
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    true,
-    ['sign', 'verify']
-  );
+  const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const privateJwk = await crypto.subtle.exportKey('jwk', pair.privateKey);
   const publicJwk = await crypto.subtle.exportKey('jwk', pair.publicKey);
   return { privateJwk, publicJwk };
@@ -201,7 +197,13 @@ describe('createExamBundlePackage', () => {
     const { privateJwk, publicJwk } = await generateAuthorityKeyPair();
     signer = await importAuthoritySigner(privateJwk, KEY_ID);
     registry = [
-      { keyId: KEY_ID, algorithm: 'ECDSA-P256', publicKeyJwk: publicJwk, status: 'active', validFrom: '2026-01-01T00:00:00.000Z' },
+      {
+        keyId: KEY_ID,
+        algorithm: 'ECDSA-P256',
+        publicKeyJwk: publicJwk,
+        status: 'active',
+        validFrom: '2026-01-01T00:00:00.000Z',
+      },
     ];
   });
 
@@ -213,7 +215,11 @@ describe('createExamBundlePackage', () => {
       deadline: '2026-06-10T04:00:00.000Z',
       proctorToken: 'ABCD1234',
       problems: [
-        { problemId: 'p1', statement: '# 問題1\n和を出力せよ。', starter: { filename: 'p1.c', language: 'c', content: '/* TODO */\n' } },
+        {
+          problemId: 'p1',
+          statement: '# 問題1\n和を出力せよ。',
+          starter: { filename: 'p1.c', language: 'c', content: '/* TODO */\n' },
+        },
         { problemId: 'p2', statement: '# 問題2\n積を出力せよ。' },
       ],
     };
@@ -247,10 +253,13 @@ describe('createExamBundlePackage', () => {
   });
 
   it('rejects duplicate problemIds', async () => {
-    const dup = { ...bundleParams(), problems: [
-      { problemId: 'p1', statement: 'a' },
-      { problemId: 'p1', statement: 'b' },
-    ] };
+    const dup = {
+      ...bundleParams(),
+      problems: [
+        { problemId: 'p1', statement: 'a' },
+        { problemId: 'p1', statement: 'b' },
+      ],
+    };
     await expect(createExamBundlePackage(dup, signer)).rejects.toThrow();
   });
 

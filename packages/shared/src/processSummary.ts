@@ -131,10 +131,7 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
   let focusLost = false;
 
   // 閉じたバースト窓を見どころへ昇格させる (閾値以上かつ現最大を超えたときのみ)。
-  const promoteBurst = (
-    burst: typeof pendingBurst,
-    current: ProcessKeyMoment | null
-  ): ProcessKeyMoment | null => {
+  const promoteBurst = (burst: typeof pendingBurst, current: ProcessKeyMoment | null): ProcessKeyMoment | null => {
     if (burst && burst.chars >= PROCESS_FOCUS_BURST_MIN_CHARS && burst.chars > (current?.value ?? 0)) {
       return {
         kind: 'focus-return-burst',
@@ -310,8 +307,7 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
   moments.push(...externalMoments);
   moments.sort((a, b) => a.fromEventIndex - b.fromEventIndex);
 
-  const durationMs =
-    events.length >= 2 ? events[events.length - 1]!.timestamp - events[0]!.timestamp : 0;
+  const durationMs = events.length >= 2 ? events[events.length - 1]!.timestamp - events[0]!.timestamp : 0;
 
   return {
     totalEvents: events.length,

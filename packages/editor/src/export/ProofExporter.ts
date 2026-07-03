@@ -280,9 +280,7 @@ export class ProofExporter {
         signature: '',
       });
     }
-    console.warn(
-      `[Export] Exam mode: pre-export attestation best-effort (recorded failure, not blocking): ${reason}`
-    );
+    console.warn(`[Export] Exam mode: pre-export attestation best-effort (recorded failure, not blocking): ${reason}`);
   }
 
   /**
@@ -358,9 +356,7 @@ export class ProofExporter {
       // Signed checkpoint の pending リクエストを最大 5 秒待機 (オンライン時のみ意味あり)
       const flushResult = await activeTab.signedCheckpointService?.waitForFlush(5000);
       if (flushResult && !flushResult.flushed) {
-        console.warn(
-          `[ProofExporter] ${flushResult.remaining} signed checkpoint(s) remain unsigned at export time`
-        );
+        console.warn(`[ProofExporter] ${flushResult.remaining} signed checkpoint(s) remain unsigned at export time`);
       }
 
       // ZIPファイルを作成
@@ -537,9 +533,7 @@ export class ProofExporter {
         // JSON シリアライズ前に最大 5 秒待機して envelope を反映させる。
         const flushResult = await tab.signedCheckpointService?.waitForFlush(5000);
         if (flushResult && !flushResult.flushed) {
-          console.warn(
-            `[ProofExporter] tab ${tab.id}: ${flushResult.remaining} unsigned checkpoint(s) at export time`
-          );
+          console.warn(`[ProofExporter] tab ${tab.id}: ${flushResult.remaining} unsigned checkpoint(s) at export time`);
         }
 
         // ソースファイル名を生成（拡張子付き）

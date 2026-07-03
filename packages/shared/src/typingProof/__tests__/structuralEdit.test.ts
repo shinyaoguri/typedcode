@@ -44,7 +44,9 @@ describe('isBenignEditorInsert', () => {
   it('rejects a single-line insert longer than the cap (minified one-liner laundering, #139)', () => {
     const oneLiner = 'const f=(n)=>n<2?n:f(n-1)+f(n-2);'.repeat(10); // 330 chars, no newline
     expect(isBenignEditorInsert(insert(oneLiner, 'insertText'))).toBe(false);
-    expect(isBenignEditorInsert(insert('y'.repeat(MAX_BENIGN_SINGLE_LINE_INSERT_CHARS + 1), 'insertReplacementText'))).toBe(false);
+    expect(
+      isBenignEditorInsert(insert('y'.repeat(MAX_BENIGN_SINGLE_LINE_INSERT_CHARS + 1), 'insertReplacementText'))
+    ).toBe(false);
   });
 
   it('keeps structural-only inserts benign regardless of length (they cannot carry code)', () => {
@@ -138,7 +140,13 @@ describe('SessionProvenanceLedger (#138: 内部ペーストの内容はセッシ
   });
 
   it('accepts content matching a verified copyOperation even after the original was deleted', () => {
-    const deleteAll = { type: 'contentChange', inputType: 'deleteContentBackward', data: '', rangeOffset: 0, rangeLength: code.length } as unknown as StoredEvent;
+    const deleteAll = {
+      type: 'contentChange',
+      inputType: 'deleteContentBackward',
+      data: '',
+      rangeOffset: 0,
+      rangeLength: code.length,
+    } as unknown as StoredEvent;
     const results = run([typed(code, 0), copyOp(code), deleteAll, typed(code, 0)]);
     expect(results[1]).toBe(true); // copy 時点で文書に実在 → 検証済みコピー
     expect(results[3]).toBe(true); // 削除後でもコピー由来として許可 (editor の copiedContent と同じ)
@@ -146,8 +154,20 @@ describe('SessionProvenanceLedger (#138: 内部ペーストの内容はセッシ
 
   it('rejects content that never existed in the session (marker laundering, #138)', () => {
     const ai = 'int ai() {\n  return 42;\n}\n';
-    const marker = { type: 'contentChange', inputType: 'insertFromInternalPaste', data: ai, rangeOffset: null, rangeLength: 0 } as unknown as StoredEvent;
-    const insertion = { type: 'contentChange', inputType: 'insertParagraph', data: ai, rangeOffset: 9, rangeLength: 0 } as unknown as StoredEvent;
+    const marker = {
+      type: 'contentChange',
+      inputType: 'insertFromInternalPaste',
+      data: ai,
+      rangeOffset: null,
+      rangeLength: 0,
+    } as unknown as StoredEvent;
+    const insertion = {
+      type: 'contentChange',
+      inputType: 'insertParagraph',
+      data: ai,
+      rangeOffset: 9,
+      rangeLength: 0,
+    } as unknown as StoredEvent;
     const results = run([typed('unrelated', 0), marker, insertion]);
     expect(results[1]).toBe(false); // マーカー (自己申告) は根拠にならない
     expect(results[2]).toBe(false); // 実挿入もセッション由来と認めない
@@ -157,8 +177,20 @@ describe('SessionProvenanceLedger (#138: 内部ペーストの内容はセッシ
     // 事前パスの許可リスト方式だと「実挿入 → マーカー」の並べ替えで挿入後の文書を根拠に
     // 自己検証できた。逐次判定 (適用前の状態) はこれを塞ぐ。
     const ai = 'int ai() {\n  return 42;\n}\n';
-    const insertion = { type: 'contentChange', inputType: 'insertParagraph', data: ai, rangeOffset: 0, rangeLength: 0 } as unknown as StoredEvent;
-    const marker = { type: 'contentChange', inputType: 'insertFromInternalPaste', data: ai, rangeOffset: null, rangeLength: 0 } as unknown as StoredEvent;
+    const insertion = {
+      type: 'contentChange',
+      inputType: 'insertParagraph',
+      data: ai,
+      rangeOffset: 0,
+      rangeLength: 0,
+    } as unknown as StoredEvent;
+    const marker = {
+      type: 'contentChange',
+      inputType: 'insertFromInternalPaste',
+      data: ai,
+      rangeOffset: null,
+      rangeLength: 0,
+    } as unknown as StoredEvent;
     const results = run([insertion, marker]);
     expect(results[0]).toBe(false);
   });
@@ -174,7 +206,13 @@ describe('SessionProvenanceLedger (#138: 内部ペーストの内容はセッシ
     // 乖離 snapshot で AI 解答を持ち込み、その部分文字列を「内部ペースト」として挿入する迂回路。
     const ai = 'int ai() {\n  return 42;\n}\n';
     const snapshot = { type: 'contentSnapshot', inputType: null, data: ai } as unknown as StoredEvent;
-    const insertion = { type: 'contentChange', inputType: 'insertParagraph', data: ai, rangeOffset: 0, rangeLength: 0 } as unknown as StoredEvent;
+    const insertion = {
+      type: 'contentChange',
+      inputType: 'insertParagraph',
+      data: ai,
+      rangeOffset: 0,
+      rangeLength: 0,
+    } as unknown as StoredEvent;
     const results = run([snapshot, insertion]);
     expect(results[1]).toBe(false);
   });
@@ -210,7 +248,10 @@ describe('getEditorAssistDeclaration', () => {
     const decl = assist();
     const events = [
       { type: 'humanAttestation', inputType: null, data: null } as unknown as StoredEvent,
-      { type: 'environmentProbe', data: { webdriver: null, automationGlobals: [], editorAssist: decl } } as unknown as StoredEvent,
+      {
+        type: 'environmentProbe',
+        data: { webdriver: null, automationGlobals: [], editorAssist: decl },
+      } as unknown as StoredEvent,
     ];
     expect(getEditorAssistDeclaration(events)).toBe(decl);
   });
@@ -234,12 +275,22 @@ describe('isSuspiciousBulkInsert (#140: verifier/editor 単一定義)', () => {
 
   it('flags a rangeOffset-bearing internal paste that actually inserts content', () => {
     // #140 のドリフト源。editor がこれを出したとき申告と再計算が一致する必要がある。
-    const ev = { type: 'contentChange', inputType: 'insertFromInternalPaste', data: 'pasted', rangeOffset: 5 } as unknown as StoredEvent;
+    const ev = {
+      type: 'contentChange',
+      inputType: 'insertFromInternalPaste',
+      data: 'pasted',
+      rangeOffset: 5,
+    } as unknown as StoredEvent;
     expect(isSuspiciousBulkInsert(ev)).toBe(true);
   });
 
   it('does not flag the internal-paste audit marker (rangeOffset == null)', () => {
-    const marker = { type: 'contentChange', inputType: 'insertFromInternalPaste', data: 'pasted', rangeOffset: null } as unknown as StoredEvent;
+    const marker = {
+      type: 'contentChange',
+      inputType: 'insertFromInternalPaste',
+      data: 'pasted',
+      rangeOffset: null,
+    } as unknown as StoredEvent;
     expect(isSuspiciousBulkInsert(marker)).toBe(false);
   });
 });
@@ -250,12 +301,22 @@ describe('bulkInsertEvents parity: StatisticsCalculator (editor 申告) と isSu
   // 正規 proof が invalid になる (#140)。
   it('StatisticsCalculator counts exactly the events isSuspiciousBulkInsert flags', () => {
     const events: StoredEvent[] = [
-      insert('a', 'insertText'),                    // single char → not bulk
-      insert('foo()', 'insertReplacementText'),     // completion → bulk
-      insert(')', 'replaceContent'),                // type-over → bulk
-      insert('xy', 'insertText'),                   // multi char → bulk
-      { type: 'contentChange', inputType: 'insertFromInternalPaste', data: 'block', rangeOffset: 3 } as unknown as StoredEvent, // rangeOffset paste → bulk
-      { type: 'contentChange', inputType: 'insertFromInternalPaste', data: 'block', rangeOffset: null } as unknown as StoredEvent, // marker → not bulk
+      insert('a', 'insertText'), // single char → not bulk
+      insert('foo()', 'insertReplacementText'), // completion → bulk
+      insert(')', 'replaceContent'), // type-over → bulk
+      insert('xy', 'insertText'), // multi char → bulk
+      {
+        type: 'contentChange',
+        inputType: 'insertFromInternalPaste',
+        data: 'block',
+        rangeOffset: 3,
+      } as unknown as StoredEvent, // rangeOffset paste → bulk
+      {
+        type: 'contentChange',
+        inputType: 'insertFromInternalPaste',
+        data: 'block',
+        rangeOffset: null,
+      } as unknown as StoredEvent, // marker → not bulk
     ];
     const expected = events.filter((e) => isSuspiciousBulkInsert(e)).length;
     const stats = new StatisticsCalculator().getTypingStatistics(events, 0);

@@ -6,7 +6,7 @@
  */
 
 import type { ProofFile, VerifyScreenshot } from '../types.js';
-import { ScreenshotService } from './ScreenshotService.js';
+import type { ScreenshotService } from './ScreenshotService.js';
 import { JsonFileProcessor } from './JsonFileProcessor.js';
 import { ZipFileProcessor } from './ZipFileProcessor.js';
 import { getFileType, isProofFilename, getLanguageFromExtension } from './fileUtils.js';
@@ -126,10 +126,7 @@ export class FileProcessor {
   /**
    * FileSystemFileHandle からファイルを処理
    */
-  async processFromHandle(
-    handle: FileSystemFileHandle,
-    relativePath: string
-  ): Promise<FileProcessResult> {
+  async processFromHandle(handle: FileSystemFileHandle, relativePath: string): Promise<FileProcessResult> {
     const file = await handle.getFile();
     const result = await this.process(file, true);
 
@@ -147,10 +144,7 @@ export class FileProcessor {
   /**
    * プレーンテキストファイルを処理
    */
-  async processPlaintext(
-    file: File,
-    relativePath?: string
-  ): Promise<FileProcessResult> {
+  async processPlaintext(file: File, relativePath?: string): Promise<FileProcessResult> {
     this.callbacks.onReadStart?.(file.name);
 
     try {

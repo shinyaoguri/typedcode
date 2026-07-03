@@ -110,10 +110,7 @@ export class SyntaxHighlighter {
   static addLineNumbers(highlightedHtml: string): string {
     const lines = highlightedHtml.split('\n');
     return lines
-      .map(
-        (line, i) =>
-          `<span class="line-number">${i + 1}</span><span class="line-content">${line}</span>`
-      )
+      .map((line, i) => `<span class="line-number">${i + 1}</span><span class="line-content">${line}</span>`)
       .join('\n');
   }
 

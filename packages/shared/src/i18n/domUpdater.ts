@@ -7,24 +7,14 @@ import type { TranslationRecord } from './types.js';
 export interface DOMUpdater {
   updateDOMTranslations: () => void;
   initDOMi18n: () => void;
-  updateElementTranslation: (
-    element: Element,
-    key: string,
-    params?: Record<string, string | number>
-  ) => void;
-  updateElementHtmlTranslation: (
-    element: Element,
-    key: string,
-    params?: Record<string, string | number>
-  ) => void;
+  updateElementTranslation: (element: Element, key: string, params?: Record<string, string | number>) => void;
+  updateElementHtmlTranslation: (element: Element, key: string, params?: Record<string, string | number>) => void;
 }
 
 /**
  * Create DOM updater functions bound to a specific I18nService instance
  */
-export function createDOMUpdater<T extends TranslationRecord>(
-  getI18n: () => I18nService<T>
-): DOMUpdater {
+export function createDOMUpdater<T extends TranslationRecord>(getI18n: () => I18nService<T>): DOMUpdater {
   const t = (key: string, params?: Record<string, string | number>): string => {
     return getI18n().t(key, params);
   };
@@ -81,22 +71,14 @@ export function createDOMUpdater<T extends TranslationRecord>(
   /**
    * Update a single element's translation
    */
-  function updateElementTranslation(
-    element: Element,
-    key: string,
-    params?: Record<string, string | number>
-  ): void {
+  function updateElementTranslation(element: Element, key: string, params?: Record<string, string | number>): void {
     element.textContent = t(key, params);
   }
 
   /**
    * Update a single element's HTML translation
    */
-  function updateElementHtmlTranslation(
-    element: Element,
-    key: string,
-    params?: Record<string, string | number>
-  ): void {
+  function updateElementHtmlTranslation(element: Element, key: string, params?: Record<string, string | number>): void {
     element.innerHTML = t(key, params);
   }
 

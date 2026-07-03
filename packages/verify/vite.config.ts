@@ -33,7 +33,7 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    minify: 'esbuild'
+    minify: 'esbuild',
   },
   esbuild: {
     // 本番ビルド時のみconsole.logを削除

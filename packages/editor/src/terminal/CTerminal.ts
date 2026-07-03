@@ -28,7 +28,6 @@ export class CTerminal {
   private inputCallback: TerminalInputCallback | null = null;
 
   constructor(container: HTMLElement) {
-
     this.terminal = new Terminal({
       cursorBlink: true,
       cursorStyle: 'block',

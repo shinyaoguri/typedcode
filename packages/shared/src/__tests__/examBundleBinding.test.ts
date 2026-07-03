@@ -40,7 +40,11 @@ function sampleBundle(): ExamBundle {
   return {
     schema: EXAM_BUNDLE_SCHEMA,
     problems: [
-      { problemId: 'p1', statement: '# 問題1\n和を出力せよ。', starter: { filename: 'p1.c', language: 'c', content: '/* TODO */\n' } },
+      {
+        problemId: 'p1',
+        statement: '# 問題1\n和を出力せよ。',
+        starter: { filename: 'p1.c', language: 'c', content: '/* TODO */\n' },
+      },
       { problemId: 'p2', statement: '# 問題2\n積を出力せよ。' },
     ],
   };
@@ -157,8 +161,12 @@ describe('verifyExamBinding (v2 bundle)', () => {
     // v1 root: per-problem ハッシュを連結しない。
     const root = await computeExamChainRoot(fpHash, nonce, packageHash, token);
     const exam: ExamProofBlock = buildExamProofBlock({
-      examId: manifest.examId, problemId: 'anything-i-like', variant: null,
-      packageHash, problemContentHash: wholePlaintextHash, startToken: token,
+      examId: manifest.examId,
+      problemId: 'anything-i-like',
+      variant: null,
+      packageHash,
+      problemContentHash: wholePlaintextHash,
+      startToken: token,
     });
     const proof = {
       typingProofData: { deviceId: fpHash, initialHashNonce: nonce, initialEventChainHash: root },
@@ -185,8 +193,12 @@ describe('verifyExamBinding (v2 bundle)', () => {
     const root = await computeExamChainRoot(fpHash, nonce, packageHash, token, fakeProblemHash);
     const exam: ExamProofBlock = {
       ...buildExamProofBlock({
-        examId: manifest.examId, problemId: 'p1', variant: null,
-        packageHash, problemContentHash: fakeProblemHash, startToken: token,
+        examId: manifest.examId,
+        problemId: 'p1',
+        variant: null,
+        packageHash,
+        problemContentHash: fakeProblemHash,
+        startToken: token,
       }),
       rootBinding: EXAM_ROOT_BINDING_V2,
     };

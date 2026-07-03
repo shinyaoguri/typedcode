@@ -98,9 +98,6 @@ export function isTypingProofError(error: unknown): error is TypingProofError {
 /**
  * エラーが特定のコードを持つかどうかを判定
  */
-export function hasErrorCode(
-  error: unknown,
-  code: TypingProofErrorCode
-): boolean {
+export function hasErrorCode(error: unknown, code: TypingProofErrorCode): boolean {
   return isTypingProofError(error) && error.code === code;
 }

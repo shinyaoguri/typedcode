@@ -5,12 +5,7 @@
  * Chrome/Edge でのみ利用可能。
  */
 
-import type {
-  FSAccessFileEntry,
-  FSAccessFolderEntry,
-  ReadDirectoryResult,
-  FSAccessCallbacks,
-} from '../types.js';
+import type { FSAccessFileEntry, FSAccessFolderEntry, ReadDirectoryResult, FSAccessCallbacks } from '../types.js';
 
 /**
  * File System Access API サービス
@@ -65,10 +60,7 @@ export class FileSystemAccessService {
   /**
    * ディレクトリを再帰的に読み取り
    */
-  async readDirectoryRecursive(
-    handle: FileSystemDirectoryHandle,
-    basePath: string = ''
-  ): Promise<ReadDirectoryResult> {
+  async readDirectoryRecursive(handle: FileSystemDirectoryHandle, basePath: string = ''): Promise<ReadDirectoryResult> {
     const files: FSAccessFileEntry[] = [];
     const folders: FSAccessFolderEntry[] = [];
 

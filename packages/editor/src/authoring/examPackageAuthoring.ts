@@ -91,13 +91,7 @@ export async function importAuthoritySigner(
 
   let privateKey: CryptoKey;
   try {
-    privateKey = await crypto.subtle.importKey(
-      'jwk',
-      parsed,
-      { name: 'ECDSA', namedCurve: 'P-256' },
-      false,
-      ['sign']
-    );
+    privateKey = await crypto.subtle.importKey('jwk', parsed, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
   } catch {
     throw new Error('Failed to import signing key (malformed P-256 private JWK)');
   }

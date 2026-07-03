@@ -11,7 +11,7 @@ export type TabUpdateCallback = (tab: VerifyTabState) => void;
 export class VerifyTabManager {
   private tabs: Map<string, VerifyTabState> = new Map();
   private activeTabId: string | null = null;
-  private tabOrder: string[] = [];  // タブの表示順序を保持
+  private tabOrder: string[] = []; // タブの表示順序を保持
 
   private onChangeCallback: TabChangeCallback | null = null;
   private onUpdateCallback: TabUpdateCallback | null = null;
@@ -83,7 +83,7 @@ export class VerifyTabManager {
     const tab = this.tabs.get(id);
     if (!tab) return;
 
-    const prevTab = this.activeTabId ? this.tabs.get(this.activeTabId) ?? null : null;
+    const prevTab = this.activeTabId ? (this.tabs.get(this.activeTabId) ?? null) : null;
     this.activeTabId = id;
 
     this.onChangeCallback?.(tab, prevTab);
@@ -93,7 +93,7 @@ export class VerifyTabManager {
    * アクティブなタブを取得
    */
   getActiveTab(): VerifyTabState | null {
-    return this.activeTabId ? this.tabs.get(this.activeTabId) ?? null : null;
+    return this.activeTabId ? (this.tabs.get(this.activeTabId) ?? null) : null;
   }
 
   /**
@@ -107,9 +107,7 @@ export class VerifyTabManager {
    * 全タブを取得（表示順）
    */
   getAllTabs(): VerifyTabState[] {
-    return this.tabOrder
-      .map(id => this.tabs.get(id))
-      .filter((tab): tab is VerifyTabState => tab !== undefined);
+    return this.tabOrder.map((id) => this.tabs.get(id)).filter((tab): tab is VerifyTabState => tab !== undefined);
   }
 
   /**

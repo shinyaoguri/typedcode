@@ -129,9 +129,7 @@ export interface ExamBundle {
  * 復号後平文を解釈した結果 (ADR-0012)。後方互換のため、構造化されていない平文は
  * 旧来の単一 Markdown 問題 (`legacy`) として扱う。
  */
-export type DecodedExamPlaintext =
-  | { kind: 'bundle'; bundle: ExamBundle }
-  | { kind: 'legacy'; statement: string };
+export type DecodedExamPlaintext = { kind: 'bundle'; bundle: ExamBundle } | { kind: 'legacy'; statement: string };
 
 // ============================================================================
 // class モードの平文配布パッケージ (ADR-0014, tier ①)

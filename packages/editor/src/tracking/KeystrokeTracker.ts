@@ -118,10 +118,7 @@ export class KeystrokeTracker extends ElementTracker<KeystrokeEvent, KeystrokeEv
     let dwellTime: number | undefined;
     if (keyDownTime !== undefined) {
       const rawDwellTime = currentTime - keyDownTime;
-      if (
-        rawDwellTime >= this.thresholds.minDwellTime &&
-        rawDwellTime <= this.thresholds.maxDwellTime
-      ) {
+      if (rawDwellTime >= this.thresholds.minDwellTime && rawDwellTime <= this.thresholds.maxDwellTime) {
         dwellTime = rawDwellTime;
       }
     }

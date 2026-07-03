@@ -289,10 +289,7 @@ export class ZipFileProcessor {
       const screenshots = await screenshotService.loadFromZip(zip, manifest, chainImageHashes);
       console.log('[ZipFileProcessor] Screenshots loaded:', screenshots.length);
 
-      this.callbacks.onScreenshotLoad?.(
-        screenshotService.count,
-        screenshotService.verifiedCount
-      );
+      this.callbacks.onScreenshotLoad?.(screenshotService.count, screenshotService.verifiedCount);
 
       return { screenshots, screenshotService };
     } catch (error) {

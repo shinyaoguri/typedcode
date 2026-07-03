@@ -30,11 +30,7 @@ export interface CodeExecutionCallbacks {
   onShowClangLoading?: () => void;
   onHideClangLoading?: () => void;
   onUpdateClangStatus?: (message: string) => void;
-  onRecordEvent?: (event: {
-    type: EventType;
-    data?: CodeExecutionEventData;
-    description: string;
-  }) => void;
+  onRecordEvent?: (event: { type: EventType; data?: CodeExecutionEventData; description: string }) => void;
   onShowErrors?: (errors: ParsedError[]) => void;
   onClearErrors?: () => void;
 }
@@ -167,10 +163,7 @@ export class CodeExecutionController {
 
     // 実行結果を記録する (ADR-0021)。catch/abort を含む全終端経路から 1 回だけ呼ぶ。
     let resultRecorded = false;
-    const recordResult = (
-      outcome: 'success' | 'failure' | 'error' | 'aborted',
-      exitCode: number | null
-    ): void => {
+    const recordResult = (outcome: 'success' | 'failure' | 'error' | 'aborted', exitCode: number | null): void => {
       if (resultRecorded) return;
       resultRecorded = true;
       this.callbacks.onRecordEvent?.({
@@ -240,7 +233,7 @@ export class CodeExecutionController {
       if (error instanceof WasmerSdkCorruptedError) {
         this.terminal?.writeError(
           '\n[System] The WebAssembly runtime is corrupted and cannot be recovered.\n' +
-          '[System] Please reload the page to continue using the C/C++ compiler.\n'
+            '[System] Please reload the page to continue using the C/C++ compiler.\n'
         );
         this.callbacks.onRuntimeStatusChange?.(target.language, 'not-ready');
       } else {

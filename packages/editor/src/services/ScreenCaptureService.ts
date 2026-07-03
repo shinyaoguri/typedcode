@@ -3,11 +3,7 @@
  * 画面キャプチャの取得、権限管理、ストリーム管理を担当
  */
 
-import type {
-  ScreenshotCaptureType,
-  DisplayInfo,
-  ScreenCapturePermissionState,
-} from '@typedcode/shared';
+import type { ScreenshotCaptureType, DisplayInfo, ScreenCapturePermissionState } from '@typedcode/shared';
 
 /** Screen Captureオプション */
 export interface ScreenCaptureOptions {
@@ -43,10 +39,10 @@ export type StreamEndedCallback = () => void;
 
 /** デフォルト設定 */
 const DEFAULT_OPTIONS: Required<ScreenCaptureOptions> = {
-  jpegQuality: 0.1,            // 容量削減のため圧縮率を高める
-  periodicIntervalMs: 30000,   // 30秒
-  focusLostDelayMs: 5000,      // 5秒後から撮影開始
-  focusLostIntervalMs: 5000,   // フォーカス喪失中は5秒ごとに撮影
+  jpegQuality: 0.1, // 容量削減のため圧縮率を高める
+  periodicIntervalMs: 30000, // 30秒
+  focusLostDelayMs: 5000, // 5秒後から撮影開始
+  focusLostIntervalMs: 5000, // フォーカス喪失中は5秒ごとに撮影
 };
 
 // HMRによる複数インスタンス生成を防ぐためのグローバルタイマーID追跡
@@ -117,7 +113,7 @@ export class ScreenCaptureService {
       this.mediaStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           displaySurface: 'monitor', // 画面全体を推奨
-          cursor: 'always',          // カーソルも含める
+          cursor: 'always', // カーソルも含める
         } as MediaTrackConstraints,
         audio: false,
       });
@@ -338,7 +334,10 @@ export class ScreenCaptureService {
     await new Promise<void>((resolve, reject) => {
       const video = this.videoElement!;
       video.onloadedmetadata = () => {
-        video.play().then(() => resolve()).catch(reject);
+        video
+          .play()
+          .then(() => resolve())
+          .catch(reject);
       };
       video.onerror = () => reject(new Error('Video element error'));
     });
@@ -382,11 +381,7 @@ export class ScreenCaptureService {
 
     // JPEGに変換
     const blob = await new Promise<Blob | null>((resolve) => {
-      this.canvas!.toBlob(
-        (b) => resolve(b),
-        'image/jpeg',
-        this.options.jpegQuality
-      );
+      this.canvas!.toBlob((b) => resolve(b), 'image/jpeg', this.options.jpegQuality);
     });
 
     if (!blob) return null;

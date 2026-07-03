@@ -356,7 +356,7 @@
 }
 
 #code-preview code {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
 }
 
 /* Code preview with line numbers */
@@ -470,7 +470,7 @@
 }
 
 .plaintext-code code {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
 }
 
 /* ============================================================================
@@ -592,7 +592,7 @@
   margin-left: auto;
   display: flex;
   gap: 12px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: "Consolas", "Monaco", monospace;
   font-size: 12px;
   font-weight: 600;
 }
@@ -607,7 +607,7 @@
 
 /* 差分ビューコンテナ */
 .diff-view {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
   font-size: 13px;
   line-height: 1.5;
 }
@@ -834,7 +834,7 @@
 }
 
 .chain-segment-error-marker::before {
-  content: '';
+  content: "";
   position: absolute;
   top: -6px;
   left: 50%;
@@ -949,7 +949,7 @@
 }
 
 .chain-segment-tooltip::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 100%;
   left: 50%;
@@ -987,7 +987,7 @@
   display: none;
 }
 .anchoring-details-summary::marker {
-  content: '';
+  content: "";
 }
 
 .anchoring-details-chevron {
@@ -1069,8 +1069,12 @@
   font-size: 11px;
   font-weight: 600;
 }
-.anchoring-verdict.success { color: var(--success-color); }
-.anchoring-verdict.warning { color: var(--warning-color); }
+.anchoring-verdict.success {
+  color: var(--success-color);
+}
+.anchoring-verdict.warning {
+  color: var(--warning-color);
+}
 
 /* 鍵カード (Section: 署名鍵) */
 

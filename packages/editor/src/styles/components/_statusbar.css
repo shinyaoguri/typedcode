@@ -93,7 +93,7 @@
 }
 
 .statusbar .hash-status {
-  font-family: 'Courier New', monospace;
+  font-family: "Courier New", monospace;
   font-size: 11px;
 }
 
@@ -131,8 +131,13 @@
 }
 
 @keyframes sync-pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Language selector in status bar */
@@ -186,14 +191,22 @@
 }
 
 .runtime-badge.loading .runtime-state::after {
-  content: '...';
+  content: "...";
   animation: loading-dots 1.5s steps(4, end) infinite;
 }
 
 @keyframes loading-dots {
-  0%, 20% { content: '.'; }
-  40% { content: '..'; }
-  60%, 100% { content: '...'; }
+  0%,
+  20% {
+    content: ".";
+  }
+  40% {
+    content: "..";
+  }
+  60%,
+  100% {
+    content: "...";
+  }
 }
 
 .runtime-badge.ready {
@@ -228,8 +241,13 @@
 }
 
 @keyframes pulse-loading {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .runtime-state-indicator.ready {

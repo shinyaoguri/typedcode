@@ -39,8 +39,15 @@ const OPEN_DEADLINE = '2999-12-31T23:59:59.999Z';
 function extensionToLanguage(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
   const map: Record<string, string> = {
-    c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp',
-    py: 'python', js: 'javascript', ts: 'typescript',
+    c: 'c',
+    h: 'c',
+    cpp: 'cpp',
+    cc: 'cpp',
+    cxx: 'cpp',
+    hpp: 'cpp',
+    py: 'python',
+    js: 'javascript',
+    ts: 'typescript',
   };
   return map[ext] ?? 'plaintext';
 }
@@ -88,12 +95,20 @@ export class AuthorPage {
   mount(): void {
     this.root.innerHTML = this.render();
     this.statementEditor = monaco.editor.create(this.el('author-statement-editor'), {
-      language: 'markdown', theme: this.monacoTheme, minimap: { enabled: false },
-      automaticLayout: true, wordWrap: 'on', lineNumbers: 'off', fontSize: 13,
+      language: 'markdown',
+      theme: this.monacoTheme,
+      minimap: { enabled: false },
+      automaticLayout: true,
+      wordWrap: 'on',
+      lineNumbers: 'off',
+      fontSize: 13,
     });
     this.starterEditor = monaco.editor.create(this.el('author-starter-editor'), {
-      language: 'c', theme: this.monacoTheme, minimap: { enabled: false },
-      automaticLayout: true, fontSize: 13,
+      language: 'c',
+      theme: this.monacoTheme,
+      minimap: { enabled: false },
+      automaticLayout: true,
+      fontSize: 13,
     });
     this.wire();
     this.input('author-token').value = generateProctorToken();
@@ -203,8 +218,14 @@ export class AuthorPage {
     exec.setTerminal(terminal);
     const runBtn = this.el('author-run-btn') as HTMLButtonElement;
     exec.setCallbacks({
-      onRunStart: () => { runBtn.disabled = true; runBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(t('author.run.running'))}`; },
-      onRunEnd: () => { runBtn.disabled = false; runBtn.innerHTML = `<i class="fas fa-play"></i> ${escapeHtml(t('author.run.label'))}`; },
+      onRunStart: () => {
+        runBtn.disabled = true;
+        runBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(t('author.run.running'))}`;
+      },
+      onRunEnd: () => {
+        runBtn.disabled = false;
+        runBtn.innerHTML = `<i class="fas fa-play"></i> ${escapeHtml(t('author.run.label'))}`;
+      },
       onNotification: (m) => terminal.writeLine(m),
       onShowClangLoading: () => terminal.writeInfo(t('author.run.compilerLoading')),
       onUpdateClangStatus: (m) => terminal.writeInfo(m),
@@ -232,7 +253,11 @@ export class AuthorPage {
   private toggleTheme(): void {
     const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem('typedcode-theme', next); } catch { /* ignore */ }
+    try {
+      localStorage.setItem('typedcode-theme', next);
+    } catch {
+      /* ignore */
+    }
     monaco.editor.setTheme(next === 'light' ? 'vs' : 'vs-dark');
   }
 
@@ -301,7 +326,10 @@ export class AuthorPage {
   private renameProblem(id: string, newName: string): void {
     const problem = this.problems.find((p) => p.id === id);
     const filename = newName.trim();
-    if (!problem || !filename) { this.renderTabs(); return; }
+    if (!problem || !filename) {
+      this.renderTabs();
+      return;
+    }
     problem.filename = filename;
     monaco.editor.setModelLanguage(problem.starterModel, extensionToLanguage(filename));
     this.renderTabs();
@@ -323,12 +351,12 @@ export class AuthorPage {
         if ((e.target as HTMLElement).closest('.tab-close-btn')) return;
         this.switchProblem(problem.id);
       });
-      tab.querySelector<HTMLElement>('.tab-filename')!.addEventListener('dblclick', (e) =>
-        this.startRename(problem, e.currentTarget as HTMLElement)
-      );
-      tab.querySelector<HTMLButtonElement>('.tab-close-btn')!.addEventListener('click', () =>
-        this.removeProblem(problem.id)
-      );
+      tab
+        .querySelector<HTMLElement>('.tab-filename')!
+        .addEventListener('dblclick', (e) => this.startRename(problem, e.currentTarget as HTMLElement));
+      tab
+        .querySelector<HTMLButtonElement>('.tab-close-btn')!
+        .addEventListener('click', () => this.removeProblem(problem.id));
       strip.appendChild(tab);
     }
   }
@@ -344,7 +372,10 @@ export class AuthorPage {
     input.addEventListener('blur', commit);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') input.blur();
-      if (e.key === 'Escape') { input.value = problem.filename; input.blur(); }
+      if (e.key === 'Escape') {
+        input.value = problem.filename;
+        input.blur();
+      }
     });
   }
 
@@ -408,7 +439,10 @@ export class AuthorPage {
       this.showBuildError(t('author.build.errorNoKey'));
       return;
     }
-    const languages = this.input('author-languages').value.split(',').map((s) => s.trim()).filter(Boolean);
+    const languages = this.input('author-languages')
+      .value.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     const examId = this.input('author-exam-id').value.trim();
 
     const buildBtn = this.el('author-build-btn') as HTMLButtonElement;
@@ -420,7 +454,14 @@ export class AuthorPage {
         embedPublicKey: this.input('author-embed-pubkey').checked,
       });
       const result = await createExamBundlePackage(
-        { examId, problems: this.collectProblems(), languages, releaseTime: new Date().toISOString(), deadline: OPEN_DEADLINE, proctorToken: this.input('author-token').value },
+        {
+          examId,
+          problems: this.collectProblems(),
+          languages,
+          releaseTime: new Date().toISOString(),
+          deadline: OPEN_DEADLINE,
+          proctorToken: this.input('author-token').value,
+        },
         signer
       );
       const filename = `${examId || 'exam'}.tcexam`;
@@ -440,7 +481,10 @@ export class AuthorPage {
    */
   private handleBuildClass(): void {
     this.el('author-build-error').hidden = true;
-    const languages = this.input('author-languages').value.split(',').map((s) => s.trim()).filter(Boolean);
+    const languages = this.input('author-languages')
+      .value.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     const classId = this.input('author-exam-id').value.trim();
     try {
       const content = buildClassPackage({ classId, problems: this.collectProblems(), languages });
@@ -477,9 +521,16 @@ export class AuthorPage {
         <dt>${escapeHtml(t('author.result.keyId'))}</dt><dd><code>${escapeHtml(result.manifest.keyId)}</code></dd>
         <dt>${escapeHtml(t('author.result.packageHash'))}</dt><dd><code class="author-hash">${escapeHtml(result.packageHash)}</code></dd>
       </dl>`;
-    this.el('author-copy-token-btn').addEventListener('click', () => void navigator.clipboard?.writeText(result.proctorToken));
+    this.el('author-copy-token-btn').addEventListener(
+      'click',
+      () => void navigator.clipboard?.writeText(result.proctorToken)
+    );
     this.el('author-dl-memo-btn').addEventListener('click', () =>
-      downloadBlob(`${result.manifest.examId || 'exam'}-proctor-code.txt`, buildProctorMemo(result, filename, new Date()), 'text/plain')
+      downloadBlob(
+        `${result.manifest.examId || 'exam'}-proctor-code.txt`,
+        buildProctorMemo(result, filename, new Date()),
+        'text/plain'
+      )
     );
     this.el('author-redownload-btn').addEventListener('click', () =>
       downloadBlob(filename, JSON.stringify(result.manifest, null, 2) + '\n', 'application/json')

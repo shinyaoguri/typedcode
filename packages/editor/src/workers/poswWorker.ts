@@ -48,7 +48,7 @@ type WorkerResponse = ComputePoSWResponse | VerifyPoSWResponse;
 function arrayBufferToHex(buffer: ArrayBuffer): string {
   const uint8Array = new Uint8Array(buffer);
   return Array.from(uint8Array)
-    .map(b => b.toString(16).padStart(2, '0'))
+    .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 }
 
@@ -88,7 +88,7 @@ async function handleComputePoSW(request: ComputePoSWRequest): Promise<ComputePo
     iterations: request.iterations,
     nonce,
     intermediateHash: hash,
-    computeTimeMs
+    computeTimeMs,
   };
 }
 
@@ -103,7 +103,7 @@ async function handleVerifyPoSW(request: VerifyPoSWRequest): Promise<VerifyPoSWR
   return {
     type: 'verify-result',
     requestId: request.requestId,
-    valid: hash === request.expectedHash
+    valid: hash === request.expectedHash,
   };
 }
 

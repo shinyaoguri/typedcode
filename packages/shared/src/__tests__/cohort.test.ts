@@ -6,11 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  computeCohortBaseline,
-  positionInCohort,
-  COHORT_MIN_N,
-} from '../analysis/cohort.js';
+import { computeCohortBaseline, positionInCohort, COHORT_MIN_N } from '../analysis/cohort.js';
 import type { AnalysisBundle } from '../analysis/bundle.js';
 import type { ProcessSummary } from '../processSummary.js';
 import type { AnalysisReport, AnalysisDimension, AnalysisSeverity } from '../analysis/types.js';
@@ -56,11 +52,7 @@ function report(
   };
 }
 
-function bundle(
-  processSummary: ProcessSummary,
-  analysis: AnalysisReport,
-  integrityValid = true
-): AnalysisBundle {
+function bundle(processSummary: ProcessSummary, analysis: AnalysisReport, integrityValid = true): AnalysisBundle {
   return {
     schema: 'analysis-bundle/1',
     integrityValid,
@@ -97,9 +89,7 @@ describe('computeCohortBaseline', () => {
     expect(small.cohortSize).toBe(1);
     expect(small.sufficient).toBe(false);
 
-    const enough = computeCohortBaseline(
-      Array.from({ length: COHORT_MIN_N }, () => bundle(summary({}), report(0)))
-    );
+    const enough = computeCohortBaseline(Array.from({ length: COHORT_MIN_N }, () => bundle(summary({}), report(0))));
     expect(enough.sufficient).toBe(true);
   });
 
@@ -126,9 +116,7 @@ describe('computeCohortBaseline', () => {
   });
 
   it('retains no per-submission rows (only aggregates)', () => {
-    const base = computeCohortBaseline([
-      bundle(summary({ reflectionNotes: ['secret note'] }), report(0)),
-    ]);
+    const base = computeCohortBaseline([bundle(summary({ reflectionNotes: ['secret note'] }), report(0))]);
     const json = JSON.stringify(base);
     expect(json).not.toContain('secret note');
     expect(json).not.toContain('reflectionNotes');

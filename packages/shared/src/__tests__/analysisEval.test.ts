@@ -43,7 +43,12 @@ describe('evaluateAnalysis corpus composition', () => {
     const r = evaluateAnalysis([
       item('a', 'genuine', report([]), 'genuine-ime'),
       item('b', 'genuine', report([]), 'genuine-ime'),
-      item('c', 'automated', report([{ dimension: 'automation', score: 0.9, confidence: 0.9, severity: 'review' }]), 'ai-paste'),
+      item(
+        'c',
+        'automated',
+        report([{ dimension: 'automation', score: 0.9, confidence: 0.9, severity: 'review' }]),
+        'ai-paste'
+      ),
     ]);
     expect(r.corpus.total).toBe(3);
     expect(r.corpus.genuine).toBe(2);
@@ -67,8 +72,16 @@ describe('genuineSignalRate (headline false-positive pressure)', () => {
   it('measures the fraction of genuine proofs reaching each severity', () => {
     // 4 genuine: 1 review, 1 notice, 1 info-only, 1 clean.
     const r = evaluateAnalysis([
-      item('g1', 'genuine', report([{ dimension: 'transcription-topology', score: 0.4, confidence: 0.3, severity: 'review' }])),
-      item('g2', 'genuine', report([{ dimension: 'focus-burst-correlation', score: 0.4, confidence: 0.4, severity: 'notice' }])),
+      item(
+        'g1',
+        'genuine',
+        report([{ dimension: 'transcription-topology', score: 0.4, confidence: 0.3, severity: 'review' }])
+      ),
+      item(
+        'g2',
+        'genuine',
+        report([{ dimension: 'focus-burst-correlation', score: 0.4, confidence: 0.4, severity: 'notice' }])
+      ),
       item('g3', 'genuine', report([{ dimension: 'automation', score: 0.5, confidence: 0.6, severity: 'info' }])),
       item('g4', 'genuine', report([])),
     ]);
@@ -83,8 +96,16 @@ describe('confusion matrix and sweep', () => {
     const items: LabeledAnalysis[] = [
       item('g1', 'genuine', report([])),
       item('g2', 'genuine', report([])),
-      item('a1', 'automated', report([{ dimension: 'transcription-topology', score: 0.8, confidence: 1, severity: 'notice' }])),
-      item('a2', 'automated', report([{ dimension: 'transcription-topology', score: 0.8, confidence: 1, severity: 'notice' }])),
+      item(
+        'a1',
+        'automated',
+        report([{ dimension: 'transcription-topology', score: 0.8, confidence: 1, severity: 'notice' }])
+      ),
+      item(
+        'a2',
+        'automated',
+        report([{ dimension: 'transcription-topology', score: 0.8, confidence: 1, severity: 'notice' }])
+      ),
     ];
     const r = evaluateAnalysis(items);
     const dim = r.axes.find((a) => a.axis === 'transcription-topology')!;
@@ -103,8 +124,16 @@ describe('confusion matrix and sweep', () => {
 
   it('a genuine proof emitting a signal becomes a false positive at low thresholds', () => {
     const items: LabeledAnalysis[] = [
-      item('g1', 'genuine', report([{ dimension: 'focus-burst-correlation', score: 0.3, confidence: 0.45, severity: 'notice' }])),
-      item('a1', 'automated', report([{ dimension: 'focus-burst-correlation', score: 0.6, confidence: 0.45, severity: 'notice' }])),
+      item(
+        'g1',
+        'genuine',
+        report([{ dimension: 'focus-burst-correlation', score: 0.3, confidence: 0.45, severity: 'notice' }])
+      ),
+      item(
+        'a1',
+        'automated',
+        report([{ dimension: 'focus-burst-correlation', score: 0.6, confidence: 0.45, severity: 'notice' }])
+      ),
     ];
     const r = evaluateAnalysis(items, { maxFpr: 0 });
     const dim = r.axes.find((a) => a.axis === 'focus-burst-correlation')!;

@@ -137,11 +137,9 @@ describe.runIf(process.env['GEN_FIXTURES'] === '1')('generate fixture proofs', (
       const exported = await proof.exportProof(content);
 
       // 自己検証 (fast: PoSW 再計算スキップ)
-      const result = await verifyProofFile(
-        { ...exported, content, language: 'c' } as never,
-        undefined,
-        { mode: 'fast' }
-      );
+      const result = await verifyProofFile({ ...exported, content, language: 'c' } as never, undefined, {
+        mode: 'fast',
+      });
       expect(result.chainValid).toBe(true);
       expect(result.metadataValid).toBe(true);
 

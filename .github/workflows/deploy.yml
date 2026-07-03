@@ -75,6 +75,9 @@ jobs:
       - name: Typecheck (all packages)
         run: npm run typecheck
 
+      - name: Lint & format check (Biome)
+        run: npm run lint
+
       - name: Build (all packages)
         run: npm run build
         env:

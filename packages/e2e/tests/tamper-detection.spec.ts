@@ -25,7 +25,7 @@ test('改ざんした proof を CLI が拒否する (無改ざんは pass)', asy
     const tp = (proof.proof ?? proof) as { events?: Array<Record<string, unknown>> };
     const events = tp.events ?? [];
     const target = events.find(
-      (e) => e.type === 'contentChange' && typeof e.data === 'string' && (e.data as string).length > 0,
+      (e) => e.type === 'contentChange' && typeof e.data === 'string' && (e.data as string).length > 0
     );
     if (!target) throw new Error('no content-change event with data to tamper');
     target.data = `${'​'}${target.data as string}`; // ゼロ幅文字を挿入して内容を改変

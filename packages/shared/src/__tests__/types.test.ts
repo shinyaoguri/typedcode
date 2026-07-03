@@ -4,11 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { isMultiFileProof } from '../types.js';
-import type {
-  ExportedProof,
-  MultiFileExportedProof,
-  AnyExportedProof,
-} from '../types.js';
+import type { ExportedProof, MultiFileExportedProof, AnyExportedProof } from '../types.js';
 
 describe('Type Guards', () => {
   // ==========================================================================

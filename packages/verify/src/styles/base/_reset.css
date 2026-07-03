@@ -1,18 +1,21 @@
 /* Reset and base styles */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   width: 100%;
   overflow: hidden;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   font-size: 13px;
   line-height: 1.4;
   background-color: var(--bg-primary);
@@ -86,7 +89,9 @@ button:disabled {
 }
 
 /* Inputs */
-input, textarea, select {
+input,
+textarea,
+select {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
@@ -96,13 +101,16 @@ input, textarea, select {
   padding: 4px 8px;
 }
 
-input:focus, textarea:focus, select:focus {
+input:focus,
+textarea:focus,
+select:focus {
   border-color: var(--accent-primary);
 }
 
 /* Code */
-pre, code {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+pre,
+code {
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
 }
 
 /* Hidden file input */

@@ -19,11 +19,7 @@ import type {
 } from './types/sessionStartToken.js';
 import { POSW_ITERATIONS, SESSION_TOKEN_FORMAT_VERSION } from './version.js';
 import { computeHash, deterministicStringify } from './utils/hashUtils.js';
-import {
-  CHECKPOINT_PUBLIC_KEYS,
-  findCheckpointPublicKey,
-  type CheckpointPublicKey,
-} from './checkpointKeys/index.js';
+import { CHECKPOINT_PUBLIC_KEYS, findCheckpointPublicKey, type CheckpointPublicKey } from './checkpointKeys/index.js';
 
 /** SHA-256 を hex 文字列で表したときの正規表現 (64 桁の小文字 hex) */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -201,7 +197,11 @@ export async function verifySessionStartToken(
       return { valid: false, reason: `key ${entry.keyId} was revoked at or before issuedAt`, keyId: entry.keyId };
     }
   } else if (entry.status === 'revoked') {
-    return { valid: false, reason: `key ${entry.keyId} status is 'revoked' but revokedAt is missing`, keyId: entry.keyId };
+    return {
+      valid: false,
+      reason: `key ${entry.keyId} status is 'revoked' but revokedAt is missing`,
+      keyId: entry.keyId,
+    };
   }
 
   let cryptoKey: CryptoKey;

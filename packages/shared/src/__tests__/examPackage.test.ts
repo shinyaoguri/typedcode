@@ -71,9 +71,7 @@ describe('parseExamPackageManifest', () => {
     expect(parseExamPackageManifest({ ...manifest, kdf: { algorithm: 'pbkdf2' } })).toBeNull();
     expect(parseExamPackageManifest({ ...manifest, cipher: { algorithm: 'AES-128-CBC' } })).toBeNull();
     expect(parseExamPackageManifest({ ...manifest, allowed: { languages: 'c' } })).toBeNull();
-    expect(
-      parseExamPackageManifest({ ...manifest, kdf: { ...manifest.kdf, params: { memKiB: 1 } } })
-    ).toBeNull();
+    expect(parseExamPackageManifest({ ...manifest, kdf: { ...manifest.kdf, params: { memKiB: 1 } } })).toBeNull();
   });
 
   it('accepts a null variant but rejects a non-string non-null variant', async () => {
