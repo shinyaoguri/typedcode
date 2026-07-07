@@ -83,7 +83,7 @@ CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リス
 | 環境 | Worker | `ALLOWED_ORIGINS` | 理由 |
 |---|---|---|---|
 | production | `typedcode-api` | `https://typedcode.dev,https://typedcode.pages.dev` | カスタムドメイン + 既定 pages.dev |
-| staging | `typedcode-api-staging` | `https://*.typedcode.pages.dev` | develop デプロイ + PR プレビュー (`<branch>.typedcode.pages.dev`) を許可 |
+| staging | `typedcode-api-staging` | `https://*.typedcode.pages.dev` | staging デプロイ (`staging.typedcode.pages.dev`) + PR プレビュー (`<branch>.typedcode.pages.dev`) を許可 |
 | dev (local) | (local) | 未設定 | `ENVIRONMENT=development` で localhost 自動許可 |
 
 `*.domain` wildcard は **1 段以上のサブドメインを要求** し (apex は含めない)、先頭リテラルドット要求で `https://eviltypedcode.pages.dev` のような prefix 偽装を弾く。`*.pages.dev` のように広げると他人の Pages サイトまで通るので**自プロジェクト配下に限定**すること (`<branch>.<project>.pages.dev` は自プロジェクトの branch alias に限られる)。新しいカスタムドメイン (例: `www.`) を足すときは production の `ALLOWED_ORIGINS` に追記する。
@@ -141,8 +141,8 @@ CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リス
 | 環境 | wrangler 設定 | トリガ | Worker 名 |
 |---|---|---|---|
 | dev (ローカル) | `wrangler.toml` (skip-worktree) | `npm run dev` | (local) |
-| staging | `wrangler.staging.toml` | **develop push → CI 自動** | `typedcode-api-staging` |
-| production | `wrangler.production.toml` | **main push → CI 承認待ち** | `typedcode-api` |
+| staging | `wrangler.staging.toml` | **main push → CI 自動** | `typedcode-api-staging` |
+| production | `wrangler.production.toml` | **v* タグ push → CI 承認待ち** | `typedcode-api` |
 
 - staging / production の wrangler config は KV ID も含めて HEAD に直接 commit されている (KV namespace ID は CF API token なしではアクセス不能なので実質的にシークレットではない)
 - ローカル `wrangler.toml` は各開発者の dev KV ID を保持 (skip-worktree のため commit されない)
@@ -213,15 +213,13 @@ npm run gen-checkpoint-key -w @typedcode/workers   # production 用
 
 ```
 ローカル開発 (npm run dev)
-   ↓ commit & push to develop
-develop ブランチ push
+   ↓ feature ブランチ → PR → squash merge
+main ブランチ push
    ↓
 [CI] test → deploy-staging (auto)
    ↓
-staging URL で動作確認 (develop.<project>.pages.dev)
-   ↓ PR develop → main → merge
-main ブランチ push
-   ↓
+staging URL で動作確認 (staging.<project>.pages.dev)
+   ↓ gh release create vX.Y.Z (タグ push)
 [CI] test → deploy-production (承認待ち)
    ↓ Actions タブで Approve
 本番デプロイ実行

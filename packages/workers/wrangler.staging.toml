@@ -3,7 +3,7 @@
 # 使い方:
 #   wrangler deploy --config wrangler.staging.toml
 #
-# CI からは develop ブランチ push 時に自動デプロイされる
+# CI からは main ブランチ push 時に自動デプロイされる
 # (.github/workflows/deploy.yml の deploy-staging ジョブ)。
 #
 # KV namespace ID はシークレットではない (Cloudflare API token なしでは
@@ -25,7 +25,7 @@ head_sampling_rate = 1
 
 [vars]
 ENVIRONMENT = "staging"
-# CORS 許可オリジン。staging Worker は develop デプロイ (develop.typedcode.pages.dev)
+# CORS 許可オリジン。staging Worker は staging デプロイ (staging.typedcode.pages.dev)
 # だけでなく PR プレビュー (<branch>.typedcode.pages.dev) からも叩かれる。
 # サブドメイン wildcard で自プロジェクト配下の pages.dev を許可する
 # (*.pages.dev のように広げないこと: 自プロジェクトの branch alias に限定される)。

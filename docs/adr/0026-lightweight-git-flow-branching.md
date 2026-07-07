@@ -1,6 +1,6 @@
 # ADR-0026: ブランチ運用を軽量 Git Flow にする (release/* を省き develop→main は merge commit・feature→develop は squash)
 
-- **Status**: Accepted
+- **Status**: Superseded by [ADR-0028](0028-tag-based-github-flow.md) (2026-07-07)
 - **Date**: 2026-06-29
 - **Deciders**: (PR 上の合意者 / レビュアー)
 - **PR / Commit**: develop

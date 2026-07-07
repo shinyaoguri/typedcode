@@ -2,7 +2,7 @@
 
 <img align="right" src="icon.png" alt="TypedCode Logo" height="150">
 
-[![CI](https://img.shields.io/github/actions/workflow/status/shinyaoguri/typedcode/deploy.yml?branch=develop&label=CI)](https://github.com/shinyaoguri/typedcode/actions/workflows/deploy.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/shinyaoguri/typedcode/deploy.yml?branch=main&label=CI)](https://github.com/shinyaoguri/typedcode/actions/workflows/deploy.yml)
 [![Live](https://img.shields.io/website?url=https%3A%2F%2Ftypedcode.dev&label=typedcode.dev)](https://typedcode.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)

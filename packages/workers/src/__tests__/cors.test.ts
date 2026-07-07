@@ -93,9 +93,9 @@ describe('CORS allowed-origin policy', () => {
   describe('with staging wildcard ALLOWED_ORIGINS', () => {
     const staging = () => baseEnv({ ALLOWED_ORIGINS: 'https://*.typedcode.pages.dev' });
 
-    it('allows the develop deployment', async () => {
-      const res = await worker.fetch(preflight('https://develop.typedcode.pages.dev'), staging());
-      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://develop.typedcode.pages.dev');
+    it('allows the staging deployment', async () => {
+      const res = await worker.fetch(preflight('https://staging.typedcode.pages.dev'), staging());
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://staging.typedcode.pages.dev');
     });
 
     it('allows an arbitrary PR preview subdomain', async () => {
@@ -114,7 +114,7 @@ describe('CORS allowed-origin policy', () => {
     });
 
     it('rejects http (scheme must match the https pattern)', async () => {
-      const res = await worker.fetch(preflight('http://develop.typedcode.pages.dev'), staging());
+      const res = await worker.fetch(preflight('http://staging.typedcode.pages.dev'), staging());
       expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
     });
   });

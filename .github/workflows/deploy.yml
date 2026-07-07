@@ -2,9 +2,10 @@ name: Deploy
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
+    tags: ['v*']
   pull_request:
-    branches: [main, develop]
+    branches: [main]
 
 # ref ごとに 1 run。PR は新しい push で古い run をキャンセル (CI 節約)。
 # push (= deploy) はキャンセルせずキューイングし、最新 run が最後に走るので
@@ -14,17 +15,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# 構成:
+# 構成 (タグ式 GitHub Flow, ADR-0028):
 #   test                   — どのトリガでも必ず走る (test:run を持つ全 workspace のユニットテスト)
 #   check                  — どのトリガでも必ず走る (全 package typecheck/build + Worker config dry-run)
-#   deploy-preview         — feature → develop PR で Pages のプレビュー URL を発行 (Workers staging 向け)
-#   comment-staging-preview— develop → main PR に staging URL をコメント (新規 preview は作らない)
-#   deploy-staging         — develop push で Workers staging + Pages staging を更新
-#   deploy-production      — main  push で Workers production + Pages production を更新
+#   deploy-preview         — feature → main PR で Pages のプレビュー URL を発行 (Workers staging 向け)
+#   deploy-staging         — main push で Workers staging + Pages staging (--branch=staging) を更新
+#   deploy-production      — v* タグ push で Workers production + Pages production を更新
 #                            (GitHub Environment "production" の Required reviewers で承認待ち)
 #
 # 設計判断:
-#   - 本番は手動承認ゲート前提。develop で動作確認 → main マージ → 承認 → 本番。
+#   - 本番は手動承認ゲート前提。main = staging で動作確認 → v* タグ (gh release create) → 承認 → 本番。
+#   - タグ push でも test/check/e2e を再実行する (リリースゲート)。タグは CI 未通過の
+#     コミットにも打ててしまうため、タグ時の再検証が唯一の強制ゲートになる。
 #   - Pages の Cloudflare バンドルは VITE_API_URL が baked-in なので、
 #     ターゲットごとに build を回す (staging build と production build が別物)。
 
@@ -54,7 +56,7 @@ jobs:
 
   # --------------------------------------------------------------------
   # 品質ゲート (merge 前に全 package を typecheck/build + Worker config 検証)
-  # build は従来 deploy job で初めて走っていたため、main/develop に入ってから
+  # build は従来 deploy job で初めて走っていたため、main に入ってから
   # 失敗する余地があった。push/PR どちらでも走らせ deploy の前提条件にする。
   # secrets 不要 (VITE_* 無しでも build は通る / wrangler は --dry-run)。
   # --------------------------------------------------------------------
@@ -136,11 +138,11 @@ jobs:
   # --------------------------------------------------------------------
   deploy-preview:
     needs: [test, check, e2e]
-    # head_ref != 'develop' で `develop → main` の PR (= PR #60 など) を除外する。
-    # この種類の PR では develop push 起因の deploy-staging が `develop.<project>.pages.dev`
-    # にデプロイするのと URL が衝突するため、PR 側の preview は走らせない。
-    # 通常の feature/* → develop PR では head_ref が feature 名になるので衝突しない。
-    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && github.head_ref != 'develop'
+    # head_ref != 'staging' で `staging` という名前のブランチを除外する。
+    # deploy-staging が --branch=staging で `staging.<project>.pages.dev` にデプロイ
+    # するため、同名 head の PR preview が走ると URL が衝突して staging を上書きする。
+    # (`staging` はブランチ名として予約。CONTRIBUTING.md 参照)
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && github.head_ref != 'staging'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -234,64 +236,12 @@ jobs:
             }
 
   # --------------------------------------------------------------------
-  # develop → main PR: 新規プレビューは作らない (develop push の deploy-staging が
-  # develop.<project>.pages.dev に出すのと URL が衝突するため)。代わりに、その
-  # staging URL を PR にコメントする。本番昇格前に確認すべき成果物がこれ。
-  # --------------------------------------------------------------------
-  comment-staging-preview:
-    needs: [test, check]
-    if: github.event_name == 'pull_request' && github.head_ref == 'develop' && github.base_ref == 'main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Comment staging preview URL on the PR
-        uses: actions/github-script@v9
-        env:
-          PROJECT_NAME: ${{ secrets.CLOUDFLARE_PROJECT_NAME }}
-        with:
-          script: |
-            const url = `https://develop.${process.env.PROJECT_NAME}.pages.dev`;
-            const marker = '## 🔍 Staging Preview (develop → main)';
-            const body = `${marker}
-
-            | Name | URL |
-            |------|-----|
-            | Staging | ${url} |
-
-            この PR は develop を main に昇格します。develop の最新ビルドは常時この staging URL にデプロイされています (API: **staging** Workers)。本番デプロイ前の動作確認はここで行ってください。
-            *Promotion candidate: ${context.sha.substring(0, 7)}*`;
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const botComment = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
-            if (botComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
-
-  # --------------------------------------------------------------------
-  # develop push: staging 環境 (Workers + Pages) を更新
-  # 自動デプロイ。承認ゲートなし。
+  # main push: staging 環境 (Workers + Pages) を更新
+  # 自動デプロイ。承認ゲートなし。main = 常時統合ブランチ (ADR-0028)。
   # --------------------------------------------------------------------
   deploy-staging:
     needs: [test, check, e2e]
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -334,20 +284,23 @@ jobs:
           command: deploy --config wrangler.staging.toml
 
       - name: Deploy to Cloudflare Pages (Staging)
-        # --branch=develop で develop.<project>.pages.dev という stable URL になる
+        # --branch=staging で staging.<project>.pages.dev という stable URL になる。
+        # --branch=main は Pages プロジェクトの production branch と衝突する
+        # (production デプロイ扱いになる) ため使わない。
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=develop --commit-hash=${{ github.sha }} --commit-message="${{ github.sha }}"
+          command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=staging --commit-hash=${{ github.sha }} --commit-message="${{ github.sha }}"
 
   # --------------------------------------------------------------------
-  # main push: production 環境 (Workers + Pages) を更新
+  # v* タグ push: production 環境 (Workers + Pages) を更新
+  # リリース = `gh release create vX.Y.Z` によるタグ作成 (CONTRIBUTING.md 参照)。
   # GitHub Environment "production" の Required reviewers で承認待ち。
   # --------------------------------------------------------------------
   deploy-production:
     needs: [test, check, e2e]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
     runs-on: ubuntu-latest
     # 注: Environment "production" の承認待ち時間は timeout-minutes に含まれない
     # (job 開始 = 承認後)。実行時間のみの上限。
@@ -361,6 +314,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           lfs: true
+          # ancestor ガード (下) が main との祖先関係を辿るため全履歴を取得する
+          fetch-depth: 0
+
+      # タグは任意のコミットに打てるため、main の履歴上のコミットであることを検証する。
+      # main に載っていないコミットへのタグでは本番デプロイを拒否する。
+      - name: Verify tag commit is on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
 
       - uses: actions/setup-node@v6
         with:
@@ -392,8 +354,11 @@ jobs:
           command: deploy --config wrangler.production.toml
 
       - name: Deploy to Cloudflare Pages (Production)
+        # --branch=main (= Pages プロジェクトの production branch) を明示する。
+        # タグ checkout は detached HEAD になり branch 推定が効かないため、
+        # 省略すると preview デプロイ扱いになって本番 URL が更新されない。
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --commit-hash=${{ github.sha }} --commit-message="${{ github.sha }}"
+          command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=main --commit-hash=${{ github.sha }} --commit-message="${{ github.sha }}"
