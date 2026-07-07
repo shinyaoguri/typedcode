@@ -445,8 +445,10 @@ function checkCloudflareResources() {
 // メンテナ専用セクション (--maintainer フラグ時のみ)
 // ============================================================================
 
-const REQUIRED_REPO_SECRETS = ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_PROJECT_NAME'];
-const REQUIRED_ENV_SECRETS = ['VITE_API_URL', 'VITE_TURNSTILE_SITE_KEY'];
+// CLOUDFLARE_API_TOKEN は repo level ではなく Environment secret (staging/production 別) に置く
+// (docs/setup.md M2: preview/staging に本番デプロイ権限の token を露出させないため)。
+const REQUIRED_REPO_SECRETS = ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_PROJECT_NAME'];
+const REQUIRED_ENV_SECRETS = ['CLOUDFLARE_API_TOKEN', 'VITE_API_URL', 'VITE_TURNSTILE_SITE_KEY'];
 const REQUIRED_WORKER_SECRETS = [
   'TURNSTILE_SECRET_KEY',
   'ATTESTATION_SECRET_KEY',
@@ -521,6 +523,16 @@ function checkGitHubSetup() {
     } else {
       report('fail', `repo secret 未設定: ${key}`, `gh secret set ${key}\n値の中身は docs/setup.md M1-M2 参照`);
     }
+  }
+
+  // repo level の CLOUDFLARE_API_TOKEN は方針違反 (Environment secret が同名 repo secret を
+  // 上書きするため動作はするが、preview/staging からも本番権限 token に到達しうる)
+  if (repoSecrets.includes('CLOUDFLARE_API_TOKEN')) {
+    report(
+      'warn',
+      'repo secret CLOUDFLARE_API_TOKEN が存在 (Environment secret への分離を推奨)',
+      `docs/setup.md M2 参照。staging/production 各 Environment に権限を絞った token を置き、repo level は削除:\n  gh secret delete CLOUDFLARE_API_TOKEN`
+    );
   }
 
   // Environments

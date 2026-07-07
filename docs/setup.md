@@ -376,10 +376,10 @@ npm run doctor -- --maintainer
 検査内容 (M1-M4 で設定した項目を全網羅):
 
 - repo 設定 (`delete_branch_on_merge=true`)
-- repo level secrets (`CLOUDFLARE_API_TOKEN`, `ACCOUNT_ID`, `PROJECT_NAME`)
+- repo level secrets (`ACCOUNT_ID`, `PROJECT_NAME`。`CLOUDFLARE_API_TOKEN` が repo level にあると warn)
 - Environments (`staging`, `production`) の存在
 - production の Required reviewers
-- 各 environment の secrets (`VITE_API_URL`, `VITE_TURNSTILE_SITE_KEY`)
+- 各 environment の secrets (`CLOUDFLARE_API_TOKEN`, `VITE_API_URL`, `VITE_TURNSTILE_SITE_KEY`)
 - `wrangler.staging.toml` / `wrangler.production.toml` の KV ID
 - staging / production Worker のデプロイ状態
 - 各 Worker の secrets (`TURNSTILE_SECRET_KEY`, `ATTESTATION_SECRET_KEY`, `CHECKPOINT_SIGNING_KEY_ID`, `CHECKPOINT_SIGNING_KEY_JWK`)
