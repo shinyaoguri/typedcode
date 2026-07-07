@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync, mkdtempSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,7 +8,10 @@ import { fileURLToPath } from 'node:url';
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../..');
 const CLI_ENTRY = resolve(REPO_ROOT, 'packages/verify-cli/src/cli.ts');
-const TSX_BIN = resolve(REPO_ROOT, 'node_modules/.bin/tsx');
+// tsx の設置場所 (root hoist か packages/e2e 配下か) は lockfile 再生成で変わりうるため、
+// root の node_modules/.bin を決め打ちせず Node の解決機構で引く
+// (Dependabot の lockfile 更新で root hoist が外れ spawn ENOENT になった実績: PR #189)。
+const TSX_CLI = createRequire(import.meta.url).resolve('tsx/cli');
 
 /**
  * verify-cli を実プロセスとして起動して proof を検証する。
@@ -41,7 +45,7 @@ export interface CliResultWithAnalysis extends CliResult {
 }
 
 export function runVerifyCli(file: string, extraArgs: string[] = []): CliResult {
-  const res = spawnSync(TSX_BIN, [CLI_ENTRY, file, ...extraArgs], {
+  const res = spawnSync(process.execPath, [TSX_CLI, CLI_ENTRY, file, ...extraArgs], {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
     // full PoSW 再計算 (10,000 iter/event) は遅い CI ランナー (2 コア・他プロセスと競合) で
