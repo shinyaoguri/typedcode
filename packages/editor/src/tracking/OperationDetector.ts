@@ -2,12 +2,7 @@
  * OperationDetector - Monaco Editorの変更イベントから操作種別を推定
  */
 
-import type {
-  InputType,
-  DeleteDirection,
-  TextRange,
-  OperationResult,
-} from '@typedcode/shared';
+import type { InputType, DeleteDirection, TextRange, OperationResult } from '@typedcode/shared';
 import type { ModelContentChange, ModelContentChangedEvent } from '../editor/types.js';
 import { t } from '../i18n/index.js';
 
@@ -30,7 +25,7 @@ export class OperationDetector {
       inputType = this.detectDeleteType(change, range);
       operationDetail = {
         deletedLength: rangeLength,
-        deleteDirection: this.getDeleteDirection(range)
+        deleteDirection: this.getDeleteDirection(range),
       };
     }
     // 2. 挿入操作の検出
@@ -38,7 +33,7 @@ export class OperationDetector {
       inputType = this.detectInsertType(text);
       operationDetail = {
         insertedText: text,
-        insertLength: text.length
+        insertLength: text.length,
       };
     }
     // 3. 置換操作の検出（範囲選択後の入力）
@@ -47,7 +42,7 @@ export class OperationDetector {
       operationDetail = {
         deletedLength: rangeLength,
         insertedText: text,
-        insertLength: text.length
+        insertLength: text.length,
       };
     }
 
@@ -65,7 +60,7 @@ export class OperationDetector {
       startLineNumber: range.startLineNumber,
       startColumn: range.startColumn,
       endLineNumber: range.endLineNumber,
-      endColumn: range.endColumn
+      endColumn: range.endColumn,
     };
 
     const result: OperationResult = {
@@ -75,7 +70,7 @@ export class OperationDetector {
       rangeLength: rangeLength,
       range: textRange,
       isMultiLine,
-      ...operationDetail
+      ...operationDetail,
     };
 
     this.lastOperation = result;
@@ -184,7 +179,7 @@ export class OperationDetector {
       return true;
     }
 
-    const allIndentChanges = changes.every(change => {
+    const allIndentChanges = changes.every((change) => {
       return /^[\s\t]*$/.test(change.text);
     });
 
@@ -196,32 +191,32 @@ export class OperationDetector {
    */
   getOperationDescription(operation: OperationResult): string {
     const descriptions: Record<InputType, string> = {
-      'insertText': t('operations.input'),
-      'insertLineBreak': t('operations.enter'),
-      'insertParagraph': t('operations.multiLineChange'),
-      'insertTab': t('operations.tab'),
-      'insertFromComposition': t('operations.imeInput'),
-      'insertCompositionText': t('operations.imeInput'),
-      'deleteCompositionText': t('operations.delete'),
-      'deleteContentBackward': t('operations.delete'),
-      'deleteContentForward': t('operations.delete'),
-      'deleteWordBackward': t('operations.multiCharDelete'),
-      'deleteWordForward': t('operations.multiCharDelete'),
-      'deleteSoftLineBackward': t('operations.bulkDelete'),
-      'deleteSoftLineForward': t('operations.bulkDelete'),
-      'deleteHardLineBackward': t('operations.bulkDelete'),
-      'deleteHardLineForward': t('operations.bulkDelete'),
-      'deleteByDrag': t('operations.delete'),
-      'deleteByCut': t('operations.bulkDelete'),
-      'replaceContent': t('operations.replace'),
-      'historyUndo': t('operations.undo'),
-      'historyRedo': t('operations.redo'),
-      'insertFromPaste': t('operations.paste'),
-      'insertFromDrop': t('operations.drop'),
-      'insertFromYank': t('operations.paste'),
-      'insertReplacementText': t('operations.replace'),
-      'insertFromPasteAsQuotation': t('operations.paste'),
-      'insertFromInternalPaste': t('operations.internalPaste')
+      insertText: t('operations.input'),
+      insertLineBreak: t('operations.enter'),
+      insertParagraph: t('operations.multiLineChange'),
+      insertTab: t('operations.tab'),
+      insertFromComposition: t('operations.imeInput'),
+      insertCompositionText: t('operations.imeInput'),
+      deleteCompositionText: t('operations.delete'),
+      deleteContentBackward: t('operations.delete'),
+      deleteContentForward: t('operations.delete'),
+      deleteWordBackward: t('operations.multiCharDelete'),
+      deleteWordForward: t('operations.multiCharDelete'),
+      deleteSoftLineBackward: t('operations.bulkDelete'),
+      deleteSoftLineForward: t('operations.bulkDelete'),
+      deleteHardLineBackward: t('operations.bulkDelete'),
+      deleteHardLineForward: t('operations.bulkDelete'),
+      deleteByDrag: t('operations.delete'),
+      deleteByCut: t('operations.bulkDelete'),
+      replaceContent: t('operations.replace'),
+      historyUndo: t('operations.undo'),
+      historyRedo: t('operations.redo'),
+      insertFromPaste: t('operations.paste'),
+      insertFromDrop: t('operations.drop'),
+      insertFromYank: t('operations.paste'),
+      insertReplacementText: t('operations.replace'),
+      insertFromPasteAsQuotation: t('operations.paste'),
+      insertFromInternalPaste: t('operations.internalPaste'),
     };
 
     return descriptions[operation.inputType] ?? operation.inputType;

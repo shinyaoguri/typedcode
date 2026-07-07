@@ -5,6 +5,7 @@
 
 import JSZip from 'jszip';
 import type { TabManager, TabState } from '../ui/tabs/TabManager.js';
+import type { EditorMode } from '../core/mode.js';
 import type { ProcessingDialog } from '../ui/components/ProcessingDialog.js';
 import { ExportProgressDialog } from '../ui/components/ExportProgressDialog.js';
 import type { ScreenshotTracker } from '../tracking/ScreenshotTracker.js';
@@ -17,6 +18,8 @@ import { getLanguageDefinition } from '../config/SupportedLanguages.js';
 import { t } from '../i18n/index.js';
 import { generateReadmeEn } from './readme-template-en.js';
 import { generateReadmeJa } from './readme-template-ja.js';
+import { summarizeProcess } from '@typedcode/shared';
+import { SelfReviewDialog } from '../ui/components/SelfReviewDialog.js';
 
 export interface ExportCallbacks {
   onNotification?: (message: string) => void;
@@ -28,9 +31,64 @@ export class ProofExporter {
   private exportProgressDialog: ExportProgressDialog;
   private screenshotTracker: ScreenshotTracker | null = null;
   private callbacks: ExportCallbacks = {};
+  /** エクスポート前認証を best-effort 化するか (ADR-0006/0011: `capabilities.preExportBestEffort`)。
+   *  true のとき Turnstile 不達/失敗でも提出 ZIP をブロックしない。exam 等で有効。 */
+  private preExportBestEffort = false;
+  /** 生成時のモード (ADR-0011)。proof に自己申告ラベルとして記録する。 */
+  private mode: EditorMode = 'casual';
+  /** 多重 export ガード。ダウンロードボタン連打での二重 export (attestation 二重記録 /
+   *  Turnstile 二重描画 / 二重ダウンロード) を防ぐ。 */
+  private isExporting = false;
+  /** 提出前セルフレビュー (ADR-0022, `capabilities.selfReview` で駆動)。 */
+  private selfReviewEnabled = false;
+  private selfReviewDialog = new SelfReviewDialog();
 
   constructor() {
     this.exportProgressDialog = new ExportProgressDialog();
+  }
+
+  /** 生成時のモードを設定する (ADR-0011)。proof.mode に記録される。 */
+  setMode(mode: EditorMode): void {
+    this.mode = mode;
+  }
+
+  /**
+   * エクスポート前認証の best-effort 化を設定 (`capabilities.preExportBestEffort` で駆動)。
+   * 有効時は Turnstile 認証が失敗/不達でも提出 ZIP をブロックしない (ADR-0006: サーバを
+   * critical path に置かない。不安定網・100名同時でも受験者が Moodle 提出物を作れるように
+   * する)。casual は従来どおり必須 (false)。
+   */
+  setPreExportBestEffort(bestEffort: boolean): void {
+    this.preExportBestEffort = bestEffort;
+  }
+
+  /** 提出前セルフレビュー (ADR-0022) の有効化 (`capabilities.selfReview` で駆動)。 */
+  setSelfReviewEnabled(enabled: boolean): void {
+    this.selfReviewEnabled = enabled;
+  }
+
+  /**
+   * 提出前セルフレビュー (ADR-0022): アクティブタブのプロセス要約を見せ、任意の
+   * 振り返りノートを reflectionNote イベントとしてチェーンへ記録する。
+   * @returns export を続行するか (false = ユーザがキャンセル)
+   */
+  private async performSelfReview(activeTab: TabState): Promise<boolean> {
+    if (!this.selfReviewEnabled) return true;
+
+    const summary = summarizeProcess(activeTab.typingProof.events);
+    const result = await this.selfReviewDialog.show(summary);
+    if (!result.proceed) return false;
+
+    if (result.note.length > 0) {
+      // ノートはチェーンに焼かれる (改ざん耐性)。exportProof が後段でチェーン完了を
+      // 待つため、ここは fire-and-forget でよい (preExportAttestation と同じ経路特性)。
+      await activeTab.typingProof.recordEvent({
+        type: 'reflectionNote',
+        data: { text: result.note },
+        description: t('selfReview.recorded'),
+      });
+    }
+    return true;
   }
 
   /**
@@ -147,14 +205,25 @@ export class ProofExporter {
       return true;
     }
 
+    // 試験モードでは認証を best-effort 化: 試行して結果を記録するが、失敗/不達でも
+    // 提出 ZIP をブロックしない (ADR-0006: サーバを critical path に置かない)。
+    // 失敗時は best-effort の失敗 attestation を記録してエクスポートを続行する。
+    const failOrBestEffort = async (reason: string): Promise<boolean> => {
+      console.error('[Export] Pre-export verification failed:', reason);
+      if (this.preExportBestEffort) {
+        await this.recordBestEffortPreExportAttestation(reason);
+        return true; // 提出をブロックしない
+      }
+      this.exportProgressDialog.hide();
+      this.callbacks.onNotification?.(t('export.preAuthFailed'));
+      return false;
+    };
+
     // Turnstileスクリプトを読み込む
     try {
       await loadTurnstileScript();
     } catch (error) {
-      console.error('[Export] Failed to load Turnstile script:', error);
-      this.exportProgressDialog.hide();
-      this.callbacks.onNotification?.(t('export.preAuthFailed'));
-      return false;
+      return failOrBestEffort(`script_load_failed: ${String(error)}`);
     }
 
     // ExportProgressDialogのTurnstileコンテナを使用
@@ -162,10 +231,7 @@ export class ProofExporter {
     const parentContainer = document.getElementById('export-turnstile-container');
 
     if (!widgetContainer) {
-      console.error('[Export] Turnstile container not found');
-      this.exportProgressDialog.hide();
-      this.callbacks.onNotification?.(t('export.preAuthFailed'));
-      return false;
+      return failOrBestEffort('turnstile_container_missing');
     }
 
     const result = await performTurnstileVerification('export_proof', {
@@ -174,10 +240,7 @@ export class ProofExporter {
     });
 
     if (!result.success || !result.attestation) {
-      console.error('[Export] Pre-export verification failed:', result.error);
-      this.exportProgressDialog.hide();
-      this.callbacks.onNotification?.(t('export.preAuthFailed'));
-      return false;
+      return failOrBestEffort(result.error ?? 'verification_failed');
     }
 
     // 全タブのTypingProofにエクスポート前attestationを記録
@@ -199,6 +262,28 @@ export class ProofExporter {
   }
 
   /**
+   * 試験モードで Turnstile 認証が失敗/不達のとき、全タブに best-effort の失敗
+   * attestation を記録する (ADR-0006)。これにより「認証を試みたが取得できなかった」
+   * 事実がチェーンに残りつつ、提出 ZIP の生成はブロックされない。
+   */
+  private async recordBestEffortPreExportAttestation(reason: string): Promise<void> {
+    if (!this.tabManager) return;
+    const allTabs = this.tabManager.getAllTabs();
+    for (const tab of allTabs) {
+      await tab.typingProof.recordPreExportAttestation({
+        success: false,
+        verified: false,
+        score: 0,
+        action: 'export_proof',
+        timestamp: new Date().toISOString(),
+        hostname: window.location.hostname,
+        signature: '',
+      });
+    }
+    console.warn(`[Export] Exam mode: pre-export attestation best-effort (recorded failure, not blocking): ${reason}`);
+  }
+
+  /**
    * タイムスタンプ文字列を生成
    */
   private generateTimestamp(): string {
@@ -212,11 +297,25 @@ export class ProofExporter {
   async exportCurrentTab(): Promise<void> {
     console.log('[Export] exportCurrentTab called');
 
+    if (this.isExporting) {
+      console.warn('[Export] Export already in progress; ignoring re-entrant call');
+      return;
+    }
+    this.isExporting = true;
+
     try {
       const activeTab = this.tabManager?.getActiveTab();
       console.log('[Export] activeTab:', activeTab?.filename);
       if (!activeTab) {
         console.log('[Export] No active tab');
+        return;
+      }
+
+      // 提出前セルフレビュー (ADR-0022): チェーン完了待ちより前に行い、
+      // 記録した reflectionNote も後段の待機/最終 checkpoint に含める。
+      const reviewOk = await this.performSelfReview(activeTab);
+      if (!reviewOk) {
+        this.callbacks.onNotification?.(t('export.cancelled'));
         return;
       }
 
@@ -241,18 +340,23 @@ export class ProofExporter {
       // エクスポート前に明示的に同期を取る必要がある
       await this.tabManager?.flushToIndexedDB();
 
+      // #143: 直前の打鍵がまだ PoSW キューにあると「content には載っているのに
+      // チェーンに無い」export になり content replay で fail する。先に排出を待つ。
+      const drained = await activeTab.typingProof.waitForQueueDrain(5000);
+      if (!drained) {
+        console.warn('[ProofExporter] event queue did not drain within 5s; exporting the chain-consistent snapshot');
+      }
       const content = activeTab.model.getValue();
       // exportProof() は最終 checkpoint を作成して onCheckpointCreated フックを発火する。
-      // 戻り値の checkpoints は CheckpointManager 内部配列への参照なので、後段で
-      // waitForFlush している間に signature が attach される。
+      // 戻り値の checkpoints は要素オブジェクトを CheckpointManager と共有するので、後段で
+      // waitForFlush している間に signature が attach される (#143 でスナップショット外の
+      // checkpoint は同梱されなくなったが、要素共有は変わらない)。
       const proof = await activeTab.typingProof.exportProof(content);
 
       // Signed checkpoint の pending リクエストを最大 5 秒待機 (オンライン時のみ意味あり)
       const flushResult = await activeTab.signedCheckpointService?.waitForFlush(5000);
       if (flushResult && !flushResult.flushed) {
-        console.warn(
-          `[ProofExporter] ${flushResult.remaining} signed checkpoint(s) remain unsigned at export time`
-        );
+        console.warn(`[ProofExporter] ${flushResult.remaining} signed checkpoint(s) remain unsigned at export time`);
       }
 
       // ZIPファイルを作成
@@ -276,6 +380,7 @@ export class ProofExporter {
       // 証明JSONを追加
       const proofWithContent = {
         ...proof,
+        mode: this.mode,
         filename: activeTab.filename,
         content,
         language: activeTab.language,
@@ -331,6 +436,8 @@ export class ProofExporter {
       console.error('[TypedCode] Export failed:', error);
       this.exportProgressDialog.hide();
       this.callbacks.onNotification?.(t('export.failed'));
+    } finally {
+      this.isExporting = false;
     }
   }
 
@@ -338,6 +445,12 @@ export class ProofExporter {
    * 全タブをZIPでエクスポート
    */
   async exportAllTabsAsZip(): Promise<void> {
+    if (this.isExporting) {
+      console.warn('[Export] Export already in progress; ignoring re-entrant call');
+      return;
+    }
+    this.isExporting = true;
+
     try {
       if (!this.tabManager) return;
 
@@ -345,6 +458,17 @@ export class ProofExporter {
       if (this.tabManager.getAllTabs().length === 0) {
         console.log('[Export] No tabs to export');
         return;
+      }
+
+      // 提出前セルフレビュー (ADR-0022): 一括 export では 1 回だけ表示し、
+      // ノートはアクティブタブのチェーンへ記録する (タブ毎 N 回は摩擦過多)。
+      const activeTabForReview = this.tabManager.getActiveTab();
+      if (activeTabForReview) {
+        const reviewOk = await this.performSelfReview(activeTabForReview);
+        if (!reviewOk) {
+          this.callbacks.onNotification?.(t('export.cancelled'));
+          return;
+        }
       }
 
       // ハッシュチェーン生成完了を待機
@@ -395,6 +519,13 @@ export class ProofExporter {
           total: allTabs.length,
         });
 
+        // #143: waitForProcessingComplete はアクティブタブしか待たない。タブ毎に
+        // キュー排出を待ってから content を確定する (排出しきれなくてもスナップショット
+        // 一貫性で proof 自体は整合するが、直前の打鍵が export に載らない)。
+        const drained = await tab.typingProof.waitForQueueDrain(5000);
+        if (!drained) {
+          console.warn(`[ProofExporter] tab ${tab.id}: event queue did not drain within 5s`);
+        }
         const content = tab.model.getValue();
         const proof = await tab.typingProof.exportProof(content);
 
@@ -402,9 +533,7 @@ export class ProofExporter {
         // JSON シリアライズ前に最大 5 秒待機して envelope を反映させる。
         const flushResult = await tab.signedCheckpointService?.waitForFlush(5000);
         if (flushResult && !flushResult.flushed) {
-          console.warn(
-            `[ProofExporter] tab ${tab.id}: ${flushResult.remaining} unsigned checkpoint(s) at export time`
-          );
+          console.warn(`[ProofExporter] tab ${tab.id}: ${flushResult.remaining} unsigned checkpoint(s) at export time`);
         }
 
         // ソースファイル名を生成（拡張子付き）
@@ -442,6 +571,7 @@ export class ProofExporter {
         // 証明JSONを追加（フラット）
         const proofWithContent = {
           ...proof,
+          mode: this.mode,
           filename: tab.filename,
           content,
           language: tab.language,
@@ -465,6 +595,13 @@ export class ProofExporter {
       };
       zip.file('README.md', generateReadmeEn(readmeParams));
       zip.file('README.ja.md', generateReadmeJa(readmeParams));
+
+      // タブ間切替の監査証跡 (ADR-0007/0010)。複数タブ提出 (exam/class) で「いつどの問題に
+      // 移ったか」を残す。各タブ proof は独立しているため、この情報は別ファイルで同梱する。
+      const tabSwitches = this.tabManager?.getTabSwitches() ?? [];
+      if (tabSwitches.length > 0) {
+        zip.file('tab-switches.json', JSON.stringify(tabSwitches, null, 2));
+      }
 
       // ZIPを生成してダウンロード（最大圧縮）
       this.exportProgressDialog.updatePhase('generating');
@@ -493,6 +630,8 @@ export class ProofExporter {
       console.error('[TypedCode] ZIP export failed:', error);
       this.exportProgressDialog.hide();
       this.callbacks.onNotification?.(t('export.zipFailed'));
+    } finally {
+      this.isExporting = false;
     }
   }
 

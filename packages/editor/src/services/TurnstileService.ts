@@ -4,6 +4,7 @@
  */
 
 import { t } from '../i18n/index.js';
+import type { SessionStartToken } from '@typedcode/shared';
 
 declare global {
   interface Window {
@@ -237,7 +238,7 @@ export async function getTurnstileToken(action: string, options?: GetTurnstileTo
         size: 'flexible',
         action,
         theme: turnstileTheme,
-        appearance: 'always',  // Always show the official Cloudflare widget
+        appearance: 'always', // Always show the official Cloudflare widget
         callback: (token) => {
           if (!resolved) {
             resolved = true;
@@ -285,11 +286,7 @@ export interface HumanAttestation {
 /**
  * Failure reason for verification
  */
-export type VerificationFailureReason =
-  | 'challenge_failed'
-  | 'timeout'
-  | 'network_error'
-  | 'token_acquisition_failed';
+export type VerificationFailureReason = 'challenge_failed' | 'timeout' | 'network_error' | 'token_acquisition_failed';
 
 /**
  * Verification result from the backend
@@ -301,6 +298,11 @@ export interface VerificationResult {
   error?: string;
   attestation?: HumanAttestation;
   failureReason?: VerificationFailureReason;
+  /**
+   * セッション開始トークン (ADR-0017)。`options.sessionStart` を渡したとき、Turnstile 成功で
+   * サーバが発行する ECDSA 署名トークン。クライアントは serverNonce を root に焼く。
+   */
+  sessionToken?: SessionStartToken | null;
 }
 
 /** Retry configuration for network errors */
@@ -379,7 +381,7 @@ function isNetworkError(response: Response | null, error: Error | null): boolean
  * Sleep for specified milliseconds
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -408,7 +410,7 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
       lastResponse = response;
 
       if (response.ok) {
-        const result = await response.json() as VerificationResult;
+        const result = (await response.json()) as VerificationResult;
         console.log('[Turnstile] Verification result:', result);
         // Notify success (no more retrying)
         retryStatusCallback?.({
@@ -440,7 +442,6 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
 
       // Network error - will retry if attempts remain
       console.warn(`[Turnstile] Attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed with status ${response.status}`);
-
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       lastResponse = null;
@@ -449,7 +450,7 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
 
     // Retry with exponential backoff if attempts remain
     if (attempt < RETRY_CONFIG.maxRetries) {
-      const delayMs = RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt - 1);
+      const delayMs = RETRY_CONFIG.initialDelayMs * 2 ** (attempt - 1);
       console.log(`[Turnstile] Retrying in ${delayMs}ms...`);
 
       // Notify about retry
@@ -486,6 +487,59 @@ export interface TurnstileVerificationOptions {
   widgetContainer?: HTMLElement;
   /** Custom parent container to show/hide (optional) */
   parentContainer?: HTMLElement;
+  /**
+   * 指定すると Phase 3 (verify) で `/api/verify-captcha` の代わりに `/api/session/start` を呼び、
+   * serverNonce 入りの ECDSA 署名トークンを取得する (ADR-0017)。Turnstile ゲートと root アンカーと
+   * 人間ゲートを 1 リクエストで兼ねる。casual/class の作成フローで使う。
+   */
+  sessionStart?: { sessionId: string; fingerprintHash: string };
+}
+
+/**
+ * Turnstile トークンを `/api/session/start` に送り、ECDSA 署名トークンを取得する (ADR-0017)。
+ * single attempt: 失敗時は呼び出し側が degraded fallback (root 未アンカー) する (ADR-0017 (b))。
+ */
+async function requestSessionStart(
+  turnstileToken: string,
+  input: { sessionId: string; fingerprintHash: string }
+): Promise<VerificationResult> {
+  if (!API_URL) {
+    return { success: false, error: 'API not configured', failureReason: 'network_error' };
+  }
+  try {
+    const response = await fetch(`${API_URL}/api/session/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        turnstileToken,
+        sessionId: input.sessionId,
+        fingerprintHash: input.fingerprintHash,
+      }),
+    });
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `HTTP ${response.status}`,
+        failureReason: response.status === 403 || response.status === 429 ? 'challenge_failed' : 'network_error',
+      };
+    }
+    const data = (await response.json()) as { success?: boolean; token?: SessionStartToken };
+    if (!data?.success || !data.token) {
+      return { success: false, error: 'session/start did not return a token', failureReason: 'network_error' };
+    }
+    return {
+      success: true,
+      score: 1.0,
+      action: data.token.payload.action ?? undefined,
+      sessionToken: data.token,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      failureReason: 'network_error',
+    };
+  }
 }
 
 /**
@@ -495,7 +549,10 @@ export interface TurnstileVerificationOptions {
  * @param options Optional configuration for custom containers
  * @returns Verification result
  */
-export async function performTurnstileVerification(action: string, options?: TurnstileVerificationOptions): Promise<VerificationResult> {
+export async function performTurnstileVerification(
+  action: string,
+  options?: TurnstileVerificationOptions
+): Promise<VerificationResult> {
   // If Turnstile is not configured, allow the action (development mode)
   if (!isTurnstileConfigured()) {
     console.log('[Turnstile] Not configured, allowing action');
@@ -517,7 +574,7 @@ export async function performTurnstileVerification(action: string, options?: Tur
     } catch (error) {
       console.warn(`[Turnstile] Script load attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed`);
       if (attempt < RETRY_CONFIG.maxRetries) {
-        const delayMs = RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt - 1);
+        const delayMs = RETRY_CONFIG.initialDelayMs * 2 ** (attempt - 1);
         retryStatusCallback?.({
           attempt,
           maxRetries: RETRY_CONFIG.maxRetries,
@@ -572,7 +629,7 @@ export async function performTurnstileVerification(action: string, options?: Tur
     // Network error - retry if attempts remain
     console.warn(`[Turnstile] Challenge attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed (network error)`);
     if (attempt < RETRY_CONFIG.maxRetries) {
-      const delayMs = RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt - 1);
+      const delayMs = RETRY_CONFIG.initialDelayMs * 2 ** (attempt - 1);
       retryStatusCallback?.({
         attempt,
         maxRetries: RETRY_CONFIG.maxRetries,
@@ -607,8 +664,11 @@ export async function performTurnstileVerification(action: string, options?: Tur
   });
 
   // Phase 3: Verify - Verify token via backend (already has retry logic inside)
+  // ADR-0017: sessionStart 指定時は session/start を呼び ECDSA トークンを取得する (root アンカー)。
   phaseCallback?.('verify', 'active');
-  const result = await verifyTurnstileToken(tokenResult.token);
+  const result = options?.sessionStart
+    ? await requestSessionStart(tokenResult.token, options.sessionStart)
+    : await verifyTurnstileToken(tokenResult.token);
   phaseCallback?.('verify', result.success ? 'done' : 'error');
 
   return result;

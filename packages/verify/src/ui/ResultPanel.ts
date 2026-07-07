@@ -16,11 +16,12 @@ import type {
   VerificationMode,
   PoswMode,
 } from '../types';
-import type { SignedCheckpointsVerificationResult } from '@typedcode/shared';
+import type { SignedCheckpointsVerificationResult, ExamBindingVerificationResult } from '@typedcode/shared';
 import type { SignedCheckpointReport } from '../types';
-import { escapeHtml, type TypingPatternAnalysis } from '@typedcode/shared';
+import { escapeHtml, type AnalysisReport, type AssuranceResult, type ProcessSummary } from '@typedcode/shared';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
-import { TypingPatternCard } from './TypingPatternCard.js';
+import { AnalysisReportCard } from './AnalysisReportCard.js';
+import { ProcessSummaryCard } from './ProcessSummaryCard.js';
 import { t } from '../i18n/index.js';
 
 export interface ResultData {
@@ -34,7 +35,14 @@ export interface ResultData {
   typingTime: string;
   typingSpeed: string;
   trustResult?: TrustResult;
-  typingPatternAnalysis?: TypingPatternAnalysis;
+  /** 分析層 (ADR-0009) の advisory レポート。判定ではない (検証結果とは独立軸)。 */
+  analysis?: AnalysisReport;
+  /** 三層保証語彙 (ADR-0020)。実証拠から機械導出 (自己申告 mode は不使用)。 */
+  assurance?: AssuranceResult;
+  /** プロセス要約 (Phase 8 W3)。制作過程の中立な記述 (疑い指標ではない)。 */
+  processSummary?: ProcessSummary;
+  /** proof の自己申告モード (ADR-0011)。参考表示のみで保証導出には使わない。 */
+  mode?: 'casual' | 'class' | 'assignment' | 'exam';
   /** 検証モード (Phase 5) */
   verificationMode?: VerificationMode;
   /** PoSW の実行モード (skipped / sampled / full) */
@@ -45,9 +53,23 @@ export interface ResultData {
     valid: boolean;
     coverage: SignedCheckpointsVerificationResult['coverage'];
     temporal: SignedCheckpointsVerificationResult['temporal'];
+    /** anchoring 密度メトリクス (ADR-0016)。sparse なら警告行に出す。 */
+    density: SignedCheckpointsVerificationResult['density'];
     reason?: string;
     /** 「展開時の根拠」表示用の追加情報 */
     report?: SignedCheckpointReport;
+  };
+  /** 試験モード (ADR-0006) の束縛検証結果。exam proof のときのみ。 */
+  examBinding?: {
+    examId: string;
+    problemId: string;
+    variant: string | null;
+    /** proof 自己完結の exam root 束縛 (package 不要) */
+    rootValid: boolean;
+    /** 問題パッケージ (.tcexam) が読み込まれたか */
+    packageProvided: boolean;
+    /** package 提供時のみ。署名→packageHash→root→内容ハッシュ→time-box */
+    binding?: ExamBindingVerificationResult;
   };
 }
 
@@ -79,9 +101,7 @@ export class ResultPanel {
   private statusIcon: HTMLElement;
   private statusTitle: HTMLElement;
   private statusFilename: HTMLElement;
-  private statusPattern: HTMLElement;
-  private patternMiniGauge: HTMLElement;
-  private patternMiniJudgment: HTMLElement;
+  private assuranceStrip: HTMLElement;
 
   // Verification cards
   private typingIcon: HTMLElement;
@@ -133,6 +153,26 @@ export class ResultPanel {
   private anchoringReason: HTMLElement;
   private anchoringDetails: HTMLElement;
   private anchoringDetailsContent: HTMLElement;
+  // 試験束縛カード (ADR-0006)
+  private cardExamBinding: HTMLElement;
+  private examIcon: HTMLElement;
+  private examBadge: HTMLElement;
+  private examProblem: HTMLElement;
+  private examRoot: HTMLElement;
+  private examSignatureRow: HTMLElement;
+  private examSignature: HTMLElement;
+  private examPackageHashRow: HTMLElement;
+  private examPackageHash: HTMLElement;
+  private examContentRow: HTMLElement;
+  private examContentHash: HTMLElement;
+  private examTimeboxRow: HTMLElement;
+  private examTimebox: HTMLElement;
+  private examReasonRow: HTMLElement;
+  private examReason: HTMLElement;
+  private examNoteRow: HTMLElement;
+  private examLoadBtn: HTMLElement;
+  /** 試験束縛カードの「問題パッケージを読み込む」要求コールバック (AppController が配線) */
+  onExamManifestRequested?: () => void;
 
   private attestationIcon: HTMLElement;
   private attestationBadge: HTMLElement;
@@ -150,8 +190,9 @@ export class ResultPanel {
   // Code preview
   private codePreview: HTMLElement;
 
-  // Typing pattern card
-  private typingPatternCard: TypingPatternCard;
+  // Analysis cards
+  private analysisReportCard: AnalysisReportCard;
+  private processSummaryCard: ProcessSummaryCard;
 
   // Chart tabs
   private tabIntegrated: HTMLElement;
@@ -192,9 +233,7 @@ export class ResultPanel {
     this.statusIcon = document.getElementById('result-status-icon')!;
     this.statusTitle = document.getElementById('result-status-title')!;
     this.statusFilename = document.getElementById('result-status-filename')!;
-    this.statusPattern = document.getElementById('result-status-pattern')!;
-    this.patternMiniGauge = document.getElementById('pattern-mini-gauge')!;
-    this.patternMiniJudgment = document.getElementById('pattern-mini-judgment')!;
+    this.assuranceStrip = document.getElementById('assurance-strip')!;
 
     // Typing card
     this.typingIcon = document.getElementById('typing-icon')!;
@@ -249,6 +288,26 @@ export class ResultPanel {
     this.anchoringDetails = document.getElementById('anchoring-details')!;
     this.anchoringDetailsContent = document.getElementById('anchoring-details-content')!;
 
+    // 試験束縛カード (ADR-0006)
+    this.cardExamBinding = document.getElementById('card-exam-binding')!;
+    this.examIcon = document.getElementById('exam-icon')!;
+    this.examBadge = document.getElementById('exam-badge')!;
+    this.examProblem = document.getElementById('exam-problem')!;
+    this.examRoot = document.getElementById('exam-root')!;
+    this.examSignatureRow = document.getElementById('exam-signature-row')!;
+    this.examSignature = document.getElementById('exam-signature')!;
+    this.examPackageHashRow = document.getElementById('exam-packagehash-row')!;
+    this.examPackageHash = document.getElementById('exam-packagehash')!;
+    this.examContentRow = document.getElementById('exam-contenthash-row')!;
+    this.examContentHash = document.getElementById('exam-contenthash')!;
+    this.examTimeboxRow = document.getElementById('exam-timebox-row')!;
+    this.examTimebox = document.getElementById('exam-timebox')!;
+    this.examReasonRow = document.getElementById('exam-reason-row')!;
+    this.examReason = document.getElementById('exam-reason')!;
+    this.examNoteRow = document.getElementById('exam-note-row')!;
+    this.examLoadBtn = document.getElementById('exam-load-btn')!;
+    this.examLoadBtn.addEventListener('click', () => this.onExamManifestRequested?.());
+
     // Attestation card
     this.cardAttestation = document.getElementById('card-attestation')!;
     this.attestationIcon = document.getElementById('attestation-icon')!;
@@ -266,8 +325,11 @@ export class ResultPanel {
     // Code preview
     this.codePreview = document.getElementById('code-preview')!;
 
-    // Typing pattern card
-    this.typingPatternCard = new TypingPatternCard();
+    // Analysis layer card (ADR-0009) — 旧 TypingPatternCard はここに統合済み
+    this.analysisReportCard = new AnalysisReportCard();
+
+    // Process summary card (Phase 8 W3)
+    this.processSummaryCard = new ProcessSummaryCard();
 
     // Chart tabs
     this.tabIntegrated = document.getElementById('tab-integrated')!;
@@ -392,7 +454,7 @@ export class ResultPanel {
     banner.id = 'diff-warning-banner';
     banner.innerHTML = `
       <i class="fas fa-exclamation-triangle"></i>
-      <span>ソースファイルと証明内容が一致しません</span>
+      <span>${escapeHtml(t('result.sourceMismatchBanner'))}</span>
       <span class="diff-stats">
         <span class="diff-additions">+${stats.additions}</span>
         <span class="diff-deletions">-${stats.deletions}</span>
@@ -424,18 +486,19 @@ export class ResultPanel {
 
     for (const hunk of diffResult.hunks) {
       for (const line of hunk.lines) {
-        const lineNum = line.type === 'removed'
-          ? (line.oldLineNumber?.toString().padStart(4, ' ') || '    ')
-          : (line.newLineNumber?.toString().padStart(4, ' ') || '    ');
+        const lineNum =
+          line.type === 'removed'
+            ? line.oldLineNumber?.toString().padStart(4, ' ') || '    '
+            : line.newLineNumber?.toString().padStart(4, ' ') || '    ';
 
-        const prefix = line.type === 'added' ? '+'
-          : line.type === 'removed' ? '-'
-          : ' ';
+        const prefix = line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ';
 
         const className = `diff-line diff-${line.type}`;
         const escapedContent = escapeHtml(line.content);
 
-        lines.push(`<div class="${className}"><span class="diff-line-number">${lineNum}</span><span class="diff-prefix">${prefix}</span><span class="diff-content">${escapedContent}</span></div>`);
+        lines.push(
+          `<div class="${className}"><span class="diff-line-number">${lineNum}</span><span class="diff-prefix">${prefix}</span><span class="diff-content">${escapedContent}</span></div>`
+        );
       }
     }
 
@@ -456,11 +519,11 @@ export class ResultPanel {
         const url = URL.createObjectURL(data.imageBlob);
         codeEl.innerHTML = `
           <div class="image-preview-container">
-            <img src="${url}" alt="${data.filename}" class="image-preview" onload="URL.revokeObjectURL(this.src)" />
+            <img src="${url}" alt="${escapeHtml(data.filename)}" class="image-preview" onload="URL.revokeObjectURL(this.src)" />
           </div>
         `;
       } else {
-        codeEl.innerHTML = '<p style="color: var(--text-tertiary);">画像を読み込めませんでした</p>';
+        codeEl.innerHTML = `<p style="color: var(--text-tertiary);">${escapeHtml(t('result.imageLoadFailed'))}</p>`;
       }
       codeEl.className = '';
     }
@@ -470,7 +533,18 @@ export class ResultPanel {
   }
 
   render(data: ResultData): void {
-    const { filename, content, language, result, poswStats, attestations, eventCount, typingTime, typingSpeed, trustResult } = data;
+    const {
+      filename,
+      content,
+      language,
+      result,
+      poswStats,
+      attestations,
+      eventCount,
+      typingTime,
+      typingSpeed,
+      trustResult,
+    } = data;
 
     // Overall status - TrustResult を優先使用
     if (trustResult) {
@@ -483,7 +557,11 @@ export class ResultPanel {
 
       this.statusIcon.className = `result-status-icon ${statusClass}`;
       this.statusIcon.innerHTML = `<i class="fas fa-${isSuccess ? 'check-circle' : isWarning ? 'exclamation-triangle' : 'times-circle'}"></i>`;
-      this.statusTitle.textContent = isSuccess ? '検証成功' : isWarning ? '警告あり' : '検証失敗';
+      this.statusTitle.textContent = isSuccess
+        ? t('result.statusSuccess')
+        : isWarning
+          ? t('result.statusWarning')
+          : t('result.statusFailed');
     }
     this.statusFilename.textContent = filename;
 
@@ -492,21 +570,25 @@ export class ResultPanel {
       this.typingIcon,
       this.typingBadge,
       result.pureTyping,
-      result.pureTyping ? '純粋' : '外部入力あり'
+      result.pureTyping ? t('result.typingPure') : t('result.typingExternal')
     );
-    this.pasteCount.textContent = `${result.pasteCount || 0}回`;
-    this.internalPasteCount.textContent = `${result.internalPasteCount || 0}回`;
-    this.externalInput.textContent = result.pureTyping ? 'なし' : 'あり';
+    this.pasteCount.textContent = t('result.timesCount', { count: result.pasteCount || 0 });
+    this.internalPasteCount.textContent = t('result.timesCount', {
+      count: result.internalPasteCount || 0,
+    });
+    this.externalInput.textContent = result.pureTyping ? t('result.externalInputNo') : t('result.externalInputYes');
 
     // Chain card
     this.renderCard(
       this.chainIcon,
       this.chainBadge,
       result.chainValid,
-      result.chainValid ? '有効' : '無効'
+      result.chainValid ? t('chain.valid') : t('chain.invalid')
     );
     this.chainMethod.textContent = result.verificationMethod || 'standard';
-    this.chainEvents.textContent = `${eventCount.toLocaleString()}件`;
+    this.chainEvents.textContent = t('result.eventsUnit', {
+      count: eventCount.toLocaleString(),
+    });
 
     // Chain error details (show only when verification fails)
     this.renderChainErrorDetails(result.chainErrorDetails);
@@ -525,12 +607,7 @@ export class ResultPanel {
           ? t('result.poswSampled')
           : t('result.poswFull');
     const poswStatus = !hasPoSW ? null : poswMode === 'skipped' ? 'warning' : 'success';
-    this.renderCard(
-      this.poswIcon,
-      this.poswBadge,
-      hasPoSW ? poswStatus === 'success' : null,
-      poswBadgeText
-    );
+    this.renderCard(this.poswIcon, this.poswBadge, hasPoSW ? poswStatus === 'success' : null, poswBadgeText);
     if (hasPoSW && poswMode === 'skipped') {
       // skipped 時は警告色で表示
       this.poswBadge.className = 'result-card-badge warning';
@@ -548,6 +625,9 @@ export class ResultPanel {
     // Anchoring card (signed checkpoints)
     this.renderAnchoringCard(data.signedCheckpoint);
 
+    // Exam binding card (ADR-0006)
+    this.renderExamBindingCard(data.examBinding);
+
     // Attestation card
     if (attestations && attestations.length > 0) {
       this.cardAttestation.style.display = 'block';
@@ -562,12 +642,14 @@ export class ResultPanel {
         this.attestationIcon,
         this.attestationBadge,
         validCount === attestations.length,
-        `${validCount}/${attestations.length} 有効`
+        t('attestation.validCount', { valid: validCount, total: attestations.length })
       );
 
       if (createAttestation) {
         this.attestationCreateRow.style.display = 'flex';
-        this.attestationCreate.textContent = createAttestation.valid ? '✓ 有効' : '✗ 無効';
+        this.attestationCreate.textContent = createAttestation.valid
+          ? `✓ ${t('attestation.valid')}`
+          : `✗ ${t('attestation.invalid')}`;
         this.attestationCreate.className = `result-row-value ${createAttestation.valid ? 'text-success' : 'text-danger'}`;
       } else {
         this.attestationCreateRow.style.display = 'none';
@@ -575,7 +657,9 @@ export class ResultPanel {
 
       if (exportAttestation) {
         this.attestationExportRow.style.display = 'flex';
-        this.attestationExport.textContent = exportAttestation.valid ? '✓ 有効' : '✗ 無効';
+        this.attestationExport.textContent = exportAttestation.valid
+          ? `✓ ${t('attestation.valid')}`
+          : `✗ ${t('attestation.invalid')}`;
         this.attestationExport.className = `result-row-value ${exportAttestation.valid ? 'text-success' : 'text-danger'}`;
       } else {
         this.attestationExportRow.style.display = 'none';
@@ -584,13 +668,22 @@ export class ResultPanel {
       this.cardAttestation.style.display = 'none';
     }
 
-    // Typing pattern - mini gauge in status card and full card
-    if (data.typingPatternAnalysis) {
-      this.renderPatternMiniGauge(data.typingPatternAnalysis);
-      this.typingPatternCard.render(data.typingPatternAnalysis);
+    // Analysis layer (ADR-0009) - advisory のみ。検証の valid とは独立軸。
+    // 打鍵動態 (旧 TypingPatternCard) も typing-pattern アナライザ経由でここに統合済み。
+    if (data.analysis) {
+      this.analysisReportCard.render(data.analysis);
     } else {
-      this.statusPattern.style.display = 'none';
-      this.typingPatternCard.hide();
+      this.analysisReportCard.hide();
+    }
+
+    // 三層保証語彙 (ADR-0020) - 結果画面最上部に整合性/時刻アンカー/著述性を併記。
+    this.renderAssurance(data.assurance, data.mode);
+
+    // プロセス要約 (Phase 8 W3) - 制作過程の中立な記述。見どころ→シークバージャンプ。
+    if (data.processSummary) {
+      this.processSummaryCard.render(data.processSummary);
+    } else {
+      this.processSummaryCard.hide();
     }
 
     // Stats
@@ -610,12 +703,74 @@ export class ResultPanel {
     this.showContent();
   }
 
-  private renderCard(
-    iconEl: HTMLElement,
-    badgeEl: HTMLElement,
-    isValid: boolean | null,
-    badgeText: string
-  ): void {
+  /**
+   * 三層保証語彙 (ADR-0020) のバッジ列を描画する。
+   * - 整合性 / 時刻アンカー = 決定的 (実証拠から導出)
+   * - 著述性 = 常に advisory (判定に見えない中立色で出す)
+   * - mode は自己申告ラベルなので「(自己申告)」を明記して参考表示のみ
+   */
+  private renderAssurance(assurance: AssuranceResult | undefined, mode?: ResultData['mode']): void {
+    if (!assurance) {
+      this.assuranceStrip.style.display = 'none';
+      return;
+    }
+    this.assuranceStrip.style.display = '';
+
+    const integrityClass = assurance.integrity === 'proven' ? 'success' : 'error';
+    const integrityValue =
+      assurance.integrity === 'proven' ? t('assurance.integrityProven') : t('assurance.integrityFailed');
+
+    let temporalClass: string;
+    let temporalValue: string;
+    switch (assurance.temporal) {
+      case 'anchored':
+        temporalClass = 'success';
+        temporalValue = t('assurance.temporalAnchored');
+        break;
+      case 'exam-t0':
+        temporalClass = 'success';
+        temporalValue = t('assurance.temporalExamT0');
+        break;
+      case 'partial':
+        temporalClass = 'warning';
+        temporalValue = t('assurance.temporalPartial');
+        break;
+      default:
+        temporalClass = 'warning';
+        temporalValue = t('assurance.temporalUnanchored');
+    }
+
+    const p = assurance.provenance;
+    const provenanceParts: string[] = [p.pureTyping ? t('assurance.pureTypingYes') : t('assurance.pureTypingNo')];
+    if (p.notableSignals !== null) {
+      provenanceParts.push(`${t('assurance.signals')} ${p.notableSignals}`);
+    }
+
+    const modeChip = mode
+      ? `<span class="assurance-chip neutral" title="${escapeHtml(t('assurance.modeSelfAsserted'))}">
+           <span class="assurance-chip-label">${t('assurance.modeLabel')}</span>
+           <span class="assurance-chip-value">${t(`assurance.mode.${mode}`)}</span>
+         </span>`
+      : '';
+
+    this.assuranceStrip.innerHTML = `
+      <span class="assurance-chip ${integrityClass}" title="${escapeHtml(t('assurance.integrityHint'))}">
+        <span class="assurance-chip-label">${t('assurance.integrity')}</span>
+        <span class="assurance-chip-value">${integrityValue}</span>
+      </span>
+      <span class="assurance-chip ${temporalClass}" title="${escapeHtml(t('assurance.temporalHint'))}">
+        <span class="assurance-chip-label">${t('assurance.temporal')}</span>
+        <span class="assurance-chip-value">${temporalValue}</span>
+      </span>
+      <span class="assurance-chip advisory" title="${escapeHtml(t('assurance.provenanceHint'))}">
+        <span class="assurance-chip-label">${t('assurance.provenance')}</span>
+        <span class="assurance-chip-value">${provenanceParts.map((x) => escapeHtml(x)).join(' · ')}</span>
+      </span>
+      ${modeChip}
+    `;
+  }
+
+  private renderCard(iconEl: HTMLElement, badgeEl: HTMLElement, isValid: boolean | null, badgeText: string): void {
     const statusClass = isValid === null ? 'pending' : isValid ? 'success' : 'error';
     iconEl.className = `result-card-icon ${statusClass}`;
     badgeEl.className = `result-card-badge ${statusClass}`;
@@ -667,24 +822,89 @@ export class ResultPanel {
     this.anchoringCoverage.textContent = `${sc.coverage.signedCount} (${pct}%)`;
     this.anchoringReasonRow.style.display = 'none';
 
+    // 警告行は post-hoc 疑いと anchoring 密度 (ADR-0016) の両方を集約する (どちらも valid のまま出る)。
+    const warnings: string[] = [];
     if (sc.temporal) {
       this.anchoringTemporalRow.style.display = 'flex';
       const serverMin = Math.round(sc.temporal.serverSpanMs / 60000);
       const clientMin = Math.round(sc.temporal.clientSpanMs / 60000);
       const ratioStr = sc.temporal.ratio !== null ? sc.temporal.ratio.toFixed(2) : 'n/a';
       this.anchoringTemporal.textContent = `${ratioStr} (server ${serverMin}min / client ${clientMin}min)`;
-      if (sc.temporal.postHocSuspected) {
-        this.anchoringWarningRow.style.display = 'flex';
-        this.anchoringWarning.textContent = t('result.anchoringPostHoc');
-      } else {
-        this.anchoringWarningRow.style.display = 'none';
-      }
+      if (sc.temporal.postHocSuspected) warnings.push(t('result.anchoringPostHoc'));
     } else {
       this.anchoringTemporalRow.style.display = 'none';
+    }
+    if (sc.density?.sparse) warnings.push(t('result.anchoringSparse'));
+    if (warnings.length > 0) {
+      this.anchoringWarningRow.style.display = 'flex';
+      this.anchoringWarning.textContent = warnings.join(' / ');
+    } else {
       this.anchoringWarningRow.style.display = 'none';
     }
 
     this.renderAnchoringDetails(sc);
+  }
+
+  /** PASS/FAIL の行値を色付きで設定する。 */
+  private setExamPassFail(el: HTMLElement, ok: boolean): void {
+    el.textContent = ok ? t('result.examPass') : t('result.examFail');
+    el.className = `result-row-value ${ok ? 'text-success' : 'text-danger'}`;
+  }
+
+  /**
+   * 試験束縛 (ADR-0006) カードを描画する。
+   * - exam proof でなければ非表示。
+   * - root 束縛は常時表示 (proof 自己完結・package 不要)。
+   * - 問題パッケージ未提供なら「読み込む」を促し、署名/内容行は隠す。
+   * - パッケージ提供時は署名/packageHash/内容/time-box を表示。
+   */
+  private renderExamBindingCard(eb?: ResultData['examBinding']): void {
+    if (!eb) {
+      this.cardExamBinding.style.display = 'none';
+      return;
+    }
+    this.cardExamBinding.style.display = 'block';
+    const variant = eb.variant ? ` / ${eb.variant}` : '';
+    this.examProblem.textContent = `${eb.examId} / ${eb.problemId}${variant}`;
+    this.setExamPassFail(this.examRoot, eb.rootValid);
+
+    const b = eb.binding;
+    const pkgRows = [this.examSignatureRow, this.examPackageHashRow, this.examContentRow, this.examTimeboxRow];
+    if (!b) {
+      // 問題パッケージ未提供: root 束縛のみ。署名/内容はスキップ。
+      for (const r of pkgRows) r.style.display = 'none';
+      this.examReasonRow.style.display = 'none';
+      this.examNoteRow.style.display = 'flex';
+      this.renderCard(
+        this.examIcon,
+        this.examBadge,
+        eb.rootValid,
+        eb.rootValid ? t('result.examRootBound') : t('result.examRootUnbound')
+      );
+      return;
+    }
+
+    // パッケージ提供: 完全束縛検証。
+    this.examNoteRow.style.display = 'none';
+    this.examSignatureRow.style.display = 'flex';
+    this.examPackageHashRow.style.display = 'flex';
+    this.examContentRow.style.display = 'flex';
+    this.setExamPassFail(this.examSignature, b.packageSignatureValid);
+    this.setExamPassFail(this.examPackageHash, b.packageHashMatches);
+    this.setExamPassFail(this.examContentHash, b.problemContentHashMatches);
+    if (b.timeBox) {
+      this.examTimeboxRow.style.display = 'flex';
+      this.examTimebox.textContent = `${b.timeBox.releaseTime} … ${b.timeBox.deadline}`;
+    } else {
+      this.examTimeboxRow.style.display = 'none';
+    }
+    if (!b.valid && b.reason) {
+      this.examReasonRow.style.display = 'flex';
+      this.examReason.textContent = b.reason;
+    } else {
+      this.examReasonRow.style.display = 'none';
+    }
+    this.renderCard(this.examIcon, this.examBadge, b.valid, b.valid ? t('result.examBound') : t('result.examFailed'));
   }
 
   /**
@@ -748,11 +968,7 @@ export class ResultPanel {
     }
     if (report.initialEventChainHash) {
       rangeRows.push(
-        this.detailRow(
-          t('result.anchoringInitialChainHash'),
-          report.initialEventChainHash,
-          'anchoring-detail-hash'
-        )
+        this.detailRow(t('result.anchoringInitialChainHash'), report.initialEventChainHash, 'anchoring-detail-hash')
       );
     }
     sections.push(
@@ -767,12 +983,8 @@ export class ResultPanel {
       const serverSec = (temporal.serverSpanMs / 1000).toFixed(1);
       const clientSec = (temporal.clientSpanMs / 1000).toFixed(1);
       const ratioStr = temporal.ratio !== null ? temporal.ratio.toFixed(3) : 'n/a';
-      const verdictKey = temporal.postHocSuspected
-        ? 'result.anchoringPostHocFlagged'
-        : 'result.anchoringPostHocClear';
-      const verdictClass = temporal.postHocSuspected
-        ? 'anchoring-verdict warning'
-        : 'anchoring-verdict success';
+      const verdictKey = temporal.postHocSuspected ? 'result.anchoringPostHocFlagged' : 'result.anchoringPostHocClear';
+      const verdictClass = temporal.postHocSuspected ? 'anchoring-verdict warning' : 'anchoring-verdict success';
       sections.push(
         `<div class="anchoring-detail-section">
           <h4 class="anchoring-detail-heading">${escapeHtml(t('result.anchoringSectionTemporal'))}</h4>
@@ -795,18 +1007,17 @@ export class ResultPanel {
       );
     } else {
       const failures = report.failedEnvelopes
-        .map((e) =>
-          `<li class="anchoring-failure-item">${escapeHtml(
-            this.formatFailureLine(e.checkpointIndex, e.eventIndex, e.reason)
-          )}</li>`
+        .map(
+          (e) =>
+            `<li class="anchoring-failure-item">${escapeHtml(
+              this.formatFailureLine(e.checkpointIndex, e.eventIndex, e.reason)
+            )}</li>`
         )
         .join('');
       const warnings = report.warningEnvelopes
         .map((e) => {
           const reason =
-            e.reason === 'key-revoked-but-trusted-by-time'
-              ? t('result.anchoringWarningRevoked')
-              : e.reason;
+            e.reason === 'key-revoked-but-trusted-by-time' ? t('result.anchoringWarningRevoked') : e.reason;
           return `<li class="anchoring-warning-item">${escapeHtml(
             this.formatFailureLine(e.checkpointIndex, e.eventIndex, reason)
           )}</li>`;
@@ -824,24 +1035,23 @@ export class ResultPanel {
     return sections.join('');
   }
 
-  private buildKeyRowHtml(k: NonNullable<ResultData['signedCheckpoint']>['report'] extends infer R
-    ? R extends { keys: Array<infer K> } ? K : never
-    : never): string {
+  private buildKeyRowHtml(
+    k: NonNullable<ResultData['signedCheckpoint']>['report'] extends infer R
+      ? R extends { keys: Array<infer K> }
+        ? K
+        : never
+      : never
+  ): string {
     const statusKey =
       k.status === 'active'
         ? 'result.anchoringKeyStatusActive'
         : k.status === 'revoked'
           ? 'result.anchoringKeyStatusRevoked'
           : 'result.anchoringKeyStatusUnknown';
-    const statusClass =
-      k.status === 'active' ? 'success' : k.status === 'revoked' ? 'error' : 'warning';
+    const statusClass = k.status === 'active' ? 'success' : k.status === 'revoked' ? 'error' : 'warning';
     const rows: string[] = [];
-    rows.push(
-      `<div class="anchoring-key-id"><span class="anchoring-detail-hash">${escapeHtml(k.keyId)}</span></div>`
-    );
-    rows.push(
-      `<div class="anchoring-key-status ${statusClass}">${escapeHtml(t(statusKey))}</div>`
-    );
+    rows.push(`<div class="anchoring-key-id"><span class="anchoring-detail-hash">${escapeHtml(k.keyId)}</span></div>`);
+    rows.push(`<div class="anchoring-key-status ${statusClass}">${escapeHtml(t(statusKey))}</div>`);
     if (k.description) {
       rows.push(this.detailRow(t('result.anchoringKeyDescription'), k.description));
     }
@@ -918,16 +1128,30 @@ export class ResultPanel {
 
     if (missingCount === 0 && tamperedCount === 0) {
       // 全て検証済み
-      this.screenshotVerification.innerHTML = `<span class="success">✓ ${screenshots.verified}/${screenshots.total}枚検証済み</span>`;
+      this.screenshotVerification.innerHTML = `<span class="success">${escapeHtml(
+        t('result.screenshotsAllVerified', {
+          verified: screenshots.verified,
+          total: screenshots.total,
+        })
+      )}</span>`;
     } else if (missingCount > 0 && tamperedCount === 0) {
       // 欠損ファイルあり（改ざんなし）
-      this.screenshotVerification.innerHTML = `<span class="error">✗ ${missingCount}/${screenshots.total}枚が欠損</span>`;
+      this.screenshotVerification.innerHTML = `<span class="error">${escapeHtml(
+        t('result.screenshotsMissing', { missing: missingCount, total: screenshots.total })
+      )}</span>`;
     } else if (missingCount === 0 && tamperedCount > 0) {
       // 改ざんの可能性あり
-      this.screenshotVerification.innerHTML = `<span class="warning">⚠ ${tamperedCount}/${screenshots.total}枚が改ざんの可能性</span>`;
+      this.screenshotVerification.innerHTML = `<span class="warning">${escapeHtml(
+        t('result.screenshotsSomeInvalid', { invalid: tamperedCount, total: screenshots.total })
+      )}</span>`;
     } else {
       // 欠損と改ざん両方
-      this.screenshotVerification.innerHTML = `<span class="error">✗ ${missingCount}枚欠損, ${tamperedCount}枚改ざんの可能性</span>`;
+      this.screenshotVerification.innerHTML = `<span class="error">${escapeHtml(
+        t('result.screenshotsMissingAndTampered', {
+          missing: missingCount,
+          tampered: tamperedCount,
+        })
+      )}</span>`;
     }
   }
 
@@ -948,7 +1172,7 @@ export class ResultPanel {
     // Reset status
     this.statusIcon.className = 'result-status-icon';
     this.statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-    this.statusTitle.textContent = '検証中...';
+    this.statusTitle.textContent = t('result.statusVerifying');
     this.statusFilename.textContent = '';
 
     // Reset stats
@@ -1031,11 +1255,7 @@ export class ResultPanel {
   /**
    * ステップの状態を更新（状態が変わった場合のみ再描画）
    */
-  updateStepStatus(
-    step: VerificationStepType,
-    status: VerificationStepStatus,
-    statusText?: string
-  ): void {
+  updateStepStatus(step: VerificationStepType, status: VerificationStepStatus, statusText?: string): void {
     // 状態が変わっていない場合はスキップ（チカチカ防止）
     const cachedStatus = this.stepStatusCache.get(step);
     if (cachedStatus === status && !statusText) {
@@ -1078,10 +1298,10 @@ export class ResultPanel {
     } else if (statusEl) {
       const defaultStatusText: Record<VerificationStepStatus, string> = {
         pending: '',
-        running: '処理中...',
-        success: '完了',
-        error: 'エラー',
-        skipped: 'スキップ',
+        running: t('progress.statusRunning'),
+        success: t('progress.statusDone'),
+        error: t('progress.statusError'),
+        skipped: t('progress.statusSkipped'),
       };
       statusEl.textContent = defaultStatusText[status];
     }
@@ -1197,7 +1417,7 @@ export class ResultPanel {
   finishProgress(): void {
     this.stopProgressTimer();
     this.updateOverallProgress(100);
-    this.updateStepStatus('complete', 'success', '完了');
+    this.updateStepStatus('complete', 'success', t('progress.statusDone'));
   }
 
   /**
@@ -1205,7 +1425,7 @@ export class ResultPanel {
    */
   errorProgress(step: VerificationStepType, errorMessage?: string): void {
     this.stopProgressTimer();
-    this.updateStepStatus(step, 'error', 'エラー');
+    this.updateStepStatus(step, 'error', t('progress.statusError'));
     if (errorMessage) {
       this.showProgressDetail(errorMessage);
     }
@@ -1263,8 +1483,8 @@ export class ResultPanel {
       const iconClass = issue.severity === 'error' ? 'fa-times-circle' : 'fa-exclamation-triangle';
       issueEl.innerHTML = `
         <i class="fas ${iconClass}"></i>
-        <span class="trust-issue-component">${this.getComponentLabel(issue.component)}</span>
-        <span class="trust-issue-message">${issue.message}</span>
+        <span class="trust-issue-component">${escapeHtml(this.getComponentLabel(issue.component))}</span>
+        <span class="trust-issue-message">${escapeHtml(issue.message)}</span>
       `;
 
       issuesContainer.appendChild(issueEl);
@@ -1292,12 +1512,15 @@ export class ResultPanel {
    */
   private getComponentLabel(component: string): string {
     const labels: Record<string, string> = {
-      metadata: 'メタデータ',
-      chain: 'ハッシュチェーン',
-      posw: 'PoSW',
-      attestation: '人間証明',
-      screenshots: 'スクリーンショット',
-      source: 'ソースファイル',
+      metadata: t('trust.components.metadata'),
+      chain: t('trust.components.chain'),
+      posw: t('trust.components.posw'),
+      attestation: t('trust.components.attestation'),
+      screenshots: t('trust.components.screenshots'),
+      source: t('trust.components.source'),
+      anchoring: t('trust.components.anchoring'),
+      exam: t('trust.components.exam'),
+      typing: t('trust.components.typing'),
     };
     return labels[component] || component;
   }
@@ -1341,7 +1564,11 @@ export class ResultPanel {
     }
 
     // タイムスタンプ詳細（タイムスタンプエラーの場合のみ）
-    if (details.errorType === 'timestamp' && details.previousTimestamp !== undefined && details.currentTimestamp !== undefined) {
+    if (
+      details.errorType === 'timestamp' &&
+      details.previousTimestamp !== undefined &&
+      details.currentTimestamp !== undefined
+    ) {
       this.chainErrorTimestampRow.style.display = 'flex';
       this.chainErrorTimestamp.textContent = `${details.previousTimestamp.toFixed(2)}ms → ${details.currentTimestamp.toFixed(2)}ms`;
     } else {
@@ -1434,69 +1661,14 @@ export class ResultPanel {
           <strong>${sampledInfo.totalEventsVerified.toLocaleString()}</strong> / ${sampledInfo.totalEvents.toLocaleString()} ${t('chain.events') || 'events'}
         </span>
         <span class="chain-segment-info-item">
-          ${t('chain.segmentViz.sampledSegments', {
-            count: sampledInfo.segments.length.toString(),
-            total: sampledInfo.totalSegments.toString(),
-          }) || `${sampledInfo.segments.length}/${sampledInfo.totalSegments} segments`}
+          ${
+            t('chain.segmentViz.sampledSegments', {
+              count: sampledInfo.segments.length.toString(),
+              total: sampledInfo.totalSegments.toString(),
+            }) || `${sampledInfo.segments.length}/${sampledInfo.totalSegments} segments`
+          }
         </span>
       </div>
     `;
-  }
-
-  // ============================================================================
-  // タイピングパターンミニゲージ
-  // ============================================================================
-
-  /**
-   * ステータスカードにタイピングパターンのミニゲージを表示
-   */
-  private renderPatternMiniGauge(analysis: TypingPatternAnalysis): void {
-    this.statusPattern.style.display = 'flex';
-
-    const { overallScore, overallJudgment } = analysis;
-
-    // 判定に応じた色クラス
-    const colorClass = this.getPatternJudgmentClass(overallJudgment);
-
-    // ミニゲージ（SVG）
-    const radius = 20;
-    const circumference = 2 * Math.PI * radius;
-    const offset = circumference - (overallScore / 100) * circumference;
-
-    this.patternMiniGauge.innerHTML = `
-      <svg class="pattern-mini-svg" viewBox="0 0 50 50">
-        <circle class="gauge-bg" cx="25" cy="25" r="${radius}" />
-        <circle class="gauge-fill ${colorClass}"
-                cx="25" cy="25" r="${radius}"
-                stroke-dasharray="${circumference}"
-                stroke-dashoffset="${offset}" />
-        <text x="25" y="28" text-anchor="middle" class="gauge-score">${overallScore}</text>
-      </svg>
-    `;
-
-    // 判定ラベル
-    const judgmentLabels: Record<string, string> = {
-      human: '人間らしい',
-      uncertain: '不明確',
-      suspicious: '疑わしい',
-    };
-    this.patternMiniJudgment.textContent = judgmentLabels[overallJudgment] || '-';
-    this.patternMiniJudgment.className = `pattern-mini-judgment ${colorClass}`;
-  }
-
-  /**
-   * タイピングパターンの判定に応じたCSSクラスを取得
-   */
-  private getPatternJudgmentClass(judgment: string): string {
-    switch (judgment) {
-      case 'human':
-        return 'success';
-      case 'uncertain':
-        return 'warning';
-      case 'suspicious':
-        return 'error';
-      default:
-        return 'pending';
-    }
   }
 }

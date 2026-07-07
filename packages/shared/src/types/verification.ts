@@ -52,6 +52,12 @@ export interface ProofMetadataVerificationResult {
   isPureTyping: boolean;
   recomputedMetadata: ProofMetadata;
   suspiciousBulkInsertEventIndexes: number[];
+  /**
+   * replay 文書と乖離した contentSnapshot の event index (#175)。挿入イベント無しで
+   * 文書を丸ごと差し替える持ち込み口。1 つでもあれば isPureTyping=false (advisory のみ、
+   * valid には影響しない)。editor の正規 snapshot は replay と常に一致するため載らない。
+   */
+  divergentContentSnapshotEventIndexes: number[];
 }
 
 /** タイピング証明ハッシュ検証結果 */

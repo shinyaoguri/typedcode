@@ -12,7 +12,7 @@ export class MainMenuDropdown {
   private button: HTMLElement | null = null;
   private dropdown: HTMLElement | null = null;
   private boundHandleOutsideClick: (e: MouseEvent) => void;
-  
+
   constructor() {
     this.boundHandleOutsideClick = this.handleOutsideClick.bind(this);
   }
@@ -30,7 +30,7 @@ export class MainMenuDropdown {
     }
 
     this.attach();
-        return true;
+    return true;
   }
 
   /**
@@ -94,5 +94,5 @@ export class MainMenuDropdown {
     document.removeEventListener('click', this.boundHandleOutsideClick);
     this.button = null;
     this.dropdown = null;
-      }
+  }
 }

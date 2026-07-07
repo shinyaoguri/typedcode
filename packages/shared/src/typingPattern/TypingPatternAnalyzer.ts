@@ -140,9 +140,7 @@ export class TypingPatternAnalyzer {
     };
   }
 
-  private calculateTypingSpeedOverTime(
-    events: StoredEvent[]
-  ): { timestamp: number; cps: number }[] {
+  private calculateTypingSpeedOverTime(events: StoredEvent[]): { timestamp: number; cps: number }[] {
     const windowSize = 5000; // 5秒ウィンドウ
     const data: { timestamp: number; cps: number }[] = [];
 
@@ -347,9 +345,7 @@ export class TypingPatternAnalyzer {
     };
   }
 
-  private analyzeSpeedVariability(
-    speedOverTime: { timestamp: number; cps: number }[]
-  ): MetricScore {
+  private analyzeSpeedVariability(speedOverTime: { timestamp: number; cps: number }[]): MetricScore {
     if (speedOverTime.length < 5) {
       return this.createInsufficientMetric('speedVariability', '速度変動');
     }
@@ -497,9 +493,7 @@ export class TypingPatternAnalyzer {
     };
   }
 
-  private analyzeCharacterSpecificTiming(
-    keySpecificDwellTimes: Record<string, number[]>
-  ): MetricScore {
+  private analyzeCharacterSpecificTiming(keySpecificDwellTimes: Record<string, number[]>): MetricScore {
     const slowKeys = ['a', 'q', 'z', ';', 'p', '/', "'"];
     const fastKeys = ['f', 'j', 'd', 'k', 's', 'l'];
 
@@ -565,11 +559,11 @@ export class TypingPatternAnalyzer {
     const weights: Record<MetricKey, number> = {
       dwellTimeConsistency: 0.15,
       flightTimePattern: 0.15,
-      rhythmRegularity: 0.20,
+      rhythmRegularity: 0.2,
       speedVariability: 0.15,
-      pausePattern: 0.10,
-      burstAnalysis: 0.10,
-      errorCorrectionPattern: 0.10,
+      pausePattern: 0.1,
+      burstAnalysis: 0.1,
+      errorCorrectionPattern: 0.1,
       characterSpecificTiming: 0.05,
     };
 
@@ -594,10 +588,7 @@ export class TypingPatternAnalyzer {
     }
 
     // 信頼度はデータ量に依存
-    const confidence = Math.min(
-      100,
-      Math.round((rawStats.totalEvents / 500) * 100)
-    );
+    const confidence = Math.min(100, Math.round((rawStats.totalEvents / 500) * 100));
 
     return { overallScore, overallJudgment, confidence };
   }
@@ -606,6 +597,9 @@ export class TypingPatternAnalyzer {
     const issues: TypingPatternIssue[] = [];
 
     for (const [key, metric] of Object.entries(metrics)) {
+      // データ不足は「計算できなかった」事実であって所見ではない。issue にすると
+      // 「データ不足」警告が羅列してノイズになる (UI レビュー指摘)。除外する。
+      if (metric.reasonKey === 'pattern.insufficient') continue;
       if (metric.judgment === 'suspicious') {
         issues.push({
           severity: 'critical',
@@ -709,7 +703,7 @@ export class TypingPatternAnalyzer {
   private calculateStdDev(values: number[]): number {
     if (values.length < 2) return 0;
     const mean = this.calculateMean(values);
-    const squaredDiffs = values.map((v) => Math.pow(v - mean, 2));
+    const squaredDiffs = values.map((v) => (v - mean) ** 2);
     return Math.sqrt(squaredDiffs.reduce((a, b) => a + b, 0) / values.length);
   }
 
@@ -726,7 +720,7 @@ export class TypingPatternAnalyzer {
     if (stdDev === 0) return 0;
 
     const n = values.length;
-    const sum = values.reduce((acc, v) => acc + Math.pow((v - mean) / stdDev, 3), 0);
+    const sum = values.reduce((acc, v) => acc + ((v - mean) / stdDev) ** 3, 0);
     return (n / ((n - 1) * (n - 2))) * sum;
   }
 
@@ -747,7 +741,7 @@ export class TypingPatternAnalyzer {
     for (let i = 0; i < values.length; i++) {
       const val = values[i];
       if (val !== undefined) {
-        denominator += Math.pow(val - mean, 2);
+        denominator += (val - mean) ** 2;
       }
     }
 

@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # 構成:
-#   test                   — どのトリガでも必ず走る (shared / workers のユニットテスト)
+#   test                   — どのトリガでも必ず走る (test:run を持つ全 workspace のユニットテスト)
 #   check                  — どのトリガでも必ず走る (全 package typecheck/build + Worker config dry-run)
 #   deploy-preview         — feature → develop PR で Pages のプレビュー URL を発行 (Workers staging 向け)
 #   comment-staging-preview— develop → main PR に staging URL をコメント (新規 preview は作らない)
@@ -34,8 +34,9 @@ jobs:
   # --------------------------------------------------------------------
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
@@ -45,11 +46,11 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=optional
 
-      - name: Run tests (shared)
-        run: npm run test:run -w @typedcode/shared
-
-      - name: Run tests (workers)
-        run: npm run test:run -w @typedcode/workers
+      # `test:run` script を持つ全 workspace を回す (#156)。パッケージ名の個別列挙だと
+      # 新パッケージのテストが CI 外に取り残される (editor がそうなっていた)。
+      # e2e は `test` のみで `test:run` を持たないため誤って拾わない。
+      - name: Run unit tests (all workspaces with test:run)
+        run: npm run test:run --workspaces --if-present
 
   # --------------------------------------------------------------------
   # 品質ゲート (merge 前に全 package を typecheck/build + Worker config 検証)
@@ -59,8 +60,9 @@ jobs:
   # --------------------------------------------------------------------
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
@@ -72,6 +74,9 @@ jobs:
 
       - name: Typecheck (all packages)
         run: npm run typecheck
+
+      - name: Lint & format check (Biome)
+        run: npm run lint
 
       - name: Build (all packages)
         run: npm run build
@@ -85,17 +90,59 @@ jobs:
         run: npm run deploy:production -w @typedcode/workers -- --dry-run --outdir /tmp/wrangler-dryrun-production
 
   # --------------------------------------------------------------------
+  # E2E (ブラウザ round-trip): 実物のエディタを動かして証明を出力し verify-cli で検証する。
+  # workers(wrangler dev) + editor(vite dev) を Playwright が起動。Turnstile は
+  # Cloudflare 公開テストキー、checkpoint 署名鍵は実行時に新規生成 (秘密はコミットしない)。
+  # コピペ/フルスクリーン等のブラウザ依存挙動もここで自動検証していく。
+  # --------------------------------------------------------------------
+  e2e:
+    runs-on: ubuntu-latest
+    # e2e は wrangler dev + vite dev を Playwright が起動する構成でハングの余地があり、
+    # 過去に PoSW full 検証でタイムアウト間際になった実績もある (a6079d0)。実測 ~18 分。
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      - name: Provision E2E env (test keys + 生成 checkpoint 鍵)
+        run: npm run setup -w @typedcode/e2e
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E (editor → export → verify-cli round-trip)
+        run: npm run test -w @typedcode/e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            packages/e2e/playwright-report/
+            packages/e2e/test-results/
+          retention-days: 7
+
+  # --------------------------------------------------------------------
   # PR: Pages プレビューデプロイ (Workers は触らない)
   # PR ビルドは staging API を指す。
   # --------------------------------------------------------------------
   deploy-preview:
-    needs: [test, check]
+    needs: [test, check, e2e]
     # head_ref != 'develop' で `develop → main` の PR (= PR #60 など) を除外する。
     # この種類の PR では develop push 起因の deploy-staging が `develop.<project>.pages.dev`
     # にデプロイするのと URL が衝突するため、PR 側の preview は走らせない。
     # 通常の feature/* → develop PR では head_ref が feature 名になるので衝突しない。
     if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && github.head_ref != 'develop'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment:
       name: staging
     permissions:
@@ -103,7 +150,7 @@ jobs:
       deployments: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           lfs: true
 
@@ -195,6 +242,7 @@ jobs:
     needs: [test, check]
     if: github.event_name == 'pull_request' && github.head_ref == 'develop' && github.base_ref == 'main'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       pull-requests: write
     steps:
@@ -242,16 +290,17 @@ jobs:
   # 自動デプロイ。承認ゲートなし。
   # --------------------------------------------------------------------
   deploy-staging:
-    needs: [test, check]
+    needs: [test, check, e2e]
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment:
       name: staging
     permissions:
       contents: read
       deployments: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           lfs: true
 
@@ -297,16 +346,19 @@ jobs:
   # GitHub Environment "production" の Required reviewers で承認待ち。
   # --------------------------------------------------------------------
   deploy-production:
-    needs: [test, check]
+    needs: [test, check, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    # 注: Environment "production" の承認待ち時間は timeout-minutes に含まれない
+    # (job 開始 = 承認後)。実行時間のみの上限。
+    timeout-minutes: 20
     environment:
       name: production
     permissions:
       contents: read
       deployments: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           lfs: true
 

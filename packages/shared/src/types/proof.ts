@@ -16,7 +16,14 @@ import type {
   WindowSizeData,
   NetworkStatusData,
   SessionResumedData,
+  EnvironmentProbeData,
+  FullscreenChangeData,
+  ExamOpenedEventData,
+  CodeExecutionEventData,
+  ReflectionNoteData,
 } from './events.js';
+import type { ExamProofBlock } from './exam.js';
+import type { SessionStartToken } from './sessionStartToken.js';
 import type {
   ScreenshotCaptureData,
   ScreenShareStartData,
@@ -33,10 +40,10 @@ import type { TemplateInjectionEventData } from './template.js';
 
 /** Proof of Sequential Work データ */
 export interface PoSWData {
-  iterations: number;       // 反復回数
-  nonce: string;            // 計算で使用したnonce
+  iterations: number; // 反復回数
+  nonce: string; // 計算で使用したnonce
   intermediateHash: string; // 中間ハッシュ（検証用）
-  computeTimeMs: number;    // 計算時間（参考値、ミリ秒）
+  computeTimeMs: number; // 計算時間（参考値、ミリ秒）
 }
 
 // ============================================================================
@@ -47,7 +54,30 @@ export interface PoSWData {
 export interface RecordEventInput {
   type: EventType;
   inputType?: InputType | null;
-  data?: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | null;
+  data?:
+    | string
+    | CursorPositionData
+    | SelectionData
+    | MousePositionData
+    | VisibilityChangeData
+    | FocusChangeData
+    | KeystrokeDynamicsData
+    | WindowSizeData
+    | NetworkStatusData
+    | SessionResumedData
+    | HumanAttestationEventData
+    | TermsAcceptedData
+    | ScreenshotCaptureData
+    | ScreenShareStartData
+    | ScreenShareStopData
+    | ScreenShareOptOutData
+    | TemplateInjectionEventData
+    | EnvironmentProbeData
+    | FullscreenChangeData
+    | ExamOpenedEventData
+    | CodeExecutionEventData
+    | ReflectionNoteData
+    | null;
   rangeOffset?: number | null;
   rangeLength?: number | null;
   range?: TextRange | null;
@@ -67,12 +97,35 @@ export interface EventHashData {
   timestamp: number;
   type: EventType;
   inputType: InputType | null;
-  data: string | CursorPositionData | SelectionData | MousePositionData | VisibilityChangeData | FocusChangeData | KeystrokeDynamicsData | WindowSizeData | NetworkStatusData | SessionResumedData | HumanAttestationEventData | TermsAcceptedData | ScreenshotCaptureData | ScreenShareStartData | ScreenShareStopData | ScreenShareOptOutData | TemplateInjectionEventData | null;
+  data:
+    | string
+    | CursorPositionData
+    | SelectionData
+    | MousePositionData
+    | VisibilityChangeData
+    | FocusChangeData
+    | KeystrokeDynamicsData
+    | WindowSizeData
+    | NetworkStatusData
+    | SessionResumedData
+    | HumanAttestationEventData
+    | TermsAcceptedData
+    | ScreenshotCaptureData
+    | ScreenShareStartData
+    | ScreenShareStopData
+    | ScreenShareOptOutData
+    | TemplateInjectionEventData
+    | EnvironmentProbeData
+    | FullscreenChangeData
+    | ExamOpenedEventData
+    | CodeExecutionEventData
+    | ReflectionNoteData
+    | null;
   rangeOffset: number | null;
   rangeLength: number | null;
   range: TextRange | null;
   previousHash: string | null;
-  posw: PoSWData;  // Proof of Sequential Work
+  posw: PoSWData; // Proof of Sequential Work
 }
 
 /** 保存されるイベントデータ（ハッシュデータ + メタデータ） */
@@ -148,10 +201,10 @@ export interface TypingProofHashResult {
 
 /** チェックポイントデータ */
 export interface CheckpointData {
-  eventIndex: number;     // チェックポイント時点のイベントインデックス
-  hash: string;           // その時点のハッシュ値
-  timestamp: number;      // その時点のタイムスタンプ
-  contentHash: string;    // その時点のコンテンツハッシュ（オプショナル検証用）
+  eventIndex: number; // チェックポイント時点のイベントインデックス
+  hash: string; // その時点のハッシュ値
+  timestamp: number; // その時点のタイムスタンプ
+  contentHash: string; // その時点のコンテンツハッシュ（オプショナル検証用）
   /** 署名済みチェックポイント (Workers 署名サービス由来)。任意 */
   signature?: SignedCheckpointEnvelope;
 }
@@ -168,6 +221,14 @@ export type {
   SignedCheckpointVerificationDetail,
   SignedCheckpointsVerificationResult,
 } from './signedCheckpoint.js';
+
+// セッション開始トークン (ADR-0017)。型本体は types/sessionStartToken.ts (browser/DOM 非依存)。
+export type {
+  SessionStartTokenPayload,
+  SessionStartTokenAlgorithm,
+  SessionStartToken,
+  SessionStartTokenVerificationResult,
+} from './sessionStartToken.js';
 
 import type { SignedCheckpointEnvelope } from './signedCheckpoint.js';
 
@@ -186,5 +247,28 @@ export interface ExportedProof {
     timestamp: string;
     isPureTyping: boolean;
   };
-  checkpoints?: CheckpointData[];  // チェックポイント（v3.2.0以降）
+  checkpoints?: CheckpointData[]; // チェックポイント（v3.2.0以降）
+  /** 試験モード (ADR-0006) の束縛ブロック。exam モードで生成された proof のみ持つ */
+  exam?: ExamProofBlock;
+  /**
+   * セッション開始トークン (ADR-0017)。casual/class で session/start が成功したときのみ持つ。
+   * `serverNonce` が root に焼かれ、検証器はこれを registry で検証して root をサーバアンカーする。
+   */
+  sessionStartToken?: SessionStartToken;
+  /**
+   * root がサーバアンカーされているか (ADR-0017)。`sessionStartToken` 同梱時 true。
+   * オフライン劣化 (session/start 不達) や旧 proof では false / 省略 = 検証器が「root 未アンカー」warning。
+   */
+  rootAnchored?: boolean;
+  /**
+   * 生成時のモード (ADR-0011)。**自己申告ラベル**であり信頼判定の根拠にはしない
+   * (採点側は実証拠 — exam なら束縛・スクショ有無等 — から保証度を導く)。後方互換のため
+   * optional (旧 proof は持たない)。editor の EditorMode と同じ union。
+   *
+   * 注: exam proof は `mode:'exam'` と `exam` ブロックの両方を持つ (mode は exam ブロック
+   * 有無から導出可能で**冗長**)。これは意図的 — `mode` は全モード共通の自己申告ラベルとして
+   * 一貫させ、`exam` だけ欠落させて非対称にしない。信頼すべきは `exam` ブロック (暗号束縛) であり
+   * `mode` ではない。
+   */
+  mode?: 'casual' | 'class' | 'assignment' | 'exam';
 }

@@ -70,6 +70,47 @@ export class HashChainManager {
   }
 
   /**
+   * 試験モード (ADR-0006/0012) の初期ハッシュ (= チェーン根) を生成。
+   * - v1: root = SHA-256(fingerprintHash ‖ nonce ‖ packageHash ‖ startToken)。
+   * - v2 (N問バンドル, ADR-0012 B-2): 末尾に per-problem `problemContentHash` を連結。
+   * genesis は監督コード入力 (= T0)。casual の generateInitialHash と対をなす。
+   *
+   * 注: この連結式は exam/examPackage.ts の `computeExamChainRoot` と**必ず一致**させること
+   * (verifier はそちらで root を再計算する)。両者の一致はテストで担保している。
+   * `problemContentHash` 省略時は v1 とバイト一致する。
+   */
+  async generateExamInitialHash(
+    fingerprintHash: string,
+    packageHash: string,
+    startToken: string,
+    problemContentHash?: string
+  ): Promise<InitialHashResult> {
+    const randomData = new Uint8Array(32);
+    crypto.getRandomValues(randomData);
+    const nonce = this.arrayBufferToHex(randomData);
+    const suffix = problemContentHash ?? '';
+    const hash = await this.computeHash(fingerprintHash + nonce + packageHash + startToken + suffix);
+    return { hash, nonce };
+  }
+
+  /**
+   * セッション開始トークン (ADR-0017) による anchored 初期ハッシュ (= チェーン根) を生成。
+   *   root = SHA-256(fingerprintHash ‖ localNonce ‖ serverNonce)
+   * serverNonce は session/start でサーバが署名トークンに焼いた 32 バイト hex。これを root に
+   * 連結することで「完全オフライン捏造」を封じる (localNonce のみの generateInitialHash と対をなす)。
+   *
+   * 注: この連結式は sessionStartToken.ts の `computeAnchoredChainRoot` と**必ず一致**させること
+   * (verifier はそちらで root を再計算する)。両者の一致はテストで担保する。
+   */
+  async generateAnchoredInitialHash(fingerprintHash: string, serverNonce: string): Promise<InitialHashResult> {
+    const randomData = new Uint8Array(32);
+    crypto.getRandomValues(randomData);
+    const localNonce = this.arrayBufferToHex(randomData);
+    const hash = await this.computeHash(fingerprintHash + localNonce + serverNonce);
+    return { hash, nonce: localNonce };
+  }
+
+  /**
    * 初期ハッシュを生成（後方互換API）
    */
   async initialHash(fingerprintHash: string): Promise<string> {
@@ -106,7 +147,9 @@ export class HashChainManager {
    */
   validateSequence(pendingSequence: number, expectedSequence: number): SequenceValidation {
     if (pendingSequence !== expectedSequence) {
-      console.warn(`[HashChainManager] Sequence mismatch: pending=${pendingSequence}, expected=${expectedSequence}. Using expected value.`);
+      console.warn(
+        `[HashChainManager] Sequence mismatch: pending=${pendingSequence}, expected=${expectedSequence}. Using expected value.`
+      );
       return { sequence: expectedSequence, wasCorrected: true };
     }
     return { sequence: expectedSequence, wasCorrected: false };
@@ -121,7 +164,9 @@ export class HashChainManager {
   ensureMonotonicTimestamp(timestamp: number, lastTimestamp: number): TimestampAdjustment {
     if (timestamp <= lastTimestamp) {
       const adjustedTimestamp = lastTimestamp + HashChainManager.TIMESTAMP_MARGIN;
-      sharedDebugLog(`[HashChainManager] Adjusting timestamp: ${timestamp.toFixed(2)} -> ${adjustedTimestamp.toFixed(2)} (last: ${lastTimestamp.toFixed(2)})`);
+      sharedDebugLog(
+        `[HashChainManager] Adjusting timestamp: ${timestamp.toFixed(2)} -> ${adjustedTimestamp.toFixed(2)} (last: ${lastTimestamp.toFixed(2)})`
+      );
       return { timestamp: adjustedTimestamp, wasAdjusted: true };
     }
     return { timestamp, wasAdjusted: false };
@@ -135,7 +180,9 @@ export class HashChainManager {
    */
   validatePreviousHash(storedPreviousHash: string | null, currentHash: string | null): string | null {
     if (storedPreviousHash !== null && storedPreviousHash !== currentHash) {
-      sharedDebugLog(`[HashChainManager] previousHash mismatch, using current. stored: ${storedPreviousHash?.substring(0, 16)}..., current: ${currentHash?.substring(0, 16)}...`);
+      sharedDebugLog(
+        `[HashChainManager] previousHash mismatch, using current. stored: ${storedPreviousHash?.substring(0, 16)}..., current: ${currentHash?.substring(0, 16)}...`
+      );
     }
     return currentHash;
   }

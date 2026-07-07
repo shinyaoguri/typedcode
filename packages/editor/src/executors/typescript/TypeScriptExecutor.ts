@@ -39,9 +39,7 @@ export class TypeScriptExecutor extends BaseExecutor {
     defaultCode: DEFAULT_TS_CODE,
   };
 
-  protected async _doInitialize(
-    onProgress?: (progress: InitializationProgress) => void
-  ): Promise<void> {
+  protected async _doInitialize(onProgress?: (progress: InitializationProgress) => void): Promise<void> {
     // TypeScript compiler is immediately available
     onProgress?.({
       stage: 'ready',
@@ -50,10 +48,7 @@ export class TypeScriptExecutor extends BaseExecutor {
     });
   }
 
-  async run(
-    code: string,
-    callbacks: ExecutionCallbacks
-  ): Promise<ExecutionResult> {
+  async run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult> {
     if (!this._initialized) {
       throw new Error('TypeScriptExecutor not initialized. Call initialize() first.');
     }
@@ -77,9 +72,7 @@ export class TypeScriptExecutor extends BaseExecutor {
 
       // Report compilation errors if any
       if (result.diagnostics && result.diagnostics.length > 0) {
-        const errorDiagnostics = result.diagnostics.filter(
-          (d) => d.category === ts.DiagnosticCategory.Error
-        );
+        const errorDiagnostics = result.diagnostics.filter((d) => d.category === ts.DiagnosticCategory.Error);
 
         if (errorDiagnostics.length > 0) {
           const errors = errorDiagnostics

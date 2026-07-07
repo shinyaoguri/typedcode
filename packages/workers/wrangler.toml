@@ -1,4 +1,10 @@
-name = "typedcode-api"
+# ローカル開発専用の config (skip-worktree で各開発者の dev KV ID を保持する)。
+# staging / production は wrangler.staging.toml / wrangler.production.toml (3 ファイル方式)。
+#
+# Worker 名は本番 (typedcode-api) と必ず分けること (#152) — 同名だと素の
+# `npx wrangler deploy` がこのファイルを既定読込みし、本番 Worker を dev 設定
+# (localhost origin 自動許可・Turnstile hostname 強制なし) で上書きしてしまう。
+name = "typedcode-api-dev"
 main = "src/index.ts"
 compatibility_date = "2025-12-26"
 
@@ -11,12 +17,5 @@ ENVIRONMENT = "development"
 #   wrangler kv namespace create CHECKPOINT_SESSIONS --preview
 [[kv_namespaces]]
 binding = "CHECKPOINT_SESSIONS"
-id = "REPLACE_WITH_PRODUCTION_ID"
+id = "REPLACE_WITH_DEV_ID"
 preview_id = "REPLACE_WITH_PREVIEW_ID"
-
-[env.production]
-vars = { ENVIRONMENT = "production" }
-
-[[env.production.kv_namespaces]]
-binding = "CHECKPOINT_SESSIONS"
-id = "REPLACE_WITH_PRODUCTION_ID"

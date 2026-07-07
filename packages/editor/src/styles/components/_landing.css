@@ -1,0 +1,219 @@
+/* ランディング (ルートのモード選択, ADR-0015) — エディタを初期化せず DOM のみで描画する。
+   4モードを比較カード(料金比較ページ風)で横並びに見せ、能力差を一目で示す。 */
+
+.landing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  overflow-y: auto;
+  background: var(--bg-primary, #1e1e1e);
+  color: var(--text-primary, #ccc);
+}
+
+.landing-content {
+  width: 100%;
+  max-width: 980px;
+  text-align: center;
+}
+
+.landing-logo {
+  width: 52px;
+  height: 52px;
+  margin-bottom: 10px;
+}
+
+.landing-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.landing-subtitle {
+  margin: 8px 0 24px;
+  font-size: 13.5px;
+  color: var(--text-secondary, #999);
+}
+
+/* 比較カードのグリッド — auto-fit で広い画面は 4 列、狭い画面は自然に 2→1 列へ折り返す。
+   display:contents / subgrid は使わない (a11y/モバイルで脆いため)。各カードは自己完結。 */
+.landing-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+  gap: 14px;
+  text-align: left;
+}
+
+/* モード別アクセント (variables/_colors.css と同値を card 単位=要素スコープで割り当てる。
+   :root[data-mode] は landing では casual 固定になり全列同色になるので使わない)。 */
+.landing-card-mode[data-mode="casual"] {
+  --card-accent: #0078d4;
+}
+.landing-card-mode[data-mode="class"] {
+  --card-accent: #1f9d9d;
+}
+.landing-card-mode[data-mode="assignment"] {
+  --card-accent: #bf8700;
+}
+.landing-card-mode[data-mode="exam"] {
+  --card-accent: #cf222e;
+}
+
+.landing-card-mode {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 16px 14px;
+  background: var(--bg-secondary, #252526);
+  border: 1px solid var(--border-color, #333);
+  border-top: 3px solid var(--card-accent, #0078d4);
+  border-radius: var(--radius-lg, 8px);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.05s,
+    box-shadow 0.15s;
+}
+
+.landing-card-mode:hover {
+  background: var(--bg-tertiary, #2d2d30);
+  border-color: var(--card-accent, #0078d4);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.landing-card-mode:active {
+  transform: translateY(1px);
+}
+
+/* casual (練習/Demo) はお試し枠なので少し控えめに見せる。 */
+.landing-card-mode[data-mode="casual"] {
+  opacity: 0.92;
+}
+
+.lc-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.lc-icon {
+  font-size: 18px;
+  color: var(--card-accent, #0078d4);
+}
+
+.lc-name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* 進行中セッションのバッジ (非同期で hidden 解除。絶対配置なのでレイアウトをずらさない)。 */
+.session-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--accent-warning, #bf8700);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.session-badge[hidden] {
+  display: none;
+}
+
+.lc-desc {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary, #999);
+  min-height: 36px;
+}
+
+.lc-feats {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  flex: 1;
+}
+
+.lc-feat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border-color, #333);
+  font-size: 12px;
+}
+
+.lc-feat:first-child {
+  border-top: none;
+}
+
+.lc-feat-label {
+  color: var(--text-tertiary, #888);
+  flex-shrink: 0;
+}
+
+.lc-feat-val {
+  text-align: right;
+}
+
+.feature-yes {
+  color: var(--accent-success, #2ea043);
+  font-weight: 700;
+}
+
+.feature-no {
+  color: var(--text-tertiary, #888);
+  opacity: 0.5;
+}
+
+.feature-na {
+  color: var(--text-quaternary, #777);
+}
+
+.feature-text {
+  color: var(--text-secondary, #bbb);
+}
+
+.lc-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--radius-md, 6px);
+  background: var(--card-accent, #0078d4);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.lc-open:hover {
+  opacity: 0.88;
+}
+
+.lc-open i {
+  font-size: 11px;
+}
+
+.landing-terms {
+  margin: 22px 0 0;
+  font-size: 11.5px;
+  color: var(--text-quaternary, #777);
+}

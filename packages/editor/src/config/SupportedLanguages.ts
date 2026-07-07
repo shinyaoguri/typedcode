@@ -4,15 +4,7 @@
  */
 
 /** 言語ID */
-export type LanguageId =
-  | 'c'
-  | 'cpp'
-  | 'javascript'
-  | 'typescript'
-  | 'python'
-  | 'html'
-  | 'css'
-  | 'plaintext';
+export type LanguageId = 'c' | 'cpp' | 'javascript' | 'typescript' | 'python' | 'html' | 'css' | 'plaintext';
 
 /** 言語定義 */
 export interface LanguageDefinition {

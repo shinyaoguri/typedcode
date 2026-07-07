@@ -5,6 +5,7 @@
  */
 
 import type JSZip from 'jszip';
+import { checkScreenshotImage } from '@typedcode/shared';
 import type {
   VerifyScreenshot,
   ScreenshotManifest,
@@ -24,7 +25,13 @@ export class ScreenshotService {
    */
   async loadFromZip(
     zip: JSZip,
-    manifest: ScreenshotManifest
+    manifest: ScreenshotManifest,
+    /**
+     * 検証済みチェーンが記録した screenshotCapture の imageHash 集合 (全 proof 横断)。
+     * 与えると、manifest だけが指す (チェーンに無い) ハッシュを改ざんとして検出する。
+     * manifest と画像は未署名なのでセットで差し替え可能 — 改ざん不能なチェーンが唯一の真正記録。
+     */
+    chainImageHashes?: ReadonlySet<string>
   ): Promise<VerifyScreenshot[]> {
     const screenshots: VerifyScreenshot[] = [];
 
@@ -43,9 +50,14 @@ export class ScreenshotService {
         try {
           const blob = await imageFile.async('blob');
 
-          // ハッシュ検証
-          const verified = await this.verifyImageHash(blob, entry.imageHash);
-          const tampered = !verified; // ファイルは存在するがハッシュ不一致 = 改竄の可能性
+          // ハッシュ検証: 画像とハッシュが一致しても、そのハッシュがチェーンに無ければ
+          // manifest+画像が揃って差し替えられた疑い (manifest は未署名・チェーンは改ざん不能)。
+          // 判定は shared の単一実装 (#147: verify-cli と結論を揃える)。
+          const { verified, tampered } = await checkScreenshotImage(
+            await blob.arrayBuffer(),
+            entry.imageHash,
+            chainImageHashes
+          );
           console.log(`[ScreenshotService] Image ${entry.filename}: verified=${verified}, tampered=${tampered}`);
 
           // ユニークIDとしてマニフェストのindexを使用（eventSequenceは重複の可能性あり）
@@ -83,7 +95,12 @@ export class ScreenshotService {
       }
     }
 
-    console.log('[ScreenshotService] Total loaded:', screenshots.length, 'missing:', screenshots.filter(s => s.missing).length);
+    console.log(
+      '[ScreenshotService] Total loaded:',
+      screenshots.length,
+      'missing:',
+      screenshots.filter((s) => s.missing).length
+    );
     return screenshots;
   }
 
@@ -112,7 +129,9 @@ export class ScreenshotService {
    */
   async loadFromFolder(
     screenshotsFolderHandle: FileSystemDirectoryHandle,
-    manifest: ScreenshotManifest
+    manifest: ScreenshotManifest,
+    /** loadFromZip と同じ。検証済みチェーンが記録した imageHash 集合 (任意)。 */
+    chainImageHashes?: ReadonlySet<string>
   ): Promise<VerifyScreenshot[]> {
     const screenshots: VerifyScreenshot[] = [];
 
@@ -124,9 +143,12 @@ export class ScreenshotService {
         const file = await fileHandle.getFile();
         const blob = new Blob([await file.arrayBuffer()], { type: file.type });
 
-        // ハッシュ検証
-        const verified = await this.verifyImageHash(blob, entry.imageHash);
-        const tampered = !verified;
+        // ハッシュ検証 (チェーン突合は loadFromZip と同じ。判定は shared の単一実装 #147)
+        const { verified, tampered } = await checkScreenshotImage(
+          await blob.arrayBuffer(),
+          entry.imageHash,
+          chainImageHashes
+        );
         console.log(`[ScreenshotService] Image ${entry.filename}: verified=${verified}, tampered=${tampered}`);
 
         const screenshot: VerifyScreenshot = {
@@ -156,7 +178,12 @@ export class ScreenshotService {
       }
     }
 
-    console.log('[ScreenshotService] Total loaded from folder:', screenshots.length, 'missing:', screenshots.filter(s => s.missing).length);
+    console.log(
+      '[ScreenshotService] Total loaded from folder:',
+      screenshots.length,
+      'missing:',
+      screenshots.filter((s) => s.missing).length
+    );
     return screenshots;
   }
 
@@ -174,7 +201,7 @@ export class ScreenshotService {
       imageUrl: null,
       imageBlob: null,
       verified: false, // 画像がないので検証不可
-      missing: true,   // 画像なしで作成
+      missing: true, // 画像なしで作成
       displayInfo: entry.displayInfo,
       fileSizeBytes: entry.fileSizeBytes,
     };
@@ -223,22 +250,6 @@ export class ScreenshotService {
   }
 
   /**
-   * 画像ハッシュを検証
-   */
-  async verifyImageHash(blob: Blob, expectedHash: string): Promise<boolean> {
-    try {
-      const buffer = await blob.arrayBuffer();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-      return hash === expectedHash;
-    } catch (error) {
-      console.error('Hash verification failed:', error);
-      return false;
-    }
-  }
-
-  /**
    * タイムスタンプで最も近いスクリーンショットを取得
    */
   findNearestScreenshot(timestamp: number): VerifyScreenshot | null {
@@ -260,9 +271,7 @@ export class ScreenshotService {
    * 指定時間範囲のスクリーンショットを取得
    */
   getScreenshotsInRange(startTime: number, endTime: number): VerifyScreenshot[] {
-    return Array.from(this.screenshots.values()).filter(
-      (s) => s.timestamp >= startTime && s.timestamp <= endTime
-    );
+    return Array.from(this.screenshots.values()).filter((s) => s.timestamp >= startTime && s.timestamp <= endTime);
   }
 
   /**

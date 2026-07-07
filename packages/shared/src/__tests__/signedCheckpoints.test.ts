@@ -147,9 +147,7 @@ describe('signed checkpoint helpers', () => {
       firstSeenAt: '2026-05-28T12:00:00.000Z',
     };
     const envelope = await signCheckpoint(payload, testKey);
-    await expect(
-      verifyCheckpointSignature(envelope, [testKey.registryEntry])
-    ).resolves.toMatchObject({ valid: true });
+    await expect(verifyCheckpointSignature(envelope, [testKey.registryEntry])).resolves.toMatchObject({ valid: true });
   });
 
   it('verifyCheckpointSignature fails when payload is tampered', async () => {
@@ -174,9 +172,7 @@ describe('signed checkpoint helpers', () => {
       ...envelope,
       payload: { ...payload, chainHash: 'tampered' },
     };
-    await expect(
-      verifyCheckpointSignature(tampered, [testKey.registryEntry])
-    ).resolves.toMatchObject({ valid: false });
+    await expect(verifyCheckpointSignature(tampered, [testKey.registryEntry])).resolves.toMatchObject({ valid: false });
   });
 
   it('resolveCheckpointPublicKey prefers embedded key when it matches registry', async () => {
@@ -221,12 +217,13 @@ describe('signed checkpoint helpers', () => {
     const envelope = await signCheckpoint(payload, testKey, { embedPublicKey: true });
     // 別の鍵を registry に置くと、embedded JWK と一致しないので fail するはず
     const other = await createTestKey({ keyId: testKey.keyId });
-    await expect(
-      resolveCheckpointPublicKey(envelope, [other.registryEntry])
-    ).resolves.toMatchObject({ ok: false, reason: 'Embedded public key does not match registry entry' });
+    await expect(resolveCheckpointPublicKey(envelope, [other.registryEntry])).resolves.toMatchObject({
+      ok: false,
+      reason: 'Embedded public key does not match registry entry',
+    });
   });
 
-  it('resolveCheckpointPublicKey succeeds with embedded key alone when registry has no entry', async () => {
+  it('resolveCheckpointPublicKey rejects an embedded key whose keyId is not in the registry (no self-signed trust)', async () => {
     const payload: SignedCheckpointPayload = {
       version: SIGNED_CHECKPOINT_FORMAT_VERSION,
       sessionId: 's',
@@ -243,9 +240,12 @@ describe('signed checkpoint helpers', () => {
       serverTimestamp: '2026-05-28T12:00:01.000Z',
       firstSeenAt: '2026-05-28T12:00:00.000Z',
     };
+    // 攻撃者は自分の鍵ペアで署名し、未登録 keyId の下に自分の公開鍵を同梱できる。
+    // 信頼アンカーは registry のみなので、これは valid にしてはならない (時刻アンカー偽造の防止)。
     const envelope = await signCheckpoint(payload, testKey, { embedPublicKey: true });
     const resolved = await resolveCheckpointPublicKey(envelope, []);
-    expect(resolved).toMatchObject({ ok: true });
+    expect(resolved.ok).toBe(false);
+    expect((resolved as { ok: false; reason: string }).reason).toMatch(/^Unknown keyId:/);
   });
 
   it('resolveCheckpointPublicKey fails for unknown keyId without embedded key', async () => {
@@ -381,7 +381,9 @@ describe('verifySignedCheckpoints', () => {
       registry: [testKey.registryEntry],
     });
     expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/checkpointIndex not strictly increasing|previousSignedCheckpointHash does not chain/);
+    expect(result.reason).toMatch(
+      /checkpointIndex not strictly increasing|previousSignedCheckpointHash does not chain/
+    );
   });
 
   it('fails when previousSignedCheckpointHash chain is broken', async () => {
@@ -555,7 +557,7 @@ describe('verifySignedCheckpoints', () => {
     expect(result.reason).toMatch(/Unknown keyId/);
   });
 
-  it('passes with embedded public key even when registry is empty (offline scenario)', async () => {
+  it('rejects an embedded public key when the keyId is not in the registry (no offline self-signed trust)', async () => {
     const { events, initialEventChainHash } = await buildSmallProof(2);
     const checkpoints = await buildSignedCheckpoints({
       events,
@@ -563,11 +565,16 @@ describe('verifySignedCheckpoints', () => {
       key: testKey,
       embedPublicKey: true,
     });
+    // 攻撃者は自分の鍵ペアで署名し、その公開鍵を envelope に同梱できる。信頼アンカーは
+    // registry のみとし、未登録 keyId は (埋め込み鍵があっても) 拒否する。さもないと
+    // 署名 cp の serverTimestamp を任意に偽造できてしまう。
+    // 長期検証可能性は「git 永続管理の registry が verify-cli にバンドルされる」ことで担保され、
+    // 埋め込み鍵に依存しない。
     const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
       registry: [],
     });
-    expect(result.valid).toBe(true);
-    expect(result.anchored).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/Unknown keyId/);
   });
 
   it('flags post-hoc batch signing when serverSpan is tiny compared to clientSpan', async () => {
@@ -638,6 +645,168 @@ describe('verifySignedCheckpoints', () => {
     });
     expect(result.valid).toBe(false);
     expect(result.reason).toMatch(/Unsupported signed checkpoint payload version/);
+  });
+});
+
+/**
+ * anchoring 密度 gate (ADR-0016) のテスト。
+ *
+ * 密度は署名 cp が指す eventIndex / serverTimestamp の **間隔** だけに依存し、ハッシュチェーンの
+ * 中身には依存しない。大ギャップ (600 events に末尾 1 cp 等) を実 PoSW で作ると遅いので、ここでは
+ * 合成イベント列を使う。verifySignedCheckpoints は checkpoint が指す event の hash 一致しか見ない
+ * ため (チェーン全体は verifyChain の責務)、合成列でも忠実に密度ロジックを検査できる。
+ * 「密で疎でない」正規ケースだけは実 proof (buildSmallProof) で固定する。
+ */
+function makeSyntheticEvents(n: number): StoredEvent[] {
+  const events: StoredEvent[] = [];
+  for (let i = 0; i < n; i++) {
+    events.push({
+      sequence: i,
+      timestamp: i * 10,
+      type: 'contentChange',
+      inputType: 'insertText',
+      data: String.fromCharCode('a'.charCodeAt(0) + (i % 26)),
+      rangeOffset: i,
+      rangeLength: 0,
+      range: null,
+      previousHash: null,
+      posw: { iterations: POSW_ITERATIONS, nonce: '0', intermediateHash: '0', computeTimeMs: 0 },
+      hash: i.toString(16).padStart(64, '0'),
+      description: null,
+      isMultiLine: null,
+      deletedLength: null,
+      insertedText: null,
+      insertLength: null,
+      deleteDirection: null,
+      selectedText: null,
+    });
+  }
+  return events;
+}
+
+describe('anchoring density gate (ADR-0016)', () => {
+  const ROOT = 'a'.repeat(64);
+
+  it('flags a single end checkpoint anchoring a long chain as sparse (large event gap)', async () => {
+    const events = makeSyntheticEvents(600);
+    // 末尾 1 個だけ署名 cp を打つ攻撃形。coverageRatio は 1.0・postHoc も立たないが疎である。
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash: ROOT,
+      key: testKey,
+      eventIndexes: [599],
+    });
+    const result = await verifySignedCheckpoints(events, checkpoints, ROOT, {
+      registry: [testKey.registryEntry],
+    });
+    // 既定は warning のみ: valid は true のまま、density.sparse で疎を知らせる。
+    expect(result.valid).toBe(true);
+    expect(result.density).not.toBeNull();
+    expect(result.density!.sparse).toBe(true);
+    expect(result.density!.firstAnchorEventIndex).toBe(599);
+    expect(result.density!.maxGapEvents).toBe(599);
+    // coverage は満点に見えてしまう (これが密度を別途見る理由)。
+    expect(result.coverage.coverageRatio).toBeCloseTo(1, 5);
+  });
+
+  it('fails (valid=false) for a sparse chain when requireAnchorDensity is set (strict / exam)', async () => {
+    const events = makeSyntheticEvents(600);
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash: ROOT,
+      key: testKey,
+      eventIndexes: [599],
+    });
+    const result = await verifySignedCheckpoints(events, checkpoints, ROOT, {
+      registry: [testKey.registryEntry],
+      requireAnchorDensity: true,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.anchored).toBe(true);
+    expect(result.density!.sparse).toBe(true);
+    expect(result.reason).toMatch(/too sparse|density gate/);
+  });
+
+  it('flags a single start checkpoint (large trailing event gap) as sparse', async () => {
+    const events = makeSyntheticEvents(600);
+    // 先頭 1 個だけ。firstAnchorLatency は 0 だが末尾ギャップが大きい。
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash: ROOT,
+      key: testKey,
+      eventIndexes: [0],
+    });
+    const result = await verifySignedCheckpoints(events, checkpoints, ROOT, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.density!.firstAnchorLatencyEvents).toBe(0);
+    expect(result.density!.maxGapEvents).toBe(599); // 末尾ギャップが検出される
+    expect(result.density!.sparse).toBe(true);
+  });
+
+  it('flags a large server-time gap between checkpoints as sparse (few events)', async () => {
+    const events = makeSyntheticEvents(4);
+    // event ギャップは小さい (連続) が、server 時刻が 60s 間隔 = 50s 閾値超え。
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash: ROOT,
+      key: testKey,
+      startServerMs: Date.parse('2026-05-28T12:00:01.000Z'),
+      serverStepMs: 60_000,
+    });
+    const result = await verifySignedCheckpoints(events, checkpoints, ROOT, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.density!.maxGapEvents).toBeLessThanOrEqual(1);
+    expect(result.density!.maxGapServerMs).toBeGreaterThan(50_000);
+    expect(result.density!.sparse).toBe(true);
+  });
+
+  it('does NOT flag a dense short legitimate session (no false positive)', async () => {
+    // 実 proof。4 events 全てに署名 cp、server は既定 1s 間隔。
+    const { events, initialEventChainHash } = await buildSmallProof(4);
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash,
+      key: testKey,
+    });
+    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+      registry: [testKey.registryEntry],
+      requireAnchorDensity: true, // strict でも通る
+    });
+    expect(result.valid).toBe(true);
+    expect(result.density).not.toBeNull();
+    expect(result.density!.sparse).toBe(false);
+    expect(result.density!.firstAnchorLatencyEvents).toBe(0);
+  });
+
+  it('does NOT flag a moderately spaced session within thresholds', async () => {
+    const events = makeSyntheticEvents(50);
+    // 5 イベント毎に署名 cp (gap 5 events ≪ 500)、server 既定 1s 間隔。
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash: ROOT,
+      key: testKey,
+      eventIndexes: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45],
+    });
+    const result = await verifySignedCheckpoints(events, checkpoints, ROOT, {
+      registry: [testKey.registryEntry],
+      requireAnchorDensity: true,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.density!.sparse).toBe(false);
+    expect(result.density!.maxGapEvents).toBeLessThanOrEqual(5);
+  });
+
+  it('reports density=null when there are no signed checkpoints (unanchored stays valid path)', async () => {
+    const events = makeSyntheticEvents(3);
+    const result = await verifySignedCheckpoints(events, [], ROOT, {
+      registry: [testKey.registryEntry],
+      requireAnchorDensity: true,
+    });
+    // 未アンカーは anchored=false。density gate は対象外で、density は null。
+    expect(result.anchored).toBe(false);
+    expect(result.density).toBeNull();
   });
 });
 

@@ -9,15 +9,7 @@ import type { EventType } from '@typedcode/shared';
 // ============================================================================
 
 /** イベントカテゴリ */
-export type EventCategory =
-  | 'content'
-  | 'cursor'
-  | 'input'
-  | 'window'
-  | 'system'
-  | 'auth'
-  | 'execution'
-  | 'capture';
+export type EventCategory = 'content' | 'cursor' | 'input' | 'window' | 'system' | 'auth' | 'execution' | 'capture';
 
 /** カテゴリ情報 */
 export interface CategoryInfo {
@@ -44,11 +36,15 @@ export const EVENT_CATEGORY_MAP: Record<EventType, EventCategory> = {
   focusChange: 'window',
   visibilityChange: 'window',
   windowResize: 'window',
+  fullscreenChange: 'window',
   // System
   editorInitialized: 'system',
   networkStatusChange: 'system',
   sessionResumed: 'system',
+  environmentProbe: 'system',
+  examOpened: 'system',
   // Auth
+  reflectionNote: 'auth',
   humanAttestation: 'auth',
   preExportAttestation: 'auth',
   termsAccepted: 'auth',
@@ -89,13 +85,13 @@ export const EVENT_CATEGORIES: CategoryInfo[] = [
     id: 'window',
     labelKey: 'charts.categories.window',
     icon: 'fa-window-maximize',
-    events: ['focusChange', 'visibilityChange', 'windowResize'],
+    events: ['focusChange', 'visibilityChange', 'windowResize', 'fullscreenChange'],
   },
   {
     id: 'system',
     labelKey: 'charts.categories.system',
     icon: 'fa-cog',
-    events: ['editorInitialized', 'networkStatusChange', 'sessionResumed'],
+    events: ['editorInitialized', 'networkStatusChange', 'sessionResumed', 'environmentProbe', 'examOpened'],
   },
   {
     id: 'auth',
@@ -151,10 +147,7 @@ export const DEFAULT_CHART_EVENT_VISIBILITY: ChartEventVisibility = {
 /**
  * イベントタイプが表示対象かどうかを判定
  */
-export function isEventTypeVisible(
-  eventType: EventType,
-  visibility: ChartEventVisibility
-): boolean {
+export function isEventTypeVisible(eventType: EventType, visibility: ChartEventVisibility): boolean {
   // 個別オーバーライドがあればそれを使用
   if (eventType in visibility.events) {
     return visibility.events[eventType] ?? false;
@@ -167,10 +160,7 @@ export function isEventTypeVisible(
 /**
  * カテゴリ内の全イベントが表示対象かどうかを判定
  */
-export function isCategoryFullyVisible(
-  category: EventCategory,
-  visibility: ChartEventVisibility
-): boolean {
+export function isCategoryFullyVisible(category: EventCategory, visibility: ChartEventVisibility): boolean {
   const categoryInfo = EVENT_CATEGORIES.find((c) => c.id === category);
   if (!categoryInfo) return false;
 
@@ -180,16 +170,11 @@ export function isCategoryFullyVisible(
 /**
  * カテゴリ内の一部イベントが表示対象かどうかを判定（部分選択状態）
  */
-export function isCategoryPartiallyVisible(
-  category: EventCategory,
-  visibility: ChartEventVisibility
-): boolean {
+export function isCategoryPartiallyVisible(category: EventCategory, visibility: ChartEventVisibility): boolean {
   const categoryInfo = EVENT_CATEGORIES.find((c) => c.id === category);
   if (!categoryInfo) return false;
 
-  const visibleCount = categoryInfo.events.filter((event) =>
-    isEventTypeVisible(event, visibility)
-  ).length;
+  const visibleCount = categoryInfo.events.filter((event) => isEventTypeVisible(event, visibility)).length;
 
   return visibleCount > 0 && visibleCount < categoryInfo.events.length;
 }

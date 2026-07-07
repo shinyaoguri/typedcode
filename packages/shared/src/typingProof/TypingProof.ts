@@ -28,8 +28,12 @@ import type {
   HumanAttestationEventData,
   TemplateInjectionEventData,
   PendingEventData,
+  ExamOpenedEventData,
+  ExamSessionContext,
+  SessionStartToken,
 } from '../types.js';
 import { PROOF_FORMAT_VERSION } from '../version.js';
+import { buildExamProofBlock } from '../exam/examPackage.js';
 import { HashChainManager } from './HashChainManager.js';
 import { PoswManager } from './PoswManager.js';
 import { CheckpointManager } from './CheckpointManager.js';
@@ -47,6 +51,19 @@ export class TypingProof {
   initialHashNonce: string | null = null;
   startTime: number = performance.now();
   initialized: boolean = false;
+
+  /**
+   * 試験モード (ADR-0006) の束縛コンテキスト。`initializeExam` で確定し、
+   * `exportProof` で proof の `exam` ブロックを組み立てるのに使う。casual では null。
+   */
+  examContext: ExamSessionContext | null = null;
+
+  /**
+   * セッション開始トークン (ADR-0017)。casual/class で session/start が成功し
+   * `initializeAnchored` で root をアンカーしたときに確定する。`exportProof` で proof に焼く。
+   * 未取得 (オフライン劣化 / exam / 旧経路) では null。
+   */
+  sessionStartToken: SessionStartToken | null = null;
   private recordQueue: Promise<RecordEventResult> = Promise.resolve({ hash: '', index: -1 });
   private queuedEventCount: number = 0;
 
@@ -130,6 +147,74 @@ export class TypingProof {
   }
 
   /**
+   * 試験モード (ADR-0006) の初期化。casual の `initialize` と異なり、チェーン根を
+   *   SHA-256(fingerprintHash ‖ nonce ‖ packageHash ‖ startToken)
+   * で確定する。**genesis は監督コード入力の瞬間 (= T0)** なので、セッション初期化ではなく
+   * 復号が成立した時点でこれを呼ぶ。以降の #0 humanAttestation / #1 examOpened はこの root に連なる。
+   *
+   * @param examContext 復号で確定した束縛 (examId / problemId / variant / packageHash /
+   *   startToken<正準形> / problemContentHash)。`exportProof` で proof.exam を組み立てる。
+   */
+  async initializeExam(
+    fingerprintHash: string,
+    fingerprintComponents: FingerprintComponents,
+    examContext: ExamSessionContext,
+    externalWorker?: Worker
+  ): Promise<void> {
+    this.fingerprint = fingerprintHash;
+    this.fingerprintComponents = fingerprintComponents;
+    const initial = await this.hashChainManager.generateExamInitialHash(
+      fingerprintHash,
+      examContext.packageHash,
+      examContext.startToken,
+      // v2 (N問バンドル, ADR-0012): root に per-problem hash を焼く。v1 は undefined で従来式。
+      examContext.rootBinding === 'v2' ? examContext.problemContentHash : undefined
+    );
+    this.initialHashNonce = initial.nonce;
+    this.hashChainManager.setCurrentHash(initial.hash);
+    this.examContext = examContext;
+
+    this.poswManager.initWorker(externalWorker);
+
+    sharedDebugLog('[TypingProof] Initialized in exam mode (root bound to packageHash + startToken)');
+
+    this.initialized = true;
+  }
+
+  /**
+   * セッション開始トークン (ADR-0017) でチェーン根をサーバアンカーして初期化する (casual/class)。
+   * casual の `initialize` と異なり root を
+   *   SHA-256(fingerprintHash ‖ localNonce ‖ serverNonce)
+   * で確定する。serverNonce は session/start でサーバが署名トークンに焼いた値。exam の
+   * `initializeExam` と同じ「**サーバトークン取得後に root 確定**」フロー。
+   *
+   * session/start が不達なら呼び出し側は従来の `initialize` にフォールバックする (root 未アンカー)。
+   *
+   * @param serverNonce session/start トークンの payload.serverNonce
+   * @param sessionStartToken proof に同梱する署名済みトークン (検証器が registry で検証する)
+   */
+  async initializeAnchored(
+    fingerprintHash: string,
+    fingerprintComponents: FingerprintComponents,
+    serverNonce: string,
+    sessionStartToken: SessionStartToken,
+    externalWorker?: Worker
+  ): Promise<void> {
+    this.fingerprint = fingerprintHash;
+    this.fingerprintComponents = fingerprintComponents;
+    const initial = await this.hashChainManager.generateAnchoredInitialHash(fingerprintHash, serverNonce);
+    this.initialHashNonce = initial.nonce;
+    this.hashChainManager.setCurrentHash(initial.hash);
+    this.sessionStartToken = sessionStartToken;
+
+    this.poswManager.initWorker(externalWorker);
+
+    sharedDebugLog('[TypingProof] Initialized with server-anchored root (ADR-0017)');
+
+    this.initialized = true;
+  }
+
+  /**
    * 人間認証をevent #0として記録
    * reCAPTCHA attestationをハッシュチェーンの最初のイベントとして記録し、
    * 「人間がファイルを作り始めた」ことを証明する
@@ -145,6 +230,30 @@ export class TypingProof {
       type: 'humanAttestation',
       data: attestation,
       description: `Human verified (score: ${attestation.score.toFixed(2)}, action: ${attestation.action})`,
+    });
+  }
+
+  /**
+   * 封印問題パッケージの開封を `examOpened` イベントとして記録する (ADR-0006)。
+   * 監督コード入力で genesis を確定し #0 humanAttestation を記録した直後、**#1** として記録する。
+   *
+   * 権威ある束縛は root + proof.exam が担うため、event index が厳密に #1 でなくても束縛の
+   * 健全性は損なわれない (本イベントはタイムライン上の可読な監査印)。ただし #0 humanAttestation の
+   * 不在は根の信頼性に関わるため、その場合のみ throw する。
+   */
+  async recordExamOpened(data: ExamOpenedEventData): Promise<RecordEventResult> {
+    if (!this.hasHumanAttestation()) {
+      throw new Error('examOpened must follow #0 humanAttestation (none recorded yet)');
+    }
+    if (this.events.length !== 1) {
+      console.warn(
+        `[TypingProof] examOpened expected at #1 but recording at #${this.events.length} (binding still valid via root + proof.exam)`
+      );
+    }
+    return await this.recordEvent({
+      type: 'examOpened',
+      data,
+      description: `Exam opened: ${data.examId}/${data.problemId}`,
     });
   }
 
@@ -329,10 +438,7 @@ export class TypingProof {
     pendingEvent: PendingEventData
   ): Promise<RecordEventResult> {
     // 1. シーケンス番号の検証・修正
-    const sequenceResult = this.hashChainManager.validateSequence(
-      pendingEvent.sequence,
-      this.events.length
-    );
+    const sequenceResult = this.hashChainManager.validateSequence(pendingEvent.sequence, this.events.length);
     const sequence = sequenceResult.sequence;
     if (sequenceResult.wasCorrected) {
       pendingEvent.sequence = sequence;
@@ -340,20 +446,14 @@ export class TypingProof {
 
     // 2. タイムスタンプの単調増加保証
     const lastTimestamp = this.events[this.events.length - 1]?.timestamp ?? -Infinity;
-    const timestampResult = this.hashChainManager.ensureMonotonicTimestamp(
-      pendingEvent.timestamp,
-      lastTimestamp
-    );
+    const timestampResult = this.hashChainManager.ensureMonotonicTimestamp(pendingEvent.timestamp, lastTimestamp);
     const timestamp = timestampResult.timestamp;
     if (timestampResult.wasAdjusted) {
       pendingEvent.timestamp = timestamp;
     }
 
     // 3. previousHashの整合性検証
-    const previousHash = this.hashChainManager.validatePreviousHash(
-      pendingEvent.previousHash,
-      this.currentHash
-    );
+    const previousHash = this.hashChainManager.validatePreviousHash(pendingEvent.previousHash, this.currentHash);
     if (pendingEvent.previousHash !== previousHash) {
       pendingEvent.previousHash = previousHash;
     }
@@ -368,7 +468,7 @@ export class TypingProof {
       rangeOffset: event.rangeOffset ?? null,
       rangeLength: event.rangeLength ?? null,
       range: event.range ?? null,
-      previousHash
+      previousHash,
     };
 
     // 5. PoSW計算
@@ -389,7 +489,7 @@ export class TypingProof {
         timestamp: timestamp.toFixed(2),
         poswIterations: posw.iterations,
         poswTimeMs: posw.computeTimeMs.toFixed(2),
-        hash: newHash
+        hash: newHash,
       });
     }
 
@@ -404,7 +504,7 @@ export class TypingProof {
       insertedText: event.insertedText ?? null,
       insertLength: event.insertLength ?? null,
       deleteDirection: event.deleteDirection ?? null,
-      selectedText: event.selectedText ?? null
+      selectedText: event.selectedText ?? null,
     };
     this.events.push(storedEvent);
 
@@ -432,25 +532,31 @@ export class TypingProof {
 
   /**
    * 最終署名を生成
+   * @param events - 対象イベント (省略時は現時点の this.events)。#143: exportProof は
+   *   スナップショットを渡し、署名とメタデータと checkpoint が同じ配列を見るようにする
+   * @param finalHash - events 末尾のハッシュ (省略時は this.currentHash)
    */
-  async generateSignature(): Promise<SignatureData> {
+  async generateSignature(
+    events: readonly StoredEvent[] = this.events,
+    finalHash: string | null = this.currentHash
+  ): Promise<SignatureData> {
     const finalData = {
-      totalEvents: this.events.length,
-      finalHash: this.currentHash,
+      totalEvents: events.length,
+      finalHash,
       startTime: this.startTime,
-      endTime: performance.now()
+      endTime: performance.now(),
     };
 
     const signatureData = JSON.stringify(finalData);
     const signature = await this.hashChainManager.computeHash(signatureData);
 
     // エクスポート用にメタデータのnullフィールドを省略
-    const compactEvents = this.events.map(event => this.compactEventForExport(event));
+    const compactEvents = events.map((event) => this.compactEventForExport(event));
 
     return {
       ...finalData,
       signature,
-      events: compactEvents
+      events: compactEvents,
     };
   }
 
@@ -491,54 +597,101 @@ export class TypingProof {
   /**
    * 証明データをエクスポート
    * @param finalContent - 最終的なコード
+   *
+   * #143: export は原子的でない — export 中も broadcast (スクショ/visibility 等) の記録で
+   * `this.events` が伸びうる。署名・メタデータ・checkpoint が別々の時点の配列を見ると、
+   * 「totalEvents が同梱 events と食い違う」「同梱 events に無い eventIndex を指す checkpoint」
+   * を持つ proof ができ、verifier (verifyProofMetadata / verifyCheckpoints) で丸ごと invalid
+   * になる。冒頭で 1 度だけスナップショットし、以降すべて同じ配列に対して計算する。
+   * スナップショット後に記録されたイベントはこの export に含まれない (チェーンには残る)。
    */
   async exportProof(finalContent: string): Promise<ExportedProof> {
-    const signature = await this.generateSignature();
+    const events = this.events.slice();
+    const lastEventIndex = events.length - 1;
+    const finalHash = lastEventIndex >= 0 ? events[lastEventIndex]!.hash : this.currentHash;
 
-    // タイピング証明ハッシュを生成
-    const typingProof = await this.generateTypingProofHash(finalContent);
+    const signature = await this.generateSignature(events, finalHash);
+
+    // タイピング証明ハッシュを生成 (メタデータ再カウントも同じスナップショットから)
+    const typingProof = await this.generateTypingProofHash(finalContent, events, finalHash);
 
     // チェックポイントをクリーンアップして最終チェックポイントを作成
-    const lastEventIndex = this.events.length - 1;
     if (lastEventIndex >= 0) {
       // 正規のチェックポイント以外を削除
       this.checkpointManager.cleanupForExport();
 
-      // 最終イベントにチェックポイントを作成（まだ存在しない場合）
-      const lastCheckpoint = this.checkpointManager.getLastCheckpoint();
-      if (!lastCheckpoint || lastCheckpoint.eventIndex !== lastEventIndex) {
-        await this.checkpointManager.createCheckpoint(lastEventIndex, this.events);
+      // スナップショット最終イベントにチェックポイントを作成（まだ存在しない場合）
+      const hasFinalCheckpoint = this.checkpointManager.getCheckpoints().some((cp) => cp.eventIndex === lastEventIndex);
+      if (!hasFinalCheckpoint) {
+        await this.checkpointManager.createCheckpoint(lastEventIndex, events);
       }
     }
 
-    return {
+    // スナップショット外 (export 開始後に伸びた分) を指す checkpoint は同梱しない
+    const checkpoints = this.checkpointManager.getCheckpoints().filter((cp) => cp.eventIndex <= lastEventIndex);
+
+    const exported: ExportedProof = {
       version: PROOF_FORMAT_VERSION,
       typingProofHash: typingProof.typingProofHash,
       typingProofData: typingProof.proofData,
       proof: signature,
       fingerprint: {
         hash: this.fingerprint!,
-        components: this.fingerprintComponents!
+        components: this.fingerprintComponents!,
       },
       metadata: {
         userAgent: navigator.userAgent,
         timestamp: new Date().toISOString(),
-        isPureTyping: typingProof.compact.isPureTyping
+        isPureTyping: typingProof.compact.isPureTyping,
       },
-      checkpoints: this.checkpointManager.getCheckpoints()
+      checkpoints,
     };
+
+    // 試験モード (ADR-0006): 束縛ブロックを焼き込む。grader はこのブロック + 公開 package
+    // だけで self-contained に検証できる (startToken も同梱)。
+    if (this.examContext) {
+      exported.exam = buildExamProofBlock(this.examContext);
+    }
+
+    // セッション開始トークン (ADR-0017): casual/class で session/start が成功していれば焼き込む。
+    // 検証器は registry でトークンを検証し serverNonce 込みで root を再計算する。
+    // exam は独自の root 束縛 (T0) を持つため rootAnchored は付けない (概念が異なる)。
+    if (this.sessionStartToken) {
+      exported.sessionStartToken = this.sessionStartToken;
+      exported.rootAnchored = true;
+    } else if (!this.examContext) {
+      // casual/class でトークン未取得 (オフライン劣化) = root 未アンカーを明示する。
+      exported.rootAnchored = false;
+    }
+
+    return exported;
+  }
+
+  /**
+   * 記録キュー (pendingEvents / PoSW 計算待ち) が空になるまで待つ (#143)。
+   *
+   * exportProof はスナップショット一貫だが、直前の打鍵がまだキューにあると
+   * 「content (エディタ buffer) には載っているのにチェーンに無い」export になり、
+   * content replay (Layer 4) で fail する。exporter は**タブ毎に**これを待ってから
+   * model 内容を確定して exportProof を呼ぶこと (アクティブタブだけ待つのでは不足)。
+   *
+   * @returns 排出しきれば true、timeout なら false (呼び出し側は警告して続行してよい —
+   *   その場合もスナップショット一貫性により proof 自体は整合する)
+   */
+  async waitForQueueDrain(timeoutMs = 5000): Promise<boolean> {
+    const start = performance.now();
+    while (this.pendingEvents.length > 0 || this.queuedEventCount > 0) {
+      if (performance.now() - start > timeoutMs) return false;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return true;
   }
 
   /**
    * 統計情報を取得
    */
   getStats(): TypingStats {
-    return this.statisticsCalculator.getStats(
-      this.events,
-      this.startTime,
-      this.currentHash,
-      this.queuedEventCount
-    );
+    return this.statisticsCalculator.getStats(this.events, this.startTime, this.currentHash, this.queuedEventCount);
   }
 
   /**
@@ -547,7 +700,11 @@ export class TypingProof {
    * @param options - 検証オプション (skipPosw 等)
    */
   async verify(
-    onProgress?: (current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash: string }) => void,
+    onProgress?: (
+      current: number,
+      total: number,
+      hashInfo?: { computed: string; expected: string; poswHash: string }
+    ) => void,
     options?: ChainVerifyOptions
   ): Promise<VerificationResult> {
     return await this.chainVerifier.verify(this.events, onProgress, options);
@@ -580,7 +737,12 @@ export class TypingProof {
   async verifySampled(
     checkpoints: CheckpointData[],
     sampleCount: number = 3,
-    onProgress?: (phase: string, current: number, total: number, hashInfo?: { computed: string; expected: string; poswHash?: string }) => void
+    onProgress?: (
+      phase: string,
+      current: number,
+      total: number,
+      hashInfo?: { computed: string; expected: string; poswHash?: string }
+    ) => void
   ): Promise<VerificationResult> {
     return await this.chainVerifier.verifySampled(this.events, checkpoints, sampleCount, onProgress);
   }
@@ -594,7 +756,7 @@ export class TypingProof {
       type: 'contentSnapshot',
       data: editorContent,
       description: `スナップショット（イベント${this.events.length}）`,
-      isSnapshot: true
+      isSnapshot: true,
     });
   }
 
@@ -609,15 +771,21 @@ export class TypingProof {
    * タイピング証明ハッシュを生成
    * @param finalContent - 最終的なコード
    */
-  async generateTypingProofHash(finalContent: string): Promise<TypingProofHashResult> {
+  async generateTypingProofHash(
+    finalContent: string,
+    events: readonly StoredEvent[] = this.events,
+    finalHash: string | null = this.currentHash
+  ): Promise<TypingProofHashResult> {
     const finalContentHash = await this.hashChainManager.computeHash(finalContent);
-    const stats = this.getTypingStatistics();
+    // #143: exportProof はスナップショットを渡す。this.events を直接見ると export 中の
+    // 追記でメタデータの再カウントが同梱 events と食い違い、verifyProofMetadata で fail する。
+    const stats = this.statisticsCalculator.getTypingStatistics(events as StoredEvent[], this.startTime);
 
     const proofData: ProofData = {
       finalContentHash,
       initialHashNonce: this.initialHashNonce ?? undefined,
-      initialEventChainHash: this.events[0]?.previousHash ?? this.currentHash,
-      finalEventChainHash: this.currentHash!,
+      initialEventChainHash: events[0]?.previousHash ?? finalHash,
+      finalEventChainHash: finalHash!,
       deviceId: this.fingerprint!,
       metadata: {
         totalEvents: stats.totalEvents,
@@ -628,8 +796,8 @@ export class TypingProof {
         deleteEvents: stats.deleteEvents,
         bulkInsertEvents: stats.bulkInsertEvents,
         totalTypingTime: stats.duration,
-        averageTypingSpeed: stats.averageWPM
-      }
+        averageTypingSpeed: stats.averageWPM,
+      },
     };
 
     const proofString = JSON.stringify(proofData);
@@ -647,8 +815,8 @@ export class TypingProof {
         content: finalContent,
         isPureTyping,
         deviceId: this.fingerprint!,
-        totalEvents: stats.totalEvents
-      }
+        totalEvents: stats.totalEvents,
+      },
     };
   }
 
@@ -668,7 +836,7 @@ export class TypingProof {
     if (computedContentHash !== proofData.finalContentHash) {
       return {
         valid: false,
-        reason: 'Final content does not match the proof'
+        reason: 'Final content does not match the proof',
       };
     }
 
@@ -678,7 +846,7 @@ export class TypingProof {
     if (computedProofHash !== typingProofHash) {
       return {
         valid: false,
-        reason: 'Proof hash does not match'
+        reason: 'Proof hash does not match',
       };
     }
 
@@ -691,7 +859,7 @@ export class TypingProof {
       valid: true,
       isPureTyping,
       deviceId: proofData.deviceId,
-      metadata: proofData.metadata
+      metadata: proofData.metadata,
     };
   }
 
@@ -706,6 +874,8 @@ export class TypingProof {
       startTime: this.startTime,
       pendingEvents: [...this.pendingEvents],
       checkpoints: [...this.checkpointManager.getCheckpoints()],
+      examContext: this.examContext,
+      sessionStartToken: this.sessionStartToken,
     };
   }
 
@@ -722,6 +892,8 @@ export class TypingProof {
       startTime: this.startTime,
       // pendingEventsは復元時に使用しないため保存しない
       checkpoints: [...this.checkpointManager.getCheckpoints()],
+      examContext: this.examContext,
+      sessionStartToken: this.sessionStartToken,
     };
   }
 
@@ -733,6 +905,8 @@ export class TypingProof {
     this.events = state.events;
     this.hashChainManager.setCurrentHash(state.currentHash);
     this.initialHashNonce = state.initialHashNonce ?? null;
+    this.examContext = state.examContext ?? null;
+    this.sessionStartToken = state.sessionStartToken ?? null;
 
     // タイムスタンプの単調増加を保証するためにstartTimeを調整
     // 最後のイベントのタイムスタンプを取得し、次のイベントがそれより大きくなるようにする
@@ -743,7 +917,9 @@ export class TypingProof {
       const lastTimestamp = lastEvent.timestamp;
       const margin = 10; // 10ms のマージンを追加
       this.startTime = performance.now() - (lastTimestamp + margin);
-      sharedDebugLog(`[TypingProof] Adjusted startTime for session resume: lastTimestamp=${lastTimestamp.toFixed(2)}, newStartTime=${this.startTime.toFixed(2)}`);
+      sharedDebugLog(
+        `[TypingProof] Adjusted startTime for session resume: lastTimestamp=${lastTimestamp.toFixed(2)}, newStartTime=${this.startTime.toFixed(2)}`
+      );
     } else {
       this.startTime = state.startTime;
     }

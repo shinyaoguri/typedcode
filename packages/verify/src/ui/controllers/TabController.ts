@@ -13,9 +13,22 @@ import type { IntegratedChart } from '../../charts/IntegratedChart';
 import type { ScreenshotOverlay } from '../../charts/ScreenshotOverlay';
 import type { ScreenshotLightbox } from '../ScreenshotLightbox';
 import type { SeekbarController } from '../../charts/SeekbarController';
-import type { VerifyTabState, ProgressDetails, VerifyScreenshot, ScreenshotVerificationSummary, VerificationStepType } from '../../types';
+import type {
+  VerifyTabState,
+  ProgressDetails,
+  VerifyScreenshot,
+  ScreenshotVerificationSummary,
+  VerificationStepType,
+} from '../../types';
 import { buildResultData, calculateChartStats } from '../../services/ResultDataService';
 import { TrustCalculator } from '../../services/TrustCalculator';
+import {
+  deriveAssurance,
+  summarizeAnalysisForAssurance,
+  summarizeProcess,
+  type AssuranceResult,
+} from '@typedcode/shared';
+import { t } from '../../i18n/index';
 
 export interface TabControllerDependencies {
   tabManager: VerifyTabManager;
@@ -193,12 +206,15 @@ export class TabController {
       this.deps.resultPanel.updateStepProgress('metadata', 100); // メタデータ完了
       // フォールバック時のみchainステップを表示
       this.deps.resultPanel.showFallbackStep();
-      this.deps.resultPanel.updateStepStatus('chain', 'running', 'フォールバック');
+      this.deps.resultPanel.updateStepStatus('chain', 'running', t('progress.statusFallback'));
       // サンプリングはスキップ（チェックポイントなしのため）
-      this.deps.resultPanel.updateStepStatus('sampling', 'skipped', 'チェックポイントなし');
+      this.deps.resultPanel.updateStepStatus('sampling', 'skipped', t('progress.statusNoCheckpoints'));
 
       const chainProgress = (current / total) * 100;
-      const detail = `${current.toLocaleString()} / ${total.toLocaleString()} イベント`;
+      const detail = t('progress.chainDetail', {
+        current: current.toLocaleString(),
+        total: total.toLocaleString(),
+      });
       this.deps.resultPanel.updateStepProgress('chain', chainProgress, detail);
     } else if (phase === 'segment' || phase === 'checkpoint') {
       // サンプリング検証（チェックポイントあり）
@@ -209,8 +225,16 @@ export class TabController {
 
       const samplingProgress = (current / total) * 100;
       // 検証済み / 対象イベント数 (全イベント数) の形式で表示
-      const totalEventsStr = totalEvents ? ` (全${totalEvents.toLocaleString()}イベント)` : '';
-      const detail = `${current.toLocaleString()}イベント検証済み / ${total.toLocaleString()}イベント${totalEventsStr}`;
+      const detail = totalEvents
+        ? t('progress.samplingDetailWithTotal', {
+            current: current.toLocaleString(),
+            total: total.toLocaleString(),
+            totalEvents: totalEvents.toLocaleString(),
+          })
+        : t('progress.samplingDetail', {
+            current: current.toLocaleString(),
+            total: total.toLocaleString(),
+          });
       this.deps.resultPanel.updateStepProgress('sampling', samplingProgress, detail);
     } else if (phase === 'complete') {
       // 全完了
@@ -253,15 +277,11 @@ export class TabController {
     const screenshotSummary = this.calculateScreenshotSummary(tabState.screenshots);
 
     // ソースファイル不一致情報を準備（proofファイルに関連付けられたソースファイルの不一致）
-    const contentMismatches = tabState.associatedSourceMismatch
-      ? [tabState.associatedSourceMismatch]
-      : undefined;
+    const contentMismatches = tabState.associatedSourceMismatch ? [tabState.associatedSourceMismatch] : undefined;
 
     // 画面共有オプトアウトイベントの検出
     const events = tabState.proofData?.proof?.events ?? [];
-    const hasScreenShareOptOut = events.some(
-      (e: { type: string }) => e.type === 'screenShareOptOut'
-    );
+    const hasScreenShareOptOut = events.some((e: { type: string }) => e.type === 'screenShareOptOut');
 
     // 信頼度を計算
     const trustResult = TrustCalculator.calculate(
@@ -277,8 +297,38 @@ export class TabController {
     const resultData = buildResultData(tabState);
     if (!resultData) return;
 
+    // 三層保証語彙 (ADR-0020): 実証拠のみから導出 (自己申告 mode は使わない)。
+    // スクショ改竄数を持つのはここだけなので導出はこの層で行う。
+    const vr = tabState.verificationResult;
+    const assurance: AssuranceResult | undefined = vr
+      ? deriveAssurance({
+          metadataValid: vr.metadataValid,
+          chainValid: vr.chainValid,
+          screenshotsTampered: screenshotSummary.tampered,
+          exam: vr.exam
+            ? {
+                present: true,
+                packageProvided: vr.exam.packageProvided,
+                bindingValid: vr.exam.binding?.valid,
+              }
+            : undefined,
+          rootAnchored: vr.rootAnchored ?? false,
+          signedCheckpoints:
+            vr.signedCheckpointAnchored !== undefined
+              ? {
+                  anchored: vr.signedCheckpointAnchored,
+                  valid: vr.signedCheckpointValid,
+                  sparse: vr.signedCheckpointDensity?.sparse,
+                  postHocSuspected: vr.signedCheckpointTemporal?.postHocSuspected,
+                }
+              : undefined,
+          isPureTyping: vr.isPureTyping,
+          analysis: vr.analysis ? summarizeAnalysisForAssurance(vr.analysis) : undefined,
+        })
+      : undefined;
+
     // trustResult を追加してレンダリング
-    this.deps.resultPanel.render({ ...resultData, trustResult });
+    this.deps.resultPanel.render({ ...resultData, trustResult, assurance });
 
     // スクリーンショット検証結果を表示
     if (tabState.screenshots && tabState.screenshots.length > 0) {
@@ -317,14 +367,14 @@ export class TabController {
       // SeekbarControllerにIntegratedChartを連携し、イベントで初期化
       if (seekbarController) {
         seekbarController.setIntegratedChart(integratedChart);
-        // アクティブなタブのコンテンツを取得してシークバーを初期化
+        // content の有無に関わらず常に初期化する。proof.json 単体 (ソースファイルなし =
+        // 標準エクスポートの proof.json) では content が無いが、再生は events から再構成できる。
+        // content を初期化のガードにすると JSON 単体読込で再生/マーカーが死ぬ (回帰修正)。
         const activeTabId = this.deps.tabBar.getActiveTabId();
-        if (activeTabId) {
-          const tabState = this.deps.tabManager.getTab(activeTabId);
-          if (tabState?.proofData?.content) {
-            seekbarController.initialize(events, tabState.proofData.content);
-          }
-        }
+        const tabState = activeTabId ? this.deps.tabManager.getTab(activeTabId) : null;
+        seekbarController.initialize(events, tabState?.proofData?.content ?? '');
+        // 見どころマーカー (W3-C): プロセス要約の moments をトラックに重ねる。
+        seekbarController.setKeyMoments(summarizeProcess(events).moments);
       }
     }
 

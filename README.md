@@ -2,11 +2,18 @@
 
 <img align="right" src="icon.png" alt="TypedCode Logo" height="150">
 
+[![CI](https://img.shields.io/github/actions/workflow/status/shinyaoguri/typedcode/deploy.yml?branch=develop&label=CI)](https://github.com/shinyaoguri/typedcode/actions/workflows/deploy.yml)
+[![Live](https://img.shields.io/website?url=https%3A%2F%2Ftypedcode.dev&label=typedcode.dev)](https://typedcode.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=white)
+![Node](https://img.shields.io/badge/Node-%E2%89%A524-339933?logo=node.js&logoColor=white)
+
 > **🚧 Work in Progress**
 >
 > このプロジェクトは活発に開発中です。破壊的変更・バグ・未完成の機能があり得ます。問題や提案があれば [Issue](https://github.com/shinyaoguri/typedcode/issues) でお知らせください。
 
-[TypedCode](https://typedcode.dev) は、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録する、改ざん耐性を備えた VSCode 風のコードエディタです。コピー＆ペーストを使わずに 1 文字ずつタイプされたことを証明できます。すべてブラウザ内で動作し、C / C++ / Python / JavaScript / TypeScript の実行も WebAssembly 経由で行えます。
+[TypedCode](https://typedcode.dev) は、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録する、改ざん耐性を備えた VSCode 風のコードエディタです。記録された編集列は改ざん耐性があり（署名チェックポイントがある場合は時刻アンカリングも付く）、エクスポート後の改変を検出できます。すべてブラウザ内で動作し、C / C++ / Python は WebAssembly (Wasmer)、JavaScript / TypeScript はブラウザ内で実行します。
 
 主たる用途は、AI 生成や自動コピーを防ぎたいプログラミング試験、および学習プロセスを検証したい教育現場です。
 
@@ -15,7 +22,7 @@
 ## 主な機能
 
 - **改ざん耐性のある証明**: SHA-256 ハッシュチェーン + Proof of Sequential Work (PoSW)
-- **時刻アンカリング**: サーバ署名済みチェックポイント (ECDSA-P256) による、後付け改ざんに強い時刻バインディング
+- **時刻アンカリング**: サーバ署名済みチェックポイント (ECDSA-P256) による、後付け改ざんに強い時刻バインディング。さらに**セッション開始トークン** (ADR-0017) でチェーン根の開始時刻もサーバアンカーし、オフライン捏造を封じる
 - **人間認証**: Cloudflare Turnstile と HMAC 署名済みアテステーション
 - **網羅的なイベント追跡**: コンテンツ変更・キーストローク・マウス・フォーカス・可視性・ペースト/ドロップ検出・テンプレート注入・セッション復旧などを記録 (一覧は [`events.ts`](packages/shared/src/types/events.ts))
 - **マルチタブ**: 複数ファイルを同時に編集し、タブ切替も追跡
@@ -33,6 +40,7 @@
 | [@typedcode/verify-cli](packages/verify-cli/) | CLI 検証ツール (Node.js ≥24) |
 | [@typedcode/shared](packages/shared/) | コアライブラリ: TypingProof / Fingerprint / 検証 / 型定義 |
 | [@typedcode/workers](packages/workers/) | Cloudflare Workers API (Turnstile 連携・チェックポイント署名) |
+| [@typedcode/e2e](packages/e2e/) | Playwright E2E テスト (実エディタで証明を生成し verify-cli で round-trip 検証) |
 
 ## ライブデモ
 
@@ -84,7 +92,7 @@ npm run build:verify-cli
 
 ## テスト
 
-テストは shared パッケージで定義されています。
+テストは shared / workers / editor パッケージにあります（verify / verify-cli は未整備）。CI が回すのは shared / workers です。
 
 ```bash
 npm run test -w @typedcode/shared
@@ -109,7 +117,7 @@ npm run test:coverage -w @typedcode/shared
 
 ### エクスポートファイル形式 (ZIP)
 
-`TC{timestamp}.zip` として出力され、以下を含みます:
+単一タブは `{filename}_TC{timestamp}.zip`、全タブ一括は `ALL_TC{timestamp}.zip` として出力され、以下を含みます:
 
 - `{filename}.{ext}` — ソースコード
 - `{filename}_proof.json` — 証明 JSON (下記構造)
@@ -121,14 +129,18 @@ npm run test:coverage -w @typedcode/shared
 **証明 JSON の構造:**
 ```json
 {
-  "version": "1.0.0",
+  "version": "1.2.0",
   "typingProofHash": "sha256...",
   "typingProofData": { "finalContentHash": "...", "metadata": {...} },
   "proof": { "events": [...], "finalHash": "..." },
   "fingerprint": { "deviceId": "...", "components": {...} },
-  "checkpoints": [...]
+  "checkpoints": [...],
+  "sessionStartToken": { "payload": {...}, "signature": "...", "keyId": "..." },
+  "rootAnchored": true
 }
 ```
+
+> `sessionStartToken` / `rootAnchored` は ADR-0017 (casual/class の root サーバアンカー) で加わった任意フィールド。session/start が成功したときのみ付き、無くても (旧 proof / オフライン) 検証は通る (後方互換、`MIN_SUPPORTED_VERSION` 1.0.0 据え置き)。
 
 ## 技術スタック
 

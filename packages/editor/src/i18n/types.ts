@@ -34,6 +34,55 @@ export interface TranslationKeys {
     initializing: string;
   };
 
+  // 機能バッジ (ぱっと見で機能/モードを判別)
+  feature: {
+    casual: string;
+    class: string;
+    assignment: string;
+    exam: string;
+    author: string;
+  };
+
+  // ルートのモード選択 (ランディング、ADR-0015)
+  landing: {
+    title: string;
+    subtitle: string;
+    termsNotice: string; // 「利用を開始すると規約に同意したものとみなします」
+    termsLink: string;
+    start: string;
+    casualDesc: string;
+    classDesc: string;
+    assignmentDesc: string;
+    examDesc: string;
+    resumeSession: string; // 進行中セッションのバッジ「続きから」
+    switchMode: string; // エディタ内モード切替の見出し/ツールチップ
+    // 比較表の行ラベル
+    feat: {
+      purpose: string;
+      problem: string;
+      screenshot: string;
+      seal: string;
+      assurance: string;
+    };
+    // 比較表のテキスト値 (モード別)
+    val: {
+      purposeCasual: string;
+      purposeClass: string;
+      purposeAssignment: string;
+      purposeExam: string;
+      problemClass: string;
+      problemExam: string;
+      screenshotCasual: string;
+      screenshotClass: string;
+      screenshotAssignment: string;
+      screenshotExam: string;
+      assuranceCasual: string;
+      assuranceClass: string;
+      assuranceAssignment: string;
+      assuranceExam: string;
+    };
+  };
+
   // Settings menu
   settings: {
     title: string;
@@ -63,6 +112,7 @@ export interface TranslationKeys {
     newTab: string;
     closeTab: string;
     copyCode: string;
+    loadProblem: string;
   };
 
   // Browser preview panel
@@ -325,6 +375,22 @@ export interface TranslationKeys {
   };
 
   // Export
+  // 提出前セルフレビュー (ADR-0022)
+  selfReview: {
+    title: string;
+    lead: string;
+    duration: string;
+    edits: string;
+    runs: string;
+    pauses: string;
+    noteLabel: string;
+    notePlaceholder: string;
+    noteHint: string;
+    cancel: string;
+    proceed: string;
+    recorded: string;
+  };
+
   export: {
     preAuthRunning: string;
     preAuthFailed: string;
@@ -388,6 +454,16 @@ export interface TranslationKeys {
     mouseOperation: string;
     rangeSelection: string;
     characterInput: string;
+    codeExecStart: string;
+    codeExecResult: string;
+    outcomeSuccess: string;
+    outcomeFailure: string;
+    outcomeError: string;
+    outcomeAborted: string;
+    codeExecFile: string;
+    codeExecExit: string;
+    codeExecElapsed: string;
+    reflectionNote: string;
   };
 
   // Event descriptions (for tracking)
@@ -404,6 +480,7 @@ export interface TranslationKeys {
     networkOnline: string;
     networkOffline: string;
     initialNetworkState: string;
+    environmentProbe: string;
     online: string;
     offline: string;
     mousePosition: string;
@@ -419,6 +496,7 @@ export interface TranslationKeys {
     screenShareResumed: string;
     screenShareOptOut: string;
     sessionResumed: string;
+    examOpened: string;
   };
 
   // Operation types (input detection)
@@ -526,5 +604,131 @@ export interface TranslationKeys {
     startFresh: string;
     resuming: string;
     clearing: string;
+  };
+
+  // Exam mode (ADR-0006 / ADR-0008)
+  exam: {
+    title: string;
+    problemPlaceholder: string;
+    fullscreenWarning: string;
+    enterFullscreen: string;
+    fsEntered: string;
+    fsExited: string;
+    fsDenied: string;
+    fsUnavailable: string;
+    submitNote: string;
+    downloadButton: string;
+    toggleProblem: string;
+    gate: {
+      title: string;
+      description: string;
+      packageLabel: string;
+      dropHint: string;
+      codeLabel: string;
+      startButton: string;
+      unlocking: string;
+      resetHint: string;
+      errorNoFile: string;
+      errorNoCode: string;
+      errorInvalidFile: string;
+      errorUntrusted: string;
+      errorWrongCode: string;
+      errorUnlockFailed: string;
+    };
+  };
+
+  // 授業モード (/class, ADR-0014)
+  class: {
+    loader: {
+      title: string;
+      description: string;
+      packageLabel: string;
+      dropHint: string;
+      loadButton: string;
+      skipButton: string;
+      loading: string;
+      errorInvalidFile: string;
+    };
+  };
+
+  // 試験問題オーサリング (/author, #80)
+  author: {
+    title: string;
+    subtitle: string;
+    copy: string;
+    reloadForLocale: string;
+    settings: { heading: string };
+    statusbar: { noExamId: string; problems: string };
+    preview: { edit: string; preview: string };
+    run: { label: string; running: string; terminal: string; compilerLoading: string };
+    key: {
+      heading: string;
+      tabExisting: string;
+      tabGenerate: string;
+      keyIdLabel: string;
+      jwkLabel: string;
+      jwkHint: string;
+      generateIntro: string;
+      generateButton: string;
+      generateFailed: string;
+      settings: string;
+      privateWarning: string;
+      registryEntryLabel: string;
+      registryHint: string;
+      downloadPrivate: string;
+    };
+    problem: {
+      heading: string;
+      examId: string;
+      problemId: string;
+      languages: string;
+      body: string;
+      bodyPlaceholder: string;
+      bundleHint: string;
+      addProblem: string;
+      removeProblem: string;
+      problemLabel: string;
+      starterToggle: string;
+      starterFilename: string;
+      starterLanguage: string;
+      starterContent: string;
+      starterPane: string;
+      renameHint: string;
+    };
+    token: {
+      heading: string;
+      label: string;
+      regenerate: string;
+      hint: string;
+      embedPubkey: string;
+    };
+    build: {
+      button: string;
+      working: string;
+      errorNoKey: string;
+      errorGeneric: string;
+    };
+    result: {
+      title: string;
+      redownload: string;
+      downloadMemo: string;
+      proctorCodeLabel: string;
+      proctorWarning: string;
+      keyId: string;
+      packageHash: string;
+    };
+    memo: {
+      title: string;
+      generatedAt: string;
+      problemFile: string;
+      note1: string;
+      note2: string;
+      note3: string;
+    };
+    classExport: {
+      button: string;
+      hint: string;
+      errorNoProblems: string;
+    };
   };
 }

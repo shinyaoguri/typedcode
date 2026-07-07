@@ -1,6 +1,8 @@
 /**
  * TabBar - VSCode-like tab management with drag & drop
  */
+import { t } from '../i18n/index.js';
+
 export type TabStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error';
 
 export interface Tab {
@@ -155,9 +157,13 @@ export class TabBar {
    * タブの順序を変更
    */
   reorderTab(fromIndex: number, toIndex: number): boolean {
-    if (fromIndex < 0 || fromIndex >= this.tabOrder.length ||
-        toIndex < 0 || toIndex >= this.tabOrder.length ||
-        fromIndex === toIndex) {
+    if (
+      fromIndex < 0 ||
+      fromIndex >= this.tabOrder.length ||
+      toIndex < 0 ||
+      toIndex >= this.tabOrder.length ||
+      fromIndex === toIndex
+    ) {
       return false;
     }
 
@@ -204,7 +210,7 @@ export class TabBar {
     const closeBtn = document.createElement('button');
     closeBtn.className = 'tab-close';
     closeBtn.innerHTML = '<i class="fas fa-times"></i>';
-    closeBtn.title = '閉じる';
+    closeBtn.title = t('common.close');
 
     tabEl.appendChild(icon);
     tabEl.appendChild(title);
@@ -372,9 +378,7 @@ export class TabBar {
    * ドロップ位置のインデックスを計算
    */
   private calculateDropIndex(clientX: number): number {
-    const tabElements = Array.from(
-      this.tabbar.querySelectorAll('.tab')
-    ) as HTMLElement[];
+    const tabElements = Array.from(this.tabbar.querySelectorAll('.tab')) as HTMLElement[];
 
     let dropIndex = this.tabOrder.length - 1;
 
@@ -414,9 +418,7 @@ export class TabBar {
     const placeholder = this.dragState.placeholder;
     if (!placeholder) return;
 
-    const tabElements = Array.from(
-      this.tabbar.querySelectorAll('.tab:not(.dragging)')
-    ) as HTMLElement[];
+    const tabElements = Array.from(this.tabbar.querySelectorAll('.tab:not(.dragging)')) as HTMLElement[];
 
     // プレースホルダを一旦削除
     placeholder.remove();

@@ -6,10 +6,11 @@
  */
 
 import type { ProofFile, VerifyScreenshot } from '../types.js';
-import { ScreenshotService } from './ScreenshotService.js';
+import type { ScreenshotService } from './ScreenshotService.js';
 import { JsonFileProcessor } from './JsonFileProcessor.js';
 import { ZipFileProcessor } from './ZipFileProcessor.js';
 import { getFileType, isProofFilename, getLanguageFromExtension } from './fileUtils.js';
+import { t } from '../i18n/index.js';
 
 // 再エクスポート（利用側の互換性のため）
 export { JsonFileProcessor } from './JsonFileProcessor.js';
@@ -125,10 +126,7 @@ export class FileProcessor {
   /**
    * FileSystemFileHandle からファイルを処理
    */
-  async processFromHandle(
-    handle: FileSystemFileHandle,
-    relativePath: string
-  ): Promise<FileProcessResult> {
+  async processFromHandle(handle: FileSystemFileHandle, relativePath: string): Promise<FileProcessResult> {
     const file = await handle.getFile();
     const result = await this.process(file, true);
 
@@ -146,10 +144,7 @@ export class FileProcessor {
   /**
    * プレーンテキストファイルを処理
    */
-  async processPlaintext(
-    file: File,
-    relativePath?: string
-  ): Promise<FileProcessResult> {
+  async processPlaintext(file: File, relativePath?: string): Promise<FileProcessResult> {
     this.callbacks.onReadStart?.(file.name);
 
     try {
@@ -179,7 +174,7 @@ export class FileProcessor {
         success: false,
         mode: 'single',
         files: [],
-        error: `ファイル読み込みに失敗しました: ${errorMessage}`,
+        error: t('errors.fileLoadFailed', { message: errorMessage }),
       };
     }
   }

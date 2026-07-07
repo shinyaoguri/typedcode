@@ -18,7 +18,8 @@ packages/
 ├── editor/     # Monaco ベースのエディタ
 ├── verify/     # 証明検証用 Web アプリ
 ├── verify-cli/ # CLI 検証ツール (Node.js ≥24)
-└── workers/    # Cloudflare Workers (Turnstile + 署名チェックポイント)
+├── workers/    # Cloudflare Workers (Turnstile + 署名チェックポイント)
+└── e2e/        # Playwright E2E (編集→export→verify-cli round-trip、CI deploy ゲート)
 ```
 
 サブシステムを触る場合は **必ず該当パッケージの `CLAUDE.md`** を読むこと。各パッケージの責務 / 境界 / 不変条件 / 罠が記述されています。
@@ -30,6 +31,7 @@ packages/
 | verify | [packages/verify/CLAUDE.md](packages/verify/CLAUDE.md) | 証明検証 UI、Worker ベースの検証 |
 | verify-cli | [packages/verify-cli/CLAUDE.md](packages/verify-cli/CLAUDE.md) | CLI 検証ツール |
 | workers | [packages/workers/CLAUDE.md](packages/workers/CLAUDE.md) | Turnstile + 署名チェックポイントの API |
+| e2e | [packages/e2e/CLAUDE.md](packages/e2e/CLAUDE.md) | ブラウザ E2E (実エディタ → 証明 export → verify-cli 検証) |
 
 ## ビルド・開発コマンド
 
@@ -51,9 +53,18 @@ npm run build:editor
 npm run build:verify
 npm run build:verify-cli
 
-# テスト (shared のみテストあり)
-npm run test -w @typedcode/shared
+# Lint / Format (Biome, #157。CI の check job も同じコマンド)
+npm run lint        # biome ci . (チェックのみ)
+npm run lint:fix    # biome check --write . (安全な自動修正 + format)
+
+# ユニットテスト (test:run を持つ全パッケージ。CI の test job も同じコマンド)
+npm run test:run --workspaces --if-present
+npm run test:run -w @typedcode/shared      # 個別実行
 npm run test:coverage -w @typedcode/shared
+
+# E2E (Playwright。workers + editor の dev サーバを自動起動して round-trip 検証)
+npm run test -w @typedcode/e2e
+# 注: CI は「ユニット (test job) + e2e (e2e job)」を全 deploy のゲートにしている
 ```
 
 ## ドキュメント階層
@@ -63,6 +74,7 @@ npm run test:coverage -w @typedcode/shared
 - **[docs/system-spec.md](docs/system-spec.md)**: クロスカット仕様 (定数、アルゴリズム、用語集)
 - **[docs/adr/](docs/adr/)**: 設計判断の蓄積 (Architecture Decision Records)
 - **`packages/*/README.md`**: ユーザー視点のドキュメント (API、使い方)
+- **[CONTRIBUTING.md](CONTRIBUTING.md)**: ブランチ運用 (軽量 Git Flow) の手順。根拠は [ADR-0026](docs/adr/0026-lightweight-git-flow-branching.md)
 
 仕様は `docs/system-spec.md`、判断の根拠は `docs/adr/`、コードの触り方は `CLAUDE.md` が真実の在処です。
 

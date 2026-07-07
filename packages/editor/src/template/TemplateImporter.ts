@@ -4,10 +4,7 @@
  */
 
 import type { TabManager } from '../ui/tabs/TabManager.js';
-import type {
-  ParsedTemplate,
-  TemplateInjectionEventData,
-} from '@typedcode/shared';
+import type { ParsedTemplate, TemplateInjectionEventData } from '@typedcode/shared';
 import { TemplateParser, TemplateValidationError } from './TemplateParser.js';
 
 /** インポート結果 */
@@ -36,7 +33,7 @@ export class TemplateImporter {
     const data = encoder.encode(content);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     return Array.from(new Uint8Array(hashBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
+      .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
   }
 
@@ -95,11 +92,7 @@ export class TemplateImporter {
     const firstFile = template.files[0]!;
     onProgress?.(1, template.files.length, firstFile.filename);
 
-    const firstTab = await tabManager.createTab(
-      firstFile.filename,
-      firstFile.language,
-      firstFile.content
-    );
+    const firstTab = await tabManager.createTab(firstFile.filename, firstFile.language, firstFile.content);
 
     if (!firstTab) {
       result.errors.push('最初のファイルの作成に失敗しました（認証エラー）');
@@ -156,9 +149,7 @@ export class TemplateImporter {
           result.errors.push(`${file.filename}の作成に失敗しました`);
         }
       } catch (error) {
-        result.errors.push(
-          `${file.filename}の作成中にエラー: ${error instanceof Error ? error.message : '不明'}`
-        );
+        result.errors.push(`${file.filename}の作成中にエラー: ${error instanceof Error ? error.message : '不明'}`);
       }
     }
 

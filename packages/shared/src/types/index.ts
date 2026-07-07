@@ -20,6 +20,12 @@ export type {
   WindowSizeData,
   NetworkStatusData,
   SessionResumedData,
+  CodeExecutionEventData,
+  ReflectionNoteData,
+  EditorAssistDeclaration,
+  EnvironmentProbeData,
+  FullscreenChangeData,
+  ExamOpenedEventData,
   KeystrokeDynamicsData,
   DetectedEventType,
   DetectedEventData,
@@ -75,7 +81,28 @@ export type {
   SignedCheckpointEnvelope,
   SignedCheckpointVerificationDetail,
   SignedCheckpointsVerificationResult,
+  SessionStartTokenPayload,
+  SessionStartTokenAlgorithm,
+  SessionStartToken,
+  SessionStartTokenVerificationResult,
 } from './proof.js';
+
+// 試験モード関連 (ADR-0006, ADR-0012)
+export type {
+  ExamKdfParams,
+  ExamKdf,
+  ExamCipher,
+  ExamPackageManifest,
+  ExamPackageSigningCore,
+  ExamSessionContext,
+  ExamProofBlock,
+  ExamBundleSchema,
+  ExamBundleProblem,
+  ExamBundle,
+  DecodedExamPlaintext,
+  ClassPackageSchema,
+  ClassPackage,
+} from './exam.js';
 
 // テンプレート関連
 export type {

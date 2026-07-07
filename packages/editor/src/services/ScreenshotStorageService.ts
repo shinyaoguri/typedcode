@@ -79,12 +79,9 @@ export class ScreenshotStorageService {
   /**
    * 特定のイベントシーケンス以降のスクリーンショットを取得
    */
-  async getByEventSequenceRange(
-    startSequence: number,
-    endSequence?: number
-  ): Promise<StoredScreenshot[]> {
+  async getByEventSequenceRange(startSequence: number, endSequence?: number): Promise<StoredScreenshot[]> {
     const all = await this.getAll();
-    return all.filter(s => {
+    return all.filter((s) => {
       if (s.eventSequence < startSequence) return false;
       if (endSequence !== undefined && s.eventSequence > endSequence) return false;
       return true;

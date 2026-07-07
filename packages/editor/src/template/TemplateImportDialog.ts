@@ -71,7 +71,7 @@ export class TemplateImportDialog {
 
       // ファイルリストを生成
       const fileList = template.files
-        .map(f => `<li style="margin: 4px 0; font-family: monospace;">${escapeHtml(f.filename)} (${f.language})</li>`)
+        .map((f) => `<li style="margin: 4px 0; font-family: monospace;">${escapeHtml(f.filename)} (${f.language})</li>`)
         .join('');
 
       modal.innerHTML = `
@@ -88,14 +88,18 @@ export class TemplateImportDialog {
             ${fileList}
           </ul>
         </div>
-        ${hasExistingTabs ? `
+        ${
+          hasExistingTabs
+            ? `
           <div style="background: var(--vscode-inputValidation-warningBackground, #352a05); border: 1px solid var(--vscode-inputValidation-warningBorder, #9d8c00); padding: 10px; border-radius: 4px; margin-bottom: 16px;">
             <p style="margin: 0; color: var(--vscode-inputValidation-warningForeground, #cca700);">
               <i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i>
               ${t('template.warningExistingTabs')}
             </p>
           </div>
-        ` : ''}
+        `
+            : ''
+        }
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
           <button id="template-cancel-btn" style="
             padding: 8px 16px;

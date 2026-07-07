@@ -66,7 +66,9 @@
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 14px;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
   text-align: left;
   font-family: inherit;
 }

@@ -10,8 +10,12 @@
   flex-shrink: 0;
   overflow: hidden;
   position: relative;
-  transition: width 0.2s ease, min-width 0.2s ease, border-right 0.2s ease,
-    background-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    width 0.2s ease,
+    min-width 0.2s ease,
+    border-right 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .sidebar.collapsed {
@@ -44,11 +48,15 @@
   letter-spacing: 0.5px;
   color: var(--text-secondary);
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-actions {
   display: flex;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .sidebar-action-btn {
@@ -59,7 +67,9 @@
   height: 22px;
   border-radius: 4px;
   color: var(--text-secondary);
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
   cursor: pointer;
 }
 
@@ -164,7 +174,9 @@
   cursor: pointer;
   padding: 0;
   border-radius: 2px;
-  transition: color 0.1s ease, background-color 0.1s ease;
+  transition:
+    color 0.1s ease,
+    background-color 0.1s ease;
 }
 
 .folder-item:hover .folder-remove {
@@ -204,7 +216,7 @@
 }
 
 .file-item.active::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   top: 0;
@@ -297,7 +309,9 @@
   cursor: pointer;
   padding: 0;
   border-radius: 2px;
-  transition: color 0.1s ease, background-color 0.1s ease;
+  transition:
+    color 0.1s ease,
+    background-color 0.1s ease;
 }
 
 .file-item:hover .file-item-remove {
@@ -336,7 +350,7 @@
 }
 
 .sidebar.drag-over::after {
-  content: 'ファイルをドロップ';
+  content: "ファイルをドロップ";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -426,7 +440,9 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
   border: none;
 }
 

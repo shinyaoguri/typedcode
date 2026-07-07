@@ -7,16 +7,21 @@ import {
   CHECKPOINT_PUBLIC_KEYS,
   TypingProof,
   findCheckpointPublicKey,
+  runAnalysis,
   verifyCheckpoints,
   verifyContentReplay,
   verifyFinalChainHash,
   verifyInitialHashRoot,
   verifyProofMetadata,
   verifyProofSignedCheckpoints,
+  verifyExamBinding,
 } from '@typedcode/shared';
 import type {
+  AnalysisReport,
   CheckpointData,
   ExportedProof,
+  ExamPackageManifest,
+  ExamProofBlock,
   FingerprintComponents,
   ProofData,
   SignedCheckpointsVerificationResult,
@@ -37,6 +42,8 @@ interface VerifyRequest {
   type: 'verify';
   id: string;
   mode?: VerificationMode;
+  /** 試験モード (ADR-0006): 問題パッケージ。あれば exam 束縛を完全検証する。 */
+  manifest?: ExamPackageManifest;
   proofData: {
     version?: string;
     typingProofHash?: string;
@@ -52,6 +59,8 @@ interface VerifyRequest {
     };
     checkpoints?: CheckpointData[];
     language?: string;
+    /** 試験モード (ADR-0006) の proof のみ持つ。root 式の分岐と exam 束縛検証に使う。 */
+    exam?: ExamProofBlock;
   };
 }
 
@@ -128,9 +137,7 @@ function sendError(id: string, error: string): void {
  * PoSW統計を計算
  */
 function calculatePoSWStats(events: StoredEvent[]): VerificationResultData['poswStats'] {
-  const eventsWithPoSW = events.filter(
-    (event) => 'posw' in event && event.posw && typeof event.posw === 'object'
-  );
+  const eventsWithPoSW = events.filter((event) => 'posw' in event && event.posw && typeof event.posw === 'object');
 
   if (eventsWithPoSW.length === 0) {
     return undefined;
@@ -184,6 +191,7 @@ async function verify(request: VerifyRequest): Promise<void> {
     // 1. メタデータ整合性の検証
     let metadataValid = false;
     let rootValid = false;
+    let rootAnchored = false;
     let isPureTyping = false;
     let metadataMessage: string | undefined;
 
@@ -204,11 +212,9 @@ async function verify(request: VerifyRequest): Promise<void> {
       // 明示的に narrowed 型として渡す。
       const narrowedProof = proofData as unknown as ExportedProof;
       const rootVerification = await verifyInitialHashRoot(narrowedProof);
-      const eventMetadataVerification = verifyProofMetadata(
-        proofData.typingProofData,
-        proofData.proof?.events ?? []
-      );
+      const eventMetadataVerification = verifyProofMetadata(proofData.typingProofData, proofData.proof?.events ?? []);
       rootValid = rootVerification.valid;
+      rootAnchored = rootVerification.rootAnchored; // ADR-0017: serverNonce 付きトークンで root がアンカーされたか
       metadataValid = hashVerification.valid && rootValid && eventMetadataVerification.valid;
       metadataMessage = !hashVerification.valid
         ? hashVerification.reason
@@ -218,7 +224,9 @@ async function verify(request: VerifyRequest): Promise<void> {
       isPureTyping = eventMetadataVerification.isPureTyping;
     } else {
       // メタデータがない場合はサポート対象外（v3.0.0以降が必要）
-      sendError(id, 'サポートされていないフォーマット: メタデータがありません（v3.0.0以降が必要）');
+      // Worker 内ではユーザーのロケール設定 (localStorage) を参照できないため、
+      // 翻訳キーをそのまま送り、メインスレッド側 (VerificationController) で t() 解決する
+      sendError(id, 'errors.unsupportedFormat');
       return;
     }
 
@@ -226,7 +234,7 @@ async function verify(request: VerifyRequest): Promise<void> {
 
     // 2. ハッシュ鎖の検証
     if (!proofData.proof?.events) {
-      sendError(id, 'No events found in proof data');
+      sendError(id, 'errors.noEvents');
       return;
     }
 
@@ -247,10 +255,7 @@ async function verify(request: VerifyRequest): Promise<void> {
     const finalHashVerification = chainVerification.valid
       ? verifyFinalChainHash(proofData as unknown as ExportedProof, chainVerification.computedHash)
       : { valid: false, reason: chainVerification.message };
-    const contentVerification = verifyContentReplay(
-      proofData.proof.events,
-      proofData.content ?? ''
-    );
+    const contentVerification = verifyContentReplay(proofData.proof.events, proofData.content ?? '');
     const checkpointVerification = await verifyCheckpoints(proofData.proof.events, proofData.checkpoints);
 
     // 3. Signed checkpoint 検証 (モード非依存)
@@ -267,12 +272,12 @@ async function verify(request: VerifyRequest): Promise<void> {
         details: [],
         coverage: { signedCount: 0, lastSignedEventIndex: null, coverageRatio: 0 },
         temporal: null,
+        density: null,
         reason: `Signed checkpoint verification threw: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
 
-    const signedCheckpointBlocks =
-      signedCheckpointResult.anchored && !signedCheckpointResult.valid;
+    const signedCheckpointBlocks = signedCheckpointResult.anchored && !signedCheckpointResult.valid;
 
     const chainValid =
       chainVerification.valid &&
@@ -299,15 +304,66 @@ async function verify(request: VerifyRequest): Promise<void> {
     const poswStats = calculatePoSWStats(proofData.proof.events);
 
     // 5. 「時刻アンカー」カードの根拠表示用の詳細情報を組み立てる
-    const signedCheckpointReport = buildSignedCheckpointReport(
-      proofData.checkpoints ?? [],
-      signedCheckpointResult
-    );
+    const signedCheckpointReport = buildSignedCheckpointReport(proofData.checkpoints ?? [], signedCheckpointResult);
+
+    // 5.5 試験モード (ADR-0006): exam ブロックがあれば束縛検証結果を組み立てる。
+    // root 束縛は rootValid (verifyInitialHashRoot の exam 分岐) で既に検証済み・package 不要。
+    // manifest が渡されたときのみ署名→packageHash→root→内容ハッシュ→time-box まで完全検証する。
+    let examResult: VerificationResultData['exam'];
+    if (proofData.exam) {
+      let examBinding: NonNullable<VerificationResultData['exam']>['binding'];
+      if (request.manifest) {
+        try {
+          examBinding = await verifyExamBinding(proofData as unknown as ExportedProof, request.manifest);
+        } catch (err) {
+          examBinding = {
+            valid: false,
+            packageSignatureValid: false,
+            packageHashMatches: false,
+            rootMatches: false,
+            problemContentHashMatches: false,
+            timeBox: null,
+            reason: `Exam binding verification threw: ${err instanceof Error ? err.message : String(err)}`,
+          };
+        }
+      }
+      examResult = {
+        present: true,
+        rootValid,
+        packageProvided: !!request.manifest,
+        binding: examBinding,
+      };
+    }
+
+    // 5.7 分析層 (ADR-0009): 検証と直交する post-hoc 分析。advisory であって判定ではない
+    // (valid には一切反映しない)。分析の失敗は検証結果を落とさない。
+    let analysis: AnalysisReport | undefined;
+    try {
+      analysis = await runAnalysis({
+        proof: proofData as unknown as ExportedProof,
+        verification: {
+          valid: metadataValid && chainValid,
+          metadataValid,
+          rootValid,
+          rootAnchored,
+          chainValid,
+          finalHashValid: finalHashVerification.valid,
+          contentValid: contentVerification.valid,
+          checkpointValid: checkpointVerification.valid,
+          isPureTyping,
+          poswSkipped: skipPosw,
+          signedCheckpoints: signedCheckpointResult,
+        },
+      });
+    } catch {
+      analysis = undefined;
+    }
 
     // 6. 結果を送信
     sendResult(id, {
       metadataValid,
       rootValid,
+      rootAnchored,
       chainValid,
       finalHashValid: finalHashVerification.valid,
       contentValid: contentVerification.valid,
@@ -323,8 +379,11 @@ async function verify(request: VerifyRequest): Promise<void> {
       signedCheckpointAnchored: signedCheckpointResult.anchored,
       signedCheckpointCoverage: signedCheckpointResult.coverage,
       signedCheckpointTemporal: signedCheckpointResult.temporal,
+      signedCheckpointDensity: signedCheckpointResult.density,
       signedCheckpointReason: signedCheckpointResult.reason,
       signedCheckpointReport,
+      analysis,
+      exam: examResult,
     });
   } catch (error) {
     sendError(id, error instanceof Error ? error.message : String(error));
@@ -353,7 +412,11 @@ function buildSignedCheckpointReport(
   const firstEnvelope = signed[0]?.signature;
   const lastEnvelope = signed[signed.length - 1]?.signature;
 
-  const toAnchor = (env: { payload: { checkpointIndex: number; eventIndex: number; serverTimestamp: string; clientTimestamp: string } } | undefined): AnchorPoint | undefined =>
+  const toAnchor = (
+    env:
+      | { payload: { checkpointIndex: number; eventIndex: number; serverTimestamp: string; clientTimestamp: string } }
+      | undefined
+  ): AnchorPoint | undefined =>
     env
       ? {
           checkpointIndex: env.payload.checkpointIndex,

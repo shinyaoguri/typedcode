@@ -58,11 +58,7 @@ export class MouseTracker extends ElementTracker<MouseEvent, MouseEventCallback>
     };
 
     // Skip if position hasn't changed
-    if (
-      this.lastPosition &&
-      this.lastPosition.x === mouseData.x &&
-      this.lastPosition.y === mouseData.y
-    ) {
+    if (this.lastPosition && this.lastPosition.x === mouseData.x && this.lastPosition.y === mouseData.y) {
       return;
     }
 

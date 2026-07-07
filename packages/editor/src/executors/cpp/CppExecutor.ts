@@ -6,11 +6,7 @@
  */
 
 import { CExecutor } from '../c/CExecutor.js';
-import type {
-  ExecutorConfig,
-  ExecutionCallbacks,
-  ExecutionResult,
-} from '../interfaces/ILanguageExecutor.js';
+import type { ExecutorConfig, ExecutionCallbacks, ExecutionResult } from '../interfaces/ILanguageExecutor.js';
 
 const DEFAULT_CPP_CODE = `#include <iostream>
 
@@ -29,10 +25,7 @@ export class CppExecutor extends CExecutor {
     defaultCode: DEFAULT_CPP_CODE,
   };
 
-  override async run(
-    code: string,
-    callbacks: ExecutionCallbacks
-  ): Promise<ExecutionResult> {
+  override async run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult> {
     return this.runWithOptions(code, callbacks, {
       sourceFile: 'main.cpp',
       compileArgs: ['-xc++', '-std=c++17'],

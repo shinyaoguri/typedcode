@@ -57,9 +57,7 @@ export abstract class BaseExecutor implements ILanguageExecutor {
    * Initialize the executor
    * Subclasses should override _doInitialize() for language-specific initialization
    */
-  async initialize(
-    onProgress?: (progress: InitializationProgress) => void
-  ): Promise<void> {
+  async initialize(onProgress?: (progress: InitializationProgress) => void): Promise<void> {
     if (this._initialized) return;
 
     if (this._initializing) {
@@ -84,18 +82,13 @@ export abstract class BaseExecutor implements ILanguageExecutor {
    * Language-specific initialization logic
    * Subclasses must implement this method
    */
-  protected abstract _doInitialize(
-    onProgress?: (progress: InitializationProgress) => void
-  ): Promise<void>;
+  protected abstract _doInitialize(onProgress?: (progress: InitializationProgress) => void): Promise<void>;
 
   /**
    * Run the provided code
    * Subclasses must implement this method
    */
-  abstract run(
-    code: string,
-    callbacks: ExecutionCallbacks
-  ): Promise<ExecutionResult>;
+  abstract run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult>;
 
   /**
    * Request abort of current execution
@@ -154,11 +147,7 @@ export abstract class BaseExecutor implements ILanguageExecutor {
    * @returns The resolved value of the promise
    * @throws Error if the promise times out
    */
-  protected executeWithTimeout<T>(
-    promise: Promise<T>,
-    timeoutMs: number,
-    timeoutMessage?: string
-  ): Promise<T> {
+  protected executeWithTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage?: string): Promise<T> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error(timeoutMessage ?? `Execution timed out after ${timeoutMs}ms`));

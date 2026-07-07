@@ -92,7 +92,10 @@ export abstract class BaseTracker<TEvent, TCallback = (event: TEvent) => void | 
 /**
  * 特定のHTML要素にアタッチするトラッカーの基底クラス
  */
-export abstract class ElementTracker<TEvent, TCallback = (event: TEvent) => void | Promise<void>> extends BaseTracker<TEvent, TCallback> {
+export abstract class ElementTracker<TEvent, TCallback = (event: TEvent) => void | Promise<void>> extends BaseTracker<
+  TEvent,
+  TCallback
+> {
   protected element: HTMLElement | null = null;
 
   /**

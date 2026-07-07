@@ -92,6 +92,10 @@ export class KeystrokeTracker extends ElementTracker<KeystrokeEvent, KeystrokeEv
       },
     };
 
+    // ADR-0018: 合成打鍵 (拡張/ページスクリプトの JS dispatch) は isTrusted=false。
+    // 信頼打鍵では省略し、通常タイピングの event data を従来とバイト一致に保つ (hash 不変)。
+    if (!e.isTrusted) keystrokeData.isTrusted = false;
+
     const modifierStr = this.getModifierString(e);
     this.emit({
       type: 'keyDown',
@@ -114,10 +118,7 @@ export class KeystrokeTracker extends ElementTracker<KeystrokeEvent, KeystrokeEv
     let dwellTime: number | undefined;
     if (keyDownTime !== undefined) {
       const rawDwellTime = currentTime - keyDownTime;
-      if (
-        rawDwellTime >= this.thresholds.minDwellTime &&
-        rawDwellTime <= this.thresholds.maxDwellTime
-      ) {
+      if (rawDwellTime >= this.thresholds.minDwellTime && rawDwellTime <= this.thresholds.maxDwellTime) {
         dwellTime = rawDwellTime;
       }
     }
@@ -139,6 +140,9 @@ export class KeystrokeTracker extends ElementTracker<KeystrokeEvent, KeystrokeEv
         meta: e.metaKey,
       },
     };
+
+    // ADR-0018: 合成打鍵は isTrusted=false (信頼打鍵では省略 = hash 不変)。
+    if (!e.isTrusted) keystrokeData.isTrusted = false;
 
     const dwellStr = dwellTime !== undefined ? ` (${t('events.dwellTime', { time: dwellTime.toFixed(0) })})` : '';
     this.emit({

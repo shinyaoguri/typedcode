@@ -37,7 +37,9 @@
   height: 28px;
   border-radius: 50%;
   color: var(--text-secondary);
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
 }
 
 .seek-btn:hover {
@@ -127,7 +129,7 @@
 /* Seek time display */
 .seek-time {
   font-size: 12px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: "Consolas", "Monaco", monospace;
   color: var(--text-secondary);
   min-width: 40px;
   text-align: center;
@@ -139,4 +141,61 @@
   color: var(--text-tertiary);
   min-width: 50px;
   text-align: center;
+}
+
+/* W3-C: 再生速度ボタンと見どころマーカー */
+
+.seek-btn-speed {
+  min-width: 36px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.seek-markers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.seek-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--bg-primary, #1e1e1e);
+  background: #4fc1ff;
+  padding: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.seek-marker:hover {
+  transform: translate(-50%, -50%) scale(1.4);
+}
+
+.seek-marker-first-run {
+  background: #22c55e;
+}
+.seek-marker-longest-pause {
+  background: #9da5b4;
+}
+.seek-marker-largest-deletion {
+  background: #f97316;
+}
+.seek-marker-largest-insertion {
+  background: #a78bfa;
+}
+.seek-marker-focus-return-burst {
+  background: #fbbf24;
+}
+.seek-marker-external-input {
+  background: #ef4444;
+}
+.seek-marker-first-failed-run {
+  background: #dc2626;
+}
+.seek-marker-first-success-after-failure {
+  background: #16a34a;
 }

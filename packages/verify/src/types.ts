@@ -1,4 +1,15 @@
-import type { ExportedProof, StoredEvent, InputType, DisplayInfo, ScreenshotCaptureType, HumanAttestation, SignedCheckpointsVerificationResult } from '@typedcode/shared';
+import type {
+  ExportedProof,
+  StoredEvent,
+  InputType,
+  DisplayInfo,
+  ScreenshotCaptureType,
+  HumanAttestation,
+  SignedCheckpointsVerificationResult,
+  ExamPackageManifest,
+  ExamBindingVerificationResult,
+  AnalysisReport,
+} from '@typedcode/shared';
 
 // Re-export HumanAttestation from shared for backward compatibility
 export type { HumanAttestation } from '@typedcode/shared';
@@ -59,6 +70,8 @@ export type PoswMode = 'skipped' | 'sampled' | 'full';
 export interface VerificationResultData {
   metadataValid: boolean;
   rootValid?: boolean;
+  /** root がサーバアンカーされているか (ADR-0017)。`sessionStartToken` で root がアンカーされていれば true。 */
+  rootAnchored?: boolean;
   chainValid: boolean;
   finalHashValid?: boolean;
   contentValid?: boolean;
@@ -100,8 +113,12 @@ export interface VerificationResultData {
   signedCheckpointValid?: boolean;
   signedCheckpointCoverage?: SignedCheckpointsVerificationResult['coverage'];
   signedCheckpointTemporal?: SignedCheckpointsVerificationResult['temporal'];
+  /** anchoring 密度メトリクス (ADR-0016)。疎なら sparse=true で warning 表示の根拠になる。 */
+  signedCheckpointDensity?: SignedCheckpointsVerificationResult['density'];
   signedCheckpointReason?: string;
   signedCheckpointAnchored?: boolean;
+  /** 分析層 (ADR-0009) の advisory レポート。判定ではない (valid とは独立軸)。 */
+  analysis?: AnalysisReport;
   /**
    * 「時刻アンカー」カードの展開ビュー用の追加情報。
    * - 検証に用いた公開鍵の registry エントリ
@@ -110,6 +127,18 @@ export interface VerificationResultData {
    * - 元データに含まれる checkpoint 総数 / セッション初確認時刻
    */
   signedCheckpointReport?: SignedCheckpointReport;
+  /**
+   * 試験モード (ADR-0006) の束縛検証結果。proof に exam ブロックがあるときのみ。
+   * - rootValid: proof 自己完結の exam root 束縛 (rootValid と同値・package 不要)
+   * - packageProvided: `.tcexam` が渡されたか
+   * - binding: package 提供時のみ。署名→packageHash→root→内容ハッシュ→time-box
+   */
+  exam?: {
+    present: boolean;
+    rootValid: boolean;
+    packageProvided: boolean;
+    binding?: ExamBindingVerificationResult;
+  };
 }
 
 /** UI が「根拠」を示すために worker が組み立てる詳細情報。 */
@@ -163,11 +192,11 @@ export interface AnchorEnvelopeIssue {
 
 /** 詳細な進捗情報 */
 export interface ProgressDetails {
-  phase: string;           // 現在のフェーズ（metadata, chain, complete）
-  current: number;         // 現在の進捗（例: 検証済みイベント数）
-  total: number;           // 全体数（例: 総イベント数）
-  totalEvents?: number;    // 総イベント数
-  totalSegments?: number;  // チェックポイント区間数
+  phase: string; // 現在のフェーズ（metadata, chain, complete）
+  current: number; // 現在の進捗（例: 検証済みイベント数）
+  total: number; // 全体数（例: 総イベント数）
+  totalEvents?: number; // 総イベント数
+  totalSegments?: number; // チェックポイント区間数
   sampledSegments?: number; // サンプリング対象区間数
   currentSegment?: number; // 現在検証中の区間
   eventsVerified?: number; // 検証済みイベント数
@@ -179,9 +208,9 @@ export interface VerifyTabState {
   filename: string;
   language: string;
   status: VerificationStatus;
-  progress: number;  // 0-100
-  progressPhase?: string;  // 現在のフェーズ（metadata, chain, etc.）
-  progressDetails?: ProgressDetails;  // 詳細な進捗情報
+  progress: number; // 0-100
+  progressPhase?: string; // 現在のフェーズ（metadata, chain, etc.）
+  progressDetails?: ProgressDetails; // 詳細な進捗情報
   proofData: ProofFile | null;
   verificationResult: VerificationResultData | null;
   // 人間証明書検証結果（メインスレッドで実行）
@@ -214,6 +243,8 @@ export interface VerifyTabState {
   // proofファイルに関連付けられたソースファイルの不一致情報
   /** 関連するソースファイルの不一致情報（proofファイル専用） */
   associatedSourceMismatch?: ContentMismatchInfo;
+  /** 試験モード (ADR-0006): grader が読み込んだ問題パッケージ (.tcexam)。完全束縛検証に使う。 */
+  examManifest?: ExamPackageManifest;
 }
 
 /** キューアイテム */
@@ -230,6 +261,8 @@ export interface WorkerRequestMessage {
   proofData: ProofFile;
   /** 検証モード。省略時はサーバ側のデフォルト ('full') を使う */
   mode?: VerificationMode;
+  /** 試験モード (ADR-0006): 問題パッケージ (.tcexam)。あれば exam 束縛を完全検証する。 */
+  manifest?: ExamPackageManifest;
 }
 
 /** Worker メッセージ: Worker→メインスレッド */
@@ -254,14 +287,14 @@ export interface WorkerResponseMessage {
 
 /** チェーン検証エラー詳細 */
 export interface ChainErrorDetails {
-  errorAt: number;              // エラーが発生したイベントインデックス
+  errorAt: number; // エラーが発生したイベントインデックス
   errorType: 'sequence' | 'timestamp' | 'previousHash' | 'posw' | 'hash' | 'segmentEnd' | 'unknown';
-  message: string;              // エラーメッセージ
-  expectedHash?: string;        // 期待されたハッシュ値
-  computedHash?: string;        // 計算されたハッシュ値
-  previousTimestamp?: number;   // 前のタイムスタンプ（timestamp errorの場合）
-  currentTimestamp?: number;    // 現在のタイムスタンプ（timestamp errorの場合）
-  totalEvents: number;          // 全イベント数
+  message: string; // エラーメッセージ
+  expectedHash?: string; // 期待されたハッシュ値
+  computedHash?: string; // 計算されたハッシュ値
+  previousTimestamp?: number; // 前のタイムスタンプ（timestamp errorの場合）
+  currentTimestamp?: number; // 現在のタイムスタンプ（timestamp errorの場合）
+  totalEvents: number; // 全イベント数
 }
 
 /** サンプリング区間情報（UI表示用） */
@@ -288,8 +321,8 @@ export interface VerificationResult {
   internalPasteCount?: number;
   verificationMethod?: string;
   errorMessage?: string;
-  chainErrorDetails?: ChainErrorDetails;  // チェーン検証エラーの詳細
-  sampledVerification?: SampledVerificationInfo;  // サンプリング検証の詳細
+  chainErrorDetails?: ChainErrorDetails; // チェーン検証エラーの詳細
+  sampledVerification?: SampledVerificationInfo; // サンプリング検証の詳細
 }
 
 /** PoSW統計（UIコンポーネント用・表示形式） */
@@ -452,11 +485,11 @@ export interface VerifyScreenshot {
   captureType: ScreenshotCaptureType;
   eventSequence: number;
   timestamp: number;
-  imageUrl: string | null;  // Object URL（遅延読み込み）
-  imageBlob: Blob | null;   // 画像データ
-  verified: boolean;        // ハッシュ検証結果
-  missing?: boolean;        // 画像ファイルが欠損しているか
-  tampered?: boolean;       // ハッシュ不一致（ファイルは存在するが改竄の可能性）
+  imageUrl: string | null; // Object URL（遅延読み込み）
+  imageBlob: Blob | null; // 画像データ
+  verified: boolean; // ハッシュ検証結果
+  missing?: boolean; // 画像ファイルが欠損しているか
+  tampered?: boolean; // ハッシュ不一致（ファイルは存在するが改竄の可能性）
   displayInfo: DisplayInfo;
   fileSizeBytes: number;
 }
@@ -509,7 +542,16 @@ export interface IntegratedChartCache {
 export type TrustLevel = 'verified' | 'partial' | 'failed';
 
 /** 信頼度に影響する問題のコンポーネント */
-export type TrustIssueComponent = 'metadata' | 'chain' | 'posw' | 'attestation' | 'screenshots' | 'source';
+export type TrustIssueComponent =
+  | 'metadata'
+  | 'chain'
+  | 'posw'
+  | 'attestation'
+  | 'screenshots'
+  | 'source'
+  | 'anchoring'
+  | 'exam'
+  | 'typing';
 
 /** 信頼度に影響する問題 */
 export interface TrustIssue {

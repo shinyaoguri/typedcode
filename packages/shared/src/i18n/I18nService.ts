@@ -111,10 +111,7 @@ export class I18nService<T extends TranslationRecord = TranslationRecord> {
    * Format message with interpolation
    * Replaces ${key} with corresponding value from params
    */
-  formatMessage(
-    template: string,
-    params: Record<string, string | number>
-  ): string {
+  formatMessage(template: string, params: Record<string, string | number>): string {
     return template.replace(/\$\{(\w+)\}/g, (_, key) => {
       return String(params[key] ?? `\${${key}}`);
     });
@@ -150,8 +147,7 @@ export class I18nService<T extends TranslationRecord = TranslationRecord> {
 /**
  * I18n instance interface for type safety
  */
-export type I18nInstance<T extends TranslationRecord = TranslationRecord> =
-  I18nService<T>;
+export type I18nInstance<T extends TranslationRecord = TranslationRecord> = I18nService<T>;
 
 /**
  * Create a new I18nService instance with the provided translations

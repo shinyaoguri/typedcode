@@ -35,10 +35,7 @@ export class FolderSyncManager {
   /**
    * ディレクトリの監視を開始
    */
-  async startWatching(
-    handle: FileSystemDirectoryHandle,
-    intervalMs?: number
-  ): Promise<void> {
+  async startWatching(handle: FileSystemDirectoryHandle, intervalMs?: number): Promise<void> {
     this.rootHandle = handle;
     this.syncIntervalMs = intervalMs ?? this.syncIntervalMs;
 
@@ -81,20 +78,14 @@ export class FolderSyncManager {
   /**
    * スナップショット用にディレクトリを走査
    */
-  private async traverseForSnapshot(
-    handle: FileSystemDirectoryHandle,
-    currentPath: string
-  ): Promise<void> {
+  private async traverseForSnapshot(handle: FileSystemDirectoryHandle, currentPath: string): Promise<void> {
     try {
       for await (const entry of handle.values()) {
         const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
 
         if (entry.kind === 'directory') {
           this.folderPaths.add(entryPath);
-          await this.traverseForSnapshot(
-            entry as FileSystemDirectoryHandle,
-            entryPath
-          );
+          await this.traverseForSnapshot(entry as FileSystemDirectoryHandle, entryPath);
         } else {
           const fileHandle = entry as FileSystemFileHandle;
           try {
@@ -124,12 +115,7 @@ export class FolderSyncManager {
       const currentFiles = new Map<string, FileSnapshot>();
       const currentFolders = new Set<string>();
 
-      await this.traverseForComparison(
-        this.rootHandle,
-        '',
-        currentFiles,
-        currentFolders
-      );
+      await this.traverseForComparison(this.rootHandle, '', currentFiles, currentFolders);
 
       // 削除されたファイルを検出
       for (const [path] of this.fileSnapshots) {
@@ -201,12 +187,7 @@ export class FolderSyncManager {
 
         if (entry.kind === 'directory') {
           folders.add(entryPath);
-          await this.traverseForComparison(
-            entry as FileSystemDirectoryHandle,
-            entryPath,
-            files,
-            folders
-          );
+          await this.traverseForComparison(entry as FileSystemDirectoryHandle, entryPath, files, folders);
         } else {
           const fileHandle = entry as FileSystemFileHandle;
           try {

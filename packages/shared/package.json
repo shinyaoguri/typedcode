@@ -15,11 +15,12 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@noble/hashes": "^2.2.0",
     "jszip": "^3.10.1"
   },
   "devDependencies": {
-    "vitest": "^4.1.8",
+    "@vitest/coverage-v8": "^4.1.9",
     "happy-dom": "^20.8.9",
-    "@vitest/coverage-v8": "^4.1.5"
+    "vitest": "^4.1.9"
   }
 }

@@ -16,6 +16,7 @@ const VALID_EVENT_TYPES: ReadonlySet<string> = new Set([
   'selectionChange',
   'externalInput',
   'editorInitialized',
+  'reflectionNote',
   'mousePositionChange',
   'visibilityChange',
   'focusChange',
@@ -85,7 +86,7 @@ const ALLOWED_INPUT_TYPES: readonly InputType[] = [
   'insertCompositionText',
   'deleteCompositionText',
   'insertFromComposition',
-  'insertFromInternalPaste'
+  'insertFromInternalPaste',
 ] as const;
 
 // 禁止される入力タイプ
@@ -94,7 +95,7 @@ const PROHIBITED_INPUT_TYPES: readonly InputType[] = [
   'insertFromDrop',
   'insertFromYank',
   'insertReplacementText',
-  'insertFromPasteAsQuotation'
+  'insertFromPasteAsQuotation',
 ] as const;
 
 /**

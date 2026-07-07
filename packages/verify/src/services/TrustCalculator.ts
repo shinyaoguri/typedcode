@@ -1,6 +1,10 @@
 /**
  * TrustCalculator - 検証結果から信頼度を計算するサービス
+ *
+ * 注意: メインスレッド専用 (TabController から呼ばれる)。
+ * t() を使うため Web Worker 内では使用しないこと。
  */
+import { t } from '../i18n/index';
 import type {
   TrustLevel,
   TrustIssue,
@@ -45,7 +49,7 @@ export class TrustCalculator {
       issues.push({
         component: 'metadata',
         severity: 'error',
-        message: 'メタデータ検証失敗',
+        message: t('trust.issueMetadataInvalid'),
       });
     }
 
@@ -54,7 +58,7 @@ export class TrustCalculator {
       issues.push({
         component: 'chain',
         severity: 'error',
-        message: verificationResult.message || 'ハッシュチェーン検証失敗',
+        message: verificationResult.message || t('trust.issueChainInvalid'),
       });
     }
 
@@ -63,14 +67,14 @@ export class TrustCalculator {
       issues.push({
         component: 'screenshots',
         severity: 'error',
-        message: `${screenshots.tampered}枚に改竄の可能性`,
+        message: t('trust.issueScreenshotsTampered', { count: screenshots.tampered }),
       });
     }
     if (screenshots.missing > 0) {
       issues.push({
         component: 'screenshots',
         severity: 'warning',
-        message: `${screenshots.missing}枚が欠損`,
+        message: t('trust.issueScreenshotsMissing', { count: screenshots.missing }),
       });
     }
 
@@ -83,19 +87,19 @@ export class TrustCalculator {
         issues.push({
           component: 'attestation',
           severity: 'warning',
-          message: '人間証明の検証に失敗',
+          message: t('trust.issueAttestationBoth'),
         });
       } else if (createFailed) {
         issues.push({
           component: 'attestation',
           severity: 'warning',
-          message: '作成時の人間証明が無効',
+          message: t('trust.issueAttestationCreate'),
         });
       } else if (exportFailed) {
         issues.push({
           component: 'attestation',
           severity: 'warning',
-          message: 'エクスポート時の人間証明が無効',
+          message: t('trust.issueAttestationExport'),
         });
       }
     }
@@ -106,7 +110,11 @@ export class TrustCalculator {
         issues.push({
           component: 'source',
           severity: 'warning',
-          message: `${mismatch.filename}: ソースファイルと証明内容が異なります (+${mismatch.additions}/-${mismatch.deletions}行)`,
+          message: t('trust.issueSourceMismatch', {
+            filename: mismatch.filename,
+            additions: mismatch.additions,
+            deletions: mismatch.deletions,
+          }),
         });
       }
     }
@@ -116,8 +124,84 @@ export class TrustCalculator {
       issues.push({
         component: 'screenshots',
         severity: 'warning',
-        message: '画面共有なしモードで記録されました',
+        message: t('trust.screenShareOptOut'),
       });
+    }
+
+    // 7. 時刻アンカー（署名チェックポイント）— サーバ署名による唯一の偽造不能要素。
+    //    無ければ proof は完全オフライン捏造が可能なので警告として明示する。
+    if (verificationResult) {
+      if (verificationResult.signedCheckpointAnchored && verificationResult.signedCheckpointValid === false) {
+        issues.push({
+          component: 'anchoring',
+          severity: 'error',
+          message: t('trust.issueAnchoringInvalid'),
+        });
+      } else if (!verificationResult.signedCheckpointAnchored) {
+        issues.push({
+          component: 'anchoring',
+          severity: 'warning',
+          message: t('trust.issueAnchoringMissing'),
+        });
+      } else {
+        // anchored かつ valid。補助的な疑い指標（post-hoc / 密度）は併存しうるので個別に積む。
+        if (verificationResult.signedCheckpointTemporal?.postHocSuspected) {
+          issues.push({
+            component: 'anchoring',
+            severity: 'warning',
+            message: t('trust.issueAnchoringPostHoc'),
+          });
+        }
+        // ADR-0016: 署名 cp が主張イベント数/時間に対して疎（末尾 1 個で長い鎖をアンカー等）。
+        if (verificationResult.signedCheckpointDensity?.sparse) {
+          issues.push({
+            component: 'anchoring',
+            severity: 'warning',
+            message: t('trust.issueAnchoringSparse'),
+          });
+        }
+      }
+    }
+
+    // 7.5 root のサーバアンカー（ADR-0017）。serverNonce 付きトークンで root がアンカーされていない
+    //     (= 完全オフライン捏造の余地) なら警告。exam は独自の T0 束縛を持つため対象外。
+    if (
+      verificationResult &&
+      verificationResult.metadataValid &&
+      !verificationResult.rootAnchored &&
+      !verificationResult.exam?.present
+    ) {
+      issues.push({
+        component: 'anchoring',
+        severity: 'warning',
+        message: t('trust.issueRootNotAnchored'),
+      });
+    }
+
+    // 8. ピュアタイピング（ペースト/バルク挿入の有無）
+    if (verificationResult && !verificationResult.isPureTyping) {
+      issues.push({
+        component: 'typing',
+        severity: 'warning',
+        message: t('trust.issueNotPureTyping'),
+      });
+    }
+
+    // 9. 試験束縛（ADR-0006）。package 提供下で失敗なら error、未提供なら真正性未確認の警告。
+    if (verificationResult?.exam?.present) {
+      if (verificationResult.exam.packageProvided && verificationResult.exam.binding?.valid === false) {
+        issues.push({
+          component: 'exam',
+          severity: 'error',
+          message: t('trust.issueExamBindingFailed'),
+        });
+      } else if (!verificationResult.exam.packageProvided) {
+        issues.push({
+          component: 'exam',
+          severity: 'warning',
+          message: t('trust.issueExamUnverified'),
+        });
+      }
     }
 
     // レベル判定
@@ -145,14 +229,14 @@ export class TrustCalculator {
   private static generateSummary(level: TrustLevel, issues: TrustIssue[]): string {
     switch (level) {
       case 'verified':
-        return '検証成功';
+        return t('trust.summaryVerified');
       case 'partial': {
         const warningCount = issues.filter((i) => i.severity === 'warning').length;
-        return `警告あり（${warningCount}件）`;
+        return t('trust.summaryPartial', { count: warningCount });
       }
       case 'failed': {
         const errorCount = issues.filter((i) => i.severity === 'error').length;
-        return `検証失敗（${errorCount}件のエラー）`;
+        return t('trust.summaryFailed', { count: errorCount });
       }
     }
   }
@@ -160,10 +244,7 @@ export class TrustCalculator {
   /**
    * コンポーネント別に問題を取得
    */
-  static getIssuesByComponent(
-    issues: TrustIssue[],
-    component: TrustIssueComponent
-  ): TrustIssue[] {
+  static getIssuesByComponent(issues: TrustIssue[], component: TrustIssueComponent): TrustIssue[] {
     return issues.filter((i) => i.component === component);
   }
 

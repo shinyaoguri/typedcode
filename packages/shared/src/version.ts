@@ -3,8 +3,35 @@
  * プロジェクト全体のバージョンを一元管理
  */
 
-/** Proof フォーマットバージョン */
-export const PROOF_FORMAT_VERSION = '1.0.0';
+/**
+ * Proof フォーマットバージョン
+ *
+ * 1.1.0: 試験モード (ADR-0006) の root 束縛を追加。casual proof の構造は不変 (加算的) だが、
+ * exam proof は root 式が異なる (`proof.exam` の有無で検証器が分岐)。旧検証器は exam proof の
+ * root 不一致で fail-closed = 正しい挙動。`MIN_SUPPORTED_VERSION` は 1.0.0 据え置き。
+ *
+ * 1.2.0: セッション開始 ECDSA トークン (ADR-0017) を追加。casual/class の root を
+ * `SHA256(fp ‖ localNonce ‖ serverNonce)` でサーバアンカーし、proof に `sessionStartToken` と
+ * `rootAnchored` を加算する。トークン非同梱 (旧 proof / オフライン劣化) は `rootAnchored:false` で
+ * 受理 = 後方互換。`MIN_SUPPORTED_VERSION` は 1.0.0 据え置き。exam root 式は不変。
+ */
+export const PROOF_FORMAT_VERSION = '1.2.0';
+
+/** 試験問題パッケージ (`*.tcexam`) フォーマットバージョン (ADR-0006) */
+export const EXAM_PACKAGE_FORMAT_VERSION = 1 as const;
+
+/** proof の `exam` ブロックのバージョン (ADR-0006) */
+export const EXAM_PROOF_VERSION = 1 as const;
+
+/** チェーン根束縛の方式バージョン (ADR-0006)。root = SHA256(fp ‖ nonce ‖ packageHash ‖ startToken) */
+export const EXAM_ROOT_BINDING = 'v1' as const;
+
+/**
+ * N問バンドル (ADR-0012 B-2) の root 束縛バージョン。
+ * root = SHA256(fp ‖ nonce ‖ packageHash ‖ startToken ‖ problemContentHash)。
+ * v1 の末尾に per-problem ハッシュを連結し、各タブを「この封印の・この問題」に束縛する。
+ */
+export const EXAM_ROOT_BINDING_V2 = 'v2' as const;
 
 /** ストレージフォーマットバージョン (localStorage用、整数) */
 export const STORAGE_FORMAT_VERSION = 1 as const;
@@ -14,6 +41,9 @@ export const POSW_ITERATIONS = 10000;
 
 /** Signed checkpoint payload フォーマットバージョン */
 export const SIGNED_CHECKPOINT_FORMAT_VERSION = 1 as const;
+
+/** セッション開始トークン (ADR-0017) の payload フォーマットバージョン */
+export const SESSION_TOKEN_FORMAT_VERSION = 1 as const;
 
 /** 最小サポートバージョン */
 export const MIN_SUPPORTED_VERSION = '1.0.0';

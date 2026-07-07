@@ -5,18 +5,14 @@
 
 import { getCExecutor } from '../executors/c/CExecutor.js';
 import type { InitializationProgress } from '../executors/interfaces/ILanguageExecutor.js';
-import {
-  SUPPORTED_LANGUAGES,
-  type LanguageId,
-} from '../config/SupportedLanguages.js';
+import { SUPPORTED_LANGUAGES, type LanguageId } from '../config/SupportedLanguages.js';
 import { t } from '../i18n/index.js';
 
 /** ランタイム状態 */
 export type RuntimeState = 'not-ready' | 'loading' | 'ready';
 
 /** 共通の注意書き */
-const EXECUTION_DISCLAIMER =
-  '※ ブラウザ上の簡易実行環境です。ローカル環境と動作が異なる場合があります。';
+const EXECUTION_DISCLAIMER = '※ ブラウザ上の簡易実行環境です。ローカル環境と動作が異なる場合があります。';
 
 /** ブラウザ内蔵で常にreadyな言語 */
 const BROWSER_NATIVE_LANGUAGES: LanguageId[] = ['javascript', 'typescript'];
@@ -113,11 +109,7 @@ export class RuntimeManager {
       case 'plaintext':
         return t('terminal.notAvailable').split('\n');
       default:
-        return [
-          t('terminal.title'),
-          t('terminal.runHint'),
-          EXECUTION_DISCLAIMER,
-        ];
+        return [t('terminal.title'), t('terminal.runHint'), EXECUTION_DISCLAIMER];
     }
   }
 

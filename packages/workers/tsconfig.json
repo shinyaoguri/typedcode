@@ -1,13 +1,6 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
     // DOM lib は型解決のためだけに含める。Workers ランタイムは DOM API を提供しないが、
     // shared パッケージ経由で transitively 型参照される DocumentVisibilityState / DataTransfer
     // 等の型定義を引き当てるためにのみ必要。実行時バンドルは tree-shaking でこれらの実装を含まない。

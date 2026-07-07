@@ -23,6 +23,51 @@ export const en: TranslationKeys = {
     initializing: 'Initializing...',
   },
 
+  feature: {
+    casual: 'Demo',
+    class: 'Class',
+    assignment: 'Assignment',
+    exam: 'Exam',
+    author: 'Author',
+  },
+
+  landing: {
+    title: 'TypedCode',
+    subtitle: 'Choose how you want to use it. Every keystroke is recorded as a tamper-evident proof.',
+    termsNotice: 'By starting, you agree to the Terms of Use.',
+    termsLink: 'Terms of Use',
+    start: 'Open',
+    casualDesc: 'Try it / personal use. No consent dialog or screen share — just type.',
+    classDesc: 'In-class work. Load a problem and work under the instructor in the room.',
+    assignmentDesc: 'Take-home assignment. Privacy-first — no screenshots.',
+    examDesc: 'Exam. Unlock a sealed problem with a proctor code; bound cryptographically.',
+    resumeSession: 'Resume',
+    switchMode: 'Switch mode',
+    feat: {
+      purpose: 'Use',
+      problem: 'Problem',
+      screenshot: 'Screenshot',
+      seal: 'Seal / binding',
+      assurance: 'Assurance',
+    },
+    val: {
+      purposeCasual: 'Try it / personal',
+      purposeClass: 'In-class work',
+      purposeAssignment: 'Take-home',
+      purposeExam: 'Exam',
+      problemClass: 'Plaintext (.tcclass)',
+      problemExam: 'Sealed (.tcexam)',
+      screenshotCasual: 'Optional (later)',
+      screenshotClass: 'On',
+      screenshotAssignment: 'Off',
+      screenshotExam: 'On',
+      assuranceCasual: 'Lowest',
+      assuranceClass: 'Medium',
+      assuranceAssignment: 'Medium',
+      assuranceExam: 'Highest',
+    },
+  },
+
   settings: {
     title: 'Settings',
     verifyProof: 'Verify Proof',
@@ -50,6 +95,7 @@ export const en: TranslationKeys = {
     newTab: 'New Tab',
     closeTab: 'Close',
     copyCode: 'Copy Code',
+    loadProblem: 'Load problem',
   },
 
   preview: {
@@ -82,8 +128,7 @@ export const en: TranslationKeys = {
 
   processingDialog: {
     title: 'Generating Hash Chain...',
-    description:
-      'Please wait while the PoSW (Proof of Sequential Work) calculation completes.',
+    description: 'Please wait while the PoSW (Proof of Sequential Work) calculation completes.',
     status: 'Processing: ${count} pending',
     statusWithProgress: 'Processing: ${count} pending (${processed}/${total} done)',
   },
@@ -113,74 +158,96 @@ export const en: TranslationKeys = {
     operationLogTitle: 'Operation Logging',
     operationLogDesc: 'The following operations are recorded in detail to generate typing proofs.',
     operationLogDetailHeading: 'Information recorded:',
-    operationLogKeystrokes: 'Key input: Press/release timing, key codes, modifier key states (Shift, Ctrl, Alt, Meta), dwell time',
-    operationLogCursor: 'Cursor operations: Cursor position movement, text selection range changes, selection direction (left/right)',
+    operationLogKeystrokes:
+      'Key input: Press/release timing, key codes, modifier key states (Shift, Ctrl, Alt, Meta), dwell time',
+    operationLogCursor:
+      'Cursor operations: Cursor position movement, text selection range changes, selection direction (left/right)',
     operationLogMouse: 'Mouse operations: Mouse cursor coordinates (sampled every 100ms)',
     operationLogContent: 'Content changes: Character insertion/deletion, change position, change content',
     operationLogClipboard: 'External input: Paste operations, drag & drop, number of characters input',
     operationLogWindow: 'Window state: Window size, focus state, tab active state, network connection state',
-    operationLogNote: 'These operations are recorded with timestamps and linked via SHA-256 hash chain. Each event includes the hash of the previous event, enabling tamper detection.',
+    operationLogNote:
+      'These operations are recorded with timestamps and linked via SHA-256 hash chain. Each event includes the hash of the previous event, enabling tamper detection.',
 
     // Hash Chain and Proof
     hashChainTitle: 'Hash Chain and Proof',
-    hashChainDesc: 'TypedCode constructs a cryptographic hash chain to prove the integrity and order of operation logs.',
+    hashChainDesc:
+      'TypedCode constructs a cryptographic hash chain to prove the integrity and order of operation logs.',
     hashChainDetailHeading: 'How proof works:',
-    hashChainSha256: 'SHA-256 Hash: Each operation event is hashed together with the previous event\'s hash, creating a chain',
+    hashChainSha256:
+      "SHA-256 Hash: Each operation event is hashed together with the previous event's hash, creating a chain",
     hashChainCheckpoint: 'Checkpoints: Checkpoints are created at regular intervals to mark proof segments',
-    hashChainPosw: 'Proof of Sequential Work (PoSW): Computational proof is generated at each checkpoint to prove passage of time. This computation runs in a Web Worker in the background',
-    hashChainFingerprint: 'Browser fingerprint: Proof files include browser environment information (language, timezone, screen resolution, etc.)',
+    hashChainPosw:
+      'Proof of Sequential Work (PoSW): Computational proof is generated at each checkpoint to prove passage of time. This computation runs in a Web Worker in the background',
+    hashChainFingerprint:
+      'Browser fingerprint: Proof files include browser environment information (language, timezone, screen resolution, etc.)',
     hashChainNote: 'This mechanism allows third parties to verify that code was typed character by character.',
 
     // Bot Detection
     botDetectionTitle: 'Bot Detection',
-    botDetectionDesc: '<a href="https://www.cloudflare.com/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a> is used to verify you are human and prevent fraudulent proof generation by automation tools or bots.',
+    botDetectionDesc:
+      '<a href="https://www.cloudflare.com/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a> is used to verify you are human and prevent fraudulent proof generation by automation tools or bots.',
     botDetectionDetailHeading: 'Verification timing:',
     botDetectionInit: 'File creation: Human verification when creating a new tab',
     botDetectionExport: 'Proof export: Final verification immediately before file output',
-    botDetectionNote: 'Turnstile verification results are validated on the server, and only successful verifications are recorded as "human verified" in proof files.',
+    botDetectionNote:
+      'Turnstile verification results are validated on the server, and only successful verifications are recorded as "human verified" in proof files.',
 
     // Data Storage
     dataStorageTitle: 'Data Storage',
-    dataStorageDesc: '<strong>All data is stored only in your browser\'s local storage (IndexedDB). No automatic transmission to servers occurs.</strong>',
+    dataStorageDesc:
+      "<strong>All data is stored only in your browser's local storage (IndexedDB). No automatic transmission to servers occurs.</strong>",
     dataStorageDetailHeading: 'Data stored:',
     dataStorageCode: 'Editor content: Source files of code you create',
     dataStorageEvents: 'Operation logs: All keystroke, cursor movement, and external input event data',
     dataStorageHash: 'Hash chain: Cryptographic hash data for proofs',
     dataStorageScreenshots: 'Screenshots: Periodically captured screen images',
     dataStorageSettings: 'Settings: Language, theme preferences, and terms acceptance state',
-    dataStorageNote: 'This data persists even when you close the browser, but can be completely deleted by clearing browser data or using the "Reset All" function. To save proof data, be sure to download files using the export function.',
+    dataStorageNote:
+      'This data persists even when you close the browser, but can be completely deleted by clearing browser data or using the "Reset All" function. To save proof data, be sure to download files using the export function.',
 
     // Screen Capture
     screenCaptureTitle: 'Screen Capture',
-    screenCaptureDesc: 'To enhance typing proof reliability, the Screen Capture API is used to periodically take screenshots.',
+    screenCaptureDesc:
+      'To enhance typing proof reliability, the Screen Capture API is used to periodically take screenshots.',
     screenCaptureDetailHeading: 'About capture:',
-    screenCapturePermission: 'Screen sharing permission: A browser screen sharing dialog will appear on first launch. Please select "Entire Screen"',
+    screenCapturePermission:
+      'Screen sharing permission: A browser screen sharing dialog will appear on first launch. Please select "Entire Screen"',
     screenCaptureInterval: 'Periodic capture: Screenshots are automatically taken every 30 seconds',
     screenCaptureFocus: 'Focus loss: Screenshots are also taken when focus leaves the editor',
     screenCaptureHash: 'Hashing: Captured images are hashed with SHA-256 and linked to proof data',
-    screenCaptureStorage: '<strong>Local storage</strong>: Image data is stored only in the browser and never sent to servers',
-    screenCaptureNote: 'If you stop screen sharing, you cannot continue working in the editor. To resume, you must grant screen sharing permission again.',
+    screenCaptureStorage:
+      '<strong>Local storage</strong>: Image data is stored only in the browser and never sent to servers',
+    screenCaptureNote:
+      'If you stop screen sharing, you cannot continue working in the editor. To resume, you must grant screen sharing permission again.',
 
     // Proof File Export
     exportTitle: 'Proof File Export',
     exportDesc: 'Created proof data can be downloaded in JSON or ZIP format.',
     exportDetailHeading: 'Export contents:',
-    exportJson: 'Proof file (.json): Complete proof data including operation logs, hash chain, PoSW data, browser fingerprint, and human verification results',
+    exportJson:
+      'Proof file (.json): Complete proof data including operation logs, hash chain, PoSW data, browser fingerprint, and human verification results',
     exportScreenshots: 'Screenshots (.jpg): Captured screen images',
     exportManifest: 'Manifest: Hash values of screenshots and correspondence with proof data',
     exportReadme: 'README file: Instructions for verifying the proof',
-    exportNote: 'Exported files can be verified with the TypedCode Verify application. You can choose between JSON output with proof data only, or ZIP output including screenshots.',
+    exportNote:
+      'Exported files can be verified with the TypedCode Verify application. You can choose between JSON output with proof data only, or ZIP output including screenshots.',
 
     // Privacy and Considerations
     privacyTitle: 'Privacy and Considerations',
     privacyDesc: 'Please review what information TypedCode collects and how proof data is handled.',
     privacyDetailHeading: 'About collected information:',
-    privacyBrowserInfo: 'Only commonly available browser information (language, timezone, screen resolution, etc.) is used. No personal information such as names or email addresses is collected',
+    privacyBrowserInfo:
+      'Only commonly available browser information (language, timezone, screen resolution, etc.) is used. No personal information such as names or email addresses is collected',
     privacyTypedContent: 'However, all code content entered in the editor is recorded',
-    privacyScreenshots: 'During screen sharing, the entire screen is saved as screenshots, so content from other applications or windows displayed on screen may also be recorded',
-    privacyLocalOnly: '<strong>All this data is stored only in your browser and is never sent to external servers</strong>',
-    privacyExportWarning: 'If you export and submit proof data to third parties, you do so at your own responsibility. Please check the recipient\'s terms and privacy policy regarding data handling',
-    privacyNote: 'Exported proof data includes your typed content and screenshots. Please review the contents before submission and ensure no confidential information is included.',
+    privacyScreenshots:
+      'During screen sharing, the entire screen is saved as screenshots, so content from other applications or windows displayed on screen may also be recorded',
+    privacyLocalOnly:
+      '<strong>All this data is stored only in your browser and is never sent to external servers</strong>',
+    privacyExportWarning:
+      "If you export and submit proof data to third parties, you do so at your own responsibility. Please check the recipient's terms and privacy policy regarding data handling",
+    privacyNote:
+      'Exported proof data includes your typed content and screenshots. Please review the contents before submission and ensure no confidential information is included.',
 
     agreeCheckbox: 'I understand and agree to the above',
     agreeButton: 'Agree and Start',
@@ -217,7 +284,8 @@ export const en: TranslationKeys = {
     errorOutOfMemory: 'Out of Memory',
     errorOutOfMemoryDesc: 'Screen sharing could not start due to insufficient browser memory.',
     errorMonitorRequired: 'Please select the entire screen',
-    errorMonitorRequiredDesc: 'TypedCode requires sharing the entire screen. Please select the entire screen, not a window or tab.',
+    errorMonitorRequiredDesc:
+      'TypedCode requires sharing the entire screen. Please select the entire screen, not a window or tab.',
     errorStorageInitFailed: 'Storage initialization failed',
     errorStorageInitFailedDesc: 'Could not prepare storage for screenshots. Please check browser storage capacity.',
     // Error solutions
@@ -267,8 +335,7 @@ export const en: TranslationKeys = {
     newTab: 'New Tab',
     closeTab: 'Close Tab',
     lastTabWarning: 'Cannot close the last tab',
-    closeConfirm:
-      'Close "${tabName}"?\nRecorded operation logs will also be deleted.',
+    closeConfirm: 'Close "${tabName}"?\nRecorded operation logs will also be deleted.',
     verifiedTooltip: 'Verified',
     failedTooltip: 'Verification Failed',
     failureTimeout: 'Timeout',
@@ -300,6 +367,22 @@ export const en: TranslationKeys = {
     executionStarted: 'Running...',
     codeExecution: 'Code execution: ${filename}',
     clearLogConfirm: 'Clear logs? (Proof data will be preserved)',
+  },
+
+  selfReview: {
+    title: 'Pre-submission review',
+    lead: 'A summary of your working process. The export contains your full edit history, and graders see this same summary.',
+    duration: 'Duration',
+    edits: 'Edits (+/-)',
+    runs: 'Runs',
+    pauses: 'Long pauses',
+    noteLabel: 'Reflection note (optional)',
+    notePlaceholder: 'What you tried, where you got stuck, what you referenced…',
+    noteHint:
+      'The note is recorded tamper-evidently like your edit history and shown to graders. You can submit without one.',
+    cancel: 'Cancel',
+    proceed: 'Continue to export',
+    recorded: 'Reflection note recorded',
   },
 
   export: {
@@ -336,8 +419,7 @@ export const en: TranslationKeys = {
       'TypeScript Runtime\nTranspiles TypeScript in real-time and executes.\nRuns in the browser JavaScript engine.',
     pythonRuntime:
       'Python Runtime (Pyodide)\nPython interpreter running on WebAssembly.\nMajor packages like NumPy are available.',
-    notAvailable:
-      'Terminal is not available for this language.\nSupported: C, C++, JavaScript, TypeScript, Python',
+    notAvailable: 'Terminal is not available for this language.\nSupported: C, C++, JavaScript, TypeScript, Python',
     supportedLanguages: 'C, C++, JavaScript, TypeScript, Python',
     runHint: 'Press Ctrl+Enter or click Run to execute code',
     cDisclaimer: '* Some standard library functions are limited in WebAssembly environment.',
@@ -369,6 +451,16 @@ export const en: TranslationKeys = {
     mouseOperation: 'Mouse Operation',
     rangeSelection: 'Range Selection',
     characterInput: 'Character Input',
+    codeExecStart: 'Run (start)',
+    codeExecResult: 'Run: ${outcome}',
+    outcomeSuccess: 'success',
+    outcomeFailure: 'failure',
+    outcomeError: 'error',
+    outcomeAborted: 'aborted',
+    codeExecFile: 'file: ${file}',
+    codeExecExit: 'exit: ${code}',
+    codeExecElapsed: 'elapsed: ${ms}ms',
+    reflectionNote: 'Reflection note',
   },
 
   events: {
@@ -384,6 +476,7 @@ export const en: TranslationKeys = {
     networkOnline: 'Network status changed: Online',
     networkOffline: 'Network status changed: Offline',
     initialNetworkState: 'Initial network state: ${state}',
+    environmentProbe: 'Environment probe (webdriver: ${webdriver})',
     online: 'Online',
     offline: 'Offline',
     mousePosition: 'Mouse position: (${x}, ${y})',
@@ -399,6 +492,7 @@ export const en: TranslationKeys = {
     screenShareResumed: 'Screen sharing resumed',
     screenShareOptOut: 'Screen sharing opt-out selected',
     sessionResumed: 'Session resumed (after reload)',
+    examOpened: 'Sealed problem opened (exam started)',
   },
 
   operations: {
@@ -436,7 +530,8 @@ export const en: TranslationKeys = {
 
   duplicateInstance: {
     title: 'TypedCode is already running',
-    description: 'TypedCode uses screen sharing and cannot run in multiple tabs or windows simultaneously. TypedCode is already running in another tab or window.',
+    description:
+      'TypedCode uses screen sharing and cannot run in multiple tabs or windows simultaneously. TypedCode is already running in another tab or window.',
     hint: 'Please return to the existing tab or close this one.',
     closeThisTab: 'Close this tab',
   },
@@ -458,13 +553,11 @@ export const en: TranslationKeys = {
 
   idleTimeout: {
     warningTitle: 'Continue working?',
-    warningMessage:
-      'The window has been out of focus for a while. Recording will be paused if there is no response.',
+    warningMessage: 'The window has been out of focus for a while. Recording will be paused if there is no response.',
     countdownLabel: 'until recording pauses',
     continueButton: 'Continue working',
     suspendedTitle: 'Recording Paused',
-    suspendedMessage:
-      'Keystroke and screenshot recording has been paused due to extended inactivity.',
+    suspendedMessage: 'Keystroke and screenshot recording has been paused due to extended inactivity.',
     suspendedHint: 'Click the button below to resume recording.',
     resumeButton: 'Resume Recording',
   },
@@ -500,5 +593,143 @@ export const en: TranslationKeys = {
     startFresh: 'New Session',
     resuming: 'Resuming session...',
     clearing: 'Clearing data...',
+  },
+
+  // Exam mode (ADR-0006 / ADR-0008)
+  exam: {
+    title: 'Exam Mode',
+    problemPlaceholder: 'Exam mode. The problem will appear in this panel (problem distribution coming later).',
+    fullscreenWarning:
+      '⚠ You are outside fullscreen. Recording continues, but this state is logged in your exam record.',
+    enterFullscreen: 'Enter fullscreen',
+    fsEntered: 'Entered fullscreen',
+    fsExited: 'Exited fullscreen',
+    fsDenied: 'Fullscreen request denied',
+    fsUnavailable: 'Fullscreen unavailable',
+    submitNote: 'When you finish: 1) download the log (ZIP) with the button below, then 2) submit it in Moodle.',
+    downloadButton: 'Download log',
+    toggleProblem: 'Toggle Problem Panel',
+    gate: {
+      title: 'Start Exam',
+      description:
+        'Load the distributed problem package (.tcexam) and enter the proctor code announced by your invigilator.',
+      packageLabel: 'Problem package (.tcexam)',
+      dropHint: 'Choose a file or drop it here',
+      codeLabel: 'Proctor code',
+      startButton: 'Start',
+      unlocking: 'Unlocking…',
+      resetHint: 'Note: append ?reset to the URL to clear all data and start over.',
+      errorNoFile: 'Please select a problem package.',
+      errorNoCode: 'Please enter the proctor code.',
+      errorInvalidFile: 'Invalid package format (please select a .tcexam file).',
+      errorUntrusted: 'This problem package could not be verified against a trusted exam authority signature.',
+      errorWrongCode: 'Wrong proctor code. Please try again.',
+      errorUnlockFailed: 'Unlock failed. Please check the package and the code.',
+    },
+  },
+
+  class: {
+    loader: {
+      title: 'Load Class Problem',
+      description:
+        'Load the distributed problem file (.tcclass). There is no seal or proctor code. You can also skip and start with a blank editor.',
+      packageLabel: 'Problem file (.tcclass)',
+      dropHint: 'Choose a file or drop it here',
+      loadButton: 'Load',
+      skipButton: 'Skip',
+      loading: 'Loading…',
+      errorInvalidFile: 'The problem file is malformed (please select a .tcclass file).',
+    },
+  },
+
+  author: {
+    title: 'Create Exam Problem',
+    subtitle:
+      'Build a signed, sealed problem package (.tcexam) and its proctor code. Keys and problems never leave this device.',
+    copy: 'Copy',
+    reloadForLocale: 'Switching language reloads the page. Unsaved edits will be lost. Continue?',
+    settings: { heading: 'Package settings' },
+    statusbar: { noExamId: '(no exam ID)', problems: 'problems' },
+    preview: { edit: 'Edit', preview: 'Preview' },
+    run: {
+      label: 'Run',
+      running: 'Running…',
+      terminal: 'Terminal',
+      compilerLoading: 'Preparing the C compiler (first run only; this may take a moment)…',
+    },
+    key: {
+      heading: 'Exam authority signing key',
+      tabExisting: 'Use an existing key',
+      tabGenerate: 'Generate a new key',
+      keyIdLabel: 'keyId',
+      jwkLabel: 'Private signing key (JWK)',
+      jwkHint:
+        'Paste the private JWK from generate-exam-authority-key as a single line. The key never leaves this device.',
+      generateIntro:
+        'Generate an ECDSA-P256 key pair in your browser. Keep the private key safe and register the public entry into the registry (via PR).',
+      generateButton: 'Generate key pair',
+      generateFailed: 'Key generation failed.',
+      settings: 'Signing key',
+      privateWarning: 'The private key is shown only once. Store it safely and never share or commit it.',
+      registryEntryLabel: 'Public key entry (append to registry)',
+      registryHint:
+        'Append this entry to packages/shared/src/examAuthorityKeys/registry.ts and open a PR to make it verifiable in production.',
+      downloadPrivate: 'Save private key',
+    },
+    problem: {
+      heading: 'Problem',
+      examId: 'Exam ID (examId)',
+      problemId: 'Problem ID (problemId)',
+      languages: 'Allowed languages (comma-separated)',
+      body: 'Problem body (Markdown)',
+      bodyPlaceholder: '# Problem 1\n\nRead from stdin…',
+      bundleHint:
+        'One exam can hold several problems; each becomes one tab for the examinee. You can optionally bundle starter code (a skeleton) per problem.',
+      addProblem: 'Add a problem',
+      removeProblem: 'Remove this problem',
+      problemLabel: 'Problem ${n}',
+      starterToggle: 'Include starter code (skeleton)',
+      starterFilename: 'Filename',
+      starterLanguage: 'Language',
+      starterContent: 'Starter code',
+      starterPane: 'Starter code (skeleton)',
+      renameHint: 'Double-click to rename the file',
+    },
+    token: {
+      heading: 'Proctor code',
+      label: 'Proctor code (reveal verbally / on the board at T0)',
+      regenerate: 'Regenerate',
+      hint: 'Examinees unlock the problem with this code. It is not stored in the plaintext package and cannot be recovered if lost.',
+      embedPubkey: 'Embed the public key in the package (long-term verifiability; trust anchor is always the registry)',
+    },
+    build: {
+      button: 'Generate and download .tcexam',
+      working: 'Generating…',
+      errorNoKey: 'Please enter the keyId and the private signing key (JWK).',
+      errorGeneric: 'Generation failed. Please check your inputs.',
+    },
+    result: {
+      title: 'Package created',
+      redownload: 'Download again',
+      downloadMemo: 'Save record',
+      proctorCodeLabel: 'Proctor code',
+      proctorWarning:
+        'Record this code now. It is not contained in the plaintext, so losing it makes the problem undecryptable.',
+      keyId: 'keyId',
+      packageHash: 'packageHash',
+    },
+    memo: {
+      title: 'TypedCode exam problem — proctor code record (for teachers; do NOT distribute to students)',
+      generatedAt: 'Generated at',
+      problemFile: 'Problem file',
+      note1: 'This proctor code is not contained in the plaintext package. If lost, the problem cannot be decrypted.',
+      note2: 'Reveal it to students verbally / on the board at T0 (start time).',
+      note3: 'This file is for teachers. Distribute only the .tcexam file to students.',
+    },
+    classExport: {
+      button: 'Generate for class (unsealed)',
+      hint: 'Outputs a plaintext .tcclass with no seal or signature, for class mode. Problems are public and need no proctor code (the exam ID is reused as the class ID).',
+      errorNoProblems: 'No problems. Enter at least one problem.',
+    },
   },
 };

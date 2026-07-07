@@ -50,7 +50,6 @@ export class EventRecorder {
     this.initialized = initialized;
   }
 
-
   /**
    * イベントを記録（fire-and-forget）
    * PoSW計算を待たずに即座に返り、バックグラウンドで処理
@@ -127,7 +126,9 @@ export class EventRecorder {
    * @returns 全タブへの記録が完了したらresolveするPromise
    */
   recordToAllTabs(event: RecordEventInput): Promise<void> {
-    console.debug(`[EventRecorder] recordToAllTabs called: ${event.type}, enabled=${this.enabled}, initialized=${this.initialized}`);
+    console.debug(
+      `[EventRecorder] recordToAllTabs called: ${event.type}, enabled=${this.enabled}, initialized=${this.initialized}`
+    );
 
     // 無効化されている場合はスキップ
     if (!this.enabled) {
@@ -164,7 +165,9 @@ export class EventRecorder {
           const logViewer = this.getLogViewer();
           const logViewerVisible = logViewer?.isVisible ?? false;
 
-          console.debug(`[EventRecorder] recordToAllTabs result: isActive=${isActive}, logViewerVisible=${logViewerVisible}, eventType=${event.type}`);
+          console.debug(
+            `[EventRecorder] recordToAllTabs result: isActive=${isActive}, logViewerVisible=${logViewerVisible}, eventType=${event.type}`
+          );
 
           if (isActive && logViewerVisible && logViewer) {
             const recordedEvent = tab.typingProof.events[result.index];

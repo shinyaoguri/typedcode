@@ -28,4 +28,7 @@ export {
   parseJsonString,
   parseZipBuffer,
   extractFirstProofFromZip,
+  extractAllProofsFromZip,
+  extractScreenshotArtifactsFromZip,
+  assertZipWithinBudget,
 } from './parser.js';

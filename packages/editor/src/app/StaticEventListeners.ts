@@ -8,6 +8,7 @@ import type { CursorPosition, RecordEventInput, DetectedEvent } from '@typedcode
 import { InputDetector } from '../tracking/InputDetector.js';
 import { isTurnstileConfigured } from '../services/TurnstileService.js';
 import { clearStorageSync, deleteScreenshotsDB } from '../utils/StorageClearHelper.js';
+import { sessionActiveKey } from '../core/storageKeys.js';
 import { t } from '../i18n/index.js';
 import { showNotification } from './AppHelpers.js';
 import { handleTemplateDrop, isTemplateFile } from './TemplateHandler.js';
@@ -149,6 +150,7 @@ export function setupStaticEventListeners(ctx: AppContext): void {
   // 新規タブ追加ボタン
   const addTabBtn = document.getElementById('add-tab-btn');
   addTabBtn?.addEventListener('click', async () => {
+    if (ctx.capabilities.tabLock) return; // タブ固定モード (試験) では新規タブ不可 (ADR-0010/0011)
     if (!ctx.tabManager) return;
 
     if (isTurnstileConfigured()) {
@@ -333,7 +335,7 @@ export function setupStaticEventListeners(ctx: AppContext): void {
     // sessionStorageはリロード時は保持され、タブを閉じると消える
     // 次回起動時にこのフラグがあればリロード、なければタブを閉じた後の再開
     try {
-      sessionStorage.setItem('typedcode-session-active', 'true');
+      sessionStorage.setItem(sessionActiveKey(), 'true');
     } catch {
       // ignore
     }

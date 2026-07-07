@@ -6,7 +6,14 @@
  * UI-specific functions for the verify package.
  */
 
-import type { PoswStatsDisplay, HumanAttestationUI, VerifyTabState, ChainErrorDetails, SampledVerificationInfo, VerificationResult } from '../types';
+import type {
+  PoswStatsDisplay,
+  HumanAttestationUI,
+  VerifyTabState,
+  ChainErrorDetails,
+  SampledVerificationInfo,
+  VerificationResult,
+} from '../types';
 import type { ResultData } from '../ui/ResultPanel';
 
 // Re-export from shared for backward compatibility
@@ -23,7 +30,7 @@ import {
   formatTypingTime,
   calculateTypingSpeed as calculateTypingSpeedShared,
   countPasteEvents as countPasteEventsShared,
-  TypingPatternAnalyzer,
+  summarizeProcess,
 } from '@typedcode/shared';
 
 /**
@@ -134,23 +141,25 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     }
   }
 
-  // Analyze typing patterns
-  const typingPatternAnalyzer = new TypingPatternAnalyzer();
-  const typingPatternAnalysis = events && events.length > 0
-    ? typingPatternAnalyzer.analyze(events)
-    : undefined;
+  // 打鍵動態の分析は typing-pattern アナライザ (shared) 経由で worker の runAnalysis に統合済み。
+  // ここで個別に TypingPatternAnalyzer を呼ぶ旧経路 (TypingPatternCard 用) は廃止した (ADR-0009)。
 
   return {
     filename: tabState.filename,
     content: proofData.content || '',
     language: tabState.language,
+    // 自己申告モードラベル (ADR-0011)。参考表示のみ — 保証導出には使わない (ADR-0020)。
+    mode: proofData.mode,
     result,
     poswStats,
     attestations: attestations.length > 0 ? attestations : undefined,
     eventCount,
     typingTime,
     typingSpeed,
-    typingPatternAnalysis,
+    // プロセス要約 (Phase 8 W3): 制作過程の中立な記述 (疑い指標ではない)。
+    processSummary: events && events.length > 0 ? summarizeProcess(events) : undefined,
+    // 分析層 (ADR-0009): worker が runAnalysis で生成した advisory レポート (判定ではない)。
+    analysis: verificationResult.analysis,
     verificationMode: verificationResult.verificationMode,
     poswMode: verificationResult.poswMode,
     signedCheckpoint:
@@ -164,8 +173,21 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
               coverageRatio: 0,
             },
             temporal: verificationResult.signedCheckpointTemporal ?? null,
+            density: verificationResult.signedCheckpointDensity ?? null,
             reason: verificationResult.signedCheckpointReason,
             report: verificationResult.signedCheckpointReport,
+          }
+        : undefined,
+    // 試験モード (ADR-0006): exam proof のときのみ束縛検証結果を渡す。
+    examBinding:
+      proofData.exam && verificationResult.exam
+        ? {
+            examId: proofData.exam.examId,
+            problemId: proofData.exam.problemId,
+            variant: proofData.exam.variant,
+            rootValid: verificationResult.exam.rootValid,
+            packageProvided: verificationResult.exam.packageProvided,
+            binding: verificationResult.exam.binding,
           }
         : undefined,
   };

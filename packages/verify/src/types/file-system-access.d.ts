@@ -32,7 +32,13 @@ interface FileSystemDirectoryHandle extends FileSystemHandle {
 }
 
 interface FileSystemWritableFileStream extends WritableStream {
-  write(data: BufferSource | Blob | string | { type: 'write' | 'seek' | 'truncate'; data?: BufferSource | Blob | string; position?: number; size?: number }): Promise<void>;
+  write(
+    data:
+      | BufferSource
+      | Blob
+      | string
+      | { type: 'write' | 'seek' | 'truncate'; data?: BufferSource | Blob | string; position?: number; size?: number }
+  ): Promise<void>;
   seek(position: number): Promise<void>;
   truncate(size: number): Promise<void>;
 }

@@ -99,28 +99,39 @@ export class ChartController {
 
     // SeekbarController を初期化
     const codePreview = document.querySelector('#code-preview code') as HTMLElement | null;
-    this.seekbarController = new SeekbarController(
-      {
-        floatingSeekbar: document.getElementById('chart-seekbar'),
-        slider: document.getElementById('seekbar-slider') as HTMLInputElement | null,
-        progressBar: document.getElementById('seekbar-progress'),
-        timeDisplay: document.getElementById('seekbar-time'),
-        eventCountDisplay: document.getElementById('seekbar-event-count'),
-        startButton: document.getElementById('seekbar-start'),
-        prevButton: document.getElementById('seekbar-prev'),
-        playButton: document.getElementById('seekbar-play'),
-        playIcon: document.getElementById('play-icon'),
-        nextButton: document.getElementById('seekbar-next'),
-        endButton: document.getElementById('seekbar-end'),
-        contentPreview: codePreview,
-      },
-    );
+    this.seekbarController = new SeekbarController({
+      floatingSeekbar: document.getElementById('chart-seekbar'),
+      slider: document.getElementById('seekbar-slider') as HTMLInputElement | null,
+      progressBar: document.getElementById('seekbar-progress'),
+      timeDisplay: document.getElementById('seekbar-time'),
+      eventCountDisplay: document.getElementById('seekbar-event-count'),
+      startButton: document.getElementById('seekbar-start'),
+      prevButton: document.getElementById('seekbar-prev'),
+      playButton: document.getElementById('seekbar-play'),
+      playIcon: document.getElementById('play-icon'),
+      nextButton: document.getElementById('seekbar-next'),
+      endButton: document.getElementById('seekbar-end'),
+      speedButton: document.getElementById('seekbar-speed'),
+      markersContainer: document.getElementById('seekbar-markers'),
+      contentPreview: codePreview,
+    });
     this.seekbarController.setupEventListeners();
 
     // IntegratedChartが既に存在する場合は連携
     if (this.integratedChart) {
       this.seekbarController.setIntegratedChart(this.integratedChart);
     }
+
+    // 分析カード (ADR-0009) の evidence リンクからのジャンプを受ける。
+    // 分析 signal は event index を指す — クリックで当該イベント適用後の状態へシークし、
+    // 採点者が「シグナルを見る → 現場を検分する」を 1 クリックにする。
+    document.addEventListener('verify:seek-to-event', (e) => {
+      const detail = (e as CustomEvent<{ eventIndex: number }>).detail;
+      if (detail && typeof detail.eventIndex === 'number' && this.seekbarController) {
+        // seekTo の index は「適用済みイベント数」(0..N)。event i の結果を見るには i+1。
+        this.seekbarController.seekTo(detail.eventIndex + 1);
+      }
+    });
 
     // ChartEventSelector を初期化
     const selectorButton = document.getElementById('chart-event-selector-btn');

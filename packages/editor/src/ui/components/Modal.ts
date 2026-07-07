@@ -83,9 +83,7 @@ export async function showModal(options: ModalOptions): Promise<void> {
       if (btn.disabled) {
         button.disabled = true;
       }
-      button.innerHTML = btn.icon
-        ? `<i class="fas ${btn.icon}"></i> ${btn.text}`
-        : btn.text;
+      button.innerHTML = btn.icon ? `<i class="fas ${btn.icon}"></i> ${btn.text}` : btn.text;
 
       button.addEventListener('click', async () => {
         const shouldClose = btn.onClick ? await btn.onClick() : true;

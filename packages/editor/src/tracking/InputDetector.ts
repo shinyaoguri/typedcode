@@ -3,12 +3,7 @@
  * ブロックはせず、検出して通知・記録する
  */
 
-import type {
-  DetectedEvent,
-  DetectedEventType,
-  DetectedEventData,
-  OnDetectedCallback,
-} from '@typedcode/shared';
+import type { DetectedEvent, DetectedEventType, DetectedEventData, OnDetectedCallback } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
 
 export class InputDetector {
@@ -28,36 +23,48 @@ export class InputDetector {
     if (!this.element) return;
 
     // paste イベントを検出
-    this.element.addEventListener('paste', (e: ClipboardEvent) => {
-      const clipboardData = e.clipboardData ?? window.clipboardData;
-      const pastedText = clipboardData?.getData('text') ?? '';
+    this.element.addEventListener(
+      'paste',
+      (e: ClipboardEvent) => {
+        const clipboardData = e.clipboardData ?? window.clipboardData;
+        const pastedText = clipboardData?.getData('text') ?? '';
 
-      this.notifyDetected('paste', t('events.paste', { length: String(pastedText.length) }), {
-        text: pastedText,
-        length: pastedText.length
-      });
-    }, true);
+        this.notifyDetected('paste', t('events.paste', { length: String(pastedText.length) }), {
+          text: pastedText,
+          length: pastedText.length,
+        });
+      },
+      true
+    );
 
     // drop イベントを検出
-    this.element.addEventListener('drop', (e: DragEvent) => {
-      const droppedText = e.dataTransfer?.getData('text') ?? '';
+    this.element.addEventListener(
+      'drop',
+      (e: DragEvent) => {
+        const droppedText = e.dataTransfer?.getData('text') ?? '';
 
-      this.notifyDetected('drop', t('events.drop', { length: String(droppedText.length) }), {
-        text: droppedText,
-        length: droppedText.length
-      });
-    }, true);
+        this.notifyDetected('drop', t('events.drop', { length: String(droppedText.length) }), {
+          text: droppedText,
+          length: droppedText.length,
+        });
+      },
+      true
+    );
 
     // copy イベント（監査用に記録）
-    this.element.addEventListener('copy', () => {
-      const selection = window.getSelection();
-      const copiedText = selection?.toString() ?? '';
+    this.element.addEventListener(
+      'copy',
+      () => {
+        const selection = window.getSelection();
+        const copiedText = selection?.toString() ?? '';
 
-      this.notifyDetected('copy', t('events.copy', { length: String(copiedText.length) }), {
-        text: copiedText,
-        length: copiedText.length
-      });
-    }, true);
+        this.notifyDetected('copy', t('events.copy', { length: String(copiedText.length) }), {
+          text: copiedText,
+          length: copiedText.length,
+        });
+      },
+      true
+    );
   }
 
   /**
@@ -70,7 +77,7 @@ export class InputDetector {
       type: eventType,
       message,
       data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     this.onDetectedAction(event);

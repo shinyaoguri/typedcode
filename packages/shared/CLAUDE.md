@@ -11,8 +11,9 @@
 
 1. **ハッシュチェーン**: `h_i = SHA-256(h_{i-1} || JSON(event_i) || PoSW_i)`。JSON シリアライズはキー順序を決定的にする (`hashUtils.ts:deterministicStringify`)。**順序が崩れると既存の証明がすべて検証不能になる**
 2. **PoSW 反復数**: `POSW_ITERATIONS` ([`src/version.ts`](src/version.ts)) 固定。検証側もこの値を期待する。**変更は破壊的**で、proof format version bump が必要
-3. **InputType の許可/禁止リスト**: `InputTypeValidator.ts` の `ALLOWED_INPUT_TYPES` / `BLOCKED_INPUT_TYPES` がピュアタイピング判定の唯一の真実。新しい入力タイプを追加する際は判断を ADR に残す ([docs/adr/0005-input-type-policy.md](../../docs/adr/0005-input-type-policy.md))
-4. **`PROOF_FORMAT_VERSION`**: 既存 proof との互換性ある変更なら据え置き。互換性破壊なら bump 必須
+3. **InputType の許可/禁止リスト**: `InputTypeValidator.ts` の `ALLOWED_INPUT_TYPES` / `PROHIBITED_INPUT_TYPES` がピュアタイピング判定の唯一の真実。新しい入力タイプを追加する際は判断を ADR に残す ([docs/adr/0005-input-type-policy.md](../../docs/adr/0005-input-type-policy.md))
+4. **`PROOF_FORMAT_VERSION`**: 既存 proof との互換性ある変更なら据え置き。互換性破壊なら bump 必須。現在 **1.2.0** (1.1.0=exam root 束縛 ADR-0006、1.2.0=session anchor ADR-0017。どちらも加算的で `MIN_SUPPORTED_VERSION` は 1.0.0 据え置き)
+7. **anchored root 式の二重定義を一致させる** (ADR-0017): casual/class の anchored root は `computeAnchoredChainRoot` (verifier) と `HashChainManager.generateAnchoredInitialHash` (editor) の **2 箇所**に `SHA256(fp ‖ localNonce ‖ serverNonce)` を持つ。exam の `computeExamChainRoot`/`generateExamInitialHash` と同じ轍。式を変えるなら両方＋テストを同時に直す
 5. **`CheckpointManager`** はステートフル。`shouldCreateCheckpoint` の判定は最終 cp の eventIndex / 時刻に依存する。`setCheckpoints` で復元する際は内部状態も再構築すること (実装済み)
 6. **検証は cp の間隔を仮定しない**: `verify` 側は cp の存在を補助メタデータとしてのみ扱い、未署名 cp の sampling は信頼しない ([docs/adr/0004-verifier-checkpoint-stance.md](../../docs/adr/0004-verifier-checkpoint-stance.md))
 
@@ -27,7 +28,8 @@
 | `typingProof/ChainVerifier.ts` | full / sampling 検証 |
 | `typingProof/InputTypeValidator.ts` | 許可/禁止 InputType の判定 |
 | `typingProof/StatisticsCalculator.ts` | 統計計算 |
-| `signedCheckpoints.ts` | 署名済み cp の payload 構築・検証・冪等判定 |
+| `signedCheckpoints.ts` | 署名済み cp の payload 構築・検証・冪等判定。anchoring 密度 (ADR-0016) も |
+| `sessionStartToken.ts` | セッション開始トークン (ADR-0017) の発行・検証 (registry-only)・`computeAnchoredChainRoot`。署名鍵は checkpoint と同一系統を流用 |
 | `checkpointKeys/registry.ts` | append-only 公開鍵レジストリ (本番鍵) |
 | `checkpointKeys/localKeys.ts` | skip-worktree のローカル開発鍵置き場 |
 | `fingerprint.ts` | ブラウザフィンガープリント |
@@ -36,6 +38,10 @@
 | `attestation.ts` | 人間認証クライアント |
 | `fileProcessing/` | ZIP / JSON 解析 |
 | `types.ts` (実体は `types/`) | 全公開型 |
+| `assurance.ts` | 三層保証語彙 (ADR-0020)。`deriveAssurance` が実証拠のみから整合性/時刻アンカー/著述性(advisory) を導出。verify(web)/verify-cli が同一実装を使う (表示の食い違い防止)。**自己申告 `proof.mode` を入力に使わない・provenance を判定に昇格させない** |
+| `analysis/` | 分析層フレームワーク (ADR-0009)。`runAnalysis` + 差し替え可能な `Analyzer` 群 (automation / transcription-topology / focus-burst の第一次ヒューリスティック + pureTyping)。検証と**直交**する advisory のみ・判定しない。`automationAnalyzer` は webdriver/headless GPU に加え **合成打鍵 (`KeystrokeDynamicsData.isTrusted===false`, ADR-0018)** も数える。`typingPatternAnalyzer` は旧 `TypingPatternAnalyzer` (打鍵動態) を `keystroke-content-consistency` 次元の advisory signal に折り込む (旧 verify TypingPatternCard を廃止・判定ゲージは持ち込まない・critical でも notice 止まり・dwell<30 で黙る ★6b)。`analysis/eval.ts` は **実証評価** (W5): ラベル付きコーパス → `evaluateAnalysis` が混同行列/閾値スイープ/genuineSignalRate を純粋関数で算出。**ゲート: 実測まで heuristic を `review` に昇格しない** (収集手順は docs/analysis-eval-protocol.md、ランナーは `__tests__/analysisEvalCorpus.test.ts`)。`analysis/bundle.ts` は **Tier A バンドル** (ADR-0024): `buildAnalysisBundle` が content-free な `{processSummary, analysis, assurance}` を束ねる (events/source/fingerprint なし)。`analysis/cohort.ts` は **コホート基準** (ADR-0025): `computeCohortBaseline`/`positionInCohort` が `AnalysisBundle[]` から頑健分布 (中央値/IQR・個票非保持) と提出物の位置 (percentile/IQR距離) を算出。**advisory・外れ値≠違反・小N ガード** |
+| `exam/` | 試験モードの暗号コア (ADR-0006)。封印 `.tcexam` の build/verify(署名)/decrypt(Argon2id+AES-256-GCM)、`computeExamChainRoot`、`parseExamPackageManifest`、grader 用 `verifyExamBinding`。root 式は `proof.exam` 有無で分岐。N問バンドル codec は `examBundle.ts` (`tcexam-exam/1`)。**授業モードの平文配布 `classPackage.ts` (ADR-0014, `tcclass/1`) も同居** — 暗号を持たず `parseExamBundle` を平文で再利用する `parseClassPackage`/`encodeClassPackage` |
+| `examAuthorityKeys/` | 出題者 (問題署名) 公開鍵レジストリ (ADR-0006)。`checkpointKeys/` と**別系統・同型** (append-only、`registry.ts` 本番 + skip-worktree な `localKeys.ts`) |
 
 ## 型定義の運用
 
@@ -51,9 +57,9 @@
 - 時計や乱数は注入可能にする (`now: () => number` パターン)。`CheckpointManager` 参照
 - 新規モジュール追加時は `__tests__/<module>Trigger.test.ts` のように **対象モジュール名 + 観点** で命名
 
-### 既知の不安定テスト
+### テストの基準値
 
-- `fingerprint.test.ts` の 20 件失敗は happy-dom の `localStorage.clear` 未実装が原因。**修正禁止** (上流の問題)。新規変更が起因していないか判断する際の基準値は「147 + N passing, 20 fingerprint failing」
+- 現在は **全 green** (2026-06 時点で **280 passing / 0 failing**)。かつて happy-dom の `localStorage.clear` 未実装で `fingerprint.test.ts` が 20 件失敗していたが、上流のバージョン更新で解消済み。fingerprint テストが失敗したら、まず happy-dom のバージョンを疑う (回帰かどうかの切り分け基準)
 
 ## よくある罠
 

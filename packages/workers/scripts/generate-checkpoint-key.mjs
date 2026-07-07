@@ -20,11 +20,10 @@
 import { webcrypto } from 'node:crypto';
 
 async function main() {
-  const { publicKey, privateKey } = await webcrypto.subtle.generateKey(
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    true,
-    ['sign', 'verify']
-  );
+  const { publicKey, privateKey } = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+    'sign',
+    'verify',
+  ]);
 
   const publicJwk = await webcrypto.subtle.exportKey('jwk', publicKey);
   const privateJwk = await webcrypto.subtle.exportKey('jwk', privateKey);
@@ -45,21 +44,25 @@ async function main() {
   console.log('  then run: git update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts');
   console.log('For PRODUCTION: append to packages/shared/src/checkpointKeys/registry.ts and open a PR');
   console.log('');
-  console.log(JSON.stringify(
-    {
-      keyId,
-      algorithm: 'ECDSA-P256',
-      publicKeyJwk: publicJwk,
-      status: 'active',
-      validFrom,
-    },
-    null,
-    2
-  ));
+  console.log(
+    JSON.stringify(
+      {
+        keyId,
+        algorithm: 'ECDSA-P256',
+        publicKeyJwk: publicJwk,
+        status: 'active',
+        validFrom,
+      },
+      null,
+      2
+    )
+  );
   console.log('');
   console.log('=== Wrangler secrets (DO NOT COMMIT) ===');
   console.log('For LOCAL dev: paste into packages/workers/.dev.vars');
-  console.log('For PRODUCTION: `wrangler secret put CHECKPOINT_SIGNING_KEY_ID` and `wrangler secret put CHECKPOINT_SIGNING_KEY_JWK`');
+  console.log(
+    'For PRODUCTION: `wrangler secret put CHECKPOINT_SIGNING_KEY_ID` and `wrangler secret put CHECKPOINT_SIGNING_KEY_JWK`'
+  );
   console.log('');
   console.log('CHECKPOINT_SIGNING_KEY_ID:');
   console.log(keyId);

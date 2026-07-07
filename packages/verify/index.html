@@ -297,26 +297,118 @@
               <div class="result-left-panel" id="result-left-panel">
                 <!-- Status Card -->
                 <div class="result-status-card" id="result-status-card">
-                  <div class="result-status-main">
-                    <div class="result-status-icon" id="result-status-icon">
-                      <i class="fas fa-spinner fa-spin"></i>
-                    </div>
-                    <div class="result-status-info">
-                      <div class="result-status-title" id="result-status-title" data-i18n="result.statusVerifying">検証中...</div>
-                      <div class="result-status-filename" id="result-status-filename"></div>
+                  <div class="result-status-row">
+                    <div class="result-status-main">
+                      <div class="result-status-icon" id="result-status-icon">
+                        <i class="fas fa-spinner fa-spin"></i>
+                      </div>
+                      <div class="result-status-info">
+                        <div class="result-status-title" id="result-status-title" data-i18n="result.statusVerifying">検証中...</div>
+                        <div class="result-status-filename" id="result-status-filename"></div>
+                      </div>
                     </div>
                   </div>
-                  <div class="result-status-pattern" id="result-status-pattern" style="display: none;">
-                    <div class="pattern-mini-gauge" id="pattern-mini-gauge"></div>
-                    <div class="pattern-mini-info">
-                      <div class="pattern-mini-label" data-i18n="pattern.title">タイピングパターン</div>
-                      <div class="pattern-mini-judgment" id="pattern-mini-judgment">-</div>
+                  <!-- 三層保証語彙 (ADR-0020): 整合性 × 時刻アンカー × 著述性(advisory)。全幅で下段に置く -->
+                  <div class="assurance-strip" id="assurance-strip" style="display: none;">
+                    <!-- Rendered by ResultPanel.renderAssurance -->
+                  </div>
+                </div>
+
+                <!-- Chart Section -->
+                <div class="chart-section" id="chart-section">
+                  <div class="chart-tabs">
+                    <button class="chart-tab active" data-tab="integrated" id="tab-integrated">
+                      <i class="fas fa-chart-line"></i> <span data-i18n="charts.integrated">統合チャート</span>
+                    </button>
+                    <button class="chart-tab" data-tab="timeline" id="tab-timeline">
+                      <i class="fas fa-keyboard"></i> <span data-i18n="charts.timeline">タイムライン</span>
+                    </button>
+                    <button class="chart-tab" data-tab="mouse" id="tab-mouse">
+                      <i class="fas fa-mouse"></i> <span data-i18n="charts.mouseTrajectory">マウス軌跡</span>
+                    </button>
+                    <!-- Event Filter -->
+                    <div class="chart-event-selector-container" id="chart-event-selector-container">
+                      <button class="chart-event-selector-btn" id="chart-event-selector-btn" data-i18n-title="charts.eventFilter">
+                        <i class="fas fa-filter"></i>
+                      </button>
+                      <div class="chart-event-selector-dropdown" id="chart-event-selector-dropdown"></div>
+                    </div>
+                  </div>
+                  <div class="chart-content">
+                    <div class="chart-panel active" id="panel-integrated">
+                      <div class="integrated-chart-container">
+                        <canvas id="integrated-chart"></canvas>
+                      </div>
+                    </div>
+                    <div class="chart-panel" id="panel-timeline">
+                      <div class="integrated-timeline">
+                        <canvas id="integrated-timeline-chart"></canvas>
+                      </div>
+                    </div>
+                    <div class="chart-panel" id="panel-mouse">
+                      <div class="mouse-trajectory">
+                        <canvas id="mouse-trajectory-chart"></canvas>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="chart-stats" id="chart-stats">
+                    <span><span data-i18n="charts.keys">キー</span>: <strong id="keydown-count">0</strong></span>
+                    <span><span data-i18n="charts.dwell">Dwell</span>: <strong id="avg-dwell-time">0ms</strong></span>
+                    <span><span data-i18n="charts.flight">Flight</span>: <strong id="avg-flight-time">0ms</strong></span>
+                    <span><span data-i18n="charts.mouse">マウス</span>: <strong id="mouse-event-count">0</strong></span>
+                  </div>
+                  <!-- Integrated Seekbar -->
+                  <div class="chart-seekbar" id="chart-seekbar" style="display: none;">
+                    <div class="seekbar-controls">
+                      <button class="seek-btn" id="seekbar-start" data-i18n-title="seekbar.start">
+                        <i class="fas fa-backward-fast"></i>
+                      </button>
+                      <button class="seek-btn" id="seekbar-prev" data-i18n-title="seekbar.prev">
+                        <i class="fas fa-backward-step"></i>
+                      </button>
+                      <button class="seek-btn seek-btn-play" id="seekbar-play" data-i18n-title="seekbar.play">
+                        <i class="fas fa-play" id="play-icon"></i>
+                      </button>
+                      <button class="seek-btn" id="seekbar-next" data-i18n-title="seekbar.next">
+                        <i class="fas fa-forward-step"></i>
+                      </button>
+                      <button class="seek-btn" id="seekbar-end" data-i18n-title="seekbar.end">
+                        <i class="fas fa-forward-fast"></i>
+                      </button>
+                      <button class="seek-btn seek-btn-speed" id="seekbar-speed" data-i18n-title="seekbar.speed">=</button>
+                    </div>
+                    <div class="seekbar-track-container">
+                      <div class="seek-track">
+                        <input type="range" class="seek-slider" id="seekbar-slider" min="0" max="100" value="100" step="1">
+                        <div class="seek-progress" id="seekbar-progress"></div>
+                        <div class="seek-markers" id="seekbar-markers"></div>
+                      </div>
+                    </div>
+                    <div class="seekbar-info">
+                      <span class="seek-time" id="seekbar-time">0:00</span>
+                      <span class="seek-count" id="seekbar-event-count">0/0</span>
                     </div>
                   </div>
                 </div>
 
                 <!-- Verification Cards -->
                 <div class="result-cards" id="result-cards">
+                  <!-- Process Summary Card (Phase 8 W3) -->
+                  <div class="result-card" id="card-process-summary" style="display: none;">
+                    <div class="result-card-header">
+                      <div class="result-card-header-left">
+                        <div class="result-card-icon success" id="process-summary-icon">
+                          <i class="fas fa-route"></i>
+                        </div>
+                        <span class="result-card-title" data-i18n="process.title">プロセス要約</span>
+                      </div>
+                      <span class="result-card-badge pending" id="process-summary-badge">-</span>
+                    </div>
+                    <div class="result-card-content" id="process-summary-content">
+                      <!-- Rendered by ProcessSummaryCard.ts -->
+                    </div>
+                  </div>
+
                   <!-- Typing Card -->
                   <div class="result-card" id="card-typing">
                     <div class="result-card-header">
@@ -504,6 +596,54 @@
                     </div>
                   </div>
 
+                  <!-- Exam binding Card (ADR-0006) -->
+                  <div class="result-card" id="card-exam-binding" style="display: none;">
+                    <div class="result-card-header">
+                      <div class="result-card-header-left">
+                        <div class="result-card-icon pending" id="exam-icon">
+                          <i class="fas fa-file-shield"></i>
+                        </div>
+                        <span class="result-card-title" data-i18n="result.examBinding">試験束縛</span>
+                      </div>
+                      <span class="result-card-badge pending" id="exam-badge">-</span>
+                    </div>
+                    <div class="result-card-content" id="exam-content">
+                      <div class="result-row">
+                        <span class="result-row-label" data-i18n="result.examProblem">問題</span>
+                        <span class="result-row-value" id="exam-problem">-</span>
+                      </div>
+                      <div class="result-row">
+                        <span class="result-row-label" data-i18n="result.examRootBinding">root 束縛</span>
+                        <span class="result-row-value" id="exam-root">-</span>
+                      </div>
+                      <div class="result-row" id="exam-signature-row" style="display: none;">
+                        <span class="result-row-label" data-i18n="result.examSignature">パッケージ署名</span>
+                        <span class="result-row-value" id="exam-signature">-</span>
+                      </div>
+                      <div class="result-row" id="exam-packagehash-row" style="display: none;">
+                        <span class="result-row-label" data-i18n="result.examPackageHash">パッケージハッシュ</span>
+                        <span class="result-row-value" id="exam-packagehash">-</span>
+                      </div>
+                      <div class="result-row" id="exam-contenthash-row" style="display: none;">
+                        <span class="result-row-label" data-i18n="result.examContentHash">問題内容ハッシュ</span>
+                        <span class="result-row-value" id="exam-contenthash">-</span>
+                      </div>
+                      <div class="result-row" id="exam-timebox-row" style="display: none;">
+                        <span class="result-row-label" data-i18n="result.examTimeBox">提出期間</span>
+                        <span class="result-row-value" id="exam-timebox">-</span>
+                      </div>
+                      <div class="result-row" id="exam-reason-row" style="display: none;">
+                        <span class="result-row-value text-danger" id="exam-reason">-</span>
+                      </div>
+                      <div class="result-row" id="exam-note-row" style="display: none;">
+                        <span class="result-row-value text-muted" data-i18n="result.examPackageNote">問題パッケージ未提供 — 署名/内容の検証はスキップされています。</span>
+                      </div>
+                      <div class="result-row">
+                        <button class="exam-load-btn" id="exam-load-btn" data-i18n="result.examLoadPackage">問題パッケージ (.tcexam) を読み込む</button>
+                      </div>
+                    </div>
+                  </div>
+
                   <!-- Human Attestation Card -->
                   <div class="result-card" id="card-attestation" style="display: none;">
                     <div class="result-card-header">
@@ -527,19 +667,22 @@
                     </div>
                   </div>
 
-                  <!-- Typing Pattern Analysis Card -->
-                  <div class="result-card" id="card-typing-pattern" style="display: none;">
+                  <!-- 打鍵動態 (旧 Typing Pattern Card) は typing-pattern アナライザ経由で
+                       下の Analysis Layer Card (ADR-0009) に統合済み。 -->
+
+                  <!-- Analysis Layer Card (ADR-0009, advisory) -->
+                  <div class="result-card" id="card-analysis" style="display: none;">
                     <div class="result-card-header">
                       <div class="result-card-header-left">
-                        <div class="result-card-icon pending" id="pattern-icon">
-                          <i class="fas fa-brain"></i>
+                        <div class="result-card-icon pending" id="analysis-icon">
+                          <i class="fas fa-magnifying-glass-chart"></i>
                         </div>
-                        <span class="result-card-title" data-i18n="result.typingPattern">タイピングパターン</span>
+                        <span class="result-card-title" data-i18n="result.analysis">プロセス分析</span>
                       </div>
-                      <span class="result-card-badge pending" id="pattern-badge">-</span>
+                      <span class="result-card-badge pending" id="analysis-badge">-</span>
                     </div>
-                    <div class="result-card-content" id="pattern-content">
-                      <!-- Rendered by TypingPatternCard.ts -->
+                    <div class="result-card-content" id="analysis-content">
+                      <!-- Rendered by AnalysisReportCard.ts -->
                     </div>
                   </div>
                 </div>
@@ -560,80 +703,6 @@
                   </div>
                 </div>
 
-                <!-- Chart Section -->
-                <div class="chart-section" id="chart-section">
-                  <div class="chart-tabs">
-                    <button class="chart-tab active" data-tab="integrated" id="tab-integrated">
-                      <i class="fas fa-chart-line"></i> <span data-i18n="charts.integrated">統合チャート</span>
-                    </button>
-                    <button class="chart-tab" data-tab="timeline" id="tab-timeline">
-                      <i class="fas fa-keyboard"></i> <span data-i18n="charts.timeline">タイムライン</span>
-                    </button>
-                    <button class="chart-tab" data-tab="mouse" id="tab-mouse">
-                      <i class="fas fa-mouse"></i> <span data-i18n="charts.mouseTrajectory">マウス軌跡</span>
-                    </button>
-                    <!-- Event Filter -->
-                    <div class="chart-event-selector-container" id="chart-event-selector-container">
-                      <button class="chart-event-selector-btn" id="chart-event-selector-btn" data-i18n-title="charts.eventFilter">
-                        <i class="fas fa-filter"></i>
-                      </button>
-                      <div class="chart-event-selector-dropdown" id="chart-event-selector-dropdown"></div>
-                    </div>
-                  </div>
-                  <div class="chart-content">
-                    <div class="chart-panel active" id="panel-integrated">
-                      <div class="integrated-chart-container">
-                        <canvas id="integrated-chart"></canvas>
-                      </div>
-                    </div>
-                    <div class="chart-panel" id="panel-timeline">
-                      <div class="integrated-timeline">
-                        <canvas id="integrated-timeline-chart"></canvas>
-                      </div>
-                    </div>
-                    <div class="chart-panel" id="panel-mouse">
-                      <div class="mouse-trajectory">
-                        <canvas id="mouse-trajectory-chart"></canvas>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="chart-stats" id="chart-stats">
-                    <span><span data-i18n="charts.keys">キー</span>: <strong id="keydown-count">0</strong></span>
-                    <span><span data-i18n="charts.dwell">Dwell</span>: <strong id="avg-dwell-time">0ms</strong></span>
-                    <span><span data-i18n="charts.flight">Flight</span>: <strong id="avg-flight-time">0ms</strong></span>
-                    <span><span data-i18n="charts.mouse">マウス</span>: <strong id="mouse-event-count">0</strong></span>
-                  </div>
-                  <!-- Integrated Seekbar -->
-                  <div class="chart-seekbar" id="chart-seekbar" style="display: none;">
-                    <div class="seekbar-controls">
-                      <button class="seek-btn" id="seekbar-start" data-i18n-title="seekbar.start">
-                        <i class="fas fa-backward-fast"></i>
-                      </button>
-                      <button class="seek-btn" id="seekbar-prev" data-i18n-title="seekbar.prev">
-                        <i class="fas fa-backward-step"></i>
-                      </button>
-                      <button class="seek-btn seek-btn-play" id="seekbar-play" data-i18n-title="seekbar.play">
-                        <i class="fas fa-play" id="play-icon"></i>
-                      </button>
-                      <button class="seek-btn" id="seekbar-next" data-i18n-title="seekbar.next">
-                        <i class="fas fa-forward-step"></i>
-                      </button>
-                      <button class="seek-btn" id="seekbar-end" data-i18n-title="seekbar.end">
-                        <i class="fas fa-forward-fast"></i>
-                      </button>
-                    </div>
-                    <div class="seekbar-track-container">
-                      <div class="seek-track">
-                        <input type="range" class="seek-slider" id="seekbar-slider" min="0" max="100" value="100" step="1">
-                        <div class="seek-progress" id="seekbar-progress"></div>
-                      </div>
-                    </div>
-                    <div class="seekbar-info">
-                      <span class="seek-time" id="seekbar-time">0:00</span>
-                      <span class="seek-count" id="seekbar-event-count">0/0</span>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               <!-- Result Panel Resize Handle -->

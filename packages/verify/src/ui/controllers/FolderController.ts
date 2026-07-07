@@ -131,8 +131,7 @@ export class FolderController {
     folderMap.set('', rootFolderId);
 
     // フォルダをソートしてから追加（親フォルダが先に処理されるように）
-    const sortedFolders = result.folders
-      .sort((a, b) => a.path.localeCompare(b.path));
+    const sortedFolders = result.folders.sort((a, b) => a.path.localeCompare(b.path));
 
     for (const folder of sortedFolders) {
       const folderId = this.deps.generateId();
@@ -239,14 +238,17 @@ export class FolderController {
         try {
           const file = await fileEntry.handle.getFile();
           const blob = new Blob([await file.arrayBuffer()], { type: file.type });
-          this.deps.addImageFile({
-            filename,
-            type: 'image',
-            language: 'image',
-            rawData: '',
-            relativePath: fileEntry.path,
-            imageBlob: blob,
-          }, folderId);
+          this.deps.addImageFile(
+            {
+              filename,
+              type: 'image',
+              language: 'image',
+              rawData: '',
+              relativePath: fileEntry.path,
+              imageBlob: blob,
+            },
+            folderId
+          );
         } catch (error) {
           console.error('Error loading image:', fileEntry.path, error);
         }
@@ -269,10 +271,7 @@ export class FolderController {
     }
 
     try {
-      const result = await this.deps.fileProcessor.processFromHandle(
-        fileEntry.handle,
-        fileEntry.path
-      );
+      const result = await this.deps.fileProcessor.processFromHandle(fileEntry.handle, fileEntry.path);
 
       if (!result.success) {
         return;

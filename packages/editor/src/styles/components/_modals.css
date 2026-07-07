@@ -935,6 +935,174 @@
   justify-content: center;
 }
 
+/* ============================================================================
+   Exam Start Gate (ADR-0006) — 試験モードのブロック型開始ゲート
+   ============================================================================ */
+.exam-gate-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40000; /* 通常の lock-overlay より前面 */
+  backdrop-filter: blur(8px);
+  animation: modal-fade-in 0.3s ease;
+}
+
+.exam-gate-overlay.hidden {
+  display: none;
+}
+
+.exam-gate-content {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  padding: 36px 40px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  width: min(460px, 92vw);
+  text-align: center;
+}
+
+.exam-gate-icon {
+  color: var(--accent-primary);
+  align-self: center;
+}
+
+.exam-gate-content h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.exam-gate-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 4px;
+  line-height: 1.6;
+}
+
+.exam-gate-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.exam-gate-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.exam-gate-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  border: 2px dashed var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-tertiary);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+
+.exam-gate-dropzone i {
+  font-size: 20px;
+}
+
+.exam-gate-dropzone:hover,
+.exam-gate-dropzone.dragover {
+  border-color: var(--accent-primary);
+  background: var(--bg-active);
+  color: var(--text-secondary);
+}
+
+.exam-gate-dropzone.has-file {
+  border-style: solid;
+  border-color: var(--accent-success);
+  color: var(--text-primary);
+}
+
+.exam-gate-code-input {
+  padding: 10px 12px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 16px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-family: monospace;
+}
+
+.exam-gate-code-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.exam-gate-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--accent-danger);
+  text-align: left;
+}
+
+.exam-gate-start {
+  padding: 11px 20px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition:
+    background 0.15s,
+    opacity 0.15s;
+}
+
+.exam-gate-start:hover:not(:disabled) {
+  background: var(--accent-secondary);
+}
+
+.exam-gate-start:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 授業モードの問題ローダ (ADR-0014): 読み込む / スキップ の 2 ボタン横並び。 */
+.class-loader-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.class-loader-actions .exam-gate-start {
+  flex: 1;
+}
+
+.exam-gate-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-quaternary);
+}
+
 /* Screen Share Guide - Chrome共有ダイアログの非表示ボタンを押すよう促すガイド */
 .screen-share-guide {
   position: fixed;
@@ -991,7 +1159,8 @@
 }
 
 @keyframes screen-share-guide-bounce {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0);
   }
   50% {

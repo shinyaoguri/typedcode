@@ -1,0 +1,548 @@
+/* 試験問題オーサリングページ (/author) のスタイル (#80)。
+   editor と同じクロム (titlebar / activitybar / workbench / statusbar) を再利用し、
+   出題の見た目を作成アプリに揃える (ADR-0012 改良)。 */
+
+@import "./variables/_colors.css";
+
+/* editor クロムの再利用 (同じクラス名で DOM を組む) */
+@import "./layout/_titlebar.css";
+@import "./layout/_main.css";
+@import "./components/_activitybar.css";
+@import "./components/_statusbar.css";
+@import "./components/_tabs.css";
+@import "./components/_markdown.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+}
+#author-root {
+  height: 100vh;
+}
+
+/* ===== 機能別アクセント (要望: ぱっと見で機能を判別)。出題アプリ = 紫。 ===== */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--feature-accent);
+  z-index: 10000;
+  pointer-events: none;
+}
+.feature-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: var(--spacing-sm);
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--feature-accent);
+  color: var(--feature-accent-fg);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  user-select: none;
+}
+.feature-badge i {
+  font-size: 10px;
+}
+/* titlebar / statusbar を機能色に (editor の _feature-accent と同じ)。 */
+.titlebar {
+  border-bottom: 1px solid var(--feature-accent);
+}
+.statusbar {
+  background: var(--feature-accent);
+}
+
+/* ===== シェル ===== */
+.author-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+.titlebar-title i {
+  color: var(--feature-accent);
+}
+.titlebar-actions {
+  gap: var(--spacing-sm);
+}
+
+/* ===== ワークベンチ (タブ + 左右分割エディタ) ===== */
+.author-workbench {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 問題タブ = スターターファイル。editor の .editor-tab を流用するので追加調整のみ。 */
+.editor-tab .tab-icon {
+  color: var(--feature-accent);
+  font-size: 13px;
+}
+
+.author-editor-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.author-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  border-right: 1px solid var(--border-color);
+}
+.author-pane:last-child {
+  border-right: none;
+}
+.author-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.author-inline-input {
+  width: 130px;
+  padding: 1px 6px;
+  font-size: 12px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+}
+.author-pane-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.author-starter-body {
+  flex-direction: column;
+}
+.author-monaco {
+  flex: 1;
+  min-height: 0;
+}
+.author-pane-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+.author-pane-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  box-sizing: border-box;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.author-pane-btn i {
+  font-size: 12px;
+  line-height: 1;
+}
+/* アイコンのみのボタン (ターミナルトグル) は正方形に揃える */
+#author-term-toggle {
+  width: 24px;
+  padding: 0;
+}
+.author-pane-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.author-pane-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.author-pane-btn.active {
+  background: var(--feature-accent);
+  border-color: var(--feature-accent);
+  color: var(--feature-accent-fg);
+}
+
+/* スターターコードの実行ターミナル */
+.author-terminal-wrap {
+  height: 200px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-color);
+  background: #1e1e1e;
+}
+.author-terminal-wrap[hidden] {
+  display: none;
+}
+.author-terminal {
+  height: 100%;
+  padding: 4px 8px;
+}
+.author-preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-lg) var(--spacing-xl);
+}
+
+/* 編集 / プレビュー のセグメント切替 */
+.author-seg {
+  display: inline-flex;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.author-seg-btn {
+  background: var(--bg-tertiary);
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.author-seg-btn + .author-seg-btn {
+  border-left: 1px solid var(--border-input);
+}
+.author-seg-btn:hover {
+  color: var(--text-primary);
+}
+.author-seg-btn.active {
+  background: var(--feature-accent);
+  color: var(--feature-accent-fg);
+}
+
+/* ===== パッケージ設定パネル (右サイド、トグル) ===== */
+.author-settings-panel {
+  width: 360px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.author-settings-panel[hidden] {
+  display: none;
+}
+.author-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.author-settings-body {
+  flex: 1;
+  padding: var(--spacing-lg);
+  overflow-y: auto;
+}
+.author-settings-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: var(--spacing-lg) 0;
+}
+.author-settings-foot {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.author-btn-block {
+  width: 100%;
+  justify-content: center;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ===== フォーム部品 ===== */
+.author-field {
+  margin-bottom: var(--spacing-lg);
+}
+.author-field:last-child {
+  margin-bottom: 0;
+}
+.author-field label {
+  display: block;
+  margin-bottom: var(--spacing-xs);
+  font-weight: 500;
+}
+.author-input,
+.author-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+}
+.author-input:focus,
+.author-textarea:focus {
+  outline: none;
+  border-color: var(--feature-accent);
+}
+.author-textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+.author-mono {
+  font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+}
+.author-hint {
+  margin: var(--spacing-xs) 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.author-check {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+  cursor: pointer;
+}
+.author-check input {
+  width: 16px;
+  height: 16px;
+}
+
+/* 鍵設定パネル内の既存鍵/新規生成タブ */
+.author-tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+.author-tab-btn {
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.author-tab-btn:hover {
+  color: var(--text-primary);
+}
+.author-tab-btn.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--feature-accent);
+}
+
+/* ボタン */
+.author-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.author-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.author-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.author-btn-primary {
+  background: var(--feature-accent);
+  border-color: var(--feature-accent);
+  color: var(--feature-accent-fg);
+}
+.author-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+.author-btn-row {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+.author-btn-row .author-input {
+  flex: 1;
+}
+.author-icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 2px 6px;
+}
+.author-icon-btn:hover {
+  color: var(--text-primary);
+}
+
+/* 注記 / コード片 */
+.author-note {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  margin: var(--spacing-md) 0;
+  font-size: 13px;
+}
+.author-note-warn {
+  background: rgba(138, 122, 30, 0.18);
+  border: 1px solid var(--accent-warning);
+}
+.author-note i {
+  margin-top: 2px;
+  color: var(--accent-warning);
+}
+.author-pre {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-md);
+  overflow-x: auto;
+  font-size: 12px;
+  font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  margin: 0 0 var(--spacing-sm);
+}
+.author-code-inline {
+  font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+/* ===== statusbar の中身 ===== */
+.statusbar .status-item .author-mono {
+  letter-spacing: 0.08em;
+}
+
+.author-error {
+  color: var(--accent-danger);
+  font-size: 13px;
+  margin: 0 0 var(--spacing-sm);
+}
+
+/* ===== 結果モーダル ===== */
+.author-result-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10002;
+  padding: var(--spacing-lg);
+}
+.author-result-overlay[hidden] {
+  display: none;
+}
+.author-result {
+  width: 560px;
+  max-width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-success);
+  border-radius: var(--radius-lg);
+}
+.author-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+}
+.author-result-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.author-result-head h3 i {
+  color: var(--accent-success);
+}
+#author-result-body {
+  padding: var(--spacing-lg);
+}
+.author-result-file {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin: 0 0 var(--spacing-lg);
+}
+.author-result-file i {
+  color: var(--feature-accent);
+}
+.author-token-box {
+  text-align: center;
+  padding: var(--spacing-lg);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-md);
+}
+.author-token-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: var(--spacing-sm);
+}
+.author-token-value {
+  font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--feature-accent);
+  margin-bottom: var(--spacing-md);
+}
+.author-token-actions {
+  justify-content: center;
+}
+.author-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px var(--spacing-lg);
+  margin: var(--spacing-lg) 0 0;
+  font-size: 13px;
+}
+.author-meta dt {
+  color: var(--text-secondary);
+}
+.author-meta dd {
+  margin: 0;
+}
+.author-meta code {
+  font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+}
+.author-hash {
+  word-break: break-all;
+  font-size: 12px;
+}

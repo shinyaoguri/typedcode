@@ -25,6 +25,26 @@ export type {
 } from './signedCheckpoints.js';
 
 export {
+  createSessionStartToken,
+  validateSessionStartInput,
+  verifySessionStartToken,
+  computeAnchoredChainRoot,
+} from './sessionStartToken.js';
+
+export type {
+  SessionStartInput,
+  SessionStartServerContext,
+  SessionStartSigner,
+} from './sessionStartToken.js';
+
+export type {
+  SessionStartToken,
+  SessionStartTokenPayload,
+  SessionStartTokenVerificationResult,
+  SessionStartTokenAlgorithm,
+} from './types/sessionStartToken.js';
+
+export {
   CHECKPOINT_PUBLIC_KEYS,
   findCheckpointPublicKey,
 } from './checkpointKeys/index.js';
@@ -37,6 +57,7 @@ export type {
 export {
   POSW_ITERATIONS,
   SIGNED_CHECKPOINT_FORMAT_VERSION,
+  SESSION_TOKEN_FORMAT_VERSION,
 } from './version.js';
 
 export {

@@ -9,6 +9,7 @@ import type { StatusBarUI } from '../StatusBarUI';
 import type { ResultPanel } from '../ResultPanel';
 import type { TabController } from './TabController';
 import type { ProgressDetails, VerificationResultData } from '../../types';
+import { t } from '../../i18n/index';
 
 export interface VerificationControllerDependencies {
   tabManager: VerifyTabManager;
@@ -68,11 +69,48 @@ export class VerificationController {
     const currentTabState = this.deps.tabManager.getTab(id);
     const hasSourceMismatch = !!currentTabState?.associatedSourceMismatch;
 
-    // ステータス判定: エラー > 警告（外部入力/ソース不一致） > 成功
+    // スクリーンショット検証 (#146): enqueue 時に tabState へ保持済みの per-image 判定を集計。
+    // TrustCalculator (改竄 = error) / deriveAssurance (integrity failed) と同じ軸を見る —
+    // ここだけ見ないとサイドバー/タブの緑と開いた結果バッジが食い違い、緑の流し見で
+    // 改竄提出が素通りする (verify/CLAUDE.md「両者を揃えて変更すること」)。
+    const screenshots = currentTabState?.screenshots ?? [];
+    const screenshotsTampered = screenshots.filter((s) => s.tampered).length;
+    const screenshotsMissing = screenshots.filter((s) => s.missing).length;
+    // 画面共有オプトアウト (TrustCalculator と同じく warning 軸)
+    const events = currentTabState?.proofData?.proof?.events ?? [];
+    const hasScreenShareOptOut = events.some((e: { type: string }) => e.type === 'screenShareOptOut');
+
+    // ステータス判定: エラー > 警告 > 成功。
+    // - error: チェーン/メタデータ破綻、署名 cp があるのに無効、package 提供下で exam 束縛失敗 (spec §6.4)、
+    //          スクショ改竄 (#146)
+    // - warning: 非ピュアタイピング / ソース不一致 / 時刻アンカー無し (偽造不能要素が無い) /
+    //            post-hoc 一括署名疑い / anchoring 密度が疎 (ADR-0016) / exam だが問題パッケージ未検証 (真正性未確認) /
+    //            スクショ欠損 / 画面共有オプトアウト (#146)
+    const examBindingFailed = !!result.exam?.packageProvided && result.exam.binding?.valid === false;
+    const anchoredButInvalid = !!result.signedCheckpointAnchored && result.signedCheckpointValid === false;
+    const examPresentButUnverified = !!result.exam?.present && !result.exam.packageProvided;
+    // ADR-0017: root 未アンカー (serverNonce トークン無し) は警告。exam は独自束縛のため対象外。
+    const rootNotAnchored = !result.rootAnchored && !result.exam?.present;
     let status: FileStatus;
-    if (!result.metadataValid || !result.chainValid) {
+    if (
+      !result.metadataValid ||
+      !result.chainValid ||
+      examBindingFailed ||
+      anchoredButInvalid ||
+      screenshotsTampered > 0
+    ) {
       status = 'error';
-    } else if (!result.isPureTyping || hasSourceMismatch) {
+    } else if (
+      !result.isPureTyping ||
+      hasSourceMismatch ||
+      !result.signedCheckpointAnchored ||
+      result.signedCheckpointTemporal?.postHocSuspected ||
+      result.signedCheckpointDensity?.sparse ||
+      rootNotAnchored ||
+      examPresentButUnverified ||
+      screenshotsMissing > 0 ||
+      hasScreenShareOptOut
+    ) {
       status = 'warning';
     } else {
       status = 'success';
@@ -94,13 +132,21 @@ export class VerificationController {
       this.deps.resultPanel.finishProgress();
       // 強制更新フラグを渡して結果を確実に表示
       this.deps.tabController.showTabContent(id, true);
+    } else if (this.deps.tabBar.getActiveTabId() === null) {
+      // まだ何も開いていなければ最初に完了した proof を自動で開く。
+      // 以降は別タブがアクティブになるのでフォーカスを奪わない (UX: 読込直後の空白を解消)。
+      this.deps.tabController.openTabForFile(id);
     }
   }
 
   /**
    * 検証エラーを処理
    */
-  handleError(id: string, error: string): void {
+  handleError(id: string, rawError: string): void {
+    // Worker はロケール設定 (localStorage) にアクセスできないため翻訳キーを
+    // そのまま送ってくることがある。ここでメインスレッドのロケールで解決する
+    // (t() は未知のキーをそのまま返すので通常のエラーメッセージには無害)。
+    const error = rawError.startsWith('errors.') ? t(rawError) : rawError;
     this.deps.uiState.incrementCompleted();
     this.deps.tabManager.updateTab(id, { status: 'error', error });
     this.deps.sidebar.updateFileStatus(id, 'error');

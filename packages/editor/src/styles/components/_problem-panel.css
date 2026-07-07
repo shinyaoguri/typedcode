@@ -1,0 +1,189 @@
+/* Problem Panel (試験モード / ADR-0006 最小骨組み)
+   左サイドの問題表示パネル。casual モードでは非表示 (.visible が付かない)。 */
+#problem-panel {
+  display: none;
+  flex: 0 0 340px;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  border-right: 1px solid var(--border-color, #333);
+  background: var(--bg-secondary, #1e1e1e);
+}
+
+#problem-panel.resizing {
+  transition: none;
+}
+
+#problem-panel.visible {
+  display: flex;
+}
+
+.problem-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 12px;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+/* ヘッダの×ボタン (パネルを閉じる) */
+.problem-control-btn {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  background: transparent;
+  color: inherit;
+  border: none;
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.problem-control-btn:hover {
+  opacity: 1;
+}
+
+/* 右端のリサイズハンドル (左パネルなので右端をドラッグ) */
+.problem-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 4px;
+  height: 100%;
+  background: transparent;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color 0.2s;
+}
+
+.problem-resize-handle:hover,
+.problem-resize-handle.dragging {
+  background: var(--accent-primary, #2d6cdf);
+}
+
+.problem-header h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.problem-content {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px;
+}
+
+.problem-body {
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  opacity: 0.85;
+}
+
+.problem-footer {
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-color, #333);
+}
+
+.exam-submit-note {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+/* 提出用ログのダウンロード — exam の完了アクションなので目立たせる。 */
+.download-log-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: #2d6cdf;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.download-log-btn:hover {
+  background: #3b7bf0;
+}
+
+/* 試験モード: タブの追加・削除 UI を隠す (ADR-0010, 1問1タブ固定)。
+   源流の TabManager ロックが本体で、これは UI アフォーダンスを消すため。 */
+body.exam-mode .add-tab-btn,
+body.exam-mode .tab-close-btn {
+  display: none !important;
+}
+
+/* 試験モード: ダウンロードは問題パネルのボタンに一本化するため、左の汎用DLメニューは隠す。 */
+body.exam-mode #download-menu-btn {
+  display: none !important;
+}
+
+/* 問題パネルのトグルは問題表示モード (exam / class / assignment) のみ表示。
+   capabilities.problemPanel が真のとき body.has-problem-panel が付く (casual にはパネルが無い)。 */
+body:not(.has-problem-panel) #toggle-problem-btn {
+  display: none;
+}
+
+/* 「問題を読み込む」は非封印の問題モード (授業/課題) のみ表示。capabilities.problemPanel &&
+   !sealedProblem のとき body.can-load-problem が付く (exam は封印ゲートで入るので出さない。ADR-0015)。 */
+body:not(.can-load-problem) #load-problem-btn {
+  display: none;
+}
+
+/* 問題パネルが開いている時のアクティブ表示。
+   アイコン色 (白) と縦バーの土台は既存の .activitybar-item.active に任せ、
+   バーの色だけ accent にする (白アイコンが背景と同化しないよう自前の色上書きはしない)。 */
+#toggle-problem-btn.active::before {
+  background: var(--accent-primary, #0078d4);
+}
+
+/* フルスクリーン警告バナー (ADR-0008) — 非ブロッキングの常時帯。
+   非フルスクリーン時のみ .visible が付く。 */
+#fullscreen-warning-banner {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  flex: 0 0 auto;
+  background: #6b4a00;
+  color: #ffe8a3;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+#fullscreen-warning-banner.visible {
+  display: flex;
+}
+
+.fullscreen-warning-text {
+  flex: 1 1 auto;
+}
+
+.fullscreen-warning-btn {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  background: #ffce54;
+  color: #3a2a00;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fullscreen-warning-btn:hover {
+  background: #ffd874;
+}

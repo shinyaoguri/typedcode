@@ -25,6 +25,7 @@ import type { StoredEvent, KeystrokeDynamicsData, InputType, EventType } from '@
 import type { VerifyScreenshot, IntegratedChartCache } from '../types.js';
 import type { ChartEventVisibility } from '../types/chartVisibility.js';
 import { DEFAULT_CHART_EVENT_VISIBILITY, isEventTypeVisible } from '../types/chartVisibility.js';
+import { t } from '../i18n/index.js';
 
 // Chart.js登録
 Chart.register(
@@ -226,9 +227,7 @@ export class IntegratedChart {
     }));
 
     // 最大値を計算
-    const maxSpeed = Math.ceil(
-      Math.max(...typingSpeedData.map((d) => d.y), 1) * 1.2
-    );
+    const maxSpeed = Math.ceil(Math.max(...typingSpeedData.map((d) => d.y), 1) * 1.2);
     const maxKeystrokeTime = Math.max(
       ...keystrokeData.dwell.map((d) => d.y),
       ...keystrokeData.flight.map((d) => d.y),
@@ -261,10 +260,7 @@ export class IntegratedChart {
   /**
    * タイピング速度を計算
    */
-  private calculateTypingSpeed(
-    events: StoredEvent[],
-    totalTime: number
-  ): { x: number; y: number }[] {
+  private calculateTypingSpeed(events: StoredEvent[], totalTime: number): { x: number; y: number }[] {
     const windowSize = 5000; // 5秒ウィンドウ
     const data: { x: number; y: number }[] = [];
 
@@ -512,7 +508,7 @@ export class IntegratedChart {
     if (this.isVisible('contentChange')) {
       datasets.push({
         type: 'line',
-        label: 'タイピング速度 (CPS)',
+        label: t('charts.datasets.typingSpeed'),
         data: this.cache.typingSpeedData,
         borderColor: '#667eea',
         backgroundColor: 'rgba(102, 126, 234, 0.1)',
@@ -557,7 +553,7 @@ export class IntegratedChart {
     if (this.isVisible('externalInput') && this.cache.externalInputMarkers.length > 0) {
       datasets.push({
         type: 'scatter',
-        label: '外部入力',
+        label: t('charts.events.externalInput'),
         data: this.cache.externalInputMarkers.map((m) => ({
           x: m.timestamp,
           y: 0,
@@ -575,7 +571,7 @@ export class IntegratedChart {
     if (this.isVisible('contentChange') && this.cache.internalPasteMarkers.length > 0) {
       datasets.push({
         type: 'scatter',
-        label: '内部ペースト',
+        label: t('charts.datasets.internalPaste'),
         data: this.cache.internalPasteMarkers.map((m) => ({
           x: m.timestamp,
           y: 0.35, // 外部入力マーカーより上、他のイベントより下に配置
@@ -595,7 +591,7 @@ export class IntegratedChart {
     if (this.isVisible('humanAttestation') && this.cache.humanAttestationEvents.length > 0) {
       datasets.push({
         type: 'scatter',
-        label: '人間検証',
+        label: t('charts.datasets.humanAttestation'),
         data: this.cache.humanAttestationEvents.map((m) => ({
           x: m.timestamp,
           y: 0.9, // 上部に配置
@@ -630,7 +626,7 @@ export class IntegratedChart {
       if (periodicScreenshots.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: '定期撮影',
+          label: t('charts.datasets.periodicCapture'),
           data: periodicScreenshots.map((s) => ({
             x: s.timestamp,
             y: 0.6, // 上部に配置
@@ -669,7 +665,7 @@ export class IntegratedChart {
       if (focusLostScreenshots.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: 'フォーカス喪失撮影',
+          label: t('charts.datasets.focusLostCapture'),
           data: focusLostScreenshots.map((s) => ({
             x: s.timestamp,
             y: 0.3, // 定期撮影より下に配置
@@ -708,7 +704,7 @@ export class IntegratedChart {
       if (manualScreenshots.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: '手動撮影',
+          label: t('charts.datasets.manualCapture'),
           data: manualScreenshots.map((s) => ({
             x: s.timestamp,
             y: 0.9, // 最上部
@@ -750,7 +746,7 @@ export class IntegratedChart {
       if (this.isVisible('termsAccepted') && termsEvents.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: '利用規約同意',
+          label: t('charts.events.termsAccepted'),
           data: termsEvents.map((m) => ({
             x: m.timestamp,
             y: 0.75,
@@ -771,7 +767,7 @@ export class IntegratedChart {
       if (this.isVisible('preExportAttestation') && preExportEvents.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: 'エクスポート認証',
+          label: t('charts.datasets.preExportAttestation'),
           data: preExportEvents.map((m) => ({
             x: m.timestamp,
             y: 0.85,
@@ -795,7 +791,7 @@ export class IntegratedChart {
       if (this.isVisible('editorInitialized') && initEvents.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: 'エディタ初期化',
+          label: t('charts.events.editorInitialized'),
           data: initEvents.map((m) => ({
             x: m.timestamp,
             y: 0.1,
@@ -816,7 +812,7 @@ export class IntegratedChart {
       if (this.isVisible('networkStatusChange') && networkEvents.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: 'ネットワーク変更',
+          label: t('charts.datasets.networkStatusChange'),
           data: networkEvents.map((m) => ({
             x: m.timestamp,
             y: 0.15,
@@ -840,7 +836,7 @@ export class IntegratedChart {
       if (this.isVisible('codeExecution') && codeEvents.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: 'コード実行',
+          label: t('charts.events.codeExecution'),
           data: codeEvents.map((m) => ({
             x: m.timestamp,
             y: 0.5,
@@ -861,7 +857,7 @@ export class IntegratedChart {
       if (this.isVisible('terminalInput') && terminalEvents.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: 'ターミナル入力',
+          label: t('charts.events.terminalInput'),
           data: terminalEvents.map((m) => ({
             x: m.timestamp,
             y: 0.45,
@@ -885,7 +881,7 @@ export class IntegratedChart {
       if (this.isVisible('screenShareStart') && shareStartEvents.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: '画面共有開始',
+          label: t('charts.events.screenShareStart'),
           data: shareStartEvents.map((m) => ({
             x: m.timestamp,
             y: 0.55,
@@ -906,7 +902,7 @@ export class IntegratedChart {
       if (this.isVisible('screenShareStop') && shareStopEvents.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: '画面共有終了',
+          label: t('charts.events.screenShareStop'),
           data: shareStopEvents.map((m) => ({
             x: m.timestamp,
             y: 0.55,
@@ -927,7 +923,7 @@ export class IntegratedChart {
       if (this.isVisible('templateInjection') && templateEvents.length > 0) {
         datasets.push({
           type: 'scatter',
-          label: 'テンプレート挿入',
+          label: t('charts.events.templateInjection'),
           data: templateEvents.map((m) => ({
             x: m.timestamp,
             y: 0.4,
@@ -948,7 +944,7 @@ export class IntegratedChart {
     if (this.isVisible('windowResize') && this.cache.windowResizeEvents && this.cache.windowResizeEvents.length > 0) {
       datasets.push({
         type: 'scatter',
-        label: 'ウィンドウリサイズ',
+        label: t('charts.events.windowResize'),
         data: this.cache.windowResizeEvents.map((m) => ({
           x: m.timestamp,
           y: 0.2,
@@ -965,10 +961,14 @@ export class IntegratedChart {
     }
 
     // 12. コンテンツスナップショット
-    if (this.isVisible('contentSnapshot') && this.cache.contentSnapshotEvents && this.cache.contentSnapshotEvents.length > 0) {
+    if (
+      this.isVisible('contentSnapshot') &&
+      this.cache.contentSnapshotEvents &&
+      this.cache.contentSnapshotEvents.length > 0
+    ) {
       datasets.push({
         type: 'scatter',
-        label: 'スナップショット',
+        label: t('charts.datasets.contentSnapshot'),
         data: this.cache.contentSnapshotEvents.map((m) => ({
           x: m.timestamp,
           y: 0.25,
@@ -1001,7 +1001,7 @@ export class IntegratedChart {
       scales: {
         x: {
           type: 'linear',
-          title: { display: true, text: '時刻' },
+          title: { display: true, text: t('charts.axisTime') },
           ticks: {
             callback: (value) => this.formatAxisTime(value as number),
             maxTicksLimit: 10,
@@ -1219,29 +1219,28 @@ export class IntegratedChart {
     if (this.isScreenshotDataset(label)) {
       const data = context.raw as ScreenshotPointData;
       const typeMap: Record<string, string> = {
-        periodic: '定期',
-        focusLost: 'フォーカス喪失',
-        manual: '手動',
+        periodic: t('screenshot.typePeriodic'),
+        focusLost: t('screenshot.typeFocusLost'),
+        manual: t('screenshot.typeManual'),
       };
-      const captureType = typeMap[data.screenshot.captureType] ?? data.screenshot.captureType;
+      const type = typeMap[data.screenshot.captureType] ?? data.screenshot.captureType;
       const time = this.formatAxisTime(data.screenshot.timestamp);
 
       if (data.screenshot.missing) {
-        return `❌ ${captureType} - ${time} [画像欠損]`;
+        return t('charts.tooltips.screenshotMissing', { type, time });
       } else if (!data.screenshot.verified) {
-        return `⚠️ ${captureType} - ${time} [改ざんの可能性]`;
+        return t('charts.tooltips.screenshotTampered', { type, time });
       } else {
-        return `📷 ${captureType} - ${time} [検証済み]`;
+        return t('charts.tooltips.screenshotVerified', { type, time });
       }
     }
 
-    if (label === '人間検証') {
+    if (label === t('charts.datasets.humanAttestation')) {
       const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `⭐ 人間検証 (Turnstile) - ${time}`;
+      return t('charts.tooltips.humanAttestation', { time: this.formatAxisTime(data.x) });
     }
 
-    if (label === 'タイピング速度 (CPS)') {
+    if (label === t('charts.datasets.typingSpeed')) {
       const data = context.raw as { x: number; y: number };
       return `${data.y.toFixed(1)} CPS`;
     }
@@ -1251,86 +1250,34 @@ export class IntegratedChart {
       return `${label}: ${data.y.toFixed(0)}ms (${data.key})`;
     }
 
-    if (label === '外部入力') {
-      return '⚠️ 外部ペースト/ドロップ';
+    if (label === t('charts.events.externalInput')) {
+      return t('charts.tooltips.externalInput');
     }
 
-    if (label === '内部ペースト') {
+    if (label === t('charts.datasets.internalPaste')) {
       const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `✅ 内部ペースト（許可） - ${time}`;
+      return t('charts.tooltips.internalPaste', { time: this.formatAxisTime(data.x) });
     }
 
-    // Auth events
-    if (label === '利用規約同意') {
+    // Auth / system / execution / capture / window / content events は
+    // dataset label → tooltip キーの対応表で解決する
+    const eventTooltips: Array<[string, string]> = [
+      [t('charts.events.termsAccepted'), 'charts.tooltips.termsAccepted'],
+      [t('charts.datasets.preExportAttestation'), 'charts.tooltips.preExportAttestation'],
+      [t('charts.events.editorInitialized'), 'charts.tooltips.editorInitialized'],
+      [t('charts.datasets.networkStatusChange'), 'charts.tooltips.networkStatusChange'],
+      [t('charts.events.codeExecution'), 'charts.tooltips.codeExecution'],
+      [t('charts.events.terminalInput'), 'charts.tooltips.terminalInput'],
+      [t('charts.events.screenShareStart'), 'charts.tooltips.screenShareStart'],
+      [t('charts.events.screenShareStop'), 'charts.tooltips.screenShareStop'],
+      [t('charts.events.templateInjection'), 'charts.tooltips.templateInjection'],
+      [t('charts.events.windowResize'), 'charts.tooltips.windowResize'],
+      [t('charts.datasets.contentSnapshot'), 'charts.tooltips.contentSnapshot'],
+    ];
+    const match = eventTooltips.find(([datasetLabel]) => datasetLabel === label);
+    if (match) {
       const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `📜 利用規約同意 - ${time}`;
-    }
-
-    if (label === 'エクスポート前検証') {
-      const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `🔐 エクスポート前検証 (Turnstile) - ${time}`;
-    }
-
-    // System events
-    if (label === 'エディタ初期化') {
-      const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `🚀 エディタ初期化 - ${time}`;
-    }
-
-    if (label === 'ネットワーク変更') {
-      const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `🌐 ネットワーク状態変更 - ${time}`;
-    }
-
-    // Execution events
-    if (label === 'コード実行') {
-      const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `▶️ コード実行 - ${time}`;
-    }
-
-    if (label === 'ターミナル入力') {
-      const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `💻 ターミナル入力 - ${time}`;
-    }
-
-    // Capture events
-    if (label === '画面共有開始') {
-      const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `🎬 画面共有開始 - ${time}`;
-    }
-
-    if (label === '画面共有終了') {
-      const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `🛑 画面共有終了 - ${time}`;
-    }
-
-    if (label === 'テンプレート挿入') {
-      const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `📝 テンプレート挿入 - ${time}`;
-    }
-
-    // Window events
-    if (label === 'ウィンドウリサイズ') {
-      const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `📐 ウィンドウリサイズ - ${time}`;
-    }
-
-    // Content events
-    if (label === 'コンテンツスナップショット') {
-      const data = context.raw as { x: number; y: number };
-      const time = this.formatAxisTime(data.x);
-      return `📋 コンテンツスナップショット - ${time}`;
+      return t(match[1], { time: this.formatAxisTime(data.x) });
     }
 
     return label;
@@ -1342,9 +1289,13 @@ export class IntegratedChart {
   private isScreenshotDataset(label: string | undefined): boolean {
     if (!label) return false;
     // 新しいラベル形式（定期撮影、フォーカス喪失撮影、手動撮影）
-    return label === '定期撮影' || label === 'フォーカス喪失撮影' || label === '手動撮影' ||
-           // 後方互換のための旧ラベル
-           label.startsWith('スクリーンショット');
+    return (
+      label === t('charts.datasets.periodicCapture') ||
+      label === t('charts.datasets.focusLostCapture') ||
+      label === t('charts.datasets.manualCapture') ||
+      // 後方互換のための旧ラベル
+      label.startsWith('スクリーンショット')
+    );
   }
 
   /**
@@ -1378,22 +1329,16 @@ export class IntegratedChart {
    */
   private handleHover(event: unknown, elements: unknown[]): void {
     const nativeEvent = event as { native: MouseEvent };
-    const screenshotElement = (elements as { datasetIndex: number; index: number }[]).find(
-      (el) => {
-        const dataset = this.chart?.data.datasets[el.datasetIndex];
-        return this.isScreenshotDataset(dataset?.label);
-      }
-    );
+    const screenshotElement = (elements as { datasetIndex: number; index: number }[]).find((el) => {
+      const dataset = this.chart?.data.datasets[el.datasetIndex];
+      return this.isScreenshotDataset(dataset?.label);
+    });
 
     if (screenshotElement && this.options.onScreenshotHover) {
       const dataset = this.chart?.data.datasets[screenshotElement.datasetIndex];
       const dataPoint = dataset?.data[screenshotElement.index] as ScreenshotPointData | undefined;
       if (dataPoint?.screenshot) {
-        this.options.onScreenshotHover(
-          dataPoint.screenshot,
-          nativeEvent.native.clientX,
-          nativeEvent.native.clientY
-        );
+        this.options.onScreenshotHover(dataPoint.screenshot, nativeEvent.native.clientX, nativeEvent.native.clientY);
       }
     } else if (this.options.onScreenshotHover) {
       this.options.onScreenshotHover(null, 0, 0);
@@ -1453,8 +1398,7 @@ export class IntegratedChart {
     // アノテーションを更新
     const annotationPlugin = this.chart.options.plugins?.annotation;
     if (annotationPlugin) {
-      (annotationPlugin as { annotations: Record<string, unknown> }).annotations =
-        this.buildAnnotations();
+      (annotationPlugin as { annotations: Record<string, unknown> }).annotations = this.buildAnnotations();
       this.chart.update('none');
     }
   }
@@ -1467,8 +1411,7 @@ export class IntegratedChart {
     if (this.chart) {
       const annotationPlugin = this.chart.options.plugins?.annotation;
       if (annotationPlugin) {
-        (annotationPlugin as { annotations: Record<string, unknown> }).annotations =
-          this.buildAnnotations();
+        (annotationPlugin as { annotations: Record<string, unknown> }).annotations = this.buildAnnotations();
         this.chart.update('none');
       }
     }

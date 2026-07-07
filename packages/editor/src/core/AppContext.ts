@@ -12,6 +12,7 @@ import type { LogViewer } from '../ui/components/LogViewer.js';
 import type { ThemeManager } from '../editor/ThemeManager.js';
 import type { CTerminal } from '../terminal/CTerminal.js';
 import type { EventRecorder } from './EventRecorder.js';
+import type { EditorMode, ModeCapabilities } from './mode.js';
 import type { SessionContentRegistry } from './SessionContentRegistry.js';
 
 // Trackers
@@ -20,6 +21,7 @@ import type { VisibilityTracker } from '../tracking/VisibilityTracker.js';
 import type { KeystrokeTracker } from '../tracking/KeystrokeTracker.js';
 import type { MouseTracker } from '../tracking/MouseTracker.js';
 import type { NetworkTracker } from '../tracking/NetworkTracker.js';
+import type { EnvironmentTracker } from '../tracking/EnvironmentTracker.js';
 import type { CursorTracker } from '../editor/CursorTracker.js';
 import type { OperationDetector } from '../tracking/OperationDetector.js';
 import type { EditorController } from '../editor/EditorController.js';
@@ -34,6 +36,8 @@ import type { DownloadDropdown } from '../ui/components/DownloadDropdown.js';
 import type { MainMenuDropdown } from '../ui/components/MainMenuDropdown.js';
 import type { TerminalPanel } from '../ui/components/TerminalPanel.js';
 import type { BrowserPreviewPanel } from '../ui/components/BrowserPreviewPanel.js';
+import type { ProblemPanel } from '../ui/components/ProblemPanel.js';
+import type { FullscreenTracker } from '../tracking/FullscreenTracker.js';
 import type { WelcomeScreen } from '../ui/components/WelcomeScreen.js';
 import type { TitlebarClock } from '../ui/components/TitlebarClock.js';
 
@@ -53,9 +57,10 @@ export interface Trackers {
   keystroke: KeystrokeTracker;
   mouse: MouseTracker;
   network: NetworkTracker;
+  environment: EnvironmentTracker;
   cursor: CursorTracker;
   operation: OperationDetector;
-  screenshot: ScreenshotTracker | null;  // 許可が得られない場合はnull
+  screenshot: ScreenshotTracker | null; // 許可が得られない場合はnull
 }
 
 /**
@@ -94,9 +99,19 @@ export interface AppContext {
   mainMenuDropdown: MainMenuDropdown;
   terminalPanel: TerminalPanel;
   browserPreviewPanel: BrowserPreviewPanel;
+  /** 試験モードの問題表示パネル (ADR-0006: 復号した問題本文の表示 + ログ DL を担う) */
+  problemPanel: ProblemPanel;
+  /** 試験モードのフルスクリーン追跡・警告バナー (ADR-0008) */
+  fullscreenTracker: FullscreenTracker;
 
   // Flags
   skipBeforeUnload: boolean;
+  /** 現在のモード (ADR-0011): URL パスで確定する (casual/class/assignment/exam)。 */
+  mode: EditorMode;
+  /** mode に対応する能力集合 (単一の真実源)。 */
+  capabilities: ModeCapabilities;
+  /** 試験モードか (= mode === 'exam')。既存の試験専用分岐が使う派生フラグ。 */
+  examMode: boolean;
 
   // Welcome Screen
   welcomeScreen: WelcomeScreen | null;

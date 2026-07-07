@@ -14,6 +14,10 @@
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 12px;
+
+  /* 機能別アクセント (要望: ぱっと見で機能を判別)。検証アプリ = 緑。 */
+  --feature-accent: #2ea043;
+  --feature-accent-fg: #ffffff;
 }
 
 :root[data-theme="dark"] {
@@ -32,56 +36,56 @@
   --text-quaternary: #505050;
 
   /* Accent colors - Vivid Orange */
-  --accent-primary: #FF5722;
-  --accent-secondary: #E64A19;
-  --accent-tertiary: #BF360C;
-  --accent-info: #FF7043;
-  --accent-success: #4CAF50;
-  --accent-success-hover: #43A047;
-  --accent-warning: #FFC107;
+  --accent-primary: #ff5722;
+  --accent-secondary: #e64a19;
+  --accent-tertiary: #bf360c;
+  --accent-info: #ff7043;
+  --accent-success: #4caf50;
+  --accent-success-hover: #43a047;
+  --accent-warning: #ffc107;
   --accent-danger: #f44336;
   --accent-danger-hover: #d32f2f;
 
   /* Common semantic colors (for verification progress UI) */
-  --accent-color: #FF5722;
-  --accent-hover: #E64A19;
+  --accent-color: #ff5722;
+  --accent-hover: #e64a19;
   --accent-rgb: 255, 87, 34;
-  --success-color: #4CAF50;
+  --success-color: #4caf50;
   --success-rgb: 76, 175, 80;
   --error-color: #f44336;
   --error-rgb: 244, 67, 54;
-  --warning-color: #FFC107;
+  --warning-color: #ffc107;
   --warning-rgb: 255, 193, 7;
 
   /* Activity Bar */
   --activitybar-bg: #333333;
   --activitybar-icon: #858585;
   --activitybar-icon-hover: #ffffff;
-  --activitybar-icon-active: #FF5722;
-  --activitybar-indicator: #FF5722;
+  --activitybar-icon-active: #ff5722;
+  --activitybar-indicator: #ff5722;
 
   /* Sidebar */
   --sidebar-bg: #252526;
   --sidebar-header-bg: #2d2d2d;
   --sidebar-item-hover: #2a2a2a;
   --sidebar-item-active: #37373d;
-  --sidebar-item-indicator: #FF5722;
+  --sidebar-item-indicator: #ff5722;
 
   /* Tabs */
   --tab-bg: #2d2d2d;
   --tab-bg-active: #1e1e1e;
   --tab-border: #252526;
-  --tab-active-indicator: #FF5722;
+  --tab-active-indicator: #ff5722;
 
   /* Status Bar */
-  --statusbar-bg: #FF5722;
+  --statusbar-bg: #ff5722;
   --statusbar-text: #ffffff;
   --statusbar-hover-bg: rgba(255, 255, 255, 0.12);
 
   /* Welcome Panel */
   --welcome-bg: #1e1e1e;
   --dropzone-border: #555555;
-  --dropzone-border-hover: #FF5722;
+  --dropzone-border-hover: #ff5722;
   --dropzone-bg-hover: rgba(255, 87, 34, 0.08);
 
   /* Cards */
@@ -118,56 +122,56 @@
   --text-quaternary: #aaaaaa;
 
   /* Accent colors - Vivid Orange (slightly darker for contrast) */
-  --accent-primary: #E64A19;
-  --accent-secondary: #BF360C;
-  --accent-tertiary: #8D2505;
-  --accent-info: #FF5722;
-  --accent-success: #388E3C;
-  --accent-success-hover: #2E7D32;
-  --accent-warning: #FFA000;
-  --accent-danger: #D32F2F;
-  --accent-danger-hover: #C62828;
+  --accent-primary: #e64a19;
+  --accent-secondary: #bf360c;
+  --accent-tertiary: #8d2505;
+  --accent-info: #ff5722;
+  --accent-success: #388e3c;
+  --accent-success-hover: #2e7d32;
+  --accent-warning: #ffa000;
+  --accent-danger: #d32f2f;
+  --accent-danger-hover: #c62828;
 
   /* Common semantic colors (for verification progress UI) */
-  --accent-color: #E64A19;
-  --accent-hover: #BF360C;
+  --accent-color: #e64a19;
+  --accent-hover: #bf360c;
   --accent-rgb: 230, 74, 25;
-  --success-color: #388E3C;
+  --success-color: #388e3c;
   --success-rgb: 56, 142, 60;
-  --error-color: #D32F2F;
+  --error-color: #d32f2f;
   --error-rgb: 211, 47, 47;
-  --warning-color: #FFA000;
+  --warning-color: #ffa000;
   --warning-rgb: 255, 160, 0;
 
   /* Activity Bar */
   --activitybar-bg: #2c2c2c;
   --activitybar-icon: #858585;
   --activitybar-icon-hover: #ffffff;
-  --activitybar-icon-active: #FF5722;
-  --activitybar-indicator: #FF5722;
+  --activitybar-icon-active: #ff5722;
+  --activitybar-indicator: #ff5722;
 
   /* Sidebar */
   --sidebar-bg: #f3f3f3;
   --sidebar-header-bg: #e8e8e8;
   --sidebar-item-hover: #e0e0e0;
   --sidebar-item-active: #d0d0d0;
-  --sidebar-item-indicator: #E64A19;
+  --sidebar-item-indicator: #e64a19;
 
   /* Tabs */
   --tab-bg: #ececec;
   --tab-bg-active: #ffffff;
   --tab-border: #d4d4d4;
-  --tab-active-indicator: #E64A19;
+  --tab-active-indicator: #e64a19;
 
   /* Status Bar */
-  --statusbar-bg: #E64A19;
+  --statusbar-bg: #e64a19;
   --statusbar-text: #ffffff;
   --statusbar-hover-bg: rgba(255, 255, 255, 0.12);
 
   /* Welcome Panel */
   --welcome-bg: #ffffff;
   --dropzone-border: #d4d4d4;
-  --dropzone-border-hover: #E64A19;
+  --dropzone-border-hover: #e64a19;
   --dropzone-bg-hover: rgba(230, 74, 25, 0.05);
 
   /* Cards */

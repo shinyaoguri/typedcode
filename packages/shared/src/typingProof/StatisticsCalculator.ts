@@ -4,30 +4,29 @@
  */
 
 import type { StoredEvent, TypingStats, TypingStatistics, EventType } from '../types.js';
+import { isSuspiciousBulkInsert } from './structuralEdit.js';
 
 export class StatisticsCalculator {
   /**
    * 基本統計情報を取得
    */
-  getStats(
-    events: StoredEvent[],
-    startTime: number,
-    currentHash: string | null,
-    pendingCount: number
-  ): TypingStats {
+  getStats(events: StoredEvent[], startTime: number, currentHash: string | null, pendingCount: number): TypingStats {
     const duration = performance.now() - startTime;
-    const eventTypes = events.reduce((acc, event) => {
-      const eventType = event.type as EventType;
-      acc[eventType] = (acc[eventType] ?? 0) + 1;
-      return acc;
-    }, {} as Record<EventType, number>);
+    const eventTypes = events.reduce(
+      (acc, event) => {
+        const eventType = event.type as EventType;
+        acc[eventType] = (acc[eventType] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<EventType, number>
+    );
 
     return {
       totalEvents: events.length,
       duration: duration / 1000,
       eventTypes,
       currentHash,
-      pendingCount
+      pendingCount,
     };
   }
 
@@ -49,7 +48,9 @@ export class StatisticsCalculator {
       if (event.inputType === 'insertFromDrop') dropEvents++;
       if (event.type === 'contentChange' && event.data) insertEvents++;
       if (event.inputType?.startsWith('delete')) deleteEvents++;
-      if (this.isSuspiciousBulkInsert(event)) bulkInsertEvents++;
+      // bulkInsertEvents は verifier (verifyProofMetadata) が完全一致を要求するため、
+      // 判定は必ず structuralEdit の単一定義を使う (#140。二重実装のドリフト防止)。
+      if (isSuspiciousBulkInsert(event)) bulkInsertEvents++;
       if (event.type === 'templateInjection') templateEvents++;
     }
 
@@ -66,21 +67,7 @@ export class StatisticsCalculator {
       bulkInsertEvents,
       templateEvents,
       duration,
-      averageWPM: Math.round(averageWPM * 10) / 10
+      averageWPM: Math.round(averageWPM * 10) / 10,
     };
-  }
-
-  private isSuspiciousBulkInsert(event: StoredEvent): boolean {
-    if (event.type !== 'contentChange') return false;
-
-    if (event.inputType === 'replaceContent' || event.inputType === 'insertReplacementText') {
-      return true;
-    }
-
-    return (
-      event.inputType === 'insertText' &&
-      typeof event.data === 'string' &&
-      event.data.length > 1
-    );
   }
 }

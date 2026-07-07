@@ -72,6 +72,31 @@ export interface SignedCheckpointsVerificationResult {
     /** ratio < 0.1 もしくは serverSpan < 60s & clientSpan > 600s で true */
     postHocSuspected: boolean;
   } | null;
+  /**
+   * anchoring 密度メトリクス (ADR-0016)。署名 cp が「主張したイベント数 / 経過時間」に対して
+   * 十分な間隔で打たれているかを計量する。末尾 1 個の署名 cp で長いチェーンを「アンカー済み」に
+   * 見せる手口 (coverageRatio 最大 1.0・postHocSuspected=false) を補足するためのシグナル。
+   * signed checkpoint が一つも無い (anchored=false) ときは null。
+   */
+  density: {
+    /** 最初の署名 cp が指す eventIndex */
+    firstAnchorEventIndex: number;
+    /** 最初の署名 cp までの未アンカー event 数 (= firstAnchorEventIndex) */
+    firstAnchorLatencyEvents: number;
+    /**
+     * firstSeenAt から最初の署名 serverTimestamp までの ms。
+     * 現アーキでは最初の署名 cp の serverTimestamp が firstSeenAt と一致するため構造的に ~0。
+     * session/start アンカー (ADR-0017) 導入後に「開始から初アンカーまでの遅延」として意味を持つ。
+     * firstSeenAt が不明なときは null。
+     */
+    firstAnchorLatencyServerMs: number | null;
+    /** 連続署名 cp 間 (先頭=event0 境界 / 末尾=最終 event 境界 を含む) の eventIndex 最大ギャップ */
+    maxGapEvents: number;
+    /** 連続署名 cp 間 serverTimestamp の最大ギャップ ms (先頭は firstSeenAt 起点。末尾境界は時刻不明のため除外) */
+    maxGapServerMs: number;
+    /** 保守的閾値を超え anchoring が疎と判定されたか (warning シグナル / strict 時は valid=false の根拠) */
+    sparse: boolean;
+  } | null;
   /** 失敗理由 (valid=false 時) */
   reason?: string;
   errorAt?: number;

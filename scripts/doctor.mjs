@@ -167,11 +167,7 @@ function checkWorkspace() {
     report('ok', 'node_modules が存在');
     state.hasNodeModules = true;
   } else {
-    report(
-      'fail',
-      'node_modules がない — まずは依存関係をインストール',
-      `npm install --include=optional`
-    );
+    report('fail', 'node_modules がない — まずは依存関係をインストール', `npm install --include=optional`);
     return;
   }
 
@@ -189,11 +185,7 @@ function checkWorkspace() {
     report('ok', `wrangler: ${wranglerV.split('\n').pop()}`);
     state.hasWrangler = true;
   } else {
-    report(
-      'warn',
-      'wrangler が見つからない (npm install で同梱されるはず)',
-      `npm install を再実行してください`
-    );
+    report('warn', 'wrangler が見つからない (npm install で同梱されるはず)', `npm install を再実行してください`);
   }
 }
 
@@ -257,11 +249,7 @@ function checkLocalConfig() {
       report('ok', 'packages/editor/.env: VITE_TURNSTILE_SITE_KEY 設定済');
     }
     if (isPlaceholder(env.VITE_API_URL)) {
-      report(
-        'warn',
-        'packages/editor/.env: VITE_API_URL が placeholder',
-        `ローカル開発なら: http://localhost:8787`
-      );
+      report('warn', 'packages/editor/.env: VITE_API_URL が placeholder', `ローカル開発なら: http://localhost:8787`);
     } else {
       report('ok', `packages/editor/.env: VITE_API_URL = ${env.VITE_API_URL}`);
     }
@@ -286,14 +274,8 @@ function checkLocalConfig() {
         'ATTESTATION_SECRET_KEY',
         `任意のランダム文字列 32 byte 以上。生成例:\n  node -e "console.log(crypto.randomBytes(32).toString('hex'))"\n  (openssl があれば: openssl rand -hex 32)`,
       ],
-      [
-        'CHECKPOINT_SIGNING_KEY_ID',
-        `npm run gen-checkpoint-key -w @typedcode/workers の出力 (tcp-YYYYMM-xxxxxx)`,
-      ],
-      [
-        'CHECKPOINT_SIGNING_KEY_JWK',
-        `npm run gen-checkpoint-key -w @typedcode/workers の出力 (1 行 JSON)`,
-      ],
+      ['CHECKPOINT_SIGNING_KEY_ID', `npm run gen-checkpoint-key -w @typedcode/workers の出力 (tcp-YYYYMM-xxxxxx)`],
+      ['CHECKPOINT_SIGNING_KEY_JWK', `npm run gen-checkpoint-key -w @typedcode/workers の出力 (1 行 JSON)`],
     ];
     for (const [key, hint] of checks) {
       if (!vars[key] || isPlaceholder(vars[key])) {
@@ -463,11 +445,7 @@ function checkCloudflareResources() {
 // メンテナ専用セクション (--maintainer フラグ時のみ)
 // ============================================================================
 
-const REQUIRED_REPO_SECRETS = [
-  'CLOUDFLARE_API_TOKEN',
-  'CLOUDFLARE_ACCOUNT_ID',
-  'CLOUDFLARE_PROJECT_NAME',
-];
+const REQUIRED_REPO_SECRETS = ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_PROJECT_NAME'];
 const REQUIRED_ENV_SECRETS = ['VITE_API_URL', 'VITE_TURNSTILE_SITE_KEY'];
 const REQUIRED_WORKER_SECRETS = [
   'TURNSTILE_SECRET_KEY',
@@ -517,9 +495,7 @@ function checkGitHubSetup() {
   report('ok', `対象 repo: ${ghRepoSlug}`);
 
   // delete_branch_on_merge
-  const repoSettings = tryExec(
-    `gh api repos/${ghRepoSlug} --jq '.delete_branch_on_merge'`
-  );
+  const repoSettings = tryExec(`gh api repos/${ghRepoSlug} --jq '.delete_branch_on_merge'`);
   if (repoSettings === 'false') {
     report('ok', 'delete_branch_on_merge: false (develop が削除されない)');
   } else if (repoSettings === 'true') {
@@ -533,10 +509,7 @@ function checkGitHubSetup() {
   }
 
   // Repo-level secrets
-  const repoSecretsJson = tryExec(
-    `gh secret list --json name --jq '[.[] | .name]'`,
-    { cwd: REPO_ROOT }
-  );
+  const repoSecretsJson = tryExec(`gh secret list --json name --jq '[.[] | .name]'`, { cwd: REPO_ROOT });
   let repoSecrets = [];
   try {
     repoSecrets = JSON.parse(repoSecretsJson || '[]');
@@ -545,18 +518,12 @@ function checkGitHubSetup() {
     if (repoSecrets.includes(key)) {
       report('ok', `repo secret: ${key}`);
     } else {
-      report(
-        'fail',
-        `repo secret 未設定: ${key}`,
-        `gh secret set ${key}\n値の中身は docs/setup.md M1-M2 参照`
-      );
+      report('fail', `repo secret 未設定: ${key}`, `gh secret set ${key}\n値の中身は docs/setup.md M1-M2 参照`);
     }
   }
 
   // Environments
-  const envListJson = tryExec(
-    `gh api repos/${ghRepoSlug}/environments --jq '[.environments[].name]'`
-  );
+  const envListJson = tryExec(`gh api repos/${ghRepoSlug}/environments --jq '[.environments[].name]'`);
   let envList = [];
   try {
     envList = JSON.parse(envListJson || '[]');
@@ -575,16 +542,12 @@ function checkGitHubSetup() {
 
     // production の Required reviewers
     if (envName === 'production') {
-      const protectionJson = tryExec(
-        `gh api repos/${ghRepoSlug}/environments/production --jq '.protection_rules'`
-      );
+      const protectionJson = tryExec(`gh api repos/${ghRepoSlug}/environments/production --jq '.protection_rules'`);
       try {
         const rules = JSON.parse(protectionJson || '[]');
         const reqRev = rules.find((r) => r.type === 'required_reviewers');
         if (reqRev && reqRev.reviewers?.length > 0) {
-          const names = reqRev.reviewers
-            .map((r) => r.reviewer?.login || r.reviewer?.name || 'unknown')
-            .join(', ');
+          const names = reqRev.reviewers.map((r) => r.reviewer?.login || r.reviewer?.name || 'unknown').join(', ');
           report('ok', `production: Required reviewers (${names})`);
         } else {
           report(
@@ -599,10 +562,9 @@ function checkGitHubSetup() {
     }
 
     // Env secrets
-    const envSecretsJson = tryExec(
-      `gh secret list --env ${envName} --json name --jq '[.[] | .name]'`,
-      { cwd: REPO_ROOT }
-    );
+    const envSecretsJson = tryExec(`gh secret list --env ${envName} --json name --jq '[.[] | .name]'`, {
+      cwd: REPO_ROOT,
+    });
     let envSecrets = [];
     try {
       envSecrets = JSON.parse(envSecretsJson || '[]');
@@ -611,11 +573,7 @@ function checkGitHubSetup() {
       if (envSecrets.includes(key)) {
         report('ok', `env "${envName}" secret: ${key}`);
       } else {
-        report(
-          'fail',
-          `env "${envName}" secret 未設定: ${key}`,
-          `gh secret set ${key} --env ${envName}`
-        );
+        report('fail', `env "${envName}" secret 未設定: ${key}`, `gh secret set ${key} --env ${envName}`);
       }
     }
   }
@@ -640,11 +598,7 @@ function checkDeployedWorker(envName, configFile) {
   // 設定ファイル存在
   const config = readFileOrNull(`packages/workers/${configFile}`);
   if (!config) {
-    report(
-      'fail',
-      `packages/workers/${configFile} が存在しない`,
-      `git checkout が壊れているか、ブランチを確認`
-    );
+    report('fail', `packages/workers/${configFile} が存在しない`, `git checkout が壊れているか、ブランチを確認`);
     return;
   }
 
@@ -666,11 +620,10 @@ function checkDeployedWorker(envName, configFile) {
 
   // Worker がデプロイされているか
   // wrangler deployments list は古い順に並ぶので、最後の Created を最新と扱う
-  const deployment = spawnSync(
-    'npx',
-    ['--no-install', 'wrangler', 'deployments', 'list', '--name', workerName],
-    { encoding: 'utf-8', cwd: resolve(REPO_ROOT, 'packages/workers') }
-  );
+  const deployment = spawnSync('npx', ['--no-install', 'wrangler', 'deployments', 'list', '--name', workerName], {
+    encoding: 'utf-8',
+    cwd: resolve(REPO_ROOT, 'packages/workers'),
+  });
   if (deployment.status === 0 && /Created:/.test(deployment.stdout)) {
     const allCreated = [...deployment.stdout.matchAll(/^Created:\s+(\S+)/gm)];
     const latest = allCreated[allCreated.length - 1]?.[1] ?? '?';
@@ -684,11 +637,10 @@ function checkDeployedWorker(envName, configFile) {
   }
 
   // Worker secrets 4 件
-  const secrets = spawnSync(
-    'npx',
-    ['--no-install', 'wrangler', 'secret', 'list', '--config', configFile],
-    { encoding: 'utf-8', cwd: resolve(REPO_ROOT, 'packages/workers') }
-  );
+  const secrets = spawnSync('npx', ['--no-install', 'wrangler', 'secret', 'list', '--config', configFile], {
+    encoding: 'utf-8',
+    cwd: resolve(REPO_ROOT, 'packages/workers'),
+  });
   if (secrets.status === 0) {
     let names = [];
     try {
@@ -731,9 +683,7 @@ function checkPagesProject() {
     cwd: resolve(REPO_ROOT, 'packages/workers'),
   });
   if (list.status === 0) {
-    const projectNames = [
-      ...list.stdout.matchAll(/^│\s+(\S[\w-]+)\s+│/gm),
-    ].map((m) => m[1]);
+    const projectNames = [...list.stdout.matchAll(/^│\s+(\S[\w-]+)\s+│/gm)].map((m) => m[1]);
     if (projectNames.length === 0) {
       report(
         'fail',
@@ -789,9 +739,7 @@ if (blocking > 0) {
 
 console.log('');
 if (warnCount > 0) {
-  console.log(
-    `${C.yellow}${C.bold}セットアップは動作可能ですが ${warnCount} 件の注意点があります。${C.reset}`
-  );
+  console.log(`${C.yellow}${C.bold}セットアップは動作可能ですが ${warnCount} 件の注意点があります。${C.reset}`);
   console.log(`必要に応じて対応してください (動作に必須ではありません)。`);
 } else {
   console.log(`${C.green}${C.bold}すべてのチェックを通過しました。${C.reset} 開発開始可能です:`);

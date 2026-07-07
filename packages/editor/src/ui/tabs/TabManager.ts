@@ -7,7 +7,9 @@
  */
 
 import * as monaco from 'monaco-editor';
-import { TypingProof, PROOF_FORMAT_VERSION } from '@typedcode/shared';
+import { TypingProof, PROOF_FORMAT_VERSION, verifyContentReplay } from '@typedcode/shared';
+import type { SessionStartToken, StoredEvent } from '@typedcode/shared';
+import { tabsKey } from '../../core/storageKeys.js';
 import type {
   FingerprintComponents,
   TabSwitchEvent,
@@ -22,19 +24,18 @@ import type {
   VerificationState,
   VerificationDetails,
   StoredTabData,
+  ExamSessionContext,
 } from '@typedcode/shared';
 import {
   isTurnstileConfigured,
+  performTurnstileVerification,
   type VerificationResult,
 } from '../../services/TurnstileService.js';
 import { performVerificationWithUI } from './TabVerificationUI.js';
 import { t } from '../../i18n/index.js';
+import { type SessionStorageService, getSessionStorageService } from '../../services/SessionStorageService.js';
 import {
-  SessionStorageService,
-  getSessionStorageService,
-} from '../../services/SessionStorageService.js';
-import {
-  SignedCheckpointService,
+  type SignedCheckpointService,
   createSignedCheckpointServiceIfEnabled,
 } from '../../services/SignedCheckpointService.js';
 import { debugLog } from '../../utils/logger.js';
@@ -42,10 +43,7 @@ import { debugLog } from '../../utils/logger.js';
 // PoSW Workerのファクトリ関数
 // Viteがsymlinkedパッケージ内のWorkerを正しく解決できないため、editorパッケージ内から読み込む
 function createPoswWorker(): Worker {
-  return new Worker(
-    new URL('../../workers/poswWorker.ts', import.meta.url),
-    { type: 'module' }
-  );
+  return new Worker(new URL('../../workers/poswWorker.ts', import.meta.url), { type: 'module' });
 }
 
 // Re-export for convenience
@@ -84,20 +82,33 @@ export type OnSyncStatusChangeCallback = (status: SyncStatus) => void;
 export interface CreateTabOptions {
   /** sessionStorageからの復元時はtrue（認証不要） */
   skipAttestation?: boolean;
+  /**
+   * 試験モード (ADR-0006) の束縛コンテキスト。指定されると:
+   * - チェーン根を initialize ではなく initializeExam で確定 (genesis = 監督コード入力)
+   * - #0 humanAttestation を best-effort で記録した直後に #1 examOpened を記録
+   * - exam ロックを跨いで作るのは解錠フロー (setExamLock 前) のみ
+   */
+  examContext?: ExamSessionContext;
+  /**
+   * 先頭タブの humanAttestation を共有する (ADR-0012 N問バンドルの 2 番目以降のタブ用)。
+   * 指定すると Turnstile / best-effort をやり直さず、この attestation を #0 に記録する
+   * (TemplateImporter の共有 attestation と同じ発想)。
+   */
+  sharedAttestation?: HumanAttestationEventData;
 }
 
 /** 言語IDから拡張子を取得 */
 function getFileExtension(language: string): string {
   const extensionMap: Record<string, string> = {
-    'c': 'c',
-    'cpp': 'cpp',
-    'javascript': 'js',
-    'typescript': 'ts',
-    'html': 'html',
-    'css': 'css',
-    'json': 'json',
-    'markdown': 'md',
-    'python': 'py'
+    c: 'c',
+    cpp: 'cpp',
+    javascript: 'js',
+    typescript: 'ts',
+    html: 'html',
+    css: 'css',
+    json: 'json',
+    markdown: 'md',
+    python: 'py',
   };
   return extensionMap[language] ?? 'txt';
 }
@@ -107,8 +118,7 @@ function generateUUID(): string {
   return crypto.randomUUID();
 }
 
-/** ストレージキー */
-const STORAGE_KEY = 'typedcode-tabs';
+/** タブ状態の sessionStorage キーは storageKeys.tabsKey() (モード別名前空間。ADR-0011 PR3)。 */
 const OLD_STORAGE_KEYS = ['editorContent', 'editorLanguage', 'editorFilename', 'typingProof'];
 
 export class TabManager {
@@ -116,11 +126,20 @@ export class TabManager {
   private tabOrder: string[] = [];
   private activeTabId: string | null = null;
   private tabSwitches: TabSwitchEvent[] = [];
+  /** 試験モードのタブロック (ADR-0010): true の間 createTab/closeTab を源流で拒否する。 */
+  private examLocked = false;
   /** 復元中フラグ。復元時に switchTab が発火する合成スイッチイベントを
    *  IndexedDB に二重永続化しないために使う。 */
   private isRestoring = false;
   private fingerprint: string | null = null;
   private fingerprintComponents: FingerprintComponents | null = null;
+  /**
+   * exam 用の署名専用 sessionStartToken (ADR-0027)。root には焼かず proof にも同梱しない。
+   * casual/class/assignment はタブの TypingProof が持つ token を使うのでここには入らない。
+   */
+  private signingOnlyToken: SessionStartToken | null = null;
+  /** acquireSigningTokenBestEffort の単一フライトガード */
+  private acquiringSigningToken = false;
   private editor: monaco.editor.IStandaloneCodeEditor;
   private onTabChangeCallback: OnTabChangeCallback | null = null;
   private onTabUpdateCallback: OnTabUpdateCallback | null = null;
@@ -139,6 +158,14 @@ export class TabManager {
   private static readonly SAVE_DEBOUNCE_MS = 100;
   /** 現在の同期状態 */
   private currentSyncStatus: SyncStatus = 'synced';
+  /**
+   * IndexedDB へ保存済みのイベント数 (タブ毎、メモリ内配列先頭からの個数)。
+   * 保存のたびに全イベントを IDB から読み直して差分計算すると長セッションで保存が
+   * 線形に重くなる (#144) ため、初回だけ IDB と突合してカーソルを確定し、以降は
+   * カーソル以降のみを append する。重複は events store の unique index が弾くので
+   * カーソルが遅れていても二重保存にはならない。
+   */
+  private savedEventCursor: Map<string, number> = new Map();
 
   constructor(editor: monaco.editor.IStandaloneCodeEditor) {
     this.editor = editor;
@@ -149,10 +176,7 @@ export class TabManager {
    * TabManagerを初期化
    * @returns 初期化成功時はtrue、reCAPTCHA失敗時はfalse
    */
-  async initialize(
-    fingerprintHash: string,
-    fingerprintComponents: FingerprintComponents
-  ): Promise<boolean> {
+  async initialize(fingerprintHash: string, fingerprintComponents: FingerprintComponents): Promise<boolean> {
     this.fingerprint = fingerprintHash;
     this.fingerprintComponents = fingerprintComponents;
 
@@ -246,19 +270,61 @@ export class TabManager {
    * Turnstileが設定されている場合、認証結果をevent #0として記録（成功・失敗問わず）
    * @returns 常にTabState（認証失敗でもタブ作成は続行）
    */
+  /** 試験モードのタブロックを設定する (ADR-0010)。初期問題タブ生成後に有効化する。 */
+  setExamLock(locked: boolean): void {
+    this.examLocked = locked;
+  }
+
   async createTab(
     filename: string = 'untitled',
     language: string = 'c',
     content: string = '',
     options?: CreateTabOptions
   ): Promise<TabState | null> {
+    if (this.examLocked) {
+      console.warn('[TypedCode] Tab creation is locked (exam mode)');
+      return null;
+    }
     const id = generateUUID();
     const createdAt = Date.now();
 
-    // TypingProofインスタンスを作成（Workerをeditorパッケージから注入）
     const typingProof = new TypingProof();
     const poswWorker = createPoswWorker();
-    await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
+
+    // 認証状態を追跡
+    let verificationState: VerificationState = 'skipped';
+    let verificationDetails: VerificationDetails | undefined;
+
+    // ADR-0017: casual/class は session/start で root をサーバアンカーする。
+    // exam は独自束縛 (initializeExam)、sharedAttestation (バンドル 2 番目以降) は再認証しない。
+    // root は serverNonce に依存するため、Turnstile を **initialize より先に** 実行する。
+    // session/start の sessionId は署名 cp と一致させる必要があるので getCurrentSessionId() を使う
+    // (verifier が token.sessionId ↔ 署名 cp sessionId の一致を要求する)。失敗時は非アンカーで継続。
+    let interactiveAuth: Awaited<ReturnType<typeof performVerificationWithUI>> | null = null;
+    if (!options?.examContext && !options?.sharedAttestation && !options?.skipAttestation && isTurnstileConfigured()) {
+      debugLog('[TabManager] Performing Turnstile + session/start for new tab...');
+      const apiSessionId = this.sessionService.getCurrentSessionId();
+      const sessionStart =
+        apiSessionId && this.fingerprint ? { sessionId: apiSessionId, fingerprintHash: this.fingerprint } : undefined;
+      interactiveAuth = await performVerificationWithUI('create_tab', t, sessionStart);
+    }
+
+    // TypingProofインスタンスの root を確定する。
+    // 試験モード (ADR-0006): examContext があれば root を packageHash + startToken に束縛する。
+    // ADR-0017: session/start トークンがあれば serverNonce 込みでアンカー。無ければ従来式。
+    if (options?.examContext) {
+      await typingProof.initializeExam(this.fingerprint!, this.fingerprintComponents!, options.examContext, poswWorker);
+    } else if (interactiveAuth?.sessionToken) {
+      await typingProof.initializeAnchored(
+        this.fingerprint!,
+        this.fingerprintComponents!,
+        interactiveAuth.sessionToken.payload.serverNonce,
+        interactiveAuth.sessionToken,
+        poswWorker
+      );
+    } else {
+      await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
+    }
 
     // Pending Event変更コールバックを設定（即時保存用）
     typingProof.setOnPendingEventChange(() => {
@@ -269,26 +335,41 @@ export class TabManager {
     // VITE_API_URL 未設定なら null (graceful degradation)。
     const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof);
 
-    // 認証状態を追跡
-    let verificationState: VerificationState = 'skipped';
-    let verificationDetails: VerificationDetails | undefined;
-
-    // Turnstile認証（skipAttestationでない場合のみ）
-    if (!options?.skipAttestation && isTurnstileConfigured()) {
-      debugLog('[TabManager] Performing Turnstile verification for new tab...');
-
-      const uiResult = await performVerificationWithUI('create_tab', t);
-
-      verificationState = uiResult.verificationState;
-      verificationDetails = uiResult.verificationDetails;
+    // #0 humanAttestation を記録する。
+    // 共有 attestation (ADR-0012 バンドルの 2 番目以降のタブ): 先頭タブの #0 を再利用し
+    // Turnstile を再実行しない。examContext と併用する。
+    if (options?.sharedAttestation) {
+      await typingProof.recordHumanAttestation(options.sharedAttestation);
+      verificationState = 'verified';
+      verificationDetails = { timestamp: new Date().toISOString() };
+    } else if (interactiveAuth) {
+      verificationState = interactiveAuth.verificationState;
+      verificationDetails = interactiveAuth.verificationDetails;
 
       // 認証結果をハッシュチェーンに記録（成功・失敗問わず）
-      await typingProof.recordHumanAttestation(uiResult.attestationData);
+      await typingProof.recordHumanAttestation(interactiveAuth.attestationData);
 
       // コールバックで通知
-      this.onVerificationCallback?.(uiResult.result);
+      this.onVerificationCallback?.(interactiveAuth.result);
 
       // 注意: 認証失敗でもタブ作成は続行（ブロックしない）
+    } else if (options?.examContext && !options?.skipAttestation) {
+      // 試験モードで Turnstile 未設定: ネット非依存の合成 best-effort attestation を #0 に記録し、
+      // 「#0 = humanAttestation」不変条件を保つ (100名・不安定網で開始を止めない＝ADR 絶対条件)。
+      await typingProof.recordHumanAttestation(this.bestEffortExamAttestation());
+    }
+
+    // 試験モード: 封印問題の開封を #1 examOpened として記録 (#0 humanAttestation の直後)。
+    if (options?.examContext) {
+      const ctx = options.examContext;
+      await typingProof.recordExamOpened({
+        examId: ctx.examId,
+        problemId: ctx.problemId,
+        variant: ctx.variant,
+        packageHash: ctx.packageHash,
+        problemContentHash: ctx.problemContentHash,
+        openedAt: new Date().toISOString(),
+      });
     }
 
     // Monacoモデルを作成
@@ -319,6 +400,23 @@ export class TabManager {
   }
 
   /**
+   * 試験モードで Turnstile が無いときの合成 best-effort attestation (ADR-0006)。
+   * ネット非依存で #0 humanAttestation を必ず置けるようにし、開始をブロックしない。
+   * verified=false / signature='unsigned' で「人間性は未検証」を正直に表す。
+   */
+  private bestEffortExamAttestation(): HumanAttestationEventData {
+    return {
+      verified: false,
+      score: 0,
+      action: 'exam_start',
+      timestamp: new Date().toISOString(),
+      hostname: window.location.hostname,
+      signature: 'unsigned',
+      success: false,
+    };
+  }
+
+  /**
    * Signed checkpoint service を tab に attach する共通処理。
    * - VITE_API_URL 未設定なら null を返す
    * - typingProof に onCheckpointCreated hook を仕掛け、新規 checkpoint を service へ流す
@@ -336,6 +434,9 @@ export class TabManager {
       sessionId,
       tabId,
       getInitialEventChainHash: () => typingProof.getInitialEventChainHash(),
+      // ADR-0027: sign は sessionStartToken 前提。token はセッション単位 (タブ横断) なので
+      // 毎回セッションレベルで解決する (exam の best-effort 取得で後から届くケースに対応)。
+      getSessionStartToken: () => this.findSigningToken(),
       attachSignature: (eventIndex, envelope) => typingProof.attachSignedCheckpoint(eventIndex, envelope),
     });
     if (!service) return null;
@@ -347,13 +448,76 @@ export class TabManager {
     if (existingCheckpoints && existingCheckpoints.length > 0) {
       void service.restore(existingCheckpoints);
     }
+
+    // exam は root を exam 式で束縛するため session/start を通らず、token を持たない。
+    // 署名クレデンシャルとしてだけ best-effort で取得する (ADR-0027。root には焼かない)。
+    // 復元経路でも呼ばれるので、リロード後の exam セッションもここで回復する。
+    if (typingProof.examContext && !this.findSigningToken()) {
+      void this.acquireSigningTokenBestEffort();
+    }
     return service;
+  }
+
+  /**
+   * このセッションの署名クレデンシャル (sessionStartToken) を解決する (ADR-0027)。
+   * casual/class/assignment は root アンカー時に取得した token が先頭タブの TypingProof に
+   * あるのでそれを流用し、exam は best-effort 取得の signingOnlyToken を使う。
+   * いずれも現在の sessionId と一致するものだけ返す (別セッションの遺物を送らない)。
+   */
+  private findSigningToken(): SessionStartToken | null {
+    const sessionId = this.sessionService.getCurrentSessionId();
+    if (!sessionId) return null;
+    if (this.signingOnlyToken?.payload.sessionId === sessionId) return this.signingOnlyToken;
+    for (const tab of this.tabs.values()) {
+      const token = tab.typingProof.sessionStartToken;
+      if (token?.payload.sessionId === sessionId) return token;
+    }
+    return null;
+  }
+
+  /**
+   * exam 用の署名専用 token を非ブロッキングで取得する (ADR-0027)。
+   * - UI は出さない (performTurnstileVerification を直接呼ぶ)。試験開始をブロックしない
+   *   (ADR-0006 の絶対条件)。失敗したら署名なしで劣化する (オフライン exam と同等)。
+   * - root には焼かない (exam の root は封印束縛 = initializeExam)。proof にも同梱しない。
+   */
+  private async acquireSigningTokenBestEffort(): Promise<void> {
+    if (this.acquiringSigningToken || this.findSigningToken()) return;
+    if (!isTurnstileConfigured()) return;
+    const sessionId = this.sessionService.getCurrentSessionId();
+    if (!sessionId || !this.fingerprint) return;
+    this.acquiringSigningToken = true;
+    try {
+      const result = await performTurnstileVerification('checkpoint_signing', {
+        sessionStart: { sessionId, fingerprintHash: this.fingerprint },
+      });
+      if (result.success && result.sessionToken) {
+        this.signingOnlyToken = result.sessionToken;
+        debugLog('[TabManager] Signing-only session token acquired (exam best-effort)');
+        for (const tab of this.tabs.values()) {
+          tab.signedCheckpointService?.retryPendingSignatures();
+        }
+      } else {
+        console.warn(
+          '[TabManager] Signing-only token acquisition failed; checkpoints stay unsigned:',
+          result.error ?? result.failureReason
+        );
+      }
+    } catch (err) {
+      console.warn('[TabManager] Signing-only token acquisition threw; checkpoints stay unsigned:', err);
+    } finally {
+      this.acquiringSigningToken = false;
+    }
   }
 
   /**
    * タブを閉じる
    */
   closeTab(tabId: string): boolean {
+    if (this.examLocked) {
+      console.warn('[TypedCode] Tab close is locked (exam mode)');
+      return false;
+    }
     const tab = this.tabs.get(tabId);
     if (!tab) return false;
 
@@ -364,7 +528,13 @@ export class TabManager {
 
     // タブを削除
     this.tabs.delete(tabId);
-    this.tabOrder = this.tabOrder.filter(id => id !== tabId);
+    this.tabOrder = this.tabOrder.filter((id) => id !== tabId);
+    this.savedEventCursor.delete(tabId);
+
+    // IndexedDB の行とイベントも削除する (#145)。残すと復旧ダイアログに閉じたタブが
+    // ゴースト表示され、tabOrder フォールバック復元で復活もしうる。実行中の保存処理が
+    // このタブを書き戻さないよう、完了を待ってから消す (fire-and-forget)。
+    this.deleteTabFromIndexedDB(tabId);
 
     // タブが0になった場合
     if (this.tabs.size === 0) {
@@ -396,10 +566,26 @@ export class TabManager {
   }
 
   /**
+   * 閉じたタブの IndexedDB 行とイベントを削除する (#145)。
+   * 実行中の保存処理がタブを書き戻す競合を避けるため、完了を待ってから消す。
+   * 削除は best-effort (失敗しても UI は既に閉じている)。
+   */
+  private deleteTabFromIndexedDB(tabId: string): void {
+    if (!this.sessionService.isInitialized()) return;
+    const pendingSave = this.currentSavePromise ?? Promise.resolve();
+    void pendingSave
+      .catch(() => undefined)
+      .then(() => this.sessionService.deleteTab(tabId))
+      .catch((e) => console.warn('[TabManager] Failed to delete closed tab from IndexedDB:', e));
+  }
+
+  /**
    * すべてのタブを閉じる（テンプレートインポート用）
    * 通常のcloseTabと異なり、最後の1つも閉じる
    */
   async closeAllTabs(): Promise<void> {
+    const closedTabIds = Array.from(this.tabs.keys());
+
     // すべてのモデルと署名サービスを破棄
     for (const tab of this.tabs.values()) {
       tab.model.dispose();
@@ -411,9 +597,14 @@ export class TabManager {
     this.tabOrder = [];
     this.activeTabId = null;
     this.tabSwitches = [];
+    this.savedEventCursor.clear();
 
     // ストレージもクリア
-    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(tabsKey());
+    // IndexedDB の行とイベントも削除 (#145: 残すと復旧ダイアログにゴースト表示される)
+    for (const tabId of closedTabIds) {
+      this.deleteTabFromIndexedDB(tabId);
+    }
   }
 
   /**
@@ -488,7 +679,7 @@ export class TabManager {
     if (!tab) return false;
 
     const previousTabId = this.activeTabId;
-    const previousTab = previousTabId ? this.tabs.get(previousTabId) ?? null : null;
+    const previousTab = previousTabId ? (this.tabs.get(previousTabId) ?? null) : null;
 
     // タブ切り替えイベントを記録
     if (previousTabId !== tabId) {
@@ -497,7 +688,7 @@ export class TabManager {
         fromTabId: previousTabId,
         toTabId: tabId,
         fromFilename: previousTab?.filename ?? null,
-        toFilename: tab.filename
+        toFilename: tab.filename,
       };
       this.tabSwitches.push(switchEvent);
       // sessionStorage は saveToStorage() 経由で保存されるが、IndexedDB には
@@ -560,7 +751,6 @@ export class TabManager {
     return true;
   }
 
-
   /**
    * アクティブなタブを取得
    */
@@ -581,9 +771,7 @@ export class TabManager {
    * 全タブを取得（tabOrder順）
    */
   getAllTabs(): TabState[] {
-    return this.tabOrder
-      .map(id => this.tabs.get(id))
-      .filter((tab): tab is TabState => tab !== undefined);
+    return this.tabOrder.map((id) => this.tabs.get(id)).filter((tab): tab is TabState => tab !== undefined);
   }
 
   /**
@@ -621,9 +809,13 @@ export class TabManager {
    * @param toIndex 移動先インデックス
    */
   reorderTab(fromIndex: number, toIndex: number): boolean {
-    if (fromIndex < 0 || fromIndex >= this.tabOrder.length ||
-        toIndex < 0 || toIndex >= this.tabOrder.length ||
-        fromIndex === toIndex) {
+    if (
+      fromIndex < 0 ||
+      fromIndex >= this.tabOrder.length ||
+      toIndex < 0 ||
+      toIndex >= this.tabOrder.length ||
+      fromIndex === toIndex
+    ) {
       return false;
     }
 
@@ -728,17 +920,17 @@ export class TabManager {
     })();
 
     this.currentSavePromise.then(() => {
-        this.currentSavePromise = null;
+      this.currentSavePromise = null;
 
-        // 保存中に新しい保存要求があった場合、最新状態で再保存
-        if (this.needsSave) {
-          this.executeSave();
-        } else {
-          // pendingEventsがあるかチェック
-          const hasPending = this.hasPendingEvents();
-          this.updateSyncStatus(hasPending ? 'pending' : 'synced');
-        }
-      });
+      // 保存中に新しい保存要求があった場合、最新状態で再保存
+      if (this.needsSave) {
+        this.executeSave();
+      } else {
+        // pendingEventsがあるかチェック
+        const hasPending = this.hasPendingEvents();
+        this.updateSyncStatus(hasPending ? 'pending' : 'synced');
+      }
+    });
   }
 
   /**
@@ -786,7 +978,7 @@ export class TabManager {
 
     // sessionStorageに保存（リロード用、軽量版）
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(storage));
+      sessionStorage.setItem(tabsKey(), JSON.stringify(storage));
     } catch (e) {
       if (e instanceof DOMException && e.name === 'QuotaExceededError') {
         console.warn('[TabManager] sessionStorage quota exceeded - content may be too large');
@@ -813,25 +1005,43 @@ export class TabManager {
       if (proofState.events.length > 0) {
         const firstEvent = proofState.events[0];
         if (firstEvent && firstEvent.sequence !== 0) {
-          console.error(`[TabManager] SAVE: Memory event chain broken for tab ${id}: first event has sequence ${firstEvent.sequence}`);
+          console.error(
+            `[TabManager] SAVE: Memory event chain broken for tab ${id}: first event has sequence ${firstEvent.sequence}`
+          );
         }
       }
 
-      // 既存イベントのシーケンス番号をSetで取得（欠落検出用）
-      const existingEvents = await this.sessionService.getEvents(id);
-      const existingSequences = new Set(existingEvents.map(e => e.sequence));
-
-      // 未保存のイベントをIndexedDBに追加（存在しないシーケンス番号のみ）
+      // 未保存のイベントを IndexedDB に追加 (#144)。
+      // 初回のみ既存イベントを全読みして欠落込みで突合し、以降はカーソル以降だけを
+      // append する (保存は 100ms デバウンスで頻発するため、毎回の全読みは長セッションで
+      // 保存を線形に重くする)。
       let newEventsCount = 0;
-      for (const event of proofState.events) {
-        if (event && !existingSequences.has(event.sequence)) {
-          await this.sessionService.appendEvent(id, event);
-          newEventsCount++;
+      const cursor = this.savedEventCursor.get(id);
+      if (cursor === undefined) {
+        // 初回 (リロード復旧直後など): 既存シーケンスと突合して欠落も補修する (従来挙動)
+        const existingEvents = await this.sessionService.getEvents(id);
+        const existingSequences = new Set(existingEvents.map((e) => e.sequence));
+        for (const event of proofState.events) {
+          if (event && !existingSequences.has(event.sequence)) {
+            await this.sessionService.appendEvent(id, event);
+            newEventsCount++;
+          }
+        }
+      } else {
+        for (let i = cursor; i < proofState.events.length; i++) {
+          const event = proofState.events[i];
+          if (event) {
+            await this.sessionService.appendEvent(id, event);
+            newEventsCount++;
+          }
         }
       }
+      this.savedEventCursor.set(id, proofState.events.length);
 
       if (newEventsCount > 0) {
-        debugLog(`[TabManager] SAVE: Tab ${id}: saved ${newEventsCount} new events (total: ${proofState.events.length})`);
+        debugLog(
+          `[TabManager] SAVE: Tab ${id}: saved ${newEventsCount} new events (total: ${proofState.events.length})`
+        );
       }
 
       const tabData: StoredTabData = {
@@ -849,6 +1059,8 @@ export class TabManager {
         verificationState: tab.verificationState,
         verificationDetails: tab.verificationDetails,
         checkpoints: proofState.checkpoints,
+        examContext: proofState.examContext,
+        sessionStartToken: proofState.sessionStartToken,
       };
       await this.sessionService.saveTab(tabData);
     }
@@ -897,13 +1109,38 @@ export class TabManager {
   }
 
   /**
+   * 復元 content をチェーン replay に整合させる (#142)。
+   *
+   * クラッシュ/強制終了がイベントキュー処理中に起きると、打鍵はチェーンに載らないのに
+   * 直近の debounced 保存で content にだけ残る。その content のまま完成させて export
+   * すると Layer 4 の content replay が不一致で proof 全体が invalid になる (学生無過失)。
+   * 打鍵はチェーンに戻せないので、buffer 側を replay 結果へ切り詰めるのが唯一の整合化。
+   * replay 自体が途中で失敗する (より深い破損) 場合は触らない — 他レイヤが検出する。
+   */
+  private reconcileRestoredContent(tabId: string, savedContent: string, events: readonly StoredEvent[]): string {
+    if (events.length === 0) return savedContent; // 整合先が無い (別種の破損はここで判断しない)
+    const replay = verifyContentReplay(events as StoredEvent[], savedContent);
+    if (replay.valid) return savedContent;
+    if (replay.reconstructedContent !== undefined) {
+      console.warn(
+        `[TabManager] Tab ${tabId}: restored content is ahead of the event chain ` +
+          `(crash window). Truncating ${savedContent.length} -> ${replay.reconstructedContent.length} chars ` +
+          `to keep the proof verifiable (#142).`
+      );
+      return replay.reconstructedContent;
+    }
+    console.error(`[TabManager] Tab ${tabId}: content replay failed during restore: ${replay.reason}`);
+    return savedContent;
+  }
+
+  /**
    * sessionStorageから読み込み
    * V1フォーマット: eventsあり（従来形式）
    * V2フォーマット: eventsなし（軽量版）→ IndexedDBからevents取得
    */
   async loadFromStorage(): Promise<boolean> {
     try {
-      const data = sessionStorage.getItem(STORAGE_KEY);
+      const data = sessionStorage.getItem(tabsKey());
       if (!data) {
         // sessionStorageが空の場合、IndexedDBからのフォールバックを試みる
         debugLog('[TabManager] sessionStorage is empty, trying IndexedDB fallback');
@@ -929,7 +1166,7 @@ export class TabManager {
         return await this.loadFromStorageV2(rawStorage);
       } else {
         console.warn(`[TabManager] Unknown storage version: ${rawStorage.version}`);
-        sessionStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(tabsKey());
         return false;
       }
     } catch (e) {
@@ -975,13 +1212,13 @@ export class TabManager {
       });
 
       // 既存 checkpoints を渡して signing service を attach (chain state を復元)
-      const signedCheckpointService = this.attachSignedCheckpointService(
-        id,
-        typingProof,
-        typingProof.checkpoints
-      );
+      const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof, typingProof.checkpoints);
 
-      const model = monaco.editor.createModel(serializedTab.content, serializedTab.language);
+      // #142: クラッシュ窓で content がチェーンより先行していたら replay 結果へ整合させる
+      const content = serializedTab.proofState
+        ? this.reconcileRestoredContent(id, serializedTab.content, serializedTab.proofState.events)
+        : serializedTab.content;
+      const model = monaco.editor.createModel(content, serializedTab.language);
 
       const tab: TabState = {
         id,
@@ -1037,14 +1274,18 @@ export class TabManager {
       if (events.length > 0) {
         const firstEvent = events[0];
         if (firstEvent && firstEvent.sequence !== 0) {
-          console.error(`[TabManager] Event chain broken for tab ${id}: first event has sequence ${firstEvent.sequence}, expected 0`);
+          console.error(
+            `[TabManager] Event chain broken for tab ${id}: first event has sequence ${firstEvent.sequence}, expected 0`
+          );
         }
         // シーケンス番号の連続性をチェック
         for (let i = 1; i < events.length; i++) {
           const prev = events[i - 1];
           const curr = events[i];
           if (prev && curr && curr.sequence !== prev.sequence + 1) {
-            console.error(`[TabManager] Event sequence gap at tab ${id}: event ${i} has sequence ${curr.sequence}, expected ${prev.sequence + 1}`);
+            console.error(
+              `[TabManager] Event sequence gap at tab ${id}: event ${i} has sequence ${curr.sequence}, expected ${prev.sequence + 1}`
+            );
           }
         }
       }
@@ -1064,17 +1305,23 @@ export class TabManager {
       const currentHash = lastEvent?.hash ?? lightweightTab.proofState.currentHash;
 
       if (actualSequence < expectedSequence) {
-        console.warn(`[TabManager] Event sync mismatch for tab ${id}: expected seq ${expectedSequence}, got ${actualSequence}. Using IndexedDB hash as currentHash.`);
+        console.warn(
+          `[TabManager] Event sync mismatch for tab ${id}: expected seq ${expectedSequence}, got ${actualSequence}. Using IndexedDB hash as currentHash.`
+        );
         // 一部イベントが未保存の可能性があるが、IndexedDBのデータを正とする
       }
 
       // 3. SerializedProofStateを構築（pendingEventsは復元しない）
+      // sessionStartToken (ADR-0017) を必ず引き継ぐ。落とすと casual/class の
+      // サーバアンカーが失われ、リロード後の proof が root 不一致で検証不能になる。
       const proofState: SerializedProofState = {
         events,
         currentHash,
         initialHashNonce: lightweightTab.proofState.initialHashNonce,
         startTime: lightweightTab.proofState.startTime,
         checkpoints: lightweightTab.proofState.checkpoints,
+        examContext: lightweightTab.proofState.examContext,
+        sessionStartToken: lightweightTab.proofState.sessionStartToken ?? null,
       };
 
       // 4. TypingProofを復元
@@ -1091,15 +1338,12 @@ export class TabManager {
         this.saveToStorage();
       });
 
-      const signedCheckpointService = this.attachSignedCheckpointService(
-        id,
-        typingProof,
-        typingProof.checkpoints
-      );
+      const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof, typingProof.checkpoints);
 
       // 6. Monacoモデル作成（contentはsessionStorageから）
+      // #142: クラッシュ窓で content がチェーンより先行していたら replay 結果へ整合させる
       const model = monaco.editor.createModel(
-        lightweightTab.content,
+        this.reconcileRestoredContent(id, lightweightTab.content, events),
         lightweightTab.language
       );
 
@@ -1176,12 +1420,12 @@ export class TabManager {
 
       // セッションメタデータからタブ順序を取得
       const session = await this.sessionService.getLatestSession();
-      const tabOrder = session?.tabOrder ?? storedTabs.map(t => t.id);
+      const tabOrder = session?.tabOrder ?? storedTabs.map((t) => t.id);
       const activeTabId = session?.activeTabId ?? storedTabs[0]?.id;
 
       // タブを復元（tabOrder順に処理）
       for (const tabId of tabOrder) {
-        const storedTab = storedTabs.find(t => t.id === tabId);
+        const storedTab = storedTabs.find((t) => t.id === tabId);
         if (!storedTab) continue;
 
         // イベントを読み込み
@@ -1198,6 +1442,10 @@ export class TabManager {
             startTime: storedTab.startTime,
             pendingEvents: [], // IndexedDB復元時はpendingEventsなし
             checkpoints: storedTab.checkpoints,
+            examContext: storedTab.examContext,
+            // sessionStartToken (ADR-0017) を必ず引き継ぐ。落とすと casual/class の
+            // サーバアンカーが失われ、復旧後の proof が root 不一致で検証不能になる。
+            sessionStartToken: storedTab.sessionStartToken ?? null,
           },
           this.fingerprint,
           this.fingerprintComponents,
@@ -1216,7 +1464,11 @@ export class TabManager {
         );
 
         // Monacoモデルを作成
-        const model = monaco.editor.createModel(storedTab.content, storedTab.language);
+        // #142: クラッシュ窓で content がチェーンより先行していたら replay 結果へ整合させる
+        const model = monaco.editor.createModel(
+          this.reconcileRestoredContent(storedTab.id, storedTab.content, events),
+          storedTab.language
+        );
 
         const tab: TabState = {
           id: storedTab.id,
@@ -1283,7 +1535,7 @@ export class TabManager {
     this.startTime = performance.now();
 
     // ストレージをクリア（sessionStorage + IndexedDB）
-    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(tabsKey());
     try {
       await this.sessionService.clearSession();
     } catch (e) {
@@ -1344,7 +1596,7 @@ export class TabManager {
         language: tab.language,
         typingProofHash: proof.typingProofHash,
         typingProofData: proof.typingProofData,
-        proof: proof.proof
+        proof: proof.proof,
       };
 
       if (!proof.metadata.isPureTyping) {
@@ -1357,7 +1609,7 @@ export class TabManager {
       type: 'multi-file',
       fingerprint: {
         hash: this.fingerprint!,
-        components: this.fingerprintComponents!
+        components: this.fingerprintComponents!,
       },
       files,
       tabSwitches: this.tabSwitches,
@@ -1365,8 +1617,8 @@ export class TabManager {
         userAgent: navigator.userAgent,
         timestamp: new Date().toISOString(),
         totalFiles: Object.keys(files).length,
-        overallPureTyping
-      }
+        overallPureTyping,
+      },
     };
   }
 

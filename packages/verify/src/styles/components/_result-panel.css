@@ -46,7 +46,7 @@
   width: 50%;
   min-width: 350px;
   max-width: 70%;
-  padding: 16px;
+  padding: 16px 16px 32px;
   overflow-y: auto;
   flex-shrink: 0;
 }
@@ -76,14 +76,23 @@
 /* Status header card */
 .result-status-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
   padding: 16px;
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: 8px;
   margin-bottom: 16px;
+}
+
+/* 上段: アイコン+タイトル と ミニゲージ を横並び */
+.result-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
 }
 
 .result-status-main {
@@ -94,86 +103,10 @@
   min-width: 0;
 }
 
-/* Typing pattern mini gauge in status card */
-.result-status-pattern {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-left: 16px;
-  border-left: 1px solid var(--border-color);
-}
-
-.pattern-mini-gauge {
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-}
-
-.pattern-mini-svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-
-.pattern-mini-svg .gauge-bg {
-  fill: none;
-  stroke: var(--bg-tertiary);
-  stroke-width: 4;
-}
-
-.pattern-mini-svg .gauge-fill {
-  fill: none;
-  stroke-width: 4;
-  stroke-linecap: round;
-  transition: stroke-dashoffset 0.5s ease;
-}
-
-.pattern-mini-svg .gauge-fill.success {
-  stroke: var(--accent-success);
-}
-
-.pattern-mini-svg .gauge-fill.warning {
-  stroke: var(--accent-warning);
-}
-
-.pattern-mini-svg .gauge-fill.error {
-  stroke: var(--accent-danger);
-}
-
-.pattern-mini-svg .gauge-score {
-  fill: var(--text-primary);
-  font-size: 12px;
-  font-weight: 600;
-  transform: rotate(90deg);
-  transform-origin: 25px 28px;
-}
-
-.pattern-mini-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.pattern-mini-label {
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-.pattern-mini-judgment {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.pattern-mini-judgment.success {
-  color: var(--accent-success);
-}
-
-.pattern-mini-judgment.warning {
-  color: var(--accent-warning);
-}
-
-.pattern-mini-judgment.error {
-  color: var(--accent-danger);
+/* 三層保証バッジは下段に全幅。上段とは区切り線で分ける (表示時のみ) */
+#assurance-strip {
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border-color);
 }
 
 .result-status-icon {
@@ -423,7 +356,7 @@
 }
 
 #code-preview code {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
 }
 
 /* Code preview with line numbers */
@@ -537,7 +470,7 @@
 }
 
 .plaintext-code code {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
 }
 
 /* ============================================================================
@@ -659,7 +592,7 @@
   margin-left: auto;
   display: flex;
   gap: 12px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: "Consolas", "Monaco", monospace;
   font-size: 12px;
   font-weight: 600;
 }
@@ -674,7 +607,7 @@
 
 /* 差分ビューコンテナ */
 .diff-view {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
   font-size: 13px;
   line-height: 1.5;
 }
@@ -901,7 +834,7 @@
 }
 
 .chain-segment-error-marker::before {
-  content: '';
+  content: "";
   position: absolute;
   top: -6px;
   left: 50%;
@@ -1016,7 +949,7 @@
 }
 
 .chain-segment-tooltip::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 100%;
   left: 50%;
@@ -1054,7 +987,7 @@
   display: none;
 }
 .anchoring-details-summary::marker {
-  content: '';
+  content: "";
 }
 
 .anchoring-details-chevron {
@@ -1136,8 +1069,12 @@
   font-size: 11px;
   font-weight: 600;
 }
-.anchoring-verdict.success { color: var(--success-color); }
-.anchoring-verdict.warning { color: var(--warning-color); }
+.anchoring-verdict.success {
+  color: var(--success-color);
+}
+.anchoring-verdict.warning {
+  color: var(--warning-color);
+}
 
 /* 鍵カード (Section: 署名鍵) */
 
@@ -1208,4 +1145,19 @@
   background-color: rgba(var(--warning-rgb), 0.08);
   border-radius: 3px;
   word-break: break-word;
+}
+
+/* 試験束縛カード (ADR-0006) の「問題パッケージを読み込む」ボタン */
+.exam-load-btn {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  background-color: transparent;
+  color: var(--accent-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.exam-load-btn:hover {
+  background-color: var(--bg-hover);
 }

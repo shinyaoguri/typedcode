@@ -4,10 +4,8 @@
  */
 
 import type { TabManager, TabState } from './TabManager.js';
-import {
-  getLanguageDefinition,
-  FILE_EXTENSIONS,
-} from '../../config/SupportedLanguages.js';
+import { escapeHtml } from '@typedcode/shared';
+import { getLanguageDefinition, FILE_EXTENSIONS } from '../../config/SupportedLanguages.js';
 import { t } from '../../i18n/index.js';
 
 export interface TabUIControllerOptions {
@@ -118,7 +116,7 @@ export class TabUIController {
 
     tabEl.innerHTML = `
       ${iconHtml}
-      <span class="tab-filename">${tab.filename}</span>
+      <span class="tab-filename">${escapeHtml(tab.filename)}</span>
       <span class="tab-extension">${ext}</span>
       ${verificationIndicator}
       <button class="tab-close-btn" title="Close Tab"><i class="fas fa-times"></i></button>
@@ -149,9 +147,7 @@ export class TabUIController {
       const timestamp = tab.verificationDetails?.timestamp
         ? new Date(tab.verificationDetails.timestamp).toLocaleString()
         : '';
-      const tooltip = timestamp
-        ? `✓ ${t('tabs.verifiedTooltip')}\n${timestamp}`
-        : `✓ ${t('tabs.verifiedTooltip')}`;
+      const tooltip = timestamp ? `✓ ${t('tabs.verifiedTooltip')}\n${timestamp}` : `✓ ${t('tabs.verifiedTooltip')}`;
       return `<span class="tab-verification verified" title="${tooltip}"></span>`;
     } else if (tab.verificationState === 'failed') {
       const timestamp = tab.verificationDetails?.timestamp
@@ -266,7 +262,7 @@ export class TabUIController {
   private startDrag(e: MouseEvent, tabEl: HTMLElement, tabId: string): void {
     const rect = tabEl.getBoundingClientRect();
     const tabs = this.tabManager.getAllTabs();
-    const index = tabs.findIndex(t => t.id === tabId);
+    const index = tabs.findIndex((t) => t.id === tabId);
 
     if (index === -1) return;
 
@@ -355,8 +351,7 @@ export class TabUIController {
 
       // ダブルクリック判定
       const isDoubleClick =
-        tabId === this.lastClickTabId &&
-        now - this.lastClickTime < TabUIController.DOUBLE_CLICK_DELAY;
+        tabId === this.lastClickTabId && now - this.lastClickTime < TabUIController.DOUBLE_CLICK_DELAY;
 
       this.cleanupDrag();
 
@@ -397,9 +392,7 @@ export class TabUIController {
    */
   private calculateDropIndex(clientX: number): number {
     const tabs = this.tabManager.getAllTabs();
-    const tabElements = Array.from(
-      this.container.querySelectorAll('.editor-tab')
-    ) as HTMLElement[];
+    const tabElements = Array.from(this.container.querySelectorAll('.editor-tab')) as HTMLElement[];
 
     let dropIndex = tabs.length - 1;
 
@@ -417,7 +410,7 @@ export class TabUIController {
       if (clientX < midPoint) {
         // このタブのインデックスを取得
         const tabId = tab.dataset.tabId;
-        const tabIndex = tabs.findIndex(t => t.id === tabId);
+        const tabIndex = tabs.findIndex((t) => t.id === tabId);
 
         if (tabIndex !== -1) {
           // ドラッグ元より後ろに挿入する場合は調整
@@ -442,9 +435,7 @@ export class TabUIController {
     if (!placeholder) return;
 
     // 全タブを取得（ドラッグ中のタブも含む）
-    const tabElements = Array.from(
-      this.container.querySelectorAll('.editor-tab')
-    ) as HTMLElement[];
+    const tabElements = Array.from(this.container.querySelectorAll('.editor-tab')) as HTMLElement[];
 
     // プレースホルダが既に挿入されている場合は一旦削除
     placeholder.remove();

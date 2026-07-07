@@ -15,6 +15,7 @@
 4. **KV は eventually consistent**: 同一 key への高頻度書き込みは ~1 write/sec の制限あり。cp トリガが頻発しないよう shared 側がハイブリッドトリガを使う ([docs/adr/0001-hybrid-checkpoint-trigger.md](../../docs/adr/0001-hybrid-checkpoint-trigger.md))
 5. **CORS のオリジン**: 編集 / 検証アプリのドメインを許可。ワイルドカード禁止 (下記「CORS と濫用防止の設計」参照)
 6. **`sessionId` は信用しない**: クライアントが投げる任意の文字列。サーバ側で `firstSeenAt` を KV に保存し改ざんを防ぐ
+7. **`/api/checkpoint/sign` は `sessionStartToken` 前提** (ADR-0027): token 検証は KV read より**前**に行い、無認証リクエストに KV コストを払わない。sessionId は token に束縛され、新規 sessionId の作成コスト = Turnstile 1 回になる。exam は署名専用 token を editor が best-effort 取得する (root には焼かない)
 
 ## ファイル構成
 
@@ -36,17 +37,24 @@ src/
 
 | Endpoint | Method | 用途 |
 |---|---|---|
-| `/api/verify-captcha` | POST | Turnstile トークン検証 + アテステーション発行 |
-| `/api/verify-attestation` | POST | アテステーション署名の整合性検証 |
-| `/api/checkpoint/sign` | POST | 未署名 cp に ECDSA-P256 署名 + `serverTimestamp` 付与 |
+| `/api/verify-captcha` | POST | Turnstile トークン検証 + アテステーション発行 (ADR-0017 で **作成時 #0 経路は session/start に統合**。pre-export 等で残置) |
+| `/api/verify-attestation` | POST | アテステーション署名の整合性検証 (**dead** — クライアント呼出なし。ADR-0017 で deprecate 注記) |
+| `/api/session/start` | POST | **ADR-0017**: Turnstile 検証 → `serverNonce` 入り ECDSA-P256 署名トークンを発行。クライアントは serverNonce を chain root に焼く。署名鍵は checkpoint と同一系統 (`getSigningKey`) |
+| `/api/checkpoint/sign` | POST | 未署名 cp に ECDSA-P256 署名 + `serverTimestamp` 付与。**`sessionStartToken` 前提** (ADR-0027: body に同送された token を registry で検証し `sessionId` 一致を要求) |
 | `/api/checkpoint/public-keys` | GET | 公開鍵レジストリ取得 (検証側のキャッシュ用) |
 | `/health` | GET | ヘルスチェック |
+
+`/api/session/start` (ADR-0017) は **Turnstile ゲート + root アンカー + 人間ゲート**を 1 リクエストで兼ねる。`handleSessionStart` (`src/index.ts`) が `verifyTurnstile` + hostname 照合 → `getSigningKey` (checkpoint.ts から export、鍵流用) で `createSessionStartToken` を署名発行。**KV を使わない** (ステートレス・冪等不要)。入力検証は shared の `validateSessionStartInput` (sessionId / fingerprintHash)。トークン検証 (registry-only) は shared の `verifySessionStartToken`。
 
 ## エラーコード (`/api/checkpoint/sign`)
 
 | Code | HTTP | 意味 |
 |---|---|---|
 | `SCHEMA_INVALID` | 400 | リクエスト body のスキーマ違反 |
+| `TOKEN_REQUIRED` | 401 | `sessionStartToken` 不在 (ADR-0027。KV read より前に弾く) |
+| `TOKEN_INVALID` | 401 | token の署名 / registry / 形式が不正 (内部理由はログのみ) |
+| `TOKEN_SESSION_MISMATCH` | 401 | `token.payload.sessionId` ≠ `input.sessionId` (token 使い回しで新規 sessionId を連打する手口を塞ぐ) |
+| `TAB_LIMIT_EXCEEDED` | 429 | per-session タブ台帳 (`session:{sessionId}:tabs`) が `MAX_TABS_PER_SESSION` (64) 超過 |
 | `NON_MONOTONIC` | 409 | `checkpointIndex` が単調増加していない |
 | `CHECKPOINT_CONFLICT` | 409 | 同一 index で内容不一致 (冪等性が成立しない) |
 | `SESSION_LIMIT_EXCEEDED` | 429 | KV の `SESSION_MAX_CHECKPOINTS` 超過 |
@@ -54,6 +62,7 @@ src/
 | `SIGNING_KEY_UNKNOWN` | 500 | `keyId` がレジストリに存在しない |
 | `SIGNING_ERROR` | 500 | 署名計算で予期しない失敗 |
 | `SESSION_PERSIST_FAILED` | 503 | **初回** checkpoint の KV 書き込み失敗。`firstSeenAt` が固定されないため署名済み envelope は返さずクライアントにリトライさせる (2 回目以降の書き込み失敗は best-effort で 200) |
+| `SESSION_STATE_UNAVAILABLE` | 503 | KV の**読み取り**失敗。「existing = null」と混同すると既存セッションに別の `firstSeenAt` で署名してしまう (#151/#153) ため、署名せずリトライさせる |
 
 ## CORS と濫用防止の設計
 
@@ -81,15 +90,30 @@ CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リス
 
 **CORS の限界と濫用防止**: CORS はブラウザのクロスオリジン**読み取り**のみを制限し、サーバ間アクセス (curl 等) は防げない。`/api/checkpoint/sign` は「任意 content への serverTimestamp 付き署名」を返すだけで、それ自体は何の権限も与えない (署名は『この内容がこのサーバ時刻に提示された』ことしか証明しない)。署名 API の濫用に対する実際の防御線は:
 
-- **per-session 上限**: `SESSION_MAX_CHECKPOINTS` (50,000) と `SESSION_TTL_SECONDS` (7 日)
+- **per-session 上限**: `SESSION_MAX_CHECKPOINTS` (50,000) と `SESSION_TTL_SECONDS` (7 日)。ただし `sessionId`/`tabId` はクライアント任意文字列なので**新規 sessionId を連打されると効かない** (per-key 上限のため)
 - **入力サイズ上限**: `MAX_BODY_BYTES` (8KB) + スキーマ厳格化 (64-hex / 最大長)
-- **IP / グローバル rate limit**: Cloudflare の WAF / Rate Limiting Rules に委譲 (Worker コード外。必要に応じてダッシュボードで設定)
+- **IP / グローバル rate limit**: Cloudflare の WAF / Rate Limiting Rules に委譲 (Worker コード外。下記の通り**必ず設定する**)
+
+### Rate Limiting の設定 (#136・defense-in-depth)
+
+**恒久対策は実装済み** (ADR-0027): `/api/checkpoint/sign` は `sessionStartToken` 前提になり、無認証リクエストは KV に触れる前に 401 で棄却される。新規 sessionId の作成コストは Turnstile 1 回に転嫁され、tabId 連打も per-session タブ台帳 (64) で有界。Rate Limiting Rule は **defense-in-depth** として引き続き推奨する (ECDSA 検証そのものの CPU コストと、session/start への負荷を抑える):
+
+1. Cloudflare ダッシュボード → 対象 Worker のゾーン → Security → WAF → Rate limiting rules
+2. Rule: `URI Path eq "/api/checkpoint/sign"` かつ method POST に対し、**同一 IP から 60 秒あたり N リクエスト** (署名 API の実利用は 1 セッション数秒〜十数秒に 1 回程度なので N=60 程度から始め、正規利用のログを見て調整) を超えたら `Block` (または `Managed Challenge`)
+3. `/api/session/start` にも同様の Rule を推奨 (Turnstile ゲートはあるが署名を伴う)
+4. 設定後、正規の連続 checkpoint (長時間セッション) が誤ブロックされないことを staging で確認する
+
+> この Rule は Worker コード外 (ダッシュボード管理) なのでリポジトリに設定証跡が残らない。**新環境 (staging/production) を立てるたびに手動で入れること。** 未設定でも ADR-0027 の token ゲートで KV write 増幅 DoS は成立しないが、署名 API の CPU 消費までは抑えられない。
 
 ## KV ネームスペース
+
+キーは **`session:{sessionId}:{tabId}`** (タブ毎)。`checkpointIndex` はタブ毎に 0 始まりで sessionId はブラウザセッション共有のため、sessionId だけでキーイングすると複数タブ (class の N 問タブ等) で 2 枚目以降が衝突して 1 つも署名されない。verifier は `firstSeenAt` をタブ間で共有要求しない (proof = 1 タブ) ので per-tab で安全。
 
 | Binding | 内容 | TTL |
 |---|---|---|
 | `CHECKPOINT_SESSIONS` | `firstSeenAt`, `lastCheckpointIndex`, `lastServerTimestamp`, `signedCount`, `lastEnvelope` (冪等用) | 7 日 |
+
+**firstSeenAt の分裂 (#151)**: KV は結果整合で他コロへの伝播に最大 ~60 秒かかる。cp 周期 (~10s) 内にコロ切替 (モバイル網等) が起きると、切替先では `existing=null` と誤認して**別の `firstSeenAt`** で署名しうる。verifier は全 envelope の firstSeenAt 完全一致を要求するため、そのまま proof に載ると正直な提出が丸ごと fail する。**緩和はクライアント側** — editor の `SignedCheckpointService` が既知の firstSeenAt と食い違う envelope を破棄してバックオフ再送する (伝播後のリトライは正しい値で署名される)。恒久対策 (Durable Object での per-session 逐次化) は W5 の ADR 課題。
 
 ## 観測性・シークレット宣言・型 (運用)
 
@@ -207,5 +231,6 @@ main ブランチ push
 
 - **`.dev.vars` を git に入れない**: `.gitignore` に登録済み。`wrangler.toml` の KV ID は skip-worktree で隠す
 - **`compatibility_date` を勝手に動かさない**: 後方互換性のために固定。新機能のために動かす必要があるときは ADR を書く
-- **本番 / preview の KV ID 分離**: `wrangler.toml` の `[env.production]` ブロックで本番用 ID を別途指定
+- **環境ごとの KV ID 分離**: 3 ファイル方式。dev は `wrangler.toml` (skip-worktree)、staging / production は `wrangler.staging.toml` / `wrangler.production.toml` に直接 commit。旧 `[env.production]` ブロック方式は廃止済み (#152)
+- **dev の Worker 名は `typedcode-api-dev`**: 本番と同名にすると素の `npx wrangler deploy` が本番を dev 設定で上書きする (#152)。ローカルの skip-worktree 版 `wrangler.toml` も `typedcode-api-dev` に揃えること
 - **`gen-checkpoint-key` で出る秘密鍵は JWK の JSON 文字列**: `.dev.vars` に貼るときは改行を含めず 1 行に

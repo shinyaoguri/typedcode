@@ -14,14 +14,14 @@ export interface ReadmeTemplateParams {
 export function generateReadmeEn(params: ReadmeTemplateParams): string {
   const { timestamp, totalFiles, totalScreenshots, sourceFiles, proofFiles } = params;
 
-  const sourceFilesList = sourceFiles.map(f => `- \`${f}\``).join('\n');
-  const proofFilesList = proofFiles.map(f => `- \`${f}\``).join('\n');
+  const sourceFilesList = sourceFiles.map((f) => `- \`${f}\``).join('\n');
+  const proofFilesList = proofFiles.map((f) => `- \`${f}\``).join('\n');
 
   return `# TypedCode Proof Archive
 
 ## Overview
 
-This archive contains typing proof data exported from TypedCode, a code editor that cryptographically records all editing operations to prove that code was typed by a human.
+This archive contains typing proof data exported from TypedCode, a code editor that cryptographically records all editing operations into a tamper-evident hash chain (with server-signed time anchoring when available). See "What This Proves / Does NOT Prove" below for the precise guarantee.
 
 **Generated:** ${timestamp}
 **Total Source Files:** ${totalFiles}
@@ -126,7 +126,7 @@ The following events are recorded in the hash chain:
 Screenshots are captured periodically and their hashes are recorded in the chain.
 
 ### Capture Triggers
-- **Periodic**: Every 60 seconds
+- **Periodic**: Every 30 seconds
 - **Focus Lost**: 5 seconds after window loses focus
 - **Manual**: User-triggered (future feature)
 
@@ -262,15 +262,17 @@ Visit the TypedCode verification page and upload the proof JSON file for automat
 ## Security Considerations
 
 ### What This Proves
-- Code was typed character-by-character (not copy-pasted in bulk)
-- Editing occurred in a continuous session
-- Screen was shared during the session (screenshots as evidence)
-- Human verification was performed (Turnstile attestation)
+- Tamper-evidence: any change to the recorded events after export breaks the SHA-256 hash chain and PoSW
+- The exported final code matches the recorded edit sequence (content replay)
+- Time anchoring (only when signed checkpoints are present): the chain existed at the server-attested timestamps
 
 ### What This Does NOT Prove
-- Identity of the person typing
-- That the code is original (not transcribed from elsewhere)
+- Identity of the person typing (the fingerprint identifies an environment, not a person)
+- That a human — not a script — produced the events (synthetic or injected events validate the same way; behavioral signals are advisory only)
+- That the code is original / not transcribed or retyped from elsewhere (real-time transcription is explicitly out of scope)
 - That no external assistance was used
+
+> Note: "pure typing" and the Turnstile attestation are advisory signals for the reviewer's judgment, not cryptographic guarantees (the attestation is not re-verified at proof-verification time). The cryptographic guarantee is tamper-evidence plus, when signed checkpoints exist, time-of-existence.
 
 ### Privacy Notes
 - All data is stored locally in the browser
@@ -287,7 +289,7 @@ Visit the TypedCode verification page and upload the proof JSON file for automat
 | Hash Algorithm | SHA-256 |
 | PoSW Iterations | 10,000 |
 | Screenshot Format | JPEG, 60% quality |
-| Screenshot Interval | 60 seconds |
+| Screenshot Interval | 30 seconds |
 | Focus Lost Delay | 5 seconds |
 | Storage | IndexedDB (local) |
 

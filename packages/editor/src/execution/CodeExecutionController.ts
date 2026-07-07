@@ -5,7 +5,7 @@
 
 import type { ILanguageExecutor, ParsedError } from '../executors/interfaces/ILanguageExecutor.js';
 import type { CTerminal } from '../terminal/CTerminal.js';
-import type { EventType } from '@typedcode/shared';
+import type { CodeExecutionEventData, EventType } from '@typedcode/shared';
 import { getCExecutor, WasmerSdkCorruptedError } from '../executors/c/CExecutor.js';
 import { getCppExecutor } from '../executors/cpp/CppExecutor.js';
 import { getJavaScriptExecutor } from '../executors/javascript/JavaScriptExecutor.js';
@@ -30,7 +30,7 @@ export interface CodeExecutionCallbacks {
   onShowClangLoading?: () => void;
   onHideClangLoading?: () => void;
   onUpdateClangStatus?: (message: string) => void;
-  onRecordEvent?: (event: { type: EventType; description: string }) => void;
+  onRecordEvent?: (event: { type: EventType; data?: CodeExecutionEventData; description: string }) => void;
   onShowErrors?: (errors: ParsedError[]) => void;
   onClearErrors?: () => void;
 }
@@ -45,6 +45,8 @@ export class CodeExecutionController {
   private terminal: CTerminal | null = null;
   private currentExecutor: ILanguageExecutor | null = null;
   private isRunning = false;
+  /** 実行中の中断を結果イベントとして記録する (ADR-0021)。run() が設定し finally で破棄。 */
+  private recordAbortedResult: (() => void) | null = null;
   private callbacks: CodeExecutionCallbacks = {};
 
   /**
@@ -147,11 +149,37 @@ export class CodeExecutionController {
       this.terminal?.writeInfo(`$ Running ${langName} (${target.filename})...\n`);
     }
 
-    // コード実行イベントを記録
+    // コード実行イベントを記録 (ADR-0021: start / result の 2 イベント)
+    const executionStartedAt = performance.now();
     this.callbacks.onRecordEvent?.({
       type: 'codeExecution',
+      data: {
+        phase: 'start',
+        filename: target.filename,
+        language: target.language,
+      },
       description: t('notifications.codeExecution', { filename: target.filename }),
     });
+
+    // 実行結果を記録する (ADR-0021)。catch/abort を含む全終端経路から 1 回だけ呼ぶ。
+    let resultRecorded = false;
+    const recordResult = (outcome: 'success' | 'failure' | 'error' | 'aborted', exitCode: number | null): void => {
+      if (resultRecorded) return;
+      resultRecorded = true;
+      this.callbacks.onRecordEvent?.({
+        type: 'codeExecution',
+        data: {
+          phase: 'result',
+          filename: target.filename,
+          language: target.language,
+          outcome,
+          exitCode,
+          elapsedMs: Math.round(performance.now() - executionStartedAt),
+        },
+        description: `${target.filename}: ${outcome}${exitCode !== null ? ` (exit ${exitCode})` : ''}`,
+      });
+    };
+    this.recordAbortedResult = () => recordResult('aborted', null);
 
     try {
       // 初回は初期化
@@ -195,6 +223,7 @@ export class CodeExecutionController {
         } else {
           this.terminal?.writeError(`\n$ ${langName} failed with code ${result.exitCode}\n`);
         }
+        recordResult(result.success ? 'success' : 'failure', result.exitCode ?? null);
       }
     } catch (error) {
       console.error('[CodeExecutionController] Execution error:', error);
@@ -204,14 +233,18 @@ export class CodeExecutionController {
       if (error instanceof WasmerSdkCorruptedError) {
         this.terminal?.writeError(
           '\n[System] The WebAssembly runtime is corrupted and cannot be recovered.\n' +
-          '[System] Please reload the page to continue using the C/C++ compiler.\n'
+            '[System] Please reload the page to continue using the C/C++ compiler.\n'
         );
         this.callbacks.onRuntimeStatusChange?.(target.language, 'not-ready');
       } else {
         this.terminal?.writeError('Execution error: ' + error + '\n');
       }
       this.callbacks.onNotification?.(t('notifications.executionFailed'));
+      recordResult('error', null);
     } finally {
+      // abort 経路 (recordAbortedResult) を含め、未記録なら記録漏れを塞ぐ。
+      recordResult('error', null);
+      this.recordAbortedResult = null;
       this.isRunning = false;
       this.currentExecutor = null;
       this.terminal?.disconnectStdin();
@@ -228,6 +261,8 @@ export class CodeExecutionController {
       this.currentExecutor.abort();
       this.terminal?.disconnectStdin();
       this.terminal?.writeError(`\n$ ${langName} execution aborted\n`);
+      // ADR-0021: 中断も結果として記録する (run() の finally より先に確定させる)
+      this.recordAbortedResult?.();
       this.isRunning = false;
       this.callbacks.onRunEnd?.();
     }

@@ -12,6 +12,7 @@ import type {
   WorkerResponseMessage,
   ProgressDetails,
 } from '../types.js';
+import type { ExamPackageManifest } from '@typedcode/shared';
 
 export interface ProgressCallbackParams {
   id: string;
@@ -38,6 +39,8 @@ export class VerificationQueue {
   // 各アイテムのパース済みデータを保持
   private parsedDataMap: Map<string, ProofFile> = new Map();
   private modeMap: Map<string, VerificationMode> = new Map();
+  // 試験モード (ADR-0006): grader が後から読み込んだ問題パッケージ (per item)
+  private manifestMap: Map<string, ExamPackageManifest> = new Map();
 
   /**
    * Workerを初期化
@@ -45,10 +48,7 @@ export class VerificationQueue {
   initialize(): void {
     if (this.worker) return;
 
-    this.worker = new Worker(
-      new URL('../workers/verificationWorker.ts', import.meta.url),
-      { type: 'module' }
-    );
+    this.worker = new Worker(new URL('../workers/verificationWorker.ts', import.meta.url), { type: 'module' });
 
     this.worker.onmessage = (event: MessageEvent<WorkerResponseMessage>) => {
       this.handleWorkerMessage(event.data);
@@ -120,9 +120,27 @@ export class VerificationQueue {
       id: this.processing.id,
       proofData,
       mode: this.modeMap.get(this.processing.id) ?? this.mode,
+      manifest: this.manifestMap.get(this.processing.id),
     };
 
     this.worker!.postMessage(message);
+  }
+
+  /**
+   * 試験モード (ADR-0006): 既に読み込み済みの proof を、後から渡された問題パッケージ
+   * (.tcexam) で再検証する。proofData は parsedDataMap に cache 済みなので再パース不要。
+   */
+  reverifyWithManifest(id: string, manifest: ExamPackageManifest): void {
+    if (!this.parsedDataMap.has(id)) {
+      console.warn('[VerificationQueue] reverifyWithManifest: unknown id', id);
+      return;
+    }
+    this.manifestMap.set(id, manifest);
+    // proofData は cache 済みなので rawData は不要 (processNext は parsedDataMap を引く)
+    this.queue.push({ id, filename: '', rawData: '' });
+    if (!this.isProcessing) {
+      this.processNext();
+    }
   }
 
   /**

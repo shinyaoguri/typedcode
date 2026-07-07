@@ -202,9 +202,7 @@ describe('Fingerprint', () => {
 
       expect(typeof info).toBe('object');
       // Should have either error or vendor/renderer
-      expect(
-        'error' in info || ('vendor' in info && 'renderer' in info)
-      ).toBe(true);
+      expect('error' in info || ('vendor' in info && 'renderer' in info)).toBe(true);
     });
   });
 

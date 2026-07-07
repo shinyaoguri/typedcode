@@ -43,7 +43,7 @@
 }
 
 .activitybar-item.active::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   top: 0;
@@ -147,7 +147,10 @@
   opacity: 0;
   visibility: hidden;
   transform: translateX(-4px);
-  transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
+  transition:
+    opacity 0.15s,
+    transform 0.15s,
+    visibility 0.15s;
   margin-left: 0;
 }
 

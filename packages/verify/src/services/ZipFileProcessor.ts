@@ -5,10 +5,12 @@
  */
 
 import JSZip from 'jszip';
+import { assertZipWithinBudget, collectChainImageHashes } from '@typedcode/shared';
 import type { ProofFile, ScreenshotManifest, VerifyScreenshot } from '../types.js';
 import type { ParsedFileData, FileProcessResult, FileProcessCallbacks } from './FileProcessor.js';
 import { ScreenshotService } from './ScreenshotService.js';
 import { isImageFile, isBinaryFile, getLanguageFromExtension } from './fileUtils.js';
+import { t } from '../i18n/index.js';
 
 /**
  * ZIP ファイル処理クラス
@@ -36,6 +38,10 @@ export class ZipFileProcessor {
 
       const zip = await JSZip.loadAsync(arrayBuffer);
 
+      // zip 爆弾ガード (#149): shared の parser 経由ではなく JSZip を直接使うため、
+      // 展開 (extractFiles) 前に解凍後サイズ・エントリ数の上限を検査する。
+      assertZipWithinBudget(zip);
+
       // ZIPファイル名をルートフォルダ名として使用
       const rootFolderName = file.name.replace(/\.zip$/i, '');
 
@@ -44,15 +50,19 @@ export class ZipFileProcessor {
 
       this.callbacks.onZipExtract?.(file.name, files.length);
 
+      // 検証済みチェーンが記録した screenshot ハッシュ集合 (全 proof 横断)。manifest だけが
+      // 指す画像 (チェーンに無い) を改ざんとして検出するため screenshot 読込へ渡す。
+      const chainImageHashes = this.collectChainScreenshotHashes(files);
+
       // スクリーンショットを読み込み
-      const { screenshots, screenshotService } = await this.loadScreenshots(zip);
+      const { screenshots, screenshotService } = await this.loadScreenshots(zip, chainImageHashes);
 
       if (files.length === 0 && screenshots.length === 0) {
         return {
           success: false,
           mode: 'multi',
           files: [],
-          error: 'ZIPにファイルがありません。',
+          error: t('errors.zipEmpty'),
         };
       }
 
@@ -76,7 +86,7 @@ export class ZipFileProcessor {
         success: false,
         mode: 'multi',
         files: [],
-        error: `ZIPファイルの読み込みに失敗しました: ${errorMessage}`,
+        error: t('errors.zipLoadFailed', { message: errorMessage }),
       };
     }
   }
@@ -229,7 +239,10 @@ export class ZipFileProcessor {
   /**
    * ZIP からスクリーンショットを読み込み
    */
-  private async loadScreenshots(zip: JSZip): Promise<{
+  private async loadScreenshots(
+    zip: JSZip,
+    chainImageHashes?: ReadonlySet<string>
+  ): Promise<{
     screenshots: VerifyScreenshot[];
     screenshotService: ScreenshotService | undefined;
   }> {
@@ -273,19 +286,27 @@ export class ZipFileProcessor {
 
       // スクリーンショットサービスを作成して読み込み
       const screenshotService = new ScreenshotService();
-      const screenshots = await screenshotService.loadFromZip(zip, manifest);
+      const screenshots = await screenshotService.loadFromZip(zip, manifest, chainImageHashes);
       console.log('[ZipFileProcessor] Screenshots loaded:', screenshots.length);
 
-      this.callbacks.onScreenshotLoad?.(
-        screenshotService.count,
-        screenshotService.verifiedCount
-      );
+      this.callbacks.onScreenshotLoad?.(screenshotService.count, screenshotService.verifiedCount);
 
       return { screenshots, screenshotService };
     } catch (error) {
       console.error('[ZipFileProcessor] Failed to load screenshots:', error);
       return { screenshots: [], screenshotService: undefined };
     }
+  }
+
+  /**
+   * 全 proof の screenshotCapture イベントから imageHash を収集する。チェーンは検証済み・
+   * 改ざん不能なので、これが screenshot の真正なハッシュ集合になる (manifest は未署名なので
+   * 画像とセットで差し替え可能)。実体は shared (#147: verify-cli と同一実装)。
+   */
+  private collectChainScreenshotHashes(files: ParsedFileData[]): Set<string> {
+    return collectChainImageHashes(
+      files.map((f) => f.proofData?.proof?.events).filter((e): e is NonNullable<typeof e> => !!e)
+    );
   }
 
   /**

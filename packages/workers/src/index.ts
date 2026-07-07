@@ -3,11 +3,8 @@
  * Turnstile 検証エンドポイント with 署名付き証明書
  */
 
-import {
-  handleSignCheckpoint,
-  handlePublicKeys,
-  type CheckpointEnv,
-} from './checkpoint.js';
+import { handleSignCheckpoint, handlePublicKeys, getSigningKey, type CheckpointEnv } from './checkpoint.js';
+import { createSessionStartToken, validateSessionStartInput, arrayBufferToHex } from '@typedcode/shared/checkpoint';
 
 interface Env extends CheckpointEnv {
   TURNSTILE_SECRET_KEY: string;
@@ -55,12 +52,42 @@ interface VerifyResponse {
 function parseAllowedOrigins(env: CorsEnv): string[] {
   return (env.ALLOWED_ORIGINS ?? '')
     .split(',')
-    .map(o => o.trim())
-    .filter(o => o.length > 0);
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
 }
 
 function isLocalhostOrigin(origin: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+}
+
+/**
+ * Turnstile siteverify が返す `hostname` を許可ドメインと照合する。
+ *
+ * Cloudflare は同一 sitekey/secret を使う別プロパティで解かれたトークンを弾くため、
+ * siteverify の hostname を検証することを推奨している。`ALLOWED_ORIGINS` の host 部分
+ * (CORS と同じ source of truth) と比較する。
+ * - `ALLOWED_ORIGINS` 未設定の環境では強制をスキップ (origin 制限は CORS が担うので
+ *   fail-open にはならない。development の localhost 等)。
+ * - 完全一致のほか `*.domain` は **1 段以上のサブドメイン** を要求 (CORS と同方針)。
+ */
+function isTurnstileHostnameAllowed(hostname: string, env: CorsEnv): boolean {
+  const allowed = parseAllowedOrigins(env);
+  if (allowed.length === 0) return true;
+  if (env.ENVIRONMENT === 'development' && /^(localhost|127\.0\.0\.1)$/.test(hostname)) {
+    return true;
+  }
+  for (const pattern of allowed) {
+    const m = /^https?:\/\/(.+)$/.exec(pattern);
+    if (!m) continue;
+    const host = m[1]!.replace(/:\d+$/, ''); // ポートを除去
+    if (host.startsWith('*.')) {
+      const base = host.slice(2);
+      if (hostname.length > base.length + 1 && hostname.endsWith(`.${base}`)) return true;
+    } else if (hostname === host) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -105,7 +132,7 @@ function originMatchesPattern(origin: string, pattern: string): boolean {
 function resolveCorsOrigin(origin: string | null, env: CorsEnv): string | null {
   if (!origin) return null;
   const allowed = parseAllowedOrigins(env);
-  if (allowed.some(pattern => originMatchesPattern(origin, pattern))) return origin;
+  if (allowed.some((pattern) => originMatchesPattern(origin, pattern))) return origin;
   if (env.ENVIRONMENT === 'development' && isLocalhostOrigin(origin)) return origin;
   return null; // fail-closed: 許可リストに無い (or 未設定の) Origin は拒否
 }
@@ -139,7 +166,10 @@ function handleCORS(request: Request, env: CorsEnv): Response {
 }
 
 /** /api/checkpoint/* で使う CORS レスポンダ */
-function checkpointResponder(origin: string | null, env: CorsEnv): { cors(extra?: Record<string, string>): HeadersInit } {
+function checkpointResponder(
+  origin: string | null,
+  env: CorsEnv
+): { cors(extra?: Record<string, string>): HeadersInit } {
   return {
     cors(extra: Record<string, string> = {}) {
       return { ...corsHeaders(origin, env), ...extra };
@@ -155,17 +185,11 @@ async function createHmacSignature(data: string, secret: string): Promise<string
   const keyData = encoder.encode(secret);
   const messageData = encoder.encode(data);
 
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
+  const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
 
   const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
   return Array.from(new Uint8Array(signature))
-    .map(b => b.toString(16).padStart(2, '0'))
+    .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 }
 
@@ -189,10 +213,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 /**
  * Turnstile検証を実行
  */
-async function verifyTurnstile(
-  token: string,
-  secretKey: string
-): Promise<TurnstileResponse> {
+async function verifyTurnstile(token: string, secretKey: string): Promise<TurnstileResponse> {
   const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
     method: 'POST',
     headers: {
@@ -204,16 +225,23 @@ async function verifyTurnstile(
     }),
   });
 
+  // siteverify が非 200 / HTML を返したケースを成功と誤判定しない (汎用 500 への fall-through 防止)。
+  if (!response.ok) {
+    return {
+      success: false,
+      challenge_ts: '',
+      hostname: '',
+      'error-codes': ['siteverify-http-error'],
+    };
+  }
+
   return response.json();
 }
 
 /**
  * 署名付き証明書を生成
  */
-async function createAttestation(
-  result: TurnstileResponse,
-  attestationSecret: string
-): Promise<HumanAttestation> {
+async function createAttestation(result: TurnstileResponse, attestationSecret: string): Promise<HumanAttestation> {
   const attestationData = {
     verified: result.success,
     score: 1.0, // Turnstile has no score, always 1.0 on success
@@ -235,10 +263,7 @@ async function createAttestation(
 /**
  * Turnstile検証エンドポイント
  */
-async function handleVerifyCaptcha(
-  request: Request,
-  env: Env
-): Promise<Response> {
+async function handleVerifyCaptcha(request: Request, env: Env): Promise<Response> {
   const origin = request.headers.get('Origin');
 
   try {
@@ -263,7 +288,16 @@ async function handleVerifyCaptcha(
     }
 
     const result = await verifyTurnstile(token, env.TURNSTILE_SECRET_KEY);
-    const isVerified = result.success;
+    // siteverify 成功でも、解かれた hostname が許可ドメインでなければ拒否する
+    // (同一 sitekey を使う別プロパティで解かれたトークンの流用を防ぐ)。
+    // action はアプリ定義で多様 (create_tab / export_proof 等) なため allowlist 強制はしない
+    // (attestation に記録はするが、proof 検証側でも信頼の主軸ではない)。
+    const hostnameOk = isTurnstileHostnameAllowed(result.hostname, env);
+    const isVerified = result.success && hostnameOk;
+
+    if (result.success && !hostnameOk) {
+      console.warn('[verify-captcha] Turnstile solved on disallowed hostname:', result.hostname);
+    }
 
     // 署名付き証明書を生成（検証成功時のみ）
     let attestation: HumanAttestation | undefined;
@@ -274,9 +308,11 @@ async function handleVerifyCaptcha(
     const response: VerifyResponse = {
       success: isVerified,
       score: isVerified ? 1.0 : 0,
-      message: result.success
+      message: isVerified
         ? 'Verified'
-        : `Verification failed: ${result['error-codes']?.join(', ') ?? 'Unknown error'}`,
+        : !result.success
+          ? `Verification failed: ${result['error-codes']?.join(', ') ?? 'Unknown error'}`
+          : 'Verification failed: hostname not allowed',
       attestation,
     };
 
@@ -316,10 +352,7 @@ interface AttestationWithExtras extends HumanAttestation {
 /**
  * 証明書検証エンドポイント（検証ページから呼び出される）
  */
-async function handleVerifyAttestation(
-  request: Request,
-  env: Env
-): Promise<Response> {
+async function handleVerifyAttestation(request: Request, env: Env): Promise<Response> {
   const origin = request.headers.get('Origin');
 
   try {
@@ -327,16 +360,13 @@ async function handleVerifyAttestation(
     const { attestation } = body;
 
     if (!attestation) {
-      return new Response(
-        JSON.stringify({ valid: false, message: 'Attestation is required' }),
-        {
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            ...corsHeaders(origin, env),
-          },
-        }
-      );
+      return new Response(JSON.stringify({ valid: false, message: 'Attestation is required' }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders(origin, env),
+        },
+      });
     }
 
     // 署名対象フィールドのみを抽出（success, failureReason, signatureは除外）
@@ -351,8 +381,7 @@ async function handleVerifyAttestation(
     const dataToSign = JSON.stringify(attestationData);
     const expectedSignature = await createHmacSignature(dataToSign, env.ATTESTATION_SECRET_KEY);
 
-    const isValid =
-      typeof signature === 'string' && timingSafeEqual(signature, expectedSignature);
+    const isValid = typeof signature === 'string' && timingSafeEqual(signature, expectedSignature);
 
     return new Response(
       JSON.stringify({
@@ -369,55 +398,171 @@ async function handleVerifyAttestation(
       }
     );
   } catch (error) {
-    return new Response(
-      JSON.stringify({ valid: false, message: 'Internal server error' }),
-      {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          ...corsHeaders(origin, env),
-        },
-      }
-    );
+    return new Response(JSON.stringify({ valid: false, message: 'Internal server error' }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders(origin, env),
+      },
+    });
   }
+}
+
+/**
+ * セッション開始エンドポイント (ADR-0017)。
+ *
+ * Turnstile を検証し、成功したら serverNonce を焼いた ECDSA-P256 署名トークンを発行する。
+ * クライアントは serverNonce を chain root (`SHA256(fp ‖ localNonce ‖ serverNonce)`) に焼き、
+ * proof にトークンを同梱する (検証器が registry でオフライン検証する)。これにより
+ * **Turnstile ゲート + root アンカー + 人間ゲート**を 1 リクエストで兼ね、HMAC attestation の
+ * 作成経路を置換する。署名鍵は checkpoint と同一系統 (getSigningKey)。
+ */
+async function handleSessionStart(request: Request, env: Env): Promise<Response> {
+  const origin = request.headers.get('Origin');
+  const json = (body: unknown, status: number): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin, env) },
+    });
+
+  let parsed: unknown;
+  try {
+    parsed = await request.json();
+  } catch {
+    return json({ success: false, message: 'Invalid JSON body' }, 400);
+  }
+
+  const turnstileToken = (parsed as { turnstileToken?: unknown })?.turnstileToken;
+  if (typeof turnstileToken !== 'string' || turnstileToken.length === 0) {
+    return json({ success: false, message: 'turnstileToken is required' }, 400);
+  }
+
+  // sessionId / fingerprintHash の検証 (shared の入力バリデーション)。
+  const validation = validateSessionStartInput(parsed);
+  if (!validation.ok) {
+    return json({ success: false, message: validation.reason }, 400);
+  }
+  const input = validation.input;
+
+  // Turnstile 検証 + hostname 照合 (verify-captcha と同方針)。
+  // 上流 (Turnstile API) の fetch reject / 非 JSON 応答は未捕捉例外 (1101) にせず 503 で返す (#153)。
+  // editor は失敗時に非アンカーへフォールバックするため、一時障害を不透明な 1101 にすると
+  // 不必要にアンカーを失う。
+  let result: Awaited<ReturnType<typeof verifyTurnstile>>;
+  try {
+    result = await verifyTurnstile(turnstileToken, env.TURNSTILE_SECRET_KEY);
+  } catch (err) {
+    console.error('[session/start] Turnstile verification unavailable:', err);
+    return json({ success: false, message: 'Turnstile verification temporarily unavailable' }, 503);
+  }
+  const hostnameOk = isTurnstileHostnameAllowed(result.hostname, env);
+  if (!result.success || !hostnameOk) {
+    if (result.success && !hostnameOk) {
+      console.warn('[session/start] Turnstile solved on disallowed hostname:', result.hostname);
+    }
+    return json({ success: false, message: 'Turnstile verification failed' }, 403);
+  }
+
+  // 署名鍵をロード (checkpoint と同一系統)。失敗詳細はサーバログのみ。
+  let signer: { keyId: string; key: CryptoKey };
+  try {
+    signer = await getSigningKey(env);
+  } catch (err) {
+    console.error('[session/start] signing key resolution failed:', err);
+    return json({ success: false, message: 'Signing key is not available' }, 500);
+  }
+
+  // serverNonce を生成し、ECDSA-P256 でトークンを署名発行。
+  const nonceBytes = new Uint8Array(32);
+  crypto.getRandomValues(nonceBytes);
+  const serverNonce = arrayBufferToHex(nonceBytes);
+  const issuedAt = new Date().toISOString();
+
+  let token;
+  try {
+    token = await createSessionStartToken(
+      input,
+      {
+        serverNonce,
+        issuedAt,
+        turnstileVerified: true,
+        hostname: result.hostname || null,
+        action: result.action ?? null,
+      },
+      { keyId: signer.keyId, privateKey: signer.key }
+    );
+  } catch (err) {
+    console.error('[session/start] token signing failed:', err);
+    return json({ success: false, message: 'Failed to issue session token' }, 500);
+  }
+
+  return json({ success: true, token }, 200);
+}
+
+async function route(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+
+  // CORS preflight
+  if (request.method === 'OPTIONS') {
+    return handleCORS(request, env);
+  }
+
+  // ルーティング
+  if (url.pathname === '/api/verify-captcha' && request.method === 'POST') {
+    return handleVerifyCaptcha(request, env);
+  }
+
+  // セッション開始トークン発行 (ADR-0017)
+  if (url.pathname === '/api/session/start' && request.method === 'POST') {
+    return handleSessionStart(request, env);
+  }
+
+  // 証明書検証エンドポイント
+  if (url.pathname === '/api/verify-attestation' && request.method === 'POST') {
+    return handleVerifyAttestation(request, env);
+  }
+
+  // Signed checkpoint endpoints
+  if (url.pathname === '/api/checkpoint/sign' && request.method === 'POST') {
+    const origin = request.headers.get('Origin');
+    return handleSignCheckpoint(request, env, checkpointResponder(origin, env));
+  }
+  if (url.pathname === '/api/checkpoint/public-keys' && request.method === 'GET') {
+    const origin = request.headers.get('Origin');
+    return handlePublicKeys(checkpointResponder(origin, env));
+  }
+
+  // ヘルスチェック
+  if (url.pathname === '/health') {
+    return new Response(JSON.stringify({ status: 'ok', environment: env.ENVIRONMENT }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  return new Response('Not Found', { status: 404 });
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-
-    // CORS preflight
-    if (request.method === 'OPTIONS') {
-      return handleCORS(request, env);
-    }
-
-    // ルーティング
-    if (url.pathname === '/api/verify-captcha' && request.method === 'POST') {
-      return handleVerifyCaptcha(request, env);
-    }
-
-    // 証明書検証エンドポイント
-    if (url.pathname === '/api/verify-attestation' && request.method === 'POST') {
-      return handleVerifyAttestation(request, env);
-    }
-
-    // Signed checkpoint endpoints
-    if (url.pathname === '/api/checkpoint/sign' && request.method === 'POST') {
-      const origin = request.headers.get('Origin');
-      return handleSignCheckpoint(request, env, checkpointResponder(origin, env));
-    }
-    if (url.pathname === '/api/checkpoint/public-keys' && request.method === 'GET') {
-      const origin = request.headers.get('Origin');
-      return handlePublicKeys(checkpointResponder(origin, env));
-    }
-
-    // ヘルスチェック
-    if (url.pathname === '/health') {
-      return new Response(JSON.stringify({ status: 'ok', environment: env.ENVIRONMENT }), {
-        headers: { 'Content-Type': 'application/json' },
+    // 最終防衛 (#153): 未捕捉例外を Workers の 1101 (CORS/JSON なし) に落とさない。
+    // ブラウザからは 1101 が不透明な CORS エラーに見え、意図したエラー経路に乗らない。
+    try {
+      return await route(request, env);
+    } catch (err) {
+      console.error('[worker] unhandled exception:', err);
+      // 最終防衛は絶対に throw しない: CORS ヘッダ計算 (env 参照) 自体が失敗しても
+      // JSON 500 を返す (ヘッダなしのフォールバック)。
+      let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      try {
+        const origin = request.headers.get('Origin');
+        headers = { ...headers, ...(corsHeaders(origin, env) as Record<string, string>) };
+      } catch {
+        /* env が壊れていても応答は返す */
+      }
+      return new Response(JSON.stringify({ success: false, message: 'Internal server error' }), {
+        status: 500,
+        headers,
       });
     }
-
-    return new Response('Not Found', { status: 404 });
   },
 };

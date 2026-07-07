@@ -6,6 +6,7 @@ import type {
   HumanAttestationEventData,
   VerificationState,
   VerificationDetails,
+  SessionStartToken,
 } from '@typedcode/shared';
 import {
   performTurnstileVerification,
@@ -21,6 +22,8 @@ export interface VerificationUIResult {
   verificationDetails: VerificationDetails;
   attestationData: HumanAttestationEventData;
   result: VerificationResult;
+  /** セッション開始トークン (ADR-0017)。sessionStart 指定かつ成功時のみ。root アンカーに使う。 */
+  sessionToken?: SessionStartToken | null;
 }
 
 /** ステップ状態の型 */
@@ -31,7 +34,8 @@ type StepStatus = 'pending' | 'active' | 'done' | 'error';
  */
 export async function performVerificationWithUI(
   action: string,
-  t: (key: string, params?: Record<string, string>) => string
+  t: (key: string, params?: Record<string, string>) => string,
+  sessionStart?: { sessionId: string; fingerprintHash: string }
 ): Promise<VerificationUIResult> {
   // ローディングモーダル要素を取得
   const loadingModal = document.getElementById('verification-loading-modal');
@@ -82,7 +86,10 @@ export async function performVerificationWithUI(
       modalDialog?.classList.add('verification-warning');
       retryInfo?.classList.remove('hidden');
       if (retryAttempt) {
-        retryAttempt.textContent = t('verification.retryAttempt', { current: String(status.attempt), max: String(status.maxRetries) });
+        retryAttempt.textContent = t('verification.retryAttempt', {
+          current: String(status.attempt),
+          max: String(status.maxRetries),
+        });
       }
 
       // カウントダウン表示
@@ -142,8 +149,9 @@ export async function performVerificationWithUI(
 
   let result: VerificationResult;
   try {
-    // 認証実行（TurnstileService内でフェーズ・リトライ処理）
-    result = await performTurnstileVerification(action);
+    // 認証実行（TurnstileService内でフェーズ・リトライ処理）。
+    // ADR-0017: sessionStart 指定時は session/start を呼び ECDSA トークンを取得する。
+    result = await performTurnstileVerification(action, sessionStart ? { sessionStart } : undefined);
   } catch (error) {
     // エラー時（ネットワークエラー等）はタイムアウトとして扱う
     console.error('[TabVerificationUI] Verification error:', error);
@@ -184,25 +192,43 @@ export async function performVerificationWithUI(
     failureReason: result.failureReason,
   };
 
-  // 認証データを生成
-  const attestationData: HumanAttestationEventData = {
-    verified: result.attestation?.verified ?? false,
-    score: result.attestation?.score ?? 0,
-    action: result.attestation?.action ?? action,
-    timestamp: result.attestation?.timestamp ?? new Date().toISOString(),
-    hostname: result.attestation?.hostname ?? window.location.hostname,
-    signature: result.attestation?.signature ?? 'unsigned',
-    success: result.success,
-    failureReason: result.failureReason,
-  };
+  // 認証データを生成。
+  // ADR-0017: session/start 経由 (result.sessionToken あり) では HMAC attestation が無い。
+  // #0 humanAttestation の暗号的束縛は proof 同梱の ECDSA sessionStartToken が担うため、ここでは
+  // タイムライン上の可読な監査印として token の情報から #0 を構成する (signature は token 由来の印)。
+  const token = result.sessionToken;
+  const attestationData: HumanAttestationEventData = token
+    ? {
+        verified: result.success,
+        score: result.score ?? (result.success ? 1.0 : 0),
+        action: token.payload.action ?? action,
+        timestamp: token.payload.issuedAt,
+        hostname: token.payload.hostname ?? window.location.hostname,
+        signature: `session-start-token:${token.keyId}`,
+        success: result.success,
+        failureReason: result.failureReason,
+      }
+    : {
+        verified: result.attestation?.verified ?? false,
+        score: result.attestation?.score ?? 0,
+        action: result.attestation?.action ?? action,
+        timestamp: result.attestation?.timestamp ?? new Date().toISOString(),
+        hostname: result.attestation?.hostname ?? window.location.hostname,
+        signature: result.attestation?.signature ?? 'unsigned',
+        success: result.success,
+        failureReason: result.failureReason,
+      };
 
-  console.log('[TabVerificationUI] Human attestation recorded:',
-    result.success ? 'verified' : `failed (${result.failureReason ?? result.error})`);
+  console.log(
+    '[TabVerificationUI] Human attestation recorded:',
+    result.success ? `verified${token ? ' (server-anchored)' : ''}` : `failed (${result.failureReason ?? result.error})`
+  );
 
   return {
     verificationState,
     verificationDetails,
     attestationData,
     result,
+    sessionToken: result.sessionToken ?? null,
   };
 }

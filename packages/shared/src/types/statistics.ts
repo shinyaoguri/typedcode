@@ -16,7 +16,7 @@ export interface TypingStats {
   duration: number;
   eventTypes: EventTypeCounts;
   currentHash: string | null;
-  pendingCount: number;  // PoSW計算待ちのイベント数
+  pendingCount: number; // PoSW計算待ちのイベント数
 }
 
 /** タイピング統計 */
@@ -28,7 +28,7 @@ export interface TypingStatistics {
   insertEvents: number;
   deleteEvents: number;
   bulkInsertEvents: number;
-  templateEvents: number;  // テンプレート注入イベント数
+  templateEvents: number; // テンプレート注入イベント数
   duration: number;
   averageWPM: number;
 }

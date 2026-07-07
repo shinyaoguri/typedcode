@@ -146,9 +146,7 @@ export async function showScreenShareOptOutConfirmDialog(): Promise<boolean> {
 /**
  * オプトアウトバナーを表示
  */
-export function showScreenShareOptOutBanner(
-  onEnableScreenShare: () => Promise<boolean>
-): void {
+export function showScreenShareOptOutBanner(onEnableScreenShare: () => Promise<boolean>): void {
   // 既存のバナーがあれば削除
   hideScreenShareOptOutBanner();
 
@@ -247,7 +245,6 @@ export async function requestScreenCaptureWithRetry(
     if (!shouldRetry) {
       return false;
     }
-    continue;
   }
 
   console.error('[TypedCode] Max screen capture attempts reached');

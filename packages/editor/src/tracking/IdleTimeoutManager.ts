@@ -55,8 +55,7 @@ export class IdleTimeoutManager {
   private titleFlashInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(options?: IdleTimeoutManagerOptions) {
-    this.idleTimeoutMs =
-      options?.idleTimeoutMs ?? IdleTimeoutManager.DEFAULT_IDLE_TIMEOUT_MS;
+    this.idleTimeoutMs = options?.idleTimeoutMs ?? IdleTimeoutManager.DEFAULT_IDLE_TIMEOUT_MS;
     // warningTimeoutMs はダイアログ側で直接管理するため、ここでは使用しない
   }
 
@@ -85,9 +84,7 @@ export class IdleTimeoutManager {
     if (this.state === 'warning') return;
 
     this.startIdleTimer();
-    console.log(
-      `[IdleTimeoutManager] Focus lost, starting ${this.idleTimeoutMs / 1000 / 60}min idle timer`
-    );
+    console.log(`[IdleTimeoutManager] Focus lost, starting ${this.idleTimeoutMs / 1000 / 60}min idle timer`);
   }
 
   /**

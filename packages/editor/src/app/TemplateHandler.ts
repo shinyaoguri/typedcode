@@ -17,10 +17,7 @@ export function isTemplateFile(file: File): boolean {
 /**
  * テンプレートコンテンツをインポート（共通処理）
  */
-export async function importTemplateContent(
-  ctx: AppContext,
-  content: string
-): Promise<boolean> {
+export async function importTemplateContent(ctx: AppContext, content: string): Promise<boolean> {
   const { templateImportDialog } = await import('../template/TemplateImportDialog.js');
   const { templateImporter } = await import('../template/TemplateImporter.js');
   const { TemplateValidationError } = await import('../template/TemplateParser.js');
@@ -51,13 +48,9 @@ export async function importTemplateContent(
 
   try {
     // 4. インポート実行
-    const result = await templateImporter.import(
-      ctx.tabManager,
-      content,
-      (current, total, currentFilename) => {
-        progress.update(current, total, currentFilename);
-      }
-    );
+    const result = await templateImporter.import(ctx.tabManager, content, (current, total, currentFilename) => {
+      progress.update(current, total, currentFilename);
+    });
 
     progress.close();
 

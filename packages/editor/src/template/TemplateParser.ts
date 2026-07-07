@@ -8,10 +8,26 @@ import type { ParsedTemplate, TemplateFileDefinition, TemplateMetadata } from '@
 
 /** サポートされている言語ID */
 const SUPPORTED_LANGUAGES = new Set([
-  'c', 'cpp', 'javascript', 'typescript', 'python',
-  'java', 'rust', 'go', 'ruby', 'php',
-  'html', 'css', 'json', 'yaml', 'xml',
-  'markdown', 'plaintext', 'sql', 'shell', 'bash'
+  'c',
+  'cpp',
+  'javascript',
+  'typescript',
+  'python',
+  'java',
+  'rust',
+  'go',
+  'ruby',
+  'php',
+  'html',
+  'css',
+  'json',
+  'yaml',
+  'xml',
+  'markdown',
+  'plaintext',
+  'sql',
+  'shell',
+  'bash',
 ]);
 
 /** テンプレートのバリデーションエラー */
@@ -51,9 +67,7 @@ export class TemplateParser {
       if (error instanceof TemplateValidationError) {
         throw error;
       }
-      throw new TemplateValidationError(
-        `YAMLパースエラー: ${error instanceof Error ? error.message : '不明なエラー'}`
-      );
+      throw new TemplateValidationError(`YAMLパースエラー: ${error instanceof Error ? error.message : '不明なエラー'}`);
     }
 
     return this.validate(parsed);
@@ -149,9 +163,7 @@ export class TemplateParser {
     }
 
     if (files.length > TEMPLATE_LIMITS.MAX_FILES) {
-      throw new TemplateValidationError(
-        `ファイル数が上限（${TEMPLATE_LIMITS.MAX_FILES}）を超えています`
-      );
+      throw new TemplateValidationError(`ファイル数が上限（${TEMPLATE_LIMITS.MAX_FILES}）を超えています`);
     }
 
     const filenames = new Set<string>();
@@ -163,9 +175,7 @@ export class TemplateParser {
 
       // 重複ファイル名チェック
       if (filenames.has(validated.filename)) {
-        throw new TemplateValidationError(
-          `重複したファイル名: ${validated.filename}`
-        );
+        throw new TemplateValidationError(`重複したファイル名: ${validated.filename}`);
       }
       filenames.add(validated.filename);
 
@@ -180,18 +190,14 @@ export class TemplateParser {
    */
   private validateFileDefinition(file: unknown, index: number): TemplateFileDefinition {
     if (!file || typeof file !== 'object') {
-      throw new TemplateValidationError(
-        `files[${index}]はオブジェクトである必要があります`
-      );
+      throw new TemplateValidationError(`files[${index}]はオブジェクトである必要があります`);
     }
 
     const obj = file as Record<string, unknown>;
 
     // filename チェック（必須）
     if (typeof obj.filename !== 'string' || obj.filename.trim() === '') {
-      throw new TemplateValidationError(
-        `files[${index}].filenameは空でない文字列である必要があります`
-      );
+      throw new TemplateValidationError(`files[${index}].filenameは空でない文字列である必要があります`);
     }
     const filename = obj.filename.trim();
 
@@ -203,24 +209,18 @@ export class TemplateParser {
 
     // 危険な文字をチェック
     if (/[<>:"|?*\x00-\x1f]/.test(filename) || filename.includes('..')) {
-      throw new TemplateValidationError(
-        `files[${index}].filenameに無効な文字が含まれています`
-      );
+      throw new TemplateValidationError(`files[${index}].filenameに無効な文字が含まれています`);
     }
 
     // language チェック（必須）
     if (typeof obj.language !== 'string' || obj.language.trim() === '') {
-      throw new TemplateValidationError(
-        `files[${index}].languageは空でない文字列である必要があります`
-      );
+      throw new TemplateValidationError(`files[${index}].languageは空でない文字列である必要があります`);
     }
     let language = obj.language.trim().toLowerCase();
 
     // サポートされていない言語はplaintextにフォールバック
     if (!SUPPORTED_LANGUAGES.has(language)) {
-      console.warn(
-        `[TemplateParser] サポートされていない言語 "${language}" をplaintextにフォールバック`
-      );
+      console.warn(`[TemplateParser] サポートされていない言語 "${language}" をplaintextにフォールバック`);
       language = 'plaintext';
     }
 
@@ -228,9 +228,7 @@ export class TemplateParser {
     let content = '';
     if (obj.content !== undefined) {
       if (typeof obj.content !== 'string') {
-        throw new TemplateValidationError(
-          `files[${index}].contentは文字列である必要があります`
-        );
+        throw new TemplateValidationError(`files[${index}].contentは文字列である必要があります`);
       }
       content = obj.content;
 
