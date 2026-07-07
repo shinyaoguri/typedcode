@@ -2,7 +2,6 @@ version: 2
 updates:
   - package-ecosystem: "npm"
     directory: "/"
-    target-branch: "develop"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 5
@@ -30,7 +29,6 @@ updates:
   # 動いている問題などを検出できる)
   - package-ecosystem: "github-actions"
     directory: "/"
-    target-branch: "develop"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3

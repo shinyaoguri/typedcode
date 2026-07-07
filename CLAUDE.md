@@ -74,7 +74,7 @@ npm run test -w @typedcode/e2e
 - **[docs/system-spec.md](docs/system-spec.md)**: クロスカット仕様 (定数、アルゴリズム、用語集)
 - **[docs/adr/](docs/adr/)**: 設計判断の蓄積 (Architecture Decision Records)
 - **`packages/*/README.md`**: ユーザー視点のドキュメント (API、使い方)
-- **[CONTRIBUTING.md](CONTRIBUTING.md)**: ブランチ運用 (軽量 Git Flow) の手順。根拠は [ADR-0026](docs/adr/0026-lightweight-git-flow-branching.md)
+- **[CONTRIBUTING.md](CONTRIBUTING.md)**: ブランチ運用 (タグ式 GitHub Flow) の手順。根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md)
 
 仕様は `docs/system-spec.md`、判断の根拠は `docs/adr/`、コードの触り方は `CLAUDE.md` が真実の在処です。
 

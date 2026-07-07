@@ -494,15 +494,16 @@ function checkGitHubSetup() {
   ghRepoSlug = `${m[1]}/${m[2]}`;
   report('ok', `対象 repo: ${ghRepoSlug}`);
 
-  // delete_branch_on_merge
+  // delete_branch_on_merge (タグ式 GitHub Flow では ON が推奨。長命ブランチは main のみで
+  // ruleset が削除から保護しているため、feature ブランチはマージ時に自動削除してよい)
   const repoSettings = tryExec(`gh api repos/${ghRepoSlug} --jq '.delete_branch_on_merge'`);
-  if (repoSettings === 'false') {
-    report('ok', 'delete_branch_on_merge: false (develop が削除されない)');
-  } else if (repoSettings === 'true') {
+  if (repoSettings === 'true') {
+    report('ok', 'delete_branch_on_merge: true (feature ブランチがマージ時に自動削除される)');
+  } else if (repoSettings === 'false') {
     report(
       'fail',
-      'delete_branch_on_merge: true (develop が PR マージ時に削除される)',
-      `gh api -X PATCH repos/${ghRepoSlug} -F delete_branch_on_merge=false`
+      'delete_branch_on_merge: false (マージ済み feature ブランチが残り続ける)',
+      `gh api -X PATCH repos/${ghRepoSlug} -F delete_branch_on_merge=true`
     );
   } else {
     report('skip', `delete_branch_on_merge 取得失敗`);
@@ -632,7 +633,7 @@ function checkDeployedWorker(envName, configFile) {
     report(
       'warn',
       `${workerName} がまだデプロイされていない`,
-      `${envName === 'staging' ? 'develop' : 'main'} ブランチに push すると CI が自動デプロイ`
+      `${envName === 'staging' ? 'main ブランチに push すると CI が自動デプロイ' : 'v* タグを push (gh release create) すると CI が承認待ちデプロイ'}`
     );
   }
 

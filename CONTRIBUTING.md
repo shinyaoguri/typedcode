@@ -1,31 +1,31 @@
 # Contributing — ブランチ運用ガイド
 
-TypedCode のブランチ運用は **軽量 Git Flow** です。判断の根拠は [ADR-0026](docs/adr/0026-lightweight-git-flow-branching.md) を参照。本ファイルは日々の**手順**を扱います。
+TypedCode のブランチ運用は **タグ式 GitHub Flow** です。判断の根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md) を参照。本ファイルは日々の**手順**を扱います。
 
 ## 全体像
 
 ```
-main      ──────────●────────────●─────   ← リリース時だけ develop からマージ + タグ
-                   ╱            ╱
-develop  ●──●──●──●──●──●──●──●──●──●────   ← 常時統合 (普段の着地先)
+tags                v1.1.0        v1.2.0
+                      ●             ●          ← リリース = v* タグ (→ production デプロイ・承認ゲート)
+main     ●──●──●──●──●──●──●──●──●──●──●────   ← 唯一の長命ブランチ (push で staging 自動デプロイ)
           ╲  ╱   ╲  ╱      ╲  ╱
-feature   ●─●    ●─●        ●─●            ← 機能ごとに切る (PR → develop, squash)
+feature   ●─●    ●─●        ●─●               ← 機能ごとに切る (PR → main, squash)
 ```
 
-| ブランチ | 役割 | 着地先 | マージ方式 |
-|---|---|---|---|
-| `main` | リリース済み (本番) | — | (develop からの受け先) |
-| `develop` | 常時統合・普段の着地先 | `main` (リリース時) | **merge commit** + タグ |
-| `feature/*` | 機能開発 | `develop` | **squash** |
-| `hotfix/*` | 本番緊急修正 (必要時のみ) | `main` と `develop` 両方 | 状況に応じる |
+| 対象 | 役割 | デプロイ |
+|---|---|---|
+| `main` | 唯一の長命ブランチ・常時統合 | push → **staging** 自動 (`staging.<project>.pages.dev`) |
+| `v*` タグ | 番号付きリリース | タグ push → **production** (承認ゲート付き) |
+| `feature/*` | 機能開発 | PR → preview URL 自動発行 |
 
-`release/*` は**作りません** (develop がそのままリリース候補)。
+- `develop` / `release/*` / `hotfix/*` ブランチは**ありません**。main が常にリリース候補です。
+- **`staging` はブランチ名として予約** (staging Pages エイリアスと衝突するため使用禁止)。
 
 ## 普段の開発フロー
 
 ```bash
-# 1. develop から feature を切る
-git switch develop
+# 1. main から feature を切る
+git switch main
 git pull
 git switch -c feature/my-change
 
@@ -33,52 +33,63 @@ git switch -c feature/my-change
 git add -A
 git commit -m "feat(editor): add foo"
 
-# 3. push して PR を作る (base = develop)
+# 3. push して PR を作る (base = main)
 git push -u origin feature/my-change
-gh pr create --base develop --fill
+gh pr create --fill
 
 # 4. CI 通過 + セルフレビュー後、Squash and Merge
 gh pr merge --squash --delete-branch
 ```
 
 - **PR は小さく** (目安 ±400 行)。1 PR = 1 つの関心事。
-- マージ前に lint / type check / test / build が緑であること。
+- マージ前に lint / type check / test / build が緑であること (main は required status checks で強制)。
+- マージされると main push の CI が staging へ自動デプロイする。動作確認は `staging.<project>.pages.dev` で。
 
-## リリース (develop → main)
+## リリース (v* タグ)
 
 ```bash
-git switch main
-git pull
-git merge --no-ff develop          # merge commit を残す (squash しない)
-git tag -a v1.1.0 -m "Release v1.1.0"
-git push origin main --tags
+# 1. バージョン bump PR (ルート package.json。UI の About 表示に使われる)
+npm version <X.Y.Z> --no-git-tag-version --workspaces-update=false
+# → PR → squash merge
+
+# 2. main 先端の CI が green なことを確認してからタグを打つ
+gh run list --branch main -L 1
+gh release create vX.Y.Z --target main --title "vX.Y.Z" --generate-notes
 ```
 
-- **必ず `--no-ff` (merge commit)**。squash すると develop の履歴が 1 コミットに潰れて辿れなくなる。
-- バージョンタグ (`vX.Y.Z`) でリリースを区切る。破壊的な証明フォーマット変更は `PROOF_FORMAT_VERSION` とも対応させる。
+- タグ push で CI (test/check/e2e) が再実行され、green 後に **production デプロイが承認待ち**になる。Actions タブで Approve すると本番反映。
+- タグは main の履歴上のコミットにのみ有効 (CI が ancestor 検証で強制)。
+- **タグの付け替え・削除はしない** (ruleset でも禁止)。本番を戻したいときは fix を入れて**次のパッチタグ**を打つ。
+- 破壊的な証明フォーマット変更は `PROOF_FORMAT_VERSION` とも対応させる。
 
 ## 本番緊急修正 (hotfix)
 
+専用ブランチはありません。通常フローの最短経路で回します:
+
 ```bash
-git switch main
-git switch -c hotfix/critical-bug
-# 修正してコミット
-git switch main && git merge --no-ff hotfix/critical-bug && git tag v1.1.1
-git switch develop && git merge --no-ff hotfix/critical-bug   # develop へも忘れず反映
+git switch main && git pull
+git switch -c fix/critical-bug
+# 修正 → PR → squash merge → staging で確認
+gh release create vX.Y.(Z+1) --target main --generate-notes   # 即パッチリリース
 ```
 
-- **main と develop の両方へ反映**するのを忘れないこと (片方だけだと次のリリースで先祖返りする)。
+main が唯一のブランチなので、旧 Git Flow のような「main と develop の両方へ反映」という手当ては不要です。
 
 ## ADR を積み重ねる stacked PR
 
-ADR を連続で積む stacked PR は、**squash すると土台の SHA が変わって後続 PR が壊れる**。この経路だけは squash せず **cherry-pick で develop へ flatten** する (詳細は [ADR-0026](docs/adr/0026-lightweight-git-flow-branching.md) / 既存運用)。
+ADR を連続で積む stacked PR は、**squash すると土台の SHA が変わって後続 PR が壊れる**。この経路だけは squash せず、**flatten ブランチに cherry-pick → PR → Rebase and merge** で main へ着地する (main は PR 必須のため直 push はしない)。詳細は [ADR-0028](docs/adr/0028-tag-based-github-flow.md) / 既存運用。
 
 ## GitHub リポジトリ設定 (推奨)
 
 Settings → General → Pull Requests:
 
-- マージ方式は **3 方式とも有効のまま** (develop→main で merge commit を使うため squash 強制にしない)
-- **Default to squash merging** を有効化 (普段の feature→develop を squash 既定に)
-- **Automatically delete head branches** を有効化
+- **Default to squash merging** を有効化 (普段の feature→main を squash 既定に)
+- Rebase merging も有効のまま (stacked PR の flatten 用)
+- **Automatically delete head branches** を有効化 (長命ブランチは main のみで、ruleset が削除から保護している)
+
+Rulesets:
+
+- `main`: 削除・force-push 禁止 + **PR 必須 + required status checks (test / check / e2e)**
+- `v*` タグ: 削除・更新禁止
 
 コミットの規約は [Conventional Commits](https://www.conventionalcommits.org/) に従います。
