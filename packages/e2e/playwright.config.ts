@@ -27,8 +27,10 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  // PoSW Worker はタブ間で CPU を食い合うので E2E は直列寄りにして安定させる。
-  workers: 1,
+  // PoSW Worker が CPU を食うため無制限並列にはしないが、テスト時間の大半は
+  // 打鍵待ち・sync 待ちの wall-clock なので 2 並列までは安全域 (CI ランナーは 4 vCPU)。
+  // flake が再発したら 1 に戻す (その場合も spec の --mode fast 整合は維持する)。
+  workers: 2,
   reporter: isCI ? [['list'], ['html', { open: 'never' }], ['github']] : [['list'], ['html', { open: 'never' }]],
 
   use: {

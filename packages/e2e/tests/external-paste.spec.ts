@@ -21,7 +21,7 @@ test('外部ペーストは insertFromPaste として記録され Pure Typing: N
   expect(pasteEvent, 'insertFromPaste event should be recorded').toBeTruthy();
   expect(pasteEvent?.data).toContain('PASTED_EXTERNAL_CODE');
 
-  const result = runVerifyCliWithAnalysis(zipPath);
+  const result = runVerifyCliWithAnalysis(zipPath, ['--mode', 'fast']);
   // チェーンは valid (ペーストしても改ざんではない)。
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   // advisory: 純粋打鍵ではない + 外部入力あり。

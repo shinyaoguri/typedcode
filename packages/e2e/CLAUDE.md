@@ -12,7 +12,7 @@
 1. **オラクルは verify-cli の結論**: 「編集 → export → verify-cli が pass/fail」を軸にする。DOM の見た目ではなくチェーン検証の exit code / analysis JSON で判定する
 2. **負のオラクルを必ず持つ**: 改竄シナリオは verify-cli が **exit 1 で拒否する**ことを assert する (1 種でも素通りすると「壊れた検証器」を緑と誤認する)。positive control (無改竄が pass) と対で置く
 3. **信頼打鍵と合成打鍵を区別**: Playwright の `keyboard.type` は CDP 経由で `isTrusted=true`。合成打鍵 (ADR-0018) は `page.evaluate(dispatchEvent)` で `isTrusted=false` を注入する
-4. **CI 時間を意識**: PoSW full 検証は重い。改竄など PoSW 無関係なシナリオは `--mode fast` を使い、happy 系はコードを短くする (deploy.yml の e2e job は `timeout-minutes: 30`、実測 ~18 分)
+4. **CI 時間を意識**: PoSW full 検証は重い。**full (既定) は happy-path の 1 本だけ** (PoSW を含む完全検証の positive control)。他のシナリオはすべて `--mode fast` を渡す (検証対象がイベント意味論・チェーン整合性であり PoSW 再計算は不要)。新しい spec を足すときも既定で fast にすること。実行は `workers: 2` の 2 並列 (flake が再発したら 1 に戻す)。deploy.yml の e2e job は `timeout-minutes: 30`
 
 ## 構成
 

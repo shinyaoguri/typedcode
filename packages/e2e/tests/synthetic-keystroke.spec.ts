@@ -35,7 +35,7 @@ test('合成打鍵には isTrusted=false が付き、信頼打鍵には付かな
   expect(realKeys.every((e) => isTrusted(e) !== false)).toBe(true);
 
   // チェーンは valid。automation 分析が合成打鍵を拾う。
-  const result = runVerifyCliWithAnalysis(zipPath);
+  const result = runVerifyCliWithAnalysis(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   expect(result.stdout.toLowerCase()).toContain('automation');
 });

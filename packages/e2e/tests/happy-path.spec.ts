@@ -6,6 +6,10 @@ import { runVerifyCliWithAnalysis } from './helpers/verifyCli.js';
  * シナリオ1 (happy path): /casual で実際にコードを打鍵 → export →
  * verify-cli が検証 pass。記録系 (editor) → 検証系 (shared/CLI) の round-trip が
  * 通ることを暗号的成果物で確認する基準テスト。
+ *
+ * verify-cli は既定の full モード (PoSW 全再計算) のまま実行する。E2E 全体で
+ * 唯一の full positive control であり、他の spec が --mode fast に寄せても
+ * PoSW を含む完全検証経路はここで担保される (CLAUDE.md 不変条件 4)。
  */
 test('casual: 打鍵→export→CLI 検証が pass する', async ({ page }) => {
   const app = new EditorApp(page);
