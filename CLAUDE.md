@@ -67,6 +67,14 @@ npm run test -w @typedcode/e2e
 # 注: CI は「ユニット (test job) + e2e (e2e job)」を全 deploy のゲートにしている
 ```
 
+## 開発フロー
+
+- ブランチ運用は**タグ式 GitHub Flow** (main 1 本 + `v*` タグ → production)。手順は [CONTRIBUTING.md](CONTRIBUTING.md)、根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md)
+- **作業は git worktree で行う** (メインのチェックアウトのブランチを切り替えない)。ブランチ名は `<type>/<短い説明>` (type はコミット型と同じ)
+- コミットと **PR タイトル**は Conventional Commits (`feat(editor): ...`)。squash merge で PR タイトルがマージコミットのメッセージになる
+- **マージしたら、メインのチェックアウトから `git sweep` を実行して** worktree とローカルブランチを掃除する (使用中・dirty な worktree は自動スキップ。[ADR-0029](docs/adr/0029-merge-cleanup-script.md))
+- **引き継ぎの真実は Issue に置く**: 着手時は Issue 本文と全コメントを読む。重要な決定・発見はその場で Issue コメントに記録し、中断時は「完了・残作業・注意点・次の一歩」の引き継ぎコメントを残す。セッションメモリ・チャット履歴は効率化のために使ってよいが、**そこにしかない情報を作らない** (詳細は CONTRIBUTING「Issue の書き方と引き継ぎ」)
+
 ## ドキュメント階層
 
 - **CLAUDE.md (本ファイル)**: 玄関口 / ナビゲーション
@@ -74,7 +82,7 @@ npm run test -w @typedcode/e2e
 - **[docs/system-spec.md](docs/system-spec.md)**: クロスカット仕様 (定数、アルゴリズム、用語集)
 - **[docs/adr/](docs/adr/)**: 設計判断の蓄積 (Architecture Decision Records)
 - **`packages/*/README.md`**: ユーザー視点のドキュメント (API、使い方)
-- **[CONTRIBUTING.md](CONTRIBUTING.md)**: ブランチ運用 (タグ式 GitHub Flow) の手順。根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md)
+- **[CONTRIBUTING.md](CONTRIBUTING.md)**: 開発の進め方 (ブランチ運用 / worktree 並行作業 / Issue 引き継ぎ / マージ後の掃除)。根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md) / [ADR-0029](docs/adr/0029-merge-cleanup-script.md)
 
 仕様は `docs/system-spec.md`、判断の根拠は `docs/adr/`、コードの触り方は `CLAUDE.md` が真実の在処です。
 
