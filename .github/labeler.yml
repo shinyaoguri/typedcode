@@ -1,0 +1,43 @@
+# PR の変更ファイルからパッケージラベルを自動付与する(.github/workflows/labeler.yml)
+"pkg:shared":
+  - changed-files:
+      - any-glob-to-any-file: "packages/shared/**"
+
+"pkg:editor":
+  - changed-files:
+      - any-glob-to-any-file: "packages/editor/**"
+
+"pkg:verify":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/verify/**"
+          - "packages/verify-cli/**"
+
+"pkg:workers":
+  - changed-files:
+      - any-glob-to-any-file: "packages/workers/**"
+
+"pkg:e2e":
+  - changed-files:
+      - any-glob-to-any-file: "packages/e2e/**"
+
+"pkg:repo":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - "scripts/**"
+          - "docs/**"
+          - "biome.json"
+          - "tsconfig.base.json"
+          - ".node-version"
+          - "package.json"
+          - "package-lock.json"
+          - "CLAUDE.md"
+          - "CONTRIBUTING.md"
+          - "README.md"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
