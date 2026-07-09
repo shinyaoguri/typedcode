@@ -25,6 +25,7 @@
   - changed-files:
       - any-glob-to-any-file:
           - ".github/**"
+          - ".claude/**"
           - "scripts/**"
           - "docs/**"
           - "biome.json"
