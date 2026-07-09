@@ -59,6 +59,7 @@
 | [0026](0026-lightweight-git-flow-branching.md) | Superseded by 0028 | ブランチ運用を軽量 Git Flow にする (release/* を省き develop→main は merge commit・feature→develop は squash) |
 | [0027](0027-checkpoint-sign-requires-session-token.md) | Accepted | /api/checkpoint/sign を sessionStartToken 前提にする (DO 化は据え置き・無認証リクエストに KV コストを払わない) |
 | [0028](0028-tag-based-github-flow.md) | Accepted | ブランチ運用をタグ式 GitHub Flow にする (main 1 本 + v* タグで production リリース・0026 を supersede) |
+| [0029](0029-merge-cleanup-script.md) | Accepted | マージ後の掃除はバージョン管理されたスクリプト (git sweep) に集約する |
 
 ## 参考
 

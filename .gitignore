@@ -40,3 +40,6 @@ docs/plans/
 # Playwright MCP output (screenshots, snapshots, e2e fixtures)
 .playwright-mcp/
 fix-*.png
+
+# git worktree の展開先 (CONTRIBUTING「並行作業 (git worktree)」参照)
+.claude/worktrees/

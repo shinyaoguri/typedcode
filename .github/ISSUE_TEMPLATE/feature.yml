@@ -1,0 +1,41 @@
+name: 機能提案・タスク
+description: 新しい機能や改善のタスク(記憶ゼロから着手できる自己完結の記述にする)
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 目的
+      description: なぜやるのか。関連する ADR / docs/system-spec.md / 既存 Issue と対応付けられると良い
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 内容
+      description: 何をつくるか・どう振る舞うか。実装方針が決まっていれば理由も
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 受け入れ条件
+      description: 何ができたら完了か。検証可能な形で(自動テスト・手動確認の別も)
+      placeholder: |
+        - [ ] ...できる(ユニットテストあり)
+        - [ ] ...の場合はエラーになる
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 関連情報
+      description: 該当ファイル・docs・ADR・依存 Issue へのリンク。前提知識のポインタを惜しまない
+      placeholder: |
+        - 依存: #123
+        - 該当: packages/shared/src/typingProof/, docs/adr/0009-pluggable-analysis-layer.md
+  - type: textarea
+    id: scope
+    attributes:
+      label: スコープ外
+      description: この Issue でやらないこと
