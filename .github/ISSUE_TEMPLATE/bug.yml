@@ -1,0 +1,30 @@
+name: バグ報告
+description: 期待と異なる動作の報告
+labels: ["bug"]
+body:
+  - type: textarea
+    id: actual
+    attributes:
+      label: 何が起きたか
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待した動作
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 環境
+      placeholder: 例) macOS / Chrome 140。verify-cli の場合は Node.js のバージョンも
