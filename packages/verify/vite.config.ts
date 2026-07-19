@@ -26,10 +26,18 @@ function getBuildInfo() {
 
 const buildInfo = getBuildInfo();
 
+// dev ランチャー (scripts/dev.mjs) が割り当てたポート。個別起動時は未設定で既定
+// (5174) にフォールバックする。
+const verifyPort = Number(process.env.VERIFY_PORT) || 5174;
+
 export default defineConfig({
   base: isDev ? '/' : '/verify/',
   server: {
-    port: 5174,
+    port: verifyPort,
+    // ランチャー割当時 (VERIFY_PORT あり) は strictPort。editor の /verify プロキシが
+    // このポート固定で追従するため、ずれると配線が壊れる。黙ってずらさず失敗させる。
+    // 手動の個別起動 (VERIFY_PORT なし) は従来どおりフォールバック可。
+    strictPort: Boolean(process.env.VERIFY_PORT),
   },
   build: {
     target: 'esnext',

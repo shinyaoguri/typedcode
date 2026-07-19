@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import { execSync } from 'child_process';
@@ -26,6 +26,25 @@ function getBuildInfo() {
 
 const buildInfo = getBuildInfo();
 
+// dev ランチャー (scripts/dev.mjs) が割り当てたポート。個別起動時は未設定で、
+// その場合は既定 (5173/5174) にフォールバックする。verifyPort は /verify プロキシの
+// 追従先。
+const editorPort = Number(process.env.EDITOR_PORT) || 5173;
+const verifyPort = Number(process.env.VERIFY_PORT) || 5174;
+
+// ランチャー (scripts/dev.mjs) がポート割当した場合、.env の VITE_API_URL が
+// ローカル既定 (http://localhost:<port>) のままなら実際の workers ポートへ追従させる。
+// staging 等の外部 URL を明示している場合は触らない。
+// (Vite は process.env に既にある変数を .env ファイルより優先する)
+const workersPort = process.env.WORKERS_PORT;
+if (workersPort) {
+  const fileEnv = loadEnv('development', __dirname, '');
+  const current = process.env.VITE_API_URL ?? fileEnv.VITE_API_URL;
+  if (!current || /^https?:\/\/(localhost|127\.0\.0\.1):\d+\/?$/.test(current)) {
+    process.env.VITE_API_URL = `http://localhost:${workersPort}`;
+  }
+}
+
 export default defineConfig({
   plugins: [
     wasm(),
@@ -49,14 +68,19 @@ export default defineConfig({
     format: 'es',
   },
   server: {
-    port: 5173,
+    port: editorPort,
+    // ランチャー割当時 (EDITOR_PORT あり) は strictPort で「ずれたら失敗」にする。
+    // ポートがずれると /verify プロキシ (verifyPort 固定) や VITE_API_URL の配線が
+    // 別プロセスを指してしまうため、黙ってずらさず即エラーにして気付かせる。
+    // 手動の個別起動 (EDITOR_PORT なし) は従来どおり vite のフォールバックに任せる。
+    strictPort: Boolean(process.env.EDITOR_PORT),
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'credentialless',
     },
     proxy: {
       '/verify': {
-        target: 'http://localhost:5174',
+        target: `http://localhost:${verifyPort}`,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/verify/, ''),
       },
