@@ -60,6 +60,7 @@
 | [0027](0027-checkpoint-sign-requires-session-token.md) | Accepted | /api/checkpoint/sign を sessionStartToken 前提にする (DO 化は据え置き・無認証リクエストに KV コストを払わない) |
 | [0028](0028-tag-based-github-flow.md) | Accepted | ブランチ運用をタグ式 GitHub Flow にする (main 1 本 + v* タグで production リリース・0026 を supersede) |
 | [0029](0029-merge-cleanup-script.md) | Accepted | マージ後の掃除はバージョン管理されたスクリプト (git sweep) に集約する |
+| [0030](0030-dev-port-autoswitch.md) | Accepted | dev サーバのポートはランチャーがセット単位で自動割当し、配線 (プロキシ / VITE_API_URL) を環境変数で追従させる |
 
 ## 参考
 

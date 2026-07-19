@@ -39,10 +39,12 @@ packages/
 # 依存関係のインストール
 npm install
 
-# 開発 (全パッケージ同時)
+# 開発 (全パッケージ同時。ポートは自動割当 = ADR-0030:
+# 既定 editor 5173 / verify 5174 / workers 8787、使用中ならセットごと +10 へ。
+# 実際の URL は起動バナーに表示され、プロキシ / VITE_API_URL も自動追従)
 npm run dev
 
-# 開発 (個別)
+# 開発 (個別。こちらは従来どおりの固定ポート)
 npm run dev:editor    # http://localhost:5173
 npm run dev:verify    # http://localhost:5174
 npm run dev:workers   # http://localhost:8787
