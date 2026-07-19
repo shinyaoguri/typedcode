@@ -44,9 +44,11 @@ export class EditorApp {
   /**
    * IndexedDB 同期と PoSW キューの掃けを待つ。リロード前に呼ぶことで、未 flush の
    * イベントが取り残されてチェーンが途切れるのを防ぐ (打鍵直後の即リロード対策)。
+   * timeout は workers: 2 の並列実行で PoSW Worker が CPU を分け合う分の余裕を含む
+   * (同期は expect のポーリングで完了し次第すぐ抜けるので、健全時のコストは増えない)。
    */
   async waitForSynced(): Promise<void> {
-    await expect(this.page.locator('#sync-status-item')).toHaveClass(/synced/, { timeout: 30_000 });
+    await expect(this.page.locator('#sync-status-item')).toHaveClass(/synced/, { timeout: 90_000 });
     // event-count が 2 回連続で同じ = PoSW キューが掃けてチェーン確定。
     let prev = -1;
     for (let i = 0; i < 30; i++) {

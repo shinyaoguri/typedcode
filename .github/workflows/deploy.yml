@@ -100,7 +100,8 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     # e2e は wrangler dev + vite dev を Playwright が起動する構成でハングの余地があり、
-    # 過去に PoSW full 検証でタイムアウト間際になった実績もある (a6079d0)。実測 ~18 分。
+    # 過去に PoSW full 検証でタイムアウト間際になった実績もある (a6079d0)。
+    # 実測 ~7 分 (--mode fast 整合 + workers:2 後。full は happy-path のみ)。
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7

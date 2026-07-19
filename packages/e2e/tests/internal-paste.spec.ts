@@ -22,7 +22,7 @@ test('内部コピペは insertFromInternalPaste として許可され Pure Typi
   // 外部ペースト (insertFromPaste) は無いこと。
   expect(events.some((e) => e.inputType === 'insertFromPaste')).toBe(false);
 
-  const result = runVerifyCli(zipPath);
+  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   // 自分のコードの内部コピペは外部入力扱いにならない。
   expect(result.stdout).toContain('Pure Typing: YES');

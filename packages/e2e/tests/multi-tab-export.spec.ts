@@ -21,7 +21,7 @@ test('casual: 複数タブを ZIP export → CLI が全 proof を検証', async 
   expect(entries.length).toBe(2);
 
   // CLI は ZIP を直接受け取り、全 proof を検証して exit 0。
-  const result = runVerifyCli(zipPath);
+  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   expect(result.stdout).toContain('Verification PASSED');
 });

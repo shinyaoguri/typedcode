@@ -24,7 +24,7 @@ test('フォーカス喪失→復帰が focusChange として記録される', a
   expect(focusChanges.some((e) => (e.data as { focused?: boolean })?.focused === true)).toBe(true);
 
   // チェーンは valid のまま。
-  const result = runVerifyCli(zipPath);
+  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   // プロセス要約にフォーカス喪失が 1 件以上計上される。
   expect(result.stdout).toMatch(/[1-9]\d* focus loss/);
