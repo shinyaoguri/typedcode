@@ -19,9 +19,9 @@
     "@typedcode/shared": "*"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260601.1",
-    "typescript": "^6.0.2",
+    "@cloudflare/workers-types": "^5.20260729.1",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10",
-    "wrangler": "^4.108.0"
+    "wrangler": "^4.115.0"
   }
 }
