@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  POSW_ITERATIONS,
   TypingProof,
   computeHash,
   verifyCheckpoints,
@@ -13,6 +14,36 @@ import {
   verifyProofMetadata,
 } from '../index.js';
 import type { ExportedProof, FingerprintComponents, ProofData, StoredEvent } from '../types.js';
+
+/**
+ * metadata 再カウントの意味論だけを見る最小イベント列を組み立てる。
+ *
+ * `verifyProofMetadata` は再カウントの手前で events の構造 (sequence / timestamp / type /
+ * previousHash / posw) を検査するため (#221)、観点に関係ないフィールドはここで既定値を埋める。
+ * これらは実際に export された proof が必ず持つフィールド (verifyChain も同じものを参照する)。
+ */
+const metadataEvents = (partials: Array<Partial<StoredEvent>>): StoredEvent[] =>
+  partials.map(
+    (partial, index) =>
+      ({
+        sequence: index,
+        timestamp: 0,
+        type: 'contentChange',
+        inputType: null,
+        data: null,
+        rangeOffset: null,
+        rangeLength: null,
+        range: null,
+        previousHash: null,
+        posw: {
+          iterations: POSW_ITERATIONS,
+          nonce: '0'.repeat(16),
+          intermediateHash: '0'.repeat(64),
+          computeTimeMs: 1,
+        },
+        ...partial,
+      }) as StoredEvent
+  );
 
 const createMockFingerprintComponents = (): FingerprintComponents => ({
   userAgent: 'Mozilla/5.0 (Verification Test)',
@@ -167,14 +198,14 @@ describe('verification utilities', () => {
   it('recomputes metadata and flags a multi-line bulk insertText as non-pure-typing', () => {
     // 複数行のコード一括投入 (AI/snippet) は bulk insert として数え、Pure Typing を崩す。
     // (単一行の補完は benign 扱いになったので、ここでは複数行で検出経路を検証する。)
-    const events = [
+    const events = metadataEvents([
       {
         type: 'contentChange',
         inputType: 'insertText',
         data: 'a\nb',
         timestamp: 10,
       },
-    ] as StoredEvent[];
+    ]);
     const proofData = {
       metadata: {
         totalEvents: 1,
@@ -205,9 +236,9 @@ describe('verification utilities', () => {
   it('treats a single-line editor completion up to the length cap as pure typing while still counting it in bulkInsertEvents', () => {
     // 1 キー入力 → 複数文字の正規な補完 (括弧自動閉じ・Tab 補完)。Pure Typing を崩さないが、
     // bulkInsertEvents の申告メタデータ照合は従来どおり数える (既存 proof と後方互換)。
-    const events = [
+    const events = metadataEvents([
       { type: 'contentChange', inputType: 'insertReplacementText', data: '()', timestamp: 10 },
-    ] as StoredEvent[];
+    ]);
     const proofData = {
       metadata: {
         totalEvents: 1,
@@ -233,7 +264,7 @@ describe('verification utilities', () => {
     // 改行を含まないため従来は「補完」扱いで isPureTyping=true を保てていた。
     // metadata 照合 (bulkInsertEvents=1) は従来どおり一致し valid は保つ (advisory のみの変化)。
     const oneLiner = 'const f=(n)=>n<2?n:f(n-1)+f(n-2);console.log(f(30));'.repeat(8); // 416 chars
-    const events = [{ type: 'contentChange', inputType: 'insertText', data: oneLiner, timestamp: 10 }] as StoredEvent[];
+    const events = metadataEvents([{ type: 'contentChange', inputType: 'insertText', data: oneLiner, timestamp: 10 }]);
     const proofData = {
       metadata: {
         totalEvents: 1,
@@ -256,7 +287,7 @@ describe('verification utilities', () => {
 
   it('flags a content-bearing insertFromInternalPaste as a bulk insert (forgery guard) but not the rangeOffset==null audit marker', () => {
     // 手製 proof が大きな挿入を「内部ペースト」と偽装するケース (rangeOffset あり = 実挿入)。
-    const forged = [
+    const forged = metadataEvents([
       {
         type: 'contentChange',
         inputType: 'insertFromInternalPaste',
@@ -264,7 +295,7 @@ describe('verification utilities', () => {
         rangeOffset: 0,
         timestamp: 10,
       },
-    ] as StoredEvent[];
+    ]);
     expect(
       verifyProofMetadata(
         {
@@ -285,7 +316,7 @@ describe('verification utilities', () => {
     ).toMatchObject({ valid: true, isPureTyping: false, suspiciousBulkInsertEventIndexes: [0] });
 
     // editor が出す正規の内部ペースト監査イベント (rangeOffset==null、replay 上スキップ) は flag しない。
-    const auditMarker = [
+    const auditMarker = metadataEvents([
       {
         type: 'contentChange',
         inputType: 'insertFromInternalPaste',
@@ -293,7 +324,7 @@ describe('verification utilities', () => {
         rangeOffset: null,
         timestamp: 10,
       },
-    ] as StoredEvent[];
+    ]);
     expect(
       verifyProofMetadata(
         {
@@ -318,7 +349,7 @@ describe('verification utilities', () => {
     // 手製 proof で「マーカー(data=AI コード) + insertParagraph(同一 data)」のペアを作る手口。
     // マーカーは自己申告なので根拠にせず、内容がセッション内に実在した replay 証拠を要求する。
     const ai = 'int solve() {\n  return 42;\n}\n';
-    const events = [
+    const events = metadataEvents([
       {
         type: 'contentChange',
         inputType: 'insertFromInternalPaste',
@@ -328,7 +359,7 @@ describe('verification utilities', () => {
         timestamp: 5,
       },
       { type: 'contentChange', inputType: 'insertParagraph', data: ai, rangeOffset: 0, rangeLength: 0, timestamp: 10 },
-    ] as StoredEvent[];
+    ]);
     const proofData = {
       metadata: {
         totalEvents: 2,
@@ -351,7 +382,7 @@ describe('verification utilities', () => {
   it('keeps a genuine internal paste of session-typed content as pure typing (#138)', () => {
     // 実際にセッション内で 1 文字ずつ打った内容をコピーして貼り直す正規フロー。
     // copyOperation がコピー時点の文書と突合され、複数行の実挿入が許可される。
-    const events = [
+    const events = metadataEvents([
       { type: 'contentChange', inputType: 'insertText', data: 'a', rangeOffset: 0, rangeLength: 0, timestamp: 1 },
       { type: 'contentChange', inputType: 'insertText', data: '\n', rangeOffset: 1, rangeLength: 0, timestamp: 2 },
       { type: 'contentChange', inputType: 'insertText', data: 'b', rangeOffset: 2, rangeLength: 0, timestamp: 3 },
@@ -372,7 +403,7 @@ describe('verification utilities', () => {
         rangeLength: 0,
         timestamp: 6,
       },
-    ] as StoredEvent[];
+    ]);
     const proofData = {
       metadata: {
         totalEvents: 6,
@@ -396,10 +427,10 @@ describe('verification utilities', () => {
     // 手製 proof が contentSnapshot 1 イベントで AI 解答全体を持ち込む laundering。
     // 挿入イベントが無いので paste/drop/bulk のどのカウントにも載らず、従来は
     // isPureTyping=true のまま通った。metadata 照合カウントは従来どおり (valid 不変)。
-    const events = [
+    const events = metadataEvents([
       { type: 'contentChange', inputType: 'insertText', data: 'a', rangeOffset: 0, rangeLength: 0, timestamp: 10 },
       { type: 'contentSnapshot', inputType: null, data: 'int solve() {\n  return 42;\n}\n', timestamp: 20 },
-    ] as StoredEvent[];
+    ]);
     const proofData = {
       metadata: {
         totalEvents: 2,
@@ -423,10 +454,10 @@ describe('verification utilities', () => {
   it('keeps pure typing for the regular contentSnapshot that matches the replayed document (#175)', () => {
     // editor が 100 イベント毎に出す正規 snapshot は取得時のエディタ内容 = replay 文書と
     // 常に一致する no-op。既存 proof の isPureTyping を変えない (後方互換)。
-    const events = [
+    const events = metadataEvents([
       { type: 'contentChange', inputType: 'insertText', data: 'a', rangeOffset: 0, rangeLength: 0, timestamp: 10 },
       { type: 'contentSnapshot', inputType: null, data: 'a', timestamp: 20 },
-    ] as StoredEvent[];
+    ]);
     const proofData = {
       metadata: {
         totalEvents: 2,
