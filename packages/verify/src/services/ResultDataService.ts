@@ -15,6 +15,7 @@ import type {
   VerificationResult,
 } from '../types';
 import type { ResultData } from '../ui/ResultPanel';
+import { normalizeProofMode } from './proofMode.js';
 
 // Re-export from shared for backward compatibility
 export {
@@ -149,7 +150,8 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
     content: proofData.content || '',
     language: tabState.language,
     // 自己申告モードラベル (ADR-0011)。参考表示のみ — 保証導出には使わない (ADR-0020)。
-    mode: proofData.mode,
+    // proof.json は攻撃者が組み立てられる入力なので、型を信用せず allowlist に落とす (#210)。
+    mode: normalizeProofMode(proofData.mode),
     result,
     poswStats,
     attestations: attestations.length > 0 ? attestations : undefined,

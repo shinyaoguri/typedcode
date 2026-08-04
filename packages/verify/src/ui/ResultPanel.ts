@@ -20,6 +20,7 @@ import type { SignedCheckpointsVerificationResult, ExamBindingVerificationResult
 import type { SignedCheckpointReport } from '../types';
 import { escapeHtml, type AnalysisReport, type AssuranceResult, type ProcessSummary } from '@typedcode/shared';
 import { SyntaxHighlighter } from '../services/SyntaxHighlighter.js';
+import type { ProofMode } from '../services/proofMode.js';
 import { AnalysisReportCard } from './AnalysisReportCard.js';
 import { ProcessSummaryCard } from './ProcessSummaryCard.js';
 import { t } from '../i18n/index.js';
@@ -41,8 +42,11 @@ export interface ResultData {
   assurance?: AssuranceResult;
   /** プロセス要約 (Phase 8 W3)。制作過程の中立な記述 (疑い指標ではない)。 */
   processSummary?: ProcessSummary;
-  /** proof の自己申告モード (ADR-0011)。参考表示のみで保証導出には使わない。 */
-  mode?: 'casual' | 'class' | 'assignment' | 'exam';
+  /**
+   * proof の自己申告モード (ADR-0011)。参考表示のみで保証導出には使わない。
+   * proof.json 由来なので `normalizeProofMode` を通した値だけを入れること (#210)。
+   */
+  mode?: ProofMode;
   /** 検証モード (Phase 5) */
   verificationMode?: VerificationMode;
   /** PoSW の実行モード (skipped / sampled / full) */
@@ -715,59 +719,7 @@ export class ResultPanel {
       return;
     }
     this.assuranceStrip.style.display = '';
-
-    const integrityClass = assurance.integrity === 'proven' ? 'success' : 'error';
-    const integrityValue =
-      assurance.integrity === 'proven' ? t('assurance.integrityProven') : t('assurance.integrityFailed');
-
-    let temporalClass: string;
-    let temporalValue: string;
-    switch (assurance.temporal) {
-      case 'anchored':
-        temporalClass = 'success';
-        temporalValue = t('assurance.temporalAnchored');
-        break;
-      case 'exam-t0':
-        temporalClass = 'success';
-        temporalValue = t('assurance.temporalExamT0');
-        break;
-      case 'partial':
-        temporalClass = 'warning';
-        temporalValue = t('assurance.temporalPartial');
-        break;
-      default:
-        temporalClass = 'warning';
-        temporalValue = t('assurance.temporalUnanchored');
-    }
-
-    const p = assurance.provenance;
-    const provenanceParts: string[] = [p.pureTyping ? t('assurance.pureTypingYes') : t('assurance.pureTypingNo')];
-    if (p.notableSignals !== null) {
-      provenanceParts.push(`${t('assurance.signals')} ${p.notableSignals}`);
-    }
-
-    const modeChip = mode
-      ? `<span class="assurance-chip neutral" title="${escapeHtml(t('assurance.modeSelfAsserted'))}">
-           <span class="assurance-chip-label">${t('assurance.modeLabel')}</span>
-           <span class="assurance-chip-value">${t(`assurance.mode.${mode}`)}</span>
-         </span>`
-      : '';
-
-    this.assuranceStrip.innerHTML = `
-      <span class="assurance-chip ${integrityClass}" title="${escapeHtml(t('assurance.integrityHint'))}">
-        <span class="assurance-chip-label">${t('assurance.integrity')}</span>
-        <span class="assurance-chip-value">${integrityValue}</span>
-      </span>
-      <span class="assurance-chip ${temporalClass}" title="${escapeHtml(t('assurance.temporalHint'))}">
-        <span class="assurance-chip-label">${t('assurance.temporal')}</span>
-        <span class="assurance-chip-value">${temporalValue}</span>
-      </span>
-      <span class="assurance-chip advisory" title="${escapeHtml(t('assurance.provenanceHint'))}">
-        <span class="assurance-chip-label">${t('assurance.provenance')}</span>
-        <span class="assurance-chip-value">${provenanceParts.map((x) => escapeHtml(x)).join(' · ')}</span>
-      </span>
-      ${modeChip}
-    `;
+    this.assuranceStrip.innerHTML = buildAssuranceStripHtml(assurance, mode);
   }
 
   private renderCard(iconEl: HTMLElement, badgeEl: HTMLElement, isValid: boolean | null, badgeText: string): void {
@@ -1671,4 +1623,67 @@ export class ResultPanel {
       </div>
     `;
   }
+}
+
+/**
+ * 三層保証バッジ列 (ADR-0020) の内側 HTML を組み立てる。`renderAssurance` の純粋部分。
+ *
+ * DOM に触れないので単体テストできる。**戻り値はそのまま innerHTML に入る** ため、
+ * 埋め込む値は例外なく `escapeHtml` を通すこと (#210)。
+ */
+export function buildAssuranceStripHtml(assurance: AssuranceResult, mode?: ResultData['mode']): string {
+  const integrityClass = assurance.integrity === 'proven' ? 'success' : 'error';
+  const integrityValue =
+    assurance.integrity === 'proven' ? t('assurance.integrityProven') : t('assurance.integrityFailed');
+
+  let temporalClass: string;
+  let temporalValue: string;
+  switch (assurance.temporal) {
+    case 'anchored':
+      temporalClass = 'success';
+      temporalValue = t('assurance.temporalAnchored');
+      break;
+    case 'exam-t0':
+      temporalClass = 'success';
+      temporalValue = t('assurance.temporalExamT0');
+      break;
+    case 'partial':
+      temporalClass = 'warning';
+      temporalValue = t('assurance.temporalPartial');
+      break;
+    default:
+      temporalClass = 'warning';
+      temporalValue = t('assurance.temporalUnanchored');
+  }
+
+  const p = assurance.provenance;
+  const provenanceParts: string[] = [p.pureTyping ? t('assurance.pureTypingYes') : t('assurance.pureTypingNo')];
+  if (p.notableSignals !== null) {
+    provenanceParts.push(`${t('assurance.signals')} ${p.notableSignals}`);
+  }
+
+  // mode は proof.json 由来 (自己申告) — 入力層で allowlist 済みだが、`t()` は未登録キーを
+  // キー文字列のまま返すため、表示層でも必ずエスケープする (#210 は二重に防ぐ)。
+  const modeChip = mode
+    ? `<span class="assurance-chip neutral" title="${escapeHtml(t('assurance.modeSelfAsserted'))}">
+         <span class="assurance-chip-label">${escapeHtml(t('assurance.modeLabel'))}</span>
+         <span class="assurance-chip-value">${escapeHtml(t(`assurance.mode.${mode}`))}</span>
+       </span>`
+    : '';
+
+  return `
+    <span class="assurance-chip ${integrityClass}" title="${escapeHtml(t('assurance.integrityHint'))}">
+      <span class="assurance-chip-label">${t('assurance.integrity')}</span>
+      <span class="assurance-chip-value">${integrityValue}</span>
+    </span>
+    <span class="assurance-chip ${temporalClass}" title="${escapeHtml(t('assurance.temporalHint'))}">
+      <span class="assurance-chip-label">${t('assurance.temporal')}</span>
+      <span class="assurance-chip-value">${temporalValue}</span>
+    </span>
+    <span class="assurance-chip advisory" title="${escapeHtml(t('assurance.provenanceHint'))}">
+      <span class="assurance-chip-label">${t('assurance.provenance')}</span>
+      <span class="assurance-chip-value">${provenanceParts.map((x) => escapeHtml(x)).join(' · ')}</span>
+    </span>
+    ${modeChip}
+  `;
 }
