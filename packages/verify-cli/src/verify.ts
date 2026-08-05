@@ -202,6 +202,8 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     analysis: summarizeAnalysisForAssurance(analysis),
     // #147: ZIP 入力で検査したときのみ渡す (undefined = 未検査は integrity に影響しない)。
     screenshotsTampered: options.screenshotSummary?.tampered,
+    // #214: fast モードは PoSW を再計算していないので integrity を proven に上げない。
+    poswSkipped: result.poswSkipped ?? false,
   });
 
   return {

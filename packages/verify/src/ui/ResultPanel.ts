@@ -1605,9 +1605,27 @@ export class ResultPanel {
  * 埋め込む値は例外なく `escapeHtml` を通すこと (#210)。
  */
 export function buildAssuranceStripHtml(assurance: AssuranceResult, mode?: ResultData['mode']): string {
-  const integrityClass = assurance.integrity === 'proven' ? 'success' : 'error';
-  const integrityValue =
-    assurance.integrity === 'proven' ? t('assurance.integrityProven') : t('assurance.integrityFailed');
+  // #214: fast モード (PoSW 未再計算) は proven ではない。「改ざんの疑い」ではないので赤 (error)
+  // にもせず、時刻アンカーの partial と同じ warning 色で「一部未検証」であることを出す。
+  let integrityClass: string;
+  let integrityValue: string;
+  let integrityHint: string;
+  switch (assurance.integrity) {
+    case 'proven':
+      integrityClass = 'success';
+      integrityValue = t('assurance.integrityProven');
+      integrityHint = t('assurance.integrityHint');
+      break;
+    case 'partial':
+      integrityClass = 'warning';
+      integrityValue = t('assurance.integrityPartial');
+      integrityHint = t('assurance.integrityPartialHint');
+      break;
+    default:
+      integrityClass = 'error';
+      integrityValue = t('assurance.integrityFailed');
+      integrityHint = t('assurance.integrityHint');
+  }
 
   let temporalClass: string;
   let temporalValue: string;
@@ -1645,9 +1663,9 @@ export function buildAssuranceStripHtml(assurance: AssuranceResult, mode?: Resul
     : '';
 
   return `
-    <span class="assurance-chip ${integrityClass}" title="${escapeHtml(t('assurance.integrityHint'))}">
+    <span class="assurance-chip ${integrityClass}" title="${escapeHtml(integrityHint)}">
       <span class="assurance-chip-label">${t('assurance.integrity')}</span>
-      <span class="assurance-chip-value">${integrityValue}</span>
+      <span class="assurance-chip-value">${escapeHtml(integrityValue)}</span>
     </span>
     <span class="assurance-chip ${temporalClass}" title="${escapeHtml(t('assurance.temporalHint'))}">
       <span class="assurance-chip-label">${t('assurance.temporal')}</span>

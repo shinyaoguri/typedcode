@@ -16,6 +16,8 @@ function healthyInput(): AssuranceInput {
     signedCheckpoints: { anchored: true, valid: true, sparse: false, postHocSuspected: false },
     isPureTyping: true,
     analysis: { reviewPriority: 0, notableSignals: 0 },
+    // 既定は full モード相当 (PoSW を実際に再計算した)。
+    poswSkipped: false,
   };
 }
 
@@ -50,6 +52,39 @@ describe('deriveAssurance — integrity', () => {
       exam: { present: true, packageProvided: false },
     };
     expect(deriveAssurance(input).integrity).toBe('proven');
+  });
+});
+
+/**
+ * fast モード (#214): PoSW の反復再計算をスキップしたときは `proven` を名乗らない。
+ * spec §8.2 が保証するのは「申告 PoSW 値が proof 全体とハッシュ的に一貫していること」までで、
+ * 「実際に 10,000 回反復したか」は確認していない。ADR-0020 の「実証拠から導出する」に従い、
+ * 検証していない分を語彙に反映する。
+ */
+describe('deriveAssurance — integrity (PoSW 未再計算)', () => {
+  it('does not claim integrity proven when the PoSW recompute was skipped', () => {
+    expect(deriveAssurance({ ...healthyInput(), poswSkipped: true }).integrity).toBe('partial');
+  });
+
+  it('still fails integrity when the chain is broken and the PoSW recompute was skipped', () => {
+    const input: AssuranceInput = { ...healthyInput(), poswSkipped: true, chainValid: false };
+    expect(deriveAssurance(input).integrity).toBe('failed');
+  });
+
+  it('still fails integrity when a screenshot is tampered and the PoSW recompute was skipped', () => {
+    const input: AssuranceInput = { ...healthyInput(), poswSkipped: true, screenshotsTampered: 1 };
+    expect(deriveAssurance(input).integrity).toBe('failed');
+  });
+
+  it('claims integrity proven only when the PoSW was actually recomputed', () => {
+    expect(deriveAssurance({ ...healthyInput(), poswSkipped: false }).integrity).toBe('proven');
+  });
+
+  it('leaves temporal and provenance untouched when the PoSW recompute was skipped', () => {
+    const full = deriveAssurance(healthyInput());
+    const fast = deriveAssurance({ ...healthyInput(), poswSkipped: true });
+    expect(fast.temporal).toBe(full.temporal);
+    expect(fast.provenance).toEqual(full.provenance);
   });
 });
 

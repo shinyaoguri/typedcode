@@ -73,6 +73,20 @@ describe('TrustCalculator.calculate — level determination', () => {
     expect(r.issues.some((i) => i.component === 'screenshots')).toBe(false);
   });
 
+  // #214: fast モードは PoSW の反復再計算をスキップする。issue を積まないと 0 件 = 「検証成功」に
+  // なり、採点者が「10,000 回の逐次作業まで検証済み」と読み違える (spec §8.2 との overclaim)。
+  it('warns (partial) when PoSW was not recomputed (fast mode)', () => {
+    const r = calc({ ...healthyResult(), verificationMode: 'fast', poswMode: 'skipped' });
+    expect(r.level).toBe('partial');
+    expect(r.issues.some((i) => i.component === 'posw' && i.severity === 'warning')).toBe(true);
+  });
+
+  it('raises no PoSW issue when the PoSW was actually recomputed (full mode)', () => {
+    const r = calc({ ...healthyResult(), verificationMode: 'full', poswMode: 'full' });
+    expect(r.level).toBe('verified');
+    expect(r.issues.some((i) => i.component === 'posw')).toBe(false);
+  });
+
   it('fails when signed checkpoints exist but are invalid', () => {
     const r = calc({
       ...healthyResult(),

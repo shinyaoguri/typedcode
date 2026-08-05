@@ -66,6 +66,16 @@ describe('buildAssuranceStripHtml', () => {
     expect(html).toContain('assurance-chip success');
     expect(html).toContain('assurance-chip advisory');
   });
+
+  // #214: fast モードの整合性は proven ではない。緑の「証明済み」で出すと overclaim になる。
+  it('renders the integrity chip as a warning (not success) when PoSW was not recomputed', () => {
+    const html = buildAssuranceStripHtml({ ...assurance(), integrity: 'partial' }, 'casual');
+
+    // temporal は anchored (success) のままなので、この warning チップは整合性のもの。
+    expect(html).toContain('assurance-chip warning');
+    // i18n 未登録キーが漏れていないこと (t() は未登録キーをそのまま返す)。
+    expect(html).not.toContain('assurance.integrityPartial');
+  });
 });
 
 /**

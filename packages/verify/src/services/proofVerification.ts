@@ -262,6 +262,9 @@ export function buildAssuranceInput(
         : undefined,
     isPureTyping: result.isPureTyping,
     analysis: result.analysis ? summarizeAnalysisForAssurance(result.analysis) : undefined,
+    // #214: fast モードは PoSW を再計算していないので integrity を proven に上げない。
+    // CLI は shared の `poswSkipped` を直接渡す — こちらの `poswMode` はその写像 (`poswModeFor`)。
+    poswSkipped: result.poswMode === 'skipped',
   };
 }
 

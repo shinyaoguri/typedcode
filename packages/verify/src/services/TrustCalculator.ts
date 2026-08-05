@@ -63,6 +63,17 @@ export class TrustCalculator {
       });
     }
 
+    // 2.5 PoSW 再計算 (#214)。fast モードは反復再計算をスキップする (spec §8.2)。issue を積まないと
+    //     0 件 = 「検証成功」になり、「10,000 回の逐次作業まで検証済み」という overclaim になる。
+    //     改ざん検出自体は fast でも成立するので error ではなく warning。
+    if (verificationResult?.poswMode === 'skipped') {
+      issues.push({
+        component: 'posw',
+        severity: 'warning',
+        message: t('trust.issuePoswSkipped'),
+      });
+    }
+
     // 3. スクリーンショット検証 (未検査 = undefined のときは何も主張しない)
     if (screenshots) {
       if (screenshots.tampered > 0) {

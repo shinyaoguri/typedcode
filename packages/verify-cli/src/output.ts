@@ -68,7 +68,14 @@ function passFail(ok: boolean): string {
  * 整合性 / 時刻アンカーは決定的、著述性は常に advisory (判定ではない) として併記する。
  */
 function formatAssurance(a: AssuranceResult): string[] {
-  const integrity = a.integrity === 'proven' ? c('green', 'PROVEN') : c('red', 'FAILED');
+  // #214: fast モードは PoSW を再計算していない = PROVEN ではない。PARTIAL は「改ざんの疑い」
+  // ではなく「実施していない検査がある」の意なので、色も赤ではなく黄にする。
+  const integrity =
+    a.integrity === 'proven'
+      ? c('green', 'PROVEN')
+      : a.integrity === 'partial'
+        ? c('yellow', 'PARTIAL')
+        : c('red', 'FAILED');
 
   let temporal: string;
   switch (a.temporal) {
@@ -93,12 +100,19 @@ function formatAssurance(a: AssuranceResult): string[] {
     parts.push(`review ${(a.provenance.reviewPriority * 100).toFixed(0)}%`);
   }
 
-  return [
+  const lines = [
     c('cyan', '--- Assurance (ADR-0020) ---'),
     `Integrity:  ${integrity}  ${c('dim', '(tamper evidence — cryptographic, deterministic)')}`,
-    `Timeline:   ${temporal}  ${c('dim', '(when it existed — server-signed / exam T0)')}`,
-    `Authorship: ${c('yellow', 'ADVISORY')}  ${c('dim', `(${parts.join(', ')} — human judgment required)`)}`,
   ];
+  if (a.integrity === 'partial') {
+    lines.push(c('dim', '            PoSW was not recomputed — the declared values are consistent with the proof,'));
+    lines.push(c('dim', '            but the sequential work itself is unverified (see --mode full).'));
+  }
+  lines.push(
+    `Timeline:   ${temporal}  ${c('dim', '(when it existed — server-signed / exam T0)')}`,
+    `Authorship: ${c('yellow', 'ADVISORY')}  ${c('dim', `(${parts.join(', ')} — human judgment required)`)}`
+  );
+  return lines;
 }
 
 /** 試験モード (ADR-0006) の束縛検証セクションを描画する。 */
@@ -215,6 +229,13 @@ export function formatResult(result: VerificationOutput): string {
         lines.push(c('red', `  Failed at event: ${result.errorAt}`));
       }
     }
+  }
+
+  // #214: fast モードは PoSW の反復再計算をスキップする (spec §8.2)。PoSW 行だけの注記だと
+  // 「PASSED」を見た採点者が逐次作業まで検証済みと読む。合否の直下で保証の範囲を明示する。
+  if (result.poswSkipped) {
+    lines.push(c('yellow', '  ! fast mode: PoSW was NOT recomputed — sequential work is unverified'));
+    lines.push(c('dim', '    Re-run with --mode full to verify the PoSW iterations.'));
   }
   lines.push('');
 

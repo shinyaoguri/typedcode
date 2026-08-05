@@ -91,8 +91,13 @@ export class VerificationController {
     //          exam 束縛失敗 (spec §6.4)、スクショ改竄 (#146)。**verify-cli の valid と同じ合成**。
     // - warning: 非ピュアタイピング / ソース不一致 / 時刻アンカー無し (偽造不能要素が無い) /
     //            post-hoc 一括署名疑い / anchoring 密度が疎 (ADR-0016) / exam だが問題パッケージ未検証 (真正性未確認) /
-    //            スクショ欠損 / 剥ぎ取り疑い (#213) / 画面共有オプトアウト (#146)
+    //            スクショ欠損 / 剥ぎ取り疑い (#213) / 画面共有オプトアウト (#146) /
+    //            PoSW 未再計算 = fast モード (#214)
     const examPresentButUnverified = !!result.exam?.present && !result.exam.packageProvided;
+    // #214: fast モードは PoSW を再計算していない。TrustCalculator の warning と同じ軸に揃える —
+    // ここを見ないと「タブは緑なのに信頼バッジは警告」になり、fast のまま流した提出物が全件緑で
+    // 素通りする (verify/CLAUDE.md「両者を揃えて変更すること」)。
+    const poswSkipped = result.poswMode === 'skipped';
     // ADR-0017: root 未アンカー (serverNonce トークン無し) は警告。exam は独自束縛のため対象外。
     const rootNotAnchored = !result.rootAnchored && !result.exam?.present;
     let status: FileStatus;
@@ -108,7 +113,8 @@ export class VerificationController {
       examPresentButUnverified ||
       screenshotsMissing > 0 ||
       screenshotsChainOnly > 0 ||
-      hasScreenShareOptOut
+      hasScreenShareOptOut ||
+      poswSkipped
     ) {
       status = 'warning';
     } else {
