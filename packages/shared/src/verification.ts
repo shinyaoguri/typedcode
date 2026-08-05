@@ -67,6 +67,13 @@ export interface FullVerificationResult {
    * exam / 旧 proof / オフライン劣化では false。warning 判定は呼び出し側 (exam は除外)。
    */
   rootAnchored?: boolean;
+  /**
+   * `sessionStartToken` の sessionId と署名 cp の sessionId が食い違ったか (spec §6.3 / ADR-0017)。
+   * true = 別セッションのトークンを流用した proof。`valid` には既に反映済みだが、UI が
+   * 「どの層が落ちたか」を chain ではなく時刻アンカー層として提示できるよう独立に返す
+   * (chain に畳み込むと「改ざんされた」と誤って告発する — #211)。
+   */
+  sessionTokenMismatch?: boolean;
 }
 
 /**
@@ -945,6 +952,7 @@ export async function verifyProofFile(
     errorMessage: verificationError,
     poswSkipped: skipPosw,
     signedCheckpoints: signedCheckpointResult,
+    sessionTokenMismatch: !!tokenSessionMismatch,
   };
 }
 

@@ -68,10 +68,21 @@ export type PoswMode = 'skipped' | 'sampled' | 'full';
 
 /** 検証結果データ（Worker→メインスレッドへ渡すデータ） */
 export interface VerificationResultData {
+  /**
+   * 総合判定。shared の `verifyProofFile` が返す `valid` をそのまま持つ (= verify-cli と同一の結論)。
+   * metadata / chain に加えて、署名 cp の失敗とセッショントークンの sessionId 不一致 (spec §6.3) を含む。
+   * スクショ改竄 / exam 束縛は proof 外の証拠なので UI 側 (VerificationController) で合流させる。
+   */
+  valid: boolean;
   metadataValid: boolean;
   rootValid?: boolean;
   /** root がサーバアンカーされているか (ADR-0017)。`sessionStartToken` で root がアンカーされていれば true。 */
   rootAnchored?: boolean;
+  /**
+   * `sessionStartToken` の sessionId と署名 cp の sessionId が食い違ったか (spec §6.3)。
+   * true = 別セッションのトークン流用。**整合性 (chainValid) ではなく時刻アンカー層の問題**として扱う。
+   */
+  sessionTokenMismatch?: boolean;
   chainValid: boolean;
   finalHashValid?: boolean;
   contentValid?: boolean;
@@ -274,7 +285,6 @@ export interface WorkerResponseMessage {
   total?: number;
   phase?: string;
   totalEvents?: number; // 全イベント数
-  hashInfo?: { computed: string; expected: string; poswHash?: string };
   // result
   result?: VerificationResultData;
   // error

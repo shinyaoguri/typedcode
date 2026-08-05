@@ -26,8 +26,8 @@
 | `ui/controllers/` | `VerificationController`, `TabController`, `FileController`, `FolderController`, `ChartController` |
 | `state/` | `VerificationQueue`, `UIStateManager`, `VerifyTabManager`, `ChartState` |
 | `charts/` | `TimelineChart`, `MouseChart`, `IntegratedChart`, `SeekbarController` (Chart.js) |
-| `services/` | `FileSystemAccessService`, `FolderSyncManager`, `SyntaxHighlighter`, `TrustCalculator`, `DiffService`, `ChartPreferencesService` |
-| `workers/` | `verificationWorker.ts` (Web Worker ベースの検証) |
+| `services/` | `FileSystemAccessService`, `FolderSyncManager`, `SyntaxHighlighter`, `TrustCalculator`, `DiffService`, `ChartPreferencesService`, `proofVerification` (shared への委譲アダプタ + 総合判定 / 保証入力の写像) |
+| `workers/` | `verificationWorker.ts` (Web Worker のメッセージ入出力のみ。検証は `services/proofVerification` へ) |
 
 ## データフロー
 
@@ -36,26 +36,31 @@ File Selection (drag&drop / FSA API)
   → FileProcessor (JSON / ZIP)
   → 形式判定 (single / multi: タブ毎に独立 proof)
   → VerificationController → VerificationQueue
-  → workers/verificationWorker.ts (Web Worker)
-     ├─ sequence 連続性
-     ├─ timestamp 単調性
-     ├─ previousHash 検証
-     ├─ ハッシュ再計算
-     ├─ PoSW (POSW_ITERATIONS 反復)
-     ├─ 署名済み cp の連結検証 (任意)
+  → workers/verificationWorker.ts (Web Worker。メッセージ入出力のみ)
+  → services/proofVerification.runProofVerification
+     ├─ verifyExamBinding (ADR-0006。package 提供時のみ・verifyProofFile より前)
+     ├─ shared の verifyProofFile (metadata / chain / PoSW / finalHash / content /
+     │  checkpoint / 署名済み cp / sessionStartToken 突合 の合成は**すべて shared**)
      └─ runAnalysis (ADR-0009。advisory のみ・valid に不反映・失敗しても検証結果を落とさない)
   → AttestationService.verify() (Workers API)
   → ResultPanel + charts
 ```
 
+**Worker 内で検証を再合成しないこと** (#211)。過去にここでレイヤを組み直していたため、
+`sessionStartToken` ↔ 署名 cp の sessionId 突合 (spec §6.3) が web だけ欠落し、`chainValid` に
+署名 cp の失敗を畳み込んで整合性チップが誤って FAILED になっていた。web↔CLI の結論一致は
+`services/__tests__/webCliParity.test.ts` (#216) が CI で固定する — verify-cli の `verifyProof` を
+実際に呼んで `valid` / 三層保証 / exam 束縛 / スクショ集計 (tampered・chainOnly) を突き合わせるので、
+片側だけ直すと落ちる。スクショの**読込経路** (ZIP vs フォルダ) の一致は `screenshotParity.test.ts` (#212) の担当。
+
 ## 信頼スコア (`TrustCalculator`)
 
 `TrustCalculator.calculate` は加減点スコアではなく **issue リスト** を組み立て、`determineLevel` で `failed`(error あり) / `partial`(warning あり) / `verified`(issue なし) に落とす。issue を上げる要素:
 
-- **error**: metadata 不正、ハッシュチェーン不正、スクショ改竄、署名 cp が anchored だが invalid、exam 束縛失敗 (package 提供時)
+- **error**: metadata 不正、ハッシュチェーン不正、スクショ改竄、署名 cp が anchored だが invalid、**セッション開始トークンと署名 cp の sessionId 不一致 (spec §6.3。整合性ではなく `anchoring` 層に上げる)**、exam 束縛失敗 (package 提供時)
 - **warning**: 未アンカー (署名 cp なし)、post-hoc 一括署名疑い、**アンカー密度が疎 (ADR-0016, `signedCheckpointDensity.sparse`)**、**root 未サーバアンカー (ADR-0017, `!rootAnchored` かつ非 exam)**、非ピュアタイピング (ペースト/バルク挿入)、ソース不一致、attestation 検証失敗、`screenShareOptOut`、exam だが問題パッケージ未読込、スクショ欠損
 
-`VerificationController.handleComplete` のタブ status 判定と **同じ軸** を見るので、両者を揃えて変更すること (タブが緑なのに信頼バッジが警告、のような不整合を避ける)。`component` を増やしたら `ResultPanel.getComponentLabel` にラベルも追加する。#146 で handleComplete にスクショ改竄 (error)・スクショ欠損・`screenShareOptOut` (warning) を合流済み。attestation 失敗は `humanAttestationResult` の書き込み元が現状無い (dead) ため status 軸に入れていない。
+`VerificationController.handleComplete` のタブ status 判定と **同じ軸** を見るので、両者を揃えて変更すること (タブが緑なのに信頼バッジが警告、のような不整合を避ける)。status の error 側は `proofVerification.isOverallValid` (= verify-cli の `valid` と同じ合成: shared の `verifyProofFile` × exam 束縛 × スクショ改竄) 一本に寄せてあるので、error 条件を増やすときは CLI 側も同時に見ること。`component` を増やしたら `ResultPanel.getComponentLabel` にラベルも追加する。#146 で handleComplete にスクショ改竄 (error)・スクショ欠損・`screenShareOptOut` (warning) を合流済み。attestation 失敗は `humanAttestationResult` の書き込み元が現状無い (dead) ため status 軸に入れていない。
 
 スクショの per-image 判定 (ハッシュ突合 + チェーン裏付け) の実体は **shared の `checkScreenshotImage`** (#147)。verify 側で再実装しない — verify-cli と結論が食い違うため。
 
@@ -77,7 +82,7 @@ File Selection (drag&drop / FSA API)
 ## 三層保証バッジ (ADR-0020)
 
 - 結果画面最上部の `#assurance-strip` に **整合性 / 時刻アンカー / 著述性** の 3 チップ (+ 自己申告 mode の参考チップ) を出す。導出は shared の `deriveAssurance` (**verify 側で再実装しない** — CLI と食い違うため)
-- 導出は `TabController.renderResult` で行う (スクショ改竄数を持つのがこの層だけのため)。入力は実証拠のみで **自己申告 `proof.mode` は使わない**
+- 導出は `TabController.renderResult` で行う (スクショ改竄数を持つのがこの層だけのため)。入力は実証拠のみで **自己申告 `proof.mode` は使わない**。`AssuranceInput` への写像は `proofVerification.buildAssuranceInput` に切り出してあり、verify-cli の同じ写像との一致をパリティテストが固定する (#216)
 - **著述性チップは常に advisory**: 判定色 (緑/赤) を使わず破線・中立色。pureTyping + シグナル数の事実併記のみ。ここを判定に見せる変更は ADR-0009/0020 違反
 - 既存の TrustCalculator (issue リスト) とタブ status は詳細表示として併存。三層バッジは語彙、issue は根拠の列挙という役割分担
 

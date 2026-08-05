@@ -369,6 +369,8 @@ export const ja: VerifyTranslationKeys = {
     issueAnchoringMissing: '時刻アンカー（署名チェックポイント）がありません',
     issueAnchoringPostHoc: 'post-hoc 一括署名の疑いがあります（サーバ時刻が申告時間より極端に短い）',
     issueAnchoringSparse: 'アンカー密度が疎です（署名チェックポイントが申告セッションに対し少ない/遅い）',
+    issueSessionTokenMismatch:
+      'セッション開始トークンと署名チェックポイントのセッションIDが一致しません（別セッションのトークン流用の疑い）',
     issueRootNotAnchored: 'チェーン根がサーバアンカーされていません（開始時刻が未固定・オフライン捏造の余地）',
     issueNotPureTyping: 'ピュアタイピングではありません（ペースト/バルク挿入あり）',
     issueExamBindingFailed: '問題束縛（署名/内容ハッシュ）の検証に失敗しました',

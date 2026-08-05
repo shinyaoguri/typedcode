@@ -13,6 +13,7 @@ import type { ScreenshotVerificationSummary, VerificationResultData } from '../.
 /** 健全な anchored proof の検証結果 (テストごとに上書きして崩す)。 */
 function healthyResult(): VerificationResultData {
   return {
+    valid: true,
     metadataValid: true,
     chainValid: true,
     isPureTyping: true,
@@ -80,6 +81,29 @@ describe('TrustCalculator.calculate — level determination', () => {
     });
     expect(r.level).toBe('failed');
     expect(r.issues.some((i) => i.component === 'anchoring' && i.severity === 'error')).toBe(true);
+  });
+
+  it('attributes an invalid signed checkpoint to anchoring, never to the hash chain (#211)', () => {
+    // 委譲前は worker が chainValid に署名 cp を畳み込んでいたため「ハッシュチェーン: <anchoring の理由>」
+    // という誤帰属が出ていた。整合性 (chain) と時刻アンカーは別層 (ADR-0020)。
+    const r = calc({
+      ...healthyResult(),
+      valid: false,
+      chainValid: true,
+      signedCheckpointAnchored: true,
+      signedCheckpointValid: false,
+    });
+    expect(r.issues.some((i) => i.component === 'chain')).toBe(false);
+    expect(r.issues.some((i) => i.component === 'anchoring' && i.severity === 'error')).toBe(true);
+  });
+
+  it('fails when the session start token does not match the signed checkpoint session (#211)', () => {
+    // 別セッションのトークン流用 (spec §6.3)。CLI は invalid とするので web も緑にしない。
+    const r = calc({ ...healthyResult(), valid: false, sessionTokenMismatch: true });
+    expect(r.level).toBe('failed');
+    expect(r.issues.some((i) => i.component === 'anchoring' && i.severity === 'error')).toBe(true);
+    // 暗号的な改ざんではないので整合性 (chain) の error にはしない。
+    expect(r.issues.some((i) => i.component === 'chain')).toBe(false);
   });
 
   it('warns (partial) when no signed checkpoint anchors the proof', () => {
