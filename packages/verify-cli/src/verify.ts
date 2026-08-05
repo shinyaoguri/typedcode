@@ -22,6 +22,7 @@ import {
   type ExamPackageManifest,
   type ExamBindingVerificationResult,
   type ScreenshotVerificationSummary,
+  type CheckpointPublicKey,
 } from '@typedcode/shared';
 import { ProgressBar } from './progress.js';
 
@@ -98,6 +99,11 @@ export interface VerifyProofOptions {
    * tampered > 0 は verify (web) の error 軸と同じく valid を落とす。未指定 = 未検査。
    */
   screenshotSummary?: ScreenshotVerificationSummary;
+  /**
+   * 署名 cp / セッション開始トークンの公開鍵レジストリ。未指定なら shared の既定 registry
+   * (本番運用はこちら)。テスト鍵を注入して web↔CLI パリティを比較するための口 (#216)。
+   */
+  signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
 }
 
 export async function verifyProof(proof: ProofFile, options: VerifyProofOptions = {}): Promise<CLIVerificationResult> {
@@ -131,6 +137,7 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     requireRootAnchor: options.requireRootAnchor,
     // 免除は検証済み束縛のみ。package 未提供 (binding=undefined) の exam proof は gate 対象。
     examBindingVerified: binding?.valid === true,
+    signedCheckpointKeyRegistry: options.signedCheckpointKeyRegistry,
   });
 
   progressBar.complete();

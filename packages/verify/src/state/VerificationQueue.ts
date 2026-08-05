@@ -18,7 +18,6 @@ export interface ProgressCallbackParams {
   id: string;
   progress: number;
   details: ProgressDetails;
-  hashInfo?: { computed: string; expected: string; poswHash?: string };
 }
 
 export type ProgressCallback = (params: ProgressCallbackParams) => void;
@@ -162,7 +161,6 @@ export class VerificationQueue {
               id: msg.id,
               progress,
               details,
-              hashInfo: msg.hashInfo,
             });
           } catch (error) {
             console.error('[VerificationQueue] Error in onProgressCallback:', error);

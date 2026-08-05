@@ -372,6 +372,8 @@ export const en: VerifyTranslationKeys = {
     issueAnchoringPostHoc: 'Post-hoc batch signing suspected (server span is far shorter than the claimed session)',
     issueAnchoringSparse:
       'Anchor density is sparse (signed checkpoints are too few / too late for the claimed session)',
+    issueSessionTokenMismatch:
+      'Session start token does not match the signed checkpoint session id (token from another session suspected)',
     issueRootNotAnchored: 'Chain root is not server-anchored (start time unfixed; offline forgery possible)',
     issueNotPureTyping: 'Not pure typing (paste / bulk insertion detected)',
     issueExamBindingFailed: 'Exam binding (signature / content hash) verification failed',

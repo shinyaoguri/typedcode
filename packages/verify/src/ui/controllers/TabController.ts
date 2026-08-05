@@ -17,12 +17,8 @@ import type { VerifyTabState, ProgressDetails, VerifyScreenshot, VerificationSte
 import { buildResultData, calculateChartStats } from '../../services/ResultDataService';
 import { TrustCalculator } from '../../services/TrustCalculator';
 import { summarizeTabScreenshots } from '../../services/screenshotSummary';
-import {
-  deriveAssurance,
-  summarizeAnalysisForAssurance,
-  summarizeProcess,
-  type AssuranceResult,
-} from '@typedcode/shared';
+import { buildAssuranceInput } from '../../services/proofVerification';
+import { deriveAssurance, summarizeProcess, type AssuranceResult } from '@typedcode/shared';
 import { t } from '../../i18n/index';
 
 export interface TabControllerDependencies {
@@ -295,33 +291,12 @@ export class TabController {
     if (!resultData) return;
 
     // 三層保証語彙 (ADR-0020): 実証拠のみから導出 (自己申告 mode は使わない)。
-    // スクショ改竄数を持つのはここだけなので導出はこの層で行う。
+    // スクショ改竄数を持つのはここだけなので導出はこの層で行う。写像は verify-cli と揃えた
+    // buildAssuranceInput、導出は shared の deriveAssurance (verify 側で再実装しない)。
     const vr = tabState.verificationResult;
     const assurance: AssuranceResult | undefined = vr
-      ? deriveAssurance({
-          metadataValid: vr.metadataValid,
-          chainValid: vr.chainValid,
-          screenshotsTampered: screenshotSummary?.tampered ?? 0,
-          exam: vr.exam
-            ? {
-                present: true,
-                packageProvided: vr.exam.packageProvided,
-                bindingValid: vr.exam.binding?.valid,
-              }
-            : undefined,
-          rootAnchored: vr.rootAnchored ?? false,
-          signedCheckpoints:
-            vr.signedCheckpointAnchored !== undefined
-              ? {
-                  anchored: vr.signedCheckpointAnchored,
-                  valid: vr.signedCheckpointValid,
-                  sparse: vr.signedCheckpointDensity?.sparse,
-                  postHocSuspected: vr.signedCheckpointTemporal?.postHocSuspected,
-                }
-              : undefined,
-          isPureTyping: vr.isPureTyping,
-          analysis: vr.analysis ? summarizeAnalysisForAssurance(vr.analysis) : undefined,
-        })
+      ? // undefined = 未検査 (proof.json 単体)。CLI も同じく undefined を渡すので integrity に影響しない。
+        deriveAssurance(buildAssuranceInput(vr, { screenshotsTampered: screenshotSummary?.tampered }))
       : undefined;
 
     // trustResult を追加してレンダリング

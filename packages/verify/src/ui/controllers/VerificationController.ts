@@ -10,6 +10,7 @@ import type { ResultPanel } from '../ResultPanel';
 import type { TabController } from './TabController';
 import type { ProgressDetails, VerificationResultData } from '../../types';
 import { summarizeTabScreenshots } from '../../services/screenshotSummary';
+import { isOverallValid } from '../../services/proofVerification';
 import { t } from '../../i18n/index';
 
 export interface VerificationControllerDependencies {
@@ -85,24 +86,17 @@ export class VerificationController {
     const hasScreenShareOptOut = events.some((e: { type: string }) => e.type === 'screenShareOptOut');
 
     // ステータス判定: エラー > 警告 > 成功。
-    // - error: チェーン/メタデータ破綻、署名 cp があるのに無効、package 提供下で exam 束縛失敗 (spec §6.4)、
-    //          スクショ改竄 (#146)
+    // - error: shared の総合判定 (`isOverallValid`) が false — チェーン/メタデータ破綻、署名 cp が
+    //          あるのに無効、セッショントークンの sessionId 不一致 (spec §6.3)、package 提供下で
+    //          exam 束縛失敗 (spec §6.4)、スクショ改竄 (#146)。**verify-cli の valid と同じ合成**。
     // - warning: 非ピュアタイピング / ソース不一致 / 時刻アンカー無し (偽造不能要素が無い) /
     //            post-hoc 一括署名疑い / anchoring 密度が疎 (ADR-0016) / exam だが問題パッケージ未検証 (真正性未確認) /
     //            スクショ欠損 / 剥ぎ取り疑い (#213) / 画面共有オプトアウト (#146)
-    const examBindingFailed = !!result.exam?.packageProvided && result.exam.binding?.valid === false;
-    const anchoredButInvalid = !!result.signedCheckpointAnchored && result.signedCheckpointValid === false;
     const examPresentButUnverified = !!result.exam?.present && !result.exam.packageProvided;
     // ADR-0017: root 未アンカー (serverNonce トークン無し) は警告。exam は独自束縛のため対象外。
     const rootNotAnchored = !result.rootAnchored && !result.exam?.present;
     let status: FileStatus;
-    if (
-      !result.metadataValid ||
-      !result.chainValid ||
-      examBindingFailed ||
-      anchoredButInvalid ||
-      screenshotsTampered > 0
-    ) {
+    if (!isOverallValid(result, { screenshotsTampered })) {
       status = 'error';
     } else if (
       !result.isPureTyping ||

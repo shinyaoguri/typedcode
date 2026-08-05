@@ -390,6 +390,7 @@ export interface VerifyTranslationKeys {
     issueAnchoringMissing: string;
     issueAnchoringPostHoc: string;
     issueAnchoringSparse: string;
+    issueSessionTokenMismatch: string;
     issueRootNotAnchored: string;
     issueNotPureTyping: string;
     issueExamBindingFailed: string;

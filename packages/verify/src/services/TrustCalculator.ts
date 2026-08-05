@@ -175,6 +175,17 @@ export class TrustCalculator {
       }
     }
 
+    // 7.2 セッション開始トークンと署名 cp の sessionId 突合（spec §6.3 / ADR-0017）。
+    //     別セッションのトークンを流用した proof。暗号的な改ざんではないので整合性（chain）ではなく
+    //     時刻アンカー層の error として上げる（chain に混ぜると「改ざんされた」と誤って告発する）。
+    if (verificationResult?.sessionTokenMismatch) {
+      issues.push({
+        component: 'anchoring',
+        severity: 'error',
+        message: t('trust.issueSessionTokenMismatch'),
+      });
+    }
+
     // 7.5 root のサーバアンカー（ADR-0017）。serverNonce 付きトークンで root がアンカーされていない
     //     (= 完全オフライン捏造の余地) なら警告。exam は独自の T0 束縛を持つため対象外。
     if (
