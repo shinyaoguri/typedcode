@@ -17,7 +17,9 @@
 
 主たる用途は、AI 生成や自動コピーを防ぎたいプログラミング試験、および学習プロセスを検証したい教育現場です。
 
-**無料・無制限・サインアップ不要。データはブラウザ外に出ません。**
+**無料・無制限・サインアップ不要。ソースコードと打鍵内容はブラウザ外に出ません。**
+
+サーバへ送られるのは、人間確認 (Cloudflare Turnstile) のトークンと、時刻アンカーのための**不透明なハッシュ・時刻・クライアント生成の識別子**だけです (セッション開始時の `sessionId` + フィンガープリントのハッシュ、署名チェックポイントのチェーン/コンテンツハッシュと時刻)。コード・キーストローク・個人情報は送信せず、証明の保管もしません ([ADR-0011 §5](docs/adr/0011-course-modes-and-path-routing.md))。
 
 ## 主な機能
 
@@ -92,11 +94,18 @@ npm run build:verify-cli
 
 ## テスト
 
-テストは shared / workers / editor パッケージにあります（verify / verify-cli は未整備）。CI が回すのは shared / workers です。
+ユニットテストは shared / editor / verify / verify-cli / workers にあります (Vitest)。CI は `test:run` を持つ**全ワークスペース**を回し、さらに別 job で E2E (Playwright) を実行します。どちらもデプロイのゲートです。
 
 ```bash
-npm run test -w @typedcode/shared
+# CI と同じユニットテスト一式
+npm run test:run --workspaces --if-present
+
+# 個別実行 / カバレッジ
+npm run test:run -w @typedcode/shared
 npm run test:coverage -w @typedcode/shared
+
+# E2E (編集 → export → verify-cli の round-trip)
+npm run test -w @typedcode/e2e
 ```
 
 ## アーキテクチャ

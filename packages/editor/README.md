@@ -52,8 +52,10 @@ TypingProof.recordEvent() (@typedcode/shared)
     ↓
 HashChainManager → PoswManager (Web Worker)
     ↓
-StoredEvent → localStorage + IndexedDB
+StoredEvent → IndexedDB (イベント本体) + sessionStorage (タブ状態)
 ```
+
+> proof データを localStorage に置くことはありません。イベント本体は IndexedDB (`typedcode-session`)、タブ状態は sessionStorage (`typedcode-tabs`) に保存されます (モード別に名前空間化)。
 
 ### Fire-and-Forget 記録
 

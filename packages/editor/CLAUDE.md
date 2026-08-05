@@ -41,7 +41,7 @@ User Action
   → EventRecorder (キューイング、fire-and-forget)
   → TypingProof.recordEvent() [shared]
   → HashChainManager → PoswManager (Web Worker)
-  → StoredEvent → localStorage + IndexedDB
+  → StoredEvent → IndexedDB (イベント本体) + sessionStorage (タブ状態。proof データは localStorage に置かない)
   → (cp 作成時) SignedCheckpointService → Workers /api/checkpoint/sign
 ```
 
