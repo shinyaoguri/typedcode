@@ -6,7 +6,7 @@
 
 TypedCode はブラウザベースのコードエディタで、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録し、改ざん耐性のあるタイピング証明を生成します。さらに Cloudflare Workers による ECDSA-P256 署名付きチェックポイントで時刻アンカリングを行います。
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Tech Stack**: TypeScript 5/6, Vite 8 (rolldown), Monaco Editor, Wasmer SDK, Chart.js, Cloudflare Workers
 **Node.js**: ≥24
 
@@ -44,16 +44,11 @@ npm install
 # 実際の URL は起動バナーに表示され、プロキシ / VITE_API_URL も自動追従)
 npm run dev
 
-# 開発 (個別。こちらは従来どおりの固定ポート)
-npm run dev:editor    # http://localhost:5173
-npm run dev:verify    # http://localhost:5174
-npm run dev:workers   # http://localhost:8787
+# 開発 (個別。こちらは従来どおりの固定ポート 5173 / 5174 / 8787)
+npm run dev:editor / dev:verify / dev:workers
 
-# ビルド
-npm run build              # 全パッケージ
-npm run build:editor
-npm run build:verify
-npm run build:verify-cli
+# ビルド (全パッケージ。個別は build:editor / build:verify / build:verify-cli)
+npm run build
 
 # Lint / Format (Biome, #157。CI の check job も同じコマンド)
 npm run lint        # biome ci . (チェックのみ)
@@ -61,8 +56,7 @@ npm run lint:fix    # biome check --write . (安全な自動修正 + format)
 
 # ユニットテスト (test:run を持つ全パッケージ。CI の test job も同じコマンド)
 npm run test:run --workspaces --if-present
-npm run test:run -w @typedcode/shared      # 個別実行
-npm run test:coverage -w @typedcode/shared
+npm run test:run -w @typedcode/shared      # 個別実行 (test:coverage も同様)
 
 # E2E (Playwright。workers + editor の dev サーバを自動起動して round-trip 検証)
 npm run test -w @typedcode/e2e
@@ -72,9 +66,9 @@ npm run test -w @typedcode/e2e
 ## 開発フロー
 
 - ブランチ運用は**タグ式 GitHub Flow** (main 1 本 + `v*` タグ → production)。手順は [CONTRIBUTING.md](CONTRIBUTING.md)、根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md)
-- **作業は git worktree で行う** (メインのチェックアウトのブランチを切り替えない)。ブランチ名は `<type>/<短い説明>` (type はコミット型と同じ)
-- コミットと **PR タイトル**は Conventional Commits (`feat(editor): ...`)。squash merge で PR タイトルがマージコミットのメッセージになる
+- **作業は git worktree で行う** (メインのチェックアウトのブランチを切り替えない)
 - **マージしたら、メインのチェックアウトから `git sweep` を実行して** worktree とローカルブランチを掃除する (使用中・dirty な worktree は自動スキップ。[ADR-0029](docs/adr/0029-merge-cleanup-script.md))
+- PR タイトルは CI (`pr-title` job) が Conventional Commits を検査する。落ちたら型を `feat|fix|docs|refactor|test|chore|ci` から選び直す
 - **引き継ぎの真実は Issue に置く**: 着手時は Issue 本文と全コメントを読む。重要な決定・発見はその場で Issue コメントに記録し、中断時は「完了・残作業・注意点・次の一歩」の引き継ぎコメントを残す。セッションメモリ・チャット履歴は効率化のために使ってよいが、**そこにしかない情報を作らない** (詳細は CONTRIBUTING「Issue の書き方と引き継ぎ」)
 
 ## モデルの役割分担 (コスト最適化)
@@ -86,38 +80,16 @@ npm run test -w @typedcode/e2e
 | `implementer` | Opus (現行 Opus 4.8) | 方針が固まった実装。複数ファイル編集・新機能・リファクタ・テスト作成 |
 | `mechanic` | Sonnet (現行 Sonnet 5) | 機械的変更。rename / i18n キー追加 / typo / 定型修正 / lint 対応 |
 
-- 委譲プロンプトは**自己完結**で書く: 対象ファイル・方針・完了条件・検証コマンドを明記する (サブエージェントはメインの会話を読めない)
-- 数行の単発修正まで委譲しない (往復のオーバーヘッドが上回る)。目安: **2 ファイル以上 or 数十行超**の編集は委譲する
+- 目安: **2 ファイル以上 or 数十行超**の編集は委譲する (数行の単発修正は往復のオーバーヘッドが上回る)
 - 設計判断・コードレビュー・ADR / CLAUDE.md の更新はメインループが担う (委譲しない)
 
 ## ドキュメント階層
 
-- **CLAUDE.md (本ファイル)**: 玄関口 / ナビゲーション
-- **`packages/*/CLAUDE.md`**: サブシステム固有の責務・不変条件・罠
-- **[docs/system-spec.md](docs/system-spec.md)**: クロスカット仕様 (定数、アルゴリズム、用語集)
-- **[docs/adr/](docs/adr/)**: 設計判断の蓄積 (Architecture Decision Records)
-- **`packages/*/README.md`**: ユーザー視点のドキュメント (API、使い方)
-- **[CONTRIBUTING.md](CONTRIBUTING.md)**: 開発の進め方 (ブランチ運用 / worktree 並行作業 / Issue 引き継ぎ / マージ後の掃除)。根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md) / [ADR-0029](docs/adr/0029-merge-cleanup-script.md)
-
-仕様は `docs/system-spec.md`、判断の根拠は `docs/adr/`、コードの触り方は `CLAUDE.md` が真実の在処です。
+仕様は [docs/system-spec.md](docs/system-spec.md) (定数・アルゴリズム・用語集)、判断の根拠は [docs/adr/](docs/adr/)、開発の進め方は [CONTRIBUTING.md](CONTRIBUTING.md)、変更履歴は [CHANGELOG.md](CHANGELOG.md) が真実の在処です。コードの触り方は本ファイルと `packages/*/CLAUDE.md`、利用者視点の使い方は `packages/*/README.md` にあります。
 
 ## 環境設定
 
-### Editor (`packages/editor/.env`)
-```
-VITE_TURNSTILE_SITE_KEY=your_site_key
-VITE_API_URL=http://localhost:8787
-```
-
-### Workers (`packages/workers/.dev.vars`)
-```
-TURNSTILE_SECRET_KEY=your_secret_key
-ATTESTATION_SECRET_KEY=any_random_string
-CHECKPOINT_SIGNING_KEY_ID=...        # gen-checkpoint-key で生成
-CHECKPOINT_SIGNING_KEY_JWK={...}     # gen-checkpoint-key で生成
-```
-
-詳細は [packages/workers/CLAUDE.md](packages/workers/CLAUDE.md) を参照。
+初回セットアップ (`.env` / `.dev.vars` の作成、Turnstile と署名鍵の用意) の手順は [docs/setup.md](docs/setup.md)、各変数の意味と不変条件は [packages/workers/CLAUDE.md](packages/workers/CLAUDE.md) を参照。**秘密情報を CLAUDE.md や docs に書き写さないこと** (置き場は gitignore 済みの `.env` / `.dev.vars` のみ)。
 
 ## i18n
 
