@@ -116,6 +116,8 @@ export interface VerifyTranslationKeys {
     screenshotVerification: string;
     screenshotsAllVerified: string;
     screenshotsSomeInvalid: string;
+    screenshotsChainOnly: string;
+    screenshotsNotChecked: string;
     screenshotsCount: string;
     posw: string;
     poswMode: string;
@@ -379,6 +381,7 @@ export interface VerifyTranslationKeys {
     issueChainInvalid: string;
     issueScreenshotsTampered: string;
     issueScreenshotsMissing: string;
+    issueScreenshotsChainOnly: string;
     issueAttestationBoth: string;
     issueAttestationCreate: string;
     issueAttestationExport: string;

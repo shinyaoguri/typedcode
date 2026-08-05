@@ -23,12 +23,12 @@ function healthyResult(): VerificationResultData {
 }
 
 function noScreenshots(): ScreenshotVerificationSummary {
-  return { total: 0, verified: 0, missing: 0, tampered: 0 };
+  return { total: 0, verified: 0, missing: 0, tampered: 0, chainOnly: 0 };
 }
 
 function calc(
   result: VerificationResultData | null,
-  screenshots: ScreenshotVerificationSummary = noScreenshots(),
+  screenshots: ScreenshotVerificationSummary | undefined = noScreenshots(),
   options?: { hasScreenShareOptOut?: boolean }
 ) {
   return TrustCalculator.calculate(result, undefined, screenshots, undefined, options);
@@ -50,14 +50,26 @@ describe('TrustCalculator.calculate — level determination', () => {
   });
 
   it('fails when any screenshot is tampered', () => {
-    const r = calc(healthyResult(), { total: 3, verified: 2, missing: 0, tampered: 1 });
+    const r = calc(healthyResult(), { total: 3, verified: 2, missing: 0, tampered: 1, chainOnly: 0 });
     expect(r.level).toBe('failed');
     expect(r.issues.some((i) => i.component === 'screenshots' && i.severity === 'error')).toBe(true);
   });
 
   it('downgrades to partial (not failed) when screenshots are only missing', () => {
-    const r = calc(healthyResult(), { total: 3, verified: 2, missing: 1, tampered: 0 });
+    const r = calc(healthyResult(), { total: 3, verified: 2, missing: 1, tampered: 0, chainOnly: 0 });
     expect(r.level).toBe('partial');
+  });
+
+  it('warns when the chain records screenshots that the manifest does not list (stripped)', () => {
+    const r = calc(healthyResult(), { total: 0, verified: 0, missing: 0, tampered: 0, chainOnly: 2 });
+    expect(r.level).toBe('partial');
+    expect(r.issues.some((i) => i.component === 'screenshots' && i.severity === 'warning')).toBe(true);
+  });
+
+  it('raises no screenshot issue when screenshots were never checked (proof.json only)', () => {
+    const r = calc(healthyResult(), undefined);
+    expect(r.level).toBe('verified');
+    expect(r.issues.some((i) => i.component === 'screenshots')).toBe(false);
   });
 
   it('fails when signed checkpoints exist but are invalid', () => {
@@ -122,7 +134,7 @@ describe('TrustCalculator.calculate — level determination', () => {
   it('error always dominates warnings in the final level', () => {
     const r = calc(
       { ...healthyResult(), chainValid: false, isPureTyping: false, rootAnchored: false },
-      { total: 1, verified: 0, missing: 1, tampered: 0 }
+      { total: 1, verified: 0, missing: 1, tampered: 0, chainOnly: 0 }
     );
     expect(r.level).toBe('failed');
   });

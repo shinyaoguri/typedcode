@@ -8,7 +8,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { escapeHtml, type AssuranceResult } from '@typedcode/shared';
-import { buildAssuranceStripHtml, type ResultData } from '../ResultPanel.js';
+import { buildAssuranceStripHtml, buildScreenshotVerificationHtml, type ResultData } from '../ResultPanel.js';
+import type { ScreenshotVerificationSummary } from '../../types.js';
 
 /** 健全な anchored proof の保証導出結果。 */
 function assurance(): AssuranceResult {
@@ -64,5 +65,55 @@ describe('buildAssuranceStripHtml', () => {
 
     expect(html).toContain('assurance-chip success');
     expect(html).toContain('assurance-chip advisory');
+  });
+});
+
+/**
+ * スクリーンショット検証行 (#213)。CLI の `Screenshots:` セクションと同じ 3 状態を出す:
+ * 未検査を明示する / 剥ぎ取り (chainOnly) を警告する / それ以外は内訳を出す。
+ */
+describe('buildScreenshotVerificationHtml', () => {
+  function summary(overrides: Partial<ScreenshotVerificationSummary> = {}): ScreenshotVerificationSummary {
+    return { total: 0, verified: 0, missing: 0, tampered: 0, chainOnly: 0, ...overrides };
+  }
+
+  it('warns when the chain records screenshots that the manifest does not list', () => {
+    const html = buildScreenshotVerificationHtml(summary({ total: 1, verified: 1, chainOnly: 2 }));
+
+    expect(html).toContain('warning');
+    expect(html).toContain('2');
+    expect(html).not.toContain('result.screenshotsChainOnly');
+  });
+
+  it('warns even when the manifest is gone entirely (screenshots stripped)', () => {
+    const html = buildScreenshotVerificationHtml(summary({ chainOnly: 3 }));
+
+    expect(html).not.toBeNull();
+    expect(html).toContain('warning');
+  });
+
+  it('states that screenshots were not checked instead of hiding the row', () => {
+    const html = buildScreenshotVerificationHtml(undefined);
+
+    expect(html).not.toBeNull();
+    expect(html).toContain('muted');
+    expect(html).not.toContain('result.screenshotsNotChecked');
+  });
+
+  it('hides the row only for a checked session that has no screenshots at all', () => {
+    expect(buildScreenshotVerificationHtml(summary())).toBeNull();
+  });
+
+  it('reports an intact export as verified', () => {
+    const html = buildScreenshotVerificationHtml(summary({ total: 2, verified: 2 }));
+
+    expect(html).toContain('success');
+    expect(html).not.toContain('warning');
+  });
+
+  it('escapes nothing unescaped into the row (counts only, no proof-derived strings)', () => {
+    const html = buildScreenshotVerificationHtml(summary({ total: 2, verified: 0, missing: 1, tampered: 1 }));
+
+    expect(html).toContain('error');
   });
 });

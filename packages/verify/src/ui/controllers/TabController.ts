@@ -13,15 +13,10 @@ import type { IntegratedChart } from '../../charts/IntegratedChart';
 import type { ScreenshotOverlay } from '../../charts/ScreenshotOverlay';
 import type { ScreenshotLightbox } from '../ScreenshotLightbox';
 import type { SeekbarController } from '../../charts/SeekbarController';
-import type {
-  VerifyTabState,
-  ProgressDetails,
-  VerifyScreenshot,
-  ScreenshotVerificationSummary,
-  VerificationStepType,
-} from '../../types';
+import type { VerifyTabState, ProgressDetails, VerifyScreenshot, VerificationStepType } from '../../types';
 import { buildResultData, calculateChartStats } from '../../services/ResultDataService';
 import { TrustCalculator } from '../../services/TrustCalculator';
+import { summarizeTabScreenshots } from '../../services/screenshotSummary';
 import {
   deriveAssurance,
   summarizeAnalysisForAssurance,
@@ -273,14 +268,16 @@ export class TabController {
       associatedSourceMismatch: tabState.associatedSourceMismatch,
     });
 
-    // スクリーンショット検証サマリーを計算
-    const screenshotSummary = this.calculateScreenshotSummary(tabState.screenshots);
+    const events = tabState.proofData?.proof?.events ?? [];
+
+    // スクリーンショット検証サマリー (#213): 剥ぎ取り軸 (chainOnly) を含む。
+    // undefined = 未検査 (proof.json 単体投入)。判定は shared に委譲する。
+    const screenshotSummary = summarizeTabScreenshots({ screenshots: tabState.screenshots, events });
 
     // ソースファイル不一致情報を準備（proofファイルに関連付けられたソースファイルの不一致）
     const contentMismatches = tabState.associatedSourceMismatch ? [tabState.associatedSourceMismatch] : undefined;
 
     // 画面共有オプトアウトイベントの検出
-    const events = tabState.proofData?.proof?.events ?? [];
     const hasScreenShareOptOut = events.some((e: { type: string }) => e.type === 'screenShareOptOut');
 
     // 信頼度を計算
@@ -304,7 +301,7 @@ export class TabController {
       ? deriveAssurance({
           metadataValid: vr.metadataValid,
           chainValid: vr.chainValid,
-          screenshotsTampered: screenshotSummary.tampered,
+          screenshotsTampered: screenshotSummary?.tampered ?? 0,
           exam: vr.exam
             ? {
                 present: true,
@@ -330,14 +327,9 @@ export class TabController {
     // trustResult を追加してレンダリング
     this.deps.resultPanel.render({ ...resultData, trustResult, assurance });
 
-    // スクリーンショット検証結果を表示
-    if (tabState.screenshots && tabState.screenshots.length > 0) {
-      this.deps.resultPanel.updateScreenshotVerification({
-        total: screenshotSummary.total,
-        verified: screenshotSummary.verified,
-        missing: screenshotSummary.missing,
-      });
-    }
+    // スクリーンショット検証結果を表示。未検査 (undefined) もその旨を出す —
+    // 「0 枚のセッション」と「検査していない」の混同は overclaim (CLI と同じ扱い #213)。
+    this.deps.resultPanel.updateScreenshotVerification(screenshotSummary);
 
     // Render charts
     if (events.length > 0) {
@@ -424,21 +416,5 @@ export class TabController {
     if (this.deps.tabBar.getActiveTabId() === id) {
       this.deps.resultPanel.errorProgress(step, error);
     }
-  }
-
-  /**
-   * スクリーンショット検証サマリーを計算
-   */
-  private calculateScreenshotSummary(screenshots?: VerifyScreenshot[]): ScreenshotVerificationSummary {
-    if (!screenshots || screenshots.length === 0) {
-      return TrustCalculator.emptyScreenshotSummary();
-    }
-
-    return {
-      total: screenshots.length,
-      verified: screenshots.filter((s) => s.verified && !s.missing && !s.tampered).length,
-      missing: screenshots.filter((s) => s.missing).length,
-      tampered: screenshots.filter((s) => s.tampered).length,
-    };
   }
 }

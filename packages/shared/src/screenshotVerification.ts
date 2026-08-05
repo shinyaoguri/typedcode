@@ -94,6 +94,24 @@ export async function checkScreenshotImage(
 }
 
 /**
+ * チェーンには記録があるのに manifest 側に対応 entry が無い imageHash の数
+ * (= スクショの剥ぎ取り疑い)。manifest ごと消されても検出できる唯一の軸なので、
+ * verify (web) の per-tab 集計と verify-cli の `summarizeScreenshotArtifacts` が
+ * **同じこの関数**を通る (片方だけ再実装すると剥ぎ取りが web で沈黙する #213)。
+ */
+export function countChainOnlyImageHashes(
+  entries: readonly Pick<ScreenshotManifestEntryLike, 'imageHash'>[],
+  chainImageHashes?: ReadonlySet<string>
+): number {
+  const manifestHashes = new Set(entries.map((e) => e.imageHash));
+  let chainOnly = 0;
+  for (const h of chainImageHashes ?? []) {
+    if (!manifestHashes.has(h)) chainOnly++;
+  }
+  return chainOnly;
+}
+
+/**
  * manifest 全 entry + 画像取得コールバックからサマリを導く (verify-cli の入口)。
  * `getImageBytes` が null を返した entry は missing。manifest 自体が無い場合は
  * `entries: []` で呼ぶと chainOnly (剥ぎ取り疑い) だけが残る。
@@ -124,11 +142,11 @@ export async function summarizeScreenshotArtifacts(params: {
     else if (check.verified) verified++;
   }
 
-  const manifestHashes = new Set(entries.map((e) => e.imageHash));
-  let chainOnly = 0;
-  for (const h of chainImageHashes ?? []) {
-    if (!manifestHashes.has(h)) chainOnly++;
-  }
-
-  return { total: entries.length, verified, missing, tampered, chainOnly };
+  return {
+    total: entries.length,
+    verified,
+    missing,
+    tampered,
+    chainOnly: countChainOnlyImageHashes(entries, chainImageHashes),
+  };
 }

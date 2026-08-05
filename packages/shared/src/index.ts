@@ -239,6 +239,7 @@ export {
   collectChainImageHashes,
   isChainBackedImageHash,
   checkScreenshotImage,
+  countChainOnlyImageHashes,
   summarizeScreenshotArtifacts,
   type ScreenshotManifestEntryLike,
   type ScreenshotImageCheck,

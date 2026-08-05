@@ -15,6 +15,7 @@ import type {
   SampledVerificationInfo,
   VerificationMode,
   PoswMode,
+  ScreenshotVerificationSummary,
 } from '../types';
 import type { SignedCheckpointsVerificationResult, ExamBindingVerificationResult } from '@typedcode/shared';
 import type { SignedCheckpointReport } from '../types';
@@ -1065,46 +1066,18 @@ export class ResultPanel {
   }
 
   /**
-   * スクリーンショット検証結果を表示
+   * スクリーンショット検証結果を表示 (`undefined` = 未検査)
    */
-  updateScreenshotVerification(screenshots: { total: number; verified: number; missing?: number }): void {
-    if (screenshots.total === 0) {
+  updateScreenshotVerification(summary: ScreenshotVerificationSummary | undefined): void {
+    const html = buildScreenshotVerificationHtml(summary);
+
+    if (html === null) {
       this.screenshotVerificationRow.style.display = 'none';
       return;
     }
 
     this.screenshotVerificationRow.style.display = '';
-
-    const missingCount = screenshots.missing ?? 0;
-    const tamperedCount = screenshots.total - screenshots.verified - missingCount;
-
-    if (missingCount === 0 && tamperedCount === 0) {
-      // 全て検証済み
-      this.screenshotVerification.innerHTML = `<span class="success">${escapeHtml(
-        t('result.screenshotsAllVerified', {
-          verified: screenshots.verified,
-          total: screenshots.total,
-        })
-      )}</span>`;
-    } else if (missingCount > 0 && tamperedCount === 0) {
-      // 欠損ファイルあり（改ざんなし）
-      this.screenshotVerification.innerHTML = `<span class="error">${escapeHtml(
-        t('result.screenshotsMissing', { missing: missingCount, total: screenshots.total })
-      )}</span>`;
-    } else if (missingCount === 0 && tamperedCount > 0) {
-      // 改ざんの可能性あり
-      this.screenshotVerification.innerHTML = `<span class="warning">${escapeHtml(
-        t('result.screenshotsSomeInvalid', { invalid: tamperedCount, total: screenshots.total })
-      )}</span>`;
-    } else {
-      // 欠損と改ざん両方
-      this.screenshotVerification.innerHTML = `<span class="error">${escapeHtml(
-        t('result.screenshotsMissingAndTampered', {
-          missing: missingCount,
-          tampered: tamperedCount,
-        })
-      )}</span>`;
-    }
+    this.screenshotVerification.innerHTML = html;
   }
 
   reset(): void {
@@ -1686,4 +1659,49 @@ export function buildAssuranceStripHtml(assurance: AssuranceResult, mode?: Resul
     </span>
     ${modeChip}
   `;
+}
+
+/**
+ * スクリーンショット検証行の内側 HTML を組み立てる。`updateScreenshotVerification` の純粋部分。
+ *
+ * verify-cli の `Screenshots:` セクションと**同じ 3 状態**を出す (#213):
+ *
+ * - `undefined` (未検査): 「検査していない」と明示する。行を隠すと「スクショ 0 枚のセッション」と
+ *   区別できず、検査していない事実が緑に見える (overclaim)
+ * - `chainOnly > 0`: チェーンに記録があるのに manifest に entry が無い = 剥ぎ取り疑いの warning
+ * - それ以外: 検証済み / 欠損 / 改竄の内訳
+ *
+ * 戻り値が `null` のときだけ行を隠す (検査済みでスクショも剥ぎ取りも無いセッション。CLI も沈黙する)。
+ */
+export function buildScreenshotVerificationHtml(summary: ScreenshotVerificationSummary | undefined): string | null {
+  if (!summary) {
+    return `<span class="muted">${escapeHtml(t('result.screenshotsNotChecked'))}</span>`;
+  }
+
+  const { total, verified, missing, tampered, chainOnly } = summary;
+  if (total === 0 && chainOnly === 0) return null;
+
+  const parts: string[] = [];
+
+  if (total > 0) {
+    if (missing === 0 && tampered === 0) {
+      parts.push(`<span class="success">${escapeHtml(t('result.screenshotsAllVerified', { verified, total }))}</span>`);
+    } else if (tampered === 0) {
+      parts.push(`<span class="error">${escapeHtml(t('result.screenshotsMissing', { missing, total }))}</span>`);
+    } else if (missing === 0) {
+      parts.push(
+        `<span class="warning">${escapeHtml(t('result.screenshotsSomeInvalid', { invalid: tampered, total }))}</span>`
+      );
+    } else {
+      parts.push(
+        `<span class="error">${escapeHtml(t('result.screenshotsMissingAndTampered', { missing, tampered }))}</span>`
+      );
+    }
+  }
+
+  if (chainOnly > 0) {
+    parts.push(`<span class="warning">${escapeHtml(t('result.screenshotsChainOnly', { count: chainOnly }))}</span>`);
+  }
+
+  return parts.join(' ');
 }

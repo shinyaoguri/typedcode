@@ -103,6 +103,9 @@ export const en: VerifyTranslationKeys = {
     screenshotVerification: 'Screenshots',
     screenshotsAllVerified: '✓ ${verified}/${total} verified',
     screenshotsSomeInvalid: '⚠ ${invalid}/${total} possibly tampered',
+    screenshotsChainOnly:
+      '⚠ ${count} screenshot(s) recorded in the chain have no manifest entry (may have been stripped)',
+    screenshotsNotChecked: 'Not checked (provide the export ZIP to verify screenshots)',
     screenshotsCount: '${count} screenshots',
     posw: 'PoSW',
     poswMode: 'Mode',
@@ -358,6 +361,8 @@ export const en: VerifyTranslationKeys = {
     issueChainInvalid: 'Hash chain verification failed',
     issueScreenshotsTampered: '${count} screenshots possibly tampered',
     issueScreenshotsMissing: '${count} screenshots missing',
+    issueScreenshotsChainOnly:
+      '${count} screenshot hash(es) in the chain have no manifest entry (may have been stripped)',
     issueAttestationBoth: 'Human attestation verification failed',
     issueAttestationCreate: 'Human attestation at creation is invalid',
     issueAttestationExport: 'Human attestation at export is invalid',

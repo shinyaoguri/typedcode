@@ -3,14 +3,15 @@
  */
 import { FileSystemAccessService } from '../../services/FileSystemAccessService';
 import { FolderSyncManager } from '../../services/FolderSyncManager';
-import { ScreenshotService } from '../../services/ScreenshotService';
+import type { ScreenshotService } from '../../services/ScreenshotService';
+import { collectFolderChainImageHashes, loadFolderScreenshots } from '../../services/folderScreenshotLoader';
 import type { FileProcessor, ParsedFileData } from '../../services/FileProcessor';
 import type { VerifyTabManager } from '../../state/VerifyTabManager';
 import type { VerificationQueue } from '../../state/VerificationQueue';
 import type { Sidebar } from '../Sidebar';
 import type { TabBar } from '../TabBar';
 import type { StatusBarUI } from '../StatusBarUI';
-import type { FSAccessFileEntry, HierarchicalFolder, VerifyScreenshot, ScreenshotManifest } from '../../types';
+import type { FSAccessFileEntry, HierarchicalFolder, VerifyScreenshot } from '../../types';
 import { t } from '../../i18n/index';
 
 export interface FolderControllerDependencies {
@@ -96,18 +97,16 @@ export class FolderController {
       return;
     }
 
-    // スクリーンショットフォルダを検出して読み込む
-    let folderScreenshots: VerifyScreenshot[] | undefined;
-    let folderStartTimestamp: number | undefined;
-    try {
-      const loadResult = await this.loadScreenshotsFromFolder(handle);
-      if (loadResult) {
-        folderScreenshots = loadResult.screenshots;
-        folderStartTimestamp = loadResult.startTimestamp;
-        console.log(`[FolderController] Loaded ${folderScreenshots.length} screenshots from folder`);
-      }
-    } catch (error) {
-      console.log('[FolderController] No screenshots folder found or error loading:', error);
+    // スクリーンショットを読み込む。フォルダはエクスポート ZIP を展開したものと同じコンテナなので、
+    // screenshots/ が無くても「未検査」ではなく **0 枚** として扱う (剥ぎ取りを chainOnly で検出させる #213)。
+    // チェーン裏付け (#212) のため、先にフォルダ内の proof から imageHash 集合を集めて渡す。
+    const chainImageHashes = await collectFolderChainImageHashes(result.files);
+    const loadResult = await loadFolderScreenshots(handle, chainImageHashes);
+    const folderScreenshots: VerifyScreenshot[] = loadResult.screenshots;
+    const folderStartTimestamp = loadResult.startTimestamp;
+    console.log(`[FolderController] Loaded ${folderScreenshots.length} screenshots from folder`);
+    if (loadResult.screenshotService) {
+      this.deps.onScreenshotServiceUpdate?.(loadResult.screenshotService);
     }
 
     // ルートフォルダを作成
@@ -168,47 +167,6 @@ export class FolderController {
 
     this.deps.onStatusBarUpdate?.();
     this.deps.statusBar.setMessage(`${t('messages.folderOpened')}: ${result.rootName}`);
-  }
-
-  /**
-   * フォルダからスクリーンショットを読み込む
-   */
-  private async loadScreenshotsFromFolder(
-    rootHandle: FileSystemDirectoryHandle
-  ): Promise<{ screenshots: VerifyScreenshot[]; startTimestamp?: number } | null> {
-    try {
-      // screenshots フォルダを取得
-      const screenshotsFolderHandle = await rootHandle.getDirectoryHandle('screenshots');
-
-      // manifest.json を読み込む
-      const manifestHandle = await screenshotsFolderHandle.getFileHandle('manifest.json');
-      const manifestFile = await manifestHandle.getFile();
-      const manifestText = await manifestFile.text();
-      const manifest = JSON.parse(manifestText) as ScreenshotManifest;
-
-      // ScreenshotServiceを作成してスクリーンショットを読み込む
-      const screenshotService = new ScreenshotService();
-      const screenshots = await screenshotService.loadFromFolder(screenshotsFolderHandle, manifest);
-
-      // startTimestampを計算（最初のスクリーンショットのタイムスタンプから）
-      let startTimestamp: number | undefined;
-      if (screenshots.length > 0) {
-        const firstScreenshot = screenshots[0]!;
-        const minTimestamp = screenshots.reduce((min, s) => Math.min(min, s.timestamp), firstScreenshot.timestamp);
-        // エクスポート時刻からtimestampを引いてstartTimestampを計算
-        const exportedAt = new Date(manifest.exportedAt).getTime();
-        const lastTimestamp = screenshots.reduce((max, s) => Math.max(max, s.timestamp), minTimestamp);
-        startTimestamp = exportedAt - lastTimestamp;
-      }
-
-      // サービスを保持し、UIコンポーネントを更新
-      this.deps.onScreenshotServiceUpdate?.(screenshotService);
-
-      return { screenshots, startTimestamp };
-    } catch {
-      // screenshots フォルダが存在しない場合
-      return null;
-    }
   }
 
   /**
