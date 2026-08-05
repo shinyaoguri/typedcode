@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { EditorApp, readProofEvents } from './helpers/app.js';
+import { EditorApp, readProofEvents, readProofJson } from './helpers/app.js';
+import type { ProofCheckpoint } from './helpers/app.js';
 import { runVerifyCliWithAnalysis } from './helpers/verifyCli.js';
 
 /**
@@ -55,4 +56,23 @@ test('casual: 打鍵→export→CLI 検証が pass する', async ({ page }) => 
     events.some((e) => e.type === 'screenShareOptOut'),
     'screenShareOptOut recorded at startup (casual defaults to opt-out)'
   ).toBe(true);
+
+  // ④ 時刻アンカリング (#228): `/api/checkpoint/sign` 経路が生きていて、署名済み
+  // checkpoint envelope が実際に proof に載っている。ADR-0004 により未アンカーの proof も
+  // valid なので、sign API が恒常 401 になっても export は console.warn だけで成功し
+  // verify-cli も exit 0 を返す。ここで envelope そのものを見張らないと、時刻アンカリングの
+  // 全損が E2E 緑のまま本番へ抜ける (rootAnchored / sessionStartToken は `/api/session/start`
+  // 経路であり、close-tab-recovery.spec が担当する別経路)。
+  const proof = (await readProofJson(zipPath)) as { checkpoints?: ProofCheckpoint[] };
+  const signed = (proof.checkpoints ?? []).filter((cp) => cp.signature);
+  expect(signed.length, 'at least one checkpoint carries a signed envelope').toBeGreaterThan(0);
+
+  // envelope が中身のある応答であること (署名サービスが本当に応答した) の軽い確認。
+  // **深追いはしない**: envelope が 1 つでも載っていれば ① の verify-cli が payload の
+  // 全フィールド・鍵解決・署名・連鎖・root 一致まで厳密に検証し、壊れていれば exit 1 になる。
+  // この spec が独自に守るのは「envelope が 1 つも無い」という verify-cli には見えない穴だけ。
+  const envelope = signed[0]!.signature!;
+  expect(envelope.keyId, 'signed checkpoint carries a keyId').toBeTruthy();
+  expect(envelope.signature, 'signed checkpoint carries a signature').toBeTruthy();
+  expect(envelope.payload?.serverTimestamp, 'server-side timestamp is the anchor itself').toBeTruthy();
 });

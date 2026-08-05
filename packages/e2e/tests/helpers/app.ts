@@ -269,6 +269,25 @@ export interface ProofEvent {
   [k: string]: unknown;
 }
 
+/**
+ * 署名済み checkpoint envelope (`/api/checkpoint/sign` の戻り) の緩い型。
+ * 全フィールドを optional にしてあるのは、E2E が assert したいのが「envelope が実在して
+ * 中身が空でない」ことだけだから (payload の厳密な検証は verify-cli と shared が担う)。
+ */
+export interface ProofSignedCheckpoint {
+  payload?: { serverTimestamp?: string; [k: string]: unknown };
+  signature?: string;
+  keyId?: string;
+  [k: string]: unknown;
+}
+
+/** proof の checkpoint 1 件 (署名 envelope の有無を見るための緩い型)。 */
+export interface ProofCheckpoint {
+  eventIndex?: number;
+  signature?: ProofSignedCheckpoint;
+  [k: string]: unknown;
+}
+
 /** ZIP 内の最初の proof.json 全体を読み出す (rootAnchored / sessionStartToken 等のトップレベル assert 用)。 */
 export async function readProofJson(zipPath: string): Promise<Record<string, unknown>> {
   const buf = await readFileBuffer(zipPath);
