@@ -21,9 +21,11 @@ tests/
 ├── helpers/app.ts        # EditorApp ページオブジェクト + ZIP/proof 読み出しヘルパ
 ├── helpers/verifyCli.ts  # tsx で verify-cli/src/cli.ts を直接実行 (raw TS の ESM 解決回避)
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
-└── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
-playwright.config.ts      # webServer で workers(:8787) + editor(:5173) を自動起動
-scripts/setup-env.mjs     # CI 用: Turnstile 公開テストキー配置 + checkpoint 署名鍵を実行時生成
+├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
+└── production-build.spec.ts  # dist 専用スモーク (既定 config からは testIgnore で除外)
+playwright.config.ts       # dev 用: webServer で workers(:8787) + editor vite dev(:5173)
+playwright.build.config.ts # dist 用: workers + editor を build して vite preview(:4173)
+scripts/setup-env.mjs      # CI 用: Turnstile 公開テストキー配置 + checkpoint 署名鍵を実行時生成
 ```
 
 ## 実行
@@ -32,10 +34,11 @@ scripts/setup-env.mjs     # CI 用: Turnstile 公開テストキー配置 + chec
 npm run install-browsers -w @typedcode/e2e   # 初回のみ
 npm run setup -w @typedcode/e2e              # CI: テストキー + 署名鍵の用意
 npm run test -w @typedcode/e2e               # 全シナリオ (サーバは Playwright が自動起動)
+npm run test:build -w @typedcode/e2e         # 本番ビルドのスモークのみ (build → vite preview)
 npm run test:headed -w @typedcode/e2e        # 失敗調査 (ブラウザ表示)
 ```
 
-CI では `deploy.yml` の `e2e` job が実行し、`deploy-preview` / `deploy-staging` / `deploy-production` の **必須ゲート** (`needs: [test, check, e2e]`) になっている。
+CI では `deploy.yml` の `e2e` job が両方 (`test` → `test:build`) を実行し、`deploy-preview` / `deploy-staging` / `deploy-production` の **必須ゲート** (`needs: [test, check, e2e]`) になっている。
 
 ## よくある罠
 
@@ -44,3 +47,4 @@ CI では `deploy.yml` の `e2e` job が実行し、`deploy-preview` / `deploy-s
 - **headless では本物の window blur が出ない**: `window.dispatchEvent(new Event('blur'))` で発火させる (handleBlur は isTrusted 非依存)
 - **画面共有は fake-media フラグで動く**: `playwright.config.ts` の chromium 引数で `getDisplayMedia` が monitor の fake stream を返す
 - **AI 一括投入の再現は dev フック経由**: `keyboard.insertText` は Monaco が 1 文字ずつ分解するため再現にならない。`window.__tcTestInsertBlock` (dev 限定) で `executeEdits` を 1 回適用する
+- **dev サーバ向けの spec は本番ビルドの退行を検出できない (#255)**: チャンク分割・バンドル変換の壊れ方は `vite build` の出力にしか現れない。`production-build.spec.ts` + `playwright.build.config.ts` がその 1 本の番人で、`vite preview` に対して走る。dev フック (`__tcTestInsertBlock`) は dist に無いので、この経路の spec は増やすなら **dev 限定 API に依存しない**こと

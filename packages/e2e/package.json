@@ -7,6 +7,7 @@
   "scripts": {
     "setup": "node scripts/setup-env.mjs",
     "test": "playwright test",
+    "test:build": "playwright test --config playwright.build.config.ts",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "report": "playwright show-report",
