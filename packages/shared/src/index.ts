@@ -44,6 +44,7 @@ export {
   verifyFinalChainHash,
   verifyContentReplay,
   verifyCheckpoints,
+  verifyEventArrayStructure,
   verifyProofMetadata,
   verifyTypingProofHash,
   verifyChain,
@@ -58,6 +59,7 @@ export type {
   PoswStats,
   VerificationMode,
   VerifyProofFileOptions,
+  EventArrayStructureResult,
 } from './verification.js';
 
 // Signed checkpoints (long-term verifiability)

@@ -9,6 +9,7 @@ import type {
   ContentReplayVerificationResult,
   ProofMetadataVerificationResult,
   ProofData,
+  ProofMetadata,
   PoSWData,
   EventHashData,
   ExportedProof,
@@ -364,6 +365,97 @@ export function verifyFinalChainHash(
   return { valid: true, computedFinalHash: finalHash, expectedFinalHash: finalHash };
 }
 
+/** イベント配列の構造検証結果 (#221) */
+export interface EventArrayStructureResult {
+  valid: boolean;
+  reason?: string;
+  /** 最初に構造違反が見つかった要素の index。配列そのものが不正なときは undefined */
+  errorAt?: number;
+}
+
+/**
+ * `proof.proof.events` の各要素が構造的に `EventHashData` であることを検証する (#221)。
+ *
+ * 走査側 (`verifyChain` / `recomputeProofMetadata` / `verifyContentReplay`) は防御的に
+ * `if (!event) continue;` で falsy 要素を飛ばす一方、`totalEvents` は `events.length` で
+ * 数える。この非対称のせいで、正規 proof の末尾に `null` を積んで `metadata.totalEvents`
+ * と `typingProofHash` を再計算するだけで、チェーン整合 (sequence / previousHash /
+ * finalHash / 署名 cp) を保ったまま totalEvents を水増しできた。さらに末尾が `null` だと
+ * `totalTypingTime` の再計算が 0 に落ちて `claimed < recomputed` 検査も無力化する。
+ *
+ * そこで「数える対象」と「走査される対象」が必ず一致するよう、再カウント (docs/system-spec.md
+ * §7 の Layer 1) の**手前**で構造を検査して弾く。検査は最低限のフィールド
+ * (sequence / timestamp / type / previousHash / posw) に留め、proof フォーマット自体は
+ * 変えない — 正規に export された proof は `MIN_SUPPORTED_VERSION` の頃から
+ * これらを常に持つため、既存 proof の検証性は変わらない。
+ */
+export function verifyEventArrayStructure(events: unknown): EventArrayStructureResult {
+  if (!Array.isArray(events)) {
+    return { valid: false, reason: 'Proof events is not an array' };
+  }
+
+  for (let i = 0; i < events.length; i++) {
+    const event: unknown = events[i];
+
+    if (typeof event !== 'object' || event === null || Array.isArray(event)) {
+      return { valid: false, reason: `Invalid event structure at event ${i}: expected an object`, errorAt: i };
+    }
+
+    const candidate = event as Record<string, unknown>;
+
+    if (typeof candidate.sequence !== 'number' || !Number.isFinite(candidate.sequence)) {
+      return {
+        valid: false,
+        reason: `Invalid event structure at event ${i}: sequence must be a finite number`,
+        errorAt: i,
+      };
+    }
+
+    if (typeof candidate.timestamp !== 'number' || !Number.isFinite(candidate.timestamp)) {
+      return {
+        valid: false,
+        reason: `Invalid event structure at event ${i}: timestamp must be a finite number`,
+        errorAt: i,
+      };
+    }
+
+    if (typeof candidate.type !== 'string') {
+      return { valid: false, reason: `Invalid event structure at event ${i}: type must be a string`, errorAt: i };
+    }
+
+    if (typeof candidate.previousHash !== 'string' && candidate.previousHash !== null) {
+      return {
+        valid: false,
+        reason: `Invalid event structure at event ${i}: previousHash must be a string or null`,
+        errorAt: i,
+      };
+    }
+
+    const posw = candidate.posw;
+    if (typeof posw !== 'object' || posw === null || Array.isArray(posw)) {
+      return { valid: false, reason: `Invalid event structure at event ${i}: posw must be an object`, errorAt: i };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
+ * 構造検証で弾いたときに返す再計算メタデータ。再計算そのものを行わないのでゼロ埋めする
+ * (呼び出し側は `valid: false` の `reason` を見る)。呼び出しごとに新しい object を返す。
+ */
+const uncountedMetadata = (): ProofMetadata => ({
+  totalEvents: 0,
+  pasteEvents: 0,
+  internalPasteEvents: 0,
+  dropEvents: 0,
+  insertEvents: 0,
+  deleteEvents: 0,
+  bulkInsertEvents: 0,
+  totalTypingTime: 0,
+  averageTypingSpeed: 0,
+});
+
 function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificationResult {
   let pasteEvents = 0;
   let internalPasteEvents = 0;
@@ -440,8 +532,24 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
 
 /**
  * Recompute proof metadata from events and compare self-reported counts.
+ *
+ * 再カウントの前に `verifyEventArrayStructure` で events の構造を検査する (#221)。
+ * verify (web) の verificationWorker と verify-cli (`verifyProofFile` 経由) は
+ * どちらも必ず本関数を通るため、構造検証はここ 1 箇所で両経路に効く。
  */
 export function verifyProofMetadata(proofData: ProofData, events: StoredEvent[]): ProofMetadataVerificationResult {
+  const structure = verifyEventArrayStructure(events);
+  if (!structure.valid) {
+    return {
+      valid: false,
+      reason: structure.reason,
+      isPureTyping: false,
+      recomputedMetadata: uncountedMetadata(),
+      suspiciousBulkInsertEventIndexes: [],
+      divergentContentSnapshotEventIndexes: [],
+    };
+  }
+
   const result = recomputeProofMetadata(events);
   const claimed = proofData.metadata;
   const recomputed = result.recomputedMetadata;
