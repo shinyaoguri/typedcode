@@ -19,14 +19,12 @@
     "jszip": "^3.10.1",
     "marked": "^18.0.7",
     "monaco-editor": "^0.56.0",
-    "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/jszip": "^3.4.1",
     "@types/node": "^26.1.2",
-    "rollup": "^4.62.3",
     "typescript": "^6.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"
