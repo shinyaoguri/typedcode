@@ -378,6 +378,7 @@ export const en: VerifyTranslationKeys = {
     issueNotPureTyping: 'Not pure typing (paste / bulk insertion detected)',
     issueExamBindingFailed: 'Exam binding (signature / content hash) verification failed',
     issueExamUnverified: 'Problem package not loaded; authenticity unverified',
+    issuePoswSkipped: 'Verified in fast mode — the PoSW (sequential work) was not recomputed',
     components: {
       metadata: 'Metadata',
       chain: 'Hash Chain',
@@ -419,6 +420,7 @@ export const en: VerifyTranslationKeys = {
     temporal: 'Time anchor',
     provenance: 'Authorship',
     integrityProven: 'Proven',
+    integrityPartial: 'Partly unverified (PoSW)',
     integrityFailed: 'Failed',
     temporalAnchored: 'Anchored',
     temporalPartial: 'Partial',
@@ -430,6 +432,8 @@ export const en: VerifyTranslationKeys = {
     modeLabel: 'Mode',
     modeSelfAsserted: 'Self-asserted label — never used for assurance derivation',
     integrityHint: 'Has the record been tampered with — cryptographic verification (deterministic)',
+    integrityPartialHint:
+      'Verified in fast mode: no tampering was found, but the PoSW recompute was skipped (the declared PoSW values are consistent with the proof; whether 10,000 iterations were actually performed is unverified). Re-verify in full mode',
     temporalHint: 'When did the record exist — server signatures / exam T0 binding (deterministic)',
     provenanceHint: 'Does the typing look authored — advisory only, not a verdict. Final judgment is human',
     mode: {

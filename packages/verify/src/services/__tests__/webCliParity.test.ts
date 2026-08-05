@@ -6,8 +6,13 @@
  * 「shared に委譲していない箇所」に集中していた (#211) ので、文書ルールではなくテストで縛る。
  *
  * そろえる観点: 総合判定 (valid) / 三層保証 (integrity・temporal・provenance) / exam 束縛 /
- * スクリーンショット集計 (tampered・chainOnly)。正常系だけでなく **片方だけが落ちうるケース**
+ * スクリーンショット集計 (tampered・chainOnly) / **検証モード (fast の PoSW 未再計算, #214)**。
+ * 正常系だけでなく **片方だけが落ちうるケース**
  * (別セッションのトークン流用・署名 cp のみ無効・スクショ改竄・スクショ剥ぎ取り) を含める。
+ *
+ * 既定の経路は `mode: 'fast'` (PoSW 再計算は Worker スタブの都合で回せない) なので、
+ * このファイルの整合性期待値は原則 `partial` になる。`proven` / `partial` の分岐そのものは
+ * 「fast と full で結論が変わる」ケース (末尾) が実 PoSW を計算して固定する。
  *
  * 注: スクショの **読込経路** (ZIP vs フォルダ) の一致は `screenshotParity.test.ts` (#212) が持つ。
  * ここが見るのは「同じ材料から web と CLI が同じ集計と同じ結論に至るか」(#213 の軸を含む)。
@@ -31,6 +36,7 @@ import {
   type ScreenshotCaptureData,
   type ScreenshotVerificationSummary,
   type SessionStartToken,
+  type VerificationMode,
 } from '@typedcode/shared';
 import {
   buildSignedCheckpoints,
@@ -71,6 +77,46 @@ class PoswWorkerStub {
           : { type: 'verify-result', requestId: message.requestId, valid: true };
       this.onmessage({ data } as MessageEvent);
     });
+  }
+
+  terminate(): void {
+    // no-op
+  }
+}
+
+/**
+ * PoSW を**本当に**計算するスタブ (`poswWorker.ts` と同じ手順)。full モードで検証が通る proof を
+ * 作るために必要 — 上の固定値スタブでは `verifyPoSW` の再計算と必ず食い違う。
+ * 1 イベントあたり 10,000 回の SHA-256 を回すので、使うのは #214 のモード分岐テストだけ。
+ */
+class RealPoswWorkerStub {
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: ((event: ErrorEvent) => void) | null = null;
+
+  postMessage(message: Record<string, unknown>): void {
+    void (async () => {
+      if (!this.onmessage) return;
+      if (message.type !== 'compute-posw') {
+        this.onmessage({ data: { type: 'verify-result', requestId: message.requestId, valid: true } } as MessageEvent);
+        return;
+      }
+      const iterations = message.iterations as number;
+      const nonce = 'ab'.repeat(16);
+      let hash = await computeHash(`${message.previousHash as string}${message.eventDataString as string}${nonce}`);
+      for (let i = 1; i < iterations; i++) {
+        hash = await computeHash(hash);
+      }
+      this.onmessage({
+        data: {
+          type: 'posw-result',
+          requestId: message.requestId,
+          iterations,
+          nonce,
+          intermediateHash: hash,
+          computeTimeMs: 1,
+        },
+      } as MessageEvent);
+    })();
   }
 
   terminate(): void {
@@ -260,6 +306,8 @@ interface ConclusionOptions {
    * が作る同じ型 (shared の `ScreenshotVerificationSummary`)。
    */
   screenshots?: ScreenshotVerificationSummary;
+  /** 検証モード (#214)。既定は `fast` (PoSW 再計算はスタブ Worker では回せないため)。 */
+  mode?: VerificationMode;
 }
 
 /** verify (web) の経路: Worker が使う合成 → UI (TabController / VerificationController) の総合判定と三層保証。 */
@@ -269,7 +317,7 @@ async function webConclusion(
   options: ConclusionOptions = {}
 ): Promise<ParityConclusion> {
   const result = await runProofVerification(proof, {
-    mode: 'fast',
+    mode: options.mode ?? 'fast',
     manifest: options.manifest,
     signedCheckpointKeyRegistry: registry,
   });
@@ -294,7 +342,7 @@ async function cliConclusion(
   options: ConclusionOptions = {}
 ): Promise<ParityConclusion> {
   const result = await verifyProof(proof, {
-    mode: 'fast',
+    mode: options.mode ?? 'fast',
     examPackageManifest: options.manifest,
     signedCheckpointKeyRegistry: registry,
     screenshotSummary: options.screenshots,
@@ -344,7 +392,8 @@ describe('web ↔ CLI parity (#216)', () => {
 
     expectSameConclusion(web, cli);
     expect(web.valid).toBe(true);
-    expect(web.assurance.integrity).toBe('proven');
+    // fast 経路なので整合性は proven ではなく partial (#214)。両経路が同じ語彙を出すことが要。
+    expect(web.assurance.integrity).toBe('partial');
     expect(web.assurance.temporal).toBe('anchored');
   });
 
@@ -361,11 +410,12 @@ describe('web ↔ CLI parity (#216)', () => {
 
     expectSameConclusion(web, cli);
     expect(cli.valid).toBe(false);
-    // 暗号的な改ざんはないので「整合性」は proven のまま — 誤って改ざん告発しない。
-    expect(cli.assurance.integrity).toBe('proven');
+    // 暗号的な改ざんはないので「整合性」は failed にしない — 誤って改ざん告発しない
+    // (fast 経路なので proven ではなく partial)。
+    expect(cli.assurance.integrity).toBe('partial');
   });
 
-  it('agrees that a proof whose signed checkpoint is invalid keeps integrity proven but fails overall', async () => {
+  it('agrees that a proof whose signed checkpoint is invalid does not fail integrity but fails overall', async () => {
     const proof = await buildAnchoredProof({
       key: testKey,
       tokenSessionId: 'session-A',
@@ -385,8 +435,8 @@ describe('web ↔ CLI parity (#216)', () => {
 
     expectSameConclusion(web, cli);
     expect(cli.valid).toBe(false);
-    // ADR-0020 の三層: 落ちたのは時刻アンカー層であって整合性ではない。
-    expect(cli.assurance.integrity).toBe('proven');
+    // ADR-0020 の三層: 落ちたのは時刻アンカー層であって整合性ではない (整合性は failed にしない)。
+    expect(cli.assurance.integrity).not.toBe('failed');
     expect(cli.assurance.temporal).toBe('partial');
   });
 
@@ -459,7 +509,7 @@ describe('web ↔ CLI parity (#216)', () => {
 
     expectSameConclusion(web, cli);
     expect(cli.valid).toBe(true);
-    expect(cli.assurance.integrity).toBe('proven');
+    expect(cli.assurance.integrity).not.toBe('failed');
   });
 
   it('agrees that a screenshot swapped together with its manifest hash fails integrity (#212)', async () => {
@@ -511,7 +561,7 @@ describe('web ↔ CLI parity (#216)', () => {
     expectSameConclusion(web, cli);
     // 剥ぎ取りは warning 軸 (exit code / valid には干渉しない)。誤って改ざん告発しないこと。
     expect(cli.valid).toBe(true);
-    expect(cli.assurance.integrity).toBe('proven');
+    expect(cli.assurance.integrity).not.toBe('failed');
   });
 
   it('agrees that screenshots are simply not checked for a bare proof.json', async () => {
@@ -528,6 +578,34 @@ describe('web ↔ CLI parity (#216)', () => {
 
     expectSameConclusion(web, cli);
     expect(cli.valid).toBe(true);
-    expect(cli.assurance.integrity).toBe('proven');
+    expect(cli.assurance.integrity).not.toBe('failed');
   });
+
+  /**
+   * #214: fast モードは PoSW の反復再計算をスキップする (spec §8.2)。web も CLI も
+   * 「整合性: 証明済み」を名乗ってはならず、**同じ語彙**に落ちること。full では従来どおり proven。
+   * ここだけ実 PoSW を計算するので、他ケースより時間がかかる。
+   */
+  it('agrees that fast mode does not prove integrity while full mode does', async () => {
+    vi.stubGlobal('Worker', RealPoswWorkerStub);
+    let proof: ProofFile;
+    try {
+      proof = await buildPlainProof();
+    } finally {
+      vi.stubGlobal('Worker', PoswWorkerStub);
+    }
+
+    const fastWeb = await webConclusion(proof, registry, { mode: 'fast' });
+    const fastCli = await cliConclusion(proof, registry, { mode: 'fast' });
+    expectSameConclusion(fastWeb, fastCli);
+    // fast は「速い改ざん検出」として正当。valid は落とさないが、整合性は proven を名乗らない。
+    expect(fastCli.valid).toBe(true);
+    expect(fastCli.assurance.integrity).toBe('partial');
+
+    const fullWeb = await webConclusion(proof, registry, { mode: 'full' });
+    const fullCli = await cliConclusion(proof, registry, { mode: 'full' });
+    expectSameConclusion(fullWeb, fullCli);
+    expect(fullCli.valid).toBe(true);
+    expect(fullCli.assurance.integrity).toBe('proven');
+  }, 60_000);
 });

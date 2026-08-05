@@ -375,6 +375,7 @@ export const ja: VerifyTranslationKeys = {
     issueNotPureTyping: 'ピュアタイピングではありません（ペースト/バルク挿入あり）',
     issueExamBindingFailed: '問題束縛（署名/内容ハッシュ）の検証に失敗しました',
     issueExamUnverified: '問題パッケージ未読込のため真正性は未確認です',
+    issuePoswSkipped: 'fast モードで検証したため PoSW（逐次作業）は再計算されていません',
     components: {
       metadata: 'メタデータ',
       chain: 'ハッシュチェーン',
@@ -416,6 +417,7 @@ export const ja: VerifyTranslationKeys = {
     temporal: '時刻アンカー',
     provenance: '著述性',
     integrityProven: '証明済み',
+    integrityPartial: '一部未検証 (PoSW)',
     integrityFailed: '失敗',
     temporalAnchored: 'アンカー済み',
     temporalPartial: '部分的',
@@ -427,6 +429,8 @@ export const ja: VerifyTranslationKeys = {
     modeLabel: 'モード',
     modeSelfAsserted: '自己申告ラベルです。保証の判定には使われません',
     integrityHint: '記録が事後改変されていないか — 暗号検証 (決定的)',
+    integrityPartialHint:
+      'fast モードで検証しました。改ざんは検出されていませんが、PoSW の反復再計算はスキップしています（申告 PoSW 値が proof 全体と一貫していることまでは確認済み。実際に 10,000 回反復したかは未検証）。full モードで再検証してください',
     temporalHint: '記録がいつ存在したか — サーバ署名 / 試験 T0 束縛 (決定的)',
     provenanceHint: '打鍵が著述に見えるか — 参考情報であり判定ではありません。最終判断は人間が行います',
     mode: {

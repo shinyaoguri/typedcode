@@ -395,6 +395,7 @@ export interface VerifyTranslationKeys {
     issueNotPureTyping: string;
     issueExamBindingFailed: string;
     issueExamUnverified: string;
+    issuePoswSkipped: string;
     components: {
       metadata: string;
       chain: string;
@@ -439,6 +440,7 @@ export interface VerifyTranslationKeys {
     temporal: string;
     provenance: string;
     integrityProven: string;
+    integrityPartial: string;
     integrityFailed: string;
     temporalAnchored: string;
     temporalPartial: string;
@@ -450,6 +452,7 @@ export interface VerifyTranslationKeys {
     modeLabel: string;
     modeSelfAsserted: string;
     integrityHint: string;
+    integrityPartialHint: string;
     temporalHint: string;
     provenanceHint: string;
     mode: {

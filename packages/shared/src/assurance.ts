@@ -15,8 +15,20 @@
  * - 本導出は verifyProofFile の valid を置き換えない (表示語彙の導出であって判定ではない)
  */
 
-/** 整合性: 暗号検証の結果。二値 (決定的)。 */
-export type IntegrityLevel = 'proven' | 'failed';
+/**
+ * 整合性: 暗号検証の結果 (決定的)。
+ *
+ * - proven:  実施すべき暗号検査をすべて実施し、すべて通った
+ * - partial: **実施していない検査がある**。現状の唯一の発生源は `fast` モード
+ *            (PoSW の反復再計算をスキップする)。spec §8.2 のとおり fast で保証されるのは
+ *            「申告 PoSW 値が proof 全体とハッシュ的に一貫している」ことまでで、
+ *            「実際に 10,000 回反復したか」は確認していない。改ざんの疑いという意味ではない
+ * - failed:  暗号検査のどれかが破れた (改ざん検出)
+ *
+ * `partial` を `proven` に丸めないこと (#214)。ADR-0020 は保証語彙を**実際に得た証拠から**
+ * 導出することを求めており、未実施の検査を「証明済み」と表示するのは overclaim にあたる。
+ */
+export type IntegrityLevel = 'proven' | 'partial' | 'failed';
 
 /**
  * 時刻アンカー: 記録の存在時刻がどの程度固定されているか。
@@ -69,6 +81,13 @@ export interface AssuranceInput {
     sparse?: boolean;
     postHocSuspected?: boolean;
   };
+  /**
+   * PoSW の反復再計算をスキップしたか (`fast` モード。`FullVerificationResult.poswSkipped`)。
+   *
+   * **optional にしないこと** (#214): 渡し忘れが「未検証なのに proven」= overclaim に倒れる。
+   * 検証側は常に自分のモードを知っているので「不明」という第三の状態は存在しない。
+   */
+  poswSkipped: boolean;
   /** ピュアタイピング (外部入力なし)。 */
   isPureTyping: boolean;
   /** 分析レポートのサマリ (ADR-0009)。分析未実行は省略。 */
@@ -82,13 +101,15 @@ export interface AssuranceInput {
  * 実証拠から三層保証を導出する。
  */
 export function deriveAssurance(input: AssuranceInput): AssuranceResult {
-  // --- 整合性: 暗号検証はどれか 1 つでも破れたら failed (二値・決定的)。
+  // --- 整合性: 暗号検証はどれか 1 つでも破れたら failed (決定的)。
+  //     破れていなくても、実施していない検査が残っていれば proven は名乗らない (#214)。
   const examBindingFailed =
     input.exam?.present === true && input.exam.packageProvided && input.exam.bindingValid === false;
-  const integrity: IntegrityLevel =
-    input.metadataValid && input.chainValid && (input.screenshotsTampered ?? 0) === 0 && !examBindingFailed
-      ? 'proven'
-      : 'failed';
+  const cryptoChecksPassed =
+    input.metadataValid && input.chainValid && (input.screenshotsTampered ?? 0) === 0 && !examBindingFailed;
+  // 改ざん検出は fast モードでも成立する (hash 連鎖・content 再生・metadata は実施済み) ので、
+  // failed が partial に優先する。
+  const integrity: IntegrityLevel = !cryptoChecksPassed ? 'failed' : input.poswSkipped ? 'partial' : 'proven';
 
   // --- 時刻アンカー
   const temporal = deriveTemporal(input);
