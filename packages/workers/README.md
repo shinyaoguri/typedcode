@@ -4,11 +4,11 @@ TypedCode 向けの Cloudflare Workers API。Turnstile 人間認証とアテス�
 
 ## 機能
 
+- **セッション開始トークンの発行** ([ADR-0017](../../docs/adr/0017-server-anchored-chain-root.md)): Turnstile 検証 → `serverNonce` 入りの ECDSA-P256 署名トークンを発行し、チェーン根をサーバアンカーする
+- **署名済みチェックポイントサービス**: 証明チェックポイントへの ECDSA-P256 + サーバ時刻署名。KV による per-session の `firstSeenAt` 管理と冪等処理を含む。署名は**セッション開始トークン前提** ([ADR-0027](../../docs/adr/0027-checkpoint-sign-requires-session-token.md))
 - **Turnstile 検証**: Cloudflare Turnstile トークンを検証
-- **アテステーション署名**: HMAC-SHA256 で署名付きアテステーションを発行
-- **アテステーション検証**: 署名の整合性を検証
-- **署名済みチェックポイントサービス**: 証明チェックポイントへの ECDSA-P256 + サーバ時刻署名。KV による per-session の `firstSeenAt` 管理を含む
-- **CORS サポート**: エディタ・検証アプリ向けに CORS を設定可能
+- **アテステーション署名**: HMAC-SHA256 で署名付きアテステーションを発行 (作成時の経路は ADR-0017 で session/start に統合済み)
+- **CORS サポート**: `ALLOWED_ORIGINS` による許可リスト方式 (fail-closed。詳細は [CLAUDE.md](CLAUDE.md))
 
 ## セットアップ
 
@@ -70,6 +70,57 @@ npm run dev  # http://localhost:8787
 
 ## API エンドポイント
 
+| Endpoint | Method | 用途 |
+|---|---|---|
+| `/api/session/start` | POST | Turnstile 検証 → セッション開始トークン発行 (ADR-0017) |
+| `/api/checkpoint/sign` | POST | 未署名チェックポイントへの ECDSA-P256 署名 + `serverTimestamp` 付与 |
+| `/api/checkpoint/public-keys` | GET | 公開鍵レジストリ取得 (検証側のキャッシュ用) |
+| `/api/verify-captcha` | POST | Turnstile トークン検証 + アテステーション発行 |
+| `/api/verify-attestation` | POST | アテステーション署名の検証 (**dead**。下記参照) |
+| `/health` | GET | ヘルスチェック |
+
+### POST `/api/session/start`
+
+Turnstile を検証し、成功したらサーバ生成の `serverNonce` を焼いた ECDSA-P256 署名トークンを発行します ([ADR-0017](../../docs/adr/0017-server-anchored-chain-root.md))。クライアントは `serverNonce` をチェーン根 (`SHA256(fingerprintHash ‖ localNonce ‖ serverNonce)`) に焼き、トークンを proof に同梱します。検証器は公開鍵レジストリだけでオフライン検証できます。
+
+このエンドポイントは **Turnstile ゲート + root アンカー + 人間ゲート**を 1 リクエストで兼ねます。KV は使いません (ステートレス)。
+
+**Request:**
+```json
+{
+  "turnstileToken": "turnstile_response_token",
+  "sessionId": "client-generated-session-id",
+  "fingerprintHash": "64桁のhex"
+}
+```
+
+**Response (成功):**
+```json
+{
+  "success": true,
+  "token": {
+    "payload": {
+      "version": 1,
+      "sessionId": "...",
+      "serverNonce": "64桁のhex",
+      "fingerprintHash": "...",
+      "issuedAt": "2026-05-28T12:00:00.000Z",
+      "turnstileVerified": true,
+      "hostname": "typedcode.dev",
+      "action": "...",
+      "poswIterations": 10000
+    },
+    "signature": "...",
+    "keyId": "...",
+    "algorithm": "ECDSA-P256"
+  }
+}
+```
+
+**失敗時**: `400` (JSON 不正 / `turnstileToken` 欠落 / `sessionId`・`fingerprintHash` の形式違反)、`403` (Turnstile 失敗 or 許可外 hostname)、`500` (署名鍵が未設定 / 署名失敗)、`503` (Turnstile API へ到達不能)。いずれも `{ "success": false, "message": "..." }` を返します。
+
+> エディタは session/start が失敗しても**セッション開始をブロックしません** (非アンカー = `rootAnchored:false` にフォールバック)。
+
 ### POST `/api/verify-captcha`
 
 Turnstile トークンを検証し、署名付きアテステーションを返却します。
@@ -107,7 +158,11 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
 }
 ```
 
+> ADR-0017 以降、**ファイル作成時の人間ゲートは `/api/session/start` に統合**されています。このエンドポイントはエクスポート前検証などの経路のために残置しています。
+
 ### POST `/api/verify-attestation`
+
+> **dead**: 現在このエンドポイントを呼ぶクライアントはありません (editor / verify / verify-cli のいずれからも呼ばれず、アテステーション署名の検証はどこでも実行されていません)。ADR-0017 で deprecate 方針です。新規に依存しないでください。
 
 署名付きアテステーションの整合性を検証します。
 
@@ -137,7 +192,9 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
 
 エディタからの未署名チェックポイントを、サーバの ECDSA-P256 鍵と `serverTimestamp` / `firstSeenAt` で署名します。
 
-**Request body** (`@typedcode/shared` の `SignedCheckpointInput` 参照):
+**`sessionStartToken` が必須です** ([ADR-0027](../../docs/adr/0027-checkpoint-sign-requires-session-token.md))。`/api/session/start` で発行されたトークンを body に同送し、その `payload.sessionId` が `sessionId` と一致する必要があります。トークン検証は KV 参照より**前**に行われるため、無認証リクエストは即座に `401` で棄却されます。
+
+**Request body** (checkpoint 本体は `@typedcode/shared` の `SignedCheckpointInput` 参照):
 ```json
 {
   "sessionId": "...",
@@ -149,7 +206,13 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
   "contentHash": "...",
   "previousSignedCheckpointHash": null,
   "totalEventsSincePrevious": 100,
-  "clientTimestamp": "2026-05-28T12:00:00.000Z"
+  "clientTimestamp": "2026-05-28T12:00:00.000Z",
+  "sessionStartToken": {
+    "payload": { "version": 1, "sessionId": "...", "serverNonce": "...", "...": "..." },
+    "signature": "...",
+    "keyId": "...",
+    "algorithm": "ECDSA-P256"
+  }
 }
 ```
 
@@ -160,9 +223,25 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
 
 **冪等性**: 同一 `sessionId` / `checkpointIndex` で `clientTimestamp` 以外が完全一致するリクエストは、前回の envelope をそのまま返します (ネットワーク不安定下での再送に対応)。
 
-**エラーコード**: `SCHEMA_INVALID` (400), `NON_MONOTONIC` / `CHECKPOINT_CONFLICT` (409),
-`SESSION_LIMIT_EXCEEDED` (429), `SIGNING_KEY_NOT_CONFIGURED` /
-`SIGNING_KEY_UNKNOWN` / `SIGNING_ERROR` (500).
+**エラーコード** (`{ "error": "...", "code": "..." }` で返ります):
+
+| Code | HTTP | 意味 |
+|---|---|---|
+| `SCHEMA_INVALID` | 400 | リクエスト body のスキーマ違反 |
+| `TOKEN_REQUIRED` | 401 | `sessionStartToken` が無い |
+| `TOKEN_INVALID` | 401 | トークンの署名 / 鍵レジストリ / 形式が不正 |
+| `TOKEN_SESSION_MISMATCH` | 401 | トークンの `sessionId` がリクエストの `sessionId` と不一致 |
+| `NON_MONOTONIC` | 409 | `checkpointIndex` が単調増加していない |
+| `CHECKPOINT_CONFLICT` | 409 | 同一 index で内容が不一致 (冪等性が成立しない) |
+| `TAB_LIMIT_EXCEEDED` | 429 | 1 セッションあたりのタブ数上限 (64) を超過 |
+| `SESSION_LIMIT_EXCEEDED` | 429 | 1 セッションあたりの署名数上限を超過 |
+| `SIGNING_KEY_NOT_CONFIGURED` | 500 | `CHECKPOINT_SIGNING_KEY_*` 未設定 |
+| `SIGNING_KEY_UNKNOWN` | 500 | `keyId` が公開鍵レジストリに存在しない |
+| `SIGNING_ERROR` | 500 | 署名計算で予期しない失敗 |
+| `SESSION_PERSIST_FAILED` | 503 | 初回チェックポイントの KV 書き込み失敗 (署名せずリトライさせる) |
+| `SESSION_STATE_UNAVAILABLE` | 503 | KV の読み取り失敗 (署名せずリトライさせる) |
+
+各コードの設計意図は [CLAUDE.md](CLAUDE.md) を参照。
 
 ### GET `/api/checkpoint/public-keys`
 
@@ -241,8 +320,10 @@ wrangler secret put CHECKPOINT_SIGNING_KEY_JWK
 
 ### wrangler.toml
 
+環境ごとに**設定ファイルを分けます** (`wrangler.toml` = ローカル dev / `wrangler.staging.toml` / `wrangler.production.toml`)。`[env.*]` ブロック方式は廃止済みです。ローカルの `wrangler.toml` は開発者ごとの KV ID を持つため skip-worktree で管理します。
+
 ```toml
-name = "typedcode-api"
+name = "typedcode-api-dev"   # ローカル dev。本番と同名にしない
 main = "src/index.ts"
 compatibility_date = "2025-12-26"
 
@@ -253,9 +334,6 @@ ENVIRONMENT = "development"
 binding = "CHECKPOINT_SESSIONS"
 id = "..."
 preview_id = "..."
-
-[env.production]
-vars = { ENVIRONMENT = "production" }
 ```
 
 ## アーキテクチャ
@@ -265,7 +343,8 @@ src/
 ├── index.ts        # エントリポイント:
 │                   #   - ルーティングとリクエスト処理
 │                   #   - Turnstile 検証ハンドラ
-│                   #   - アテステーション検証ハンドラ
+│                   #   - セッション開始トークン発行 (handleSessionStart, ADR-0017)
+│                   #   - アテステーション検証ハンドラ (dead)
 │                   #   - ヘルスチェック
 │                   #   - CORS ハンドリング
 │                   #   - HMAC 署名ユーティリティ
@@ -304,6 +383,6 @@ src/
 
 1. **シークレット**: `.dev.vars` を絶対にコミットしない。本番では `wrangler secret put` を使う
 2. **CORS**: 許可するオリジンを適切に設定する
-3. **レートリミット**: 本番では追加のレートリミットを検討
-4. **署名検証**: アテステーション署名はサーバ側でも必ず検証する
+3. **レートリミット**: `/api/checkpoint/sign` の濫用防止は `sessionStartToken` (ADR-0027) が主防御。加えて Cloudflare の Rate Limiting Rules を defense-in-depth として**環境ごとに設定する** (手順は [CLAUDE.md](CLAUDE.md))
+4. **トークン検証**: セッション開始トークンと署名済みチェックポイントは、常に公開鍵レジストリ (`registry.ts`) の鍵でのみ検証する (自己署名トークンを受理しない)
 5. **公開鍵管理**: 本番鍵は `packages/shared/src/checkpointKeys/registry.ts` に append-only で追加し、`status: 'revoked'` で失効管理する

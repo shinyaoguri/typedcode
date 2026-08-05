@@ -25,7 +25,7 @@ typedcode-verify proof.zip
 # 複数ファイルを指定
 typedcode-verify file1.json file2.zip
 
-# 検証モード (既定 full。fast は PoSW 反復をスキップ)
+# 検証モード (full | fast | audit。既定 full)
 typedcode-verify proof.zip --mode fast
 
 # 試験モード (ADR-0006): 問題パッケージ (.tcexam) を渡して束縛を完全検証
@@ -38,7 +38,53 @@ typedcode-verify ALL_TC.zip --require-anchor-density
 
 # root アンカー gate (ADR-0017): root 未アンカー (serverNonce トークン無し) を fail させる (採点向け opt-in)
 typedcode-verify ALL_TC.zip --require-root-anchor
+
+# 外部 Analyzer を差し込む (ADR-0023。反復可。既定の分析器に追加される)
+typedcode-verify proof.zip --analyzer ./my-analyzer.mjs
+
+# 既定の分析器を外して外部のみ使う (--analyzer が最低 1 つ必要)
+typedcode-verify proof.zip --analyzer ./my-analyzer.mjs --no-default-analyzers
+
+# 分析結果を機械可読に書き出す
+typedcode-verify ALL_TC.zip --analysis-json out.json      # {filename, valid, analysis}
+typedcode-verify ALL_TC.zip --analysis-bundle bundle.json # content-free な派生バンドル (ADR-0024 Tier A)
 ```
+
+### オプション一覧
+
+| オプション | 説明 |
+|---|---|
+| `--mode <full\|fast\|audit>` | 検証モード (既定 `full`)。`fast` は PoSW 反復をスキップ、`audit` は現状 `full` と同等 |
+| `--exam-package <file.tcexam>` | 試験束縛を完全検証 (ADR-0006) |
+| `--submitted-at <ISO>` | 提出時刻。time-box (提出期間内か) を判定 |
+| `--require-anchor-density` | アンカー密度が疎な proof を exit 1 にする (ADR-0016) |
+| `--require-root-anchor` | root 未アンカーの proof を exit 1 にする (ADR-0017) |
+| `--analyzer <module>` | 外部 Analyzer モジュールを読み込む (反復可、ADR-0023) |
+| `--no-default-analyzers` | 同梱の分析器を外し、`--analyzer` で指定したものだけを使う |
+| `--analysis-json <out.json>` | 分析レポートを JSON でファイル出力 |
+| `--analysis-bundle <out.json>` | content-free な派生バンドルを出力 (ADR-0024 Tier A) |
+| `--help`, `-h` | 使い方を表示 |
+
+未知のオプションや値の欠落はエラーになります (`--require-root-anchr` のようなタイポでゲートが黙って無効化されるのを防ぐため)。
+
+### 外部 Analyzer (ADR-0023)
+
+TypedCode は「判定するツール」ではなく「多様な分析手法を載せる基盤」です。採点者・研究者は CLI を**フォークせず**、自前の分析器を差し込めます。
+
+- `--analyzer <module>` に、ADR-0009 の Analyzer 契約を `default` / `analyzer` / `analyzers` で export する ES モジュールのパスを渡します (反復可)
+- 既定では同梱の分析器に**追加**されます。`--no-default-analyzers` を付けると外部のみになります
+- 分析結果は **advisory** で、**exit code には一切影響しません**
+
+> ⚠️ `--analyzer` は指定したモジュールを動的 import します = **任意コード実行**。信頼できるモジュールのみを渡してください。
+
+### 分析結果の書き出し
+
+| フラグ | 出力内容 |
+|---|---|
+| `--analysis-json <out.json>` | proof ごとの `{filename, valid, analysis}`。分析器の評価ハーネスやコホート集計の入口 |
+| `--analysis-bundle <out.json>` | proof ごとの `{filename, schema, integrityValid, processSummary, analysis, assurance}`。**events / ソースコード / fingerprint を含まない** content-free な派生ビュー (ADR-0024 Tier A) |
+
+どちらも advisory で exit code には影響しません。
 
 ### 試験モード (ADR-0006)
 
@@ -93,7 +139,9 @@ Anchoring:   VERIFIED (12 signed checkpoints, 100.0% coverage)
 6. **署名済みチェックポイント検証**: 任意。サーバ署名・連結ハッシュ・時刻整合を検証
 7. **試験束縛検証** (ADR-0006、`proof.exam` がある場合): root 束縛 (自己完結) +、`--exam-package` 指定時は署名・packageHash・問題内容ハッシュ・time-box
 
-> 注: 人間認証 (attestation) の署名検証は **CLI では行わない** (verify(web) が Workers API 経由で行う)。analysis レポート (ADR-0009) は advisory で判定には使わない。
+> 注: HMAC アテステーションの署名検証は **CLI でも verify(web) でも行いません** (現在どのクライアントからも実行されていない dead な経路です)。人間ゲートの暗号的な証拠は **セッション開始トークン** (ADR-0017) が担い、公開鍵レジストリだけで**オフライン検証**されます (`--require-root-anchor` 参照)。analysis レポート (ADR-0009) は advisory で判定には使いません。
+
+検証はすべてオフラインで完結します (ネットワークアクセスなし)。
 
 ## ビルド
 
@@ -107,7 +155,9 @@ npm run dev        # watch モード
 ```
 src/
 ├── cli.ts         # CLI エントリポイント
-├── verify.ts      # 検証ロジック
+├── args.ts        # 引数・フラグの解析と検証 (純関数)
+├── verify.ts      # 検証ロジック (shared を呼ぶ薄いラッパ)
+├── analyzers.ts   # 外部 Analyzer の読み込みと契約バリデーション
 ├── output.ts      # 結果の整形
 ├── progress.ts    # 進捗表示
 └── zip.ts         # ZIP ファイル処理
