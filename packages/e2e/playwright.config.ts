@@ -20,6 +20,10 @@ const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: './tests',
+  // production-build.spec.ts は dist (vite preview) を対象にする専用 spec なので、
+  // dev サーバ向けのこの設定からは外す。実行は playwright.build.config.ts
+  // (`npm run test:build -w @typedcode/e2e`) が担う。
+  testIgnore: /production-build\.spec\.ts$/,
   // PoSW (Web Worker でのハッシュ計算) と export + verify-cli の full 再計算が絡むため重い。
   // 遅い CI ランナーでも収まるよう長めに取る。
   timeout: 300_000,
