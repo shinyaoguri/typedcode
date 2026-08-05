@@ -1,0 +1,75 @@
+name: PR Title
+
+# PR タイトルが Conventional Commits 形式かを検査する (CONTRIBUTING.md)。
+# squash merge では PR タイトルがそのままマージコミットのメッセージになるため、
+# タイトルの形式崩れは main の履歴に直接残る。
+#
+# pull_request_target を使う理由: fork からの PR でも base リポジトリ側の
+# 設定で走らせるため。checkout はせず PR タイトル文字列しか読まないので、
+# fork のコードを実行する経路はない。permissions も read のみに絞る。
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # job id = status check の context 名 (main ruleset の required check に使える)
+  pr-title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate PR title (Conventional Commits)
+        env:
+          # PR タイトルはユーザー入力。${{ }} を run: の中へ直接展開すると
+          # そのままシェルのコマンド文字列に埋め込まれ、コマンドインジェクション
+          # 経路になる (pull_request_target は fork からも発火するので特に危険)。
+          # env 経由で受け取り、シェルは変数としてしか触らない。
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          # 許可 type は CONTRIBUTING.md / CLAUDE.md の規約に合わせる。
+          # 増減させるときは 3 箇所 (ここ / CONTRIBUTING.md / CLAUDE.md) を揃えること。
+          types='feat|fix|docs|refactor|test|chore|ci'
+
+          # <type>(<scope>)!: <要約>
+          #   - (<scope>) は省略可
+          #   - ! による breaking change 表記を許可
+          #   - ": " の後の要約は空・空白のみを不可とする
+          regex="^(${types})(\([^()]+\))?!?: [^[:space:]].*$"
+
+          if [[ "$PR_TITLE" =~ $regex ]]; then
+            echo "OK: $PR_TITLE"
+            exit 0
+          fi
+
+          # ::error:: の 1 行に埋め込むためのエスケープ (% と改行はリテラルに出せない)
+          escaped="${PR_TITLE//%/%25}"
+          escaped="${escaped//$'\r'/%0D}"
+          escaped="${escaped//$'\n'/%0A}"
+
+          echo "::error title=PR title is not Conventional Commits::PR タイトルが Conventional Commits 形式ではありません。%0A%0A期待する形式: <type>(<scope>): <要約>%0A  - (<scope>) は省略可 (例: feat: ...)%0A  - 破壊的変更は ! を付ける (例: feat!: ... / feat(shared)!: ...)%0A  - 要約は空にできない%0A許可 type: feat, fix, docs, refactor, test, chore, ci%0A実際のタイトル: ${escaped}%0A%0A例: feat(editor): キーストローク記録を追加 / fix: PoSW の競合を解消 / feat!: 証明フォーマットを変更%0Asquash merge では PR タイトルがマージコミットのメッセージになります (CONTRIBUTING.md)。"
+
+          {
+            echo "## PR タイトルが Conventional Commits 形式ではありません"
+            echo
+            echo '```'
+            echo "実際のタイトル: ${PR_TITLE}"
+            echo '```'
+            echo
+            echo "期待する形式: \`<type>(<scope>): <要約>\` ((\`<scope>\`) は省略可、破壊的変更は \`!\`)"
+            echo
+            echo "許可 type: \`feat\` / \`fix\` / \`docs\` / \`refactor\` / \`test\` / \`chore\` / \`ci\`"
+            echo
+            echo "例: \`feat(editor): キーストローク記録を追加\`, \`fix: PoSW の競合を解消\`, \`feat!: 証明フォーマットを変更\`"
+            echo
+            echo "squash merge では PR タイトルがマージコミットのメッセージになります (\`CONTRIBUTING.md\` 参照)。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1

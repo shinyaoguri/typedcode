@@ -62,6 +62,8 @@
 | [0029](0029-merge-cleanup-script.md) | Accepted | マージ後の掃除はバージョン管理されたスクリプト (git sweep) に集約する |
 | [0030](0030-dev-port-autoswitch.md) | Accepted | dev サーバのポートはランチャーがセット単位で自動割当し、配線 (プロキシ / VITE_API_URL) を環境変数で追従させる |
 | [0031](0031-integrity-partial-when-posw-skipped.md) | Accepted | 検証モードで省略した検査を整合性層に反映する (integrity に `partial` を追加・ADR-0020 の値域を拡張) |
+| [0032](0032-biome-as-single-lint-format-toolchain.md) | Accepted | lint / format を Biome 1 つに集約し品質ゲートを typecheck 以外へ広げる (`.editorconfig` は置かない) |
+| [0033](0033-e2e-round-trip-harness-as-deploy-gate.md) | Accepted | E2E は暗号成果物をオラクルにした round-trip に限定し、全 deploy の必須ゲートにする (full は 1 本・他は fast) |
 
 ## 参考
 
