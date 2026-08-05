@@ -6,12 +6,7 @@
 
 import type JSZip from 'jszip';
 import { checkScreenshotImage } from '@typedcode/shared';
-import type {
-  VerifyScreenshot,
-  ScreenshotManifest,
-  ScreenshotManifestEntry,
-  ScreenshotVerificationSummary,
-} from '../types.js';
+import type { VerifyScreenshot, ScreenshotManifest, ScreenshotManifestEntry } from '../types.js';
 
 /**
  * スクリーンショット管理サービス
@@ -28,10 +23,14 @@ export class ScreenshotService {
     manifest: ScreenshotManifest,
     /**
      * 検証済みチェーンが記録した screenshotCapture の imageHash 集合 (全 proof 横断)。
-     * 与えると、manifest だけが指す (チェーンに無い) ハッシュを改ざんとして検出する。
+     * manifest だけが指す (チェーンに無い) ハッシュを改ざんとして検出するために使う。
      * manifest と画像は未署名なのでセットで差し替え可能 — 改ざん不能なチェーンが唯一の真正記録。
+     *
+     * **必須引数**: 省略できると `isChainBackedImageHash` が常に true に退化して
+     * チェーン裏付け検査が黙って無効化される (#212 の原因)。空集合は「チェーンに記録が無い
+     * 旧 proof」として shared 側が対象外扱いにする。
      */
-    chainImageHashes?: ReadonlySet<string>
+    chainImageHashes: ReadonlySet<string>
   ): Promise<VerifyScreenshot[]> {
     const screenshots: VerifyScreenshot[] = [];
 
@@ -130,8 +129,8 @@ export class ScreenshotService {
   async loadFromFolder(
     screenshotsFolderHandle: FileSystemDirectoryHandle,
     manifest: ScreenshotManifest,
-    /** loadFromZip と同じ。検証済みチェーンが記録した imageHash 集合 (任意)。 */
-    chainImageHashes?: ReadonlySet<string>
+    /** loadFromZip と同じ (必須)。検証済みチェーンが記録した imageHash 集合。 */
+    chainImageHashes: ReadonlySet<string>
   ): Promise<VerifyScreenshot[]> {
     const screenshots: VerifyScreenshot[] = [];
 
@@ -300,19 +299,6 @@ export class ScreenshotService {
    */
   get tamperedCount(): number {
     return Array.from(this.screenshots.values()).filter((s) => s.tampered).length;
-  }
-
-  /**
-   * 検証サマリーを取得
-   */
-  getVerificationSummary(): ScreenshotVerificationSummary {
-    const screenshots = Array.from(this.screenshots.values());
-    return {
-      total: screenshots.length,
-      verified: screenshots.filter((s) => s.verified && !s.missing && !s.tampered).length,
-      missing: screenshots.filter((s) => s.missing).length,
-      tampered: screenshots.filter((s) => s.tampered).length,
-    };
   }
 
   /**

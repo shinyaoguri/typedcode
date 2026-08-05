@@ -9,6 +9,7 @@ import type { StatusBarUI } from '../StatusBarUI';
 import type { ResultPanel } from '../ResultPanel';
 import type { TabController } from './TabController';
 import type { ProgressDetails, VerificationResultData } from '../../types';
+import { summarizeTabScreenshots } from '../../services/screenshotSummary';
 import { t } from '../../i18n/index';
 
 export interface VerificationControllerDependencies {
@@ -73,11 +74,14 @@ export class VerificationController {
     // TrustCalculator (改竄 = error) / deriveAssurance (integrity failed) と同じ軸を見る —
     // ここだけ見ないとサイドバー/タブの緑と開いた結果バッジが食い違い、緑の流し見で
     // 改竄提出が素通りする (verify/CLAUDE.md「両者を揃えて変更すること」)。
-    const screenshots = currentTabState?.screenshots ?? [];
-    const screenshotsTampered = screenshots.filter((s) => s.tampered).length;
-    const screenshotsMissing = screenshots.filter((s) => s.missing).length;
-    // 画面共有オプトアウト (TrustCalculator と同じく warning 軸)
     const events = currentTabState?.proofData?.proof?.events ?? [];
+    const screenshotSummary = summarizeTabScreenshots({ screenshots: currentTabState?.screenshots, events });
+    const screenshotsTampered = screenshotSummary?.tampered ?? 0;
+    const screenshotsMissing = screenshotSummary?.missing ?? 0;
+    // 剥ぎ取り疑い (#213): チェーンに記録があるのに manifest に entry が無い。
+    // CLI の warning と同じ軸なので、ここを見ないとタブだけ緑になる。
+    const screenshotsChainOnly = screenshotSummary?.chainOnly ?? 0;
+    // 画面共有オプトアウト (TrustCalculator と同じく warning 軸)
     const hasScreenShareOptOut = events.some((e: { type: string }) => e.type === 'screenShareOptOut');
 
     // ステータス判定: エラー > 警告 > 成功。
@@ -85,7 +89,7 @@ export class VerificationController {
     //          スクショ改竄 (#146)
     // - warning: 非ピュアタイピング / ソース不一致 / 時刻アンカー無し (偽造不能要素が無い) /
     //            post-hoc 一括署名疑い / anchoring 密度が疎 (ADR-0016) / exam だが問題パッケージ未検証 (真正性未確認) /
-    //            スクショ欠損 / 画面共有オプトアウト (#146)
+    //            スクショ欠損 / 剥ぎ取り疑い (#213) / 画面共有オプトアウト (#146)
     const examBindingFailed = !!result.exam?.packageProvided && result.exam.binding?.valid === false;
     const anchoredButInvalid = !!result.signedCheckpointAnchored && result.signedCheckpointValid === false;
     const examPresentButUnverified = !!result.exam?.present && !result.exam.packageProvided;
@@ -109,6 +113,7 @@ export class VerificationController {
       rootNotAnchored ||
       examPresentButUnverified ||
       screenshotsMissing > 0 ||
+      screenshotsChainOnly > 0 ||
       hasScreenShareOptOut
     ) {
       status = 'warning';

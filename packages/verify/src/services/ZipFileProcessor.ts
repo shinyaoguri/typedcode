@@ -6,9 +6,10 @@
 
 import JSZip from 'jszip';
 import { assertZipWithinBudget, collectChainImageHashes } from '@typedcode/shared';
-import type { ProofFile, ScreenshotManifest, VerifyScreenshot } from '../types.js';
+import type { ProofFile, VerifyScreenshot } from '../types.js';
 import type { ParsedFileData, FileProcessResult, FileProcessCallbacks } from './FileProcessor.js';
 import { ScreenshotService } from './ScreenshotService.js';
+import { normalizeScreenshotManifest } from './screenshotManifest.js';
 import { isImageFile, isBinaryFile, getLanguageFromExtension } from './fileUtils.js';
 import { t } from '../i18n/index.js';
 
@@ -241,7 +242,7 @@ export class ZipFileProcessor {
    */
   private async loadScreenshots(
     zip: JSZip,
-    chainImageHashes?: ReadonlySet<string>
+    chainImageHashes: ReadonlySet<string>
   ): Promise<{
     screenshots: VerifyScreenshot[];
     screenshotService: ScreenshotService | undefined;
@@ -255,31 +256,23 @@ export class ZipFileProcessor {
 
     try {
       const manifestText = await manifestFile.async('string');
-      const parsed = JSON.parse(manifestText);
 
-      // 新形式（オブジェクト with version/screenshots）と旧形式（配列）の両方に対応
-      let manifest: ScreenshotManifest;
-      if (Array.isArray(parsed)) {
-        // 旧形式: 配列のみ
-        console.log('[ZipFileProcessor] Legacy manifest format detected (array)');
-        manifest = {
-          version: '1.0',
-          exportedAt: new Date().toISOString(),
-          totalScreenshots: parsed.length,
-          screenshots: parsed,
-        };
-      } else {
-        // 新形式: オブジェクト
-        manifest = parsed as ScreenshotManifest;
+      // 新形式（オブジェクト with version/screenshots）と旧形式（配列）の両方に対応。
+      // パースはフォルダ経路と共有する単一実装 (#212)。
+      const manifest = normalizeScreenshotManifest(JSON.parse(manifestText));
+
+      if (!manifest) {
+        console.log('[ZipFileProcessor] manifest.json is not a screenshot manifest');
+        return { screenshots: [], screenshotService: undefined };
       }
 
       console.log('[ZipFileProcessor] Manifest loaded:', {
         version: manifest.version,
         totalScreenshots: manifest.totalScreenshots,
-        screenshotsCount: manifest.screenshots?.length ?? 0,
+        screenshotsCount: manifest.screenshots.length,
       });
 
-      if (!manifest.screenshots || manifest.screenshots.length === 0) {
+      if (manifest.screenshots.length === 0) {
         console.log('[ZipFileProcessor] Manifest has no screenshots');
         return { screenshots: [], screenshotService: undefined };
       }

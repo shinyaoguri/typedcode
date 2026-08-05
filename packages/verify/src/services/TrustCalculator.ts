@@ -31,14 +31,15 @@ export class TrustCalculator {
    * 検証結果から信頼度を計算
    * @param verificationResult - 検証結果
    * @param attestationResult - 人間証明結果
-   * @param screenshots - スクリーンショット検証サマリー
+   * @param screenshots - スクリーンショット検証サマリー（`undefined` = 未検査。CLI の
+   *                      `Screenshots: not checked` と同じで、issue は上げない）
    * @param contentMismatches - ソースファイル不一致情報（オプション）
    * @param options - 追加オプション
    */
   static calculate(
     verificationResult: VerificationResultData | null,
     attestationResult: AttestationResult | undefined,
-    screenshots: ScreenshotVerificationSummary,
+    screenshots: ScreenshotVerificationSummary | undefined,
     contentMismatches?: ContentMismatchInfo[],
     options?: TrustCalculatorOptions
   ): TrustResult {
@@ -62,20 +63,31 @@ export class TrustCalculator {
       });
     }
 
-    // 3. スクリーンショット検証
-    if (screenshots.tampered > 0) {
-      issues.push({
-        component: 'screenshots',
-        severity: 'error',
-        message: t('trust.issueScreenshotsTampered', { count: screenshots.tampered }),
-      });
-    }
-    if (screenshots.missing > 0) {
-      issues.push({
-        component: 'screenshots',
-        severity: 'warning',
-        message: t('trust.issueScreenshotsMissing', { count: screenshots.missing }),
-      });
+    // 3. スクリーンショット検証 (未検査 = undefined のときは何も主張しない)
+    if (screenshots) {
+      if (screenshots.tampered > 0) {
+        issues.push({
+          component: 'screenshots',
+          severity: 'error',
+          message: t('trust.issueScreenshotsTampered', { count: screenshots.tampered }),
+        });
+      }
+      if (screenshots.missing > 0) {
+        issues.push({
+          component: 'screenshots',
+          severity: 'warning',
+          message: t('trust.issueScreenshotsMissing', { count: screenshots.missing }),
+        });
+      }
+      // チェーンに記録があるのに manifest に entry が無い = 剥ぎ取り疑い (#213)。
+      // verify-cli の `screenshots may have been stripped` warning と同じ軸・同じ重み。
+      if (screenshots.chainOnly > 0) {
+        issues.push({
+          component: 'screenshots',
+          severity: 'warning',
+          message: t('trust.issueScreenshotsChainOnly', { count: screenshots.chainOnly }),
+        });
+      }
     }
 
     // 4. Attestation検証（ネットワークエラーなどは警告扱い）
@@ -249,9 +261,10 @@ export class TrustCalculator {
   }
 
   /**
-   * 空のスクリーンショットサマリーを生成
+   * 空のスクリーンショットサマリーを生成 (「検査したが 0 枚」。**未検査は `undefined`** で表す —
+   * これを未検査の代わりに使うと「検査して問題なし」に化ける)
    */
   static emptyScreenshotSummary(): ScreenshotVerificationSummary {
-    return { total: 0, verified: 0, missing: 0, tampered: 0 };
+    return { total: 0, verified: 0, missing: 0, tampered: 0, chainOnly: 0 };
   }
 }

@@ -310,6 +310,12 @@
   color: var(--status-warning);
 }
 
+/* 未検査 (proof.json 単体投入でスクショを検査していない) の中立表示 */
+.result-row-value .muted {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
 /* Stats row */
 .result-stats {
   display: flex;

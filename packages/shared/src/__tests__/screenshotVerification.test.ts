@@ -10,6 +10,7 @@ import {
   sha256HexOfBytes,
   collectChainImageHashes,
   checkScreenshotImage,
+  countChainOnlyImageHashes,
   summarizeScreenshotArtifacts,
   extractScreenshotArtifactsFromZip,
 } from '../index.js';
@@ -74,6 +75,23 @@ describe('checkScreenshotImage', () => {
     const hash = await sha256HexOfBytes(bytes);
     expect((await checkScreenshotImage(bytes, hash, new Set())).tampered).toBe(false);
     expect((await checkScreenshotImage(bytes, hash, undefined)).tampered).toBe(false);
+  });
+});
+
+describe('countChainOnlyImageHashes', () => {
+  it('counts chain hashes that have no manifest entry (stripped screenshots)', () => {
+    const kept = 'a'.repeat(64);
+    const stripped = 'b'.repeat(64);
+    expect(countChainOnlyImageHashes([{ imageHash: kept }], new Set([kept, stripped]))).toBe(1);
+  });
+
+  it('counts every chain hash when the manifest is gone entirely', () => {
+    expect(countChainOnlyImageHashes([], new Set(['a'.repeat(64), 'b'.repeat(64)]))).toBe(2);
+  });
+
+  it('counts nothing when the chain records no screenshot (manifest-only extras are not this axis)', () => {
+    expect(countChainOnlyImageHashes([{ imageHash: 'a'.repeat(64) }], new Set())).toBe(0);
+    expect(countChainOnlyImageHashes([{ imageHash: 'a'.repeat(64) }], undefined)).toBe(0);
   });
 });
 

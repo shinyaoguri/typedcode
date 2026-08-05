@@ -567,13 +567,15 @@ export interface TrustResult {
   issues: TrustIssue[];
 }
 
-/** スクリーンショット検証サマリー */
-export interface ScreenshotVerificationSummary {
-  total: number;
-  verified: number;
-  missing: number;
-  tampered: number;
-}
+/**
+ * スクリーンショット検証サマリー。
+ *
+ * shared の型 (verify-cli と同一) をそのまま使う。web だけ軸が欠けると
+ * 「CLI は剥ぎ取り warning / web は緑」型の乖離になる (#213) ため再定義しない。
+ * **未検査** (proof.json 単体投入で screenshots/ を伴わない) は `undefined` で表し、
+ * 「スクショ 0 枚のセッション」(= `total: 0` のサマリ) と区別する (CLI と同じ意味付け)。
+ */
+export type { ScreenshotVerificationSummary } from '@typedcode/shared';
 
 // ============================================================================
 // 差分比較用の型定義
