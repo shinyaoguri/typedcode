@@ -14,6 +14,9 @@
 3. **検証 (Web Worker) は決定的**: `workers/verificationWorker.ts` は同じ proof に対して常に同じ結果を返す。乱数 / 時刻 / ネットワーク状態に依存しない (Workers の attestation 検証のみネットワーク依存だが、結果は cache 可)
 4. **マルチタブ proof はタブ毎に独立した `<name>_proof.json` を N 個**として扱い、各タブを個別に検証する (verify-cli は全件検証、verify(web) はタブごと)。`MultiFileExportedProof` / `isMultiFileProof()` 型は存在するが現状のエクスポート経路では未使用 (dead)
 5. **i18n キーは型と同期**: `src/i18n/types.ts` の `VerifyTranslationKeys` に新規キーを追加しないと TS2353 が出る
+6. **スクリーンショット判定は全軸を `shared` に委譲する** (#212 / #213): per-image は `checkScreenshotImage`、剥ぎ取り (`chainOnly`) は `countChainOnlyImageHashes`、チェーン側ハッシュ集合は `collectChainImageHashes`。web に判定式を書くと verify-cli と結論が食い違う (実際に `chainOnly` が web だけ欠落し、剥ぎ取りが沈黙していた)
+7. **`chainImageHashes` は必須引数**: optional にすると渡し忘れが fail-open (チェーン裏付け検査が無効化され、画像と manifest をセットで差し替えた改竄を見逃す) になる。実際に ZIP 経路と結論が割れる事故が起きたので、型で封じてある
+8. **入力の種類で「0 枚」と「未検査」を区別する**: ZIP とフォルダは**コンテナ**なので `screenshots/` が無ければ 0 枚 = 剥ぎ取り疑いを見る。proof.json 単体は検査対象が無いので `undefined` = 未検査として issue を上げない (verify-cli の `Screenshots: not checked` と同じ意味論)。両者を混同すると overclaim または誤検知になる
 
 ## ディレクトリ一覧
 
