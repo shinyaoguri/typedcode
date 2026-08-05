@@ -61,6 +61,7 @@
 | [0028](0028-tag-based-github-flow.md) | Accepted | ブランチ運用をタグ式 GitHub Flow にする (main 1 本 + v* タグで production リリース・0026 を supersede) |
 | [0029](0029-merge-cleanup-script.md) | Accepted | マージ後の掃除はバージョン管理されたスクリプト (git sweep) に集約する |
 | [0030](0030-dev-port-autoswitch.md) | Accepted | dev サーバのポートはランチャーがセット単位で自動割当し、配線 (プロキシ / VITE_API_URL) を環境変数で追従させる |
+| [0031](0031-integrity-partial-when-posw-skipped.md) | Accepted | 検証モードで省略した検査を整合性層に反映する (integrity に `partial` を追加・ADR-0020 の値域を拡張) |
 
 ## 参考
 

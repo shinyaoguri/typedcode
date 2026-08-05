@@ -1,6 +1,6 @@
 # ADR-0020: 保証を三層語彙 (整合性 × 時刻アンカー × 著述性) で機械導出し表示する
 
-- **Status**: Accepted
+- **Status**: Accepted (integrity の値域は [ADR-0031](0031-integrity-partial-when-posw-skipped.md) で `partial` を追加)
 - **Date**: 2026-06-12
 - **Deciders**: (PR 上の合意者 / レビュアー)
 - **PR / Commit**: (本 ADR と同一 PR)
