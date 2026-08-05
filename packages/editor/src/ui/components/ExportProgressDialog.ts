@@ -193,6 +193,17 @@ export class ExportProgressDialog {
   }
 
   /**
+   * 記録キューの排出待ち状況を表示する (#225)。
+   * 打鍵が多いと排出に数秒〜数十秒かかることがあるので、無言で固まったように見せず
+   * 「残り何件を処理中か」を出す。フェーズ自体は preparing のまま。
+   */
+  showDrainProgress(remaining: number): void {
+    if (this.statusText) {
+      this.statusText.textContent = t('export.statusDraining', { count: remaining });
+    }
+  }
+
+  /**
    * 進行状況を更新（詳細）
    */
   updateProgress(progress: ExportProgress): void {

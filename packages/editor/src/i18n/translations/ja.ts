@@ -404,6 +404,9 @@ export const ja: TranslationKeys = {
     statusScreenshots: 'スクリーンショットを取得しています...',
     statusGenerating: 'ZIPファイルを生成しています...',
     statusComplete: '完了',
+    statusDraining: '打鍵の記録を処理しています...（残り${count}件）',
+    queueNotDrained:
+      '打鍵の記録が完了していないため、エクスポートを中止しました（未処理の打鍵を含む証明は検証できなくなるため）。コードはそのまま残っています。数秒待ってから、もう一度ダウンロードしてください。',
   },
 
   terminal: {

@@ -42,6 +42,7 @@ import type { CheckpointCreatedHook } from './CheckpointManager.js';
 import type { SignedCheckpointEnvelope } from '../types.js';
 import { StatisticsCalculator } from './StatisticsCalculator.js';
 import { isAllowedInputType, isProhibitedInputType } from './InputTypeValidator.js';
+import { waitForQueueDrain, type QueueDrainOptions, type QueueDrainResult } from './queueDrain.js';
 import { sharedDebugLog } from '../utils/debug.js';
 
 export class TypingProof {
@@ -604,6 +605,11 @@ export class TypingProof {
    * を持つ proof ができ、verifier (verifyProofMetadata / verifyCheckpoints) で丸ごと invalid
    * になる。冒頭で 1 度だけスナップショットし、以降すべて同じ配列に対して計算する。
    * スナップショット後に記録されたイベントはこの export に含まれない (チェーンには残る)。
+   *
+   * #225: このスナップショット一貫性が守るのは署名 / メタデータ / checkpoint までで、
+   * **`finalContent` との整合は守らない**。スナップショットに載っていない打鍵を含む content
+   * を渡すと content replay (検証 Layer 4) が最終内容と一致せず proof 全体が invalid になる。
+   * 呼び出し側は `waitForQueueDrain` で排出を確認してから content を確定すること。
    */
   async exportProof(finalContent: string): Promise<ExportedProof> {
     const events = this.events.slice();
@@ -668,23 +674,31 @@ export class TypingProof {
   }
 
   /**
-   * 記録キュー (pendingEvents / PoSW 計算待ち) が空になるまで待つ (#143)。
+   * 記録キュー (pendingEvents / PoSW 計算待ち) が空になるまで待つ (#143, #225)。
    *
    * exportProof はスナップショット一貫だが、直前の打鍵がまだキューにあると
    * 「content (エディタ buffer) には載っているのにチェーンに無い」export になり、
-   * content replay (Layer 4) で fail する。exporter は**タブ毎に**これを待ってから
-   * model 内容を確定して exportProof を呼ぶこと (アクティブタブだけ待つのでは不足)。
+   * content replay (検証 Layer 4) が最終内容と一致せず **proof 全体が invalid** になる。
+   * スナップショット一貫性が守るのは署名 / メタデータ / checkpoint の整合だけで、
+   * content との整合は守らない。exporter は**タブ毎に**これを待ってから model 内容を
+   * 確定して exportProof を呼び、**排出できなかったときは export を中止すること**
+   * (アクティブタブだけ待つのでは不足)。
    *
-   * @returns 排出しきれば true、timeout なら false (呼び出し側は警告して続行してよい —
-   *   その場合もスナップショット一貫性により proof 自体は整合する)
+   * 待ち方は進捗ベース (#225): PoSW は Worker 障害時もメインスレッドで必ず完了するため、
+   * 排出が終わらない主因は「キューが長い」であって恒久停止ではない。固定 5 秒で諦めず、
+   * 残件が減り続けている限り待ち、停滞したときだけ諦める (上限は `maxWaitMs`)。
+   *
+   * @returns 排出できたか (`drained`) と打ち切り理由・残件数。`drained === false` のとき
+   *   content と chain は食い違いうるので、その content で proof を作ってはいけない。
    */
-  async waitForQueueDrain(timeoutMs = 5000): Promise<boolean> {
-    const start = performance.now();
-    while (this.pendingEvents.length > 0 || this.queuedEventCount > 0) {
-      if (performance.now() - start > timeoutMs) return false;
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-    return true;
+  async waitForQueueDrain(options: QueueDrainOptions = {}): Promise<QueueDrainResult> {
+    return waitForQueueDrain(
+      () => ({
+        remaining: Math.max(this.pendingEvents.length, this.queuedEventCount),
+        committed: this.events.length,
+      }),
+      options
+    );
   }
 
   /**
