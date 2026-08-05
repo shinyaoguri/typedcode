@@ -134,7 +134,6 @@ __BUILD_DATE__       // ビルド時刻
 | yaml | ^2.9 | テンプレート YAML 解析 |
 | vite | ^8.0 | ビルドツール (rolldown) |
 | vite-plugin-wasm | ^3.6 | WASM サポート |
-| vite-plugin-top-level-await | ^1.6 | トップレベル await のサポート |
 
 ## スクリーンショット機能
 

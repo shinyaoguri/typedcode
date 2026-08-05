@@ -31,6 +31,9 @@ npm run install-browsers -w @typedcode/e2e
 # 全シナリオ実行 (サーバは Playwright が自動起動)
 npm run test -w @typedcode/e2e
 
+# 本番ビルド (dist) のスモークだけを実行 (editor を build → vite preview)
+npm run test:build -w @typedcode/e2e
+
 # 失敗調査
 npm run test:headed -w @typedcode/e2e   # ブラウザを表示
 npm run report -w @typedcode/e2e        # 直近の HTML レポート (trace 付き)
@@ -38,6 +41,19 @@ npm run report -w @typedcode/e2e        # 直近の HTML レポート (trace 付
 
 ローカルで既に `npm run dev` を回している場合は `reuseExistingServer` でその
 サーバを再利用する (CI では毎回新規起動)。
+
+### 本番ビルド向けの別設定 (#255)
+
+上記の `npm run test` は **vite dev サーバ**に対して走るため、バンドル変換や
+チャンク分割に起因する退行を原理的に検出できない。実際 #255 では
+`vite-plugin-top-level-await` が monaco の関数巻き上げを壊し、**本番ビルドだけ
+エディタが起動しない**状態で CI が緑のまま main に載った。
+
+そのため [playwright.build.config.ts](playwright.build.config.ts) を別に持ち、
+`vite build` → `vite preview` (:4173) に対して
+[tests/production-build.spec.ts](tests/production-build.spec.ts) だけを走らせる
+(`npm run test:build`)。既定の `playwright.config.ts` は `testIgnore` でこの spec を
+外しているので、dev 向けシナリオの挙動は変わらない。
 
 ## CI / 環境の用意
 

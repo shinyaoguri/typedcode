@@ -96,6 +96,8 @@ jobs:
   # workers(wrangler dev) + editor(vite dev) を Playwright が起動。Turnstile は
   # Cloudflare 公開テストキー、checkpoint 署名鍵は実行時に新規生成 (秘密はコミットしない)。
   # コピペ/フルスクリーン等のブラウザ依存挙動もここで自動検証していく。
+  # 最後に本番ビルド (vite preview) のスモークも踏む (#255)。この job は
+  # deploy-preview / deploy-staging / deploy-production の必須ゲート。
   # --------------------------------------------------------------------
   e2e:
     runs-on: ubuntu-latest
@@ -122,6 +124,14 @@ jobs:
 
       - name: Run E2E (editor → export → verify-cli round-trip)
         run: npm run test -w @typedcode/e2e
+
+      # 本番ビルド (vite build → vite preview) のスモーク。上の round-trip は
+      # vite dev サーバに対して走るため、バンドル変換やチャンク分割に起因する退行を
+      # 原理的に検出できない (#255)。この 1 本だけ dist を実際に配信して踏む。
+      - name: Run production-build smoke (vite build → vite preview)
+        run: npm run test:build -w @typedcode/e2e
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Upload Playwright report on failure
         if: failure()

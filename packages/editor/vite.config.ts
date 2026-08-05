@@ -1,6 +1,5 @@
 import { defineConfig, loadEnv } from 'vite';
 import wasm from 'vite-plugin-wasm';
-import topLevelAwait from 'vite-plugin-top-level-await';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -48,7 +47,11 @@ if (workersPort) {
 export default defineConfig({
   plugins: [
     wasm(),
-    topLevelAwait(),
+    // vite-plugin-top-level-await は使わない (#255)。このプラグインは
+    // チャンクの全エクスポートを先頭の let へ巻き上げて本体を async IIFE で包むため、
+    // 関数宣言の巻き上げに依存している monaco (vs/platform/instantiation) が壊れ、
+    // 本番ビルドのエディタが起動しなくなる。build.target: 'esnext' と
+    // worker.format: 'es' でネイティブ TLA が使えるので、そもそも不要。
     // dev サーバで `/author` (拡張子なし) を `/author.html` に解決する。
     // 本番 (Cloudflare Pages) は clean URL で `/author` → `author.html` を自動配信するため不要。
     {
