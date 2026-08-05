@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { TypingProof, computeHash, verifyProofMetadata, verifyCheckpoints } from '../index.js';
+import { TypingProof, computeHash, verifyProofMetadata, verifyCheckpoints, verifyContentReplay } from '../index.js';
 import type { FingerprintComponents } from '../types.js';
 
 const createMockFingerprintComponents = (): FingerprintComponents => ({
@@ -96,6 +96,20 @@ describe('exportProof snapshot consistency (#143)', () => {
 
   it('waitForQueueDrain resolves once all recorded events are on the chain', async () => {
     const { proof } = await buildProof('a');
-    await expect(proof.waitForQueueDrain(1000)).resolves.toBe(true);
+    await expect(proof.waitForQueueDrain({ maxWaitMs: 1000 })).resolves.toMatchObject({
+      drained: true,
+      remaining: 0,
+      reason: 'drained',
+    });
+  });
+
+  // #225: snapshot 一貫性は content との整合を守らない。exporter が排出待ちに失敗したまま
+  // buffer 内容で proof を作ってはいけない理由 (= 何が壊れるか) をここで固定する。
+  it('rejects exported content that contains a keystroke missing from the chain', async () => {
+    const { proof, content } = await buildProof('ab');
+    // 直前の 'c' がまだ PoSW キューにあり、チェーンには載っていない状況。
+    const bufferContent = `${content}c`;
+    const exported = await proof.exportProof(bufferContent);
+    expect(verifyContentReplay(exported.proof.events, bufferContent)).toMatchObject({ valid: false });
   });
 });

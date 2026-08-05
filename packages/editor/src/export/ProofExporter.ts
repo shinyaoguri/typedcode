@@ -26,6 +26,11 @@ export interface ExportCallbacks {
 }
 
 export class ProofExporter {
+  /** 記録キュー排出待ち (#225): 残件が減らないまま何 ms 経ったら諦めるか。 */
+  private static readonly DRAIN_STALL_MS = 5000;
+  /** 記録キュー排出待ち (#225): 進捗が続いていても待ち続ける上限。無限待ちを防ぐ。 */
+  private static readonly DRAIN_MAX_WAIT_MS = 60000;
+
   private tabManager: TabManager | null = null;
   private processingDialog: ProcessingDialog | null = null;
   private exportProgressDialog: ExportProgressDialog;
@@ -294,6 +299,42 @@ export class ProofExporter {
   }
 
   /**
+   * 記録キューの排出を待ち、待ちきれなければ export を中止する (#225)。
+   *
+   * export は `model.getValue()` を content として焼くが、exportProof が同梱する events は
+   * 排出済みイベントのスナップショットしか含まない。排出しきれないまま export すると
+   * 「content にはあるが chain には無い」proof になり、content replay (検証 Layer 4) が
+   * 最終内容と一致せず **proof 全体が invalid** になる — 学生に過失が無いまま答案が検証不能
+   * になるので絶対に出さない。content を replay 結果へ切り詰める案 (#225 の選択肢 A) は
+   * 「画面に見えている直前の打鍵が提出物から黙って消える」ためデータ欠落として採らない
+   * (復元経路の `reconcileRestoredContent` が切り詰めるのは、クラッシュ後で buffer を信用
+   * できずチェーンだけが真実という別状況だから)。
+   *
+   * 待ち方は進捗ベース: PoSW は Worker 障害時もメインスレッドにフォールバックして必ず完了
+   * するので、排出が終わらない主因は「キューが長い」。残件が減り続けている限り待ち、
+   * 停滞したときだけ諦める (上限 `DRAIN_MAX_WAIT_MS`)。長引く間は残件数をダイアログに出す。
+   *
+   * @returns export を続行してよいか
+   */
+  private async drainQueueOrAbort(tab: TabState): Promise<boolean> {
+    const result = await tab.typingProof.waitForQueueDrain({
+      stallTimeoutMs: ProofExporter.DRAIN_STALL_MS,
+      maxWaitMs: ProofExporter.DRAIN_MAX_WAIT_MS,
+      onProgress: (remaining) => {
+        if (remaining > 0) this.exportProgressDialog.showDrainProgress(remaining);
+      },
+    });
+    if (result.drained) return true;
+
+    console.error(
+      `[ProofExporter] tab ${tab.id}: event queue did not drain (${result.reason}, ${result.remaining} remaining after ${Math.round(result.waitedMs)}ms); aborting export to avoid a proof whose content is not on the chain`
+    );
+    this.exportProgressDialog.hide();
+    this.callbacks.onNotification?.(t('export.queueNotDrained'));
+    return false;
+  }
+
+  /**
    * タイムスタンプ文字列を生成
    */
   private generateTimestamp(): string {
@@ -350,11 +391,11 @@ export class ProofExporter {
       // エクスポート前に明示的に同期を取る必要がある
       await this.tabManager?.flushToIndexedDB();
 
-      // #143: 直前の打鍵がまだ PoSW キューにあると「content には載っているのに
-      // チェーンに無い」export になり content replay で fail する。先に排出を待つ。
-      const drained = await activeTab.typingProof.waitForQueueDrain(5000);
-      if (!drained) {
-        console.warn('[ProofExporter] event queue did not drain within 5s; exporting the chain-consistent snapshot');
+      // #143/#225: 直前の打鍵がまだ PoSW キューにあると「content には載っているのに
+      // チェーンに無い」export になり content replay で fail する。先に排出を待ち、
+      // 待ちきれなければ export を中止する。
+      if (!(await this.drainQueueOrAbort(activeTab))) {
+        return;
       }
       const content = activeTab.model.getValue();
       // exportProof() は最終 checkpoint を作成して onCheckpointCreated フックを発火する。
@@ -529,12 +570,11 @@ export class ProofExporter {
           total: allTabs.length,
         });
 
-        // #143: waitForProcessingComplete はアクティブタブしか待たない。タブ毎に
-        // キュー排出を待ってから content を確定する (排出しきれなくてもスナップショット
-        // 一貫性で proof 自体は整合するが、直前の打鍵が export に載らない)。
-        const drained = await tab.typingProof.waitForQueueDrain(5000);
-        if (!drained) {
-          console.warn(`[ProofExporter] tab ${tab.id}: event queue did not drain within 5s`);
+        // #143/#225: waitForProcessingComplete はアクティブタブしか待たない。タブ毎に
+        // キュー排出を待ってから content を確定する。1 タブでも排出しきれなければ
+        // ZIP 全体を中止する (そのタブだけ invalid な proof を混ぜない)。
+        if (!(await this.drainQueueOrAbort(tab))) {
+          return;
         }
         const content = tab.model.getValue();
         const proof = await tab.typingProof.exportProof(content);

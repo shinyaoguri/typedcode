@@ -411,6 +411,10 @@ export interface TranslationKeys {
     statusScreenshots: string;
     statusGenerating: string;
     statusComplete: string;
+    /** 記録キュー排出待ちの進捗 (#225)。`${count}` = 残件数 */
+    statusDraining: string;
+    /** 排出できず export を中止したときの通知 (#225) */
+    queueNotDrained: string;
   };
 
   // Terminal / Runtime

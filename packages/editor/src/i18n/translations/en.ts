@@ -405,6 +405,9 @@ export const en: TranslationKeys = {
     statusScreenshots: 'Collecting screenshots...',
     statusGenerating: 'Generating ZIP file...',
     statusComplete: 'Complete',
+    statusDraining: 'Recording your keystrokes... (${count} left)',
+    queueNotDrained:
+      'Export cancelled because your keystrokes are still being recorded (a proof that omits them cannot be verified). Your code is untouched — please wait a few seconds and download again.',
   },
 
   terminal: {

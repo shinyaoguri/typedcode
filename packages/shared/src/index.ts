@@ -8,6 +8,14 @@ export * from './types.js';
 // タイピング証明
 export { TypingProof } from './typingProof.js';
 
+// 記録キューの排出待ち (#225) — exporter が待機ポリシーを指定し、結果で export 継続を判断する
+export type { QueueDrainOptions, QueueDrainResult, QueueDrainReason } from './typingProof/queueDrain.js';
+export {
+  DEFAULT_QUEUE_DRAIN_STALL_MS,
+  DEFAULT_QUEUE_DRAIN_MAX_WAIT_MS,
+  DEFAULT_QUEUE_DRAIN_POLL_MS,
+} from './typingProof/queueDrain.js';
+
 // フィンガープリント
 export { Fingerprint } from './fingerprint.js';
 
