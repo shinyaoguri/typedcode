@@ -1,0 +1,219 @@
+name: Freshness
+
+# 週次の鮮度チェック。「放っておくと静かに腐る参照」をまとめて検知し、
+# 結果があるときだけ Issue に集約する (毎週 Issue を増やさないよう、
+# 同タイトルの open Issue があればコメント追記に切り替える)。
+#
+# 検査項目:
+#   1. リポ内 Markdown の相対リンク切れ (docs/ADR ↔ 実装のパスずれを拾う)
+#   2. npm 依存の古さ (npm outdated の要約)
+on:
+  schedule:
+    # 毎週月曜 00:00 UTC (= 月曜 09:00 JST)
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      # ------------------------------------------------------------------
+      # 1. Markdown の相対リンク切れ
+      #    `](...)` の対象を抽出し、ファイル/ディレクトリの実在を確認する。
+      #    除外: 外部 URL・mailto/tel/data・アンカーのみ (`#...`)・
+      #          サイト絶対パス (`/casual` などルーティング用でリポ内パスではない)・
+      #          gitignore 対象 (`.env` / `.dev.vars` など「開発者が作る前提」の参照)
+      # ------------------------------------------------------------------
+      - name: Check relative Markdown links
+        id: links
+        run: |
+          set -euo pipefail
+          report="${RUNNER_TEMP}/links.md"
+          : > "$report"
+
+          while IFS= read -r file; do
+            dir="$(dirname "$file")"
+            while IFS= read -r raw; do
+              target="${raw#](}"
+              if [ -z "$target" ]; then
+                continue
+              fi
+              case "$target" in
+                http://*|https://*|//*|mailto:*|tel:*|data:*|'#'*|'<'*) continue ;;
+                /*) continue ;;
+              esac
+              # アンカーとクエリを除いたパス部分で判定する
+              target="${target%%#*}"
+              target="${target%%\?*}"
+              if [ -z "$target" ]; then
+                continue
+              fi
+              if [ -e "${dir}/${target}" ]; then
+                continue
+              fi
+              if git check-ignore -q "${dir}/${target}" 2>/dev/null; then
+                continue
+              fi
+              printf -- '- `%s` → `%s`\n' "$file" "$target" >> "$report"
+            done < <(grep -oE '\]\([^)[:space:]]*' "$file" || true)
+          done < <(git ls-files '*.md')
+
+          count="$(wc -l < "$report" | tr -d ' ')"
+          echo "count=${count}" >> "$GITHUB_OUTPUT"
+          echo "Broken relative links: ${count}"
+          cat "$report"
+
+      # ------------------------------------------------------------------
+      # 2. npm 依存の古さ
+      #    npm outdated は更新があると exit 1 を返すので `|| true` で握る。
+      # ------------------------------------------------------------------
+      - name: Check outdated npm dependencies
+        id: deps
+        run: |
+          set -euo pipefail
+          raw="${RUNNER_TEMP}/outdated.json"
+          npm outdated --workspaces --include-workspace-root --json > "$raw" || true
+
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
+
+            const rawPath = `${process.env.RUNNER_TEMP}/outdated.json`;
+            const outPath = `${process.env.RUNNER_TEMP}/deps.md`;
+            const text = readFileSync(rawPath, "utf8").trim();
+            const data = text ? JSON.parse(text) : {};
+
+            // 同名パッケージが複数 workspace で別バージョンのときは配列になる
+            const rows = Object.entries(data).flatMap(([name, info]) =>
+              (Array.isArray(info) ? info : [info]).map((i) => ({
+                name,
+                current: i.current ?? "-",
+                wanted: i.wanted ?? "-",
+                latest: i.latest ?? "-",
+                dependent: i.dependent ?? "-",
+              })),
+            );
+
+            const majorOf = (v) => Number.parseInt(String(v).split(".")[0], 10);
+            const isMajorBehind = (r) => {
+              const c = majorOf(r.current);
+              const l = majorOf(r.latest);
+              return Number.isFinite(c) && Number.isFinite(l) && l > c;
+            };
+
+            const lines = [];
+            if (rows.length > 0) {
+              const major = rows.filter(isMajorBehind);
+              lines.push(`古い依存: **${rows.length} 件** (うち major 更新あり: **${major.length} 件**)`, "");
+              if (major.length > 0) {
+                lines.push("major が上がっているもの (破壊的変更の可能性あり):", "");
+                lines.push("| package | current | latest | workspace |");
+                lines.push("|---|---|---|---|");
+                for (const r of major) {
+                  lines.push(`| \`${r.name}\` | ${r.current} | ${r.latest} | ${r.dependent} |`);
+                }
+                lines.push("");
+              }
+              lines.push("<details><summary>全件 (npm outdated)</summary>", "");
+              lines.push("| package | current | wanted | latest | workspace |");
+              lines.push("|---|---|---|---|---|");
+              for (const r of rows.sort((a, b) => a.name.localeCompare(b.name))) {
+                lines.push(`| \`${r.name}\` | ${r.current} | ${r.wanted} | ${r.latest} | ${r.dependent} |`);
+              }
+              lines.push("", "</details>");
+            }
+
+            writeFileSync(outPath, lines.length > 0 ? `${lines.join("\n")}\n` : "");
+            appendFileSync(process.env.GITHUB_OUTPUT, `count=${rows.length}\n`);
+            console.log(`Outdated dependencies: ${rows.length}`);
+          '
+
+      # ------------------------------------------------------------------
+      # 3. 検知結果の集約 (0 件なら Issue を作らずに終わる)
+      # ------------------------------------------------------------------
+      - name: Compose report
+        id: report
+        env:
+          LINKS_COUNT: ${{ steps.links.outputs.count }}
+          DEPS_COUNT: ${{ steps.deps.outputs.count }}
+        run: |
+          set -euo pipefail
+          body="${RUNNER_TEMP}/report.md"
+
+          {
+            echo "## 鮮度チェック結果 (${GITHUB_WORKFLOW})"
+            echo
+            echo "- 実行: [\`${GITHUB_RUN_ID}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo "- 対象コミット: \`${GITHUB_SHA}\`"
+            echo
+          } > "$body"
+
+          if [ "$LINKS_COUNT" -gt 0 ]; then
+            {
+              echo "### 1. Markdown の相対リンク切れ (${LINKS_COUNT} 件)"
+              echo
+              echo "参照先が存在しません。リンク先の移動・削除に docs が追従できていない可能性があります。"
+              echo
+              cat "${RUNNER_TEMP}/links.md"
+              echo
+            } >> "$body"
+          fi
+
+          if [ "$DEPS_COUNT" -gt 0 ]; then
+            {
+              echo "### 2. npm 依存の古さ"
+              echo
+              cat "${RUNNER_TEMP}/deps.md"
+              echo
+            } >> "$body"
+          fi
+
+          if [ "$LINKS_COUNT" -gt 0 ] || [ "$DEPS_COUNT" -gt 0 ]; then
+            echo "has_findings=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_findings=false" >> "$GITHUB_OUTPUT"
+            echo "鮮度チェックの検知は 0 件。Issue は作成しません。"
+          fi
+
+      # ------------------------------------------------------------------
+      # 4. Issue へ集約
+      #    同タイトルの open Issue があれば新規作成せずコメント追記する
+      #    (週次で Issue が増殖しないように)。
+      # ------------------------------------------------------------------
+      - name: Create or update freshness issue
+        if: steps.report.outputs.has_findings == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: 'chore: 鮮度チェックの検知結果 (自動)'
+        run: |
+          set -euo pipefail
+          body="${RUNNER_TEMP}/report.md"
+
+          existing="$(gh issue list --state open --limit 200 --json number,title \
+            --jq '[.[] | select(.title == env.ISSUE_TITLE)] | .[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            echo "既存 Issue #${existing} にコメント追記します。"
+            gh issue comment "$existing" --body-file "$body"
+          else
+            echo "新規 Issue を作成します。"
+            gh issue create --title "$ISSUE_TITLE" --body-file "$body"
+          fi
