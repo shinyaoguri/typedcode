@@ -57,7 +57,7 @@ ProofExporter.export()
 
 ## よくある罠
 
-- **`vite-plugin-top-level-await` は rollup を要求**: Vite 8 は rolldown ベースだが、このプラグインが rollup を `require` する。`package.json` の `devDependencies` に `rollup` を明示しないとビルドが落ちる
+- **`vite-plugin-top-level-await` を再導入しない (#255)**: このプラグインはチャンクの全エクスポートを先頭の `let` に巻き上げて本体を async IIFE で包む。`export function` が代入文に降格するため、**関数宣言の巻き上げに依存している monaco** (`vs/platform/instantiation`: `createDecorator` を定義より前に呼ぶ) が壊れ、`createDecorator is not a function` → 以降のエクスポート代入が全て飛び `Class extends value undefined` に至る。**dev サーバでは再現せず本番ビルドだけが壊れる**ので、`packages/e2e/tests/production-build.spec.ts` (vite preview 対象) が番人。`build.target` を `esnext` から下げるときだけ再検討の余地がある
 - **Monaco の `onDidChangeModelContent` イベントは ICustomEvent ではない**: `InputDetector` で paste を判定するときの DOM event は `editor.onDidPaste` 経由で取る (Monaco の paste は contentChange と paste の 2 段)
 - **IndexedDB のバージョンマイグレーション**: スキーマを変えるときは `STORAGE_FORMAT_VERSION` を bump し、`shared` のマイグレーション関数を更新する
 - **ビルド時に注入される `__GIT_COMMIT__` 等**: dev サーバでは undefined になることがあるので、参照側でフォールバックを持つ
