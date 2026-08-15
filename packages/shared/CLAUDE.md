@@ -16,6 +16,7 @@
 7. **anchored root 式の二重定義を一致させる** (ADR-0017): casual/class の anchored root は `computeAnchoredChainRoot` (verifier) と `HashChainManager.generateAnchoredInitialHash` (editor) の **2 箇所**に `SHA256(fp ‖ localNonce ‖ serverNonce)` を持つ。exam の `computeExamChainRoot`/`generateExamInitialHash` と同じ轍。式を変えるなら両方＋テストを同時に直す
 5. **`CheckpointManager`** はステートフル。`shouldCreateCheckpoint` の判定は最終 cp の eventIndex / 時刻に依存する。`setCheckpoints` で復元する際は内部状態も再構築すること (実装済み)
 6. **検証は cp の間隔を仮定しない**: `verify` 側は cp の存在を補助メタデータとしてのみ扱い、未署名 cp の sampling は信頼しない ([docs/adr/0004-verifier-checkpoint-stance.md](../../docs/adr/0004-verifier-checkpoint-stance.md))
+8. **`isPureTyping` の判定点は 1 つ** (#235): `structuralEdit.ts` の `evaluatePureTyping` だけが決める。export 時の自己申告 (`TypingProof`) と採点側の再計算 (`verifyProofMetadata`) が同じ関数を呼ぶので、proof に焼かれる値と検証器の結論が食い違わない。**別の場所に式を書き足さないこと**。なお `metadata.bulkInsertEvents` は `isSuspiciousBulkInsert` の素のカウントのままで、こちらは申告値との完全一致を要求するので定義を変えると既存 proof が invalid になる
 
 ## モジュール一覧
 
@@ -47,7 +48,8 @@
 
 - `types/` 配下にカテゴリ別 (`events.ts`, `proof.ts`, `storage.ts`, ...) で配置
 - ルート `types.ts` がすべて re-export
-- **新しいイベント / 入力タイプを追加するときは `types/events.ts` だけでなく `InputTypeValidator.ts` と CLAUDE.md / system-spec.md / shared README も同時更新**。過去にこの同期が崩れて事故った
+- **新しいイベント / 入力タイプを追加するときは `types/events.ts` だけでなく CLAUDE.md / system-spec.md / shared README も同時更新**。過去にこの同期が崩れて事故った (#222: `VALID_EVENT_TYPES` が 26 種のまま union の 29 種から取り残された)
+- `InputTypeValidator.ts` の `VALID_EVENT_TYPES` / `VALID_INPUT_TYPES` は **union から導出済み**なので手動同期は不要 — `EventType` / `InputType` に型を足すと **tsc が記入漏れを検出**する (#235 と同じ「文書ルールでなく機械で強制する」方針)
 
 ## テスト規約 (#4 テスト強化の方針)
 

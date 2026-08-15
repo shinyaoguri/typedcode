@@ -42,6 +42,7 @@ import type { CheckpointCreatedHook } from './CheckpointManager.js';
 import type { SignedCheckpointEnvelope } from '../types.js';
 import { StatisticsCalculator } from './StatisticsCalculator.js';
 import { isAllowedInputType, isProhibitedInputType } from './InputTypeValidator.js';
+import { evaluatePureTyping } from './structuralEdit.js';
 import { waitForQueueDrain, type QueueDrainOptions, type QueueDrainResult } from './queueDrain.js';
 import { sharedDebugLog } from '../utils/debug.js';
 
@@ -817,9 +818,11 @@ export class TypingProof {
     const proofString = JSON.stringify(proofData);
     const typingProofHash = await this.hashChainManager.computeHash(proofString);
 
-    // isPureTyping: 外部ペースト/ドロップがない場合はtrue
-    // 内部ペーストは許可されているため、isPureTypingには影響しない
-    const isPureTyping = stats.pasteEvents === 0 && stats.dropEvents === 0 && stats.bulkInsertEvents === 0;
+    // isPureTyping (advisory): 判定は structuralEdit の単一定義に委譲する (#235)。採点側の
+    // 再計算 (`verifyProofMetadata`) と同じ関数なので、proof に焼かれる自己申告と検証器の
+    // 結論が食い違わない。以前はここだけ `bulkInsertEvents === 0` という benign 除外なしの
+    // 式で、括弧自動閉じ (Monaco 既定 on) の `(` 1 つで false に落ちていた。
+    const isPureTyping = evaluatePureTyping(events).isPureTyping;
 
     return {
       typingProofHash,
@@ -836,6 +839,15 @@ export class TypingProof {
 
   /**
    * タイピング証明ハッシュを検証
+   *
+   * **ここが返す `isPureTyping` は判定の 3 つ目の定義ではない** (#235)。本メソッドは
+   * `proofData.metadata` (自己申告のカウント) しか受け取らず events を持たないため、
+   * 括弧自動閉じ等の benign 除外・内部ペーストの replay 検証・乖離 snapshot の検出
+   * (すべて events が要る) を行えない。**メタデータのみからの粗い自己チェック**であり、
+   * 採点側の結論 (`verifyProofMetadata` → `evaluatePureTyping`) とは一致しない
+   * (こちらの方が厳しく false に倒れる)。採点・表示に使う値は必ず events を渡せる
+   * `verifyProofMetadata` から取ること。
+   *
    * @param typingProofHash - 検証するハッシュ
    * @param proofData - 証明データ
    * @param finalContent - 最終コード
@@ -864,6 +876,7 @@ export class TypingProof {
       };
     }
 
+    // events が無いためメタデータのみの粗い判定 (上の JSDoc 参照)。
     const isPureTyping =
       proofData.metadata.pasteEvents === 0 &&
       proofData.metadata.dropEvents === 0 &&

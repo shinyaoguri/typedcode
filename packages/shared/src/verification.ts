@@ -24,13 +24,8 @@ export {
 
 import { deterministicStringify, computeHash } from './utils/hashUtils.js';
 import { computeExamChainRoot } from './exam/examPackage.js';
-import {
-  isBenignEditorInsert,
-  isFlaggedBulkInsert,
-  isSuspiciousBulkInsert,
-  SessionProvenanceLedger,
-} from './typingProof/structuralEdit.js';
-import { isDivergentContentSnapshot, isTemplateInjectionData, offsetFromRange } from './typingProof/replay.js';
+import { evaluatePureTyping } from './typingProof/structuralEdit.js';
+import { isTemplateInjectionData, offsetFromRange } from './typingProof/replay.js';
 import { POSW_ITERATIONS, EXAM_ROOT_BINDING_V2 } from './version.js';
 import { verifyProofSignedCheckpoints } from './signedCheckpoints.js';
 import { verifySessionStartToken, computeAnchoredChainRoot } from './sessionStartToken.js';
@@ -469,27 +464,8 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
   let dropEvents = 0;
   let insertEvents = 0;
   let deleteEvents = 0;
-  const suspiciousBulkInsertEventIndexes: number[] = [];
-  // isPureTyping を崩す「正規でない bulk 挿入」の数。2 種を拾う:
-  //  (a) 従来の suspicious bulk (insertReplacementText/replaceContent/insertText>1/大内部ペースト)
-  //      のうち、括弧自動閉じ・単一行補完などの benign と、検証済み内部ペースト (自分の
-  //      コードのコピペ = 許可。#138 の replay 検証に合格したもの) を除いたもの。
-  //  (b) 複数行の実コード一括投入 (AI/snippet)。Monaco は insertParagraph で記録するため
-  //      (a) の suspicious 判定には載らないので別途拾う。空白のみの auto-indent と
-  //      検証済み内部ペーストの実挿入は除外。
-  // bulkInsertEvents の申告メタデータ照合 (verifyProofMetadata) は従来どおり suspicious のみ
-  // 数えるので、既存 proof との後方互換と整合性チェックは保たれる。
-  let nonBenignBulkInsertCount = 0;
-  // #175: replay 文書と乖離した contentSnapshot。挿入イベント無しで文書を丸ごと差し替え
-  // られる唯一の口なので、外部入力相当として isPureTyping を崩す (正規 snapshot は常に
-  // 一致する no-op なので既存 proof に影響しない)。claimed metadata との照合カウントには
-  // 含めない (後方互換)。
-  const divergentContentSnapshotEventIndexes: number[] = [];
-  // #138: 内部ペーストの許可はマーカー (自己申告) でなく、replay で検証したセッション内在性。
-  const ledger = new SessionProvenanceLedger();
 
-  for (let i = 0; i < events.length; i++) {
-    const event = events[i];
+  for (const event of events) {
     if (!event) continue;
 
     if (event.inputType === 'insertFromPaste') pasteEvents++;
@@ -497,17 +473,14 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
     if (event.inputType === 'insertFromDrop') dropEvents++;
     if (event.type === 'contentChange' && event.data) insertEvents++;
     if (event.inputType?.startsWith('delete')) deleteEvents++;
-
-    if (isDivergentContentSnapshot(event, ledger.currentContent)) {
-      divergentContentSnapshotEventIndexes.push(i);
-    }
-    const sessionDerived = ledger.checkAndApply(event);
-    const suspicious = isSuspiciousBulkInsert(event);
-    if (suspicious) suspiciousBulkInsertEventIndexes.push(i);
-    if ((suspicious && !isBenignEditorInsert(event) && !sessionDerived) || isFlaggedBulkInsert(event, sessionDerived)) {
-      nonBenignBulkInsertCount++;
-    }
   }
+
+  // isPureTyping (advisory) の判定は structuralEdit の単一定義に委譲する (#235)。export 側の
+  // 自己申告 (`TypingProof.generateTypingProofHash`) も同じ関数を使うため、proof に焼かれる
+  // 申告値と採点側の結論が食い違わない。`suspiciousBulkInsertEventIndexes` (= 申告メタデータ
+  // 照合に使う bulkInsertEvents の再計算値) の定義は従来どおりで、後方互換は保たれる。
+  const pureTyping = evaluatePureTyping(events);
+  const { suspiciousBulkInsertEventIndexes, divergentContentSnapshotEventIndexes } = pureTyping;
 
   const totalTypingTime = events[events.length - 1]?.timestamp ?? 0;
   const averageTypingSpeed = totalTypingTime > 0 ? Math.round((insertEvents / (totalTypingTime / 60000)) * 10) / 10 : 0;
@@ -526,11 +499,7 @@ function recomputeProofMetadata(events: StoredEvent[]): ProofMetadataVerificatio
 
   return {
     valid: true,
-    isPureTyping:
-      pasteEvents === 0 &&
-      dropEvents === 0 &&
-      nonBenignBulkInsertCount === 0 &&
-      divergentContentSnapshotEventIndexes.length === 0,
+    isPureTyping: pureTyping.isPureTyping,
     recomputedMetadata,
     suspiciousBulkInsertEventIndexes,
     divergentContentSnapshotEventIndexes,

@@ -201,3 +201,77 @@ export function isFlaggedBulkInsert(event: StoredEvent, sessionDerived: boolean)
   // 内部ペースト (自分のコード) の実挿入は許可。AI/外部の一括投入だけ残す。
   return !sessionDerived;
 }
+
+/** `evaluatePureTyping` の結果。isPureTyping の内訳を呼び出し側へ返す。 */
+export interface PureTypingEvaluation {
+  /** advisory な「打鍵だけで書かれたか」。決定ロジックは `evaluatePureTyping` だけが持つ。 */
+  isPureTyping: boolean;
+  /** isPureTyping を崩した bulk 挿入の件数 (benign / 検証済み内部ペーストを除いたもの)。 */
+  nonBenignBulkInsertCount: number;
+  /** `isSuspiciousBulkInsert` の素のヒット位置。`metadata.bulkInsertEvents` の再計算値。 */
+  suspiciousBulkInsertEventIndexes: number[];
+  /** replay 文書と乖離した contentSnapshot の位置 (#175)。 */
+  divergentContentSnapshotEventIndexes: number[];
+}
+
+/**
+ * advisory な `isPureTyping` の **単一の判定点** (#235)。
+ *
+ * 以前は 3 箇所に別々の式があり、export 時の自己申告 (`TypingProof`) は
+ * `bulkInsertEvents === 0`、つまり benign 除外なしの厳しい式だった。Monaco の括弧自動閉じ
+ * (既定 on) で `(` を 1 つ打つだけで自己申告が false に落ち、採点側 (`verifyProofMetadata`)
+ * の true と食い違う値が proof に焼かれていた。判定はこの関数だけが持つ。
+ *
+ * isPureTyping を崩すのは 4 つ:
+ *  - 外部ペースト / ドロップ (禁止入力そのもの)
+ *  - 「正規でない bulk 挿入」= (a) 従来の suspicious bulk (insertReplacementText /
+ *    replaceContent / insertText>1 / 大きな内部ペースト) のうち benign (括弧自動閉じ・
+ *    上限内の単一行補完) と検証済み内部ペースト (#138) を除いたもの、(b) 複数行の実コード
+ *    一括投入 (AI/snippet)。Monaco は (b) を `insertParagraph` で記録するので (a) の
+ *    suspicious 判定には載らず、別途拾う必要がある
+ *  - replay 文書と乖離した contentSnapshot (#175。挿入イベント無しで文書を丸ごと差し替え
+ *    られる唯一の口)
+ *
+ * **`metadata.bulkInsertEvents` (= `suspiciousBulkInsertEventIndexes.length`) の定義は
+ * ここでも変えない。** `verifyProofMetadata` が申告値との完全一致を要求するため、変えると
+ * 既存 proof が invalid になる (`isSuspiciousBulkInsert` の警告コメント参照)。
+ */
+export function evaluatePureTyping(events: readonly StoredEvent[]): PureTypingEvaluation {
+  let pasteEvents = 0;
+  let dropEvents = 0;
+  let nonBenignBulkInsertCount = 0;
+  const suspiciousBulkInsertEventIndexes: number[] = [];
+  const divergentContentSnapshotEventIndexes: number[] = [];
+  // #138: 内部ペーストの許可はマーカー (自己申告) でなく、replay で検証したセッション内在性。
+  const ledger = new SessionProvenanceLedger();
+
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    if (!event) continue;
+
+    if (event.inputType === 'insertFromPaste') pasteEvents++;
+    if (event.inputType === 'insertFromDrop') dropEvents++;
+
+    // 乖離判定は台帳へ適用する**前**の文書に対して行う (適用後だと必ず一致してしまう)。
+    if (isDivergentContentSnapshot(event, ledger.currentContent)) {
+      divergentContentSnapshotEventIndexes.push(i);
+    }
+    const sessionDerived = ledger.checkAndApply(event);
+    const suspicious = isSuspiciousBulkInsert(event);
+    if (suspicious) suspiciousBulkInsertEventIndexes.push(i);
+    if ((suspicious && !isBenignEditorInsert(event) && !sessionDerived) || isFlaggedBulkInsert(event, sessionDerived)) {
+      nonBenignBulkInsertCount++;
+    }
+  }
+
+  return {
+    isPureTyping:
+      pasteEvents === 0 &&
+      dropEvents === 0 &&
+      nonBenignBulkInsertCount === 0 &&
+      divergentContentSnapshotEventIndexes.length === 0,
+    nonBenignBulkInsertCount,
+    suspiciousBulkInsertEventIndexes,
+    divergentContentSnapshotEventIndexes,
+  };
+}
