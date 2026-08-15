@@ -60,7 +60,7 @@
 
 ## References
 
-- 検証エンジン: [`packages/verify/src/core/VerificationEngine.ts`](../../packages/verify/src/core/VerificationEngine.ts)
+- 検証エンジン: [`packages/verify/src/workers/verificationWorker.ts`](../../packages/verify/src/workers/verificationWorker.ts) (PR #252 以降は shared の `verifyProofFile` へ委譲)
 - shared 検証ロジック: [`packages/shared/src/verification.ts`](../../packages/shared/src/verification.ts)
 - ChainVerifier: [`packages/shared/src/typingProof/ChainVerifier.ts`](../../packages/shared/src/typingProof/ChainVerifier.ts)
 - PR #60 (Harden proof verification)

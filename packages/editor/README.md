@@ -23,7 +23,7 @@
 | C++ | Wasmer SDK | Clang++ WASM |
 | Python | Wasmer SDK | Python WASM ランタイム |
 | JavaScript | ネイティブ | ブラウザ eval + console キャプチャ |
-| TypeScript | SWC | JS にトランスパイルしてから eval |
+| TypeScript | typescript (`ts.transpileModule`) | JS にトランスパイルしてから eval |
 
 ## 開発
 
@@ -126,13 +126,15 @@ __BUILD_DATE__       // ビルド時刻
 
 | パッケージ | バージョン | 用途 |
 |---------|---------|---------|
-| monaco-editor | ^0.55 | コードエディタ本体 |
+| monaco-editor | ^0.56 | コードエディタ本体 |
 | @xterm/xterm | ^6.0 | ターミナルエミュレータ |
 | @xterm/addon-fit | ^0.11 | ターミナルの自動リサイズ |
 | @wasmer/sdk | ^0.10 | WebAssembly ランタイム |
+| dompurify | ^3.4 | 問題パネルの markdown 描画のサニタイズ |
 | jszip | ^3.10 | ZIP エクスポート |
+| marked | ^18.0 | 問題パネルの markdown 描画 |
 | yaml | ^2.9 | テンプレート YAML 解析 |
-| vite | ^8.0 | ビルドツール (rolldown) |
+| vite | ^8.1 | ビルドツール (rolldown) |
 | vite-plugin-wasm | ^3.6 | WASM サポート |
 
 ## スクリーンショット機能
