@@ -47,6 +47,7 @@ src/
 
 - ZIP 入力のとき、`screenshots/manifest.json` の entry と画像バイト列を突合し、さらにチェーンの `screenshotCapture.imageHash` (改ざん不能な唯一の真正記録) との裏付けを検査する。判定は **shared の `summarizeScreenshotArtifacts` / `checkScreenshotImage`** (verify web と同一実装) — CLI 側で再実装しない
 - **改ざん (tampered) は exit 1** (web の error 軸 / integrity failed と同じ結論)。欠損・chainOnly (チェーンに記録があるのに manifest に無い = 剥ぎ取り疑い) は warning のみで exit 非干渉
+- チェーンが健全でスクショだけ改ざんのときは、出力ヘッダに改ざん枚数を出す (#217)。exam 束縛のみ失敗と同型で、chain の成功メッセージを `Error:` として誤表示しない (両方落ちたときは両方出す)
 - JSON 単体入力は画像が無いので未検査 — 出力に `Screenshots: not checked` を明示する (overclaim 防止)
 - サマリは ZIP 単位で一度だけ計算し全 proof に共有する (スクショはセッション単位で proof 横断)。`deriveAssurance` へは `screenshotsTampered` として渡る
 
@@ -66,7 +67,7 @@ src/
 - 検証 (`--- Checks ---`) と**直交する advisory** を `--- Analysis (advisory) ---` セクションに出す。判定ではない (**exit code には一切影響させない** — ここを破ると ADR-0009 の直交性が壊れる)
 - 各 signal は severity (`INFO`/`NOTICE`/`REVIEW`) + summary + **evidence (event index)** を出す。evidence は人間が当該イベントを検分するためのリンクで ADR-0009 上必須
 - `--analysis-json <out.json>` (任意): 全 proof 分の `{filename, valid, analysis}` を JSON でファイル出力する。分析器の評価ハーネス / コホート集計の機械可読な入口 (Phase 8 W5)。advisory のみで exit code 非干渉
-- `--analysis-bundle <out.json>` (任意, ADR-0024 Tier A): 全 proof 分の **content-free な派生バンドル** `{filename, schema, integrityValid, processSummary, analysis, assurance}` を出力する。**events / ソース / fingerprint を含まない** (Tier A)。コホート基準 (ADR-0025) の入力フォーマット。組み立ては shared の `buildAnalysisBundle` に委譲 (CLI は result の content-free な派生物を渡すだけ)。advisory のみで exit code 非干渉
+- `--analysis-bundle <out.json>` (任意, ADR-0024 Tier A): 全 proof 分の **content-free な派生バンドル** `{filename, schema, integrityValid, processSummary, analysis, assurance}` を出力する。**events / ソース / fingerprint を含まない** (Tier A)。コホート基準 (ADR-0025) の入力フォーマット。組み立ては shared の `buildAnalysisBundle` に委譲 (CLI は result の content-free な派生物を渡すだけ)。advisory のみで exit code 非干渉。`integrityValid` は **gate 込みの総合 valid ではなく `assurance.integrity !== 'failed'`** (`toBundleIntegrityValid`, #219) — 契約は「整合性検証を通ったか」で、ADR-0031 の `'partial'` (検査を省略した) を失敗に潰さない
 - `--analyzer <module>` (任意・反復可) / `--no-default-analyzers` (ADR-0023 / プラットフォーム方針): 採点者/研究者の**外部 Analyzer** (ADR-0009 契約を default / `analyzer` / `analyzers` で export する ES モジュール) を**フォークせず**差し込む。既定では同梱分析器に**追加**、`--no-default-analyzers` で既定を外して外部のみ。読込は `src/analyzers.ts` の `loadExternalAnalyzers` (動的 import + 契約バリデーション + 重複 id 拒否) で、**分析ロジックは外部モジュール側**。`runAnalysis(input, analyzers)` に渡すだけ。advisory のみで exit code 非干渉。**注意**: 任意モジュールを動的 import する = 任意コード実行。信頼できるモジュールのみ
 - 分析ロジックは shared の `runAnalysis` に委譲。**CLI 側に分析器を書かない** (`--analyzer` も読込 I/O のみで中身は外部)
 

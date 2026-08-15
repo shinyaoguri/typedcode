@@ -77,6 +77,21 @@ export interface CLIVerificationResult {
   screenshots?: ScreenshotVerificationSummary;
 }
 
+/**
+ * Tier A バンドル (ADR-0024) の `integrityValid` へ渡す値を導く (#219)。
+ *
+ * - `CLIVerificationResult.valid` は `--require-root-anchor` などの **gate 込み**の総合判定なので、
+ *   「派生元 proof が整合性検証を通ったか」という ADR-0024 の契約とはずれる。そのまま渡すと
+ *   gate で落ちただけの proof が `integrityValid: false` かつ `assurance.integrity: 'proven'` という
+ *   自己矛盾したレコードになる。
+ * - `=== 'proven'` にしないのは、ADR-0031 (#253) で `IntegrityLevel` に `'partial'` が入り fast モードが
+ *   `'partial'` になるため。`'partial'` は「実施していない検査がある」であって「整合性が失敗した」では
+ *   ないので、ここで false に潰してはいけない。
+ */
+export function toBundleIntegrityValid(assurance: AssuranceResult): boolean {
+  return assurance.integrity !== 'failed';
+}
+
 export interface VerifyProofOptions {
   mode?: VerificationMode;
   /** `.tcexam` 問題パッケージ (任意)。あれば署名/復号/内容まで完全検証する。 */
