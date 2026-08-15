@@ -5,9 +5,9 @@ import { defineConfig, devices } from '@playwright/test';
  * round-trip を基本形にする (UI の見た目ではなく、暗号的に検証可能な成果物を
  * オラクルにする)。詳細は packages/e2e/README.md。
  *
- * 2 つのローカルサーバを起動する:
- *   - workers (wrangler dev :8787): /api/session/start・/api/verify-captcha・署名 CP
- *   - editor  (vite dev   :5173): テスト対象アプリ
+ * 2 つのローカルサーバを起動する (ポートは既定値。E2E_EDITOR_PORT / E2E_WORKERS_PORT で上書き可能):
+ *   - workers (wrangler dev 既定 :8787): /api/session/start・/api/verify-captcha・署名 CP
+ *   - editor  (vite dev   既定 :5173): テスト対象アプリ
  *
  * editor/.env は既に Cloudflare の Turnstile テストキー (1x...AA = 常に pass) と
  * VITE_API_URL=http://localhost:8787 を指すため、追加設定なしでフルスタックが回る。
@@ -64,10 +64,17 @@ export default defineConfig({
     },
   ],
 
+  // `port:` は TCP 応答しか見ないため、既定ポートを別プロセスが握っていると
+  // reuseExistingServer 時に「自分のサーバ」と誤認しうる (ローカル開発時のみ影響、
+  // CI は reuseExistingServer: false)。起動コマンド自体にもポートを渡し、
+  // E2E_EDITOR_PORT / E2E_WORKERS_PORT を指定したときに実際にそのポートで
+  // 上がるようにする (指定しない限りは無指定と同じ既定ポートに上がる)。
+  // 配線は scripts/dev.mjs (118-145 行目) と同じパターンを踏襲する。
   webServer: [
     {
       name: 'workers',
-      command: 'npm run dev -w @typedcode/workers',
+      // wrangler dev は env を読まないため、コマンド側に --port を渡す。
+      command: `npm run dev -w @typedcode/workers -- --port ${WORKERS_PORT}`,
       cwd: '../..',
       port: WORKERS_PORT,
       reuseExistingServer: !isCI,
@@ -78,6 +85,10 @@ export default defineConfig({
     {
       name: 'editor',
       command: 'npm run dev -w @typedcode/editor',
+      // packages/editor/vite.config.ts が EDITOR_PORT (server.port + strictPort) と
+      // WORKERS_PORT (VITE_API_URL 追従) を既に読む実装になっている。受け口は
+      // 実装済みで、これまで渡していなかっただけなので env で渡す。
+      env: { EDITOR_PORT: String(EDITOR_PORT), WORKERS_PORT: String(WORKERS_PORT) },
       cwd: '../..',
       port: EDITOR_PORT,
       reuseExistingServer: !isCI,
