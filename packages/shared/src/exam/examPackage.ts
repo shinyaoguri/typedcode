@@ -608,12 +608,10 @@ export async function verifyExamBinding(
     withinWindow,
   };
 
+  // time-box は advisory (ADR-0013)。valid には合流させない — 遅延提出 (や早期提出) の
+  // 扱いは提出窓を管理する Moodle 側の運用判断であって、暗号的束縛の検証失敗ではない。
   result.valid =
-    result.packageSignatureValid &&
-    result.packageHashMatches &&
-    result.rootMatches &&
-    result.problemContentHashMatches &&
-    withinWindow !== false; // submission 提供時のみ window 違反で fail
+    result.packageSignatureValid && result.packageHashMatches && result.rootMatches && result.problemContentHashMatches;
   return result;
 }
 

@@ -69,6 +69,31 @@ function examBindingFailed(): CLIExamResult {
   };
 }
 
+/** 束縛は全て通っているが提出が窓の外だった proof (time-box は advisory / ADR-0013)。 */
+function examBindingLate(): CLIExamResult {
+  return {
+    present: true,
+    examId: 'exam-1',
+    problemId: 'p1',
+    variant: null,
+    packageProvided: true,
+    rootBindingValid: true,
+    binding: {
+      valid: true,
+      packageSignatureValid: true,
+      packageHashMatches: true,
+      rootMatches: true,
+      problemContentHashMatches: true,
+      timeBox: {
+        releaseTime: '2026-06-06T00:00:00.000Z',
+        deadline: '2026-06-06T03:00:00.000Z',
+        windowCoherent: true,
+        withinWindow: false,
+      },
+    },
+  };
+}
+
 /** チェーン検証が通ったときに shared が返す (成功) メッセージ。 */
 const CHAIN_SUCCESS_MESSAGE = 'All hashes verified successfully (including PoSW)';
 
@@ -152,6 +177,23 @@ describe('formatResult — 総合 FAILED の理由表示 (#217)', () => {
     const header = failureHeader(text);
     expect(header).toContain('Exam binding failed: packageHash mismatch');
     expect(header).toContain('Screenshots failed: 1/8 tampered');
+  });
+});
+
+describe('formatResult — time-box は advisory (ADR-0013 / #220)', () => {
+  it('does not print FAIL on the time-box line of a late submission', () => {
+    const text = plain(formatResult(output({ exam: examBindingLate() })));
+
+    const windowLine = text.split('\n').find((line) => line.includes('Submitted within window'));
+    expect(windowLine).toBeDefined();
+    expect(windowLine).not.toContain('FAIL');
+  });
+
+  it('marks a missed submission window as advisory rather than a verification failure', () => {
+    const text = plain(formatResult(output({ exam: examBindingLate() })));
+
+    const windowLine = text.split('\n').find((line) => line.includes('Submitted within window')) ?? '';
+    expect(windowLine).toMatch(/advisory/i);
   });
 });
 
