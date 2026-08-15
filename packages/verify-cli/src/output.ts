@@ -219,8 +219,23 @@ export function formatResult(result: VerificationOutput): string {
     // \u300cError:\u300d\u3068\u3057\u3066\u51fa\u3059\u3068\u8aa4\u89e3\u3092\u62db\u304f\u3002\u305d\u306e\u5834\u5408\u306f exam \u675f\u7e1b\u306e\u7406\u7531\u3092\u51fa\u3059\u3002
     const examBindingFailedOnly =
       result.metadataValid && result.chainValid && !!result.exam?.binding && !result.exam.binding.valid;
-    if (examBindingFailedOnly) {
-      lines.push(c('red', `  Exam binding failed: ${result.exam!.binding!.reason ?? 'see section below'}`));
+    // #217: スクショ改ざんも同じ形の矛盾を起こす (チェーン健全 → errorMessage は成功文字列のまま、
+    // 総合 valid だけが screenshotsValid で false になる)。改ざん枚数を失敗理由として出す。
+    const tamperedShots = result.screenshots?.tampered ?? 0;
+    const screenshotsFailedOnly = result.metadataValid && result.chainValid && tamperedShots > 0;
+    if (examBindingFailedOnly || screenshotsFailedOnly) {
+      // 両方落ちることもある (exam proof の ZIP でスクショも改ざん) ので、片方に潰さず両方出す。
+      if (examBindingFailedOnly) {
+        lines.push(c('red', `  Exam binding failed: ${result.exam!.binding!.reason ?? 'see section below'}`));
+      }
+      if (screenshotsFailedOnly) {
+        lines.push(
+          c(
+            'red',
+            `  Screenshots failed: ${tamperedShots}/${result.screenshots!.total} tampered — hash mismatch or not backed by the chain`
+          )
+        );
+      }
     } else {
       if (result.errorMessage) {
         lines.push(c('red', `  Error: ${result.errorMessage}`));

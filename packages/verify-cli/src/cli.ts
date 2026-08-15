@@ -7,7 +7,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
-import { verifyProof, type ProofFile } from './verify.js';
+import { verifyProof, toBundleIntegrityValid, type ProofFile } from './verify.js';
 import { extractAllProofs, extractScreenshotArtifacts } from './zip.js';
 import { loadExternalAnalyzers } from './analyzers.js';
 import { formatResult, printError, printUsage } from './output.js';
@@ -188,7 +188,8 @@ async function main(): Promise<void> {
       // Tier A バンドル (ADR-0024): content-free な派生ビュー。--analysis-bundle 指定時のみ集める。
       if (analysisBundlePath !== undefined) {
         const bundle = buildAnalysisBundle({
-          integrityValid: result.valid,
+          // #219: gate 込みの result.valid ではなく整合性そのものを渡す (理由は関数の doc)。
+          integrityValid: toBundleIntegrityValid(result.assurance),
           processSummary: result.processSummary,
           analysis: result.analysis,
           assurance: result.assurance,

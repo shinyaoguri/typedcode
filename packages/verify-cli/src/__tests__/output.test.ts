@@ -7,8 +7,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { AssuranceResult } from '@typedcode/shared';
+import type { AssuranceResult, ScreenshotVerificationSummary } from '@typedcode/shared';
 import { formatResult, type VerificationOutput } from '../output.js';
+import type { CLIExamResult } from '../verify.js';
 
 /** 色付けは TTY 依存 (module load 時に決まる) なので、比較前に ANSI を落とす。 */
 function plain(text: string): string {
@@ -42,6 +43,117 @@ function output(overrides: Partial<VerificationOutput> = {}): VerificationOutput
     ...overrides,
   };
 }
+
+function screenshots(overrides: Partial<ScreenshotVerificationSummary> = {}): ScreenshotVerificationSummary {
+  return { total: 8, verified: 7, missing: 0, tampered: 1, chainOnly: 0, ...overrides };
+}
+
+/** exam 束縛だけが落ちた proof (チェーンは健全)。 */
+function examBindingFailed(): CLIExamResult {
+  return {
+    present: true,
+    examId: 'exam-1',
+    problemId: 'p1',
+    variant: null,
+    packageProvided: true,
+    rootBindingValid: true,
+    binding: {
+      valid: false,
+      packageSignatureValid: true,
+      packageHashMatches: false,
+      rootMatches: true,
+      problemContentHashMatches: true,
+      timeBox: null,
+      reason: 'packageHash mismatch',
+    },
+  };
+}
+
+/** チェーン検証が通ったときに shared が返す (成功) メッセージ。 */
+const CHAIN_SUCCESS_MESSAGE = 'All hashes verified successfully (including PoSW)';
+
+/** FAILED ヘッダから Assurance セクションまで = 「なぜ落ちたか」を述べる領域。 */
+function failureHeader(text: string): string {
+  return text.slice(text.indexOf('Verification FAILED'), text.indexOf('--- Assurance'));
+}
+
+describe('formatResult — 総合 FAILED の理由表示 (#217)', () => {
+  it('reports the chain failure reason when the chain itself is broken', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          chainValid: false,
+          errorMessage: 'Hash mismatch at event 3',
+          errorAt: 3,
+          assurance: assurance({ integrity: 'failed' }),
+        })
+      )
+    );
+
+    expect(failureHeader(text)).toContain('Error: Hash mismatch at event 3');
+  });
+
+  it('reports the exam binding reason when only the exam binding failed', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          errorMessage: CHAIN_SUCCESS_MESSAGE,
+          exam: examBindingFailed(),
+        })
+      )
+    );
+
+    expect(failureHeader(text)).toContain('Exam binding failed: packageHash mismatch');
+    expect(failureHeader(text)).not.toContain(CHAIN_SUCCESS_MESSAGE);
+  });
+
+  it('never presents the chain success message as the error when only screenshots were tampered', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          errorMessage: CHAIN_SUCCESS_MESSAGE,
+          screenshots: screenshots({ tampered: 1 }),
+        })
+      )
+    );
+
+    expect(failureHeader(text)).not.toContain(CHAIN_SUCCESS_MESSAGE);
+  });
+
+  it('names the tampered screenshots as the failure reason when only screenshots were tampered', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          errorMessage: CHAIN_SUCCESS_MESSAGE,
+          screenshots: screenshots({ tampered: 2, verified: 6 }),
+        })
+      )
+    );
+
+    expect(failureHeader(text)).toContain('Screenshots failed: 2/8 tampered');
+  });
+
+  it('reports both reasons when the exam binding and the screenshots failed together', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          errorMessage: CHAIN_SUCCESS_MESSAGE,
+          exam: examBindingFailed(),
+          screenshots: screenshots({ tampered: 1 }),
+        })
+      )
+    );
+
+    const header = failureHeader(text);
+    expect(header).toContain('Exam binding failed: packageHash mismatch');
+    expect(header).toContain('Screenshots failed: 1/8 tampered');
+  });
+});
 
 describe('formatResult — PoSW が再計算されなかったとき (fast モード)', () => {
   it('states next to the PASSED header that the PoSW was not recomputed', () => {
