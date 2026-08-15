@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: [main]
 
+# デフォルトは read-only。デプロイ等が必要な job は各 job の permissions で個別に昇格する
+# (161 / 260 / 321 行目付近)。リポジトリ設定は既に default_workflow_permissions: read だが、
+# 将来の設定変更に対する防御として明示する。
+permissions:
+  contents: read
+
 # ref ごとに 1 run。PR は新しい push で古い run をキャンセル (CI 節約)。
 # push (= deploy) はキャンセルせずキューイングし、最新 run が最後に走るので
 # 「古い deploy が後から完了して新しい成果物を上書きする」競合を防ぐ。
@@ -119,6 +125,26 @@ jobs:
       - name: Provision E2E env (test keys + 生成 checkpoint 鍵)
         run: npm run setup -w @typedcode/e2e
 
+      # キーには Playwright のバージョンを含める。package-lock.json のハッシュだけだと
+      # Playwright と無関係な依存更新でもキャッシュが無効化されてしまうため、
+      # `npx playwright --version` (インストール済み @playwright/test の CLI) が
+      # 報告する実バージョンを切り出してキーに使う (package.json の ^1.62.0 のような
+      # 範囲指定ではなく、実際に解決されたバージョンで判定するため)。
+      - name: Get installed Playwright version
+        id: playwright-version
+        run: echo "version=$(npx playwright --version | sed 's/Version //')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+          restore-keys: |
+            playwright-browsers-${{ runner.os }}-
+
+      # キャッシュヒット時も install は実行したままにする。ブラウザ本体が揃っていれば
+      # 即座に終わる一方、--with-deps が入れる OS 依存パッケージ (apt) はキャッシュの
+      # 対象外 (~/.cache/ms-playwright に含まれない) なので毎回必要。
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
@@ -191,19 +217,33 @@ jobs:
       - name: Deploy to Cloudflare Pages (Preview)
         id: preview-deploy
         uses: cloudflare/wrangler-action@v4
+        # wrangler-action は command: を child_process.exec() に渡す = /bin/sh が解釈する。
+        # よって ${{ }} を直接展開すると値がそのままシェルコマンド文字列に埋め込まれる。
+        # head_ref (ブランチ名) は `;` `$` バッククォート等を含み得るため、env: 経由で
+        # シェル変数として渡し、command: 側は変数参照のみにする。参照は必ずクォートする
+        # (未クォートだと語分割とグロブ展開が残り、対策が半端になる)。
+        env:
+          PREVIEW_BRANCH: ${{ github.head_ref }}
+          CF_PROJECT_NAME: ${{ secrets.CLOUDFLARE_PROJECT_NAME }}
+          COMMIT_SHA: ${{ github.sha }}
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # --commit-message を明示的に ASCII で渡す。CF Pages API は非 ASCII
           # コミットメッセージを 8000111 で拒否することがあるため (wrangler issue)、
           # SHA を message として送って追跡性を保つ。
-          command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=${{ github.head_ref }} --commit-hash=${{ github.sha }} --commit-message="${{ github.sha }}"
+          command: pages deploy ./dist --project-name="$CF_PROJECT_NAME" --branch="$PREVIEW_BRANCH" --commit-hash="$COMMIT_SHA" --commit-message="$COMMIT_SHA"
 
       - name: Comment PR with preview URL
         uses: actions/github-script@v9
+        # wrangler の出力にバッククォートや `${` が混ざると、テンプレートリテラルへの
+        # 直接展開ではスクリプトごと壊れて job が落ちる。env: 経由で渡し、
+        # process.env 参照にすることで出力内容に関わらず安全に扱う。
+        env:
+          PREVIEW_DEPLOY_OUTPUT: ${{ steps.preview-deploy.outputs.command-output }}
         with:
           script: |
-            const output = `${{ steps.preview-deploy.outputs.command-output }}`;
+            const output = process.env.PREVIEW_DEPLOY_OUTPUT;
             const urlMatch = output.match(/https:\/\/[^\s]+\.pages\.dev/);
             const previewUrl = urlMatch ? urlMatch[0] : null;
 
