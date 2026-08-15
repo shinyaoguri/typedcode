@@ -206,7 +206,7 @@ const handle = await showDirectoryPicker();
 | diff | ^9.0 | 差分計算 |
 | highlight.js | ^11.11 | シンタックスハイライト |
 | jszip | ^3.10 | ZIP の解凍 |
-| vite | ^8.0 | ビルドツール |
+| vite | ^8.1 | ビルドツール |
 
 ## 環境変数
 
