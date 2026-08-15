@@ -122,14 +122,26 @@ describe('verifyExamBinding', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('fails when the submission is after the deadline', async () => {
+  // time-box は advisory (ADR-0013)。遅延提出の是非は Moodle 側の運用判断であって、
+  // 暗号的束縛 (署名 / packageHash / root / 内容ハッシュ) の検証失敗ではない。
+  it('keeps the binding valid for a late submission (time-box is advisory, ADR-0013)', async () => {
     const { proof, manifest, registry } = await makeExamProof();
     const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {
       examAuthorityRegistry: registry,
       submissionTimeMs: Date.parse('2026-06-06T09:00:00.000Z'),
     });
     expect(result.timeBox?.withinWindow).toBe(false);
-    expect(result.valid).toBe(false);
+    expect(result.valid).toBe(true);
+  });
+
+  it('keeps the binding valid for a submission before the release time (ADR-0013)', async () => {
+    const { proof, manifest, registry } = await makeExamProof();
+    const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+      submissionTimeMs: Date.parse('2026-06-05T23:00:00.000Z'),
+    });
+    expect(result.timeBox?.withinWindow).toBe(false);
+    expect(result.valid).toBe(true);
   });
 
   it('fails when the package signature cannot be verified (unknown authority)', async () => {

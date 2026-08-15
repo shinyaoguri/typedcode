@@ -139,8 +139,14 @@ function formatExamSection(exam: CLIExamResult, lines: string[]): void {
     lines.push(`Time-box:     ${tb.releaseTime} … ${tb.deadline}`);
     if (tb.withinWindow === null) {
       lines.push(c('dim', '    (submission time not provided — pass --submitted-at to check the window)'));
+    } else if (tb.withinWindow) {
+      lines.push('  Submitted within window: yes');
     } else {
-      lines.push(`  Submitted within window: ${passFail(tb.withinWindow)}`);
+      // time-box は advisory (ADR-0013)。束縛検証の合否ではないので PASS/FAIL の語彙を使わない
+      // (総合 PASS の下に FAIL と出ると、採点者が失格条件と読み違える)。
+      lines.push(
+        `  Submitted within window: ${c('yellow', 'no')}  ${c('dim', '(advisory — the submission window is managed by Moodle, not by this proof)')}`
+      );
     }
   }
   if (!b.valid && b.reason) {
