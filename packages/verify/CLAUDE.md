@@ -39,7 +39,8 @@ File Selection (drag&drop / FSA API)
   → VerificationController → VerificationQueue
   → workers/verificationWorker.ts (Web Worker。メッセージ入出力のみ)
   → services/proofVerification.runProofVerification
-     ├─ verifyExamBinding (ADR-0006。package 提供時のみ・verifyProofFile より前)
+     ├─ verifyExamBinding (ADR-0006。package 提供時は**必ず**・verifyProofFile より前。
+     │  #218: `proof.exam &&` を条件にすると exam ブロック無しの proof で束縛が黙って無効化される)
      ├─ shared の verifyProofFile (metadata / chain / PoSW / finalHash / content /
      │  checkpoint / 署名済み cp / sessionStartToken 突合 の合成は**すべて shared**)
      └─ runAnalysis (ADR-0009。advisory のみ・valid に不反映・失敗しても検証結果を落とさない)

@@ -94,6 +94,24 @@ function examBindingLate(): CLIExamResult {
   };
 }
 
+/** exam ブロックが無い proof に `--exam-package` を渡したとき (#218: ゲートの誤用)。 */
+function examPackageNotApplicable(): CLIExamResult {
+  return {
+    present: false,
+    packageProvided: true,
+    rootBindingValid: false,
+    binding: {
+      valid: false,
+      packageSignatureValid: false,
+      packageHashMatches: false,
+      rootMatches: false,
+      problemContentHashMatches: false,
+      timeBox: null,
+      reason: 'Proof has no exam block',
+    },
+  };
+}
+
 /** チェーン検証が通ったときに shared が返す (成功) メッセージ。 */
 const CHAIN_SUCCESS_MESSAGE = 'All hashes verified successfully (including PoSW)';
 
@@ -177,6 +195,44 @@ describe('formatResult — 総合 FAILED の理由表示 (#217)', () => {
     const header = failureHeader(text);
     expect(header).toContain('Exam binding failed: packageHash mismatch');
     expect(header).toContain('Screenshots failed: 1/8 tampered');
+  });
+});
+
+describe('formatResult — exam ブロックの無い proof に package を渡したとき (#218)', () => {
+  it('names the missing exam block as the failure reason instead of the chain success message', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          errorMessage: CHAIN_SUCCESS_MESSAGE,
+          exam: examPackageNotApplicable(),
+        })
+      )
+    );
+
+    const header = failureHeader(text);
+    expect(header).toContain('Exam binding failed: Proof has no exam block');
+    expect(header).not.toContain(CHAIN_SUCCESS_MESSAGE);
+  });
+
+  it('states that the gate does not apply instead of printing empty exam fields', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          errorMessage: CHAIN_SUCCESS_MESSAGE,
+          exam: examPackageNotApplicable(),
+        })
+      )
+    );
+
+    const section = text.slice(text.indexOf('--- Exam binding'));
+    expect(section).toContain('--exam-package was provided but this proof has no exam block');
+    expect(section).toContain('Reason: Proof has no exam block');
+    // 存在しない値を空欄や undefined で見せない (採点者が「exam proof だ」と読み違える)。
+    expect(section).not.toContain('Exam:');
+    expect(section).not.toContain('Root binding:');
+    expect(section).not.toContain('undefined');
   });
 });
 

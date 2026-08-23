@@ -375,6 +375,7 @@ export const ja: VerifyTranslationKeys = {
     issueNotPureTyping: 'ピュアタイピングではありません（ペースト/バルク挿入あり）',
     issueExamBindingFailed: '問題束縛（署名/内容ハッシュ）の検証に失敗しました',
     issueExamUnverified: '問題パッケージ未読込のため真正性は未確認です',
+    issueExamPackageNotApplicable: '問題パッケージが渡されましたが、この proof に試験ブロックがありません',
     issuePoswSkipped: 'fast モードで検証したため PoSW（逐次作業）は再計算されていません',
     components: {
       metadata: 'メタデータ',

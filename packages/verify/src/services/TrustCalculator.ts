@@ -236,6 +236,14 @@ export class TrustCalculator {
           message: t('trust.issueExamUnverified'),
         });
       }
+    } else if (verificationResult?.exam && verificationResult.exam.binding?.valid === false) {
+      // #218: exam ブロックの無い proof に問題パッケージを渡した = ゲートの誤用。総合判定は
+      // invalid になるので、issue がゼロで level だけ落ちる不整合を作らないようここで理由を出す。
+      issues.push({
+        component: 'exam',
+        severity: 'error',
+        message: t('trust.issueExamPackageNotApplicable'),
+      });
     }
 
     // レベル判定

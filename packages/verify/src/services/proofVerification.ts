@@ -136,10 +136,12 @@ export async function runProofVerification(
   const sharedProof = proof as unknown as SharedProofFile;
   const totalEvents = proof.proof?.events?.length ?? 0;
 
-  // 1. 試験モード (ADR-0006): exam ブロックがあり package も渡されたときのみ完全束縛を検証する。
+  // 1. 試験モード (ADR-0006): package が渡されたら**必ず**完全束縛を検証する。
+  //    #218: `proof.exam &&` を条件にすると exam ブロックの無い proof で束縛が黙って無効になる
+  //    (CLI 側と同じ fail-open)。shared の `verifyExamBinding` が exam 無しを fail-closed で弾く。
   //    root アンカー gate (#131) の exam 免除は「検証済み束縛」に基づくので verifyProofFile より前に計算する。
   let examBinding: NonNullable<VerificationResultData['exam']>['binding'];
-  if (proof.exam && options.manifest) {
+  if (options.manifest) {
     try {
       examBinding = await verifyExamBinding(sharedProof, options.manifest);
     } catch (err) {
@@ -174,6 +176,8 @@ export async function runProofVerification(
     analysis = undefined;
   }
 
+  // #218: package を渡したのに exam ブロックが無い proof も結果に載せる (present: false)。
+  // 総合判定 (isOverallValid) はこの binding の失敗で落ちる。
   const examResult: VerificationResultData['exam'] = proof.exam
     ? {
         present: true,
@@ -181,7 +185,9 @@ export async function runProofVerification(
         packageProvided: !!options.manifest,
         binding: examBinding,
       }
-    : undefined;
+    : examBinding
+      ? { present: false, rootValid: false, packageProvided: true, binding: examBinding }
+      : undefined;
 
   return {
     valid: result.valid,
@@ -245,7 +251,9 @@ export function buildAssuranceInput(
     screenshotsTampered: options.screenshotsTampered,
     exam: result.exam
       ? {
-          present: true,
+          // #218: present を固定値にしない (CLI 側 verify.ts と同じ理由 — gate の誤用を
+          // 改ざん扱いにしない)。
+          present: result.exam.present,
           packageProvided: result.exam.packageProvided,
           bindingValid: result.exam.binding?.valid,
         }

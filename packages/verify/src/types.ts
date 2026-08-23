@@ -139,8 +139,10 @@ export interface VerificationResultData {
    */
   signedCheckpointReport?: SignedCheckpointReport;
   /**
-   * 試験モード (ADR-0006) の束縛検証結果。proof に exam ブロックがあるときのみ。
-   * - rootValid: proof 自己完結の exam root 束縛 (rootValid と同値・package 不要)
+   * 試験モード (ADR-0006) の束縛検証結果。proof に exam ブロックがあるか、**exam ブロックが
+   * 無いのに問題パッケージが渡された** (#218: gate の誤用) ときに載る。
+   * - present: proof に exam ブロックがあるか。false = package を渡す対象ではない proof
+   * - rootValid: proof 自己完結の exam root 束縛 (rootValid と同値・package 不要)。present=false では常に false
    * - packageProvided: `.tcexam` が渡されたか
    * - binding: package 提供時のみ。署名→packageHash→root→内容ハッシュ→time-box
    */

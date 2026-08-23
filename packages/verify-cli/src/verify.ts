@@ -31,18 +31,29 @@ export type { ProofFile };
 
 /**
  * 試験モード (ADR-0006) の grader 結果。
+ * - present: proof に exam ブロックがあるか。**`false` でも `--exam-package` が渡されていれば
+ *   このオブジェクトは作られる** (#218: gate のサイレント無効化を許さない)。その場合
+ *   examId / problemId / variant は無く、binding が shared の fail-closed 分岐の結果を持つ。
  * - rootBindingValid: proof 自己完結の exam root 束縛 (verifyProofFile の rootValid)。package 不要。
+ *   非 exam proof (present=false) では意味を持たないので false 固定。
  * - binding: `.tcexam` が渡されたときのみ。署名 → packageHash → root → 内容ハッシュ → time-box。
  */
-export interface CLIExamResult {
-  present: boolean;
-  examId: string;
-  problemId: string;
-  variant: string | null;
-  packageProvided: boolean;
-  rootBindingValid: boolean;
-  binding?: ExamBindingVerificationResult;
-}
+export type CLIExamResult =
+  | {
+      present: true;
+      examId: string;
+      problemId: string;
+      variant: string | null;
+      packageProvided: boolean;
+      rootBindingValid: boolean;
+      binding?: ExamBindingVerificationResult;
+    }
+  | {
+      present: false;
+      packageProvided: true;
+      rootBindingValid: false;
+      binding: ExamBindingVerificationResult;
+    };
 
 export interface CLIVerificationResult {
   valid: boolean;
@@ -135,15 +146,17 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     progressBar.update(current);
   };
 
-  // 試験モード (ADR-0006): exam ブロックがあれば束縛を先に検証する。
+  // 試験モード (ADR-0006): package が渡されたら**必ず**束縛を検証する。
+  // #218: ここで `proof.exam &&` を条件にすると、exam ブロックの無い proof に package を渡したとき
+  // 何も検証されず exit 0 で通る (採点ゲートのサイレント無効化)。shared の `verifyExamBinding` は
+  // exam ブロック無しを fail-closed で弾く (`reason: 'Proof has no exam block'`) ので、そこへ到達させる。
   // root アンカー gate (#131) の exam 免除は「検証済み束縛」に基づくため verifyProofFile より前に計算する。
-  const binding =
-    proof.exam && options.examPackageManifest
-      ? await verifyExamBinding(proof, options.examPackageManifest, {
-          examAuthorityRegistry: EXAM_AUTHORITY_KEYS,
-          submissionTimeMs: options.submittedAtMs,
-        })
-      : undefined;
+  const binding = options.examPackageManifest
+    ? await verifyExamBinding(proof, options.examPackageManifest, {
+        examAuthorityRegistry: EXAM_AUTHORITY_KEYS,
+        submissionTimeMs: options.submittedAtMs,
+      })
+    : undefined;
 
   // Run verification using shared utilities
   const result = await verifyProofFile(proof, onProgress, {
@@ -164,6 +177,8 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
 
   // 試験モード (ADR-0006): root 束縛は proof 自己完結 (verifyProofFile が rootValid で検証済み)。
   // package が渡されたときのみ署名/復号/内容まで完全検証する (binding は上で計算済み)。
+  // #218: package を渡したのに exam ブロックが無い proof も結果に載せる (present: false)。
+  // 黙って無視すると採点者に何も見えないまま exit 0 で通る。
   let exam: CLIExamResult | undefined;
   if (proof.exam) {
     exam = {
@@ -173,6 +188,13 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
       variant: proof.exam.variant,
       packageProvided: !!options.examPackageManifest,
       rootBindingValid: result.rootValid ?? false,
+      binding,
+    };
+  } else if (binding) {
+    exam = {
+      present: false,
+      packageProvided: true,
+      rootBindingValid: false,
       binding,
     };
   }
@@ -199,7 +221,10 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     chainValid: result.chainValid,
     exam: exam
       ? {
-          present: true,
+          // #218: present を固定値にしない。exam ブロックの無い proof への package 提供は
+          // 「gate の誤用」であって改ざんではないので、integrity を failed に落とさせない
+          // (deriveAssurance は present === true のときだけ束縛失敗を integrity に流す)。
+          present: exam.present,
           packageProvided: exam.packageProvided,
           bindingValid: exam.binding?.valid,
         }

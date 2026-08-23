@@ -395,6 +395,7 @@ export interface VerifyTranslationKeys {
     issueNotPureTyping: string;
     issueExamBindingFailed: string;
     issueExamUnverified: string;
+    issueExamPackageNotApplicable: string;
     issuePoswSkipped: string;
     components: {
       metadata: string;

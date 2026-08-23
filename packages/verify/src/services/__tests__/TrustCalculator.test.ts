@@ -169,6 +169,17 @@ describe('TrustCalculator.calculate — level determination', () => {
     expect(r.issues.some((i) => i.component === 'exam' && i.severity === 'warning')).toBe(true);
   });
 
+  it('fails when a package was provided for a proof that has no exam block (#218)', () => {
+    // ゲートの誤用。総合判定は invalid になるので、バッジ側も理由付きで failed に落ちる必要がある
+    // (issue ゼロのまま level だけ落ちると、採点者は理由を辿れない)。
+    const r = calc({
+      ...healthyResult(),
+      exam: { present: false, rootValid: false, packageProvided: true, binding: { valid: false } },
+    } as unknown as VerificationResultData);
+    expect(r.level).toBe('failed');
+    expect(r.issues.some((i) => i.component === 'exam' && i.severity === 'error')).toBe(true);
+  });
+
   it('error always dominates warnings in the final level', () => {
     const r = calc(
       { ...healthyResult(), chainValid: false, isPureTyping: false, rootAnchored: false },

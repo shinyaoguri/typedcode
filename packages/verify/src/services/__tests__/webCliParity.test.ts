@@ -495,6 +495,23 @@ describe('web ↔ CLI parity (#216)', () => {
     expect(cli.assurance.integrity).toBe('failed');
   });
 
+  it('agrees that a package provided for a proof with no exam block invalidates it (#218)', async () => {
+    const authority = await makeExamAuthority();
+    const { manifest } = await buildSamplePackage(authority.signer);
+    // casual proof (exam ブロック無し) に問題パッケージを渡した = 採点ゲートの誤用。
+    // 黙って exit 0 にすると ADR-0006 の保証が丸ごと欠落したまま「合格」で通る (#218)。
+    const proof = await buildPlainProof();
+
+    const web = await webConclusion(proof, registry, { manifest });
+    const cli = await cliConclusion(proof, registry, { manifest });
+
+    expectSameConclusion(web, cli);
+    expect(cli.valid).toBe(false);
+    expect(cli.exam).toEqual({ present: false, packageProvided: true, bindingValid: false });
+    // gate の無効化であって改ざんではない (ADR-0020 の語彙)。integrity は落とさない。
+    expect(cli.assurance.integrity).toBe('partial');
+  });
+
   it('agrees on a healthy screenshot (chain-backed image, no issue)', async () => {
     const bytes = new TextEncoder().encode('genuine-screenshot-bytes');
     const imageHash = await sha256HexOfBytes(bytes);

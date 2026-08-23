@@ -41,6 +41,9 @@ src/
 - `--exam-package <file.tcexam>` (任意): 指定すると shared の `verifyExamBinding` で署名→packageHash→root→内容ハッシュ→time-box まで完全検証する。**未指定でも** `proof.exam` のある proof は root 束縛 (自己完結) を検証し「package 未提供」を明示する
 - `--submitted-at <ISO>` (任意): time-box の `withinWindow` 判定 (Moodle 提出時刻)。未指定なら window 表示のみ
 - package 指定で束縛失敗は **exit 1**。exam 束縛のみ失敗時は出力ヘッダに束縛理由を出す (chain の成功メッセージを誤表示しない)
+- **`--exam-package` を渡したら `exam` ブロックの無い proof も必ず束縛検証にかける** (#218)。呼び出し側で `proof.exam &&` を条件にすると、casual proof が何も検証されないまま exit 0 で通る (採点ゲートのサイレント無効化)。判定は shared の `verifyExamBinding` が fail-closed (`reason: 'Proof has no exam block'`) で持つので、CLI はそこへ**到達させる**だけ。ZIP では per-proof に失敗させる (不変条件 3 と同型)
+- **束縛が「対象外の proof」で落ちても `integrity` は落とさない**: これはゲートの誤用であって改ざんではない (ADR-0020 の語彙)。`deriveAssurance` へ渡す `exam.present` を固定値 `true` にしないこと
+- `--submitted-at` は time-box (advisory) 専用。`--exam-package` 無しでは効かないので warning を出す (exit code は変えない)
 - ロジックは全て shared (`verifyExamBinding` / `parseExamPackageManifest`) に委譲。CLI は薄いラッパに留める
 
 ## スクリーンショット検証 (#147)
