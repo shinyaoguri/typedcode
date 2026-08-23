@@ -11,7 +11,7 @@ import type { StatusBarUI } from '../StatusBarUI';
 import type { ProofFile, VerifyScreenshot, DiffResult, ContentMismatchInfo } from '../../types';
 import { t } from '../../i18n/index';
 import { DiffService } from '../../services/DiffService';
-import { parseExamPackageManifest, type ExamPackageManifest } from '@typedcode/shared';
+import { normalizeProofLanguage, parseExamPackageManifest, type ExamPackageManifest } from '@typedcode/shared';
 
 /** 隠し file input を開いて 1 ファイルを返す (キャンセルは null)。 */
 function pickFile(accept: string): Promise<File | null> {
@@ -398,7 +398,9 @@ export class FileController {
       this.deps.tabManager.addTab({
         id,
         filename: displayName,
-        language: proofData.language || 'unknown',
+        // proof.json は攻撃者が組み立てられる入力。自己申告の language をそのまま状態に入れると
+        // 表示層の className に届く (#248)。取り込み口で allowlist に落とす。
+        language: normalizeProofLanguage(proofData.language),
         status: 'pending',
         progress: 0,
         proofData,

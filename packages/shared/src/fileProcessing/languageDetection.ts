@@ -47,6 +47,15 @@ const LANGUAGE_MAP: Record<string, string> = {
   '.txt': 'plaintext',
 };
 
+/**
+ * `LANGUAGE_MAP` が返しうる言語 ID の集合 (重複排除)。
+ *
+ * proof 由来の自己申告 `language` を allowlist に落とす `normalizeProofLanguage`
+ * (`proofLanguage.ts`) が参照する正本。集合を別に書き起こすと `LANGUAGE_MAP` とドリフトして
+ * 正当な言語が `'unknown'` に落ちるので、必ずここから導出すること。
+ */
+export const KNOWN_LANGUAGES: readonly string[] = Object.freeze([...new Set(Object.values(LANGUAGE_MAP))]);
+
 /** Binary file extensions */
 const BINARY_EXTENSIONS = [
   '.exe',

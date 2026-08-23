@@ -223,6 +223,10 @@ export {
   isBinaryFile,
   getFileType,
   isProofFilename,
+  KNOWN_LANGUAGES,
+  // proof 由来の自己申告言語の入力検証 (#248)
+  normalizeProofLanguage,
+  UNKNOWN_LANGUAGE,
   // Parser
   isProofFile,
   parseJsonString,

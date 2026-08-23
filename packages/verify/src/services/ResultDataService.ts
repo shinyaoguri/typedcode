@@ -31,6 +31,7 @@ import {
   formatTypingTime,
   calculateTypingSpeed as calculateTypingSpeedShared,
   countPasteEvents as countPasteEventsShared,
+  normalizeProofLanguage,
   summarizeProcess,
 } from '@typedcode/shared';
 
@@ -148,7 +149,10 @@ export function buildResultData(tabState: VerifyTabState): ResultData | null {
   return {
     filename: tabState.filename,
     content: proofData.content || '',
-    language: tabState.language,
+    // 自己申告言語。ResultPanel が `language-${...}` を className に組み立てるので、
+    // 表示境界でも入力を信用しない (#248)。取り込み口 (FileController) でも同じ正規化を
+    // 通しているが、normalizeProofLanguage は冪等なので二重適用に害はない。
+    language: normalizeProofLanguage(tabState.language),
     // 自己申告モードラベル (ADR-0011)。参考表示のみ — 保証導出には使わない (ADR-0020)。
     // proof.json は攻撃者が組み立てられる入力なので、型を信用せず allowlist に落とす (#210)。
     mode: normalizeProofMode(proofData.mode),
