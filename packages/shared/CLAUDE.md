@@ -17,6 +17,7 @@
 5. **`CheckpointManager`** はステートフル。`shouldCreateCheckpoint` の判定は最終 cp の eventIndex / 時刻に依存する。`setCheckpoints` で復元する際は内部状態も再構築すること (実装済み)
 6. **検証は cp の間隔を仮定しない**: `verify` 側は cp の存在を補助メタデータとしてのみ扱い、未署名 cp の sampling は信頼しない ([docs/adr/0004-verifier-checkpoint-stance.md](../../docs/adr/0004-verifier-checkpoint-stance.md))
 8. **`isPureTyping` の判定点は 1 つ** (#235): `structuralEdit.ts` の `evaluatePureTyping` だけが決める。export 時の自己申告 (`TypingProof`) と採点側の再計算 (`verifyProofMetadata`) が同じ関数を呼ぶので、proof に焼かれる値と検証器の結論が食い違わない。**別の場所に式を書き足さないこと**。なお `metadata.bulkInsertEvents` は `isSuspiciousBulkInsert` の素のカウントのままで、こちらは申告値との完全一致を要求するので定義を変えると既存 proof が invalid になる
+9. **ZIP エントリの展開は予算経由** (#234): `fileProcessing/zipBudget.ts` の `ZipExtractionBudget` + `readZipEntryBytes` / `readZipEntryText` だけが JSZip からバイトを取り出す。ヘッダの申告 `uncompressedSize` は攻撃者が書ける値なので `assertZipWithinBudget` は**早期 reject 専用** (それだけでは 300 MiB を 1 バイトと名乗る ZIP を素通しする)。上限は展開中の**実バイト**で見る。`entry.async(...)` の直接呼び出しは `__tests__/zipReadPolicy.test.ts` が禁止する
 
 ## モジュール一覧
 
@@ -37,7 +38,7 @@
 | `verification.ts` | チェーン外検証ユーティリティ (content replay 等) |
 | `poswWorker.ts` | PoSW Web Worker 本体 |
 | `attestation.ts` | 人間認証クライアント |
-| `fileProcessing/` | ZIP / JSON 解析 |
+| `fileProcessing/` | ZIP / JSON 解析。`zipBudget.ts` が ZIP 展開の上限 (エントリ数・実バイト予算) と予算付きリーダーを持つ |
 | `types.ts` (実体は `types/`) | 全公開型 |
 | `assurance.ts` | 三層保証語彙 (ADR-0020)。`deriveAssurance` が実証拠のみから整合性/時刻アンカー/著述性(advisory) を導出。verify(web)/verify-cli が同一実装を使う (表示の食い違い防止)。**自己申告 `proof.mode` を入力に使わない・provenance を判定に昇格させない** |
 | `analysis/` | 分析層フレームワーク (ADR-0009)。`runAnalysis` + 差し替え可能な `Analyzer` 群 (automation / transcription-topology / focus-burst の第一次ヒューリスティック + pureTyping)。検証と**直交**する advisory のみ・判定しない。`automationAnalyzer` は webdriver/headless GPU に加え **合成打鍵 (`KeystrokeDynamicsData.isTrusted===false`, ADR-0018)** も数える。`typingPatternAnalyzer` は旧 `TypingPatternAnalyzer` (打鍵動態) を `keystroke-content-consistency` 次元の advisory signal に折り込む (旧 verify TypingPatternCard を廃止・判定ゲージは持ち込まない・critical でも notice 止まり・dwell<30 で黙る ★6b)。`analysis/eval.ts` は **実証評価** (W5): ラベル付きコーパス → `evaluateAnalysis` が混同行列/閾値スイープ/genuineSignalRate を純粋関数で算出。**ゲート: 実測まで heuristic を `review` に昇格しない** (収集手順は docs/analysis-eval-protocol.md、ランナーは `__tests__/analysisEvalCorpus.test.ts`)。`analysis/bundle.ts` は **Tier A バンドル** (ADR-0024): `buildAnalysisBundle` が content-free な `{processSummary, analysis, assurance}` を束ねる (events/source/fingerprint なし)。`analysis/cohort.ts` は **コホート基準** (ADR-0025): `computeCohortBaseline`/`positionInCohort` が `AnalysisBundle[]` から頑健分布 (中央値/IQR・個票非保持) と提出物の位置 (percentile/IQR距離) を算出。**advisory・外れ値≠違反・小N ガード** |

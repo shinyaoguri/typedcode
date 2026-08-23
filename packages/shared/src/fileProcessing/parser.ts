@@ -14,39 +14,8 @@ import type {
   ScreenshotManifestEntry,
 } from './types.js';
 import { getLanguageFromExtension, isBinaryFile } from './languageDetection.js';
-
-// ============================================================================
-// ZIP 展開の DoS ガード (zip bomb)
-// ============================================================================
-
-/** 全エントリの解凍後合計サイズ上限 (bytes)。正規 proof (スクショ込み) でも十分余裕がある。 */
-const MAX_ZIP_TOTAL_UNCOMPRESSED = 256 * 1024 * 1024; // 256 MB
-/** エントリ数上限。 */
-const MAX_ZIP_ENTRIES = 5000;
-
-/**
- * 高圧縮率の悪意ある ZIP (zip bomb) で grader / 検証 UI を OOM/ハングさせないための事前ガード。
- * `JSZip.loadAsync` は解凍前のメタデータを持つので、エントリの解凍後サイズ合計を**展開前に**
- * 検査して上限超過なら throw する。
- *
- * parser 内の各エントリポイントが呼ぶほか、shared を経由せず JSZip を直接使う消費者
- * (verify の ZipFileProcessor 等) も loadAsync 直後に必ず呼ぶこと (#149)。
- */
-export function assertZipWithinBudget(zip: JSZip): void {
-  const names = Object.keys(zip.files);
-  if (names.length > MAX_ZIP_ENTRIES) {
-    throw new Error(`ZIP has too many entries (${names.length} > ${MAX_ZIP_ENTRIES})`);
-  }
-  let total = 0;
-  for (const name of names) {
-    // `_data.uncompressedSize` は JSZip 内部だが安定。未取得なら 0 として扱う (エントリ数で別途上限)。
-    const f = zip.files[name] as unknown as { _data?: { uncompressedSize?: number } };
-    total += f?._data?.uncompressedSize ?? 0;
-    if (total > MAX_ZIP_TOTAL_UNCOMPRESSED) {
-      throw new Error(`ZIP uncompressed size exceeds limit (${MAX_ZIP_TOTAL_UNCOMPRESSED} bytes)`);
-    }
-  }
-}
+// zip 爆弾ガードと展開予算の実体は `zipBudget.ts` (#149 / #234)
+import { ZipExtractionBudget, assertZipWithinBudget, readZipEntryBytes, readZipEntryText } from './zipBudget.js';
 
 // ============================================================================
 // Type guards
@@ -107,12 +76,14 @@ export function parseJsonString(content: string, filename: string): ParsedFileDa
  * @param buffer - ZIP file as ArrayBuffer
  * @param zipFilename - Original ZIP filename
  * @param callbacks - Optional progress callbacks
+ * @param budget - 展開の実バイト予算 (既定 256 MiB。ZIP 1 個につき 1 つ)
  * @returns ZIP parse result
  */
 export async function parseZipBuffer(
   buffer: ArrayBuffer,
   zipFilename: string,
-  callbacks?: FileParseCallbacks
+  callbacks?: FileParseCallbacks,
+  budget: ZipExtractionBudget = new ZipExtractionBudget()
 ): Promise<ZipParseResult> {
   try {
     const zip = await JSZip.loadAsync(buffer);
@@ -148,7 +119,7 @@ export async function parseZipBuffer(
       // Skip binary files (text files only)
       if (isBinaryFile(filename)) continue;
 
-      const content = await zipEntry.async('string');
+      const content = await readZipEntryText(zipEntry, budget);
 
       // For JSON files, check if it's a proof file
       if (filename.endsWith('.json')) {
@@ -175,7 +146,7 @@ export async function parseZipBuffer(
     callbacks?.onZipExtract?.(zipFilename, files.length);
 
     // Load screenshots
-    const { screenshotManifest, screenshotBlobs } = await loadScreenshotsFromZip(zip, callbacks);
+    const { screenshotManifest, screenshotBlobs } = await loadScreenshotsFromZip(zip, budget, callbacks);
 
     if (files.length === 0 && (!screenshotManifest || screenshotManifest.screenshots.length === 0)) {
       return {
@@ -223,6 +194,7 @@ export async function parseZipBuffer(
  */
 async function loadScreenshotsFromZip(
   zip: JSZip,
+  budget: ZipExtractionBudget,
   callbacks?: FileParseCallbacks
 ): Promise<{
   screenshotManifest: ScreenshotManifest | undefined;
@@ -236,7 +208,7 @@ async function loadScreenshotsFromZip(
   }
 
   try {
-    const manifestText = await manifestFile.async('string');
+    const manifestText = await readZipEntryText(manifestFile, budget);
     const parsed = JSON.parse(manifestText);
 
     // Support both new format (object with version/screenshots) and legacy format (array)
@@ -270,7 +242,7 @@ async function loadScreenshotsFromZip(
         continue;
       }
 
-      const arrayBuffer = await screenshotFile.async('arraybuffer');
+      const arrayBuffer = (await readZipEntryBytes(screenshotFile, budget)).buffer as ArrayBuffer;
 
       // Verify hash
       const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
@@ -300,7 +272,10 @@ async function loadScreenshotsFromZip(
  * - manifest が壊れている / 形式不正 → `entries: []` (チェーンに記録があれば
  *   chainOnly として浮くように、「無かった」と同一視しない)
  */
-export async function extractScreenshotArtifactsFromZip(buffer: ArrayBuffer): Promise<{
+export async function extractScreenshotArtifactsFromZip(
+  buffer: ArrayBuffer,
+  budget: ZipExtractionBudget = new ZipExtractionBudget()
+): Promise<{
   entries: Array<{ filename: string; imageHash: string }>;
   images: Map<string, ArrayBuffer>;
 } | null> {
@@ -312,7 +287,7 @@ export async function extractScreenshotArtifactsFromZip(buffer: ArrayBuffer): Pr
 
   let rawEntries: unknown = [];
   try {
-    const parsed: unknown = JSON.parse(await manifestFile.async('string'));
+    const parsed: unknown = JSON.parse(await readZipEntryText(manifestFile, budget));
     rawEntries = Array.isArray(parsed) ? parsed : ((parsed as { screenshots?: unknown } | null)?.screenshots ?? []);
   } catch {
     rawEntries = [];
@@ -333,7 +308,7 @@ export async function extractScreenshotArtifactsFromZip(buffer: ArrayBuffer): Pr
   for (const entry of entries) {
     const file = zip.file(`screenshots/${entry.filename}`);
     if (!file) continue;
-    images.set(entry.filename, await file.async('arraybuffer'));
+    images.set(entry.filename, (await readZipEntryBytes(file, budget)).buffer as ArrayBuffer);
   }
 
   return { entries, images };
@@ -343,9 +318,13 @@ export async function extractScreenshotArtifactsFromZip(buffer: ArrayBuffer): Pr
  * Extract first proof file from ZIP buffer
  * Simplified function for CLI use
  * @param buffer - ZIP file as ArrayBuffer
+ * @param budget - 展開の実バイト予算 (既定 256 MiB)
  * @returns Proof file data
  */
-export async function extractFirstProofFromZip(buffer: ArrayBuffer): Promise<ProofFileCore> {
+export async function extractFirstProofFromZip(
+  buffer: ArrayBuffer,
+  budget: ZipExtractionBudget = new ZipExtractionBudget()
+): Promise<ProofFileCore> {
   const zip = await JSZip.loadAsync(buffer);
   assertZipWithinBudget(zip);
 
@@ -362,7 +341,7 @@ export async function extractFirstProofFromZip(buffer: ArrayBuffer): Promise<Pro
     throw new Error(`Cannot read file: ${jsonFileName}`);
   }
 
-  const jsonContent = await jsonFile.async('string');
+  const jsonContent = await readZipEntryText(jsonFile, budget);
 
   try {
     const proof = JSON.parse(jsonContent) as ProofFileCore;
@@ -393,7 +372,8 @@ export async function extractFirstProofFromZip(buffer: ArrayBuffer): Promise<Pro
  * - ファイル名昇順で決定的に返す。
  */
 export async function extractAllProofsFromZip(
-  buffer: ArrayBuffer
+  buffer: ArrayBuffer,
+  budget: ZipExtractionBudget = new ZipExtractionBudget()
 ): Promise<Array<{ filename: string; proof: ProofFileCore }>> {
   const zip = await JSZip.loadAsync(buffer);
   assertZipWithinBudget(zip);
@@ -405,7 +385,7 @@ export async function extractAllProofsFromZip(
   for (const name of jsonNames) {
     const file = zip.files[name];
     if (!file) continue;
-    const content = await file.async('string');
+    const content = await readZipEntryText(file, budget);
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);

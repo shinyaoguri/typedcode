@@ -230,7 +230,14 @@ export {
   extractFirstProofFromZip,
   extractAllProofsFromZip,
   extractScreenshotArtifactsFromZip,
+  // ZIP 展開予算 (#234): エントリの読み出しは必ずこの経路を通す
+  ZipExtractionBudget,
+  ZipBudgetExceededError,
+  readZipEntryBytes,
+  readZipEntryText,
   assertZipWithinBudget,
+  MAX_ZIP_TOTAL_UNCOMPRESSED,
+  MAX_ZIP_ENTRIES,
 } from './fileProcessing/index.js';
 
 // スクリーンショット検証 (#146/#147): verify (web) / verify-cli が同じ結論を出すための単一実装

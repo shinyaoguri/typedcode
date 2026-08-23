@@ -17,6 +17,7 @@
 6. **スクリーンショット判定は全軸を `shared` に委譲する** (#212 / #213): per-image は `checkScreenshotImage`、剥ぎ取り (`chainOnly`) は `countChainOnlyImageHashes`、チェーン側ハッシュ集合は `collectChainImageHashes`。web に判定式を書くと verify-cli と結論が食い違う (実際に `chainOnly` が web だけ欠落し、剥ぎ取りが沈黙していた)
 7. **`chainImageHashes` は必須引数**: optional にすると渡し忘れが fail-open (チェーン裏付け検査が無効化され、画像と manifest をセットで差し替えた改竄を見逃す) になる。実際に ZIP 経路と結論が割れる事故が起きたので、型で封じてある
 8. **入力の種類で「0 枚」と「未検査」を区別する**: ZIP とフォルダは**コンテナ**なので `screenshots/` が無ければ 0 枚 = 剥ぎ取り疑いを見る。proof.json 単体は検査対象が無いので `undefined` = 未検査として issue を上げない (verify-cli の `Screenshots: not checked` と同じ意味論)。両者を混同すると overclaim または誤検知になる
+9. **JSZip の `.async(...)` を直接呼ばない** (#234): ZIP エントリの読み出しは shared の `readZipEntryBytes` / `readZipEntryText` に `ZipFileProcessor` が作った `ZipExtractionBudget` を渡して行う。`.async(...)` は申告サイズを無視して最後まで展開するので、サイズを詐称した ZIP で採点者のブラウザが OOM する。`services/__tests__/zipReadPolicy.test.ts` が直接呼び出しを機械的に禁止する (文書ルールだけだった #149 では 6 箇所まで再発した)
 
 ## ディレクトリ一覧
 
