@@ -5,7 +5,8 @@
  */
 
 import type JSZip from 'jszip';
-import { checkScreenshotImage } from '@typedcode/shared';
+import { checkScreenshotImage, readZipEntryBytes } from '@typedcode/shared';
+import type { ZipExtractionBudget } from '@typedcode/shared';
 import type { VerifyScreenshot, ScreenshotManifest, ScreenshotManifestEntry } from '../types.js';
 
 /**
@@ -30,7 +31,13 @@ export class ScreenshotService {
      * チェーン裏付け検査が黙って無効化される (#212 の原因)。空集合は「チェーンに記録が無い
      * 旧 proof」として shared 側が対象外扱いにする。
      */
-    chainImageHashes: ReadonlySet<string>
+    chainImageHashes: ReadonlySet<string>,
+    /**
+     * ZIP 1 個ぶんの展開予算 (#234)。申告 uncompressedSize は詐称できるので、実バイトを
+     * 計上するこの予算だけが展開量の歯止めになる。`ZipFileProcessor` が作った同じ
+     * インスタンスを渡すこと (extractFiles と合算され、同じエントリは二重計上されない)。
+     */
+    budget: ZipExtractionBudget
   ): Promise<VerifyScreenshot[]> {
     const screenshots: VerifyScreenshot[] = [];
 
@@ -47,7 +54,7 @@ export class ScreenshotService {
 
       if (imageFile) {
         try {
-          const blob = await imageFile.async('blob');
+          const blob = new Blob([await readZipEntryBytes(imageFile, budget)]);
 
           // ハッシュ検証: 画像とハッシュが一致しても、そのハッシュがチェーンに無ければ
           // manifest+画像が揃って差し替えられた疑い (manifest は未署名・チェーンは改ざん不能)。

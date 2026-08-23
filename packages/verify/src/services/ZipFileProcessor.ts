@@ -5,7 +5,13 @@
  */
 
 import JSZip from 'jszip';
-import { assertZipWithinBudget, collectChainImageHashes } from '@typedcode/shared';
+import {
+  ZipExtractionBudget,
+  assertZipWithinBudget,
+  collectChainImageHashes,
+  readZipEntryBytes,
+  readZipEntryText,
+} from '@typedcode/shared';
 import type { ProofFile, VerifyScreenshot } from '../types.js';
 import type { ParsedFileData, FileProcessResult, FileProcessCallbacks } from './FileProcessor.js';
 import { ScreenshotService } from './ScreenshotService.js';
@@ -40,14 +46,19 @@ export class ZipFileProcessor {
       const zip = await JSZip.loadAsync(arrayBuffer);
 
       // zip 爆弾ガード (#149): shared の parser 経由ではなく JSZip を直接使うため、
-      // 展開 (extractFiles) 前に解凍後サイズ・エントリ数の上限を検査する。
+      // 展開 (extractFiles) 前に解凍後サイズ・エントリ数の上限を検査する。ただし申告値は詐称でき、
+      // これだけでは素通りする (#234) — 実バイトの歯止めは下の budget が持つ。
       assertZipWithinBudget(zip);
+
+      // ZIP 1 個ぶんの展開予算 (#234)。extractFiles と loadScreenshots は screenshots/ の
+      // 同じエントリを 2 回読むので、予算はエントリ単位で計上され二重計上されない。
+      const budget = new ZipExtractionBudget();
 
       // ZIPファイル名をルートフォルダ名として使用
       const rootFolderName = file.name.replace(/\.zip$/i, '');
 
       // ファイルを抽出
-      const { files, folderPaths } = await this.extractFiles(zip);
+      const { files, folderPaths } = await this.extractFiles(zip, budget);
 
       this.callbacks.onZipExtract?.(file.name, files.length);
 
@@ -56,7 +67,7 @@ export class ZipFileProcessor {
       const chainImageHashes = this.collectChainScreenshotHashes(files);
 
       // スクリーンショットを読み込み
-      const { screenshots, screenshotService } = await this.loadScreenshots(zip, chainImageHashes);
+      const { screenshots, screenshotService } = await this.loadScreenshots(zip, chainImageHashes, budget);
 
       if (files.length === 0 && screenshots.length === 0) {
         return {
@@ -95,7 +106,10 @@ export class ZipFileProcessor {
   /**
    * ZIP からファイルを抽出
    */
-  private async extractFiles(zip: JSZip): Promise<{
+  private async extractFiles(
+    zip: JSZip,
+    budget: ZipExtractionBudget
+  ): Promise<{
     files: ParsedFileData[];
     folderPaths: string[];
   }> {
@@ -122,14 +136,14 @@ export class ZipFileProcessor {
 
       // screenshots/ フォルダ内のファイルを処理
       if (path.startsWith('screenshots/')) {
-        const parsed = await this.processScreenshotFile(zipEntry, filename, path);
+        const parsed = await this.processScreenshotFile(zipEntry, filename, path, budget);
         if (parsed) files.push(parsed);
         continue;
       }
 
       // 画像ファイルを処理
       if (isImageFile(filename)) {
-        const blob = await zipEntry.async('blob');
+        const blob = new Blob([await readZipEntryBytes(zipEntry, budget)]);
         files.push({
           filename,
           type: 'image',
@@ -144,7 +158,7 @@ export class ZipFileProcessor {
       // その他のバイナリファイルはスキップ（テキストファイルのみ処理）
       if (isBinaryFile(filename)) continue;
 
-      const content = await zipEntry.async('string');
+      const content = await readZipEntryText(zipEntry, budget);
       const parsed = this.parseTextFile(content, filename, path);
       files.push(parsed);
     }
@@ -158,10 +172,11 @@ export class ZipFileProcessor {
   private async processScreenshotFile(
     zipEntry: JSZip.JSZipObject,
     filename: string,
-    path: string
+    path: string,
+    budget: ZipExtractionBudget
   ): Promise<ParsedFileData | null> {
     if (filename === 'manifest.json') {
-      const content = await zipEntry.async('string');
+      const content = await readZipEntryText(zipEntry, budget);
       return {
         filename,
         type: 'plaintext',
@@ -170,7 +185,7 @@ export class ZipFileProcessor {
         relativePath: path,
       };
     } else if (isImageFile(filename)) {
-      const blob = await zipEntry.async('blob');
+      const blob = new Blob([await readZipEntryBytes(zipEntry, budget)]);
       return {
         filename,
         type: 'image',
@@ -242,7 +257,8 @@ export class ZipFileProcessor {
    */
   private async loadScreenshots(
     zip: JSZip,
-    chainImageHashes: ReadonlySet<string>
+    chainImageHashes: ReadonlySet<string>,
+    budget: ZipExtractionBudget
   ): Promise<{
     screenshots: VerifyScreenshot[];
     screenshotService: ScreenshotService | undefined;
@@ -255,7 +271,7 @@ export class ZipFileProcessor {
     }
 
     try {
-      const manifestText = await manifestFile.async('string');
+      const manifestText = await readZipEntryText(manifestFile, budget);
 
       // 新形式（オブジェクト with version/screenshots）と旧形式（配列）の両方に対応。
       // パースはフォルダ経路と共有する単一実装 (#212)。
@@ -279,7 +295,7 @@ export class ZipFileProcessor {
 
       // スクリーンショットサービスを作成して読み込み
       const screenshotService = new ScreenshotService();
-      const screenshots = await screenshotService.loadFromZip(zip, manifest, chainImageHashes);
+      const screenshots = await screenshotService.loadFromZip(zip, manifest, chainImageHashes, budget);
       console.log('[ZipFileProcessor] Screenshots loaded:', screenshots.length);
 
       this.callbacks.onScreenshotLoad?.(screenshotService.count, screenshotService.verifiedCount);

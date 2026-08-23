@@ -22,6 +22,17 @@ export {
   isProofFilename,
 } from './languageDetection.js';
 
+// ZIP 展開予算 (#234)
+export {
+  ZipExtractionBudget,
+  ZipBudgetExceededError,
+  readZipEntryBytes,
+  readZipEntryText,
+  assertZipWithinBudget,
+  MAX_ZIP_TOTAL_UNCOMPRESSED,
+  MAX_ZIP_ENTRIES,
+} from './zipBudget.js';
+
 // Parser
 export {
   isProofFile,
@@ -30,5 +41,4 @@ export {
   extractFirstProofFromZip,
   extractAllProofsFromZip,
   extractScreenshotArtifactsFromZip,
-  assertZipWithinBudget,
 } from './parser.js';
