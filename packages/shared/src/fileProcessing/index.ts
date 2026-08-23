@@ -20,7 +20,11 @@ export {
   isBinaryFile,
   getFileType,
   isProofFilename,
+  KNOWN_LANGUAGES,
 } from './languageDetection.js';
+
+// proof 由来の自己申告言語の入力検証 (#248)
+export { normalizeProofLanguage, UNKNOWN_LANGUAGE } from './proofLanguage.js';
 
 // ZIP 展開予算 (#234)
 export {

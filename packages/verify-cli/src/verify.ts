@@ -10,6 +10,7 @@ import {
   deriveAssurance,
   summarizeAnalysisForAssurance,
   summarizeProcess,
+  normalizeProofLanguage,
   EXAM_AUTHORITY_KEYS,
   type ProofFile,
   type VerificationProgressCallback,
@@ -258,7 +259,9 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     poswIterations,
     errorAt: result.errorAt,
     errorMessage: result.errorMessage,
-    language: proof.language,
+    // proof 由来の自己申告値。生値のままだと Language: 行から改行や ANSI を stdout へ
+    // 流し込める (#248 / #266)。allowlist に落として渡す。
+    language: normalizeProofLanguage(proof.language),
     mode,
     poswSkipped: result.poswSkipped ?? false,
     signedCheckpoints: result.signedCheckpoints,

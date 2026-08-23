@@ -4,6 +4,7 @@
  * JSON ファイルの読み込みと解析を担当
  */
 
+import { normalizeProofLanguage } from '@typedcode/shared';
 import type { ProofFile } from '../types.js';
 import type { ParsedFileData, FileProcessResult, FileProcessCallbacks } from './FileProcessor.js';
 import { getLanguageFromExtension } from './fileUtils.js';
@@ -44,7 +45,7 @@ export class JsonFileProcessor {
         if (parsed.proof) {
           isValidProofFile = true;
           proofData = parsed;
-          language = parsed.language ?? 'unknown';
+          language = normalizeProofLanguage(parsed.language);
           const eventCount = parsed.proof?.events?.length ?? 0;
           this.callbacks.onParseComplete?.(file.name, eventCount);
         }
@@ -116,7 +117,7 @@ export class JsonFileProcessor {
         return {
           filename,
           type: 'proof',
-          language: parsed.language ?? 'unknown',
+          language: normalizeProofLanguage(parsed.language),
           rawData: content,
           proofData: parsed,
         };

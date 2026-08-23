@@ -9,6 +9,7 @@ import {
   ZipExtractionBudget,
   assertZipWithinBudget,
   collectChainImageHashes,
+  normalizeProofLanguage,
   readZipEntryBytes,
   readZipEntryText,
 } from '@typedcode/shared';
@@ -214,7 +215,7 @@ export class ZipFileProcessor {
         if (parsed.proof) {
           isValidProofFile = true;
           proofData = parsed;
-          language = parsed.language ?? 'unknown';
+          language = normalizeProofLanguage(parsed.language);
         }
       } catch {
         // パース失敗は無視（通常のJSONとして扱う）
