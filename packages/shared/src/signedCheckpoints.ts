@@ -24,7 +24,12 @@ import type {
 import type { CheckpointData, ExportedProof, StoredEvent } from './types/proof.js';
 import { POSW_ITERATIONS, SIGNED_CHECKPOINT_FORMAT_VERSION } from './version.js';
 import { computeHash, deterministicStringify } from './utils/hashUtils.js';
-import { CHECKPOINT_PUBLIC_KEYS, findCheckpointPublicKey, type CheckpointPublicKey } from './checkpointKeys/index.js';
+import {
+  CHECKPOINT_PUBLIC_KEYS,
+  checkRegistryKeyValidityAt,
+  findCheckpointPublicKey,
+  type CheckpointPublicKey,
+} from './checkpointKeys/index.js';
 
 const POST_HOC_RATIO_THRESHOLD = 0.1;
 const POST_HOC_MIN_SERVER_SPAN_MS = 60 * 1000;
@@ -568,38 +573,45 @@ export async function verifySignedCheckpoints(
     const detail: SignedCheckpointVerificationDetail = { ...detailBase, valid: true };
     const entry = sigResult.registryEntry;
     if (entry) {
-      const validFromTs = Date.parse(entry.validFrom);
-      if (Number.isFinite(validFromTs) && serverTs < validFromTs) {
-        return fail(
-          { ...detailBase, reason: `key ${entry.keyId} not yet valid at serverTimestamp` },
-          `Signed checkpoint key ${entry.keyId} validFrom is after serverTimestamp at event ${payload.eventIndex}`,
-          payload.eventIndex
-        );
-      }
-      if (entry.validUntil && Date.parse(entry.validUntil) < serverTs) {
-        return fail(
-          { ...detailBase, reason: `key ${entry.keyId} expired before serverTimestamp` },
-          `Signed checkpoint key ${entry.keyId} validUntil is before serverTimestamp at event ${payload.eventIndex}`,
-          payload.eventIndex
-        );
-      }
-      if (entry.revokedAt) {
-        const revokedTs = Date.parse(entry.revokedAt);
-        if (Number.isFinite(revokedTs) && serverTs >= revokedTs) {
-          return fail(
-            { ...detailBase, reason: `key ${entry.keyId} revoked before serverTimestamp` },
-            `Signed checkpoint key ${entry.keyId} was revoked at or before serverTimestamp at event ${payload.eventIndex}`,
-            payload.eventIndex
-          );
+      // 鍵の有効期間 / 失効判定は checkpointKeys/keyValidity.ts に一本化 (#233)。
+      // registry の日時が parse 不能なエントリは信頼しない (fail-closed)。
+      const verdict = checkRegistryKeyValidityAt(entry, serverTs);
+      if (!verdict.ok) {
+        const at = `at event ${payload.eventIndex}`;
+        switch (verdict.code) {
+          case 'malformed-date':
+            return fail(
+              { ...detailBase, reason: `key ${entry.keyId} has an unparsable ${verdict.field} in the registry` },
+              `Signed checkpoint key ${entry.keyId} has an unparsable ${verdict.field} in the registry ${at}`,
+              payload.eventIndex
+            );
+          case 'not-yet-valid':
+            return fail(
+              { ...detailBase, reason: `key ${entry.keyId} not yet valid at serverTimestamp` },
+              `Signed checkpoint key ${entry.keyId} validFrom is after serverTimestamp ${at}`,
+              payload.eventIndex
+            );
+          case 'expired':
+            return fail(
+              { ...detailBase, reason: `key ${entry.keyId} expired before serverTimestamp` },
+              `Signed checkpoint key ${entry.keyId} validUntil is before serverTimestamp ${at}`,
+              payload.eventIndex
+            );
+          case 'revoked-before-anchor':
+            return fail(
+              { ...detailBase, reason: `key ${entry.keyId} revoked before serverTimestamp` },
+              `Signed checkpoint key ${entry.keyId} was revoked at or before serverTimestamp ${at}`,
+              payload.eventIndex
+            );
+          case 'revoked-without-revoked-at':
+            return fail(
+              { ...detailBase, reason: `key ${entry.keyId} revoked without revokedAt` },
+              `Signed checkpoint key ${entry.keyId} status is 'revoked' but revokedAt is missing`,
+              payload.eventIndex
+            );
         }
+      } else if (verdict.revokedAfterAnchor) {
         detail.warning = 'key-revoked-but-trusted-by-time';
-      } else if (entry.status === 'revoked') {
-        // revokedAt が無いまま status='revoked' は安全側で拒否
-        return fail(
-          { ...detailBase, reason: `key ${entry.keyId} revoked without revokedAt` },
-          `Signed checkpoint key ${entry.keyId} status is 'revoked' but revokedAt is missing`,
-          payload.eventIndex
-        );
       }
     }
 

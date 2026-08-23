@@ -179,6 +179,25 @@ describe('exam package signature', () => {
     expect(result.reason).toContain('revoked');
   });
 
+  // #233: 出題者鍵側も同型の fail-open を持っていた。
+  it('rejects a key whose revokedAt is unparsable (fail-closed)', async () => {
+    const { signer, entry } = await makeExamAuthority();
+    const { manifest } = await buildSamplePackage(signer);
+    const broken = [{ ...entry, status: 'revoked' as const, revokedAt: '2026-13-45T99:99:99Z' }];
+    const result = await verifyExamPackageSignature(manifest, broken);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('unparsable revokedAt');
+  });
+
+  it('rejects a key whose validFrom is unparsable (fail-closed)', async () => {
+    const { signer, entry } = await makeExamAuthority();
+    const { manifest } = await buildSamplePackage(signer);
+    const broken = [{ ...entry, validFrom: 'not-a-date' }];
+    const result = await verifyExamPackageSignature(manifest, broken);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('unparsable validFrom');
+  });
+
   it('trusts a package released before revokedAt but surfaces a warning', async () => {
     const { signer, entry } = await makeExamAuthority();
     const { manifest } = await buildSamplePackage(signer); // releaseTime 2026-06-06

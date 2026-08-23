@@ -481,6 +481,11 @@ interface ExamProofBlock {
   - 鍵 validFrom > serverTimestamp なら fail (未来鍵)
   - 鍵 revoked かつ serverTimestamp >= revokedAt なら fail。前なら warning 付き通過
   - 鍵 validUntil < serverTimestamp なら fail
+  - registry entry の `validFrom` / `validUntil` / `revokedAt` が **parse 不能なら fail** (#233)。
+    日時は手書き運用 (§9.4) なので typo が起こりうる。かつては parse 不能だと有効性検査ごと
+    スキップされ、失効済みの鍵が黙って信頼されていた。fail-closed の粒度は **entry 単位**
+    (registry 全体を無効化しない)。判定は `checkpointKeys/keyValidity.ts` に一本化されており、
+    署名 cp / sessionStartToken / 出題者鍵 (`releaseTime` anchor) の 3 消費者が同じ実装を使う
 - envelope 配列全体:
   - 全 envelope で `sessionId` 一致
   - 全 envelope で `firstSeenAt` 一致 ← sessionId 流用防御
@@ -595,6 +600,7 @@ interface ExamProofBlock {
 
 - 本仕様の安全性は **署名秘密鍵が漏洩しないこと** に依存する
 - 漏洩発覚時の対処: `revokedAt` を設定して registry に残す。`serverTimestamp < revokedAt` の envelope は warning 付きで trust、`>=` は fail
+- registry の日時は手書きなので **parse 不能な entry は信頼しない** (fail-closed)。typo は `__tests__/registryFormat.test.ts` が CI で止める (厳密 ISO-8601 UTC・実在する日時・`revoked` なら `revokedAt` 必須)
 - 鍵ローテーション: 新旧並走運用 (新鍵 validFrom = 旧鍵 validUntil)
 
 ---
@@ -653,6 +659,10 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 3. 既存 proof:
    - `serverTimestamp < revokedAt` → warning 付きで通る (漏洩前なので trust)
    - `serverTimestamp >= revokedAt` → fail
+4. **日時は厳密な ISO-8601 (UTC, 例 `2026-05-28T14:43:43.346Z`) で書く**。parse 不能な日時を
+   持つ entry は検証側が信頼しない (その鍵で署名された cp / token / 問題パッケージが fail する)
+   ので、revoke したつもりの typo は「黙って有効」ではなく「その鍵が全部落ちる」形で現れる。
+   `packages/shared/src/__tests__/registryFormat.test.ts` が PR の時点で typo を止める
 
 ---
 
