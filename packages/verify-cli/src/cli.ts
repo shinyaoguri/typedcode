@@ -108,6 +108,14 @@ async function main(): Promise<void> {
       printError(`Invalid --submitted-at value: ${submittedAtRaw}. Use an ISO 8601 timestamp.`);
       process.exit(1);
     }
+    // #218: --submitted-at は time-box (advisory) の判定にしか使われず、time-box は package の
+    // manifest にしか無い。単独で渡しても黙って捨てられるので、その旨を出す (advisory なので
+    // exit code は変えない — 束縛ゲートの無効化とは性質が違う)。
+    if (examPackagePath === undefined) {
+      console.warn(
+        'Warning: --submitted-at has no effect without --exam-package (the time-box comes from the package).'
+      );
+    }
   }
 
   try {

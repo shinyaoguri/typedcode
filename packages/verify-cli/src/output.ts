@@ -119,6 +119,18 @@ function formatAssurance(a: AssuranceResult): string[] {
 function formatExamSection(exam: CLIExamResult, lines: string[]): void {
   lines.push('');
   lines.push(c('cyan', '--- Exam binding (ADR-0006) ---'));
+
+  // #218: package を渡したのに exam ブロックが無い = 採点ゲートの誤用。exam 情報も root 束縛も
+  // 存在しないので描画せず、ゲートが対象外の proof に当たったことだけを明示する。
+  if (!exam.present) {
+    lines.push(c('red', '  ! --exam-package was provided but this proof has no exam block'));
+    lines.push(c('dim', '    This submission is not an exam proof — the exam binding gate does not apply to it.'));
+    if (exam.binding?.reason) {
+      lines.push(c('red', `  Reason: ${exam.binding.reason}`));
+    }
+    return;
+  }
+
   const variant = exam.variant ? ` / ${exam.variant}` : '';
   lines.push(`Exam:         ${exam.examId} / ${exam.problemId}${variant}`);
   // root 束縛は proof 自己完結 (package 不要)。

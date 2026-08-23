@@ -378,6 +378,7 @@ export const en: VerifyTranslationKeys = {
     issueNotPureTyping: 'Not pure typing (paste / bulk insertion detected)',
     issueExamBindingFailed: 'Exam binding (signature / content hash) verification failed',
     issueExamUnverified: 'Problem package not loaded; authenticity unverified',
+    issueExamPackageNotApplicable: 'A problem package was provided, but this proof has no exam block',
     issuePoswSkipped: 'Verified in fast mode — the PoSW (sequential work) was not recomputed',
     components: {
       metadata: 'Metadata',

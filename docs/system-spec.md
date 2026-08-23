@@ -525,7 +525,7 @@ interface ExamProofBlock {
 4. `startToken` で package を復号 → 平文 `problemContentHash` = `proof.exam.problemContentHash` → 答案はこの問題のもの
 5. **time-box** (advisory): `releaseTime ≤ 提出時刻 ≤ deadline`。実際の提出時刻は外部 (Moodle)。verify-cli は `--submitted-at` で渡せ、未指定なら window 表示のみ (`withinWindow=null`)。**`withinWindow=false` は `verifyExamBinding` の `valid` には合流しない** — 提出窓の管理は Moodle が唯一の正で、遅延提出は失格条件ではない ([ADR-0013](adr/0013-exam-schedule-advisory-keep-manifest-format.md) / §4.7)
 
-配線: **verify-cli** は `--exam-package <file.tcexam>` で渡す (任意、未指定なら root 束縛のみ表示し「package 未提供」を明示)。**verify(web)** は試験束縛カードで root 束縛を常時表示し、「問題パッケージを読み込む」で `.tcexam` を取り込み当該タブを再検証して完全束縛を表示する。package 指定で束縛が失敗すれば全体を invalid とする。
+配線: **verify-cli** は `--exam-package <file.tcexam>` で渡す (任意、未指定なら root 束縛のみ表示し「package 未提供」を明示)。**verify(web)** は試験束縛カードで root 束縛を常時表示し、「問題パッケージを読み込む」で `.tcexam` を取り込み当該タブを再検証して完全束縛を表示する。package 指定で束縛が失敗すれば全体を invalid とする。**package を渡したのに `exam` ブロックが無い proof も invalid** (#218) — 一斉採点で casual proof が混ざると束縛が一切検証されないまま通過するため、ゲートのサイレント無効化を許さない (ZIP では per-proof に失敗させる)。
 
 ---
 
