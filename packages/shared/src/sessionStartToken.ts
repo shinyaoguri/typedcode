@@ -19,7 +19,12 @@ import type {
 } from './types/sessionStartToken.js';
 import { POSW_ITERATIONS, SESSION_TOKEN_FORMAT_VERSION } from './version.js';
 import { computeHash, deterministicStringify } from './utils/hashUtils.js';
-import { CHECKPOINT_PUBLIC_KEYS, findCheckpointPublicKey, type CheckpointPublicKey } from './checkpointKeys/index.js';
+import {
+  CHECKPOINT_PUBLIC_KEYS,
+  checkRegistryKeyValidityAt,
+  findCheckpointPublicKey,
+  type CheckpointPublicKey,
+} from './checkpointKeys/index.js';
 
 /** SHA-256 を hex 文字列で表したときの正規表現 (64 桁の小文字 hex) */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -183,25 +188,25 @@ export async function verifySessionStartToken(
     return { valid: false, reason: 'Session token issuedAt is not a valid ISO date', keyId: entry.keyId };
   }
 
-  // 鍵の有効期間 / 失効を issuedAt を anchor に判定 (署名 cp と同方針)。
-  const validFromTs = Date.parse(entry.validFrom);
-  if (Number.isFinite(validFromTs) && issuedTs < validFromTs) {
-    return { valid: false, reason: `key ${entry.keyId} validFrom is after issuedAt`, keyId: entry.keyId };
-  }
-  if (entry.validUntil && Date.parse(entry.validUntil) < issuedTs) {
-    return { valid: false, reason: `key ${entry.keyId} validUntil is before issuedAt`, keyId: entry.keyId };
-  }
-  if (entry.revokedAt) {
-    const revokedTs = Date.parse(entry.revokedAt);
-    if (Number.isFinite(revokedTs) && issuedTs >= revokedTs) {
-      return { valid: false, reason: `key ${entry.keyId} was revoked at or before issuedAt`, keyId: entry.keyId };
-    }
-  } else if (entry.status === 'revoked') {
-    return {
-      valid: false,
-      reason: `key ${entry.keyId} status is 'revoked' but revokedAt is missing`,
-      keyId: entry.keyId,
-    };
+  // 鍵の有効期間 / 失効を issuedAt を anchor に判定 (署名 cp と同じ実装を共有 = #233)。
+  // registry の日時が parse 不能なエントリは信頼しない (fail-closed)。
+  const verdict = checkRegistryKeyValidityAt(entry, issuedTs);
+  if (!verdict.ok) {
+    const reason = ((): string => {
+      switch (verdict.code) {
+        case 'malformed-date':
+          return `key ${entry.keyId} has an unparsable ${verdict.field} in the registry`;
+        case 'not-yet-valid':
+          return `key ${entry.keyId} validFrom is after issuedAt`;
+        case 'expired':
+          return `key ${entry.keyId} validUntil is before issuedAt`;
+        case 'revoked-before-anchor':
+          return `key ${entry.keyId} was revoked at or before issuedAt`;
+        case 'revoked-without-revoked-at':
+          return `key ${entry.keyId} status is 'revoked' but revokedAt is missing`;
+      }
+    })();
+    return { valid: false, reason, keyId: entry.keyId };
   }
 
   let cryptoKey: CryptoKey;

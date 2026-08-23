@@ -128,6 +128,37 @@ describe('session start token (ADR-0017)', () => {
     expect(result.reason).toMatch(/revoked at or before issuedAt/);
   });
 
+  // #233: registry の日時は手書き運用 (system-spec §9.4)。parse 不能な日時で
+  // 有効性検査ごと素通りする fail-open を塞ぐ。エントリ単位で信頼しない。
+  it('rejects a token whose registry entry has an unparsable revokedAt (fail-closed)', async () => {
+    const token = await makeToken(testKey);
+    const broken: CheckpointPublicKey = {
+      ...testKey.registryEntry,
+      status: 'revoked',
+      revokedAt: '2026-13-45T99:99:99Z',
+    };
+    const result = await verifySessionStartToken(token, [broken]);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/unparsable revokedAt/);
+    expect(result.keyId).toBe(testKey.keyId);
+  });
+
+  it('rejects a token whose registry entry has an unparsable validFrom (fail-closed)', async () => {
+    const token = await makeToken(testKey);
+    const broken: CheckpointPublicKey = { ...testKey.registryEntry, validFrom: 'not-a-date' };
+    const result = await verifySessionStartToken(token, [broken]);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/unparsable validFrom/);
+  });
+
+  it('rejects a token whose registry entry has an unparsable validUntil (fail-closed)', async () => {
+    const token = await makeToken(testKey);
+    const broken: CheckpointPublicKey = { ...testKey.registryEntry, validUntil: 'until further notice' };
+    const result = await verifySessionStartToken(token, [broken]);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/unparsable validUntil/);
+  });
+
   it('rejects a token with an unsupported version or poswIterations', async () => {
     const base = await makeToken(testKey);
     const badVersion: SessionStartToken = { ...base, payload: { ...base.payload, version: 99 as 1 } };

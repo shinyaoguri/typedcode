@@ -18,6 +18,7 @@
 6. **検証は cp の間隔を仮定しない**: `verify` 側は cp の存在を補助メタデータとしてのみ扱い、未署名 cp の sampling は信頼しない ([docs/adr/0004-verifier-checkpoint-stance.md](../../docs/adr/0004-verifier-checkpoint-stance.md))
 8. **`isPureTyping` の判定点は 1 つ** (#235): `structuralEdit.ts` の `evaluatePureTyping` だけが決める。export 時の自己申告 (`TypingProof`) と採点側の再計算 (`verifyProofMetadata`) が同じ関数を呼ぶので、proof に焼かれる値と検証器の結論が食い違わない。**別の場所に式を書き足さないこと**。なお `metadata.bulkInsertEvents` は `isSuspiciousBulkInsert` の素のカウントのままで、こちらは申告値との完全一致を要求するので定義を変えると既存 proof が invalid になる
 9. **ZIP エントリの展開は予算経由** (#234): `fileProcessing/zipBudget.ts` の `ZipExtractionBudget` + `readZipEntryBytes` / `readZipEntryText` だけが JSZip からバイトを取り出す。ヘッダの申告 `uncompressedSize` は攻撃者が書ける値なので `assertZipWithinBudget` は**早期 reject 専用** (それだけでは 300 MiB を 1 バイトと名乗る ZIP を素通しする)。上限は展開中の**実バイト**で見る。`entry.async(...)` の直接呼び出しは `__tests__/zipReadPolicy.test.ts` が禁止する
+10. **registry の日時判定は 1 箇所** (#233): `checkpointKeys/keyValidity.ts` の `checkRegistryKeyValidityAt` だけが `validFrom` / `validUntil` / `revokedAt` を解釈する。署名 cp (anchor=`serverTimestamp`) / sessionStartToken (`issuedAt`) / 出題者鍵 (`releaseTime`) の 3 消費者はここを呼び、**文言づけだけ**を各自で持つ。日時は system-spec §9.4 の手書き運用なので **parse 不能なら entry 単位で信頼しない** (fail-closed) — かつては 3 箇所とも `Number.isFinite` ガードで検査ごと素通りし、失効済み鍵が警告すら出さずに通っていた。出荷 registry の形式は `__tests__/registryFormat.test.ts` が縛る (`Date.parse` は `2026-02-30` をロールオーバーして受け入れるので、厳密 ISO 正規表現 + 往復比較の両方が要る)
 
 ## モジュール一覧
 
@@ -33,6 +34,7 @@
 | `signedCheckpoints.ts` | 署名済み cp の payload 構築・検証・冪等判定。anchoring 密度 (ADR-0016) も |
 | `sessionStartToken.ts` | セッション開始トークン (ADR-0017) の発行・検証 (registry-only)・`computeAnchoredChainRoot`。署名鍵は checkpoint と同一系統を流用 |
 | `checkpointKeys/registry.ts` | append-only 公開鍵レジストリ (本番鍵) |
+| `checkpointKeys/keyValidity.ts` | 鍵の有効期間 / 失効判定の**単一実装** (#233)。checkpoint 鍵と出題者鍵の両方を構造型で受ける |
 | `checkpointKeys/localKeys.ts` | skip-worktree のローカル開発鍵置き場 |
 | `fingerprint.ts` | ブラウザフィンガープリント |
 | `verification.ts` | チェーン外検証ユーティリティ (content replay 等) |

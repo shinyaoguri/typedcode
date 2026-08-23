@@ -29,6 +29,7 @@ import type {
 import type { ExportedProof } from '../types/proof.js';
 import { computeHash, deterministicStringify, arrayBufferToHex } from '../utils/hashUtils.js';
 import { EXAM_AUTHORITY_KEYS, findExamAuthorityKey, type ExamAuthorityKey } from '../examAuthorityKeys/index.js';
+import { checkRegistryKeyValidityAt } from '../checkpointKeys/keyValidity.js';
 import {
   EXAM_PACKAGE_FORMAT_VERSION,
   EXAM_PROOF_VERSION,
@@ -415,10 +416,12 @@ export async function verifyExamPackageSignature(
 
 /**
  * 出題者鍵が package の `releaseTime` 時点で有効かを判定する (ADR-0006)。
- * signedCheckpoints のキー有効性判定をミラー (anchor が serverTimestamp ではなく releaseTime)。
+ * 判定そのものは checkpoint 署名鍵と共通の `checkRegistryKeyValidityAt` に委ね (#233)、
+ * ここは anchor (`releaseTime`) の解決と、出題者鍵向けの文言づけだけを担う。
  *   - validFrom より前 / validUntil より後の release → 期限外で reject
  *   - revokedAt 以降の release → 失効後署名で reject、revokedAt より前 → trust + warning
  *   - status='revoked' で revokedAt 無し → 安全側で reject
+ *   - registry の日時が parse 不能 → そのエントリを信頼しない (fail-closed)
  */
 function checkExamKeyValidityAtRelease(
   entry: ExamAuthorityKey,
@@ -428,27 +431,27 @@ function checkExamKeyValidityAtRelease(
   if (!Number.isFinite(releaseTs)) {
     return { ok: false, reason: 'Package releaseTime is not a valid date' };
   }
-  const fromTs = Date.parse(entry.validFrom);
-  if (Number.isFinite(fromTs) && releaseTs < fromTs) {
-    return { ok: false, reason: `Authority key ${entry.keyId} was not yet valid at package release time` };
-  }
-  if (entry.validUntil) {
-    const untilTs = Date.parse(entry.validUntil);
-    if (Number.isFinite(untilTs) && releaseTs > untilTs) {
-      return { ok: false, reason: `Authority key ${entry.keyId} had expired by package release time` };
+  const verdict = checkRegistryKeyValidityAt(entry, releaseTs);
+  if (!verdict.ok) {
+    switch (verdict.code) {
+      case 'malformed-date':
+        return {
+          ok: false,
+          reason: `Authority key ${entry.keyId} has an unparsable ${verdict.field} in the registry`,
+        };
+      case 'not-yet-valid':
+        return { ok: false, reason: `Authority key ${entry.keyId} was not yet valid at package release time` };
+      case 'expired':
+        return { ok: false, reason: `Authority key ${entry.keyId} had expired by package release time` };
+      case 'revoked-before-anchor':
+        return { ok: false, reason: `Authority key ${entry.keyId} was revoked at or before package release time` };
+      case 'revoked-without-revoked-at':
+        return { ok: false, reason: `Authority key ${entry.keyId} is revoked (status) without revokedAt` };
     }
   }
-  if (entry.revokedAt) {
-    const revokedTs = Date.parse(entry.revokedAt);
-    if (Number.isFinite(revokedTs) && releaseTs >= revokedTs) {
-      return { ok: false, reason: `Authority key ${entry.keyId} was revoked at or before package release time` };
-    }
+  if (verdict.revokedAfterAnchor) {
     // 失効前に署名された package は trust するが警告 (registry の運用方針)。
     return { ok: true, warning: `Authority key ${entry.keyId} was revoked after this package was released` };
-  }
-  if (entry.status === 'revoked') {
-    // revokedAt が無いまま status='revoked' は安全側で reject (signedCheckpoints と同方針)。
-    return { ok: false, reason: `Authority key ${entry.keyId} is revoked (status) without revokedAt` };
   }
   return { ok: true };
 }

@@ -523,6 +523,44 @@ describe('verifySignedCheckpoints', () => {
     expect(result.details[0]!.warning).toBe('key-revoked-but-trusted-by-time');
   });
 
+  // #233: revokedAt が parse 不能だと revoke 判定ごと素通りしていた (warning すら出ない)。
+  it('rejects envelope when the registry entry has an unparsable revokedAt (fail-closed)', async () => {
+    const { events, initialEventChainHash } = await buildSmallProof(1);
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash,
+      key: testKey,
+      startServerMs: Date.parse('2026-06-01T00:00:00.000Z'),
+    });
+    const brokenEntry: CheckpointPublicKey = {
+      ...testKey.registryEntry,
+      status: 'revoked',
+      revokedAt: '2026-13-45T99:99:99Z',
+    };
+    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+      registry: [brokenEntry],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/unparsable revokedAt/);
+    expect(result.details[0]?.warning).toBeUndefined();
+  });
+
+  it('rejects envelope when the registry entry has an unparsable validUntil (fail-closed)', async () => {
+    const { events, initialEventChainHash } = await buildSmallProof(1);
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash,
+      key: testKey,
+      startServerMs: Date.parse('2026-06-01T00:00:00.000Z'),
+    });
+    const brokenEntry: CheckpointPublicKey = { ...testKey.registryEntry, validUntil: 'soon' };
+    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+      registry: [brokenEntry],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/unparsable validUntil/);
+  });
+
   it('rejects envelope when validUntil is before serverTimestamp', async () => {
     const { events, initialEventChainHash } = await buildSmallProof(1);
     const checkpoints = await buildSignedCheckpoints({
