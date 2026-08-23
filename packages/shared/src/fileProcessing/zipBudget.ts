@@ -121,8 +121,11 @@ type InternalStreamCapable = {
  * 返り値は常に**専用の `ArrayBuffer` を丸ごと使う** `Uint8Array` (byteOffset 0 / 全長) なので、
  * 呼び出し側は `.buffer` をそのまま `ArrayBuffer` として渡してよい。
  */
-export function readZipEntryBytes(entry: JSZip.JSZipObject, budget: ZipExtractionBudget): Promise<Uint8Array> {
-  return new Promise<Uint8Array>((resolve, reject) => {
+export function readZipEntryBytes(
+  entry: JSZip.JSZipObject,
+  budget: ZipExtractionBudget
+): Promise<Uint8Array<ArrayBuffer>> {
+  return new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) => {
     const stream = (entry as unknown as InternalStreamCapable).internalStream('uint8array');
     const chunks: Uint8Array[] = [];
     let received = 0;

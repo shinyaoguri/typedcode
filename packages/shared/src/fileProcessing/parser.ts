@@ -242,7 +242,7 @@ async function loadScreenshotsFromZip(
         continue;
       }
 
-      const arrayBuffer = (await readZipEntryBytes(screenshotFile, budget)).buffer as ArrayBuffer;
+      const arrayBuffer = (await readZipEntryBytes(screenshotFile, budget)).buffer;
 
       // Verify hash
       const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
@@ -308,7 +308,7 @@ export async function extractScreenshotArtifactsFromZip(
   for (const entry of entries) {
     const file = zip.file(`screenshots/${entry.filename}`);
     if (!file) continue;
-    images.set(entry.filename, (await readZipEntryBytes(file, budget)).buffer as ArrayBuffer);
+    images.set(entry.filename, (await readZipEntryBytes(file, budget)).buffer);
   }
 
   return { entries, images };
