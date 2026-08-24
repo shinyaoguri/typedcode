@@ -8,7 +8,14 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AssuranceResult, ScreenshotVerificationSummary } from '@typedcode/shared';
-import { formatMultiSummary, formatProofHeader, formatResult, safe, type VerificationOutput } from '../output.js';
+import {
+  formatMultiSummary,
+  formatProofHeader,
+  formatResult,
+  printUsage,
+  safe,
+  type VerificationOutput,
+} from '../output.js';
 import type { CLIExamResult } from '../verify.js';
 
 /** 色付けは TTY 依存 (module load 時に決まる) なので、比較前に ANSI を落とす。 */
@@ -426,5 +433,36 @@ describe('formatResult — proof 由来の文字列による偽セクション�
     expect(reflection[0]).toContain(' / second');
     expect(reflection[0]).not.toContain(ESC);
     expect(reflection[0]).toContain('(sanitized)');
+  });
+});
+
+describe('printUsage — --mode の説明が実装と一致する (#283 c2)', () => {
+  /** printUsage は console.log へ書くので、1 回分を掴む。 */
+  function usageText(): string {
+    const lines: string[] = [];
+    const original = console.log;
+    console.log = (...args: unknown[]) => {
+      lines.push(args.map(String).join(' '));
+    };
+    try {
+      printUsage();
+    } finally {
+      console.log = original;
+    }
+    return plain(lines.join('\n'));
+  }
+
+  it('audit を「未実装・現状 full と同等」と説明する', () => {
+    // 実装は verify の poswModeFor が audit → 'full' に落としており、spec §6.1 も
+    // 「部分的 PoSW 検証 (未実装、現状 full と同等)」。help だけが
+    // `fast + deterministic PoSW sampling` = fast 相当と読める文言だった。
+    // 採点者が「audit なら軽くて十分」と誤読すると、実際にはフルコストを払う。
+    expect(usageText()).toMatch(/audit\s+- unimplemented; currently equivalent to full/);
+  });
+
+  it('audit が fast 相当・サンプリング実施だと読める文言を含まない', () => {
+    const text = usageText();
+    expect(text).not.toMatch(/audit\s+- fast/);
+    expect(text).not.toMatch(/deterministic PoSW sampling/);
   });
 });
