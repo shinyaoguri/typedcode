@@ -10,7 +10,7 @@ import { resolve, extname } from 'node:path';
 import { verifyProof, toBundleIntegrityValid, type ProofFile } from './verify.js';
 import { extractAllProofs, extractScreenshotArtifacts } from './zip.js';
 import { loadExternalAnalyzers } from './analyzers.js';
-import { formatResult, printError, printUsage } from './output.js';
+import { formatMultiSummary, formatProofHeader, formatResult, printError, printUsage } from './output.js';
 import { Spinner } from './progress.js';
 import {
   parseExamPackageManifest,
@@ -180,7 +180,7 @@ async function main(): Promise<void> {
     const analysisDump: Array<{ filename: string; valid: boolean; analysis: unknown }> = [];
     const bundleDump: Array<{ filename: string } & AnalysisBundle> = [];
     for (const { filename, proof } of proofs) {
-      if (multi) console.log(`\n=== ${filename} ===`);
+      if (multi) console.log(formatProofHeader(filename));
       const result = await verifyProof(proof, {
         mode,
         examPackageManifest,
@@ -220,11 +220,7 @@ async function main(): Promise<void> {
     }
 
     if (multi) {
-      const passed = summary.filter((s) => s.valid).length;
-      console.log(`\n=== Summary: ${passed}/${summary.length} proofs passed ===`);
-      for (const s of summary) {
-        console.log(`  ${s.valid ? '✓' : '✗'} ${s.filename}`);
-      }
+      console.log(formatMultiSummary(summary));
     }
 
     process.exit(summary.every((s) => s.valid) ? 0 : 1);

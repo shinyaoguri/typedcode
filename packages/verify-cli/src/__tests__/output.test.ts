@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AssuranceResult, ScreenshotVerificationSummary } from '@typedcode/shared';
-import { formatResult, type VerificationOutput } from '../output.js';
+import { formatMultiSummary, formatProofHeader, formatResult, safe, type VerificationOutput } from '../output.js';
 import type { CLIExamResult } from '../verify.js';
 
 /** 色付けは TTY 依存 (module load 時に決まる) なので、比較前に ANSI を落とす。 */
@@ -296,5 +296,135 @@ describe('formatResult — PoSW が再計算されなかったとき (fast モ�
 
     expect(text).toMatch(/Integrity: +FAILED/);
     expect(text).toContain('Verification FAILED');
+  });
+});
+
+/**
+ * 出力境界のサニタイズ (#266)。
+ *
+ * proof / ZIP 由来の文字列を生値のまま stdout に流すと、改行と ANSI エスケープで**任意の行を
+ * 偽造できる**。実 CLI で「ZIP エントリ名から Summary に緑の `✓ main_proof.json` を生やす」
+ * ところまで再現済み。exit code は守られるので、守るのは **stdout を grep する採点運用**。
+ */
+const ESC = String.fromCharCode(27);
+
+/** Summary の合格行を偽造しにくる ZIP エントリ名。 */
+const FORGED_ENTRY_NAME = `evil_proof.json\n  ${ESC}[32m✓${ESC}[0m main_proof.json`;
+
+describe('safe — 未信頼文字列の無害化 (#266)', () => {
+  it('leaves an ordinary value untouched (no noisy suffix on the happy path)', () => {
+    expect(safe('main_proof.json')).toBe('main_proof.json');
+  });
+
+  it('strips control characters and says so', () => {
+    const result = safe(FORGED_ENTRY_NAME);
+    expect(result).not.toContain('\n');
+    expect(result).not.toContain(ESC);
+    expect(result).toContain('(sanitized)');
+  });
+
+  it('truncates an over-long value and says so', () => {
+    const result = safe('a'.repeat(500));
+    expect(result).toBe(`${'a'.repeat(200)} (sanitized)`);
+  });
+
+  it('accepts non-strings (proof fields are self-asserted, not type-checked)', () => {
+    expect(safe(10000)).toBe('10000');
+    expect(safe(undefined)).toBe('undefined');
+  });
+});
+
+describe('formatMultiSummary — ZIP エントリ名による合格行の偽造 (#266)', () => {
+  it('keeps one line per proof even when an entry name carries a newline', () => {
+    const text = plain(
+      formatMultiSummary([
+        { filename: FORGED_ENTRY_NAME, valid: false },
+        { filename: 'main_proof.json', valid: false },
+      ])
+    );
+
+    // 見出し 1 行 + proof 2 行。偽造行が混ざれば 4 行になる。
+    expect(text.trim().split('\n')).toHaveLength(3);
+    expect(text).not.toContain(ESC);
+    // 合格印は行頭にしか立たない。名前の中に残る `✓` の文字そのものは無害。
+    expect(text.split('\n').filter((l) => /^ {2}✓/.test(l))).toHaveLength(0);
+    expect(text).toContain('0/2 proofs passed');
+  });
+
+  it('still marks genuinely passing proofs', () => {
+    const text = plain(formatMultiSummary([{ filename: 'ok_proof.json', valid: true }]));
+    expect(text).toContain('1/1 proofs passed');
+    expect(text).toContain(`✓ ok_proof.json`);
+  });
+});
+
+describe('formatProofHeader — proof ごとの見出し (#266)', () => {
+  it('collapses a forged entry name into a single header line', () => {
+    const text = plain(formatProofHeader(FORGED_ENTRY_NAME));
+    expect(text.trim().split('\n')).toHaveLength(1);
+    expect(text).not.toContain(ESC);
+    expect(text).toContain('(sanitized)');
+  });
+});
+
+describe('formatResult — proof 由来の文字列による偽セクションの注入 (#266)', () => {
+  it('does not let errorMessage open a second Checks block', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          chainValid: false,
+          errorMessage: `Hash mismatch\n\n--- Checks ---\nHash Chain:  PASS`,
+        })
+      )
+    );
+
+    // 見出しとして立つ `--- Checks ---` は 1 つだけ。注入分は `Error:` 行の中に留まる。
+    const lines = text.split('\n');
+    expect(lines.filter((l) => l.trim() === '--- Checks ---')).toHaveLength(1);
+    expect(lines.filter((l) => /^Hash Chain: +PASS/.test(l))).toHaveLength(0);
+  });
+
+  it('does not emit ANSI escapes carried by a self-asserted examId', () => {
+    const text = formatResult(
+      output({
+        valid: false,
+        exam: { ...examBindingFailed(), examId: `exam-1${ESC}[32m` },
+      })
+    );
+
+    expect(text).not.toContain(`exam-1${ESC}[32m`);
+    expect(plain(text)).toContain('(sanitized)');
+  });
+
+  it('does not let a reflection note inject a line, but keeps its newlines readable', () => {
+    const text = plain(
+      formatResult(
+        output({
+          processSummary: {
+            durationMs: 0,
+            insertedChars: 0,
+            deletedChars: 0,
+            deletionRatio: null,
+            executionCount: 0,
+            runSuccessCount: 0,
+            runFailureCount: 0,
+            hasRunResults: false,
+            pauseCount: 0,
+            focusLossCount: 0,
+            externalInputCount: 0,
+            reflectionNotes: [`first${ESC}[31m\nsecond`],
+            moments: [],
+          },
+        })
+      )
+    );
+
+    const reflection = text.split('\n').filter((l) => l.startsWith('Reflection:'));
+    expect(reflection).toHaveLength(1);
+    // 改行は ` / ` へ畳んで読めるまま、ESC だけが落ちる (`[31m` の文字は無害なので残る)。
+    expect(reflection[0]).toContain(' / second');
+    expect(reflection[0]).not.toContain(ESC);
+    expect(reflection[0]).toContain('(sanitized)');
   });
 });
