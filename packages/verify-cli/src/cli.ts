@@ -39,7 +39,8 @@ async function main(): Promise<void> {
 
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
     printUsage();
-    process.exit(args.length === 0 ? 1 : 0);
+    process.exitCode = args.length === 0 ? 1 : 0;
+    return;
   }
 
   // 未知フラグ・タイポ・値欠落は黙殺せず usage error (#148)。
@@ -48,7 +49,8 @@ async function main(): Promise<void> {
   if (flagError !== null) {
     printError(flagError);
     printUsage();
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const mode = parseModeFlag(args);
@@ -56,7 +58,8 @@ async function main(): Promise<void> {
   if (positional.length === 0) {
     printError('No proof file given.');
     printUsage();
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   const filePath = resolve(positional[0]!);
   const ext = extname(filePath).toLowerCase();
@@ -84,14 +87,16 @@ async function main(): Promise<void> {
   if (analyzerPaths.length > 0 || noDefaultAnalyzers) {
     if (noDefaultAnalyzers && analyzerPaths.length === 0) {
       printError('--no-default-analyzers requires at least one --analyzer <path>.');
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
     let external: Analyzer[];
     try {
       external = await loadExternalAnalyzers(analyzerPaths);
     } catch (err) {
       printError(err instanceof Error ? err.message : String(err));
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
     analyzers = noDefaultAnalyzers ? external : [...defaultAnalyzers, ...external];
     const names = analyzers.map((a) => `${a.id}@${a.version}`).join(', ');
@@ -106,7 +111,8 @@ async function main(): Promise<void> {
     submittedAtMs = Date.parse(submittedAtRaw);
     if (Number.isNaN(submittedAtMs)) {
       printError(`Invalid --submitted-at value: ${submittedAtRaw}. Use an ISO 8601 timestamp.`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
     // #218: --submitted-at は time-box (advisory) の判定にしか使われず、time-box は package の
     // manifest にしか無い。単独で渡しても黙って捨てられるので、その旨を出す (advisory なので
@@ -140,7 +146,8 @@ async function main(): Promise<void> {
     } else {
       spinner.stop();
       printError(`Unsupported file type: ${ext}. Use .json or .zip`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     // 問題パッケージ (.tcexam) の読込・パース (任意)
@@ -151,7 +158,8 @@ async function main(): Promise<void> {
       if (!parsed) {
         spinner.stop();
         printError(`Invalid exam package (.tcexam): ${examPackagePath}`);
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
       examPackageManifest = parsed;
     }
@@ -223,10 +231,10 @@ async function main(): Promise<void> {
       console.log(formatMultiSummary(summary));
     }
 
-    process.exit(summary.every((s) => s.valid) ? 0 : 1);
+    process.exitCode = summary.every((s) => s.valid) ? 0 : 1;
   } catch (error) {
     printError(error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 

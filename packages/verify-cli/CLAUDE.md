@@ -15,7 +15,7 @@
 ## 重要な不変条件
 
 1. **`shared` の検証ロジックを再実装しない**: バグや暗号アルゴリズムの修正は shared 側で行う。CLI 側で差分があると 「Web で OK / CLI で NG」 のような不整合事故が起きる
-2. **終了コード**: 0 = 成功、1 = 失敗 / エラー。これが CI で利用されるので変えない
+2. **終了コード**: 0 = 成功、1 = 失敗 / エラー。これが CI で利用されるので変えない。**立て方は `process.exitCode` で、`process.exit()` は使わない** (#283): stdout がパイプのとき Node の書き込みは非同期なので、`process.exit()` は未 flush の出力を捨ててプロセスを落とす。60 proof の ZIP を遅い読み手 (`| tee` / `| less`) へ流すと **ちょうど 65536 バイト (パイプバッファ 1 個分) で行の途中から切れ、`=== Summary: N/M proofs passed ===` ごと消える**ことを実測済み。TTY 実行とファイル redirect では再現しないので、気付かずに再導入しやすい (`exitCode.test.ts` が `process.exit(` の再導入を落とす)。副作用として `--analyzer` の外部モジュールがハンドルを残すと自然終了できなくなるので、README に明記してある
 3. **ZIP 内の proof は全件検証する**: exam/class はタブ毎に独立した `<name>_proof.json` を N 個出力するので、`shared` の `extractAllProofsFromZip` で全件を取り出し、**1 件でも fail なら exit 1**。最初の 1 件だけ見ると未検証タブが exit 0 で通る (proof 判定は構造 `isProofFile` で、ファイル名順や `screenshots/manifest.json` に依存しない)
 4. **stdout は人間向け、stderr はエラーログ**: パイプして grep される可能性を考慮
 5. **proof / ZIP 由来の文字列は `output.ts` の `safe()` を通してから stdout へ出す** (#266): 生値のままだと改行と ANSI エスケープで**任意の行を偽造できる** (ZIP エントリ名から Summary に緑の `✓ <正規ファイル名>` を生やせることを再現済み)。exit code は守られるので壊れるのは grep する採点運用と端末表示。`safe()` が保証するのは「未信頼値が 1 行に収まり行頭を乗っ取れない」ところまで — 行内に `Hash Chain:  PASS` という**文字列**が残るのは防げないので、**採点は行頭を固定して** grep する。整形を `cli.ts` の `console.log` に直接書かない (テストを当てられなくなる。`formatProofHeader` / `formatMultiSummary` のように `output.ts` へ寄せる)

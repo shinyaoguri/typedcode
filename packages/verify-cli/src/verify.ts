@@ -133,6 +133,24 @@ export interface VerifyProofOptions {
   signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
 }
 
+/**
+ * オブジェクトを再帰的に凍結する (#238 c3)。
+ *
+ * 用途は `FullVerificationResult` の凍結ひとつ。**event 数に比例するデータには使わないこと**
+ * (proof 本体は分析層が読む必要があり、コピーも凍結もコストが event 数に比例する)。
+ * ES module は strict mode なので、凍結後の代入は黙って無視されるのではなく TypeError で throw する。
+ * 分析器が throw しても orchestrator が握り潰す契約 (shared の `Analyzer` の JSDoc) なので、
+ * 行儀の悪い分析器 1 つが他の分析器を巻き添えにすることはない。
+ */
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  Object.freeze(value);
+  for (const key of Object.getOwnPropertyNames(value)) {
+    deepFreeze((value as Record<string, unknown>)[key]);
+  }
+  return value;
+}
+
 export async function verifyProof(proof: ProofFile, options: VerifyProofOptions = {}): Promise<CLIVerificationResult> {
   const mode: VerificationMode = options.mode ?? 'full';
   const startTime = performance.now();
@@ -171,10 +189,11 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
 
   progressBar.complete();
 
-  // 分析層 (ADR-0009): 検証と直交する post-hoc 分析。既定の分析器は方向性を示す
-  // プレースホルダのみ。advisory であって判定ではない (verifyProofFile の valid とは別軸)。
-  // options.analyzers が渡れば (採点者/研究者の外部アナライザ) それを使う。未指定なら shared 既定。
-  const analysis = await runAnalysis({ proof, verification: result }, options.analyzers);
+  // #238 (c3): 検証結果を凍結してから分析層へ渡す。`AnalysisInput.verification` は
+  // このオブジェクトそのものなので、凍結しないと外部 analyzer が `valid` 等を書き換えられる。
+  // 小さなサマリ (signedCheckpoints.details は署名 cp 数ぶんで event 数には比例しない) なので
+  // 深く凍結してよい。以降このオブジェクトは誰も書き換えない。
+  deepFreeze(result);
 
   // 試験モード (ADR-0006): root 束縛は proof 自己完結 (verifyProofFile が rootValid で検証済み)。
   // package が渡されたときのみ署名/復号/内容まで完全検証する (binding は上で計算済み)。
@@ -207,8 +226,6 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
   const firstPoswEvent = events.find((e) => e.posw);
   const poswIterations = firstPoswEvent?.posw?.iterations;
 
-  const duration = (performance.now() - startTime) / 1000;
-
   // package が渡されたとき、束縛失敗は全体を fail にする (proof 自己整合とは別軸の真正性)。
   const examValid = exam?.binding ? exam.binding.valid : true;
 
@@ -216,7 +233,27 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
   // 全体 fail = exit 1 に合流させる。欠損/chainOnly は warning (web と同じ) で exit 非干渉。
   const screenshotsValid = (options.screenshotSummary?.tampered ?? 0) === 0;
 
+  // proof 由来の自己申告値。生値のままだと Language: 行から改行や ANSI を stdout へ
+  // 流し込める (#248 / #266)。allowlist に落として渡す。
+  const language = normalizeProofLanguage(proof.language);
+  const processSummary = summarizeProcess(events);
+
+  // 判定に効く値 (exit code を決める valid、および三層保証の integrity / authenticity の入力) は
+  // **ここまでですべて確定している**。分析層より後に読むのは `analysis` だけ、という並びを保つこと。
+  // #238 (c3): 以前は runAnalysis がここより前に走っており、`AnalysisInput.verification` 経由で
+  // 外部 analyzer が `result.valid` を書き換えると改ざん proof が exit 0 になった。
+  // ADR-0009 / ADR-0023 の「advisory は判定に漏れない」を、凍結 (上) と順序 (ここ) の二重で担保する。
+  const valid = result.valid && examValid && screenshotsValid;
+
+  // 分析層 (ADR-0009): 検証と直交する post-hoc 分析。既定の分析器は方向性を示す
+  // プレースホルダのみ。advisory であって判定ではない (verifyProofFile の valid とは別軸)。
+  // options.analyzers が渡れば (採点者/研究者の外部アナライザ) それを使う。未指定なら shared 既定。
+  const analysis = await runAnalysis({ proof, verification: result }, options.analyzers);
+
+  const duration = (performance.now() - startTime) / 1000;
+
   // 三層保証語彙 (ADR-0020): 実証拠のみから導出 (自己申告 mode は使わない)。
+  // analysis は `process` 層 (notableSignals / reviewPriority) にしか流れない (shared/assurance.ts)。
   const assurance = deriveAssurance({
     metadataValid: result.metadataValid,
     chainValid: result.chainValid,
@@ -248,7 +285,7 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
   });
 
   return {
-    valid: result.valid && examValid && screenshotsValid,
+    valid,
     metadataValid: result.metadataValid,
     chainValid: result.chainValid,
     isPureTyping: result.isPureTyping,
@@ -259,16 +296,14 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     poswIterations,
     errorAt: result.errorAt,
     errorMessage: result.errorMessage,
-    // proof 由来の自己申告値。生値のままだと Language: 行から改行や ANSI を stdout へ
-    // 流し込める (#248 / #266)。allowlist に落として渡す。
-    language: normalizeProofLanguage(proof.language),
+    language,
     mode,
     poswSkipped: result.poswSkipped ?? false,
     signedCheckpoints: result.signedCheckpoints,
     rootAnchored: result.rootAnchored ?? false,
     analysis,
     assurance,
-    processSummary: summarizeProcess(events),
+    processSummary,
     exam,
     screenshots: options.screenshotSummary,
   };

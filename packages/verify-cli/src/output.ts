@@ -516,7 +516,7 @@ ${c('cyan', 'Arguments:')}
 ${c('cyan', 'Options:')}
   --mode           Verification mode (default: full)
                    fast  - Skip PoSW recompute (tamper resistance only)
-                   audit - fast + deterministic PoSW sampling (placeholder)
+                   audit - unimplemented; currently equivalent to full (spec 6.1)
                    full  - Full PoSW verification
   --exam-package   Exam mode (ADR-0006): sealed problem package (.tcexam) to fully
                    verify the binding (signature, package hash, decrypted content).
