@@ -18,6 +18,36 @@ function c(color: keyof typeof COLORS, text: string): string {
   return useColors ? `${COLORS[color]}${text}${COLORS.reset}` : text;
 }
 
+/** 未信頼値を 1 行に収めるための表示上限。超えた分は切り詰めて `(sanitized)` を付ける。 */
+const MAX_UNTRUSTED_LENGTH = 200;
+
+/**
+ * proof / ZIP 由来の**未信頼**文字列を stdout へ出す前に無害化する (#266)。
+ *
+ * CLI の stdout はパイプして grep される (不変条件 4)。生値のままだと改行で任意の行を、
+ * ANSI エスケープで色と既存行の上書きを注入でき、`✓ main_proof.json` のような
+ * **偽の合格行を採点スクリプトに読ませられる** (ZIP エントリ名で実際に再現済み)。
+ *
+ * - C0 / C1 制御文字 (ESC・CR・LF を含む) を除去する
+ * - `MAX_UNTRUSTED_LENGTH` で切り詰める
+ * - **除去か切り詰めが起きたときだけ `(sanitized)` を付ける**。黙って消すと「元からその名前
+ *   だった」と読めてしまい、採点者が異常に気づけない
+ *
+ * 保証するのは「**未信頼値が 1 行に収まり、行頭を乗っ取れない**」ところまで。`Error:` 行の中に
+ * `Hash Chain:  PASS` という**文字列**が残ることは防げない (正当な本文と区別できない) ので、
+ * 採点スクリプトは `^Hash Chain:` のように**行頭を固定して** grep すること。
+ *
+ * 注意: `c()` による着色は `safe()` の**外側**で行うこと。内側に入れると CLI 自身の ANSI まで
+ * 落ちる。また非文字列も受ける — 未検証の proof には数値であるべき欄に文字列が入りうる。
+ */
+export function safe(value: unknown): string {
+  const raw = typeof value === 'string' ? value : String(value);
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: 制御文字の除去そのものが目的
+  const stripped = raw.replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
+  const truncated = stripped.slice(0, MAX_UNTRUSTED_LENGTH);
+  return truncated === raw ? truncated : `${truncated} (sanitized)`;
+}
+
 import type {
   VerificationMode,
   SignedCheckpointsVerificationResult,
@@ -126,13 +156,15 @@ function formatExamSection(exam: CLIExamResult, lines: string[]): void {
     lines.push(c('red', '  ! --exam-package was provided but this proof has no exam block'));
     lines.push(c('dim', '    This submission is not an exam proof — the exam binding gate does not apply to it.'));
     if (exam.binding?.reason) {
-      lines.push(c('red', `  Reason: ${exam.binding.reason}`));
+      lines.push(c('red', `  Reason: ${safe(exam.binding.reason)}`));
     }
     return;
   }
 
-  const variant = exam.variant ? ` / ${exam.variant}` : '';
-  lines.push(`Exam:         ${exam.examId} / ${exam.problemId}${variant}`);
+  // examId / problemId / variant は proof の自己申告 (#273 で manifest 突合を検討中)。
+  // 突合前でも「壊れた文字を出さない」ことだけは境界で保証する (#266)。
+  const variant = exam.variant ? ` / ${safe(exam.variant)}` : '';
+  lines.push(`Exam:         ${safe(exam.examId)} / ${safe(exam.problemId)}${variant}`);
   // root 束縛は proof 自己完結 (package 不要)。
   lines.push(`Root binding: ${passFail(exam.rootBindingValid)}  ${c('dim', '(answer bound to package + T0)')}`);
 
@@ -148,7 +180,7 @@ function formatExamSection(exam: CLIExamResult, lines: string[]): void {
   lines.push(`Content hash: ${passFail(b.problemContentHashMatches)}`);
   if (b.timeBox) {
     const tb = b.timeBox;
-    lines.push(`Time-box:     ${tb.releaseTime} … ${tb.deadline}`);
+    lines.push(`Time-box:     ${safe(tb.releaseTime)} … ${safe(tb.deadline)}`);
     if (tb.withinWindow === null) {
       lines.push(c('dim', '    (submission time not provided — pass --submitted-at to check the window)'));
     } else if (tb.withinWindow) {
@@ -162,7 +194,7 @@ function formatExamSection(exam: CLIExamResult, lines: string[]): void {
     }
   }
   if (!b.valid && b.reason) {
-    lines.push(c('red', `  Reason: ${b.reason}`));
+    lines.push(c('red', `  Reason: ${safe(b.reason)}`));
   }
 }
 
@@ -204,7 +236,10 @@ function formatProcessSummary(p: ProcessSummary): string[] {
     `Activity:    ${runs}, ${p.pauseCount} long pause(s), ${p.focusLossCount} focus loss(es), ${p.externalInputCount} external input(s)`
   );
   for (const note of p.reflectionNotes) {
-    lines.push(`Reflection:  ${note.replace(/\n/g, ' / ')}`);
+    // 学習者が自由入力した文字列 = 未信頼 (#266)。改行は正当な入力なので ` / ` へ畳んでから
+    // (捨てると文が繋がって読めなくなる)、残る制御文字を safe() で落とす。旧実装は \r と ESC を
+    // 素通ししていた。
+    lines.push(`Reflection:  ${safe(note.replace(/\n/g, ' / '))}`);
   }
   for (const m of p.moments) {
     const range =
@@ -244,7 +279,7 @@ export function formatResult(result: VerificationOutput): string {
     if (examBindingFailedOnly || screenshotsFailedOnly) {
       // 両方落ちることもある (exam proof の ZIP でスクショも改ざん) ので、片方に潰さず両方出す。
       if (examBindingFailedOnly) {
-        lines.push(c('red', `  Exam binding failed: ${result.exam!.binding!.reason ?? 'see section below'}`));
+        lines.push(c('red', `  Exam binding failed: ${safe(result.exam!.binding!.reason ?? 'see section below')}`));
       }
       if (screenshotsFailedOnly) {
         lines.push(
@@ -256,10 +291,11 @@ export function formatResult(result: VerificationOutput): string {
       }
     } else {
       if (result.errorMessage) {
-        lines.push(c('red', `  Error: ${result.errorMessage}`));
+        // 検証失敗の理由には proof 由来の値が埋め込まれる (`got ${claimed[key]}` など)。
+        lines.push(c('red', `  Error: ${safe(result.errorMessage)}`));
       }
       if (result.errorAt !== undefined) {
-        lines.push(c('red', `  Failed at event: ${result.errorAt}`));
+        lines.push(c('red', `  Failed at event: ${safe(result.errorAt)}`));
       }
     }
   }
@@ -304,7 +340,12 @@ export function formatResult(result: VerificationOutput): string {
 
   if (result.poswIterations) {
     const poswStatus = result.poswSkipped ? c('yellow', 'SKIPPED (fast mode)') : c('green', 'VERIFIED');
-    lines.push(`PoSW:        ${result.poswIterations.toLocaleString()} iterations/event — ${poswStatus}`);
+    // 型は number だが値は proof の自己申告なので、非数値が来たら整形せず safe() で出す (#266)。
+    const iterations =
+      typeof result.poswIterations === 'number' && Number.isFinite(result.poswIterations)
+        ? result.poswIterations.toLocaleString()
+        : safe(result.poswIterations);
+    lines.push(`PoSW:        ${iterations} iterations/event — ${poswStatus}`);
   }
 
   if (result.mode) {
@@ -348,7 +389,8 @@ export function formatResult(result: VerificationOutput): string {
         lines.push(c('yellow', '  ! Some envelopes signed with a key that was later revoked'));
       }
     } else {
-      lines.push(`Anchoring:   ${c('red', 'FAILED')} ${sc.reason ?? ''}`);
+      // reason には proof 由来の keyId / algorithm が埋め込まれる。
+      lines.push(`Anchoring:   ${c('red', 'FAILED')} ${sc.reason ? safe(sc.reason) : ''}`);
     }
   }
 
@@ -409,14 +451,15 @@ export function formatResult(result: VerificationOutput): string {
             : s.severity === 'notice'
               ? c('yellow', 'NOTICE')
               : c('dim', 'INFO');
-        lines.push(`  [${tag}] ${s.dimension}: ${s.summary}`);
+        // signal の文言は proof 由来に加え、外部 `--analyzer` (ADR-0023) の出力も入る = 未信頼。
+        lines.push(`  [${tag}] ${safe(s.dimension)}: ${safe(s.summary)}`);
         // 証拠リンク (ADR-0009 で必須): 人間が当該イベントを検分できるよう event index を出す。
         for (const ev of s.evidence) {
           const range =
             ev.toEventIndex !== undefined && ev.toEventIndex !== ev.fromEventIndex
               ? `events ${ev.fromEventIndex}–${ev.toEventIndex}`
               : `event ${ev.fromEventIndex}`;
-          lines.push(c('dim', `      evidence: ${range}${ev.note ? ` (${ev.note})` : ''}`));
+          lines.push(c('dim', `      evidence: ${range}${ev.note ? ` (${safe(ev.note)})` : ''}`));
         }
       }
     }
@@ -424,6 +467,31 @@ export function formatResult(result: VerificationOutput): string {
 
   lines.push('');
 
+  return lines.join('\n');
+}
+
+/**
+ * ZIP 内の proof ごとの見出し (複数 proof のときだけ出る)。
+ *
+ * ファイル名は **ZIP エントリ名** = 攻撃者が自由に決められる文字列 (#266)。整形を `cli.ts` の
+ * `console.log` に置いたままだとテストを当てられないので、出力の組み立てはここに寄せる。
+ */
+export function formatProofHeader(filename: string): string {
+  return `\n=== ${safe(filename)} ===`;
+}
+
+/**
+ * 複数 proof の合否一覧。
+ *
+ * 採点運用はこの `✓` 行を grep する。エントリ名に改行を仕込まれても**行数が entries.length + 1
+ * のまま**であることが不変条件で、`output.test.ts` がそれを固定する (#266)。
+ */
+export function formatMultiSummary(entries: ReadonlyArray<{ filename: string; valid: boolean }>): string {
+  const passed = entries.filter((e) => e.valid).length;
+  const lines = [`\n=== Summary: ${passed}/${entries.length} proofs passed ===`];
+  for (const e of entries) {
+    lines.push(`  ${e.valid ? '✓' : '✗'} ${safe(e.filename)}`);
+  }
   return lines.join('\n');
 }
 
