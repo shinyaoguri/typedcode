@@ -24,9 +24,9 @@
   },
   "devDependencies": {
     "@types/jszip": "^3.4.1",
-    "@types/node": "^26.1.2",
+    "@types/node": "^26.4.0",
     "typescript": "^6.0.2",
-    "vite": "^8.1.5",
-    "vitest": "^4.1.10"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   }
 }
