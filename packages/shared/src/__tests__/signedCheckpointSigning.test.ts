@@ -110,6 +110,32 @@ describe('validateSignedCheckpointInput', () => {
     expect(r.ok).toBe(false);
   });
 
+  it('accepts a crypto.randomUUID()-shaped sessionId and tabId', () => {
+    const r = validateSignedCheckpointInput({
+      ...baseInputRaw,
+      sessionId: '3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b',
+      tabId: 'a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d',
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects a sessionId containing the KV key separator ":" (#297)', () => {
+    // KV キーは `session:{sessionId}:{tabId}` なので、`a:b`/`c` と `a`/`b:c` が同じキーになる。
+    const r = validateSignedCheckpointInput({ ...baseInputRaw, sessionId: 'a:b' });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects a tabId containing the KV key separator ":" (#297)', () => {
+    const r = validateSignedCheckpointInput({ ...baseInputRaw, tabId: 'b:c' });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects a tabId with characters outside the ASCII id allowlist (#297)', () => {
+    // 非 ASCII は KV キーのバイト長 (512) を文字数上限 200 から読めなくする。
+    const r = validateSignedCheckpointInput({ ...baseInputRaw, tabId: 'タブ/1' });
+    expect(r.ok).toBe(false);
+  });
+
   it('rejects an over-long clientTimestamp even if Date.parse would tolerate it', () => {
     const r = validateSignedCheckpointInput({
       ...baseInputRaw,

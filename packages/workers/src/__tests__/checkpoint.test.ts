@@ -101,6 +101,9 @@ class MockKV {
 
 const responder = { cors: () => ({}) };
 
+/** per-session タブ台帳の KV キー (#297: record の `session:` 名前空間から分離) */
+const TAB_REGISTRY_KEY = 'tabs:test-session';
+
 async function freshSigningKey(): Promise<string> {
   const keyPair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const jwk = await crypto.subtle.exportKey('jwk', keyPair.privateKey);
@@ -433,13 +436,13 @@ describe('handleSignCheckpoint', () => {
   it('registers each new tab in the per-session tab registry', async () => {
     await sign(makeRequest(makeInput({ tabId: 'tab-1' })));
     await sign(makeRequest(makeInput({ tabId: 'tab-2' })));
-    expect(JSON.parse(kv.store.get('session:test-session:tabs')!)).toEqual(['tab-1', 'tab-2']);
+    expect(JSON.parse(kv.store.get(TAB_REGISTRY_KEY)!)).toEqual(['tab-1', 'tab-2']);
   });
 
   it('rejects a NEW tab beyond the per-session cap with TAB_LIMIT_EXCEEDED but keeps known tabs signable', async () => {
     // 1 Turnstile (= 1 token) から tabId 連打で KV キーを増幅させる残余ベクタの蓋。
     const fullTabs = Array.from({ length: 64 }, (_, i) => `tab-${i + 1}`);
-    kv.store.set('session:test-session:tabs', JSON.stringify(fullTabs));
+    kv.store.set(TAB_REGISTRY_KEY, JSON.stringify(fullTabs));
 
     const rejected = await sign(makeRequest(makeInput({ tabId: 'tab-65' })));
     expect(rejected.status).toBe(429);
@@ -448,5 +451,40 @@ describe('handleSignCheckpoint', () => {
     // 台帳に既にいるタブは上限到達後も署名を継続できる
     const known = await sign(makeRequest(makeInput({ tabId: 'tab-64' })));
     expect(known.status).toBe(200);
+  });
+
+  // ---------- KV キーの名前空間と保存値の形 (#297) ----------
+
+  it('keeps the tab registry intact when a tab is literally named "tabs"', async () => {
+    // 旧キーでは台帳 `session:{sid}:tabs` と tabId=tabs の record が同じキーになり、
+    // record (オブジェクト) が台帳 (string[]) として読まれて後続タブの署名が例外になった。
+    const resNormal = await sign(makeRequest(makeInput({ tabId: 'normal' })));
+    const resTabs = await sign(makeRequest(makeInput({ tabId: 'tabs' })));
+    const resAnother = await sign(makeRequest(makeInput({ tabId: 'another' })));
+    expect([resNormal.status, resTabs.status, resAnother.status]).toEqual([200, 200, 200]);
+    expect(JSON.parse(kv.store.get(TAB_REGISTRY_KEY)!)).toEqual(['normal', 'tabs', 'another']);
+  });
+
+  it('rejects ids containing the key separator with SCHEMA_INVALID', async () => {
+    // `a:b`/`c` と `a`/`b:c` が同じ record キー `session:a:b:c` に潰れるのを入口で塞ぐ。
+    const res = await sign(makeRequest(makeInput({ sessionId: 'a:b', tabId: 'b:c' })));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as ErrorResponseBody).code).toBe('SCHEMA_INVALID');
+    expect(kv.store.size).toBe(0);
+  });
+
+  it('treats a malformed tab registry as unreadable instead of throwing', async () => {
+    // 台帳は best-effort の防御線: 形が壊れていれば read 失敗と同じく cap 判定をスキップして署名を通す。
+    kv.store.set(TAB_REGISTRY_KEY, JSON.stringify({ x: 1 }));
+    const res = await sign(makeRequest(makeInput({ tabId: 'tab-new' })));
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects a malformed session record with 503 instead of throwing', async () => {
+    // record を null 扱いにすると既存セッションに別の firstSeenAt で署名してしまう (#151 と同じ罠)。
+    kv.store.set('session:test-session:tab-1', JSON.stringify([]));
+    const res = await sign(makeRequest(makeInput({ tabId: 'tab-1' })));
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as ErrorResponseBody).code).toBe('SESSION_STATE_UNAVAILABLE');
   });
 });

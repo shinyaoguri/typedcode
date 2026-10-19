@@ -49,6 +49,15 @@ const MAX_FIRST_ANCHOR_LATENCY_EVENTS = 500; // events before the first signed c
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** sessionId / tabId の許容最大長 (UUID 等で十分。署名 API の濫用対策) */
 const MAX_ID_LENGTH = 200;
+/**
+ * sessionId / tabId の許容文字種 (#297)。Workers の KV キー `session:{sessionId}:{tabId}` に
+ * そのまま埋め込まれるので、区切り文字 `:` を締め出して `a:b`/`c` と `a`/`b:c` の衝突を塞ぐ。
+ * ASCII 限定にすることで MAX_ID_LENGTH (文字数) がそのまま KV キーのバイト長上限 (512) 内に収まる。
+ * editor の ID は crypto.randomUUID() なので常にこの集合に入る。
+ * sessionStartToken.ts の validateSessionStartInput と同じ集合に揃えること (token の sessionId が
+ * ここを通らないと、発行はできても署名できない sessionId が生まれる)。
+ */
+const ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 /** clientTimestamp (ISO 8601) の許容最大長 */
 const MAX_TIMESTAMP_LENGTH = 40;
 /** checkpointIndex / eventIndex / totalEventsSincePrevious の上限 (整数オーバーフロー/濫用対策) */
@@ -155,7 +164,8 @@ export function validateSignedCheckpointInput(
   const obj = raw as Record<string, unknown>;
 
   // sessionId / tabId: 任意のクライアント生成文字列だが、署名 API なので
-  // 非空かつ最大長で縛る (DoS / KV キー肥大化対策)。
+  // 非空かつ最大長で縛る (DoS / KV キー肥大化対策)。文字種も KV キーの区切りと衝突しない
+  // allowlist に限る (#297)。
   for (const k of ['sessionId', 'tabId'] as const) {
     const v = obj[k];
     if (typeof v !== 'string' || v.length === 0) {
@@ -163,6 +173,9 @@ export function validateSignedCheckpointInput(
     }
     if (v.length > MAX_ID_LENGTH) {
       return { ok: false, reason: `${k} exceeds max length (${MAX_ID_LENGTH})` };
+    }
+    if (!ID_PATTERN.test(v)) {
+      return { ok: false, reason: `${k} must match ${ID_PATTERN.source}` };
     }
   }
 

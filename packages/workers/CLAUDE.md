@@ -54,7 +54,7 @@ src/
 | `TOKEN_REQUIRED` | 401 | `sessionStartToken` 不在 (ADR-0027。KV read より前に弾く) |
 | `TOKEN_INVALID` | 401 | token の署名 / registry / 形式が不正 (内部理由はログのみ) |
 | `TOKEN_SESSION_MISMATCH` | 401 | `token.payload.sessionId` ≠ `input.sessionId` (token 使い回しで新規 sessionId を連打する手口を塞ぐ) |
-| `TAB_LIMIT_EXCEEDED` | 429 | per-session タブ台帳 (`session:{sessionId}:tabs`) が `MAX_TABS_PER_SESSION` (64) 超過 |
+| `TAB_LIMIT_EXCEEDED` | 429 | per-session タブ台帳 (`tabs:{sessionId}`) が `MAX_TABS_PER_SESSION` (64) 超過 |
 | `NON_MONOTONIC` | 409 | `checkpointIndex` が単調増加していない |
 | `CHECKPOINT_CONFLICT` | 409 | 同一 index で内容不一致 (冪等性が成立しない) |
 | `SESSION_LIMIT_EXCEEDED` | 429 | KV の `SESSION_MAX_CHECKPOINTS` 超過 |
@@ -62,7 +62,9 @@ src/
 | `SIGNING_KEY_UNKNOWN` | 500 | `keyId` がレジストリに存在しない |
 | `SIGNING_ERROR` | 500 | 署名計算で予期しない失敗 |
 | `SESSION_PERSIST_FAILED` | 503 | **初回** checkpoint の KV 書き込み失敗。`firstSeenAt` が固定されないため署名済み envelope は返さずクライアントにリトライさせる (2 回目以降の書き込み失敗は best-effort で 200) |
-| `SESSION_STATE_UNAVAILABLE` | 503 | KV の**読み取り**失敗。「existing = null」と混同すると既存セッションに別の `firstSeenAt` で署名してしまう (#151/#153) ため、署名せずリトライさせる |
+| `SESSION_STATE_UNAVAILABLE` | 503 | KV の**読み取り**失敗、または読めた record が不正形 (#297)。「existing = null」と混同すると既存セッションに別の `firstSeenAt` で署名してしまう (#151/#153) ため、署名せずリトライさせる |
+
+`SCHEMA_INVALID` には `sessionId` / `tabId` の文字種違反 (`^[A-Za-z0-9._-]+$` 外。#297) も含む。
 
 ## CORS と濫用防止の設計
 
@@ -107,11 +109,21 @@ CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リス
 
 ## KV ネームスペース
 
-キーは **`session:{sessionId}:{tabId}`** (タブ毎)。`checkpointIndex` はタブ毎に 0 始まりで sessionId はブラウザセッション共有のため、sessionId だけでキーイングすると複数タブ (class の N 問タブ等) で 2 枚目以降が衝突して 1 つも署名されない。verifier は `firstSeenAt` をタブ間で共有要求しない (proof = 1 タブ) ので per-tab で安全。
+session record のキーは **`session:{sessionId}:{tabId}`** (タブ毎)。`checkpointIndex` はタブ毎に 0 始まりで sessionId はブラウザセッション共有のため、sessionId だけでキーイングすると複数タブ (class の N 問タブ等) で 2 枚目以降が衝突して 1 つも署名されない。verifier は `firstSeenAt` をタブ間で共有要求しない (proof = 1 タブ) ので per-tab で安全。
 
-| Binding | 内容 | TTL |
-|---|---|---|
-| `CHECKPOINT_SESSIONS` | `firstSeenAt`, `lastCheckpointIndex`, `lastServerTimestamp`, `signedCount`, `lastEnvelope` (冪等用) | 7 日 |
+| Binding | キー | 内容 | TTL |
+|---|---|---|---|
+| `CHECKPOINT_SESSIONS` | `session:{sessionId}:{tabId}` | session record: `firstSeenAt`, `lastCheckpointIndex`, `lastServerTimestamp`, `signedCount`, `lastEnvelope` (冪等用) | 7 日 |
+| `CHECKPOINT_SESSIONS` | `tabs:{sessionId}` | per-session タブ台帳 (`string[]`、ADR-0027 のタブ上限用) | 7 日 |
+
+**キーの不変条件 (#297)**:
+
+- キーは `checkpoint.ts` の `sessionRecordKey` / `tabRegistryKey` だけが組み立てる。**レコード種別ごとに接頭辞を分ける** (かつて台帳を `session:{sessionId}:tabs` に置いていたため、tabId=`tabs` の record と同じキーになり、後続タブの署名が例外になった)。新しい種別を足すときも別接頭辞にすること
+- `sessionId` / `tabId` は shared の `validateSignedCheckpointInput` / `validateSessionStartInput` が **`^[A-Za-z0-9._-]+$` (≤200 文字)** に限る。区切り `:` を締め出すので `a:b`/`c` と `a`/`b:c` が同じ record キーに潰れない。ASCII 限定なので KV キーのバイト長上限 (512) にも収まる。editor の ID は `crypto.randomUUID()` なので常に集合内。2 つの validator の文字種は**同じ集合に揃える** (ずれると token は発行できるが署名できない sessionId が生まれる)
+- KV の `get<T>('json')` は cast するだけなので、読んだ値は `isSessionRecord` / `isTabRegistry` で形を確かめる。不正形の **record は 503 `SESSION_STATE_UNAVAILABLE`** (null 扱いにすると別 `firstSeenAt` で署名する #151 の罠)、不正形の **台帳は read 失敗と同じ扱い** (cap 判定をスキップして署名は通す)
+- **record キーは変えない**: 変えると進行中セッションが新しい `firstSeenAt` で署名され、editor の #151 ガードで署名が止まる
+
+**移行 (#297 の台帳キー変更)**: 旧台帳 `session:{sessionId}:tabs` は読まれなくなり、TTL 7 日で自然消滅する。デプロイ直後の進行中セッションは台帳が空から数え直しになるが、cap が一時的に甘くなる側にしか倒れないので特別な移行作業は不要。record キーは据え置きなので署名の継続性 (`firstSeenAt`・冪等再送) には影響しない。
 
 **firstSeenAt の分裂 (#151)**: KV は結果整合で他コロへの伝播に最大 ~60 秒かかる。cp 周期 (~10s) 内にコロ切替 (モバイル網等) が起きると、切替先では `existing=null` と誤認して**別の `firstSeenAt`** で署名しうる。verifier は全 envelope の firstSeenAt 完全一致を要求するため、そのまま proof に載ると正直な提出が丸ごと fail する。**緩和はクライアント側** — editor の `SignedCheckpointService` が既知の firstSeenAt と食い違う envelope を破棄してバックオフ再送する (伝播後のリトライは正しい値で署名される)。恒久対策 (Durable Object での per-session 逐次化) は W5 の ADR 課題。
 

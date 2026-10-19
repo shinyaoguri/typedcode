@@ -262,7 +262,7 @@ interface CheckpointData {
 2. **sessionStartToken 検証 (ADR-0027)**: 同送された token の ECDSA 署名を registry で検証し、`token.payload.sessionId === input.sessionId` を要求 (KV read より前。無認証リクエストに KV コストを払わない)
 3. KV から `session:{sessionId}:{tabId}` を取得
 4. **firstSeenAt 確定**: 既存があればその値、なければ `now` で初回書込
-5. 新規タブなら per-session タブ台帳 (`session:{sessionId}:tabs`) の上限チェック (`MAX_TABS_PER_SESSION` = 64、best-effort)
+5. 新規タブなら per-session タブ台帳 (`tabs:{sessionId}`。record の `session:` 名前空間とは別。#297) の上限チェック (`MAX_TABS_PER_SESSION` = 64、best-effort。不正形の台帳は read 失敗と同扱いで判定スキップ)。`sessionId` / `tabId` は `^[A-Za-z0-9._-]+$` (≤200) で、不正形の session record は 503 `SESSION_STATE_UNAVAILABLE`
 6. checkpointIndex 単調性チェック (best-effort)
 7. signedCount セッション上限チェック (50,000)
 8. `payload = { ...input, serverTimestamp: now, firstSeenAt, poswIterations: 10000, version: 1 }` を構築

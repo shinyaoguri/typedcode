@@ -3,6 +3,7 @@
  *
  * 設計:
  * - サーバは最小限の KV 状態 (session:{sessionId}:{tabId}) のみ保持する (タブ毎)。
+ *   加えて per-session のタブ台帳 (tabs:{sessionId}) を持つ (ADR-0027 のタブ上限)。
  * - 厳密な単調性は verifier 側の連鎖チェックで保証。サーバ側は best-effort で
  *   非単調 / セッション上限超過を弾く。
  * - firstSeenAt は KV 初回書込時に確定し、それ以降は固定。verifier はすべての
@@ -42,6 +43,47 @@ interface SessionRecord {
    * 409 を返してしまい、その checkpoint は永久に失われる。
    */
   lastEnvelope?: SignedCheckpointEnvelope;
+}
+
+/**
+ * KV に保存された session record の実行時形検査 (#297)。
+ * `get<T>('json')` は cast するだけで形を保証しない。ハンドラが読むフィールドだけを見る。
+ */
+function isSessionRecord(v: unknown): v is SessionRecord {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const r = v as Record<string, unknown>;
+  if (typeof r.firstSeenAt !== 'string') return false;
+  if (!Number.isInteger(r.lastCheckpointIndex) || !Number.isInteger(r.signedCount)) return false;
+  // lastEnvelope は冪等判定で `.payload` を読むので、あるなら payload を持つオブジェクトであること
+  if (r.lastEnvelope !== undefined) {
+    const envelope = r.lastEnvelope as Record<string, unknown> | null;
+    if (!envelope || typeof envelope !== 'object' || !envelope.payload || typeof envelope.payload !== 'object') {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** KV に保存されたタブ台帳の実行時形検査 (#297)。 */
+function isTabRegistry(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((t) => typeof t === 'string');
+}
+
+/**
+ * KV キーの単一定義 (#297)。record と台帳は**接頭辞で名前空間を分ける**: かつて台帳を
+ * `session:{sessionId}:tabs` に置いていたため、tabId=`tabs` の record と同じキーになり
+ * 台帳が壊れた。ID の文字種は shared の validator が `[A-Za-z0-9._-]` に限るので、区切り
+ * `:` による `a:b`/`c` ↔ `a`/`b:c` の衝突も起きない。
+ *
+ * record キーは据え置き (変えると進行中セッションが新しい firstSeenAt で署名され、#151
+ * ガードで署名が止まる)。旧台帳キーは読まれなくなり TTL で自然消滅する。
+ */
+function sessionRecordKey(sessionId: string, tabId: string): string {
+  return `session:${sessionId}:${tabId}`;
+}
+
+function tabRegistryKey(sessionId: string): string {
+  return `tabs:${sessionId}`;
 }
 
 /** session record の TTL (秒). 検証可能性とは無関係 — 漏洩 sessionId による
@@ -254,13 +296,18 @@ export async function handleSignCheckpoint(
   // (class モードの N 問タブ等) で 2 枚目以降のタブが checkpointIndex 衝突 → CHECKPOINT_CONFLICT /
   // NON_MONOTONIC となり 1 つも署名されない。verifier は firstSeenAt をタブ間で共有要求しない
   // (proof = 1 タブ) ので、firstSeenAt がタブ毎に確定するのは安全。
-  const sessionKey = `session:${input.sessionId}:${input.tabId}`;
+  const sessionKey = sessionRecordKey(input.sessionId, input.tabId);
   // KV read の失敗は「existing = null」と混同してはいけない (#153/#151): null 扱いにすると
   // 既存セッションに新しい firstSeenAt で署名してしまい、verifier の firstSeenAt 完全一致
   // 要求により proof 全体が検証不能になる。必ず 503 でクライアントにリトライさせる。
   let existing: SessionRecord | null;
   try {
-    existing = await env.CHECKPOINT_SESSIONS.get<SessionRecord>(sessionKey, 'json');
+    const stored = await env.CHECKPOINT_SESSIONS.get<unknown>(sessionKey, 'json');
+    if (stored !== null && !isSessionRecord(stored)) {
+      // 不正形の record も「読めなかった」扱い。null に倒すと別の firstSeenAt で署名してしまう。
+      throw new Error(`malformed session record at ${sessionKey}`);
+    }
+    existing = stored;
   } catch (err) {
     console.error('[checkpoint] KV read failed:', err);
     return jsonResponse(
@@ -282,11 +329,16 @@ export async function handleSignCheckpoint(
   // token に焼けない)。新規タブの初回署名時のみ per-session のタブ台帳を見て上限を
   // 強制し、「1 Turnstile → 無制限の KV キー」を塞ぐ。KV は結果整合なので同時開始
   // タブで多少の over-admission はありうる (厳密化は DO 化 = ADR-0027 の再評価条件)。
-  const tabsKey = `session:${input.sessionId}:tabs`;
+  const tabsKey = tabRegistryKey(input.sessionId);
   let knownTabs: string[] | null = null;
   if (isFirstCheckpoint) {
     try {
-      knownTabs = (await env.CHECKPOINT_SESSIONS.get<string[]>(tabsKey, 'json')) ?? [];
+      const stored = (await env.CHECKPOINT_SESSIONS.get<unknown>(tabsKey, 'json')) ?? [];
+      if (!isTabRegistry(stored)) {
+        // 不正形の台帳は read 失敗と同じ扱い (下の catch で cap 判定をスキップ)。
+        throw new Error(`malformed tab registry at ${tabsKey}`);
+      }
+      knownTabs = stored;
     } catch (err) {
       // タブ台帳は best-effort の防御線: 読めないときは cap 判定をスキップして署名は通す
       // (KV 障害で正規ユーザーを締め出さない。session record 側の read 失敗は上で 503 済み)。
