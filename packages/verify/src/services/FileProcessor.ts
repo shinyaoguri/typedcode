@@ -9,7 +9,7 @@ import type { ProofFile, VerifyScreenshot } from '../types.js';
 import type { ScreenshotService } from './ScreenshotService.js';
 import { JsonFileProcessor } from './JsonFileProcessor.js';
 import { ZipFileProcessor } from './ZipFileProcessor.js';
-import { getFileType, isProofFilename, getLanguageFromExtension } from './fileUtils.js';
+import { getLanguageFromExtension } from './fileUtils.js';
 import { t } from '../i18n/index.js';
 
 // 再エクスポート（利用側の互換性のため）
@@ -191,26 +191,5 @@ export class FileProcessor {
    */
   async processZip(file: File): Promise<FileProcessResult> {
     return this.zipProcessor.process(file);
-  }
-
-  /**
-   * ファイル拡張子からファイルタイプを判定
-   */
-  static getFileType(filename: string): 'json' | 'zip' | 'unknown' {
-    return getFileType(filename);
-  }
-
-  /**
-   * 証明ファイルのファイル名パターンにマッチするか
-   */
-  static isProofFilename(filename: string): boolean {
-    return isProofFilename(filename);
-  }
-
-  /**
-   * ファイル拡張子から言語を推測（後方互換性のため維持）
-   */
-  public getLanguageFromExtension(filename: string): string {
-    return getLanguageFromExtension(filename);
   }
 }
