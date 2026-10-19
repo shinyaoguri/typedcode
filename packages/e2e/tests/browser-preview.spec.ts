@@ -182,8 +182,17 @@ test('編集による再描画でプレビューのスクロール位置が維�
   await app.focusEditor();
   await page.keyboard.press('Control+End');
   await page.keyboard.type(' ');
+  // srcdoc の再代入でフレームが再読込されるため、その最中の evaluate は
+  // "Execution context was destroyed" で投げる。poll は例外をそのまま失敗にするので、
+  // 再読込中は -2 (まだ新ドキュメントではない) として再試行する。期待値の 800 は緩めない。
   await expect
-    .poll(() => body.evaluate((el) => (el.dataset.stale ? -1 : Math.round(window.scrollY))), { timeout: 10_000 })
+    .poll(
+      () =>
+        body
+          .evaluate((el) => (el.dataset.stale ? -1 : Math.round(window.scrollY)))
+          .catch(() => -2),
+      { timeout: 10_000 }
+    )
     .toBe(800);
 });
 
