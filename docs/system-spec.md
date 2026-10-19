@@ -402,10 +402,6 @@ interface ExamProofBlock {
 
 `startToken` を保存しても、束縛の価値 (「T0 前に知り得ない」) は損なわれない (公開は T0 後)。保存により grader はコードを out-of-band に受け取る運用が不要になり、コード紛失で root 検証不能になるリスクも消える。
 
-### 5.4. マルチファイル形式
-
-複数タブ同時にエクスポートした場合は `MultiFileExportedProof` (`type: 'multi-file'`) で、各ファイルが独立した `proof.events[]` + `checkpoints[]` を持つ。タブ間切替は `tabSwitches: TabSwitchEvent[]` に記録。
-
 ---
 
 ## 6. 検証フェーズ
@@ -670,7 +666,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 
 | 用語 | 意味 |
 |------|------|
-| **proof** | ExportedProof または MultiFileExportedProof。エクスポートされた検証可能な記録 |
+| **proof** | ExportedProof。エクスポートされた検証可能な記録 (複数タブは `<name>_proof.json` を N 個 ZIP に同梱する。§5.2) |
 | **event** | エディタ操作 1 つを表す最小単位。29 種類 |
 | **chain hash** | event.hash。previousHash + eventData の SHA-256 |
 | **PoSW** | Proof of Sequential Work。10000 回 SHA-256 反復 |

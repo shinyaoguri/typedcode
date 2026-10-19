@@ -39,7 +39,7 @@ File Selection (ドラッグ＆ドロップ / File System Access API)
     ↓
 FileProcessor (JSON パース or ZIP 展開)
     ↓
-形式判定 (single-file / multi-file)
+形式判定 (単一 proof / 複数 proof を含む ZIP)
     ↓
 VerificationEngine.verify()
     ↓
@@ -138,22 +138,6 @@ shared の `summarizeProcess` (純関数) の結果を、カード列の先頭�
   },
   "fingerprint": { "deviceId": "...", "components": {...} },
   "checkpoints": [...]
-}
-```
-
-### マルチファイル (JSON)
-
-```json
-{
-  "version": "1.0.0",
-  "type": "multi-file",
-  "files": {
-    "main.c": { /* MultiFileExportEntry */ },
-    "utils.h": { /* MultiFileExportEntry */ }
-  },
-  "tabSwitches": [...],
-  "fingerprint": {...},
-  "metadata": { "totalFiles": 2, "overallPureTyping": true }
 }
 ```
 

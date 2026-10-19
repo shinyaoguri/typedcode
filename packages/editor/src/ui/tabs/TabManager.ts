@@ -7,7 +7,7 @@
  */
 
 import * as monaco from 'monaco-editor';
-import { TypingProof, PROOF_FORMAT_VERSION, verifyContentReplay } from '@typedcode/shared';
+import { TypingProof, verifyContentReplay } from '@typedcode/shared';
 import type { SessionStartToken, StoredEvent } from '@typedcode/shared';
 import { tabsKey } from '../../core/storageKeys.js';
 import type {
@@ -17,9 +17,6 @@ import type {
   MultiTabStorage,
   LightweightTabState,
   LightweightMultiTabStorage,
-  ExportedProof,
-  MultiFileExportedProof,
-  MultiFileExportEntry,
   HumanAttestationEventData,
   VerificationState,
   VerificationDetails,
@@ -95,22 +92,6 @@ export interface CreateTabOptions {
    * (TemplateImporter の共有 attestation と同じ発想)。
    */
   sharedAttestation?: HumanAttestationEventData;
-}
-
-/** 言語IDから拡張子を取得 */
-function getFileExtension(language: string): string {
-  const extensionMap: Record<string, string> = {
-    c: 'c',
-    cpp: 'cpp',
-    javascript: 'js',
-    typescript: 'ts',
-    html: 'html',
-    css: 'css',
-    json: 'json',
-    markdown: 'md',
-    python: 'py',
-  };
-  return extensionMap[language] ?? 'txt';
 }
 
 /** UUID生成 */
@@ -1508,126 +1489,6 @@ export class TabManager {
       console.error('[TabManager] Failed to load from IndexedDB:', e);
       return false;
     }
-  }
-
-  /**
-   * SessionStorageServiceを取得
-   */
-  getSessionService(): SessionStorageService {
-    return this.sessionService;
-  }
-
-  /**
-   * 全データをリセット
-   * @returns リセット成功時はtrue、reCAPTCHA失敗時はfalse
-   */
-  async reset(): Promise<boolean> {
-    // 全モデルを破棄
-    for (const tab of this.tabs.values()) {
-      tab.model.dispose();
-    }
-
-    // データをクリア
-    this.tabs.clear();
-    this.tabOrder = [];
-    this.activeTabId = null;
-    this.tabSwitches = [];
-    this.startTime = performance.now();
-
-    // ストレージをクリア（sessionStorage + IndexedDB）
-    sessionStorage.removeItem(tabsKey());
-    try {
-      await this.sessionService.clearSession();
-    } catch (e) {
-      console.error('[TabManager] Failed to clear IndexedDB session:', e);
-    }
-
-    // 新しいタブを作成
-    const tab = await this.createTab('Untitled-1', 'c', '// Hello, TypedCode!\n');
-    if (!tab) {
-      console.error('[TabManager] Failed to create tab after reset (reCAPTCHA failed)');
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * 単一タブをエクスポート（既存形式）
-   */
-  async exportSingleTab(tabId: string): Promise<ExportedProof | null> {
-    const tab = this.tabs.get(tabId);
-    if (!tab) return null;
-
-    const content = tab.model.getValue();
-    return await tab.typingProof.exportProof(content);
-  }
-
-  /**
-   * 全タブをエクスポート（マルチファイル形式）
-   */
-  async exportAllTabs(): Promise<MultiFileExportedProof> {
-    const files: Record<string, MultiFileExportEntry> = {};
-    let overallPureTyping = true;
-
-    for (const tab of this.tabs.values()) {
-      const content = tab.model.getValue();
-      const proof = await tab.typingProof.exportProof(content);
-
-      // ファイル名に拡張子を追加（まだない場合）
-      let filename = tab.filename;
-      const ext = '.' + getFileExtension(tab.language);
-      if (!filename.endsWith(ext)) {
-        filename = filename + ext;
-      }
-
-      // 重複ファイル名を処理
-      let uniqueFilename = filename;
-      let counter = 1;
-      while (files[uniqueFilename]) {
-        const baseName = filename.replace(/\.[^.]+$/, '');
-        const extension = filename.match(/\.[^.]+$/)?.[0] ?? '';
-        uniqueFilename = `${baseName}_${counter}${extension}`;
-        counter++;
-      }
-
-      files[uniqueFilename] = {
-        content,
-        language: tab.language,
-        typingProofHash: proof.typingProofHash,
-        typingProofData: proof.typingProofData,
-        proof: proof.proof,
-      };
-
-      if (!proof.metadata.isPureTyping) {
-        overallPureTyping = false;
-      }
-    }
-
-    return {
-      version: PROOF_FORMAT_VERSION,
-      type: 'multi-file',
-      fingerprint: {
-        hash: this.fingerprint!,
-        components: this.fingerprintComponents!,
-      },
-      files,
-      tabSwitches: this.tabSwitches,
-      metadata: {
-        userAgent: navigator.userAgent,
-        timestamp: new Date().toISOString(),
-        totalFiles: Object.keys(files).length,
-        overallPureTyping,
-      },
-    };
-  }
-
-  /**
-   * アクティブタブの内容を取得
-   */
-  getActiveContent(): string {
-    const tab = this.getActiveTab();
-    return tab?.model.getValue() ?? '';
   }
 
   /**

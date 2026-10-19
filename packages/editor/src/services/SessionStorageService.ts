@@ -463,33 +463,6 @@ export class SessionStorageService {
     return IndexedDBHelper.countByIndex(this.db, STORE_TABS, 'sessionId', sessionId);
   }
 
-  /**
-   * タブコンテンツを更新
-   */
-  async updateTabContent(tabId: string, content: string): Promise<void> {
-    const tab = await this.getTab(tabId);
-    if (!tab) return;
-
-    tab.content = content;
-    tab.lastModifiedAt = Date.now();
-    await this.saveTab(tab);
-  }
-
-  /**
-   * タブメタデータを更新
-   */
-  async updateTabMetadata(
-    tabId: string,
-    updates: Partial<Pick<StoredTabData, 'filename' | 'language' | 'verificationState' | 'verificationDetails'>>
-  ): Promise<void> {
-    const tab = await this.getTab(tabId);
-    if (!tab) return;
-
-    Object.assign(tab, updates);
-    tab.lastModifiedAt = Date.now();
-    await this.saveTab(tab);
-  }
-
   // ============================================================================
   // Event Operations
   // ============================================================================
@@ -576,41 +549,6 @@ export class SessionStorageService {
   async getEventCount(tabId: string): Promise<number> {
     if (!this.db) throw new Error('Database not initialized');
     return IndexedDBHelper.countByIndex(this.db, STORE_EVENTS, 'tabId', tabId);
-  }
-
-  /**
-   * 指定インデックス以降のイベントを切り詰め（破損回復用）
-   */
-  async truncateEvents(tabId: string, fromIndex: number): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_EVENTS], 'readwrite');
-      const store = transaction.objectStore(STORE_EVENTS);
-      const index = store.index('tabId');
-      const request = index.openCursor(tabId);
-
-      transaction.onerror = () => {
-        console.error('[SessionStorage] Failed to truncate events:', transaction.error);
-        reject(new Error('Failed to truncate events'));
-      };
-
-      transaction.oncomplete = () => {
-        console.log(`[SessionStorage] Events truncated from index ${fromIndex} for tab ${tabId}`);
-        resolve();
-      };
-
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (cursor) {
-          const eventData = cursor.value as StoredEventData;
-          if (eventData.eventIndex >= fromIndex) {
-            cursor.delete();
-          }
-          cursor.continue();
-        }
-      };
-    });
   }
 
   // ============================================================================
@@ -714,114 +652,6 @@ export class SessionStorageService {
   // ============================================================================
   // Utility Operations
   // ============================================================================
-
-  /**
-   * 古いセッションを削除（容量管理）
-   */
-  async pruneOldSessions(keepCount: number = 1): Promise<number> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    const sessions = await IndexedDBHelper.getAll<SessionMetadata>(this.db, STORE_SESSIONS);
-
-    // 古い順にソート
-    sessions.sort((a, b) => a.createdAt - b.createdAt);
-
-    // 削除対象を決定
-    const toDelete = sessions.slice(0, Math.max(0, sessions.length - keepCount));
-    let deletedCount = 0;
-
-    for (const session of toDelete) {
-      // 現在のセッションはスキップ
-      if (session.sessionId === this.sessionId) continue;
-
-      try {
-        await this.deleteSessionById(session.sessionId);
-        deletedCount++;
-      } catch (error) {
-        console.error(`[SessionStorage] Failed to delete session ${session.sessionId}:`, error);
-      }
-    }
-
-    console.log(`[SessionStorage] Pruned ${deletedCount} old sessions`);
-    return deletedCount;
-  }
-
-  /**
-   * 特定のセッションを削除
-   */
-  private async deleteSessionById(sessionId: string): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(
-        [STORE_SESSIONS, STORE_TABS, STORE_EVENTS, STORE_TAB_SWITCHES, STORE_SCREENSHOTS],
-        'readwrite'
-      );
-
-      transaction.onerror = () => {
-        reject(new Error(`Failed to delete session ${sessionId}`));
-      };
-
-      transaction.oncomplete = () => {
-        resolve();
-      };
-
-      // セッションを削除
-      transaction.objectStore(STORE_SESSIONS).delete(sessionId);
-
-      // 関連するタブを削除
-      const tabsStore = transaction.objectStore(STORE_TABS);
-      const tabsIndex = tabsStore.index('sessionId');
-      const tabsRequest = tabsIndex.openCursor(sessionId);
-
-      tabsRequest.onsuccess = () => {
-        const cursor = tabsRequest.result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
-
-      // 関連するイベントを削除
-      const eventsStore = transaction.objectStore(STORE_EVENTS);
-      const eventsIndex = eventsStore.index('sessionId');
-      const eventsRequest = eventsIndex.openCursor(sessionId);
-
-      eventsRequest.onsuccess = () => {
-        const cursor = eventsRequest.result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
-
-      // 関連するタブ切り替えを削除
-      const switchesStore = transaction.objectStore(STORE_TAB_SWITCHES);
-      const switchesIndex = switchesStore.index('sessionId');
-      const switchesRequest = switchesIndex.openCursor(sessionId);
-
-      switchesRequest.onsuccess = () => {
-        const cursor = switchesRequest.result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
-
-      // 関連するスクリーンショットを削除
-      const screenshotsStore = transaction.objectStore(STORE_SCREENSHOTS);
-      const screenshotsIndex = screenshotsStore.index('sessionId');
-      const screenshotsRequest = screenshotsIndex.openCursor(sessionId);
-
-      screenshotsRequest.onsuccess = () => {
-        const cursor = screenshotsRequest.result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
-    });
-  }
 
   /**
    * データベース接続を閉じる

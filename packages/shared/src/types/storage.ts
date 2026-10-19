@@ -28,8 +28,7 @@ import type {
   ScreenShareOptOutData,
 } from './screenshot.js';
 import type { HumanAttestationEventData, TermsAcceptedData } from './attestation.js';
-import type { FingerprintComponents } from './fingerprint.js';
-import type { StoredEvent, ProofData, SignatureData, CheckpointData } from './proof.js';
+import type { StoredEvent, CheckpointData } from './proof.js';
 import type { TemplateInjectionEventData } from './template.js';
 import type { ExamSessionContext } from './exam.js';
 import type { SessionStartToken } from './sessionStartToken.js';
@@ -118,33 +117,6 @@ export interface MultiTabStorage {
   tabs: Record<string, SerializedTabState>;
   tabOrder: string[];
   tabSwitches: TabSwitchEvent[];
-}
-
-/** マルチファイルエクスポート用ファイルエントリ */
-export interface MultiFileExportEntry {
-  content: string;
-  language: string;
-  typingProofHash: string;
-  typingProofData: ProofData;
-  proof: SignatureData;
-}
-
-/** マルチファイルエクスポート形式 */
-export interface MultiFileExportedProof {
-  version: string;
-  type: 'multi-file';
-  fingerprint: {
-    hash: string;
-    components: FingerprintComponents;
-  };
-  files: Record<string, MultiFileExportEntry>;
-  tabSwitches: TabSwitchEvent[];
-  metadata: {
-    userAgent: string;
-    timestamp: string;
-    totalFiles: number;
-    overallPureTyping: boolean;
-  };
 }
 
 // ============================================================================

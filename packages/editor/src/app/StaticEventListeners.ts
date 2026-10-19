@@ -7,7 +7,7 @@ import type { AppContext } from '../core/AppContext.js';
 import type { CursorPosition, RecordEventInput, DetectedEvent } from '@typedcode/shared';
 import { InputDetector } from '../tracking/InputDetector.js';
 import { isTurnstileConfigured } from '../services/TurnstileService.js';
-import { clearStorageSync, deleteScreenshotsDB } from '../utils/StorageClearHelper.js';
+import { clearStorageSync } from '../utils/StorageClearHelper.js';
 import { sessionActiveKey } from '../core/storageKeys.js';
 import { t } from '../i18n/index.js';
 import { showNotification } from './AppHelpers.js';
@@ -327,9 +327,6 @@ export function setupStaticEventListeners(ctx: AppContext): void {
   // セッションの非アクティブ化は visibilitychange + document.hidden で行う
   window.addEventListener('beforeunload', (e) => {
     if (ctx.skipBeforeUnload) return;
-
-    // スクリーンショットのIndexedDBを削除（sessionStorageと同様にタブを閉じたら消える）
-    deleteScreenshotsDB();
 
     // セッションをアクティブとしてマーク（リロード検出用）
     // sessionStorageはリロード時は保持され、タブを閉じると消える
