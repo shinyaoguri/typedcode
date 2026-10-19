@@ -24,10 +24,10 @@
     "node": ">=24"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.11",
+    "@biomejs/biome": "2.5.15",
     "concurrently": "^10.0.6",
     "esbuild": "^0.28.2",
-    "wrangler": "^4.146.0"
+    "wrangler": "^4.151.1"
   },
   "overrides": {
     "vite": "^8.0.5",
