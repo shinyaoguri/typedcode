@@ -34,3 +34,16 @@ describe('CLI の終了経路 (#283 c1)', () => {
     expect(CLI_SOURCE).toMatch(/process\.exitCode = summary\.every\(\(s\) => s\.valid\) \? 0 : 1;/);
   });
 });
+
+describe('fail-closed な既定の終了コード (#315)', () => {
+  // 自然終了が正規経路なので、集計にも catch にも届かずに終わったプロセスは exitCode の
+  // 既定値で終わる。既定 0 だと解決しない analyzer 1 つで改ざん proof が exit 0 になる。
+  // 実プロセスでの挙動は cliExitProcess.test.ts が見る。ここは再導入を止める位置の固定。
+  const MAIN_BODY = CLI_SOURCE.slice(CLI_SOURCE.indexOf('async function main()'));
+
+  it('main() sets process.exitCode = 1 as its first statement', () => {
+    expect(MAIN_BODY).toMatch(
+      /^async function main\(\): Promise<void> \{\s*(?:\/\/[^\n]*\n\s*)*process\.exitCode = 1;/
+    );
+  });
+});

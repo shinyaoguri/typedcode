@@ -1,0 +1,116 @@
+{
+  "version": "1.2.0",
+  "typingProofHash": "3096d2d165a29f3e78e15e00b854739fe57e3829f705eb91b1e4d2626dc31186",
+  "typingProofData": {
+    "finalContentHash": "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df",
+    "initialHashNonce": "0fb1fac4397f6b158cafc75f1432678d109661f3bba90fbbc27f7e7ee752a6b8",
+    "initialEventChainHash": "8f1b7538055a1f8148efaca57d4116eece673c310d9592d4356fc567825f8665",
+    "finalEventChainHash": "ffa262035d99d53086f0d6398cba96a1ad47a009c3906cf69b3578761de46e5d",
+    "deviceId": "fbc2e30f364b9dd22348cce692e644c9f70f8166f3b6d2457d7409e7eb9a9e32",
+    "metadata": {
+      "totalEvents": 2,
+      "pasteEvents": 0,
+      "internalPasteEvents": 0,
+      "dropEvents": 0,
+      "insertEvents": 2,
+      "deleteEvents": 0,
+      "bulkInsertEvents": 0,
+      "totalTypingTime": 474.6768609999999,
+      "averageTypingSpeed": 252.8
+    }
+  },
+  "proof": {
+    "totalEvents": 2,
+    "finalHash": "ffa262035d99d53086f0d6398cba96a1ad47a009c3906cf69b3578761de46e5d",
+    "startTime": 589.262962,
+    "endTime": 1063.678112,
+    "signature": "6e4da081e4661cba5a44217d19efc1547f1dfa80338923fb796760cd36b28383",
+    "events": [
+      {
+        "sequence": 0,
+        "timestamp": 2.5902149999999438,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "o",
+        "rangeOffset": 0,
+        "rangeLength": 0,
+        "range": null,
+        "previousHash": "8f1b7538055a1f8148efaca57d4116eece673c310d9592d4356fc567825f8665",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "e31d720ccbbb5d99a656210a8336c022",
+          "intermediateHash": "65096e2933f5271ed26d37726bed960c11af886518febfc5e6446c2c4f990a67",
+          "computeTimeMs": 263.8659449999999
+        },
+        "hash": "02e2f09c29d085a14bb4e0c672e3ed817e6c011f6981a5aead37c5c14c4d3ef3"
+      },
+      {
+        "sequence": 1,
+        "timestamp": 267.64806899999996,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "k",
+        "rangeOffset": 1,
+        "rangeLength": 0,
+        "range": null,
+        "previousHash": "02e2f09c29d085a14bb4e0c672e3ed817e6c011f6981a5aead37c5c14c4d3ef3",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "7e69a3fe1f9c8eed258b1ffdac8549d2",
+          "intermediateHash": "f32bd597b9e2dfb5c492759c690b6d71054e28167dc8b6909d14fc13db17e2f1",
+          "computeTimeMs": 206.24145999999996
+        },
+        "hash": "ffa262035d99d53086f0d6398cba96a1ad47a009c3906cf69b3578761de46e5d"
+      }
+    ]
+  },
+  "fingerprint": {
+    "hash": "fbc2e30f364b9dd22348cce692e644c9f70f8166f3b6d2457d7409e7eb9a9e32",
+    "components": {
+      "userAgent": "TypedCode verify-cli fixture",
+      "language": "en",
+      "languages": ["en"],
+      "platform": "FixtureOS",
+      "hardwareConcurrency": 4,
+      "deviceMemory": 8,
+      "screen": {
+        "width": 1,
+        "height": 1,
+        "availWidth": 1,
+        "availHeight": 1,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "devicePixelRatio": 1
+      },
+      "timezone": "UTC",
+      "timezoneOffset": 0,
+      "canvas": "fixture",
+      "webgl": {
+        "vendor": "fixture",
+        "renderer": "fixture"
+      },
+      "fonts": ["Arial"],
+      "cookieEnabled": true,
+      "doNotTrack": "unspecified",
+      "maxTouchPoints": 0
+    }
+  },
+  "metadata": {
+    "userAgent": "Node.js/22",
+    "timestamp": "2026-10-19T16:16:10.499Z",
+    "isPureTyping": true
+  },
+  "checkpoints": [
+    {
+      "eventIndex": 1,
+      "hash": "ffa262035d99d53086f0d6398cba96a1ad47a009c3906cf69b3578761de46e5d",
+      "timestamp": 267.64806899999996,
+      "contentHash": "8254c329a92850f6d539dd376f4816ee2764517da5e0235514af433164480d7a"
+    }
+  ],
+  "rootAnchored": false,
+  "mode": "casual",
+  "filename": "valid",
+  "content": "ok",
+  "language": "javascript"
+}
