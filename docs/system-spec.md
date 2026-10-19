@@ -412,7 +412,9 @@ interface ExamProofBlock {
 |------|------|------------------|------------------------|
 | `fast` | 改ざん検出のみ | スキップ | ~50ms |
 | `audit` | 部分的 PoSW 検証 (未実装、現状 full と同等) | (将来) 決定的サンプリング | 中 |
-| `full` | 完全検証 | 全 event を再計算 | ~10〜60 秒 |
+| `full` | 完全検証 | 全 event を再計算 | verify-cli (Node): ~15〜30 秒 / verify web (Worker): ~25 秒 |
+
+`full` の時間は PoSW 反復が支配的 (1 event あたり 10000 回の SHA-256 で 15〜30 ms 程度)。検証側の反復は `@noble/hashes` の同期 SHA-256 (`iterateSha256HexSync`) で全環境共通に計算する (#267)。以前は 1 反復ごとに `await crypto.subtle.digest` を挟んでおり、Promise のオーバーヘッドで Node では 10〜20 倍遅かった (1000 events で 2 分超)。web の値は headless Chromium で純 JS SHA-256 を計測した概算 (#267 トリアージ時点) で、ブラウザでは WebCrypto の await が軽いため改善幅は約 2 倍にとどまる。どちらも絶対値はマシン負荷で大きく揺れるので目安として扱う。
 
 モード非依存で常に実行されるのは: メタデータ照合、ハッシュチェーン再計算、内容再生、署名チェックポイント検証。**`fast` で省略するのは PoSW 反復 (1 event あたり 10000 回 SHA-256) のみ**。
 

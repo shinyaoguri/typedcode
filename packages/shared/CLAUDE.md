@@ -38,7 +38,8 @@
 | `checkpointKeys/keyValidity.ts` | 鍵の有効期間 / 失効判定の**単一実装** (#233)。checkpoint 鍵と出題者鍵の両方を構造型で受ける |
 | `checkpointKeys/localKeys.ts` | skip-worktree のローカル開発鍵置き場 |
 | `fingerprint.ts` | ブラウザフィンガープリント |
-| `verification.ts` | チェーン外検証ユーティリティ (content replay 等) |
+| `verification.ts` | チェーン外検証ユーティリティ (content replay 等)。`verifyPoSW` の反復は**同期 SHA-256** (`hashUtils.ts` の `iterateSha256HexSync`、`@noble/hashes`) で計算する (#267) |
+| `utils/hashUtils.ts` | `deterministicStringify` / `computeHash` (WebCrypto, async) / `iterateSha256HexSync` (PoSW 反復の同期版。`computeHash` を n 回 await した結果とビット単位で一致することを `__tests__/poswSync.test.ts` が固定ベクタで縛る) |
 | `poswWorker.ts` | PoSW Web Worker 本体 |
 | `attestation.ts` | 人間認証クライアント |
 | `fileProcessing/` | ZIP / JSON 解析。`zipBudget.ts` が ZIP 展開の上限 (エントリ数・実バイト予算) と予算付きリーダーを持つ。`proofLanguage.ts` は proof 由来の自己申告 `language` を allowlist (`languageDetection.ts` の `KNOWN_LANGUAGES`) に落とす (#248) |
@@ -71,4 +72,5 @@
 
 - **`shared` の `main` は `src/index.ts` (raw TypeScript)**: Vite はそのまま読めるが、tsc コンパイル後の verify-cli を `node` で直接実行すると ESM 解決でコケる。これは pre-existing で Node バージョンとは無関係
 - **`SignedCheckpointService` (editor 側) は単一フライト**: shared 側で並列 `flush` を許す形に変えると、サーバ側の冪等判定とともに二重署名問題が再発しうる
+- **PoSW の記録側と検証側は実装が違う** (#267): 記録側 (`PoswManager` / `poswWorker.ts`) は `await crypto.subtle.digest` の反復、検証側 (`verifyPoSW`) は同期の `iterateSha256HexSync`。各反復の入力は**前回ハッシュの小文字 16 進文字列の UTF-8 (= ASCII)** で、生バイトではない。どちらかの手順を変えると既存 proof の PoSW がすべて fail する。記録側を同期化するかは #241 の判断待ち (記録が速くなる = PoSW の「最低計算時間」の意味が変わる)
 - **`registry.ts` は append-only**: 鍵を消すと過去の proof が検証不能になる。失効するときは `status: 'revoked'` で残す
