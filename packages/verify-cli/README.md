@@ -11,7 +11,9 @@ npm run build:verify-cli
 node packages/verify-cli/dist/cli.js <proof-file>
 ```
 
-> 以降の例では `typedcode-verify` をコマンド名として表記しますが、公開前は `node packages/verify-cli/dist/cli.js` に読み替えてください。公開後は `npm install -g @typedcode/verify-cli` / `npx typedcode-verify` を予定 (バンドルが必要・将来課題)。
+> 以降の例では `typedcode-verify` をコマンド名として表記しますが、公開前は `node packages/verify-cli/dist/cli.js` に読み替えてください。公開後は `npm install -g @typedcode/verify-cli` / `npx typedcode-verify` を予定。
+
+`dist/cli.js` は `@typedcode/shared` ごと 1 ファイルにまとめた ESM bundle で (#298)、素の Node.js (>= 24) だけで動きます。tsx などの TypeScript 実行環境は不要で、`dist/cli.js` を単体で別の場所へ持ち出しても動作します。
 
 ## 使い方
 
@@ -123,9 +125,9 @@ Anchoring:   VERIFIED (12 signed checkpoints, 100.0% coverage)
 | 0 | 検証成功 |
 | 1 | 検証失敗 / エラー |
 
-## 対応形式
-
 既定は 1 (fail-closed) です。0 になるのは全 proof の検証を最後まで終えて合格したときと `--help` だけで、外部 Analyzer が解決しないまま止まる等で途中で終わった場合も 1 になります (#315)。
+
+## 対応形式
 
 | 形式 | 拡張子 | 説明 |
 |--------|-----------|-------------|
@@ -149,9 +151,12 @@ Anchoring:   VERIFIED (12 signed checkpoints, 100.0% coverage)
 ## ビルド
 
 ```bash
-npm run build      # ビルド
-npm run dev        # watch モード
+npm run build      # 型検査 (tsc --noEmit) + esbuild で dist/cli.js に bundle
+npm run dev        # watch モード (esbuild)
+npm run test:dist  # build 済みの dist/cli.js を素の node で叩く smoke test
 ```
+
+ビルドは `scripts/build.mjs` (esbuild) が `src/cli.ts` を起点に shared・jszip などの依存をすべて取り込んだ単一の `dist/cli.js` を出力します。`--analyzer` で渡す外部モジュールは実行時に読み込まれるので bundle には含まれません。
 
 ## アーキテクチャ
 

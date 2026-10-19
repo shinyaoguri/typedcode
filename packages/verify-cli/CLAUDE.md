@@ -23,6 +23,8 @@
 ## ファイル構成
 
 ```
+scripts/
+└── build.mjs      # esbuild で dist/cli.js (単一 ESM) に bundle (#298)
 src/
 ├── cli.ts         # エントリポイント
 ├── verify.ts      # 検証ロジック (shared を呼ぶ薄いラッパ)
@@ -33,7 +35,9 @@ src/
 
 ## よくある罠
 
-- **`@typedcode/shared` の `main` は `src/index.ts` (raw TypeScript)**: tsc コンパイル後の `dist/cli.js` を `node` で直接実行すると `ERR_MODULE_NOT_FOUND` が出る。これは pre-existing でモノレポ内ローカル実行時の構成課題。**Node のバージョンとは無関係**。公開時にはバンドルが必要 (将来課題)
+- **build は esbuild による単一 ESM bundle** (#298, `scripts/build.mjs`): `@typedcode/shared` の `main` は `src/index.ts` (raw TypeScript、中の import は `.js` 拡張子の bundler 解決前提) なので、tsc の出力を `node` で起動すると shared の解決で `ERR_MODULE_NOT_FOUND` になる (Node のバージョンとは無関係)。shared を JS 生成に変えると editor / verify / workers の Vite 解決と PoSW Worker の URL に波及するので、**CLI 側で shared ごと `dist/cli.js` 1 ファイルに取り込む**。`tsc` は型検査専用 (`build` は `tsc --noEmit && node scripts/build.mjs`)。**`dev` / `build` を `tsc` の emit に戻さない** (dist が素の node で起動しなくなる)。ESM bundle には `require` が無いので `createRequire` の banner を付けてある (CJS 依存が Node builtin を動的 `require` した時点で落ちる罠の防御)。`--analyzer` の外部モジュールは実行時の動的 import なので bundle に入らない
+- **配布物の smoke は `npm run test:dist`** (`distSmoke.test.ts` / `vitest.dist.config.ts`): build 後に `dist/` だけを一時ディレクトリへ写し、素の node で `--help` / 有効 proof / 壊れた proof / `--analyzer` を叩く。`dist/cli.js` が無ければ fail。通常の `test:run` からは除外 (build していない環境で壊さないため) — CI の check job が build 直後に回す。tsx で `src/cli.ts` を起動するテスト (`cliExitProcess.test.ts`、e2e) では配布物の解決は確かめられない
+- **有効 proof の fixture** (`src/__tests__/fixtures/proofs/valid.json`) は実 PoSW 付き。proof フォーマットが変わって通らなくなったら同じディレクトリの `generate-valid.mts` で作り直す
 - **新しい proof フォーマットへの対応**: shared 側で `parseJsonString` / `parseZipBuffer` を拡張すれば CLI もそのまま追従する。CLI 側に判定ロジックを書かない
 - **進捗表示は TTY 検出**: パイプ先や CI ログでは ANSI エスケープを抑制する
 

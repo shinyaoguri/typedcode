@@ -19,7 +19,7 @@
 ```
 tests/
 ├── helpers/app.ts        # EditorApp ページオブジェクト + ZIP/proof 読み出しヘルパ
-├── helpers/verifyCli.ts  # tsx で verify-cli/src/cli.ts を直接実行 (raw TS の ESM 解決回避)
+├── helpers/verifyCli.ts  # tsx で verify-cli/src/cli.ts を直接実行 (build 待ち不要。dist は verify-cli の test:dist が担保)
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
 └── production-build.spec.ts  # dist 専用スモーク (既定 config からは testIgnore で除外)
@@ -42,7 +42,7 @@ CI では `deploy.yml` の `e2e` job が両方 (`test` → `test:build`) を実�
 
 ## よくある罠
 
-- **`verify-cli` は tsx で src を直接実行**: shared が raw TS (`src/index.ts`) のため `node dist/cli.js` は `ERR_MODULE_NOT_FOUND`。`helpers/verifyCli.ts` が `tsx cli.ts` で回避する
+- **`verify-cli` は tsx で src を直接実行**: build を待たずに済むよう `helpers/verifyCli.ts` が `tsx cli.ts` で src を直接実行する。配布物 `dist/cli.js` (esbuild の単一 ESM bundle, #298) が素の node で動くことは verify-cli の `npm run test:dist` が CI で担保する
 - **打鍵直後の即リロードはイベント取り残し**: PoSW / IndexedDB flush 前に reload するとチェーンが途切れる。`waitForSynced` (`#sync-status-item.synced` + event-count 安定) を挟む
 - **headless では本物の window blur が出ない**: `window.dispatchEvent(new Event('blur'))` で発火させる (handleBlur は isTrusted 非依存)
 - **画面共有は fake-media フラグで動く**: `playwright.config.ts` の chromium 引数で `getDisplayMedia` が monitor の fake stream を返す

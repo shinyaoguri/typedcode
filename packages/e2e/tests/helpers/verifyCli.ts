@@ -16,10 +16,10 @@ const TSX_CLI = createRequire(import.meta.url).resolve('tsx/cli');
 /**
  * verify-cli を実プロセスとして起動して proof を検証する。
  *
- * shared の main は raw TypeScript (`src/index.ts`) なので `node dist/cli.js` は
- * ERR_MODULE_NOT_FOUND になる (verify-cli/CLAUDE.md の既知課題)。E2E では
- * tsx で `src/cli.ts` を直接実行し、CLI の引数解析・ZIP 展開・exit code・
- * shared 統合まで「本物の CLI 表面」を検証する。
+ * E2E では build を待たずに済むよう tsx で `src/cli.ts` を直接実行し、CLI の
+ * 引数解析・ZIP 展開・exit code・shared 統合まで「本物の CLI 表面」を検証する。
+ * 配布物の `dist/cli.js` (esbuild の単一 bundle, #298) を素の node で起動できることは
+ * verify-cli 側の smoke (`npm run test:dist -w @typedcode/verify-cli`) が別に担保する。
  */
 export interface CliResult {
   exitCode: number;
