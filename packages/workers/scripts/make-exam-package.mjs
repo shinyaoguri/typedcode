@@ -23,8 +23,9 @@
  *   --problem-id <id>    (既定: "p1")
  *   --variant <v>        per-student variant (既定: null)
  *   --languages <a,b>    許可言語 CSV (既定: "c")
- *   --release <ISO>      T0 (既定: 実行時刻)
- *   --deadline <ISO>     T1 (既定: 実行時刻 + 3h)
+ *   --release <ISO>      パッケージ発行時刻 = 出題者鍵の有効性アンカー (既定: 実行時刻。ADR-0013)
+ *   --deadline <ISO>     advisory な提出窓の上限 (既定: 2999-12-31T23:59:59.999Z = オープン。
+ *                        開始 / 締切の管理は Moodle が正。ADR-0013)
  *   --token <CODE>       監督コード (省略時は 8 字 Crockford Base32 を自動生成)
  *   --out <file>         出力 .tcexam (既定: "<problemId>.tcexam")
  *   --embed-pubkey       publicKeyJwk を同梱する (long-term verifiability)
@@ -38,6 +39,11 @@ import { argon2id } from '@noble/hashes/argon2.js';
 const EXAM_PACKAGE_FORMAT_VERSION = 1;
 const DEFAULT_KDF_PARAMS = { memKiB: 65536, iterations: 3, parallelism: 1 };
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // I L O U を除外 (32 文字)
+
+// --- packages/editor/src/authoring/AuthorPage.ts の OPEN_DEADLINE と同値 (ADR-0013) ---
+// スケジュールは Moodle 管理なので deadline は「オープン」を既定にする (manifest 仕様上は必須)。
+// .mjs からは raw TS の shared/editor を import できないため同値リテラルで持つ。変えるなら両方を直すこと。
+const OPEN_DEADLINE = '2999-12-31T23:59:59.999Z';
 
 // --- shared/src/utils/hashUtils.ts の写し (canonical serialization) ---
 function deterministicStringify(obj) {
@@ -106,9 +112,9 @@ async function main() {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  const now = new Date();
-  const releaseTime = args.release ?? now.toISOString();
-  const deadline = args.deadline ?? new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString();
+  // releaseTime = issued-at (出題者鍵の有効性アンカー)、deadline = advisory な上限 (ADR-0013)
+  const releaseTime = args.release ?? new Date().toISOString();
+  const deadline = args.deadline ?? OPEN_DEADLINE;
   const token = args.token ? args.token.toUpperCase().replace(/[^0-9A-HJKMNP-TV-Z]/g, '') : generateToken();
   const outFile = args.out ?? `${problemId}.tcexam`;
 
@@ -188,7 +194,7 @@ async function main() {
   console.log('release:     ' + releaseTime);
   console.log('deadline:    ' + deadline);
   console.log('');
-  console.log('=== 監督コード (T0 に口頭/板書で解禁) ===');
+  console.log('=== 監督コード (試験開始時に口頭/板書で解禁) ===');
   console.log('  ' + token.replace(/(.{4})(.{4})/, '$1-$2') + '  (入力時の区切り/大小は無視されます)');
   console.log('');
   console.log('※ コードは平文 manifest に含まれない。紛失すると復号不能なので安全に保管すること。');
