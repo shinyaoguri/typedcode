@@ -15,6 +15,10 @@
 - `npm run dev` の開発サーバポートをセット単位で自動割当し、editor の `/verify` プロキシと `VITE_API_URL` を実際の割当ポートへ追従させた ([ADR-0030](docs/adr/0030-dev-port-autoswitch.md))。個別起動 (`dev:editor` など) は従来どおり固定ポート (#197)
 - README 群を実装に合わせて刷新し、実在しない検証機能の記述 (overclaim) や古い API 契約を解消した (#249)
 - 依存パッケージを更新した (dompurify、postcss、sharp、wrangler、shell-quote、concurrently、GitHub Actions ほか) (#199, #200, #201, #204, #205, #206, #209)
+- PoSW 検証 (full モード) の反復を同期 SHA-256 (`@noble/hashes`) に置き換え、1 反復ごとの `await crypto.subtle.digest` を廃止した。出力は同一で、Node (verify-cli) では約 19 倍高速 (#267)
+- `make-exam-package.mjs` の既定 deadline を `2999-12-31T23:59:59.999Z` (オープン) に変更し、`--release` / `--deadline` の説明を ADR-0013 と `/author` に揃えた。既定のまま作ったパッケージで全提出が「窓外 (advisory)」と表示されるノイズを解消 (#271)
+- 呼び出し元ゼロの dead API を削除した: `TabManager` の `exportSingleTab` / `exportAllTabs` / `reset` / `getActiveContent` / `getSessionService`、`SessionStorageService` の `pruneOldSessions` / `truncateEvents` / `updateTabContent` / `updateTabMetadata`、shared の `MultiFileExportedProof` / `MultiFileExportEntry` / `isMultiFileProof` / `AnyExportedProof`、`beforeunload` での legacy スクリーンショット DB 削除 (#284, #231)
+- 拡張子 → 言語の判定を verify から shared の実装へ一本化した (挙動の変更なし) (#278)
 
 ### 修正
 
@@ -24,9 +28,14 @@
 - 試験束縛の検証で提出時刻の time-box を失格条件として扱っていた問題を修正した ([ADR-0013](docs/adr/0013-exam-schedule-advisory-keep-manifest-format.md) は advisory と定めている)。締切を過ぎた提出というだけで束縛が invalid になり、root アンカー gate の試験免除が外れ保証等級まで下がるうえ、提出時刻を渡さない検証 (Web) と CLI で結論が食い違っていた。time-box を `valid` から外し、CLI の表示も PASS/FAIL ではなく advisory と分かる文言に改めた (#220)
 - ZIP のヘッダに書かれた解凍後サイズを詐称すると 256 MB の展開ガードを素通りし、検証 (Web) / verify-cli が ZIP 内の全データを展開してしまう問題を修正した。展開中の実バイト数を数えて上限で中断するようにし、JSZip から直接読み出す経路をテストで塞いだ (#234)
 - 単一タブ export の事前認証を best-effort 化し、class / assignment モードで Turnstile が不達のときに提出用 ZIP を一切出力できなくなる問題を修正した (失敗 attestation はチェーンに記録される) (#244)
+- HTML プレビューで、HTML タブが無い状態を経由すると再表示しても空のままになる不具合を修正した (#299)
+- verify-cli の終了コードの既定を 1 (fail-closed) にし、解決しない `--analyzer` で処理が途中で終わっても改ざんされた proof が exit 0 にならないようにした (#315)
+- verify-cli を esbuild で単一 ESM ファイルに bundle し、ビルド済み `dist/cli.js` が素の Node で起動するようにした。配布物の smoke test (`npm run test:dist`) を CI に追加 (#298)
+- 署名 API の per-session タブ台帳を record と別の KV 名前空間 (`tabs:{sessionId}`) に移し、`sessionId` / `tabId` を `[A-Za-z0-9._-]` に制限した。`tabId=tabs` で台帳が壊れて後続タブの署名が例外になる問題と、区切り文字 `:` による record キー衝突を解消。KV の不正形な record / 台帳でも未捕捉例外にならない (#297)
 
 ### セキュリティ
 
+- HTML プレビュー iframe を `sandbox="allow-scripts allow-modals allow-forms"` の opaque origin で隔離し、プレビュー内のスクリプトから親画面・localStorage・IndexedDB (proof の保存先)・トップレベル遷移・ポップアップに届かないようにした。内容の投入は srcdoc に一本化し、スクロール位置の保存/復帰は postMessage 経由になった (#291)
 - 公開鍵レジストリの `validFrom` / `validUntil` / `revokedAt` が parse 不能な日時 (手書き運用での typo) だと鍵の有効性検査そのものがスキップされ、失効させたはずの鍵が黙って信頼される問題を修正した。日時が読めないエントリはそのエントリだけ信頼しない (fail-closed) ようにし、判定を署名チェックポイント / セッション開始トークン / 出題者鍵の 3 消費者で共有する実装に一本化した。あわせて出荷されるレジストリの日時形式を検査するテストを追加し、typo を CI で止めるようにした (#233)
 - proof の `mode` を allowlist で検証したうえでエスケープし、検証サイトのオリジンで任意 HTML が実行できる XSS を塞いだ (#245)
 - proof の `events` 各要素の構造を検証し、null 要素を積んで `metadata.totalEvents` を水増しする偽造を塞いだ (#246)

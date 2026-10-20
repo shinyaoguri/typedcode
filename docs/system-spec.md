@@ -262,7 +262,7 @@ interface CheckpointData {
 2. **sessionStartToken 検証 (ADR-0027)**: 同送された token の ECDSA 署名を registry で検証し、`token.payload.sessionId === input.sessionId` を要求 (KV read より前。無認証リクエストに KV コストを払わない)
 3. KV から `session:{sessionId}:{tabId}` を取得
 4. **firstSeenAt 確定**: 既存があればその値、なければ `now` で初回書込
-5. 新規タブなら per-session タブ台帳 (`session:{sessionId}:tabs`) の上限チェック (`MAX_TABS_PER_SESSION` = 64、best-effort)
+5. 新規タブなら per-session タブ台帳 (`tabs:{sessionId}`。record の `session:` 名前空間とは別。#297) の上限チェック (`MAX_TABS_PER_SESSION` = 64、best-effort。不正形の台帳は read 失敗と同扱いで判定スキップ)。`sessionId` / `tabId` は `^[A-Za-z0-9._-]+$` (≤200) で、不正形の session record は 503 `SESSION_STATE_UNAVAILABLE`
 6. checkpointIndex 単調性チェック (best-effort)
 7. signedCount セッション上限チェック (50,000)
 8. `payload = { ...input, serverTimestamp: now, firstSeenAt, poswIterations: 10000, version: 1 }` を構築
@@ -402,10 +402,6 @@ interface ExamProofBlock {
 
 `startToken` を保存しても、束縛の価値 (「T0 前に知り得ない」) は損なわれない (公開は T0 後)。保存により grader はコードを out-of-band に受け取る運用が不要になり、コード紛失で root 検証不能になるリスクも消える。
 
-### 5.4. マルチファイル形式
-
-複数タブ同時にエクスポートした場合は `MultiFileExportedProof` (`type: 'multi-file'`) で、各ファイルが独立した `proof.events[]` + `checkpoints[]` を持つ。タブ間切替は `tabSwitches: TabSwitchEvent[]` に記録。
-
 ---
 
 ## 6. 検証フェーズ
@@ -416,7 +412,9 @@ interface ExamProofBlock {
 |------|------|------------------|------------------------|
 | `fast` | 改ざん検出のみ | スキップ | ~50ms |
 | `audit` | 部分的 PoSW 検証 (未実装、現状 full と同等) | (将来) 決定的サンプリング | 中 |
-| `full` | 完全検証 | 全 event を再計算 | ~10〜60 秒 |
+| `full` | 完全検証 | 全 event を再計算 | verify-cli (Node): ~15〜30 秒 / verify web (Worker): ~25 秒 |
+
+`full` の時間は PoSW 反復が支配的 (1 event あたり 10000 回の SHA-256 で 15〜30 ms 程度)。検証側の反復は `@noble/hashes` の同期 SHA-256 (`iterateSha256HexSync`) で全環境共通に計算する (#267)。以前は 1 反復ごとに `await crypto.subtle.digest` を挟んでおり、Promise のオーバーヘッドで Node では 10〜20 倍遅かった (1000 events で 2 分超)。web の値は headless Chromium で純 JS SHA-256 を計測した概算 (#267 トリアージ時点) で、ブラウザでは WebCrypto の await が軽いため改善幅は約 2 倍にとどまる。どちらも絶対値はマシン負荷で大きく揺れるので目安として扱う。
 
 モード非依存で常に実行されるのは: メタデータ照合、ハッシュチェーン再計算、内容再生、署名チェックポイント検証。**`fast` で省略するのは PoSW 反復 (1 event あたり 10000 回 SHA-256) のみ**。
 
@@ -670,7 +668,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 
 | 用語 | 意味 |
 |------|------|
-| **proof** | ExportedProof または MultiFileExportedProof。エクスポートされた検証可能な記録 |
+| **proof** | ExportedProof。エクスポートされた検証可能な記録 (複数タブは `<name>_proof.json` を N 個 ZIP に同梱する。§5.2) |
 | **event** | エディタ操作 1 つを表す最小単位。29 種類 |
 | **chain hash** | event.hash。previousHash + eventData の SHA-256 |
 | **PoSW** | Proof of Sequential Work。10000 回 SHA-256 反復 |

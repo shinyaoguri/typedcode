@@ -1,11 +1,40 @@
 /**
  * BrowserPreviewPanel - ブラウザプレビューパネルの表示・リサイズ制御
  * HTML/CSS/JSタブを統合してiframeでプレビュー表示
+ *
+ * 隔離 (#291): プレビュー iframe は index.html で
+ * `sandbox="allow-scripts allow-modals allow-forms"` (allow-same-origin なし) を持つため、
+ * 中身は opaque origin で動き親 DOM・localStorage・IndexedDB (proof の保存先) に届かない。
+ * 親からも contentWindow の中身には触れないので、スクロール位置の保存/復帰は
+ * postMessage ブリッジ (PREVIEW_BRIDGE_SCRIPT) で行う。内容の投入は srcdoc に一本化する
+ * (#299: src と srcdoc を混在させると残った srcdoc が優先されて再表示が空になる)。
  */
 
 import type { TabManager, TabState } from '../tabs/TabManager.js';
 import type * as monaco from 'monaco-editor';
 import { escapeHtml } from '@typedcode/shared';
+
+/** プレビュー → 親: 現在のスクロール位置 */
+const MSG_SCROLL = 'tc-preview-scroll';
+/** 親 → プレビュー: 再描画後に復帰させるスクロール位置 */
+const MSG_RESTORE = 'tc-preview-restore';
+
+/**
+ * プレビュー HTML の末尾に注入するブリッジ。スクロールのたびに位置を親へ送り、
+ * 親からの復帰要求 (送信元が親 window のものだけ) で scrollTo する。
+ * 先頭に入れると `<!DOCTYPE html>` より前になり quirks mode に落ちるので必ず末尾に付ける。
+ * opaque origin からは親の origin を指定できないため targetOrigin は '*' (送るのは座標だけ)。
+ */
+const PREVIEW_BRIDGE_SCRIPT = `<script data-typedcode-preview-bridge>(function () {
+  addEventListener('scroll', function () {
+    parent.postMessage({ type: '${MSG_SCROLL}', x: scrollX, y: scrollY }, '*');
+  }, { passive: true });
+  addEventListener('message', function (e) {
+    var d = e.data;
+    if (e.source !== parent || !d || d.type !== '${MSG_RESTORE}') return;
+    if (typeof d.x === 'number' && typeof d.y === 'number') scrollTo(d.x, d.y);
+  });
+})();</script>`;
 
 export interface BrowserPreviewPanelOptions {
   /** パネルID */
@@ -52,8 +81,9 @@ export class BrowserPreviewPanel {
   private updateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly DEBOUNCE_MS = 300;
 
-  // スクロール位置保存
+  // スクロール位置保存 (プレビューから postMessage で受け取った最新値)
   private lastScrollPosition = { x: 0, y: 0 };
+  private boundMessage: ((e: MessageEvent) => void) | null = null;
 
   // Monacoモデル変更リスナーのdispose関数
   private modelChangeDisposables: monaco.IDisposable[] = [];
@@ -86,6 +116,7 @@ export class BrowserPreviewPanel {
     this.setupRefreshButton();
     this.setupResizeHandle();
     this.setupContentObserver();
+    this.setupScrollBridge();
 
     console.log('[BrowserPreviewPanel] Initialized');
     return true;
@@ -217,9 +248,14 @@ export class BrowserPreviewPanel {
    */
   private showPlaceholder(): void {
     if (this.iframe) {
-      this.iframe.srcdoc = '';
+      // srcdoc = '' では属性が残り、後の投入と混在しうる (#299)。属性ごと外して
+      // about:blank に戻す (前の内容のスクリプトもここで止まる)。
+      this.iframe.removeAttribute('srcdoc');
+      this.iframe.src = 'about:blank';
       this.iframe.style.display = 'none';
     }
+    // 次に表示する HTML は別物なので位置は持ち越さない
+    this.lastScrollPosition = { x: 0, y: 0 };
     if (this.placeholder) {
       this.placeholder.style.display = 'flex';
     }
@@ -237,28 +273,14 @@ export class BrowserPreviewPanel {
     }
   }
 
-  // Blob URL管理
-  private currentBlobUrl: string | null = null;
-
   /**
    * iframeにコンテンツを設定
+   * srcdoc だけを使う (Blob URL / src は使わない)。srcdoc の再代入で毎回再読込される。
    */
   private setIframeContent(content: string): void {
     if (!this.iframe) return;
 
-    // スクロール位置を保存
-    this.saveScrollPosition();
-
-    // 前のBlob URLを解放
-    if (this.currentBlobUrl) {
-      URL.revokeObjectURL(this.currentBlobUrl);
-      this.currentBlobUrl = null;
-    }
-
-    // Blob URLを作成してiframeに設定
-    const blob = new Blob([content], { type: 'text/html' });
-    this.currentBlobUrl = URL.createObjectURL(blob);
-    this.iframe.src = this.currentBlobUrl;
+    this.iframe.srcdoc = content + PREVIEW_BRIDGE_SCRIPT;
 
     // ロード後にスクロール位置を復元
     this.iframe.onload = () => {
@@ -267,33 +289,41 @@ export class BrowserPreviewPanel {
   }
 
   /**
-   * スクロール位置を保存
+   * プレビューからのスクロール位置通知を受け取るリスナーを登録
    */
-  private saveScrollPosition(): void {
-    if (!this.iframe?.contentWindow) return;
-
-    try {
-      this.lastScrollPosition = {
-        x: this.iframe.contentWindow.scrollX ?? 0,
-        y: this.iframe.contentWindow.scrollY ?? 0,
-      };
-    } catch {
-      // cross-origin制限でアクセスできない場合は無視
-      this.lastScrollPosition = { x: 0, y: 0 };
-    }
+  private setupScrollBridge(): void {
+    this.boundMessage = this.handlePreviewMessage.bind(this);
+    window.addEventListener('message', this.boundMessage);
   }
 
   /**
-   * スクロール位置を復元
+   * プレビューからのメッセージを処理 (スクロール位置の保存)
+   * 送信元がプレビュー iframe の window であることと型・値を検査してから採用する
+   * (opaque origin なので e.origin は 'null'。識別は e.source で行う)。
+   */
+  private handlePreviewMessage(e: MessageEvent): void {
+    if (!this.iframe?.contentWindow || e.source !== this.iframe.contentWindow) return;
+
+    const data: unknown = e.data;
+    if (typeof data !== 'object' || data === null) return;
+    const { type, x, y } = data as { type?: unknown; x?: unknown; y?: unknown };
+    if (type !== MSG_SCROLL) return;
+    if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return;
+
+    this.lastScrollPosition = { x: Math.max(0, x), y: Math.max(0, y) };
+  }
+
+  /**
+   * スクロール位置を復元 (プレビュー側のブリッジに復帰を依頼する)
    */
   private restoreScrollPosition(): void {
     if (!this.iframe?.contentWindow) return;
 
-    try {
-      this.iframe.contentWindow.scrollTo(this.lastScrollPosition.x, this.lastScrollPosition.y);
-    } catch {
-      // cross-origin制限でアクセスできない場合は無視
-    }
+    // opaque origin の相手には '*' でしか送れない (中身は座標だけ)
+    this.iframe.contentWindow.postMessage(
+      { type: MSG_RESTORE, x: this.lastScrollPosition.x, y: this.lastScrollPosition.y },
+      '*'
+    );
   }
 
   /**
@@ -590,10 +620,10 @@ export class BrowserPreviewPanel {
       clearTimeout(this.updateDebounceTimer);
     }
 
-    // Blob URLを解放
-    if (this.currentBlobUrl) {
-      URL.revokeObjectURL(this.currentBlobUrl);
-      this.currentBlobUrl = null;
+    // プレビューからのメッセージ受信を停止
+    if (this.boundMessage) {
+      window.removeEventListener('message', this.boundMessage);
+      this.boundMessage = null;
     }
 
     // モデル変更リスナーを破棄

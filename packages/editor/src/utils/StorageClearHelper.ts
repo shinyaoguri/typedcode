@@ -58,14 +58,3 @@ export function clearStorageSync(): void {
     }
   }
 }
-
-/**
- * スクリーンショット用IndexedDBのみを削除（beforeunload用）
- */
-export function deleteScreenshotsDB(): void {
-  try {
-    indexedDB.deleteDatabase('typedcode-screenshots');
-  } catch {
-    // ignore
-  }
-}

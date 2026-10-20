@@ -32,7 +32,10 @@ import { renderMarkdown } from '../utils/markdown.js';
 import type { CodeExecutionController } from '../execution/CodeExecutionController.js';
 import type { CTerminal } from '../terminal/CTerminal.js';
 
-/** オープンな締切 (ADR-0013: スケジュールは Moodle 管理)。manifest 仕様上 deadline は必須。 */
+/**
+ * オープンな締切 (ADR-0013: スケジュールは Moodle 管理)。manifest 仕様上 deadline は必須。
+ * `packages/workers/scripts/make-exam-package.mjs` の `OPEN_DEADLINE` (既定 deadline) と同値に保つこと。
+ */
 const OPEN_DEADLINE = '2999-12-31T23:59:59.999Z';
 
 /** ファイル拡張子 → Monaco/実行の言語 ID。 */

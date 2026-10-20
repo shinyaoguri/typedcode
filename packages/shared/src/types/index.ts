@@ -153,8 +153,6 @@ export type {
   VerificationDetails,
   SerializedTabState,
   MultiTabStorage,
-  MultiFileExportEntry,
-  MultiFileExportedProof,
   ContentCache,
   // IndexedDB セッション永続化関連
   SessionMetadata,
@@ -174,21 +172,6 @@ export type {
 
 // 共通
 export type { Theme } from './common.js';
-
-// ============================================================================
-// 統合型・ユーティリティ
-// ============================================================================
-
-import type { ExportedProof } from './proof.js';
-import type { MultiFileExportedProof } from './storage.js';
-
-/** エクスポートプルーフの統合型 */
-export type AnyExportedProof = ExportedProof | MultiFileExportedProof;
-
-/** マルチファイルプルーフかどうかを判定する型ガード */
-export function isMultiFileProof(data: AnyExportedProof): data is MultiFileExportedProof {
-  return 'type' in data && data.type === 'multi-file';
-}
 
 // ============================================================================
 // グローバル拡張

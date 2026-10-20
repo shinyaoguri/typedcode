@@ -22,7 +22,7 @@ export {
   computeHash,
 } from './utils/hashUtils.js';
 
-import { deterministicStringify, computeHash } from './utils/hashUtils.js';
+import { deterministicStringify, computeHash, iterateSha256HexSync } from './utils/hashUtils.js';
 import { computeExamChainRoot } from './exam/examPackage.js';
 import { evaluatePureTyping } from './typingProof/structuralEdit.js';
 import { isTemplateInjectionData, offsetFromRange } from './typingProof/replay.js';
@@ -635,19 +635,18 @@ export async function verifyCheckpoints(
 
 /**
  * Verify PoSW (Proof of Sequential Work)
+ *
+ * 反復は同期 SHA-256 (`iterateSha256HexSync`) で計算する (#267)。記録側の
+ * `await computeHash` 反復と出力は同一で、1 反復ごとの Promise オーバーヘッドだけを省く。
+ * シグネチャは async のまま据え置き、`verifyChain` は event ごとに await を挟むので
+ * 進捗コールバックは従来どおり動く。
  */
 export async function verifyPoSW(previousHash: string, eventDataString: string, posw: PoSWData): Promise<boolean> {
   if (posw.iterations !== POSW_ITERATIONS) {
     return false;
   }
 
-  let hash = await computeHash(previousHash + eventDataString + posw.nonce);
-
-  for (let i = 1; i < posw.iterations; i++) {
-    hash = await computeHash(hash);
-  }
-
-  return hash === posw.intermediateHash;
+  return iterateSha256HexSync(previousHash + eventDataString + posw.nonce, posw.iterations) === posw.intermediateHash;
 }
 
 /**

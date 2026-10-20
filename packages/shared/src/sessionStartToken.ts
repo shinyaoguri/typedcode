@@ -30,6 +30,12 @@ import {
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** sessionId の許容最大長 (UUID 等で十分。API 濫用対策) */
 const MAX_ID_LENGTH = 200;
+/**
+ * sessionId の許容文字種 (#297)。token に焼いた sessionId はそのまま checkpoint 署名の KV キーに
+ * なるので、signedCheckpoints.ts の validateSignedCheckpointInput と**同じ集合**に揃える
+ * (ずれると「token は発行できるが署名できない sessionId」が生まれる)。
+ */
+const ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 /**
  * casual / class の anchored chain root を計算する単一ソース。
@@ -143,6 +149,9 @@ export function validateSessionStartInput(
   }
   if (sessionId.length > MAX_ID_LENGTH) {
     return { ok: false, reason: `sessionId exceeds max length (${MAX_ID_LENGTH})` };
+  }
+  if (!ID_PATTERN.test(sessionId)) {
+    return { ok: false, reason: `sessionId must match ${ID_PATTERN.source}` };
   }
 
   const fingerprintHash = obj.fingerprintHash;

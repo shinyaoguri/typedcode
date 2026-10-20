@@ -95,7 +95,6 @@ import {
   parseJsonString,
   parseZipBuffer,
   isProofFile,
-  isMultiFileProof,
   isProofFilename,
   extractFirstProofFromZip,
 } from '@typedcode/shared';
@@ -105,11 +104,6 @@ const proof = parseJsonString(jsonContent);
 
 // ZIP を解析
 const proof = await parseZipBuffer(arrayBuffer);
-
-// マルチファイル証明かどうかの判定
-if (isMultiFileProof(proof)) {
-  // マルチファイル処理
-}
 ```
 
 ### 検証関数
@@ -146,7 +140,6 @@ W3C InputEvent の `inputType` に対応する union 型。許可リスト (`ALL
 import type {
   StoredEvent,            // ハッシュチェーン付きで記録されたイベント
   ExportedProof,          // 単一ファイル証明形式
-  MultiFileExportedProof, // マルチファイル証明形式
   VerificationResult,     // 検証結果
   CheckpointData,         // ハッシュチェーン中間点
   PoSWData,               // Proof of Sequential Work データ

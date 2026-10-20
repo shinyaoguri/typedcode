@@ -15,7 +15,7 @@
 ## 重要な不変条件
 
 1. **`shared` の検証ロジックを再実装しない**: バグや暗号アルゴリズムの修正は shared 側で行う。CLI 側で差分があると 「Web で OK / CLI で NG」 のような不整合事故が起きる
-2. **終了コード**: 0 = 成功、1 = 失敗 / エラー。これが CI で利用されるので変えない。**立て方は `process.exitCode` で、`process.exit()` は使わない** (#283): stdout がパイプのとき Node の書き込みは非同期なので、`process.exit()` は未 flush の出力を捨ててプロセスを落とす。60 proof の ZIP を遅い読み手 (`| tee` / `| less`) へ流すと **ちょうど 65536 バイト (パイプバッファ 1 個分) で行の途中から切れ、`=== Summary: N/M proofs passed ===` ごと消える**ことを実測済み。TTY 実行とファイル redirect では再現しないので、気付かずに再導入しやすい (`exitCode.test.ts` が `process.exit(` の再導入を落とす)。副作用として `--analyzer` の外部モジュールがハンドルを残すと自然終了できなくなるので、README に明記してある
+2. **終了コード**: 0 = 成功、1 = 失敗 / エラー。これが CI で利用されるので変えない。**立て方は `process.exitCode` で、`process.exit()` は使わない** (#283): stdout がパイプのとき Node の書き込みは非同期なので、`process.exit()` は未 flush の出力を捨ててプロセスを落とす。60 proof の ZIP を遅い読み手 (`| tee` / `| less`) へ流すと **ちょうど 65536 バイト (パイプバッファ 1 個分) で行の途中から切れ、`=== Summary: N/M proofs passed ===` ごと消える**ことを実測済み。TTY 実行とファイル redirect では再現しないので、気付かずに再導入しやすい (`exitCode.test.ts` が `process.exit(` の再導入を落とす)。副作用として `--analyzer` の外部モジュールがハンドルを残すと自然終了できなくなるので、README に明記してある。**`exitCode` の既定は 1 (fail-closed, #315)**: `main()` の先頭で `process.exitCode = 1` を立て、0 に下ろすのは成功の集計 (`summary.every(...)`) と `--help` だけ。自然終了が正規経路なので、集計にも catch にも届かずに終わったプロセスは既定値で終わる — 既定 0 だと、解決しない Promise を返す analyzer (悪意でもバグでも) 1 つで改ざん proof が `Loading proof file...` のまま exit 0 になる (再現済み)。新しい早期 return を足すときも 0 を立てない限り失敗のままになる向きを保つ (`exitCode.test.ts` が位置を、`cliExitProcess.test.ts` が実プロセスの終了コードを固定)
 3. **ZIP 内の proof は全件検証する**: exam/class はタブ毎に独立した `<name>_proof.json` を N 個出力するので、`shared` の `extractAllProofsFromZip` で全件を取り出し、**1 件でも fail なら exit 1**。最初の 1 件だけ見ると未検証タブが exit 0 で通る (proof 判定は構造 `isProofFile` で、ファイル名順や `screenshots/manifest.json` に依存しない)
 4. **stdout は人間向け、stderr はエラーログ**: パイプして grep される可能性を考慮
 5. **proof / ZIP 由来の文字列は `output.ts` の `safe()` を通してから stdout へ出す** (#266): 生値のままだと改行と ANSI エスケープで**任意の行を偽造できる** (ZIP エントリ名から Summary に緑の `✓ <正規ファイル名>` を生やせることを再現済み)。exit code は守られるので壊れるのは grep する採点運用と端末表示。`safe()` が保証するのは「未信頼値が 1 行に収まり行頭を乗っ取れない」ところまで — 行内に `Hash Chain:  PASS` という**文字列**が残るのは防げないので、**採点は行頭を固定して** grep する。整形を `cli.ts` の `console.log` に直接書かない (テストを当てられなくなる。`formatProofHeader` / `formatMultiSummary` のように `output.ts` へ寄せる)
@@ -23,6 +23,8 @@
 ## ファイル構成
 
 ```
+scripts/
+└── build.mjs      # esbuild で dist/cli.js (単一 ESM) に bundle (#298)
 src/
 ├── cli.ts         # エントリポイント
 ├── verify.ts      # 検証ロジック (shared を呼ぶ薄いラッパ)
@@ -33,7 +35,9 @@ src/
 
 ## よくある罠
 
-- **`@typedcode/shared` の `main` は `src/index.ts` (raw TypeScript)**: tsc コンパイル後の `dist/cli.js` を `node` で直接実行すると `ERR_MODULE_NOT_FOUND` が出る。これは pre-existing でモノレポ内ローカル実行時の構成課題。**Node のバージョンとは無関係**。公開時にはバンドルが必要 (将来課題)
+- **build は esbuild による単一 ESM bundle** (#298, `scripts/build.mjs`): `@typedcode/shared` の `main` は `src/index.ts` (raw TypeScript、中の import は `.js` 拡張子の bundler 解決前提) なので、tsc の出力を `node` で起動すると shared の解決で `ERR_MODULE_NOT_FOUND` になる (Node のバージョンとは無関係)。shared を JS 生成に変えると editor / verify / workers の Vite 解決と PoSW Worker の URL に波及するので、**CLI 側で shared ごと `dist/cli.js` 1 ファイルに取り込む**。`tsc` は型検査専用 (`build` は `tsc --noEmit && node scripts/build.mjs`)。**`dev` / `build` を `tsc` の emit に戻さない** (dist が素の node で起動しなくなる)。ESM bundle には `require` が無いので `createRequire` の banner を付けてある (CJS 依存が Node builtin を動的 `require` した時点で落ちる罠の防御)。`--analyzer` の外部モジュールは実行時の動的 import なので bundle に入らない
+- **配布物の smoke は `npm run test:dist`** (`distSmoke.test.ts` / `vitest.dist.config.ts`): build 後に `dist/` だけを一時ディレクトリへ写し、素の node で `--help` / 有効 proof / 壊れた proof / `--analyzer` を叩く。`dist/cli.js` が無ければ fail。通常の `test:run` からは除外 (build していない環境で壊さないため) — CI の check job が build 直後に回す。tsx で `src/cli.ts` を起動するテスト (`cliExitProcess.test.ts`、e2e) では配布物の解決は確かめられない
+- **有効 proof の fixture** (`src/__tests__/fixtures/proofs/valid.json`) は実 PoSW 付き。proof フォーマットが変わって通らなくなったら同じディレクトリの `generate-valid.mts` で作り直す
 - **新しい proof フォーマットへの対応**: shared 側で `parseJsonString` / `parseZipBuffer` を拡張すれば CLI もそのまま追従する。CLI 側に判定ロジックを書かない
 - **進捗表示は TTY 検出**: パイプ先や CI ログでは ANSI エスケープを抑制する
 

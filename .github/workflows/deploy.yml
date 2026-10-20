@@ -91,6 +91,11 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
+      # verify-cli の配布物 (esbuild bundle) を素の node で起動する smoke (#298)。
+      # tsx で src を叩くユニット / e2e では dist の解決失敗が隠れるので、build 直後にここで見る。
+      - name: Smoke-test verify-cli dist (plain node)
+        run: npm run test:dist -w @typedcode/verify-cli
+
       - name: Validate Worker config (staging dry-run)
         run: npm run deploy:staging -w @typedcode/workers -- --dry-run --outdir /tmp/wrangler-dryrun-staging
 

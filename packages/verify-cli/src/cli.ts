@@ -35,6 +35,10 @@ function parseModeFlag(args: string[]): VerificationMode {
 }
 
 async function main(): Promise<void> {
+  // fail-closed (#315): 既定は失敗。0 に下ろすのは `--help` と成功の集計だけ。
+  // 終了は自然終了 (#283) なので、解決しない Promise (外部 analyzer など) で途中のまま
+  // イベントループが空になると、ここで立てた値のまま終わる。既定 0 だと改ざん proof が exit 0 になる。
+  process.exitCode = 1;
   const args = process.argv.slice(2);
 
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) {

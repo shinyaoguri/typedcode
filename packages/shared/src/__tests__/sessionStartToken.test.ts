@@ -17,6 +17,7 @@ import {
   computeHash,
   createSessionStartToken,
   verifySessionStartToken,
+  validateSessionStartInput,
   computeAnchoredChainRoot,
   verifyInitialHashRoot,
   type CheckpointPublicKey,
@@ -171,6 +172,26 @@ describe('session start token (ADR-0017)', () => {
     const token = await makeToken(testKey);
     expect(token.payload.version).toBe(SESSION_TOKEN_FORMAT_VERSION);
     expect(token.payload.poswIterations).toBe(POSW_ITERATIONS);
+  });
+});
+
+describe('validateSessionStartInput', () => {
+  const fingerprintHash = 'f'.repeat(64);
+
+  it('accepts a crypto.randomUUID()-shaped sessionId', () => {
+    const r = validateSessionStartInput({ sessionId: '3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b', fingerprintHash });
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects a sessionId containing the KV key separator ":" (#297)', () => {
+    // token に焼いた sessionId がそのまま checkpoint 署名の KV キーになるので、入口で同じ文字種に縛る。
+    const r = validateSessionStartInput({ sessionId: 'a:b', fingerprintHash });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects an over-long sessionId', () => {
+    const r = validateSessionStartInput({ sessionId: 'x'.repeat(201), fingerprintHash });
+    expect(r.ok).toBe(false);
   });
 });
 
