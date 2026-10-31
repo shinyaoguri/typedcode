@@ -65,7 +65,7 @@ Issue #214 として検出)。`TrustCalculator` は `poswMode` を見ず issue �
 
 `AssuranceInput.poswSkipped` は **optional にせず必須**とする。optional にすると渡し忘れが
 「未検証なのに proven」= 本 Issue そのものに倒れるためで、`chainImageHashes` を必須化した
-のと同じ理由 (`packages/verify/CLAUDE.md` 不変条件 7)。`screenshotsTampered` と違い
+のと同じ理由 (`packages/verify/AGENTS.md` 不変条件 7)。`screenshotsTampered` と違い
 「未検査」という第三の状態が存在しない点も根拠になる。
 
 **ADR-0020 は本件を除きすべて有効**である。三層の構成・直交性・provenance が常に advisory

@@ -3,7 +3,7 @@
  *
  * 信頼バッジは verify (web) の security boundary の要 — 「タブは緑なのにバッジは failed」
  * 型の回帰 (#146) が着地する場所なので、error / warning / verified の軸を仕様として固定する。
- * VerificationController.handleComplete の status 判定はこれと同じ軸を見る (verify/CLAUDE.md)。
+ * VerificationController.handleComplete の status 判定はこれと同じ軸を見る (verify/AGENTS.md)。
  */
 
 import { describe, expect, it } from 'vitest';

@@ -90,7 +90,7 @@
 - [ADR-0033](0033-e2e-round-trip-harness-as-deploy-gate.md) — 暗号成果物をオラクルにした round-trip E2E (本 ADR の 1 の前提)
 - [ADR-0032](0032-biome-as-single-lint-format-toolchain.md) — 品質ゲートを lint / format へ広げた判断
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — 完了の定義 (Definition of Done)
-- [packages/e2e/CLAUDE.md](../../packages/e2e/CLAUDE.md) — E2E の不変条件 (data-* 状態契約での assert)
+- [packages/e2e/AGENTS.md](../../packages/e2e/AGENTS.md) — E2E の不変条件 (data-* 状態契約での assert)
 - [scripts/require-tests.mjs](../../scripts/require-tests.mjs) / [.github/workflows/pr-checks.yml](../../.github/workflows/pr-checks.yml) — テスト必須ゲート
 - 各 `packages/*/vitest.config.ts` の `coverage.thresholds` — カバレッジの床
 - Issue #346 (追跡) / #336 (テストファイルの型検査) / #335 (Node のバージョン強制)

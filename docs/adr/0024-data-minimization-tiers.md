@@ -82,7 +82,7 @@
 - ADR-0023 (分析プラットフォーム方針: 研究基盤は content なしで分析する)
 - ADR-0009 (分析層の直交性・private 分析器)
 - ADR-0020 (三層保証語彙: 派生ビューの overclaim を避ける)
-- shared 不変条件 #1 (ハッシュチェーン = 全イベント・redact 不可) — `packages/shared/CLAUDE.md`
+- shared 不変条件 #1 (ハッシュチェーン = 全イベント・redact 不可) — `packages/shared/AGENTS.md`
 - `packages/shared/src/types/proof.ts` (`ExportedProof` / `StoredEvent` の content・fingerprint)
 - `packages/shared/src/processSummary.ts` (`ProcessSummary` / `reflectionNotes`)
 - `docs/analysis-eval-protocol.md` §2 (データ最小化・同意)

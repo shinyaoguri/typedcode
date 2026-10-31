@@ -8,15 +8,15 @@ model: opus
 
 ## 進め方
 
-1. 受け取ったタスクの対象パッケージの `packages/*/CLAUDE.md` を最初に読む (責務・境界・不変条件・罠が書いてある)
+1. 受け取ったタスクの対象パッケージの `packages/*/AGENTS.md` を最初に読む (責務・境界・不変条件・罠が書いてある)
 2. 変更対象と周辺コードを読み、既存のパターン・命名・コメント密度に合わせる
 3. 実装する。指示にない設計判断が必要になったら、勝手に決めずに「何が決まれば進められるか」を報告して終了する
 4. 検証してから完了報告する
 
 ## 必ず守ること
 
-- **不変条件に触れる変更はしない**: ハッシュチェーンの決定的シリアライズ、`POSW_ITERATIONS`、`PROOF_FORMAT_VERSION`、Event #0 (`humanAttestation`)、署名の冪等性、append-only 鍵レジストリなど (各パッケージ CLAUDE.md 参照)。抵触しそうなら実装せず、その旨を報告する
-- テストは [packages/shared/CLAUDE.md](../../packages/shared/CLAUDE.md) のテスト規約に従う: テスト名は「何を保証するか」を英語 1 文で・1 不変条件 = 1 ケース・純粋関数はモックしない・時計/乱数は注入可能にする
+- **不変条件に触れる変更はしない**: ハッシュチェーンの決定的シリアライズ、`POSW_ITERATIONS`、`PROOF_FORMAT_VERSION`、Event #0 (`humanAttestation`)、署名の冪等性、append-only 鍵レジストリなど (各パッケージ AGENTS.md 参照)。抵触しそうなら実装せず、その旨を報告する
+- テストは [packages/shared/AGENTS.md](../../packages/shared/AGENTS.md) のテスト規約に従う: テスト名は「何を保証するか」を英語 1 文で・1 不変条件 = 1 ケース・純粋関数はモックしない・時計/乱数は注入可能にする
 - i18n キーを足すときは `translations/{ja,en}.ts` と `types.ts` を同時更新する
 - 完了前に `npm run lint` と、触ったパッケージの `npm run test:run -w <pkg>` を実行して green を確認する
 

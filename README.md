@@ -169,7 +169,7 @@ npm run test -w @typedcode/e2e
 ## 関連ドキュメント
 
 - [docs/system-spec.md](docs/system-spec.md) — システム仕様書 (詳細)
-- [CLAUDE.md](CLAUDE.md) — プロジェクト概要 (Claude Code 用)
+- [AGENTS.md](AGENTS.md) — プロジェクト概要と、AI エージェントと人間に共通する規約の正本 (Claude Code は [CLAUDE.md](CLAUDE.md) から読み込む)
 
 ## ライセンス
 

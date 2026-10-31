@@ -8,7 +8,7 @@ TypedCode 向けの Cloudflare Workers API。Turnstile 人間認証とアテス�
 - **署名済みチェックポイントサービス**: 証明チェックポイントへの ECDSA-P256 + サーバ時刻署名。KV による per-session の `firstSeenAt` 管理と冪等処理を含む。署名は**セッション開始トークン前提** ([ADR-0027](../../docs/adr/0027-checkpoint-sign-requires-session-token.md))
 - **Turnstile 検証**: Cloudflare Turnstile トークンを検証
 - **アテステーション署名**: HMAC-SHA256 で署名付きアテステーションを発行 (作成時の経路は ADR-0017 で session/start に統合済み)
-- **CORS サポート**: `ALLOWED_ORIGINS` による許可リスト方式 (fail-closed。詳細は [CLAUDE.md](CLAUDE.md))
+- **CORS サポート**: `ALLOWED_ORIGINS` による許可リスト方式 (fail-closed。詳細は [AGENTS.md](AGENTS.md))
 
 ## セットアップ
 
@@ -241,7 +241,7 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
 | `SESSION_PERSIST_FAILED` | 503 | 初回チェックポイントの KV 書き込み失敗 (署名せずリトライさせる) |
 | `SESSION_STATE_UNAVAILABLE` | 503 | KV の読み取り失敗 (署名せずリトライさせる) |
 
-各コードの設計意図は [CLAUDE.md](CLAUDE.md) を参照。
+各コードの設計意図は [AGENTS.md](AGENTS.md) を参照。
 
 ### GET `/api/checkpoint/public-keys`
 
@@ -383,6 +383,6 @@ src/
 
 1. **シークレット**: `.dev.vars` を絶対にコミットしない。本番では `wrangler secret put` を使う
 2. **CORS**: 許可するオリジンを適切に設定する
-3. **レートリミット**: `/api/checkpoint/sign` の濫用防止は `sessionStartToken` (ADR-0027) が主防御。加えて Cloudflare の Rate Limiting Rules を defense-in-depth として**環境ごとに設定する** (手順は [CLAUDE.md](CLAUDE.md))
+3. **レートリミット**: `/api/checkpoint/sign` の濫用防止は `sessionStartToken` (ADR-0027) が主防御。加えて Cloudflare の Rate Limiting Rules を defense-in-depth として**環境ごとに設定する** (手順は [AGENTS.md](AGENTS.md))
 4. **トークン検証**: セッション開始トークンと署名済みチェックポイントは、常に公開鍵レジストリ (`registry.ts`) の鍵でのみ検証する (自己署名トークンを受理しない)
 5. **公開鍵管理**: 本番鍵は `packages/shared/src/checkpointKeys/registry.ts` に append-only で追加し、`status: 'revoked'` で失効管理する

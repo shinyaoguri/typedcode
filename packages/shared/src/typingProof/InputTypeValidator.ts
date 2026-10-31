@@ -11,7 +11,7 @@ import type { InputType, EventType } from '../types.js';
  * **手書きの Set にしないこと** (#222)。`Record<EventType, true>` から導出しているので、
  * `EventType` union に型を足すとこの表の記入漏れを tsc が検出する。かつて手書きの Set が
  * union から取り残され、`environmentProbe` / `fullscreenChange` / `examOpened` の 3 種が
- * 実行時検証で「無効」になっていた (同期の崩れは CLAUDE.md の「よくある罠」でも既知)。
+ * 実行時検証で「無効」になっていた (同期の崩れは AGENTS.md の「よくある罠」でも既知)。
  */
 const EVENT_TYPE_MEMBERS: Record<EventType, true> = {
   humanAttestation: true,

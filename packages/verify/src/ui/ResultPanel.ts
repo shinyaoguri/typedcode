@@ -563,7 +563,7 @@ export class ResultPanel {
       const statusClass = isSuccess ? 'success' : isWarning ? 'warning' : 'error';
 
       this.statusIcon.className = `result-status-icon ${statusClass}`;
-      // 状態契約 (CLAUDE.md): data-level は TrustCalculator の生の値だけを出す。ここで
+      // 状態契約 (AGENTS.md): data-level は TrustCalculator の生の値だけを出す。ここで
       // TrustLevel を導出し直すと信頼バッジと食い違いうるので、この経路では付けない。
       delete this.statusIcon.dataset.level;
       this.statusIcon.innerHTML = `<i class="fas fa-${isSuccess ? 'check-circle' : isWarning ? 'exclamation-triangle' : 'times-circle'}"></i>`;
@@ -1675,7 +1675,7 @@ export function buildAssuranceStripHtml(assurance: AssuranceResult, mode?: Resul
 
   // mode は proof.json 由来 (自己申告) — 入力層で allowlist 済みだが、`t()` は未登録キーを
   // キー文字列のまま返すため、表示層でも必ずエスケープする (#210 は二重に防ぐ)。
-  // data-axis / data-level / data-pure-typing / data-mode は状態契約 (verify/CLAUDE.md)。
+  // data-axis / data-level / data-pure-typing / data-mode は状態契約 (verify/AGENTS.md)。
   // 値は shared の enum そのもので、色クラス (warning が整合性と時刻アンカーで同じ) では区別しない。
   // 著述性はレベルを持たない advisory なので data-level を出さない (ADR-0009 / ADR-0020)。
   const modeChip = mode
@@ -1703,7 +1703,7 @@ export function buildAssuranceStripHtml(assurance: AssuranceResult, mode?: Resul
 }
 
 /**
- * `#assurance-strip` に三層保証の状態契約 (verify/CLAUDE.md「状態契約」) を書く。
+ * `#assurance-strip` に三層保証の状態契約 (verify/AGENTS.md「状態契約」) を書く。
  * 値は shared の `deriveAssurance` が返す生の enum で、翻訳テキストや色クラスに依存しない。
  */
 export function applyAssuranceState(el: HTMLElement, assurance: AssuranceResult): void {

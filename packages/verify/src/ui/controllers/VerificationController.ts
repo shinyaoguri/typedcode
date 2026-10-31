@@ -74,7 +74,7 @@ export class VerificationController {
     // スクリーンショット検証 (#146): enqueue 時に tabState へ保持済みの per-image 判定を集計。
     // TrustCalculator (改竄 = error) / deriveAssurance (integrity failed) と同じ軸を見る —
     // ここだけ見ないとサイドバー/タブの緑と開いた結果バッジが食い違い、緑の流し見で
-    // 改竄提出が素通りする (verify/CLAUDE.md「両者を揃えて変更すること」)。
+    // 改竄提出が素通りする (verify/AGENTS.md「両者を揃えて変更すること」)。
     const events = currentTabState?.proofData?.proof?.events ?? [];
     const screenshotSummary = summarizeTabScreenshots({ screenshots: currentTabState?.screenshots, events });
     const screenshotsTampered = screenshotSummary?.tampered ?? 0;
@@ -96,7 +96,7 @@ export class VerificationController {
     const examPresentButUnverified = !!result.exam?.present && !result.exam.packageProvided;
     // #214: fast モードは PoSW を再計算していない。TrustCalculator の warning と同じ軸に揃える —
     // ここを見ないと「タブは緑なのに信頼バッジは警告」になり、fast のまま流した提出物が全件緑で
-    // 素通りする (verify/CLAUDE.md「両者を揃えて変更すること」)。
+    // 素通りする (verify/AGENTS.md「両者を揃えて変更すること」)。
     const poswSkipped = result.poswMode === 'skipped';
     // ADR-0017: root 未アンカー (serverNonce トークン無し) は警告。exam は独自束縛のため対象外。
     const rootNotAnchored = !result.rootAnchored && !result.exam?.present;

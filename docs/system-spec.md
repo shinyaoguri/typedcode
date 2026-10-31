@@ -730,8 +730,8 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 - [packages/shared/README.md](../packages/shared/README.md) — shared API リファレンス
 - [packages/verify/README.md](../packages/verify/README.md) — 検証 UI の使い方
 - [packages/verify-cli/README.md](../packages/verify-cli/README.md) — CLI 検証ツール
-- [CLAUDE.md](../CLAUDE.md) — リポジトリ全体の玄関口 (Claude Code / Agent SDK 用)
-- [packages/*/CLAUDE.md](../packages/) — 各サブシステムの責務 / 不変条件 / 罠
+- [AGENTS.md](../AGENTS.md) — リポジトリ全体の玄関口 (AI エージェントと人間に共通する規約)
+- [packages/*/AGENTS.md](../packages/) — 各サブシステムの責務 / 不変条件 / 罠
 - [docs/adr/](adr/) — Architecture Decision Records (なぜそうしたかの蓄積)
 - 試験モード ADR: [0006](adr/0006-exam-mode-sealed-problem-binding.md) (封印問題 + 根束縛) / [0007](adr/0007-maximal-signal-capture.md) (生信号捕捉) / [0008](adr/0008-exam-fullscreen-request-not-enforce.md) (フルスクリーン要求) / [0009](adr/0009-pluggable-analysis-layer.md) (分析層) / [0010](adr/0010-exam-session-model.md) (セッションモデル, ADR-0011 で sticky を置換) / [0011](adr/0011-course-modes-and-path-routing.md) (授業/課題/試験のモードと path 分岐)
 

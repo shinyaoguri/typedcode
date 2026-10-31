@@ -4,7 +4,7 @@ import { expect } from '@playwright/test';
 /**
  * 検証 Web (`packages/verify`) を Playwright から駆動するページオブジェクト。
  *
- * 判定は **data-* の状態契約だけ** を読む (verify/CLAUDE.md「状態契約」、ADR-0034)。
+ * 判定は **data-* の状態契約だけ** を読む (verify/AGENTS.md「状態契約」、ADR-0034)。
  * 翻訳テキスト・色クラス・見た目には依存しない。契約の表と値域を変えるときはこのファイルも
  * 同じ PR で直すこと。
  */

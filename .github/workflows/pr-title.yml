@@ -34,8 +34,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 許可 type は CONTRIBUTING.md / CLAUDE.md の規約に合わせる。
-          # 増減させるときは 3 箇所 (ここ / CONTRIBUTING.md / CLAUDE.md) を揃えること。
+          # 許可 type は CONTRIBUTING.md / AGENTS.md の規約に合わせる。
+          # 増減させるときは 3 箇所 (ここ / CONTRIBUTING.md / AGENTS.md) を揃えること。
           types='feat|fix|docs|refactor|test|chore|ci'
 
           # <type>(<scope>)!: <要約>

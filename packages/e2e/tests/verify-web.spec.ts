@@ -6,7 +6,7 @@ import { VerifyWebApp, type VerifyVerdict } from './helpers/verifyWeb.js';
 
 /**
  * verify Web を通す往復 E2E (#346 PR 3): editor で打鍵 → export した ZIP を検証 Web に入れ、
- * 判定を **data-* の状態契約** (verify/CLAUDE.md) で読む。翻訳テキスト・色クラスは見ない。
+ * 判定を **data-* の状態契約** (verify/AGENTS.md) で読む。翻訳テキスト・色クラスは見ない。
  *
  * オラクルは verify-cli (不変条件 1): 同じ ZIP に対する CLI の判定と Web の判定が一致すること
  * (Web↔CLI パリティ) を軸にし、改ざんで両方が拒否する負のオラクルと対にする (不変条件 2)。

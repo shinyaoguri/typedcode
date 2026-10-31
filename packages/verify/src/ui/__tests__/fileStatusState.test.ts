@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * サイドバー (`.file-item`) とタブ (`.tab`) の状態契約 (verify/CLAUDE.md「状態契約 (data-* 属性)」)。
+ * サイドバー (`.file-item`) とタブ (`.tab`) の状態契約 (verify/AGENTS.md「状態契約 (data-* 属性)」)。
  *
  * status の出所は VerificationController の 1 か所 (tabManager.updateTab と同じ値を Sidebar /
  * TabBar に流す) で、Sidebar / TabBar は受け取った値をそのまま data-status に出すだけ。

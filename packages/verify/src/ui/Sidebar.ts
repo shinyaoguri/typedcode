@@ -522,7 +522,7 @@ export class Sidebar {
     const isProof = file.isProof !== false; // デフォルトはtrue（JSONファイル）
     item.className = `file-item${file.id === this.activeFileId ? ' active' : ''}${isProof ? ' proof-file' : ' plaintext-file'}`;
     item.dataset.id = file.id;
-    // 状態契約 (verify/CLAUDE.md): status は VerificationController が決めた値をそのまま出す。
+    // 状態契約 (verify/AGENTS.md): status は VerificationController が決めた値をそのまま出す。
     // ここで検証結果から導出し直さないこと (タブ・信頼バッジと食い違う)。
     item.dataset.status = file.status;
     item.dataset.filename = file.filename;

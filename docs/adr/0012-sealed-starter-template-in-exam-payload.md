@@ -101,7 +101,7 @@ TypedCode には独立した2機能があり、いまは**直交**している�
 - 実装フェーズ: (1) shared に bundle codec + per-problem ハッシュ + B-2 root + 後方互換 + テスト → (2) editor 解錠を `TemplateImporter` 再利用で N タブ exam 束縛（ProblemPanel per-tab・リロード復帰・源流ロック N タブ化） → (3) `/author` に N 問入力。
 - 1問複数ファイル（軸: 1問 N ファイル）は別 ADR / 将来 schema 拡張（`problems[i].files[]`）。
 - `.yaml` テンプレート ↔ bundle payload 相互変換。
-- system-spec.md と shared/editor の CLAUDE.md に payload schema / 束縛式を明記。
+- system-spec.md と shared/editor の AGENTS.md に payload schema / 束縛式を明記。
 
 ## References
 
