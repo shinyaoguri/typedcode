@@ -143,7 +143,14 @@ export interface StoredEvent extends EventHashData {
 /** イベント記録結果 */
 export interface RecordEventResult {
   hash: string;
+  /** チェーン上のインデックス。`recorded === false` のときは -1 */
   index: number;
+  /**
+   * イベントがハッシュチェーンに載ったか。記録中に例外が出てイベントが捨てられた場合は false
+   * (そのとき hash / index は直前のイベントではなく「載らなかった」ことを表す: hash は現在の
+   * チェーン先頭、index は -1)。呼び出し側は false のとき LogViewer / IndexedDB へ送らない (#284)。
+   */
+  recorded: boolean;
 }
 
 // ============================================================================

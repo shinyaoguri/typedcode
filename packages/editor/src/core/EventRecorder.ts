@@ -85,6 +85,12 @@ export class EventRecorder {
 
     recordPromise
       .then(async (result) => {
+        // 記録に失敗してチェーンに載らなかったイベントは UI / IndexedDB に流さない (#284)
+        if (!result.recorded) {
+          console.warn('[EventRecorder] Event was not recorded (dropped); skipping LogViewer / IndexedDB');
+          return;
+        }
+
         const recordedEvent = activeProof.events[result.index];
 
         // ログビューアに追加（非同期）
@@ -159,6 +165,9 @@ export class EventRecorder {
 
       return recordPromise
         .then((result) => {
+          // 記録に失敗してチェーンに載らなかったイベントは UI に流さない (#284)
+          if (!result.recorded) return;
+
           // アクティブタブの場合のみログビューアに追加
           const activeTab = this.tabManager.getActiveTab();
           const isActive = activeTab && activeTab.id === tab.id;
