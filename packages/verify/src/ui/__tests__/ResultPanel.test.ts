@@ -8,8 +8,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { escapeHtml, type AssuranceResult } from '@typedcode/shared';
-import { buildAssuranceStripHtml, buildScreenshotVerificationHtml, type ResultData } from '../ResultPanel.js';
+import {
+  buildAssuranceStripHtml,
+  buildExamIdentifierLabel,
+  buildScreenshotVerificationHtml,
+  type ResultData,
+} from '../ResultPanel.js';
 import type { ScreenshotVerificationSummary } from '../../types.js';
+import { t } from '../../i18n/index.js';
 
 /** 健全な anchored proof の保証導出結果。 */
 function assurance(): AssuranceResult {
@@ -125,5 +131,48 @@ describe('buildScreenshotVerificationHtml', () => {
     const html = buildScreenshotVerificationHtml(summary({ total: 2, verified: 0, missing: 1, tampered: 1 }));
 
     expect(html).toContain('error');
+  });
+});
+
+describe('buildExamIdentifierLabel (#273)', () => {
+  type ExamBinding = NonNullable<ResultData['examBinding']>;
+  type Binding = NonNullable<ExamBinding['binding']>;
+
+  const binding = (overrides: Partial<Binding> = {}): Binding => ({
+    valid: true,
+    packageSignatureValid: true,
+    packageHashMatches: true,
+    rootMatches: true,
+    problemContentHashMatches: true,
+    identifiersMatch: true,
+    verifiedIds: { examId: 'exam-1', problemId: 'p1', variant: 'A' },
+    timeBox: null,
+    ...overrides,
+  });
+  const selfClaimed = (b?: Binding): ExamBinding => ({
+    examId: 'claimed-exam',
+    problemId: 'claimed-p',
+    variant: 'Z',
+    rootValid: true,
+    packageProvided: b !== undefined,
+    binding: b,
+  });
+
+  it('shows the manifest identifiers, without a self-reported label, when the binding passed', () => {
+    expect(buildExamIdentifierLabel(selfClaimed(binding()))).toBe('exam-1 / p1 / A');
+  });
+
+  it('labels the proof-side identifiers as self-reported when no package is provided', () => {
+    const label = buildExamIdentifierLabel(selfClaimed());
+    expect(label).toContain('claimed-exam / claimed-p / Z');
+    expect(label).toContain(t('result.examSelfReported'));
+  });
+
+  it('labels the proof-side identifiers as self-reported when the binding failed', () => {
+    const label = buildExamIdentifierLabel(
+      selfClaimed(binding({ valid: false, identifiersMatch: false, verifiedIds: undefined }))
+    );
+    expect(label).toContain('claimed-exam');
+    expect(label).toContain(t('result.examSelfReported'));
   });
 });

@@ -62,6 +62,7 @@ function examBindingFailed(): Extract<CLIExamResult, { present: true }> {
     examId: 'exam-1',
     problemId: 'p1',
     variant: null,
+    identifiersVerified: false,
     packageProvided: true,
     rootBindingValid: true,
     binding: {
@@ -70,6 +71,7 @@ function examBindingFailed(): Extract<CLIExamResult, { present: true }> {
       packageHashMatches: false,
       rootMatches: true,
       problemContentHashMatches: true,
+      identifiersMatch: false,
       timeBox: null,
       reason: 'packageHash mismatch',
     },
@@ -83,6 +85,7 @@ function examBindingLate(): CLIExamResult {
     examId: 'exam-1',
     problemId: 'p1',
     variant: null,
+    identifiersVerified: true,
     packageProvided: true,
     rootBindingValid: true,
     binding: {
@@ -91,6 +94,8 @@ function examBindingLate(): CLIExamResult {
       packageHashMatches: true,
       rootMatches: true,
       problemContentHashMatches: true,
+      identifiersMatch: true,
+      verifiedIds: { examId: 'exam-1', problemId: 'p1', variant: null },
       timeBox: {
         releaseTime: '2026-06-06T00:00:00.000Z',
         deadline: '2026-06-06T03:00:00.000Z',
@@ -113,6 +118,7 @@ function examPackageNotApplicable(): CLIExamResult {
       packageHashMatches: false,
       rootMatches: false,
       problemContentHashMatches: false,
+      identifiersMatch: false,
       timeBox: null,
       reason: 'Proof has no exam block',
     },

@@ -179,6 +179,7 @@ export interface VerifyTranslationKeys {
     // 試験束縛 (ADR-0006)
     examBinding: string;
     examProblem: string;
+    examSelfReported: string;
     examRootBinding: string;
     examSignature: string;
     examPackageHash: string;

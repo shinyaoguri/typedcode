@@ -8,7 +8,7 @@
  * - `verifyExamPackageSignature`: 出題者鍵レジストリで package 署名を検証する
  * - `deriveExamKey` / `decryptExamPackage`: 監督コードから鍵を導出し復号する
  * - `computeExamPackageHash` / `computeProblemContentHash` / `computeExamChainRoot`: 束縛用ハッシュ
- * - `verifyExamBinding`: grader 用の高レベル検証 (署名 → packageHash → root → 内容ハッシュ → time-box)
+ * - `verifyExamBinding`: grader 用の高レベル検証 (署名 → packageHash → 識別子 → root → 内容ハッシュ → time-box)
  *
  * 不変条件: **署名入力と packageHash は同一の canonical core** (`{signature, publicKeyJwk}` を
  * 除いた manifest) を `deterministicStringify` して計算する。これにより任意同梱の publicKeyJwk の
@@ -469,6 +469,16 @@ export interface ExamTimeBox {
   withinWindow: boolean | null;
 }
 
+/** 束縛検証で manifest と照合する proof 側の識別子名 */
+export type ExamIdentifierName = 'examId' | 'problemId' | 'variant';
+
+/** 束縛検証済みの識別子 (`ExamBindingVerificationResult.verifiedIds`) */
+export interface ExamVerifiedIdentifiers {
+  examId: string;
+  problemId: string;
+  variant: string | null;
+}
+
 export interface ExamBindingVerificationResult {
   /** 全ステップ合格か */
   valid: boolean;
@@ -480,6 +490,21 @@ export interface ExamBindingVerificationResult {
   rootMatches: boolean;
   /** 復号した平文の SHA-256 が proof.exam.problemContentHash と一致するか */
   problemContentHashMatches: boolean;
+  /**
+   * proof.exam の識別子 (examId / variant、v1 は problemId も) が検証済み manifest と一致するか (#273)。
+   * これらは proof 側の自己申告で暗号的束縛の外にあるため、manifest との照合で初めて検証済みになる。
+   */
+  identifiersMatch: boolean;
+  /** `identifiersMatch` が false のとき、どの識別子が不一致だったか */
+  mismatchedIdentifiers?: ExamIdentifierName[];
+  /**
+   * 束縛が全て合格したときだけ載る、**検証済みの**識別子 (#273)。表示・採点先の振り分けには
+   * proof.exam の自己申告値ではなくこちらを使うこと。
+   * - examId / variant: manifest (出題者署名済み) の値
+   * - problemId: v1 は manifest の値、v2 は manifest.problemId が固定ラベルなので
+   *   bundle 検索 (+ per-problem hash) で保護された proof 側の値
+   */
+  verifiedIds?: ExamVerifiedIdentifiers;
   /** 時間窓 (advisory)。submission 時刻が無い PR1 では withinWindow=null */
   timeBox: ExamTimeBox | null;
   reason?: string;
@@ -510,6 +535,7 @@ export async function verifyExamBinding(
     packageHashMatches: false,
     rootMatches: false,
     problemContentHashMatches: false,
+    identifiersMatch: false,
     timeBox: null,
   };
 
@@ -596,6 +622,26 @@ export async function verifyExamBinding(
     return { ...result, reason: 'Decrypted problemContentHash does not match proof.exam.problemContentHash' };
   }
 
+  // 5. 識別子の照合 (#273)。examId / variant / problemId は proof 側の自己申告で、packageHash・root・
+  //    内容ハッシュのどれにも含まれない。署名済み manifest と食い違う proof は「この試験の答案」と
+  //    言えないので束縛失敗にする。暗号的な検査が全て通った後に行う (ダウングレード拒否など、
+  //    より本質的な失敗理由を識別子不一致で隠さないため)。
+  //    - variant: null と未指定 (undefined) は同一視し、それ以外は厳密一致。
+  //    - problemId: v1 のみ manifest と照合。v2 の manifest.problemId はバンドルの固定ラベルで、
+  //      実際の problemId は上の bundle 検索 (+ per-problem hash) が保護している。
+  const mismatched: ExamIdentifierName[] = [];
+  if (exam.examId !== manifest.examId) mismatched.push('examId');
+  if (!isV2 && exam.problemId !== manifest.problemId) mismatched.push('problemId');
+  if ((exam.variant ?? null) !== (manifest.variant ?? null)) mismatched.push('variant');
+  if (mismatched.length > 0) {
+    return {
+      ...result,
+      mismatchedIdentifiers: mismatched,
+      reason: `proof.exam does not match the verified package: ${mismatched.join(', ')}`,
+    };
+  }
+  result.identifiersMatch = true;
+
   // 6. time-box (advisory)。実際の submission 時刻は外部 (Moodle)。
   const releaseMs = Date.parse(manifest.releaseTime);
   const deadlineMs = Date.parse(manifest.deadline);
@@ -614,7 +660,19 @@ export async function verifyExamBinding(
   // time-box は advisory (ADR-0013)。valid には合流させない — 遅延提出 (や早期提出) の
   // 扱いは提出窓を管理する Moodle 側の運用判断であって、暗号的束縛の検証失敗ではない。
   result.valid =
-    result.packageSignatureValid && result.packageHashMatches && result.rootMatches && result.problemContentHashMatches;
+    result.packageSignatureValid &&
+    result.packageHashMatches &&
+    result.identifiersMatch &&
+    result.rootMatches &&
+    result.problemContentHashMatches;
+  if (result.valid) {
+    result.verifiedIds = {
+      examId: manifest.examId,
+      // v2: manifest.problemId は固定ラベル。bundle 検索 + per-problem hash で保護された値を使う。
+      problemId: isV2 ? exam.problemId : manifest.problemId,
+      variant: manifest.variant ?? null,
+    };
+  }
   return result;
 }
 

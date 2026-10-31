@@ -166,6 +166,7 @@ export const ja: VerifyTranslationKeys = {
     // 試験束縛 (ADR-0006)
     examBinding: '試験束縛',
     examProblem: '問題',
+    examSelfReported: '自己申告・未検証',
     examRootBinding: 'root 束縛',
     examSignature: 'パッケージ署名',
     examPackageHash: 'パッケージハッシュ',
