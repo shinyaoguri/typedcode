@@ -50,6 +50,7 @@ jobs:
           report="${RUNNER_TEMP}/links.md"
           : > "$report"
 
+          # shellcheck disable=SC2016 # printf の書式内の `...` は Markdown のコード表記で、展開させないための意図した単一引用符
           while IFS= read -r file; do
             dir="$(dirname "$file")"
             while IFS= read -r raw; do
@@ -93,6 +94,7 @@ jobs:
           raw="${RUNNER_TEMP}/outdated.json"
           npm outdated --workspaces --include-workspace-root --json > "$raw" || true
 
+          # shellcheck disable=SC2016 # JS のテンプレートリテラル (`...${x}`) をシェルに展開させないための意図した単一引用符
           node --input-type=module -e '
             import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 
