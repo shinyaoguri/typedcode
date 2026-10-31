@@ -508,14 +508,17 @@ export function printUsage(): void {
 ${c('bold', 'typedcode-verify')} - Verify TypedCode proof files
 
 ${c('cyan', 'Usage:')}
-  typedcode-verify <file.json|file.zip> [--mode <fast|audit|full>]
+  typedcode-verify <file.json|file.zip>... [--mode <fast|audit|full>]
                    [--exam-package <file.tcexam>] [--submitted-at <ISO>]
                    [--require-anchor-density] [--require-root-anchor]
                    [--analysis-json <out.json>] [--analysis-bundle <out.json>]
                    [--analyzer <module>]... [--no-default-analyzers]
 
 ${c('cyan', 'Arguments:')}
-  file    Path to proof file (.json) or exported archive (.zip)
+  file    Path to a proof file (.json) or exported archive (.zip). One or more
+          may be given; every one is verified and options apply to all of them.
+          An unreadable or invalid input counts as a failure (exit 1) without
+          stopping the others.
 
 ${c('cyan', 'Options:')}
   --mode           Verification mode (default: full)

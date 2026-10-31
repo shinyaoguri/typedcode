@@ -2,7 +2,7 @@
 /**
  * @typedcode/verify-cli - Typing proof file verifier
  *
- * Usage: typedcode-verify <file.json|file.zip> [--mode <m>] [--exam-package <f>] [--submitted-at <ISO>]
+ * Usage: typedcode-verify <file.json|file.zip>... [--mode <m>] [--exam-package <f>] [--submitted-at <ISO>]
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
@@ -65,9 +65,6 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const filePath = resolve(positional[0]!);
-  const ext = extname(filePath).toLowerCase();
-
   // anchoring 密度 gate (ADR-0016): boolean フラグ。指定すると密度が疎な proof を fail させる。
   const requireAnchorDensity = args.includes('--require-anchor-density');
 
@@ -128,80 +125,110 @@ async function main(): Promise<void> {
     }
   }
 
-  try {
-    const spinner = new Spinner('Loading proof file...');
-    spinner.start();
-
-    // 検証対象の proof 群 (ZIP は全タブ分、JSON は 1 件)
-    let proofs: Array<{ filename: string; proof: ProofFile }>;
-
-    if (ext === '.zip') {
-      proofs = await extractAllProofs(filePath);
-      if (proofs.length === 0) {
-        throw new Error('No proof file found in ZIP');
-      }
-    } else if (ext === '.json') {
-      const content = await readFile(filePath, 'utf-8');
-      const proof = JSON.parse(content) as ProofFile;
-      if (!proof.proof || !proof.typingProofHash) {
-        throw new Error('Invalid proof file structure');
-      }
-      proofs = [{ filename: positional[0]!, proof }];
-    } else {
-      spinner.stop();
-      printError(`Unsupported file type: ${ext}. Use .json or .zip`);
-      process.exitCode = 1;
-      return;
-    }
-
-    // 問題パッケージ (.tcexam) の読込・パース (任意)
-    let examPackageManifest: ExamPackageManifest | undefined;
-    if (examPackagePath !== undefined) {
+  // 問題パッケージ (.tcexam) の読込・パース (任意)。全入力に共通で適用するので一度だけ読む。
+  // 読めない・不正なら、どの入力も検証できないので全体を失敗にする。
+  let examPackageManifest: ExamPackageManifest | undefined;
+  if (examPackagePath !== undefined) {
+    try {
       const raw = await readFile(resolve(examPackagePath), 'utf-8');
       const parsed = parseExamPackageManifest(JSON.parse(raw));
       if (!parsed) {
-        spinner.stop();
         printError(`Invalid exam package (.tcexam): ${examPackagePath}`);
         process.exitCode = 1;
         return;
       }
       examPackageManifest = parsed;
+    } catch (error) {
+      printError(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+      return;
     }
+  }
 
-    // スクリーンショット検証 (#147): ZIP 入力のとき一度だけ計算して全 proof に渡す
-    // (スクショはセッション単位で proof 横断)。真正記録は各チェーンの screenshotCapture.imageHash。
-    // JSON 単体入力は画像が無いので未検査 (undefined) — 出力で明示する (overclaim 防止)。
+  // 位置引数はすべて検証する (#294)。入力ごとの読込・パース・拡張子の失敗は全体を落とさず、
+  // summary に失敗として積んで残りの入力へ進む。1 件でも失敗なら最後に exit 1。
+  const multiInput = positional.length > 1;
+  const summary: Array<{ filename: string; valid: boolean; reason?: string }> = [];
+  const analysisDump: Array<{ filename: string; valid: boolean; analysis: unknown }> = [];
+  const bundleDump: Array<{ filename: string } & AnalysisBundle> = [];
+
+  for (const input of positional) {
+    const spinner = new Spinner('Loading proof file...');
+    spinner.start();
+
+    // 検証対象の proof 群 (ZIP は全タブ分、JSON は 1 件)
+    let proofs: Array<{ filename: string; proof: ProofFile }>;
     let screenshotSummary: ScreenshotVerificationSummary | undefined;
-    if (ext === '.zip') {
-      const chainImageHashes = collectChainImageHashes(proofs.map((p) => p.proof.proof.events));
-      const artifacts = await extractScreenshotArtifacts(filePath);
-      // スクショ無しセッション (manifest もチェーン記録も無し) は全ゼロの summary になり
-      // 出力上は沈黙する。undefined は「検査できない」(JSON 単体入力) の意味に限定する。
-      screenshotSummary = await summarizeScreenshotArtifacts({
-        entries: artifacts?.entries ?? [],
-        getImageBytes: async (filename) => artifacts?.images.get(filename) ?? null,
-        chainImageHashes,
-      });
+    try {
+      const filePath = resolve(input);
+      const ext = extname(filePath).toLowerCase();
+
+      if (ext === '.zip') {
+        const extracted = await extractAllProofs(filePath);
+        if (extracted.length === 0) {
+          throw new Error('No proof file found in ZIP');
+        }
+        // 入力が複数のとき、別々の ZIP に同名の entry (`tab1_proof.json` など) があっても
+        // summary / --analysis-* の filename が衝突しないよう入力名を前置する。
+        proofs = multiInput
+          ? extracted.map((p) => ({ filename: `${input}:${p.filename}`, proof: p.proof }))
+          : extracted;
+
+        // スクリーンショット検証 (#147): ZIP 入力ごとに一度だけ計算して、その ZIP の全 proof に渡す
+        // (スクショはセッション単位で proof 横断)。真正記録は各チェーンの screenshotCapture.imageHash。
+        // JSON 単体入力は画像が無いので未検査 (undefined) — 出力で明示する (overclaim 防止)。
+        const chainImageHashes = collectChainImageHashes(proofs.map((p) => p.proof.proof.events));
+        const artifacts = await extractScreenshotArtifacts(filePath);
+        // スクショ無しセッション (manifest もチェーン記録も無し) は全ゼロの summary になり
+        // 出力上は沈黙する。undefined は「検査できない」(JSON 単体入力) の意味に限定する。
+        screenshotSummary = await summarizeScreenshotArtifacts({
+          entries: artifacts?.entries ?? [],
+          getImageBytes: async (filename) => artifacts?.images.get(filename) ?? null,
+          chainImageHashes,
+        });
+      } else if (ext === '.json') {
+        const content = await readFile(filePath, 'utf-8');
+        const proof = JSON.parse(content) as ProofFile;
+        if (!proof.proof || !proof.typingProofHash) {
+          throw new Error('Invalid proof file structure');
+        }
+        proofs = [{ filename: input, proof }];
+      } else {
+        throw new Error(`Unsupported file type: ${ext}. Use .json or .zip`);
+      }
+    } catch (error) {
+      spinner.stop();
+      const reason = error instanceof Error ? error.message : String(error);
+      // 複数入力のときは、どの入力の失敗か分かるよう入力名を前置する。
+      printError(multiInput ? `${input}: ${reason}` : reason);
+      summary.push({ filename: input, valid: false, reason });
+      continue;
     }
 
     spinner.stop();
 
     // 全 proof を検証。1 件でも fail なら exit 1 (CI が部分合格を成功と誤読しないように)。
-    const multi = proofs.length > 1;
-    const summary: Array<{ filename: string; valid: boolean }> = [];
-    const analysisDump: Array<{ filename: string; valid: boolean; analysis: unknown }> = [];
-    const bundleDump: Array<{ filename: string } & AnalysisBundle> = [];
+    const multi = multiInput || proofs.length > 1;
     for (const { filename, proof } of proofs) {
       if (multi) console.log(formatProofHeader(filename));
-      const result = await verifyProof(proof, {
-        mode,
-        examPackageManifest,
-        submittedAtMs,
-        requireAnchorDensity,
-        requireRootAnchor,
-        analyzers,
-        screenshotSummary,
-      });
+      let result: Awaited<ReturnType<typeof verifyProof>>;
+      try {
+        result = await verifyProof(proof, {
+          mode,
+          examPackageManifest,
+          submittedAtMs,
+          requireAnchorDensity,
+          requireRootAnchor,
+          analyzers,
+          screenshotSummary,
+        });
+      } catch (error) {
+        // 1 件の検証中の例外で残りの入力を未検証のまま落とさない。失敗として数えて続ける。
+        const reason = error instanceof Error ? error.message : String(error);
+        printError(`${filename}: ${reason}`);
+        summary.push({ filename, valid: false, reason });
+        continue;
+      }
       console.log(formatResult(result));
       summary.push({ filename, valid: result.valid });
       analysisDump.push({ filename, valid: result.valid, analysis: result.analysis });
@@ -217,8 +244,11 @@ async function main(): Promise<void> {
         bundleDump.push({ filename, ...bundle });
       }
     }
+  }
 
+  try {
     // --analysis-json: AnalysisReport を機械可読でファイルへ (advisory、exit code 非干渉)。
+    // 読めなかった入力は分析が無いので載らない (失敗は summary と exit code に出る)。
     if (analysisJsonPath !== undefined) {
       await writeFile(resolve(analysisJsonPath), JSON.stringify(analysisDump, null, 2), 'utf-8');
       console.log(`\nAnalysis report written to ${analysisJsonPath}`);
@@ -231,7 +261,7 @@ async function main(): Promise<void> {
       console.log(`\nAnalysis bundle (Tier A) written to ${analysisBundlePath}`);
     }
 
-    if (multi) {
+    if (summary.length > 1) {
       console.log(formatMultiSummary(summary));
     }
 

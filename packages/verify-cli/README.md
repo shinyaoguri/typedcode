@@ -24,7 +24,7 @@ typedcode-verify proof.json
 # スクリーンショット付き ZIP を検証
 typedcode-verify proof.zip
 
-# 複数ファイルを指定
+# 複数ファイルを指定 (すべて検証し、オプションは全入力に適用)
 typedcode-verify file1.json file2.zip
 
 # 検証モード (full | fast | audit。既定 full)
@@ -114,7 +114,7 @@ Mode:        casual
 Anchoring:   VERIFIED (12 signed checkpoints, 100.0% coverage)
 ```
 
-複数 proof を含む ZIP では各 `*_proof.json` を順に検証し、末尾に `=== Summary: N/M proofs passed ===` を出します (1 件でも失敗すれば exit 1)。`--mode fast` のときは PoSW 行が `SKIPPED (fast mode)`、署名 cp が無いときは `Anchoring: unavailable` になります。
+複数 proof を含む ZIP では各 `*_proof.json` を順に検証し、末尾に `=== Summary: N/M proofs passed ===` を出します (1 件でも失敗すれば exit 1)。入力を複数渡したときも同様で、全入力の全 proof を検証して末尾に Summary を出します。存在しない・壊れている・未対応拡張子の入力は、他の入力の検証を止めずに失敗として数え (Summary では `✗`、エラーは stderr)、1 件でもあれば exit 1 です。複数入力のときの ZIP 内 proof は `<入力>:<エントリ名>` で表示し、`--analysis-json` / `--analysis-bundle` の `filename` も同じ名前になります (読み込めなかった入力は分析が無いので載りません)。`--mode fast` のときは PoSW 行が `SKIPPED (fast mode)`、署名 cp が無いときは `Anchoring: unavailable` になります。
 
 `Anchoring` 行の下には**アンカー密度** (ADR-0016) の `Density: max gap … events / …s, first anchor @ event …` が出ます。署名 cp が主張セッションに対して疎な場合 (例: 末尾 1 個だけで長いチェーンをアンカー) は `! Anchoring is sparse …` の警告が付きます。既定は警告のみですが、`--require-anchor-density` を付けると疎な proof を **exit 1** にできます (採点向け opt-in)。
 
