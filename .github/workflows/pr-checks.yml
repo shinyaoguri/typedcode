@@ -1,0 +1,58 @@
+name: PR Checks
+
+# PR の中身 (変更ファイル・ラベル・本文) を見る検査 (ADR-0034)。
+#
+# require-tests: 実装 (packages/*/src) を変えた PR がテストも変えているかを判定する。
+#   テストが本当に不要な PR は、ラベル `no-test-needed` + PR 本文の `## テスト不要の理由`
+#   で通す (CONTRIBUTING.md「完了の定義」)。判定ロジックは scripts/require-tests.mjs、
+#   そのテストは deploy.yml の check job で走る。
+#
+# pull_request_target を使う理由: fork からの PR でも base リポジトリ側の設定で走らせるため。
+# pull_request_target の既定の checkout ref は **base ブランチ** (PR の head ではない)。
+# ここでは ref を指定せずに checkout するので、実行されるのは base 側の
+# scripts/require-tests.mjs であり、fork のコードを実行する経路はない。PR から読むのは
+# 変更ファイル名 (API) とタイトル・本文・ラベル・author の文字列だけ。permissions も read のみ。
+on:
+  pull_request_target:
+    # labeled / unlabeled / edited: `no-test-needed` ラベルや理由の追記で再判定するため
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # job id = status check の context 名 (main ruleset の required check に使える)
+  require-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # ref 未指定 = pull_request_target では base ブランチ。head (fork) を checkout しないこと。
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      - name: Require tests for implementation changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # PR のタイトル・本文・ラベル・author はユーザー入力。${{ }} を run: の中へ直接
+          # 展開するとシェルのコマンド文字列に埋め込まれ、コマンドインジェクション経路になる
+          # (pull_request_target は fork からも発火するので特に危険)。env 経由で受け取り、
+          # シェルは変数としてしか触らない (pr-title.yml と同じ対策)。
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' > "${RUNNER_TEMP}/changed-files.txt"
+          node scripts/require-tests.mjs --files "${RUNNER_TEMP}/changed-files.txt"

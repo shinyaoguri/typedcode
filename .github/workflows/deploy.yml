@@ -88,6 +88,11 @@ jobs:
       - name: Lint & format check (Biome)
         run: npm run lint
 
+      # テスト必須ゲート (pr-checks.yml) の判定ロジックのテスト (ADR-0034)。pr-checks.yml は
+      # pull_request_target で base 側のスクリプトを実行するので、PR で変えたロジックはここで検査する。
+      - name: Test require-tests gate (node:test)
+        run: node --test scripts/require-tests.test.mjs
+
       - name: Build (all packages)
         run: npm run build
         env:
