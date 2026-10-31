@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import JSZip from 'jszip';
 import {
   ZipBudgetExceededError,
@@ -8,6 +8,11 @@ import {
   readZipEntryText,
 } from '../fileProcessing/zipBudget.js';
 import { extractAllProofsFromZip } from '../fileProcessing/parser.js';
+
+// 32 MiB の偽装 ZIP を DEFLATE で生成・展開するテストは、CI のカバレッジ計測 (v8, ADR-0034) 下で
+// 既定の 5 秒を恒常的に超える (#348 の test job で 5011ms)。重いのは計測のオーバーヘッドで
+// 振る舞いではないので、このファイルだけ上限を広げる。
+vi.setConfig({ testTimeout: 30_000 });
 
 const MIB = 1024 * 1024;
 
