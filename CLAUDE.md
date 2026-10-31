@@ -53,6 +53,7 @@ npm run build
 # Lint / Format (Biome, #157。CI の check job も同じコマンド)
 npm run lint        # biome ci . (チェックのみ)
 npm run lint:fix    # biome check --write . (安全な自動修正 + format)
+npm run lint:workflows  # .github/workflows を actionlint + shellcheck で検査 (版と sha256 を固定して .cache/ に落とす。#351)
 
 # ユニットテスト (カバレッジ付き。test:coverage を持つ全パッケージ。CI の test job も同じコマンド)
 npm run test:coverage                       # = npm run test:coverage --workspaces --if-present
@@ -64,7 +65,7 @@ npm run test -w @typedcode/e2e
 # 注: CI は「ユニット (test job) + e2e (e2e job)」を全 deploy のゲートにしている
 
 # 手元で CI と同じ検査を 1 コマンドで (完了の定義 = CONTRIBUTING.md / ADR-0034)
-npm run check       # typecheck → lint → test:coverage → require-tests のテスト → e2e
+npm run check       # typecheck → lint → lint:workflows → test:coverage → require-tests のテスト → e2e
 npm run check:fast  # 上から e2e を除いたもの
 ```
 

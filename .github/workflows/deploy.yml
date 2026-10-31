@@ -63,6 +63,7 @@ jobs:
       # test:run だけ持つ新パッケージがカバレッジ計測ごと CI から漏れないようここで落とす。
       - name: Require test:coverage alongside test:run
         run: |
+          # shellcheck disable=SC2016 # JS のテンプレートリテラル (`...${x}`) をシェルに展開させないための意図した単一引用符
           node -e '
             const fs = require("node:fs");
             const missing = fs.readdirSync("packages")
@@ -100,6 +101,11 @@ jobs:
 
       - name: Lint & format check (Biome)
         run: npm run lint
+
+      # workflow の式・イベント名・run: のシェルを actionlint + shellcheck (版と sha256 を固定) で検査する。
+      # pull_request_target / schedule の workflow は壊れていても PR が緑のまま空振りするため (#351)。
+      - name: Lint workflows (actionlint + shellcheck)
+        run: npm run lint:workflows
 
       # テスト必須ゲート (pr-checks.yml) の判定ロジックのテスト (ADR-0034)。pr-checks.yml は
       # pull_request_target で base 側のスクリプトを実行するので、PR で変えたロジックはここで検査する。
