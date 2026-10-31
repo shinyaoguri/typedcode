@@ -283,6 +283,8 @@ interface SignedCheckpointEnvelope {
 }
 ```
 
+**Editor 側のタイムアウト (#324)**: sign の fetch は `WORKERS_FETCH_TIMEOUT_MS` で打ち切る。無応答でも single-flight の `flushing` が解除され、そのエントリは通常の失敗と同じ backoff で再送される (`clientTimestamp` は entry 固定なので ADR-0003 の冪等再送に乗る)。
+
 **意義**:
 - payload の `serverTimestamp` は **サーバが付与** するので、クライアント単独で偽造不可
 - `firstSeenAt` は KV 初回書込時に確定し、**それ以降同じ sessionId に対して不変** → sessionId 流用攻撃を検出可能
@@ -706,6 +708,8 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `SESSION_TTL_SECONDS` | 604800 (7日) | `workers/src/checkpoint.ts` |
 | `SESSION_MAX_CHECKPOINTS` | 50000 | `workers/src/checkpoint.ts` |
 | `MAX_TABS_PER_SESSION` | 64 | `workers/src/checkpoint.ts` (ADR-0027) |
+| `WORKERS_FETCH_TIMEOUT_MS` | 10_000 | `editor/src/config/timeouts.ts` (Workers への 1 回の fetch の上限。verify-captcha / session/start / checkpoint/sign。超過は既存の失敗経路 = retry・degraded fallback・署名の backoff 再試行に合流。#324) |
+| `PRE_EXPORT_VERIFICATION_BUDGET_MS` | 15_000 | `editor/src/config/timeouts.ts` (best-effort モード = exam/class/assignment の export 前認証全体の予算。超過は失敗 attestation を記録して ZIP を出す。casual には適用しない。#324) |
 | `POST_HOC_RATIO_THRESHOLD` | 0.1 | `signedCheckpoints.ts` |
 | `POST_HOC_MIN_SERVER_SPAN_MS` | 60_000 | `signedCheckpoints.ts` |
 | `POST_HOC_MIN_CLIENT_SPAN_MS` | 600_000 | `signedCheckpoints.ts` |

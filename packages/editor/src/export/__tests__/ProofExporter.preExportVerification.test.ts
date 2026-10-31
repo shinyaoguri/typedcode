@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { HumanAttestationEventData } from '@typedcode/shared';
 import type { TabManager, TabState } from '../../ui/tabs/TabManager.js';
+import { PRE_EXPORT_VERIFICATION_BUDGET_MS } from '../../config/timeouts.js';
 
 /** Turnstile 層の振る舞いを差し替えるためのハンドル (vi.mock はホイストされるので hoisted で共有)。 */
 const turnstile = vi.hoisted(() => ({
@@ -223,5 +224,109 @@ describe('ProofExporter.performPreExportVerificationForAllTabs', () => {
     await expect(verifier.performPreExportVerificationForAllTabs()).resolves.toBe(false);
     expect(first.attestations).toHaveLength(0);
     expect(notifications).toHaveLength(1);
+  });
+});
+
+describe('pre-export verification budget (#324)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  type VerifyResult = { success: boolean; error?: string; attestation?: unknown };
+
+  /** resolve を外から呼べる、無応答の Turnstile 検証。 */
+  function hangVerification() {
+    let finish: (value: VerifyResult) => void = () => {};
+    turnstile.verify = () =>
+      new Promise<VerifyResult>((resolve) => {
+        finish = resolve;
+      });
+    return { finish: (value: VerifyResult) => finish(value) };
+  }
+
+  const okVerification: VerifyResult = {
+    success: true,
+    attestation: {
+      verified: true,
+      score: 1,
+      action: 'export_proof',
+      timestamp: '2026-08-05T00:00:00.000Z',
+      hostname: 'unit-test.local',
+      signature: 'sig',
+    },
+  };
+
+  it('records a failure attestation and continues the export when verification exceeds the budget in best-effort mode', async () => {
+    const tab = makeTab('tab-1');
+    const { verifier } = createExporter([tab], true);
+    hangVerification();
+
+    const pending = verifier.performPreExportVerification(tab.tab);
+    await vi.advanceTimersByTimeAsync(PRE_EXPORT_VERIFICATION_BUDGET_MS);
+
+    await expect(pending).resolves.toBe(true);
+    expect(tab.attestations).toHaveLength(1);
+    expect(tab.attestations[0]).toMatchObject({ success: false, verified: false, signature: '' });
+  });
+
+  it('does not record a second attestation when the abandoned verification succeeds after the budget', async () => {
+    const tab = makeTab('tab-1');
+    const { verifier } = createExporter([tab], true);
+    const hung = hangVerification();
+
+    const pending = verifier.performPreExportVerification(tab.tab);
+    await vi.advanceTimersByTimeAsync(PRE_EXPORT_VERIFICATION_BUDGET_MS);
+    await pending;
+
+    hung.finish(okVerification);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(tab.attestations).toHaveLength(1);
+    expect(tab.attestations[0]?.success).toBe(false);
+  });
+
+  it('applies the budget to every tab in the all-tabs verification in best-effort mode', async () => {
+    const first = makeTab('tab-1');
+    const second = makeTab('tab-2');
+    const { verifier } = createExporter([first, second], true);
+    hangVerification();
+
+    const pending = verifier.performPreExportVerificationForAllTabs();
+    await vi.advanceTimersByTimeAsync(PRE_EXPORT_VERIFICATION_BUDGET_MS);
+
+    await expect(pending).resolves.toBe(true);
+    expect(first.attestations[0]?.success).toBe(false);
+    expect(second.attestations[0]?.success).toBe(false);
+  });
+
+  it('keeps waiting without a budget when best-effort is disabled (casual)', async () => {
+    const tab = makeTab('tab-1');
+    const { verifier } = createExporter([tab], false);
+    const hung = hangVerification();
+
+    let settled = false;
+    const pending = verifier.performPreExportVerification(tab.tab).then((value) => {
+      settled = true;
+      return value;
+    });
+    await vi.advanceTimersByTimeAsync(PRE_EXPORT_VERIFICATION_BUDGET_MS * 10);
+    expect(settled).toBe(false);
+    expect(tab.attestations).toHaveLength(0);
+
+    hung.finish(okVerification);
+    await expect(pending).resolves.toBe(true);
+    expect(tab.attestations[0]?.success).toBe(true);
+  });
+
+  it('records the real attestation when verification finishes within the budget', async () => {
+    const tab = makeTab('tab-1');
+    const { verifier } = createExporter([tab], true);
+
+    await expect(verifier.performPreExportVerification(tab.tab)).resolves.toBe(true);
+    expect(tab.attestations[0]?.success).toBe(true);
   });
 });
