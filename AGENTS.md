@@ -51,7 +51,8 @@ npm run dev:editor / dev:verify / dev:workers
 npm run build
 
 # Lint / Format (Biome, #157。CI の check job も同じコマンド)
-npm run lint        # biome ci . (チェックのみ)
+npm run lint        # biome ci . + lint:docs (チェックのみ。CI の check job も同じコマンド)
+npm run lint:docs   # docs/ とルートの *.md に [[...]] 形式のローカル記憶参照が残っていないか (#343)
 npm run lint:fix    # biome check --write . (安全な自動修正 + format)
 npm run lint:workflows  # .github/workflows を actionlint + shellcheck で検査 (版と sha256 を固定して .cache/ に落とす。#351)
 
