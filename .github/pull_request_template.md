@@ -5,13 +5,35 @@
 ## Test plan
 
 <!--
-チェックボックスで「やったこと」を列挙する。
-未テストなら理由を明記する。
+完了の定義は CONTRIBUTING.md「完了の定義 (Definition of Done)」/ ADR-0034。
+目標は「CI が緑なら手動確認は不要」。手で確かめたことは下の「手動で確認したこと」へ。
 -->
 
-- [ ] `npm run build` — 全パッケージビルド成功
-- [ ] `npm run test:run -w @typedcode/shared` — shared テストすべて pass (fingerprint 20 件失敗は既知問題)
-- [ ] 手動動作確認 (該当する場合は内容を記載)
+- [ ] `npm run check:fast` — typecheck / lint / カバレッジ付きユニットテスト (CI の test・check と同じ)
+- [ ] `npm run test -w @typedcode/e2e` — E2E (UI の振る舞いを変えた場合。CI の e2e と同じ)
+- [ ] カバレッジが上がったなら `npm run coverage:ratchet` で床を引き上げた
+
+### 受け入れ条件とテスト
+
+<!-- Issue の受け入れ条件ごとに、それを表すテスト (ファイル / テスト名) を対応付ける。 -->
+
+| 受け入れ条件 | それを表すテスト |
+|---|---|
+|  |  |
+
+### 自動化できず手動で確認したこと
+
+<!-- 無ければ「なし」。ある場合は、確認した内容と自動化できない理由を書く (例: 画素レベルの見た目)。 -->
+
+- なし
+
+## テスト不要の理由
+
+<!--
+該当時のみ記入。実装 (packages/*/src) を変えてテストを変えていない PR は CI の require-tests が落とす。
+テストが本当に不要なら、ラベル `no-test-needed` を付け、この見出しの下に理由を書く (HTML コメントは数えない)。
+該当しなければこの節は空のままでよい。
+-->
 
 ## Documentation impact
 

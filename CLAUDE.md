@@ -54,13 +54,18 @@ npm run build
 npm run lint        # biome ci . (チェックのみ)
 npm run lint:fix    # biome check --write . (安全な自動修正 + format)
 
-# ユニットテスト (test:run を持つ全パッケージ。CI の test job も同じコマンド)
-npm run test:run --workspaces --if-present
-npm run test:run -w @typedcode/shared      # 個別実行 (test:coverage も同様)
+# ユニットテスト (カバレッジ付き。test:coverage を持つ全パッケージ。CI の test job も同じコマンド)
+npm run test:coverage                       # = npm run test:coverage --workspaces --if-present
+npm run test:run -w @typedcode/shared       # 個別実行 (カバレッジ無し。test:coverage も同様に -w で)
+npm run coverage:ratchet                    # カバレッジが上がったら各 vitest.config.ts の床を引き上げる (ADR-0034)
 
 # E2E (Playwright。workers + editor の dev サーバを自動起動して round-trip 検証)
 npm run test -w @typedcode/e2e
 # 注: CI は「ユニット (test job) + e2e (e2e job)」を全 deploy のゲートにしている
+
+# 手元で CI と同じ検査を 1 コマンドで (完了の定義 = CONTRIBUTING.md / ADR-0034)
+npm run check       # typecheck → lint → test:coverage → require-tests のテスト → e2e
+npm run check:fast  # 上から e2e を除いたもの
 ```
 
 ## 開発フロー

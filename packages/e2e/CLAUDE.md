@@ -5,14 +5,16 @@
 ## 責務と境界
 
 - **持つ**: Playwright (Chromium) でのシナリオ駆動、export ZIP の取得、verify-cli の spawn と exit code / `--analysis-json` 判定、敵対的パック (偽造・改竄・合成打鍵・AI 一括投入) の負のオラクル
-- **持たない**: UI の見た目 assert (暗号的に検証可能な成果物をオラクルにするので flaky になりにくい)、ユニットテスト (各パッケージの `__tests__` が担う)、proof 生成/検証ロジック本体 (editor / shared)
+- **持つ (UI)**: UI の振る舞いの検査。ただし **`data-*` 属性の状態契約** (実装が生の enum 値・状態を属性で出す) を読んで assert し、翻訳テキスト・CSS クラス・見た目には依存しない ([ADR-0034](../../docs/adr/0034-replace-manual-verification-with-automated-tests.md))。見た目は DOM / 状態 / a11y (axe) / レイアウト不変条件で機械検査する
+- **持たない**: 画素比較 (スクリーンショット差分。OS 差と基準画像の運用コストで不採用 / ADR-0034)、翻訳テキストや見た目に依存した assert、ユニットテスト (各パッケージの `__tests__` が担う)、proof 生成/検証ロジック本体 (editor / shared)
 
 ## 重要な不変条件
 
-1. **オラクルは verify-cli の結論**: 「編集 → export → verify-cli が pass/fail」を軸にする。DOM の見た目ではなくチェーン検証の exit code / analysis JSON で判定する
+1. **オラクルの第一は verify-cli の結論**: 「編集 → export → verify-cli が pass/fail」を軸にする。証明に関わる判定は DOM ではなくチェーン検証の exit code / analysis JSON で行う。UI の状態を見るのはその補助で、`data-*` の状態契約に限る (翻訳テキスト・見た目を読まない)
 2. **負のオラクルを必ず持つ**: 改竄シナリオは verify-cli が **exit 1 で拒否する**ことを assert する (1 種でも素通りすると「壊れた検証器」を緑と誤認する)。positive control (無改竄が pass) と対で置く
 3. **信頼打鍵と合成打鍵を区別**: Playwright の `keyboard.type` は CDP 経由で `isTrusted=true`。合成打鍵 (ADR-0018) は `page.evaluate(dispatchEvent)` で `isTrusted=false` を注入する
 4. **CI 時間を意識**: PoSW full 検証は重い。**full (既定) は happy-path の 1 本だけ** (PoSW を含む完全検証の positive control)。他のシナリオはすべて `--mode fast` を渡す (検証対象がイベント意味論・チェーン整合性であり PoSW 再計算は不要)。新しい spec を足すときも既定で fast にすること。実行は `workers: 2` の 2 並列 (flake が再発したら 1 に戻す)。deploy.yml の e2e job は `timeout-minutes: 30`
+5. **既知バグは失敗する再現を先に置く**: すぐ直さないバグは `test.fixme('#N ...')` (Issue 番号をタイトルに含める) で再現を置き、修正 PR で `fixme` を外す
 
 ## 構成
 

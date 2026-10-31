@@ -45,9 +45,24 @@ gh pr merge --squash --delete-branch
 
 - **PR は小さく** (目安 ±400 行)。1 PR = 1 つの関心事。
 - **PR タイトルも Conventional Commits 形式にする**。Squash and Merge では PR タイトルがマージコミットのメッセージになります。
-- マージ前に lint / type check / test / build が緑であること (main は required status checks で強制)。
+- マージ前に lint / type check / test / build が緑であること (main は required status checks で強制)。手元では `npm run check` で同じ検査を回せる。
+- 「完了」の基準は下記「完了の定義」。**CI が緑なら手動の動作確認は不要**にすることが目標で、そのためにテストを足す。
 - マージされると main push の CI が staging へ自動デプロイする。動作確認は `staging.<project>.pages.dev` で。
 - **マージしたら、メインのチェックアウトから `git sweep` を実行して**ローカルブランチと worktree を掃除する (下記「マージ後の掃除」)。
+
+## 完了の定義 (Definition of Done)
+
+機能追加のたびに手で動作確認するのをやめ、「CI が緑なら手動確認は不要」を成り立たせるための基準です。判断の根拠は [ADR-0034](docs/adr/0034-replace-manual-verification-with-automated-tests.md)。
+
+- **UI の振る舞いを変える / 足すなら E2E を 1 本以上** (`packages/e2e/tests/`)。検査には翻訳テキストや見た目ではなく、**生の enum 値・状態を出す `data-*` 属性** (状態契約) を使い、そのフックも同じ PR で実装に足す。証明に関わる振る舞いは、従来どおり verify-cli の結論をオラクルにする ([packages/e2e/CLAUDE.md](packages/e2e/CLAUDE.md))
+- **ロジックはユニットテスト** (各パッケージの `__tests__/` か `*.test.ts`。書き方は [packages/shared/CLAUDE.md](packages/shared/CLAUDE.md) の「テスト規約」)
+- **バグ修正は先に赤いテスト**: 再現するテストが落ちるのを確かめてから直す。すぐ直さない既知バグは E2E なら `test.fixme('#N ...')` で再現を置き、修正 PR で外す
+- **カバレッジは下げない**: 各パッケージの `vitest.config.ts` の `coverage.thresholds` が実測値の床で、下回ると CI の test job が落ちる。テストを足してカバレッジが上がったら `npm run coverage:ratchet` で床を引き上げ、その差分もコミットする
+- **テストが本当に不要なら理由を書く**: 実装 (`packages/*/src`) を変えてテストを変えていない PR は、CI の `require-tests` ([pr-checks.yml](.github/workflows/pr-checks.yml)) が落とす。挙動を変えないリファクタなどでテストが不要な場合は、PR にラベル `no-test-needed` を付け、PR 本文の `## テスト不要の理由` 見出しの下に理由を書く (ラベル・本文の編集で再判定される)。`docs` / `ci` / `chore` 型と依存更新の PR は対象外
+- **自動化できない確認は理由とともに残す**: 見た目の最終確認など、手で確かめたことは PR 本文の「自動化できず手動で確認したこと」に理由つきで書く
+- **手元では `npm run check`** (typecheck → lint → カバレッジ付きユニットテスト → E2E)。E2E を除いた `npm run check:fast` もある
+
+`scripts/` のテストのうち `require-tests.test.mjs` は CI (check job) で走る。`sweep.test.ts` は使い捨てのリポジトリを組み立てる統合テストなので CI 常設にはしておらず、スクリプトを変えたときに手元で回す (下記「マージ後の掃除」)。
 
 ## 並行作業 (git worktree)
 
