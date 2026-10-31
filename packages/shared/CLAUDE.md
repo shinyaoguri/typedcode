@@ -66,7 +66,7 @@
 
 ### テストの基準値
 
-- 現在は **全 green** (2026-10 時点で **545 passed / 4 skipped**。2026-06 は 280 passing)。かつて happy-dom の `localStorage.clear` 未実装で `fingerprint.test.ts` が 20 件失敗していたが、上流のバージョン更新で解消済み。fingerprint テストが失敗したら、まず happy-dom のバージョンを疑う (回帰かどうかの切り分け基準)
+- 現在は **全 green** (件数は書かない。実数は `npm run test:run -w @typedcode/shared` の出力が正本)。かつて happy-dom の `localStorage.clear` 未実装で `fingerprint.test.ts` が 20 件失敗していたが、上流のバージョン更新で解消済み。fingerprint テストが失敗したら、まず happy-dom のバージョンを疑う (回帰かどうかの切り分け基準)
 
 ## よくある罠
 

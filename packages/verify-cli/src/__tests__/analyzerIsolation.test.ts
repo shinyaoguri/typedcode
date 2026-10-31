@@ -181,11 +181,21 @@ describe('外部 analyzer の隔離 (#283 c3)', () => {
     const witness: Analyzer = {
       id: 'witness-fixture',
       version: '1.0.0',
-      analyze: () => [{ id: 'witness', severity: 'info', summary: 'ran' }],
+      analyze: () => [
+        {
+          analyzerId: 'witness-fixture',
+          dimension: 'automation',
+          score: 0,
+          confidence: 1,
+          severity: 'info',
+          evidence: [],
+          summary: 'ran',
+        },
+      ],
     };
 
     const result = await verifyProof(healthy, { mode: 'fast', analyzers: [hostileAnalyzer, witness] });
 
-    expect(result.analysis.signals.some((s) => s.id === 'witness')).toBe(true);
+    expect(result.analysis.signals.some((s) => s.analyzerId === 'witness-fixture')).toBe(true);
   });
 });

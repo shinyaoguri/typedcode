@@ -13,13 +13,15 @@
     "gen-exam-authority-key": "node scripts/generate-exam-authority-key.mjs",
     "make-exam-package": "node scripts/make-exam-package.mjs",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@typedcode/shared": "*"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260729.1",
+    "@vitest/coverage-v8": "^5.0.5",
     "typescript": "^6.0.2",
     "vitest": "^5.0.5",
     "wrangler": "^4.151.1"

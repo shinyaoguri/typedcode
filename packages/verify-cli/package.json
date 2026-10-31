@@ -16,13 +16,15 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:dist": "vitest run --config vitest.dist.config.ts"
+    "test:dist": "vitest run --config vitest.dist.config.ts",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@typedcode/shared": "*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@vitest/coverage-v8": "^5.0.5",
     "esbuild": "^0.28.2",
     "typescript": "^6.0.2",
     "vitest": "^5.0.5"
