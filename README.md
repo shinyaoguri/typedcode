@@ -162,7 +162,7 @@ npm run test -w @typedcode/e2e
 | エディタ | Monaco Editor, xterm.js |
 | 実行環境 | Wasmer SDK (WebAssembly) |
 | 検証 UI | Chart.js, Highlight.js |
-| ビルド | Vite 8, TypeScript 5/6 |
+| ビルド | Vite 8, TypeScript 6 |
 | Workers | Cloudflare Workers, Wrangler |
 | テスト | Vitest |
 

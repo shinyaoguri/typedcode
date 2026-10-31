@@ -127,4 +127,4 @@ attestation は別用途として当面据え置く (作成時 root とは独立
 - 鍵/署名の流用元: [`checkpoint.ts`](../../packages/workers/src/checkpoint.ts) `getSigningKey`、[`signedCheckpoints.ts`](../../packages/shared/src/signedCheckpoints.ts) `resolveCheckpointPublicKey` (registry-only = C1)
 - worker 既存ヘルパ: [`index.ts`](../../packages/workers/src/index.ts) `verifyTurnstile` / `resolveCorsOrigin` / `handleVerifyCaptcha`
 - 関連 ADR: [ADR-0002](0002-signed-checkpoints-with-ecdsa-p256.md) / [ADR-0006](0006-exam-mode-sealed-problem-binding.md) (exam root) / [ADR-0016](0016-anchoring-density-signal.md) (密度 gate) / ADR-0007 (isTrusted = ADR-C)
-- 脅威の出所: [[review-develop-2026-06]] の concept-alignment 節
+- 脅威の出所: 2026-06 の develop レビュー (concept-alignment 節)。レビュー記録は作者のローカルメモにあり、Issue / PR としては残っていない

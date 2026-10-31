@@ -14,7 +14,9 @@ permissions:
   contents: read
 
 # ref ごとに 1 run。PR は新しい push で古い run をキャンセル (CI 節約)。
-# push (= deploy) はキャンセルせずキューイングし、最新 run が最後に走るので
+# push (= deploy) は cancel-in-progress が false なので、実行中の run は途中でキャンセルしない。
+# 同じグループで待機中の古い run は、新しい run が来るとキャンセルされ最新だけが残る
+# (キューに積まれて全部走るわけではない)。最新 run が最後に走るので
 # 「古い deploy が後から完了して新しい成果物を上書きする」競合を防ぐ。
 # 本番デプロイを途中キャンセルしないため cancel-in-progress は PR のみ true。
 concurrency:
