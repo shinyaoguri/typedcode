@@ -220,6 +220,9 @@ export {
   type FileParseCallbacks,
   type ScreenshotManifest,
   type ScreenshotManifestEntry,
+  type ProofExtractionFailure,
+  type ProofExtractionFailureReason,
+  type ProofExtractionResult,
   // Language detection
   getLanguageFromExtension,
   isBinaryFile,
@@ -235,6 +238,7 @@ export {
   parseZipBuffer,
   extractFirstProofFromZip,
   extractAllProofsFromZip,
+  isProofExportFilename,
   extractScreenshotArtifactsFromZip,
   // ZIP 展開予算 (#234): エントリの読み出しは必ずこの経路を通す
   ZipExtractionBudget,

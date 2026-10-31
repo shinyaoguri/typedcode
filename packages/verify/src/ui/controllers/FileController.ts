@@ -11,7 +11,12 @@ import type { StatusBarUI } from '../StatusBarUI';
 import type { ProofFile, VerifyScreenshot, DiffResult, ContentMismatchInfo } from '../../types';
 import { t } from '../../i18n/index';
 import { DiffService } from '../../services/DiffService';
-import { normalizeProofLanguage, parseExamPackageManifest, type ExamPackageManifest } from '@typedcode/shared';
+import {
+  isProofFile,
+  normalizeProofLanguage,
+  parseExamPackageManifest,
+  type ExamPackageManifest,
+} from '@typedcode/shared';
 
 /** 隠し file input を開いて 1 ファイルを返す (キャンセルは null)。 */
 function pickFile(accept: string): Promise<File | null> {
@@ -354,8 +359,23 @@ export class FileController {
       startTimestamp,
     });
 
+    // proof として読めないファイルは黙って捨てず、error のタブ/行として残す (#292)。
+    // 壊れた proof を消すと、そのタブが未検証のまま全体が通ったように見える。
+    let parsed: unknown;
     try {
-      const proofData = JSON.parse(rawData) as ProofFile;
+      parsed = JSON.parse(rawData);
+    } catch (error) {
+      console.error('Error parsing JSON:', error);
+      this.addUnreadableProof(filename, t('errors.jsonParseError', { filename }), folderId, relativePath);
+      return;
+    }
+    if (!isProofFile(parsed)) {
+      this.addUnreadableProof(filename, t('errors.proofNotAProof', { filename }), folderId, relativePath);
+      return;
+    }
+
+    try {
+      const proofData = parsed as unknown as ProofFile;
       const id = this.deps.generateId();
 
       // 表示名を生成（重複がある場合は番号を付ける）
@@ -432,8 +452,50 @@ export class FileController {
       // Update status bar
       this.deps.onStatusBarUpdate?.();
     } catch (error) {
-      console.error('Error parsing JSON:', error);
+      console.error('Error adding proof for verification:', error);
       this.deps.statusBar.setError(t('errors.jsonParseError', { filename }));
     }
+  }
+
+  /**
+   * proof として読めなかったファイルを、検証 error のタブ/サイドバー行として追加する (#292)。
+   * 検証キューには載せない (検証できないので結果は付かない)。通常の検証失敗 (handleError) と同じ
+   * `status: 'error'` なので、サイドバー/タブの `data-status` 契約もそのまま error になる。
+   */
+  private addUnreadableProof(
+    filename: string,
+    error: string,
+    folderId: string | undefined,
+    relativePath: string | undefined
+  ): void {
+    const id = this.deps.generateId();
+    const displayName = this.deps.uiState.generateDisplayName(filename, folderId);
+
+    this.deps.tabManager.addTab({
+      id,
+      filename: displayName,
+      language: 'unknown',
+      status: 'error',
+      progress: 0,
+      proofData: null,
+      verificationResult: null,
+      error,
+    });
+
+    this.deps.sidebar.addFile({
+      id,
+      filename: displayName,
+      status: 'error',
+      folderId,
+      relativePath,
+      isProof: true,
+    });
+
+    // 総数と完了数の両方に数える (handleError と同じ。片方だけだと進捗表示が終わらない)。
+    this.deps.uiState.incrementTotal();
+    this.deps.uiState.incrementCompleted();
+
+    this.deps.statusBar.setError(error);
+    this.deps.onStatusBarUpdate?.();
   }
 }

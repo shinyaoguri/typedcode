@@ -9,6 +9,7 @@ import {
   ZipExtractionBudget,
   assertZipWithinBudget,
   collectChainImageHashes,
+  isProofExportFilename,
   normalizeProofLanguage,
   readZipEntryBytes,
   readZipEntryText,
@@ -218,7 +219,7 @@ export class ZipFileProcessor {
           language = normalizeProofLanguage(parsed.language);
         }
       } catch {
-        // パース失敗は無視（通常のJSONとして扱う）
+        // パース失敗: proof の名前でなければ通常のJSONとして扱う（proof の名前なら下で error 扱い）
       }
 
       if (isValidProofFile) {
@@ -228,6 +229,17 @@ export class ZipFileProcessor {
           language,
           rawData: content,
           proofData,
+          relativePath: path,
+        };
+      } else if (isProofExportFilename(path)) {
+        // proof の名前 (`*_proof.json`) なのに proof として読めない (JSON 破損・proof 構造なし, #292)。
+        // 通常の JSON として success で並べると、壊れたタブが未検証のまま見落とされる。
+        // type: 'proof' のまま渡し、取り込み側 (FileController) が error として表示する。
+        return {
+          filename,
+          type: 'proof',
+          language: 'unknown',
+          rawData: content,
           relativePath: path,
         };
       } else {

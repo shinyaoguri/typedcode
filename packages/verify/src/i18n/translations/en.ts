@@ -543,6 +543,7 @@ export const en: VerifyTranslationKeys = {
     browserNotSupportedDesc: 'Please use file selection or drag and drop instead',
     examInvalidPackage: 'Invalid problem package (.tcexam)',
     jsonParseError: 'JSON parse error: ${filename}',
+    proofNotAProof: 'Not a proof file (no proof data): ${filename}',
     fileLoadFailed: 'Failed to read file: ${message}',
     zipEmpty: 'No files found in the ZIP.',
     zipLoadFailed: 'Failed to read ZIP file: ${message}',

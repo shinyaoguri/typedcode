@@ -44,5 +44,7 @@ export {
   parseZipBuffer,
   extractFirstProofFromZip,
   extractAllProofsFromZip,
+  isProofExportFilename,
   extractScreenshotArtifactsFromZip,
 } from './parser.js';
+export type { ProofExtractionFailure, ProofExtractionFailureReason, ProofExtractionResult } from './parser.js';

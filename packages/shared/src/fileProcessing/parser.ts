@@ -360,6 +360,36 @@ export async function extractFirstProofFromZip(
 }
 
 /**
+ * editor が書き出す proof ファイル名か (`<name>_proof.json`、重複時は `<name>_proof_<N>.json`)。
+ *
+ * 命名の出どころは editor の `ProofExporter` (単体 export と複数タブ export の両方)。構造 (`isProofFile`)
+ * では proof と判定できない壊れたファイルを「proof になるはずだったもの」と見分ける唯一の手がかりで、
+ * ZIP 抽出 (`extractAllProofsFromZip`) と verify Web の読込が同じ判定を共有する (#292)。
+ * パス区切りより前は見ない (`sub/main_proof.json` も対象)。
+ */
+export function isProofExportFilename(path: string): boolean {
+  return /(?:^|\/)[^/]*_proof(?:_\d+)?\.json$/i.test(path);
+}
+
+/** proof として読めなかった理由。 */
+export type ProofExtractionFailureReason =
+  /** JSON として壊れている */
+  | 'invalid-json'
+  /** JSON としては正しいが proof の構造 (`proof` オブジェクト) を持たない */
+  | 'not-a-proof';
+
+/** `*_proof.json` の名前なのに proof として読めなかったファイル。 */
+export interface ProofExtractionFailure {
+  filename: string;
+  reason: ProofExtractionFailureReason;
+}
+
+export interface ProofExtractionResult {
+  proofs: Array<{ filename: string; proof: ProofFileCore }>;
+  failures: ProofExtractionFailure[];
+}
+
+/**
  * ZIP 内の **すべて** の proof JSON を構造で選別して返す (verify-cli の offline grader 用)。
  *
  * exam/class モードはタブ毎に独立した `<name>_proof.json` を N 個出力するため、grader は
@@ -368,33 +398,43 @@ export async function extractFirstProofFromZip(
  *
  * - proof 判定は **構造** (`isProofFile`) で行う (ファイル名順や位置に依存しない。
  *   `screenshots/manifest.json` のような非 proof JSON が先頭に来ても誤選択しない)。
+ * - **ただし proof の命名 (`isProofExportFilename`) に当たるのに proof として読めないファイルは
+ *   黙って捨てず `failures` に集める** (#292)。壊れた `*_proof.json` を無視すると、そのタブが
+ *   未検証のまま全体が PASS になる。命名に当たらない JSON (設定・manifest など) は従来どおり無視する。
  * - `screenshots/` 配下は除外する。
- * - ファイル名昇順で決定的に返す。
+ * - ファイル名昇順で決定的に返す (`failures` も同じ順)。
+ * - 展開は必ず予算経由。予算超過は従来どおり throw する (全体エラー)。
  */
 export async function extractAllProofsFromZip(
   buffer: ArrayBuffer,
   budget: ZipExtractionBudget = new ZipExtractionBudget()
-): Promise<Array<{ filename: string; proof: ProofFileCore }>> {
+): Promise<ProofExtractionResult> {
   const zip = await JSZip.loadAsync(buffer);
   assertZipWithinBudget(zip);
   const jsonNames = Object.keys(zip.files)
     .filter((name) => name.endsWith('.json') && !zip.files[name]?.dir && !name.startsWith('screenshots/'))
     .sort();
 
-  const proofs: Array<{ filename: string; proof: ProofFileCore }> = [];
+  const proofs: ProofExtractionResult['proofs'] = [];
+  const failures: ProofExtractionFailure[] = [];
   for (const name of jsonNames) {
     const file = zip.files[name];
     if (!file) continue;
     const content = await readZipEntryText(file, budget);
+    const expectedProof = isProofExportFilename(name);
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
     } catch {
-      continue; // 壊れた / 非 JSON はスキップ (proof ではない)
+      // proof の名前なら失敗として報告する。そうでない非 JSON は proof ではないので無視。
+      if (expectedProof) failures.push({ filename: name, reason: 'invalid-json' });
+      continue;
     }
     if (isProofFile(parsed)) {
       proofs.push({ filename: name, proof: parsed as ProofFileCore });
+    } else if (expectedProof) {
+      failures.push({ filename: name, reason: 'not-a-proof' });
     }
   }
-  return proofs;
+  return { proofs, failures };
 }

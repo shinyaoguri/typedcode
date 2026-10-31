@@ -565,6 +565,7 @@ export interface VerifyTranslationKeys {
     browserNotSupportedDesc: string;
     examInvalidPackage: string;
     jsonParseError: string;
+    proofNotAProof: string;
     fileLoadFailed: string;
     zipEmpty: string;
     zipLoadFailed: string;

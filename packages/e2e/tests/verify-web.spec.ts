@@ -154,11 +154,9 @@ test('正常と改ざんの ZIP を一度に入れても、ファイルごとの
   expectWebCliParity([tampered1!], runVerifyCliWithVerdicts(tamperedZip, ['--mode', 'fast']));
 });
 
-// 既知バグ #292: ZIP 内の壊れた `*_proof.json` は、CLI では黙ってスキップされ (exit 0)、
-// verify Web では proof でない JSON (プレーンテキスト・status success) として並ぶ。直ったら fixme を外す。
-test.fixme('#292: 壊れた *_proof.json を含む ZIP でも結果が出て、壊れたファイルが error として見える', async ({
-  page,
-}) => {
+// #292: ZIP 内の壊れた `*_proof.json` は、CLI では失敗として数え (exit 1)、verify Web では error として並べる。
+// (かつては CLI が黙ってスキップして exit 0、Web がプレーンテキスト・status success で並べていた。)
+test('#292: 壊れた *_proof.json を含む ZIP でも結果が出て、壊れたファイルが error として見える', async ({ page }) => {
   const zipPath = await typeAndExport(new EditorApp(page));
   const names = await proofNames(zipPath);
   const brokenZip = await writeZipVariant(zipPath, {

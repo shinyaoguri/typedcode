@@ -10,7 +10,14 @@ import { resolve, extname } from 'node:path';
 import { verifyProof, toBundleIntegrityValid, type ProofFile } from './verify.js';
 import { extractAllProofs, extractScreenshotArtifacts } from './zip.js';
 import { loadExternalAnalyzers } from './analyzers.js';
-import { formatMultiSummary, formatProofHeader, formatResult, printError, printUsage } from './output.js';
+import {
+  formatMultiSummary,
+  formatProofHeader,
+  formatResult,
+  formatUnreadableProof,
+  printError,
+  printUsage,
+} from './output.js';
 import { Spinner } from './progress.js';
 import {
   parseExamPackageManifest,
@@ -23,6 +30,7 @@ import {
   type Analyzer,
   type AnalysisBundle,
   type ScreenshotVerificationSummary,
+  type ProofExtractionFailure,
 } from '@typedcode/shared';
 
 import { findFlagError, flagValue, flagValues, nonFlagArgs } from './args.js';
@@ -158,16 +166,20 @@ async function main(): Promise<void> {
 
     // 検証対象の proof 群 (ZIP は全タブ分、JSON は 1 件)
     let proofs: Array<{ filename: string; proof: ProofFile }>;
+    // ZIP 内の `*_proof.json` のうち proof として読めなかったもの (#292)。1 件でも失敗として数える。
+    let unreadable: ProofExtractionFailure[] = [];
     let screenshotSummary: ScreenshotVerificationSummary | undefined;
     try {
       const filePath = resolve(input);
       const ext = extname(filePath).toLowerCase();
 
       if (ext === '.zip') {
-        const extracted = await extractAllProofs(filePath);
-        if (extracted.length === 0) {
+        const { proofs: extracted, failures } = await extractAllProofs(filePath);
+        // 壊れた proof しか無い ZIP は「proof が無い」ではなく破損として報告する (下の failures 出力)。
+        if (extracted.length === 0 && failures.length === 0) {
           throw new Error('No proof file found in ZIP');
         }
+        unreadable = multiInput ? failures.map((f) => ({ ...f, filename: `${input}:${f.filename}` })) : failures;
         // 入力が複数のとき、別々の ZIP に同名の entry (`tab1_proof.json` など) があっても
         // summary / --analysis-* の filename が衝突しないよう入力名を前置する。
         proofs = multiInput
@@ -208,7 +220,7 @@ async function main(): Promise<void> {
     spinner.stop();
 
     // 全 proof を検証。1 件でも fail なら exit 1 (CI が部分合格を成功と誤読しないように)。
-    const multi = multiInput || proofs.length > 1;
+    const multi = multiInput || proofs.length + unreadable.length > 1;
     for (const { filename, proof } of proofs) {
       if (multi) console.log(formatProofHeader(filename));
       let result: Awaited<ReturnType<typeof verifyProof>>;
@@ -243,6 +255,14 @@ async function main(): Promise<void> {
         });
         bundleDump.push({ filename, ...bundle });
       }
+    }
+
+    // 読めなかった proof も他の proof の検証を止めず、失敗として summary に積む (#292)。
+    // 単独でもファイル名が出るよう、ヘッダは multi に関係なく出す。
+    for (const { filename, reason } of unreadable) {
+      console.log(formatProofHeader(filename));
+      console.log(formatUnreadableProof(reason));
+      summary.push({ filename, valid: false, reason });
     }
   }
 
