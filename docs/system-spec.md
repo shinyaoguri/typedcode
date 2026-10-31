@@ -265,7 +265,7 @@ interface CheckpointData {
 4. **firstSeenAt 確定**: 既存があればその値、なければ `now` で初回書込
 5. 新規タブなら per-session タブ台帳 (`tabs:{sessionId}`。record の `session:` 名前空間とは別。#297) の上限チェック (`MAX_TABS_PER_SESSION` = 64、best-effort。不正形の台帳は read 失敗と同扱いで判定スキップ)。`sessionId` / `tabId` は `^[A-Za-z0-9._-]+$` (≤200) で、不正形の session record は 503 `SESSION_STATE_UNAVAILABLE`
 6. checkpointIndex 単調性チェック (best-effort)
-7. signedCount 上限チェック (50,000 / (sessionId, tabId) 単位。超過は 429 `SESSION_LIMIT_EXCEEDED`)。セッション全体の理論上限は `MAX_TABS_PER_SESSION` × 50,000 = 3,200,000
+7. signedCount 上限チェック (50,000 / (sessionId, tabId) 単位。超過は 429 `SESSION_LIMIT_EXCEEDED`)。セッション全体の理論上限は `MAX_TABS_PER_SESSION` × `SESSION_MAX_CHECKPOINTS`
 8. `payload = { ...input, serverTimestamp: now, firstSeenAt, poswIterations: 10000, version: 1 }` を構築
 9. `signature = ECDSA-P256.sign(privateKey, deterministicStringify(payload))`
 10. KV 更新 (TTL **7 日**)
@@ -587,7 +587,7 @@ interface ExamProofBlock {
 |-----------|------|
 | (#138) 手製 proof で内部ペーストの監査マーカー (data=AI コード) と同一 data の `insertParagraph` を並べ、自分のコードのコピペに偽装する | `SessionProvenanceLedger` が replay で再現した**セッション内在性**を要求する: (a) それ以前の `copyOperation` に完全一致し、かつその data がコピー時点の replay 文書の部分文字列、または (b) 適用前の replay 文書の部分文字列。マーカー自体は判定入力にしない (ADR-0020)。不成立なら複数行 bulk 挿入として `isPureTyping=false` |
 | (#175) 挿入イベント無しで `contentSnapshot` により文書を丸ごと差し替える | replay 文書と乖離した snapshot を `divergentContentSnapshotEventIndexes` に記録し、台帳には取り込まない。1 件でもあれば `isPureTyping=false`。editor の正規 snapshot は常に replay と一致する no-op |
-| (#139) minify した 1 行プログラムを `insertText` 1 イベントで投入する | 構造文字のみでない単一行 insertText は 120 文字超 (`MAX_BENIGN_SINGLE_LINE_INSERT_CHARS`) で benign から外れ、bulk 扱い |
+| (#139) minify した 1 行プログラムを `insertText` 1 イベントで投入する | 構造文字のみでない単一行 insertText は `MAX_BENIGN_SINGLE_LINE_INSERT_CHARS` を超えると benign から外れ、bulk 扱い |
 | (限界・誤検知方向) 別タブでコピーした内容を貼る正規操作 | 1 proof = 1 タブなので内部ペースト検証が成立せず bulk 扱い。`valid` は不変 |
 
 `metadata.bulkInsertEvents` の定義は変えない (申告値と再計算値の完全一致を `verifyProofMetadata` が要求するため。変えると既存 proof が invalid になる)。
@@ -803,7 +803,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-07-02 | sign の sessionStartToken 前提化 (#136, ADR-0027) | `/api/checkpoint/sign` はスキーマ検証直後・KV read より前に `sessionStartToken` を ECDSA 検証し、`token.payload.sessionId === input.sessionId` を要求する (`TOKEN_REQUIRED` / `TOKEN_INVALID` / `TOKEN_SESSION_MISMATCH` = 401)。tabId 連打には per-session のタブ台帳 (`MAX_TABS_PER_SESSION`) で蓋。§4.6 を反映 |
 | 2026-08-05 | fast モードの overclaim 是正 (#214) | `fast` は PoSW の反復再計算をスキップする (§8.2) のに、web も CLI も決定的保証の語彙 (「検証成功 / 整合性: 証明済み」「Verification PASSED / Integrity: PROVEN」) で結果を出していた。`IntegrityLevel` に **`partial`** を追加し、`AssuranceInput.poswSkipped` (必須) から fast を `proven` に上げないよう `deriveAssurance` を変更 (temporal / provenance の意味は不変)。verify は整合性チップを warning 表示 + `TrustCalculator` に `posw` warning + タブ status も警告、verify-cli はヘッダ直下と Assurance に注記。**判定 (`verifyProofFile` の valid / exit code) と proof フォーマットは不変** — 表示の正直化であって fast を fail させる変更ではない。web↔CLI の一致は `webCliParity.test.ts` に fast/full の観点を追加して固定 |
 | 2026-08-16 | exam time-box を advisory に (#220 / #272) | `verifyExamBinding` の `withinWindow=false` を総合 `valid` に合流させない (ADR-0013 に実装を合わせた)。§6.4 手順 6 を反映 |
-| 2026-08-23 | 展開 DoS の実バイト予算 (#234 / #274) | ZIP 展開を、ヘッダの申告サイズでなく展開中に実際に出たバイト数 (`MAX_ZIP_TOTAL_UNCOMPRESSED` = 256 MiB、エントリ数は `MAX_ZIP_ENTRIES`) で打ち切る (`fileProcessing/zipBudget.ts`)。proof フォーマット・検証判定は不変。本仕様の本文に記述の変更は無い |
+| 2026-08-23 | 展開 DoS の実バイト予算 (#234 / #274) | ZIP 展開を、ヘッダの申告サイズでなく展開中に実際に出たバイト数 (`MAX_ZIP_TOTAL_UNCOMPRESSED`、エントリ数は `MAX_ZIP_ENTRIES`) で打ち切る (`fileProcessing/zipBudget.ts`)。proof フォーマット・検証判定は不変。本仕様の本文に記述の変更は無い |
 | 2026-08-23 | package 指定時は exam ブロック無し proof も invalid (#218 / #275) | `--exam-package` (verify-cli) / 問題パッケージ読込 (verify Web) を指定したのに proof に `exam` ブロックが無い場合も束縛検証にかけ、invalid とする。§6.4 の配線を反映 |
 | 2026-08-23 | registry 日時の fail-closed (#233 / #276) | registry entry の `validFrom` / `validUntil` / `revokedAt` が parse 不能な鍵を信頼しない (entry 単位)。§6.2 Layer 6 / §8.4 / §9.4 を反映 |
 | 2026-10-21 | 棚卸し 9 件の実装 (#267 ほか / #318) | 検証側の PoSW 反復を `@noble/hashes` の同期 SHA-256 に変更 (#267)。タブ台帳を `tabs:{sessionId}` に分離し ID の文字種を `[A-Za-z0-9._-]` に制限 (#297)。§4.6 / §6.1 を反映し、§5.4 (マルチファイル形式) を削除 (#318) |
