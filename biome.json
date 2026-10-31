@@ -32,6 +32,16 @@
       "trailingCommas": "es5"
     }
   },
+  "markdown": {
+    "formatter": {
+      "enabled": false
+    }
+  },
+  "yaml": {
+    "formatter": {
+      "enabled": false
+    }
+  },
   "assist": {
     "enabled": false
   },
