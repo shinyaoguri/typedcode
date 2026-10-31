@@ -403,6 +403,7 @@ export class ResultPanel {
   }
 
   showLoading(): void {
+    this.clearVerdictState();
     this.loading.style.display = 'flex';
     this.content.style.display = 'none';
     this.plaintextContent.style.display = 'none';
@@ -415,6 +416,7 @@ export class ResultPanel {
   }
 
   showPlaintext(): void {
+    this.clearVerdictState();
     this.loading.style.display = 'none';
     this.content.style.display = 'none';
     this.plaintextContent.style.display = 'flex';
@@ -561,6 +563,9 @@ export class ResultPanel {
       const statusClass = isSuccess ? 'success' : isWarning ? 'warning' : 'error';
 
       this.statusIcon.className = `result-status-icon ${statusClass}`;
+      // 状態契約 (CLAUDE.md): data-level は TrustCalculator の生の値だけを出す。ここで
+      // TrustLevel を導出し直すと信頼バッジと食い違いうるので、この経路では付けない。
+      delete this.statusIcon.dataset.level;
       this.statusIcon.innerHTML = `<i class="fas fa-${isSuccess ? 'check-circle' : isWarning ? 'exclamation-triangle' : 'times-circle'}"></i>`;
       this.statusTitle.textContent = isSuccess
         ? t('result.statusSuccess')
@@ -717,10 +722,22 @@ export class ResultPanel {
   private renderAssurance(assurance: AssuranceResult | undefined, mode?: ResultData['mode']): void {
     if (!assurance) {
       this.assuranceStrip.style.display = 'none';
+      clearAssuranceState(this.assuranceStrip);
       return;
     }
     this.assuranceStrip.style.display = '';
     this.assuranceStrip.innerHTML = buildAssuranceStripHtml(assurance, mode);
+    applyAssuranceState(this.assuranceStrip, assurance);
+  }
+
+  /**
+   * 判定の状態契約 (`#assurance-strip` / `#result-status-icon` の data-*) を外す。
+   * 判定を表示していない間 (検証中・プレーンテキスト表示・リセット) に前のタブの判定が
+   * 残っていると、E2E が別ファイルの判定を読んで通ってしまうため。
+   */
+  private clearVerdictState(): void {
+    clearAssuranceState(this.assuranceStrip);
+    delete this.statusIcon.dataset.level;
   }
 
   private renderCard(iconEl: HTMLElement, badgeEl: HTMLElement, isValid: boolean | null, badgeText: string): void {
@@ -1095,6 +1112,7 @@ export class ResultPanel {
     });
 
     // Reset status
+    this.clearVerdictState();
     this.statusIcon.className = 'result-status-icon';
     this.statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     this.statusTitle.textContent = t('result.statusVerifying');
@@ -1378,6 +1396,8 @@ export class ResultPanel {
     const { level, summary, issues } = trustResult;
 
     this.statusIcon.className = `result-status-icon ${colorMap[level]}`;
+    // 状態契約: 総合判定の生の値 (verified | partial | failed)。色クラスでは区別しない。
+    this.statusIcon.dataset.level = level;
     this.statusIcon.innerHTML = `<i class="fas fa-${iconMap[level]}"></i>`;
     this.statusTitle.textContent = summary;
 
@@ -1655,28 +1675,48 @@ export function buildAssuranceStripHtml(assurance: AssuranceResult, mode?: Resul
 
   // mode は proof.json 由来 (自己申告) — 入力層で allowlist 済みだが、`t()` は未登録キーを
   // キー文字列のまま返すため、表示層でも必ずエスケープする (#210 は二重に防ぐ)。
+  // data-axis / data-level / data-pure-typing / data-mode は状態契約 (verify/CLAUDE.md)。
+  // 値は shared の enum そのもので、色クラス (warning が整合性と時刻アンカーで同じ) では区別しない。
+  // 著述性はレベルを持たない advisory なので data-level を出さない (ADR-0009 / ADR-0020)。
   const modeChip = mode
-    ? `<span class="assurance-chip neutral" title="${escapeHtml(t('assurance.modeSelfAsserted'))}">
+    ? `<span class="assurance-chip neutral" data-axis="mode" data-mode="${escapeHtml(mode)}" title="${escapeHtml(t('assurance.modeSelfAsserted'))}">
          <span class="assurance-chip-label">${escapeHtml(t('assurance.modeLabel'))}</span>
          <span class="assurance-chip-value">${escapeHtml(t(`assurance.mode.${mode}`))}</span>
        </span>`
     : '';
 
   return `
-    <span class="assurance-chip ${integrityClass}" title="${escapeHtml(integrityHint)}">
+    <span class="assurance-chip ${integrityClass}" data-axis="integrity" data-level="${escapeHtml(assurance.integrity)}" title="${escapeHtml(integrityHint)}">
       <span class="assurance-chip-label">${t('assurance.integrity')}</span>
       <span class="assurance-chip-value">${escapeHtml(integrityValue)}</span>
     </span>
-    <span class="assurance-chip ${temporalClass}" title="${escapeHtml(t('assurance.temporalHint'))}">
+    <span class="assurance-chip ${temporalClass}" data-axis="temporal" data-level="${escapeHtml(assurance.temporal)}" title="${escapeHtml(t('assurance.temporalHint'))}">
       <span class="assurance-chip-label">${t('assurance.temporal')}</span>
       <span class="assurance-chip-value">${temporalValue}</span>
     </span>
-    <span class="assurance-chip advisory" title="${escapeHtml(t('assurance.provenanceHint'))}">
+    <span class="assurance-chip advisory" data-axis="provenance" data-pure-typing="${p.pureTyping ? 'true' : 'false'}" title="${escapeHtml(t('assurance.provenanceHint'))}">
       <span class="assurance-chip-label">${t('assurance.provenance')}</span>
       <span class="assurance-chip-value">${provenanceParts.map((x) => escapeHtml(x)).join(' · ')}</span>
     </span>
     ${modeChip}
   `;
+}
+
+/**
+ * `#assurance-strip` に三層保証の状態契約 (verify/CLAUDE.md「状態契約」) を書く。
+ * 値は shared の `deriveAssurance` が返す生の enum で、翻訳テキストや色クラスに依存しない。
+ */
+export function applyAssuranceState(el: HTMLElement, assurance: AssuranceResult): void {
+  el.dataset.integrity = assurance.integrity;
+  el.dataset.temporal = assurance.temporal;
+  el.dataset.pureTyping = assurance.provenance.pureTyping ? 'true' : 'false';
+}
+
+/** 判定を表示していない状態 = 属性が無い、を表す (値 `none` などは使わない)。 */
+export function clearAssuranceState(el: HTMLElement): void {
+  delete el.dataset.integrity;
+  delete el.dataset.temporal;
+  delete el.dataset.pureTyping;
 }
 
 /**

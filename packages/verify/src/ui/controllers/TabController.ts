@@ -174,6 +174,16 @@ export class TabController {
         this.deps.resultPanel.stopProgressTimer();
         this.renderResult(tabState);
       }
+    } else if (tabState.status === 'error') {
+      // 検証自体が失敗したタブ (未対応形式・JSON 破損・Worker エラー)。結果が無いので、
+      // handleError がアクティブタブに出すのと同じ「進捗 UI のエラー表示」を出す。
+      // 何もしないと直前に開いていた別ファイルの判定 (と data-* の状態契約) が残り、
+      // エラーのファイルを開いたのに前のファイルの判定が見える。
+      if (!isSameTab || forceRefresh || statusChanged) {
+        this.deps.uiState.setCurrentDisplayedTabId(id, tabState.status);
+        this.deps.resultPanel.startProgress(tabState.filename);
+        this.deps.resultPanel.errorProgress('chain', tabState.error);
+      }
     }
   }
 

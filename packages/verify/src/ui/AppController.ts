@@ -20,6 +20,8 @@ import { ChartController } from './controllers/ChartController';
 import { FolderController } from './controllers/FolderController';
 import { getI18n } from '../i18n/index';
 import { showAboutDialog } from './AboutDialog';
+import { bindFileInput, processFilesInOrder } from './fileInput';
+import { resolveInitialVerifyMode } from '../services/verifyModeQuery';
 
 export class AppController {
   private themeManager: ThemeManager;
@@ -46,6 +48,9 @@ export class AppController {
   constructor() {
     this.fileInput = document.getElementById('file-input') as HTMLInputElement;
 
+    // 検証モードの初期値。既定は full、`?mode=fast|audit|full` で上書きできる (E2E 用)。
+    const initialVerifyMode = resolveInitialVerifyMode(window.location.search);
+
     // Initialize theme
     this.themeManager = new ThemeManager();
 
@@ -62,7 +67,7 @@ export class AppController {
         // モード変更を視覚的に伝えるためのみ。既に表示中の結果は再検証しないが、
         // 次の検証から新モードが使われる。
       },
-      initialVerifyMode: 'full',
+      initialVerifyMode,
     });
 
     this.sidebar = new Sidebar({
@@ -82,6 +87,7 @@ export class AppController {
     this.statusBar = new StatusBarUI();
     this.welcomePanel = new WelcomePanel({
       onFilesSelected: (files) => this.handleFilesSelected(files),
+      onBrowse: () => this.openFileDialog(),
     });
     this.resultPanel = new ResultPanel();
 
@@ -93,6 +99,7 @@ export class AppController {
     });
 
     this.verificationQueue = new VerificationQueue();
+    this.verificationQueue.setMode(initialVerifyMode);
     this.fileProcessor = new FileProcessor();
 
     // Initialize ChartController first (needed by other controllers)
@@ -187,13 +194,8 @@ export class AppController {
       onFileRemove: (id) => this.handleFileRemove(id),
     });
 
-    // File input change handler
-    this.fileInput.addEventListener('change', () => {
-      if (this.fileInput.files && this.fileInput.files.length > 0) {
-        this.handleFilesSelected(this.fileInput.files);
-        this.fileInput.value = '';
-      }
-    });
+    // ファイル選択ダイアログ (`multiple`)。change の購読はここ 1 か所だけ (WelcomePanel 等は開くだけ)。
+    bindFileInput(this.fileInput, (files) => this.handleFilesSelected(files));
 
     // ページ離脱時の確認ダイアログ
     this.setupBeforeUnloadHandler();
@@ -298,10 +300,8 @@ export class AppController {
     this.fileInput.click();
   }
 
-  private async handleFilesSelected(files: FileList): Promise<void> {
-    for (const file of Array.from(files)) {
-      await this.fileController.processFile(file);
-    }
+  private async handleFilesSelected(files: FileList | File[]): Promise<void> {
+    await processFilesInOrder(Array.from(files), (file) => this.fileController.processFile(file));
   }
 
   private handleFileSelect(id: string): void {
