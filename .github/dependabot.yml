@@ -19,6 +19,11 @@ updates:
       # Group all production dependencies together
       production-dependencies:
         dependency-type: "production"
+        # 0.x の minor は実質 breaking なので束ねると group 全体が止まる (#333)。
+        # @wasmer/sdk は 0.10→0.19 で API が変わり、他の更新を 1 か月以上詰まらせた。
+        # 個別 PR にして移行は別に進める。
+        exclude-patterns:
+          - "@wasmer/sdk"
         update-types:
           - "major"
           - "minor"
