@@ -29,6 +29,7 @@ import {
   type VerificationResult,
 } from '../../services/TurnstileService.js';
 import { performVerificationWithUI } from './TabVerificationUI.js';
+import { resolveRestoreOrder } from './restoreOrder.js';
 import { t } from '../../i18n/index.js';
 import { type SessionStorageService, getSessionStorageService } from '../../services/SessionStorageService.js';
 import {
@@ -1162,8 +1163,8 @@ export class TabManager {
    * @private
    */
   private async loadFromStorageV1(rawStorage: MultiTabStorage): Promise<boolean> {
-    // tabOrderがない場合は生成（後方互換性のため）
-    const tabOrder: string[] = rawStorage.tabOrder ?? Object.keys(rawStorage.tabs);
+    // tabOrder が無い / 空 / 一部欠けていても、保存済みのタブを取りこぼさない (#326)
+    const tabOrder = resolveRestoreOrder(rawStorage.tabOrder, Object.keys(rawStorage.tabs));
 
     // タブを復元（tabOrder順に処理）
     for (const id of tabOrder) {
@@ -1401,8 +1402,13 @@ export class TabManager {
 
       // セッションメタデータからタブ順序を取得
       const session = await this.sessionService.getLatestSession();
-      const tabOrder = session?.tabOrder ?? storedTabs.map((t) => t.id);
-      const activeTabId = session?.activeTabId ?? storedTabs[0]?.id;
+      // createSession は tabOrder: [] / activeTabId: '' で初期化するので `??` では fallback が効かない (#326)。
+      // 保存済みタブ行を取りこぼさない順序へ解決し、active が空なら復元順の先頭にする。
+      const tabOrder = resolveRestoreOrder(
+        session?.tabOrder,
+        storedTabs.map((t) => t.id)
+      );
+      const activeTabId = session?.activeTabId || tabOrder[0];
 
       // タブを復元（tabOrder順に処理）
       for (const tabId of tabOrder) {
