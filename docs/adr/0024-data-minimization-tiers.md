@@ -5,13 +5,13 @@
 - **Deciders**: (PR 上の合意者 / レビュアー)
 - **PR / Commit**: develop へ stacked-PR
 
-> 検証の整合性は**全イベントを要求**する (ハッシュチェーンが全打鍵を束ねる) が、その全イベント列には**学生のソース全文と打鍵動態・フィンガープリント**が含まれる。これを分析者・研究者・コホート集計など**あらゆる消費者に丸ごと渡すのは過剰露出**。データ最小化 ([[analysis-platform-stance]] ADR-0023 / 評価プロトコル §2 / [[review-develop-2026-06]] のデータ最小化指摘) と整合性を両立させる**ティアモデル**を定める。本 ADR は方針・不変条件・ティア定義を確定し、実装と「検証可能な選択的開示」の暗号は follow-up に委ねる。
+> 検証の整合性は**全イベントを要求**する (ハッシュチェーンが全打鍵を束ねる) が、その全イベント列には**学生のソース全文と打鍵動態・フィンガープリント**が含まれる。これを分析者・研究者・コホート集計など**あらゆる消費者に丸ごと渡すのは過剰露出**。データ最小化 ([ADR-0023](0023-analysis-platform-not-judge.md) / 評価プロトコル §2 / 2026-06 の develop レビューのデータ最小化指摘。レビュー記録は作者のローカルメモにあり、Issue / PR としては残っていない) と整合性を両立させる**ティアモデル**を定める。本 ADR は方針・不変条件・ティア定義を確定し、実装と「検証可能な選択的開示」の暗号は follow-up に委ねる。
 
 ## Context
 
 事実関係 (`packages/shared/src/types/proof.ts`):
 
-- **ハッシュチェーン = `SHA256(h_{i-1} ‖ JSON(event_i) ‖ PoSW_i)`** ([[phase8-plan]] / shared 不変条件 #1)。各 `StoredEvent` は `data` / `insertedText` / `selectedText` に**打鍵した文字そのもの**を持つ。
+- **ハッシュチェーン = `SHA256(h_{i-1} ‖ JSON(event_i) ‖ PoSW_i)`** ([packages/shared/AGENTS.md](../../packages/shared/AGENTS.md) の不変条件 #1)。各 `StoredEvent` は `data` / `insertedText` / `selectedText` に**打鍵した文字そのもの**を持つ。
 - したがって**整合性検証 (`verifyProofFile`) には全イベント列が必須**。1 つでも削る・テキストを伏せると `JSON(event_i)` が変わりチェーンが壊れる。**proof は redact できない**。
 - proof にはさらに `content` (最終全文)、`fingerprint.components` (canvas/webgl/fonts 等の**端末識別情報**) が入る。
 - 一方、既存の派生物は **content-free**:

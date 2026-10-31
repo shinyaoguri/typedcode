@@ -17,8 +17,8 @@
 
 - **個人開発** (実質 1 名)。「QA チーム」「リリース凍結期間」「複数人の並行レビュー」は存在しない。
 - ただし **1.0.0 を出荷済みの製品**であり、リリースは番号付きのイベントとして区切りたい (暗号証明エンジンの破壊的変更は `PROOF_FORMAT_VERSION` で管理される性質上、リリース境界が意味を持つ)。
-- 既に **Conventional Commits** を実践しており、**ADR を積み重ねる stacked PR** の運用がある ([[adr-stacked-pr-merge]]: squash は stacked PR の土台 SHA を壊すため develop へは cherry-pick で flatten する)。
-- `develop` を長命の統合ブランチとし main 昇格を保留する方針は既に確立している ([[release-strategy]])。
+- 既に **Conventional Commits** を実践しており、**ADR を積み重ねる stacked PR** の運用がある (squash は stacked PR の土台 SHA を壊すため develop へは cherry-pick で flatten する運用)。
+- `develop` を長命の統合ブランチとし main 昇格を保留する方針は既に確立している (最後の main 昇格は 2026-06-05 の PR [#64](https://github.com/shinyaoguri/typedcode/pull/64))。
 
 ## Considered Options
 
@@ -39,7 +39,7 @@
 
 ### Option D: 軽量 Git Flow (フル Git Flow から release/* を省く・本 ADR)
 - `main` / `develop` / `feature/*` は残し、**`release/*` は作らない** (develop がそのままリリース候補)。`hotfix/*` は常設運用にせず「本番緊急時に main から切る」概念だけ残す。
-- Pros: 既存の develop 運用・リリース保留方針 ([[release-strategy]]) とそのまま整合。儀式コストの高い release ブランチを省ける。マージ方式を経路ごとに最適化できる。
+- Pros: 既存の develop 運用・リリース保留方針とそのまま整合。儀式コストの高い release ブランチを省ける。マージ方式を経路ごとに最適化できる。
 - Cons: hotfix を main と develop の両方へ反映する手当てを忘れると分岐がずれる (手順で担保する)。→ **採用**。
 
 ## Decision
@@ -59,7 +59,7 @@
 
 - **feature → develop は squash**: 1 機能 = 1 コミットで develop の履歴を読みやすく保つ。途中の "wip"/"fix typo" を main 系列に持ち込まない。
 - **develop → main は merge commit**: リリースの区切りを履歴に残す。ここで squash すると develop の全履歴が 1 コミットに潰れて辿れなくなるため使わない。
-- **ADR stacked PR → develop は cherry-pick で flatten** ([[adr-stacked-pr-merge]]): squash は stacked PR の土台 SHA を壊すため、この経路だけ別運用。
+- **ADR stacked PR → develop は cherry-pick で flatten**: squash は stacked PR の土台 SHA を壊すため、この経路だけ別運用。
 
 → この使い分けがあるため、GitHub のマージ許可は **3 方式とも有効のまま・デフォルトのみ squash** に設定する (squash 強制にすると develop→main の merge commit ができなくなる)。
 
@@ -69,14 +69,14 @@
 
 - **Dependabot のセキュリティ更新は常に既定ブランチへ PR を起票**し、`dependabot.yml` の `target-branch` (version update 用) では対象を変えられない。既定が `main` のままだと undici / esbuild 等のセキュリティ更新が `main` 直撃で飛び、「依存更新は develop へ」という本 ADR の方針と噛み合わなかった。
 - 既定を `develop` にすることで、**version update (`target-branch: develop`) も security update (既定ブランチ) も develop に集約**される。新規 PR の base 既定や `git clone` の初期チェックアウトも develop に揃い、「普段の着地先は develop」という実態と一致する。
-- **この変更はリリース昇格ポリシーを変えない**。`main` は依然リリース専用で、`develop → main` は merge commit + タグでのみ更新する ([[release-strategy]])。既定ブランチは Dependabot / PR / clone の初期値にすぎず、本番昇格の保留方針とは独立。
+- **この変更はリリース昇格ポリシーを変えない**。`main` は依然リリース専用で、`develop → main` は merge commit + タグでのみ更新する。既定ブランチは Dependabot / PR / clone の初期値にすぎず、本番昇格の保留方針とは独立。
 - `dependabot.yml` 側の `target-branch: develop` (version update 用の明示ピン) は既定と一致して冗長になるが、将来既定を戻しても version update が develop に留まる保険として残置する。
 
 ## Consequences
 
 ### Positive
 - ブランチ運用とマージ方式が明文化され、口頭ルールへの依存が消える (将来の自分 / 貢献者 / AI エージェントが辿れる)。
-- 既存の develop 統合・リリース保留 ([[release-strategy]]) / stacked PR flatten ([[adr-stacked-pr-merge]]) 運用を一切変えずに済む。
+- 既存の develop 統合・リリース保留 / stacked PR flatten 運用を一切変えずに済む。
 - リリースが merge commit + タグで履歴に明示的に区切られる。
 
 ### Negative / Trade-offs
@@ -90,7 +90,6 @@
 
 ## References
 
-- [[release-strategy]] (develop は長命の統合ブランチ・main 昇格は意図的に保留)
-- [[adr-stacked-pr-merge]] (squash は ADR stacked PR の SHA を壊す → cherry-pick で flatten)
+- (作者のローカルメモにあった運用方針。内容は本 ADR の Context に転記済み) develop は長命の統合ブランチ・main 昇格は意図的に保留 / squash は ADR stacked PR の SHA を壊す → cherry-pick で flatten
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) (本 ADR を実務手順に落とした運用ガイド)
 - 外部: [A successful Git branching model (Vincent Driessen)](https://nvie.com/posts/a-successful-git-branching-model/) / [GitHub Flow](https://docs.github.com/en/get-started/quickstart/github-flow)
