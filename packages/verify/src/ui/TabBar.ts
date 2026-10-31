@@ -192,8 +192,11 @@ export class TabBar {
 
   private createTabElement(tab: Tab): HTMLElement {
     const tabEl = document.createElement('div');
-    tabEl.className = `tab${tab.id === this.activeTabId ? ' active' : ''}`;
+    const isActive = tab.id === this.activeTabId;
+    tabEl.className = `tab${isActive ? ' active' : ''}`;
     tabEl.dataset.id = tab.id;
+    // 状態契約: アクティブなタブにだけ data-active="true" を付ける (それ以外は属性なし)。
+    if (isActive) tabEl.dataset.active = 'true';
     // 状態契約 (verify/AGENTS.md): status は VerificationController が決めた値をそのまま出す。
     tabEl.dataset.status = tab.status;
     tabEl.dataset.filename = tab.filename;

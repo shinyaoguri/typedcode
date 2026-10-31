@@ -110,6 +110,7 @@ export class ResultPanel {
   private statusIcon: HTMLElement;
   private statusTitle: HTMLElement;
   private statusFilename: HTMLElement;
+  private statusCard: HTMLElement;
   private assuranceStrip: HTMLElement;
 
   // Verification cards
@@ -242,6 +243,7 @@ export class ResultPanel {
     this.statusIcon = document.getElementById('result-status-icon')!;
     this.statusTitle = document.getElementById('result-status-title')!;
     this.statusFilename = document.getElementById('result-status-filename')!;
+    this.statusCard = document.getElementById('result-status-card')!;
     this.assuranceStrip = document.getElementById('assurance-strip')!;
 
     // Typing card
@@ -560,6 +562,8 @@ export class ResultPanel {
     // Overall status
     this.renderTrustBadge(trustResult);
     this.statusFilename.textContent = filename;
+    // 状態契約: 判定を描画している間だけ、その判定がどのファイルのものかを出す。
+    this.statusCard.dataset.filename = filename;
 
     // Typing card
     this.renderCard(
@@ -718,6 +722,7 @@ export class ResultPanel {
   private clearVerdictState(): void {
     clearAssuranceState(this.assuranceStrip);
     delete this.statusIcon.dataset.level;
+    delete this.statusCard.dataset.filename;
   }
 
   private renderCard(iconEl: HTMLElement, badgeEl: HTMLElement, isValid: boolean | null, badgeText: string): void {

@@ -77,11 +77,15 @@ E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく�
 | `#file-list .file-item` | `data-status` | `pending` / `verifying` / `success` / `warning` / `error` | ファイルの検証状態 |
 | `#file-list .file-item` | `data-filename` | 表示名 | どのファイルの行か |
 | `#tabbar .tab` | `data-status` / `data-filename` | `.file-item` と同じ | タブの検証状態 |
+| `#tabbar .tab` | `data-active` | `true` (アクティブ時のみ。それ以外は属性なし) | アクティブなタブ (#281) |
+| `#file-list .file-item` | `data-active` | `true` (アクティブ時のみ。それ以外は属性なし) | アクティブなファイル行 (#281) |
+| `#result-status-card` | `data-filename` | 表示名 | 結果パネルが判定を描画しているファイル (判定を表示していない間は属性なし。#281) |
 
 - **判定を表示していない間は属性を付けない** (`none` などの値は使わない)。検証中 (`startProgress` / `showLoading`)・プレーンテキスト / 画像表示・`reset()`・assurance 無しの描画では `#assurance-strip` の 3 属性と `#result-status-icon` の `data-level` を外す。前のタブの判定が残ると、E2E が別ファイルの判定を読んで通ってしまう。検証自体が失敗したタブ (status `error`・結果なし。未対応形式など) を開いたときも `TabController.showTabContent` が進捗 UI のエラー表示に切り替えるので属性は付かない (以前は何もせず、直前のファイルの判定が残っていた)。E2E は属性が現れるのを待ってから読む
 - **`data-status` の出所は `VerificationController` (`tabManager.updateTab` と同じ値を Sidebar / TabBar に流す) に一本化する**。Sidebar / TabBar は受け取った値を出すだけで、検証結果から導出し直さない (`ui/__tests__/fileStatusState.test.ts` が 3 者の一致を固定)
 - `#result-status-icon` の `data-level` は `TrustCalculator` の結果を描画したときだけ付ける。`ResultData.trustResult` は必須で、ResultPanel は TrustLevel を導出し直さない
 - 属性値は `escapeHtml` を通す (innerHTML 生成。自己申告 `mode` は proof 由来なので特に。#210)
+- **active は 4 か所 (TabBar / VerifyTabManager / Sidebar / 結果パネルの表示中ファイル) にあり、タブ・ファイルを閉じた後は `TabController.settleActiveAfterRemoval` で一致させる** (#281)。`handleTabClose` / `removeFile` / `removeFolder` はすべてここを通る。次に選ぶのは TabBar の active (開いているタブだけが候補。未オープンのファイルは選ばない)。`VerifyTabManager.removeTab` はアクティブを消しても自動で別タブに切り替えず active を外すだけ (どれを表示するかは TabController が決める)。`ui/__tests__/tabClose.test.ts` が固定する
 - **この契約 (要素・属性名・値域・「無い」の意味) を変えるときは、`packages/e2e` の E2E と同じ PR で変える**。片方だけ変えると E2E が赤になるか、もっと悪いと別の要素を読んで黙って通る。ユニットテストは `ui/__tests__/ResultPanelState.test.ts` / `fileStatusState.test.ts`。E2E 側の読み手は [`packages/e2e/tests/helpers/verifyWeb.ts`](../e2e/tests/helpers/verifyWeb.ts) (`VerifyWebApp`) 1 か所で、[`verify-web.spec.ts`](../e2e/tests/verify-web.spec.ts) が同じ ZIP に対する verify-cli の判定との一致 (Web↔CLI パリティ)、[`production-build.spec.ts`](../e2e/tests/production-build.spec.ts) が本番ビルド (`/verify/`) で属性が出ることを見る
 - 検証モードの初期値は URL クエリ `?mode=fast|audit|full` で上書きできる (E2E 用。既定 `full`、不正値は無視。`services/verifyModeQuery.ts`)
 - `#file-input` は `multiple`。change の購読は `AppController` の `bindFileInput` 1 か所だけ (WelcomePanel 等は `click()` で開くだけ)。二重購読は `ui/__tests__/fileInput.test.ts` が機械的に禁止する

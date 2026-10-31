@@ -26,7 +26,7 @@ tests/
 ├── helpers/verifyWeb.ts  # VerifyWebApp: 検証 Web を開き #file-input に ZIP/JSON を渡し、data-* の状態契約だけを読む
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
-├── verify-web.spec.ts    # 検証 Web の往復: Web↔CLI パリティ・改ざん・複数ファイル (#215)・壊れた proof (#292)
+├── verify-web.spec.ts    # 検証 Web の往復: Web↔CLI パリティ・改ざん・複数ファイル (#215)・壊れた proof (#292)・タブを閉じたあとの active / 表示の一致 (#281)
 └── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)
 playwright.config.ts       # dev 用: webServer で workers(:8787) + editor vite dev(:5173) + verify vite dev(:5174)
 playwright.build.config.ts # dist 用: workers + editor/verify を build し、verify を editor の dist の verify/ に重ねて vite preview(:4173)

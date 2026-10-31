@@ -140,6 +140,33 @@ describe('ResultPanel overall verdict state contract', () => {
   );
 });
 
+describe('ResultPanel displayed file state contract (#281 v2)', () => {
+  function statusCard(): HTMLElement {
+    return document.getElementById('result-status-card')!;
+  }
+
+  it('exposes the filename of the file whose verdict is on screen', () => {
+    panel.render(resultData({ filename: 'b_proof.json' }));
+
+    expect(statusCard().dataset.filename).toBe('b_proof.json');
+  });
+
+  it.each([
+    ['another file starts verifying', (p: ResultPanel) => p.startProgress('other_proof.json')],
+    [
+      'a plaintext file is opened',
+      (p: ResultPanel) => p.renderPlaintext({ filename: 'main.c', content: '', language: 'c' }),
+    ],
+    ['the panel is reset', (p: ResultPanel) => p.reset()],
+  ])('drops the filename when %s', (_label, transition) => {
+    panel.render(resultData({ filename: 'b_proof.json' }));
+
+    transition(panel);
+
+    expect(statusCard().hasAttribute('data-filename')).toBe(false);
+  });
+});
+
 describe('ResultPanel exam binding card without a problem package (#281 v5)', () => {
   it('shows a bound root as a warning and expands the card so the load-package prompt is visible', () => {
     panel.render(
