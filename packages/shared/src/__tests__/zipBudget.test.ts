@@ -187,8 +187,9 @@ describe('extractAllProofsFromZip', () => {
     zip.file('a_proof.json', JSON.stringify({ proof: { events: [] }, typingProofHash: 'abc' }));
     const buf = await zip.generateAsync({ type: 'uint8array' });
 
-    const proofs = await extractAllProofsFromZip(buf.buffer as ArrayBuffer);
+    const { proofs, failures } = await extractAllProofsFromZip(buf.buffer as ArrayBuffer);
 
     expect(proofs.map((p) => p.filename)).toEqual(['a_proof.json']);
+    expect(failures).toEqual([]);
   });
 });

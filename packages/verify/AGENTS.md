@@ -19,6 +19,7 @@
 8. **入力の種類で「0 枚」と「未検査」を区別する**: ZIP とフォルダは**コンテナ**なので `screenshots/` が無ければ 0 枚 = 剥ぎ取り疑いを見る。proof.json 単体は検査対象が無いので `undefined` = 未検査として issue を上げない (verify-cli の `Screenshots: not checked` と同じ意味論)。両者を混同すると overclaim または誤検知になる
 9. **JSZip の `.async(...)` を直接呼ばない** (#234): ZIP エントリの読み出しは shared の `readZipEntryBytes` / `readZipEntryText` に `ZipFileProcessor` が作った `ZipExtractionBudget` を渡して行う。`.async(...)` は申告サイズを無視して最後まで展開するので、サイズを詐称した ZIP で採点者のブラウザが OOM する。`services/__tests__/zipReadPolicy.test.ts` が直接呼び出しを機械的に禁止する (文書ルールだけだった #149 では 6 箇所まで再発した)
 10. **拡張子 → 言語の表は shared の `LANGUAGE_MAP` が正本** (#278): `KNOWN_LANGUAGES` (= proof の `language` の allowlist の導出元。#248) もここから導出される。verify に表を書き起こさない。`services/fileUtils.ts` は shared の `getLanguageFromExtension` / `getFileType` / `isProofFilename` を再エクスポートするだけで、`isBinaryFile` だけ「画像は別経路で扱う」ため `isImageFile` 除外を重ねる。`services/__tests__/fileUtilsPolicy.test.ts` が表の再出現を機械的に禁止する
+11. **proof の名前 (`*_proof.json` / `*_proof_N.json`, shared の `isProofExportFilename`) なのに読めないファイルは、plaintext / success として並べず error として残す** (#292)。`ZipFileProcessor.parseTextFile` は壊れていても `type: 'proof'` で返し、`FileController.addFileToVerification` が JSON 破損・proof 構造なしを `status: 'error'` のタブ/行にする (検証キューには載せない)。黙って通常の JSON に落とすと壊れたタブが緑の流し見で見落とされ、verify-cli の失敗扱いとも食い違う。`services/__tests__/zipBrokenProof.test.ts` と E2E `verify-web.spec.ts` が固定
 
 ## ディレクトリ一覧
 

@@ -540,6 +540,7 @@ export const ja: VerifyTranslationKeys = {
     browserNotSupportedDesc: '代わりにファイル選択またはドラッグ＆ドロップをご利用ください',
     examInvalidPackage: '問題パッケージ (.tcexam) が不正です',
     jsonParseError: 'JSONパースエラー: ${filename}',
+    proofNotAProof: '証明ファイルとして読めません（proof データがありません）: ${filename}',
     fileLoadFailed: 'ファイル読み込みに失敗しました: ${message}',
     zipEmpty: 'ZIPにファイルがありません。',
     zipLoadFailed: 'ZIPファイルの読み込みに失敗しました: ${message}',

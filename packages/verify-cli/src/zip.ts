@@ -10,6 +10,7 @@ import {
   extractAllProofsFromZip,
   extractScreenshotArtifactsFromZip,
   type ProofFile,
+  type ProofExtractionFailure,
 } from '@typedcode/shared';
 
 function toArrayBuffer(buffer: Buffer): ArrayBuffer {
@@ -25,11 +26,16 @@ export async function extractProofFromZip(filePath: string): Promise<ProofFile> 
 /**
  * ZIP 内の **すべて** の proof JSON を返す (exam/class はタブ毎に N 個出力されるため)。
  * grader は全件を検証して初めて exit 0 にできる。
+ *
+ * proof の名前 (`*_proof.json`) なのに読めなかったファイルは `failures` に入る (#292)。
+ * 呼び出し側は 1 件でもあれば失敗として数えること — 黙って捨てると、壊れたタブが未検証のまま通る。
  */
-export async function extractAllProofs(filePath: string): Promise<Array<{ filename: string; proof: ProofFile }>> {
+export async function extractAllProofs(
+  filePath: string
+): Promise<{ proofs: Array<{ filename: string; proof: ProofFile }>; failures: ProofExtractionFailure[] }> {
   const arrayBuffer = toArrayBuffer(await readFile(filePath));
-  const proofs = await extractAllProofsFromZip(arrayBuffer);
-  return proofs.map((p) => ({ filename: p.filename, proof: p.proof as ProofFile }));
+  const { proofs, failures } = await extractAllProofsFromZip(arrayBuffer);
+  return { proofs: proofs.map((p) => ({ filename: p.filename, proof: p.proof as ProofFile })), failures };
 }
 
 /**

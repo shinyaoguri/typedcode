@@ -126,7 +126,7 @@ shared の main が raw TypeScript のため `node dist/cli.js` は動かない
 
 | ファイル | 検証内容 |
 |---|---|
-| verify-web.spec.ts | export ZIP を検証 Web に入れ、data-* の状態契約 (status / integrity / temporal / pure-typing / 総合判定) が同じ ZIP に対する verify-cli の判定と一致する。改ざん ZIP は Web も CLI も拒否。正常 + 改ざんを一度に入れて判定が混ざらない (#215)。壊れた `*_proof.json` 入りの ZIP は既知バグ #292 として `test.fixme` |
+| verify-web.spec.ts | export ZIP を検証 Web に入れ、data-* の状態契約 (status / integrity / temporal / pure-typing / 総合判定) が同じ ZIP に対する verify-cli の判定と一致する。改ざん ZIP は Web も CLI も拒否。正常 + 改ざんを一度に入れて判定が混ざらない (#215)。壊れた `*_proof.json` 入りの ZIP は、Web が error として並べ、CLI が exit 1 にする (#292) |
 | production-build.spec.ts | 本番ビルドの verify (`/verify/`) が proof を読んで状態契約の属性を出す |
 
 > Web↔CLI で比べられるのは合否 (`data-status` error ⇔ CLI の `valid=false`、総合判定 failed も同じ軸) と

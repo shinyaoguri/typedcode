@@ -56,6 +56,7 @@ import type {
   ProcessSummary,
   ProcessKeyMoment,
   ScreenshotVerificationSummary,
+  ProofExtractionFailureReason,
 } from '@typedcode/shared';
 import type { CLIExamResult } from './verify.js';
 
@@ -483,6 +484,15 @@ export function formatResult(result: VerificationOutput): string {
  */
 export function formatProofHeader(filename: string): string {
   return `\n=== ${safe(filename)} ===`;
+}
+
+/**
+ * ZIP 内の `*_proof.json` が proof として読めなかったときの 1 行 (#292)。
+ * 理由は shared が返すコードで、未信頼の文字列は含まないが、出力の形は他の失敗行と揃える。
+ */
+export function formatUnreadableProof(reason: ProofExtractionFailureReason): string {
+  const text = reason === 'invalid-json' ? 'invalid JSON' : 'valid JSON but not a proof (no "proof" object)';
+  return c('red', `✗ Could not read proof: ${text}`);
 }
 
 /**
