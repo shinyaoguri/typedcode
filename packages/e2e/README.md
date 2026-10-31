@@ -13,10 +13,11 @@ Playwright (Chromium) でシナリオ実行 → export → verify-cli で検証
   ② 記録イベント列がシナリオ台本と一致すること (--analysis-json で機械判定)
 ```
 
-Playwright の `webServer` が 2 つのローカルサーバを自動起動する:
+Playwright の `webServer` が 3 つのローカルサーバを自動起動する:
 
 - **workers** (`wrangler dev` :8787) — `/api/session/start`・`/api/verify-captcha`・署名 CP
 - **editor** (`vite dev` :5173) — テスト対象アプリ
+- **verify** (`vite dev` :5174) — 検証 Web。export した ZIP を入れて、判定を data-* の状態契約で読む
 
 `editor/.env` は Cloudflare の Turnstile **テストキー** (`1x00000000000000000000AA` =
 常に pass) と `VITE_API_URL=http://localhost:8787` を指すので、追加設定なしで
@@ -52,7 +53,8 @@ npm run report -w @typedcode/e2e        # 直近の HTML レポート (trace 付
 そのため [playwright.build.config.ts](playwright.build.config.ts) を別に持ち、
 `vite build` → `vite preview` (:4173) に対して
 [tests/production-build.spec.ts](tests/production-build.spec.ts) だけを走らせる
-(`npm run test:build`)。既定の `playwright.config.ts` は `testIgnore` でこの spec を
+(`npm run test:build`)。verify も build し、deploy と同じく editor の dist の `verify/` に
+重ねて ([scripts/stage-verify-dist.mjs](scripts/stage-verify-dist.mjs)) `/verify/` で開く。既定の `playwright.config.ts` は `testIgnore` でこの spec を
 外しているので、dev 向けシナリオの挙動は変わらない。
 
 ## CI / 環境の用意
@@ -67,8 +69,10 @@ CI には `.dev.vars` も `editor/.env` も存在しない (gitignore)。`npm ru
 秘密情報は一切コミットしない。**ローカルに既存の `.dev.vars` があれば何もしない**
 ので、開発者の skip-worktree な checkpoint 鍵 / Turnstile 設定を壊さない。
 
-CI ジョブは `.github/workflows/deploy.yml` の `e2e`。`deploy-preview` /
-`deploy-staging` / `deploy-production` は `[test, check, e2e]` でゲートされる。
+CI ジョブは `.github/workflows/deploy.yml` の `e2e-shard` (Playwright の `--shard` で 2 分割した
+matrix。`test:build` は shard 1 だけ) と、全 shard の成功を要求する集約 job `e2e`。
+`deploy-preview` / `deploy-staging` / `deploy-production` は `[test, check, e2e]` でゲートされ、
+main ruleset の required check も `e2e`。
 
 ## verify-cli の起動
 
@@ -117,6 +121,17 @@ shared の main が raw TypeScript のため `node dist/cli.js` は動かない
 > bulk 検出を素通り) を発見し `shared` で修正した。内部ペースト (自分のコード) は監査マーカーと
 > 同一内容を許可リスト化して誤検知を回避。AI 一括投入を実ブラウザで再現するため editor に
 > dev 限定フック `__tcTestInsertBlock` (本番ビルドで除去) を追加。
+
+**Phase E (検証 Web, #346)**
+
+| ファイル | 検証内容 |
+|---|---|
+| verify-web.spec.ts | export ZIP を検証 Web に入れ、data-* の状態契約 (status / integrity / temporal / pure-typing / 総合判定) が同じ ZIP に対する verify-cli の判定と一致する。改ざん ZIP は Web も CLI も拒否。正常 + 改ざんを一度に入れて判定が混ざらない (#215)。壊れた `*_proof.json` 入りの ZIP は既知バグ #292 として `test.fixme` |
+| production-build.spec.ts | 本番ビルドの verify (`/verify/`) が proof を読んで状態契約の属性を出す |
+
+> Web↔CLI で比べられるのは合否 (`data-status` error ⇔ CLI の `valid=false`、総合判定 failed も同じ軸) と
+> 三層保証 (`--analysis-bundle` の assurance)。success / warning・verified / partial の区別は Web だけの
+> TrustCalculator の導出で、CLI に対応する出力が無いので比べていない。
 
 残り (フルスクリーン = exam ゲート + .tcexam fixture / Turnstile 失敗分岐 / staging カナリア /
 ブラウザマトリクス) は今後。macOS ネイティブ全画面・実 Turnstile チャレンジ・実ディスプレイの
