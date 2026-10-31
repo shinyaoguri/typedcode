@@ -18,7 +18,8 @@ model: opus
 - **不変条件に触れる変更はしない**: ハッシュチェーンの決定的シリアライズ、`POSW_ITERATIONS`、`PROOF_FORMAT_VERSION`、Event #0 (`humanAttestation`)、署名の冪等性、append-only 鍵レジストリなど (各パッケージ AGENTS.md 参照)。抵触しそうなら実装せず、その旨を報告する
 - テストは [packages/shared/AGENTS.md](../../packages/shared/AGENTS.md) のテスト規約に従う: テスト名は「何を保証するか」を英語 1 文で・1 不変条件 = 1 ケース・純粋関数はモックしない・時計/乱数は注入可能にする
 - i18n キーを足すときは `translations/{ja,en}.ts` と `types.ts` を同時更新する
-- 完了前に `npm run lint` と、触ったパッケージの `npm run test:run -w <pkg>` を実行して green を確認する
+- [CONTRIBUTING.md の「完了の定義」](../../CONTRIBUTING.md) に従ってテストを足す: ロジックはユニットテスト、UI の振る舞いを変える / 足すなら `packages/e2e/tests/` に E2E を 1 本以上 (検査は `data-*` の状態契約で)、バグ修正は再現テストが赤くなるのを見てから直す
+- 完了前に `npm run check:fast` (typecheck → lint → lint:workflows → カバレッジ付きユニットテスト → require-tests のテスト) を green にする。UI を触ったら E2E を含む `npm run check` まで回す。カバレッジが上がったら `npm run coverage:ratchet` で床を引き上げ、その差分も変更に含める
 
 ## 報告形式
 
