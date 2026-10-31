@@ -119,3 +119,49 @@ describe('CORS allowed-origin policy', () => {
     });
   });
 });
+
+// ---- セキュリティヘッダ (#285 w4) ----
+describe('security headers', () => {
+  const env = () => baseEnv({ ALLOWED_ORIGINS: 'https://app.example.com' });
+  const EXPECTED = {
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+  } as const;
+
+  function expectSecurityHeaders(res: Response): void {
+    for (const [name, value] of Object.entries(EXPECTED)) {
+      expect(res.headers.get(name), name).toBe(value);
+    }
+  }
+
+  it('is set on a CORS preflight (204)', async () => {
+    const res = await worker.fetch(preflight('https://app.example.com'), env());
+    expect(res.status).toBe(204);
+    expectSecurityHeaders(res);
+  });
+
+  it('is set on /health', async () => {
+    const res = await worker.fetch(new Request('https://api.test/health'), env());
+    expect(res.status).toBe(200);
+    expectSecurityHeaders(res);
+  });
+
+  it('is set on a 404', async () => {
+    const res = await worker.fetch(new Request('https://api.test/nope'), env());
+    expect(res.status).toBe(404);
+    expectSecurityHeaders(res);
+  });
+
+  it('is set on public-keys while keeping its Cache-Control and the CORS headers', async () => {
+    const res = await worker.fetch(
+      new Request('https://api.test/api/checkpoint/public-keys', { headers: { Origin: 'https://app.example.com' } }),
+      env()
+    );
+    expect(res.status).toBe(200);
+    expectSecurityHeaders(res);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=3600');
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example.com');
+    expect(res.headers.get('Vary')).toBe('Origin');
+  });
+});

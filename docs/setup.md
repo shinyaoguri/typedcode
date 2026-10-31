@@ -188,6 +188,14 @@ wrangler login
 
 `.dev.vars` の keyId が `packages/shared/src/checkpointKeys/{registry,localKeys}.ts` のいずれにも存在しない状態。Step 5 で `LOCAL_CHECKPOINT_PUBLIC_KEYS` に対応する公開鍵 entry を append したか確認。
 
+### 署名 API が `SIGNING_KEY_MISMATCH`
+
+`.dev.vars` の `CHECKPOINT_SIGNING_KEY_JWK` が、`CHECKPOINT_SIGNING_KEY_ID` に対応するレジストリの公開鍵と対になっていない状態。Step 5 で生成した keyId・公開鍵・秘密鍵の 3 点が同じ実行のものか確認する (鍵をやり直したら 3 点とも差し替える。同じ keyId のまま JWK だけ替えない)。
+
+### 署名 API が `SIGNING_KEY_INVALID`
+
+レジストリ上の署名鍵が現時点で無効 (`status: 'revoked'` / `validFrom` が未来 / `validUntil` が過去 / 日時の typo)。`localKeys.ts` の該当エントリの日時と `status` を確認する。原因の詳細は Worker のログに出る。
+
 ### 検証で envelope の署名検証失敗
 
 サーバ (Worker) と検証側 (verify) の鍵対が一致していない可能性。Step 5 を再度実行して鍵対を作り直す。

@@ -37,6 +37,10 @@ describe('fetch top-level guard', () => {
     expect(res.headers.get('Content-Type')).toBe('application/json');
     const body = (await res.json()) as { success: boolean };
     expect(body.success).toBe(false);
+    // 最終防衛の 500 にもセキュリティヘッダが付く (#285 w4)
+    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
+    expect(res.headers.get('Content-Security-Policy')).toBe("default-src 'none'; frame-ancestors 'none'");
   });
 
   it('serves /health normally with the guard in place (no behavior change on the happy path)', async () => {

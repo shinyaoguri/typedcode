@@ -2,26 +2,46 @@
  * /api/session/start (ADR-0017) ハンドラのフローテスト。
  *
  * - Turnstile siteverify はグローバル fetch をモックして成功/失敗を注入する。
- * - 署名鍵は ECDSA-P256 を都度生成し、registry の既存 keyId に紐付けて使う
- *   (handler フロー検証には十分。署名そのものの registry 照合は shared 側でテスト済み)。
+ * - 署名鍵は ECDSA-P256 を都度生成し、その公開鍵を registry に載せて使う。getSigningKey は
+ *   env の秘密 JWK と registry の公開鍵が対であることを検査する (#285) ので、本番 registry の
+ *   keyId に別鍵を紐付ける従来のやり方は使えない。`CHECKPOINT_PUBLIC_KEYS` を差し替え可能な
+ *   配列に置き換え (vi.mock)、テストごとに push / splice する。
  */
 
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest';
+import type { CheckpointPublicKey } from '@typedcode/shared/checkpoint';
+
+const hoisted = vi.hoisted(() => ({ registry: [] as unknown[] }));
+
+vi.mock('@typedcode/shared/checkpoint', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@typedcode/shared/checkpoint')>();
+  return { ...actual, CHECKPOINT_PUBLIC_KEYS: hoisted.registry as readonly CheckpointPublicKey[] };
+});
+
 import worker from '../index.js';
 
 type TestEnv = Parameters<typeof worker.fetch>[1];
 
-/** registry.ts に append 済みの本番 keyId */
-const REGISTERED_KEY_ID = 'tcp-202605-fd6d42';
+/** テスト用 registry に載せる署名鍵の keyId */
+const REGISTERED_KEY_ID = 'tcp-test-session-start';
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
+const registry = hoisted.registry as CheckpointPublicKey[];
 let signingJwk: string;
+let registryEntry: CheckpointPublicKey;
 const originalFetch = globalThis.fetch;
 
 beforeAll(async () => {
   const keyPair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   signingJwk = JSON.stringify(await crypto.subtle.exportKey('jwk', keyPair.privateKey));
+  registryEntry = {
+    keyId: REGISTERED_KEY_ID,
+    algorithm: 'ECDSA-P256',
+    publicKeyJwk: await crypto.subtle.exportKey('jwk', keyPair.publicKey),
+    status: 'active',
+    validFrom: '2026-01-01T00:00:00.000Z',
+  };
 });
 
 afterAll(() => {
@@ -39,6 +59,11 @@ function mockTurnstile(success: boolean, hostname = 'typedcode.dev', action = 'c
 
 beforeEach(() => {
   mockTurnstile(true);
+  registry.splice(0, registry.length, registryEntry);
+});
+
+afterEach(() => {
+  registry.splice(0, registry.length);
 });
 
 function makeEnv(overrides: Partial<Record<string, string>> = {}): TestEnv {
@@ -148,5 +173,28 @@ describe('handleSessionStart (POST /api/session/start)', () => {
     const env = makeEnv({ CHECKPOINT_SIGNING_KEY_JWK: undefined });
     const res = await worker.fetch(sessionStartReq(validBody), env);
     expect(res.status).toBe(500);
+  });
+
+  it('returns 500 with a fixed message when the env private key is not the registry key pair', async () => {
+    // registry の公開鍵と対にならない秘密鍵で token を署名すると、検証側で全 token が無効になる。
+    const other = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+    const otherJwk = JSON.stringify(await crypto.subtle.exportKey('jwk', other.privateKey));
+    const res = await worker.fetch(sessionStartReq(validBody), makeEnv({ CHECKPOINT_SIGNING_KEY_JWK: otherJwk }));
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as SessionStartResponse;
+    expect(body.success).toBe(false);
+    expect(body.message).toBe('Signing key is not available');
+  });
+
+  it('returns 500 with a fixed message when the signing key is revoked in the registry', async () => {
+    registry.splice(0, registry.length, {
+      ...registryEntry,
+      status: 'revoked',
+      revokedAt: '2026-02-01T00:00:00.000Z',
+    });
+    const res = await worker.fetch(sessionStartReq(validBody), makeEnv());
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as SessionStartResponse;
+    expect(body.message).toBe('Signing key is not available');
   });
 });

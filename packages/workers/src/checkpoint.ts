@@ -13,6 +13,7 @@
 
 import {
   CHECKPOINT_PUBLIC_KEYS,
+  checkRegistryKeyValidityAt,
   createSignedCheckpointEnvelope,
   findCheckpointPublicKey,
   isIdempotentSigningRetry,
@@ -20,6 +21,7 @@ import {
   verifySessionStartToken,
 } from '@typedcode/shared/checkpoint';
 import type { CheckpointPublicKey, SessionStartToken, SignedCheckpointEnvelope } from '@typedcode/shared/checkpoint';
+import { MAX_JSON_BODY_BYTES, readJsonBodyLimited } from './body.js';
 
 export interface CheckpointEnv {
   CHECKPOINT_SESSIONS: KVNamespace;
@@ -90,7 +92,10 @@ function tabRegistryKey(sessionId: string): string {
  *  「古いセッション後付け改竄」攻撃の窓を短く保つ目的。 */
 const SESSION_TTL_SECONDS = 7 * 24 * 3600;
 
-/** 1 セッションあたり許容する最大 checkpoint 数 (DoS 防御の最後の砦) */
+/**
+ * 1 (sessionId, tabId) あたり許容する最大 checkpoint 数 (DoS 防御の最後の砦)。
+ * 名前は SESSION_ だが、KV record がタブ別 (`session:{sessionId}:{tabId}`) なのでタブ単位。
+ */
 const SESSION_MAX_CHECKPOINTS = 50_000;
 
 /**
@@ -101,10 +106,6 @@ const SESSION_MAX_CHECKPOINTS = 50_000;
  * class バンドルの現実的な問題数 (≤30 程度) に大きく余裕を持たせた値。
  */
 const MAX_TABS_PER_SESSION = 64;
-
-/** 署名リクエスト body の最大サイズ (bytes)。固定スキーマの cp 1 件は ~1KB 程度。
- *  署名 API なので余裕を見つつ上限を設けて巨大 body をパース前に弾く。 */
-const MAX_BODY_BYTES = 8 * 1024;
 
 interface CorsResponder {
   cors(extraHeaders?: Record<string, string>): HeadersInit;
@@ -123,6 +124,8 @@ interface ErrorBody {
     | 'TAB_LIMIT_EXCEEDED'
     | 'SIGNING_KEY_NOT_CONFIGURED'
     | 'SIGNING_KEY_UNKNOWN'
+    | 'SIGNING_KEY_MISMATCH'
+    | 'SIGNING_KEY_INVALID'
     | 'SIGNING_ERROR'
     | 'SESSION_PERSIST_FAILED'
     | 'SESSION_STATE_UNAVAILABLE';
@@ -138,29 +141,84 @@ function jsonResponse(body: unknown, status: number, cors: HeadersInit): Respons
   });
 }
 
-let cachedPrivateKey: { keyId: string; key: CryptoKey } | null = null;
+let cachedPrivateKey: { keyId: string; jwkText: string; key: CryptoKey } | null = null;
+
+function signingKeyError(code: ErrorBody['code'], message: string, extra: Record<string, unknown> = {}): Error {
+  return Object.assign(new Error(message), { code }, extra);
+}
+
+/** JWK の公開鍵部分 (kty / crv / x / y) が一致するか。秘密成分 (d) は比較にも出力にも使わない。 */
+function samePublicKeyParts(a: JsonWebKey, b: JsonWebKey): boolean {
+  return a.kty === b.kty && a.crv === b.crv && a.x === b.x && a.y === b.y;
+}
 
 /**
- * checkpoint 署名鍵 (ECDSA-P256 private) をロードする。キャッシュあり。
+ * checkpoint 署名鍵 (ECDSA-P256 private) をロードする。
  * ADR-0017 の session/start トークン署名もこの鍵を流用する (運用一系統)。
+ *
+ * 署名の前に毎回、次を保証する (#285):
+ * - **registry に居る keyId であること** (キャッシュより前に判定する)
+ * - **registry エントリが今この時点で有効であること** (`status: revoked` / 有効期間外 / 日時不正は拒否)。
+ *   キャッシュヒット時も毎回判定する (isolate の寿命中に registry の有効期間が切れうる)
+ * - **env の秘密 JWK が registry の公開鍵と対であること** (JWK だけを別鍵に差し替えた運用ミスを
+ *   署名前に検知する。検証側は registry の公開鍵で検証するので、不一致のまま署名すると全 proof が壊れる)
+ *
+ * キャッシュは `keyId` と JWK 文字列の**両方**が一致するときだけ再利用する。ローテは必ず keyId の
+ * 変更を伴う (同一 keyId の JWK 差し替えはガードで 500)。
+ * (#321 で「自環境の鍵だけを許す」条件を足すときはこのガードの中に追加する。)
+ *
+ * エラーの `code` は `SIGNING_KEY_NOT_CONFIGURED` / `SIGNING_KEY_UNKNOWN` / `SIGNING_KEY_INVALID` /
+ * `SIGNING_KEY_MISMATCH`。JWK の parse / import 失敗は code なしで throw する (呼び出し側で SIGNING_ERROR)。
+ * keyId・理由は例外に載せるがログ専用で、JWK の値は例外にもログにも出さない。
  */
-export async function getSigningKey(env: CheckpointEnv): Promise<{ keyId: string; key: CryptoKey }> {
-  if (!env.CHECKPOINT_SIGNING_KEY_JWK || !env.CHECKPOINT_SIGNING_KEY_ID) {
-    throw Object.assign(new Error('Signing key not configured'), {
-      code: 'SIGNING_KEY_NOT_CONFIGURED',
+export async function getSigningKey(
+  env: CheckpointEnv,
+  registry: readonly CheckpointPublicKey[] = CHECKPOINT_PUBLIC_KEYS,
+  nowMs: number = Date.now()
+): Promise<{ keyId: string; key: CryptoKey }> {
+  const keyId = env.CHECKPOINT_SIGNING_KEY_ID;
+  const jwkText = env.CHECKPOINT_SIGNING_KEY_JWK;
+  if (!jwkText || !keyId) {
+    throw signingKeyError('SIGNING_KEY_NOT_CONFIGURED', 'Signing key not configured');
+  }
+
+  // registry を必ず明示して引く (省略すると shared 内部の registry を見てしまい、注入が効かない)。
+  const entry = findCheckpointPublicKey(keyId, registry);
+  if (!entry) {
+    throw signingKeyError('SIGNING_KEY_UNKNOWN', `Signing keyId not in registry: ${keyId}`);
+  }
+
+  const verdict = checkRegistryKeyValidityAt(entry, nowMs);
+  if (!verdict.ok) {
+    throw signingKeyError('SIGNING_KEY_INVALID', `Signing key ${keyId} is not valid now: ${verdict.code}`, {
+      reason: verdict.code,
+      ...(verdict.code === 'malformed-date' ? { field: verdict.field } : {}),
     });
   }
-  if (cachedPrivateKey && cachedPrivateKey.keyId === env.CHECKPOINT_SIGNING_KEY_ID) {
+  if (verdict.revokedAfterAnchor) {
+    // revokedAt が未来の鍵: 署名は許すが、失効が迫っているので運用者に気付かせる。
+    console.warn(`[checkpoint] signing key ${keyId} has a scheduled revokedAt; rotate before it takes effect`);
+  }
+
+  if (cachedPrivateKey && cachedPrivateKey.keyId === keyId && cachedPrivateKey.jwkText === jwkText) {
     return cachedPrivateKey;
   }
-  if (!findCheckpointPublicKey(env.CHECKPOINT_SIGNING_KEY_ID)) {
-    throw Object.assign(new Error(`Signing keyId not in registry: ${env.CHECKPOINT_SIGNING_KEY_ID}`), {
-      code: 'SIGNING_KEY_UNKNOWN',
-    });
+
+  let jwk: JsonWebKey;
+  try {
+    jwk = JSON.parse(jwkText) as JsonWebKey;
+  } catch {
+    // JSON.parse のエラー文には入力 (= 秘密鍵) の断片が含まれうるので、原因の例外は載せない。
+    throw new Error('Signing key JWK is not valid JSON');
   }
-  const jwk = JSON.parse(env.CHECKPOINT_SIGNING_KEY_JWK) as JsonWebKey;
+  if (!samePublicKeyParts(jwk, entry.publicKeyJwk)) {
+    throw signingKeyError(
+      'SIGNING_KEY_MISMATCH',
+      `Signing key JWK does not match the registry public key for keyId ${keyId}`
+    );
+  }
   const key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
-  cachedPrivateKey = { keyId: env.CHECKPOINT_SIGNING_KEY_ID, key };
+  cachedPrivateKey = { keyId, jwkText, key };
   return cachedPrivateKey;
 }
 
@@ -182,49 +240,22 @@ export async function handleSignCheckpoint(
   request: Request,
   env: CheckpointEnv,
   responder: CorsResponder,
-  /** テスト用: token 検証に使う公開鍵 registry の差し替え (既定は本番 registry)。 */
-  tokenKeyRegistry: readonly CheckpointPublicKey[] = CHECKPOINT_PUBLIC_KEYS
+  /** テスト用: token 検証と署名鍵ガードに使う公開鍵 registry の差し替え (既定は本番 registry)。 */
+  keyRegistry: readonly CheckpointPublicKey[] = CHECKPOINT_PUBLIC_KEYS
 ): Promise<Response> {
-  // body サイズ上限: まず Content-Length があればパース前に弾く (巨大 body の DoS 対策)。
-  const contentLength = Number(request.headers.get('Content-Length') ?? '');
-  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
-    return jsonResponse(
-      { error: `Request body exceeds ${MAX_BODY_BYTES} bytes`, code: 'SCHEMA_INVALID' } satisfies ErrorBody,
-      400,
-      responder.cors()
-    );
+  // 本文は読み込み中に上限 (MAX_JSON_BODY_BYTES) を強制する。Content-Length の欠落・詐称・chunked でも
+  // 実バイトで打ち切り、巨大 body を全部バッファしてから弾くことはしない (#285)。
+  const read = await readJsonBodyLimited(request);
+  if (!read.ok) {
+    const error =
+      read.kind === 'too_large'
+        ? `Request body exceeds ${MAX_JSON_BODY_BYTES} bytes`
+        : read.kind === 'invalid_json'
+          ? 'Invalid JSON body'
+          : 'Invalid request body';
+    return jsonResponse({ error, code: 'SCHEMA_INVALID' } satisfies ErrorBody, 400, responder.cors());
   }
-
-  // 本文を読み、Content-Length が欠落/詐称/chunked でも **実バイト長** で上限を強制する。
-  // (Number('') === 0 や NaN で上の事前チェックを擦り抜けるケースの保険。)
-  let bodyText: string;
-  try {
-    bodyText = await request.text();
-  } catch {
-    return jsonResponse(
-      { error: 'Invalid request body', code: 'SCHEMA_INVALID' } satisfies ErrorBody,
-      400,
-      responder.cors()
-    );
-  }
-  if (new TextEncoder().encode(bodyText).length > MAX_BODY_BYTES) {
-    return jsonResponse(
-      { error: `Request body exceeds ${MAX_BODY_BYTES} bytes`, code: 'SCHEMA_INVALID' } satisfies ErrorBody,
-      400,
-      responder.cors()
-    );
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(bodyText);
-  } catch {
-    return jsonResponse(
-      { error: 'Invalid JSON body', code: 'SCHEMA_INVALID' } satisfies ErrorBody,
-      400,
-      responder.cors()
-    );
-  }
+  const parsed = read.value;
 
   const validation = validateSignedCheckpointInput(parsed);
   if (!validation.ok) {
@@ -253,7 +284,7 @@ export async function handleSignCheckpoint(
   }
   let tokenResult: Awaited<ReturnType<typeof verifySessionStartToken>>;
   try {
-    tokenResult = await verifySessionStartToken(sessionStartToken, tokenKeyRegistry);
+    tokenResult = await verifySessionStartToken(sessionStartToken, keyRegistry);
   } catch (err) {
     console.error('[checkpoint] session token verification threw:', err);
     tokenResult = { valid: false, reason: 'Malformed session token' };
@@ -278,10 +309,10 @@ export async function handleSignCheckpoint(
     );
   }
 
-  // 鍵を解決 (キャッシュあり)
+  // 鍵を解決 (registry との整合・有効性を毎回確認。秘密鍵のインポートだけキャッシュ)
   let signer: { keyId: string; key: CryptoKey };
   try {
-    signer = await getSigningKey(env);
+    signer = await getSigningKey(env, keyRegistry);
   } catch (err) {
     const code = (err as { code?: ErrorBody['code'] }).code ?? 'SIGNING_ERROR';
     // 内部例外メッセージ (keyId / JWK パーサのテキスト等) はクライアントに返さず、
