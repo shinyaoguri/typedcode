@@ -215,3 +215,39 @@ describe('verifyExamBinding (v2 bundle)', () => {
     expect(result.reason).toContain('not an exam bundle');
   });
 });
+
+describe('verifyExamBinding (v2 bundle) — identifier consistency (#273)', () => {
+  it('fails when proof.exam.examId differs from the manifest, even though the bundle lookup passes', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(0);
+    const altered = { ...proof, exam: { ...proof.exam, examId: 'other-exam' } };
+    const result = await verifyExamBinding(altered as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.identifiersMatch).toBe(false);
+    expect(result.reason).toContain('examId');
+  });
+
+  it('fails when proof.exam.variant differs from the manifest', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(0);
+    const altered = { ...proof, exam: { ...proof.exam, variant: 'B' } };
+    const result = await verifyExamBinding(altered as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('variant');
+  });
+
+  it('does not compare problemId with the manifest (v2 manifest.problemId is a label, not the problem)', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(1);
+    // sample package の manifest.problemId ('p1') は p2 の proof と食い違うが、v2 では正常
+    expect(manifest.problemId).not.toBe(proof.exam.problemId);
+    const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.identifiersMatch).toBe(true);
+    // 検証済みの problemId は bundle 検索で保護された proof 側の値 (manifest の固定ラベルではない)
+    expect(result.verifiedIds).toEqual({ examId: manifest.examId, problemId: 'p2', variant: null });
+  });
+});

@@ -39,6 +39,8 @@ export type {
   ExamPackageSignatureResult,
   ExamTimeBox,
   ExamBindingVerificationResult,
+  ExamIdentifierName,
+  ExamVerifiedIdentifiers,
   VerifyExamBindingOptions,
   BuildExamProofBlockInput,
 } from './examPackage.js';

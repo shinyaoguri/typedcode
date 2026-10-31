@@ -834,8 +834,7 @@ export class ResultPanel {
       return;
     }
     this.cardExamBinding.style.display = 'block';
-    const variant = eb.variant ? ` / ${eb.variant}` : '';
-    this.examProblem.textContent = `${eb.examId} / ${eb.problemId}${variant}`;
+    this.examProblem.textContent = buildExamIdentifierLabel(eb);
     this.setExamPassFail(this.examRoot, eb.rootValid);
 
     const b = eb.binding;
@@ -1616,6 +1615,21 @@ export class ResultPanel {
       </div>
     `;
   }
+}
+
+/**
+ * 試験束縛カードの「問題」行の文言を組み立てる (#273)。`renderExamBindingCard` の純粋部分。
+ *
+ * 束縛が合格したときだけ検証済み manifest の識別子を表示する。package 未提供・束縛失敗では
+ * proof の自己申告値なので、検証済みに見せないよう「自己申告・未検証」を添える。
+ * 戻り値は textContent に入れる (HTML ではない)。
+ */
+export function buildExamIdentifierLabel(eb: NonNullable<ResultData['examBinding']>): string {
+  const verified = eb.binding?.valid ? eb.binding.verifiedIds : undefined;
+  const ids = verified ?? eb;
+  const variant = ids.variant ? ` / ${ids.variant}` : '';
+  const label = `${ids.examId} / ${ids.problemId}${variant}`;
+  return verified ? label : `${label} (${t('result.examSelfReported')})`;
 }
 
 /**

@@ -175,4 +175,81 @@ describe('verifyExamBinding', () => {
     expect(result.packageHashMatches).toBe(false);
     expect(result.valid).toBe(false);
   });
+
+  // #273: proof.exam の識別子 (examId / variant / v1 problemId) は proof 側の自己申告で、
+  // 暗号的束縛 (packageHash / root / 内容ハッシュ) の外にある。manifest と照合して、
+  // 表示・採点先の振り分けが未検証の識別子に依存しないようにする。
+  describe('identifier consistency (#273)', () => {
+    async function bindWith(mutate: (exam: ExamProofBlock) => ExamProofBlock, opts: SamplePackageOptions = {}) {
+      const { proof, manifest, registry } = await makeExamProof(opts);
+      const altered = { ...proof, exam: mutate(proof.exam) };
+      return verifyExamBinding(altered as unknown as BindingArg, manifest, { examAuthorityRegistry: registry });
+    }
+
+    it('reports identifiersMatch and the verified identifiers from the manifest for a consistent proof', async () => {
+      const { proof, manifest, registry } = await makeExamProof({ variant: 'A' });
+      const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {
+        examAuthorityRegistry: registry,
+      });
+      expect(result.valid).toBe(true);
+      expect(result.identifiersMatch).toBe(true);
+      expect(result.verifiedIds).toEqual({ examId: 'exam-1', problemId: 'p1', variant: 'A' });
+    });
+
+    it('fails when proof.exam.examId differs from the manifest', async () => {
+      const result = await bindWith((e) => ({ ...e, examId: 'other-exam' }));
+      expect(result.valid).toBe(false);
+      expect(result.identifiersMatch).toBe(false);
+      expect(result.reason).toContain('examId');
+      expect(result.verifiedIds).toBeUndefined();
+    });
+
+    it('fails when proof.exam.variant differs from a non-null manifest variant', async () => {
+      const result = await bindWith((e) => ({ ...e, variant: 'B' }), { variant: 'A' });
+      expect(result.valid).toBe(false);
+      expect(result.identifiersMatch).toBe(false);
+      expect(result.reason).toContain('variant');
+    });
+
+    it('fails when the proof claims a variant but the manifest has none (null)', async () => {
+      const result = await bindWith((e) => ({ ...e, variant: 'A' }));
+      expect(result.valid).toBe(false);
+      expect(result.identifiersMatch).toBe(false);
+      expect(result.reason).toContain('variant');
+    });
+
+    it('fails when the proof drops the variant of a variant-bound manifest', async () => {
+      const result = await bindWith((e) => ({ ...e, variant: null }), { variant: 'A' });
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('variant');
+    });
+
+    it('treats an absent (undefined) proof variant the same as null', async () => {
+      const result = await bindWith((e) => {
+        const { variant: _variant, ...rest } = e;
+        return rest as unknown as ExamProofBlock;
+      });
+      expect(result.valid).toBe(true);
+      expect(result.identifiersMatch).toBe(true);
+      expect(result.verifiedIds?.variant).toBeNull();
+    });
+
+    it('fails when a v1 proof.exam.problemId differs from the manifest', async () => {
+      const result = await bindWith((e) => ({ ...e, problemId: 'other-problem' }));
+      expect(result.valid).toBe(false);
+      expect(result.identifiersMatch).toBe(false);
+      expect(result.reason).toContain('problemId');
+    });
+
+    it('does not reach the identifier check when the package signature is already invalid', async () => {
+      const { proof, manifest } = await makeExamProof();
+      const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {
+        examAuthorityRegistry: [],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.packageSignatureValid).toBe(false);
+      expect(result.identifiersMatch).toBe(false);
+      expect(result.verifiedIds).toBeUndefined();
+    });
+  });
 });

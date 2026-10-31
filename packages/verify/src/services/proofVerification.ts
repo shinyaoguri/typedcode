@@ -151,6 +151,7 @@ export async function runProofVerification(
         packageHashMatches: false,
         rootMatches: false,
         problemContentHashMatches: false,
+        identifiersMatch: false,
         timeBox: null,
         reason: `Exam binding verification threw: ${err instanceof Error ? err.message : String(err)}`,
       };

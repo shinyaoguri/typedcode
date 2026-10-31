@@ -142,6 +142,7 @@ initialEventChainHash = SHA256(fingerprintHash ‖ localNonce ‖ packageHash �
 2. `packageHash` 再計算 = `proof.exam.packageHash` → この問題に束縛
 3. root 再計算 (fingerprintHash, localNonce, packageHash, **`proof.exam.startToken`**) = `initialEventChainHash` → **T0 以降に開始** (token は proof 同梱なので out-of-band 不要・self-contained)
 4. `startToken` で package を復号 → 平文 `problemContentHash` = `proof.exam.problemContentHash` → 答案はこの問題のもの
+4b. (#273) `proof.exam` の `examId` / `variant` (v1 は `problemId` も) を署名済み manifest と照合 → 不一致なら束縛失敗。これらは hash の外にある自己申告なので、表示・採点先の振り分けは合格時の `verifiedIds` を使う (v2 の `problemId` は 4 の bundle 検索が保護するので manifest とは照合しない)
 5. 既存のチェーン/PoSW/署名 cp 検証
 6. time-box: T0(package) ≤ 作業 ≤ Moodle 提出
 7. (後段・pluggable) 転写/挙動分析

@@ -167,6 +167,7 @@ export const en: VerifyTranslationKeys = {
     // Exam binding (ADR-0006)
     examBinding: 'Exam binding',
     examProblem: 'Problem',
+    examSelfReported: 'self-reported, unverified',
     examRootBinding: 'Root binding',
     examSignature: 'Package signature',
     examPackageHash: 'Package hash',

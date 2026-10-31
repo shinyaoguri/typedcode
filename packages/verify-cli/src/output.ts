@@ -161,10 +161,12 @@ function formatExamSection(exam: CLIExamResult, lines: string[]): void {
     return;
   }
 
-  // examId / problemId / variant は proof の自己申告 (#273 で manifest 突合を検討中)。
-  // 突合前でも「壊れた文字を出さない」ことだけは境界で保証する (#266)。
+  // examId / problemId / variant: 束縛検証に合格したときだけ検証済み manifest の値 (#273)。
+  // package 未提供・束縛失敗のときは proof の自己申告なので、検証済みに見せないよう明示する。
+  // 値は境界で safe() を通す (#266)。
   const variant = exam.variant ? ` / ${safe(exam.variant)}` : '';
-  lines.push(`Exam:         ${safe(exam.examId)} / ${safe(exam.problemId)}${variant}`);
+  const selfReported = exam.identifiersVerified ? '' : `  ${c('yellow', '(self-reported)')}`;
+  lines.push(`Exam:         ${safe(exam.examId)} / ${safe(exam.problemId)}${variant}${selfReported}`);
   // root 束縛は proof 自己完結 (package 不要)。
   lines.push(`Root binding: ${passFail(exam.rootBindingValid)}  ${c('dim', '(answer bound to package + T0)')}`);
 
@@ -178,6 +180,9 @@ function formatExamSection(exam: CLIExamResult, lines: string[]): void {
   lines.push(`Signature:    ${passFail(b.packageSignatureValid)}`);
   lines.push(`Package hash: ${passFail(b.packageHashMatches)}`);
   lines.push(`Content hash: ${passFail(b.problemContentHashMatches)}`);
+  lines.push(
+    `Identifiers:  ${passFail(b.identifiersMatch)}  ${c('dim', '(examId / variant / problemId match the package)')}`
+  );
   if (b.timeBox) {
     const tb = b.timeBox;
     lines.push(`Time-box:     ${safe(tb.releaseTime)} … ${safe(tb.deadline)}`);

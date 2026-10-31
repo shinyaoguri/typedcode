@@ -42,9 +42,15 @@ export type { ProofFile };
 export type CLIExamResult =
   | {
       present: true;
+      /**
+       * 試験の識別子。`identifiersVerified` が true のときは検証済み manifest の値、false のときは
+       * proof の**自己申告**値 (#273)。検証済みに見せないこと。
+       */
       examId: string;
       problemId: string;
       variant: string | null;
+      /** 識別子が束縛検証 (署名済み package との照合) を通った値か。package 未提供・束縛失敗では false */
+      identifiersVerified: boolean;
       packageProvided: boolean;
       rootBindingValid: boolean;
       binding?: ExamBindingVerificationResult;
@@ -201,11 +207,15 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
   // 黙って無視すると採点者に何も見えないまま exit 0 で通る。
   let exam: CLIExamResult | undefined;
   if (proof.exam) {
+    // #273: 束縛が合格したときだけ検証済み manifest 側の識別子を載せる。それ以外 (package 未提供・
+    // 束縛失敗) は proof の自己申告値のままで、identifiersVerified=false で区別する。
+    const verifiedIds = binding?.valid ? binding.verifiedIds : undefined;
     exam = {
       present: true,
-      examId: proof.exam.examId,
-      problemId: proof.exam.problemId,
-      variant: proof.exam.variant,
+      examId: verifiedIds?.examId ?? proof.exam.examId,
+      problemId: verifiedIds?.problemId ?? proof.exam.problemId,
+      variant: verifiedIds ? verifiedIds.variant : (proof.exam.variant ?? null),
+      identifiersVerified: verifiedIds !== undefined,
       packageProvided: !!options.examPackageManifest,
       rootBindingValid: result.rootValid ?? false,
       binding,

@@ -153,6 +153,8 @@ export type {
   ExamPackageSignatureResult,
   ExamTimeBox,
   ExamBindingVerificationResult,
+  ExamIdentifierName,
+  ExamVerifiedIdentifiers,
   VerifyExamBindingOptions,
   BuildExamProofBlockInput,
 } from './exam/index.js';
