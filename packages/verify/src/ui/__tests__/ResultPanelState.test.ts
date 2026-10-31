@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * 結果パネルの判定の状態契約 (verify/CLAUDE.md「状態契約 (data-* 属性)」, ADR-0034)。
+ * 結果パネルの判定の状態契約 (verify/AGENTS.md「状態契約 (data-* 属性)」, ADR-0034)。
  *
  * E2E は翻訳テキストや色クラスではなく、ここで固定する data-* を読んで判定を assert する。
  * 色クラスは整合性 partial と時刻アンカー partial がどちらも `warning` で区別できないため、

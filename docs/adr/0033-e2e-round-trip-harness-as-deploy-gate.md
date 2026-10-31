@@ -72,7 +72,7 @@ TypedCode の価値は「キーストロークの証明が本当に検証を通�
 
 ## References
 
-- [packages/e2e/CLAUDE.md](../../packages/e2e/CLAUDE.md) — 不変条件と罠 (本 ADR の運用面の正本)
+- [packages/e2e/AGENTS.md](../../packages/e2e/AGENTS.md) — 不変条件と罠 (本 ADR の運用面の正本)
 - [.github/workflows/deploy.yml](../../.github/workflows/deploy.yml) — `e2e` job と `needs: [test, check, e2e]`
 - `packages/e2e/tests/helpers/verifyCli.ts`, `packages/e2e/scripts/setup-env.mjs`
 - [ADR-0018](0018-istrusted-capture.md) — 合成打鍵の扱い (負のシナリオの根拠)

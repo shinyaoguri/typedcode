@@ -19,7 +19,7 @@ import { VerifyWebApp } from './helpers/verifyWeb.js';
  * オラクルは「console / pageerror が出ない」「Monaco が実際にマウントされる」
  * 「打鍵がエディタに入る」の 3 点と、verify の本番ビルド (`/verify/` 配下) が proof を読んで
  * 状態契約の属性を出すこと。重い round-trip と判定の中身 (Web↔CLI パリティ) は dev 側の
- * spec (verify-web.spec.ts) が担うので、ここには増やさない (CLAUDE.md「CI 時間を意識」)。
+ * spec (verify-web.spec.ts) が担うので、ここには増やさない (AGENTS.md「CI 時間を意識」)。
  * dist には dev フックが無いので、dev 限定 API に依存しないこと。
  */
 test('production build: エディタが console エラーなくマウントし打鍵できる', async ({ page }) => {

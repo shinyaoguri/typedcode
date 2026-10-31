@@ -9,7 +9,7 @@ import { defineConfig, devices } from '@playwright/test';
  * E2E_VERIFY_PORT で上書き可能):
  *   - workers (wrangler dev 既定 :8787): /api/session/start・/api/verify-captcha・署名 CP
  *   - editor  (vite dev   既定 :5173): テスト対象アプリ (use.baseURL)
- *   - verify  (vite dev   既定 :5174): 検証 Web。Workers は呼ばない (verify/CLAUDE.md)。
+ *   - verify  (vite dev   既定 :5174): 検証 Web。Workers は呼ばない (verify/AGENTS.md)。
  *     URL は helpers/verifyWeb.ts が E2E_VERIFY_URL から組み立てる (baseURL は editor のまま)
  *
  * editor/.env は既に Cloudflare の Turnstile テストキー (1x...AA = 常に pass) と

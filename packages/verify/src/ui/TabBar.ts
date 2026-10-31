@@ -194,7 +194,7 @@ export class TabBar {
     const tabEl = document.createElement('div');
     tabEl.className = `tab${tab.id === this.activeTabId ? ' active' : ''}`;
     tabEl.dataset.id = tab.id;
-    // 状態契約 (verify/CLAUDE.md): status は VerificationController が決めた値をそのまま出す。
+    // 状態契約 (verify/AGENTS.md): status は VerificationController が決めた値をそのまま出す。
     tabEl.dataset.status = tab.status;
     tabEl.dataset.filename = tab.filename;
 

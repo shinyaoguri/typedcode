@@ -3,7 +3,7 @@
  *
  * **検証そのものは shared の `verifyProofFile` に全面委譲する** (#211)。ここは
  * 「shared の結果を UI 型 (VerificationResultData) に写す」だけのアダプタで、判定ロジックを
- * 書かない (verify/CLAUDE.md の不変条件: shared の検証ロジックを再実装しない)。
+ * 書かない (verify/AGENTS.md の不変条件: shared の検証ロジックを再実装しない)。
  *
  * 過去にここでレイヤを再合成していたため、
  * - `sessionStartToken` ↔ 署名 cp の sessionId 突合 (spec §6.3) が web だけ欠落

@@ -10,7 +10,7 @@ import { runVerifyCliWithAnalysis } from './helpers/verifyCli.js';
  *
  * verify-cli は既定の full モード (PoSW 全再計算) のまま実行する。E2E 全体で
  * 唯一の full positive control であり、他の spec が --mode fast に寄せても
- * PoSW を含む完全検証経路はここで担保される (CLAUDE.md 不変条件 4)。
+ * PoSW を含む完全検証経路はここで担保される (AGENTS.md 不変条件 4)。
  */
 test('casual: 打鍵→export→CLI 検証が pass する', async ({ page }) => {
   const app = new EditorApp(page);

@@ -438,6 +438,6 @@ CF Pages API が非 ASCII コミットメッセージを弾くケース。`deplo
 ## 関連ドキュメント
 
 - [README.md](../README.md) — プロジェクト概要
-- [CLAUDE.md](../CLAUDE.md) — リポジトリ全体の玄関口
-- [packages/workers/CLAUDE.md](../packages/workers/CLAUDE.md) — Workers サブシステムの責務と不変条件
+- [AGENTS.md](../AGENTS.md) — リポジトリ全体の玄関口
+- [packages/workers/AGENTS.md](../packages/workers/AGENTS.md) — Workers サブシステムの責務と不変条件
 - [docs/system-spec.md](system-spec.md) — システム仕様

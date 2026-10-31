@@ -33,6 +33,7 @@
           - ".node-version"
           - "package.json"
           - "package-lock.json"
+          - "AGENTS.md"
           - "CLAUDE.md"
           - "CONTRIBUTING.md"
           - "README.md"

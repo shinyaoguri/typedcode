@@ -9,7 +9,7 @@
 
 `/api/checkpoint/sign` は Origin も Turnstile も session トークンも要求しない無認証エンドポイントで、1 リクエストごとに KV read 1 + ECDSA 署名 1 + KV write 1 を消費する (#136)。`sessionId` / `tabId` はクライアント任意文字列なので、**新規 sessionId を連打すると per-session 上限 (`SESSION_MAX_CHECKPOINTS`) を回避して KV write を増幅させる DoS** になる。Workers Free プランの KV write (1,000/日) を数分で枯渇させると、以降すべての正規ユーザーの初回 checkpoint が `SESSION_PERSIST_FAILED` (503) になり、プラットフォーム全体の時刻アンカリングが停止する。
 
-暫定対応として Cloudflare Rate Limiting Rule の設定を運用チェックリスト化した (workers/CLAUDE.md) が、これはダッシュボード管理でリポジトリに証跡が残らず、環境追加のたびに手動設定が必要で、**攻撃者にコストを強制する構造でもない**。
+暫定対応として Cloudflare Rate Limiting Rule の設定を運用チェックリスト化した (workers/AGENTS.md) が、これはダッシュボード管理でリポジトリに証跡が残らず、環境追加のたびに手動設定が必要で、**攻撃者にコストを強制する構造でもない**。
 
 隣接課題として #151 (KV 結果整合による `firstSeenAt` 分裂) がある。クライアント側緩和 (不一致 envelope の破棄 + バックオフ再送、PR #179) は済んでいるが、根本解は Durable Object での per-session 逐次化であり、ADR-0003 が却下した複雑性との再トレードオフ判断が残っていた。
 

@@ -11,7 +11,7 @@
  * 挙動そのものはプロセスを跨ぐので e2e の領分だが、**再導入を止めるのはここ** —
  * `process.exit()` は 1 箇所足すだけで同じ穴が開き、しかも普段の TTY 実行では再現しない。
  *
- * 終了コードの意味 (0 = 成功 / 1 = 失敗・エラー) は verify-cli/CLAUDE.md の不変条件 2。
+ * 終了コードの意味 (0 = 成功 / 1 = 失敗・エラー) は verify-cli/AGENTS.md の不変条件 2。
  */
 
 import { describe, expect, it } from 'vitest';

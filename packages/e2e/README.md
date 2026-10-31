@@ -77,7 +77,7 @@ main ruleset の required check も `e2e`。
 ## verify-cli の起動
 
 shared の main が raw TypeScript のため `node dist/cli.js` は動かない
-(verify-cli/CLAUDE.md の既知課題)。E2E は `tsx` で `src/cli.ts` を直接実行する。
+(verify-cli/AGENTS.md の既知課題)。E2E は `tsx` で `src/cli.ts` を直接実行する。
 ヘルパーは [tests/helpers/verifyCli.ts](tests/helpers/verifyCli.ts)。
 
 ## シナリオ (段階的に拡充)
