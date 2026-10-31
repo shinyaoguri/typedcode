@@ -136,14 +136,14 @@ shared の `summarizeProcess` (純関数) の結果を、カード列の先頭�
     "events": [...],
     "finalHash": "..."
   },
-  "fingerprint": { "deviceId": "...", "components": {...} },
+  "fingerprint": { "hash": "...", "components": {...} },
   "checkpoints": [...]
 }
 ```
 
 ### ZIP 形式
 
-- `proof.json` — 証明本体
+- `<name>_proof.json` — 証明本体 (タブ数ぶん。同名は `_proof_N.json`)
 - `screenshots/` — スクリーンショット (JPEG)
 - `screenshots/manifest.json` — ハッシュとメタデータ
 - `README.md`, `README.ja.md` — 検証手順

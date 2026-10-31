@@ -234,7 +234,7 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
 | `NON_MONOTONIC` | 409 | `checkpointIndex` が単調増加していない |
 | `CHECKPOINT_CONFLICT` | 409 | 同一 index で内容が不一致 (冪等性が成立しない) |
 | `TAB_LIMIT_EXCEEDED` | 429 | 1 セッションあたりのタブ数上限 (64) を超過 |
-| `SESSION_LIMIT_EXCEEDED` | 429 | 1 セッションあたりの署名数上限を超過 |
+| `SESSION_LIMIT_EXCEEDED` | 429 | (sessionId, tabId) あたりの署名数上限 (50,000) を超過 |
 | `SIGNING_KEY_NOT_CONFIGURED` | 500 | `CHECKPOINT_SIGNING_KEY_*` 未設定 |
 | `SIGNING_KEY_UNKNOWN` | 500 | `keyId` が公開鍵レジストリに存在しない |
 | `SIGNING_ERROR` | 500 | 署名計算で予期しない失敗 |
@@ -262,6 +262,8 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
   "cacheTtlSec": 86400
 }
 ```
+
+注: レスポンスは `Cache-Control: public, max-age=3600` を返す。本体の `cacheTtlSec` (86400) は HTTP キャッシュとは別のヒント値で、現状 HTTP ヘッダと一致しない。verify / verify-cli / editor はこの endpoint を使わず、registry をビルド時に shared へ同梱する (鍵の追加・revoke の反映は再ビルド・再リリース)。両者を揃えるかの判断は #370。
 
 ### GET `/health`
 
