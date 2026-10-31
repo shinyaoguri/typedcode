@@ -20,7 +20,9 @@
     "lint:fix": "biome check --write .",
     "doctor": "node scripts/doctor.mjs",
     "test:coverage": "npm run test:coverage --workspaces --if-present",
-    "coverage:ratchet": "COVERAGE_RATCHET=1 npm run test:coverage --workspaces --if-present"
+    "coverage:ratchet": "COVERAGE_RATCHET=1 npm run test:coverage --workspaces --if-present",
+    "check:fast": "npm run typecheck && npm run lint && npm run test:coverage && node --test scripts/require-tests.test.mjs",
+    "check": "npm run check:fast && npm run test -w @typedcode/e2e"
   },
   "engines": {
     "node": ">=24"
