@@ -495,8 +495,12 @@ export function formatMultiSummary(entries: ReadonlyArray<{ filename: string; va
   return lines.join('\n');
 }
 
+/**
+ * エラー文言は ZIP エントリ名・proof の値・例外メッセージ由来の未信頼文字列を含みうるので、
+ * `safe()` を通して端末制御文字を除去する (#339)。着色は `safe()` の外側で行う。
+ */
 export function printError(message: string): void {
-  console.error(c('red', `Error: ${message}`));
+  console.error(c('red', `Error: ${safe(message)}`));
 }
 
 export function printUsage(): void {
