@@ -25,6 +25,7 @@ tests/
 ├── helpers/verifyCli.ts  # tsx で verify-cli/src/cli.ts を直接実行 (build 待ち不要。dist は verify-cli の test:dist が担保)
 ├── helpers/verifyWeb.ts  # VerifyWebApp: 検証 Web を開き #file-input に ZIP/JSON を渡し、data-* の状態契約だけを読む
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
+├── workers-hang-export.spec.ts  # Workers 無応答 (route で応答しない) でも class の export が上限内に ZIP を出す (#324。fetch 上限 + best-effort 予算)
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
 ├── verify-web.spec.ts    # 検証 Web の往復: Web↔CLI パリティ・改ざん・複数ファイル (#215)・壊れた proof (#292)・タブを閉じたあとの active / 表示の一致 (#281)
 └── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)

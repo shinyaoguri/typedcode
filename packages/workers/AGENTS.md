@@ -11,7 +11,7 @@
 
 1. **`/api/checkpoint/sign` は冪等** ([docs/adr/0003-idempotent-signing-retry.md](../../docs/adr/0003-idempotent-signing-retry.md)): 同一 `sessionId` / `checkpointIndex` で `clientTimestamp` 以外が一致するリクエストには **前回 envelope をそのまま返す**。`isIdempotentSigningRetry` で判定。これがないとネットワーク再送で `previousSignedCheckpointHash` チェーンが破綻する
 2. **`CHECKPOINT_SIGNING_KEY_*` シークレット**: 本番では `wrangler secret put` で投入。秘密鍵を git に入れない
-3. **公開鍵レジストリは append-only**: `packages/shared/src/checkpointKeys/registry.ts`。失効は `status: 'revoked'` で表現し、削除しない
+3. **公開鍵レジストリは append-only**: `packages/shared/src/checkpointKeys/registry.ts`。失効は `status: 'revoked'` で表現し、削除しない。**鍵のローテは必ず `keyId` の変更を伴う**: `getSigningKey` は署名のたびにレジストリの公開鍵と env の秘密 JWK が対であること (`SIGNING_KEY_MISMATCH`) と、その鍵が今有効であること (`SIGNING_KEY_INVALID`) を確かめるので、同一 `keyId` のまま JWK だけを差し替えると 500 になる。キャッシュは `keyId` と JWK 文字列の**両方**が一致したときだけ再利用する (#285)
 4. **KV は eventually consistent**: 同一 key への高頻度書き込みは ~1 write/sec の制限あり。cp トリガが頻発しないよう shared 側がハイブリッドトリガを使う ([docs/adr/0001-hybrid-checkpoint-trigger.md](../../docs/adr/0001-hybrid-checkpoint-trigger.md))
 5. **CORS のオリジン**: 編集 / 検証アプリのドメインを許可。ワイルドカード禁止 (下記「CORS と濫用防止の設計」参照)
 6. **`sessionId` は信用しない**: クライアントが投げる任意の文字列。サーバ側で `firstSeenAt` を KV に保存し改ざんを防ぐ
@@ -22,10 +22,11 @@
 ```
 src/
 ├── index.ts        # エントリ:
-│                   #   - ルーティング、CORS
+│                   #   - ルーティング、CORS、セキュリティヘッダ (withSecurityHeaders)
 │                   #   - Turnstile 検証
 │                   #   - アテステーション署名 (HMAC-SHA256)
 │                   #   - ヘルスチェック
+├── body.ts         # 本文 JSON の上限付き読み取り (readJsonBodyLimited)。全 POST が通る
 └── checkpoint.ts   # 署名済み cp:
                     #   - handleSignCheckpoint (POST /api/checkpoint/sign)
                     #   - handlePublicKeys (GET /api/checkpoint/public-keys)
@@ -60,6 +61,8 @@ src/
 | `SESSION_LIMIT_EXCEEDED` | 429 | KV の `SESSION_MAX_CHECKPOINTS` 超過 |
 | `SIGNING_KEY_NOT_CONFIGURED` | 500 | `CHECKPOINT_SIGNING_KEY_*` 未設定 |
 | `SIGNING_KEY_UNKNOWN` | 500 | `keyId` がレジストリに存在しない |
+| `SIGNING_KEY_MISMATCH` | 500 | env の秘密 JWK がレジストリの同 `keyId` の公開鍵と対ではない (JWK の差し替えミス。署名前に検知) |
+| `SIGNING_KEY_INVALID` | 500 | レジストリの署名鍵が現時点で無効 (revoked / 有効期間外 / 日時 parse 不能。`checkRegistryKeyValidityAt`)。`revokedAt` が未来の鍵は警告ログのみで署名する |
 | `SIGNING_ERROR` | 500 | 署名計算で予期しない失敗 |
 | `SESSION_PERSIST_FAILED` | 503 | **初回** checkpoint の KV 書き込み失敗。`firstSeenAt` が固定されないため署名済み envelope は返さずクライアントにリトライさせる (2 回目以降の書き込み失敗は best-effort で 200) |
 | `SESSION_STATE_UNAVAILABLE` | 503 | KV の**読み取り**失敗、または読めた record が不正形 (#297)。「existing = null」と混同すると既存セッションに別の `firstSeenAt` で署名してしまう (#151/#153) ため、署名せずリトライさせる |
@@ -92,8 +95,8 @@ CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リス
 
 **CORS の限界と濫用防止**: CORS はブラウザのクロスオリジン**読み取り**のみを制限し、サーバ間アクセス (curl 等) は防げない。`/api/checkpoint/sign` は「任意 content への serverTimestamp 付き署名」を返すだけで、それ自体は何の権限も与えない (署名は『この内容がこのサーバ時刻に提示された』ことしか証明しない)。署名 API の濫用に対する実際の防御線は:
 
-- **per-session 上限**: `SESSION_MAX_CHECKPOINTS` (50,000) と `SESSION_TTL_SECONDS` (7 日)。ただし `sessionId`/`tabId` はクライアント任意文字列なので**新規 sessionId を連打されると効かない** (per-key 上限のため)
-- **入力サイズ上限**: `MAX_BODY_BYTES` (8KB) + スキーマ厳格化 (64-hex / 最大長)
+- **per-(sessionId, tabId) 上限** (タブ単位。名前は `SESSION_` だが per-tab): `SESSION_MAX_CHECKPOINTS` (50,000) と `SESSION_TTL_SECONDS` (7 日)。ただし `sessionId`/`tabId` はクライアント任意文字列なので**新規 sessionId を連打されると効かない** (per-key 上限のため)
+- **入力サイズ上限**: `MAX_JSON_BODY_BYTES` (8KiB。`src/body.ts`) を**全 POST で読み込み中に強制** (Content-Length は信用せず実バイトで打ち切り、Turnstile fetch・署名・KV に触れる前に 400)。Turnstile トークンは型・非空・`MAX_TURNSTILE_TOKEN_LENGTH` (2048) を検査。スキーマ厳格化 (64-hex / 最大長) も併用
 - **IP / グローバル rate limit**: Cloudflare の WAF / Rate Limiting Rules に委譲 (Worker コード外。下記の通り**必ず設定する**)
 
 ### Rate Limiting の設定 (#136・defense-in-depth)

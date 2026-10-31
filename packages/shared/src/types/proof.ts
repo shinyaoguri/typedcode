@@ -143,7 +143,14 @@ export interface StoredEvent extends EventHashData {
 /** イベント記録結果 */
 export interface RecordEventResult {
   hash: string;
+  /** チェーン上のインデックス。`recorded === false` のときは -1 */
   index: number;
+  /**
+   * イベントがハッシュチェーンに載ったか。記録中に例外が出てイベントが捨てられた場合は false
+   * (そのとき hash / index は直前のイベントではなく「載らなかった」ことを表す: hash は現在の
+   * チェーン先頭、index は -1)。呼び出し側は false のとき LogViewer / IndexedDB へ送らない (#284)。
+   */
+  recorded: boolean;
 }
 
 // ============================================================================
@@ -247,7 +254,7 @@ export interface ExportedProof {
     timestamp: string;
     isPureTyping: boolean;
   };
-  checkpoints?: CheckpointData[]; // チェックポイント（v3.2.0以降）
+  checkpoints?: CheckpointData[]; // 署名・未署名のチェックポイント列
   /** 試験モード (ADR-0006) の束縛ブロック。exam モードで生成された proof のみ持つ */
   exam?: ExamProofBlock;
   /**

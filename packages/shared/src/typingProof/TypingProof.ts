@@ -66,12 +66,12 @@ export class TypingProof {
    * 未取得 (オフライン劣化 / exam / 旧経路) では null。
    */
   sessionStartToken: SessionStartToken | null = null;
-  private recordQueue: Promise<RecordEventResult> = Promise.resolve({ hash: '', index: -1 });
+  private recordQueue: Promise<RecordEventResult> = Promise.resolve({ hash: '', index: -1, recorded: false });
   private queuedEventCount: number = 0;
 
   /**
    * PoSW計算が完了していないイベント
-   * リロード時に保存され、復旧時にPoSW計算を完了させる
+   * リロード時に sessionStorage へ保存される。ただし復元時は破棄される (restoreState)
    */
   private pendingEvents: PendingEventData[] = [];
 
@@ -403,6 +403,8 @@ export class TypingProof {
         // 前のイベントでエラーが発生してもチェーンを継続
       })
       .then(async () => {
+        // push 済みかどうかを catch で判定するための基準 (#284)
+        const lengthBefore = this.events.length;
         try {
           const result = await this._recordEventInternal(event, pendingEvent);
           // PoSW計算完了後、pendingEventsから削除
@@ -421,8 +423,15 @@ export class TypingProof {
             this.pendingEvents.splice(idx, 1);
             this.onPendingEventChange?.(this.pendingEvents);
           }
-          // エラー時は現在の状態を返す（チェーンは途切れない）
-          return { hash: this.currentHash ?? '', index: this.events.length - 1 };
+          // events.push の後段 (チェックポイント作成など) で throw した場合、
+          // イベントはチェーンに載っている。載ったかは events の長さで判定する (#284)
+          const stored = this.events[lengthBefore];
+          if (stored) {
+            return { hash: stored.hash, index: lengthBefore, recorded: true };
+          }
+          // チェーンに載らず捨てられた。直前イベントの index を返すと呼び出し側が
+          // 別イベントを今回のイベントとして UI / IndexedDB に二重投入するため -1 を返す
+          return { hash: this.currentHash ?? '', index: -1, recorded: false };
         } finally {
           // 処理完了後にキュー待ち数を減少
           this.queuedEventCount--;
@@ -515,7 +524,7 @@ export class TypingProof {
       await this.checkpointManager.createCheckpoint(eventIndex, this.events);
     }
 
-    return { hash: newHash, index: eventIndex };
+    return { hash: newHash, index: eventIndex, recorded: true };
   }
 
   /**
@@ -951,9 +960,9 @@ export class TypingProof {
       this.startTime = state.startTime;
     }
 
-    // Pending Eventsは復元しない（リロード時に失われる）
-    // PoSW計算中だったイベントはリロードで失われるが、エクスポート時には
-    // waitForProcessingComplete()でPoSW計算完了を待機するため整合性は保証される
+    // Pending Eventsは復元しない（リロードで失われる）。PoSW計算中だったイベントは
+    // チェーンに載らず、復元側が content を replay に整合させる (#142)。
+    // export 時の content と chain の整合は waitForQueueDrain + 未排出時の中止 (#225) で担保する。
     this.pendingEvents = [];
 
     // チェックポイントを復元（サンプリング検証用）

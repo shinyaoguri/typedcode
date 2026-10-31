@@ -5,6 +5,7 @@
 
 import { handleSignCheckpoint, handlePublicKeys, getSigningKey, type CheckpointEnv } from './checkpoint.js';
 import { createSessionStartToken, validateSessionStartInput, arrayBufferToHex } from '@typedcode/shared/checkpoint';
+import { MAX_JSON_BODY_BYTES, MAX_TURNSTILE_TOKEN_LENGTH, readJsonBodyLimited, type ReadJsonResult } from './body.js';
 
 interface Env extends CheckpointEnv {
   TURNSTILE_SECRET_KEY: string;
@@ -210,6 +211,28 @@ function timingSafeEqual(a: string, b: string): boolean {
   return mismatch === 0;
 }
 
+/** 本文読み取りの失敗を、クライアントに返す固定文言にする */
+function bodyErrorMessage(kind: Extract<ReadJsonResult, { ok: false }>['kind']): string {
+  switch (kind) {
+    case 'too_large':
+      return `Request body exceeds ${MAX_JSON_BODY_BYTES} bytes`;
+    case 'invalid_json':
+      return 'Invalid JSON body';
+    case 'read_error':
+      return 'Invalid request body';
+  }
+}
+
+/**
+ * Turnstile トークンの入力検査。文字列・非空・長さ上限。通れば null、弾くときは 400 用の文言を返す。
+ * 非 string がそのまま URLSearchParams に入って "[object Object]" で Turnstile に問い合わせるのを防ぐ。
+ */
+function turnstileTokenError(token: unknown, missingMessage: string): string | null {
+  if (typeof token !== 'string' || token.length === 0) return missingMessage;
+  if (token.length > MAX_TURNSTILE_TOKEN_LENGTH) return 'Token is too long';
+  return null;
+}
+
 /**
  * Turnstile検証を実行
  */
@@ -265,29 +288,25 @@ async function createAttestation(result: TurnstileResponse, attestationSecret: s
  */
 async function handleVerifyCaptcha(request: Request, env: Env): Promise<Response> {
   const origin = request.headers.get('Origin');
+  const json = (body: VerifyResponse, status: number): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin, env) },
+    });
+
+  // 本文は Turnstile fetch より前に、上限付きで読む (拒否時は外部呼び出しをしない)。
+  const read = await readJsonBodyLimited(request);
+  if (!read.ok) {
+    return json({ success: false, score: 0, message: bodyErrorMessage(read.kind) }, 400);
+  }
+  const token = (read.value as { token?: unknown } | null)?.token;
+  const tokenError = turnstileTokenError(token, 'Token is required');
+  if (tokenError !== null) {
+    return json({ success: false, score: 0, message: tokenError }, 400);
+  }
 
   try {
-    const body = await request.json<{ token: string }>();
-    const { token } = body;
-
-    if (!token) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          score: 0,
-          message: 'Token is required',
-        } satisfies VerifyResponse),
-        {
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            ...corsHeaders(origin, env),
-          },
-        }
-      );
-    }
-
-    const result = await verifyTurnstile(token, env.TURNSTILE_SECRET_KEY);
+    const result = await verifyTurnstile(token as string, env.TURNSTILE_SECRET_KEY);
     // siteverify 成功でも、解かれた hostname が許可ドメインでなければ拒否する
     // (同一 sitekey を使う別プロパティで解かれたトークンの流用を防ぐ)。
     // action はアプリ定義で多様 (create_tab / export_proof 等) なため allowlist 強制はしない
@@ -316,28 +335,10 @@ async function handleVerifyCaptcha(request: Request, env: Env): Promise<Response
       attestation,
     };
 
-    return new Response(JSON.stringify(response), {
-      status: response.success ? 200 : 403,
-      headers: {
-        'Content-Type': 'application/json',
-        ...corsHeaders(origin, env),
-      },
-    });
+    return json(response, response.success ? 200 : 403);
   } catch (error) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        score: 0,
-        message: 'Internal server error',
-      } satisfies VerifyResponse),
-      {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          ...corsHeaders(origin, env),
-        },
-      }
-    );
+    console.error('[verify-captcha] unexpected error:', error);
+    return json({ success: false, score: 0, message: 'Internal server error' }, 500);
   }
 }
 
@@ -354,19 +355,21 @@ interface AttestationWithExtras extends HumanAttestation {
  */
 async function handleVerifyAttestation(request: Request, env: Env): Promise<Response> {
   const origin = request.headers.get('Origin');
+  const json = (body: unknown, status: number): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin, env) },
+    });
+
+  const read = await readJsonBodyLimited(request);
+  if (!read.ok) {
+    return json({ valid: false, message: bodyErrorMessage(read.kind) }, 400);
+  }
+  const attestation = (read.value as { attestation?: AttestationWithExtras } | null)?.attestation;
 
   try {
-    const body = await request.json<{ attestation: AttestationWithExtras }>();
-    const { attestation } = body;
-
     if (!attestation) {
-      return new Response(JSON.stringify({ valid: false, message: 'Attestation is required' }), {
-        status: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          ...corsHeaders(origin, env),
-        },
-      });
+      return json({ valid: false, message: 'Attestation is required' }, 400);
     }
 
     // 署名対象フィールドのみを抽出（success, failureReason, signatureは除外）
@@ -383,28 +386,17 @@ async function handleVerifyAttestation(request: Request, env: Env): Promise<Resp
 
     const isValid = typeof signature === 'string' && timingSafeEqual(signature, expectedSignature);
 
-    return new Response(
-      JSON.stringify({
+    return json(
+      {
         valid: isValid,
         message: isValid ? 'Attestation is valid' : 'Invalid signature',
         attestation: isValid ? attestationData : undefined,
-      }),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          ...corsHeaders(origin, env),
-        },
-      }
+      },
+      200
     );
   } catch (error) {
-    return new Response(JSON.stringify({ valid: false, message: 'Internal server error' }), {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        ...corsHeaders(origin, env),
-      },
-    });
+    console.error('[verify-attestation] unexpected error:', error);
+    return json({ valid: false, message: 'Internal server error' }, 500);
   }
 }
 
@@ -425,16 +417,17 @@ async function handleSessionStart(request: Request, env: Env): Promise<Response>
       headers: { 'Content-Type': 'application/json', ...corsHeaders(origin, env) },
     });
 
-  let parsed: unknown;
-  try {
-    parsed = await request.json();
-  } catch {
-    return json({ success: false, message: 'Invalid JSON body' }, 400);
+  // 本文は Turnstile fetch・署名より前に、上限付きで読む (拒否時は外部呼び出しをしない)。
+  const read = await readJsonBodyLimited(request);
+  if (!read.ok) {
+    return json({ success: false, message: bodyErrorMessage(read.kind) }, 400);
   }
+  const parsed = read.value;
 
-  const turnstileToken = (parsed as { turnstileToken?: unknown })?.turnstileToken;
-  if (typeof turnstileToken !== 'string' || turnstileToken.length === 0) {
-    return json({ success: false, message: 'turnstileToken is required' }, 400);
+  const turnstileToken = (parsed as { turnstileToken?: unknown } | null)?.turnstileToken;
+  const tokenError = turnstileTokenError(turnstileToken, 'turnstileToken is required');
+  if (tokenError !== null) {
+    return json({ success: false, message: tokenError }, 400);
   }
 
   // sessionId / fingerprintHash の検証 (shared の入力バリデーション)。
@@ -450,7 +443,7 @@ async function handleSessionStart(request: Request, env: Env): Promise<Response>
   // 不必要にアンカーを失う。
   let result: Awaited<ReturnType<typeof verifyTurnstile>>;
   try {
-    result = await verifyTurnstile(turnstileToken, env.TURNSTILE_SECRET_KEY);
+    result = await verifyTurnstile(turnstileToken as string, env.TURNSTILE_SECRET_KEY);
   } catch (err) {
     console.error('[session/start] Turnstile verification unavailable:', err);
     return json({ success: false, message: 'Turnstile verification temporarily unavailable' }, 503);
@@ -542,27 +535,54 @@ async function route(request: Request, env: Env): Promise<Response> {
   return new Response('Not Found', { status: 404 });
 }
 
+/** 全レスポンスに付けるセキュリティヘッダ。この API は JSON しか返さないので最も厳しい CSP でよい。 */
+const SECURITY_HEADERS: Readonly<Record<string, string>> = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+};
+
+/**
+ * 応答にセキュリティヘッダを足す。既にあるヘッダは上書きしない。
+ * 自身は絶対に throw しない (複製に失敗したら元の応答をそのまま返す)。
+ */
+function withSecurityHeaders(res: Response): Response {
+  try {
+    const out = new Response(res.body, res);
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+      if (!out.headers.has(name)) out.headers.set(name, value);
+    }
+    return out;
+  } catch {
+    return res;
+  }
+}
+
+async function handle(request: Request, env: Env): Promise<Response> {
+  // 最終防衛 (#153): 未捕捉例外を Workers の 1101 (CORS/JSON なし) に落とさない。
+  // ブラウザからは 1101 が不透明な CORS エラーに見え、意図したエラー経路に乗らない。
+  try {
+    return await route(request, env);
+  } catch (err) {
+    console.error('[worker] unhandled exception:', err);
+    // 最終防衛は絶対に throw しない: CORS ヘッダ計算 (env 参照) 自体が失敗しても
+    // JSON 500 を返す (ヘッダなしのフォールバック)。
+    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const origin = request.headers.get('Origin');
+      headers = { ...headers, ...(corsHeaders(origin, env) as Record<string, string>) };
+    } catch {
+      /* env が壊れていても応答は返す */
+    }
+    return new Response(JSON.stringify({ success: false, message: 'Internal server error' }), {
+      status: 500,
+      headers,
+    });
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    // 最終防衛 (#153): 未捕捉例外を Workers の 1101 (CORS/JSON なし) に落とさない。
-    // ブラウザからは 1101 が不透明な CORS エラーに見え、意図したエラー経路に乗らない。
-    try {
-      return await route(request, env);
-    } catch (err) {
-      console.error('[worker] unhandled exception:', err);
-      // 最終防衛は絶対に throw しない: CORS ヘッダ計算 (env 参照) 自体が失敗しても
-      // JSON 500 を返す (ヘッダなしのフォールバック)。
-      let headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      try {
-        const origin = request.headers.get('Origin');
-        headers = { ...headers, ...(corsHeaders(origin, env) as Record<string, string>) };
-      } catch {
-        /* env が壊れていても応答は返す */
-      }
-      return new Response(JSON.stringify({ success: false, message: 'Internal server error' }), {
-        status: 500,
-        headers,
-      });
-    }
+    return withSecurityHeaders(await handle(request, env));
   },
 };

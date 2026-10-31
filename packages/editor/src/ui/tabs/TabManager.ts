@@ -30,6 +30,7 @@ import {
 } from '../../services/TurnstileService.js';
 import { performVerificationWithUI } from './TabVerificationUI.js';
 import { resolveRestoreOrder } from './restoreOrder.js';
+import { shouldRecordTabSwitch } from './tabSwitchPolicy.js';
 import { t } from '../../i18n/index.js';
 import { type SessionStorageService, getSessionStorageService } from '../../services/SessionStorageService.js';
 import {
@@ -663,8 +664,10 @@ export class TabManager {
     const previousTabId = this.activeTabId;
     const previousTab = previousTabId ? (this.tabs.get(previousTabId) ?? null) : null;
 
-    // タブ切り替えイベントを記録
-    if (previousTabId !== tabId) {
+    // タブ切り替えイベントを記録。
+    // 復元中は履歴を復元済みの tabSwitches から取るので合成エントリを足さない (#284 e5)。
+    // 足すと、リロードのたびに fromTabId: null の切替が蓄積する。
+    if (shouldRecordTabSwitch(previousTabId, tabId, this.isRestoring)) {
       const switchEvent: TabSwitchEvent = {
         timestamp: performance.now() - this.startTime,
         fromTabId: previousTabId,
@@ -675,10 +678,7 @@ export class TabManager {
       this.tabSwitches.push(switchEvent);
       // sessionStorage は saveToStorage() 経由で保存されるが、IndexedDB には
       // 別途 append しないと sessionStorage が消えた復旧で履歴が失われる。
-      // 復元中の合成スイッチ (isRestoring) は二重保存になるので除外。
-      if (!this.isRestoring) {
-        void this.persistTabSwitch(switchEvent);
-      }
+      void this.persistTabSwitch(switchEvent);
     }
 
     this.activeTabId = tabId;

@@ -10,7 +10,7 @@ export interface ProofStats {
 }
 
 export type GetStatsCallback = () => ProofStats | null;
-export type SnapshotCallback = (content: string) => Promise<{ index: number }>;
+export type SnapshotCallback = (content: string) => Promise<{ index: number; recorded: boolean }>;
 
 const PROGRESS_RING_CIRCUMFERENCE = 2 * Math.PI * 8; // 円周 = 2πr (r=8)
 
@@ -125,7 +125,11 @@ export class ProofStatusDisplay {
 
       this.snapshotCallback(editorContent)
         .then((result) => {
-          console.log('[TypedCode] Content snapshot recorded at event', result.index);
+          if (result.recorded) {
+            console.log('[TypedCode] Content snapshot recorded at event', result.index);
+          } else {
+            console.warn('[TypedCode] Content snapshot was not recorded (dropped)');
+          }
         })
         .catch((error) => {
           console.error('[TypedCode] Snapshot recording failed:', error);

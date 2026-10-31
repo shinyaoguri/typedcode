@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { EditorApp, readProofEvents } from './helpers/app.js';
+import { EditorApp, readProofEvents, readZipEntryText } from './helpers/app.js';
 import { runVerifyCli } from './helpers/verifyCli.js';
 
 /**
@@ -36,4 +36,27 @@ test('リロード後もセッションが復元され、チェーンが途切�
   // sessionResumed イベントが記録されている (復元の痕跡)。
   const events = await readProofEvents(zipPath);
   expect(events.some((e) => e.type === 'sessionResumed')).toBe(true);
+});
+
+/**
+ * 復元時に switchTab が合成の「null → 最初のタブ」切替を足し、リロードのたびに
+ * tab-switches.json へ蓄積していた (#284)。復元中は復元済みの履歴を使うので足さない。
+ * 最初のタブを開いたときの 1 件 (fromTabId: null) だけが残る。
+ * 注: 単一タブ export の ZIP には tab-switches.json が入らないので、全タブ export で読む。
+ */
+test('リロードを重ねても tab-switches.json に fromTabId: null の合成切替が蓄積しない', async ({ page }) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.typeCode('int a = 1;\n');
+
+  await app.reloadAndResume();
+  await app.typeCode('int b = 2;\n');
+  await app.reloadAndResume();
+
+  const zipPath = await app.exportAllTabs();
+  const switches = JSON.parse(await readZipEntryText(zipPath, 'tab-switches.json')) as Array<{
+    fromTabId: string | null;
+  }>;
+
+  expect(switches.filter((s) => s.fromTabId === null)).toHaveLength(1);
 });

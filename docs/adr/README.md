@@ -65,6 +65,7 @@
 | [0032](0032-biome-as-single-lint-format-toolchain.md) | Accepted | lint / format を Biome 1 つに集約し品質ゲートを typecheck 以外へ広げる (`.editorconfig` は置かない) |
 | [0033](0033-e2e-round-trip-harness-as-deploy-gate.md) | Accepted | E2E は暗号成果物をオラクルにした round-trip に限定し、全 deploy の必須ゲートにする (full は 1 本・他は fast) |
 | [0034](0034-replace-manual-verification-with-automated-tests.md) | Accepted | 機能追加時の手動動作確認を自動テストで置き換える (オラクルは暗号成果物・UI は data-* 状態契約・画素比較はしない・テスト必須ゲートとカバレッジのラチェット) |
+| [0035](0035-triage-gate-for-issues.md) | Accepted | 着手できる Issue を、メンテナが `verify: triaged` を付けたものに限る (エージェントが印を付けてよいのは自分で踏んで起票し受け入れ条件を書いたものだけ・着手時に受け入れ条件の現況を確かめる) |
 
 ## 参考
 

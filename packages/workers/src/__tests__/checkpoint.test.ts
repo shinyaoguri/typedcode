@@ -5,24 +5,20 @@
  * - shared の検証ロジック (validateSignedCheckpointInput, isIdempotentSigningRetry,
  *   createSignedCheckpointEnvelope) は実体を呼ぶ。
  * - KV と CorsResponder のみ in-memory モックする。
- * - 署名鍵は ECDSA-P256 で都度生成し、registry の既存 keyId に紐付けて使う。
- *   署名 = サーバが署名するロジックの検証であり、検証側の signature 検証ではないため
- *   公開鍵との整合は不要 (= 偽の鍵ペアでも handler のフローは検証可能)。
- * - sessionStartToken (ADR-0027) だけは handler が実検証するので、本物の鍵対で token を
- *   作り、その公開鍵を registry 注入 (第 4 引数) で信頼させる。
+ * - 署名鍵は ECDSA-P256 で都度生成し、その公開鍵を注入 registry (第 4 引数) に載せる。
+ *   getSigningKey は env の秘密 JWK が registry の公開鍵と対であることを検査する (#285) ので、
+ *   env には registry と対の秘密 JWK を渡す (「偽の鍵ペアでもフローは通る」前提は成り立たない)。
+ * - sessionStartToken (ADR-0027) も同じ鍵対で作り、同じ registry で信頼させる。
  *
  * Node 24 が webcrypto を global crypto.subtle として提供するため、setup file 不要。
  */
 
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
-import { createSessionStartToken } from '@typedcode/shared/checkpoint';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { createSessionStartToken, verifyCheckpointSignature } from '@typedcode/shared/checkpoint';
 import type { CheckpointPublicKey, SessionStartToken, SignedCheckpointInput } from '@typedcode/shared/checkpoint';
 import { handleSignCheckpoint, type CheckpointEnv } from '../checkpoint.js';
 
 // ---------- 共通ヘルパ ----------
-
-/** registry.ts に append 済みの本番 keyId (テスト時は鍵対が違うが handler フロー検証には十分) */
-const REGISTERED_KEY_ID = 'tcp-202605-fd6d42';
 
 /**
  * ADR-0027: sign は sessionStartToken 前提。token の署名は実検証されるので、
@@ -30,12 +26,15 @@ const REGISTERED_KEY_ID = 'tcp-202605-fd6d42';
  */
 const TOKEN_KEY_ID = 'tcp-test-token-key';
 let tokenRegistry: readonly CheckpointPublicKey[];
+/** TOKEN_KEY_ID の公開鍵と対になる秘密 JWK (env.CHECKPOINT_SIGNING_KEY_JWK に入れる) */
+let tokenPrivateJwk: string;
 let validToken: SessionStartToken;
 let foreignSessionToken: SessionStartToken; // 別 sessionId に発行された token
 let forgedToken: SessionStartToken; // registry に居ない鍵で署名された token
 
 beforeAll(async () => {
   const keyPair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  tokenPrivateJwk = JSON.stringify(await crypto.subtle.exportKey('jwk', keyPair.privateKey));
   tokenRegistry = [
     {
       keyId: TOKEN_KEY_ID,
@@ -104,10 +103,13 @@ const responder = { cors: () => ({}) };
 /** per-session タブ台帳の KV キー (#297: record の `session:` 名前空間から分離) */
 const TAB_REGISTRY_KEY = 'tabs:test-session';
 
-async function freshSigningKey(): Promise<string> {
+/** registry の公開鍵と**対にならない**秘密 JWK (鍵差し替えガード SIGNING_KEY_MISMATCH 用) */
+async function freshKeyPair(): Promise<{ privateJwk: string; publicJwk: JsonWebKey }> {
   const keyPair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
-  const jwk = await crypto.subtle.exportKey('jwk', keyPair.privateKey);
-  return JSON.stringify(jwk);
+  return {
+    privateJwk: JSON.stringify(await crypto.subtle.exportKey('jwk', keyPair.privateKey)),
+    publicJwk: await crypto.subtle.exportKey('jwk', keyPair.publicKey),
+  };
 }
 
 function makeInput(overrides: Partial<SignedCheckpointInput> = {}): SignedCheckpointInput {
@@ -165,20 +167,23 @@ describe('handleSignCheckpoint', () => {
     kv = new MockKV();
     env = {
       CHECKPOINT_SESSIONS: kv as unknown as KVNamespace,
-      CHECKPOINT_SIGNING_KEY_JWK: await freshSigningKey(),
-      CHECKPOINT_SIGNING_KEY_ID: REGISTERED_KEY_ID,
+      CHECKPOINT_SIGNING_KEY_JWK: tokenPrivateJwk,
+      CHECKPOINT_SIGNING_KEY_ID: TOKEN_KEY_ID,
     };
   });
 
   /** ADR-0027: 全テストで token 検証 registry を注入して呼ぶ共通ラッパー */
-  const sign = (request: Request, targetEnv: CheckpointEnv = env) =>
-    handleSignCheckpoint(request, targetEnv, responder, tokenRegistry);
+  const sign = (
+    request: Request,
+    targetEnv: CheckpointEnv = env,
+    registry: readonly CheckpointPublicKey[] = tokenRegistry
+  ) => handleSignCheckpoint(request, targetEnv, responder, registry);
 
   it('signs a fresh checkpoint and stores session state', async () => {
     const res = await sign(makeRequest(makeInput()));
     expect(res.status).toBe(200);
     const body = (await res.json()) as SignResponseBody;
-    expect(body.envelope.keyId).toBe(REGISTERED_KEY_ID);
+    expect(body.envelope.keyId).toBe(TOKEN_KEY_ID);
     expect(body.envelope.signature).toMatch(/^[0-9a-f]+$/);
     expect(kv.store.has('session:test-session:tab-1')).toBe(true);
   });
@@ -486,5 +491,146 @@ describe('handleSignCheckpoint', () => {
     const res = await sign(makeRequest(makeInput({ tabId: 'tab-1' })));
     expect(res.status).toBe(503);
     expect(((await res.json()) as ErrorResponseBody).code).toBe('SESSION_STATE_UNAVAILABLE');
+  });
+
+  // ---------- 署名鍵ガード: 鍵差し替え (#285 w1) と有効性 (#285 w5) ----------
+
+  describe('signing key guard', () => {
+    /** 注入 registry に、署名鍵 (keyId) の公開鍵エントリを足して返す。token 検証用エントリは残す */
+    function registryWith(entry: CheckpointPublicKey): readonly CheckpointPublicKey[] {
+      return [...tokenRegistry, entry];
+    }
+
+    async function signingFixture(overrides: Partial<CheckpointPublicKey> = {}) {
+      const pair = await freshKeyPair();
+      const entry: CheckpointPublicKey = {
+        keyId: 'tcp-test-guard-key',
+        algorithm: 'ECDSA-P256',
+        publicKeyJwk: pair.publicJwk,
+        status: 'active',
+        validFrom: '2026-01-01T00:00:00.000Z',
+        ...overrides,
+      };
+      const guardEnv: CheckpointEnv = {
+        CHECKPOINT_SESSIONS: kv as unknown as KVNamespace,
+        CHECKPOINT_SIGNING_KEY_JWK: pair.privateJwk,
+        CHECKPOINT_SIGNING_KEY_ID: entry.keyId,
+      };
+      return { pair, entry, guardEnv };
+    }
+
+    it('rejects with SIGNING_KEY_MISMATCH and writes nothing when the env private key is not the registry key pair', async () => {
+      // 同じ keyId のまま env の JWK だけ別鍵に差し替えられると、registry の公開鍵では検証できない署名が
+      // 出回る。署名前に弾き、KV にも触れない。
+      const other = await freshKeyPair();
+      const res = await sign(makeRequest(makeInput()), { ...env, CHECKPOINT_SIGNING_KEY_JWK: other.privateJwk });
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as ErrorResponseBody;
+      expect(body.code).toBe('SIGNING_KEY_MISMATCH');
+      expect(body.error).toBe('Signing key is not available');
+      expect(kv.store.size).toBe(0);
+    });
+
+    it('does not reuse a cached key after the env JWK is swapped under the same keyId', async () => {
+      // 回帰 (#285 w1): 旧実装はキャッシュを keyId だけで引いたため、1 回目に正しい鍵で署名できた後に
+      // 同じ keyId で JWK だけ差し替わっても古い鍵を返し続け (ガードを素通りし)、逆向きでも検査されなかった。
+      const first = await sign(makeRequest(makeInput({ tabId: 'tab-cache' })));
+      expect(first.status).toBe(200);
+
+      const other = await freshKeyPair();
+      const second = await sign(makeRequest(makeInput({ tabId: 'tab-cache-2' })), {
+        ...env,
+        CHECKPOINT_SIGNING_KEY_JWK: other.privateJwk,
+      });
+      expect(second.status).toBe(500);
+      expect(((await second.json()) as ErrorResponseBody).code).toBe('SIGNING_KEY_MISMATCH');
+    });
+
+    it('signs with the rotated key (new keyId) and the envelope verifies against its registry public key', async () => {
+      const { entry, guardEnv } = await signingFixture({ keyId: 'tcp-test-rotated' });
+      const registry = registryWith(entry);
+      const res = await sign(makeRequest(makeInput({ tabId: 'tab-rotated' })), guardEnv, registry);
+      expect(res.status).toBe(200);
+      const { envelope } = (await res.json()) as SignResponseBody;
+      expect(envelope.keyId).toBe('tcp-test-rotated');
+      const verdict = await verifyCheckpointSignature(envelope as never, registry);
+      expect(verdict.valid).toBe(true);
+    });
+
+    it.each([
+      ['revoked with a past revokedAt', { status: 'revoked', revokedAt: '2026-02-01T00:00:00.000Z' }],
+      ['revoked without revokedAt', { status: 'revoked' }],
+      ['validFrom in the future', { validFrom: '2999-01-01T00:00:00.000Z' }],
+      ['validUntil in the past', { validUntil: '2026-02-01T00:00:00.000Z' }],
+      ['validFrom is not a date', { validFrom: 'not-a-date' }],
+    ] as const)(
+      'rejects with SIGNING_KEY_INVALID and writes nothing when the signing key is %s',
+      async (_name, patch) => {
+        const { entry, guardEnv } = await signingFixture(patch as Partial<CheckpointPublicKey>);
+        const res = await sign(makeRequest(makeInput()), guardEnv, registryWith(entry));
+        expect(res.status).toBe(500);
+        const body = (await res.json()) as ErrorResponseBody;
+        expect(body.code).toBe('SIGNING_KEY_INVALID');
+        expect(body.error).toBe('Signing key is not available');
+        expect(kv.store.size).toBe(0);
+      }
+    );
+
+    it('still signs with a key whose revokedAt is in the future (warns, does not block)', async () => {
+      const { entry, guardEnv } = await signingFixture({ status: 'active', revokedAt: '2999-01-01T00:00:00.000Z' });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const res = await sign(makeRequest(makeInput()), guardEnv, registryWith(entry));
+        expect(res.status).toBe(200);
+        expect(warn).toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('re-checks validity on a cache hit (a key that expires after the first signature is refused)', async () => {
+      const { entry, guardEnv } = await signingFixture();
+      const first = await sign(makeRequest(makeInput({ tabId: 'tab-v1' })), guardEnv, registryWith(entry));
+      expect(first.status).toBe(200);
+
+      const expired = { ...entry, validUntil: '2026-02-01T00:00:00.000Z' };
+      const second = await sign(makeRequest(makeInput({ tabId: 'tab-v2' })), guardEnv, registryWith(expired));
+      expect(second.status).toBe(500);
+      expect(((await second.json()) as ErrorResponseBody).code).toBe('SIGNING_KEY_INVALID');
+    });
+
+    it('fails as SIGNING_ERROR without echoing the JWK text when it is not valid JSON', async () => {
+      // JSON.parse のエラー文には入力の断片が含まれうる。秘密鍵をログに出さない。
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const res = await sign(makeRequest(makeInput()), {
+          ...env,
+          CHECKPOINT_SIGNING_KEY_JWK: '{"d":"SECRET-D-VALUE" oops',
+        });
+        expect(res.status).toBe(500);
+        expect(((await res.json()) as ErrorResponseBody).code).toBe('SIGNING_ERROR');
+        const logged = JSON.stringify(
+          errorSpy.mock.calls.map((c) => c.map((a) => (a instanceof Error ? a.message : a)))
+        );
+        expect(logged).not.toContain('SECRET-D-VALUE');
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+
+    it('never logs JWK values when the guard rejects', async () => {
+      const other = await freshKeyPair();
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        await sign(makeRequest(makeInput()), { ...env, CHECKPOINT_SIGNING_KEY_JWK: other.privateJwk });
+        const logged = JSON.stringify(
+          errorSpy.mock.calls.map((c) => c.map((a) => (a instanceof Error ? a.message : a)))
+        );
+        const privateD = (JSON.parse(other.privateJwk) as { d: string }).d;
+        expect(logged).not.toContain(privateD);
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
   });
 });

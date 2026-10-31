@@ -22,6 +22,10 @@
 
 ### 修正
 
+- editor から Workers への fetch (verify-captcha / session/start / checkpoint/sign) にタイムアウトが無く、回線が止まると試験の export・タブ作成・署名が無期限に止まりうる問題を修正した。各 fetch を `WORKERS_FETCH_TIMEOUT_MS` で打ち切って既存の失敗経路 (リトライ・署名の backoff 再試行) に合流させ、exam / class / assignment の export 前認証は全体を `PRE_EXPORT_VERIFICATION_BUDGET_MS` で打ち切って失敗 attestation を記録したうえで ZIP を出す。casual の export 前認証は従来どおり待つ (#324)
+- タブ復元で `tabOrder` が空配列 (セッション作成直後の初期値) や一部欠けていると、保存済みのタブ行が黙ってスキップされ、IndexedDB に残っているのに UI から開けないタブになりうる問題を修正した。復元順は tabOrder の順に、tabOrder に無い保存済みタブを末尾に足して全件復元する (#326)
+- focus-burst 分析器がハッシュ対象外の `insertLength` を集計しており、整合性 `proven` の proof でも書き換えでシグナルを消したり作ったりできた問題を修正した。挿入文字数はハッシュ対象の `data` の長さで数え、`runAnalysis` は分析器へ渡すイベントをハッシュ対象のフィールドだけに射影する (#328)
+- workers の署名・入力まわりを硬化した。署名鍵のキャッシュが `keyId` だけで引かれ、同じ `keyId` のまま JWK が差し替わっても検知できなかった問題を直し、署名のたびにレジストリ公開鍵との対応 (`SIGNING_KEY_MISMATCH`) と有効性 (`SIGNING_KEY_INVALID`: 失効・有効期間外・日時不正) を検査する (HTTP 500、クライアントへは固定文言)。全 POST の本文を読み込み中に 8KiB で打ち切り、不正 JSON は 400 を返し (verify-captcha / verify-attestation は 500 だった)、Turnstile トークンの型・長さ (≤2048) も外部呼び出しの前に検査する。verify-captcha / verify-attestation の予期しない例外をログに出し、全レスポンスに `X-Content-Type-Options` / `Referrer-Policy` / `Content-Security-Policy` を付与した (#285)
 - ZIP 内の壊れた `*_proof.json` (JSON 破損・proof 構造なし) が黙って無視され、有効な proof だけで PASS / exit 0 になる問題を修正した。verify-cli は proof の命名 (`*_proof.json` / `*_proof_N.json`) に当たるのに読めないファイルを失敗として数え (ファイル名と理由を表示、exit 1。他の proof の検証は止めない)、verify Web は同じファイルを通常の JSON ではなく error として表示する。`extractAllProofsFromZip` の戻り値は `{ proofs, failures }` になった (#292)
 - 試験束縛の検証が `proof.exam` の `examId` / `variant` (旧形式の単一問題では `problemId` も) を package と照合しておらず、これらを書き換えた proof も束縛合格になり、CLI / Web が自己申告値を検証済みのように表示していた問題を修正した。署名済み package と食い違えば束縛失敗とし、束縛合格時のみ package 側の識別子を表示する。package 未提供・束縛失敗のときは「自己申告」と明示する (#273)
 - verify-cli が位置引数の 1 件目しか検証せず、`valid.json broken.json` や `valid.json does-not-exist.json` が未検証のまま exit 0 になる問題を修正した。複数の位置引数をすべて検証し、読めない・壊れている入力は他の入力を止めずに失敗として数え、1 件でも失敗すれば exit 1 にする。複数入力のときの ZIP 内 proof は `<入力>:<エントリ名>` で表示する (#294)
@@ -34,6 +38,9 @@
 - HTML プレビューで、HTML タブが無い状態を経由すると再表示しても空のままになる不具合を修正した (#299)
 - verify-cli の終了コードの既定を 1 (fail-closed) にし、解決しない `--analyzer` で処理が途中で終わっても改ざんされた proof が exit 0 にならないようにした (#315)
 - verify-cli を esbuild で単一 ESM ファイルに bundle し、ビルド済み `dist/cli.js` が素の Node で起動するようにした。配布物の smoke test (`npm run test:dist`) を CI に追加 (#298)
+- 記録に失敗してチェーンに載らなかったイベントが、直前のイベントを指す index で成功扱いになり、LogViewer と IndexedDB へ二重投入されていた問題を修正した。`RecordEventResult` に `recorded` を足し、載らなかったときは `recorded: false` / `index: -1` を返す (チェックポイント作成など push 後の失敗は載っているので `recorded: true`)。EventRecorder は載らなかったイベントを UI / IndexedDB に流さない。proof 形式・ハッシュ入力の変更なし (#284)
+- 複数行にまたがる短い削除 (2〜49 文字) が `deleteWordBackward` に分類されていた問題を修正した。行をまたぐ削除は長さによらず `deleteHardLineBackward` とする。Monaco の変更イベントは削除文字列を持たないため、この分類と削除方向は推定 (advisory)。proof 形式・ハッシュ入力の変更なし (#284)
+- リロードで復元するたびに、`tab-switches.json` へ `fromTabId: null` の合成タブ切替が 1 件ずつ蓄積していた問題を修正した。復元中は復元済みの履歴を使い、合成エントリを足さない。proof 形式・ハッシュ入力の変更なし (#284)
 - 署名 API の per-session タブ台帳を record と別の KV 名前空間 (`tabs:{sessionId}`) に移し、`sessionId` / `tabId` を `[A-Za-z0-9._-]` に制限した。`tabId=tabs` で台帳が壊れて後続タブの署名が例外になる問題と、区切り文字 `:` による record キー衝突を解消。KV の不正形な record / 台帳でも未捕捉例外にならない (#297)
 - 検証 (Web) の表示不整合をまとめて修正した。信頼バッジのハッシュチェーン issue に worker の英文がそのまま出ていた、スクリーンショットの解像度が欠けた displayInfo で `undefined x undefined` になる、問題パッケージ未提供の試験束縛カードが root 束縛だけで緑 (success) になり導線が畳まれていた、問題パッケージ (.tcexam) の manifest がキューのクリア後も残る、といった問題の解消。あわせて到達不能な `PoswMode` の `sampled` と未使用の i18n キーを削除した (#281)
 - 検証 (Web) でアクティブなタブやファイルを閉じたあと、タブバー・サイドバー・結果パネルの選択が食い違い、閉じたはずのファイルの判定が表示されたままになる問題を修正した。次のタブの選択を TabController に一本化し、未オープンのファイルを選ばないようにした。あわせて、タブを閉じたあとに別の proof へ問題パッケージ (.tcexam) が束縛される経路と、フォルダ削除後にサイドバーの選択が残る問題も解消した。状態契約に `data-active` / `#result-status-card[data-filename]` を追加 (#281)
