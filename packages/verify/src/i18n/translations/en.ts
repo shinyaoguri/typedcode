@@ -80,9 +80,6 @@ export const en: VerifyTranslationKeys = {
 
   result: {
     statusVerifying: 'Verifying...',
-    statusSuccess: 'Verification Successful',
-    statusWarning: 'Warnings Found',
-    statusFailed: 'Verification Failed',
     typingPure: 'Pure',
     typingExternal: 'External input',
     timesCount: '${count}',
@@ -110,7 +107,6 @@ export const en: VerifyTranslationKeys = {
     posw: 'PoSW',
     poswMode: 'Mode',
     poswSkipped: 'Skipped (fast)',
-    poswSampled: 'Sampled (audit)',
     poswFull: 'Verified (full)',
     poswNone: 'None',
     iterations: 'Iterations',

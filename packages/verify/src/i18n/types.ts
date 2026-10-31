@@ -93,9 +93,6 @@ export interface VerifyTranslationKeys {
   // Result panels
   result: {
     statusVerifying: string;
-    statusSuccess: string;
-    statusWarning: string;
-    statusFailed: string;
     typingPure: string;
     typingExternal: string;
     timesCount: string;
@@ -122,7 +119,6 @@ export interface VerifyTranslationKeys {
     posw: string;
     poswMode: string;
     poswSkipped: string;
-    poswSampled: string;
     poswFull: string;
     poswNone: string;
     iterations: string;

@@ -20,6 +20,18 @@ export interface LightboxOptions {
 }
 
 /**
+ * 解像度の表示文字列。displayInfo は manifest 由来で欠けうる (旧形式・破損) ので、
+ * 数値の width / height が揃わないときは `undefined x undefined` を出さず '-' にする (#281)。
+ */
+export function formatScreenshotResolution(displayInfo: unknown): string {
+  if (typeof displayInfo !== 'object' || displayInfo === null) return '-';
+  const { width, height } = displayInfo as { width?: unknown; height?: unknown };
+  if (typeof width !== 'number' || typeof height !== 'number') return '-';
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return '-';
+  return `${width} x ${height}`;
+}
+
+/**
  * スクリーンショットライトボックス
  */
 export class ScreenshotLightbox {
@@ -291,7 +303,7 @@ export class ScreenshotLightbox {
 
     this.typeEl.textContent = typeMap[screenshot.captureType] ?? screenshot.captureType;
     this.timeEl.textContent = this.formatTime(screenshot.timestamp);
-    this.resolutionEl.textContent = `${screenshot.displayInfo.width} x ${screenshot.displayInfo.height}`;
+    this.resolutionEl.textContent = formatScreenshotResolution(screenshot.displayInfo);
 
     // 検証状態
     if (screenshot.verified) {

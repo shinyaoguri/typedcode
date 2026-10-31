@@ -64,7 +64,7 @@ export type VerificationStatus = 'pending' | 'verifying' | 'success' | 'warning'
 export type VerificationMode = 'fast' | 'audit' | 'full';
 
 /** PoSW の検証モード */
-export type PoswMode = 'skipped' | 'sampled' | 'full';
+export type PoswMode = 'skipped' | 'full';
 
 /** 検証結果データ（Worker→メインスレッドへ渡すデータ） */
 export interface VerificationResultData {

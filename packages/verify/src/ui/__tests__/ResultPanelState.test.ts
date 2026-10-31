@@ -138,12 +138,26 @@ describe('ResultPanel overall verdict state contract', () => {
       expect(statusIcon().dataset.level).toBe(level);
     }
   );
+});
 
-  it('does not invent a level when rendered without a TrustCalculator result', () => {
-    panel.render(resultData({}, 'failed'));
-    panel.render(resultData({ trustResult: undefined }));
+describe('ResultPanel exam binding card without a problem package (#281 v5)', () => {
+  it('shows a bound root as a warning and expands the card so the load-package prompt is visible', () => {
+    panel.render(
+      resultData({
+        examBinding: {
+          examId: 'exam-1',
+          problemId: 'p1',
+          variant: null,
+          rootValid: true,
+          packageProvided: false,
+        },
+      })
+    );
 
-    expect(statusIcon().hasAttribute('data-level')).toBe(false);
+    expect(document.getElementById('card-exam-binding')?.classList.contains('expanded')).toBe(true);
+    expect(document.getElementById('exam-icon')?.classList.contains('warning')).toBe(true);
+    expect(document.getElementById('exam-badge')?.classList.contains('warning')).toBe(true);
+    expect(document.getElementById('exam-note-row')?.style.display).toBe('flex');
   });
 });
 

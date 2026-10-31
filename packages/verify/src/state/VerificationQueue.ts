@@ -245,6 +245,7 @@ export class VerificationQueue {
     this.queue = [];
     this.parsedDataMap.clear();
     this.modeMap.clear();
+    this.manifestMap.clear();
     // 処理中のアイテムはそのまま完了を待つ
   }
 
@@ -259,6 +260,7 @@ export class VerificationQueue {
     this.queue = [];
     this.parsedDataMap.clear();
     this.modeMap.clear();
+    this.manifestMap.clear();
     this.processing = null;
     this.isProcessing = false;
   }

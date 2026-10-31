@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { TrustCalculator } from '../TrustCalculator.js';
 import type { ScreenshotVerificationSummary, VerificationResultData } from '../../types.js';
+import { t } from '../../i18n/index.js';
 
 /** 健全な anchored proof の検証結果 (テストごとに上書きして崩す)。 */
 function healthyResult(): VerificationResultData {
@@ -48,6 +49,14 @@ describe('TrustCalculator.calculate — level determination', () => {
 
   it('fails when the hash chain is broken', () => {
     expect(calc({ ...healthyResult(), chainValid: false }).level).toBe('failed');
+  });
+
+  it('shows a localized chain issue, never the raw English worker message', () => {
+    const r = calc({ ...healthyResult(), chainValid: false, message: 'Previous hash mismatch at event 42' });
+    const chainIssue = r.issues.find((i) => i.component === 'chain');
+
+    expect(chainIssue?.message).toBe(t('trust.issueChainInvalid'));
+    expect(chainIssue?.message).not.toContain('Previous hash');
   });
 
   it('fails when any screenshot is tampered', () => {

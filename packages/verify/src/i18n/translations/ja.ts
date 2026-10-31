@@ -80,9 +80,6 @@ export const ja: VerifyTranslationKeys = {
 
   result: {
     statusVerifying: '検証中...',
-    statusSuccess: '検証成功',
-    statusWarning: '警告あり',
-    statusFailed: '検証失敗',
     typingPure: '純粋',
     typingExternal: '外部入力あり',
     timesCount: '${count}回',
@@ -109,7 +106,6 @@ export const ja: VerifyTranslationKeys = {
     posw: 'PoSW',
     poswMode: 'モード',
     poswSkipped: 'スキップ (fast)',
-    poswSampled: 'サンプリング (audit)',
     poswFull: '完全検証 (full)',
     poswNone: 'なし',
     iterations: '反復回数',
