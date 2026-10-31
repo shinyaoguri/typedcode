@@ -12,6 +12,7 @@ import {
   formatMultiSummary,
   formatProofHeader,
   formatResult,
+  printError,
   printUsage,
   safe,
   type VerificationOutput,
@@ -442,6 +443,36 @@ describe('formatResult — proof 由来の文字列による偽セクション�
     expect(reflection[0]).toContain(' / second');
     expect(reflection[0]).not.toContain(ESC);
     expect(reflection[0]).toContain('(sanitized)');
+  });
+});
+
+describe('printError — エラー文言に混じる未信頼文字列の無害化 (#339)', () => {
+  /** printError は console.error へ書くので、1 回分を掴む。 */
+  function errorOutput(message: string): string {
+    const lines: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      lines.push(args.map(String).join(' '));
+    };
+    try {
+      printError(message);
+    } finally {
+      console.error = original;
+    }
+    return lines.join('\n');
+  }
+
+  it('does not emit a raw ESC sequence carried in the message', () => {
+    // ZIP エントリ名や proof 由来の文字列は Error.message に埋まって printError へ来る。
+    // 端末制御文字がそのまま出ると画面の書き換え (行の偽造) ができてしまう。
+    const output = errorOutput(`Failed to read ${FORGED_ENTRY_NAME}`);
+    expect(output).not.toContain(`${ESC}[32m`);
+    expect(output).not.toContain('\n');
+    expect(output).toContain('(sanitized)');
+  });
+
+  it('keeps an ordinary message readable with no suffix', () => {
+    expect(plain(errorOutput('No proof file given.'))).toBe('Error: No proof file given.');
   });
 });
 

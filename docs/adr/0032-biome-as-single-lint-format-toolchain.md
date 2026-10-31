@@ -36,7 +36,7 @@
 
 **Option B (Biome 1 つ)** を採る。決め手は「ツールチェーンに割ける時間が小さい」という制約で、設定 1 ファイル・依存 1 つ・`npm run lint` = `biome ci .` の 1 コマンドという運用の軽さが、ルール網羅性の不足を上回ると判断した。
 
-型情報つきルールが要る領域 (浮遊 Promise など) は、`tsconfig.base.json` を root に新設して 6 か所コピペの tsconfig を `extends` 化し、コンパイラ側の厳格化 (`noUnusedLocals` / `noUncheckedIndexedAccess` など。workers は欠落していたため段階的に揃える) で補う。lint と型検査の役割をこう分けたので、`.editorconfig` は置かない (format の正本を Biome に一本化し、二重定義の食い違いを作らない)。
+型情報つきルールが要る領域 (浮遊 Promise など) は、`tsconfig.base.json` を root に新設して 6 か所コピペの tsconfig を `extends` 化し、コンパイラ側の厳格化 (`noUnusedLocals` / `noUncheckedIndexedAccess` など。workers も同じ導入 PR ([#185](https://github.com/shinyaoguri/typedcode/pull/185)) で `tsconfig.base.json` を extends する形へ揃えた) で補う。lint と型検査の役割をこう分けたので、`.editorconfig` は置かない (format の正本を Biome に一本化し、二重定義の食い違いを作らない)。
 
 ## Consequences
 
@@ -55,7 +55,6 @@
 ### Follow-ups / 残課題
 
 - `scripts/` 配下に既存の warning が残っている (lint は green だが info / warn は出る)。ルールを上げるか個別に潰すかは未決
-- workers の tsconfig 厳格化は段階的に進める方針で、完了していない
 
 ## References
 

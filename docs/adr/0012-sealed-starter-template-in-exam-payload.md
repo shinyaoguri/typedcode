@@ -1,9 +1,9 @@
 # ADR-0012: 封印問題の平文を構造化し、N問バンドル＋問題ごとのスターターコードを同梱する
 
-- **Status**: Accepted (実装済み・develop マージ済み)
+- **Status**: Accepted (実装済み)
 - **Date**: 2026-06-08 (Accepted: 2026-06-09)
 - **Deciders**: (PR 上の合意者 / レビュアー)
-- **PR / Commit**: #89 (ADR) / #90 (Phase1+2a: shared codec + grader v2) / #91 (Phase2b: editor N タブ解錠) / #92 (Phase3: /author N問オーサリング)。追加で #95 にて editor クロム統一・Markdown プレビュー(受験表示と統一)・スターターコードの C 実行。すべて develop マージ済み。
+- **PR / Commit**: #89 (ADR) / #90 (Phase1+2a: shared codec + grader v2) / #91 (Phase2b: editor N タブ解錠) / #92 (Phase3: /author N問オーサリング)。追加で #95 にて editor クロム統一・Markdown プレビュー(受験表示と統一)・スターターコードの C 実行。すべて マージ済み。
 
 ## Context
 

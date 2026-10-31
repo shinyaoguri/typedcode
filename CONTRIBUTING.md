@@ -60,7 +60,7 @@ gh pr merge --squash --delete-branch
 - **カバレッジは下げない**: 各パッケージの `vitest.config.ts` の `coverage.thresholds` が実測値の床で、下回ると CI の test job が落ちる。テストを足してカバレッジが上がったら `npm run coverage:ratchet` で床を引き上げ、その差分もコミットする
 - **テストが本当に不要なら理由を書く**: 実装 (`packages/*/src`) を変えてテストを変えていない PR は、CI の `require-tests` ([pr-checks.yml](.github/workflows/pr-checks.yml)) が落とす。挙動を変えないリファクタなどでテストが不要な場合は、PR にラベル `no-test-needed` を付け、PR 本文の `## テスト不要の理由` 見出しの下に理由を書く (ラベル・本文の編集で再判定される)。`docs` / `ci` / `chore` 型と依存更新の PR は対象外
 - **自動化できない確認は理由とともに残す**: 見た目の最終確認など、手で確かめたことは PR 本文の「自動化できず手動で確認したこと」に理由つきで書く
-- **手元では `npm run check`** (typecheck → lint → workflow の検査 (`lint:workflows` = actionlint + shellcheck) → カバレッジ付きユニットテスト → E2E)。E2E を除いた `npm run check:fast` もある
+- **手元では `npm run check`** (typecheck → lint (Biome + docs の `[[...]]` 参照の検査) → workflow の検査 (`lint:workflows` = actionlint + shellcheck) → カバレッジ付きユニットテスト → E2E)。E2E を除いた `npm run check:fast` もある
 
 `scripts/` のテストのうち `require-tests.test.mjs` は CI (check job) で走る。`sweep.test.ts` は使い捨てのリポジトリを組み立てる統合テストなので CI 常設にはしておらず、スクリプトを変えたときに手元で回す (下記「マージ後の掃除」)。
 

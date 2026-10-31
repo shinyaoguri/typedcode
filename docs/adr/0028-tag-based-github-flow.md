@@ -45,7 +45,7 @@ ADR-0026 (2026-06-29) で軽量 Git Flow (main=リリース, develop=常時統�
 
 - `develop` / `release/*` / `hotfix/*` は廃止。緊急修正は「main へ fix PR → 即パッチタグ」の最短経路で行う。
 - `staging` はブランチ名として**予約** (Pages の staging エイリアスと衝突するため)。
-- ADR stacked PR の cherry-pick flatten は維持するが、main が PR 必須になるため「flatten ブランチ → PR → **Rebase and merge**」方式に変更する ([[adr-stacked-pr-merge]])。
+- ADR stacked PR の cherry-pick flatten は維持するが、main が PR 必須になるため「flatten ブランチ → PR → **Rebase and merge**」方式に変更する。
 
 ### リリースゲート (タグの安全装置)
 
@@ -77,6 +77,6 @@ ADR-0026 (2026-06-29) で軽量 Git Flow (main=リリース, develop=常時統�
 ## References
 
 - [ADR-0026](0026-lightweight-git-flow-branching.md) (superseded — 軽量 Git Flow と当時の前提)
-- [[release-strategy]] / [[adr-stacked-pr-merge]] (メモリ: 移行に伴い更新)
+- 移行 PR [#188](https://github.com/shinyaoguri/typedcode/pull/188) (リリース方針・stacked PR 運用のメモ書きもこの移行で更新した。メモは作者のローカルにあり、内容は ADR-0026 / 本 ADR に転記済み)
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) (本 ADR を実務手順に落とした運用ガイド)
 - 外部: [GitHub Flow](https://docs.github.com/en/get-started/quickstart/github-flow) / [nvie の追記 (2020): 継続的デリバリーの Web アプリには Git Flow より GitHub Flow 系を推奨](https://nvie.com/posts/a-successful-git-branching-model/)

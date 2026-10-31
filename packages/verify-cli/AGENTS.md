@@ -19,6 +19,7 @@
 3. **ZIP 内の proof は全件検証する**: exam/class はタブ毎に独立した `<name>_proof.json` を N 個出力するので、`shared` の `extractAllProofsFromZip` で全件を取り出し、**1 件でも fail なら exit 1**。最初の 1 件だけ見ると未検証タブが exit 0 で通る (proof 判定は構造 `isProofFile` で、ファイル名順や `screenshots/manifest.json` に依存しない)
 4. **stdout は人間向け、stderr はエラーログ**: パイプして grep される可能性を考慮
 5. **proof / ZIP 由来の文字列は `output.ts` の `safe()` を通してから stdout へ出す** (#266): 生値のままだと改行と ANSI エスケープで**任意の行を偽造できる** (ZIP エントリ名から Summary に緑の `✓ <正規ファイル名>` を生やせることを再現済み)。exit code は守られるので壊れるのは grep する採点運用と端末表示。`safe()` が保証するのは「未信頼値が 1 行に収まり行頭を乗っ取れない」ところまで — 行内に `Hash Chain:  PASS` という**文字列**が残るのは防げないので、**採点は行頭を固定して** grep する。整形を `cli.ts` の `console.log` に直接書かない (テストを当てられなくなる。`formatProofHeader` / `formatMultiSummary` のように `output.ts` へ寄せる)
+6. **位置引数の入力は全件検証する** (#294): `positional[0]` だけを処理すると `valid.json broken.json` が未検証のまま exit 0 になり、順序を入れ替えると結論が変わった。入力ごとの読込・パース・未対応拡張子・ZIP 内 proof 無しは全体を落とさず、summary に `valid: false` として積んで残りの入力へ進む (1 件でも失敗なら exit 1)。複数入力のときの ZIP 内 proof の表示名 (= `--analysis-*` の `filename`) は `<入力>:<エントリ名>`。`--exam-package` などのオプションは全入力に共通。`cliInputs.test.ts` が固定
 
 ## ファイル構成
 
