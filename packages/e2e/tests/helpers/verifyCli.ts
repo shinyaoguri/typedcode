@@ -79,3 +79,49 @@ export function runVerifyCliWithAnalysis(file: string, extraArgs: string[] = [])
   }
   return { ...res, analysis };
 }
+
+/** `--analysis-bundle` 1 件 (Tier A バンドル, ADR-0024) のうち E2E が読む部分。 */
+export interface CliVerdictEntry {
+  /** ZIP 内のエントリパス (JSON 単体入力ならコマンドに渡したパス)。 */
+  filename: string;
+  /** exit code の根拠になる proof ごとの合否 (`--analysis-json` の `valid`)。 */
+  valid: boolean;
+  /** shared の `deriveAssurance` の結果 (verify Web の `#assurance-strip` と同じ導出)。 */
+  assurance: {
+    integrity: string;
+    temporal: string;
+    provenance: { pureTyping: boolean; [k: string]: unknown };
+  };
+}
+
+export interface CliResultWithVerdicts extends CliResult {
+  verdicts: CliVerdictEntry[];
+}
+
+/**
+ * proof を検証し、proof ごとの機械可読な判定 (合否 + 三層保証) を返す。verify Web の
+ * data-* 状態契約と突き合わせる (Web↔CLI パリティ) ための入口。
+ *
+ * 合否は `--analysis-json` の `valid`、三層保証は `--analysis-bundle` の `assurance` から読む。
+ * どちらも advisory 出力で exit code には干渉しない (exit code は `exitCode` で別に見る)。
+ */
+export function runVerifyCliWithVerdicts(file: string, extraArgs: string[] = []): CliResultWithVerdicts {
+  const outDir = mkdtempSync(join(tmpdir(), 'tc-e2e-verdicts-'));
+  const analysisPath = join(outDir, 'analysis.json');
+  const bundlePath = join(outDir, 'bundle.json');
+  const res = runVerifyCli(file, [...extraArgs, '--analysis-json', analysisPath, '--analysis-bundle', bundlePath]);
+  if (!existsSync(analysisPath) || !existsSync(bundlePath)) {
+    throw new Error(`verify-cli wrote no analysis/bundle (exit ${res.exitCode})\n${res.stdout}${res.stderr}`);
+  }
+  const analysis = JSON.parse(readFileSync(analysisPath, 'utf-8')) as Array<{ filename: string; valid: boolean }>;
+  const bundles = JSON.parse(readFileSync(bundlePath, 'utf-8')) as Array<{
+    filename: string;
+    assurance: CliVerdictEntry['assurance'];
+  }>;
+  const verdicts = analysis.map((a) => {
+    const b = bundles.find((x) => x.filename === a.filename);
+    if (!b) throw new Error(`no analysis bundle for ${a.filename}`);
+    return { filename: a.filename, valid: a.valid, assurance: b.assurance };
+  });
+  return { ...res, verdicts };
+}
