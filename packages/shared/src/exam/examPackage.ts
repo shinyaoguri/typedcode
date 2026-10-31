@@ -8,7 +8,7 @@
  * - `verifyExamPackageSignature`: 出題者鍵レジストリで package 署名を検証する
  * - `deriveExamKey` / `decryptExamPackage`: 監督コードから鍵を導出し復号する
  * - `computeExamPackageHash` / `computeProblemContentHash` / `computeExamChainRoot`: 束縛用ハッシュ
- * - `verifyExamBinding`: grader 用の高レベル検証 (署名 → packageHash → 識別子 → root → 内容ハッシュ → time-box)
+ * - `verifyExamBinding`: grader 用の高レベル検証 (署名 → packageHash → root → 内容ハッシュ → 識別子 → time-box)
  *
  * 不変条件: **署名入力と packageHash は同一の canonical core** (`{signature, publicKeyJwk}` を
  * 除いた manifest) を `deterministicStringify` して計算する。これにより任意同梱の publicKeyJwk の
