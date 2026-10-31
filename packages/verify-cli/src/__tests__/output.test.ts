@@ -56,7 +56,7 @@ function screenshots(overrides: Partial<ScreenshotVerificationSummary> = {}): Sc
 }
 
 /** exam 束縛だけが落ちた proof (チェーンは健全)。 */
-function examBindingFailed(): CLIExamResult {
+function examBindingFailed(): Extract<CLIExamResult, { present: true }> {
   return {
     present: true,
     examId: 'exam-1',
@@ -409,7 +409,9 @@ describe('formatResult — proof 由来の文字列による偽セクション�
       formatResult(
         output({
           processSummary: {
+            totalEvents: 0,
             durationMs: 0,
+            contentChangeCount: 0,
             insertedChars: 0,
             deletedChars: 0,
             deletionRatio: null,
@@ -418,6 +420,7 @@ describe('formatResult — proof 由来の文字列による偽セクション�
             runFailureCount: 0,
             hasRunResults: false,
             pauseCount: 0,
+            longestPauseMs: null,
             focusLossCount: 0,
             externalInputCount: 0,
             reflectionNotes: [`first${ESC}[31m\nsecond`],
