@@ -8,11 +8,13 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import { evaluate, extractNoTestReason, isImplementationFile, isTestFile } from './require-tests.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./require-tests.mjs', import.meta.url));
+const PR_TEMPLATE = readFileSync(new URL('../.github/pull_request_template.md', import.meta.url), 'utf8');
 
 const IMPL = 'packages/editor/src/core/foo.ts';
 const UNIT_TEST = 'packages/editor/src/core/__tests__/foo.test.ts';
@@ -116,6 +118,18 @@ describe('evaluate', () => {
 
   it('fails when a reason is written but the no-test-needed label is missing', () => {
     assert.equal(evaluate({ ...feat({ body: REASON_BODY }), files: [IMPL] }).ok, false);
+  });
+
+  it('fails when the no-test-needed label is set on an untouched PR template body', () => {
+    const outcome = evaluate({ ...feat({ labels: ['no-test-needed'], body: PR_TEMPLATE }), files: [IMPL] });
+    assert.equal(outcome.ok, false);
+  });
+
+  it('passes when the reason is filled into the PR template and the label is set', () => {
+    const body = PR_TEMPLATE.replace('## テスト不要の理由\n', '## テスト不要の理由\n\n挙動を変えない改名だけ。\n');
+    assert.notEqual(body, PR_TEMPLATE);
+    const outcome = evaluate({ ...feat({ labels: ['no-test-needed'], body }), files: [IMPL] });
+    assert.equal(outcome.verdict, 'waived');
   });
 
   it('passes when the no-test-needed label is set and the reason section has text', () => {
