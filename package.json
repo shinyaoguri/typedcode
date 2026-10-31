@@ -18,7 +18,9 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "biome ci .",
     "lint:fix": "biome check --write .",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "test:coverage": "npm run test:coverage --workspaces --if-present",
+    "coverage:ratchet": "COVERAGE_RATCHET=1 npm run test:coverage --workspaces --if-present"
   },
   "engines": {
     "node": ">=24"

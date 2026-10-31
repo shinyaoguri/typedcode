@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # 構成 (タグ式 GitHub Flow, ADR-0028):
-#   test                   — どのトリガでも必ず走る (test:run を持つ全 workspace のユニットテスト)
+#   test                   — どのトリガでも必ず走る (test:coverage を持つ全 workspace のユニットテスト + カバレッジの床)
 #   check                  — どのトリガでも必ず走る (全 package typecheck/build + Worker config dry-run)
 #   deploy-preview         — feature → main PR で Pages のプレビュー URL を発行 (Workers staging 向け)
 #   deploy-staging         — main push で Workers staging + Pages staging (--branch=staging) を更新
@@ -54,11 +54,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=optional
 
-      # `test:run` script を持つ全 workspace を回す (#156)。パッケージ名の個別列挙だと
-      # 新パッケージのテストが CI 外に取り残される (editor がそうなっていた)。
-      # e2e は `test` のみで `test:run` を持たないため誤って拾わない。
-      - name: Run unit tests (all workspaces with test:run)
-        run: npm run test:run --workspaces --if-present
+      # `test:coverage` script を持つ全 workspace のユニットテストをカバレッジ付きで回す
+      # (#156 / ADR-0034)。パッケージ名の個別列挙だと新パッケージのテストが CI 外に取り残される
+      # (editor がそうなっていた)。各 vitest.config.ts の coverage.thresholds (実測値の床) を
+      # 下回ると落ちるので「テストが減らない」ことをここで強制する。床の引き上げは手元の
+      # `npm run coverage:ratchet`。e2e は `test` のみで `test:coverage` を持たないため誤って拾わない。
+      - name: Run unit tests with coverage (all workspaces with test:coverage)
+        run: npm run test:coverage --workspaces --if-present
 
   # --------------------------------------------------------------------
   # 品質ゲート (merge 前に全 package を typecheck/build + Worker config 検証)
