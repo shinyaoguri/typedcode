@@ -78,7 +78,11 @@ export class OperationDetector {
   }
 
   /**
-   * 削除操作の詳細な種別を推定
+   * 削除操作の詳細な種別を推定 (advisory)
+   *
+   * Monaco の変更イベントは削除された文字列を持たないので、空白や単語境界は判定できない。
+   * 範囲の行数と長さだけで分類する: 行をまたぐ削除は行単位の削除、同一行の 2〜49 文字は
+   * 便宜的に deleteWordBackward、それ以上は deleteByCut とする (#284)。
    */
   private detectDeleteType(change: ModelContentChange, range: ModelContentChange['range']): InputType {
     const { rangeLength } = change;
@@ -91,14 +95,14 @@ export class OperationDetector {
       return 'deleteContentForward';
     }
 
-    // 単語単位の削除（5文字以上で空白を含まない）
-    if (rangeLength > 1 && rangeLength < 50) {
-      return 'deleteWordBackward';
-    }
-
-    // 行単位の削除
+    // 行をまたぐ削除（長さによらず行単位の削除として扱う）
     if (range.startLineNumber !== range.endLineNumber) {
       return 'deleteHardLineBackward';
+    }
+
+    // 同一行内の短い範囲削除（2〜49 文字）。単語かどうかは判定できないので便宜的な分類
+    if (rangeLength > 1 && rangeLength < 50) {
+      return 'deleteWordBackward';
     }
 
     // 大量削除（範囲選択後のDelete）
@@ -141,7 +145,7 @@ export class OperationDetector {
   }
 
   /**
-   * 削除方向を推定
+   * 削除方向を推定。advisory (Backspace と Delete は変更イベント上で区別できない)
    */
   private getDeleteDirection(range: ModelContentChange['range']): DeleteDirection {
     if (range.startColumn === 1) {
