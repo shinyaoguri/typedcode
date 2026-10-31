@@ -90,6 +90,10 @@ export default defineConfig({
     },
   },
   preview: {
+    // preview.proxy は未指定だと server.proxy を引き継ぎ、`/verify` を dev の verify サーバへ
+    // 転送してしまう (起動していなければ 502)。preview は dist の配信なので、deploy と同じく
+    // dist の `verify/` (e2e の playwright.build.config.ts が重ねる) をそのまま返す。
+    proxy: {},
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'credentialless',

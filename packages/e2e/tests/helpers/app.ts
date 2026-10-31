@@ -19,8 +19,30 @@ export class EditorApp {
    * 各テストを独立させる (main.ts の `?reset` ハンドラ)。
    */
   async openCasualFresh(): Promise<void> {
-    await this.page.goto('/casual?reset');
-    await this.waitReady();
+    await this.openModeFresh('casual');
+  }
+
+  /**
+   * 任意のモードをクリーンなセッションで開く (モード共通の入口)。
+   *
+   * - `/<mode>?reset` で全モードの保存データを消してから起動する (`openCasualFresh` と同じ)
+   * - 利用規約モーダル (class / assignment / exam で未同意なら出る。casual は出さない = ADR-0015) は
+   *   `acceptTerms` で同意済みにして飛ばす。既定は casual 以外で true (casual の既存 spec の
+   *   記録内容を変えないため、casual では何も足さない)
+   * - 起動時の画面共有の選択ダイアログ (class と exam で出る) は `screenShare` で選ぶ。省略時は触らない
+   * - class / exam 固有の操作 (問題の読み込み・試験ゲート) はここに入れない。エディタが
+   *   その手前で止まるモードでは `waitReady: false` にして、呼び出し側で続きを駆動する
+   */
+  async openModeFresh(mode: EditorMode, opts: OpenModeOptions = {}): Promise<void> {
+    const { acceptTerms = mode !== 'casual', screenShare, waitReady = true } = opts;
+    if (acceptTerms) await installTermsAccepted(this.page);
+    await this.page.goto(`/${mode}?reset`);
+    if (screenShare) {
+      const choice = this.page.locator(`.screen-share-choice-dialog [data-choice="${screenShare}"]`);
+      await choice.waitFor({ state: 'visible', timeout: 30_000 });
+      await choice.click();
+    }
+    if (waitReady) await this.waitReady();
   }
 
   /** エディタとイベント記録 (#0 humanAttestation) が立ち上がるまで待つ。 */
@@ -50,13 +72,22 @@ export class EditorApp {
   async waitForSynced(): Promise<void> {
     await expect(this.page.locator('#sync-status-item')).toHaveClass(/synced/, { timeout: 90_000 });
     // event-count が 2 回連続で同じ = PoSW キューが掃けてチェーン確定。
+    // 上限までに安定しなければ throw する (#229)。以前は黙って return していたため、
+    // チェーンが確定していないまま reload / export へ進み、原因の離れた所で落ちていた。
+    const deadline = Date.now() + SYNC_STABLE_TIMEOUT_MS;
+    const seen: number[] = [];
     let prev = -1;
-    for (let i = 0; i < 30; i++) {
+    while (Date.now() < deadline) {
       const c = await this.eventCount();
       if (c === prev) return;
+      seen.push(c);
       prev = c;
       await this.page.waitForTimeout(300);
     }
+    throw new Error(
+      `event-count did not settle within ${SYNC_STABLE_TIMEOUT_MS}ms (PoSW queue still draining?). ` +
+        `observed: ${seen.slice(-10).join(' → ')}`
+    );
   }
 
   /**
@@ -188,11 +219,18 @@ export class EditorApp {
   /**
    * エクスポートをトリガしてダウンロード ZIP を一時ファイルに保存し、そのパスを返す。
    * casual の pre-export Turnstile はテストキーで自動 pass する。
+   *
+   * 導線は 2 つある: 左のダウンロードメニュー (`#download-menu-btn` → 項目) と、問題パネルの
+   * 「ログをダウンロード」(`#download-log-btn`。全タブ ZIP。exam はこちらに一本化される)。
    */
-  private async exportAndSave(itemId: '#export-current-tab-btn' | '#export-zip-btn'): Promise<string> {
-    await this.page.locator('#download-menu-btn').click();
+  private async exportAndSave(route: ExportRoute): Promise<string> {
     const downloadPromise = this.page.waitForEvent('download', { timeout: 90_000 });
-    await this.page.locator(itemId).click();
+    if (route === 'logButton') {
+      await this.page.locator('#download-log-btn').click();
+    } else {
+      await this.page.locator('#download-menu-btn').click();
+      await this.page.locator(route === 'currentTab' ? '#export-current-tab-btn' : '#export-zip-btn').click();
+    }
     // casual/class/assignment は提出前セルフレビュー (ADR-0022) が割り込むので続行する。
     // exam には無いので未出現でも握り潰す。
     await this.proceedSelfReviewIfPresent();
@@ -216,13 +254,68 @@ export class EditorApp {
 
   /** 現在のタブだけをエクスポート (`<name>_TC<ts>.zip`)。保存パスを返す。 */
   exportCurrentTab(): Promise<string> {
-    return this.exportAndSave('#export-current-tab-btn');
+    return this.exportAndSave('currentTab');
   }
 
   /** 全タブをエクスポート (`ALL_TC<ts>.zip`)。保存パスを返す。 */
   exportAllTabs(): Promise<string> {
-    return this.exportAndSave('#export-zip-btn');
+    return this.exportAndSave('allTabs');
   }
+
+  /**
+   * 問題パネルの「ログをダウンロード」(`#download-log-btn`) で全タブ ZIP を出す。保存パスを返す。
+   * class / assignment / exam の提出導線 (exam は左のメニューが隠れてこちらだけになる)。
+   */
+  exportViaLogButton(): Promise<string> {
+    return this.exportAndSave('logButton');
+  }
+}
+
+/** エディタのモード (URL の 1 段目)。 */
+export type EditorMode = 'casual' | 'class' | 'assignment' | 'exam';
+
+/** export の導線。`currentTab` / `allTabs` はダウンロードメニュー、`logButton` は問題パネルのボタン。 */
+export type ExportRoute = 'currentTab' | 'allTabs' | 'logButton';
+
+export interface OpenModeOptions {
+  /** 利用規約を同意済みにしてモーダルを飛ばす。既定: casual 以外で true。 */
+  acceptTerms?: boolean;
+  /** 起動時の画面共有の選択ダイアログ (class / exam) で選ぶ側。省略時はダイアログに触らない。 */
+  screenShare?: 'share' | 'optOut';
+  /** エディタと #0 の記録まで待つ。既定 true (問題読込・試験ゲートの手前で止まるモードは false)。 */
+  waitReady?: boolean;
+}
+
+/** `waitForSynced` が event-count の安定を待つ上限。 */
+const SYNC_STABLE_TIMEOUT_MS = 30_000;
+
+/**
+ * 利用規約の同意フラグを、ページのスクリプトより先に localStorage へ入れる。
+ * 形式は editor の `TermsHandler.markTermsAccepted` と同じ (`version` が一致しないと未同意扱い)。
+ *
+ * `?reset` は main.ts の先頭で `localStorage.clear()` するので、init script で入れただけでは
+ * 規約チェック (起動フローの後段) の前に消える。`Storage.prototype.clear` を包み、localStorage が
+ * 消されたら同意フラグだけ戻す (それ以外の消去はそのまま効く)。
+ */
+async function installTermsAccepted(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const KEY = 'typedcode-terms-accepted';
+    const now = Date.now();
+    const value = JSON.stringify({ version: '1.0', timestamp: now, agreedAt: new Date(now).toISOString() });
+    const put = () => {
+      try {
+        window.localStorage.setItem(KEY, value);
+      } catch {
+        /* 保存不可環境では諦める (モーダルが出るので呼び出し側の待ちで気付ける) */
+      }
+    };
+    const originalClear = Storage.prototype.clear;
+    Storage.prototype.clear = function clear(this: Storage) {
+      originalClear.call(this);
+      if (this === window.localStorage) put();
+    };
+    put();
+  });
 }
 
 /** ZIP 内の `*_proof.json` エントリ名一覧。 */
@@ -259,6 +352,63 @@ export async function extractProofJson(
   const dest = join(dir, mutate ? 'tampered_proof.json' : 'clean_proof.json');
   await writeFile(dest, JSON.stringify(proof));
   return dest;
+}
+
+/**
+ * export ZIP を読み、書き換えた ZIP を一時ファイルに書き出してパスを返す (verify Web に ZIP の
+ * まま渡す改ざん / 破損シナリオ用。`extractProofJson` の ZIP 版)。
+ *
+ * - `mutateProof`: ZIP 内の全 `*_proof.json` を JSON として書き換える (hash は再計算しない)
+ * - `renameProof`: proof のエントリ名のベースを置き換える (`<base>_proof.json`)。同じ export から
+ *   作った ZIP を 2 つ同時に verify Web へ入れると、表示名 (`data-filename`) が同じになって
+ *   どちらの行か区別できないため
+ * - `extraEntries`: 追加するエントリ (名前 → 中身の文字列。壊れた proof の注入など)
+ */
+export async function writeZipVariant(
+  zipPath: string,
+  opts: {
+    mutateProof?: (proof: Record<string, unknown>) => void;
+    renameProof?: string;
+    extraEntries?: Record<string, string>;
+    /** 出力ファイル名 (拡張子込み)。既定は `variant.zip`。verify Web のフォルダ名になる。 */
+    outName?: string;
+  }
+): Promise<string> {
+  const src = await JSZip.loadAsync(await readFileBuffer(zipPath));
+  const out = new JSZip();
+  for (const [name, entry] of Object.entries(src.files)) {
+    if (entry.dir) continue;
+    if (name.endsWith('_proof.json')) {
+      let raw = await entry.async('string');
+      if (opts.mutateProof) {
+        const proof = JSON.parse(raw) as Record<string, unknown>;
+        opts.mutateProof(proof);
+        raw = JSON.stringify(proof);
+      }
+      const dest = opts.renameProof ? name.replace(/[^/]*_proof\.json$/, `${opts.renameProof}_proof.json`) : name;
+      out.file(dest, raw);
+    } else {
+      out.file(name, await entry.async('uint8array'));
+    }
+  }
+  for (const [name, content] of Object.entries(opts.extraEntries ?? {})) out.file(name, content);
+  const dir = mkdtempSync(join(tmpdir(), 'tc-e2e-zip-'));
+  const dest = join(dir, opts.outName ?? 'variant.zip');
+  await writeFile(dest, await out.generateAsync({ type: 'nodebuffer' }));
+  return dest;
+}
+
+/**
+ * proof を改ざんする (tamper-detection.spec と同じ手口): 中ほどの content-change イベントの
+ * data にゼロ幅文字を足す。hash を再計算しないのでハッシュチェーンが切れ、検証は失敗するべき。
+ */
+export function tamperFirstContentChange(proof: Record<string, unknown>): void {
+  const tp = (proof.proof ?? proof) as { events?: Array<Record<string, unknown>> };
+  const target = (tp.events ?? []).find(
+    (e) => e.type === 'contentChange' && typeof e.data === 'string' && (e.data as string).length > 0
+  );
+  if (!target) throw new Error('no content-change event with data to tamper');
+  target.data = `\u200b${target.data as string}`;
 }
 
 /** proof イベント 1 件 (ホワイトボックス assert 用の緩い型)。 */

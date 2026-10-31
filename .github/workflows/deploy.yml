@@ -123,19 +123,28 @@ jobs:
         run: npm run deploy:production -w @typedcode/workers -- --dry-run --outdir /tmp/wrangler-dryrun-production
 
   # --------------------------------------------------------------------
-  # E2E (ブラウザ round-trip): 実物のエディタを動かして証明を出力し verify-cli で検証する。
-  # workers(wrangler dev) + editor(vite dev) を Playwright が起動。Turnstile は
+  # E2E (ブラウザ round-trip): 実物のエディタを動かして証明を出力し verify-cli と検証 Web で検証する。
+  # workers(wrangler dev) + editor(vite dev) + verify(vite dev) を Playwright が起動。Turnstile は
   # Cloudflare 公開テストキー、checkpoint 署名鍵は実行時に新規生成 (秘密はコミットしない)。
   # コピペ/フルスクリーン等のブラウザ依存挙動もここで自動検証していく。
-  # 最後に本番ビルド (vite preview) のスモークも踏む (#255)。この job は
-  # deploy-preview / deploy-staging / deploy-production の必須ゲート。
+  # 本番ビルド (vite preview) のスモーク (#255) は shard 1 だけで踏む。
+  #
+  # spec の増加 (#346) を吸収するため Playwright の --shard で 2 分割して並列に走らせる。
+  # matrix の job の check 名は `e2e (shard 1/2)` のように変わるので、required check と
+  # deploy-* の `needs: [test, check, e2e]` が参照する `e2e` は下の集約 job が名乗る。
   # --------------------------------------------------------------------
-  e2e:
+  e2e-shard:
+    name: e2e (shard ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     # e2e は wrangler dev + vite dev を Playwright が起動する構成でハングの余地があり、
     # 過去に PoSW full 検証でタイムアウト間際になった実績もある (a6079d0)。
-    # 実測 ~7 分 (--mode fast 整合 + workers:2 後。full は happy-path のみ)。
+    # 実測 ~7 分 (分割前の全体。--mode fast 整合 + workers:2 後。full は happy-path のみ)。
     timeout-minutes: 30
+    strategy:
+      # 片方の shard が落ちても、もう片方の失敗も見えるよう最後まで走らせる。
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
 
@@ -173,13 +182,15 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
-      - name: Run E2E (editor → export → verify-cli round-trip)
-        run: npm run test -w @typedcode/e2e
+      - name: Run E2E shard ${{ matrix.shard }}/2 (editor → export → verify-cli / verify Web)
+        run: npm run test -w @typedcode/e2e -- --shard=${{ matrix.shard }}/2
 
       # 本番ビルド (vite build → vite preview) のスモーク。上の round-trip は
       # vite dev サーバに対して走るため、バンドル変換やチャンク分割に起因する退行を
-      # 原理的に検出できない (#255)。この 1 本だけ dist を実際に配信して踏む。
+      # 原理的に検出できない (#255)。editor と verify (/verify/) の dist を実際に配信して踏む。
+      # 2 本だけなので shard 1 に寄せる (両 shard で build を二重に回さない)。
       - name: Run production-build smoke (vite build → vite preview)
+        if: matrix.shard == 1
         run: npm run test:build -w @typedcode/e2e
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
@@ -188,11 +199,31 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          # shard ごとに名前を分ける (同名だと 2 つ目のアップロードが衝突して失敗する)。
+          name: playwright-report-shard-${{ matrix.shard }}
           path: |
             packages/e2e/playwright-report/
             packages/e2e/test-results/
           retention-days: 7
+
+  # 全 shard の成否を 1 つの check `e2e` に集約する。main の ruleset の required check と
+  # deploy-* の `needs: [..., e2e]` はこの名前を見る。`if: always()` が無いと shard の失敗時に
+  # この job が skipped になり、ruleset 上は skipped が「通過」扱いになってしまう。
+  e2e:
+    needs: [e2e-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every E2E shard to succeed
+        env:
+          SHARD_RESULT: ${{ needs.e2e-shard.result }}
+        run: |
+          echo "e2e-shard result: $SHARD_RESULT"
+          if [ "$SHARD_RESULT" != "success" ]; then
+            echo "::error::E2E shard が成功していない (result=$SHARD_RESULT)"
+            exit 1
+          fi
 
   # --------------------------------------------------------------------
   # PR: Pages プレビューデプロイ (Workers は触らない)

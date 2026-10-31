@@ -6,8 +6,9 @@ import { defineConfig, devices } from '@playwright/test';
  * 既定の `playwright.config.ts` は vite **dev** サーバを起動するため、チャンク
  * 分割やバンドル変換に起因する退行を原理的に検出できない (#255: dev では console
  * エラー 0 件、本番ビルドだけエディタが起動しない状態で CI が緑のまま main に載った)。
- * ここでは editor を `vite build` してから `vite preview` で dist を配信し、
- * `tests/production-build.spec.ts` だけを走らせる。
+ * ここでは editor と verify を `vite build` し、deploy.yml と同じく editor の dist の
+ * `verify/` に verify の dist を重ねてから (`scripts/stage-verify-dist.mjs`) `vite preview` で
+ * 配信し、`tests/production-build.spec.ts` だけを走らせる。verify は `/verify/` 配下で開く。
  *
  * 実行: npm run test:build -w @typedcode/e2e
  *
@@ -58,11 +59,17 @@ export default defineConfig({
       // 検証対象は「いま build した dist」でなければ意味がないので、build を
       // コマンドに含め `reuseExistingServer: false` で既存 preview の再利用も禁じる。
       name: 'editor-preview',
-      command: `npm run build -w @typedcode/editor && npm run preview -w @typedcode/editor -- --port ${PREVIEW_PORT} --strictPort`,
+      // verify は deploy と同じく editor の dist の `verify/` に重ねる (base: '/verify/' でビルドされる)。
+      command: [
+        'npm run build -w @typedcode/editor',
+        'npm run build -w @typedcode/verify',
+        'node packages/e2e/scripts/stage-verify-dist.mjs',
+        `npm run preview -w @typedcode/editor -- --port ${PREVIEW_PORT} --strictPort`,
+      ].join(' && '),
       cwd: '../..',
       port: PREVIEW_PORT,
       reuseExistingServer: false,
-      timeout: 180_000,
+      timeout: 240_000,
       stdout: 'pipe',
       stderr: 'pipe',
     },

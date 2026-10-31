@@ -5,9 +5,12 @@ import { defineConfig, devices } from '@playwright/test';
  * round-trip を基本形にする (UI の見た目ではなく、暗号的に検証可能な成果物を
  * オラクルにする)。詳細は packages/e2e/README.md。
  *
- * 2 つのローカルサーバを起動する (ポートは既定値。E2E_EDITOR_PORT / E2E_WORKERS_PORT で上書き可能):
+ * 3 つのローカルサーバを起動する (ポートは既定値。E2E_EDITOR_PORT / E2E_WORKERS_PORT /
+ * E2E_VERIFY_PORT で上書き可能):
  *   - workers (wrangler dev 既定 :8787): /api/session/start・/api/verify-captcha・署名 CP
- *   - editor  (vite dev   既定 :5173): テスト対象アプリ
+ *   - editor  (vite dev   既定 :5173): テスト対象アプリ (use.baseURL)
+ *   - verify  (vite dev   既定 :5174): 検証 Web。Workers は呼ばない (verify/CLAUDE.md)。
+ *     URL は helpers/verifyWeb.ts が E2E_VERIFY_URL から組み立てる (baseURL は editor のまま)
  *
  * editor/.env は既に Cloudflare の Turnstile テストキー (1x...AA = 常に pass) と
  * VITE_API_URL=http://localhost:8787 を指すため、追加設定なしでフルスタックが回る。
@@ -15,8 +18,13 @@ import { defineConfig, devices } from '@playwright/test';
 
 const EDITOR_PORT = Number(process.env.E2E_EDITOR_PORT ?? 5173);
 const WORKERS_PORT = Number(process.env.E2E_WORKERS_PORT ?? 8787);
+const VERIFY_PORT = Number(process.env.E2E_VERIFY_PORT ?? 5174);
 const BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${EDITOR_PORT}`;
 const isCI = !!process.env.CI;
+
+// verify Web の URL は helpers/verifyWeb.ts が読む。config は Playwright の worker プロセスでも
+// 評価されるので、ここで env に置けば spec 側へポートの既定値を二重に書かずに済む。
+process.env.E2E_VERIFY_URL ??= `http://localhost:${VERIFY_PORT}/`;
 
 export default defineConfig({
   testDir: './tests',
@@ -88,9 +96,23 @@ export default defineConfig({
       // packages/editor/vite.config.ts が EDITOR_PORT (server.port + strictPort) と
       // WORKERS_PORT (VITE_API_URL 追従) を既に読む実装になっている。受け口は
       // 実装済みで、これまで渡していなかっただけなので env で渡す。
-      env: { EDITOR_PORT: String(EDITOR_PORT), WORKERS_PORT: String(WORKERS_PORT) },
+      // VERIFY_PORT は editor の `/verify` プロキシの向き先 (spec は verify を直接開くが、配線を揃えておく)。
+      env: { EDITOR_PORT: String(EDITOR_PORT), WORKERS_PORT: String(WORKERS_PORT), VERIFY_PORT: String(VERIFY_PORT) },
       cwd: '../..',
       port: EDITOR_PORT,
+      reuseExistingServer: !isCI,
+      timeout: 120_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      name: 'verify',
+      command: 'npm run dev -w @typedcode/verify',
+      // packages/verify/vite.config.ts は VERIFY_PORT があると server.port + strictPort にする
+      // (別プロセスが握っていたら黙ってずらさず失敗する)。
+      env: { VERIFY_PORT: String(VERIFY_PORT) },
+      cwd: '../..',
+      port: VERIFY_PORT,
       reuseExistingServer: !isCI,
       timeout: 120_000,
       stdout: 'pipe',
