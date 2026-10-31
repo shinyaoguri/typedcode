@@ -15,7 +15,12 @@
 import type { StoredEvent } from './types/proof.js';
 import type { CodeExecutionEventData, FocusChangeData, ReflectionNoteData } from './types/events.js';
 import { isProhibitedInputType } from './typingProof/InputTypeValidator.js';
-import { isBenignEditorInsert, isFlaggedBulkInsert, SessionProvenanceLedger } from './typingProof/structuralEdit.js';
+import {
+  insertedCharCount,
+  isBenignEditorInsert,
+  isFlaggedBulkInsert,
+  SessionProvenanceLedger,
+} from './typingProof/structuralEdit.js';
 import { isDivergentContentSnapshot } from './typingProof/replay.js';
 
 /** 編集の停止 (考え中) とみなす contentChange 間ギャップの下限。 */
@@ -154,7 +159,7 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
       case 'contentChange': {
         contentChangeCount++;
 
-        const inserted = typeof event.data === 'string' ? event.data.length : 0;
+        const inserted = insertedCharCount(event);
         const deleted = event.rangeLength ?? 0;
         insertedChars += inserted;
         deletedChars += deleted;

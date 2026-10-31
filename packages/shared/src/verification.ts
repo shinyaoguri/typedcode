@@ -676,6 +676,31 @@ export async function verifyTypingProofHash(
 }
 
 /**
+ * イベントのうち **ハッシュ (PoSW 入力と `event.hash`) の計算に入るフィールド** (posw を除く) を取り出す。
+ *
+ * これが「署名対象の事実」の単一定義 (#328)。チェーン検証 (`verifyChain`) と、分析層が入力を
+ * 署名対象だけに絞る射影 (`projectProofToHashedEvents`) の両方がここを通る。`description` /
+ * `insertLength` / `selectedText` などの派生フィールドはハッシュに入らず、proof.json を
+ * 書き換えても検証が通ってしまうので、判断の根拠にしてはならない。
+ *
+ * 検証結果がビット単位で変わらないよう、値の加工 (`?? null` 等) は一切しない。
+ * フィールドを足す・変えるなら記録側 (`TypingProof.recordEvent` / `ChainVerifier`) と同時に。
+ */
+export function pickHashedEventFields(event: EventHashData): Omit<EventHashData, 'posw'> {
+  return {
+    sequence: event.sequence,
+    timestamp: event.timestamp,
+    type: event.type,
+    inputType: event.inputType,
+    data: event.data,
+    rangeOffset: event.rangeOffset,
+    rangeLength: event.rangeLength,
+    range: event.range,
+    previousHash: event.previousHash,
+  };
+}
+
+/**
  * Verify hash chain with PoSW
  *
  * `options.skipPosw: true` で PoSW 反復再計算をスキップする。
@@ -726,17 +751,7 @@ export async function verifyChain(
     }
 
     // Build event data for PoSW verification
-    const eventDataWithoutPoSW = {
-      sequence: event.sequence,
-      timestamp: event.timestamp,
-      type: event.type,
-      inputType: event.inputType,
-      data: event.data,
-      rangeOffset: event.rangeOffset,
-      rangeLength: event.rangeLength,
-      range: event.range,
-      previousHash: event.previousHash,
-    };
+    const eventDataWithoutPoSW = pickHashedEventFields(event);
 
     // PoSW verification
     if (event.posw.iterations !== POSW_ITERATIONS) {

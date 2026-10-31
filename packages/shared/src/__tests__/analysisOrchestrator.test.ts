@@ -125,3 +125,80 @@ describe('pureTypingAnalyzer (placeholder)', () => {
     expect(report.signals[0]!.evidence[0]?.note).toBe('divergent-content-snapshot');
   });
 });
+
+describe('runAnalysis hashed-field projection', () => {
+  const blurEv = (t: number, seq: number) => ({
+    sequence: seq,
+    type: 'focusChange',
+    timestamp: t,
+    data: { focused: false },
+  });
+  const focusEv = (t: number, seq: number) => ({
+    sequence: seq,
+    type: 'focusChange',
+    timestamp: t,
+    data: { focused: true },
+  });
+  const insertEv = (t: number, seq: number, extra: Record<string, unknown>) => ({
+    sequence: seq,
+    type: 'contentChange',
+    timestamp: t,
+    inputType: 'insertText',
+    data: 'x'.repeat(250),
+    ...extra,
+  });
+
+  function inputWith(extra: Record<string, unknown>): AnalysisInput {
+    const events = [blurEv(0, 0), focusEv(20_000, 1), insertEv(21_000, 2, extra)];
+    return {
+      proof: { proof: { events } } as unknown as AnalysisInput['proof'],
+      verification: {
+        valid: true,
+        metadataValid: true,
+        chainValid: true,
+        isPureTyping: true,
+      } as AnalysisInput['verification'],
+    };
+  }
+
+  it('produces identical output when only unhashed event fields are rewritten', async () => {
+    const baseline = await runAnalysis(inputWith({}));
+    const tampered = await runAnalysis(
+      inputWith({
+        insertLength: 0,
+        description: 'tampered',
+        selectedText: 'tampered',
+        insertedText: 'tampered',
+        deletedLength: 9_999,
+        isMultiLine: true,
+        deleteDirection: 'forward',
+      })
+    );
+    expect(baseline.signals.length).toBeGreaterThan(0);
+    expect(tampered).toEqual(baseline);
+  });
+
+  it('hands analyzers events that carry only hashed fields', async () => {
+    let seen: Record<string, unknown> | undefined;
+    const spy: Analyzer = {
+      id: 'spy',
+      version: '1.0.0',
+      analyze(input) {
+        seen = input.proof.proof.events[2] as unknown as Record<string, unknown>;
+        return [];
+      },
+    };
+    await runAnalysis(inputWith({ insertLength: 7, description: 'd', selectedText: 's', unknownExtra: 1 }), [spy]);
+    expect(seen).toBeDefined();
+    expect(seen!.data).toBe('x'.repeat(250));
+    for (const key of ['insertLength', 'description', 'selectedText', 'unknownExtra']) {
+      expect(seen![key] ?? null).toBeNull();
+    }
+  });
+
+  it('does not mutate the caller proof when projecting', async () => {
+    const input = inputWith({ insertLength: 7 });
+    await runAnalysis(input, []);
+    expect((input.proof.proof.events[2] as unknown as { insertLength: number }).insertLength).toBe(7);
+  });
+});
