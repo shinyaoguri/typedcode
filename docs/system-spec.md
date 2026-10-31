@@ -283,7 +283,7 @@ interface SignedCheckpointEnvelope {
 }
 ```
 
-**Editor 側のタイムアウト (#324)**: sign の fetch は `WORKERS_FETCH_TIMEOUT_MS` (10 秒) で打ち切る。無応答でも single-flight の `flushing` が解除され、そのエントリは通常の失敗と同じ backoff で再送される (`clientTimestamp` は entry 固定なので ADR-0003 の冪等再送に乗る)。
+**Editor 側のタイムアウト (#324)**: sign の fetch は `WORKERS_FETCH_TIMEOUT_MS` で打ち切る。無応答でも single-flight の `flushing` が解除され、そのエントリは通常の失敗と同じ backoff で再送される (`clientTimestamp` は entry 固定なので ADR-0003 の冪等再送に乗る)。
 
 **意義**:
 - payload の `serverTimestamp` は **サーバが付与** するので、クライアント単独で偽造不可
