@@ -20,6 +20,7 @@ import type {
   SignedCheckpointEnvelope,
   SignedCheckpointInput,
 } from '@typedcode/shared';
+import { WORKERS_FETCH_TIMEOUT_MS } from '../config/timeouts.js';
 
 export interface SignedCheckpointServiceOptions {
   apiUrl: string;
@@ -333,6 +334,9 @@ export class SignedCheckpointService {
         headers: { 'Content-Type': 'application/json' },
         // ADR-0027: token は署名 payload には含まれない認証情報なので body に同送する。
         body: JSON.stringify({ ...input, sessionStartToken }),
+        // 無応答だと flushing が解除されず署名が詰まる。タイムアウトは catch → handleFailure で
+        // 通常の失敗と同じ backoff 再試行になる (clientTimestamp は entry 固定なので ADR-0003 の冪等再送に乗る) (#324)
+        signal: AbortSignal.timeout(WORKERS_FETCH_TIMEOUT_MS),
       });
       if (!res.ok) {
         const errBody = (await res.json().catch(() => ({}))) as { code?: string; error?: string };

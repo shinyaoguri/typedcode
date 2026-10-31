@@ -95,7 +95,7 @@ CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リス
 
 **CORS の限界と濫用防止**: CORS はブラウザのクロスオリジン**読み取り**のみを制限し、サーバ間アクセス (curl 等) は防げない。`/api/checkpoint/sign` は「任意 content への serverTimestamp 付き署名」を返すだけで、それ自体は何の権限も与えない (署名は『この内容がこのサーバ時刻に提示された』ことしか証明しない)。署名 API の濫用に対する実際の防御線は:
 
-- **per-session 上限**: `SESSION_MAX_CHECKPOINTS` (50,000) と `SESSION_TTL_SECONDS` (7 日)。ただし `sessionId`/`tabId` はクライアント任意文字列なので**新規 sessionId を連打されると効かない** (per-key 上限のため)
+- **per-(sessionId, tabId) 上限** (タブ単位。名前は `SESSION_` だが per-tab): `SESSION_MAX_CHECKPOINTS` (50,000) と `SESSION_TTL_SECONDS` (7 日)。ただし `sessionId`/`tabId` はクライアント任意文字列なので**新規 sessionId を連打されると効かない** (per-key 上限のため)
 - **入力サイズ上限**: `MAX_JSON_BODY_BYTES` (8KiB。`src/body.ts`) を**全 POST で読み込み中に強制** (Content-Length は信用せず実バイトで打ち切り、Turnstile fetch・署名・KV に触れる前に 400)。Turnstile トークンは型・非空・`MAX_TURNSTILE_TOKEN_LENGTH` (2048) を検査。スキーマ厳格化 (64-hex / 最大長) も併用
 - **IP / グローバル rate limit**: Cloudflare の WAF / Rate Limiting Rules に委譲 (Worker コード外。下記の通り**必ず設定する**)
 

@@ -5,6 +5,7 @@
 
 import { t } from '../i18n/index.js';
 import type { SessionStartToken } from '@typedcode/shared';
+import { WORKERS_FETCH_TIMEOUT_MS } from '../config/timeouts.js';
 
 declare global {
   interface Window {
@@ -405,6 +406,8 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ token }),
+        // 無応答でも固まらないよう上限を付ける。AbortError/TimeoutError は catch でリトライ対象になる (#324)
+        signal: AbortSignal.timeout(WORKERS_FETCH_TIMEOUT_MS),
       });
 
       lastResponse = response;
@@ -515,6 +518,9 @@ async function requestSessionStart(
         sessionId: input.sessionId,
         fingerprintHash: input.fingerprintHash,
       }),
+      // 無応答でもタブ作成が固まらないよう上限を付ける。タイムアウトは catch で network_error になり、
+      // 呼び出し側の degraded fallback (root 未アンカー) に合流する (#324)
+      signal: AbortSignal.timeout(WORKERS_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) {
       return {

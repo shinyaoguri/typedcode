@@ -13,13 +13,20 @@ import {
   isTurnstileConfigured,
   performTurnstileVerification,
   loadTurnstileScript,
+  type VerificationResult,
 } from '../services/TurnstileService.js';
+import { PRE_EXPORT_VERIFICATION_BUDGET_MS } from '../config/timeouts.js';
 import { getLanguageDefinition } from '../config/SupportedLanguages.js';
 import { t } from '../i18n/index.js';
 import { generateReadmeEn } from './readme-template-en.js';
 import { generateReadmeJa } from './readme-template-ja.js';
 import { summarizeProcess } from '@typedcode/shared';
 import { SelfReviewDialog } from '../ui/components/SelfReviewDialog.js';
+
+/** export 前 Turnstile 認証の取得結果 (記録は呼び出し側)。 */
+type PreExportAttestationOutcome =
+  | { ok: true; attestation: NonNullable<VerificationResult['attestation']> }
+  | { ok: false; reason: string };
 
 export interface ExportCallbacks {
   onNotification?: (message: string) => void;
@@ -160,6 +167,59 @@ export class ProofExporter {
   }
 
   /**
+   * export 前 Turnstile 認証の取得部 (スクリプト読込 + チャレンジ + 検証)。attestation の記録は
+   * 呼び出し側が結果を受けて行う (単一タブ / 全タブで記録先が違うため)。
+   *
+   * best-effort (`preExportBestEffort`) のときだけ全体を `PRE_EXPORT_VERIFICATION_BUDGET_MS` で
+   * 打ち切る (#324。Workers 無応答でも提出 ZIP を出せるように)。超過は `budget_exceeded` の失敗として
+   * 返し、呼び出し側の既存経路 (失敗 attestation を記録して続行) に回す。打ち切り後も裏で
+   * 走り続ける Turnstile 処理の結果はここで捨てる = 記録は呼び出し側の 1 回きりで、二重記録しない。
+   * casual (best-effort でない) は従来どおり無期限に待つ。
+   */
+  private async acquirePreExportAttestation(): Promise<PreExportAttestationOutcome> {
+    const run = async (): Promise<PreExportAttestationOutcome> => {
+      // Turnstileスクリプトを読み込む
+      try {
+        await loadTurnstileScript();
+      } catch (error) {
+        return { ok: false, reason: `script_load_failed: ${String(error)}` };
+      }
+
+      // ExportProgressDialogのTurnstileコンテナを使用
+      const widgetContainer = this.exportProgressDialog.getTurnstileContainer();
+      const parentContainer = document.getElementById('export-turnstile-container');
+
+      if (!widgetContainer) {
+        return { ok: false, reason: 'turnstile_container_missing' };
+      }
+
+      const result = await performTurnstileVerification('export_proof', {
+        widgetContainer,
+        parentContainer: parentContainer ?? undefined,
+      });
+
+      if (!result.success || !result.attestation) {
+        return { ok: false, reason: result.error ?? 'verification_failed' };
+      }
+      return { ok: true, attestation: result.attestation };
+    };
+
+    if (!this.preExportBestEffort) {
+      return run();
+    }
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const budget = new Promise<{ ok: false; reason: string }>((resolve) => {
+      timer = setTimeout(() => resolve({ ok: false, reason: 'budget_exceeded' }), PRE_EXPORT_VERIFICATION_BUDGET_MS);
+    });
+    try {
+      return await Promise.race([run(), budget]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
    * エクスポート前にTurnstile検証を実行し、attestationを記録
    * ExportProgressDialogを使用して進行状況を表示
    */
@@ -176,28 +236,9 @@ export class ProofExporter {
     // 失敗時は best-effort 判定へ。記録対象は成功経路と同じくアクティブタブのみ。
     const failOrBestEffort = (reason: string): Promise<boolean> => this.failOrBestEffort([activeTab], reason);
 
-    // Turnstileスクリプトを読み込む
-    try {
-      await loadTurnstileScript();
-    } catch (error) {
-      return failOrBestEffort(`script_load_failed: ${String(error)}`);
-    }
-
-    // ExportProgressDialogのTurnstileコンテナを使用
-    const widgetContainer = this.exportProgressDialog.getTurnstileContainer();
-    const parentContainer = document.getElementById('export-turnstile-container');
-
-    if (!widgetContainer) {
-      return failOrBestEffort('turnstile_container_missing');
-    }
-
-    const result = await performTurnstileVerification('export_proof', {
-      widgetContainer,
-      parentContainer: parentContainer ?? undefined,
-    });
-
-    if (!result.success || !result.attestation) {
-      return failOrBestEffort(result.error ?? 'verification_failed');
+    const result = await this.acquirePreExportAttestation();
+    if (!result.ok) {
+      return failOrBestEffort(result.reason);
     }
 
     // アクティブタブのTypingProofにエクスポート前attestationを記録
@@ -234,28 +275,9 @@ export class ProofExporter {
     const failOrBestEffort = (reason: string): Promise<boolean> =>
       this.failOrBestEffort(tabManager.getAllTabs(), reason);
 
-    // Turnstileスクリプトを読み込む
-    try {
-      await loadTurnstileScript();
-    } catch (error) {
-      return failOrBestEffort(`script_load_failed: ${String(error)}`);
-    }
-
-    // ExportProgressDialogのTurnstileコンテナを使用
-    const widgetContainer = this.exportProgressDialog.getTurnstileContainer();
-    const parentContainer = document.getElementById('export-turnstile-container');
-
-    if (!widgetContainer) {
-      return failOrBestEffort('turnstile_container_missing');
-    }
-
-    const result = await performTurnstileVerification('export_proof', {
-      widgetContainer,
-      parentContainer: parentContainer ?? undefined,
-    });
-
-    if (!result.success || !result.attestation) {
-      return failOrBestEffort(result.error ?? 'verification_failed');
+    const result = await this.acquirePreExportAttestation();
+    if (!result.ok) {
+      return failOrBestEffort(result.reason);
     }
 
     // 全タブのTypingProofにエクスポート前attestationを記録
