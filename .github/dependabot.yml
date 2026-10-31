@@ -4,6 +4,12 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    # 公開から 7 日経っていない版は PR にしない (#351。指定しないときの既定は 3 日)。
+    # 乗っ取られたパッケージの悪意ある版は、公開から数日のうちに見つかって取り下げ
+    # られることが多いので、その期間を避ける。cooldown が掛かるのは version updates だけで、security
+    # updates (脆弱性の修正) には掛からないので、脆弱性の修正は遅れない。
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     ignore:
       # happy-dom causes Dependabot errors due to its package structure
@@ -31,6 +37,9 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    # npm と同じ理由 (#351)。action も公開直後の版を避ける。
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 3
     groups:
       github-actions:
