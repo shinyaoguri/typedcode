@@ -47,6 +47,11 @@ npm run gen-checkpoint-key -w @typedcode/workers
 
 これらが未設定の場合、`/api/checkpoint/sign` は `SIGNING_KEY_NOT_CONFIGURED` (500) を返します。それ以外のエンドポイントは動作します。
 
+署名のたびに、`CHECKPOINT_SIGNING_KEY_ID` のレジストリ公開鍵が今この時点で有効で、`CHECKPOINT_SIGNING_KEY_JWK` がその公開鍵と対であることを確認します。次のときは署名せず 500 を返し、原因 (keyId・理由) は Worker のログにだけ出ます (クライアントには固定文言 `Signing key is not available`)。
+
+- `SIGNING_KEY_MISMATCH`: `.dev.vars` / `wrangler secret` の JWK がレジストリの公開鍵と対ではない。**鍵のローテは必ず `keyId` を変えて**行い、同じ `keyId` のまま JWK だけを差し替えない。`gen-checkpoint-key` で出た keyId・公開鍵・秘密鍵の 3 点を揃えて設定し直す
+- `SIGNING_KEY_INVALID`: レジストリの `status` / `validFrom` / `validUntil` / `revokedAt` を確認する (失効済み・有効期間外・日時の typo)。新しい鍵を発行して `keyId` ごと切り替える
+
 ### 4. KV ネームスペースの作成 (開発者ごとに 1 回)
 
 ```bash
@@ -237,6 +242,8 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
 | `SESSION_LIMIT_EXCEEDED` | 429 | (sessionId, tabId) あたりの署名数上限 (50,000) を超過 |
 | `SIGNING_KEY_NOT_CONFIGURED` | 500 | `CHECKPOINT_SIGNING_KEY_*` 未設定 |
 | `SIGNING_KEY_UNKNOWN` | 500 | `keyId` が公開鍵レジストリに存在しない |
+| `SIGNING_KEY_MISMATCH` | 500 | `CHECKPOINT_SIGNING_KEY_JWK` が、同じ `keyId` のレジストリ公開鍵と対になっていない (鍵の差し替えミス) |
+| `SIGNING_KEY_INVALID` | 500 | レジストリ上の署名鍵が現時点で無効 (`status: revoked` / 有効期間外 / 日時が parse 不能) |
 | `SIGNING_ERROR` | 500 | 署名計算で予期しない失敗 |
 | `SESSION_PERSIST_FAILED` | 503 | 初回チェックポイントの KV 書き込み失敗 (署名せずリトライさせる) |
 | `SESSION_STATE_UNAVAILABLE` | 503 | KV の読み取り失敗 (署名せずリトライさせる) |

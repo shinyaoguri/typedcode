@@ -47,11 +47,13 @@ export type {
 export {
   CHECKPOINT_PUBLIC_KEYS,
   findCheckpointPublicKey,
+  checkRegistryKeyValidityAt,
 } from './checkpointKeys/index.js';
 
 export type {
   CheckpointPublicKey,
   CheckpointPublicKeyStatus,
+  RegistryKeyVerdict,
 } from './checkpointKeys/index.js';
 
 export {
