@@ -19,7 +19,7 @@ export default defineConfig({
         autoUpdate: process.env.COVERAGE_RATCHET === '1' ? (value: number) => Math.floor(value) : false,
         lines: 74,
         functions: 69,
-        branches: 67,
+        branches: 68,
         statements: 73,
       },
     },

@@ -332,6 +332,15 @@ export async function listZipEntries(zipPath: string): Promise<string[]> {
   return Object.keys(zip.files);
 }
 
+/** ZIP 内の指定エントリをテキストとして読む (tab-switches.json など)。無ければ throw。 */
+export async function readZipEntryText(zipPath: string, entryName: string): Promise<string> {
+  const buf = await readFileBuffer(zipPath);
+  const zip = await JSZip.loadAsync(buf);
+  const entry = zip.files[entryName];
+  if (!entry) throw new Error(`no ${entryName} in ${zipPath} (entries: ${Object.keys(zip.files).join(', ')})`);
+  return entry.async('string');
+}
+
 /**
  * ZIP から最初の proof.json を取り出し、`mutate` で書き換えた JSON を一時ファイルに
  * 書き出してパスを返す。改ざん検出 (負のオラクル) シナリオ用。`mutate` を省くと

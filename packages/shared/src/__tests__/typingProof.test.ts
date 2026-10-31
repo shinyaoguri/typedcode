@@ -2,7 +2,7 @@
  * TypingProof クラスのテスト
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { TypingProof } from '../typingProof.js';
 import { HashChainManager } from '../typingProof/HashChainManager.js';
 import type { FingerprintComponents, InputType } from '../types.js';
@@ -282,6 +282,7 @@ describe('TypingProof', () => {
         data: 'a',
       });
 
+      expect(result.recorded).toBe(true);
       expect(result.index).toBe(0);
       expect(result.hash).not.toBe(initialHash);
       expect(proof.events.length).toBe(1);
@@ -332,6 +333,64 @@ describe('TypingProof', () => {
       expect(results[1]?.index).toBe(1);
       expect(results[2]?.index).toBe(2);
       expect(proof.events.length).toBe(3);
+    });
+
+    describe('when recording fails (#284)', () => {
+      // 内部実装 (private) の PoSW / チェックポイント管理を差し替えるための型
+      type Internals = {
+        poswManager: { computePoSW: (...args: unknown[]) => Promise<unknown> };
+        checkpointManager: {
+          shouldCreateCheckpoint: (eventIndex: number) => boolean;
+          createCheckpoint: (...args: unknown[]) => Promise<void>;
+        };
+      };
+
+      beforeEach(() => {
+        // recordEvent は失敗を console.error に出して継続する。テスト出力を汚さない
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+      });
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      it('reports recorded:false and index -1 when the event never reached the chain', async () => {
+        await proof.recordEvent({ type: 'contentChange', data: 'a' });
+        const hashAfterFirst = proof.currentHash;
+        vi.spyOn((proof as unknown as Internals).poswManager, 'computePoSW').mockRejectedValueOnce(new Error('boom'));
+
+        const result = await proof.recordEvent({ type: 'contentChange', data: 'b' });
+
+        expect(result.recorded).toBe(false);
+        expect(result.index).toBe(-1);
+        expect(proof.events.length).toBe(1);
+        expect(proof.currentHash).toBe(hashAfterFirst);
+      });
+
+      it('keeps the chain valid and continues numbering after a dropped event', async () => {
+        await proof.recordEvent({ type: 'contentChange', data: 'a' });
+        vi.spyOn((proof as unknown as Internals).poswManager, 'computePoSW').mockRejectedValueOnce(new Error('boom'));
+        await proof.recordEvent({ type: 'contentChange', data: 'b' });
+
+        const next = await proof.recordEvent({ type: 'contentChange', data: 'c' });
+
+        expect(next.recorded).toBe(true);
+        expect(next.index).toBe(1);
+        expect(proof.events[1]?.sequence).toBe(1);
+        expect((await proof.verify()).valid).toBe(true);
+      });
+
+      it('reports the event as recorded when only the checkpoint creation after the push fails', async () => {
+        const internals = proof as unknown as Internals;
+        vi.spyOn(internals.checkpointManager, 'shouldCreateCheckpoint').mockReturnValue(true);
+        vi.spyOn(internals.checkpointManager, 'createCheckpoint').mockRejectedValueOnce(new Error('cp'));
+
+        const result = await proof.recordEvent({ type: 'contentChange', data: 'a' });
+
+        expect(result.recorded).toBe(true);
+        expect(result.index).toBe(proof.events.length - 1);
+        expect(result.hash).toBe(proof.events[result.index]?.hash);
+      });
     });
   });
 
