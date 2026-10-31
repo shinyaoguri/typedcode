@@ -247,7 +247,7 @@ export interface ExportedProof {
     timestamp: string;
     isPureTyping: boolean;
   };
-  checkpoints?: CheckpointData[]; // チェックポイント（v3.2.0以降）
+  checkpoints?: CheckpointData[]; // 署名・未署名のチェックポイント列
   /** 試験モード (ADR-0006) の束縛ブロック。exam モードで生成された proof のみ持つ */
   exam?: ExamProofBlock;
   /**

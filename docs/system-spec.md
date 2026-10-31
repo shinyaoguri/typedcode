@@ -64,7 +64,7 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
 
 ## 3. システム構成
 
-5 パッケージで構成される npm workspaces モノレポ。
+6 パッケージで構成される npm workspaces モノレポ。
 
 | Package | 役割 |
 |---------|------|
@@ -73,6 +73,7 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
 | `@typedcode/verify` | proof 検証 UI (Vite, ブラウザ) |
 | `@typedcode/verify-cli` | proof 検証 CLI (Node ≥24) |
 | `@typedcode/workers` | Cloudflare Workers (Turnstile + 署名チェックポイント + 検証 endpoint) |
+| `@typedcode/e2e` | Playwright E2E (編集→export→verify-cli / verify Web の round-trip)。CI の deploy ゲート。配布物ではない |
 
 ### データの流れ (概要)
 ```
@@ -85,7 +86,7 @@ TypedCode は、ブラウザ上のコードエディタにおける編集操作 
               │←──────── envelope (payload + signature + keyId) ───
               │
               ↓ exportProof()
-       [proof.zip] = proof.json + screenshots + README
+       [proof.zip] = *_proof.json (タブ数) + screenshots + README (+ tab-switches.json)
 
 [verify] ←─ load ─ [proof.zip]
        │
@@ -210,7 +211,7 @@ intermediateHash = hash
 - 各イベントに「最低限の計算時間」を強制 (約 5〜30ms / event 程度)
 - 大量のイベントを瞬時に偽造することを困難にする (10000 events なら最低 50 秒の連続計算)
 - 並列化困難 (一つのイベントの PoSW 内部は前ハッシュに依存して直列)
-- ただし、Workers/サーバなど高性能環境では並列で複数 event 分を計算できるため、絶対的な防御ではない (時刻アンカリングと併用)
+- PoSW は「時間の下限」ではなく「逐次コスト」を課すだけで、高性能な CPU ほど速く回せる。並列化できるのは別 proof 同士 (別チェーン) のみで、1 本のチェーン内は event 間も直列 (各 event の PoSW の種は直前 event の最終 hash)。絶対的な防御ではないので時刻アンカリングと併用する
 
 ### 4.5. チェックポイント (Checkpoint)
 
@@ -264,7 +265,7 @@ interface CheckpointData {
 4. **firstSeenAt 確定**: 既存があればその値、なければ `now` で初回書込
 5. 新規タブなら per-session タブ台帳 (`tabs:{sessionId}`。record の `session:` 名前空間とは別。#297) の上限チェック (`MAX_TABS_PER_SESSION` = 64、best-effort。不正形の台帳は read 失敗と同扱いで判定スキップ)。`sessionId` / `tabId` は `^[A-Za-z0-9._-]+$` (≤200) で、不正形の session record は 503 `SESSION_STATE_UNAVAILABLE`
 6. checkpointIndex 単調性チェック (best-effort)
-7. signedCount セッション上限チェック (50,000)
+7. signedCount 上限チェック (50,000 / (sessionId, tabId) 単位。超過は 429 `SESSION_LIMIT_EXCEEDED`)。セッション全体の理論上限は `MAX_TABS_PER_SESSION` × `SESSION_MAX_CHECKPOINTS`
 8. `payload = { ...input, serverTimestamp: now, firstSeenAt, poswIterations: 10000, version: 1 }` を構築
 9. `signature = ECDSA-P256.sign(privateKey, deterministicStringify(payload))`
 10. KV 更新 (TTL **7 日**)
@@ -287,7 +288,7 @@ interface SignedCheckpointEnvelope {
 
 **意義**:
 - payload の `serverTimestamp` は **サーバが付与** するので、クライアント単独で偽造不可
-- `firstSeenAt` は KV 初回書込時に確定し、**それ以降同じ sessionId に対して不変** → sessionId 流用攻撃を検出可能
+- `firstSeenAt` は KV 初回書込時に確定し、**同じ (sessionId, tabId) に対して不変**。タブごとに別の値になりうるが、proof は 1 タブなので検証器は envelope 間の一致だけを見る → sessionId 流用 (他人の chain 末尾への append) を検出可能
 - ECDSA-P256 署名により外部検証可能 (公開鍵は git で永続管理)
 
 ### 4.7. 試験モード: 封印問題パッケージとチェーン根束縛 (ADR-0006)
@@ -339,21 +340,28 @@ interface SignedCheckpointEnvelope {
 ### 5.1. ローカルストレージ (実行中)
 - **sessionStorage `typedcode-tabs`**: タブ状態 (lightweight V2 フォーマット、events は IndexedDB から取得)
 - **IndexedDB `typedcode-session`**: イベント本体、screenshots、tabSwitches、session メタデータ
-- **localStorage**: なし (proof データは sessionStorage/IndexedDB)
+- **localStorage**: proof データ (events・チェーン) は置かない。置くのは端末 ID (`typedcode-device-id`)、利用規約同意 (`typedcode-terms-accepted`)、テーマ / 言語 (`typedcode-theme` / `typedcode-locale`)、問題キャッシュ (`typedcode-exam-packages[-<mode>]` / `typedcode-class-problems[-<mode>]`。問題は T0 後公開値)。いずれも証明の入力ではない
 
 ローカル保存は **生存中のみ意味があり、検証可能性とは独立**。エクスポート時に proof.json へ凝縮される。
 
 ### 5.2. エクスポート ZIP
 
 ```
-my-code.zip
-├── filename.{c,py,...}      // ソースコード本体
-├── filename_proof.json      // proof データ (下記詳細)
-├── README.md                // 人間可読の説明 (ja/en)
-└── screenshots/             // スクリーンショット (オプション)
-    ├── 0001.png
-    └── ...
+<base>_TC<ts>.zip            // 単一タブ export。一括 export は ALL_TC<ts>.zip
+├── <source>.{c,py,...}      // ソースコード本体 (フラット。同名は <name>_N.<ext>)
+├── <base>_proof.json        // タブごとの proof (下記 §5.3。同名は <base>_proof_N.json)
+├── README.md                // 人間可読の説明 (en)
+├── README.ja.md             // 同 (ja)
+├── tab-switches.json        // 複数タブ一括 export で切替が 1 件以上あるときのみ
+└── screenshots/             // 撮影があった場合のみ
+    ├── screenshot_<seq6>_<ts>.jpg
+    ├── ...
+    └── manifest.json
 ```
+
+- 複数タブの一括 export では `*_proof.json` が N 個になる。各タブは独立した proof で、**タブ間をつなぐハッシュ鎖は無い**
+- `tab-switches.json` はチェーン外の平文サイドファイルで、ハッシュに入らず、どの検証器 (verify / verify-cli) も読まない (監査用の人間向け情報)
+- `screenshots/` は撮影があった場合のみ含まれる
 
 ### 5.3. `proof.json` (単一ファイル形式)
 
@@ -389,6 +397,13 @@ interface ExportedProof {
   };
   checkpoints?: CheckpointData[];   // 各 signature? 付き
   exam?: ExamProofBlock;            // 試験モード時のみ (ADR-0006)
+  sessionStartToken?: SessionStartToken;  // ADR-0017。casual/class で session/start 成功時のみ。serverNonce が root に焼かれる。検証器は registry-only で ECDSA 検証し root を再計算する
+  rootAnchored?: boolean;           // 自己申告 (token 同梱=true、オフライン劣化=false。exam は付けない)。ハッシュ非対象で、検証器は信用せず自前で再導出する
+  mode?: 'casual' | 'class' | 'assignment' | 'exam';  // ProofExporter が付与する自己申告ラベル。信頼判定に使わない (ADR-0011/0020)。表示前に normalizeProofMode を通す
+  // 以下は ZIP に書き出す JSON にだけ ProofExporter が足す (TypingProof.exportProof の戻りには無い)
+  filename?: string;                // タブ名
+  content?: string;                 // 最終ソース (finalContentHash と照合される)
+  language?: string;                // 表示前に normalizeProofLanguage で allowlist 化 (#248)
 }
 
 // 試験モード proof のみ持つ。grader が self-contained に束縛を検証するための値 (ADR-0006)
@@ -401,6 +416,8 @@ interface ExamProofBlock {
   rootBinding: 'v1' | 'v2';     // v1=単一(ADR-0006), v2=N問バンドルで problemContentHash も root に連結(ADR-0012)。現行 editor は v2。未設定は v1 とみなす
 }
 ```
+
+`typingProofHash` の対象は `typingProofData` のみ。ここで追記したフィールド (`sessionStartToken` / `rootAnchored` / `mode` / `filename` / `content` / `language`) のうち `sessionStartToken` 以外はハッシュ対象外の自己申告で、改ざん検出は `content` なら `finalContentHash` 照合、`sessionStartToken` なら ECDSA 検証 + root 再計算が担う。
 
 `startToken` を保存しても、束縛の価値 (「T0 前に知り得ない」) は損なわれない (公開は T0 後)。保存により grader はコードを out-of-band に受け取る運用が不要になり、コード紛失で root 検証不能になるリスクも消える。
 
@@ -439,7 +456,7 @@ interface ExamProofBlock {
   - **exam** (`proof.exam` あり): 試験モードの root 式 (v1 = `SHA256(fp ‖ nonce ‖ packageHash ‖ startToken)`、v2 = 末尾に `‖ problemContentHash`。`proof.exam.rootBinding` で分岐。§4.2)。proof 自己完結・package 不要
   - **anchored casual/class** (`proof.sessionStartToken` あり, ADR-0017): `SHA256(fp ‖ nonce ‖ serverNonce)`。加えてトークンの ECDSA を **registry で検証** (registry-only = C1。未登録 keyId は拒否)、鍵の有効期間/失効を `issuedAt` を anchor に判定、`token.fingerprintHash === proof.fingerprint.hash` (端末束縛)。成立で `rootAnchored=true`
   - **従来 casual/class**: `SHA256(fp ‖ nonce)`。`rootAnchored=false`
-- `metadata` (pasteEvents, dropEvents, insertEvents, ...) を全イベント走査で再カウントして照合
+- `metadata` (pasteEvents, dropEvents, insertEvents, ...) を全イベント走査で再カウントして照合。`isPureTyping` は `evaluatePureTyping` (`typingProof/structuralEdit.ts`) が再計算する (advisory。`valid` を変えない。§7.1)
 
 **Layer 2: ハッシュチェーン整合性**
 - 各 event について:
@@ -457,6 +474,7 @@ interface ExamProofBlock {
 **Layer 4: 内容再生**
 - `contentSnapshot` / `templateInjection` / `contentChange` のみ抽出して順次適用
 - 各 contentChange は range/offset に基づきテキスト挿入/削除を再現
+- `inputType === 'insertFromInternalPaste'` かつ `rangeOffset == null` の `contentChange` は replay でスキップする (`verifyContentReplay`)。editor が出す内部ペーストの監査マーカーで、データを文書へ適用しない。実挿入を伴う内部ペーストは `rangeOffset` を持ち、通常どおり適用される
 - 最終再生コンテンツが `proof.content` と完全一致
 
 **Layer 5: チェックポイント整合性 (未署名分)**
@@ -552,7 +570,7 @@ interface ExamProofBlock {
 | 偽の posw.iterations 数を申告 | Layer 2 fast/full 共通 (iterations === 10000 必須) |
 | signature を別 proof から流用 | Layer 6 (initialEventChainHash 不一致, chainHash 不一致) |
 | envelope を並び替え/削除 | Layer 6 (`previousSignedCheckpointHash` 連鎖違反) |
-| **sessionId 流用** で別人の checkpoint chain 末尾に自分の envelope を append | Layer 6 (`firstSeenAt` 不一致 → KV 由来の不変値で防御) |
+| **sessionId 流用** で別人の checkpoint chain 末尾に自分の envelope を append | Layer 6 (`firstSeenAt` 不一致 → KV 由来の (sessionId, tabId) 単位の不変値で防御) |
 | 全 envelope を proof 完成後にバッチで署名取得 (post-hoc) | Layer 6 (serverSpan が clientSpan と乖離 → warning フラグ) |
 | Workers サーバを将来停止させた後に proof 改ざん | Layer 6 (公開鍵 registry が git 永続管理、envelope 同梱で完全オフライン検証可能) |
 | **(試験)** T0 前に問題を読んで事前 solve | 封印 (Argon2id + 監督コード)。T0 まで復号不可 (消費期限つき; 配布窓は数分) |
@@ -562,6 +580,19 @@ interface ExamProofBlock {
 | **(試験)** 出題者を詐称した偽問題パッケージ | §6.4 (`examAuthorityKeys` での署名検証に失敗) |
 
 **多層性 (defense in depth)**: 一つのレイヤを攻撃者が突破しても、他レイヤが直交的に検出する。たとえば event の data 改ざんは Layer 2 の hash 不一致と Layer 4 の content 不一致と Layer 6 の chainHash 不一致の **3 経路で検出される**。
+
+### 7.1. laundering 系 (advisory)
+
+「外部で作ったコードを、打鍵だけで書いたように見せる」手製 proof への対策。ここでの検出は `isPureTyping=false` (advisory) にしかならず、`valid` は変えない。判定は `evaluatePureTyping` (`typingProof/structuralEdit.ts`) の 1 箇所が持つ。
+
+| 攻撃シナリオ | 検出 |
+|-----------|------|
+| (#138) 手製 proof で内部ペーストの監査マーカー (data=AI コード) と同一 data の `insertParagraph` を並べ、自分のコードのコピペに偽装する | `SessionProvenanceLedger` が replay で再現した**セッション内在性**を要求する: (a) それ以前の `copyOperation` に完全一致し、かつその data がコピー時点の replay 文書の部分文字列、または (b) 適用前の replay 文書の部分文字列。マーカー自体は判定入力にしない (ADR-0020)。不成立なら複数行 bulk 挿入として `isPureTyping=false` |
+| (#175) 挿入イベント無しで `contentSnapshot` により文書を丸ごと差し替える | replay 文書と乖離した snapshot を `divergentContentSnapshotEventIndexes` に記録し、台帳には取り込まない。1 件でもあれば `isPureTyping=false`。editor の正規 snapshot は常に replay と一致する no-op |
+| (#139) minify した 1 行プログラムを `insertText` 1 イベントで投入する | 構造文字のみでない単一行 insertText は `MAX_BENIGN_SINGLE_LINE_INSERT_CHARS` を超えると benign から外れ、bulk 扱い |
+| (限界・誤検知方向) 別タブでコピーした内容を貼る正規操作 | 1 proof = 1 タブなので内部ペースト検証が成立せず bulk 扱い。`valid` は不変 |
+
+`metadata.bulkInsertEvents` の定義は変えない (申告値と再計算値の完全一致を `verifyProofMetadata` が要求するため。変えると既存 proof が invalid になる)。
 
 ---
 
@@ -600,7 +631,7 @@ interface ExamProofBlock {
 ### 8.4. 鍵管理の前提
 
 - 本仕様の安全性は **署名秘密鍵が漏洩しないこと** に依存する
-- 漏洩発覚時の対処: `revokedAt` を設定して registry に残す。`serverTimestamp < revokedAt` の envelope は warning 付きで trust、`>=` は fail
+- 漏洩発覚時の対処: `revokedAt` を設定して registry に残す。`serverTimestamp < revokedAt` の envelope は warning 付きで trust、`>=` は fail。配布済みの verify / verify-cli は再リリースまで旧 registry のまま
 - registry の日時は手書きなので **parse 不能な entry は信頼しない** (fail-closed)。typo は `__tests__/registryFormat.test.ts` が CI で止める (厳密 ISO-8601 UTC・実在する日時・`revoked` なら `revokedAt` 必須)
 - 鍵ローテーション: 新旧並走運用 (新鍵 validFrom = 旧鍵 validUntil)
 
@@ -656,7 +687,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
      // 他は変更しない
    }
    ```
-2. PR レビューしてマージ → verify ページ次回読込で反映 (cacheTtlSec: 86400)
+2. PR レビューしてマージ → registry はビルド時に shared へ同梱される定数であり、反映は verify (Web) / verify-cli の再ビルド・再デプロイ (再リリース) で行う。Workers の `/api/checkpoint/public-keys` は verify / verify-cli / editor のいずれも呼ばない参照用 endpoint で、その HTTP キャッシュは revoke の反映時間とは無関係
 3. 既存 proof:
    - `serverTimestamp < revokedAt` → warning 付きで通る (漏洩前なので trust)
    - `serverTimestamp >= revokedAt` → fail
@@ -678,7 +709,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **checkpoint** | 直前 cp から 100 event か 10 秒のいずれかが先に到達した時点で作られる「中間スナップショット」 |
 | **signed checkpoint** | サーバが ECDSA-P256 で署名した checkpoint。temporal anchoring の本体 |
 | **envelope** | SignedCheckpointEnvelope。署名済み payload + 署名 + keyId |
-| **firstSeenAt** | サーバが initial に sessionId を見た時刻。KV 由来で不変 |
+| **firstSeenAt** | サーバが (sessionId, tabId) を最初に見た時刻。KV 由来で、そのキーに対して不変 |
 | **anchored** | proof に signed checkpoint が 1 つ以上含まれている状態 |
 | **post-hoc batch signing** | proof 完成後に複数 envelope を短時間で一括取得する攻撃。temporal ratio で検出試行 |
 | **anchor density / sparse (ADR-0016)** | 署名 cp が主張イベント数/時間に対し十分密かを見る指標。`maxGapEvents>500` / `maxGapServerMs>50s` / `firstAnchorLatencyEvents>500` で `sparse`。末尾 1 点アンカー (coverageRatio=1.0 でも疎) を検出。既定 warning、`requireAnchorDensity` で strict-fail |
@@ -706,7 +737,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `DEFAULT_MAX_CHECKPOINT_INTERVAL_MS` | 10_000 | `CheckpointManager.ts` |
 | `SIGNED_CHECKPOINT_FORMAT_VERSION` | 1 | `version.ts` |
 | `SESSION_TTL_SECONDS` | 604800 (7日) | `workers/src/checkpoint.ts` |
-| `SESSION_MAX_CHECKPOINTS` | 50000 | `workers/src/checkpoint.ts` |
+| `SESSION_MAX_CHECKPOINTS` | 50000 / (sessionId, tabId) 単位。名前は `SESSION_` だが per-tab。error code `SESSION_LIMIT_EXCEEDED` と合わせて互換のため据え置き | `workers/src/checkpoint.ts` |
 | `MAX_TABS_PER_SESSION` | 64 | `workers/src/checkpoint.ts` (ADR-0027) |
 | `WORKERS_FETCH_TIMEOUT_MS` | 10_000 | `editor/src/config/timeouts.ts` (Workers への 1 回の fetch の上限。verify-captcha / session/start / checkpoint/sign。超過は既存の失敗経路 = retry・degraded fallback・署名の backoff 再試行に合流。#324) |
 | `PRE_EXPORT_VERIFICATION_BUDGET_MS` | 15_000 | `editor/src/config/timeouts.ts` (best-effort モード = exam/class/assignment の export 前認証全体の予算。超過は失敗 attestation を記録して ZIP を出す。casual には適用しない。#324) |
@@ -773,4 +804,12 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-06-12 | Tier A エクスポート (ADR-0024 実装) | shared に **content-free な Tier A バンドル** `AnalysisBundle` (`analysis-bundle/1`) + `buildAnalysisBundle` を追加。`{ integrityValid, processSummary, analysis, assurance }` のみで **events / ソース / fingerprint を含まない** 派生ビュー。verify-cli `--analysis-bundle <out.json>` で全 proof 分を `{filename, ...bundle}` として出力 (コホート基準 ADR-0025 の入力フォーマット)。組み立ては shared 委譲・CLI は content-free な派生物を渡すだけ。バンドルは単独で整合性検証できない (Tier F で別途) ことを `integrityValid` の意味として明記。advisory・exit code 非干渉・proof フォーマット不変 |
 | 2026-06-12 | コホート基準の実装 (ADR-0025 実装) | shared 純粋関数 `computeCohortBaseline(bundles)` / `positionInCohort(bundle, baseline)`。Tier A `AnalysisBundle[]` を入力に、メトリクス (durationMs/deletionRatio/pauseCount/reviewPriority 等 13 種) ごとの**頑健分布** (中央値/IQR/min/max/n) + 各次元の base rate (notable signal を出したバンドル割合) を算出。`CohortBaseline` は**集約のみ・個票非保持** (コホート内プライバシー)。`positionInCohort` は提出物の midrank percentile + IQR 単位の箱外距離を返す (五数要約からの近似 = 個票非保持の代償と明記)。`COHORT_MIN_N`=5 未満は `sufficient:false` で警告 (小N ガード)。**すべて advisory な triage で外れ値≠違反・valid/exit code 非干渉**。表示/CLI 面は follow-up。proof フォーマット不変 |
 | 2026-06-13 | 打鍵動態を分析層へ統合 (ADR-0009 follow-up) | 旧 `TypingPatternCard` (verify の human/uncertain/suspicious 判定スコアゲージ) を廃止し、shared の新 `typingPatternAnalyzer` が `TypingPatternAnalyzer` の所見を **`keystroke-content-consistency` 次元の advisory signal** として `runAnalysis` (defaultAnalyzers) に折り込む。判定ゲージは持ち込まず issue ベースの手掛かりのみ (ADR-0023 非判定)。issue→signal の severity は **critical でも `notice` 止まり** (W5 ゲート: heuristic を review に上げない)。**打鍵動態サンプル (dwell) < 30 の proof では黙る** (★6b: ペースト主体/低打鍵を誤検知しないガード)。verify は ResultPanel のミニゲージ + TypingPatternCard + ResultDataService の個別呼び出し + index.html/CSS を撤去し AnalysisReportCard へ一本化。analyzer 単体テスト 3 件。proof フォーマット不変・valid 非干渉 |
+| 2026-07-02 | sign の sessionStartToken 前提化 (#136, ADR-0027) | `/api/checkpoint/sign` はスキーマ検証直後・KV read より前に `sessionStartToken` を ECDSA 検証し、`token.payload.sessionId === input.sessionId` を要求する (`TOKEN_REQUIRED` / `TOKEN_INVALID` / `TOKEN_SESSION_MISMATCH` = 401)。tabId 連打には per-session のタブ台帳 (`MAX_TABS_PER_SESSION`) で蓋。§4.6 を反映 |
 | 2026-08-05 | fast モードの overclaim 是正 (#214) | `fast` は PoSW の反復再計算をスキップする (§8.2) のに、web も CLI も決定的保証の語彙 (「検証成功 / 整合性: 証明済み」「Verification PASSED / Integrity: PROVEN」) で結果を出していた。`IntegrityLevel` に **`partial`** を追加し、`AssuranceInput.poswSkipped` (必須) から fast を `proven` に上げないよう `deriveAssurance` を変更 (temporal / provenance の意味は不変)。verify は整合性チップを warning 表示 + `TrustCalculator` に `posw` warning + タブ status も警告、verify-cli はヘッダ直下と Assurance に注記。**判定 (`verifyProofFile` の valid / exit code) と proof フォーマットは不変** — 表示の正直化であって fast を fail させる変更ではない。web↔CLI の一致は `webCliParity.test.ts` に fast/full の観点を追加して固定 |
+| 2026-08-16 | exam time-box を advisory に (#220 / #272) | `verifyExamBinding` の `withinWindow=false` を総合 `valid` に合流させない (ADR-0013 に実装を合わせた)。§6.4 手順 6 を反映 |
+| 2026-08-23 | 展開 DoS の実バイト予算 (#234 / #274) | ZIP 展開を、ヘッダの申告サイズでなく展開中に実際に出たバイト数 (`MAX_ZIP_TOTAL_UNCOMPRESSED`、エントリ数は `MAX_ZIP_ENTRIES`) で打ち切る (`fileProcessing/zipBudget.ts`)。proof フォーマット・検証判定は不変。本仕様の本文に記述の変更は無い |
+| 2026-08-23 | package 指定時は exam ブロック無し proof も invalid (#218 / #275) | `--exam-package` (verify-cli) / 問題パッケージ読込 (verify Web) を指定したのに proof に `exam` ブロックが無い場合も束縛検証にかけ、invalid とする。§6.4 の配線を反映 |
+| 2026-08-23 | registry 日時の fail-closed (#233 / #276) | registry entry の `validFrom` / `validUntil` / `revokedAt` が parse 不能な鍵を信頼しない (entry 単位)。§6.2 Layer 6 / §8.4 / §9.4 を反映 |
+| 2026-10-21 | 棚卸し 9 件の実装 (#267 ほか / #318) | 検証側の PoSW 反復を `@noble/hashes` の同期 SHA-256 に変更 (#267)。タブ台帳を `tabs:{sessionId}` に分離し ID の文字種を `[A-Za-z0-9._-]` に制限 (#297)。§4.6 / §6.1 を反映し、§5.4 (マルチファイル形式) を削除 (#318) |
+| 2026-11-01 | exam 識別子の照合 (#273 / #363) | `.tcexam` を渡したとき、proof 側の `examId` / `variant` (v1 は `problemId` も) を署名済み manifest と照合し、不一致なら束縛失敗とする。§6.4 手順 5 を反映 |
+| 2026-11-01 | spec 同期 (#231) | 実装との乖離を是正: §3 に e2e、§4.4 の並列化記述、§4.6 / §7 / 用語集の per-(sessionId, tabId)、§5.1 の localStorage、§5.2 の ZIP 構成、§5.3 の欠落フィールド、§6.2 Layer 4 の internalPaste スキップ、§7.1 laundering 系 (#138 / #175 / #139)、§9.4 を registry ビルド時同梱の事実に修正 |
