@@ -16,10 +16,12 @@ function input(events: unknown[]): AnalysisInput {
 
 const blur = (t: number) => ({ type: 'focusChange', timestamp: t, data: { focused: false } });
 const focus = (t: number) => ({ type: 'focusChange', timestamp: t, data: { focused: true } });
-const insert = (t: number, chars: number) => ({
+/** ハッシュ対象の `data` (挿入テキスト) で挿入量を表す。`insertLength` は署名対象外なので使わない。 */
+const insert = (t: number, chars: number, extra: Record<string, unknown> = {}) => ({
   type: 'contentChange',
   timestamp: t,
-  insertLength: chars,
+  data: 'x'.repeat(chars),
+  ...extra,
 });
 
 describe('focusBurstAnalyzer', () => {
@@ -47,5 +49,22 @@ describe('focusBurstAnalyzer', () => {
     const events = [blur(0), focus(20_000), insert(100_000, 500)];
     const signals = await focusBurstAnalyzer.analyze(input(events));
     expect(signals).toHaveLength(0);
+  });
+
+  it('ignores the unhashed insertLength field when counting the burst', async () => {
+    const big = [blur(0), focus(20_000), insert(21_000, 250, { insertLength: 0 })];
+    expect(await focusBurstAnalyzer.analyze(input(big))).toHaveLength(1);
+
+    const small = [blur(0), focus(20_000), insert(21_000, 20, { insertLength: 9_999 })];
+    expect(await focusBurstAnalyzer.analyze(input(small))).toHaveLength(0);
+  });
+
+  it('does not count non-string data as inserted characters', async () => {
+    const events = [
+      blur(0),
+      focus(20_000),
+      { type: 'contentChange', timestamp: 21_000, data: null, insertLength: 500 },
+    ];
+    expect(await focusBurstAnalyzer.analyze(input(events))).toHaveLength(0);
   });
 });

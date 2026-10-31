@@ -24,6 +24,17 @@
 import type { StoredEvent, EditorAssistDeclaration } from '../types.js';
 import { applyReplayEventTolerant, isDivergentContentSnapshot } from './replay.js';
 
+/**
+ * contentChange が挿入した文字数。**ハッシュ対象の `data` の長さ**で数える (#328)。
+ *
+ * `insertLength` / `insertedText` はハッシュに入らず proof.json の書き換えで動かせるので使わない。
+ * プロセス要約 (`processSummary`) と focus-burst 分析器が同じ定義でバースト量を測るための単一定義。
+ * `data` が文字列でない (カーソル位置等のオブジェクト・null) イベントは 0。
+ */
+export function insertedCharCount(event: Pick<StoredEvent, 'data'>): number {
+  return typeof event.data === 'string' ? event.data.length : 0;
+}
+
 /** 構造文字: 括弧・クォート・空白。これらだけなら「内容 (コード)」を運べない。 */
 const STRUCTURAL_CHARS = /^[()[\]{}<>"'`\s]+$/;
 

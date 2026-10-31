@@ -6,6 +6,8 @@
  */
 
 import type { AnalysisInput, AnalysisReport, AnalysisSeverity, AnalysisSignal, Analyzer } from './types.js';
+import type { ExportedProof, StoredEvent } from '../types/proof.js';
+import { pickHashedEventFields } from '../verification.js';
 import { defaultAnalyzers } from './analyzers/index.js';
 
 /** severity 別の要確認寄与の重み。`info` は寄与しない。 */
@@ -31,17 +33,46 @@ function signalContribution(signal: AnalysisSignal): number {
 }
 
 /**
+ * イベントを「ハッシュ対象フィールドだけ」に射影する (#328)。
+ *
+ * `description` / `insertLength` / `selectedText` などはハッシュに入らず、proof.json を書き換えても
+ * チェーン検証が通ってしまう。分析器がそれを読むと、検証済みでも攻撃者が結果を左右できるので、
+ * 入口で落として **分析器が署名対象の事実だけを見る** ことを構造で保証する。非ハッシュ対象の
+ * フィールドは `null` にし (型は `StoredEvent` のまま)、`hash` はチェーン検証の出力としてそのまま残す。
+ * 元の proof は変更しない。
+ */
+function projectProofToHashedEvents(proof: ExportedProof): ExportedProof {
+  const events = proof.proof?.events;
+  if (!Array.isArray(events)) return proof;
+  const projected: StoredEvent[] = events.map((event) => ({
+    ...pickHashedEventFields(event),
+    posw: event.posw,
+    hash: event.hash,
+    description: null,
+    isMultiLine: null,
+    deletedLength: null,
+    insertedText: null,
+    insertLength: null,
+    deleteDirection: null,
+    selectedText: null,
+  }));
+  return { ...proof, proof: { ...proof.proof, events: projected } };
+}
+
+/**
  * 分析器群を走らせて `AnalysisReport` を組み立てる (ADR-0009)。
  *
  * - `analyzers` を差し替えれば分析内容を丸ごと入れ替えられる (既定は `defaultAnalyzers`)。
+ * - 分析器へ渡す proof のイベントは **ハッシュ対象フィールドだけ**に射影される (#328)。
  * - ある分析器が throw しても他を止めない (best-effort / graceful)。
  * - `reviewPriority` は signal 寄与度の **最大値** (一本でも強い手掛かりがあれば優先)。
  *   **判定ではない**。
  */
 export async function runAnalysis(
-  input: AnalysisInput,
+  rawInput: AnalysisInput,
   analyzers: readonly Analyzer[] = defaultAnalyzers
 ): Promise<AnalysisReport> {
+  const input = { ...rawInput, proof: projectProofToHashedEvents(rawInput.proof) };
   const signals: AnalysisSignal[] = [];
   const analyzerVersions: Record<string, string> = {};
 

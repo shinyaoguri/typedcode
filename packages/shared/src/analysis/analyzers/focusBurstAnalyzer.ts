@@ -13,6 +13,7 @@
 
 import type { AnalysisInput, AnalysisSignal, Analyzer } from '../types.js';
 import type { FocusChangeData } from '../../types/events.js';
+import { insertedCharCount } from '../../typingProof/structuralEdit.js';
 
 const ID = 'focus-burst';
 /** これ以上の離脱を「長い離脱」とみなす (ms)。 */
@@ -45,13 +46,13 @@ export const focusBurstAnalyzer: Analyzer = {
       blurAt = null;
       if (blurMs < MIN_BLUR_MS) continue;
 
-      // 復帰直後の窓に挿入された文字数を集計
+      // 復帰直後の窓に挿入された文字数を集計 (ハッシュ対象の data の長さ。processSummary と同じ定義)
       const windowEnd = e.timestamp + BURST_WINDOW_MS;
       let burst = 0;
       for (let j = i + 1; j < events.length; j++) {
         const f = events[j]!;
         if (f.timestamp > windowEnd) break;
-        if (f.type === 'contentChange') burst += f.insertLength ?? 0;
+        if (f.type === 'contentChange') burst += insertedCharCount(f);
       }
       if (burst < BURST_CHARS) continue;
 
