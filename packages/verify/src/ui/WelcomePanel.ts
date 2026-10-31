@@ -5,19 +5,24 @@ export class WelcomePanel {
   private panel: HTMLElement;
   private dropZone: HTMLElement;
   private browseBtn: HTMLElement;
-  private fileInput: HTMLInputElement;
 
   private onFilesSelected: (files: FileList) => void;
+  private onBrowse: () => void;
 
+  /**
+   * `onBrowse` はファイル選択ダイアログを開く。`#file-input` の change は AppController が
+   * `bindFileInput` で 1 か所だけ購読するので、ここでは開く操作だけを委ねる (二重購読の防止)。
+   */
   constructor(callbacks: {
     onFilesSelected: (files: FileList) => void;
+    onBrowse: () => void;
   }) {
     this.onFilesSelected = callbacks.onFilesSelected;
+    this.onBrowse = callbacks.onBrowse;
 
     this.panel = document.getElementById('welcome-panel')!;
     this.dropZone = document.getElementById('drop-zone')!;
     this.browseBtn = document.getElementById('browse-btn')!;
-    this.fileInput = document.getElementById('file-input')! as HTMLInputElement;
 
     this.setupEventListeners();
   }
@@ -25,15 +30,7 @@ export class WelcomePanel {
   private setupEventListeners(): void {
     // Browse button
     this.browseBtn.addEventListener('click', () => {
-      this.fileInput.click();
-    });
-
-    // File input change
-    this.fileInput.addEventListener('change', () => {
-      if (this.fileInput.files && this.fileInput.files.length > 0) {
-        this.onFilesSelected(this.fileInput.files);
-        this.fileInput.value = ''; // Reset for next selection
-      }
+      this.onBrowse();
     });
 
     // Drag and drop
@@ -50,7 +47,7 @@ export class WelcomePanel {
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
         e.preventDefault();
-        this.fileInput.click();
+        this.onBrowse();
       }
     });
   }

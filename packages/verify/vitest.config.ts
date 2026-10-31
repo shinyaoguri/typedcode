@@ -2,8 +2,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    // TrustCalculator 等の純関数を対象にする (DOM 非依存)。UI コンポーネントのテストを
-    // 足すときは happy-dom を導入して environmentMatchGlobs で分けること。
+    // 既定は node (TrustCalculator 等の純関数)。DOM が要る UI テストはファイル先頭に
+    // `// @vitest-environment happy-dom` を書いて個別に切り替える (vitest 5 に environmentMatchGlobs は無い)。
+    // 実際の index.html を組み立てる手順は `src/ui/__tests__/verifyDom.ts`。
     environment: 'node',
     include: ['src/**/*.test.ts'],
     globals: true,
@@ -18,10 +19,10 @@ export default defineConfig({
       thresholds: {
         // 普段のテストで config が書き換わらないよう、ラチェット時 (COVERAGE_RATCHET=1) だけ有効にする
         autoUpdate: process.env.COVERAGE_RATCHET === '1' ? (value: number) => Math.floor(value) : false,
-        lines: 8,
-        functions: 7,
-        branches: 9,
-        statements: 8,
+        lines: 22,
+        functions: 15,
+        branches: 17,
+        statements: 21,
       },
     },
   },

@@ -11,7 +11,7 @@
 
 1. **検証は cp の間隔を仮定しない** ([docs/adr/0004-verifier-checkpoint-stance.md](../../docs/adr/0004-verifier-checkpoint-stance.md)): 33 イベントごとでも 100 イベントごとでも 1 cp しかなくても動かなくてはいけない。`shared` 側の `CHECKPOINT_INTERVAL` の値を hard-code しない
 2. **未署名 cp の sampling を信頼しない**: 検証成功条件として「サンプリングで OK だった」だけでは不可。フルチェーン検証または署名済み cp の連結検証が前提 (PR #60 のハードニング)
-3. **検証 (Web Worker) は決定的**: `workers/verificationWorker.ts` は同じ proof に対して常に同じ結果を返す。乱数 / 時刻 / ネットワーク状態に依存しない (Workers の attestation 検証のみネットワーク依存だが、結果は cache 可)
+3. **検証 (Web Worker) は決定的**: `workers/verificationWorker.ts` は同じ proof に対して常に同じ結果を返す。乱数 / 時刻 / ネットワーク状態に依存しない。verify は Workers の `/api` を一切呼ばない (署名済み cp の公開鍵は shared の `checkpointKeys` レジストリに同梱。shared の `AttestationService` は使っていない)
 4. **マルチタブ proof はタブ毎に独立した `<name>_proof.json` を N 個**として扱い、各タブを個別に検証する (verify-cli は全件検証、verify(web) はタブごと)
 5. **i18n キーは型と同期**: `src/i18n/types.ts` の `VerifyTranslationKeys` に新規キーを追加しないと TS2353 が出る
 6. **スクリーンショット判定は全軸を `shared` に委譲する** (#212 / #213): per-image は `checkScreenshotImage`、剥ぎ取り (`chainOnly`) は `countChainOnlyImageHashes`、チェーン側ハッシュ集合は `collectChainImageHashes`。web に判定式を書くと verify-cli と結論が食い違う (実際に `chainOnly` が web だけ欠落し、剥ぎ取りが沈黙していた)
@@ -45,9 +45,12 @@ File Selection (drag&drop / FSA API)
      ├─ shared の verifyProofFile (metadata / chain / PoSW / finalHash / content /
      │  checkpoint / 署名済み cp / sessionStartToken 突合 の合成は**すべて shared**)
      └─ runAnalysis (ADR-0009。advisory のみ・valid に不反映・失敗しても検証結果を落とさない)
-  → AttestationService.verify() (Workers API)
+  → VerificationController.handleComplete (タブ status を決める唯一の場所)
+  → TabController.renderResult (TrustCalculator / deriveAssurance)
   → ResultPanel + charts
 ```
+
+ネットワークには出ない (Workers の `/api` を呼ばない)。人間証明 (`humanAttestationResult`) の書き込み元は現状無い (下記「信頼スコア」)。
 
 **Worker 内で検証を再合成しないこと** (#211)。過去にここでレイヤを組み直していたため、
 `sessionStartToken` ↔ 署名 cp の sessionId 突合 (spec §6.3) が web だけ欠落し、`chainValid` に
@@ -55,6 +58,32 @@ File Selection (drag&drop / FSA API)
 `services/__tests__/webCliParity.test.ts` (#216) が CI で固定する — verify-cli の `verifyProof` を
 実際に呼んで `valid` / 三層保証 / exam 束縛 / スクショ集計 (tampered・chainOnly) を突き合わせるので、
 片側だけ直すと落ちる。スクショの**読込経路** (ZIP vs フォルダ) の一致は `screenshotParity.test.ts` (#212) の担当。
+
+## 状態契約 (data-* 属性)
+
+E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく、ここに挙げる **data-\* 属性** で読む ([ADR-0034](../../docs/adr/0034-replace-manual-verification-with-automated-tests.md))。値はすべて生の enum (shared / TrustCalculator / VerificationController の値そのもの) で、翻訳しない。
+
+| 要素 | 属性 | 取りうる値 | 意味 |
+|---|---|---|---|
+| `#assurance-strip` | `data-integrity` | `proven` / `partial` / `failed` | 三層保証の整合性 (shared `IntegrityLevel`)。`partial` = fast モードで PoSW 未再計算 (#214) |
+| `#assurance-strip` | `data-temporal` | `anchored` / `partial` / `unanchored` / `exam-t0` | 時刻アンカー (shared `TemporalLevel`) |
+| `#assurance-strip` | `data-pure-typing` | `true` / `false` | 著述性の `provenance.pureTyping` (advisory。判定ではない) |
+| `#assurance-strip .assurance-chip` | `data-axis` | `integrity` / `temporal` / `provenance` / `mode` | どの軸のチップか |
+| 〃 (`integrity` / `temporal` のチップ) | `data-level` | 上の `data-integrity` / `data-temporal` と同じ値 | チップ単位の判定 |
+| 〃 (`provenance` のチップ) | `data-pure-typing` | `true` / `false` | **`data-level` は付けない** (著述性はレベルを持たない。ADR-0009 / ADR-0020) |
+| 〃 (`mode` のチップ) | `data-mode` | proof の自己申告 `mode` (`normalizeProofMode` 済み) | 参考表示。保証の導出には使っていない |
+| `#result-status-icon` | `data-level` | `verified` / `partial` / `failed` | 総合判定 (`TrustCalculator` の `TrustLevel`) |
+| `#file-list .file-item` | `data-status` | `pending` / `verifying` / `success` / `warning` / `error` | ファイルの検証状態 |
+| `#file-list .file-item` | `data-filename` | 表示名 | どのファイルの行か |
+| `#tabbar .tab` | `data-status` / `data-filename` | `.file-item` と同じ | タブの検証状態 |
+
+- **判定を表示していない間は属性を付けない** (`none` などの値は使わない)。検証中 (`startProgress` / `showLoading`)・プレーンテキスト / 画像表示・`reset()`・assurance 無しの描画では `#assurance-strip` の 3 属性と `#result-status-icon` の `data-level` を外す。前のタブの判定が残ると、E2E が別ファイルの判定を読んで通ってしまう。検証自体が失敗したタブ (status `error`・結果なし。未対応形式など) を開いたときも `TabController.showTabContent` が進捗 UI のエラー表示に切り替えるので属性は付かない (以前は何もせず、直前のファイルの判定が残っていた)。E2E は属性が現れるのを待ってから読む
+- **`data-status` の出所は `VerificationController` (`tabManager.updateTab` と同じ値を Sidebar / TabBar に流す) に一本化する**。Sidebar / TabBar は受け取った値を出すだけで、検証結果から導出し直さない (`ui/__tests__/fileStatusState.test.ts` が 3 者の一致を固定)
+- `#result-status-icon` の `data-level` は `TrustCalculator` の結果を描画したときだけ付ける。`trustResult` の無いフォールバック描画で TrustLevel を導出し直さない
+- 属性値は `escapeHtml` を通す (innerHTML 生成。自己申告 `mode` は proof 由来なので特に。#210)
+- **この契約 (要素・属性名・値域・「無い」の意味) を変えるときは、`packages/e2e` の E2E と同じ PR で変える**。片方だけ変えると E2E が赤になるか、もっと悪いと別の要素を読んで黙って通る。ユニットテストは `ui/__tests__/ResultPanelState.test.ts` / `fileStatusState.test.ts`
+- 検証モードの初期値は URL クエリ `?mode=fast|audit|full` で上書きできる (E2E 用。既定 `full`、不正値は無視。`services/verifyModeQuery.ts`)
+- `#file-input` は `multiple`。change の購読は `AppController` の `bindFileInput` 1 か所だけ (WelcomePanel 等は `click()` で開くだけ)。二重購読は `ui/__tests__/fileInput.test.ts` が機械的に禁止する
 
 ## 信頼スコア (`TrustCalculator`)
 
