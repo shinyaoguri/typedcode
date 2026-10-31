@@ -59,6 +59,19 @@ jobs:
       # (editor がそうなっていた)。各 vitest.config.ts の coverage.thresholds (実測値の床) を
       # 下回ると落ちるので「テストが減らない」ことをここで強制する。床の引き上げは手元の
       # `npm run coverage:ratchet`。e2e は `test` のみで `test:coverage` を持たないため誤って拾わない。
+      # `--if-present` は test:coverage を持たない workspace を黙って飛ばすので、
+      # test:run だけ持つ新パッケージがカバレッジ計測ごと CI から漏れないようここで落とす。
+      - name: Require test:coverage alongside test:run
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const missing = fs.readdirSync("packages")
+              .map((d) => `packages/${d}/package.json`)
+              .filter((p) => fs.existsSync(p))
+              .filter((p) => { const s = JSON.parse(fs.readFileSync(p, "utf8")).scripts ?? {}; return s["test:run"] && !s["test:coverage"]; });
+            if (missing.length) { console.error(`::error::test:run があるのに test:coverage が無い: ${missing.join(", ")}`); process.exit(1); }
+          '
+
       - name: Run unit tests with coverage (all workspaces with test:coverage)
         run: npm run test:coverage --workspaces --if-present
 
