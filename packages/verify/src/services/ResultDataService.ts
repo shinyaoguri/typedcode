@@ -52,8 +52,11 @@ function parseErrorType(message?: string): ChainErrorDetails['errorType'] {
 
 /**
  * Build ResultData from tab state
+ *
+ * `trustResult` は含まない (スクショ検証サマリーを持つ TabController が TrustCalculator で
+ * 計算して足す)。
  */
-export function buildResultData(tabState: VerifyTabState): ResultData | null {
+export function buildResultData(tabState: VerifyTabState): Omit<ResultData, 'trustResult'> | null {
   if (!tabState.proofData || !tabState.verificationResult) return null;
 
   const { proofData, verificationResult } = tabState;

@@ -149,6 +149,42 @@ export class VerifyWebApp {
     };
   }
 
+  /** サイドバーで `filename` の行を選ぶ (対応するタブが開く)。 */
+  async selectFile(filename: string): Promise<void> {
+    const item = this.page.locator(`#file-list .file-item[data-filename="${cssEscape(filename)}"]`);
+    await expect(item).toHaveCount(1);
+    await item.click();
+    await expect(this.page.locator(`#tabbar .tab[data-filename="${cssEscape(filename)}"]`)).toHaveCount(1);
+  }
+
+  /** `filename` のタブの閉じるボタンを押す (ファイルはサイドバーに残る)。 */
+  async closeTab(filename: string): Promise<void> {
+    await this.page.locator(`#tabbar .tab[data-filename="${cssEscape(filename)}"] .tab-close`).click();
+  }
+
+  /** `#tabbar .tab[data-active="true"]` の表示名。アクティブなタブが無ければ null。 */
+  async activeTabFilename(): Promise<string | null> {
+    return this.singleFilename('#tabbar .tab[data-active="true"]');
+  }
+
+  /** `#file-list .file-item[data-active="true"]` の表示名。アクティブな行が無ければ null。 */
+  async activeFileItemFilename(): Promise<string | null> {
+    return this.singleFilename('#file-list .file-item[data-active="true"]');
+  }
+
+  /** `#result-status-card[data-filename]`: 結果パネルが判定を出しているファイルの表示名。無ければ null。 */
+  async displayedFilename(): Promise<string | null> {
+    return this.page.locator('#result-status-card').getAttribute('data-filename');
+  }
+
+  /** セレクタに一致する要素がちょうど 1 つならその `data-filename`、0 個なら null。2 個以上は契約違反。 */
+  private async singleFilename(selector: string): Promise<string | null> {
+    const loc = this.page.locator(selector);
+    const count = await loc.count();
+    if (count > 1) throw new Error(`expected at most one ${selector}, found ${count}`);
+    return count === 0 ? null : loc.getAttribute('data-filename');
+  }
+
   /** `filenames` を順に選んで判定を読む (選び直すたびに描画し直されることも同時に見る)。 */
   async readVerdicts(filenames: string[]): Promise<VerifyVerdict[]> {
     const out: VerifyVerdict[] = [];

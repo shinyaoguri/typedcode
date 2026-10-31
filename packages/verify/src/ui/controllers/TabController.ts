@@ -108,12 +108,57 @@ export class TabController {
     // タブを閉じてもサイドバーのファイル一覧には残す
     this.deps.tabBar.removeTab(id);
 
-    // タブがなくなった場合、ウェルカムパネルを表示
+    // 残ったタブへ表示・active を寄せる。タブがなくなった場合はウェルカムパネルを表示
     // （ただしサイドバーにはファイルが残っている）
-    if (!this.deps.tabBar.getActiveTabId()) {
+    this.settleActiveAfterRemoval();
+  }
+
+  /**
+   * ファイルを一覧から削除する (タブ・tabManager・サイドバーのすべてから)。
+   */
+  removeFile(id: string): void {
+    this.forgetFile(id);
+    this.deps.sidebar.removeFile(id);
+    this.settleActiveAfterRemoval();
+  }
+
+  /**
+   * フォルダを一覧から削除する (中のファイルのタブ・tabManager も含む)。
+   */
+  removeFolder(folderId: string): void {
+    for (const fileId of this.deps.sidebar.getFilesInFolder(folderId)) {
+      this.forgetFile(fileId);
+    }
+    // サイドバーからフォルダを削除（中のファイルも一緒に削除される）
+    this.deps.sidebar.removeFolder(folderId);
+    this.settleActiveAfterRemoval();
+  }
+
+  /** 表示状態・tabManager・タブバーからファイルを外す (サイドバーは呼び出し側)。 */
+  private forgetFile(id: string): void {
+    // 表示中のファイルの場合、表示状態をリセット
+    if (this.deps.uiState.isDisplayed(id)) {
+      this.deps.uiState.setCurrentDisplayedTabId(null);
+    }
+    this.deps.tabManager.removeTab(id);
+    this.deps.tabBar.removeTab(id);
+  }
+
+  /**
+   * 残ったタブへ表示・active を寄せる。冪等 (active が変わらなければ表示は再描画されない)。
+   *
+   * 次に選ぶタブは TabBar が決めた active (開いているタブだけが候補。未オープンのファイルは
+   * 選ばない)。TabBar / VerifyTabManager / Sidebar / 結果パネルの 4 か所をここで一致させる。
+   */
+  private settleActiveAfterRemoval(): void {
+    const next = this.deps.tabBar.getActiveTabId();
+    if (!next) {
       this.deps.resultPanel.hide();
       this.deps.welcomePanel.show();
+      return;
     }
+    this.deps.sidebar.setActiveFile(next);
+    this.deps.tabManager.switchTab(next);
   }
 
   /**

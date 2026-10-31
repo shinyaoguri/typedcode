@@ -254,6 +254,9 @@ export class Sidebar {
         this.filesByPath.delete(file.relativePath);
       }
       this.files.delete(id);
+      if (this.activeFileId === id) {
+        this.activeFileId = null;
+      }
     });
     this.render();
   }
@@ -520,8 +523,11 @@ export class Sidebar {
   private createFileItem(file: SidebarFile, depth: number): HTMLElement {
     const item = document.createElement('div');
     const isProof = file.isProof !== false; // デフォルトはtrue（JSONファイル）
-    item.className = `file-item${file.id === this.activeFileId ? ' active' : ''}${isProof ? ' proof-file' : ' plaintext-file'}`;
+    const isActive = file.id === this.activeFileId;
+    item.className = `file-item${isActive ? ' active' : ''}${isProof ? ' proof-file' : ' plaintext-file'}`;
     item.dataset.id = file.id;
+    // 状態契約: アクティブなファイル行にだけ data-active="true" を付ける (それ以外は属性なし)。
+    if (isActive) item.dataset.active = 'true';
     // 状態契約 (verify/AGENTS.md): status は VerificationController が決めた値をそのまま出す。
     // ここで検証結果から導出し直さないこと (タブ・信頼バッジと食い違う)。
     item.dataset.status = file.status;

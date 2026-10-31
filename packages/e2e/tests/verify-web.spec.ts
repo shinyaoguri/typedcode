@@ -154,6 +154,44 @@ test('正常と改ざんの ZIP を一度に入れても、ファイルごとの
   expectWebCliParity([tampered1!], runVerifyCliWithVerdicts(tamperedZip, ['--mode', 'fast']));
 });
 
+// #281: アクティブなタブを閉じたあと、TabBar / サイドバー / 結果パネルの active が食い違い、
+// 閉じたはずのタブの判定が残る (別の提出物の判定を読む事故)。
+test('アクティブなタブを閉じても、タブ・サイドバー・結果パネルの active が一致する (#281)', async ({ page }) => {
+  const zipPath = await typeAndExport(new EditorApp(page));
+  const zips = [
+    await writeZipVariant(zipPath, { renameProof: 'a', outName: 'a.zip' }),
+    await writeZipVariant(zipPath, { renameProof: 'b', outName: 'b.zip' }),
+    await writeZipVariant(zipPath, { renameProof: 'c', outName: 'c.zip' }),
+  ];
+  const web = new VerifyWebApp(page);
+  await web.open('fast');
+  await web.load(zips);
+
+  // a → b → c の順に開く (最後に開いた c がアクティブ)。
+  for (const f of ['a_proof.json', 'b_proof.json', 'c_proof.json']) await web.selectFile(f);
+  await expect.poll(() => web.activeTabFilename()).toBe('c_proof.json');
+  await expect.poll(() => web.displayedFilename()).toBe('c_proof.json');
+
+  await web.closeTab('c_proof.json');
+
+  // 閉じた c ではなく、残ったタブのどれかに 3 か所そろって移っている。
+  await expect
+    .poll(async () => ({
+      tab: await web.activeTabFilename(),
+      sidebar: await web.activeFileItemFilename(),
+      displayed: await web.displayedFilename(),
+    }))
+    .toMatchObject({ tab: expect.stringMatching(/^[ab]_proof\.json$/) });
+  const after = {
+    tab: await web.activeTabFilename(),
+    sidebar: await web.activeFileItemFilename(),
+    displayed: await web.displayedFilename(),
+  };
+  expect(after.sidebar, JSON.stringify(after)).toBe(after.tab);
+  expect(after.displayed, JSON.stringify(after)).toBe(after.tab);
+  expect(after.tab, JSON.stringify(after)).not.toBe('c_proof.json');
+});
+
 // #292: ZIP 内の壊れた `*_proof.json` は、CLI では失敗として数え (exit 1)、verify Web では error として並べる。
 // (かつては CLI が黙ってスキップして exit 0、Web がプレーンテキスト・status success で並べていた。)
 test('#292: 壊れた *_proof.json を含む ZIP でも結果が出て、壊れたファイルが error として見える', async ({ page }) => {

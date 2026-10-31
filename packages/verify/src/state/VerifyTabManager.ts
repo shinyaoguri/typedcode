@@ -63,14 +63,11 @@ export class VerifyTabManager {
       this.tabOrder.splice(orderIndex, 1);
     }
 
-    // アクティブタブが削除された場合は別のタブに切り替え
+    // アクティブタブが削除された場合は active を外すだけにする。次にどのタブを表示するかは
+    // タブバー (開いているタブの集合) を知る TabController が決める。ここで tabOrder (未オープンの
+    // ファイルを含む) から選ぶと、タブバー・サイドバー・結果パネルと食い違う (#281)。
     if (this.activeTabId === id) {
-      const nextTabId = this.tabOrder[Math.max(0, orderIndex - 1)] ?? null;
-      if (nextTabId) {
-        this.switchTab(nextTabId);
-      } else {
-        this.activeTabId = null;
-      }
+      this.activeTabId = null;
     }
 
     return true;

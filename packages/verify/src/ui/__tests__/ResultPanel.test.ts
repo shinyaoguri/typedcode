@@ -11,6 +11,7 @@ import { escapeHtml, type AssuranceResult } from '@typedcode/shared';
 import {
   buildAssuranceStripHtml,
   buildExamIdentifierLabel,
+  examBindingCardStatus,
   buildScreenshotVerificationHtml,
   type ResultData,
 } from '../ResultPanel.js';
@@ -174,5 +175,45 @@ describe('buildExamIdentifierLabel (#273)', () => {
     );
     expect(label).toContain('claimed-exam');
     expect(label).toContain(t('result.examSelfReported'));
+  });
+});
+
+describe('examBindingCardStatus', () => {
+  type ExamBinding = NonNullable<ResultData['examBinding']>;
+  type Binding = NonNullable<ExamBinding['binding']>;
+
+  const binding = (valid: boolean): Binding => ({
+    valid,
+    packageSignatureValid: valid,
+    packageHashMatches: valid,
+    rootMatches: valid,
+    problemContentHashMatches: valid,
+    identifiersMatch: valid,
+    verifiedIds: valid ? { examId: 'exam-1', problemId: 'p1', variant: 'A' } : undefined,
+    timeBox: null,
+  });
+  const eb = (rootValid: boolean, b?: Binding): ExamBinding => ({
+    examId: 'e',
+    problemId: 'p',
+    variant: null,
+    rootValid,
+    packageProvided: b !== undefined,
+    binding: b,
+  });
+
+  it('warns (not success) when no package is provided and the root binds', () => {
+    expect(examBindingCardStatus(eb(true))).toBe('warning');
+  });
+
+  it('errors when no package is provided and the root does not bind', () => {
+    expect(examBindingCardStatus(eb(false))).toBe('error');
+  });
+
+  it('succeeds when the package binding passed', () => {
+    expect(examBindingCardStatus(eb(true, binding(true)))).toBe('success');
+  });
+
+  it('errors when the package binding failed', () => {
+    expect(examBindingCardStatus(eb(true, binding(false)))).toBe('error');
   });
 });

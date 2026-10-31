@@ -164,7 +164,10 @@ export class AppController {
 
     // 試験束縛カード (ADR-0006) の「問題パッケージを読み込む」: アクティブタブに .tcexam を読み込み再検証。
     this.resultPanel.onExamManifestRequested = () => {
-      const tab = this.tabManager.getActiveTab();
+      // 「アクティブ」は開いているタブ (TabController) のもの。tabManager の active は
+      // タブを閉じたあと別の proof を指しうるので、そちらから引かない (別 proof へ束縛する事故の防止)。
+      const activeId = this.tabController.getActiveTabId();
+      const tab = activeId ? this.tabManager.getTab(activeId) : null;
       if (tab) void this.fileController.loadExamManifestForTab(tab.id);
     };
 
@@ -318,48 +321,13 @@ export class AppController {
   }
 
   private handleFileRemove(id: string): void {
-    // 削除するファイルが表示中の場合、表示状態をリセット
-    if (this.uiState.isDisplayed(id)) {
-      this.uiState.setCurrentDisplayedTabId(null);
-    }
-
-    // ファイル一覧から削除する場合は、タブとTabManagerからも削除
-    this.tabManager.removeTab(id);
-    this.tabBar.removeTab(id);
-    this.sidebar.removeFile(id);
-
-    // If no files left, show welcome panel
-    if (this.sidebar.getFileCount() === 0 && this.sidebar.getFolderCount() === 0) {
-      this.resultPanel.hide();
-      this.welcomePanel.show();
-    }
-
+    // タブ・tabManager・サイドバーからの削除と、残ったタブへの表示の寄せは TabController が担う
+    this.tabController.removeFile(id);
     this.updateStatusBar();
   }
 
   private handleFolderRemove(folderId: string): void {
-    // フォルダ内のファイルIDを取得
-    const fileIds = this.sidebar.getFilesInFolder(folderId);
-
-    // フォルダ内のファイルをタブとTabManagerから削除
-    for (const fileId of fileIds) {
-      // 表示中のファイルの場合、表示状態をリセット
-      if (this.uiState.isDisplayed(fileId)) {
-        this.uiState.setCurrentDisplayedTabId(null);
-      }
-      this.tabManager.removeTab(fileId);
-      this.tabBar.removeTab(fileId);
-    }
-
-    // サイドバーからフォルダを削除（中のファイルも一緒に削除される）
-    this.sidebar.removeFolder(folderId);
-
-    // If no files left, show welcome panel
-    if (this.sidebar.getFileCount() === 0 && this.sidebar.getFolderCount() === 0) {
-      this.resultPanel.hide();
-      this.welcomePanel.show();
-    }
-
+    this.tabController.removeFolder(folderId);
     this.updateStatusBar();
   }
 

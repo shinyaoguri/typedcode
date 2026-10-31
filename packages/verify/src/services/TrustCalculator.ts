@@ -59,7 +59,7 @@ export class TrustCalculator {
       issues.push({
         component: 'chain',
         severity: 'error',
-        message: verificationResult.message || t('trust.issueChainInvalid'),
+        message: t('trust.issueChainInvalid'),
       });
     }
 

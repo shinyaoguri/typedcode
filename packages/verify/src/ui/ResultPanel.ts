@@ -26,6 +26,9 @@ import { AnalysisReportCard } from './AnalysisReportCard.js';
 import { ProcessSummaryCard } from './ProcessSummaryCard.js';
 import { t } from '../i18n/index.js';
 
+/** 結果カードのアイコン・バッジの状態 (CSS クラス名と一致)。 */
+type CardStatus = 'success' | 'warning' | 'error' | 'pending';
+
 export interface ResultData {
   filename: string;
   content: string;
@@ -36,7 +39,8 @@ export interface ResultData {
   eventCount: number;
   typingTime: string;
   typingSpeed: string;
-  trustResult?: TrustResult;
+  /** TrustCalculator の結果 (総合判定バッジの唯一の入力)。 */
+  trustResult: TrustResult;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない (検証結果とは独立軸)。 */
   analysis?: AnalysisReport;
   /** 三層保証語彙 (ADR-0020)。実証拠から機械導出 (自己申告 mode は不使用)。 */
@@ -50,7 +54,7 @@ export interface ResultData {
   mode?: ProofMode;
   /** 検証モード (Phase 5) */
   verificationMode?: VerificationMode;
-  /** PoSW の実行モード (skipped / sampled / full) */
+  /** PoSW の実行モード (skipped / full) */
   poswMode?: PoswMode;
   /** 時刻アンカー (signed checkpoint) の検証結果 */
   signedCheckpoint?: {
@@ -106,6 +110,7 @@ export class ResultPanel {
   private statusIcon: HTMLElement;
   private statusTitle: HTMLElement;
   private statusFilename: HTMLElement;
+  private statusCard: HTMLElement;
   private assuranceStrip: HTMLElement;
 
   // Verification cards
@@ -238,6 +243,7 @@ export class ResultPanel {
     this.statusIcon = document.getElementById('result-status-icon')!;
     this.statusTitle = document.getElementById('result-status-title')!;
     this.statusFilename = document.getElementById('result-status-filename')!;
+    this.statusCard = document.getElementById('result-status-card')!;
     this.assuranceStrip = document.getElementById('assurance-strip')!;
 
     // Typing card
@@ -553,27 +559,11 @@ export class ResultPanel {
       trustResult,
     } = data;
 
-    // Overall status - TrustResult を優先使用
-    if (trustResult) {
-      this.renderTrustBadge(trustResult);
-    } else {
-      // フォールバック: 従来のロジック
-      const isSuccess = result.chainValid && result.pureTyping;
-      const isWarning = result.chainValid && !result.pureTyping;
-      const statusClass = isSuccess ? 'success' : isWarning ? 'warning' : 'error';
-
-      this.statusIcon.className = `result-status-icon ${statusClass}`;
-      // 状態契約 (AGENTS.md): data-level は TrustCalculator の生の値だけを出す。ここで
-      // TrustLevel を導出し直すと信頼バッジと食い違いうるので、この経路では付けない。
-      delete this.statusIcon.dataset.level;
-      this.statusIcon.innerHTML = `<i class="fas fa-${isSuccess ? 'check-circle' : isWarning ? 'exclamation-triangle' : 'times-circle'}"></i>`;
-      this.statusTitle.textContent = isSuccess
-        ? t('result.statusSuccess')
-        : isWarning
-          ? t('result.statusWarning')
-          : t('result.statusFailed');
-    }
+    // Overall status
+    this.renderTrustBadge(trustResult);
     this.statusFilename.textContent = filename;
+    // 状態契約: 判定を描画している間だけ、その判定がどのファイルのものかを出す。
+    this.statusCard.dataset.filename = filename;
 
     // Typing card
     this.renderCard(
@@ -613,16 +603,10 @@ export class ResultPanel {
       ? t('result.poswNone')
       : poswMode === 'skipped'
         ? t('result.poswSkipped')
-        : poswMode === 'sampled'
-          ? t('result.poswSampled')
-          : t('result.poswFull');
-    const poswStatus = !hasPoSW ? null : poswMode === 'skipped' ? 'warning' : 'success';
-    this.renderCard(this.poswIcon, this.poswBadge, hasPoSW ? poswStatus === 'success' : null, poswBadgeText);
-    if (hasPoSW && poswMode === 'skipped') {
-      // skipped 時は警告色で表示
-      this.poswBadge.className = 'result-card-badge warning';
-      this.poswIcon.className = 'result-card-icon warning';
-    }
+        : t('result.poswFull');
+    // skipped 時は警告色で表示
+    const poswStatus: CardStatus = !hasPoSW ? 'pending' : poswMode === 'skipped' ? 'warning' : 'success';
+    this.renderCardStatus(this.poswIcon, this.poswBadge, poswStatus, poswBadgeText);
     this.poswIterations.textContent = hasPoSW ? poswStats.totalIterations.toLocaleString() : '-';
     this.poswTotalTime.textContent = hasPoSW ? `${Math.round(poswStats.totalTime)}ms` : '-';
     if (data.poswMode) {
@@ -738,12 +722,17 @@ export class ResultPanel {
   private clearVerdictState(): void {
     clearAssuranceState(this.assuranceStrip);
     delete this.statusIcon.dataset.level;
+    delete this.statusCard.dataset.filename;
   }
 
   private renderCard(iconEl: HTMLElement, badgeEl: HTMLElement, isValid: boolean | null, badgeText: string): void {
-    const statusClass = isValid === null ? 'pending' : isValid ? 'success' : 'error';
-    iconEl.className = `result-card-icon ${statusClass}`;
-    badgeEl.className = `result-card-badge ${statusClass}`;
+    this.renderCardStatus(iconEl, badgeEl, isValid === null ? 'pending' : isValid ? 'success' : 'error', badgeText);
+  }
+
+  /** カードのアイコン・バッジを 4 状態 (success / warning / error / pending) で描画する。 */
+  private renderCardStatus(iconEl: HTMLElement, badgeEl: HTMLElement, status: CardStatus, badgeText: string): void {
+    iconEl.className = `result-card-icon ${status}`;
+    badgeEl.className = `result-card-badge ${status}`;
     badgeEl.textContent = badgeText;
   }
 
@@ -844,12 +833,15 @@ export class ResultPanel {
       for (const r of pkgRows) r.style.display = 'none';
       this.examReasonRow.style.display = 'none';
       this.examNoteRow.style.display = 'flex';
-      this.renderCard(
+      this.renderCardStatus(
         this.examIcon,
         this.examBadge,
-        eb.rootValid,
+        examBindingCardStatus(eb),
         eb.rootValid ? t('result.examRootBound') : t('result.examRootUnbound')
       );
+      // 「問題パッケージを読み込む」導線は折りたたみの中にあるので、未提供のうちは開いておく
+      // (add のみ。ユーザーが畳んだ状態を toggle で上書きしない)。
+      this.cardExamBinding.classList.add('expanded');
       return;
     }
 
@@ -873,7 +865,12 @@ export class ResultPanel {
     } else {
       this.examReasonRow.style.display = 'none';
     }
-    this.renderCard(this.examIcon, this.examBadge, b.valid, b.valid ? t('result.examBound') : t('result.examFailed'));
+    this.renderCardStatus(
+      this.examIcon,
+      this.examBadge,
+      examBindingCardStatus(eb),
+      b.valid ? t('result.examBound') : t('result.examFailed')
+    );
   }
 
   /**
@@ -1630,6 +1627,18 @@ export function buildExamIdentifierLabel(eb: NonNullable<ResultData['examBinding
   const variant = ids.variant ? ` / ${ids.variant}` : '';
   const label = `${ids.examId} / ${ids.problemId}${variant}`;
   return verified ? label : `${label} (${t('result.examSelfReported')})`;
+}
+
+/**
+ * 試験束縛カードの見た目の状態 (#281)。`renderExamBindingCard` の純粋部分。
+ *
+ * 問題パッケージ未提供は root 束縛しか見ていない = 完全束縛ではないので、root が合っていても
+ * success (緑) にはせず warning にする (信頼バッジが「exam だが問題パッケージ未読込」を
+ * 警告にするのと同じ向き)。root が合わなければ error。
+ */
+export function examBindingCardStatus(eb: NonNullable<ResultData['examBinding']>): 'success' | 'warning' | 'error' {
+  if (!eb.binding) return eb.rootValid ? 'warning' : 'error';
+  return eb.binding.valid ? 'success' : 'error';
 }
 
 /**
