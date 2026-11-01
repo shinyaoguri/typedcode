@@ -62,7 +62,7 @@ gh pr merge --squash --delete-branch
 - **自動化できない確認は理由とともに残す**: 見た目の最終確認など、手で確かめたことは PR 本文の「自動化できず手動で確認したこと」に理由つきで書く
 - **手元では `npm run check`** (typecheck → lint (Biome + docs の `[[...]]` 参照の検査) → workflow の検査 (`lint:workflows` = actionlint + shellcheck) → カバレッジ付きユニットテスト → E2E)。E2E を除いた `npm run check:fast` もある
 
-`scripts/` のテストのうち `require-tests.test.mjs` は CI (check job) で走る。`sweep.test.ts` は使い捨てのリポジトリを組み立てる統合テストなので CI 常設にはしておらず、スクリプトを変えたときに手元で回す (下記「マージ後の掃除」)。
+`scripts/` のテストのうち `require-tests.test.mjs` と、e2e の環境準備のテスト `packages/e2e/scripts/setup-env.test.mjs` は CI (check job) で走る。`sweep.test.ts` は使い捨てのリポジトリを組み立てる統合テストなので CI 常設にはしておらず、スクリプトを変えたときに手元で回す (下記「マージ後の掃除」)。
 
 ## 並行作業 (git worktree)
 

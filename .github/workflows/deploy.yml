@@ -109,10 +109,12 @@ jobs:
       - name: Lint workflows (actionlint + shellcheck)
         run: npm run lint:workflows
 
-      # テスト必須ゲート (pr-checks.yml) の判定ロジックのテスト (ADR-0034)。pr-checks.yml は
-      # pull_request_target で base 側のスクリプトを実行するので、PR で変えたロジックはここで検査する。
-      - name: Test require-tests gate (node:test)
-        run: node --test scripts/require-tests.test.mjs
+      # vitest を持たない場所のスクリプトのテスト (node:test)。
+      # - require-tests: テスト必須ゲート (pr-checks.yml) の判定ロジック (ADR-0034)。pr-checks.yml は
+      #   pull_request_target で base 側のスクリプトを実行するので、PR で変えたロジックはここで検査する。
+      # - setup-env: e2e の環境準備。既存の .dev.vars の署名鍵と localKeys.ts の食い違いを検知する (#388)
+      - name: Test scripts (node:test)
+        run: node --test scripts/require-tests.test.mjs packages/e2e/scripts/setup-env.test.mjs
 
       - name: Build (all packages)
         run: npm run build
