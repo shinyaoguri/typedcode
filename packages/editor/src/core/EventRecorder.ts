@@ -6,17 +6,36 @@
  * ブラウザタブを閉じた後も復旧可能
  */
 
-import type { RecordEventInput } from '@typedcode/shared';
-import type { TabManager } from '../ui/tabs/TabManager.js';
+import type { EventType, RecordEventInput } from '@typedcode/shared';
+import type { TabManager, TabState } from '../ui/tabs/TabManager.js';
 import type { LogViewer } from '../ui/components/LogViewer.js';
 import { t } from '../i18n/index.js';
 import { EventPersistence } from './EventPersistence.js';
+
+/**
+ * セッション全体のスナップショット型 (#405)。recordToAllTabs に来た最新の 1 件を型ごとに保持し、
+ * 後から作ったタブに recordSessionSnapshotTo で流し直す。配列の順が流し直しの順で、
+ * casual の起動時タブに載る順 (Phase 5 の recordInitial 群 → Phase 5.5 の opt-out) と揃える。
+ * 新しい起動時ワンショットを足すときはここに登録する (登録しないと、起動時にタブが無い
+ * class / assignment と 2 個目以降のタブの proof から欠落する)。
+ */
+const SESSION_SNAPSHOT_EVENT_TYPES: readonly EventType[] = [
+  'windowResize',
+  'networkStatusChange',
+  'environmentProbe',
+  'screenShareOptOut',
+];
 
 export interface EventRecorderOptions {
   tabManager: TabManager;
   getLogViewer: () => LogViewer | null;
   onStatusUpdate?: () => void;
   onError?: (message: string) => void;
+  /**
+   * 利用規約同意の termsAccepted イベントを組み立てる (同意が無ければ null)。
+   * recordSessionSnapshotTo が、そのタブにまだ無いときだけ先頭に記録する (#405)。
+   */
+  getTermsAcceptedEvent?: () => RecordEventInput | null;
 }
 
 export class EventRecorder {
@@ -24,15 +43,19 @@ export class EventRecorder {
   private getLogViewer: () => LogViewer | null;
   private onStatusUpdate: (() => void) | null;
   private onError: ((message: string) => void) | null;
+  private getTermsAcceptedEvent: (() => RecordEventInput | null) | null;
   private enabled = true;
   private initialized = false;
   private persistence: EventPersistence;
+  /** スナップショット型ごとの最新イベント (#405)。タブが 0 件のときも保持する */
+  private sessionSnapshot = new Map<EventType, RecordEventInput>();
 
   constructor(options: EventRecorderOptions) {
     this.tabManager = options.tabManager;
     this.getLogViewer = options.getLogViewer;
     this.onStatusUpdate = options.onStatusUpdate ?? null;
     this.onError = options.onError ?? null;
+    this.getTermsAcceptedEvent = options.getTermsAcceptedEvent ?? null;
     this.persistence = new EventPersistence();
   }
 
@@ -148,6 +171,13 @@ export class EventRecorder {
       return Promise.resolve();
     }
 
+    // スナップショット型は、タブ一覧を読むのと同じ同期区間で保持する (#405)。
+    // TabManager はタブ登録の直後に同期で recordSessionSnapshotTo を呼ぶので、
+    // 同時に作られたタブは「ここで一覧に載る」か「流し直しで受け取る」のどちらか一方になる。
+    if (SESSION_SNAPSHOT_EVENT_TYPES.includes(event.type)) {
+      this.sessionSnapshot.set(event.type, event);
+    }
+
     const allTabs = this.tabManager.getAllTabs();
     if (allTabs.length === 0) {
       console.debug('[EventRecorder] Skipping - no tabs');
@@ -157,46 +187,90 @@ export class EventRecorder {
     console.debug(`[EventRecorder] Recording ${event.type} to ${allTabs.length} tabs`);
 
     // 全タブに並列で記録
-    const promises = allTabs.map((tab) => {
-      const recordPromise = tab.typingProof.recordEvent(event);
-
-      // 記録開始時にステータスを更新
-      this.onStatusUpdate?.();
-
-      return recordPromise
-        .then((result) => {
-          // 記録に失敗してチェーンに載らなかったイベントは UI に流さない (#284)
-          if (!result.recorded) return;
-
-          // アクティブタブの場合のみログビューアに追加
-          const activeTab = this.tabManager.getActiveTab();
-          const isActive = activeTab && activeTab.id === tab.id;
-          const logViewer = this.getLogViewer();
-          const logViewerVisible = logViewer?.isVisible ?? false;
-
-          console.debug(
-            `[EventRecorder] recordToAllTabs result: isActive=${isActive}, logViewerVisible=${logViewerVisible}, eventType=${event.type}`
-          );
-
-          if (isActive && logViewerVisible && logViewer) {
-            const recordedEvent = tab.typingProof.events[result.index];
-            if (recordedEvent) {
-              logViewer.addLogEntry(recordedEvent, result.index);
-            }
-          }
-        })
-        .catch((err) => {
-          console.error(`[EventRecorder] Recording to tab ${tab.id} failed:`, err);
-        })
-        .finally(() => {
-          this.onStatusUpdate?.();
-        });
-    });
+    const promises = allTabs.map((tab) => this.recordToTab(tab, event));
 
     // 全タブへの記録が完了してから保存（PoSW計算完了後）
     return Promise.all(promises).then(() => {
       this.persistence.saveTabsToSessionStorage(this.tabManager);
     });
+  }
+
+  /**
+   * セッションのスナップショットを、後から作ったタブ 1 つにだけ記録する (#405)。
+   * 起動時ワンショット (termsAccepted・初期 windowResize / networkStatusChange・environmentProbe・
+   * screenShareOptOut) は記録した時点にあるタブにしか載らないため、class / assignment
+   * (起動時にタブが無い) や 2 個目以降のタブの proof から欠落していた。
+   * TabManager.setOnTabCreated から、タブ登録の直後に同期で呼ばれる前提
+   * (recordToAllTabs の記録と二重にも漏れにもならない)。
+   * @returns そのタブへの記録が完了したらresolveするPromise
+   */
+  recordSessionSnapshotTo(tab: TabState): Promise<void> {
+    if (!this.enabled || !this.initialized) {
+      return Promise.resolve();
+    }
+
+    const events: RecordEventInput[] = [];
+    // termsAccepted は localStorage の同意から作る。既に載っているタブには重ねない
+    const termsEvent = this.getTermsAcceptedEvent?.() ?? null;
+    if (termsEvent && !tab.typingProof.events.some((e) => e.type === 'termsAccepted')) {
+      events.push(termsEvent);
+    }
+    for (const type of SESSION_SNAPSHOT_EVENT_TYPES) {
+      const snapshot = this.sessionSnapshot.get(type);
+      if (snapshot) events.push(snapshot);
+    }
+    if (events.length === 0) {
+      return Promise.resolve();
+    }
+
+    console.debug(`[EventRecorder] Replaying session snapshot (${events.length} events) to tab ${tab.id}`);
+
+    // recordEvent は呼んだ順にチェーンへ載るので、同期で順に呼べば順序が保たれる
+    const promises = events.map((event) => this.recordToTab(tab, event));
+
+    return Promise.all(promises).then(() => {
+      this.persistence.saveTabsToSessionStorage(this.tabManager);
+    });
+  }
+
+  /**
+   * 1 タブにイベントを記録する (recordToAllTabs / recordSessionSnapshotTo の共通処理)。
+   * アクティブタブの場合のみ LogViewer に反映し、失敗はログに出して resolve する。
+   */
+  private recordToTab(tab: TabState, event: RecordEventInput): Promise<void> {
+    const recordPromise = tab.typingProof.recordEvent(event);
+
+    // 記録開始時にステータスを更新
+    this.onStatusUpdate?.();
+
+    return recordPromise
+      .then((result) => {
+        // 記録に失敗してチェーンに載らなかったイベントは UI に流さない (#284)
+        if (!result.recorded) return;
+
+        // アクティブタブの場合のみログビューアに追加
+        const activeTab = this.tabManager.getActiveTab();
+        const isActive = activeTab && activeTab.id === tab.id;
+        const logViewer = this.getLogViewer();
+        const logViewerVisible = logViewer?.isVisible ?? false;
+
+        console.debug(
+          `[EventRecorder] recordToTab result: isActive=${isActive}, logViewerVisible=${logViewerVisible}, eventType=${event.type}`
+        );
+
+        if (isActive && logViewerVisible && logViewer) {
+          const recordedEvent = tab.typingProof.events[result.index];
+          if (recordedEvent) {
+            logViewer.addLogEntry(recordedEvent, result.index);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error(`[EventRecorder] Recording to tab ${tab.id} failed:`, err);
+      })
+      .finally(() => {
+        this.onStatusUpdate?.();
+      });
   }
 
   /**

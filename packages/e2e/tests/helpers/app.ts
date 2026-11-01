@@ -475,6 +475,23 @@ export async function readProofEvents(zipPath: string): Promise<ProofEvent[]> {
   return proof.proof?.events ?? [];
 }
 
+/**
+ * ZIP 内の全 `*_proof.json` から events 配列を読み出す (全タブ export の proof ごとの検査用)。
+ * キーは ZIP のエントリ名。
+ */
+export async function readAllProofEvents(zipPath: string): Promise<Map<string, ProofEvent[]>> {
+  const buf = await readFileBuffer(zipPath);
+  const zip = await JSZip.loadAsync(buf);
+  const result = new Map<string, ProofEvent[]>();
+  for (const entryName of Object.keys(zip.files).filter((n) => n.endsWith('_proof.json'))) {
+    const proof = JSON.parse(await zip.files[entryName]!.async('string')) as {
+      proof?: { events?: ProofEvent[] };
+    };
+    result.set(entryName, proof.proof?.events ?? []);
+  }
+  return result;
+}
+
 async function readFileBuffer(path: string): Promise<Buffer> {
   const { readFile } = await import('node:fs/promises');
   return readFile(path);

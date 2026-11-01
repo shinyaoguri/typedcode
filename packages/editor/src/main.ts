@@ -77,6 +77,7 @@ import {
   type ExamPackageManifest,
   type HumanAttestationEventData,
   type ClassPackage,
+  type RecordEventInput,
 } from '@typedcode/shared';
 import { resolveRoute, capabilitiesFor, type EditorMode } from './core/mode.js';
 import { LandingPage } from './ui/components/LandingPage.js';
@@ -513,8 +514,16 @@ function initializeEventRecorder(): void {
     getLogViewer: () => ctx.logViewer,
     onStatusUpdate: () => updateProofStatus(ctx),
     onError: (msg) => showNotification(msg),
+    getTermsAcceptedEvent: buildTermsAcceptedEvent,
   });
   ctx.eventRecorder.setInitialized(true);
+
+  // 後から作ったタブに起動時ワンショットを流し直す (#405)。ここより前 (Phase 4 まで) に作られた
+  // タブ (casual の既定タブ・exam の開封タブ・復元タブ) は対象外で、従来どおり Phase 5 / 5.5 の
+  // recordToAllTabs と起動時の recordTermsAcceptance で載る (二重に載らない)。
+  ctx.tabManager!.setOnTabCreated((tab) => {
+    void ctx.eventRecorder?.recordSessionSnapshotTo(tab);
+  });
 }
 
 function initializeIdleTimeoutManager(): void {
@@ -849,37 +858,49 @@ function initializeCodeExecution(): void {
   });
 }
 
+/**
+ * localStorage の利用規約同意から termsAccepted イベントを組み立てる (同意が無い・壊れていれば null)。
+ * 起動時の recordTermsAcceptance と、後から作ったタブへの流し直し (#405) で共用する。
+ */
+function buildTermsAcceptedEvent(): RecordEventInput | null {
+  const termsData = localStorage.getItem(TERMS_ACCEPTED_KEY);
+  if (!termsData) return null;
+
+  try {
+    const parsed = JSON.parse(termsData);
+    return {
+      type: 'termsAccepted',
+      data: {
+        version: parsed.version,
+        timestamp: parsed.timestamp,
+        agreedAt: parsed.agreedAt,
+      },
+      description: `Terms v${parsed.version} accepted`,
+    };
+  } catch (err) {
+    console.error('[TypedCode] Failed to parse terms data:', err);
+    return null;
+  }
+}
+
 function recordTermsAcceptance(): void {
   const activeProofForTerms = ctx.tabManager?.getActiveProof();
   if (!activeProofForTerms) return;
 
-  const termsData = localStorage.getItem(TERMS_ACCEPTED_KEY);
-  if (!termsData) return;
+  const termsEvent = buildTermsAcceptedEvent();
+  if (!termsEvent) return;
 
-  try {
-    const parsed = JSON.parse(termsData);
-    const hasTermsEvent = activeProofForTerms.events.some((e: { type: string }) => e.type === 'termsAccepted');
-    if (!hasTermsEvent) {
-      activeProofForTerms
-        .recordEvent({
-          type: 'termsAccepted',
-          data: {
-            version: parsed.version,
-            timestamp: parsed.timestamp,
-            agreedAt: parsed.agreedAt,
-          },
-          description: `Terms v${parsed.version} accepted`,
-        })
-        .then(() => {
-          console.log('[TypedCode] Terms acceptance recorded to hash chain');
-          ctx.tabManager?.saveToStorage();
-        })
-        .catch((err: unknown) => {
-          console.error('[TypedCode] Failed to record terms acceptance:', err);
-        });
-    }
-  } catch (err) {
-    console.error('[TypedCode] Failed to parse terms data:', err);
+  const hasTermsEvent = activeProofForTerms.events.some((e: { type: string }) => e.type === 'termsAccepted');
+  if (!hasTermsEvent) {
+    activeProofForTerms
+      .recordEvent(termsEvent)
+      .then(() => {
+        console.log('[TypedCode] Terms acceptance recorded to hash chain');
+        ctx.tabManager?.saveToStorage();
+      })
+      .catch((err: unknown) => {
+        console.error('[TypedCode] Failed to record terms acceptance:', err);
+      });
   }
 }
 
