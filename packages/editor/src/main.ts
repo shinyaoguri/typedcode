@@ -668,7 +668,7 @@ function initializeTerminal(): void {
   if (aboutBtn) {
     aboutBtn.addEventListener('click', () => {
       ctx.settingsDropdown.close();
-      showAboutDialog(getI18n());
+      showAboutDialog(getI18n(), { returnFocusTo: document.getElementById('settings-btn') });
     });
   }
 

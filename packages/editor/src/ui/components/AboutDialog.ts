@@ -12,6 +12,7 @@ import {
   AUTHOR_GITHUB,
 } from '@typedcode/shared';
 import type { I18nInstance } from '@typedcode/shared';
+import { attachDialogA11y } from './dialogA11y.js';
 
 /**
  * Format ISO date string to locale date string
@@ -32,10 +33,18 @@ function formatDate(isoDate: string, locale: string): string {
   }
 }
 
+export interface AboutDialogOptions {
+  /** 閉じた後に戻すフォーカス先。About は設定メニューの項目から開くが、メニューは開くと同時に閉じるので、メニューを開いたボタンを渡す */
+  returnFocusTo?: HTMLElement | null;
+}
+
 /**
  * Show the about dialog
+ *
+ * a11y (#305) は `dialogA11y.ts` が担う。どの経路で閉じても `closeModal` を通り、
+ * document の keydown リスナーはそこで解放される。
  */
-export function showAboutDialog(i18n: I18nInstance): void {
+export function showAboutDialog(i18n: I18nInstance, options: AboutDialogOptions = {}): void {
   const buildInfo = getBuildInfo();
   const locale = i18n.getLocale();
 
@@ -49,7 +58,7 @@ export function showAboutDialog(i18n: I18nInstance): void {
 
   dialog.innerHTML = `
     <button class="modal-close-btn" aria-label="${i18n.t('common.close')}">
-      <i class="fas fa-times"></i>
+      <i class="fas fa-times" aria-hidden="true"></i>
     </button>
     <div class="about-dialog-content">
       <div class="about-header">
@@ -108,17 +117,27 @@ export function showAboutDialog(i18n: I18nInstance): void {
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
 
-  // Close handlers
+  const closeBtn = dialog.querySelector<HTMLElement>('.modal-close-btn');
+
+  const a11y = attachDialogA11y(dialog, {
+    labelledBy: dialog.querySelector<HTMLElement>('.about-app-name')!,
+    initialFocus: closeBtn,
+    returnFocusTo: options.returnFocusTo,
+    onRequestClose: () => closeModal(),
+  });
+
+  // Close handlers (冪等: どの経路から何度呼ばれても片付けは 1 回)
+  let closed = false;
   const closeModal = (): void => {
+    if (closed) return;
+    closed = true;
+    a11y.close();
     overlay.classList.add('hidden');
     setTimeout(() => overlay.remove(), 200);
   };
 
   // Close button
-  const closeBtn = dialog.querySelector('.modal-close-btn');
-  if (closeBtn) {
-    closeBtn.addEventListener('click', closeModal);
-  }
+  closeBtn?.addEventListener('click', closeModal);
 
   // Click outside to close
   overlay.addEventListener('click', (e) => {
@@ -126,13 +145,4 @@ export function showAboutDialog(i18n: I18nInstance): void {
       closeModal();
     }
   });
-
-  // Escape key to close
-  const handleEscape = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') {
-      closeModal();
-      document.removeEventListener('keydown', handleEscape);
-    }
-  };
-  document.addEventListener('keydown', handleEscape);
 }
