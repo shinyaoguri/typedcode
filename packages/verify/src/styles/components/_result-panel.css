@@ -51,6 +51,13 @@
   flex-shrink: 0;
 }
 
+/* 子は縮ませない。縦 flex で内容が高さを超えると、overflow: hidden の子 (.chart-section は
+   min-height が 0 になる) が 2px まで潰れ、タブが結果カードの下に隠れて押せなくなる (#395)。
+   溢れた分は .result-left-panel の overflow-y: auto でスクロールさせる。 */
+.result-left-panel > * {
+  flex-shrink: 0;
+}
+
 /* Result panel resize handle */
 .result-resize-handle {
   width: 4px;

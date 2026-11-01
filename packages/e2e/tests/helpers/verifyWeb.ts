@@ -38,6 +38,9 @@ export interface VerifyVerdict extends VerifyFileState {
   tabStatus: VerifyFileStatus | null;
 }
 
+/** 結果パネルのチャートタブ (`#tab-<name>` / `#panel-<name>`)。 */
+export type ChartTabName = 'integrated' | 'timeline' | 'mouse';
+
 const UNSETTLED: ReadonlySet<string> = new Set(['pending', 'verifying']);
 
 /**
@@ -175,6 +178,27 @@ export class VerifyWebApp {
   /** `#result-status-card[data-filename]`: 結果パネルが判定を出しているファイルの表示名。無ければ null。 */
   async displayedFilename(): Promise<string | null> {
     return this.page.locator('#result-status-card').getAttribute('data-filename');
+  }
+
+  /**
+   * 結果パネルのチャートタブ (`#tab-<name>`) を **force なしで** 押す。人の操作と同じく、別の要素に
+   * 覆われていれば Playwright が押せずに落ちる (#395)。押した結果は `activeChartTab()` で読む。
+   */
+  async clickChartTab(name: ChartTabName): Promise<void> {
+    await this.page.locator(`#tab-${name}`).click({ timeout: 10_000 });
+  }
+
+  /** `.chart-tab[data-active="true"]` の `data-tab`。選択中のタブが 1 つに定まらなければ null。 */
+  async activeChartTab(): Promise<string | null> {
+    const loc = this.page.locator('#chart-section .chart-tab[data-active="true"]');
+    return (await loc.count()) === 1 ? loc.getAttribute('data-tab') : null;
+  }
+
+  /** `.chart-panel[data-active="true"]` の id から `panel-` を除いたもの。表示中のパネルが 1 つに定まらなければ null。 */
+  async activeChartPanel(): Promise<string | null> {
+    const loc = this.page.locator('#chart-section .chart-panel[data-active="true"]');
+    if ((await loc.count()) !== 1) return null;
+    return (await loc.getAttribute('id'))?.replace(/^panel-/, '') ?? null;
   }
 
   /** セレクタに一致する要素がちょうど 1 つならその `data-filename`、0 個なら null。2 個以上は契約違反。 */

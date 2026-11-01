@@ -392,12 +392,18 @@ export class ResultPanel {
   }
 
   private setActiveChartTab(tab: 'integrated' | 'timeline' | 'mouse'): void {
-    this.tabIntegrated.classList.toggle('active', tab === 'integrated');
-    this.tabTimeline.classList.toggle('active', tab === 'timeline');
-    this.tabMouse.classList.toggle('active', tab === 'mouse');
-    this.panelIntegrated.classList.toggle('active', tab === 'integrated');
-    this.panelTimeline.classList.toggle('active', tab === 'timeline');
-    this.panelMouse.classList.toggle('active', tab === 'mouse');
+    // 選択状態は class (見た目) と data-active (E2E の状態契約。active のときだけ "true"、他は属性なし)。
+    const set = (el: HTMLElement, active: boolean): void => {
+      el.classList.toggle('active', active);
+      if (active) el.dataset.active = 'true';
+      else delete el.dataset.active;
+    };
+    set(this.tabIntegrated, tab === 'integrated');
+    set(this.tabTimeline, tab === 'timeline');
+    set(this.tabMouse, tab === 'mouse');
+    set(this.panelIntegrated, tab === 'integrated');
+    set(this.panelTimeline, tab === 'timeline');
+    set(this.panelMouse, tab === 'mouse');
   }
 
   show(): void {

@@ -216,3 +216,31 @@ test('#292: 壊れた *_proof.json を含む ZIP でも結果が出て、壊れ�
   const cli = runVerifyCliWithVerdicts(brokenZip, ['--mode', 'fast']);
   expect(cli.exitCode, cli.stdout + cli.stderr).toBe(1);
 });
+
+// #395: 結果を表示した後、1280x800 でチャートのタブ (タイムライン等) が結果カードに覆われて押せなかった。
+// `.result-left-panel` は縦 flex で、`overflow: hidden` の `.chart-section` が高さ不足のとき 2px まで
+// 縮み、タブの位置に `#result-cards` が重なっていた。force なしのクリックが通ることを見る。
+test.describe('結果パネルのチャートタブ (1280x800)', () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test('結果表示後にタイムライン・マウス軌跡のタブを force なしで押して切り替えられる (#395)', async ({ page }) => {
+    const zipPath = await typeAndExport(new EditorApp(page));
+    const [proof] = await proofNames(zipPath);
+
+    const web = new VerifyWebApp(page);
+    await web.open('fast');
+    await web.load([zipPath]);
+    await web.readVerdict(proof!);
+
+    expect(await web.activeChartTab(), '初期は統合チャート').toBe('integrated');
+    expect(await web.activeChartPanel()).toBe('integrated');
+
+    await web.clickChartTab('timeline');
+    await expect.poll(() => web.activeChartTab()).toBe('timeline');
+    expect(await web.activeChartPanel(), 'タブに対応するパネルが表示される').toBe('timeline');
+
+    await web.clickChartTab('mouse');
+    await expect.poll(() => web.activeChartTab()).toBe('mouse');
+    expect(await web.activeChartPanel()).toBe('mouse');
+  });
+});
