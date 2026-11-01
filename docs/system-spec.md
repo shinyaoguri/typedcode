@@ -266,10 +266,11 @@ interface CheckpointData {
 5. 新規タブなら per-session タブ台帳 (`tabs:{sessionId}`。record の `session:` 名前空間とは別。#297) の上限チェック (`MAX_TABS_PER_SESSION` = 64、best-effort。不正形の台帳は read 失敗と同扱いで判定スキップ)。`sessionId` / `tabId` は `^[A-Za-z0-9._-]+$` (≤200) で、不正形の session record は 503 `SESSION_STATE_UNAVAILABLE`
 6. checkpointIndex 単調性チェック (best-effort)
 7. signedCount 上限チェック (50,000 / (sessionId, tabId) 単位。超過は 429 `SESSION_LIMIT_EXCEEDED`)。セッション全体の理論上限は `MAX_TABS_PER_SESSION` × `SESSION_MAX_CHECKPOINTS`
-8. `payload = { ...input, serverTimestamp: now, firstSeenAt, poswIterations: 10000, version: 1 }` を構築
-9. `signature = ECDSA-P256.sign(privateKey, deterministicStringify(payload))`
-10. KV 更新 (TTL **7 日**)
-11. envelope を返却
+8. **serverTimestamp の単調クランプ (#226)**: `serverTimestamp = max(now, record.lastServerTimestamp + 1ms)`。verifier は連続する署名 cp の `serverTimestamp` に厳密増加を要求する (§6.2) ため、クロックスキューで壁時計が前回署名より戻っても同一 KV record (= 同一 (sessionId, tabId)) に続けて署名する限り値は逆行しない。クランプした値で署名し、`lastServerTimestamp` にも保存する (前回値が無い初回は `now` のまま)。発動時は Workers Logs に warn (sessionId は出さない)。KV は結果整合なので、別コロで record が stale に見える窓までは塞げない (検証器側の許容は別件)。冪等再送は前回 envelope をそのまま返すのでクランプの対象外
+9. `payload = { ...input, serverTimestamp, firstSeenAt, poswIterations: 10000, version: 1 }` を構築
+10. `signature = ECDSA-P256.sign(privateKey, deterministicStringify(payload))`
+11. KV 更新 (TTL **7 日**)
+12. envelope を返却
 
 **Envelope 形式**:
 ```typescript
