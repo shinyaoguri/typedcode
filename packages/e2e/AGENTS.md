@@ -53,7 +53,7 @@ CI では `deploy.yml` の `e2e-shard` job が Playwright の `--shard=1/2` / `2
 
 ### モード共通の入口 (helpers/app.ts)
 
-- `openModeFresh(mode, { acceptTerms, screenShare, waitReady })`: `/<mode>?reset` で開く。利用規約は init script で localStorage `typedcode-terms-accepted` を入れて飛ばす (既定は casual 以外)。起動時の画面共有の選択ダイアログ (`.screen-share-choice-dialog`。class と exam で出ることを確認済み) は `screenShare: 'share' | 'optOut'` で選ぶ。問題の読み込み・試験ゲートは各モードの spec 側で足す
+- `openModeFresh(mode, { acceptTerms, screenShare, waitReady })`: `/<mode>?reset` で開く。利用規約は init script で localStorage `typedcode-terms-accepted` を入れて飛ばす (既定は casual 以外)。起動時の画面共有の選択ダイアログ (`.screen-share-choice-dialog`。class と exam で出ることを確認済み) は `screenShare: 'share' | 'optOut'` で選ぶ (`optOut` は続けて出る確認ダイアログ `.screen-share-optout-confirm-dialog` の confirm まで閉じる。#374)。問題の読み込み・試験ゲートは各モードの spec 側で足す
 - export は `exportCurrentTab` / `exportAllTabs` (ダウンロードメニュー) と `exportViaLogButton` (問題パネルの `#download-log-btn`。exam はこちらに一本化される)
 - `writeZipVariant` / `tamperFirstContentChange`: export ZIP を書き換えた ZIP (改ざん・proof の改名・壊れたエントリの追加) を作る。verify Web には ZIP のまま渡す
 
