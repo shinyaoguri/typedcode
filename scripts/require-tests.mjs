@@ -152,18 +152,18 @@ export function formatFailure(outcome) {
 }
 
 /** GitHub Actions の `::error::` 1 行に埋め込めるようにエスケープする。 */
-function escapeAnnotation(text) {
+export function escapeAnnotation(text) {
   return text.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
 }
 
-function parseLabels(raw) {
+export function parseLabels(raw) {
   if (!raw) return [];
   const parsed = JSON.parse(raw);
   if (!Array.isArray(parsed)) throw new Error('PR_LABELS は JSON 配列で渡す');
   return parsed.map(String);
 }
 
-function readFiles(argv) {
+export function readFiles(argv) {
   const index = argv.indexOf('--files');
   const source = index === -1 ? '-' : argv[index + 1];
   if (source === undefined) throw new Error('--files にはパス (または - で stdin) を渡す');
