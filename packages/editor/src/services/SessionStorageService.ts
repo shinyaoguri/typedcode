@@ -16,6 +16,7 @@ import type {
 } from '@typedcode/shared';
 import { IndexedDBHelper } from './IndexedDBHelper.js';
 import { sessionDbName } from '../core/storageKeys.js';
+import { sortTabSwitchesByAppendOrder } from './tabSwitchOrder.js';
 
 // Re-export types for convenience
 export type { SessionMetadata, StoredTabData, StoredEventData, StoredTabSwitchData, SessionSummary, TabSummary };
@@ -580,7 +581,8 @@ export class SessionStorageService {
       'sessionId',
       sessionId
     );
-    return stored.map((s) => s.switchEvent).sort((a, b) => a.timestamp - b.timestamp);
+    // timestamp はロードごとに 0 起点でリロードをまたぐと単調でないので、追記順 (id) で並べる (#385)
+    return sortTabSwitchesByAppendOrder(stored);
   }
 
   // ============================================================================
