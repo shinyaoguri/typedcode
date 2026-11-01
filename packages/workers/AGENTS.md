@@ -16,6 +16,7 @@
 5. **CORS のオリジン**: 編集 / 検証アプリのドメインを許可。ワイルドカード禁止 (下記「CORS と濫用防止の設計」参照)
 6. **`sessionId` は信用しない**: クライアントが投げる任意の文字列。サーバ側で `firstSeenAt` を KV に保存し改ざんを防ぐ
 7. **`/api/checkpoint/sign` は `sessionStartToken` 前提** (ADR-0027): token 検証は KV read より**前**に行い、無認証リクエストに KV コストを払わない。sessionId は token に束縛され、新規 sessionId の作成コスト = Turnstile 1 回になる。exam は署名専用 token を editor が best-effort 取得する (root には焼かない)
+8. **`serverTimestamp` は同一 record 内で厳密増加させる** (#226): 検証器は連続する署名 cp の `serverTimestamp` に厳密増加を要求するので、`clampServerTimestamp` が署名前に `max(now, lastServerTimestamp + 1ms)` へクランプし、その値で署名・保存する (発動時は `console.warn`、sessionId は出さない)。既に読んだ record を使うので KV の読み書きは増やさない。限界: KV は結果整合なので、別コロで record が stale に見える窓や、put が 429 で落ちた直後は塞げない (そこは検証器側の許容 = 別件)。冪等再送は前回 envelope を返すので対象外
 
 ## ファイル構成
 

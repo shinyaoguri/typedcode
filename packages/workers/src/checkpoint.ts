@@ -5,7 +5,8 @@
  * - サーバは最小限の KV 状態 (session:{sessionId}:{tabId}) のみ保持する (タブ毎)。
  *   加えて per-session のタブ台帳 (tabs:{sessionId}) を持つ (ADR-0027 のタブ上限)。
  * - 厳密な単調性は verifier 側の連鎖チェックで保証。サーバ側は best-effort で
- *   非単調 / セッション上限超過を弾く。
+ *   非単調 / セッション上限超過を弾く。serverTimestamp だけは verifier が厳密増加を
+ *   要求するため、署名前に前回値 +1ms でクランプする (#226。同一 KV record の範囲で)。
  * - firstSeenAt は KV 初回書込時に確定し、それ以降は固定。verifier はすべての
  *   envelope で firstSeenAt が一致することを要求するので、sessionId 乗っ取りに
  *   対する追加の防御線となる。
@@ -45,6 +46,22 @@ interface SessionRecord {
    * 409 を返してしまい、その checkpoint は永久に失われる。
    */
   lastEnvelope?: SignedCheckpointEnvelope;
+}
+
+/**
+ * 署名する serverTimestamp を前回値より厳密に大きくする (#226)。
+ * `max(now, last + 1ms)`。前回値が無い / ISO として読めないときは now のまま
+ * (読めない値で署名を止めない。record の形検査は lastServerTimestamp を見ない)。
+ * クランプが発動したら Workers Logs に残す。sessionId は出さない (差分だけ)。
+ */
+export function clampServerTimestamp(nowIso: string, lastServerTimestamp: string | undefined): string {
+  if (lastServerTimestamp === undefined) return nowIso;
+  const last = Date.parse(lastServerTimestamp);
+  const now = Date.parse(nowIso);
+  if (Number.isNaN(last) || Number.isNaN(now) || now > last) return nowIso;
+  const clamped = new Date(last + 1).toISOString();
+  console.warn(`[checkpoint] serverTimestamp clamped to previous + 1ms (wall clock behind by ${last - now}ms)`);
+  return clamped;
 }
 
 /**
@@ -431,12 +448,18 @@ export async function handleSignCheckpoint(
     }
   }
 
+  // serverTimestamp の単調クランプ (#226): verifier は連続する cp の serverTimestamp の
+  // 厳密増加を要求する。コロ / マシン間のクロックスキューで壁時計が前回署名より戻っても
+  // 正直な proof を落とさないよう、前回値 +1ms を下限にする。既に読んだ record を使うので
+  // KV の読み書きは増えない。冪等再送 (前回 envelope を返す) は上で return 済みなので対象外。
+  const serverTimestamp = clampServerTimestamp(nowIso, existing?.lastServerTimestamp);
+
   // 署名
   let envelope;
   try {
     envelope = await createSignedCheckpointEnvelope(
       input,
-      { serverTimestamp: nowIso, firstSeenAt },
+      { serverTimestamp, firstSeenAt },
       { keyId: signer.keyId, privateKey: signer.key }
     );
   } catch (err) {
@@ -453,7 +476,7 @@ export async function handleSignCheckpoint(
   const nextRecord: SessionRecord = {
     firstSeenAt,
     lastCheckpointIndex: input.checkpointIndex,
-    lastServerTimestamp: nowIso,
+    lastServerTimestamp: serverTimestamp,
     signedCount: (existing?.signedCount ?? 0) + 1,
     lastEnvelope: envelope,
   };

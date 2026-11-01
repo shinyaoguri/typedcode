@@ -13,7 +13,7 @@
  * Node 24 が webcrypto を global crypto.subtle として提供するため、setup file 不要。
  */
 
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { createSessionStartToken, verifyCheckpointSignature } from '@typedcode/shared/checkpoint';
 import type { CheckpointPublicKey, SessionStartToken, SignedCheckpointInput } from '@typedcode/shared/checkpoint';
 import { handleSignCheckpoint, type CheckpointEnv } from '../checkpoint.js';
@@ -491,6 +491,110 @@ describe('handleSignCheckpoint', () => {
     const res = await sign(makeRequest(makeInput({ tabId: 'tab-1' })));
     expect(res.status).toBe(503);
     expect(((await res.json()) as ErrorResponseBody).code).toBe('SESSION_STATE_UNAVAILABLE');
+  });
+
+  // ---------- serverTimestamp の単調クランプ (#226) ----------
+
+  describe('serverTimestamp monotonic clamp', () => {
+    const T0 = Date.parse('2026-06-04T12:00:00.000Z');
+    const next = { checkpointIndex: 1, previousSignedCheckpointHash: 'e'.repeat(64) } as const;
+
+    /** Date だけを偽装する (crypto.subtle の非同期処理は実時間のまま動く) */
+    function setWallClock(ms: number): void {
+      vi.setSystemTime(ms);
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    async function signedTimestamp(overrides: Partial<SignedCheckpointInput>): Promise<string> {
+      const res = await sign(makeRequest(makeInput(overrides)));
+      expect(res.status).toBe(200);
+      return ((await res.json()) as SignResponseBody).envelope.payload.serverTimestamp;
+    }
+
+    it('keeps serverTimestamp strictly increasing when the wall clock steps back between two signatures', async () => {
+      setWallClock(T0);
+      const first = await signedTimestamp({ checkpointIndex: 0 });
+      setWallClock(T0 - 5);
+      const second = await signedTimestamp(next);
+      expect(first).toBe(new Date(T0).toISOString());
+      expect(second).toBe(new Date(T0 + 1).toISOString());
+    });
+
+    it('bumps the second signature by 1ms when two checkpoints are signed at the same instant', async () => {
+      setWallClock(T0);
+      await signedTimestamp({ checkpointIndex: 0 });
+      const second = await signedTimestamp(next);
+      expect(second).toBe(new Date(T0 + 1).toISOString());
+    });
+
+    it('persists the clamped value as lastServerTimestamp so the next signature clamps against it', async () => {
+      setWallClock(T0);
+      await signedTimestamp({ checkpointIndex: 0 });
+      setWallClock(T0 - 5);
+      await signedTimestamp(next);
+      const record = JSON.parse(kv.store.get('session:test-session:tab-1')!) as { lastServerTimestamp: string };
+      expect(record.lastServerTimestamp).toBe(new Date(T0 + 1).toISOString());
+
+      const third = await signedTimestamp({
+        ...next,
+        checkpointIndex: 2,
+        previousSignedCheckpointHash: 'f'.repeat(64),
+      });
+      expect(third).toBe(new Date(T0 + 2).toISOString());
+    });
+
+    it('does not touch serverTimestamp when the clock moves forward, and logs nothing', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      setWallClock(T0);
+      await signedTimestamp({ checkpointIndex: 0 });
+      setWallClock(T0 + 10_000);
+      const second = await signedTimestamp(next);
+      expect(second).toBe(new Date(T0 + 10_000).toISOString());
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('logs that the clamp fired without exposing the sessionId', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      setWallClock(T0);
+      await signedTimestamp({ checkpointIndex: 0 });
+      setWallClock(T0 - 5);
+      await signedTimestamp(next);
+
+      const logged = warn.mock.calls.map((args) => args.map(String).join(' '));
+      expect(logged.some((line) => line.includes('serverTimestamp clamped'))).toBe(true);
+      expect(logged.some((line) => line.includes('test-session'))).toBe(false);
+    });
+
+    it('returns the cached envelope unchanged on an idempotent retry even if the clock stepped back', async () => {
+      setWallClock(T0);
+      const input = makeInput({ checkpointIndex: 0 });
+      const first = (await (await sign(makeRequest(input))).json()) as SignResponseBody;
+      setWallClock(T0 - 5_000);
+      const retry = (await (
+        await sign(makeRequest({ ...input, clientTimestamp: '2026-06-04T12:00:05.000Z' }))
+      ).json()) as SignResponseBody;
+      expect(retry.envelope.signature).toBe(first.envelope.signature);
+      expect(retry.envelope.payload.serverTimestamp).toBe(new Date(T0).toISOString());
+    });
+
+    it('signs with the wall clock when the stored lastServerTimestamp is unparseable', async () => {
+      setWallClock(T0);
+      await signedTimestamp({ checkpointIndex: 0 });
+      const key = 'session:test-session:tab-1';
+      const record = JSON.parse(kv.store.get(key)!) as Record<string, unknown>;
+      kv.store.set(key, JSON.stringify({ ...record, lastServerTimestamp: 'garbage' }));
+
+      setWallClock(T0 + 3);
+      const second = await signedTimestamp(next);
+      expect(second).toBe(new Date(T0 + 3).toISOString());
+    });
   });
 
   // ---------- 署名鍵ガード: 鍵差し替え (#285 w1) と有効性 (#285 w5) ----------
