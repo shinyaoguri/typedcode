@@ -126,7 +126,7 @@ export class TabController {
    * フォルダを一覧から削除する (中のファイルのタブ・tabManager も含む)。
    */
   removeFolder(folderId: string): void {
-    for (const fileId of this.deps.sidebar.getFilesInFolder(folderId)) {
+    for (const fileId of this.deps.sidebar.getFileIdsInFolderTree(folderId)) {
       this.forgetFile(fileId);
     }
     // サイドバーからフォルダを削除（中のファイルも一緒に削除される）
@@ -149,10 +149,14 @@ export class TabController {
    *
    * 次に選ぶタブは TabBar が決めた active (開いているタブだけが候補。未オープンのファイルは
    * 選ばない)。TabBar / VerifyTabManager / Sidebar / 結果パネルの 4 か所をここで一致させる。
+   * 開いているタブが 0 件なら 4 か所とも active 無しにする。
    */
   private settleActiveAfterRemoval(): void {
     const next = this.deps.tabBar.getActiveTabId();
     if (!next) {
+      // 開いているタブが無い: Sidebar / VerifyTabManager の active も外す (閉じたファイルを指したまま残さない)
+      this.deps.sidebar.setActiveFile(null);
+      this.deps.tabManager.clearActiveTab();
       this.deps.resultPanel.hide();
       this.deps.welcomePanel.show();
       return;

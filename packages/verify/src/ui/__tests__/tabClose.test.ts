@@ -135,6 +135,20 @@ describe('closing a tab', () => {
     expect(visible('welcome-panel')).toBe(true);
     expect(visible('result-container')).toBe(false);
   });
+
+  it('clears the Sidebar and VerifyTabManager active when the last tab is closed', () => {
+    addFile(app, 'a');
+    openFiles(app, ['a']);
+
+    closeTab('a');
+
+    expect(app.sidebar.getActiveFileId()).toBeNull();
+    expect(app.tabManager.getActiveTab()).toBeNull();
+    // ファイル自体は一覧に残る
+    expect(app.sidebar.getFileCount()).toBe(1);
+    expect(app.tabManager.hasTab('a')).toBe(true);
+    expect(document.querySelector('#file-list .file-item[data-active="true"]')).toBeNull();
+  });
 });
 
 describe('removing files from the sidebar', () => {
@@ -173,6 +187,43 @@ describe('removing files from the sidebar', () => {
 
     expect(visible('welcome-panel')).toBe(true);
     expect(visible('result-container')).toBe(false);
+  });
+});
+
+describe('removing a nested folder', () => {
+  it('forgets the tabs of files in descendant folders, not only the direct children', () => {
+    app.sidebar.addFolder({ id: 'f1', name: 'one', expanded: true });
+    app.sidebar.addFolder({ id: 'f2', name: 'two', expanded: true, parentId: 'f1' });
+    app.sidebar.addFolder({ id: 'f3', name: 'three', expanded: true, parentId: 'f2' });
+    addFile(app, 'a');
+    addFile(app, 'b', 'f1');
+    addFile(app, 'c', 'f2');
+    addFile(app, 'd', 'f3');
+    openFiles(app, ['a', 'b', 'c', 'd']);
+
+    app.tabController.removeFolder('f1');
+
+    expect(document.querySelectorAll('#tabbar .tab')).toHaveLength(1);
+    for (const id of ['b', 'c', 'd']) {
+      expect(app.tabBar.hasTab(id)).toBe(false);
+      expect(app.tabManager.hasTab(id)).toBe(false);
+      expect(document.querySelector(`#tabbar .tab[data-id="${id}"]`)).toBeNull();
+    }
+    expect(actives(app)).toEqual({ tabBar: 'a', tabManager: 'a', sidebar: 'a', displayed: 'a' });
+    expect(app.sidebar.getFileCount()).toBe(1);
+    expect(app.sidebar.getFolderCount()).toBe(0);
+  });
+});
+
+describe('Sidebar.getFilesInFolder', () => {
+  it('returns only the direct children, leaving descendants to getFileIdsInFolderTree', () => {
+    app.sidebar.addFolder({ id: 'f1', name: 'one', expanded: true });
+    app.sidebar.addFolder({ id: 'f2', name: 'two', expanded: true, parentId: 'f1' });
+    addFile(app, 'b', 'f1');
+    addFile(app, 'c', 'f2');
+
+    expect(app.sidebar.getFilesInFolder('f1')).toEqual(['b']);
+    expect(app.sidebar.getFileIdsInFolderTree('f1').sort()).toEqual(['b', 'c']);
   });
 });
 

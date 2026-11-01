@@ -361,7 +361,8 @@ export class Sidebar {
     }
   }
 
-  setActiveFile(id: string): void {
+  /** active を切り替える。null で active を外す (開いているタブが無くなったとき)。 */
+  setActiveFile(id: string | null): void {
     this.activeFileId = id;
     this.render();
   }
@@ -383,11 +384,34 @@ export class Sidebar {
     return Array.from(this.folders.values());
   }
 
-  // フォルダ内のファイルIDを取得
+  // フォルダ直下のファイルIDを取得 (子フォルダの中は含まない。件数表示用)
   getFilesInFolder(folderId: string): string[] {
     const fileIds: string[] = [];
     this.files.forEach((file, id) => {
       if (file.folderId === folderId) {
+        fileIds.push(id);
+      }
+    });
+    return fileIds;
+  }
+
+  // フォルダ配下のファイルIDを子孫フォルダの中まで含めて取得 (removeFolder が消す範囲と同じ)
+  getFileIdsInFolderTree(folderId: string): string[] {
+    const folderIds = new Set<string>([folderId]);
+    // parentId を辿って子孫フォルダを集める (追加順に依存しないよう、増えなくなるまで繰り返す)
+    let grew = true;
+    while (grew) {
+      grew = false;
+      this.folders.forEach((f, id) => {
+        if (f.parentId && folderIds.has(f.parentId) && !folderIds.has(id)) {
+          folderIds.add(id);
+          grew = true;
+        }
+      });
+    }
+    const fileIds: string[] = [];
+    this.files.forEach((file, id) => {
+      if (file.folderId && folderIds.has(file.folderId)) {
         fileIds.push(id);
       }
     });

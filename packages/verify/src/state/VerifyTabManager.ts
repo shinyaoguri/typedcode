@@ -87,6 +87,14 @@ export class VerifyTabManager {
   }
 
   /**
+   * アクティブを外す (タブ自体は残す)。onChange は呼ばない: 表示するタブが無くなった
+   * ときに TabController が welcome を出す側で、ここから何かを描画させない。
+   */
+  clearActiveTab(): void {
+    this.activeTabId = null;
+  }
+
+  /**
    * アクティブなタブを取得
    */
   getActiveTab(): VerifyTabState | null {
