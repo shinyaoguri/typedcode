@@ -85,8 +85,11 @@ CI には `.dev.vars` も `editor/.env` も存在しない (gitignore)。`npm ru
 - checkpoint 署名鍵を**実行時に新規生成**し、秘密 JWK を `workers/.dev.vars`、
   公開鍵を `shared/.../checkpointKeys/localKeys.ts` に書く (verifier が keyId 解決)
 
-秘密情報は一切コミットしない。**ローカルに既存の `.dev.vars` があれば何もしない**
-ので、開発者の skip-worktree な checkpoint 鍵 / Turnstile 設定を壊さない。
+秘密情報は一切コミットしない。**ローカルに既存の `.dev.vars` があれば生成しない**
+ので、開発者の skip-worktree な checkpoint 鍵 / Turnstile 設定を壊さない。ただし
+`.dev.vars` の `CHECKPOINT_SIGNING_KEY_ID` が `registry.ts` にも `localKeys.ts` にも無いときは、
+直し方を表示して非 0 で終わる (#388)。`localKeys.ts` は追跡ファイルなので checkout などで
+空配列に戻ることがあり (#338)、そのままだと workers が署名を拒否して e2e が「署名 0 件」で落ちるため。
 
 CI ジョブは `.github/workflows/deploy.yml` の `e2e-shard` (Playwright の `--shard` で 2 分割した
 matrix。`test:build` は shard 1 だけ) と、全 shard の成功を要求する集約 job `e2e`。
