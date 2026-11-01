@@ -71,6 +71,9 @@ export type OnTabUpdateCallback = (tab: TabState) => void;
 /** 認証結果コールバック */
 export type OnVerificationCallback = (result: VerificationResult) => void;
 
+/** タブ作成コールバック (#405) */
+export type OnTabCreatedCallback = (tab: TabState) => void;
+
 /** 同期状態 */
 export type SyncStatus = 'synced' | 'syncing' | 'pending';
 
@@ -128,6 +131,7 @@ export class TabManager {
   private onTabUpdateCallback: OnTabUpdateCallback | null = null;
   private onVerificationCallback: OnVerificationCallback | null = null;
   private onSyncStatusChangeCallback: OnSyncStatusChangeCallback | null = null;
+  private onTabCreatedCallback: OnTabCreatedCallback | null = null;
   private startTime: number = performance.now();
   private sessionService: SessionStorageService;
 
@@ -213,6 +217,15 @@ export class TabManager {
    */
   setOnSyncStatusChange(callback: OnSyncStatusChangeCallback): void {
     this.onSyncStatusChangeCallback = callback;
+  }
+
+  /**
+   * タブ作成コールバックを設定 (#405)
+   * createTab / createTabFromTemplate で新しく作ったタブを登録した直後に同期で呼ぶ。
+   * 復元 (sessionStorage / IndexedDB) の経路では呼ばない (復元したタブは既に記録済みのため)。
+   */
+  setOnTabCreated(callback: OnTabCreatedCallback): void {
+    this.onTabCreatedCallback = callback;
   }
 
   /**
@@ -372,6 +385,10 @@ export class TabManager {
 
     this.tabs.set(id, tab);
     this.tabOrder.push(id);
+    // 起動時ワンショットの流し直し (#405)。#0 / #1 の記録より後に呼ぶので「#0 = humanAttestation」は崩れない。
+    // 登録 (tabs.set) と同じ同期区間で呼ぶこと: 間に await を挟むと、その間の recordToAllTabs が
+    // このタブにも載せたうえでスナップショットからも流し直す (二重) か、どちらにも載らない (漏れ)。
+    this.onTabCreatedCallback?.(tab);
 
     // 最初のタブまたはアクティブタブがない場合はこのタブをアクティブに
     if (this.activeTabId === null) {
@@ -644,6 +661,8 @@ export class TabManager {
 
     this.tabs.set(id, tab);
     this.tabOrder.push(id);
+    // 起動時ワンショットの流し直し (#405)。登録と同じ同期区間で呼ぶ理由は createTab を参照
+    this.onTabCreatedCallback?.(tab);
 
     // 最初のタブならアクティブに
     if (this.activeTabId === null) {
