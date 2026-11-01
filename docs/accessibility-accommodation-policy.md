@@ -71,7 +71,20 @@ TypedCode の捕捉・分析・コホート基準が、**IME (各言語の入力
 
 ---
 
-## 6. 関連
+## 6. ダイアログの実装規約 (editor)
+
+捕捉・分析の公平性とは別に、editor 自体をキーボード・スクリーンリーダーで使えることも一次要件とする (#305)。**ダイアログを足す・直すときは `packages/editor/src/ui/components/dialogA11y.ts` の `attachDialogA11y` を使う**。
+
+- 付与するもの: `role="dialog"` / `aria-modal="true"` / タイトルを指す `aria-labelledby`、開いた直後の初期フォーカス、Tab / Shift+Tab の閉じ込め、Escape、閉じたあとの起点へのフォーカス復帰
+- document に付けるリスナーはヘルパが持ち、`close()` で解放する (冪等)。**閉じる経路 (ボタン・overlay・Escape・プログラムからの close) を 1 つの close 関数に集約し、その中で `close()` を呼ぶ**。経路ごとに解放を書くと取りこぼす
+- 閉じさせないダイアログ (`closeOnOverlayClick: false`) は Escape でも閉じない。閉じる手段はダイアログ内のボタンで必ず用意する
+- ネイティブ `<dialog>` + `showModal()` は使わない。top layer に出るため `ExamStartGate` (`z-index: 40000`) など既存の重なり規則が変わる
+- 移行状況: `showModal` 経由のダイアログと `AboutDialog` は移行済み。`SessionRecoveryDialog` / `SelfReviewDialog` / `ExportProgressDialog` / `TemplateImportDialog` / `ScreenCaptureDialogs` / タブ閉じ確認 / `index.html` の静的モーダル / `CountdownDialog` / lock overlay は未移行 (段階的に移す)
+- 自動検査は単体テスト (`ui/components/__tests__/`) と E2E (`packages/e2e/tests/modal-a11y.spec.ts`)。**スクリーンリーダー (VoiceOver + Chrome など) での読み上げは自動化できないので、ダイアログの構造を変えたときは人が確認する**
+
+---
+
+## 7. 関連
 
 - ADR-0005 (InputType 許可/禁止ポリシー = `isPureTyping` の真実)
 - ADR-0009 (分析の直交性・advisory・判定しない)
