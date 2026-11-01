@@ -192,6 +192,24 @@ test('アクティブなタブを閉じても、タブ・サイドバー・結�
   expect(after.tab, JSON.stringify(after)).not.toBe('c_proof.json');
 });
 
+// #387: 最後の 1 枚を閉じても Sidebar の active が閉じたファイルを指したまま残る。
+test('最後のタブを閉じると、サイドバーにもアクティブな行が残らない (#387)', async ({ page }) => {
+  const zipPath = await typeAndExport(new EditorApp(page));
+  const zip = await writeZipVariant(zipPath, { renameProof: 'a', outName: 'a.zip' });
+  const web = new VerifyWebApp(page);
+  await web.open('fast');
+  await web.load([zip]);
+
+  await web.selectFile('a_proof.json');
+  await expect.poll(() => web.activeTabFilename()).toBe('a_proof.json');
+  await expect.poll(() => web.activeFileItemFilename()).toBe('a_proof.json');
+
+  await web.closeTab('a_proof.json');
+
+  await expect.poll(() => web.activeTabFilename()).toBeNull();
+  await expect.poll(() => web.activeFileItemFilename()).toBeNull();
+});
+
 // #292: ZIP 内の壊れた `*_proof.json` は、CLI では失敗として数え (exit 1)、verify Web では error として並べる。
 // (かつては CLI が黙ってスキップして exit 0、Web がプレーンテキスト・status success で並べていた。)
 test('#292: 壊れた *_proof.json を含む ZIP でも結果が出て、壊れたファイルが error として見える', async ({ page }) => {
