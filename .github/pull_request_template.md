@@ -41,7 +41,8 @@ GitHub はこの小見出しの "Closes #N" で Issue を紐づけ、merge で�
 
 <!--
 editor / verify の見た目・動きを変えた PR は、ここに before/after の画像を載せる (ADR-0036)。
-見た目が変わらないなら、この節に「なし」と書く。
+見た目が変わらないなら、この節に「なし」と書く。見た目に効くパスを変えて本文に画像が無いと CI の
+require-visual-evidence が落とすので、そのときは見た目が変わらない理由をここに書いてラベル `no-visual-change` を付ける。
 - 画像はリポジトリにコミットせず、Gyazo へ上げて URL を貼る (repo-standards プラグインの gyazo-capture スキル)
 - 動きはアニメーション WebP (GIF にしない)。素材は `npm run shots -w @typedcode/e2e` で packages/e2e/shots/ に撮れる
   (before は main で同じコマンドを打つ)
