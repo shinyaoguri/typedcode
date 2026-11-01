@@ -177,6 +177,11 @@ export class EventRecorder {
     if (SESSION_SNAPSHOT_EVENT_TYPES.includes(event.type)) {
       this.sessionSnapshot.set(event.type, event);
     }
+    // 起動時に opt-out した後でバナーから画面共有を始めたら、opt-out はもう事実ではない。
+    // 以降に作るタブへ流し直さない (開始後のタブに「共有しない」と記録してしまう)
+    if (event.type === 'screenShareStart') {
+      this.sessionSnapshot.delete('screenShareOptOut');
+    }
 
     const allTabs = this.tabManager.getAllTabs();
     if (allTabs.length === 0) {

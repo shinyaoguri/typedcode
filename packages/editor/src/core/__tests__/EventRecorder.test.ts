@@ -293,6 +293,17 @@ describe('EventRecorder session snapshot for tabs created later (#405)', () => {
     expect(tab.typingProof.events).toHaveLength(0);
   });
 
+  it('does not replay screenShareOptOut once screen sharing has started', async () => {
+    const { recorder, addTab } = await setupWithTabs();
+
+    await recorder.recordToAllTabs(screenShareOptOut);
+    await recorder.recordToAllTabs({ type: 'screenShareStart', data: null });
+    const tab = await addTab();
+    await recorder.recordSessionSnapshotTo(tab);
+
+    expect(countOf(tab, 'screenShareOptOut')).toBe(0);
+  });
+
   it('does not retain a snapshot sent while recording is disabled', async () => {
     const { recorder, addTab } = await setupWithTabs();
 
