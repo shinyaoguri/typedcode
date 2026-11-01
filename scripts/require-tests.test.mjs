@@ -62,6 +62,16 @@ describe('file classification', () => {
       assert.equal(isTestFile(file), true, file);
     }
   });
+
+  it('does not count the @shots capture spec as a test change, since it asserts nothing', () => {
+    for (const file of ['packages/e2e/tests/shots.spec.ts', 'packages/e2e/tests/verify.shots.spec.ts']) {
+      assert.equal(isTestFile(file), false, file);
+    }
+  });
+
+  it('still counts an e2e spec whose name merely ends in "shots" as a test change', () => {
+    assert.equal(isTestFile('packages/e2e/tests/screenshots.spec.ts'), true);
+  });
 });
 
 describe('evaluate', () => {
@@ -73,6 +83,10 @@ describe('evaluate', () => {
 
   it('passes an implementation change accompanied by a unit test change', () => {
     assert.equal(evaluate({ ...feat(), files: [IMPL, UNIT_TEST] }).ok, true);
+  });
+
+  it('fails an implementation change accompanied only by the @shots capture spec', () => {
+    assert.equal(evaluate({ ...feat(), files: [IMPL, 'packages/e2e/tests/shots.spec.ts'] }).ok, false);
   });
 
   it('passes an implementation change accompanied only by an e2e spec change', () => {

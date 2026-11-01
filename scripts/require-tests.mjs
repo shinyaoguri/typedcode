@@ -13,6 +13,7 @@
  *   - 実装の変更: packages/<pkg>/src/** のテストでない .ts/.mts/.mjs/.js/.html/.css と、
  *     packages/<pkg>/*.html (Vite のページエントリ。index.html / author.html)
  *   - テストの変更: __tests__/ 配下、*.test.ts、packages/e2e/tests/**、scripts/**\/*.test.*
+ *     (ただし撮影 spec の shots.spec.ts・*.shots.spec.ts は数えない)
  *   - 実装の変更があってテストの変更が無ければ fail。ただしラベル `no-test-needed` があり、
  *     本文の `## テスト不要の理由` 節に (HTML コメントを除いて) 空でない文があれば pass
  *
@@ -40,8 +41,17 @@ const EXEMPT_TITLE_TYPES = ['docs', 'ci', 'chore'];
 const EXEMPT_AUTHORS = ['dependabot[bot]'];
 const IMPL_EXTENSIONS = /\.(ts|mts|mjs|js|html|css)$/;
 
-/** 変更ファイルがテストの変更か。 */
+/**
+ * 撮影 spec (`@shots`。何も assert せず、人が見る証跡を撮るだけ / ADR-0036) か。
+ * `packages/e2e/tests/` の `shots.spec.ts` と、増やすときの命名 `*.shots.spec.ts` に当てる。
+ */
+export function isShotsSpec(file) {
+  return /^packages\/e2e\/tests\/(.+\/)?([^/]+\.)?shots\.spec\.ts$/.test(file);
+}
+
+/** 変更ファイルがテストの変更か。撮影 spec は検査ではないので数えない。 */
 export function isTestFile(file) {
+  if (isShotsSpec(file)) return false;
   return (
     /(^|\/)__tests__\//.test(file) ||
     /\.test\.ts$/.test(file) ||
@@ -137,7 +147,7 @@ export function formatFailure(outcome) {
     `- テストが本当に不要な変更 (挙動を変えないリファクタ・文言だけの修正など) なら、PR にラベル \`${NO_TEST_LABEL}\` を付け、`,
     `  PR 本文の \`## ${REASON_HEADING}\` 見出しの下に理由を書く (HTML コメントは数えない)。ラベル・本文の編集でこのチェックは再実行される`,
     '',
-    'テストとして数えるもの: `__tests__/` 配下、`*.test.ts`、`packages/e2e/tests/**`、`scripts/**/*.test.*`',
+    'テストとして数えるもの: `__tests__/` 配下、`*.test.ts`、`packages/e2e/tests/**` (撮影 spec の `shots.spec.ts` / `*.shots.spec.ts` を除く)、`scripts/**/*.test.*`',
   ].join('\n');
 }
 
