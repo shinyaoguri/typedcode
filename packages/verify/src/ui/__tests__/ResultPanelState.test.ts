@@ -241,6 +241,28 @@ describe('TabController opening a tab whose verification errored', () => {
   });
 });
 
+describe('ResultPanel chart tab state contract (#395)', () => {
+  const activeTabs = () =>
+    [...document.querySelectorAll<HTMLElement>('.chart-tab[data-active="true"]')].map((el) => el.id);
+  const activePanels = () =>
+    [...document.querySelectorAll<HTMLElement>('.chart-panel[data-active="true"]')].map((el) => el.id);
+
+  it('marks only the integrated tab and panel active before any tab is clicked', () => {
+    expect(activeTabs()).toEqual(['tab-integrated']);
+    expect(activePanels()).toEqual(['panel-integrated']);
+  });
+
+  it('moves data-active to the clicked tab and its panel, leaving no attribute on the others', () => {
+    document.getElementById('tab-timeline')!.click();
+    expect(activeTabs()).toEqual(['tab-timeline']);
+    expect(activePanels()).toEqual(['panel-timeline']);
+
+    document.getElementById('tab-mouse')!.click();
+    expect(activeTabs()).toEqual(['tab-mouse']);
+    expect(activePanels()).toEqual(['panel-mouse']);
+  });
+});
+
 /** 色クラス `warning` を持つチップの軸 (data-axis) の一覧。 */
 function warningChipAxes(): string[] {
   return Array.from(strip().querySelectorAll<HTMLElement>('.assurance-chip.warning')).map(
