@@ -3,7 +3,7 @@
 - **Status**: Accepted
 - **Date**: 2026-11-01
 - **Deciders**: @shinyaoguri
-- **PR / Commit**: (#391。続く #392 / #393)
+- **PR / Commit**: (#391。続けて #392 / #393)
 
 ## Context
 
@@ -36,7 +36,11 @@ Option C を採る。
 3. **置き場は Gyazo で、リポジトリにコミットしない**。画像は Gyazo へ上げて URL を PR 本文に貼る (repo-standards プラグインの gyazo-capture スキル)。`shots/` は gitignore する
 4. **動きは可逆のアニメーション WebP**。GIF は 256 色に落ちて文字やアンチエイリアスが崩れるので使わない。コマ撮りを `img2webp` で可逆のまま束ね、大きすぎるときだけ近似可逆に落とす
 5. **Gyazo が使えないときは GitHub の添付へ退避する** (gyazo-capture スキルの「E」の手順)。証跡を載せないことの言い訳にはしない
-6. **欠落ゲートと CI の自動コメントを続けて入れる**: UI に触れた PR の本文に画像が無ければ落とすゲート (#392) と、CI が base と head で同じ spec を撮って before/after の表を PR に自動でコメントする仕組み (#393)。この ADR の時点では規律と撮影 spec まで
+6. **欠落ゲートと CI の自動コメントを続けて入れた**: UI に触れた PR の本文に画像が無ければ落とすゲート (#392、`pr-checks.yml` の `require-visual-evidence`) と、CI が base と head で同じ spec を撮って before/after の表を PR に自動でコメントする仕組み (#393、`.github/workflows/visual-evidence.yml`)。後者の要点:
+   - **base は merge commit (`refs/pull/N/merge`) の第一親**。head が「いまの main + この PR」なので、merge-base (分岐時点の main) と比べると、分岐後に main へ入った無関係な差が before/after に混ざる
+   - **PR のコードを走らせる job (撮影) とトークンを触る job (Gyazo へ上げてコメントする) を分ける**。npm ci の install script などは `$GITHUB_ENV` / `$GITHUB_PATH` に書いて同じ job の後続 step を乗っ取れるので、撮影 job にはシークレットを渡さず artifact だけを出し、コメントする job は checkout せずトークンを 1 step にだけ渡す
+   - **トークン (リポジトリシークレット `GYAZO_ACCESS_TOKEN`) が無ければ notice を出して緑で終わる**。fork と dependabot の PR は最初から対象外。証跡は在れば助かるもので、無いことは PR を止める理由にならない (本文の画像の有無は #392 のゲートが見る)
+   - **必須チェックにしない**。変更ファイルで skipped になりうるワークフローを ruleset の必須にすると、走らなかった PR が「待ち」のまま止まる。コメントは同じ PR では 1 件を上書きし (マーカー `<!-- visual-evidence -->`)、作者はそこから本文の「見た目の証跡」へ写す (数えられるのも squash 後に残るのも本文だけ)
 
 規律はルートの AGENTS.md「開発フロー」、CONTRIBUTING.md の完了の定義、PR テンプレートの「見た目の証跡」節に置く。PR テンプレートの例の画像記法は HTML コメントの中にだけ置き、テンプレートの文面だけで #392 のゲートを通らないようにする。
 
@@ -54,12 +58,12 @@ Option C を採る。
 - 外部サービス (Gyazo) に依存する。障害時は GitHub の添付へ手で退避する
 
 ### Follow-ups / 残課題
-- #392: UI に触れた PR の本文に画像が無ければ落とすゲート
-- #393: CI で base と head を撮り、before/after の表を PR に自動でコメントする
+- なし (#392 / #393 は入れた。人がやること: リポジトリシークレット `GYAZO_ACCESS_TOKEN` の登録。無い間は #393 のコメントが出ないだけで、CI は止まらない)
 
 ## References
 
 - `packages/e2e/tests/shots.spec.ts` / `packages/e2e/playwright.config.ts` (`grepInvert`)
-- `scripts/require-tests.mjs` (`isShotsSpec`: 撮影 spec はテストに数えない)
+- `scripts/require-tests.mjs` (`isShotsSpec`: 撮影 spec はテストに数えない) / `scripts/require-visual-evidence.mjs` (#392)
+- `.github/workflows/visual-evidence.yml` (#393: base と head を撮って before/after をコメントする)
 - [ADR-0034](0034-replace-manual-verification-with-automated-tests.md) (画素比較をしない)
 - #391 / #392 / #393
