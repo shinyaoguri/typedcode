@@ -38,6 +38,7 @@
 - 単一タブ export の事前認証を best-effort 化し、class / assignment モードで Turnstile が不達のときに提出用 ZIP を一切出力できなくなる問題を修正した (失敗 attestation はチェーンに記録される) (#244)
 - HTML プレビューで、HTML タブが無い状態を経由すると再表示しても空のままになる不具合を修正した (#299)
 - verify-cli の終了コードの既定を 1 (fail-closed) にし、解決しない `--analyzer` で処理が途中で終わっても改ざんされた proof が exit 0 にならないようにした (#315)
+- editor の共通モーダル (`showModal`) と About ダイアログに、`role="dialog"` / `aria-modal` / `aria-labelledby`、初期フォーカス、Tab の閉じ込め、閉じたあとの起点へのフォーカス復帰を付けた (`ui/components/dialogA11y.ts`)。ボタンや overlay で閉じても document の keydown リスナーが残り、開閉のたびに Escape の処理が溜まる問題と、非同期 `onClick` 実行中の再クリック・Escape で二重に閉じる問題も解消した。`closeOnOverlayClick: false` のダイアログ (画面共有エラーの再試行モード) は Escape でも閉じなくなる。他のダイアログの移行は段階的に行う (#305)
 - verify-cli を esbuild で単一 ESM ファイルに bundle し、ビルド済み `dist/cli.js` が素の Node で起動するようにした。配布物の smoke test (`npm run test:dist`) を CI に追加 (#298)
 - 記録に失敗してチェーンに載らなかったイベントが、直前のイベントを指す index で成功扱いになり、LogViewer と IndexedDB へ二重投入されていた問題を修正した。`RecordEventResult` に `recorded` を足し、載らなかったときは `recorded: false` / `index: -1` を返す (チェックポイント作成など push 後の失敗は載っているので `recorded: true`)。EventRecorder は載らなかったイベントを UI / IndexedDB に流さない。proof 形式・ハッシュ入力の変更なし (#284)
 - 複数行にまたがる短い削除 (2〜49 文字) が `deleteWordBackward` に分類されていた問題を修正した。行をまたぐ削除は長さによらず `deleteHardLineBackward` とする。Monaco の変更イベントは削除文字列を持たないため、この分類と削除方向は推定 (advisory)。proof 形式・ハッシュ入力の変更なし (#284)

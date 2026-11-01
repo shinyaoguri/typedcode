@@ -4,6 +4,8 @@
  * Provides functionality for showing and managing modal dialogs.
  */
 
+import { attachDialogA11y } from './dialogA11y.js';
+
 export interface ModalButton {
   /** Button text */
   text: string;
@@ -30,12 +32,30 @@ export interface ModalOptions {
   buttons?: ModalButton[];
   /** Whether clicking overlay closes the modal */
   closeOnOverlayClick?: boolean;
+  /**
+   * Whether the Escape key closes the modal.
+   * Defaults to `closeOnOverlayClick`: a modal that must not be dismissed from outside
+   * cannot be dismissed with Escape either.
+   */
+  closeOnEscape?: boolean;
   /** Custom CSS class for the modal dialog */
   className?: string;
 }
 
+/** 初期フォーカスの置き場。破壊的な操作があるときは取り消しを優先する */
+function pickInitialFocus(buttons: ModalButton[], elements: HTMLButtonElement[]): HTMLButtonElement | undefined {
+  const enabled = elements.flatMap((el, i) => (buttons[i]?.disabled ? [] : [{ el, type: buttons[i]!.type }]));
+  const find = (type: ModalButton['type']): HTMLButtonElement | undefined => enabled.find((b) => b.type === type)?.el;
+  const hasDanger = enabled.some((b) => b.type === 'danger');
+  return (hasDanger ? find('cancel') : undefined) ?? find('primary') ?? enabled[0]?.el;
+}
+
 /**
  * Show a modal dialog
+ *
+ * a11y (#305): role / aria-modal / aria-labelledby、初期フォーカス、Tab の閉じ込め、
+ * 起点へのフォーカス復帰は `dialogA11y.ts` が担う。どの経路で閉じても同じ `closeModal` を通り、
+ * document のリスナーはそこで解放される。
  *
  * @param options - Modal configuration
  * @returns Promise that resolves when modal is closed
@@ -48,6 +68,7 @@ export async function showModal(options: ModalOptions): Promise<void> {
     icon = 'fa-info-circle',
     buttons = [{ text: 'OK', type: 'primary' }],
     closeOnOverlayClick = true,
+    closeOnEscape = closeOnOverlayClick,
     className,
   } = options;
 
@@ -66,7 +87,7 @@ export async function showModal(options: ModalOptions): Promise<void> {
     // Build dialog HTML
     dialog.innerHTML = `
       <div class="modal-header">
-        <i class="fas ${icon}"></i>
+        <i class="fas ${icon}" aria-hidden="true"></i>
         <h3>${title}</h3>
       </div>
       <div class="modal-body">
@@ -77,29 +98,66 @@ export async function showModal(options: ModalOptions): Promise<void> {
 
     // Add buttons
     const footer = dialog.querySelector('.modal-footer')!;
+    const buttonEls: HTMLButtonElement[] = [];
+    // onClick 実行中・閉じる処理中は、ボタン・Escape・overlay のどれからも新しい操作を受けない
+    let busy = false;
+    let closed = false;
+
     buttons.forEach((btn) => {
       const button = document.createElement('button');
       button.className = `modal-btn modal-btn-${btn.type}`;
       if (btn.disabled) {
         button.disabled = true;
       }
-      button.innerHTML = btn.icon ? `<i class="fas ${btn.icon}"></i> ${btn.text}` : btn.text;
+      button.innerHTML = btn.icon ? `<i class="fas ${btn.icon}" aria-hidden="true"></i> ${btn.text}` : btn.text;
 
       button.addEventListener('click', async () => {
-        const shouldClose = btn.onClick ? await btn.onClick() : true;
+        // 実行中は全ボタンを disabled にするので、再クリックはここに届かない
+        busy = true;
+        buttonEls.forEach((el) => {
+          el.disabled = true;
+        });
+        // disabled になった要素はフォーカスを失うので、トラップの内側に留める
+        dialog.focus();
+        let shouldClose: boolean | void = false; // onClick が例外を投げたときは閉じずに戻す
+        try {
+          shouldClose = btn.onClick ? await btn.onClick() : true;
+        } finally {
+          busy = false;
+          if (shouldClose === false) {
+            buttonEls.forEach((el, i) => {
+              el.disabled = buttons[i]?.disabled ?? false;
+            });
+          }
+        }
         if (shouldClose !== false) {
           closeModal();
+        } else {
+          button.focus();
         }
       });
 
+      buttonEls.push(button);
       footer.appendChild(button);
     });
 
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 
-    // Close modal function
+    const a11y = attachDialogA11y(dialog, {
+      labelledBy: dialog.querySelector<HTMLElement>('.modal-header h3')!,
+      initialFocus: pickInitialFocus(buttons, buttonEls),
+      closeOnEscape,
+      onRequestClose: () => {
+        if (!busy) closeModal();
+      },
+    });
+
+    // Close modal function (冪等: どの経路から何度呼ばれても片付けと resolve は 1 回)
     const closeModal = (): void => {
+      if (closed) return;
+      closed = true;
+      a11y.close();
       overlay.classList.add('hidden');
       setTimeout(() => {
         overlay.remove();
@@ -110,20 +168,11 @@ export async function showModal(options: ModalOptions): Promise<void> {
     // Handle overlay click
     if (closeOnOverlayClick) {
       overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) {
+        if (e.target === overlay && !busy) {
           closeModal();
         }
       });
     }
-
-    // Handle escape key
-    const handleEscape = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        closeModal();
-        document.removeEventListener('keydown', handleEscape);
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
   });
 }
 
