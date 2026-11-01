@@ -32,6 +32,9 @@ export default defineConfig({
   // dev サーバ向けのこの設定からは外す。実行は playwright.build.config.ts
   // (`npm run test:build -w @typedcode/e2e`) が担う。
   testIgnore: /production-build\.spec\.ts$/,
+  // `@shots` は人が見る証跡を撮るだけで何も assert しない (tests/shots.spec.ts / ADR-0036)。
+  // 検査ではないので通常の実行と CI のシャードからは外し、`npm run shots` (SHOTS=1) のときだけ走らせる。
+  grepInvert: process.env.SHOTS === '1' ? undefined : /@shots/,
   // PoSW (Web Worker でのハッシュ計算) と export + verify-cli の full 再計算が絡むため重い。
   // 遅い CI ランナーでも収まるよう長めに取る。
   timeout: 300_000,

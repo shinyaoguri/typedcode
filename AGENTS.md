@@ -64,6 +64,7 @@ npm run coverage:ratchet                    # カバレッジが上がったら�
 # E2E (Playwright。workers + editor の dev サーバを自動起動して round-trip 検証)
 npm run test -w @typedcode/e2e
 # 注: CI は「ユニット (test job) + e2e (e2e job)」を全 deploy のゲートにしている
+npm run shots -w @typedcode/e2e             # 見た目・動きの証跡を packages/e2e/shots/ に撮る (検査ではない。ADR-0036)
 
 # 手元で CI と同じ検査を 1 コマンドで (完了の定義 = CONTRIBUTING.md / ADR-0034)
 npm run check       # typecheck → lint → lint:workflows → test:coverage → require-tests のテスト → e2e
@@ -76,6 +77,7 @@ npm run check:fast  # 上から e2e を除いたもの
 - **作業は git worktree で行う** (メインのチェックアウトのブランチを切り替えない)
 - **マージしたら、メインのチェックアウトから `git sweep` を実行して** worktree とローカルブランチを掃除する (使用中・dirty な worktree は自動スキップ。[ADR-0029](docs/adr/0029-merge-cleanup-script.md))
 - PR タイトルは CI (`pr-title` job) が Conventional Commits を検査する。落ちたら型を `feat|fix|docs|refactor|test|chore|ci` から選び直す
+- **editor / verify の見た目・動きを変える PR は、本文に before/after の画像を載せる**。動きはアニメーション WebP (GIF にしない)。画像はリポジトリにコミットせず Gyazo へ上げて URL を貼る (手順は repo-standards プラグインの gyazo-capture スキル、手元で撮るのは `npm run shots -w @typedcode/e2e`。根拠は [ADR-0036](docs/adr/0036-visual-evidence-on-prs.md))
 - **新しい仕組みは実害を示せるときだけ足す**: 新しいゲート・検査・フック・ラベル・ワークフローは、塞ぐ実害を Issue 番号で示せるときだけ足す (消すときは要らない)。「あると良さそう」なら起票して待たせる
 
 ## Issue と着手
