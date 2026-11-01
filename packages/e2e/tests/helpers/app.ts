@@ -29,7 +29,7 @@ export class EditorApp {
    * - 利用規約モーダル (class / assignment / exam で未同意なら出る。casual は出さない = ADR-0015) は
    *   `acceptTerms` で同意済みにして飛ばす。既定は casual 以外で true (casual の既存 spec の
    *   記録内容を変えないため、casual では何も足さない)
-   * - 起動時の画面共有の選択ダイアログ (class と exam で出る) は `screenShare` で選ぶ。省略時は触らない
+   * - 起動時の画面共有の選択ダイアログ (class と exam で出る) は `screenShare` で選ぶ ('optOut' は続く確認ダイアログも閉じる)。省略時は触らない
    * - class / exam 固有の操作 (問題の読み込み・試験ゲート) はここに入れない。エディタが
    *   その手前で止まるモードでは `waitReady: false` にして、呼び出し側で続きを駆動する
    */
@@ -41,6 +41,13 @@ export class EditorApp {
       const choice = this.page.locator(`.screen-share-choice-dialog [data-choice="${screenShare}"]`);
       await choice.waitFor({ state: 'visible', timeout: 30_000 });
       await choice.click();
+      if (screenShare === 'optOut') {
+        // optOut は続けて確認ダイアログ (ScreenCaptureDialogs.ts) が出て、confirm を押すまで
+        // 先へ進まない (#374)。ここで閉じる。
+        const confirm = this.page.locator('.screen-share-optout-confirm-dialog [data-action="confirm"]');
+        await confirm.waitFor({ state: 'visible', timeout: 30_000 });
+        await confirm.click();
+      }
     }
     if (waitReady) await this.waitReady();
   }
