@@ -110,11 +110,13 @@ jobs:
         run: npm run lint:workflows
 
       # vitest を持たない場所のスクリプトのテスト (node:test)。
-      # - require-tests: テスト必須ゲート (pr-checks.yml) の判定ロジック (ADR-0034)。pr-checks.yml は
-      #   pull_request_target で base 側のスクリプトを実行するので、PR で変えたロジックはここで検査する。
+      # - scripts/*.test.mjs: PR ゲート (pr-checks.yml の require-tests / require-visual-evidence) の判定
+      #   ロジック (ADR-0034 / ADR-0036)。pr-checks.yml は pull_request_target で base 側のスクリプトを
+      #   実行するので、PR で変えたロジックはここで検査する。scripts/sweep.test.ts (vitest・使い捨て
+      #   リポジトリの統合テスト) は CI 常設にしないので、glob を *.test.mjs に絞って外している。
       # - setup-env: e2e の環境準備。既存の .dev.vars の署名鍵と localKeys.ts の食い違いを検知する (#388)
       - name: Test scripts (node:test)
-        run: node --test scripts/require-tests.test.mjs packages/e2e/scripts/setup-env.test.mjs
+        run: node --test 'scripts/*.test.mjs' packages/e2e/scripts/setup-env.test.mjs
 
       - name: Build (all packages)
         run: npm run build

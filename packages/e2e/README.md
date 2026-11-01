@@ -57,6 +57,25 @@ npm run report -w @typedcode/e2e        # 直近の HTML レポート (trace 付
 重ねて ([scripts/stage-verify-dist.mjs](scripts/stage-verify-dist.mjs)) `/verify/` で開く。既定の `playwright.config.ts` は `testIgnore` でこの spec を
 外しているので、dev 向けシナリオの挙動は変わらない。
 
+## 見た目・動きの証跡 (`npm run shots`)
+
+E2E は見た目を画素で比べないので、editor / verify の見た目・動きを変えた PR には本文に
+before/after の画像を載せる ([ADR-0036](../../docs/adr/0036-visual-evidence-on-prs.md))。その素材を撮るのが
+[tests/shots.spec.ts](tests/shots.spec.ts) (タイトルに `@shots`。何も assert しない) で、通常の
+`npm run test` からは外してある。
+
+```bash
+npm run shots -w @typedcode/e2e   # packages/e2e/shots/ に PNG・アニメーション WebP・manifest.json を出す
+```
+
+- `manifest.json` は `[{file, caption}]` の配列で、何を撮ったかの正本
+- 打鍵の様子はコマ撮りを `img2webp` (macOS: `brew install webp` / Debian: `apt-get install webp`) で
+  可逆のアニメーション WebP に束ねる。`img2webp` が無ければ WebP だけ飛ばす
+- `shots/` は gitignore 済み。画像はコミットせず Gyazo に上げて PR 本文に貼る (repo-standards
+  プラグインの gyazo-capture スキル)。before は main で同じコマンドを打って撮る
+- UI に触れた PR には、CI ([visual-evidence.yml](../../.github/workflows/visual-evidence.yml)) が base と head で
+  このコマンドを回して before/after の表をコメントする。要る画面を本文の「見た目の証跡」へ写す
+
 ## CI / 環境の用意
 
 CI には `.dev.vars` も `editor/.env` も存在しない (gitignore)。`npm run setup`

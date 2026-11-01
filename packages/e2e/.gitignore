@@ -2,3 +2,5 @@ test-results/
 playwright-report/
 playwright/.cache/
 downloads/
+# npm run shots の出力 (画像はコミットせず Gyazo へ上げる / ADR-0036)
+shots/

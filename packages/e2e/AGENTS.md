@@ -6,6 +6,7 @@
 
 - **持つ**: Playwright (Chromium) でのシナリオ駆動、export ZIP の取得、verify-cli の spawn と exit code / `--analysis-json` / `--analysis-bundle` 判定、敵対的パック (偽造・改竄・合成打鍵・AI 一括投入) の負のオラクル、検証 Web (verify) に ZIP を入れて状態契約を読む Web↔CLI パリティ
 - **持つ (UI)**: UI の振る舞いの検査。ただし **`data-*` 属性の状態契約** (実装が生の enum 値・状態を属性で出す) を読んで assert し、翻訳テキスト・CSS クラス・見た目には依存しない ([ADR-0034](../../docs/adr/0034-replace-manual-verification-with-automated-tests.md))。見た目は DOM / 状態 / a11y (axe) / レイアウト不変条件で機械検査する
+- **持つ (証跡)**: 人が見る見た目・動きの証跡を撮る撮影 spec (`tests/shots.spec.ts`、タイトルに `@shots`)。**何も assert しない** (待ち合わせは data-* の状態契約と既存ヘルパの wait 系だけ)。通常の実行と CI のシャードからは `playwright.config.ts` の `grepInvert` で外し、`npm run shots` (`SHOTS=1`) のときだけ走る。base と head で同じ画面になるよう `ja-JP`・`Asia/Tokyo`・light・1280×800 で撮り、撮るたびに変わる要素 (時計・ハッシュ) は mask で隠す。何を撮ったかは `shots/manifest.json` (`[{file, caption}]`) が正本で、ファイル名は連番で固定する (CI の `.github/workflows/visual-evidence.yml` が base と head で撮り、before/after を `file` で対にして PR にコメントする / #393)。画像を比べて合否を出すのではないので、下の「画素比較を持たない」とは矛盾しない ([ADR-0036](../../docs/adr/0036-visual-evidence-on-prs.md))
 - **持たない**: 画素比較 (スクリーンショット差分。OS 差と基準画像の運用コストで不採用 / ADR-0034)、翻訳テキストや見た目に依存した assert、ユニットテスト (各パッケージの `__tests__` が担う)、proof 生成/検証ロジック本体 (editor / shared)
 
 ## 重要な不変条件
@@ -28,11 +29,13 @@ tests/
 ├── workers-hang-export.spec.ts  # Workers 無応答 (route で応答しない) でも class の export が上限内に ZIP を出す (#324。fetch 上限 + best-effort 予算)
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
 ├── verify-web.spec.ts    # 検証 Web の往復: Web↔CLI パリティ・改ざん・複数ファイル (#215)・壊れた proof (#292)・タブを閉じたあとの active / 表示の一致 (#281)
+├── shots.spec.ts         # @shots: 証跡の撮影だけ (assert なし・通常実行から除外)。撮影 spec を増やすなら *.shots.spec.ts (require-tests がテストに数えない命名) にし、タイトルに @shots を付ける
 └── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)
 playwright.config.ts       # dev 用: webServer で workers(:8787) + editor vite dev(:5173) + verify vite dev(:5174)
 playwright.build.config.ts # dist 用: workers + editor/verify を build し、verify を editor の dist の verify/ に重ねて vite preview(:4173)
 scripts/setup-env.mjs      # CI 用: Turnstile 公開テストキー配置 + checkpoint 署名鍵を実行時生成
 scripts/stage-verify-dist.mjs # dist 用: deploy.yml の「Merge build outputs」と同じ配置 (editor/dist/verify) を作る
+shots/                     # npm run shots の出力 (PNG・アニメーション WebP・manifest.json)。gitignore 済み
 ```
 
 ## 実行
@@ -43,6 +46,7 @@ npm run setup -w @typedcode/e2e              # CI: テストキー + 署名鍵�
 npm run test -w @typedcode/e2e               # 全シナリオ (サーバは Playwright が自動起動)
 npm run test:build -w @typedcode/e2e         # 本番ビルドのスモークのみ (build → vite preview)
 npm run test:headed -w @typedcode/e2e        # 失敗調査 (ブラウザ表示)
+npm run shots -w @typedcode/e2e              # 見た目・動きの証跡を shots/ に撮る (@shots だけ。WebP の束ねに img2webp が要る)
 ```
 
 CI では `deploy.yml` の `e2e-shard` job が Playwright の `--shard=1/2` / `2/2` を matrix で並列に走らせ (`test:build` は shard 1 だけ)、集約 job **`e2e`** が全 shard の成功を要求する。`e2e` が main ruleset の required check であり、`deploy-preview` / `deploy-staging` / `deploy-production` の **必須ゲート** (`needs: [test, check, e2e]`) になっている。matrix の job は check 名が `e2e (shard 1/2)` に変わるので、**集約 job の名前 `e2e` と `if: always()` を外さないこと** (外すと shard 失敗時に skipped = ruleset 上は通過になる)。shard の手元再現は `npm run test -w @typedcode/e2e -- --shard=1/2`
