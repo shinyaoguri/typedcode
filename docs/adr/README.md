@@ -73,3 +73,5 @@
 - [ADR の元になった Michael Nygard の記事](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
 - [docs/system-spec.md](../system-spec.md) — コード挙動の仕様 (What)
 - 各 `packages/*/AGENTS.md` — サブシステムの責務と不変条件
+
+<!-- #393 の実地確認用 (merge しない) -->
