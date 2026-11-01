@@ -45,7 +45,7 @@ editor / verify の見た目・動きを変えた PR は、ここに before/afte
 require-visual-evidence が落とすので、そのときは見た目が変わらない理由をここに書いてラベル `no-visual-change` を付ける。
 - 画像はリポジトリにコミットせず、Gyazo へ上げて URL を貼る (repo-standards プラグインの gyazo-capture スキル)
 - 動きはアニメーション WebP (GIF にしない)。素材は `npm run shots -w @typedcode/e2e` で packages/e2e/shots/ に撮れる
-  (before は main で同じコマンドを打つ)
+  (before は main で同じコマンドを打つ)。UI に触れた PR には CI (visual-evidence) が before/after をコメントするので、ここへ写す
 
 例:
 

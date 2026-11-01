@@ -73,6 +73,8 @@ npm run shots -w @typedcode/e2e   # packages/e2e/shots/ に PNG・アニメー�
   可逆のアニメーション WebP に束ねる。`img2webp` が無ければ WebP だけ飛ばす
 - `shots/` は gitignore 済み。画像はコミットせず Gyazo に上げて PR 本文に貼る (repo-standards
   プラグインの gyazo-capture スキル)。before は main で同じコマンドを打って撮る
+- UI に触れた PR には、CI ([visual-evidence.yml](../../.github/workflows/visual-evidence.yml)) が base と head で
+  このコマンドを回して before/after の表をコメントする。要る画面を本文の「見た目の証跡」へ写す
 
 ## CI / 環境の用意
 

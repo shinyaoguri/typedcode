@@ -1,0 +1,438 @@
+name: Visual Evidence
+
+# UI に触れた PR へ、base と head の両方で撮った画面を before/after の表にしてコメントする (#393 / ADR-0036)。
+#
+# 撮影は packages/e2e/tests/shots.spec.ts (`@shots`) が正本で、何を撮ったかは spec が書き出す
+# shots/manifest.json (`[{file, caption}]`) に持つ。ここは base と head で同じ spec を走らせ、
+# 同じ `file` 同士を並べるだけ (撮る画面の一覧をこのファイルに二重に書かない)。
+#
+# 人が見る証跡であって合否は出さないので、**必須チェックにはしない**。scope で skipped になりうる
+# ワークフローを ruleset の必須にすると、走らなかった PR が「待ち」のまま止まる。本文の画像の有無は
+# 必須の require-visual-evidence (pr-checks.yml) が見る。ここが付けるコメントは本文へ写す素材。
+#
+# job を 3 つに分ける理由:
+#   scope   — 変更ファイルから「撮るか」だけを決める (fork と dependabot は対象外)
+#   capture — **PR のコードを走らせる job。シークレットを一切渡さない**。npm ci の install script や
+#             playwright の webServer は PR が書いたコードで、`$GITHUB_ENV` / `$GITHUB_PATH` に書けば
+#             同じ job の後続 step (env・PATH) を乗っ取れる。トークンを触る step を同じ job に置くと
+#             そこから抜かれるので、撮影は成果物 (artifact) だけを外へ出して終わる
+#   publish — **PR のコードを checkout しない job**。artifact (画像と manifest) をデータとして読み、
+#             GYAZO_ACCESS_TOKEN はアップロードの step の env にだけ渡す
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+# PR ごとに 1 run。push し直したら古い撮影は捨てる (コメントは最新の head だけを映す)。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  scope:
+    # fork の PR にはシークレットが渡らず、dependabot の PR は UI を変えない。どちらも撮らない。
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.judge.outputs.run }}
+    steps:
+      # 判定は scripts/*.mjs の関数をそのまま使う (見た目に効くパスの一覧を YAML に二重に書かない)。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # 撮るのは、見た目に効くパス (require-visual-evidence の isVisualFile)・撮影 spec
+      # (require-tests の isShotsSpec)・このワークフロー自身のどれかに当たったとき。
+      - name: Decide whether to capture
+        id: judge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CHANGED_FILES: ${{ runner.temp }}/changed-files.txt
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' > "$CHANGED_FILES"
+          node --input-type=module -e '
+            import { appendFileSync, readFileSync } from "node:fs";
+            import { isShotsSpec } from "./scripts/require-tests.mjs";
+            import { isVisualFile } from "./scripts/require-visual-evidence.mjs";
+            const SELF = ".github/workflows/visual-evidence.yml";
+            const files = readFileSync(process.env.CHANGED_FILES, "utf8").split("\n").filter(Boolean);
+            const hits = files.filter((f) => isVisualFile(f) || isShotsSpec(f) || f === SELF);
+            console.log(hits.length > 0 ? ["撮る (当たったパス):", ...hits].join("\n") : "見た目に効くパスの変更なし。撮らない");
+            appendFileSync(process.env.GITHUB_OUTPUT, "run=" + (hits.length > 0) + "\n");
+          '
+
+  capture:
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    # 撮影 1 回は数分 (打鍵 → export → 検証 Web の 1 本)。base と head の npm ci と合わせて収まる長さ。
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      base-sha: ${{ steps.base.outputs.sha }}
+      base-has-shots: ${{ steps.base-shots.outputs.present }}
+    # **secrets.* を一切参照しない job** (上の「job を 3 つに分ける理由」)。
+    steps:
+      # head = pull_request の既定の ref (refs/pull/N/merge)。PR を base へ merge した結果を撮る。
+      - name: Checkout head (refs/pull/N/merge)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: head
+          fetch-depth: 2
+          persist-credentials: false
+
+      # base = その merge commit の第一親。merge-base (PR が分岐した時点の main) ではなく第一親にするのは、
+      # head が「いまの main + この PR」なので、比べる相手も「いまの main」にしないと、分岐後に main へ
+      # 入った無関係な見た目の差が before/after に混ざるため。
+      - name: Resolve base (first parent of the merge commit)
+        id: base
+        run: echo "sha=$(git -C head rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.base.outputs.sha }}
+          path: base
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: head/.node-version
+          cache: 'npm'
+          cache-dependency-path: |
+            head/package-lock.json
+            base/package-lock.json
+
+      # 撮影 spec が入る前の base (#391 より古い main) には `npm run shots` が無い。そのときは before を空欄にする。
+      - name: Check whether base has the shots script
+        id: base-shots
+        run: |
+          present=false
+          if node -e 'const p = require(process.argv[1]); process.exit(p.scripts && p.scripts.shots ? 0 : 1)' \
+            "${GITHUB_WORKSPACE}/base/packages/e2e/package.json" 2>/dev/null; then
+            present=true
+          fi
+          echo "present=${present}" >> "$GITHUB_OUTPUT"
+          echo "base に shots があるか: ${present}"
+
+      - name: Install dependencies (head)
+        working-directory: head
+        run: npm ci --include=optional
+
+      - name: Provision E2E env (head)
+        working-directory: head
+        run: npm run setup -w @typedcode/e2e
+
+      # キャッシュの鍵は deploy.yml の e2e-shard と同じ (Playwright の実バージョン)。main で作られた
+      # キャッシュをそのまま使える。base の版が違えば、下の base 側の install が差分を落とす。
+      - name: Get installed Playwright version (head)
+        id: playwright-version
+        working-directory: head
+        run: echo "version=$(npx playwright --version | sed 's/Version //')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+          restore-keys: |
+            playwright-browsers-${{ runner.os }}-
+
+      # --with-deps の OS 依存パッケージはキャッシュに含まれないので毎回入れる (deploy.yml と同じ)。
+      - name: Install Playwright browser (head)
+        working-directory: head
+        run: npx playwright install --with-deps chromium
+
+      # 打鍵の動きをアニメーション WebP に束ねる img2webp (無いと shots.spec.ts は WebP だけ飛ばす)。
+      - name: Install img2webp
+        run: sudo apt-get install -y --no-install-recommends webp
+
+      # 日本語 (ja-JP) で撮るので、CJK フォントが無いと文字が豆腐になる。--with-deps が入れる
+      # フォントで足りる想定だが、画像が豆腐だったときに調べられるよう件数だけ残す。
+      - name: Log Japanese fonts
+        run: echo "fc-list :lang=ja → $(fc-list :lang=ja | wc -l) 件"
+
+      # 撮影に失敗しても job は落とさない (証跡は在れば助かるもので、無いことは PR を止める理由にならない)。
+      # 撮れなかった画面は publish が「(撮れなかった)」と書く。
+      - name: Capture after (head)
+        working-directory: head
+        continue-on-error: true
+        run: npm run shots -w @typedcode/e2e
+
+      - name: Install dependencies (base)
+        if: steps.base-shots.outputs.present == 'true'
+        working-directory: base
+        run: npm ci --include=optional
+
+      - name: Provision E2E env (base)
+        if: steps.base-shots.outputs.present == 'true'
+        working-directory: base
+        run: npm run setup -w @typedcode/e2e
+
+      # base と head で Playwright の版が違いうるので base でも入れる (同じ版なら即座に終わる)。
+      - name: Install Playwright browser (base)
+        if: steps.base-shots.outputs.present == 'true'
+        working-directory: base
+        run: npx playwright install --with-deps chromium
+
+      # head のサーバが残っていても衝突しないよう、base は別のポートで立てる (playwright.config.ts が読む)。
+      - name: Capture before (base)
+        if: steps.base-shots.outputs.present == 'true'
+        working-directory: base
+        continue-on-error: true
+        env:
+          E2E_EDITOR_PORT: '5273'
+          E2E_VERIFY_PORT: '5274'
+          E2E_WORKERS_PORT: '8887'
+        run: npm run shots -w @typedcode/e2e
+
+      # 画像と manifest だけを base/ と head/ に分けて集める (コマ撮りの frames/ は含めない)。
+      - name: Collect captures
+        if: always()
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/visual-evidence"
+          for side in base head; do
+            mkdir -p "${out}/${side}"
+            src="${GITHUB_WORKSPACE}/${side}/packages/e2e/shots"
+            [ -d "$src" ] || continue
+            find "$src" -maxdepth 1 -type f \( -name '*.png' -o -name '*.webp' -o -name 'manifest.json' \) \
+              -exec cp {} "${out}/${side}/" \;
+          done
+          find "$out" -type f -exec ls -l {} + || true
+
+      - name: Upload captures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: visual-evidence
+          path: ${{ runner.temp }}/visual-evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
+  publish:
+    needs: [scope, capture]
+    # capture が落ちても (撮れなかったことを) コメントに書く。cancelled (新しい push が来た) のときは
+    # 古い撮影でコメントを上書きしないよう走らせない (always() ではなく !cancelled())。
+    if: ${{ !cancelled() && needs.scope.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+    # **checkout しない** (PR のコードを走らせない)。artifact はデータとしてだけ読む。
+    steps:
+      - name: Download captures
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: visual-evidence
+          path: ${{ runner.temp }}/visual-evidence
+
+      - name: Upload to Gyazo and comment before/after
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          # トークンはこの step にだけ渡す。未設定のリポジトリでは空になり、何もせず緑で終わる。
+          GYAZO_ACCESS_TOKEN: ${{ secrets.GYAZO_ACCESS_TOKEN }}
+          EVIDENCE_DIR: ${{ runner.temp }}/visual-evidence
+          BASE_SHA: ${{ needs.capture.outputs.base-sha }}
+          BASE_HAS_SHOTS: ${{ needs.capture.outputs.base-has-shots }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+
+            const token = process.env.GYAZO_ACCESS_TOKEN;
+            if (!token) {
+              core.notice('GYAZO_ACCESS_TOKEN が無いので before/after のコメントを省く (fork・未設定のリポジトリ)');
+              return;
+            }
+
+            const MARKER = '<!-- visual-evidence -->';
+            const BOT = 'github-actions[bot]';
+            // GitHub の camo は外部画像が大きいと詰まる (5MB 超で 404、その手前でも途中で切れる)。
+            const MAX_BYTES = 4 * 1024 * 1024;
+            // manifest は PR のコードが書いたもの。パス走査を防ぐため、ディレクトリを含まない名前だけを通す。
+            const FILE_RE = /^[\w.-]+\.(png|webp)$/;
+            const GYAZO_URL_RE = /^https:\/\/i\.gyazo\.com\/[\w.-]+$/;
+            const TYPES = { png: 'image/png', webp: 'image/webp' };
+
+            const dir = process.env.EVIDENCE_DIR;
+            const pr = context.payload.pull_request;
+            const prNumber = context.issue.number;
+            const baseSha = process.env.BASE_SHA ?? '';
+            const baseHasShots = process.env.BASE_HAS_SHOTS === 'true';
+            const repoUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}`;
+            const runUrl = `${repoUrl}/actions/runs/${context.runId}`;
+            const adrUrl = `${repoUrl}/blob/main/docs/adr/0036-visual-evidence-on-prs.md`;
+
+            // 表のセル・見出し・alt に入れる文字列。HTML と表の区切り・改行・メンションを無害にする。
+            const esc = (s) =>
+              String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/\|/g, '&#124;')
+                .replace(/@/g, '&#64;')
+                .replace(/\s*[\r\n]+\s*/g, ' ');
+
+            function readManifest(side) {
+              const file = path.join(dir, side, 'manifest.json');
+              if (!fs.existsSync(file)) return null;
+              try {
+                const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+                if (!Array.isArray(parsed)) throw new Error('配列ではない');
+                const seen = new Set();
+                return parsed.flatMap((entry) => {
+                  const name = entry?.file;
+                  if (typeof name !== 'string' || !FILE_RE.test(name) || seen.has(name)) {
+                    core.warning(`${side}/manifest.json の file を飛ばした: ${JSON.stringify(name)}`);
+                    return [];
+                  }
+                  seen.add(name);
+                  return [{ file: name, caption: String(entry.caption ?? name).slice(0, 200) }];
+                });
+              } catch (error) {
+                core.warning(`${side}/manifest.json を読めない: ${error.message}`);
+                return null;
+              }
+            }
+
+            async function upload(file, title) {
+              const ext = path.extname(file).slice(1);
+              const form = new FormData();
+              form.append('access_token', token);
+              form.append('imagedata', await fs.openAsBlob(file, { type: TYPES[ext] }), path.basename(file));
+              form.append('title', title);
+              form.append('app', 'typedcode');
+              form.append('referer_url', pr.html_url);
+              const res = await fetch('https://upload.gyazo.com/api/upload', { method: 'POST', body: form });
+              if (!res.ok) throw new Error(`upload が HTTP ${res.status}`);
+              const { url } = await res.json();
+              if (typeof url !== 'string' || !GYAZO_URL_RE.test(url)) throw new Error('url が返らなかった');
+              return url;
+            }
+
+            // Gyazo の障害は「上げられたのに URL が引けない」形で現れる。返った URL を引いて確かめる。
+            async function reachable(url) {
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                const res = await fetch(url, { method: 'HEAD' }).catch(() => null);
+                if (res?.status === 200) return true;
+                await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+              }
+              return false;
+            }
+
+            const manifests = { base: readManifest('base'), head: readManifest('head') };
+
+            // 1 枚分のセル。上げられたら <img>、そうでなければ理由を書く。
+            async function cell(side, shot) {
+              const manifest = manifests[side];
+              if (side === 'base' && !baseHasShots) return '(なし: base に撮影 spec が無い)';
+              if (!manifest) return '(撮れなかった)';
+              if (side === 'base' && !manifest.some((s) => s.file === shot.file)) return '(なし: base に無い画面)';
+              const file = path.join(dir, side, shot.file);
+              if (!fs.existsSync(file)) return '(撮れなかった)';
+              const { size } = fs.statSync(file);
+              if (size > MAX_BYTES) {
+                core.warning(`${side}/${shot.file} は ${size} バイトで 4MB を超えるので上げない`);
+                return '(4MB を超えるので省いた)';
+              }
+              const label = side === 'base' ? 'before' : 'after';
+              try {
+                const url = await upload(file, `typedcode PR #${prNumber} — ${shot.caption} (${label})`);
+                if (!(await reachable(url))) {
+                  core.warning(`${side}/${shot.file}: 上げた URL が 200 で引けない (${url})`);
+                  return '(上げたが URL が引けなかった)';
+                }
+                return `<img src="${url}" alt="${esc(`${shot.caption} (${label})`)}" width="420">`;
+              } catch (error) {
+                core.warning(`${side}/${shot.file} を Gyazo へ上げられなかった: ${error.message}`);
+                return '(Gyazo へ上げられなかった)';
+              }
+            }
+
+            const sections = [];
+            for (const [index, shot] of (manifests.head ?? []).entries()) {
+              const before = await cell('base', shot);
+              const after = await cell('head', shot);
+              sections.push(
+                [
+                  `#### ${index + 1}. ${esc(shot.caption)}`,
+                  '',
+                  '| before (base) | after (this PR) |',
+                  '| --- | --- |',
+                  `| ${before} | ${after} |`,
+                ].join('\n'),
+              );
+            }
+
+            const short = (sha) => (sha ? `\`${sha.slice(0, 7)}\`` : '(不明)');
+            const lines = [MARKER, '## 見た目の証跡 (before / after)', ''];
+            if (sections.length === 0) {
+              lines.push(
+                `この PR (head) の画面を撮れなかった。[撮影の run](${runUrl}) の「Capture after (head)」のログを見る。`,
+              );
+            } else {
+              const removed = (manifests.base ?? []).filter((b) => !manifests.head.some((h) => h.file === b.file));
+              lines.push(
+                'UI に触れた PR なので、base とこの PR の両方で同じ撮影 spec (`packages/e2e/tests/shots.spec.ts`) を撮って並べた。',
+                '見るのは人の目で、ここに合否は無い。',
+                '',
+                sections.join('\n\n'),
+              );
+              if (removed.length > 0) {
+                lines.push('', `base にだけある画面 (この PR で撮らなくなった): ${removed.map((r) => esc(r.caption)).join(' / ')}`);
+              }
+              lines.push(
+                '',
+                '<details><summary>PR 本文の「見た目の証跡」へ写す用の Markdown</summary>',
+                '',
+                'require-visual-evidence が数えるのは PR 本文の画像だけで、squash merge 後に残るのも本文なので、要る画面を本文へ写す。',
+                '',
+                '````markdown',
+                sections.join('\n\n'),
+                '````',
+                '',
+                '</details>',
+              );
+            }
+            lines.push(
+              '',
+              '---',
+              `<sub>before: base ${short(baseSha)} (merge commit の第一親) / after: head ${short(pr.head.sha)} を base へ merge した状態。` +
+                'Playwright Chromium (headless)・ja-JP・1280x800・light で撮影。動きはコマ撮りを束ねたもので実時間ではない。' +
+                `[撮影の run](${runUrl}) / [ADR-0036](${adrUrl})</sub>`,
+            );
+            const body = lines.join('\n');
+
+            // コメントは増やさず、同じ PR では 1 件を上書きする。
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: prNumber,
+              per_page: 100,
+            });
+            const existing = comments.find((c) => c.user?.login === BOT && c.body?.includes(MARKER));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+              core.info(`コメントを更新した: ${existing.html_url}`);
+            } else {
+              const { data } = await github.rest.issues.createComment({ ...context.repo, issue_number: prNumber, body });
+              core.info(`コメントを作った: ${data.html_url}`);
+            }
