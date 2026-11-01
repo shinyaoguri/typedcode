@@ -109,10 +109,12 @@ jobs:
       - name: Lint workflows (actionlint + shellcheck)
         run: npm run lint:workflows
 
-      # テスト必須ゲート (pr-checks.yml) の判定ロジックのテスト (ADR-0034)。pr-checks.yml は
-      # pull_request_target で base 側のスクリプトを実行するので、PR で変えたロジックはここで検査する。
-      - name: Test require-tests gate (node:test)
-        run: node --test scripts/require-tests.test.mjs
+      # PR ゲート (pr-checks.yml の require-tests / require-visual-evidence) の判定ロジックのテスト
+      # (ADR-0034 / ADR-0036)。pr-checks.yml は pull_request_target で base 側のスクリプトを実行するので、
+      # PR で変えたロジックはここで検査する。scripts/sweep.test.ts (vitest・使い捨てリポジトリの
+      # 統合テスト) は CI 常設にしないので、glob を *.test.mjs に絞って外している。
+      - name: Test PR gate scripts (node:test)
+        run: node --test 'scripts/*.test.mjs'
 
       - name: Build (all packages)
         run: npm run build

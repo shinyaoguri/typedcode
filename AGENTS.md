@@ -67,7 +67,7 @@ npm run test -w @typedcode/e2e
 npm run shots -w @typedcode/e2e             # 見た目・動きの証跡を packages/e2e/shots/ に撮る (検査ではない。ADR-0036)
 
 # 手元で CI と同じ検査を 1 コマンドで (完了の定義 = CONTRIBUTING.md / ADR-0034)
-npm run check       # typecheck → lint → lint:workflows → test:coverage → require-tests のテスト → e2e
+npm run check       # typecheck → lint → lint:workflows → test:coverage → scripts/*.test.mjs (PR ゲートのテスト) → e2e
 npm run check:fast  # 上から e2e を除いたもの
 ```
 
