@@ -52,6 +52,30 @@ async function buildDeclaredSizeForgedZip(entryName: string, payloadBytes: numbe
 }
 
 /**
+ * 中央ディレクトリとローカルヘッダの `uncompressedSize` を 0 に詐称した ZIP を作る (#447)。
+ * JSZip は申告 0 のエントリの中身を捨てて空として持つので、実データを積んでも展開されないことを確かめる。
+ */
+async function buildDeclaredZeroForgedZip(entryName: string, payloadBytes: number): Promise<Uint8Array> {
+  const zip = new JSZip();
+  zip.file(entryName, new Uint8Array(payloadBytes));
+  const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (view.getUint32(0, true) !== 0x04034b50) throw new Error('local file header is not at offset 0');
+  let centralDirOffset = -1;
+  for (let i = bytes.length - 46; i >= 0; i--) {
+    if (view.getUint32(i, true) === 0x02014b50) {
+      centralDirOffset = i;
+      break;
+    }
+  }
+  if (centralDirOffset < 0) throw new Error('central directory header not found');
+
+  view.setUint32(22, 0, true);
+  view.setUint32(centralDirOffset + 24, 0, true);
+  return bytes;
+}
+
+/**
  * zip 爆弾ガード (#149 / #234)。verify の ZipFileProcessor など shared の parser を経由しない
  * 消費者からも呼ばれる public API なので、上限判定そのものを固定する。
  */
@@ -92,6 +116,50 @@ describe('assertZipWithinBudget', () => {
     const fake = { files: { 'a.bin': { dir: false, _data: {} } } } as unknown as JSZip;
 
     expect(() => assertZipWithinBudget(fake)).toThrow(/no readable declared size/);
+  });
+
+  it.each(['STORE', 'DEFLATE'] as const)(
+    'accepts a zero-byte file entry round-tripped through JSZip (%s)',
+    async (compression) => {
+      // editor は空のタブも全タブ export に含める。JSZip は 0 バイトのエントリに申告サイズを持たせない (#447)
+      const zip = new JSZip();
+      zip.file('p1.c', 'int main(void) { return 0; }\n');
+      zip.file('p2.c', '');
+      const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: 'uint8array', compression }));
+
+      expect(() => assertZipWithinBudget(loaded)).not.toThrow();
+    }
+  );
+
+  it('still rejects an oversized declared total when the zip also has a zero-byte entry', () => {
+    const empty = { dir: false, _data: Promise.resolve(''), options: { compression: 'STORE' } };
+    const fake = {
+      files: {
+        'empty.c': empty,
+        'a.bin': { _data: { uncompressedSize: 200 * MIB } },
+        'b.bin': { _data: { uncompressedSize: 200 * MIB } },
+      },
+    } as unknown as JSZip;
+
+    expect(() => assertZipWithinBudget(fake)).toThrow(/uncompressed size exceeds/);
+  });
+
+  it.each([
+    ['a non-STORE placeholder', { _data: Promise.resolve(''), options: { compression: 'DEFLATE' } }],
+    ['a non-thenable placeholder', { _data: '', options: { compression: 'STORE' } }],
+    ['a placeholder without options', { _data: Promise.resolve('') }],
+  ])('rejects %s that only partly matches the empty-entry shape', (_label, entry) => {
+    // 「空」とみなすのは JSZip が 0 バイトのエントリに作る形と完全に一致するときだけ (fail-closed を保つ)
+    const fake = { files: { 'a.bin': { dir: false, ...entry } } } as unknown as JSZip;
+
+    expect(() => assertZipWithinBudget(fake)).toThrow(/no readable declared size/);
+  });
+
+  it('accepts an entry forged to declare zero bytes because JSZip discards its payload', async () => {
+    const forged = await buildDeclaredZeroForgedZip('big.bin', 1 * MIB);
+    const zip = await JSZip.loadAsync(forged);
+
+    expect(() => assertZipWithinBudget(zip)).not.toThrow();
   });
 
   it('accepts a zip that lies about its uncompressed size (declared sizes are not a defense)', async () => {
@@ -147,6 +215,17 @@ describe('readZipEntryBytes', () => {
     expect(budget.used).toBe(4);
   });
 
+  it('reads nothing from an entry forged to declare zero bytes (the empty shape is not a bypass)', async () => {
+    const forged = await buildDeclaredZeroForgedZip('big.bin', 1 * MIB);
+    const zip = await JSZip.loadAsync(forged);
+    const budget = new ZipExtractionBudget(1 * MIB);
+
+    const bytes = await readZipEntryBytes(zip.file('big.bin')!, budget);
+
+    expect(bytes.length).toBe(0);
+    expect(budget.used).toBe(0);
+  });
+
   it('charges a re-read entry only once so a second pass over screenshots still fits', async () => {
     const zip = new JSZip();
     zip.file('screenshots/1.png', new Uint8Array(4096));
@@ -181,6 +260,21 @@ describe('extractAllProofsFromZip', () => {
       extractAllProofsFromZip(forged.buffer as ArrayBuffer, new ZipExtractionBudget(1 * MIB))
     ).rejects.toThrow(ZipBudgetExceededError);
   }, 60_000);
+
+  it('reads proofs from an export zip that contains an empty source file', async () => {
+    // 空のタブを含む全タブ export の形 (#447)。verify-cli / verify Web はここで全体エラーにしていた
+    const zip = new JSZip();
+    zip.file('p1.c', 'int main(void) { return 0; }\n');
+    zip.file('p2.c', '');
+    zip.file('p1_proof.json', JSON.stringify({ proof: { events: [] }, typingProofHash: 'abc' }));
+    zip.file('p2_proof.json', JSON.stringify({ proof: { events: [] }, typingProofHash: 'def' }));
+    const buf = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+
+    const { proofs, failures } = await extractAllProofsFromZip(buf.buffer as ArrayBuffer);
+
+    expect(proofs.map((p) => p.filename)).toEqual(['p1_proof.json', 'p2_proof.json']);
+    expect(failures).toEqual([]);
+  });
 
   it('reads proofs from an honest zip within the budget', async () => {
     const zip = new JSZip();
