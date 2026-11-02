@@ -14,6 +14,7 @@
 
 import {
   CHECKPOINT_PUBLIC_KEYS,
+  SESSION_TOKEN_MAX_AGE_MS,
   checkRegistryKeyValidityAt,
   createSignedCheckpointEnvelope,
   findCheckpointPublicKey,
@@ -135,6 +136,7 @@ interface ErrorBody {
     | 'TOKEN_REQUIRED'
     | 'TOKEN_INVALID'
     | 'TOKEN_SESSION_MISMATCH'
+    | 'TOKEN_EXPIRED'
     | 'NON_MONOTONIC'
     | 'CHECKPOINT_CONFLICT'
     | 'SESSION_LIMIT_EXCEEDED'
@@ -320,6 +322,22 @@ export async function handleSignCheckpoint(
       {
         error: 'Session start token does not match the request sessionId',
         code: 'TOKEN_SESSION_MISMATCH',
+      } satisfies ErrorBody,
+      401,
+      responder.cors()
+    );
+  }
+  // #227: token の最大有効期間。無期限だと KV の TTL (7 日) ごとに signedCount とタブ台帳がリセットされ、
+  // 漏洩した token が恒久的な bearer として残る。検査は**この sign 経路だけ**に置く
+  // (検証器も verifySessionStartToken を呼ぶので、共有側に age を入れると過去の proof の採点が壊れる)。
+  // 未来の issuedAt は弾かない: 作れるのは署名鍵を持つ者だけで、その者は sign API を経由しなくてよい。
+  // 判定は KV read より前なので、期限切れの token には KV コストを払わない。
+  const tokenIssuedAtMs = Date.parse(sessionStartToken.payload.issuedAt);
+  if (Date.now() - tokenIssuedAtMs > SESSION_TOKEN_MAX_AGE_MS) {
+    return jsonResponse(
+      {
+        error: 'Session start token has expired; obtain a new one',
+        code: 'TOKEN_EXPIRED',
       } satisfies ErrorBody,
       401,
       responder.cors()

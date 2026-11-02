@@ -460,19 +460,32 @@ export class TabManager {
 
   /**
    * このセッションの署名クレデンシャル (sessionStartToken) を解決する (ADR-0027)。
-   * casual/class/assignment は root アンカー時に取得した token が先頭タブの TypingProof に
-   * あるのでそれを流用し、exam は best-effort 取得の signingOnlyToken を使う。
-   * いずれも現在の sessionId と一致するものだけ返す (別セッションの遺物を送らない)。
+   * casual/class/assignment は root アンカー時に取得した token が各タブの TypingProof にあり、
+   * exam は best-effort 取得の signingOnlyToken を使う。
+   * いずれも現在の sessionId と一致するものだけを候補にし (別セッションの遺物を送らない)、
+   * その中で `issuedAt` が最新のものを返す (#227)。sign は token の最大有効期間 (30 日) を過ぎると
+   * TOKEN_EXPIRED で拒否するので、最初に見つかったタブの古い token を使い続けると、後から開いた
+   * タブが新しい token を持っていても全タブの署名が落ちる。期限の判定自体はサーバに任せる
+   * (editor の時計では判定しない)。
    */
   private findSigningToken(): SessionStartToken | null {
     const sessionId = this.sessionService.getCurrentSessionId();
     if (!sessionId) return null;
-    if (this.signingOnlyToken?.payload.sessionId === sessionId) return this.signingOnlyToken;
-    for (const tab of this.tabs.values()) {
-      const token = tab.typingProof.sessionStartToken;
-      if (token?.payload.sessionId === sessionId) return token;
-    }
-    return null;
+    let latest: SessionStartToken | null = null;
+    let latestIssuedAt = Number.NEGATIVE_INFINITY;
+    const consider = (token: SessionStartToken | null | undefined): void => {
+      if (token?.payload.sessionId !== sessionId) return;
+      const issuedAt = Date.parse(token.payload.issuedAt);
+      // 解釈できない issuedAt は最古扱い (他に候補が無ければそれでも返す)
+      const rank = Number.isFinite(issuedAt) ? issuedAt : Number.NEGATIVE_INFINITY;
+      if (latest === null || rank > latestIssuedAt) {
+        latest = token;
+        latestIssuedAt = rank;
+      }
+    };
+    consider(this.signingOnlyToken);
+    for (const tab of this.tabs.values()) consider(tab.typingProof.sessionStartToken);
+    return latest;
   }
 
   /**

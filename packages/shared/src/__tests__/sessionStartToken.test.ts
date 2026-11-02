@@ -13,6 +13,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   POSW_ITERATIONS,
   SESSION_TOKEN_FORMAT_VERSION,
+  SESSION_TOKEN_MAX_AGE_MS,
   TypingProof,
   computeHash,
   createSessionStartToken,
@@ -107,6 +108,19 @@ describe('session start token (ADR-0017)', () => {
     const result = await verifySessionStartToken(tampered, [testKey.registryEntry]);
     expect(result.valid).toBe(false);
     expect(result.reason).toMatch(/signature is invalid/);
+  });
+
+  // #227: 最大有効期間は Workers の sign 経路だけが見る。検証器 (proof の採点) も同じ関数を呼ぶので、
+  // ここに age を入れると「提出から 30 日後の採点」が全滅する。
+  it('still verifies a token older than SESSION_TOKEN_MAX_AGE_MS (the verifier does not look at age)', async () => {
+    const olderThanMaxAge = new Date(Date.now() - SESSION_TOKEN_MAX_AGE_MS - 24 * 3600 * 1000).toISOString();
+    const token = await makeToken(testKey, { issuedAt: olderThanMaxAge });
+    const result = await verifySessionStartToken(token, [testKey.registryEntry]);
+    expect(result.valid).toBe(true);
+  });
+
+  it('SESSION_TOKEN_MAX_AGE_MS is 30 days', () => {
+    expect(SESSION_TOKEN_MAX_AGE_MS).toBe(30 * 24 * 3600 * 1000);
   });
 
   it('rejects a token signed before the key validFrom', async () => {
