@@ -42,6 +42,21 @@
   font-size: 12px;
 }
 
+/* 検証完了後の集約に失敗を含むとき (#282)。オレンジのバーの上で目立つよう濃い赤の地に白 */
+.status-item.has-failure {
+  background-color: #b71c1c;
+  font-weight: 600;
+}
+
+.status-item.has-failure:hover {
+  background-color: #c62828;
+}
+
+.status-summary-failed::before {
+  content: "·";
+  margin-right: 5px;
+}
+
 /* Queue status with progress */
 .status-queue {
   display: flex;
