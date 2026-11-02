@@ -36,6 +36,37 @@ const STORE_SCREENSHOTS = 'screenshots';
 export const SESSION_STORAGE_VERSION = 1;
 
 // ============================================================================
+// Errors (#484 / #237)
+// ============================================================================
+
+/**
+ * 同じタブ・同じ seq に、保存済みとは別の hash のイベントを書こうとした (二重インスタンスの乖離)。
+ * 呼び出し側は「保存層が拒否した」と他のストレージ失敗 (quota 等) から区別できる。
+ */
+export class EventChainConflictError extends Error {
+  constructor(
+    readonly tabId: string,
+    readonly eventIndex: number,
+    readonly storedHash: string,
+    readonly attemptedHash: string
+  ) {
+    super(
+      `Event chain conflict on tab ${tabId} at sequence ${eventIndex}: ` +
+        `stored hash differs from the attempted one (another instance wrote this session)`
+    );
+    this.name = 'EventChainConflictError';
+  }
+}
+
+/** このインスタンスが握っていたセッションを、別のインスタンスが resumeSession した (別インスタンスに再開された)。 */
+export class SessionOwnershipError extends Error {
+  constructor(readonly sessionId: string) {
+    super(`Session ${sessionId} was resumed by another instance`);
+    this.name = 'SessionOwnershipError';
+  }
+}
+
+// ============================================================================
 // Service Implementation
 // ============================================================================
 
@@ -346,6 +377,22 @@ export class SessionStorageService {
     return this.instanceId;
   }
 
+  /**
+   * このインスタンスがセッションの所有者かを確かめる (#484)。
+   * 別インスタンスが `resumeSession` すると sessions の instanceId が上書きされるので、
+   * 後から再開された側が呼ぶと `SessionOwnershipError` で reject する。
+   * appendEvent は所有者を見ない (先に書いた側のイベントは有効のまま。拒否は hash の食い違いだけ)。
+   */
+  async assertOwner(): Promise<void> {
+    if (!this.db || !this.sessionId) throw new Error('Database or session not initialized');
+
+    const session = await this.getSessionById(this.sessionId);
+    if (!session) throw new Error(`Session not found: ${this.sessionId}`);
+    if (session.instanceId !== this.instanceId) {
+      throw new SessionOwnershipError(this.sessionId);
+    }
+  }
+
   // ============================================================================
   // Tab Operations
   // ============================================================================
@@ -426,7 +473,15 @@ export class SessionStorageService {
 
   /**
    * イベントを追加（インクリメンタル書き込み）
-   * 既に同じシーケンス番号のイベントが存在する場合はスキップ（リロード時の重複防止）
+   *
+   * 同じ (tabId, sequence) が既にある場合 (ConstraintError) は、同じトランザクション内で
+   * 保存済みイベントを読み hash を比べる (#484 / #237):
+   * - hash が同じ: 冪等に成功扱い。保存の再試行や、EventRecorder と TabManager.saveToIndexedDB の
+   *   二重書き込みはここに入る。tabs レコードは書き換えない (古いイベントで currentHash を巻き戻さない)
+   * - hash が違う: 同じセッションに別のチェーンを書こうとした二重インスタンスの乖離。
+   *   `EventChainConflictError` で reject し、events も tabs も変更しない
+   *
+   * 新規に追加できたときだけ、同じトランザクションで tabs の最終書き込み位置と currentHash を進める。
    */
   async appendEvent(tabId: string, event: StoredEvent): Promise<void> {
     if (!this.db || !this.sessionId) throw new Error('Database or session not initialized');
@@ -441,51 +496,59 @@ export class SessionStorageService {
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([STORE_EVENTS, STORE_TABS], 'readwrite');
+      const eventsStore = transaction.objectStore(STORE_EVENTS);
 
-      let eventAddFailed = false;
+      // トランザクション完了時にどう終えるか。ConstraintError は preventDefault で中止を防ぐので、
+      // 結果は oncomplete で確定させる
+      let conflict: EventChainConflictError | null = null;
+      let unexpected: Error | null = null;
 
       transaction.onerror = () => {
-        // ConstraintErrorの場合は重複イベントなのでスキップ
-        if (eventAddFailed) {
-          // イベント追加は失敗したが、それ以外は成功 - 正常終了扱い
-          resolve();
-          return;
-        }
         console.error('[SessionStorage] Failed to append event:', transaction.error);
         reject(new Error('Failed to append event'));
       };
 
       transaction.oncomplete = () => {
-        resolve();
+        if (conflict) reject(conflict);
+        else if (unexpected) reject(unexpected);
+        else resolve();
       };
 
-      // イベントを追加
-      const addRequest = transaction.objectStore(STORE_EVENTS).add(eventData);
+      const addRequest = eventsStore.add(eventData);
+
+      addRequest.onsuccess = () => {
+        // 新規に書けたので、タブの最終書き込みインデックスを更新
+        const tabsStore = transaction.objectStore(STORE_TABS);
+        const getRequest = tabsStore.get(tabId);
+        getRequest.onsuccess = () => {
+          const tab = getRequest.result as StoredTabData | undefined;
+          if (tab) {
+            tab.lastWrittenEventIndex = event.sequence;
+            tab.currentHash = event.hash;
+            tab.lastModifiedAt = Date.now();
+            tabsStore.put(tab);
+          }
+        };
+      };
 
       addRequest.onerror = (e) => {
-        // ConstraintError（重複）の場合はエラーを無視
         const error = (e.target as IDBRequest).error;
-        if (error?.name === 'ConstraintError') {
-          // 重複イベントはスキップ（リロード時に発生する正常なケース）
-          eventAddFailed = true;
-          e.preventDefault(); // トランザクションの中止を防ぐ
-          e.stopPropagation();
-          return;
-        }
-      };
+        if (error?.name !== 'ConstraintError') return; // それ以外はトランザクションごと失敗させる
 
-      // タブの最終書き込みインデックスを更新
-      const tabsStore = transaction.objectStore(STORE_TABS);
-      const getRequest = tabsStore.get(tabId);
+        e.preventDefault(); // トランザクションの中止を防ぐ
+        e.stopPropagation();
 
-      getRequest.onsuccess = () => {
-        const tab = getRequest.result as StoredTabData | undefined;
-        if (tab) {
-          tab.lastWrittenEventIndex = event.sequence;
-          tab.currentHash = event.hash;
-          tab.lastModifiedAt = Date.now();
-          tabsStore.put(tab);
-        }
+        // 保存済みイベントを同じトランザクションで読んで hash を比べる
+        const getExisting = eventsStore.index('tabId_eventIndex').get([tabId, event.sequence]);
+        getExisting.onsuccess = () => {
+          const stored = getExisting.result as StoredEventData | undefined;
+          if (!stored) {
+            unexpected = new Error('Failed to append event: constraint violated but no stored event found');
+          } else if (stored.eventData.hash !== event.hash) {
+            conflict = new EventChainConflictError(tabId, event.sequence, stored.eventData.hash, event.hash);
+          }
+          // hash が同じなら何もしない (冪等。tabs は書き換えない)
+        };
       };
     });
   }
