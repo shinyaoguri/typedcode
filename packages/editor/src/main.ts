@@ -541,6 +541,9 @@ function initializeEventRecorder(): void {
   ctx.tabManager!.setOnTabCreated((tab) => {
     void ctx.eventRecorder?.recordSessionSnapshotTo(tab);
   });
+
+  // 閉じたタブの記録中イベントの append が済んでから、tabs 行を消して PoSW Worker を終了する (#342)
+  ctx.tabManager!.setTabSettleBarrier((tabId) => ctx.eventRecorder?.whenTabSettled(tabId) ?? Promise.resolve());
 }
 
 function initializeIdleTimeoutManager(): void {
