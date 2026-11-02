@@ -160,7 +160,7 @@ npm run test -w @typedcode/e2e
 | レイヤー | 技術 |
 |-------|------------|
 | エディタ | Monaco Editor, xterm.js |
-| 実行環境 | Wasmer SDK (WebAssembly) |
+| 実行環境 | Wasmer SDK (C / C++)、Pyodide (Python)。どちらも WebAssembly |
 | 検証 UI | Chart.js, Highlight.js |
 | ビルド | Vite 8, TypeScript 6 |
 | Workers | Cloudflare Workers, Wrangler |
