@@ -116,9 +116,9 @@ jobs:
         run: node scripts/check-deps.mjs
 
       # vitest を持たない場所のスクリプトのテスト (node:test)。
-      # - scripts/*.test.mjs: PR ゲート (pr-checks.yml の require-tests / require-visual-evidence) の判定
-      #   ロジック (ADR-0034 / ADR-0036)。pr-checks.yml は pull_request_target で base 側のスクリプトを
-      #   実行するので、PR で変えたロジックはここで検査する。scripts/sweep.test.ts (vitest・使い捨て
+      # - scripts/*.test.mjs: PR ゲート (pr-checks.yml の require-tests / require-visual-evidence /
+      #   require-issue) の判定ロジック (ADR-0034 / ADR-0036 / ADR-0038)。pr-checks.yml は
+      #   pull_request_target で base 側のスクリプトを実行するので、PR で変えたロジックはここで検査する。scripts/sweep.test.ts (vitest・使い捨て
       #   リポジトリの統合テスト) は CI 常設にしないので、glob を *.test.mjs に絞って外している。
       # - setup-env: e2e の環境準備。既存の .dev.vars の署名鍵と localKeys.ts の食い違いを検知する (#388)
       - name: Test scripts (node:test)

@@ -13,6 +13,12 @@ name: PR Checks
 #   `no-visual-change` で通す。判定ロジックは scripts/require-visual-evidence.mjs、
 #   そのテストは deploy.yml の check job で走る。
 #
+# require-issue: PR が自リポジトリの Issue を閉じるかを判定する (ADR-0038)。本文の文字列ではなく
+#   GitHub が作った紐づけ (closingIssuesReferences) を読む (コードスパン・引用の中の Closes は紐づかない
+#   ため)。タイトルの型 (docs / ci / chore) では免除しない。受け入れ条件を持たない PR はラベル
+#   `no-issue` で通し、dependabot の PR は対象外。判定ロジックは scripts/require-issue.mjs、
+#   そのテストは deploy.yml の check job で走る。
+#
 # pull_request_target を使う理由: fork からの PR でも base リポジトリ側の設定で走らせるため。
 # pull_request_target の既定の checkout ref は **base ブランチ** (PR の head ではない)。
 # ここでは ref を指定せずに checkout するので、実行されるのは base 側の
@@ -20,7 +26,8 @@ name: PR Checks
 # 変更ファイル名 (API) とタイトル・本文・ラベル・author の文字列だけ。permissions も read のみ。
 on:
   pull_request_target:
-    # labeled / unlabeled / edited: `no-test-needed` / `no-visual-change` ラベルや、理由・画像の追記で再判定するため
+    # labeled / unlabeled / edited: `no-test-needed` / `no-visual-change` / `no-issue` ラベルや、
+    # 理由・画像・Closes の追記で再判定するため
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
 
 permissions:
@@ -89,3 +96,34 @@ jobs:
           set -euo pipefail
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' > "${RUNNER_TEMP}/changed-files.txt"
           node scripts/require-visual-evidence.mjs --files "${RUNNER_TEMP}/changed-files.txt"
+
+  require-issue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # closingIssuesReferences は GraphQL で紐づいた Issue を読むので、workflow 全体の
+    # contents / pull-requests: read に加えて issues: read が要る (job の permissions は全体を置き換える)。
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      # ref 未指定 = pull_request_target では base ブランチ。head (fork) を checkout しないこと。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      - name: Require a closing issue reference
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # PR 由来の文字列は env 経由で受け取る (理由は require-tests job と同じ)。
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          gh pr view "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --json closingIssuesReferences > "${RUNNER_TEMP}/closing.json"
+          node scripts/require-issue.mjs --closing "${RUNNER_TEMP}/closing.json"
