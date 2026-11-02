@@ -5,6 +5,8 @@
  * 後から開いた方をブロックする。
  */
 
+import { getSessionStorageService } from './SessionStorageService.js';
+
 const CHANNEL_NAME_BASE = 'typedcode-instance-guard';
 const HEARTBEAT_INTERVAL = 1000; // 1秒ごとにハートビート
 
@@ -26,7 +28,8 @@ export class SingleInstanceGuard {
    *   storage は既にモード別名前空間化されているので共存して問題ない。
    */
   constructor(namespace?: string) {
-    this.instanceId = crypto.randomUUID();
+    // instanceId の権威は永続化される SessionStorageService 側 (生成箇所を 1 つに保つ)
+    this.instanceId = getSessionStorageService().getInstanceId();
     this.channelName = namespace ? `${CHANNEL_NAME_BASE}:${namespace}` : CHANNEL_NAME_BASE;
   }
 

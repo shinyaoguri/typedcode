@@ -155,21 +155,9 @@ export class SessionStorageService {
     const session = await this.getLatestSession();
     if (!session) return false;
 
-    // セッションが非アクティブなら復旧可能
-    if (!session.isActive) return true;
-
-    // アクティブセッションがある場合、タブが存在するかチェック
+    // タブが存在するかチェック
     const tabCount = await this.getTabCount(session.sessionId);
     return tabCount > 0;
-  }
-
-  /**
-   * 最新のセッションがアクティブかどうかチェック
-   * リロード時はアクティブ、タブを閉じた後は非アクティブ
-   */
-  async isSessionActive(): Promise<boolean> {
-    const session = await this.getLatestSession();
-    return session?.isActive ?? false;
   }
 
   /**
@@ -282,38 +270,6 @@ export class SessionStorageService {
   async updateSession(session: SessionMetadata): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
     await IndexedDBHelper.put(this.db, STORE_SESSIONS, session);
-  }
-
-  /**
-   * セッションアクティビティを更新（ハートビート）
-   */
-  async updateSessionActivity(): Promise<void> {
-    if (!this.sessionId || !this.db) return;
-
-    const session = await this.getSessionById(this.sessionId);
-    if (!session) return;
-
-    session.lastActiveAt = Date.now();
-    await this.updateSession(session);
-  }
-
-  /**
-   * セッションを非アクティブにマーク
-   */
-  async markSessionInactive(): Promise<void> {
-    if (!this.sessionId || !this.db) return;
-
-    try {
-      const session = await this.getSessionById(this.sessionId);
-      if (!session) return;
-
-      session.isActive = false;
-      session.lastActiveAt = Date.now();
-      await this.updateSession(session);
-      console.log('[SessionStorage] Session marked inactive:', this.sessionId);
-    } catch (error) {
-      console.error('[SessionStorage] Failed to mark session inactive:', error);
-    }
   }
 
   /**

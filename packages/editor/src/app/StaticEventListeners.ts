@@ -324,7 +324,7 @@ export function setupStaticEventListeners(ctx: AppContext): void {
   });
 
   // ページ離脱時の確認ダイアログ
-  // セッションの非アクティブ化は visibilitychange + document.hidden で行う
+  // (セッションの isActive は書き換えない。リロードとタブ閉じの区別は下の sessionStorage フラグで行う)
   window.addEventListener('beforeunload', (e) => {
     if (ctx.skipBeforeUnload) return;
 
