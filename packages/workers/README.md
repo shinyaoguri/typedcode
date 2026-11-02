@@ -265,12 +265,11 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
       "status": "active",
       "validFrom": "..."
     }
-  ],
-  "cacheTtlSec": 86400
+  ]
 }
 ```
 
-注: レスポンスは `Cache-Control: public, max-age=3600` を返す。本体の `cacheTtlSec` (86400) は HTTP キャッシュとは別のヒント値で、現状 HTTP ヘッダと一致しない。verify / verify-cli / editor はこの endpoint を使わず、registry をビルド時に shared へ同梱する (鍵の追加・revoke の反映は再ビルド・再リリース)。両者を揃えるかの判断は #370。
+注: キャッシュは HTTP の `Cache-Control: public, max-age=3600` に一本化している (body に TTL のフィールドは無い)。verify / verify-cli / editor はこの endpoint を使わず、registry をビルド時に shared へ同梱する (鍵の追加・revoke の反映は再ビルド・再リリース)。
 
 ### GET `/health`
 

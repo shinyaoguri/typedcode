@@ -165,3 +165,14 @@ describe('security headers', () => {
     expect(res.headers.get('Vary')).toBe('Origin');
   });
 });
+
+describe('GET /api/checkpoint/public-keys caching (#370)', () => {
+  it('has no cacheTtlSec in the body and caches only via Cache-Control: public, max-age=3600', async () => {
+    const res = await worker.fetch(new Request('https://api.test/api/checkpoint/public-keys'), baseEnv());
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=3600');
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(Array.isArray(body.keys)).toBe(true);
+    expect(body).not.toHaveProperty('cacheTtlSec');
+  });
+});
