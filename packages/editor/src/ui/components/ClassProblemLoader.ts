@@ -23,6 +23,8 @@ export class ClassProblemLoader {
       const overlay = document.createElement('div');
       overlay.className = 'exam-gate-overlay';
       overlay.id = 'class-problem-loader';
+      // 状態契約 (packages/editor/AGENTS.md「状態契約」): 閉じると `.hidden` が付いてから DOM を外れる。
+      overlay.dataset.dialog = 'class-problem-loader';
       overlay.innerHTML = this.render();
       document.body.appendChild(overlay);
       this.overlay = overlay;

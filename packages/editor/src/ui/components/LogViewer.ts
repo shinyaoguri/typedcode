@@ -82,6 +82,8 @@ export class LogViewer {
     this.isVisible = !this.isVisible;
     const logViewer = document.getElementById('log-viewer');
     const editorContainer = document.querySelector('.editor-container') as HTMLElement | null;
+    // 状態契約 (packages/editor/AGENTS.md「状態契約」): 開閉は `.visible` と同時に data-open で出す。
+    logViewer?.setAttribute('data-open', String(this.isVisible));
 
     if (this.isVisible) {
       logViewer?.classList.add('visible');

@@ -66,9 +66,11 @@ export class ProblemPanel {
     return this.panel?.classList.contains('visible') ?? false;
   }
 
-  /** Activity Bar のトグルアイコンに開閉状態を反映する (VSCode 風の左バー + 明色)。 */
+  /** Activity Bar のトグルアイコンとパネルの data-open に開閉状態を反映する (VSCode 風の左バー + 明色)。 */
   private updateToggleState(): void {
     this.toggleBtn?.classList.toggle('active', this.isVisible);
+    // 状態契約 (packages/editor/AGENTS.md「状態契約」): 開閉は `.visible` と同時に data-open で出す。
+    this.panel?.setAttribute('data-open', String(this.isVisible));
   }
 
   /** パネル見出しをモードに合わせて設定する (試験/授業/課題。ADR-0015)。 */
