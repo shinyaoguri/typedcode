@@ -13,7 +13,7 @@
 >
 > このプロジェクトは活発に開発中です。破壊的変更・バグ・未完成の機能があり得ます。問題や提案があれば [Issue](https://github.com/shinyaoguri/typedcode/issues) でお知らせください。
 
-[TypedCode](https://typedcode.dev) は、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録する、改ざん耐性を備えた VSCode 風のコードエディタです。記録された編集列は改ざん耐性があり（署名チェックポイントがある場合は時刻アンカリングも付く）、エクスポート後の改変を検出できます。すべてブラウザ内で動作し、C / C++ / Python は WebAssembly (Wasmer)、JavaScript / TypeScript はブラウザ内で実行します。
+[TypedCode](https://typedcode.dev) は、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録する、改ざん耐性を備えた VSCode 風のコードエディタです。記録された編集列は改ざん耐性があり（署名チェックポイントがある場合は時刻アンカリングも付く）、エクスポート後の改変を検出できます。すべてブラウザ内で動作し、C / C++ は WebAssembly (Wasmer)、Python は WebAssembly (Pyodide)、JavaScript / TypeScript はブラウザ内で実行します。
 
 主たる用途は、AI 生成や自動コピーを防ぎたいプログラミング試験、および学習プロセスを検証したい教育現場です。
 
@@ -29,7 +29,7 @@
 - **網羅的なイベント追跡**: コンテンツ変更・キーストローク・マウス・フォーカス・可視性・ペースト/ドロップ検出・テンプレート注入・セッション復旧などを記録 (一覧は [`events.ts`](packages/shared/src/types/events.ts))
 - **マルチタブ**: 複数ファイルを同時に編集し、タブ切替も追跡
 - **スクリーンショット**: 定期撮影とフォーカス喪失時の撮影、ハッシュ検証付き
-- **ブラウザ内実行**: Wasmer SDK (WebAssembly) で C / C++ / Python / JavaScript / TypeScript を実行
+- **ブラウザ内実行**: C / C++ は Wasmer SDK、Python は Pyodide (どちらも WebAssembly)、JavaScript / TypeScript はブラウザ内で実行
 - **エクスポート形式**: 証明 JSON・ソースコード・スクリーンショット・検証手順を含む ZIP アーカイブ
 - **日英バイリンガル UI**
 
