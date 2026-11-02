@@ -25,10 +25,12 @@ tests/
 ├── helpers/app.ts        # EditorApp ページオブジェクト + ZIP/proof 読み出しヘルパ
 ├── helpers/verifyCli.ts  # tsx で verify-cli/src/cli.ts を直接実行 (build 待ち不要。dist は verify-cli の test:dist が担保)
 ├── helpers/verifyWeb.ts  # VerifyWebApp: 検証 Web を開き #file-input に ZIP/JSON を渡し、data-* の状態契約だけを読む
+├── helpers/scenario.ts   # 利用シーン網羅 (scenarios/) の操作とフィクスチャ: .tcclass / テンプレート YAML、メニュー操作、問題の読み込み、マウスでのドラッグ・リサイズ、ファイルのドロップ、ノート付き export (app.ts は並行作業と衝突しないよう触らずここに置く)
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
 ├── workers-hang-export.spec.ts  # Workers 無応答 (route で応答しない) でも class の export が上限内に ZIP を出す (#324。fetch 上限 + best-effort 予算)
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
 ├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)
+├── scenarios/*.spec.ts   # editor の利用シーン網羅 (#434): ランディング・規約・class/assignment・復旧の新規開始・タブ並べ替え・8 言語・テーマ/表示言語・リセット・テンプレート・パネル・セルフレビュー・新規ウィンドウ。各シナリオは expectConsistent() と verify-cli (fast) で締める。既知の製品バグは test.fixme('#N ...') で再現を置く
 ├── verify-web.spec.ts    # 検証 Web の往復: Web↔CLI パリティ・改ざん・複数ファイル (#215)・壊れた proof (#292)・タブを閉じたあとの active / 表示の一致 (#281)
 ├── shots.spec.ts         # @shots: 証跡の撮影だけ (assert なし・通常実行から除外)。撮影 spec を増やすなら *.shots.spec.ts (require-tests がテストに数えない命名) にし、タイトルに @shots を付ける
 └── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)
