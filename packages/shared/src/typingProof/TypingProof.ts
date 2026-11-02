@@ -12,7 +12,6 @@ import type {
   EventHashData,
   StoredEvent,
   VerificationResult,
-  TypingProofVerificationResult,
   SignatureData,
   ExportedProof,
   TypingStats,
@@ -843,59 +842,6 @@ export class TypingProof {
         deviceId: this.fingerprint!,
         totalEvents: stats.totalEvents,
       },
-    };
-  }
-
-  /**
-   * タイピング証明ハッシュを検証
-   *
-   * **ここが返す `isPureTyping` は判定の 3 つ目の定義ではない** (#235)。本メソッドは
-   * `proofData.metadata` (自己申告のカウント) しか受け取らず events を持たないため、
-   * 括弧自動閉じ等の benign 除外・内部ペーストの replay 検証・乖離 snapshot の検出
-   * (すべて events が要る) を行えない。**メタデータのみからの粗い自己チェック**であり、
-   * 採点側の結論 (`verifyProofMetadata` → `evaluatePureTyping`) とは一致しない
-   * (こちらの方が厳しく false に倒れる)。採点・表示に使う値は必ず events を渡せる
-   * `verifyProofMetadata` から取ること。
-   *
-   * @param typingProofHash - 検証するハッシュ
-   * @param proofData - 証明データ
-   * @param finalContent - 最終コード
-   */
-  async verifyTypingProofHash(
-    typingProofHash: string,
-    proofData: ProofData,
-    finalContent: string
-  ): Promise<TypingProofVerificationResult> {
-    const computedContentHash = await this.hashChainManager.computeHash(finalContent);
-
-    if (computedContentHash !== proofData.finalContentHash) {
-      return {
-        valid: false,
-        reason: 'Final content does not match the proof',
-      };
-    }
-
-    const proofString = JSON.stringify(proofData);
-    const computedProofHash = await this.hashChainManager.computeHash(proofString);
-
-    if (computedProofHash !== typingProofHash) {
-      return {
-        valid: false,
-        reason: 'Proof hash does not match',
-      };
-    }
-
-    // events が無いためメタデータのみの粗い判定 (上の JSDoc 参照)。
-    const isPureTyping =
-      proofData.metadata.pasteEvents === 0 &&
-      proofData.metadata.dropEvents === 0 &&
-      (proofData.metadata.bulkInsertEvents ?? 0) === 0;
-
-    return {
-      valid: true,
-      isPureTyping,
-      deviceId: proofData.deviceId,
-      metadata: proofData.metadata,
     };
   }
 

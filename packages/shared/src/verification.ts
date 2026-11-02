@@ -681,28 +681,29 @@ export async function verifyPoSW(previousHash: string, eventDataString: string, 
 
 /**
  * Verify typing proof hash (metadata)
+ *
+ * 最終コンテンツのハッシュと `typingProofHash` の照合だけを行う内部関数 (`verifyProofFile` 専用)。
+ * isPureTyping はここでは判定しない (判定の定義は `verifyProofMetadata` → `evaluatePureTyping` の 1 つだけ)。
  */
-export async function verifyTypingProofHash(
+async function verifyTypingProofHash(
   typingProofHash: string,
   proofData: ProofData,
   finalContent: string
-): Promise<{ valid: boolean; isPureTyping: boolean }> {
+): Promise<{ valid: boolean }> {
   const computedContentHash = await computeHash(finalContent);
 
   if (computedContentHash !== proofData.finalContentHash) {
-    return { valid: false, isPureTyping: false };
+    return { valid: false };
   }
 
   const proofString = JSON.stringify(proofData);
   const computedProofHash = await computeHash(proofString);
 
   if (computedProofHash !== typingProofHash) {
-    return { valid: false, isPureTyping: false };
+    return { valid: false };
   }
 
-  const isPureTyping = proofData.metadata.pasteEvents === 0 && proofData.metadata.dropEvents === 0;
-
-  return { valid: true, isPureTyping };
+  return { valid: true };
 }
 
 /**

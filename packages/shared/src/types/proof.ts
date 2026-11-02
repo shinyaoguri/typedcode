@@ -189,6 +189,12 @@ export interface SignatureData {
   finalHash: string | null;
   startTime: number;
   endTime: number;
+  /**
+   * `{ totalEvents, finalHash, startTime, endTime }` の `JSON.stringify` を SHA-256 にかけただけの値。
+   * **鍵を使わないので署名ではなく、どこでも検証されない** (真正性・完全性の根拠にならない。
+   * 改ざん耐性はハッシュチェーン・PoSW・署名付きチェックポイントが担う)。
+   * 名前は旧形式からの互換のためで、proof 形式を変えないので改名しない。
+   */
   signature: string;
   events: StoredEvent[];
 }
