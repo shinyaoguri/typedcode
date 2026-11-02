@@ -17,10 +17,10 @@ export default defineConfig({
       thresholds: {
         // 普段のテストで config が書き換わらないよう、ラチェット時 (COVERAGE_RATCHET=1) だけ有効にする
         autoUpdate: process.env.COVERAGE_RATCHET === '1' ? (value: number) => Math.floor(value) : false,
-        lines: 77,
-        functions: 73,
-        branches: 72,
-        statements: 76,
+        lines: 78,
+        functions: 74,
+        branches: 73,
+        statements: 77,
       },
     },
   },
