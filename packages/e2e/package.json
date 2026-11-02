@@ -6,10 +6,12 @@
   "description": "End-to-end browser tests: drive the real editor, export proofs, and verify them with verify-cli (round-trip oracle).",
   "scripts": {
     "setup": "node scripts/setup-env.mjs",
+    "pretest": "npm run setup && npm run install-browsers",
     "test": "playwright test",
     "test:build": "playwright test --config playwright.build.config.ts",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
+    "preshots": "npm run setup && npm run install-browsers",
     "shots": "SHOTS=1 playwright test --grep @shots",
     "report": "playwright show-report",
     "install-browsers": "playwright install chromium",
