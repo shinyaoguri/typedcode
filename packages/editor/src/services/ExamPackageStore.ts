@@ -5,8 +5,8 @@
  * **用途は「リロード時の問題再表示」のみ**。チェーン束縛そのもの (examContext) は proof 状態側に
  * 持つ (root の nonce/root と不可分のため再構築不可・本ストアからは復元しない)。
  *
- * T0 後は問題は公開値なので localStorage 保存で機密性の損失はない。解除は `?reset`
- * (localStorage.clear) に一本化されている (ADR-0010)。
+ * T0 後は問題は公開値なので localStorage 保存で機密性の損失はない。解除は設定メニューのリセットで
+ * 現在のモードの分だけ消える (`utils/StorageClearHelper.ts`。#323)。
  */
 
 import type { ExamPackageManifest } from '@typedcode/shared';
@@ -61,7 +61,7 @@ export const ExamPackageStore = {
     return values[0] ?? null;
   },
 
-  /** すべて消す (テスト/明示クリア用。通常の解除は ?reset の localStorage.clear に委ねる) */
+  /** すべて消す (テスト/明示クリア用。通常の解除は設定メニューのリセットに委ねる) */
   clear(): void {
     try {
       localStorage.removeItem(examPackagesKey());

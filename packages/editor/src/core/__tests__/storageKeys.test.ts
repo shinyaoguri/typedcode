@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  allSessionDbNames,
   examPackagesKey,
+  modeLocalStorageKeys,
+  modeSessionStorageKeys,
   sessionActiveKey,
   sessionDbName,
   setStorageNamespace,
@@ -49,21 +50,29 @@ describe('setStorageNamespace is the single switch that re-points every getter',
   });
 });
 
-describe('allSessionDbNames', () => {
-  it('covers every mode session db plus the legacy screenshots db for ?reset', () => {
-    expect(allSessionDbNames()).toEqual([
-      'typedcode-session',
-      'typedcode-session-class',
-      'typedcode-session-assignment',
-      'typedcode-session-exam',
-      'typedcode-screenshots',
-    ]);
+describe('keys that the reset removes (modeLocalStorageKeys / modeSessionStorageKeys)', () => {
+  it('lists only the current mode keys for casual (un-suffixed)', () => {
+    setStorageNamespace('casual');
+    expect(modeLocalStorageKeys()).toEqual(['typedcode-exam-packages', 'typedcode-class-problems']);
+    expect(modeSessionStorageKeys()).toEqual(['typedcode-tabs', 'typedcode-session-active']);
   });
 
-  it('is independent of the current namespace', () => {
-    setStorageNamespace('exam');
-    const underExam = allSessionDbNames();
-    setStorageNamespace('casual');
-    expect(allSessionDbNames()).toEqual(underExam);
+  it('lists only the suffixed keys for the current mode and none of the other modes', () => {
+    setStorageNamespace('assignment');
+    expect(modeLocalStorageKeys()).toEqual([
+      'typedcode-exam-packages-assignment',
+      'typedcode-class-problems-assignment',
+    ]);
+    expect(modeSessionStorageKeys()).toEqual(['typedcode-tabs-assignment', 'typedcode-session-active-assignment']);
+  });
+
+  it('never includes the mode-independent keys (terms, locale, theme)', () => {
+    for (const mode of ['casual', 'class', 'assignment', 'exam'] as const) {
+      setStorageNamespace(mode);
+      const all = [...modeLocalStorageKeys(), ...modeSessionStorageKeys()];
+      expect(all).not.toContain('typedcode-terms-accepted');
+      expect(all).not.toContain('typedcode-locale');
+      expect(all).not.toContain('typedcode-theme');
+    }
   });
 });

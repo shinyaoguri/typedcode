@@ -49,15 +49,14 @@ export function classProblemsKey(): string {
 }
 
 /**
- * 全モードのセッション IndexedDB 名 (?reset の全消去用)。legacy `typedcode-screenshots`
- * も含める。新しいモードを足したらここにも追加すること。
+ * 現在のモードが localStorage に持つキー (リセットの消去対象)。モード共通のキー (規約同意・表示言語・
+ * テーマ) は含めない。新しいモード別キーを足したらここにも追加すること (#323)。
  */
-export function allSessionDbNames(): readonly string[] {
-  return [
-    'typedcode-session',
-    'typedcode-session-class',
-    'typedcode-session-assignment',
-    'typedcode-session-exam',
-    'typedcode-screenshots', // legacy (現在はセッション DB の screenshots ストアを使用)
-  ];
+export function modeLocalStorageKeys(): readonly string[] {
+  return [examPackagesKey(), classProblemsKey()];
+}
+
+/** 現在のモードが sessionStorage に持つキー (リセットの消去対象)。足したらここにも追加する (#323)。 */
+export function modeSessionStorageKeys(): readonly string[] {
+  return [tabsKey(), sessionActiveKey()];
 }

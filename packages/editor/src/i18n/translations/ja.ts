@@ -105,14 +105,16 @@ export const ja: TranslationKeys = {
   },
 
   resetDialog: {
-    title: 'すべてのデータをリセット',
+    title: 'このモードのデータをリセット',
     warning: 'この操作は取り消せません！',
-    description: '以下のデータが完全に削除されます：',
-    itemTabs: 'すべてのタブとコード',
-    itemLogs: 'すべての操作ログ',
-    itemProofs: 'すべてのタイピング証明',
-    itemData: 'すべての保存データ',
-    confirmButton: 'すべてリセット',
+    scope: '「${mode}」モード（${count} タブ）の以下のデータが完全に削除されます。ほかのモードのデータは残ります。',
+    itemTabs: 'このモードのタブとコード',
+    itemLogs: 'このモードの操作ログ',
+    itemProofs: 'このモードのタイピング証明',
+    itemData: 'このモードの保存データ',
+    confirmButton: 'このモードをリセット',
+    failed:
+      'リセットに失敗しました。同じモードを別のタブで開いている場合は閉じて、ページを再読み込みしてからやり直してください。',
   },
 
   tabCloseDialog: {
@@ -618,7 +620,6 @@ export const ja: TranslationKeys = {
       codeLabel: '監督コード',
       startButton: '開始',
       unlocking: '解錠中…',
-      resetHint: '※ データを全消去してやり直すには URL に ?reset を付けます。',
       errorNoFile: '問題パッケージを選択してください。',
       errorNoCode: '監督コードを入力してください。',
       errorInvalidFile: '問題パッケージの形式が不正です（.tcexam を選択してください）。',

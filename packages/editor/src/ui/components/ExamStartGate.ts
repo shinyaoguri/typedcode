@@ -238,8 +238,6 @@ export class ExamStartGate {
         <button class="btn btn-primary exam-gate-start" id="exam-gate-start" disabled>
           <i class="fas fa-play"></i> ${escapeHtml(t('exam.gate.startButton'))}
         </button>
-
-        <p class="exam-gate-hint">${escapeHtml(t('exam.gate.resetHint'))}</p>
       </div>
     `;
   }

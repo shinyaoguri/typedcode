@@ -105,14 +105,16 @@ export const en: TranslationKeys = {
   },
 
   resetDialog: {
-    title: 'Reset All Data',
+    title: 'Reset This Mode',
     warning: 'This action cannot be undone!',
-    description: 'The following data will be permanently deleted:',
-    itemTabs: 'All tabs and code',
-    itemLogs: 'All operation logs',
-    itemProofs: 'All typing proofs',
-    itemData: 'All saved data',
-    confirmButton: 'Reset All',
+    scope:
+      'The following data in "${mode}" mode (tabs: ${count}) will be permanently deleted. Data in the other modes is kept.',
+    itemTabs: 'Tabs and code in this mode',
+    itemLogs: 'Operation logs in this mode',
+    itemProofs: 'Typing proofs in this mode',
+    itemData: 'Saved data in this mode',
+    confirmButton: 'Reset This Mode',
+    failed: 'Reset failed. If the same mode is open in another tab, close it, reload this page, and try again.',
   },
 
   tabCloseDialog: {
@@ -621,7 +623,6 @@ export const en: TranslationKeys = {
       codeLabel: 'Proctor code',
       startButton: 'Start',
       unlocking: 'Unlocking…',
-      resetHint: 'Note: append ?reset to the URL to clear all data and start over.',
       errorNoFile: 'Please select a problem package.',
       errorNoCode: 'Please enter the proctor code.',
       errorInvalidFile: 'Invalid package format (please select a .tcexam file).',

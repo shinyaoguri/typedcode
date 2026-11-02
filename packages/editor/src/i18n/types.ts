@@ -126,12 +126,14 @@ export interface TranslationKeys {
   resetDialog: {
     title: string;
     warning: string;
-    description: string;
+    /** 消えるモード名 (`${mode}`) とそのモードのタブ数 (`${count}`) を差し込む */
+    scope: string;
     itemTabs: string;
     itemLogs: string;
     itemProofs: string;
     itemData: string;
     confirmButton: string;
+    failed: string;
   };
 
   // Tab close confirmation dialog
@@ -631,7 +633,6 @@ export interface TranslationKeys {
       codeLabel: string;
       startButton: string;
       unlocking: string;
-      resetHint: string;
       errorNoFile: string;
       errorNoCode: string;
       errorInvalidFile: string;
