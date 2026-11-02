@@ -1099,12 +1099,19 @@ export class TabManager {
 
     // 3. needsSaveがtrue（デバウンス中に変更があった）、または
     //    念のため最新状態を保存
+    // executeSave と同じく保存の前に needsSave をクリアする。保存の await 中に来た
+    // saveToStorage() は needsSave を立て直すので、その要求を握りつぶさずに残せる
+    this.needsSave = false;
     debugLog('[TabManager] Saving latest state to IndexedDB...');
     await this.saveToIndexedDB();
     this.saveToSessionStorage();
 
-    // needsSaveをクリア
-    this.needsSave = false;
+    // 4. 同期状態を確定する (#456)
+    // 1. でデバウンスタイマーを取り消したので、状態を決める executeSave の完了処理は走らない。
+    // flush の間に新しい保存要求が来ていれば (needsSave・タイマー・実行中の保存)、その保存が決める
+    if (!this.needsSave && !this.saveDebounceTimer && !this.currentSavePromise) {
+      this.updateSyncStatus(this.hasPendingEvents() ? 'pending' : 'synced');
+    }
 
     debugLog('[TabManager] IndexedDB flush complete');
   }
