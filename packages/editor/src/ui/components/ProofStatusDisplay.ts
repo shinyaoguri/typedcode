@@ -129,6 +129,10 @@ export class ProofStatusDisplay {
         .then((result) => {
           if (result.recorded) {
             console.log('[TypedCode] Content snapshot recorded at event', result.index);
+            // スナップショットは EventRecorder を通さずに記録されるので、これが最後のイベントだと
+            // カウンタ (状態契約の data-count / data-hash) が 1 件ぶん遅れたまま残る。記録後に表示を追従させる。
+            // 再入しても totalEvents が 100 の倍数を外れる (または閾値が進んでいる) ので二重には記録しない。
+            this.update();
           } else {
             console.warn('[TypedCode] Content snapshot was not recorded (dropped)');
           }

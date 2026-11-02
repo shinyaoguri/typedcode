@@ -26,9 +26,12 @@ tests/
 ├── helpers/verifyCli.ts  # tsx で verify-cli/src/cli.ts を直接実行 (build 待ち不要。dist は verify-cli の test:dist が担保)
 ├── helpers/verifyWeb.ts  # VerifyWebApp: 検証 Web を開き #file-input に ZIP/JSON を渡し、data-* の状態契約だけを読む
 ├── helpers/scenario.ts   # 利用シーン網羅 (scenarios/) の操作とフィクスチャ: .tcclass / テンプレート YAML、メニュー操作、問題の読み込み、マウスでのドラッグ・リサイズ、ファイルのドロップ、ノート付き export (app.ts は並行作業と衝突しないよう触らずここに置く)
+├── helpers/faults.ts     # 障害注入 (#435): Workers の API を 1 つずつ 503 / abort / hang (呼び出し回数を返す)、Turnstile のスクリプトの遮断、IndexedDB の open 失敗・QuotaExceeded、getDisplayMedia の stream の退避とトラックの ended
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
 ├── workers-hang-export.spec.ts  # Workers 無応答 (route で応答しない) でも class の export が上限内に ZIP を出す (#324。fetch 上限 + best-effort 予算)
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
+├── fault-workers / fault-turnstile / fault-network / fault-storage  # 障害注入 (#435): session/start・checkpoint/sign の失敗、Turnstile 不達、オフラインの往復、IndexedDB の障害 (#325 / #300 は fixme)
+├── multi-instance / history-navigation / viewport / ime-undo / idle / screen-capture-lock / reset-url  # 環境の揺さぶり (#435): 多重起動・戻る / 進む・狭い画面・IME と undo / redo・アイドル停止・画面共有の停止・?reset (#323 は fixme)
 ├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)
 ├── scenarios/*.spec.ts   # editor の利用シーン網羅 (#434): ランディング・規約・class/assignment・復旧の新規開始・タブ並べ替え・8 言語・テーマ/表示言語・リセット・テンプレート・パネル・セルフレビュー・新規ウィンドウ。各シナリオは expectConsistent() と verify-cli (fast) で締める。既知の製品バグは test.fixme('#N ...') で再現を置く
 ├── verify-web.spec.ts    # 検証 Web の往復: Web↔CLI パリティ・改ざん・複数ファイル (#215)・壊れた proof (#292)・タブを閉じたあとの active / 表示の一致 (#281)
@@ -77,5 +80,12 @@ CI では `deploy.yml` の `e2e-shard` job が Playwright の `--shard=1/2` / `2
 - **`vite preview` は `server.proxy` を引き継ぐ**: editor の `preview.proxy: {}` を外すと `/verify` が dev の verify サーバへ転送され、本番ビルドのスモークで 502 になる
 - **headless では本物の window blur が出ない**: `window.dispatchEvent(new Event('blur'))` で発火させる (handleBlur は isTrusted 非依存)
 - **画面共有は fake-media フラグで動く**: `playwright.config.ts` の chromium 引数で `getDisplayMedia` が monitor の fake stream を返す
+- **画面共有の停止は `track.stop()` では再現できない**: ページ自身が止めたトラックには `ended` が発火しない。`faults.ts` の `captureDisplayStreams` で stream を退避し、`endLastScreenShare` でトラックに `ended` を直接投げる
+- **API の障害は 1 つずつ塞ぐ**: `**/api/**` をまとめて塞ぐと casual の export 前認証 (`/api/verify-captcha`) まで落ち、export が設計どおり中止される。`injectApiFault` でエンドポイントを選び、返る `calls()` で注入が空振りしていないことを assert する。hang は 1 回あたり fetch 上限 (10 秒) かかるので、`addTab` (expect の既定 15 秒) では足りないことがある
+- **`setOffline` は読込後にだけ使う**: 読込前に入れると Monaco などの読み込みまで遮断される。読込後の数秒の往復では Vite の HMR がページを読み直さないことを実測した (`fault-network.spec.ts` が navigation の回数で見張る)
+- **値の無い `?reset` は何も消さない**: `urlParams.get('reset')` が空文字で偽になる。全消去が走るのは `?reset=<値>` (Reset All が付ける `?reset=<timestamp>` を含む) だけ (#323)
+- **打鍵した改行は `\r\n` になる**: `devices['Desktop Chrome']` は Windows の UA なので Monaco のモデルの改行が CRLF になり、`keyboard.type('a\n')` の内容は `a\r\n`。最終内容を文字列で比べる spec は改行を打たないか、改行を正規化して比べる
+- **undo / redo は Ctrl 系で押す**: `devices['Desktop Chrome']` は Windows の UA なので、Monaco は mac の上でも Ctrl+Z / Ctrl+Shift+Z を undo / redo にする (`ControlOrMeta` だと mac では Cmd になって何も起きない)
+- **`page.clock` の時刻表記は `hh:mm:ss`**: `'60:00'` は不正 (分は 59 まで)。1 時間は `'01:00:00'`。setInterval のカウントダウンは `fastForward` (各タイマー高々 1 回) ではなく `runFor` で回す
 - **AI 一括投入の再現は dev フック経由**: `keyboard.insertText` は Monaco が 1 文字ずつ分解するため再現にならない。`window.__tcTestInsertBlock` (dev 限定) で `executeEdits` を 1 回適用する
 - **dev サーバ向けの spec は本番ビルドの退行を検出できない (#255)**: チャンク分割・バンドル変換の壊れ方は `vite build` の出力にしか現れない。`production-build.spec.ts` + `playwright.build.config.ts` がその 1 本の番人で、`vite preview` に対して走る。dev フック (`__tcTestInsertBlock` / `__tcTestSnapshot`) は dist に無い (無いことを同 spec が assert する) ので、この経路の spec は増やすなら **dev 限定 API に依存しない**こと
