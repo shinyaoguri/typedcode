@@ -145,6 +145,7 @@ gh release create vX.Y.Z --target main --title "vX.Y.Z" --generate-notes
 - タグは main の履歴上のコミットにのみ有効 (CI が ancestor 検証で強制)。
 - **タグの付け替え・削除はしない** (ruleset でも禁止)。本番を戻したいときは fix を入れて**次のパッチタグ**を打つ。
 - 破壊的な証明フォーマット変更は `PROOF_FORMAT_VERSION` とも対応させる。
+- **リリースの停滞は自動で検知する** (#410)。週次の `freshness.yml` が、最新の `v*` タグから **30 日を超え**、かつそのタグ以降に `fix` / `feat` のコミット (`feat(scope)!:` も含む) が **1 件以上**あるとき、`chore: 本番リリースの停滞 (自動)` という Issue を開く (open のものがあればコメントを追記する。docs / chore / ci だけの 30 日超は検知しない)。通知を受けたら、上の手順でリリースする。見送るならその理由を Issue にコメントする。判定は `scripts/release-stall.mjs`
 
 ## 本番緊急修正 (hotfix)
 

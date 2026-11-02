@@ -7,6 +7,8 @@ name: Freshness
 # 検査項目:
 #   1. リポ内 Markdown の相対リンク切れ (docs/ADR ↔ 実装のパスずれを拾う)
 #   2. npm 依存の古さ (npm outdated の要約)
+#   3. 本番リリースの停滞 (最新の v* タグから 30 日超 かつ 未リリースの fix / feat が 1 件以上。#410)
+#      1・2 とは別の専用 Issue に出す (常設の「鮮度チェック」Issue に埋もれさせないため)
 on:
   schedule:
     # 毎週月曜 00:00 UTC (= 月曜 09:00 JST)
@@ -27,6 +29,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 3 のリリース停滞検知が v* タグと <tag>..HEAD の履歴を読むため全履歴とタグが要る
+          fetch-depth: 0
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -208,6 +213,35 @@ jobs:
         run: |
           set -euo pipefail
           body="${RUNNER_TEMP}/report.md"
+
+          existing="$(gh issue list --state open --limit 200 --json number,title \
+            --jq '[.[] | select(.title == env.ISSUE_TITLE)] | .[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            echo "既存 Issue #${existing} にコメント追記します。"
+            gh issue comment "$existing" --body-file "$body"
+          else
+            echo "新規 Issue を作成します。"
+            gh issue create --title "$ISSUE_TITLE" --body-file "$body"
+          fi
+
+      # ------------------------------------------------------------------
+      # 3. 本番リリースの停滞 (#410)
+      #    判定は scripts/release-stall.mjs (純関数 + node --test)。1・2 の集約 (Compose report /
+      #    上の Issue) には混ぜず、専用タイトルの Issue に出す。検知しても job は失敗させない。
+      # ------------------------------------------------------------------
+      - name: Check release stall
+        id: stall
+        run: node scripts/release-stall.mjs --body-file "${RUNNER_TEMP}/release-stall.md"
+
+      - name: Create or update release stall issue
+        if: steps.stall.outputs.stalled == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: 'chore: 本番リリースの停滞 (自動)'
+        run: |
+          set -euo pipefail
+          body="${RUNNER_TEMP}/release-stall.md"
 
           existing="$(gh issue list --state open --limit 200 --json number,title \
             --jq '[.[] | select(.title == env.ISSUE_TITLE)] | .[0].number // empty')"
