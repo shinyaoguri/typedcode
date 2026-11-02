@@ -158,6 +158,64 @@ describe('EventRecorder with a dropped event (#284)', () => {
   });
 });
 
+describe('EventRecorder.whenTabSettled (#342)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('Worker', MockPoswWorker);
+    persistence.saveEventToIndexedDB.mockReset();
+    persistence.saveEventToIndexedDB.mockImplementation(async () => {});
+    persistence.saveTabsToSessionStorage.mockClear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('resolves immediately when nothing is in flight for the tab', async () => {
+    const { recorder } = await setup();
+
+    await expect(recorder.whenTabSettled('tab-1')).resolves.toBeUndefined();
+  });
+
+  it('does not resolve until the IndexedDB append of an in-flight record() has finished', async () => {
+    const { recorder } = await setup();
+    let finishAppend: () => void = () => {};
+    persistence.saveEventToIndexedDB.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finishAppend = resolve))
+    );
+    recorder.record({ type: 'contentChange', inputType: 'insertText', data: 'a' });
+    await vi.waitFor(() => expect(persistence.saveEventToIndexedDB).toHaveBeenCalledTimes(1));
+
+    let settled = false;
+    const waiting = recorder.whenTabSettled('tab-1').then(() => (settled = true));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settled).toBe(false);
+
+    finishAppend();
+    await waiting;
+    expect(settled).toBe(true);
+  });
+
+  it("does not wait for another tab's in-flight record()", async () => {
+    const { recorder } = await setup();
+    persistence.saveEventToIndexedDB.mockImplementationOnce(() => new Promise<void>(() => {}));
+    recorder.record({ type: 'contentChange', inputType: 'insertText', data: 'a' });
+    await vi.waitFor(() => expect(persistence.saveEventToIndexedDB).toHaveBeenCalledTimes(1));
+
+    await expect(recorder.whenTabSettled('tab-other')).resolves.toBeUndefined();
+  });
+
+  it('counts a record() that failed as settled instead of rejecting', async () => {
+    const { typingProof, recorder } = await setup();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    failNextPoSW(typingProof);
+    recorder.record({ type: 'contentChange', inputType: 'insertText', data: 'a' });
+
+    await expect(recorder.whenTabSettled('tab-1')).resolves.toBeUndefined();
+  });
+});
+
 /** 偽 tabManager のタブ一覧を差し替えられる版。TabManager の登録 (tabs.set) を addTab で模す */
 async function setupWithTabs(options: { getTermsAcceptedEvent?: () => RecordEventInput | null } = {}) {
   const tabs: TabState[] = [];
