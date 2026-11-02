@@ -40,7 +40,23 @@ npm run report -w @typedcode/e2e        # 直近の HTML レポート (trace 付
 ```
 
 ローカルで既に `npm run dev` を回している場合は `reuseExistingServer` でその
-サーバを再利用する (CI では毎回新規起動)。
+サーバを再利用する (CI では毎回新規起動)。**exam の spec は editor を E2E 用の設定
+(出題者鍵を差し替える `vite.editor.config.mjs`) で起こすサーバが前提**なので、別の worktree などの
+通常の dev サーバが 5173 を握っていると「出題者の署名を検証できない」で落ちる。その場合は
+`E2E_EDITOR_PORT` / `E2E_WORKERS_PORT` / `E2E_VERIFY_PORT` で空きポートを指定する。
+
+### exam の fixture (#229)
+
+`npm run setup` が `scripts/setup-exam-fixture.mjs` で `packages/e2e/fixtures/exam/` (gitignore 済み) に、
+使い捨ての出題者鍵で署名・封印した問題パッケージ (v2 バンドル 1 問) を作る。封印は本物の出題者ツール
+`packages/workers/scripts/make-exam-package.mjs` を spawn するので、shared との canonical serialization の
+ドリフトも検出できる。出題者の**秘密鍵はディスクに残さない**。fixture は揃っていれば作り直さない
+(作り直すなら `packages/e2e/fixtures` を消して `npm run setup -w @typedcode/e2e`)。
+
+shared の追跡ファイル `examAuthorityKeys/localKeys.ts` は**書き換えない** (E2E の鍵が混ざったままコミットされると
+本番の verifier が偽の出題者鍵を信頼する。#338)。editor は `vite.editor.config.mjs`、verify-cli は
+`tests/helpers/verifyCli.ts` の `examAuthorityKeys: true` (`exam-keys/` の resolve フック) で、E2E の実行時だけ
+`./localKeys` の import を fixture の公開鍵に差し替える。
 
 ### 本番ビルド向けの別設定 (#255)
 
@@ -127,6 +143,7 @@ shared の main が raw TypeScript のため `node dist/cli.js` は動かない
 | mode-routing.spec.ts | `/`・未知パスはランディング (エディタ非初期化・4カード)、`/casual` は明示ルート、カードから遷移 |
 | reload-recovery.spec.ts | 編集→リロード→復元→追記→export、チェーンがリロードをまたいで検証 pass |
 | screen-share.spec.ts | 画面共有有効化 → screenShareStart + スクショ記録 → ZIP に screenshots/ → 検証 pass |
+| exam-roundtrip.spec.ts | `/exam` で `.tcexam` を誤コードで拒否 (ゲートに留まる) → 正コードで解錠 → 打鍵 → export → `verify-cli --mode fast --exam-package` が exit 0 + Exam binding の PASS 行。別パッケージ・本物の registry では exit 1。署名 envelope ≥ 1 (#229) |
 
 > reload-recovery は実装の **sessionStartToken 喪失バグ** (リロードで root アンカーが落ち
 > proof が検証不能になる) を発見し、`editor` 側で修正した (editor↔shared をまたぐ統合バグ)。
@@ -154,6 +171,6 @@ shared の main が raw TypeScript のため `node dist/cli.js` は動かない
 > 三層保証 (`--analysis-bundle` の assurance)。success / warning・verified / partial の区別は Web だけの
 > TrustCalculator の導出で、CLI に対応する出力が無いので比べていない。
 
-残り (フルスクリーン = exam ゲート + .tcexam fixture / Turnstile 失敗分岐 / staging カナリア /
+残り (フルスクリーン / Turnstile 失敗分岐 / staging カナリア /
 ブラウザマトリクス) は今後。macOS ネイティブ全画面・実 Turnstile チャレンジ・実ディスプレイの
 画面共有ピッカーは手動スモーク。

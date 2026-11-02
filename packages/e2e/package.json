@@ -5,7 +5,7 @@
   "type": "module",
   "description": "End-to-end browser tests: drive the real editor, export proofs, and verify them with verify-cli (round-trip oracle).",
   "scripts": {
-    "setup": "node scripts/setup-env.mjs",
+    "setup": "node scripts/setup-env.mjs && node scripts/setup-exam-fixture.mjs",
     "pretest": "npm run setup && npm run install-browsers",
     "test": "playwright test",
     "test:build": "playwright test --config playwright.build.config.ts",

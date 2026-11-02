@@ -358,6 +358,33 @@ export class EditorApp {
     }
   }
 
+  /**
+   * 試験ゲート (`ExamStartGate`) に `.tcexam` と監督コードを入れて「開始」を押す (#229)。
+   * 解錠できたかどうかは見ない (誤コードの拒否を確かめるときにも使う)。
+   *
+   * 復号の Argon2id (64 MiB / 3 iters) はメインスレッドで同期に走るので、押した直後の数秒は
+   * ページが固まる。ここでは押すところまでで、結果は `unlockExam` / 呼び出し側の assert が待つ。
+   * ファイルは hidden の `<input type="file">` に直接渡す (ドロップゾーンのクリックを経ない)。
+   */
+  async submitExamGate(packagePath: string, code: string): Promise<void> {
+    await this.page.locator('#exam-gate-file').setInputFiles(packagePath);
+    await this.page.locator('#exam-gate-code').fill(code);
+    const start = this.page.locator('#exam-gate-start');
+    await expect(start).toBeEnabled();
+    await start.click();
+  }
+
+  /**
+   * 試験ゲートを解錠して、エディタとイベント記録 (#0 / #1 examOpened) が立ち上がるまで待つ。
+   * 解錠後はゲートが外れて `html[data-app-state]` が `ready` になる。
+   */
+  async unlockExam(packagePath: string, code: string): Promise<void> {
+    await this.submitExamGate(packagePath, code);
+    await expect.poll(() => this.appState(), { timeout: UNLOCK_TIMEOUT_MS }).toBe('ready');
+    await expect(this.page.locator('#exam-start-gate')).toHaveCount(0);
+    await this.waitReady();
+  }
+
   /** 現在のタブだけをエクスポート (`<name>_TC<ts>.zip`)。保存パスを返す。 */
   exportCurrentTab(): Promise<string> {
     return this.exportAndSave('currentTab');
@@ -481,6 +508,9 @@ export interface OpenModeOptions {
   /** エディタと #0 の記録まで待つ。既定 true (問題読込・試験ゲートの手前で止まるモードは false)。 */
   waitReady?: boolean;
 }
+
+/** 試験ゲートの解錠 (署名検証 + Argon2id の復号 + セッション構築) を待つ上限。CI の遅いランナーでも収まる余裕を取る。 */
+const UNLOCK_TIMEOUT_MS = 120_000;
 
 /** `waitForSynced` が event-count の安定を待つ上限。 */
 const SYNC_STABLE_TIMEOUT_MS = 30_000;
