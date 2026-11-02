@@ -32,7 +32,11 @@ import { performVerificationWithUI } from './TabVerificationUI.js';
 import { resolveRestoreOrder } from './restoreOrder.js';
 import { shouldRecordTabSwitch } from './tabSwitchPolicy.js';
 import { t } from '../../i18n/index.js';
-import { type SessionStorageService, getSessionStorageService } from '../../services/SessionStorageService.js';
+import {
+  type SessionStorageService,
+  getSessionStorageService,
+  EventChainConflictError,
+} from '../../services/SessionStorageService.js';
 import {
   type SignedCheckpointService,
   createSignedCheckpointServiceIfEnabled,
@@ -1107,37 +1111,49 @@ export class TabManager {
         }
       }
 
-      // 未保存のイベントを IndexedDB に追加 (#144)。
-      // 初回のみ既存イベントを全読みして欠落込みで突合し、以降はカーソル以降だけを
-      // append する (保存は 100ms デバウンスで頻発するため、毎回の全読みは長セッションで
-      // 保存を線形に重くする)。
-      let newEventsCount = 0;
-      const cursor = this.savedEventCursor.get(id);
-      if (cursor === undefined) {
-        // 初回 (リロード復旧直後など): 既存シーケンスと突合して欠落も補修する (従来挙動)
-        const existingEvents = await this.sessionService.getEvents(id);
-        const existingSequences = new Set(existingEvents.map((e) => e.sequence));
-        for (const event of proofState.events) {
-          if (event && !existingSequences.has(event.sequence)) {
-            await this.sessionService.appendEvent(id, event);
-            newEventsCount++;
+      try {
+        // 未保存のイベントを IndexedDB に追加 (#144)。
+        // 初回のみ既存イベントを全読みして欠落込みで突合し、以降はカーソル以降だけを
+        // append する (保存は 100ms デバウンスで頻発するため、毎回の全読みは長セッションで
+        // 保存を線形に重くする)。
+        let newEventsCount = 0;
+        const cursor = this.savedEventCursor.get(id);
+        if (cursor === undefined) {
+          // 初回 (リロード復旧直後など): 既存シーケンスと突合して欠落も補修する (従来挙動)
+          const existingEvents = await this.sessionService.getEvents(id);
+          const existingSequences = new Set(existingEvents.map((e) => e.sequence));
+          for (const event of proofState.events) {
+            if (event && !existingSequences.has(event.sequence)) {
+              await this.sessionService.appendEvent(id, event);
+              newEventsCount++;
+            }
+          }
+        } else {
+          for (let i = cursor; i < proofState.events.length; i++) {
+            const event = proofState.events[i];
+            if (event) {
+              await this.sessionService.appendEvent(id, event);
+              newEventsCount++;
+            }
           }
         }
-      } else {
-        for (let i = cursor; i < proofState.events.length; i++) {
-          const event = proofState.events[i];
-          if (event) {
-            await this.sessionService.appendEvent(id, event);
-            newEventsCount++;
-          }
-        }
-      }
-      this.savedEventCursor.set(id, proofState.events.length);
+        this.savedEventCursor.set(id, proofState.events.length);
 
-      if (newEventsCount > 0) {
-        debugLog(
-          `[TabManager] SAVE: Tab ${id}: saved ${newEventsCount} new events (total: ${proofState.events.length})`
-        );
+        if (newEventsCount > 0) {
+          debugLog(
+            `[TabManager] SAVE: Tab ${id}: saved ${newEventsCount} new events (total: ${proofState.events.length})`
+          );
+        }
+      } catch (e) {
+        if (e instanceof EventChainConflictError) {
+          // 同じセッションに別インスタンスが先に違う hash のイベントを書いていた (#484 / #237)。
+          // 保存層は events も tabs も変えずに拒否したので、ここで自分のスナップショットを
+          // saveTab で上書きして汚さない。cursor も進めず、他のタブと sessionStorage の保存は続ける。
+          // 検出時の read-only 化・UI は #237 PR-3
+          console.error(`[TabManager] SAVE: skipped tab ${id}: ${e.message}`);
+          continue;
+        }
+        throw e;
       }
 
       const tabData: StoredTabData = {

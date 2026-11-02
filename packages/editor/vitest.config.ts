@@ -18,9 +18,9 @@ export default defineConfig({
         // 普段のテストで config が書き換わらないよう、ラチェット時 (COVERAGE_RATCHET=1) だけ有効にする
         autoUpdate: process.env.COVERAGE_RATCHET === '1' ? (value: number) => Math.floor(value) : false,
         lines: 29,
-        functions: 29,
-        branches: 22,
-        statements: 28,
+        functions: 30,
+        branches: 23,
+        statements: 29,
       },
     },
   },
