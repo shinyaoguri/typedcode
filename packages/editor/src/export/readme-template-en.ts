@@ -276,7 +276,8 @@ Visit the TypedCode verification page and upload the proof JSON file for automat
 
 ### Privacy Notes
 - All data is stored locally in the browser
-- No automatic server uploads
+- Your code, keystrokes and personal information are never sent to the server
+- The only things sent to the server are the Turnstile token for human verification and, for timestamping, the session ID, a hash of the device fingerprint, and hash-chain values with their timestamps
 - Screenshots are only included in the exported ZIP
 - Device fingerprint is hashed (not reversible)
 
