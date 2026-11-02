@@ -103,20 +103,6 @@ export interface VerificationResultData {
     totalTimeMs: number;
     iterations: number;
   };
-  // サンプリング検証結果
-  sampledResult?: {
-    sampledSegments: Array<{
-      startIndex: number;
-      endIndex: number;
-      eventCount: number;
-      startHash: string;
-      endHash: string;
-      verified: boolean;
-    }>;
-    totalSegments: number;
-    totalEventsVerified: number;
-    totalEvents: number;
-  };
   // 検証モード (Phase 2 で worker から設定される)
   verificationMode?: VerificationMode;
   poswMode?: PoswMode;
@@ -309,22 +295,6 @@ export interface ChainErrorDetails {
   totalEvents: number; // 全イベント数
 }
 
-/** サンプリング区間情報（UI表示用） */
-export interface SampledSegmentInfo {
-  startIndex: number;
-  endIndex: number;
-  eventCount: number;
-  verified: boolean;
-}
-
-/** サンプリング検証結果（UI表示用） */
-export interface SampledVerificationInfo {
-  segments: SampledSegmentInfo[];
-  totalSegments: number;
-  totalEventsVerified: number;
-  totalEvents: number;
-}
-
 /** 検証結果（UIコンポーネント用） */
 export interface VerificationResult {
   chainValid: boolean;
@@ -334,7 +304,6 @@ export interface VerificationResult {
   verificationMethod?: string;
   errorMessage?: string;
   chainErrorDetails?: ChainErrorDetails; // チェーン検証エラーの詳細
-  sampledVerification?: SampledVerificationInfo; // サンプリング検証の詳細
 }
 
 /** PoSW統計（UIコンポーネント用・表示形式） */

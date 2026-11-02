@@ -12,7 +12,6 @@ import type {
   TrustLevel,
   DiffResult,
   ChainErrorDetails,
-  SampledVerificationInfo,
   VerificationMode,
   PoswMode,
   ScreenshotVerificationSummary,
@@ -137,11 +136,6 @@ export class ResultPanel {
   private chainErrorComputed: HTMLElement;
   private chainErrorTimestampRow: HTMLElement;
   private chainErrorTimestamp: HTMLElement;
-  // Chain segment visualization
-  private chainSegmentViz: HTMLElement;
-  private chainSegmentBar: HTMLElement;
-  private chainSegmentTotal: HTMLElement;
-  private chainSegmentInfo: HTMLElement;
 
   private poswIcon: HTMLElement;
   private poswBadge: HTMLElement;
@@ -271,11 +265,6 @@ export class ResultPanel {
     this.chainErrorComputed = document.getElementById('chain-error-computed')!;
     this.chainErrorTimestampRow = document.getElementById('chain-error-timestamp-row')!;
     this.chainErrorTimestamp = document.getElementById('chain-error-timestamp')!;
-    // Chain segment visualization
-    this.chainSegmentViz = document.getElementById('chain-segment-viz')!;
-    this.chainSegmentBar = document.getElementById('chain-segment-bar')!;
-    this.chainSegmentTotal = document.getElementById('chain-segment-total')!;
-    this.chainSegmentInfo = document.getElementById('chain-segment-info')!;
 
     // PoSW card
     this.poswIcon = document.getElementById('posw-icon')!;
@@ -598,9 +587,6 @@ export class ResultPanel {
 
     // Chain error details (show only when verification fails)
     this.renderChainErrorDetails(result.chainErrorDetails);
-
-    // Chain segment visualization (show for sampled verification)
-    this.renderChainSegmentViz(result.sampledVerification, eventCount, result.chainErrorDetails);
 
     // PoSW card with mode awareness
     const hasPoSW = poswStats && poswStats.totalIterations > 0;
@@ -1521,102 +1507,6 @@ export class ResultPanel {
     } else {
       this.chainErrorTimestampRow.style.display = 'none';
     }
-  }
-
-  /**
-   * サンプリング区間を視覚化
-   */
-  private renderChainSegmentViz(
-    sampledInfo?: SampledVerificationInfo,
-    totalEvents?: number,
-    errorDetails?: ChainErrorDetails
-  ): void {
-    // サンプリング検証がない場合は非表示
-    if (!sampledInfo || sampledInfo.segments.length === 0) {
-      this.chainSegmentViz.style.display = 'none';
-      return;
-    }
-
-    this.chainSegmentViz.style.display = 'block';
-
-    const total = sampledInfo.totalEvents || totalEvents || 1;
-    this.chainSegmentTotal.textContent = total.toLocaleString();
-
-    // セグメントバーをクリア
-    this.chainSegmentBar.innerHTML = '';
-
-    // 検証済み区間とそれ以外を描画
-    const segments = sampledInfo.segments;
-    let lastEndIndex = 0;
-
-    for (const segment of segments) {
-      // 前の区間との隙間（未検証区間）を描画
-      if (segment.startIndex > lastEndIndex) {
-        const gapStart = (lastEndIndex / total) * 100;
-        const gapWidth = ((segment.startIndex - lastEndIndex) / total) * 100;
-        const gapEl = document.createElement('div');
-        gapEl.className = 'chain-segment unverified';
-        gapEl.style.left = `${gapStart}%`;
-        gapEl.style.width = `${gapWidth}%`;
-        this.chainSegmentBar.appendChild(gapEl);
-      }
-
-      // サンプリング区間を描画
-      const startPercent = (segment.startIndex / total) * 100;
-      const widthPercent = ((segment.endIndex - segment.startIndex) / total) * 100;
-
-      const segmentEl = document.createElement('div');
-      segmentEl.className = `chain-segment ${segment.verified ? 'verified' : 'error'}`;
-      segmentEl.style.left = `${startPercent}%`;
-      segmentEl.style.width = `${Math.max(widthPercent, 0.5)}%`; // 最小幅を確保
-
-      // ツールチップを追加
-      const tooltipEl = document.createElement('div');
-      tooltipEl.className = 'chain-segment-tooltip';
-      tooltipEl.textContent = `${segment.startIndex.toLocaleString()} - ${segment.endIndex.toLocaleString()} (${segment.eventCount.toLocaleString()})`;
-      segmentEl.appendChild(tooltipEl);
-
-      this.chainSegmentBar.appendChild(segmentEl);
-      lastEndIndex = segment.endIndex;
-    }
-
-    // 最後の区間の後の隙間（未検証区間）を描画
-    if (lastEndIndex < total) {
-      const gapStart = (lastEndIndex / total) * 100;
-      const gapWidth = ((total - lastEndIndex) / total) * 100;
-      const gapEl = document.createElement('div');
-      gapEl.className = 'chain-segment unverified';
-      gapEl.style.left = `${gapStart}%`;
-      gapEl.style.width = `${gapWidth}%`;
-      this.chainSegmentBar.appendChild(gapEl);
-    }
-
-    // エラー位置のマーカーを追加
-    if (errorDetails && errorDetails.errorAt !== undefined) {
-      const errorPercent = (errorDetails.errorAt / total) * 100;
-      const errorMarker = document.createElement('div');
-      errorMarker.className = 'chain-segment-error-marker';
-      errorMarker.style.left = `${errorPercent}%`;
-      errorMarker.title = `Error at event ${errorDetails.errorAt.toLocaleString()}`;
-      this.chainSegmentBar.appendChild(errorMarker);
-    }
-
-    // サマリー情報を表示
-    this.chainSegmentInfo.innerHTML = `
-      <div class="chain-segment-info-summary">
-        <span class="chain-segment-info-item">
-          <strong>${sampledInfo.totalEventsVerified.toLocaleString()}</strong> / ${sampledInfo.totalEvents.toLocaleString()} ${t('chain.events') || 'events'}
-        </span>
-        <span class="chain-segment-info-item">
-          ${
-            t('chain.segmentViz.sampledSegments', {
-              count: sampledInfo.segments.length.toString(),
-              total: sampledInfo.totalSegments.toString(),
-            }) || `${sampledInfo.segments.length}/${sampledInfo.totalSegments} segments`
-          }
-        </span>
-      </div>
-    `;
   }
 }
 

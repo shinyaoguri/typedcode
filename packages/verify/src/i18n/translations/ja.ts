@@ -205,16 +205,6 @@ export const ja: VerifyTranslationKeys = {
         unknown: '不明なエラー',
       },
     },
-    segmentViz: {
-      header: '検証区間',
-      verified: '検証済み',
-      unverified: '未検証',
-      error: 'エラー',
-      segmentInfo: '区間 ${index}: イベント ${start} - ${end} (${count}件)',
-      totalEvents: '全イベント数: ${count}',
-      verifiedEvents: '検証済み: ${count}件',
-      sampledSegments: 'サンプリング区間: ${count}/${total}',
-    },
   },
 
   posw: {
