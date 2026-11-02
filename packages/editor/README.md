@@ -124,18 +124,21 @@ __BUILD_DATE__       // ビルド時刻
 
 ## 依存関係
 
-| パッケージ | バージョン | 用途 |
-|---------|---------|---------|
-| monaco-editor | ^0.56 | コードエディタ本体 |
-| @xterm/xterm | ^6.0 | ターミナルエミュレータ |
-| @xterm/addon-fit | ^0.11 | ターミナルの自動リサイズ |
-| @wasmer/sdk | ^0.10 | WebAssembly ランタイム |
-| dompurify | ^3.4 | 問題パネルの markdown 描画のサニタイズ |
-| jszip | ^3.10 | ZIP エクスポート |
-| marked | ^18.0 | 問題パネルの markdown 描画 |
-| yaml | ^2.9 | テンプレート YAML 解析 |
-| vite | ^8.1 | ビルドツール (rolldown) |
-| vite-plugin-wasm | ^3.6 | WASM サポート |
+版は各パッケージの `package.json` を参照してください (README には書き写しません)。
+
+| パッケージ | 用途 |
+|---------|---------|
+| @typedcode/shared | 証明エンジンと型定義 |
+| monaco-editor | コードエディタ本体 |
+| @xterm/xterm | ターミナルエミュレータ |
+| @xterm/addon-fit | ターミナルの自動リサイズ |
+| @wasmer/sdk | WebAssembly ランタイム |
+| dompurify | 問題パネルの markdown 描画のサニタイズ |
+| jszip | ZIP エクスポート |
+| marked | 問題パネルの markdown 描画 |
+| yaml | テンプレート YAML 解析 |
+| vite | ビルドツール (rolldown) |
+| vite-plugin-wasm | WASM サポート |
 
 ## スクリーンショット機能
 

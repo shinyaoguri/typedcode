@@ -181,16 +181,18 @@ const handle = await showDirectoryPicker();
 
 ## 依存関係
 
-| パッケージ | バージョン | 用途 |
-|---------|---------|---------|
-| @typedcode/shared | * | コア型と検証ロジック |
-| chart.js | ^4.4 | チャート描画 |
-| chartjs-plugin-annotation | ^3.0 | チャートのアノテーション |
-| chartjs-plugin-zoom | ^2.0 | チャートのズーム/パン |
-| diff | ^9.0 | 差分計算 |
-| highlight.js | ^11.11 | シンタックスハイライト |
-| jszip | ^3.10 | ZIP の解凍 |
-| vite | ^8.1 | ビルドツール |
+版は各パッケージの `package.json` を参照してください (README には書き写しません)。
+
+| パッケージ | 用途 |
+|---------|---------|
+| @typedcode/shared | コア型と検証ロジック |
+| chart.js | チャート描画 |
+| chartjs-plugin-annotation | チャートのアノテーション |
+| chartjs-plugin-zoom | チャートのズーム/パン |
+| diff | 差分計算 |
+| highlight.js | シンタックスハイライト |
+| jszip | ZIP の解凍 |
+| vite | ビルドツール |
 
 ## 環境変数
 

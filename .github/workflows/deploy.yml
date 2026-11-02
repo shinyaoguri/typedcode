@@ -109,6 +109,12 @@ jobs:
       - name: Lint workflows (actionlint + shellcheck)
         run: npm run lint:workflows
 
+      # README の依存表 (パッケージ名と用途だけ。版は書かない) と package.json を名前で突き合わせる (#269)。
+      # dependencies を足して README に書かない PR / 消えた依存が表に残った PR を落とす。
+      # dependabot PR は依存の増減をしないので落ちない。
+      - name: Check README dependency tables
+        run: node scripts/check-deps.mjs
+
       # vitest を持たない場所のスクリプトのテスト (node:test)。
       # - scripts/*.test.mjs: PR ゲート (pr-checks.yml の require-tests / require-visual-evidence) の判定
       #   ロジック (ADR-0034 / ADR-0036)。pr-checks.yml は pull_request_target で base 側のスクリプトを

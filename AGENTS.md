@@ -55,6 +55,7 @@ npm run lint        # biome ci . + lint:docs (チェックのみ。CI の check 
 npm run lint:docs   # docs/ とルートの *.md に [[...]] 形式のローカル記憶参照が残っていないか (#343)
 npm run lint:fix    # biome check --write . (安全な自動修正 + format)
 npm run lint:workflows  # .github/workflows を actionlint + shellcheck で検査 (版と sha256 を固定して .cache/ に落とす。#351)
+node scripts/check-deps.mjs  # packages/*/README.md の依存表 (名前と用途だけ。版は書かない) と package.json を名前で突合 (#269)
 
 # ユニットテスト (カバレッジ付き。test:coverage を持つ全パッケージ。CI の test job も同じコマンド)
 npm run test:coverage                       # = npm run test:coverage --workspaces --if-present
@@ -67,7 +68,7 @@ npm run test -w @typedcode/e2e
 npm run shots -w @typedcode/e2e             # 見た目・動きの証跡を packages/e2e/shots/ に撮る (検査ではない。ADR-0036)
 
 # 手元で CI と同じ検査を 1 コマンドで (完了の定義 = CONTRIBUTING.md / ADR-0034)
-npm run check       # typecheck → lint → lint:workflows → test:coverage → scripts/*.test.mjs (PR ゲートのテスト) → e2e
+npm run check       # typecheck → lint → lint:workflows → check-deps → test:coverage → scripts/*.test.mjs (PR ゲートのテスト) → e2e
 npm run check:fast  # 上から e2e を除いたもの
 ```
 

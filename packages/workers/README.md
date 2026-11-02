@@ -381,11 +381,13 @@ src/
 
 ## 依存関係
 
-| パッケージ | バージョン | 用途 |
-|---------|---------|---------|
-| @typedcode/shared | * | 共有型と検証ロジック |
-| wrangler | ^4.92 | Cloudflare Workers CLI |
-| @cloudflare/workers-types | * | TypeScript の型定義 |
+版は各パッケージの `package.json` を参照してください (README には書き写しません)。
+
+| パッケージ | 用途 |
+|---------|---------|
+| @typedcode/shared | 共有型と検証ロジック |
+| wrangler | Cloudflare Workers CLI |
+| @cloudflare/workers-types | TypeScript の型定義 |
 
 ## セキュリティ上の注意
 
