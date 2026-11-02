@@ -492,7 +492,7 @@ const SYNC_STABLE_TIMEOUT_MS = 30_000;
  * 規約チェック (起動フローの後段) の前に消える。`Storage.prototype.clear` を包み、localStorage が
  * 消されたら同意フラグだけ戻す (それ以外の消去はそのまま効く)。
  */
-async function installTermsAccepted(page: Page): Promise<void> {
+export async function installTermsAccepted(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const KEY = 'typedcode-terms-accepted';
     const now = Date.now();
