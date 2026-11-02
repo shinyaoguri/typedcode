@@ -59,12 +59,3 @@ export interface ProofMetadataVerificationResult {
    */
   divergentContentSnapshotEventIndexes: number[];
 }
-
-/** タイピング証明ハッシュ検証結果 */
-export interface TypingProofVerificationResult {
-  valid: boolean;
-  reason?: string;
-  isPureTyping?: boolean;
-  deviceId?: string;
-  metadata?: ProofMetadata;
-}
