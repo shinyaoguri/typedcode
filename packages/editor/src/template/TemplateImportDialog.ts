@@ -41,6 +41,8 @@ export class TemplateImportDialog {
       // モーダル要素を作成
       const overlay = document.createElement('div');
       overlay.className = 'modal-overlay';
+      // 状態契約 (packages/editor/AGENTS.md「状態契約」)。閉じると DOM から外れる。
+      overlay.dataset.dialog = 'template-import';
       overlay.style.cssText = `
         position: fixed;
         top: 0;
@@ -167,6 +169,8 @@ export class TemplateImportDialog {
   showProgress(): { update: (current: number, total: number, filename: string) => void; close: () => void } {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
+    // 状態契約 (packages/editor/AGENTS.md「状態契約」)。close で DOM から外れる。
+    overlay.dataset.dialog = 'template-progress';
     overlay.style.cssText = `
       position: fixed;
       top: 0;
