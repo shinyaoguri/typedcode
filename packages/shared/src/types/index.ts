@@ -119,7 +119,6 @@ export type {
   VerificationResult,
   ContentReplayVerificationResult,
   ProofMetadataVerificationResult,
-  TypingProofVerificationResult,
 } from './verification.js';
 
 // 統計関連

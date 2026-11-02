@@ -711,6 +711,19 @@ export class TypingProof {
   }
 
   /**
+   * 破棄する (#342)。PoSW Web Worker を終了する。タブを閉じるときに呼ぶ。
+   *
+   * 呼ぶ前に `waitForQueueDrain` で計算中のイベントの確定を待つこと。計算中に呼ぶと、
+   * Worker に出した要求が返らないまま捨てられ、そのイベントはチェーンに載らない。
+   * 破棄後に `recordEvent` を呼んでもメインスレッドの計算にフォールバックして完走するが、
+   * Worker は戻らない (使い終えたインスタンスを作り直さずに使い回さないこと)。
+   * 冪等 (二度呼んでも安全)。
+   */
+  dispose(): void {
+    this.poswManager.dispose();
+  }
+
+  /**
    * 統計情報を取得
    */
   getStats(): TypingStats {

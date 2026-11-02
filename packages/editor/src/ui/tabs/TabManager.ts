@@ -132,6 +132,13 @@ export class TabManager {
   private onVerificationCallback: OnVerificationCallback | null = null;
   private onSyncStatusChangeCallback: OnSyncStatusChangeCallback | null = null;
   private onTabCreatedCallback: OnTabCreatedCallback | null = null;
+  /**
+   * そのタブについて記録中のイベント (PoSW 計算 → IndexedDB への append) が片付くまで待つ関数 (#342)。
+   * EventRecorder が持つので main.ts が注入する。未設定ならこの待ちを省く
+   */
+  private tabSettleBarrier: ((tabId: string) => Promise<void>) | null = null;
+  /** 閉じたタブの後始末 (retireTab) のうち、まだ終わっていないもの */
+  private retiringTabs = new Set<Promise<void>>();
   private startTime: number = performance.now();
   private sessionService: SessionStorageService;
 
@@ -226,6 +233,24 @@ export class TabManager {
    */
   setOnTabCreated(callback: OnTabCreatedCallback): void {
     this.onTabCreatedCallback = callback;
+  }
+
+  /**
+   * タブを閉じるとき、そのタブの記録中イベントが片付くまで待つ関数を設定する (#342)。
+   * EventRecorder.whenTabSettled を渡す。
+   */
+  setTabSettleBarrier(barrier: (tabId: string) => Promise<void>): void {
+    this.tabSettleBarrier = barrier;
+  }
+
+  /**
+   * 閉じたタブの後始末 (retireTab) がすべて終わるまで待つ (#342)。
+   * closeTab / closeAllTabs は同期の戻り値を保つため後始末を待たない。待ちたい呼び出し元 (テスト) 用。
+   */
+  async whenTabsRetired(): Promise<void> {
+    while (this.retiringTabs.size > 0) {
+      await Promise.all([...this.retiringTabs]);
+    }
   }
 
   /**
@@ -531,10 +556,9 @@ export class TabManager {
     this.tabOrder = this.tabOrder.filter((id) => id !== tabId);
     this.savedEventCursor.delete(tabId);
 
-    // IndexedDB の行とイベントも削除する (#145)。残すと復旧ダイアログに閉じたタブが
-    // ゴースト表示され、tabOrder フォールバック復元で復活もしうる。実行中の保存処理が
-    // このタブを書き戻さないよう、完了を待ってから消す (fire-and-forget)。
-    this.deleteTabFromIndexedDB(tabId);
+    // IndexedDB の行とイベントを削除し、PoSW Worker を終了する (#145, #342)。
+    // 記録中のイベントの確定を待つので後段は非同期 (fire-and-forget)。
+    this.retireTab(tab);
 
     // タブが0になった場合
     if (this.tabs.size === 0) {
@@ -566,17 +590,51 @@ export class TabManager {
   }
 
   /**
+   * 閉じたタブ (tabs から外した直後) の後始末を非同期に進める (#342)。順序が要る:
+   *
+   * 1. `waitForQueueDrain`: 計算中のイベントの PoSW が確定するまで待つ。
+   * 2. `tabSettleBarrier`: 確定した記録の IndexedDB への append が済むまで待つ。drain だけでは足りない。
+   *    append は確定後の `.then` で走るので、ここで待たずに行を消すと、そのあとで tabs 行の無い
+   *    events 行が増える (孤児)。
+   * 3. `deleteTabFromIndexedDB`: tabs 行と events 行を消す。計算中のイベントは捨てず、タブごと消える。
+   * 4. `TypingProof.dispose()`: PoSW Worker を終了する。途中で失敗・打ち切りでも必ず終了する。
+   *
+   * 他のタブの記録には触らない。
+   */
+  private retireTab(tab: TabState): void {
+    const retiring = (async () => {
+      try {
+        const drain = await tab.typingProof.waitForQueueDrain();
+        if (!drain.drained) {
+          console.warn(
+            `[TabManager] Closed tab ${tab.id} did not drain its PoSW queue (${drain.reason}); disposing anyway`
+          );
+        }
+        await this.tabSettleBarrier?.(tab.id);
+        await this.deleteTabFromIndexedDB(tab.id);
+      } catch (e) {
+        console.warn('[TabManager] Failed to settle closed tab before disposing it:', e);
+      } finally {
+        tab.typingProof.dispose();
+      }
+    })();
+    this.retiringTabs.add(retiring);
+    void retiring.then(() => this.retiringTabs.delete(retiring));
+  }
+
+  /**
    * 閉じたタブの IndexedDB 行とイベントを削除する (#145)。
    * 実行中の保存処理がタブを書き戻す競合を避けるため、完了を待ってから消す。
    * 削除は best-effort (失敗しても UI は既に閉じている)。
    */
-  private deleteTabFromIndexedDB(tabId: string): void {
+  private async deleteTabFromIndexedDB(tabId: string): Promise<void> {
     if (!this.sessionService.isInitialized()) return;
-    const pendingSave = this.currentSavePromise ?? Promise.resolve();
-    void pendingSave
-      .catch(() => undefined)
-      .then(() => this.sessionService.deleteTab(tabId))
-      .catch((e) => console.warn('[TabManager] Failed to delete closed tab from IndexedDB:', e));
+    try {
+      await (this.currentSavePromise ?? Promise.resolve()).catch(() => undefined);
+      await this.sessionService.deleteTab(tabId);
+    } catch (e) {
+      console.warn('[TabManager] Failed to delete closed tab from IndexedDB:', e);
+    }
   }
 
   /**
@@ -584,7 +642,7 @@ export class TabManager {
    * 通常のcloseTabと異なり、最後の1つも閉じる
    */
   async closeAllTabs(): Promise<void> {
-    const closedTabIds = Array.from(this.tabs.keys());
+    const closedTabs = Array.from(this.tabs.values());
 
     // すべてのモデルと署名サービスを破棄
     for (const tab of this.tabs.values()) {
@@ -601,9 +659,10 @@ export class TabManager {
 
     // ストレージもクリア
     sessionStorage.removeItem(tabsKey());
-    // IndexedDB の行とイベントも削除 (#145: 残すと復旧ダイアログにゴースト表示される)
-    for (const tabId of closedTabIds) {
-      this.deleteTabFromIndexedDB(tabId);
+    // IndexedDB の行とイベントの削除と PoSW Worker の終了 (#145, #342。残すと復旧ダイアログに
+    // ゴースト表示される / Worker が漏れる)。記録中のイベントの確定を待つので後段は非同期
+    for (const tab of closedTabs) {
+      this.retireTab(tab);
     }
   }
 
