@@ -75,7 +75,7 @@ export const en: TranslationKeys = {
     toggleTheme: 'Toggle Theme',
     language: 'Language',
     about: 'About',
-    resetAll: 'Reset All',
+    resetAll: 'Reset This Mode',
   },
 
   activityBar: {
@@ -206,7 +206,7 @@ export const en: TranslationKeys = {
     dataStorageScreenshots: 'Screenshots: Periodically captured screen images',
     dataStorageSettings: 'Settings: Language, theme preferences, and terms acceptance state',
     dataStorageNote:
-      'This data persists even when you close the browser, but can be completely deleted by clearing browser data or using the "Reset All" function. To save proof data, be sure to download files using the export function.',
+      'This data persists even when you close the browser, but can be completely deleted by clearing browser data or using the "Reset This Mode" function. To save proof data, be sure to download files using the export function.',
 
     // Screen Capture
     screenCaptureTitle: 'Screen Capture',

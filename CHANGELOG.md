@@ -30,6 +30,7 @@
 
 ### 修正
 
+- 設定メニューのリセット項目 (`settings.resetAll`) が ja / en とも英語の「Reset All」のままで、挙動 (現在のモードのデータだけを消す) と食い違っていた。確認ダイアログの確定ボタンに合わせて、ja「このモードをリセット」/ en「Reset This Mode」にした。利用規約の保存データの注記 (`terms.dataStorageNote`) が指す機能名も同じ名称にした。キー名 `resetAll` は変えていない (#505)
 - exam の試験ゲート (タブが無い間) に撮れたスクリーンショットが、チェーンに `screenshotCapture` を残さないまま保存されて export ZIP の manifest に入り、解錠後の撮影で verifier が tampered と判定して正当な答案が `Integrity: FAILED` になる問題を修正した。`ScreenshotTracker.handleCapture` は callback (チェーンへの記録先) が無いとき保存しない (#503)
 - 離脱確認で「このページに留まる」を選ぶと、`SingleInstanceGuard` が `beforeunload` で破棄されたまま残り、2 つ目のタブが正規インスタンスとして起動してハッシュチェーンを二重に伸ばせてしまう問題を修正した。破棄を `pagehide` (`persisted === false`、実際にページを離れるとき) に移した。bfcache に入る (`persisted === true`) ときは破棄せず、戻る操作で復元されたページのガードもそのまま生きている (#483, 親 #237)
 - 同じセッションを 2 つのインスタンス (凍結復帰したタブと再開したタブなど) が書いたとき、`SessionStorageService.appendEvent` が同じ seq の hash の食い違いを黙って吸収し、タブ行の `currentHash` を後から書いた側で上書きしていた問題を修正した。同じタブ・同じ seq に別の hash を書こうとすると `EventChainConflictError` で拒否し (events・タブ行は変えない)、同じ hash の再 append (保存の再試行・二重書き込み) は冪等に成功してタブ行を書き換えない。`assertOwner()` で、別インスタンスに `resumeSession` された側を `SessionOwnershipError` で検出できる。競合したタブは `TabManager` の保存でスナップショットの上書きを飛ばしてログに残す (検出時の read-only 化・UI は #237 PR-3) (#484, #237)

@@ -75,7 +75,7 @@ export const ja: TranslationKeys = {
     toggleTheme: 'Toggle Theme',
     language: '言語',
     about: 'バージョン情報',
-    resetAll: 'Reset All',
+    resetAll: 'このモードをリセット',
   },
 
   activityBar: {
@@ -204,7 +204,7 @@ export const ja: TranslationKeys = {
     dataStorageScreenshots: 'スクリーンショット：定期的に撮影された画面キャプチャ画像',
     dataStorageSettings: '設定情報：言語設定、テーマ設定、利用規約への同意状態',
     dataStorageNote:
-      'これらのデータはブラウザを閉じても保持されますが、ブラウザのデータ消去や「Reset All」機能で完全に削除できます。証明データを保存したい場合は、必ずエクスポート機能でファイルをダウンロードしてください。',
+      'これらのデータはブラウザを閉じても保持されますが、ブラウザのデータ消去や「このモードをリセット」機能で完全に削除できます。証明データを保存したい場合は、必ずエクスポート機能でファイルをダウンロードしてください。',
 
     // 画面キャプチャ
     screenCaptureTitle: '画面キャプチャ',
