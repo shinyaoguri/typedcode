@@ -88,6 +88,7 @@ import { DownloadDropdown } from './ui/components/DownloadDropdown.js';
 import { MainMenuDropdown } from './ui/components/MainMenuDropdown.js';
 import { TerminalPanel } from './ui/components/TerminalPanel.js';
 import { CodeExecutionController } from './execution/CodeExecutionController.js';
+import { toRecordEventInput } from './execution/codeExecutionRecording.js';
 import { ProofExporter } from './export/ProofExporter.js';
 import { RuntimeManager } from './execution/RuntimeManager.js';
 import { TabUIController } from './ui/tabs/TabUIController.js';
@@ -775,7 +776,7 @@ function initializeCodeExecution(): void {
     onShowClangLoading: showClangLoading,
     onHideClangLoading: hideClangLoading,
     onUpdateClangStatus: updateClangStatus,
-    onRecordEvent: (event) => ctx.eventRecorder?.record({ type: event.type, description: event.description }),
+    onRecordEvent: (event) => ctx.eventRecorder?.record(toRecordEventInput(event)),
     onShowErrors: showErrorsInEditor,
     onClearErrors: clearEditorErrors,
   });

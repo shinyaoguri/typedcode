@@ -16,6 +16,14 @@ vi.setConfig({ testTimeout: 30_000 });
 
 const MIB = 1024 * 1024;
 
+/** thenable を作るためのキー (リテラルの `then` プロパティは biome の noThenProperty が禁じる)。 */
+const THEN = 'then';
+
+/** `internalStream` は JSZip の型定義に無い。テストで包む用の最小の型。 */
+type InternalStreamEntry = {
+  internalStream(type: 'uint8array'): JSZip.JSZipStreamHelper<Uint8Array>;
+};
+
 /**
  * 申告 `uncompressedSize` を 1 バイトと詐称した ZIP を作る (#234 の再現)。
  *
@@ -148,11 +156,34 @@ describe('assertZipWithinBudget', () => {
     ['a non-STORE placeholder', { _data: Promise.resolve(''), options: { compression: 'DEFLATE' } }],
     ['a non-thenable placeholder', { _data: '', options: { compression: 'STORE' } }],
     ['a placeholder without options', { _data: Promise.resolve('') }],
+    // 以下は STORE のまま `_data` の形だけを崩す。`typeof data === 'object'` / `data !== null` /
+    // `typeof data.then === 'function'` のどれを緩めても、ここのどれかが 0 バイト扱いに落ちる
+    [
+      'a thenable function (not an object) placeholder',
+      { _data: Object.assign(() => {}, { [THEN]: () => {} }), options: { compression: 'STORE' } },
+    ],
+    ['a null placeholder', { _data: null, options: { compression: 'STORE' } }],
+    ['an object placeholder without then', { _data: {}, options: { compression: 'STORE' } }],
   ])('rejects %s that only partly matches the empty-entry shape', (_label, entry) => {
     // 「空」とみなすのは JSZip が 0 バイトのエントリに作る形と完全に一致するときだけ (fail-closed を保つ)
     const fake = { files: { 'a.bin': { dir: false, ...entry } } } as unknown as JSZip;
 
     expect(() => assertZipWithinBudget(fake)).toThrow(/no readable declared size/);
+  });
+
+  it('does not count a thenable placeholder that carries a declared size as an empty entry', () => {
+    // 申告サイズを持つ `_data` は 0 バイトではない。空の形に見えても申告値で数える (`!('uncompressedSize' in data)`)
+    const fake = {
+      files: {
+        'a.bin': {
+          dir: false,
+          _data: { [THEN]: () => {}, uncompressedSize: 300 * MIB },
+          options: { compression: 'STORE' },
+        },
+      },
+    } as unknown as JSZip;
+
+    expect(() => assertZipWithinBudget(fake)).toThrow(/uncompressed size exceeds limit/);
   });
 
   it('accepts an entry forged to declare zero bytes because JSZip discards its payload', async () => {
@@ -202,6 +233,99 @@ describe('readZipEntryBytes', () => {
     // その分は捨てるので保持量は予算 + チャンク 1 個で頭打ちになる。全展開 (32 MiB) とは桁が違う。
     expect(budget.used).toBeLessThanOrEqual(2 * MIB);
   }, 60_000);
+
+  it('pauses the stream as soon as the budget is exceeded', async () => {
+    const forged = await buildDeclaredSizeForgedZip('big.json', 32 * MIB);
+    const zip = await JSZip.loadAsync(forged);
+    const entry = zip.file('big.json')!;
+    // `internalStream` が返すストリームヘルパの `pause` だけを spy する (挙動は本物のまま)。
+    // zipReadPolicy.test.ts が禁じるのは `.async(...)` の直接呼び出しで、ここは対象外
+    const pause = vi.fn();
+    const original = (entry as unknown as InternalStreamEntry).internalStream.bind(entry);
+    vi.spyOn(entry as unknown as InternalStreamEntry, 'internalStream').mockImplementation((type) => {
+      const helper = original(type);
+      const originalPause = helper.pause.bind(helper);
+      helper.pause = () => {
+        pause();
+        return originalPause();
+      };
+      return helper;
+    });
+
+    await expect(readZipEntryBytes(entry, new ZipExtractionBudget(1 * MIB))).rejects.toThrow(ZipBudgetExceededError);
+
+    // reject した時点で pause 済みでなければ、予算超過後も展開が止まらない (#234 の DoS ガードの半分)
+    expect(pause).toHaveBeenCalled();
+  }, 60_000);
+
+  it('rejects with the stream error instead of hanging when the entry cannot be inflated', async () => {
+    // 壊れたエントリでは error が出る。ハンドラが無いと Promise が決着せず verify / verify-cli が止まる
+    const zip = new JSZip();
+    zip.file('a.bin', new Uint8Array(64));
+    const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }));
+    const entry = loaded.file('a.bin')!;
+    const boom = new Error('boom: corrupt deflate stream');
+    vi.spyOn(entry as unknown as InternalStreamEntry, 'internalStream').mockImplementation(() => {
+      const handlers: Record<string, (arg?: unknown) => void> = {};
+      const helper = {
+        on(event: string, handler: (arg?: unknown) => void) {
+          handlers[event] = handler;
+          return helper;
+        },
+        pause: () => helper,
+        // resume されたら error を出す (本物のストリームも resume で流れ始める)
+        resume() {
+          queueMicrotask(() => handlers.error?.(boom));
+          return helper;
+        },
+      };
+      return helper as unknown as JSZip.JSZipStreamHelper<Uint8Array>;
+    });
+
+    const result = await readZipEntryBytes(entry, new ZipExtractionBudget(1 * MIB)).then(
+      () => null,
+      (error: unknown) => error
+    );
+
+    expect(result).toBe(boom);
+    expect(result).not.toBeInstanceOf(ZipBudgetExceededError);
+  }, 5_000);
+
+  it('rejects when the deflate data of a real entry is corrupt', async () => {
+    // 先頭の DEFLATE ブロックのヘッダを予約ブロック型 (BTYPE=11) に書き換える
+    const zip = new JSZip();
+    zip.file('a.bin', new Uint8Array(4096));
+    const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const nameLength = view.getUint16(26, true);
+    const extraLength = view.getUint16(28, true);
+    bytes[30 + nameLength + extraLength] = 0xff;
+    const loaded = await JSZip.loadAsync(bytes);
+
+    const result = await readZipEntryBytes(loaded.file('a.bin')!, new ZipExtractionBudget(1 * MIB)).then(
+      () => null,
+      (error: unknown) => error
+    );
+
+    expect(result).toBeInstanceOf(Error);
+    expect(result).not.toBeInstanceOf(ZipBudgetExceededError);
+  }, 5_000);
+
+  it.each(['STORE', 'DEFLATE'] as const)('reassembles a multi-chunk entry byte for byte (%s)', async (compression) => {
+    // 1 チャンクは約 16 KiB なので 1 MiB は複数チャンクで流れる。非一様な内容で連結の順序・位置まで比べる
+    const original = new Uint8Array(1 * MIB);
+    for (let i = 0; i < original.length; i++) original[i] = i % 251;
+    const zip = new JSZip();
+    zip.file('a.bin', original);
+    const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: 'uint8array', compression }));
+    const budget = new ZipExtractionBudget(2 * MIB);
+
+    const bytes = await readZipEntryBytes(loaded.file('a.bin')!, budget);
+
+    expect(bytes.length).toBe(original.length);
+    expect(bytes.every((value, i) => value === original[i])).toBe(true);
+    expect(budget.used).toBe(1 * MIB);
+  });
 
   it('reads a whole entry when it fits in the budget', async () => {
     const zip = new JSZip();
