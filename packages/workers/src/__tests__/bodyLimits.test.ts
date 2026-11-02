@@ -36,7 +36,7 @@ const env = {
   ALLOWED_ORIGINS: 'https://typedcode.dev',
 } as unknown as TestEnv;
 
-const ENDPOINTS = ['/api/verify-captcha', '/api/verify-attestation', '/api/session/start'] as const;
+const ENDPOINTS = ['/api/verify-captcha', '/api/session/start'] as const;
 
 /** Content-Length 無しのストリーム本文 (chunked 相当) */
 function streamPost(path: string, chunks: Uint8Array[]): Request {
@@ -66,7 +66,7 @@ function jsonPost(path: string, body: unknown): Request {
   });
 }
 
-describe('POST body limits (verify-captcha / verify-attestation / session/start)', () => {
+describe('POST body limits (verify-captcha / session/start)', () => {
   it.each(ENDPOINTS)('%s rejects a body over the limit with 400 before any outbound call', async (path) => {
     const filler = new TextEncoder().encode('x'.repeat(1024));
     const chunks = Array.from({ length: MAX_JSON_BODY_BYTES / 1024 + 1 }, () => filler); // 8KiB + 1KiB
@@ -84,11 +84,7 @@ describe('POST body limits (verify-captcha / verify-attestation / session/start)
   it.each(ENDPOINTS)('%s answers a rejected body in its own JSON shape', async (path) => {
     const res = await worker.fetch(jsonPost(path, '{ "broken'), env);
     const body = (await res.json()) as Record<string, unknown>;
-    if (path === '/api/verify-attestation') {
-      expect(body.valid).toBe(false);
-    } else {
-      expect(body.success).toBe(false);
-    }
+    expect(body.success).toBe(false);
     expect(typeof body.message).toBe('string');
   });
 });

@@ -4,7 +4,6 @@
 import type {
   VerificationResult,
   PoswStatsDisplay,
-  HumanAttestationUI,
   VerificationStepType,
   VerificationStepStatus,
   TrustResult,
@@ -34,7 +33,6 @@ export interface ResultData {
   language: string;
   result: VerificationResult;
   poswStats?: PoswStatsDisplay;
-  attestations?: HumanAttestationUI[];
   eventCount: number;
   typingTime: string;
   typingSpeed: string;
@@ -178,14 +176,6 @@ export class ResultPanel {
   /** 試験束縛カードの「問題パッケージを読み込む」要求コールバック (AppController が配線) */
   onExamManifestRequested?: () => void;
 
-  private attestationIcon: HTMLElement;
-  private attestationBadge: HTMLElement;
-  private attestationCreate: HTMLElement;
-  private attestationExport: HTMLElement;
-  private attestationCreateRow: HTMLElement;
-  private attestationExportRow: HTMLElement;
-  private cardAttestation: HTMLElement;
-
   // Stats
   private statEvents: HTMLElement;
   private statTime: HTMLElement;
@@ -307,15 +297,6 @@ export class ResultPanel {
     this.examNoteRow = document.getElementById('exam-note-row')!;
     this.examLoadBtn = document.getElementById('exam-load-btn')!;
     this.examLoadBtn.addEventListener('click', () => this.onExamManifestRequested?.());
-
-    // Attestation card
-    this.cardAttestation = document.getElementById('card-attestation')!;
-    this.attestationIcon = document.getElementById('attestation-icon')!;
-    this.attestationBadge = document.getElementById('attestation-badge')!;
-    this.attestationCreate = document.getElementById('attestation-create')!;
-    this.attestationExport = document.getElementById('attestation-export')!;
-    this.attestationCreateRow = document.getElementById('attestation-create-row')!;
-    this.attestationExportRow = document.getElementById('attestation-export-row')!;
 
     // Stats
     this.statEvents = document.getElementById('stat-events')!;
@@ -541,18 +522,7 @@ export class ResultPanel {
   }
 
   render(data: ResultData): void {
-    const {
-      filename,
-      content,
-      language,
-      result,
-      poswStats,
-      attestations,
-      eventCount,
-      typingTime,
-      typingSpeed,
-      trustResult,
-    } = data;
+    const { filename, content, language, result, poswStats, eventCount, typingTime, typingSpeed, trustResult } = data;
 
     // Overall status
     this.renderTrustBadge(trustResult);
@@ -613,46 +583,6 @@ export class ResultPanel {
 
     // Exam binding card (ADR-0006)
     this.renderExamBindingCard(data.examBinding);
-
-    // Attestation card
-    if (attestations && attestations.length > 0) {
-      this.cardAttestation.style.display = 'block';
-      const createAttestation = attestations.find((a) => a.type === 'create' || a.eventIndex === 0);
-      const exportAttestation = attestations.find((a) => a.type === 'export' || (a.eventIndex && a.eventIndex > 0));
-
-      let validCount = 0;
-      if (createAttestation?.valid) validCount++;
-      if (exportAttestation?.valid) validCount++;
-
-      this.renderCard(
-        this.attestationIcon,
-        this.attestationBadge,
-        validCount === attestations.length,
-        t('attestation.validCount', { valid: validCount, total: attestations.length })
-      );
-
-      if (createAttestation) {
-        this.attestationCreateRow.style.display = 'flex';
-        this.attestationCreate.textContent = createAttestation.valid
-          ? `✓ ${t('attestation.valid')}`
-          : `✗ ${t('attestation.invalid')}`;
-        this.attestationCreate.className = `result-row-value ${createAttestation.valid ? 'text-success' : 'text-danger'}`;
-      } else {
-        this.attestationCreateRow.style.display = 'none';
-      }
-
-      if (exportAttestation) {
-        this.attestationExportRow.style.display = 'flex';
-        this.attestationExport.textContent = exportAttestation.valid
-          ? `✓ ${t('attestation.valid')}`
-          : `✗ ${t('attestation.invalid')}`;
-        this.attestationExport.className = `result-row-value ${exportAttestation.valid ? 'text-success' : 'text-danger'}`;
-      } else {
-        this.attestationExportRow.style.display = 'none';
-      }
-    } else {
-      this.cardAttestation.style.display = 'none';
-    }
 
     // Analysis layer (ADR-0009) - advisory のみ。検証の valid とは独立軸。
     // 打鍵動態 (旧 TypingPatternCard) も typing-pattern アナライザ経由でここに統合済み。
@@ -1087,8 +1017,8 @@ export class ResultPanel {
 
   reset(): void {
     // Reset all cards to pending state
-    const icons = [this.typingIcon, this.chainIcon, this.poswIcon, this.attestationIcon];
-    const badges = [this.typingBadge, this.chainBadge, this.poswBadge, this.attestationBadge];
+    const icons = [this.typingIcon, this.chainIcon, this.poswIcon];
+    const badges = [this.typingBadge, this.chainBadge, this.poswBadge];
 
     icons.forEach((icon) => {
       icon.className = 'result-card-icon pending';
@@ -1448,7 +1378,6 @@ export class ResultPanel {
       metadata: t('trust.components.metadata'),
       chain: t('trust.components.chain'),
       posw: t('trust.components.posw'),
-      attestation: t('trust.components.attestation'),
       screenshots: t('trust.components.screenshots'),
       source: t('trust.components.source'),
       anchoring: t('trust.components.anchoring'),

@@ -194,23 +194,6 @@ async function createHmacSignature(data: string, secret: string): Promise<string
     .join('');
 }
 
-/**
- * 文字列の定数時間比較。HMAC 署名のような秘密値の比較に使う。
- *
- * 通常の `===` は最初に異なる文字で early-return するため、比較にかかる時間から
- * 「正解 prefix の長さ」が漏れ得る (timing attack)。ここでは長さが一致する限り
- * 全文字を XOR で畳み込み、early-return しないことで内容に依存しない時間にする。
- * (期待値 = HMAC-SHA256 hex は常に固定長 128 文字なので、長さの早期判定は秘密を漏らさない)
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return mismatch === 0;
-}
-
 /** 本文読み取りの失敗を、クライアントに返す固定文言にする */
 function bodyErrorMessage(kind: Extract<ReadJsonResult, { ok: false }>['kind']): string {
   switch (kind) {
@@ -343,64 +326,6 @@ async function handleVerifyCaptcha(request: Request, env: Env): Promise<Response
 }
 
 /**
- * 証明書に含まれる可能性のある追加フィールド（署名対象外）
- */
-interface AttestationWithExtras extends HumanAttestation {
-  success?: boolean;
-  failureReason?: string;
-}
-
-/**
- * 証明書検証エンドポイント（検証ページから呼び出される）
- */
-async function handleVerifyAttestation(request: Request, env: Env): Promise<Response> {
-  const origin = request.headers.get('Origin');
-  const json = (body: unknown, status: number): Response =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin, env) },
-    });
-
-  const read = await readJsonBodyLimited(request);
-  if (!read.ok) {
-    return json({ valid: false, message: bodyErrorMessage(read.kind) }, 400);
-  }
-  const attestation = (read.value as { attestation?: AttestationWithExtras } | null)?.attestation;
-
-  try {
-    if (!attestation) {
-      return json({ valid: false, message: 'Attestation is required' }, 400);
-    }
-
-    // 署名対象フィールドのみを抽出（success, failureReason, signatureは除外）
-    const { signature, success: _success, failureReason: _failureReason, ...coreData } = attestation;
-    const attestationData = {
-      verified: coreData.verified,
-      score: coreData.score,
-      action: coreData.action,
-      timestamp: coreData.timestamp,
-      hostname: coreData.hostname,
-    };
-    const dataToSign = JSON.stringify(attestationData);
-    const expectedSignature = await createHmacSignature(dataToSign, env.ATTESTATION_SECRET_KEY);
-
-    const isValid = typeof signature === 'string' && timingSafeEqual(signature, expectedSignature);
-
-    return json(
-      {
-        valid: isValid,
-        message: isValid ? 'Attestation is valid' : 'Invalid signature',
-        attestation: isValid ? attestationData : undefined,
-      },
-      200
-    );
-  } catch (error) {
-    console.error('[verify-attestation] unexpected error:', error);
-    return json({ valid: false, message: 'Internal server error' }, 500);
-  }
-}
-
-/**
  * セッション開始エンドポイント (ADR-0017)。
  *
  * Turnstile を検証し、成功したら serverNonce を焼いた ECDSA-P256 署名トークンを発行する。
@@ -508,11 +433,6 @@ async function route(request: Request, env: Env): Promise<Response> {
   // セッション開始トークン発行 (ADR-0017)
   if (url.pathname === '/api/session/start' && request.method === 'POST') {
     return handleSessionStart(request, env);
-  }
-
-  // 証明書検証エンドポイント
-  if (url.pathname === '/api/verify-attestation' && request.method === 'POST') {
-    return handleVerifyAttestation(request, env);
   }
 
   // Signed checkpoint endpoints

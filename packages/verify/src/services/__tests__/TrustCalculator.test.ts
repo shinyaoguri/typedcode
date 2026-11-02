@@ -33,7 +33,7 @@ function calc(
   screenshots: ScreenshotVerificationSummary | undefined = noScreenshots(),
   options?: { hasScreenShareOptOut?: boolean }
 ) {
-  return TrustCalculator.calculate(result, undefined, screenshots, undefined, options);
+  return TrustCalculator.calculate(result, screenshots, undefined, options);
 }
 
 describe('TrustCalculator.calculate — level determination', () => {

@@ -6,7 +6,7 @@
  * を数え、上限を超えた時点でストリームを cancel して打ち切る。Content-Length は信用しない
  * (欠落・詐称・chunked でも実バイトで強制する) が、宣言値が上限超なら 1 バイトも読まずに弾く。
  *
- * 全 POST ハンドラ (verify-captcha / verify-attestation / session/start / checkpoint/sign) が
+ * 全 POST ハンドラ (verify-captcha / session/start / checkpoint/sign) が
  * Turnstile fetch・署名・KV に触れる**前**にここを通す。
  */
 

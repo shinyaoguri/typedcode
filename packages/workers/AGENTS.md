@@ -40,7 +40,6 @@ src/
 | Endpoint | Method | 用途 |
 |---|---|---|
 | `/api/verify-captcha` | POST | Turnstile トークン検証 + アテステーション発行 (ADR-0017 で **作成時 #0 経路は session/start に統合**。pre-export 等で残置) |
-| `/api/verify-attestation` | POST | アテステーション署名の整合性検証 (**dead** — クライアント呼出なし。ADR-0017 で deprecate 注記) |
 | `/api/session/start` | POST | **ADR-0017**: Turnstile 検証 → `serverNonce` 入り ECDSA-P256 署名トークンを発行。クライアントは serverNonce を chain root に焼く。署名鍵は checkpoint と同一系統 (`getSigningKey`) |
 | `/api/checkpoint/sign` | POST | 未署名 cp に ECDSA-P256 署名 + `serverTimestamp` 付与。**`sessionStartToken` 前提** (ADR-0027: body に同送された token を registry で検証し `sessionId` 一致を要求) |
 | `/api/checkpoint/public-keys` | GET | 公開鍵レジストリ取得 (検証側のキャッシュ用) |

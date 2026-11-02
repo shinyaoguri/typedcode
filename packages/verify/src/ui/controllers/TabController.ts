@@ -336,13 +336,9 @@ export class TabController {
     const hasScreenShareOptOut = events.some((e: { type: string }) => e.type === 'screenShareOptOut');
 
     // 信頼度を計算
-    const trustResult = TrustCalculator.calculate(
-      tabState.verificationResult,
-      tabState.humanAttestationResult,
-      screenshotSummary,
-      contentMismatches,
-      { hasScreenShareOptOut }
-    );
+    const trustResult = TrustCalculator.calculate(tabState.verificationResult, screenshotSummary, contentMismatches, {
+      hasScreenShareOptOut,
+    });
 
     console.log('[TabController] Trust result:', trustResult);
 

@@ -201,14 +201,6 @@ export {
   type ChartStats,
 } from './calculations.js';
 
-// 人間認証サービス
-export {
-  AttestationService,
-  type HumanAttestation,
-  type AttestationVerificationResult,
-  type AttestationVerificationDetails,
-} from './attestation.js';
-
 // ファイル処理
 export {
   // Types
