@@ -33,6 +33,7 @@ tests/
 ├── multi-instance / history-navigation / viewport / ime-undo / idle / screen-capture-lock / reset-url  # 環境の揺さぶり (#435): 多重起動・戻る / 進む・狭い画面・IME と undo / redo・アイドル停止・画面共有の停止・?reset (#323 は fixme)
 ├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)
 ├── verify-web.spec.ts    # 検証 Web の往復: Web↔CLI パリティ・改ざん・複数ファイル (#215)・壊れた proof (#292)・タブを閉じたあとの active / 表示の一致 (#281)
+├── model/                # model-based E2E (#436): fast-check の fc.commands でランダムな操作列を流し、各手の後にモデル (editorModel.ts) と状態契約・snapshot・件数・エラーを突き合わせ、最後に全タブの export を verify-cli (fast) で検証する。PR ゲートは固定シード 2 本 × 15 手、`@nightly` はランダムシードの長尺。実アプリの操作は playwrightDriver.ts、実行と失敗の報告 (シード・縮約後の操作列・再実行コマンド) は runner.ts
 ├── shots.spec.ts         # @shots: 証跡の撮影だけ (assert なし・通常実行から除外)。撮影 spec を増やすなら *.shots.spec.ts (require-tests がテストに数えない命名) にし、タイトルに @shots を付ける
 └── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)
 playwright.config.ts       # dev 用: webServer で workers(:8787) + editor vite dev(:5173) + verify vite dev(:5174)
@@ -51,7 +52,10 @@ npm run test:headed -w @typedcode/e2e        # 失敗調査 (ブラウザ表示)
 npm run shots -w @typedcode/e2e              # 見た目・動きの証跡を shots/ に撮る (@shots だけ。WebP の束ねに img2webp が要る。preshots が同じ準備をする)
 npm run setup -w @typedcode/e2e              # 単独で打つとき: テストキー + 署名鍵の用意 (pretest / preshots が呼ぶ)
 npm run install-browsers -w @typedcode/e2e   # 単独で打つとき: Chromium の導入 (同上。OS の共有ライブラリは入れない)
+NIGHTLY=1 npm run test -w @typedcode/e2e -- --grep @nightly   # 毎晩の長い E2E だけ (model-based の長尺。FC_SEED / FC_RUNS / FC_STEPS で上書き)
 ```
+
+**`@nightly` は通常の実行と CI のシャードから外れる** (`playwright.config.ts` の grepInvert。`@shots` と同じ扱いで、`NIGHTLY=1` のときだけ含める)。毎晩 `.github/workflows/e2e-nightly.yml` が `--grep @nightly --retries=0` で回し、失敗したらテストの出力ディレクトリの `model-failure.md` (シード・縮約後の操作列・再実行コマンド) を同名の open Issue に集める。model-based の失敗は報告に出る `FC_SEED=… FC_PATH=… FC_REPLAY_PATH=…` を付けて同じ列を再実行できる。fast-check の縮約は同じ列を何度も流し直すので、**列ごとに新しいブラウザコンテキストで始める** (同じページで `openCasualFresh()` を繰り返すと前の列の状態が残る)。
 
 **`pretest` / `preshots` は `npm run setup && npm run install-browsers`**。`.env` も `.dev.vars` もブラウザも無い新しい worktree・環境で、`npm ci` の直後に `npm run test` だけで通る。どちらも繰り返し実行して安全: setup は既存の `.dev.vars` を上書きせず鍵 ID の検査だけ、`playwright install` は導入済みなら何もしない。`test:headed` / `test:ui` / `test:build` には付けていない (準備済みの環境で使う前提)。`--with-deps` は sudo が要るので付けておらず、Linux で共有ライブラリが足りなければ手で `npx playwright install --with-deps chromium` を打つ (CI は deploy.yml の既存 step が入れる)。
 

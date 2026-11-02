@@ -26,6 +26,12 @@ const isCI = !!process.env.CI;
 // 評価されるので、ここで env に置けば spec 側へポートの既定値を二重に書かずに済む。
 process.env.E2E_VERIFY_URL ??= `http://localhost:${VERIFY_PORT}/`;
 
+/** 通常の実行から外すタグ (`@shots` は SHOTS=1、`@nightly` は NIGHTLY=1 のときだけ含める)。 */
+function excludedTags(): RegExp | undefined {
+  const tags = [...(process.env.SHOTS === '1' ? [] : ['@shots']), ...(process.env.NIGHTLY === '1' ? [] : ['@nightly'])];
+  return tags.length === 0 ? undefined : new RegExp(tags.join('|'));
+}
+
 export default defineConfig({
   testDir: './tests',
   // production-build.spec.ts は dist (vite preview) を対象にする専用 spec なので、
@@ -34,7 +40,9 @@ export default defineConfig({
   testIgnore: /production-build\.spec\.ts$/,
   // `@shots` は人が見る証跡を撮るだけで何も assert しない (tests/shots.spec.ts / ADR-0036)。
   // 検査ではないので通常の実行と CI のシャードからは外し、`npm run shots` (SHOTS=1) のときだけ走らせる。
-  grepInvert: process.env.SHOTS === '1' ? undefined : /@shots/,
+  // `@nightly` は長い・ランダムな検査 (tests/model/ の model-based E2E 長尺 / #436) で、PR ゲートには重い。
+  // 通常の実行と CI のシャードからは外し、NIGHTLY=1 のときだけ含める (.github/workflows/e2e-nightly.yml)。
+  grepInvert: excludedTags(),
   // PoSW (Web Worker でのハッシュ計算) と export + verify-cli の full 再計算が絡むため重い。
   // 遅い CI ランナーでも収まるよう長めに取る。
   timeout: 300_000,
