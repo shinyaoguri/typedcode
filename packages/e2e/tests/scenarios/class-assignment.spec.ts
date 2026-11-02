@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { EditorApp, readAllProofEvents, type EditorMode } from '../helpers/app.js';
+import { EditorApp, listProofEntries, readAllProofEvents, type EditorMode } from '../helpers/app.js';
 import { runVerifyCli } from '../helpers/verifyCli.js';
 import {
   SAMPLE_CLASS_ID,
@@ -54,7 +54,7 @@ for (const mode of ['class', 'assignment'] as const) {
     expect(await app.openDialogs()).not.toContain('welcome');
     await app.expectConsistent();
 
-    // 空のタブを含む ZIP は検証が拒否する既知のバグ (#447) を避けるため、全タブに書く (下の fixme が再現)。
+    // 問題ごとのタブで書く (各問題の proof に打鍵が載る)。書かないタブを含む export は下のテストが見る。
     await typeIntoEveryTab(app, 'int x;');
     await app.expectConsistent();
 
@@ -81,14 +81,16 @@ test.fixme('#441 class: starter の filename (p1.c) がそのままタブ名に�
   expect((await app.tabs())[0]?.filename).toBe('p1.c');
 });
 
-test.fixme('#447 class: 書いていない (空の) タブを含む全タブ export が verify (fast) で pass する', async ({
-  page,
-}) => {
+// 回帰テスト: 0 バイトのファイルを含む ZIP を ZIP の予算検査が拒否していた (#447、#449 で修正)。
+test('class: 書いていない (空の) タブを含む全タブ export が verify (fast) で pass する', async ({ page }) => {
   const app = new EditorApp(page);
   await openAndLoad(app, 'class');
   // p2 は starter が無く、打鍵もしないので 0 バイトのファイルとして ZIP に入る。
   await app.typeCode('int x;');
+  await app.expectConsistent();
   const zipPath = await app.exportViaLogButton();
+  expect(await listProofEntries(zipPath)).toHaveLength(problems.length);
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
+  await app.expectConsistent();
 });

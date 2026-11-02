@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp } from '../helpers/app.js';
 import { runVerifyCli } from '../helpers/verifyCli.js';
-import { dragBy, loadClassPackage, panelOpen, typeIntoEveryTab, waitDialogOpen, widthOf } from '../helpers/scenario.js';
+import { dragBy, loadClassPackage, panelOpen, waitDialogOpen, widthOf } from '../helpers/scenario.js';
 
 /**
  * #434-10: ログビューア (`#log-viewer`) と問題パネル (`#problem-panel`) の開閉とリサイズ。開閉は状態契約
@@ -15,8 +15,7 @@ test('class: 問題パネルとログビューアを開閉・リサイズして�
   await app.openModeFresh('class', { screenShare: 'share', waitReady: false });
   await waitDialogOpen(app, 'welcome');
   await loadClassPackage(app);
-  // 空のタブを含む ZIP は検証が拒否する既知のバグ (#447) を避けるため、全タブに書く。
-  await typeIntoEveryTab(app, 'int a;');
+  await app.typeCode('int a;');
 
   // 問題パネル: 読み込みで開く → × で閉じる → Activity Bar のトグルで開く → 右端のハンドルで広げる。
   expect(await panelOpen(page, 'problem-panel')).toBe('true');

@@ -33,7 +33,7 @@ test('class: リセットは Esc と背景クリックでは何も消さずに�
   await app.openModeFresh('class', { screenShare: 'share', waitReady: false });
   await waitDialogOpen(app, 'welcome');
   await loadClassPackage(app);
-  // 空のタブを含む ZIP は検証が拒否する既知のバグ (#447) を避けるため、全タブに書く。
+  // 全タブに書いておき、閉じただけのリセットで全タブの中身が保たれることを見る。
   await typeIntoEveryTab(app, 'int keep;');
   await app.waitForSynced();
   await app.expectConsistent();

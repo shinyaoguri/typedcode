@@ -1,11 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { EditorApp } from '../helpers/app.js';
+import { EditorApp, readProofEvents } from '../helpers/app.js';
+import { runVerifyCli } from '../helpers/verifyCli.js';
 import { waitDialogOpen } from '../helpers/scenario.js';
 
 /**
  * #434-1: ランディング (`/`、ADR-0015) のカードから 4 モードへ入れる・続きからバッジ・ModeSwitcher の
  * キーボード操作。判定は `html[data-app-state]` / `html[data-mode]` / `data-dialog` / バッジの
- * `data-tab-count` だけを読む。各モードのフロー自体 (問題の読み込み・試験ゲートの解錠) は別の spec の対象。
+ * `data-tab-count` だけを読む。各モードのフロー自体 (問題の読み込み・試験ゲートの解錠) は別の spec の対象
+ * (exam は #229)。入った先で編集できる casual は打鍵 → export → verify-cli (fast) まで、assignment は
+ * ウェルカムでの expectConsistent() まで見る。
  */
 
 /** カード経由で入ったあと、そのモードの最初の画面 (`data-dialog`) が出る。 */
@@ -39,12 +42,26 @@ for (const mode of ['casual', 'class', 'assignment', 'exam'] as const) {
       await app.waitReady();
       await expect.poll(() => app.appState()).toBe('ready');
       expect(await app.openDialogs()).not.toContain('terms');
+      await app.typeCode('int a;');
+      await app.waitForSynced();
+      await app.expectConsistent();
+      // カードで済ませた規約の同意も記録され (termsAccepted がちょうど 1 件)、その proof が verify を通る。
+      const zipPath = await app.exportCurrentTab();
+      const events = await readProofEvents(zipPath);
+      expect(events.filter((e) => e.type === 'termsAccepted')).toHaveLength(1);
+      const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+      expect(result.passed, result.stdout + result.stderr).toBe(true);
       await app.expectConsistent();
       return;
     }
     await waitDialogOpen(app, first);
     // カードを押した時点で規約は同意済みになる (= 規約のモーダルを出さない)。
     expect(await app.openDialogs()).not.toContain('terms');
+    if (mode === 'assignment') {
+      // タブ 0 本のウェルカムでも DOM の状態契約と内部状態が一致する。
+      await expect.poll(() => app.appState()).toBe('ready');
+      await app.expectConsistent();
+    }
     if (mode === 'exam') {
       await page.locator('.screen-share-choice-dialog [data-choice="share"]').click();
       await waitDialogOpen(app, 'exam-gate');
@@ -80,7 +97,7 @@ test('続きからバッジは、タブのあるセッションのモードに�
 test('ModeSwitcher はキーボードだけで開閉・移動でき、Enter で別モードへ移る', async ({ page }) => {
   const app = new EditorApp(page);
   // ModeSwitcher の遷移は skipBeforeUnload を立てないので、記録のあるタブでは離脱確認 (beforeunload) が出る
-  // (製品側の問題として報告済み。再現は下の fixme)。ここでは確認を受け入れて遷移そのものを確かめる。
+  // (#445。再現は theme-locale.spec.ts の fixme)。ここでは確認を受け入れて遷移そのものを確かめる。
   page.on('dialog', (dialog) => void dialog.accept());
   await app.openCasualFresh();
   await app.waitForSynced();
@@ -115,4 +132,8 @@ test('ModeSwitcher はキーボードだけで開閉・移動でき、Enter で�
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/assignment$/);
   await expect(page.locator('html')).toHaveAttribute('data-mode', 'assignment');
+  // ModeSwitcher は規約の同意を済ませない (カードと違う) ので、移った先は規約から始まる。
+  // 移った先でも DOM の状態契約と内部状態が一致する。
+  await waitDialogOpen(app, 'terms');
+  await app.expectConsistent();
 });

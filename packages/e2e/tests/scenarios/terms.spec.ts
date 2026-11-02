@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp, readAllProofEvents } from '../helpers/app.js';
 import { runVerifyCli } from '../helpers/verifyCli.js';
-import { loadClassPackage, typeIntoEveryTab, waitDialogClosed, waitDialogOpen } from '../helpers/scenario.js';
+import { loadClassPackage, waitDialogClosed, waitDialogOpen } from '../helpers/scenario.js';
 
 /**
  * #434-2: 利用規約 (class / assignment / exam で未同意なら出る。ADR-0015)。同意するまでアプリは
@@ -34,8 +34,7 @@ test('class: 規約に同意するまで先へ進めず、同意すると画面�
   await expect.poll(() => app.appState()).toBe('ready');
 
   await loadClassPackage(app);
-  // 空のタブを含む ZIP は検証が拒否する既知のバグ (#447) を避けるため、全タブに書く。
-  await typeIntoEveryTab(app, 'int a;');
+  await app.typeCode('int a;');
   await app.expectConsistent();
 
   const zipPath = await app.exportViaLogButton();

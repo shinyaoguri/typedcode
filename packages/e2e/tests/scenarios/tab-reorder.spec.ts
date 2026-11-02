@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp } from '../helpers/app.js';
 import { runVerifyCli } from '../helpers/verifyCli.js';
-import { dragTabTo, typeIntoEveryTab } from '../helpers/scenario.js';
+import { dragTabTo } from '../helpers/scenario.js';
 
 /**
  * #434-5: タブをマウスで並べ替える (TabUIController のマウスイベント実装。5px の閾値を超えるとドラッグ)。
@@ -15,8 +15,7 @@ test('先頭のタブを末尾までドラッグすると順序が変わり、�
   await app.openCasualFresh();
   await app.addTab();
   await app.addTab();
-  // 空のタブを含む ZIP は検証が拒否する既知のバグ (#447) を避けるため、全タブに書いておく。
-  await typeIntoEveryTab(app, 'int v;');
+  await app.typeCode('int v;');
   await app.expectConsistent();
   const before = (await app.tabs()).map((t) => t.id);
   expect(before).toHaveLength(3);

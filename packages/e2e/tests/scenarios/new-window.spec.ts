@@ -6,8 +6,8 @@ import { clickMainMenuItem } from '../helpers/scenario.js';
 /**
  * #434-12: メインメニューの「新しいウィンドウ」(`#new-window-btn`) は `?fresh=1` で同じモードを別ウィンドウに開く。
  * 元のウィンドウのタブ構成 (id・中身) は変わらず、その後も打鍵が記録されて export が verify (fast) で pass する。
- * 新しいウィンドウの側は同じモードの二重起動の検出で `duplicate-instance` に止まる既知の問題 (#442。仕様判断待ち)
- * があるので、popup の状態は assert しない。
+ * 新しいウィンドウの側は起動の途中で止まり、そのまま使えない既知の問題 (#442。仕様判断待ち) があるので、
+ * popup の状態は assert しない。
  */
 test('新しいウィンドウを開いても元のウィンドウのタブは変わらず、記録が続いて verify (fast) が pass する', async ({
   page,
@@ -29,7 +29,23 @@ test('新しいウィンドウを開いても元のウィンドウのタブは�
   await clickMainMenuItem(page, 'new-window-btn');
   const popup = await popupPromise;
   expect(new URL((await freshRequest).url()).pathname).toBe('/casual');
-  await popup.waitForLoadState('domcontentloaded');
+  // popup の起動 (SingleInstanceGuard の ping/pong を含む) が落ち着くまで待ってから元のウィンドウを見る。
+  // popup は起動の途中 (ready / duplicate-instance / session-recovery のどれか) で落ち着く。どこで止まるかは
+  // #442 で扱うので、どれになったかは assert しない。
+  await expect
+    .poll(
+      () =>
+        popup.evaluate(() => {
+          if (document.documentElement.dataset.appState === 'ready') return true;
+          return [...document.querySelectorAll<HTMLElement>('[data-dialog]')].some(
+            (el) =>
+              !el.classList.contains('hidden') &&
+              (el.dataset.dialog === 'duplicate-instance' || el.dataset.dialog === 'session-recovery')
+          );
+        }),
+      { timeout: 30_000 }
+    )
+    .toBe(true);
 
   await page.bringToFront();
   await app.expectConsistent();

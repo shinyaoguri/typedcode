@@ -226,8 +226,7 @@ export async function saveDownload(download: Download): Promise<string> {
 }
 
 /**
- * 全タブに順に打鍵する。空のファイル (0 バイト) を含む export ZIP は verify-cli が拒否する既知の
- * バグ (#447) があるので、全タブ export の前に呼んで空のタブを残さない。
+ * 全タブに順に打鍵する (問題ごとのタブで書く・全タブの中身が保たれることを見る、といったシナリオ用)。
  */
 export async function typeIntoEveryTab(app: EditorApp, text: string): Promise<void> {
   for (const tab of await app.tabs()) {
