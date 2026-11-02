@@ -47,11 +47,11 @@
 ## 実装の要点
 
 ### Workers (`checkpoint.ts`)
-- スキーマ検証直後・**KV read より前**にトークンを検証する。エラーコード: `TOKEN_REQUIRED` / `TOKEN_INVALID` / `TOKEN_SESSION_MISMATCH` (いずれも 401)。検証失敗の内部理由はログのみ (クライアントには固定文言)。
+- スキーマ検証直後・**KV read より前**にトークンを検証する。エラーコード: `TOKEN_REQUIRED` / `TOKEN_INVALID` / `TOKEN_SESSION_MISMATCH` / `TOKEN_EXPIRED` (#227。いずれも 401)。検証失敗の内部理由はログのみ (クライアントには固定文言)。
 - 新規タブの初回署名時のみ `tabs:{sessionId}` を読み、`MAX_TABS_PER_SESSION` (64) 超過なら `TAB_LIMIT_EXCEEDED` (429)。台帳は best-effort (KV 障害時や不正形のときは cap 判定をスキップして正規ユーザーを締め出さない。欠けても under-count 側 = cap が甘くなる側にしか倒れない)。
 
 ### Editor
-- `SignedCheckpointService` は `getSessionStartToken` でセッションレベルのトークンを毎回解決し、body に同送する。トークンが無い間は**送信せず待機** (401 の無駄打ちをしない)。`TOKEN_INVALID` / `TOKEN_SESSION_MISMATCH` は恒久失敗として署名を諦め queue を空にする (export の `waitForFlush` を空回りさせない)。
+- `SignedCheckpointService` は `getSessionStartToken` でセッションレベルのトークンを毎回解決し、body に同送する。トークンが無い間は**送信せず待機** (401 の無駄打ちをしない)。`TOKEN_INVALID` / `TOKEN_SESSION_MISMATCH` は恒久失敗として署名を諦め queue を空にする (export の `waitForFlush` を空回りさせない)。`TOKEN_EXPIRED` (#227) は恒久失敗にしない: queue を保ち、期限切れと返された token では再送せず、`findSigningToken` (sessionId が一致する中で `issuedAt` 最新) が別の token を返したら再開する。
 - casual / class / assignment: root アンカー時に取得済みの token (先頭タブの `TypingProof.sessionStartToken`) をタブ横断で流用する。
 - **exam**: root は封印束縛 (ADR-0006) で session/start を通らないため、タブ生成/復元時に**非ブロッキング best-effort** で署名専用トークンを取得する (`TabManager.acquireSigningTokenBestEffort`)。UI は出さず、試験開始をブロックしない (ADR-0006 の絶対条件)。root には焼かず proof にも同梱しない。失敗時は署名なしで劣化 = オフライン exam と同等。
 
@@ -69,9 +69,11 @@
 ### Negative / Trade-offs
 - タブ台帳は KV 結果整合の下で over-admission がありうる (厳密化は DO 化の仕事)。
 - exam の署名可否が Turnstile 到達性に依存する (従来は sign 到達性のみ)。ベストエフォート追加取得で吸収。
+- **時間方向 (#227)**: 当初は token に有効期限が無く、署名鍵が生きている限り無期限に使えた。KV record の TTL (7 日) が切れるたびに `signedCount` とタブ台帳がリセットされるので、上の「有界化」は 1 token あたりの時間軸では開いていた。`/api/checkpoint/sign` で `issuedAt` から `SESSION_TOKEN_MAX_AGE_MS` (**30 日**) を超えた token を 401 `TOKEN_EXPIRED` で拒否して閉じた (KV read より前)。リセットは 1 token あたり最大 ~4 回に有界で、`issuedAt` を遡らせた偽造 token の窓も同じ上限に収まる。割り切り: (a) 30 日は 7 日 (KV TTL) より長い。editor の自動再取得が入るまで、毎日開く課題セッションの署名を途切れさせないため (縮めるのは定数 1 行)。(b) 検査は sign 経路だけで、検証器は age を見ない (採点時に過去の proof が落ちないように)。(c) 未来の `issuedAt` は弾かない (作れるのは署名鍵を持つ者だけで、その者は sign API を経由しなくてよい)。(d) token を取り直す能動的リカバリは無く、editor は同じセッションの別タブが持つ新しい token を選ぶ (受動的リカバリ)。
 - `MAX_TABS_PER_SESSION` (64) を超える正規ユースケース (巨大 class バンドル) が現れたら定数を再検討する。
 
 ### Follow-ups / 残課題
+- token の能動的な再取得 (期限切れ時に Turnstile を再実行して署名専用 token を取り直す) は #236(b) で exam と共通化して扱う。入ったら `SESSION_TOKEN_MAX_AGE_MS` を 7 日へ縮められる。
 - DO 化の再評価トリガ (上記 3 条件) の観測を Workers Logs で行う (`[checkpoint] session token rejected` / firstSeenAt mismatch の頻度)。
 - `createTabFromTemplate` のバンドルタブ非アンカー (ADR-0017 follow-up) は本 ADR の範囲外のまま。
 

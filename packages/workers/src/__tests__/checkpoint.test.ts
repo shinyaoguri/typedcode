@@ -15,10 +15,19 @@
 
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { createSessionStartToken, verifyCheckpointSignature } from '@typedcode/shared/checkpoint';
+import { SESSION_TOKEN_MAX_AGE_MS } from '@typedcode/shared/checkpoint';
 import type { CheckpointPublicKey, SessionStartToken, SignedCheckpointInput } from '@typedcode/shared/checkpoint';
 import { handleSignCheckpoint, type CheckpointEnv } from '../checkpoint.js';
 
 // ---------- 共通ヘルパ ----------
+
+/**
+ * テスト全体の基準時刻 (#227)。ハンドラの `Date.now()` は各テストでこの時刻に固定し、
+ * fixture token の `issuedAt` もここから作る。固定の `issuedAt` と実時計を並べると、
+ * 時間の経過で token が max-age を超えて全テストが TOKEN_EXPIRED になる。
+ * #226 のクランプのテスト (T0) も同じ基準を使う。
+ */
+const NOW_MS = Date.parse('2026-06-04T12:00:00.000Z');
 
 /**
  * ADR-0027: sign は sessionStartToken 前提。token の署名は実検証されるので、
@@ -28,6 +37,8 @@ const TOKEN_KEY_ID = 'tcp-test-token-key';
 let tokenRegistry: readonly CheckpointPublicKey[];
 /** TOKEN_KEY_ID の公開鍵と対になる秘密 JWK (env.CHECKPOINT_SIGNING_KEY_JWK に入れる) */
 let tokenPrivateJwk: string;
+/** token を作る署名者 (期限切れ / 期限内の境界テストで issuedAt を変えた token を作るのに使う) */
+let tokenSigner: { keyId: string; privateKey: CryptoKey };
 let validToken: SessionStartToken;
 let foreignSessionToken: SessionStartToken; // 別 sessionId に発行された token
 let forgedToken: SessionStartToken; // registry に居ない鍵で署名された token
@@ -46,12 +57,13 @@ beforeAll(async () => {
   ];
   const serverContext = {
     serverNonce: '0'.repeat(64),
-    issuedAt: '2026-06-04T11:59:00.000Z',
+    issuedAt: new Date(NOW_MS - 60_000).toISOString(),
     turnstileVerified: true,
     hostname: 'workers.test',
     action: 'session_start',
   };
   const signer = { keyId: TOKEN_KEY_ID, privateKey: keyPair.privateKey };
+  tokenSigner = signer;
   validToken = await createSessionStartToken(
     { sessionId: 'test-session', fingerprintHash: 'f'.repeat(64) },
     serverContext,
@@ -76,8 +88,12 @@ class MockKV {
   store = new Map<string, string>();
   failNextPut = false;
   failNextGet = false;
+  /** get / put の呼び出し回数 (「KV に触れない」ことの検査用) */
+  getCount = 0;
+  putCount = 0;
 
   async get<T = unknown>(key: string, type?: 'json' | 'text'): Promise<T | null> {
+    this.getCount++;
     if (this.failNextGet) {
       this.failNextGet = false;
       throw new Error('simulated KV read failure');
@@ -87,6 +103,7 @@ class MockKV {
     return type === 'json' ? (JSON.parse(v) as T) : (v as unknown as T);
   }
   async put(key: string, value: string): Promise<void> {
+    this.putCount++;
     if (this.failNextPut) {
       this.failNextPut = false;
       throw new Error('simulated KV write failure');
@@ -164,12 +181,19 @@ describe('handleSignCheckpoint', () => {
   let env: CheckpointEnv;
 
   beforeEach(async () => {
+    // Date だけを偽装する (crypto.subtle の非同期処理は実時間のまま動く)
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW_MS);
     kv = new MockKV();
     env = {
       CHECKPOINT_SESSIONS: kv as unknown as KVNamespace,
       CHECKPOINT_SIGNING_KEY_JWK: tokenPrivateJwk,
       CHECKPOINT_SIGNING_KEY_ID: TOKEN_KEY_ID,
     };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   /** ADR-0027: 全テストで token 検証 registry を注入して呼ぶ共通ラッパー */
@@ -436,6 +460,52 @@ describe('handleSignCheckpoint', () => {
     expect(kv.store.size).toBe(0);
   });
 
+  // ---------- token の最大有効期間 (#227) ----------
+
+  describe('session token max age', () => {
+    /** 指定の issuedAt で test-session 用の token を作る (registry は共通の鍵対) */
+    async function tokenIssuedAt(issuedAtMs: number): Promise<SessionStartToken> {
+      return createSessionStartToken(
+        { sessionId: 'test-session', fingerprintHash: 'f'.repeat(64) },
+        {
+          serverNonce: '0'.repeat(64),
+          issuedAt: new Date(issuedAtMs).toISOString(),
+          turnstileVerified: true,
+          hostname: 'workers.test',
+          action: 'session_start',
+        },
+        tokenSigner
+      );
+    }
+
+    it('rejects a token older than SESSION_TOKEN_MAX_AGE_MS with TOKEN_EXPIRED and never touches KV', async () => {
+      const expired = await tokenIssuedAt(NOW_MS - SESSION_TOKEN_MAX_AGE_MS - 1);
+      const res = await sign(makeRequest(makeInput(), expired));
+      expect(res.status).toBe(401);
+      expect(((await res.json()) as ErrorResponseBody).code).toBe('TOKEN_EXPIRED');
+      expect(kv.getCount).toBe(0);
+      expect(kv.putCount).toBe(0);
+    });
+
+    it('accepts a token just inside the max age', async () => {
+      const justInside = await tokenIssuedAt(NOW_MS - SESSION_TOKEN_MAX_AGE_MS + 60_000);
+      const res = await sign(makeRequest(makeInput(), justInside));
+      expect(res.status).toBe(200);
+    });
+
+    it('accepts a token exactly SESSION_TOKEN_MAX_AGE_MS old (the limit is inclusive)', async () => {
+      const exactly = await tokenIssuedAt(NOW_MS - SESSION_TOKEN_MAX_AGE_MS);
+      const res = await sign(makeRequest(makeInput(), exactly));
+      expect(res.status).toBe(200);
+    });
+
+    it('does not reject a token whose issuedAt is in the future (only key holders can mint one)', async () => {
+      const future = await tokenIssuedAt(NOW_MS + 30 * 24 * 3600 * 1000);
+      const res = await sign(makeRequest(makeInput(), future));
+      expect(res.status).toBe(200);
+    });
+  });
+
   // ---------- per-session タブ上限 (ADR-0027) ----------
 
   it('registers each new tab in the per-session tab registry', async () => {
@@ -496,19 +566,15 @@ describe('handleSignCheckpoint', () => {
   // ---------- serverTimestamp の単調クランプ (#226) ----------
 
   describe('serverTimestamp monotonic clamp', () => {
-    const T0 = Date.parse('2026-06-04T12:00:00.000Z');
+    const T0 = NOW_MS;
     const next = { checkpointIndex: 1, previousSignedCheckpointHash: 'e'.repeat(64) } as const;
 
-    /** Date だけを偽装する (crypto.subtle の非同期処理は実時間のまま動く) */
+    /** 時計は外側の beforeEach が NOW_MS に固定済み。ここでは進める / 戻すだけ */
     function setWallClock(ms: number): void {
       vi.setSystemTime(ms);
     }
 
-    beforeEach(() => {
-      vi.useFakeTimers({ toFake: ['Date'] });
-    });
     afterEach(() => {
-      vi.useRealTimers();
       vi.restoreAllMocks();
     });
 

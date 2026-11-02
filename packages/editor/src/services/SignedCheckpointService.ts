@@ -115,6 +115,13 @@ export class SignedCheckpointService {
    * (export の waitForFlush を timeout まで空回りさせないため)。
    */
   private tokenRejected = false;
+  /**
+   * サーバが TOKEN_EXPIRED (最大有効期間超過。#227) で拒否した token の署名。
+   * 恒久失敗ではない: 同じセッションの別タブが新しい token を持てば署名は通る。
+   * なのでこの token でだけ送出を止め (queue と試行回数は保つ)、`getSessionStartToken` が
+   * 別の token を返し始めたら再開する。期限は editor の時計で判定せず、サーバの判定に従う。
+   */
+  private expiredTokenSignature: string | null = null;
   /** online/offline リスナのデタッチ用 */
   private onlineListener: (() => void) | null = null;
   /**
@@ -219,7 +226,7 @@ export class SignedCheckpointService {
     while (this.queue.size > 0 && Date.now() - startedAt < timeoutMs) {
       // 署名クレデンシャルが無い / 恒久拒否された間は進展しないので timeout まで待たない
       // (ADR-0027 の劣化モード: 署名なしで export を続行する)。
-      if (this.tokenRejected || !this.getSessionStartToken()) break;
+      if (this.tokenRejected || !this.resolveUsableToken()) break;
       // online であれば即時 flush を試みる
       if (this.isOnline()) {
         await this.flush();
@@ -300,7 +307,7 @@ export class SignedCheckpointService {
         if (!this.isOnline()) return;
         // ADR-0027: sign は sessionStartToken 前提。token が無い間は送っても 401 なので
         // 待機する (次の handleNewCheckpoint / retryPendingSignatures で再開)。
-        if (this.tokenRejected || !this.getSessionStartToken()) return;
+        if (this.tokenRejected || !this.resolveUsableToken()) return;
         // 連鎖整合を保つため eventIndex の昇順で処理
         let nextEventIndex: number | null = null;
         for (const k of this.queue.keys()) {
@@ -325,7 +332,7 @@ export class SignedCheckpointService {
       console.warn('[SignedCheckpointService] initialEventChainHash unavailable, skipping sign');
       return false;
     }
-    const sessionStartToken = this.getSessionStartToken();
+    const sessionStartToken = this.resolveUsableToken();
     if (!sessionStartToken) return false; // flush 側のガードと同じ待機 (token 到着で再開)
     entry.attempts++;
     try {
@@ -351,6 +358,18 @@ export class SignedCheckpointService {
           }
           this.queue.clear();
           return false;
+        }
+        // 最大有効期間超過 (#227) は恒久失敗ではない: queue を保ったまま、この token での送出だけ止める。
+        // 試行回数も戻す (新しい token が届くまでの空打ちで maxAttempts を使い切らせない)。
+        if (errBody.code === 'TOKEN_EXPIRED') {
+          console.warn(
+            '[SignedCheckpointService] session token expired (TOKEN_EXPIRED); pausing signing until a newer token is available'
+          );
+          this.expiredTokenSignature = sessionStartToken.signature;
+          entry.attempts--;
+          // 応答待ちの間に別タブが新しい token を解決していたら、flush のループを続けてそのまま再送する
+          // (return false だとループを抜け、次の checkpoint まで再開しない)。無ければガードで待機に入る。
+          return this.resolveUsableToken() !== null;
         }
         return this.handleFailure(
           eventIndex,
@@ -389,6 +408,17 @@ export class SignedCheckpointService {
     } catch (err) {
       return this.handleFailure(eventIndex, entry, err instanceof Error ? err.message : String(err));
     }
+  }
+
+  /**
+   * 今送れる署名用 token。無い、またはサーバが TOKEN_EXPIRED で拒否済みの token のままなら null
+   * (より新しい token が解決されるまで待つ)。
+   */
+  private resolveUsableToken(): SessionStartToken | null {
+    const token = this.getSessionStartToken();
+    if (!token) return null;
+    if (this.expiredTokenSignature !== null && token.signature === this.expiredTokenSignature) return null;
+    return token;
   }
 
   private handleFailure(eventIndex: number, entry: QueuedEntry, reason: string): boolean {

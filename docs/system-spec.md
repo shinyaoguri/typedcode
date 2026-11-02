@@ -261,6 +261,7 @@ interface CheckpointData {
 **Workers 側処理** (`/api/checkpoint/sign`):
 1. スキーマ検証
 2. **sessionStartToken 検証 (ADR-0027)**: 同送された token の ECDSA 署名を registry で検証し、`token.payload.sessionId === input.sessionId` を要求 (KV read より前。無認証リクエストに KV コストを払わない)
+2b. **token の最大有効期間 (#227)**: `now - token.payload.issuedAt > SESSION_TOKEN_MAX_AGE_MS` (30 日) なら 401 `TOKEN_EXPIRED` (KV read より前)。この検査は sign 経路だけで行い、検証器 (`verifySessionStartToken`) は age を見ない (採点時に過去の proof が落ちないように)。未来の `issuedAt` は弾かない
 3. KV から `session:{sessionId}:{tabId}` を取得
 4. **firstSeenAt 確定**: 既存があればその値、なければ `now` で初回書込
 5. 新規タブなら per-session タブ台帳 (`tabs:{sessionId}`。record の `session:` 名前空間とは別。#297) の上限チェック (`MAX_TABS_PER_SESSION` = 64、best-effort。不正形の台帳は read 失敗と同扱いで判定スキップ)。`sessionId` / `tabId` は `^[A-Za-z0-9._-]+$` (≤200) で、不正形の session record は 503 `SESSION_STATE_UNAVAILABLE`
@@ -742,6 +743,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `DEFAULT_MAX_CHECKPOINT_INTERVAL_MS` | 10_000 | `CheckpointManager.ts` |
 | `SIGNED_CHECKPOINT_FORMAT_VERSION` | 1 | `version.ts` |
 | `SESSION_TTL_SECONDS` | 604800 (7日) | `workers/src/checkpoint.ts` |
+| `SESSION_TOKEN_MAX_AGE_MS` | 2_592_000_000 (30日) | `shared/src/sessionStartToken.ts` (sessionStartToken の最大有効期間。sign 経路 = `workers/src/checkpoint.ts` だけが検査し、超過は 401 `TOKEN_EXPIRED`。検証器は見ない。#227) |
 | `SESSION_MAX_CHECKPOINTS` | 50000 / (sessionId, tabId) 単位。名前は `SESSION_` だが per-tab。error code `SESSION_LIMIT_EXCEEDED` と合わせて互換のため据え置き | `workers/src/checkpoint.ts` |
 | `MAX_TABS_PER_SESSION` | 64 | `workers/src/checkpoint.ts` (ADR-0027) |
 | `WORKERS_FETCH_TIMEOUT_MS` | 10_000 | `editor/src/config/timeouts.ts` (Workers への 1 回の fetch の上限。verify-captcha / session/start / checkpoint/sign。超過は既存の失敗経路 = retry・degraded fallback・署名の backoff 再試行に合流。#324) |
@@ -819,3 +821,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-01 | exam 識別子の照合 (#273 / #363) | `.tcexam` を渡したとき、proof 側の `examId` / `variant` (v1 は `problemId` も) を署名済み manifest と照合し、不一致なら束縛失敗とする。§6.4 手順 5 を反映 |
 | 2026-11-01 | spec 同期 (#231) | 実装との乖離を是正: §3 に e2e、§4.4 の並列化記述、§4.6 / §7 / 用語集の per-(sessionId, tabId)、§5.1 の localStorage、§5.2 の ZIP 構成、§5.3 の欠落フィールド、§6.2 Layer 4 の internalPaste スキップ、§7.1 laundering 系 (#138 / #175 / #139)、§9.4 を registry ビルド時同梱の事実に修正 |
 | 2026-11-02 | proof.json を整形しない仕様の明記と `__proto__` ガード (#417 / #341 v2) | §5.3 に「proof.json は整形 (キー順の変更・再シリアライズ) をせずに渡す」を明記し、`typingProofHash` 不一致の失敗メッセージにも整形が原因になりうる旨を添えた。構造検証 `verifyEventArrayStructure` が events 内の own property `__proto__` を invalid にする (`deterministicStringify` が落とすため足してもハッシュが変わらない malleability の封じ込め)。`PROOF_FORMAT_VERSION` 据え置き・proof 形式不変 |
+| 2026-11-03 | sessionStartToken の最大有効期間 (#227) | `/api/checkpoint/sign` は `issuedAt` から `SESSION_TOKEN_MAX_AGE_MS` (30 日) を超えた token を 401 `TOKEN_EXPIRED` で拒否する (KV read より前)。検査は sign 経路だけで、検証器は age を見ない。§4.6 手順 2b と定数表を反映 |
