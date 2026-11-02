@@ -27,6 +27,7 @@
 - `make-exam-package.mjs` の既定 deadline を `2999-12-31T23:59:59.999Z` (オープン) に変更し、`--release` / `--deadline` の説明を ADR-0013 と `/author` に揃えた。既定のまま作ったパッケージで全提出が「窓外 (advisory)」と表示されるノイズを解消 (#271)
 - 呼び出し元ゼロの dead API を削除した: `TabManager` の `exportSingleTab` / `exportAllTabs` / `reset` / `getActiveContent` / `getSessionService`、`SessionStorageService` の `pruneOldSessions` / `truncateEvents` / `updateTabContent` / `updateTabMetadata`、shared の `MultiFileExportedProof` / `MultiFileExportEntry` / `isMultiFileProof` / `AnyExportedProof`、`beforeunload` での legacy スクリーンショット DB 削除 (#284, #231)
 - 拡張子 → 言語の判定を verify から shared の実装へ一本化した (挙動の変更なし) (#278)
+- `index.html` に一度も存在しなかった `clear-log-btn` のクリア配線 (`LogViewerPanelOptions.clearButtonId`・`setupClearButton`・`LogViewer.clear()`・`notifications.clearLogConfirm`) を削除した。ボタンは HTML に無かったので利用者に見える挙動は変わらない (#443)
 
 ### 修正
 

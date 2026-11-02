@@ -815,7 +815,6 @@ function initializeCodeExecution(): void {
     editorContainer: editorContainer!,
     toggleButtonId: 'toggle-log-btn',
     closeButtonId: 'close-log-btn',
-    clearButtonId: 'clear-log-btn',
     resizeHandleId: 'log-resize-handle',
     panelId: 'log-viewer',
     eventCountSelector: '.status-item[title="Total events recorded"]',
