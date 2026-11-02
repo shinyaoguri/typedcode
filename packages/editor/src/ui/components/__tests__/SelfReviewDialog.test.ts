@@ -61,12 +61,17 @@ describe('SelfReviewDialog accessibility', () => {
     expect(document.activeElement).toBe(document.querySelector('.self-review-close'));
   });
 
-  it('cancels the export on Escape, discarding the note', async () => {
-    const result = new SelfReviewDialog().show(summary);
-    (document.getElementById('self-review-note') as HTMLTextAreaElement).value = 'draft';
-    pressKey({ key: 'Escape' });
-    await expect(result).resolves.toEqual({ proceed: false, note: '' });
-    expect(document.querySelector('[data-dialog="self-review"]')).toBeNull();
+  it('ignores Escape so that a half-written note is not lost with one key', async () => {
+    const result = vi.fn();
+    void new SelfReviewDialog().show(summary).then(result);
+    const note = document.getElementById('self-review-note') as HTMLTextAreaElement;
+    note.value = 'draft';
+    const event = pressKey({ key: 'Escape' });
+    await Promise.resolve();
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.querySelector('[data-dialog="self-review"]')).not.toBeNull();
+    expect(note.value).toBe('draft');
+    expect(result).not.toHaveBeenCalled();
   });
 
   it('proceeds with the trimmed note when proceed is clicked', async () => {
@@ -76,17 +81,16 @@ describe('SelfReviewDialog accessibility', () => {
     await expect(result).resolves.toEqual({ proceed: true, note: 'learned loops' });
   });
 
-  it.each(['cancel', 'proceed', 'escape'] as const)('returns focus to the opener when closed via %s', async (path) => {
+  it.each(['cancel', 'proceed'] as const)('returns focus to the opener when closed via %s', async (path) => {
     const opener = document.getElementById('opener')!;
     opener.focus();
     const result = new SelfReviewDialog().show(summary);
-    if (path === 'escape') pressKey({ key: 'Escape' });
-    else action(path).click();
+    action(path).click();
     await result;
     expect(document.activeElement).toBe(opener);
   });
 
-  it.each(['cancel', 'proceed', 'escape'] as const)(
+  it.each(['cancel', 'proceed'] as const)(
     'leaves no document keydown listener behind after repeated open/close via %s',
     (path) => {
       const add = vi.spyOn(document, 'addEventListener');
@@ -94,8 +98,7 @@ describe('SelfReviewDialog accessibility', () => {
       const dialog = new SelfReviewDialog();
       for (let i = 0; i < 5; i++) {
         void dialog.show(summary);
-        if (path === 'escape') pressKey({ key: 'Escape' });
-        else action(path).click();
+        action(path).click();
       }
       const count = (spy: typeof add): number => spy.mock.calls.filter((c) => c[0] === 'keydown').length;
       expect(count(add) - count(remove)).toBe(0);

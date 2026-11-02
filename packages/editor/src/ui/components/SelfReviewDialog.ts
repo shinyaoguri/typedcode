@@ -7,7 +7,7 @@
  * - ノートは任意。空のまま進めば reflectionNote イベントは記録されない
  * - キャンセルで export 自体を中止できる
  * - 表示は中立 (疑い・判定の意味づけをしない)
- * - a11y (#305) は `dialogA11y.ts` が担う。Escape は「キャンセル」と同じ (export の中止)
+ * - a11y (#305) は `dialogA11y.ts` が担う。Escape では閉じない (書きかけのノートを一つのキーで失わせない。閉じる手段はキャンセルボタン / ×)
  */
 
 import type { ProcessSummary } from '@typedcode/shared';
@@ -80,7 +80,8 @@ export class SelfReviewDialog {
       this.a11y = attachDialogA11y(overlay.querySelector<HTMLElement>('.self-review-dialog')!, {
         labelledBy: overlay.querySelector<HTMLElement>('.self-review-header h2')!,
         initialFocus: textarea,
-        onRequestClose: () => finish({ proceed: false, note: '' }),
+        closeOnEscape: false,
+        onRequestClose: () => {},
       });
     });
   }

@@ -79,7 +79,7 @@ TypedCode の捕捉・分析・コホート基準が、**IME (各言語の入力
 - document に付けるリスナーはヘルパが持ち、`close()` で解放する (冪等)。**閉じる経路 (ボタン・overlay・Escape・プログラムからの close) を 1 つの close 関数に集約し、その中で `close()` を呼ぶ**。経路ごとに解放を書くと取りこぼす
 - 閉じさせないダイアログ (`closeOnOverlayClick: false`) は Escape でも閉じない。閉じる手段はダイアログ内のボタンで必ず用意する
 - ネイティブ `<dialog>` + `showModal()` は使わない。top layer に出るため `ExamStartGate` (`z-index: 40000`) など既存の重なり規則が変わる
-- 破壊的な選択肢があるダイアログは、初期フォーカスを破壊的でない側 (取り消し・再開) に置く。選択が必須のダイアログ (復旧) と進行表示 (書き出し・テンプレート取込の進捗) は Escape で閉じない (`closeOnEscape: false`)
+- 破壊的な選択肢があるダイアログは、初期フォーカスを破壊的でない側 (取り消し・再開) に置く。選択が必須のダイアログ (復旧)・書きかけの入力を持つダイアログ (セルフレビューのノート)・進行表示 (書き出し・テンプレート取込の進捗) は Escape で閉じない (`closeOnEscape: false`)
 - 移行状況: DOM を JS で組むダイアログ (`showModal` 経由・`AboutDialog`・`SessionRecoveryDialog`・`SelfReviewDialog`・`ExportProgressDialog`・`TemplateImportDialog` の確認と進捗・`ScreenCaptureDialogs` の画面共有選択とオプトアウト確認) は移行済み。**未移行**: `index.html` の静的モーダル (`hidden` クラスで開閉する。`ProcessingDialog` もこれを操作する) / タブ閉じ確認 (`TabUIController`) / `CountdownDialog` / lock overlay (段階的に移す)
 - メニュー項目から始まる操作 (書き出しのセルフレビュー・進捗) は、閉じたあとの復帰先がメニュー内の項目 (閉じたメニューの中) になる。復帰先を明示する設計 (呼び出し元から `returnFocusTo` を渡す) は未対応
 - 自動検査は単体テスト (`ui/components/__tests__/`) と E2E (`packages/e2e/tests/modal-a11y.spec.ts`)。**スクリーンリーダー (VoiceOver + Chrome など) での読み上げは自動化できないので、ダイアログの構造を変えたときは人が確認する**

@@ -126,7 +126,9 @@ test('the session recovery dialog is a named modal dialog that traps Tab and can
   await waitDialogClosed(app2, 'session-recovery');
 });
 
-test('the self-review dialog is a named modal dialog that traps Tab and closes on Escape', async ({ page }) => {
+test('the self-review dialog is a named modal dialog that traps Tab and keeps a half-written note on Escape', async ({
+  page,
+}) => {
   const app = new EditorApp(page);
   await app.openCasualFresh();
   await app.typeCode('int a;');
@@ -149,8 +151,14 @@ test('the self-review dialog is a named modal dialog that traps Tab and closes o
     expect(await focusInside(page, 'self-review'), `Shift+Tab #${i + 1}`).toBe(true);
   }
 
-  // Escape はキャンセルと同じ (export を中止する)。閉じたあとにフォーカスが消えたダイアログに残らない
+  // Escape では閉じず、書きかけのノートも残る (閉じる手段はキャンセルボタン)
+  await page.locator('#self-review-note').fill('draft');
   await page.keyboard.press('Escape');
+  expect(await app.openDialogs()).toContain('self-review');
+  await expect(page.locator('#self-review-note')).toHaveValue('draft');
+
+  // 閉じたあとにフォーカスが消えたダイアログに残らない
+  await page.locator('[data-dialog="self-review"] .self-review-btn-cancel').click();
   await waitDialogClosed(app, 'self-review');
   expect(await focusInside(page, 'self-review')).toBe(false);
   await app.expectConsistent();
