@@ -124,7 +124,7 @@ Issue の起票から PR の close までの規律はこの節で完結する。
 
 ### ラベル
 
-- **状態ラベル**: `status: in progress` (着手中。並行セッションの重複を避ける) / `verify: triaged` (受け入れ条件が固まり、着手してよい)
+- **状態ラベル**: `status: in progress` (着手中。並行セッションの重複を避ける) / `verify: triaged` (受け入れ条件が固まり、着手してよい)。`status: in progress` が付いたまま、参照する open PR も人の手も 3 日を超えて無い open Issue は、毎日の [claim-stall.yml](.github/workflows/claim-stall.yml) が赤くして名乗る (印は外さない。#469)。名乗られたら、閉じる / 印を外して残作業をコメントする / プランを更新して人の手を残す、のどれかをする
 - **種類ラベル** (Issue / PR に一つ): `bug` / `enhancement` / `documentation` / `security` など。Issue テンプレートが自動で付けるものはそのまま使う (#378 で `type:*` に置き換える予定)
 - **パッケージラベル** (`pkg:shared` / `pkg:editor` / `pkg:verify` / `pkg:workers` / `pkg:e2e` / `pkg:repo`): PR には変更ファイルから labeler が自動で付ける ([.github/labeler.yml](.github/labeler.yml))。Issue には着手対象が明らかな場合に手で付ける
 - `severity:*` はレビュー・トリアージ時の重要度の明示に使う
