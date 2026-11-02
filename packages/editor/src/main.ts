@@ -18,6 +18,8 @@ const examMode = mode === 'exam';
 // 機能別アクセント (要望): 作成アプリは data-feature=editor、色はモードで切替 (data-mode)。
 document.documentElement.setAttribute('data-feature', 'editor');
 document.documentElement.setAttribute('data-mode', mode);
+// 状態契約 (packages/editor/AGENTS.md「状態契約」): アプリの段階。boot / initializeApp が進める。
+setAppState('initializing');
 
 // 全消去リクエスト (?reset): 全モードのデータを消す手動ユーティリティ (sticky 解除用ではない)。
 if (urlParams.get('reset')) {
@@ -81,6 +83,7 @@ import {
 } from '@typedcode/shared';
 import { resolveRoute, capabilitiesFor, type EditorMode } from './core/mode.js';
 import { LandingPage } from './ui/components/LandingPage.js';
+import { setAppState, getAppState, buildTestSnapshot } from './core/stateContract.js';
 import { ModeSwitcher } from './ui/components/ModeSwitcher.js';
 import { setStorageNamespace, tabsKey, sessionActiveKey, allSessionDbNames } from './core/storageKeys.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
@@ -194,6 +197,8 @@ function updateSyncStatusUI(status: SyncStatus): void {
   // クラスをリセット
   syncStatusItem.classList.remove('synced', 'syncing', 'pending');
   syncStatusItem.classList.add(status);
+  // 状態契約: class と同じ値を data-state にも出す (E2E はこちらを読む)
+  syncStatusItem.dataset.state = status;
 
   // テキストを更新
   const statusTexts: Record<SyncStatus, string> = {
@@ -232,7 +237,7 @@ const editor: MonacoEditor = monaco.editor.create(editorContainer, {
 // 再現するため、現在の選択位置に単一の executeEdits を適用する。通常のキー入力 API では
 // Monaco が 1 文字ずつに分解してしまい、この一括投入経路を E2E で再現できないため用意する。
 if (import.meta.env.DEV) {
-  (window as unknown as { __tcTestInsertBlock?: (text: string) => void }).__tcTestInsertBlock = (text: string) => {
+  window.__tcTestInsertBlock = (text: string) => {
     const selection = editor.getSelection();
     if (!selection) return;
     editor.focus();
@@ -315,6 +320,13 @@ const ctx: AppContext = {
   // Session Content Registry (for internal paste detection)
   contentRegistry: new SessionContentRegistry(),
 };
+
+// E2E テスト専用フック (dev ビルドのみ。__tcTestInsertBlock と同じく本番では除去される)。
+// DOM の状態契約 (data-*) と突き合わせるための内部状態の写しを返す。E2E の `expectConsistent()` が
+// 両者の一致を確かめる (packages/editor/AGENTS.md「状態契約」)。
+if (import.meta.env.DEV) {
+  window.__tcTestSnapshot = () => buildTestSnapshot(ctx.tabManager, getAppState());
+}
 
 // editor-assist 宣言 (ADR-0019): Monaco の解決済みオプションから支援機能の実効状態を
 // environmentProbe (起動時ワンショット) に焼く。recordInitial より前に provider を設定する。
@@ -439,7 +451,7 @@ async function initializeTabManager(
   // ProofExporterの初期化
   ctx.proofExporter.setTabManager(ctx.tabManager);
   ctx.proofExporter.setProcessingDialog(ctx.processingDialog);
-  ctx.proofExporter.setCallbacks({ onNotification: showNotification });
+  ctx.proofExporter.setCallbacks({ onNotification: showNotification, onProofChanged: () => updateProofStatus(ctx) });
   if (ctx.trackers.screenshot) {
     ctx.proofExporter.setScreenshotTracker(ctx.trackers.screenshot);
   }
@@ -928,7 +940,9 @@ function examFileExtension(language: string): string {
  */
 async function runExamUnlock(appCtx: AppContext): Promise<void> {
   const gate = new ExamStartGate();
+  setAppState('gate');
   const { manifest, plaintext, packageHash, startToken } = await gate.prompt(); // 解錠まで block
+  setAppState('initializing');
 
   const decoded = decodeExamPlaintext(plaintext);
   if (decoded.kind === 'bundle') {
@@ -1533,12 +1547,16 @@ async function initializeApp(): Promise<void> {
   // Phase 10: IdleTimeoutManagerの初期化
   initializeIdleTimeoutManager();
 
+  // 状態契約: ここから編集できる (タブ 0 本ならウェルカム画面)
+  setAppState('ready');
+
   console.log('[TypedCode] App initialized successfully');
 }
 
 // ブート: ランディング (ADR-0015) なら重いエディタ初期化をせず DOM だけ描画する。
 function boot(): void {
   if (isLanding) {
+    setAppState('landing');
     new LandingPage().render();
     return;
   }

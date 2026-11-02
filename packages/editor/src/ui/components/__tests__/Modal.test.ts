@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { showModal, type ModalOptions } from '../Modal.js';
+import { showCountdownDialog, showLockOverlay, showModal, type ModalOptions } from '../Modal.js';
 
 /** document に Escape を送る (ダイアログ側のリスナーは document に付く)。 */
 function pressEscape(): void {
@@ -200,5 +200,54 @@ describe('showModal accessibility', () => {
     pressEscape();
     await settle();
     expect(modal.resolved()).toBe(1);
+  });
+});
+
+/** 状態契約 (#433): 「開いている」= `[data-dialog]` が DOM にあって `.hidden` が付いていない */
+function openDialogNames(): string[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-dialog]')]
+    .filter((el) => !el.classList.contains('hidden'))
+    .map((el) => el.dataset.dialog!);
+}
+
+describe('dialog state contract', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  it('reports a showModal dialog as open by its dialogName until it is closed', async () => {
+    open({ dialogName: 'sample' });
+    expect(openDialogNames()).toEqual(['sample']);
+
+    buttons()[0]!.click();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(openDialogNames()).toEqual([]);
+  });
+
+  it('puts the dialogName of countdown dialogs and lock overlays on their overlay', () => {
+    void showCountdownDialog({
+      title: 'T',
+      message: 'M',
+      seconds: 30,
+      continueButtonText: 'Go',
+      dialogName: 'countdown',
+    });
+    showLockOverlay({
+      overlayId: 'lock',
+      title: 'T',
+      description: 'D',
+      buttonText: 'Go',
+      onResume: () => {},
+      dialogName: 'lock',
+    });
+
+    expect(openDialogNames()).toEqual(['countdown', 'lock']);
   });
 });

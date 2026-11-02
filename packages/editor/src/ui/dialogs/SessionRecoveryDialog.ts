@@ -86,6 +86,7 @@ export function showSessionRecoveryDialog(sessionSummary: SessionSummary): Promi
     const overlay = document.createElement('div');
     overlay.id = 'session-recovery-overlay';
     overlay.className = 'modal-overlay';
+    overlay.dataset.dialog = 'session-recovery';
     overlay.innerHTML = `
       <div class="modal-dialog modal-info session-recovery-dialog">
         <div class="modal-header">

@@ -56,15 +56,17 @@ export class ProofStatusDisplay {
     const stats = this.getStats?.();
     if (!stats) return;
 
-    // イベント数を更新
+    // イベント数を更新 (data-count は状態契約。packages/editor/AGENTS.md「状態契約」)
     if (this.eventCountEl) {
       this.eventCountEl.textContent = String(stats.totalEvents);
+      this.eventCountEl.dataset.count = String(stats.totalEvents);
     }
 
-    // 現在のハッシュを更新
+    // 現在のハッシュを更新 (表示は省略形、data-hash は省略しない完全な値)
     if (this.currentHashEl && stats.currentHash) {
       this.currentHashEl.textContent = stats.currentHash.substring(0, 16) + '...';
       this.currentHashEl.title = stats.currentHash;
+      this.currentHashEl.dataset.hash = stats.currentHash;
     }
 
     // プログレスリングを更新
@@ -146,10 +148,12 @@ export class ProofStatusDisplay {
 
     if (this.eventCountEl) {
       this.eventCountEl.textContent = '0';
+      this.eventCountEl.dataset.count = '0';
     }
     if (this.currentHashEl) {
       this.currentHashEl.textContent = '-';
       this.currentHashEl.title = '';
+      this.currentHashEl.dataset.hash = '';
     }
     if (this.progressBar) {
       this.progressBar.style.strokeDashoffset = String(PROGRESS_RING_CIRCUMFERENCE);

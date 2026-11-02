@@ -46,6 +46,7 @@ export class ExamStartGate {
     return new Promise((resolve) => {
       const overlay = document.createElement('div');
       overlay.className = 'exam-gate-overlay';
+      overlay.dataset.dialog = 'exam-gate';
       overlay.id = 'exam-start-gate';
       overlay.innerHTML = this.render();
       document.body.appendChild(overlay);

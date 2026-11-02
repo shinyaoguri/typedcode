@@ -30,6 +30,12 @@ type PreExportAttestationOutcome =
 
 export interface ExportCallbacks {
   onNotification?: (message: string) => void;
+  /**
+   * export の試行が終わった (成功・失敗・キャンセルを問わない) ときに呼ぶ。export は reflectionNote /
+   * preExportAttestation を EventRecorder を通さず proof へ直接記録するので、ステータスバーの件数・ハッシュ
+   * (状態契約 `#event-count[data-count]` / `#current-hash[data-hash]`) をここで追従させる (#433)
+   */
+  onProofChanged?: () => void;
 }
 
 export class ProofExporter {
@@ -511,6 +517,7 @@ export class ProofExporter {
       this.callbacks.onNotification?.(t('export.failed'));
     } finally {
       this.isExporting = false;
+      this.callbacks.onProofChanged?.();
     }
   }
 
@@ -704,6 +711,7 @@ export class ProofExporter {
       this.callbacks.onNotification?.(t('export.zipFailed'));
     } finally {
       this.isExporting = false;
+      this.callbacks.onProofChanged?.();
     }
   }
 

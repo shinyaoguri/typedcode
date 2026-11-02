@@ -35,6 +35,7 @@ export class ExportProgressDialog {
     this.overlay = document.createElement('div');
     this.overlay.id = 'export-progress-dialog';
     this.overlay.className = 'modal-overlay';
+    this.overlay.dataset.dialog = 'export-progress';
     this.overlay.innerHTML = `
       <div class="modal-dialog modal-info export-progress-modal">
         <div class="modal-header">

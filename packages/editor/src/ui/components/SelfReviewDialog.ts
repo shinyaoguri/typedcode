@@ -31,6 +31,7 @@ export class SelfReviewDialog {
 
       const overlay = document.createElement('div');
       overlay.className = 'self-review-overlay';
+      overlay.dataset.dialog = 'self-review';
       overlay.innerHTML = `
         <div class="self-review-dialog" role="dialog" aria-modal="true">
           <div class="self-review-header">

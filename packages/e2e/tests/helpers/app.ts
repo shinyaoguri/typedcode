@@ -8,7 +8,8 @@ import { expect } from '@playwright/test';
 
 /**
  * 実物の TypedCode エディタを Playwright から駆動するページオブジェクト。
- * セレクタは安定した既存 DOM id (#download-menu-btn 等) を使う。
+ * 操作のセレクタは安定した既存 DOM id (#download-menu-btn 等) を使い、状態の判定は editor の
+ * 状態契約 (data-* と dev フック `__tcTestSnapshot`。packages/editor/AGENTS.md「状態契約」) だけを読む。
  */
 export class EditorApp {
   constructor(public readonly page: Page) {}
@@ -59,10 +60,10 @@ export class EditorApp {
     await expect.poll(() => this.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
   }
 
-  /** 記録済みイベント総数 (UI 表示)。 */
+  /** 記録済みイベント総数 (アクティブなタブ。状態契約 `#event-count[data-count]`)。 */
   async eventCount(): Promise<number> {
-    const txt = (await this.page.locator('#event-count').textContent()) ?? '0';
-    return Number.parseInt(txt.replace(/[^0-9]/g, ''), 10) || 0;
+    const raw = (await this.page.locator('#event-count').getAttribute('data-count')) ?? '0';
+    return Number.parseInt(raw, 10) || 0;
   }
 
   /** アクティブな Monaco エディタにフォーカスする。 */
@@ -77,7 +78,7 @@ export class EditorApp {
    * (同期は expect のポーリングで完了し次第すぐ抜けるので、健全時のコストは増えない)。
    */
   async waitForSynced(): Promise<void> {
-    await expect(this.page.locator('#sync-status-item')).toHaveClass(/synced/, { timeout: 90_000 });
+    await expect(this.page.locator('#sync-status-item')).toHaveAttribute('data-state', 'synced', { timeout: 90_000 });
     // event-count が 2 回連続で同じ = PoSW キューが掃けてチェーン確定。
     // 上限までに安定しなければ throw する (#229)。以前は黙って return していたため、
     // チェーンが確定していないまま reload / export へ進み、原因の離れた所で落ちていた。
@@ -216,11 +217,108 @@ export class EditorApp {
 
   /** 新規タブを追加する。 */
   async addTab(): Promise<void> {
-    const before = await this.page.locator('#editor-tabs .editor-tab, #editor-tabs [role="tab"]').count();
+    const before = await this.page.locator(TAB_SELECTOR).count();
     await this.page.locator('#add-tab-btn').click();
+    await expect.poll(() => this.page.locator(TAB_SELECTOR).count()).toBeGreaterThan(before);
+  }
+
+  /** タブを押して切り替える (ファイル名の上を押す。閉じるボタンに当てない)。 */
+  async switchToTab(tabId: string): Promise<void> {
+    await this.tabLocator(tabId).locator('.tab-filename').click();
+    await expect(this.tabLocator(tabId)).toHaveAttribute('data-active', 'true');
+  }
+
+  /**
+   * タブをダブルクリックして改名し、Enter で確定する。`newName` は拡張子を除いた名前
+   * (拡張子は言語で決まり、`data-filename` は拡張子込みになる)。
+   */
+  async renameTab(tabId: string, newName: string): Promise<void> {
+    await this.tabLocator(tabId).locator('.tab-filename').dblclick();
+    const input = this.page.locator(`${TAB_SELECTOR} .tab-filename-input`);
+    await input.waitFor({ state: 'visible' });
+    await input.fill(newName);
+    await input.press('Enter');
+    await input.waitFor({ state: 'detached' });
+  }
+
+  /** タブの閉じるボタンを押す。確認ダイアログ (`data-dialog="tab-close"`) が開くまで待つ。 */
+  async requestCloseTab(tabId: string): Promise<void> {
+    await this.tabLocator(tabId).locator('.tab-close-btn').click();
+    await expect.poll(() => this.openDialogs()).toContain('tab-close');
+  }
+
+  /** タブを閉じる確認ダイアログに答える。閉じたことは `data-dialog` で待つ。 */
+  async answerCloseTab(answer: 'confirm' | 'cancel'): Promise<void> {
+    await this.page.locator(answer === 'confirm' ? '#tab-close-confirm-btn' : '#tab-close-cancel-btn').click();
+    await expect.poll(() => this.openDialogs()).not.toContain('tab-close');
+  }
+
+  /** アクティブなタブの言語をステータスバーの `#language-selector` で変える。 */
+  async setLanguage(language: string): Promise<void> {
+    await this.page.locator('#language-selector').selectOption(language);
+  }
+
+  private tabLocator(tabId: string) {
+    return this.page.locator(`${TAB_SELECTOR}[data-tab-id="${tabId}"]`);
+  }
+
+  /** アプリの段階 (状態契約 `html[data-app-state]`)。 */
+  appState(): Promise<string | null> {
+    return this.page.locator('html').getAttribute('data-app-state');
+  }
+
+  /** dev フック `__tcTestSnapshot` で内部状態の写しを読む (dev ビルド限定。本番ビルドでは throw)。 */
+  snapshot(): Promise<EditorSnapshot> {
+    return this.page.evaluate(() => {
+      const fn = (window as unknown as { __tcTestSnapshot?: () => unknown }).__tcTestSnapshot;
+      if (!fn) throw new Error('__tcTestSnapshot not available (dev hook missing)');
+      return fn() as EditorSnapshot;
+    });
+  }
+
+  /** DOM のタブ (表示順)。状態契約 `.editor-tab` の data-* だけを読む。 */
+  tabs(): Promise<DomTab[]> {
+    return this.page.locator(TAB_SELECTOR).evaluateAll((els) =>
+      (els as HTMLElement[]).map((el) => ({
+        id: el.dataset.tabId ?? '',
+        filename: el.dataset.filename ?? '',
+        language: el.dataset.language ?? '',
+        active: el.dataset.active === 'true',
+        verification: el.dataset.verification ?? '',
+      }))
+    );
+  }
+
+  /** 開いているダイアログの名前。開いている = `[data-dialog]` が DOM にあって `.hidden` が付いていない。 */
+  openDialogs(): Promise<string[]> {
+    return this.page
+      .locator('[data-dialog]')
+      .evaluateAll((els) =>
+        (els as HTMLElement[]).filter((el) => !el.classList.contains('hidden')).map((el) => el.dataset.dialog ?? '')
+      );
+  }
+
+  /**
+   * DOM の状態契約と内部状態 (`__tcTestSnapshot`) が一致することを確かめる。比べるのは
+   * タブの順序と id、active (DOM でちょうど 1 つ ⇔ snapshot の activeTabId。タブ 0 本ならどちらも無し)、
+   * filename、language、アクティブなタブの件数 (`#event-count[data-count]`) とハッシュ
+   * (`#current-hash[data-hash]`)、`#language-selector` の値。
+   *
+   * 件数とハッシュは PoSW の非同期処理で動くので、アクティブなタブの pending が 0 になり DOM が
+   * 追いつくまで待つ (DOM と snapshot は 1 回の evaluate で同時に読む)。上限までに揃わなければ
+   * 食い違いの一覧を添えて落ちる。
+   */
+  async expectConsistent(): Promise<void> {
+    let last: string[] = [];
     await expect
-      .poll(() => this.page.locator('#editor-tabs .editor-tab, #editor-tabs [role="tab"]').count())
-      .toBeGreaterThan(before);
+      .poll(
+        async () => {
+          last = await this.page.evaluate(readContractMismatches, TAB_SELECTOR);
+          return last;
+        },
+        { timeout: CONSISTENT_TIMEOUT_MS, intervals: [100, 250, 500] }
+      )
+      .toEqual([]);
   }
 
   /**
@@ -276,6 +374,96 @@ export class EditorApp {
   exportViaLogButton(): Promise<string> {
     return this.exportAndSave('logButton');
   }
+}
+
+/** editor のタブ要素 (状態契約の data-* を持つ)。 */
+const TAB_SELECTOR = '#editor-tabs .editor-tab';
+
+/** `expectConsistent` が DOM と snapshot の収束を待つ上限 (PoSW のキューが掃けるまでを含む)。 */
+const CONSISTENT_TIMEOUT_MS = 30_000;
+
+/** `__tcTestSnapshot` のタブ 1 本分 (editor の `core/stateContract.ts` の `TestSnapshotTab`)。 */
+export interface EditorSnapshotTab {
+  id: string;
+  /** 拡張子込みの名前 (DOM の `data-filename` と同じ表現) */
+  filename: string;
+  language: string;
+  content: string;
+  totalEvents: number;
+  pendingCount: number;
+  currentHash: string | null;
+}
+
+/** `__tcTestSnapshot` の戻り値 (editor の `core/stateContract.ts` の `TestSnapshot`)。 */
+export interface EditorSnapshot {
+  appState: string | null;
+  activeTabId: string | null;
+  tabs: EditorSnapshotTab[];
+}
+
+/** DOM から読んだタブ 1 本分 (`.editor-tab` の data-*)。 */
+export interface DomTab {
+  id: string;
+  filename: string;
+  language: string;
+  active: boolean;
+  /** 生の VerificationState (`pending` / `verified` / `failed` / `skipped`) */
+  verification: string;
+}
+
+/**
+ * ページ内で DOM の状態契約と snapshot を同時に読み、食い違いを文字列で返す (一致なら空)。
+ * `page.evaluate` に渡すのでクロージャの外の値を参照しない。
+ */
+function readContractMismatches(tabSelector: string): string[] {
+  const fn = (window as unknown as { __tcTestSnapshot?: () => EditorSnapshot }).__tcTestSnapshot;
+  if (!fn) return ['__tcTestSnapshot not available (dev hook missing)'];
+  const snap = fn();
+  const domTabs = [...document.querySelectorAll<HTMLElement>(tabSelector)].map((el) => ({
+    id: el.dataset.tabId ?? '',
+    filename: el.dataset.filename,
+    language: el.dataset.language,
+    active: el.dataset.active,
+  }));
+  const out: string[] = [];
+  const domIds = domTabs.map((t) => t.id);
+  const snapIds = snap.tabs.map((t) => t.id);
+  if (JSON.stringify(domIds) !== JSON.stringify(snapIds)) {
+    out.push(`tab order: dom=${JSON.stringify(domIds)} snapshot=${JSON.stringify(snapIds)}`);
+  }
+  const domActive = domTabs.filter((t) => t.active === 'true').map((t) => t.id);
+  const badActive = domTabs.filter((t) => t.active !== 'true' && t.active !== 'false').map((t) => t.id);
+  if (badActive.length > 0) out.push(`data-active is neither "true" nor "false" on ${JSON.stringify(badActive)}`);
+  const expectedActive = snap.activeTabId === null ? [] : [snap.activeTabId];
+  if (JSON.stringify(domActive) !== JSON.stringify(expectedActive)) {
+    out.push(`active: dom=${JSON.stringify(domActive)} snapshot.activeTabId=${JSON.stringify(snap.activeTabId)}`);
+  }
+  for (const st of snap.tabs) {
+    const dt = domTabs.find((t) => t.id === st.id);
+    if (!dt) continue;
+    if (dt.filename !== st.filename) out.push(`filename of ${st.id}: dom=${dt.filename} snapshot=${st.filename}`);
+    if (dt.language !== st.language) out.push(`language of ${st.id}: dom=${dt.language} snapshot=${st.language}`);
+  }
+  const count = document.getElementById('event-count')?.dataset.count;
+  const hash = document.getElementById('current-hash')?.dataset.hash;
+  const activeTab = snap.tabs.find((t) => t.id === snap.activeTabId);
+  if (activeTab) {
+    if (activeTab.pendingCount !== 0)
+      out.push(`active tab ${activeTab.id} still has ${activeTab.pendingCount} pending`);
+    if (count !== String(activeTab.totalEvents)) {
+      out.push(`event count: dom=${count} snapshot.totalEvents=${activeTab.totalEvents}`);
+    }
+    if (hash !== (activeTab.currentHash ?? ''))
+      out.push(`hash: dom=${hash} snapshot.currentHash=${activeTab.currentHash}`);
+    const selected = (document.getElementById('language-selector') as HTMLSelectElement | null)?.value;
+    if (selected !== activeTab.language) {
+      out.push(`#language-selector: dom=${selected} snapshot.language=${activeTab.language}`);
+    }
+  } else if (snap.tabs.length === 0) {
+    if (count !== '0') out.push(`event count with no tabs: dom=${count} (expected 0)`);
+    if (hash !== '') out.push(`hash with no tabs: dom=${hash} (expected empty)`);
+  }
+  return out;
 }
 
 /** エディタのモード (URL の 1 段目)。 */

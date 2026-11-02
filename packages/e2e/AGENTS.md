@@ -28,6 +28,7 @@ tests/
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
 ├── workers-hang-export.spec.ts  # Workers 無応答 (route で応答しない) でも class の export が上限内に ZIP を出す (#324。fetch 上限 + best-effort 予算)
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
+├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)
 ├── verify-web.spec.ts    # 検証 Web の往復: Web↔CLI パリティ・改ざん・複数ファイル (#215)・壊れた proof (#292)・タブを閉じたあとの active / 表示の一致 (#281)
 ├── shots.spec.ts         # @shots: 証跡の撮影だけ (assert なし・通常実行から除外)。撮影 spec を増やすなら *.shots.spec.ts (require-tests がテストに数えない命名) にし、タイトルに @shots を付ける
 └── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)
@@ -56,13 +57,14 @@ CI では `deploy.yml` の `e2e-shard` job が Playwright の `--shard=1/2` / `2
 ### モード共通の入口 (helpers/app.ts)
 
 - `openModeFresh(mode, { acceptTerms, screenShare, waitReady })`: `/<mode>?reset` で開く。利用規約は init script で localStorage `typedcode-terms-accepted` を入れて飛ばす (既定は casual 以外)。起動時の画面共有の選択ダイアログ (`.screen-share-choice-dialog`。class と exam で出ることを確認済み) は `screenShare: 'share' | 'optOut'` で選ぶ (`optOut` は続けて出る確認ダイアログ `.screen-share-optout-confirm-dialog` の confirm まで閉じる。#374)。問題の読み込み・試験ゲートは各モードの spec 側で足す
+- **editor の UI 状態は状態契約と `expectConsistent()` で判定する** (#433): タブ・カウンタ・同期・アプリの段階・ダイアログは [packages/editor/AGENTS.md の「状態契約」](../editor/AGENTS.md) の data-* と dev フック `__tcTestSnapshot` だけを読む (`tabs()` / `openDialogs()` / `snapshot()` / `appState()`)。操作の後は `expectConsistent()` で DOM と内部状態の一致を確かめる (アクティブなタブの PoSW pending が 0 になって DOM が追いつくまで待ち、揃わなければ食い違いの一覧を添えて落ちる)。`__tcTestSnapshot` は dev 限定なので `production-build.spec.ts` からは使わない。タブ操作は `addTab` / `switchToTab` / `renameTab` / `requestCloseTab` + `answerCloseTab` / `setLanguage` を使う。通しの例は `tests/state-contract.spec.ts`
 - export は `exportCurrentTab` / `exportAllTabs` (ダウンロードメニュー) と `exportViaLogButton` (問題パネルの `#download-log-btn`。exam はこちらに一本化される)
 - `writeZipVariant` / `tamperFirstContentChange`: export ZIP を書き換えた ZIP (改ざん・proof の改名・壊れたエントリの追加) を作る。verify Web には ZIP のまま渡す
 
 ## よくある罠
 
 - **`verify-cli` は tsx で src を直接実行**: build を待たずに済むよう `helpers/verifyCli.ts` が `tsx cli.ts` で src を直接実行する。配布物 `dist/cli.js` (esbuild の単一 ESM bundle, #298) が素の node で動くことは verify-cli の `npm run test:dist` が CI で担保する
-- **打鍵直後の即リロードはイベント取り残し**: PoSW / IndexedDB flush 前に reload するとチェーンが途切れる。`waitForSynced` (`#sync-status-item.synced` + event-count 安定) を挟む。event-count が 30 秒以内に安定しなければ throw する (#229。以前は黙って return し、原因から離れた所で落ちていた)
+- **打鍵直後の即リロードはイベント取り残し**: PoSW / IndexedDB flush 前に reload するとチェーンが途切れる。`waitForSynced` (`#sync-status-item[data-state="synced"]` + `#event-count[data-count]` の安定) を挟む。event-count が 30 秒以内に安定しなければ throw する (#229。以前は黙って return し、原因から離れた所で落ちていた)
 - **`?reset` は localStorage を消す**: init script で入れた値も main.ts 先頭の `localStorage.clear()` で消える。利用規約の同意フラグは `Storage.prototype.clear` を包んで戻している (`installTermsAccepted`)。同じ手口で値を仕込むときはこれに倣う
 - **verify Web の判定は「選んだファイル」のもの**: `#assurance-strip` / `#result-status-icon` は表示中のタブ 1 つ分しか持たない。`VerifyWebApp.readVerdict` はサイドバーの行を選んでから読む。同じ export から作った ZIP を 2 つ入れると表示名 (`data-filename`) が重なって行が定まらないので、`writeZipVariant({ renameProof })` で proof 名を変える。`data-status` が `success` のプレーンテキスト (README・ソース) に判定は付かないので、読むのは `*_proof.json` だけ
 - **verify Web の完了待ちはサイドバーの全行で見る**: `#vp-step-*` は表示中のタブの進捗表示 (状態契約の外) なので待ちに使わない。`waitSettled` は全 `.file-item` の `data-status` が pending / verifying でなく、それが 2 回続けて同じになるまで待つ
@@ -70,4 +72,4 @@ CI では `deploy.yml` の `e2e-shard` job が Playwright の `--shard=1/2` / `2
 - **headless では本物の window blur が出ない**: `window.dispatchEvent(new Event('blur'))` で発火させる (handleBlur は isTrusted 非依存)
 - **画面共有は fake-media フラグで動く**: `playwright.config.ts` の chromium 引数で `getDisplayMedia` が monitor の fake stream を返す
 - **AI 一括投入の再現は dev フック経由**: `keyboard.insertText` は Monaco が 1 文字ずつ分解するため再現にならない。`window.__tcTestInsertBlock` (dev 限定) で `executeEdits` を 1 回適用する
-- **dev サーバ向けの spec は本番ビルドの退行を検出できない (#255)**: チャンク分割・バンドル変換の壊れ方は `vite build` の出力にしか現れない。`production-build.spec.ts` + `playwright.build.config.ts` がその 1 本の番人で、`vite preview` に対して走る。dev フック (`__tcTestInsertBlock`) は dist に無いので、この経路の spec は増やすなら **dev 限定 API に依存しない**こと
+- **dev サーバ向けの spec は本番ビルドの退行を検出できない (#255)**: チャンク分割・バンドル変換の壊れ方は `vite build` の出力にしか現れない。`production-build.spec.ts` + `playwright.build.config.ts` がその 1 本の番人で、`vite preview` に対して走る。dev フック (`__tcTestInsertBlock` / `__tcTestSnapshot`) は dist に無い (無いことを同 spec が assert する) ので、この経路の spec は増やすなら **dev 限定 API に依存しない**こと

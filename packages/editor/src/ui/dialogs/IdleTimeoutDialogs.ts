@@ -22,6 +22,7 @@ export function showIdleWarningDialog(timeoutMs: number): Promise<boolean> {
     icon: 'fa-clock',
     dialogId: IDLE_WARNING_OVERLAY_ID,
     countdownLabel: t('idleTimeout.countdownLabel') ?? '',
+    dialogName: 'idle-warning',
   });
 }
 
@@ -38,6 +39,7 @@ export function showIdleSuspendedOverlay(onResume: () => void): void {
     buttonText: t('idleTimeout.resumeButton') ?? 'Resume',
     icon: 'pause-circle',
     className: 'idle-suspended-overlay',
+    dialogName: 'idle-suspended',
     onResume,
   });
 }

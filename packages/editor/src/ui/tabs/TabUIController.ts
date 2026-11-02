@@ -8,6 +8,14 @@ import { escapeHtml } from '@typedcode/shared';
 import { getLanguageDefinition, FILE_EXTENSIONS } from '../../config/SupportedLanguages.js';
 import { t } from '../../i18n/index.js';
 
+/**
+ * タブの完全なファイル名 (拡張子込み)。タブに表示される名前と同じで、状態契約の
+ * `data-filename` と dev フック `__tcTestSnapshot` の filename はこの表現に揃える。
+ */
+export function tabFullFilename(tab: Pick<TabState, 'filename' | 'language'>): string {
+  return `${tab.filename}.${FILE_EXTENSIONS[tab.language] ?? 'txt'}`;
+}
+
 export interface TabUIControllerOptions {
   container: HTMLElement;
   tabManager: TabManager;
@@ -99,9 +107,15 @@ export class TabUIController {
     tabEl.className = 'editor-tab';
     tabEl.dataset.tabId = tab.id;
 
-    if (this.tabManager.getActiveTab()?.id === tab.id) {
+    const isActive = this.tabManager.getActiveTab()?.id === tab.id;
+    if (isActive) {
       tabEl.classList.add('active');
     }
+    // 状態契約 (packages/editor/AGENTS.md「状態契約」)。E2E は class や翻訳テキストではなくこれを読む
+    tabEl.dataset.active = String(isActive);
+    tabEl.dataset.filename = tabFullFilename(tab);
+    tabEl.dataset.language = tab.language;
+    tabEl.dataset.verification = tab.verificationState;
     const ext = '.' + this.getFileExtension(tab.language);
 
     // SVGアイコンがあればimgタグ、なければFont Awesomeのデフォルトアイコン
@@ -127,9 +141,7 @@ export class TabUIController {
     closeBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
       const targetTab = this.tabManager.getTab(tab.id);
-      const tabName = targetTab
-        ? `${targetTab.filename}.${this.getFileExtension(targetTab.language)}`
-        : t('tabs.untitled');
+      const tabName = targetTab ? tabFullFilename(targetTab) : t('tabs.untitled');
       this.showTabCloseConfirmDialog(tab.id, tabName);
     });
 
@@ -212,6 +224,10 @@ export class TabUIController {
       const newName = input.value.trim() || 'untitled';
       this.tabManager.renameTab(tabId, newName);
       filenameSpan.textContent = newName;
+      // renameTab の onTabUpdate が updateUI で描き直さない構成でも契約が古い名前を指さないよう、
+      // 表示と同じ箇所で data-filename も追従させる
+      const renamed = this.tabManager.getTab(tabId);
+      if (renamed) tabEl.dataset.filename = tabFullFilename(renamed);
       filenameSpan.style.display = '';
       input.remove();
     };

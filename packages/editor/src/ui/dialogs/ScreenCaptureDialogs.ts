@@ -22,6 +22,7 @@ export async function showScreenShareChoiceDialog(): Promise<ScreenShareChoice> 
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
+    overlay.dataset.dialog = 'screen-share-choice';
 
     const dialog = document.createElement('div');
     dialog.className = 'modal-dialog screen-share-choice-dialog';
@@ -92,6 +93,7 @@ export async function showScreenShareOptOutConfirmDialog(): Promise<boolean> {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
+    overlay.dataset.dialog = 'screen-share-optout-confirm';
 
     const dialog = document.createElement('div');
     dialog.className = 'modal-dialog modal-default screen-share-optout-confirm-dialog';
@@ -283,6 +285,7 @@ export function showScreenCaptureLockOverlay(
     buttonText: t('screenCapture.resumeButton') ?? '画面共有を再開',
     icon: 'desktop',
     className: 'screen-capture-lock-overlay',
+    dialogName: 'screen-capture-lock',
     onResume: async () => {
       const result = await onResume();
       return result; // false を返すとオーバーレイが閉じない
