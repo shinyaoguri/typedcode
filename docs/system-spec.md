@@ -341,7 +341,7 @@ interface SignedCheckpointEnvelope {
 ### 5.1. ローカルストレージ (実行中)
 - **sessionStorage `typedcode-tabs`**: タブ状態 (lightweight V2 フォーマット、events は IndexedDB から取得)
 - **IndexedDB `typedcode-session`**: イベント本体、screenshots、tabSwitches、session メタデータ
-- **localStorage**: proof データ (events・チェーン) は置かない。置くのは端末 ID (`typedcode-device-id`)、利用規約同意 (`typedcode-terms-accepted`)、テーマ / 言語 (`typedcode-theme` / `typedcode-locale`)、問題キャッシュ (`typedcode-exam-packages[-<mode>]` / `typedcode-class-problems[-<mode>]`。問題は T0 後公開値)。いずれも証明の入力ではない
+- **localStorage**: proof データ (events・チェーン) は置かない。置くのは利用規約同意 (`typedcode-terms-accepted`)、テーマ / 言語 (`typedcode-theme` / `typedcode-locale`)、問題キャッシュ (`typedcode-exam-packages[-<mode>]` / `typedcode-class-problems[-<mode>]`。問題は T0 後公開値)。いずれも証明の入力ではない
 
 ローカル保存は **生存中のみ意味があり、検証可能性とは独立**。エクスポート時に proof.json へ凝縮される。
 

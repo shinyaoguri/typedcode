@@ -196,7 +196,7 @@ export const en: TranslationKeys = {
     // Data Storage
     dataStorageTitle: 'Data Storage',
     dataStorageDesc:
-      "<strong>All data is stored only in your browser's local storage (IndexedDB). No automatic transmission to servers occurs.</strong>",
+      "<strong>Your code, keystrokes and personal information are never sent, and all data is stored only in your browser's local storage (IndexedDB). The only things sent to the server are the Turnstile token for human verification and, for timestamping, the session ID, a hash of the device fingerprint, and hash-chain values with their timestamps.</strong>",
     dataStorageDetailHeading: 'Data stored:',
     dataStorageCode: 'Editor content: Source files of code you create',
     dataStorageEvents: 'Operation logs: All keystroke, cursor movement, and external input event data',

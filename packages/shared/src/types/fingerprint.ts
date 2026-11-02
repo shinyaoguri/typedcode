@@ -43,16 +43,6 @@ export interface FingerprintComponents {
   maxTouchPoints: number;
 }
 
-/** 安定したブラウザ情報 */
-export interface StableInfo {
-  userAgent: string;
-  platform: string;
-  language: string;
-  hardwareConcurrency: number;
-  timezone: string;
-  webglVendor: string;
-}
-
 /** 詳細フィンガープリント情報 */
 export interface DetailedFingerprint {
   hash: string;

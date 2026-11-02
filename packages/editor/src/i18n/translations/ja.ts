@@ -194,7 +194,7 @@ export const ja: TranslationKeys = {
     // データ保存
     dataStorageTitle: 'データ保存',
     dataStorageDesc:
-      '<strong>すべてのデータはブラウザのローカルストレージ（IndexedDB）にのみ保存されます。サーバーへの自動送信は一切行いません。</strong>',
+      '<strong>コード・打鍵内容・個人情報は送信せず、データはブラウザのローカルストレージ（IndexedDB）にのみ保存されます。サーバーへ送るのは、人間確認のための Turnstile トークンと、時刻証明のためのセッション ID・端末 fingerprint のハッシュ・ハッシュチェーンの値と時刻だけです。</strong>',
     dataStorageDetailHeading: '保存されるデータ：',
     dataStorageCode: 'エディタの内容：作成したコードのソースファイル',
     dataStorageEvents: '操作ログ：すべてのキーストローク、カーソル移動、外部入力のイベントデータ',

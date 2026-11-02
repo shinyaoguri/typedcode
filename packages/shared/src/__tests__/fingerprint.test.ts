@@ -16,101 +16,6 @@ describe('Fingerprint', () => {
   });
 
   // ==========================================================================
-  // getDeviceId テスト
-  // ==========================================================================
-
-  describe('getDeviceId', () => {
-    it('should generate new device ID if none exists', async () => {
-      const deviceId = await Fingerprint.getDeviceId();
-
-      // Should be a 64-character hex string (SHA-256)
-      expect(deviceId).toMatch(/^[a-f0-9]{64}$/);
-
-      // Should be stored in localStorage
-      expect(localStorage.getItem(Fingerprint.STORAGE_KEY)).toBe(deviceId);
-    });
-
-    it('should return existing device ID from localStorage', async () => {
-      const existingId = 'existing-device-id-12345';
-      localStorage.setItem(Fingerprint.STORAGE_KEY, existingId);
-
-      const deviceId = await Fingerprint.getDeviceId();
-      expect(deviceId).toBe(existingId);
-    });
-
-    it('should persist generated device ID across calls', async () => {
-      const firstCall = await Fingerprint.getDeviceId();
-      const secondCall = await Fingerprint.getDeviceId();
-
-      expect(firstCall).toBe(secondCall);
-    });
-  });
-
-  // ==========================================================================
-  // generateDeviceId テスト
-  // ==========================================================================
-
-  describe('generateDeviceId', () => {
-    it('should generate unique IDs on each call', async () => {
-      const id1 = await Fingerprint.generateDeviceId();
-      const id2 = await Fingerprint.generateDeviceId();
-
-      // Each call should produce a different ID (due to UUID and timestamp)
-      expect(id1).not.toBe(id2);
-    });
-
-    it('should return a 64-character hex string', async () => {
-      const id = await Fingerprint.generateDeviceId();
-
-      expect(id).toHaveLength(64);
-      expect(id).toMatch(/^[a-f0-9]+$/);
-    });
-  });
-
-  // ==========================================================================
-  // getStableInfo テスト
-  // ==========================================================================
-
-  describe('getStableInfo', () => {
-    it('should return stable browser info', async () => {
-      const info = await Fingerprint.getStableInfo();
-
-      expect(info).toHaveProperty('userAgent');
-      expect(info).toHaveProperty('platform');
-      expect(info).toHaveProperty('language');
-      expect(info).toHaveProperty('hardwareConcurrency');
-      expect(info).toHaveProperty('timezone');
-      expect(info).toHaveProperty('webglVendor');
-    });
-
-    it('should return consistent info on multiple calls', async () => {
-      const info1 = await Fingerprint.getStableInfo();
-      const info2 = await Fingerprint.getStableInfo();
-
-      expect(info1.userAgent).toBe(info2.userAgent);
-      expect(info1.platform).toBe(info2.platform);
-      expect(info1.language).toBe(info2.language);
-    });
-  });
-
-  // ==========================================================================
-  // getWebGLVendor テスト
-  // ==========================================================================
-
-  describe('getWebGLVendor', () => {
-    it('should return a string', () => {
-      const vendor = Fingerprint.getWebGLVendor();
-      expect(typeof vendor).toBe('string');
-    });
-
-    it('should return vendor info or unknown', () => {
-      const vendor = Fingerprint.getWebGLVendor();
-      // Either returns mock value or 'unknown'
-      expect(vendor.length).toBeGreaterThan(0);
-    });
-  });
-
-  // ==========================================================================
   // collectComponents テスト
   // ==========================================================================
 
@@ -244,12 +149,17 @@ describe('Fingerprint', () => {
   });
 
   // ==========================================================================
-  // STORAGE_KEY テスト
+  // データ最小化 (#412)
   // ==========================================================================
 
-  describe('STORAGE_KEY', () => {
-    it('should be the expected value', () => {
-      expect(Fingerprint.STORAGE_KEY).toBe('typedcode-device-id');
+  describe('storage writes', () => {
+    it('does not write any typedcode- key to localStorage when collecting or hashing the fingerprint', async () => {
+      await Fingerprint.collectComponents();
+      await Fingerprint.generate();
+      await Fingerprint.getDetailedFingerprint();
+
+      const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i));
+      expect(keys.filter((k) => k?.startsWith('typedcode-'))).toEqual([]);
     });
   });
 });
