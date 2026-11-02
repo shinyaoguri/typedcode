@@ -18,6 +18,8 @@
 
 - 変異検査 (#467) の系統 3・4 を守るテストを shared に足した (`verification.metadata.test.ts`、仕様・実装の変更なし)。`verifyProofFile` の `metadataValid` は `typingProofHash` の不一致と root の不一致のどちらか片方だけでも落ち、申告メタデータ (`pasteEvents` など 6 キーと `totalTypingTime`) を偽って `typingProofHash` を再計算した proof は拒否される。貼り付け・ドロップ・削除を含む正規 proof は `valid: true` のまま (#498)
 
+- 検証の「厳しくする向き」の変異検査 (#467) で生き残った 3 箇所について、正規の proof が通ることを確かめる正の対照テストを足した (`verification.positiveControls.test.ts`)。timestamp が同値で連続するチェーン、置換・削除 (`rangeLength > 0`) を含む replay、templateInjection / contentSnapshot の後に contentChange が続く replay が `valid: true` になる。仕様の変更なし (#502)
+
 ### 変更
 
 - URL に `?reset=<値>` を付けて開くだけで、確認なしに全モードの localStorage・sessionStorage・session DB が消える仕組みを撤去した ([ADR-0011](docs/adr/0011-course-modes-and-path-routing.md) の決定どおり)。設定メニューの Reset All は確認ダイアログに消えるモード名とタブ数を出し、**現在のモードの session DB とモード別のキーだけ**を消す (ほかのモードのデータ、規約同意・表示言語・テーマ・Cookie は残る)。自分の DB 接続を閉じ、削除の完了を待ってからパラメータ無しの URL でリロードする。試験の開始画面から `?reset` の案内 (`exam.gate.resetHint`) を外した (#323, #446)
