@@ -4,3 +4,5 @@ playwright/.cache/
 downloads/
 # npm run shots の出力 (画像はコミットせず Gyazo へ上げる / ADR-0036)
 shots/
+# exam round-trip 用の fixture (npm run setup が生成。出題者鍵の公開鍵とパッケージ。#229)
+fixtures/

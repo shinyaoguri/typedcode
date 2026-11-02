@@ -26,6 +26,7 @@ tests/
 ├── helpers/verifyCli.ts  # tsx で verify-cli/src/cli.ts を直接実行 (build 待ち不要。dist は verify-cli の test:dist が担保)
 ├── helpers/verifyWeb.ts  # VerifyWebApp: 検証 Web を開き #file-input に ZIP/JSON を渡し、data-* の状態契約だけを読む
 ├── helpers/scenario.ts   # 利用シーン網羅 (scenarios/) の操作とフィクスチャ: .tcclass / テンプレート YAML、メニュー操作、問題の読み込み、マウスでのドラッグ・リサイズ、ファイルのドロップ、ノート付き export (app.ts は並行作業と衝突しないよう触らずここに置く)
+├── helpers/examFixture.ts # exam の fixture (fixtures/exam/fixture.json) を読む: 監督コード・パッケージのパス・出題者鍵の keyId
 ├── helpers/faults.ts     # 障害注入 (#435): Workers の API を 1 つずつ 503 / abort / hang (呼び出し回数を返す)、Turnstile のスクリプトの遮断、IndexedDB の open 失敗・QuotaExceeded、getDisplayMedia の stream の退避とトラックの ended
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
 ├── workers-hang-export.spec.ts  # Workers 無応答 (route で応答しない) でも class の export が上限内に ZIP を出す (#324。fetch 上限 + best-effort 予算)
@@ -33,6 +34,7 @@ tests/
 ├── fault-workers / fault-turnstile / fault-network / fault-storage  # 障害注入 (#435): session/start・checkpoint/sign の失敗、Turnstile 不達、オフラインの往復、IndexedDB の障害 (#325 / #300 は fixme)
 ├── multi-instance / history-navigation / viewport / ime-undo / idle / screen-capture-lock / reset-url  # 環境の揺さぶり (#435): 多重起動・戻る / 進む・狭い画面・IME と undo / redo・アイドル停止・画面共有の停止・`?reset` が何も消さないこと (#323) とリセットの現在のモード限定
 ├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)
+├── exam-roundtrip.spec.ts # exam モードの round-trip (#229): 誤コードの拒否 → 正コードで解錠 → 打鍵 → export → verify-cli --exam-package (束縛 PASS) と負のオラクル。fixture が無いとき CI では落とし、ローカルでは skip
 ├── scenarios/*.spec.ts   # editor の利用シーン網羅 (#434): ランディング・規約・class/assignment・復旧の新規開始・タブ並べ替え・8 言語・テーマ/表示言語・リセット・テンプレート・パネル・セルフレビュー・新規ウィンドウ。各シナリオは expectConsistent() と verify-cli (fast) で締める。既知の製品バグは test.fixme('#N ...') で再現を置く
 ├── verify-web.spec.ts    # 検証 Web の往復: Web↔CLI パリティ・改ざん・複数ファイル (#215)・壊れた proof (#292)・タブを閉じたあとの active / 表示の一致 (#281)
 ├── model/                # model-based E2E (#436): fast-check の fc.commands でランダムな操作列を流し、各手の後にモデル (editorModel.ts) と状態契約・snapshot・件数・エラーを突き合わせ、最後に全タブの export を verify-cli (fast) で検証する。手には、ブラウザのタブを閉じて復旧ダイアログから再開する `CloseAndResume` (IndexedDB からの復旧経路。`Reload` は sessionStorage 経路。#450) を含む。PR ゲートは固定シード 2 本 × 15 手 (手を足したら dry-run でシードを選び直す。根拠は model-based.spec.ts のコメント)、`@nightly` はランダムシードの長尺。実アプリの操作は playwrightDriver.ts、実行と失敗の報告 (シード・縮約後の操作列・再実行コマンド) は runner.ts
@@ -41,6 +43,8 @@ tests/
 playwright.config.ts       # dev 用: webServer で workers(:8787) + editor vite dev(:5173) + verify vite dev(:5174)
 playwright.build.config.ts # dist 用: workers + editor/verify を build し、verify を editor の dist の verify/ に重ねて vite preview(:4173)
 scripts/setup-env.mjs      # CI 用: Turnstile 公開テストキー配置 + checkpoint 署名鍵を実行時生成
+scripts/setup-exam-fixture.mjs # exam 用 fixture: 使い捨ての出題者鍵を作り make-exam-package.mjs で p1 / other の .tcexam を packages/e2e/fixtures/exam/ (gitignore 済み) に生成。`npm run setup` が setup-env.mjs の次に走る。揃っていれば何もしない
+exam-keys/ + vite.editor.config.mjs # exam の出題者鍵の差し替え (下記の罠): editor の dev サーバ用 Vite プラグインと、verify-cli (tsx) 用の resolve フック
 scripts/stage-verify-dist.mjs # dist 用: deploy.yml の「Merge build outputs」と同じ配置 (editor/dist/verify) を作る
 shots/                     # npm run shots の出力 (PNG・アニメーション WebP・manifest.json)。gitignore 済み
 ```
@@ -52,7 +56,7 @@ npm run test -w @typedcode/e2e               # 全シナリオ (サーバは Pla
 npm run test:build -w @typedcode/e2e         # 本番ビルドのスモークのみ (build → vite preview)
 npm run test:headed -w @typedcode/e2e        # 失敗調査 (ブラウザ表示)
 npm run shots -w @typedcode/e2e              # 見た目・動きの証跡を shots/ に撮る (@shots だけ。WebP の束ねに img2webp が要る。preshots が同じ準備をする)
-npm run setup -w @typedcode/e2e              # 単独で打つとき: テストキー + 署名鍵の用意 (pretest / preshots が呼ぶ)
+npm run setup -w @typedcode/e2e              # 単独で打つとき: テストキー + 署名鍵 + exam fixture の用意 (pretest / preshots が呼ぶ)
 npm run install-browsers -w @typedcode/e2e   # 単独で打つとき: Chromium の導入 (同上。OS の共有ライブラリは入れない)
 NIGHTLY=1 npm run test -w @typedcode/e2e -- --grep @nightly   # 毎晩の長い E2E だけ (model-based の長尺。FC_SEED / FC_RUNS / FC_STEPS で上書き)
 ```
@@ -72,6 +76,8 @@ CI では `deploy.yml` の `e2e-shard` job が Playwright の `--shard=1/2` / `2
 
 ## よくある罠
 
+- **exam の出題者鍵は追跡ファイルに書かない (#229, #338)**: `packages/shared/src/examAuthorityKeys/localKeys.ts` は verifier の信頼の根で、開発者が skip-worktree で自分の鍵を置く追跡ファイル。E2E の使い捨て鍵が混ざったままコミットされると本番の verifier が偽の出題者鍵を信頼する。そのため fixture 生成はこのファイルを触らず、`./localKeys` の import を E2E の実行時だけ差し替える (editor の dev サーバは `playwright.config.ts` の webServer が `--config ../e2e/vite.editor.config.mjs` で起こす。verify-cli は `runVerifyCli(..., { examAuthorityKeys: true })` が `exam-keys/node-register.mjs` を tsx の `--import` に付ける)。`--exam-package` に E2E の fixture を渡すときだけ `examAuthorityKeys: true` にし、他の検証は本物の registry のままにする。差し替え先 (`fixtures/exam/authority-keys.mjs`) が無ければどちらも何もしない。spec は `localKeys.ts` に fixture の keyId が混ざっていないことも assert する。**別の worktree などの通常の dev サーバが同じポートを握っていると差し替えが効かず「出題者の署名を検証できない」で落ちる**ので、`E2E_EDITOR_PORT` 等で空きポートを指定する。注: `setup-env.mjs` が `.dev.vars` の無い環境で書く checkpoint 鍵の `localKeys.ts` は従来どおり追跡ファイルを書き換える (これは別件。コミットしないこと)
+- **exam の解錠は Argon2id がメインスレッドで同期に走る**: 押した直後の数秒ページが固まる (本番パラメータのまま。署名検証 + 復号で数秒、遅い CI ランナーを見込んで `unlockExam` は 120 秒待つ)。誤コードのエラー表示 (`#exam-gate-error` の `hidden` 属性) と `html[data-app-state]` (`gate` → `ready`) で待ち、翻訳テキストは読まない。誤コードと「署名が信頼できない」は文言でしか区別できないので、同じ test の中で誤コード → 正コードの順に流し、正コードで解錠できることを「署名検証は通っている」の証拠にしている
 - **`verify-cli` は tsx で src を直接実行**: build を待たずに済むよう `helpers/verifyCli.ts` が `tsx cli.ts` で src を直接実行する。配布物 `dist/cli.js` (esbuild の単一 ESM bundle, #298) が素の node で動くことは verify-cli の `npm run test:dist` が CI で担保する
 - **打鍵直後の即リロードはイベント取り残し**: PoSW / IndexedDB flush 前に reload するとチェーンが途切れる。`waitForSynced` (`#sync-status-item[data-state="synced"]` + `#event-count[data-count]` の安定) を挟む。event-count が 30 秒以内に安定しなければ throw する (#229。以前は黙って return し、原因から離れた所で落ちていた)
 - **URL を開くだけで保存データは消えない (#323)**: `?reset` の全消去は撤去済み (`?reset` も `?reset=1` も何も消さない)。テストの独立は Playwright の context 分離に頼る。同じ context で `openCasualFresh()` を繰り返しても前のセッションは残る (復旧ダイアログ・復元が出る)。init script で入れた localStorage の値 (`installTermsAccepted`) もそのまま残る。消去を検査するのは設定メニューのリセット (`scenarios/reset.spec.ts`。現在のモードの DB とキーだけが消える)

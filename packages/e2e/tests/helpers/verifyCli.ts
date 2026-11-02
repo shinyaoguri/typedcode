@@ -3,7 +3,7 @@ import { readFileSync, existsSync, mkdtempSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../..');
@@ -12,6 +12,9 @@ const CLI_ENTRY = resolve(REPO_ROOT, 'packages/verify-cli/src/cli.ts');
 // root の node_modules/.bin を決め打ちせず Node の解決機構で引く
 // (Dependabot の lockfile 更新で root hoist が外れ spawn ENOENT になった実績: PR #189)。
 const TSX_CLI = createRequire(import.meta.url).resolve('tsx/cli');
+// exam の出題者鍵を E2E 用の公開鍵に差し替える resolve フックの登録 (#229)。
+// shared の追跡ファイル localKeys.ts を書き換えずに、使い捨ての鍵を信頼させるための仕組み。
+const EXAM_KEYS_REGISTER = pathToFileURL(resolve(HERE, '../../exam-keys/node-register.mjs')).href;
 
 /**
  * verify-cli を実プロセスとして起動して proof を検証する。
@@ -44,8 +47,17 @@ export interface CliResultWithAnalysis extends CliResult {
   analysis: CliAnalysisEntry[];
 }
 
-export function runVerifyCli(file: string, extraArgs: string[] = []): CliResult {
-  const res = spawnSync(process.execPath, [TSX_CLI, CLI_ENTRY, file, ...extraArgs], {
+export interface RunVerifyCliOptions {
+  /**
+   * exam の出題者鍵を E2E 用の公開鍵 (fixtures/exam/authority-keys.mjs) に差し替えて起動する (#229)。
+   * `--exam-package` に E2E の fixture を渡すときだけ true にする。他の検証は本物の registry のまま走らせる。
+   */
+  examAuthorityKeys?: boolean;
+}
+
+export function runVerifyCli(file: string, extraArgs: string[] = [], options: RunVerifyCliOptions = {}): CliResult {
+  const nodeArgs = options.examAuthorityKeys ? ['--import', EXAM_KEYS_REGISTER] : [];
+  const res = spawnSync(process.execPath, [TSX_CLI, ...nodeArgs, CLI_ENTRY, file, ...extraArgs], {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
     // full PoSW 再計算 (10,000 iter/event) は遅い CI ランナー (2 コア・他プロセスと競合) で
