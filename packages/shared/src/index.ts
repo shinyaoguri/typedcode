@@ -54,7 +54,6 @@ export {
   verifyCheckpoints,
   verifyEventArrayStructure,
   verifyProofMetadata,
-  verifyTypingProofHash,
   verifyChain,
   verifyProofFile,
   calculatePoswStats,

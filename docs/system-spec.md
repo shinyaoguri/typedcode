@@ -384,7 +384,7 @@ interface ExportedProof {
     finalHash: string;              // = finalEventChainHash
     startTime: number;
     endTime: number;
-    signature: string;              // 旧形式の互換用 (現バージョンでは構造的署名)
+    signature: string;              // 鍵を使わない SHA-256 (totalEvents/finalHash/startTime/endTime の JSON)。署名ではなく、どこでも検証されない。旧形式の名前を互換のため残している
     events: StoredEvent[];          // 全イベント列
   };
   fingerprint: {
