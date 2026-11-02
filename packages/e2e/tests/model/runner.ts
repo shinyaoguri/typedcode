@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import type { Browser, BrowserContext, TestInfo } from '@playwright/test';
 import fc from 'fast-check';
-import { type EditorModel, AddTab, SwitchTab, Type, editorCommandArbitraries } from './editorModel.js';
+import { type EditorModel, AddTab, editorCommandArbitraries } from './editorModel.js';
 import { PlaywrightEditorDriver } from './playwrightDriver.js';
 
 /**
@@ -9,9 +9,10 @@ import { PlaywrightEditorDriver } from './playwrightDriver.js';
  *
  * 1 本の列 = 新しいブラウザコンテキストで `openCasualFresh()` → コマンド列 (各手の後にモデルと突き合わせ) →
  * 全タブ export の検証。列ごとにコンテキストを作り直すのは、同じページで `openCasualFresh()` を
- * 繰り返しても前の列の状態が残るため (`/casual?reset` は値の無い `reset` を main.ts が偽と読み、
+ * 繰り返しても前の列の状態が残るため (#446: `/casual?reset` は値の無い `reset` を main.ts が偽と読み、
  * 消去が走らない。各 spec は新しいコンテキストで始まるので普段は表に出ない)。縮約は同じ列を何度も
- * 流し直すので、列どうしが独立でないと縮約が壊れる。
+ * 流し直すので、列どうしが独立でないと縮約が壊れる。#446 が直ったら、1 つのページで
+ * `openCasualFresh()` を繰り返す形に戻してよい (戻さなくても正しさは変わらない)。
  * 失敗したら fast-check が操作列を縮約し、シード・path・縮約後の操作列と、同じ列を再実行するコマンドを
  * テスト出力と `model-failure.md` (テストの出力ディレクトリ。nightly はこれを Issue に集める) に出す。
  *
@@ -62,6 +63,7 @@ export async function runModelBased(o: ModelRunOptions): Promise<void> {
     fc.commands(editorCommandArbitraries(), { maxCommands: o.steps, size: 'max', replayPath }),
     async (cmds) => {
       runNo += 1;
+      // 列ごとに新しいコンテキスト (#446 の回避。上の説明を参照)
       await context?.close();
       context = await o.browser.newContext();
       const driver = new PlaywrightEditorDriver(await context.newPage());
@@ -114,19 +116,12 @@ function errorText(e: unknown): string {
 /**
  * 列の最後: 全タブを export して verify-cli で検証し、proof をモデルと突き合わせる。
  * タブ 0 本 (全部閉じてウェルカム) で終わった列は、ウェルカム画面からタブを 1 本足してから export する
- * (export するものが無いと検証が空振りになるため)。空のタブには 1 文打ってから export する
- * (空のソースを含む ZIP は verify-cli が読めない既知の不具合を避ける。ExportCurrentTab の check と同じ理由)。
- * ここで足した手は縮約後の操作列には出ない (操作ログには出る)。
+ * (export するものが無いと検証が空振りになるため)。足した手は縮約後の操作列には出ない (操作ログには出る)。
  */
 async function finish(model: EditorModel, driver: PlaywrightEditorDriver): Promise<void> {
   if (model.tabs.length === 0) {
     driver.log('finish: no tabs left, adding one from the welcome screen');
     await new AddTab().run(model, driver);
-  }
-  for (const tab of model.tabs.filter((t) => t.content === '')) {
-    driver.log(`finish: typing into empty tab ${tab.id}`);
-    if (model.activeId !== tab.id) await new SwitchTab(model.tabs.indexOf(tab)).run(model, driver);
-    await new Type('end = 1;').run(model, driver);
   }
   driver.log('finish: ExportAllTabs()');
   await driver.exportAllTabs(model);

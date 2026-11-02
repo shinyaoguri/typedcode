@@ -309,10 +309,8 @@ export class FocusLoss extends EditorCommand {
 
 export class ExportCurrentTab extends EditorCommand {
   check(m: Readonly<EditorModel>): boolean {
-    // 空のタブは export しない: 空のソース (0 バイトのエントリ) を含む ZIP は verify-cli が読めない
-    // (shared の zipBudget.ts `assertZipWithinBudget` が JSZip の空エントリから申告サイズを取れず throw する)。
-    // 既知の不具合として報告済み。直ったらこの条件と runner.ts の finish の打鍵を外す。
-    return (activeTab(m)?.content.length ?? 0) > 0;
+    // 空のタブも export する (空のソースを含む ZIP が verify-cli で pass することも見る / #447)。
+    return m.tabs.length >= 1;
   }
   protected async step(m: EditorModel, d: EditorDriver): Promise<void> {
     await d.exportCurrentTab(activeTab(m)!);

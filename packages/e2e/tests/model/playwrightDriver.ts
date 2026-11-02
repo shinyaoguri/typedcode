@@ -53,7 +53,7 @@ export class PlaywrightEditorDriver implements EditorDriver {
   readonly lines: string[] = [];
   private lastTabClick: { id: string; at: number } | null = null;
   private runLabel = '';
-  /** 記録された contentSnapshot のイベント index (editor の console.log から拾う。下の settleSnapshotLag) */
+  /** 記録された contentSnapshot のイベント index (editor の console.log から拾う。#448 の回避 settleSnapshotLag 用) */
   private readonly contentSnapshotIndexes = new Set<number>();
 
   constructor(readonly page: Page) {
@@ -230,13 +230,13 @@ export class PlaywrightEditorDriver implements EditorDriver {
   }
 
   /**
-   * 既知の不具合の回避: contentSnapshot (`ProofStatusDisplay.checkSnapshot` が 100 イベントごとに記録) は
+   * 既知の不具合 #448 の回避: contentSnapshot (`ProofStatusDisplay.checkSnapshot` が 100 イベントごとに記録) は
    * proof に載るのに `#event-count` / `#current-hash` の表示を更新しないので、それが手の最後のイベントだと
    * 表示が遅れたまま止まり、`expectConsistent()` が落ちる (次のイベントで追いつく)。contentSnapshot が
    * 2 件続けて記録されることもあり、そのときは 2 件遅れる。
    * 「アクティブなタブの pending が 0・表示が k 件少ない・足りない k 件がどれも contentSnapshot」のときだけ、
    * 内容を変えない打鍵 (Shift) を 1 回足して表示を追いつかせる。それ以外の食い違いはそのまま
-   * `expectConsistent()` に落とさせる。直ったらこのメソッドを消す。
+   * `expectConsistent()` に落とさせる。#448 が直ったら、このメソッドと呼び出し・contentSnapshotIndexes を消す。
    */
   private async settleSnapshotLag(): Promise<void> {
     const read = async () => {
