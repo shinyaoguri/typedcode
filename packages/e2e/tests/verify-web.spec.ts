@@ -125,10 +125,20 @@ test('正常と改ざんの ZIP を一度に入れても、ファイルごとの
 
   const web = new VerifyWebApp(page);
   await web.open('fast');
+  // 何も読んでいない間は集約を出さない (属性なし)。
+  expect(await web.proofSummary()).toBeNull();
   const states = await web.load([cleanZip, tamperedZip]);
   const status = (f: string) => states.find((s) => s.filename === f)?.status;
   expect(status('clean_proof.json'), JSON.stringify(states)).not.toBe('error');
   expect(status('tampered_proof.json'), JSON.stringify(states)).toBe('error');
+
+  // ステータスバーの集約 (#282): 警告は passed に数えるので、正常 (fast = warning) + 改ざん (error) は 1/2 で失敗 1。
+  await expect.poll(() => web.proofSummary()).toEqual({ total: 2, passed: 1, failed: 1 });
+  // 正常な proof を開いた状態から、失敗のクリックで失敗した proof のタブに移る。
+  await web.selectFile('clean_proof.json');
+  await expect.poll(() => web.activeTabFilename()).toBe('clean_proof.json');
+  await web.clickProofSummary();
+  await expect.poll(() => web.activeTabFilename()).toBe('tampered_proof.json');
 
   // 正常 → 改ざん → 正常 → 改ざん と選び直す。直前のファイルの判定が残る (#215) と、
   // 改ざん側で partial が、正常側で failed が読めてしまう。

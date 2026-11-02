@@ -22,6 +22,7 @@ import { getI18n } from '../i18n/index';
 import { showAboutDialog } from './AboutDialog';
 import { bindFileInput, processFilesInOrder } from './fileInput';
 import { resolveInitialVerifyMode } from '../services/verifyModeQuery';
+import { summarizeVerification } from '../services/verificationSummary';
 
 export class AppController {
   private themeManager: ThemeManager;
@@ -148,6 +149,7 @@ export class AppController {
       setTimeout(() => this.updateStatusBar(), 0);
     });
     this.verificationQueue.initialize();
+    this.statusBar.setOnFailedClick(() => this.openFirstFailedProof());
 
     // Initialize FileController
     this.fileController = new FileController({
@@ -353,8 +355,21 @@ export class AppController {
       const state = this.uiState.getState();
       this.statusBar.setVerifying(state.completedCount, state.totalCount);
     } else {
-      this.statusBar.setReady();
+      // 検証が全件済んだら件数を残す (#282)。自動で開くのは 1 件だけなので、赤い proof を見落とさないため。
+      // 入力はタブの status (VerificationController が流した値) だけ。proof が 0 件 (plaintext のみ等) なら Ready。
+      const summary = summarizeVerification(allTabs);
+      if (summary.done && summary.total > 0) {
+        this.statusBar.setSummary(summary);
+      } else {
+        this.statusBar.setReady();
+      }
     }
+  }
+
+  /** 失敗サマリのクリック: 最初に失敗した proof を開く。自動オープンの規則は変えない。 */
+  private openFirstFailedProof(): void {
+    const { firstFailedId } = summarizeVerification(this.tabManager.getAllTabs());
+    if (firstFailedId) this.tabController.openTabForFile(firstFailedId);
   }
 
   private generateId(): string {

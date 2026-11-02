@@ -275,6 +275,10 @@ export interface VerifyTranslationKeys {
   statusBar: {
     ready: string;
     verifying: string;
+    /** `${passed}/${total}` (検証完了後の集約。警告は passed に数える。#282) */
+    summary: string;
+    /** `${failed}` (失敗を含むときだけ summary に併記) */
+    summaryFailed: string;
   };
 
   // Charts
