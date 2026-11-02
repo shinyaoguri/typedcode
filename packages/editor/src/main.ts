@@ -90,6 +90,7 @@ import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
 import { initializeTrackers } from './tracking/TrackersInitializer.js';
+import { removeLegacyDeviceId } from './utils/legacyStorage.js';
 import { ThemeManager } from './editor/ThemeManager.js';
 import { TabManager, type SyncStatus, type TabState } from './ui/tabs/TabManager.js';
 import type { MonacoEditor } from './editor/types.js';
@@ -416,15 +417,15 @@ function hideInitOverlay(): void {
 // ========================================
 
 async function initializeDeviceInfo(): Promise<{
-  deviceId: string;
   fingerprintHash: string;
   fingerprintComponents: Awaited<ReturnType<typeof Fingerprint.collectComponents>>;
 }> {
   updateInitMessage(t('notifications.gettingDeviceInfo'));
-  const deviceId = await Fingerprint.getDeviceId();
+  // 旧版が書いた端末 ID を消す (収集は #412 でやめた)
+  removeLegacyDeviceId();
   const fingerprintComponents = await Fingerprint.collectComponents();
   const fingerprintHash = await Fingerprint.generate();
-  return { deviceId, fingerprintHash, fingerprintComponents };
+  return { fingerprintHash, fingerprintComponents };
 }
 
 /**

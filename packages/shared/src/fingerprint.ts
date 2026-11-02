@@ -3,75 +3,10 @@
  * 端末とブラウザの固有情報を収集して識別子を生成
  */
 
-import type { FingerprintComponents, StableInfo, ScreenInfo, WebGLInfo, DetailedFingerprint } from './types.js';
-import { sharedDebugLog } from './utils/debug.js';
+import type { FingerprintComponents, ScreenInfo, WebGLInfo, DetailedFingerprint } from './types.js';
 import { computeHash } from './utils/hashUtils.js';
 
 export class Fingerprint {
-  static readonly STORAGE_KEY = 'typedcode-device-id';
-
-  /**
-   * 永続的なデバイスIDを取得または生成
-   */
-  static async getDeviceId(): Promise<string> {
-    const existingId = localStorage.getItem(this.STORAGE_KEY);
-    if (existingId) {
-      sharedDebugLog('[Fingerprint] Using existing device ID');
-      return existingId;
-    }
-
-    sharedDebugLog('[Fingerprint] Generating new device ID');
-    const deviceId = await this.generateDeviceId();
-    localStorage.setItem(this.STORAGE_KEY, deviceId);
-    return deviceId;
-  }
-
-  /**
-   * 新しいデバイスIDを生成
-   */
-  static async generateDeviceId(): Promise<string> {
-    const uuid = crypto.randomUUID();
-    const timestamp = Date.now();
-    const stableInfo = await this.getStableInfo();
-
-    const combined = `${uuid}-${timestamp}-${JSON.stringify(stableInfo)}`;
-    return computeHash(combined);
-  }
-
-  /**
-   * 比較的安定したブラウザ情報を取得
-   */
-  static async getStableInfo(): Promise<StableInfo> {
-    return {
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-      language: navigator.language,
-      hardwareConcurrency: navigator.hardwareConcurrency ?? 0,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      webglVendor: this.getWebGLVendor(),
-    };
-  }
-
-  /**
-   * WebGLベンダー情報のみ取得（安定した情報）
-   */
-  static getWebGLVendor(): string {
-    try {
-      const canvas = document.createElement('canvas');
-      const gl =
-        canvas.getContext('webgl') ?? (canvas.getContext('experimental-webgl') as WebGLRenderingContext | null);
-      if (!gl) return 'unknown';
-
-      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-      if (debugInfo) {
-        return gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) as string;
-      }
-      return gl.getParameter(gl.VENDOR) as string;
-    } catch {
-      return 'unknown';
-    }
-  }
-
   /**
    * ブラウザフィンガープリントを生成（詳細情報用）
    */

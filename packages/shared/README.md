@@ -54,12 +54,9 @@ const exported = await proof.exportProof(finalContent);
 
 ### Fingerprint
 
-ブラウザフィンガープリントとデバイス ID の管理。
+ブラウザフィンガープリントの収集とハッシュ化 (ブラウザには何も書き込まない)。
 
 ```typescript
-// 永続デバイス ID を取得 (localStorage 保存)
-const deviceId = await Fingerprint.getDeviceId();
-
 // 構成要素を収集
 const components = await Fingerprint.collectComponents();
 
