@@ -43,13 +43,23 @@ class FakeBroadcastChannel {
   }
 }
 
+let windowListeners: Record<string, Array<(e: unknown) => void>> = {};
+const fire = (type: string, event: unknown = {}): void => {
+  for (const listener of windowListeners[type] ?? []) listener(event);
+};
+
 describe('SingleInstanceGuard instanceId', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     FakeBroadcastChannel.instances = [];
     vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
-    // becomeActive が beforeunload を登録する (node 環境には window が無い)
-    vi.stubGlobal('window', { addEventListener: vi.fn() });
+    // becomeActive がページ離脱のリスナーを登録する (node 環境には window が無い)
+    windowListeners = {};
+    vi.stubGlobal('window', {
+      addEventListener: (type: string, listener: (e: unknown) => void) => {
+        (windowListeners[type] ??= []).push(listener);
+      },
+    });
   });
 
   afterEach(() => {
@@ -82,5 +92,63 @@ describe('SingleInstanceGuard instanceId', () => {
 
     await vi.advanceTimersByTimeAsync(500);
     await expect(pending).resolves.toBe(true);
+  });
+});
+
+/**
+ * 破棄のタイミング (#483)。beforeunload は離脱確認で「このページに留まる」を選ぶと、アンロードが
+ * 起きないのに発火済みになる。そこで破棄すると、生きているページのガードだけが外れて 2 つ目のタブが
+ * 正規インスタンスとして起動できてしまう。確実に離れるときだけ発火する pagehide で破棄する。
+ */
+describe('SingleInstanceGuard disposal timing', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    FakeBroadcastChannel.instances = [];
+    windowListeners = {};
+    vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
+    vi.stubGlobal('window', {
+      addEventListener: (type: string, listener: (e: unknown) => void) => {
+        (windowListeners[type] ??= []).push(listener);
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  async function activate(): Promise<SingleInstanceGuard> {
+    const guard = new SingleInstanceGuard('test');
+    const pending = guard.checkForExistingInstance();
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(pending).resolves.toBe(false);
+    return guard;
+  }
+
+  it('keeps the guard active when beforeunload fires but the user stays on the page', async () => {
+    const guard = await activate();
+
+    fire('beforeunload');
+
+    expect(guard.getIsActive()).toBe(true);
+    guard.dispose();
+  });
+
+  it('disposes the guard on pagehide when the page is really being unloaded (persisted=false)', async () => {
+    const guard = await activate();
+
+    fire('pagehide', { persisted: false });
+
+    expect(guard.getIsActive()).toBe(false);
+  });
+
+  it('keeps the guard when pagehide enters the bfcache (persisted=true), so a restored page is still guarded', async () => {
+    const guard = await activate();
+
+    fire('pagehide', { persisted: true });
+
+    expect(guard.getIsActive()).toBe(true);
+    guard.dispose();
   });
 });
