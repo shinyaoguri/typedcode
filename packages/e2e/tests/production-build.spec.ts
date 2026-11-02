@@ -17,7 +17,7 @@ import { VerifyWebApp } from './helpers/verifyWeb.js';
  * (dev サーバに対して走らせても目的の退行を検出できないため)。
  *
  * オラクルは「console / pageerror が出ない」「Monaco が実際にマウントされる」
- * 「打鍵がエディタに入る」の 3 点と、verify の本番ビルド (`/verify/` 配下) が proof を読んで
+ * 「打鍵がエディタに入る」の 3 点、dev フック (`__tcTestInsertBlock` / `__tcTestSnapshot`) が dist に無いこと、verify の本番ビルド (`/verify/` 配下) が proof を読んで
  * 状態契約の属性を出すこと。重い round-trip と判定の中身 (Web↔CLI パリティ) は dev 側の
  * spec (verify-web.spec.ts) が担うので、ここには増やさない (AGENTS.md「CI 時間を意識」)。
  * dist には dev フックが無いので、dev 限定 API に依存しないこと。
@@ -68,6 +68,14 @@ test('production build: エディタが console エラーなくマウントし�
   // ④ console / page エラーが 1 件も出ていない。これが #255 の再現オラクル。
   expect(pageErrors, collected()).toEqual([]);
   expect(consoleErrors, collected()).toEqual([]);
+
+  // ⑤ E2E 専用の dev フック (main.ts の `import.meta.env.DEV` ガード内) が dist に残っていない。
+  // ガードが外れると、本番で任意の一括挿入 (`__tcTestInsertBlock`) や内部状態の読み出しができてしまう (#433)。
+  const hooks = await page.evaluate(() => {
+    const w = window as unknown as Record<string, unknown>;
+    return { insertBlock: typeof w.__tcTestInsertBlock, snapshot: typeof w.__tcTestSnapshot };
+  });
+  expect(hooks).toEqual({ insertBlock: 'undefined', snapshot: 'undefined' });
 });
 
 test('production build: verify (/verify/) が proof を読んで判定の状態契約を出す', async ({ page, baseURL }) => {
