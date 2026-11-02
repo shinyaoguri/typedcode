@@ -65,9 +65,10 @@
 | [0031](0031-integrity-partial-when-posw-skipped.md) | Accepted | 検証モードで省略した検査を整合性層に反映する (integrity に `partial` を追加・ADR-0020 の値域を拡張) |
 | [0032](0032-biome-as-single-lint-format-toolchain.md) | Accepted | lint / format を Biome 1 つに集約し品質ゲートを typecheck 以外へ広げる (`.editorconfig` は置かない) |
 | [0033](0033-e2e-round-trip-harness-as-deploy-gate.md) | Accepted | E2E は暗号成果物をオラクルにした round-trip に限定し、全 deploy の必須ゲートにする (full は 1 本・他は fast) |
-| [0034](0034-replace-manual-verification-with-automated-tests.md) | Accepted | 機能追加時の手動動作確認を自動テストで置き換える (オラクルは暗号成果物・UI は data-* 状態契約・画素比較はしない・テスト必須ゲートとカバレッジのラチェット) |
+| [0034](0034-replace-manual-verification-with-automated-tests.md) | Accepted (決定 5 の範囲を ADR-0037 で追補) | 機能追加時の手動動作確認を自動テストで置き換える (オラクルは暗号成果物・UI は data-* 状態契約・画素比較はしない・テスト必須ゲートとカバレッジのラチェット) |
 | [0035](0035-triage-gate-for-issues.md) | Accepted | 着手できる Issue を、メンテナが `verify: triaged` を付けたものに限る (エージェントが印を付けてよいのは自分で踏んで起票し受け入れ条件を書いたものだけ・着手時に受け入れ条件の現況を確かめる) |
 | [0036](0036-visual-evidence-on-prs.md) | Accepted | UI を変えた PR は本文に before/after の画像を載せ、素材は撮影専用の @shots spec で撮る (人が見る証跡でありオラクルではない・画素比較しない・画像は Gyazo でコミットしない・動きは可逆アニメーション WebP) |
+| [0037](0037-see-red-before-trusting-new-tests.md) | Accepted | 新しいテスト・検査は、検証対象を壊して赤くなるのを見てから仕上げる (バグ修正に限らない・何を壊したかを PR の対応表に書く・変異検査の道具は実害を測ってから) |
 
 ## 参考
 
