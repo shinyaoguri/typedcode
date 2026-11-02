@@ -863,13 +863,6 @@ export class LogViewer {
   }
 
   /**
-   * ログをクリア
-   */
-  clear(): void {
-    this.container.innerHTML = '';
-  }
-
-  /**
    * ログをJSON形式でエクスポート
    */
   exportAsJSON(): string {

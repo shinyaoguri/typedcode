@@ -71,6 +71,27 @@ export class WasmerSdkCorruptedError extends Error {
   }
 }
 
+/**
+ * clang に渡すソースを組み立てる: stdout を非バッファ化する preamble + ユーザーのコード。
+ * stdout は行バッファから非バッファに切り替わり、ローカル端末と同じ見え方になる。
+ *
+ * preamble の最後の `#line 1` で、直後のユーザーのコードの 1 行目を 1 行目として数え直させる。
+ * これが無いと clang のエラー行が preamble の行数分ずれ、エディタのマーカーが範囲外になる (#489)。
+ * ファイル名は指定しない (`main.c` / `main.cpp` のまま。`parseErrors` が読む形を変えない)。
+ * 行数を変える編集をするときは `#line 1` を必ずユーザーのコードの直前に置くこと。
+ */
+export function buildSourceWithPreamble(code: string): string {
+  const preamble = `#include <stdio.h>
+/* TypedCode: Force unbuffered stdout for immediate output */
+__attribute__((constructor))
+static void __typedcode_init_stdout(void) {
+    setvbuf(stdout, (char *)0, _IONBF, 0);
+}
+#line 1
+`;
+  return preamble + code;
+}
+
 /** Options for compiling with different settings */
 export interface CompileOptions {
   sourceFile?: string;
@@ -220,16 +241,7 @@ export class CExecutor extends BaseExecutor {
     try {
       callbacks.onProgress?.('Compiling...');
 
-      // Inject unbuffered stdout setup at the beginning of the code
-      // This ensures stdout behaves like a local terminal (line-buffered → unbuffered)
-      const preamble = `#include <stdio.h>
-/* TypedCode: Force unbuffered stdout for immediate output */
-__attribute__((constructor))
-static void __typedcode_init_stdout(void) {
-    setvbuf(stdout, (char *)0, _IONBF, 0);
-}
-`;
-      const modifiedCode = preamble + code;
+      const modifiedCode = buildSourceWithPreamble(code);
 
       // Each run gets a fresh sandbox holding clang and the source file
       sandbox = await wasmer.sandboxes.create({

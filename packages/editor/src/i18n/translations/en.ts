@@ -368,7 +368,6 @@ export const en: TranslationKeys = {
     compilationStarted: 'Compiling...',
     executionStarted: 'Running...',
     codeExecution: 'Code execution: ${filename}',
-    clearLogConfirm: 'Clear logs? (Proof data will be preserved)',
   },
 
   selfReview: {

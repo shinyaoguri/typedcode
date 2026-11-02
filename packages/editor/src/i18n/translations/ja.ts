@@ -368,7 +368,6 @@ export const ja: TranslationKeys = {
     compilationStarted: 'コンパイル中...',
     executionStarted: '実行中...',
     codeExecution: 'コード実行: ${filename}',
-    clearLogConfirm: 'ログをクリアしますか？（証明データは保持されます）',
   },
 
   selfReview: {

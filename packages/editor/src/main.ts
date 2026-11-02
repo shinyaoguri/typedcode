@@ -68,6 +68,7 @@ import {
 } from './services/SingleInstanceGuard.js';
 import { CTerminal } from './terminal/CTerminal.js';
 import type { ParsedError } from './executors/c/CExecutor.js';
+import { resolveMarkerRange } from './executors/errorMarkerRange.js';
 import '@xterm/xterm/css/xterm.css';
 
 // モジュールのインポート
@@ -731,10 +732,7 @@ function initializeCodeExecution(): void {
     if (!activeTab) return;
 
     const markers = errors.map((err) => ({
-      startLineNumber: err.line,
-      startColumn: err.column,
-      endLineNumber: err.line,
-      endColumn: activeTab.model.getLineMaxColumn(err.line),
+      ...resolveMarkerRange(activeTab.model, err),
       message: err.message,
       severity:
         err.severity === 'error'
@@ -815,7 +813,6 @@ function initializeCodeExecution(): void {
     editorContainer: editorContainer!,
     toggleButtonId: 'toggle-log-btn',
     closeButtonId: 'close-log-btn',
-    clearButtonId: 'clear-log-btn',
     resizeHandleId: 'log-resize-handle',
     panelId: 'log-viewer',
     eventCountSelector: '.status-item[title="Total events recorded"]',
