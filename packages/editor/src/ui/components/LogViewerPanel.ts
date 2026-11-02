@@ -4,7 +4,6 @@
  */
 
 import type { LogViewer } from './LogViewer.js';
-import { t } from '../../i18n/index.js';
 
 export interface LogViewerPanelOptions {
   /** LogViewerインスタンスを取得するゲッター */
@@ -15,8 +14,6 @@ export interface LogViewerPanelOptions {
   toggleButtonId: string;
   /** 閉じるボタンID */
   closeButtonId: string;
-  /** クリアボタンID */
-  clearButtonId: string;
   /** リサイズハンドルID */
   resizeHandleId: string;
   /** ログビューアパネルID */
@@ -30,7 +27,6 @@ export class LogViewerPanel {
   private editorContainer: HTMLElement;
   private toggleBtn: HTMLElement | null = null;
   private closeBtn: HTMLElement | null = null;
-  private clearBtn: HTMLElement | null = null;
   private resizeHandle: HTMLElement | null = null;
   private panelEl: HTMLElement | null = null;
   private mainEl: HTMLElement | null = null;
@@ -51,7 +47,6 @@ export class LogViewerPanel {
     // DOM要素を取得
     this.toggleBtn = document.getElementById(options.toggleButtonId);
     this.closeBtn = document.getElementById(options.closeButtonId);
-    this.clearBtn = document.getElementById(options.clearButtonId);
     this.resizeHandle = document.getElementById(options.resizeHandleId);
     this.panelEl = document.getElementById(options.panelId);
     this.mainEl = document.querySelector('main');
@@ -59,7 +54,6 @@ export class LogViewerPanel {
     // イベントリスナーを設定
     this.setupToggleButton();
     this.setupCloseButton();
-    this.setupClearButton();
     this.setupResizeHandle();
 
     // ステータスバークリックでログ表示
@@ -104,19 +98,6 @@ export class LogViewerPanel {
       this.closeBtn.addEventListener('click', () => {
         this.getLogViewer()?.hide();
         this.updateToggleButtonState();
-      });
-    }
-  }
-
-  /**
-   * クリアボタンのセットアップ
-   */
-  private setupClearButton(): void {
-    if (this.clearBtn) {
-      this.clearBtn.addEventListener('click', () => {
-        if (confirm(t('notifications.clearLogConfirm'))) {
-          this.getLogViewer()?.clear();
-        }
       });
     }
   }
@@ -247,7 +228,6 @@ export class LogViewerPanel {
     }
     this.toggleBtn = null;
     this.closeBtn = null;
-    this.clearBtn = null;
     this.resizeHandle = null;
     this.panelEl = null;
     this.mainEl = null;

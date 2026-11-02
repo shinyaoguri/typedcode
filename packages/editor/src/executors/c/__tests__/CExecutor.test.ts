@@ -113,7 +113,8 @@ vi.mock('@wasmer/sdk', () => {
   return { Wasmer };
 });
 
-const { CExecutor } = await import('../CExecutor.js');
+const { CExecutor, buildSourceWithPreamble } = await import('../CExecutor.js');
+const { CppExecutor } = await import('../../cpp/CppExecutor.js');
 
 function collectCallbacks() {
   const out = { stdout: '', stderr: '', stdin: null as WritableStream<Uint8Array> | null };
@@ -245,5 +246,36 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
 
     await executor.initialize();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('compile error line numbers (#489)', () => {
+  it('places `#line 1` immediately before the user code so clang numbers its lines from 1', () => {
+    const source = buildSourceWithPreamble('int main(){return undefined_var;}');
+
+    expect(source.endsWith('#line 1\nint main(){return undefined_var;}')).toBe(true);
+    expect(source).toContain('setvbuf(stdout, (char *)0, _IONBF, 0);');
+  });
+
+  it('sends the #line-prefixed source to clang for both C and C++', async () => {
+    for (const Executor of [CExecutor, CppExecutor]) {
+      sdk.reset();
+      const executor = new Executor();
+      await executor.initialize();
+      await executor.run('int main(){return 0;}', collectCallbacks().callbacks);
+
+      const files = Object.values(sdk.sandboxFiles[0] ?? {});
+      expect(files).toHaveLength(1);
+      expect(String(files[0]).endsWith('#line 1\nint main(){return 0;}')).toBe(true);
+    }
+  });
+
+  it('reads line 1 from a clang message that points at the first user line', () => {
+    const executor = new CExecutor();
+
+    expect(executor.parseErrors("main.c:1:19: error: use of undeclared identifier 'undefined_var'")).toEqual([
+      { line: 1, column: 19, severity: 'error', message: "use of undeclared identifier 'undefined_var'" },
+    ]);
+    expect(executor.parseErrors('main.cpp:1:5: warning: unused variable')[0]?.line).toBe(1);
   });
 });
