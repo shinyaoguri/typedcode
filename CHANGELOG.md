@@ -28,6 +28,7 @@
 ### 修正
 
 - 打鍵が 100 件の倍数に達して contentSnapshot が記録されたとき、ステータスバーのイベント数とハッシュ (`#event-count[data-count]` / `#current-hash[data-hash]`) が次のイベントまで 1 件遅れたまま残る問題を修正した。スナップショットの記録が済んだら表示を追従させる (#448)
+- 空のタブ (0 バイトのファイル) を含めて全タブ export した ZIP を、verify-cli / verify Web が `ZIP entry has no readable declared size` で拒否する問題を修正した。JSZip が 0 バイトのエントリに作る形 (申告サイズを持たない空の中身を STORE で持つ) と完全に一致するエントリだけを 0 バイトとして数え、それ以外の申告サイズが読めないエントリは従来どおり fail-closed で拒否する。申告 0 を詐称しても JSZip は中身を捨てるので展開は起きない (#447)
 - 「閉じて再開」の復元が tabs レコードの古い `currentHash` を採用し、定期保存と append の競合で再開後のチェーンが切れて proof が invalid になりうる問題を修正した。`TypingProof.restoreState` が events 末尾の hash を正とし (events が空のときだけ渡された値を使う)、editor の 3 つの復元経路すべてに効く。V2 経路の個別の補正は重複になるので削除。proof 形式・ハッシュ入力の変更なし (#322)
 - Workers の `GET /api/checkpoint/public-keys` が body の `cacheTtlSec` (86400) と `Cache-Control: max-age=3600` で食い違う TTL を返していた問題を修正した。body から `cacheTtlSec` フィールドを削除し、キャッシュは `Cache-Control: public, max-age=3600` に一本化した。リポジトリ内にこのフィールドを読む側は無い (#370)
 - editor から Workers への fetch (verify-captcha / session/start / checkpoint/sign) にタイムアウトが無く、回線が止まると試験の export・タブ作成・署名が無期限に止まりうる問題を修正した。各 fetch を `WORKERS_FETCH_TIMEOUT_MS` で打ち切って既存の失敗経路 (リトライ・署名の backoff 再試行) に合流させ、exam / class / assignment の export 前認証は全体を `PRE_EXPORT_VERIFICATION_BUDGET_MS` で打ち切って失敗 attestation を記録したうえで ZIP を出す。casual の export 前認証は従来どおり待つ (#324)

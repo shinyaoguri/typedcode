@@ -74,6 +74,35 @@ export class ZipExtractionBudget {
   }
 }
 
+/** `assertZipWithinBudget` が読む JSZip の内部フィールド (型定義に無い)。 */
+type JszipEntryInternals = {
+  dir?: boolean;
+  _data?: { uncompressedSize?: number; then?: unknown };
+  options?: { compression?: string | null };
+};
+
+/**
+ * JSZip が `loadAsync` で 0 バイトのエントリに作る形か。
+ *
+ * JSZip 3.10 の `fileAdd` (lib/object.js) は申告 `uncompressedSize` が 0 のエントリの中身を捨て、
+ * `""` を `compression: 'STORE'` で持ち直す。`""` は `prepareContent` で Promise に包まれるので、
+ * `_data` は申告サイズを持たない thenable になる。中身を捨てているので、申告 0 を詐称して
+ * データを積んでも読み出しは 0 バイトで、展開の迂回路にはならない。
+ *
+ * この形と**完全に一致するときだけ** 0 バイトとみなす。JSZip の表現が変わって一致しなくなれば
+ * 呼び出し側は fail-closed で throw し、round-trip テストが赤くなる。
+ */
+function isJszipEmptyEntry(f: JszipEntryInternals | undefined): boolean {
+  const data = f?._data;
+  return (
+    f?.options?.compression === 'STORE' &&
+    typeof data === 'object' &&
+    data !== null &&
+    typeof data.then === 'function' &&
+    !('uncompressedSize' in data)
+  );
+}
+
 /**
  * 高圧縮率の悪意ある ZIP (zip bomb) を**展開前に**落とすための早期ガード。
  *
@@ -83,6 +112,7 @@ export class ZipExtractionBudget {
  *
  * 申告値が取れない非ディレクトリエントリは **fail-closed** で throw する。JSZip の内部構造
  * (`_data.uncompressedSize`) が変わったら round-trip テストが赤くなり、黙って無検査になるのを防ぐ。
+ * 例外は JSZip が 0 バイトのエントリに作る形 (`isJszipEmptyEntry`) だけで、これは 0 として数える (#447)。
  */
 export function assertZipWithinBudget(zip: JSZip): void {
   const names = Object.keys(zip.files);
@@ -92,9 +122,9 @@ export function assertZipWithinBudget(zip: JSZip): void {
   let total = 0;
   for (const name of names) {
     // `_data.uncompressedSize` は JSZip 内部だが `loadAsync` 経路では中央ディレクトリ由来で安定。
-    const f = zip.files[name] as unknown as { dir?: boolean; _data?: { uncompressedSize?: number } };
+    const f = zip.files[name] as unknown as JszipEntryInternals;
     if (f?.dir) continue; // ディレクトリはサイズを持たない
-    const declared = f?._data?.uncompressedSize;
+    const declared = isJszipEmptyEntry(f) ? 0 : f?._data?.uncompressedSize;
     if (typeof declared !== 'number' || !Number.isFinite(declared) || declared < 0) {
       throw new Error(`ZIP entry has no readable declared size: ${name}`);
     }
