@@ -1,6 +1,6 @@
 # ADR-0034: 機能追加時の手動動作確認を自動テストで置き換える
 
-- **Status**: Accepted
+- **Status**: Accepted (決定 5 の範囲を ADR-0037 で追補: 新しいテスト・検査全般に、壊して赤を見る手順を課す)
 - **Date**: 2026-10-31
 - **Deciders**: @shinyaoguri
 - **PR / Commit**: (追跡 Issue #346 の PR 1「テスト基盤の土台」)
