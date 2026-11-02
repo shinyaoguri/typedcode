@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canonicalizeStartToken,
   parseExamPackageManifest,
+  parseExamPackageManifestResult,
   examPackageSigningCore,
   computeExamPackageHash,
   computeProblemContentHash,
@@ -79,6 +80,65 @@ describe('parseExamPackageManifest', () => {
     const { manifest } = await buildSamplePackage(signer);
     expect(parseExamPackageManifest({ ...manifest, variant: null })).not.toBeNull();
     expect(parseExamPackageManifest({ ...manifest, variant: 7 })).toBeNull();
+  });
+});
+
+describe('parseExamPackageManifest format version gate (#223)', () => {
+  it('rejects a validly signed package with an unknown formatVersion', async () => {
+    const { signer, registry } = await makeExamAuthority('exam-parse-fv2');
+    const { manifest } = await buildSamplePackage(signer, { formatVersion: 2 });
+    // 署名自体は正規 (formatVersion は署名 core に含まれ、改竄ではない)
+    expect((await verifyExamPackageSignature(manifest, registry)).valid).toBe(true);
+    expect(parseExamPackageManifest(JSON.parse(JSON.stringify(manifest)))).toBeNull();
+  });
+
+  it('tells a newer formatVersion apart from a malformed manifest and says why', async () => {
+    const { signer } = await makeExamAuthority('exam-parse-fv2-reason');
+    const { manifest } = await buildSamplePackage(signer, { formatVersion: 2 });
+    const result = parseExamPackageManifestResult(JSON.parse(JSON.stringify(manifest)));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('unsupportedFormatVersion');
+    expect(result.newer).toBe(true);
+    expect(result.reason).toMatch(/format version/i);
+  });
+
+  it('rejects a formatVersion below the supported one (0) as unsupported, not newer', async () => {
+    const { signer } = await makeExamAuthority('exam-parse-fv0');
+    const { manifest } = await buildSamplePackage(signer, { formatVersion: 0 });
+    const result = parseExamPackageManifestResult(JSON.parse(JSON.stringify(manifest)));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('unsupportedFormatVersion');
+    expect(result.newer).toBe(false);
+  });
+
+  it('reports a non-numeric formatVersion as malformed', async () => {
+    const { signer } = await makeExamAuthority('exam-parse-fv-str');
+    const { manifest } = await buildSamplePackage(signer);
+    const result = parseExamPackageManifestResult({ ...manifest, formatVersion: '1' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('malformed');
+  });
+
+  it('accepts the supported formatVersion and returns the same manifest as the null-returning API', async () => {
+    const { signer } = await makeExamAuthority('exam-parse-fv1');
+    const { manifest } = await buildSamplePackage(signer);
+    const raw = JSON.parse(JSON.stringify(manifest));
+    const result = parseExamPackageManifestResult(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.manifest).toBe(parseExamPackageManifest(raw));
+  });
+
+  it('reports a structurally broken manifest as malformed', async () => {
+    const { signer } = await makeExamAuthority('exam-parse-broken');
+    const { manifest } = await buildSamplePackage(signer);
+    const result = parseExamPackageManifestResult({ ...manifest, kdf: { algorithm: 'pbkdf2' } });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('malformed');
   });
 });
 

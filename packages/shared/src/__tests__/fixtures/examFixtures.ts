@@ -50,6 +50,8 @@ export interface SamplePackageOptions {
   embedPubkey?: boolean;
   releaseTime?: string;
   deadline?: string;
+  /** manifest の formatVersion (既定 1)。未知バージョンの正規署名 package を作る (#223) */
+  formatVersion?: number;
 }
 
 /** テスト用の封印問題パッケージを 1 つ作る */
@@ -60,7 +62,7 @@ export async function buildSamplePackage(
   const token = opts.token ?? 'ABCD1234';
   const plaintext = opts.plaintext ?? '# Problem 1\nWrite a program that prints 42.';
   const input: ExamPackageBuildInput = {
-    formatVersion: 1,
+    formatVersion: opts.formatVersion ?? 1,
     examId: opts.examId ?? 'exam-1',
     problemId: opts.problemId ?? 'p1',
     variant: opts.variant ?? null,

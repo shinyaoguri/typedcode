@@ -5,6 +5,7 @@
 export {
   canonicalizeStartToken,
   parseExamPackageManifest,
+  parseExamPackageManifestResult,
   examPackageSigningCore,
   computeExamPackageHash,
   computeProblemContentHash,
@@ -43,4 +44,6 @@ export type {
   ExamVerifiedIdentifiers,
   VerifyExamBindingOptions,
   BuildExamProofBlockInput,
+  ExamManifestParseResult,
+  ExamManifestRejectionCode,
 } from './examPackage.js';

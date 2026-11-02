@@ -26,7 +26,14 @@ import { deterministicStringify, computeHash, iterateSha256HexSync } from './uti
 import { computeExamChainRoot } from './exam/examPackage.js';
 import { evaluatePureTyping } from './typingProof/structuralEdit.js';
 import { isTemplateInjectionData, offsetFromRange } from './typingProof/replay.js';
-import { POSW_ITERATIONS, EXAM_ROOT_BINDING_V2 } from './version.js';
+import {
+  POSW_ITERATIONS,
+  EXAM_ROOT_BINDING_V2,
+  classifyProofVersion,
+  isProofVersionRejected,
+  proofVersionRejectionMessage,
+  type ProofVersionStatus,
+} from './version.js';
 import { verifyProofSignedCheckpoints } from './signedCheckpoints.js';
 import { verifySessionStartToken, computeAnchoredChainRoot } from './sessionStartToken.js';
 import { CHECKPOINT_PUBLIC_KEYS } from './checkpointKeys/index.js';
@@ -69,6 +76,12 @@ export interface FullVerificationResult {
    * (chain に畳み込むと「改ざんされた」と誤って告発する — #211)。
    */
   sessionTokenMismatch?: boolean;
+  /**
+   * `proof.version` の分類 (#223)。`tooOld` / `malformed` は `valid: false` (`errorMessage` に出す)。
+   * `newer` (この検証器が知る major を超える) は reject せず、他の検査どおり `valid` を決めたうえで
+   * 表示層が「旧規則で誤読する恐れ」の warning を出す。
+   */
+  versionStatus?: ProofVersionStatus;
 }
 
 /**
@@ -864,6 +877,13 @@ export async function verifyProofFile(
   const skipPosw = mode === 'fast';
   const events = proof.proof.events;
 
+  // 0. バージョンゲート (#223)。proof.version は typingProofHash の入力ではないので、名乗り替えても
+  //    他の検査は影響を受けない。下限未満・不正形式はここで不合格、未知の新 major は warning として
+  //    versionStatus で返す。「どの層が落ちたか」を残すため、不合格でも以降の検査は走らせる。
+  const versionStatus = classifyProofVersion(proof.version);
+  const versionRejected = isProofVersionRejected(versionStatus);
+  const versionError = proofVersionRejectionMessage(versionStatus, proof.version);
+
   // 1. Verify metadata
   let metadataValid = false;
   let rootValid = false;
@@ -953,7 +973,13 @@ export async function verifyProofFile(
                   : chainResult.message;
 
   return {
-    valid: metadataValid && chainValid && !signedCheckpointBlocks && !tokenSessionMismatch && !rootAnchorBlocks,
+    valid:
+      !versionRejected &&
+      metadataValid &&
+      chainValid &&
+      !signedCheckpointBlocks &&
+      !tokenSessionMismatch &&
+      !rootAnchorBlocks,
     metadataValid,
     rootValid,
     rootAnchored,
@@ -963,10 +989,11 @@ export async function verifyProofFile(
     checkpointValid: checkpointResult.valid,
     isPureTyping,
     errorAt: chainResult.errorAt ?? checkpointResult.errorAt ?? signedCheckpointResult.errorAt,
-    errorMessage: verificationError,
+    errorMessage: versionError ?? verificationError,
     poswSkipped: skipPosw,
     signedCheckpoints: signedCheckpointResult,
     sessionTokenMismatch: !!tokenSessionMismatch,
+    versionStatus,
   };
 }
 

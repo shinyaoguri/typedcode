@@ -125,6 +125,7 @@ export type {
 export {
   canonicalizeStartToken,
   parseExamPackageManifest,
+  parseExamPackageManifestResult,
   examPackageSigningCore,
   computeExamPackageHash,
   computeProblemContentHash,
@@ -157,6 +158,8 @@ export type {
   ExamVerifiedIdentifiers,
   VerifyExamBindingOptions,
   BuildExamProofBlockInput,
+  ExamManifestParseResult,
+  ExamManifestRejectionCode,
 } from './exam/index.js';
 
 // バージョン定数
@@ -174,12 +177,16 @@ export {
   parseVersion,
   compareVersions,
   isVersionSupported,
+  parseVersionStrict,
+  classifyProofVersion,
+  isProofVersionRejected,
+  proofVersionRejectionMessage,
   getBuildInfo,
   GITHUB_REPO,
   GITHUB_URL,
   AUTHOR_GITHUB,
 } from './version.js';
-export type { BuildInfo } from './version.js';
+export type { BuildInfo, ParsedVersion, ProofVersionStatus } from './version.js';
 
 // i18n (多言語対応)
 export {

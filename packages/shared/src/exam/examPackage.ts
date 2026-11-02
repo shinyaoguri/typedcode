@@ -93,44 +93,91 @@ export function canonicalizeStartToken(raw: string): string {
 // manifest パース / バリデーション (untrusted JSON → ExamPackageManifest)
 // ============================================================================
 
+/** `parseExamPackageManifestResult` が拒否した理由の種別 */
+export type ExamManifestRejectionCode =
+  /** 必須フィールドの欠落・型違い (形が揃っていない) */
+  | 'malformed'
+  /** `formatVersion` が数値でない、または `EXAM_PACKAGE_FORMAT_VERSION` と異なる */
+  | 'unsupportedFormatVersion';
+
+export type ExamManifestParseResult =
+  | { ok: true; manifest: ExamPackageManifest }
+  | {
+      ok: false;
+      code: ExamManifestRejectionCode;
+      /** 利用者に見せてよい英語の理由 (自己申告値は埋め込まない) */
+      reason: string;
+      /**
+       * `unsupportedFormatVersion` のとき、package が名乗る `formatVersion` が自分より新しいか。
+       * 「新しいアプリで開いてください」と「壊れている」を表示層が出し分けるための値。
+       */
+      newer?: boolean;
+    };
+
 /**
- * untrusted な JSON (`.tcexam` ファイル) を ExamPackageManifest として最低限の構造検証つきで
- * パースする。形が不正なら null。真正性は `verifyExamPackageSignature`、復号可否は
- * `decryptExamPackage` が担う (ここは「形が揃っているか」だけを見る)。editor の取込ゲートと
- * verify-cli / verify(web) の grader が同じ判定を共有するために shared に置く。
+ * untrusted な JSON (`.tcexam` ファイル) を ExamPackageManifest として構造検証つきでパースし、
+ * 拒否するときは**理由つき**で返す (#223)。表示層 (editor の取込 / verify / verify-cli) はこちらを使う。
+ *
+ * `formatVersion` は署名 core に含まれるので改竄はできないが、正規に署名された未知の
+ * `formatVersion` (将来の v2) を旧ロジックで復号・束縛すると意味が変わりうるため、
+ * `EXAM_PACKAGE_FORMAT_VERSION` と異なるものはここで拒否する (前方互換ハザードの封じ込め)。
+ * 真正性は `verifyExamPackageSignature`、復号可否は `decryptExamPackage` が担う
+ * (ここは「形が揃っていて、読める formatVersion か」だけを見る)。
  */
-export function parseExamPackageManifest(input: unknown): ExamPackageManifest | null {
-  if (!input || typeof input !== 'object') return null;
+export function parseExamPackageManifestResult(input: unknown): ExamManifestParseResult {
+  const malformed = (reason = 'Exam package manifest is malformed'): ExamManifestParseResult => ({
+    ok: false,
+    code: 'malformed',
+    reason,
+  });
+  if (!input || typeof input !== 'object') return malformed();
   const m = input as Record<string, unknown>;
   const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
   const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
-  if (typeof m.formatVersion !== 'number') return null;
-  if (!isStr(m.examId) || !isStr(m.problemId)) return null;
-  if (!(m.variant === null || isStr(m.variant))) return null;
-  if (!isStr(m.releaseTime) || !isStr(m.deadline)) return null;
-  if (!isStr(m.keyId) || !isStr(m.algorithm) || !isStr(m.signature)) return null;
+  if (typeof m.formatVersion !== 'number') return malformed('Exam package formatVersion is missing or not a number');
+  if (m.formatVersion !== EXAM_PACKAGE_FORMAT_VERSION) {
+    return {
+      ok: false,
+      code: 'unsupportedFormatVersion',
+      reason: `Exam package format version is not supported by this build (supported: ${EXAM_PACKAGE_FORMAT_VERSION})`,
+      newer: m.formatVersion > EXAM_PACKAGE_FORMAT_VERSION,
+    };
+  }
+  if (!isStr(m.examId) || !isStr(m.problemId)) return malformed();
+  if (!(m.variant === null || isStr(m.variant))) return malformed();
+  if (!isStr(m.releaseTime) || !isStr(m.deadline)) return malformed();
+  if (!isStr(m.keyId) || !isStr(m.algorithm) || !isStr(m.signature)) return malformed();
 
   const kdf = m.kdf;
-  if (!isObj(kdf) || kdf.algorithm !== 'argon2id' || !isStr(kdf.salt) || !isObj(kdf.params)) return null;
+  if (!isObj(kdf) || kdf.algorithm !== 'argon2id' || !isStr(kdf.salt) || !isObj(kdf.params)) return malformed();
   const p = kdf.params;
   if (typeof p.memKiB !== 'number' || typeof p.iterations !== 'number' || typeof p.parallelism !== 'number') {
-    return null;
+    return malformed();
   }
 
   const cipher = m.cipher;
   if (!isObj(cipher) || cipher.algorithm !== 'AES-256-GCM' || !isStr(cipher.iv) || !isStr(cipher.ciphertext)) {
-    return null;
+    return malformed();
   }
 
   const allowed = m.allowed;
-  if (!isObj(allowed) || !Array.isArray(allowed.languages)) return null;
-  if (!allowed.languages.every((l) => typeof l === 'string')) return null;
+  if (!isObj(allowed) || !Array.isArray(allowed.languages)) return malformed();
+  if (!allowed.languages.every((l) => typeof l === 'string')) return malformed();
 
   // publicKeyJwk は任意 (long-term verifiability の同梱)。あれば object。
-  if (m.publicKeyJwk !== undefined && !isObj(m.publicKeyJwk)) return null;
+  if (m.publicKeyJwk !== undefined && !isObj(m.publicKeyJwk)) return malformed();
 
-  return input as ExamPackageManifest;
+  return { ok: true, manifest: input as ExamPackageManifest };
+}
+
+/**
+ * `parseExamPackageManifestResult` の互換ラッパー。拒否理由を捨てて null を返す。
+ * 呼び出し側が理由を出せるように、新規コードは `parseExamPackageManifestResult` を使うこと。
+ */
+export function parseExamPackageManifest(input: unknown): ExamPackageManifest | null {
+  const result = parseExamPackageManifestResult(input);
+  return result.ok ? result.manifest : null;
 }
 
 // ============================================================================
@@ -542,6 +589,16 @@ export async function verifyExamBinding(
   const exam = proof.exam;
   if (!exam) {
     return { ...base, reason: 'Proof has no exam block' };
+  }
+  // exam ブロックのバージョンゲート (#223)。examProofVersion は自己申告で root にも署名にも入らない
+  // (inert) が、将来 v2 で意味が変わったブロックを v1 の意味論で黙って検証しないために束縛失敗にする。
+  // 欠落は 1 とみなす (examProofVersion を持たない旧 proof との互換)。
+  const examProofVersion = exam.examProofVersion === undefined ? 1 : exam.examProofVersion;
+  if (examProofVersion !== EXAM_PROOF_VERSION) {
+    return {
+      ...base,
+      reason: `Unsupported proof.exam version (this verifier supports examProofVersion ${EXAM_PROOF_VERSION})`,
+    };
   }
   const fingerprintHash = proof.fingerprint?.hash;
   const nonce = proof.typingProofData.initialHashNonce;
