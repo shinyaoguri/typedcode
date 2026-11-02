@@ -451,7 +451,7 @@ async function initializeTabManager(
   // ProofExporterの初期化
   ctx.proofExporter.setTabManager(ctx.tabManager);
   ctx.proofExporter.setProcessingDialog(ctx.processingDialog);
-  ctx.proofExporter.setCallbacks({ onNotification: showNotification });
+  ctx.proofExporter.setCallbacks({ onNotification: showNotification, onProofChanged: () => updateProofStatus(ctx) });
   if (ctx.trackers.screenshot) {
     ctx.proofExporter.setScreenshotTracker(ctx.trackers.screenshot);
   }
