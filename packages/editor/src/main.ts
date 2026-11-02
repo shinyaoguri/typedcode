@@ -180,7 +180,11 @@ initDOMi18n();
 // モード切替ピル (ADR-0015): titlebar に現在モードを表示し、クリックで 4 モードへ切り替えられる。
 // 以前の静的バッジ (feature-badge) を置き換える。ランディングはエディタシェルを使わないので挿入しない。
 if (!isLanding) {
-  new ModeSwitcher(mode);
+  // クリック時にだけ呼ばれるので、ctx (下で const 宣言) を参照してよい。モードごとに保存先が別で現モードの作業は
+  // 失われないので、離脱確認は出さない (#445)。
+  new ModeSwitcher(mode, () => {
+    ctx.skipUnloadConfirm = true;
+  });
 }
 
 // Monaco Editor の Worker 設定
@@ -305,6 +309,7 @@ const ctx: AppContext = {
 
   // Flags
   skipBeforeUnload: false,
+  skipUnloadConfirm: false,
   examMode,
   mode,
   capabilities: capabilitiesFor(mode),
@@ -682,6 +687,8 @@ function initializeTerminal(): void {
     languageToggleBtn.addEventListener('click', () => {
       const currentLocale = i18n.getLocale();
       const newLocale = currentLocale === 'ja' ? 'en' : 'ja';
+      // リロードしても同じセッションが続く (切替前に sessionStorage へ保存される) ので、離脱確認は出さない (#445)
+      ctx.skipUnloadConfirm = true;
       i18n.setLocale(newLocale);
       ctx.settingsDropdown.close();
       window.location.reload();

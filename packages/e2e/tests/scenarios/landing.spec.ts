@@ -96,9 +96,6 @@ test('続きからバッジは、タブのあるセッションのモードに�
 
 test('ModeSwitcher はキーボードだけで開閉・移動でき、Enter で別モードへ移る', async ({ page }) => {
   const app = new EditorApp(page);
-  // ModeSwitcher の遷移は skipBeforeUnload を立てないので、記録のあるタブでは離脱確認 (beforeunload) が出る
-  // (#445。再現は theme-locale.spec.ts の fixme)。ここでは確認を受け入れて遷移そのものを確かめる。
-  page.on('dialog', (dialog) => void dialog.accept());
   await app.openCasualFresh();
   await app.waitForSynced();
 
