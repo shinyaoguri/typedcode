@@ -49,6 +49,12 @@ export class EventRecorder {
   private persistence: EventPersistence;
   /** スナップショット型ごとの最新イベント (#405)。タブが 0 件のときも保持する */
   private sessionSnapshot = new Map<EventType, RecordEventInput>();
+  /**
+   * record() が走らせた「PoSW 計算 → IndexedDB への append」の完了待ち (#342)。tabId ごとに、
+   * 終わっていない分だけを持つ。タブを閉じるとき、これが空になってから tabs 行を消す
+   * (先に消すと、後から append された events 行がどのタブにも属さない孤児として残る)
+   */
+  private inFlightByTab = new Map<string, Set<Promise<void>>>();
 
   constructor(options: EventRecorderOptions) {
     this.tabManager = options.tabManager;
@@ -106,7 +112,7 @@ export class EventRecorder {
     // 記録開始時にステータスを更新（queuedEventCount増加後なのでプログレスリングが表示される）
     this.onStatusUpdate?.();
 
-    recordPromise
+    const settled = recordPromise
       .then(async (result) => {
         // 記録に失敗してチェーンに載らなかったイベントは UI / IndexedDB に流さない (#284)
         if (!result.recorded) {
@@ -146,6 +152,36 @@ export class EventRecorder {
         // 成功・失敗に関わらずステータスを更新
         this.onStatusUpdate?.();
       });
+    this.trackInFlight(capturedTabId, settled);
+  }
+
+  /** record() の完了待ちを tabId に紐づける。終われば自分で外れる (catch 済みなので reject しない) */
+  private trackInFlight(tabId: string, settled: Promise<void>): void {
+    let inFlight = this.inFlightByTab.get(tabId);
+    if (!inFlight) {
+      inFlight = new Set();
+      this.inFlightByTab.set(tabId, inFlight);
+    }
+    inFlight.add(settled);
+    void settled.then(() => {
+      inFlight.delete(settled);
+      if (inFlight.size === 0 && this.inFlightByTab.get(tabId) === inFlight) {
+        this.inFlightByTab.delete(tabId);
+      }
+    });
+  }
+
+  /**
+   * そのタブについて record() が走らせた記録 (PoSW の確定と IndexedDB への append) がすべて
+   * 終わるまで待つ (#342)。TabManager がタブを閉じるとき、tabs 行の削除と PoSW Worker の終了の前に
+   * 呼ぶ。待っている間に始まった記録も待つ。失敗した記録も「終わった」ものとして数える (reject しない)。
+   */
+  async whenTabSettled(tabId: string): Promise<void> {
+    for (;;) {
+      const inFlight = this.inFlightByTab.get(tabId);
+      if (!inFlight || inFlight.size === 0) return;
+      await Promise.all([...inFlight]);
+    }
   }
 
   /**
