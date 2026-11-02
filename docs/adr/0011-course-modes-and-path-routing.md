@@ -104,7 +104,7 @@ proof に **動作したモードと能力集合**を記録し、ハッシュチ
 - **ADR-0010 の sticky モデルを置換する移行コスト**。
 
 ### Follow-ups / 残課題
-- 実装: path ルーティング + Pages SPA フォールバック / storage 名前空間化 / `?exam=1`・sticky・`?reset` の撤去 / モードを能力プリセット化 / proof に mode・能力集合を記録 / 課題モードでスクショ無効。
+- 実装: path ルーティング + Pages SPA フォールバック / storage 名前空間化 / `?exam=1`・sticky・`?reset` の撤去 / モードを能力プリセット化 (`?reset` の URL 起動の全消去は [#323](https://github.com/shinyaoguri/typedcode/issues/323) で撤去した。残る消去は設定メニューの Reset All を確認ダイアログで確定したときだけで、**現在のモードの session DB とモード別キーだけ**を消す。ほかのモードのデータと、規約同意・表示言語・テーマ・Cookie は残す) / proof に mode・能力集合を記録 / 課題モードでスクショ無効。
 - 出題者/課題作成ツール（[#80](https://github.com/shinyaoguri/typedcode/issues/80)）を「署名する／さらに封印する」の1系統で 3 モード分の配布物を出せるようにする。
 - ② 署名記述子は per-student variant を採る段で起こす（別 ADR）。
 - proof の "保証ラベル/能力集合" スキーマと、grader 側での保証度導出を定義する。

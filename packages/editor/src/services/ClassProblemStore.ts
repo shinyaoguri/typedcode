@@ -8,7 +8,7 @@
  * class タブは **examContext を持たない** (root 束縛なし、tier ①) ため problemId を proof から
  * 引けない。代わりに **タブの filename** (セッション/リロードで安定・一意) で問題本文を照合する。
  *
- * 問題は公開前提なので localStorage 保存で機密性の損失はない。解除は `?reset` に一本化。
+ * 問題は公開前提なので localStorage 保存で機密性の損失はない。解除は設定メニューのリセット (現在のモードの分だけ消える。#323)。
  */
 
 import { classProblemsKey } from '../core/storageKeys.js';
@@ -61,7 +61,7 @@ export const ClassProblemStore = {
     return values[0] ?? null;
   },
 
-  /** すべて消す (テスト/明示クリア用。通常の解除は ?reset に委ねる) */
+  /** すべて消す (テスト/明示クリア用。通常の解除は設定メニューのリセットに委ねる) */
   clear(): void {
     try {
       localStorage.removeItem(classProblemsKey());

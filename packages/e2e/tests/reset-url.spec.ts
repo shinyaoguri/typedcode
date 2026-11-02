@@ -2,14 +2,12 @@ import { test, expect } from '@playwright/test';
 import { EditorApp, installTermsAccepted } from './helpers/app.js';
 
 /**
- * #323: URL に `?reset=<値>` を付けて開くだけで、確認なしに全モードの localStorage・sessionStorage・
- * セッション DB が消える (main.ts 先頭の `?reset` ハンドラ)。期待 (#323 の受け入れ条件 1):
- * `/<mode>?reset=1` で開いても、localStorage・sessionStorage・どのモードの session DB も消えない。
- *
- * 値を付ける (`?reset=1`): 値の無い `?reset` は `urlParams.get('reset')` が空文字で偽になり、
- * 今も何も消さないので空振りする (#323。ヘルパの doc の誤りは #323 の受け入れ条件 6 が扱う)。
+ * #323: URL に `?reset=<値>` を付けて開いても何も消えない (URL 起動の全消去は撤去済み。消去は設定メニューの
+ * リセットを確定したときの現在のモードだけ)。リンクを踏ませるだけで全モードのデータを消せてはいけない。
+ * `?reset=1` のように値を付けて確かめる (値の無い `?reset` も同じく何も消さないが、旧実装は値の有無で
+ * 挙動が分かれていたので、消す側に倒れていた形で検査する)。
  */
-test.fixme('#323 /casual?reset=1 で開いても、どのモードの session DB も localStorage / sessionStorage も消えない', async ({
+test('#323 /casual?reset=1 で開いても、どのモードの session DB も localStorage / sessionStorage も消えない', async ({
   page,
 }) => {
   const app = new EditorApp(page);

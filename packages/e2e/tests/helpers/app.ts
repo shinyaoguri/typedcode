@@ -15,9 +15,10 @@ export class EditorApp {
   constructor(public readonly page: Page) {}
 
   /**
-   * クリーンな casual セッションで開く。`?reset` は全モードの localStorage /
-   * sessionStorage / IndexedDB を消すので、前回セッション復元モーダルを確実に回避し
-   * 各テストを独立させる (main.ts の `?reset` ハンドラ)。
+   * クリーンな casual セッションで開く。各テストは新しいブラウザ context で始まり localStorage /
+   * sessionStorage / IndexedDB が空なので、前回セッション復元モーダルは出ず、テストは互いに独立する
+   * (URL を開くだけで保存データを消す仕組みは無い。#323)。同じ context でもう一度開き直すと前のセッションが
+   * 残るので、列ごとに独立させたいときは context を作り直す (model/runner.ts)。
    */
   async openCasualFresh(): Promise<void> {
     await this.openModeFresh('casual');
@@ -26,7 +27,7 @@ export class EditorApp {
   /**
    * 任意のモードをクリーンなセッションで開く (モード共通の入口)。
    *
-   * - `/<mode>?reset` で全モードの保存データを消してから起動する (`openCasualFresh` と同じ)
+   * - `/<mode>` を開く (保存データは消さない。context が新しいので空の状態で起動する。`openCasualFresh` と同じ)
    * - 利用規約モーダル (class / assignment / exam で未同意なら出る。casual は出さない = ADR-0015) は
    *   `acceptTerms` で同意済みにして飛ばす。既定は casual 以外で true (casual の既存 spec の
    *   記録内容を変えないため、casual では何も足さない)
@@ -37,7 +38,7 @@ export class EditorApp {
   async openModeFresh(mode: EditorMode, opts: OpenModeOptions = {}): Promise<void> {
     const { acceptTerms = mode !== 'casual', screenShare, waitReady = true } = opts;
     if (acceptTerms) await installTermsAccepted(this.page);
-    await this.page.goto(`/${mode}?reset`);
+    await this.page.goto(`/${mode}`);
     if (screenShare) {
       const choice = this.page.locator(`.screen-share-choice-dialog [data-choice="${screenShare}"]`);
       await choice.waitFor({ state: 'visible', timeout: 30_000 });
@@ -488,9 +489,7 @@ const SYNC_STABLE_TIMEOUT_MS = 30_000;
  * 利用規約の同意フラグを、ページのスクリプトより先に localStorage へ入れる。
  * 形式は editor の `TermsHandler.markTermsAccepted` と同じ (`version` が一致しないと未同意扱い)。
  *
- * `?reset` は main.ts の先頭で `localStorage.clear()` するので、init script で入れただけでは
- * 規約チェック (起動フローの後段) の前に消える。`Storage.prototype.clear` を包み、localStorage が
- * 消されたら同意フラグだけ戻す (それ以外の消去はそのまま効く)。
+ * init script はページのスクリプトより先に走るので、規約チェック (起動フローの後段) の前に入っている。
  */
 export async function installTermsAccepted(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -503,11 +502,6 @@ export async function installTermsAccepted(page: Page): Promise<void> {
       } catch {
         /* 保存不可環境では諦める (モーダルが出るので呼び出し側の待ちで気付ける) */
       }
-    };
-    const originalClear = Storage.prototype.clear;
-    Storage.prototype.clear = function clear(this: Storage) {
-      originalClear.call(this);
-      if (this === window.localStorage) put();
     };
     put();
   });

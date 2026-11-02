@@ -7,10 +7,10 @@ import type { AppContext } from '../core/AppContext.js';
 import type { CursorPosition, RecordEventInput, DetectedEvent } from '@typedcode/shared';
 import { InputDetector } from '../tracking/InputDetector.js';
 import { isTurnstileConfigured } from '../services/TurnstileService.js';
-import { clearStorageSync } from '../utils/StorageClearHelper.js';
 import { t } from '../i18n/index.js';
 import { showNotification } from './AppHelpers.js';
 import { handleBeforeUnload } from './beforeUnloadGuard.js';
+import { confirmReset, prepareResetDialog } from './resetDialog.js';
 import { handleTemplateDrop, isTemplateFile } from './TemplateHandler.js';
 import { showLanguageDescriptionInTerminal } from './TerminalHandler.js';
 
@@ -276,6 +276,8 @@ export function setupStaticEventListeners(ctx: AppContext): void {
   // リセットボタン（設定メニュー内）をクリックしてダイアログを表示
   document.getElementById('reset-btn')?.addEventListener('click', () => {
     document.getElementById('settings-dropdown')?.classList.remove('visible');
+    // 消えるモード名とタブ数を差し込んでから開く (#323)
+    prepareResetDialog(ctx);
     resetDialog?.classList.remove('hidden');
   });
 
@@ -313,14 +315,8 @@ export function setupStaticEventListeners(ctx: AppContext): void {
     // ダイアログを閉じる
     resetDialog?.classList.add('hidden');
 
-    // beforeunloadイベントをスキップ
-    ctx.skipBeforeUnload = true;
-
-    // ストレージをクリア（同期版）
-    clearStorageSync();
-
-    // リロード（reset パラメータ付き）
-    window.location.href = window.location.origin + window.location.pathname + '?reset=' + Date.now();
+    // 現在のモードのデータを消し、完了してからパラメータ無しでリロードする (#323)
+    void confirmReset(ctx);
   });
 
   // ページ離脱時の確認ダイアログ

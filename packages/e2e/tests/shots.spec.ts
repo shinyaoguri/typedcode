@@ -17,7 +17,7 @@ import { VerifyWebApp } from './helpers/verifyWeb.js';
  *   `grepInvert` で外してある。タイトルの `@shots` が目印
  * - 待ち合わせは data-* の状態契約と既存ヘルパの wait 系だけで行い、翻訳テキストは読まない
  *   (packages/e2e/AGENTS.md)。検証は fast (不変条件 4)
- * - 言語は locale で決める (`?reset` が localStorage を消すので、言語設定は navigator.language →
+ * - 言語は locale で決める (context が新しく localStorage が空なので、言語設定は navigator.language →
  *   既定の順に落ちる)。時刻・配色・画面幅も固定し、base と head で同じ条件の画像を得る
  * - 撮影後の画像はリポジトリにコミットしない (shots/ は gitignore 済み)。Gyazo へ上げて URL を貼る
  */

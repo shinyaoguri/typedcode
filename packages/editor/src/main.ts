@@ -5,7 +5,7 @@ const urlParams = new URLSearchParams(window.location.search);
 // sticky は持たない — path はリロードで永続し、試験の整合性は封印の暗号束縛 (ADR-0006) が担保する。
 // ストレージはモード別に名前空間化する (PR3) ので、モード間でセッションが混ざらず共存できる
 // (PR1/PR2 の「モード切替時 auto-clear」を置換)。**NS は最初期に確定**させる — 以降の storage
-// 参照 (?reset/?fresh 含む) が storageKeys の getter を使うため。
+// 参照 (?fresh 含む) が storageKeys の getter を使うため。
 // ルート (ADR-0015): `/` と未知パスは 'landing' (モード選択の入口)。`/casual` 等は該当 mode。
 // landing のときは重いエディタ初期化をせず LandingPage の DOM だけ描画する (末尾の boot で分岐)。
 const route = resolveRoute(window.location.pathname);
@@ -21,42 +21,8 @@ document.documentElement.setAttribute('data-mode', mode);
 // 状態契約 (packages/editor/AGENTS.md「状態契約」): アプリの段階。boot / initializeApp が進める。
 setAppState('initializing');
 
-// 全消去リクエスト (?reset): 全モードのデータを消す手動ユーティリティ (sticky 解除用ではない)。
-if (urlParams.get('reset')) {
-  console.log('[TypedCode] Reset parameter detected, clearing all data...');
-  try {
-    localStorage.clear();
-  } catch {
-    /* ignore */
-  }
-  try {
-    sessionStorage.clear();
-  } catch {
-    /* ignore */
-  }
-  try {
-    const cookies = document.cookie.split(';');
-    for (const cookie of cookies) {
-      const eqPos = cookie.indexOf('=');
-      const name = eqPos > -1 ? cookie.substring(0, eqPos).trim() : cookie.trim();
-      if (name) {
-        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  for (const db of allSessionDbNames()) {
-    try {
-      indexedDB.deleteDatabase(db);
-    } catch {
-      /* ignore */
-    }
-  }
-  const cleanUrl = window.location.origin + window.location.pathname;
-  window.history.replaceState({}, '', cleanUrl);
-  console.log('[TypedCode] All data cleared, URL cleaned');
-}
+// URL を開くだけで保存データが消える経路は持たない (#323。旧 ?reset の全消去は撤去した)。
+// 消去は設定メニューのリセットを確認ダイアログで確定したときの、現在のモードだけ (app/resetDialog.ts)。
 
 // 新規ウィンドウ (?fresh=1): 現モードのタブ状態だけクリアして clean に始める。
 if (urlParams.get('fresh') === '1') {
@@ -85,7 +51,7 @@ import { resolveRoute, capabilitiesFor, type EditorMode } from './core/mode.js';
 import { LandingPage } from './ui/components/LandingPage.js';
 import { setAppState, getAppState, buildTestSnapshot } from './core/stateContract.js';
 import { ModeSwitcher } from './ui/components/ModeSwitcher.js';
-import { setStorageNamespace, tabsKey, sessionActiveKey, allSessionDbNames } from './core/storageKeys.js';
+import { setStorageNamespace, tabsKey, sessionActiveKey } from './core/storageKeys.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
