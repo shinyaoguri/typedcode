@@ -55,6 +55,29 @@ ProofExporter.export()
   → JSZip → ダウンロード
 ```
 
+## 状態契約 (data-* 属性)
+
+E2E (`packages/e2e`) は editor の UI 状態を、翻訳テキストや CSS クラスではなくここに挙げる **data-\* 属性** と dev 限定フック `__tcTestSnapshot` で読む ([ADR-0034](../../docs/adr/0034-replace-manual-verification-with-automated-tests.md)、#433)。値は生の値 (id・言語 id・enum) で、翻訳しない。既存の class (`active` / `synced` など) や表示テキストはそのまま残してあり、契約はそれに**足した**もの。
+
+| 要素 | 属性 | 取りうる値 | 意味 |
+|---|---|---|---|
+| `html` | `data-app-state` | `initializing` / `landing` / `gate` / `ready` | アプリの段階 (`core/stateContract.ts`)。`landing` = モード選択の入口、`gate` = 試験のスタートゲート (`ExamStartGate`) で解錠待ち、`ready` = 編集できる (タブ 0 本のウェルカム画面を含む)。利用規約・画面共有の選択・復旧ダイアログの間は `initializing`。起動を途中で止める画面 (別タブで起動中・未対応ブラウザ・認証失敗) でも `initializing` のまま残るので、何で止まったかは `data-dialog` で見る |
+| `#editor-tabs .editor-tab` | `data-tab-id` | タブ id | どのタブか (契約以前からある属性) |
+| 〃 | `data-active` | `true` / `false` (全タブに付ける) | アクティブなタブ。タブがあれば `true` はちょうど 1 つ |
+| 〃 | `data-filename` | 拡張子込みの名前 (`Untitled-1.c`) | タブに表示される名前 (`tabFullFilename`)。改名の確定 (`startFilenameEdit` の finishEdit) でも更新する |
+| 〃 | `data-language` | Monaco の言語 id (`c` / `python` …) | タブの言語 |
+| 〃 | `data-verification` | `pending` / `verified` / `failed` / `skipped` | タブの `verificationState` (shared `VerificationState`) をそのまま出す。`.tab-verification` のインジケータが出るのは `verified` / `failed` だけだが、契約は 4 値とも出す |
+| `#sync-status-item` | `data-state` | `synced` / `syncing` / `pending` | IndexedDB 同期状態 (`SyncStatus`。class と同じ値)。最初の状態通知までは属性なし |
+| `#event-count` | `data-count` | 整数 | アクティブなタブの `totalEvents`。タブ 0 本 (reset) では `0` |
+| `#current-hash` | `data-hash` | 省略しない完全なハッシュ / 空文字 | アクティブなタブの `currentHash` (表示は先頭 16 文字に省略)。タブ 0 本 (reset) では空 |
+| ダイアログ・オーバーレイの root | `data-dialog` | 下記の名前 | どのダイアログか。**開いている = DOM にあって `.hidden` が付いていない** |
+
+`data-dialog` の名前: `terms` / `reset` / `tab-close` / `processing` / `duplicate-instance` / `unsupported-browser` (以上 `index.html` の静的要素) / `session-recovery` / `welcome` (`.welcome-screen`) / `self-review` / `screen-share-choice` / `screen-share-optout-confirm` / `screen-share-error` / `screen-capture-lock` / `idle-warning` / `idle-suspended` / `export-progress` / `exam-gate`。`Modal.ts` の `showModal` / `showCountdownDialog` / `showLockOverlay` で作るものは引数 `dialogName` で overlay に付ける (新しいダイアログを足すときも名前を付ける)。
+
+- **dev フック `window.__tcTestSnapshot()`** (`main.ts` の `import.meta.env.DEV` ガード内。`__tcTestInsertBlock` と同じ流儀): `{ appState, activeTabId, tabs: [{ id, filename, language, content, totalEvents, pendingCount, currentHash }] }` を返す (`core/stateContract.ts` の `buildTestSnapshot`)。tabs は表示順 (`getAllTabs()`)、filename は `data-filename` と同じ拡張子込み、タブ 0 本なら `activeTabId: null`。本番ビルドには残らない (`production-build.spec.ts` が見張る)
+- E2E 側の読み手は [`packages/e2e/tests/helpers/app.ts`](../e2e/tests/helpers/app.ts) の `EditorApp` (`tabs()` / `openDialogs()` / `snapshot()` / `expectConsistent()`)。`expectConsistent()` は DOM の契約と snapshot の一致 (タブの順序・id・active・filename・language、アクティブなタブの件数・ハッシュ、`#language-selector` の値) を、PoSW の pending が 0 になって DOM が追いつくまで待って確かめる。**proof に記録したのに表示を更新しない経路を作ると、ここで食い違いとして落ちる** (export が EventRecorder を通さず記録する分は `ExportCallbacks.onProofChanged` で表示を追従させている)
+- **この契約 (要素・属性名・値域・「無い」の意味・snapshot の形) を変えるときは、`packages/e2e` の E2E と同じ PR で変える**。片方だけ変えると E2E が赤になるか、もっと悪いと別の要素を読んで黙って通る。ユニットテストは `ui/tabs/__tests__/TabUIController.stateContract.test.ts` / `ui/components/__tests__/ProofStatusDisplay.test.ts` / `ui/components/__tests__/Modal.test.ts` (dialog state contract) / `core/__tests__/stateContract.test.ts`
+
 ## よくある罠
 
 - **`vite-plugin-top-level-await` を再導入しない (#255)**: このプラグインはチャンクの全エクスポートを先頭の `let` に巻き上げて本体を async IIFE で包む。`export function` が代入文に降格するため、**関数宣言の巻き上げに依存している monaco** (`vs/platform/instantiation`: `createDecorator` を定義より前に呼ぶ) が壊れ、`createDecorator is not a function` → 以降のエクスポート代入が全て飛び `Class extends value undefined` に至る。**dev サーバでは再現せず本番ビルドだけが壊れる**ので、`packages/e2e/tests/production-build.spec.ts` (vite preview 対象) が番人。`build.target` を `esnext` から下げるときだけ再検討の余地がある

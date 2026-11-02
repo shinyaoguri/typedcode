@@ -25,6 +25,7 @@ export class WelcomeScreen {
 
     this.element = document.createElement('div');
     this.element.className = 'welcome-screen';
+    this.element.dataset.dialog = 'welcome';
     this.element.innerHTML = `
       <div class="welcome-content">
         <div class="welcome-logo">

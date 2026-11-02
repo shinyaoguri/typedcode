@@ -40,6 +40,11 @@ export interface ModalOptions {
   closeOnEscape?: boolean;
   /** Custom CSS class for the modal dialog */
   className?: string;
+  /**
+   * 状態契約の `data-dialog` に出す名前 (packages/editor/AGENTS.md「状態契約」)。
+   * overlay (開閉で `.hidden` が付く・DOM から外れる要素) に付ける。
+   */
+  dialogName?: string;
 }
 
 /** 初期フォーカスの置き場。破壊的な操作があるときは取り消しを優先する */
@@ -70,12 +75,14 @@ export async function showModal(options: ModalOptions): Promise<void> {
     closeOnOverlayClick = true,
     closeOnEscape = closeOnOverlayClick,
     className,
+    dialogName,
   } = options;
 
   return new Promise((resolve) => {
     // Create overlay
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
+    if (dialogName) overlay.dataset.dialog = dialogName;
 
     // Create dialog
     const dialog = document.createElement('div');
@@ -195,6 +202,11 @@ export interface CountdownDialogOptions {
   dialogId?: string;
   /** Optional countdown label */
   countdownLabel?: string;
+  /**
+   * 状態契約の `data-dialog` に出す名前 (packages/editor/AGENTS.md「状態契約」)。
+   * overlay (開閉で `.hidden` が付く・DOM から外れる要素) に付ける。
+   */
+  dialogName?: string;
 }
 
 /**
@@ -211,6 +223,7 @@ export function showCountdownDialog(options: CountdownDialogOptions): Promise<bo
     icon = 'fa-clock',
     dialogId = 'countdown-dialog-overlay',
     countdownLabel = '',
+    dialogName,
   } = options;
 
   return new Promise((resolve) => {
@@ -231,6 +244,7 @@ export function showCountdownDialog(options: CountdownDialogOptions): Promise<bo
     const overlay = document.createElement('div');
     overlay.id = dialogId;
     overlay.className = 'modal-overlay';
+    if (dialogName) overlay.dataset.dialog = dialogName;
     overlay.innerHTML = `
       <div class="modal-dialog modal-info countdown-dialog">
         <div class="modal-header">
@@ -313,6 +327,11 @@ export interface LockOverlayOptions {
   secondaryButtonText?: string;
   /** Callback when secondary button is clicked */
   onSecondaryAction?: () => void | Promise<boolean | void>;
+  /**
+   * 状態契約の `data-dialog` に出す名前 (packages/editor/AGENTS.md「状態契約」)。
+   * overlay (開閉で `.hidden` が付く・DOM から外れる要素) に付ける。
+   */
+  dialogName?: string;
 }
 
 /**
@@ -332,6 +351,7 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
     className = 'lock-overlay',
     secondaryButtonText,
     onSecondaryAction,
+    dialogName,
   } = options;
 
   // Remove existing overlay
@@ -341,6 +361,7 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
   const overlay = document.createElement('div');
   overlay.id = overlayId;
   overlay.className = className;
+  if (dialogName) overlay.dataset.dialog = dialogName;
   // Use content class based on overlay class (e.g., screen-capture-lock-overlay -> screen-capture-lock-content)
   const contentClass = className.replace('-overlay', '-content');
 

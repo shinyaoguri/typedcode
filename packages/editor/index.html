@@ -325,11 +325,11 @@
         </div>
         <div class="status-item" title="Total events recorded">
           <i class="fas fa-list-ol"></i>
-          <span id="event-count">0</span> <span data-i18n="statusBar.events">events</span>
+          <span id="event-count" data-count="0">0</span> <span data-i18n="statusBar.events">events</span>
         </div>
         <div class="status-item hash-status" id="hash-status-item" title="Current hash chain">
           <i class="fas fa-link"></i>
-          <span id="current-hash">-</span>
+          <span id="current-hash" data-hash="">-</span>
         </div>
         <div class="status-item sync-status" id="sync-status-item" title="IndexedDB sync status">
           <i class="fas fa-database" id="sync-icon"></i>
@@ -357,7 +357,7 @@
     </div>
 
     <!-- Reset Confirmation Dialog -->
-    <div id="reset-dialog" class="modal-overlay hidden">
+    <div id="reset-dialog" class="modal-overlay hidden" data-dialog="reset">
       <div class="modal-dialog modal-danger">
         <div class="modal-header">
           <i class="fas fa-triangle-exclamation"></i>
@@ -383,7 +383,7 @@
     </div>
 
     <!-- Processing Wait Dialog -->
-    <div id="processing-dialog" class="modal-overlay hidden">
+    <div id="processing-dialog" class="modal-overlay hidden" data-dialog="processing">
       <div class="modal-dialog modal-info">
         <div class="modal-header">
           <i class="fas fa-spinner fa-spin"></i>
@@ -487,7 +487,7 @@
     </div>
 
     <!-- Tab Close Confirmation Dialog -->
-    <div id="tab-close-dialog" class="modal-overlay hidden">
+    <div id="tab-close-dialog" class="modal-overlay hidden" data-dialog="tab-close">
       <div class="modal-dialog modal-danger">
         <div class="modal-header">
           <i class="fas fa-triangle-exclamation"></i>
@@ -514,7 +514,7 @@
     </div>
 
     <!-- Terms of Service Modal -->
-    <div id="terms-modal" class="modal-overlay hidden">
+    <div id="terms-modal" class="modal-overlay hidden" data-dialog="terms">
       <div class="modal-dialog modal-terms">
         <div class="modal-header">
           <i class="fas fa-file-contract"></i>
@@ -683,7 +683,7 @@
   </div>
 
   <!-- Duplicate Instance Overlay (shown when app is already running in another tab) -->
-  <div id="duplicate-instance-overlay" class="modal-overlay hidden" style="z-index: 100000;">
+  <div id="duplicate-instance-overlay" class="modal-overlay hidden" data-dialog="duplicate-instance" style="z-index: 100000;">
     <div class="modal-dialog modal-info">
       <div class="modal-header">
         <i class="fas fa-window-restore"></i>
@@ -702,7 +702,7 @@
   </div>
 
   <!-- Unsupported Browser Overlay (shown for Safari and other unsupported browsers) -->
-  <div id="unsupported-browser-overlay" class="modal-overlay hidden" style="z-index: 100000;">
+  <div id="unsupported-browser-overlay" class="modal-overlay hidden" data-dialog="unsupported-browser" style="z-index: 100000;">
     <div class="modal-dialog modal-warning">
       <div class="modal-header">
         <i class="fab fa-chrome"></i>

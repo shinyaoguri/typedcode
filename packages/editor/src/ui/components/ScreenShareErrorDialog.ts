@@ -279,6 +279,7 @@ export async function showScreenShareErrorDialog(
     icon: errorInfo.icon,
     closeOnOverlayClick: !showRetry, // 再試行モードでは外側クリックで閉じない
     className: 'screen-share-error-modal',
+    dialogName: 'screen-share-error',
     buttons,
   });
 
