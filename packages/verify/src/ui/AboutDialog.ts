@@ -109,10 +109,24 @@ export function showAboutDialog(i18n: I18nInstance): void {
   document.body.appendChild(overlay);
 
   // Close handlers
+  // Escape 用のリスナーは document に付くので、閉じる経路 (Escape / 閉じるボタン / overlay クリック)
+  // に関わらず closeModal で必ず外す。冪等にして、二重に呼ばれても安全にする。
+  let closed = false;
   const closeModal = (): void => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener('keydown', handleEscape);
     overlay.classList.remove('visible');
     setTimeout(() => overlay.remove(), 200);
   };
+
+  // Escape key to close
+  const handleEscape = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      closeModal();
+    }
+  };
+  document.addEventListener('keydown', handleEscape);
 
   // Close button
   const closeBtn = dialog.querySelector('.modal-close-btn');
@@ -126,13 +140,4 @@ export function showAboutDialog(i18n: I18nInstance): void {
       closeModal();
     }
   });
-
-  // Escape key to close
-  const handleEscape = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') {
-      closeModal();
-      document.removeEventListener('keydown', handleEscape);
-    }
-  };
-  document.addEventListener('keydown', handleEscape);
 }
