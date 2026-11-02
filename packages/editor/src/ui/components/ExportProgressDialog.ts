@@ -4,6 +4,7 @@
  */
 
 import { t } from '../../i18n/index.js';
+import { attachDialogA11y, type DialogA11yHandle } from './dialogA11y.js';
 
 /** エクスポートのフェーズ */
 export type ExportPhase =
@@ -20,8 +21,13 @@ export interface ExportProgress {
   total?: number;
 }
 
+/**
+ * a11y (#305) は `dialogA11y.ts` が担う。進行表示で閉じられないので Escape は無視し、
+ * 操作できる要素が無い間 (Turnstile ウィジェットが出るまで) はダイアログ自身がフォーカスを持つ。
+ */
 export class ExportProgressDialog {
   private overlay: HTMLElement | null = null;
+  private a11y: DialogA11yHandle | null = null;
   private progressBar: HTMLElement | null = null;
   private statusText: HTMLElement | null = null;
   private turnstileContainer: HTMLElement | null = null;
@@ -107,6 +113,12 @@ export class ExportProgressDialog {
     this.progressBar = this.overlay.querySelector('#export-progress-bar');
     this.statusText = this.overlay.querySelector('#export-status');
     this.turnstileContainer = this.overlay.querySelector('#export-turnstile-container');
+
+    this.a11y = attachDialogA11y(this.overlay.querySelector<HTMLElement>('.modal-dialog')!, {
+      labelledBy: this.overlay.querySelector<HTMLElement>('.modal-header h3')!,
+      closeOnEscape: false,
+      onRequestClose: () => {},
+    });
   }
 
   /**
@@ -241,6 +253,8 @@ export class ExportProgressDialog {
    */
   hide(): void {
     if (this.overlay) {
+      this.a11y?.close();
+      this.a11y = null;
       this.overlay.remove();
       this.overlay = null;
       this.progressBar = null;

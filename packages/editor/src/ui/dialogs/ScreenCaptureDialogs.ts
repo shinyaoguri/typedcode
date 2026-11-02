@@ -6,6 +6,7 @@
 import type { ScreenshotTracker } from '../../tracking/ScreenshotTracker.js';
 import { showScreenShareErrorDialog } from '../components/ScreenShareErrorDialog.js';
 import { showLockOverlay, hideLockOverlay } from '../components/Modal.js';
+import { attachDialogA11y } from '../components/dialogA11y.js';
 import { t } from '../../i18n/index.js';
 
 const SCREEN_CAPTURE_LOCK_OVERLAY_ID = 'screen-capture-lock-overlay';
@@ -60,7 +61,21 @@ export async function showScreenShareChoiceDialog(): Promise<ScreenShareChoice> 
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 
+    const shareBtn = dialog.querySelector<HTMLElement>('[data-choice="share"]');
+    const optOutBtn = dialog.querySelector<HTMLElement>('[data-choice="optOut"]');
+
+    // a11y (#305): どの経路 (選択・Escape) で閉じても closeDialog を通り、リスナー解放は 1 回。Escape は 'cancelled'
+    const a11y = attachDialogA11y(dialog, {
+      labelledBy: dialog.querySelector<HTMLElement>('.modal-header h3')!,
+      initialFocus: shareBtn,
+      onRequestClose: () => closeDialog('cancelled'),
+    });
+
+    let closed = false;
     const closeDialog = (choice: ScreenShareChoice): void => {
+      if (closed) return;
+      closed = true;
+      a11y.close();
       overlay.classList.add('hidden');
       setTimeout(() => {
         overlay.remove();
@@ -69,20 +84,8 @@ export async function showScreenShareChoiceDialog(): Promise<ScreenShareChoice> 
     };
 
     // イベントリスナーを設定
-    const shareBtn = dialog.querySelector('[data-choice="share"]');
-    const optOutBtn = dialog.querySelector('[data-choice="optOut"]');
-
     shareBtn?.addEventListener('click', () => closeDialog('share'));
     optOutBtn?.addEventListener('click', () => closeDialog('optOut'));
-
-    // Escキーでキャンセル
-    const handleEscape = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        document.removeEventListener('keydown', handleEscape);
-        closeDialog('cancelled');
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
   });
 }
 
@@ -120,7 +123,21 @@ export async function showScreenShareOptOutConfirmDialog(): Promise<boolean> {
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 
+    const cancelBtn = dialog.querySelector<HTMLElement>('[data-action="cancel"]');
+    const confirmBtn = dialog.querySelector<HTMLElement>('[data-action="confirm"]');
+
+    // a11y (#305): 信頼度が下がる側 (確認) を既定のフォーカスにしない。Escape はキャンセル
+    const a11y = attachDialogA11y(dialog, {
+      labelledBy: dialog.querySelector<HTMLElement>('.modal-header h3')!,
+      initialFocus: cancelBtn,
+      onRequestClose: () => closeDialog(false),
+    });
+
+    let closed = false;
     const closeDialog = (confirmed: boolean): void => {
+      if (closed) return;
+      closed = true;
+      a11y.close();
       overlay.classList.add('hidden');
       setTimeout(() => {
         overlay.remove();
@@ -128,20 +145,8 @@ export async function showScreenShareOptOutConfirmDialog(): Promise<boolean> {
       }, 200);
     };
 
-    const cancelBtn = dialog.querySelector('[data-action="cancel"]');
-    const confirmBtn = dialog.querySelector('[data-action="confirm"]');
-
     cancelBtn?.addEventListener('click', () => closeDialog(false));
     confirmBtn?.addEventListener('click', () => closeDialog(true));
-
-    // Escキーでキャンセル
-    const handleEscape = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        document.removeEventListener('keydown', handleEscape);
-        closeDialog(false);
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
   });
 }
 

@@ -7,6 +7,7 @@
 
 import { t } from '../../i18n/index.js';
 import { escapeHtml, type SessionSummary, type TabSummary } from '@typedcode/shared';
+import { attachDialogA11y, type DialogA11yHandle } from '../components/dialogA11y.js';
 
 export type SessionRecoveryChoice = 'resume' | 'fresh';
 
@@ -66,8 +67,14 @@ function generateTabListHtml(tabs: TabSummary[]): string {
     .join('');
 }
 
+/** 表示中のダイアログの a11y。置き換えで DOM から消えるときに解放する (document の keydown リスナーを残さない) */
+let activeA11y: DialogA11yHandle | null = null;
+
 /**
  * セッション復旧ダイアログを表示
+ *
+ * a11y (#305) は `dialogA11y.ts` が担う。選択 (再開 / 新規開始) が必須なので Escape では閉じない
+ * (破壊的な「新規開始」を Escape に割り当てない)。初期フォーカスは破壊的でない「再開」。
  *
  * @param sessionSummary セッションサマリー
  * @returns ユーザーの選択結果
@@ -75,6 +82,8 @@ function generateTabListHtml(tabs: TabSummary[]): string {
 export function showSessionRecoveryDialog(sessionSummary: SessionSummary): Promise<SessionRecoveryDialogResult> {
   return new Promise((resolve) => {
     // 既存のダイアログがあれば削除
+    activeA11y?.close();
+    activeA11y = null;
     const existing = document.getElementById('session-recovery-overlay');
     existing?.remove();
 
@@ -138,6 +147,14 @@ export function showSessionRecoveryDialog(sessionSummary: SessionSummary): Promi
     const resumeBtn = document.getElementById('session-resume-btn');
     const freshBtn = document.getElementById('session-fresh-btn');
 
+    const a11y = attachDialogA11y(overlay.querySelector<HTMLElement>('.modal-dialog')!, {
+      labelledBy: overlay.querySelector<HTMLElement>('.modal-header h3')!,
+      initialFocus: resumeBtn,
+      closeOnEscape: false,
+      onRequestClose: () => {},
+    });
+    activeA11y = a11y;
+
     // 再開ボタン
     resumeBtn?.addEventListener('click', () => {
       disableButtons();
@@ -168,6 +185,9 @@ export function showSessionRecoveryDialog(sessionSummary: SessionSummary): Promi
     }
 
     function cleanup(): void {
+      // どちらのボタンからでもここを通る。リスナー解放とフォーカス復帰は先に済ませる (冪等)
+      a11y.close();
+      if (activeA11y === a11y) activeA11y = null;
       setTimeout(() => {
         overlay.classList.add('hidden');
         setTimeout(() => overlay.remove(), 200);

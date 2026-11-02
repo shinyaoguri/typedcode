@@ -140,6 +140,19 @@ describe('attachDialogA11y', () => {
     expect(document.activeElement).toBe(a);
   });
 
+  it('includes an iframe (such as the Turnstile widget) in the Tab ring', () => {
+    const { dialog, a, b } = mount();
+    const frame = document.createElement('iframe');
+    dialog.insertBefore(frame, b.nextSibling);
+    b.focus();
+    key({ key: 'Tab' }); // b は最後ではなくなったので、ブラウザに任せる
+    expect(document.activeElement).toBe(b);
+    frame.focus();
+    const event = key({ key: 'Tab' }); // iframe が最後の要素 → 先頭へ折り返す
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(a);
+  });
+
   it('requests close on Escape unless closeOnEscape is false', () => {
     const open = mount();
     key({ key: 'Escape' });
