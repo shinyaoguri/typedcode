@@ -11,7 +11,6 @@ import type {
   HumanAttestationUI,
   VerifyTabState,
   ChainErrorDetails,
-  SampledVerificationInfo,
   VerificationResult,
 } from '../types';
 import type { ResultData } from '../ui/ResultPanel';
@@ -93,30 +92,13 @@ export function buildResultData(tabState: VerifyTabState): Omit<ResultData, 'tru
     };
   }
 
-  // Build sampled verification info if available
-  let sampledVerification: SampledVerificationInfo | undefined;
-  if (verificationResult.sampledResult) {
-    sampledVerification = {
-      segments: verificationResult.sampledResult.sampledSegments.map((seg) => ({
-        startIndex: seg.startIndex,
-        endIndex: seg.endIndex,
-        eventCount: seg.eventCount,
-        verified: seg.verified,
-      })),
-      totalSegments: verificationResult.sampledResult.totalSegments,
-      totalEventsVerified: verificationResult.sampledResult.totalEventsVerified,
-      totalEvents: verificationResult.sampledResult.totalEvents,
-    };
-  }
-
   const result: VerificationResult = {
     chainValid: verificationResult.chainValid,
     pureTyping: verificationResult.isPureTyping,
     pasteCount,
     internalPasteCount,
-    verificationMethod: verificationResult.sampledResult ? 'sampled' : 'full',
+    verificationMethod: 'full',
     chainErrorDetails,
-    sampledVerification,
   };
 
   // Convert PoSW stats (from shared PoswStats to UI PoswStatsDisplay)

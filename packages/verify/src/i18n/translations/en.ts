@@ -206,16 +206,6 @@ export const en: VerifyTranslationKeys = {
         unknown: 'Unknown Error',
       },
     },
-    segmentViz: {
-      header: 'Verification Segments',
-      verified: 'Verified',
-      unverified: 'Unverified',
-      error: 'Error',
-      segmentInfo: 'Segment ${index}: Events ${start} - ${end} (${count})',
-      totalEvents: 'Total events: ${count}',
-      verifiedEvents: 'Verified: ${count}',
-      sampledSegments: 'Sampled segments: ${count}/${total}',
-    },
   },
 
   posw: {

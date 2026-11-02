@@ -218,16 +218,6 @@ export interface VerifyTranslationKeys {
         unknown: string;
       };
     };
-    segmentViz: {
-      header: string;
-      verified: string;
-      unverified: string;
-      error: string;
-      segmentInfo: string;
-      totalEvents: string;
-      verifiedEvents: string;
-      sampledSegments: string;
-    };
   };
 
   // PoSW panel
