@@ -350,8 +350,12 @@ export const ja: VerifyTranslationKeys = {
     issueExamUnverified: '問題パッケージ未読込のため真正性は未確認です',
     issueExamPackageNotApplicable: '問題パッケージが渡されましたが、この proof に試験ブロックがありません',
     issuePoswSkipped: 'fast モードで検証したため PoSW（逐次作業）は再計算されていません',
+    issueVersionUnsupported: 'proof の形式バージョンが無い・不正、またはこの検証器が対応する最小バージョンより古いです',
+    issueVersionNewer:
+      'proof の形式バージョン ${version} はこの検証器が対応するものより新しく、意味が変わったフィールドを旧規則で読んでいる恐れがあります',
     components: {
       metadata: 'メタデータ',
+      version: '形式バージョン',
       chain: 'ハッシュチェーン',
       posw: 'PoSW',
       screenshots: 'スクリーンショット',
@@ -510,6 +514,10 @@ export const ja: VerifyTranslationKeys = {
     browserNotSupported: 'File System Access API は Chrome / Edge でのみ利用可能です',
     browserNotSupportedDesc: '代わりにファイル選択またはドラッグ＆ドロップをご利用ください',
     examInvalidPackage: '問題パッケージ (.tcexam) が不正です',
+    examPackageNewerFormat:
+      'この問題パッケージはこの検証器が対応するより新しい形式です。最新の検証器を使ってください。',
+    examPackageUnsupportedFormat:
+      'この問題パッケージの形式はもう対応していません。出題者に新しいパッケージを依頼してください。',
     jsonParseError: 'JSONパースエラー: ${filename}',
     proofNotAProof: '証明ファイルとして読めません（proof データがありません）: ${filename}',
     fileLoadFailed: 'ファイル読み込みに失敗しました: ${message}',

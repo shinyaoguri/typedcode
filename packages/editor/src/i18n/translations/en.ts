@@ -626,6 +626,10 @@ export const en: TranslationKeys = {
       errorNoFile: 'Please select a problem package.',
       errorNoCode: 'Please enter the proctor code.',
       errorInvalidFile: 'Invalid package format (please select a .tcexam file).',
+      errorNewerFormat:
+        'This problem package uses a newer format than this editor supports. Please open the latest version of the editor.',
+      errorUnsupportedFormat:
+        'This problem package uses a format that is no longer supported. Please ask the exam administrator for a new one.',
       errorUntrusted: 'This problem package could not be verified against a trusted exam authority signature.',
       errorWrongCode: 'Wrong proctor code. Please try again.',
       errorUnlockFailed: 'Unlock failed. Please check the package and the code.',

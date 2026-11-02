@@ -1342,6 +1342,9 @@ export class ResultPanel {
     for (const issue of issues) {
       const issueEl = document.createElement('div');
       issueEl.className = `trust-issue-item ${issue.severity}`;
+      // 状態契約 (E2E が翻訳テキストではなくこれを読む。verify/AGENTS.md)
+      issueEl.dataset.component = issue.component;
+      issueEl.dataset.severity = issue.severity;
 
       const iconClass = issue.severity === 'error' ? 'fa-times-circle' : 'fa-exclamation-triangle';
       issueEl.innerHTML = `
@@ -1376,6 +1379,7 @@ export class ResultPanel {
   private getComponentLabel(component: string): string {
     const labels: Record<string, string> = {
       metadata: t('trust.components.metadata'),
+      version: t('trust.components.version'),
       chain: t('trust.components.chain'),
       posw: t('trust.components.posw'),
       screenshots: t('trust.components.screenshots'),
