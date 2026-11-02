@@ -116,9 +116,15 @@ export class SingleInstanceGuard {
       this.channel?.postMessage({ type: 'instance-active', senderId: this.instanceId } as MessageType);
     }, HEARTBEAT_INTERVAL);
 
-    // ページ終了時にクリーンアップ
-    window.addEventListener('beforeunload', () => {
-      this.dispose();
+    // ページ終了時にクリーンアップする。beforeunload では破棄しない (#483): 離脱確認 (記録のあるタブを
+    // 閉じようとしたとき) で「このページに留まる」を選ぶとアンロードは起きないのに beforeunload は
+    // 発火済みで、生きているページのガードだけが外れ、2 つ目のタブが正規インスタンスとして起動できて
+    // しまう。pagehide は実際にページを離れるときだけ発火する。
+    // persisted=true (bfcache に入る) ときは破棄しない: ページは凍結されるだけで、戻る操作で
+    // そのまま復元される (pageshow で再取得しなくてもガードが生きている)。凍結中は ping に
+    // 答えられないが、その間に開かれた別タブとの競合の検出は #237 (instance-active の受信) の範囲。
+    window.addEventListener('pagehide', (event) => {
+      if (!event.persisted) this.dispose();
     });
   }
 
