@@ -47,7 +47,7 @@ for (const mode of ['class', 'assignment'] as const) {
     await openAndLoad(app, mode);
     if (mode === 'assignment') expect(await app.openDialogs()).not.toContain('screen-share-choice');
 
-    // 問題の数だけタブができ、言語は starter (無ければ allowed の先頭) に従う。ファイル名は #441 があるので見ない。
+    // 問題の数だけタブができ、言語は starter (無ければ allowed の先頭) に従う。ファイル名は下の #441 の回帰テストが見る。
     const tabs = await app.tabs();
     expect(tabs.map((t) => t.language)).toEqual(problems.map((p) => p.starter?.language ?? 'c'));
     expect(await panelOpen(page, 'problem-panel')).toBe('true');
@@ -73,13 +73,19 @@ for (const mode of ['class', 'assignment'] as const) {
   });
 }
 
-test.fixme('#441 class: starter の filename (p1.c) がそのままタブ名になり、拡張子が二重に付かない', async ({
-  page,
-}) => {
-  const app = new EditorApp(page);
-  await openAndLoad(app, 'class');
-  expect((await app.tabs())[0]?.filename).toBe('p1.c');
-});
+// 回帰テスト: starter の filename (p1.c) と、starter が無い問題の `<problemId>.<ext>` (p2.c) が、
+// 拡張子込みのままタブに渡されて `.c.c` になっていた (#441)。
+for (const mode of ['class', 'assignment'] as const) {
+  test(`${mode}: タブの名前は starter の filename と <problemId>.<ext> のまま、拡張子が二重に付かない`, async ({
+    page,
+  }) => {
+    const app = new EditorApp(page);
+    await openAndLoad(app, mode);
+    expect((await app.tabs()).map((t) => t.filename)).toEqual(['p1.c', 'p2.c']);
+    expect((await app.snapshot()).tabs.map((t) => t.filename)).toEqual(['p1.c', 'p2.c']);
+    await app.expectConsistent();
+  });
+}
 
 // 回帰テスト: 0 バイトのファイルを含む ZIP を ZIP の予算検査が拒否していた (#447、#449 で修正)。
 test('class: 書いていない (空の) タブを含む全タブ export が verify (fast) で pass する', async ({ page }) => {

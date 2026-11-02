@@ -38,6 +38,8 @@ async function confirmImport(app: EditorApp): Promise<void> {
 async function expectImportedAndVerified(app: EditorApp, previousIds: string[]): Promise<void> {
   const tabs = await app.tabs();
   expect(tabs.map((t) => t.language)).toEqual(FILES.map((f) => f.language));
+  // 拡張子込みの filename はそのままタブの名前になる (拡張子が二重に付かない。#441)。
+  expect(tabs.map((t) => t.filename)).toEqual(FILES.map((f) => f.filename));
   for (const t of tabs) expect(previousIds, 'existing tabs are closed by the import').not.toContain(t.id);
   const snap = await app.snapshot();
   expect(snap.tabs.map((t) => t.content)).toEqual(FILES.map((f) => f.content));
