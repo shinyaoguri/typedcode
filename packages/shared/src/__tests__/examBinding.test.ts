@@ -15,6 +15,7 @@ import {
   computeExamChainRoot,
   computeHash,
   deterministicStringify,
+  EXAM_PROOF_VERSION,
   type ExamPackageManifest,
   type ExamProofBlock,
   type ExamAuthorityKey,
@@ -141,6 +142,39 @@ describe('verifyExamBinding', () => {
       submissionTimeMs: Date.parse('2026-06-05T23:00:00.000Z'),
     });
     expect(result.timeBox?.withinWindow).toBe(false);
+    expect(result.valid).toBe(true);
+  });
+
+  // examProofVersion は自己申告で root にも署名にも入らない。将来 v2 の意味論の exam ブロックを
+  // v1 として黙って検証しないため、既知値 (EXAM_PROOF_VERSION) 以外は束縛失敗にする (#223)。
+  it('fails the binding when proof.exam.examProofVersion is not the supported version', async () => {
+    const { proof, manifest, registry } = await makeExamProof();
+    const bumped = { ...proof, exam: { ...proof.exam, examProofVersion: EXAM_PROOF_VERSION + 1 } };
+    const result = await verifyExamBinding(bumped as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/examProofVersion/);
+  });
+
+  it('fails the binding for a lower or non-numeric examProofVersion too', async () => {
+    const { proof, manifest, registry } = await makeExamProof();
+    for (const bad of [0, 1.5, '1', null]) {
+      const tampered = { ...proof, exam: { ...proof.exam, examProofVersion: bad } };
+      const result = await verifyExamBinding(tampered as unknown as BindingArg, manifest, {
+        examAuthorityRegistry: registry,
+      });
+      expect(result.valid, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('treats a missing examProofVersion as 1 and keeps the binding valid', async () => {
+    const { proof, manifest, registry } = await makeExamProof();
+    const { examProofVersion: _omit, ...examWithout } = proof.exam;
+    const legacy = { ...proof, exam: examWithout };
+    const result = await verifyExamBinding(legacy as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
     expect(result.valid).toBe(true);
   });
 

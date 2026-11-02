@@ -541,6 +541,10 @@ interface ExamProofBlock {
 - 署名済み checkpoint は `anchored=true` のとき必須レイヤ。`anchored=false` (旧 proof など) では他レイヤで成立すれば valid
 - **アンカー密度 (ADR-0016)** は既定 warning。`requireAnchorDensity` (verify-cli の `--require-anchor-density` 等) を渡したときのみ `sparse` を signed checkpoint レイヤの fail に合流させる (exam/採点で opt-in)
 - **root サーバアンカー (ADR-0017)**: `sessionStartToken` があるとき token↔署名 cp の `sessionId` 一致も要求する (アンカーとチェーンの結びつき)。`rootAnchored=false` (token 無し = オフライン劣化 / 旧 proof) は既定 warning。`requireRootAnchor` (verify-cli の `--require-root-anchor`) を渡したときのみ fail に合流させる (exam の免除は `examBindingVerified` = 束縛検証合格が条件。自己申告の exam ブロックだけでは免除しない #131。high-stakes 採点で opt-in)
+- **バージョンゲート (#223)**: `verifyProofFile` は入口で `proof.version` を `classifyProofVersion` で分類し、結果の `versionStatus` に載せる (`typingProofHash` の入力ではないので、ここがゲートの唯一の効き目)。形式は厳密に `MAJOR.MINOR.PATCH` (`'abc'` / `'1'` / `'1.2.0-beta'` / 欠落 / 文字列以外は `malformed`)。
+  - `tooOld` (`MIN_SUPPORTED_VERSION` 未満) と `malformed` は `valid: false` で、`errorMessage` が version に言及する (自己申告値は埋め込まない)。他レイヤの結果 (`chainValid` など) は落とさず返す
+  - `newer` (この検証器が知る major を超える。例 `2.0.0`) は reject しない。意味が変わったフィールドを旧規則で読む恐れがあるので `versionStatus: 'newer'` で表示層へ渡し、`valid` は他の検査で決まる。同じ major の新しい minor / patch は `supported` (加算的変更という約束)
+  - `current` (= `PROOF_FORMAT_VERSION`) / `supported` (下限以上・既知 major 内) は従来どおり
 - レイヤ間優先順位: metadata → chain → finalHash → checkpoint → content → signedCheckpoint
 - いずれかが false なら、エラー位置 (event index) とメッセージを返す
 
@@ -548,6 +552,7 @@ interface ExamProofBlock {
 
 試験モード proof には上記 6 レイヤに加え `verifyExamBinding` がある。**完全オフライン**で動く。root 束縛 (上記 Layer 1 の exam 分岐) は proof 自己完結なので package 不要だが、**真正性 (本物の問題か) と内容束縛は問題パッケージ (`.tcexam`) を grader に渡したときのみ**検証できる。
 
+0. **バージョンゲート (#223)**: `proof.exam.examProofVersion` が `EXAM_PROOF_VERSION` と異なれば、暗号検査に入る前に束縛失敗 (欠落は 1 とみなす = 旧 proof 互換)。package 側の `formatVersion` は `parseExamPackageManifest` / `parseExamPackageManifestResult` が `EXAM_PACKAGE_FORMAT_VERSION` と照合し、正規に署名されていても異なる値は拒否する (理由つきの `parseExamPackageManifestResult` は `unsupportedFormatVersion` と `malformed` を区別し、`newer` で新旧を示す。表示層はこちらを使う)
 1. package 署名を `examAuthorityKeys` で検証 → 本物の問題。**信頼は registry 登録鍵に限る** (未登録 keyId は同梱公開鍵があっても untrusted = 自己署名を排除)。鍵の有効期間/失効も `releaseTime` を anchor に判定 (validFrom 前・validUntil 後・失効後 release は reject、失効前 release は warning 付き trust)。anchor が出題者自己申告な点の限界は [ADR-0006 セキュリティ硬化](adr/0006-exam-mode-sealed-problem-binding.md) 参照
 2. `packageHash` 再計算 = `proof.exam.packageHash` → この問題に束縛
 3. root 再計算 (`fingerprintHash, nonce, packageHash, proof.exam.startToken`) = `initialEventChainHash` → **T0 以降に開始** (token は proof 同梱なので out-of-band 不要)
@@ -755,9 +760,9 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `SESSION_TOKEN_FORMAT_VERSION` | 1 | `version.ts` (セッション開始トークン payload, ADR-0017) |
 | `COHORT_MIN_N` | 5 | `analysis/cohort.ts` (コホート基準の小 N ガード, ADR-0025) |
 | `STORAGE_FORMAT_VERSION` | 1 | `version.ts` |
-| `MIN_SUPPORTED_VERSION` | '1.0.0' | `version.ts` (旧 proof も検証可) |
-| `EXAM_PACKAGE_FORMAT_VERSION` | 1 | `version.ts` (`.tcexam` の formatVersion) |
-| `EXAM_PROOF_VERSION` | 1 | `version.ts` (`proof.exam.examProofVersion`) |
+| `MIN_SUPPORTED_VERSION` | '1.0.0' | `version.ts` (`proof.version` の下限。これ未満と `MAJOR.MINOR.PATCH` 以外の形式は `verifyProofFile` が reject する。§6.3。#223) |
+| `EXAM_PACKAGE_FORMAT_VERSION` | 1 | `version.ts` (`.tcexam` の formatVersion。`parseExamPackageManifest` は一致しない値を拒否する。§6.4。#223) |
+| `EXAM_PROOF_VERSION` | 1 | `version.ts` (`proof.exam.examProofVersion`。`verifyExamBinding` は一致しない値を束縛失敗にする。欠落は 1 とみなす。§6.4。#223) |
 | `EXAM_ROOT_BINDING` | 'v1' | `version.ts` (単一問題, ADR-0006) |
 | `EXAM_ROOT_BINDING_V2` | 'v2' | `version.ts` (N問バンドル, root に problemContentHash を連結, ADR-0012)。現行 editor は新規 exam を v2 で焼く |
 | Argon2id params (試験) | memKiB=65536 / iterations=3 / parallelism=1 | `make-exam-package.mjs` 既定 (manifest に保持し出題者が調整可) |
