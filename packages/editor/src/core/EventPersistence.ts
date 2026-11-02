@@ -6,7 +6,7 @@
 
 import type { StoredEvent } from '@typedcode/shared';
 import type { TabManager } from '../ui/tabs/TabManager.js';
-import { getSessionStorageService } from '../services/SessionStorageService.js';
+import { getSessionStorageService, EventChainConflictError } from '../services/SessionStorageService.js';
 
 export class EventPersistence {
   /**
@@ -19,6 +19,11 @@ export class EventPersistence {
         await sessionService.appendEvent(tabId, event);
       }
     } catch (e) {
+      if (e instanceof EventChainConflictError) {
+        // 二重インスタンスの乖離 (#484 / #237)。保存層が拒否した。検出時の read-only 化・UI は #237 PR-3
+        console.error('[EventPersistence] Event rejected: another instance wrote a different chain:', e.message);
+        throw e;
+      }
       console.error('[EventPersistence] Failed to save event to IndexedDB:', e);
       throw e;
     }

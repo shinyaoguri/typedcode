@@ -3,9 +3,9 @@
  *
  * fake-indexeddb 上で、永続化の「いまの振る舞い」を固定する。
  * - 保存 → 復元の往復で内容と順序が戻る
- * - 同じ (tabId, eventIndex) の再 append は reject されず、events は 1 件のまま (ConstraintError の吸収。
- *   EventRecorder と TabManager.saveToIndexedDB が同じイベントを二重に書くため、いまは正常系。
- *   書き込み経路を一本化する #414 / #237 で変えるときに、このテストが赤くなる)
+ * - 同じ (tabId, eventIndex) の再 append は、hash が同じなら冪等 (reject されず events は 1 件、tabs も書き換えない。
+ *   EventRecorder と TabManager.saveToIndexedDB が同じイベントを二重に書くため正常系)。hash が違えば
+ *   二重インスタンスの競合として reject し、tabs を汚さない (#484 / #237)
  * - clearSession / deleteTab が対象のストアを消す (#317 で変えるときに赤くなる)
  *
  * vitest は node 環境なので、`indexedDB` はテストごとに新しい `IDBFactory` を差して DB を分離する。
@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import type { StoredEvent, StoredTabData, StoredScreenshotData, TabSwitchEvent } from '@typedcode/shared';
 import { setStorageNamespace } from '../../core/storageKeys.js';
-import { SessionStorageService } from '../SessionStorageService.js';
+import { SessionStorageService, EventChainConflictError, SessionOwnershipError } from '../SessionStorageService.js';
 
 function makeEvent(sequence: number, overrides: Partial<StoredEvent> = {}): StoredEvent {
   return {
@@ -208,20 +208,9 @@ describe('SessionStorageService', () => {
       service = opened.service;
       await service.saveTab(makeTab('tab-1', opened.sessionId));
       await service.appendEvent('tab-1', makeEvent(0, { hash: 'first' }));
-      await service.appendEvent('tab-1', makeEvent(0, { hash: 'second' }));
+      await service.appendEvent('tab-1', makeEvent(0, { hash: 'second' })).catch(() => {});
 
       expect((await service.getEvents('tab-1'))[0]?.hash).toBe('first');
-    });
-
-    it('a duplicate append still moves the tab currentHash to the duplicate event hash', async () => {
-      // いまの挙動の固定: events への add は弾かれるが、同じトランザクション内の tabs 更新は走る
-      const opened = await openService();
-      service = opened.service;
-      await service.saveTab(makeTab('tab-1', opened.sessionId));
-      await service.appendEvent('tab-1', makeEvent(0, { hash: 'first' }));
-      await service.appendEvent('tab-1', makeEvent(0, { hash: 'second' }));
-
-      expect((await service.getTab('tab-1'))?.currentHash).toBe('second');
     });
 
     it('the same eventIndex on a different tab is not a duplicate', async () => {
@@ -235,6 +224,106 @@ describe('SessionStorageService', () => {
 
       expect(await service.getEventCount('tab-a')).toBe(1);
       expect(await service.getEventCount('tab-b')).toBe(1);
+    });
+
+    it('a duplicate append with the same hash does not rewrite the tab record', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+      await service.appendEvent('tab-1', makeEvent(0));
+      await service.appendEvent('tab-1', makeEvent(1));
+      const before = await service.getTab('tab-1');
+
+      // 保存の再試行 / EventRecorder と saveToIndexedDB の二重書き込み: 古い seq の同 hash 再 append
+      await service.appendEvent('tab-1', makeEvent(0));
+
+      expect(await service.getTab('tab-1')).toEqual(before);
+    });
+  });
+
+  describe('two instances on one session (#484 / #237)', () => {
+    /** A が createSession し、B が同じ sessionId を resumeSession した状態を作る。 */
+    async function openTwoInstances(): Promise<{
+      a: SessionStorageService;
+      b: SessionStorageService;
+      sessionId: string;
+    }> {
+      const a = new SessionStorageService();
+      await a.initialize();
+      const session = await a.createSession();
+      const b = new SessionStorageService();
+      await b.initialize();
+      await b.resumeSession(session.sessionId);
+      await a.saveTab(makeTab('tab-1', session.sessionId));
+      return { a, b, sessionId: session.sessionId };
+    }
+
+    it('rejects the later instance append when the same tab and sequence already hold a different hash', async () => {
+      const { a, b } = await openTwoInstances();
+      service = a;
+      await a.appendEvent('tab-1', makeEvent(5, { hash: 'hash-A' }));
+
+      await expect(b.appendEvent('tab-1', makeEvent(5, { hash: 'hash-B' }))).rejects.toBeInstanceOf(
+        EventChainConflictError
+      );
+      b.close();
+    });
+
+    it('leaves the tab currentHash at the first writer hash after a rejected conflicting append', async () => {
+      const { a, b } = await openTwoInstances();
+      service = a;
+      await a.appendEvent('tab-1', makeEvent(5, { hash: 'hash-A' }));
+      await b.appendEvent('tab-1', makeEvent(5, { hash: 'hash-B' })).catch(() => {});
+
+      const tab = await a.getTab('tab-1');
+      expect(tab?.currentHash).toBe('hash-A');
+      expect(tab?.lastWrittenEventIndex).toBe(5);
+      b.close();
+    });
+
+    it('keeps the first writer event in the events store after a rejected conflicting append', async () => {
+      const { a, b } = await openTwoInstances();
+      service = a;
+      await a.appendEvent('tab-1', makeEvent(5, { hash: 'hash-A' }));
+      await b.appendEvent('tab-1', makeEvent(5, { hash: 'hash-B' })).catch(() => {});
+
+      expect((await a.getEvents('tab-1')).map((e) => e.hash)).toEqual(['hash-A']);
+      b.close();
+    });
+
+    it('accepts the same sequence and hash again from the other instance without touching the tab record', async () => {
+      const { a, b } = await openTwoInstances();
+      service = a;
+      await a.appendEvent('tab-1', makeEvent(5, { hash: 'hash-A' }));
+      const before = await a.getTab('tab-1');
+
+      await expect(b.appendEvent('tab-1', makeEvent(5, { hash: 'hash-A' }))).resolves.toBeUndefined();
+
+      expect(await a.getTab('tab-1')).toEqual(before);
+      b.close();
+    });
+
+    it('assertOwner rejects with SessionOwnershipError once another instance has resumed the session', async () => {
+      const { a, b } = await openTwoInstances();
+      service = a;
+
+      await expect(a.assertOwner()).rejects.toBeInstanceOf(SessionOwnershipError);
+      b.close();
+    });
+
+    it('assertOwner resolves for the instance that resumed the session last', async () => {
+      const { a, b } = await openTwoInstances();
+      service = a;
+
+      await expect(b.assertOwner()).resolves.toBeUndefined();
+      b.close();
+    });
+
+    it('assertOwner resolves for the instance that created the session while nobody else has resumed it', async () => {
+      const opened = await openService();
+      service = opened.service;
+
+      await expect(service.assertOwner()).resolves.toBeUndefined();
     });
   });
 
