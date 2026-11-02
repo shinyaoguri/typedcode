@@ -25,6 +25,7 @@ export type {
 } from './signedCheckpoints.js';
 
 export {
+  SESSION_TOKEN_MAX_AGE_MS,
   createSessionStartToken,
   validateSessionStartInput,
   verifySessionStartToken,

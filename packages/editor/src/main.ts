@@ -90,6 +90,7 @@ import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
 import { initializeTrackers } from './tracking/TrackersInitializer.js';
+import { removeLegacyDeviceId } from './utils/legacyStorage.js';
 import { ThemeManager } from './editor/ThemeManager.js';
 import { TabManager, type SyncStatus, type TabState } from './ui/tabs/TabManager.js';
 import type { MonacoEditor } from './editor/types.js';
@@ -179,7 +180,11 @@ initDOMi18n();
 // モード切替ピル (ADR-0015): titlebar に現在モードを表示し、クリックで 4 モードへ切り替えられる。
 // 以前の静的バッジ (feature-badge) を置き換える。ランディングはエディタシェルを使わないので挿入しない。
 if (!isLanding) {
-  new ModeSwitcher(mode);
+  // クリック時にだけ呼ばれるので、ctx (下で const 宣言) を参照してよい。モードごとに保存先が別で現モードの作業は
+  // 失われないので、離脱確認は出さない (#445)。
+  new ModeSwitcher(mode, () => {
+    ctx.skipUnloadConfirm = true;
+  });
 }
 
 // Monaco Editor の Worker 設定
@@ -304,6 +309,7 @@ const ctx: AppContext = {
 
   // Flags
   skipBeforeUnload: false,
+  skipUnloadConfirm: false,
   examMode,
   mode,
   capabilities: capabilitiesFor(mode),
@@ -416,15 +422,15 @@ function hideInitOverlay(): void {
 // ========================================
 
 async function initializeDeviceInfo(): Promise<{
-  deviceId: string;
   fingerprintHash: string;
   fingerprintComponents: Awaited<ReturnType<typeof Fingerprint.collectComponents>>;
 }> {
   updateInitMessage(t('notifications.gettingDeviceInfo'));
-  const deviceId = await Fingerprint.getDeviceId();
+  // 旧版が書いた端末 ID を消す (収集は #412 でやめた)
+  removeLegacyDeviceId();
   const fingerprintComponents = await Fingerprint.collectComponents();
   const fingerprintHash = await Fingerprint.generate();
-  return { deviceId, fingerprintHash, fingerprintComponents };
+  return { fingerprintHash, fingerprintComponents };
 }
 
 /**
@@ -536,6 +542,9 @@ function initializeEventRecorder(): void {
   ctx.tabManager!.setOnTabCreated((tab) => {
     void ctx.eventRecorder?.recordSessionSnapshotTo(tab);
   });
+
+  // 閉じたタブの記録中イベントの append が済んでから、tabs 行を消して PoSW Worker を終了する (#342)
+  ctx.tabManager!.setTabSettleBarrier((tabId) => ctx.eventRecorder?.whenTabSettled(tabId) ?? Promise.resolve());
 }
 
 function initializeIdleTimeoutManager(): void {
@@ -678,6 +687,8 @@ function initializeTerminal(): void {
     languageToggleBtn.addEventListener('click', () => {
       const currentLocale = i18n.getLocale();
       const newLocale = currentLocale === 'ja' ? 'en' : 'ja';
+      // リロードしても同じセッションが続く (切替前に sessionStorage へ保存される) ので、離脱確認は出さない (#445)
+      ctx.skipUnloadConfirm = true;
       i18n.setLocale(newLocale);
       ctx.settingsDropdown.close();
       window.location.reload();

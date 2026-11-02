@@ -3,7 +3,7 @@ import { envInt, runModelBased } from './runner.js';
 
 /**
  * model-based E2E (#436): ランダムな操作列 (タブの追加・切替・改名・閉じる・打鍵・外部ペースト・
- * 内部コピペ・言語変更・リロード・フォーカス喪失・export) を実エディタに流し、各手の後にモデル
+ * 内部コピペ・言語変更・リロード・ブラウザのタブを閉じて復旧ダイアログから再開・フォーカス喪失・export) を実エディタに流し、各手の後にモデル
  * (tests/model/editorModel.ts) と状態契約・内部状態・件数・エラーを突き合わせ、最後に全タブの export を
  * verify-cli (--mode fast) で検証する。
  *
@@ -19,9 +19,13 @@ import { envInt, runModelBased } from './runner.js';
 test.describe.configure({ mode: 'parallel' });
 
 const PR_STEPS = 15;
-// 2 本で全 12 種の手 (閉じるは確定とキャンセル) を通り、それぞれ 13〜14 手が実際に走るシードを選んだ
-// (縮約の無い dry-run で確かめた: 436088 = 切替・閉じる確定・2 回のリロード、436028 = 内部コピペ・3 タブ)。
-const PR_SEEDS = [436_088, 436_028] as const;
+// 2 本で全 13 種の手 (閉じるは確定とキャンセルを別に数える) を通り、それぞれ 14〜15 手が実際に走る
+// シードを選んだ (#450)。どちらも「タブを閉じて復旧ダイアログから再開する」手
+// (CloseAndResume) をタブ 2 本・アクティブが 2 本目の状態で通る (IndexedDB 復旧の経路。#322 / #367 / #401)。
+// 縮約の無い dry-run で確かめた: 450436 = 3 回の CloseAndResume・3 回のリロード・閉じる確定、
+// 450582 = 外部ペースト 2 回・内部コピペ・言語変更・export。手を足すと fc.commands の生成列が変わるので、
+// 手を足す PR は同じ手順でシードを選び直す。
+const PR_SEEDS = [450_436, 450_582] as const;
 
 for (const [i, seed] of PR_SEEDS.entries()) {
   const grepToken = `model-pr-${i + 1}`;

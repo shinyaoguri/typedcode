@@ -15,7 +15,7 @@
 4. **KV は eventually consistent**: 同一 key への高頻度書き込みは ~1 write/sec の制限あり。cp トリガが頻発しないよう shared 側がハイブリッドトリガを使う ([docs/adr/0001-hybrid-checkpoint-trigger.md](../../docs/adr/0001-hybrid-checkpoint-trigger.md))
 5. **CORS のオリジン**: 編集 / 検証アプリのドメインを許可。ワイルドカード禁止 (下記「CORS と濫用防止の設計」参照)
 6. **`sessionId` は信用しない**: クライアントが投げる任意の文字列。サーバ側で `firstSeenAt` を KV に保存し改ざんを防ぐ
-7. **`/api/checkpoint/sign` は `sessionStartToken` 前提** (ADR-0027): token 検証は KV read より**前**に行い、無認証リクエストに KV コストを払わない。sessionId は token に束縛され、新規 sessionId の作成コスト = Turnstile 1 回になる。exam は署名専用 token を editor が best-effort 取得する (root には焼かない)
+7. **`/api/checkpoint/sign` は `sessionStartToken` 前提** (ADR-0027): token 検証は KV read より**前**に行い、無認証リクエストに KV コストを払わない。sessionId は token に束縛され、新規 sessionId の作成コスト = Turnstile 1 回になる。exam は署名専用 token を editor が best-effort 取得する (root には焼かない)。**token の最大有効期間 `SESSION_TOKEN_MAX_AGE_MS` (30 日) は sign 経路 (`checkpoint.ts`) だけで検査し、検証器 (`verifySessionStartToken`) は age を見ない** (#227): 検証器も同じ関数を呼ぶので、そこに入れると過去の proof の採点が壊れる。無期限だと KV TTL (7 日) ごとに `signedCount` とタブ台帳がリセットされ続けるのを有界化する。未来の `issuedAt` は弾かない (作れるのは署名鍵を持つ者だけで、その者は sign を経由しなくてよい)
 8. **`serverTimestamp` は同一 record 内で厳密増加させる** (#226): 検証器は連続する署名 cp の `serverTimestamp` に厳密増加を要求するので、`clampServerTimestamp` が署名前に `max(now, lastServerTimestamp + 1ms)` へクランプし、その値で署名・保存する (発動時は `console.warn`、sessionId は出さない)。既に読んだ record を使うので KV の読み書きは増やさない。限界: KV は結果整合なので、別コロで record が stale に見える窓や、put が 429 で落ちた直後は塞げない (そこは検証器側の許容 = 別件)。冪等再送は前回 envelope を返すので対象外
 
 ## ファイル構成
@@ -55,6 +55,7 @@ src/
 | `TOKEN_REQUIRED` | 401 | `sessionStartToken` 不在 (ADR-0027。KV read より前に弾く) |
 | `TOKEN_INVALID` | 401 | token の署名 / registry / 形式が不正 (内部理由はログのみ) |
 | `TOKEN_SESSION_MISMATCH` | 401 | `token.payload.sessionId` ≠ `input.sessionId` (token 使い回しで新規 sessionId を連打する手口を塞ぐ) |
+| `TOKEN_EXPIRED` | 401 | `token.payload.issuedAt` から `SESSION_TOKEN_MAX_AGE_MS` (30 日) を超えている (#227。KV read より前)。editor は恒久失敗にせず、より新しい token が解決されたら再送する |
 | `TAB_LIMIT_EXCEEDED` | 429 | per-session タブ台帳 (`tabs:{sessionId}`) が `MAX_TABS_PER_SESSION` (64) 超過 |
 | `NON_MONOTONIC` | 409 | `checkpointIndex` が単調増加していない |
 | `CHECKPOINT_CONFLICT` | 409 | 同一 index で内容不一致 (冪等性が成立しない) |

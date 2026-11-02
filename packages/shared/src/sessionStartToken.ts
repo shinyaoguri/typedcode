@@ -26,6 +26,17 @@ import {
   type CheckpointPublicKey,
 } from './checkpointKeys/index.js';
 
+/**
+ * sessionStartToken の最大有効期間 (ms, 30 日。#227)。Workers の `/api/checkpoint/sign` だけが
+ * `issuedAt` からの経過をこの値と比べ、超えた token を `TOKEN_EXPIRED` で拒否する。
+ *
+ * **`verifySessionStartToken` はこの値を見ない**。検証器も同じ関数を呼ぶ (proof 同梱 token の
+ * root アンカー検証) ので、age を入れると「提出から 30 日後の採点」が全滅する。
+ * 値が KV の `SESSION_TTL_SECONDS` (7 日) より長いのは、課題モードの連続利用を署名が途切れさせない
+ * ため (editor の自動再取得が入るまでの余裕)。縮めるのはこの定数 1 行。
+ */
+export const SESSION_TOKEN_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
+
 /** SHA-256 を hex 文字列で表したときの正規表現 (64 桁の小文字 hex) */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** sessionId の許容最大長 (UUID 等で十分。API 濫用対策) */

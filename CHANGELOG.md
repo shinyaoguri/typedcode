@@ -28,6 +28,7 @@
 
 ### 修正
 
+- `/api/checkpoint/sign` が `sessionStartToken` の古さを見ず、署名鍵が生きている限り同じ token が無期限に有効だった問題を修正した。`issuedAt` から 30 日 (`SESSION_TOKEN_MAX_AGE_MS`) を超えた token は 401 `TOKEN_EXPIRED` で拒否する (KV には触れない)。検査は sign 経路だけで、検証器は age を見ないので過去の proof の採点は変わらない。editor は `TOKEN_EXPIRED` を恒久失敗にせず署名の queue を保ち、`findSigningToken` が sessionId の一致する中で `issuedAt` が最新の token を選ぶので、後から開いたタブの新しい token で全タブの署名が再開する。期限切れの token しか無くても export は止まらない ([ADR-0027](docs/adr/0027-checkpoint-sign-requires-session-token.md)) (#227)
 - 打鍵していないタブを export すると、同期状態 (`#sync-status-item[data-state]`) が `pending` のまま戻らない問題を修正した。export の直前の flush がデバウンス中の保存を取り消して自分で保存するのに、状態を確定させていなかった。flush の最後で、その間に新しい保存要求が無ければ保存の完了と同じ規則 (PoSW 待ちのイベントが残っていれば `pending`、無ければ `synced`) で確定させる (#456)
 - 打鍵が 100 件の倍数に達して contentSnapshot が記録されたとき、ステータスバーのイベント数とハッシュ (`#event-count[data-count]` / `#current-hash[data-hash]`) が次のイベントまで 1 件遅れたまま残る問題を修正した。スナップショットの記録が済んだら表示を追従させる (#448)
 - 空のタブ (0 バイトのファイル) を含めて全タブ export した ZIP を、verify-cli / verify Web が `ZIP entry has no readable declared size` で拒否する問題を修正した。JSZip が 0 バイトのエントリに作る形 (申告サイズを持たない空の中身を STORE で持つ) と完全に一致するエントリだけを 0 バイトとして数え、それ以外の申告サイズが読めないエントリは従来どおり fail-closed で拒否する。申告 0 を詐称しても JSZip は中身を捨てるので展開は起きない (#447)

@@ -207,6 +207,7 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
 | `TOKEN_REQUIRED` | 401 | `sessionStartToken` が無い |
 | `TOKEN_INVALID` | 401 | トークンの署名 / 鍵レジストリ / 形式が不正 |
 | `TOKEN_SESSION_MISMATCH` | 401 | トークンの `sessionId` がリクエストの `sessionId` と不一致 |
+| `TOKEN_EXPIRED` | 401 | トークンの `issuedAt` から 30 日 (`SESSION_TOKEN_MAX_AGE_MS`) を超えている |
 | `NON_MONOTONIC` | 409 | `checkpointIndex` が単調増加していない |
 | `CHECKPOINT_CONFLICT` | 409 | 同一 index で内容が不一致 (冪等性が成立しない) |
 | `TAB_LIMIT_EXCEEDED` | 429 | 1 セッションあたりのタブ数上限 (64) を超過 |

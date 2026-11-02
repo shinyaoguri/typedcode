@@ -59,7 +59,6 @@ export type {
   ScreenInfo,
   WebGLInfo,
   FingerprintComponents,
-  StableInfo,
   DetailedFingerprint,
 } from './fingerprint.js';
 
@@ -119,7 +118,6 @@ export type {
   VerificationResult,
   ContentReplayVerificationResult,
   ProofMetadataVerificationResult,
-  TypingProofVerificationResult,
 } from './verification.js';
 
 // 統計関連

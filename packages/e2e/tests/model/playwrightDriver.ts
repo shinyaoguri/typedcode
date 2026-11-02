@@ -46,7 +46,9 @@ function isAllowedConsoleError(text: string): boolean {
  * 1 本の列ごとに作り直す (runner.ts が列ごとに新しいブラウザコンテキストのページを渡す)。
  */
 export class PlaywrightEditorDriver implements EditorDriver {
-  readonly app: EditorApp;
+  /** 現在のページ。`closeAndResume` が閉じて開き直すたびに差し替わる (コンテキストは同じ) */
+  page: Page;
+  app: EditorApp;
   /** pageerror と許可リスト外の console.error (各手の後に 0 件であることを見る) */
   readonly errors: string[] = [];
   /** 直近の 1 本分の操作ログ (失敗の報告に添える) */
@@ -54,8 +56,14 @@ export class PlaywrightEditorDriver implements EditorDriver {
   private lastTabClick: { id: string; at: number } | null = null;
   private runLabel = '';
 
-  constructor(readonly page: Page) {
+  constructor(page: Page) {
+    this.page = page;
     this.app = new EditorApp(page);
+    this.watchErrors(page);
+  }
+
+  /** pageerror と console.error の監視 (ページを開き直したら新しいページにも付ける。`errors` は引き継ぐ)。 */
+  private watchErrors(page: Page): void {
     page.on('pageerror', (e) => this.errors.push(`pageerror: ${e.message}`));
     page.on('console', (msg) => {
       if (msg.type() === 'error' && !isAllowedConsoleError(msg.text())) {
@@ -167,6 +175,28 @@ export class PlaywrightEditorDriver implements EditorDriver {
     const tabs = await this.app.tabs();
     expect(tabs, 'casual opens one default tab when restored with no tabs').toHaveLength(1);
     return tabs[0]!.id;
+  }
+
+  /**
+   * 同期を待ってからブラウザのタブを閉じ (sessionStorage は消え、IndexedDB は残る)、同じコンテキストで
+   * 開き直して (`?reset` 無し) 復旧ダイアログの「再開」を押す。手順は close-tab-recovery.spec.ts と同じ。
+   * 復旧ダイアログが出ることが前提 (出なければ IndexedDB の復旧経路を通っていないので落とす)。
+   */
+  async closeAndResume(): Promise<void> {
+    await this.app.waitForSynced();
+    const context = this.page.context();
+    await this.page.close();
+    const page = await context.newPage();
+    this.page = page;
+    this.app = new EditorApp(page);
+    this.watchErrors(page);
+    this.lastTabClick = null;
+    await page.goto('/casual');
+    const resume = page.locator('#session-resume-btn');
+    await resume.waitFor({ state: 'visible', timeout: 30_000 });
+    await resume.click();
+    await page.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible' });
+    await expect.poll(() => this.app.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
   }
 
   async focusLossAndReturn(): Promise<void> {

@@ -114,6 +114,18 @@ describe('TabUIController state contract', () => {
 });
 
 describe('tabFullFilename', () => {
+  // #441: class / テンプレート / exam の starter は拡張子込みの名前 (p1.c) で createTab する。
+  it('appends exactly one extension whether or not the stored name already carries it', () => {
+    expect(tabFullFilename({ filename: 'p1', language: 'c' } as TabState)).toBe('p1.c');
+    expect(tabFullFilename({ filename: 'p1.c', language: 'c' } as TabState)).toBe('p1.c');
+    expect(tabFullFilename({ filename: 'main.py', language: 'python' } as TabState)).toBe('main.py');
+  });
+
+  it('still appends the language extension when the dotted suffix belongs to a different extension', () => {
+    expect(tabFullFilename({ filename: 'a.py', language: 'c' } as TabState)).toBe('a.py.c');
+    expect(tabFullFilename({ filename: 'v1.2', language: 'c' } as TabState)).toBe('v1.2.c');
+  });
+
   it('falls back to the txt extension for a language without a registered extension', () => {
     expect(tabFullFilename({ filename: 'notes', language: 'no-such-language' } as TabState)).toBe('notes.txt');
   });

@@ -8,9 +8,9 @@ import type { CursorPosition, RecordEventInput, DetectedEvent } from '@typedcode
 import { InputDetector } from '../tracking/InputDetector.js';
 import { isTurnstileConfigured } from '../services/TurnstileService.js';
 import { clearStorageSync } from '../utils/StorageClearHelper.js';
-import { sessionActiveKey } from '../core/storageKeys.js';
 import { t } from '../i18n/index.js';
 import { showNotification } from './AppHelpers.js';
+import { handleBeforeUnload } from './beforeUnloadGuard.js';
 import { handleTemplateDrop, isTemplateFile } from './TemplateHandler.js';
 import { showLanguageDescriptionInTerminal } from './TerminalHandler.js';
 
@@ -325,33 +325,12 @@ export function setupStaticEventListeners(ctx: AppContext): void {
 
   // ページ離脱時の確認ダイアログ
   // (セッションの isActive は書き換えない。リロードとタブ閉じの区別は下の sessionStorage フラグで行う)
-  window.addEventListener('beforeunload', (e) => {
-    if (ctx.skipBeforeUnload) return;
+  window.addEventListener('beforeunload', (e) => handleBeforeUnload(ctx, e));
 
-    // セッションをアクティブとしてマーク（リロード検出用）
-    // sessionStorageはリロード時は保持され、タブを閉じると消える
-    // 次回起動時にこのフラグがあればリロード、なければタブを閉じた後の再開
-    try {
-      sessionStorage.setItem(sessionActiveKey(), 'true');
-    } catch {
-      // ignore
-    }
-
-    // 最新のタブ状態をsessionStorageに同期的に保存
-    // - リロード時：sessionStorageは保持されるため、最新状態が復元可能になる
-    // - タブ閉じ時：sessionStorageは消えるため効果なし（IndexedDBから復元）
-    // PoSW計算中でもMonacoモデルから最新コンテンツを取得して保存
-    // 重要: beforeunloadではasync処理が完了しないため、同期的に保存する
-    try {
-      ctx.tabManager?.saveToStorageSync();
-    } catch {
-      // ignore - sessionStorageへの同期保存も失敗する可能性がある（QuotaExceeded等）
-    }
-
-    const activeProof = ctx.tabManager?.getActiveProof();
-    if (activeProof && activeProof.events.length > 0) {
-      e.preventDefault();
-    }
+  // bfcache から戻ったとき (モード移動・言語切替の後に履歴で戻った場合など) は、確認の抑止を解除して
+  // 以後のタブ閉じでは確認が出るようにする
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) ctx.skipUnloadConfirm = false;
   });
 
   // 現在のタブをZIPでエクスポート（ファイル + 検証ログ）

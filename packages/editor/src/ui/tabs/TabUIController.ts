@@ -11,9 +11,14 @@ import { t } from '../../i18n/index.js';
 /**
  * タブの完全なファイル名 (拡張子込み)。タブに表示される名前と同じで、状態契約の
  * `data-filename` と dev フック `__tcTestSnapshot` の filename はこの表現に揃える。
+ *
+ * `tab.filename` は拡張子なし (`Untitled-1`) でも拡張子込み (class の starter・テンプレート・exam の
+ * `p1.c`) でも入ってくるので、既にその言語の拡張子で終わっていれば足さない (`ProofExporter` の
+ * ZIP 内ファイル名の補正と同じ形。#441)。
  */
 export function tabFullFilename(tab: Pick<TabState, 'filename' | 'language'>): string {
-  return `${tab.filename}.${FILE_EXTENSIONS[tab.language] ?? 'txt'}`;
+  const ext = FILE_EXTENSIONS[tab.language] ?? 'txt';
+  return tab.filename.endsWith(`.${ext}`) ? tab.filename : `${tab.filename}.${ext}`;
 }
 
 export interface TabUIControllerOptions {
