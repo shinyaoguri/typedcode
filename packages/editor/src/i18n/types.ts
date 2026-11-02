@@ -373,7 +373,6 @@ export interface TranslationKeys {
     compilationStarted: string;
     executionStarted: string;
     codeExecution: string;
-    clearLogConfirm: string;
   };
 
   // Export
