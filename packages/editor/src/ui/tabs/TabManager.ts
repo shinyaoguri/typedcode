@@ -148,6 +148,8 @@ export class TabManager {
   private needsSave: boolean = false;
   /** デバウンス用タイマー */
   private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** リセット確定後 (#323)。true の間は sessionStorage への保存と新しい保存要求を受け付けない */
+  private persistenceSuspended = false;
   /** デバウンス待ち時間（ミリ秒） */
   private static readonly SAVE_DEBOUNCE_MS = 100;
   /** 現在の同期状態 */
@@ -908,6 +910,22 @@ export class TabManager {
   }
 
   /**
+   * 保存を止める (リセット確定用、#323)
+   *
+   * リセットは DB の削除の完了を待ってからリロードする。その間にデバウンス中・実行中の保存が
+   * sessionStorage へ書くと、消したタブ状態がリロードで復元されてしまう。以後 sessionStorage への保存は
+   * すべて無効にする (リロードで解除される。再開は無い)。
+   */
+  suspendPersistence(): void {
+    this.persistenceSuspended = true;
+    if (this.saveDebounceTimer) {
+      clearTimeout(this.saveDebounceTimer);
+      this.saveDebounceTimer = null;
+    }
+    this.needsSave = false;
+  }
+
+  /**
    * sessionStorageに同期的に保存（beforeunload用）
    *
    * beforeunloadではasync処理が完了しないため、
@@ -943,6 +961,8 @@ export class TabManager {
    * 3. beforeunloadではsaveToStorageSync()を使用して同期的にsessionStorageに保存
    */
   saveToStorage(): void {
+    if (this.persistenceSuspended) return;
+
     // 次の保存が必要であることをマーク
     this.needsSave = true;
 
@@ -1023,6 +1043,9 @@ export class TabManager {
    * @private
    */
   private saveToSessionStorage(): void {
+    // リセット確定後に保存が走ると、消したはずのタブ状態が sessionStorage に戻ってリロードで復元される (#323)
+    if (this.persistenceSuspended) return;
+
     const sessionId = this.sessionService.getCurrentSessionId() ?? '';
 
     // V2フォーマット: 軽量版（eventsなし）

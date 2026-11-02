@@ -38,7 +38,7 @@ test('production build: エディタが console エラーなくマウントし�
     if (!isIrrelevant(err.message)) pageErrors.push(err.message);
   });
 
-  await page.goto('/casual?reset');
+  await page.goto('/casual');
 
   // ① Monaco が実際にマウントされる。#255 では .monaco-editor が生えないまま止まった。
   // ここで落ちると素の TimeoutError になり原因が見えないので、収集済みのエラーを添えて投げ直す。

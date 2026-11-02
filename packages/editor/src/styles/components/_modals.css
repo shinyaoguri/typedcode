@@ -1097,12 +1097,6 @@
   flex: 1;
 }
 
-.exam-gate-hint {
-  margin: 0;
-  font-size: 11px;
-  color: var(--text-quaternary);
-}
-
 /* Screen Share Guide - Chrome共有ダイアログの非表示ボタンを押すよう促すガイド */
 .screen-share-guide {
   position: fixed;

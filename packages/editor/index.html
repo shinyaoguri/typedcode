@@ -361,22 +361,23 @@
       <div class="modal-dialog modal-danger">
         <div class="modal-header">
           <i class="fas fa-triangle-exclamation"></i>
-          <h3 data-i18n="resetDialog.title">すべてのデータをリセット</h3>
+          <h3 data-i18n="resetDialog.title">このモードのデータをリセット</h3>
         </div>
         <div class="modal-body">
           <p class="modal-warning" data-i18n="resetDialog.warning">この操作は取り消せません！</p>
-          <p data-i18n="resetDialog.description">以下のデータが完全に削除されます：</p>
+          <!-- 消えるモード名とタブ数は開くときに差し込む (StaticEventListeners の openResetDialog)。data-mode / data-tab-count は状態契約 -->
+          <p id="reset-scope" data-mode="" data-tab-count=""></p>
           <ul class="modal-list">
-            <li><i class="fas fa-file-code"></i> <span data-i18n="resetDialog.itemTabs">すべてのタブとコード</span></li>
-            <li><i class="fas fa-list"></i> <span data-i18n="resetDialog.itemLogs">すべての操作ログ</span></li>
-            <li><i class="fas fa-shield-halved"></i> <span data-i18n="resetDialog.itemProofs">すべてのタイピング証明</span></li>
-            <li><i class="fas fa-database"></i> <span data-i18n="resetDialog.itemData">すべての保存データ</span></li>
+            <li><i class="fas fa-file-code"></i> <span data-i18n="resetDialog.itemTabs">このモードのタブとコード</span></li>
+            <li><i class="fas fa-list"></i> <span data-i18n="resetDialog.itemLogs">このモードの操作ログ</span></li>
+            <li><i class="fas fa-shield-halved"></i> <span data-i18n="resetDialog.itemProofs">このモードのタイピング証明</span></li>
+            <li><i class="fas fa-database"></i> <span data-i18n="resetDialog.itemData">このモードの保存データ</span></li>
           </ul>
         </div>
         <div class="modal-footer">
           <button class="modal-btn modal-btn-cancel" id="reset-cancel-btn" data-i18n="common.cancel">キャンセル</button>
           <button class="modal-btn modal-btn-danger" id="reset-confirm-btn">
-            <i class="fas fa-trash"></i> <span data-i18n="resetDialog.confirmButton">すべてリセット</span>
+            <i class="fas fa-trash"></i> <span data-i18n="resetDialog.confirmButton">このモードをリセット</span>
           </button>
         </div>
       </div>
