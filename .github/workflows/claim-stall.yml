@@ -1,0 +1,53 @@
+name: Claim Stall
+
+# 着手印の放置の検出 (#469)。`status: in progress` が付いたまま、参照する open PR も人の手も
+# 閾値 (既定 3 日) を超えて無い open Issue があれば、run の要約と `::warning::` に出してジョブを赤くする
+# (scheduled workflow の失敗通知でメンテナに届く)。
+#
+# 判定の正本は scripts/claim-stall.mjs (純関数 + node --test。テストは deploy.yml の check job で走る)。
+# YAML には判定を書かない。
+#
+# **印は外さず、起票もしない**。中断中の作業と区別できないので、閉じる・印を外して残作業を
+# コメントする・プランを更新して人の手を残す、は人かエージェントの仕事 (AGENTS.md「ラベル」)。
+# 起票しないのは、freshness.yml の Issue (#261) のように溜まってノイズになるため。
+# だから権限は読み取りだけにする。
+on:
+  schedule:
+    # 毎日 00:17 UTC (= 09:17 JST)。毎時 0 分は混むので避ける
+    - cron: '17 0 * * *'
+  workflow_dispatch:
+    inputs:
+      threshold_days:
+        description: '放置とみなす日数 (これを超えたら検出。0 で印の付いた Issue をほぼすべて検出する)'
+        required: false
+        default: '3'
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  claim-stall:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # スクリプトは node の標準モジュールと gh だけを使うので npm ci はしない
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # exit 0 = 検出なし / 1 = 検出あり (赤) / 2 = 読めなかった (赤)
+      - name: Check stale claims
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # schedule では inputs が空なので、スクリプトの既定 (3) に任せる
+          CLAIM_STALL_DAYS: ${{ inputs.threshold_days }}
+        run: node scripts/claim-stall.mjs
