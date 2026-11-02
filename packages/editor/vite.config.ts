@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import wasm from 'vite-plugin-wasm';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
@@ -44,9 +44,48 @@ if (workersPort) {
   }
 }
 
+// @wasmer/sdk (0.19 以降) は worker と、worker が動的 import する SDK 本体 (wasm-bindgen の glue) を
+// `new URL('./browser-worker.js', import.meta.url)` / `new URL('../pkg/wasmer_sdk_js.js', import.meta.url)`
+// で自分で解決する。本番ビルドの Vite はこれを「中身を触らない静的アセット」としてコピーするので、
+// そのファイルが持つ相対 import (`./node-compat.js` や `./snippets/.../inline0.js`) が dist に
+// 存在せず、worker の起動で 404 になる。ビルド時だけこの 2 か所を、依存をバンドルしたチャンクの
+// URL に置き換える (#364):
+// - worker は `?worker&url` (自己完結した worker チャンク。export は要らない)
+// - SDK 本体は worker が `default` と `ThreadPoolWorker` を import して使うので、export を残す
+//   必要がある。`?worker&url` は export を落とすため、`preserveSignature` 付きのチャンクとして
+//   emit して `import.meta.ROLLUP_FILE_URL_*` で参照する
+// dev サーバは node_modules をそのまま配信して相対 import が解決するので触らない。
+const WASMER_SDK_WORKER_EXPR = 'new URL("./browser-worker.js", import.meta.url)';
+const WASMER_SDK_GLUE_EXPR = 'new URL("../pkg/wasmer_sdk_js.js", import.meta.url)';
+
+function wasmerSdkBundledWorkers(): Plugin {
+  return {
+    name: 'wasmer-sdk-bundled-workers',
+    apply: 'build',
+    enforce: 'pre',
+    async transform(code, id) {
+      if (!/[\\/]@wasmer[\\/]sdk[\\/]dist[\\/]index\.js$/.test(id)) return null;
+      for (const expr of [WASMER_SDK_WORKER_EXPR, WASMER_SDK_GLUE_EXPR]) {
+        if (!code.includes(expr)) {
+          // SDK の更新で書き方が変わったら、壊れた worker を黙って出さずにビルドを止める
+          throw new Error(`[wasmer-sdk-bundled-workers] pattern not found in @wasmer/sdk: ${expr}`);
+        }
+      }
+      const glue = await this.resolve('../pkg/wasmer_sdk_js.js', id);
+      if (!glue) throw new Error('[wasmer-sdk-bundled-workers] cannot resolve @wasmer/sdk glue module');
+      const ref = this.emitFile({ type: 'chunk', id: glue.id, preserveSignature: 'strict' });
+      const out = code
+        .replace(WASMER_SDK_WORKER_EXPR, 'new URL(__wasmerSdkWorkerUrl, import.meta.url)')
+        .replace(WASMER_SDK_GLUE_EXPR, `new URL(import.meta.ROLLUP_FILE_URL_${ref}, import.meta.url)`);
+      return { code: `import __wasmerSdkWorkerUrl from "./browser-worker.js?worker&url";\n${out}`, map: null };
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     wasm(),
+    wasmerSdkBundledWorkers(),
     // vite-plugin-top-level-await は使わない (#255)。このプラグインは
     // チャンクの全エクスポートを先頭の let へ巻き上げて本体を async IIFE で包むため、
     // 関数宣言の巻き上げに依存している monaco (vs/platform/instantiation) が壊れ、
@@ -67,6 +106,14 @@ export default defineConfig({
     },
   ],
   base: '/',
+  resolve: {
+    alias: {
+      // @wasmer/sdk の WISP ネットワーク (network mode "wisp" 専用) が読む AGPL-3.0 の
+      // wisp-js を、配信物に入れないためローカルの空実装に差し替える。sandbox の
+      // ネットワークは使わない (#364)
+      '@mercuryworkshop/wisp-js/client': resolve(__dirname, 'src/executors/c/wispClientStub.ts'),
+    },
+  },
   worker: {
     format: 'es',
   },
