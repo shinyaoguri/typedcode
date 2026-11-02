@@ -41,13 +41,15 @@ shots/                     # npm run shots の出力 (PNG・アニメーショ�
 ## 実行
 
 ```bash
-npm run install-browsers -w @typedcode/e2e   # 初回のみ
-npm run setup -w @typedcode/e2e              # CI: テストキー + 署名鍵の用意
-npm run test -w @typedcode/e2e               # 全シナリオ (サーバは Playwright が自動起動)
+npm run test -w @typedcode/e2e               # 全シナリオ (サーバは Playwright が自動起動)。pretest が setup と install-browsers を先に走らせる (#335)
 npm run test:build -w @typedcode/e2e         # 本番ビルドのスモークのみ (build → vite preview)
 npm run test:headed -w @typedcode/e2e        # 失敗調査 (ブラウザ表示)
-npm run shots -w @typedcode/e2e              # 見た目・動きの証跡を shots/ に撮る (@shots だけ。WebP の束ねに img2webp が要る)
+npm run shots -w @typedcode/e2e              # 見た目・動きの証跡を shots/ に撮る (@shots だけ。WebP の束ねに img2webp が要る。preshots が同じ準備をする)
+npm run setup -w @typedcode/e2e              # 単独で打つとき: テストキー + 署名鍵の用意 (pretest / preshots が呼ぶ)
+npm run install-browsers -w @typedcode/e2e   # 単独で打つとき: Chromium の導入 (同上。OS の共有ライブラリは入れない)
 ```
+
+**`pretest` / `preshots` は `npm run setup && npm run install-browsers`**。`.env` も `.dev.vars` もブラウザも無い新しい worktree・環境で、`npm ci` の直後に `npm run test` だけで通る。どちらも繰り返し実行して安全: setup は既存の `.dev.vars` を上書きせず鍵 ID の検査だけ、`playwright install` は導入済みなら何もしない。`test:headed` / `test:ui` / `test:build` には付けていない (準備済みの環境で使う前提)。`--with-deps` は sudo が要るので付けておらず、Linux で共有ライブラリが足りなければ手で `npx playwright install --with-deps chromium` を打つ (CI は deploy.yml の既存 step が入れる)。
 
 CI では `deploy.yml` の `e2e-shard` job が Playwright の `--shard=1/2` / `2/2` を matrix で並列に走らせ (`test:build` は shard 1 だけ)、集約 job **`e2e`** が全 shard の成功を要求する。`e2e` が main ruleset の required check であり、`deploy-preview` / `deploy-staging` / `deploy-production` の **必須ゲート** (`needs: [test, check, e2e]`) になっている。matrix の job は check 名が `e2e (shard 1/2)` に変わるので、**集約 job の名前 `e2e` と `if: always()` を外さないこと** (外すと shard 失敗時に skipped = ruleset 上は通過になる)。shard の手元再現は `npm run test -w @typedcode/e2e -- --shard=1/2`
 

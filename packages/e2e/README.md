@@ -26,10 +26,9 @@ Turnstile → workers 検証 → attestation 記録までフルスタックが�
 ## 実行
 
 ```bash
-# 初回のみ: ブラウザ取得
-npm run install-browsers -w @typedcode/e2e
-
-# 全シナリオ実行 (サーバは Playwright が自動起動)
+# 全シナリオ実行 (サーバは Playwright が自動起動)。
+# pretest が `npm run setup` (テストキー + 署名鍵) と `npm run install-browsers` (Chromium) を先に走らせるので、
+# npm ci 直後の新しい環境でもこれだけで通る。どちらも繰り返して安全 (既存の .dev.vars は上書きせず、導入済みなら何もしない)
 npm run test -w @typedcode/e2e
 
 # 本番ビルド (dist) のスモークだけを実行 (editor を build → vite preview)
