@@ -15,6 +15,7 @@
 
 ### 変更
 
+- ランダムな操作列 (タブの追加・切替・改名・閉じる・打鍵・外部ペースト・内部コピペ・言語変更・リロード・フォーカス喪失・export) を実エディタに流し、各手の後にモデルと状態契約を突き合わせて最後に全 proof を verify-cli で検証する model-based E2E を足した。PR ゲートは固定シード 2 本、毎晩の `e2e-nightly.yml` はランダムシードの長い列を回し、失敗はシードと縮約後の操作列を Issue に集める (#436)
 - 見た目・動きの証跡 (静止画と可逆のアニメーション WebP) を撮る撮影専用の E2E spec (`@shots`) と `npm run shots -w @typedcode/e2e` を足し、editor / verify の見た目を変える PR は本文に before/after の画像を載せる規律を置いた ([ADR-0036](docs/adr/0036-visual-evidence-on-prs.md))。通常の E2E と CI のシャードからは外している (#391)
 - fast モードの検証で PoSW を再計算していないことを Web / CLI の双方で明示し、整合性 (integrity) を `proven` に上げず `partial` として扱うようにした ([ADR-0031](docs/adr/0031-integrity-partial-when-posw-skipped.md))。合否判定と proof フォーマットは変更なし (#253)
 - `npm run dev` の開発サーバポートをセット単位で自動割当し、editor の `/verify` プロキシと `VITE_API_URL` を実際の割当ポートへ追従させた ([ADR-0030](docs/adr/0030-dev-port-autoswitch.md))。個別起動 (`dev:editor` など) は従来どおり固定ポート (#197)

@@ -1,0 +1,145 @@
+name: E2E nightly
+
+# 毎晩の長い E2E (`@nightly` の付いたテスト)。PR ゲート (deploy.yml の e2e-shard) には重すぎる、
+# ランダムシードの長い操作列を流す model-based E2E (packages/e2e/tests/model/ / #436) などを回す。
+# `@nightly` は playwright.config.ts の grepInvert で通常の実行から外れていて、NIGHTLY=1 のときだけ含まれる。
+#
+# 失敗したら、テストが出力ディレクトリに書く model-failure.md (シード・縮約後の操作列・再実行コマンド) を
+# 集めて Issue にする。同じタイトルの open Issue があればコメント追記に切り替える (freshness.yml と同じ形)。
+on:
+  schedule:
+    # 毎日 18:30 UTC (= 03:30 JST)。freshness.yml (月曜 00:00 UTC) と時刻を被らせない
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'model-based E2E のシード (空ならランダム)。失敗の報告に出た FC_SEED を入れると同じ列を回す'
+        required: false
+        default: ''
+      runs:
+        description: 'model-based E2E の列の本数 (FC_RUNS)'
+        required: false
+        default: '3'
+      steps:
+        description: 'model-based E2E の 1 列の長さ (FC_STEPS)'
+        required: false
+        default: '40'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    # model-based の長尺 (既定 40 手 × 3 本) と失敗時の縮約 (テスト側で 60 分に打ち切る) を収める
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: 'npm'
+
+      # ここから「Install Playwright browser」までは deploy.yml の e2e-shard と同じ手順
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      - name: Provision E2E env (test keys + 生成 checkpoint 鍵)
+        run: npm run setup -w @typedcode/e2e
+
+      - name: Get installed Playwright version
+        id: playwright-version
+        run: echo "version=$(npx playwright --version | sed 's/Version //')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+          restore-keys: |
+            playwright-browsers-${{ runner.os }}-
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # retries を 0 にする: シードを指定しない run ではリトライのたびに別のシードになり、
+      # 失敗した列が「リトライで通った」として消えてしまうため。
+      - name: Run @nightly E2E
+        env:
+          NIGHTLY: '1'
+          FC_SEED: ${{ inputs.seed }}
+          FC_RUNS: ${{ inputs.runs }}
+          FC_STEPS: ${{ inputs.steps }}
+        run: |
+          set -o pipefail
+          npm run test -w @typedcode/e2e -- --grep @nightly --retries=0 2>&1 | tee "${RUNNER_TEMP}/e2e-nightly.log"
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-nightly
+          path: |
+            packages/e2e/playwright-report/
+            packages/e2e/test-results/
+          retention-days: 14
+
+      - name: Compose failure report
+        if: failure()
+        run: |
+          set -euo pipefail
+          body="${RUNNER_TEMP}/report.md"
+          {
+            echo "## nightly E2E の失敗 (${GITHUB_WORKFLOW})"
+            echo
+            echo "- 実行: [\`${GITHUB_RUN_ID}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo "- 対象コミット: \`${GITHUB_SHA}\`"
+            echo
+            echo "実行したシード (テスト出力の \`[model] seed=\` 行):"
+            echo
+            echo '```'
+            grep -E '\[model\] seed=' "${RUNNER_TEMP}/e2e-nightly.log" || echo '(なし: model-based のテストが始まる前に落ちた)'
+            echo '```'
+            echo
+          } > "$body"
+
+          found=0
+          while IFS= read -r -d '' report; do
+            cat "$report" >> "$body"
+            echo >> "$body"
+            found=1
+          done < <(find packages/e2e/test-results -name model-failure.md -print0 2>/dev/null | sort -z)
+
+          if [ "$found" -eq 0 ]; then
+            {
+              echo "model-failure.md が見つからない (タイムアウトや model-based 以外のテストの失敗)。"
+              echo "上のシードと、実行ログの \`[model #N]\` の操作ログ・artifact の Playwright レポートから辿る。"
+            } >> "$body"
+          fi
+          cat "$body"
+
+      - name: Create or update nightly failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: 'test: nightly E2E の失敗 (自動)'
+        run: |
+          set -euo pipefail
+          body="${RUNNER_TEMP}/report.md"
+
+          existing="$(gh issue list --state open --limit 200 --json number,title \
+            --jq '[.[] | select(.title == env.ISSUE_TITLE)] | .[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            echo "既存 Issue #${existing} にコメント追記します。"
+            gh issue comment "$existing" --body-file "$body"
+          else
+            echo "新規 Issue を作成します。"
+            gh issue create --title "$ISSUE_TITLE" --body-file "$body"
+          fi
