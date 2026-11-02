@@ -1292,18 +1292,12 @@ export class TabManager {
       }
       debugLog(`[TabManager] Tab ${id}: loaded ${events.length} events from IndexedDB`);
 
-      // 2. 同期確認と currentHash の決定
-      // IMPORTANT: sessionStorageのcurrentHashではなく、IndexedDBから取得したイベントの
-      // 最後のhashを使用する。これにより、IndexedDBへの保存が遅延した場合でも
-      // 整合性が保たれる。
+      // 2. 同期確認
+      // currentHash は TypingProof.restoreState が events 末尾の hash から決める (#322)。
+      // sessionStorage の currentHash は非同期保存の遅延で古いことがあるので、events が空の
+      // ときの初期ハッシュとしてだけ渡す。
       const expectedSequence = lightweightTab.proofState.lastEventSequence;
       const actualSequence = events.length - 1;
-      const lastEvent = events[events.length - 1];
-
-      // IndexedDBの最後のイベントのhashをcurrentHashとして使用
-      // イベントがない場合のみ、初期ハッシュを保持しているsessionStorageを使用する。
-      // sessionStorageのcurrentHashは信頼できない（非同期保存の遅延により不一致の可能性）
-      const currentHash = lastEvent?.hash ?? lightweightTab.proofState.currentHash;
 
       if (actualSequence < expectedSequence) {
         console.warn(
@@ -1317,7 +1311,7 @@ export class TabManager {
       // サーバアンカーが失われ、リロード後の proof が root 不一致で検証不能になる。
       const proofState: SerializedProofState = {
         events,
-        currentHash,
+        currentHash: lightweightTab.proofState.currentHash,
         initialHashNonce: lightweightTab.proofState.initialHashNonce,
         startTime: lightweightTab.proofState.startTime,
         checkpoints: lightweightTab.proofState.checkpoints,

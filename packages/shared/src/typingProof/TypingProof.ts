@@ -885,7 +885,16 @@ export class TypingProof {
    */
   restoreState(state: SerializedProofState): void {
     this.events = state.events;
-    this.hashChainManager.setCurrentHash(state.currentHash);
+    // チェーンの続きは events 末尾の hash を正とする (#322)。state.currentHash は tabs レコード
+    // 由来で、定期保存と append の競合で古い値に戻りうる。events が空のときだけ (初期ハッシュを
+    // 保持している) 渡された値を使う。
+    const lastEventForHash = state.events[state.events.length - 1];
+    if (lastEventForHash && lastEventForHash.hash !== state.currentHash) {
+      console.warn(
+        `[TypingProof] restoreState: currentHash (${state.currentHash}) differs from the last event hash; using the last event hash (seq ${lastEventForHash.sequence})`
+      );
+    }
+    this.hashChainManager.setCurrentHash(lastEventForHash?.hash ?? state.currentHash);
     this.initialHashNonce = state.initialHashNonce ?? null;
     this.examContext = state.examContext ?? null;
     this.sessionStartToken = state.sessionStartToken ?? null;

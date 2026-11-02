@@ -23,6 +23,7 @@
 
 ### 修正
 
+- 「閉じて再開」の復元が tabs レコードの古い `currentHash` を採用し、定期保存と append の競合で再開後のチェーンが切れて proof が invalid になりうる問題を修正した。`TypingProof.restoreState` が events 末尾の hash を正とし (events が空のときだけ渡された値を使う)、editor の 3 つの復元経路すべてに効く。V2 経路の個別の補正は重複になるので削除。proof 形式・ハッシュ入力の変更なし (#322)
 - Workers の `GET /api/checkpoint/public-keys` が body の `cacheTtlSec` (86400) と `Cache-Control: max-age=3600` で食い違う TTL を返していた問題を修正した。body から `cacheTtlSec` フィールドを削除し、キャッシュは `Cache-Control: public, max-age=3600` に一本化した。リポジトリ内にこのフィールドを読む側は無い (#370)
 - editor から Workers への fetch (verify-captcha / session/start / checkpoint/sign) にタイムアウトが無く、回線が止まると試験の export・タブ作成・署名が無期限に止まりうる問題を修正した。各 fetch を `WORKERS_FETCH_TIMEOUT_MS` で打ち切って既存の失敗経路 (リトライ・署名の backoff 再試行) に合流させ、exam / class / assignment の export 前認証は全体を `PRE_EXPORT_VERIFICATION_BUDGET_MS` で打ち切って失敗 attestation を記録したうえで ZIP を出す。casual の export 前認証は従来どおり待つ (#324)
 - タブ復元で `tabOrder` が空配列 (セッション作成直後の初期値) や一部欠けていると、保存済みのタブ行が黙ってスキップされ、IndexedDB に残っているのに UI から開けないタブになりうる問題を修正した。復元順は tabOrder の順に、tabOrder に無い保存済みタブを末尾に足して全件復元する (#326)
