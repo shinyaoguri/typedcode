@@ -51,7 +51,8 @@ src/
 - **`--exam-package` を渡したら `exam` ブロックの無い proof も必ず束縛検証にかける** (#218)。呼び出し側で `proof.exam &&` を条件にすると、casual proof が何も検証されないまま exit 0 で通る (採点ゲートのサイレント無効化)。判定は shared の `verifyExamBinding` が fail-closed (`reason: 'Proof has no exam block'`) で持つので、CLI はそこへ**到達させる**だけ。ZIP では per-proof に失敗させる (不変条件 3 と同型)
 - **束縛が「対象外の proof」で落ちても `integrity` は落とさない**: これはゲートの誤用であって改ざんではない (ADR-0020 の語彙)。`deriveAssurance` へ渡す `exam.present` を固定値 `true` にしないこと
 - `--submitted-at` は time-box (advisory) 専用。`--exam-package` 無しでは効かないので warning を出す (exit code は変えない)
-- ロジックは全て shared (`verifyExamBinding` / `parseExamPackageManifest`) に委譲。CLI は薄いラッパに留める
+- ロジックは全て shared (`verifyExamBinding` / `parseExamPackageManifestResult`) に委譲。CLI は薄いラッパに留める。`.tcexam` の取込は理由つきの `parseExamPackageManifestResult` を使い、未知の `formatVersion` (新旧) と形式不正を出し分ける (null を返す旧 `parseExamPackageManifest` は使わない。#223)
+- **proof の形式バージョン (#223)**: 判定 (`versionStatus`) は shared の `verifyProofFile` が持つ。CLI は `newer` を合否の直下の warning として出し (exit code には干渉しない)、`tooOld` / `malformed` は `errorMessage` を `Error:` に出す。**自己申告の `proof.version` は生で stdout に出さず**、`verify.ts` が `parseVersionStrict` で数字に正規化した `declaredVersion` だけを使う (shared AGENTS.md 不変条件 11)
 
 ## スクリーンショット検証 (#147)
 

@@ -506,3 +506,43 @@ describe('printUsage — --mode の説明が実装と一致する (#283 c2)', ()
     expect(text).not.toMatch(/deterministic PoSW sampling/);
   });
 });
+
+describe('formatResult — proof format version (#223)', () => {
+  const VERSION_ERROR = 'Proof version 0.1.0 is older than the minimum supported version 1.0.0';
+
+  it('prints a newer-major warning right under the PASSED header and keeps the verdict', () => {
+    const text = plain(formatResult(output({ versionStatus: 'newer', declaredVersion: '2.0.0' })));
+
+    const header = text.slice(text.indexOf('Verification PASSED'), text.indexOf('--- Assurance'));
+    expect(header).toContain('proof format version 2.0.0 is newer than this verifier supports');
+  });
+
+  it('prints no version warning for current / supported proofs', () => {
+    for (const versionStatus of ['current', 'supported'] as const) {
+      expect(plain(formatResult(output({ versionStatus })))).not.toContain('newer than this verifier');
+    }
+  });
+
+  it('prints a rejected version as the failure reason even when an exam binding failure is the only other reason', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          versionStatus: 'tooOld',
+          errorMessage: VERSION_ERROR,
+          exam: examBindingFailed(),
+        })
+      )
+    );
+
+    const header = failureHeader(text);
+    expect(header).toContain(`Error: ${VERSION_ERROR}`);
+    expect(header).toContain('Exam binding failed: packageHash mismatch');
+  });
+
+  it('does not print the version error line twice when nothing else failed', () => {
+    const text = plain(formatResult(output({ valid: false, versionStatus: 'tooOld', errorMessage: VERSION_ERROR })));
+
+    expect(text.split(VERSION_ERROR).length - 1).toBe(1);
+  });
+});

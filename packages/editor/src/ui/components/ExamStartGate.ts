@@ -17,7 +17,7 @@ import {
   decryptExamPackage,
   canonicalizeStartToken,
   computeExamPackageHash,
-  parseExamPackageManifest,
+  parseExamPackageManifestResult,
   escapeHtml,
   type ExamPackageManifest,
 } from '@typedcode/shared';
@@ -59,12 +59,17 @@ export class ExamStartGate {
       const startBtn = overlay.querySelector<HTMLButtonElement>('#exam-gate-start')!;
       const errorEl = overlay.querySelector<HTMLElement>('#exam-gate-error')!;
 
-      const showError = (msg: string): void => {
+      // reason は E2E が翻訳テキストではなくこれを読むための状態契約 (editor/AGENTS.md)。
+      // 取込の拒否理由 (`invalid-file` / `newer-format` / `unsupported-format`) だけに付け、他の誤りでは付けない。
+      const showError = (msg: string, reason?: string): void => {
         errorEl.textContent = msg;
+        if (reason) errorEl.dataset.reason = reason;
+        else delete errorEl.dataset.reason;
         errorEl.hidden = false;
       };
       const clearError = (): void => {
         errorEl.hidden = true;
+        delete errorEl.dataset.reason;
       };
       const refreshStartEnabled = (): void => {
         startBtn.disabled = !this.manifest || codeInput.value.trim().length === 0;
@@ -74,19 +79,30 @@ export class ExamStartGate {
         clearError();
         const reader = new FileReader();
         reader.onload = () => {
+          // #223: 「壊れている」と「このエディタより新しい / もう対応しない形式」を出し分ける。
+          // 新しい形式を「不正」と読ませると、受験者はファイルを選び直し続けてしまう。
+          let rejection: { message: string; reason: string } | null = null;
           try {
-            const parsed = parseExamPackageManifest(JSON.parse(String(reader.result)));
-            if (!parsed) {
-              throw new Error('not a manifest');
+            const parsed = parseExamPackageManifestResult(JSON.parse(String(reader.result)));
+            if (parsed.ok) {
+              this.manifest = parsed.manifest;
+              filenameEl.textContent = file.name;
+              dropzone.classList.add('has-file');
+            } else if (parsed.code === 'unsupportedFormatVersion') {
+              rejection = parsed.newer
+                ? { message: t('exam.gate.errorNewerFormat'), reason: 'newer-format' }
+                : { message: t('exam.gate.errorUnsupportedFormat'), reason: 'unsupported-format' };
+            } else {
+              rejection = { message: t('exam.gate.errorInvalidFile'), reason: 'invalid-file' };
             }
-            this.manifest = parsed;
-            filenameEl.textContent = file.name;
-            dropzone.classList.add('has-file');
           } catch {
+            rejection = { message: t('exam.gate.errorInvalidFile'), reason: 'invalid-file' };
+          }
+          if (rejection) {
             this.manifest = null;
             dropzone.classList.remove('has-file');
             filenameEl.textContent = t('exam.gate.dropHint');
-            showError(t('exam.gate.errorInvalidFile'));
+            showError(rejection.message, rejection.reason);
           }
           refreshStartEnabled();
         };

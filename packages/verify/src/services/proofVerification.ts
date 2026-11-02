@@ -14,6 +14,7 @@
 import {
   CHECKPOINT_PUBLIC_KEYS,
   findCheckpointPublicKey,
+  parseVersionStrict,
   runAnalysis,
   summarizeAnalysisForAssurance,
   verifyExamBinding,
@@ -122,6 +123,12 @@ const EMPTY_SIGNED_CHECKPOINTS: SignedCheckpointsVerificationResult = {
   density: null,
 };
 
+/** 自己申告 version のうち、表示してよい形 (`MAJOR.MINOR.PATCH` の数字だけ) に正規化する (#223) */
+function normalizeDeclaredVersion(version: unknown): string | undefined {
+  const parsed = parseVersionStrict(version);
+  return parsed ? `${parsed.major}.${parsed.minor}.${parsed.patch}` : undefined;
+}
+
 /**
  * 検証を実行し UI 型の結果を返す。
  *
@@ -196,6 +203,8 @@ export async function runProofVerification(
     rootValid: result.rootValid,
     rootAnchored: result.rootAnchored,
     sessionTokenMismatch: result.sessionTokenMismatch,
+    versionStatus: result.versionStatus,
+    declaredVersion: normalizeDeclaredVersion(proof.version),
     chainValid: result.chainValid,
     finalHashValid: result.finalHashValid,
     contentValid: result.contentValid,

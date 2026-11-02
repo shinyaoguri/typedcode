@@ -48,6 +48,7 @@ export function safe(value: unknown): string {
   return truncated === raw ? truncated : `${truncated} (sanitized)`;
 }
 
+import { PROOF_FORMAT_VERSION, isProofVersionRejected, parseVersionStrict } from '@typedcode/shared';
 import type {
   VerificationMode,
   SignedCheckpointsVerificationResult,
@@ -57,6 +58,7 @@ import type {
   ProcessKeyMoment,
   ScreenshotVerificationSummary,
   ProofExtractionFailureReason,
+  ProofVersionStatus,
 } from '@typedcode/shared';
 import type { CLIExamResult } from './verify.js';
 
@@ -86,6 +88,10 @@ export interface VerificationOutput {
   processSummary?: ProcessSummary;
   /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
   exam?: CLIExamResult;
+  /** `proof.version` の分類 (#223)。`newer` のとき warning を出し、`tooOld` / `malformed` は失敗理由を出す。 */
+  versionStatus?: ProofVersionStatus;
+  /** 自己申告 version を数字だけに正規化した値 (不正形式は undefined)。表示に使ってよいのはこちらだけ。 */
+  declaredVersion?: string;
   /** スクリーンショット検証 (#147)。undefined = 未検査 (JSON 単体入力)。 */
   screenshots?: ScreenshotVerificationSummary;
 }
@@ -284,6 +290,10 @@ export function formatResult(result: VerificationOutput): string {
     const screenshotsFailedOnly = result.metadataValid && result.chainValid && tamperedShots > 0;
     if (examBindingFailedOnly || screenshotsFailedOnly) {
       // 両方落ちることもある (exam proof の ZIP でスクショも改ざん) ので、片方に潰さず両方出す。
+      // #223: version の不合格が重なるときもその理由を落とさない (shared は version の理由を errorMessage の先頭に置く)。
+      if (result.versionStatus !== undefined && isProofVersionRejected(result.versionStatus) && result.errorMessage) {
+        lines.push(c('red', `  Error: ${safe(result.errorMessage)}`));
+      }
       if (examBindingFailedOnly) {
         lines.push(c('red', `  Exam binding failed: ${safe(result.exam!.binding!.reason ?? 'see section below')}`));
       }
@@ -311,6 +321,22 @@ export function formatResult(result: VerificationOutput): string {
   if (result.poswSkipped) {
     lines.push(c('yellow', '  ! fast mode: PoSW was NOT recomputed — sequential work is unverified'));
     lines.push(c('dim', '    Re-run with --mode full to verify the PoSW iterations.'));
+  }
+  // #223: 検証器が知る major を超える proof。reject はしない (valid / exit code は他の検査で決まる) が、
+  // 意味が変わったフィールドを旧規則で読んでいる恐れがあるので、合否の直下で明示する。
+  // 表示するのは数字に正規化した値だけ (proof.version の生値は stdout に補間しない)。
+  if (result.versionStatus === 'newer') {
+    const declared = result.declaredVersion ? ` ${safe(result.declaredVersion)}` : '';
+    const supported = parseVersionStrict(PROOF_FORMAT_VERSION);
+    lines.push(
+      c(
+        'yellow',
+        `  ! proof format version${declared} is newer than this verifier supports (up to ${supported?.major ?? '?'}.x)`
+      )
+    );
+    lines.push(
+      c('dim', '    Fields whose meaning changed may be read with the old rules — use an up-to-date verifier.')
+    );
   }
   lines.push('');
 

@@ -74,6 +74,7 @@ E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく�
 | 〃 (`provenance` のチップ) | `data-pure-typing` | `true` / `false` | **`data-level` は付けない** (著述性はレベルを持たない。ADR-0009 / ADR-0020) |
 | 〃 (`mode` のチップ) | `data-mode` | proof の自己申告 `mode` (`normalizeProofMode` 済み) | 参考表示。保証の導出には使っていない |
 | `#result-status-icon` | `data-level` | `verified` / `partial` / `failed` | 総合判定 (`TrustCalculator` の `TrustLevel`) |
+| `#trust-issues-list .trust-issue-item` | `data-component` / `data-severity` | `TrustIssueComponent` (`metadata` / `version` / `chain` / `posw` / `screenshots` / `source` / `anchoring` / `exam` / `typing`) / `error` / `warning` | 信頼バッジの issue 1 件。リストは issue が 0 件なら無い。`version` は proof の形式バージョン (#223): `newer` は warning、`tooOld` / `malformed` は error。**`VerificationController` の status と同じ軸** (`newer` → `warning`) |
 | `#file-list .file-item` | `data-status` | `pending` / `verifying` / `success` / `warning` / `error` | ファイルの検証状態 |
 | `#file-list .file-item` | `data-filename` | 表示名 | どのファイルの行か |
 | `#tabbar .tab` | `data-status` / `data-filename` | `.file-item` と同じ | タブの検証状態 |

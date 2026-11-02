@@ -11,6 +11,7 @@ import {
   summarizeAnalysisForAssurance,
   summarizeProcess,
   normalizeProofLanguage,
+  parseVersionStrict,
   EXAM_AUTHORITY_KEYS,
   type ProofFile,
   type VerificationProgressCallback,
@@ -24,6 +25,7 @@ import {
   type ExamBindingVerificationResult,
   type ScreenshotVerificationSummary,
   type CheckpointPublicKey,
+  type ProofVersionStatus,
 } from '@typedcode/shared';
 import { ProgressBar } from './progress.js';
 
@@ -88,6 +90,16 @@ export interface CLIVerificationResult {
   processSummary: ProcessSummary;
   /** 試験モードの束縛検証 (ADR-0006)。exam proof でないときは undefined。 */
   exam?: CLIExamResult;
+  /**
+   * `proof.version` の分類 (#223)。`tooOld` / `malformed` は shared が `valid: false` にしている
+   * (`errorMessage` に理由)。`newer` は reject せず、出力が warning を出す (exit code は他の検査で決まる)。
+   */
+  versionStatus?: ProofVersionStatus;
+  /**
+   * 自己申告 `proof.version` を `MAJOR.MINOR.PATCH` の数字だけに正規化した値。不正形式は undefined。
+   * 表示に使ってよいのはこちらだけ (生の `proof.version` は攻撃者が書ける — shared AGENTS.md 不変条件 11)。
+   */
+  declaredVersion?: string;
   /**
    * スクリーンショット検証 (#147)。ZIP 入力で計算されたときのみ。undefined = 未検査
    * (JSON 単体入力など)。判定は shared の summarizeScreenshotArtifacts (verify web と同一実装)。
@@ -155,6 +167,12 @@ function deepFreeze<T>(value: T): T {
     deepFreeze((value as Record<string, unknown>)[key]);
   }
   return value;
+}
+
+/** 自己申告 version のうち、表示してよい形 (`MAJOR.MINOR.PATCH` の数字だけ) に正規化する */
+function declaredVersion(version: unknown): string | undefined {
+  const parsed = parseVersionStrict(version);
+  return parsed ? `${parsed.major}.${parsed.minor}.${parsed.patch}` : undefined;
 }
 
 export async function verifyProof(proof: ProofFile, options: VerifyProofOptions = {}): Promise<CLIVerificationResult> {
@@ -315,6 +333,8 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     assurance,
     processSummary,
     exam,
+    versionStatus: result.versionStatus,
+    declaredVersion: declaredVersion(proof.version),
     screenshots: options.screenshotSummary,
   };
 }

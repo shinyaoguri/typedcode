@@ -545,6 +545,7 @@ interface ExamProofBlock {
   - `tooOld` (`MIN_SUPPORTED_VERSION` 未満) と `malformed` は `valid: false` で、`errorMessage` が version に言及する (自己申告値は埋め込まない)。他レイヤの結果 (`chainValid` など) は落とさず返す
   - `newer` (この検証器が知る major を超える。例 `2.0.0`) は reject しない。意味が変わったフィールドを旧規則で読む恐れがあるので `versionStatus: 'newer'` で表示層へ渡し、`valid` は他の検査で決まる。同じ major の新しい minor / patch は `supported` (加算的変更という約束)
   - `current` (= `PROOF_FORMAT_VERSION`) / `supported` (下限以上・既知 major 内) は従来どおり
+  - **表示層 (Web / CLI で同じ結論)**: `newer` は reject せず warning を出す。verify-cli は合否の直下に `! proof format version X is newer than this verifier supports` を出し (exit code は他の検査で決まる)、verify (Web) は信頼バッジに `component: 'version'` の warning を 1 件足してタブを `warning` にする。`tooOld` / `malformed` は両方で失敗 (CLI は `Error:` に version の理由、Web は `component: 'version'` の error で `failed`) になり、整合性 (integrity) は `failed` にしない (version は改ざんの証拠ではない)。表示してよい自己申告 version は `MAJOR.MINOR.PATCH` の数字に正規化した値 (`declaredVersion`) だけで、不正形式の値は stdout / DOM に補間しない。固定は `webCliParity.test.ts`
 - レイヤ間優先順位: metadata → chain → finalHash → checkpoint → content → signedCheckpoint
 - いずれかが false なら、エラー位置 (event index) とメッセージを返す
 
@@ -552,7 +553,7 @@ interface ExamProofBlock {
 
 試験モード proof には上記 6 レイヤに加え `verifyExamBinding` がある。**完全オフライン**で動く。root 束縛 (上記 Layer 1 の exam 分岐) は proof 自己完結なので package 不要だが、**真正性 (本物の問題か) と内容束縛は問題パッケージ (`.tcexam`) を grader に渡したときのみ**検証できる。
 
-0. **バージョンゲート (#223)**: `proof.exam.examProofVersion` が `EXAM_PROOF_VERSION` と異なれば、暗号検査に入る前に束縛失敗 (欠落は 1 とみなす = 旧 proof 互換)。package 側の `formatVersion` は `parseExamPackageManifest` / `parseExamPackageManifestResult` が `EXAM_PACKAGE_FORMAT_VERSION` と照合し、正規に署名されていても異なる値は拒否する (理由つきの `parseExamPackageManifestResult` は `unsupportedFormatVersion` と `malformed` を区別し、`newer` で新旧を示す。表示層はこちらを使う)
+0. **バージョンゲート (#223)**: `proof.exam.examProofVersion` が `EXAM_PROOF_VERSION` と異なれば、暗号検査に入る前に束縛失敗 (欠落は 1 とみなす = 旧 proof 互換)。package 側の `formatVersion` は `parseExamPackageManifest` / `parseExamPackageManifestResult` が `EXAM_PACKAGE_FORMAT_VERSION` と照合し、正規に署名されていても異なる値は拒否する (理由つきの `parseExamPackageManifestResult` は `unsupportedFormatVersion` と `malformed` を区別し、`newer` で新旧を示す。表示層はこちらを使う。editor の取込ゲート・verify の問題パッケージ読込・verify-cli の `--exam-package` はいずれも拒否理由を出し分け、「より新しい形式 (最新のアプリを使う)」「もう対応しない形式 (出題者に新しいパッケージを依頼)」「形式不正」を取り違えさせない)
 1. package 署名を `examAuthorityKeys` で検証 → 本物の問題。**信頼は registry 登録鍵に限る** (未登録 keyId は同梱公開鍵があっても untrusted = 自己署名を排除)。鍵の有効期間/失効も `releaseTime` を anchor に判定 (validFrom 前・validUntil 後・失効後 release は reject、失効前 release は warning 付き trust)。anchor が出題者自己申告な点の限界は [ADR-0006 セキュリティ硬化](adr/0006-exam-mode-sealed-problem-binding.md) 参照
 2. `packageHash` 再計算 = `proof.exam.packageHash` → この問題に束縛
 3. root 再計算 (`fingerprintHash, nonce, packageHash, proof.exam.startToken`) = `initialEventChainHash` → **T0 以降に開始** (token は proof 同梱なので out-of-band 不要)

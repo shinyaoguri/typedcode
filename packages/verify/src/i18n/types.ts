@@ -371,8 +371,11 @@ export interface VerifyTranslationKeys {
     issueExamUnverified: string;
     issueExamPackageNotApplicable: string;
     issuePoswSkipped: string;
+    issueVersionUnsupported: string;
+    issueVersionNewer: string;
     components: {
       metadata: string;
+      version: string;
       chain: string;
       posw: string;
       screenshots: string;
@@ -536,6 +539,8 @@ export interface VerifyTranslationKeys {
     browserNotSupported: string;
     browserNotSupportedDesc: string;
     examInvalidPackage: string;
+    examPackageNewerFormat: string;
+    examPackageUnsupportedFormat: string;
     jsonParseError: string;
     proofNotAProof: string;
     fileLoadFailed: string;

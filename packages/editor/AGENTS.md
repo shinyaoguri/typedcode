@@ -70,6 +70,7 @@ E2E (`packages/e2e`) は editor の UI 状態を、翻訳テキストや CSS ク
 | `#sync-status-item` | `data-state` | `synced` / `syncing` / `pending` | IndexedDB 同期状態 (`SyncStatus`。class と同じ値)。最初の状態通知までは属性なし |
 | `#event-count` | `data-count` | 整数 | アクティブなタブの `totalEvents`。タブ 0 本 (reset) では `0` |
 | `#current-hash` | `data-hash` | 省略しない完全なハッシュ / 空文字 | アクティブなタブの `currentHash` (表示は先頭 16 文字に省略)。タブ 0 本 (reset) では空 |
+| `#exam-gate-error` (`exam-gate` 内) | `data-reason` | `invalid-file` / `newer-format` / `unsupported-format` (取込を拒否したときだけ。他の誤りや非表示では属性なし) | 問題パッケージの取込を拒否した理由 (#223)。`newer-format` = このエディタより新しい `formatVersion`、`unsupported-format` = もう対応しない古い `formatVersion`、`invalid-file` = 形式不正。shared の `parseExamPackageManifestResult` の結果の写像 |
 | ダイアログ・オーバーレイの root | `data-dialog` | 下記の名前 | どのダイアログか。**開いている = DOM にあって `.hidden` が付いていない** |
 | `#log-viewer` / `#problem-panel` | `data-open` | `true` / `false` (`index.html` で `false` から始める) | パネルが開いているか。`.visible` と同時に更新する (`LogViewer.toggle` / `ProblemPanel.updateToggleState`)。#434 |
 | セルフレビューのボタン (`[data-dialog="self-review"]` 内) | `data-action` | `proceed` / `cancel` | 続行か中止か。`cancel` は「キャンセル」と × (`.self-review-close`) の 2 つに付く。#434 |
