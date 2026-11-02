@@ -113,6 +113,67 @@ test('改ざんした ZIP を verify Web が error として出し、verify-cli 
   }
 });
 
+test('未知の新 major の proof は reject されず、verify Web と verify-cli の両方が warning を出す (#223)', async ({
+  page,
+}) => {
+  const zipPath = await typeAndExport(new EditorApp(page));
+  // version は typingProofHash の入力ではないので、書き換えても他の検査は無傷 (差は version だけから生じる)。
+  const newerZip = await writeZipVariant(zipPath, {
+    mutateProof: (proof) => {
+      proof.version = '2.0.0';
+    },
+    outName: 'newer-major.zip',
+  });
+  const names = await proofNames(newerZip);
+
+  const cli = runVerifyCliWithVerdicts(newerZip, ['--mode', 'fast']);
+  expect(cli.exitCode, 'a newer major is a warning, not a rejection\n' + cli.stdout).toBe(0);
+  expect(cli.stdout).toContain('is newer than this verifier supports');
+
+  const web = new VerifyWebApp(page);
+  await web.open('fast');
+  await web.load([newerZip]);
+  const verdicts = await web.readVerdicts(names);
+
+  expectWebCliParity(verdicts, cli);
+  for (const v of verdicts) {
+    expect(v.status, JSON.stringify(v)).not.toBe('error');
+    await web.selectFile(v.filename);
+    expect(await web.trustIssues(), v.filename).toContainEqual({ component: 'version', severity: 'warning' });
+  }
+});
+
+test('下限未満の version の proof を verify Web が error として出し、verify-cli と同じく拒否する (#223)', async ({
+  page,
+}) => {
+  const zipPath = await typeAndExport(new EditorApp(page));
+  const oldZip = await writeZipVariant(zipPath, {
+    mutateProof: (proof) => {
+      proof.version = '0.1.0';
+    },
+    outName: 'too-old.zip',
+  });
+  const names = await proofNames(oldZip);
+
+  const cli = runVerifyCliWithVerdicts(oldZip, ['--mode', 'fast']);
+  expect(cli.exitCode, cli.stdout).toBe(1);
+  expect(cli.stdout).toContain('older than the minimum supported version');
+
+  const web = new VerifyWebApp(page);
+  await web.open('fast');
+  await web.load([oldZip]);
+  const verdicts = await web.readVerdicts(names);
+
+  expectWebCliParity(verdicts, cli);
+  for (const v of verdicts) {
+    expect(v.status, JSON.stringify(v)).toBe('error');
+    // チェーンは無傷なので改ざん告発 (integrity failed) にはしない。理由は version の issue として出る。
+    expect(v.integrity).not.toBe('failed');
+    await web.selectFile(v.filename);
+    expect(await web.trustIssues(), v.filename).toContainEqual({ component: 'version', severity: 'error' });
+  }
+});
+
 test('正常と改ざんの ZIP を一度に入れても、ファイルごとの判定が混ざらない (#215)', async ({ page }) => {
   const zipPath = await typeAndExport(new EditorApp(page));
   // 同じ export から作るので proof のエントリ名を変え、表示名 (data-filename) を区別できるようにする。

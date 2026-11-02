@@ -46,6 +46,23 @@ export class TrustCalculator {
       });
     }
 
+    // 1.5 proof format version (#223)。下限未満・不正形式・欠落は shared が valid:false にしている
+    //     (error)。検証器が知る major を超えるものは reject せず、旧規則で誤読する恐れを warning で示す。
+    //     表示するのは数字に正規化した declaredVersion だけ (生の proof.version は DOM に入れない)。
+    if (verificationResult?.versionStatus === 'tooOld' || verificationResult?.versionStatus === 'malformed') {
+      issues.push({
+        component: 'version',
+        severity: 'error',
+        message: t('trust.issueVersionUnsupported'),
+      });
+    } else if (verificationResult?.versionStatus === 'newer') {
+      issues.push({
+        component: 'version',
+        severity: 'warning',
+        message: t('trust.issueVersionNewer', { version: verificationResult.declaredVersion ?? '?' }),
+      });
+    }
+
     // 2. ハッシュチェーン検証
     if (verificationResult && !verificationResult.chainValid) {
       issues.push({

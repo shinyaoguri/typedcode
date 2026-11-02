@@ -20,7 +20,7 @@ import {
 } from './output.js';
 import { Spinner } from './progress.js';
 import {
-  parseExamPackageManifest,
+  parseExamPackageManifestResult,
   defaultAnalyzers,
   buildAnalysisBundle,
   collectChainImageHashes,
@@ -139,13 +139,21 @@ async function main(): Promise<void> {
   if (examPackagePath !== undefined) {
     try {
       const raw = await readFile(resolve(examPackagePath), 'utf-8');
-      const parsed = parseExamPackageManifest(JSON.parse(raw));
-      if (!parsed) {
-        printError(`Invalid exam package (.tcexam): ${examPackagePath}`);
+      const parsed = parseExamPackageManifestResult(JSON.parse(raw));
+      if (!parsed.ok) {
+        // #223: 「壊れている」と「この verifier より新しい形式」を出し分ける (reason は shared の固定文言)。
+        const hint =
+          parsed.code === 'unsupportedFormatVersion'
+            ? parsed.newer
+              ? ' Use an up-to-date verify-cli.'
+              : ' This package predates the supported format; ask the exam administrator for a new one.'
+            : '';
+        // printError は 200 字で切り詰めるので、理由と案内を先に、(長くなりうる) パスを最後に置く。
+        printError(`Invalid exam package (.tcexam): ${parsed.reason}.${hint} (${examPackagePath})`);
         process.exitCode = 1;
         return;
       }
-      examPackageManifest = parsed;
+      examPackageManifest = parsed.manifest;
     } catch (error) {
       printError(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;

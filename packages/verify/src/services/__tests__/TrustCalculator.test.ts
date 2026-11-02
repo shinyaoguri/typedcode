@@ -189,6 +189,34 @@ describe('TrustCalculator.calculate — level determination', () => {
     expect(r.issues.some((i) => i.component === 'exam' && i.severity === 'error')).toBe(true);
   });
 
+  // #223: proof.version のゲート。下限未満・不正形式は shared が valid:false にするので、バッジ側も
+  // 理由つきで failed に落ちる必要がある。未知の新 major は reject せず warning。
+  it.each(['tooOld', 'malformed'] as const)(
+    'fails with a version issue when the proof version is %s (#223)',
+    (versionStatus) => {
+      const r = calc({ ...healthyResult(), valid: false, versionStatus });
+      expect(r.level).toBe('failed');
+      expect(r.issues.some((i) => i.component === 'version' && i.severity === 'error')).toBe(true);
+    }
+  );
+
+  it('warns (partial, not failed) with the normalized version when the proof version is a newer major (#223)', () => {
+    const r = calc({ ...healthyResult(), versionStatus: 'newer', declaredVersion: '2.0.0' });
+    expect(r.level).toBe('partial');
+    const issue = r.issues.find((i) => i.component === 'version');
+    expect(issue?.severity).toBe('warning');
+    expect(issue?.message).toContain('2.0.0');
+  });
+
+  it.each(['current', 'supported'] as const)(
+    'raises no version issue for a %s proof version (#223)',
+    (versionStatus) => {
+      const r = calc({ ...healthyResult(), versionStatus });
+      expect(r.level).toBe('verified');
+      expect(r.issues.some((i) => i.component === 'version')).toBe(false);
+    }
+  );
+
   it('error always dominates warnings in the final level', () => {
     const r = calc(
       { ...healthyResult(), chainValid: false, isPureTyping: false, rootAnchored: false },

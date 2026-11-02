@@ -34,6 +34,7 @@ import {
   type ExamSessionContext,
   type FingerprintComponents,
   type ScreenshotCaptureData,
+  type ProofVersionStatus,
   type ScreenshotVerificationSummary,
   type SessionStartToken,
   type VerificationMode,
@@ -45,6 +46,8 @@ import {
 } from '../../../../shared/src/__tests__/fixtures/signedCheckpointFixtures.js';
 import { buildSamplePackage, makeExamAuthority } from '../../../../shared/src/__tests__/fixtures/examFixtures.js';
 import { verifyProof } from '../../../../verify-cli/src/verify.js';
+import { formatResult } from '../../../../verify-cli/src/output.js';
+import { TrustCalculator } from '../TrustCalculator.js';
 import { buildAssuranceInput, isOverallValid, runProofVerification } from '../proofVerification.js';
 import { summarizeTabScreenshots } from '../screenshotSummary.js';
 import type { ProofFile, VerifyScreenshot } from '../../types.js';
@@ -296,6 +299,12 @@ interface ParityConclusion {
   valid: boolean;
   assurance: AssuranceResult;
   exam: { present: boolean; packageProvided: boolean; bindingValid?: boolean } | null;
+  /**
+   * proof.version のゲート (#223)。`status` は shared の分類、`warns` は「検証器より新しい」warning を
+   * 出したか (web は TrustCalculator の issue、CLI は formatResult の行)、`errorMentionsVersion` は
+   * 不合格の理由に version が出たか。
+   */
+  version: { status: ProofVersionStatus | undefined; warns: boolean; errorMentionsVersion: boolean };
 }
 
 interface ConclusionOptions {
@@ -322,6 +331,7 @@ async function webConclusion(
     signedCheckpointKeyRegistry: registry,
   });
   const screenshotsTampered = options.screenshots?.tampered;
+  const trust = TrustCalculator.calculate(result, undefined);
   return {
     valid: isOverallValid(result, { screenshotsTampered }),
     assurance: deriveAssurance(buildAssuranceInput(result, { screenshotsTampered })),
@@ -332,6 +342,11 @@ async function webConclusion(
           bindingValid: result.exam.binding?.valid,
         }
       : null,
+    version: {
+      status: result.versionStatus,
+      warns: trust.issues.some((i) => i.component === 'version' && i.severity === 'warning'),
+      errorMentionsVersion: /version/i.test(result.message ?? ''),
+    },
   };
 }
 
@@ -357,6 +372,12 @@ async function cliConclusion(
           bindingValid: result.exam.binding?.valid,
         }
       : null,
+    version: {
+      status: result.versionStatus,
+      // 色は TTY 依存で付くので、警告文の本体だけを見る (ANSI の有無に左右されない)。
+      warns: formatResult(result).includes('newer than this verifier supports'),
+      errorMentionsVersion: /version/i.test(result.errorMessage ?? ''),
+    },
   };
 }
 
@@ -369,6 +390,7 @@ function expectSameConclusion(web: ParityConclusion, cli: ParityConclusion): voi
   expect(web.valid).toBe(cli.valid);
   expect(comparableAssurance(web.assurance)).toEqual(comparableAssurance(cli.assurance));
   expect(web.exam).toEqual(cli.exam);
+  expect(web.version).toEqual(cli.version);
 }
 
 let testKey: TestKey;
@@ -596,6 +618,53 @@ describe('web ↔ CLI parity (#216)', () => {
     expectSameConclusion(web, cli);
     expect(cli.valid).toBe(true);
     expect(cli.assurance.integrity).not.toBe('failed');
+  });
+
+  // #223: proof.version のゲート。version は typingProofHash の入力ではないので、名乗り替えても
+  // 他の検査は無傷 — 結論の差は version だけから生じる。
+  describe('proof version gate (#223)', () => {
+    it('agrees that a current-version proof raises no version warning', async () => {
+      const proof = await buildPlainProof();
+
+      const web = await webConclusion(proof, registry);
+      const cli = await cliConclusion(proof, registry);
+
+      expectSameConclusion(web, cli);
+      expect(cli.valid).toBe(true);
+      expect(cli.version).toEqual({ status: 'current', warns: false, errorMentionsVersion: false });
+    });
+
+    it('agrees that a newer-major proof stays valid but warns on both paths', async () => {
+      const proof = { ...(await buildPlainProof()), version: '2.0.0' } as ProofFile;
+
+      const web = await webConclusion(proof, registry);
+      const cli = await cliConclusion(proof, registry);
+
+      expectSameConclusion(web, cli);
+      expect(cli.valid).toBe(true);
+      expect(cli.version).toEqual({ status: 'newer', warns: true, errorMentionsVersion: false });
+    });
+
+    it.each([
+      ['below the minimum supported version', '0.9.0', 'tooOld'],
+      ['not MAJOR.MINOR.PATCH', '1.2.0-beta', 'malformed'],
+      ['missing', undefined, 'malformed'],
+    ] as const)(
+      'agrees that a proof whose version is %s is rejected with a version reason',
+      async (_label, version, status) => {
+        const base = await buildPlainProof();
+        const proof = { ...base, version } as ProofFile;
+
+        const web = await webConclusion(proof, registry);
+        const cli = await cliConclusion(proof, registry);
+
+        expectSameConclusion(web, cli);
+        expect(cli.valid).toBe(false);
+        expect(cli.version).toEqual({ status, warns: false, errorMentionsVersion: true });
+        // 整合性 (改ざん耐性) の主張は version では変わらない — 改ざん告発に化けさせない。
+        expect(cli.assurance.integrity).not.toBe('failed');
+      }
+    );
   });
 
   /**

@@ -11,10 +11,11 @@ import type { StatusBarUI } from '../StatusBarUI';
 import type { ProofFile, VerifyScreenshot, DiffResult, ContentMismatchInfo } from '../../types';
 import { t } from '../../i18n/index';
 import { DiffService } from '../../services/DiffService';
+import { examPackageErrorKey } from '../../services/examPackageError';
 import {
   isProofFile,
   normalizeProofLanguage,
-  parseExamPackageManifest,
+  parseExamPackageManifestResult,
   type ExamPackageManifest,
 } from '@typedcode/shared';
 
@@ -84,13 +85,16 @@ export class FileController {
     const file = await pickFile('.tcexam,application/json');
     if (!file) return;
 
-    let manifest: ExamPackageManifest | null = null;
+    let manifest: ExamPackageManifest;
     try {
-      manifest = parseExamPackageManifest(JSON.parse(await file.text()));
+      const parsed = parseExamPackageManifestResult(JSON.parse(await file.text()));
+      if (!parsed.ok) {
+        // #223: 「壊れている」と「この検証器より新しい / もう対応しない形式」を出し分ける
+        this.deps.statusBar.setError(t(examPackageErrorKey(parsed)));
+        return;
+      }
+      manifest = parsed.manifest;
     } catch {
-      manifest = null;
-    }
-    if (!manifest) {
       this.deps.statusBar.setError(t('errors.examInvalidPackage'));
       return;
     }

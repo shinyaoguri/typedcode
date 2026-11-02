@@ -127,6 +127,10 @@ describe('VerificationController as the single source of file status', () => {
     ['warning', { poswMode: 'skipped' }],
     ['warning', { isPureTyping: false }],
     ['error', { valid: false, chainValid: false }],
+    // #223: 未知の新 major は warning (TrustCalculator と同じ軸)、下限未満・不正形式は error
+    ['warning', { versionStatus: 'newer', declaredVersion: '2.0.0' }],
+    ['error', { valid: false, versionStatus: 'tooOld' }],
+    ['success', { versionStatus: 'supported' }],
   ];
 
   it.each(cases)(

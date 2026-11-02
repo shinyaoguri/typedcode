@@ -353,8 +353,13 @@ export const en: VerifyTranslationKeys = {
     issueExamUnverified: 'Problem package not loaded; authenticity unverified',
     issueExamPackageNotApplicable: 'A problem package was provided, but this proof has no exam block',
     issuePoswSkipped: 'Verified in fast mode — the PoSW (sequential work) was not recomputed',
+    issueVersionUnsupported:
+      'Proof format version is missing, malformed, or older than the minimum version this verifier supports',
+    issueVersionNewer:
+      'Proof format version ${version} is newer than this verifier supports — fields whose meaning changed may be read with the old rules',
     components: {
       metadata: 'Metadata',
+      version: 'Format Version',
       chain: 'Hash Chain',
       posw: 'PoSW',
       screenshots: 'Screenshots',
@@ -513,6 +518,10 @@ export const en: VerifyTranslationKeys = {
     browserNotSupported: 'File System Access API is only available in Chrome / Edge',
     browserNotSupportedDesc: 'Please use file selection or drag and drop instead',
     examInvalidPackage: 'Invalid problem package (.tcexam)',
+    examPackageNewerFormat:
+      'This problem package uses a newer format than this verifier supports. Use an up-to-date verifier.',
+    examPackageUnsupportedFormat:
+      'This problem package uses a format that is no longer supported. Ask the exam administrator for a new one.',
     jsonParseError: 'JSON parse error: ${filename}',
     proofNotAProof: 'Not a proof file (no proof data): ${filename}',
     fileLoadFailed: 'Failed to read file: ${message}',
