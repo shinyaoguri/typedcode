@@ -4,8 +4,9 @@
  * Compiles and executes C code in the browser using Wasmer SDK and Clang.
  */
 
-import { init, Wasmer, Directory, type SpawnOptions } from '@wasmer/sdk';
-import wasmUrl from '@wasmer/sdk/wasm?url';
+// 0.19 以降の SDK は wasm 本体と worker を自分で `new URL(..., import.meta.url)` で解決する
+// (旧 `init({ module })` と `@wasmer/sdk/wasm?url` は廃止。#364)
+import { Wasmer, type Output, type Package, type Process, type ReadableBytes, type Sandbox } from '@wasmer/sdk';
 
 import { BaseExecutor } from '../base/BaseExecutor.js';
 import type {
@@ -35,6 +36,9 @@ int main() {
  * Update this when uploading a new version via scripts/update-clang.sh
  */
 const CLANG_VERSION = '0.1.1';
+
+/** Guest directory where the source and compiled binary are placed */
+const WORKSPACE_DIR = '/workspace';
 
 const RUNTIME_ERROR_PATTERNS = [
   'runtimeerror',
@@ -83,17 +87,16 @@ export class CExecutor extends BaseExecutor {
     icon: 'c-icon',
   };
 
-  protected clangPkg: Wasmer | null = null;
+  /** Wasmer client (owns the worker pool and runtime) */
+  protected wasmer: Wasmer | null = null;
+
+  protected clangPkg: Package | null = null;
 
   /** Cached Clang binary to avoid re-downloading on reset */
   private clangBinary: Uint8Array | null = null;
 
-  /** Currently running instance (for abort support) */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private runningInstance: any = null;
-
-  /** Stdin stream of the running instance (for sending SIGINT) */
-  private runningStdin: WritableStream<Uint8Array> | null = null;
+  /** Currently running process (for abort support) */
+  private runningInstance: Process | null = null;
 
   /** Callbacks for the current execution (for abort messaging) */
   private currentCallbacks: ExecutionCallbacks | null = null;
@@ -106,7 +109,8 @@ export class CExecutor extends BaseExecutor {
         percentage: 10,
       });
 
-      await init({ module: wasmUrl });
+      this.wasmer = new Wasmer();
+      await this.wasmer.ready();
 
       // Cache Clang binary to avoid re-downloading on reset
       if (!this.clangBinary) {
@@ -134,7 +138,7 @@ export class CExecutor extends BaseExecutor {
         });
       }
 
-      this.clangPkg = await Wasmer.fromFile(this.clangBinary);
+      this.clangPkg = await this.wasmer.packages.load(this.clangBinary);
 
       onProgress?.({
         stage: 'ready',
@@ -200,7 +204,7 @@ export class CExecutor extends BaseExecutor {
       }
     }
 
-    if (!this._initialized || !this.clangPkg) {
+    if (!this._initialized || !this.wasmer || !this.clangPkg) {
       throw new Error('Executor not initialized. Call initialize() first.');
     }
 
@@ -208,6 +212,10 @@ export class CExecutor extends BaseExecutor {
     const extraArgs = options.compileArgs ?? [];
 
     this.resetAbort();
+
+    const wasmer = this.wasmer;
+    const clangPkg = this.clangPkg;
+    let sandbox: Sandbox | null = null;
 
     try {
       callbacks.onProgress?.('Compiling...');
@@ -223,35 +231,34 @@ static void __typedcode_init_stdout(void) {
 `;
       const modifiedCode = preamble + code;
 
-      // Create virtual filesystem with source file
-      const project = new Directory();
-      await project.writeFile(sourceFile, modifiedCode);
+      // Each run gets a fresh sandbox holding clang and the source file
+      sandbox = await wasmer.sandboxes.create({
+        packages: [clangPkg],
+        files: { [`${WORKSPACE_DIR}/${sourceFile}`]: modifiedCode },
+      });
 
-      const entrypoint = this.clangPkg.entrypoint;
-      if (!entrypoint) {
-        throw new Error('Clang package has no entrypoint');
-      }
+      // Compile the code (clang package used as selector = its entrypoint)
+      const compileResult = await sandbox
+        .command(clangPkg, [
+          `${WORKSPACE_DIR}/${sourceFile}`,
+          '-o',
+          `${WORKSPACE_DIR}/main.wasm`,
+          '-target',
+          'wasm32-wasi',
+          '-O2',
+          ...extraArgs,
+        ])
+        .run({ check: false });
 
-      // Compile the code
-      const compileOptions: SpawnOptions = {
-        args: [`/project/${sourceFile}`, '-o', '/project/main.wasm', '-target', 'wasm32-wasi', '-O2', ...extraArgs],
-        mount: {
-          '/project': project,
-        },
-      };
-
-      const compileInstance = await entrypoint.run(compileOptions);
-      const compileResult = await compileInstance.wait();
-
-      if (compileResult.code !== 0) {
+      if (compileResult.exitCode !== 0) {
         // Compilation failed
-        const stderr = compileResult.stderr;
+        const stderr = compileResult.stderr.text();
         callbacks.onStderr(stderr);
 
         return {
           success: false,
-          exitCode: compileResult.code,
-          stdout: compileResult.stdout,
+          exitCode: compileResult.exitCode,
+          stdout: compileResult.stdout.text(),
           stderr: stderr,
           error: 'Compilation failed',
         };
@@ -259,75 +266,42 @@ static void __typedcode_init_stdout(void) {
 
       callbacks.onProgress?.('Running...');
 
-      // Read the compiled WASM binary
-      const wasmBinary = await project.readFile('main.wasm');
-
-      // Load and run the compiled program
-      const program = await Wasmer.fromFile(wasmBinary);
-      const programEntrypoint = program.entrypoint;
-      if (!programEntrypoint) {
-        throw new Error('Compiled program has no entrypoint');
-      }
+      // Read the compiled WASM binary and install it as a package (raw wasm → command `main`)
+      const wasmBinary = await sandbox.fs.readFile(`${WORKSPACE_DIR}/main.wasm`);
+      const program = await sandbox.installPackage(wasmBinary);
 
       // Start the program
-      const runInstance = await programEntrypoint.run();
+      const runInstance = await sandbox.command(program).spawn({ stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
       this.runningInstance = runInstance;
       this.currentCallbacks = callbacks;
 
-      const decoder = new TextDecoder();
-
-      // Connect stdout using pipeTo() for direct streaming
-      // Keep the promise to ensure all output is flushed before returning
-      const stdoutPromise = runInstance.stdout
-        .pipeTo(
-          new WritableStream({
-            write: (chunk) => {
-              callbacks.onStdout(decoder.decode(chunk));
-            },
-          })
-        )
-        .catch(() => {
-          // Ignore pipe errors (e.g., when program ends)
-        });
-
-      // Connect stderr using pipeTo() for direct streaming
-      const stderrPromise = runInstance.stderr
-        .pipeTo(
-          new WritableStream({
-            write: (chunk) => {
-              callbacks.onStderr(decoder.decode(chunk));
-            },
-          })
-        )
-        .catch(() => {
-          // Ignore pipe errors
-        });
+      // Stream stdout/stderr to callbacks. Keep the promises to ensure all output
+      // is flushed before returning
+      const stdoutPromise = pumpOutput(runInstance.stdout, callbacks.onStdout);
+      const stderrPromise = pumpOutput(runInstance.stderr, callbacks.onStderr);
 
       // Notify caller that stdin is ready for connection
-      const stdinStream = runInstance.stdin;
-      if (stdinStream) {
-        this.runningStdin = stdinStream;
-        callbacks.onStdinReady?.(stdinStream);
+      if (runInstance.stdin) {
+        callbacks.onStdinReady?.(runInstance.stdin.toWritableStream());
       }
 
       // Wait for the program to finish
-      let runResult;
+      let runResult: Output;
       try {
         runResult = await runInstance.wait();
       } finally {
         this.runningInstance = null;
-        this.runningStdin = null;
         this.currentCallbacks = null;
       }
 
       // Wait for output streams to flush with a timeout
-      // pipeTo() may hang if the stream doesn't close properly
+      // (safety valve in case a stream doesn't close properly)
       const flushTimeout = new Promise<void>((resolve) => setTimeout(resolve, 100));
       await Promise.race([Promise.all([stdoutPromise, stderrPromise]), flushTimeout]);
 
       return {
-        success: runResult.code === 0,
-        exitCode: runResult.code,
+        success: runResult.exitCode === 0,
+        exitCode: runResult.exitCode,
         stdout: '', // Already streamed via callbacks
         stderr: '', // Already streamed via callbacks
       };
@@ -354,50 +328,33 @@ static void __typedcode_init_stdout(void) {
         stderr: errorMsg,
         error: errorMsg,
       };
+    } finally {
+      // Release the per-run sandbox (errors on close are not actionable)
+      if (sandbox) {
+        sandbox.close().catch(() => {});
+      }
     }
   }
 
   protected _onAbort(): void {
     console.log('[CExecutor] Abort requested');
     if (this.runningInstance) {
-      // Try to send SIGINT (Ctrl+C) via stdin
-      // ASCII 3 (ETX) is the character sent when Ctrl+C is pressed
-      if (this.runningStdin) {
-        this.sendSigint().catch(() => {
-          // Ignore errors - stream may already be closed
-        });
-      }
+      // Force-terminate the running process
+      this.runningInstance.kill().catch(() => {
+        // Ignore errors - process may already have exited
+      });
 
-      // Notify user with improved message
+      // Notify user
       this.currentCallbacks?.onStderr(
-        '\n[System] Stop requested. The program may not respond to interrupts.\n' +
-          '[System] Runtime will be automatically reset on next execution.\n'
+        '\n[System] Program stopped.\n' + '[System] Runtime will be automatically reset on next execution.\n'
       );
 
-      // Mark runtime for reset as a fallback
-      // Programs that don't handle SIGINT will continue running,
-      // but the runtime will be reset on the next execution
+      // Mark runtime for reset as a conservative fallback
+      // (in case the kill leaves the worker pool in a bad state)
       this.markRuntimeCorrupted();
       this.runningInstance = null;
-      this.runningStdin = null;
       this.currentCallbacks = null;
       console.log('[CExecutor] Runtime marked for reset');
-    }
-  }
-
-  /**
-   * Send SIGINT (Ctrl+C) to the running program via stdin
-   */
-  private async sendSigint(): Promise<void> {
-    if (!this.runningStdin) return;
-
-    try {
-      const writer = this.runningStdin.getWriter();
-      // ASCII 3 (ETX) = Ctrl+C
-      await writer.write(new Uint8Array([3]));
-      writer.releaseLock();
-    } catch {
-      // Stream may already be closed
     }
   }
 
@@ -450,16 +407,27 @@ static void __typedcode_init_stdout(void) {
 
     // Clear running instance references
     this.runningInstance = null;
-    this.runningStdin = null;
     this.currentCallbacks = null;
 
-    // Clear Clang package (but keep binary cached for fast reload)
+    // Close the Wasmer client and clear Clang package (but keep binary cached for fast reload)
+    this.closeWasmer();
     this.clangPkg = null;
 
     // Reset base class state
     await super.resetRuntime();
 
     console.log('[CExecutor] Runtime reset complete, will reinitialize on next run');
+  }
+
+  /**
+   * Close the Wasmer client (releases workers) and drop the reference
+   */
+  private closeWasmer(): void {
+    const wasmer = this.wasmer;
+    this.wasmer = null;
+    wasmer?.close().catch((error: unknown) => {
+      console.warn('[CExecutor] Failed to close Wasmer client:', error);
+    });
   }
 
   parseErrors(stderr: string): ParsedError[] {
@@ -489,11 +457,30 @@ static void __typedcode_init_stdout(void) {
 
   override dispose(): void {
     super.dispose();
+    this.closeWasmer();
     this.clangPkg = null;
     this.clangBinary = null; // Release cached binary on dispose
     this.runningInstance = null;
-    this.runningStdin = null;
     this.currentCallbacks = null;
+  }
+}
+
+/**
+ * Decode a process output stream and forward it to a callback.
+ * Stream errors (e.g., when the program ends abruptly) are ignored.
+ */
+async function pumpOutput(stream: ReadableBytes | null, onText: (text: string) => void): Promise<void> {
+  if (!stream) return;
+  const decoder = new TextDecoder();
+  try {
+    for await (const chunk of stream) {
+      const text = decoder.decode(chunk, { stream: true });
+      if (text) onText(text);
+    }
+    const rest = decoder.decode();
+    if (rest) onText(rest);
+  } catch {
+    // Ignore stream errors
   }
 }
 
