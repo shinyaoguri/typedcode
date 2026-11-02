@@ -420,6 +420,10 @@ interface ExamProofBlock {
 
 `typingProofHash` の対象は `typingProofData` のみ。ここで追記したフィールド (`sessionStartToken` / `rootAnchored` / `mode` / `filename` / `content` / `language`) のうち `sessionStartToken` 以外はハッシュ対象外の自己申告で、改ざん検出は `content` なら `finalContentHash` 照合、`sessionStartToken` なら ECDSA 検証 + root 再計算が担う。
 
+**`proof.json` は整形せずに渡す** (#417)。`typingProofHash` (`typingProofData` 全体) とチェックポイントの `contentHash` は `JSON.stringify` した文字列の SHA-256 で、オブジェクトのキー順に依存する (`deterministicStringify` ではない)。`jq -S` などでキー順を変える・再シリアライズする・値を整形し直すと、正直な proof でも `Typing proof hash does not match metadata` で不一致になり、改ざんと区別できない。採点者には export した proof.json を無加工のまま (ZIP ならそのまま) 渡す。ハッシュ形式を `deterministicStringify` に揃える案は、旧 proof を救えず形式が 2 系統になるため採らない (`PROOF_FORMAT_VERSION` は据え置き)。
+
+また構造検証 (`verifyEventArrayStructure`, §7 Layer 1 の手前) は、events の各イベント内 (`data` / `posw` / `range` などの入れ子、配列の中を含む) に own property の `__proto__` があれば invalid にする。`deterministicStringify` は `__proto__` キーを prototype 差し替えとして扱い own property として残さないため、足してもハッシュが変わらない (malleability) ので、ハッシュに入る前に弾く。`constructor` / `prototype` はハッシュに入るので対象外。
+
 `startToken` を保存しても、束縛の価値 (「T0 前に知り得ない」) は損なわれない (公開は T0 後)。保存により grader はコードを out-of-band に受け取る運用が不要になり、コード紛失で root 検証不能になるリスクも消える。
 
 ---
@@ -814,3 +818,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-10-21 | 棚卸し 9 件の実装 (#267 ほか / #318) | 検証側の PoSW 反復を `@noble/hashes` の同期 SHA-256 に変更 (#267)。タブ台帳を `tabs:{sessionId}` に分離し ID の文字種を `[A-Za-z0-9._-]` に制限 (#297)。§4.6 / §6.1 を反映し、§5.4 (マルチファイル形式) を削除 (#318) |
 | 2026-11-01 | exam 識別子の照合 (#273 / #363) | `.tcexam` を渡したとき、proof 側の `examId` / `variant` (v1 は `problemId` も) を署名済み manifest と照合し、不一致なら束縛失敗とする。§6.4 手順 5 を反映 |
 | 2026-11-01 | spec 同期 (#231) | 実装との乖離を是正: §3 に e2e、§4.4 の並列化記述、§4.6 / §7 / 用語集の per-(sessionId, tabId)、§5.1 の localStorage、§5.2 の ZIP 構成、§5.3 の欠落フィールド、§6.2 Layer 4 の internalPaste スキップ、§7.1 laundering 系 (#138 / #175 / #139)、§9.4 を registry ビルド時同梱の事実に修正 |
+| 2026-11-02 | proof.json を整形しない仕様の明記と `__proto__` ガード (#417 / #341 v2) | §5.3 に「proof.json は整形 (キー順の変更・再シリアライズ) をせずに渡す」を明記し、`typingProofHash` 不一致の失敗メッセージにも整形が原因になりうる旨を添えた。構造検証 `verifyEventArrayStructure` が events 内の own property `__proto__` を invalid にする (`deterministicStringify` が落とすため足してもハッシュが変わらない malleability の封じ込め)。`PROOF_FORMAT_VERSION` 据え置き・proof 形式不変 |

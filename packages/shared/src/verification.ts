@@ -437,9 +437,39 @@ export function verifyEventArrayStructure(events: unknown): EventArrayStructureR
     if (typeof posw !== 'object' || posw === null || Array.isArray(posw)) {
       return { valid: false, reason: `Invalid event structure at event ${i}: posw must be an object`, errorAt: i };
     }
+
+    if (hasOwnProtoKey(candidate)) {
+      return {
+        valid: false,
+        reason: `Invalid event structure at event ${i}: own property "__proto__" is not allowed`,
+        errorAt: i,
+      };
+    }
   }
 
   return { valid: true };
+}
+
+/**
+ * `value` 配下 (入れ子のオブジェクト・配列の中を含む) に own property の `__proto__` があるか (#417)。
+ *
+ * `deterministicStringify` (utils/hashUtils.ts) は `sorted['__proto__'] = …` で prototype を
+ * 差し替えてしまい、own property として残らない。そのため `JSON.parse` で作った `__proto__` キーは
+ * ハッシュに影響せず、足しても `valid: true` のままになる (malleability)。`constructor` /
+ * `prototype` は落ちずにハッシュへ入るので対象にしない。
+ * 深い入れ子でスタックを使い切らないよう、明示的なスタックで走査する。
+ */
+function hasOwnProtoKey(value: unknown): boolean {
+  const seen = new WeakSet<object>();
+  const stack: unknown[] = [value];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (typeof current !== 'object' || current === null || seen.has(current)) continue;
+    seen.add(current);
+    if (Object.hasOwn(current, '__proto__')) return true;
+    for (const child of Object.values(current)) stack.push(child);
+  }
+  return false;
 }
 
 /**
@@ -852,7 +882,7 @@ export async function verifyProofFile(
     rootAnchored = rootResult.rootAnchored;
     metadataValid = metaResult.valid && rootValid && eventMetadataResult.valid;
     metadataError = !metaResult.valid
-      ? 'Typing proof hash does not match metadata'
+      ? 'Typing proof hash does not match metadata (the proof may have been tampered with, or proof.json may have been reformatted or re-serialized, e.g. key order changed: pass proof.json exactly as exported)'
       : !rootResult.valid
         ? rootResult.reason
         : eventMetadataResult.reason;
