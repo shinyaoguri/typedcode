@@ -11,9 +11,15 @@
 
 ### 追加
 
+- 検証の部品関数の照合 6 箇所を、関数を直接呼んで確かめるテストを足した (`verification.components.test.ts`)。`verifyInitialHashRoot` の deviceId と fingerprint components、`verifyFinalChainHash` の `typingProofData.finalEventChainHash`、`verifyCheckpoints` の cp の順序・timestamp・contentHash について、条件を外すと赤くなる。仕様と実装は変えていない (#500)
 - ZIP の予算付きリーダー (`readZipEntryBytes`) と空エントリ判定 (`isJszipEmptyEntry`) を守るテストを足した。予算超過時の `pause()`・stream の `error` での reject・複数チャンクの連結を、`isJszipEmptyEntry` の 5 条件それぞれを緩めると赤になる入力とあわせて固定し、`packages/shared/AGENTS.md` の不変条件 9 (形の判定を緩めると `zipBudget.test.ts` が止める) を実測と一致させた (#501)
 - 試験 (exam) モードの round-trip E2E を足した (`packages/e2e/tests/exam-roundtrip.spec.ts`)。誤コードはゲートに留まり、正コードで解錠 → 打鍵 → export した ZIP を `verify-cli --mode fast --exam-package` に通すと exit 0 と束縛 (Root binding / Signature / Package hash / Content hash) の PASS 行が出る。別の問題パッケージと本物の registry では exit 1。fixture は `npm run setup` が `make-exam-package.mjs` で生成し、shared の追跡ファイル `examAuthorityKeys/localKeys.ts` は書き換えず、E2E の実行時だけ出題者鍵を差し替える (#229)
 - 検証 (Web) で複数 proof を読み込んだとき、全件の検証が終わったあともステータスバーに `N/M proofs passed` と失敗件数を残すようにした (警告は passed に数える。plaintext・画像は数えず、読めない `*_proof.json` は失敗に数える)。失敗があれば押して最初に失敗した proof を開ける。状態契約に `#queue-status[data-proof-total/passed/failed]` を追加 (#282)
+- `verifyProofFile` のセッション開始トークンの sessionId 照合 (別セッションのトークン流用を弾く。ADR-0017) と、署名 cp が無効なら全体を無効にする判定 (ADR-0020) を shared のテストで守るようにした (`verification.sessionToken.test.ts`)。これまでは verify の `webCliParity.test.ts` でしか捕まらなかった。仕様・実装の変更なし (#499, 親 #467)
+
+- 変異検査 (#467) の系統 3・4 を守るテストを shared に足した (`verification.metadata.test.ts`、仕様・実装の変更なし)。`verifyProofFile` の `metadataValid` は `typingProofHash` の不一致と root の不一致のどちらか片方だけでも落ち、申告メタデータ (`pasteEvents` など 6 キーと `totalTypingTime`) を偽って `typingProofHash` を再計算した proof は拒否される。貼り付け・ドロップ・削除を含む正規 proof は `valid: true` のまま (#498)
+
+- 検証の「厳しくする向き」の変異検査 (#467) で生き残った 3 箇所について、正規の proof が通ることを確かめる正の対照テストを足した (`verification.positiveControls.test.ts`)。timestamp が同値で連続するチェーン、置換・削除 (`rangeLength > 0`) を含む replay、templateInjection / contentSnapshot の後に contentChange が続く replay が `valid: true` になる。仕様の変更なし (#502)
 
 ### 変更
 
@@ -28,9 +34,11 @@
 - `make-exam-package.mjs` の既定 deadline を `2999-12-31T23:59:59.999Z` (オープン) に変更し、`--release` / `--deadline` の説明を ADR-0013 と `/author` に揃えた。既定のまま作ったパッケージで全提出が「窓外 (advisory)」と表示されるノイズを解消 (#271)
 - 呼び出し元ゼロの dead API を削除した: `TabManager` の `exportSingleTab` / `exportAllTabs` / `reset` / `getActiveContent` / `getSessionService`、`SessionStorageService` の `pruneOldSessions` / `truncateEvents` / `updateTabContent` / `updateTabMetadata`、shared の `MultiFileExportedProof` / `MultiFileExportEntry` / `isMultiFileProof` / `AnyExportedProof`、`beforeunload` での legacy スクリーンショット DB 削除 (#284, #231)
 - 拡張子 → 言語の判定を verify から shared の実装へ一本化した (挙動の変更なし) (#278)
+- `index.html` に一度も存在しなかった `clear-log-btn` のクリア配線 (`LogViewerPanelOptions.clearButtonId`・`setupClearButton`・`LogViewer.clear()`・`notifications.clearLogConfirm`) を削除した。ボタンは HTML に無かったので利用者に見える挙動は変わらない (#443)
 
 ### 修正
 
+- C / C++ のコンパイルエラーの行番号が、`CExecutor` が先頭に足す preamble (6 行) の分だけずれ、エディタへのマーカー表示で Monaco が `Illegal value for lineNumber` を投げていた問題を修正した。preamble の末尾に `#line 1` を置いて clang 自身に元の行番号を出させ (端末のメッセージも `main.c:1:` になる)、`showErrorsInEditor` は範囲外の行 (モデルの行数超過・1 未満) を最終行 / 1 行目に寄せて例外を投げない (#489)
 - exam の試験ゲート (タブが無い間) に撮れたスクリーンショットが、チェーンに `screenshotCapture` を残さないまま保存されて export ZIP の manifest に入り、解錠後の撮影で verifier が tampered と判定して正当な答案が `Integrity: FAILED` になる問題を修正した。`ScreenshotTracker.handleCapture` は callback (チェーンへの記録先) が無いとき保存しない (#503)
 - 離脱確認で「このページに留まる」を選ぶと、`SingleInstanceGuard` が `beforeunload` で破棄されたまま残り、2 つ目のタブが正規インスタンスとして起動してハッシュチェーンを二重に伸ばせてしまう問題を修正した。破棄を `pagehide` (`persisted === false`、実際にページを離れるとき) に移した。bfcache に入る (`persisted === true`) ときは破棄せず、戻る操作で復元されたページのガードもそのまま生きている (#483, 親 #237)
 - 同じセッションを 2 つのインスタンス (凍結復帰したタブと再開したタブなど) が書いたとき、`SessionStorageService.appendEvent` が同じ seq の hash の食い違いを黙って吸収し、タブ行の `currentHash` を後から書いた側で上書きしていた問題を修正した。同じタブ・同じ seq に別の hash を書こうとすると `EventChainConflictError` で拒否し (events・タブ行は変えない)、同じ hash の再 append (保存の再試行・二重書き込み) は冪等に成功してタブ行を書き換えない。`assertOwner()` で、別インスタンスに `resumeSession` された側を `SessionOwnershipError` で検出できる。競合したタブは `TabManager` の保存でスナップショットの上書きを飛ばしてログに残す (検出時の read-only 化・UI は #237 PR-3) (#484, #237)
