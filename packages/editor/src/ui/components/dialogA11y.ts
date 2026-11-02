@@ -37,9 +37,14 @@ export interface DialogA11yHandle {
   close(): void;
 }
 
-/** Tab 巡回の対象。`display: none` などの描画状態までは見ない (`hidden` 属性と `inert` だけ除外する) */
+/**
+ * Tab 巡回の対象。`display: none` などの描画状態までは見ない (`hidden` 属性と `inert` だけ除外する)。
+ * `iframe` を含めるのは、書き出し中の Turnstile ウィジェット (cross-origin) にキーボードで入れるように。
+ * iframe の中は keydown を受けられないので閉じ込めの外に出るが、次の Tab でここへ引き戻す
+ */
 const FOCUSABLE_SELECTOR = [
   'a[href]',
+  'iframe',
   'button:not([disabled])',
   'input:not([disabled]):not([type="hidden"])',
   'select:not([disabled])',

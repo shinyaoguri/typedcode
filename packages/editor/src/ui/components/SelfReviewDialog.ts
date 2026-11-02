@@ -7,10 +7,12 @@
  * - ノートは任意。空のまま進めば reflectionNote イベントは記録されない
  * - キャンセルで export 自体を中止できる
  * - 表示は中立 (疑い・判定の意味づけをしない)
+ * - a11y (#305) は `dialogA11y.ts` が担う。Escape では閉じない (書きかけのノートを一つのキーで失わせない。閉じる手段はキャンセルボタン / ×)
  */
 
 import type { ProcessSummary } from '@typedcode/shared';
 import { t } from '../../i18n/index.js';
+import { attachDialogA11y, type DialogA11yHandle } from './dialogA11y.js';
 
 export interface SelfReviewResult {
   /** export を続行するか (false = キャンセル)。 */
@@ -21,6 +23,7 @@ export interface SelfReviewResult {
 
 export class SelfReviewDialog {
   private overlay: HTMLElement | null = null;
+  private a11y: DialogA11yHandle | null = null;
 
   /**
    * ダイアログを表示し、ユーザの選択を返す。
@@ -33,7 +36,7 @@ export class SelfReviewDialog {
       overlay.className = 'self-review-overlay';
       overlay.dataset.dialog = 'self-review';
       overlay.innerHTML = `
-        <div class="self-review-dialog" role="dialog" aria-modal="true">
+        <div class="self-review-dialog">
           <div class="self-review-header">
             <h2>${t('selfReview.title')}</h2>
             <button type="button" class="self-review-close" data-action="cancel" aria-label="${t('selfReview.cancel')}">×</button>
@@ -74,7 +77,12 @@ export class SelfReviewDialog {
 
       this.overlay = overlay;
       document.body.appendChild(overlay);
-      textarea.focus();
+      this.a11y = attachDialogA11y(overlay.querySelector<HTMLElement>('.self-review-dialog')!, {
+        labelledBy: overlay.querySelector<HTMLElement>('.self-review-header h2')!,
+        initialFocus: textarea,
+        closeOnEscape: false,
+        onRequestClose: () => {},
+      });
     });
   }
 
@@ -93,6 +101,8 @@ export class SelfReviewDialog {
   }
 
   private close(): void {
+    this.a11y?.close();
+    this.a11y = null;
     this.overlay?.remove();
     this.overlay = null;
   }

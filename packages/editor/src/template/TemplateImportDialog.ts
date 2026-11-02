@@ -5,6 +5,7 @@
 
 import { escapeHtml, type ParsedTemplate } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
+import { attachDialogA11y } from '../ui/components/dialogA11y.js';
 
 export class TemplateImportDialog {
   /**
@@ -126,40 +127,35 @@ export class TemplateImportDialog {
       document.body.appendChild(overlay);
 
       // イベントハンドラ
-      const confirmBtn = modal.querySelector('#template-confirm-btn');
-      const cancelBtn = modal.querySelector('#template-cancel-btn');
+      const confirmBtn = modal.querySelector<HTMLElement>('#template-confirm-btn');
+      const cancelBtn = modal.querySelector<HTMLElement>('#template-cancel-btn');
 
-      const cleanup = () => {
-        document.body.removeChild(overlay);
+      // a11y (#305): どの経路 (ボタン・overlay・Escape) で閉じても finish を通り、リスナー解放は 1 回。
+      // 既存タブへの影響を警告しているときは、取り消し側から始める
+      const a11y = attachDialogA11y(modal, {
+        labelledBy: modal.querySelector<HTMLElement>('h3')!,
+        initialFocus: hasExistingTabs ? cancelBtn : confirmBtn,
+        onRequestClose: () => finish(false),
+      });
+
+      let finished = false;
+      const finish = (confirmed: boolean): void => {
+        if (finished) return;
+        finished = true;
+        a11y.close();
+        overlay.remove();
+        resolve(confirmed);
       };
 
-      confirmBtn?.addEventListener('click', () => {
-        cleanup();
-        resolve(true);
-      });
-
-      cancelBtn?.addEventListener('click', () => {
-        cleanup();
-        resolve(false);
-      });
+      confirmBtn?.addEventListener('click', () => finish(true));
+      cancelBtn?.addEventListener('click', () => finish(false));
 
       // オーバーレイクリックでキャンセル
       overlay.addEventListener('click', (e) => {
         if (e.target === overlay) {
-          cleanup();
-          resolve(false);
+          finish(false);
         }
       });
-
-      // Escキーでキャンセル
-      const escHandler = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-          cleanup();
-          document.removeEventListener('keydown', escHandler);
-          resolve(false);
-        }
-      };
-      document.addEventListener('keydown', escHandler);
     });
   }
 
@@ -216,6 +212,13 @@ export class TemplateImportDialog {
     const filenameEl = modal.querySelector('#template-progress-filename') as HTMLElement;
     const progressBar = modal.querySelector('#template-progress-bar') as HTMLElement;
 
+    // 進行表示で閉じられないので Escape は無視する。操作できる要素が無いのでダイアログ自身がフォーカスを持つ (#305)
+    const a11y = attachDialogA11y(modal, {
+      labelledBy: modal.querySelector<HTMLElement>('h3')!,
+      closeOnEscape: false,
+      onRequestClose: () => {},
+    });
+
     return {
       update: (current: number, total: number, filename: string) => {
         currentEl.textContent = String(current);
@@ -224,9 +227,8 @@ export class TemplateImportDialog {
         progressBar.style.width = `${(current / total) * 100}%`;
       },
       close: () => {
-        if (document.body.contains(overlay)) {
-          document.body.removeChild(overlay);
-        }
+        a11y.close();
+        overlay.remove();
       },
     };
   }
