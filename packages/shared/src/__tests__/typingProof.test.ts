@@ -629,6 +629,40 @@ describe('TypingProof', () => {
     });
   });
 
+  describe('restoreState の currentHash (#322)', () => {
+    it('should resume the chain from the last event hash even when the passed currentHash is stale', async () => {
+      const original = new TypingProof();
+      const mockComponents = createMockFingerprintComponents();
+      await original.initialize('test-fingerprint', mockComponents);
+      await original.recordEvent({ type: 'contentChange', data: 'a' });
+      await original.recordEvent({ type: 'contentChange', data: 'b' });
+
+      const serialized = original.serializeState();
+      const lastHash = serialized.events[serialized.events.length - 1]!.hash;
+      // tabs レコードが古い値に戻った状態 (定期保存と append の競合)。events 先頭の hash を渡す。
+      const stale = { ...serialized, currentHash: serialized.events[0]!.hash };
+      expect(stale.currentHash).not.toBe(lastHash);
+
+      const restored = await TypingProof.fromSerializedState(stale, 'test-fingerprint', mockComponents);
+      expect(restored.currentHash).toBe(lastHash);
+
+      await restored.recordEvent({ type: 'contentChange', data: 'c' });
+      expect(restored.events[restored.events.length - 1]!.previousHash).toBe(lastHash);
+    });
+
+    it('should use the passed currentHash when there are no events', async () => {
+      const original = new TypingProof();
+      const mockComponents = createMockFingerprintComponents();
+      await original.initialize('test-fingerprint', mockComponents);
+
+      const serialized = original.serializeState();
+      expect(serialized.events).toHaveLength(0);
+
+      const restored = await TypingProof.fromSerializedState(serialized, 'test-fingerprint', mockComponents);
+      expect(restored.currentHash).toBe(serialized.currentHash);
+    });
+  });
+
   describe('fromSerializedState', () => {
     it('should create new instance from serialized state', async () => {
       const original = new TypingProof();
