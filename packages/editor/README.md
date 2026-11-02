@@ -21,7 +21,7 @@
 |----------|---------|---------|
 | C | Wasmer SDK | Clang WASM、stdin/stdout 対応 |
 | C++ | Wasmer SDK | Clang++ WASM |
-| Python | Wasmer SDK | Python WASM ランタイム |
+| Python | Pyodide | CPython を WebAssembly にしたもの。jsdelivr から読み込む |
 | JavaScript | ネイティブ | ブラウザ eval + console キャプチャ |
 | TypeScript | typescript (`ts.transpileModule`) | JS にトランスパイルしてから eval |
 
