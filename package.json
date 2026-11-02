@@ -23,7 +23,7 @@
     "doctor": "node scripts/doctor.mjs",
     "test:coverage": "npm run test:coverage --workspaces --if-present",
     "coverage:ratchet": "COVERAGE_RATCHET=1 npm run test:coverage --workspaces --if-present",
-    "check:fast": "npm run typecheck && npm run lint && npm run lint:workflows && npm run test:coverage && node --test 'scripts/*.test.mjs' packages/e2e/scripts/setup-env.test.mjs",
+    "check:fast": "npm run typecheck && npm run lint && npm run lint:workflows && node scripts/check-deps.mjs && npm run test:coverage && node --test 'scripts/*.test.mjs' packages/e2e/scripts/setup-env.test.mjs",
     "check": "npm run check:fast && npm run test -w @typedcode/e2e"
   },
   "engines": {
