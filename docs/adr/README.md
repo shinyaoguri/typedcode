@@ -69,6 +69,7 @@
 | [0035](0035-triage-gate-for-issues.md) | Accepted | 着手できる Issue を、メンテナが `verify: triaged` を付けたものに限る (エージェントが印を付けてよいのは自分で踏んで起票し受け入れ条件を書いたものだけ・着手時に受け入れ条件の現況を確かめる) |
 | [0036](0036-visual-evidence-on-prs.md) | Accepted | UI を変えた PR は本文に before/after の画像を載せ、素材は撮影専用の @shots spec で撮る (人が見る証跡でありオラクルではない・画素比較しない・画像は Gyazo でコミットしない・動きは可逆アニメーション WebP) |
 | [0037](0037-see-red-before-trusting-new-tests.md) | Accepted | 新しいテスト・検査は、検証対象を壊して赤くなるのを見てから仕上げる (バグ修正に限らない・何を壊したかを PR の対応表に書く・変異検査の道具は実害を測ってから) |
+| [0038](0038-every-pr-closes-an-issue.md) | Accepted | PR は必ず Issue を閉じる (GitHub の紐づけ closingIssuesReferences を読む require-issue ゲート・例外は no-issue ラベルだけ・段階 PR は sub-issue を閉じる) |
 
 ## 参考
 
