@@ -81,7 +81,6 @@ npm run dev  # http://localhost:8787
 | `/api/checkpoint/sign` | POST | 未署名チェックポイントへの ECDSA-P256 署名 + `serverTimestamp` 付与 |
 | `/api/checkpoint/public-keys` | GET | 公開鍵レジストリ取得 (検証側のキャッシュ用) |
 | `/api/verify-captcha` | POST | Turnstile トークン検証 + アテステーション発行 |
-| `/api/verify-attestation` | POST | アテステーション署名の検証 (**dead**。下記参照) |
 | `/health` | GET | ヘルスチェック |
 
 ### POST `/api/session/start`
@@ -164,34 +163,6 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
 ```
 
 > ADR-0017 以降、**ファイル作成時の人間ゲートは `/api/session/start` に統合**されています。このエンドポイントはエクスポート前検証などの経路のために残置しています。
-
-### POST `/api/verify-attestation`
-
-> **dead**: 現在このエンドポイントを呼ぶクライアントはありません (editor / verify / verify-cli のいずれからも呼ばれず、アテステーション署名の検証はどこでも実行されていません)。ADR-0017 で deprecate 方針です。新規に依存しないでください。
-
-署名付きアテステーションの整合性を検証します。
-
-**Request:**
-```json
-{
-  "attestation": {
-    "verified": true,
-    "score": 1.0,
-    "action": "human_verification",
-    "timestamp": "2026-01-05T10:30:00.000Z",
-    "hostname": "typedcode.dev",
-    "signature": "hmac_sha256_signature"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "valid": true,
-  "message": "Attestation is valid"
-}
-```
 
 ### POST `/api/checkpoint/sign`
 
@@ -299,6 +270,8 @@ const payload = JSON.stringify({
 
 const signature = HMAC_SHA256(payload, ATTESTATION_SECRET_KEY);
 ```
+
+この署名を照合する API・クライアントはありません (検証 API は [#340](https://github.com/shinyaoguri/typedcode/issues/340) で撤去)。発行の扱いは [#415](https://github.com/shinyaoguri/typedcode/issues/415)。
 
 ## デプロイ
 

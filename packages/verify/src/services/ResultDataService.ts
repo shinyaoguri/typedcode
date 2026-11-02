@@ -6,13 +6,7 @@
  * UI-specific functions for the verify package.
  */
 
-import type {
-  PoswStatsDisplay,
-  HumanAttestationUI,
-  VerifyTabState,
-  ChainErrorDetails,
-  VerificationResult,
-} from '../types';
+import type { PoswStatsDisplay, VerifyTabState, ChainErrorDetails, VerificationResult } from '../types';
 import type { ResultData } from '../ui/ResultPanel';
 import { normalizeProofMode } from './proofMode.js';
 
@@ -110,24 +104,6 @@ export function buildResultData(tabState: VerifyTabState): Omit<ResultData, 'tru
       }
     : undefined;
 
-  // Convert attestations
-  const attestations: HumanAttestationUI[] = [];
-  if (tabState.humanAttestationResult?.hasAttestation) {
-    if (tabState.humanAttestationResult.createValid !== undefined) {
-      attestations.push({
-        type: 'create',
-        eventIndex: 0,
-        valid: tabState.humanAttestationResult.createValid,
-      });
-    }
-    if (tabState.humanAttestationResult.exportValid !== undefined) {
-      attestations.push({
-        type: 'export',
-        valid: tabState.humanAttestationResult.exportValid,
-      });
-    }
-  }
-
   // 打鍵動態の分析は typing-pattern アナライザ (shared) 経由で worker の runAnalysis に統合済み。
   // ここで個別に TypingPatternAnalyzer を呼ぶ旧経路 (TypingPatternCard 用) は廃止した (ADR-0009)。
 
@@ -143,7 +119,6 @@ export function buildResultData(tabState: VerifyTabState): Omit<ResultData, 'tru
     mode: normalizeProofMode(proofData.mode),
     result,
     poswStats,
-    attestations: attestations.length > 0 ? attestations : undefined,
     eventCount,
     typingTime,
     typingSpeed,

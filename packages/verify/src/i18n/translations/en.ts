@@ -111,9 +111,6 @@ export const en: VerifyTranslationKeys = {
     poswNone: 'None',
     iterations: 'Iterations',
     totalTime: 'Total Time',
-    humanAttestation: 'Human Attestation',
-    createTime: 'Created',
-    exportTime: 'Exported',
     typingPattern: 'Typing Pattern',
     analysis: 'Process Analysis',
     anchoring: 'Temporal Anchoring',
@@ -224,16 +221,6 @@ export const en: VerifyTranslationKeys = {
     externalInputDetected: 'External input detected',
     noPasteDetected: 'No paste detected',
     pasteDropCount: '${paste} pastes / ${drop} drops',
-  },
-
-  attestation: {
-    valid: 'Valid',
-    invalid: 'Invalid',
-    none: 'None',
-    validCount: '${valid}/${total} valid',
-    verifiedLegacy: 'Verified (legacy)',
-    exportTimeAuth: 'Authenticated at export',
-    noAttestation: 'No human attestation',
   },
 
   screenshot: {
@@ -352,9 +339,6 @@ export const en: VerifyTranslationKeys = {
     issueScreenshotsMissing: '${count} screenshots missing',
     issueScreenshotsChainOnly:
       '${count} screenshot hash(es) in the chain have no manifest entry (may have been stripped)',
-    issueAttestationBoth: 'Human attestation verification failed',
-    issueAttestationCreate: 'Human attestation at creation is invalid',
-    issueAttestationExport: 'Human attestation at export is invalid',
     issueSourceMismatch: '${filename}: source file differs from proof content (+${additions}/-${deletions} lines)',
     issueAnchoringInvalid: 'Signed checkpoints are invalid',
     issueAnchoringMissing: 'No temporal anchor (signed checkpoints)',
@@ -373,7 +357,6 @@ export const en: VerifyTranslationKeys = {
       metadata: 'Metadata',
       chain: 'Hash Chain',
       posw: 'PoSW',
-      attestation: 'Human Attestation',
       screenshots: 'Screenshots',
       source: 'Source File',
       anchoring: 'Temporal Anchoring',

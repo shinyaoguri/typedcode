@@ -7,7 +7,7 @@ TypedCode のコアライブラリ。型定義・暗号証明エンジン・検�
 ワークスペース内で利用されるため、エディタ・検証アプリ・CLI から `@typedcode/shared` として import します。
 
 ```typescript
-import { TypingProof, Fingerprint, AttestationService } from '@typedcode/shared';
+import { TypingProof, Fingerprint } from '@typedcode/shared';
 import type { FingerprintComponents, StoredEvent, ExportedProof } from '@typedcode/shared';
 ```
 
@@ -71,17 +71,6 @@ const hash = await Fingerprint.generate();
 - 環境: timezone, timezoneOffset, cookieEnabled, doNotTrack
 - 描画: Canvas フィンガープリント、WebGL vendor / renderer
 - フォント: システムフォント検出結果
-
-### AttestationService
-
-Cloudflare Turnstile による人間認証の検証クライアント。
-
-```typescript
-const attestation = new AttestationService(apiUrl);
-
-// アテステーション署名の検証
-const result = await attestation.verify(attestationData);
-```
 
 ### ファイル処理
 

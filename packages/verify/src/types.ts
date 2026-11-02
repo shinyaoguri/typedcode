@@ -4,21 +4,16 @@ import type {
   InputType,
   DisplayInfo,
   ScreenshotCaptureType,
-  HumanAttestation,
   SignedCheckpointsVerificationResult,
   ExamPackageManifest,
   ExamBindingVerificationResult,
   AnalysisReport,
 } from '@typedcode/shared';
 
-// Re-export HumanAttestation from shared for backward compatibility
-export type { HumanAttestation } from '@typedcode/shared';
-
 // Extended proof data with content and language
 export interface ProofFile extends ExportedProof {
   content: string;
   language: string;
-  humanAttestation?: HumanAttestation;
 }
 
 // Content cache type
@@ -212,12 +207,6 @@ export interface VerifyTabState {
   progressDetails?: ProgressDetails; // 詳細な進捗情報
   proofData: ProofFile | null;
   verificationResult: VerificationResultData | null;
-  // 人間証明書検証結果（メインスレッドで実行）
-  humanAttestationResult?: {
-    createValid?: boolean;
-    exportValid?: boolean;
-    hasAttestation: boolean;
-  };
   error?: string;
   // プレーンテキストファイル（検証対象外）
   isPlaintext?: boolean;
@@ -311,14 +300,6 @@ export interface PoswStatsDisplay {
   totalIterations: number;
   totalTime: number;
   avgTime: number;
-}
-
-/** 人間証明（UIコンポーネント用） */
-export interface HumanAttestationUI {
-  type: 'create' | 'export';
-  eventIndex?: number;
-  valid: boolean;
-  timestamp?: string;
 }
 
 // ============================================================================
@@ -527,7 +508,6 @@ export type TrustIssueComponent =
   | 'metadata'
   | 'chain'
   | 'posw'
-  | 'attestation'
   | 'screenshots'
   | 'source'
   | 'anchoring'

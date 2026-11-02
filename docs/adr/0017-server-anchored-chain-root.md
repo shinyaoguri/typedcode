@@ -80,7 +80,7 @@ root = SHA256(fingerprintHash ‖ localNonce ‖ serverNonce)
 ECDSA トークン発行 = root アンカー = 人間ゲートを兼ねる。`#0 humanAttestation` イベントは引き続き記録するが、
 その暗号的束縛は **proof 同梱の ECDSA `sessionStartToken`** (registry でオフライン検証可) が担い、HMAC attestation の
 作成経路 (`/api/verify-captcha` → `createAttestation`) は **editor の作成フローから外す**。これにより脅威④
-(attestation の非束縛・未検証) を直接解消する。dead な `/api/verify-attestation` は deprecate。pre-export
+(attestation の非束縛・未検証) を直接解消する。dead な `/api/verify-attestation` は deprecate (**撤去済み**: 検証 API・shared の `AttestationService`・verify の人間証明カードは [#340](https://github.com/shinyaoguri/typedcode/issues/340) で削除した。発行側は残る)。pre-export
 attestation は別用途として当面据え置く (作成時 root とは独立)。
 
 ## Compatibility & Availability (詰め)
@@ -109,7 +109,7 @@ attestation は別用途として当面据え置く (作成時 root とは独立
 
 ### Follow-ups / 残課題
 - exam root への serverNonce 連結 (開始時刻アンカー) は別 ADR / 後続 (EXAM_ROOT_BINDING v3 として検討)。
-- 旧 `/api/verify-attestation` (HMAC, dead) は deprecate 注記。pre-export attestation の扱いは §Open questions。
+- 旧 `/api/verify-attestation` (HMAC, dead) は deprecate 注記 → **#340 で撤去済み** (検証 API・`AttestationService`・verify の人間証明カード)。`/api/verify-captcha` の attestation 発行と `ATTESTATION_SECRET_KEY` は pre-export 用に残し、その扱いは #415 と §Open questions。
 - ADR-C (isTrusted 捕捉) は本 ADR と独立に加算。
 
 ## 確定した設計判断 (2026-06-12 レビュー)

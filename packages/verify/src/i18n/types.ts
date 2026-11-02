@@ -123,9 +123,6 @@ export interface VerifyTranslationKeys {
     poswNone: string;
     iterations: string;
     totalTime: string;
-    humanAttestation: string;
-    createTime: string;
-    exportTime: string;
     typingPattern: string;
     analysis: string;
     anchoring: string;
@@ -238,17 +235,6 @@ export interface VerifyTranslationKeys {
     externalInputDetected: string;
     noPasteDetected: string;
     pasteDropCount: string;
-  };
-
-  // Attestation panel
-  attestation: {
-    valid: string;
-    invalid: string;
-    none: string;
-    validCount: string;
-    verifiedLegacy: string;
-    exportTimeAuth: string;
-    noAttestation: string;
   };
 
   // Screenshot capture type labels (lightbox / overlay / chart tooltips)
@@ -373,9 +359,6 @@ export interface VerifyTranslationKeys {
     issueScreenshotsTampered: string;
     issueScreenshotsMissing: string;
     issueScreenshotsChainOnly: string;
-    issueAttestationBoth: string;
-    issueAttestationCreate: string;
-    issueAttestationExport: string;
     issueSourceMismatch: string;
     issueAnchoringInvalid: string;
     issueAnchoringMissing: string;
@@ -392,7 +375,6 @@ export interface VerifyTranslationKeys {
       metadata: string;
       chain: string;
       posw: string;
-      attestation: string;
       screenshots: string;
       source: string;
       anchoring: string;

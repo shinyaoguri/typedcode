@@ -15,12 +15,6 @@ import type {
   ContentMismatchInfo,
 } from '../types';
 
-export interface AttestationResult {
-  createValid?: boolean;
-  exportValid?: boolean;
-  hasAttestation: boolean;
-}
-
 export interface TrustCalculatorOptions {
   /** 画面共有をオプトアウトしたかどうか */
   hasScreenShareOptOut?: boolean;
@@ -30,7 +24,6 @@ export class TrustCalculator {
   /**
    * 検証結果から信頼度を計算
    * @param verificationResult - 検証結果
-   * @param attestationResult - 人間証明結果
    * @param screenshots - スクリーンショット検証サマリー（`undefined` = 未検査。CLI の
    *                      `Screenshots: not checked` と同じで、issue は上げない）
    * @param contentMismatches - ソースファイル不一致情報（オプション）
@@ -38,7 +31,6 @@ export class TrustCalculator {
    */
   static calculate(
     verificationResult: VerificationResultData | null,
-    attestationResult: AttestationResult | undefined,
     screenshots: ScreenshotVerificationSummary | undefined,
     contentMismatches?: ContentMismatchInfo[],
     options?: TrustCalculatorOptions
@@ -97,32 +89,6 @@ export class TrustCalculator {
           component: 'screenshots',
           severity: 'warning',
           message: t('trust.issueScreenshotsChainOnly', { count: screenshots.chainOnly }),
-        });
-      }
-    }
-
-    // 4. Attestation検証（ネットワークエラーなどは警告扱い）
-    if (attestationResult?.hasAttestation) {
-      const createFailed = attestationResult.createValid === false;
-      const exportFailed = attestationResult.exportValid === false;
-
-      if (createFailed && exportFailed) {
-        issues.push({
-          component: 'attestation',
-          severity: 'warning',
-          message: t('trust.issueAttestationBoth'),
-        });
-      } else if (createFailed) {
-        issues.push({
-          component: 'attestation',
-          severity: 'warning',
-          message: t('trust.issueAttestationCreate'),
-        });
-      } else if (exportFailed) {
-        issues.push({
-          component: 'attestation',
-          severity: 'warning',
-          message: t('trust.issueAttestationExport'),
         });
       }
     }
