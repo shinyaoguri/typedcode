@@ -623,6 +623,10 @@ export const ja: TranslationKeys = {
       errorNoFile: '問題パッケージを選択してください。',
       errorNoCode: '監督コードを入力してください。',
       errorInvalidFile: '問題パッケージの形式が不正です（.tcexam を選択してください）。',
+      errorNewerFormat:
+        'この問題パッケージはこのエディタが対応するより新しい形式です。最新版のエディタを開いてください。',
+      errorUnsupportedFormat:
+        'この問題パッケージの形式はもう対応していません。出題者に新しいパッケージを依頼してください。',
       errorUntrusted: 'この問題パッケージは信頼できる出題者の署名で検証できませんでした。',
       errorWrongCode: '監督コードが違います。もう一度入力してください。',
       errorUnlockFailed: '解錠に失敗しました。パッケージとコードを確認してください。',

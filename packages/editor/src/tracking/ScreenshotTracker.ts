@@ -391,6 +391,16 @@ export class ScreenshotTracker {
       return;
     }
 
+    // チェーンへの記録先（callback）が無いときは保存しない。
+    // export ZIP の manifest に入る画像は、必ずチェーン上の screenshotCapture に
+    // 裏付けられていなければならない（無いと verifier が tampered と判定する。#503）。
+    // 試験ゲート中などタブが無い間は callback が null のまま撮影が走る。
+    const callback = this.callback;
+    if (!callback) {
+      console.debug('[ScreenshotTracker] Capture skipped - no callback (cannot record to chain)');
+      return;
+    }
+
     // TypingProofと同じ相対時間を使用（performance.now() - startTime）
     const timestamp = this.state.getRelativeTimestamp();
     const createdAt = Date.now();
@@ -421,14 +431,11 @@ export class ScreenshotTracker {
       const description = this.generateDescription(captureType);
 
       // コールバックを呼び出し
-      console.log(`[ScreenshotTracker] callback is ${this.callback ? 'set' : 'null'}`);
-      if (this.callback) {
-        this.callback({
-          type: 'screenshotCapture',
-          data: eventData,
-          description,
-        });
-      }
+      callback({
+        type: 'screenshotCapture',
+        data: eventData,
+        description,
+      });
 
       console.log(`[ScreenshotTracker] Screenshot recorded: ${captureType}`);
     } catch (error) {

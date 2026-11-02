@@ -92,12 +92,15 @@ export class VerificationController {
     // - warning: 非ピュアタイピング / ソース不一致 / 時刻アンカー無し (偽造不能要素が無い) /
     //            post-hoc 一括署名疑い / anchoring 密度が疎 (ADR-0016) / exam だが問題パッケージ未検証 (真正性未確認) /
     //            スクショ欠損 / 剥ぎ取り疑い (#213) / 画面共有オプトアウト (#146) /
-    //            PoSW 未再計算 = fast モード (#214)
+    //            PoSW 未再計算 = fast モード (#214) / proof の形式バージョンが検証器より新しい (#223)
     const examPresentButUnverified = !!result.exam?.present && !result.exam.packageProvided;
     // #214: fast モードは PoSW を再計算していない。TrustCalculator の warning と同じ軸に揃える —
     // ここを見ないと「タブは緑なのに信頼バッジは警告」になり、fast のまま流した提出物が全件緑で
     // 素通りする (verify/AGENTS.md「両者を揃えて変更すること」)。
     const poswSkipped = result.poswMode === 'skipped';
+    // #223: 検証器が知る major を超える proof。TrustCalculator の warning と同じ軸に揃える
+    // (reject はしない。下限未満・不正形式は shared が valid:false にするので上の error に入る)。
+    const versionNewer = result.versionStatus === 'newer';
     // ADR-0017: root 未アンカー (serverNonce トークン無し) は警告。exam は独自束縛のため対象外。
     const rootNotAnchored = !result.rootAnchored && !result.exam?.present;
     let status: FileStatus;
@@ -114,7 +117,8 @@ export class VerificationController {
       screenshotsMissing > 0 ||
       screenshotsChainOnly > 0 ||
       hasScreenShareOptOut ||
-      poswSkipped
+      poswSkipped ||
+      versionNewer
     ) {
       status = 'warning';
     } else {

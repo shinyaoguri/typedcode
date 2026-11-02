@@ -322,6 +322,8 @@ npx wrangler kv namespace create CHECKPOINT_SESSIONS_PRODUCTION
 
 出力された 2 つの ID を [packages/workers/wrangler.staging.toml](../packages/workers/wrangler.staging.toml) / [packages/workers/wrangler.production.toml](../packages/workers/wrangler.production.toml) の `id = "..."` に貼り付け commit する (KV ID は秘密情報ではない)。
 
+> **授業・試験で使う環境は Cloudflare の Workers Paid が前提です。** `/api/checkpoint/sign` は 1 回の署名ごとに KV の read と write を 1 回ずつ使い、Free の KV write は 1 日 1,000 回までです (40 人の授業なら開始から数分で尽きます)。操作回数の式・上限表・枯渇時の挙動は [packages/workers/AGENTS.md の「KV の容量見積もりと枯渇時の挙動」](../packages/workers/AGENTS.md#kv-の容量見積もりと枯渇時の挙動-330) を参照してください。個人で動作を試すだけなら Free でも動きます。
+
 ### Turnstile widget (staging / production 別に作成推奨)
 
 [Turnstile dashboard](https://dash.cloudflare.com/?to=/:account/turnstile) で:

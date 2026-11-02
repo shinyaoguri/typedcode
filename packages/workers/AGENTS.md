@@ -131,6 +131,50 @@ session record のキーは **`session:{sessionId}:{tabId}`** (タブ毎)。`che
 
 **firstSeenAt の分裂 (#151)**: KV は結果整合で他コロへの伝播に最大 ~60 秒かかる。cp 周期 (~10s) 内にコロ切替 (モバイル網等) が起きると、切替先では `existing=null` と誤認して**別の `firstSeenAt`** で署名しうる。verifier は全 envelope の firstSeenAt 完全一致を要求するため、そのまま proof に載ると正直な提出が丸ごと fail する。**緩和はクライアント側** — editor の `SignedCheckpointService` が既知の firstSeenAt と食い違う envelope を破棄してバックオフ再送する (伝播後のリトライは正しい値で署名される)。恒久対策 (Durable Object での per-session 逐次化) は W5 の ADR 課題。
 
+### KV の容量見積もりと枯渇時の挙動 (#330)
+
+**授業・試験で使う環境 (staging / production とも) は Workers Paid が前提**。Free の KV write は 1 日 1,000 回で、40 人の授業なら開始から数分で尽きる。KV を使う API は `/api/checkpoint/sign` だけ (`/api/session/start` と `/api/verify-captcha` は KV に触れない)。
+
+**1 リクエストあたりの KV 操作** (`checkpoint.ts` の `handleSignCheckpoint`):
+
+| 場面 | read | write | 根拠 |
+|---|---|---|---|
+| 2 回目以降の署名 | 1 (session record) | 1 (session record) | 冒頭の `CHECKPOINT_SESSIONS.get(sessionKey)` と、署名後の `put(sessionKey)` |
+| タブの初回署名 (`isFirstCheckpoint`) | +1 (タブ台帳 `tabs:{sessionId}`) | +1 (台帳。そのタブが台帳に無いときだけ) | `get(tabsKey)` と `put(tabsKey)` |
+| 冪等再送 / `NON_MONOTONIC` / `CHECKPOINT_CONFLICT` / `SESSION_LIMIT_EXCEEDED` | 1 | 0 | 署名と `put` の前に return する |
+| token の不備 (401) | 0 | 0 | token 検証は KV read より前 (不変条件 7) |
+
+**見積もりの式**: 1 人あたりの cp 数/分 `N = max(60 / MAX_CHECKPOINT_INTERVAL_S, イベント数/分 ÷ MAX_EVENTS_PER_CHECKPOINT)`。`MAX_*` は shared の `DEFAULT_MAX_CHECKPOINT_INTERVAL_MS` / `DEFAULT_MAX_EVENTS_PER_CHECKPOINT` ([ADR-0001](../../docs/adr/0001-hybrid-checkpoint-trigger.md)。`CheckpointManager.shouldCreateCheckpoint`)。何も操作していない間は cp が出ないので 0 になる。現行の既定値では間隔側が 6 件/分、打鍵が 600 イベント/分を超えるとイベント側が支配する。
+
+```
+KV write ≈ 人数 × 分 × N + タブ数 × 1    (台帳の write)
+KV read  ≈ 人数 × 分 × N + タブ数 × 1    (台帳の read) + 冪等再送・409 などの再送ぶん
+```
+
+例: 40 人 × 90 分 × 6 件/分 = 約 21,600 write (read もほぼ同数)。Free の 1 日 1,000 write は約 4 分で尽き、1 人あたりでも約 2.8 時間ぶんにしかならない。Paid なら月に含まれる 100 万 write の約 2% で、超過課金になっても write 分で 1 コマ約 $0.11。数字は上の式からの**机上の見積もり**で、負荷試験で確かめたものではない。
+
+**Cloudflare の上限** (確認日 2026-11-01。出典: [KV limits](https://developers.cloudflare.com/kv/platform/limits/) / [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/) / [Workers limits](https://developers.cloudflare.com/workers/platform/limits/)。料金・上限は改定されうるので、判断の前に出典を見直すこと):
+
+| | Free | Paid |
+|---|---|---|
+| KV read | 100,000/日 | 月 1,000 万を含み、超過は $0.50/100 万 |
+| KV write | 1,000/日 (超えるとエラー) | 月 100 万を含み、超過は $5.00/100 万 |
+| 同じキーへの write | 1 回/秒 | 1 回/秒 |
+| Workers リクエスト | 100,000/日 (超えると Error 1027) | — |
+
+**枯渇 (KV のエラー) 時の挙動** (read 失敗・初回の write 失敗・2 回目以降の write 失敗は `checkpoint.test.ts` のケースが押さえている。台帳の行はコード (`handleSignCheckpoint` の `try/catch`) からの読み取り):
+
+| 枯渇するもの | 挙動 | クライアント |
+|---|---|---|
+| read (session record) | 全署名が 503 `SESSION_STATE_UNAVAILABLE` (初回に限らない)。署名しない | editor の `SignedCheckpointService` がバックオフ再送 |
+| write、タブの初回 cp | 503 `SESSION_PERSIST_FAILED`。署名済み envelope は破棄 | 同上 (`firstSeenAt` が固定されるまで署名は成立しない) |
+| write、2 回目以降 | **200 のまま** envelope を返す。record は更新されず (`lastCheckpointIndex` / `lastEnvelope` が古いまま)、次に書けた署名で追従する | 成功として扱う (失敗に気づかない) |
+| read (タブ台帳) / write (台帳) | エラーにならない。台帳が読めなければタブ数の上限判定を飛ばし、書けなければ台帳が欠けて上限が甘くなる側にしか倒れない | 影響なし |
+
+editor は署名を best-effort で扱い、export は `waitForFlush` が timeout で返るので止まらない。ただし署名待ちの cp は未署名のまま残る。write の枯渇後に始まるタブは初回 cp が 503 になって署名が付かない形で現れるので、授業・試験の前に Paid であることを確かめる。
+
+Durable Objects 化 (ADR-0027 Option C) は `firstSeenAt` の分裂 (#151) の恒久対策として別に扱う。Paid であれば、容量を理由に急ぐものではない。
+
 ## 観測性・シークレット宣言・型 (運用)
 
 `wrangler.{staging,production}.toml` に以下を宣言している (dev の `wrangler.toml` は skip-worktree なので対象外):

@@ -8,6 +8,7 @@ import type {
   ExamPackageManifest,
   ExamBindingVerificationResult,
   AnalysisReport,
+  ProofVersionStatus,
 } from '@typedcode/shared';
 
 // Extended proof data with content and language
@@ -78,6 +79,16 @@ export interface VerificationResultData {
    * true = 別セッションのトークン流用。**整合性 (chainValid) ではなく時刻アンカー層の問題**として扱う。
    */
   sessionTokenMismatch?: boolean;
+  /**
+   * `proof.version` の分類 (#223)。`tooOld` / `malformed` は shared が `valid: false` にしている。
+   * `newer` (検証器が知る major を超える) は reject せず、TrustCalculator / VerificationController が warning にする。
+   */
+  versionStatus?: ProofVersionStatus;
+  /**
+   * 自己申告 `proof.version` を `MAJOR.MINOR.PATCH` の数字だけに正規化した値 (不正形式は undefined)。
+   * 表示に使ってよいのはこちらだけ — 生の `proof.version` は攻撃者が書ける (shared AGENTS.md 不変条件 11)。
+   */
+  declaredVersion?: string;
   chainValid: boolean;
   finalHashValid?: boolean;
   contentValid?: boolean;
@@ -506,6 +517,7 @@ export type TrustLevel = 'verified' | 'partial' | 'failed';
 /** 信頼度に影響する問題のコンポーネント */
 export type TrustIssueComponent =
   | 'metadata'
+  | 'version'
   | 'chain'
   | 'posw'
   | 'screenshots'

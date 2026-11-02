@@ -636,6 +636,8 @@ export interface TranslationKeys {
       errorNoFile: string;
       errorNoCode: string;
       errorInvalidFile: string;
+      errorNewerFormat: string;
+      errorUnsupportedFormat: string;
       errorUntrusted: string;
       errorWrongCode: string;
       errorUnlockFailed: string;

@@ -51,3 +51,39 @@ test('別のモード (casual と assignment) なら、2 つのタブの両方�
   expect((await casual.snapshot()).tabs.map((t) => t.content)).toEqual(['int a = 1;']);
   expect(await casual.openDialogs()).not.toContain('duplicate-instance');
 });
+
+/**
+ * #483: 離脱確認 (beforeunload) で「このページに留まる」を選ぶと、アンロードは起きないのにガードが
+ * 破棄され、2 つ目のタブが正規インスタンスとして起動できてしまった。破棄は pagehide (persisted=false)
+ * に移したので、留まったページのガードは生きている。
+ * 離脱確認は記録のあるタブ (events > 0) を閉じようとしたときに出る (`beforeUnloadGuard.ts`)。
+ */
+test('離脱確認で「留まる」を選んだ後に同じモードを開くと、後から開いた側が duplicate-instance で止まる (#483)', async ({
+  page,
+  context,
+}) => {
+  const dialogs: string[] = [];
+  page.on('dialog', (dialog) => {
+    dialogs.push(dialog.type());
+    void dialog.dismiss();
+  });
+  const first = new EditorApp(page);
+  await first.openCasualFresh();
+  await first.typeCode('int a = 1;\n');
+  await first.waitForSynced();
+
+  await page.close({ runBeforeUnload: true });
+  // close() はダイアログの処理を待たずに返るので、出るのを待つ。dismiss したのでタブは閉じない。
+  await expect.poll(() => dialogs).toEqual(['beforeunload']);
+  expect(page.isClosed()).toBe(false);
+
+  const page2 = await context.newPage();
+  const second = new EditorApp(page2);
+  await page2.goto('/casual');
+
+  await expect.poll(() => second.openDialogs(), { timeout: 15_000 }).toContain('duplicate-instance');
+  expect(await second.appState()).toBe('initializing');
+  // 留まったページはそのまま編集を続けられ、チェーンも整合している。
+  await first.typeCode('int b = 2;\n');
+  await first.expectConsistent();
+});

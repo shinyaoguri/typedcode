@@ -163,6 +163,20 @@ export class VerifyWebApp {
   }
 
   /**
+   * いま開いている結果の信頼バッジの issue (`#trust-issues-list .trust-issue-item` の
+   * `data-component` / `data-severity`)。`readVerdict(filename)` などでそのファイルを選んだ後に読む。
+   * issue が無ければ空配列 (リストごと無い)。
+   */
+  async trustIssues(): Promise<Array<{ component: string; severity: string }>> {
+    return this.page.locator('#trust-issues-list .trust-issue-item').evaluateAll((items) =>
+      items.map((el) => ({
+        component: (el as HTMLElement).dataset.component ?? '',
+        severity: (el as HTMLElement).dataset.severity ?? '',
+      }))
+    );
+  }
+
+  /**
    * `#queue-status` の `data-proof-total/passed/failed`。3 つとも付いていなければ null (= 集約を出していない)。
    * ステータスバーの更新は検証完了の次のタスク (setTimeout 0) で走るので、`waitSettled()` の直後は
    * `expect.poll(() => web.proofSummary())` で読む。
