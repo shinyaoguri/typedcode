@@ -38,6 +38,16 @@ export interface VerifyVerdict extends VerifyFileState {
   tabStatus: VerifyFileStatus | null;
 }
 
+/**
+ * ステータスバーの検証集約 (`#queue-status[data-proof-*]`, #282)。警告は passed に数える
+ * (verify-cli の summary の `valid` と同じ軸)。判定が無い間 (検証中・proof 0 件) は属性が無いので null。
+ */
+export interface VerifyProofSummary {
+  total: number;
+  passed: number;
+  failed: number;
+}
+
 /** 結果パネルのチャートタブ (`#tab-<name>` / `#panel-<name>`)。 */
 export type ChartTabName = 'integrated' | 'timeline' | 'mouse';
 
@@ -150,6 +160,25 @@ export class VerifyWebApp {
       level: await this.page.locator('#result-status-icon').getAttribute('data-level'),
       tabStatus: (await tab.getAttribute('data-status')) as VerifyFileStatus | null,
     };
+  }
+
+  /**
+   * `#queue-status` の `data-proof-total/passed/failed`。3 つとも付いていなければ null (= 集約を出していない)。
+   * ステータスバーの更新は検証完了の次のタスク (setTimeout 0) で走るので、`waitSettled()` の直後は
+   * `expect.poll(() => web.proofSummary())` で読む。
+   */
+  async proofSummary(): Promise<VerifyProofSummary | null> {
+    const status = this.page.locator('#queue-status');
+    const [total, passed, failed] = await Promise.all(
+      ['total', 'passed', 'failed'].map((k) => status.getAttribute(`data-proof-${k}`))
+    );
+    if (total === null || passed === null || failed === null) return null;
+    return { total: Number(total), passed: Number(passed), failed: Number(failed) };
+  }
+
+  /** ステータスバーの集約 (失敗を含むときだけ押せる) を押す。失敗した proof のタブが開く。 */
+  async clickProofSummary(): Promise<void> {
+    await this.page.locator('#queue-status').click({ timeout: 10_000 });
   }
 
   /** サイドバーで `filename` の行を選ぶ (対応するタブが開く)。 */

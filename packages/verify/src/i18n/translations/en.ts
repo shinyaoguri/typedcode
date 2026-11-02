@@ -257,6 +257,8 @@ export const en: VerifyTranslationKeys = {
   statusBar: {
     ready: 'Ready',
     verifying: 'Verifying ${current}/${total}',
+    summary: '${passed}/${total} proofs passed',
+    summaryFailed: '${failed} failed',
   },
 
   charts: {

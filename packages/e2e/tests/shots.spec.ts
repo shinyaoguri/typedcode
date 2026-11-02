@@ -2,8 +2,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test, type Page } from '@playwright/test';
-import { EditorApp, listProofEntries } from './helpers/app.js';
+import { expect, test, type Page } from '@playwright/test';
+import { EditorApp, listProofEntries, tamperFirstContentChange, writeZipVariant } from './helpers/app.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
 
 /**
@@ -45,6 +45,11 @@ const SHOTS = [
   {
     file: '03-verify-result.png',
     caption: '検証 Web: export した ZIP の検証結果 (fast モードなので整合性は partial 表示)',
+  },
+  {
+    file: '04-verify-summary.png',
+    caption:
+      '検証 Web: 正常な proof と改ざんした proof の ZIP を同時に読んだときのステータスバーの集約 (N/M と失敗件数)',
   },
 ] as const;
 
@@ -161,5 +166,18 @@ test.describe('見た目・動きの証跡 @shots', () => {
     // readVerdict は data-* 属性が現れるまで待つ (判定が描画し終わった合図)。値は見ない。
     await web.readVerdict(proof);
     await page.screenshot({ path: out('03-verify-result.png') });
+
+    // 04: 正常と改ざんの 2 proof を同時に読み、検証完了後のステータスバーの集約 (#282) を撮る。
+    const tamperedZip = await writeZipVariant(zipPath, {
+      mutateProof: tamperFirstContentChange,
+      renameProof: 'tampered',
+      outName: 'tampered.zip',
+    });
+    const cleanZip = await writeZipVariant(zipPath, { renameProof: 'clean', outName: 'clean.zip' });
+    await web.open('fast');
+    await web.load([cleanZip, tamperedZip]);
+    // 集約は検証完了の次のタスクで描かれる。data-proof-* が付くのを待つ (値は見ない)。
+    await expect.poll(() => web.proofSummary()).not.toBeNull();
+    await page.screenshot({ path: out('04-verify-summary.png') });
   });
 });

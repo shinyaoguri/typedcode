@@ -256,6 +256,8 @@ export const ja: VerifyTranslationKeys = {
   statusBar: {
     ready: 'Ready',
     verifying: '検証中 ${current}/${total}',
+    summary: '${passed}/${total} 件 OK',
+    summaryFailed: '失敗 ${failed} 件',
   },
 
   charts: {

@@ -82,8 +82,10 @@ E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく�
 | `#result-status-card` | `data-filename` | 表示名 | 結果パネルが判定を描画しているファイル (判定を表示していない間は属性なし。#281) |
 | `.chart-tab` (`#tab-integrated` / `#tab-timeline` / `#tab-mouse`) | `data-active` | `true` (選択中のみ。それ以外は属性なし) | 結果パネルのチャートタブの選択状態 (#395) |
 | `.chart-panel` (`#panel-integrated` / `#panel-timeline` / `#panel-mouse`) | `data-active` | `true` (表示中のみ。それ以外は属性なし) | 表示中のチャートパネル。タブを押せたかは対応するパネルで見る (#395) |
+| `#queue-status` | `data-proof-total` / `data-proof-passed` / `data-proof-failed` | 0 以上の整数 (10 進文字列。3 つ同時に付く) | 検証が全件済んだあとのステータスバーの集約 (#282)。total = proof のタブ数 (plaintext・画像は数えない。検証できなかった `*_proof.json` は数える)、passed = status が `success` / `warning` (警告は passed に数える = verify-cli の `valid` と同じ軸)、failed = `error`。**検証中・proof 0 件・ステータスバーが他の表示 (Ready / エラー / メッセージ) の間は属性なし**。failed > 0 のときだけクリックで最初に失敗した proof を開く |
 
 - **判定を表示していない間は属性を付けない** (`none` などの値は使わない)。検証中 (`startProgress` / `showLoading`)・プレーンテキスト / 画像表示・`reset()`・assurance 無しの描画では `#assurance-strip` の 3 属性と `#result-status-icon` の `data-level` を外す。前のタブの判定が残ると、E2E が別ファイルの判定を読んで通ってしまう。検証自体が失敗したタブ (status `error`・結果なし。未対応形式など) を開いたときも `TabController.showTabContent` が進捗 UI のエラー表示に切り替えるので属性は付かない (以前は何もせず、直前のファイルの判定が残っていた)。E2E は属性が現れるのを待ってから読む
+- **ステータスバーの集約 (`services/verificationSummary.summarizeVerification`) の入力はタブの status だけ** (#282)。検証結果から導出し直さない (Sidebar / TabBar と食い違う余地ができ、検証キューに載らない読めない proof が抜ける)。集約を出すのは `AppController.updateStatusBar` の 1 か所で、`StatusBarUI` は `setSummary` 以外の表示に切り替えるたびに data-proof-* を外す
 - **`data-status` の出所は `VerificationController` (`tabManager.updateTab` と同じ値を Sidebar / TabBar に流す) に一本化する**。Sidebar / TabBar は受け取った値を出すだけで、検証結果から導出し直さない (`ui/__tests__/fileStatusState.test.ts` が 3 者の一致を固定)
 - `#result-status-icon` の `data-level` は `TrustCalculator` の結果を描画したときだけ付ける。`ResultData.trustResult` は必須で、ResultPanel は TrustLevel を導出し直さない
 - 属性値は `escapeHtml` を通す (innerHTML 生成。自己申告 `mode` は proof 由来なので特に。#210)
