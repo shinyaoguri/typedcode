@@ -85,6 +85,11 @@ export interface EditorDriver {
   setLanguage(language: ModelLanguage): Promise<void>;
   /** リロードして復元する。タブ 0 本だったときは casual が既定タブを作るので、その id を返す。 */
   reload(hadNoTabs: boolean): Promise<string | null>;
+  /**
+   * ブラウザのタブを閉じて開き直し、復旧ダイアログから再開する。sessionStorage は消え、IndexedDB だけが
+   * 残るので、リロードとは別の復元経路 (IndexedDB からの復旧) を通る。
+   */
+  closeAndResume(): Promise<void>;
   focusLossAndReturn(): Promise<void>;
   /** 現タブを export し、verify-cli (--mode fast) の判定と proof の中身を `tab` と突き合わせる。 */
   exportCurrentTab(tab: Readonly<ModelTab>): Promise<void>;
@@ -295,6 +300,29 @@ export class Reload extends EditorCommand {
   }
 }
 
+/**
+ * ブラウザのタブを閉じて、開き直して復旧ダイアログの「再開」を押す (#450)。
+ * Reload が通るのは sessionStorage からの復元で、IndexedDB からの復旧 (古い currentHash の採用・
+ * タブ復元順の解決・タブ切替履歴の並び。#322 / #367 / #401) はこの手でしか通らない。
+ *
+ * モデルは何も変えない (タブ列・active・内容・言語・名前がそのまま復元される)。active の根拠:
+ * TabManager は保存のたびに session へ activeTabId を書き (`saveToIndexedDB` の `updateActiveTabId`)、
+ * 復旧で `session.activeTabId` を `switchTab` で戻す (`loadFromIndexedDB`)。閉じる前に同期を待つので、
+ * 閉じる前の active のまま復元される。件数は復旧で `sessionResumed` が足されるだけで減らない。
+ * タブ 0 本では復旧する保存済みのタブ行が無く、復旧ダイアログの前提が崩れるので生成しない。
+ */
+export class CloseAndResume extends EditorCommand {
+  check(m: Readonly<EditorModel>): boolean {
+    return m.tabs.length >= 1;
+  }
+  protected async step(_m: EditorModel, d: EditorDriver): Promise<void> {
+    await d.closeAndResume();
+  }
+  toString(): string {
+    return 'CloseAndResume()';
+  }
+}
+
 export class FocusLoss extends EditorCommand {
   check(): boolean {
     return true;
@@ -353,6 +381,7 @@ export function editorCommandArbitraries(): fc.Arbitrary<ModelCommand>[] {
     fc.constant(new InternalCopyPaste()),
     fc.constantFrom(...MODEL_LANGUAGES).map((l) => new SetLanguage(l)),
     fc.constant(new Reload()),
+    fc.constant(new CloseAndResume()),
     fc.constant(new FocusLoss()),
     fc.constant(new ExportCurrentTab()),
   ];
