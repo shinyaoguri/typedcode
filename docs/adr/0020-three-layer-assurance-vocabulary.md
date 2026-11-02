@@ -1,6 +1,6 @@
 # ADR-0020: 保証を三層語彙 (整合性 × 時刻アンカー × 著述性) で機械導出し表示する
 
-- **Status**: Accepted (integrity の値域は [ADR-0031](0031-integrity-partial-when-posw-skipped.md) で `partial` を追加)
+- **Status**: Accepted (integrity の値域は [ADR-0031](0031-integrity-partial-when-posw-skipped.md) で `partial` を追加。Decision 4 の「exam present → `exam-t0`」は #131 で「束縛が検証済み (`bindingValid === true`) のときに限る」に強化済み)
 - **Date**: 2026-06-12
 - **Deciders**: (PR 上の合意者 / レビュアー)
 - **PR / Commit**: (本 ADR と同一 PR)

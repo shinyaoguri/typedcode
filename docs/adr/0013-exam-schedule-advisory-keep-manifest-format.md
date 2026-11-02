@@ -3,7 +3,7 @@
 - **Status**: Accepted
 - **Date**: 2026-06-09
 - **Deciders**: (PR 上の合意者 / レビュアー)
-- **PR / Commit**: #NN
+- **PR / Commit**: (PR 番号なし、`810243a`)
 
 ## Context
 

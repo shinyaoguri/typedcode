@@ -1,6 +1,6 @@
 # ADR-0017: セッション開始 ECDSA トークンでチェーン根をサーバアンカーする
 
-- **Status**: Accepted
+- **Status**: Accepted。ただし **Decision 手順 5 (root の `issuedAt` 以降にチェーンが始まる) は未実装** — 署名 cp が無い proof ではイベントの timestamp が相対値 (`performance.now()` 基準) なので検査できず、署名 cp がある場合の比較 (初回 cp の `firstSeenAt >= issuedAt`) は時計のずれで正直な proof を落としうるため入れていない。入れるなら #226 で許容差付きの警告として検討する ([#232](https://github.com/shinyaoguri/typedcode/issues/232))
 - **Date**: 2026-06-12
 - **Deciders**: develop レビュー (Phase 7 / ADR-A)
 - **PR / Commit**: `feat/phase7-session-anchor`
@@ -41,7 +41,7 @@ casual / class proof のチェーン根は `root = SHA256(fingerprintHash ‖ lo
 - **採用: `PROOF_FORMAT_VERSION` 1.1.0 → 1.2.0、`MIN_SUPPORTED_VERSION` は 1.0.0 据え置き**。
   旧 proof (token 無し) は `rootAnchored:false` で受理 = 後方互換。`sessionStartToken` / `rootAnchored` は加算的フィールド。
 
-## Decision (proposed)
+## Decision
 
 セッション開始時に **ECDSA 署名済みトークンを 1 つ発行し、その `serverNonce` を root に焼く**。Turnstile でゲートする。
 

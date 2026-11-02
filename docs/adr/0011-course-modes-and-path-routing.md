@@ -1,6 +1,6 @@
 # ADR-0011: 授業・課題・試験を1ドメインのパスで分岐し、能力プリセットでモデル化する
 
-- **Status**: Accepted (実装済み)
+- **Status**: Accepted (実装済み)。ただし **§6 前半 (モードと能力集合をチェーンに焼く) は未実装** — `mode` は export 時に top-level へ付くだけでハッシュ対象外、能力集合は記録されない。§6 後半 (保証ラベルを実証拠から機械判定) は [ADR-0020](0020-three-layer-assurance-vocabulary.md) で実現した ([#232](https://github.com/shinyaoguri/typedcode/issues/232))
 - **Date**: 2026-06-07 (Accepted: 2026-06-08)
 - **Deciders**: (PR 上の合意者 / レビュアー)
 - **PR / Commit**: #81 (ADR) / #82 #83 #84 (PR1–3 実装。マージ済み)
