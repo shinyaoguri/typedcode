@@ -522,5 +522,6 @@ export async function handleSignCheckpoint(
 export function handlePublicKeys(responder: CorsResponder): Response {
   // 公開鍵 registry はビルド時に git から固定 (削除しないので長期検証可能)。
   const keys = CHECKPOINT_PUBLIC_KEYS.map(({ description, ...rest }) => rest);
-  return jsonResponse({ keys, cacheTtlSec: 86400 }, 200, responder.cors({ 'Cache-Control': 'public, max-age=3600' }));
+  // キャッシュの TTL は HTTP の Cache-Control に一本化する (body に別の TTL を持たない。#370)。
+  return jsonResponse({ keys }, 200, responder.cors({ 'Cache-Control': 'public, max-age=3600' }));
 }
