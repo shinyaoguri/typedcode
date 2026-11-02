@@ -53,15 +53,11 @@ export class PlaywrightEditorDriver implements EditorDriver {
   readonly lines: string[] = [];
   private lastTabClick: { id: string; at: number } | null = null;
   private runLabel = '';
-  /** 記録された contentSnapshot のイベント index (editor の console.log から拾う。#448 の回避 settleSnapshotLag 用) */
-  private readonly contentSnapshotIndexes = new Set<number>();
 
   constructor(readonly page: Page) {
     this.app = new EditorApp(page);
     page.on('pageerror', (e) => this.errors.push(`pageerror: ${e.message}`));
     page.on('console', (msg) => {
-      const snapshotAt = /Content snapshot recorded at event (\d+)/.exec(msg.text());
-      if (snapshotAt) this.contentSnapshotIndexes.add(Number(snapshotAt[1]));
       if (msg.type() === 'error' && !isAllowedConsoleError(msg.text())) {
         this.errors.push(`console.error: ${msg.text()} (${msg.location().url})`);
       }
@@ -191,7 +187,6 @@ export class PlaywrightEditorDriver implements EditorDriver {
 
   async expectMatches(model: EditorModel): Promise<void> {
     // 1. DOM の状態契約と内部状態が一致する (アクティブなタブの PoSW が掃けるまで待つ)。
-    await this.settleSnapshotLag();
     await this.app.expectConsistent();
     // 2. DOM のタブ列 (順序・id・filename・language) と active がモデルと一致する。
     const expectedTabs = model.tabs.map((t) => ({
@@ -227,34 +222,6 @@ export class PlaywrightEditorDriver implements EditorDriver {
     }
     // 4. pageerror と console.error が出ていない。
     expect(this.errors, 'no pageerror / console.error so far').toEqual([]);
-  }
-
-  /**
-   * 既知の不具合 #448 の回避: contentSnapshot (`ProofStatusDisplay.checkSnapshot` が 100 イベントごとに記録) は
-   * proof に載るのに `#event-count` / `#current-hash` の表示を更新しないので、それが手の最後のイベントだと
-   * 表示が遅れたまま止まり、`expectConsistent()` が落ちる (次のイベントで追いつく)。contentSnapshot が
-   * 2 件続けて記録されることもあり、そのときは 2 件遅れる。
-   * 「アクティブなタブの pending が 0・表示が k 件少ない・足りない k 件がどれも contentSnapshot」のときだけ、
-   * 内容を変えない打鍵 (Shift) を 1 回足して表示を追いつかせる。それ以外の食い違いはそのまま
-   * `expectConsistent()` に落とさせる。#448 が直ったら、このメソッドと呼び出し・contentSnapshotIndexes を消す。
-   */
-  private async settleSnapshotLag(): Promise<void> {
-    const read = async () => {
-      const snap = await this.app.snapshot();
-      return { tab: snap.tabs.find((t) => t.id === snap.activeTabId), dom: await this.app.eventCount() };
-    };
-    if (!(await read()).tab) return;
-    await expect.poll(async () => (await read()).tab?.pendingCount ?? 0, { timeout: 30_000 }).toBe(0);
-    const { tab, dom } = await read();
-    if (!tab || dom >= tab.totalEvents) return;
-    for (let i = dom; i < tab.totalEvents; i++) {
-      if (!this.contentSnapshotIndexes.has(i)) return;
-    }
-    this.log(
-      `  known lag: #event-count misses contentSnapshot at events ${dom}..${tab.totalEvents - 1}; pressing Shift`
-    );
-    await this.app.focusEditor();
-    await this.page.keyboard.press('Shift');
   }
 
   /** 末尾にカーソルを置く (補完の候補が出ていれば閉じる)。 */
