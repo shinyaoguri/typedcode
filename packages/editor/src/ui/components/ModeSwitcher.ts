@@ -31,7 +31,14 @@ export class ModeSwitcher {
   private opened = false;
   private readonly onOutside: (e: MouseEvent) => void;
 
-  constructor(private readonly current: EditorMode) {
+  /**
+   * @param onBeforeNavigate 別モードへ遷移する直前に呼ぶ。ui は AppContext を持たないので、
+   *   離脱確認の抑止 (`ctx.skipUnloadConfirm`) などは構築側が渡す (#445)。
+   */
+  constructor(
+    private readonly current: EditorMode,
+    private readonly onBeforeNavigate?: () => void
+  ) {
     this.root = document.createElement('div');
     this.root.className = 'mode-switcher';
     this.root.innerHTML = this.html();
@@ -81,6 +88,7 @@ export class ModeSwitcher {
       item.addEventListener('click', () => {
         const mode = item.dataset.mode as EditorMode;
         if (mode !== this.current) {
+          this.onBeforeNavigate?.();
           window.location.assign(`/${mode}`);
         } else {
           this.close();
