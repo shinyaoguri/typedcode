@@ -120,10 +120,13 @@ export class LandingPage {
       const { detectModeSessions } = await import('../../core/SessionDetector.js');
       const sessions = await detectModeSessions();
       for (const mode of ALL_EDITOR_MODES) {
-        const info = sessions[mode];
-        if (!info) continue;
         const badge = overlay.querySelector<HTMLElement>(`.landing-card-mode[data-mode="${mode}"] .session-badge`);
         if (!badge) continue;
+        const info = sessions[mode];
+        // 状態契約 (packages/editor/AGENTS.md「状態契約」): 検出が終わったら全カードに付ける
+        // (バッジを出すカードはタブ数、出さないカードは 0)。検出前・検出失敗では属性が無い。
+        badge.dataset.tabCount = String(info?.tabCount ?? 0);
+        if (!info) continue;
         badge.textContent = `${t('landing.resumeSession')} (${info.tabCount})`;
         badge.hidden = false;
       }

@@ -36,7 +36,7 @@ export class SelfReviewDialog {
         <div class="self-review-dialog" role="dialog" aria-modal="true">
           <div class="self-review-header">
             <h2>${t('selfReview.title')}</h2>
-            <button type="button" class="self-review-close" aria-label="${t('selfReview.cancel')}">×</button>
+            <button type="button" class="self-review-close" data-action="cancel" aria-label="${t('selfReview.cancel')}">×</button>
           </div>
           <p class="self-review-lead">${t('selfReview.lead')}</p>
           <div class="self-review-stats">
@@ -50,8 +50,8 @@ export class SelfReviewDialog {
             placeholder="${t('selfReview.notePlaceholder')}"></textarea>
           <p class="self-review-note-hint">${t('selfReview.noteHint')}</p>
           <div class="self-review-actions">
-            <button type="button" class="self-review-btn-cancel">${t('selfReview.cancel')}</button>
-            <button type="button" class="self-review-btn-proceed">${t('selfReview.proceed')}</button>
+            <button type="button" class="self-review-btn-cancel" data-action="cancel">${t('selfReview.cancel')}</button>
+            <button type="button" class="self-review-btn-proceed" data-action="proceed">${t('selfReview.proceed')}</button>
           </div>
         </div>
       `;
