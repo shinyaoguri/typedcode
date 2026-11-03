@@ -76,6 +76,9 @@ export const en: VerifyTranslationKeys = {
     chainDetail: '${current} / ${total} events',
     samplingDetail: '${current} events verified / ${total} events',
     samplingDetailWithTotal: '${current} events verified / ${total} events (${totalEvents} total)',
+    cancel: 'Cancel',
+    retry: 'Verify again',
+    cancelled: 'Verification cancelled',
   },
 
   result: {
@@ -246,6 +249,7 @@ export const en: VerifyTranslationKeys = {
     verifying: 'Verifying ${current}/${total}',
     summary: '${passed}/${total} proofs passed',
     summaryFailed: '${failed} failed',
+    summaryCancelled: '${cancelled} cancelled',
   },
 
   charts: {

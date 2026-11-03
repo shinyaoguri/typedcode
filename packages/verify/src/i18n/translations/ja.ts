@@ -76,6 +76,9 @@ export const ja: VerifyTranslationKeys = {
     chainDetail: '${current} / ${total} イベント',
     samplingDetail: '${current}イベント検証済み / ${total}イベント',
     samplingDetailWithTotal: '${current}イベント検証済み / ${total}イベント (全${totalEvents}イベント)',
+    cancel: 'キャンセル',
+    retry: '再検証',
+    cancelled: '検証をキャンセルしました',
   },
 
   result: {
@@ -245,6 +248,7 @@ export const ja: VerifyTranslationKeys = {
     verifying: '検証中 ${current}/${total}',
     summary: '${passed}/${total} 件 OK',
     summaryFailed: '失敗 ${failed} 件',
+    summaryCancelled: 'キャンセル ${cancelled} 件',
   },
 
   charts: {

@@ -131,6 +131,26 @@ Anchoring:   VERIFIED (12 signed checkpoints, 100.0% coverage)
 
 既定は 1 (fail-closed) です。0 になるのは全 proof の検証を最後まで終えて合格したときと `--help` だけで、外部 Analyzer が解決しないまま止まる等で途中で終わった場合も 1 になります (#315)。
 
+### 複数の提出物を並列に検証する
+
+CLI は渡された入力を 1 件ずつ順に検証します (並列実行のオプションはありません)。PoSW を再計算する `full` は 1 イベントあたり約 9 ms かかるので、提出物が多いときは `xargs -P` でプロセスを並べてください。入力ごとにログと exit code を分けておくと、どの提出物が落ちたかを後から拾えます (まとめて 1 プロセスに渡すと exit code は全体で 1 つになります)。
+
+```bash
+# submissions/ の ZIP を 4 並列で検証し、入力ごとに logs/<名前>.log と logs/<名前>.exit を残す
+mkdir -p logs
+find submissions -name '*.zip' -print0 |
+  xargs -0 -P 4 -I {} sh -c '
+    name=$(basename "$1" .zip)
+    typedcode-verify "$1" > "logs/$name.log" 2>&1
+    echo $? > "logs/$name.exit"
+  ' _ {}
+
+# exit code が 0 でなかった (= 検証失敗かエラー) 入力
+grep -L '^0$' logs/*.exit
+```
+
+exit code の意味は上の表と同じです (0 = その入力の全 proof が合格、1 = 失敗かエラー)。並列数はコア数とメモリ (ZIP 1 件ぶんを展開して持つ) に合わせて決めてください。
+
 ## 提出物の照合 (ZIP の同梱ソース)
 
 ZIP 入力では、proof ごとに、同梱されたソースが `proof.content` (検証済みの本文) と**バイト単位で一致するか**を照合し、結果を `--- Submission ---` 節に出します。proof を検証しても、同梱ソースが同じ内容である保証にはならないためです (採点するソースが、検証したものとずれます)。

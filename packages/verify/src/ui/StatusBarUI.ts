@@ -39,20 +39,26 @@ export class StatusBarUI {
 
   /**
    * 検証が全件済んだあとの集約 (#282)。`passed` は警告を含む (CLI の `valid` と同じ軸)。
-   * 数値は `data-proof-total/passed/failed` にも出す (E2E の状態契約。verify/AGENTS.md)。
+   * 数値は `data-proof-total/passed/failed/cancelled` にも出す (E2E の状態契約。verify/AGENTS.md)。
+   * キャンセル (未検証。#331) は失敗と別に数え、件数があるときだけ中立色で文言に添える。
    */
-  setSummary(summary: { passed: number; total: number; failed: number }): void {
-    const { passed, total, failed } = summary;
+  setSummary(summary: { passed: number; total: number; failed: number; cancelled: number }): void {
+    const { passed, total, failed, cancelled } = summary;
     this.clearSummaryState();
     const failedText =
       failed > 0 ? `<span class="status-summary-failed">${t('statusBar.summaryFailed', { failed })}</span>` : '';
+    const cancelledText =
+      cancelled > 0
+        ? `<span class="status-summary-cancelled">${t('statusBar.summaryCancelled', { cancelled })}</span>`
+        : '';
     this.queueStatus.innerHTML = `
       <i class="fas fa-${failed > 0 ? 'exclamation-circle' : 'check-circle'}"></i>
-      <span>${t('statusBar.summary', { passed, total })}</span>${failedText}
+      <span>${t('statusBar.summary', { passed, total })}</span>${failedText}${cancelledText}
     `;
     this.queueStatus.dataset.proofTotal = String(total);
     this.queueStatus.dataset.proofPassed = String(passed);
     this.queueStatus.dataset.proofFailed = String(failed);
+    this.queueStatus.dataset.proofCancelled = String(cancelled);
     if (failed > 0) {
       this.queueStatus.classList.add('clickable', 'has-failure');
       this.failedClickable = true;
@@ -63,6 +69,7 @@ export class StatusBarUI {
     delete this.queueStatus.dataset.proofTotal;
     delete this.queueStatus.dataset.proofPassed;
     delete this.queueStatus.dataset.proofFailed;
+    delete this.queueStatus.dataset.proofCancelled;
     this.queueStatus.classList.remove('clickable', 'has-failure');
     this.failedClickable = false;
   }

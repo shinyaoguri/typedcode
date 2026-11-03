@@ -209,6 +209,14 @@ export class ResultPanel {
   private vpOverallTime: HTMLElement;
   private vpDetail: HTMLElement;
   private vpDetailText: HTMLElement;
+  private vpRoot: HTMLElement;
+  private vpTitleText: HTMLElement;
+  private vpCancelBtn: HTMLButtonElement;
+  private vpRetryBtn: HTMLButtonElement;
+  /** 進捗表示の「キャンセル」(#331)。表示中のタブの検証を止める要求 (AppController が配線) */
+  onCancelRequested?: () => void;
+  /** キャンセル後の「再検証」(#331)。表示中のタブを並べ直す要求 (AppController が配線) */
+  onRetryRequested?: () => void;
   private progressStartTime: number = 0;
   private progressTimerInterval: number | null = null;
 
@@ -333,6 +341,12 @@ export class ResultPanel {
     this.vpOverallTime = document.getElementById('vp-overall-time')!;
     this.vpDetail = document.getElementById('vp-detail')!;
     this.vpDetailText = document.getElementById('vp-detail-text')!;
+    this.vpRoot = this.loading.querySelector<HTMLElement>('.verification-progress')!;
+    this.vpTitleText = document.getElementById('vp-title-text')!;
+    this.vpCancelBtn = document.getElementById('vp-cancel-btn') as HTMLButtonElement;
+    this.vpRetryBtn = document.getElementById('vp-retry-btn') as HTMLButtonElement;
+    this.vpCancelBtn.addEventListener('click', () => this.onCancelRequested?.());
+    this.vpRetryBtn.addEventListener('click', () => this.onRetryRequested?.());
 
     this.setupEventListeners();
   }
@@ -1076,8 +1090,39 @@ export class ResultPanel {
       this.updateElapsedTime();
     }, 100);
 
+    // 検証中 (待機中を含む) はキャンセルを押せる (#331)
+    this.setProgressActions('running');
+
     this.show();
     this.showLoading();
+  }
+
+  /**
+   * 検証をキャンセルしたタブの表示 (#331)。判定は無いので進捗 UI のまま「キャンセルした」と再検証の導線を出す。
+   * showLoading が判定の data-* を外す (状態契約: 判定を表示していない間は属性を付けない)。
+   */
+  showCancelled(filename: string): void {
+    this.stopProgressTimer();
+    this.vpFilename.textContent = filename;
+    this.vpOverallFill.style.width = '0%';
+    this.vpOverallPercent.textContent = '0%';
+    this.vpOverallTime.textContent = '0:00';
+    this.resetProgressSteps();
+    this.setProgressActions('cancelled');
+    this.show();
+    this.showLoading();
+  }
+
+  /**
+   * 進捗ヘッダの見出しと操作ボタンを切り替える。running = 検証中 (キャンセル可)、
+   * cancelled = キャンセル済み (再検証可)、settled = 完了・エラー (どちらも出さない)。
+   */
+  private setProgressActions(state: 'running' | 'cancelled' | 'settled'): void {
+    const cancelled = state === 'cancelled';
+    this.vpRoot.classList.toggle('vp-cancelled', cancelled);
+    this.vpTitleText.textContent = cancelled ? t('progress.cancelled') : t('progress.verifying');
+    this.vpCancelBtn.hidden = state !== 'running';
+    this.vpRetryBtn.hidden = !cancelled;
   }
 
   /**
@@ -1277,6 +1322,7 @@ export class ResultPanel {
    */
   finishProgress(): void {
     this.stopProgressTimer();
+    this.setProgressActions('settled');
     this.updateOverallProgress(100);
     this.updateStepStatus('complete', 'success', t('progress.statusDone'));
   }
@@ -1286,6 +1332,7 @@ export class ResultPanel {
    */
   errorProgress(step: VerificationStepType, errorMessage?: string): void {
     this.stopProgressTimer();
+    this.setProgressActions('settled');
     this.updateStepStatus(step, 'error', t('progress.statusError'));
     if (errorMessage) {
       this.showProgressDetail(errorMessage);
