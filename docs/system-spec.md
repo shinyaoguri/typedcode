@@ -687,7 +687,7 @@ interface ExamProofBlock {
 
 1. dev 鍵生成: `npm run gen-checkpoint-key -w @typedcode/workers`
 2. 出力された公開鍵 entry を `packages/shared/src/checkpointKeys/localKeys.ts` に append
-3. **skip-worktree**: `git update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts` (誤コミット防止)
+3. `localKeys.ts` は gitignore 済み (誤コミット防止。#338)。無ければ `npm install` (postinstall) / e2e の setup / `npm run doctor` が `localKeys.ts.example` から作る (既存は上書きしない)
 4. 出力された秘密鍵 JWK / keyId を `packages/workers/.dev.vars` に貼る
 5. dev KV namespace 作成 (上記 9.1 ステップ 1 と同じ)、`wrangler.toml` 編集
 6. **skip-worktree**: `git update-index --skip-worktree packages/workers/wrangler.toml`

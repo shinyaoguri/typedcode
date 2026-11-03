@@ -6,11 +6,17 @@
  */
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { isKeyIdRegistered, readSigningKeyId, setupEnv } from './setup-env.mjs';
+
+const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+const CHECKPOINT_EXAMPLE = 'packages/shared/src/checkpointKeys/localKeys.ts.example';
+const EXAM_EXAMPLE = 'packages/shared/src/examAuthorityKeys/localKeys.ts.example';
 
 const SECRET_JWK = '{"kty":"EC","crv":"P-256","d":"SECRET-D-VALUE","x":"xx","y":"yy"}';
 const EMPTY_LOCAL_KEYS = 'export const LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [];\n';
@@ -23,6 +29,7 @@ function paths() {
     devVars: join(root, 'packages/workers/.dev.vars'),
     registry: join(root, 'packages/shared/src/checkpointKeys/registry.ts'),
     localKeys: join(root, 'packages/shared/src/checkpointKeys/localKeys.ts'),
+    examLocalKeys: join(root, 'packages/shared/src/examAuthorityKeys/localKeys.ts'),
     editorEnv: join(root, 'packages/editor/.env'),
   };
 }
@@ -42,7 +49,10 @@ beforeEach(() => {
   const p = paths();
   mkdirSync(join(root, 'packages/workers'), { recursive: true });
   mkdirSync(join(root, 'packages/shared/src/checkpointKeys'), { recursive: true });
+  mkdirSync(join(root, 'packages/shared/src/examAuthorityKeys'), { recursive: true });
   mkdirSync(join(root, 'packages/editor'), { recursive: true });
+  // setup は最初に無い localKeys.ts を .example から作る (#338)。実リポの .example をそのまま置く
+  for (const example of [CHECKPOINT_EXAMPLE, EXAM_EXAMPLE]) copyFileSync(join(REPO_ROOT, example), join(root, example));
   writeFileSync(p.registry, REGISTRY);
   writeFileSync(p.localKeys, EMPTY_LOCAL_KEYS);
 });
@@ -135,5 +145,38 @@ describe('setupEnv without .dev.vars', () => {
 
     const second = await run();
     assert.equal(second.code, 0);
+  });
+});
+
+describe('setupEnv and the local key files (#338)', () => {
+  it('creates the exam authority localKeys.ts from its example even when .dev.vars already exists', async () => {
+    const p = paths();
+    writeFileSync(p.devVars, devVarsWith('CHECKPOINT_SIGNING_KEY_ID=tcp-prod-2026'));
+
+    const { code } = await run();
+
+    assert.equal(code, 0);
+    assert.equal(readFileSync(p.examLocalKeys, 'utf8'), readFileSync(join(root, EXAM_EXAMPLE), 'utf8'));
+  });
+
+  it('leaves git status clean in a checkout that has the repository .gitignore', async () => {
+    const git = (...args) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.name=e2e', '-c', 'user.email=e2e@example.invalid', '-c', 'commit.gpgsign=false', ...args],
+        { cwd: root, encoding: 'utf8' }
+      );
+    // 生成ルート (.dev.vars 無し) は localKeys.ts を両方とも作り、checkpoint の方は鍵を書き込む
+    rmSync(paths().localKeys);
+    copyFileSync(join(REPO_ROOT, '.gitignore'), join(root, '.gitignore'));
+    git('init', '-q');
+    git('add', '-A');
+    git('commit', '-q', '--no-verify', '-m', 'fixture');
+
+    const { code } = await run();
+
+    assert.equal(code, 0);
+    assert.equal(existsSync(paths().examLocalKeys), true);
+    assert.equal(git('status', '--porcelain', '--untracked-files=all'), '');
   });
 });

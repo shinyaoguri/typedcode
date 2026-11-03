@@ -39,7 +39,8 @@
 
 鍵管理:
 - **本番鍵**: `packages/shared/src/checkpointKeys/registry.ts` に **append-only** で追加。失効は `status: 'revoked'` で表現し、エントリは削除しない (古い proof の検証用に残す)
-- **開発鍵**: `packages/shared/src/checkpointKeys/localKeys.ts` に書き、`git update-index --skip-worktree` で隠す。CI ビルドには含まれない
+- **開発鍵**: `packages/shared/src/checkpointKeys/localKeys.ts` に書き、git の管理から隠す。CI ビルドには含まれない
+  - (#338 で gitignore に変更: 当初は空配列のファイルを追跡したうえで `git update-index` のインデックス単位のフラグで隠していたが、worktree 間で共有されず、e2e の setup が書き換えた鍵が誤コミットされる経路が残った。いまは追跡せず、無ければ `npm install` (postinstall) が `localKeys.ts.example` から作る)
 - **秘密鍵**: 本番は `wrangler secret put`、開発は `.dev.vars`。git には絶対に入れない
 - **発行ツール**: `npm run gen-checkpoint-key -w @typedcode/workers` で公開鍵 / 秘密鍵 / keyId を一括生成
 

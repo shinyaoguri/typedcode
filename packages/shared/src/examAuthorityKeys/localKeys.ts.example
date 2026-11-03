@@ -1,0 +1,29 @@
+/**
+ * ローカル開発用の追加 exam authority 公開鍵 (ADR-0006、gitignored)。
+ *
+ * `localKeys.ts` は git で追跡しない (#338)。無ければ `npm install` (postinstall)・
+ * e2e の setup (`npm run setup -w @typedcode/e2e`)・`npm run doctor` がこのファイルから
+ * コピーして作る (既にあれば上書きしない)。手で作るなら:
+ *   cp localKeys.ts.example localKeys.ts
+ *
+ * 次に `npm run gen-exam-authority-key -w @typedcode/workers` を実行し、
+ * 出力された公開鍵エントリを LOCAL_EXAM_AUTHORITY_KEYS に append する。
+ * `registry.ts` の本番鍵リストとマージして使われる。
+ *
+ * gitignored なので、各出題者の dev 鍵がコミットされて本番の verifier に
+ * 信頼されることはない。本番公開鍵は `registry.ts` に append し、PR でレビューする。
+ */
+
+import type { ExamAuthorityKey } from './registry.js';
+
+export const LOCAL_EXAM_AUTHORITY_KEYS: readonly ExamAuthorityKey[] = [
+  // 例 (gen-exam-authority-key の出力をそのまま貼る):
+  // {
+  //   keyId: 'exam-202605-xxxxxx',
+  //   algorithm: 'ECDSA-P256',
+  //   publicKeyJwk: { kty: 'EC', crv: 'P-256', x: '...', y: '...' },
+  //   status: 'active',
+  //   validFrom: '2026-05-28T00:00:00Z',
+  //   description: 'My dev exam authority key (do not use in production)',
+  // },
+] as const;

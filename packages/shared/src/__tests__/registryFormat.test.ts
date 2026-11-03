@@ -6,7 +6,7 @@
  * それは「typo った鍵で署名されたものが全部落ちる」という事後の壊れ方でしかない。
  * typo は**この形式テストが CI で止める**のが本命。
  *
- * 検査対象は merged なレジストリ (registry.ts + tracked な localKeys.ts) の両系統。
+ * 検査対象は merged なレジストリ (registry.ts + 手元の localKeys.ts。gitignore 済み。#338) の両系統。
  *
  * 注: `Date.parse` は寛容で、`'2026-02-30T00:00:00Z'` のような溢れた日付を
  * ロールオーバーして受け入れてしまう (実測)。ここでは厳密な ISO-8601 (UTC) 正規表現と
