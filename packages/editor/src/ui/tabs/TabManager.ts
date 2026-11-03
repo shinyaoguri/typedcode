@@ -31,6 +31,7 @@ import {
 import { performVerificationWithUI } from './TabVerificationUI.js';
 import { resolveRestoreOrder } from './restoreOrder.js';
 import { shouldRecordTabSwitch } from './tabSwitchPolicy.js';
+import { type SyncStatus, type PersistOutcome, resolveSyncStatus, isPersistFailure } from './syncStatus.js';
 import { t } from '../../i18n/index.js';
 import {
   type SessionStorageService,
@@ -78,8 +79,8 @@ export type OnVerificationCallback = (result: VerificationResult) => void;
 /** タブ作成コールバック (#405) */
 export type OnTabCreatedCallback = (tab: TabState) => void;
 
-/** 同期状態 */
-export type SyncStatus = 'synced' | 'syncing' | 'pending';
+/** 同期状態と保存の結果 (定義は syncStatus.ts。main.ts などはここから import する) */
+export type { SyncStatus, PersistOutcome };
 
 /** 同期状態変更コールバック */
 export type OnSyncStatusChangeCallback = (status: SyncStatus) => void;
@@ -156,6 +157,14 @@ export class TabManager {
   private persistenceSuspended = false;
   /** デバウンス待ち時間（ミリ秒） */
   private static readonly SAVE_DEBOUNCE_MS = 100;
+  /** 保存に失敗したときの再試行間隔の初期値 (#543)。失敗が続くと倍々に延ばす */
+  private static readonly SAVE_RETRY_INITIAL_MS = 2_000;
+  /** 保存の再試行間隔の上限 (#543) */
+  private static readonly SAVE_RETRY_MAX_MS = 60_000;
+  /** 保存の再試行タイマー (#543)。失敗した保存の後にだけ張る */
+  private saveRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 次に失敗したときの再試行間隔。成功で初期値に戻す */
+  private saveRetryDelayMs = TabManager.SAVE_RETRY_INITIAL_MS;
   /** 現在の同期状態 */
   private currentSyncStatus: SyncStatus = 'synced';
   /**
@@ -926,6 +935,7 @@ export class TabManager {
       clearTimeout(this.saveDebounceTimer);
       this.saveDebounceTimer = null;
     }
+    this.cancelSaveRetry();
     this.needsSave = false;
   }
 
@@ -945,7 +955,7 @@ export class TabManager {
       this.saveDebounceTimer = null;
     }
 
-    // sessionStorageに即座に保存
+    // sessionStorageに即座に保存 (成否はページを離れる直前なので表示に使わない)
     this.saveToSessionStorage();
 
     // needsSaveをクリア（この保存で最新状態が保存された）
@@ -970,8 +980,11 @@ export class TabManager {
     // 次の保存が必要であることをマーク
     this.needsSave = true;
 
-    // 保存待ち状態を通知
-    this.updateSyncStatus('pending');
+    // 保存待ち状態を通知。保存の失敗を表示している間は上書きしない (#543。打鍵のたびに
+    // 失敗表示を点滅させない。状態を変えるのは次の永続化の結果だけ)
+    if (!isPersistFailure(this.currentSyncStatus)) {
+      this.updateSyncStatus('pending');
+    }
 
     // デバウンス：短時間に複数回呼ばれた場合は最後の呼び出しのみ実行
     if (this.saveDebounceTimer) {
@@ -999,35 +1012,97 @@ export class TabManager {
     // needsSaveをクリアしてから保存開始
     // 保存中に新しいsaveToStorage()が呼ばれたらneedsSaveが再度trueになる
     this.needsSave = false;
+    // この保存が再試行を兼ねる (#543)
+    this.cancelSaveRetry();
 
-    // 同期中状態を通知
-    this.updateSyncStatus('syncing');
+    // 同期中状態を通知 (保存の失敗を表示している間は上書きしない。#543)
+    if (!isPersistFailure(this.currentSyncStatus)) {
+      this.updateSyncStatus('syncing');
+    }
 
-    this.currentSavePromise = (async () => {
-      try {
-        // IndexedDBに先に保存
-        await this.saveToIndexedDB();
-        // IndexedDB保存完了後にsessionStorageを更新
-        this.saveToSessionStorage();
-      } catch (e) {
-        console.error('[TabManager] Failed to save to IndexedDB:', e);
-        // IndexedDBの保存に失敗しても、sessionStorageには保存する
-        this.saveToSessionStorage();
-      }
-    })();
+    // persistAll は reject しない (失敗は結果で返る)
+    const save = this.persistAll();
+    this.currentSavePromise = save.then(() => undefined);
 
-    this.currentSavePromise.then(() => {
+    void save.then((outcome) => {
       this.currentSavePromise = null;
 
       // 保存中に新しい保存要求があった場合、最新状態で再保存
       if (this.needsSave) {
         this.executeSave();
       } else {
-        // pendingEventsがあるかチェック
-        const hasPending = this.hasPendingEvents();
-        this.updateSyncStatus(hasPending ? 'pending' : 'synced');
+        this.settleSyncStatus(outcome);
       }
     });
+  }
+
+  /**
+   * IndexedDB → sessionStorage の順に保存し、それぞれの成否を返す (#543)。reject しない。
+   *
+   * IndexedDB への保存が完了してから sessionStorage を更新する (データ整合性)。IndexedDB が
+   * 失敗しても sessionStorage には保存する (リロードで復元できる最後の砦)。
+   */
+  private async persistAll(): Promise<PersistOutcome> {
+    let idbOk = true;
+    let error: unknown;
+    try {
+      await this.saveToIndexedDB();
+    } catch (e) {
+      idbOk = false;
+      error = e;
+      console.error('[TabManager] Failed to save to IndexedDB:', e);
+    }
+
+    let sessionStorageOk: boolean;
+    try {
+      sessionStorageOk = this.saveToSessionStorage();
+    } catch (e) {
+      sessionStorageOk = false;
+      console.error('[TabManager] Failed to save to sessionStorage:', e);
+    }
+
+    return idbOk ? { idbOk, sessionStorageOk } : { idbOk, sessionStorageOk, error };
+  }
+
+  /**
+   * 保存の結果から同期状態を確定させる (#543)。失敗なら再試行を張り、成功なら再試行の間隔を戻す。
+   */
+  private settleSyncStatus(outcome: PersistOutcome): void {
+    const status = resolveSyncStatus({
+      idbOk: outcome.idbOk,
+      sessionStorageOk: outcome.sessionStorageOk,
+      hasPendingEvents: this.hasPendingEvents(),
+    });
+    this.updateSyncStatus(status);
+    if (isPersistFailure(status)) {
+      this.scheduleSaveRetry();
+    } else {
+      this.saveRetryDelayMs = TabManager.SAVE_RETRY_INITIAL_MS;
+    }
+  }
+
+  /**
+   * 失敗した保存の再試行を張る (#543)。間隔は SAVE_RETRY_INITIAL_MS から倍々で SAVE_RETRY_MAX_MS まで。
+   * 待っている間に新しい保存要求が来たら、そのデバウンス保存 (executeSave) が取り消して自分で試す。
+   */
+  private scheduleSaveRetry(): void {
+    if (this.persistenceSuspended) return;
+    this.cancelSaveRetry();
+    const delay = this.saveRetryDelayMs;
+    this.saveRetryDelayMs = Math.min(delay * 2, TabManager.SAVE_RETRY_MAX_MS);
+    this.saveRetryTimer = setTimeout(() => {
+      this.saveRetryTimer = null;
+      // 実行中・デバウンス中の保存があれば、その結果が状態を決める
+      if (this.currentSavePromise || this.saveDebounceTimer) return;
+      this.executeSave();
+    }, delay);
+  }
+
+  private cancelSaveRetry(): void {
+    if (this.saveRetryTimer) {
+      clearTimeout(this.saveRetryTimer);
+      this.saveRetryTimer = null;
+    }
   }
 
   /**
@@ -1044,11 +1119,12 @@ export class TabManager {
 
   /**
    * sessionStorageに軽量版を保存
+   * @returns 保存できたか (リセット確定後で書かなかった場合は true。#543)
    * @private
    */
-  private saveToSessionStorage(): void {
+  private saveToSessionStorage(): boolean {
     // リセット確定後に保存が走ると、消したはずのタブ状態が sessionStorage に戻ってリロードで復元される (#323)
-    if (this.persistenceSuspended) return;
+    if (this.persistenceSuspended) return true;
 
     const sessionId = this.sessionService.getCurrentSessionId() ?? '';
 
@@ -1079,12 +1155,14 @@ export class TabManager {
     // sessionStorageに保存（リロード用、軽量版）
     try {
       sessionStorage.setItem(tabsKey(), JSON.stringify(storage));
+      return true;
     } catch (e) {
       if (e instanceof DOMException && e.name === 'QuotaExceededError') {
         console.warn('[TabManager] sessionStorage quota exceeded - content may be too large');
       } else {
         console.error('[TabManager] Failed to save to sessionStorage:', e);
       }
+      return false;
     }
   }
 
@@ -1188,12 +1266,15 @@ export class TabManager {
    * IndexedDBへの保存を完了させる（エクスポート前やbeforeunloadで呼び出す）
    *
    * 以下の処理を行う：
-   * 1. デバウンスタイマーが動作中ならキャンセル
+   * 1. デバウンスタイマー・再試行タイマーが動作中ならキャンセル
    * 2. 現在実行中の保存処理があれば完了を待機
    * 3. needsSaveがtrueなら（保存待ちの変更があれば）最新状態を保存
    * 4. 最新の状態を確実にIndexedDBに保存
+   *
+   * reject しない (#543)。保存の成否は戻り値で返す。export は proof をメモリ上のチェーンから
+   * 作るので、保存先の障害で止めない (失敗の扱いは呼び出し側が決める)。
    */
-  async flushToIndexedDB(): Promise<void> {
+  async flushToIndexedDB(): Promise<PersistOutcome> {
     debugLog('[TabManager] Flushing to IndexedDB...');
 
     // 1. デバウンスタイマーがあればキャンセル（即座に保存するため）
@@ -1202,11 +1283,14 @@ export class TabManager {
       this.saveDebounceTimer = null;
     }
 
-    // 2. 現在実行中の保存処理があれば完了を待機
+    // 2. 現在実行中の保存処理があれば完了を待機 (reject しない)
     if (this.currentSavePromise) {
       debugLog('[TabManager] Waiting for current save to complete...');
       await this.currentSavePromise;
     }
+
+    // この flush が再試行を兼ねる (待っている間に張られた再試行も含めて取り消す。#543)
+    this.cancelSaveRetry();
 
     // 3. needsSaveがtrue（デバウンス中に変更があった）、または
     //    念のため最新状態を保存
@@ -1214,17 +1298,17 @@ export class TabManager {
     // saveToStorage() は needsSave を立て直すので、その要求を握りつぶさずに残せる
     this.needsSave = false;
     debugLog('[TabManager] Saving latest state to IndexedDB...');
-    await this.saveToIndexedDB();
-    this.saveToSessionStorage();
+    const outcome = await this.persistAll();
 
     // 4. 同期状態を確定する (#456)
     // 1. でデバウンスタイマーを取り消したので、状態を決める executeSave の完了処理は走らない。
     // flush の間に新しい保存要求が来ていれば (needsSave・タイマー・実行中の保存)、その保存が決める
     if (!this.needsSave && !this.saveDebounceTimer && !this.currentSavePromise) {
-      this.updateSyncStatus(this.hasPendingEvents() ? 'pending' : 'synced');
+      this.settleSyncStatus(outcome);
     }
 
     debugLog('[TabManager] IndexedDB flush complete');
+    return outcome;
   }
 
   /**

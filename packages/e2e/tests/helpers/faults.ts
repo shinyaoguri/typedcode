@@ -97,6 +97,14 @@ interface PageFaultLog {
   quotaFailures: number;
   /** `getDisplayMedia` が返した stream (新しい順ではなく取得順) */
   displayStreams: MediaStream[];
+  /** `injectTransactionAbort` が abort させた transaction の数 (#543) */
+  transactionAborts?: number;
+  /** 保存先の注入で差し替える前の関数 (`restoreStorageFaults` が戻す。#543) */
+  storageOriginals?: {
+    add: IDBObjectStore['add'];
+    put: IDBObjectStore['put'];
+    setItem: Storage['setItem'];
+  };
 }
 
 /**
@@ -164,6 +172,12 @@ export async function injectQuotaExceeded(page: Page, scope: 'idb' | 'idbAndSess
     const w = window as unknown as { __tcFaults?: PageFaultLog };
     w.__tcFaults ??= { idbOpenFailures: 0, quotaFailures: 0, displayStreams: [] };
     const log = w.__tcFaults;
+    // 解除 (restoreStorageFaults) のために、最初の注入の前の関数を退避する
+    log.storageOriginals ??= {
+      add: IDBObjectStore.prototype.add,
+      put: IDBObjectStore.prototype.put,
+      setItem: Storage.prototype.setItem,
+    };
     const fail = () => {
       log.quotaFailures += 1;
       throw new DOMException('injected', 'QuotaExceededError');
@@ -182,9 +196,77 @@ export async function injectQuotaExceeded(page: Page, scope: 'idb' | 'idbAndSess
   }, scope);
 }
 
-/** `injectQuotaExceeded` が投げた回数。 */
+/** `injectQuotaExceeded` が投げた回数 (`injectTransactionAbort` の `setItem` の失敗も数える)。 */
 export function quotaFailureCount(page: Page): Promise<number> {
   return page.evaluate(() => (window as unknown as { __tcFaults?: PageFaultLog }).__tcFaults?.quotaFailures ?? 0);
+}
+
+/**
+ * request の success の後に transaction を abort させる (#543 / #300 の受け入れ条件 2)。起動して
+ * `waitForSynced` を待った後に呼ぶ。容量切れなどで commit の時点で失敗する、の再現。
+ *
+ * - `idb`: `IDBObjectStore.prototype.put` の request が success した後に、その transaction を `abort()` する
+ * - `idbAndSessionStorage`: 上に加えて `Storage.prototype.setItem` が QuotaExceeded を投げる
+ *
+ * 包むのは `put` だけ。保存の経路 (`appendEvent` の events の add → tabs 行の get → put、`saveTab`、
+ * `updateSession`) はどれも put が transaction の最後の request なので、その後に abort すると待ちの
+ * request が無く、`error` は来ずに `abort` だけが来る (commit 時の失敗と同じ形。`onabort` を待たない
+ * 実装はここで永遠に settle しない)。`add` の後に abort すると、`appendEvent` が同じ transaction に足した
+ * get が AbortError で失敗して `error` が bubble するので、`onabort` を待たない実装でも reject してしまい
+ * 再現にならない。
+ *
+ * request の `onsuccess` は呼び出し側が request を受け取った直後に同期で設定するので、microtask で
+ * それを包み直し、呼び出し側のハンドラを走らせてから abort する (先に abort すると、ハンドラが
+ * 終わった transaction に触って throw し、別の壊れ方になる)。abort した回数は `transactionAbortCount` で読む。
+ */
+export async function injectTransactionAbort(page: Page, scope: 'idb' | 'idbAndSessionStorage'): Promise<void> {
+  await page.evaluate((s) => {
+    const w = window as unknown as { __tcFaults?: PageFaultLog };
+    w.__tcFaults ??= { idbOpenFailures: 0, quotaFailures: 0, displayStreams: [] };
+    const log = w.__tcFaults;
+    log.storageOriginals ??= {
+      add: IDBObjectStore.prototype.add,
+      put: IDBObjectStore.prototype.put,
+      setItem: Storage.prototype.setItem,
+    };
+    log.transactionAborts ??= 0;
+    const originalPut = log.storageOriginals.put;
+    IDBObjectStore.prototype.put = function put(this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+      const request = originalPut.call(this, value, key);
+      const transaction = this.transaction;
+      queueMicrotask(() => {
+        const handler = request.onsuccess;
+        request.onsuccess = function onsuccess(this: IDBRequest, event: Event) {
+          handler?.call(this, event);
+          log.transactionAborts = (log.transactionAborts ?? 0) + 1;
+          transaction.abort();
+        };
+      });
+      return request;
+    };
+    if (s === 'idbAndSessionStorage') {
+      Storage.prototype.setItem = function setItem() {
+        log.quotaFailures += 1;
+        throw new DOMException('injected', 'QuotaExceededError');
+      };
+    }
+  }, scope);
+}
+
+/** `injectTransactionAbort` が abort させた transaction の数。 */
+export function transactionAbortCount(page: Page): Promise<number> {
+  return page.evaluate(() => (window as unknown as { __tcFaults?: PageFaultLog }).__tcFaults?.transactionAborts ?? 0);
+}
+
+/** `injectQuotaExceeded` / `injectTransactionAbort` の注入を外し、元の `add` / `put` / `setItem` に戻す。 */
+export async function restoreStorageFaults(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const originals = (window as unknown as { __tcFaults?: PageFaultLog }).__tcFaults?.storageOriginals;
+    if (!originals) throw new Error('no storage fault was injected');
+    IDBObjectStore.prototype.add = originals.add;
+    IDBObjectStore.prototype.put = originals.put;
+    Storage.prototype.setItem = originals.setItem;
+  });
 }
 
 /**

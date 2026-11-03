@@ -7,6 +7,7 @@
  *   EventRecorder と TabManager.saveToIndexedDB が同じイベントを二重に書くため正常系)。hash が違えば
  *   二重インスタンスの競合として reject し、tabs を汚さない (#484 / #237)
  * - clearSession / deleteTab が対象のストアを消す (#317 で変えるときに赤くなる)
+ * - 書き込みは transaction の commit で成功とし、request の success の後に abort されたら reject する (#543)
  *
  * vitest は node 環境なので、`indexedDB` はテストごとに新しい `IDBFactory` を差して DB を分離する。
  */
@@ -16,6 +17,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import type { StoredEvent, StoredTabData, StoredScreenshotData, TabSwitchEvent } from '@typedcode/shared';
 import { setStorageNamespace } from '../../core/storageKeys.js';
 import { SessionStorageService, EventChainConflictError, SessionOwnershipError } from '../SessionStorageService.js';
+import { abortTransactionsAfterWriteSuccess, settleWithin, type InjectedAbort } from './idbFaults.js';
 
 function makeEvent(sequence: number, overrides: Partial<StoredEvent> = {}): StoredEvent {
   return {
@@ -407,6 +409,46 @@ describe('SessionStorageService', () => {
       await service.deleteTab('tab-1');
 
       expect((await service.getLatestSession())?.sessionId).toBe(opened.sessionId);
+    });
+  });
+
+  describe('transaction aborted after the write request succeeded (#543)', () => {
+    let injected: InjectedAbort | null = null;
+
+    afterEach(() => {
+      injected?.restore();
+      injected = null;
+    });
+
+    it('appendEvent rejects instead of hanging', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+      // appendEvent は events の add → tabs の get → tabs の put を 1 つの transaction で行う。最後の put の後に
+      // abort させると待ちの request が無く、error は来ずに abort だけが来る (commit 時の失敗と同じ形)
+      injected = abortTransactionsAfterWriteSuccess(['put']);
+
+      await expect(settleWithin(service.appendEvent('tab-1', makeEvent(0)))).rejects.toThrow(/Failed to append event/);
+      expect(injected.aborted()).toBe(1);
+    });
+
+    it('saveTab rejects', async () => {
+      const opened = await openService();
+      service = opened.service;
+      injected = abortTransactionsAfterWriteSuccess(['put']);
+
+      await expect(settleWithin(service.saveTab(makeTab('tab-1', opened.sessionId)))).rejects.toThrow(
+        /Failed to put to tabs/
+      );
+    });
+
+    it('createSession rejects and does not adopt the session id', async () => {
+      service = new SessionStorageService();
+      await service.initialize();
+      injected = abortTransactionsAfterWriteSuccess(['add']);
+
+      await expect(settleWithin(service.createSession())).rejects.toThrow(/Failed to create session/);
+      expect(service.getCurrentSessionId()).toBeNull();
     });
   });
 

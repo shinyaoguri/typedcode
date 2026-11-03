@@ -16,6 +16,7 @@
 
 ### 修正
 
+- editor の同期状態が、IndexedDB や sessionStorage への保存に失敗しても `Synced` (同期済み) と表示していた問題を直した。保存の結果で状態を決め、片方にだけ保存できたら `degraded` (一部のみ保存)、どちらにも保存できなかったら `failed` (保存失敗) を出し、2 秒から倍々 (上限 60 秒) の間隔で再試行して、書けるようになったら `synced` に戻す。IndexedDB の書き込みは transaction の commit (`oncomplete`) で成功とし、abort (`onabort`) でも失敗にするので、commit の時点で abort されても保存と export がハングしない。export 前の保存が失敗しても、警告を残して export (proof はメモリ上のチェーンから作る) を続ける (#543)
 - editor で `recordToAllTabs` / `recordSessionSnapshotTo` (windowResize・visibility / focus・スクリーンショット系・fullscreen・sessionResumed・起動時ワンショットの流し直しなど) が記録したイベントも、`record()` と同じく確定ごとに IndexedDB へ 1 件ずつ append するようにした。これまでは TabManager のデバウンス保存だけが頼りで、直後に打鍵が続くと後続の seq だけが先に入って events に欠番ができ、そのまま落ちると復元したチェーンが欠番で切れた。この append もタブを閉じる後始末 (確定 → append → 削除) の待ち対象に入る (#471)
 - ja の設定メニューで `settings.verifyProof` と `settings.toggleTheme` が英語 (「Verify Proof」「Toggle Theme」) のままだったのを、「証明を検証」「テーマを切り替え」に訳した。en は変えていない (#518)
 - verify-cli が、ZIP に同梱されたソースが `proof.content` と違っても `Verification PASSED` / exit 0 にしていた問題を直した。proof ごとに、同梱ソースを proof の `filename` と `language` から editor と同じ手順で作った期待名で対にして、バイト単位で照合する (改行・BOM は正規化しない)。不一致と、対応を一意に決められない場合は exit 1、ソース欠落と孤立ソースは警告で exit code に影響しない。`Integrity: PROVEN` は変わらず、結果は `--- Submission ---` 節に出る。verify (Web) も同じ shared の関数で突き合わせ、不一致のタブを error にする。これまで Web は proof 名の `_proof.json` を剥がしたベース名で引いていたので、同名のタブの 2 つ目 (`main_proof_1.json` ↔ `main_1.c`) は黙って未照合だった。言語 → 拡張子の表と export のファイル名の付け方は shared へ移し、editor の export もそれを使う。`--extract-sources` は #409 (#293)

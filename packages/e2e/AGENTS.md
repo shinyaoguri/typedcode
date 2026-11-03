@@ -27,11 +27,11 @@ tests/
 ├── helpers/verifyWeb.ts  # VerifyWebApp: 検証 Web を開き #file-input に ZIP/JSON を渡し、data-* の状態契約だけを読む
 ├── helpers/scenario.ts   # 利用シーン網羅 (scenarios/) の操作とフィクスチャ: .tcclass / テンプレート YAML、メニュー操作、問題の読み込み、マウスでのドラッグ・リサイズ、ファイルのドロップ、ノート付き export (app.ts は並行作業と衝突しないよう触らずここに置く)
 ├── helpers/examFixture.ts # exam の fixture (fixtures/exam/fixture.json) を読む: 監督コード・パッケージのパス・出題者鍵の keyId
-├── helpers/faults.ts     # 障害注入 (#435): Workers の API を 1 つずつ 503 / abort / hang (呼び出し回数を返す)、Turnstile のスクリプトの遮断、IndexedDB の open 失敗・QuotaExceeded、getDisplayMedia の stream の退避とトラックの ended
+├── helpers/faults.ts     # 障害注入 (#435): Workers の API を 1 つずつ 503 / abort / hang (呼び出し回数を返す)、Turnstile のスクリプトの遮断、IndexedDB の open 失敗・QuotaExceeded・request の success 後の transaction の abort (#543)、保存先の注入の解除、getDisplayMedia の stream の退避とトラックの ended
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
 ├── workers-hang-export.spec.ts  # Workers 無応答 (route で応答しない) でも class の export が上限内に ZIP を出す (#324。fetch 上限 + best-effort 予算)
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
-├── fault-session-start / fault-checkpoint-sign / fault-turnstile / fault-network / fault-storage  # 障害注入 (#435): session/start・checkpoint/sign の失敗 (API ごとに別ファイル。hang 待ちを含む 1 ファイルが CI で Playwright の Slow Test の閾値 5 分を超えたため / #525)、Turnstile 不達、オフラインの往復、IndexedDB の障害 (#325 / #300 は fixme)
+├── fault-session-start / fault-checkpoint-sign / fault-turnstile / fault-network / fault-storage  # 障害注入 (#435): session/start・checkpoint/sign の失敗 (API ごとに別ファイル。hang 待ちを含む 1 ファイルが CI で Playwright の Slow Test の閾値 5 分を超えたため / #525)、Turnstile 不達、オフラインの往復、IndexedDB の障害 (#325 は fixme。保存の QuotaExceeded で `failed` / `degraded`・その状態での export・解除後の回復とリロード後の export = #543)。transaction の abort は `fault-storage-abort` (#543)
 ├── multi-instance / history-navigation / viewport / ime-undo / idle / screen-capture-lock / reset-url  # 環境の揺さぶり (#435): 多重起動・戻る / 進む・狭い画面・IME と undo / redo・アイドル停止・画面共有の停止・`?reset` が何も消さないこと (#323) とリセットの現在のモード限定
 ├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)
 ├── exam-roundtrip.spec.ts # exam モードの round-trip (#229): 誤コードの拒否 → 正コードで解錠 → 打鍵 → export → verify-cli --exam-package (束縛 PASS) と負のオラクル。fixture が無いとき CI では落とし、ローカルでは skip
