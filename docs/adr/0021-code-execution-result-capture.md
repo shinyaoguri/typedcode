@@ -77,3 +77,10 @@ Option C を採用。
 - `packages/shared/src/types/events.ts` — `CodeExecutionEventData`
 - `packages/shared/src/processSummary.ts` — 消費側 (W3)
 - `packages/editor/src/execution/CodeExecutionController.ts` — 記録側
+
+## 追記 (#290)
+
+- **2026-11-04**: outcome に `timeout` を足した。実行時間の上限 (30 秒) を超えて実行環境ごと強制終了した実行を表し、exitCode は `null` にする。これまでタイムアウトは catch で `failure` / exit 1 として記録され、実行時エラーと区別できなかった。JS / TS の実行を sandbox に移した [ADR-0041](0041-sandboxed-code-execution.md) とあわせて入れた。型は shared の `CodeExecutionOutcome`
+- `summarizeProcess` は `timeout` を `failure` / `error` と同じく失敗 (`runFailureCount`) に数え、「初の失敗実行」の見どころにも入れる。止まらないプログラムは、デバッグサイクルの上では失敗の側にあるため。`aborted` と未知の値は、これまでどおりどちらにも数えない
+- 追加は加算的で、`PROOF_FORMAT_VERSION` は据え置く。チェーン検証は outcome を解釈しないので、旧版の verifier も `timeout` を含む proof を valid と判定する (shared のテストで固定した)。旧版の `summarizeProcess` は `timeout` を成功にも失敗にも数えない
+- 出力予算の超過・実行環境の初期化失敗・Worker の異常終了は、実行基盤の側の終わり方として `error` で記録する
