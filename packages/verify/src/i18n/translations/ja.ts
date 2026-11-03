@@ -435,6 +435,7 @@ export const ja: VerifyTranslationKeys = {
     dimensionFocusBurst: '離脱とバーストの相関',
     summary: {
       externalInput: '外部入力あり: ペースト ${paste} 件 / ドロップ ${drop} 件 / 複数行一括投入 ${bulk} 件',
+      templateInjection: 'テンプレートで入った文字数 ${template} / 打った文字数 ${typed}',
     },
   },
 
