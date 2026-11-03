@@ -70,9 +70,9 @@ export const ja: TranslationKeys = {
 
   settings: {
     title: '設定',
-    verifyProof: 'Verify Proof',
+    verifyProof: '証明を検証',
     github: 'GitHub',
-    toggleTheme: 'Toggle Theme',
+    toggleTheme: 'テーマを切り替え',
     language: '言語',
     about: 'バージョン情報',
     resetAll: 'このモードをリセット',
@@ -81,7 +81,6 @@ export const ja: TranslationKeys = {
   activityBar: {
     menu: 'メニュー',
     newFile: '新規ファイル',
-    newWindow: '新規ウィンドウ',
     importTemplate: 'テンプレート読込',
     toggleTerminal: 'ターミナルの表示切替',
     toggleLogPanel: 'ログパネルの表示切替',
