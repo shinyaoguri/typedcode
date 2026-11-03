@@ -51,7 +51,10 @@ const SHOTS = [
     caption:
       '検証 Web: 正常な proof と改ざんした proof の ZIP を同時に読んだときのステータスバーの集約 (N/M と失敗件数)',
   },
-  { file: '05-main-menu.png', caption: 'エディタ (通常モード): メインメニューを開いた状態 (時計とハッシュは隠している)' },
+  {
+    file: '05-main-menu.png',
+    caption: 'エディタ (通常モード): メインメニューを開いた状態 (時計とハッシュは隠している)',
+  },
 ] as const;
 
 type ShotFile = (typeof SHOTS)[number]['file'];
