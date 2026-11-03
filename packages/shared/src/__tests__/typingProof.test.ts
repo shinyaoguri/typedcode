@@ -498,6 +498,28 @@ describe('TypingProof', () => {
       expect(result.valid).toBe(true);
     });
 
+    it('verifies a chain that carries a codeExecution result with an outcome value it does not know', async () => {
+      await proof.recordEvent({
+        type: 'codeExecution',
+        data: { phase: 'start', filename: 'a.js', language: 'javascript' },
+      });
+      await proof.recordEvent({
+        type: 'codeExecution',
+        data: {
+          phase: 'result',
+          filename: 'a.js',
+          language: 'javascript',
+          // 将来の版が足す値を旧版の検証器が読んでも、チェーン検証は outcome を解釈しない
+          outcome: 'from-the-future' as unknown as 'timeout',
+          exitCode: null,
+          elapsedMs: 1,
+        },
+      });
+
+      const result = await proof.verify();
+      expect(result.valid).toBe(true);
+    });
+
     it('should verify multiple events chain', async () => {
       await proof.recordEvent({ type: 'contentChange', data: 'a' });
       await proof.recordEvent({ type: 'contentChange', data: 'b' });

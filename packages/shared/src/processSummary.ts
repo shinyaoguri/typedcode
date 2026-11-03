@@ -69,7 +69,7 @@ export interface ProcessSummary {
    */
   hasRunResults: boolean;
   runSuccessCount: number;
-  /** failure (非 0 exit) + error (実行基盤例外)。aborted は数えない。 */
+  /** failure (非 0 exit) + error (実行基盤例外) + timeout (時間切れ, #290)。aborted と未知の値は数えない。 */
   runFailureCount: number;
   /** PROCESS_PAUSE_THRESHOLD_MS を超えた編集停止の回数。 */
   pauseCount: number;
@@ -229,7 +229,8 @@ export function summarizeProcess(events: readonly StoredEvent[]): ProcessSummary
                 timestamp: event.timestamp,
               };
             }
-          } else if (data.outcome === 'failure' || data.outcome === 'error') {
+          } else if (data.outcome === 'failure' || data.outcome === 'error' || data.outcome === 'timeout') {
+            // timeout (#290): 止まらないプログラムはデバッグサイクルでは失敗の側に数える
             runFailureCount++;
             if (!firstFailedRun) {
               firstFailedRun = { kind: 'first-failed-run', fromEventIndex: i, timestamp: event.timestamp };
