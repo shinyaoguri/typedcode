@@ -299,3 +299,46 @@ describe('TabManager sync status when saving fails (#543)', () => {
     expect(tabManager.getSyncStatus()).toBe('degraded');
   });
 });
+
+describe('TabManager.getPersistenceReport (#544)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    session.initialized = true;
+    session.failWrites = false;
+    stubSessionStorage();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('has no last save before anything was saved', () => {
+    const { tabManager } = setup();
+
+    expect(tabManager.getPersistenceReport().lastSave).toBeNull();
+  });
+
+  it('reports the outcome of the latest save', async () => {
+    const { tabManager } = setup();
+    session.failWrites = true;
+
+    await tabManager.flushToIndexedDB();
+
+    expect(tabManager.getPersistenceReport().lastSave).toMatchObject({ idbOk: false, sessionStorageOk: true });
+  });
+
+  it('reports a null persisted count for a tab whose saved events were never confirmed, and the count once they were', () => {
+    const { tabManager, internals } = setup();
+    internals.tabs.set('tab-1', tabWithPendingEvents());
+    internals.tabs.set('tab-2', tabWithPendingEvents());
+    (internals as unknown as { savedEventCursor: Map<string, number> }).savedEventCursor.set('tab-2', 7);
+
+    expect([...tabManager.getPersistenceReport().persistedEventCounts]).toEqual([
+      ['tab-1', null],
+      ['tab-2', 7],
+    ]);
+  });
+});

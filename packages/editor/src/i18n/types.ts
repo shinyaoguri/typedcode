@@ -107,6 +107,8 @@ export interface TranslationKeys {
     download: string;
     downloadAll: string;
     exportCurrentTab: string;
+    /** 救出 (証明ではないコードの退避。#544) */
+    rescue: string;
     settings: string;
     newTab: string;
     closeTab: string;
@@ -405,6 +407,12 @@ export interface TranslationKeys {
     failed: string;
     zipSuccess: string;
     zipFailed: string;
+    /** 救出 ZIP を出した (#544) */
+    rescueSuccess: string;
+    /** ZIP を作れず単一 JSON で救出した (#544) */
+    rescueJsonFallback: string;
+    /** 救出ファイルを作れなかった (#544) */
+    rescueFailed: string;
     progressTitle: string;
     phaseVerification: string;
     phasePreparing: string;
@@ -626,6 +634,8 @@ export interface TranslationKeys {
     fsUnavailable: string;
     submitNote: string;
     downloadButton: string;
+    /** 問題パネルの救出ボタン (#544) */
+    rescueButton: string;
     toggleProblem: string;
     gate: {
       title: string;

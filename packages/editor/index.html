@@ -149,6 +149,11 @@
                 <i class="fas fa-file-zipper"></i>
                 <span data-i18n="activityBar.exportCurrentTab">Download Current Tab</span>
               </button>
+              <!-- 救出 (#544): 証明ではなく、認証・保存・排出待ちを通さずにコードだけを出す -->
+              <button class="dropdown-item" id="rescue-download-btn">
+                <i class="fas fa-life-ring"></i>
+                <span data-i18n="activityBar.rescue">Rescue code (not a proof)</span>
+              </button>
             </div>
           </div>
           <div class="activitybar-divider"></div>
@@ -221,6 +226,10 @@
               <p class="exam-submit-note" data-i18n="exam.submitNote">When you finish, download the log and submit it in Moodle.</p>
               <button id="download-log-btn" class="download-log-btn">
                 <i class="fas fa-download"></i> <span data-i18n="exam.downloadButton">Download log</span>
+              </button>
+              <!-- 救出 (#544): exam は左の DL メニューを隠すので、ここにも置く -->
+              <button id="problem-rescue-btn" class="problem-rescue-btn">
+                <i class="fas fa-life-ring"></i> <span data-i18n="exam.rescueButton">Rescue code (not a proof)</span>
               </button>
             </div>
           </div>

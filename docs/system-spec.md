@@ -445,6 +445,41 @@ interface ExamProofBlock {
 
 `startToken` を保存しても、束縛の価値 (「T0 前に知り得ない」) は損なわれない (公開は T0 後)。保存により grader はコードを out-of-band に受け取る運用が不要になり、コード紛失で root 検証不能になるリスクも消える。
 
+### 5.4. 救出ファイル (`typedcode-rescue/1`)
+
+保存先・認証・PoSW が壊れていても、学習者がその時点のコードを持ち出すための出力 (#544、[ADR-0042](adr/0042-rescue-code-before-proof.md))。**証明ではない**: 検証器にかけるものではなく、提出の正本は §5.2 の export のまま。editor の救出ボタン (`#rescue-download-btn` / `#problem-rescue-btn`) が出す。
+
+```
+RESCUE_TC<ts>.zip                 // <ts> は §5.2 と同じ YYMMDDHHmm
+├── src/<source>                  // エディタの内容 (名前は §5.2 と同じ規則。同名は <name>_N.<ext>)
+├── logs/<source>.events.json     // メモリ上のチェーンのイベント (検証していない記録。PoSW 待ちは含まない)
+└── rescue-manifest.json
+```
+
+```typescript
+interface RescueManifest {
+  schema: 'typedcode-rescue/1';
+  notAProof: true;                // 証明ではない。*_proof.json は作らない
+  notice: string;                 // 受け取った人への注意書き (en + ja)
+  createdAt: string;              // ISO 8601
+  mode: string;                   // casual / class / assignment / exam
+  lastSave: { idbOk: boolean; sessionStorageOk: boolean; error: string | null } | null;  // 直近の保存の結果 (#543)
+  tabs: {
+    id: string; filename: string; language: string;
+    source: string | null;        // src/ のパス。内容が読めなければ null
+    eventsLog: string | null;     // logs/ のパス。読めなければ null
+    chainEventCount: number | null;     // チェーンに載っているイベント数
+    persistedEventCount: number | null; // IndexedDB への保存を確かめた数 (未確定なら null)
+    pendingEventCount: number | null;   // PoSW 待ちの数
+    error: string | null;         // そのタブの読み出しが throw したときの理由
+  }[];
+}
+```
+
+- 救出は待機・Turnstile・IndexedDB への flush・PoSW の排出待ち・署名・スクリーンショットを一切通さない。読むのはエディタの内容とメモリ上のチェーンだけ
+- 1 タブの読み出しが throw しても他のタブは出す。イベントだけ読めないタブもソースは出す
+- ZIP が作れなければ `RESCUE_TC<ts>.json` (`{ manifest, files: { path, content }[] }`)、それも保存できなければ `src/` のソースを `RESCUE_TC<ts>_<source>` として 1 つずつ出す
+
 ---
 
 ## 6. 検証フェーズ

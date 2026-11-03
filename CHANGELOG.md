@@ -11,6 +11,7 @@
 
 ### 追加
 
+- editor に救出ボタン (「コードを救出 (証明なし)」) を足した。左のダウンロードメニューと問題パネル (exam でも出る) から、保存先・認証・PoSW の排出のどれも待たずに、メモリ上の最新のコードと記録を `RESCUE_TC<ts>.zip` (`src/`・`logs/`・`rescue-manifest.json`) として出す。証明ではない (`*_proof.json` を入れず、manifest に `notAProof: true`)。1 タブの読み出しが失敗しても他のタブは出し、ZIP が作れなければ単一 JSON、それも保存できなければソースを 1 つずつ出す。形式は system-spec §5.4、判断は ADR-0042 (#544)
 - verify-cli に `--extract-sources <dir>` を足した。ZIP 入力の proof ごとに `<dir>/<proof のベース名>/` へ、`submitted.<ext>` (同梱ソースの原文バイト)・`verified.<ext>` (`proof.content`。チェーンが検証に通ったときだけ)・`report.json` (照合の状態と検証結果の要約) を書く。不一致や検証失敗でも submitted は書き、exit code は変えない。入力の ZIP と書き出し先の既存ファイルは上書きせず (既存のディレクトリはエラーで exit 1)、`<dir>` の外には書かない (ZIP エントリ名と `proof.filename` から作る名前は無害化する)。採点者が jq で JSON から本文を抜かずに済む (#409)
 - テンプレート (`templateInjection`) で入った文字数と打った文字数を、分析層の advisory signal (severity `info`) として出すようにした。verify の分析カードと verify-cli の `--- Analysis (advisory) ---` に「テンプレートで入った文字数 500 / 打った文字数 10」の形で出る。文字数は自己申告の `contentLength` ではなく `data.content.length` の合計で数える。`reviewPriority` と著述性の `notableSignals`、検証結果、`isPureTyping` は変えない (#416)
 

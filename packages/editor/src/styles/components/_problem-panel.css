@@ -120,6 +120,29 @@
   background: #3b7bf0;
 }
 
+/* 救出 (#544)。提出用のログではない控えのボタンなので、ログのダウンロードより控えめに (枠線だけ) 置く */
+.problem-rescue-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.problem-rescue-btn:hover {
+  opacity: 1;
+  background: var(--statusbar-hover-bg, rgba(255, 255, 255, 0.08));
+}
+
 /* 試験モード: タブの追加・削除 UI を隠す (ADR-0010, 1問1タブ固定)。
    源流の TabManager ロックが本体で、これは UI アフォーダンスを消すため。 */
 body.exam-mode .add-tab-btn,
