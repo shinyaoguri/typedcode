@@ -439,6 +439,7 @@ export const en: VerifyTranslationKeys = {
     dimensionFocusBurst: 'Focus-loss / burst correlation',
     summary: {
       externalInput: 'External input present: ${paste} paste, ${drop} drop, ${bulk} bulk insertion(s)',
+      templateInjection: 'Template-injected content: ${template} chars from templates, ${typed} chars typed',
     },
   },
 
