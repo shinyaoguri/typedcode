@@ -58,6 +58,7 @@ gh pr merge --squash --delete-branch
 - **ロジックはユニットテスト** (各パッケージの `__tests__/` か `*.test.ts`。書き方は [packages/shared/AGENTS.md](packages/shared/AGENTS.md) の「テスト規約」)
 - **バグ修正は先に赤いテスト**: 再現するテストが落ちるのを確かめてから直す。すぐ直さない既知バグは E2E なら `test.fixme('#N ...')` で再現を置き、修正 PR で外す
 - **新しいテスト・検査は壊して赤を見てから仕上げる** (バグ修正に限らない): 検証対象の振る舞いを一時的に壊すか直した行を戻して、そのテストが赤くなるのを確かめる。壊しても緑のままのテストは書き直す。何を壊して赤くなったかは、PR の受け入れ条件の対応表の「壊すと赤になるか」列に書く。カバレッジと `require-tests` はテストの検証力を見ないため ([ADR-0037](docs/adr/0037-see-red-before-trusting-new-tests.md))
+- **変異検査の対象ファイルを変えたら、変更行に `npm run mutate` を回す**: `packages/shared/stryker.config.json` の `mutate` にあるファイル (対象の正本はそこ。検証系の数ファイル) を変えた PR は、変更行に絞って変異検査 ([StrykerJS](https://stryker-mutator.io/)) を回し、生き残った変異をテストで殺すか、同値変異 (振る舞いが変わらない変異) と判断した理由を PR の対応表に書く。道具は手元のコマンドだけで、CI にも `npm run check` / `check:fast` にも載せない (全体で数分かかり、同値変異が常に残る)。ADR-0037 の「壊して赤を見る」を機械でやるもので、カバレッジと `require-tests` が見ない検証力を測る ([ADR-0040](docs/adr/0040-mutation-testing-with-stryker-locally.md))。使い方は下の「変異検査」
 - **カバレッジは下げない**: 各パッケージの `vitest.config.ts` の `coverage.thresholds` が実測値の床で、下回ると CI の test job が落ちる。**機能 PR では床を動かさない**。床は、main で週 1 回測る定期ジョブ ([coverage-ratchet.yml](.github/workflows/coverage-ratchet.yml)) が「上げられる値」を Issue で知らせるので、それを受けた専用の PR で、Issue の表の値 (CI と同じ環境の実測) を書いて上げる。手元の実測は CI を上回りうるので、手元の `npm run coverage:ratchet` の値をそのまま使わない ([ADR-0039](docs/adr/0039-raise-coverage-floors-in-dedicated-prs.md))
 - **テストが本当に不要なら理由を書く**: 実装 (`packages/*/src`) を変えてテストを変えていない PR は、CI の `require-tests` ([pr-checks.yml](.github/workflows/pr-checks.yml)) が落とす。挙動を変えないリファクタなどでテストが不要な場合は、PR にラベル `no-test-needed` を付け、PR 本文の `## テスト不要の理由` 見出しの下に理由を書く (ラベル・本文の編集で再判定される)。`docs` / `ci` / `chore` 型と依存更新の PR は対象外
 - **見た目・動きを変えたら before/after を本文へ**: editor / verify の見た目・動きを変える PR は、PR 本文の「見た目の証跡」に before/after の画像 (動きはアニメーション WebP) を載せる。画像はコミットせず Gyazo へ上げて URL を貼る。素材は `npm run shots -w @typedcode/e2e` で撮れるほか、UI に触れた PR には CI ([visual-evidence.yml](.github/workflows/visual-evidence.yml)) が base と head で撮った before/after をコメントするので、それを本文の「見た目の証跡」へ写す。見た目に効くパス (editor / verify の HTML・CSS・UI 部品) を変えて本文に画像が無い PR は、CI の `require-visual-evidence` ([pr-checks.yml](.github/workflows/pr-checks.yml)) が落とす。見た目が変わらない変更 (ロジック・data-* の追加など) なら、ラベル `no-visual-change` を付ける ([ADR-0036](docs/adr/0036-visual-evidence-on-prs.md))
@@ -66,6 +67,25 @@ gh pr merge --squash --delete-branch
 - **手元では `npm run check`** (typecheck → lint (Biome + docs の `[[...]]` 参照の検査) → workflow の検査 (`lint:workflows` = actionlint + shellcheck) → README の依存表と package.json の名前の突合 (`node scripts/check-deps.mjs`。依存の版は package.json が唯一の正で、README は名前と用途だけ) → カバレッジ付きユニットテスト → E2E)。E2E を除いた `npm run check:fast` もある
 
 `scripts/` のテストのうち `*.test.mjs` (PR ゲートの `require-tests` / `require-visual-evidence` / `require-issue` など) と、e2e の環境準備のテスト `packages/e2e/scripts/setup-env.test.mjs` は CI (check job) で `node --test 'scripts/*.test.mjs' packages/e2e/scripts/setup-env.test.mjs` として走る。`sweep.test.ts` は使い捨てのリポジトリを組み立てる統合テストなので CI 常設にはしておらず、スクリプトを変えたときに手元で回す (下記「マージ後の掃除」)。
+
+## 変異検査 (StrykerJS)
+
+実装を 1 か所ずつ機械的に壊し (`>=` → `>`、条件を `false` に、など)、テストが赤くなるかを測る。壊しても緑のまま生き残った変異 (survived) が、テストの足りない箇所を指す。判断の根拠は [ADR-0040](docs/adr/0040-mutation-testing-with-stryker-locally.md)。
+
+```sh
+# 設定にある全ファイル (数分)。ファイルごとの killed / survived / timeout / no coverage が端末に出る
+npm run mutate -w @typedcode/shared
+
+# 範囲を絞る (--mutate は設定の mutate を置き換える)。`ファイル:開始行-終了行`、1 行なら `ファイル:行`
+npm run mutate -w @typedcode/shared -- --mutate 'src/verification.ts:100-150'
+# 複数ファイル・複数範囲はコンマ区切り
+npm run mutate -w @typedcode/shared -- --mutate 'src/verification.ts:100-150,src/utils/hashUtils.ts'
+```
+
+- パスは `packages/shared` からの相対 (`src/...`)。変更した範囲は `git diff -U0 <ファイル>` の `@@ -a,b +c,d @@` の `c` から `c+d-1` で分かる
+- 判定は shared のテストだけで行う。作業ファイルは `packages/shared/.stryker-tmp/` に出て、終了時にソースは元に戻る (`inPlace`。verify-cli の fixture を相対パスで読むテストが sandbox のコピーでは動かないため)。**走っている間はその 5 ファイルを編集しない** (途中で止めたときはソースに変異が残りうるので、`git status` で確かめる)
+- 同値変異は常に残る (対象の件数や内訳は実行のたびに端末で見る)。読み方は「survived のうち、そのファイルの判定が変わるのに緑のもの」だけ拾う。殺すテストを足したら、ADR-0037 のとおり、足したテストが壊して赤くなることも確かめる
+- 対象ファイルを増やす・減らすときは `packages/shared/stryker.config.json` の `mutate` を直す (docs には書き写さない)
 
 ## 並行作業 (git worktree)
 
