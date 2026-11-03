@@ -13,6 +13,10 @@
 
 - テンプレート (`templateInjection`) で入った文字数と打った文字数を、分析層の advisory signal (severity `info`) として出すようにした。verify の分析カードと verify-cli の `--- Analysis (advisory) ---` に「テンプレートで入った文字数 500 / 打った文字数 10」の形で出る。文字数は自己申告の `contentLength` ではなく `data.content.length` の合計で数える。`reviewPriority` と著述性の `notableSignals`、検証結果、`isPureTyping` は変えない (#416)
 
+### 修正
+
+- ja の設定メニューで `settings.verifyProof` と `settings.toggleTheme` が英語 (「Verify Proof」「Toggle Theme」) のままだったのを、「証明を検証」「テーマを切り替え」に訳した。en は変えていない (#518)
+
 ## [1.2.0] - 2026-11-03
 
 ### 追加
