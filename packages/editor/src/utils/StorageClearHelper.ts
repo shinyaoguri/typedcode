@@ -1,5 +1,5 @@
 /**
- * StorageClearHelper - 設定メニューのリセット (Reset All) の消去処理 (#323)
+ * StorageClearHelper - 設定メニューの「このモードをリセット」(en は Reset This Mode) の消去処理 (#323)
  *
  * 消すのは**現在のモードのデータだけ**: そのモードの session IndexedDB と、`core/storageKeys.ts` で
  * モード別になっている localStorage / sessionStorage のキー。ほかのモードのデータ、モード共通のキー
