@@ -10,7 +10,7 @@
 ## 動作要件
 
 - **Node.js ≥24** (`engines` で強制)
-- ルート `package.json` engines `>=24` と同じ。`.node-version` は `24.4.1`、GitHub Actions も `node-version: '24'`
+- ルート `package.json` engines `>=24` と同じ。`.node-version` は `24.22.2`、GitHub Actions も `node-version: '24'`
 
 ## 重要な不変条件
 
