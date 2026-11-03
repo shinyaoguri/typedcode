@@ -1,11 +1,8 @@
-// Check URL parameters for special actions
-const urlParams = new URLSearchParams(window.location.search);
-
 // モード (ADR-0011): URL パスでモードを確定する (`/exam` `/class` `/assignment`、他は casual)。
 // sticky は持たない — path はリロードで永続し、試験の整合性は封印の暗号束縛 (ADR-0006) が担保する。
 // ストレージはモード別に名前空間化する (PR3) ので、モード間でセッションが混ざらず共存できる
 // (PR1/PR2 の「モード切替時 auto-clear」を置換)。**NS は最初期に確定**させる — 以降の storage
-// 参照 (?fresh 含む) が storageKeys の getter を使うため。
+// 参照が storageKeys の getter を使うため。
 // ルート (ADR-0015): `/` と未知パスは 'landing' (モード選択の入口)。`/casual` 等は該当 mode。
 // landing のときは重いエディタ初期化をせず LandingPage の DOM だけ描画する (末尾の boot で分岐)。
 const route = resolveRoute(window.location.pathname);
@@ -23,13 +20,6 @@ setAppState('initializing');
 
 // URL を開くだけで保存データが消える経路は持たない (#323。旧 ?reset の全消去は撤去した)。
 // 消去は設定メニューのリセットを確認ダイアログで確定したときの、現在のモードだけ (app/resetDialog.ts)。
-
-// 新規ウィンドウ (?fresh=1): 現モードのタブ状態だけクリアして clean に始める。
-if (urlParams.get('fresh') === '1') {
-  sessionStorage.removeItem(tabsKey());
-  const cleanUrl = window.location.origin + window.location.pathname;
-  window.history.replaceState({}, '', cleanUrl);
-}
 
 import * as monaco from 'monaco-editor';
 import './styles/main.css';
@@ -603,13 +593,6 @@ function initializeTerminal(): void {
 
     await ctx.tabManager.switchTab(newTab.id);
     showNotification(t('notifications.newTabCreated'));
-  });
-
-  const newWindowBtn = document.getElementById('new-window-btn');
-  newWindowBtn?.addEventListener('click', () => {
-    ctx.mainMenuDropdown.close();
-    // Open a fresh window with ?fresh=1 to signal that sessionStorage should be cleared
-    window.open(window.location.origin + window.location.pathname + '?fresh=1', '_blank');
   });
 
   // テンプレートインポートボタン

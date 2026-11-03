@@ -98,7 +98,6 @@ export interface TranslationKeys {
   activityBar: {
     menu: string;
     newFile: string;
-    newWindow: string;
     importTemplate: string;
     toggleTerminal: string;
     toggleLogPanel: string;
