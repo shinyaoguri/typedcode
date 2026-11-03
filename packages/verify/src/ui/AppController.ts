@@ -115,6 +115,7 @@ export class AppController {
       sidebar: this.sidebar,
       resultPanel: this.resultPanel,
       welcomePanel: this.welcomePanel,
+      verificationQueue: this.verificationQueue,
       getTimelineChart: () => this.chartController.getTimelineChart(),
       getMouseChart: () => this.chartController.getMouseChart(),
       getIntegratedChart: () => this.chartController.getIntegratedChart(),
@@ -148,6 +149,10 @@ export class AppController {
       this.verificationController.handleError(id, error);
       setTimeout(() => this.updateStatusBar(), 0);
     });
+    this.verificationQueue.setOnCancelled((id) => {
+      this.verificationController.handleCancelled(id);
+      this.updateStatusBar();
+    });
     this.verificationQueue.initialize();
     this.statusBar.setOnFailedClick(() => this.openFirstFailedProof());
 
@@ -175,6 +180,10 @@ export class AppController {
       const tab = activeId ? this.tabManager.getTab(activeId) : null;
       if (tab) void this.fileController.loadExamManifestForTab(tab.id);
     };
+
+    // 進捗表示のキャンセル / キャンセル後の再検証 (#331)。対象は開いているタブ (TabController) のもの。
+    this.resultPanel.onCancelRequested = () => this.cancelActiveVerification();
+    this.resultPanel.onRetryRequested = () => this.retryActiveVerification();
 
     // Initialize FolderController
     this.folderController = new FolderController({
@@ -372,6 +381,25 @@ export class AppController {
         this.statusBar.setReady();
       }
     }
+  }
+
+  /** 表示中のタブの検証を止める (#331)。待機中・検証中のタブだけが対象。 */
+  private cancelActiveVerification(): void {
+    const activeId = this.tabController.getActiveTabId();
+    const tab = activeId ? this.tabManager.getTab(activeId) : null;
+    if (!tab || (tab.status !== 'pending' && tab.status !== 'verifying')) return;
+    // 状態の更新は onCancelled (VerificationController.handleCancelled) が担う
+    this.verificationQueue.cancel(tab.id);
+  }
+
+  /** キャンセルした表示中のタブを再検証する (#331)。proof はタブが持っているものを渡す。 */
+  private retryActiveVerification(): void {
+    const activeId = this.tabController.getActiveTabId();
+    const tab = activeId ? this.tabManager.getTab(activeId) : null;
+    if (!tab?.proofData || tab.status !== 'cancelled') return;
+    this.verificationController.markRequeued(tab.id);
+    this.verificationQueue.requeue(tab.id, tab.proofData);
+    this.updateStatusBar();
   }
 
   /** 失敗サマリのクリック: 最初に失敗した proof を開く。自動オープンの規則は変えない。 */

@@ -193,6 +193,7 @@ describe('ResultPanel verdict while no verdict is shown', () => {
     ['another file starts verifying', (p) => p.startProgress('other_proof.json')],
     ['a plaintext file is opened', (p) => p.renderPlaintext({ filename: 'main.c', content: '', language: 'c' })],
     ['the panel is reset', (p) => p.reset()],
+    ['a cancelled file is opened (#331)', (p) => p.showCancelled('cancelled_proof.json')],
   ];
 
   it.each(transitions)('drops the previous verdict attributes when %s', (_label, transition) => {
@@ -238,6 +239,82 @@ describe('TabController opening a tab whose verification errored', () => {
     expect(strip().hasAttribute('data-integrity')).toBe(false);
     expect(statusIcon().hasAttribute('data-level')).toBe(false);
     expect(document.getElementById('vp-filename')?.textContent).toBe('broken_proof.json');
+  });
+});
+
+describe('ResultPanel cancel / retry buttons (#331)', () => {
+  const cancelBtn = () => document.getElementById('vp-cancel-btn') as HTMLButtonElement;
+  const retryBtn = () => document.getElementById('vp-retry-btn') as HTMLButtonElement;
+
+  it('offers cancel, not retry, while a file is verifying', () => {
+    panel.startProgress('main.c_proof.json');
+
+    expect(cancelBtn().hidden).toBe(false);
+    expect(retryBtn().hidden).toBe(true);
+  });
+
+  it.each<[string, (p: ResultPanel) => void]>([
+    ['verification finishes', (p) => p.finishProgress()],
+    ['verification fails', (p) => p.errorProgress('chain', 'boom')],
+  ])('hides cancel once %s', (_label, settle) => {
+    panel.startProgress('main.c_proof.json');
+
+    settle(panel);
+
+    expect(cancelBtn().hidden).toBe(true);
+    expect(retryBtn().hidden).toBe(true);
+  });
+
+  it('offers retry, not cancel, for a cancelled file', () => {
+    panel.startProgress('main.c_proof.json');
+
+    panel.showCancelled('main.c_proof.json');
+
+    expect(cancelBtn().hidden).toBe(true);
+    expect(retryBtn().hidden).toBe(false);
+  });
+
+  it('forwards the button clicks to the cancel / retry handlers', () => {
+    const calls: string[] = [];
+    panel.onCancelRequested = () => calls.push('cancel');
+    panel.onRetryRequested = () => calls.push('retry');
+
+    cancelBtn().click();
+    retryBtn().click();
+
+    expect(calls).toEqual(['cancel', 'retry']);
+  });
+});
+
+describe('TabController opening a cancelled tab (#331)', () => {
+  it('shows the cancelled view instead of leaving the previous verdict on screen', () => {
+    const tabManager = new VerifyTabManager();
+    const uiState = new UIStateManager();
+    const controller = new TabController({
+      tabManager,
+      uiState,
+      resultPanel: panel,
+      getTimelineChart: () => null,
+      getMouseChart: () => null,
+    } as unknown as TabControllerDependencies);
+    panel.render(resultData({ filename: 'good_proof.json' }, 'verified'));
+    uiState.setCurrentDisplayedTabId('good', 'success');
+    tabManager.addTab({
+      id: 'stopped',
+      filename: 'stopped_proof.json',
+      language: 'c',
+      status: 'cancelled',
+      progress: 0,
+      proofData: null,
+      verificationResult: null,
+    });
+
+    controller.showTabContent('stopped');
+
+    expect(strip().hasAttribute('data-integrity')).toBe(false);
+    expect(statusIcon().hasAttribute('data-level')).toBe(false);
+    expect(document.getElementById('vp-filename')?.textContent).toBe('stopped_proof.json');
+    expect((document.getElementById('vp-retry-btn') as HTMLButtonElement).hidden).toBe(false);
   });
 });
 

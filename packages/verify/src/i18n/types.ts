@@ -88,6 +88,12 @@ export interface VerifyTranslationKeys {
     chainDetail: string;
     samplingDetail: string;
     samplingDetailWithTotal: string;
+    /** 進捗表示のキャンセルボタン (#331) */
+    cancel: string;
+    /** キャンセル後の再検証ボタン (#331) */
+    retry: string;
+    /** キャンセルしたタブの見出し (#331) */
+    cancelled: string;
   };
 
   // Result panels
@@ -265,6 +271,8 @@ export interface VerifyTranslationKeys {
     summary: string;
     /** `${failed}` (失敗を含むときだけ summary に併記) */
     summaryFailed: string;
+    /** `${cancelled}` (キャンセルした proof があるときだけ summary に併記。#331) */
+    summaryCancelled: string;
   };
 
   // Charts

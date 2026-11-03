@@ -161,8 +161,19 @@
                     <i class="fas fa-shield-halved"></i>
                   </div>
                   <div class="vp-title">
-                    <h2 data-i18n="progress.verifying">検証中</h2>
+                    <h2 id="vp-title-text" data-i18n="progress.verifying">検証中</h2>
                     <p class="vp-filename" id="vp-filename"></p>
+                  </div>
+                  <!-- 項目ごとのキャンセル / キャンセル後の再検証 (#331)。表示は ResultPanel が切り替える -->
+                  <div class="vp-actions">
+                    <button type="button" class="vp-action-btn" id="vp-cancel-btn" hidden>
+                      <i class="fas fa-ban"></i>
+                      <span data-i18n="progress.cancel">キャンセル</span>
+                    </button>
+                    <button type="button" class="vp-action-btn" id="vp-retry-btn" hidden>
+                      <i class="fas fa-rotate-right"></i>
+                      <span data-i18n="progress.retry">再検証</span>
+                    </button>
                   </div>
                 </div>
 
