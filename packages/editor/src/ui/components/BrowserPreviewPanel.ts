@@ -396,9 +396,8 @@ export class BrowserPreviewPanel {
     const results: string[] = [];
     // <link rel="stylesheet" href="..."> または <link href="..." rel="stylesheet"> をマッチ
     const linkRegex = /<link\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*>/gi;
-    let match;
 
-    while ((match = linkRegex.exec(html)) !== null) {
+    for (const match of html.matchAll(linkRegex)) {
       const fullTag = match[0];
       const href = match[1];
       // rel="stylesheet" を含むかチェック
@@ -417,9 +416,8 @@ export class BrowserPreviewPanel {
     const results: string[] = [];
     // <script src="..."> をマッチ（type="module"も含む）
     const scriptRegex = /<script\s+[^>]*src\s*=\s*["']([^"']+)["'][^>]*>/gi;
-    let match;
 
-    while ((match = scriptRegex.exec(html)) !== null) {
+    for (const match of html.matchAll(scriptRegex)) {
       if (match[1]) {
         results.push(match[1]);
       }

@@ -239,7 +239,7 @@ export class Sidebar {
         childFolders.push(id);
       }
     });
-    childFolders.forEach((id) => this.removeFolder(id));
+    for (const id of childFolders) this.removeFolder(id);
 
     // フォルダ内のファイルも削除
     const filesToRemove: string[] = [];

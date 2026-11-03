@@ -175,7 +175,7 @@ export class ScreenshotService {
 
         this.screenshots.set(screenshot.id, screenshot);
         screenshots.push(screenshot);
-      } catch (error) {
+      } catch {
         // 画像ファイルが見つからない場合
         console.warn(`[ScreenshotService] Image file missing: ${entry.filename}`);
         const screenshot = this.createMissingScreenshot(entry);
@@ -235,7 +235,7 @@ export class ScreenshotService {
    */
   getImageUrl(id: string): string | null {
     const screenshot = this.screenshots.get(id);
-    if (!screenshot || !screenshot.imageBlob) return null;
+    if (!screenshot?.imageBlob) return null;
 
     if (!screenshot.imageUrl) {
       screenshot.imageUrl = URL.createObjectURL(screenshot.imageBlob);

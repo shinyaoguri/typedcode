@@ -665,7 +665,7 @@ export class ResultPanel {
    * - anchored && valid: badge は success。post-hoc 警告は別行で表示
    */
   private renderAnchoringCard(sc: ResultData['signedCheckpoint']): void {
-    if (!sc || !sc.anchored) {
+    if (!sc?.anchored) {
       this.anchoringIcon.className = 'result-card-icon warning';
       this.anchoringBadge.className = 'result-card-badge warning';
       this.anchoringBadge.textContent = t('result.anchoringUnavailable');

@@ -63,7 +63,7 @@ export class I18nService<T extends TranslationRecord = TranslationRecord> {
     }
 
     // Notify listeners
-    this.listeners.forEach((listener) => listener(locale));
+    for (const listener of this.listeners) listener(locale);
   }
 
   /**

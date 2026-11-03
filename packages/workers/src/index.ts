@@ -5,6 +5,7 @@
 
 import { handleSignCheckpoint, handlePublicKeys, getSigningKey, type CheckpointEnv } from './checkpoint.js';
 import { createSessionStartToken, validateSessionStartInput, arrayBufferToHex } from '@typedcode/shared/checkpoint';
+import type { SessionStartToken } from '@typedcode/shared/checkpoint';
 import { MAX_JSON_BODY_BYTES, MAX_TURNSTILE_TOKEN_LENGTH, readJsonBodyLimited, type ReadJsonResult } from './body.js';
 
 interface Env extends CheckpointEnv {
@@ -396,7 +397,7 @@ async function handleSessionStart(request: Request, env: Env): Promise<Response>
   const serverNonce = arrayBufferToHex(nonceBytes);
   const issuedAt = new Date().toISOString();
 
-  let token;
+  let token: SessionStartToken;
   try {
     token = await createSessionStartToken(
       input,

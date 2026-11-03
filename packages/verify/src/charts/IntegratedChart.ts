@@ -20,6 +20,7 @@ import {
   type Point,
 } from 'chart.js';
 import annotationPlugin from 'chartjs-plugin-annotation';
+import type { AnnotationOptions } from 'chartjs-plugin-annotation';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import type { StoredEvent, KeystrokeDynamicsData, InputType, EventType } from '@typedcode/shared';
 import type { VerifyScreenshot, IntegratedChartCache } from '../types.js';
@@ -1083,8 +1084,7 @@ export class IntegratedChart {
   /**
    * アノテーションを構築（フォーカス状態・Visibility状態のバー）
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private buildAnnotations(): Record<string, any> {
+  private buildAnnotations(): Record<string, AnnotationOptions> {
     if (!this.cache) return {};
 
     const annotations: Record<string, unknown> = {};
@@ -1205,7 +1205,7 @@ export class IntegratedChart {
       };
     }
 
-    return annotations;
+    return annotations as Record<string, AnnotationOptions>;
   }
 
   /**

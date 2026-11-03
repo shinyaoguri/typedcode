@@ -27,7 +27,7 @@ describe('parseExamBundle', () => {
   it('accepts a well-formed bundle and normalizes it to the known shape', () => {
     const bundle = parseExamBundle(sampleBundle());
     expect(bundle?.problems).toHaveLength(2);
-    expect(bundle?.problems[1]!.starter).toBeUndefined();
+    expect(bundle?.problems[1]?.starter).toBeUndefined();
   });
 
   it('rejects a payload without the bundle schema', () => {

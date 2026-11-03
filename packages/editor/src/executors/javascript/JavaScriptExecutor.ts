@@ -122,8 +122,7 @@ export class JavaScriptExecutor extends BaseExecutor {
     // "TypeError: Cannot read property 'x' of undefined at <anonymous>:3:5"
     const v8Regex = /at\s+(?:<anonymous>|[\w.]+):(\d+):(\d+)/g;
 
-    let match;
-    while ((match = v8Regex.exec(stderr)) !== null) {
+    for (const match of stderr.matchAll(v8Regex)) {
       const [, line, column] = match;
       if (line && column) {
         // Extract error message from the beginning
@@ -315,7 +314,7 @@ ${code}
       const match = stack.match(/<anonymous>:(\d+):(\d+)/);
 
       let message = `${error.name}: ${error.message}`;
-      if (match && match[1] && match[2]) {
+      if (match?.[1] && match[2]) {
         const line = Math.max(1, parseInt(match[1], 10) - this.getWrapperLineCount());
         const column = parseInt(match[2], 10);
         message += ` (at line ${line}, column ${column})`;

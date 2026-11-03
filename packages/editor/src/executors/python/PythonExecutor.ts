@@ -297,8 +297,7 @@ export class PythonExecutor extends BaseExecutor {
     const importRegex = /^\s*(?:import|from)\s+(\w+)/gm;
     const packages = new Set<string>();
 
-    let match;
-    while ((match = importRegex.exec(code)) !== null) {
+    for (const match of code.matchAll(importRegex)) {
       const pkg = match[1];
       // Exclude standard library and already installed packages
       if (pkg && !PYTHON_STDLIB_MODULES.has(pkg) && !this.installedPackages.has(pkg)) {
@@ -419,8 +418,7 @@ await micropip.install([${packageList.map((p) => `'${p}'`).join(', ')}])
     const lineRegex = /File "(?:<exec>|<stdin>|<string>)", line (\d+)/g;
     const errorTypeRegex = /^(\w+Error):\s*(.+)$/m;
 
-    let lineMatch;
-    while ((lineMatch = lineRegex.exec(stderr)) !== null) {
+    for (const lineMatch of stderr.matchAll(lineRegex)) {
       if (!lineMatch[1]) continue;
       const line = parseInt(lineMatch[1], 10);
       const errorMatch = stderr.match(errorTypeRegex);

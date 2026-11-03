@@ -39,7 +39,7 @@ export class BaseThemeManager {
       return savedTheme;
     }
     // システム設定をチェック
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+    if (window.matchMedia?.('(prefers-color-scheme: light)').matches) {
       return 'light';
     }
     return 'dark';

@@ -182,7 +182,7 @@ export function disposeScreenshotPreviews(container: HTMLElement): void {
   const expandedEntries = container.querySelectorAll('.log-entry-screenshot.expanded');
   expandedEntries.forEach((entry) => {
     const img = entry.querySelector('.log-entry-screenshot-image') as HTMLImageElement;
-    if (img && img.src.startsWith('blob:')) {
+    if (img?.src.startsWith('blob:')) {
       URL.revokeObjectURL(img.src);
     }
   });
