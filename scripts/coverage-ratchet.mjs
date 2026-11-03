@@ -115,7 +115,7 @@ export function formatIssueBody(raises, { sha, repo, serverUrl = 'https://github
     '',
     '値は main の CI と同じ環境での実測を切り捨てたもの。**最新のコメントが現在の値**で、古いコメントの値は使わない。',
     '',
-    '床を上げる手順 (機能 PR とは別の、専用の PR で行う。ADR-0034 / CONTRIBUTING.md「完了の定義」):',
+    '床を上げる手順 (機能 PR とは別の、専用の PR で行う。ADR-0039 / CONTRIBUTING.md「完了の定義」):',
     '',
     '1. 最新の main から worktree を切る',
     '2. 表の値を各パッケージの `vitest.config.ts` の `coverage.thresholds` に書いてコミットする (手元の `npm run coverage:ratchet` は手元の実測で床を決めるので、CI の実測を上回りうる。この表の値を使う)',
