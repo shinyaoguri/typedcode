@@ -13,7 +13,8 @@ function healthyInput(): AssuranceInput {
     chainValid: true,
     screenshotsTampered: 0,
     rootAnchored: true,
-    signedCheckpoints: { anchored: true, valid: true, sparse: false, postHocSuspected: false },
+    signedCheckpoints: { anchored: true, valid: true, sparse: false, postHocSuspected: false, terminal: true },
+    sessionTokenMismatch: false,
     isPureTyping: true,
     analysis: { reviewPriority: 0, notableSignals: 0 },
     // 既定は full モード相当 (PoSW を実際に再計算した)。
@@ -127,7 +128,7 @@ describe('deriveAssurance — temporal', () => {
     const input: AssuranceInput = {
       ...healthyInput(),
       rootAnchored: false,
-      signedCheckpoints: { anchored: true, valid: false },
+      signedCheckpoints: { anchored: true, valid: false, terminal: true },
     };
     expect(deriveAssurance(input).temporal).toBe('unanchored');
   });
@@ -170,6 +171,56 @@ describe('deriveAssurance — temporal', () => {
       exam: { present: true, packageProvided: false },
     };
     expect(deriveAssurance(input).temporal).toBe('partial');
+  });
+});
+
+/**
+ * 未署名の末尾 (#295): 最後の署名 cp より後のイベントは、サーバ時刻の上界を持たない。
+ * 先頭だけ署名して残りをオフラインで書き足した proof を `anchored` と呼ばない。
+ */
+describe('deriveAssurance — temporal (未署名の末尾, #295)', () => {
+  it('downgrades to partial when the last signed checkpoint does not reach the final event', () => {
+    const input: AssuranceInput = {
+      ...healthyInput(),
+      signedCheckpoints: { anchored: true, valid: true, sparse: false, postHocSuspected: false, terminal: false },
+    };
+    expect(deriveAssurance(input).temporal).toBe('partial');
+  });
+
+  it('keeps anchored when the last signed checkpoint covers the final event', () => {
+    const input: AssuranceInput = {
+      ...healthyInput(),
+      signedCheckpoints: { anchored: true, valid: true, sparse: false, postHocSuspected: false, terminal: true },
+    };
+    expect(deriveAssurance(input).temporal).toBe('anchored');
+  });
+
+  it('still counts a valid checkpoint chain with an unsigned tail as some server time evidence', () => {
+    const input: AssuranceInput = {
+      ...healthyInput(),
+      rootAnchored: false,
+      signedCheckpoints: { anchored: true, valid: true, sparse: false, postHocSuspected: false, terminal: false },
+    };
+    expect(deriveAssurance(input).temporal).toBe('partial');
+  });
+});
+
+/**
+ * token と署名 cp の sessionId 不一致 (#295 / #329 後半, spec §6.3): 別セッションの cp は
+ * この proof の時刻証拠にならない。改ざんではないので integrity には流さない。
+ */
+describe('deriveAssurance — temporal (sessionId 不一致)', () => {
+  it('does not report anchored when the session token and signed checkpoints disagree on sessionId', () => {
+    expect(deriveAssurance({ ...healthyInput(), sessionTokenMismatch: true }).temporal).toBe('partial');
+  });
+
+  it('does not count mismatched-session checkpoints as time evidence when the root is unanchored', () => {
+    const input: AssuranceInput = { ...healthyInput(), rootAnchored: false, sessionTokenMismatch: true };
+    expect(deriveAssurance(input).temporal).toBe('unanchored');
+  });
+
+  it('keeps integrity proven when only the sessionId disagrees', () => {
+    expect(deriveAssurance({ ...healthyInput(), sessionTokenMismatch: true }).integrity).toBe('proven');
   });
 });
 

@@ -12,8 +12,11 @@ import type { CliResultWithVerdicts } from './verifyCli.js';
  * 同じ PR で直すこと。
  */
 
-/** `.file-item` / `.tab` の `data-status` (VerificationController が決めた値)。 */
-export type VerifyFileStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error';
+/**
+ * `.file-item` / `.tab` の `data-status` (VerificationController が決めた値)。`cancelled` は利用者が
+ * 検証をキャンセルした (未検証。判定ではない。#331)。待ちの観点では確定 (settled) に数える。
+ */
+export type VerifyFileStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error' | 'cancelled';
 
 /** 検証モード (`?mode=`)。e2e の既定は fast (PoSW full は happy-path の 1 本だけ = 不変条件 4)。 */
 export type VerifyMode = 'fast' | 'audit' | 'full';
@@ -44,6 +47,8 @@ export interface VerifyVerdict extends VerifyFileState {
 /**
  * ステータスバーの検証集約 (`#queue-status[data-proof-*]`, #282)。警告は passed に数える
  * (verify-cli の summary の `valid` と同じ軸)。判定が無い間 (検証中・proof 0 件) は属性が無いので null。
+ * キャンセルした proof の件数 (`data-proof-cancelled`, #331) は passed にも failed にも入らず、`proofCancelled()` で読む
+ * (この形を `toEqual` で比べている既存の spec を変えないため、別の読み手にしてある)。
  */
 export interface VerifyProofSummary {
   total: number;
@@ -146,8 +151,13 @@ export class VerifyWebApp {
    * 終わるまで待つ。サイドバーの全 `.file-item` の状態を返す。
    */
   async load(paths: string[]): Promise<VerifyFileState[]> {
-    await this.page.locator('#file-input').setInputFiles(paths);
+    await this.addFiles(paths);
     return this.waitSettled(paths.length);
+  }
+
+  /** ファイルを `#file-input` に渡すだけで、検証の完了は待たない (検証中の操作を見る spec 用。#331)。 */
+  async addFiles(paths: string[]): Promise<void> {
+    await this.page.locator('#file-input').setInputFiles(paths);
   }
 
   /**
@@ -248,6 +258,28 @@ export class VerifyWebApp {
     );
     if (total === null || passed === null || failed === null) return null;
     return { total: Number(total), passed: Number(passed), failed: Number(failed) };
+  }
+
+  /**
+   * `#queue-status[data-proof-cancelled]` (#331): 集約のうちキャンセルした proof の件数。集約を出していなければ null
+   * (付くときは `data-proof-total` などと同時)。
+   */
+  async proofCancelled(): Promise<number | null> {
+    const value = await this.page.locator('#queue-status').getAttribute('data-proof-cancelled');
+    return value === null ? null : Number(value);
+  }
+
+  /**
+   * 表示中のタブの検証をキャンセルする (`#vp-cancel-btn`, #331)。ボタンは表示中のタブが pending / verifying の
+   * 間だけ出るので、`selectFile` でその行を選んでから押す。押した結果は `fileStates()` の `cancelled` で読む。
+   */
+  async cancelVerification(): Promise<void> {
+    await this.page.locator('#vp-cancel-btn').click({ timeout: 10_000 });
+  }
+
+  /** キャンセルした表示中のタブを再検証する (`#vp-retry-btn`, #331)。 */
+  async retryVerification(): Promise<void> {
+    await this.page.locator('#vp-retry-btn').click({ timeout: 10_000 });
   }
 
   /** ステータスバーの集約 (失敗を含むときだけ押せる) を押す。失敗した proof のタブが開く。 */

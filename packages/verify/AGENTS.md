@@ -77,7 +77,7 @@ E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく�
 | 〃 (`mode` のチップ) | `data-mode` | proof の自己申告 `mode` (`normalizeProofMode` 済み) | 参考表示。保証の導出には使っていない |
 | `#result-status-icon` | `data-level` | `verified` / `partial` / `failed` | 総合判定 (`TrustCalculator` の `TrustLevel`) |
 | `#trust-issues-list .trust-issue-item` | `data-component` / `data-severity` | `TrustIssueComponent` (`metadata` / `version` / `chain` / `posw` / `screenshots` / `source` / `anchoring` / `exam` / `typing`) / `error` / `warning` | 信頼バッジの issue 1 件。リストは issue が 0 件なら無い。`version` は proof の形式バージョン (#223): `newer` は warning、`tooOld` / `malformed` は error。**`VerificationController` の status と同じ軸** (`newer` → `warning`) |
-| `#file-list .file-item` | `data-status` | `pending` / `verifying` / `success` / `warning` / `error` | ファイルの検証状態 |
+| `#file-list .file-item` | `data-status` | `pending` / `verifying` / `success` / `warning` / `error` / `cancelled` | ファイルの検証状態。`cancelled` = 利用者が検証をキャンセルした (未検証。判定ではないので `error` と区別し、色も中立色にする。#331) |
 | `#file-list .file-item` | `data-filename` | 表示名 | どのファイルの行か |
 | `#tabbar .tab` | `data-status` / `data-filename` | `.file-item` と同じ | タブの検証状態 |
 | `#tabbar .tab` | `data-active` | `true` (アクティブ時のみ。それ以外は属性なし) | アクティブなタブ (#281) |
@@ -85,9 +85,10 @@ E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく�
 | `#result-status-card` | `data-filename` | 表示名 | 結果パネルが判定を描画しているファイル (判定を表示していない間は属性なし。#281) |
 | `.chart-tab` (`#tab-integrated` / `#tab-timeline` / `#tab-mouse`) | `data-active` | `true` (選択中のみ。それ以外は属性なし) | 結果パネルのチャートタブの選択状態 (#395) |
 | `.chart-panel` (`#panel-integrated` / `#panel-timeline` / `#panel-mouse`) | `data-active` | `true` (表示中のみ。それ以外は属性なし) | 表示中のチャートパネル。タブを押せたかは対応するパネルで見る (#395) |
-| `#queue-status` | `data-proof-total` / `data-proof-passed` / `data-proof-failed` | 0 以上の整数 (10 進文字列。3 つ同時に付く) | 検証が全件済んだあとのステータスバーの集約 (#282)。total = proof のタブ数 (plaintext・画像は数えない。検証できなかった `*_proof.json` は数える)、passed = status が `success` / `warning` (警告は passed に数える = verify-cli の `valid` と同じ軸)、failed = `error`。**検証中・proof 0 件・ステータスバーが他の表示 (Ready / エラー / メッセージ) の間は属性なし**。failed > 0 のときだけクリックで最初に失敗した proof を開く |
+| `#queue-status` | `data-proof-total` / `data-proof-passed` / `data-proof-failed` / `data-proof-cancelled` | 0 以上の整数 (10 進文字列。4 つ同時に付く) | 検証が全件済んだあとのステータスバーの集約 (#282)。total = proof のタブ数 (plaintext・画像は数えない。検証できなかった `*_proof.json` は数える)、passed = status が `success` / `warning` (警告は passed に数える = verify-cli の `valid` と同じ軸)、failed = `error`、cancelled = `cancelled` (passed にも failed にも入れない。「全件済んだ」の判定では済みに数える。#331)。**検証中・proof 0 件・ステータスバーが他の表示 (Ready / エラー / メッセージ) の間は属性なし**。failed > 0 のときだけクリックで最初に失敗した proof を開く |
 
 - **判定を表示していない間は属性を付けない** (`none` などの値は使わない)。検証中 (`startProgress` / `showLoading`)・プレーンテキスト / 画像表示・`reset()`・assurance 無しの描画では `#assurance-strip` の 3 属性と `#result-status-icon` の `data-level` を外す。前のタブの判定が残ると、E2E が別ファイルの判定を読んで通ってしまう。検証自体が失敗したタブ (status `error`・結果なし。未対応形式など) を開いたときも `TabController.showTabContent` が進捗 UI のエラー表示に切り替えるので属性は付かない (以前は何もせず、直前のファイルの判定が残っていた)。E2E は属性が現れるのを待ってから読む
+- **キャンセルしたタブ (`cancelled`) を開くと、進捗 UI に「キャンセルした」表示と再検証ボタン (`#vp-retry-btn`) を出す**。判定は無いので `#assurance-strip` / `#result-status-icon` の data-* は付けない。キャンセルボタン (`#vp-cancel-btn`) は表示中のタブが pending / verifying の間だけ出る (#331)
 - **ステータスバーの集約 (`services/verificationSummary.summarizeVerification`) の入力はタブの status だけ** (#282)。検証結果から導出し直さない (Sidebar / TabBar と食い違う余地ができ、検証キューに載らない読めない proof が抜ける)。集約を出すのは `AppController.updateStatusBar` の 1 か所で、`StatusBarUI` は `setSummary` 以外の表示に切り替えるたびに data-proof-* を外す
 - **`data-status` の出所は `VerificationController` (`tabManager.updateTab` と同じ値を Sidebar / TabBar に流す) に一本化する**。Sidebar / TabBar は受け取った値を出すだけで、検証結果から導出し直さない (`ui/__tests__/fileStatusState.test.ts` が 3 者の一致を固定)
 - `#result-status-icon` の `data-level` は `TrustCalculator` の結果を描画したときだけ付ける。`ResultData.trustResult` は必須で、ResultPanel は TrustLevel を導出し直さない
@@ -96,6 +97,13 @@ E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく�
 - **この契約 (要素・属性名・値域・「無い」の意味) を変えるときは、`packages/e2e` の E2E と同じ PR で変える**。片方だけ変えると E2E が赤になるか、もっと悪いと別の要素を読んで黙って通る。ユニットテストは `ui/__tests__/ResultPanelState.test.ts` / `fileStatusState.test.ts`。E2E 側の読み手は [`packages/e2e/tests/helpers/verifyWeb.ts`](../e2e/tests/helpers/verifyWeb.ts) (`VerifyWebApp`) 1 か所で、[`verify-web-parity.spec.ts`](../e2e/tests/verify-web-parity.spec.ts) (ほか `verify-web-submission` / `verify-web-ui`) が同じ ZIP に対する verify-cli の判定との一致 (Web↔CLI パリティ)、[`production-build.spec.ts`](../e2e/tests/production-build.spec.ts) が本番ビルド (`/verify/`) で属性が出ることを見る
 - 検証モードの初期値は URL クエリ `?mode=fast|audit|full` で上書きできる (E2E 用。既定 `full`、不正値は無視。`services/verifyModeQuery.ts`)
 - `#file-input` は `multiple`。change の購読は `AppController` の `bindFileInput` 1 か所だけ (WelcomePanel 等は `click()` で開くだけ)。二重購読は `ui/__tests__/fileInput.test.ts` が機械的に禁止する
+
+## 検証キュー (`state/VerificationQueue`)
+
+- Worker は 1 本で、1 件ずつ処理する。待ち行列は **proof のイベント数の少ない順** (同数は到着順。処理中の 1 件は動かさない)。重い proof の後ろで軽い proof の結果が待たされないため (#331)
+- `cancel(id)`: 待ち行列から外すか、処理中なら Worker を terminate して作り直して次へ進め、`onCancelled` を呼ぶ (→ `VerificationController.handleCancelled` が `cancelled` を流す)。`remove(id)` は同じ外し方でコールバックを呼ばず、その id のモード・問題パッケージも消す (ファイルを消したとき。`TabController.forgetFile` が呼ぶので、ファイル単体の削除もフォルダごとの削除も通る)
+- **パース済みの proof は完了 (result / error / cancel / remove) で手放す**。再検証 (`reverifyWithManifest(id, manifest, proofData)` / キャンセル後の `requeue(id, proofData)`) は**呼び出し側がタブの `proofData` を渡す** (キューに写しを残さない)。`requeue` はいまの既定モードで並べ直す (重い full を止め、fast に切り替えてから再検証する逃げ道)
+- 作り直す前の Worker や、処理中でない id から遅れて届いたメッセージは捨てる。`state/__tests__/VerificationQueue.test.ts` が Worker のモックで固定する
 
 ## 信頼スコア (`TrustCalculator`)
 
@@ -116,7 +124,7 @@ chain issue の `message` は常に翻訳済み文言 (`trust.issueChainInvalid`
 - **File System Access API はブラウザ依存**: Chrome/Edge のみ。フォールバック (`<input type="file">`) を維持
 - **チャートのズーム / パン状態は `ChartPreferencesService` で永続化**: 検証結果のリセット時にクリアするか、ユーザー設定として残すかの線引きに注意
 - **`tab-switches.json` はチェーン外の平文サイドファイル**: 各タブの proof とは独立で、ハッシュ連鎖に入らず verify / verify-cli も読まない。順序や内容を変えても検証結果は変わらない (監査用の人間向け情報)
-- **試験束縛カード (ADR-0006)**: `proof.exam` がある proof は root 束縛を worker が runtime で検証済み (`verifyInitialHashRoot` の exam 分岐。worker は proofData 全体を受け取る)。完全束縛 (署名/復号/内容) は **`.tcexam` を「問題パッケージを読み込む」で取り込んだとき** `verifyExamBinding` で検証 → `VerificationQueue.reverifyWithManifest` で当該タブのみ再検証。result-card は**折りたたみ式** (`.result-card-content` は既定 `display:none`、ヘッダクリックで展開) なので、ボタンは展開後に現れる。なお package 未提供 (root 束縛のみ) のカードは **warning (緑にしない) + 既定展開** にしてある (`examBindingCardStatus`。導線を畳みの中に隠さない。#281)
+- **試験束縛カード (ADR-0006)**: `proof.exam` がある proof は root 束縛を worker が runtime で検証済み (`verifyInitialHashRoot` の exam 分岐。worker は proofData 全体を受け取る)。完全束縛 (署名/復号/内容) は **`.tcexam` を「問題パッケージを読み込む」で取り込んだとき** `verifyExamBinding` で検証 → `VerificationQueue.reverifyWithManifest` で当該タブのみ再検証 (proof はタブの `proofData` を渡す。キューは完了した proof を持っていない)。result-card は**折りたたみ式** (`.result-card-content` は既定 `display:none`、ヘッダクリックで展開) なので、ボタンは展開後に現れる。なお package 未提供 (root 束縛のみ) のカードは **warning (緑にしない) + 既定展開** にしてある (`examBindingCardStatus`。導線を畳みの中に隠さない。#281)
 
 ## 分析カード (ADR-0009)
 

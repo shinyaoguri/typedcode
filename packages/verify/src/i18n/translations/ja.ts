@@ -76,6 +76,9 @@ export const ja: VerifyTranslationKeys = {
     chainDetail: '${current} / ${total} イベント',
     samplingDetail: '${current}イベント検証済み / ${total}イベント',
     samplingDetailWithTotal: '${current}イベント検証済み / ${total}イベント (全${totalEvents}イベント)',
+    cancel: 'キャンセル',
+    retry: '再検証',
+    cancelled: '検証をキャンセルしました',
   },
 
   result: {
@@ -122,6 +125,8 @@ export const ja: VerifyTranslationKeys = {
     anchoringNone: '署名なし',
     anchoringPostHoc: '⚠ 後付け一括署名の疑い (server span / client span が極端に小さい)',
     anchoringSparse: '⚠ アンカー密度が疎です (署名チェックポイントが申告セッションに対し少ない/遅い)',
+    anchoringUnsignedTail: '⚠ 末尾 ${count} イベントが署名されていません (最終署名はイベント #${index})',
+    anchoringLastSigned: '最終署名: イベント #${index}',
     // 詳細展開セクション
     anchoringDetailsToggle: '検証の根拠を表示',
     anchoringSectionKeys: '署名鍵',
@@ -245,6 +250,7 @@ export const ja: VerifyTranslationKeys = {
     verifying: '検証中 ${current}/${total}',
     summary: '${passed}/${total} 件 OK',
     summaryFailed: '失敗 ${failed} 件',
+    summaryCancelled: 'キャンセル ${cancelled} 件',
   },
 
   charts: {

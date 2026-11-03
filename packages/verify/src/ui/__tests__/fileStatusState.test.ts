@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 
 describe('Sidebar file item state contract', () => {
-  it.each<FileStatus>(['pending', 'verifying', 'success', 'warning', 'error'])(
+  it.each<FileStatus>(['pending', 'verifying', 'success', 'warning', 'error', 'cancelled'])(
     'exposes status %s and the filename as data attributes',
     (status) => {
       const sidebar = new Sidebar({ onFileSelect: () => {}, onAddFile: () => {} });
@@ -55,7 +55,7 @@ describe('Sidebar file item state contract', () => {
 });
 
 describe('TabBar tab state contract', () => {
-  it.each<FileStatus>(['pending', 'verifying', 'success', 'warning', 'error'])(
+  it.each<FileStatus>(['pending', 'verifying', 'success', 'warning', 'error', 'cancelled'])(
     'exposes status %s and the filename as data attributes',
     (status) => {
       const tabBar = new TabBar({ onTabSelect: () => {}, onTabClose: () => {} });
@@ -99,7 +99,7 @@ function wire(): { controller: VerificationController; tabManager: VerifyTabMana
     tabManager,
     sidebar,
     tabBar,
-    uiState: { incrementCompleted: vi.fn() },
+    uiState: { incrementCompleted: vi.fn(), incrementTotal: vi.fn() },
     statusBar: { setError: vi.fn() },
     resultPanel: { finishProgress: vi.fn(), errorProgress: vi.fn() },
     tabController: { showTabContent: vi.fn(), openTabForFile: vi.fn(), updateVerificationProgressUI: vi.fn() },
@@ -153,6 +153,39 @@ describe('VerificationController as the single source of file status', () => {
 
     expect(fileItem()?.dataset.status).toBe('verifying');
     expect(tab()?.dataset.status).toBe('verifying');
+  });
+
+  it('puts the same cancelled status on the tab state, the file item and the tab when verification is cancelled', () => {
+    const { controller, tabManager } = wire();
+    controller.handleProgress(ID, 40);
+
+    controller.handleCancelled(ID);
+
+    expect(tabManager.getTab(ID)?.status).toBe('cancelled');
+    expect(fileItem()?.dataset.status).toBe('cancelled');
+    expect(tab()?.dataset.status).toBe('cancelled');
+  });
+
+  it('keeps a cancelled tab cancelled when a late progress message arrives', () => {
+    const { controller, tabManager } = wire();
+    controller.handleCancelled(ID);
+
+    controller.handleProgress(ID, 60);
+
+    expect(tabManager.getTab(ID)?.status).toBe('cancelled');
+    expect(fileItem()?.dataset.status).toBe('cancelled');
+    expect(tab()?.dataset.status).toBe('cancelled');
+  });
+
+  it('puts the same pending status on the tab state, the file item and the tab when a cancelled tab is requeued', () => {
+    const { controller, tabManager } = wire();
+    controller.handleCancelled(ID);
+
+    controller.markRequeued(ID);
+
+    expect(tabManager.getTab(ID)?.status).toBe('pending');
+    expect(fileItem()?.dataset.status).toBe('pending');
+    expect(tab()?.dataset.status).toBe('pending');
   });
 
   it('marks the file item and the tab as error when the worker reports an error', () => {

@@ -137,6 +137,9 @@ export function buildResultData(tabState: VerifyTabState): Omit<ResultData, 'tru
               signedCount: 0,
               lastSignedEventIndex: null,
               coverageRatio: 0,
+              // 署名 cp の情報が無いときは全イベントが未署名の末尾 (shared の computeCoverage と同じ定義)。
+              unsignedTailEvents: eventCount,
+              terminalAnchored: false,
             },
             temporal: verificationResult.signedCheckpointTemporal ?? null,
             density: verificationResult.signedCheckpointDensity ?? null,

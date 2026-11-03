@@ -13,6 +13,7 @@ import type { IntegratedChart } from '../../charts/IntegratedChart';
 import type { ScreenshotOverlay } from '../../charts/ScreenshotOverlay';
 import type { ScreenshotLightbox } from '../ScreenshotLightbox';
 import type { SeekbarController } from '../../charts/SeekbarController';
+import type { VerificationQueue } from '../../state/VerificationQueue';
 import type { VerifyTabState, ProgressDetails, VerifyScreenshot, VerificationStepType } from '../../types';
 import { buildResultData, calculateChartStats } from '../../services/ResultDataService';
 import { TrustCalculator } from '../../services/TrustCalculator';
@@ -28,6 +29,8 @@ export interface TabControllerDependencies {
   sidebar: Sidebar;
   resultPanel: ResultPanel;
   welcomePanel: WelcomePanel;
+  /** ファイルを一覧から消したとき、検証キューからも外す (#331。消した proof の検証を続けない) */
+  verificationQueue: Pick<VerificationQueue, 'remove'>;
   getTimelineChart: () => TimelineChart | null;
   getMouseChart: () => MouseChart | null;
   // IntegratedChart関連（オプショナル - 後方互換性のため）
@@ -134,8 +137,16 @@ export class TabController {
     this.settleActiveAfterRemoval();
   }
 
-  /** 表示状態・tabManager・タブバーからファイルを外す (サイドバーは呼び出し側)。 */
+  /** 検証キュー・表示状態・tabManager・タブバーからファイルを外す (サイドバーは呼び出し側)。 */
   private forgetFile(id: string): void {
+    // 待ち行列・処理中の検証から外す (#331)。消したファイルの検証を続けない
+    this.deps.verificationQueue.remove(id);
+    const tab = this.deps.tabManager.getTab(id);
+    if (tab && (tab.status === 'pending' || tab.status === 'verifying')) {
+      // 検証の済んでいない proof を外したら「済み」に数える。数えないとステータスバーの
+      // 「検証中 N/M」の N が M に届かない (この proof の完了は二度と来ない)
+      this.deps.uiState.incrementCompleted();
+    }
     // 表示中のファイルの場合、表示状態をリセット
     if (this.deps.uiState.isDisplayed(id)) {
       this.deps.uiState.setCurrentDisplayedTabId(null);
@@ -215,6 +226,13 @@ export class TabController {
       // 既存の進捗があれば反映（同じタブでも更新）
       if (tabState.progressDetails) {
         this.updateVerificationProgressUI(tabState.progressDetails, tabState.progress);
+      }
+    } else if (tabState.status === 'cancelled') {
+      // 検証をキャンセルしたタブ (#331)。判定は無いので、進捗 UI に「キャンセルした」表示と再検証の導線を出す
+      // (showLoading が判定の data-* を外す = 状態契約の「判定を表示していない間は属性を付けない」)。
+      if (!isSameTab || forceRefresh || statusChanged) {
+        this.deps.uiState.setCurrentDisplayedTabId(id, tabState.status);
+        this.deps.resultPanel.showCancelled(tabState.filename);
       }
     } else if (tabState.verificationResult && tabState.proofData) {
       // 完了している場合

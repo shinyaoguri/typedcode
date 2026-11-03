@@ -1,6 +1,6 @@
 # ADR-0020: 保証を三層語彙 (整合性 × 時刻アンカー × 著述性) で機械導出し表示する
 
-- **Status**: Accepted (integrity の値域は [ADR-0031](0031-integrity-partial-when-posw-skipped.md) で `partial` を追加。Decision 4 の「exam present → `exam-t0`」は #131 で「束縛が検証済み (`bindingValid === true`) のときに限る」に強化済み)
+- **Status**: Accepted (integrity の値域は [ADR-0031](0031-integrity-partial-when-posw-skipped.md) で `partial` を追加。Decision 4 の「exam present → `exam-t0`」は #131 で「束縛が検証済み (`bindingValid === true`) のときに限る」に強化済み。Decision 4 の `anchored` は #295 で「最後の署名 cp が最終イベントを指す」「token と cp の sessionId が一致」を条件に追加済み)
 - **Date**: 2026-06-12
 - **Deciders**: (PR 上の合意者 / レビュアー)
 - **PR / Commit**: (本 ADR と同一 PR)
@@ -48,7 +48,9 @@ Option B を採用。
    (`packages/shared/src/assurance.ts`)。verify (web) と verify-cli が同一実装を使い、
    「Web と CLI で保証表示が食い違う」事故を構造的に防ぐ。テストは shared に置く。
 2. **入力は実証拠のみ**: metadataValid / chainValid / スクショ改竄数 / exam 束縛 /
-   rootAnchored / 署名 cp (valid・sparse・postHoc) / isPureTyping / 分析サマリ。
+   rootAnchored / 署名 cp (valid・sparse・postHoc・terminal = 最後の署名 cp が最終イベントを指すか) /
+   sessionTokenMismatch (セッション開始トークンと署名 cp の sessionId 不一致) / isPureTyping / 分析サマリ。
+   terminal と sessionTokenMismatch は必須入力 (optional だと渡し忘れが overclaim に倒れる。#295)。
    **自己申告 `proof.mode` は入力に使わない** (ADR-0011 §6)。mode は「自己申告」と明記の上で
    参考表示のみ。
 3. **温度差の規律**:
@@ -57,9 +59,22 @@ Option B を採用。
    - 本導出は `verifyProofFile` の valid を**置き換えない** (表示語彙であって判定ではない)。
 4. **temporal の導出規則**:
    - exam present → `exam-t0` (署名 cp は best-effort の補強で regime を変えない)
-   - rootAnchored ∧ 署名 cp が valid・密・post-hoc 疑いなし → `anchored`
-   - rootAnchored ∨ 有効な署名 cp (ただし疎 / post-hoc / 片方のみ) → `partial`
-   - どちらも無し (invalid な cp 連鎖は時刻証拠に数えない) → `unanchored`
+   - rootAnchored ∧ 署名 cp が valid・密・post-hoc 疑いなし ∧ 最後の署名 cp が最終イベントを指す
+     (未署名の末尾がない) ∧ token と cp の sessionId が一致 → `anchored`
+   - rootAnchored ∨ 有効な署名 cp (ただし疎 / post-hoc / 未署名の末尾 / 片方のみ) → `partial`
+   - どちらも無し (invalid な cp 連鎖と、token と sessionId が食い違う cp は時刻証拠に数えない)
+     → `unanchored`
+   - 空セッション (events 0 件) は署名 cp を持てない (eventIndex が範囲外で invalid) ので `anchored`
+     にならない。署名 cp の無い旧形式は従来どおり、root アンカーだけなら `partial`、何も無ければ
+     `unanchored`
+
+   **#295 での追記**: 当初の規則は最終イベントへの署名を見ておらず、先頭 1 イベントだけ署名して
+   残りをオフラインで書き足した proof が `anchored` になった (短いセッションでは密度も疎にならない)。
+   最終状態への署名は「その時点の内容が存在した時刻の上界」をサーバ時刻で与えるもので、各イベントの
+   実時刻を直接証明するわけではない。末尾に猶予 (N イベントまで未署名を許す) は設けない — 健全な
+   セッションは export 時に最終イベントへ署名するので満たし、猶予は「直前の数打鍵だけ未署名」の
+   偽造余地を残す。sessionId 不一致は改ざんの検出ではないので integrity には流さず、temporal だけ
+   降格させる (総合 `valid` は従来どおり false)。`valid` の受理条件 (最終署名必須) は #296 の範囲。
 5. **表示**: verify (web) は結果画面最上部に三層バッジ (+ mode の参考表示)、verify-cli は
    ヘッダ直下に `--- Assurance ---` 1 行サマリ。既存の TrustCalculator (issue リスト) と
    タブ status は詳細パネルとして併存する (issue の母集団は変えない)。

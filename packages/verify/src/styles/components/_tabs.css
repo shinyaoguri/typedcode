@@ -112,6 +112,12 @@
   background-color: var(--accent-danger);
 }
 
+/* キャンセル = 未検証 (#331)。中立色の輪郭だけにして pending (塗り) とも error (赤) とも見分ける */
+.tab-status.cancelled {
+  background-color: transparent;
+  border: 1px solid var(--text-tertiary);
+}
+
 /* Tab close button */
 .tab-close {
   display: flex;

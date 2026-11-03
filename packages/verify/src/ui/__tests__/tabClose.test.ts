@@ -7,7 +7,7 @@
  * 採点者が別の提出物の判定を読む。実物の 7 クラスを AppController と同じ形で結線して固定する。
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TabBar } from '../TabBar.js';
 import { Sidebar } from '../Sidebar.js';
 import { ResultPanel } from '../ResultPanel.js';
@@ -23,6 +23,8 @@ interface App {
   tabManager: VerifyTabManager;
   uiState: UIStateManager;
   tabController: TabController;
+  /** 検証キューの `remove` (ファイルを消したら検証キューからも外す。#331) */
+  removeFromQueue: ReturnType<typeof vi.fn>;
 }
 
 function wire(): App {
@@ -37,6 +39,7 @@ function wire(): App {
     onTabClose: (id) => holder.controller?.handleTabClose(id),
   });
   const sidebar = new Sidebar({ onFileSelect: () => {}, onAddFile: () => {} });
+  const removeFromQueue = vi.fn();
   const tabController = new TabController({
     tabManager,
     uiState,
@@ -44,12 +47,13 @@ function wire(): App {
     sidebar,
     resultPanel,
     welcomePanel,
+    verificationQueue: { remove: removeFromQueue },
     getTimelineChart: () => null,
     getMouseChart: () => null,
   });
   holder.controller = tabController;
   tabManager.setOnChange((tab) => tabController.showTabContent(tab.id));
-  return { tabBar, sidebar, tabManager, uiState, tabController };
+  return { tabBar, sidebar, tabManager, uiState, tabController, removeFromQueue };
 }
 
 /** プレーンテキストのファイルを tabManager と sidebar に登録する (タブはまだ開かない)。 */
@@ -187,6 +191,47 @@ describe('removing files from the sidebar', () => {
 
     expect(visible('welcome-panel')).toBe(true);
     expect(visible('result-container')).toBe(false);
+  });
+});
+
+describe('removing files from the verification queue (#331)', () => {
+  it('takes a removed file out of the verification queue', () => {
+    for (const id of ['a', 'b']) addFile(app, id);
+
+    app.tabController.removeFile('b');
+
+    expect(app.removeFromQueue.mock.calls).toEqual([['b']]);
+  });
+
+  it('takes every file of a removed folder, including descendant folders, out of the verification queue', () => {
+    app.sidebar.addFolder({ id: 'f1', name: 'one', expanded: true });
+    app.sidebar.addFolder({ id: 'f2', name: 'two', expanded: true, parentId: 'f1' });
+    addFile(app, 'a');
+    addFile(app, 'b', 'f1');
+    addFile(app, 'c', 'f2');
+
+    app.tabController.removeFolder('f1');
+
+    expect(app.removeFromQueue.mock.calls.map(([id]) => id).sort()).toEqual(['b', 'c']);
+  });
+
+  it('counts a removed proof that was still waiting as completed so the verifying counter can reach the total', () => {
+    app.tabManager.addTab({
+      id: 'p',
+      filename: 'p_proof.json',
+      language: 'c',
+      status: 'pending',
+      progress: 0,
+      proofData: null,
+      verificationResult: null,
+    });
+    app.sidebar.addFile({ id: 'p', filename: 'p_proof.json', status: 'pending' });
+    app.uiState.incrementTotal();
+
+    app.tabController.removeFile('p');
+
+    const { completedCount, totalCount } = app.uiState.getState();
+    expect(completedCount).toBe(totalCount);
   });
 });
 
