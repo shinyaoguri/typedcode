@@ -162,6 +162,9 @@ export class AppController {
       generateId: () => this.generateId(),
       onScreenshotServiceUpdate: (service) => this.chartController.updateScreenshotService(service),
       onStatusBarUpdate: () => this.updateStatusBar(),
+      tabBar: this.tabBar,
+      // 提出物の照合結果 (#293) が検証後に付いたタブの status を、出所 (VerificationController) で付け直す
+      onSubmissionChange: (id) => this.verificationController.recomputeStatus(id),
     });
 
     // 試験束縛カード (ADR-0006) の「問題パッケージを読み込む」: アクティブタブに .tcexam を読み込み再検証。
@@ -194,6 +197,7 @@ export class AppController {
       },
       addPlaintextFile: (fileData, folderId) => this.fileController.addPlaintextFile(fileData, folderId),
       addImageFile: (fileData, folderId) => this.fileController.addImageFile(fileData, folderId),
+      settleSubmission: () => this.fileController.settleSubmission(),
       onScreenshotServiceUpdate: (service) => this.chartController.updateScreenshotService(service),
       onStatusBarUpdate: () => this.updateStatusBar(),
       onFileRemove: (id) => this.handleFileRemove(id),
@@ -325,11 +329,15 @@ export class AppController {
   private handleFileRemove(id: string): void {
     // タブ・tabManager・サイドバーからの削除と、残ったタブへの表示の寄せは TabController が担う
     this.tabController.removeFile(id);
+    this.fileController.forgetSubmissionFiles([id]);
     this.updateStatusBar();
   }
 
   private handleFolderRemove(folderId: string): void {
+    // 外れるファイルは、サイドバーから消す前に控える (消した後は引けない)
+    const removedIds = this.sidebar.getFileIdsInFolderTree(folderId);
     this.tabController.removeFolder(folderId);
+    this.fileController.forgetSubmissionFiles(removedIds);
     this.updateStatusBar();
   }
 

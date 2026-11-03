@@ -1,5 +1,7 @@
+import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { test, expect } from '@playwright/test';
+import JSZip from 'jszip';
 import { EditorApp, listProofEntries, tamperFirstContentChange, writeZipVariant } from './helpers/app.js';
 import { runVerifyCliWithVerdicts, type CliResultWithVerdicts } from './helpers/verifyCli.js';
 import { VerifyWebApp, type VerifyVerdict } from './helpers/verifyWeb.js';
@@ -304,6 +306,36 @@ test('#292: 壊れた *_proof.json を含む ZIP でも結果が出て、壊れ�
   // CLI も壊れた proof を失敗として数える。
   const cli = runVerifyCliWithVerdicts(brokenZip, ['--mode', 'fast']);
   expect(cli.exitCode, cli.stdout + cli.stderr).toBe(1);
+});
+
+// #293: ZIP に同梱されたソースが proof.content と違うとき、CLI は exit 1、verify Web は proof とソースを error にする。
+// (かつて CLI は同梱ソースを読まず PASSED / exit 0、Web は warning だった。) 整合性 (integrity) は落とさない:
+// proof 自体は改ざんされていないので、判定は提出物の不整合 (`source` component) として別の理由で出る。
+test('#293: 同梱ソースを差し替えた ZIP は Web で error、CLI で exit 1 になり、整合性は落ちない', async ({ page }) => {
+  const zipPath = await typeAndExport(new EditorApp(page));
+  const proofName = (await proofNames(zipPath))[0]!;
+  const sourceName = Object.keys((await JSZip.loadAsync(await readFile(zipPath))).files).find((n) => n.endsWith('.c'))!;
+  const forged = await writeZipVariant(zipPath, {
+    // 同じ名前の extraEntries は元のソースを置き換える (proof は触らない)
+    extraEntries: { [sourceName]: 'THIS IS NOT THE VERIFIED CONTENT' },
+    outName: 'forged-source.zip',
+  });
+
+  const cli = runVerifyCliWithVerdicts(forged, ['--mode', 'fast']);
+  expect(cli.exitCode, cli.stdout + cli.stderr).toBe(1);
+  expect(cli.stdout).toMatch(new RegExp(`^Source:\\s+${sourceName.replace('.', '\\.')}\\s+MISMATCH`, 'm'));
+  expect(cli.verdicts[0]?.assurance.integrity, 'CLI も整合性は落とさない').not.toBe('failed');
+
+  const web = new VerifyWebApp(page);
+  await web.open('fast');
+  const states = await web.load([forged]);
+  expect(states.find((s) => s.filename === proofName)?.status, JSON.stringify(states)).toBe('error');
+  expect(states.find((s) => s.filename === sourceName)?.status, JSON.stringify(states)).toBe('error');
+
+  const verdict = (await web.readVerdicts([proofName]))[0]!;
+  expect(verdict.integrity, '整合性のバッジは落とさない').toBe('partial');
+  expect(verdict.level).toBe('failed');
+  expect(await web.trustIssues()).toContainEqual({ component: 'source', severity: 'error' });
 });
 
 // #395: 結果を表示した後、1280x800 でチャートのタブ (タイムライン等) が結果カードに覆われて押せなかった。

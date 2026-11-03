@@ -8,16 +8,21 @@ import type { UIStateManager } from '../../state/UIStateManager';
 import type { VerificationQueue } from '../../state/VerificationQueue';
 import type { Sidebar } from '../Sidebar';
 import type { StatusBarUI } from '../StatusBarUI';
-import type { ProofFile, VerifyScreenshot, DiffResult, ContentMismatchInfo } from '../../types';
+import type { ProofFile, VerifyScreenshot, ContentMismatchInfo, VerifyTabState } from '../../types';
 import { t } from '../../i18n/index';
 import { DiffService } from '../../services/DiffService';
 import { examPackageErrorKey } from '../../services/examPackageError';
 import {
   isProofFile,
+  isSubmissionSourceEntry,
+  matchSubmissionSources,
   normalizeProofLanguage,
   parseExamPackageManifestResult,
+  submissionSeverity,
   type ExamPackageManifest,
 } from '@typedcode/shared';
+import type { FileStatus } from '../Sidebar';
+import type { TabStatus } from '../TabBar';
 
 /** 隠し file input を開いて 1 ファイルを返す (キャンセルは null)。 */
 function pickFile(accept: string): Promise<File | null> {
@@ -51,24 +56,34 @@ export interface FileControllerDependencies {
   generateId: () => string;
   onScreenshotServiceUpdate?: (service: ScreenshotService) => void;
   onStatusBarUpdate?: () => void;
+  /** 開いているタブの見た目を更新する (照合結果が後から付いたとき用。タブが開いていなければ何もしない) */
+  tabBar?: { hasTab(id: string): boolean; updateTabStatus(id: string, status: TabStatus): void };
+  /**
+   * 検証済みの proof タブに提出物の照合結果が付いた / 変わったときの通知。status の出所は
+   * VerificationController なので、再計算はそちらに任せる (ここで status を導出し直さない)。
+   */
+  onSubmissionChange?: (tabId: string) => void;
+}
+
+/**
+ * 1 つのフォルダ (ZIP のルート・サブフォルダ・FSA のフォルダ) に集まった、提出物の照合の材料 (#293)。
+ * `path` はフォルダ内のファイル名 (ZIP のサブフォルダは別フォルダとして扱われ、別の registry になる)。
+ */
+interface SubmissionFolder {
+  proofs: Array<{ tabId: string; path: string; filename: unknown; language: unknown; content: unknown }>;
+  unreadable: Array<{ tabId: string; path: string }>;
+  sources: Array<{ tabId: string; path: string; bytes: Uint8Array; text: string }>;
 }
 
 export class FileController {
   private deps: FileControllerDependencies;
 
   /**
-   * proofファイルのcontentを保存するマップ
-   * folderId -> (baseFilename -> content)
-   * 例: "folder123" -> ("main" -> "int main() {...}")
+   * フォルダごとの提出物照合の材料 (folderId -> 材料)。ファイルを足すたびに登録するだけで、
+   * 照合 (`settleSubmission`) は全ファイルが揃ってから行う (途中で判定すると、まだ読んでいないソースが
+   * 「欠落」に見える)。対応規則と比較は shared の `matchSubmissionSources` が持つ (verify-cli と同一実装)。
    */
-  private proofContentMap: Map<string, Map<string, string>> = new Map();
-
-  /**
-   * proofファイルのIDを保存するマップ（ソースファイル不一致時の更新用）
-   * folderId -> (baseFilename -> proofTabId)
-   * 例: "folder123" -> ("main" -> "tab456")
-   */
-  private proofIdMap: Map<string, Map<string, string>> = new Map();
+  private submissionFolders: Map<string, SubmissionFolder> = new Map();
 
   constructor(deps: FileControllerDependencies) {
     this.deps = deps;
@@ -164,12 +179,6 @@ export class FileController {
         this.deps.onScreenshotServiceUpdate(result.screenshotService);
       }
 
-      // ZIPファイルの場合、proof contentマップとIDマップをクリア
-      if (file.name.endsWith('.zip') && rootFolderId) {
-        this.proofContentMap.set(rootFolderId, new Map());
-        this.proofIdMap.set(rootFolderId, new Map());
-      }
-
       // 2パスで処理: 1) proofファイル、2) plaintext/imageファイル
       // これにより、plaintextファイル処理時にproofのcontentを参照できる
       const proofFiles = result.files.filter((f) => f.type === 'proof');
@@ -209,6 +218,9 @@ export class FileController {
           this.addPlaintextFile(fileData, folderId);
         }
       }
+
+      // 全ファイルが揃ったので、同梱ソースと proof.content を照合する (#293)
+      this.settleSubmission();
     } catch (error) {
       console.error('Error processing file:', error);
       this.deps.statusBar.setError(`${t('errors.fileReadError')}: ${file.name}`);
@@ -234,55 +246,22 @@ export class FileController {
 
   /**
    * プレーンテキストファイルを追加（読み取り専用）
-   * 同じフォルダ内に対応するproofファイルがあれば差分比較を行う
+   *
+   * 同梱ソースの候補なら、提出物照合の材料として登録する。照合そのものは `settleSubmission` が
+   * 全ファイルが揃ってから行う (#293)。proof の有無・照合の結果によらず、ソースは常に平文タブとして開ける。
    */
   addPlaintextFile(fileData: ParsedFileData, folderId?: string): void {
     const id = this.deps.generateId();
     const displayName = this.deps.uiState.generateDisplayName(fileData.filename, folderId);
 
-    // 対応するproofファイルのcontentを検索して差分を計算
-    let diffResult: DiffResult | undefined;
-    let hasContentMismatch = false;
-    let associatedProofContent: string | undefined;
-    let associatedProofId: string | undefined;
-
-    if (folderId && fileData.rawData) {
-      const folderProofs = this.proofContentMap.get(folderId);
-      const folderProofIds = this.proofIdMap.get(folderId);
-      if (folderProofs) {
-        // ファイル名からベース名を抽出（拡張子を除去）
-        const baseFilename = fileData.filename.replace(/\.[^.]+$/, '');
-        const proofContent = folderProofs.get(baseFilename);
-        associatedProofId = folderProofIds?.get(baseFilename);
-
-        if (proofContent !== undefined) {
-          associatedProofContent = proofContent;
-          diffResult = DiffService.compare(fileData.rawData, proofContent);
-          hasContentMismatch = !diffResult.isIdentical;
-
-          if (hasContentMismatch) {
-            console.log(`[FileController] Content mismatch detected for ${fileData.filename}:`, {
-              additions: diffResult.stats.additions,
-              deletions: diffResult.stats.deletions,
-              associatedProofId,
-            });
-
-            // 対応するproofファイルのタブ情報も更新（不一致情報を追加）
-            if (associatedProofId) {
-              const mismatchInfo: ContentMismatchInfo = {
-                filename: fileData.filename,
-                additions: diffResult.stats.additions,
-                deletions: diffResult.stats.deletions,
-              };
-              this.deps.tabManager.updateTab(associatedProofId, {
-                associatedSourceMismatch: mismatchInfo,
-              });
-              // サイドバーのproofファイルアイコンも警告に更新
-              this.deps.sidebar.updateFileStatus(associatedProofId, 'warning');
-            }
-          }
-        }
-      }
+    if (folderId && isSubmissionSourceEntry(fileData.filename)) {
+      this.submissionFolderOf(folderId).sources.push({
+        tabId: id,
+        path: fileData.filename,
+        // バイト列を持たない入力 (他の経路) は再符号化で代える。BOM はここで失われるので、持てる経路では持たせている。
+        bytes: fileData.rawBytes ?? new TextEncoder().encode(fileData.rawData),
+        text: fileData.rawData,
+      });
     }
 
     // Add to tab manager (plaintext file - no verification)
@@ -290,22 +269,19 @@ export class FileController {
       id,
       filename: displayName,
       language: fileData.language,
-      status: hasContentMismatch ? 'warning' : 'success', // 差分がある場合は警告状態
+      status: 'success',
       progress: 100,
       proofData: null,
       verificationResult: null,
       isPlaintext: true, // プレーンテキストフラグ
       plaintextContent: fileData.rawData,
-      associatedProofContent,
-      diffResult,
-      hasContentMismatch,
     });
 
     // Add to sidebar (file list)
     this.deps.sidebar.addFile({
       id,
       filename: displayName,
-      status: hasContentMismatch ? 'warning' : 'success', // 差分がある場合は警告アイコン
+      status: 'success',
       folderId,
       isProof: false, // プレーンテキストファイル
     });
@@ -385,28 +361,16 @@ export class FileController {
       // 表示名を生成（重複がある場合は番号を付ける）
       const displayName = this.deps.uiState.generateDisplayName(filename, folderId);
 
-      // proofファイルのcontentとIDをマップに保存（差分比較用）
-      // ファイル名から_proofを除去してベース名を取得
-      // 例: "main_proof.json" -> "main"
-      const baseFilename = filename.replace(/_proof\.json$/i, '').replace(/\.json$/i, '');
-
-      if (folderId && proofData.content) {
-        let folderProofs = this.proofContentMap.get(folderId);
-        if (!folderProofs) {
-          folderProofs = new Map();
-          this.proofContentMap.set(folderId, folderProofs);
-        }
-        folderProofs.set(baseFilename, proofData.content);
-      }
-
-      // proofファイルIDをマップに保存（ソースファイル不一致時の更新用）
+      // 提出物照合の材料として登録 (#293)。自己申告の欄は未検証なので unknown のまま渡す。
       if (folderId) {
-        let folderProofIds = this.proofIdMap.get(folderId);
-        if (!folderProofIds) {
-          folderProofIds = new Map();
-          this.proofIdMap.set(folderId, folderProofIds);
-        }
-        folderProofIds.set(baseFilename, id);
+        const claim = parsed as { filename?: unknown; language?: unknown; content?: unknown };
+        this.submissionFolderOf(folderId).proofs.push({
+          tabId: id,
+          path: filename,
+          filename: claim.filename,
+          language: claim.language,
+          content: claim.content,
+        });
       }
 
       // startTimestampが渡されていない場合は計算
@@ -475,6 +439,9 @@ export class FileController {
     const id = this.deps.generateId();
     const displayName = this.deps.uiState.generateDisplayName(filename, folderId);
 
+    // 読めない proof もタブ番号の欠番として照合に渡す (後続タブのソース名を確定できなくなる, #293)
+    if (folderId) this.submissionFolderOf(folderId).unreadable.push({ tabId: id, path: filename });
+
     this.deps.tabManager.addTab({
       id,
       filename: displayName,
@@ -500,6 +467,122 @@ export class FileController {
     this.deps.uiState.incrementCompleted();
 
     this.deps.statusBar.setError(error);
+    this.deps.onStatusBarUpdate?.();
+  }
+
+  /**
+   * 一覧から外されたファイルを照合の材料から外し、残りで照合し直す (#293)。
+   * 外したファイルが相手だった proof / ソースの結論も、残りの材料に合わせて変わる。
+   */
+  forgetSubmissionFiles(tabIds: readonly string[]): void {
+    const gone = new Set(tabIds);
+    for (const folder of this.submissionFolders.values()) {
+      folder.proofs = folder.proofs.filter((p) => !gone.has(p.tabId));
+      folder.unreadable = folder.unreadable.filter((u) => !gone.has(u.tabId));
+      folder.sources = folder.sources.filter((s) => !gone.has(s.tabId));
+    }
+    this.settleSubmission();
+  }
+
+  private submissionFolderOf(folderId: string): SubmissionFolder {
+    let folder = this.submissionFolders.get(folderId);
+    if (!folder) {
+      folder = { proofs: [], unreadable: [], sources: [] };
+      this.submissionFolders.set(folderId, folder);
+    }
+    return folder;
+  }
+
+  /**
+   * 集めた材料でフォルダ単位に提出物を照合し、結果をタブ / サイドバーに反映する (#293)。
+   * `folderId` を省くと材料のある全フォルダが対象。何度呼んでも同じ結果になる (毎回、状態を付け直す)。
+   *
+   * 結論は verify-cli と同じ shared の関数 (`matchSubmissionSources` / `submissionSeverity`) が出す:
+   * - 不一致 / 対応が曖昧: proof タブと同梱ソースのタブを error にする。整合性 (integrity) のバッジは変えない
+   * - ソース欠落 / 孤立ソース: warning
+   */
+  settleSubmission(folderId?: string): void {
+    for (const id of folderId !== undefined ? [folderId] : [...this.submissionFolders.keys()]) {
+      this.settleSubmissionFolder(id);
+    }
+  }
+
+  private settleSubmissionFolder(folderId: string): void {
+    const folder = this.submissionFolders.get(folderId);
+    // proof の無いフォルダは照合する相手がいない。ソースは平文タブとして開けるまま (status も success のまま)。
+    if (!folder || folder.proofs.length + folder.unreadable.length === 0) return;
+
+    const report = matchSubmissionSources({
+      proofs: folder.proofs.map((p) => ({
+        path: p.path,
+        filename: p.filename,
+        language: p.language,
+        content: p.content,
+      })),
+      unreadableProofPaths: folder.unreadable.map((u) => u.path),
+      sources: folder.sources.map((s) => ({ path: s.path, bytes: s.bytes })),
+    });
+
+    // 付け直しなので、まず全ソースタブを既定 (success・不一致表示なし) に戻す。
+    const sourceUpdates = new Map<string, Partial<VerifyTabState>>();
+    for (const source of folder.sources) {
+      sourceUpdates.set(source.tabId, {
+        status: 'success',
+        hasContentMismatch: false,
+        diffResult: undefined,
+        associatedProofContent: undefined,
+      });
+    }
+    const sourceByPath = new Map(folder.sources.map((s) => [s.path, s]));
+
+    report.pairs.forEach((pair, i) => {
+      const proof = folder.proofs[i]!;
+      const severity = submissionSeverity(report, pair);
+      let info: ContentMismatchInfo | undefined;
+
+      if (pair.status !== 'match') {
+        let additions = 0;
+        let deletions = 0;
+        const source = pair.expectedSource === undefined ? undefined : sourceByPath.get(pair.expectedSource);
+        if (pair.status === 'mismatch' && source && typeof proof.content === 'string') {
+          // 行単位の差分は表示用 (結論には使わない)。バイト単位で違うのに行は同じ (CRLF・BOM) こともある。
+          const diff = DiffService.compare(source.text, proof.content);
+          additions = diff.stats.additions;
+          deletions = diff.stats.deletions;
+          sourceUpdates.set(source.tabId, {
+            status: 'error',
+            hasContentMismatch: true,
+            diffResult: diff,
+            associatedProofContent: proof.content,
+          });
+        }
+        info = {
+          filename: pair.expectedSource ?? proof.path,
+          additions,
+          deletions,
+          kind: pair.status,
+          severity: severity === 'failure' ? 'error' : 'warning',
+        };
+      }
+
+      const before = this.deps.tabManager.getTab(proof.tabId)?.associatedSourceMismatch;
+      this.deps.tabManager.updateTab(proof.tabId, { associatedSourceMismatch: info });
+      // 検証が先に終わっていたら、status を付け直す (出所は VerificationController)
+      if (JSON.stringify(before) !== JSON.stringify(info)) this.deps.onSubmissionChange?.(proof.tabId);
+    });
+
+    // どの proof の期待名にも当たらないソースは warning (exit code 相当のものではない)
+    for (const orphan of report.orphanSources) {
+      const source = sourceByPath.get(orphan);
+      if (source) sourceUpdates.set(source.tabId, { status: 'warning' });
+    }
+
+    for (const [tabId, updates] of sourceUpdates) {
+      this.deps.tabManager.updateTab(tabId, updates);
+      const status = updates.status as FileStatus;
+      this.deps.sidebar.updateFileStatus(tabId, status);
+      if (this.deps.tabBar?.hasTab(tabId)) this.deps.tabBar.updateTabStatus(tabId, status as TabStatus);
+    }
     this.deps.onStatusBarUpdate?.();
   }
 }

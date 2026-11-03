@@ -34,6 +34,11 @@ export interface ParsedFileData {
   language: string;
   /** 生データ（文字列、画像の場合は空） */
   rawData: string;
+  /**
+   * 生のバイト列 (提出物の照合用, #293)。`rawData` は UTF-8 復号の結果で BOM が落ちるので、バイト単位で
+   * 照合するソース (ZIP の同梱ソース・フォルダのプレーンテキスト) だけが持つ。無ければ `rawData` の再符号化で代える。
+   */
+  rawBytes?: Uint8Array;
   /** 解析済みデータ（proof の場合のみ） */
   proofData?: ProofFile;
   /** フォルダ内の相対パス */
@@ -148,7 +153,9 @@ export class FileProcessor {
     this.callbacks.onReadStart?.(file.name);
 
     try {
-      const text = await file.text();
+      // バイト列も残す (#293): `file.text()` は BOM を落とすので、提出物の照合はバイト列で行う。
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const text = new TextDecoder('utf-8').decode(bytes);
       const sizeKb = text.length / 1024;
       this.callbacks.onReadComplete?.(file.name, sizeKb);
 
@@ -163,6 +170,7 @@ export class FileProcessor {
             type: 'plaintext',
             language,
             rawData: text,
+            rawBytes: bytes,
             relativePath,
           },
         ],

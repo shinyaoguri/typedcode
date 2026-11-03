@@ -32,6 +32,8 @@ export interface FolderControllerDependencies {
   ) => void;
   addPlaintextFile: (fileData: ParsedFileData, folderId?: string) => void;
   addImageFile: (fileData: ParsedFileData, folderId?: string) => void;
+  /** 読み込んだファイルが揃ったところで、同梱ソースと proof.content を照合する (#293) */
+  settleSubmission: () => void;
   onScreenshotServiceUpdate?: (service: ScreenshotService) => void;
   onStatusBarUpdate?: () => void;
   onFileRemove?: (id: string) => void;
@@ -161,6 +163,7 @@ export class FolderController {
     for (const fileEntry of result.files) {
       await this.processFileFromHandle(fileEntry, folderMap, folderScreenshots, folderStartTimestamp);
     }
+    this.deps.settleSubmission();
 
     // 監視を開始
     await this.syncManager.startWatching(handle, 3000);
@@ -285,6 +288,7 @@ export class FolderController {
         }
       }
 
+      this.deps.settleSubmission();
       this.deps.statusBar.setMessage(`${t('messages.fileAdded')}: ${file.name}`);
     } catch (error) {
       console.error('Error processing added file:', error);
@@ -520,6 +524,7 @@ export class FolderController {
       }
     }
 
+    this.deps.settleSubmission();
     this.deps.statusBar.setMessage(`${t('messages.folderOpened')}: ${zipFolderName}`);
   }
 

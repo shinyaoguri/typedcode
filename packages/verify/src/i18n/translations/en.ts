@@ -339,7 +339,12 @@ export const en: VerifyTranslationKeys = {
     issueScreenshotsMissing: '${count} screenshots missing',
     issueScreenshotsChainOnly:
       '${count} screenshot hash(es) in the chain have no manifest entry (may have been stripped)',
-    issueSourceMismatch: '${filename}: source file differs from proof content (+${additions}/-${deletions} lines)',
+    issueSubmissionMismatch:
+      'Submission mismatch: ${filename} does not match the proof content (+${additions}/-${deletions} lines)',
+    issueSubmissionMissing: 'Submission mismatch: ${filename} is not bundled (cannot compare with the proof content)',
+    issueSubmissionAmbiguous: 'Submission mismatch: cannot determine which source file belongs to this proof',
+    issueSubmissionUncheckable:
+      'Submission mismatch: this proof has no filename or content, so the bundled source cannot be compared',
     issueAnchoringInvalid: 'Signed checkpoints are invalid',
     issueAnchoringMissing: 'No temporal anchor (signed checkpoints)',
     issueAnchoringPostHoc: 'Post-hoc batch signing suspected (server span is far shorter than the claimed session)',
@@ -363,7 +368,7 @@ export const en: VerifyTranslationKeys = {
       chain: 'Hash Chain',
       posw: 'PoSW',
       screenshots: 'Screenshots',
-      source: 'Source File',
+      source: 'Submission',
       anchoring: 'Temporal Anchoring',
       exam: 'Exam Binding',
       typing: 'Typing',

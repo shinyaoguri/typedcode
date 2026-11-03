@@ -20,6 +20,23 @@ export interface TrustCalculatorOptions {
   hasScreenShareOptOut?: boolean;
 }
 
+function submissionIssueMessage(info: ContentMismatchInfo): string {
+  switch (info.kind) {
+    case 'mismatch':
+      return t('trust.issueSubmissionMismatch', {
+        filename: info.filename,
+        additions: info.additions,
+        deletions: info.deletions,
+      });
+    case 'missing-source':
+      return t('trust.issueSubmissionMissing', { filename: info.filename });
+    case 'ambiguous':
+      return t('trust.issueSubmissionAmbiguous');
+    case 'uncheckable':
+      return t('trust.issueSubmissionUncheckable');
+  }
+}
+
 export class TrustCalculator {
   /**
    * 検証結果から信頼度を計算
@@ -110,17 +127,15 @@ export class TrustCalculator {
       }
     }
 
-    // 5. ソースファイル不一致検証
+    // 5. 提出物 (同梱ソースと proof.content) の照合 (#293)。重さは shared の `submissionSeverity` の結論
+    //    (verify-cli の exit code と同じ): 内容の不一致・対応の曖昧さは error、ソース欠落は warning。
+    //    proof 自体は改ざんされていないので、integrity (`deriveAssurance`) には影響させない。
     if (contentMismatches && contentMismatches.length > 0) {
       for (const mismatch of contentMismatches) {
         issues.push({
           component: 'source',
-          severity: 'warning',
-          message: t('trust.issueSourceMismatch', {
-            filename: mismatch.filename,
-            additions: mismatch.additions,
-            deletions: mismatch.deletions,
-          }),
+          severity: mismatch.severity,
+          message: submissionIssueMessage(mismatch),
         });
       }
     }

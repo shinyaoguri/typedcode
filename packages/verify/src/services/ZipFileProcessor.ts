@@ -10,6 +10,7 @@ import {
   assertZipWithinBudget,
   collectChainImageHashes,
   isProofExportFilename,
+  isSubmissionSourceEntry,
   normalizeProofLanguage,
   readZipEntryBytes,
   readZipEntryText,
@@ -159,6 +160,17 @@ export class ZipFileProcessor {
 
       // その他のバイナリファイルはスキップ（テキストファイルのみ処理）
       if (isBinaryFile(filename)) continue;
+
+      // 提出物のソース候補 (#293) は生のバイト列も残す: 照合はバイト単位で、テキスト復号は BOM を落とす。
+      // 予算はエントリ単位で数えるので、バイトで読んで復号しても二重計上にならない。
+      if (isSubmissionSourceEntry(path)) {
+        const bytes = await readZipEntryBytes(zipEntry, budget);
+        files.push({
+          ...this.parseTextFile(new TextDecoder('utf-8').decode(bytes), filename, path),
+          rawBytes: bytes,
+        });
+        continue;
+      }
 
       const content = await readZipEntryText(zipEntry, budget);
       const parsed = this.parseTextFile(content, filename, path);
