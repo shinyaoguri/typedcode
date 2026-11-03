@@ -7,7 +7,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { AssuranceResult, ScreenshotVerificationSummary, SubmissionPair } from '@typedcode/shared';
+import {
+  runAnalysis,
+  type AssuranceResult,
+  type ScreenshotVerificationSummary,
+  type SubmissionPair,
+} from '@typedcode/shared';
 import {
   formatMultiSummary,
   formatOrphanSources,
@@ -674,5 +679,26 @@ describe('formatOrphanSources (#293)', () => {
 
     expect(text).toContain('! Source file not matched to any proof: extra.py');
     expect(text.split('\n').filter((l) => l.startsWith('✓'))).toEqual([]);
+  });
+});
+
+describe('formatResult — テンプレート注入量の advisory (#416)', () => {
+  it('prints the template and typed character counts as an INFO line in the advisory section', async () => {
+    const events = [
+      { type: 'templateInjection', timestamp: 0, data: { content: 'x'.repeat(500), contentLength: 0 } },
+      { type: 'contentChange', timestamp: 1000, data: 'y'.repeat(10), inputType: 'insertText' },
+    ];
+    const analysis = await runAnalysis({
+      proof: { proof: { events } } as never,
+      verification: { valid: true, metadataValid: true, chainValid: true, isPureTyping: true } as never,
+    });
+
+    const text = plain(formatResult(output({ analysis })));
+
+    const section = text.slice(text.indexOf('--- Analysis (advisory) ---'));
+    const line = section.split('\n').find((l) => l.includes('Template-injected content'));
+    expect(line).toBe(
+      '  [INFO] transcription-topology: Template-injected content: 500 chars from templates, 10 chars typed'
+    );
   });
 });

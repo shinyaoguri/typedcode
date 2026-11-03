@@ -23,6 +23,7 @@ export {
   focusBurstAnalyzer,
   pureTypingAnalyzer,
   typingPatternAnalyzer,
+  templateInjectionAnalyzer,
 } from './analyzers/index.js';
 
 export { buildAnalysisBundle, ANALYSIS_BUNDLE_SCHEMA } from './bundle.js';

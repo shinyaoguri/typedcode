@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+### 追加
+
+- テンプレート (`templateInjection`) で入った文字数と打った文字数を、分析層の advisory signal (severity `info`) として出すようにした。verify の分析カードと verify-cli の `--- Analysis (advisory) ---` に「テンプレートで入った文字数 500 / 打った文字数 10」の形で出る。文字数は自己申告の `contentLength` ではなく `data.content.length` の合計で数える。`reviewPriority` と著述性の `notableSignals`、検証結果、`isPureTyping` は変えない (#416)
+
 ### 修正
 
 - verify-cli が、ZIP に同梱されたソースが `proof.content` と違っても `Verification PASSED` / exit 0 にしていた問題を直した。proof ごとに、同梱ソースを proof の `filename` と `language` から editor と同じ手順で作った期待名で対にして、バイト単位で照合する (改行・BOM は正規化しない)。不一致と、対応を一意に決められない場合は exit 1、ソース欠落と孤立ソースは警告で exit code に影響しない。`Integrity: PROVEN` は変わらず、結果は `--- Submission ---` 節に出る。verify (Web) も同じ shared の関数で突き合わせ、不一致のタブを error にする。これまで Web は proof 名の `_proof.json` を剥がしたベース名で引いていたので、同名のタブの 2 つ目 (`main_proof_1.json` ↔ `main_1.c`) は黙って未照合だった。言語 → 拡張子の表と export のファイル名の付け方は shared へ移し、editor の export もそれを使う。`--extract-sources` は #409 (#293)
