@@ -165,6 +165,11 @@ export function formatOrphanSources(orphans: readonly string[]): string {
   return lines.join('\n');
 }
 
+/** `--extract-sources` で書き出したディレクトリの 1 行表示 (パスは proof / ZIP 由来を含みうるので `safe()`)。 */
+export function formatExtractedSources(dir: string, files: readonly string[]): string {
+  return `Extracted: ${safe(dir)}${files.length > 0 ? ` (${files.map(safe).join(', ')})` : ''}`;
+}
+
 function passFail(ok: boolean): string {
   return ok ? c('green', 'PASS') : c('red', 'FAIL');
 }
@@ -634,6 +639,7 @@ ${c('cyan', 'Usage:')}
                    [--require-anchor-density] [--require-root-anchor]
                    [--analysis-json <out.json>] [--analysis-bundle <out.json>]
                    [--analyzer <module>]... [--no-default-analyzers]
+                   [--extract-sources <dir>]
 
 ${c('cyan', 'Arguments:')}
   file    Path to a proof file (.json) or exported archive (.zip). One or more
@@ -676,6 +682,13 @@ ${c('cyan', 'Options:')}
                    the exit code.
   --no-default-analyzers
                    Disable the built-in analyzers and run only the --analyzer ones.
+  --extract-sources
+                   ZIP inputs: write, per proof, <dir>/<proof base name>/ with
+                   submitted.<ext> (the bundled source, byte-for-byte), verified.<ext>
+                   (proof.content, only when the hash chain verified) and report.json.
+                   Written even when verification fails or the source mismatches. Never
+                   overwrites an existing file (an existing directory is an error, exit
+                   1) and never writes outside <dir>. Does not change the exit code.
 
 ${c('cyan', 'Examples:')}
   typedcode-verify proof.json
