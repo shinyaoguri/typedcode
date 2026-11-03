@@ -1446,13 +1446,6 @@ export class ResultPanel {
 }
 
 /**
- * 試験束縛カードの「問題」行の文言を組み立てる (#273)。`renderExamBindingCard` の純粋部分。
- *
- * 束縛が合格したときだけ検証済み manifest の識別子を表示する。package 未提供・束縛失敗では
- * proof の自己申告値なので、検証済みに見せないよう「自己申告・未検証」を添える。
- * 戻り値は textContent に入れる (HTML ではない)。
- */
-/**
  * Anchoring カードの coverage 行 (署名 cp が有効なとき)。署名 cp 数と割合に、最後の署名 cp が指す
  * イベント位置を添える (#295)。割合だけでは「どこで署名が途切れたか」が読めない。
  * 値は検証済みの数値だけで、proof 由来の文字列を含まない (textContent に入る)。
@@ -1477,6 +1470,13 @@ export function anchoringUnsignedTailWarning(coverage: SignedCheckpointsVerifica
   });
 }
 
+/**
+ * 試験束縛カードの「問題」行の文言を組み立てる (#273)。`renderExamBindingCard` の純粋部分。
+ *
+ * 束縛が合格したときだけ検証済み manifest の識別子を表示する。package 未提供・束縛失敗では
+ * proof の自己申告値なので、検証済みに見せないよう「自己申告・未検証」を添える。
+ * 戻り値は textContent に入れる (HTML ではない)。
+ */
 export function buildExamIdentifierLabel(eb: NonNullable<ResultData['examBinding']>): string {
   const verified = eb.binding?.valid ? eb.binding.verifiedIds : undefined;
   const ids = verified ?? eb;
