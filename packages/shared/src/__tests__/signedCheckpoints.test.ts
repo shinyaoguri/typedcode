@@ -722,6 +722,98 @@ function makeSyntheticEvents(n: number): StoredEvent[] {
   return events;
 }
 
+/**
+ * 未署名の末尾 (#295): 最後の署名 cp より後のイベントには、サーバ時刻の上界が無い。
+ * coverage がその件数と「最終イベントまで署名が届いたか」を返し、assurance の temporal が
+ * `anchored` の条件に使う。
+ */
+describe('signed checkpoint coverage — unsigned tail (#295)', () => {
+  it('counts the events after the last signed checkpoint as the unsigned tail', async () => {
+    const { events, initialEventChainHash } = await buildSmallProof(3);
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash,
+      key: testKey,
+      eventIndexes: [0],
+    });
+    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.valid).toBe(true);
+    expect(result.coverage.unsignedTailEvents).toBe(events.length - 1);
+  });
+
+  it('does not mark the chain terminal-anchored when the last signed checkpoint stops before the final event', async () => {
+    const { events, initialEventChainHash } = await buildSmallProof(3);
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash,
+      key: testKey,
+      eventIndexes: [0],
+    });
+    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.coverage.terminalAnchored).toBe(false);
+  });
+
+  it('reports no unsigned tail when the last signed checkpoint is the final event', async () => {
+    const { events, initialEventChainHash } = await buildSmallProof(3);
+    const checkpoints = await buildSignedCheckpoints({ events, initialEventChainHash, key: testKey });
+    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.coverage.unsignedTailEvents).toBe(0);
+  });
+
+  it('marks the chain terminal-anchored when the last signed checkpoint is the final event', async () => {
+    const { events, initialEventChainHash } = await buildSmallProof(3);
+    const checkpoints = await buildSignedCheckpoints({ events, initialEventChainHash, key: testKey });
+    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.coverage.terminalAnchored).toBe(true);
+  });
+
+  it('counts a single trailing unsigned event (off-by-one boundary)', async () => {
+    const { events, initialEventChainHash } = await buildSmallProof(3);
+    const lastButOne = events.length - 2;
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash,
+      key: testKey,
+      eventIndexes: [0, lastButOne],
+    });
+    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.coverage.unsignedTailEvents).toBe(1);
+    expect(result.coverage.terminalAnchored).toBe(false);
+  });
+
+  it('treats every event as the unsigned tail when no signed checkpoint exists', async () => {
+    const { events, initialEventChainHash } = await buildSmallProof(3);
+    const result = await verifySignedCheckpoints(events, [], initialEventChainHash, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.coverage.unsignedTailEvents).toBe(events.length);
+    expect(result.coverage.terminalAnchored).toBe(false);
+  });
+
+  it('never reports a negative unsigned tail or terminal anchoring for a checkpoint pointing past the last event', async () => {
+    // 4 イベントで署名した cp 列を、末尾 1 イベントを落とした列で検証する (eventIndex 範囲外 → invalid)。
+    const { events, initialEventChainHash } = await buildSmallProof(4);
+    const checkpoints = await buildSignedCheckpoints({ events, initialEventChainHash, key: testKey });
+    const truncated = events.slice(0, -1);
+    const result = await verifySignedCheckpoints(truncated, checkpoints, initialEventChainHash, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.coverage.unsignedTailEvents).toBe(0);
+    expect(result.coverage.terminalAnchored).toBe(false);
+  });
+});
+
 describe('anchoring density gate (ADR-0016)', () => {
   const ROOT = 'a'.repeat(64);
 
