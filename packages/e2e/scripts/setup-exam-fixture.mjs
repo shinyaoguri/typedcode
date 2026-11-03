@@ -9,8 +9,8 @@
  *   - fixture.json             … spec が読む入口 (監督コード・パッケージのパス・keyId)
  *
  * **`packages/shared/src/examAuthorityKeys/localKeys.ts` は書き換えない。** それは verifier の信頼の根で、
- * 追跡ファイル (開発者は skip-worktree で自分の鍵を置く) なので、E2E 用の使い捨て鍵が混ざったまま
- * コミットされると本番の verifier が偽の出題者鍵を信頼する (#338)。代わりに E2E の実行時だけ、
+ * 開発者が自分の dev 鍵を置く場所 (gitignore 済み。#338) なので、E2E 用の使い捨て鍵を書くと開発者の鍵を壊し、
+ * e2e の後も手元の通常の dev サーバ・verifier が偽の出題者鍵を信頼し続ける。代わりに E2E の実行時だけ、
  * editor の dev サーバ (vite.editor.config.mjs) と verify-cli (tests/helpers/examKeysLoader.mjs) が
  * `localKeys` の import を `authority-keys.mjs` に差し替える。
  *

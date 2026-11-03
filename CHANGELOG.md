@@ -14,6 +14,10 @@
 - verify-cli に `--extract-sources <dir>` を足した。ZIP 入力の proof ごとに `<dir>/<proof のベース名>/` へ、`submitted.<ext>` (同梱ソースの原文バイト)・`verified.<ext>` (`proof.content`。チェーンが検証に通ったときだけ)・`report.json` (照合の状態と検証結果の要約) を書く。不一致や検証失敗でも submitted は書き、exit code は変えない。入力の ZIP と書き出し先の既存ファイルは上書きせず (既存のディレクトリはエラーで exit 1)、`<dir>` の外には書かない (ZIP エントリ名と `proof.filename` から作る名前は無害化する)。採点者が jq で JSON から本文を抜かずに済む (#409)
 - テンプレート (`templateInjection`) で入った文字数と打った文字数を、分析層の advisory signal (severity `info`) として出すようにした。verify の分析カードと verify-cli の `--- Analysis (advisory) ---` に「テンプレートで入った文字数 500 / 打った文字数 10」の形で出る。文字数は自己申告の `contentLength` ではなく `data.content.length` の合計で数える。`reviewPriority` と著述性の `notableSignals`、検証結果、`isPureTyping` は変えない (#416)
 
+### 変更
+
+- dev 用の公開鍵置き場 `packages/shared/src/checkpointKeys/localKeys.ts` と `packages/shared/src/examAuthorityKeys/localKeys.ts` を git の追跡から外して gitignore した。無ければ `npm install` / `npm ci` (ルートの postinstall)・e2e の setup・`npm run doctor` が隣の `localKeys.ts.example` から作る (既存のファイルは上書きしない)。これまでは空配列のファイルを追跡して各自が skip-worktree で隠す運用で、worktree では効かず、e2e の setup が書いた鍵が誤コミットされると本番の verifier が dev 鍵を信頼する経路が残っていた。e2e の setup の後も `git status` は clean のまま。**移行**: skip-worktree で自分の鍵を置いている人は pull の前に、ファイルを退避 → `git update-index --no-skip-worktree <path>` → `git checkout -- <path>` → pull → 退避したファイルを戻す (退避しないと pull が `would be overwritten` で止まる)。鍵を置いていない人は pull 後に `npm install` (または `npm run doctor`) で作られる (#338)
+
 ### 修正
 
 - editor で `recordToAllTabs` / `recordSessionSnapshotTo` (windowResize・visibility / focus・スクリーンショット系・fullscreen・sessionResumed・起動時ワンショットの流し直しなど) が記録したイベントも、`record()` と同じく確定ごとに IndexedDB へ 1 件ずつ append するようにした。これまでは TabManager のデバウンス保存だけが頼りで、直後に打鍵が続くと後続の seq だけが先に入って events に欠番ができ、そのまま落ちると復元したチェーンが欠番で切れた。この append もタブを閉じる後始末 (確定 → append → 削除) の待ち対象に入る (#471)

@@ -2,7 +2,11 @@
 /**
  * E2E 用の環境を用意する (主に CI)。秘密情報は一切コミットせず、署名鍵は
  * 実行のたびに新規生成する。ローカルに既存の .dev.vars がある場合は生成しない
- * (開発者の skip-worktree な checkpoint 鍵 / Turnstile 設定を尊重する)。
+ * (開発者の checkpoint 鍵 / Turnstile 設定を尊重する)。
+ *
+ * 最初に、shared の 2 つの localKeys.ts (checkpoint 鍵と出題者鍵) が無ければ `.example` から作る
+ * (scripts/ensure-local-keys.mjs。`npm install` を通らない worktree 向け。既存は上書きしない)。
+ * 下に書く 3 つはどれも gitignore 済みで worktree ごとに別なので、setup の後も git status は clean のまま (#338)。
  *
  * 用意するもの:
  *   - packages/workers/.dev.vars              … Turnstile テスト secret + 新規 checkpoint 署名鍵 (秘密 JWK)
@@ -14,8 +18,9 @@
  * 署名チェックポイント (root anchoring) まで検証できる。
  *
  * 既存の .dev.vars がある場合は、その CHECKPOINT_SIGNING_KEY_ID が registry.ts か
- * localKeys.ts に載っているかだけを確かめる (#388)。localKeys.ts は追跡ファイルなので
- * checkout で空配列に戻ることがあり (#338)、そのままでは workers が SIGNING_KEY_UNKNOWN で
+ * localKeys.ts に載っているかだけを確かめる (#388)。.dev.vars と localKeys.ts は別々に
+ * 消えたり作り直されたりする (片方だけ別の worktree からコピーした、localKeys.ts を消して
+ * `.example` から作り直された、など) ので、食い違うと workers が SIGNING_KEY_UNKNOWN で
  * /api/session/start を 500 にし、e2e が「署名 0 件」で分かりにくく落ちる。
  * 開発者の .dev.vars は上書きせず、直し方を出して非 0 で終える。秘密 JWK の行は読まない。
  */
@@ -23,6 +28,7 @@ import { webcrypto } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureLocalKeys } from '../../../scripts/ensure-local-keys.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../../..');
@@ -60,6 +66,8 @@ export async function setupEnv({ root = ROOT, log = console.log, error = console
   const localKeys = resolve(root, 'packages/shared/src/checkpointKeys/localKeys.ts');
   const editorEnv = resolve(root, 'packages/editor/.env');
 
+  ensureLocalKeys({ root, log });
+
   if (existsSync(devVars)) {
     const keyId = readSigningKeyId(readFileSync(devVars, 'utf8'));
     const sources = [registryTs, localKeys]
@@ -79,7 +87,7 @@ export async function setupEnv({ root = ROOT, log = console.log, error = console
         '    - e2e 用の使い捨て鍵なら、.dev.vars を退避して setup を再実行する:',
         '        mv packages/workers/.dev.vars packages/workers/.dev.vars.bak && npm run setup -w @typedcode/e2e',
         '      (退避したファイルは gitignore されないので、確認後に削除する)',
-        '    - 自分の dev 鍵なら、その公開鍵を packages/shared/src/checkpointKeys/localKeys.ts に戻す (#338)',
+        '    - 自分の dev 鍵なら、その公開鍵を packages/shared/src/checkpointKeys/localKeys.ts に戻す (gitignore 済み。#338)',
       ].join('\n')
     );
     return 1;

@@ -13,7 +13,7 @@ const CLI_ENTRY = resolve(REPO_ROOT, 'packages/verify-cli/src/cli.ts');
 // (Dependabot の lockfile 更新で root hoist が外れ spawn ENOENT になった実績: PR #189)。
 const TSX_CLI = createRequire(import.meta.url).resolve('tsx/cli');
 // exam の出題者鍵を E2E 用の公開鍵に差し替える resolve フックの登録 (#229)。
-// shared の追跡ファイル localKeys.ts を書き換えずに、使い捨ての鍵を信頼させるための仕組み。
+// shared の localKeys.ts (開発者の鍵置き場。gitignore 済み) を書き換えずに、使い捨ての鍵を信頼させるための仕組み。
 const EXAM_KEYS_REGISTER = pathToFileURL(resolve(HERE, '../../exam-keys/node-register.mjs')).href;
 
 /**

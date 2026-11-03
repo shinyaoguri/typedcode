@@ -11,8 +11,9 @@ ADR-0006 試験モードの**動作確認 (e2e) 用**手順。配布する封印
 node packages/workers/scripts/generate-exam-authority-key.mjs
 ```
 
-- 出力された**公開鍵**を `packages/shared/src/examAuthorityKeys/localKeys.ts` に登録し、
-  `git update-index --skip-worktree` で隠す（dev 鍵を commit しない。本番鍵だけが `registry.ts`）。
+- 出力された**公開鍵**を `packages/shared/src/examAuthorityKeys/localKeys.ts` に登録する
+  （gitignore 済みなので dev 鍵は commit されない。無ければ `npm install` / `npm run doctor` が `.example` から作る。
+  本番鍵だけが `registry.ts`。#338）。
 - **秘密鍵 JWK** と `keyId` は次のステップで使う（commit しない）。
 
 ## 2. 封印問題パッケージ (`.tcexam`) を生成
@@ -38,5 +39,5 @@ EXAM_SIGNING_KEY_JWK='{...秘密鍵JWK...}' EXAM_SIGNING_KEY_ID=<keyId> \
 4. その ZIP を `/verify` に投入 → exam 束縛カードで root 束縛を確認。
    「問題パッケージを読み込む」で `/tmp/p1.tcexam` を渡すと署名/packageHash/内容まで完全検証。
 
-> dev 鍵は `localKeys.ts`（skip-worktree）にのみ置く。registry.ts は本番運用鍵のみを
+> dev 鍵は `localKeys.ts`（gitignore 済み）にのみ置く。registry.ts は本番運用鍵のみを
 > append-only で保持し、過去 proof の検証可能性を維持する。
