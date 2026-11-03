@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-03
+
 ### 追加
 
 - 検証の部品関数の照合 6 箇所を、関数を直接呼んで確かめるテストを足した (`verification.components.test.ts`)。`verifyInitialHashRoot` の deviceId と fingerprint components、`verifyFinalChainHash` の `typingProofData.finalEventChainHash`、`verifyCheckpoints` の cp の順序・timestamp・contentHash について、条件を外すと赤くなる。仕様と実装は変えていない (#500)
@@ -17,10 +19,10 @@
 - 試験 (exam) モードの round-trip E2E を足した (`packages/e2e/tests/exam-roundtrip.spec.ts`)。誤コードはゲートに留まり、正コードで解錠 → 打鍵 → export した ZIP を `verify-cli --mode fast --exam-package` に通すと exit 0 と束縛 (Root binding / Signature / Package hash / Content hash) の PASS 行が出る。別の問題パッケージと本物の registry では exit 1。fixture は `npm run setup` が `make-exam-package.mjs` で生成し、shared の追跡ファイル `examAuthorityKeys/localKeys.ts` は書き換えず、E2E の実行時だけ出題者鍵を差し替える (#229)
 - 検証 (Web) で複数 proof を読み込んだとき、全件の検証が終わったあともステータスバーに `N/M proofs passed` と失敗件数を残すようにした (警告は passed に数える。plaintext・画像は数えず、読めない `*_proof.json` は失敗に数える)。失敗があれば押して最初に失敗した proof を開ける。状態契約に `#queue-status[data-proof-total/passed/failed]` を追加 (#282)
 - `verifyProofFile` のセッション開始トークンの sessionId 照合 (別セッションのトークン流用を弾く。ADR-0017) と、署名 cp が無効なら全体を無効にする判定 (ADR-0020) を shared のテストで守るようにした (`verification.sessionToken.test.ts`)。これまでは verify の `webCliParity.test.ts` でしか捕まらなかった。仕様・実装の変更なし (#499, 親 #467)
-
 - 変異検査 (#467) の系統 3・4 を守るテストを shared に足した (`verification.metadata.test.ts`、仕様・実装の変更なし)。`verifyProofFile` の `metadataValid` は `typingProofHash` の不一致と root の不一致のどちらか片方だけでも落ち、申告メタデータ (`pasteEvents` など 6 キーと `totalTypingTime`) を偽って `typingProofHash` を再計算した proof は拒否される。貼り付け・ドロップ・削除を含む正規 proof は `valid: true` のまま (#498)
-
 - 検証の「厳しくする向き」の変異検査 (#467) で生き残った 3 箇所について、正規の proof が通ることを確かめる正の対照テストを足した (`verification.positiveControls.test.ts`)。timestamp が同値で連続するチェーン、置換・削除 (`rangeLength > 0`) を含む replay、templateInjection / contentSnapshot の後に contentChange が続く replay が `valid: true` になる。仕様の変更なし (#502)
+- editor の UI 状態を `data-*` の状態契約として DOM に出した。タブ (`.editor-tab` の `data-active` / `data-filename` / `data-language` / `data-verification`)、ステータスバー (`#sync-status-item[data-state]` / `#event-count[data-count]` / `#current-hash[data-hash]`)、アプリの段階 (`html[data-app-state]`)、ダイアログの root (`data-dialog`) が対象で、表は `packages/editor/AGENTS.md` の「状態契約」節にある。dev ビルドだけで内部状態を返す `window.__tcTestSnapshot()` を足し (本番ビルドで `undefined` になることを `production-build.spec` が見張る)、E2E の判定を契約に切り替えて、DOM と内部状態の一致を確かめる `expectConsistent()` を足した (#433)
+- 検証 (Web) の判定を `data-*` の状態契約として DOM に出した。`#assurance-strip` と `.assurance-chip` に三層判定の生の値、`#result-status-icon[data-level]`、ファイル一覧とタブに `data-status` / `data-filename` を付け、判定が無いときは属性を外す。あわせて `#file-input` を `multiple` にして change の二重購読を 1 か所にまとめ、`?mode=fast|audit|full` で検証モードの初期値を上書きできるようにした (既定は full のまま) (#215)
 
 ### 変更
 
@@ -36,6 +38,8 @@
 - 呼び出し元ゼロの dead API を削除した: `TabManager` の `exportSingleTab` / `exportAllTabs` / `reset` / `getActiveContent` / `getSessionService`、`SessionStorageService` の `pruneOldSessions` / `truncateEvents` / `updateTabContent` / `updateTabMetadata`、shared の `MultiFileExportedProof` / `MultiFileExportEntry` / `isMultiFileProof` / `AnyExportedProof`、`beforeunload` での legacy スクリーンショット DB 削除 (#284, #231)
 - 拡張子 → 言語の判定を verify から shared の実装へ一本化した (挙動の変更なし) (#278)
 - `index.html` に一度も存在しなかった `clear-log-btn` のクリア配線 (`LogViewerPanelOptions.clearButtonId`・`setupClearButton`・`LogViewer.clear()`・`notifications.clearLogConfirm`) を削除した。ボタンは HTML に無かったので利用者に見える挙動は変わらない (#443)
+- C / C++ の実行に使う `@wasmer/sdk` を 0.10 から 0.19 に上げ、`CExecutor` を新しい API (`Wasmer` クライアント、実行ごとの sandbox、`Process.kill()` による停止) に合わせた。本番ビルドで SDK の worker が起動しない問題は Vite プラグイン (`wasmerSdkBundledWorkers`) で塞ぎ、ネットワーク専用の AGPL-3.0 の推移的依存 `@mercuryworkshop/wisp-js` はスタブに差し替えて配信物から外した。実行結果の形とエラー分類は変えていない (#364)
+- 誰も読まない永続の端末 ID (`typedcode-device-id`) の収集をやめ、既存の端末に残った値は起動時に 1 回消すようにした。あわせて利用規約の「サーバーへの自動送信は一切行いません」を、実際に送るもの (セッション ID・fingerprint のハッシュ・ハッシュチェーンの値と時刻) の説明に改めた (#412)
 
 ### 修正
 
@@ -78,6 +82,24 @@
 - 署名 API の per-session タブ台帳を record と別の KV 名前空間 (`tabs:{sessionId}`) に移し、`sessionId` / `tabId` を `[A-Za-z0-9._-]` に制限した。`tabId=tabs` で台帳が壊れて後続タブの署名が例外になる問題と、区切り文字 `:` による record キー衝突を解消。KV の不正形な record / 台帳でも未捕捉例外にならない (#297)
 - 検証 (Web) の表示不整合をまとめて修正した。信頼バッジのハッシュチェーン issue に worker の英文がそのまま出ていた、スクリーンショットの解像度が欠けた displayInfo で `undefined x undefined` になる、問題パッケージ未提供の試験束縛カードが root 束縛だけで緑 (success) になり導線が畳まれていた、問題パッケージ (.tcexam) の manifest がキューのクリア後も残る、といった問題の解消。あわせて到達不能な `PoswMode` の `sampled` と未使用の i18n キーを削除した (#281)
 - 検証 (Web) でアクティブなタブやファイルを閉じたあと、タブバー・サイドバー・結果パネルの選択が食い違い、閉じたはずのファイルの判定が表示されたままになる問題を修正した。次のタブの選択を TabController に一本化し、未オープンのファイルを選ばないようにした。あわせて、タブを閉じたあとに別の proof へ問題パッケージ (.tcexam) が束縛される経路と、フォルダ削除後にサイドバーの選択が残る問題も解消した。状態契約に `data-active` / `#result-status-card[data-filename]` を追加 (#281)
+- export ZIP の README (ja / en) のプライバシー注記が「サーバーへの自動アップロードなし」と書き、実際の送信内容 (時刻証明・人間確認) と利用規約の双方に食い違っていた問題を修正した。コード・打鍵内容・個人情報は送らず、送るのは Turnstile トークンと、セッション ID・fingerprint のハッシュ・ハッシュチェーンの値と時刻だけ、と規約と同じ事実に揃えた (#470)
+- 記録のあるタブがあるとき、モードの移動 (ModeSwitcher) と表示言語の切替で離脱確認が出て、キャンセルすると `html[lang]` だけが変わった中途半端な状態が残る問題を修正した。作業が失われない遷移なので確認 (`preventDefault`) だけを抑止し、sessionStorage への同期保存とリロード検出はそのまま走らせる (#445)
+- class の問題・テンプレート・exam の問題から作ったタブの名前が `p1.c.c` のように拡張子を二重に付けていた問題を修正した。表示名は、既にその言語の拡張子で終わっていれば足さない (export と同じ規則) (#441)
+- タブを閉じても PoSW Worker が終了せず、計算中のイベントが tabs 行の削除より後に append されて、どのタブにも属さない events 行が IndexedDB に残る問題を修正した。閉じたタブは「キューの排出 → 計算中のイベントの確定と append → tabs 行と events 行の削除 → Worker の終了」の順で片付ける (#342)
+- export の後、ステータスバーのイベント数とハッシュ (`#event-count` / `#current-hash`) が、export で proof に足した reflectionNote / preExportAttestation を反映せず古いまま残る問題を修正した。export の試行が終わるたびに表示を更新する (#439)
+- 検証 (Web) の About ダイアログを閉じるボタンや overlay のクリックで閉じると Escape の keydown リスナーが残り、開閉のたびに溜まる問題を修正した。どの経路で閉じてもリスナーを外す (#408)
+- 検証 (Web) で結果を表示すると (1280x800 など) チャート欄が潰れ、タイムラインなどのチャートタブが結果カードに覆われて押せない問題を修正した。左パネルの子を縮ませず、溢れた分はパネルのスクロールに回す。状態契約に `.chart-tab` / `.chart-panel` の `data-active` を追加 (#395)
+- 検証 (Web) で最後のタブを閉じた後もサイドバーとタブ管理の active が閉じたファイルを指したまま残る問題と、入れ子のフォルダを削除しても子孫のファイルのタブが残る問題を修正した (#387)
+- 署名 API (`/api/checkpoint/sign`) が署名する `serverTimestamp` を `max(現在時刻, 前回値 + 1ms)` にクランプし、Workers 間のクロックスキューで時刻が逆行して正直な proof が検証で落ちる問題を塞いだ。KV の読み書きは増えない。KV の結果整合で残る窓 (検証器側の許容) は #226 の後続で扱う (#402)
+- リロードをまたいだタブ切り替え履歴 (`tab-switches.json`) の復元が、ロードごとに 0 起点の timestamp で並べられ、リロード後の切替がリロード前より前に並びうる問題を修正した。IndexedDB の追記順 (autoIncrement の `id`) で並べる。proof の形と timestamp の意味は変えない (#385)
+- E2E ヘルパ `openModeFresh(mode, { screenShare: 'optOut' })` が画面共有オプトアウトの確認ダイアログで止まり、起動待ちまで進まなかった問題を修正した (#374)
+- `npm run setup -w @typedcode/e2e` が、既存の `.dev.vars` の署名 keyId が `registry.ts` / `localKeys.ts` のどちらにも無いとき、keyId と直し方を出して exit 1 で止まるようにした。これまでは何もせず終わり、E2E が「署名付きチェックポイントが 0 件」という原因から遠い所で落ちていた (#388)
+- verify-cli の 3 件を修正した。`--analyzer` で渡した外部分析器が検証結果のオブジェクトを書き換えて改ざん proof を exit 0 にできた構造を塞いだ (結果を凍結してから分析層へ渡し、判定に効く値を分析より前に確定させる。[ADR-0009](docs/adr/0009-pluggable-analysis-layer.md) / [ADR-0023](docs/adr/0023-analysis-platform-not-judge.md))。`process.exit()` をやめて `process.exitCode` にし、パイプ (`| tee` など) で stdout の末尾が切れる問題を直した。`audit` モードの help を実装 (full と同等) に揃えた (#283)
+- export 時に proof へ書く自己申告の `isPureTyping` が採点側と別の式で計算され、括弧の自動補完を 1 回使うだけで false になって採点側の判定と食い違う値が proof に焼かれていた問題を修正した。判定を `evaluatePureTyping` に一本化し、採点側と editor が同じ関数を呼ぶ。あわせて `VALID_EVENT_TYPES` を `EventType` の型から導出し、手書きの Set から漏れていた 3 種 (`environmentProbe` / `fullscreenChange` / `examOpened`) を埋めた (以後、型に足すと tsc が記入漏れを検出する) (#222, #235)
+- verify-cli が、スクリーンショットの改ざんだけで失敗した proof に `Error: All hashes verified successfully` という成功メッセージを失敗理由として出していた問題を修正した (`Screenshots failed: ...` を出す)。analysis bundle の `integrityValid` が gate 込みの `valid` になっていて、`--require-root-anchor` で落ちただけの proof が同じレコードの `assurance.integrity: 'proven'` と矛盾していたのを、整合性の判定 (`integrity !== 'failed'`) に揃えた ([ADR-0024](docs/adr/0024-data-minimization-tiers.md))。exit code は変わらない (#217, #219)
+- 本番ビルド (Cloudflare Pages / `vite preview`) でエディタが一切起動しない問題を修正した。monaco 0.56 のチャンク構成の変更で、`vite-plugin-top-level-await` の変換が関数宣言の巻き上げを壊していたため、プラグインを外した (#255)
+- E2E が verify-cli を起動するときの tsx の解決を、root の `node_modules/.bin/tsx` 決め打ちから `require.resolve('tsx/cli')` に変え、npm が tsx を入れ子に置いても動くようにした (#191)
+- `npm run doctor -- --maintainer` が repo secret の `CLOUDFLARE_API_TOKEN` を必須にしていた問題を修正した。docs/setup.md の方針どおり staging / production の Environment secret として検査し、repo level に残っていれば警告する (#190)
 
 ### セキュリティ
 
@@ -85,6 +107,13 @@
 - 公開鍵レジストリの `validFrom` / `validUntil` / `revokedAt` が parse 不能な日時 (手書き運用での typo) だと鍵の有効性検査そのものがスキップされ、失効させたはずの鍵が黙って信頼される問題を修正した。日時が読めないエントリはそのエントリだけ信頼しない (fail-closed) ようにし、判定を署名チェックポイント / セッション開始トークン / 出題者鍵の 3 消費者で共有する実装に一本化した。あわせて出荷されるレジストリの日時形式を検査するテストを追加し、typo を CI で止めるようにした (#233)
 - proof の `mode` を allowlist で検証したうえでエスケープし、検証サイトのオリジンで任意 HTML が実行できる XSS を塞いだ (#245)
 - proof の `events` 各要素の構造を検証し、null 要素を積んで `metadata.totalEvents` を水増しする偽造を塞いだ (#246)
+- proof の events に own property の `__proto__` を足してもハッシュが変わらず `valid: true` のままになる (malleability) 問題を、構造検証で invalid にして塞いだ (入れ子・循環参照も走査する)。あわせて「proof.json は整形 (キー順の変更・再シリアライズ) をせずに渡す」を [docs/system-spec.md](docs/system-spec.md) §5.3 に明記し、`Typing proof hash does not match metadata` に整形が原因になりうる旨を添えた。proof 形式・`PROOF_FORMAT_VERSION` は変えない (#417)
+- verify-cli のエラー出力 (`printError`) も `safe()` を通し、JSON の構文エラーや ZIP エントリ名に入った端末制御文字で、直前の FAIL 行を消したり偽の ✓ を描いたりできる穴を塞いだ (#339)
+- verify-cli が proof / ZIP 由来の文字列を無加工で stdout に出し、改行と ANSI エスケープで Summary に偽の `✓` 行を作れた問題を修正した。制御文字を除いて 200 文字で切り詰める `safe()` を出力の境界で未信頼値の補間点すべてに通し、変化が起きたときは `(sanitized)` を付ける (#266)
+- proof の自己申告の `language` を allowlist に落とし、生値を表示層へ渡さないようにした。検証 (Web) では `ts hidden` のような値がコードプレビューの class に入ってプレビューを消せ、verify-cli では `Language:` 行に生値が出ていた (#248)
+- `--exam-package` を渡した採点で、exam ブロックの無い proof (`/casual` で作ったもの) が束縛検証を素通りして exit 0 になる問題を修正した。package が渡されたら exam ブロックの有無によらず束縛を検証し、無ければ `Exam binding failed: Proof has no exam block` で失敗 (exit 1) にする。verify (Web) も同じ判定にした ([ADR-0006](docs/adr/0006-exam-mode-sealed-problem-binding.md)) (#218)
+- miniflare が exact で固定している開発用依存の `sharp` を override で 0.35.4 に上げ (GHSA-rgj7-g3m4-5g8c。本番の Worker には入らない)、dead になっていた `uuid` の override を外した (#307)
+- wrangler / miniflare 経由の開発用依存 `undici` を override で 7.29.0 に上げ (GHSA-4cwx-7wf7-3272 ほか。本番の Worker には入らない)、Dependabot の security update が失敗し続けていたのを解消した。dead になっていた `rollup` の override を外した (#259)
 
 ## [1.1.0] - 2026-07-07
 
@@ -147,5 +176,6 @@
 - replay と乖離した `contentSnapshot` を外部入力相当として advisory 検出するようにした (#182)
 - Workers の dev 用 Worker 名を分離し、未捕捉例外の最終防衛を追加した (#165)
 
-[Unreleased]: https://github.com/shinyaoguri/typedcode/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/shinyaoguri/typedcode/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/shinyaoguri/typedcode/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/shinyaoguri/typedcode/releases/tag/v1.1.0
