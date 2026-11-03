@@ -295,6 +295,11 @@
   color: var(--accent-danger);
 }
 
+/* キャンセル = 未検証 (#331)。判定ではないので error の赤にせず中立色にする (不正の疑いと読まれないため) */
+.file-item-status.cancelled i {
+  color: var(--text-tertiary);
+}
+
 /* File remove button */
 .file-item-remove {
   display: none;

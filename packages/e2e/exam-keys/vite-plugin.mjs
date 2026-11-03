@@ -3,7 +3,7 @@
  *
  * shared の `examAuthorityKeys/index.ts` が読む `./localKeys` を、E2E の出題者「公開」鍵
  * (fixtures/exam/authority-keys.mjs。setup-exam-fixture.mjs が生成) に差し替える。
- * 追跡ファイル `localKeys.ts` を書き換えずに、E2E の使い捨て鍵を信頼させるための仕組み。
+ * 開発者の鍵置き場 `localKeys.ts` (gitignore 済み) を書き換えずに、E2E の使い捨て鍵を信頼させるための仕組み。
  *
  * fixture が無ければ何もしない (通常の localKeys.ts がそのまま使われる)。dev サーバ専用で、
  * 本番ビルドの設定 (packages/editor/vite.config.ts) には入っていない。

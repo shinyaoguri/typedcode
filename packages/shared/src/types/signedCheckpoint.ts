@@ -62,6 +62,17 @@ export interface SignedCheckpointsVerificationResult {
     lastSignedEventIndex: number | null;
     /** 0..1。signed checkpoint が指す eventIndex 最大値 / 全 event 数 */
     coverageRatio: number;
+    /**
+     * 最後の署名 cp より後のイベント数 (= 未署名の末尾。#295)。サーバ署名のどれにも覆われず、
+     * 時刻の上界を持たない。署名 cp が無ければ events.length。0 未満にはならない
+     * (eventIndex が範囲外の不正な cp でも 0 に丸める)。
+     */
+    unsignedTailEvents: number;
+    /**
+     * 署名 cp があり、最後の署名 cp の eventIndex が最終イベント (events.length - 1) を指すか (#295)。
+     * 三層保証の temporal が `anchored` を名乗る条件の一つ (ADR-0020)。
+     */
+    terminalAnchored: boolean;
   };
   /** post-hoc batch signing 疑い指標 */
   temporal: {

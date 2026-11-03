@@ -131,10 +131,9 @@ git update-index --skip-worktree packages/workers/wrangler.toml
 
 ローカル開発用に **ECDSA-P256 鍵対**を 1 つ作る。本番/staging 鍵とは別物にすること (登録済鍵を流用すると、ローカルが本番鍵対と区別不能になる)。
 
-```bash
-cp packages/shared/src/checkpointKeys/localKeys.ts.example packages/shared/src/checkpointKeys/localKeys.ts
-git update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts
+`packages/shared/src/checkpointKeys/localKeys.ts` は gitignore 済みで、`npm install` (postinstall) が `localKeys.ts.example` から作る (既にあれば上書きしない。#338)。無ければ `npm run doctor` でも作られる。
 
+```bash
 npm run gen-checkpoint-key -w @typedcode/workers
 ```
 

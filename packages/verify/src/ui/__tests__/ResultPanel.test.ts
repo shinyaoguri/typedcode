@@ -7,8 +7,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { escapeHtml, type AssuranceResult } from '@typedcode/shared';
+import { escapeHtml, type AssuranceResult, type SignedCheckpointsVerificationResult } from '@typedcode/shared';
 import {
+  anchoringUnsignedTailWarning,
+  buildAnchoringCoverageText,
   buildAssuranceStripHtml,
   buildExamIdentifierLabel,
   examBindingCardStatus,
@@ -215,5 +217,53 @@ describe('examBindingCardStatus', () => {
 
   it('errors when the package binding failed', () => {
     expect(examBindingCardStatus(eb(true, binding(false)))).toBe('error');
+  });
+});
+
+/**
+ * 時刻アンカーカードの未署名の末尾 (#295)。最後の署名 cp より後のイベントはサーバ時刻の上界を
+ * 持たないので、coverage 行に最終署名の位置を、警告行に末尾の件数を出す。
+ */
+describe('anchoring card — unsigned tail (#295)', () => {
+  function coverage(
+    overrides: Partial<SignedCheckpointsVerificationResult['coverage']> = {}
+  ): SignedCheckpointsVerificationResult['coverage'] {
+    return {
+      signedCount: 1,
+      lastSignedEventIndex: 0,
+      coverageRatio: 1 / 3,
+      unsignedTailEvents: 2,
+      terminalAnchored: false,
+      ...overrides,
+    };
+  }
+
+  it('shows the last signed event position next to the signed count and ratio', () => {
+    expect(buildAnchoringCoverageText(coverage())).toBe(`1 (33.3%) · ${t('result.anchoringLastSigned', { index: 0 })}`);
+  });
+
+  it('omits the last signed position when no checkpoint is signed', () => {
+    expect(buildAnchoringCoverageText(coverage({ signedCount: 0, lastSignedEventIndex: null, coverageRatio: 0 }))).toBe(
+      '0 (0.0%)'
+    );
+  });
+
+  it('warns with the trailing event count and the last signed event', () => {
+    expect(anchoringUnsignedTailWarning(coverage())).toBe(t('result.anchoringUnsignedTail', { count: 2, index: 0 }));
+  });
+
+  it('does not warn when the last signed checkpoint is the final event', () => {
+    expect(
+      anchoringUnsignedTailWarning(
+        coverage({ lastSignedEventIndex: 2, coverageRatio: 1, unsignedTailEvents: 0, terminalAnchored: true })
+      )
+    ).toBeNull();
+  });
+
+  it('interpolates the count and index into the translated warning', () => {
+    const text = anchoringUnsignedTailWarning(coverage({ unsignedTailEvents: 7, lastSignedEventIndex: 4 }));
+    expect(text).toContain('7');
+    expect(text).toContain('#4');
+    expect(text).not.toContain('${count}');
   });
 });

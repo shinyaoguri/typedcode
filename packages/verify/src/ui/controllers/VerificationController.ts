@@ -36,8 +36,13 @@ export class VerificationController {
   handleProgress(id: string, progress: number, details?: ProgressDetails): void {
     const tabState = this.deps.tabManager.getTab(id);
 
-    // 既に完了しているタブへの進捗更新はスキップ（遅延メッセージ対策）
-    if (tabState?.status === 'success' || tabState?.status === 'warning' || tabState?.status === 'error') {
+    // 既に完了・キャンセルしたタブへの進捗更新はスキップ（遅延メッセージ対策）
+    if (
+      tabState?.status === 'success' ||
+      tabState?.status === 'warning' ||
+      tabState?.status === 'error' ||
+      tabState?.status === 'cancelled'
+    ) {
       return;
     }
 
@@ -180,6 +185,38 @@ export class VerificationController {
     this.deps.sidebar.updateFileStatus(id, status);
     if (this.deps.tabBar.hasTab(id)) {
       this.deps.tabBar.updateTabStatus(id, status as TabStatus);
+    }
+    if (this.deps.tabBar.getActiveTabId() === id) {
+      this.deps.tabController.showTabContent(id, true);
+    }
+  }
+
+  /**
+   * 検証のキャンセルを処理 (#331)。status は `cancelled` (未検証。判定ではないので error にしない)。
+   * キャンセルした項目は「済み」に数える (集約・進捗の分子が止まらないように)。
+   */
+  handleCancelled(id: string): void {
+    this.deps.uiState.incrementCompleted();
+    this.deps.tabManager.updateTab(id, { status: 'cancelled', progress: 0, progressDetails: undefined });
+    this.deps.sidebar.updateFileStatus(id, 'cancelled');
+    if (this.deps.tabBar.hasTab(id)) {
+      this.deps.tabBar.updateTabStatus(id, 'cancelled');
+    }
+    if (this.deps.tabBar.getActiveTabId() === id) {
+      this.deps.tabController.showTabContent(id, true);
+    }
+  }
+
+  /**
+   * キャンセルしたタブを再検証の待ちに戻す (#331)。キューへ並べ直すのは呼び出し側。
+   * 並べ直した分を総数に足す (handleComplete が済みに数えるので、足さないと分子が総数を超える)。
+   */
+  markRequeued(id: string): void {
+    this.deps.uiState.incrementTotal();
+    this.deps.tabManager.updateTab(id, { status: 'pending', progress: 0, verificationResult: null, error: undefined });
+    this.deps.sidebar.updateFileStatus(id, 'pending', 0);
+    if (this.deps.tabBar.hasTab(id)) {
+      this.deps.tabBar.updateTabStatus(id, 'pending', 0);
     }
     if (this.deps.tabBar.getActiveTabId() === id) {
       this.deps.tabController.showTabContent(id, true);

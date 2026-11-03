@@ -121,7 +121,8 @@ export class FileController {
       progress: 0,
       verificationResult: null,
     });
-    this.deps.verificationQueue.reverifyWithManifest(tabId, manifest);
+    // キューは完了した proof を手放しているので、タブの持つ proof を渡す (#331)
+    this.deps.verificationQueue.reverifyWithManifest(tabId, manifest, tab.proofData);
   }
 
   /**

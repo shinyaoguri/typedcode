@@ -4,7 +4,7 @@
 import type { HierarchicalFolder } from '../types.js';
 import { t } from '../i18n/index.js';
 
-export type FileStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error';
+export type FileStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error' | 'cancelled';
 
 export interface SidebarFile {
   id: string;
@@ -698,6 +698,9 @@ export class Sidebar {
         return '<i class="fas fa-exclamation-triangle"></i>';
       case 'error':
         return '<i class="fas fa-times-circle"></i>';
+      case 'cancelled':
+        // 未検証 (判定ではない)。error の × と見分けられる形にする (#331)
+        return '<i class="fas fa-ban"></i>';
       default:
         return '';
     }

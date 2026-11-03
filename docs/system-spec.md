@@ -552,11 +552,26 @@ interface ExamProofBlock {
     (= ハイブリッドトリガ 100 events / 10,000 ms の 5 倍。保守的な置きで実ログ調整待ち)。
   - 既定は **warning のみ** (valid は true)。`requireAnchorDensity` opt-in (exam/採点) のとき `sparse` で `valid=false`。
     `signedCount === 0` (未アンカー) は対象外 = `density=null` で、ADR-0004「未アンカーは valid のまま」を維持。
+- 未署名の末尾 (#295、表示と三層保証の入力。`valid` には効かない):
+  - `coverage.unsignedTailEvents` = 最後の署名 cp より後のイベント数 (`events.length - 1 - lastSignedEventIndex`、0 未満は 0)。
+    署名 cp が無ければ `events.length`。この区間はどのサーバ署名にも覆われず、時刻の上界を持たない (オフラインで書き足せる)。
+  - `coverage.terminalAnchored` = 署名 cp があり、最後の署名 cp の eventIndex が最終イベント (`events.length - 1`) を指すか。
+  - 短いセッションでは先頭 1 点だけの署名でも `sparse` にならないので、密度とは別に見る。三層保証の時刻アンカーは
+    `terminalAnchored` が false なら `anchored` を名乗らない (§6.3)。verify-cli は Anchoring 行に `last signed event #N` と、
+    末尾が残るとき `! K trailing events are not covered by a signed checkpoint (unsigned tail)` を出し、verify (Web) は
+    時刻アンカーカードの coverage 行と警告行に同じ情報を出す。
 
 ### 6.3. 検証成功判定
 
 - `verifyProofFile` 全レイヤを `&&` で組み合わせる
 - 署名済み checkpoint は `anchored=true` のとき必須レイヤ。`anchored=false` (旧 proof など) では他レイヤで成立すれば valid
+- **三層保証の時刻アンカー (ADR-0020、表示語彙であって `valid` を置き換えない)**: `temporal: anchored` は
+  root サーバアンカー ∧ 署名 cp が valid・密 (`sparse` でない)・post-hoc 疑いなし ∧ **最後の署名 cp が最終イベントを指す**
+  (`coverage.terminalAnchored`。未署名の末尾がない) ∧ **token と署名 cp の sessionId が一致** (`sessionTokenMismatch` でない) のときだけ。
+  最終状態への署名は「その時点の内容が存在した時刻の上界」をサーバ時刻で与えるもので、各イベントの実時刻を直接証明するわけではない。
+  サーバ時刻証拠が一部だけ (疎 / post-hoc / 未署名の末尾 / root か cp の片方のみ) なら `partial`、無ければ `unanchored`
+  (invalid な cp 連鎖と sessionId が食い違う cp は時刻証拠に数えない)。sessionId 不一致は改ざんではないので整合性は落とさない (#295)。
+  空セッション (events 0 件) は署名 cp を持てず `anchored` にならず、署名 cp の無い旧形式は root アンカーだけなら `partial`
 - **アンカー密度 (ADR-0016)** は既定 warning。`requireAnchorDensity` (verify-cli の `--require-anchor-density` 等) を渡したときのみ `sparse` を signed checkpoint レイヤの fail に合流させる (exam/採点で opt-in)
 - **root サーバアンカー (ADR-0017)**: `sessionStartToken` があるとき token↔署名 cp の `sessionId` 一致も要求する (アンカーとチェーンの結びつき)。`rootAnchored=false` (token 無し = オフライン劣化 / 旧 proof) は既定 warning。`requireRootAnchor` (verify-cli の `--require-root-anchor`) を渡したときのみ fail に合流させる (exam の免除は `examBindingVerified` = 束縛検証合格が条件。自己申告の exam ブロックだけでは免除しない #131。high-stakes 採点で opt-in)
 - **バージョンゲート (#223)**: `verifyProofFile` は入口で `proof.version` を `classifyProofVersion` で分類し、結果の `versionStatus` に載せる (`typingProofHash` の入力ではないので、ここがゲートの唯一の効き目)。形式は厳密に `MAJOR.MINOR.PATCH` (`'abc'` / `'1'` / `'1.2.0-beta'` / 欠落 / 文字列以外は `malformed`)。
@@ -687,7 +702,7 @@ interface ExamProofBlock {
 
 1. dev 鍵生成: `npm run gen-checkpoint-key -w @typedcode/workers`
 2. 出力された公開鍵 entry を `packages/shared/src/checkpointKeys/localKeys.ts` に append
-3. **skip-worktree**: `git update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts` (誤コミット防止)
+3. `localKeys.ts` は gitignore 済み (誤コミット防止。#338)。無ければ `npm install` (postinstall) / e2e の setup / `npm run doctor` が `localKeys.ts.example` から作る (既存は上書きしない)
 4. 出力された秘密鍵 JWK / keyId を `packages/workers/.dev.vars` に貼る
 5. dev KV namespace 作成 (上記 9.1 ステップ 1 と同じ)、`wrangler.toml` 編集
 6. **skip-worktree**: `git update-index --skip-worktree packages/workers/wrangler.toml`
@@ -847,3 +862,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-02 | proof.json を整形しない仕様の明記と `__proto__` ガード (#417 / #341 v2) | §5.3 に「proof.json は整形 (キー順の変更・再シリアライズ) をせずに渡す」を明記し、`typingProofHash` 不一致の失敗メッセージにも整形が原因になりうる旨を添えた。構造検証 `verifyEventArrayStructure` が events 内の own property `__proto__` を invalid にする (`deterministicStringify` が落とすため足してもハッシュが変わらない malleability の封じ込め)。`PROOF_FORMAT_VERSION` 据え置き・proof 形式不変 |
 | 2026-11-03 | sessionStartToken の最大有効期間 (#227) | `/api/checkpoint/sign` は `issuedAt` から `SESSION_TOKEN_MAX_AGE_MS` (30 日) を超えた token を 401 `TOKEN_EXPIRED` で拒否する (KV read より前)。検査は sign 経路だけで、検証器は age を見ない。§4.6 手順 2b と定数表を反映 |
 | 2026-11-03 | テンプレートで入った文字数を分析層の advisory signal に (#416) | shared に `templateInjectionAnalyzer` (`template-injection`) を足した。`templateInjection` の `data.content.length` の合計 (テンプレートで入った文字数) と、`contentChange` の `insertedCharCount` の合計 (打った文字数) を `summaryParams` (`template` / `typed`) に載せる 1 件の signal を、テンプレート注入があるときだけ出す。`data.contentLength` は自己申告なので数えない。dimension は既存の `transcription-topology`、severity は `info` 固定で、`reviewPriority` と `notableSignals` は変えない (exam / class の正規 proof はすべて starter の templateInjection を持つため、notice にすると全員が上がる。量への閾値も置かない = ADR-0023)。`isPureTyping` の定義・検証結果・exit code・proof フォーマットは不変。verify の分析カード (`analysis.summary.templateInjection`、ja / en) と verify-cli の advisory 欄に出る |
+| 2026-11-04 | 未署名の末尾と sessionId 不一致を temporal から外す (#295) | `deriveTemporal` は最後の署名 cp が最終イベントまで届いているかを見ておらず、先頭 1 イベントだけ署名して残りを書き足した proof が `anchored` になった。token と署名 cp の sessionId 不一致も `AssuranceInput` に入らず `anchored` だった。署名 cp の `coverage` に `unsignedTailEvents` / `terminalAnchored` を足し、`AssuranceInput` に必須の `signedCheckpoints.terminal` と `sessionTokenMismatch` を足して、`anchored` の条件に加えた (§6.2 Layer 6 / §6.3)。verify-cli と verify (Web) は最終署名の位置と未署名の末尾の件数を出す。**判定 (`verifyProofFile` の valid / exit code) と proof フォーマットは不変** |

@@ -53,8 +53,8 @@ npm run report -w @typedcode/e2e        # 直近の HTML レポート (trace 付
 ドリフトも検出できる。出題者の**秘密鍵はディスクに残さない**。fixture は揃っていれば作り直さない
 (作り直すなら `packages/e2e/fixtures` を消して `npm run setup -w @typedcode/e2e`)。
 
-shared の追跡ファイル `examAuthorityKeys/localKeys.ts` は**書き換えない** (E2E の鍵が混ざったままコミットされると
-本番の verifier が偽の出題者鍵を信頼する。#338)。editor は `vite.editor.config.mjs`、verify-cli は
+shared の `examAuthorityKeys/localKeys.ts` (開発者の鍵置き場。gitignore 済み) は**書き換えない** (書くと開発者の鍵を壊し、
+e2e の後も手元の verifier が偽の出題者鍵を信頼し続ける。#229 / #338)。editor は `vite.editor.config.mjs`、verify-cli は
 `tests/helpers/verifyCli.ts` の `examAuthorityKeys: true` (`exam-keys/` の resolve フック) で、E2E の実行時だけ
 `./localKeys` の import を fixture の公開鍵に差し替える。
 
@@ -96,15 +96,19 @@ npm run shots -w @typedcode/e2e   # packages/e2e/shots/ に PNG・アニメー�
 CI には `.dev.vars` も `editor/.env` も存在しない (gitignore)。`npm run setup`
 ([scripts/setup-env.mjs](scripts/setup-env.mjs)) が:
 
+- shared の 2 つの `localKeys.ts` (checkpoint 鍵と出題者鍵。gitignore 済み) が無ければ `.example` から作る
+  (`npm install` の postinstall と同じ処理。`npm install` を通らない worktree 向け。既存は上書きしない / #338)
 - Turnstile の Cloudflare **公開テストキー** (常に pass) を `editor/.env` に配置
 - checkpoint 署名鍵を**実行時に新規生成**し、秘密 JWK を `workers/.dev.vars`、
   公開鍵を `shared/.../checkpointKeys/localKeys.ts` に書く (verifier が keyId 解決)
 
+書き込む先はどれも gitignore 済みなので、setup の後も `git status` は clean のまま (#338)。
 秘密情報は一切コミットしない。**ローカルに既存の `.dev.vars` があれば生成しない**
-ので、開発者の skip-worktree な checkpoint 鍵 / Turnstile 設定を壊さない。ただし
+ので、開発者の checkpoint 鍵 / Turnstile 設定を壊さない。ただし
 `.dev.vars` の `CHECKPOINT_SIGNING_KEY_ID` が `registry.ts` にも `localKeys.ts` にも無いときは、
-直し方を表示して非 0 で終わる (#388)。`localKeys.ts` は追跡ファイルなので checkout などで
-空配列に戻ることがあり (#338)、そのままだと workers が署名を拒否して e2e が「署名 0 件」で落ちるため。
+直し方を表示して非 0 で終わる (#388)。`.dev.vars` と `localKeys.ts` は別々に消えたり作り直されたりするので
+(片方だけ別の worktree から持ってきた、`localKeys.ts` が `.example` から作り直された、など)、
+食い違ったままだと workers が署名を拒否して e2e が「署名 0 件」で落ちるため。
 
 CI ジョブは `.github/workflows/deploy.yml` の `e2e-shard` (Playwright の `--shard` で 2 分割した
 matrix。`test:build` は shard 1 だけ) と、全 shard の成功を要求する集約 job `e2e`。

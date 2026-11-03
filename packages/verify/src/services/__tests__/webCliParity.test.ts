@@ -193,6 +193,8 @@ async function buildAnchoredProof(options: {
   key: TestKey;
   tokenSessionId: string;
   checkpointSessionId: string;
+  /** 署名 cp を打つ eventIndex。省略時は全イベント (最終イベントまで署名が届く正常形)。 */
+  signedEventIndexes?: number[];
 }): Promise<ProofFile> {
   const components = createMockFingerprintComponents();
   const fingerprintHash = await computeHash(JSON.stringify(components, null, 0));
@@ -208,6 +210,7 @@ async function buildAnchoredProof(options: {
     initialEventChainHash: exported.typingProofData.initialEventChainHash ?? '',
     key: options.key,
     sessionId: options.checkpointSessionId,
+    eventIndexes: options.signedEventIndexes,
   });
 
   return { ...exported, checkpoints, content, language: 'text' } as ProofFile;
@@ -435,6 +438,29 @@ describe('web ↔ CLI parity (#216)', () => {
     // 暗号的な改ざんはないので「整合性」は failed にしない — 誤って改ざん告発しない
     // (fast 経路なので proven ではなく partial)。
     expect(cli.assurance.integrity).toBe('partial');
+    // 別セッションの署名 cp はこの proof の時刻証拠にならない (#295 / #329 後半)。root のアンカーだけが残る。
+    expect(web.assurance.temporal).toBe('partial');
+    expect(cli.assurance.temporal).toBe('partial');
+  });
+
+  it('agrees that a proof whose last events are not signed is only partially anchored (#295)', async () => {
+    // 先頭イベントだけ署名し、以降を署名なしで書き足した proof。密度は疎にならず post-hoc も立たない。
+    const proof = await buildAnchoredProof({
+      key: testKey,
+      tokenSessionId: 'session-A',
+      checkpointSessionId: 'session-A',
+      signedEventIndexes: [0],
+    });
+
+    const web = await webConclusion(proof, registry);
+    const cli = await cliConclusion(proof, registry);
+
+    expectSameConclusion(web, cli);
+    // valid の判定は変えない (最終署名を受理条件にするのは #296)。
+    expect(cli.valid).toBe(true);
+    // 片側の写像だけ直すと、ここか expectSameConclusion のどちらかが赤になる。
+    expect(web.assurance.temporal).toBe('partial');
+    expect(cli.assurance.temporal).toBe('partial');
   });
 
   it('agrees that a proof whose signed checkpoint is invalid does not fail integrity but fails overall', async () => {
