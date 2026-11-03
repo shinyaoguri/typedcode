@@ -103,7 +103,7 @@ export default defineConfig({
     },
     {
       name: 'editor',
-      // exam の出題者鍵だけ E2E 用に差し替える設定で起こす (追跡ファイル localKeys.ts は書き換えない。#229)。
+      // exam の出題者鍵だけ E2E 用に差し替える設定で起こす (開発者の鍵置き場 localKeys.ts は書き換えない。#229)。
       command: 'npm run dev -w @typedcode/editor -- --config ../e2e/vite.editor.config.mjs',
       // packages/editor/vite.config.ts が EDITOR_PORT (server.port + strictPort) と
       // WORKERS_PORT (VITE_API_URL 追従) を既に読む実装になっている。受け口は

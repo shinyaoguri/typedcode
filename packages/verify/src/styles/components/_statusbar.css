@@ -52,9 +52,15 @@
   background-color: #c62828;
 }
 
-.status-summary-failed::before {
+.status-summary-failed::before,
+.status-summary-cancelled::before {
   content: "·";
   margin-right: 5px;
+}
+
+/* キャンセル (未検証。#331) は失敗ではないので地の色は変えず、文言を添えるだけ */
+.status-summary-cancelled {
+  opacity: 0.85;
 }
 
 /* Queue status with progress */

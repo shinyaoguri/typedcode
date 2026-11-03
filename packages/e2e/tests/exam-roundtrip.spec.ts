@@ -19,7 +19,7 @@ import { runVerifyCli } from './helpers/verifyCli.js';
  *   1 つ以上載っていること (ADR-0027 の `acquireSigningTokenBestEffort` 経路) だけを見る
  *
  * fixture (出題者鍵・パッケージ) は `npm run setup -w @typedcode/e2e` が packages/e2e/fixtures/exam/ に
- * 生成する。shared の追跡ファイル localKeys.ts は書き換えず、editor の dev サーバ (vite.editor.config.mjs)
+ * 生成する。shared の localKeys.ts (開発者の鍵置き場。gitignore 済み) は書き換えず、editor の dev サーバ (vite.editor.config.mjs)
  * と verify-cli (exam-keys/) が E2E の実行時だけ公開鍵を差し替える。verify-cli は既定どおり fast
  * (PoSW 全再計算は happy-path の 1 本だけ。AGENTS.md 不変条件 4)。
  */
@@ -42,7 +42,7 @@ test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打
     return;
   }
 
-  // 追跡ファイルに E2E の鍵を書いていない (書くとコミットされて本番の verifier が偽の出題者鍵を信頼する。#338)。
+  // 開発者の鍵置き場に E2E の鍵を書いていない (書くと e2e の後も手元の verifier が使い捨ての出題者鍵を信頼し続ける。#229 / #338)。
   expect(readFileSync(LOCAL_KEYS_TS, 'utf8'), 'shared の localKeys.ts に E2E の鍵が混ざっている').not.toContain(
     fixture.keyId
   );

@@ -11,6 +11,7 @@ import {
   runAnalysis,
   type AssuranceResult,
   type ScreenshotVerificationSummary,
+  type SignedCheckpointsVerificationResult,
   type SubmissionPair,
 } from '@typedcode/shared';
 import {
@@ -700,5 +701,62 @@ describe('formatResult — テンプレート注入量の advisory (#416)', () =
     expect(line).toBe(
       '  [INFO] transcription-topology: Template-injected content: 500 chars from templates, 10 chars typed'
     );
+  });
+});
+
+/**
+ * 未署名の末尾 (#295): 最後の署名 cp より後のイベントはサーバ時刻の上界を持たない。Timeline が
+ * ANCHORED にならない理由を、Anchoring 行の最終署名位置と警告行で読めるようにする。
+ */
+describe('formatResult — 未署名の末尾 (#295)', () => {
+  function signedCheckpoints(
+    coverage: Partial<SignedCheckpointsVerificationResult['coverage']>
+  ): SignedCheckpointsVerificationResult {
+    return {
+      valid: true,
+      anchored: true,
+      details: [],
+      coverage: {
+        signedCount: 1,
+        lastSignedEventIndex: 0,
+        coverageRatio: 1 / 3,
+        unsignedTailEvents: 2,
+        terminalAnchored: false,
+        ...coverage,
+      },
+      temporal: null,
+      density: null,
+    };
+  }
+
+  it('shows the position of the last signed event on the Anchoring line', () => {
+    const text = plain(formatResult(output({ signedCheckpoints: signedCheckpoints({}) })));
+
+    expect(text).toMatch(/^Anchoring: +VERIFIED \(1 signed checkpoints, 33\.3% coverage, last signed event #0\)$/m);
+  });
+
+  it('warns with the count of trailing events not covered by a signed checkpoint', () => {
+    const text = plain(formatResult(output({ signedCheckpoints: signedCheckpoints({}) })));
+
+    expect(text).toContain('  ! 2 trailing events are not covered by a signed checkpoint (unsigned tail)');
+  });
+
+  it('does not warn about an unsigned tail when the last signed checkpoint is the final event', () => {
+    const text = plain(
+      formatResult(
+        output({
+          signedCheckpoints: signedCheckpoints({
+            signedCount: 3,
+            lastSignedEventIndex: 2,
+            coverageRatio: 1,
+            unsignedTailEvents: 0,
+            terminalAnchored: true,
+          }),
+        })
+      )
+    );
+
+    expect(text).toContain('last signed event #2');
+    expect(text).not.toContain('unsigned tail');
   });
 });

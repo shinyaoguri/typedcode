@@ -7,7 +7,8 @@ import type { ExamAuthorityKey } from './registry.js';
  * マージした完全な exam authority レジストリ。
  *
  * `registry.ts` はレビュー必須の公式鍵リスト。
- * `localKeys.ts` は各出題者が自分の dev 鍵を追加する場所 (skip-worktree 推奨)。
+ * `localKeys.ts` は各出題者が自分の dev 鍵を追加する場所 (gitignore 済み。無ければ
+ * `npm install` (postinstall) / e2e の setup / doctor が `localKeys.ts.example` から作る。#338)。
  */
 export const EXAM_AUTHORITY_KEYS: readonly ExamAuthorityKey[] = [...REGISTRY_KEYS, ...LOCAL_EXAM_AUTHORITY_KEYS];
 

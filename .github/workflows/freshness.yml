@@ -2,11 +2,11 @@ name: Freshness
 
 # 週次の鮮度チェック。「放っておくと静かに腐る参照」をまとめて検知し、
 # 結果があるときだけ Issue に集約する (毎週 Issue を増やさないよう、
-# 同タイトルの open Issue があればコメント追記に切り替える)。
+# 同タイトルの open Issue があればコメント追記に切り替え、直前の報告と同じ内容なら追記もしない)。
 #
 # 検査項目:
 #   1. リポ内 Markdown の相対リンク切れ (docs/ADR ↔ 実装のパスずれを拾う)
-#   2. npm 依存の古さ (npm outdated の要約)
+#   2. npm 依存の古さ (npm outdated の要約。scripts/summarize-outdated.mjs)
 #   3. 本番リリースの停滞 (最新の v* タグから 30 日超 かつ 未リリースの fix / feat が 1 件以上。#410)
 #      1・2 とは別の専用 Issue に出す (常設の「鮮度チェック」Issue に埋もれさせないため)
 on:
@@ -90,68 +90,19 @@ jobs:
 
       # ------------------------------------------------------------------
       # 2. npm 依存の古さ
-      #    npm outdated は更新があると exit 1 を返すので `|| true` で握る。
+      #    集計は scripts/summarize-outdated.mjs (純関数 + node --test。#261)。breaking の判定
+      #    (0.x の minor を含む)・据え置き中の依存 (ignore リスト)・latest < current の行の除外は
+      #    そちらに持つ。`--workspaces` は付けない: 付けると root の devDependencies が漏れる
+      #    (フラグ無しなら root と全 workspace を拾う)。npm outdated は更新があると exit 1 を返すので
+      #    `|| true` で握る。
       # ------------------------------------------------------------------
       - name: Check outdated npm dependencies
         id: deps
         run: |
           set -euo pipefail
           raw="${RUNNER_TEMP}/outdated.json"
-          npm outdated --workspaces --include-workspace-root --json > "$raw" || true
-
-          # shellcheck disable=SC2016 # JS のテンプレートリテラル (`...${x}`) をシェルに展開させないための意図した単一引用符
-          node --input-type=module -e '
-            import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
-
-            const rawPath = `${process.env.RUNNER_TEMP}/outdated.json`;
-            const outPath = `${process.env.RUNNER_TEMP}/deps.md`;
-            const text = readFileSync(rawPath, "utf8").trim();
-            const data = text ? JSON.parse(text) : {};
-
-            // 同名パッケージが複数 workspace で別バージョンのときは配列になる
-            const rows = Object.entries(data).flatMap(([name, info]) =>
-              (Array.isArray(info) ? info : [info]).map((i) => ({
-                name,
-                current: i.current ?? "-",
-                wanted: i.wanted ?? "-",
-                latest: i.latest ?? "-",
-                dependent: i.dependent ?? "-",
-              })),
-            );
-
-            const majorOf = (v) => Number.parseInt(String(v).split(".")[0], 10);
-            const isMajorBehind = (r) => {
-              const c = majorOf(r.current);
-              const l = majorOf(r.latest);
-              return Number.isFinite(c) && Number.isFinite(l) && l > c;
-            };
-
-            const lines = [];
-            if (rows.length > 0) {
-              const major = rows.filter(isMajorBehind);
-              lines.push(`古い依存: **${rows.length} 件** (うち major 更新あり: **${major.length} 件**)`, "");
-              if (major.length > 0) {
-                lines.push("major が上がっているもの (破壊的変更の可能性あり):", "");
-                lines.push("| package | current | latest | workspace |");
-                lines.push("|---|---|---|---|");
-                for (const r of major) {
-                  lines.push(`| \`${r.name}\` | ${r.current} | ${r.latest} | ${r.dependent} |`);
-                }
-                lines.push("");
-              }
-              lines.push("<details><summary>全件 (npm outdated)</summary>", "");
-              lines.push("| package | current | wanted | latest | workspace |");
-              lines.push("|---|---|---|---|---|");
-              for (const r of rows.sort((a, b) => a.name.localeCompare(b.name))) {
-                lines.push(`| \`${r.name}\` | ${r.current} | ${r.wanted} | ${r.latest} | ${r.dependent} |`);
-              }
-              lines.push("", "</details>");
-            }
-
-            writeFileSync(outPath, lines.length > 0 ? `${lines.join("\n")}\n` : "");
-            appendFileSync(process.env.GITHUB_OUTPUT, `count=${rows.length}\n`);
-            console.log(`Outdated dependencies: ${rows.length}`);
-          '
+          npm outdated --json > "$raw" || true
+          node scripts/summarize-outdated.mjs --input "$raw" --body-file "${RUNNER_TEMP}/deps.md"
 
       # ------------------------------------------------------------------
       # 3. 検知結果の集約 (0 件なら Issue を作らずに終わる)
@@ -218,6 +169,15 @@ jobs:
             --jq '[.[] | select(.title == env.ISSUE_TITLE)] | .[0].number // empty')"
 
           if [ -n "$existing" ]; then
+            # 直前の bot のコメント (無ければ Issue 本文) と、実行 ID と対象コミットの行を除いて
+            # 同じ内容なら追記しない (毎週同じ報告で Issue を埋めない。#261)
+            previous="${RUNNER_TEMP}/previous-report.md"
+            gh issue view "$existing" --json body,comments \
+              --jq '([.comments[] | select(.author.login == "github-actions")] | last | .body) // .body' > "$previous"
+            if node scripts/summarize-outdated.mjs --same-report "$previous" "$body"; then
+              echo "前回の報告と同じ内容なので、Issue #${existing} には追記しません。"
+              exit 0
+            fi
             echo "既存 Issue #${existing} にコメント追記します。"
             gh issue comment "$existing" --body-file "$body"
           else

@@ -11,10 +11,14 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-    ignore:
-      # happy-dom causes Dependabot errors due to its package structure
-      # Update manually when needed
-      - dependency-name: "happy-dom"
+    # PR タイトルの type を本番依存は fix、dev 依存は chore に分ける (#333)。
+    # 本番依存の更新が fix としてリリース判断 (#332 の停滞検知) に数えられるようにする。
+    # transitive の security updates が prefix-development に従うかは未確認 (従わなければ
+    # 本番扱いの fix(deps) になり、安全側に倒れる)。
+    commit-message:
+      prefix: "fix"
+      prefix-development: "chore"
+      include: "scope"
     groups:
       # Group all production dependencies together
       production-dependencies:

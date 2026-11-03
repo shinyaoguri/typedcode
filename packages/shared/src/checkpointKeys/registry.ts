@@ -34,7 +34,7 @@ export interface CheckpointPublicKey {
  *
  * **このファイルは本番運用される鍵のみを記述する。PR でレビューする想定。**
  *
- * 各開発者の dev 鍵は `localKeys.ts` に書く (skip-worktree 推奨)。
+ * 各開発者の dev 鍵は `localKeys.ts` に書く (gitignore 済み。`.example` から作られる。#338)。
  * 鍵生成: `npm run gen-checkpoint-key -w @typedcode/workers`
  *
  * 運用ルール:

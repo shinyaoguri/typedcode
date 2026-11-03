@@ -2,7 +2,7 @@
  * verify-cli (tsx) 用の module resolve フック (#229)。vite-plugin.mjs の Node 版。
  *
  * shared の `examAuthorityKeys/index.ts` が読む `./localKeys` を、E2E の出題者公開鍵
- * (fixtures/exam/authority-keys.mjs) に差し替える。追跡ファイル `localKeys.ts` は書き換えない。
+ * (fixtures/exam/authority-keys.mjs) に差し替える。開発者の鍵置き場 `localKeys.ts` (gitignore 済み) は書き換えない。
  * node-register.mjs が登録する。fixture が無ければ何もしない。
  */
 import { existsSync } from 'node:fs';

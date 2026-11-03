@@ -51,6 +51,43 @@
   }
 }
 
+/* キャンセル / 再検証 (#331)。ヘッダの右端に寄せる */
+.vp-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.vp-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.vp-action-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.vp-action-btn[hidden] {
+  display: none;
+}
+
+/* キャンセルした = 未検証。判定ではないので中立色にし、脈打たせない (検証中に見せない) */
+.verification-progress.vp-cancelled .vp-icon {
+  background: var(--text-tertiary);
+  animation: none;
+}
+
 .vp-title h2 {
   margin: 0;
   font-size: 1.25rem;
@@ -360,6 +397,10 @@
   .vp-header {
     flex-direction: column;
     text-align: center;
+  }
+
+  .vp-actions {
+    margin-left: 0;
   }
 
   .vp-step-header {

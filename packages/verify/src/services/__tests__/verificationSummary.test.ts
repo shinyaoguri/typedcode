@@ -12,7 +12,7 @@ describe('summarizeVerification', () => {
   it('counts a warning as passed and reports one failure for a success/warning/error set', () => {
     const summary = summarizeVerification([proof('a', 'success'), proof('b', 'warning'), proof('c', 'error')]);
 
-    expect(summary).toEqual({ total: 3, passed: 2, failed: 1, done: true, firstFailedId: 'c' });
+    expect(summary).toEqual({ total: 3, passed: 2, failed: 1, cancelled: 0, done: true, firstFailedId: 'c' });
   });
 
   it('does not count plaintext or image tabs', () => {
@@ -47,6 +47,12 @@ describe('summarizeVerification', () => {
     expect(summary.done).toBe(false);
   });
 
+  it('counts a cancelled proof apart from passed and failed, and treats it as done', () => {
+    const summary = summarizeVerification([proof('a', 'success'), proof('b', 'cancelled'), proof('c', 'error')]);
+
+    expect(summary).toEqual({ total: 3, passed: 1, failed: 1, cancelled: 1, done: true, firstFailedId: 'c' });
+  });
+
   it('picks the first failed proof in display order', () => {
     const summary = summarizeVerification([proof('a', 'success'), proof('b', 'error'), proof('c', 'error')]);
 
@@ -54,6 +60,13 @@ describe('summarizeVerification', () => {
   });
 
   it('is done with no proofs at all', () => {
-    expect(summarizeVerification([])).toEqual({ total: 0, passed: 0, failed: 0, done: true, firstFailedId: null });
+    expect(summarizeVerification([])).toEqual({
+      total: 0,
+      passed: 0,
+      failed: 0,
+      cancelled: 0,
+      done: true,
+      firstFailedId: null,
+    });
   });
 });
