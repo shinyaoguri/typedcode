@@ -460,6 +460,7 @@ export const en: TranslationKeys = {
     outcomeFailure: 'failure',
     outcomeError: 'error',
     outcomeAborted: 'aborted',
+    outcomeTimeout: 'timeout',
     codeExecFile: 'file: ${file}',
     codeExecExit: 'exit: ${code}',
     codeExecElapsed: 'elapsed: ${ms}ms',

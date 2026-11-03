@@ -1,8 +1,11 @@
 /**
  * JavaScript Language Executor
  *
- * Executes JavaScript code in the browser using the built-in JS engine.
- * Captures console.log/warn/error output and routes to terminal.
+ * ユーザーの JS を opaque origin の sandbox iframe の中の Worker で実行する (#290 / ADR-0041)。
+ * エディタの realm では eval しない (親 DOM・localStorage・proof の IndexedDB・`/author` の
+ * 秘密鍵に届かせない / 同期の無限ループでエディタを止めない)。停止・タイムアウト・出力予算の超過は
+ * iframe ごと除去して終わらせる (SandboxRunner)。console の代替・行番号の補正は Worker 側
+ * (sandbox/workerSource.ts) が持つ。
  */
 
 import { BaseExecutor } from '../base/BaseExecutor.js';
@@ -13,6 +16,7 @@ import type {
   InitializationProgress,
   ParsedError,
 } from '../interfaces/ILanguageExecutor.js';
+import { SandboxRunner, type SandboxResult, type SandboxRun } from '../sandbox/SandboxRunner.js';
 
 const DEFAULT_JS_CODE = `// Welcome to JavaScript!
 console.log("Hello, World!");
@@ -21,6 +25,19 @@ console.log("Hello, World!");
 const sum = [1, 2, 3, 4, 5].reduce((a, b) => a + b, 0);
 console.log("Sum of 1-5:", sum);
 `;
+
+/** sandbox の結果を ExecutionResult に写す (outcome はそのまま載せ、Controller が記録に使う) */
+export function toExecutionResult(result: SandboxResult): ExecutionResult {
+  const success = result.outcome === 'success';
+  return {
+    success,
+    exitCode: result.exitCode ?? 1,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    outcome: result.outcome,
+    ...(result.error !== undefined ? { error: result.error } : {}),
+  };
+}
 
 export class JavaScriptExecutor extends BaseExecutor {
   readonly config: ExecutorConfig = {
@@ -31,14 +48,15 @@ export class JavaScriptExecutor extends BaseExecutor {
     defaultCode: DEFAULT_JS_CODE,
   };
 
-  // For abort handling
-  private abortController: AbortController | null = null;
+  /** 実行中の run (停止の対象)。run ごとに iframe と Worker が別なので、前の run と混ざらない */
+  private currentRun: SandboxRun | null = null;
 
-  /** getWrapperLineCount の実測値 (初回の run で決まる) */
-  private wrapperLineCount: number | null = null;
+  constructor(private readonly runner: SandboxRunner = new SandboxRunner()) {
+    super();
+  }
 
   protected async _doInitialize(onProgress?: (progress: InitializationProgress) => void): Promise<void> {
-    // JavaScript requires no initialization - the engine is built into the browser
+    // 実行環境は run ごとに作るので、ここで用意するものは無い
     onProgress?.({
       stage: 'ready',
       message: 'JavaScript engine ready!',
@@ -52,64 +70,20 @@ export class JavaScriptExecutor extends BaseExecutor {
     }
 
     this.resetAbort();
-    this.abortController = new AbortController();
+    callbacks.onProgress?.('Running JavaScript...');
 
-    let stdout = '';
-    let stderr = '';
-
-    // Create console interceptors
-    const customConsole = this.createConsoleProxy(callbacks, (text) => {
-      stdout += text;
-    });
-
+    const run = this.runner.start(code, { onStdout: callbacks.onStdout, onStderr: callbacks.onStderr });
+    this.currentRun = run;
     try {
-      callbacks.onProgress?.('Running JavaScript...');
-
-      await this.getWrapperLineCount();
-
-      // Wrap code in async function to support top-level await
-      const fn = this.createFunction(code);
-
-      // Execute with timeout and abort support
-      const result = await this.executeWithTimeout(
-        fn(customConsole, this.abortController.signal),
-        30000 // 30 second timeout
-      );
-
-      // If function returns a value, log it
-      if (result !== undefined) {
-        const resultStr = this.formatValue(result);
-        callbacks.onStdout(`=> ${resultStr}\n`);
-        stdout += `=> ${resultStr}\n`;
-      }
-
-      return {
-        success: true,
-        exitCode: 0,
-        stdout,
-        stderr,
-      };
-    } catch (error) {
-      const errorInfo = this.formatError(error);
-      callbacks.onStderr(errorInfo.message + '\n');
-      stderr = errorInfo.message;
-
-      return {
-        success: false,
-        exitCode: 1,
-        stdout,
-        stderr,
-        error: errorInfo.message,
-      };
+      return toExecutionResult(await run.result);
     } finally {
-      this.abortController = null;
+      // 停止 → 即再実行で、古い run の後始末が新しい run を消さないようにする
+      if (this.currentRun === run) this.currentRun = null;
     }
   }
 
   protected _onAbort(): void {
-    if (this.abortController) {
-      this.abortController.abort();
-    }
+    this.currentRun?.abort();
   }
 
   parseErrors(stderr: string): ParsedError[] {
@@ -118,216 +92,9 @@ export class JavaScriptExecutor extends BaseExecutor {
 
   override dispose(): void {
     super.dispose();
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
+    this.currentRun?.abort();
+    this.currentRun = null;
   }
-
-  // ============ Private Helper Methods ============
-
-  /**
-   * ユーザーコードの 1 行目より前にある行数 (AsyncFunction の前置き + wrapCode の前置き)。
-   *
-   * AsyncFunction は本体の前に `async function anonymous(...` / `) {` の行を足し、その行数は
-   * エンジンが決める。固定値で引くとずれる (#290 で 2 行ずれていたのを確認) ので、同じ形の関数で
-   * 投げた例外の位置から実測する。位置が読めないときは V8 の形 (前置き 2 行 + wrapCode 2 行) とみなす。
-   */
-  private async getWrapperLineCount(): Promise<number> {
-    if (this.wrapperLineCount !== null) return this.wrapperLineCount;
-    let count = 4;
-    try {
-      await this.createFunction('throw new Error("calibrate")')(undefined, undefined);
-    } catch (error) {
-      const location = locateAnonymousFrame(error instanceof Error ? (error.stack ?? '') : '');
-      if (location) count = location.line - 1;
-    }
-    this.wrapperLineCount = count;
-    return count;
-  }
-
-  private createFunction(code: string): (...args: unknown[]) => Promise<unknown> {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
-      ...args: string[]
-    ) => (...args: unknown[]) => Promise<unknown>;
-    return new AsyncFunction('console', '__abortSignal__', this.wrapCode(code));
-  }
-
-  /**
-   * Create a proxy console that intercepts all console methods
-   */
-  private createConsoleProxy(callbacks: ExecutionCallbacks, appendStdout: (text: string) => void): Console {
-    const formatArgs = (...args: unknown[]): string => {
-      return args.map((arg) => this.formatValue(arg)).join(' ');
-    };
-
-    const timers = new Map<string, number>();
-    const counts = new Map<string, number>();
-
-    return {
-      log: (...args: unknown[]) => {
-        const text = formatArgs(...args) + '\n';
-        callbacks.onStdout(text);
-        appendStdout(text);
-      },
-      info: (...args: unknown[]) => {
-        const text = '[INFO] ' + formatArgs(...args) + '\n';
-        callbacks.onStdout(text);
-        appendStdout(text);
-      },
-      warn: (...args: unknown[]) => {
-        const text = '[WARN] ' + formatArgs(...args) + '\n';
-        callbacks.onStderr(text);
-      },
-      error: (...args: unknown[]) => {
-        const text = '[ERROR] ' + formatArgs(...args) + '\n';
-        callbacks.onStderr(text);
-      },
-      debug: (...args: unknown[]) => {
-        const text = '[DEBUG] ' + formatArgs(...args) + '\n';
-        callbacks.onStdout(text);
-        appendStdout(text);
-      },
-      trace: (...args: unknown[]) => {
-        const text = '[TRACE] ' + formatArgs(...args) + '\n';
-        callbacks.onStdout(text);
-        appendStdout(text);
-      },
-      dir: (obj: unknown) => {
-        const text = this.formatValue(obj, true) + '\n';
-        callbacks.onStdout(text);
-        appendStdout(text);
-      },
-      table: (data: unknown) => {
-        const text = '[TABLE] ' + JSON.stringify(data, null, 2) + '\n';
-        callbacks.onStdout(text);
-        appendStdout(text);
-      },
-      clear: () => {
-        callbacks.onStdout('\x1b[2J\x1b[H'); // ANSI clear screen
-      },
-      assert: (condition: boolean, ...args: unknown[]) => {
-        if (!condition) {
-          const text = 'Assertion failed: ' + formatArgs(...args) + '\n';
-          callbacks.onStderr(text);
-        }
-      },
-      count: (label = 'default') => {
-        const count = (counts.get(label) || 0) + 1;
-        counts.set(label, count);
-        const text = `${label}: ${count}\n`;
-        callbacks.onStdout(text);
-        appendStdout(text);
-      },
-      countReset: (label = 'default') => {
-        counts.delete(label);
-      },
-      group: () => {},
-      groupCollapsed: () => {},
-      groupEnd: () => {},
-      time: (label = 'default') => {
-        timers.set(label, performance.now());
-      },
-      timeEnd: (label = 'default') => {
-        const start = timers.get(label);
-        if (start !== undefined) {
-          const duration = performance.now() - start;
-          const text = `${label}: ${duration.toFixed(2)}ms\n`;
-          callbacks.onStdout(text);
-          appendStdout(text);
-          timers.delete(label);
-        }
-      },
-      timeLog: (label = 'default') => {
-        const start = timers.get(label);
-        if (start !== undefined) {
-          const duration = performance.now() - start;
-          const text = `${label}: ${duration.toFixed(2)}ms\n`;
-          callbacks.onStdout(text);
-          appendStdout(text);
-        }
-      },
-    } as unknown as Console;
-  }
-
-  /**
-   * Format a value for console output
-   */
-  private formatValue(value: unknown, expand = false): string {
-    if (value === undefined) return 'undefined';
-    if (value === null) return 'null';
-    if (typeof value === 'string') return value;
-    if (typeof value === 'number' || typeof value === 'boolean') {
-      return String(value);
-    }
-    if (typeof value === 'function') {
-      return `[Function: ${value.name || 'anonymous'}]`;
-    }
-    if (typeof value === 'symbol') {
-      return value.toString();
-    }
-    if (value instanceof Error) {
-      return `${value.name}: ${value.message}`;
-    }
-    if (Array.isArray(value)) {
-      if (expand || value.length <= 10) {
-        return JSON.stringify(value);
-      }
-      return `Array(${value.length})`;
-    }
-    if (typeof value === 'object') {
-      try {
-        const json = JSON.stringify(value, null, expand ? 2 : undefined);
-        if (!expand && json.length > 100) {
-          return json.slice(0, 100) + '...';
-        }
-        return json;
-      } catch {
-        return '[Object]';
-      }
-    }
-    return String(value);
-  }
-
-  /**
-   * Wrap user code to support top-level await
-   */
-  private wrapCode(code: string): string {
-    return `
-"use strict";
-${code}
-    `;
-  }
-
-  /**
-   * Format error for display
-   */
-  private formatError(error: unknown): { message: string; line?: number; column?: number } {
-    if (error instanceof Error) {
-      const location = locateAnonymousFrame(error.stack || '');
-
-      let message = `${error.name}: ${error.message}`;
-      if (location) {
-        const line = Math.max(1, location.line - (this.wrapperLineCount ?? 4));
-        const column = location.column;
-        message += ` (at line ${line}, column ${column})`;
-        return { message, line, column };
-      }
-      return { message };
-    }
-    return { message: String(error) };
-  }
-}
-
-/**
- * 例外のスタックから、AsyncFunction で作ったユーザーコードの位置 (前置き込みの行・列) を読む。
- * V8 は `<anonymous>:L:C`、SpiderMonkey は `> AsyncFunction:L:C` の形で出す。
- */
-export function locateAnonymousFrame(stack: string): { line: number; column: number } | null {
-  const match = /<anonymous>:(\d+):(\d+)/.exec(stack) ?? /> (?:Async)?Function:(\d+):(\d+)/.exec(stack);
-  if (!match?.[1] || !match[2]) return null;
-  return { line: parseInt(match[1], 10), column: parseInt(match[2], 10) };
 }
 
 /**

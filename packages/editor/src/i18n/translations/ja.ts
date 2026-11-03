@@ -458,6 +458,7 @@ export const ja: TranslationKeys = {
     outcomeFailure: '失敗',
     outcomeError: 'エラー',
     outcomeAborted: '中止',
+    outcomeTimeout: 'タイムアウト',
     codeExecFile: 'ファイル: ${file}',
     codeExecExit: 'exit: ${code}',
     codeExecElapsed: '所要: ${ms}ms',

@@ -1,7 +1,8 @@
 /**
  * TypeScript Language Executor
  *
- * Transpiles TypeScript code to JavaScript and executes it using JavaScriptExecutor.
+ * Transpiles TypeScript code to JavaScript and executes it using JavaScriptExecutor
+ * (the sandboxed iframe + Worker of #290).
  * Uses the TypeScript compiler API for transpilation (no type checking for performance).
  */
 
@@ -104,7 +105,12 @@ export class TypeScriptExecutor extends BaseExecutor {
       if (!jsExecutor.isInitialized) {
         await jsExecutor.initialize();
       }
+      // 初期化を待つ間に停止されたら、sandbox を作らずに中止で返す (#290)
+      if (this.shouldAbort()) {
+        return { success: false, exitCode: 1, stdout: '', stderr: '', outcome: 'aborted' };
+      }
 
+      // 実行は JavaScriptExecutor の sandbox (opaque origin の iframe 内の Worker) に任せる
       return await jsExecutor.run(result.outputText, callbacks);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);

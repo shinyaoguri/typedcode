@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { locateAnonymousFrame, parseJavaScriptErrors } from '../JavaScriptExecutor.js';
+import { parseJavaScriptErrors } from '../JavaScriptExecutor.js';
 
 describe('parseJavaScriptErrors', () => {
   it('turns the executor error line into a marker at the reported user line and column', () => {
@@ -25,18 +25,5 @@ describe('parseJavaScriptErrors', () => {
 
   it('does not create a marker from output without an executor location', () => {
     expect(parseJavaScriptErrors('[ERROR] at foo (<anonymous>:3:5)\n')).toEqual([]);
-  });
-});
-
-describe('locateAnonymousFrame', () => {
-  it('reads the position of eval-created code from V8 and SpiderMonkey stacks', () => {
-    expect(
-      locateAnonymousFrame('TypeError: x\n    at eval (eval at run (blob:null/abc:5:19), <anonymous>:5:6)')
-    ).toEqual({
-      line: 5,
-      column: 6,
-    });
-    expect(locateAnonymousFrame('@blob:null/abc line 5 > AsyncFunction:4:7')).toEqual({ line: 4, column: 7 });
-    expect(locateAnonymousFrame('Error\n    at foo (file.js:1:1)')).toBeNull();
   });
 });
