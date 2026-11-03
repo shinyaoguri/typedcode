@@ -46,5 +46,31 @@ export {
   extractAllProofsFromZip,
   isProofExportFilename,
   extractScreenshotArtifactsFromZip,
+  extractSubmissionSourcesFromZip,
 } from './parser.js';
 export type { ProofExtractionFailure, ProofExtractionFailureReason, ProofExtractionResult } from './parser.js';
+
+// export ZIP のファイル名の付け方 (editor と提出物検証の共有仕様, #293)
+export {
+  LANGUAGE_FILE_EXTENSIONS,
+  FALLBACK_FILE_EXTENSION,
+  fileExtensionForLanguage,
+  withLanguageExtension,
+  proofBaseName,
+  createExportNamer,
+  planExportFilenames,
+} from './exportNaming.js';
+export type { ExportTabName, ExportFilenames } from './exportNaming.js';
+
+// 提出物 (ZIP) の対応規則と照合 (#293)
+export { matchSubmissionSources, isSubmissionSourceEntry, submissionSeverity } from './submissionSources.js';
+export type {
+  SubmissionProofInput,
+  SubmissionSourceInput,
+  MatchSubmissionSourcesInput,
+  SubmissionPairStatus,
+  SubmissionMismatchDetail,
+  SubmissionPair,
+  SubmissionReport,
+  SubmissionSeverity,
+} from './submissionSources.js';

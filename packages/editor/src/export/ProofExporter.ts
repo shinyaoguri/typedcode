@@ -16,11 +16,10 @@ import {
   type VerificationResult,
 } from '../services/TurnstileService.js';
 import { PRE_EXPORT_VERIFICATION_BUDGET_MS } from '../config/timeouts.js';
-import { getLanguageDefinition } from '../config/SupportedLanguages.js';
 import { t } from '../i18n/index.js';
 import { generateReadmeEn } from './readme-template-en.js';
 import { generateReadmeJa } from './readme-template-ja.js';
-import { summarizeProcess } from '@typedcode/shared';
+import { createExportNamer, proofBaseName, summarizeProcess, withLanguageExtension } from '@typedcode/shared';
 import { SelfReviewDialog } from '../ui/components/SelfReviewDialog.js';
 
 /** export 前 Turnstile 認証の取得結果 (記録は呼び出し側)。 */
@@ -442,18 +441,14 @@ export class ProofExporter {
       const zip = new JSZip();
       const timestamp = this.generateTimestamp();
 
-      // ソースファイル名を生成（拡張子付き）
-      let sourceFilename = activeTab.filename;
-      const ext = getLanguageDefinition(activeTab.language)?.fileExtension ?? 'txt';
-      if (!sourceFilename.endsWith(`.${ext}`)) {
-        sourceFilename = `${sourceFilename}.${ext}`;
-      }
+      // ソースファイル名を生成（拡張子付き）。名前の付け方は shared が正本 (#293: 検証側が同じ手順で再現する)
+      const sourceFilename = withLanguageExtension(activeTab.filename, activeTab.language);
 
       // ソースコードを追加
       zip.file(sourceFilename, content);
 
       // ログファイル名を生成（ファイル名_proof.json形式）
-      const baseFilename = activeTab.filename.replace(/\.[^.]+$/, ''); // 拡張子を除去
+      const baseFilename = proofBaseName(activeTab.filename);
       const logFilename = `${baseFilename}_proof.json`;
 
       // 証明JSONを追加
@@ -582,9 +577,9 @@ export class ProofExporter {
       const zip = new JSZip();
       const timestamp = this.generateTimestamp();
 
-      // ファイル名の重複を処理するためのマップ
-      const usedSourceFilenames = new Map<string, number>();
-      const usedLogFilenames = new Map<string, number>();
+      // ファイル名 (ソース / proof) は shared が正本。同名・拡張子違いのタブの番号付けまで含めて、
+      // 検証側 (`matchSubmissionSources`) が同じ手順で再現できるようにここで 1 か所から作る (#293)。
+      const exportNames = createExportNamer();
 
       // 各タブをエクスポート
       const fileList: string[] = [];
@@ -615,37 +610,14 @@ export class ProofExporter {
           console.warn(`[ProofExporter] tab ${tab.id}: ${flushResult.remaining} unsigned checkpoint(s) at export time`);
         }
 
-        // ソースファイル名を生成（拡張子付き）
-        let sourceFilename = tab.filename;
-        const ext = getLanguageDefinition(tab.language)?.fileExtension ?? 'txt';
-        if (!sourceFilename.endsWith(`.${ext}`)) {
-          sourceFilename = `${sourceFilename}.${ext}`;
-        }
-
-        // ソースファイル名の重複を処理
-        let uniqueSourceFilename = sourceFilename;
-        const sourceCount = usedSourceFilenames.get(sourceFilename) ?? 0;
-        if (sourceCount > 0) {
-          const baseName = sourceFilename.replace(/\.[^.]+$/, '');
-          const extension = sourceFilename.match(/\.[^.]+$/)?.[0] ?? '';
-          uniqueSourceFilename = `${baseName}_${sourceCount}${extension}`;
-        }
-        usedSourceFilenames.set(sourceFilename, sourceCount + 1);
+        const { source: uniqueSourceFilename, proof: logFilename } = exportNames({
+          filename: tab.filename,
+          language: tab.language,
+        });
 
         // ソースコードを追加（フラット）
         zip.file(uniqueSourceFilename, content);
         fileList.push(uniqueSourceFilename);
-
-        // ログファイル名を生成（ファイル名_proof.json形式）
-        const baseFilename = tab.filename.replace(/\.[^.]+$/, ''); // 拡張子を除去
-        let logFilename = `${baseFilename}_proof.json`;
-
-        // ログファイル名の重複を処理
-        const logCount = usedLogFilenames.get(logFilename) ?? 0;
-        if (logCount > 0) {
-          logFilename = `${baseFilename}_proof_${logCount}.json`;
-        }
-        usedLogFilenames.set(`${baseFilename}_proof.json`, logCount + 1);
 
         // 証明JSONを追加（フラット）
         const proofWithContent = {
