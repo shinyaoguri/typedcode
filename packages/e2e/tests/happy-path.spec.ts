@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp, readProofEvents, readProofJson } from './helpers/app.js';
 import type { ProofCheckpoint } from './helpers/app.js';
-import { runVerifyCliWithAnalysis } from './helpers/verifyCli.js';
+import { runVerifyCliWithVerdicts } from './helpers/verifyCli.js';
 
 /**
  * シナリオ1 (happy path): /casual で実際にコードを打鍵 → export →
@@ -29,7 +29,7 @@ test('casual: 打鍵→export→CLI 検証が pass する', async ({ page }) => 
   expect(await app.eventCount()).toBeGreaterThan(initialCount);
 
   const zipPath = await app.exportCurrentTab();
-  const result = runVerifyCliWithAnalysis(zipPath);
+  const result = runVerifyCliWithVerdicts(zipPath);
 
   // ① チェーン検証が pass (exit 0)。
   expect(result.passed, result.stdout + result.stderr).toBe(true);
@@ -37,9 +37,9 @@ test('casual: 打鍵→export→CLI 検証が pass する', async ({ page }) => 
   // 純粋打鍵 (ペースト/ドロップなし) として記録されている。
   expect(result.stdout).toContain('Pure Typing: YES');
 
-  // ② analysis レポート (advisory) も valid を返し、ペースト由来の指摘がない。
-  expect(result.analysis.length).toBeGreaterThan(0);
-  expect(result.analysis[0]!.valid).toBe(true);
+  // ② proof ごとの判定 (`--analysis-json` の valid) も valid を返す。
+  expect(result.verdicts.length).toBeGreaterThan(0);
+  expect(result.verdicts[0]!.valid).toBe(true);
 
   // ③ 起動時ワンショット信号 (#132): environmentProbe (ADR-0007 Tier0 + ADR-0019 の
   // editorAssist 宣言) と screenShareOptOut (casual は既定オプトアウト = ADR-0015) が
@@ -75,4 +75,12 @@ test('casual: 打鍵→export→CLI 検証が pass する', async ({ page }) => 
   expect(envelope.keyId, 'signed checkpoint carries a keyId').toBeTruthy();
   expect(envelope.signature, 'signed checkpoint carries a signature').toBeTruthy();
   expect(envelope.payload?.serverTimestamp, 'server-side timestamp is the anchor itself').toBeTruthy();
+
+  // ⑤ 最終イベントまで署名が届く正常系が降格しないことの番人 (#295)。temporal の anchored は
+  // 「最後の署名 cp が最終イベントを指す」ことを条件にしたので、export 時の最終署名が proof に
+  // 載らない (署名待ちが間に合わない・最終 cp の後にイベントが積まれる) と、正直な proof が
+  // partial に落ちる。三層保証は `--analysis-bundle` の assurance (shared の deriveAssurance) で読む。
+  expect(result.verdicts[0]!.assurance.temporal, 'an honest session is anchored up to its final event').toBe(
+    'anchored'
+  );
 });

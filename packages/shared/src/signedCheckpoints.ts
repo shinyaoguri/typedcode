@@ -400,7 +400,7 @@ export async function verifySignedCheckpoints(
     valid: false,
     anchored: false,
     details: [],
-    coverage: { signedCount: 0, lastSignedEventIndex: null, coverageRatio: 0 },
+    coverage: computeCoverage(events, signedCheckpoints),
     temporal: null,
     density: null,
   };
@@ -674,13 +674,24 @@ function computeCoverage(
   signedCheckpoints: Array<CheckpointData & { signature: SignedCheckpointEnvelope }>
 ): SignedCheckpointsVerificationResult['coverage'] {
   const signedCount = signedCheckpoints.length;
+  const total = events.length;
   if (signedCount === 0) {
-    return { signedCount: 0, lastSignedEventIndex: null, coverageRatio: 0 };
+    // 署名 cp が無ければ全イベントが未署名の末尾 (#295)。
+    return {
+      signedCount: 0,
+      lastSignedEventIndex: null,
+      coverageRatio: 0,
+      unsignedTailEvents: total,
+      terminalAnchored: false,
+    };
   }
   const lastSignedEventIndex = signedCheckpoints[signedCheckpoints.length - 1]!.signature.payload.eventIndex;
-  const total = events.length;
   const coverageRatio = total > 0 ? Math.min(1, (lastSignedEventIndex + 1) / total) : 0;
-  return { signedCount, lastSignedEventIndex, coverageRatio };
+  // 未署名の末尾 (#295): 最後の署名 cp より後のイベントはサーバ時刻の上界を持たない。
+  // eventIndex が範囲外の cp (検証は失敗する) でも負の件数を出さない。
+  const unsignedTailEvents = Math.max(0, total - 1 - lastSignedEventIndex);
+  const terminalAnchored = lastSignedEventIndex === total - 1;
+  return { signedCount, lastSignedEventIndex, coverageRatio, unsignedTailEvents, terminalAnchored };
 }
 
 /**

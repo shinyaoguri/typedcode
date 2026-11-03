@@ -3,7 +3,8 @@
  * Setup doctor — clone 後の環境セットアップが正しく完了しているかをチェック。
  *
  * 設計方針:
- *   - 読み取り専用 (何も書き換えない、何も削除しない)
+ *   - 読み取り専用 (何も削除しない)。書くのは、無い dev 用の公開鍵置き場 localKeys.ts を
+ *     .example から作ることだけ (gitignore 済み・既存は上書きしない。Section 5 / #338)
  *   - **新規ユーザー前提**: wrangler / gh / openssl が無くても doctor 本体は動く
  *   - 不足があれば「何を、どこで、どうやって」直すかを具体的に表示
  *   - 段階的: ツール無 → npm install → wrangler → Cloudflare 登録 → 設定ファイル → 鍵
@@ -21,6 +22,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync, spawnSync } from 'node:child_process';
+import { ensureLocalKeys, LOCAL_KEYS_FILES } from './ensure-local-keys.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = new Set(process.argv.slice(2));
@@ -332,33 +334,38 @@ function checkLocalConfig() {
 function checkSigningKey() {
   section('5. 署名鍵 (signed checkpoints)');
 
-  const localKeys = readFileOrNull('packages/shared/src/checkpointKeys/localKeys.ts');
-  if (!localKeys) {
+  // localKeys.ts は gitignore 済みで git が持たない (#338)。無ければ .example から作る (既存は上書きしない)
+  let created = [];
+  try {
+    created = ensureLocalKeys({ root: REPO_ROOT, log: () => {} });
+  } catch (err) {
     report(
       'fail',
-      'packages/shared/src/checkpointKeys/localKeys.ts がない',
-      `cp packages/shared/src/checkpointKeys/localKeys.ts.example packages/shared/src/checkpointKeys/localKeys.ts\ngit update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts`
+      'localKeys.ts を .example から作れない',
+      `${err?.message ?? err}\nnode scripts/ensure-local-keys.mjs`
     );
     return;
   }
-
-  try {
-    const out = execSync('git ls-files -v packages/shared/src/checkpointKeys/localKeys.ts', {
-      cwd: REPO_ROOT,
-      encoding: 'utf-8',
-    });
-    if (out.startsWith('S ')) {
-      report('ok', 'localKeys.ts: skip-worktree 適用済');
-    } else {
+  for (const rel of LOCAL_KEYS_FILES) {
+    if (created.includes(rel)) {
+      report('ok', `${rel}: 無かったので .example から作成`);
+    }
+    // 古いチェックアウト (#338 より前の .gitignore や、まだ追跡している index) だと誤コミットの経路が残る
+    const ignored = spawnSync('git', ['check-ignore', '-q', rel], { cwd: REPO_ROOT });
+    if (ignored.status === 0) {
+      report('ok', `${rel}: gitignore 済`);
+    } else if (ignored.status === 1) {
       report(
         'warn',
-        'localKeys.ts: skip-worktree 未適用',
-        `git update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts`
+        `${rel}: gitignore されていない (または追跡されている)`,
+        `main を pull する (移行手順は CHANGELOG.md の #338)。追跡が残っていれば:\n  git rm --cached ${rel}`
       );
+    } else {
+      report('skip', `${rel}: gitignore を確認できず`);
     }
-  } catch {
-    report('skip', 'localKeys.ts: skip-worktree 確認できず');
   }
+
+  const localKeys = readFileOrNull('packages/shared/src/checkpointKeys/localKeys.ts') ?? '';
 
   const hasEntry = /keyId\s*:\s*['"]tcp-/.test(localKeys);
   const devVars = readFileOrNull('packages/workers/.dev.vars');

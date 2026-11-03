@@ -107,7 +107,8 @@ git worktree list   # 一覧確認
 
 - **`node_modules` は worktree ごとに独立。** 作成した直後は必ず `npm ci` する。メインのチェックアウトも、`git pull` で lockfile が変わったら `npm ci` し直す (忘れると「コマンドが見つからない」系のエラーになる)
 - **dev サーバのポートは自動割当 ([ADR-0030](docs/adr/0030-dev-port-autoswitch.md))。** `npm run dev` は既定ポート (editor 5173 / verify 5174 / workers 8787) が使用中だと**セットごと +10** (5183/5184/8797, …) して空きへ移り、editor の `/verify` プロキシと `VITE_API_URL` も追従する。複数 worktree・別プロジェクトとの同時起動は無調整で共存でき、実際の URL は起動バナーで確認する。個別起動 (`npm run dev:editor` 等) は従来どおり固定ポート (衝突時は vite が +1 フォールバックするだけで配線は追従しない点に注意)
-- **skip-worktree はインデックス単位で、worktree 間で共有されない。** メインのチェックアウトで隠している `packages/shared/src/checkpointKeys/localKeys.ts` / `packages/workers/wrangler.toml` のローカル版や `.dev.vars` は、新しい worktree には存在しない (HEAD のプレースホルダ版がチェックアウトされる)。ユニットテストはそのまま通るが、worktree 内で workers をローカル起動するにはこれらの再セットアップが必要 ([packages/workers/AGENTS.md](packages/workers/AGENTS.md) の手順)。E2E は `npm run setup -w @typedcode/e2e` が鍵を実行時生成するので不要
+- **skip-worktree はインデックス単位で、worktree 間で共有されない。** メインのチェックアウトで隠している `packages/workers/wrangler.toml` のローカル版は、新しい worktree には存在しない (HEAD のプレースホルダ版がチェックアウトされる)
+- **gitignore 済みのローカル設定も worktree ごとに別。** `.dev.vars` や dev 鍵の置き場 `packages/shared/src/checkpointKeys/localKeys.ts` / `packages/shared/src/examAuthorityKeys/localKeys.ts` (#338) は新しい worktree に引き継がれない (`localKeys.ts` は `npm ci` の postinstall が `.example` の空配列版を置く)。ユニットテストはそのまま通るが、worktree 内で workers をローカル起動するには上の `wrangler.toml` と合わせて再セットアップが必要 ([packages/workers/AGENTS.md](packages/workers/AGENTS.md) の手順)。E2E は `npm run setup -w @typedcode/e2e` が鍵を実行時生成するので不要
 - **`git stash` は全 worktree 共有。** 取り違えやすいので、作業を退避したいときは stash ではなく WIP コミットにする
 - **同じブランチは一つの worktree にしかチェックアウトできない** (main はリポジトリ直下が使っているので、worktree で main は開けない)
 - worktree の実体は `.claude/worktrees/` にあり、git 管理外 (.gitignore 済み)。消すときは `rm -rf` ではなく `git worktree remove` (または下記 sweep) を使う (git 側の登録も一緒に消えるため)

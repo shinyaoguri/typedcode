@@ -7,7 +7,8 @@ import type { CheckpointPublicKey } from './registry.js';
  * マージした完全なレジストリ。
  *
  * `registry.ts` はレビュー必須の公式鍵リスト。
- * `localKeys.ts` は各開発者が自分の dev 鍵を追加する場所 (skip-worktree 推奨)。
+ * `localKeys.ts` は各開発者が自分の dev 鍵を追加する場所 (gitignore 済み。無ければ
+ * `npm install` (postinstall) / e2e の setup / doctor が `localKeys.ts.example` から作る。#338)。
  */
 export const CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [
   ...REGISTRY_KEYS,

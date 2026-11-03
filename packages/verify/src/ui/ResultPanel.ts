@@ -209,6 +209,14 @@ export class ResultPanel {
   private vpOverallTime: HTMLElement;
   private vpDetail: HTMLElement;
   private vpDetailText: HTMLElement;
+  private vpRoot: HTMLElement;
+  private vpTitleText: HTMLElement;
+  private vpCancelBtn: HTMLButtonElement;
+  private vpRetryBtn: HTMLButtonElement;
+  /** 進捗表示の「キャンセル」(#331)。表示中のタブの検証を止める要求 (AppController が配線) */
+  onCancelRequested?: () => void;
+  /** キャンセル後の「再検証」(#331)。表示中のタブを並べ直す要求 (AppController が配線) */
+  onRetryRequested?: () => void;
   private progressStartTime: number = 0;
   private progressTimerInterval: number | null = null;
 
@@ -333,6 +341,12 @@ export class ResultPanel {
     this.vpOverallTime = document.getElementById('vp-overall-time')!;
     this.vpDetail = document.getElementById('vp-detail')!;
     this.vpDetailText = document.getElementById('vp-detail-text')!;
+    this.vpRoot = this.loading.querySelector<HTMLElement>('.verification-progress')!;
+    this.vpTitleText = document.getElementById('vp-title-text')!;
+    this.vpCancelBtn = document.getElementById('vp-cancel-btn') as HTMLButtonElement;
+    this.vpRetryBtn = document.getElementById('vp-retry-btn') as HTMLButtonElement;
+    this.vpCancelBtn.addEventListener('click', () => this.onCancelRequested?.());
+    this.vpRetryBtn.addEventListener('click', () => this.onRetryRequested?.());
 
     this.setupEventListeners();
   }
@@ -699,11 +713,11 @@ export class ResultPanel {
     this.anchoringBadge.className = 'result-card-badge success';
     this.anchoringBadge.textContent = t('result.anchoringVerified');
     this.anchoringStatus.textContent = t('result.anchoringVerified');
-    const pct = (sc.coverage.coverageRatio * 100).toFixed(1);
-    this.anchoringCoverage.textContent = `${sc.coverage.signedCount} (${pct}%)`;
+    this.anchoringCoverage.textContent = buildAnchoringCoverageText(sc.coverage);
     this.anchoringReasonRow.style.display = 'none';
 
-    // 警告行は post-hoc 疑いと anchoring 密度 (ADR-0016) の両方を集約する (どちらも valid のまま出る)。
+    // 警告行は post-hoc 疑い・anchoring 密度 (ADR-0016)・未署名の末尾 (#295) を集約する
+    // (どれも valid のまま出る)。
     const warnings: string[] = [];
     if (sc.temporal) {
       this.anchoringTemporalRow.style.display = 'flex';
@@ -716,6 +730,8 @@ export class ResultPanel {
       this.anchoringTemporalRow.style.display = 'none';
     }
     if (sc.density?.sparse) warnings.push(t('result.anchoringSparse'));
+    const unsignedTail = anchoringUnsignedTailWarning(sc.coverage);
+    if (unsignedTail) warnings.push(unsignedTail);
     if (warnings.length > 0) {
       this.anchoringWarningRow.style.display = 'flex';
       this.anchoringWarning.textContent = warnings.join(' / ');
@@ -1076,8 +1092,39 @@ export class ResultPanel {
       this.updateElapsedTime();
     }, 100);
 
+    // 検証中 (待機中を含む) はキャンセルを押せる (#331)
+    this.setProgressActions('running');
+
     this.show();
     this.showLoading();
+  }
+
+  /**
+   * 検証をキャンセルしたタブの表示 (#331)。判定は無いので進捗 UI のまま「キャンセルした」と再検証の導線を出す。
+   * showLoading が判定の data-* を外す (状態契約: 判定を表示していない間は属性を付けない)。
+   */
+  showCancelled(filename: string): void {
+    this.stopProgressTimer();
+    this.vpFilename.textContent = filename;
+    this.vpOverallFill.style.width = '0%';
+    this.vpOverallPercent.textContent = '0%';
+    this.vpOverallTime.textContent = '0:00';
+    this.resetProgressSteps();
+    this.setProgressActions('cancelled');
+    this.show();
+    this.showLoading();
+  }
+
+  /**
+   * 進捗ヘッダの見出しと操作ボタンを切り替える。running = 検証中 (キャンセル可)、
+   * cancelled = キャンセル済み (再検証可)、settled = 完了・エラー (どちらも出さない)。
+   */
+  private setProgressActions(state: 'running' | 'cancelled' | 'settled'): void {
+    const cancelled = state === 'cancelled';
+    this.vpRoot.classList.toggle('vp-cancelled', cancelled);
+    this.vpTitleText.textContent = cancelled ? t('progress.cancelled') : t('progress.verifying');
+    this.vpCancelBtn.hidden = state !== 'running';
+    this.vpRetryBtn.hidden = !cancelled;
   }
 
   /**
@@ -1277,6 +1324,7 @@ export class ResultPanel {
    */
   finishProgress(): void {
     this.stopProgressTimer();
+    this.setProgressActions('settled');
     this.updateOverallProgress(100);
     this.updateStepStatus('complete', 'success', t('progress.statusDone'));
   }
@@ -1286,6 +1334,7 @@ export class ResultPanel {
    */
   errorProgress(step: VerificationStepType, errorMessage?: string): void {
     this.stopProgressTimer();
+    this.setProgressActions('settled');
     this.updateStepStatus(step, 'error', t('progress.statusError'));
     if (errorMessage) {
       this.showProgressDetail(errorMessage);
@@ -1441,6 +1490,31 @@ export class ResultPanel {
       this.chainErrorTimestampRow.style.display = 'none';
     }
   }
+}
+
+/**
+ * Anchoring カードの coverage 行 (署名 cp が有効なとき)。署名 cp 数と割合に、最後の署名 cp が指す
+ * イベント位置を添える (#295)。割合だけでは「どこで署名が途切れたか」が読めない。
+ * 値は検証済みの数値だけで、proof 由来の文字列を含まない (textContent に入る)。
+ */
+export function buildAnchoringCoverageText(coverage: SignedCheckpointsVerificationResult['coverage']): string {
+  const pct = (coverage.coverageRatio * 100).toFixed(1);
+  const base = `${coverage.signedCount} (${pct}%)`;
+  if (coverage.lastSignedEventIndex === null) return base;
+  return `${base} · ${t('result.anchoringLastSigned', { index: coverage.lastSignedEventIndex })}`;
+}
+
+/**
+ * 未署名の末尾 (#295) の警告文。最後の署名 cp より後にイベントが残るときだけ返す。
+ * 末尾はサーバ時刻の上界を持たず、三層保証の時刻アンカーも `anchored` にならない
+ * (shared の `deriveAssurance`)。ここは表示だけで、判定は導出し直さない。
+ */
+export function anchoringUnsignedTailWarning(coverage: SignedCheckpointsVerificationResult['coverage']): string | null {
+  if (coverage.unsignedTailEvents <= 0 || coverage.lastSignedEventIndex === null) return null;
+  return t('result.anchoringUnsignedTail', {
+    count: coverage.unsignedTailEvents,
+    index: coverage.lastSignedEventIndex,
+  });
 }
 
 /**

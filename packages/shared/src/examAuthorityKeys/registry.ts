@@ -41,7 +41,7 @@ export interface ExamAuthorityKey {
  *
  * **このファイルは本番運用される鍵のみを記述する。PR でレビューする想定。**
  *
- * 各出題者の dev 鍵は `localKeys.ts` に書く (skip-worktree 推奨)。
+ * 各出題者の dev 鍵は `localKeys.ts` に書く (gitignore 済み。`.example` から作られる。#338)。
  * keyId 規約: `exam-YYYYMM-xxxxxx` (例: `exam-2026s-ab12cd` のように学期を含めても良い)。
  *
  * 運用ルール:
@@ -52,7 +52,7 @@ export const EXAM_AUTHORITY_KEYS: readonly ExamAuthorityKey[] = [
   // 本番鍵はここに append する。
   //
   // dev / プレビュー検証用の鍵は registry には commit しない。各 maintainer が
-  // `localKeys.ts` (skip-worktree) にローカル鍵を置き、ExamStartGate の解錠フローを
+  // `localKeys.ts` (gitignore 済み) にローカル鍵を置き、ExamStartGate の解錠フローを
   // 実機確認する (docs/examples/README.md 参照)。本番試験で実運用する鍵だけをここに残す。
 ] as const;
 

@@ -55,6 +55,18 @@ const SHOTS = [
     file: '05-main-menu.png',
     caption: 'エディタ (通常モード): メインメニューを開いた状態 (時計とハッシュは隠している)',
   },
+  {
+    file: '06-verify-verifying.png',
+    caption: '検証 Web (full モード): 検証中の proof の進捗表示とキャンセルボタン (経過時間は隠している)',
+  },
+  {
+    file: '07-verify-cancelled.png',
+    caption: '検証 Web: 検証をキャンセルした proof (未検証の表示と再検証ボタン、ステータスバーのキャンセル件数)',
+  },
+  {
+    file: '08-verify-cancel.webp',
+    caption: '検証 Web: 検証中の proof をキャンセルする操作 (キャンセル後に次の proof の検証が進む)',
+  },
 ] as const;
 
 type ShotFile = (typeof SHOTS)[number]['file'];
@@ -194,5 +206,55 @@ test.describe('見た目・動きの証跡 @shots', () => {
     // 集約は検証完了の次のタスクで描かれる。data-proof-* が付くのを待つ (値は見ない)。
     await expect.poll(() => web.proofSummary()).not.toBeNull();
     await page.screenshot({ path: out('04-verify-summary.png') });
+  });
+
+  // 06〜08 (#331): 検証中の進捗表示 (キャンセルボタン) と、キャンセルした後の表示。キャンセルは処理中の項目への
+  // 操作なので full で流す (fast は一瞬で終わり、処理中を撮れない)。打鍵は verify-web-ui.spec.ts のキャンセルの
+  // spec と同じく、コメント 1 行を足して検証の時間を稼ぐ。
+  test('検証 Web の検証中とキャンセル後の画面を撮る @shots', async ({ page }) => {
+    const app = new EditorApp(page);
+    await app.openCasualFresh();
+    await app.typeCode(`// padding line for a slower full verification\n${CODE}`);
+    const zipPath = await app.exportCurrentTab();
+    const first = await writeZipVariant(zipPath, { renameProof: 'first', outName: 'first.zip' });
+    const second = await writeZipVariant(zipPath, { renameProof: 'second', outName: 'second.zip' });
+    const web = new VerifyWebApp(page);
+    await web.open('full');
+    await web.addFiles([first, second]);
+
+    const verifying = page.locator('#file-list .file-item[data-status="verifying"]');
+    await verifying.first().waitFor({ state: 'attached', timeout: 60_000 });
+    const target = await verifying.first().getAttribute('data-filename');
+    if (!target) {
+      console.warn('[shots] 検証中の行を掴めなかったので 06〜08 を飛ばす');
+      return;
+    }
+    await web.selectFile(target);
+    const elapsed = page.locator('#vp-overall-time');
+
+    // 06: 検証中 (キャンセルボタンが見える)。
+    await page.screenshot({ path: out('06-verify-verifying.png'), animations: 'disabled', mask: [elapsed] });
+
+    // 08: キャンセルの前後をコマ撮りする。
+    mkdirSync(FRAMES, { recursive: true });
+    const frames: string[] = [];
+    const snap = async () => {
+      const path = join(FRAMES, `frame.${String(frames.length + 1).padStart(4, '0')}.png`);
+      await page.screenshot({ path, animations: 'disabled', mask: [elapsed] });
+      frames.push(path);
+    };
+    for (let i = 0; i < 4; i++) await snap();
+    await web.cancelVerification();
+    for (let i = 0; i < 6; i++) await snap();
+
+    // 07: もう 1 件の検証が済み、ステータスバーに集約 (キャンセル件数を含む) が出てから撮る。
+    await web.waitSettled(2, 240_000);
+    await expect.poll(() => web.proofSummary()).not.toBeNull();
+    await snap();
+    const last = frames.at(-1);
+    if (last) for (let i = 0; i < 10; i++) frames.push(last);
+    bundleWebp(frames, out('08-verify-cancel.webp'));
+    rmSync(FRAMES, { recursive: true, force: true });
+    await page.screenshot({ path: out('07-verify-cancelled.png'), animations: 'disabled' });
   });
 });

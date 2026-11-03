@@ -55,7 +55,10 @@ export interface IntegratedTimelineCache {
 // ============================================================================
 
 /** 検証ステータス */
-export type VerificationStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error';
+/**
+ * 検証状態。`cancelled` = 利用者が検証をキャンセルした (未検証。判定ではないので error と区別する。#331)
+ */
+export type VerificationStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error' | 'cancelled';
 
 /** 検証モード */
 export type VerificationMode = 'fast' | 'audit' | 'full';

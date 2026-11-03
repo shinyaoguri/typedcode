@@ -76,6 +76,9 @@ export const en: VerifyTranslationKeys = {
     chainDetail: '${current} / ${total} events',
     samplingDetail: '${current} events verified / ${total} events',
     samplingDetailWithTotal: '${current} events verified / ${total} events (${totalEvents} total)',
+    cancel: 'Cancel',
+    retry: 'Verify again',
+    cancelled: 'Verification cancelled',
   },
 
   result: {
@@ -123,6 +126,9 @@ export const en: VerifyTranslationKeys = {
     anchoringNone: 'No signed checkpoints',
     anchoringPostHoc: '⚠ Post-hoc batch signing suspected (server span / client span unusually small)',
     anchoringSparse: '⚠ Anchoring is sparse (few/late signed checkpoints for the claimed session)',
+    anchoringUnsignedTail:
+      '⚠ The last ${count} events are not covered by a signed checkpoint (last signed: event #${index})',
+    anchoringLastSigned: 'last signed: event #${index}',
     // Expanded details section
     anchoringDetailsToggle: 'Show verification basis',
     anchoringSectionKeys: 'Signing key',
@@ -246,6 +252,7 @@ export const en: VerifyTranslationKeys = {
     verifying: 'Verifying ${current}/${total}',
     summary: '${passed}/${total} proofs passed',
     summaryFailed: '${failed} failed',
+    summaryCancelled: '${cancelled} cancelled',
   },
 
   charts: {

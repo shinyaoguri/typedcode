@@ -3,7 +3,7 @@
  */
 import { t } from '../i18n/index.js';
 
-export type TabStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error';
+export type TabStatus = 'pending' | 'verifying' | 'success' | 'warning' | 'error' | 'cancelled';
 
 export interface Tab {
   id: string;

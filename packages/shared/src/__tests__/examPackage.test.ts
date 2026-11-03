@@ -26,7 +26,7 @@ import {
 } from '../index.js';
 import { HashChainManager } from '../typingProof/HashChainManager.js';
 // 本番レジストリ (registry.ts) を直接見る。`index.js` 経由の merged 版は各開発者の
-// localKeys (skip-worktree) を含み得るため、本番鍵の空判定にはこちらを使う。
+// localKeys (gitignore 済みの dev 鍵置き場) を含み得るため、本番鍵の空判定にはこちらを使う。
 import { EXAM_AUTHORITY_KEYS as PRODUCTION_EXAM_AUTHORITY_KEYS } from '../examAuthorityKeys/registry.js';
 import { makeExamAuthority, buildSamplePackage } from './fixtures/examFixtures.js';
 
@@ -370,7 +370,7 @@ describe('exam authority registry', () => {
 
   it('ships no keys in the production registry until a real exam key is onboarded', () => {
     // localKeys (dev) は除外。本番 registry.ts のみを検査する (誤って dev/preview 鍵を commit した検出)。
-    // dev/preview 検証鍵は localKeys.ts に置く規約なので、本番 registry は実鍵オンボードまで空。
+    // dev/preview 検証鍵は localKeys.ts (gitignore 済み) に置く規約なので、本番 registry は実鍵オンボードまで空。
     expect(PRODUCTION_EXAM_AUTHORITY_KEYS.map((k) => k.keyId)).toEqual([]);
   });
 });

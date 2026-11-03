@@ -21,6 +21,7 @@
     "lint:fix": "biome check --write .",
     "lint:workflows": "bash scripts/actionlint.sh",
     "doctor": "node scripts/doctor.mjs",
+    "postinstall": "node scripts/ensure-local-keys.mjs",
     "test:coverage": "npm run test:coverage --workspaces --if-present",
     "coverage:ratchet": "COVERAGE_RATCHET=1 npm run test:coverage --workspaces --if-present",
     "check:fast": "npm run typecheck && npm run lint && npm run lint:workflows && node scripts/check-deps.mjs && npm run test:coverage && node --test 'scripts/*.test.mjs' packages/e2e/scripts/setup-env.test.mjs",

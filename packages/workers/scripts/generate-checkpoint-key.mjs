@@ -12,7 +12,8 @@
  *
  * 鍵の置き場所:
  * - **ローカル dev 鍵**: 公開鍵を packages/shared/src/checkpointKeys/localKeys.ts に
- *   append し、`git update-index --skip-worktree` で git status から隠す
+ *   append する (gitignore 済みなのでコミットされない。無ければ `npm install` / `npm run doctor` が
+ *   `.example` から作る。#338)
  * - **本番運用鍵**: 公開鍵を packages/shared/src/checkpointKeys/registry.ts に
  *   append して PR レビュー、私的 JWK は `wrangler secret put` で本番に投入
  */
@@ -41,7 +42,7 @@ async function main() {
   console.log('');
   console.log('=== Public key entry ===');
   console.log('For LOCAL dev: append to packages/shared/src/checkpointKeys/localKeys.ts');
-  console.log('  then run: git update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts');
+  console.log('  (gitignored. If missing, run `npm install` or `npm run doctor` to create it from the .example)');
   console.log('For PRODUCTION: append to packages/shared/src/checkpointKeys/registry.ts and open a PR');
   console.log('');
   console.log(

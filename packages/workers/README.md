@@ -38,10 +38,7 @@ npm run gen-checkpoint-key -w @typedcode/workers
 
 実行すると以下が出力されます。
 
-- `CheckpointPublicKey` エントリ: 開発用の鍵は `packages/shared/src/checkpointKeys/localKeys.ts` に追記し、コミット汚染を避けるため次のコマンドを実行:
-  ```bash
-  git update-index --skip-worktree packages/shared/src/checkpointKeys/localKeys.ts
-  ```
+- `CheckpointPublicKey` エントリ: 開発用の鍵は `packages/shared/src/checkpointKeys/localKeys.ts` に追記します。このファイルは gitignore 済みでコミットされません (無ければ `npm install` の postinstall か `npm run doctor` が `localKeys.ts.example` から作ります。#338)。
   本番鍵は通常の PR で `packages/shared/src/checkpointKeys/registry.ts` に登録します。
 - 対応する `CHECKPOINT_SIGNING_KEY_ID` と `CHECKPOINT_SIGNING_KEY_JWK`: `.dev.vars` に貼り付け。
 
