@@ -365,6 +365,24 @@ interface SignedCheckpointEnvelope {
 - `tab-switches.json` はチェーン外の平文サイドファイルで、ハッシュに入らず、どの検証器 (verify / verify-cli) も読まない (監査用の人間向け情報)
 - `screenshots/` は撮影があった場合のみ含まれる
 
+#### 5.2.1. 提出物の対応規則と比較 (#293)
+
+proof を検証しても、同梱ソースが `proof.content` と同じである保証にはならない。ZIP からソースを取り出して採点する運用で「検証したもの」と「採点するもの」がずれないよう、検証器 (verify-cli / verify Web) は同梱ソースを `proof.content` と照合する。実装は shared の `matchSubmissionSources` (`fileProcessing/submissionSources.ts`) の 1 つで、CLI と Web が同じ結論を出す。
+
+**対応規則**: proof 1 件につき、期待されるソース名を 1 つだけ作る。名前の推測 (ベース名の一致など) は使わない。
+
+1. proof の自己申告 `filename` と `language` から、editor の export と同じ手順 (`exportNaming.ts`) でソース名を作る。`filename` が `.<ext>` で終わっていなければ `.<ext>` を足す。`<ext>` は言語から決まる表 (`LANGUAGE_FILE_EXTENSIONS`。未知の言語は `txt`) で、editor もこの表を使う
+2. 同じ名前のタブが複数あるときは、proof ファイル名の `_proof` / `_proof_1` / `_proof_2`… の順 (= タブの順) に、ソース名へ `_1` / `_2`… を割り当てる。数え方はソースと proof で違う (ソースは拡張子込み、proof は拡張子なし) ので、`main.c` + `main.py` は、ソースが `main.c` / `main.py`、proof が `main_proof.json` / `main_proof_1.json` になる
+3. 期待名のソースが無ければ `missing-source`、あれば `proof.content` と比較する
+
+`proof.filename` は自己申告だが、照合は「その名前のソースが `proof.content` と一致するか」なので、名前を偽っても検証済みでない内容を通せない。内容が一致する別名のソースを探して割り当てることはしない (本物を `valid_1.js`、偽物を期待名 `valid.js` に置かれると、本物と対にして偽物を孤立ソース扱いにしてしまうため)。読めない proof (欠番)・番号が飛ぶ proof・期待名が他の proof と衝突する proof は、期待名を一意に決められないので `ambiguous` にする。
+
+**比較**: `proof.content` を UTF-8 に符号化したバイト列と、ZIP から取り出した**生のバイト列**の厳密一致。改行 (CRLF / LF)・BOM・末尾の空白・Unicode 正規化は**正規化しない**。正規化すると「検証した内容」と「採点する内容」の差が隠れる。editor は同じ `content` から両方を書くので、正直な ZIP が食い違うことはない。
+
+**結論の重さ**: `mismatch` / `ambiguous` は失敗 (verify-cli は exit 1、Web はタブを error)。`missing-source` と、どの proof の期待名にも当たらない孤立ソースは警告 (exit code に影響しない)。proof 自体は改ざんされていないので、三層保証の整合性 (integrity) は落とさない。proof に `filename` / `content` が無いとき (`uncheckable`) は、ZIP にソースがあれば失敗、無ければ警告。JSON 単体の入力は同梱ソースが無いので未検査 (`Submission: not checked`)。
+
+採点に使うのは、`match` したソースか `proof.content` のどちらかで、`mismatch` したソースは使わない。
+
 ### 5.3. `proof.json` (単一ファイル形式)
 
 ```typescript
