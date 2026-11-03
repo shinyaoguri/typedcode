@@ -458,6 +458,7 @@ export interface VerifyTranslationKeys {
     dimensionFocusBurst: string;
     summary: {
       externalInput: string;
+      templateInjection: string;
     };
   };
 

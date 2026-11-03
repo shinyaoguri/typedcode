@@ -7,6 +7,7 @@
  * - `focus-burst`                  : 長い離脱 → 復帰直後の大量入力
  * - `pureTyping`                   : 既存 `isPureTyping` advisory の折り込み
  * - `typing-pattern` (keystroke-content-consistency) : 打鍵動態 (Dwell/Flight・リズム) の所見
+ * - `template-injection`            : テンプレートで入った文字数と打った文字数の開示 (severity `info`・判定しない)
  *
  * いずれも **第一次ヒューリスティックで低 confidence・advisory のみ**。感度の高い本物の分析器
  * (重み/閾値を秘匿したいもの) は採点者側に private で足す想定。
@@ -25,6 +26,7 @@ import { transcriptionTopologyAnalyzer } from './transcriptionTopologyAnalyzer.j
 import { focusBurstAnalyzer } from './focusBurstAnalyzer.js';
 import { pureTypingAnalyzer } from './pureTypingAnalyzer.js';
 import { typingPatternAnalyzer } from './typingPatternAnalyzer.js';
+import { templateInjectionAnalyzer } from './templateInjectionAnalyzer.js';
 
 export const defaultAnalyzers: readonly Analyzer[] = [
   automationAnalyzer,
@@ -32,6 +34,7 @@ export const defaultAnalyzers: readonly Analyzer[] = [
   focusBurstAnalyzer,
   pureTypingAnalyzer,
   typingPatternAnalyzer,
+  templateInjectionAnalyzer,
 ];
 
 export { automationAnalyzer } from './automationAnalyzer.js';
@@ -39,3 +42,4 @@ export { transcriptionTopologyAnalyzer } from './transcriptionTopologyAnalyzer.j
 export { focusBurstAnalyzer } from './focusBurstAnalyzer.js';
 export { pureTypingAnalyzer } from './pureTypingAnalyzer.js';
 export { typingPatternAnalyzer } from './typingPatternAnalyzer.js';
+export { templateInjectionAnalyzer } from './templateInjectionAnalyzer.js';

@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { AssuranceResult, ScreenshotVerificationSummary } from '@typedcode/shared';
+import { runAnalysis, type AssuranceResult, type ScreenshotVerificationSummary } from '@typedcode/shared';
 import {
   formatMultiSummary,
   formatProofHeader,
@@ -544,5 +544,26 @@ describe('formatResult — proof format version (#223)', () => {
     const text = plain(formatResult(output({ valid: false, versionStatus: 'tooOld', errorMessage: VERSION_ERROR })));
 
     expect(text.split(VERSION_ERROR).length - 1).toBe(1);
+  });
+});
+
+describe('formatResult — テンプレート注入量の advisory (#416)', () => {
+  it('prints the template and typed character counts as an INFO line in the advisory section', async () => {
+    const events = [
+      { type: 'templateInjection', timestamp: 0, data: { content: 'x'.repeat(500), contentLength: 0 } },
+      { type: 'contentChange', timestamp: 1000, data: 'y'.repeat(10), inputType: 'insertText' },
+    ];
+    const analysis = await runAnalysis({
+      proof: { proof: { events } } as never,
+      verification: { valid: true, metadataValid: true, chainValid: true, isPureTyping: true } as never,
+    });
+
+    const text = plain(formatResult(output({ analysis })));
+
+    const section = text.slice(text.indexOf('--- Analysis (advisory) ---'));
+    const line = section.split('\n').find((l) => l.includes('Template-injected content'));
+    expect(line).toBe(
+      '  [INFO] transcription-topology: Template-injected content: 500 chars from templates, 10 chars typed'
+    );
   });
 });
