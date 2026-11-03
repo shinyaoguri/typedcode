@@ -51,6 +51,7 @@ const SHOTS = [
     caption:
       '検証 Web: 正常な proof と改ざんした proof の ZIP を同時に読んだときのステータスバーの集約 (N/M と失敗件数)',
   },
+  { file: '05-main-menu.png', caption: 'エディタ (通常モード): メインメニューを開いた状態 (時計とハッシュは隠している)' },
 ] as const;
 
 type ShotFile = (typeof SHOTS)[number]['file'];
@@ -152,6 +153,17 @@ test.describe('見た目・動きの証跡 @shots', () => {
       path: out('02-editor.png'),
       mask: [page.locator('#titlebar-clock'), page.locator('#current-hash')],
     });
+
+    // 05: メインメニュー (#main-menu-btn) を開いた状態。項目の増減 (#442) が見た目で分かるように撮る。
+    // 番号は manifest の並びを保つため末尾の 05 のまま、撮る順は 02 の直後 (まだエディタ画面にいるうち)。
+    await page.locator('#main-menu-btn').click();
+    await page.locator('#main-menu-dropdown').waitFor({ state: 'visible' });
+    await page.screenshot({
+      path: out('05-main-menu.png'),
+      animations: 'disabled',
+      mask: [page.locator('#titlebar-clock'), page.locator('#current-hash')],
+    });
+    await page.locator('#main-menu-btn').click();
 
     // 03: export した ZIP を検証 Web (fast) に入れ、proof の結果画面を撮る。
     const zipPath = await app.exportCurrentTab();
