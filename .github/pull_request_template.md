@@ -15,7 +15,7 @@
 
 - [ ] `npm run check:fast` — typecheck / lint / カバレッジ付きユニットテスト (CI の test・check と同じ)
 - [ ] `npm run test -w @typedcode/e2e` — E2E (UI の振る舞いを変えた場合。CI の e2e と同じ)
-- [ ] カバレッジが上がったなら `npm run coverage:ratchet` で床を引き上げた
+- [ ] カバレッジの床 (`vitest.config.ts` の `coverage.thresholds`) を動かしていない (床を上げる専用の PR を除く。ADR-0039)
 
 <!--
 閉じる Issue ごとに "### Closes #N" の小見出しを立て、受け入れ条件と「何でどう確かめたか」を並べる (AGENTS.md「Issue と着手」/ ADR-0035)。

@@ -1,0 +1,79 @@
+name: Coverage Ratchet
+
+# カバレッジの床を「上げられる値」の知らせ (#472)。main で `npm run coverage:ratchet` を回し、
+# `packages/*/vitest.config.ts` の `coverage.thresholds` に差分が出たら、パッケージと指標ごとの
+# 「今の床 → 上げられる値」を Issue に書く。差分が無ければ何もしない。
+#
+# 機能 PR では床を動かさない。床を上げる専用の PR は、この知らせを見た人かエージェントが出す
+# (その PR の CI test job が緑なら、CI 上の実測で床を超えていることが確かめられる)。
+# **PR は開かない**: GITHUB_TOKEN で開いた PR には pull_request の CI が走らず、GitHub App / PAT を
+# 登録する運用は採らないと決めた。だから権限は contents: read と issues: write だけ。
+#
+# 判定と本文の組み立ては scripts/coverage-ratchet.mjs (純関数 + node --test。テストは deploy.yml の
+# check job で走る)。YAML には判定を書かない。
+# main が床を割っている (test job が赤い) 場合は、ラチェットのテスト実行が落ちてこのジョブも赤くなる。
+on:
+  schedule:
+    # 毎週月曜 00:23 UTC (= 月曜 09:23 JST)。freshness (00:00) と時刻を重ねない
+    - cron: '23 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  coverage-ratchet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # 手動実行で別ブランチを選んでも、測るのは main (CI の test job と同じソース)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      # 床の書き換えはこの run の作業ツリーの中だけ (コミットも push もしない)
+      - name: Run coverage ratchet
+        run: npm run coverage:ratchet
+
+      - name: Collect floor changes
+        id: ratchet
+        run: |
+          set -euo pipefail
+          git diff -U0 -- 'packages/*/vitest.config.ts' > "${RUNNER_TEMP}/ratchet.diff"
+          node scripts/coverage-ratchet.mjs \
+            --diff-file "${RUNNER_TEMP}/ratchet.diff" \
+            --body-file "${RUNNER_TEMP}/ratchet.md"
+
+      # 同タイトルの open Issue があれば新規作成せずコメント追記する (週次で Issue が増殖しないように)
+      - name: Create or update ratchet issue
+        if: steps.ratchet.outputs.notify == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: 'chore: カバレッジの床を上げられる (自動)'
+        run: |
+          set -euo pipefail
+          body="${RUNNER_TEMP}/ratchet.md"
+
+          existing="$(gh issue list --state open --limit 200 --json number,title \
+            --jq '[.[] | select(.title == env.ISSUE_TITLE)] | .[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            echo "既存 Issue #${existing} にコメント追記します。"
+            gh issue comment "$existing" --body-file "$body"
+          else
+            echo "新規 Issue を作成します。"
+            gh issue create --title "$ISSUE_TITLE" --body-file "$body"
+          fi
