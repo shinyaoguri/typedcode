@@ -16,7 +16,7 @@
 3. **信頼打鍵と合成打鍵を区別**: Playwright の `keyboard.type` は CDP 経由で `isTrusted=true`。合成打鍵 (ADR-0018) は `page.evaluate(dispatchEvent)` で `isTrusted=false` を注入する
 4. **CI 時間を意識**: PoSW full 検証は重い。**full (既定) は happy-path の 1 本だけ** (PoSW を含む完全検証の positive control)。他のシナリオはすべて `--mode fast` を渡す (検証対象がイベント意味論・チェーン整合性であり PoSW 再計算は不要)。新しい spec を足すときも既定で fast にすること。実行は `workers: 2` の 2 並列 (flake が再発したら 1 に戻す)。deploy.yml の e2e-shard job (shard ごと) は `timeout-minutes: 30`
 5. **既知バグは失敗する再現を先に置く**: すぐ直さないバグは `test.fixme('#N ...')` (Issue 番号をタイトルに含める) で再現を置き、修正 PR で `fixme` を外す
-6. **検証 Web の判定は verify-cli と突き合わせる**: verify Web の判定 (`data-status` / `#assurance-strip` / `#result-status-icon` の data-*) は、同じ ZIP に対する verify-cli の判定 (`runVerifyCliWithVerdicts`: proof ごとの `valid` + `--analysis-bundle` の三層保証) と一致することを assert し、値そのもの (fast なら integrity `partial` など) も併せて見る (両方が同じ向きに壊れても緑にしないため)。CLI から機械的に読めない **success / warning、verified / partial の区別は Web だけの TrustCalculator の導出**なので、パリティの対象外 (verify-web.spec.ts の `expectWebCliParity` の doc)
+6. **検証 Web の判定は verify-cli と突き合わせる**: verify Web の判定 (`data-status` / `#assurance-strip` / `#result-status-icon` の data-*) は、同じ ZIP に対する verify-cli の判定 (`runVerifyCliWithVerdicts`: proof ごとの `valid` + `--analysis-bundle` の三層保証) と一致することを assert し、値そのもの (fast なら integrity `partial` など) も併せて見る (両方が同じ向きに壊れても緑にしないため)。CLI から機械的に読めない **success / warning、verified / partial の区別は Web だけの TrustCalculator の導出**なので、パリティの対象外 (`tests/helpers/verifyWeb.ts` の `expectWebCliParity` の doc)
 
 ## 構成
 
@@ -36,7 +36,7 @@ tests/
 ├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)
 ├── exam-roundtrip.spec.ts # exam モードの round-trip (#229): 誤コードの拒否 → 正コードで解錠 → 打鍵 → export → verify-cli --exam-package (束縛 PASS) と負のオラクル。fixture が無いとき CI では落とし、ローカルでは skip
 ├── scenarios/*.spec.ts   # editor の利用シーン網羅 (#434): ランディング・規約・class/assignment・復旧の新規開始・タブ並べ替え・8 言語・テーマ/表示言語・リセット・テンプレート・パネル・セルフレビュー・メインメニュー。各シナリオは expectConsistent() と verify-cli (fast) で締める。既知の製品バグは test.fixme('#N ...') で再現を置く
-├── verify-web.spec.ts    # 検証 Web の往復: Web↔CLI パリティ・改ざん・複数ファイル (#215)・壊れた proof (#292)・タブを閉じたあとの active / 表示の一致 (#281)
+├── verify-web-parity / verify-web-submission / verify-web-ui  # 検証 Web の往復 (3 ファイルに分割: 1 ファイル 10 本が CI で Playwright の Slow Test の閾値 5 分を超えたため / #533)。parity = Web↔CLI パリティ・改ざん・version gate。submission = 複数ファイルの混在 (#215)・壊れた proof (#292)・同梱ソースの差し替え (#293)。ui = タブを閉じたあとの active / 表示の一致 (#281 / #387)・チャートタブ (#395)。共通の手順 (`typeAndExport` / `expectWebCliParity` / `proofNames`) は `helpers/verifyWeb.ts`
 ├── model/                # model-based E2E (#436): fast-check の fc.commands でランダムな操作列を流し、各手の後にモデル (editorModel.ts) と状態契約・snapshot・件数・エラーを突き合わせ、最後に全タブの export を verify-cli (fast) で検証する。手には、ブラウザのタブを閉じて復旧ダイアログから再開する `CloseAndResume` (IndexedDB からの復旧経路。`Reload` は sessionStorage 経路。#450) を含む。PR ゲートは固定シード 2 本 × 15 手 (手を足したら dry-run でシードを選び直す。根拠は model-based.spec.ts のコメント)、`@nightly` はランダムシードの長尺。実アプリの操作は playwrightDriver.ts、実行と失敗の報告 (シード・縮約後の操作列・再実行コマンド) は runner.ts
 ├── shots.spec.ts         # @shots: 証跡の撮影だけ (assert なし・通常実行から除外)。撮影 spec を増やすなら *.shots.spec.ts (require-tests がテストに数えない命名) にし、タイトルに @shots を付ける
 └── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)

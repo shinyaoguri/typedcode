@@ -1,5 +1,8 @@
+import { basename } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { listProofEntries, type EditorApp } from './app.js';
+import type { CliResultWithVerdicts } from './verifyCli.js';
 
 /**
  * 検証 Web (`packages/verify`) を Playwright から駆動するページオブジェクト。
@@ -61,6 +64,63 @@ export function defaultVerifyUrl(): string {
   const url = process.env.E2E_VERIFY_URL;
   if (!url) throw new Error('E2E_VERIFY_URL is not set (playwright.config.ts sets it for the dev config)');
   return url;
+}
+
+/*
+ * verify-web 系の spec (verify-web-parity / verify-web-submission / verify-web-ui) が共有する
+ * 「editor で打鍵して export → Web と CLI の判定を突き合わせる」手順。#533 で spec を分けるときに
+ * 各 spec へ重複させないためここへ置いた。
+ */
+
+const SAMPLE_CODE = 'int main(void) {\n  return 0;\n}\n';
+
+/** editor を開いて SAMPLE_CODE を打鍵し、現在のタブを export した ZIP のパスを返す。 */
+export async function typeAndExport(app: EditorApp): Promise<string> {
+  await app.openCasualFresh();
+  await app.typeCode(SAMPLE_CODE);
+  return app.exportCurrentTab();
+}
+
+/**
+ * Web の判定 (proof ごと) が CLI の判定と一致することを確かめる。
+ *
+ * 比べられるもの:
+ * - 合否: Web の `data-status === 'error'` ⇔ CLI の proof ごとの `valid === false` (どちらも
+ *   `isOverallValid` と同じ合成)。総合判定 `data-level === 'failed'` も同じ軸
+ * - 三層保証: `data-integrity` / `data-temporal` / `data-pure-typing` ⇔ `--analysis-bundle` の assurance
+ * - exit code: 全 proof が valid のときだけ 0
+ *
+ * 比べられないもの: success と warning の区別、verified と partial の区別。どちらも Web だけの
+ * TrustCalculator (issue リスト) の導出で、CLI には対応する機械可読な出力が無い。
+ */
+export function expectWebCliParity(web: VerifyVerdict[], cli: CliResultWithVerdicts): void {
+  const cliOutput = cli.stdout + cli.stderr;
+  expect(web.map((w) => w.filename).sort(), 'Web と CLI が同じ proof の集合を検証している').toEqual(
+    cli.verdicts.map((c) => basename(c.filename)).sort()
+  );
+  expect(cli.exitCode, cliOutput).toBe(cli.verdicts.every((c) => c.valid) ? 0 : 1);
+
+  for (const c of cli.verdicts) {
+    const w = web.find((x) => x.filename === basename(c.filename))!;
+    const ctx = `${w.filename}: web=${JSON.stringify(w)} cli=${JSON.stringify(c)}`;
+    expect(w.status === 'error', `status error ⇔ CLI invalid (${ctx})`).toBe(!c.valid);
+    expect(w.tabStatus, `tab と sidebar の status が一致 (${ctx})`).toBe(w.status);
+    if (w.integrity === null) {
+      // 判定を表示していないのは「検証自体が失敗したファイル」だけ。
+      expect(w.status, `判定なしは error のときだけ (${ctx})`).toBe('error');
+      expect(c.valid, ctx).toBe(false);
+      continue;
+    }
+    expect(w.integrity, `integrity (${ctx})`).toBe(c.assurance.integrity);
+    expect(w.temporal, `temporal (${ctx})`).toBe(c.assurance.temporal);
+    expect(w.pureTyping, `pure typing (${ctx})`).toBe(String(c.assurance.provenance.pureTyping));
+    expect(w.level === 'failed', `総合判定 failed ⇔ CLI invalid (${ctx})`).toBe(!c.valid);
+  }
+}
+
+/** ZIP 内の proof のベース名 (= verify Web の `data-filename`)。 */
+export async function proofNames(zipPath: string): Promise<string[]> {
+  return (await listProofEntries(zipPath)).map((n) => basename(n));
 }
 
 export class VerifyWebApp {
