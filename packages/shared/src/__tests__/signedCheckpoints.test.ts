@@ -800,6 +800,31 @@ describe('signed checkpoint coverage — unsigned tail (#295)', () => {
     expect(result.coverage.terminalAnchored).toBe(false);
   });
 
+  it('reports the covered fraction up to the last signed checkpoint, not the whole chain', async () => {
+    const { events, initialEventChainHash } = await buildSmallProof(3);
+    const checkpoints = await buildSignedCheckpoints({
+      events,
+      initialEventChainHash,
+      key: testKey,
+      eventIndexes: [0],
+    });
+    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.coverage.coverageRatio).toBeCloseTo(1 / events.length, 5);
+  });
+
+  it('never marks an empty session terminal-anchored even if a signed checkpoint is attached', async () => {
+    // events 0 件は署名 cp を持てない (eventIndex が範囲外で invalid)。空セッションは anchored にならない。
+    const { events, initialEventChainHash } = await buildSmallProof(1);
+    const checkpoints = await buildSignedCheckpoints({ events, initialEventChainHash, key: testKey });
+    const result = await verifySignedCheckpoints([], checkpoints, initialEventChainHash, {
+      registry: [testKey.registryEntry],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.coverage).toMatchObject({ coverageRatio: 0, unsignedTailEvents: 0, terminalAnchored: false });
+  });
+
   it('never reports a negative unsigned tail or terminal anchoring for a checkpoint pointing past the last event', async () => {
     // 4 イベントで署名した cp 列を、末尾 1 イベントを落とした列で検証する (eventIndex 範囲外 → invalid)。
     const { events, initialEventChainHash } = await buildSmallProof(4);
