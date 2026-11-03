@@ -15,6 +15,7 @@ export const VALUE_FLAGS = new Set([
   '--analysis-json',
   '--analysis-bundle',
   '--analyzer',
+  '--extract-sources',
 ]);
 
 /** 値を取らない boolean flag。`=` 付きは拒否する。 */
