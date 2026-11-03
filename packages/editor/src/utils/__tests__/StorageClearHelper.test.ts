@@ -4,13 +4,17 @@
  * fake-indexeddb 上で、リセットが「現在のモードの session DB と、そのモードのキーだけ」を消し、
  * 自分の接続を閉じて削除の完了を待つことを固定する。vitest は node 環境なので、`indexedDB` と
  * `localStorage` / `sessionStorage` はテストごとに差す。
+ *
+ * 削除の `blocked` は猶予まで待つ (#524)。fake-indexeddb は close pending の接続では blocked を出さないので、
+ * 別の接続を開いたままにして blocked を起こし、猶予のタイマーは setTimeout だけを偽にして進める
+ * (fake-indexeddb 自身の進行は setImmediate なので止めない)。
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import { setStorageNamespace } from '../../core/storageKeys.js';
 import { getSessionStorageService } from '../../services/SessionStorageService.js';
-import { clearCurrentModeData, deleteDatabaseAndWait } from '../StorageClearHelper.js';
+import { DELETE_BLOCKED_GRACE_MS, clearCurrentModeData, deleteDatabaseAndWait } from '../StorageClearHelper.js';
 
 function makeStorage(initial: Record<string, string>): Storage {
   const map = new Map(Object.entries(initial));
@@ -42,6 +46,45 @@ async function dbNames(): Promise<string[]> {
   return (await indexedDB.databases()).map((d) => d.name ?? '').sort();
 }
 
+/** DB を開いたままの接続を返す (別タブなど、削除を blocked にする相手の代役)。 */
+async function openConnection(name: string): Promise<IDBDatabase> {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open(name, 1);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+  });
+}
+
+/** 次の `deleteDatabase` の request に `blocked` が来たら resolve する。 */
+function nextDeletionBlocked(): Promise<void> {
+  const original = indexedDB.deleteDatabase.bind(indexedDB);
+  return new Promise<void>((resolve) => {
+    vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation((name: string) => {
+      const request = original(name);
+      request.addEventListener('blocked', () => resolve(), { once: true });
+      return request;
+    });
+  });
+}
+
+/** settle したかを同期的に読めるようにする (reject は値として受ける)。 */
+function track<T>(promise: Promise<T>): { readonly settled: boolean; readonly outcome: Promise<T | unknown> } {
+  let settled = false;
+  const outcome = promise.then(
+    (v) => v,
+    (e: unknown) => e
+  );
+  void outcome.then(() => {
+    settled = true;
+  });
+  return {
+    get settled() {
+      return settled;
+    },
+    outcome,
+  };
+}
+
 describe('clearCurrentModeData', () => {
   beforeEach(() => {
     vi.stubGlobal('indexedDB', new IDBFactory());
@@ -71,6 +114,7 @@ describe('clearCurrentModeData', () => {
 
   afterEach(() => {
     getSessionStorageService().close();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -127,15 +171,18 @@ describe('clearCurrentModeData', () => {
     expect(await dbNames()).toEqual([]);
   });
 
-  it('rejects and keeps the keys when the db deletion is blocked by another open connection', async () => {
-    const other = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open('typedcode-session', 1);
-      req.onerror = () => reject(req.error);
-      req.onsuccess = () => resolve(req.result);
-    });
+  it('rejects and keeps the keys when another open connection still blocks the deletion after the grace period', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const other = await openConnection('typedcode-session');
+    const blocked = nextDeletionBlocked();
 
-    await expect(clearCurrentModeData()).rejects.toThrow(/blocked/);
+    const result = track(clearCurrentModeData());
+    await blocked;
+    await vi.advanceTimersByTimeAsync(DELETE_BLOCKED_GRACE_MS - 1);
+    expect(result.settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
 
+    expect(await result.outcome).toMatchObject({ message: expect.stringMatching(/blocked/) });
     expect(sessionStorage.getItem('typedcode-tabs')).toBe('casual-tabs');
     expect(localStorage.getItem('typedcode-exam-packages')).toBe('casual-exam-cache');
     other.close();
@@ -154,5 +201,47 @@ describe('deleteDatabaseAndWait', () => {
 
   it('resolves for a database that does not exist', async () => {
     await expect(deleteDatabaseAndWait('typedcode-session-never-created')).resolves.toBeUndefined();
+  });
+
+  it('resolves and removes the database when the blocking connection closes after blocked', async () => {
+    const other = await openConnection('typedcode-session');
+    const blocked = nextDeletionBlocked();
+
+    const deletion = deleteDatabaseAndWait('typedcode-session');
+    await blocked;
+    other.close();
+
+    await expect(deletion).resolves.toBeUndefined();
+    expect(await dbNames()).toEqual([]);
+  });
+
+  describe('with fake timers', () => {
+    beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }));
+    afterEach(() => vi.useRealTimers());
+
+    it('still resolves when the blocking connection closes just before the grace period ends', async () => {
+      const other = await openConnection('typedcode-session');
+      const blocked = nextDeletionBlocked();
+
+      const deletion = deleteDatabaseAndWait('typedcode-session', { blockedGraceMs: 100 });
+      await blocked;
+      await vi.advanceTimersByTimeAsync(99);
+      other.close();
+
+      await expect(deletion).resolves.toBeUndefined();
+      expect(await dbNames()).toEqual([]);
+    });
+
+    it('leaves no grace timer behind once the deletion has settled', async () => {
+      const other = await openConnection('typedcode-session');
+      const blocked = nextDeletionBlocked();
+
+      const deletion = deleteDatabaseAndWait('typedcode-session', { blockedGraceMs: 100 });
+      await blocked;
+      other.close();
+      await deletion;
+
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 });
