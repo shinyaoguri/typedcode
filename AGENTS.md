@@ -60,6 +60,7 @@ node scripts/check-deps.mjs  # packages/*/README.md の依存表 (名前と用�
 # ユニットテスト (カバレッジ付き。test:coverage を持つ全パッケージ。CI の test job も同じコマンド)
 npm run test:coverage                       # = npm run test:coverage --workspaces --if-present
 npm run test:run -w @typedcode/shared       # 個別実行 (カバレッジ無し。test:coverage も同様に -w で)
+npm run mutate -w @typedcode/shared         # 変異検査 (StrykerJS)。shared の検証系を変えたら変更行に回す。`check` / `check:fast` には含めない・CI にも載せない (数分かかる)。範囲の絞り方は CONTRIBUTING.md「変異検査」、根拠は ADR-0040
 npm run coverage:ratchet                    # 各 vitest.config.ts の床を実測まで引き上げる。機能 PR では回さない (床は定期ジョブの知らせを受けた専用の PR で上げる。ADR-0039)
 
 # E2E (Playwright。workers + editor の dev サーバを自動起動して round-trip 検証)

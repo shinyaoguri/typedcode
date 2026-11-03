@@ -12,13 +12,16 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "mutate": "stryker run"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",
     "jszip": "^3.10.2"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^10.1.1",
+    "@stryker-mutator/vitest-runner": "^10.1.1",
     "@vitest/coverage-v8": "^5.0.5",
     "happy-dom": "^20.8.9",
     "vitest": "^5.0.5"

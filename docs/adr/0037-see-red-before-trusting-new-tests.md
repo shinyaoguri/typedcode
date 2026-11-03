@@ -1,6 +1,6 @@
 # ADR-0037: 新しいテスト・検査は、検証対象を壊して赤くなるのを見てから仕上げる
 
-- **Status**: Accepted
+- **Status**: Accepted (Option C の変異検査は ADR-0040 で、shared の検証系に対する手元のコマンドとして採った)
 - **Date**: 2026-11-03
 - **Deciders**: @shinyaoguri
 - **PR / Commit**: (#466 を閉じる PR)

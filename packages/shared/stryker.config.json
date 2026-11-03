@@ -1,0 +1,17 @@
+{
+  "$schema": "../../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "vitest": { "configFile": "vitest.config.ts" },
+  "mutate": [
+    "src/verification.ts",
+    "src/typingProof/ChainVerifier.ts",
+    "src/fileProcessing/zipBudget.ts",
+    "src/utils/hashUtils.ts",
+    "src/typingProof/InputTypeValidator.ts"
+  ],
+  "inPlace": true,
+  "coverageAnalysis": "perTest",
+  "reporters": ["clear-text", "progress"],
+  "clearTextReporter": { "reportTests": false, "allowColor": false },
+  "timeoutMS": 30000
+}

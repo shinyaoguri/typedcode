@@ -46,3 +46,9 @@ fix-*.png
 
 # Vitest coverage (npm run test:coverage)
 coverage/
+
+# StrykerJS (npm run mutate -w @typedcode/shared。inPlace の退避先と html レポート。ADR-0040)
+.stryker-tmp/
+reports/mutation/
+# vitest-runner が実行中に packages/shared 直下へ置く作業ファイル (終了時に消えるが、並列の後始末で残ることがある)
+stryker-setup-*.js
