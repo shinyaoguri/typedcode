@@ -81,7 +81,6 @@ export const en: TranslationKeys = {
   activityBar: {
     menu: 'Menu',
     newFile: 'New File',
-    newWindow: 'New Window',
     importTemplate: 'Import Template',
     toggleTerminal: 'Toggle Terminal',
     toggleLogPanel: 'Toggle Log Panel',
