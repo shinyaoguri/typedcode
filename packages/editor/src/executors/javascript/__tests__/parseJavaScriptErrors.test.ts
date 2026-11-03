@@ -1,0 +1,42 @@
+/**
+ * JS の実行時エラーからエディタのマーカーを作る経路のテスト。
+ *
+ * 出力の `(at line N, column M)` はユーザーコードの行・列に直してあり、parseErrors はそれを
+ * そのまま読む。以前は正規表現がこの形に一致せずマーカーが付かず、行も前置きの分だけずれていた。
+ */
+
+import { describe, it, expect } from 'vitest';
+import { locateAnonymousFrame, parseJavaScriptErrors } from '../JavaScriptExecutor.js';
+
+describe('parseJavaScriptErrors', () => {
+  it('turns the executor error line into a marker at the reported user line and column', () => {
+    expect(
+      parseJavaScriptErrors("TypeError: Cannot read properties of null (reading 'x') (at line 2, column 6)\n")
+    ).toEqual([
+      { line: 2, column: 6, severity: 'error', message: "TypeError: Cannot read properties of null (reading 'x')" },
+    ]);
+  });
+
+  it('finds the error line even when other stderr output precedes it in the same chunk', () => {
+    const errors = parseJavaScriptErrors('[ERROR] something\nReferenceError: y is not defined (at line 7, column 1)\n');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ line: 7, column: 1, message: 'ReferenceError: y is not defined' });
+  });
+
+  it('does not create a marker from output without an executor location', () => {
+    expect(parseJavaScriptErrors('[ERROR] at foo (<anonymous>:3:5)\n')).toEqual([]);
+  });
+});
+
+describe('locateAnonymousFrame', () => {
+  it('reads the position of eval-created code from V8 and SpiderMonkey stacks', () => {
+    expect(
+      locateAnonymousFrame('TypeError: x\n    at eval (eval at run (blob:null/abc:5:19), <anonymous>:5:6)')
+    ).toEqual({
+      line: 5,
+      column: 6,
+    });
+    expect(locateAnonymousFrame('@blob:null/abc line 5 > AsyncFunction:4:7')).toEqual({ line: 4, column: 7 });
+    expect(locateAnonymousFrame('Error\n    at foo (file.js:1:1)')).toBeNull();
+  });
+});

@@ -34,6 +34,9 @@ export class JavaScriptExecutor extends BaseExecutor {
   // For abort handling
   private abortController: AbortController | null = null;
 
+  /** getWrapperLineCount の実測値 (初回の run で決まる) */
+  private wrapperLineCount: number | null = null;
+
   protected async _doInitialize(onProgress?: (progress: InitializationProgress) => void): Promise<void> {
     // JavaScript requires no initialization - the engine is built into the browser
     onProgress?.({
@@ -62,16 +65,10 @@ export class JavaScriptExecutor extends BaseExecutor {
     try {
       callbacks.onProgress?.('Running JavaScript...');
 
+      await this.getWrapperLineCount();
+
       // Wrap code in async function to support top-level await
-      const wrappedCode = this.wrapCode(code);
-
-      // Create async function with custom scope
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
-        ...args: string[]
-      ) => (...args: unknown[]) => Promise<unknown>;
-
-      const fn = new AsyncFunction('console', '__abortSignal__', wrappedCode);
+      const fn = this.createFunction(code);
 
       // Execute with timeout and abort support
       const result = await this.executeWithTimeout(
@@ -116,30 +113,7 @@ export class JavaScriptExecutor extends BaseExecutor {
   }
 
   parseErrors(stderr: string): ParsedError[] {
-    const errors: ParsedError[] = [];
-
-    // Pattern: V8/SpiderMonkey error format
-    // "TypeError: Cannot read property 'x' of undefined at <anonymous>:3:5"
-    const v8Regex = /at\s+(?:<anonymous>|[\w.]+):(\d+):(\d+)/g;
-
-    for (const match of stderr.matchAll(v8Regex)) {
-      const [, line, column] = match;
-      if (line && column) {
-        // Extract error message from the beginning
-        const errorMatch = stderr.match(/^(\w+Error):\s*(.+?)(?:\n|$)/);
-        const message = errorMatch ? `${errorMatch[1]}: ${errorMatch[2]}` : 'JavaScript Error';
-
-        errors.push({
-          line: Math.max(1, parseInt(line, 10) - this.getWrapperLineCount()),
-          column: parseInt(column, 10),
-          severity: 'error',
-          message,
-        });
-        break; // Only take the first error location
-      }
-    }
-
-    return errors;
+    return parseJavaScriptErrors(stderr);
   }
 
   override dispose(): void {
@@ -153,10 +127,31 @@ export class JavaScriptExecutor extends BaseExecutor {
   // ============ Private Helper Methods ============
 
   /**
-   * Get the number of lines added by wrapCode
+   * ユーザーコードの 1 行目より前にある行数 (AsyncFunction の前置き + wrapCode の前置き)。
+   *
+   * AsyncFunction は本体の前に `async function anonymous(...` / `) {` の行を足し、その行数は
+   * エンジンが決める。固定値で引くとずれる (#290 で 2 行ずれていたのを確認) ので、同じ形の関数で
+   * 投げた例外の位置から実測する。位置が読めないときは V8 の形 (前置き 2 行 + wrapCode 2 行) とみなす。
    */
-  private getWrapperLineCount(): number {
-    return 2; // "use strict" + blank line before user code
+  private async getWrapperLineCount(): Promise<number> {
+    if (this.wrapperLineCount !== null) return this.wrapperLineCount;
+    let count = 4;
+    try {
+      await this.createFunction('throw new Error("calibrate")')(undefined, undefined);
+    } catch (error) {
+      const location = locateAnonymousFrame(error instanceof Error ? (error.stack ?? '') : '');
+      if (location) count = location.line - 1;
+    }
+    this.wrapperLineCount = count;
+    return count;
+  }
+
+  private createFunction(code: string): (...args: unknown[]) => Promise<unknown> {
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
+      ...args: string[]
+    ) => (...args: unknown[]) => Promise<unknown>;
+    return new AsyncFunction('console', '__abortSignal__', this.wrapCode(code));
   }
 
   /**
@@ -310,13 +305,12 @@ ${code}
    */
   private formatError(error: unknown): { message: string; line?: number; column?: number } {
     if (error instanceof Error) {
-      const stack = error.stack || '';
-      const match = stack.match(/<anonymous>:(\d+):(\d+)/);
+      const location = locateAnonymousFrame(error.stack || '');
 
       let message = `${error.name}: ${error.message}`;
-      if (match?.[1] && match[2]) {
-        const line = Math.max(1, parseInt(match[1], 10) - this.getWrapperLineCount());
-        const column = parseInt(match[2], 10);
+      if (location) {
+        const line = Math.max(1, location.line - (this.wrapperLineCount ?? 4));
+        const column = location.column;
         message += ` (at line ${line}, column ${column})`;
         return { message, line, column };
       }
@@ -324,6 +318,36 @@ ${code}
     }
     return { message: String(error) };
   }
+}
+
+/**
+ * 例外のスタックから、AsyncFunction で作ったユーザーコードの位置 (前置き込みの行・列) を読む。
+ * V8 は `<anonymous>:L:C`、SpiderMonkey は `> AsyncFunction:L:C` の形で出す。
+ */
+export function locateAnonymousFrame(stack: string): { line: number; column: number } | null {
+  const match = /<anonymous>:(\d+):(\d+)/.exec(stack) ?? /> (?:Async)?Function:(\d+):(\d+)/.exec(stack);
+  if (!match?.[1] || !match[2]) return null;
+  return { line: parseInt(match[1], 10), column: parseInt(match[2], 10) };
+}
+
+/**
+ * 実行時エラーの出力 (`TypeError: ... (at line N, column M)`) からエディタのマーカーを作る。
+ * 行・列は出力の時点でユーザーコードの位置に直してあるので、ここでは引き算しない。
+ * 読むのは executor 自身が出す `(at line N, column M)` の形だけ (ユーザーが console に出した
+ * スタックの文字列からはマーカーを作らない)。最初の 1 件だけを返す。
+ */
+export function parseJavaScriptErrors(stderr: string): ParsedError[] {
+  const match = /^(.*?)\s*\(at line (\d+), column (\d+)\)\s*$/m.exec(stderr);
+  if (!match?.[2] || !match[3]) return [];
+  const message = (match[1] ?? '').trim() || 'JavaScript Error';
+  return [
+    {
+      line: Math.max(1, parseInt(match[2], 10)),
+      column: Math.max(1, parseInt(match[3], 10)),
+      severity: 'error',
+      message,
+    },
+  ];
 }
 
 // Singleton instance
