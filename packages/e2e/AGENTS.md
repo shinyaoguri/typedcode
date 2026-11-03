@@ -33,6 +33,7 @@ tests/
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
 ├── fault-session-start / fault-checkpoint-sign / fault-turnstile / fault-network / fault-storage  # 障害注入 (#435): session/start・checkpoint/sign の失敗 (API ごとに別ファイル。hang 待ちを含む 1 ファイルが CI で Playwright の Slow Test の閾値 5 分を超えたため / #525)、Turnstile 不達、オフラインの往復、IndexedDB の障害 (#325 / #300 は fixme)
 ├── multi-instance / history-navigation / viewport / ime-undo / idle / screen-capture-lock / reset-url  # 環境の揺さぶり (#435): 多重起動・戻る / 進む・狭い画面・IME と undo / redo・アイドル停止・画面共有の停止・`?reset` が何も消さないこと (#323) とリセットの現在のモード限定
+├── code-execution.spec.ts # JS / TS の実行の隔離と停止 (#290 / ADR-0041): 停止後に出力・副作用が出ない・同期ループ中も記録が進む (テスト側の watchdog)・親 DOM / IndexedDB / localStorage / ネットワーク / `/author` の `#author-jwk` に届かない・停止 → 即再実行・outcome の区別とエラーのマーカーの行・出力予算・異常の後の export と verify-cli (fast)。実行の状態は `data-exec-*`、上限は dev 限定の `window.__tcExecLimits` で縮める
 ├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)
 ├── exam-roundtrip.spec.ts # exam モードの round-trip (#229): 誤コードの拒否 → 正コードで解錠 → 打鍵 → export → verify-cli --exam-package (束縛 PASS) と負のオラクル。fixture が無いとき CI では落とし、ローカルでは skip
 ├── scenarios/*.spec.ts   # editor の利用シーン網羅 (#434): ランディング・規約・class/assignment・復旧の新規開始・タブ並べ替え・8 言語・テーマ/表示言語・リセット・テンプレート・パネル・セルフレビュー・メインメニュー。各シナリオは expectConsistent() と verify-cli (fast) で締める。既知の製品バグは test.fixme('#N ...') で再現を置く
