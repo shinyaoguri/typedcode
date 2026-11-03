@@ -118,7 +118,14 @@ const EMPTY_SIGNED_CHECKPOINTS: SignedCheckpointsVerificationResult = {
   valid: false,
   anchored: false,
   details: [],
-  coverage: { signedCount: 0, lastSignedEventIndex: null, coverageRatio: 0 },
+  // anchored=false なので末尾の件数は表示にも保証にも使われない (イベント列を持たないので 0 で埋める)。
+  coverage: {
+    signedCount: 0,
+    lastSignedEventIndex: null,
+    coverageRatio: 0,
+    unsignedTailEvents: 0,
+    terminalAnchored: false,
+  },
   temporal: null,
   density: null,
 };
@@ -276,8 +283,12 @@ export function buildAssuranceInput(
             valid: result.signedCheckpointValid,
             sparse: result.signedCheckpointDensity?.sparse,
             postHocSuspected: result.signedCheckpointTemporal?.postHocSuspected,
+            // #295: CLI 側 verify.ts と同じ写像。coverage が無ければ最終署名は確かめられないので false。
+            terminal: result.signedCheckpointCoverage?.terminalAnchored ?? false,
           }
         : undefined,
+    // #295: token と署名 cp の sessionId が食い違えば、その cp を時刻証拠に数えない (CLI と同じ)。
+    sessionTokenMismatch: result.sessionTokenMismatch ?? false,
     isPureTyping: result.isPureTyping,
     analysis: result.analysis ? summarizeAnalysisForAssurance(result.analysis) : undefined,
     // #214: fast モードは PoSW を再計算していないので integrity を proven に上げない。
