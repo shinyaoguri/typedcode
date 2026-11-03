@@ -70,9 +70,9 @@ export const ja: TranslationKeys = {
 
   settings: {
     title: '設定',
-    verifyProof: 'Verify Proof',
+    verifyProof: '証明を検証',
     github: 'GitHub',
-    toggleTheme: 'Toggle Theme',
+    toggleTheme: 'テーマを切り替え',
     language: '言語',
     about: 'バージョン情報',
     resetAll: 'このモードをリセット',

@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+### 修正
+
+- ja の設定メニューで `settings.verifyProof` と `settings.toggleTheme` が英語 (「Verify Proof」「Toggle Theme」) のままだったのを、「証明を検証」「テーマを切り替え」に訳した。en は変えていない (#518)
+
 ## [1.2.0] - 2026-11-03
 
 ### 追加
