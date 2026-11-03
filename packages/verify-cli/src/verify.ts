@@ -302,8 +302,12 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
           valid: result.signedCheckpoints.valid,
           sparse: result.signedCheckpoints.density?.sparse,
           postHocSuspected: result.signedCheckpoints.temporal?.postHocSuspected,
+          // #295: 最後の署名 cp が最終イベントまで届いていなければ anchored を名乗らない。
+          terminal: result.signedCheckpoints.coverage.terminalAnchored,
         }
       : undefined,
+    // #295: token と署名 cp の sessionId が食い違えば、その cp を時刻証拠に数えない。
+    sessionTokenMismatch: result.sessionTokenMismatch ?? false,
     isPureTyping: result.isPureTyping,
     analysis: summarizeAnalysisForAssurance(analysis),
     // #147: ZIP 入力で検査したときのみ渡す (undefined = 未検査は integrity に影響しない)。

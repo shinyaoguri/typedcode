@@ -713,11 +713,11 @@ export class ResultPanel {
     this.anchoringBadge.className = 'result-card-badge success';
     this.anchoringBadge.textContent = t('result.anchoringVerified');
     this.anchoringStatus.textContent = t('result.anchoringVerified');
-    const pct = (sc.coverage.coverageRatio * 100).toFixed(1);
-    this.anchoringCoverage.textContent = `${sc.coverage.signedCount} (${pct}%)`;
+    this.anchoringCoverage.textContent = buildAnchoringCoverageText(sc.coverage);
     this.anchoringReasonRow.style.display = 'none';
 
-    // 警告行は post-hoc 疑いと anchoring 密度 (ADR-0016) の両方を集約する (どちらも valid のまま出る)。
+    // 警告行は post-hoc 疑い・anchoring 密度 (ADR-0016)・未署名の末尾 (#295) を集約する
+    // (どれも valid のまま出る)。
     const warnings: string[] = [];
     if (sc.temporal) {
       this.anchoringTemporalRow.style.display = 'flex';
@@ -730,6 +730,8 @@ export class ResultPanel {
       this.anchoringTemporalRow.style.display = 'none';
     }
     if (sc.density?.sparse) warnings.push(t('result.anchoringSparse'));
+    const unsignedTail = anchoringUnsignedTailWarning(sc.coverage);
+    if (unsignedTail) warnings.push(unsignedTail);
     if (warnings.length > 0) {
       this.anchoringWarningRow.style.display = 'flex';
       this.anchoringWarning.textContent = warnings.join(' / ');
@@ -1488,6 +1490,31 @@ export class ResultPanel {
       this.chainErrorTimestampRow.style.display = 'none';
     }
   }
+}
+
+/**
+ * Anchoring カードの coverage 行 (署名 cp が有効なとき)。署名 cp 数と割合に、最後の署名 cp が指す
+ * イベント位置を添える (#295)。割合だけでは「どこで署名が途切れたか」が読めない。
+ * 値は検証済みの数値だけで、proof 由来の文字列を含まない (textContent に入る)。
+ */
+export function buildAnchoringCoverageText(coverage: SignedCheckpointsVerificationResult['coverage']): string {
+  const pct = (coverage.coverageRatio * 100).toFixed(1);
+  const base = `${coverage.signedCount} (${pct}%)`;
+  if (coverage.lastSignedEventIndex === null) return base;
+  return `${base} · ${t('result.anchoringLastSigned', { index: coverage.lastSignedEventIndex })}`;
+}
+
+/**
+ * 未署名の末尾 (#295) の警告文。最後の署名 cp より後にイベントが残るときだけ返す。
+ * 末尾はサーバ時刻の上界を持たず、三層保証の時刻アンカーも `anchored` にならない
+ * (shared の `deriveAssurance`)。ここは表示だけで、判定は導出し直さない。
+ */
+export function anchoringUnsignedTailWarning(coverage: SignedCheckpointsVerificationResult['coverage']): string | null {
+  if (coverage.unsignedTailEvents <= 0 || coverage.lastSignedEventIndex === null) return null;
+  return t('result.anchoringUnsignedTail', {
+    count: coverage.unsignedTailEvents,
+    index: coverage.lastSignedEventIndex,
+  });
 }
 
 /**

@@ -126,6 +126,9 @@ export const en: VerifyTranslationKeys = {
     anchoringNone: 'No signed checkpoints',
     anchoringPostHoc: '⚠ Post-hoc batch signing suspected (server span / client span unusually small)',
     anchoringSparse: '⚠ Anchoring is sparse (few/late signed checkpoints for the claimed session)',
+    anchoringUnsignedTail:
+      '⚠ The last ${count} events are not covered by a signed checkpoint (last signed: event #${index})',
+    anchoringLastSigned: 'last signed: event #${index}',
     // Expanded details section
     anchoringDetailsToggle: 'Show verification basis',
     anchoringSectionKeys: 'Signing key',

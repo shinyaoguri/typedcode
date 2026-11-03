@@ -32,8 +32,11 @@ export type IntegrityLevel = 'proven' | 'partial' | 'failed';
 
 /**
  * 時刻アンカー: 記録の存在時刻がどの程度固定されているか。
- * - anchored:   root サーバアンカー + 署名 cp が密 (申告セッション全体が時刻固定)
- * - partial:    何らかのサーバアンカーはあるが弱い (疎 / post-hoc 疑い / root か cp の片方のみ)
+ * - anchored:   root サーバアンカー + 署名 cp が密で、最後の署名 cp が最終イベントまで届いている
+ *               (token と cp の sessionId も一致)。最終状態への署名は「その時点の内容が存在した
+ *               時刻の上界」を与える。各イベントの実時刻を直接証明するわけではない (#295)
+ * - partial:    何らかのサーバアンカーはあるが弱い (疎 / post-hoc 疑い / 未署名の末尾 /
+ *               root か cp の片方のみ)
  * - unanchored: サーバ由来の時刻証拠なし (完全オフライン捏造の余地)
  * - exam-t0:    試験 proof。T0 束縛 (封印 + 監督コード) が時刻の regime を担う (ADR-0006)。
  *               **束縛が実際に検証済み (package 提供 + verifyExamBinding 合格) のときのみ** —
@@ -80,7 +83,24 @@ export interface AssuranceInput {
     valid?: boolean;
     sparse?: boolean;
     postHocSuspected?: boolean;
+    /**
+     * 最後の署名 cp が最終イベントを指すか (`coverage.terminalAnchored`。#295)。false なら
+     * 未署名の末尾があり、そこはオフラインで書き足せる。
+     *
+     * **optional にしないこと**: 渡し忘れが「末尾が未署名なのに anchored」= overclaim に倒れる
+     * (`poswSkipped` と同じ理由、#214/#295)。
+     */
+    terminal: boolean;
   };
+  /**
+   * セッション開始トークンと署名 cp の sessionId が食い違ったか (`FullVerificationResult.sessionTokenMismatch`。
+   * spec §6.3)。true なら署名 cp は別セッションのもので、この proof の時刻証拠に数えない (#295 / #329 後半)。
+   * 改ざんの検出ではないので integrity には流さない。
+   *
+   * **optional にしないこと**: 渡し忘れが「別セッションの cp で anchored」= overclaim に倒れる
+   * (`poswSkipped` と同じ理由、#214/#295)。
+   */
+  sessionTokenMismatch: boolean;
   /**
    * PoSW の反復再計算をスキップしたか (`fast` モード。`FullVerificationResult.poswSkipped`)。
    *
@@ -136,15 +156,18 @@ function deriveTemporal(input: AssuranceInput): TemporalLevel {
   }
 
   const sc = input.signedCheckpoints;
-  // 有効な署名 cp 連鎖があるか (anchored だが invalid は時刻証拠として数えない)
-  const hasValidCheckpoints = sc?.anchored === true && sc.valid !== false;
-  const checkpointsClean = hasValidCheckpoints && sc?.sparse !== true && sc?.postHocSuspected !== true;
+  // 有効な署名 cp 連鎖があるか (anchored だが invalid は時刻証拠として数えない)。
+  // token と sessionId が食い違う cp は別セッションのもの (spec §6.3) なので、これも数えない (#295)。
+  const hasValidCheckpoints = sc?.anchored === true && sc.valid !== false && !input.sessionTokenMismatch;
+  // 最終イベントまで署名が届いていなければ (未署名の末尾)、末尾はオフラインで書き足せる (#295)。
+  const checkpointsClean =
+    hasValidCheckpoints && sc?.sparse !== true && sc?.postHocSuspected !== true && sc?.terminal === true;
 
   if (input.rootAnchored && checkpointsClean) {
     return 'anchored';
   }
   if (input.rootAnchored || hasValidCheckpoints) {
-    // 片方のみ / 疎 / post-hoc 疑い — 何らかのサーバ時刻証拠はある
+    // 片方のみ / 疎 / post-hoc 疑い / 未署名の末尾 — 何らかのサーバ時刻証拠はある
     return 'partial';
   }
   return 'unanchored';
