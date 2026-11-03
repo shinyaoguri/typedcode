@@ -54,7 +54,7 @@
 
 ### Follow-ups / 残課題
 
-- `scripts/` 配下に既存の warning が残っている (lint は green だが info / warn は出る)。ルールを上げるか個別に潰すかは未決
+- ~~`scripts/` 配下に既存の warning が残っている。ルールを上げるか個別に潰すかは未決~~ → **決定済み (2026-11-03, Issue [#344](https://github.com/shinyaoguri/typedcode/issues/344))**: 個別に潰し、warning でも CI を落とす。`npm run lint` は `biome ci --error-on-warnings .` (+ `lint:docs`)。既存の warning / info は書き換えで 0 件にし、書き換えが不自然な箇所だけ理由つきの `// biome-ignore lint/<group>/<rule>: <理由>` で黙らせた。`biome.json` でルールを `off` に下げて件数を減らすことはしない。info では落とさない (`--error-on-warnings` は info を数えないので、将来の info は手で片付ける)。11-01 以降に新しい warning が 3 件すり抜けた (#407・#486) ことが、検査を足す実害
 
 ## References
 

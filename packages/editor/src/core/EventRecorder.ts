@@ -6,7 +6,7 @@
  * ブラウザタブを閉じた後も復旧可能
  */
 
-import type { EventType, RecordEventInput } from '@typedcode/shared';
+import type { EventType, RecordEventInput, StoredEvent } from '@typedcode/shared';
 import type { TabManager, TabState } from '../ui/tabs/TabManager.js';
 import type { LogViewer } from '../ui/components/LogViewer.js';
 import { t } from '../i18n/index.js';
@@ -131,11 +131,7 @@ export class EventRecorder {
         // IndexedDBにイベントをインクリメンタルに保存
         // イベント発生時にキャプチャしたtabIdを使用（現在のアクティブタブではなく）
         if (recordedEvent) {
-          try {
-            await this.persistence.saveEventToIndexedDB(capturedTabId, recordedEvent);
-          } catch {
-            // エラーはEventPersistence内でログ出力済み
-          }
+          await this.persistEvent(capturedTabId, recordedEvent);
         }
 
         // タブデータを保存（sessionStorage用）
@@ -284,10 +280,17 @@ export class EventRecorder {
     // 記録開始時にステータスを更新
     this.onStatusUpdate?.();
 
-    return recordPromise
-      .then((result) => {
-        // 記録に失敗してチェーンに載らなかったイベントは UI に流さない (#284)
+    const settled = recordPromise
+      .then(async (result) => {
+        // 記録に失敗してチェーンに載らなかったイベントは UI / IndexedDB に流さない (#284)
         if (!result.recorded) return;
+
+        const recordedEvent = tab.typingProof.events[result.index];
+
+        // IndexedDB へ 1 件ずつ append する (#471)。record() と同じ経路に乗せる。
+        // append は「確定の通知順」に開始する必要があるので、await より前の同期区間で呼ぶ
+        // (デバウンス保存だけに任せると、直後の record() の seq だけが先に入って欠番ができる)
+        const appended = recordedEvent ? this.persistEvent(tab.id, recordedEvent) : Promise.resolve();
 
         // アクティブタブの場合のみログビューアに追加
         const activeTab = this.tabManager.getActiveTab();
@@ -299,12 +302,11 @@ export class EventRecorder {
           `[EventRecorder] recordToTab result: isActive=${isActive}, logViewerVisible=${logViewerVisible}, eventType=${event.type}`
         );
 
-        if (isActive && logViewerVisible && logViewer) {
-          const recordedEvent = tab.typingProof.events[result.index];
-          if (recordedEvent) {
-            logViewer.addLogEntry(recordedEvent, result.index);
-          }
+        if (isActive && logViewerVisible && logViewer && recordedEvent) {
+          logViewer.addLogEntry(recordedEvent, result.index);
         }
+
+        await appended;
       })
       .catch((err) => {
         console.error(`[EventRecorder] Recording to tab ${tab.id} failed:`, err);
@@ -312,6 +314,18 @@ export class EventRecorder {
       .finally(() => {
         this.onStatusUpdate?.();
       });
+    // タブを閉じるとき、この append も待つ (#342)
+    this.trackInFlight(tab.id, settled);
+    return settled;
+  }
+
+  /** IndexedDB への append。失敗は EventPersistence がログに出すので握って続ける */
+  private async persistEvent(tabId: string, event: StoredEvent): Promise<void> {
+    try {
+      await this.persistence.saveEventToIndexedDB(tabId, event);
+    } catch {
+      // エラーはEventPersistence内でログ出力済み
+    }
   }
 
   /**

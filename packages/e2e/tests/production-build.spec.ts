@@ -19,7 +19,7 @@ import { VerifyWebApp } from './helpers/verifyWeb.js';
  * オラクルは「console / pageerror が出ない」「Monaco が実際にマウントされる」
  * 「打鍵がエディタに入る」の 3 点、dev フック (`__tcTestInsertBlock` / `__tcTestSnapshot`) が dist に無いこと、verify の本番ビルド (`/verify/` 配下) が proof を読んで
  * 状態契約の属性を出すこと。重い round-trip と判定の中身 (Web↔CLI パリティ) は dev 側の
- * spec (verify-web.spec.ts) が担うので、ここには増やさない (AGENTS.md「CI 時間を意識」)。
+ * spec (verify-web-*.spec.ts) が担うので、ここには増やさない (AGENTS.md「CI 時間を意識」)。
  * dist には dev フックが無いので、dev 限定 API に依存しないこと。
  */
 test('production build: エディタが console エラーなくマウントし打鍵できる', async ({ page }) => {
@@ -96,7 +96,7 @@ test('production build: verify (/verify/) が proof を読んで判定の状態�
   const states = await web.load([zipPath]);
   expect(states.length, 'ZIP のファイルがサイドバーに並ぶ').toBeGreaterThan(0);
 
-  // 判定の値そのものは dev 側 (verify-web.spec.ts) が CLI と突き合わせる。ここは「本番ビルドでも
+  // 判定の値そのものは dev 側 (verify-web-parity.spec.ts) が CLI と突き合わせる。ここは「本番ビルドでも
   // 検証 Worker が動いて判定まで届き、状態契約の属性が出る」ことだけを見る。
   for (const v of await web.readVerdicts(names)) {
     expect(v.status, JSON.stringify(v)).not.toBe('error');

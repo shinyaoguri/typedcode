@@ -203,7 +203,11 @@ export function evaluateAnalysis(items: LabeledAnalysis[], opts: EvaluateOptions
   const byCondition: Record<string, { genuine: number; automated: number }> = {};
   for (const item of items) {
     const key = item.condition ?? '(none)';
-    const bucket = (byCondition[key] ??= { genuine: 0, automated: 0 });
+    let bucket = byCondition[key];
+    if (!bucket) {
+      bucket = { genuine: 0, automated: 0 };
+      byCondition[key] = bucket;
+    }
     if (item.label === 'genuine') bucket.genuine++;
     else bucket.automated++;
   }

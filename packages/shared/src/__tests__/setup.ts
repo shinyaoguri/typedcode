@@ -4,7 +4,7 @@
  */
 
 import { vi } from 'vitest';
-import * as nodeCrypto from 'crypto';
+import * as nodeCrypto from 'node:crypto';
 
 // ===== crypto.subtle モック =====
 // happy-dom does not support crypto.subtle. SHA-256 だけは独自実装で軽量に提供しつつ、
@@ -47,10 +47,7 @@ class MockWorker {
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
 
-  constructor(_scriptURL: string | URL, _options?: WorkerOptions) {
-    // Worker is not actually created in tests
-  }
-
+  // コンストラクタは持たない (テストでは Worker を実際には作らない)。
   postMessage(message: Record<string, unknown>): void {
     // Use queueMicrotask to simulate async behavior
     queueMicrotask(() => {

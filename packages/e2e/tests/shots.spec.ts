@@ -60,7 +60,7 @@ const SHOTS = [
 type ShotFile = (typeof SHOTS)[number]['file'];
 
 /**
- * 打つコード。verify-web.spec.ts 等と同じもの (括弧の自動補完で崩れないことが確かめてある)。
+ * 打つコード。verify-web-*.spec.ts 等と同じもの (括弧の自動補完で崩れないことが確かめてある)。
  * コマ撮りのため 1〜2 文字ずつ打つ。
  */
 const CODE = 'int main(void) {\n  return 0;\n}\n';

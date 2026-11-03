@@ -50,6 +50,9 @@ typedcode-verify proof.zip --analyzer ./my-analyzer.mjs --no-default-analyzers
 # 分析結果を機械可読に書き出す
 typedcode-verify ALL_TC.zip --analysis-json out.json      # {filename, valid, analysis}
 typedcode-verify ALL_TC.zip --analysis-bundle bundle.json # content-free な派生バンドル (ADR-0024 Tier A)
+
+# 採点に使うソースを取り出す (proof ごとに submitted / verified / report.json を書く)
+typedcode-verify ALL_TC.zip --extract-sources graded/
 ```
 
 ### オプション一覧
@@ -65,6 +68,7 @@ typedcode-verify ALL_TC.zip --analysis-bundle bundle.json # content-free な派�
 | `--no-default-analyzers` | 同梱の分析器を外し、`--analyzer` で指定したものだけを使う |
 | `--analysis-json <out.json>` | 分析レポートを JSON でファイル出力 |
 | `--analysis-bundle <out.json>` | content-free な派生バンドルを出力 (ADR-0024 Tier A) |
+| `--extract-sources <dir>` | ZIP の proof ごとに、同梱ソースと `proof.content` を `<dir>` へ書き出す ([書き出し](#ソースの書き出し---extract-sources)) |
 | `--help`, `-h` | 使い方を表示 |
 
 未知のオプションや値の欠落はエラーになります (`--require-root-anchr` のようなタイポでゲートが黙って無効化されるのを防ぐため)。
@@ -151,6 +155,31 @@ Source:      valid.js  MISMATCH (differs from proof.content)
 - `Integrity: PROVEN` は変わりません。proof 自体は改ざんされていないので、提出物の不整合は整合性の判定ではなく、総合の合否 (exit 1) と `Submission failed:` の行に出ます
 - JSON 単体の入力は同梱ソースが無いので `Submission: not checked` と出ます
 - **採点に使うのは、`MATCH` したソースか、`proof.content` です**。`MISMATCH` したソースは採点に使わないでください。同梱ソースは ZIP を展開すればそのまま読めるので、不一致のときも元のソースは失われません
+
+## ソースの書き出し (`--extract-sources`)
+
+`--extract-sources <dir>` を付けると、ZIP 入力の proof ごとに `<dir>/<proof のベース名>/` を作って 3 つを書きます (`<proof のベース名>` は proof の ZIP 内ファイル名から `.json` とフォルダを除いたもの。`main_proof.json` なら `main_proof`)。
+
+```
+graded/
+└── main_proof/
+    ├── submitted.c    # ZIP に同梱されていたソースの原文バイト (期待名で対になったもの)
+    ├── verified.c     # proof.content (検証済みの本文)
+    └── report.json    # 照合の状態と検証結果の要約
+```
+
+| ファイル | 内容 | 書かれる条件 |
+|---|---|---|
+| `submitted.<ext>` | 同梱ソースの原文バイト (BOM・改行もそのまま) | 照合が `match` または `mismatch` のとき。`MISSING` / `AMBIGUOUS` / `UNCHECKABLE` のときは書かない (他の proof のソースをこの proof の提出物として見せないため) |
+| `verified.<ext>` | `proof.content` | チェーン (Hash Chain / Metadata) が検証に通ったとき。改ざんされた proof の本文は「検証済み」の名では出さない |
+| `report.json` | `submission` (`status` は `match` / `mismatch` / `missing-source` / `ambiguous` / `uncheckable`)、`files`、`verification` (`valid` / `chainValid` / `metadataValid` / `integrity` / `errorMessage`) | 常に |
+
+- **不一致でも検証失敗でも `submitted` は書きます**。コードの回収を、検証の結論に妨げさせないためです。`MISMATCH` のときは `submitted.<ext>` (提出されたもの) と `verified.<ext>` (proof が記録していたもの) が別のファイルとして並びます。採点に使うのは `match` した `submitted` か `verified` です
+- **元のソースを上書きしません**: 入力の ZIP は読むだけです。書き出し先のファイルは排他的に作成し、`<dir>/<名前>/` が既にあるときはその proof を**書かずにエラー** (exit 1) にします (再実行しても黙って別名を作りません)。シンボリックリンクも辿りません
+- **`<dir>` の外には書きません**: ディレクトリ名は ZIP エントリ名から、`<ext>` は期待されるソース名 (proof の `filename` / `language` から作った名前) から作りますが、どちらも改ざんされうる値なので、最後のパス区切りより後ろだけを取り、文字・数字・`._-` 以外は `_` に置き換え、先頭の `.` を除きます。`../x` や絶対パスは書き出し先を動かせません。拡張子が英数字でなければ `txt` になります
+- 複数の入力が同じ名前のエントリ (`main_proof.json` など) を持つときは、同じ実行の 2 つ目以降に `_2`, `_3`… を付けます。元のエントリは `report.json` の `input` / `proofEntry` に残ります
+- 書き出しの失敗 (既存のディレクトリ・書き込み権限など) は exit 1 です。それ以外で exit code は変わりません (検証・照合の規約のとおり)
+- JSON 単体の入力には同梱ソースが無いので、警告を出して何も書きません。孤立ソース (どの proof にも対にならなかったファイル) は書き出しません。ZIP を展開して読んでください
 
 ## 対応形式
 

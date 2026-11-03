@@ -473,7 +473,7 @@ export async function handleSignCheckpoint(
   const serverTimestamp = clampServerTimestamp(nowIso, existing?.lastServerTimestamp);
 
   // 署名
-  let envelope;
+  let envelope: SignedCheckpointEnvelope;
   try {
     envelope = await createSignedCheckpointEnvelope(
       input,

@@ -86,7 +86,7 @@ export class ScreenCaptureService {
    * Screen Capture APIの利用可否をチェック
    */
   static isSupported(): boolean {
-    return !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+    return !!navigator.mediaDevices?.getDisplayMedia;
   }
 
   // ========================================
@@ -426,7 +426,7 @@ export class ScreenCaptureService {
    */
   private cleanup(): void {
     if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach((track) => track.stop());
+      for (const track of this.mediaStream.getTracks()) track.stop();
       this.mediaStream = null;
     }
 

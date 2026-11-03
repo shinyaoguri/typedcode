@@ -16,6 +16,12 @@ describe('findFlagError', () => {
     expect(findFlagError(['p.zip', '--analyzer', 'a.mjs', '--analyzer=b.mjs'])).toBeNull();
   });
 
+  it('accepts --extract-sources as a value flag and skips its value when collecting inputs', () => {
+    expect(findFlagError(['p.zip', '--extract-sources', 'out'])).toBeNull();
+    expect(findFlagError(['p.zip', '--extract-sources=out'])).toBeNull();
+    expect(nonFlagArgs(['p.zip', '--extract-sources', 'out'])).toEqual(['p.zip']);
+  });
+
   it('rejects a typo of a security gate flag instead of silently ignoring it', () => {
     expect(findFlagError(['proof.zip', '--require-root-anchr'])).toContain('Unknown option');
   });

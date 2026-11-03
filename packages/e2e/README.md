@@ -164,7 +164,9 @@ shared の main が raw TypeScript のため `node dist/cli.js` は動かない
 
 | ファイル | 検証内容 |
 |---|---|
-| verify-web.spec.ts | export ZIP を検証 Web に入れ、data-* の状態契約 (status / integrity / temporal / pure-typing / 総合判定) が同じ ZIP に対する verify-cli の判定と一致する。改ざん ZIP は Web も CLI も拒否。正常 + 改ざんを一度に入れて判定が混ざらない (#215)。壊れた `*_proof.json` 入りの ZIP は、Web が error として並べ、CLI が exit 1 にする (#292) |
+| verify-web-parity.spec.ts | export ZIP を検証 Web に入れ、data-* の状態契約 (status / integrity / temporal / pure-typing / 総合判定) が同じ ZIP に対する verify-cli の判定と一致する。改ざん ZIP は Web も CLI も拒否。version が新 major なら warning、下限未満なら拒否 (#223) |
+| verify-web-submission.spec.ts | 正常 + 改ざんを一度に入れて判定が混ざらない (#215)。壊れた `*_proof.json` 入りの ZIP は、Web が error として並べ、CLI が exit 1 にする (#292)。同梱ソースを差し替えた ZIP は Web が error、CLI が exit 1 (#293) |
+| verify-web-ui.spec.ts | アクティブなタブ / 最後のタブを閉じたあとのタブ・サイドバー・結果パネルの active の一致 (#281 / #387)、結果表示後にチャートのタブが押せる (#395) |
 | production-build.spec.ts | 本番ビルドの verify (`/verify/`) が proof を読んで状態契約の属性を出す |
 
 > Web↔CLI で比べられるのは合否 (`data-status` error ⇔ CLI の `valid=false`、総合判定 failed も同じ軸) と

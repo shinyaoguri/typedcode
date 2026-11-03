@@ -208,6 +208,7 @@ export class TemplateParser {
     }
 
     // 危険な文字をチェック
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: ファイル名に使えない制御文字 (0x00-0x1f) を検出するのが目的
     if (/[<>:"|?*\x00-\x1f]/.test(filename) || filename.includes('..')) {
       throw new TemplateValidationError(`files[${index}].filenameに無効な文字が含まれています`);
     }

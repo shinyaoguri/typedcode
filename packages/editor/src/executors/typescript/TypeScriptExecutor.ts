@@ -129,8 +129,7 @@ export class TypeScriptExecutor extends BaseExecutor {
     // TypeScript error format: "(line,column): error TS1234: message"
     const regex = /\((\d+),(\d+)\):\s*(error|warning)\s*TS\d+:\s*(.+)/g;
 
-    let match;
-    while ((match = regex.exec(stderr)) !== null) {
+    for (const match of stderr.matchAll(regex)) {
       const [, line, column, severity, message] = match;
       if (line && column && severity && message) {
         errors.push({

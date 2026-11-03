@@ -85,7 +85,7 @@ export async function importAuthoritySigner(
   } catch {
     throw new Error('Signing key JWK is not valid JSON');
   }
-  if (!parsed || parsed.kty !== 'EC' || parsed.crv !== 'P-256' || !parsed.d) {
+  if (parsed?.kty !== 'EC' || parsed.crv !== 'P-256' || !parsed.d) {
     throw new Error('Signing key must be an EC P-256 private JWK (with a "d" parameter)');
   }
 

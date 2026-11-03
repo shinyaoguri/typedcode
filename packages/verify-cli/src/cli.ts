@@ -10,7 +10,9 @@ import { resolve, extname } from 'node:path';
 import { verifyProof, toBundleIntegrityValid, type ProofFile } from './verify.js';
 import { extractAllProofs, extractScreenshotArtifacts, extractSubmissionSources } from './zip.js';
 import { loadExternalAnalyzers } from './analyzers.js';
+import { createDirNamer, extractProofSources, type ExtractVerification } from './extractSources.js';
 import {
+  formatExtractedSources,
   formatMultiSummary,
   formatOrphanSources,
   formatProofHeader,
@@ -18,6 +20,7 @@ import {
   formatUnreadableProof,
   printError,
   printUsage,
+  safe,
 } from './output.js';
 import { Spinner } from './progress.js';
 import {
@@ -29,6 +32,7 @@ import {
   matchSubmissionSources,
   submissionSeverity,
   type SubmissionReport,
+  type SubmissionSourceInput,
   type VerificationMode,
   type ExamPackageManifest,
   type Analyzer,
@@ -90,6 +94,12 @@ async function main(): Promise<void> {
   // Tier A バンドル出力 (ADR-0024): content-free な {ProcessSummary, Analysis, Assurance}
   // をファイルへ。コホート基準 (ADR-0025) の入力フォーマット。advisory・exit code 非干渉。
   const analysisBundlePath = flagValue(args, '--analysis-bundle');
+
+  // 提出物の書き出し (#409): ZIP の proof ごとに submitted / verified / report.json を書く。
+  // 検証の判定には触れない (書き出しの失敗だけ exit 1 に倒す)。元のソースと既存のファイルは上書きしない。
+  const extractSourcesDir = flagValue(args, '--extract-sources');
+  const dirNamer = createDirNamer();
+  let extractFailures = 0;
 
   // 外部アナライザ (ADR-0009 / プラットフォーム方針): 採点者/研究者が自前の Analyzer を
   // フォークせず差し込む口。`--analyzer <path>` 反復可、`--no-default-analyzers` で既定を外す。
@@ -183,6 +193,8 @@ async function main(): Promise<void> {
     let screenshotSummary: ScreenshotVerificationSummary | undefined;
     // 提出物の照合 (#293)。undefined = 未検査 (JSON 単体入力は同梱ソースが無い)。
     let submissionReport: SubmissionReport | undefined;
+    // ZIP の同梱ソース候補 (生バイト)。`--extract-sources` が対のソースの本体を引く。
+    let submissionSources: SubmissionSourceInput[] = [];
     // 表示名 (複数入力のときは入力名つき) → proof の ZIP 内パス。照合は ZIP 内のパスで行う。
     const entryPathOf = new Map<string, string>();
     try {
@@ -198,6 +210,7 @@ async function main(): Promise<void> {
         unreadable = multiInput ? failures.map((f) => ({ ...f, filename: `${input}:${f.filename}` })) : failures;
         // 提出物の照合 (#293): 同梱ソースと proof.content を対応規則 (shared) で対にして照合する。
         // 壊れた proof も欠番として渡す (後続タブのソース名を確定できなくなるため)。
+        submissionSources = await extractSubmissionSources(filePath);
         submissionReport = matchSubmissionSources({
           // 自己申告の欄は未検証なので unknown のまま渡す (型の確認は shared が行う)。
           proofs: extracted.map((p) => {
@@ -205,14 +218,14 @@ async function main(): Promise<void> {
             return { path: p.filename, filename: claim.filename, language: claim.language, content: claim.content };
           }),
           unreadableProofPaths: failures.map((f) => f.filename),
-          sources: await extractSubmissionSources(filePath),
+          sources: submissionSources,
         });
         // 入力が複数のとき、別々の ZIP に同名の entry (`tab1_proof.json` など) があっても
         // summary / --analysis-* の filename が衝突しないよう入力名を前置する。
         proofs = multiInput
           ? extracted.map((p) => ({ filename: `${input}:${p.filename}`, proof: p.proof }))
           : extracted;
-        extracted.forEach((p, i) => entryPathOf.set(proofs[i]!.filename, p.filename));
+        for (const [i, p] of extracted.entries()) entryPathOf.set(proofs[i]!.filename, p.filename);
 
         // スクリーンショット検証 (#147): ZIP 入力ごとに一度だけ計算して、その ZIP の全 proof に渡す
         // (スクショはセッション単位で proof 横断)。真正記録は各チェーンの screenshotCapture.imageHash。
@@ -233,6 +246,11 @@ async function main(): Promise<void> {
           throw new Error('Invalid proof file structure');
         }
         proofs = [{ filename: input, proof }];
+        if (extractSourcesDir !== undefined) {
+          console.warn(
+            `Warning: --extract-sources only applies to ZIP inputs; nothing was extracted from ${safe(input)}.`
+          );
+        }
       } else {
         throw new Error(`Unsupported file type: ${ext}. Use .json or .zip`);
       }
@@ -251,6 +269,40 @@ async function main(): Promise<void> {
     const multi = multiInput || proofs.length + unreadable.length > 1;
     for (const { filename, proof } of proofs) {
       if (multi) console.log(formatProofHeader(filename));
+      const entryPath = entryPathOf.get(filename);
+      const pair =
+        submissionReport && entryPath !== undefined
+          ? submissionReport.pairs.find((p) => p.proofPath === entryPath)
+          : undefined;
+
+      // 提出物の書き出し (#409)。検証の成否にかかわらず (検証が例外で止まっても) 書く。
+      // 失敗は検証の判定とは独立に数え、最後に exit 1 へ倒す。
+      const extract = async (verification: ExtractVerification): Promise<void> => {
+        if (extractSourcesDir === undefined || entryPath === undefined) return;
+        const claim = proof as unknown as { filename?: unknown; language?: unknown; content?: unknown };
+        try {
+          const written = await extractProofSources({
+            outDir: extractSourcesDir,
+            namer: dirNamer,
+            input,
+            proofEntry: entryPath,
+            proofFilename: claim.filename,
+            language: claim.language,
+            content: claim.content,
+            pair,
+            sourceBytes:
+              pair?.expectedSource !== undefined
+                ? submissionSources.find((s) => s.path === pair.expectedSource)?.bytes
+                : undefined,
+            verification,
+          });
+          console.log(formatExtractedSources(written.dir, written.files));
+        } catch (error) {
+          extractFailures++;
+          printError(`${filename}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      };
+
       let result: Awaited<ReturnType<typeof verifyProof>>;
       try {
         result = await verifyProof(proof, {
@@ -267,18 +319,22 @@ async function main(): Promise<void> {
         const reason = error instanceof Error ? error.message : String(error);
         printError(`${filename}: ${reason}`);
         summary.push({ filename, valid: false, reason });
+        await extract({ kind: 'error', reason });
         continue;
       }
       // 提出物の不整合は proof 自体の改ざんではないので integrity (assurance) は落とさず、総合 valid だけを落とす (#293)。
-      const entryPath = entryPathOf.get(filename);
-      const pair =
-        submissionReport && entryPath !== undefined
-          ? submissionReport.pairs.find((p) => p.proofPath === entryPath)
-          : undefined;
       const submission =
         submissionReport && pair ? { pair, severity: submissionSeverity(submissionReport, pair) } : undefined;
       const valid = result.valid && submission?.severity !== 'failure';
       console.log(formatResult({ ...result, valid, submission }));
+      await extract({
+        kind: 'completed',
+        valid,
+        chainValid: result.chainValid,
+        metadataValid: result.metadataValid,
+        integrity: result.assurance.integrity,
+        ...(result.errorMessage !== undefined ? { errorMessage: result.errorMessage } : {}),
+      });
       summary.push({
         filename,
         valid,
@@ -331,7 +387,7 @@ async function main(): Promise<void> {
       console.log(formatMultiSummary(summary));
     }
 
-    process.exitCode = summary.every((s) => s.valid) ? 0 : 1;
+    process.exitCode = summary.every((s) => s.valid) && extractFailures === 0 ? 0 : 1;
   } catch (error) {
     printError(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

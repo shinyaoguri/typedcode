@@ -18,7 +18,7 @@ import { buildResultData, calculateChartStats } from '../../services/ResultDataS
 import { TrustCalculator } from '../../services/TrustCalculator';
 import { summarizeTabScreenshots } from '../../services/screenshotSummary';
 import { buildAssuranceInput } from '../../services/proofVerification';
-import { deriveAssurance, summarizeProcess, type AssuranceResult } from '@typedcode/shared';
+import { deriveAssurance, summarizeProcess, type AssuranceResult, type StoredEvent } from '@typedcode/shared';
 import { t } from '../../i18n/index';
 
 export interface TabControllerDependencies {
@@ -370,7 +370,7 @@ export class TabController {
   /**
    * チャートをレンダリング
    */
-  private renderCharts(events: any[], screenshots?: VerifyScreenshot[], startTimestamp?: number): void {
+  private renderCharts(events: StoredEvent[], screenshots?: VerifyScreenshot[], startTimestamp?: number): void {
     const timelineChart = this.deps.getTimelineChart();
     const mouseChart = this.deps.getMouseChart();
     const integratedChart = this.deps.getIntegratedChart?.();

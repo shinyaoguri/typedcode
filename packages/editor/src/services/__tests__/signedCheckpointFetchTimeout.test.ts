@@ -120,6 +120,10 @@ describe('SignedCheckpointService fetch timeout (#324)', () => {
     // 全リクエストに signal が付き、再送は clientTimestamp 固定 (サーバ側の冪等判定に乗る)
     expect(signals.every((s) => s instanceof AbortSignal)).toBe(true);
     expect(clientTimestamps[1]).toBe(clientTimestamps[0]);
+    // attach → queue 削除の間に動的 import と crypto.subtle の hash (実時間の非同期) が挟まる。
+    // 待たずに dispose すると、dispose が queue に残ったエントリを見るかどうかが実行ごとに変わり、
+    // SignedCheckpointService の分岐カバレッジが揺れる (#495)。
+    await vi.waitFor(() => expect(service.pendingCount()).toBe(0));
     service.dispose();
   });
 });

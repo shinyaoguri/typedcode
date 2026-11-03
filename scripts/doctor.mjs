@@ -56,7 +56,7 @@ function report(status, label, hint) {
   const icon = ICONS[status] ?? ' ';
   console.log(`  ${icon} ${label}`);
   if (hint) {
-    hint.split('\n').forEach((line) => console.log(`      ${C.dim}${line}${C.reset}`));
+    for (const line of hint.split('\n')) console.log(`      ${C.dim}${line}${C.reset}`);
   }
   if (status === 'ok') okCount++;
   else if (status === 'warn') warnCount++;
@@ -366,7 +366,7 @@ function checkSigningKey() {
 
   if (!hasEntry && devKeyId && !isPlaceholder(devKeyId)) {
     const registry = readFileOrNull('packages/shared/src/checkpointKeys/registry.ts');
-    if (registry && registry.includes(devKeyId)) {
+    if (registry?.includes(devKeyId)) {
       report(
         'warn',
         `localKeys.ts に dev 鍵 entry なし。.dev.vars の keyId (${devKeyId}) は registry.ts に存在`,
@@ -456,7 +456,6 @@ const REQUIRED_WORKER_SECRETS = [
   'CHECKPOINT_SIGNING_KEY_JWK',
 ];
 
-let ghAvailable = false;
 let ghRepoSlug = ''; // owner/repo
 
 // ============================================================================
@@ -477,7 +476,6 @@ function checkGitHubSetup() {
     );
     return;
   }
-  ghAvailable = true;
 
   const authStatus = spawnSync('gh', ['auth', 'status'], { encoding: 'utf-8' });
   if (authStatus.status !== 0) {

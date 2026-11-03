@@ -448,8 +448,7 @@ export class CExecutor extends BaseExecutor {
     // Matches .c, .cpp, .cc, .cxx files
     const regex = /(?:<stdin>|main\.c(?:pp)?|[\w.]+\.(?:c|cpp|cc|cxx)):(\d+):(\d+):\s*(error|warning|note):\s*(.+)/g;
 
-    let match;
-    while ((match = regex.exec(stderr)) !== null) {
+    for (const match of stderr.matchAll(regex)) {
       const line = match[1];
       const column = match[2];
       const severity = match[3];

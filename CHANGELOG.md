@@ -11,10 +11,12 @@
 
 ### 追加
 
+- verify-cli に `--extract-sources <dir>` を足した。ZIP 入力の proof ごとに `<dir>/<proof のベース名>/` へ、`submitted.<ext>` (同梱ソースの原文バイト)・`verified.<ext>` (`proof.content`。チェーンが検証に通ったときだけ)・`report.json` (照合の状態と検証結果の要約) を書く。不一致や検証失敗でも submitted は書き、exit code は変えない。入力の ZIP と書き出し先の既存ファイルは上書きせず (既存のディレクトリはエラーで exit 1)、`<dir>` の外には書かない (ZIP エントリ名と `proof.filename` から作る名前は無害化する)。採点者が jq で JSON から本文を抜かずに済む (#409)
 - テンプレート (`templateInjection`) で入った文字数と打った文字数を、分析層の advisory signal (severity `info`) として出すようにした。verify の分析カードと verify-cli の `--- Analysis (advisory) ---` に「テンプレートで入った文字数 500 / 打った文字数 10」の形で出る。文字数は自己申告の `contentLength` ではなく `data.content.length` の合計で数える。`reviewPriority` と著述性の `notableSignals`、検証結果、`isPureTyping` は変えない (#416)
 
 ### 修正
 
+- editor で `recordToAllTabs` / `recordSessionSnapshotTo` (windowResize・visibility / focus・スクリーンショット系・fullscreen・sessionResumed・起動時ワンショットの流し直しなど) が記録したイベントも、`record()` と同じく確定ごとに IndexedDB へ 1 件ずつ append するようにした。これまでは TabManager のデバウンス保存だけが頼りで、直後に打鍵が続くと後続の seq だけが先に入って events に欠番ができ、そのまま落ちると復元したチェーンが欠番で切れた。この append もタブを閉じる後始末 (確定 → append → 削除) の待ち対象に入る (#471)
 - ja の設定メニューで `settings.verifyProof` と `settings.toggleTheme` が英語 (「Verify Proof」「Toggle Theme」) のままだったのを、「証明を検証」「テーマを切り替え」に訳した。en は変えていない (#518)
 - verify-cli が、ZIP に同梱されたソースが `proof.content` と違っても `Verification PASSED` / exit 0 にしていた問題を直した。proof ごとに、同梱ソースを proof の `filename` と `language` から editor と同じ手順で作った期待名で対にして、バイト単位で照合する (改行・BOM は正規化しない)。不一致と、対応を一意に決められない場合は exit 1、ソース欠落と孤立ソースは警告で exit code に影響しない。`Integrity: PROVEN` は変わらず、結果は `--- Submission ---` 節に出る。verify (Web) も同じ shared の関数で突き合わせ、不一致のタブを error にする。これまで Web は proof 名の `_proof.json` を剥がしたベース名で引いていたので、同名のタブの 2 つ目 (`main_proof_1.json` ↔ `main_1.c`) は黙って未照合だった。言語 → 拡張子の表と export のファイル名の付け方は shared へ移し、editor の export もそれを使う。`--extract-sources` は #409 (#293)
 

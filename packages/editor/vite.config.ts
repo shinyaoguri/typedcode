@@ -1,8 +1,8 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import wasm from 'vite-plugin-wasm';
-import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 // ビルド情報を取得
 function getBuildInfo() {

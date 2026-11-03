@@ -26,7 +26,7 @@ describe('parseClassPackage', () => {
     const pkg = parseClassPackage(samplePackage());
     expect(pkg?.classId).toBe('2026-algo-week3');
     expect(pkg?.bundle.problems).toHaveLength(2);
-    expect(pkg?.bundle.problems[0]!.starter?.filename).toBe('p1.c');
+    expect(pkg?.bundle.problems[0]?.starter?.filename).toBe('p1.c');
   });
 
   it('rejects a payload without the class schema', () => {

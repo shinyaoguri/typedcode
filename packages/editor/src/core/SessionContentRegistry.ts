@@ -59,7 +59,7 @@ export class SessionContentRegistry {
     if (this.getAllContents) {
       const allContents = this.getAllContents();
       for (const tabContent of allContents) {
-        if (tabContent && tabContent.includes(content)) {
+        if (tabContent?.includes(content)) {
           return true;
         }
       }

@@ -1271,8 +1271,7 @@ export class TabManager {
         return false;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rawStorage: any = JSON.parse(data);
+      const rawStorage = JSON.parse(data);
 
       // バージョン別に処理を分岐
       if (rawStorage.version === 1) {

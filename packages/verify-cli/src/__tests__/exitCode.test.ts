@@ -31,7 +31,10 @@ describe('CLI の終了経路 (#283 c1)', () => {
   });
 
   it('検証結果の集計がそのまま終了コードになる (成功 0 / 失敗 1)', () => {
-    expect(CLI_SOURCE).toMatch(/process\.exitCode = summary\.every\(\(s\) => s\.valid\) \? 0 : 1;/);
+    // 書き出し (--extract-sources, #409) の失敗だけが、検証の合否とは別に 1 へ倒す。それ以外は集計のみ。
+    expect(CLI_SOURCE).toMatch(
+      /process\.exitCode = summary\.every\(\(s\) => s\.valid\) && extractFailures === 0 \? 0 : 1;/
+    );
   });
 });
 

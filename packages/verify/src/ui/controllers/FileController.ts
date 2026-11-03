@@ -95,7 +95,7 @@ export class FileController {
    */
   async loadExamManifestForTab(tabId: string): Promise<void> {
     const tab = this.deps.tabManager.getTab(tabId);
-    if (!tab || !tab.proofData?.exam) return;
+    if (!tab?.proofData?.exam) return;
 
     const file = await pickFile('.tcexam,application/json');
     if (!file) return;
