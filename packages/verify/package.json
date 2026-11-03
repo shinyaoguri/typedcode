@@ -21,7 +21,6 @@
     "jszip": "^3.10.2"
   },
   "devDependencies": {
-    "@types/diff": "^8.0.0",
     "@types/node": "^26.6.5",
     "@vitest/coverage-v8": "^5.0.5",
     "happy-dom": "^21.0.4",

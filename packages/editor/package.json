@@ -24,7 +24,6 @@
     "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@types/jszip": "^3.4.1",
     "@types/node": "^26.6.5",
     "@vitest/coverage-v8": "^5.0.5",
     "fake-indexeddb": "^6.2.7",
