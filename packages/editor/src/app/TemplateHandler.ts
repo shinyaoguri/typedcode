@@ -2,6 +2,7 @@
  * TemplateHandler - テンプレートインポート処理
  */
 
+import type { ParsedTemplate } from '@typedcode/shared';
 import type { AppContext } from '../core/AppContext.js';
 import { t } from '../i18n/index.js';
 import { showNotification } from './AppHelpers.js';
@@ -25,7 +26,7 @@ export async function importTemplateContent(ctx: AppContext, content: string): P
   if (!ctx.tabManager) return false;
 
   // 1. テンプレートをパース
-  let template;
+  let template: ParsedTemplate;
   try {
     template = templateImporter.parseTemplate(content);
   } catch (error: unknown) {

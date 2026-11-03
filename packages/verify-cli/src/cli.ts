@@ -212,7 +212,7 @@ async function main(): Promise<void> {
         proofs = multiInput
           ? extracted.map((p) => ({ filename: `${input}:${p.filename}`, proof: p.proof }))
           : extracted;
-        extracted.forEach((p, i) => entryPathOf.set(proofs[i]!.filename, p.filename));
+        for (const [i, p] of extracted.entries()) entryPathOf.set(proofs[i]!.filename, p.filename);
 
         // スクリーンショット検証 (#147): ZIP 入力ごとに一度だけ計算して、その ZIP の全 proof に渡す
         // (スクショはセッション単位で proof 横断)。真正記録は各チェーンの screenshotCapture.imageHash。

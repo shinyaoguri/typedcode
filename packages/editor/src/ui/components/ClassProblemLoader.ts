@@ -77,18 +77,18 @@ export class ClassProblemLoader {
       });
 
       // ファイル取込 (ドラッグ&ドロップ)
-      ['dragenter', 'dragover'].forEach((evt) =>
+      for (const evt of ['dragenter', 'dragover']) {
         dropzone.addEventListener(evt, (e) => {
           e.preventDefault();
           dropzone.classList.add('dragover');
-        })
-      );
-      ['dragleave', 'drop'].forEach((evt) =>
+        });
+      }
+      for (const evt of ['dragleave', 'drop']) {
         dropzone.addEventListener(evt, (e) => {
           e.preventDefault();
           dropzone.classList.remove('dragover');
-        })
-      );
+        });
+      }
       dropzone.addEventListener('drop', (e) => {
         const file = (e as DragEvent).dataTransfer?.files?.[0];
         if (file) handleFile(file);

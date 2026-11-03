@@ -196,7 +196,7 @@ export class TabUIController {
 
     // タブ要素のみを削除（add-tab-btn は保持）
     const tabElements = this.container.querySelectorAll('.editor-tab');
-    tabElements.forEach((el) => el.remove());
+    for (const el of tabElements) el.remove();
 
     // add-tab-btn の前にタブを挿入
     for (const tab of this.tabManager.getAllTabs()) {

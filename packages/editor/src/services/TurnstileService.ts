@@ -577,7 +577,7 @@ export async function performTurnstileVerification(
       await loadTurnstileScript();
       scriptLoaded = true;
       break;
-    } catch (error) {
+    } catch {
       console.warn(`[Turnstile] Script load attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed`);
       if (attempt < RETRY_CONFIG.maxRetries) {
         const delayMs = RETRY_CONFIG.initialDelayMs * 2 ** (attempt - 1);

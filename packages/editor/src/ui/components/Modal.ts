@@ -12,7 +12,7 @@ export interface ModalButton {
   /** Button type for styling */
   type: 'primary' | 'cancel' | 'danger';
   /** Click handler - if returns true, modal closes */
-  onClick?: () => boolean | void | Promise<boolean | void>;
+  onClick?: () => boolean | undefined | Promise<boolean | undefined>;
   /** Whether button is disabled */
   disabled?: boolean;
   /** Optional icon class (Font Awesome) */
@@ -126,7 +126,7 @@ export async function showModal(options: ModalOptions): Promise<void> {
         });
         // disabled になった要素はフォーカスを失うので、トラップの内側に留める
         dialog.focus();
-        let shouldClose: boolean | void = false; // onClick が例外を投げたときは閉じずに戻す
+        let shouldClose: boolean | undefined = false; // onClick が例外を投げたときは閉じずに戻す
         try {
           shouldClose = btn.onClick ? await btn.onClick() : true;
         } finally {
@@ -320,13 +320,15 @@ export interface LockOverlayOptions {
   /** Icon class (without fa- prefix) */
   icon?: string;
   /** Callback when button is clicked */
-  onResume: () => void | Promise<boolean | void>;
+  // biome-ignore lint/suspicious/noConfusingVoidType: コールバックの戻り値として「何も返さない関数」(`() => void`) も受けるため。undefined に置き換えると、呼び出し側の `() => void` 型のハンドラを渡せなくなる
+  onResume: () => void | Promise<boolean | undefined>;
   /** Custom class name */
   className?: string;
   /** Secondary button text (optional) */
   secondaryButtonText?: string;
   /** Callback when secondary button is clicked */
-  onSecondaryAction?: () => void | Promise<boolean | void>;
+  // biome-ignore lint/suspicious/noConfusingVoidType: コールバックの戻り値として「何も返さない関数」(`() => void`) も受けるため。undefined に置き換えると、呼び出し側の `() => void` 型のハンドラを渡せなくなる
+  onSecondaryAction?: () => void | Promise<boolean | undefined>;
   /**
    * 状態契約の `data-dialog` に出す名前 (packages/editor/AGENTS.md「状態契約」)。
    * overlay (開閉で `.hidden` が付く・DOM から外れる要素) に付ける。

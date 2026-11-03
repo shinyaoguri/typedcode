@@ -57,7 +57,9 @@ describe('SingleInstanceGuard instanceId', () => {
     windowListeners = {};
     vi.stubGlobal('window', {
       addEventListener: (type: string, listener: (e: unknown) => void) => {
-        (windowListeners[type] ??= []).push(listener);
+        const listeners = windowListeners[type] ?? [];
+        listeners.push(listener);
+        windowListeners[type] = listeners;
       },
     });
   });
@@ -108,7 +110,9 @@ describe('SingleInstanceGuard disposal timing', () => {
     vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
     vi.stubGlobal('window', {
       addEventListener: (type: string, listener: (e: unknown) => void) => {
-        (windowListeners[type] ??= []).push(listener);
+        const listeners = windowListeners[type] ?? [];
+        listeners.push(listener);
+        windowListeners[type] = listeners;
       },
     });
   });

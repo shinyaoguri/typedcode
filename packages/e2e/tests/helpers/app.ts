@@ -132,6 +132,7 @@ export class EditorApp {
    * monaco は ES モジュールで window に露出しないので DOM 経由で読む。
    */
   async editorValue(): Promise<string> {
+    // biome-ignore lint/performance/useDomNodeTextContent: Playwright の Locator.innerText() であり DOM の innerText ではない。行ごとの <div> を改行に変換して読むために必要 (textContent だと改行が落ちる)
     const text = await this.page.locator('.monaco-editor .view-lines').first().innerText();
     // Monaco は空白を non-breaking space でレンダリングするので通常スペースに正規化する。
     return text.replace(/[\u00a0\u200b]/g, ' ');
