@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
-import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
