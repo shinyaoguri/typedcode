@@ -314,6 +314,32 @@ describe('TabManager closing a tab (#342)', () => {
     expect(await service.getEvents(a.id)).toEqual([]);
   });
 
+  it('waits for the append of an event recorded to every tab before deleting the closed tab rows (#471)', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c');
+    const b = await s.openTab('b.c');
+    appendDelayMs = 300;
+    const recordedToAll = s.recorder.recordToAllTabs({ type: 'focusChange', data: { focused: false } });
+
+    // PoSW は全タブで確定したが、append は 300ms 後。この窓で A を閉じる
+    await vi.waitFor(() => {
+      expect(a.typingProof.events.length).toBe(2);
+      expect(b.typingProof.events.length).toBe(2);
+    });
+    s.tabManager.closeTab(a.id);
+    await s.tabManager.whenTabsRetired();
+    await recordedToAll;
+
+    // A の append は削除より前に終わり、削除のあとに A の events 行は残らない
+    expect(log.indexOf(`appended:${a.id}`)).toBeGreaterThanOrEqual(0);
+    expect(log.indexOf(`appended:${a.id}`)).toBeLessThan(log.indexOf(`deleted:${a.id}`));
+    expect(await service.getTab(a.id)).toBeNull();
+    expect(await service.getEvents(a.id)).toEqual([]);
+    // 開いたままの B には全タブ記録のイベントが入っている
+    expect((await service.getEvents(b.id)).map((e) => e.sequence)).toEqual([1]);
+  });
+
   it('keeps recording the tabs that are still open while a closed tab is waiting for its in-flight event', async () => {
     const s = await setup();
     service = s.service;
