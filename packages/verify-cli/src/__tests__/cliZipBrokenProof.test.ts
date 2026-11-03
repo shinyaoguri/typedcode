@@ -128,7 +128,9 @@ describe('ZIP with only unrelated JSON next to a valid proof (unchanged behaviou
   });
 
   it('several valid proofs are all verified', async () => {
-    const zip = await writeZip({ 'a_proof.json': VALID, 'b_proof.json': VALID, 'c_proof_1.json': VALID });
+    // 番号は欠番なく `_proof` / `_proof_1` と続く形 (editor の出力)。`c_proof_1.json` だけを置くと、前のタブの名前を
+    // 知れずソース名を決められないので提出物の照合が ambiguous になる (#293)。
+    const zip = await writeZip({ 'a_proof.json': VALID, 'b_proof.json': VALID, 'b_proof_1.json': VALID });
 
     const res = runSourceCli([zip]);
 

@@ -9,6 +9,8 @@ import {
   extractFirstProofFromZip,
   extractAllProofsFromZip,
   extractScreenshotArtifactsFromZip,
+  extractSubmissionSourcesFromZip,
+  type SubmissionSourceInput,
   type ProofFile,
   type ProofExtractionFailure,
 } from '@typedcode/shared';
@@ -48,4 +50,13 @@ export async function extractScreenshotArtifacts(filePath: string): Promise<{
 } | null> {
   const arrayBuffer = toArrayBuffer(await readFile(filePath));
   return extractScreenshotArtifactsFromZip(arrayBuffer);
+}
+
+/**
+ * ZIP の同梱ソース候補を生のバイト列で取り出す (#293)。照合は shared の `matchSubmissionSources` が持つ。
+ * 展開は予算経由 (shared が担う)。
+ */
+export async function extractSubmissionSources(filePath: string): Promise<SubmissionSourceInput[]> {
+  const arrayBuffer = toArrayBuffer(await readFile(filePath));
+  return extractSubmissionSourcesFromZip(arrayBuffer);
 }

@@ -64,12 +64,18 @@ export class VerificationController {
   }
 
   /**
-   * 検証完了を処理
+   * 検証結果とタブの状態からタブの status を決める (error > warning > success)。
+   * 検証完了時 (`handleComplete`) と、提出物の照合結果が後から変わったとき (`recomputeStatus`) の両方が通る。
    */
-  handleComplete(id: string, result: VerificationResultData): void {
-    // 現在のタブ状態を取得（ソースファイル不一致情報を確認するため）
+  private deriveStatus(id: string, result: VerificationResultData): FileStatus {
+    // 現在のタブ状態を取得（提出物の照合結果を確認するため）
     const currentTabState = this.deps.tabManager.getTab(id);
-    const hasSourceMismatch = !!currentTabState?.associatedSourceMismatch;
+    // 提出物 (同梱ソースと proof.content) の照合 (#293)。重さは shared の `submissionSeverity` の結論で、
+    // verify-cli の exit code と同じ軸: 不一致・対応の曖昧さ = error / ソース欠落 = warning。
+    // proof 自体は改ざんされていないので、整合性 (assurance) は落とさず status だけに効かせる。
+    const submission = currentTabState?.associatedSourceMismatch;
+    const submissionFailed = submission?.severity === 'error';
+    const hasSourceMismatch = submission?.severity === 'warning';
 
     // スクリーンショット検証 (#146): enqueue 時に tabState へ保持済みの per-image 判定を集計。
     // TrustCalculator (改竄 = error) / deriveAssurance (integrity failed) と同じ軸を見る —
@@ -104,7 +110,7 @@ export class VerificationController {
     // ADR-0017: root 未アンカー (serverNonce トークン無し) は警告。exam は独自束縛のため対象外。
     const rootNotAnchored = !result.rootAnchored && !result.exam?.present;
     let status: FileStatus;
-    if (!isOverallValid(result, { screenshotsTampered })) {
+    if (submissionFailed || !isOverallValid(result, { screenshotsTampered })) {
       status = 'error';
     } else if (
       !result.isPureTyping ||
@@ -124,6 +130,14 @@ export class VerificationController {
     } else {
       status = 'success';
     }
+    return status;
+  }
+
+  /**
+   * 検証完了を処理
+   */
+  handleComplete(id: string, result: VerificationResultData): void {
+    const status = this.deriveStatus(id, result);
 
     this.deps.uiState.incrementCompleted();
 
@@ -145,6 +159,30 @@ export class VerificationController {
       // まだ何も開いていなければ最初に完了した proof を自動で開く。
       // 以降は別タブがアクティブになるのでフォーカスを奪わない (UX: 読込直後の空白を解消)。
       this.deps.tabController.openTabForFile(id);
+    }
+  }
+
+  /**
+   * 検証済みのタブの status を、いまの提出物の照合結果で付け直す (#293)。
+   *
+   * 照合はフォルダ / ZIP の全ファイルが揃ってから行うので、検証が先に終わったタブは
+   * `handleComplete` の時点では結果を知らない。status の出所をここ (VerificationController) に
+   * 保つため、FileController は照合結果をタブ状態に置いてこのメソッドを呼ぶ。
+   */
+  recomputeStatus(id: string): void {
+    const tab = this.deps.tabManager.getTab(id);
+    if (!tab?.verificationResult || tab.status === 'pending' || tab.status === 'verifying') return;
+
+    const status = this.deriveStatus(id, tab.verificationResult);
+    if (status === tab.status) return;
+
+    this.deps.tabManager.updateTab(id, { status });
+    this.deps.sidebar.updateFileStatus(id, status);
+    if (this.deps.tabBar.hasTab(id)) {
+      this.deps.tabBar.updateTabStatus(id, status as TabStatus);
+    }
+    if (this.deps.tabBar.getActiveTabId() === id) {
+      this.deps.tabController.showTabContent(id, true);
     }
   }
 

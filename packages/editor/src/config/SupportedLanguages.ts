@@ -3,6 +3,8 @@
  * アプリケーション全体で使用する言語定義を一元管理
  */
 
+import { LANGUAGE_FILE_EXTENSIONS } from '@typedcode/shared';
+
 /** 言語ID */
 export type LanguageId = 'c' | 'cpp' | 'javascript' | 'typescript' | 'python' | 'html' | 'css' | 'plaintext';
 
@@ -30,7 +32,7 @@ export const SUPPORTED_LANGUAGES: readonly LanguageDefinition[] = [
   {
     id: 'c',
     displayName: 'C',
-    fileExtension: 'c',
+    fileExtension: LANGUAGE_FILE_EXTENSIONS.c,
     executable: true,
     runtimeName: 'Clang',
     hasSvgIcon: true,
@@ -38,7 +40,7 @@ export const SUPPORTED_LANGUAGES: readonly LanguageDefinition[] = [
   {
     id: 'cpp',
     displayName: 'C++',
-    fileExtension: 'cpp',
+    fileExtension: LANGUAGE_FILE_EXTENSIONS.cpp,
     executable: true,
     runtimeName: 'Clang',
     hasSvgIcon: true,
@@ -46,7 +48,7 @@ export const SUPPORTED_LANGUAGES: readonly LanguageDefinition[] = [
   {
     id: 'javascript',
     displayName: 'JavaScript',
-    fileExtension: 'js',
+    fileExtension: LANGUAGE_FILE_EXTENSIONS.javascript,
     executable: true,
     runtimeName: 'Browser JS',
     hasSvgIcon: true,
@@ -54,7 +56,7 @@ export const SUPPORTED_LANGUAGES: readonly LanguageDefinition[] = [
   {
     id: 'typescript',
     displayName: 'TypeScript',
-    fileExtension: 'ts',
+    fileExtension: LANGUAGE_FILE_EXTENSIONS.typescript,
     executable: true,
     runtimeName: 'TS Compiler',
     hasSvgIcon: true,
@@ -62,7 +64,7 @@ export const SUPPORTED_LANGUAGES: readonly LanguageDefinition[] = [
   {
     id: 'python',
     displayName: 'Python',
-    fileExtension: 'py',
+    fileExtension: LANGUAGE_FILE_EXTENSIONS.python,
     executable: true,
     runtimeName: 'Pyodide',
     hasSvgIcon: true,
@@ -70,21 +72,21 @@ export const SUPPORTED_LANGUAGES: readonly LanguageDefinition[] = [
   {
     id: 'html',
     displayName: 'HTML',
-    fileExtension: 'html',
+    fileExtension: LANGUAGE_FILE_EXTENSIONS.html,
     executable: false,
     hasSvgIcon: true,
   },
   {
     id: 'css',
     displayName: 'CSS',
-    fileExtension: 'css',
+    fileExtension: LANGUAGE_FILE_EXTENSIONS.css,
     executable: false,
     hasSvgIcon: true,
   },
   {
     id: 'plaintext',
     displayName: 'Plain Text',
-    fileExtension: 'txt',
+    fileExtension: LANGUAGE_FILE_EXTENSIONS.plaintext,
     executable: false,
     hasSvgIcon: false,
   },

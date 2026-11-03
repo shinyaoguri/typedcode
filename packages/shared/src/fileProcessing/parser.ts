@@ -16,6 +16,7 @@ import type {
 import { getLanguageFromExtension, isBinaryFile } from './languageDetection.js';
 // zip 爆弾ガードと展開予算の実体は `zipBudget.ts` (#149 / #234)
 import { ZipExtractionBudget, assertZipWithinBudget, readZipEntryBytes, readZipEntryText } from './zipBudget.js';
+import { isSubmissionSourceEntry, type SubmissionSourceInput } from './submissionSources.js';
 
 // ============================================================================
 // Type guards
@@ -312,6 +313,27 @@ export async function extractScreenshotArtifactsFromZip(
   }
 
   return { entries, images };
+}
+
+/**
+ * ZIP から、提出物のソース候補 (`isSubmissionSourceEntry`) を**生のバイト列**で取り出す (#293)。
+ *
+ * 照合 (`matchSubmissionSources`) はバイト単位なので、テキストへ復号して返さない
+ * (`readZipEntryText` の復号は BOM を落とす)。展開は必ず予算経由。パス昇順で決定的に返す。
+ */
+export async function extractSubmissionSourcesFromZip(
+  buffer: ArrayBuffer,
+  budget: ZipExtractionBudget = new ZipExtractionBudget()
+): Promise<SubmissionSourceInput[]> {
+  const zip = await JSZip.loadAsync(buffer);
+  assertZipWithinBudget(zip);
+  const sources: SubmissionSourceInput[] = [];
+  for (const name of Object.keys(zip.files).sort()) {
+    const file = zip.files[name];
+    if (!file || file.dir || !isSubmissionSourceEntry(name)) continue;
+    sources.push({ path: name, bytes: await readZipEntryBytes(file, budget) });
+  }
+  return sources;
 }
 
 /**

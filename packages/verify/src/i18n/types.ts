@@ -359,7 +359,10 @@ export interface VerifyTranslationKeys {
     issueScreenshotsTampered: string;
     issueScreenshotsMissing: string;
     issueScreenshotsChainOnly: string;
-    issueSourceMismatch: string;
+    issueSubmissionMismatch: string;
+    issueSubmissionMissing: string;
+    issueSubmissionAmbiguous: string;
+    issueSubmissionUncheckable: string;
     issueAnchoringInvalid: string;
     issueAnchoringMissing: string;
     issueAnchoringPostHoc: string;

@@ -9,6 +9,7 @@ import type {
   ExamBindingVerificationResult,
   AnalysisReport,
   ProofVersionStatus,
+  SubmissionPairStatus,
 } from '@typedcode/shared';
 
 // Extended proof data with content and language
@@ -585,9 +586,19 @@ export interface DiffLine {
   newLineNumber?: number;
 }
 
-/** ソースファイル不一致情報 */
+/**
+ * 提出物 (同梱ソースと proof.content) の照合で、proof に付く不整合の情報 (#293)。
+ *
+ * 判定 (`kind`) と重さ (`severity`) は shared の `matchSubmissionSources` / `submissionSeverity` の結論で、
+ * verify-cli と同じ。`mismatch` / `ambiguous` (と、ソースがあるときの `uncheckable`) は error、
+ * `missing-source` は warning。照合に問題が無い proof には付けない (`undefined`)。
+ */
 export interface ContentMismatchInfo {
+  /** 期待されるソースの名前 (自己申告の filename から作った名前。作れなければ proof のファイル名) */
   filename: string;
+  /** 行単位の差分の追加 / 削除行数 (`kind: 'mismatch'` のときだけ意味を持つ。他は 0) */
   additions: number;
   deletions: number;
+  kind: Exclude<SubmissionPairStatus, 'match'>;
+  severity: 'warning' | 'error';
 }

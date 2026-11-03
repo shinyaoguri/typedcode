@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { TrustCalculator } from '../TrustCalculator.js';
-import type { ScreenshotVerificationSummary, VerificationResultData } from '../../types.js';
+import type { ContentMismatchInfo, ScreenshotVerificationSummary, VerificationResultData } from '../../types.js';
 import { t } from '../../i18n/index.js';
 
 /** 健全な anchored proof の検証結果 (テストごとに上書きして崩す)。 */
@@ -222,6 +222,43 @@ describe('TrustCalculator.calculate — level determination', () => {
       { ...healthyResult(), chainValid: false, isPureTyping: false, rootAnchored: false },
       { total: 1, verified: 0, missing: 1, tampered: 0, chainOnly: 0 }
     );
+    expect(r.level).toBe('failed');
+  });
+});
+
+describe('TrustCalculator.calculate — submission issues (#293)', () => {
+  const info = (kind: ContentMismatchInfo['kind'], severity: ContentMismatchInfo['severity']): ContentMismatchInfo => ({
+    filename: 'valid.js',
+    additions: 1,
+    deletions: 2,
+    kind,
+    severity,
+  });
+
+  it('fails when the bundled source differs from proof.content, as a source issue rather than a chain issue', () => {
+    const r = TrustCalculator.calculate(healthyResult(), noScreenshots(), [info('mismatch', 'error')]);
+
+    expect(r.level).toBe('failed');
+    expect(r.issues.find((i) => i.component === 'source')).toMatchObject({ severity: 'error' });
+    expect(r.issues.some((i) => i.component === 'chain')).toBe(false);
+  });
+
+  it('names the source file and the line counts in the mismatch message', () => {
+    const r = TrustCalculator.calculate(healthyResult(), noScreenshots(), [info('mismatch', 'error')]);
+
+    expect(r.issues.find((i) => i.component === 'source')?.message).toContain('valid.js');
+  });
+
+  it('only warns when the bundled source is missing', () => {
+    const r = TrustCalculator.calculate(healthyResult(), noScreenshots(), [info('missing-source', 'warning')]);
+
+    expect(r.level).toBe('partial');
+    expect(r.issues.find((i) => i.component === 'source')).toMatchObject({ severity: 'warning' });
+  });
+
+  it('fails when the proof cannot be paired with a single source file', () => {
+    const r = TrustCalculator.calculate(healthyResult(), noScreenshots(), [info('ambiguous', 'error')]);
+
     expect(r.level).toBe('failed');
   });
 });

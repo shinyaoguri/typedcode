@@ -21,6 +21,8 @@
 10. **拡張子 → 言語の表は shared の `LANGUAGE_MAP` が正本** (#278): `KNOWN_LANGUAGES` (= proof の `language` の allowlist の導出元。#248) もここから導出される。verify に表を書き起こさない。`services/fileUtils.ts` は shared の `getLanguageFromExtension` / `getFileType` / `isProofFilename` を再エクスポートするだけで、`isBinaryFile` だけ「画像は別経路で扱う」ため `isImageFile` 除外を重ねる。`services/__tests__/fileUtilsPolicy.test.ts` が表の再出現を機械的に禁止する
 11. **proof の名前 (`*_proof.json` / `*_proof_N.json`, shared の `isProofExportFilename`) なのに読めないファイルは、plaintext / success として並べず error として残す** (#292)。`ZipFileProcessor.parseTextFile` は壊れていても `type: 'proof'` で返し、`FileController.addFileToVerification` が JSON 破損・proof 構造なしを `status: 'error'` のタブ/行にする (検証キューには載せない)。黙って通常の JSON に落とすと壊れたタブが緑の流し見で見落とされ、verify-cli の失敗扱いとも食い違う。`services/__tests__/zipBrokenProof.test.ts` と E2E `verify-web.spec.ts` が固定
 
+12. **同梱ソースと `proof.content` の照合は shared の `matchSubmissionSources` に委譲する** (#293): `FileController` が登録した材料 (フォルダごとの proof・ソース・読めない proof) を、全ファイルが揃ってから `settleSubmission` で照合する (途中で判定すると、まだ読んでいないソースが「欠落」に見える。ZIP は `processFile` の末尾、フォルダは `FolderController` が読み込み後に呼ぶ)。名前の推測 (ベース名の一致) を再び書かない — 同名のタブの 2 つ目 (`main_proof_1.json` ↔ `main_1.c`) が黙って未照合になる (これが旧実装の欠陥だった)。結論は verify-cli と同じ: **不一致・対応の曖昧さは error、ソース欠落・孤立ソースは warning** (`ContentMismatchInfo.severity`。TrustCalculator の `source` issue と `VerificationController.deriveStatus` が同じ軸で見る)。proof のタブに付くのは status と `source` issue だけで、**整合性 (integrity) のバッジは proven のまま**。照合結果は検証が終わった後に付くこともあるので、status の出所は `VerificationController.recomputeStatus` に一本化してある (FileController は `onSubmissionChange` で通知するだけで、status を導出し直さない)。ソースは proof の有無・照合の結果によらず**常に平文タブとして開ける** (不一致のときは行差分ビュー)。比較はバイト厳密なので、ソース候補は BOM を落とさない生バイト (`ParsedFileData.rawBytes`) を持つ。`ui/__tests__/submissionCheck.test.ts` が Web の配線を、`services/__tests__/webCliParity.submission.test.ts` が同じ ZIP での CLI との結論の一致を固定する
+
 ## ディレクトリ一覧
 
 | ディレクトリ | 役割 |
@@ -99,8 +101,8 @@ E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく�
 
 `TrustCalculator.calculate` は加減点スコアではなく **issue リスト** を組み立て、`determineLevel` で `failed`(error あり) / `partial`(warning あり) / `verified`(issue なし) に落とす。issue を上げる要素:
 
-- **error**: metadata 不正、ハッシュチェーン不正、スクショ改竄、署名 cp が anchored だが invalid、**セッション開始トークンと署名 cp の sessionId 不一致 (spec §6.3。整合性ではなく `anchoring` 層に上げる)**、exam 束縛失敗 (package 提供時)
-- **warning**: 未アンカー (署名 cp なし)、post-hoc 一括署名疑い、**アンカー密度が疎 (ADR-0016, `signedCheckpointDensity.sparse`)**、**root 未サーバアンカー (ADR-0017, `!rootAnchored` かつ非 exam)**、非ピュアタイピング (ペースト/バルク挿入)、ソース不一致、`screenShareOptOut`、exam だが問題パッケージ未読込、スクショ欠損
+- **error**: metadata 不正、ハッシュチェーン不正、スクショ改竄、**提出物の不整合 (同梱ソースが `proof.content` と不一致・対応が曖昧。`source` component。#293)**、署名 cp が anchored だが invalid、**セッション開始トークンと署名 cp の sessionId 不一致 (spec §6.3。整合性ではなく `anchoring` 層に上げる)**、exam 束縛失敗 (package 提供時)
+- **warning**: 未アンカー (署名 cp なし)、post-hoc 一括署名疑い、**アンカー密度が疎 (ADR-0016, `signedCheckpointDensity.sparse`)**、**root 未サーバアンカー (ADR-0017, `!rootAnchored` かつ非 exam)**、非ピュアタイピング (ペースト/バルク挿入)、**同梱ソースの欠落 (`source` component)**、`screenShareOptOut`、exam だが問題パッケージ未読込、スクショ欠損
 
 `VerificationController.handleComplete` のタブ status 判定と **同じ軸** を見るので、両者を揃えて変更すること (タブが緑なのに信頼バッジが警告、のような不整合を避ける)。status の error 側は `proofVerification.isOverallValid` (= verify-cli の `valid` と同じ合成: shared の `verifyProofFile` × exam 束縛 × スクショ改竄) 一本に寄せてあるので、error 条件を増やすときは CLI 側も同時に見ること。`component` を増やしたら `ResultPanel.getComponentLabel` にラベルも追加する。#146 で handleComplete にスクショ改竄 (error)・スクショ欠損・`screenShareOptOut` (warning) を合流済み。attestation の署名は検証しないので status 軸にも信頼バッジにも入れない (#340)。
 

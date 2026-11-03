@@ -123,9 +123,34 @@ Anchoring:   VERIFIED (12 signed checkpoints, 100.0% coverage)
 | Code | 説明 |
 |------|-------------|
 | 0 | 検証成功 |
-| 1 | 検証失敗 / エラー |
+| 1 | 検証失敗 / エラー (ZIP の同梱ソースが `proof.content` と一致しない場合を含む) |
 
 既定は 1 (fail-closed) です。0 になるのは全 proof の検証を最後まで終えて合格したときと `--help` だけで、外部 Analyzer が解決しないまま止まる等で途中で終わった場合も 1 になります (#315)。
+
+## 提出物の照合 (ZIP の同梱ソース)
+
+ZIP 入力では、proof ごとに、同梱されたソースが `proof.content` (検証済みの本文) と**バイト単位で一致するか**を照合し、結果を `--- Submission ---` 節に出します。proof を検証しても、同梱ソースが同じ内容である保証にはならないためです (採点するソースが、検証したものとずれます)。
+
+```
+--- Submission ---
+Source:      valid.js  MISMATCH (differs from proof.content)
+  source 32 bytes, proof.content 1 bytes, first difference at byte 0
+```
+
+| 表示 | 意味 | exit code |
+|---|---|---|
+| `MATCH` | 期待名のソースが `proof.content` とバイト単位で一致 | 影響なし |
+| `MISMATCH` | 期待名のソースが `proof.content` と違う | **1** |
+| `AMBIGUOUS` | 対応するソースを一意に決められない (読めない proof や欠番が先にある、期待名が他の proof と衝突) | **1** |
+| `UNCHECKABLE` | proof に `filename` / `content` が無く、比較できない。ZIP にソースがあるときだけ失敗 | ソースがあれば **1** |
+| `MISSING` | 期待名のソースが ZIP に無い (警告) | 影響なし |
+| `! Source file not matched to any proof` | どの proof の期待名にも当たらないソース (警告。`--- Submission (ZIP) ---` 節) | 影響なし |
+
+- **対応規則**: 期待名は proof の `filename` と `language` から、editor の export と同じ手順で作ります (同名のタブは `_proof` / `_proof_1`… の順に `main.c` / `main_1.c`…)。名前の推測や、内容が一致する別名のソースの探索はしません。詳細は [system-spec §5.2.1](../../docs/system-spec.md)
+- **比較は厳密一致**: 改行 (CRLF / LF)・BOM・末尾の空白・Unicode 正規化は**正規化しません**
+- `Integrity: PROVEN` は変わりません。proof 自体は改ざんされていないので、提出物の不整合は整合性の判定ではなく、総合の合否 (exit 1) と `Submission failed:` の行に出ます
+- JSON 単体の入力は同梱ソースが無いので `Submission: not checked` と出ます
+- **採点に使うのは、`MATCH` したソースか、`proof.content` です**。`MISMATCH` したソースは採点に使わないでください。同梱ソースは ZIP を展開すればそのまま読めるので、不一致のときも元のソースは失われません
 
 ## 対応形式
 

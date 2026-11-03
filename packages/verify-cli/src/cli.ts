@@ -8,10 +8,11 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { verifyProof, toBundleIntegrityValid, type ProofFile } from './verify.js';
-import { extractAllProofs, extractScreenshotArtifacts } from './zip.js';
+import { extractAllProofs, extractScreenshotArtifacts, extractSubmissionSources } from './zip.js';
 import { loadExternalAnalyzers } from './analyzers.js';
 import {
   formatMultiSummary,
+  formatOrphanSources,
   formatProofHeader,
   formatResult,
   formatUnreadableProof,
@@ -25,6 +26,9 @@ import {
   buildAnalysisBundle,
   collectChainImageHashes,
   summarizeScreenshotArtifacts,
+  matchSubmissionSources,
+  submissionSeverity,
+  type SubmissionReport,
   type VerificationMode,
   type ExamPackageManifest,
   type Analyzer,
@@ -177,6 +181,10 @@ async function main(): Promise<void> {
     // ZIP 内の `*_proof.json` のうち proof として読めなかったもの (#292)。1 件でも失敗として数える。
     let unreadable: ProofExtractionFailure[] = [];
     let screenshotSummary: ScreenshotVerificationSummary | undefined;
+    // 提出物の照合 (#293)。undefined = 未検査 (JSON 単体入力は同梱ソースが無い)。
+    let submissionReport: SubmissionReport | undefined;
+    // 表示名 (複数入力のときは入力名つき) → proof の ZIP 内パス。照合は ZIP 内のパスで行う。
+    const entryPathOf = new Map<string, string>();
     try {
       const filePath = resolve(input);
       const ext = extname(filePath).toLowerCase();
@@ -188,11 +196,23 @@ async function main(): Promise<void> {
           throw new Error('No proof file found in ZIP');
         }
         unreadable = multiInput ? failures.map((f) => ({ ...f, filename: `${input}:${f.filename}` })) : failures;
+        // 提出物の照合 (#293): 同梱ソースと proof.content を対応規則 (shared) で対にして照合する。
+        // 壊れた proof も欠番として渡す (後続タブのソース名を確定できなくなるため)。
+        submissionReport = matchSubmissionSources({
+          // 自己申告の欄は未検証なので unknown のまま渡す (型の確認は shared が行う)。
+          proofs: extracted.map((p) => {
+            const claim = p.proof as unknown as { filename?: unknown; language?: unknown; content?: unknown };
+            return { path: p.filename, filename: claim.filename, language: claim.language, content: claim.content };
+          }),
+          unreadableProofPaths: failures.map((f) => f.filename),
+          sources: await extractSubmissionSources(filePath),
+        });
         // 入力が複数のとき、別々の ZIP に同名の entry (`tab1_proof.json` など) があっても
         // summary / --analysis-* の filename が衝突しないよう入力名を前置する。
         proofs = multiInput
           ? extracted.map((p) => ({ filename: `${input}:${p.filename}`, proof: p.proof }))
           : extracted;
+        extracted.forEach((p, i) => entryPathOf.set(proofs[i]!.filename, p.filename));
 
         // スクリーンショット検証 (#147): ZIP 入力ごとに一度だけ計算して、その ZIP の全 proof に渡す
         // (スクショはセッション単位で proof 横断)。真正記録は各チェーンの screenshotCapture.imageHash。
@@ -249,9 +269,22 @@ async function main(): Promise<void> {
         summary.push({ filename, valid: false, reason });
         continue;
       }
-      console.log(formatResult(result));
-      summary.push({ filename, valid: result.valid });
-      analysisDump.push({ filename, valid: result.valid, analysis: result.analysis });
+      // 提出物の不整合は proof 自体の改ざんではないので integrity (assurance) は落とさず、総合 valid だけを落とす (#293)。
+      const entryPath = entryPathOf.get(filename);
+      const pair =
+        submissionReport && entryPath !== undefined
+          ? submissionReport.pairs.find((p) => p.proofPath === entryPath)
+          : undefined;
+      const submission =
+        submissionReport && pair ? { pair, severity: submissionSeverity(submissionReport, pair) } : undefined;
+      const valid = result.valid && submission?.severity !== 'failure';
+      console.log(formatResult({ ...result, valid, submission }));
+      summary.push({
+        filename,
+        valid,
+        ...(result.valid && !valid ? { reason: 'Submission: bundled source does not match the verified proof' } : {}),
+      });
+      analysisDump.push({ filename, valid, analysis: result.analysis });
       // Tier A バンドル (ADR-0024): content-free な派生ビュー。--analysis-bundle 指定時のみ集める。
       if (analysisBundlePath !== undefined) {
         const bundle = buildAnalysisBundle({
@@ -263,6 +296,11 @@ async function main(): Promise<void> {
         });
         bundleDump.push({ filename, ...bundle });
       }
+    }
+
+    // 孤立ソース (どの proof の期待名にも当たらない同梱ファイル) は警告だけ。exit code には影響しない (#293)。
+    if (submissionReport && submissionReport.orphanSources.length > 0) {
+      console.log(formatOrphanSources(submissionReport.orphanSources));
     }
 
     // 読めなかった proof も他の proof の検証を止めず、失敗として summary に積む (#292)。

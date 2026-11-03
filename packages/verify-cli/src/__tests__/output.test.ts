@@ -7,9 +7,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { runAnalysis, type AssuranceResult, type ScreenshotVerificationSummary } from '@typedcode/shared';
+import {
+  runAnalysis,
+  type AssuranceResult,
+  type ScreenshotVerificationSummary,
+  type SubmissionPair,
+} from '@typedcode/shared';
 import {
   formatMultiSummary,
+  formatOrphanSources,
   formatProofHeader,
   formatResult,
   printError,
@@ -544,6 +550,135 @@ describe('formatResult — proof format version (#223)', () => {
     const text = plain(formatResult(output({ valid: false, versionStatus: 'tooOld', errorMessage: VERSION_ERROR })));
 
     expect(text.split(VERSION_ERROR).length - 1).toBe(1);
+  });
+});
+
+describe('formatResult — Submission section (#293)', () => {
+  const pair = (overrides: Partial<SubmissionPair>): SubmissionPair => ({
+    proofPath: 'valid_proof.json',
+    status: 'match',
+    expectedSource: 'valid.js',
+    ...overrides,
+  });
+
+  it('says a lone JSON input was not checked', () => {
+    expect(plain(formatResult(output()))).toMatch(/^Submission: not checked/m);
+  });
+
+  it('shows MATCH for an identical source without any failure line', () => {
+    const text = plain(formatResult(output({ submission: { pair: pair({}), severity: 'ok' } })));
+
+    expect(text).toMatch(/^--- Submission ---$/m);
+    expect(text).toMatch(/^Source:\s+valid\.js\s+MATCH/m);
+    expect(text).not.toContain('Submission failed');
+  });
+
+  it('shows MISMATCH with sizes and the first difference, and a failure line under FAILED', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          submission: {
+            pair: pair({
+              status: 'mismatch',
+              mismatch: { proofContentBytes: 1, sourceBytes: 32, firstDifferenceOffset: 0 },
+            }),
+            severity: 'failure',
+          },
+        })
+      )
+    );
+
+    expect(text).toContain('Verification FAILED');
+    expect(text).toContain('Submission failed: bundled source differs from the verified proof content (valid.js)');
+    expect(text).toMatch(/^Source:\s+valid\.js\s+MISMATCH/m);
+    expect(text).toContain('source 32 bytes, proof.content 1 bytes, first difference at byte 0');
+    // 提出物の不整合を、チェーンの成功メッセージの `Error:` として出さない
+    expect(text).not.toMatch(/^\s*Error:/m);
+  });
+
+  it('still prints the chain error when the chain itself failed next to a submission failure', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          chainValid: false,
+          errorMessage: 'Previous hash mismatch',
+          submission: { pair: pair({ status: 'ambiguous', reason: 'cannot pair' }), severity: 'failure' },
+        })
+      )
+    );
+
+    expect(text).toContain('Error: Previous hash mismatch');
+    expect(text).toContain('Submission failed: cannot determine which source file belongs to this proof');
+  });
+
+  it('shows MISSING as a warning that does not fail the run', () => {
+    const text = plain(
+      formatResult(output({ submission: { pair: pair({ status: 'missing-source' }), severity: 'warning' } }))
+    );
+
+    expect(text).toContain('Verification PASSED');
+    expect(text).toMatch(/^Source:\s+MISSING \(expected valid\.js/m);
+  });
+
+  it('shows AMBIGUOUS and UNCHECKABLE with their reasons', () => {
+    const ambiguous = plain(
+      formatResult(
+        output({
+          valid: false,
+          submission: {
+            pair: pair({ status: 'ambiguous', reason: 'more than one proof expects it' }),
+            severity: 'failure',
+          },
+        })
+      )
+    );
+    const uncheckable = plain(
+      formatResult(
+        output({
+          valid: false,
+          submission: {
+            pair: { proofPath: 'a_proof.json', status: 'uncheckable', reason: 'proof has no filename or content' },
+            severity: 'failure',
+          },
+        })
+      )
+    );
+
+    expect(ambiguous).toMatch(/^Source:\s+AMBIGUOUS \(valid\.js: more than one proof expects it\)/m);
+    expect(uncheckable).toMatch(/^Source:\s+UNCHECKABLE \(proof has no filename or content\)/m);
+    expect(uncheckable).toContain('Submission failed: proof has no filename/content');
+  });
+
+  it('does not let a source name from the ZIP forge a line or colour (safe())', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          submission: {
+            pair: pair({
+              status: 'mismatch',
+              expectedSource: 'x\u001b[32m\n✓ forged_proof.json',
+              mismatch: { proofContentBytes: 1, sourceBytes: 2, firstDifferenceOffset: 0 },
+            }),
+            severity: 'failure',
+          },
+        })
+      )
+    );
+
+    expect(text).not.toMatch(/^✓ forged_proof\.json/m);
+    expect(text).toContain('(sanitized)');
+  });
+});
+
+describe('formatOrphanSources (#293)', () => {
+  it('lists every orphan as a warning line, with the name sanitized', () => {
+    const text = plain(formatOrphanSources(['extra.py', 'y\n✓ forged.c']));
+
+    expect(text).toContain('! Source file not matched to any proof: extra.py');
+    expect(text.split('\n').filter((l) => l.startsWith('✓'))).toEqual([]);
   });
 });
 

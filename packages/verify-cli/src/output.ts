@@ -59,6 +59,8 @@ import type {
   ScreenshotVerificationSummary,
   ProofExtractionFailureReason,
   ProofVersionStatus,
+  SubmissionPair,
+  SubmissionSeverity,
 } from '@typedcode/shared';
 import type { CLIExamResult } from './verify.js';
 
@@ -94,6 +96,73 @@ export interface VerificationOutput {
   declaredVersion?: string;
   /** スクリーンショット検証 (#147)。undefined = 未検査 (JSON 単体入力)。 */
   screenshots?: ScreenshotVerificationSummary;
+  /**
+   * 提出物 (同梱ソースと `proof.content`) の照合 (#293)。undefined = 未検査 (JSON 単体入力は同梱ソースが無い)。
+   * `severity` は shared の `submissionSeverity` の結論で、`failure` なら呼び出し側が `valid` を false にする。
+   */
+  submission?: { pair: SubmissionPair; severity: SubmissionSeverity };
+}
+
+/** 照合の失敗を 1 行に。内容は出さず、名前と食い違いの位置だけ (名前は ZIP / proof 由来なので `safe()`)。 */
+function describeSubmissionFailure(pair: SubmissionPair): string {
+  const name = pair.expectedSource === undefined ? '' : ` (${safe(pair.expectedSource)})`;
+  switch (pair.status) {
+    case 'mismatch':
+      return `bundled source differs from the verified proof content${name}`;
+    case 'ambiguous':
+      return `cannot determine which source file belongs to this proof${name}`;
+    case 'uncheckable':
+      return 'proof has no filename/content, so the bundled source cannot be compared';
+    default:
+      return `source check failed${name}`;
+  }
+}
+
+/** `--- Submission ---` 節の行 (1 proof 分)。未検査は JSON 単体入力。 */
+function formatSubmission(submission: VerificationOutput['submission']): string[] {
+  if (!submission) {
+    return [c('dim', 'Submission: not checked (provide the export ZIP to compare the bundled sources)')];
+  }
+  const { pair, severity } = submission;
+  const lines = [c('cyan', '--- Submission ---')];
+  const expected = pair.expectedSource === undefined ? '' : safe(pair.expectedSource);
+  switch (pair.status) {
+    case 'match':
+      lines.push(`Source:      ${expected}  ${c('green', 'MATCH')} (identical to proof.content)`);
+      break;
+    case 'mismatch': {
+      const m = pair.mismatch!;
+      lines.push(`Source:      ${expected}  ${c('red', 'MISMATCH')} (differs from proof.content)`);
+      lines.push(
+        `  source ${m.sourceBytes} bytes, proof.content ${m.proofContentBytes} bytes, first difference at byte ${m.firstDifferenceOffset}`
+      );
+      lines.push(
+        c('dim', '  Grade proof.content, not the bundled file. Byte-exact comparison: CRLF / BOM are not normalized.')
+      );
+      break;
+    }
+    case 'missing-source':
+      lines.push(`Source:      ${c('yellow', 'MISSING')} (expected ${expected}; no bundled source to compare)`);
+      break;
+    case 'ambiguous':
+      lines.push(
+        `Source:      ${c('red', 'AMBIGUOUS')} (${expected === '' ? '' : `${expected}: `}${pair.reason ?? 'cannot determine the source file'})`
+      );
+      break;
+    case 'uncheckable':
+      lines.push(`Source:      ${c(severity === 'failure' ? 'red' : 'yellow', 'UNCHECKABLE')} (${pair.reason ?? ''})`);
+      break;
+  }
+  return lines;
+}
+
+/** ZIP の孤立ソース (どの proof の期待名にも当たらないファイル) の警告。exit code には影響しない。 */
+export function formatOrphanSources(orphans: readonly string[]): string {
+  const lines = ['', c('cyan', '--- Submission (ZIP) ---')];
+  for (const path of orphans) {
+    lines.push(c('yellow', `  ! Source file not matched to any proof: ${safe(path)}`));
+  }
+  return lines.join('\n');
 }
 
 function passFail(ok: boolean): string {
@@ -288,7 +357,9 @@ export function formatResult(result: VerificationOutput): string {
     // 総合 valid だけが screenshotsValid で false になる)。改ざん枚数を失敗理由として出す。
     const tamperedShots = result.screenshots?.tampered ?? 0;
     const screenshotsFailedOnly = result.metadataValid && result.chainValid && tamperedShots > 0;
-    if (examBindingFailedOnly || screenshotsFailedOnly) {
+    const submissionFailure = result.submission?.severity === 'failure' ? result.submission.pair : undefined;
+    const submissionFailedOnly = result.metadataValid && result.chainValid && submissionFailure !== undefined;
+    if (examBindingFailedOnly || screenshotsFailedOnly || submissionFailedOnly) {
       // 両方落ちることもある (exam proof の ZIP でスクショも改ざん) ので、片方に潰さず両方出す。
       // #223: version の不合格が重なるときもその理由を落とさない (shared は version の理由を errorMessage の先頭に置く)。
       if (result.versionStatus !== undefined && isProofVersionRejected(result.versionStatus) && result.errorMessage) {
@@ -305,6 +376,9 @@ export function formatResult(result: VerificationOutput): string {
           )
         );
       }
+      if (submissionFailedOnly) {
+        lines.push(c('red', `  Submission failed: ${describeSubmissionFailure(submissionFailure!)}`));
+      }
     } else {
       if (result.errorMessage) {
         // 検証失敗の理由には proof 由来の値が埋め込まれる (`got ${claimed[key]}` など)。
@@ -312,6 +386,9 @@ export function formatResult(result: VerificationOutput): string {
       }
       if (result.errorAt !== undefined) {
         lines.push(c('red', `  Failed at event: ${safe(result.errorAt)}`));
+      }
+      if (submissionFailure) {
+        lines.push(c('red', `  Submission failed: ${describeSubmissionFailure(submissionFailure)}`));
       }
     }
   }
@@ -454,6 +531,9 @@ export function formatResult(result: VerificationOutput): string {
   } else {
     lines.push(c('dim', 'Screenshots: not checked (provide the export ZIP to verify screenshots)'));
   }
+
+  // 提出物の照合 (#293): 同梱ソースと proof.content。未検査 (JSON 単体入力) は明示して overclaim を防ぐ。
+  lines.push(...formatSubmission(result.submission));
 
   // 試験モード (ADR-0006): exam ブロックがあれば束縛検証セクションを出す。
   if (result.exam) {
