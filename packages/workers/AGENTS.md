@@ -189,7 +189,7 @@ Durable Objects 化 (ADR-0027 Option C) は `firstSeenAt` の分裂 (#151) の�
 1. `cp .dev.vars.example .dev.vars` で雛形コピー
 2. Turnstile キーを `.dev.vars` に貼り付け
 3. `npm run gen-checkpoint-key -w @typedcode/workers` で開発用鍵生成
-4. 公開鍵を `packages/shared/src/checkpointKeys/localKeys.ts` に貼り付け、`git update-index --skip-worktree` で隠す
+4. 公開鍵を `packages/shared/src/checkpointKeys/localKeys.ts` に貼り付け (gitignore 済み。無ければ `npm install` / `npm run doctor` が `.example` から作る。#338)
 5. 秘密鍵 (`CHECKPOINT_SIGNING_KEY_JWK`) と `CHECKPOINT_SIGNING_KEY_ID` を `.dev.vars` に貼り付け
 6. `wrangler kv namespace create CHECKPOINT_SESSIONS` で KV 作成し `wrangler.toml` の ID を置換 (こちらも skip-worktree)
 7. `npm run dev` で http://localhost:8787

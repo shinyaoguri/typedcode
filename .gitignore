@@ -28,6 +28,12 @@ yarn-error.log*
 .env.*.local
 .dev.vars
 
+# dev 用の公開鍵置き場 (#338)。追跡すると e2e の使い捨て鍵や開発者の dev 鍵が
+# 誤コミットされ、本番の verifier がそれを信頼する。無ければ npm install
+# (postinstall) / e2e の setup / doctor が隣の .example から作る
+packages/shared/src/checkpointKeys/localKeys.ts
+packages/shared/src/examAuthorityKeys/localKeys.ts
+
 # Cache
 .cache/
 .parcel-cache/

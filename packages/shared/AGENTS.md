@@ -37,7 +37,7 @@
 | `sessionStartToken.ts` | セッション開始トークン (ADR-0017) の発行・検証 (registry-only)・`computeAnchoredChainRoot`。署名鍵は checkpoint と同一系統を流用 |
 | `checkpointKeys/registry.ts` | append-only 公開鍵レジストリ (本番鍵) |
 | `checkpointKeys/keyValidity.ts` | 鍵の有効期間 / 失効判定の**単一実装** (#233)。checkpoint 鍵と出題者鍵の両方を構造型で受ける |
-| `checkpointKeys/localKeys.ts` | skip-worktree のローカル開発鍵置き場 |
+| `checkpointKeys/localKeys.ts` | ローカル開発鍵置き場 (gitignore 済み。無ければ `npm install` の postinstall / e2e の setup / doctor が `localKeys.ts.example` から作る。#338) |
 | `fingerprint.ts` | ブラウザフィンガープリント |
 | `verification.ts` | チェーン外検証ユーティリティ (content replay 等)。`verifyPoSW` の反復は**同期 SHA-256** (`hashUtils.ts` の `iterateSha256HexSync`、`@noble/hashes`) で計算する (#267) |
 | `utils/hashUtils.ts` | `deterministicStringify` / `computeHash` (WebCrypto, async) / `iterateSha256HexSync` (PoSW 反復の同期版。`computeHash` を n 回 await した結果とビット単位で一致することを `__tests__/poswSync.test.ts` が固定ベクタで縛る) |
@@ -48,7 +48,7 @@
 | `assurance.ts` | 三層保証語彙 (ADR-0020)。`deriveAssurance` が実証拠のみから整合性/時刻アンカー/著述性(advisory) を導出。verify(web)/verify-cli が同一実装を使う (表示の食い違い防止)。**自己申告 `proof.mode` を入力に使わない・provenance を判定に昇格させない** |
 | `analysis/` | 分析層フレームワーク (ADR-0009)。`runAnalysis` + 差し替え可能な `Analyzer` 群 (automation / transcription-topology / focus-burst の第一次ヒューリスティック + pureTyping)。検証と**直交**する advisory のみ・判定しない。`automationAnalyzer` は webdriver/headless GPU に加え **合成打鍵 (`KeystrokeDynamicsData.isTrusted===false`, ADR-0018)** も数える。`templateInjectionAnalyzer` (#416) は `templateInjection` の `data.content.length` の合計 (テンプレートで入った文字数。自己申告の `contentLength` は使わない) と `contentChange` の `insertedCharCount` の合計を並べる **severity `info` 固定**の signal で、`isPureTyping` の定義も `reviewPriority` も変えない (starter を持つ正規の proof で全員 notice にならないため。閾値で振り分けない = ADR-0023)。`typingPatternAnalyzer` は旧 `TypingPatternAnalyzer` (打鍵動態) を `keystroke-content-consistency` 次元の advisory signal に折り込む (旧 verify TypingPatternCard を廃止・判定ゲージは持ち込まない・critical でも notice 止まり・dwell<30 で黙る ★6b)。`analysis/eval.ts` は **実証評価** (W5): ラベル付きコーパス → `evaluateAnalysis` が混同行列/閾値スイープ/genuineSignalRate を純粋関数で算出。**ゲート: 実測まで heuristic を `review` に昇格しない** (収集手順は docs/analysis-eval-protocol.md、ランナーは `__tests__/analysisEvalCorpus.test.ts`)。`analysis/bundle.ts` は **Tier A バンドル** (ADR-0024): `buildAnalysisBundle` が content-free な `{processSummary, analysis, assurance}` を束ねる (events/source/fingerprint なし)。`analysis/cohort.ts` は **コホート基準** (ADR-0025): `computeCohortBaseline`/`positionInCohort` が `AnalysisBundle[]` から頑健分布 (中央値/IQR・個票非保持) と提出物の位置 (percentile/IQR距離) を算出。**advisory・外れ値≠違反・小N ガード** |
 | `exam/` | 試験モードの暗号コア (ADR-0006)。封印 `.tcexam` の build/verify(署名)/decrypt(Argon2id+AES-256-GCM)、`computeExamChainRoot`、`parseExamPackageManifest`、grader 用 `verifyExamBinding`。root 式は `proof.exam` 有無で分岐。N問バンドル codec は `examBundle.ts` (`tcexam-exam/1`)。**授業モードの平文配布 `classPackage.ts` (ADR-0014, `tcclass/1`) も同居** — 暗号を持たず `parseExamBundle` を平文で再利用する `parseClassPackage`/`encodeClassPackage` |
-| `examAuthorityKeys/` | 出題者 (問題署名) 公開鍵レジストリ (ADR-0006)。`checkpointKeys/` と**別系統・同型** (append-only、`registry.ts` 本番 + skip-worktree な `localKeys.ts`) |
+| `examAuthorityKeys/` | 出題者 (問題署名) 公開鍵レジストリ (ADR-0006)。`checkpointKeys/` と**別系統・同型** (append-only、`registry.ts` 本番 + gitignore 済みの `localKeys.ts`) |
 
 ## 型定義の運用
 
