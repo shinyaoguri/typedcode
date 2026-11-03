@@ -135,6 +135,8 @@ export interface VerifyTranslationKeys {
     anchoringNone: string;
     anchoringPostHoc: string;
     anchoringSparse: string;
+    anchoringUnsignedTail: string;
+    anchoringLastSigned: string;
     // 詳細展開セクション
     anchoringDetailsToggle: string;
     anchoringSectionKeys: string;

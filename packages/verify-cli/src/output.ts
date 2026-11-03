@@ -482,7 +482,21 @@ export function formatResult(result: VerificationOutput): string {
     } else if (sc.valid) {
       const cov = sc.coverage;
       const pct = (cov.coverageRatio * 100).toFixed(1);
-      lines.push(`Anchoring:   ${c('green', 'VERIFIED')} (${cov.signedCount} signed checkpoints, ${pct}% coverage)`);
+      // 最終署名の位置 (#295)。valid 分岐なので eventIndex は検証済みの整数。
+      const lastSigned = cov.lastSignedEventIndex !== null ? `, last signed event #${cov.lastSignedEventIndex}` : '';
+      lines.push(
+        `Anchoring:   ${c('green', 'VERIFIED')} (${cov.signedCount} signed checkpoints, ${pct}% coverage${lastSigned})`
+      );
+      // 未署名の末尾 (#295): 最後の署名 cp より後のイベントはサーバ時刻の上界を持たない。
+      // Timeline が ANCHORED にならない理由をここで示す (判定は shared の deriveAssurance)。
+      if (cov.unsignedTailEvents > 0) {
+        lines.push(
+          c(
+            'yellow',
+            `  ! ${cov.unsignedTailEvents} trailing events are not covered by a signed checkpoint (unsigned tail)`
+          )
+        );
+      }
       if (sc.temporal?.postHocSuspected) {
         lines.push(c('yellow', '  ! Post-hoc batch signing suspected (server span << client span)'));
       }
