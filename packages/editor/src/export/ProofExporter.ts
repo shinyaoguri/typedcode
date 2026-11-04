@@ -393,6 +393,8 @@ export class ProofExporter {
       return;
     }
     this.isExporting = true;
+    /** ダウンロードまで済んだタブ。ダウンロード後の自己検証は export の区間 (isExporting) の外で行う (#565) */
+    let downloadedTab: TabState | null = null;
 
     try {
       const activeTab = this.tabManager?.getActiveTab();
@@ -511,15 +513,7 @@ export class ProofExporter {
       const zipFilename = `${baseFilename}_TC${timestamp}.zip`;
       this.downloadBlob(blob, zipFilename);
       console.log('[Export] Download triggered:', zipFilename);
-
-      const verification = await activeTab.typingProof.verify();
-      console.log('[TypedCode] Verification result:', verification);
-
-      if (verification.valid) {
-        this.callbacks.onNotification?.(t('export.successVerified'));
-      } else {
-        this.callbacks.onNotification?.(t('export.verifyFailed'));
-      }
+      downloadedTab = activeTab;
     } catch (error) {
       console.error('[TypedCode] Export failed:', error);
       this.exportProgressDialog.hide();
@@ -527,6 +521,31 @@ export class ProofExporter {
     } finally {
       this.isExporting = false;
       this.callbacks.onProofChanged?.();
+    }
+
+    if (downloadedTab) {
+      await this.verifyAfterDownload(downloadedTab);
+    }
+  }
+
+  /**
+   * ダウンロードの後に、タブのチェーンを PoSW 込みで検証し直して結果を通知する。
+   *
+   * 全イベントの PoSW を計算し直すので、件数が多いと数十秒かかる。export はダウンロードで終わっているので、
+   * これは export の区間 (isExporting) の外で行い、その間に押された次の export を無視しない (#565)。
+   * 検証の途中で次の export が同じ proof に記録しても、TypingProof の events は追記しかされず、
+   * 追記されたイベントは検証済みのハッシュの続きとして同じく検証される (PoSW の Worker は requestId で
+   * 要求を取り違えない) ので、この検証は壊れない。
+   */
+  private async verifyAfterDownload(tab: TabState): Promise<void> {
+    try {
+      const verification = await tab.typingProof.verify();
+      console.log('[TypedCode] Verification result:', verification);
+      this.callbacks.onNotification?.(t(verification.valid ? 'export.successVerified' : 'export.verifyFailed'));
+    } catch (error) {
+      // ZIP は既に出ているので「export に失敗した」とは言わない。検証できなかったことだけを伝える。
+      console.error('[TypedCode] Verification after export failed:', error);
+      this.callbacks.onNotification?.(t('export.verifyFailed'));
     }
   }
 

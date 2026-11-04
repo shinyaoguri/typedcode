@@ -55,7 +55,11 @@ ProofExporter.export()
   → performPreExportVerification() (Turnstile。exam/class/assignment は best-effort)
   → getProofData() → ScreenshotTracker.getAllScreenshots()
   → JSZip → ダウンロード
+  ── ここで export の区間 (isExporting) を閉じる ──
+  → (現在のタブだけ) typingProof.verify() で PoSW 込みの自己検証 → 結果の通知
 ```
+
+単一フライトのガード (`isExporting`) はダウンロードまでの区間だけを閉じる。ダウンロード後の自己検証 (`verifyAfterDownload`。件数が多いと数十秒) は区間の外で走らせ、その間に押された次の export を無視しない (#565)。検証の途中に次の export が同じ proof へ記録しても、events は追記だけで、追記分は検証済みのハッシュの続きとして検証されるので壊れない (`export/__tests__/ProofExporter.verifyAfterDownload.test.ts`)。検証の throw は ZIP が出た後なので `export.failed` ではなく `export.verifyFailed` で知らせる。
 
 ## 状態契約 (data-* 属性)
 
