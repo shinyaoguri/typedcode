@@ -75,7 +75,7 @@ src/
 
 ## root アンカー gate (ADR-0017)
 
-- `--require-root-anchor` (任意・boolean): root がサーバアンカーされていない (`sessionStartToken` 無し = オフライン劣化 / 旧 proof) proof を **exit 1** にする (採点向け opt-in)。既定は warning のみで `Root anchor: unanchored` を出す。**exam proof の免除は束縛が検証済み (`--exam-package` で `verifyExamBinding` 合格) のときのみ** (#131) — 自己申告の exam ブロックだけでは gate を回避できない
+- `--require-root-anchor` (任意・boolean): root がサーバアンカーされていない (`sessionStartToken` 無し = オフライン劣化 / 旧 proof) proof を **exit 1** にする (採点向け opt-in)。既定は warning のみで `Root anchor: unanchored` を出す。token はあるが検証できない proof (`rootAnchorFailure`、#329) は既定で exit 1 (整合性は落とさない) で、`Root anchor: UNTRUSTED (<理由>)` を出す (`no session start token` と出さない。keyId は `safe()` を通す)。gate を立てていても Error 行は token の失敗理由を優先する。**exam proof の免除は束縛が検証済み (`--exam-package` で `verifyExamBinding` 合格) のときのみ** (#131) — 自己申告の exam ブロックだけでは gate を回避できない
 - 判定は shared の `verifyProofFile` (`requireRootAnchor` + `examBindingVerified`) に委譲。CLI は `verifyExamBinding` を先に実行して結果フラグを通すだけ。proof は `PROOF_FORMAT_VERSION` 1.2.0 (`MIN_SUPPORTED` 1.0.0 据置) なので **旧 proof もそのまま検証**でき、`rootAnchored:false` で受理 (後方互換)
 
 ## 分析層の出力 (ADR-0009)

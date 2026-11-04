@@ -359,6 +359,14 @@ export const en: VerifyTranslationKeys = {
       'Anchor density is sparse (signed checkpoints are too few / too late for the claimed session)',
     issueSessionTokenMismatch:
       'Session start token does not match the signed checkpoint session id (token from another session suspected)',
+    issueSessionTokenUntrusted: {
+      unknownKey:
+        "Start time cannot be confirmed: this verifier does not know the session start token key ${keyId} (not content tampering; the verifier's key registry may be outdated — update verify)",
+      invalid:
+        'Start time cannot be confirmed: the session start token signature could not be verified (the chain root is self-consistent; not content tampering)',
+      fingerprintMismatch:
+        'Start time cannot be confirmed: the session start token was issued for another device (the chain root is self-consistent; not content tampering)',
+    },
     issueRootNotAnchored: 'Chain root is not server-anchored (start time unfixed; offline forgery possible)',
     issueNotPureTyping: 'Not pure typing (paste / bulk insertion detected)',
     issueExamBindingFailed: 'Exam binding (signature / content hash) verification failed',

@@ -13,6 +13,7 @@ import type {
   PoSWData,
   EventHashData,
   ExportedProof,
+  SessionStartTokenVerificationResult,
 } from './types.js';
 
 // Re-export hash utilities for backward compatibility
@@ -69,6 +70,13 @@ export interface FullVerificationResult {
    * exam / 旧 proof / オフライン劣化では false。warning 判定は呼び出し側 (exam は除外)。
    */
   rootAnchored?: boolean;
+  /**
+   * root は token の serverNonce 込みの式で自己整合しているが、その token を検証できなかった (#329)。
+   * 未知の keyId (検証器の registry が古い可能性) / 署名不正 / fingerprintHash の不一致。
+   * 改ざんではないので `metadataValid` (整合性) は落とさず、`rootAnchored: false` と `valid: false` に
+   * だけ反映する (未知 keyId の署名 cp と同じ扱い)。`errorMessage` には `reason` が入る。
+   */
+  rootAnchorFailure?: RootAnchorFailure;
   /**
    * `sessionStartToken` の sessionId と署名 cp の sessionId が食い違ったか (spec §6.3 / ADR-0017)。
    * true = 別セッションのトークンを流用した proof。`valid` には既に反映済みだが、UI が
@@ -141,17 +149,71 @@ export interface VerifyInitialHashRootOptions {
   signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
 }
 
+/**
+ * セッション開始トークンを検証できなかった理由の分類 (#329)。
+ * - `token-unknown-key`: token の keyId がこの検証器の registry に無い (registry が古い可能性)
+ * - `token-invalid`: 署名不正・形式違反・鍵の有効期間外など、token 自体を信頼できない
+ * - `token-fingerprint-mismatch`: token が proof とは別の端末 (fingerprintHash) 向けに発行されている
+ */
+export type RootAnchorFailureCode = 'token-unknown-key' | 'token-invalid' | 'token-fingerprint-mismatch';
+
+/**
+ * root は serverNonce 込みの式で自己整合している (= 内容の改ざんではない) が、その serverNonce を
+ * 運ぶ token を検証できなかったこと (#329)。開始時刻の根拠が無いだけなので、整合性ではなく
+ * 時刻アンカー層の失敗として扱う。
+ */
+export interface RootAnchorFailure {
+  code: RootAnchorFailureCode;
+  /** 表示用の理由 (英語)。`keyId` を含みうる (proof 由来なので表示層で無害化する)。 */
+  reason: string;
+  /** token の keyId (proof 由来)。 */
+  keyId?: string;
+}
+
 export interface VerifyInitialHashRootResult {
   valid: boolean;
   reason?: string;
   computedInitialHash?: string;
   expectedInitialHash?: string;
   /**
-   * root がサーバアンカーされているか (ADR-0017)。casual/class で有効な `sessionStartToken` が
-   * serverNonce 込みで root を成立させたとき true。exam / 旧 proof / オフライン劣化では false。
+   * root がサーバアンカーされているか (ADR-0017)。casual/class で**検証済みの** `sessionStartToken` が
+   * serverNonce 込みで root を成立させたとき true。exam / 旧 proof / オフライン劣化、および token を
+   * 検証できなかった場合 (`anchorFailure`) は false。
    * (exam は独自の T0 束縛を持つため、warning 判定では `proof.exam` を別途考慮すること。)
    */
   rootAnchored: boolean;
+  /**
+   * `valid: true` のときだけ付く (#329)。root は token の serverNonce で自己整合しているが、token を
+   * 検証できなかった。`valid: false` (root 不一致 = 改ざん) のときは付かない。
+   */
+  anchorFailure?: RootAnchorFailure;
+}
+
+/**
+ * token を検証できなかった理由の書き出し (#329)。root は自己整合しているので「改ざんではない」ことを
+ * 先頭に置く。verify-cli は理由を 200 文字で切り詰めて出す (`safe()`) ので、要点を前に寄せて短く保つ。
+ */
+const UNTRUSTED_TOKEN_PREFIX = 'Start time unanchored (not content tampering): ';
+
+/**
+ * token の検証失敗を `RootAnchorFailure` に落とす (#329)。
+ * registry が古い可能性を示唆するのは未知の keyId のときだけ (署名不正は鍵を知っていて合わないので)。
+ */
+function describeTokenFailure(tokenResult: SessionStartTokenVerificationResult, keyId: string): RootAnchorFailure {
+  if (tokenResult.unknownKey) {
+    return {
+      code: 'token-unknown-key',
+      keyId,
+      reason:
+        `${UNTRUSTED_TOKEN_PREFIX}session start token key ${keyId} is not in this verifier's registry ` +
+        '(registry may be outdated: update verify-cli / verify)',
+    };
+  }
+  return {
+    code: 'token-invalid',
+    keyId,
+    reason: `${UNTRUSTED_TOKEN_PREFIX}session start token could not be verified (${tokenResult.reason ?? 'unknown'})`,
+  };
 }
 
 /**
@@ -201,6 +263,7 @@ export async function verifyInitialHashRoot(
   // root 式を分岐して期待値を計算する。
   let computedInitialHash: string;
   let rootAnchored = false;
+  let anchorFailure: RootAnchorFailure | undefined;
   let rootMismatchReason: string;
 
   if (proof.exam) {
@@ -219,32 +282,26 @@ export async function verifyInitialHashRoot(
       'Initial event chain hash does not match exam binding (fingerprint, nonce, packageHash, startToken)';
   } else if (proof.sessionStartToken) {
     // ADR-0017: セッション開始トークンの serverNonce で root をサーバアンカーする。
-    // まずトークンの ECDSA を registry で検証 (未登録 keyId は拒否 = 自己署名トークンを信頼しない)。
+    // トークンの ECDSA を registry で検証 (未登録 keyId は信頼しない = 自己署名トークンでアンカーを名乗らせない)。
+    const token = proof.sessionStartToken;
     const registry = options.signedCheckpointKeyRegistry ?? CHECKPOINT_PUBLIC_KEYS;
-    const tokenResult = await verifySessionStartToken(proof.sessionStartToken, registry);
+    const tokenResult = await verifySessionStartToken(token, registry);
+    // #329: token を検証できなくても、それだけで改ざんとはしない。root が token の serverNonce 込みの式で
+    // 自己整合していれば内容は無傷で、欠けているのは開始時刻の根拠だけ (未知 keyId の署名 cp と同じ扱い)。
+    // root が合わなければ下の照合で従来どおり valid:false (改ざん) になる。token を剥がして逃げる道は無い:
+    // token の無い proof は serverNonce を含まない別の式 (fp ‖ nonce) で照合される。
     if (!tokenResult.valid) {
-      return {
-        valid: false,
-        reason: `Session start token invalid: ${tokenResult.reason ?? 'unknown'}`,
-        expectedInitialHash,
-        rootAnchored: false,
+      anchorFailure = describeTokenFailure(tokenResult, token.keyId);
+    } else if (token.payload.fingerprintHash !== fingerprintHash) {
+      // トークンの fingerprintHash が proof の fingerprint と一致すること (端末束縛)。
+      anchorFailure = {
+        code: 'token-fingerprint-mismatch',
+        keyId: token.keyId,
+        reason: `${UNTRUSTED_TOKEN_PREFIX}session start token fingerprintHash does not match proof fingerprint (issued for another device)`,
       };
     }
-    // トークンの fingerprintHash が proof の fingerprint と一致すること (端末束縛)。
-    if (proof.sessionStartToken.payload.fingerprintHash !== fingerprintHash) {
-      return {
-        valid: false,
-        reason: 'Session start token fingerprintHash does not match proof fingerprint',
-        expectedInitialHash,
-        rootAnchored: false,
-      };
-    }
-    computedInitialHash = await computeAnchoredChainRoot(
-      fingerprintHash,
-      nonce,
-      proof.sessionStartToken.payload.serverNonce
-    );
-    rootAnchored = true;
+    computedInitialHash = await computeAnchoredChainRoot(fingerprintHash, nonce, token.payload.serverNonce);
+    rootAnchored = anchorFailure === undefined;
     rootMismatchReason =
       'Initial event chain hash does not match server-anchored root (fingerprint, nonce, serverNonce)';
   } else {
@@ -274,7 +331,9 @@ export async function verifyInitialHashRoot(
     };
   }
 
-  return { valid: true, computedInitialHash, expectedInitialHash, rootAnchored };
+  return anchorFailure
+    ? { valid: true, computedInitialHash, expectedInitialHash, rootAnchored, anchorFailure }
+    : { valid: true, computedInitialHash, expectedInitialHash, rootAnchored };
 }
 
 function firstMismatchIndex(left: string, right: string): number {
@@ -888,6 +947,7 @@ export async function verifyProofFile(
   let metadataValid = false;
   let rootValid = false;
   let rootAnchored = false;
+  let rootAnchorFailure: RootAnchorFailure | undefined;
   let isPureTyping = false;
   let metadataError: string | undefined;
   let eventMetadataResult: ProofMetadataVerificationResult | undefined;
@@ -901,6 +961,7 @@ export async function verifyProofFile(
     eventMetadataResult = verifyProofMetadata(proof.typingProofData, events);
     rootValid = rootResult.valid;
     rootAnchored = rootResult.rootAnchored;
+    rootAnchorFailure = rootResult.anchorFailure;
     metadataValid = metaResult.valid && rootValid && eventMetadataResult.valid;
     metadataError = !metaResult.valid
       ? 'Typing proof hash does not match metadata (the proof may have been tampered with, or proof.json may have been reformatted or re-serialized, e.g. key order changed: pass proof.json exactly as exported)'
@@ -962,27 +1023,31 @@ export async function verifyProofFile(
           ? checkpointResult.reason
           : !contentResult.valid
             ? contentResult.reason
-            : tokenSessionMismatch
-              ? tokenSessionMismatch
-              : signedCheckpointBlocks
-                ? signedCheckpointResult.reason
-                : rootAnchorBlocks
-                  ? proof.exam
-                    ? 'Root anchoring is required and the exam binding is not verified (provide and verify the exam package to exempt an exam proof)'
-                    : 'Root is not server-anchored (ADR-0017) but root anchoring is required'
-                  : chainResult.message;
+            : rootAnchorFailure
+              ? rootAnchorFailure.reason
+              : tokenSessionMismatch
+                ? tokenSessionMismatch
+                : signedCheckpointBlocks
+                  ? signedCheckpointResult.reason
+                  : rootAnchorBlocks
+                    ? proof.exam
+                      ? 'Root anchoring is required and the exam binding is not verified (provide and verify the exam package to exempt an exam proof)'
+                      : 'Root is not server-anchored (ADR-0017) but root anchoring is required'
+                    : chainResult.message;
 
   return {
     valid:
       !versionRejected &&
       metadataValid &&
       chainValid &&
+      !rootAnchorFailure &&
       !signedCheckpointBlocks &&
       !tokenSessionMismatch &&
       !rootAnchorBlocks,
     metadataValid,
     rootValid,
     rootAnchored,
+    rootAnchorFailure,
     chainValid,
     finalHashValid: finalHashResult.valid,
     contentValid: contentResult.valid,

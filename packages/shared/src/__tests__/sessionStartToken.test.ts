@@ -99,6 +99,22 @@ describe('session start token (ADR-0017)', () => {
     expect(result.reason).toMatch(/Unknown keyId/);
   });
 
+  it('returns the keyId and flags the key as unknown when the keyId is not in the registry (#329)', async () => {
+    // 検証器は「registry が古い可能性」を keyId つきで示す。署名不正と区別できる必要がある。
+    const token = await makeToken(testKey);
+    const result = await verifySessionStartToken(token, []);
+    expect(result.keyId).toBe(testKey.keyId);
+    expect(result.unknownKey).toBe(true);
+  });
+
+  it('does not flag the key as unknown when a registered key fails the signature check (#329)', async () => {
+    const token = await makeToken(testKey);
+    const tampered: SessionStartToken = { ...token, payload: { ...token.payload, sessionId: 'session-Z' } };
+    const result = await verifySessionStartToken(tampered, [testKey.registryEntry]);
+    expect(result.valid).toBe(false);
+    expect(result.unknownKey).toBeUndefined();
+  });
+
   it('rejects a token whose payload was tampered after signing', async () => {
     const token = await makeToken(testKey);
     const tampered: SessionStartToken = {
@@ -272,7 +288,8 @@ describe('verifyInitialHashRoot with session start token (ADR-0017)', () => {
     const token = await makeToken(testKey, { fingerprintHash });
     const { exported } = await buildAnchoredProof(SERVER_NONCE, token);
 
-    // serverNonce を別物にすり替える (署名が壊れる)。
+    // serverNonce を別物にすり替える (署名も壊れるが、決め手は root が serverNonce 込みの式と合わなくなること)。
+    // token の検証失敗だけなら #329 で「時刻の根拠なし」に格下げされるが、root 不一致は改ざんのまま。
     exported.sessionStartToken = {
       ...exported.sessionStartToken!,
       payload: { ...exported.sessionStartToken!.payload, serverNonce: 'b2'.repeat(32) },
@@ -282,19 +299,37 @@ describe('verifyInitialHashRoot with session start token (ADR-0017)', () => {
     });
     expect(result.valid).toBe(false);
     expect(result.rootAnchored).toBe(false);
-    expect(result.reason).toMatch(/Session start token invalid/);
+    expect(result.reason).toBe(
+      'Initial event chain hash does not match server-anchored root (fingerprint, nonce, serverNonce)'
+    );
+    expect(result.anchorFailure).toBeUndefined();
   });
 
-  it('fails when the token fingerprintHash does not match the proof fingerprint', async () => {
-    // buildAnchoredProof は proof の fingerprint を内部で確定する。トークンだけ別の fingerprint で
-    // 署名させ、root の serverNonce が合っていても端末束縛 (token.fingerprintHash != proof fp) で弾くことを見る。
+  it('keeps the root valid but unanchored when the token fingerprintHash does not match the proof fingerprint (#329)', async () => {
+    // buildAnchoredProof は proof の fingerprint を内部で確定する。トークンだけ別の fingerprint で署名させる。
+    // root は serverNonce 込みの式で自己整合しているので改ざんではないが、端末束縛が崩れているので
+    // token を開始時刻の根拠には使えない。
     const wrongToken = await makeToken(testKey, { fingerprintHash: '0'.repeat(64) });
     const { exported } = await buildAnchoredProof(SERVER_NONCE, wrongToken);
     const result = await verifyInitialHashRoot(exported, {
       signedCheckpointKeyRegistry: [testKey.registryEntry],
     });
-    expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/fingerprintHash does not match/);
+    expect(result.valid).toBe(true);
+    expect(result.rootAnchored).toBe(false);
+    expect(result.anchorFailure?.code).toBe('token-fingerprint-mismatch');
+    expect(result.anchorFailure?.reason).toMatch(/fingerprintHash does not match/);
+  });
+
+  it('keeps the root valid but unanchored when the token keyId is not in the registry (#329)', async () => {
+    const components = createMockFingerprintComponents();
+    const fingerprintHash = await computeHash(JSON.stringify(components, null, 0));
+    const token = await makeToken(testKey, { fingerprintHash });
+    const { exported } = await buildAnchoredProof(SERVER_NONCE, token);
+    const result = await verifyInitialHashRoot(exported, { signedCheckpointKeyRegistry: [] });
+    expect(result.valid).toBe(true);
+    expect(result.rootAnchored).toBe(false);
+    expect(result.anchorFailure?.code).toBe('token-unknown-key');
+    expect(result.anchorFailure?.keyId).toBe(testKey.keyId);
   });
 
   it('reports rootAnchored=false for a legacy proof without a session start token', async () => {

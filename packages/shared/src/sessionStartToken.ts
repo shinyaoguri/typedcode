@@ -200,7 +200,7 @@ export async function verifySessionStartToken(
   // 信頼アンカーは registry。未登録 keyId は拒否 (自己署名トークンを valid にしない)。
   const entry = findCheckpointPublicKey(token.keyId, registry) ?? null;
   if (!entry) {
-    return { valid: false, reason: `Unknown keyId: ${token.keyId}` };
+    return { valid: false, reason: `Unknown keyId: ${token.keyId}`, keyId: token.keyId, unknownKey: true };
   }
 
   const issuedTs = Date.parse(token.payload.issuedAt);

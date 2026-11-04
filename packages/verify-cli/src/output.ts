@@ -59,6 +59,7 @@ import type {
   ScreenshotVerificationSummary,
   ProofExtractionFailureReason,
   ProofVersionStatus,
+  RootAnchorFailure,
   SubmissionPair,
   SubmissionSeverity,
 } from '@typedcode/shared';
@@ -82,6 +83,8 @@ export interface VerificationOutput {
   signedCheckpoints?: SignedCheckpointsVerificationResult;
   /** root がサーバアンカーされているか (ADR-0017) */
   rootAnchored?: boolean;
+  /** token はあるが検証できなかった理由 (#329)。`Root anchor:` 行を UNTRUSTED にする。`keyId` は proof 由来。 */
+  rootAnchorFailure?: RootAnchorFailure;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
   analysis?: AnalysisReport;
   /** 三層保証語彙 (ADR-0020)。 */
@@ -343,6 +346,21 @@ function formatProcessSummary(p: ProcessSummary): string[] {
   return lines;
 }
 
+/**
+ * `Root anchor: UNTRUSTED` 行の括弧内 (#329)。改ざんの判定ではないので「開始時刻の根拠が無い」側の
+ * 言い方にそろえる。registry が古い可能性に触れるのは未知の keyId のときだけ。
+ */
+function describeRootAnchorFailure(failure: RootAnchorFailure): string {
+  switch (failure.code) {
+    case 'token-unknown-key':
+      return `session start token key ${safe(failure.keyId)} is unknown to this verifier — its registry may be outdated; update verify-cli`;
+    case 'token-fingerprint-mismatch':
+      return 'session start token was issued for another device fingerprint — start time not server-anchored';
+    case 'token-invalid':
+      return 'session start token could not be verified — start time not server-anchored';
+  }
+}
+
 export function formatResult(result: VerificationOutput): string {
   const lines: string[] = [];
 
@@ -470,6 +488,9 @@ export function formatResult(result: VerificationOutput): string {
   if (!result.exam?.present) {
     if (result.rootAnchored) {
       lines.push(`Root anchor: ${c('green', 'VERIFIED')} (server-anchored chain root)`);
+    } else if (result.rootAnchorFailure) {
+      // #329: token はあるが検証できない。「token が無い」と出すと事実に反する。keyId は proof 由来。
+      lines.push(`Root anchor: ${c('red', 'UNTRUSTED')} (${describeRootAnchorFailure(result.rootAnchorFailure)})`);
     } else {
       lines.push(`Root anchor: ${c('yellow', 'unanchored')} (no session start token — offline fabrication possible)`);
     }

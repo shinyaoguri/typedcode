@@ -191,6 +191,8 @@ async function typeInto(proof: TypingProof, text: string): Promise<string> {
  */
 async function buildAnchoredProof(options: {
   key: TestKey;
+  /** token を発行する鍵。省略時は `key` (署名 cp と同じ鍵)。registry に無い鍵を渡すと #329 の状況になる。 */
+  tokenKey?: TestKey;
   tokenSessionId: string;
   checkpointSessionId: string;
   /** 署名 cp を打つ eventIndex。省略時は全イベント (最終イベントまで署名が届く正常形)。 */
@@ -198,7 +200,7 @@ async function buildAnchoredProof(options: {
 }): Promise<ProofFile> {
   const components = createMockFingerprintComponents();
   const fingerprintHash = await computeHash(JSON.stringify(components, null, 0));
-  const token = await makeToken(options.key, options.tokenSessionId, fingerprintHash);
+  const token = await makeToken(options.tokenKey ?? options.key, options.tokenSessionId, fingerprintHash);
 
   const proof = new TypingProof();
   await proof.initializeAnchored(fingerprintHash, components, SERVER_NONCE, token);
@@ -441,6 +443,66 @@ describe('web ↔ CLI parity (#216)', () => {
     // 別セッションの署名 cp はこの proof の時刻証拠にならない (#295 / #329 後半)。root のアンカーだけが残る。
     expect(web.assurance.temporal).toBe('partial');
     expect(cli.assurance.temporal).toBe('partial');
+  });
+
+  describe('a session start token signed by a key outside the registry (#329)', () => {
+    // 古い registry を同梱した検証器で新しい鍵の token を見る状況。root は serverNonce 込みで自己整合する。
+    it('agrees that the proof fails overall without failing integrity, and is unanchored without signed checkpoints', async () => {
+      const proof = await buildAnchoredProof({
+        key: testKey,
+        tokenKey: await createTestKey(),
+        tokenSessionId: 'session-A',
+        checkpointSessionId: 'session-A',
+        signedEventIndexes: [],
+      });
+
+      const web = await webConclusion(proof, registry);
+      const cli = await cliConclusion(proof, registry);
+
+      expectSameConclusion(web, cli);
+      expect(cli.valid).toBe(false);
+      // 改ざんではない (fast 経路なので proven ではなく partial)。
+      expect(cli.assurance.integrity).toBe('partial');
+      expect(cli.assurance.temporal).toBe('unanchored');
+    });
+
+    it('agrees that trusted signed checkpoints make the timeline partial, never anchored', async () => {
+      const proof = await buildAnchoredProof({
+        key: testKey,
+        tokenKey: await createTestKey(),
+        tokenSessionId: 'session-A',
+        checkpointSessionId: 'session-A',
+      });
+
+      const web = await webConclusion(proof, registry);
+      const cli = await cliConclusion(proof, registry);
+
+      expectSameConclusion(web, cli);
+      expect(cli.valid).toBe(false);
+      expect(cli.assurance.integrity).toBe('partial');
+      expect(cli.assurance.temporal).toBe('partial');
+    });
+
+    it('reports it as an anchoring error on the web and as an untrusted root anchor in the CLI, not as tampering', async () => {
+      const proof = await buildAnchoredProof({
+        key: testKey,
+        tokenKey: await createTestKey(),
+        tokenSessionId: 'session-A',
+        checkpointSessionId: 'session-A',
+      });
+
+      const webResult = await runProofVerification(proof, { mode: 'fast', signedCheckpointKeyRegistry: registry });
+      const trust = TrustCalculator.calculate(webResult, undefined);
+      const cliText = formatResult(
+        await verifyProof(proof, { mode: 'fast', signedCheckpointKeyRegistry: registry })
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI エスケープの除去そのものが目的
+      ).replace(/\x1b\[[0-9;]*m/g, '');
+
+      expect(trust.issues.some((i) => i.component === 'anchoring' && i.severity === 'error')).toBe(true);
+      expect(trust.issues.some((i) => i.component === 'metadata' || i.component === 'chain')).toBe(false);
+      expect(cliText).toMatch(/^Root anchor: UNTRUSTED /m);
+      expect(cliText).toMatch(/^Metadata: {4}PASS$/m);
+    });
   });
 
   it('agrees that a proof whose last events are not signed is only partially anchored (#295)', async () => {

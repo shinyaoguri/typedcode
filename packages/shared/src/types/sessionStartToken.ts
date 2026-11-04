@@ -45,6 +45,14 @@ export interface SessionStartToken {
 export interface SessionStartTokenVerificationResult {
   valid: boolean;
   reason?: string;
-  /** 検証に用いた registry 鍵の keyId (鍵 rotation/revoke 表示用) */
+  /**
+   * token の keyId (鍵 rotation/revoke 表示用)。registry に無い keyId でも返す (#329。「検証器の
+   * registry が古い可能性」を示すため)。proof 由来の値なので、表示層は自分の流儀で無害化してから出す。
+   */
   keyId?: string;
+  /**
+   * keyId が registry に無かったか (#329)。true のときは署名を検証していない。
+   * 「署名が壊れている」と「この検証器が鍵を知らない」を分けて表示するために返す。
+   */
+  unknownKey?: boolean;
 }

@@ -209,6 +209,7 @@ export async function runProofVerification(
     metadataValid: result.metadataValid,
     rootValid: result.rootValid,
     rootAnchored: result.rootAnchored,
+    rootAnchorFailure: result.rootAnchorFailure,
     sessionTokenMismatch: result.sessionTokenMismatch,
     versionStatus: result.versionStatus,
     declaredVersion: normalizeDeclaredVersion(proof.version),
