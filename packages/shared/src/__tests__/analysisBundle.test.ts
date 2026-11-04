@@ -32,6 +32,7 @@ const processSummary: ProcessSummary = {
 
 const analysis: AnalysisReport = {
   analyzerVersions: { automation: '0.1.0' },
+  analyzerStatus: { automation: { version: '0.1.0', status: 'ok' } },
   signals: [],
   reviewPriority: 0,
 };

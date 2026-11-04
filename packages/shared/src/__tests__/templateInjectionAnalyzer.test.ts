@@ -106,8 +106,8 @@ describe('templateInjectionAnalyzer', () => {
 
     expect(after.signals.length).toBe(before.signals.length + 1);
     expect(after.reviewPriority).toBe(before.reviewPriority);
-    expect(summarizeAnalysisForAssurance(after).notableSignals).toBe(
-      summarizeAnalysisForAssurance(before).notableSignals
+    expect(summarizeAnalysisForAssurance(after)?.notableSignals).toBe(
+      summarizeAnalysisForAssurance(before)?.notableSignals
     );
   });
 });

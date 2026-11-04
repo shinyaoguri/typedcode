@@ -70,10 +70,20 @@ Option C を採用。中心判断 = **分析層は暗号検証と直交する pl
 
    interface AnalysisReport {
      analyzerVersions: Record<string, string>;
+     // #301 で追加。id → 実行結果の状態。無い (旧形式の) レポートは「分析できたか不明」として読む
+     analyzerStatus: Record<string, {
+       version: string;
+       status: 'ok' | 'failed' | 'timeout' | 'invalid-output';
+       message?: string;            // 未信頼の文字列 (200 字で切る)。表示側で safe() / escapeHtml を通す
+       discardedSignals?: number;   // invalid-output で捨てた signal 数
+     }>;
      signals: AnalysisSignal[];
      reviewPriority: number;   // 集約された「要確認」度 — 判定ではない
    }
    ```
+   - **失敗は signal にしない (#301)**: 分析器の throw (同期・非同期)・期限切れ・契約に合わない出力は、その分析器の `analyzerStatus` に `failed` / `timeout` / `invalid-output` として残し、他の分析器は止めない。signal 0 件の「手掛かりなし」と区別するため。`ok` の分析器が 1 つも無ければ、三層保証の著述性 (`reviewPriority` / `notableSignals`) は「分析未実行」(`null`) に倒す。
+   - **期限 (#301)**: 分析器ごとに `ANALYZER_TIMEOUT_MS` (10 秒)。期限までに決着しなければ `timeout` とし、**後から解決しても結果は捨てる**。決着したら期限のタイマーを必ず解除する (残すと CLI の自然終了が期限ぶん遅れる)。期限は非同期の待ちにしか効かず、**同期の無限ループは止まらない**。外部分析器 (`--analyzer`) は信頼済みのコードとして扱う前提で、Worker / 子プロセスによる隔離はしない。
+   - **出力の検査 (#301)**: 戻り値が配列でなければ signal 0 件の `invalid-output`。signal ごとに、オブジェクトであること・`severity` が 3 値のどれか・`score` / `confidence` が finite な number・`evidence` が配列・`summary` が string を見て、合わない signal だけを捨てる (その分析器は `invalid-output`、合う signal は残す)。捨てた signal は `reviewPriority` に寄与しない。finite だが 0..1 の外にある値は従来どおり集約時に clamp する。
    - **判定しない**: 自動 pass/fail を出さない。`reviewPriority` は**人間レビューの優先度**のみ。最終判断は監督/採点者。
    - **証拠リンク必須**: 各 signal は event index / 時間範囲を指し、人間が当該箇所を検分できる。
 4. **配置 / 開示**: 契約・型・orchestrator・出力モデルは **shared (の非 crypto モジュール)**。開示してよい分析器 (自動化判定など) は **verify＋CLI に同梱**。閾値/重みが感度高いものは**採点者側 private** (verify-cli のビルドに注入、web verify には配布しない)。**proof に分析結果を焼き込まない** (後付け・再実行可能成果物、`analyzerVersion` で出自記録)。

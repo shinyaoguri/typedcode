@@ -39,6 +39,7 @@ function report(
 ): AnalysisReport {
   return {
     analyzerVersions: { test: '1.0.0' },
+    analyzerStatus: { test: { version: '1.0.0', status: 'ok' } },
     reviewPriority,
     signals: signals.map((s) => ({
       analyzerId: 'test',
