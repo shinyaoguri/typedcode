@@ -87,6 +87,11 @@ async function main(): Promise<void> {
   // root アンカー gate (ADR-0017): boolean フラグ。指定すると root 未アンカー proof を fail させる。
   const requireRootAnchor = args.includes('--require-root-anchor');
 
+  // 受理ポリシー (#296 / ADR-0043): 署名 cp の存在・最終イベントへの署名を受理条件にする。
+  // 違反は整合性の失敗と分けて `--- Acceptance policy ---` に出し、exit 1 にする。
+  const requireSignedCheckpoints = args.includes('--require-signed-checkpoints');
+  const requireTerminalAnchor = args.includes('--require-final-anchor');
+
   // 分析レポートの JSON 出力 (ADR-0009): 評価ハーネス/集計スクリプトの機械可読な入口。
   // advisory であって判定ではない — exit code には一切影響しない。
   const analysisJsonPath = flagValue(args, '--analysis-json');
@@ -179,7 +184,7 @@ async function main(): Promise<void> {
   // summary に失敗として積んで残りの入力へ進む。1 件でも失敗なら最後に exit 1。
   const multiInput = positional.length > 1;
   const summary: Array<{ filename: string; valid: boolean; reason?: string }> = [];
-  const analysisDump: Array<{ filename: string; valid: boolean; analysis: unknown }> = [];
+  const analysisDump: Array<{ filename: string; valid: boolean; policy: unknown; analysis: unknown }> = [];
   const bundleDump: Array<{ filename: string } & AnalysisBundle> = [];
 
   for (const input of positional) {
@@ -311,6 +316,8 @@ async function main(): Promise<void> {
           submittedAtMs,
           requireAnchorDensity,
           requireRootAnchor,
+          requireSignedCheckpoints,
+          requireTerminalAnchor,
           analyzers,
           screenshotSummary,
         });
@@ -340,7 +347,8 @@ async function main(): Promise<void> {
         valid,
         ...(result.valid && !valid ? { reason: 'Submission: bundled source does not match the verified proof' } : {}),
       });
-      analysisDump.push({ filename, valid, analysis: result.analysis });
+      // policy (#296) は追加のみ。--analysis-bundle (ADR-0024 の content-free 派生物) には載せない。
+      analysisDump.push({ filename, valid, policy: result.policy, analysis: result.analysis });
       // Tier A バンドル (ADR-0024): content-free な派生ビュー。--analysis-bundle 指定時のみ集める。
       if (analysisBundlePath !== undefined) {
         const bundle = buildAnalysisBundle({

@@ -22,6 +22,15 @@ describe('findFlagError', () => {
     expect(nonFlagArgs(['p.zip', '--extract-sources', 'out'])).toEqual(['p.zip']);
   });
 
+  it.each(['--require-signed-checkpoints', '--require-final-anchor'])(
+    'accepts the acceptance policy flag %s as a boolean flag (#296)',
+    (flag) => {
+      expect(findFlagError(['proof.zip', flag])).toBeNull();
+      expect(findFlagError(['proof.zip', `${flag}=true`])).toContain('does not take a value');
+      expect(nonFlagArgs(['proof.zip', flag])).toEqual(['proof.zip']);
+    }
+  );
+
   it('rejects a typo of a security gate flag instead of silently ignoring it', () => {
     expect(findFlagError(['proof.zip', '--require-root-anchr'])).toContain('Unknown option');
   });

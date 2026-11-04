@@ -27,6 +27,7 @@ import {
   type CheckpointPublicKey,
   type ProofVersionStatus,
   type RootAnchorFailure,
+  type AcceptancePolicyResult,
 } from '@typedcode/shared';
 import { ProgressBar } from './progress.js';
 
@@ -88,6 +89,12 @@ export interface CLIVerificationResult {
    * 改ざんではないので整合性は落ちないが、`valid` は false (exit 1)。`keyId` は proof 由来。
    */
   rootAnchorFailure?: RootAnchorFailure;
+  /**
+   * 受理ポリシー (#296 / ADR-0043) の評価結果 (shared の `FullVerificationResult.policy` そのもの)。
+   * `--require-*` を 1 つも立てなければ `applied` は全部 false で、`violations` は空。
+   * 整合性が落ちた proof では評価しない (`evaluated: false`)。
+   */
+  policy: AcceptancePolicyResult;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
   analysis: AnalysisReport;
   /** 三層保証語彙 (ADR-0020)。実証拠から機械導出した表示用語彙 (valid の置換ではない)。 */
@@ -134,10 +141,14 @@ export interface VerifyProofOptions {
   examPackageManifest?: ExamPackageManifest;
   /** Moodle 提出時刻 (epoch ms, 任意)。time-box の withinWindow 判定に使う。 */
   submittedAtMs?: number;
-  /** anchoring 密度 gate (ADR-0016)。true で密度が疎な proof を fail させる (採点 opt-in)。 */
+  /** anchoring 密度 gate (ADR-0016)。true で密度が疎な proof を fail させる (採点 opt-in, 受理ポリシー #296)。 */
   requireAnchorDensity?: boolean;
   /** root アンカー必須 (ADR-0017)。true で root 未アンカー (serverNonce トークン無し) を fail させる (採点 opt-in)。 */
   requireRootAnchor?: boolean;
+  /** 署名 cp 必須 (#296)。true で署名 cp が 1 件も無い proof を fail させる (`--require-signed-checkpoints`)。 */
+  requireSignedCheckpoints?: boolean;
+  /** 最終署名必須 (#296)。true で最終イベントが署名 cp に覆われていない proof を fail させる (`--require-final-anchor`)。 */
+  requireTerminalAnchor?: boolean;
   /**
    * 分析に使う Analyzer 群 (ADR-0009 / プラットフォーム方針)。未指定なら shared の
    * `defaultAnalyzers`。採点者/研究者の外部アナライザを CLI が読み込んで差し込むための口。
@@ -217,6 +228,8 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     mode,
     requireAnchorDensity: options.requireAnchorDensity,
     requireRootAnchor: options.requireRootAnchor,
+    requireSignedCheckpoints: options.requireSignedCheckpoints,
+    requireTerminalAnchor: options.requireTerminalAnchor,
     // 免除は検証済み束縛のみ。package 未提供 (binding=undefined) の exam proof は gate 対象。
     examBindingVerified: binding?.valid === true,
     signedCheckpointKeyRegistry: options.signedCheckpointKeyRegistry,
@@ -350,6 +363,7 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     signedCheckpoints: result.signedCheckpoints,
     rootAnchored: result.rootAnchored ?? false,
     rootAnchorFailure: result.rootAnchorFailure,
+    policy: result.policy,
     analysis,
     assurance,
     processSummary,
