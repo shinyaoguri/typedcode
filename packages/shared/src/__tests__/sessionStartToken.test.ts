@@ -20,11 +20,14 @@ import {
   verifySessionStartToken,
   validateSessionStartInput,
   computeAnchoredChainRoot,
+  deterministicStringify,
   verifyInitialHashRoot,
   type CheckpointPublicKey,
   type FingerprintComponents,
   type SessionStartToken,
+  type SessionStartTokenPayload,
 } from '../index.js';
+import { MAX_ID_LENGTH } from '../sessionStartToken.js';
 import { HashChainManager } from '../typingProof/HashChainManager.js';
 import { createTestKey, type TestKey } from './fixtures/signedCheckpointFixtures.js';
 
@@ -75,6 +78,20 @@ async function makeToken(
     },
     { keyId: key.keyId, privateKey: key.privateKey }
   );
+}
+
+/**
+ * 任意の payload に正しい署名を付け直す。payload を書き換えるだけだと署名検証で先に落ち、
+ * version などの個別の検査が効いているかは分からない (#580)。
+ */
+async function resignToken(token: SessionStartToken, payload: SessionStartTokenPayload, key: TestKey) {
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    key.privateKey,
+    new TextEncoder().encode(deterministicStringify(payload)) as unknown as ArrayBuffer
+  );
+  const hex = Array.from(new Uint8Array(signature), (b) => b.toString(16).padStart(2, '0')).join('');
+  return { ...token, payload, signature: hex };
 }
 
 let testKey: TestKey;
@@ -190,12 +207,63 @@ describe('session start token (ADR-0017)', () => {
     expect(result.reason).toMatch(/unparsable validUntil/);
   });
 
-  it('rejects a token with an unsupported version or poswIterations', async () => {
+  it('rejects a correctly signed token with an unsupported version', async () => {
     const base = await makeToken(testKey);
-    const badVersion: SessionStartToken = { ...base, payload: { ...base.payload, version: 99 as 1 } };
-    expect((await verifySessionStartToken(badVersion, [testKey.registryEntry])).valid).toBe(false);
-    const badPosw: SessionStartToken = { ...base, payload: { ...base.payload, poswIterations: 1 } };
-    expect((await verifySessionStartToken(badPosw, [testKey.registryEntry])).valid).toBe(false);
+    const token = await resignToken(base, { ...base.payload, version: 99 as 1 }, testKey);
+    const result = await verifySessionStartToken(token, [testKey.registryEntry]);
+    expect(result).toMatchObject({ valid: false, reason: 'Unsupported session token version: 99' });
+  });
+
+  it('rejects a correctly signed token whose poswIterations differs from POSW_ITERATIONS', async () => {
+    const base = await makeToken(testKey);
+    const token = await resignToken(base, { ...base.payload, poswIterations: POSW_ITERATIONS + 1 }, testKey);
+    const result = await verifySessionStartToken(token, [testKey.registryEntry]);
+    expect(result).toMatchObject({ valid: false, reason: expect.stringMatching(/poswIterations mismatch/) });
+  });
+
+  it('rejects a correctly signed token whose algorithm label is not ECDSA-P256', async () => {
+    // algorithm は署名対象 (payload) の外にあるので、書き換えても ECDSA の検証自体は通る。
+    const base = await makeToken(testKey);
+    const token = { ...base, algorithm: 'ES256' as SessionStartToken['algorithm'] };
+    const result = await verifySessionStartToken(token, [testKey.registryEntry]);
+    expect(result).toMatchObject({ valid: false, reason: 'Unsupported algorithm: ES256' });
+  });
+
+  it('rejects a correctly signed token whose issuedAt is not a date', async () => {
+    const base = await makeToken(testKey);
+    const token = await resignToken(base, { ...base.payload, issuedAt: 'not-a-date' }, testKey);
+    const result = await verifySessionStartToken(token, [testKey.registryEntry]);
+    expect(result).toMatchObject({ valid: false, reason: 'Session token issuedAt is not a valid ISO date' });
+  });
+
+  it('rejects a token issued after the key validUntil', async () => {
+    const token = await makeToken(testKey);
+    const expired: CheckpointPublicKey = { ...testKey.registryEntry, validUntil: '2025-01-01T00:00:00.000Z' };
+    const result = await verifySessionStartToken(token, [expired]);
+    expect(result).toMatchObject({ valid: false, reason: expect.stringMatching(/validUntil is before issuedAt/) });
+  });
+
+  it('rejects a token from a key marked revoked without revokedAt', async () => {
+    const token = await makeToken(testKey);
+    const revoked: CheckpointPublicKey = { ...testKey.registryEntry, status: 'revoked' };
+    const result = await verifySessionStartToken(token, [revoked]);
+    expect(result).toMatchObject({
+      valid: false,
+      reason: expect.stringMatching(/status is 'revoked' but revokedAt is missing/),
+    });
+  });
+
+  it('rejects a token whose registry public key cannot be imported', async () => {
+    const token = await makeToken(testKey);
+    const broken: CheckpointPublicKey = { ...testKey.registryEntry, publicKeyJwk: { kty: 'EC' } };
+    const result = await verifySessionStartToken(token, [broken]);
+    expect(result).toMatchObject({ valid: false, reason: 'Failed to import registry public key' });
+  });
+
+  it('reports an odd-length signature as malformed hex rather than a failed verification', async () => {
+    const token = { ...(await makeToken(testKey)), signature: 'abc' };
+    const result = await verifySessionStartToken(token, [testKey.registryEntry]);
+    expect(result).toMatchObject({ valid: false, reason: 'Malformed signature hex' });
   });
 
   it('uses the current SESSION_TOKEN_FORMAT_VERSION in created tokens', async () => {
@@ -222,6 +290,28 @@ describe('validateSessionStartInput', () => {
   it('rejects an over-long sessionId', () => {
     const r = validateSessionStartInput({ sessionId: 'x'.repeat(201), fingerprintHash });
     expect(r.ok).toBe(false);
+  });
+
+  it('accepts a sessionId of exactly the maximum length', () => {
+    const r = validateSessionStartInput({ sessionId: 'x'.repeat(MAX_ID_LENGTH), fingerprintHash });
+    expect(r.ok).toBe(true);
+  });
+
+  it('returns exactly the validated sessionId and fingerprintHash', () => {
+    const r = validateSessionStartInput({ sessionId: 'session-A', fingerprintHash, extra: 'dropped' });
+    expect(r).toEqual({ ok: true, input: { sessionId: 'session-A', fingerprintHash } });
+  });
+
+  // 型を偽った値は文字列化すると検査を素通りしうるので、型の検査も固定する (#580)。
+  it.each<[string, unknown]>([
+    ['a null body', null],
+    ['a numeric sessionId', { sessionId: 12345, fingerprintHash }],
+    ['a non-hex fingerprintHash', { sessionId: 'session-A', fingerprintHash: 'not-hex' }],
+    ['a fingerprintHash wrapped in an array', { sessionId: 'session-A', fingerprintHash: [fingerprintHash] }],
+    ['a 65-char hex fingerprintHash', { sessionId: 'session-A', fingerprintHash: `${fingerprintHash}f` }],
+    ['a fingerprintHash with a non-hex prefix', { sessionId: 'session-A', fingerprintHash: `x${fingerprintHash}` }],
+  ])('rejects %s', (_label, body) => {
+    expect(validateSessionStartInput(body).ok).toBe(false);
   });
 });
 

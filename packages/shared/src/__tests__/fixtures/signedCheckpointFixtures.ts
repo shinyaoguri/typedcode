@@ -167,6 +167,66 @@ export async function buildSignedCheckpoints(options: BuildSignedCheckpointsOpti
   return out;
 }
 
+/**
+ * 署名済み cp 列の payload を書き換え、previousSignedCheckpointHash の連鎖と署名を先頭から付け直す。
+ *
+ * payload を書き換えるだけだと署名検証や連鎖の検査で先に落ち、狙った 1 つの検査に届かない。
+ * 「署名も連鎖も正しく、ある 1 つの検査だけに反する」cp 列を作るために使う。
+ * `edit` が previousSignedCheckpointHash を書き換えても、付け直した連鎖で上書きされる。
+ * CheckpointData の hash / contentHash / eventIndex は元のまま残す。
+ */
+export async function resignCheckpoints(
+  checkpoints: CheckpointData[],
+  key: TestKey,
+  edit: (payload: SignedCheckpointPayload, index: number) => SignedCheckpointPayload
+): Promise<CheckpointData[]> {
+  const out: CheckpointData[] = [];
+  let previousSignedCheckpointHash: string | null = null;
+  for (let i = 0; i < checkpoints.length; i++) {
+    const checkpoint = checkpoints[i]!;
+    if (!checkpoint.signature) throw new Error(`Test fixture checkpoint ${i} is not signed`);
+    const payload: SignedCheckpointPayload = {
+      ...edit({ ...checkpoint.signature.payload }, i),
+      previousSignedCheckpointHash,
+    };
+    out.push({ ...checkpoint, signature: await signCheckpoint(payload, key) });
+    previousSignedCheckpointHash = await hashSignedCheckpointPayload(payload);
+  }
+  return out;
+}
+
+/**
+ * 合成のイベント列。署名 cp の検証は cp が指す event の hash 一致しか見ない (チェーン全体は
+ * verifyChain の責務) ので、密度や時刻の検査は実 PoSW を回さずにこの列で検査できる。
+ * hash は index の 16 進を 64 桁に詰めたもの (列の中で一意)。
+ */
+export function makeSyntheticEvents(n: number): StoredEvent[] {
+  const events: StoredEvent[] = [];
+  for (let i = 0; i < n; i++) {
+    events.push({
+      sequence: i,
+      timestamp: i * 10,
+      type: 'contentChange',
+      inputType: 'insertText',
+      data: String.fromCharCode('a'.charCodeAt(0) + (i % 26)),
+      rangeOffset: i,
+      rangeLength: 0,
+      range: null,
+      previousHash: null,
+      posw: { iterations: POSW_ITERATIONS, nonce: '0', intermediateHash: '0', computeTimeMs: 0 },
+      hash: i.toString(16).padStart(64, '0'),
+      description: null,
+      isMultiLine: null,
+      deletedLength: null,
+      insertedText: null,
+      insertLength: null,
+      deleteDirection: null,
+      selectedText: null,
+    });
+  }
+  return events;
+}
+
 async function computeContentHashAt(event: StoredEvent): Promise<string> {
   if (event.data == null) return '';
   const stringified = typeof event.data === 'string' ? event.data : JSON.stringify(event.data);

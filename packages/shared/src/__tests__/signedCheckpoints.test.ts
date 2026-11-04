@@ -36,6 +36,7 @@ import {
 import {
   buildSignedCheckpoints,
   createTestKey,
+  makeSyntheticEvents,
   signCheckpoint,
   type TestKey,
 } from './fixtures/signedCheckpointFixtures.js';
@@ -689,42 +690,6 @@ describe('verifySignedCheckpoints', () => {
 });
 
 /**
- * anchoring 密度 gate (ADR-0016) のテスト。
- *
- * 密度は署名 cp が指す eventIndex / serverTimestamp の **間隔** だけに依存し、ハッシュチェーンの
- * 中身には依存しない。大ギャップ (600 events に末尾 1 cp 等) を実 PoSW で作ると遅いので、ここでは
- * 合成イベント列を使う。verifySignedCheckpoints は checkpoint が指す event の hash 一致しか見ない
- * ため (チェーン全体は verifyChain の責務)、合成列でも忠実に密度ロジックを検査できる。
- * 「密で疎でない」正規ケースだけは実 proof (buildSmallProof) で固定する。
- */
-function makeSyntheticEvents(n: number): StoredEvent[] {
-  const events: StoredEvent[] = [];
-  for (let i = 0; i < n; i++) {
-    events.push({
-      sequence: i,
-      timestamp: i * 10,
-      type: 'contentChange',
-      inputType: 'insertText',
-      data: String.fromCharCode('a'.charCodeAt(0) + (i % 26)),
-      rangeOffset: i,
-      rangeLength: 0,
-      range: null,
-      previousHash: null,
-      posw: { iterations: POSW_ITERATIONS, nonce: '0', intermediateHash: '0', computeTimeMs: 0 },
-      hash: i.toString(16).padStart(64, '0'),
-      description: null,
-      isMultiLine: null,
-      deletedLength: null,
-      insertedText: null,
-      insertLength: null,
-      deleteDirection: null,
-      selectedText: null,
-    });
-  }
-  return events;
-}
-
-/**
  * 未署名の末尾 (#295): 最後の署名 cp より後のイベントには、サーバ時刻の上界が無い。
  * coverage がその件数と「最終イベントまで署名が届いたか」を返し、assurance の temporal が
  * `anchored` の条件に使う。
@@ -841,6 +806,15 @@ describe('signed checkpoint coverage — unsigned tail (#295)', () => {
   });
 });
 
+/**
+ * anchoring 密度 gate (ADR-0016) のテスト。
+ *
+ * 密度は署名 cp が指す eventIndex / serverTimestamp の **間隔** だけに依存し、ハッシュチェーンの
+ * 中身には依存しない。大ギャップ (600 events に末尾 1 cp 等) を実 PoSW で作ると遅いので、ここでは
+ * 合成イベント列を使う。verifySignedCheckpoints は checkpoint が指す event の hash 一致しか見ない
+ * ため (チェーン全体は verifyChain の責務)、合成列でも忠実に密度ロジックを検査できる。
+ * 「密で疎でない」正規ケースだけは実 proof (buildSmallProof) で固定する。
+ */
 describe('anchoring density gate (ADR-0016)', () => {
   const ROOT = 'a'.repeat(64);
 

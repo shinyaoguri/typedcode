@@ -5,6 +5,9 @@
   "mutate": [
     "src/verification.ts",
     "src/acceptancePolicy.ts",
+    "src/signedCheckpoints.ts",
+    "src/sessionStartToken.ts",
+    "src/assurance.ts",
     "src/typingProof/ChainVerifier.ts",
     "src/fileProcessing/zipBudget.ts",
     "src/utils/hashUtils.ts",

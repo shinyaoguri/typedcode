@@ -31,9 +31,11 @@ import {
   type CheckpointPublicKey,
 } from './checkpointKeys/index.js';
 
-const POST_HOC_RATIO_THRESHOLD = 0.1;
-const POST_HOC_MIN_SERVER_SPAN_MS = 60 * 1000;
-const POST_HOC_MIN_CLIENT_SPAN_MS = 10 * 60 * 1000;
+// post-hoc と密度 (下) の閾値は system-spec §10 の定数。境界のテスト (`signedCheckpointThresholds.test.ts`) が
+// 値を書き写さずに参照できるよう export する (index には出さない。公開 API ではない)。
+export const POST_HOC_RATIO_THRESHOLD = 0.1;
+export const POST_HOC_MIN_SERVER_SPAN_MS = 60 * 1000;
+export const POST_HOC_MIN_CLIENT_SPAN_MS = 10 * 60 * 1000;
 
 // --- ADR-0016: anchoring 密度の保守的閾値 ---
 // cadence は CheckpointManager のハイブリッドトリガ (100 events OR 10,000 ms) に同期させる。
@@ -41,14 +43,14 @@ const POST_HOC_MIN_CLIENT_SPAN_MS = 10 * 60 * 1000;
 // その 5 倍を「疎」と判定する保守的下限に採る。5 倍未満のギャップは正規の signing 失敗 (ネットワーク瞬断)
 // と区別しにくいため罰さない。閾値はサンプルログが無い現状の安全側の置きで、実ログ収集後に要調整。
 // TODO(ADR-0016): tune MAX_ANCHOR_GAP_* with real session logs.
-const MAX_ANCHOR_GAP_EVENTS = 5 * 100; // 500 events
-const MAX_ANCHOR_GAP_SERVER_MS = 5 * 10_000; // 50s
-const MAX_FIRST_ANCHOR_LATENCY_EVENTS = 500; // events before the first signed checkpoint
+export const MAX_ANCHOR_GAP_EVENTS = 5 * 100; // 500 events
+export const MAX_ANCHOR_GAP_SERVER_MS = 5 * 10_000; // 50s
+export const MAX_FIRST_ANCHOR_LATENCY_EVENTS = 500; // events before the first signed checkpoint
 
 /** SHA-256 を hex 文字列で表したときの正規表現 (64 桁の小文字 hex) */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** sessionId / tabId の許容最大長 (UUID 等で十分。署名 API の濫用対策) */
-const MAX_ID_LENGTH = 200;
+export const MAX_ID_LENGTH = 200;
 /**
  * sessionId / tabId の許容文字種 (#297)。Workers の KV キー `session:{sessionId}:{tabId}` に
  * そのまま埋め込まれるので、区切り文字 `:` を締め出して `a:b`/`c` と `a`/`b:c` の衝突を塞ぐ。
@@ -59,7 +61,7 @@ const MAX_ID_LENGTH = 200;
  */
 const ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 /** clientTimestamp (ISO 8601) の許容最大長 */
-const MAX_TIMESTAMP_LENGTH = 40;
+export const MAX_TIMESTAMP_LENGTH = 40;
 /** checkpointIndex / eventIndex / totalEventsSincePrevious の上限 (整数オーバーフロー/濫用対策) */
 const MAX_SAFE_COUNT = Number.MAX_SAFE_INTEGER;
 
