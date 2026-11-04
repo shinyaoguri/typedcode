@@ -80,7 +80,7 @@ import { TerminalPanel } from './ui/components/TerminalPanel.js';
 import { CodeExecutionController } from './execution/CodeExecutionController.js';
 import { toRecordEventInput } from './execution/codeExecutionRecording.js';
 import { ProofExporter } from './export/ProofExporter.js';
-import { createRescueExporter, type RescueExporter } from './export/RescueExporter.js';
+import { createRescueExporter, downloadBlobAsFile, type RescueExporter } from './export/RescueExporter.js';
 import { RuntimeManager } from './execution/RuntimeManager.js';
 import { TabUIController } from './ui/tabs/TabUIController.js';
 import { LogViewerPanel } from './ui/components/LogViewerPanel.js';
@@ -113,6 +113,7 @@ import {
 } from './ui/dialogs/ScreenCaptureDialogs.js';
 import { initSessionStorageService } from './services/SessionStorageService.js';
 import { showSessionRecoveryDialog } from './ui/dialogs/SessionRecoveryDialog.js';
+import { showUnprovenContentDialog } from './ui/dialogs/UnprovenContentDialog.js';
 
 // shared ライブラリのトレースログは dev サーバ時のみ有効化 (本番は no-op)。
 setSharedDebug(import.meta.env.DEV);
@@ -1531,7 +1532,45 @@ async function initializeApp(): Promise<void> {
   // 状態契約: ここから編集できる (タブ 0 本ならウェルカム画面)
   setAppState('ready');
 
+  // 復元で証明と食い違った元のコードを保全したタブがあれば知らせる (#413)。待たない (編集は止めない)
+  notifyRestoreDivergences();
+
   console.log('[TypedCode] App initialized successfully');
+}
+
+/**
+ * 今回の復元で、証明に載らなかった編集をエディタから外したタブを知らせる (#413。ADR-0042 段階 2)。
+ * 元のコードは TabManager が IndexedDB の `unprovenContents` に保全済み。差分は Monaco の diff editor
+ * (読み取り専用) で、左が証明に載っている版、右が元のコード
+ */
+function notifyRestoreDivergences(): void {
+  const divergences = ctx.tabManager?.takeRestoreDivergences() ?? [];
+  if (divergences.length === 0) return;
+  void showUnprovenContentDialog(divergences, {
+    createDiffView: (container, divergence) => {
+      const proofModel = monaco.editor.createModel(divergence.chainContent, divergence.language);
+      const originalModel = monaco.editor.createModel(divergence.original, divergence.language);
+      const diffEditor = monaco.editor.createDiffEditor(container, {
+        readOnly: true,
+        originalEditable: false,
+        automaticLayout: true,
+        renderSideBySide: true,
+        // ダイアログの幅では既定 (900px 未満で inline) に倒れるので、左右に並べたままにする
+        useInlineViewWhenSpaceIsLimited: false,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+      });
+      diffEditor.setModel({ original: proofModel, modified: originalModel });
+      return {
+        dispose: () => {
+          diffEditor.dispose();
+          proofModel.dispose();
+          originalModel.dispose();
+        },
+      };
+    },
+    download: downloadBlobAsFile,
+  });
 }
 
 // ブート: ランディング (ADR-0015) なら重いエディタ初期化をせず DOM だけ描画する。
