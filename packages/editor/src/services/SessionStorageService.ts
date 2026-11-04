@@ -70,15 +70,52 @@ export class SessionOwnershipError extends Error {
   }
 }
 
+/**
+ * open が `blocked` を受けた (#325)。別のタブが旧版の接続を握ったまま閉じないので、スキーマを上げられない。
+ * 待ち続けると起動が止まるので即 reject する。呼び出し側は「他の TypedCode のタブを閉じて再読み込み」を案内できる。
+ */
+export class SessionStorageBlockedError extends Error {
+  constructor() {
+    super('IndexedDB open was blocked by another connection that did not close (another TypedCode tab may be open)');
+    this.name = 'SessionStorageBlockedError';
+  }
+}
+
+/** 接続を失った理由。`versionchange` = 新しい版が別のタブで開かれた、`closed` = 強制 close の後の再オープンに失敗した */
+export type SessionStorageLostReason = 'versionchange' | 'closed';
+
+/** 接続を失った後の操作 (#325)。再読み込みするまで保存先は使えない。 */
+export class SessionStorageUnavailableError extends Error {
+  constructor(readonly reason: SessionStorageLostReason) {
+    super(`IndexedDB connection is unavailable (${reason}); reload the page to reconnect`);
+    this.name = 'SessionStorageUnavailableError';
+  }
+}
+
 // ============================================================================
 // Service Implementation
 // ============================================================================
 
 export class SessionStorageService {
   private db: IDBDatabase | null = null;
+  /**
+   * 接続を失っても (versionchange / 再オープンの失敗) 落とさない (#325)。`TabManager.saveToIndexedDB` は
+   * 未初期化なら黙って成功扱いにするので、ここを落とすと保存の失敗が `synced` に見える。
+   */
   private initialized = false;
   private sessionId: string | null = null;
   private instanceId: string;
+  /** 接続を失った理由。立つと以後の操作は `SessionStorageUnavailableError` で reject する */
+  private lost: SessionStorageLostReason | null = null;
+  /**
+   * 全メソッドが db を受け取る前に待つ Promise (reject しない)。普段は解決済みで、強制 close の後は
+   * 再オープンの試みに差し替わる。全メソッドがこの 1 本に `.then` を連ねるので、呼び出し順が
+   * transaction の作成順として保たれる (IndexedDB の書き込みは逐次 = 不変条件 5)
+   */
+  private connectionReady: Promise<void> = Promise.resolve();
+  /** `close()` のたびに進める。close 後に終わった再オープンの結果を採用しないため */
+  private generation = 0;
+  private onConnectionLost: ((reason: SessionStorageLostReason) => void) | null = null;
 
   constructor() {
     this.instanceId = crypto.randomUUID();
@@ -86,23 +123,60 @@ export class SessionStorageService {
 
   /**
    * IndexedDBを初期化
+   *
+   * open が `blocked` を受けたら `SessionStorageBlockedError` で即 reject する (#325)。
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
+    const db = await this.openDatabase();
+    this.db = db;
+    this.attachConnectionHandlers(db);
+    this.initialized = true;
+    console.log('[SessionStorage] Database initialized');
+  }
+
+  /**
+   * 接続を失ったとき (versionchange / 強制 close の後の再オープン失敗) に呼ぶリスナーを設定する (#325)。
+   * 保存の失敗表示は呼び出し側の既存の経路 (書き込みの reject) に任せ、ここは再読み込みの案内に使う。
+   */
+  setOnConnectionLost(callback: ((reason: SessionStorageLostReason) => void) | null): void {
+    this.onConnectionLost = callback;
+  }
+
+  /**
+   * session DB を開く。`blocked` は待たずに reject し、その後に遅れて success した接続は close して握らない
+   * (握ると、待たせていた側の旧接続と同じく次の版の open を塞ぐ)。
+   */
+  private openDatabase(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
+      let settled = false;
       const request = indexedDB.open(sessionDbName(), DB_VERSION);
 
       request.onerror = () => {
+        if (settled) return;
+        settled = true;
         console.error('[SessionStorage] Failed to open database:', request.error);
         reject(new Error('Failed to open IndexedDB'));
       };
 
+      request.onblocked = () => {
+        if (settled) return;
+        settled = true;
+        const error = new SessionStorageBlockedError();
+        console.error('[SessionStorage]', error.message);
+        reject(error);
+      };
+
       request.onsuccess = () => {
-        this.db = request.result;
-        this.initialized = true;
-        console.log('[SessionStorage] Database initialized');
-        resolve();
+        const db = request.result;
+        if (settled) {
+          // blocked で reject 済み: 遅れて開いた接続は使わない
+          db.close();
+          return;
+        }
+        settled = true;
+        resolve(db);
       };
 
       request.onupgradeneeded = (event) => {
@@ -124,6 +198,78 @@ export class SessionStorageService {
           this.createUnprovenContentsStore(db);
         }
       };
+    });
+  }
+
+  /**
+   * 開いた接続に、接続を失う 2 つの経路のハンドラを張る (#325)。
+   * - `versionchange`: 別のタブが新しい版を開こうとしている (か DB を消そうとしている)。閉じないと相手が
+   *   blocked で止まるので閉じ、以後の操作は `SessionStorageUnavailableError('versionchange')` にする
+   * - `close`: サイトデータの削除などで強制的に閉じられた (自分の `close()` では発火しない)。
+   *   再オープンを 1 回だけ試み、失敗したら `SessionStorageUnavailableError('closed')` にする
+   */
+  private attachConnectionHandlers(db: IDBDatabase): void {
+    db.onversionchange = () => {
+      if (this.db !== db) return;
+      this.detachConnectionHandlers(db);
+      db.close();
+      this.db = null;
+      console.warn('[SessionStorage] Database closed for a newer version opened elsewhere');
+      this.markLost('versionchange');
+    };
+    db.onclose = () => {
+      if (this.db !== db) return;
+      this.detachConnectionHandlers(db);
+      this.db = null;
+      console.warn('[SessionStorage] Database connection was closed unexpectedly; reopening once');
+      this.reopen();
+    };
+  }
+
+  private detachConnectionHandlers(db: IDBDatabase): void {
+    db.onversionchange = null;
+    db.onclose = null;
+  }
+
+  /** 強制 close の後に 1 回だけ開き直す。待っている操作は `connectionReady` 経由でこの結果を待つ */
+  private reopen(): void {
+    const generation = this.generation;
+    this.connectionReady = this.openDatabase().then(
+      (db) => {
+        if (generation !== this.generation) {
+          // 再オープン中に close() された: 採用しない
+          db.close();
+          return;
+        }
+        this.db = db;
+        this.attachConnectionHandlers(db);
+        console.log('[SessionStorage] Database reopened');
+      },
+      (error: unknown) => {
+        if (generation !== this.generation) return;
+        console.error('[SessionStorage] Failed to reopen database:', error);
+        this.markLost('closed');
+      }
+    );
+  }
+
+  private markLost(reason: SessionStorageLostReason): void {
+    if (this.lost) return;
+    this.lost = reason;
+    this.onConnectionLost?.(reason);
+  }
+
+  /**
+   * 操作に使う接続を返す。再オープン中ならその結果を待ち、接続を失った後は `SessionStorageUnavailableError`、
+   * 未初期化なら `Database not initialized` で reject する。
+   *
+   * 全メソッドが同じ深さでここを経てから transaction を作る (呼び出し順 = 作成順。不変条件 5)。
+   */
+  private getDb(): Promise<IDBDatabase> {
+    return this.connectionReady.then(() => {
+      if (this.lost) throw new SessionStorageUnavailableError(this.lost);
+      if (!this.db) throw new Error('Database not initialized');
+      return this.db;
     });
   }
 
@@ -204,8 +350,6 @@ export class SessionStorageService {
    * 既存のセッションが存在するかチェック
    */
   async hasExistingSession(): Promise<boolean> {
-    if (!this.db) throw new Error('Database not initialized');
-
     const session = await this.getLatestSession();
     if (!session) return false;
 
@@ -218,8 +362,8 @@ export class SessionStorageService {
    * 最新のセッションを取得
    */
   async getLatestSession(): Promise<SessionMetadata | null> {
-    if (!this.db) throw new Error('Database not initialized');
-    return IndexedDBHelper.getLatestByIndex<SessionMetadata>(this.db, STORE_SESSIONS, 'createdAt');
+    const db = await this.getDb();
+    return IndexedDBHelper.getLatestByIndex<SessionMetadata>(db, STORE_SESSIONS, 'createdAt');
   }
 
   /**
@@ -255,7 +399,7 @@ export class SessionStorageService {
    * 新しいセッションを作成
    */
   async createSession(): Promise<SessionMetadata> {
-    if (!this.db) throw new Error('Database not initialized');
+    const db = await this.getDb();
 
     const now = Date.now();
     const session: SessionMetadata = {
@@ -270,7 +414,7 @@ export class SessionStorageService {
     };
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_SESSIONS], 'readwrite');
+      const transaction = db.transaction([STORE_SESSIONS], 'readwrite');
       settleOnCommit(
         transaction,
         'Failed to create session',
@@ -292,8 +436,6 @@ export class SessionStorageService {
    * 既存のセッションを再開
    */
   async resumeSession(sessionId: string): Promise<SessionMetadata> {
-    if (!this.db) throw new Error('Database not initialized');
-
     const session = await this.getSessionById(sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
@@ -315,23 +457,24 @@ export class SessionStorageService {
    * セッションIDでセッションを取得
    */
   private async getSessionById(sessionId: string): Promise<SessionMetadata | null> {
-    if (!this.db) throw new Error('Database not initialized');
-    return IndexedDBHelper.get<SessionMetadata>(this.db, STORE_SESSIONS, sessionId);
+    const db = await this.getDb();
+    return IndexedDBHelper.get<SessionMetadata>(db, STORE_SESSIONS, sessionId);
   }
 
   /**
    * セッションを更新
    */
   async updateSession(session: SessionMetadata): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-    await IndexedDBHelper.put(this.db, STORE_SESSIONS, session);
+    const db = await this.getDb();
+    await IndexedDBHelper.put(db, STORE_SESSIONS, session);
   }
 
   /**
    * アクティブタブIDを更新
    */
   async updateActiveTabId(activeTabId: string): Promise<void> {
-    if (!this.sessionId || !this.db) return;
+    // 未初期化なら黙って戻る (従来どおり)。接続を失った後は getSessionById が reject する (#325)
+    if (!this.sessionId || !this.initialized) return;
 
     const session = await this.getSessionById(this.sessionId);
     if (!session) return;
@@ -345,7 +488,8 @@ export class SessionStorageService {
    * タブ順序を更新
    */
   async updateTabOrder(tabOrder: string[]): Promise<void> {
-    if (!this.sessionId || !this.db) return;
+    // 未初期化なら黙って戻る (従来どおり)。接続を失った後は getSessionById が reject する (#325)
+    if (!this.sessionId || !this.initialized) return;
 
     const session = await this.getSessionById(this.sessionId);
     if (!session) return;
@@ -359,10 +503,10 @@ export class SessionStorageService {
    * セッションを完全にクリア
    */
   async clearSession(): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
+    const db = await this.getDb();
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(
+      const transaction = db.transaction(
         [STORE_SESSIONS, STORE_TABS, STORE_EVENTS, STORE_TAB_SWITCHES, STORE_SCREENSHOTS],
         'readwrite'
       );
@@ -411,7 +555,7 @@ export class SessionStorageService {
    * appendEvent は所有者を見ない (先に書いた側のイベントは有効のまま。拒否は hash の食い違いだけ)。
    */
   async assertOwner(): Promise<void> {
-    if (!this.db || !this.sessionId) throw new Error('Database or session not initialized');
+    if (!this.initialized || !this.sessionId) throw new Error('Database or session not initialized');
 
     const session = await this.getSessionById(this.sessionId);
     if (!session) throw new Error(`Session not found: ${this.sessionId}`);
@@ -428,8 +572,8 @@ export class SessionStorageService {
    * タブを保存
    */
   async saveTab(tab: StoredTabData): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-    await IndexedDBHelper.put(this.db, STORE_TABS, tab);
+    const db = await this.getDb();
+    await IndexedDBHelper.put(db, STORE_TABS, tab);
     console.log('[SessionStorage] Tab saved:', tab.id);
   }
 
@@ -437,26 +581,26 @@ export class SessionStorageService {
    * タブを取得
    */
   async getTab(tabId: string): Promise<StoredTabData | null> {
-    if (!this.db) throw new Error('Database not initialized');
-    return IndexedDBHelper.get<StoredTabData>(this.db, STORE_TABS, tabId);
+    const db = await this.getDb();
+    return IndexedDBHelper.get<StoredTabData>(db, STORE_TABS, tabId);
   }
 
   /**
    * セッションの全タブを読み込み
    */
   async loadTabs(sessionId: string): Promise<StoredTabData[]> {
-    if (!this.db) throw new Error('Database not initialized');
-    return IndexedDBHelper.getAllByIndex<StoredTabData>(this.db, STORE_TABS, 'sessionId', sessionId);
+    const db = await this.getDb();
+    return IndexedDBHelper.getAllByIndex<StoredTabData>(db, STORE_TABS, 'sessionId', sessionId);
   }
 
   /**
    * タブを削除
    */
   async deleteTab(tabId: string): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
+    const db = await this.getDb();
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_TABS, STORE_EVENTS], 'readwrite');
+      const transaction = db.transaction([STORE_TABS, STORE_EVENTS], 'readwrite');
 
       settleOnCommit(
         transaction,
@@ -493,8 +637,8 @@ export class SessionStorageService {
    * タブ数を取得
    */
   async getTabCount(sessionId: string): Promise<number> {
-    if (!this.db) throw new Error('Database not initialized');
-    return IndexedDBHelper.countByIndex(this.db, STORE_TABS, 'sessionId', sessionId);
+    const db = await this.getDb();
+    return IndexedDBHelper.countByIndex(db, STORE_TABS, 'sessionId', sessionId);
   }
 
   // ============================================================================
@@ -514,18 +658,20 @@ export class SessionStorageService {
    * 新規に追加できたときだけ、同じトランザクションで tabs の最終書き込み位置と currentHash を進める。
    */
   async appendEvent(tabId: string, event: StoredEvent): Promise<void> {
-    if (!this.db || !this.sessionId) throw new Error('Database or session not initialized');
+    const sessionId = this.sessionId;
+    if (!this.initialized || !sessionId) throw new Error('Database or session not initialized');
+    const db = await this.getDb();
 
     const eventData: StoredEventData = {
       tabId,
-      sessionId: this.sessionId,
+      sessionId,
       eventIndex: event.sequence,
       eventData: event,
       writtenAt: Date.now(),
     };
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_EVENTS, STORE_TABS], 'readwrite');
+      const transaction = db.transaction([STORE_EVENTS, STORE_TABS], 'readwrite');
       const eventsStore = transaction.objectStore(STORE_EVENTS);
 
       // トランザクション完了時にどう終えるか。ConstraintError は preventDefault で中止を防ぐので、
@@ -591,8 +737,8 @@ export class SessionStorageService {
    * タブの全イベントを取得
    */
   async getEvents(tabId: string): Promise<StoredEvent[]> {
-    if (!this.db) throw new Error('Database not initialized');
-    const storedEvents = await IndexedDBHelper.getAllByIndex<StoredEventData>(this.db, STORE_EVENTS, 'tabId', tabId);
+    const db = await this.getDb();
+    const storedEvents = await IndexedDBHelper.getAllByIndex<StoredEventData>(db, STORE_EVENTS, 'tabId', tabId);
     // eventIndexでソートしてeventDataを抽出
     return storedEvents.sort((a, b) => a.eventIndex - b.eventIndex).map((e) => e.eventData);
   }
@@ -601,8 +747,8 @@ export class SessionStorageService {
    * イベント数を取得
    */
   async getEventCount(tabId: string): Promise<number> {
-    if (!this.db) throw new Error('Database not initialized');
-    return IndexedDBHelper.countByIndex(this.db, STORE_EVENTS, 'tabId', tabId);
+    const db = await this.getDb();
+    return IndexedDBHelper.countByIndex(db, STORE_EVENTS, 'tabId', tabId);
   }
 
   // ============================================================================
@@ -613,23 +759,25 @@ export class SessionStorageService {
    * タブ切り替えイベントを保存
    */
   async saveTabSwitch(switchEvent: TabSwitchEvent): Promise<void> {
-    if (!this.db || !this.sessionId) throw new Error('Database or session not initialized');
+    const sessionId = this.sessionId;
+    if (!this.initialized || !sessionId) throw new Error('Database or session not initialized');
+    const db = await this.getDb();
 
     const data: StoredTabSwitchData = {
-      sessionId: this.sessionId,
+      sessionId,
       switchEvent,
     };
 
-    await IndexedDBHelper.add(this.db, STORE_TAB_SWITCHES, data);
+    await IndexedDBHelper.add(db, STORE_TAB_SWITCHES, data);
   }
 
   /**
    * セッションのタブ切り替え履歴を取得
    */
   async getTabSwitches(sessionId: string): Promise<TabSwitchEvent[]> {
-    if (!this.db) throw new Error('Database not initialized');
+    const db = await this.getDb();
     const stored = await IndexedDBHelper.getAllByIndex<StoredTabSwitchData>(
-      this.db,
+      db,
       STORE_TAB_SWITCHES,
       'sessionId',
       sessionId
@@ -650,9 +798,9 @@ export class SessionStorageService {
    * 消えるのはモードのリセットで DB ごと消すときだけ。保持期間と容量の管理は #317 で扱う。
    */
   async appendUnprovenContent(record: Omit<StoredUnprovenContentData, 'id'>): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
+    const db = await this.getDb();
     // id は autoIncrement に任せ、add で書く (put にしない = 既存の行を上書きする経路を持たない)
-    await IndexedDBHelper.add(this.db, STORE_UNPROVEN_CONTENTS, record);
+    await IndexedDBHelper.add(db, STORE_UNPROVEN_CONTENTS, record);
     console.log('[SessionStorage] Unproven content preserved for tab:', record.tabId);
   }
 
@@ -660,9 +808,9 @@ export class SessionStorageService {
    * タブの元の content を、残した順 (古い順) に返す。
    */
   async getUnprovenContents(tabId: string): Promise<StoredUnprovenContentData[]> {
-    if (!this.db) throw new Error('Database not initialized');
+    const db = await this.getDb();
     const rows = await IndexedDBHelper.getAllByIndex<StoredUnprovenContentData>(
-      this.db,
+      db,
       STORE_UNPROVEN_CONTENTS,
       'tabId',
       tabId
@@ -678,8 +826,8 @@ export class SessionStorageService {
    * スクリーンショットを保存
    */
   async saveScreenshot(screenshot: StoredScreenshotData): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-    await IndexedDBHelper.put(this.db, STORE_SCREENSHOTS, screenshot);
+    const db = await this.getDb();
+    await IndexedDBHelper.put(db, STORE_SCREENSHOTS, screenshot);
     console.log('[SessionStorage] Screenshot saved:', screenshot.id);
   }
 
@@ -687,17 +835,17 @@ export class SessionStorageService {
    * IDでスクリーンショットを取得
    */
   async getScreenshotById(id: string): Promise<StoredScreenshotData | null> {
-    if (!this.db) throw new Error('Database not initialized');
-    return IndexedDBHelper.get<StoredScreenshotData>(this.db, STORE_SCREENSHOTS, id);
+    const db = await this.getDb();
+    return IndexedDBHelper.get<StoredScreenshotData>(db, STORE_SCREENSHOTS, id);
   }
 
   /**
    * セッションの全スクリーンショットを取得
    */
   async getScreenshotsBySession(sessionId: string): Promise<StoredScreenshotData[]> {
-    if (!this.db) throw new Error('Database not initialized');
+    const db = await this.getDb();
     const screenshots = await IndexedDBHelper.getAllByIndex<StoredScreenshotData>(
-      this.db,
+      db,
       STORE_SCREENSHOTS,
       'sessionId',
       sessionId
@@ -711,8 +859,8 @@ export class SessionStorageService {
    * スクリーンショットを削除
    */
   async deleteScreenshot(id: string): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-    await IndexedDBHelper.delete(this.db, STORE_SCREENSHOTS, id);
+    const db = await this.getDb();
+    await IndexedDBHelper.delete(db, STORE_SCREENSHOTS, id);
     console.log('[SessionStorage] Screenshot deleted:', id);
   }
 
@@ -720,8 +868,8 @@ export class SessionStorageService {
    * セッションの全スクリーンショットを削除
    */
   async clearScreenshotsBySession(sessionId: string): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-    await IndexedDBHelper.deleteByIndex(this.db, STORE_SCREENSHOTS, 'sessionId', sessionId);
+    const db = await this.getDb();
+    await IndexedDBHelper.deleteByIndex(db, STORE_SCREENSHOTS, 'sessionId', sessionId);
     console.log('[SessionStorage] Screenshots cleared for session:', sessionId);
   }
 
@@ -729,11 +877,11 @@ export class SessionStorageService {
    * スクリーンショット数を取得
    */
   async getScreenshotCount(sessionId?: string): Promise<number> {
-    if (!this.db) throw new Error('Database not initialized');
+    const db = await this.getDb();
     if (sessionId) {
-      return IndexedDBHelper.countByIndex(this.db, STORE_SCREENSHOTS, 'sessionId', sessionId);
+      return IndexedDBHelper.countByIndex(db, STORE_SCREENSHOTS, 'sessionId', sessionId);
     }
-    return IndexedDBHelper.count(this.db, STORE_SCREENSHOTS);
+    return IndexedDBHelper.count(db, STORE_SCREENSHOTS);
   }
 
   // ============================================================================
@@ -741,16 +889,22 @@ export class SessionStorageService {
   // ============================================================================
 
   /**
-   * データベース接続を閉じる
+   * データベース接続を閉じる (リセット用)。接続を失った状態と再オープン中の試みも片付ける。
+   * 自分で閉じるので、再オープンもリスナーの通知も起こさない。
    */
   close(): void {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-      this.initialized = false;
-      this.sessionId = null;
+    const db = this.db;
+    if (db) {
+      this.detachConnectionHandlers(db);
+      db.close();
       console.log('[SessionStorage] Database closed');
     }
+    this.generation += 1;
+    this.db = null;
+    this.initialized = false;
+    this.sessionId = null;
+    this.lost = null;
+    this.connectionReady = Promise.resolve();
   }
 
   /**

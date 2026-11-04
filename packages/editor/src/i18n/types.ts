@@ -378,6 +378,10 @@ export interface TranslationKeys {
     compilationStarted: string;
     executionStarted: string;
     codeExecution: string;
+    /** 新しい版が別のタブで開かれ、IndexedDB の接続を閉じた (#325) */
+    storageVersionChange: string;
+    /** IndexedDB の接続が強制的に閉じられ、開き直せなかった (#325) */
+    storageConnectionLost: string;
   };
 
   // Export
@@ -557,6 +561,15 @@ export interface TranslationKeys {
     description: string;
     hint: string;
     closeThisTab: string;
+  };
+
+  // 起動失敗の画面 (#325)
+  bootFailure: {
+    title: string;
+    description: string;
+    blockedHint: string;
+    reload: string;
+    detail: string;
   };
 
   // Unsupported browser detection

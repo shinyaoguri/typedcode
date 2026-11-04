@@ -707,6 +707,29 @@
     </div>
   </div>
 
+  <!-- Boot Failure Overlay (#325): 起動中の例外 (IndexedDB の open 失敗など) で止まったときに出す。データを消す操作は置かない -->
+  <div id="boot-failure-overlay" class="modal-overlay hidden" data-dialog="boot-failure" style="z-index: 100000;">
+    <div class="modal-dialog modal-danger">
+      <div class="modal-header">
+        <i class="fas fa-triangle-exclamation"></i>
+        <h3 data-i18n="bootFailure.title">TypedCode を起動できませんでした</h3>
+      </div>
+      <div class="modal-body">
+        <p data-i18n="bootFailure.description">起動中にエラーが発生しました。保存済みのデータは消えていません。ページを再読み込みしてください。</p>
+        <p class="modal-hint" id="boot-failure-blocked-hint" data-i18n="bootFailure.blockedHint" hidden>別のタブで TypedCode の古いバージョンが開いています。他の TypedCode のタブを閉じてから再読み込みしてください。</p>
+        <details class="boot-failure-detail">
+          <summary data-i18n="bootFailure.detail">エラーの詳細</summary>
+          <pre id="boot-failure-detail-text"></pre>
+        </details>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-primary" id="boot-failure-reload-btn">
+          <i class="fas fa-rotate-right"></i> <span data-i18n="bootFailure.reload">再読み込み</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Unsupported Browser Overlay (shown for Safari and other unsupported browsers) -->
   <div id="unsupported-browser-overlay" class="modal-overlay hidden" data-dialog="unsupported-browser" style="z-index: 100000;">
     <div class="modal-dialog modal-warning">

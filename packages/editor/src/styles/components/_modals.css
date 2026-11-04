@@ -1460,6 +1460,34 @@
 }
 
 /* ================================================
+   Boot Failure Overlay (#325)
+   ================================================ */
+
+#boot-failure-overlay .modal-dialog {
+  max-width: 480px;
+}
+
+.boot-failure-detail summary {
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.boot-failure-detail pre {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  max-height: 120px;
+  overflow: auto;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ================================================
    Unsupported Browser Overlay
    ================================================ */
 
