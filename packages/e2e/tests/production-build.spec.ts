@@ -107,3 +107,33 @@ test('production build: verify (/verify/) が proof を読んで判定の状態�
   }
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
+
+test('production build: JS の実行が sandbox (iframe 内の Worker) で動き、dev 限定の上限の上書きが効かない', async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('javascript');
+  await app.focusEditor();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.press('Delete');
+  await page.keyboard.type('console.log("hello-" + (6*7))');
+
+  // dev ビルドなら 1ms でタイムアウトする上書き。本番ビルドでは読まれない (#290)
+  await page.evaluate(() => {
+    (window as unknown as { __tcExecLimits?: unknown }).__tcExecLimits = { timeoutMs: 1 };
+  });
+
+  // 本番の CSP・COEP (credentialless) の下でも sandbox iframe と Blob Worker が動き、success で終わる
+  const terminal = page.locator('#xterm-container');
+  await page.locator('#run-code-btn').click();
+  await expect(terminal).toHaveAttribute('data-exec-run', '1');
+  await expect(terminal).toHaveAttribute('data-exec-state', 'idle', { timeout: 30_000 });
+  await expect(terminal).toHaveAttribute('data-exec-outcome', 'success');
+  await expect(terminal.locator('.xterm-rows')).toContainText('hello-42');
+  await expect(page.locator('iframe[data-code-runner]')).toHaveCount(0);
+  expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});

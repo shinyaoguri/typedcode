@@ -3,6 +3,7 @@
  * Provides interactive terminal for C program I/O
  */
 
+import type { CodeExecutionOutcome } from '@typedcode/shared';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 
@@ -11,6 +12,7 @@ export type TerminalInputCallback = (input: string) => void;
 
 export class CTerminal {
   private terminal: Terminal;
+  private readonly container: HTMLElement;
   private fitAddon: FitAddon;
   private inputBuffer: string = '';
   private inputResolver: ((value: string) => void) | null = null;
@@ -28,6 +30,8 @@ export class CTerminal {
   private inputCallback: TerminalInputCallback | null = null;
 
   constructor(container: HTMLElement) {
+    this.container = container;
+    container.dataset.execState = 'idle';
     this.terminal = new Terminal({
       cursorBlink: true,
       cursorStyle: 'block',
@@ -144,6 +148,22 @@ export class CTerminal {
       }
     });
     resizeObserver.observe(container);
+  }
+
+  /**
+   * コード実行の状態契約 (#290。packages/editor/AGENTS.md「状態契約」): 実行を始めた。
+   * `data-exec-state="running"`・`data-exec-run=<run の通し番号>` を付け、前の結果 (`data-exec-outcome`) を外す
+   */
+  markRunStarted(runId: number): void {
+    this.container.dataset.execState = 'running';
+    this.container.dataset.execRun = String(runId);
+    delete this.container.dataset.execOutcome;
+  }
+
+  /** コード実行の状態契約: 実行が終わった。`data-exec-state="idle"` と結果 `data-exec-outcome` を付ける */
+  markRunFinished(outcome: CodeExecutionOutcome): void {
+    this.container.dataset.execState = 'idle';
+    this.container.dataset.execOutcome = outcome;
   }
 
   /**
