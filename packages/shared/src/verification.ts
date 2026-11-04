@@ -36,6 +36,12 @@ import {
   type ProofVersionStatus,
 } from './version.js';
 import { verifyProofSignedCheckpoints } from './signedCheckpoints.js';
+import {
+  evaluateAcceptancePolicy,
+  normalizeAcceptancePolicy,
+  type AcceptancePolicy,
+  type AcceptancePolicyResult,
+} from './acceptancePolicy.js';
 import { verifySessionStartToken, computeAnchoredChainRoot } from './sessionStartToken.js';
 import { CHECKPOINT_PUBLIC_KEYS } from './checkpointKeys/index.js';
 import type { SignedCheckpointsVerificationResult } from './types.js';
@@ -53,7 +59,25 @@ export interface ProofFile extends ExportedProof {
  * Result of full verification
  */
 export interface FullVerificationResult {
+  /**
+   * 総合の結論 = `integrityValid && policy.violations.length === 0`。verify-cli の exit code の元。
+   * 受理ポリシー (#296) を何も立てなければ `integrityValid` と同じ値。
+   */
   valid: boolean;
+  /**
+   * 受理ポリシーを何も足さないときの結論 (#296 / ADR-0043)。version・メタデータ・チェーン・token の
+   * 検証失敗 (#329)・署名 cp の失敗・token と cp の sessionId の不一致のどれも無いとき true。
+   *
+   * ADR-0020 の `assurance.integrity` (三層保証の整合性。token の失敗や署名 cp の失敗では落ちない) や、
+   * Tier A バンドルの `integrityValid` (verify-cli の `toBundleIntegrityValid` = `integrity !== 'failed'`)
+   * とは**別の値**。こちらは「opt-in の受理要件を外したときに `valid` がどうなるか」を表す。
+   */
+  integrityValid: boolean;
+  /**
+   * 受理ポリシー (#296 / ADR-0043) の評価結果。`integrityValid` が false なら評価せず
+   * (`evaluated: false`、`violations` は空)、違反は整合性の失敗と混ざらない。
+   */
+  policy: AcceptancePolicyResult;
   metadataValid: boolean;
   rootValid?: boolean;
   chainValid: boolean;
@@ -100,22 +124,16 @@ export interface FullVerificationResult {
  */
 export type VerificationMode = 'fast' | 'audit' | 'full';
 
-export interface VerifyProofFileOptions {
+/**
+ * `verifyProofFile` の options。受理ポリシー (#296 / ADR-0043) の 4 要件
+ * (`requireRootAnchor` / `requireAnchorDensity` / `requireSignedCheckpoints` / `requireTerminalAnchor`) は
+ * `AcceptancePolicy` から受ける。どれも既定 false で、違反は `policy.violations` に出て `valid` だけを落とす
+ * (`integrityValid` は落とさない)。
+ */
+export interface VerifyProofFileOptions extends AcceptancePolicy {
   mode?: VerificationMode;
   /** 公開鍵レジストリ (テスト/CLI から注入) */
   signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
-  /**
-   * anchoring 密度 gate (ADR-0016)。true のとき、署名 cp が「主張したイベント数 / 時間」に対して
-   * 疎すぎる proof を signed checkpoint 検証で fail させる (signedCheckpointBlocks 経由で全体 invalid)。
-   * 既定 false = 密度は計測のみ (warning は呼び出し側が表示)。exam / 採点ポリシーで opt-in する。
-   */
-  requireAnchorDensity?: boolean;
-  /**
-   * root アンカー必須 (ADR-0017)。true のとき、casual/class で root がサーバアンカーされていない
-   * (`sessionStartToken` 無し = オフライン劣化 / 旧 proof) proof を fail させる。既定 false = warning のみ。
-   * exam proof の免除は `examBindingVerified` に基づく (下記)。high-stakes 採点で opt-in。
-   */
-  requireRootAnchor?: boolean;
   /**
    * exam 束縛が実際に検証済みか (#131)。呼び出し側が `verifyExamBinding` (署名→packageHash→root→
    * 内容ハッシュ) に合格したときのみ true を渡す。`requireRootAnchor` の exam 免除はこのフラグに
@@ -986,9 +1004,9 @@ export async function verifyProofFile(
   const chainValid = chainResult.valid && finalHashResult.valid && checkpointResult.valid && contentResult.valid;
 
   // 3. Verify signed checkpoints (mode independent; only affects "anchored" axis)
+  //    密度は計量だけで、ここでは valid を落とさない (判定は受理ポリシー = 下の 5.)。
   const signedCheckpointResult = await verifyProofSignedCheckpoints(proof, {
     registry: options.signedCheckpointKeyRegistry,
-    requireAnchorDensity: options.requireAnchorDensity,
   });
 
   // 4. ADR-0017: セッション開始トークンと署名 cp の sessionId 突合 (アンカーとチェーンの結びつき)。
@@ -1003,16 +1021,37 @@ export async function verifyProofFile(
     }
   }
 
-  // 5. ADR-0017: root アンカー必須 (strict, opt-in)。exam の免除は「束縛が実際に検証済み」の
-  //    ときだけ (#131)。exam ブロックの存在だけで免除すると、架空の exam ブロック (root は exam 式で
-  //    自己整合する) を付けるだけで gate を回避できてしまう。
-  const examExempt = !!proof.exam && options.examBindingVerified === true;
-  const rootAnchorBlocks = !!options.requireRootAnchor && !examExempt && metadataValid && !rootAnchored;
-
   // signed checkpoint が存在しつつ無効なら全体も無効。存在しない (anchored=false) のは
   // 「補助情報が無い」だけで、tamper resistance は他レイヤで担保される。
   const signedCheckpointBlocks = signedCheckpointResult.anchored && !signedCheckpointResult.valid;
 
+  // ポリシーを何も足さないときの結論 (#296)。
+  const integrityValid =
+    !versionRejected &&
+    metadataValid &&
+    chainValid &&
+    !rootAnchorFailure &&
+    !signedCheckpointBlocks &&
+    !tokenSessionMismatch;
+
+  // 5. 受理ポリシー (#296 / ADR-0043。root アンカー ADR-0017・密度 ADR-0016 を含む opt-in の要件)。
+  //    整合性が落ちた proof では評価しない (改ざん proof の値で要件を語らない)。
+  //    exam の root アンカー免除は「束縛が実際に検証済み」のときだけ (#131)。exam ブロックの存在だけで
+  //    免除すると、架空の exam ブロック (root は exam 式で自己整合する) を付けるだけで要件を回避できる。
+  const applied = normalizeAcceptancePolicy(options);
+  const violations = integrityValid
+    ? evaluateAcceptancePolicy(
+        {
+          rootAnchored,
+          examExempt: !!proof.exam && options.examBindingVerified === true,
+          isExam: !!proof.exam,
+          signedCheckpoints: signedCheckpointResult,
+        },
+        applied
+      )
+    : [];
+
+  // 整合性の理由を先に出す。整合性が通っていれば最初の違反の文言 (成功の文言を Error 行に出さない。#329)。
   const verificationError = !metadataValid
     ? metadataError
     : !chainResult.valid
@@ -1029,21 +1068,12 @@ export async function verifyProofFile(
                 ? tokenSessionMismatch
                 : signedCheckpointBlocks
                   ? signedCheckpointResult.reason
-                  : rootAnchorBlocks
-                    ? proof.exam
-                      ? 'Root anchoring is required and the exam binding is not verified (provide and verify the exam package to exempt an exam proof)'
-                      : 'Root is not server-anchored (ADR-0017) but root anchoring is required'
-                    : chainResult.message;
+                  : (violations[0]?.message ?? chainResult.message);
 
   return {
-    valid:
-      !versionRejected &&
-      metadataValid &&
-      chainValid &&
-      !rootAnchorFailure &&
-      !signedCheckpointBlocks &&
-      !tokenSessionMismatch &&
-      !rootAnchorBlocks,
+    valid: integrityValid && violations.length === 0,
+    integrityValid,
+    policy: { applied, evaluated: integrityValid, violations },
     metadataValid,
     rootValid,
     rootAnchored,

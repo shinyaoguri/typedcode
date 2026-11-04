@@ -71,6 +71,25 @@ export type {
   RootAnchorFailureCode,
 } from './verification.js';
 
+// 受理ポリシー (#296 / ADR-0043) — 整合性とは別に、採点者が opt-in で足す受理要件の評価
+export {
+  evaluateAcceptancePolicy,
+  normalizeAcceptancePolicy,
+  hasAcceptancePolicy,
+  ROOT_ANCHOR_REQUIRED_MESSAGE,
+  EXAM_ROOT_ANCHOR_REQUIRED_MESSAGE,
+  ANCHOR_DENSITY_SPARSE_MESSAGE,
+  SIGNED_CHECKPOINTS_MISSING_MESSAGE,
+  TERMINAL_ANCHOR_MISSING_MESSAGE,
+} from './acceptancePolicy.js';
+export type {
+  AcceptancePolicy,
+  AcceptancePolicyEvidence,
+  AcceptancePolicyResult,
+  AcceptancePolicyViolation,
+  AcceptancePolicyViolationCode,
+} from './acceptancePolicy.js';
+
 // Signed checkpoints (long-term verifiability)
 export {
   hashSignedCheckpointPayload,

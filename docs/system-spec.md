@@ -602,8 +602,10 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
   - `firstAnchorLatencyServerMs` = firstSeenAt → 初アンカーの ms。現アーキでは構造的に ~0 (session/start アンカー = ADR-0017 で意味化)。計測のみで gate には使わない。
   - **疎判定 `sparse`**: `maxGapEvents > 500` または `maxGapServerMs > 50s` または `firstAnchorLatencyEvents > 500`
     (= ハイブリッドトリガ 100 events / 10,000 ms の 5 倍。保守的な置きで実ログ調整待ち)。
-  - 既定は **warning のみ** (valid は true)。`requireAnchorDensity` opt-in (exam/採点) のとき `sparse` で `valid=false`。
-    `signedCount === 0` (未アンカー) は対象外 = `density=null` で、ADR-0004「未アンカーは valid のまま」を維持。
+  - 署名 cp レイヤは密度を**計量するだけ**で、`sparse` でも `signedCheckpoints.valid` は true のまま。不受理にするのは
+    受理ポリシーの `requireAnchorDensity` (違反 `anchor-density-sparse`。§6.3.1、#296) で、整合性 (`integrityValid`) は落とさない。
+    `signedCount === 0` (未アンカー) は対象外 = `density=null` で、ADR-0004「未アンカーは valid のまま」を維持
+    (署名 cp の存在を求めるのは `requireSignedCheckpoints`)。
 - 未署名の末尾 (#295、表示と三層保証の入力。`valid` には効かない):
   - `coverage.unsignedTailEvents` = 最後の署名 cp より後のイベント数 (`events.length - 1 - lastSignedEventIndex`、0 未満は 0)。
     署名 cp が無ければ `events.length`。この区間はどのサーバ署名にも覆われず、時刻の上界を持たない (オフラインで書き足せる)。
@@ -624,8 +626,8 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
   サーバ時刻証拠が一部だけ (疎 / post-hoc / 未署名の末尾 / root か cp の片方のみ) なら `partial`、無ければ `unanchored`
   (invalid な cp 連鎖と sessionId が食い違う cp は時刻証拠に数えない)。sessionId 不一致は改ざんではないので整合性は落とさない (#295)。
   空セッション (events 0 件) は署名 cp を持てず `anchored` にならず、署名 cp の無い旧形式は root アンカーだけなら `partial`
-- **アンカー密度 (ADR-0016)** は既定 warning。`requireAnchorDensity` (verify-cli の `--require-anchor-density` 等) を渡したときのみ `sparse` を signed checkpoint レイヤの fail に合流させる (exam/採点で opt-in)
-- **root サーバアンカー (ADR-0017)**: `sessionStartToken` があるとき token↔署名 cp の `sessionId` 一致も要求する (アンカーとチェーンの結びつき)。token はあるが検証できない (`rootAnchorFailure`、#329) は既定で fail (`valid: false`) だが整合性は落とさない (未知 keyId の署名 cp と同じ扱い。temporal は有効な署名 cp があれば `partial`、無ければ `unanchored`)。`rootAnchored=false` (token 無し = オフライン劣化 / 旧 proof) は既定 warning。`requireRootAnchor` (verify-cli の `--require-root-anchor`) を渡したときのみ fail に合流させる (exam の免除は `examBindingVerified` = 束縛検証合格が条件。自己申告の exam ブロックだけでは免除しない #131。high-stakes 採点で opt-in)
+- **アンカー密度 (ADR-0016)** は既定 warning。`requireAnchorDensity` (verify-cli の `--require-anchor-density` 等) を渡したときのみ、受理ポリシーの違反 `anchor-density-sparse` として `valid` を落とす (exam/採点で opt-in。signed checkpoint レイヤの fail には合流させない。§6.3.1)
+- **root サーバアンカー (ADR-0017)**: `sessionStartToken` があるとき token↔署名 cp の `sessionId` 一致も要求する (アンカーとチェーンの結びつき)。token はあるが検証できない (`rootAnchorFailure`、#329) は既定で fail (`valid: false`) だが整合性は落とさない (未知 keyId の署名 cp と同じ扱い。temporal は有効な署名 cp があれば `partial`、無ければ `unanchored`)。`rootAnchored=false` (token 無し = オフライン劣化 / 旧 proof) は既定 warning。`requireRootAnchor` (verify-cli の `--require-root-anchor`) を渡したときのみ、受理ポリシーの違反 `root-anchor-missing` として fail させる (exam の免除は `examBindingVerified` = 束縛検証合格が条件。自己申告の exam ブロックだけでは免除しない #131。high-stakes 採点で opt-in)
 - **バージョンゲート (#223)**: `verifyProofFile` は入口で `proof.version` を `classifyProofVersion` で分類し、結果の `versionStatus` に載せる (`typingProofHash` の入力ではないので、ここがゲートの唯一の効き目)。形式は厳密に `MAJOR.MINOR.PATCH` (`'abc'` / `'1'` / `'1.2.0-beta'` / 欠落 / 文字列以外は `malformed`)。
   - `tooOld` (`MIN_SUPPORTED_VERSION` 未満) と `malformed` は `valid: false` で、`errorMessage` が version に言及する (自己申告値は埋め込まない)。他レイヤの結果 (`chainValid` など) は落とさず返す
   - `newer` (この検証器が知る major を超える。例 `2.0.0`) は reject しない。意味が変わったフィールドを旧規則で読む恐れがあるので `versionStatus: 'newer'` で表示層へ渡し、`valid` は他の検査で決まる。同じ major の新しい minor / patch は `supported` (加算的変更という約束)
@@ -633,6 +635,23 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
   - **表示層 (Web / CLI で同じ結論)**: `newer` は reject せず warning を出す。verify-cli は合否の直下に `! proof format version X is newer than this verifier supports` を出し (exit code は他の検査で決まる)、verify (Web) は信頼バッジに `component: 'version'` の warning を 1 件足してタブを `warning` にする。`tooOld` / `malformed` は両方で失敗 (CLI は `Error:` に version の理由、Web は `component: 'version'` の error で `failed`) になり、整合性 (integrity) は `failed` にしない (version は改ざんの証拠ではない)。表示してよい自己申告 version は `MAJOR.MINOR.PATCH` の数字に正規化した値 (`declaredVersion`) だけで、不正形式の値は stdout / DOM に補間しない。固定は `webCliParity.test.ts`
 - レイヤ間優先順位: metadata → chain → finalHash → checkpoint → content → signedCheckpoint
 - いずれかが false なら、エラー位置 (event index) とメッセージを返す
+
+#### 6.3.1. 受理ポリシー (#296, ADR-0043)
+
+整合性 (改ざんされていないか) とは別に、採点者が opt-in で足す受理要件。判定は shared の `evaluateAcceptancePolicy` (純関数) 1 か所で、`verifyProofFile` が options (`AcceptancePolicy`) から受けて評価する。
+
+| 要件 (`AcceptancePolicy`) | verify-cli | 違反 code | 違反の条件 |
+|---|---|---|---|
+| `requireRootAnchor` | `--require-root-anchor` | `root-anchor-missing` | `rootAnchored` でない (exam は束縛が検証済み = `examBindingVerified` のときだけ免除。#131) |
+| `requireAnchorDensity` | `--require-anchor-density` | `anchor-density-sparse` | `density.sparse` (署名 cp 0 件は `density=null` で対象外) |
+| `requireSignedCheckpoints` | `--require-signed-checkpoints` | `signed-checkpoints-missing` | `coverage.signedCount === 0` |
+| `requireTerminalAnchor` | `--require-final-anchor` | `terminal-anchor-missing` | `!coverage.terminalAnchored && coverage.unsignedTailEvents > 0`。違反に `unsignedTailEvents` を添える (署名 cp 0 件は全イベントを未署名の末尾として数える。イベント 0 件の proof は対象外) |
+
+- `integrityValid` = ポリシーを何も足さないときの結論 (version・メタデータ・チェーン・token の検証失敗 #329・署名 cp の失敗・token と cp の sessionId 不一致のどれも無い)。ADR-0020 の `assurance.integrity` や Tier A バンドルの `integrityValid` とは別の値
+- `policy = { applied, evaluated, violations }`。`applied` は 4 要件とも boolean で残す。**`integrityValid` が false なら評価しない** (`evaluated: false`、`violations` は空)。改ざん proof の値で要件を語らず、違反と改ざんを混ぜない
+- `valid = integrityValid && violations.length === 0`。`errorMessage` は整合性の理由を優先し、整合性が通っていれば最初の違反の文言 (並びは `anchor-density-sparse` → `root-anchor-missing` → `signed-checkpoints-missing` → `terminal-anchor-missing`)
+- verify (Web) はポリシーを適用しない (署名 cp の有無・最終署名・未署名の末尾を表示するだけ)。CLI の違反は同じ shared の `coverage` から来る (`webCliParity.test.ts` が固定)
+- 提出期間 (time-box) と LMS の受領時刻は入れない (ADR-0013 の advisory のまま)
 
 ### 6.4. 試験束縛検証 (grader, ADR-0006)
 
@@ -809,9 +828,10 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **firstSeenAt** | サーバが (sessionId, tabId) を最初に見た時刻。KV 由来で、そのキーに対して不変 |
 | **anchored** | proof に signed checkpoint が 1 つ以上含まれている状態 |
 | **post-hoc batch signing** | proof 完成後に複数 envelope を短時間で一括取得する攻撃。temporal ratio で検出試行 |
-| **anchor density / sparse (ADR-0016)** | 署名 cp が主張イベント数/時間に対し十分密かを見る指標。`maxGapEvents>500` / `maxGapServerMs>50s` / `firstAnchorLatencyEvents>500` で `sparse`。末尾 1 点アンカー (coverageRatio=1.0 でも疎) を検出。既定 warning、`requireAnchorDensity` で strict-fail |
+| **anchor density / sparse (ADR-0016)** | 署名 cp が主張イベント数/時間に対し十分密かを見る指標。`maxGapEvents>500` / `maxGapServerMs>50s` / `firstAnchorLatencyEvents>500` で `sparse`。末尾 1 点アンカー (coverageRatio=1.0 でも疎) を検出。既定 warning、`requireAnchorDensity` で受理ポリシーの違反 `anchor-density-sparse` (§6.3.1) |
+| **受理ポリシー / acceptance policy (ADR-0043)** | 整合性とは別に採点者が opt-in で足す受理要件 (`requireRootAnchor` / `requireAnchorDensity` / `requireSignedCheckpoints` / `requireTerminalAnchor`)。違反は `policy.violations` に code つきで出て `valid` だけを落とし、`integrityValid` は落とさない。整合性が落ちた proof では評価しない (`evaluated: false`)。§6.3.1 |
 | **session start token / serverNonce (ADR-0017)** | session/start が Turnstile 後に発行する ECDSA 署名トークン。`serverNonce` を root (`SHA256(fp ‖ localNonce ‖ serverNonce)`) に焼き、開始時刻をサーバアンカーする。完全オフライン捏造を封じる。Turnstile ゲート + root アンカー + 人間ゲートを兼ね、HMAC attestation の作成経路を置換 |
-| **rootAnchored (ADR-0017)** | proof の root が serverNonce トークンでアンカーされているか。`sessionStartToken` 同梱で true。false (旧 proof / オフライン劣化) は warning、`requireRootAnchor` で strict-fail。exam の免除は束縛検証合格 (`examBindingVerified`) が条件 (#131) |
+| **rootAnchored (ADR-0017)** | proof の root が serverNonce トークンでアンカーされているか。`sessionStartToken` 同梱で true。false (旧 proof / オフライン劣化) は warning、`requireRootAnchor` で受理ポリシーの違反 `root-anchor-missing`。exam の免除は束縛検証合格 (`examBindingVerified`) が条件 (#131) |
 | **isTrusted / 合成打鍵 (ADR-0018)** | keyDown/keyUp の `data.isTrusted===false` = JS dispatch (拡張/ページスクリプト) の合成打鍵。keystroke data 経由で hash chain に焼かれ改ざん耐性あり。`automationAnalyzer` が数えて advisory signal。**限界**: CDP/ハード注入は isTrusted=true で捕捉不可 (部分的) |
 | **(試験) 試験モード** | URL パス `/exam` で入る anti-AI-cheating モード (ADR-0011 でモードを path 分岐化、旧 `?exam=1` sticky を置換)。封印問題 + 監督コード + チェーン根束縛。ADR-0006〜0011 |
 | **モード (casual/class/assignment/exam)** | URL パスで確定する動作モード (ADR-0011/0015)。`/casual` `/class` `/assignment` `/exam`。能力 (スクショ/封印/フルスクリーン等) と storage 名前空間がモード別。proof に自己申告 `mode` を記録 |

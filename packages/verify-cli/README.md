@@ -41,6 +41,10 @@ typedcode-verify ALL_TC.zip --require-anchor-density
 # root アンカー gate (ADR-0017): root 未アンカー (serverNonce トークン無し) を fail させる (採点向け opt-in)
 typedcode-verify ALL_TC.zip --require-root-anchor
 
+# 受理ポリシー (#296): 署名 cp が 1 件も無い proof / 最終イベントまで署名が届いていない proof を fail させる
+typedcode-verify ALL_TC.zip --require-signed-checkpoints
+typedcode-verify ALL_TC.zip --require-final-anchor   # 短時間の試験向け (下の注意を参照)
+
 # 外部 Analyzer を差し込む (ADR-0023。反復可。既定の分析器に追加される)
 typedcode-verify proof.zip --analyzer ./my-analyzer.mjs
 
@@ -48,7 +52,7 @@ typedcode-verify proof.zip --analyzer ./my-analyzer.mjs
 typedcode-verify proof.zip --analyzer ./my-analyzer.mjs --no-default-analyzers
 
 # 分析結果を機械可読に書き出す
-typedcode-verify ALL_TC.zip --analysis-json out.json      # {filename, valid, analysis}
+typedcode-verify ALL_TC.zip --analysis-json out.json      # {filename, valid, policy, analysis}
 typedcode-verify ALL_TC.zip --analysis-bundle bundle.json # content-free な派生バンドル (ADR-0024 Tier A)
 
 # 採点に使うソースを取り出す (proof ごとに submitted / verified / report.json を書く)
@@ -64,6 +68,8 @@ typedcode-verify ALL_TC.zip --extract-sources graded/
 | `--submitted-at <ISO>` | 提出時刻。time-box (提出期間内か) を判定 |
 | `--require-anchor-density` | アンカー密度が疎な proof を exit 1 にする (ADR-0016) |
 | `--require-root-anchor` | root 未アンカーの proof を exit 1 にする (ADR-0017) |
+| `--require-signed-checkpoints` | 署名 cp が 1 件も無い proof を exit 1 にする (#296) |
+| `--require-final-anchor` | 最終イベントが署名 cp に覆われていない (未署名の末尾がある) proof を exit 1 にする (#296)。長いセッションでは使わない ([受理ポリシー](#受理ポリシー---require-)) |
 | `--analyzer <module>` | 外部 Analyzer モジュールを読み込む (反復可、ADR-0023) |
 | `--no-default-analyzers` | 同梱の分析器を外し、`--analyzer` で指定したものだけを使う |
 | `--analysis-json <out.json>` | 分析レポートを JSON でファイル出力 |
@@ -124,6 +130,19 @@ Anchoring:   VERIFIED (12 signed checkpoints, 100.0% coverage)
 複数 proof を含む ZIP では各 `*_proof.json` を順に検証し、末尾に `=== Summary: N/M proofs passed ===` を出します (1 件でも失敗すれば exit 1)。入力を複数渡したときも同様で、全入力の全 proof を検証して末尾に Summary を出します。存在しない・壊れている・未対応拡張子の入力は、他の入力の検証を止めずに失敗として数え (Summary では `✗`、エラーは stderr)、1 件でもあれば exit 1 です。複数入力のときの ZIP 内 proof は `<入力>:<エントリ名>` で表示し、`--analysis-json` / `--analysis-bundle` の `filename` も同じ名前になります (読み込めなかった入力は分析が無いので載りません)。`--mode fast` のときは PoSW 行が `SKIPPED (fast mode)`、署名 cp が無いときは `Anchoring: unavailable` になります。
 
 `Anchoring` 行の下には**アンカー密度** (ADR-0016) の `Density: max gap … events / …s, first anchor @ event …` が出ます。署名 cp が主張セッションに対して疎な場合 (例: 末尾 1 個だけで長いチェーンをアンカー) は `! Anchoring is sparse …` の警告が付きます。既定は警告のみですが、`--require-anchor-density` を付けると疎な proof を **exit 1** にできます (採点向け opt-in)。
+
+### 受理ポリシー (`--require-*`)
+
+`--require-root-anchor` / `--require-anchor-density` / `--require-signed-checkpoints` / `--require-final-anchor` は、改ざんの検出 (整合性) とは別に、採点者が「この proof を受理するか」の条件を足す受理ポリシーです (ADR-0043)。どれも既定は off で、立てなければ結論も出力も変わりません。
+
+- 1 つでも立てると、出力に `--- Acceptance policy ---` 節が出ます。立てた要件 (`Applied:`)、結果 (`Result: all requirements met` / `N requirement(s) not met`)、違反ごとに `FAIL <code>: <理由>` の行が並びます。code は `root-anchor-missing` / `anchor-density-sparse` / `signed-checkpoints-missing` / `terminal-anchor-missing` (未署名の末尾の件数つき) です
+- 違反があれば exit 1 ですが、`Metadata` / `Hash Chain` は `PASS` のままで、改ざんとは区別できます。逆に、改ざんなどで検証そのものが失敗した proof ではポリシーを評価せず、`Result: not evaluated (verification failed)` と出します
+- `--analysis-json` の各要素に `policy` (`applied` / `evaluated` / `violations`) が入ります。`--analysis-bundle` には入りません
+- 違反した proof があっても、残りの入力の検証と `--analysis-*` の書き出しは続きます
+- `--require-anchor-density` は署名 cp が 0 件の proof を対象にしません (署名 cp の存在を求めるのは `--require-signed-checkpoints`)。密度が疎な proof は `Anchoring: VERIFIED` と `! Anchoring is sparse` の警告のまま、受理ポリシーの違反として exit 1 になります
+- 提出期間 (time-box) と LMS の受領時刻はポリシーに含みません (ADR-0013)
+
+> **注意: `--require-final-anchor` は、署名 token の再取得 (#236(b)) が入るまで、短時間の試験以外で常用しないでください。** 長い課題のセッションでは、token の期限切れなどで最終イベントへの署名を取れないことがあり、改ざんしていない正直な提出が不受理 (exit 1) になりえます。
 
 ## 終了コード
 

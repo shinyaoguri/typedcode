@@ -75,6 +75,7 @@ root = SHA256(fingerprintHash ‖ localNonce ‖ serverNonce)
 **フォールバック (Option b)**: session/start 不達なら旧式 `SHA256(fp ‖ localNonce)` root にフォールバックし
 `rootAnchored:false`。verify は warning。strict (採点) は `requireRootAnchor` opt-in で fail にできる
 (ADR-0016 の `requireAnchorDensity` と同じ「既定 warning / opt-in strict」パターン)。
+2026-11 以降、この opt-in は受理ポリシー (ADR-0043) の 1 要件 `root-anchor-missing` として評価し、整合性 (`integrityValid`) とは別に返す。
 
 編集側は exam の `initializeExam` と同じ「**トークン取得後に root 確定**」フローを casual/class に導入する
 (`initializeAnchored(fp, components, serverNonce, token)` を新設、または `initialize` に任意 token を渡す)。

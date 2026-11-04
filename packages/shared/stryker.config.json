@@ -4,6 +4,7 @@
   "vitest": { "configFile": "vitest.config.ts" },
   "mutate": [
     "src/verification.ts",
+    "src/acceptancePolicy.ts",
     "src/typingProof/ChainVerifier.ts",
     "src/fileProcessing/zipBudget.ts",
     "src/utils/hashUtils.ts",

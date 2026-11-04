@@ -16,6 +16,7 @@ import {
   SIGNED_CHECKPOINT_FORMAT_VERSION,
   TypingProof,
   computeHash,
+  evaluateAcceptancePolicy,
   hashSignedCheckpointPayload,
   isIdempotentSigningRetry,
   resolveCheckpointPublicKey,
@@ -29,6 +30,7 @@ import {
   type SignedCheckpointEnvelope,
   type SignedCheckpointInput,
   type SignedCheckpointPayload,
+  type SignedCheckpointsVerificationResult,
   type StoredEvent,
 } from '../index.js';
 import {
@@ -842,6 +844,17 @@ describe('signed checkpoint coverage — unsigned tail (#295)', () => {
 describe('anchoring density gate (ADR-0016)', () => {
   const ROOT = 'a'.repeat(64);
 
+  /**
+   * 密度 gate の判定は受理ポリシーへ移った (#296 / ADR-0043)。`verifySignedCheckpoints` は密度を計量する
+   * だけで valid を落とさないので、ここでは計量結果を受理ポリシーに通して gate の結論を見る。
+   * root アンカーは満たした形にして、密度要件だけを立てる。
+   */
+  const densityViolations = (result: SignedCheckpointsVerificationResult) =>
+    evaluateAcceptancePolicy(
+      { rootAnchored: true, examExempt: false, isExam: false, signedCheckpoints: result },
+      { requireAnchorDensity: true }
+    );
+
   it('flags a single end checkpoint anchoring a long chain as sparse (large event gap)', async () => {
     const events = makeSyntheticEvents(600);
     // 末尾 1 個だけ署名 cp を打つ攻撃形。coverageRatio は 1.0・postHoc も立たないが疎である。
@@ -864,7 +877,7 @@ describe('anchoring density gate (ADR-0016)', () => {
     expect(result.coverage.coverageRatio).toBeCloseTo(1, 5);
   });
 
-  it('fails (valid=false) for a sparse chain when requireAnchorDensity is set (strict / exam)', async () => {
+  it('rejects a sparse chain through the acceptance policy when requireAnchorDensity is set (strict / exam)', async () => {
     const events = makeSyntheticEvents(600);
     const checkpoints = await buildSignedCheckpoints({
       events,
@@ -874,12 +887,13 @@ describe('anchoring density gate (ADR-0016)', () => {
     });
     const result = await verifySignedCheckpoints(events, checkpoints, ROOT, {
       registry: [testKey.registryEntry],
-      requireAnchorDensity: true,
     });
-    expect(result.valid).toBe(false);
+    // 署名そのものは健全なので signed checkpoint レイヤは valid のまま (#296)。不受理は policy の違反として出る。
+    expect(result.valid).toBe(true);
     expect(result.anchored).toBe(true);
-    expect(result.density!.sparse).toBe(true);
-    expect(result.reason).toMatch(/too sparse|density gate/);
+    const violations = densityViolations(result);
+    expect(violations.map((v) => v.code)).toEqual(['anchor-density-sparse']);
+    expect(violations[0]!.message).toMatch(/too sparse|density gate/);
   });
 
   it('flags a single start checkpoint (large trailing event gap) as sparse', async () => {
@@ -927,9 +941,9 @@ describe('anchoring density gate (ADR-0016)', () => {
     });
     const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
       registry: [testKey.registryEntry],
-      requireAnchorDensity: true, // strict でも通る
     });
     expect(result.valid).toBe(true);
+    expect(densityViolations(result)).toEqual([]); // strict でも通る
     expect(result.density).not.toBeNull();
     expect(result.density!.sparse).toBe(false);
     expect(result.density!.firstAnchorLatencyEvents).toBe(0);
@@ -946,9 +960,9 @@ describe('anchoring density gate (ADR-0016)', () => {
     });
     const result = await verifySignedCheckpoints(events, checkpoints, ROOT, {
       registry: [testKey.registryEntry],
-      requireAnchorDensity: true,
     });
     expect(result.valid).toBe(true);
+    expect(densityViolations(result)).toEqual([]);
     expect(result.density!.sparse).toBe(false);
     expect(result.density!.maxGapEvents).toBeLessThanOrEqual(5);
   });
@@ -957,11 +971,11 @@ describe('anchoring density gate (ADR-0016)', () => {
     const events = makeSyntheticEvents(3);
     const result = await verifySignedCheckpoints(events, [], ROOT, {
       registry: [testKey.registryEntry],
-      requireAnchorDensity: true,
     });
     // 未アンカーは anchored=false。density gate は対象外で、density は null。
     expect(result.anchored).toBe(false);
     expect(result.density).toBeNull();
+    expect(densityViolations(result)).toEqual([]);
   });
 });
 

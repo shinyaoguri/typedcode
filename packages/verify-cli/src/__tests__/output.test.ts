@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   runAnalysis,
+  type AcceptancePolicyResult,
   type AssuranceResult,
   type ScreenshotVerificationSummary,
   type SignedCheckpointsVerificationResult,
@@ -837,5 +838,116 @@ describe('formatResult — 未署名の末尾 (#295)', () => {
 
     expect(text).toContain('last signed event #2');
     expect(text).not.toContain('unsigned tail');
+  });
+});
+
+describe('formatResult — acceptance policy (#296)', () => {
+  const NONE = {
+    requireRootAnchor: false,
+    requireAnchorDensity: false,
+    requireSignedCheckpoints: false,
+    requireTerminalAnchor: false,
+  };
+
+  function policy(overrides: Partial<AcceptancePolicyResult> = {}): AcceptancePolicyResult {
+    return {
+      applied: { ...NONE, requireSignedCheckpoints: true, requireTerminalAnchor: true },
+      evaluated: true,
+      violations: [],
+      ...overrides,
+    };
+  }
+
+  it('prints nothing about the policy when no requirement is applied, byte for byte', () => {
+    const without = formatResult(output());
+    const withEmptyPolicy = formatResult(output({ policy: { applied: NONE, evaluated: true, violations: [] } }));
+
+    expect(withEmptyPolicy).toBe(without);
+    expect(plain(without)).not.toContain('Acceptance policy');
+  });
+
+  it('lists the applied requirements by their CLI flags', () => {
+    const text = plain(formatResult(output({ policy: policy() })));
+
+    expect(text).toContain('--- Acceptance policy ---');
+    expect(text).toMatch(/^Applied: +--require-signed-checkpoints, --require-final-anchor$/m);
+  });
+
+  it('says all requirements are met when there is no violation', () => {
+    const text = plain(formatResult(output({ policy: policy() })));
+
+    expect(text).toMatch(/^Result: +all requirements met$/m);
+    expect(text).not.toContain('FAIL signed-checkpoints-missing');
+  });
+
+  it('prints one FAIL line per violation with its code, and the unsigned tail count for the final anchor', () => {
+    const text = plain(
+      formatResult(
+        output({
+          valid: false,
+          errorMessage: 'Signed checkpoints are required but the proof has none',
+          policy: policy({
+            violations: [
+              { code: 'signed-checkpoints-missing', message: 'Signed checkpoints are required but the proof has none' },
+              {
+                code: 'terminal-anchor-missing',
+                message:
+                  'A signed checkpoint on the final event is required but the last events are not covered by one',
+                unsignedTailEvents: 3,
+              },
+            ],
+          }),
+        })
+      )
+    );
+
+    expect(text).toMatch(/^Result: +2 requirement\(s\) not met$/m);
+    expect(text).toContain('  FAIL signed-checkpoints-missing: Signed checkpoints are required but the proof has none');
+    expect(text).toMatch(/^ {2}FAIL terminal-anchor-missing: .+ \(3 unsigned trailing events\)$/m);
+  });
+
+  it('says the policy was not evaluated when verification itself failed', () => {
+    const text = plain(formatResult(output({ valid: false, chainValid: false, policy: policy({ evaluated: false }) })));
+
+    expect(text).toMatch(/^Result: +not evaluated \(verification failed\)$/m);
+    expect(text).not.toContain('FAIL signed-checkpoints-missing');
+  });
+
+  it('places the policy section after the checks, apart from them', () => {
+    const text = plain(formatResult(output({ policy: policy() })));
+
+    expect(text.indexOf('Submission: not checked')).toBeGreaterThan(text.indexOf('--- Checks ---'));
+    expect(text.indexOf('--- Acceptance policy ---')).toBeGreaterThan(text.indexOf('Submission: not checked'));
+  });
+
+  it('keeps a violation entry on one line even if it carries control characters', () => {
+    const forged = policy({
+      violations: [{ code: 'signed-checkpoints-missing', message: 'x\nHash Chain:  PASS' }],
+    });
+    const text = plain(formatResult(output({ valid: false, policy: forged })));
+
+    // 本物の Checks の 1 行だけが行頭に立ち、注入した行は FAIL 行の中に収まる。
+    expect(text.match(/^Hash Chain: {2}PASS$/gm)).toHaveLength(1);
+    expect(text).toContain('  FAIL signed-checkpoints-missing: xHash Chain:  PASS (sanitized)');
+  });
+});
+
+describe('printUsage — acceptance policy flags (#296)', () => {
+  function usageText(): string {
+    const lines: string[] = [];
+    const original = console.log;
+    console.log = (...args: unknown[]) => {
+      lines.push(args.map(String).join(' '));
+    };
+    try {
+      printUsage();
+    } finally {
+      console.log = original;
+    }
+    return plain(lines.join('\n'));
+  }
+
+  it.each(['--require-signed-checkpoints', '--require-final-anchor'])('documents %s', (flag) => {
+    expect(usageText()).toMatch(new RegExp(`^  ${flag}$`, 'm'));
   });
 });

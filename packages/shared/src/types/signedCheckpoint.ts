@@ -105,7 +105,7 @@ export interface SignedCheckpointsVerificationResult {
     maxGapEvents: number;
     /** 連続署名 cp 間 serverTimestamp の最大ギャップ ms (先頭は firstSeenAt 起点。末尾境界は時刻不明のため除外) */
     maxGapServerMs: number;
-    /** 保守的閾値を超え anchoring が疎と判定されたか (warning シグナル / strict 時は valid=false の根拠) */
+    /** 保守的閾値を超え anchoring が疎と判定されたか (warning シグナル。`valid` は落とさない。不受理にするのは受理ポリシーの `anchor-density-sparse`。#296) */
     sparse: boolean;
   } | null;
   /** 失敗理由 (valid=false 時) */

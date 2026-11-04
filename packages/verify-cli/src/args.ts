@@ -22,6 +22,8 @@ export const VALUE_FLAGS = new Set([
 export const BOOLEAN_FLAGS = new Set([
   '--require-anchor-density',
   '--require-root-anchor',
+  '--require-signed-checkpoints',
+  '--require-final-anchor',
   '--no-default-analyzers',
   '--help',
   '-h',

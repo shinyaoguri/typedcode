@@ -48,8 +48,15 @@ export function safe(value: unknown): string {
   return truncated === raw ? truncated : `${truncated} (sanitized)`;
 }
 
-import { PROOF_FORMAT_VERSION, isProofVersionRejected, parseVersionStrict } from '@typedcode/shared';
+import {
+  PROOF_FORMAT_VERSION,
+  hasAcceptancePolicy,
+  isProofVersionRejected,
+  parseVersionStrict,
+} from '@typedcode/shared';
 import type {
+  AcceptancePolicy,
+  AcceptancePolicyResult,
   VerificationMode,
   SignedCheckpointsVerificationResult,
   AnalysisReport,
@@ -85,6 +92,11 @@ export interface VerificationOutput {
   rootAnchored?: boolean;
   /** token はあるが検証できなかった理由 (#329)。`Root anchor:` 行を UNTRUSTED にする。`keyId` は proof 由来。 */
   rootAnchorFailure?: RootAnchorFailure;
+  /**
+   * 受理ポリシー (#296 / ADR-0043)。要件を 1 つでも立てたときだけ `--- Acceptance policy ---` 節を出す
+   * (立てなければ出力は変えない)。
+   */
+  policy?: AcceptancePolicyResult;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
   analysis?: AnalysisReport;
   /** 三層保証語彙 (ADR-0020)。 */
@@ -171,6 +183,38 @@ export function formatOrphanSources(orphans: readonly string[]): string {
 /** `--extract-sources` で書き出したディレクトリの 1 行表示 (パスは proof / ZIP 由来を含みうるので `safe()`)。 */
 export function formatExtractedSources(dir: string, files: readonly string[]): string {
   return `Extracted: ${safe(dir)}${files.length > 0 ? ` (${files.map(safe).join(', ')})` : ''}`;
+}
+
+/** 受理ポリシーの要件と CLI フラグの対応 (表示順もこの順)。 */
+const POLICY_FLAGS: ReadonlyArray<readonly [keyof AcceptancePolicy, string]> = [
+  ['requireRootAnchor', '--require-root-anchor'],
+  ['requireAnchorDensity', '--require-anchor-density'],
+  ['requireSignedCheckpoints', '--require-signed-checkpoints'],
+  ['requireTerminalAnchor', '--require-final-anchor'],
+];
+
+/**
+ * `--- Acceptance policy ---` 節 (#296)。要件を 1 つも立てていなければ空 (出力を変えない)。
+ * 違反の code と message は shared の固定値、件数は数値だが、出力の契約をそろえるため `safe()` を通す。
+ */
+function formatAcceptancePolicy(policy: AcceptancePolicyResult | undefined): string[] {
+  if (!policy || !hasAcceptancePolicy(policy.applied)) return [];
+  const applied = POLICY_FLAGS.filter(([key]) => policy.applied[key]).map(([, flag]) => flag);
+  const lines = ['', c('cyan', '--- Acceptance policy ---'), `Applied:     ${applied.join(', ')}`];
+  if (!policy.evaluated) {
+    lines.push(`Result:      ${c('yellow', 'not evaluated (verification failed)')}`);
+    return lines;
+  }
+  if (policy.violations.length === 0) {
+    lines.push(`Result:      ${c('green', 'all requirements met')}`);
+    return lines;
+  }
+  lines.push(`Result:      ${c('red', `${policy.violations.length} requirement(s) not met`)}`);
+  for (const v of policy.violations) {
+    const tail = v.unsignedTailEvents !== undefined ? ` (${safe(v.unsignedTailEvents)} unsigned trailing events)` : '';
+    lines.push(`  ${c('red', 'FAIL')} ${safe(v.code)}: ${safe(v.message)}${tail}`);
+  }
+  return lines;
 }
 
 function passFail(ok: boolean): string {
@@ -575,6 +619,9 @@ export function formatResult(result: VerificationOutput): string {
   // 提出物の照合 (#293): 同梱ソースと proof.content。未検査 (JSON 単体入力) は明示して overclaim を防ぐ。
   lines.push(...formatSubmission(result.submission));
 
+  // 受理ポリシー (#296): 整合性の Checks とは分けて、立てた要件と違反を出す。
+  lines.push(...formatAcceptancePolicy(result.policy));
+
   // 試験モード (ADR-0006): exam ブロックがあれば束縛検証セクションを出す。
   if (result.exam) {
     formatExamSection(result.exam, lines);
@@ -690,6 +737,7 @@ ${c('cyan', 'Usage:')}
   typedcode-verify <file.json|file.zip>... [--mode <fast|audit|full>]
                    [--exam-package <file.tcexam>] [--submitted-at <ISO>]
                    [--require-anchor-density] [--require-root-anchor]
+                   [--require-signed-checkpoints] [--require-final-anchor]
                    [--analysis-json <out.json>] [--analysis-bundle <out.json>]
                    [--analyzer <module>]... [--no-default-analyzers]
                    [--extract-sources <dir>]
@@ -720,6 +768,17 @@ ${c('cyan', 'Options:')}
                    default (unanchored root is only a warning). Exam proofs are exempt
                    ONLY when their binding is verified via --exam-package (#131); a
                    self-declared exam block alone does not bypass the gate.
+  --require-signed-checkpoints
+                   Fail (exit 1) when the proof has no signed checkpoint at all (#296).
+                   Off by default (no signed checkpoint is only "Anchoring: unavailable").
+  --require-final-anchor
+                   Fail (exit 1) when the final event is not covered by a signed
+                   checkpoint, i.e. the proof has an unsigned tail (#296). Avoid it for
+                   long sessions until the signing token can be renewed (#236): an
+                   honest submission may miss its final signature.
+                   The --require-* options form the acceptance policy: violations are
+                   listed under "--- Acceptance policy ---", apart from tampering, and
+                   are not evaluated for a proof that already failed verification.
   --analysis-json  Write the advisory analysis report (ADR-0009) for every verified
                    proof to the given file as JSON, for aggregation / evaluation
                    tooling. Advisory only — never affects the exit code.

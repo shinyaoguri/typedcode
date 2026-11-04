@@ -74,6 +74,7 @@
 | [0040](0040-mutation-testing-with-stryker-locally.md) | Accepted | 変異検査の道具 (StrykerJS) を shared の検証系に対する手元のコマンドとして常設する (ADR-0037 の Option C・判定は shared のテストだけ・inPlace・CI にも check にも載せない・生き残りは殺すか同値と書く) |
 | [0041](0041-sandboxed-code-execution.md) | Accepted | ユーザーの JS / TS は opaque origin の sandbox iframe (allow-scripts だけ) の中の Blob Worker で実行し、停止・タイムアウト・出力予算の超過は iframe ごと除去して終わらせる (同 realm / 同 origin Worker を却下・CSP は connect-src 'none'・完了の定義は Node と同じ・outcome に timeout) |
 | [0042](0042-rescue-code-before-proof.md) | Accepted | コードの保全を証明の正しさより優先し、証明ではない救出ファイル (`typedcode-rescue/2`) で持ち出させる (何も待たない・proof.json を入れない・`notAProof: true`・ZIP が駄目なら単一 JSON・保存状態の区分は #543。段階 2 = 復元時に証明と食い違った元のコードを `unprovenContents` に追記で残して知らせる #413) |
+| [0043](0043-acceptance-policy-separated-from-integrity.md) | Accepted | 受理ポリシー (root / 密度 / 署名 cp の存在 / 最終署名の 4 つの opt-in 要件) を検証の結論から分け、`integrityValid` と `policy.violations` (列挙型の code) で返す (密度 gate を signedCheckpoints から外す・整合性が落ちたら評価しない・Web は適用しない・time-box は入れない) |
 
 ## 参考
 
