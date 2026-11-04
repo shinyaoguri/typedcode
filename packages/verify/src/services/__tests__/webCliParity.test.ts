@@ -218,6 +218,28 @@ async function buildAnchoredProof(options: {
   return { ...exported, checkpoints, content, language: 'text' } as ProofFile;
 }
 
+/**
+ * proof の署名 cp を差し替える (受理ポリシーのパリティ #296 用)。`signedEventIndexes` が空なら署名 cp なし。
+ * `serverStepMs` を 60 秒にすると、署名は健全なまま密度だけが疎になる (閾値 50 秒)。
+ */
+async function withSignedCheckpoints(
+  proof: ProofFile,
+  options: { key: TestKey; sessionId: string; signedEventIndexes?: number[]; serverStepMs?: number }
+): Promise<ProofFile> {
+  const checkpoints =
+    options.signedEventIndexes?.length === 0
+      ? []
+      : await buildSignedCheckpoints({
+          events: proof.proof.events,
+          initialEventChainHash: proof.typingProofData.initialEventChainHash ?? '',
+          key: options.key,
+          sessionId: options.sessionId,
+          eventIndexes: options.signedEventIndexes,
+          serverStepMs: options.serverStepMs,
+        });
+  return { ...proof, checkpoints } as ProofFile;
+}
+
 /** 署名 cp を持たない casual proof (exam ブロックは任意)。 */
 async function buildPlainProof(examContext?: ExamSessionContext): Promise<ProofFile> {
   const components = createMockFingerprintComponents();
@@ -782,4 +804,98 @@ describe('web ↔ CLI parity (#216)', () => {
     expect(fullCli.valid).toBe(true);
     expect(fullCli.assurance.integrity).toBe('proven');
   }, 60_000);
+
+  /**
+   * 受理ポリシー (#296): Web はポリシーを適用せず、署名 cp の有無・最終署名・未署名の末尾を表示するだけ。
+   * CLI の違反はその表示と同じ shared の coverage から来ることを、6 つの証拠の形で固定する。
+   */
+  describe('acceptance policy parity (#296)', () => {
+    const anchored = (signedEventIndexes?: number[], serverStepMs?: number) => async () =>
+      withSignedCheckpoints(
+        await buildAnchoredProof({ key: testKey, tokenSessionId: 'session-A', checkpointSessionId: 'session-A' }),
+        { key: testKey, sessionId: 'session-A', signedEventIndexes, serverStepMs }
+      );
+    const unanchored = (signedEventIndexes?: number[]) => async () =>
+      withSignedCheckpoints(await buildPlainProof(), { key: testKey, sessionId: 'session-A', signedEventIndexes });
+
+    const CASES: ReadonlyArray<readonly [string, () => Promise<ProofFile>]> = [
+      ['root anchor only', anchored([])],
+      ['signed checkpoints only', unanchored()],
+      ['no signed checkpoints', unanchored([])],
+      ['sparse anchoring', anchored(undefined, 60_000)],
+      ['final event signed', anchored()],
+      ['final events unsigned', anchored([0])],
+    ];
+
+    /** 6 ケースが本当に別の形になっていること (パリティの比較が全部同じ値どうしにならないこと) の前提。 */
+    const EXPECTED_STRICT_CODES: Record<string, string[]> = {
+      'root anchor only': ['signed-checkpoints-missing', 'terminal-anchor-missing'],
+      'signed checkpoints only': [],
+      'no signed checkpoints': ['signed-checkpoints-missing', 'terminal-anchor-missing'],
+      'sparse anchoring': [],
+      'final event signed': [],
+      'final events unsigned': ['terminal-anchor-missing'],
+    };
+
+    async function bothPaths(build: () => Promise<ProofFile>) {
+      const proof = await build();
+      const web = await runProofVerification(proof, { mode: 'fast', signedCheckpointKeyRegistry: registry });
+      const cliPlain = await verifyProof(proof, { mode: 'fast', signedCheckpointKeyRegistry: registry });
+      const cliStrict = await verifyProof(proof, {
+        mode: 'fast',
+        signedCheckpointKeyRegistry: registry,
+        requireSignedCheckpoints: true,
+        requireTerminalAnchor: true,
+      });
+      return { web, cliPlain, cliStrict };
+    }
+
+    it.each(CASES)(
+      'reports the same signed checkpoint coverage on the web and in the CLI for "%s"',
+      async (_label, build) => {
+        const { web, cliPlain } = await bothPaths(build);
+        const pick = (c: { signedCount: number; terminalAnchored: boolean; unsignedTailEvents: number } | undefined) =>
+          c && {
+            signedCount: c.signedCount,
+            terminalAnchored: c.terminalAnchored,
+            unsignedTailEvents: c.unsignedTailEvents,
+          };
+
+        expect(pick(web.signedCheckpointCoverage)).toEqual(pick(cliPlain.signedCheckpoints?.coverage));
+      }
+    );
+
+    it.each(CASES)('derives the CLI violations from what the web shows for "%s"', async (_label, build) => {
+      const { web, cliStrict } = await bothPaths(build);
+      const coverage = web.signedCheckpointCoverage!;
+      const codes = cliStrict.policy.violations.map((v) => v.code);
+      const terminal = cliStrict.policy.violations.find((v) => v.code === 'terminal-anchor-missing');
+
+      expect(cliStrict.policy.evaluated).toBe(true);
+      expect(codes.includes('signed-checkpoints-missing')).toBe(coverage.signedCount === 0);
+      expect(terminal?.unsignedTailEvents).toBe(
+        !coverage.terminalAnchored && coverage.unsignedTailEvents > 0 ? coverage.unsignedTailEvents : undefined
+      );
+    });
+
+    it.each(CASES)(
+      'fails the CLI with the expected violations under the strict policy for "%s"',
+      async (label, build) => {
+        const { cliStrict } = await bothPaths(build);
+
+        expect(cliStrict.policy.violations.map((v) => v.code)).toEqual(EXPECTED_STRICT_CODES[label]);
+        expect(cliStrict.valid).toBe(EXPECTED_STRICT_CODES[label]!.length === 0);
+      }
+    );
+
+    it.each(CASES)(
+      'keeps the web verdict equal to the CLI verdict without a policy for "%s"',
+      async (_label, build) => {
+        const { web, cliPlain } = await bothPaths(build);
+
+        expect(web.valid).toBe(cliPlain.valid);
+        expect(cliPlain.policy.violations).toEqual([]);
+      }
+    );
+  });
 });
