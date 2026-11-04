@@ -4,7 +4,9 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    // global-setup.ts が照合の純関数 (scripts/server-identity.mjs) と識別子 (scripts/worktree-id.mjs) を読む (#552)
+    "allowJs": true
   },
-  "include": ["tests/**/*.ts", "playwright.config.ts", "playwright.build.config.ts"]
+  "include": ["tests/**/*.ts", "playwright.config.ts", "playwright.build.config.ts", "global-setup.ts", "ports.ts"]
 }

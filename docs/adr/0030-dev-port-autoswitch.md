@@ -43,6 +43,7 @@ CONTRIBUTING はこれまで「dev サーバのポートは全 worktree で共�
 - **配線追従**: editor の `/verify` プロキシ先は `VERIFY_PORT` から導出。`VITE_API_URL` は .env の値が**ローカル既定 (`http://localhost:<port>`) のときだけ** `WORKERS_PORT` へ追従させ、staging 等の外部 URL を明示している場合は触らない (Vite は process.env を .env ファイルより優先する仕様を利用)。
 - **黙認ずれの禁止**: ランチャーがポートを割り当てた場合 (`EDITOR_PORT` 等が設定されている場合) は `strictPort: true`。探索と listen の間の race で衝突したら黙ってずれず失敗させる (再実行すれば次の空きセットが選ばれる)。手動の個別起動 (env 未設定) は従来どおり vite のフォールバックに任せる。
 - **変更しないもの**: workers の CORS (dev は localhost をポート不問で許可済み)。e2e (`E2E_EDITOR_PORT` / `E2E_WORKERS_PORT` で既に可変・独自起動)。
+  - 注 (#552): e2e はポートを自動で割り当てない代わりに、ポートが応答したサーバを再利用する前に、それが**この作業ツリーのもの**かを照合する。各 dev サーバは作業ツリーの識別子 (`scripts/worktree-id.mjs`) を名乗り (editor / verify は応答ヘッダ `X-TypedCode-Worktree`、workers は `/health` の `worktree`)、e2e の globalSetup (`packages/e2e/global-setup.ts`) が合わないサーバを見つけたらテストを走らせずに落とす。このランチャーが起こすサーバも名乗るので、別の worktree の `npm run dev` が e2e の既定ポートを握っていれば、黙って再利用されずに止まる。
 
 ## Consequences
 

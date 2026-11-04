@@ -252,6 +252,8 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
 }
 ```
 
+`npm run dev` (`wrangler dev`) で起こしたときだけ、`worktree` (どの作業ツリーの dev サーバかの識別子。`--var DEV_WORKTREE_ID` で渡す) も返す。e2e が別の worktree の workers を再利用しないための照合に使う (#552)。staging / production の応答には付かない。
+
 ## 署名アルゴリズム (アテステーション)
 
 HMAC-SHA256 で署名を計算します。
