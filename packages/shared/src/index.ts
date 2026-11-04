@@ -297,7 +297,7 @@ export {
 export { TypingPatternAnalyzer } from './typingPattern/index.js';
 
 // 分析層 (ADR-0009): 検証と直交する pluggable な分析フレームワーク (器のみ)
-export { runAnalysis, defaultAnalyzers } from './analysis/index.js';
+export { runAnalysis, defaultAnalyzers, ANALYZER_TIMEOUT_MS } from './analysis/index.js';
 export type {
   AnalysisDimension,
   AnalysisSeverity,
@@ -306,6 +306,9 @@ export type {
   AnalysisInput,
   Analyzer,
   AnalysisReport,
+  AnalyzerRunStatus,
+  AnalyzerStatus,
+  RunAnalysisOptions,
 } from './analysis/index.js';
 
 // Tier A 分析バンドル (ADR-0024): content-free な派生ビュー (events/content/fingerprint なし)

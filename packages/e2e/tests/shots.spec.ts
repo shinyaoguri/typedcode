@@ -82,6 +82,16 @@ const SHOTS = [
     file: '10-unproven-content-diff.png',
     caption: 'エディタ: 同じ通知で差分を開いた状態 (左が証明の版、右が元のコード。読み取り専用)',
   },
+  {
+    file: '11-verify-analysis-unavailable.png',
+    caption:
+      '検証 Web: 分析カードで、どの分析器も結果を返せなかった (失敗・時間切れ) ときの表示 (分析器を失敗させたレポートを差し込んで描画)',
+  },
+  {
+    file: '12-verify-analysis-partial.png',
+    caption:
+      '検証 Web: 分析カードで、一部の分析器だけが結果を返せなかったときの表示 (分析器を失敗させたレポートを差し込んで描画)',
+  },
 ] as const;
 
 type ShotFile = (typeof SHOTS)[number]['file'];
@@ -255,6 +265,68 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await expect(dialog.locator('.unproven-diff')).toHaveAttribute('data-diff-tab-id', /.+/);
     await dialog.locator('.unproven-diff .editor.modified .view-line').first().waitFor({ state: 'visible' });
     await resumed.screenshot({ path: out('10-unproven-content-diff.png'), animations: 'disabled', mask });
+  });
+
+  // 11〜12 (#301): 分析器の失敗・時間切れを「シグナルなし」と区別する分析カード。同梱の分析器は通常の proof では
+  // 失敗しないので、検証結果の画面を出した後、dev サーバが配る実物の AnalysisReportCard (`/src/...` はアプリと同じ
+  // モジュール) に、分析器が失敗したレポートを渡して描き直す。proof は verify-cli の有効な fixture を使う。
+  test('検証 Web の分析カードで分析できなかった分析器の表示を撮る @shots', async ({ page }) => {
+    const fixtureProof = fileURLToPath(
+      new URL('../../verify-cli/src/__tests__/fixtures/proofs/valid.json', import.meta.url)
+    );
+    const web = new VerifyWebApp(page);
+    await web.open('fast');
+    await web.load([fixtureProof]);
+    await web.readVerdict(basename(fixtureProof));
+    const card = page.locator('#card-analysis');
+    await card.waitFor({ state: 'visible' });
+    // カードは畳まれて出るので、見出しを押して中身を開く。
+    await card.locator('.result-card-header').click();
+    await expect(card).toHaveClass(/expanded/);
+
+    const renderReport = async (report: unknown) => {
+      await page.evaluate(
+        async ({ modulePath, r }) => {
+          const mod = await import(modulePath);
+          new mod.AnalysisReportCard().render(r);
+        },
+        { modulePath: '/src/ui/AnalysisReportCard.ts', r: report }
+      );
+    };
+
+    // 11: どの分析器も結果を返せなかった (signal 0 件でも「シグナルなし」ではない)。
+    await renderReport({
+      analyzerVersions: { automation: '0.1.0', 'focus-burst': '0.1.0' },
+      analyzerStatus: {
+        automation: { version: '0.1.0', status: 'failed', message: 'analyzer failure' },
+        'focus-burst': { version: '0.1.0', status: 'timeout', message: 'did not settle within 10000 ms' },
+      },
+      signals: [],
+      reviewPriority: 0,
+    });
+    await card.screenshot({ path: out('11-verify-analysis-unavailable.png'), animations: 'disabled' });
+
+    // 12: 一部の分析器だけが結果を返せなかった (返せた分析器の signal は残る)。
+    await renderReport({
+      analyzerVersions: { automation: '0.1.0', 'focus-burst': '0.1.0' },
+      analyzerStatus: {
+        automation: { version: '0.1.0', status: 'ok' },
+        'focus-burst': { version: '0.1.0', status: 'timeout', message: 'did not settle within 10000 ms' },
+      },
+      signals: [
+        {
+          analyzerId: 'automation',
+          dimension: 'automation',
+          score: 0.6,
+          confidence: 0.8,
+          severity: 'notice',
+          evidence: [{ fromEventIndex: 3 }],
+          summary: 'Synthetic keystrokes detected',
+        },
+      ],
+      reviewPriority: 0.24,
+    });
+    await card.screenshot({ path: out('12-verify-analysis-partial.png'), animations: 'disabled' });
   });
 
   // 06〜08 (#331): 検証中の進捗表示 (キャンセルボタン) と、キャンセルした後の表示。キャンセルは処理中の項目への

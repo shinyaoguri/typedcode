@@ -443,6 +443,15 @@ export const ja: VerifyTranslationKeys = {
     score: '異常度',
     confidence: '確信度',
     analyzers: '分析器',
+    unavailable: '分析不能',
+    partiallyUnavailable: '一部分析不能',
+    unavailableNote:
+      'どの分析器も結果を返せませんでした (失敗・時間切れ・不正な出力)。シグナルが無いことは「手掛かりなし」を意味しません。検証結果には影響しません。',
+    partialNote:
+      '一部の分析器が結果を返せませんでした。下のシグナルは結果を返せた分析器のものだけです。検証結果には影響しません。',
+    statusFailed: '失敗',
+    statusTimeout: '時間切れ',
+    statusInvalidOutput: '不正な出力',
     severityInfo: '情報',
     severityNotice: '注意',
     severityReview: '要確認',

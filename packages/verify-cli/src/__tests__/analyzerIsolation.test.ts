@@ -118,7 +118,8 @@ async function buildTamperedProof(): Promise<ProofFile> {
  * 検証結果を書き換えにかかる分析器。判定に効く boolean は**反転**させる — 固定値を書くと
  * 「もともとその値だった」ケースで退行を見逃すため (改ざん proof なら false→true、
  * 健全な proof なら true→false になり、どちらでも結論の汚染が観測できる)。
- * 凍結されていれば代入は TypeError で throw し、orchestrator が握り潰す。
+ * 凍結されていれば代入は TypeError で throw する (ここでは分析器自身が catch する。catch しなければ
+ * orchestrator がこの分析器を `failed` として記録して続ける, #301)。
  */
 const hostileAnalyzer: Analyzer = {
   id: 'hostile-fixture',
@@ -197,5 +198,68 @@ describe('外部 analyzer の隔離 (#283 c3)', () => {
     const result = await verifyProof(healthy, { mode: 'fast', analyzers: [hostileAnalyzer, witness] });
 
     expect(result.analysis.signals.some((s) => s.analyzerId === 'witness-fixture')).toBe(true);
+  });
+});
+
+/**
+ * 分析できなかった分析器 (#301)。throw・期限切れ・大量の出力のどれでも、検証の結論
+ * (`valid` と `assurance.integrity`) は分析器なしのときと同じで、分析は status として別に残る。
+ * 期限は `analysisTimeoutMs` で縮める (既定 10 秒を実時間で待つのは `cliExitProcess.test.ts` の 1 本だけ)。
+ */
+describe('分析できなかった分析器は検証の結論を変えない (#301)', () => {
+  const hang: Analyzer = { id: 'hang-fixture', version: '1.0.0', analyze: () => new Promise(() => {}) };
+  const boom: Analyzer = {
+    id: 'boom-fixture',
+    version: '1.0.0',
+    analyze: () => {
+      throw new Error('analyzer failure');
+    },
+  };
+  const flood: Analyzer = {
+    id: 'flood-fixture',
+    version: '1.0.0',
+    analyze: () =>
+      Array.from({ length: 100_000 }, () => ({
+        analyzerId: 'flood-fixture',
+        dimension: 'automation' as const,
+        score: 0,
+        confidence: 1,
+        severity: 'info' as const,
+        evidence: [],
+        summary: 'flood',
+      })),
+  };
+
+  it('改ざん proof は、throw / 解決しない / 大量出力の分析器を通しても invalid と integrity failed のまま', async () => {
+    const tampered = await buildTamperedProof();
+    const baseline = await verifyProof(tampered, { mode: 'fast', analyzers: [] });
+
+    const result = await verifyProof(tampered, {
+      mode: 'fast',
+      analyzers: [boom, hang, flood],
+      analysisTimeoutMs: 50,
+    });
+
+    expect(result.valid).toBe(baseline.valid);
+    expect(result.valid).toBe(false);
+    expect(result.assurance.integrity).toBe('failed');
+  });
+
+  it('健全な proof は、解決しない分析器を通しても valid のままで、分析は timeout として残る', async () => {
+    const healthy = await buildProof('hello');
+
+    const result = await verifyProof(healthy, { mode: 'fast', analyzers: [hang], analysisTimeoutMs: 50 });
+
+    expect(result.valid).toBe(true);
+    expect(result.assurance.integrity).toBe('partial');
+    expect(result.analysis.analyzerStatus['hang-fixture']?.status).toBe('timeout');
+  });
+
+  it('全分析器が失敗したら、Authorship の reviewPriority を 0% ではなく未実行 (null) にする', async () => {
+    const healthy = await buildProof('hello');
+
+    const result = await verifyProof(healthy, { mode: 'fast', analyzers: [boom], analysisTimeoutMs: 50 });
+
+    expect(result.assurance.provenance.reviewPriority).toBeNull();
   });
 });

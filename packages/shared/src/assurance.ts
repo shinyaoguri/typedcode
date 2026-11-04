@@ -176,11 +176,19 @@ function deriveTemporal(input: AssuranceInput): TemporalLevel {
 /**
  * AnalysisReport から AssuranceInput.analysis を作るヘルパ。
  * notableSignals = severity が 'info' を超える signal 数。
+ *
+ * `ok` で終わった分析器が 1 つも無ければ (全滅・分析器なし) `undefined` を返す (#301)。
+ * 呼び出し側はそれをそのまま `AssuranceInput.analysis` に渡し、provenance の
+ * `reviewPriority` / `notableSignals` を `null` (= 分析未実行) にする。signal 0 件の
+ * `reviewPriority: 0` を「手掛かりなし」と見せないため。
  */
 export function summarizeAnalysisForAssurance(report: {
   reviewPriority: number;
   signals: ReadonlyArray<{ severity: 'info' | 'notice' | 'review' }>;
-}): NonNullable<AssuranceInput['analysis']> {
+  analyzerStatus: Readonly<Record<string, { status: string }>>;
+}): AssuranceInput['analysis'] {
+  const anyAnalyzerOk = Object.values(report.analyzerStatus).some((s) => s.status === 'ok');
+  if (!anyAnalyzerOk) return undefined;
   return {
     reviewPriority: report.reviewPriority,
     notableSignals: report.signals.filter((s) => s.severity !== 'info').length,

@@ -468,6 +468,15 @@ export interface VerifyTranslationKeys {
     score: string;
     confidence: string;
     analyzers: string;
+    /** #301: どの分析器も結果を返せなかったときのバッジ */
+    unavailable: string;
+    /** #301: 一部の分析器が結果を返せず、要確認の手掛かりも無いときのバッジ */
+    partiallyUnavailable: string;
+    unavailableNote: string;
+    partialNote: string;
+    statusFailed: string;
+    statusTimeout: string;
+    statusInvalidOutput: string;
     severityInfo: string;
     severityNotice: string;
     severityReview: string;

@@ -251,8 +251,40 @@ describe('summarizeAnalysisForAssurance', () => {
     const summary = summarizeAnalysisForAssurance({
       reviewPriority: 0.4,
       signals: [{ severity: 'info' }, { severity: 'notice' }, { severity: 'review' }],
+      analyzerStatus: { a: { status: 'ok' } },
     });
-    expect(summary.notableSignals).toBe(2);
-    expect(summary.reviewPriority).toBe(0.4);
+    expect(summary?.notableSignals).toBe(2);
+    expect(summary?.reviewPriority).toBe(0.4);
+  });
+
+  it('reports analysis as not run when no analyzer finished ok (#301)', () => {
+    const summary = summarizeAnalysisForAssurance({
+      reviewPriority: 0,
+      signals: [],
+      analyzerStatus: { boom: { status: 'failed' }, hang: { status: 'timeout' }, bad: { status: 'invalid-output' } },
+    });
+    expect(summary).toBeUndefined();
+  });
+
+  it('keeps the summary when at least one analyzer finished ok next to failed ones (#301)', () => {
+    const summary = summarizeAnalysisForAssurance({
+      reviewPriority: 0,
+      signals: [],
+      analyzerStatus: { boom: { status: 'failed' }, quiet: { status: 'ok' } },
+    });
+    expect(summary).toEqual({ reviewPriority: 0, notableSignals: 0 });
+  });
+
+  it('leaves provenance null when every analyzer failed, so review 0% is not shown as no findings (#301)', () => {
+    const result = deriveAssurance({
+      ...healthyInput(),
+      analysis: summarizeAnalysisForAssurance({
+        reviewPriority: 0,
+        signals: [],
+        analyzerStatus: { boom: { status: 'failed' } },
+      }),
+    });
+    expect(result.provenance.reviewPriority).toBeNull();
+    expect(result.provenance.notableSignals).toBeNull();
   });
 });

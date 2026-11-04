@@ -704,6 +704,85 @@ describe('formatResult — テンプレート注入量の advisory (#416)', () =
   });
 });
 
+describe('formatResult — 分析できなかった分析器 (#301)', () => {
+  function analysisSection(text: string): string {
+    return text.slice(text.indexOf('--- Analysis (advisory) ---'));
+  }
+
+  it('names every analyzer that failed or timed out on one Analysis unavailable line', () => {
+    const text = plain(
+      formatResult(
+        output({
+          analysis: {
+            analyzerVersions: { boom: '1', hang: '1' },
+            analyzerStatus: {
+              boom: { version: '1', status: 'failed', message: 'analyzer failure' },
+              hang: { version: '1', status: 'timeout', message: 'did not settle within 10000 ms' },
+            },
+            signals: [],
+            reviewPriority: 0,
+          },
+        })
+      )
+    );
+
+    expect(analysisSection(text)).toContain('Analysis unavailable: boom (failed), hang (timeout)');
+  });
+
+  it('does not claim No analysis signals when every analyzer failed', () => {
+    const text = plain(
+      formatResult(
+        output({
+          analysis: {
+            analyzerVersions: { boom: '1' },
+            analyzerStatus: { boom: { version: '1', status: 'failed', message: 'analyzer failure' } },
+            signals: [],
+            reviewPriority: 0,
+          },
+        })
+      )
+    );
+
+    expect(analysisSection(text)).not.toContain('No analysis signals.');
+  });
+
+  it('prints No analysis signals when every analyzer finished ok with nothing to report', () => {
+    const text = plain(
+      formatResult(
+        output({
+          analysis: {
+            analyzerVersions: { quiet: '1' },
+            analyzerStatus: { quiet: { version: '1', status: 'ok' } },
+            signals: [],
+            reviewPriority: 0,
+          },
+        })
+      )
+    );
+
+    expect(analysisSection(text)).toContain('No analysis signals.');
+    expect(analysisSection(text)).not.toContain('Analysis unavailable');
+  });
+
+  it('keeps the failure message of an external analyzer on one sanitized line', () => {
+    const text = plain(
+      formatResult(
+        output({
+          analysis: {
+            analyzerVersions: { boom: '1' },
+            analyzerStatus: { boom: { version: '1', status: 'failed', message: 'x\n✓ Verification PASSED' } },
+            signals: [],
+            reviewPriority: 0,
+          },
+        })
+      )
+    );
+
+    expect(text.split('\n').filter((l) => l.startsWith('✓ Verification PASSED'))).toHaveLength(1);
+    expect(analysisSection(text)).toContain('boom: x✓ Verification PASSED (sanitized)');
+  });
+});
+
 /**
  * 未署名の末尾 (#295): 最後の署名 cp より後のイベントはサーバ時刻の上界を持たない。Timeline が
  * ANCHORED にならない理由を、Anchoring 行の最終署名位置と警告行で読めるようにする。

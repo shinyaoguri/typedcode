@@ -132,6 +132,7 @@ chain issue の `message` は常に翻訳済み文言 (`trust.issueChainInvalid`
 - 表示は `AnalysisReportCard` (`#card-analysis`)。severity (`info`/`notice`/`review`)・score/confidence・summary に加え **evidence (event index) をボタンで出す**
 - evidence クリックは `document` に `verify:seek-to-event` CustomEvent を dispatch し、`ChartController` が `SeekbarController.seekTo(eventIndex + 1)` で当該イベント適用後の状態へジャンプする (「シグナルを見る → 現場を検分」の 1 クリック化)
 - 分析ロジックは shared に置く。verify 側に分析器を書かない (テストの厚みが shared 側にあるため。verify のユニットテストは #135 で導入済みだが純関数中心)
+- **分析できなかった分析器を「シグナルなし」と見せない** (#301): `runAnalysis` は分析器ごとに期限 (shared の `ANALYZER_TIMEOUT_MS` = 10 秒) を付け、throw・期限切れ・不正な出力を `AnalysisReport.analyzerStatus` に残して resolve する。解決しない分析器があっても検証結果は期限後に返る。カードは `analysisAvailability` で `complete` / `partial` / `unavailable` を決め、カードの `data-analysis-availability` (状態契約) に出す。`unavailable` (ok の分析器が 0) はバッジを「分析不能」(warning)、`partial` は注記を出し、分析器の一覧に status (`data-analyzer-status`) と message を出す。「分析シグナルなし」は `complete` のときだけ。message と id は外部分析器が決められる未信頼の文字列なので `escapeHtml` を通す。`runProofVerification` の `analyzers` / `analysisTimeoutMs` はテストの継ぎ目 (本番は渡さない)。全滅のとき `summarizeAnalysisForAssurance` が undefined を返し、著述性の signal 数も null になる
 
 ## 三層保証バッジ (ADR-0020)
 
