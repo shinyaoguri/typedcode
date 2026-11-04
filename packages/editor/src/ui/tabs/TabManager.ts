@@ -100,6 +100,9 @@ export type OnVerificationCallback = (result: VerificationResult) => void;
 /** タブ作成コールバック (#405) */
 export type OnTabCreatedCallback = (tab: TabState) => void;
 
+/** proof の変化 (記録の受付・PoSW の確定) の通知 (#521) */
+export type OnProofChangeCallback = () => void;
+
 /** 同期状態と保存の結果 (定義は syncStatus.ts。main.ts などはここから import する) */
 export type { SyncStatus, PersistOutcome };
 
@@ -169,6 +172,9 @@ export class TabManager {
   private onVerificationCallback: OnVerificationCallback | null = null;
   private onSyncStatusChangeCallback: OnSyncStatusChangeCallback | null = null;
   private onTabCreatedCallback: OnTabCreatedCallback | null = null;
+  private onProofChangeCallback: OnProofChangeCallback | null = null;
+  /** proof の変化の通知を microtask に積んである間 true (同じ tick の変化を 1 回にまとめる。#521) */
+  private proofChangeNotifyQueued = false;
   /**
    * そのタブについて記録中のイベント (PoSW 計算 → IndexedDB への append) が片付くまで待つ関数 (#342)。
    * EventRecorder が持つので main.ts が注入する。未設定ならこの待ちを省く
@@ -284,6 +290,40 @@ export class TabManager {
    */
   setOnTabCreated(callback: OnTabCreatedCallback): void {
     this.onTabCreatedCallback = callback;
+  }
+
+  /**
+   * proof の変化の通知を設定する (#521)。どのタブの TypingProof でも、記録の受付 (pending への追加) と
+   * PoSW の確定 (events への push の後) のたびに呼ぶ。EventRecorder を通らずに proof へ直接記録する経路
+   * (export 前の attestation・contentSnapshot など) でも呼ばれるので、表示の追従をここ 1 点に寄せられる。
+   *
+   * 通知は microtask に回し、同じ tick の変化を 1 回にまとめる。同期で呼ばないのは、(1) 確定の直後に
+   * TypingProof が待ち数 (getStats の pendingCount) を減らすので、その後の値を読ませるため、(2) 表示の
+   * 更新の中で記録したイベント (ProofStatusDisplay の contentSnapshot) から表示の更新へ同期に再入させないため。
+   */
+  setOnProofChange(callback: OnProofChangeCallback | null): void {
+    this.onProofChangeCallback = callback;
+  }
+
+  /**
+   * TypingProof の pending の増減 (記録の受付と PoSW の確定) を、保存と proof の変化の通知へつなぐ。
+   * タブの TypingProof を作る・復元する経路はすべてここを通す (どれか 1 つでも漏れると、その経路の
+   * タブだけ保存か表示の追従が抜ける)。
+   */
+  private watchProofChanges(typingProof: TypingProof): void {
+    typingProof.setOnPendingEventChange(() => {
+      this.saveToStorage();
+      this.queueProofChangeNotification();
+    });
+  }
+
+  private queueProofChangeNotification(): void {
+    if (!this.onProofChangeCallback || this.proofChangeNotifyQueued) return;
+    this.proofChangeNotifyQueued = true;
+    queueMicrotask(() => {
+      this.proofChangeNotifyQueued = false;
+      this.onProofChangeCallback?.();
+    });
   }
 
   /**
@@ -409,10 +449,8 @@ export class TabManager {
       await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
     }
 
-    // Pending Event変更コールバックを設定（即時保存用）
-    typingProof.setOnPendingEventChange(() => {
-      this.saveToStorage();
-    });
+    // Pending Event の増減を保存 (即時) と表示の追従へつなぐ
+    this.watchProofChanges(typingProof);
 
     // Signed checkpoint service を tab 毎に作成して hook を配線。
     // VITE_API_URL 未設定なら null (graceful degradation)。
@@ -763,10 +801,8 @@ export class TabManager {
     const poswWorker = createPoswWorker();
     await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
 
-    // Pending Event変更コールバックを設定（即時保存用）
-    typingProof.setOnPendingEventChange(() => {
-      this.saveToStorage();
-    });
+    // Pending Event の増減を保存 (即時) と表示の追従へつなぐ
+    this.watchProofChanges(typingProof);
 
     // 共有された認証データがあれば event #0 として記録
     if (sharedAttestation) {
@@ -1515,10 +1551,8 @@ export class TabManager {
         await typingProof.initialize(this.fingerprint!, this.fingerprintComponents!, poswWorker);
       }
 
-      // Pending Event変更コールバックを設定（即時保存用）
-      typingProof.setOnPendingEventChange(() => {
-        this.saveToStorage();
-      });
+      // Pending Event の増減を保存 (即時) と表示の追従へつなぐ
+      this.watchProofChanges(typingProof);
 
       // 既存 checkpoints を渡して signing service を attach (chain state を復元)
       const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof, typingProof.checkpoints);
@@ -1639,10 +1673,8 @@ export class TabManager {
         poswWorker
       );
 
-      // 5. コールバック設定
-      typingProof.setOnPendingEventChange(() => {
-        this.saveToStorage();
-      });
+      // 5. コールバック設定 (Pending Event の増減を保存 (即時) と表示の追従へつなぐ)
+      this.watchProofChanges(typingProof);
 
       const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof, typingProof.checkpoints);
 
@@ -1766,10 +1798,8 @@ export class TabManager {
           poswWorker
         );
 
-        // Pending Event変更コールバックを設定（即時保存用）
-        typingProof.setOnPendingEventChange(() => {
-          this.saveToStorage();
-        });
+        // Pending Event の増減を保存 (即時) と表示の追従へつなぐ
+        this.watchProofChanges(typingProof);
 
         const signedCheckpointService = this.attachSignedCheckpointService(
           storedTab.id,
