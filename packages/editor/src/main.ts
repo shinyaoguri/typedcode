@@ -80,6 +80,7 @@ import { TerminalPanel } from './ui/components/TerminalPanel.js';
 import { CodeExecutionController } from './execution/CodeExecutionController.js';
 import { toRecordEventInput } from './execution/codeExecutionRecording.js';
 import { ProofExporter } from './export/ProofExporter.js';
+import { createRescueExporter, type RescueExporter } from './export/RescueExporter.js';
 import { RuntimeManager } from './execution/RuntimeManager.js';
 import { TabUIController } from './ui/tabs/TabUIController.js';
 import { LogViewerPanel } from './ui/components/LogViewerPanel.js';
@@ -331,6 +332,23 @@ if (ctx.examMode) {
   document.body.classList.add('exam-mode');
 }
 
+// 救出 (#544 / ADR-0042): 証明ではない救出ファイルで、メモリ上の最新のコードと記録を出す。
+// 保存先・認証・PoSW の排出のどれも待たない (それらが壊れているときに押すボタンなので)。
+// 導線は左の DL メニュー (#rescue-download-btn) と問題パネル (#problem-rescue-btn。exam は DL メニューを隠す)
+let rescueExporter: RescueExporter | null = null;
+function rescueCode(): void {
+  const tabManager = ctx.tabManager;
+  if (!tabManager) return;
+  rescueExporter ??= createRescueExporter(tabManager, { mode: ctx.mode, notify: showNotification });
+  void rescueExporter.rescueAll();
+}
+document.getElementById('rescue-download-btn')?.addEventListener('click', (e) => {
+  // タブが無いと DL メニューの項目は無効になる (DownloadDropdown)
+  if ((e.currentTarget as HTMLElement).classList.contains('disabled')) return;
+  ctx.downloadDropdown.close();
+  rescueCode();
+});
+
 // 問題表示モード (exam / class / assignment): 問題パネルを配線する。Monaco は automaticLayout: true
 // なのでパネル出現に伴う再レイアウトは自動。class/assignment は封印なしの平文配布 (ADR-0014/0015)。
 if (ctx.capabilities.problemPanel) {
@@ -346,6 +364,9 @@ if (ctx.capabilities.problemPanel) {
   // TypedCode 側に「提出」操作は持たない。exam では unify で左の汎用DLメニューを隠し一本化する。
   document.getElementById('download-log-btn')?.addEventListener('click', () => {
     void ctx.proofExporter.exportAllTabsAsZip();
+  });
+  document.getElementById('problem-rescue-btn')?.addEventListener('click', () => {
+    rescueCode();
   });
   // 非封印モード (授業/課題) は「問題を読み込む」でいつでも平文 `.tcclass` を取り込める (ADR-0015)。
   // exam は封印ゲートで入るのでこのボタンは出さない (sealedProblem で判別)。

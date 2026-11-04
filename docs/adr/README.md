@@ -73,6 +73,7 @@
 | [0039](0039-raise-coverage-floors-in-dedicated-prs.md) | Accepted | カバレッジの床は機能 PR で動かさず、週 1 回の定期ジョブの知らせを受けた専用の PR で上げる (ADR-0034 決定 4 の運用を改訂・PR は自動で開かない) |
 | [0040](0040-mutation-testing-with-stryker-locally.md) | Accepted | 変異検査の道具 (StrykerJS) を shared の検証系に対する手元のコマンドとして常設する (ADR-0037 の Option C・判定は shared のテストだけ・inPlace・CI にも check にも載せない・生き残りは殺すか同値と書く) |
 | [0041](0041-sandboxed-code-execution.md) | Accepted | ユーザーの JS / TS は opaque origin の sandbox iframe (allow-scripts だけ) の中の Blob Worker で実行し、停止・タイムアウト・出力予算の超過は iframe ごと除去して終わらせる (同 realm / 同 origin Worker を却下・CSP は connect-src 'none'・完了の定義は Node と同じ・outcome に timeout) |
+| [0042](0042-rescue-code-before-proof.md) | Accepted | コードの保全を証明の正しさより優先し、証明ではない救出ファイル (`typedcode-rescue/1`) で持ち出させる (何も待たない・proof.json を入れない・`notAProof: true`・ZIP が駄目なら単一 JSON・保存状態の区分は #543) |
 
 ## 参考
 

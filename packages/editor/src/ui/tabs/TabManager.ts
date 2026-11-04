@@ -82,6 +82,17 @@ export type OnTabCreatedCallback = (tab: TabState) => void;
 /** 同期状態と保存の結果 (定義は syncStatus.ts。main.ts などはここから import する) */
 export type { SyncStatus, PersistOutcome };
 
+/** 永続化の現況 (救出ファイルの manifest に載せる。#544) */
+export interface PersistenceReport {
+  /**
+   * タブ id → IndexedDB への保存を TabManager が確かめたイベント数 (メモリ上の配列の先頭からの個数)。
+   * まだ一度も確かめていないタブ (起動・復元の直後で保存が走っていない) は `null`
+   */
+  persistedEventCounts: ReadonlyMap<string, number | null>;
+  /** 直近の永続化 (IndexedDB → sessionStorage) の結果。まだ一度も保存していなければ `null` */
+  lastSave: PersistOutcome | null;
+}
+
 /** 同期状態変更コールバック */
 export type OnSyncStatusChangeCallback = (status: SyncStatus) => void;
 
@@ -165,6 +176,8 @@ export class TabManager {
   private saveRetryTimer: ReturnType<typeof setTimeout> | null = null;
   /** 次に失敗したときの再試行間隔。成功で初期値に戻す */
   private saveRetryDelayMs = TabManager.SAVE_RETRY_INITIAL_MS;
+  /** 直近の永続化の結果 (#544。救出ファイルの manifest が読む) */
+  private lastPersistOutcome: PersistOutcome | null = null;
   /** 現在の同期状態 */
   private currentSyncStatus: SyncStatus = 'synced';
   /**
@@ -266,6 +279,17 @@ export class TabManager {
     while (this.retiringTabs.size > 0) {
       await Promise.all([...this.retiringTabs]);
     }
+  }
+
+  /**
+   * 永続化の現況を返す (#544)。読むだけで、保存も待機もしない (救出は保存の成功を前提にしない)。
+   */
+  getPersistenceReport(): PersistenceReport {
+    const persistedEventCounts = new Map<string, number | null>();
+    for (const id of this.tabs.keys()) {
+      persistedEventCounts.set(id, this.savedEventCursor.get(id) ?? null);
+    }
+    return { persistedEventCounts, lastSave: this.lastPersistOutcome };
   }
 
   /**
@@ -1061,7 +1085,9 @@ export class TabManager {
       console.error('[TabManager] Failed to save to sessionStorage:', e);
     }
 
-    return idbOk ? { idbOk, sessionStorageOk } : { idbOk, sessionStorageOk, error };
+    const outcome: PersistOutcome = idbOk ? { idbOk, sessionStorageOk } : { idbOk, sessionStorageOk, error };
+    this.lastPersistOutcome = outcome;
+    return outcome;
   }
 
   /**

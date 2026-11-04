@@ -15,6 +15,7 @@
 4. **`InputDetector` の paste 検出**: `SessionContentRegistry` と照合して `insertFromPaste` (禁止) と `insertFromInternalPaste` (許可) を分ける。この判定がピュアタイピング判定の入口
 5. **IndexedDB の書き込みは逐次**: イベント記録順序が崩れると復元時のチェーンが壊れる。**同じ `(tabId, eventIndex)` への `SessionStorageService.appendEvent` は、同じ hash の再 append だけを冪等な成功とする** (保存の再試行と、`EventRecorder` / `TabManager.saveToIndexedDB` の二重書き込みはここに入る。events も tabs 行も書き換えない)。**hash が違えば二重インスタンスの乖離として `EventChainConflictError` で reject** し、events・tabs 行を変えない (ConstraintError を黙って吸収しない。tabs 行の `currentHash` を後から書いた側で上書きさせない = #484 / #237)。呼び出し側はこのエラーを握りつぶさず、`TabManager.saveToIndexedDB` は競合したタブの `saveTab` を飛ばす。復元は events 末尾の hash を正とする (#322) ので、tabs 行を更新しない重複があっても巻き戻らない。所有者確認は `assertOwner()` (別インスタンスが `resumeSession` した後に呼ぶと `SessionOwnershipError`)。`appendEvent` 自体は所有者を見ない。検出時の read-only 化・UI は #237 PR-3。**IndexedDB の書き込みは transaction の `oncomplete` で成功とし、`onerror` / `onabort` で失敗とする** (`IndexedDBHelper.ts` の `settleOnCommit`。request の success は commit の保証ではなく、`onabort` を待たないと commit 時に abort された書き込みが永遠に settle しない = #543)。**保存状態 (`#sync-status-item`) は永続化の成否を表す** (PoSW の処理完了とは別)。`TabManager.flushToIndexedDB()` は reject せず保存の結果を返し、export はその失敗で止めない (proof はメモリ上のチェーンから作る)
 6. **エクスポート前 attestation**: `ProofExporter` の export (`exportCurrentTab` / `exportAllTabsAsZip`) は Turnstile 検証 (`performPreExportVerification` / `…ForAllTabs`) を通す。ただし **exam/class/assignment は `preExportBestEffort=true`** (capabilities) で、Turnstile 不達/失敗でも失敗 attestation を記録して提出 ZIP を出す (ADR-0006/0011。教室の不安定網で受験者を締め出さない)。casual は従来どおりブロックする。best-effort の認証全体は `PRE_EXPORT_VERIFICATION_BUDGET_MS` で打ち切り、超過は失敗 attestation 経路に回す (casual は無期限に待つ。#324)
+7. **救出は Turnstile・PoSW・IndexedDB・ネットワークの成功に依存しない。救出ファイルは proof を含まない** ([ADR-0042](../../docs/adr/0042-rescue-code-before-proof.md)、#544): `RescueExporter` はエディタの内容とメモリ上のチェーン (`serializeState().events`) を読むだけで、待機・Turnstile・`flushToIndexedDB`・`waitForQueueDrain`・署名の `waitForFlush`・スクリーンショットを呼ばない (保存先や認証が壊れているときに押すボタンなので、どれかを待てば救出も止まる)。救出ファイル (`typedcode-rescue/1`) に `*_proof.json` を入れず、manifest に `notAProof: true` を書く (`exportProof()` も呼ばない。最終 checkpoint を作り署名を起こすので状態を変える)。1 タブの読み出しの失敗で他のタブを止めない。形式は [system-spec §5.4](../../docs/system-spec.md)
 
 ## ディレクトリ一覧
 
@@ -26,7 +27,7 @@
 | `execution/` | `CodeExecutionController`, `RuntimeManager` |
 | `executors/` | 言語別実行: C, C++ (Wasmer SDK), JavaScript, TypeScript, Python (Pyodide)。`sandbox/` = JS / TS を opaque origin の sandbox iframe 内の Blob Worker で動かす `SandboxRunner` と、その runner (srcdoc + CSP)・Worker のソース (文字列定数)・メッセージの検査・上限 (ADR-0041) |
 | `ui/components/` | モーダル / 通知 / ドロップダウン / パネル |
-| `export/` | `ProofExporter`, README テンプレート |
+| `export/` | `ProofExporter`, README テンプレート、救出 (`rescueBundle.ts` の純関数 `buildRescueBundle` と `RescueExporter`。証明ではない `RESCUE_TC<ts>.zip`。導線は `#rescue-download-btn` / `#problem-rescue-btn`。#544 / ADR-0042) |
 | `services/` | `TurnstileService`, `StorageService`, `ScreenshotStorageService`, `SignedCheckpointService` |
 | `terminal/` | `CTerminal` (xterm.js) |
 | `i18n/` | 翻訳 (ja/en) と型定義 |
