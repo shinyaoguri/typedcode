@@ -4,7 +4,7 @@
  */
 
 import JSZip from 'jszip';
-import type { TabManager, TabState } from '../ui/tabs/TabManager.js';
+import type { PersistOutcome, TabManager, TabState } from '../ui/tabs/TabManager.js';
 import type { EditorMode } from '../core/mode.js';
 import type { ProcessingDialog } from '../ui/components/ProcessingDialog.js';
 import { ExportProgressDialog } from '../ui/components/ExportProgressDialog.js';
@@ -35,6 +35,19 @@ export interface ExportCallbacks {
    * (状態契約 `#event-count[data-count]` / `#current-hash[data-hash]`) をここで追従させる (#433)
    */
   onProofChanged?: () => void;
+}
+
+/**
+ * export 前の保存 (flushToIndexedDB) が失敗しても export は止めない (#543)。proof はメモリ上の
+ * チェーンから作るので、保存先 (IndexedDB / sessionStorage) の障害は proof の正しさに関わらない。
+ * 保存の失敗は同期状態 (`degraded` / `failed`) が表示するので、ここでは警告を残すだけにする。
+ */
+function warnIfFlushFailed(outcome: PersistOutcome): void {
+  if (outcome.idbOk && outcome.sessionStorageOk) return;
+  console.warn(
+    `[ProofExporter] Export continues although saving before export failed (IndexedDB: ${outcome.idbOk ? 'ok' : 'failed'}, sessionStorage: ${outcome.sessionStorageOk ? 'ok' : 'failed'})`,
+    outcome.error
+  );
 }
 
 export class ProofExporter {
@@ -416,7 +429,8 @@ export class ProofExporter {
       // エクスポート前にIndexedDBへの保存を完了させる
       // V2フォーマットではsessionStorageとIndexedDBの同期が非同期のため、
       // エクスポート前に明示的に同期を取る必要がある
-      await this.tabManager?.flushToIndexedDB();
+      const flushOutcome = await this.tabManager?.flushToIndexedDB();
+      if (flushOutcome) warnIfFlushFailed(flushOutcome);
 
       // #143/#225: 直前の打鍵がまだ PoSW キューにあると「content には載っているのに
       // チェーンに無い」export になり content replay で fail する。先に排出を待ち、
@@ -565,7 +579,7 @@ export class ProofExporter {
       // エクスポート前にIndexedDBへの保存を完了させる
       // V2フォーマットではsessionStorageとIndexedDBの同期が非同期のため、
       // エクスポート前に明示的に同期を取る必要がある
-      await this.tabManager.flushToIndexedDB();
+      warnIfFlushFailed(await this.tabManager.flushToIndexedDB());
 
       const allTabs = this.tabManager.getAllTabs();
 

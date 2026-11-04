@@ -21,6 +21,7 @@
 
 ### 修正
 
+- editor の同期状態が、IndexedDB や sessionStorage への保存に失敗しても `Synced` (同期済み) と表示していた問題を直した。保存の結果で状態を決め、片方にだけ保存できたら `degraded` (一部のみ保存)、どちらにも保存できなかったら `failed` (保存失敗) を出し、2 秒から倍々 (上限 60 秒) の間隔で再試行して、書けるようになったら `synced` に戻す。IndexedDB の書き込みは transaction の commit (`oncomplete`) で成功とし、abort (`onabort`) でも失敗にするので、commit の時点で abort されても保存と export がハングしない。export 前の保存が失敗しても、警告を残して export (proof はメモリ上のチェーンから作る) を続ける (#543)
 - 三層保証の時刻アンカーが、最後の署名チェックポイントが最終イベントまで届いていない proof でも `anchored` になっていた問題を直した。root がサーバアンカー済みで先頭 1 イベントだけ署名した proof (残りはオフラインで書き足せる) が、短いセッションでは密度も疎にならず `valid: true` / `temporal: anchored` だった。セッション開始トークンと署名チェックポイントの sessionId が食い違う proof も `anchored` だった。どちらも `partial` (root も無ければ `unanchored`) にする。verify-cli の Anchoring 行に最後に署名されたイベントの位置と未署名の末尾の件数 (`! K trailing events are not covered by a signed checkpoint (unsigned tail)`) を、verify (Web) の時刻アンカーカードにも同じ情報を出す。`valid` / exit code・整合性 (integrity)・proof フォーマットは変えていない (#295)
 - editor で `recordToAllTabs` / `recordSessionSnapshotTo` (windowResize・visibility / focus・スクリーンショット系・fullscreen・sessionResumed・起動時ワンショットの流し直しなど) が記録したイベントも、`record()` と同じく確定ごとに IndexedDB へ 1 件ずつ append するようにした。これまでは TabManager のデバウンス保存だけが頼りで、直後に打鍵が続くと後続の seq だけが先に入って events に欠番ができ、そのまま落ちると復元したチェーンが欠番で切れた。この append もタブを閉じる後始末 (確定 → append → 削除) の待ち対象に入る (#471)
 - ja の設定メニューで `settings.verifyProof` と `settings.toggleTheme` が英語 (「Verify Proof」「Toggle Theme」) のままだったのを、「証明を検証」「テーマを切り替え」に訳した。en は変えていない (#518)

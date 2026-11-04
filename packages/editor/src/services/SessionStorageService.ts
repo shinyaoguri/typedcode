@@ -14,7 +14,7 @@ import type {
   TabSummary,
   StoredScreenshotData,
 } from '@typedcode/shared';
-import { IndexedDBHelper } from './IndexedDBHelper.js';
+import { IndexedDBHelper, settleOnCommit } from './IndexedDBHelper.js';
 import { sessionDbName } from '../core/storageKeys.js';
 import { sortTabSwitchesByAppendOrder } from './tabSwitchOrder.js';
 
@@ -248,19 +248,20 @@ export class SessionStorageService {
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([STORE_SESSIONS], 'readwrite');
-      const store = transaction.objectStore(STORE_SESSIONS);
-      const request = store.add(session);
-
-      request.onerror = () => {
-        console.error('[SessionStorage] Failed to create session:', request.error);
-        reject(new Error('Failed to create session'));
-      };
-
-      request.onsuccess = () => {
-        this.sessionId = session.sessionId;
-        console.log('[SessionStorage] Session created:', session.sessionId);
-        resolve(session);
-      };
+      settleOnCommit(
+        transaction,
+        'Failed to create session',
+        () => {
+          this.sessionId = session.sessionId;
+          console.log('[SessionStorage] Session created:', session.sessionId);
+          resolve(session);
+        },
+        (error) => {
+          console.error('[SessionStorage]', error);
+          reject(error);
+        }
+      );
+      transaction.objectStore(STORE_SESSIONS).add(session);
     });
   }
 
@@ -343,16 +344,19 @@ export class SessionStorageService {
         'readwrite'
       );
 
-      transaction.onerror = () => {
-        console.error('[SessionStorage] Failed to clear session:', transaction.error);
-        reject(new Error('Failed to clear session'));
-      };
-
-      transaction.oncomplete = () => {
-        this.sessionId = null;
-        console.log('[SessionStorage] All session data cleared');
-        resolve();
-      };
+      settleOnCommit(
+        transaction,
+        'Failed to clear session',
+        () => {
+          this.sessionId = null;
+          console.log('[SessionStorage] All session data cleared');
+          resolve();
+        },
+        (error) => {
+          console.error('[SessionStorage]', error);
+          reject(error);
+        }
+      );
 
       // 全てのstoreをクリア
       transaction.objectStore(STORE_SESSIONS).clear();
@@ -431,15 +435,18 @@ export class SessionStorageService {
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([STORE_TABS, STORE_EVENTS], 'readwrite');
 
-      transaction.onerror = () => {
-        console.error('[SessionStorage] Failed to delete tab:', transaction.error);
-        reject(new Error('Failed to delete tab'));
-      };
-
-      transaction.oncomplete = () => {
-        console.log('[SessionStorage] Tab deleted:', tabId);
-        resolve();
-      };
+      settleOnCommit(
+        transaction,
+        'Failed to delete tab',
+        () => {
+          console.log('[SessionStorage] Tab deleted:', tabId);
+          resolve();
+        },
+        (error) => {
+          console.error('[SessionStorage]', error);
+          reject(error);
+        }
+      );
 
       // タブを削除
       transaction.objectStore(STORE_TABS).delete(tabId);
@@ -499,20 +506,24 @@ export class SessionStorageService {
       const eventsStore = transaction.objectStore(STORE_EVENTS);
 
       // トランザクション完了時にどう終えるか。ConstraintError は preventDefault で中止を防ぐので、
-      // 結果は oncomplete で確定させる
+      // 結果は oncomplete で確定させる。request の success の後に transaction が abort されても
+      // (容量切れの commit 失敗など) 成功にせず reject する (#543)
       let conflict: EventChainConflictError | null = null;
       let unexpected: Error | null = null;
 
-      transaction.onerror = () => {
-        console.error('[SessionStorage] Failed to append event:', transaction.error);
-        reject(new Error('Failed to append event'));
-      };
-
-      transaction.oncomplete = () => {
-        if (conflict) reject(conflict);
-        else if (unexpected) reject(unexpected);
-        else resolve();
-      };
+      settleOnCommit(
+        transaction,
+        'Failed to append event',
+        () => {
+          if (conflict) reject(conflict);
+          else if (unexpected) reject(unexpected);
+          else resolve();
+        },
+        (error) => {
+          console.error('[SessionStorage]', error);
+          reject(error);
+        }
+      );
 
       const addRequest = eventsStore.add(eventData);
 
