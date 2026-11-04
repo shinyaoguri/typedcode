@@ -3,7 +3,13 @@ import { mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
-import { EditorApp, listProofEntries, tamperFirstContentChange, writeZipVariant } from './helpers/app.js';
+import {
+  EditorApp,
+  appendToStoredTabContent,
+  listProofEntries,
+  tamperFirstContentChange,
+  writeZipVariant,
+} from './helpers/app.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
 
 /**
@@ -66,6 +72,15 @@ const SHOTS = [
   {
     file: '08-verify-cancel.webp',
     caption: '検証 Web: 検証中の proof をキャンセルする操作 (キャンセル後に次の proof の検証が進む)',
+  },
+  {
+    file: '09-unproven-content.png',
+    caption:
+      'エディタ: 処理待ちを残して閉じた後に再開したときの通知 (証明に載らなかった編集。元のコードと証明の文字数、差分とダウンロード)',
+  },
+  {
+    file: '10-unproven-content-diff.png',
+    caption: 'エディタ: 同じ通知で差分を開いた状態 (左が証明の版、右が元のコード。読み取り専用)',
   },
 ] as const;
 
@@ -206,6 +221,40 @@ test.describe('見た目・動きの証跡 @shots', () => {
     // 集約は検証完了の次のタスクで描かれる。data-proof-* が付くのを待つ (値は見ない)。
     await expect.poll(() => web.proofSummary()).not.toBeNull();
     await page.screenshot({ path: out('04-verify-summary.png') });
+  });
+
+  // 09〜10 (#413): PoSW の処理待ちを残して閉じた状態 (tabs の content にだけ打鍵が残る) から再開したときの通知。
+  // 処理待ちの状態は、閉じた後に `/` の別ページから tabs の content の末尾を書き足して作る (close-tab-recovery.spec.ts と同じ)。
+  test('復元時に証明と食い違った元のコードの通知と差分を撮る @shots', async ({ page, context }) => {
+    const app = new EditorApp(page);
+    await app.openCasualFresh();
+    await app.typeCode(CODE);
+    await app.waitForSynced();
+    await page.close();
+
+    const landing = await context.newPage();
+    await landing.goto('/');
+    await appendToStoredTabContent(landing, '// typed but not in the proof yet');
+    await landing.close();
+
+    const resumed = await context.newPage();
+    await resumed.goto('/casual');
+    const resume = resumed.locator('#session-resume-btn');
+    await resume.waitFor({ state: 'visible', timeout: 15_000 });
+    await resume.click();
+    await new EditorApp(resumed).waitReady();
+    const mask = [resumed.locator('#titlebar-clock'), resumed.locator('#current-hash')];
+
+    // 09: 通知 (差分を開く前)。
+    const dialog = resumed.locator('[data-dialog="unproven-content"]');
+    await dialog.locator('.unproven-item').waitFor({ state: 'visible', timeout: 30_000 });
+    await resumed.screenshot({ path: out('09-unproven-content.png'), animations: 'disabled', mask });
+
+    // 10: 差分を開いた状態。Monaco の diff editor が行を描くまで待つ。
+    await dialog.locator('[data-action="show-diff"]').click();
+    await expect(dialog.locator('.unproven-diff')).toHaveAttribute('data-diff-tab-id', /.+/);
+    await dialog.locator('.unproven-diff .editor.modified .view-line').first().waitFor({ state: 'visible' });
+    await resumed.screenshot({ path: out('10-unproven-content-diff.png'), animations: 'disabled', mask });
   });
 
   // 06〜08 (#331): 検証中の進捗表示 (キャンセルボタン) と、キャンセルした後の表示。キャンセルは処理中の項目への
