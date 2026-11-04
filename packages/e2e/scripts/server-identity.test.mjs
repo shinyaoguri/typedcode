@@ -26,6 +26,17 @@ function checkEditor(observation, peers = PEERS) {
   });
 }
 
+/** workers をポート 8810 で 1 台だけ照合する (test:build の照合と同じ形)。 */
+function checkWorkers(observation, options = {}) {
+  return checkServerIdentities({
+    root: ROOT,
+    expectedId: MINE,
+    servers: [{ name: 'workers', port: 8810, envVar: 'E2E_WORKERS_PORT', observation }],
+    peers: PEERS,
+    ...options,
+  });
+}
+
 describe('checkServerIdentities', () => {
   it('passes when every server reports this worktree id', () => {
     const result = checkServerIdentities({
@@ -84,6 +95,21 @@ describe('checkServerIdentities', () => {
     assert.equal(result.ok, false);
     assert.doesNotMatch(result.message, /E2E_EDITOR_PORT/);
     assert.match(result.message, /E2E_WORKERS_PORT/);
+  });
+
+  it('fails on a lone workers of another worktree and points only at E2E_WORKERS_PORT (test:build checks workers alone)', () => {
+    const result = checkWorkers({ kind: 'id', id: OTHER });
+    assert.equal(result.ok, false);
+    assert.match(result.message, /ポート 8810 \(workers\) は別の作業ツリーのサーバが使用中/);
+    assert.match(result.message, /E2E_WORKERS_PORT=<空きポート>/);
+    assert.doesNotMatch(result.message, /E2E_EDITOR_PORT|E2E_VERIFY_PORT/);
+  });
+
+  it('suggests the given rerun command and falls back to the dev e2e command without one', () => {
+    const custom = checkWorkers({ kind: 'id', id: OTHER }, { rerun: 'npm run test:build -w @typedcode/e2e' });
+    assert.match(custom.message, /E2E_WORKERS_PORT=<空きポート> npm run test:build -w @typedcode\/e2e\)/);
+    const fallback = checkWorkers({ kind: 'id', id: OTHER });
+    assert.match(fallback.message, /E2E_WORKERS_PORT=<空きポート> npm run test -w @typedcode\/e2e\)/);
   });
 });
 
