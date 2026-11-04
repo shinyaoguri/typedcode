@@ -468,6 +468,7 @@ export interface TranslationKeys {
     outcomeFailure: string;
     outcomeError: string;
     outcomeAborted: string;
+    outcomeTimeout: string;
     codeExecFile: string;
     codeExecExit: string;
     codeExecElapsed: string;

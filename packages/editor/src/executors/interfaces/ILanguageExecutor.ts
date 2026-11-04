@@ -5,6 +5,8 @@
  * All language executors (C, Python, JavaScript, etc.) must implement this interface.
  */
 
+import type { CodeExecutionOutcome } from '@typedcode/shared';
+
 /**
  * Configuration for a language executor
  */
@@ -63,6 +65,11 @@ export interface ExecutionResult {
   stderr: string;
   /** Error message if execution failed before program could run */
   error?: string;
+  /**
+   * codeExecution の result に記録する outcome (ADR-0021)。executor が決められるとき
+   * (sandbox の timeout / aborted / error 等) だけ載せる。無ければ Controller が success から決める
+   */
+  outcome?: CodeExecutionOutcome;
 }
 
 /**

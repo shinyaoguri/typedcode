@@ -771,6 +771,8 @@ export class LogViewer {
         return t('logViewer.outcomeError');
       case 'aborted':
         return t('logViewer.outcomeAborted');
+      case 'timeout':
+        return t('logViewer.outcomeTimeout');
       default:
         return '-';
     }

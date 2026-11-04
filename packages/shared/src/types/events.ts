@@ -192,19 +192,23 @@ export interface ReflectionNoteData {
  * （= start 相当、結果なし）。「失敗 → 修正 → 成功」のデバッグサイクルは
  * プロセス要約・分析層がこのデータから導出する。
  */
+/**
+ * codeExecution の result イベントの結果 (ADR-0021)。
+ * - success: 正常終了 (exitCode 0)
+ * - failure: 非 0 終了 (コンパイルエラー / 実行時エラーの exit)
+ * - error: 実行基盤の例外 (ランタイム破損・実行環境の初期化失敗・出力予算の超過等)
+ * - aborted: ユーザ中断
+ * - timeout: 実行時間の上限を超えて強制終了した (#290 で追加。旧版の読み手は未知の値として扱う)
+ */
+export type CodeExecutionOutcome = 'success' | 'failure' | 'error' | 'aborted' | 'timeout';
+
 export interface CodeExecutionEventData {
   phase: 'start' | 'result';
   filename: string | null;
   language: string | null;
-  /**
-   * phase 'result' のみ。
-   * - success: 正常終了 (exitCode 0)
-   * - failure: 非 0 終了 (コンパイルエラー / 実行時エラーの exit)
-   * - error: 実行基盤の例外 (ランタイム破損等)
-   * - aborted: ユーザ中断
-   */
-  outcome?: 'success' | 'failure' | 'error' | 'aborted';
-  /** phase 'result' のみ。exit code が得られない経路 (error/aborted) は null。 */
+  /** phase 'result' のみ。値の意味は {@link CodeExecutionOutcome}。 */
+  outcome?: CodeExecutionOutcome;
+  /** phase 'result' のみ。exit code が得られない経路 (error/aborted/timeout) は null。 */
   exitCode?: number | null;
   /** phase 'result' のみ。start からの経過 ms。 */
   elapsedMs?: number;

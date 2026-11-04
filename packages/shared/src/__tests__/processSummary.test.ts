@@ -206,6 +206,49 @@ describe('summarizeProcess — moments', () => {
     expect(s.runSuccessCount).toBe(1);
   });
 
+  it('counts a timed-out run as a failure so it opens a debug cycle (#290)', () => {
+    const s = summarizeProcess([
+      makeEvent({
+        type: 'codeExecution',
+        timestamp: 0,
+        data: { phase: 'start', filename: 'a.js', language: 'javascript' },
+      }),
+      makeEvent({
+        type: 'codeExecution',
+        timestamp: 30_000,
+        data: { phase: 'result', filename: 'a.js', language: 'javascript', outcome: 'timeout', exitCode: null },
+      }),
+    ]);
+    expect(s.runFailureCount).toBe(1);
+    expect(s.runSuccessCount).toBe(0);
+    expect(s.moments.find((m) => m.kind === 'first-failed-run')?.fromEventIndex).toBe(1);
+  });
+
+  it('ignores an unknown future outcome value instead of counting it either way', () => {
+    const s = summarizeProcess([
+      makeEvent({
+        type: 'codeExecution',
+        timestamp: 0,
+        data: { phase: 'start', filename: 'a.js', language: 'javascript' },
+      }),
+      makeEvent({
+        type: 'codeExecution',
+        timestamp: 100,
+        data: {
+          phase: 'result',
+          filename: 'a.js',
+          language: 'javascript',
+          outcome: 'from-the-future' as unknown as 'timeout',
+          exitCode: null,
+        },
+      }),
+    ]);
+    expect(s.executionCount).toBe(1);
+    expect(s.hasRunResults).toBe(true);
+    expect(s.runFailureCount).toBe(0);
+    expect(s.runSuccessCount).toBe(0);
+  });
+
   it('treats legacy codeExecution events without data as run starts with unknown results', () => {
     const s = summarizeProcess([makeEvent({ type: 'codeExecution', timestamp: 0 })]);
     expect(s.executionCount).toBe(1);
