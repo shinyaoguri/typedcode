@@ -11,7 +11,7 @@ import { runVerifyCli } from './helpers/verifyCli.js';
 
 /**
  * 保存先 (IndexedDB / sessionStorage) の障害 (#435)。
- * - #325 (open の失敗で起動が止まらない) は既知のバグの再現で、修正 PR で `fixme` を外す (e2e AGENTS.md の不変条件 5)
+ * - #325: 起動時の open の失敗でスピナーのまま止まらず、再読み込みを案内するエラー画面 (`boot-failure`) が出る
  * - #543 (#300 段階 1a): 保存 (add / put / setItem) の QuotaExceeded で同期状態が `failed` / `degraded` になり、
  *   そのままでも export が出て verify-cli で PASS する。注入を解除すると `synced` に戻り、リロードして
  *   IndexedDB から復元した後の export も PASS する。transaction の abort は `fault-storage-abort.spec.ts`
@@ -21,19 +21,24 @@ import { runVerifyCli } from './helpers/verifyCli.js';
 const BOOT_ERROR_TIMEOUT_MS = 5_000;
 
 /**
- * #325: 起動時に `indexedDB.open` が失敗すると、`initializeApp` の reject を誰も拾わず
- * `html[data-app-state]` が `initializing` のまま無限スピナーになる。
- * 期待: 数秒以内に、起動を止めるエラー画面が `[data-dialog]` で出る (名前は #325 の修正 PR で決まるので
- * ここでは名前を問わず「何か開いている」ことを見る)。
+ * #325: 起動時に `indexedDB.open` が失敗しても、`initializeApp` の reject を拾って、数秒以内に
+ * 起動を止めるエラー画面 (`[data-dialog="boot-failure"]`) を出す。修正前は誰も拾わず、
+ * `html[data-app-state]` が `initializing` のまま無限スピナーになっていた。
+ * 画面には再読み込みの操作だけを置き、保存データを消す操作 (リセットなど) は置かない。
  */
-test.fixme('#325 IndexedDB の open が失敗すると、起動を止めるエラー画面が数秒以内に出る', async ({ page }) => {
+test('#325 IndexedDB の open が失敗すると、起動を止めるエラー画面が数秒以内に出る', async ({ page }) => {
   await failSessionDbOpen(page);
   const app = new EditorApp(page);
   await page.goto('/casual');
 
   // 注入が効いた (セッション DB の open を失敗させた)。
   await expect.poll(() => idbOpenFailureCount(page)).toBeGreaterThan(0);
-  await expect.poll(() => app.openDialogs(), { timeout: BOOT_ERROR_TIMEOUT_MS }).not.toEqual([]);
+  await expect.poll(() => app.openDialogs(), { timeout: BOOT_ERROR_TIMEOUT_MS }).toEqual(['boot-failure']);
+
+  const dialog = page.locator('[data-dialog="boot-failure"]');
+  await expect(page.locator('#boot-failure-reload-btn')).toBeVisible();
+  // 操作は再読み込みの 1 つだけ (データを消す操作を置かない)。
+  await expect(dialog.locator('button')).toHaveCount(1);
   // 編集できる状態には進まない (エラー画面で止まる)。
   expect(await app.appState()).toBe('initializing');
 });

@@ -370,6 +370,10 @@ export const ja: TranslationKeys = {
     compilationStarted: 'コンパイル中...',
     executionStarted: '実行中...',
     codeExecution: 'コード実行: ${filename}',
+    storageVersionChange:
+      '新しいバージョンが別のタブで開かれました。保存を続けるにはこのタブを再読み込みしてください。',
+    storageConnectionLost:
+      '保存先 (IndexedDB) に接続できなくなりました。再読み込みするか、「コードを救出」でコードを保存してください。',
   },
 
   selfReview: {
@@ -542,6 +546,15 @@ export const ja: TranslationKeys = {
       'TypedCode は画面共有を使用するため、複数のタブやウィンドウで同時に使用することはできません。既に別のタブまたはウィンドウで TypedCode が起動しています。',
     hint: '既存のタブに戻るか、このタブを閉じてください。',
     closeThisTab: 'このタブを閉じる',
+  },
+
+  bootFailure: {
+    title: 'TypedCode を起動できませんでした',
+    description: '起動中にエラーが発生しました。保存済みのデータは消えていません。ページを再読み込みしてください。',
+    blockedHint:
+      '別のタブで TypedCode の古いバージョンが開いています。他の TypedCode のタブを閉じてから再読み込みしてください。',
+    reload: '再読み込み',
+    detail: 'エラーの詳細',
   },
 
   unsupportedBrowser: {

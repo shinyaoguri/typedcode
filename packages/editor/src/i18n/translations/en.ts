@@ -370,6 +370,9 @@ export const en: TranslationKeys = {
     compilationStarted: 'Compiling...',
     executionStarted: 'Running...',
     codeExecution: 'Code execution: ${filename}',
+    storageVersionChange: 'A newer version was opened in another tab. Reload this tab to keep saving.',
+    storageConnectionLost:
+      'Lost the connection to storage (IndexedDB). Reload the page, or save your code with "Rescue code".',
   },
 
   selfReview: {
@@ -544,6 +547,14 @@ export const en: TranslationKeys = {
       'TypedCode uses screen sharing and cannot run in multiple tabs or windows simultaneously. TypedCode is already running in another tab or window.',
     hint: 'Please return to the existing tab or close this one.',
     closeThisTab: 'Close this tab',
+  },
+
+  bootFailure: {
+    title: 'TypedCode could not start',
+    description: 'An error occurred during startup. Your saved data has not been deleted. Please reload the page.',
+    blockedHint: 'An older version of TypedCode is open in another tab. Close the other TypedCode tabs, then reload.',
+    reload: 'Reload',
+    detail: 'Error details',
   },
 
   unsupportedBrowser: {

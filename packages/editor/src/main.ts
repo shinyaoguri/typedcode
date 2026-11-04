@@ -111,7 +111,7 @@ import {
   showScreenShareOptOutBanner,
   hideScreenShareOptOutBanner,
 } from './ui/dialogs/ScreenCaptureDialogs.js';
-import { initSessionStorageService } from './services/SessionStorageService.js';
+import { initSessionStorageService, SessionStorageBlockedError } from './services/SessionStorageService.js';
 import { showSessionRecoveryDialog } from './ui/dialogs/SessionRecoveryDialog.js';
 import { showUnprovenContentDialog } from './ui/dialogs/UnprovenContentDialog.js';
 
@@ -1118,6 +1118,32 @@ function restoreClassProblemDisplay(appCtx: AppContext): void {
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
 }
 
+/**
+ * 起動の途中で投げられた例外を画面に出す (#325)。スピナーを消し、再読み込みを案内する静的オーバーレイを開く。
+ * データを消す操作は置かない (保存済みのデータは残っている)。`data-app-state` は `initializing` のまま
+ * (起動を途中で止める他の画面と同じ扱い。何で止まったかは `data-dialog="boot-failure"` で見る)。
+ */
+function showBootFailure(error: unknown): void {
+  console.error('[TypedCode] Initialization failed:', error);
+  initOverlay?.classList.add('hidden');
+
+  const overlay = document.getElementById('boot-failure-overlay');
+  if (!overlay) return;
+
+  const blockedHint = document.getElementById('boot-failure-blocked-hint');
+  if (blockedHint) blockedHint.hidden = !(error instanceof SessionStorageBlockedError);
+
+  const detail = document.getElementById('boot-failure-detail-text');
+  if (detail) {
+    detail.textContent = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  }
+
+  document.getElementById('boot-failure-reload-btn')?.addEventListener('click', () => window.location.reload(), {
+    once: true,
+  });
+  overlay.classList.remove('hidden');
+}
+
 // ========================================
 // メイン初期化関数
 // ========================================
@@ -1171,6 +1197,12 @@ async function initializeApp(): Promise<void> {
   // Phase 1.5: Screen Capture許可の取得（画面全体のみ許可）
   // セッション復旧の可能性を事前にチェック（IndexedDBにセッションが存在する場合、またはリロードの場合）
   const sessionService = await initSessionStorageService();
+  // 接続を失ったら再読み込みを案内する (#325)。保存の失敗表示は TabManager の既存の経路 (degraded / failed) に任せる
+  sessionService.setOnConnectionLost((reason) => {
+    showNotification(
+      t(reason === 'versionchange' ? 'notifications.storageVersionChange' : 'notifications.storageConnectionLost')
+    );
+  });
   const isReload = sessionStorage.getItem(sessionActiveKey()) === 'true';
   const hasExistingSession = await sessionService.hasExistingSession();
 
@@ -1587,7 +1619,8 @@ function boot(): void {
   }
   // 静的イベントリスナーを設定（DOM準備後）
   setupStaticEventListeners(ctx);
-  void initializeApp();
+  // 起動のどこで reject しても、スピナーのまま止めずにエラー画面を出す (#325)
+  initializeApp().catch(showBootFailure);
 }
 
 // DOMContentLoaded または即座に実行
