@@ -9,7 +9,8 @@
  * 各 dev サーバは作業ツリーの識別子 (scripts/worktree-id.mjs) を名乗る:
  *   - editor / verify: `GET /` の応答ヘッダ `X-TypedCode-Worktree` (各 vite.config.ts の server.headers)
  *   - workers: `GET /health` の JSON の `worktree` (`wrangler dev --var DEV_WORKTREE_ID:<id>`)
- * global-setup.ts がそれを読み (observeServer)、ここの checkServerIdentities で照合して、合わなければ
+ * global-setup.ts (dev 設定の 3 台) と global-setup.build.ts (build 設定の workers。#560) がそれを読み
+ * (observeServer)、ここの checkServerIdentities で照合して、合わなければ
  * テストを 1 本も走らせずに落とす。setup-env.mjs と同じく、判定は副作用の無い関数に置き、
  * ネットワークと git の呼び出しは引数で差し替えられるようにする。
  */
@@ -106,12 +107,16 @@ function describeProblem({ name, port, observation }, expectedId, peers) {
   }
 }
 
+/** 失敗文言で案内する再実行コマンドの既定 (dev 設定の e2e)。 */
+const DEFAULT_RERUN = 'npm run test -w @typedcode/e2e';
+
 /**
  * 全サーバがこの作業ツリーのものかを照合する。
- * @param {{ root: string, expectedId: string, servers: ServerObservation[], peers: Map<string, string> }} input
+ * `rerun` は失敗文言の再実行例に出すコマンド (build 設定は `npm run test:build -w @typedcode/e2e`。#560)。
+ * @param {{ root: string, expectedId: string, servers: ServerObservation[], peers: Map<string, string>, rerun?: string }} input
  * @returns {{ ok: true } | { ok: false, message: string }}
  */
-export function checkServerIdentities({ root, expectedId, servers, peers }) {
+export function checkServerIdentities({ root, expectedId, servers, peers, rerun = DEFAULT_RERUN }) {
   const problems = [];
   const envVars = [];
   for (const server of servers) {
@@ -128,7 +133,7 @@ export function checkServerIdentities({ root, expectedId, servers, peers }) {
       `  この作業ツリー: ${root} (識別子: ${expectedId})`,
       ...problems,
       `  直し方: そのサーバを止めるか、${envVars.join(' / ')} で空きポートを指定してください` +
-        ` (例: ${envVars.map((v) => `${v}=<空きポート>`).join(' ')} npm run test -w @typedcode/e2e)`,
+        ` (例: ${envVars.map((v) => `${v}=<空きポート>`).join(' ')} ${rerun})`,
     ].join('\n'),
   };
 }

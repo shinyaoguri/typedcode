@@ -45,7 +45,8 @@ npm run report -w @typedcode/e2e        # 直近の HTML レポート (trace 付
 別の worktree のサーバや識別子を名乗らないサーバ (照合が入る前の版で動くもの・TypedCode 以外のプロセス) が
 ポートを握っていると、テストを 1 本も走らせずに「ポート N は別の作業ツリーのサーバが使用中 (相手: <パス>)」の
 形で落ちるので、そのサーバを止めるか `E2E_EDITOR_PORT` / `E2E_WORKERS_PORT` / `E2E_VERIFY_PORT` で
-空きポートを指定する。**exam の spec は editor を E2E 用の設定 (出題者鍵を差し替える `vite.editor.config.mjs`)
+空きポートを指定する。本番ビルドのスモーク (`npm run test:build`) も、再利用しうる workers を
+`global-setup.build.ts` で同じく照合する (#560。`E2E_WORKERS_PORT` で空きポートへ逃がせる)。**exam の spec は editor を E2E 用の設定 (出題者鍵を差し替える `vite.editor.config.mjs`)
 で起こすサーバが前提**なので、同じ作業ツリーの通常の `npm run dev` が 5173 を握っていると、照合は通っても
 「出題者の署名を検証できない」で落ちる。その場合も同じく空きポートを指定する。
 
