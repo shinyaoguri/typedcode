@@ -68,6 +68,10 @@ root = SHA256(fingerprintHash ‖ localNonce ‖ serverNonce)
 5. root の `issuedAt` 以降にチェーンが始まる (時系列整合)。
 → ① (オフライン捏造/遡及封鎖) と ④ (attestation を ECDSA 束縛 + オフライン検証可) を同時達成。
 
+**token を検証できないとき (2026-11 追補, [#329](https://github.com/shinyaoguri/typedcode/issues/329))**: 手順 1・2 の失敗 (未登録 keyId・署名不正・鍵の有効期間外) と端末束縛 (`token.fingerprintHash === proof.fingerprint.hash`) の不一致は、それだけでは**改ざんとしない**。手順 3 (serverNonce 込みの root 再計算) が合えば root は有効 (整合性は落ちない) で `rootAnchored:false`、理由を `rootAnchorFailure` で返し、総合の `valid` だけを false にする (署名 cp の未登録 keyId と同じ扱い。時刻アンカーは有効な署名 cp があれば partial、無ければ unanchored)。手順 3 が合わなければ従来どおり改ざん。
+- 理由: registry は append-only なので、未登録 keyId が実際に起きるのは「古い registry を同梱した検証器で新しい鍵の token を見る」場合で、正直な proof が「改ざん」と表示されていた。未登録 keyId のときは keyId と「検証器の registry が古い可能性」を出す。
+- 安全性: token を剥がしても、token の無い proof は serverNonce を含まない従来式で照合されるので root は合わない。自己署名 token で serverNonce を選んでも `rootAnchored:true` にはならず (registry-only = C1 は不変)、総合は不合格のまま。
+
 **フォールバック (Option b)**: session/start 不達なら旧式 `SHA256(fp ‖ localNonce)` root にフォールバックし
 `rootAnchored:false`。verify は warning。strict (採点) は `requireRootAnchor` opt-in で fail にできる
 (ADR-0016 の `requireAnchorDensity` と同じ「既定 warning / opt-in strict」パターン)。
@@ -90,6 +94,7 @@ attestation は別用途として当面据え置く (作成時 root とは独立
 | 旧 (既存) | 1.0.0 / 1.1.0 | 無 | `rootAnchored:false` + warning。valid は他レイヤで成立 (後方互換) |
 | 新・成功 | 1.2.0 | 有 | token 検証 → serverNonce 込み root 再計算。`rootAnchored:true` |
 | 新・劣化 | 1.2.0 | 無 | `rootAnchored:false` + warning (オフライン開始)。strict 採点では fail 可 |
+| 新・token 検証不能 (#329) | 1.2.0 | 有 (未登録 keyId / 署名不正 / 端末束縛の不一致) | serverNonce 込みの root が合えば整合性は維持、`rootAnchored:false` + `rootAnchorFailure`、valid は false。root が合わなければ改ざん |
 
 - `MIN_SUPPORTED_VERSION` を上げないので、既存 proof は引き続き検証できる (fail-closed にしない)。
 - exam proof は root 式が別 (ADR-0006)。当面 serverNonce を足さない → 既存の exam 検証は不変。

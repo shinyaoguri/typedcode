@@ -26,6 +26,7 @@ import {
   type ScreenshotVerificationSummary,
   type CheckpointPublicKey,
   type ProofVersionStatus,
+  type RootAnchorFailure,
 } from '@typedcode/shared';
 import { ProgressBar } from './progress.js';
 
@@ -82,6 +83,11 @@ export interface CLIVerificationResult {
   signedCheckpoints: FullVerificationResult['signedCheckpoints'];
   /** root がサーバアンカーされているか (ADR-0017) */
   rootAnchored: boolean;
+  /**
+   * token はあるが検証できなかった (#329。shared の `FullVerificationResult.rootAnchorFailure`)。
+   * 改ざんではないので整合性は落ちないが、`valid` は false (exit 1)。`keyId` は proof 由来。
+   */
+  rootAnchorFailure?: RootAnchorFailure;
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない。 */
   analysis: AnalysisReport;
   /** 三層保証語彙 (ADR-0020)。実証拠から機械導出した表示用語彙 (valid の置換ではない)。 */
@@ -333,6 +339,7 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     poswSkipped: result.poswSkipped ?? false,
     signedCheckpoints: result.signedCheckpoints,
     rootAnchored: result.rootAnchored ?? false,
+    rootAnchorFailure: result.rootAnchorFailure,
     analysis,
     assurance,
     processSummary,

@@ -67,6 +67,8 @@ export type {
   VerificationMode,
   VerifyProofFileOptions,
   EventArrayStructureResult,
+  RootAnchorFailure,
+  RootAnchorFailureCode,
 } from './verification.js';
 
 // Signed checkpoints (long-term verifiability)

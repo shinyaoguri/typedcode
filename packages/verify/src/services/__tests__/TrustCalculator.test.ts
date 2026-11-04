@@ -140,6 +140,47 @@ describe('TrustCalculator.calculate — level determination', () => {
     expect(r.issues.some((i) => i.component === 'anchoring' && i.severity === 'warning')).toBe(true);
   });
 
+  describe('a session start token that cannot be verified (#329)', () => {
+    /** 古い registry の検証器で新しい鍵の token を見た proof (root は自己整合、shared が valid:false に畳み済み)。 */
+    const untrusted = (code: 'token-unknown-key' | 'token-invalid' | 'token-fingerprint-mismatch') =>
+      ({
+        ...healthyResult(),
+        valid: false,
+        rootAnchored: false,
+        rootAnchorFailure: { code, reason: 'reason from shared', keyId: 'tcp-209901-future' },
+      }) as VerificationResultData;
+
+    it('fails with an anchoring error rather than a metadata error', () => {
+      const r = calc(untrusted('token-unknown-key'));
+      expect(r.level).toBe('failed');
+      expect(r.issues.some((i) => i.component === 'anchoring' && i.severity === 'error')).toBe(true);
+      expect(r.issues.some((i) => i.component === 'metadata')).toBe(false);
+      expect(r.issues.some((i) => i.message === t('trust.issueMetadataInvalid'))).toBe(false);
+    });
+
+    it('does not also raise the root-not-anchored warning (the token exists; it is just untrusted)', () => {
+      const r = calc(untrusted('token-unknown-key'));
+      expect(r.issues.some((i) => i.message === t('trust.issueRootNotAnchored'))).toBe(false);
+    });
+
+    it('names the keyId and the outdated-registry hint only for an unknown key', () => {
+      const unknownKey = calc(untrusted('token-unknown-key')).issues.find((i) => i.component === 'anchoring');
+      const invalid = calc(untrusted('token-invalid')).issues.find((i) => i.component === 'anchoring');
+
+      expect(unknownKey?.message).toBe(
+        t('trust.issueSessionTokenUntrusted.unknownKey', { keyId: 'tcp-209901-future' })
+      );
+      expect(unknownKey?.message).toContain('tcp-209901-future');
+      expect(invalid?.message).toBe(t('trust.issueSessionTokenUntrusted.invalid'));
+    });
+
+    it('uses a distinct message for a token issued for another device', () => {
+      const r = calc(untrusted('token-fingerprint-mismatch'));
+      const issue = r.issues.find((i) => i.component === 'anchoring' && i.severity === 'error');
+      expect(issue?.message).toBe(t('trust.issueSessionTokenUntrusted.fingerprintMismatch'));
+    });
+  });
+
   it('does not warn about root anchoring for an exam proof (own T0 binding)', () => {
     const r = calc({
       ...healthyResult(),

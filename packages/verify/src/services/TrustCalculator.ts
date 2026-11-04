@@ -4,6 +4,7 @@
  * 注意: メインスレッド専用 (TabController から呼ばれる)。
  * t() を使うため Web Worker 内では使用しないこと。
  */
+import type { RootAnchorFailure } from '@typedcode/shared';
 import { t } from '../i18n/index';
 import type {
   TrustLevel,
@@ -34,6 +35,21 @@ function submissionIssueMessage(info: ContentMismatchInfo): string {
       return t('trust.issueSubmissionAmbiguous');
     case 'uncheckable':
       return t('trust.issueSubmissionUncheckable');
+  }
+}
+
+/**
+ * 検証できない token の理由 (#329)。registry が古い可能性に触れるのは未知の keyId のときだけ。
+ * keyId は proof 由来だが、issue の message は ResultPanel が `escapeHtml` を通して描画する。
+ */
+function sessionTokenUntrustedMessage(failure: RootAnchorFailure): string {
+  switch (failure.code) {
+    case 'token-unknown-key':
+      return t('trust.issueSessionTokenUntrusted.unknownKey', { keyId: failure.keyId ?? '?' });
+    case 'token-fingerprint-mismatch':
+      return t('trust.issueSessionTokenUntrusted.fingerprintMismatch');
+    case 'token-invalid':
+      return t('trust.issueSessionTokenUntrusted.invalid');
   }
 }
 
@@ -197,7 +213,21 @@ export class TrustCalculator {
 
     // 7.5 root のサーバアンカー（ADR-0017）。serverNonce 付きトークンで root がアンカーされていない
     //     (= 完全オフライン捏造の余地) なら警告。exam は独自の T0 束縛を持つため対象外。
-    if (verificationResult?.metadataValid && !verificationResult.rootAnchored && !verificationResult.exam?.present) {
+    //     token はあるが検証できない (#329) ときは、root は自己整合している (改ざんではない) が開始時刻の
+    //     根拠が無い。CLI と同じく総合は不合格なので、時刻アンカー層の error として理由つきで上げ、
+    //     「token が無い」と読める未アンカーの警告は重ねない。metadata が別の理由で落ちているときは
+    //     「改ざんではない」と読める文言を出さない (metadata の error が先に立つ)。
+    if (verificationResult?.metadataValid && verificationResult.rootAnchorFailure) {
+      issues.push({
+        component: 'anchoring',
+        severity: 'error',
+        message: sessionTokenUntrustedMessage(verificationResult.rootAnchorFailure),
+      });
+    } else if (
+      verificationResult?.metadataValid &&
+      !verificationResult.rootAnchored &&
+      !verificationResult.exam?.present
+    ) {
       issues.push({
         component: 'anchoring',
         severity: 'warning',
