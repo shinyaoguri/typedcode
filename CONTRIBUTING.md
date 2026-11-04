@@ -83,7 +83,9 @@ npm run mutate -w @typedcode/shared -- --mutate 'src/verification.ts:100-150,src
 ```
 
 - パスは `packages/shared` からの相対 (`src/...`)。変更した範囲は `git diff -U0 <ファイル>` の `@@ -a,b +c,d @@` の `c` から `c+d-1` で分かる
-- 判定は shared のテストだけで行う。作業ファイルは `packages/shared/.stryker-tmp/` に出て、終了時にソースは元に戻る (`inPlace`。verify-cli の fixture を相対パスで読むテストが sandbox のコピーでは動かないため)。**走っている間はその 5 ファイルを編集しない** (途中で止めたときはソースに変異が残りうるので、`git status` で確かめる)
+- 判定は shared のテストだけで行う。作業ファイルは `packages/shared/.stryker-tmp/` に出て、終了時にソースは元に戻る (`inPlace`。verify-cli の fixture を相対パスで読むテストが sandbox のコピーでは動かないため)。**走っている間は対象のファイルを編集せず、同じ作業ツリーで別の変異検査も走らせない**
+- `npm run mutate` は、`packages/shared/.stryker-tmp/` が既にあると変異を始めずに止まる (`scripts/stryker-guard.mjs`。実行中のものと重ねない・中断の残骸の上で回さないため。#600)。`npx stryker run` を直接打つとこの検査を通らないので、`npm run mutate` から回す
+- **途中で止まったとき** (Ctrl-C の二度押し・プロセスの kill・マシンの停止): 元のファイルは `packages/shared/.stryker-tmp/backup-*/` に `packages/shared` からの相対パスのまま退避されている。走っていないこと (`pgrep -fl stryker` が何も出さない) を確かめてから、`cp -R packages/shared/.stryker-tmp/backup-*/. packages/shared/` で戻し、`git status` と `git diff` で変異が残っていないことを見てから `rm -rf packages/shared/.stryker-tmp` する。退避は実行前の作業ツリーそのもの (未コミットの変更も含む) なので、`git checkout` で戻すより確実
 - 同値変異は常に残る (対象の件数や内訳は実行のたびに端末で見る)。読み方は「survived のうち、そのファイルの判定が変わるのに緑のもの」だけ拾う。殺すテストを足したら、ADR-0037 のとおり、足したテストが壊して赤くなることも確かめる
 - 対象ファイルを増やす・減らすときは `packages/shared/stryker.config.json` の `mutate` を直す (docs には書き写さない)
 
