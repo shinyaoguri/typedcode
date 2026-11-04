@@ -13,6 +13,7 @@ import type {
   SessionSummary,
   TabSummary,
   StoredScreenshotData,
+  StoredUnprovenContentData,
 } from '@typedcode/shared';
 import { IndexedDBHelper, settleOnCommit } from './IndexedDBHelper.js';
 import { sessionDbName } from '../core/storageKeys.js';
@@ -23,7 +24,8 @@ export type { SessionMetadata, StoredTabData, StoredEventData, StoredTabSwitchDa
 
 // DB 名はモード別に名前空間化する (ADR-0011 PR3): casual=typedcode-session、他は -<mode>。
 // storageKeys.sessionDbName() を使用時 (initialize) に呼ぶ — main.ts が最初期に NS を確定する。
-const DB_VERSION = 2;
+// 2 → 3: unprovenContents ストアを追加 (#413。既存のストアと行は変えない)
+const DB_VERSION = 3;
 
 // Object Store Names
 const STORE_SESSIONS = 'sessions';
@@ -31,6 +33,8 @@ const STORE_TABS = 'tabs';
 const STORE_EVENTS = 'events';
 const STORE_TAB_SWITCHES = 'tabSwitches';
 const STORE_SCREENSHOTS = 'screenshots';
+/** 復元時に証明と食い違った元の content (追記のみ。#413) */
+const STORE_UNPROVEN_CONTENTS = 'unprovenContents';
 
 // Schema version for data format (use the shared constant)
 export const SESSION_STORAGE_VERSION = 1;
@@ -114,6 +118,11 @@ export class SessionStorageService {
         if (oldVersion >= 1 && oldVersion < 2) {
           this.createScreenshotsStore(db);
         }
+
+        // Version 2 → 3: unprovenContents ストア追加 (#413)。既存のストアと行には触らない
+        if (oldVersion >= 1 && oldVersion < 3) {
+          this.createUnprovenContentsStore(db);
+        }
       };
     });
   }
@@ -158,6 +167,9 @@ export class SessionStorageService {
 
     // Screenshots store (Version 2で追加、新規DBでも作成)
     this.createScreenshotsStore(db);
+
+    // Unproven contents store (Version 3で追加、新規DBでも作成)
+    this.createUnprovenContentsStore(db);
   }
 
   /**
@@ -170,6 +182,17 @@ export class SessionStorageService {
       screenshotsStore.createIndex('timestamp', 'timestamp', { unique: false });
       screenshotsStore.createIndex('eventSequence', 'eventSequence', { unique: false });
       console.log('[SessionStorage] Screenshots store created');
+    }
+  }
+
+  /**
+   * Unproven contents Object Storeを作成（マイグレーション用。#413）
+   */
+  private createUnprovenContentsStore(db: IDBDatabase): void {
+    if (!db.objectStoreNames.contains(STORE_UNPROVEN_CONTENTS)) {
+      const store = db.createObjectStore(STORE_UNPROVEN_CONTENTS, { keyPath: 'id', autoIncrement: true });
+      store.createIndex('tabId', 'tabId', { unique: false });
+      console.log('[SessionStorage] Unproven contents store created');
     }
   }
 
@@ -613,6 +636,38 @@ export class SessionStorageService {
     );
     // timestamp はロードごとに 0 起点でリロードをまたぐと単調でないので、追記順 (id) で並べる (#385)
     return sortTabSwitchesByAppendOrder(stored);
+  }
+
+  // ============================================================================
+  // Unproven Content Operations (#413)
+  // ============================================================================
+
+  /**
+   * 復元時に証明と食い違った元の content を残す。
+   *
+   * **追記のみ**: 既存の行を書き換えず、消す操作も持たない (`clearSession` / `deleteTab` も触らない)。
+   * tabs の `saveTab` (put) とは別のストアなので、その後の保存やリロードで上書きされない。
+   * 消えるのはモードのリセットで DB ごと消すときだけ。保持期間と容量の管理は #317 で扱う。
+   */
+  async appendUnprovenContent(record: Omit<StoredUnprovenContentData, 'id'>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    // id は autoIncrement に任せ、add で書く (put にしない = 既存の行を上書きする経路を持たない)
+    await IndexedDBHelper.add(this.db, STORE_UNPROVEN_CONTENTS, record);
+    console.log('[SessionStorage] Unproven content preserved for tab:', record.tabId);
+  }
+
+  /**
+   * タブの元の content を、残した順 (古い順) に返す。
+   */
+  async getUnprovenContents(tabId: string): Promise<StoredUnprovenContentData[]> {
+    if (!this.db) throw new Error('Database not initialized');
+    const rows = await IndexedDBHelper.getAllByIndex<StoredUnprovenContentData>(
+      this.db,
+      STORE_UNPROVEN_CONTENTS,
+      'tabId',
+      tabId
+    );
+    return rows.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
   }
 
   // ============================================================================

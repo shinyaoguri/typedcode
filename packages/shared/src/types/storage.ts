@@ -183,6 +183,31 @@ export interface StoredTabSwitchData {
   switchEvent: TabSwitchEvent;
 }
 
+/**
+ * 復元時に証明 (チェーンの replay) と食い違った元の content (IndexedDB の `unprovenContents`。#413)。
+ *
+ * PoSW の処理待ちが残ったまま閉じると、打鍵はチェーンに載らないのに content にだけ残る。
+ * 復元はバッファを replay 版にして proof を valid に保ち、元の content はここに**追記のみ**で残す
+ * (tabs の `saveTab` の put とは別のストアなので、その後の保存やリロードで上書きされない)。
+ */
+export interface StoredUnprovenContentData {
+  /** 追記の順 (autoIncrement) */
+  id?: number;
+  tabId: string;
+  /** 見つけたときのセッション。分からなければ `null` */
+  sessionId: string | null;
+  filename: string;
+  language: string;
+  /** 切り詰める前の元の content (証明に載っていない編集を含む) */
+  content: string;
+  /** 証明に載っている内容 (チェーンの replay) の文字数 */
+  chainContentLength: number;
+  /** 見つけた時点のチェーンのイベント数 */
+  chainEventCount: number;
+  /** 見つけた時刻 (epoch ms) */
+  detectedAt: number;
+}
+
 /** セッションサマリー（復旧ダイアログ用） */
 export interface SessionSummary {
   sessionId: string;

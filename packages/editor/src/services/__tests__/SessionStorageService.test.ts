@@ -14,7 +14,13 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
-import type { StoredEvent, StoredTabData, StoredScreenshotData, TabSwitchEvent } from '@typedcode/shared';
+import type {
+  StoredEvent,
+  StoredTabData,
+  StoredScreenshotData,
+  StoredUnprovenContentData,
+  TabSwitchEvent,
+} from '@typedcode/shared';
 import { setStorageNamespace } from '../../core/storageKeys.js';
 import { SessionStorageService, EventChainConflictError, SessionOwnershipError } from '../SessionStorageService.js';
 import { abortTransactionsAfterWriteSuccess, settleWithin, type InjectedAbort } from './idbFaults.js';
@@ -72,6 +78,71 @@ function makeScreenshot(id: string, sessionId: string): StoredScreenshotData {
     displayInfo: { width: 1, height: 1, devicePixelRatio: 1 },
     eventSequence: 0,
   };
+}
+
+function makeUnproven(tabId: string, content: string): Omit<StoredUnprovenContentData, 'id'> {
+  return {
+    tabId,
+    sessionId: 'session-1',
+    filename: `${tabId}.ts`,
+    language: 'typescript',
+    content,
+    chainContentLength: 1,
+    chainEventCount: 1,
+    detectedAt: 1,
+  };
+}
+
+/** リクエストを Promise にする (テストで生の IndexedDB を触るとき用) */
+function requestDone<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * DB_VERSION 2 (unprovenContents を足す前) の形で DB を作り、タブ 1 つとイベント 1 件を入れて閉じる。
+ * ストアと index は v2 の `createObjectStores` と同じ (アップグレードの前提を固定する)。
+ */
+async function seedVersion2Database(tab: StoredTabData, event: StoredEvent): Promise<void> {
+  const open = indexedDB.open('typedcode-session', 2);
+  open.onupgradeneeded = () => {
+    const db = open.result;
+    const sessions = db.createObjectStore('sessions', { keyPath: 'sessionId' });
+    sessions.createIndex('createdAt', 'createdAt', { unique: false });
+    sessions.createIndex('isActive', 'isActive', { unique: false });
+    const tabs = db.createObjectStore('tabs', { keyPath: 'id' });
+    tabs.createIndex('sessionId', 'sessionId', { unique: false });
+    tabs.createIndex('lastModifiedAt', 'lastModifiedAt', { unique: false });
+    const events = db.createObjectStore('events', { keyPath: 'id', autoIncrement: true });
+    events.createIndex('tabId', 'tabId', { unique: false });
+    events.createIndex('sessionId', 'sessionId', { unique: false });
+    events.createIndex('tabId_eventIndex', ['tabId', 'eventIndex'], { unique: true });
+    events.createIndex('writtenAt', 'writtenAt', { unique: false });
+    const switches = db.createObjectStore('tabSwitches', { keyPath: 'id', autoIncrement: true });
+    switches.createIndex('sessionId', 'sessionId', { unique: false });
+    switches.createIndex('timestamp', 'switchEvent.timestamp', { unique: false });
+    const shots = db.createObjectStore('screenshots', { keyPath: 'id' });
+    shots.createIndex('sessionId', 'sessionId', { unique: false });
+    shots.createIndex('timestamp', 'timestamp', { unique: false });
+    shots.createIndex('eventSequence', 'eventSequence', { unique: false });
+  };
+  const db = await requestDone(open);
+  const tx = db.transaction(['tabs', 'events'], 'readwrite');
+  tx.objectStore('tabs').put(tab);
+  tx.objectStore('events').add({
+    tabId: tab.id,
+    sessionId: tab.sessionId,
+    eventIndex: event.sequence,
+    eventData: event,
+    writtenAt: 1,
+  });
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
 }
 
 /** createSession 後の service を作る。 */
@@ -409,6 +480,86 @@ describe('SessionStorageService', () => {
       await service.deleteTab('tab-1');
 
       expect((await service.getLatestSession())?.sessionId).toBe(opened.sessionId);
+    });
+  });
+
+  describe('unproven contents (#413)', () => {
+    it('keeps the preserved original content after saveTab rewrites the tab content', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(makeTab('tab-1', opened.sessionId, { content: 'abcdef' }));
+      await service.appendUnprovenContent(makeUnproven('tab-1', 'abcdef'));
+
+      // 復元後の保存は tabs の content を replay 版で put する
+      await service.saveTab(makeTab('tab-1', opened.sessionId, { content: 'abc' }));
+      await service.saveTab(makeTab('tab-1', opened.sessionId, { content: 'abc + more typing' }));
+
+      expect((await service.getUnprovenContents('tab-1')).map((r) => r.content)).toEqual(['abcdef']);
+    });
+
+    it('appends a second preserved content for the same tab after the first instead of overwriting it', async () => {
+      const opened = await openService();
+      service = opened.service;
+
+      await service.appendUnprovenContent(makeUnproven('tab-1', 'first original'));
+      await service.appendUnprovenContent(makeUnproven('tab-1', 'second original'));
+
+      expect((await service.getUnprovenContents('tab-1')).map((r) => r.content)).toEqual([
+        'first original',
+        'second original',
+      ]);
+    });
+
+    it('returns only the preserved contents of the requested tab', async () => {
+      const opened = await openService();
+      service = opened.service;
+
+      await service.appendUnprovenContent(makeUnproven('tab-1', 'one'));
+      await service.appendUnprovenContent(makeUnproven('tab-2', 'two'));
+
+      expect((await service.getUnprovenContents('tab-2')).map((r) => r.content)).toEqual(['two']);
+    });
+
+    it('deleteTab leaves the preserved original contents of that tab in place', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+      await service.appendUnprovenContent(makeUnproven('tab-1', 'abcdef'));
+
+      await service.deleteTab('tab-1');
+
+      expect((await service.getUnprovenContents('tab-1')).map((r) => r.content)).toEqual(['abcdef']);
+    });
+
+    it('clearSession leaves the preserved original contents in place', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.appendUnprovenContent(makeUnproven('tab-1', 'abcdef'));
+
+      await service.clearSession();
+
+      expect((await service.getUnprovenContents('tab-1')).map((r) => r.content)).toEqual(['abcdef']);
+    });
+
+    it('upgrading a version 2 database keeps the tabs and events it already held', async () => {
+      const tab = makeTab('tab-1', 'session-old', { content: 'kept' });
+      await seedVersion2Database(tab, makeEvent(0));
+
+      service = new SessionStorageService();
+      await service.initialize();
+
+      expect((await service.loadTabs('session-old')).map((t) => t.content)).toEqual(['kept']);
+      expect((await service.getEvents('tab-1')).map((e) => e.hash)).toEqual(['hash-0']);
+    });
+
+    it('upgrading a version 2 database adds a store that can hold preserved contents', async () => {
+      await seedVersion2Database(makeTab('tab-1', 'session-old'), makeEvent(0));
+
+      service = new SessionStorageService();
+      await service.initialize();
+      await service.appendUnprovenContent(makeUnproven('tab-1', 'abcdef'));
+
+      expect((await service.getUnprovenContents('tab-1')).map((r) => r.content)).toEqual(['abcdef']);
     });
   });
 
