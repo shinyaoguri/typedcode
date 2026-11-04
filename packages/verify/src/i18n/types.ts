@@ -378,6 +378,12 @@ export interface VerifyTranslationKeys {
     issueAnchoringPostHoc: string;
     issueAnchoringSparse: string;
     issueSessionTokenMismatch: string;
+    /** 検証できない session start token (#329)。code ごとの文言。unknownKey は `${keyId}` を受ける。 */
+    issueSessionTokenUntrusted: {
+      unknownKey: string;
+      invalid: string;
+      fingerprintMismatch: string;
+    };
     issueRootNotAnchored: string;
     issueNotPureTyping: string;
     issueExamBindingFailed: string;

@@ -353,6 +353,14 @@ export const ja: VerifyTranslationKeys = {
     issueAnchoringSparse: 'アンカー密度が疎です（署名チェックポイントが申告セッションに対し少ない/遅い）',
     issueSessionTokenMismatch:
       'セッション開始トークンと署名チェックポイントのセッションIDが一致しません（別セッションのトークン流用の疑い）',
+    issueSessionTokenUntrusted: {
+      unknownKey:
+        'セッション開始トークンの鍵 ${keyId} をこの検証器が知らないため、開始時刻を確かめられません（内容の改ざんではありません。検証器の鍵 registry が古い可能性があります: verify を更新してください）',
+      invalid:
+        'セッション開始トークンの署名を検証できないため、開始時刻を確かめられません（チェーン根は自己整合しており、内容の改ざんではありません）',
+      fingerprintMismatch:
+        'セッション開始トークンが別の端末向けに発行されているため、開始時刻を確かめられません（チェーン根は自己整合しており、内容の改ざんではありません）',
+    },
     issueRootNotAnchored: 'チェーン根がサーバアンカーされていません（開始時刻が未固定・オフライン捏造の余地）',
     issueNotPureTyping: 'ピュアタイピングではありません（ペースト/バルク挿入あり）',
     issueExamBindingFailed: '問題束縛（署名/内容ハッシュ）の検証に失敗しました',

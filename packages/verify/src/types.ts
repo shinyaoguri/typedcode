@@ -9,6 +9,7 @@ import type {
   ExamBindingVerificationResult,
   AnalysisReport,
   ProofVersionStatus,
+  RootAnchorFailure,
   SubmissionPairStatus,
 } from '@typedcode/shared';
 
@@ -78,6 +79,12 @@ export interface VerificationResultData {
   rootValid?: boolean;
   /** root がサーバアンカーされているか (ADR-0017)。`sessionStartToken` で root がアンカーされていれば true。 */
   rootAnchored?: boolean;
+  /**
+   * `sessionStartToken` はあるが検証できなかった (#329。未知の keyId / 署名不正 / fingerprintHash の不一致)。
+   * root は serverNonce 込みの式で自己整合しているので**整合性ではなく時刻アンカー層の問題**。
+   * shared が `valid: false` に畳み済み。`keyId` は proof 由来なので表示時は `escapeHtml` を通す。
+   */
+  rootAnchorFailure?: RootAnchorFailure;
   /**
    * `sessionStartToken` の sessionId と署名 cp の sessionId が食い違ったか (spec §6.3)。
    * true = 別セッションのトークン流用。**整合性 (chainValid) ではなく時刻アンカー層の問題**として扱う。
