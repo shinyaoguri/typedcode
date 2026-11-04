@@ -17,6 +17,12 @@ interface Env extends CheckpointEnv {
    * production / staging では設定必須 (未設定だと後方互換で任意 Origin を reflect する)。
    */
   ALLOWED_ORIGINS?: string;
+  /**
+   * dev サーバの作業ツリーの識別子 (#552)。packages/workers の `dev` スクリプトが
+   * `wrangler dev --var DEV_WORKTREE_ID:<id>` で渡し、`/health` が `worktree` として返す。e2e が
+   * 別の worktree の workers を再利用していないかの照合に使う。staging / production の設定には無い。
+   */
+  DEV_WORKTREE_ID?: string;
 }
 
 /** CORS の許可判定に必要な env の最小サブセット */
@@ -448,7 +454,11 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   // ヘルスチェック
   if (url.pathname === '/health') {
-    return new Response(JSON.stringify({ status: 'ok', environment: env.ENVIRONMENT }), {
+    // worktree は dev で DEV_WORKTREE_ID を渡したときだけ付ける (staging / production の応答は変えない)
+    const health = env.DEV_WORKTREE_ID
+      ? { status: 'ok', environment: env.ENVIRONMENT, worktree: env.DEV_WORKTREE_ID }
+      : { status: 'ok', environment: env.ENVIRONMENT };
+    return new Response(JSON.stringify(health), {
       headers: { 'Content-Type': 'application/json' },
     });
   }

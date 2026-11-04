@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --var DEV_WORKTREE_ID:$(node ../../scripts/worktree-id.mjs)",
     "deploy": "echo 'Refusing bare deploy: it would target the production Worker name with the local dev config. Use deploy:staging or deploy:production (each pins --config).' && exit 1",
     "deploy:staging": "wrangler deploy --config wrangler.staging.toml",
     "deploy:production": "wrangler deploy --config wrangler.production.toml",

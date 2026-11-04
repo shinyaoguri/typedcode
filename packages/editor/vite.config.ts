@@ -3,6 +3,7 @@ import wasm from 'vite-plugin-wasm';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { WORKTREE_ID_HEADER, worktreeIdOf } from '../../scripts/worktree-id.mjs';
 
 // ビルド情報を取得
 function getBuildInfo() {
@@ -127,6 +128,9 @@ export default defineConfig({
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'credentialless',
+      // この dev サーバがどの作業ツリーのものかを名乗る。e2e の globalSetup が照合し、別の worktree の
+      // サーバを再利用しないようにする (#552)。dev サーバだけで、preview / 本番の配信には付けない。
+      [WORKTREE_ID_HEADER]: worktreeIdOf(resolve(__dirname, '../..')),
     },
     proxy: {
       '/verify': {

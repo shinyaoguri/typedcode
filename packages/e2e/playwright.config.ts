@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_PORTS } from './ports.js';
 
 /**
  * E2E は「実物のエディタを動かして証明を出力し、それを verify-cli で検証する」
@@ -16,9 +17,7 @@ import { defineConfig, devices } from '@playwright/test';
  * VITE_API_URL=http://localhost:8787 を指すため、追加設定なしでフルスタックが回る。
  */
 
-const EDITOR_PORT = Number(process.env.E2E_EDITOR_PORT ?? 5173);
-const WORKERS_PORT = Number(process.env.E2E_WORKERS_PORT ?? 8787);
-const VERIFY_PORT = Number(process.env.E2E_VERIFY_PORT ?? 5174);
+const { editor: EDITOR_PORT, workers: WORKERS_PORT, verify: VERIFY_PORT } = E2E_PORTS;
 const BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${EDITOR_PORT}`;
 const isCI = !!process.env.CI;
 
@@ -38,6 +37,9 @@ export default defineConfig({
   // dev サーバ向けのこの設定からは外す。実行は playwright.build.config.ts
   // (`npm run test:build -w @typedcode/e2e`) が担う。
   testIgnore: /production-build\.spec\.ts$/,
+  // 下の webServer がこの作業ツリーのサーバか (別の worktree のサーバを再利用していないか) を、
+  // テストより前に照合する (#552)。Playwright は webServer の準備を globalSetup より先に済ませる。
+  globalSetup: './global-setup.ts',
   // `@shots` は人が見る証跡を撮るだけで何も assert しない (tests/shots.spec.ts / ADR-0036)。
   // 検査ではないので通常の実行と CI のシャードからは外し、`npm run shots` (SHOTS=1) のときだけ走らせる。
   // `@nightly` は長い・ランダムな検査 (tests/model/ の model-based E2E 長尺 / #436) で、PR ゲートには重い。
@@ -85,14 +87,16 @@ export default defineConfig({
 
   // `port:` は TCP 応答しか見ないため、既定ポートを別プロセスが握っていると
   // reuseExistingServer 時に「自分のサーバ」と誤認しうる (ローカル開発時のみ影響、
-  // CI は reuseExistingServer: false)。起動コマンド自体にもポートを渡し、
-  // E2E_EDITOR_PORT / E2E_WORKERS_PORT を指定したときに実際にそのポートで
-  // 上がるようにする (指定しない限りは無指定と同じ既定ポートに上がる)。
-  // 配線は scripts/dev.mjs (118-145 行目) と同じパターンを踏襲する。
+  // CI は reuseExistingServer: false)。別の worktree の本物の editor / workers / verify が
+  // 握っている場合は globalSetup (global-setup.ts) が作業ツリーの識別子を照合して落とす (#552)。
+  // 起動コマンド自体にもポートを渡し、E2E_EDITOR_PORT / E2E_WORKERS_PORT を指定したときに
+  // 実際にそのポートで上がるようにする (指定しない限りは無指定と同じ既定ポートに上がる)。
+  // 配線は scripts/dev.mjs (「起動」の節、120-147 行目) と同じパターンを踏襲する。
   webServer: [
     {
       name: 'workers',
-      // wrangler dev は env を読まないため、コマンド側に --port を渡す。
+      // wrangler dev は env を読まないため、コマンド側に --port を渡す。作業ツリーの識別子
+      // (--var DEV_WORKTREE_ID) は packages/workers の dev スクリプト自体が渡す (#552)。
       command: `npm run dev -w @typedcode/workers -- --port ${WORKERS_PORT}`,
       cwd: '../..',
       port: WORKERS_PORT,
