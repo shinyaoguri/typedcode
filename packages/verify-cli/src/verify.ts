@@ -145,6 +145,11 @@ export interface VerifyProofOptions {
    */
   analyzers?: readonly Analyzer[];
   /**
+   * 分析器 1 つあたりの期限 (ms, #301)。未指定なら shared の `ANALYZER_TIMEOUT_MS` (10 秒)。
+   * CLI オプションには出さない — テストが期限切れの経路を実時間 10 秒待たずに通すための継ぎ目。
+   */
+  analysisTimeoutMs?: number;
+  /**
    * ZIP 全体のスクリーンショット検証サマリ (#147)。呼び出し側 (cli.ts) が ZIP から
    * 一度だけ計算して全 proof に渡す (スクショはセッション単位で proof 横断のため)。
    * tampered > 0 は verify (web) の error 軸と同じく valid を落とす。未指定 = 未検査。
@@ -163,8 +168,8 @@ export interface VerifyProofOptions {
  * 用途は `FullVerificationResult` の凍結ひとつ。**event 数に比例するデータには使わないこと**
  * (proof 本体は分析層が読む必要があり、コピーも凍結もコストが event 数に比例する)。
  * ES module は strict mode なので、凍結後の代入は黙って無視されるのではなく TypeError で throw する。
- * 分析器が throw しても orchestrator が握り潰す契約 (shared の `Analyzer` の JSDoc) なので、
- * 行儀の悪い分析器 1 つが他の分析器を巻き添えにすることはない。
+ * 分析器が throw しても orchestrator がその分析器を `failed` として記録して続ける契約 (shared の
+ * `Analyzer` の JSDoc, #301) なので、行儀の悪い分析器 1 つが他の分析器を巻き添えにすることはない。
  */
 function deepFreeze<T>(value: T): T {
   if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
@@ -282,7 +287,11 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
   // 分析層 (ADR-0009): 検証と直交する post-hoc 分析。既定の分析器は方向性を示す
   // プレースホルダのみ。advisory であって判定ではない (verifyProofFile の valid とは別軸)。
   // options.analyzers が渡れば (採点者/研究者の外部アナライザ) それを使う。未指定なら shared 既定。
-  const analysis = await runAnalysis({ proof, verification: result }, options.analyzers);
+  // 分析器ごとに期限があり (#301)、throw・期限切れ・不正な出力は analyzerStatus に残って先へ進む。
+  // 解決しない Promise を返す分析器でも、検証結果の出力と exit code はここで止まらない。
+  const analysis = await runAnalysis({ proof, verification: result }, options.analyzers, {
+    timeoutMs: options.analysisTimeoutMs,
+  });
 
   const duration = (performance.now() - startTime) / 1000;
 
@@ -315,6 +324,7 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     // #295: token と署名 cp の sessionId が食い違えば、その cp を時刻証拠に数えない。
     sessionTokenMismatch: result.sessionTokenMismatch ?? false,
     isPureTyping: result.isPureTyping,
+    // ok の分析器が 1 つも無ければ undefined (= 分析未実行) になり、Authorship に `review 0%` を出さない (#301)。
     analysis: summarizeAnalysisForAssurance(analysis),
     // #147: ZIP 入力で検査したときのみ渡す (undefined = 未検査は integrity に影響しない)。
     screenshotsTampered: options.screenshotSummary?.tampered,

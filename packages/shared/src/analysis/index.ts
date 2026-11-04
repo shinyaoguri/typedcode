@@ -13,9 +13,12 @@ export type {
   AnalysisInput,
   Analyzer,
   AnalysisReport,
+  AnalyzerRunStatus,
+  AnalyzerStatus,
 } from './types.js';
 
-export { runAnalysis } from './orchestrator.js';
+export { runAnalysis, ANALYZER_TIMEOUT_MS } from './orchestrator.js';
+export type { RunAnalysisOptions } from './orchestrator.js';
 export {
   defaultAnalyzers,
   automationAnalyzer,

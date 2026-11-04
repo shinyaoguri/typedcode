@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_PORTS } from './ports.js';
 
 /**
  * 本番ビルド (dist) 専用の Playwright 設定。
@@ -13,11 +14,12 @@ import { defineConfig, devices } from '@playwright/test';
  * 実行: npm run test:build -w @typedcode/e2e
  *
  * dev 用の設定とは webServer / testMatch 以外を共有しない (dev 側の挙動を一切
- * 変えないため意図的に別ファイルにしている)。
+ * 変えないため意図的に別ファイルにしている)。workers のポート (ports.ts) と作業ツリーの照合
+ * (global-setup.ts の checkIdentities) だけは dev 設定と同じものを使う (#560)。
  */
 
 const PREVIEW_PORT = Number(process.env.E2E_PREVIEW_PORT ?? 4173);
-const WORKERS_PORT = Number(process.env.E2E_WORKERS_PORT ?? 8787);
+const WORKERS_PORT = E2E_PORTS.workers;
 const BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${PREVIEW_PORT}`;
 const isCI = !!process.env.CI;
 
@@ -42,12 +44,19 @@ export default defineConfig({
 
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 
+  // テストより前に、起こした / 再利用した workers がこの作業ツリーのものかを照合する (#560)。
+  // `port:` は TCP 応答しか見ないので、ローカルで reuseExistingServer が別の worktree の workers に
+  // 黙ってつながるのを防ぐ。editor-preview は毎回起こすので照合しない (global-setup.build.ts)。
+  globalSetup: './global-setup.build.ts',
+
   webServer: [
     {
       // Turnstile / セッション開始 API。無いと fetch 失敗が console エラーとして
       // 出てしまい、本題 (バンドル起因のエラー) と区別がつかなくなる。
       name: 'workers',
-      command: 'npm run dev -w @typedcode/workers',
+      // wrangler dev は env を読まないため、コマンド側に --port を渡す (無いと E2E_WORKERS_PORT を
+      // 変えても既定の 8787 に上がる。#560)。作業ツリーの識別子は packages/workers の dev スクリプトが渡す。
+      command: `npm run dev -w @typedcode/workers -- --port ${WORKERS_PORT}`,
       cwd: '../..',
       port: WORKERS_PORT,
       reuseExistingServer: !isCI,
@@ -66,6 +75,9 @@ export default defineConfig({
         'node packages/e2e/scripts/stage-verify-dist.mjs',
         `npm run preview -w @typedcode/editor -- --port ${PREVIEW_PORT} --strictPort`,
       ].join(' && '),
+      // packages/editor/vite.config.ts は build 時も WORKERS_PORT を読み、VITE_API_URL がローカル既定なら
+      // そのポートへ追従させる。渡さないと、ビルドした editor は E2E_WORKERS_PORT ではなく .env の値を叩く (#560)。
+      env: { WORKERS_PORT: String(WORKERS_PORT) },
       cwd: '../..',
       port: PREVIEW_PORT,
       reuseExistingServer: false,

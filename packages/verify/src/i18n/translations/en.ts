@@ -450,6 +450,15 @@ export const en: VerifyTranslationKeys = {
     score: 'Anomaly',
     confidence: 'Confidence',
     analyzers: 'Analyzers',
+    unavailable: 'Analysis unavailable',
+    partiallyUnavailable: 'Partially unavailable',
+    unavailableNote:
+      'No analyzer returned a result (failed, timed out, or invalid output). The absence of signals does not mean there are no clues. The verification result is not affected.',
+    partialNote:
+      'Some analyzers did not return a result. The signals below come only from the analyzers that did. The verification result is not affected.',
+    statusFailed: 'failed',
+    statusTimeout: 'timed out',
+    statusInvalidOutput: 'invalid output',
     severityInfo: 'INFO',
     severityNotice: 'NOTICE',
     severityReview: 'REVIEW',

@@ -109,10 +109,12 @@ test('#300 保存の失敗から回復すると synced に戻り、リロード�
   await injectQuotaExceeded(page, 'idbAndSessionStorage');
   await app.typeCode('int r = 2;\n');
   await expect(page.locator('#sync-status-item')).toHaveAttribute('data-state', 'failed', { timeout: 15_000 });
-  const failures = await quotaFailureCount(page);
-  expect(failures).toBeGreaterThan(0);
 
   await restoreStorageFaults(page);
+  // 回数は解除の後に控える。`failed` は最初の失敗で出るので、そこから解除までの間も、PoSW が後から確定した
+  // イベントの保存と再試行が注入に当たって回数が増えうる (#567)。解除後は注入の関数が外れているので増えない
+  const failures = await quotaFailureCount(page);
+  expect(failures).toBeGreaterThan(0);
   await app.typeCode('int t = 4;\n');
   await app.waitForSynced();
   // 解除後は注入に届いていない (回復は本物の保存で起きた)

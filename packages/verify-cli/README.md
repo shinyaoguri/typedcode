@@ -81,6 +81,9 @@ TypedCode は「判定するツール」ではなく「多様な分析手法を�
 - 既定では同梱の分析器に**追加**されます。`--no-default-analyzers` を付けると外部のみになります
 - 分析結果は **advisory** で、**exit code には一切影響しません**。渡される検証結果は凍結済みで、書き換えようとすると分析器側で例外になります (他の分析器は止まりません)
 - 分析器は**ハンドルを残さないでください** (タイマー・ソケット・開いたままのファイル)。CLI は終了コードを立てたあとイベントループが空になるのを待って終了するため、残ったハンドルはプロセスの終了を妨げます
+- 分析器ごとに **10 秒の期限** があります (変更するオプションはありません)。期限までに返らない分析器は `timeout`、例外を投げた分析器は `failed`、契約に合わない出力 (配列でない戻り値、未知の severity、有限でない score / confidence、配列でない evidence、文字列でない summary) は `invalid-output` として記録され、他の分析器と検証結果の出力は続きます。期限の後に返ってきた結果は捨てます。契約に合わない signal だけが捨てられ、合う signal は残ります
+- 分析できなかった分析器は `--- Analysis (advisory) ---` に `Analysis unavailable: boom (failed), hang (timeout)` の形で出ます。`No analysis signals.` は全分析器が正常に終わって signal が 0 件のときだけ出ます。`--analysis-json` / `--analysis-bundle` の `analysis.analyzerStatus` に分析器ごとの状態 (`ok` / `failed` / `timeout` / `invalid-output`) が入ります。どの分析器も正常に終わらなかったときは、Assurance の Authorship 行に signal 数と `review N%` を出しません (「手掛かりなし」と区別するため)
+- 期限は非同期の待ちにしか効きません。**同期の無限ループ (`for (;;) {}`) は止まりません** — 外部分析器は信頼済みのコードとして扱う前提です
 
 > ⚠️ `--analyzer` は指定したモジュールを動的 import します = **任意コード実行**。信頼できるモジュールのみを渡してください。
 

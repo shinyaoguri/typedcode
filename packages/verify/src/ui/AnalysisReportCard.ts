@@ -5,6 +5,8 @@
  * - 暗号検証 (valid/invalid) とは独立軸 — このカードの内容は検証結果に影響しない
  * - 各 signal の evidence (event index) はクリックでシークバーの当該位置へジャンプし、
  *   採点者が現場を検分できるようにする (ADR-0009 の証拠リンク必須要件)
+ * - 分析器の失敗・時間切れ・不正な出力は「シグナルなし」と区別して出す (#301)。カードの
+ *   `data-analysis-availability` (complete / partial / unavailable) が状態契約
  */
 
 import {
@@ -13,9 +15,26 @@ import {
   type AnalysisSignal,
   type AnalysisDimension,
   type AnalysisSeverity,
+  type AnalyzerRunStatus,
   type EvidenceRef,
 } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
+
+/**
+ * 分析器の実行結果から見た、レポートの可用性 (#301)。
+ * - complete: 全分析器が ok (signal 0 件なら「手掛かりなし」と言える)
+ * - partial: ok と非 ok が混在 (signal は ok の分析器のものだけ)
+ * - unavailable: ok が 1 つも無い (signal 0 件は「分析できなかった」)。`analyzerStatus` の無い
+ *   レポートも「分析できたか不明」なので、こちらに倒す
+ */
+export type AnalysisAvailability = 'complete' | 'partial' | 'unavailable';
+
+export function analysisAvailability(report: AnalysisReport): AnalysisAvailability {
+  const statuses = Object.values(report.analyzerStatus ?? {});
+  const ok = statuses.filter((s) => s.status === 'ok').length;
+  if (ok === 0) return 'unavailable';
+  return ok < statuses.length ? 'partial' : 'complete';
+}
 
 export class AnalysisReportCard {
   private cardElement: HTMLElement | null = null;
@@ -44,32 +63,60 @@ export class AnalysisReportCard {
     const content = this.cardElement.querySelector('#analysis-content');
 
     // advisory なので error クラスは使わない: review/notice あり → warning、無し → success。
+    // 分析できなかった分析器がある (#301) なら、手掛かりが無くても success にしない。
+    const availability = analysisAvailability(report);
     const notable = report.signals.filter((s) => s.severity !== 'info');
-    const stateClass = notable.length > 0 ? 'warning' : 'success';
+    const stateClass = notable.length > 0 || availability !== 'complete' ? 'warning' : 'success';
+    this.cardElement.dataset['analysisAvailability'] = availability;
 
     if (icon) {
       icon.className = `result-card-icon ${stateClass}`;
     }
     if (badge) {
       badge.className = `result-card-badge ${stateClass}`;
-      badge.textContent =
-        notable.length > 0
-          ? `${t('analysis.reviewPriority')} ${(report.reviewPriority * 100).toFixed(0)}%`
-          : t('analysis.noSignals');
+      badge.textContent = this.badgeText(report, availability, notable.length);
     }
     if (content) {
-      content.innerHTML = this.renderContent(report);
+      content.innerHTML = this.renderContent(report, availability);
       this.setupEventListeners(content);
     }
   }
 
-  private renderContent(report: AnalysisReport): string {
-    const signals = report.signals.length
-      ? `<ul class="analysis-signal-list">${report.signals.map((s) => this.renderSignal(s)).join('')}</ul>`
-      : `<div class="analysis-no-signals">${t('analysis.noSignals')}</div>`;
+  private badgeText(report: AnalysisReport, availability: AnalysisAvailability, notableCount: number): string {
+    if (availability === 'unavailable') return t('analysis.unavailable');
+    if (notableCount > 0) return `${t('analysis.reviewPriority')} ${(report.reviewPriority * 100).toFixed(0)}%`;
+    return availability === 'partial' ? t('analysis.partiallyUnavailable') : t('analysis.noSignals');
+  }
 
+  private renderContent(report: AnalysisReport, availability: AnalysisAvailability): string {
+    // 「シグナルなし」と言えるのは全分析器が ok のときだけ (#301)。
+    let signals = '';
+    if (report.signals.length) {
+      signals = `<ul class="analysis-signal-list">${report.signals.map((s) => this.renderSignal(s)).join('')}</ul>`;
+    } else if (availability === 'complete') {
+      signals = `<div class="analysis-no-signals">${t('analysis.noSignals')}</div>`;
+    }
+
+    let unavailableNote = '';
+    if (availability !== 'complete') {
+      const key = availability === 'unavailable' ? 'analysis.unavailableNote' : 'analysis.partialNote';
+      unavailableNote = `
+      <div class="analysis-unavailable-note">
+        <i class="fas fa-triangle-exclamation"></i>
+        <span>${t(key)}</span>
+      </div>`;
+    }
+
+    const status = report.analyzerStatus ?? {};
     const versions = Object.entries(report.analyzerVersions)
-      .map(([id, v]) => `${escapeHtml(id)}@${escapeHtml(v)}`)
+      .map(([id, v]) => {
+        const s = status[id];
+        // id / version / message は外部分析器が決められる未信頼の文字列 (#301)。
+        const label = `${escapeHtml(id)}@${escapeHtml(v)}`;
+        if (!s || s.status === 'ok') return `<span class="analysis-analyzer" data-analyzer-status="ok">${label}</span>`;
+        const detail = s.message ? `: ${escapeHtml(s.message)}` : '';
+        return `<span class="analysis-analyzer unavailable" data-analyzer-status="${escapeHtml(s.status)}">${label} (${this.statusLabel(s.status)}${detail})</span>`;
+      })
       .join(', ');
 
     return `
@@ -77,9 +124,23 @@ export class AnalysisReportCard {
         <i class="fas fa-info-circle"></i>
         <span>${t('analysis.advisory')}</span>
       </div>
+      ${unavailableNote}
       ${signals}
       <div class="analysis-versions">${t('analysis.analyzers')}: ${versions}</div>
     `;
+  }
+
+  private statusLabel(status: AnalyzerRunStatus): string {
+    switch (status) {
+      case 'failed':
+        return t('analysis.statusFailed');
+      case 'timeout':
+        return t('analysis.statusTimeout');
+      case 'invalid-output':
+        return t('analysis.statusInvalidOutput');
+      default:
+        return escapeHtml(String(status));
+    }
   }
 
   private renderSignal(signal: AnalysisSignal): string {
