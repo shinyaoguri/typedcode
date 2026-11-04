@@ -9,19 +9,36 @@
  *
  * 直し方は `main()` 冒頭で `process.exitCode = 1` にし、成功の集計でだけ 0 に下ろすこと。
  * ソース上の位置は `exitCode.test.ts` が、ここでは実際の終了コードを見る。
- * analyzer のタイムアウトや失敗の扱いそのものは #301 の領分 — ここは「途中で終わったら 0 ではない」だけ。
+ *
+ * #301 で分析器ごとに期限 (shared の `ANALYZER_TIMEOUT_MS` = 10 秒) が付いたので、解決しない
+ * analyzer を差しても期限後に検証結果を最後まで出して終わる。CLI オプションで期限を縮められないので、
+ * このケースだけ実時間で 10 秒待つ (個別の timeout を長めに取る)。
  */
 
 import { describe, expect, it } from 'vitest';
-import { fixture, runSourceCli } from './helpers/runCli.js';
+import { type CliRun, fixture, runSourceCli } from './helpers/runCli.js';
 
 const TAMPERED = fixture('proofs', 'tampered.json');
 const VALID = fixture('proofs', 'valid.json');
 
+/** 解決しない analyzer の実行は 10 秒かかるので、1 回だけ走らせて両方のケースで読む。 */
+let hangRun: CliRun | undefined;
+function runWithHangingAnalyzer(): CliRun {
+  hangRun ??= runSourceCli(['--analyzer', fixture('analyzers', 'hang.mjs'), TAMPERED]);
+  return hangRun;
+}
+
 describe('CLI exit code as a process (#315)', () => {
-  it('a never-settling external analyzer cannot let a tampered proof exit 0', () => {
-    const res = runSourceCli(['--analyzer', fixture('analyzers', 'hang.mjs'), TAMPERED]);
-    expect(res.exitCode).toBe(1);
+  it('a never-settling external analyzer cannot let a tampered proof exit 0', { timeout: 30_000 }, () => {
+    expect(runWithHangingAnalyzer().exitCode).toBe(1);
+  });
+
+  it('a never-settling external analyzer times out and the verification result is still printed (#301)', {
+    timeout: 30_000,
+  }, () => {
+    const res = runWithHangingAnalyzer();
+    expect(res.stdout).toContain('Verification FAILED');
+    expect(res.stdout).toContain('Analysis unavailable: hang (timeout)');
   });
 
   it('a tampered proof exits 1 without any external analyzer', () => {

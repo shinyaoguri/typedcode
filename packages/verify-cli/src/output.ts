@@ -591,8 +591,26 @@ export function formatResult(result: VerificationOutput): string {
     lines.push('');
     lines.push(c('cyan', '--- Analysis (advisory) ---'));
     lines.push(c('dim', 'Heuristic, not a verdict — for human review only.'));
+    // #301: 分析器の失敗・期限切れ・不正な出力を「手掛かりなし」と区別して出す。
+    // analyzerStatus の無い旧形式は「分析できたか不明」なので、ok とは数えない。
+    const statuses = Object.entries(analysis.analyzerStatus ?? {});
+    const unavailable = statuses.filter(([, s]) => s.status !== 'ok');
+    if (unavailable.length > 0) {
+      // id と message は外部 `--analyzer` が決められる = 未信頼。
+      const list = unavailable.map(([id, s]) => `${safe(id)} (${safe(s.status)})`).join(', ');
+      lines.push(c('yellow', `Analysis unavailable: ${list}`));
+      for (const [id, s] of unavailable) {
+        if (s.message) lines.push(c('dim', `  ${safe(id)}: ${safe(s.message)}`));
+      }
+    }
+    const allOk = statuses.length > 0 && unavailable.length === 0;
     if (analysis.signals.length === 0) {
-      lines.push('No analysis signals.');
+      // 「シグナルなし」と言えるのは全分析器が契約どおり終わったときだけ。
+      if (allOk) {
+        lines.push('No analysis signals.');
+      } else if (unavailable.length < statuses.length) {
+        lines.push('No analysis signals from the analyzers that completed.');
+      }
     } else {
       const pct = (analysis.reviewPriority * 100).toFixed(0);
       lines.push(`Review priority: ${pct}%`);
