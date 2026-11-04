@@ -1,0 +1,15 @@
+{
+  "keyId": "frozen-fixture-checkpoint-0001",
+  "algorithm": "ECDSA-P256",
+  "publicKeyJwk": {
+    "key_ops": ["verify"],
+    "ext": true,
+    "kty": "EC",
+    "x": "oKFJQc27LrK86NTfqUzw7JZGqLBBxZkCD1O0k61AunU",
+    "y": "0Czj-j_RSR-2Vmj0V7T86IDqVmg8ygF2kmjSDbcNxeM",
+    "crv": "P-256"
+  },
+  "status": "active",
+  "validFrom": "2026-01-01T00:00:00.000Z",
+  "description": "Test key for frozen proof fixtures (#581). Private key discarded; never add to the production registry."
+}
