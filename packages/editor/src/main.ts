@@ -158,7 +158,7 @@ function updateSyncStatusUI(status: SyncStatus): void {
   if (!syncStatusItem || !syncStatusText) return;
 
   // クラスをリセット
-  syncStatusItem.classList.remove('synced', 'syncing', 'pending');
+  syncStatusItem.classList.remove('synced', 'syncing', 'pending', 'degraded', 'failed');
   syncStatusItem.classList.add(status);
   // 状態契約: class と同じ値を data-state にも出す (E2E はこちらを読む)
   syncStatusItem.dataset.state = status;
@@ -168,6 +168,8 @@ function updateSyncStatusUI(status: SyncStatus): void {
     synced: t('statusBar.synced'),
     syncing: t('statusBar.syncing'),
     pending: t('statusBar.pending'),
+    degraded: t('statusBar.degraded'),
+    failed: t('statusBar.failed'),
   };
   syncStatusText.textContent = statusTexts[status];
 }

@@ -329,6 +329,8 @@ export const en: TranslationKeys = {
     synced: 'Synced',
     syncing: 'Syncing...',
     pending: 'Pending',
+    degraded: 'Partially saved',
+    failed: 'Save failed',
   },
 
   tabs: {

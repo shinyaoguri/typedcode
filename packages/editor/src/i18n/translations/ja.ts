@@ -329,6 +329,8 @@ export const ja: TranslationKeys = {
     synced: '同期済み',
     syncing: '同期中...',
     pending: '保存待ち',
+    degraded: '一部のみ保存',
+    failed: '保存失敗',
   },
 
   tabs: {

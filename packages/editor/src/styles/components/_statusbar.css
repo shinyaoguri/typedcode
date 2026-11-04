@@ -130,6 +130,18 @@
   color: #ffd54f;
 }
 
+/* 保存の失敗 (#543)。青い statusbar の上で文字色だけでは目立たないので、背景で示す。
+   failed は白文字とのコントラストを取るため、濃い側の --accent-danger-hover を使う */
+.statusbar .sync-status.degraded {
+  color: var(--statusbar-text);
+  background: var(--accent-warning);
+}
+
+.statusbar .sync-status.failed {
+  color: var(--statusbar-text);
+  background: var(--accent-danger-hover);
+}
+
 @keyframes sync-pulse {
   0%,
   100% {

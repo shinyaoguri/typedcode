@@ -332,6 +332,10 @@ export interface TranslationKeys {
     synced: string;
     syncing: string;
     pending: string;
+    /** 保存先の片方 (IndexedDB か sessionStorage) にだけ保存できた (#543) */
+    degraded: string;
+    /** どちらにも保存できなかった (#543) */
+    failed: string;
   };
 
   // Tab management

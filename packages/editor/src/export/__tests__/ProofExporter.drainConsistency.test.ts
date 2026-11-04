@@ -7,13 +7,16 @@
  * content replay (検証 Layer 4) で **proof 全体が invalid** になる。学生に過失が無いまま
  * 答案が検証不能になるので、排出できなかったときは **export を中止**して再試行させる
  * (content を切り詰めると提出物からデータが黙って消えるため採らない)。
+ *
+ * 逆に、export 前の保存 (flushToIndexedDB) の失敗では export を止めない (#543)。proof はメモリ上の
+ * チェーンから作るので、保存先の障害は proof の正しさに関わらない。
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import JSZip from 'jszip';
 import { TypingProof, computeHash, verifyContentReplay } from '@typedcode/shared';
 import type { FingerprintComponents, QueueDrainResult } from '@typedcode/shared';
-import type { TabManager, TabState } from '../../ui/tabs/TabManager.js';
+import type { PersistOutcome, TabManager, TabState } from '../../ui/tabs/TabManager.js';
 
 const turnstile = vi.hoisted(() => ({ configured: false }));
 
@@ -105,7 +108,9 @@ interface Download {
   filename: string;
 }
 
-function createExporter(tabs: TabState[]) {
+const SAVED: PersistOutcome = { idbOk: true, sessionStorageOk: true };
+
+function createExporter(tabs: TabState[], flushOutcome: PersistOutcome = SAVED) {
   const exporter = new ProofExporter();
   const notifications: string[] = [];
   const downloads: Download[] = [];
@@ -115,7 +120,7 @@ function createExporter(tabs: TabState[]) {
     getActiveTab: () => tabs[0] ?? null,
     getActiveProof: () => tabs[0]?.typingProof ?? null,
     getTabSwitches: () => [],
-    flushToIndexedDB: async () => {},
+    flushToIndexedDB: async () => flushOutcome,
   } as unknown as TabManager);
   // ダウンロード経路は DOM 依存なので差し替えて blob を捕捉する。
   (exporter as unknown as { downloadBlob: (blob: Blob, filename: string) => void }).downloadBlob = (blob, filename) => {
@@ -225,6 +230,41 @@ describe('ProofExporter.exportAllTabsAsZip drain consistency (#225)', () => {
     const first = await makeTab('tab-1', 'ab', 'ab');
     const second = await makeTab('tab-2', 'cd', 'cd');
     const { exporter, downloads } = createExporter([first, second]);
+
+    await exporter.exportAllTabsAsZip();
+
+    expect(downloads).toHaveLength(1);
+  });
+});
+
+describe('ProofExporter when saving before export fails (#543)', () => {
+  const NOTHING_SAVED: PersistOutcome = {
+    idbOk: false,
+    sessionStorageOk: false,
+    error: new Error('Failed to append event: AbortError'),
+  };
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('still downloads the current tab proof when neither IndexedDB nor sessionStorage could be written', async () => {
+    const tab = await makeTab('tab-1', 'abc', 'abc');
+    const { exporter, downloads } = createExporter([tab], NOTHING_SAVED);
+
+    await exporter.exportCurrentTab();
+
+    expect(downloads).toHaveLength(1);
+  });
+
+  it('still downloads the all-tabs ZIP when neither IndexedDB nor sessionStorage could be written', async () => {
+    const first = await makeTab('tab-1', 'ab', 'ab');
+    const second = await makeTab('tab-2', 'cd', 'cd');
+    const { exporter, downloads } = createExporter([first, second], NOTHING_SAVED);
 
     await exporter.exportAllTabsAsZip();
 

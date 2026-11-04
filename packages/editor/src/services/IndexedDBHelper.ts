@@ -5,7 +5,48 @@
  */
 
 /**
+ * readwrite の transaction を commit で成功、error / abort で失敗として待つ (#543)。
+ *
+ * request の success は「その操作が transaction の中で通った」だけで、commit される保証ではない
+ * (後から abort されると書いた内容は捨てられる)。書き込みは `oncomplete` で成功とし、`onerror` と
+ * `onabort` で失敗とする。`onabort` を待たないと、abort された transaction の Promise は永遠に
+ * settle しない (保存も export もハングする)。
+ *
+ * error の後には abort も来るので、失敗の通知は 1 回だけにする (Promise は二重 settle を無視するが、
+ * 呼び出し側のログを二重に出さないため)。abort の理由は `transaction.error` に入るが、`abort()` を
+ * 明示的に呼んだときは null なので、その場合も Error を作る。
+ *
+ * `oncomplete` / `onerror` / `onabort` を上書きするので、呼び出し側はこれらを自分で設定しない。
+ * request の `onerror` で `preventDefault()` した失敗は transaction を止めないので、ここには来ない。
+ */
+export function settleOnCommit(
+  transaction: IDBTransaction,
+  failureMessage: string,
+  onCommit: () => void,
+  onFailure: (error: Error) => void
+): void {
+  let failed = false;
+  const fail = (event: Event) => {
+    if (failed) return;
+    failed = true;
+    // error は request から bubble してくるので、request の error が理由を持つ
+    const target = event.target as { error?: DOMException | null } | null;
+    const cause = target?.error ?? transaction.error;
+    const reason = cause ? `${cause.name}: ${cause.message}` : 'transaction aborted';
+    onFailure(new Error(`${failureMessage}: ${reason}`, cause ? { cause } : undefined));
+  };
+  transaction.oncomplete = () => {
+    if (!failed) onCommit();
+  };
+  transaction.onerror = fail;
+  transaction.onabort = fail;
+}
+
+/**
  * IndexedDB操作のヘルパー関数群
+ *
+ * 書き込み系 (add / put / delete / clear / addBatch / deleteByIndex) は transaction の commit
+ * (`oncomplete`) で resolve し、`onerror` / `onabort` で reject する (`settleOnCommit`。#543)。
  */
 export class IndexedDBHelper {
   /**
@@ -33,15 +74,14 @@ export class IndexedDBHelper {
   static add<T>(db: IDBDatabase, storeName: string, value: T): Promise<IDBValidKey> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readwrite');
+      // key は request の success で控え、commit で返す
+      let key: IDBValidKey | undefined;
+      settleOnCommit(transaction, `Failed to add to ${storeName}`, () => resolve(key as IDBValidKey), reject);
       const store = transaction.objectStore(storeName);
       const request = store.add(value);
 
-      request.onerror = () => {
-        reject(new Error(`Failed to add to ${storeName}: ${request.error?.message}`));
-      };
-
       request.onsuccess = () => {
-        resolve(request.result);
+        key = request.result;
       };
     });
   }
@@ -52,15 +92,14 @@ export class IndexedDBHelper {
   static put<T>(db: IDBDatabase, storeName: string, value: T): Promise<IDBValidKey> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readwrite');
+      // key は request の success で控え、commit で返す
+      let key: IDBValidKey | undefined;
+      settleOnCommit(transaction, `Failed to put to ${storeName}`, () => resolve(key as IDBValidKey), reject);
       const store = transaction.objectStore(storeName);
       const request = store.put(value);
 
-      request.onerror = () => {
-        reject(new Error(`Failed to put to ${storeName}: ${request.error?.message}`));
-      };
-
       request.onsuccess = () => {
-        resolve(request.result);
+        key = request.result;
       };
     });
   }
@@ -71,16 +110,8 @@ export class IndexedDBHelper {
   static delete(db: IDBDatabase, storeName: string, key: IDBValidKey): Promise<void> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readwrite');
-      const store = transaction.objectStore(storeName);
-      const request = store.delete(key);
-
-      request.onerror = () => {
-        reject(new Error(`Failed to delete from ${storeName}: ${request.error?.message}`));
-      };
-
-      request.onsuccess = () => {
-        resolve();
-      };
+      settleOnCommit(transaction, `Failed to delete from ${storeName}`, resolve, reject);
+      transaction.objectStore(storeName).delete(key);
     });
   }
 
@@ -168,16 +199,8 @@ export class IndexedDBHelper {
   static clear(db: IDBDatabase, storeName: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readwrite');
-      const store = transaction.objectStore(storeName);
-      const request = store.clear();
-
-      request.onerror = () => {
-        reject(new Error(`Failed to clear ${storeName}: ${request.error?.message}`));
-      };
-
-      request.onsuccess = () => {
-        resolve();
-      };
+      settleOnCommit(transaction, `Failed to clear ${storeName}`, resolve, reject);
+      transaction.objectStore(storeName).clear();
     });
   }
 
@@ -242,15 +265,8 @@ export class IndexedDBHelper {
 
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readwrite');
+      settleOnCommit(transaction, `Failed to add batch to ${storeName}`, resolve, reject);
       const store = transaction.objectStore(storeName);
-
-      transaction.onerror = () => {
-        reject(new Error(`Failed to add batch to ${storeName}: ${transaction.error?.message}`));
-      };
-
-      transaction.oncomplete = () => {
-        resolve();
-      };
 
       for (const value of values) {
         store.add(value);
@@ -264,14 +280,16 @@ export class IndexedDBHelper {
   static deleteByIndex(db: IDBDatabase, storeName: string, indexName: string, key: IDBValidKey): Promise<number> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([storeName], 'readwrite');
+      let deletedCount = 0;
+      settleOnCommit(
+        transaction,
+        `Failed to delete by index from ${storeName}.${indexName}`,
+        () => resolve(deletedCount),
+        reject
+      );
       const store = transaction.objectStore(storeName);
       const index = store.index(indexName);
       const request = index.openCursor(IDBKeyRange.only(key));
-      let deletedCount = 0;
-
-      request.onerror = () => {
-        reject(new Error(`Failed to delete by index from ${storeName}.${indexName}: ${request.error?.message}`));
-      };
 
       request.onsuccess = () => {
         const cursor = request.result;
@@ -279,8 +297,6 @@ export class IndexedDBHelper {
           cursor.delete();
           deletedCount++;
           cursor.continue();
-        } else {
-          resolve(deletedCount);
         }
       };
     });
