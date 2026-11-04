@@ -22,6 +22,7 @@ import {
 } from '@typedcode/shared';
 import type {
   AnalysisReport,
+  Analyzer,
   AssuranceInput,
   CheckpointData,
   CheckpointPublicKey,
@@ -52,6 +53,13 @@ export interface RunProofVerificationOptions {
   onChainProgress?: (current: number, total: number) => void;
   /** 公開鍵レジストリ (テストから注入)。未指定なら shared の既定 registry。 */
   signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
+  /**
+   * 分析器 (テストから注入, #301)。未指定なら shared の `defaultAnalyzers`。Web は外部分析器を
+   * 読み込まないので、失敗・期限切れの分析器を差して検証結果が返ることを確かめるための継ぎ目。
+   */
+  analyzers?: readonly Analyzer[];
+  /** 分析器 1 つあたりの期限 (ms, テストから注入)。未指定なら shared の `ANALYZER_TIMEOUT_MS`。 */
+  analysisTimeoutMs?: number;
 }
 
 /**
@@ -183,10 +191,14 @@ export async function runProofVerification(
   const signedCheckpoints = result.signedCheckpoints ?? EMPTY_SIGNED_CHECKPOINTS;
 
   // 3. 分析層 (ADR-0009): 検証と直交する post-hoc 分析。advisory であって判定ではない
-  //    (valid には一切反映しない)。分析の失敗は検証結果を落とさない。
+  //    (valid には一切反映しない)。分析の失敗は検証結果を落とさない。分析器ごとの throw・期限切れ・
+  //    不正な出力は runAnalysis が analyzerStatus に記録して resolve する (#301) ので、解決しない
+  //    分析器があっても検証結果は期限後に返る。catch は orchestrator 自体の想定外の失敗への保険。
   let analysis: AnalysisReport | undefined;
   try {
-    analysis = await runAnalysis({ proof: sharedProof, verification: result });
+    analysis = await runAnalysis({ proof: sharedProof, verification: result }, options.analyzers, {
+      timeoutMs: options.analysisTimeoutMs,
+    });
   } catch {
     analysis = undefined;
   }
