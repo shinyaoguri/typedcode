@@ -21,6 +21,7 @@
 10. **registry の日時判定は 1 箇所** (#233): `checkpointKeys/keyValidity.ts` の `checkRegistryKeyValidityAt` だけが `validFrom` / `validUntil` / `revokedAt` を解釈する。署名 cp (anchor=`serverTimestamp`) / sessionStartToken (`issuedAt`) / 出題者鍵 (`releaseTime`) の 3 消費者はここを呼び、**文言づけだけ**を各自で持つ。日時は system-spec §9.4 の手書き運用なので **parse 不能なら entry 単位で信頼しない** (fail-closed) — かつては 3 箇所とも `Number.isFinite` ガードで検査ごと素通りし、失効済み鍵が警告すら出さずに通っていた。出荷 registry の形式は `__tests__/registryFormat.test.ts` が縛る (`Date.parse` は `2026-02-30` をロールオーバーして受け入れるので、厳密 ISO 正規表現 + 往復比較の両方が要る)
 11. **proof 由来の自己申告文字列は表示前に allowlist へ落とす** (#210 / #248): `proof.json` は攻撃者が組み立てられる入力で、型注釈は `JSON.parse` の結果を cast しただけ。表示層は値を補間する (verify は `className`、verify-cli は stdout) ので、`language` は `fileProcessing/proofLanguage.ts` の `normalizeProofLanguage` を通す (集合外は `'unknown'`)。allowlist の元は `languageDetection.ts` の `KNOWN_LANGUAGES` **1 箇所**で、別に書き起こすとドリフトする。`mode` は verify 側の `normalizeProofMode` が同じ契約を持つ。**表示に使う自己申告フィールドを増やすときは、まず正規化の置き場を決めること**
 12. **分析器はハッシュ対象のフィールドしか見ない** (#328): `description` / `insertLength` / `selectedText` などはハッシュに入らず、proof.json を書き換えても検証が通る。`runAnalysis` は入口でイベントを `verification.ts` の `pickHashedEventFields` (ハッシュ対象フィールドの**単一定義**。`verifyChain` も同じ関数を使う) に射影してから分析器へ渡す。挿入文字数は `structuralEdit.ts` の `insertedCharCount` (`data` の長さ) で数え、`processSummary` と分析器で定義を分けない。射影を外す・ハッシュ対象外のフィールドを分析に使う変更は、`analysisOrchestrator.test.ts` の「対象外フィールドを書き換えても出力が変わらない」テストが止める
+13. **token の検証失敗は改ざんではなく時刻アンカーの失敗** (#329): `verifyInitialHashRoot` は token の未登録 keyId・署名不正・`fingerprintHash` の不一致で `valid:false` を返さない。serverNonce 込みの式で root を照合し、合えば `valid:true` / `rootAnchored:false` / `anchorFailure` (`token-unknown-key` / `token-invalid` / `token-fingerprint-mismatch`) を返す。`verifyProofFile` はそれを `rootAnchorFailure` に写し、総合の `valid` と `errorMessage` の連鎖に入れる (`metadataValid` は落とさない)。**`rootAnchored` の意味 (検証済みの token で root が成立した) は変えない**。連鎖に入れ忘れると、CLI の Error 行に成功の文言 (`All hashes verified successfully`) が出る。root が合わない (serverNonce の書き換え) のは従来どおり改ざん。`verification.untrustedSessionToken.test.ts` が full モードで固定する
 
 ## モジュール一覧
 
@@ -34,7 +35,7 @@
 | `typingProof/InputTypeValidator.ts` | 許可/禁止 InputType の判定 |
 | `typingProof/StatisticsCalculator.ts` | 統計計算 |
 | `signedCheckpoints.ts` | 署名済み cp の payload 構築・検証・冪等判定。anchoring 密度 (ADR-0016) も |
-| `sessionStartToken.ts` | セッション開始トークン (ADR-0017) の発行・検証 (registry-only)・`computeAnchoredChainRoot`。署名鍵は checkpoint と同一系統を流用 |
+| `sessionStartToken.ts` | セッション開始トークン (ADR-0017) の発行・検証 (registry-only)・`computeAnchoredChainRoot`。署名鍵は checkpoint と同一系統を流用。未登録 keyId でも `keyId` と `unknownKey: true` を返す (#329) |
 | `checkpointKeys/registry.ts` | append-only 公開鍵レジストリ (本番鍵) |
 | `checkpointKeys/keyValidity.ts` | 鍵の有効期間 / 失効判定の**単一実装** (#233)。checkpoint 鍵と出題者鍵の両方を構造型で受ける |
 | `checkpointKeys/localKeys.ts` | ローカル開発鍵置き場 (gitignore 済み。無ければ `npm install` の postinstall / e2e の setup / doctor が `localKeys.ts.example` から作る。#338) |
