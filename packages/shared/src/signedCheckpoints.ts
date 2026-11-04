@@ -363,13 +363,6 @@ export async function verifyCheckpointSignature(
 
 interface VerifySignedCheckpointsOptions {
   registry?: readonly CheckpointPublicKey[];
-  /**
-   * true のとき anchoring 密度が保守的閾値を下回る (density.sparse) 場合に valid=false にする (ADR-0016)。
-   * 既定 false = density は計測のみで、warning 表示は呼び出し側の責務。exam / 採点ポリシーで opt-in する。
-   * 未アンカー (anchored=false) のときは density=null なので、この gate は影響しない
-   * (ADR-0004「未アンカーは valid のまま」を維持する)。
-   */
-  requireAnchorDensity?: boolean;
 }
 
 /**
@@ -644,21 +637,10 @@ export async function verifySignedCheckpoints(
   const coverage = computeCoverage(events, signedCheckpoints);
   const temporal = computeTemporal(firstClientTs, lastClientTs, firstServerTs, lastServerTs);
 
-  // 全 envelope は署名・連鎖整合とも合格。ここで anchoring 密度 gate を任意適用する (ADR-0016)。
-  // strict (exam/採点で opt-in) のときだけ、疎な anchoring を valid=false に落とす。
-  // 既定は valid=true のまま density を返し、呼び出し側が warning として表示する。
-  if (options.requireAnchorDensity && density?.sparse) {
-    return {
-      valid: false,
-      anchored: true,
-      details,
-      coverage,
-      temporal,
-      density,
-      reason: 'Signed checkpoint anchoring is too sparse for the claimed session (density gate)',
-    };
-  }
-
+  // 全 envelope は署名・連鎖整合とも合格。anchoring 密度 (ADR-0016) は計量して返すだけで、
+  // ここでは valid を落とさない。疎な proof を不受理にする判定は受理ポリシー
+  // (`acceptancePolicy.ts` の `anchor-density-sparse`, #296) へ移った。密度で valid を落とすと、
+  // 「署名が改ざんされた」と「証拠が足りない」を機械的に見分けられなくなる。
   return {
     valid: true,
     anchored: true,
