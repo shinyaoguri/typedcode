@@ -66,7 +66,7 @@ gh pr merge --squash --delete-branch
 - **自動化できない確認は理由とともに残す**: 見た目の最終確認など、手で確かめたことは PR 本文の「自動化できず手動で確認したこと」に理由つきで書く
 - **手元では `npm run check`** (typecheck → lint (Biome + docs の `[[...]]` 参照の検査) → workflow の検査 (`lint:workflows` = actionlint + shellcheck) → README の依存表と package.json の名前の突合 (`node scripts/check-deps.mjs`。依存の版は package.json が唯一の正で、README は名前と用途だけ) → カバレッジ付きユニットテスト → E2E)。E2E を除いた `npm run check:fast` もある
 
-`scripts/` のテストのうち `*.test.mjs` (PR ゲートの `require-tests` / `require-visual-evidence` / `require-issue` など) と、e2e の環境準備のテスト `packages/e2e/scripts/setup-env.test.mjs` は CI (check job) で `node --test 'scripts/*.test.mjs' packages/e2e/scripts/setup-env.test.mjs` として走る。`sweep.test.ts` は使い捨てのリポジトリを組み立てる統合テストなので CI 常設にはしておらず、スクリプトを変えたときに手元で回す (下記「マージ後の掃除」)。
+`scripts/` のテストのうち `*.test.mjs` (PR ゲートの `require-tests` / `require-visual-evidence` / `require-issue` など) と、e2e の環境準備とサーバ照合のテスト `packages/e2e/scripts/*.test.mjs` (`setup-env` / `server-identity`) は CI (check job) で `node --test 'scripts/*.test.mjs' 'packages/e2e/scripts/*.test.mjs'` として走る。`sweep.test.ts` は使い捨てのリポジトリを組み立てる統合テストなので CI 常設にはしておらず、スクリプトを変えたときに手元で回す (下記「マージ後の掃除」)。
 
 ## 変異検査 (StrykerJS)
 

@@ -40,10 +40,14 @@ npm run report -w @typedcode/e2e        # 直近の HTML レポート (trace 付
 ```
 
 ローカルで既に `npm run dev` を回している場合は `reuseExistingServer` でその
-サーバを再利用する (CI では毎回新規起動)。**exam の spec は editor を E2E 用の設定
-(出題者鍵を差し替える `vite.editor.config.mjs`) で起こすサーバが前提**なので、別の worktree などの
-通常の dev サーバが 5173 を握っていると「出題者の署名を検証できない」で落ちる。その場合は
-`E2E_EDITOR_PORT` / `E2E_WORKERS_PORT` / `E2E_VERIFY_PORT` で空きポートを指定する。
+サーバを再利用する (CI では毎回新規起動)。ただし再利用するのは**この作業ツリーのサーバだけ**で、
+テストより前に globalSetup (`global-setup.ts`) が各サーバの名乗る作業ツリーの識別子を照合する (#552)。
+別の worktree のサーバや識別子を名乗らないサーバ (照合が入る前の版で動くもの・TypedCode 以外のプロセス) が
+ポートを握っていると、テストを 1 本も走らせずに「ポート N は別の作業ツリーのサーバが使用中 (相手: <パス>)」の
+形で落ちるので、そのサーバを止めるか `E2E_EDITOR_PORT` / `E2E_WORKERS_PORT` / `E2E_VERIFY_PORT` で
+空きポートを指定する。**exam の spec は editor を E2E 用の設定 (出題者鍵を差し替える `vite.editor.config.mjs`)
+で起こすサーバが前提**なので、同じ作業ツリーの通常の `npm run dev` が 5173 を握っていると、照合は通っても
+「出題者の署名を検証できない」で落ちる。その場合も同じく空きポートを指定する。
 
 ### exam の fixture (#229)
 
