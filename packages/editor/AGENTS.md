@@ -55,7 +55,11 @@ ProofExporter.export()
   → performPreExportVerification() (Turnstile。exam/class/assignment は best-effort)
   → getProofData() → ScreenshotTracker.getAllScreenshots()
   → JSZip → ダウンロード
+  ── ここで export の区間 (isExporting) を閉じる ──
+  → (現在のタブだけ) typingProof.verify() で PoSW 込みの自己検証 → 結果の通知
 ```
+
+単一フライトのガード (`isExporting`) はダウンロードまでの区間だけを閉じる。ダウンロード後の自己検証 (`verifyAfterDownload`。件数が多いと数十秒) は区間の外で走らせ、その間に押された次の export を無視しない (#565)。検証の途中に次の export が同じ proof へ記録しても、events は追記だけで、追記分は検証済みのハッシュの続きとして検証されるので壊れない (`export/__tests__/ProofExporter.verifyAfterDownload.test.ts`)。検証の throw は ZIP が出た後なので `export.failed` ではなく `export.verifyFailed` で知らせる。
 
 ## 状態契約 (data-* 属性)
 
@@ -85,7 +89,7 @@ E2E (`packages/e2e`) は editor の UI 状態を、翻訳テキストや CSS ク
 `data-dialog` の名前: `terms` / `reset` / `tab-close` / `processing` / `duplicate-instance` / `unsupported-browser` (以上 `index.html` の静的要素) / `session-recovery` / `welcome` (`.welcome-screen`) / `self-review` / `screen-share-choice` / `screen-share-optout-confirm` / `screen-share-error` / `screen-capture-lock` / `idle-warning` / `idle-suspended` / `export-progress` / `exam-gate` / `class-problem-loader` (`ClassProblemLoader`。閉じると `.hidden` が付いてから外れる) / `template-import` / `template-progress` (`TemplateImportDialog` の確認と進捗。閉じると DOM から外れる) / `unproven-content` (`UnprovenContentDialog`。復元時に証明と食い違った元のコードの通知 = #413。閉じると DOM から外れる)。`Modal.ts` の `showModal` / `showCountdownDialog` / `showLockOverlay` で作るものは引数 `dialogName` で overlay に付ける (新しいダイアログを足すときも名前を付ける)。
 
 - **dev フック `window.__tcTestSnapshot()`** (`main.ts` の `import.meta.env.DEV` ガード内。`__tcTestInsertBlock` と同じ流儀): `{ appState, activeTabId, tabs: [{ id, filename, language, content, totalEvents, pendingCount, currentHash }] }` を返す (`core/stateContract.ts` の `buildTestSnapshot`)。tabs は表示順 (`getAllTabs()`)、filename は `data-filename` と同じ拡張子込み、タブ 0 本なら `activeTabId: null`。本番ビルドには残らない (`production-build.spec.ts` が見張る)
-- E2E 側の読み手は [`packages/e2e/tests/helpers/app.ts`](../e2e/tests/helpers/app.ts) の `EditorApp` (`tabs()` / `openDialogs()` / `snapshot()` / `expectConsistent()`)。`expectConsistent()` は DOM の契約と snapshot の一致 (タブの順序・id・active・filename・language、アクティブなタブの件数・ハッシュ、`#language-selector` の値) を、PoSW の pending が 0 になって DOM が追いつくまで待って確かめる。**proof に記録したのに表示を更新しない経路を作ると、ここで食い違いとして落ちる** (export が EventRecorder を通さず記録する分は `ExportCallbacks.onProofChanged` で表示を追従させている)
+- E2E 側の読み手は [`packages/e2e/tests/helpers/app.ts`](../e2e/tests/helpers/app.ts) の `EditorApp` (`tabs()` / `openDialogs()` / `snapshot()` / `expectConsistent()`)。`expectConsistent()` は DOM の契約と snapshot の一致 (タブの順序・id・active・filename・language、アクティブなタブの件数・ハッシュ、`#language-selector` の値) を、PoSW の pending が 0 になって DOM が追いつくまで待って確かめる。**proof に記録したのに表示を更新しない経路を作ると、ここで食い違いとして落ちる**。表示 (`#event-count` / `#current-hash`) は、どのタブの TypingProof でも記録の受付と PoSW の確定のたびに `TabManager.setOnProofChange` の通知 (microtask にまとめて 1 回) で追従するので、EventRecorder を通さず proof に直接記録する経路 (export 前の attestation・contentSnapshot・テンプレート注入など) も個別に表示を更新しなくてよい (#521。それ以前は経路ごとに足していた: export の `ExportCallbacks.onProofChanged` = #439、contentSnapshot の記録後の `update()` = #448)。TypingProof を作る・復元する経路を足すときは、`setOnPendingEventChange` を直に張らず `watchProofChanges` を通す (保存と表示の追従の両方がそこにある)
 - **この契約 (要素・属性名・値域・「無い」の意味・snapshot の形) を変えるときは、`packages/e2e` の E2E と同じ PR で変える**。片方だけ変えると E2E が赤になるか、もっと悪いと別の要素を読んで黙って通る。ユニットテストは `execution/__tests__/CodeExecutionController.runGuard.test.ts` (data-exec-*) / `ui/dialogs/__tests__/UnprovenContentDialog.test.ts` (unproven-content) / `ui/tabs/__tests__/TabUIController.stateContract.test.ts` / `ui/components/__tests__/ProofStatusDisplay.test.ts` / `ui/components/__tests__/Modal.test.ts` (dialog state contract) / `ui/components/__tests__/panelsStateContract.test.ts` (data-open・data-action・data-tab-count・class-problem-loader) / `template/__tests__/TemplateImportDialog.test.ts` / `core/__tests__/stateContract.test.ts`
 
 ## よくある罠

@@ -85,3 +85,76 @@ test('casual: タブ操作の各段階で DOM の状態契約と内部状態が�
   const finalSnapshot = await app.snapshot();
   expect(finalSnapshot).toMatchObject({ appState: 'ready', activeTabId: null, tabs: [] });
 });
+
+/** ダウンロードのアンカー (`a[download]`) が DOM に入った瞬間に読んだ表示と内部状態。 */
+interface AtDownload {
+  domCount: string | undefined;
+  domHash: string | undefined;
+  totalEvents: number | undefined;
+  currentHash: string | null | undefined;
+}
+
+/**
+ * #521: 2 本目のタブを閉じた後に現在のタブを export すると、export が EventRecorder を通さずに記録する
+ * `preExportAttestation` の分だけ、ステータスバーの件数とハッシュが内部の値より 1 件遅れていた。
+ * 表示の追従が export の最後 (全イベントの PoSW を検証し直す `verify()` の後) にしか無く、ダウンロードは
+ * その前に起きるので、件数の多いセッションでは `expectConsistent()` の待ちを超えて取り残される。
+ * タブを閉じる手は原因ではない (閉じない列でも同じく 1 件遅れた) が、nightly で落ちた列の形を残す。
+ *
+ * verify の長さに頼らず決定的に見るため、ダウンロードのアンカーが DOM に入った瞬間 (= verify より前) の
+ * 表示と `__tcTestSnapshot` を MutationObserver で写し取り、その時点で一致していることを確かめる。
+ */
+test('casual: 2 本目のタブを閉じた後の export で、ダウンロードの時点の件数とハッシュが内部の値と一致する (#521)', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  const [first] = await app.tabs();
+
+  await app.addTab();
+  const second = (await app.tabs())[1]!;
+  await app.switchToTab(first!.id);
+  await app.typeCode('int a = 1;\n');
+  await app.requestCloseTab(second.id);
+  await app.answerCloseTab('confirm');
+  await app.expectConsistent();
+  await app.waitForSynced();
+
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      __tc521AtDownload?: unknown;
+      __tcTestSnapshot?: () => {
+        activeTabId: string | null;
+        tabs: Array<{ id: string; totalEvents: number; currentHash: string | null }>;
+      };
+    };
+    const observer = new MutationObserver((records) => {
+      const added = records.some((r) =>
+        [...r.addedNodes].some((n) => n instanceof HTMLAnchorElement && n.hasAttribute('download'))
+      );
+      if (!added || w.__tc521AtDownload) return;
+      const snap = w.__tcTestSnapshot?.();
+      const active = snap?.tabs.find((t) => t.id === snap.activeTabId);
+      w.__tc521AtDownload = {
+        domCount: document.getElementById('event-count')?.dataset.count,
+        domHash: document.getElementById('current-hash')?.dataset.hash,
+        totalEvents: active?.totalEvents,
+        currentHash: active?.currentHash,
+      };
+      observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true });
+  });
+
+  const zipPath = await app.exportCurrentTab();
+  const atDownload = await page.evaluate(
+    () => (window as unknown as { __tc521AtDownload?: AtDownload }).__tc521AtDownload
+  );
+  expect(atDownload, 'the download anchor must have been observed').toBeDefined();
+  expect(atDownload!.domCount).toBe(String(atDownload!.totalEvents));
+  expect(atDownload!.domHash).toBe(atDownload!.currentHash);
+  await app.expectConsistent();
+
+  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  expect(result.passed, result.stdout + result.stderr).toBe(true);
+});

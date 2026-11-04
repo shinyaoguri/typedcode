@@ -460,6 +460,11 @@ async function initializeTabManager(
     () => ctx.editor.getValue()
   );
 
+  // proof が変わったら (EventRecorder を通らない直接の記録を含む) ステータスバーを追従させる (#521)。
+  // 非アクティブなタブの変化でも呼ばれるが、update はアクティブなタブを読むので害は無く、
+  // タブ 0 本では getStats が null を返して reset 後の表示を上書きしない。
+  ctx.tabManager.setOnProofChange(() => updateProofStatus(ctx));
+
   // タブ変更コールバックを設定
   ctx.tabManager.setOnTabChange((tab, previousTab) => {
     console.log('[TypedCode] Tab switched:', previousTab?.filename, '->', tab.filename);
