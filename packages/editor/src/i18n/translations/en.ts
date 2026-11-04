@@ -605,6 +605,19 @@ export const en: TranslationKeys = {
     clearing: 'Clearing data...',
   },
 
+  // Original code that did not match the proof on restore (#413)
+  unprovenContent: {
+    title: 'Some edits were not recorded in the proof',
+    message:
+      'Edits that were still being processed when the page closed are not in the proof, so the editor shows the version recorded in the proof. The original code is kept, and you can compare it or download it.',
+    tabSummary: '${filename}: original ${original} chars → proof ${chain} chars',
+    showDiff: 'Show diff',
+    download: 'Download original code',
+    diffLabel: 'Left: version in the proof (editor content) / Right: original code (read-only)',
+    note: 'The original code is also included in the rescue file (not a proof). Retype any part you need in the editor.',
+    close: 'Close',
+  },
+
   // Exam mode (ADR-0006 / ADR-0008)
   exam: {
     title: 'Exam Mode',

@@ -1,8 +1,9 @@
 /**
- * 救出ファイルの組み立て (#544 / #300 の受け入れ条件 6・7)。
+ * 救出ファイルの組み立て (#544 / #300 の受け入れ条件 6・7、#413 の受け入れ条件 4)。
  *
  * 救出ファイルは証明ではない: `*_proof.json` を作らず、manifest に `notAProof: true` を書く。
  * 1 タブの読み出しが throw しても、他のタブのソースは出る。
+ * 復元時に証明と食い違って保全した元のコードは、`src/` とは別の `unproven/` に入れ、manifest に文字数を載せる。
  */
 
 import { describe, it, expect } from 'vitest';
@@ -44,10 +45,12 @@ describe('buildRescueBundle (#544)', () => {
     expect(rescueBundleEntries(bundle).filter((f) => f.path.endsWith('_proof.json'))).toEqual([]);
   });
 
-  it('marks the manifest as not a proof under the typedcode-rescue/1 schema', () => {
+  it('marks the manifest as not a proof under the typedcode-rescue/2 schema', () => {
     const { manifest } = build([source({ id: 'a' })]);
 
-    expect(manifest).toMatchObject({ schema: RESCUE_SCHEMA, notAProof: true, mode: 'casual' });
+    // /2 = #413 でタブに unprovenContents を足した形 (形を変えたら番号を上げる)
+    expect(manifest).toMatchObject({ schema: 'typedcode-rescue/2', notAProof: true, mode: 'casual' });
+    expect(RESCUE_SCHEMA).toBe('typedcode-rescue/2');
     expect(manifest.createdAt).toBe('2026-11-04T00:00:00.000Z');
   });
 
@@ -87,6 +90,53 @@ describe('buildRescueBundle (#544)', () => {
     expect(bundle.files).toEqual([{ path: 'src/a.c', content: 'kept' }]);
     expect(bundle.manifest.tabs[0]).toMatchObject({ source: 'src/a.c', eventsLog: null, chainEventCount: null });
     expect(bundle.manifest.tabs[0]?.error).toMatch(/^events: Error: boom/);
+  });
+
+  it('writes each preserved original content under unproven/, apart from the src/ source (#413)', () => {
+    const bundle = build([
+      source({
+        id: 'main',
+        readContent: () => 'abc',
+        readEvents: () => [],
+        readUnprovenContents: () => [
+          { content: 'abcdef', chainContentLength: 3 },
+          { content: 'abcxyz', chainContentLength: 3 },
+        ],
+      }),
+    ]);
+
+    expect(bundle.files).toEqual([
+      { path: 'src/main.c', content: 'abc' },
+      { path: 'logs/main.c.events.json', content: '[]' },
+      { path: 'unproven/1/main.c', content: 'abcdef' },
+      { path: 'unproven/2/main.c', content: 'abcxyz' },
+    ]);
+  });
+
+  it('lists each preserved original content with its path and character counts in the manifest (#413)', () => {
+    const { manifest } = build([
+      source({ id: 'main', readUnprovenContents: () => [{ content: 'abcdef', chainContentLength: 3 }] }),
+    ]);
+
+    expect(manifest.tabs[0]?.unprovenContents).toEqual([
+      { path: 'unproven/1/main.c', originalLength: 6, chainContentLength: 3 },
+    ]);
+  });
+
+  it('records an empty list for a tab that has no preserved original content (#413)', () => {
+    const { manifest } = build([source({ id: 'main' })]);
+
+    expect(manifest.tabs[0]?.unprovenContents).toEqual([]);
+  });
+
+  it('still writes a tab source when only its preserved original contents cannot be read (#413)', () => {
+    const bundle = build([
+      source({ id: 'a', readContent: () => 'kept', readEvents: () => [], readUnprovenContents: fail }),
+    ]);
+
+    expect(bundle.files.map((f) => f.path)).toEqual(['src/a.c', 'logs/a.c.events.json']);
+    expect(bundle.manifest.tabs[0]).toMatchObject({ source: 'src/a.c', unprovenContents: null });
+    expect(bundle.manifest.tabs[0]?.error).toMatch(/^unproven: Error: boom/);
   });
 
   it('names same-named tabs the way the normal export does', () => {

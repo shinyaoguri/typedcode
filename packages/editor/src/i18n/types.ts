@@ -623,6 +623,18 @@ export interface TranslationKeys {
     clearing: string;
   };
 
+  // 復元時に証明と食い違った元のコードの通知 (#413)
+  unprovenContent: {
+    title: string;
+    message: string;
+    tabSummary: string;
+    showDiff: string;
+    download: string;
+    diffLabel: string;
+    note: string;
+    close: string;
+  };
+
   // Exam mode (ADR-0006 / ADR-0008)
   exam: {
     title: string;

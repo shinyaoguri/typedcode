@@ -445,7 +445,7 @@ interface ExamProofBlock {
 
 `startToken` を保存しても、束縛の価値 (「T0 前に知り得ない」) は損なわれない (公開は T0 後)。保存により grader はコードを out-of-band に受け取る運用が不要になり、コード紛失で root 検証不能になるリスクも消える。
 
-### 5.4. 救出ファイル (`typedcode-rescue/1`)
+### 5.4. 救出ファイル (`typedcode-rescue/2`)
 
 保存先・認証・PoSW が壊れていても、学習者がその時点のコードを持ち出すための出力 (#544、[ADR-0042](adr/0042-rescue-code-before-proof.md))。**証明ではない**: 検証器にかけるものではなく、提出の正本は §5.2 の export のまま。editor の救出ボタン (`#rescue-download-btn` / `#problem-rescue-btn`) が出す。
 
@@ -453,12 +453,13 @@ interface ExamProofBlock {
 RESCUE_TC<ts>.zip                 // <ts> は §5.2 と同じ YYMMDDHHmm
 ├── src/<source>                  // エディタの内容 (名前は §5.2 と同じ規則。同名は <name>_N.<ext>)
 ├── logs/<source>.events.json     // メモリ上のチェーンのイベント (検証していない記録。PoSW 待ちは含まない)
+├── unproven/<n>/<source>         // 復元時に証明と食い違って保全した元のコード (§5.4.1。n は保全した順の 1 始まり。無ければ出ない)
 └── rescue-manifest.json
 ```
 
 ```typescript
 interface RescueManifest {
-  schema: 'typedcode-rescue/1';
+  schema: 'typedcode-rescue/2';   // /1 (#544) に tabs[].unprovenContents を足した形 (#413)
   notAProof: true;                // 証明ではない。*_proof.json は作らない
   notice: string;                 // 受け取った人への注意書き (en + ja)
   createdAt: string;              // ISO 8601
@@ -468,6 +469,11 @@ interface RescueManifest {
     id: string; filename: string; language: string;
     source: string | null;        // src/ のパス。内容が読めなければ null
     eventsLog: string | null;     // logs/ のパス。読めなければ null
+    unprovenContents: {           // 保全した元のコード (古い順。無ければ []、読めなければ null。#413)
+      path: string;               // unproven/<n>/<source>
+      originalLength: number;     // 元のコードの文字数
+      chainContentLength: number; // 証明に載っている内容の文字数
+    }[] | null;
     chainEventCount: number | null;     // チェーンに載っているイベント数
     persistedEventCount: number | null; // IndexedDB への保存を確かめた数 (未確定なら null)
     pendingEventCount: number | null;   // PoSW 待ちの数
@@ -478,7 +484,17 @@ interface RescueManifest {
 
 - 救出は待機・Turnstile・IndexedDB への flush・PoSW の排出待ち・署名・スクリーンショットを一切通さない。読むのはエディタの内容とメモリ上のチェーンだけ
 - 1 タブの読み出しが throw しても他のタブは出す。イベントだけ読めないタブもソースは出す
-- ZIP が作れなければ `RESCUE_TC<ts>.json` (`{ manifest, files: { path, content }[] }`)、それも保存できなければ `src/` のソースを `RESCUE_TC<ts>_<source>` として 1 つずつ出す
+- ZIP が作れなければ `RESCUE_TC<ts>.json` (`{ manifest, files: { path, content }[] }`)、それも保存できなければ `src/` のソースを `RESCUE_TC<ts>_<source>` として、保全した元のコードを `RESCUE_TC<ts>_unproven_<n>_<source>` として 1 つずつ出す
+
+#### 5.4.1. 復元時に証明と食い違った元のコード (#413、ADR-0042 段階 2)
+
+PoSW の処理待ちが残ったまま閉じる (またはリロードする) と、処理待ちの打鍵はチェーンに載らないのに、保存済みの content には残る。処理待ちは復元しない (`TypingProof.restoreState`) ので、そのまま続けると content replay (§6.2 Layer 4) が合わず proof が invalid になる。復元はこう扱う (`ui/tabs/restoredContent.ts` の `reconcileRestoredContent` と `TabManager.restoreContent`)。
+
+- エディタのバッファはチェーンの replay 版にする (proof は valid のまま。proof 形式・検証器・分析器は変えない)。replay が途中で失敗する (再構成できない破損) ときは content を変えない
+- 元の content は session DB (IndexedDB) の `unprovenContents` ストアに**追記のみ**で残す。行は `{ id (autoIncrement), tabId, sessionId, filename, language, content, chainContentLength, chainEventCount, detectedAt }` (`StoredUnprovenContentData`)。tabs の `saveTab` (put) とは別のストアなので、その後の保存・リロードで上書きされない。`clearSession` (復旧ダイアログの「新規セッション」) と `deleteTab` (タブを閉じる) も触らず、消えるのはモードのリセットで DB ごと消すときだけ (保持期間と容量は #317)。DB のバージョンは 2 → 3 (ストアを足すだけで、既存のストアと行は変えない)
+- 同じタブで食い違いが 2 回以上起きたら追記する (最初の元のコードを残す)。同じ内容が既にあれば重ねない
+- 復元のたびに保全済みの元のコードを読み戻し、タブのメモリ上の状態に載せる。救出 (§5.4) はそのメモリを読む (IndexedDB に依存しない)
+- 食い違ったときは通知 (`data-dialog="unproven-content"`) を出す。差分の大きさは「元 X 文字 → 証明 Y 文字」で示す (処理待ちが途中の編集や削除だと、差分は末尾に限らず、元のほうが短いこともある)。通知から、差分 (Monaco の diff editor。左 = 証明の版、右 = 元のコード、読み取り専用) と元のコードのダウンロード (`UNPROVEN_<source>`) を開ける。元のコードをバッファへ自動で戻すことはしない (戻すと証明と食い違う)
 
 ---
 

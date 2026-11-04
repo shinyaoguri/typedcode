@@ -709,3 +709,86 @@ async function readFileBuffer(path: string): Promise<Buffer> {
   const { readFile } = await import('node:fs/promises');
   return readFile(path);
 }
+
+/** casual の session DB の名前 (editor の `storageKeys.sessionDbName()`。casual は名前空間なし) */
+const CASUAL_SESSION_DB = 'typedcode-session';
+
+/**
+ * casual の session DB で、ただ 1 つの tabs レコードの content の末尾に `suffix` を足す (#413)。
+ * PoSW の処理待ちが残ったまま閉じた状態 (打鍵は content にだけ残り、チェーンに載っていない) を作る。
+ *
+ * 必ずエディタのページを**閉じた後**に、session DB を書かない入口 (`/`) の別ページから呼ぶ
+ * (閉じる前に書くと、閉じるときの保存が content を戻す)。返り値は書き換える前と後の content。
+ */
+export function appendToStoredTabContent(page: Page, suffix: string): Promise<{ before: string; after: string }> {
+  return page.evaluate(
+    ({ dbName, suffix }) =>
+      new Promise<{ before: string; after: string }>((resolve, reject) => {
+        const open = indexedDB.open(dbName);
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const tx = db.transaction(['tabs'], 'readwrite');
+          const store = tx.objectStore('tabs');
+          const all = store.getAll();
+          let result: { before: string; after: string } | null = null;
+          all.onsuccess = () => {
+            const tabs = all.result as Array<{ content: string }>;
+            if (tabs.length !== 1) {
+              reject(new Error(`expected exactly one stored tab, found ${tabs.length}`));
+              tx.abort();
+              return;
+            }
+            const tab = tabs[0]!;
+            result = { before: tab.content, after: tab.content + suffix };
+            tab.content = result.after;
+            store.put(tab);
+          };
+          tx.oncomplete = () => {
+            db.close();
+            if (result) resolve(result);
+          };
+          tx.onerror = () => reject(tx.error);
+        };
+      }),
+    { dbName: CASUAL_SESSION_DB, suffix }
+  );
+}
+
+/** session DB に保全された元のコード 1 つ (`unprovenContents` の行のうち、テストが見るもの。#413) */
+export interface StoredUnprovenContent {
+  tabId: string;
+  content: string;
+  chainContentLength: number;
+}
+
+/** casual の session DB に保全された元のコード (`unprovenContents`。#413) を追記順に読む */
+export function readUnprovenContents(page: Page): Promise<StoredUnprovenContent[]> {
+  return page.evaluate(
+    (dbName) =>
+      new Promise<StoredUnprovenContent[]>((resolve, reject) => {
+        const open = indexedDB.open(dbName);
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          if (!db.objectStoreNames.contains('unprovenContents')) {
+            db.close();
+            resolve([]);
+            return;
+          }
+          const req = db.transaction(['unprovenContents'], 'readonly').objectStore('unprovenContents').getAll();
+          req.onsuccess = () => {
+            db.close();
+            const rows = req.result as Array<StoredUnprovenContent & { id: number }>;
+            resolve(
+              rows
+                .sort((a, b) => a.id - b.id)
+                .map(({ tabId, content, chainContentLength }) => ({ tabId, content, chainContentLength }))
+            );
+          };
+          req.onerror = () => reject(req.error);
+        };
+      }),
+    CASUAL_SESSION_DB
+  );
+}

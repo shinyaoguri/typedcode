@@ -7,7 +7,7 @@
  */
 
 import * as monaco from 'monaco-editor';
-import { TypingProof, verifyContentReplay } from '@typedcode/shared';
+import { TypingProof } from '@typedcode/shared';
 import type { SessionStartToken, StoredEvent } from '@typedcode/shared';
 import { tabsKey } from '../../core/storageKeys.js';
 import type {
@@ -21,6 +21,7 @@ import type {
   VerificationState,
   VerificationDetails,
   StoredTabData,
+  StoredUnprovenContentData,
   ExamSessionContext,
 } from '@typedcode/shared';
 import {
@@ -30,6 +31,7 @@ import {
 } from '../../services/TurnstileService.js';
 import { performVerificationWithUI } from './TabVerificationUI.js';
 import { resolveRestoreOrder } from './restoreOrder.js';
+import { reconcileRestoredContent } from './restoredContent.js';
 import { shouldRecordTabSwitch } from './tabSwitchPolicy.js';
 import { type SyncStatus, type PersistOutcome, resolveSyncStatus, isPersistFailure } from './syncStatus.js';
 import { t } from '../../i18n/index.js';
@@ -65,6 +67,25 @@ export interface TabState {
   verificationDetails?: VerificationDetails;
   /** Workers 署名サービス (VITE_API_URL 未設定時は null) */
   signedCheckpointService?: SignedCheckpointService | null;
+  /**
+   * 復元時に証明と食い違って保全した元の content (古い順。#413)。復元のたびに IndexedDB の
+   * `unprovenContents` から読み戻す。救出 (ADR-0042) は IndexedDB に依存しないので、ここ (メモリ) を読む
+   */
+  unprovenContents?: readonly StoredUnprovenContentData[];
+}
+
+/**
+ * 今回の復元で、証明と食い違って元の content をバッファから外したタブ (#413)。
+ * main.ts が復元後に読んで、差分とダウンロードの通知を出す
+ */
+export interface RestoreDivergence {
+  tabId: string;
+  filename: string;
+  language: string;
+  /** 切り詰める前の元の content */
+  original: string;
+  /** 証明に載っている内容 (バッファに置いた版) */
+  chainContent: string;
 }
 
 /** タブ変更コールバック */
@@ -188,6 +209,8 @@ export class TabManager {
    * カーソルが遅れていても二重保存にはならない。
    */
   private savedEventCursor: Map<string, number> = new Map();
+  /** 今回の復元で元の content をバッファから外したタブ (#413。`takeRestoreDivergences` で受け取る) */
+  private restoreDivergences: RestoreDivergence[] = [];
 
   constructor(editor: monaco.editor.IStandaloneCodeEditor) {
     this.editor = editor;
@@ -1338,28 +1361,86 @@ export class TabManager {
   }
 
   /**
-   * 復元 content をチェーン replay に整合させる (#142)。
+   * 復元 content をチェーン replay に整合させ、食い違った元の content を保全する (#142 / #413)。
    *
-   * クラッシュ/強制終了がイベントキュー処理中に起きると、打鍵はチェーンに載らないのに
-   * 直近の debounced 保存で content にだけ残る。その content のまま完成させて export
-   * すると Layer 4 の content replay が不一致で proof 全体が invalid になる (学生無過失)。
-   * 打鍵はチェーンに戻せないので、buffer 側を replay 結果へ切り詰めるのが唯一の整合化。
-   * replay 自体が途中で失敗する (より深い破損) 場合は触らない — 他レイヤが検出する。
+   * バッファは replay 版にして proof を valid に保つ (整合の判断は純関数 `reconcileRestoredContent`)。
+   * 元の content は IndexedDB の `unprovenContents` に追記で残し (tabs の put とは別のストアなので、
+   * この後の保存で上書きされない)、`restoreDivergences` に積んで main.ts の通知に渡す。保全を待ってから
+   * 返すので、復元したバッファを保存する (`saveTab`) より先に元の content が残る。
+   *
+   * 2 回目以降の復元では replay が合うので何もしないが、保全済みの元の content は毎回読み戻して
+   * `TabState.unprovenContents` に載せる (救出はメモリだけを読む = ADR-0042)。IndexedDB が使えなくても
+   * 復元は止めず、元の content はメモリに残す。
    */
-  private reconcileRestoredContent(tabId: string, savedContent: string, events: readonly StoredEvent[]): string {
-    if (events.length === 0) return savedContent; // 整合先が無い (別種の破損はここで判断しない)
-    const replay = verifyContentReplay(events as StoredEvent[], savedContent);
-    if (replay.valid) return savedContent;
-    if (replay.reconstructedContent !== undefined) {
-      console.warn(
-        `[TabManager] Tab ${tabId}: restored content is ahead of the event chain ` +
-          `(crash window). Truncating ${savedContent.length} -> ${replay.reconstructedContent.length} chars ` +
-          `to keep the proof verifiable (#142).`
-      );
-      return replay.reconstructedContent;
+  private async restoreContent(
+    tab: { id: string; filename: string; language: string },
+    savedContent: string,
+    events: readonly StoredEvent[]
+  ): Promise<{ content: string; unprovenContents: StoredUnprovenContentData[] }> {
+    const reconciled = reconcileRestoredContent(savedContent, events);
+    if (reconciled.replayError !== undefined) {
+      console.error(`[TabManager] Tab ${tab.id}: content replay failed during restore: ${reconciled.replayError}`);
     }
-    console.error(`[TabManager] Tab ${tabId}: content replay failed during restore: ${replay.reason}`);
-    return savedContent;
+
+    const canPersist = this.sessionService.isInitialized();
+    let preserved: StoredUnprovenContentData[] = [];
+    if (canPersist) {
+      try {
+        preserved = await this.sessionService.getUnprovenContents(tab.id);
+      } catch (e) {
+        console.error(`[TabManager] Tab ${tab.id}: could not read preserved original contents:`, e);
+      }
+    }
+
+    const divergence = reconciled.divergence;
+    if (divergence) {
+      console.warn(
+        `[TabManager] Tab ${tab.id}: restored content differs from the event chain ` +
+          `(pending events were not restored). Buffer uses the chain version ` +
+          `(${divergence.original.length} -> ${divergence.chainContent.length} chars); ` +
+          `the original is preserved (#413).`
+      );
+      // 同じ元の content を既に残している (前回の復元の後、保存される前に閉じた) なら重ねない
+      if (!preserved.some((record) => record.content === divergence.original)) {
+        const record: StoredUnprovenContentData = {
+          tabId: tab.id,
+          sessionId: this.sessionService.getCurrentSessionId(),
+          filename: tab.filename,
+          language: tab.language,
+          content: divergence.original,
+          chainContentLength: divergence.chainContent.length,
+          chainEventCount: events.length,
+          detectedAt: Date.now(),
+        };
+        if (canPersist) {
+          try {
+            await this.sessionService.appendUnprovenContent(record);
+          } catch (e) {
+            // 保存できなくても、メモリ (TabState) には残して通知・ダウンロード・救出で取り出せるようにする
+            console.error(`[TabManager] Tab ${tab.id}: could not preserve the original content:`, e);
+          }
+        }
+        preserved = [...preserved, record];
+      }
+      this.restoreDivergences.push({
+        tabId: tab.id,
+        filename: tab.filename,
+        language: tab.language,
+        original: divergence.original,
+        chainContent: divergence.chainContent,
+      });
+    }
+
+    return { content: reconciled.content, unprovenContents: preserved };
+  }
+
+  /**
+   * 今回の復元で元の content をバッファから外したタブを受け取る (受け取ると空になる。#413)
+   */
+  takeRestoreDivergences(): RestoreDivergence[] {
+    const taken = this.restoreDivergences;
+    this.restoreDivergences = [];
+    return taken;
   }
 
   /**
@@ -1442,11 +1523,13 @@ export class TabManager {
       // 既存 checkpoints を渡して signing service を attach (chain state を復元)
       const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof, typingProof.checkpoints);
 
-      // #142: クラッシュ窓で content がチェーンより先行していたら replay 結果へ整合させる
-      const content = serializedTab.proofState
-        ? this.reconcileRestoredContent(id, serializedTab.content, serializedTab.proofState.events)
-        : serializedTab.content;
-      const model = monaco.editor.createModel(content, serializedTab.language);
+      // #142 / #413: content がチェーンより先行していたら replay 結果へ整合させ、元の content は保全する
+      const restored = await this.restoreContent(
+        { id, filename: serializedTab.filename, language: serializedTab.language },
+        serializedTab.content,
+        serializedTab.proofState?.events ?? []
+      );
+      const model = monaco.editor.createModel(restored.content, serializedTab.language);
 
       const tab: TabState = {
         id,
@@ -1458,6 +1541,7 @@ export class TabManager {
         verificationState: serializedTab.verificationState ?? 'skipped',
         verificationDetails: serializedTab.verificationDetails,
         signedCheckpointService,
+        unprovenContents: restored.unprovenContents,
       };
 
       this.tabs.set(id, tab);
@@ -1563,11 +1647,13 @@ export class TabManager {
       const signedCheckpointService = this.attachSignedCheckpointService(id, typingProof, typingProof.checkpoints);
 
       // 6. Monacoモデル作成（contentはsessionStorageから）
-      // #142: クラッシュ窓で content がチェーンより先行していたら replay 結果へ整合させる
-      const model = monaco.editor.createModel(
-        this.reconcileRestoredContent(id, lightweightTab.content, events),
-        lightweightTab.language
+      // #142 / #413: content がチェーンより先行していたら replay 結果へ整合させ、元の content は保全する
+      const restored = await this.restoreContent(
+        { id, filename: lightweightTab.filename, language: lightweightTab.language },
+        lightweightTab.content,
+        events
       );
+      const model = monaco.editor.createModel(restored.content, lightweightTab.language);
 
       // 7. タブ作成
       const tab: TabState = {
@@ -1580,6 +1666,7 @@ export class TabManager {
         verificationState: lightweightTab.verificationState ?? 'skipped',
         verificationDetails: lightweightTab.verificationDetails,
         signedCheckpointService,
+        unprovenContents: restored.unprovenContents,
       };
 
       this.tabs.set(id, tab);
@@ -1691,11 +1778,9 @@ export class TabManager {
         );
 
         // Monacoモデルを作成
-        // #142: クラッシュ窓で content がチェーンより先行していたら replay 結果へ整合させる
-        const model = monaco.editor.createModel(
-          this.reconcileRestoredContent(storedTab.id, storedTab.content, events),
-          storedTab.language
-        );
+        // #142 / #413: content がチェーンより先行していたら replay 結果へ整合させ、元の content は保全する
+        const restored = await this.restoreContent(storedTab, storedTab.content, events);
+        const model = monaco.editor.createModel(restored.content, storedTab.language);
 
         const tab: TabState = {
           id: storedTab.id,
@@ -1707,6 +1792,7 @@ export class TabManager {
           verificationState: storedTab.verificationState,
           verificationDetails: storedTab.verificationDetails,
           signedCheckpointService,
+          unprovenContents: restored.unprovenContents,
         };
 
         this.tabs.set(storedTab.id, tab);
