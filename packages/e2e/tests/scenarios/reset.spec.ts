@@ -15,7 +15,8 @@ import {
  * データだけ**を消し、削除の完了を待ってからパラメータ無しの URL で起動し直す。ダイアログには消えるモード名と
  * タブ数が出る (`#reset-scope[data-mode][data-tab-count]`)。class / assignment は確定後にタブ 0 本のウェルカム、
  * casual は ADR-0015 どおり新しい既定タブが 1 本できる (前のタブ id は残らない)。ほかのモードの session DB・
- * タブ・キーと、モード共通のキー (規約同意など) は残る。
+ * タブ・キーと、モード共通のキー (規約同意など) は残る。自分の接続を閉じた時点でその接続のトランザクションが
+ * 走っていても (削除に一時的な blocked が来る)、失敗にせず削除の完了を待ってリロードする (#524)。
  */
 
 /** タブの id と中身 (件数を除く)。 */
@@ -114,6 +115,46 @@ test('casual: リセットを確定すると前のタブは残らず、新しい
   expect(JSON.stringify(await readProofEvents(zipPath))).not.toContain('old;');
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
+});
+
+test('自分の接続でトランザクションが走っている最中にリセットを確定しても、削除を待ってリロードする (#524)', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.typeCode('int old;');
+  await app.waitForSynced();
+  const oldIds = (await app.tabs()).map((t) => t.id);
+
+  // 保存の書き込みが続いている最中の close を決定的に作る: session DB の接続を閉じる直前に、その接続で
+  // 約 500ms 続く readonly トランザクションを始める。Chromium は close pending の接続にトランザクションが
+  // 残っていると deleteDatabase に先に blocked を出し、トランザクションの完了後に success を出す。
+  await page.evaluate(() => {
+    const originalClose = IDBDatabase.prototype.close;
+    IDBDatabase.prototype.close = function (this: IDBDatabase) {
+      try {
+        if (this.name === 'typedcode-session') {
+          const store = this.transaction('tabs', 'readonly').objectStore('tabs');
+          const until = performance.now() + 500;
+          const loop = (): void => {
+            if (performance.now() < until) store.count().onsuccess = loop;
+          };
+          loop();
+        }
+      } finally {
+        originalClose.call(this);
+      }
+    };
+  });
+
+  await openReset(app);
+  await confirmResetAndWaitReload(app, /\/casual$/);
+  await app.waitReady();
+  await app.expectConsistent();
+  const tabs = await app.snapshot();
+  expect(tabs.tabs).toHaveLength(1);
+  expect(oldIds).not.toContain(tabs.tabs[0]!.id);
+  expect(tabs.tabs[0]!.content).toBe('');
 });
 
 test('casual のリセットは casual の session DB とキーだけを消し、assignment / exam のデータと規約同意は残す (#323)', async ({
