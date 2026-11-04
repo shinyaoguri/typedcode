@@ -88,14 +88,25 @@ Issue の起票から PR の close までの規律はこの節で完結する。
 
 ### 進め方
 
-1. 変更は Issue の起票から始める。起票は雑でよい。未トリアージの Issue を調べて受け入れ条件を本文に書くところまでは、着手を待たずにしてよい (ラベルは付けない)
-2. **着手できるのは `verify: triaged` の付いた Issue だけ**。このラベルはメンテナが付ける。エージェントが付けてよいのは、自分で起票し受け入れ条件を書いた Issue だけ。着手したら `status: in progress` を付け、merge か中断で外す
+1. 変更は Issue の起票から始める。起票は雑でよい。未トリアージの Issue を調べて受け入れ条件を本文に書くところまでは、着手を待たずにしてよい (`verify: triaged` は付けない。判定の区分と印は下の「トリアージ判定」)
+2. **着手できるのは `verify: triaged` の付いた Issue だけ**。このラベルはメンテナが付ける。エージェントが付けてよいのは、自分で起票し受け入れ条件を書いた Issue だけ。triaged の中は `severity:critical` → `high` → `medium` → `low` の順に選ぶ (無印は最後)。着手したら `status: in progress` を付け、merge か中断で外す
 3. 着手時に、Issue 本文と全コメントを読み、各受け入れ条件を現行コードと突き合わせて「まだ有効 / 既に満たされている / 差し替えが要る」をプランに書く。事実のずれ (行番号・綴り・数) は先に本文を直す。条件を緩める・絞る・差し替えるときは、本文は直さず根拠をコメントして人の判断を待つ
 4. プラン (変更点・確認方法) を Issue にコメントする。PR を出した後に変わったら、差分を PR にコメントする
 5. PR 本文の「Test plan」に、閉じる Issue ごとに受け入れ条件と確かめ方の対応表を置く (形は [PR テンプレート](.github/pull_request_template.md))。`Closes #N` は PR 本文に書く
 6. **PR は必ず Issue を閉じる**。閉じる Issue が無い PR は CI の `require-issue` が落とす。見るのは本文の文字列ではなく、GitHub が実際に作った紐づけ (`Closes #N` が効いているか) なので、コードスパン・引用の中に書いた `Closes` は数えない。段階に分けて進める作業は、親を `Refs` で開いたままにせず、段階ごとに sub-issue を切ってそれを閉じる。受け入れ条件を持たない PR (依存の手動更新・リリース準備など) だけ、ラベル `no-issue` を付けて通す ([ADR-0038](docs/adr/0038-every-pr-closes-an-issue.md))
 
 移行: ゲートを入れた時点 (#377) で既に `status: in progress` の Issue は、印が無くても続けてよい。
+
+### トリアージ判定
+
+未トリアージの Issue を調べたら、コメントの先頭に `**トリアージ判定**: <区分>` を書き、区分ごとの印を付ける (#334)。メンテナは決めたら `status: needs decision` を外し、`verify: triaged` を付けるか閉じる。triaged の後で人の選択が要るようになった Issue (直し方の選択、満たせない条件の扱いなど) にも `status: needs decision` を付けて待つ。
+
+| 区分 | 意味 | 印 |
+|---|---|---|
+| 着手可 | 受け入れ条件が現行コードで有効 | なし (メンテナが `verify: triaged` を付ける) |
+| 方針の判断待ち | 受け入れ条件を確定するのに仕様や方針の選択が要る | `status: needs decision` |
+| 条件の差し替え待ち | 受け入れ条件の絞り込み・差し替えを提案した (本文は直さない) | `status: needs decision` |
+| close 候補 | 既に満たされている、または不要になった | `status: needs decision` |
 
 ### 作業中に踏んだ問題
 
@@ -105,7 +116,7 @@ Issue の起票から PR の close までの規律はこの節で完結する。
 |---|---|
 | その PR の説明で筋が通る (同じ根の兄弟は常にここ) | 起票して、その PR で閉じる (既定) |
 | 根が違い、受け入れ条件は書ける | 起票し、受け入れ条件を本文に書いて `verify: triaged` まで付ける |
-| 受け入れ条件を書けない (仕様や方針の選択が要る) | ラベルなしで置き、メンテナの判断を待つ |
+| 受け入れ条件を書けない (仕様や方針の選択が要る) | `status: needs decision` を付けて置き、メンテナの判断を待つ |
 
 ### Issue 本文に書くこと
 
@@ -126,10 +137,10 @@ Issue の起票から PR の close までの規律はこの節で完結する。
 
 ### ラベル
 
-- **状態ラベル**: `status: in progress` (着手中。並行セッションの重複を避ける) / `verify: triaged` (受け入れ条件が固まり、着手してよい)。`status: in progress` が付いたまま、参照する open PR も人の手も 3 日を超えて無い open Issue は、毎日の [claim-stall.yml](.github/workflows/claim-stall.yml) が赤くして名乗る (印は外さない。#469)。名乗られたら、閉じる / 印を外して残作業をコメントする / プランを更新して人の手を残す、のどれかをする
-- **種類ラベル** (Issue / PR に一つ): `bug` / `enhancement` / `documentation` / `security` など。Issue テンプレートが自動で付けるものはそのまま使う (#378 で `type:*` に置き換える予定)
+- **状態ラベル**: `status: in progress` (着手中。並行セッションの重複を避ける) / `verify: triaged` (受け入れ条件が固まり、着手してよい) / `status: needs decision` (調べたが人の選択が要る。付ける場面は「トリアージ判定」)。`status: in progress` が付いたまま、参照する open PR も人の手も 3 日を超えて無い open Issue は、毎日の [claim-stall.yml](.github/workflows/claim-stall.yml) が赤くして名乗る (印は外さない。#469)。名乗られたら、閉じる / 印を外して残作業をコメントする / プランを更新して人の手を残す、のどれかをする
+- **種類ラベル** (Issue / PR に一つ): `bug` / `enhancement` / `documentation` など。Issue テンプレートが自動で付けるものはそのまま使う。`security` は種類ラベルと併用する (例: `bug` + `security`)
 - **パッケージラベル** (`pkg:shared` / `pkg:editor` / `pkg:verify` / `pkg:workers` / `pkg:e2e` / `pkg:repo`): PR には変更ファイルから labeler が自動で付ける ([.github/labeler.yml](.github/labeler.yml))。Issue には着手対象が明らかな場合に手で付ける
-- `severity:*` はレビュー・トリアージ時の重要度の明示に使う
+- `severity:*` はレビュー・トリアージ時の重要度の明示に使い、優先度もこれで表す (タイトルに `[P1]` などを書かない)
 
 ## ドキュメント階層
 
