@@ -69,7 +69,6 @@ afterEach(() => {
 function makeEnv(overrides: Partial<Record<string, string>> = {}): TestEnv {
   return {
     TURNSTILE_SECRET_KEY: 'secret',
-    ATTESTATION_SECRET_KEY: 'x',
     ENVIRONMENT: 'production',
     ALLOWED_ORIGINS: 'https://typedcode.dev',
     CHECKPOINT_SIGNING_KEY_JWK: signingJwk,

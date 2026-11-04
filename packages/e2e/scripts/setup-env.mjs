@@ -112,7 +112,6 @@ export async function setupEnv({ root = ROOT, log = console.log, error = console
     [
       '# E2E 用に自動生成 (CI)。コミットしないこと。',
       `TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY}`,
-      'ATTESTATION_SECRET_KEY=e2e-attestation-secret',
       `CHECKPOINT_SIGNING_KEY_ID=${keyId}`,
       `CHECKPOINT_SIGNING_KEY_JWK=${JSON.stringify(privateJwk)}`,
       '',

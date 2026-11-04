@@ -12,7 +12,14 @@ export interface HumanAttestationEventData {
   action: string; // アクション名（'create_tab'など）
   timestamp: string; // サーバータイムスタンプ（信頼できるアンカー）
   hostname: string; // ホスト名
-  signature: string; // HMAC-SHA256署名（改ざん検出用）
+  /**
+   * 署名の印。暗号的な検証には使わない (検証器はこの値を読まない)。
+   * - 新しい export 前 attestation (`preExportAttestation`) は `'unsigned'` (#415 で署名をやめた)
+   * - 作成時の #0 (session/start 経由) は `session-start-token:<keyId>` (束縛は proof 同梱の sessionStartToken が担う。ADR-0017)
+   * - best-effort の失敗記録は `''`
+   * - 旧い proof には HMAC-SHA256 の 16 進値が入っている (legacy。読むが検証しない)。型を string のままにして旧 proof を読めるようにする
+   */
+  signature: string;
   // 認証フロー結果（成功/失敗問わず記録）
   success: boolean; // 認証フロー自体が成功したか
   failureReason?: VerificationFailureReason; // 失敗時の理由

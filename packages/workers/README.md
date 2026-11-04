@@ -1,13 +1,13 @@
 # @typedcode/workers
 
-TypedCode 向けの Cloudflare Workers API。Turnstile 人間認証とアテステーション署名、署名済みチェックポイントの発行を担当します。
+TypedCode 向けの Cloudflare Workers API。Turnstile 人間認証、セッション開始トークンと署名済みチェックポイントの発行を担当します。
 
 ## 機能
 
 - **セッション開始トークンの発行** ([ADR-0017](../../docs/adr/0017-server-anchored-chain-root.md)): Turnstile 検証 → `serverNonce` 入りの ECDSA-P256 署名トークンを発行し、チェーン根をサーバアンカーする
 - **署名済みチェックポイントサービス**: 証明チェックポイントへの ECDSA-P256 + サーバ時刻署名。KV による per-session の `firstSeenAt` 管理と冪等処理を含む。署名は**セッション開始トークン前提** ([ADR-0027](../../docs/adr/0027-checkpoint-sign-requires-session-token.md))
 - **Turnstile 検証**: Cloudflare Turnstile トークンを検証
-- **アテステーション署名**: HMAC-SHA256 で署名付きアテステーションを発行 (作成時の経路は ADR-0017 で session/start に統合済み)
+- **export 前アテステーション**: Turnstile の検証結果を**署名しない**アテステーション (`signature: "unsigned"`) として返す ([#415](https://github.com/shinyaoguri/typedcode/issues/415)。作成時の経路は ADR-0017 で session/start に統合済み)
 - **CORS サポート**: `ALLOWED_ORIGINS` による許可リスト方式 (fail-closed。詳細は [AGENTS.md](AGENTS.md))
 
 ## セットアップ
@@ -27,7 +27,6 @@ cp .dev.vars.example .dev.vars
 `.dev.vars` を編集:
 ```
 TURNSTILE_SECRET_KEY=your_secret_key_here
-ATTESTATION_SECRET_KEY=any_random_string_for_signing
 ```
 
 ### 3. チェックポイント署名鍵の生成 (開発者ごとに 1 回)
@@ -124,7 +123,7 @@ Turnstile を検証し、成功したらサーバ生成の `serverNonce` を焼�
 
 ### POST `/api/verify-captcha`
 
-Turnstile トークンを検証し、署名付きアテステーションを返却します。
+Turnstile トークンを検証し、成功時は検証結果をアテステーションとして返却します。アテステーションは署名しません (`signature` は常に `"unsigned"`。[#415](https://github.com/shinyaoguri/typedcode/issues/415))。
 
 **Request:**
 ```json
@@ -138,14 +137,14 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
 {
   "success": true,
   "score": 1.0,
-  "message": "Verification successful",
+  "message": "Verified",
   "attestation": {
     "verified": true,
     "score": 1.0,
-    "action": "human_verification",
+    "action": "export_proof",
     "timestamp": "2026-01-05T10:30:00.000Z",
     "hostname": "typedcode.dev",
-    "signature": "hmac_sha256_signature"
+    "signature": "unsigned"
   }
 }
 ```
@@ -254,23 +253,9 @@ Turnstile トークンを検証し、署名付きアテステーションを返�
 
 `npm run dev` (`wrangler dev`) で起こしたときだけ、`worktree` (どの作業ツリーの dev サーバかの識別子。`--var DEV_WORKTREE_ID` で渡す) も返す。e2e が別の worktree の workers を再利用しないための照合に使う (#552)。staging / production の応答には付かない。
 
-## 署名アルゴリズム (アテステーション)
+## アテステーションの署名 (廃止)
 
-HMAC-SHA256 で署名を計算します。
-
-```typescript
-const payload = JSON.stringify({
-  verified: attestation.verified,
-  score: attestation.score,
-  action: attestation.action,
-  timestamp: attestation.timestamp,
-  hostname: attestation.hostname
-});
-
-const signature = HMAC_SHA256(payload, ATTESTATION_SECRET_KEY);
-```
-
-この署名を照合する API・クライアントはありません (検証 API は [#340](https://github.com/shinyaoguri/typedcode/issues/340) で撤去)。発行の扱いは [#415](https://github.com/shinyaoguri/typedcode/issues/415)。
+以前は `/api/verify-captcha` のアテステーションに secret で署名していましたが、照合する API・クライアントが無く (検証 API は [#340](https://github.com/shinyaoguri/typedcode/issues/340) で撤去)、セッションにも内容にも束縛されていなかったため、[#415](https://github.com/shinyaoguri/typedcode/issues/415) で署名と secret をやめました。Turnstile の検証は続けます。人間ゲートの暗号的な証拠はセッション開始トークン ([ADR-0017](../../docs/adr/0017-server-anchored-chain-root.md)) が担います。旧い proof に残る署名値は legacy として読むだけで、検証しません。
 
 ## デプロイ
 
@@ -292,7 +277,6 @@ npm run deploy:production  # 本番 Worker にデプロイ (wrangler.production.
 
 ```bash
 wrangler secret put TURNSTILE_SECRET_KEY
-wrangler secret put ATTESTATION_SECRET_KEY
 wrangler secret put CHECKPOINT_SIGNING_KEY_ID
 wrangler secret put CHECKPOINT_SIGNING_KEY_JWK
 ```
@@ -325,10 +309,8 @@ src/
 │                   #   - ルーティングとリクエスト処理
 │                   #   - Turnstile 検証ハンドラ
 │                   #   - セッション開始トークン発行 (handleSessionStart, ADR-0017)
-│                   #   - アテステーション検証ハンドラ (dead)
 │                   #   - ヘルスチェック
 │                   #   - CORS ハンドリング
-│                   #   - HMAC 署名ユーティリティ
 └── checkpoint.ts   # 署名済みチェックポイント:
                     #   - /api/checkpoint/sign (handleSignCheckpoint)
                     #   - /api/checkpoint/public-keys (handlePublicKeys)
@@ -341,7 +323,6 @@ src/
 | 変数 | 説明 | 必須 |
 |----------|-------------|----------|
 | `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile のシークレット | はい |
-| `ATTESTATION_SECRET_KEY` | HMAC 署名鍵 | はい |
 | `CHECKPOINT_SIGNING_KEY_ID` | 署名済みチェックポイント用の keyId (`CHECKPOINT_PUBLIC_KEYS` レジストリに存在する必要あり) | `/api/checkpoint/sign` 用 |
 | `CHECKPOINT_SIGNING_KEY_JWK` | ECDSA-P256 秘密鍵 (JWK の JSON 文字列) | `/api/checkpoint/sign` 用 |
 | `ENVIRONMENT` | 環境名 | 任意 |

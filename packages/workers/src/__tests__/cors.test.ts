@@ -13,7 +13,6 @@ type TestEnv = Parameters<typeof worker.fetch>[1];
 function baseEnv(overrides: Partial<Record<string, string>> = {}): TestEnv {
   return {
     TURNSTILE_SECRET_KEY: 'x',
-    ATTESTATION_SECRET_KEY: 'x',
     ENVIRONMENT: 'production',
     ...overrides,
   } as unknown as TestEnv;

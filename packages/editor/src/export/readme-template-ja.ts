@@ -199,7 +199,7 @@ Event[N] ─┴─► Hash[N] = SHA-256(Event[N] + Hash[N-1] + PoSW[N])
     "finalHash": "最終イベントハッシュ...",
     "startTime": 1705312200000,
     "endTime": 1705315800000,
-    "signature": "HMAC署名...",
+    "signature": "SHA-256 ハッシュ...",
     "events": [
       {
         "sequence": 0,

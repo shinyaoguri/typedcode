@@ -1,10 +1,11 @@
 # packages/workers — AGENTS.md
 
-`@typedcode/workers` は **Cloudflare Workers の API サーバ**。Turnstile 検証・アテステーション署名・署名済みチェックポイント発行を担当する。
+`@typedcode/workers` は **Cloudflare Workers の API サーバ**。Turnstile 検証・セッション開始トークンと署名済みチェックポイントの発行を担当する。
 
 ## 責務と境界
 
-- **持つ**: Turnstile API への HTTP 検証、HMAC-SHA256 でのアテステーション署名、ECDSA-P256 での cp 署名、KV を使った per-session のリプレイ防止と冪等処理
+- **持つ**: Turnstile API への HTTP 検証、ECDSA-P256 でのセッション開始トークン・cp 署名、KV を使った per-session のリプレイ防止と冪等処理
+- **持たない (#415 でやめた)**: export 前アテステーションの署名。`/api/verify-captcha` は Turnstile の結果を `signature: 'unsigned'` で返す (形は旧 editor との互換のために残す)。署名用の secret も持たない
 - **持たない**: ハッシュチェーン計算 (shared に委譲)、proof の保管 (Workers は stateful な保管庫ではない)、ユーザー個別ストレージ
 
 ## 重要な不変条件
@@ -24,8 +25,8 @@
 src/
 ├── index.ts        # エントリ:
 │                   #   - ルーティング、CORS、セキュリティヘッダ (withSecurityHeaders)
-│                   #   - Turnstile 検証
-│                   #   - アテステーション署名 (HMAC-SHA256)
+│                   #   - Turnstile 検証 (+ 署名しない export 前アテステーション)
+│                   #   - セッション開始トークン発行 (handleSessionStart)
 │                   #   - ヘルスチェック
 ├── body.ts         # 本文 JSON の上限付き読み取り (readJsonBodyLimited)。全 POST が通る
 └── checkpoint.ts   # 署名済み cp:
@@ -39,7 +40,7 @@ src/
 
 | Endpoint | Method | 用途 |
 |---|---|---|
-| `/api/verify-captcha` | POST | Turnstile トークン検証 + アテステーション発行 (ADR-0017 で **作成時 #0 経路は session/start に統合**。pre-export 等で残置) |
+| `/api/verify-captcha` | POST | Turnstile トークン検証 + 署名しないアテステーション (`signature: 'unsigned'`。#415) を返す (ADR-0017 で **作成時 #0 経路は session/start に統合**。pre-export 等で残置) |
 | `/api/session/start` | POST | **ADR-0017**: Turnstile 検証 → `serverNonce` 入り ECDSA-P256 署名トークンを発行。クライアントは serverNonce を chain root に焼く。署名鍵は checkpoint と同一系統 (`getSigningKey`) |
 | `/api/checkpoint/sign` | POST | 未署名 cp に ECDSA-P256 署名 + `serverTimestamp` 付与。**`sessionStartToken` 前提** (ADR-0027: body に同送された token を registry で検証し `sessionId` 一致を要求) |
 | `/api/checkpoint/public-keys` | GET | 公開鍵レジストリ取得 (検証側のキャッシュ用) |
@@ -180,7 +181,7 @@ Durable Objects 化 (ADR-0027 Option C) は `firstSeenAt` の分裂 (#151) の�
 `wrangler.{staging,production}.toml` に以下を宣言している (dev の `wrangler.toml` は skip-worktree なので対象外):
 
 - **`[observability] enabled = true`**: Workers Logs を有効化。`head_sampling_rate = 1` は低トラフィックな署名 API 向けに全リクエスト記録。トラフィックが増えたら下げる。
-- **`[secrets] required = [...]`**: `TURNSTILE_SECRET_KEY` / `ATTESTATION_SECRET_KEY` / `CHECKPOINT_SIGNING_KEY_ID` / `CHECKPOINT_SIGNING_KEY_JWK` を必須宣言。`wrangler secret put` 漏れがあると **deploy 時にエラー**になり、設定漏れによる本番事故を防ぐ。`--dry-run` (CI の config 検証) では secret の存在チェックは走らない。
+- **`[secrets] required = [...]`**: `TURNSTILE_SECRET_KEY` / `CHECKPOINT_SIGNING_KEY_ID` / `CHECKPOINT_SIGNING_KEY_JWK` を必須宣言 (export 前アテステーションの署名用 secret は #415 で外した。Worker に残っていても無害で、消す順序は CHANGELOG)。`wrangler secret put` 漏れがあると **deploy 時にエラー**になり、設定漏れによる本番事故を防ぐ。`--dry-run` (CI の config 検証) では secret の存在チェックは走らない。
 
 **Env の型**: 現状 `src/index.ts` の `Env` / `checkpoint.ts` の `CheckpointEnv` は手書き。`npm run cf-typegen` (= `wrangler types`) で config から `worker-configuration.d.ts` を生成できる (gitignore 済み・commit しない)。生成された runtime types へ完全移行 (= `@cloudflare/workers-types` を外し tsconfig を更新、手書き `Env` を撤去) は**別途の follow-up**。今は手書き `Env` が source of truth なので、binding を増やしたら手書き側も更新すること。
 
@@ -241,7 +242,6 @@ GitHub repo の Settings → Environments に **2 つの環境** を作成:
 # staging Worker (typedcode-api-staging)
 cd packages/workers
 wrangler secret put TURNSTILE_SECRET_KEY --config wrangler.staging.toml
-wrangler secret put ATTESTATION_SECRET_KEY --config wrangler.staging.toml
 wrangler secret put CHECKPOINT_SIGNING_KEY_ID --config wrangler.staging.toml
 wrangler secret put CHECKPOINT_SIGNING_KEY_JWK --config wrangler.staging.toml
 

@@ -199,7 +199,7 @@ Each \`*_proof.json\` file contains:
     "finalHash": "last_event_hash...",
     "startTime": 1705312200000,
     "endTime": 1705315800000,
-    "signature": "hmac_signature...",
+    "signature": "sha256_hash...",
     "events": [
       {
         "sequence": 0,

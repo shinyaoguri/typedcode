@@ -19,13 +19,37 @@ import { PRE_EXPORT_VERIFICATION_BUDGET_MS } from '../config/timeouts.js';
 import { t } from '../i18n/index.js';
 import { generateReadmeEn } from './readme-template-en.js';
 import { generateReadmeJa } from './readme-template-ja.js';
-import { createExportNamer, proofBaseName, summarizeProcess, withLanguageExtension } from '@typedcode/shared';
+import {
+  createExportNamer,
+  proofBaseName,
+  summarizeProcess,
+  withLanguageExtension,
+  type HumanAttestationEventData,
+} from '@typedcode/shared';
 import { SelfReviewDialog } from '../ui/components/SelfReviewDialog.js';
 
 /** export 前 Turnstile 認証の取得結果 (記録は呼び出し側)。 */
-type PreExportAttestationOutcome =
-  | { ok: true; attestation: NonNullable<VerificationResult['attestation']> }
-  | { ok: false; reason: string };
+type PreExportAttestationOutcome = { ok: true; attestation: HumanAttestationEventData } | { ok: false; reason: string };
+
+/**
+ * Turnstile 成功時に proof へ記録する export 前 attestation を組み立てる (#415)。
+ *
+ * attestation は署名しない。`signature` はサーバの値にかかわらず常に `'unsigned'` にそろえる
+ * (移行期間に旧 Worker が返す HMAC 値も記録しない。検証する場所がどこにも無い)。Worker が
+ * `attestation` を返さない成功応答でも、Turnstile は通っているので成功として記録する。
+ */
+function toPreExportAttestation(result: VerificationResult): HumanAttestationEventData {
+  const attestation = result.attestation;
+  return {
+    success: true,
+    verified: attestation?.verified ?? true,
+    score: attestation?.score ?? 1,
+    action: attestation?.action ?? 'export_proof',
+    timestamp: attestation?.timestamp ?? new Date().toISOString(),
+    hostname: attestation?.hostname ?? window.location.hostname,
+    signature: 'unsigned',
+  };
+}
 
 export interface ExportCallbacks {
   onNotification?: (message: string) => void;
@@ -216,10 +240,10 @@ export class ProofExporter {
         parentContainer: parentContainer ?? undefined,
       });
 
-      if (!result.success || !result.attestation) {
+      if (!result.success) {
         return { ok: false, reason: result.error ?? 'verification_failed' };
       }
-      return { ok: true, attestation: result.attestation };
+      return { ok: true, attestation: toPreExportAttestation(result) };
     };
 
     if (!this.preExportBestEffort) {
@@ -260,15 +284,7 @@ export class ProofExporter {
     }
 
     // アクティブタブのTypingProofにエクスポート前attestationを記録
-    await activeTab.typingProof.recordPreExportAttestation({
-      success: true,
-      verified: result.attestation.verified,
-      score: result.attestation.score,
-      action: result.attestation.action,
-      timestamp: result.attestation.timestamp,
-      hostname: result.attestation.hostname,
-      signature: result.attestation.signature,
-    });
+    await activeTab.typingProof.recordPreExportAttestation(result.attestation);
     console.log('[Export] Pre-export attestation recorded');
 
     return true;
@@ -301,15 +317,8 @@ export class ProofExporter {
     // 全タブのTypingProofにエクスポート前attestationを記録
     const allTabs = tabManager.getAllTabs();
     for (const tab of allTabs) {
-      await tab.typingProof.recordPreExportAttestation({
-        success: true,
-        verified: result.attestation.verified,
-        score: result.attestation.score,
-        action: result.attestation.action,
-        timestamp: result.attestation.timestamp,
-        hostname: result.attestation.hostname,
-        signature: result.attestation.signature,
-      });
+      // タブごとに別のオブジェクトを渡す (記録した event の data を他のタブと共有しない)
+      await tab.typingProof.recordPreExportAttestation({ ...result.attestation });
     }
     console.log(`[Export] Pre-export attestation recorded for ${allTabs.length} tabs`);
 

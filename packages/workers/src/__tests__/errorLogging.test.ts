@@ -32,7 +32,6 @@ describe('unexpected-error logging', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const env = {
       TURNSTILE_SECRET_KEY: 's',
-      ATTESTATION_SECRET_KEY: 'a',
       ENVIRONMENT: 'production',
       ALLOWED_ORIGINS: 'https://typedcode.dev',
     } as unknown as TestEnv;

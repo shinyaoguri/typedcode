@@ -1,6 +1,6 @@
 /**
  * TypedCode API - Cloudflare Workers
- * Turnstile 検証エンドポイント with 署名付き証明書
+ * Turnstile 検証 (export 前の attestation)・セッション開始トークン・署名済みチェックポイント
  */
 
 import { handleSignCheckpoint, handlePublicKeys, getSigningKey, type CheckpointEnv } from './checkpoint.js';
@@ -10,7 +10,6 @@ import { MAX_JSON_BODY_BYTES, MAX_TURNSTILE_TOKEN_LENGTH, readJsonBodyLimited, t
 
 interface Env extends CheckpointEnv {
   TURNSTILE_SECRET_KEY: string;
-  ATTESTATION_SECRET_KEY: string; // 証明書署名用の秘密鍵
   ENVIRONMENT: string;
   /**
    * CORS 許可オリジン (カンマ区切り)。例: "https://app.example.com,https://verify.example.com"。
@@ -38,7 +37,11 @@ interface TurnstileResponse {
 }
 
 /**
- * 署名付き証明書（改竄防止）
+ * Turnstile の検証結果の記録 (署名しない。#415)。
+ *
+ * 以前はここに署名を付けていたが、検証する場所がどこにも無く、セッションにも内容にも束縛されて
+ * いなかったのでやめた。形は旧 editor との互換のために残す (旧 editor は `attestation` が無い
+ * 成功応答を失敗扱いにする)。人間ゲートの暗号的な証拠はセッション開始トークン (ADR-0017) が担う。
  */
 interface HumanAttestation {
   verified: boolean;
@@ -46,7 +49,7 @@ interface HumanAttestation {
   action: string;
   timestamp: string;
   hostname: string;
-  signature: string; // HMAC-SHA256署名
+  signature: 'unsigned';
 }
 
 interface VerifyResponse {
@@ -185,22 +188,6 @@ function checkpointResponder(
   };
 }
 
-/**
- * HMAC-SHA256署名を生成
- */
-async function createHmacSignature(data: string, secret: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(secret);
-  const messageData = encoder.encode(data);
-
-  const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-  return Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
 /** 本文読み取りの失敗を、クライアントに返す固定文言にする */
 function bodyErrorMessage(kind: Extract<ReadJsonResult, { ok: false }>['kind']): string {
   switch (kind) {
@@ -252,24 +239,16 @@ async function verifyTurnstile(token: string, secretKey: string): Promise<Turnst
 }
 
 /**
- * 署名付き証明書を生成
+ * Turnstile の検証結果を、署名しない attestation の形にする (#415)。
  */
-async function createAttestation(result: TurnstileResponse, attestationSecret: string): Promise<HumanAttestation> {
-  const attestationData = {
+function toAttestation(result: TurnstileResponse): HumanAttestation {
+  return {
     verified: result.success,
     score: 1.0, // Turnstile has no score, always 1.0 on success
     action: result.action ?? 'unknown',
     timestamp: result.challenge_ts,
     hostname: result.hostname,
-  };
-
-  // 署名対象データ（JSON文字列化して署名）
-  const dataToSign = JSON.stringify(attestationData);
-  const signature = await createHmacSignature(dataToSign, attestationSecret);
-
-  return {
-    ...attestationData,
-    signature,
+    signature: 'unsigned',
   };
 }
 
@@ -308,11 +287,8 @@ async function handleVerifyCaptcha(request: Request, env: Env): Promise<Response
       console.warn('[verify-captcha] Turnstile solved on disallowed hostname:', result.hostname);
     }
 
-    // 署名付き証明書を生成（検証成功時のみ）
-    let attestation: HumanAttestation | undefined;
-    if (isVerified && env.ATTESTATION_SECRET_KEY) {
-      attestation = await createAttestation(result, env.ATTESTATION_SECRET_KEY);
-    }
+    // 検証結果の記録 (検証成功時のみ。署名はしない = #415)
+    const attestation = isVerified ? toAttestation(result) : undefined;
 
     const response: VerifyResponse = {
       success: isVerified,
@@ -338,8 +314,8 @@ async function handleVerifyCaptcha(request: Request, env: Env): Promise<Response
  * Turnstile を検証し、成功したら serverNonce を焼いた ECDSA-P256 署名トークンを発行する。
  * クライアントは serverNonce を chain root (`SHA256(fp ‖ localNonce ‖ serverNonce)`) に焼き、
  * proof にトークンを同梱する (検証器が registry でオフライン検証する)。これにより
- * **Turnstile ゲート + root アンカー + 人間ゲート**を 1 リクエストで兼ね、HMAC attestation の
- * 作成経路を置換する。署名鍵は checkpoint と同一系統 (getSigningKey)。
+ * **Turnstile ゲート + root アンカー + 人間ゲート**を 1 リクエストで兼ね、作成時の
+ * attestation の経路を置換する。署名鍵は checkpoint と同一系統 (getSigningKey)。
  */
 async function handleSessionStart(request: Request, env: Env): Promise<Response> {
   const origin = request.headers.get('Origin');

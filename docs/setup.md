@@ -98,17 +98,11 @@ cp packages/workers/.dev.vars.example packages/workers/.dev.vars
 [packages/workers/.dev.vars](../packages/workers/.dev.vars) を編集:
 ```
 TURNSTILE_SECRET_KEY=<Step 4a の Secret Key、なくても可>
-ATTESTATION_SECRET_KEY=<次の Node ワンライナーの出力など、任意の文字列>
 CHECKPOINT_SIGNING_KEY_ID=<Step 6 で生成>
 CHECKPOINT_SIGNING_KEY_JWK=<Step 6 で生成>
 ```
 
-`ATTESTATION_SECRET_KEY` の生成 (どちらでも OK):
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# または openssl があれば
-openssl rand -hex 32
-```
+> 既存の環境へ: `ATTESTATION_SECRET_KEY` は [#415](https://github.com/shinyaoguri/typedcode/issues/415) で不要になりました (export 前アテステーションの署名をやめた)。`.dev.vars` や Worker に残っていても無害です。Worker からの消し方と順序は [CHANGELOG](../CHANGELOG.md) の該当項目を参照。
 
 **(c) workers (KV ID)**
 
@@ -341,13 +335,11 @@ cd packages/workers
 
 # staging Worker
 npx wrangler secret put TURNSTILE_SECRET_KEY --config wrangler.staging.toml
-npx wrangler secret put ATTESTATION_SECRET_KEY --config wrangler.staging.toml      # openssl rand -hex 32
 npx wrangler secret put CHECKPOINT_SIGNING_KEY_ID --config wrangler.staging.toml   # M4 で生成
 npx wrangler secret put CHECKPOINT_SIGNING_KEY_JWK --config wrangler.staging.toml  # M4 で生成
 
-# production Worker (同じ 4 件、値は別物にする)
+# production Worker (同じ 3 件、値は別物にする)
 npx wrangler secret put TURNSTILE_SECRET_KEY --config wrangler.production.toml
-npx wrangler secret put ATTESTATION_SECRET_KEY --config wrangler.production.toml
 npx wrangler secret put CHECKPOINT_SIGNING_KEY_ID --config wrangler.production.toml
 npx wrangler secret put CHECKPOINT_SIGNING_KEY_JWK --config wrangler.production.toml
 ```
@@ -391,7 +383,7 @@ npm run doctor -- --maintainer
 - 各 environment の secrets (`CLOUDFLARE_API_TOKEN`, `VITE_API_URL`, `VITE_TURNSTILE_SITE_KEY`)
 - `wrangler.staging.toml` / `wrangler.production.toml` の KV ID
 - staging / production Worker のデプロイ状態
-- 各 Worker の secrets (`TURNSTILE_SECRET_KEY`, `ATTESTATION_SECRET_KEY`, `CHECKPOINT_SIGNING_KEY_ID`, `CHECKPOINT_SIGNING_KEY_JWK`)
+- 各 Worker の secrets (`TURNSTILE_SECRET_KEY`, `CHECKPOINT_SIGNING_KEY_ID`, `CHECKPOINT_SIGNING_KEY_JWK`)
 - Cloudflare Pages プロジェクトの存在
 
 これですべて ok なら、CI 経由のデプロイがフローします。

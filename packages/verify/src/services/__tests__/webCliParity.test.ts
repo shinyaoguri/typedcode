@@ -197,6 +197,8 @@ async function buildAnchoredProof(options: {
   checkpointSessionId: string;
   /** 署名 cp を打つ eventIndex。省略時は全イベント (最終イベントまで署名が届く正常形)。 */
   signedEventIndexes?: number[];
+  /** 指定すると、打鍵の後にこの signature の export 前 attestation を記録してから export する (#415)。 */
+  preExportSignature?: string;
 }): Promise<ProofFile> {
   const components = createMockFingerprintComponents();
   const fingerprintHash = await computeHash(JSON.stringify(components, null, 0));
@@ -205,6 +207,17 @@ async function buildAnchoredProof(options: {
   const proof = new TypingProof();
   await proof.initializeAnchored(fingerprintHash, components, SERVER_NONCE, token);
   const content = await typeInto(proof, 'hello');
+  if (options.preExportSignature !== undefined) {
+    await proof.recordPreExportAttestation({
+      success: true,
+      verified: true,
+      score: 1,
+      action: 'export_proof',
+      timestamp: ISSUED_AT,
+      hostname: 'typedcode.dev',
+      signature: options.preExportSignature,
+    });
+  }
   const exported = await proof.exportProof(content);
 
   const checkpoints = await buildSignedCheckpoints({
@@ -503,6 +516,32 @@ describe('web ↔ CLI parity (#216)', () => {
       expect(cliText).toMatch(/^Root anchor: UNTRUSTED /m);
       expect(cliText).toMatch(/^Metadata: {4}PASS$/m);
     });
+  });
+
+  it('reaches the same conclusion for a legacy HMAC pre-export signature and an unsigned one (#415)', async () => {
+    // 旧 Worker が返した HMAC 値 (64 hex) を持つ旧 proof と、#415 以降の 'unsigned' の proof。
+    // 検証器は signature を読まないので、web / CLI とも、2 本の結論が同じでなければならない。
+    const build = (preExportSignature: string) =>
+      buildAnchoredProof({
+        key: testKey,
+        tokenSessionId: 'session-A',
+        checkpointSessionId: 'session-A',
+        preExportSignature,
+      });
+    const legacy = await build('3f'.repeat(32));
+    const unsigned = await build('unsigned');
+    expect(legacy.proof.events.some((e) => e.type === 'preExportAttestation')).toBe(true);
+
+    const legacyWeb = await webConclusion(legacy, registry);
+    const legacyCli = await cliConclusion(legacy, registry);
+    const unsignedWeb = await webConclusion(unsigned, registry);
+    const unsignedCli = await cliConclusion(unsigned, registry);
+
+    expectSameConclusion(legacyWeb, legacyCli);
+    expectSameConclusion(unsignedWeb, unsignedCli);
+    expectSameConclusion(legacyCli, unsignedCli);
+    expect(unsignedCli.valid).toBe(true);
+    expect(unsignedCli.assurance.temporal).toBe('anchored');
   });
 
   it('agrees that a proof whose last events are not signed is only partially anchored (#295)', async () => {

@@ -53,7 +53,7 @@ File Selection (drag&drop / FSA API)
   → ResultPanel + charts
 ```
 
-ネットワークには出ない (Workers の `/api` を呼ばない)。人間証明 (HMAC attestation) の署名は検証しない (検証 API は撤去済み。ADR-0017 / #340)。
+ネットワークには出ない (Workers の `/api` を呼ばない)。人間証明 (attestation) の `signature` は検証しない (検証 API は撤去済み。ADR-0017 / #340。export 前 attestation は #415 で署名自体をやめ、新しい proof は `'unsigned'`、旧 proof の HMAC 値は legacy として読むだけ)。
 
 **Worker 内で検証を再合成しないこと** (#211)。過去にここでレイヤを組み直していたため、
 `sessionStartToken` ↔ 署名 cp の sessionId 突合 (spec §6.3) が web だけ欠落し、`chainValid` に

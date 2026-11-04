@@ -273,7 +273,9 @@ export async function getTurnstileToken(action: string, options?: GetTurnstileTo
 }
 
 /**
- * Signed human attestation certificate (issued by server, tamper-proof)
+ * Turnstile の検証結果の記録 (`/api/verify-captcha` が成功時に返す。署名しない = #415)。
+ * 新しい Worker は `signature: 'unsigned'` を返す。旧 Worker は HMAC 値を返していたが、検証する
+ * 場所が無いので editor は記録時に `'unsigned'` にそろえる (`ProofExporter` / `TabVerificationUI`)。
  */
 export interface HumanAttestation {
   verified: boolean;
