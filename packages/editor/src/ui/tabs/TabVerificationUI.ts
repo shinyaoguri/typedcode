@@ -193,9 +193,11 @@ export async function performVerificationWithUI(
   };
 
   // 認証データを生成。
-  // ADR-0017: session/start 経由 (result.sessionToken あり) では HMAC attestation が無い。
+  // ADR-0017: session/start 経由 (result.sessionToken あり) では /api/verify-captcha の attestation が無い。
   // #0 humanAttestation の暗号的束縛は proof 同梱の ECDSA sessionStartToken が担うため、ここでは
   // タイムライン上の可読な監査印として token の情報から #0 を構成する (signature は token 由来の印)。
+  // token の無い経路 (/api/verify-captcha) の attestation は署名しない (#415) ので、signature は
+  // サーバの値にかかわらず常に 'unsigned' にそろえる。
   const token = result.sessionToken;
   const attestationData: HumanAttestationEventData = token
     ? {
@@ -214,7 +216,7 @@ export async function performVerificationWithUI(
         action: result.attestation?.action ?? action,
         timestamp: result.attestation?.timestamp ?? new Date().toISOString(),
         hostname: result.attestation?.hostname ?? window.location.hostname,
-        signature: result.attestation?.signature ?? 'unsigned',
+        signature: 'unsigned',
         success: result.success,
         failureReason: result.failureReason,
       };

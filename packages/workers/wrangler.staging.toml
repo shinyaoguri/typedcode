@@ -10,9 +10,9 @@
 # アクセス不能) ため、直接 commit している。新しい staging KV を切り直す
 # 場合はこのファイルを編集して PR を出す。
 #
-# Worker のシークレット (TURNSTILE_SECRET_KEY, ATTESTATION_SECRET_KEY,
-# CHECKPOINT_SIGNING_KEY_*) は `wrangler secret put --config wrangler.staging.toml`
-# で staging Worker に直接投入する。
+# Worker のシークレット (TURNSTILE_SECRET_KEY, CHECKPOINT_SIGNING_KEY_*) は
+# `wrangler secret put --config wrangler.staging.toml` で staging Worker に直接投入する。
+# export 前アテステーションの署名用 secret は #415 で不要になった (残っていても無害)。
 
 name = "typedcode-api-staging"
 main = "src/index.ts"
@@ -35,7 +35,6 @@ ALLOWED_ORIGINS = "https://*.typedcode.pages.dev"
 [secrets]
 required = [
   "TURNSTILE_SECRET_KEY",
-  "ATTESTATION_SECRET_KEY",
   "CHECKPOINT_SIGNING_KEY_ID",
   "CHECKPOINT_SIGNING_KEY_JWK",
 ]

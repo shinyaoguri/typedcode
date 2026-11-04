@@ -87,6 +87,11 @@ ECDSA トークン発行 = root アンカー = 人間ゲートを兼ねる。`#0
 (attestation の非束縛・未検証) を直接解消する。dead な `/api/verify-attestation` は deprecate (**撤去済み**: 検証 API・shared の `AttestationService`・verify の人間証明カードは [#340](https://github.com/shinyaoguri/typedcode/issues/340) で削除した。発行側は残る)。pre-export
 attestation は別用途として当面据え置く (作成時 root とは独立)。
 
+**改訂 (2026-11-04, [#415](https://github.com/shinyaoguri/typedcode/issues/415))**: 据え置いた pre-export attestation の
+HMAC 署名と `ATTESTATION_SECRET_KEY` をやめた。署名を検証する場所は #340 以降どこにも無く、セッションにも内容にも束縛されて
+いなかったため。export 前の Turnstile 検証そのものは続ける (`/api/verify-captcha` は結果を同じ形で返す)。新しい proof の
+`preExportAttestation.signature` は `'unsigned'`。旧 proof に残る HMAC 値は legacy として読むが検証しない (検証結果は変わらない)。
+
 ## Compatibility & Availability (詰め)
 
 | proof | version | sessionStartToken | 検証器の扱い |
@@ -114,7 +119,7 @@ attestation は別用途として当面据え置く (作成時 root とは独立
 
 ### Follow-ups / 残課題
 - exam root への serverNonce 連結 (開始時刻アンカー) は別 ADR / 後続 (EXAM_ROOT_BINDING v3 として検討)。
-- 旧 `/api/verify-attestation` (HMAC, dead) は deprecate 注記 → **#340 で撤去済み** (検証 API・`AttestationService`・verify の人間証明カード)。`/api/verify-captcha` の attestation 発行と `ATTESTATION_SECRET_KEY` は pre-export 用に残し、その扱いは #415 と §Open questions。
+- 旧 `/api/verify-attestation` (HMAC, dead) は deprecate 注記 → **#340 で撤去済み** (検証 API・`AttestationService`・verify の人間証明カード)。`/api/verify-captcha` の attestation 発行と `ATTESTATION_SECRET_KEY` は pre-export 用に残し、その扱いは #415 と §Open questions。→ **#415 (2026-11-04) で署名と secret をやめた** (Turnstile は続け、`signature` は `'unsigned'`、旧 proof の HMAC 値は読むが検証しない legacy。上記 Decision の改訂参照)。
 - ADR-C (isTrusted 捕捉) は本 ADR と独立に加算。
 
 ## 確定した設計判断 (2026-06-12 レビュー)

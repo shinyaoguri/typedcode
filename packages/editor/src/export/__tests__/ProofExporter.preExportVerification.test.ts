@@ -8,6 +8,9 @@
  * #224: 単一タブ用の `performPreExportVerification` にだけこの分岐が無く、class/assignment の
  * 受講者が Turnstile 不達で単一タブ ZIP を一切出せなくなっていた。全タブ版と同じ意味論
  * (失敗 attestation を記録してから続行) に揃えたことをここで固定する。
+ *
+ * #415: export 前 attestation は署名しない。サーバ (旧 Worker) が signature を返しても記録は常に
+ * `'unsigned'` で、成功の判定は `success` だけで行う (attestation の無い成功応答でも export を続ける)。
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -186,12 +189,42 @@ describe('ProofExporter.performPreExportVerification (single tab, #224)', () => 
     expect(progressDialog.hideCount).toBe(1);
   });
 
-  it('records a successful attestation on the active tab when Turnstile verification succeeds', async () => {
+  it('records an unsigned successful attestation on the active tab even when the server returns a signature', async () => {
     const tab = makeTab('tab-1');
     const { verifier } = createExporter([tab], true);
 
     await expect(verifier.performPreExportVerification(tab.tab)).resolves.toBe(true);
-    expect(tab.attestations[0]).toMatchObject({ success: true, verified: true, signature: 'sig' });
+    expect(tab.attestations).toEqual([
+      {
+        success: true,
+        verified: true,
+        score: 1,
+        action: 'export_proof',
+        timestamp: '2026-08-05T00:00:00.000Z',
+        hostname: 'unit-test.local',
+        signature: 'unsigned',
+      },
+    ]);
+  });
+
+  it('continues a casual export and records an unsigned success when the server omits the attestation', async () => {
+    const tab = makeTab('tab-1');
+    const { verifier, notifications } = createExporter([tab], false);
+    turnstile.verify = async () => ({ success: true });
+
+    await expect(verifier.performPreExportVerification(tab.tab)).resolves.toBe(true);
+    expect(tab.attestations).toEqual([
+      {
+        success: true,
+        verified: true,
+        score: 1,
+        action: 'export_proof',
+        timestamp: expect.any(String),
+        hostname: 'unit-test.local',
+        signature: 'unsigned',
+      },
+    ]);
+    expect(notifications).toHaveLength(0);
   });
 
   it('skips verification without recording an attestation when Turnstile is not configured', async () => {
@@ -205,6 +238,19 @@ describe('ProofExporter.performPreExportVerification (single tab, #224)', () => 
 });
 
 describe('ProofExporter.performPreExportVerificationForAllTabs', () => {
+  it('records an unsigned successful attestation on every tab even when the server returns a signature', async () => {
+    const first = makeTab('tab-1');
+    const second = makeTab('tab-2');
+    const { verifier } = createExporter([first, second], false);
+
+    await expect(verifier.performPreExportVerificationForAllTabs()).resolves.toBe(true);
+    for (const tab of [first, second]) {
+      expect(tab.attestations).toEqual([
+        expect.objectContaining({ success: true, verified: true, signature: 'unsigned' }),
+      ]);
+    }
+  });
+
   it('records a failure attestation on every tab when Turnstile fails in best-effort mode', async () => {
     const first = makeTab('tab-1');
     const second = makeTab('tab-2');

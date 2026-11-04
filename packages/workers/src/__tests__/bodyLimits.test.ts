@@ -31,7 +31,6 @@ afterEach(() => {
 
 const env = {
   TURNSTILE_SECRET_KEY: 'secret',
-  ATTESTATION_SECRET_KEY: 'attest',
   ENVIRONMENT: 'production',
   ALLOWED_ORIGINS: 'https://typedcode.dev',
 } as unknown as TestEnv;

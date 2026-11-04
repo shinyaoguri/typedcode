@@ -263,7 +263,7 @@ function checkLocalConfig() {
     report(
       'fail',
       'packages/workers/.dev.vars がない',
-      `cp packages/workers/.dev.vars.example packages/workers/.dev.vars\n以下の 4 つを設定 (詳細は doctor の続くチェックで個別に案内)`
+      `cp packages/workers/.dev.vars.example packages/workers/.dev.vars\n以下の 3 つを設定 (詳細は doctor の続くチェックで個別に案内)`
     );
   } else {
     const vars = envOf(devVars);
@@ -271,10 +271,6 @@ function checkLocalConfig() {
       [
         'TURNSTILE_SECRET_KEY',
         `Turnstile widget の "Secret Key" (Site Key の対)\n人間認証を使わないなら空欄可 (Worker 側でフォールバック)`,
-      ],
-      [
-        'ATTESTATION_SECRET_KEY',
-        `任意のランダム文字列 32 byte 以上。生成例:\n  node -e "console.log(crypto.randomBytes(32).toString('hex'))"\n  (openssl があれば: openssl rand -hex 32)`,
       ],
       ['CHECKPOINT_SIGNING_KEY_ID', `npm run gen-checkpoint-key -w @typedcode/workers の出力 (tcp-YYYYMM-xxxxxx)`],
       ['CHECKPOINT_SIGNING_KEY_JWK', `npm run gen-checkpoint-key -w @typedcode/workers の出力 (1 行 JSON)`],
@@ -456,12 +452,7 @@ function checkCloudflareResources() {
 // (docs/setup.md M2: preview/staging に本番デプロイ権限の token を露出させないため)。
 const REQUIRED_REPO_SECRETS = ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_PROJECT_NAME'];
 const REQUIRED_ENV_SECRETS = ['CLOUDFLARE_API_TOKEN', 'VITE_API_URL', 'VITE_TURNSTILE_SITE_KEY'];
-const REQUIRED_WORKER_SECRETS = [
-  'TURNSTILE_SECRET_KEY',
-  'ATTESTATION_SECRET_KEY',
-  'CHECKPOINT_SIGNING_KEY_ID',
-  'CHECKPOINT_SIGNING_KEY_JWK',
-];
+const REQUIRED_WORKER_SECRETS = ['TURNSTILE_SECRET_KEY', 'CHECKPOINT_SIGNING_KEY_ID', 'CHECKPOINT_SIGNING_KEY_JWK'];
 
 let ghRepoSlug = ''; // owner/repo
 

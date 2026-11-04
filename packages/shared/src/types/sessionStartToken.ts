@@ -3,7 +3,7 @@
  *
  * casual / class セッション開始時に Workers が 1 つ発行する ECDSA-P256 署名済みトークン。
  * `serverNonce` を chain root に焼くことで root をサーバアンカーし、完全オフライン捏造を封じる。
- * 同時に Turnstile 結果を束縛し、人間ゲートの暗号的証拠 (HMAC attestation の置換) になる。
+ * 同時に Turnstile 結果を束縛し、人間ゲートの暗号的証拠になる (旧い HMAC attestation の置換。その署名は #415 でやめた)。
  *
  * これらの型は Cloudflare Workers / Node tooling からも import されるため、
  * 他の types/* ファイルに依存しない独立した型ファイルにしている (signedCheckpoint.ts と同方針)。

@@ -6,9 +6,6 @@
 # Get from: https://dash.cloudflare.com/?to=/:account/turnstile
 TURNSTILE_SECRET_KEY=your_turnstile_secret_key_here
 
-# Attestation signing secret (any random string, must match production)
-ATTESTATION_SECRET_KEY=your_attestation_secret_key_here
-
 # Signed checkpoint signing key (ECDSA-P256, JWK)
 # Setup:
 #   1. Run `npm run gen-checkpoint-key -w @typedcode/workers`

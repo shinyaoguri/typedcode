@@ -223,7 +223,7 @@ graded/
 
 **形式バージョンのゲート** (#223): proof の `version` が `MIN_SUPPORTED_VERSION` 未満・`MAJOR.MINOR.PATCH` 以外・欠落のとき、`Error:` に version の理由を出して **exit 1** にします。この検証器が知る major を超える `version` (例 `2.0.0`) は reject せず、合否の直下に `! proof format version … is newer than this verifier supports` の warning を出します (exit code は他の検査で決まります。意味が変わったフィールドを旧規則で読んでいる恐れがあるので、最新の verify-cli で確かめ直してください)。`--exam-package` の `.tcexam` が未知の `formatVersion` のときは、形式不正とは別の文言 (新しい形式なら最新の verify-cli を使う旨) を stderr に出して exit 1 です。
 
-> 注: HMAC アテステーションの署名検証は **CLI でも verify(web) でも行いません** (現在どのクライアントからも実行されていない dead な経路です)。人間ゲートの暗号的な証拠は **セッション開始トークン** (ADR-0017) が担い、公開鍵レジストリだけで**オフライン検証**されます (`--require-root-anchor` 参照)。analysis レポート (ADR-0009) は advisory で判定には使いません。
+> 注: export 前アテステーション (`preExportAttestation`) の `signature` は **CLI でも verify(web) でも検証しません**。新しい proof では `'unsigned'` で、旧い proof に残る HMAC 値は legacy として読むだけです (署名は [#415](https://github.com/shinyaoguri/typedcode/issues/415) でやめました。どちらの proof も検証結果は同じです)。人間ゲートの暗号的な証拠は **セッション開始トークン** (ADR-0017) が担い、公開鍵レジストリだけで**オフライン検証**されます (`--require-root-anchor` 参照)。analysis レポート (ADR-0009) は advisory で判定には使いません。
 
 検証はすべてオフラインで完結します (ネットワークアクセスなし)。
 
