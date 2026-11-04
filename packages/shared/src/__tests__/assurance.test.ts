@@ -47,6 +47,14 @@ describe('deriveAssurance — integrity', () => {
     expect(deriveAssurance(input).integrity).toBe('failed');
   });
 
+  it('keeps integrity proven for an exam proof whose provided package passes binding verification', () => {
+    const input: AssuranceInput = {
+      ...healthyInput(),
+      exam: { present: true, packageProvided: true, bindingValid: true },
+    };
+    expect(deriveAssurance(input).integrity).toBe('proven');
+  });
+
   it('keeps integrity proven for an exam proof when no package was provided', () => {
     const input: AssuranceInput = {
       ...healthyInput(),
