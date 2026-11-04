@@ -1,0 +1,435 @@
+{
+  "version": "1.2.0",
+  "typingProofHash": "990991c556d33ba463863901a68b2e08fce22f0235e4e7906f5ec1ec005fd090",
+  "typingProofData": {
+    "finalContentHash": "50e528749e1ac43adf985978cd681bd9e16f0ed0a7db7329d16357e1c5769ad3",
+    "initialHashNonce": "f4ad01b0343243036f67dce4b8b0432f5ebae3ab19e15931c515849a14fe5303",
+    "initialEventChainHash": "8bce4c96cecb7ec3f587179a41200ac1434c58d24d5de90dffd62bd0c658597a",
+    "finalEventChainHash": "7a698cf0110a77b6b2ac37ca9ad8b61675015514f79d34c973a9561010e198c4",
+    "deviceId": "b6ad69e301b8c038f591f7e940e30f7970fb9b985832076bc377ac2699b77a6b",
+    "metadata": {
+      "totalEvents": 11,
+      "pasteEvents": 0,
+      "internalPasteEvents": 0,
+      "dropEvents": 0,
+      "insertEvents": 7,
+      "deleteEvents": 0,
+      "bulkInsertEvents": 1,
+      "totalTypingTime": 1217.5535,
+      "averageTypingSpeed": 345
+    }
+  },
+  "proof": {
+    "totalEvents": 11,
+    "finalHash": "7a698cf0110a77b6b2ac37ca9ad8b61675015514f79d34c973a9561010e198c4",
+    "startTime": 4413.288375,
+    "endTime": 5630.801,
+    "signature": "992f0c188ac87d3167cc55498c9269f574f1cd60388685301487520a45dd2a26",
+    "events": [
+      {
+        "sequence": 0,
+        "timestamp": 0.04566700000032142,
+        "type": "humanAttestation",
+        "inputType": null,
+        "data": {
+          "verified": false,
+          "score": 0,
+          "action": "exam_start",
+          "timestamp": "2026-11-04T16:01:07.077Z",
+          "hostname": "typedcode.dev",
+          "signature": "unsigned",
+          "success": false
+        },
+        "rangeOffset": null,
+        "rangeLength": null,
+        "range": null,
+        "previousHash": "8bce4c96cecb7ec3f587179a41200ac1434c58d24d5de90dffd62bd0c658597a",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "f369f4596da908119c2b73014714e356",
+          "intermediateHash": "d60aeab114b98b8939c3f57f588ffcc936573faa43233cc7b6c6b8fe29db56ff",
+          "computeTimeMs": 85.01516700000047
+        },
+        "hash": "c773764da8446ac6583732011a139bb2ff18507075b0c1bc6fe7115ab866a46e",
+        "description": "Human verified (score: 0.00, action: exam_start)"
+      },
+      {
+        "sequence": 1,
+        "timestamp": 85.18520900000021,
+        "type": "examOpened",
+        "inputType": null,
+        "data": {
+          "examId": "frozen-exam-v2",
+          "problemId": "p1",
+          "variant": null,
+          "packageHash": "0042e70cba0be07e24e7932e27d628dc86a644d94837b648ba3035b48acc0035",
+          "problemContentHash": "8bce55810be4ce5ac9885fb568edfaccda583fbe070b2b50ceb4a7ebd38e3d4a",
+          "openedAt": "2026-11-04T16:01:07.162Z"
+        },
+        "rangeOffset": null,
+        "rangeLength": null,
+        "range": null,
+        "previousHash": "c773764da8446ac6583732011a139bb2ff18507075b0c1bc6fe7115ab866a46e",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "e45442d513f483979b2ee2e19661ab81",
+          "intermediateHash": "752ad40444da6bc8731e00053b479021730294d4cc6e42158db1f3e45c0b4302",
+          "computeTimeMs": 115.47012500000073
+        },
+        "hash": "ba04d8e97e863d56feedea69539c8338c426f8348732f4f5f413142daa4df4e1",
+        "description": "Exam opened: frozen-exam-v2/p1"
+      },
+      {
+        "sequence": 2,
+        "timestamp": 200.86824999999953,
+        "type": "templateInjection",
+        "inputType": null,
+        "data": {
+          "templateName": "frozen-exam-v2/p1",
+          "templateHash": "8bce55810be4ce5ac9885fb568edfaccda583fbe070b2b50ceb4a7ebd38e3d4a",
+          "filename": "p1.c",
+          "content": "/* TODO */\n",
+          "contentHash": "09d5a518c4e92e940c352f68076f936bae0bba29129a21da3215252a2d118313",
+          "contentLength": 11,
+          "totalFilesInTemplate": 1,
+          "injectionSource": "file_import"
+        },
+        "rangeOffset": null,
+        "rangeLength": null,
+        "range": null,
+        "previousHash": "ba04d8e97e863d56feedea69539c8338c426f8348732f4f5f413142daa4df4e1",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "59cfa3efed7112e0df2d3aade568b0bf",
+          "intermediateHash": "cc5bf801158c6b0ce26a3e976099a5af53dd1c97a3f6193e5ca6c7dd8e14cf1f",
+          "computeTimeMs": 122.15083400000003
+        },
+        "hash": "2e245374f12da71e152f34e6ad39e5606bfbd4fa448b63873a72b80a4b023f61",
+        "description": "Template \"frozen-exam-v2/p1\" - p1.c (11 chars)"
+      },
+      {
+        "sequence": 3,
+        "timestamp": 323.16291699999965,
+        "type": "contentChange",
+        "inputType": "replaceContent",
+        "data": "s",
+        "rangeOffset": 3,
+        "rangeLength": 4,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 4,
+          "endLineNumber": 1,
+          "endColumn": 8
+        },
+        "previousHash": "2e245374f12da71e152f34e6ad39e5606bfbd4fa448b63873a72b80a4b023f61",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "c2481cec19ed25f0e97b3b45ae5d08b5",
+          "intermediateHash": "ab79aab617b8473b102131a1ae12bb12a360b43530f05a61f43edbd0aa740b11",
+          "computeTimeMs": 98.21337500000027
+        },
+        "hash": "7086b3c72bb05fd3107d77715992cff1b1eebeec20d11fa41661752eb1f9345c",
+        "description": "replaceContent",
+        "isMultiLine": false,
+        "deletedLength": 4,
+        "insertedText": "s",
+        "insertLength": 1
+      },
+      {
+        "sequence": 4,
+        "timestamp": 421.509959,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "u",
+        "rangeOffset": 4,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 5,
+          "endLineNumber": 1,
+          "endColumn": 5
+        },
+        "previousHash": "7086b3c72bb05fd3107d77715992cff1b1eebeec20d11fa41661752eb1f9345c",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "3aba2a69eb64d0608e6bb7c29a53bde1",
+          "intermediateHash": "f61c732edac8f2f382bff06d9ba58c7e3722a7ff442a34942cc929e57fe5760e",
+          "computeTimeMs": 93.20716700000048
+        },
+        "hash": "4125bae3093c8efd34a59f10ffe59a45ea40c4c892ffa702950ba78c124b2ee1",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": "u",
+        "insertLength": 1
+      },
+      {
+        "sequence": 5,
+        "timestamp": 514.8489170000003,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "m",
+        "rangeOffset": 5,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 6,
+          "endLineNumber": 1,
+          "endColumn": 6
+        },
+        "previousHash": "4125bae3093c8efd34a59f10ffe59a45ea40c4c892ffa702950ba78c124b2ee1",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "bf0ecc8c40d8fd7f4de50813c1c908c9",
+          "intermediateHash": "e36a228a1f20bf0d7c06c6e65689392c4aef6d759f7b04d35a78874b079429c9",
+          "computeTimeMs": 91.6722920000002
+        },
+        "hash": "4f2972962ecea18f38dcceb98a217210a2871f002f2405df477f35bf535c5f62",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": "m",
+        "insertLength": 1
+      },
+      {
+        "sequence": 6,
+        "timestamp": 606.6441669999995,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "s",
+        "rangeOffset": 10,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 2,
+          "startColumn": 1,
+          "endLineNumber": 2,
+          "endColumn": 1
+        },
+        "previousHash": "4f2972962ecea18f38dcceb98a217210a2871f002f2405df477f35bf535c5f62",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "dbb0fd4734b87d56a61b9258dcf8455f",
+          "intermediateHash": "a5dfcd7b3f593ec314b1ac05673c03da0c5b970e19792dcf829cbde66a3837d7",
+          "computeTimeMs": 176.890625
+        },
+        "hash": "3094bc099d2d293b8e70876326f7dcf3efdb8761770e2f52c0a6e97e0d67b6cc",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": "s",
+        "insertLength": 1
+      },
+      {
+        "sequence": 7,
+        "timestamp": 783.6632499999996,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "=",
+        "rangeOffset": 11,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 2,
+          "startColumn": 2,
+          "endLineNumber": 2,
+          "endColumn": 2
+        },
+        "previousHash": "3094bc099d2d293b8e70876326f7dcf3efdb8761770e2f52c0a6e97e0d67b6cc",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "a9748f91afa2ce88672891cc49713602",
+          "intermediateHash": "96cdff4c2bbe33a89176e467bce064591fdf820e872842f382e9b5378145c7a7",
+          "computeTimeMs": 98.53399999999965
+        },
+        "hash": "33ddf713809a85be672928d3904cf3c505dde9649c01ea4467c7092522e4c4c5",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": "=",
+        "insertLength": 1
+      },
+      {
+        "sequence": 8,
+        "timestamp": 882.3392089999998,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "3",
+        "rangeOffset": 12,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 2,
+          "startColumn": 3,
+          "endLineNumber": 2,
+          "endColumn": 3
+        },
+        "previousHash": "33ddf713809a85be672928d3904cf3c505dde9649c01ea4467c7092522e4c4c5",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "d1058289e51ddc19327f9c01d6f5ebc5",
+          "intermediateHash": "a7d61e74d1a243c8108bce6bd48b7e4273f5d4e059df86ec4473d6064a2a3ef5",
+          "computeTimeMs": 100.31983300000047
+        },
+        "hash": "c32e79af0a7523e5e5019e0167963ae1adaebef7418f3a470f68a166a1971416",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": "3",
+        "insertLength": 1
+      },
+      {
+        "sequence": 9,
+        "timestamp": 982.7942499999999,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": ";",
+        "rangeOffset": 13,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 2,
+          "startColumn": 4,
+          "endLineNumber": 2,
+          "endColumn": 4
+        },
+        "previousHash": "c32e79af0a7523e5e5019e0167963ae1adaebef7418f3a470f68a166a1971416",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "8d81051a06e4804e57d98642529b2f60",
+          "intermediateHash": "5497c87db12c51fdbdf563ccea09fdf17e0f88558b7aa187828de1223ff69b49",
+          "computeTimeMs": 110.88699999999972
+        },
+        "hash": "7b17e5408e21bcdfbdaef628519e8ef900b2d339a5f9b07f85fb0cda7908155f",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": ";",
+        "insertLength": 1
+      },
+      {
+        "sequence": 10,
+        "timestamp": 1093.8153750000001,
+        "type": "preExportAttestation",
+        "inputType": null,
+        "data": {
+          "verified": false,
+          "score": 0,
+          "action": "export_proof",
+          "timestamp": "2026-11-04T16:01:08.171Z",
+          "hostname": "typedcode.dev",
+          "signature": "",
+          "success": false
+        },
+        "rangeOffset": null,
+        "rangeLength": null,
+        "range": null,
+        "previousHash": "7b17e5408e21bcdfbdaef628519e8ef900b2d339a5f9b07f85fb0cda7908155f",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "dd829922fd5bf369b50def7474516b29",
+          "intermediateHash": "5fd088ea2585045247152085f1c3e575e8278f57541065284da8957403711d29",
+          "computeTimeMs": 123.57808400000067
+        },
+        "hash": "7a698cf0110a77b6b2ac37ca9ad8b61675015514f79d34c973a9561010e198c4",
+        "description": "Pre-export verification (score: 0.00, action: export_proof)"
+      }
+    ]
+  },
+  "fingerprint": {
+    "hash": "b6ad69e301b8c038f591f7e940e30f7970fb9b985832076bc377ac2699b77a6b",
+    "components": {
+      "userAgent": "TypedCode frozen proof fixture",
+      "language": "ja",
+      "languages": ["ja", "en"],
+      "platform": "FixtureOS",
+      "hardwareConcurrency": 8,
+      "deviceMemory": 8,
+      "screen": {
+        "width": 1440,
+        "height": 900,
+        "availWidth": 1440,
+        "availHeight": 860,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "devicePixelRatio": 2
+      },
+      "timezone": "Asia/Tokyo",
+      "timezoneOffset": -540,
+      "canvas": "frozen-fixture",
+      "webgl": {
+        "vendor": "frozen-fixture",
+        "renderer": "frozen-fixture"
+      },
+      "fonts": ["Arial"],
+      "cookieEnabled": true,
+      "doNotTrack": "unspecified",
+      "maxTouchPoints": 0
+    }
+  },
+  "metadata": {
+    "userAgent": "Node.js/24",
+    "timestamp": "2026-11-04T16:01:08.294Z",
+    "isPureTyping": true
+  },
+  "checkpoints": [
+    {
+      "eventIndex": 5,
+      "hash": "4f2972962ecea18f38dcceb98a217210a2871f002f2405df477f35bf535c5f62",
+      "timestamp": 514.8489170000003,
+      "contentHash": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+      "signature": {
+        "payload": {
+          "version": 1,
+          "sessionId": "frozen-exam-v2-session",
+          "tabId": "frozen-exam-v2-tab-p1",
+          "checkpointIndex": 0,
+          "eventIndex": 5,
+          "initialEventChainHash": "8bce4c96cecb7ec3f587179a41200ac1434c58d24d5de90dffd62bd0c658597a",
+          "chainHash": "4f2972962ecea18f38dcceb98a217210a2871f002f2405df477f35bf535c5f62",
+          "contentHash": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "previousSignedCheckpointHash": null,
+          "totalEventsSincePrevious": 6,
+          "poswIterations": 10000,
+          "clientTimestamp": "2026-11-04T16:01:07.622Z",
+          "serverTimestamp": "2026-11-04T16:01:07.742Z",
+          "firstSeenAt": "2026-11-04T16:01:07.742Z"
+        },
+        "signature": "ba75f655236873f5e2fc178f38c791f7b4d5f7d9271436a3a0f2ec936e832a0721da62f18658af8958a70a9fcefd97beebf461eb4197e136796c2277e09104d5",
+        "keyId": "frozen-fixture-checkpoint-0001",
+        "algorithm": "ECDSA-P256"
+      }
+    },
+    {
+      "eventIndex": 10,
+      "hash": "7a698cf0110a77b6b2ac37ca9ad8b61675015514f79d34c973a9561010e198c4",
+      "timestamp": 1093.8153750000001,
+      "contentHash": "1ff64a68f9b0f950a9a8fdd05212ab618d547cc6b2998c0c15785d12dbdda363",
+      "signature": {
+        "payload": {
+          "version": 1,
+          "sessionId": "frozen-exam-v2-session",
+          "tabId": "frozen-exam-v2-tab-p1",
+          "checkpointIndex": 1,
+          "eventIndex": 10,
+          "initialEventChainHash": "8bce4c96cecb7ec3f587179a41200ac1434c58d24d5de90dffd62bd0c658597a",
+          "chainHash": "7a698cf0110a77b6b2ac37ca9ad8b61675015514f79d34c973a9561010e198c4",
+          "contentHash": "1ff64a68f9b0f950a9a8fdd05212ab618d547cc6b2998c0c15785d12dbdda363",
+          "previousSignedCheckpointHash": "20bbc973ce0012c50e8b5cb9c9c446f58aa3077b7cccfbd8d5c77432c09a795d",
+          "totalEventsSincePrevious": 5,
+          "poswIterations": 10000,
+          "clientTimestamp": "2026-11-04T16:01:08.201Z",
+          "serverTimestamp": "2026-11-04T16:01:08.321Z",
+          "firstSeenAt": "2026-11-04T16:01:07.742Z"
+        },
+        "signature": "4fec14a5b5bb00dcd8e07c8398dc0911997c958952dfa84e98a8a3fb9c76b6e697c5b082a8e8ced0c1d2886f828c8597c42f6d80ab1c71d5626d62cbae226a2a",
+        "keyId": "frozen-fixture-checkpoint-0001",
+        "algorithm": "ECDSA-P256"
+      }
+    }
+  ],
+  "exam": {
+    "examProofVersion": 1,
+    "examId": "frozen-exam-v2",
+    "problemId": "p1",
+    "variant": null,
+    "packageHash": "0042e70cba0be07e24e7932e27d628dc86a644d94837b648ba3035b48acc0035",
+    "problemContentHash": "8bce55810be4ce5ac9885fb568edfaccda583fbe070b2b50ceb4a7ebd38e3d4a",
+    "startToken": "H4D8W2NP",
+    "rootBinding": "v2"
+  },
+  "mode": "exam",
+  "filename": "p1.c",
+  "content": "/* sum */\ns=3;",
+  "language": "c"
+}

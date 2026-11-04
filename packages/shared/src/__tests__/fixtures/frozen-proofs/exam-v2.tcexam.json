@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "examId": "frozen-exam-v2",
+  "problemId": "bundle",
+  "variant": null,
+  "kdf": {
+    "algorithm": "argon2id",
+    "salt": "b8a8be89c254a821f852f506155391f4",
+    "params": {
+      "memKiB": 256,
+      "iterations": 1,
+      "parallelism": 1
+    }
+  },
+  "cipher": {
+    "algorithm": "AES-256-GCM",
+    "iv": "80dc49c0e082610ba3dc0b71",
+    "ciphertext": "mHvLDoL6qY7lxRG9f2LeVPjDfmw8BTvOJCBEdLBuCNofCl0s15Zd6xg5qpeU07edLpjmyqaOn8fp0lD07/dFtCvI9nir3O0IwwpUoR7Y7Bz65VwBpQgJ3mo9yyJphcMDCNKdAmxK7mJbmqjgK+LmmjBwmSOQaw68j22vG/dE0HV385cNxyEOBJXcmY3P3cDFUXyaAkL8GQZfK9sew5x2K7ES7g7jCEe454KfMNbsl2+JyDzyofKqBCsnXq+WFw89oa9rZlS3cCccjlG4xCaa/gUrLgxUTJeQ7rtt0ZnMf/WRkcUnFqWdvfFXkyOCUrSs39GZ9NBpBeARyd2sGfJ0AYHG4XhR5VUxg6LTDFLE5K6nhtl+dmpK2x410leN+w=="
+  },
+  "releaseTime": "2026-11-04T15:01:07.075Z",
+  "deadline": "2999-12-31T23:59:59.999Z",
+  "allowed": {
+    "languages": ["c"]
+  },
+  "keyId": "frozen-fixture-exam-0001",
+  "algorithm": "ECDSA-P256",
+  "signature": "45dcf1129fce8cb83831d30f5cb0efa677ee6875e7f995b7c995a03ed77ccc747c7f23637a411f10e8d466874077eb01998f1b1b942b2aafcb477ccfbfa578a0"
+}

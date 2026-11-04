@@ -1,0 +1,412 @@
+{
+  "version": "1.2.0",
+  "typingProofHash": "24c5e16fa7106885b5bcd1ddc39a4366a1fd9b3d39d40fbbb0ca34c959c32665",
+  "typingProofData": {
+    "finalContentHash": "efc4d8633065122c587be5e23753b84e8fd554b9a0704144fbdfc7b44750b4c8",
+    "initialHashNonce": "324d04146fd5a7d0a64299666fa00b1c2ddcdc67474fe6b587ef773ddf72a6cf",
+    "initialEventChainHash": "fae222aa31ba1be207ecff6089ae4a9938f240bf984864d3e82e6381ba057799",
+    "finalEventChainHash": "33ee2bd3509b8e45182f1dab496a65ad50b1a3e79dfcc27bdfae15b4ee61eb36",
+    "deviceId": "b6ad69e301b8c038f591f7e940e30f7970fb9b985832076bc377ac2699b77a6b",
+    "metadata": {
+      "totalEvents": 12,
+      "pasteEvents": 0,
+      "internalPasteEvents": 0,
+      "dropEvents": 0,
+      "insertEvents": 8,
+      "deleteEvents": 1,
+      "bulkInsertEvents": 0,
+      "totalTypingTime": 1241.0242080000003,
+      "averageTypingSpeed": 386.8
+    }
+  },
+  "proof": {
+    "totalEvents": 12,
+    "finalHash": "33ee2bd3509b8e45182f1dab496a65ad50b1a3e79dfcc27bdfae15b4ee61eb36",
+    "startTime": 3169.847209,
+    "endTime": 4410.823084,
+    "signature": "61a3ae09b7c0dd91588486e9a889285adec24e5d32683ea86f92d3272368dc9a",
+    "events": [
+      {
+        "sequence": 0,
+        "timestamp": 0.0777499999999236,
+        "type": "humanAttestation",
+        "inputType": null,
+        "data": {
+          "verified": false,
+          "score": 0,
+          "action": "exam_start",
+          "timestamp": "2026-11-04T16:01:05.833Z",
+          "hostname": "typedcode.dev",
+          "signature": "unsigned",
+          "success": false
+        },
+        "rangeOffset": null,
+        "rangeLength": null,
+        "range": null,
+        "previousHash": "fae222aa31ba1be207ecff6089ae4a9938f240bf984864d3e82e6381ba057799",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "31d2fb23cb7394367f0e5761e4fec749",
+          "intermediateHash": "a0fa94a1668b02a106003404bbdba1b7ab573c05d02283f5788bcbdbf1e607b4",
+          "computeTimeMs": 99.74279200000001
+        },
+        "hash": "830c6d8cf1fb4155435d3897a8e8130cb9bec8bede172291137cb076d63c8794",
+        "description": "Human verified (score: 0.00, action: exam_start)"
+      },
+      {
+        "sequence": 1,
+        "timestamp": 100.0302499999998,
+        "type": "examOpened",
+        "inputType": null,
+        "data": {
+          "examId": "frozen-exam-v1",
+          "problemId": "p1",
+          "variant": null,
+          "packageHash": "f8679838d8abd2c4ed6e5e5e1ae80e57eccb0b74ead36b13eaf9dead6a9419c0",
+          "problemContentHash": "a50dbea5efd3da6ad6e70d33891a85a3cc1aced66d94c02c5705204bdc067913",
+          "openedAt": "2026-11-04T16:01:05.933Z"
+        },
+        "rangeOffset": null,
+        "rangeLength": null,
+        "range": null,
+        "previousHash": "830c6d8cf1fb4155435d3897a8e8130cb9bec8bede172291137cb076d63c8794",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "cc65644e725d71fb7e681d87e91ddadc",
+          "intermediateHash": "3b751b1095267c2cc16bbec1e187f76a704f9774dd6f8bbe4cf9f4a22a9242ae",
+          "computeTimeMs": 104.97054200000002
+        },
+        "hash": "993995526b1ca7053d537938e220348541ad5701b00b8811b14ee17f1aeb857f",
+        "description": "Exam opened: frozen-exam-v1/p1"
+      },
+      {
+        "sequence": 2,
+        "timestamp": 205.13250000000016,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "x",
+        "rangeOffset": 0,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 1,
+          "endLineNumber": 1,
+          "endColumn": 1
+        },
+        "previousHash": "993995526b1ca7053d537938e220348541ad5701b00b8811b14ee17f1aeb857f",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "bbd146ca939a1a639beccbd5bd9fc221",
+          "intermediateHash": "0718cc923bdc7848512997065695bcec970cd7cea914580209f180faae401689",
+          "computeTimeMs": 103.19858299999987
+        },
+        "hash": "d5d00f81eafcc70fa6bd136330b8790679f4e2358bc2fe40f6ee65a80f1e845f",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": "x",
+        "insertLength": 1
+      },
+      {
+        "sequence": 3,
+        "timestamp": 308.46512500000017,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": " ",
+        "rangeOffset": 1,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 2,
+          "endLineNumber": 1,
+          "endColumn": 2
+        },
+        "previousHash": "d5d00f81eafcc70fa6bd136330b8790679f4e2358bc2fe40f6ee65a80f1e845f",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "cf74dfe18ceee66627f7763d5c6949e6",
+          "intermediateHash": "a33aeac37d84025cf9fee947239b8b87ff03eeb35a757b12050dce935f49e04b",
+          "computeTimeMs": 116.35070799999994
+        },
+        "hash": "cc30051769a1eecffa8030f13ad9ee74121bcfd1dcecf78e70a4b01e00560c4f",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": " ",
+        "insertLength": 1
+      },
+      {
+        "sequence": 4,
+        "timestamp": 424.9417910000002,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "=",
+        "rangeOffset": 2,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 3,
+          "endLineNumber": 1,
+          "endColumn": 3
+        },
+        "previousHash": "cc30051769a1eecffa8030f13ad9ee74121bcfd1dcecf78e70a4b01e00560c4f",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "355879d22268e784e65adcb372f89937",
+          "intermediateHash": "1f405a2727054288185f20e3319cfd420c689aa84b709992ae4e3ac54e7c2567",
+          "computeTimeMs": 115.55062499999985
+        },
+        "hash": "78b8907bc248f1581f39bdcda48ba560fbef43ec39143b6c41b0d1a1e57ca43b",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": "=",
+        "insertLength": 1
+      },
+      {
+        "sequence": 5,
+        "timestamp": 540.6089160000001,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": " ",
+        "rangeOffset": 3,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 4,
+          "endLineNumber": 1,
+          "endColumn": 4
+        },
+        "previousHash": "78b8907bc248f1581f39bdcda48ba560fbef43ec39143b6c41b0d1a1e57ca43b",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "186bdeb67cfaba6edf6769cd7ffc36a8",
+          "intermediateHash": "d10472dc03bf12094d07176d606fac9fca7d162bfb8de27b55526210f06c1589",
+          "computeTimeMs": 88.39216699999997
+        },
+        "hash": "c2f3faccdb692e78fe3b9e6970da7e83eb512df7c8e5e8f738117d1c7e43bb4e",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": " ",
+        "insertLength": 1
+      },
+      {
+        "sequence": 6,
+        "timestamp": 629.132666,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "4",
+        "rangeOffset": 4,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 5,
+          "endLineNumber": 1,
+          "endColumn": 5
+        },
+        "previousHash": "c2f3faccdb692e78fe3b9e6970da7e83eb512df7c8e5e8f738117d1c7e43bb4e",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "715059815611f63cd2354e4a06e0aa1e",
+          "intermediateHash": "b6162854a571f5debf3ed00c43a7e0bd3edc591683df6fd7968eed975f58b153",
+          "computeTimeMs": 87.41341599999987
+        },
+        "hash": "c3598547572d1edd6de9753f7a98df270b9b4abd77319fa0f53ab2beecf661d9",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": "4",
+        "insertLength": 1
+      },
+      {
+        "sequence": 7,
+        "timestamp": 716.6821249999998,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "1",
+        "rangeOffset": 5,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 6,
+          "endLineNumber": 1,
+          "endColumn": 6
+        },
+        "previousHash": "c3598547572d1edd6de9753f7a98df270b9b4abd77319fa0f53ab2beecf661d9",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "f206ba3c2bccbc9f2b21965103dbeff9",
+          "intermediateHash": "e140a3e2412301de6f8b1079a6dbf9a030c6112462636a49a8bb5258ddcf3b94",
+          "computeTimeMs": 105.61629100000027
+        },
+        "hash": "6471f8f577a2cc3ac147fc48ee1c021d42d7af18a6d657d5d1998a345c61079c",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": "1",
+        "insertLength": 1
+      },
+      {
+        "sequence": 8,
+        "timestamp": 822.4411660000001,
+        "type": "contentChange",
+        "inputType": "deleteContentBackward",
+        "data": "",
+        "rangeOffset": 5,
+        "rangeLength": 1,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 6,
+          "endLineNumber": 1,
+          "endColumn": 7
+        },
+        "previousHash": "6471f8f577a2cc3ac147fc48ee1c021d42d7af18a6d657d5d1998a345c61079c",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "b93bb7e0af1f4b510f7c6c0cb9a67bee",
+          "intermediateHash": "72cb71d446ebb0f9cc805b2c49d5d05af25e44022f8b07c3094405f86fc92614",
+          "computeTimeMs": 108.56424999999945
+        },
+        "hash": "0d95ca8afa920d10e664b98049048ecafa1a9472e9f19f042a9a9bdb77e7d3af",
+        "description": "deleteContentBackward",
+        "isMultiLine": false,
+        "deletedLength": 1,
+        "deleteDirection": "backward"
+      },
+      {
+        "sequence": 9,
+        "timestamp": 931.1392499999997,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": "2",
+        "rangeOffset": 5,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 6,
+          "endLineNumber": 1,
+          "endColumn": 6
+        },
+        "previousHash": "0d95ca8afa920d10e664b98049048ecafa1a9472e9f19f042a9a9bdb77e7d3af",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "32dd459689b23a76c1ea9291b682866f",
+          "intermediateHash": "c008a399cd6f671f3e979f72cef26553ee7776bf5564863f824f156fa1da2b98",
+          "computeTimeMs": 125.48424999999952
+        },
+        "hash": "40d420b590929953e9463950155461780ca763a67010995e9e06e8dfc3c0c8f1",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": "2",
+        "insertLength": 1
+      },
+      {
+        "sequence": 10,
+        "timestamp": 1056.7648329999997,
+        "type": "contentChange",
+        "inputType": "insertText",
+        "data": ";",
+        "rangeOffset": 6,
+        "rangeLength": 0,
+        "range": {
+          "startLineNumber": 1,
+          "startColumn": 7,
+          "endLineNumber": 1,
+          "endColumn": 7
+        },
+        "previousHash": "40d420b590929953e9463950155461780ca763a67010995e9e06e8dfc3c0c8f1",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "055ad4406423abc52c7c8ce7645283ab",
+          "intermediateHash": "045a16943427d1dc64b1c7185348d8c45bf3f16b37318910010a3fe1c4b79246",
+          "computeTimeMs": 90.16258299999936
+        },
+        "hash": "2b64e5132f6c250dc385a49f7ca911ca7065811b117903103c27a763bf5a23a6",
+        "description": "insertText",
+        "isMultiLine": false,
+        "insertedText": ";",
+        "insertLength": 1
+      },
+      {
+        "sequence": 11,
+        "timestamp": 1147.072791,
+        "type": "preExportAttestation",
+        "inputType": null,
+        "data": {
+          "verified": false,
+          "score": 0,
+          "action": "export_proof",
+          "timestamp": "2026-11-04T16:01:06.980Z",
+          "hostname": "typedcode.dev",
+          "signature": "",
+          "success": false
+        },
+        "rangeOffset": null,
+        "rangeLength": null,
+        "range": null,
+        "previousHash": "2b64e5132f6c250dc385a49f7ca911ca7065811b117903103c27a763bf5a23a6",
+        "posw": {
+          "iterations": 10000,
+          "nonce": "87bb259fb00dcccfcb5cc3d38f92001e",
+          "intermediateHash": "4e13b8ff7d456766309f17be280deea96190a062a041c3773f122f861cdab546",
+          "computeTimeMs": 93.76966700000048
+        },
+        "hash": "33ee2bd3509b8e45182f1dab496a65ad50b1a3e79dfcc27bdfae15b4ee61eb36",
+        "description": "Pre-export verification (score: 0.00, action: export_proof)"
+      }
+    ]
+  },
+  "fingerprint": {
+    "hash": "b6ad69e301b8c038f591f7e940e30f7970fb9b985832076bc377ac2699b77a6b",
+    "components": {
+      "userAgent": "TypedCode frozen proof fixture",
+      "language": "ja",
+      "languages": ["ja", "en"],
+      "platform": "FixtureOS",
+      "hardwareConcurrency": 8,
+      "deviceMemory": 8,
+      "screen": {
+        "width": 1440,
+        "height": 900,
+        "availWidth": 1440,
+        "availHeight": 860,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "devicePixelRatio": 2
+      },
+      "timezone": "Asia/Tokyo",
+      "timezoneOffset": -540,
+      "canvas": "frozen-fixture",
+      "webgl": {
+        "vendor": "frozen-fixture",
+        "renderer": "frozen-fixture"
+      },
+      "fonts": ["Arial"],
+      "cookieEnabled": true,
+      "doNotTrack": "unspecified",
+      "maxTouchPoints": 0
+    }
+  },
+  "metadata": {
+    "userAgent": "Node.js/24",
+    "timestamp": "2026-11-04T16:01:07.074Z",
+    "isPureTyping": true
+  },
+  "checkpoints": [
+    {
+      "eventIndex": 11,
+      "hash": "33ee2bd3509b8e45182f1dab496a65ad50b1a3e79dfcc27bdfae15b4ee61eb36",
+      "timestamp": 1147.072791,
+      "contentHash": "f6b7a909201aaaeeebc1f988e3f3b619c7e68c4d631b79ed2c66f2bd5bb7529c"
+    }
+  ],
+  "exam": {
+    "examProofVersion": 1,
+    "examId": "frozen-exam-v1",
+    "problemId": "p1",
+    "variant": null,
+    "packageHash": "f8679838d8abd2c4ed6e5e5e1ae80e57eccb0b74ead36b13eaf9dead6a9419c0",
+    "problemContentHash": "a50dbea5efd3da6ad6e70d33891a85a3cc1aced66d94c02c5705204bdc067913",
+    "startToken": "K7M2Q9XR",
+    "rootBinding": "v1"
+  },
+  "mode": "exam",
+  "filename": "p1",
+  "content": "x = 42;",
+  "language": "c"
+}

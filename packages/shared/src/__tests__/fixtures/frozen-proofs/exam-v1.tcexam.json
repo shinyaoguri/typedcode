@@ -1,0 +1,28 @@
+{
+  "formatVersion": 1,
+  "examId": "frozen-exam-v1",
+  "problemId": "p1",
+  "variant": null,
+  "kdf": {
+    "algorithm": "argon2id",
+    "salt": "36b9916ac34fa9ae7eb01b6a367406ac",
+    "params": {
+      "memKiB": 256,
+      "iterations": 1,
+      "parallelism": 1
+    }
+  },
+  "cipher": {
+    "algorithm": "AES-256-GCM",
+    "iv": "10b943edba8225efaa0d3d21",
+    "ciphertext": "jdWdgxmypNmA8FClgyqLBqcfcrtBwiCPeqBTDApRun+BTIujv3f2SFM6zPWC"
+  },
+  "releaseTime": "2026-11-04T15:01:05.827Z",
+  "deadline": "2999-12-31T23:59:59.999Z",
+  "allowed": {
+    "languages": ["c"]
+  },
+  "keyId": "frozen-fixture-exam-0001",
+  "algorithm": "ECDSA-P256",
+  "signature": "d9620457f839a822ffe8c0775bfde99ff74deead1654e4383450376eeeeb18d219d1d064578e4fa2d09898078fff17beae526888ac9d3cead842116bf06b866b"
+}
