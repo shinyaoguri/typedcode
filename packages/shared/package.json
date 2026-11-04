@@ -13,7 +13,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "mutate": "stryker run"
+    "mutate": "node ../../scripts/stryker-guard.mjs && stryker run"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",
