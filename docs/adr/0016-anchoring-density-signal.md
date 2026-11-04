@@ -1,6 +1,6 @@
 # ADR-0016: 署名チェックポイントの「アンカー密度」をシグナル化し、任意で gate する
 
-- **Status**: Accepted
+- **Status**: Accepted (gate の置き場は ADR-0043 で受理ポリシーへ移した。`signedCheckpoints.valid` はもう密度で落ちない)
 - **Date**: 2026-06-12
 - **Deciders**: develop レビュー (Phase 7 / ADR-B)
 - **PR / Commit**: `feat/phase7-anchoring-density` (Phase 7 の最初の一手)

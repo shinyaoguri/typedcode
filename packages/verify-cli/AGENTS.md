@@ -67,22 +67,31 @@ src/
 - JSON 単体入力は画像が無いので未検査 — 出力に `Screenshots: not checked` を明示する (overclaim 防止)
 - サマリは ZIP 単位で一度だけ計算し全 proof に共有する (スクショはセッション単位で proof 横断)。`deriveAssurance` へは `screenshotsTampered` として渡る
 
+## 受理ポリシー (ADR-0043)
+
+- 4 つの opt-in 要件を受理ポリシーとして評価する: `--require-root-anchor` (`root-anchor-missing`) / `--require-anchor-density` (`anchor-density-sparse`) / `--require-signed-checkpoints` (`signed-checkpoints-missing`) / `--require-final-anchor` (`terminal-anchor-missing`。未署名の末尾の件数つき)。判定は shared の `evaluateAcceptancePolicy` (`verifyProofFile` が呼ぶ) に委譲し、CLI はフラグを通すだけ。**CLI に判定式を書かない**
+- 結果は整合性 (`integrityValid`) と違反 (`policy.violations`) に分かれて返る。総合 `valid` (= exit code) は `integrityValid && violations が空`。整合性が落ちた proof ではポリシーを評価しない (`policy.evaluated: false`)
+- 出力は、フラグを 1 つでも立てたときだけ `--- Acceptance policy ---` 節を出す。**フラグ無しの出力は変えない** (既定のポリシーは空 = 従来どおりの結論。不足は warning のまま)。`--analysis-json` の各要素にも `policy` を載せる。`--analysis-bundle` (Tier A) には載せない (content-free な派生物で、ポリシーは採点側の設定)
+- 違反した proof も、他の入力の検証と `--analysis-*` / `--extract-sources` を止めない (不変条件 6 の経路)
+- time-box (`--submitted-at`) と LMS の受領時刻はポリシーに入れない (ADR-0013 の advisory のまま)
+- `--require-final-anchor` は #236(b) (署名 token の再取得) の着地前は、短時間の試験以外で常用しない (README に明記)
+
 ## アンカー密度 gate (ADR-0016)
 
 - `--require-anchor-density` (任意・boolean): 署名 cp が「主張したイベント数 / 経過時間」に対して**疎**な proof を **exit 1** にする (採点向け opt-in)。既定は warning のみで `Anchoring` 行の下に `! Anchoring is sparse …` を出す
-- 判定は shared の `verifySignedCheckpoints` (`requireAnchorDensity`) に委譲。CLI は `verifyProofFile` にフラグを通すだけ。閾値 (cadence×5) も shared 側が単一ソース
+- 判定は shared の受理ポリシー (ADR-0043、`anchor-density-sparse`) に委譲。CLI は `verifyProofFile` にフラグを通すだけ。閾値 (cadence×5) は shared の `computeDensity` が単一ソース。密度不足は `signedCheckpoints.valid` を落とさない (Anchoring 行は `VERIFIED` + `! Anchoring is sparse`、Acceptance policy 節に違反)。cp が 0 件の proof は対象外 (`density: null`)。cp の存在を求めるのは `--require-signed-checkpoints`
 - 末尾 1 個の署名 cp で長いチェーンをアンカーする手口を捕捉する (`coverageRatio` は 1.0 でも疎)。**非破壊** (proof フォーマット不変)
 
 ## root アンカー gate (ADR-0017)
 
 - `--require-root-anchor` (任意・boolean): root がサーバアンカーされていない (`sessionStartToken` 無し = オフライン劣化 / 旧 proof) proof を **exit 1** にする (採点向け opt-in)。既定は warning のみで `Root anchor: unanchored` を出す。token はあるが検証できない proof (`rootAnchorFailure`、#329) は既定で exit 1 (整合性は落とさない) で、`Root anchor: UNTRUSTED (<理由>)` を出す (`no session start token` と出さない。keyId は `safe()` を通す)。gate を立てていても Error 行は token の失敗理由を優先する。**exam proof の免除は束縛が検証済み (`--exam-package` で `verifyExamBinding` 合格) のときのみ** (#131) — 自己申告の exam ブロックだけでは gate を回避できない
-- 判定は shared の `verifyProofFile` (`requireRootAnchor` + `examBindingVerified`) に委譲。CLI は `verifyExamBinding` を先に実行して結果フラグを通すだけ。proof は `PROOF_FORMAT_VERSION` 1.2.0 (`MIN_SUPPORTED` 1.0.0 据置) なので **旧 proof もそのまま検証**でき、`rootAnchored:false` で受理 (後方互換)
+- 判定は shared の `verifyProofFile` (`requireRootAnchor` + `examBindingVerified`) に委譲 (受理ポリシーの `root-anchor-missing`。ADR-0043)。CLI は `verifyExamBinding` を先に実行して結果フラグを通すだけ。proof は `PROOF_FORMAT_VERSION` 1.2.0 (`MIN_SUPPORTED` 1.0.0 据置) なので **旧 proof もそのまま検証**でき、`rootAnchored:false` で受理 (後方互換)
 
 ## 分析層の出力 (ADR-0009)
 
 - 検証 (`--- Checks ---`) と**直交する advisory** を `--- Analysis (advisory) ---` セクションに出す。判定ではない (**exit code には一切影響させない** — ここを破ると ADR-0009 の直交性が壊れる)
 - 各 signal は severity (`INFO`/`NOTICE`/`REVIEW`) + summary + **evidence (event index)** を出す。evidence は人間が当該イベントを検分するためのリンクで ADR-0009 上必須
-- `--analysis-json <out.json>` (任意): 全 proof 分の `{filename, valid, analysis}` を JSON でファイル出力する。分析器の評価ハーネス / コホート集計の機械可読な入口 (Phase 8 W5)。advisory のみで exit code 非干渉
+- `--analysis-json <out.json>` (任意): 全 proof 分の `{filename, valid, policy, analysis}` を JSON でファイル出力する (`policy` は受理ポリシーの結果。ADR-0043)。分析器の評価ハーネス / コホート集計の機械可読な入口 (Phase 8 W5)。advisory のみで exit code 非干渉
 - `--analysis-bundle <out.json>` (任意, ADR-0024 Tier A): 全 proof 分の **content-free な派生バンドル** `{filename, schema, integrityValid, processSummary, analysis, assurance}` を出力する。**events / ソース / fingerprint を含まない** (Tier A)。コホート基準 (ADR-0025) の入力フォーマット。組み立ては shared の `buildAnalysisBundle` に委譲 (CLI は result の content-free な派生物を渡すだけ)。advisory のみで exit code 非干渉。`integrityValid` は **gate 込みの総合 valid ではなく `assurance.integrity !== 'failed'`** (`toBundleIntegrityValid`, #219) — 契約は「整合性検証を通ったか」で、ADR-0031 の `'partial'` (検査を省略した) を失敗に潰さない
 - `--analyzer <module>` (任意・反復可) / `--no-default-analyzers` (ADR-0023 / プラットフォーム方針): 採点者/研究者の**外部 Analyzer** (ADR-0009 契約を default / `analyzer` / `analyzers` で export する ES モジュール) を**フォークせず**差し込む。既定では同梱分析器に**追加**、`--no-default-analyzers` で既定を外して外部のみ。読込は `src/analyzers.ts` の `loadExternalAnalyzers` (動的 import + 契約バリデーション + 重複 id 拒否) で、**分析ロジックは外部モジュール側**。`runAnalysis(input, analyzers)` に渡すだけ。advisory のみで exit code 非干渉。**注意**: 任意モジュールを動的 import する = 任意コード実行。信頼できるモジュールのみ
 - 分析ロジックは shared の `runAnalysis` に委譲。**CLI 側に分析器を書かない** (`--analyzer` も読込 I/O のみで中身は外部)
