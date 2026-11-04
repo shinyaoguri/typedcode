@@ -121,7 +121,10 @@ console.log('');
 // 割り当てポートを環境変数で各 dev サーバへ渡す。editor/verify の vite.config は
 // EDITOR_PORT/VERIFY_PORT で server.port と proxy/VITE_API_URL を追従させ、workers は
 // --port フラグで wrangler dev のポートを固定する (env の WORKERS_PORT は editor 側の
-// VITE_API_URL 追従にも使う)。
+// VITE_API_URL 追従にも使う)。各サーバは作業ツリーの識別子 (scripts/worktree-id.mjs) を名乗る:
+// editor / verify は vite.config.ts の server.headers、workers は packages/workers の dev スクリプトが
+// 渡す `--var DEV_WORKTREE_ID` (`npm run dev:workers` でも同じに名乗る)。e2e はこれで別の worktree の
+// サーバを見分ける (#552)。
 const env = {
   ...process.env,
   EDITOR_PORT: String(ports.editor),

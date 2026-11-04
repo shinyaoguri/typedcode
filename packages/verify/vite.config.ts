@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { WORKTREE_ID_HEADER, worktreeIdOf } from '../../scripts/worktree-id.mjs';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -38,6 +39,11 @@ export default defineConfig({
     // このポート固定で追従するため、ずれると配線が壊れる。黙ってずらさず失敗させる。
     // 手動の個別起動 (VERIFY_PORT なし) は従来どおりフォールバック可。
     strictPort: Boolean(process.env.VERIFY_PORT),
+    // この dev サーバがどの作業ツリーのものかを名乗る。e2e の globalSetup が照合し、別の worktree の
+    // サーバを再利用しないようにする (#552)。dev サーバだけで、本番の配信には付けない。
+    headers: {
+      [WORKTREE_ID_HEADER]: worktreeIdOf(resolve(__dirname, '../..')),
+    },
   },
   build: {
     target: 'esnext',
