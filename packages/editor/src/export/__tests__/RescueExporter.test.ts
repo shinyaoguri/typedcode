@@ -81,7 +81,7 @@ describe('RescueExporter.rescueAll (#544)', () => {
 
     expect(saved.map((s) => s.filename)).toEqual([`${BASE}.json`]);
     const json = JSON.parse(await saved[0]!.blob.text());
-    expect(json.manifest).toMatchObject({ notAProof: true, schema: 'typedcode-rescue/1' });
+    expect(json.manifest).toMatchObject({ notAProof: true, schema: 'typedcode-rescue/2' });
     expect(
       json.files.filter((f: { path: string }) => f.path.startsWith('src/')).map((f: { content: string }) => f.content)
     ).toEqual(['int a;', 'int b;']);
@@ -105,6 +105,27 @@ describe('RescueExporter.rescueAll (#544)', () => {
     expect(saved.map((s) => s.filename)).toEqual([`${BASE}_a.c`, `${BASE}_b.c`]);
     expect(await Promise.all(saved.map((s) => s.blob.text()))).toEqual(['int a;', 'int b;']);
     expect(notices).toEqual(['export.rescueFailed']);
+  });
+
+  it('also downloads each preserved original content separately in the last resort (#413)', async () => {
+    const saved: Saved[] = [];
+    const { exporter } = setup({
+      getSources: () => [
+        { ...source('a', 'abc'), readUnprovenContents: () => [{ content: 'abcdef', chainContentLength: 3 }] },
+      ],
+      buildZip: async () => {
+        throw new Error('zip failed');
+      },
+      download: (blob, filename) => {
+        if (filename.endsWith('.json')) throw new Error('json failed');
+        saved.push({ blob, filename });
+      },
+    });
+
+    await exporter.rescueAll();
+
+    expect(saved.map((s) => s.filename)).toEqual([`${BASE}_a.c`, `${BASE}_unproven_1_a.c`]);
+    expect(await saved[1]!.blob.text()).toBe('abcdef');
   });
 
   it('reports failure without throwing when the tabs cannot be read at all', async () => {
@@ -137,6 +158,7 @@ describe('liveTabRescueSources (#544)', () => {
         waitForQueueDrain,
       },
       signedCheckpointService: { waitForFlush },
+      unprovenContents: [{ content: 'int main(void) { pending }', chainContentLength: 17 }],
     } as unknown as TabState;
     const tabManager = {
       getAllTabs: () => [tab],
@@ -152,6 +174,14 @@ describe('liveTabRescueSources (#544)', () => {
     expect(rescued?.readContent()).toBe('int main(void) {}');
     expect(rescued?.readEvents()).toHaveLength(2);
     expect(rescued).toMatchObject({ persistedEventCount: 1, pendingEventCount: 3 });
+  });
+
+  it('reads the preserved original contents from the tab in memory (#413)', () => {
+    const [rescued] = liveTabRescueSources(liveTabs().tabManager);
+
+    expect(rescued?.readUnprovenContents?.()).toEqual([
+      { content: 'int main(void) { pending }', chainContentLength: 17 },
+    ]);
   });
 
   it('never waits for the PoSW queue, the IndexedDB flush or checkpoint signing', async () => {

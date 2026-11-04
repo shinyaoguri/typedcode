@@ -47,7 +47,7 @@ async function expectRescueMatchesEditor(app: EditorApp, zipPath: string, mode: 
   expect(entries.filter((e) => e.endsWith('_proof.json'))).toEqual([]);
 
   const manifest = JSON.parse(await readZipEntryText(zipPath, 'rescue-manifest.json')) as RescueManifest;
-  expect(manifest).toMatchObject({ schema: 'typedcode-rescue/1', notAProof: true, mode });
+  expect(manifest).toMatchObject({ schema: 'typedcode-rescue/2', notAProof: true, mode });
 
   const snapshot = await app.snapshot();
   expect(manifest.tabs.map((t) => t.id)).toEqual(snapshot.tabs.map((t) => t.id));

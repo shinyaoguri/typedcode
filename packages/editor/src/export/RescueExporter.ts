@@ -45,6 +45,16 @@ export function rescueTimestamp(date: Date): string {
   return `${String(date.getFullYear()).slice(2)}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}`;
 }
 
+/**
+ * 1 ファイルずつ落とすときの名前 (`<base>_` の後ろ)。ソース (`src/a.c` → `a.c`) と保全した元のコード
+ * (`unproven/1/a.c` → `unproven_1_a.c`) だけを落とし、イベントの記録は落とさない (`null`)
+ */
+function separateDownloadName(path: string): string | null {
+  if (path.startsWith('src/')) return path.slice('src/'.length);
+  if (path.startsWith('unproven/')) return path.replaceAll('/', '_');
+  return null;
+}
+
 /** ライブのタブを救出の入力にする。読み出しは救出の時点で行い、保存・待機は一切しない */
 export function liveTabRescueSources(
   tabManager: Pick<TabManager, 'getAllTabs' | 'getPersistenceReport'>
@@ -68,6 +78,8 @@ export function liveTabRescueSources(
       language: tab.language,
       readContent: () => tab.model.getValue(),
       readEvents: () => tab.typingProof.serializeState().events,
+      // 復元時に保全した元のコード (#413)。IndexedDB は読まず、復元のときに読み戻したメモリ上の写しを使う
+      readUnprovenContents: () => tab.unprovenContents ?? [],
       persistedEventCount: persisted.get(tab.id) ?? null,
       pendingEventCount,
     };
@@ -149,12 +161,13 @@ export class RescueExporter {
       console.error('[Rescue] Could not save the rescue JSON; downloading each source separately:', e);
     }
 
-    // 最後の手段: 読めたソースを 1 ファイルずつ (1 つの失敗で残りを止めない)
+    // 最後の手段: 読めたソースと保全した元のコード (#413) を 1 ファイルずつ (1 つの失敗で残りを止めない)
     let saved = 0;
     for (const file of bundle.files) {
-      if (!file.path.startsWith('src/')) continue;
+      const name = separateDownloadName(file.path);
+      if (name === null) continue;
       try {
-        deps.download(new Blob([file.content], { type: 'text/plain' }), `${base}_${file.path.slice('src/'.length)}`);
+        deps.download(new Blob([file.content], { type: 'text/plain' }), `${base}_${name}`);
         saved++;
       } catch (e) {
         console.error(`[Rescue] Could not save ${file.path}:`, e);
