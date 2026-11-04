@@ -3,7 +3,7 @@
 - **Status**: Accepted
 - **Date**: 2026-11-04
 - **Deciders**: @shinyaoguri
-- **PR / Commit**: (#544 を閉じる PR。保存状態の区分は #543 = PR #553)
+- **PR / Commit**: (#544 を閉じる PR。保存状態の区分は #543 = PR #553。段階 2 は #413 を閉じる PR)
 
 ## Context
 
@@ -69,15 +69,33 @@ Option C を採る。救出はコードを手元に残すための経路で、�
 - PoSW 待ちのイベントはログに入らない (件数だけ残る)
 - ソースを 1 つずつ落とす最後の手段は、ブラウザの「複数のダウンロード」の許可を求められることがある
 
+## 段階 2: 復元時に証明と食い違った元のコードを捨てない (#413)
+
+段階 1 の救出は、エディタのバッファ (メモリ) を読む。ところが復元経路には、バッファに入る前にコードを捨てる箇所が残っていた。PoSW の処理待ちが残ったまま閉じる (またはリロードする) と、処理待ちの打鍵はチェーンに載らず、保存済みの content にだけ残る。処理待ちは復元しないので、復元時の `reconcileRestoredContent` (#142) は content を replay の結果まで切り詰め、元の content をどこにも残さなかった。直後の保存で tabs の content は上書きされ、警告も本番ビルドでは消えていた。救出 ZIP はバッファを読むので、切り詰めた後の版しか入らない。
+
+2026-11-01 に案 A で確定した (#300 のコメント)。
+
+- **バッファは replay 版にする** (#142 の目的 = 復元後の proof を content replay で invalid にしない、を保つ)。過去のイベントを捏造して帳尻を合わせる案 B (回復イベントを新設する) は採らない。proof 形式・検証器・分析器は変えない (`PROOF_FORMAT_VERSION` 据え置き)
+- **元の content は IndexedDB の専用ストア `unprovenContents` に追記のみで残す**。tabs の行に欄を足すと、`saveTab` の put がその行ごと書き換えるので、上書きを防ぐ規律をコードの注意で守り続けることになる。別のストアにして put の経路を持たせないことで、上書きを構造で防ぐ。`clearSession` と `deleteTab` も触らない
+- **知らせる**: 復元後に通知を出し、差分 (読み取り専用) と元のコードのダウンロードを開ける。差分の大きさは「末尾 N 文字」ではなく「元 X 文字 → 証明 Y 文字」で示す。処理待ちが途中の編集や削除だと、差分は末尾に限らず、元のほうが短いこともあるため
+- **救出にも入れる**: 元のコードは救出 ZIP の `src/` (エディタの内容 = 証明と同じ版) とは別の `unproven/<n>/` に入れ、manifest のタブに `unprovenContents` (パスと文字数) を足す。形が変わるので schema を `typedcode-rescue/2` に上げる。救出は IndexedDB に依存しないという段階 1 の不変条件を保つため、保全した元のコードは復元のたびにタブのメモリ上の状態へ読み戻し、救出はそれを読む
+- 元のコードをバッファへ自動で戻すことはしない (戻すと証明と食い違い、段階 2 の前と同じ invalid に戻る)。必要な部分は学習者が打ち直す
+
+`STORAGE_FORMAT_VERSION` は据え置く。この定数は localStorage 用の整数で、IndexedDB のスキーマ (`SessionStorageService` の `DB_VERSION`) とは別に管理されている (`DB_VERSION` を 1 → 2 に上げたときも据え置いた)。今回の変更はストアを足すだけで既存の行の形を変えないので、移行は `onupgradeneeded` でのストア作成だけで足り、shared に移行関数は要らない。
+
+形式は [system-spec §5.4.1](../system-spec.md)。
+
 ### Follow-ups / 残課題
 
 - 過去のセッションを一覧から回収する導線 (#317)。救出ファイルを別のクリーンな環境で読み込んで使う導線
+- 保全した元のコード (`unprovenContents`) の保持期間と容量の管理 (#317)。いまはモードのリセットで DB ごと消すまで残る
 - 救出ファイルの読み込み側 (verify などで「証明ではない」と表示する) は未実装。いまは manifest を人が読む
 
 ## References
 
 - `packages/editor/src/export/rescueBundle.ts` (`buildRescueBundle`)、`packages/editor/src/export/RescueExporter.ts`
 - `packages/editor/src/ui/tabs/syncStatus.ts` (`resolveSyncStatus`。保存状態の区分 = #543)
-- `packages/editor/src/ui/tabs/TabManager.ts` (`getPersistenceReport`)
-- #300 (09-09 の要件更新、10-19 の救出形式の推奨)、#543、#544、#317
+- `packages/editor/src/ui/tabs/TabManager.ts` (`getPersistenceReport`、段階 2 の `restoreContent`)
+- `packages/editor/src/ui/tabs/restoredContent.ts` (`reconcileRestoredContent`)、`packages/editor/src/ui/dialogs/UnprovenContentDialog.ts` (段階 2)
+- #300 (09-09 の要件更新、10-19 の救出形式の推奨、11-01 の段階 2 の方式)、#543、#544、#317、#413、#142
 - [system-spec §5.4](../system-spec.md)
