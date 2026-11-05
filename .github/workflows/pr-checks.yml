@@ -23,20 +23,41 @@ name: PR Checks
 # pull_request_target の既定の checkout ref は **base ブランチ** (PR の head ではない)。
 # ここでは ref を指定せずに checkout するので、実行されるのは base 側の
 # scripts/require-*.mjs であり、fork のコードを実行する経路はない。PR から読むのは
-# 変更ファイル名 (API) とタイトル・本文・ラベル・author の文字列だけ。permissions も read のみ。
+# 変更ファイル名 (API) と、gh pr view で読むタイトル・本文・ラベル・author・紐づけ Issue だけ。
+# permissions も read のみ。
+#
+# concurrency を置かない理由 (#632): 同じ PR に event が続けて来ると (opened の直後に labeler の
+# labeled など)、concurrency が先の run を取り消し、取り消された run の必須チェック (require-*) が
+# `cancelled` の check-run として head commit に残る。#621 では、取り消された run 41956846996 の
+# require-* 3 件が cancelled で残り、同じ名前の check-run が別の run で success になっていても
+# マージが BLOCKED になった (run の取り直しで解けた)。
+#   - `cancel-in-progress: false` にしても取り消しは無くならない。concurrency group の待機中の run は
+#     新しい run が来ると取り消される: "By default, any existing `pending` job or workflow in the same
+#     concurrency group will be canceled" (docs.github.com「Control the concurrency of workflows and
+#     jobs」/ workflow syntax の `concurrency`)。#621 で取り消されたのも後から作られた側の run で
+#     (先の run は success まで走った)、取り消しは実行中の run に限らない
+#   - `queue: max` (2026-05 の changelog) は待機中の run を 100 件まで残すが、溢れた分はやはり
+#     取り消される ("When the queue is full, any additional jobs or workflow runs are canceled")。
+#     この検査は読むだけで冪等なので、直列に並べる必要がそもそも無い
+#   - 必須チェックは head commit の結果で判定され、成功とみなす結論は success / skipped / neutral
+#     (docs.github.com「Troubleshooting required status checks」)。同じ名前の check-run が複数ある
+#     ときにどれを見るかはドキュメントに書かれていないので、それに頼らない設計にする
+# そこで concurrency を外して run を取り消さず、各 run は event payload ではなく**実行時点の PR の
+# 現在値** (gh pr view) で判定する。payload は event が起きた瞬間のラベル・本文なので、run の
+# 順序が前後すると古い状態で判定した結論が最後に残り得るが、現在値を読めば、最後の event より
+# 後に読んだ run はどれも同じ結論になる。
 on:
   pull_request_target:
     # labeled / unlabeled / edited: `no-test-needed` / `no-visual-change` / `no-issue` ラベルや、
     # 理由・画像・Closes の追記で再判定するため
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
 
+# issues: read は gh pr view (GraphQL) で closingIssuesReferences を読むのに要る。ラベルも同じ
+# gh pr view で読むので、3 job とも同じ read 権限に揃える (書き込み権限は持たせない)。
 permissions:
   contents: read
   pull-requests: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  issues: read
 
 jobs:
   # job id = status check の context 名 (main ruleset の required check に使える)
@@ -56,19 +77,17 @@ jobs:
       - name: Require tests for implementation changes
         env:
           GH_TOKEN: ${{ github.token }}
-          # PR のタイトル・本文・ラベル・author はユーザー入力。${{ }} を run: の中へ直接
-          # 展開するとシェルのコマンド文字列に埋め込まれ、コマンドインジェクション経路になる
-          # (pull_request_target は fork からも発火するので特に危険)。env 経由で受け取り、
-          # シェルは変数としてしか触らない (pr-title.yml と同じ対策)。
+          # PR のタイトル・本文・ラベル・author はユーザー入力なので、run: へ ${{ }} で展開しない
+          # (シェルのコマンド文字列に埋め込まれ、コマンドインジェクション経路になる。
+          # pull_request_target は fork からも発火するので特に危険)。ここで渡すのは PR 番号だけで、
+          # 文字列は gh pr view の JSON をファイルに書いてスクリプトに読ませる (シェルは触らない)。
+          # payload ではなく実行時点の現在値を読む理由は先頭のコメント (#632)。
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' > "${RUNNER_TEMP}/changed-files.txt"
-          node scripts/require-tests.mjs --files "${RUNNER_TEMP}/changed-files.txt"
+          gh pr view "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --json title,body,labels,author > "${RUNNER_TEMP}/pr.json"
+          node scripts/require-tests.mjs --pr "${RUNNER_TEMP}/pr.json" --files "${RUNNER_TEMP}/changed-files.txt"
 
   require-visual-evidence:
     runs-on: ubuntu-latest
@@ -86,26 +105,17 @@ jobs:
       - name: Require visual evidence for UI changes
         env:
           GH_TOKEN: ${{ github.token }}
-          # PR 由来の文字列は env 経由で受け取る (理由は require-tests job と同じ)。
+          # PR 由来の文字列は gh pr view の JSON 経由で受け取る (理由は require-tests job と同じ)。
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' > "${RUNNER_TEMP}/changed-files.txt"
-          node scripts/require-visual-evidence.mjs --files "${RUNNER_TEMP}/changed-files.txt"
+          gh pr view "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --json title,body,labels,author > "${RUNNER_TEMP}/pr.json"
+          node scripts/require-visual-evidence.mjs --pr "${RUNNER_TEMP}/pr.json" --files "${RUNNER_TEMP}/changed-files.txt"
 
   require-issue:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # closingIssuesReferences は GraphQL で紐づいた Issue を読むので、workflow 全体の
-    # contents / pull-requests: read に加えて issues: read が要る (job の permissions は全体を置き換える)。
-    permissions:
-      contents: read
-      pull-requests: read
-      issues: read
     steps:
       # ref 未指定 = pull_request_target では base ブランチ。head (fork) を checkout しないこと。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -119,11 +129,10 @@ jobs:
       - name: Require a closing issue reference
         env:
           GH_TOKEN: ${{ github.token }}
-          # PR 由来の文字列は env 経由で受け取る (理由は require-tests job と同じ)。
+          # PR 由来の文字列は gh pr view の JSON 経由で受け取る (理由は require-tests job と同じ)。
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
-          gh pr view "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --json closingIssuesReferences > "${RUNNER_TEMP}/closing.json"
-          node scripts/require-issue.mjs --closing "${RUNNER_TEMP}/closing.json"
+          # ラベル・author と紐づけを 1 回の gh pr view で同じ時点から読み、同じファイルを両方に渡す
+          gh pr view "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --json title,body,labels,author,closingIssuesReferences > "${RUNNER_TEMP}/pr.json"
+          node scripts/require-issue.mjs --pr "${RUNNER_TEMP}/pr.json" --closing "${RUNNER_TEMP}/pr.json"

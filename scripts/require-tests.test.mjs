@@ -8,10 +8,12 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
-import { evaluate, extractNoTestReason, isImplementationFile, isTestFile } from './require-tests.mjs';
+import { evaluate, extractNoTestReason, isImplementationFile, isTestFile, parsePr } from './require-tests.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./require-tests.mjs', import.meta.url));
 const PR_TEMPLATE = readFileSync(new URL('../.github/pull_request_template.md', import.meta.url), 'utf8');
@@ -22,6 +24,16 @@ const REASON_BODY = '## Summary\n\nリファクタ\n\n## テスト不要の理�
 
 function feat(overrides = {}) {
   return { title: 'feat(editor): foo', labels: [], body: '', author: 'someone', ...overrides };
+}
+
+/** `gh pr view --json title,body,labels,author` の出力の形 (CLI の --pr に渡すもの)。 */
+function ghPr({ title = 'feat(editor): foo', body = '', labels = [], login = 'someone' } = {}) {
+  return {
+    title,
+    body,
+    labels: labels.map((name, i) => ({ id: `LA_${i}`, name, description: '', color: 'ededed' })),
+    author: { id: 'U_1', is_bot: login.startsWith('app/'), login, name: '' },
+  };
 }
 
 describe('file classification', () => {
@@ -170,9 +182,37 @@ describe('extractNoTestReason', () => {
   });
 });
 
+describe('parsePr', () => {
+  it('maps gh pr view output to the title, body, label names and author login', () => {
+    const json = ghPr({ title: 'feat: foo', body: 'b', labels: ['no-test-needed', 'pkg:editor'], login: 'someone' });
+    assert.deepEqual(parsePr(json), {
+      title: 'feat: foo',
+      body: 'b',
+      labels: ['no-test-needed', 'pkg:editor'],
+      author: 'someone',
+    });
+  });
+
+  it('spells a gh bot login (app/<slug>) as the payload does, so dependabot stays exempt', () => {
+    const pr = parsePr(ghPr({ login: 'app/dependabot' }));
+    assert.equal(evaluate({ ...pr, files: [IMPL] }).verdict, 'exempt');
+  });
+
+  it('rejects JSON without labels instead of judging it as unlabeled', () => {
+    const { labels: _labels, ...withoutLabels } = ghPr();
+    assert.throws(() => parsePr(withoutLabels), /labels が配列ではない/);
+  });
+});
+
 describe('CLI', () => {
-  function run(files, env) {
-    return spawnSync(process.execPath, [SCRIPT], {
+  const dir = mkdtempSync(join(tmpdir(), 'require-tests-'));
+  function prFile(json) {
+    const path = join(dir, `pr-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(path, JSON.stringify(json));
+    return path;
+  }
+  function run(files, args, env = {}) {
+    return spawnSync(process.execPath, [SCRIPT, ...args], {
       input: `${files.join('\n')}\n`,
       encoding: 'utf8',
       env: { PATH: process.env.PATH, ...env },
@@ -180,16 +220,35 @@ describe('CLI', () => {
   }
 
   it('exits 1 with an ::error:: annotation when tests are missing', () => {
-    const child = run([IMPL], { PR_TITLE: 'feat: foo', PR_LABELS: '[]' });
+    const child = run([IMPL], ['--pr', prFile(ghPr())]);
     assert.equal(child.status, 1);
     assert.match(child.stdout, /^::error /m);
   });
 
   it('exits 0 when the change is accompanied by tests', () => {
-    assert.equal(run([IMPL, UNIT_TEST], { PR_TITLE: 'feat: foo' }).status, 0);
+    assert.equal(run([IMPL, UNIT_TEST], ['--pr', prFile(ghPr())]).status, 0);
   });
 
-  it('exits 2 when PR_LABELS is not a JSON array', () => {
-    assert.equal(run([IMPL], { PR_TITLE: 'feat: foo', PR_LABELS: 'no-test-needed' }).status, 2);
+  it('waives by the no-test-needed label in the PR JSON', () => {
+    const pr = ghPr({ labels: ['no-test-needed'], body: REASON_BODY });
+    assert.equal(run([IMPL], ['--pr', prFile(pr)]).status, 0);
+  });
+
+  it('judges by the current labels in the PR JSON, ignoring a stale PR_LABELS env', () => {
+    const child = run([IMPL], ['--pr', prFile(ghPr({ body: REASON_BODY }))], {
+      PR_LABELS: '["no-test-needed"]',
+      PR_TITLE: 'docs: foo',
+    });
+    assert.equal(child.status, 1);
+  });
+
+  it('exits 2 when --pr is not given', () => {
+    assert.equal(run([IMPL], []).status, 2);
+  });
+
+  it('exits 2 when the PR JSON is broken', () => {
+    const path = join(dir, 'broken.json');
+    writeFileSync(path, '{"title":');
+    assert.equal(run([IMPL], ['--pr', path]).status, 2);
   });
 });

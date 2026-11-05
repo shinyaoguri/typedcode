@@ -34,20 +34,21 @@
  *     誤検知がラベル頼みになりゲートの信号が薄まるため外している
  *
  * 使い方 (CI は .github/workflows/pr-checks.yml):
- *   git diff --name-only origin/main...HEAD | PR_TITLE='feat: ...' PR_BODY="$(cat body.md)" node scripts/require-visual-evidence.mjs
- *   node scripts/require-visual-evidence.mjs --files changed-files.txt
+ *   gh pr view N --json title,body,labels,author > pr.json
+ *   git diff --name-only origin/main...HEAD | node scripts/require-visual-evidence.mjs --pr pr.json
+ *   node scripts/require-visual-evidence.mjs --pr pr.json --files changed-files.txt
  *
- * 入力 (環境変数。PR 由来の文字列はシェルに展開せず env で受け取る):
- *   PR_TITLE / PR_BODY / PR_AUTHOR — そのまま
- *   PR_LABELS                       — ラベル名の JSON 配列 (例: '["no-visual-change"]')
- *   変更ファイル一覧                 — 1 行 1 パス。`--files <path>` (`-` または省略で stdin)
+ * 入力 (require-tests と同じ。読み方は require-tests.mjs の readPr / readFiles):
+ *   PR の現在値      — `--pr <path>`: `gh pr view --json title,body,labels,author` の出力 JSON (必須)。
+ *                      event payload ではなく実行時点の PR を読む (#632)
+ *   変更ファイル一覧 — 1 行 1 パス。`--files <path>` (`-` または省略で stdin)
  *
  * exit 0 = pass / 1 = 画像なし / 2 = 入力エラー
  */
 
 import { appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { escapeAnnotation, exemptionReason, isTestFile, parseLabels, readFiles } from './require-tests.mjs';
+import { escapeAnnotation, exemptionReason, isTestFile, readFiles, readPr } from './require-tests.mjs';
 
 /** 逃げ道のラベル名。CONTRIBUTING.md / PR テンプレートと揃える。 */
 export const NO_VISUAL_LABEL = 'no-visual-change';
@@ -154,13 +155,8 @@ export function formatFailure(outcome) {
 function main() {
   let outcome;
   try {
-    outcome = evaluate({
-      files: readFiles(process.argv.slice(2)),
-      title: process.env.PR_TITLE ?? '',
-      body: process.env.PR_BODY ?? '',
-      author: process.env.PR_AUTHOR ?? '',
-      labels: parseLabels(process.env.PR_LABELS),
-    });
+    const argv = process.argv.slice(2);
+    outcome = evaluate({ ...readPr(argv), files: readFiles(argv) });
   } catch (error) {
     console.error(`require-visual-evidence: 入力エラー: ${error instanceof Error ? error.message : error}`);
     process.exitCode = 2;
