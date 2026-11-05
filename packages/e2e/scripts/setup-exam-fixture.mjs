@@ -11,7 +11,7 @@
  * **`packages/shared/src/examAuthorityKeys/localKeys.ts` は書き換えない。** それは verifier の信頼の根で、
  * 開発者が自分の dev 鍵を置く場所 (gitignore 済み。#338) なので、E2E 用の使い捨て鍵を書くと開発者の鍵を壊し、
  * e2e の後も手元の通常の dev サーバ・verifier が偽の出題者鍵を信頼し続ける。代わりに E2E の実行時だけ、
- * editor の dev サーバ (vite.editor.config.mjs) と verify-cli (tests/helpers/examKeysLoader.mjs) が
+ * editor / verify の dev サーバ (vite.editor.config.mjs / vite.verify.config.mjs) と verify-cli (tests/helpers/examKeysLoader.mjs) が
  * `localKeys` の import を `authority-keys.mjs` に差し替える。
  *
  * 封印は `packages/workers/scripts/make-exam-package.mjs` を実際に spawn して行う。このスクリプトは

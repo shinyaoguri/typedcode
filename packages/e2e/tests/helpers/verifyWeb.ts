@@ -282,6 +282,24 @@ export class VerifyWebApp {
     await this.page.locator('#vp-retry-btn').click({ timeout: 10_000 });
   }
 
+  /**
+   * 表示中のタブ (exam の proof) に問題パッケージ (`.tcexam`) を渡す (#229)。試験束縛カードの
+   * `#exam-load-btn` を押し、verify が動的に作る file input を `filechooser` で受けて `packagePath` を入れる。
+   * カードは問題パッケージ未提供の exam proof を表示しているときだけ出るので、`readVerdict` / `selectFile` で
+   * その行を選んでから呼ぶ。
+   *
+   * 渡すと verify は同じタブを再検証する (`reverifyWithManifest`)。再検証の始まりと終わりを区別できる
+   * 状態契約は無く、fast の小さい proof では一瞬で終わる (`waitSettled` が渡す前の確定状態を完了と見誤りうる)。
+   * そのため完了は待たない。呼び出し側は期待する判定 (例: `data-temporal` が `exam-t0`) が現れるのを
+   * `expect(async () => { ... await web.readVerdict(name) ... }).toPass()` で待つ (`readVerdict` は検証中だと
+   * throw するので、throw を再試行に数える `toPass` を使う)。
+   */
+  async loadExamPackage(packagePath: string): Promise<void> {
+    const chooser = this.page.waitForEvent('filechooser');
+    await this.page.locator('#exam-load-btn').click({ timeout: 10_000 });
+    await (await chooser).setFiles(packagePath);
+  }
+
   /** ステータスバーの集約 (失敗を含むときだけ押せる) を押す。失敗した proof のタブが開く。 */
   async clickProofSummary(): Promise<void> {
     await this.page.locator('#queue-status').click({ timeout: 10_000 });

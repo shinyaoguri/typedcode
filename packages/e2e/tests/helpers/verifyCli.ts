@@ -116,12 +116,21 @@ export interface CliResultWithVerdicts extends CliResult {
  *
  * 合否は `--analysis-json` の `valid`、三層保証は `--analysis-bundle` の `assurance` から読む。
  * どちらも advisory 出力で exit code には干渉しない (exit code は `exitCode` で別に見る)。
+ * `options` は `runVerifyCli` と同じ (exam の fixture を `--exam-package` に渡すときは `examAuthorityKeys: true`)。
  */
-export function runVerifyCliWithVerdicts(file: string, extraArgs: string[] = []): CliResultWithVerdicts {
+export function runVerifyCliWithVerdicts(
+  file: string,
+  extraArgs: string[] = [],
+  options: RunVerifyCliOptions = {}
+): CliResultWithVerdicts {
   const outDir = mkdtempSync(join(tmpdir(), 'tc-e2e-verdicts-'));
   const analysisPath = join(outDir, 'analysis.json');
   const bundlePath = join(outDir, 'bundle.json');
-  const res = runVerifyCli(file, [...extraArgs, '--analysis-json', analysisPath, '--analysis-bundle', bundlePath]);
+  const res = runVerifyCli(
+    file,
+    [...extraArgs, '--analysis-json', analysisPath, '--analysis-bundle', bundlePath],
+    options
+  );
   if (!existsSync(analysisPath) || !existsSync(bundlePath)) {
     throw new Error(`verify-cli wrote no analysis/bundle (exit ${res.exitCode})\n${res.stdout}${res.stderr}`);
   }

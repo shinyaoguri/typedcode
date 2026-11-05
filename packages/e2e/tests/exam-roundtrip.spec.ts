@@ -5,7 +5,8 @@ import { test, expect } from '@playwright/test';
 import { EditorApp, readProofEvents, readProofJson } from './helpers/app.js';
 import type { ProofCheckpoint } from './helpers/app.js';
 import { loadExamFixture } from './helpers/examFixture.js';
-import { runVerifyCli } from './helpers/verifyCli.js';
+import { runVerifyCli, runVerifyCliWithVerdicts } from './helpers/verifyCli.js';
+import { VerifyWebApp, expectWebCliParity, proofNames } from './helpers/verifyWeb.js';
 
 /**
  * 試験 (exam) モードの round-trip (#229): 封印問題パッケージを監督コードで解錠 → 打鍵 → export →
@@ -17,9 +18,13 @@ import { runVerifyCli } from './helpers/verifyCli.js';
  *   本物の registry で検証しても exit 1 (E2E 用の鍵が差し込まれていることが pass の前提だと確かめる)
  * - `#0` の verified / signature の値は assert しない (#236 の方針決定で変わるため)。署名 envelope が
  *   1 つ以上載っていること (ADR-0027 の `acquireSigningTokenBestEffort` 経路) だけを見る
+ * - 同じ ZIP を verify Web に入れ、試験束縛カードの `#exam-load-btn` から同じ package を渡すと、
+ *   `#assurance-strip[data-temporal]` が `exam-t0` になり、verify-cli の `--analysis-bundle` の判定と一致する
+ *   (不変条件 6)。渡す前は exam-t0 でないことも見て、空振りでないことを確かめる。束縛の内訳は Web に
+ *   data-* の契約が無いので見ない。verify の dev サーバも E2E の出題者鍵を信頼する (vite.verify.config.mjs)
  *
  * fixture (出題者鍵・パッケージ) は `npm run setup -w @typedcode/e2e` が packages/e2e/fixtures/exam/ に
- * 生成する。shared の localKeys.ts (開発者の鍵置き場。gitignore 済み) は書き換えず、editor の dev サーバ (vite.editor.config.mjs)
+ * 生成する。shared の localKeys.ts (開発者の鍵置き場。gitignore 済み) は書き換えず、editor / verify の dev サーバ (vite.editor.config.mjs / vite.verify.config.mjs)
  * と verify-cli (exam-keys/) が E2E の実行時だけ公開鍵を差し替える。verify-cli は既定どおり fast
  * (PoSW 全再計算は happy-path の 1 本だけ。AGENTS.md 不変条件 4)。
  */
@@ -31,7 +36,7 @@ const LOCAL_KEYS_TS = resolve(
 
 const fixture = loadExamFixture();
 
-test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打鍵 → export → verify-cli --exam-package が pass する', async ({
+test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打鍵 → export → verify-cli --exam-package が pass し、verify Web も .tcexam で exam-t0 になる', async ({
   page,
 }) => {
   // CI で fixture が無いのは setup の配線の壊れ。skip で緑にせず落とす (「CI で skip されずに走る」が受け入れ条件)。
@@ -109,5 +114,44 @@ test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打
     const untrusted = runVerifyCli(zipPath, ['--mode', 'fast', '--exam-package', fixture.packagePath]);
     expect(untrusted.exitCode, untrusted.stdout + untrusted.stderr).toBe(1);
     expect(untrusted.stdout).toMatch(/Signature:\s+FAIL/);
+  });
+
+  await test.step('verify Web に同じ ZIP と .tcexam を入れると temporal が exam-t0 になり、verify-cli と一致する', async () => {
+    const names = await proofNames(zipPath);
+    expect(names, 'exam の export は proof 1 本').toHaveLength(1);
+    const name = names[0]!;
+
+    const cli = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast', '--exam-package', fixture.packagePath], {
+      examAuthorityKeys: true,
+    });
+    expect(cli.exitCode, cli.stdout + cli.stderr).toBe(0);
+    expect(
+      cli.verdicts.map((v) => v.assurance.temporal),
+      '束縛を検証済みの CLI は exam-t0'
+    ).toEqual(['exam-t0']);
+
+    // 試験中の editor から離れると beforeunload の確認が出うるので、verify Web は同じ context の別 page で開く。
+    const web = new VerifyWebApp(await page.context().newPage());
+    await web.open('fast');
+    await web.load([zipPath]);
+
+    // 空振りでないことの裏取り: 問題パッケージを渡す前は束縛が未検証なので exam-t0 を名乗らない (#131)。
+    const before = await web.readVerdict(name);
+    expect(before.status, JSON.stringify(before)).not.toBe('error');
+    expect(before.temporal, `package 未提供で exam-t0 を名乗った: ${JSON.stringify(before)}`).not.toBe('exam-t0');
+
+    await web.loadExamPackage(fixture.packagePath);
+    // 再検証の完了は状態契約で区別できないので、期待する判定が現れるまで待つ (loadExamPackage の doc)。
+    await expect(async () => {
+      const v = await web.readVerdict(name);
+      expect(v.temporal, JSON.stringify(v)).toBe('exam-t0');
+    }).toPass({ timeout: 120_000 });
+    await web.waitSettled();
+
+    const after = await web.readVerdict(name);
+    expect(after.status, JSON.stringify(after)).not.toBe('error');
+    expect(after.temporal).toBe('exam-t0');
+    // 束縛の内訳 (Signature / Package hash) は Web に data-* の契約が無いので見ない (2026-11-05 の決定)。
+    expectWebCliParity([after], cli);
   });
 });

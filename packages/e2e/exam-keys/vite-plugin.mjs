@@ -1,12 +1,12 @@
 /**
- * editor の dev サーバ (vite.editor.config.mjs) が使う Vite プラグイン (#229)。
+ * editor / verify の dev サーバ (vite.editor.config.mjs / vite.verify.config.mjs) が使う Vite プラグイン (#229)。
  *
  * shared の `examAuthorityKeys/index.ts` が読む `./localKeys` を、E2E の出題者「公開」鍵
  * (fixtures/exam/authority-keys.mjs。setup-exam-fixture.mjs が生成) に差し替える。
  * 開発者の鍵置き場 `localKeys.ts` (gitignore 済み) を書き換えずに、E2E の使い捨て鍵を信頼させるための仕組み。
  *
  * fixture が無ければ何もしない (通常の localKeys.ts がそのまま使われる)。dev サーバ専用で、
- * 本番ビルドの設定 (packages/editor/vite.config.ts) には入っていない。
+ * 本番ビルドの設定 (packages/editor/vite.config.ts / packages/verify/vite.config.ts) には入っていない。
  */
 import { existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
