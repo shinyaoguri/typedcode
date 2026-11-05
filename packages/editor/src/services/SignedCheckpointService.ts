@@ -261,6 +261,11 @@ export class SignedCheckpointService {
   // ---- internal ---------------------------------------------------------
 
   private enqueueFromCheckpoint(cp: CheckpointData): void {
+    // data の無いイベント (削除の contentChange は data: '') に乗った cp は contentHash が空文字になる。
+    // 署名 API は 64 桁 hex を要求して 400 で拒否し、昇順処理のため後続の署名まで止まる (#571)。
+    // この cp は署名せずに飛ばす: 失うのはこの点の時刻アンカーだけで、次の cp で署名が再開する。
+    // totalEventsSincePrevious は最後に署名した cp から数えるので、連鎖は崩れない。
+    if (!cp.contentHash) return;
     const eventIndex = cp.eventIndex;
     if (this.queue.has(eventIndex)) return;
     this.queue.set(eventIndex, {

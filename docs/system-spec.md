@@ -227,7 +227,7 @@ interface CheckpointData {
   eventIndex: number;     // 0-indexed イベント位置
   hash: string;           // 対応 event の hash
   timestamp: number;      // 対応 event の timestamp
-  contentHash: string;    // SHA256(event.data) — 該当イベントのデータ部のハッシュ
+  contentHash: string;    // SHA256(event.data) — 該当イベントのデータ部のハッシュ。data の無いイベント (削除の contentChange は data: '') では空文字で、この cp は署名の対象外 (#571)
   signature?: SignedCheckpointEnvelope;  // サーバ署名 (後述、optional)
 }
 ```
