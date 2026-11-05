@@ -45,6 +45,7 @@ GitHub はこの小見出しの "Closes #N" で Issue を紐づけ、merge で�
 editor / verify の見た目・動きを変えた PR は、ここに before/after の画像を載せる (ADR-0036)。
 見た目が変わらないなら、この節に「なし」と書く。見た目に効くパスを変えて本文に画像が無いと CI の
 require-visual-evidence が落とすので、そのときは見た目が変わらない理由をここに書いてラベル `no-visual-change` を付ける。
+タイトルの型 (docs / ci / chore) では免除されない。
 - 画像はリポジトリにコミットせず、Gyazo へ上げて URL を貼る (repo-standards プラグインの gyazo-capture スキル)
 - 動きはアニメーション WebP (GIF にしない)。素材は `npm run shots -w @typedcode/e2e` で packages/e2e/shots/ に撮れる
   (before は main で同じコマンドを打つ)。UI に触れた PR には CI (visual-evidence) が before/after をコメントするので、ここへ写す
@@ -59,7 +60,8 @@ require-visual-evidence が落とすので、そのときは見た目が変わ�
 ## テスト不要の理由
 
 <!--
-該当時のみ記入。実装 (packages/*/src) を変えてテストを変えていない PR は CI の require-tests が落とす。
+該当時のみ記入。実装 (packages/*/src、vite.config.ts・public/_headers・wrangler*.toml など) を変えてテストを変えていない PR は
+CI の require-tests が落とす (タイトルの型 docs / ci / chore では免除されない)。
 テストが本当に不要なら、ラベル `no-test-needed` を付け、この見出しの下に理由を書く (HTML コメントは数えない)。
 該当しなければこの節は空のままでよい。
 -->

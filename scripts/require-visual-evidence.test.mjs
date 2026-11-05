@@ -167,14 +167,29 @@ describe('evaluate', () => {
     assert.equal(evaluate({ ...feat(), files }).verdict, 'no-visual-files');
   });
 
-  it('exempts docs / ci / chore typed titles even when visual files change', () => {
+  it('does not exempt a chore PR that changes a visual path', () => {
+    assert.equal(evaluate({ ...feat({ title: 'chore: foo' }), files: [CSS] }).verdict, 'missing-image');
+  });
+
+  it('does not exempt docs / ci typed titles either when visual files change', () => {
     for (const title of ['docs: foo', 'ci(repo): foo', 'chore!: foo']) {
-      assert.equal(evaluate({ ...feat({ title }), files: [CSS] }).verdict, 'exempt', title);
+      assert.equal(evaluate({ ...feat({ title }), files: [CSS] }).verdict, 'missing-image', title);
+    }
+  });
+
+  it('exempts docs / ci / chore typed titles that change no visual path', () => {
+    for (const title of ['docs: foo', 'ci(repo): foo', 'chore!: foo']) {
+      const outcome = evaluate({
+        ...feat({ title }),
+        files: ['docs/adr/0036-x.md', 'packages/verify/src/services/x.ts'],
+      });
+      assert.equal(outcome.verdict, 'exempt', title);
     }
   });
 
   it('exempts dependency bumps and dependabot PRs', () => {
     assert.equal(evaluate({ ...feat({ title: 'fix(deps): bump foo' }), files: [CSS] }).verdict, 'exempt');
+    assert.equal(evaluate({ ...feat({ title: 'chore(deps): bump foo' }), files: [CSS] }).verdict, 'exempt');
     assert.equal(evaluate({ ...feat({ author: 'dependabot[bot]' }), files: [CSS] }).verdict, 'exempt');
   });
 });

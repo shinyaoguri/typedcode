@@ -12,8 +12,8 @@
  * 照合すると「書いたのに閉じない」PR が通ってしまう。mokume の `scripts/review-gate.sh` も同じ理由で
  * closingIssuesReferences を読んでいる。
  *
- * require-tests / require-visual-evidence と違い、**タイトルの型 (docs / ci / chore) では免除しない**
- * (require-tests.mjs の exemptionReason は使わない)。閉じ忘れは docs / ci / chore の PR にもあり、
+ * require-tests / require-visual-evidence (見るファイルを含まない PR に限ってタイトルの型で免除する) と違い、
+ * **タイトルの型 (docs / ci / chore) では一切免除しない** (require-tests.mjs の exemptionReason は使わない)。閉じ忘れは docs / ci / chore の PR にもあり、
  * 型で免除すると Issue を閉じる責務ごと抜ける。受け入れ条件を持たない PR (依存の手動更新・
  * リリース準備など) はラベルで通す。
  *

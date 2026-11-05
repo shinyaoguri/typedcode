@@ -53,10 +53,26 @@ describe('file classification', () => {
     assert.equal(isImplementationFile(UNIT_TEST), false);
   });
 
-  it('does not count non-source files (docs, config, JSON) as implementation changes', () => {
+  it('counts delivery config (vite.config.ts, public/_headers, workers wrangler*.toml) as an implementation change', () => {
+    for (const file of [
+      'packages/editor/public/_headers',
+      'packages/editor/vite.config.ts',
+      'packages/workers/wrangler.production.toml',
+      'packages/verify/public/_headers',
+      'packages/verify/vite.config.ts',
+      'packages/workers/wrangler.toml',
+      'packages/workers/wrangler.staging.toml',
+    ]) {
+      assert.equal(isImplementationFile(file), true, file);
+    }
+  });
+
+  it('does not count non-source files (docs, test config, JSON, other public assets) as implementation changes', () => {
     for (const file of [
       'packages/editor/README.md',
-      'packages/editor/vite.config.ts',
+      'packages/editor/vitest.config.ts',
+      'packages/editor/package.json',
+      'packages/editor/public/favicon.svg',
       'packages/shared/src/data.json',
     ]) {
       assert.equal(isImplementationFile(file), false, file);
@@ -113,14 +129,37 @@ describe('evaluate', () => {
     assert.equal(evaluate({ ...feat(), files: ['docs/adr/0034-x.md', 'package.json'] }).ok, true);
   });
 
-  it('exempts docs / ci / chore typed titles even when implementation files change', () => {
+  it('fails a chore PR that changes packages/editor/src/x.ts without a test change', () => {
+    const outcome = evaluate({ ...feat({ title: 'chore: foo' }), files: ['packages/editor/src/x.ts'] });
+    assert.equal(outcome.verdict, 'missing-tests');
+  });
+
+  it('exempts a chore PR that changes only docs/ by its title type', () => {
+    const outcome = evaluate({ ...feat({ title: 'chore: foo' }), files: ['docs/adr/0034-x.md', 'docs/setup.md'] });
+    assert.equal(outcome.verdict, 'exempt');
+  });
+
+  it('does not exempt docs / ci typed titles either when implementation files change', () => {
     for (const title of ['docs: foo', 'ci(deploy): foo', 'chore!: foo']) {
-      assert.equal(evaluate({ ...feat({ title }), files: [IMPL] }).verdict, 'exempt', title);
+      assert.equal(evaluate({ ...feat({ title }), files: [IMPL] }).verdict, 'missing-tests', title);
     }
   });
 
+  it('fails a chore PR that changes only delivery config without a test change', () => {
+    const outcome = evaluate({ ...feat({ title: 'chore(workers): foo' }), files: ['packages/workers/wrangler.toml'] });
+    assert.equal(outcome.verdict, 'missing-tests');
+  });
+
+  it('waives a chore PR with implementation changes by the no-test-needed label and a reason', () => {
+    const outcome = evaluate({
+      ...feat({ title: 'chore: foo', labels: ['no-test-needed'], body: REASON_BODY }),
+      files: [IMPL],
+    });
+    assert.equal(outcome.verdict, 'waived');
+  });
+
   it('exempts dependency bump titles', () => {
-    for (const title of ['fix(deps): bump foo', 'feat(deps-dev): bump bar']) {
+    for (const title of ['fix(deps): bump foo', 'feat(deps-dev): bump bar', 'chore(deps): bump baz']) {
       assert.equal(evaluate({ ...feat({ title }), files: [IMPL] }).verdict, 'exempt', title);
     }
   });

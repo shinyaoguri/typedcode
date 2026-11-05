@@ -11,8 +11,8 @@
  * スクリーンショットを含む) は数えない。
  *
  * ルール:
- *   - 対象外 (pass): require-tests と同じ (タイトルが docs / ci / chore 型、`(deps` を含む、
- *     author が dependabot[bot])
+ *   - 対象外 (pass): require-tests と同じ (タイトルが docs / ci / chore 型で見た目に効くパスを含まない、
+ *     `(deps` を含む、author が dependabot[bot])。型の名乗りだけでは見た目の変更を免除しない (#591)
  *   - 見た目のファイル (isVisualFile): packages/(editor|verify)/*.html、
  *     packages/(editor|verify)/src/**\/*.css、packages/editor/src/ui/(components|dialogs)/**、
  *     packages/verify/src/ui/*.ts (直下のみ。AppController.ts / fileInput.ts を除く)、
@@ -119,7 +119,7 @@ export function evaluate({ files, title = '', labels = [], body = '', author = '
   const visualFiles = files.filter(isVisualFile);
   const result = (ok, verdict, detail) => ({ ok, verdict, detail, visualFiles });
 
-  const exempt = exemptionReason({ title, author });
+  const exempt = exemptionReason({ title, author, gatedFiles: visualFiles });
   if (exempt) return result(true, 'exempt', `対象外: ${exempt}`);
   if (visualFiles.length === 0) return result(true, 'no-visual-files', '見た目に効くパスの変更なし');
   if (labels.includes(NO_VISUAL_LABEL)) return result(true, 'waived', `ラベル ${NO_VISUAL_LABEL} あり`);
@@ -146,6 +146,7 @@ export function formatFailure(outcome) {
     '  アップロードの手順は repo-standards プラグインの gyazo-capture スキル',
     `- 見た目が変わらない変更 (ロジック・data-* の追加など) なら、PR にラベル \`${NO_VISUAL_LABEL}\` を付ける。`,
     '  ラベル・本文の編集でこのチェックは再実行される',
+    '- タイトルの型 (`docs` / `ci` / `chore`) では免除されない (型の免除は見た目に効くパスを含まない PR だけ)',
     '',
     '判定は PR 本文だけを見る (コメントの画像は数えない。squash merge 後に残るのは本文)。',
     'HTML コメント・コードブロック・インラインコードの中の画像も数えない。根拠は ADR-0036',

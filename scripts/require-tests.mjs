@@ -8,10 +8,12 @@
  * 止める網として働く。テストが本当に不要な PR には逃げ道 (ラベル + 理由) を用意する。
  *
  * ルール:
- *   - 対象外 (pass): タイトルが docs / ci / chore 型、`(deps` / `(deps-dev)` を含む、
- *     author が dependabot[bot]
- *   - 実装の変更: packages/<pkg>/src/** のテストでない .ts/.mts/.mjs/.js/.html/.css と、
- *     packages/<pkg>/*.html (Vite のページエントリ。index.html / author.html)
+ *   - 対象外 (pass): タイトルが docs / ci / chore 型で実装の変更を含まない、`(deps` / `(deps-dev)` を含む、
+ *     author が dependabot[bot]。型の名乗りだけでは実装の変更を免除しない (#591)
+ *   - 実装の変更: packages/<pkg>/src/** のテストでない .ts/.mts/.mjs/.js/.html/.css、
+ *     packages/<pkg>/*.html (Vite のページエントリ。index.html / author.html)、
+ *     配信の振る舞いを変える設定 (packages/<pkg>/vite.config.ts・packages/<pkg>/public/_headers・
+ *     packages/workers/wrangler*.toml)
  *   - テストの変更: __tests__/ 配下、*.test.ts、packages/e2e/tests/**、scripts/**\/*.test.*
  *     (ただし撮影 spec の shots.spec.ts・*.shots.spec.ts は数えない)
  *   - 実装の変更があってテストの変更が無ければ fail。ただしラベル `no-test-needed` があり、
@@ -43,6 +45,12 @@ export const REASON_HEADING = 'テスト不要の理由';
 const EXEMPT_TITLE_TYPES = ['docs', 'ci', 'chore'];
 const EXEMPT_AUTHORS = ['dependabot[bot]'];
 const IMPL_EXTENSIONS = /\.(ts|mts|mjs|js|html|css)$/;
+/** src の外でも配信の振る舞いを変える設定 (ビルド・応答ヘッダ・Worker の束縛と変数)。 */
+const IMPL_CONFIG_PATTERNS = [
+  /^packages\/[^/]+\/vite\.config\.ts$/,
+  /^packages\/[^/]+\/public\/_headers$/,
+  /^packages\/workers\/wrangler[^/]*\.toml$/,
+];
 
 /**
  * 撮影 spec (`@shots`。何も assert せず、人が見る証跡を撮るだけ / ADR-0036) か。
@@ -67,14 +75,21 @@ export function isTestFile(file) {
 export function isImplementationFile(file) {
   if (isTestFile(file)) return false;
   if (/^packages\/[^/]+\/[^/]+\.html$/.test(file)) return true;
+  if (IMPL_CONFIG_PATTERNS.some((pattern) => pattern.test(file))) return true;
   return /^packages\/[^/]+\/src\//.test(file) && IMPL_EXTENSIONS.test(file);
 }
 
-/** ゲートの対象外にする PR なら、その理由を返す。対象なら null。 */
-export function exemptionReason({ title = '', author = '' }) {
+/**
+ * ゲートの対象外にする PR なら、その理由を返す。対象なら null。
+ *
+ * `gatedFiles` はそのゲートが見るファイル (require-tests は実装の変更、require-visual-evidence は
+ * 見た目に効くパス)。タイトルの型 (docs / ci / chore) による免除は、これが空のときだけ効かせる
+ * (型の名乗りだけで実装を素通りさせない。#591)。author と依存更新の免除はファイルを見ない。
+ */
+export function exemptionReason({ title = '', author = '', gatedFiles = [] }) {
   if (EXEMPT_AUTHORS.includes(author)) return `author が ${author}`;
   const type = /^([a-z]+)(\([^()]*\))?!?:/.exec(title)?.[1];
-  if (type && EXEMPT_TITLE_TYPES.includes(type)) return `タイトルの型が ${type}`;
+  if (type && EXEMPT_TITLE_TYPES.includes(type) && gatedFiles.length === 0) return `タイトルの型が ${type}`;
   if (title.includes('(deps')) return 'タイトルが依存更新 (deps)';
   return null;
 }
@@ -110,7 +125,7 @@ export function evaluate({ files, title = '', labels = [], body = '', author = '
   const testFiles = files.filter(isTestFile);
   const result = (ok, verdict, detail) => ({ ok, verdict, detail, implementationFiles, testFiles });
 
-  const exempt = exemptionReason({ title, author });
+  const exempt = exemptionReason({ title, author, gatedFiles: implementationFiles });
   if (exempt) return result(true, 'exempt', `対象外: ${exempt}`);
   if (implementationFiles.length === 0) return result(true, 'no-implementation', '実装の変更なし');
   if (testFiles.length > 0) return result(true, 'has-tests', `テストの変更 ${testFiles.length} 件あり`);
@@ -149,6 +164,7 @@ export function formatFailure(outcome) {
     '  完了の定義は CONTRIBUTING.md「完了の定義 (Definition of Done)」',
     `- テストが本当に不要な変更 (挙動を変えないリファクタ・文言だけの修正など) なら、PR にラベル \`${NO_TEST_LABEL}\` を付け、`,
     `  PR 本文の \`## ${REASON_HEADING}\` 見出しの下に理由を書く (HTML コメントは数えない)。ラベル・本文の編集でこのチェックは再実行される`,
+    '- タイトルの型 (`docs` / `ci` / `chore`) では免除されない (型の免除は実装の変更を含まない PR だけ)',
     '',
     'テストとして数えるもの: `__tests__/` 配下、`*.test.ts`、`packages/e2e/tests/**` (撮影 spec の `shots.spec.ts` / `*.shots.spec.ts` を除く)、`scripts/**/*.test.*`',
   ].join('\n');
