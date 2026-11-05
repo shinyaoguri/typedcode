@@ -46,8 +46,8 @@ npm run report -w @typedcode/e2e        # 直近の HTML レポート (trace 付
 ポートを握っていると、テストを 1 本も走らせずに「ポート N は別の作業ツリーのサーバが使用中 (相手: <パス>)」の
 形で落ちるので、そのサーバを止めるか `E2E_EDITOR_PORT` / `E2E_WORKERS_PORT` / `E2E_VERIFY_PORT` で
 空きポートを指定する。本番ビルドのスモーク (`npm run test:build`) も、再利用しうる workers を
-`global-setup.build.ts` で同じく照合する (#560。`E2E_WORKERS_PORT` で空きポートへ逃がせる)。**exam の spec は editor を E2E 用の設定 (出題者鍵を差し替える `vite.editor.config.mjs`)
-で起こすサーバが前提**なので、同じ作業ツリーの通常の `npm run dev` が 5173 を握っていると、照合は通っても
+`global-setup.build.ts` で同じく照合する (#560。`E2E_WORKERS_PORT` で空きポートへ逃がせる)。**exam の spec は editor と verify を E2E 用の設定 (出題者鍵を差し替える `vite.editor.config.mjs` /
+`vite.verify.config.mjs`) で起こすサーバが前提**なので、同じ作業ツリーの通常の `npm run dev` が 5173 / 5174 を握っていると、照合は通っても
 「出題者の署名を検証できない」で落ちる。その場合も同じく空きポートを指定する。
 
 ### exam の fixture (#229)
@@ -59,7 +59,7 @@ npm run report -w @typedcode/e2e        # 直近の HTML レポート (trace 付
 (作り直すなら `packages/e2e/fixtures` を消して `npm run setup -w @typedcode/e2e`)。
 
 shared の `examAuthorityKeys/localKeys.ts` (開発者の鍵置き場。gitignore 済み) は**書き換えない** (書くと開発者の鍵を壊し、
-e2e の後も手元の verifier が偽の出題者鍵を信頼し続ける。#229 / #338)。editor は `vite.editor.config.mjs`、verify-cli は
+e2e の後も手元の verifier が偽の出題者鍵を信頼し続ける。#229 / #338)。editor は `vite.editor.config.mjs`、verify Web は `vite.verify.config.mjs`、verify-cli は
 `tests/helpers/verifyCli.ts` の `examAuthorityKeys: true` (`exam-keys/` の resolve フック) で、E2E の実行時だけ
 `./localKeys` の import を fixture の公開鍵に差し替える。
 

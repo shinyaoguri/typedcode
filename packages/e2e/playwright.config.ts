@@ -136,7 +136,8 @@ export default defineConfig({
     },
     {
       name: 'verify',
-      command: 'npm run dev -w @typedcode/verify',
+      // editor と同じく exam の出題者鍵だけ E2E 用に差し替える設定で起こす (`.tcexam` の署名検証。#229)。
+      command: 'npm run dev -w @typedcode/verify -- --config ../e2e/vite.verify.config.mjs',
       // packages/verify/vite.config.ts は VERIFY_PORT があると server.port + strictPort にする
       // (別プロセスが握っていたら黙ってずらさず失敗する)。
       env: { VERIFY_PORT: String(VERIFY_PORT) },
