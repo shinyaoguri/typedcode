@@ -96,6 +96,23 @@ npm run shots -w @typedcode/e2e   # packages/e2e/shots/ に PNG・アニメー�
 - UI に触れた PR には、CI ([visual-evidence.yml](../../.github/workflows/visual-evidence.yml)) が base と head で
   このコマンドを回して before/after の表をコメントする。要る画面を本文の「見た目の証跡」へ写す
 
+## 記録側 PoSW のベンチ (`npm run bench:posw`)
+
+[tests/posw.bench.spec.ts](tests/posw.bench.spec.ts) (タイトルに `@bench`。何も assert しない) は、実エディタで打鍵と
+マウス移動を一定のペースで流し、PoSW の処理待ち (backlog) が増え続けるかと、掃ける速さ (件/秒) を測る。
+反復数の判断の根拠 ([ADR-0044](../../docs/adr/0044-lower-posw-iterations-for-recording-throughput.md)) を取った手順で、
+通常の `npm run test` と CI からは外してある。
+
+```bash
+npm run bench:posw -w @typedcode/e2e                          # 1 倍と CPU 4 倍相当。packages/e2e/bench/ に JSON を出す
+BENCH_ITERATIONS=1000 npm run bench:posw -w @typedcode/e2e    # 反復数を変えたときの見積もり (できる proof は検証に通らない)
+```
+
+- 4 倍相当は、メインスレッドに CDP の `Emulation.setCPUThrottlingRate`、PoSW の Worker には処理時間を 4 倍に
+  引き延ばす busy-wait を差し込んで模擬する (CDP のスロットルは dedicated Worker に効かない)
+- 読み方: `paced[].pendingEvery2s` が単調に伸びていれば、処理が入力に追いついていない。目安は ADR-0044 の「目安」
+- 1 回あたり 2 本 × 約 2〜5 分。`bench/` は gitignore 済み
+
 ## CI / 環境の用意
 
 CI には `.dev.vars` も `editor/.env` も存在しない (gitignore)。`npm run setup`

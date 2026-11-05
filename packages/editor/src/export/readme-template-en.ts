@@ -65,7 +65,7 @@ Event[N] ─┴─► Hash[N] = SHA-256(Event[N] + Hash[N-1] + PoSW[N])
 Each event's hash depends on:
 1. **Event Data** - The actual operation (keystroke, cursor move, etc.)
 2. **Previous Hash** - The hash of the preceding event
-3. **Proof of Sequential Work (PoSW)** - A computational proof that takes time to generate
+3. **Proof of Sequential Work (PoSW)** - Sequential hash computation imposed on each event (not a proof of working time or keystroke timing)
 
 ### Why Tampering Is Difficult
 
@@ -73,8 +73,8 @@ Each event's hash depends on:
 |-----------------|--------------|
 | Modify a single event | Changes that event's hash, invalidating all subsequent hashes |
 | Insert/delete events | Breaks the chain continuity |
-| Recompute entire chain | PoSW makes this computationally expensive |
-| Forge timestamps | Inconsistent with adjacent events and PoSW timing |
+| Recompute entire chain | Requires redoing every event's PoSW in sequence. That alone does not prevent it, but with signed checkpoints a rebuilt chain no longer matches the hashes the server signed |
+| Forge timestamps | Checked against the order of adjacent events and the server time in signed checkpoints (PoSW is not evidence of time) |
 
 ---
 
