@@ -32,7 +32,6 @@
 | `typingProof/HashChainManager.ts` | SHA-256 計算とチェーン状態管理 |
 | `typingProof/PoswManager.ts` | PoSW 計算 (Web Worker 経由) |
 | `typingProof/CheckpointManager.ts` | ハイブリッドトリガ (N events OR T ms) で cp 作成 |
-| `typingProof/ChainVerifier.ts` | full / sampling 検証 |
 | `typingProof/InputTypeValidator.ts` | 許可/禁止 InputType の判定 |
 | `typingProof/StatisticsCalculator.ts` | 統計計算 |
 | `signedCheckpoints.ts` | 署名済み cp の payload 構築・検証・冪等判定。anchoring 密度 (ADR-0016) の計量も (gate は `acceptancePolicy.ts`)。post-hoc と疎は**ハッシュ対象の `event.timestamp` と `serverTimestamp` の照合**で測り、申告値の `clientTimestamp` を判定に使わない (#320。`clientSpanMs` / `ratio` は表示用)。post-hoc の基点に token の `issuedAt` を使うのは root が検証済みのときだけで、`verifyProofSignedCheckpoints` は `sessionAnchorIssuedAt` を必須で受ける |

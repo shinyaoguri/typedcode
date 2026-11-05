@@ -4,24 +4,6 @@
 
 import type { StoredEvent, EventHashData, ProofMetadata } from './proof.js';
 
-/** サンプリングされた区間の情報 */
-export interface SampledSegmentInfo {
-  startIndex: number;
-  endIndex: number;
-  eventCount: number;
-  startHash: string;
-  endHash: string;
-  verified: boolean;
-}
-
-/** サンプリング検証結果 */
-export interface SampledVerificationResult {
-  sampledSegments: SampledSegmentInfo[];
-  totalSegments: number;
-  totalEventsVerified: number;
-  totalEvents: number;
-}
-
 /** ハッシュ検証結果 */
 export interface VerificationResult {
   valid: boolean;
@@ -33,7 +15,6 @@ export interface VerificationResult {
   computedHash?: string;
   previousTimestamp?: number;
   currentTimestamp?: number;
-  sampledResult?: SampledVerificationResult;
 }
 
 /** 最終コンテンツ再構築検証結果 */
