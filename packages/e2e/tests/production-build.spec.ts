@@ -78,6 +78,110 @@ test('production build: エディタが console エラーなくマウントし�
   expect(hooks).toEqual({ insertBlock: 'undefined', snapshot: 'undefined' });
 });
 
+/**
+ * landing (`/`) の初期ロードで取得してはいけないもの (#302)。entry.ts は landing では main.ts を
+ * dynamic import しないので、Monaco の worker・実行系・xterm・Wasmer は 1 つも来ないはず。
+ * Monaco 本体は共有 chunk に合流して名前で引けないので、`.monaco-editor` の個数と `editor.worker`
+ * (Monaco が生成されると必ず取りに行く) の不在で見る。
+ */
+const EDITOR_ONLY_ASSETS = [
+  /editor\.api/,
+  /editor\.worker/,
+  /CodeExecutionController/,
+  /CTerminal/,
+  /wasmer/i,
+  /\.wasm$/,
+];
+
+test('production build: landing (/) はエディタ本体を読み込まずにカードだけ描く', async ({ page }) => {
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  const requested: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
+  page.on('request', (req) => requested.push(new URL(req.url()).pathname));
+
+  const app = new EditorApp(page);
+  await page.goto('/');
+  await expect.poll(() => app.appState()).toBe('landing');
+  await expect(page.locator('.landing-card-mode')).toHaveCount(4);
+  // テーマは editor と同じ設定で付く (Playwright の既定の配色は light)。main.ts を読まなくなっても落とさない
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  // 続きからバッジの検出 (SessionDetector の遅延 import) が終わるまで待ち、遅れて来る取得も拾う
+  await expect(page.locator('.landing-card-mode .session-badge[data-tab-count]')).toHaveCount(4);
+  await page.waitForLoadState('networkidle');
+
+  await expect(page.locator('.monaco-editor')).toHaveCount(0);
+  const leaked = requested.filter((path) => EDITOR_ONLY_ASSETS.some((re) => re.test(path)));
+  expect(leaked, `landing で取得した URL:\n${requested.join('\n')}`).toEqual([]);
+  expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+  expect(consoleErrors, consoleErrors.join('\n')).toEqual([]);
+});
+
+test('production build: landing のカードから /casual に入ると Monaco は 1 個だけ生成される', async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+  const workerFetches: string[] = [];
+  page.on('request', (req) => {
+    if (/editor\.worker/.test(req.url())) workerFetches.push(req.url());
+  });
+
+  const app = new EditorApp(page);
+  await page.goto('/');
+  await expect.poll(() => app.appState()).toBe('landing');
+  await page.locator('.landing-card-mode[data-mode="casual"]').click();
+  await expect(page).toHaveURL(/\/casual$/);
+  await app.waitReady();
+
+  await expect(page.locator('.monaco-editor')).toHaveCount(1);
+  expect(workerFetches, workerFetches.join('\n')).toHaveLength(1);
+  expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});
+
+test('production build: エディタ本体の chunk を取得できないとき、スピナーのまま止めずに起動失敗の画面を出す', async ({
+  page,
+  request,
+}) => {
+  // index.html が静的に読む JS (entry と modulepreload) だけを通し、entry.ts が dynamic import する
+  // main.ts 側の chunk をすべて落とす (不安定な網で main の chunk が届かない状況)。chunk 名は
+  // ビルドで変わるので、名前ではなく index.html から決める。
+  const html = await (await request.get('/casual')).text();
+  const staticScripts = new Set(
+    [...html.matchAll(/<(?:script|link)[^>]+(?:src|href)="(\/assets\/[^"]+\.js)"/g)].map((m) => m[1])
+  );
+  expect(staticScripts.size, html).toBeGreaterThan(0);
+  await page.route('**/assets/*.js', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    return staticScripts.has(path) ? route.continue() : route.abort();
+  });
+
+  const app = new EditorApp(page);
+  await page.goto('/casual');
+  await expect.poll(() => app.openDialogs(), { timeout: 30_000 }).toEqual(['boot-failure']);
+  await expect(page.locator('#boot-failure-reload-btn')).toBeVisible();
+  expect(await app.appState()).toBe('initializing');
+});
+
+// 直接アクセスで editor が起動する (#302)。casual は先頭のテストが打鍵まで見ている。
+for (const [mode, firstState] of [
+  ['class', 'ready'],
+  ['exam', 'gate'],
+] as const) {
+  test(`production build: /${mode} に直接アクセスすると editor が起動する`, async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(err.message));
+
+    const app = new EditorApp(page);
+    await app.openModeFresh(mode, { screenShare: 'optOut', waitReady: false });
+    await expect.poll(() => app.appState(), { timeout: 30_000 }).toBe(firstState);
+    await expect(page.locator('html')).toHaveAttribute('data-mode', mode);
+    await expect(page.locator('.monaco-editor')).toHaveCount(1);
+    expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+  });
+}
+
 test('production build: verify (/verify/) が proof を読んで判定の状態契約を出す', async ({ page, baseURL }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));

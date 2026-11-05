@@ -62,6 +62,6 @@
 
 - 検証エンジン: [`packages/verify/src/workers/verificationWorker.ts`](../../packages/verify/src/workers/verificationWorker.ts) (PR #252 以降は shared の `verifyProofFile` へ委譲)
 - shared 検証ロジック: [`packages/shared/src/verification.ts`](../../packages/shared/src/verification.ts)
-- ChainVerifier: [`packages/shared/src/typingProof/ChainVerifier.ts`](../../packages/shared/src/typingProof/ChainVerifier.ts)
+- ChainVerifier: `packages/shared/src/typingProof/ChainVerifier.ts` (#586 で削除。editor の export 後の自己検証も `verifyProofFile` へ寄せた)
 - PR #60 (Harden proof verification)
 - 関連 ADR: [0001 (cp トリガ)](0001-hybrid-checkpoint-trigger.md), [0002 (署名)](0002-signed-checkpoints-with-ecdsa-p256.md)

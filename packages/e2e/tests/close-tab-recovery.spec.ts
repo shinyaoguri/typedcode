@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import {
+  BOOT_TIMEOUT_MS,
   EditorApp,
   appendToStoredTabContent,
   listZipEntries,
@@ -43,7 +44,7 @@ test('タブを閉じて復旧ダイアログから再開しても root アン�
   await resume.waitFor({ state: 'visible', timeout: 15_000 });
   await resume.click();
 
-  await page2.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible' });
+  await page2.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
   await expect.poll(() => app2.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
 
   // 復元されたエディタに前回の内容が残っている。
@@ -134,7 +135,7 @@ test('tabs レコードの currentHash が古くても、再開後のチェー�
   await resume.waitFor({ state: 'visible', timeout: 15_000 });
   await resume.click();
 
-  await page2.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible' });
+  await page2.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
   await expect.poll(() => app2.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
   expect(await app2.editorValue()).toContain('int a = 1;');
 

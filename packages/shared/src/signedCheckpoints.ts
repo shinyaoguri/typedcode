@@ -67,7 +67,6 @@ export const MAX_ANCHOR_GAP_SERVER_MS = 5 * 10_000; // 50s
  * 実時間で待ってオフラインで合成したイベントを待った時間に散らし、末尾 1 個だけ署名させる形が通ってしまう。
  */
 export const MAX_UNANCHORED_EVENT_SPAN_MS = 5 * 10_000; // 50s
-export const MAX_FIRST_ANCHOR_LATENCY_EVENTS = 500; // events before the first signed checkpoint
 
 /** SHA-256 を hex 文字列で表したときの正規表現 (64 桁の小文字 hex) */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -751,6 +750,7 @@ function computeCoverage(
  *
  * - event ギャップ: 先頭 (event0 → 初アンカー) / 連続アンカー間 / 末尾 (最終アンカー → 最終 event)。
  *   単一末尾 cp は先頭ギャップが、単一先頭 cp は末尾ギャップが大きくなり、どちらの偏りも検出できる。
+ *   初アンカーまでの件数 (`firstAnchorLatencyEvents`) は先頭ギャップそのものなので、独立の条件にせず計測値として返す (#603)。
  * - 説明できないサーバ時刻の空白 (A, #320): 連続アンカー間の (Δs − Δe)。正直な無操作 (Δe ≈ Δs) は数えない。
  *   先頭 (firstSeenAt → 初アンカー、現状 ~0) はイベント時刻の対応が無いので生の差で含める。
  *   末尾は最終 event のサーバ時刻が無いため評価しない (event ギャップと terminalAnchored でカバーする)。
@@ -842,8 +842,7 @@ function computeDensity(
     eventTimeUnusable ||
     maxGapEvents > MAX_ANCHOR_GAP_EVENTS ||
     maxUnexplainedGapServerMs > MAX_ANCHOR_GAP_SERVER_MS ||
-    maxUnanchoredEventSpanMs > MAX_UNANCHORED_EVENT_SPAN_MS ||
-    firstAnchorLatencyEvents > MAX_FIRST_ANCHOR_LATENCY_EVENTS;
+    maxUnanchoredEventSpanMs > MAX_UNANCHORED_EVENT_SPAN_MS;
 
   return {
     firstAnchorEventIndex,

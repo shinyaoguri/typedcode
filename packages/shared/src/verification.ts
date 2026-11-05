@@ -805,7 +805,7 @@ async function verifyTypingProofHash(
  * 書き換えても検証が通ってしまうので、判断の根拠にしてはならない。
  *
  * 検証結果がビット単位で変わらないよう、値の加工 (`?? null` 等) は一切しない。
- * フィールドを足す・変えるなら記録側 (`TypingProof.recordEvent` / `ChainVerifier`) と同時に。
+ * フィールドを足す・変えるなら記録側 (`TypingProof.recordEvent`) と同時に。
  */
 export function pickHashedEventFields(event: EventHashData): Omit<EventHashData, 'posw'> {
   return {
