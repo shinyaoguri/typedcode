@@ -3,12 +3,14 @@
  *
  * Transpiles TypeScript code to JavaScript and executes it using JavaScriptExecutor
  * (the sandboxed iframe + Worker of #290).
- * Uses the TypeScript compiler API for transpilation (no type checking for performance).
+ * Transpilation runs in Monaco's bundled TypeScript worker (`getEmitOutput`, no type checking. #605),
+ * so the editor bundle does not carry its own copy of the TypeScript compiler.
  */
 
-import * as ts from 'typescript';
 import { BaseExecutor } from '../base/BaseExecutor.js';
 import { getJavaScriptExecutor } from '../javascript/JavaScriptExecutor.js';
+import { transpileWithMonaco } from './monacoTranspile.js';
+import { formatTranspileDiagnostics } from './transpileDiagnostics.js';
 import type {
   ExecutorConfig,
   ExecutionCallbacks,
@@ -41,10 +43,10 @@ export class TypeScriptExecutor extends BaseExecutor {
   };
 
   protected async _doInitialize(onProgress?: (progress: InitializationProgress) => void): Promise<void> {
-    // TypeScript compiler is immediately available
+    // Monaco's TypeScript worker is started lazily on the first transpile
     onProgress?.({
       stage: 'ready',
-      message: 'TypeScript compiler ready!',
+      message: 'TypeScript (Monaco worker) ready!',
       percentage: 100,
     });
   }
@@ -59,43 +61,24 @@ export class TypeScriptExecutor extends BaseExecutor {
     try {
       callbacks.onProgress?.('Transpiling TypeScript...');
 
-      // Transpile TypeScript to JavaScript
-      const result = ts.transpileModule(code, {
-        compilerOptions: {
-          module: ts.ModuleKind.ESNext,
-          target: ts.ScriptTarget.ES2020,
-          strict: false, // Lenient for runtime execution
-          esModuleInterop: true,
-          skipLibCheck: true,
-        },
-        reportDiagnostics: true,
-      });
+      // Transpile TypeScript to JavaScript in Monaco's TypeScript worker (syntax only, no type checking)
+      const result = await transpileWithMonaco(code);
+      // worker の初回ロードは数秒かかるので、その間に停止されたら実行せずに中止で返す
+      if (this.shouldAbort()) {
+        return { success: false, exitCode: 1, stdout: '', stderr: '', outcome: 'aborted' };
+      }
 
       // Report compilation errors if any
-      if (result.diagnostics && result.diagnostics.length > 0) {
-        const errorDiagnostics = result.diagnostics.filter((d) => d.category === ts.DiagnosticCategory.Error);
-
-        if (errorDiagnostics.length > 0) {
-          const errors = errorDiagnostics
-            .map((d) => {
-              const message = ts.flattenDiagnosticMessageText(d.messageText, '\n');
-              if (d.file && d.start !== undefined) {
-                const { line, character } = d.file.getLineAndCharacterOfPosition(d.start);
-                return `(${line + 1},${character + 1}): error TS${d.code}: ${message}`;
-              }
-              return `error TS${d.code}: ${message}`;
-            })
-            .join('\n');
-
-          callbacks.onStderr(errors + '\n');
-          return {
-            success: false,
-            exitCode: 1,
-            stdout: '',
-            stderr: errors,
-            error: 'TypeScript compilation failed',
-          };
-        }
+      const errors = formatTranspileDiagnostics(code, result.diagnostics);
+      if (errors.length > 0) {
+        callbacks.onStderr(errors + '\n');
+        return {
+          success: false,
+          exitCode: 1,
+          stdout: '',
+          stderr: errors,
+          error: 'TypeScript compilation failed',
+        };
       }
 
       callbacks.onProgress?.('Running JavaScript...');
