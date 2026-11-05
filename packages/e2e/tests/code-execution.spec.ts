@@ -18,6 +18,8 @@ import { runVerifyCli } from './helpers/verifyCli.js';
  * - 実行コードから親 DOM・IndexedDB・localStorage・ネットワーク・`/author` の秘密鍵に届かない
  * - 停止 → 即再実行で古い run が新しい run を壊さない
  * - 結果 (outcome) が区別されて記録され、異常の後も編集が export されて verify-cli (fast) が通る
+ * - TS は Monaco 同梱の TypeScript worker で transpile され (#605)、型注釈と top-level await を含むコードが
+ *   エディタと `/author` で動き、構文エラーは `(行,列): error TS…` とマーカーで知らされる
  *
  * 実行の状態は状態契約 (ターミナルのコンテナの `data-exec-state` / `data-exec-run` /
  * `data-exec-outcome`。packages/editor/AGENTS.md「状態契約」) で読み、翻訳テキストに依存しない。
@@ -269,6 +271,63 @@ test('タイムアウト・正常終了・実行時エラーが区別され、�
   expect(markedLine?.text.replace(/ /g, ' ')).toBe('null.x;');
 });
 
+test('typescript: 型注釈と top-level await を含むコードが transpile されて実行され、success が記録される', async ({
+  page,
+}) => {
+  const app = await openJsTab(page, 'typescript');
+  await replaceCode(
+    app,
+    'interface U { n: string }\nconst u: U = { n: "ok" };\nawait Promise.resolve();\nconsole.log(u.n);\n'
+  );
+
+  const run = await startRun(page);
+  expect(await waitOutcome(page, run)).toBe('success');
+  await expect.poll(() => terminalText(page)).toContain('ok');
+
+  await app.waitForSynced();
+  const zipPath = await app.exportCurrentTab();
+  const events = [...(await readAllProofEvents(zipPath)).values()][0] ?? [];
+  const outcomes = events
+    .filter((e) => e.type === 'codeExecution' && (e.data as { phase?: string } | null)?.phase === 'result')
+    .map((e) => (e.data as { outcome?: string }).outcome);
+  expect(outcomes).toEqual(['success']);
+});
+
+test('typescript: 構文エラーは実行せずに failure になり、位置付きのエラーとマーカーがその行に出る', async ({
+  page,
+}) => {
+  const app = await openJsTab(page, 'typescript');
+  await replaceCode(app, 'const x: = 1;\n');
+
+  const run = await startRun(page);
+  expect(await waitOutcome(page, run)).toBe('failure');
+  await expect.poll(() => terminalText(page)).toMatch(/\(1,\d+\): error TS\d+:/);
+  await expectNoRunnerFrame(page);
+
+  // 実行のマーカー (squiggly) が `const x: = 1;` の行に、エラーの列から行末まで付いている。
+  // Monaco 自身の構文検査も同じ位置に squiggly を出す (幅は誤りの字句 `=` だけ) ので、
+  // 行末まで届くもの (= parseErrors → resolveMarkerRange が付けたもの) があることで見分ける
+  await expect
+    .poll(async () => {
+      const squigglies = await page
+        .locator('.monaco-editor .squiggly-error')
+        .evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => ({ top: r.top, right: r.right })));
+      const lines = await page.locator('.monaco-editor .view-lines .view-line').evaluateAll((els) =>
+        els.map((l) => ({
+          top: l.getBoundingClientRect().top,
+          textRight: (l.firstElementChild ?? l).getBoundingClientRect().right,
+          text: (l.textContent ?? '').replace(/ /g, ' '),
+        }))
+      );
+      const line = lines.find((l) => l.text === 'const x: = 1;');
+      if (!line) return 'line not found';
+      return squigglies.some((s) => Math.abs(s.top - line.top) < 4 && Math.abs(s.right - line.textRight) < 4)
+        ? 'marked to end of line'
+        : `no squiggly reaches the end of the line: ${JSON.stringify({ line, squigglies })}`;
+    })
+    .toBe('marked to end of line');
+});
+
 test('大量出力は予算で打ち切られて error になり、その間もエディタの記録が進む', async ({ page }) => {
   const app = await openJsTab(page);
   await setExecLimits(page, { outputBudgetChars: 200_000 });
@@ -348,4 +407,26 @@ test('/author でスターターコードを JS で実行しても #author-jwk �
   expect(await waitOutcome(page, run, terminal)).toBe('success');
   await expect.poll(() => terminalText(page, terminal)).toContain('jwk:blocked');
   expect(await terminalText(page, terminal)).not.toContain('SECRET-AUTHOR-KEY');
+});
+
+test('/author でスターターコードを TS として実行できる', async ({ page }) => {
+  await installTermsAccepted(page);
+  await page.goto('/author');
+  await page.locator('#author-starter-editor .view-lines').waitFor({ state: 'visible' });
+
+  // スターターのファイル名を .ts にする (上の JS の test と同じく dblclick だけを送る)
+  await page.locator('#author-tabs .tab-filename').first().dispatchEvent('dblclick');
+  const input = page.locator('#author-tabs .tab-filename-input');
+  await input.fill('p1.ts');
+  await input.press('Enter');
+  await expect(page.locator('#author-tabs .tab-filename').first()).toHaveText('p1.ts');
+
+  // 改行を含めない 1 行で入れる (上の JS の test と同じ流儀。改行で自動インデント・補完を通さない)
+  await page.locator('#author-starter-editor .view-lines').click();
+  await page.keyboard.insertText('interface P { n: number } const p: P = { n: 41 }; console.log("ts:" + (p.n + 1));');
+
+  const terminal = '#author-terminal';
+  const run = await startRun(page, '#author-run-btn', terminal);
+  expect(await waitOutcome(page, run, terminal)).toBe('success');
+  await expect.poll(() => terminalText(page, terminal)).toContain('ts:42');
 });

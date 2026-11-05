@@ -23,7 +23,7 @@
 | C++ | Wasmer SDK | C と同じ Clang WASM。**`<iostream>` は使えない** (コンパイルが終わらない)。`<string>` / `<vector>` / `<array>` / `<memory>` / `<algorithm>` など C++ 標準ライブラリのヘッダも同じく、終わらないかコンパイラが落ちる。入出力は `<cstdio>` (`std::printf` / `std::scanf`) を使う。原因はコンパイラ (clang 16) と同梱の libc++ ヘッダ (19) の版の食い違い ([#490](https://github.com/shinyaoguri/typedcode/issues/490)) |
 | Python | Pyodide | CPython を WebAssembly にしたもの。jsdelivr から読み込む |
 | JavaScript | ネイティブ | ブラウザ eval + console キャプチャ |
-| TypeScript | typescript (`ts.transpileModule`) | JS にトランスパイルしてから eval |
+| TypeScript | Monaco 同梱の TypeScript worker (`getEmitOutput`。型チェックなし) | JS にトランスパイルしてから JavaScript と同じ sandbox で実行 |
 
 ## 開発
 
