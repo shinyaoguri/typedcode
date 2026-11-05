@@ -1,6 +1,6 @@
 # ADR-0024: 目的別データ最小化ティアを定義する (整合性は全イベント・分析/共有は content-free 派生物)
 
-- **Status**: Accepted
+- **Status**: Accepted (Follow-ups の「fingerprint 自体の最小化」は ADR-0044 で閉じた)
 - **Date**: 2026-06-12
 - **Deciders**: (PR 上の合意者 / レビュアー)
 - **PR / Commit**: develop へ stacked-PR

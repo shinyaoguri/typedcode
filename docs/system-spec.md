@@ -142,7 +142,7 @@ interface EventHashData {
 
 セッション開始時に **fingerprint** からチェーンルートを生成する。
 
-**Fingerprint** ([Fingerprint.ts]): ブラウザ環境を表すコンポーネント集約 (userAgent, screen, timezone, canvas, webgl, fonts, ...) を JSON 化して SHA-256 ハッシュ。決定的にユーザ環境を表す 64-hex 文字列。
+**Fingerprint** ([Fingerprint.ts]): ブラウザ環境を表すコンポーネント集約 (userAgent, screen, timezone, webgl の unmasked vendor / renderer, ...) を JSON 化して SHA-256 ハッシュ。集める 13 キーとそれぞれの理由は ADR-0044。canvas と fonts は 2026-11 から集めない (旧 proof には入っており、検証器は特定のキーを要求しないのでそのまま検証できる)。決定的にユーザ環境を表す 64-hex 文字列。
 
 **初期チェーンハッシュ生成**:
 ```typescript
@@ -939,3 +939,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-04 | 検証できない sessionStartToken を改ざんにしない (#329) | token の未登録 keyId・署名不正・`fingerprintHash` の不一致で `verifyInitialHashRoot` が `valid:false` を返し、`metadataValid=false` → integrity `failed` になっていた (古い registry の検証器で正直な proof が「改ざん」と出る)。root が `serverNonce` 込みの式で合えば root を有効のまま `rootAnchored=false` とし、理由を `rootAnchorFailure` で返して総合の `valid` だけを落とす (§6.2 Layer 1 / §6.3)。`serverNonce` を書き換えて root が合わない proof は従来どおり改ざん。**proof フォーマットは不変** |
 | 2026-11-04 | JS / TS 実行の隔離 (ADR-0041, #290) | ユーザーの JS / TS を opaque origin の sandbox iframe (`allow-scripts` だけ) の中の Blob Worker で実行し、停止・タイムアウト (30 秒)・出力予算 (1,000,000 文字) の超過は iframe ごと除去して終わらせる。`codeExecution` の result の outcome に **`timeout`** を足した (加算的・`PROOF_FORMAT_VERSION` 据え置き)。`summarizeProcess` は timeout を失敗に数える。§4.1 を反映 |
 | 2026-11-04 | 分析器の失敗・期限切れ・不正な出力を「手掛かりなし」と区別 (#301) | `AnalysisReport` に `analyzerStatus` (分析器ごとの `ok` / `failed` / `timeout` / `invalid-output`) を足した (`analyzerVersions` は互換のため残す。`analysis-bundle/1` は据え置き)。`runAnalysis` は分析器ごとに `ANALYZER_TIMEOUT_MS` (10 秒) の期限を付け、契約に合わない signal を捨てて `reviewPriority` に寄与させない。ok の分析器が 0 なら三層保証の著述性は「分析未実行」(null)。verify-cli は `Analysis unavailable: <id> (<status>)` 行、verify (Web) は分析カードの「分析不能」バッジ・注記で出す。検証結果 (`valid` / integrity) は変えない |
+| 2026-11-05 | fingerprint の収集を用途のあるコンポーネントに絞る (ADR-0044, #242) | `collectComponents` から `canvas` (描画結果の data URL) と `fonts` (フォント一覧) を外し、`webgl` を `unmaskedVendor` / `unmaskedRenderer` の 2 値にした (13 キー)。読むコードは `automationAnalyzer` の `webgl.unmaskedRenderer` だけで、root・流用検出・token 束縛は hash の等値比較で足りる。検証器は proof 同梱の components を再ハッシュするだけなので旧 proof (17 キー) はそのまま valid。`FingerprintComponents` は `canvas` / `fonts` を optional にし、新しく集める形は `CollectedFingerprintComponents`。proof 形式の番号は変えない |
