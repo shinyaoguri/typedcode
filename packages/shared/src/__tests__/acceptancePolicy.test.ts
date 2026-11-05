@@ -66,6 +66,8 @@ const signedCoverage = (lastSignedEventIndex: number, sparse = false): Evidence[
     firstAnchorLatencyServerMs: 0,
     maxGapEvents: 1,
     maxGapServerMs: sparse ? 60_000 : 1_000,
+    maxUnexplainedGapServerMs: sparse ? 60_000 : 1_000,
+    maxUnanchoredEventSpanMs: 0,
     sparse,
   },
 });

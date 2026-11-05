@@ -92,6 +92,11 @@ const SHOTS = [
     caption:
       '検証 Web: 分析カードで、一部の分析器だけが結果を返せなかったときの表示 (分析器を失敗させたレポートを差し込んで描画)',
   },
+  {
+    file: '13-verify-anchoring.png',
+    caption:
+      '検証 Web: 時刻アンカーカードを開き、詳細を広げた状態 (post-hoc の判定に使う時刻の要約行と、時間スパン分析の欄)',
+  },
 ] as const;
 
 type ShotFile = (typeof SHOTS)[number]['file'];
@@ -327,6 +332,37 @@ test.describe('見た目・動きの証跡 @shots', () => {
       reviewPriority: 0.24,
     });
     await card.screenshot({ path: out('12-verify-analysis-partial.png'), animations: 'disabled' });
+  });
+
+  // 13 (#320): 時刻アンカーカード。署名チェックポイント付きの proof が要るので、エディタで打って export した ZIP を
+  // 検証 Web (fast) に入れる。カードは畳まれて出るので見出しを押して開き、詳細 (<details>) も広げてから撮る。
+  test('検証 Web の時刻アンカーカードを撮る @shots', async ({ page }) => {
+    const app = new EditorApp(page);
+    await app.openCasualFresh();
+    await app.typeCode(CODE);
+    const zipPath = await app.exportCurrentTab();
+    const [proof] = (await listProofEntries(zipPath)).map((n) => basename(n));
+    if (!proof) {
+      console.warn('[shots] ZIP に proof が無いので 13 を飛ばす');
+      return;
+    }
+    const web = new VerifyWebApp(page);
+    await web.open('fast');
+    await web.load([zipPath]);
+    await web.readVerdict(proof);
+    const card = page.locator('#card-anchoring');
+    await card.waitFor({ state: 'visible' });
+    await card.locator('.result-card-header').click();
+    await expect(card).toHaveClass(/expanded/);
+    const details = page.locator('#anchoring-details');
+    if (await details.isVisible()) {
+      await details.evaluate((el) => {
+        (el as HTMLDetailsElement).open = true;
+      });
+    }
+    // 詳細を広げたカードは 800px に収まらず、下端がステータスバーで切れる。この 1 枚だけ縦に広げて撮る。
+    await page.setViewportSize({ width: 1280, height: 1800 });
+    await card.screenshot({ path: out('13-verify-anchoring.png'), animations: 'disabled' });
   });
 
   // 06〜08 (#331): 検証中の進捗表示 (キャンセルボタン) と、キャンセルした後の表示。キャンセルは処理中の項目への

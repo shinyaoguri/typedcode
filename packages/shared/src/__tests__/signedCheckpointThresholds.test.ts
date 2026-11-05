@@ -1,12 +1,13 @@
 /**
  * system-spec §10 の時刻アンカー閾値の境界 (#580)。
  *
- * 密度 (ADR-0016: `maxGapEvents` / `maxGapServerMs` / `firstAnchorLatencyEvents`) と post-hoc 疑い
- * (`ratio < POST_HOC_RATIO_THRESHOLD`) が、閾値ちょうど・前後で判定を変えることを固定する。
+ * 密度 (ADR-0016: `maxGapEvents` / `maxUnexplainedGapServerMs` / `maxUnanchoredEventSpanMs` /
+ * `firstAnchorLatencyEvents`) と post-hoc 疑い (イベント時刻のリード ≤ max(`POST_HOC_TOLERANCE_MS`,
+ * `POST_HOC_TOLERANCE_RATIO` × Δs)。#320) が、閾値ちょうど・前後で判定を変えることを固定する。
  * 値は書き写さず signedCheckpoints.ts の定数を参照する (閾値を動かしてもテストは境界についてくる)。
  *
- * 密度と post-hoc は署名 cp が指す eventIndex と時刻の間隔だけで決まり、ハッシュチェーンの中身には
- * 依存しないので、イベント列は合成 (makeSyntheticEvents) を使う。
+ * 密度と post-hoc は署名 cp が指す eventIndex と時刻 (イベント時刻・サーバ時刻) の間隔だけで決まり、
+ * ハッシュチェーンの中身には依存しないので、イベント列は合成 (makeSyntheticEvents) を使う。
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -15,9 +16,9 @@ import {
   MAX_ANCHOR_GAP_EVENTS,
   MAX_ANCHOR_GAP_SERVER_MS,
   MAX_FIRST_ANCHOR_LATENCY_EVENTS,
-  POST_HOC_MIN_CLIENT_SPAN_MS,
-  POST_HOC_MIN_SERVER_SPAN_MS,
-  POST_HOC_RATIO_THRESHOLD,
+  MAX_UNANCHORED_EVENT_SPAN_MS,
+  POST_HOC_TOLERANCE_MS,
+  POST_HOC_TOLERANCE_RATIO,
 } from '../signedCheckpoints.js';
 import {
   buildSignedCheckpoints,
@@ -29,6 +30,11 @@ import {
 
 const ROOT = 'a'.repeat(64);
 const FIRST_SEEN_MS = Date.parse('2026-05-28T12:00:00.000Z');
+/**
+ * イベント時刻 (event.timestamp) の起点。0 にすると、差 (e_j − e_k) を取るべきところで足す実装でも
+ * 値が変わらず見逃すので、正の値から始める (#320)。
+ */
+const EVENT_ORIGIN_MS = 5_000;
 
 let testKey: TestKey;
 
@@ -38,20 +44,27 @@ beforeAll(async () => {
 
 type CheckpointLayout = Omit<BuildSignedCheckpointsOptions, 'events' | 'initialEventChainHash' | 'key'>;
 
-/** 合成イベント列に、指定の配置で署名 cp を打って検証する。既定の server 時刻は firstSeenAt の 1 秒後から 1 秒間隔。 */
+/**
+ * 合成イベント列に、指定の配置で署名 cp を打って検証する。既定の server 時刻は firstSeenAt の 1 秒後から 1 秒間隔。
+ * `sessionAnchorIssuedAt` は post-hoc 照合の基点 (#320)。
+ */
 async function verifyLayout(
   events: StoredEvent[],
-  layout: CheckpointLayout
+  layout: CheckpointLayout & { sessionAnchorIssuedAt?: string | null }
 ): Promise<SignedCheckpointsVerificationResult> {
+  const { sessionAnchorIssuedAt, ...rest } = layout;
   const checkpoints = await buildSignedCheckpoints({
     events,
     initialEventChainHash: ROOT,
     key: testKey,
     firstSeenAt: new Date(FIRST_SEEN_MS).toISOString(),
     startServerMs: FIRST_SEEN_MS + 1000,
-    ...layout,
+    ...rest,
   });
-  return verifySignedCheckpoints(events, checkpoints, ROOT, { registry: [testKey.registryEntry] });
+  return verifySignedCheckpoints(events, checkpoints, ROOT, {
+    registry: [testKey.registryEntry],
+    sessionAnchorIssuedAt,
+  });
 }
 
 describe('anchor density thresholds (ADR-0016, spec §10)', () => {
@@ -88,10 +101,51 @@ describe('anchor density thresholds (ADR-0016, spec §10)', () => {
     [MAX_ANCHOR_GAP_SERVER_MS - 1, false],
     [MAX_ANCHOR_GAP_SERVER_MS, false],
     [MAX_ANCHOR_GAP_SERVER_MS + 1, true],
-  ])('treats a server-time gap of %i ms between two consecutive anchors as sparse=%s', async (gapMs, sparse) => {
-    const result = await verifyLayout(makeSyntheticEvents(2), { serverStepMs: gapMs });
-    expect(result.density!.sparse).toBe(sparse);
-  });
+  ])(
+    'treats a server-time gap of %i ms not explained by event time between two anchors as sparse=%s',
+    async (gapMs, sparse) => {
+      // 2 つのイベントは同じイベント時刻 (Δe = 0) なので、サーバ時刻の空白はまるごと説明できない (#320)。
+      const result = await verifyLayout(
+        makeSyntheticEvents(2, () => 0),
+        { serverStepMs: gapMs }
+      );
+      expect(result.density!.sparse).toBe(sparse);
+    }
+  );
+
+  it.each([
+    [MAX_ANCHOR_GAP_SERVER_MS - 1, false],
+    [MAX_ANCHOR_GAP_SERVER_MS, false],
+    [MAX_ANCHOR_GAP_SERVER_MS + 1, true],
+  ])(
+    'treats an unexplained gap of %i ms left after subtracting the event-time gap as sparse=%s',
+    async (unexplainedMs, sparse) => {
+      // サーバ時刻の空白 5 分のうち、イベント時刻で説明できるのは (5 分 − unexplainedMs)。
+      // イベント時刻は 0 からではなく EVENT_ORIGIN_MS から始める (差を取らずに足す実装を見逃さない)。
+      const serverGapMs = 5 * 60_000;
+      const result = await verifyLayout(
+        makeSyntheticEvents(2, (i) => EVENT_ORIGIN_MS + i * (serverGapMs - unexplainedMs)),
+        { serverStepMs: serverGapMs }
+      );
+      expect(result.density!.sparse).toBe(sparse);
+    }
+  );
+
+  it.each([
+    [MAX_UNANCHORED_EVENT_SPAN_MS - 1, false],
+    [MAX_UNANCHORED_EVENT_SPAN_MS, false],
+    [MAX_UNANCHORED_EVENT_SPAN_MS + 1, true],
+  ])(
+    'treats an unsigned event %i ms after the previous anchor (before the next one) as sparse=%s',
+    async (spanMs, sparse) => {
+      // cp は event 0 と 2。event 1 は署名で挟まれているが cp を持たない。サーバ時刻は Δe と同じだけ進む。
+      const result = await verifyLayout(
+        makeSyntheticEvents(3, (i) => EVENT_ORIGIN_MS + [0, spanMs, spanMs + 1][i]!),
+        { eventIndexes: [0, 2], serverStepMs: spanMs + 1 }
+      );
+      expect(result.density!.sparse).toBe(sparse);
+    }
+  );
 
   it.each([
     [MAX_ANCHOR_GAP_SERVER_MS - 1, false],
@@ -103,10 +157,13 @@ describe('anchor density thresholds (ADR-0016, spec §10)', () => {
   });
 
   it('still measures the server-time gap between anchors when firstSeenAt is unparsable', async () => {
-    const result = await verifyLayout(makeSyntheticEvents(2), {
-      firstSeenAt: 'not-a-date',
-      serverStepMs: MAX_ANCHOR_GAP_SERVER_MS + 1,
-    });
+    const result = await verifyLayout(
+      makeSyntheticEvents(2, () => 0),
+      {
+        firstSeenAt: 'not-a-date',
+        serverStepMs: MAX_ANCHOR_GAP_SERVER_MS + 1,
+      }
+    );
     expect(result.density!.sparse).toBe(true);
   });
 
@@ -121,43 +178,43 @@ describe('anchor density thresholds (ADR-0016, spec §10)', () => {
   });
 });
 
-describe('post-hoc batch signing threshold (spec §10)', () => {
-  const CLIENT_SPAN_MS = 1_000_000;
-  const serverSpanAtThreshold = Math.round(POST_HOC_RATIO_THRESHOLD * CLIENT_SPAN_MS);
+describe('post-hoc batch signing tolerance (spec §10, #320)', () => {
+  /** 2 つの署名 cp をサーバ時刻 serverDeltaMs 離して打ち、イベント時刻を leadMs だけ多く進める。 */
+  const verifyLead = (serverDeltaMs: number, leadMs: number) =>
+    verifyLayout(
+      makeSyntheticEvents(2, (i) => EVENT_ORIGIN_MS + i * (serverDeltaMs + leadMs)),
+      { serverStepMs: serverDeltaMs }
+    );
 
   it.each([
-    [serverSpanAtThreshold - 1, true],
-    [serverSpanAtThreshold, false],
-    [serverSpanAtThreshold + 1, false],
-  ])('treats a server span of %i ms over a 1,000,000 ms client span as post-hoc=%s', async (serverSpanMs, postHoc) => {
-    const result = await verifyLayout(makeSyntheticEvents(2), {
-      clientStepMs: CLIENT_SPAN_MS,
-      serverStepMs: serverSpanMs,
-    });
+    [POST_HOC_TOLERANCE_MS - 1, false],
+    [POST_HOC_TOLERANCE_MS, false],
+    [POST_HOC_TOLERANCE_MS + 1, true],
+  ])('treats an event-time lead of %i ms over a one-second server span as post-hoc=%s', async (leadMs, postHoc) => {
+    const result = await verifyLead(1000, leadMs);
     expect(result.temporal!.postHocSuspected).toBe(postHoc);
   });
 
-  it('flags a sub-minimum server span over a client span beyond the minimum as post-hoc', async () => {
-    const result = await verifyLayout(makeSyntheticEvents(2), {
-      clientStepMs: POST_HOC_MIN_CLIENT_SPAN_MS + 1,
-      serverStepMs: POST_HOC_MIN_SERVER_SPAN_MS - 1,
+  // 200 分のスパンでは相対の許容差 (1% = 120s) が絶対値 (60s) より大きい。
+  const LONG_SPAN_MS = 200 * 60_000;
+  const relativeTolerance = POST_HOC_TOLERANCE_RATIO * LONG_SPAN_MS;
+
+  it.each([
+    [relativeTolerance - 1000, false],
+    [relativeTolerance, false],
+    [relativeTolerance + 1, true],
+    [relativeTolerance + 1000, true],
+  ])('treats an event-time lead of %i ms over a 200-minute server span as post-hoc=%s', async (leadMs, postHoc) => {
+    const result = await verifyLead(LONG_SPAN_MS, leadMs);
+    expect(result.temporal!.postHocSuspected).toBe(postHoc);
+  });
+
+  it('applies the absolute tolerance when the base point issuedAt is later than the signature', async () => {
+    // 基点の issuedAt が cp より後 (Δs < 0)。正直な proof では起きない形で、許容差は絶対値の 60s だけになる。
+    const result = await verifyLayout(makeSyntheticEvents(1), {
+      sessionAnchorIssuedAt: new Date(FIRST_SEEN_MS + 1000 + POST_HOC_TOLERANCE_MS + 1).toISOString(),
     });
     expect(result.temporal!.postHocSuspected).toBe(true);
-  });
-
-  it('does not flag a client span beyond the minimum when the server span is not short', async () => {
-    // ratio は閾値の 2 倍。長いクライアント時間だけでは post-hoc にしない。
-    const result = await verifyLayout(makeSyntheticEvents(2), {
-      clientStepMs: POST_HOC_MIN_CLIENT_SPAN_MS + 1,
-      serverStepMs: 2 * POST_HOC_MIN_SERVER_SPAN_MS,
-    });
-    expect(result.temporal!.postHocSuspected).toBe(false);
-  });
-
-  it('does not flag post-hoc signing when every checkpoint shares one client timestamp', async () => {
-    // client span 0 では ratio を定義しない (null)。null を 0 と読んで「比率が閾値未満」にしない。
-    const result = await verifyLayout(makeSyntheticEvents(2), { clientStepMs: 0 });
-    expect(result.temporal!.postHocSuspected).toBe(false);
   });
 
   it('reports a null ratio when the client span is zero', async () => {

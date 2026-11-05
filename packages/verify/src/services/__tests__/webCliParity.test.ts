@@ -53,7 +53,9 @@ import { summarizeTabScreenshots } from '../screenshotSummary.js';
 import type { ProofFile, VerifyScreenshot } from '../../types.js';
 
 const SERVER_NONCE = 'a1'.repeat(32);
-const ISSUED_AT = '2026-06-12T00:00:00.000Z';
+// 署名 cp (fixture の既定は 2026-05-28T12:00:01Z から 1 秒間隔) より前。token の後に root を作り、その後に
+// 打鍵・署名するので、issuedAt が cp の serverTimestamp より後だと post-hoc の照合の基点で矛盾する (#320)。
+const ISSUED_AT = '2026-05-28T12:00:00.000Z';
 
 /**
  * PoSW 用 Web Worker のスタブ (shared の `src/__tests__/setup.ts` と同じ役割)。

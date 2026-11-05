@@ -562,16 +562,25 @@ export function formatResult(result: VerificationOutput): string {
           )
         );
       }
+      // post-hoc はイベント時刻 (ハッシュ対象) とサーバ時刻の照合で判定する (#320)。
       if (sc.temporal?.postHocSuspected) {
-        lines.push(c('yellow', '  ! Post-hoc batch signing suspected (server span << client span)'));
+        const leadSec = (sc.temporal.maxEventLeadMs / 1000).toFixed(0);
+        lines.push(
+          c(
+            'yellow',
+            `  ! Post-hoc batch signing suspected (event time ran ${leadSec}s ahead of server time; tolerance max(60s, 1%))`
+          )
+        );
       }
-      // anchoring 密度 (ADR-0016): 主張イベント数/時間に対する署名 cp の間隔。
+      // anchoring 密度 (ADR-0016): 主張イベント数/時間に対する署名 cp の間隔。サーバ時刻の空白は、
+      // イベント時刻で説明できない分 (無操作は数えない) と、署名で挟まれていないイベントの時刻の幅で見る (#320)。
       if (sc.density) {
-        const gapServerSec = (sc.density.maxGapServerMs / 1000).toFixed(0);
+        const unexplainedSec = (sc.density.maxUnexplainedGapServerMs / 1000).toFixed(0);
+        const unanchoredSec = (sc.density.maxUnanchoredEventSpanMs / 1000).toFixed(0);
         lines.push(
           c(
             'dim',
-            `  Density: max gap ${sc.density.maxGapEvents} events / ${gapServerSec}s, first anchor @ event ${sc.density.firstAnchorEventIndex}`
+            `  Density: max gap ${sc.density.maxGapEvents} events / ${unexplainedSec}s unexplained server time / ${unanchoredSec}s unanchored event time, first anchor @ event ${sc.density.firstAnchorEventIndex}`
           )
         );
         if (sc.density.sparse) {

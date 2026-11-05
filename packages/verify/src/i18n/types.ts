@@ -166,6 +166,8 @@ export interface VerifyTranslationKeys {
     anchoringAnchorAt: string;
     anchoringAnchorTimestamp: string;
     anchoringServerSpan: string;
+    anchoringEventSpan: string;
+    anchoringEventLead: string;
     anchoringClientSpan: string;
     anchoringRatio: string;
     anchoringPostHocCriteria: string;

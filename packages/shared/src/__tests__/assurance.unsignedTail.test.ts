@@ -58,7 +58,9 @@ async function makeToken(key: TestKey, fingerprintHash: string): Promise<Session
     { sessionId: SESSION_ID, fingerprintHash },
     {
       serverNonce: SERVER_NONCE,
-      issuedAt: '2026-06-12T00:00:00.000Z',
+      // 署名 cp (fixture の既定は 2026-05-28T12:00:01Z から 1 秒間隔) より前に発行された形にする。
+      // token の後に root を作り、その後に打鍵・署名するので、issuedAt は cp の serverTimestamp より前 (#320)。
+      issuedAt: '2026-05-28T12:00:00.000Z',
       turnstileVerified: true,
       hostname: 'typedcode.dev',
       action: 'create_tab',
