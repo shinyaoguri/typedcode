@@ -53,7 +53,7 @@ describe('buildAnalysisBundle (Tier A)', () => {
   it('carries only the content-free derived views — no events/content/fingerprint', () => {
     const bundle = buildAnalysisBundle({ integrityValid: false, processSummary, analysis, assurance });
     const keys = Object.keys(bundle).sort();
-    expect(keys).toEqual(['analysis', 'assurance', 'integrityValid', 'processSummary', 'schema']);
+    expect(keys).toEqual(['analysis', 'assurance', 'integrityValid', 'notice', 'processSummary', 'schema']);
     // 生データの鍵が紛れていないこと (取り違え防止)。
     const json = JSON.stringify(bundle);
     expect(json).not.toContain('"events"');

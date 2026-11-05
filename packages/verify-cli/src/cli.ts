@@ -27,6 +27,7 @@ import {
   parseExamPackageManifestResult,
   defaultAnalyzers,
   buildAnalysisBundle,
+  toAggregateBundle,
   collectChainImageHashes,
   summarizeScreenshotArtifacts,
   matchSubmissionSources,
@@ -37,6 +38,7 @@ import {
   type ExamPackageManifest,
   type Analyzer,
   type AnalysisBundle,
+  type AggregateBundle,
   type ScreenshotVerificationSummary,
   type ProofExtractionFailure,
 } from '@typedcode/shared';
@@ -99,6 +101,10 @@ async function main(): Promise<void> {
   // Tier A バンドル出力 (ADR-0024): content-free な {ProcessSummary, Analysis, Assurance}
   // をファイルへ。コホート基準 (ADR-0025) の入力フォーマット。advisory・exit code 非干渉。
   const analysisBundlePath = flagValue(args, '--analysis-bundle');
+
+  // Tier S 集計バンドル (ADR-0024 Amendment, #304): Tier A から数値とカテゴリだけを allowlist で
+  // 書き出す (自由記述・ファイル名・event index なし)。研究・集計向け。advisory・exit code 非干渉。
+  const aggregateBundlePath = flagValue(args, '--aggregate-bundle');
 
   // 提出物の書き出し (#409): ZIP の proof ごとに submitted / verified / report.json を書く。
   // 検証の判定には触れない (書き出しの失敗だけ exit 1 に倒す)。元のソースと既存のファイルは上書きしない。
@@ -186,6 +192,8 @@ async function main(): Promise<void> {
   const summary: Array<{ filename: string; valid: boolean; reason?: string }> = [];
   const analysisDump: Array<{ filename: string; valid: boolean; policy: unknown; analysis: unknown }> = [];
   const bundleDump: Array<{ filename: string } & AnalysisBundle> = [];
+  // filename を持たない (ファイル名に学籍番号や氏名が入る運用がありうる。#304)。順序は入力順。
+  const aggregateDump: AggregateBundle[] = [];
 
   for (const input of positional) {
     const spinner = new Spinner('Loading proof file...');
@@ -349,8 +357,9 @@ async function main(): Promise<void> {
       });
       // policy (#296) は追加のみ。--analysis-bundle (ADR-0024 の content-free 派生物) には載せない。
       analysisDump.push({ filename, valid, policy: result.policy, analysis: result.analysis });
-      // Tier A バンドル (ADR-0024): content-free な派生ビュー。--analysis-bundle 指定時のみ集める。
-      if (analysisBundlePath !== undefined) {
+      // Tier A バンドル (ADR-0024): content-free な派生ビュー。--analysis-bundle / --aggregate-bundle
+      // 指定時のみ組む。Tier S は Tier A から shared の allowlist (toAggregateBundle) で作る。
+      if (analysisBundlePath !== undefined || aggregateBundlePath !== undefined) {
         const bundle = buildAnalysisBundle({
           // #219: gate 込みの result.valid ではなく整合性そのものを渡す (理由は関数の doc)。
           integrityValid: toBundleIntegrityValid(result.assurance),
@@ -358,7 +367,8 @@ async function main(): Promise<void> {
           analysis: result.analysis,
           assurance: result.assurance,
         });
-        bundleDump.push({ filename, ...bundle });
+        if (analysisBundlePath !== undefined) bundleDump.push({ filename, ...bundle });
+        if (aggregateBundlePath !== undefined) aggregateDump.push(toAggregateBundle(bundle));
       }
     }
 
@@ -389,6 +399,12 @@ async function main(): Promise<void> {
     if (analysisBundlePath !== undefined) {
       await writeFile(resolve(analysisBundlePath), JSON.stringify(bundleDump, null, 2), 'utf-8');
       console.log(`\nAnalysis bundle (Tier A) written to ${analysisBundlePath}`);
+    }
+
+    // --aggregate-bundle: Tier S 集計バンドル群 (数値とカテゴリだけ。filename なし)。advisory・exit code 非干渉。
+    if (aggregateBundlePath !== undefined) {
+      await writeFile(resolve(aggregateBundlePath), JSON.stringify(aggregateDump, null, 2), 'utf-8');
+      console.log(`\nAggregate bundle (Tier S) written to ${aggregateBundlePath}`);
     }
 
     if (summary.length > 1) {

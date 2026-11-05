@@ -77,6 +77,20 @@
 - **★5 grader ベースライン/コホート ADR** は本ティア (Tier A/S の集計) を入力前提に設計する。
 - fingerprint 自体の最小化 (Tier F 内でも採点に不要なコンポーネントを削るか) は別途検討余地。
 
+## Amendment (2026-11, #304): Tier S は allowlist で書き出し、自由記述は Tier A までにする
+
+Tier A の実装 (`buildAnalysisBundle`) は派生物を参照のまま束ねるので、本 ADR が明示的に許した `reflectionNotes` 以外の自由記述 (分析器の `summary` / `summaryParams` / `evidence[].note`、外部分析器が決める `analyzerId` / `dimension`、`analyzerStatus` の `message`) と、型に無い余分なフィールドも素通しする。verify-cli はさらに proof のファイル名 (`filename`) を足す。「ソース全文のフィールドが無い」ことは、匿名性や学外へ共有できることの保証ではなかった。Tier S は定義だけで実装が無かった。
+
+追加の決定:
+
+1. **Tier S は数値とカテゴリの allowlist serializer で作る。** `toAggregateBundle` (`packages/shared/src/analysis/aggregateBundle.ts`) が Tier A から項目を 1 つずつ書き出す。型を narrow するだけ・spread で作るのは不可 (実行時の余分なフィールドが残る)。列挙値は既知集合で照合して外れたら `other`、数値は有限数でなければ `null`。項目の一覧は `packages/verify-cli/README.md` の「分析結果の書き出し」が利用者向けの正本。出力は verify-cli の `--aggregate-bundle`
+2. **自由記述とファイル名は Tier A まで。** Tier S は `reflectionNotes`・分析器の文字列・`analyzerId`・event index (`moments` / `evidence`)・ファイル名を持たない
+3. **Tier A は授業内レビュー用で、学外へ共有しない。** Tier A からファイル名は外さない (担当教員が誰の提出かを知っている前提の既存の運用を保つ)。代わりに、Tier A が含む自由記述とファイル名を README で開示する。表の「想定読者」のうち、研究者・コホート集計 (授業の外) へ渡すのは Tier S にする
+4. **不変条件 6 の明記を出力そのものに載せる。** Tier A / Tier S の各要素に固定文言 `notice` (`DERIVED_VIEW_NOTICE`) を入れる。Tier A への追加は追記のみなので schema は `analysis-bundle/1` のまま
+5. コホート基準 (ADR-0025) は数値とカテゴリしか読まない (`CohortBundleInput`)。Tier S からの計算は、既知の次元だけなら Tier A からの計算と一致する
+
+学生への可視化 (記録状態・提出 ZIP の中身・スクリーンショットの容量) と、容量・保存期間・削除方法の説明は本 Amendment の範囲外 (前者は別 Issue、後者は #317)。
+
 ## References
 
 - ADR-0023 (分析プラットフォーム方針: 研究基盤は content なしで分析する)
