@@ -34,15 +34,9 @@ import { fileURLToPath } from 'node:url';
 /**
  * 意図して据え置いている更新。`name` の latest が `from` 以降の行を「据え置き中」にする。
  * 決着したら該当行を消す (消すと次の run から本表に出る)。
+ * 形: `{ name: 'typescript', from: '7.0.0', issue: '#208', reason: '…' }` (typescript 7 は #208 で決着して消した)
  */
-export const IGNORED = [
-  {
-    name: 'typescript',
-    from: '7.0.0',
-    issue: '#208',
-    reason: 'TypeScript 7 (ネイティブコンパイラ) への移行を検討中',
-  },
-];
+export const IGNORED = [];
 
 /** `1.2.3` / `v1.2.3-beta.1` を [major, minor, patch] にする。読めなければ null。 */
 export function parseVersion(version) {
