@@ -23,8 +23,10 @@ import {
   createExportNamer,
   proofBaseName,
   summarizeProcess,
+  verifyProofFile,
   withLanguageExtension,
   type HumanAttestationEventData,
+  type ProofFile,
 } from '@typedcode/shared';
 import { SelfReviewDialog } from '../ui/components/SelfReviewDialog.js';
 
@@ -402,8 +404,8 @@ export class ProofExporter {
       return;
     }
     this.isExporting = true;
-    /** ダウンロードまで済んだタブ。ダウンロード後の自己検証は export の区間 (isExporting) の外で行う (#565) */
-    let downloadedTab: TabState | null = null;
+    /** ダウンロードした ZIP に入れた proof.json。ダウンロード後の自己検証は export の区間 (isExporting) の外で行う (#565) */
+    let downloadedProofJson: string | null = null;
 
     try {
       const activeTab = this.tabManager?.getActiveTab();
@@ -484,7 +486,8 @@ export class ProofExporter {
         content,
         language: activeTab.language,
       };
-      zip.file(logFilename, JSON.stringify(proofWithContent, null, 2));
+      const proofJson = JSON.stringify(proofWithContent, null, 2);
+      zip.file(logFilename, proofJson);
 
       // スクリーンショットを追加
       this.exportProgressDialog.updatePhase('screenshots');
@@ -522,7 +525,7 @@ export class ProofExporter {
       const zipFilename = `${baseFilename}_TC${timestamp}.zip`;
       this.downloadBlob(blob, zipFilename);
       console.log('[Export] Download triggered:', zipFilename);
-      downloadedTab = activeTab;
+      downloadedProofJson = proofJson;
     } catch (error) {
       console.error('[TypedCode] Export failed:', error);
       this.exportProgressDialog.hide();
@@ -532,23 +535,23 @@ export class ProofExporter {
       this.callbacks.onProofChanged?.();
     }
 
-    if (downloadedTab) {
-      await this.verifyAfterDownload(downloadedTab);
+    if (downloadedProofJson !== null) {
+      await this.verifyAfterDownload(downloadedProofJson);
     }
   }
 
   /**
-   * ダウンロードの後に、タブのチェーンを PoSW 込みで検証し直して結果を通知する。
+   * ダウンロードの後に、ZIP に入れたのと同じ proof.json を検証器 (`verifyProofFile`) にかけて結果を通知する (#586)。
    *
-   * 全イベントの PoSW を計算し直すので、件数が多いと数十秒かかる。export はダウンロードで終わっているので、
-   * これは export の区間 (isExporting) の外で行い、その間に押された次の export を無視しない (#565)。
-   * 検証の途中で次の export が同じ proof に記録しても、TypingProof の events は追記しかされず、
-   * 追記されたイベントは検証済みのハッシュの続きとして同じく検証される (PoSW の Worker は requestId で
-   * 要求を取り違えない) ので、この検証は壊れない。
+   * ZIP と同じスナップショットを検証するので、検証中に次の export が同じ proof へ追記しても関係ない。
+   * PoSW は再計算しない (fast)。受理ポリシー (`require*`) は立てない = verify-cli の既定と同じで、
+   * 通知の結論は同じ ZIP を verify-cli に通したときの結論と一致する。
+   * export はダウンロードで終わっているので、これは export の区間 (isExporting) の外で行い、
+   * その間に押された次の export を無視しない (#565)。
    */
-  private async verifyAfterDownload(tab: TabState): Promise<void> {
+  private async verifyAfterDownload(proofJson: string): Promise<void> {
     try {
-      const verification = await tab.typingProof.verify();
+      const verification = await verifyProofFile(JSON.parse(proofJson) as ProofFile, undefined, { mode: 'fast' });
       console.log('[TypedCode] Verification result:', verification);
       this.callbacks.onNotification?.(t(verification.valid ? 'export.successVerified' : 'export.verifyFailed'));
     } catch (error) {

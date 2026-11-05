@@ -10,7 +10,6 @@ export { TypingProof } from './TypingProof.js';
 export { HashChainManager } from './HashChainManager.js';
 export { PoswManager } from './PoswManager.js';
 export { CheckpointManager } from './CheckpointManager.js';
-export { ChainVerifier } from './ChainVerifier.js';
 export { StatisticsCalculator } from './StatisticsCalculator.js';
 
 // 記録キューの排出待ち (#225): 進捗ベースの待機ロジック (純関数)

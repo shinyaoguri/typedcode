@@ -4,8 +4,15 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { TypingProof } from '../typingProof.js';
+import { verifyChain } from '../verification.js';
 import { HashChainManager } from '../typingProof/HashChainManager.js';
 import type { FingerprintComponents, InputType } from '../types.js';
+
+/**
+ * 記録したチェーンを検証器 (`verifyChain`) にかけるときの指定。setup.ts の Worker モックは偽の PoSW を返すので、
+ * PoSW の反復だけは再計算しない (sequence / timestamp / previousHash / iterations / hash は検証する)。
+ */
+const SKIP_MOCKED_POSW = { skipPosw: true } as const;
 
 // テスト用のモックFingerprintComponents
 const createMockFingerprintComponents = (): FingerprintComponents => ({
@@ -313,7 +320,7 @@ describe('TypingProof', () => {
       await proof.recordEvent({ type: 'contentChange', data: 'a' });
       proof.events[0]!.posw.iterations = 1;
 
-      const result = await proof.verify();
+      const result = await verifyChain(proof.events, undefined, SKIP_MOCKED_POSW);
 
       expect(result.valid).toBe(false);
       expect(result.message).toContain('PoSW iterations mismatch');
@@ -377,7 +384,7 @@ describe('TypingProof', () => {
         expect(next.recorded).toBe(true);
         expect(next.index).toBe(1);
         expect(proof.events[1]?.sequence).toBe(1);
-        expect((await proof.verify()).valid).toBe(true);
+        expect((await verifyChain(proof.events, undefined, SKIP_MOCKED_POSW)).valid).toBe(true);
       });
 
       it('reports the event as recorded when only the checkpoint creation after the push fails', async () => {
@@ -478,7 +485,7 @@ describe('TypingProof', () => {
   // P2: 検証テスト
   // ==========================================================================
 
-  describe('verify', () => {
+  describe('verifyChain on the recorded chain', () => {
     let proof: TypingProof;
 
     beforeEach(async () => {
@@ -487,14 +494,14 @@ describe('TypingProof', () => {
     });
 
     it('should verify empty chain', async () => {
-      const result = await proof.verify();
+      const result = await verifyChain(proof.events, undefined, SKIP_MOCKED_POSW);
       expect(result.valid).toBe(true);
     });
 
     it('should verify single event chain', async () => {
       await proof.recordEvent({ type: 'contentChange', data: 'test' });
 
-      const result = await proof.verify();
+      const result = await verifyChain(proof.events, undefined, SKIP_MOCKED_POSW);
       expect(result.valid).toBe(true);
     });
 
@@ -516,7 +523,7 @@ describe('TypingProof', () => {
         },
       });
 
-      const result = await proof.verify();
+      const result = await verifyChain(proof.events, undefined, SKIP_MOCKED_POSW);
       expect(result.valid).toBe(true);
     });
 
@@ -525,7 +532,7 @@ describe('TypingProof', () => {
       await proof.recordEvent({ type: 'contentChange', data: 'b' });
       await proof.recordEvent({ type: 'contentChange', data: 'c' });
 
-      const result = await proof.verify();
+      const result = await verifyChain(proof.events, undefined, SKIP_MOCKED_POSW);
       expect(result.valid).toBe(true);
       expect(result.message).toContain('verified successfully');
     });
@@ -535,10 +542,14 @@ describe('TypingProof', () => {
       await proof.recordEvent({ type: 'contentChange', data: 'b' });
 
       const progressCalls: number[] = [];
-      await proof.verify((current, total) => {
-        progressCalls.push(current);
-        expect(total).toBe(2);
-      });
+      await verifyChain(
+        proof.events,
+        (current, total) => {
+          progressCalls.push(current);
+          expect(total).toBe(2);
+        },
+        SKIP_MOCKED_POSW
+      );
 
       expect(progressCalls).toContain(1);
       expect(progressCalls).toContain(2);

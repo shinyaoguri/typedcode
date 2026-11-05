@@ -69,6 +69,13 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: isCI ? 'retain-on-failure' : 'off',
+    // 1 つの操作・遷移の上限 (#584)。既定の 0 (上限なし) だと、止まった待ちはテスト全体の上限まで待ち、
+    // 失敗もテストのタイムアウトとしか出ない。actionTimeout は context の既定 timeout になるので、click などの
+    // 操作だけでなく、timeout を渡していない waitForFunction / waitForEvent / locator.waitFor もこの値で切れる。
+    // 30 秒を超えて待つ箇所 (起動待ちの BOOT_TIMEOUT_MS など) は、その呼び出しに timeout を渡す。
+    // expect の待ちは上の expect.timeout が決める。
+    actionTimeout: 30_000,
+    navigationTimeout: 30_000,
     // 外部ペースト/内部ペーストのシナリオでクリップボードを実操作するため付与。
     permissions: ['clipboard-read', 'clipboard-write'],
   },

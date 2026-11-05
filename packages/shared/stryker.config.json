@@ -8,7 +8,6 @@
     "src/signedCheckpoints.ts",
     "src/sessionStartToken.ts",
     "src/assurance.ts",
-    "src/typingProof/ChainVerifier.ts",
     "src/fileProcessing/zipBudget.ts",
     "src/utils/hashUtils.ts",
     "src/typingProof/InputTypeValidator.ts"

@@ -1,8 +1,7 @@
 /**
  * system-spec §10 の時刻アンカー閾値の境界 (#580)。
  *
- * 密度 (ADR-0016: `maxGapEvents` / `maxUnexplainedGapServerMs` / `maxUnanchoredEventSpanMs` /
- * `firstAnchorLatencyEvents`) と post-hoc 疑い (イベント時刻のリード ≤ max(`POST_HOC_TOLERANCE_MS`,
+ * 密度 (ADR-0016: `maxGapEvents` / `maxUnexplainedGapServerMs` / `maxUnanchoredEventSpanMs`) と post-hoc 疑い (イベント時刻のリード ≤ max(`POST_HOC_TOLERANCE_MS`,
  * `POST_HOC_TOLERANCE_RATIO` × Δs)。#320) が、閾値ちょうど・前後で判定を変えることを固定する。
  * 値は書き写さず signedCheckpoints.ts の定数を参照する (閾値を動かしてもテストは境界についてくる)。
  *
@@ -15,7 +14,6 @@ import { verifySignedCheckpoints, type SignedCheckpointsVerificationResult, type
 import {
   MAX_ANCHOR_GAP_EVENTS,
   MAX_ANCHOR_GAP_SERVER_MS,
-  MAX_FIRST_ANCHOR_LATENCY_EVENTS,
   MAX_UNANCHORED_EVENT_SPAN_MS,
   POST_HOC_TOLERANCE_MS,
   POST_HOC_TOLERANCE_RATIO,
@@ -88,12 +86,15 @@ describe('anchor density thresholds (ADR-0016, spec §10)', () => {
   });
 
   it.each([
-    [MAX_FIRST_ANCHOR_LATENCY_EVENTS - 1, false],
-    [MAX_FIRST_ANCHOR_LATENCY_EVENTS, false],
-    [MAX_FIRST_ANCHOR_LATENCY_EVENTS + 1, true],
-  ])('treats a first anchor %i events into the session as sparse=%s', async (latency, sparse) => {
-    // 唯一のアンカーを最終イベントに置き、末尾ギャップを 0 にする。
+    [MAX_ANCHOR_GAP_EVENTS - 1, false],
+    [MAX_ANCHOR_GAP_EVENTS, false],
+    [MAX_ANCHOR_GAP_EVENTS + 1, true],
+  ])('treats a first anchor %i events into the session as sparse=%s via the leading gap', async (latency, sparse) => {
+    // 唯一のアンカーを最終イベントに置き、末尾ギャップを 0 にする。初アンカーまでの件数は独立の条件ではなく、
+    // 先頭ギャップとして maxGapEvents の条件で判定される (#603)。
     const result = await verifyLayout(makeSyntheticEvents(latency + 1), { eventIndexes: [latency] });
+    expect(result.density!.firstAnchorLatencyEvents).toBe(latency);
+    expect(result.density!.maxGapEvents).toBe(latency);
     expect(result.density!.sparse).toBe(sparse);
   });
 
