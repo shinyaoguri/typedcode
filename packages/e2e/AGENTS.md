@@ -30,7 +30,7 @@ tests/
 ├── helpers/faults.ts     # 障害注入 (#435): Workers の API を 1 つずつ 503 / abort / hang (呼び出し回数を返す)、Turnstile のスクリプトの遮断、IndexedDB の open 失敗・QuotaExceeded・request の success 後の transaction の abort (#543)、保存先の注入の解除、getDisplayMedia の stream の退避とトラックの ended
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
 ├── workers-hang-export.spec.ts  # Workers 無応答 (route で応答しない) でも class の export が上限内に ZIP を出す (#324。fetch 上限 + best-effort 予算)
-├── tab-create-auth-budget.spec.ts # Turnstile の配信元と Workers を両方無応答にしても、class の新規タブがタブ作成の予算 (15 秒) + 5 秒以内に打鍵を受け付け、未アンカーの proof が verify-cli (fast) で通る (#375)
+├── tab-create-auth-budget.spec.ts # Turnstile の配信元と Workers を両方無応答にしても、class の新規タブがタブ作成の予算 (`TAB_CREATE_VERIFICATION_BUDGET_MS`) + 5 秒以内に打鍵を受け付け、未アンカーの proof が verify-cli (fast) で通る (#375)
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
 ├── fault-session-start / fault-checkpoint-sign / fault-turnstile / fault-network / fault-storage  # 障害注入 (#435): session/start・checkpoint/sign の失敗 (API ごとに別ファイル。hang 待ちを含む 1 ファイルが CI で Playwright の Slow Test の閾値 5 分を超えたため / #525)、Turnstile 不達、オフラインの往復、IndexedDB の障害 (起動時の open の失敗で起動失敗のエラー画面 `boot-failure` が出る = #325。保存の QuotaExceeded で `failed` / `degraded`・その状態での export・解除後の回復とリロード後の export = #543)。transaction の abort は `fault-storage-abort` (#543)、保存先が全滅した状態からの救出ボタン (casual 2 タブ・exam の問題パネル) は `fault-storage-rescue` (#544。exam の分は fixture が無いとき CI では落とし、ローカルでは skip)
 ├── multi-instance / history-navigation / viewport / ime-undo / idle / screen-capture-lock / reset-url  # 環境の揺さぶり (#435): 多重起動・戻る / 進む・狭い画面・IME と undo / redo・アイドル停止・画面共有の停止・`?reset` が何も消さないこと (#323) とリセットの現在のモード限定
