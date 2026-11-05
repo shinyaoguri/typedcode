@@ -7,6 +7,13 @@ import type { Download, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
 /**
+ * アプリの起動待ち (Monaco の `.view-lines` が visible になるまで) の上限。待ちの既定は config の
+ * `actionTimeout` (30 秒) だが、CI の各 shard の最初のテストは vite dev が Monaco を初めて変換する時間を含むので、
+ * 起動待ちだけ長めに取る (#584)。
+ */
+export const BOOT_TIMEOUT_MS = 60_000;
+
+/**
  * 実物の TypedCode エディタを Playwright から駆動するページオブジェクト。
  * 操作のセレクタは安定した既存 DOM id (#download-menu-btn 等) を使い、状態の判定は editor の
  * 状態契約 (data-* と dev フック `__tcTestSnapshot`。packages/editor/AGENTS.md「状態契約」) だけを読む。
@@ -56,7 +63,10 @@ export class EditorApp {
 
   /** エディタとイベント記録 (#0 humanAttestation) が立ち上がるまで待つ。 */
   async waitReady(): Promise<void> {
-    await this.page.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible' });
+    await this.page
+      .locator('.monaco-editor .view-lines')
+      .first()
+      .waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
     // #0 humanAttestation が記録されると event-count が 1 以上になる。
     await expect.poll(() => this.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
   }
@@ -114,7 +124,10 @@ export class EditorApp {
     } catch {
       /* 自動復元 (モーダル無し) */
     }
-    await this.page.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible' });
+    await this.page
+      .locator('.monaco-editor .view-lines')
+      .first()
+      .waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
     await expect.poll(() => this.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
   }
 

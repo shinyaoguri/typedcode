@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { expect, type Page } from '@playwright/test';
 import JSZip from 'jszip';
-import { EditorApp } from '../helpers/app.js';
+import { BOOT_TIMEOUT_MS, EditorApp } from '../helpers/app.js';
 import { runVerifyCliWithVerdicts } from '../helpers/verifyCli.js';
 import {
   type EditorDriver,
@@ -195,7 +195,7 @@ export class PlaywrightEditorDriver implements EditorDriver {
     const resume = page.locator('#session-resume-btn');
     await resume.waitFor({ state: 'visible', timeout: 30_000 });
     await resume.click();
-    await page.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible' });
+    await page.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
     await expect.poll(() => this.app.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
   }
 

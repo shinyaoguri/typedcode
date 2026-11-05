@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import {
+  BOOT_TIMEOUT_MS,
   EditorApp,
   installTermsAccepted,
   listZipEntries,
@@ -386,7 +387,7 @@ test('実行の異常 (非同期・同期の無限処理・大量出力・Worker
 test('/author でスターターコードを JS で実行しても #author-jwk に届かない', async ({ page }) => {
   await installTermsAccepted(page);
   await page.goto('/author');
-  await page.locator('#author-starter-editor .view-lines').waitFor({ state: 'visible' });
+  await page.locator('#author-starter-editor .view-lines').waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
   await page.locator('#author-jwk').fill('{"d":"SECRET-AUTHOR-KEY"}');
 
   // スターターのファイル名を .js にする (タブのダブルクリックで改名)。本物の 2 回クリックは
@@ -412,7 +413,7 @@ test('/author でスターターコードを JS で実行しても #author-jwk �
 test('/author でスターターコードを TS として実行できる', async ({ page }) => {
   await installTermsAccepted(page);
   await page.goto('/author');
-  await page.locator('#author-starter-editor .view-lines').waitFor({ state: 'visible' });
+  await page.locator('#author-starter-editor .view-lines').waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
 
   // スターターのファイル名を .ts にする (上の JS の test と同じく dblclick だけを送る)
   await page.locator('#author-tabs .tab-filename').first().dispatchEvent('dblclick');
