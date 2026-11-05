@@ -609,10 +609,11 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
   - `maxUnanchoredEventSpanMs` = 連続署名 cp k, k+1 の間にある (cp を持たない) イベント x の `e_x − e_k` の最大
     (= 署名で挟まれていないイベントの時刻の幅)。最初の署名 cp より前・最後の署名 cp より後は数えない。正直な editor は
     最後の cp から 10s で次のイベントに cp を作るので ~10s に収まる (#320)。
-  - `firstAnchorLatencyEvents` = 最初の署名 cp までの未アンカー event 数。
+  - `firstAnchorLatencyEvents` = 最初の署名 cp までの未アンカー event 数。計測のみで判定には使わない (先頭ギャップとして
+    `maxGapEvents` に必ず含まれるので、独立の条件にしても判定は変わらない。#603)。
   - `firstAnchorLatencyServerMs` = firstSeenAt → 初アンカーの ms。現アーキでは構造的に ~0 (session/start アンカー = ADR-0017 で意味化)。計測のみで gate には使わない。
   - **疎判定 `sparse`**: `maxGapEvents > 500` または `maxUnexplainedGapServerMs > 50s` または `maxUnanchoredEventSpanMs > 50s`
-    または `firstAnchorLatencyEvents > 500` (= ハイブリッドトリガ 100 events / 10,000 ms の 5 倍。保守的な置きで実ログ調整待ち)。
+    (= ハイブリッドトリガ 100 events / 10,000 ms の 5 倍。保守的な置きで実ログ調整待ち)。
     署名 cp の間のイベント時刻が有限の数でなければ `sparse` に倒す (fail-closed)。
   - 署名 cp レイヤは密度を**計量するだけ**で、`sparse` でも `signedCheckpoints.valid` は true のまま。不受理にするのは
     受理ポリシーの `requireAnchorDensity` (違反 `anchor-density-sparse`。§6.3.1、#296) で、整合性 (`integrityValid`) は落とさない。
@@ -846,7 +847,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **firstSeenAt** | サーバが (sessionId, tabId) を最初に見た時刻。KV 由来で、そのキーに対して不変 |
 | **anchored** | proof に signed checkpoint が 1 つ以上含まれている状態 |
 | **post-hoc batch signing** | proof 完成後に複数 envelope を短時間で一括取得する攻撃。イベント時刻 (`event.timestamp`) の進みがサーバ時刻の進みを `max(60s, 1%)` より超える 2 点があれば疑う (累積照合・検証済み token の `issuedAt` を基点に含む。#320) |
-| **anchor density / sparse (ADR-0016)** | 署名 cp が主張イベント数/時間に対し十分密かを見る指標。`maxGapEvents>500` / `maxUnexplainedGapServerMs>50s` / `maxUnanchoredEventSpanMs>50s` / `firstAnchorLatencyEvents>500` で `sparse` (#320 で生のサーバ時刻ギャップから置き換え)。末尾 1 点アンカー (coverageRatio=1.0 でも疎) を検出。既定 warning、`requireAnchorDensity` で受理ポリシーの違反 `anchor-density-sparse` (§6.3.1) |
+| **anchor density / sparse (ADR-0016)** | 署名 cp が主張イベント数/時間に対し十分密かを見る指標。`maxGapEvents>500` / `maxUnexplainedGapServerMs>50s` / `maxUnanchoredEventSpanMs>50s` で `sparse` (#320 で生のサーバ時刻ギャップから置き換え)。末尾 1 点アンカー (coverageRatio=1.0 でも疎) を検出。既定 warning、`requireAnchorDensity` で受理ポリシーの違反 `anchor-density-sparse` (§6.3.1) |
 | **受理ポリシー / acceptance policy (ADR-0043)** | 整合性とは別に採点者が opt-in で足す受理要件 (`requireRootAnchor` / `requireAnchorDensity` / `requireSignedCheckpoints` / `requireTerminalAnchor`)。違反は `policy.violations` に code つきで出て `valid` だけを落とし、`integrityValid` は落とさない。整合性が落ちた proof では評価しない (`evaluated: false`)。§6.3.1 |
 | **session start token / serverNonce (ADR-0017)** | session/start が Turnstile 後に発行する ECDSA 署名トークン。`serverNonce` を root (`SHA256(fp ‖ localNonce ‖ serverNonce)`) に焼き、開始時刻をサーバアンカーする。完全オフライン捏造を封じる。Turnstile ゲート + root アンカー + 人間ゲートを兼ね、HMAC attestation の作成経路を置換 |
 | **rootAnchored (ADR-0017)** | proof の root が serverNonce トークンでアンカーされているか。`sessionStartToken` 同梱で true。false (旧 proof / オフライン劣化) は warning、`requireRootAnchor` で受理ポリシーの違反 `root-anchor-missing`。exam の免除は束縛検証合格 (`examBindingVerified`) が条件 (#131) |
@@ -883,7 +884,6 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `MAX_ANCHOR_GAP_EVENTS` | 500 | `signedCheckpoints.ts` (ADR-0016) |
 | `MAX_ANCHOR_GAP_SERVER_MS` | 50_000 | `signedCheckpoints.ts` (イベント時刻で説明できないサーバ時刻の空白の上限。ADR-0016 / #320) |
 | `MAX_UNANCHORED_EVENT_SPAN_MS` | 50_000 | `signedCheckpoints.ts` (署名で挟まれていないイベントの時刻の幅の上限。#320) |
-| `MAX_FIRST_ANCHOR_LATENCY_EVENTS` | 500 | `signedCheckpoints.ts` (ADR-0016) |
 | `PROOF_FORMAT_VERSION` | '1.2.0' | `version.ts` (1.1.0 = exam root 式 ADR-0006、1.2.0 = session アンカー ADR-0017。いずれも加算的で後方互換) |
 | `SESSION_TOKEN_FORMAT_VERSION` | 1 | `version.ts` (セッション開始トークン payload, ADR-0017) |
 | `COHORT_MIN_N` | 5 | `analysis/cohort.ts` (コホート基準の小 N ガード, ADR-0025) |

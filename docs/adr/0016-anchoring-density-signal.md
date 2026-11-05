@@ -73,7 +73,7 @@
   クライアント暗号の限界で、proctor + 挙動分析の領域。README/spec はこの範囲を超えて主張しないこと。
 
 ### Follow-ups / 残課題
-- 実セッションログを集め `MAX_ANCHOR_GAP_EVENTS` / `MAX_ANCHOR_GAP_SERVER_MS` / `MAX_FIRST_ANCHOR_LATENCY_EVENTS` を調整。
+- 実セッションログを集め `MAX_ANCHOR_GAP_EVENTS` / `MAX_ANCHOR_GAP_SERVER_MS` を調整 (初アンカーまでの件数の閾値は #603 で外した。下の改訂節)。
 - verify(web) は現状 density を **warning 表示のみ**。exam proof に対する web 側 strict-fail の配線は follow-up。
 - ADR-0017 (session/start サーバアンカー) 実装後、`firstAnchorLatencyServerMs` を gate 対象に格上げ検討。
 
@@ -106,7 +106,7 @@
   - イベント時刻が有限の数でない点があれば post-hoc 疑いに倒す (fail-closed。改ざんなら `verifyChain` でも落ちる)。
   - `clientSpanMs` / `ratio` は表示用の参考値として残し、判定に使わない。`eventSpanMs` (最初から最後の署名 cp の
     イベント時刻の幅) と `maxEventLeadMs` (全ペア・基点込みの `Δe − Δs` の最大) を足した。
-- **sparse**: event 件数のギャップ (500) と初アンカーまでの件数 (500) は据え置き。サーバ時刻の生のギャップ
+- **sparse**: event 件数のギャップ (500) は据え置き (初アンカーまでの件数 (500) もこの時点では据え置いたが、#603 で外した。下の改訂節)。サーバ時刻の生のギャップ
   `maxGapServerMs` は表示用に残し、判定は次の 2 つに置き換えた。
   - **(A) 説明できないサーバ時刻の空白** `maxUnexplainedGapServerMs`: 連続する署名 cp 間の
     `(s_j − s_{j−1}) − (e_j − e_{j−1})` の最大が 50s 超で sparse。無操作の区間は `Δe ≈ Δs` なので数えない。
@@ -139,6 +139,17 @@
   この形のものは、改訂前の `anchored` から `partial` に変わる。整合性 (`integrityValid`) と内容は変わらない。
 - 「主張した時間ぶん実際にサーバへ周期的に接続し続ける」ライブ台本セッションを防げない点 (上の「正直な天井」) は
   変わらない。
+
+## 改訂 (#603, 2026-11): 初アンカーまでの件数を判定から外す
+
+`firstAnchorLatencyEvents > MAX_FIRST_ANCHOR_LATENCY_EVENTS` (500) は判定に効いていなかった。`maxGapEvents` は先頭ギャップ
+(event 0 → 最初の署名 cp = `firstAnchorLatencyEvents`) を含むので常に `maxGapEvents ≥ firstAnchorLatencyEvents` で、閾値が
+`MAX_ANCHOR_GAP_EVENTS` と同じ 500 である限り、この条件が真になる proof は必ず `maxGapEvents > 500` でも sparse になる。
+変異検査 (#580) では、この条件を `false` にする変異が同値として生き残っていた。
+
+- 判定から外し、定数 `MAX_FIRST_ANCHOR_LATENCY_EVENTS` を消した。`density.firstAnchorLatencyEvents` は計測値として残す
+- どの proof でも `sparse` の結果は変わらない (上の含意が常に成り立つため)。web と CLI は同じ `computeDensity` を使う
+- 実ログで「先頭だけ別の閾値が要る」とわかったら、そのとき独立の定数として戻す (先頭ギャップの閾値を 500 より小さくする形になる)
 
 ## References
 
