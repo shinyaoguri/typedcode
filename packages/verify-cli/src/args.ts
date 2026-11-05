@@ -14,6 +14,7 @@ export const VALUE_FLAGS = new Set([
   '--submitted-at',
   '--analysis-json',
   '--analysis-bundle',
+  '--aggregate-bundle',
   '--analyzer',
   '--extract-sources',
 ]);

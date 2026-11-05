@@ -4,7 +4,8 @@
  * 1 件の過程要約は単独では読めない (「45 分は速いのか」はコホート分布に対してのみ意味を持つ)。
  * 採点者が**集団内のどこに位置するか**で注意を配分するための、content-free な集約分布を計算する。
  *
- * 入力は Tier A の `AnalysisBundle[]` (ADR-0024)。ソース・打鍵文字・fingerprint は含まれない。
+ * 入力は Tier A の `AnalysisBundle[]` か Tier S の `AggregateBundle[]` (ADR-0024)。読むのは数値と
+ * カテゴリ (`CohortBundleInput`) だけで、自由記述もファイル名も使わない (#304)。
  *
  * 重要な不変条件 (ADR-0025):
  * - **advisory のみ。** 外れ値は triage の手掛かりであって違反ではない。判定でも valid 反映でもない。
@@ -15,7 +16,17 @@
  * - 純粋・決定的 (乱数・時計を使わない)。
  */
 
-import type { AnalysisBundle } from './bundle.js';
+/**
+ * コホート計算が読む部分だけの入力型 (#304)。Tier A の `AnalysisBundle` と Tier S の
+ * `AggregateBundle` の両方が構造的に渡る。ここに自由記述の欄を足さないこと。
+ */
+export interface CohortBundleInput {
+  processSummary: { readonly [K in Exclude<CohortMetricKey, 'reviewPriority'>]: number | null };
+  analysis: {
+    reviewPriority: number | null;
+    signals: readonly { readonly dimension: string; readonly severity: string }[];
+  };
+}
 
 /** これ未満のコホートでは分布が誤導しやすい (ADR-0025 §5)。位置表示側で警告する。 */
 export const COHORT_MIN_N = 5;
@@ -104,7 +115,7 @@ export interface CohortPosition {
 // 抽出
 // ============================================================================
 
-function extractMetrics(bundle: AnalysisBundle): Record<CohortMetricKey, number | null> {
+function extractMetrics(bundle: CohortBundleInput): Record<CohortMetricKey, number | null> {
   const p = bundle.processSummary;
   return {
     durationMs: p.durationMs,
@@ -124,7 +135,7 @@ function extractMetrics(bundle: AnalysisBundle): Record<CohortMetricKey, number 
 }
 
 /** このバンドルで notable signal (severity !== 'info') を出した次元の集合。 */
-function notableDimensions(bundle: AnalysisBundle): Set<string> {
+function notableDimensions(bundle: CohortBundleInput): Set<string> {
   const dims = new Set<string>();
   for (const s of bundle.analysis.signals) {
     if (s.severity !== 'info') dims.add(s.dimension);
@@ -182,7 +193,7 @@ function percentileRank(sorted: number[], value: number): number {
  * Tier A バンドル群からコホート基準を計算する (純粋・決定的)。
  * 個票は保持せず、メトリクスごとの頑健統計と次元 base rate のみを返す。
  */
-export function computeCohortBaseline(bundles: readonly AnalysisBundle[]): CohortBaseline {
+export function computeCohortBaseline(bundles: readonly CohortBundleInput[]): CohortBaseline {
   const cohortSize = bundles.length;
 
   // メトリクスごとに非 null 値を集める。
@@ -229,7 +240,7 @@ export function computeCohortBaseline(bundles: readonly AnalysisBundle[]): Cohor
  * 注意: baseline は値の分布要約しか持たないため、percentile は提出値が分布の中央値・四分位
  * に対してどこかを示す近似であって、元コホートへの厳密 midrank ではない (個票非保持の代償)。
  */
-export function positionInCohort(bundle: AnalysisBundle, baseline: CohortBaseline): CohortPosition {
+export function positionInCohort(bundle: CohortBundleInput, baseline: CohortBaseline): CohortPosition {
   const m = extractMetrics(bundle);
   const metrics: Partial<Record<CohortMetricKey, MetricPosition>> = {};
 
