@@ -134,7 +134,7 @@ CI には `.dev.vars` も `editor/.env` も存在しない (gitignore)。`npm ru
 
 CI ジョブは `.github/workflows/deploy.yml` の `e2e-shard` (Playwright の `--shard` で 2 分割した
 matrix。`test:build` は shard 1 だけ) と、全 shard の成功を要求する集約 job `e2e`。
-`deploy-preview` / `deploy-staging` / `deploy-production` は `[test, check, e2e]` でゲートされ、
+`build-preview` / `deploy-staging` / `deploy-production` は `[test, check, e2e]` でゲートされ、
 main ruleset の required check も `e2e`。
 
 ## verify-cli の起動
