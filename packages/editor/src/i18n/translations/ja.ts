@@ -35,6 +35,7 @@ export const ja: TranslationKeys = {
     title: 'TypedCode',
     subtitle: '使う場面を選んでください。すべての打鍵を改ざん耐性のある証明として記録します。',
     termsNotice: '利用を開始すると、利用規約に同意したものとみなします。',
+    scopeNote: '全モード共通: 手元の画面からの書き写しや外部の支援の有無は証明しません。',
     termsLink: '利用規約',
     start: '開く',
     casualDesc: 'お試し・個人利用。同意画面も画面共有もなしですぐ書けます。',
@@ -186,7 +187,7 @@ export const ja: TranslationKeys = {
     // Bot検出
     botDetectionTitle: 'Bot検出',
     botDetectionDesc:
-      '自動化ツールやボットによる不正な証明生成を防止するため、<a href="https://www.cloudflare.com/ja-jp/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a>を使用して人間であることを確認します。',
+      '自動化ツールやボットによる不正な証明生成を抑止するため、<a href="https://www.cloudflare.com/ja-jp/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a>を使用して人間であることを確認します。',
     botDetectionDetailHeading: '検証タイミング：',
     botDetectionInit: 'ファイル作成時：新しいタブを作成する際に人間検証を実施',
     botDetectionExport: '証明エクスポート時：ファイル出力の直前に最終確認を実施',

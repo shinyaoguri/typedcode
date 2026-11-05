@@ -32,6 +32,7 @@
 - editor の TypeScript 実行で、JavaScript への transpile を同梱の TypeScript コンパイラ (`ts.transpileModule`) から Monaco 同梱の TypeScript worker (`getEmitOutput`) に移し、全ページが読み込んでいたコンパイラ (約 3.6 MB) をバンドルから外した。型チェックはしないのも、構文エラーの出力 (`(行,列): error TS<code>: <message>`) とマーカーも従来どおり。compilerOptions は Monaco の既定 (target ESNext) になり、top-level await はそのまま実行される (#605)
 - 全 workspace の型チェックを TypeScript 7 (ネイティブコンパイラ) に上げた (`typescript` を `^7.0.2` に)。鮮度チェック (`scripts/summarize-outdated.mjs`) の typescript 7 の据え置きを外し、次の版からは他の依存と同じく報告される (#208)
 - editor の export (現在のタブ) の後に出す自己検証 (「検証: OK」/「警告」) を、ZIP に入れたのと同じ proof.json に検証器 `verifyProofFile` を `{ mode: 'fast' }` でかけた結論に変えた。これまでは記録中のメモリのハッシュ鎖だけを別の実装 (`ChainVerifier`) で PoSW 込みで検証し直していて、root (初期ハッシュと nonce・token の束縛)・メタデータのハッシュ・content replay・署名 cp・version を見ないので、verify-cli が落とす proof にも「検証: OK」と出しえた。結論は同じ ZIP を verify-cli の既定で検証したときと一致し、PoSW を再計算しないので件数が多くても待たない。shared の `ChainVerifier` と `TypingProof.verify()` / `verifySampled()`、それだけが使っていた型 `SampledSegmentInfo` / `SampledVerificationResult` (`VerificationResult.sampledResult`) は削除した (検証は `verifyChain` / `verifyProofFile` で行う) (#586)
+- 製品の説明を、防げることと防げないことに合わせた。README の主たる用途を「AI 生成や自動コピーを防ぎたい」から「コピペや一括生成を排除し、打鍵の過程を検証可能にする (AI の利用そのものを防ぐ仕組みではない)」に直し、「防ぐもの / 防がないもの」の節を足した (書き写し・外部の支援・本人性・人間が打ったことは証明しない。export 同梱 README の「証明できること / できないこと」と同じ内容)。editor のランディングの比較表の下に「全モード共通: 手元の画面からの書き写しや外部の支援の有無は証明しません」の注記 (`#landing-scope-note`) を出し、利用規約の Turnstile の説明を「不正な証明生成を防止するため」から「抑止するため」(en は prevent → deter) にした。system-spec の想定ユースケースも「AI 生成物との分別の補助」に直した (#240)
 
 ### 修正
 

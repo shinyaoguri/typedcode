@@ -35,6 +35,8 @@ export const en: TranslationKeys = {
     title: 'TypedCode',
     subtitle: 'Choose how you want to use it. Every keystroke is recorded as a tamper-evident proof.',
     termsNotice: 'By starting, you agree to the Terms of Use.',
+    scopeNote:
+      'All modes: TypedCode does not prove whether the code was copied by hand from another screen or written with outside help.',
     termsLink: 'Terms of Use',
     start: 'Open',
     casualDesc: 'Try it / personal use. No consent dialog or screen share — just type.',
@@ -188,7 +190,7 @@ export const en: TranslationKeys = {
     // Bot Detection
     botDetectionTitle: 'Bot Detection',
     botDetectionDesc:
-      '<a href="https://www.cloudflare.com/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a> is used to verify you are human and prevent fraudulent proof generation by automation tools or bots.',
+      '<a href="https://www.cloudflare.com/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a> is used to verify you are human and to deter fraudulent proof generation by automation tools or bots.',
     botDetectionDetailHeading: 'Verification timing:',
     botDetectionInit: 'File creation: Human verification when creating a new tab',
     botDetectionExport: 'Proof export: Final verification immediately before file output',
