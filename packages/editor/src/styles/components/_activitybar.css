@@ -30,6 +30,11 @@
   text-decoration: none;
 }
 
+/* 実行中だけ出す停止ボタン (#stop-code-btn) など、main.ts が hidden を付け外しする項目 (#620) */
+.activitybar-item.hidden {
+  display: none;
+}
+
 .activitybar-item i {
   font-size: 22px;
 }
