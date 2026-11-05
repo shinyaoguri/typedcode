@@ -60,6 +60,8 @@ export type {
   ScreenInfo,
   WebGLInfo,
   FingerprintComponents,
+  CollectedWebGLInfo,
+  CollectedFingerprintComponents,
   DetailedFingerprint,
 } from './fingerprint.js';
 

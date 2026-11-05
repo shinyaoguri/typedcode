@@ -142,7 +142,7 @@ interface EventHashData {
 
 セッション開始時に **fingerprint** からチェーンルートを生成する。
 
-**Fingerprint** ([Fingerprint.ts]): ブラウザ環境を表すコンポーネント集約 (userAgent, screen, timezone, canvas, webgl, fonts, ...) を JSON 化して SHA-256 ハッシュ。決定的にユーザ環境を表す 64-hex 文字列。
+**Fingerprint** ([Fingerprint.ts]): ブラウザ環境を表すコンポーネント集約 (userAgent, screen, timezone, webgl の unmasked vendor / renderer, ...) を JSON 化して SHA-256 ハッシュ。集める 13 キーとそれぞれの理由は ADR-0044。canvas と fonts は 2026-11 から集めない (旧 proof には入っており、検証器は特定のキーを要求しないのでそのまま検証できる)。決定的にユーザ環境を表す 64-hex 文字列。
 
 **初期チェーンハッシュ生成**:
 ```typescript
@@ -940,3 +940,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-04 | JS / TS 実行の隔離 (ADR-0041, #290) | ユーザーの JS / TS を opaque origin の sandbox iframe (`allow-scripts` だけ) の中の Blob Worker で実行し、停止・タイムアウト (30 秒)・出力予算 (1,000,000 文字) の超過は iframe ごと除去して終わらせる。`codeExecution` の result の outcome に **`timeout`** を足した (加算的・`PROOF_FORMAT_VERSION` 据え置き)。`summarizeProcess` は timeout を失敗に数える。§4.1 を反映 |
 | 2026-11-05 | 集計用 Tier S バンドル (ADR-0024 Amendment, #304) | shared に `toAggregateBundle` (`aggregate-bundle/1`) を足した。Tier A から数値とカテゴリだけを allowlist で 1 項目ずつ書き出し、`reflectionNotes`・分析器の `summary` / `summaryParams` / `evidence`・`analyzerId`・event index・ファイル名と、型に無い余分なフィールドを出さない (未知の列挙値は `other`、非有限数は `null`)。verify-cli `--aggregate-bundle <out.json>` で全 proof 分を出す (`filename` なし)。Tier A / Tier S の各要素に固定文言 `notice` (派生ビューで単独では検証できない) を足した (Tier A は追記のみで `analysis-bundle/1` 据え置き)。`computeCohortBaseline` / `positionInCohort` の入力を数値とカテゴリだけの `CohortBundleInput` に緩めた (計算は不変)。Tier A は授業内レビュー用で学外へ共有しないことを README に開示 (ファイル名は外さない)。proof フォーマット不変 |
 | 2026-11-04 | 分析器の失敗・期限切れ・不正な出力を「手掛かりなし」と区別 (#301) | `AnalysisReport` に `analyzerStatus` (分析器ごとの `ok` / `failed` / `timeout` / `invalid-output`) を足した (`analyzerVersions` は互換のため残す。`analysis-bundle/1` は据え置き)。`runAnalysis` は分析器ごとに `ANALYZER_TIMEOUT_MS` (10 秒) の期限を付け、契約に合わない signal を捨てて `reviewPriority` に寄与させない。ok の分析器が 0 なら三層保証の著述性は「分析未実行」(null)。verify-cli は `Analysis unavailable: <id> (<status>)` 行、verify (Web) は分析カードの「分析不能」バッジ・注記で出す。検証結果 (`valid` / integrity) は変えない |
+| 2026-11-05 | fingerprint の収集を用途のあるコンポーネントに絞る (ADR-0044, #242) | `collectComponents` から `canvas` (描画結果の data URL) と `fonts` (フォント一覧) を外し、`webgl` を `unmaskedVendor` / `unmaskedRenderer` の 2 値にした (13 キー)。読むコードは `automationAnalyzer` の `webgl.unmaskedRenderer` だけで、root・流用検出・token 束縛は hash の等値比較で足りる。検証器は proof 同梱の components を再ハッシュするだけなので旧 proof (17 キー) はそのまま valid。`FingerprintComponents` は `canvas` / `fonts` を optional にし、新しく集める形は `CollectedFingerprintComponents`。proof 形式の番号は変えない |

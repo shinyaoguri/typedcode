@@ -20,25 +20,24 @@ describe('Fingerprint', () => {
   // ==========================================================================
 
   describe('collectComponents', () => {
-    it('should collect all fingerprint components', async () => {
+    it('collects exactly the 13 components kept by ADR-0044 and nothing else (no canvas, no fonts)', async () => {
       const components = await Fingerprint.collectComponents();
 
-      // Check all required properties exist
-      expect(components).toHaveProperty('userAgent');
-      expect(components).toHaveProperty('language');
-      expect(components).toHaveProperty('languages');
-      expect(components).toHaveProperty('platform');
-      expect(components).toHaveProperty('hardwareConcurrency');
-      expect(components).toHaveProperty('deviceMemory');
-      expect(components).toHaveProperty('screen');
-      expect(components).toHaveProperty('timezone');
-      expect(components).toHaveProperty('timezoneOffset');
-      expect(components).toHaveProperty('canvas');
-      expect(components).toHaveProperty('webgl');
-      expect(components).toHaveProperty('fonts');
-      expect(components).toHaveProperty('cookieEnabled');
-      expect(components).toHaveProperty('doNotTrack');
-      expect(components).toHaveProperty('maxTouchPoints');
+      expect(Object.keys(components).sort()).toEqual([
+        'cookieEnabled',
+        'deviceMemory',
+        'doNotTrack',
+        'hardwareConcurrency',
+        'language',
+        'languages',
+        'maxTouchPoints',
+        'platform',
+        'screen',
+        'timezone',
+        'timezoneOffset',
+        'userAgent',
+        'webgl',
+      ]);
     });
 
     it('should return screen info with correct structure', async () => {
@@ -84,49 +83,62 @@ describe('Fingerprint', () => {
   });
 
   // ==========================================================================
-  // getCanvasFingerprint テスト
-  // ==========================================================================
-
-  describe('getCanvasFingerprint', () => {
-    it('should return a data URL or error string', async () => {
-      const fingerprint = await Fingerprint.getCanvasFingerprint();
-
-      // Should return either data URL or 'canvas-error'
-      expect(typeof fingerprint).toBe('string');
-      expect(fingerprint.length).toBeGreaterThan(0);
-    });
-  });
-
-  // ==========================================================================
   // getWebGLFingerprint テスト
   // ==========================================================================
 
   describe('getWebGLFingerprint', () => {
-    it('should return WebGL info object', () => {
-      const info = Fingerprint.getWebGLFingerprint();
+    // setup.ts の既定モック (getExtension は null) を、ケースごとに差し替えて必ず戻す
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
 
-      expect(typeof info).toBe('object');
-      // Should have either error or vendor/renderer
-      expect('error' in info || ('vendor' in info && 'renderer' in info)).toBe(true);
-    });
-  });
-
-  // ==========================================================================
-  // getAvailableFonts テスト
-  // ==========================================================================
-
-  describe('getAvailableFonts', () => {
-    it('should return an array', () => {
-      const fonts = Fingerprint.getAvailableFonts();
-
-      expect(Array.isArray(fonts)).toBe(true);
+    afterEach(() => {
+      HTMLCanvasElement.prototype.getContext = originalGetContext;
     });
 
-    it('should return consistent fonts on multiple calls', () => {
-      const fonts1 = Fingerprint.getAvailableFonts();
-      const fonts2 = Fingerprint.getAvailableFonts();
+    /** WEBGL_debug_renderer_info を持つ WebGL context を返すようにする */
+    const stubWebGLWithDebugRendererInfo = (): void => {
+      const UNMASKED_VENDOR_WEBGL = 0x9245;
+      const UNMASKED_RENDERER_WEBGL = 0x9246;
+      const gl = {
+        VENDOR: 0x1f00,
+        RENDERER: 0x1f01,
+        VERSION: 0x1f02,
+        SHADING_LANGUAGE_VERSION: 0x8b8c,
+        getParameter: (param: number) => {
+          switch (param) {
+            case UNMASKED_VENDOR_WEBGL:
+              return 'Real GPU Vendor';
+            case UNMASKED_RENDERER_WEBGL:
+              return 'Real GPU Renderer';
+            default:
+              return 'masked value';
+          }
+        },
+        getExtension: (name: string) =>
+          name === 'WEBGL_debug_renderer_info' ? { UNMASKED_VENDOR_WEBGL, UNMASKED_RENDERER_WEBGL } : null,
+      };
+      HTMLCanvasElement.prototype.getContext = ((contextId: string) =>
+        contextId === 'webgl' || contextId === 'experimental-webgl'
+          ? gl
+          : null) as typeof HTMLCanvasElement.prototype.getContext;
+    };
 
-      expect(fonts1).toEqual(fonts2);
+    it("reports 'unknown' for both unmasked values when WEBGL_debug_renderer_info is unavailable", () => {
+      expect(Fingerprint.getWebGLFingerprint()).toEqual({ unmaskedVendor: 'unknown', unmaskedRenderer: 'unknown' });
+    });
+
+    it('returns only the unmasked vendor and renderer when WEBGL_debug_renderer_info is available', () => {
+      stubWebGLWithDebugRendererInfo();
+
+      expect(Fingerprint.getWebGLFingerprint()).toEqual({
+        unmaskedVendor: 'Real GPU Vendor',
+        unmaskedRenderer: 'Real GPU Renderer',
+      });
+    });
+
+    it('returns an error marker when no WebGL context is available', () => {
+      HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
+
+      expect(Fingerprint.getWebGLFingerprint()).toEqual({ error: 'WebGL not supported' });
     });
   });
 
