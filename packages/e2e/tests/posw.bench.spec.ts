@@ -4,7 +4,7 @@ import { test, type Page } from '@playwright/test';
 import { EditorApp } from './helpers/app.js';
 
 /**
- * 記録側 PoSW のベンチ (`@bench`, #241 / ADR-0044)。**何も assert しない**。数値を吐くだけ。
+ * 記録側 PoSW のベンチ (`@bench`, #241 / ADR-0045)。**何も assert しない**。数値を吐くだけ。
  *
  * 実エディタ (casual) を開き、打鍵とマウス移動を一定のペースで流して、PoSW の処理待ち
  * (`__tcTestSnapshot()` の `pendingCount` = backlog) が増え続けるかを見る。あわせて、遅延なしの打鍵で

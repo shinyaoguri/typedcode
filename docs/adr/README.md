@@ -55,7 +55,7 @@
 | [0021](0021-code-execution-result-capture.md) | Accepted | コード実行の結果 (成功/失敗/exit code) を start/result の 2 イベントで加算的に捕捉する |
 | [0022](0022-pre-export-self-review.md) | Accepted | 提出前セルフレビュー: 自分の過程要約を確認し任意の振り返り `reflectionNote` をチェーンへ記録する (exam は off) |
 | [0023](0023-analysis-platform-not-judge.md) | Accepted | 分析を判定器ではなく多様な分析手法の差込み基盤として位置づける (verify-cli `--analyzer` 外部分析器・既定は advisory 据え置き) |
-| [0024](0024-data-minimization-tiers.md) | Accepted | 目的別データ最小化ティア: 整合性は全イベント (Tier F)・分析/共有は content-free 派生物 (Tier A/S)。proof は redact しない |
+| [0024](0024-data-minimization-tiers.md) | Accepted (fingerprint の収集範囲の宿題は ADR-0044 で閉じた) | 目的別データ最小化ティア: 整合性は全イベント (Tier F)・分析/共有は content-free 派生物 (Tier A/S)。proof は redact しない |
 | [0025](0025-grader-cohort-baseline.md) | Accepted | 採点者向けコホート基準を content-free な分布として定義 (外れ値は triage であって違反ではない・norms は配らない) |
 | [0026](0026-lightweight-git-flow-branching.md) | Superseded by 0028 | ブランチ運用を軽量 Git Flow にする (release/* を省き develop→main は merge commit・feature→develop は squash) |
 | [0027](0027-checkpoint-sign-requires-session-token.md) | Accepted | /api/checkpoint/sign を sessionStartToken 前提にする (DO 化は据え置き・無認証リクエストに KV コストを払わない) |
@@ -75,7 +75,8 @@
 | [0041](0041-sandboxed-code-execution.md) | Accepted | ユーザーの JS / TS は opaque origin の sandbox iframe (allow-scripts だけ) の中の Blob Worker で実行し、停止・タイムアウト・出力予算の超過は iframe ごと除去して終わらせる (同 realm / 同 origin Worker を却下・CSP は connect-src 'none'・完了の定義は Node と同じ・outcome に timeout) |
 | [0042](0042-rescue-code-before-proof.md) | Accepted | コードの保全を証明の正しさより優先し、証明ではない救出ファイル (`typedcode-rescue/2`) で持ち出させる (何も待たない・proof.json を入れない・`notAProof: true`・ZIP が駄目なら単一 JSON・保存状態の区分は #543。段階 2 = 復元時に証明と食い違った元のコードを `unprovenContents` に追記で残して知らせる #413) |
 | [0043](0043-acceptance-policy-separated-from-integrity.md) | Accepted | 受理ポリシー (root / 密度 / 署名 cp の存在 / 最終署名の 4 つの opt-in 要件) を検証の結論から分け、`integrityValid` と `policy.violations` (列挙型の code) で返す (密度 gate を signedCheckpoints から外す・整合性が落ちたら評価しない・Web は適用しない・time-box は入れない) |
-| [0044](0044-lower-posw-iterations-for-recording-throughput.md) | Accepted (実装は #611) | PoSW の反復数を 10,000 から 1,000 に下げる (CPU 4 倍相当で記録が入力に追いつかない実測が根拠・偽造側の下限は 10,000 でも分単位で防御にならない・記録側の await / 同期は形式と安全性に影響しない実装詳細・root アンカーで変える案と同期化だけの案は不採用) |
+| [0044](0044-fingerprint-collection-scope.md) | Accepted | fingerprint の収集を用途のあるコンポーネントに絞る (canvas・fonts を集めず、WebGL は `unmaskedVendor` / `unmaskedRenderer` の 2 値だけ。残す 13 キーごとに理由を書き、新しいキーは読むコードか理由を書いてから集める。旧 proof は受け付け続ける) |
+| [0045](0045-lower-posw-iterations-for-recording-throughput.md) | Accepted (実装は #611) | PoSW の反復数を 10,000 から 1,000 に下げる (CPU 4 倍相当で記録が入力に追いつかない実測が根拠・偽造側の下限は 10,000 でも分単位で防御にならない・記録側の await / 同期は形式と安全性に影響しない実装詳細・root アンカーで変える案と同期化だけの案は不採用) |
 
 ## 参考
 

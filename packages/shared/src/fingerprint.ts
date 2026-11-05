@@ -1,9 +1,9 @@
 /**
- * Fingerprint - ブラウザフィンガープリント生成
- * 端末とブラウザの固有情報を収集して識別子を生成
+ * Fingerprint - ブラウザ環境情報のハッシュ
+ * proof に同梱するブラウザ環境情報を集め、その SHA-256 を端末の照合用の値にする
  */
 
-import type { FingerprintComponents, ScreenInfo, WebGLInfo, DetailedFingerprint } from './types.js';
+import type { CollectedFingerprintComponents, CollectedWebGLInfo, DetailedFingerprint, ScreenInfo } from './types.js';
 import { computeHash } from './utils/hashUtils.js';
 
 export class Fingerprint {
@@ -18,8 +18,12 @@ export class Fingerprint {
 
   /**
    * フィンガープリント構成要素を収集
+   *
+   * 集めるのは 13 キーだけ (canvas の描画結果とフォント一覧は集めず、WebGL は
+   * unmasked の vendor / renderer の 2 値)。各キーを残す理由は
+   * docs/adr/0044-fingerprint-collection-scope.md (#242)。
    */
-  static async collectComponents(): Promise<FingerprintComponents> {
+  static async collectComponents(): Promise<CollectedFingerprintComponents> {
     const screenInfo: ScreenInfo = {
       width: screen.width,
       height: screen.height,
@@ -30,7 +34,7 @@ export class Fingerprint {
       devicePixelRatio: window.devicePixelRatio ?? 1,
     };
 
-    const components: FingerprintComponents = {
+    const components: CollectedFingerprintComponents = {
       userAgent: navigator.userAgent,
       language: navigator.language,
       languages: navigator.languages ?? [],
@@ -40,9 +44,7 @@ export class Fingerprint {
       screen: screenInfo,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       timezoneOffset: new Date().getTimezoneOffset(),
-      canvas: await this.getCanvasFingerprint(),
       webgl: this.getWebGLFingerprint(),
-      fonts: this.getAvailableFonts(),
       cookieEnabled: navigator.cookieEnabled,
       doNotTrack: navigator.doNotTrack ?? 'unknown',
       maxTouchPoints: navigator.maxTouchPoints ?? 0,
@@ -52,35 +54,11 @@ export class Fingerprint {
   }
 
   /**
-   * Canvas フィンガープリントを生成
+   * WebGL の unmasked vendor / renderer を取得 (ヘッドレス GPU の検出に使う)
+   *
+   * `WEBGL_debug_renderer_info` が無ければ各 `'unknown'`。context が取れなければ `error` だけを返す。
    */
-  static async getCanvasFingerprint(): Promise<string> {
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = 200;
-      canvas.height = 50;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return 'canvas-error';
-
-      ctx.textBaseline = 'top';
-      ctx.font = '14px "Arial"';
-      ctx.fillStyle = '#f60';
-      ctx.fillRect(125, 1, 62, 20);
-      ctx.fillStyle = '#069';
-      ctx.fillText('TypedCode', 2, 15);
-      ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
-      ctx.fillText('TypedCode', 4, 17);
-
-      return canvas.toDataURL();
-    } catch {
-      return 'canvas-error';
-    }
-  }
-
-  /**
-   * WebGL フィンガープリントを取得
-   */
-  static getWebGLFingerprint(): WebGLInfo {
+  static getWebGLFingerprint(): CollectedWebGLInfo {
     try {
       const canvas = document.createElement('canvas');
       const gl =
@@ -93,73 +71,12 @@ export class Fingerprint {
       const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
 
       return {
-        vendor: gl.getParameter(gl.VENDOR) as string,
-        renderer: gl.getParameter(gl.RENDERER) as string,
-        version: gl.getParameter(gl.VERSION) as string,
-        shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION) as string,
         unmaskedVendor: debugInfo ? (gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) as string) : 'unknown',
         unmaskedRenderer: debugInfo ? (gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) as string) : 'unknown',
       };
     } catch {
       return { error: 'WebGL error' };
     }
-  }
-
-  /**
-   * 利用可能なフォントを検出
-   */
-  static getAvailableFonts(): string[] {
-    const baseFonts = ['monospace', 'sans-serif', 'serif'] as const;
-    const testFonts = [
-      'Arial',
-      'Verdana',
-      'Times New Roman',
-      'Courier New',
-      'Georgia',
-      'Palatino',
-      'Garamond',
-      'Bookman',
-      'Comic Sans MS',
-      'Trebuchet MS',
-      'Impact',
-      'Helvetica',
-      'Lucida Console',
-      'Monaco',
-      'Consolas',
-      'Menlo',
-      'MS Gothic',
-      'Yu Gothic',
-    ];
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return [];
-
-    const testString = 'mmmmmmmmmmlli';
-    const testSize = '72px';
-
-    const baseWidths: Record<string, number> = {};
-    baseFonts.forEach((baseFont) => {
-      ctx.font = `${testSize} ${baseFont}`;
-      baseWidths[baseFont] = ctx.measureText(testString).width;
-    });
-
-    const availableFonts: string[] = [];
-    testFonts.forEach((font) => {
-      let detected = false;
-      baseFonts.forEach((baseFont) => {
-        ctx.font = `${testSize} '${font}', ${baseFont}`;
-        const width = ctx.measureText(testString).width;
-        if (width !== baseWidths[baseFont]) {
-          detected = true;
-        }
-      });
-      if (detected) {
-        availableFonts.push(font);
-      }
-    });
-
-    return availableFonts;
   }
 
   /**

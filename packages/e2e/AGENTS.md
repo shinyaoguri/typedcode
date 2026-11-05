@@ -41,7 +41,7 @@ tests/
 ├── verify-web-parity / verify-web-submission / verify-web-ui  # 検証 Web の往復 (3 ファイルに分割: 1 ファイル 10 本が CI で Playwright の Slow Test の閾値 5 分を超えたため / #533)。parity = Web↔CLI パリティ・改ざん・version gate。submission = 複数ファイルの混在 (#215)・壊れた proof (#292)・同梱ソースの差し替え (#293)。ui = タブを閉じたあとの active / 表示の一致 (#281 / #387)・チャートタブ (#395)。共通の手順 (`typeAndExport` / `expectWebCliParity` / `proofNames`) は `helpers/verifyWeb.ts`
 ├── model/                # model-based E2E (#436): fast-check の fc.commands でランダムな操作列を流し、各手の後にモデル (editorModel.ts) と状態契約・snapshot・件数・エラーを突き合わせ、最後に全タブの export を verify-cli (fast) で検証する。手には、ブラウザのタブを閉じて復旧ダイアログから再開する `CloseAndResume` (IndexedDB からの復旧経路。`Reload` は sessionStorage 経路。#450) を含む。PR ゲートは固定シード 2 本 × 15 手 (手を足したら dry-run でシードを選び直す。根拠は model-based.spec.ts のコメント)、`@nightly` はランダムシードの長尺。実アプリの操作は playwrightDriver.ts、実行と失敗の報告 (シード・縮約後の操作列・再実行コマンド) は runner.ts
 ├── shots.spec.ts         # @shots: 証跡の撮影だけ (assert なし・通常実行から除外)。撮影 spec を増やすなら *.shots.spec.ts (require-tests がテストに数えない命名) にし、タイトルに @shots を付ける
-├── posw.bench.spec.ts    # @bench: 記録側 PoSW のスループットと backlog を 1 倍と CPU 4 倍相当で測る (assert なし・通常実行と CI から除外。`npm run bench:posw` = BENCH=1)。CDP の CPU スロットルは dedicated Worker に効かないので、PoSW の Worker は route で差し込む busy-wait で処理時間を引き延ばす (ADR-0044 / #241)
+├── posw.bench.spec.ts    # @bench: 記録側 PoSW のスループットと backlog を 1 倍と CPU 4 倍相当で測る (assert なし・通常実行と CI から除外。`npm run bench:posw` = BENCH=1)。CDP の CPU スロットルは dedicated Worker に効かないので、PoSW の Worker は route で差し込む busy-wait で処理時間を引き延ばす (ADR-0045 / #241)
 └── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)
 playwright.config.ts       # dev 用: webServer で workers(:8787) + editor vite dev(:5173) + verify vite dev(:5174)
 ports.ts                   # 上の 3 ポート (E2E_*_PORT で上書き)。playwright.config.ts と global-setup.ts が読む (build 設定も workers の値を読む)
@@ -66,7 +66,7 @@ npm run shots -w @typedcode/e2e              # 見た目・動きの証跡を sh
 npm run setup -w @typedcode/e2e              # 単独で打つとき: テストキー + 署名鍵 + exam fixture の用意 (pretest / preshots が呼ぶ)
 npm run install-browsers -w @typedcode/e2e   # 単独で打つとき: Chromium の導入 (同上。OS の共有ライブラリは入れない)
 NIGHTLY=1 npm run test -w @typedcode/e2e -- --grep @nightly   # 毎晩の長い E2E だけ (model-based の長尺。FC_SEED / FC_RUNS / FC_STEPS で上書き)
-npm run bench:posw -w @typedcode/e2e         # 記録側 PoSW のベンチ (@bench だけ。packages/e2e/bench/ に JSON。BENCH_ITERATIONS で反復数の見積もり。ADR-0044)
+npm run bench:posw -w @typedcode/e2e         # 記録側 PoSW のベンチ (@bench だけ。packages/e2e/bench/ に JSON。BENCH_ITERATIONS で反復数の見積もり。ADR-0045)
 ```
 
 **`@nightly` は通常の実行と CI のシャードから外れる** (`playwright.config.ts` の grepInvert。`@shots` と同じ扱いで、`NIGHTLY=1` のときだけ含める)。毎晩 `.github/workflows/e2e-nightly.yml` が `--grep @nightly --retries=0` で回し、失敗したらテストの出力ディレクトリの `model-failure.md` (シード・縮約後の操作列・再実行コマンド) を同名の open Issue に集める。model-based の失敗は報告に出る `FC_SEED=… FC_PATH=… FC_REPLAY_PATH=…` を付けて同じ列を再実行できる。fast-check の縮約は同じ列を何度も流し直すので、**列ごとに新しいブラウザコンテキストで始める** (同じページで `openCasualFresh()` を繰り返すと前の列の状態が残る)。

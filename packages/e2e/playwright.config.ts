@@ -48,7 +48,7 @@ export default defineConfig({
   // 検査ではないので通常の実行と CI のシャードからは外し、`npm run shots` (SHOTS=1) のときだけ走らせる。
   // `@nightly` は長い・ランダムな検査 (tests/model/ の model-based E2E 長尺 / #436) で、PR ゲートには重い。
   // 通常の実行と CI のシャードからは外し、NIGHTLY=1 のときだけ含める (.github/workflows/e2e-nightly.yml)。
-  // `@bench` は記録側 PoSW のベンチ (tests/posw.bench.spec.ts / ADR-0044)。数値を吐くだけで assert しないので、
+  // `@bench` は記録側 PoSW のベンチ (tests/posw.bench.spec.ts / ADR-0045)。数値を吐くだけで assert しないので、
   // 検査から外し、`npm run bench:posw` (BENCH=1) のときだけ走らせる。
   grepInvert: excludedTags(),
   // PoSW (Web Worker でのハッシュ計算) と export + verify-cli の full 再計算が絡むため重い。
