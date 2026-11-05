@@ -44,6 +44,7 @@ import {
   type SignedCheckpointService,
   createSignedCheckpointServiceIfEnabled,
 } from '../../services/SignedCheckpointService.js';
+import { isStorageFullError } from '../../services/StorageCapacityProbe.js';
 import { debugLog } from '../../utils/logger.js';
 import { TAB_CREATE_VERIFICATION_BUDGET_MS } from '../../config/timeouts.js';
 
@@ -176,6 +177,9 @@ export class TabManager {
   private onSyncStatusChangeCallback: OnSyncStatusChangeCallback | null = null;
   private onTabCreatedCallback: OnTabCreatedCallback | null = null;
   private onProofChangeCallback: OnProofChangeCallback | null = null;
+  /** 保存が容量切れで失敗したときの通知 (#626)。セッション中 1 回だけ呼ぶ */
+  private onStorageFullCallback: (() => void) | null = null;
+  private storageFullNotified = false;
   /** proof の変化の通知を microtask に積んである間 true (同じ tick の変化を 1 回にまとめる。#521) */
   private proofChangeNotifyQueued = false;
   /**
@@ -306,6 +310,15 @@ export class TabManager {
    */
   setOnProofChange(callback: OnProofChangeCallback | null): void {
     this.onProofChangeCallback = callback;
+  }
+
+  /**
+   * IndexedDB への保存が容量切れらしい失敗 (`isStorageFullError`: `QuotaExceededError` と、Chromium がディスク満杯で返す I/O の失敗。`cause` の連鎖まで見る) になったときの通知を
+   * 設定する (#626)。呼ぶのはセッション中 1 回だけ (再試行のたびに出さない)。同期状態の決め方
+   * (`syncStatus.ts`) とは独立で、表示は `degraded` / `failed` のまま変わらない。
+   */
+  setOnStorageFull(callback: (() => void) | null): void {
+    this.onStorageFullCallback = callback;
   }
 
   /**
@@ -1155,6 +1168,7 @@ export class TabManager {
       idbOk = false;
       error = e;
       console.error('[TabManager] Failed to save to IndexedDB:', e);
+      if (isStorageFullError(e)) this.notifyStorageFull();
     }
 
     let sessionStorageOk: boolean;
@@ -1168,6 +1182,13 @@ export class TabManager {
     const outcome: PersistOutcome = idbOk ? { idbOk, sessionStorageOk } : { idbOk, sessionStorageOk, error };
     this.lastPersistOutcome = outcome;
     return outcome;
+  }
+
+  /** 容量切れの通知をセッション中 1 回だけ出す (#626) */
+  private notifyStorageFull(): void {
+    if (this.storageFullNotified || !this.onStorageFullCallback) return;
+    this.storageFullNotified = true;
+    this.onStorageFullCallback();
   }
 
   /**

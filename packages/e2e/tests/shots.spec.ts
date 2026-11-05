@@ -11,6 +11,7 @@ import {
   writeZipVariant,
 } from './helpers/app.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
+import { failStorageProbe } from './helpers/faults.js';
 
 /**
  * 見た目・動きの証跡 (`@shots`, #391 / ADR-0036)。**何も assert しない**。人が見るための画像を吐くだけ。
@@ -96,6 +97,11 @@ const SHOTS = [
     file: '13-verify-anchoring.png',
     caption:
       '検証 Web: 時刻アンカーカードを開き、詳細を広げた状態 (post-hoc の判定に使う時刻の要約行と、時間スパン分析の欄)',
+  },
+  {
+    file: '14-storage-low.png',
+    caption:
+      'エディタ: 起動時の空き容量の試験で書き込めなかったときの警告 (このまま続ける / もう一度確かめる。書き込みを容量切れにして表示)',
   },
 ] as const;
 
@@ -270,6 +276,19 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await expect(dialog.locator('.unproven-diff')).toHaveAttribute('data-diff-tab-id', /.+/);
     await dialog.locator('.unproven-diff .editor.modified .view-line').first().waitFor({ state: 'visible' });
     await resumed.screenshot({ path: out('10-unproven-content-diff.png'), animations: 'disabled', mask });
+  });
+
+  // 14 (#626): 起動時の空き容量の試験で書けなかったときの警告。試験用 DB への書き込みだけを容量切れにする
+  test('起動時の空き容量不足の警告を撮る @shots', async ({ page }) => {
+    await failStorageProbe(page);
+    const app = new EditorApp(page);
+    await page.goto('/casual');
+    await expect.poll(() => app.openDialogs()).toEqual(['storage-low']);
+    await page.screenshot({
+      path: out('14-storage-low.png'),
+      animations: 'disabled',
+      mask: [page.locator('#titlebar-clock')],
+    });
   });
 
   // 11〜12 (#301): 分析器の失敗・時間切れを「シグナルなし」と区別する分析カード。同梱の分析器は通常の proof では

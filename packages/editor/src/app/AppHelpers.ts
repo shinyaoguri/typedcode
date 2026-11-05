@@ -8,11 +8,15 @@ import { t } from '../i18n/index.js';
 
 /**
  * 通知メッセージを表示
+ *
+ * `notice` を渡すと `#block-notification[data-notice]` にその id を書く (状態契約。E2E が翻訳文ではなく
+ * どの通知かで読むため。#626)。渡さなければ空文字にする (前の通知の id を残さない)。
  */
-export function showNotification(message: string): void {
+export function showNotification(message: string, notice?: string): void {
   const blockNotificationEl = document.getElementById('block-notification');
   const blockMessageEl = document.getElementById('block-message');
   if (blockMessageEl) blockMessageEl.textContent = message;
+  blockNotificationEl?.setAttribute('data-notice', notice ?? '');
   blockNotificationEl?.classList.remove('hidden');
   setTimeout(() => {
     blockNotificationEl?.classList.add('hidden');

@@ -374,6 +374,8 @@ export const ja: TranslationKeys = {
       '新しいバージョンが別のタブで開かれました。保存を続けるにはこのタブを再読み込みしてください。',
     storageConnectionLost:
       '保存先 (IndexedDB) に接続できなくなりました。再読み込みするか、「コードを救出」でコードを保存してください。',
+    storageFull:
+      '保存できませんでした。ディスクの空き容量が不足している可能性があります。「コードを救出」でコードを保存し、空き容量を増やしてください。',
   },
 
   selfReview: {
@@ -555,6 +557,15 @@ export const ja: TranslationKeys = {
       '別のタブで TypedCode の古いバージョンが開いています。他の TypedCode のタブを閉じてから再読み込みしてください。',
     reload: '再読み込み',
     detail: 'エラーの詳細',
+  },
+
+  storageLow: {
+    title: 'ディスクの空き容量が不足している可能性があります',
+    description:
+      'TypedCode は作業の記録をこの PC に保存します。約 ${size}MB を書き込めるか試しましたが、書き込めませんでした。空き容量が足りない可能性があります。このまま使うと、途中で保存できなくなるおそれがあります。',
+    hint: '不要なファイルを削除して空き容量を増やしてから「もう一度確かめる」を押してください。',
+    continue: 'このまま続ける',
+    retry: 'もう一度確かめる',
   },
 
   unsupportedBrowser: {

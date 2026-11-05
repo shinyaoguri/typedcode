@@ -1460,6 +1460,18 @@
 }
 
 /* ================================================
+   Storage Low Overlay (#626)
+   ================================================ */
+
+#storage-low-overlay .modal-dialog {
+  max-width: 480px;
+}
+
+#storage-low-overlay .modal-header i {
+  color: var(--accent-warning);
+}
+
+/* ================================================
    Boot Failure Overlay (#325)
    ================================================ */
 

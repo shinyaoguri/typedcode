@@ -97,6 +97,8 @@ interface PageFaultLog {
   quotaFailures: number;
   /** `getDisplayMedia` が返した stream (新しい順ではなく取得順) */
   displayStreams: MediaStream[];
+  /** `failStorageProbe` が失敗させた、試験用 DB への `put` の回数 (#626) */
+  probeFailures?: number;
   /** `injectTransactionAbort` が abort させた transaction の数 (#543) */
   transactionAborts?: number;
   /** 保存先の注入で差し替える前の関数 (`restoreStorageFaults` が戻す。#543) */
@@ -156,6 +158,61 @@ export async function failSessionDbOpen(target: Page | BrowserContext): Promise<
 /** `failSessionDbOpen` が失敗させた `indexedDB.open` の回数。 */
 export function idbOpenFailureCount(page: Page): Promise<number> {
   return page.evaluate(() => (window as unknown as { __tcFaults?: PageFaultLog }).__tcFaults?.idbOpenFailures ?? 0);
+}
+
+/** 起動時の空き容量の試験が書く DB の名前 (editor の `STORAGE_PROBE_DB_NAME`。#626) */
+export const STORAGE_PROBE_DB_NAME = 'typedcode-storage-probe';
+
+/**
+ * 起動時の空き容量の試験 (#626) の書き込みの失敗の形。
+ * - `quota`: put が同期で `QuotaExceededError` を投げる (ブラウザの割り当てを超えたとき)
+ * - `ioError`: put の request は通り、その後に transaction が `DataError: Failed to write blobs (IOError)`
+ *   で abort する。ディスクが本当に一杯のときに Chromium が返す形 (#626 の実ディスクでの再現。
+ *   `QuotaExceededError` にはならない)
+ */
+export type StorageProbeFailure = 'quota' | 'ioError';
+
+/**
+ * 起動時の空き容量の試験 (#626) の書き込みを失敗させる init script を入れる。goto の前に呼ぶ。
+ * 試験用 DB (`STORAGE_PROBE_DB_NAME`) の transaction での `put` だけを失敗させ、セッション DB の保存は
+ * 通す (試験の後の起動と打鍵の保存は本物のまま)。失敗させた回数は `probeFailureCount` で読む。
+ *
+ * `ioError` は `injectTransactionAbort` と同じく request の success の後に abort する。本物の transaction の
+ * `error` は読み取り専用の getter なので、その transaction にだけ同名のプロパティを定義して理由を持たせる
+ * (abort の理由は editor の `settleOnCommit` が `transaction.error` から読む)。
+ */
+export async function failStorageProbe(
+  target: Page | BrowserContext,
+  failure: StorageProbeFailure = 'quota'
+): Promise<void> {
+  await target.addInitScript(
+    ({ probeDbName, kind }) => {
+      const w = window as unknown as { __tcFaults?: PageFaultLog };
+      w.__tcFaults ??= { idbOpenFailures: 0, quotaFailures: 0, displayStreams: [] };
+      const log = w.__tcFaults;
+      log.probeFailures ??= 0;
+      const originalPut = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function put(this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+        if (this.transaction.db.name !== probeDbName) return originalPut.call(this, value, key);
+        log.probeFailures = (log.probeFailures ?? 0) + 1;
+        if (kind === 'quota') throw new DOMException('injected', 'QuotaExceededError');
+        const request = originalPut.call(this, value, key);
+        const transaction = this.transaction;
+        Object.defineProperty(transaction, 'error', {
+          value: new DOMException('Failed to write blobs (IOError)', 'DataError'),
+          configurable: true,
+        });
+        request.addEventListener('success', () => transaction.abort());
+        return request;
+      };
+    },
+    { probeDbName: STORAGE_PROBE_DB_NAME, kind: failure }
+  );
+}
+
+/** `failStorageProbe` が失敗させた回数 (= 試験が書き込みに来た回数)。 */
+export function probeFailureCount(page: Page): Promise<number> {
+  return page.evaluate(() => (window as unknown as { __tcFaults?: PageFaultLog }).__tcFaults?.probeFailures ?? 0);
 }
 
 /**

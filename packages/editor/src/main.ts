@@ -108,6 +108,11 @@ import {
   hideScreenShareOptOutBanner,
 } from './ui/dialogs/ScreenCaptureDialogs.js';
 import { initSessionStorageService, SessionStorageBlockedError } from './services/SessionStorageService.js';
+import {
+  probeStorageCapacity,
+  resolveStorageProbeBytes,
+  type StorageProbeResult,
+} from './services/StorageCapacityProbe.js';
 import { showSessionRecoveryDialog } from './ui/dialogs/SessionRecoveryDialog.js';
 import { showUnprovenContentDialog } from './ui/dialogs/UnprovenContentDialog.js';
 import { showBootFailure } from './app/bootFailure.js';
@@ -486,6 +491,12 @@ async function initializeTabManager(
   // 同期状態変更コールバックを設定
   ctx.tabManager.setOnSyncStatusChange((status: SyncStatus) => {
     updateSyncStatusUI(status);
+  });
+
+  // 保存が容量切れで失敗したら救出を勧める (#626)。セッション中 1 回だけ (TabManager が抑える)。
+  // 同期状態の表示 (degraded / failed) はそのまま
+  ctx.tabManager.setOnStorageFull(() => {
+    showNotification(t('notifications.storageFull'), 'storage-full');
   });
 
   let initialized: boolean;
@@ -1113,6 +1124,66 @@ function restoreClassProblemDisplay(appCtx: AppContext): void {
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
 }
 
+/**
+ * 起動時の空き容量の試験を 1 回走らせ、結果と所要時間を console に残す (#626)。
+ * 結果はハッシュチェーンには記録しない。
+ */
+async function runStorageProbe(): Promise<StorageProbeResult> {
+  const startedAt = performance.now();
+  const bytes = resolveStorageProbeBytes();
+  const result = await probeStorageCapacity({ bytes });
+  const elapsedMs = Math.round(performance.now() - startedAt);
+  const detail = result.kind === 'inconclusive' ? ` (${result.reason})` : '';
+  const message = `[TypedCode] Storage probe: ${result.kind}${detail}, ${bytes} bytes in ${elapsedMs}ms`;
+  if (result.kind === 'ok') {
+    console.log(message);
+  } else {
+    // console.error にしない (容量不足は起動を止める失敗ではない)
+    console.warn(message, 'error' in result ? result.error : '');
+  }
+  return result;
+}
+
+/**
+ * 空き容量の試験で書けなかったときの警告 (`[data-dialog="storage-low"]`。#626)。
+ * 「このまま続ける」で閉じて起動を続ける。「もう一度確かめる」で試験をやり直し、書けたら閉じて続ける
+ * (書けなければ開いたまま)。試験が判定できなかったとき (`inconclusive`) も閉じる (容量不足と言えない)。
+ */
+function showStorageLowDialog(): Promise<void> {
+  const overlay = document.getElementById('storage-low-overlay');
+  const continueBtn = document.getElementById('storage-low-continue-btn') as HTMLButtonElement | null;
+  const retryBtn = document.getElementById('storage-low-retry-btn') as HTMLButtonElement | null;
+  if (!overlay || !continueBtn || !retryBtn) return Promise.resolve();
+
+  const description = document.getElementById('storage-low-description');
+  if (description) {
+    const size = Math.round(resolveStorageProbeBytes() / (1024 * 1024));
+    description.textContent = t('storageLow.description', { size });
+  }
+
+  return new Promise((resolve) => {
+    const close = () => {
+      continueBtn.removeEventListener('click', onContinue);
+      retryBtn.removeEventListener('click', onRetry);
+      overlay.classList.add('hidden');
+      resolve();
+    };
+    const onContinue = () => close();
+    const onRetry = async () => {
+      continueBtn.disabled = true;
+      retryBtn.disabled = true;
+      const result = await runStorageProbe();
+      continueBtn.disabled = false;
+      retryBtn.disabled = false;
+      if (result.kind !== 'insufficient') close();
+    };
+    continueBtn.addEventListener('click', onContinue);
+    retryBtn.addEventListener('click', onRetry);
+    overlay.classList.remove('hidden');
+    continueBtn.focus();
+  });
+}
+
 // ========================================
 // メイン初期化関数
 // ========================================
@@ -1159,6 +1230,17 @@ async function initializeApp(): Promise<void> {
   if (ctx.mode !== 'casual' && !hasAcceptedTerms()) {
     initOverlay?.classList.add('hidden');
     await showTermsModal();
+    initOverlay?.classList.remove('hidden');
+    updateInitMessage(t('app.initializing'));
+  }
+
+  // Phase 1.2: 空き容量の試験 (#626)。セッション DB とは別の DB に約 200MB を書いて消す。
+  // 書けなければ警告を出し、続行は選べる (起動は止めない)。判定できなかったときは何も出さない。
+  // landing は boot() が initializeApp を短絡するので走らない
+  const storageProbe = await runStorageProbe();
+  if (storageProbe.kind === 'insufficient') {
+    initOverlay?.classList.add('hidden');
+    await showStorageLowDialog();
     initOverlay?.classList.remove('hidden');
     updateInitMessage(t('app.initializing'));
   }

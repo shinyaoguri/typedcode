@@ -34,6 +34,8 @@ vi.mock('../TabVerificationUI.js', () => ({
 const session = vi.hoisted(() => ({
   initialized: false,
   failWrites: false,
+  /** failWrites のときに投げる例外 (null なら容量切れではない失敗) */
+  failError: null as Error | null,
   /** updateTabOrder を呼んだ回数 = IndexedDB への保存を試みた回数 (タブ 0 本なら 1 回の保存で 1 回) */
   writes: 0,
 }));
@@ -45,7 +47,7 @@ vi.mock('../../../services/SessionStorageService.js', () => ({
     updateActiveTabId: async () => {},
     updateTabOrder: async () => {
       session.writes += 1;
-      if (session.failWrites) throw new Error('Failed to put to sessions: AbortError');
+      if (session.failWrites) throw session.failError ?? new Error('Failed to put to sessions: AbortError');
     },
   }),
   EventChainConflictError: class extends Error {},
@@ -297,6 +299,80 @@ describe('TabManager sync status when saving fails (#543)', () => {
 
     expect(outcome).toMatchObject({ idbOk: false, sessionStorageOk: true });
     expect(tabManager.getSyncStatus()).toBe('degraded');
+  });
+});
+
+describe('TabManager storage full notification (#626)', () => {
+  const DEBOUNCE_MS = 100;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    session.initialized = true;
+    session.failWrites = false;
+    session.failError = null;
+    stubSessionStorage();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    session.failError = null;
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('notifies only once per session even when saves keep failing with QuotaExceededError', async () => {
+    const { tabManager } = setup();
+    const notify = vi.fn();
+    tabManager.setOnStorageFull(notify);
+    session.failWrites = true;
+    // settleOnCommit と同じく、容量切れを cause に包んで投げる
+    session.failError = new Error('Failed to put to sessions', {
+      cause: new DOMException('full', 'QuotaExceededError'),
+    });
+
+    tabManager.saveToStorage();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(notify).toHaveBeenCalledTimes(1);
+
+    // 再試行 (2 秒・4 秒後) と新しい保存も失敗し続けるが、通知は増えない
+    await vi.advanceTimersByTimeAsync(6_000);
+    tabManager.saveToStorage();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(session.writes).toBeGreaterThan(2);
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('notifies when saving fails with the FILE_ERROR_NO_SPACE UnknownError Chromium raises on a full disk', async () => {
+    const { tabManager } = setup();
+    const notify = vi.fn();
+    tabManager.setOnStorageFull(notify);
+    session.failWrites = true;
+    // #626 の実ディスクでの再現で、小さな行の put を繰り返したときに Chromium が返した失敗
+    session.failError = new Error('Failed to append event', {
+      cause: new DOMException(
+        'Connection is closing because of: IO error: .../000003.log: FILE_ERROR_NO_SPACE (ChromeMethodBFE: 3::WritableFileAppend::8)',
+        'UnknownError'
+      ),
+    });
+
+    tabManager.saveToStorage();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not notify when saving fails for a reason other than a full storage', async () => {
+    const { tabManager } = setup();
+    const notify = vi.fn();
+    tabManager.setOnStorageFull(notify);
+    session.failWrites = true;
+
+    tabManager.saveToStorage();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(tabManager.getSyncStatus()).toBe('degraded');
+    expect(notify).not.toHaveBeenCalled();
   });
 });
 
