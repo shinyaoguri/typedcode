@@ -96,6 +96,7 @@ export class TypeScriptExecutor extends BaseExecutor {
       // 実行は JavaScriptExecutor の sandbox (opaque origin の iframe 内の Worker) に任せる
       return await jsExecutor.run(result.outputText, callbacks);
     } catch (error) {
+      // 変換 (Monaco の TS worker) や実行環境の準備の失敗は、ユーザーのコードの失敗ではなく実行基盤の例外 (ADR-0021 の error)
       const errorMsg = error instanceof Error ? error.message : String(error);
       callbacks.onStderr(`TypeScript Error: ${errorMsg}\n`);
       return {
@@ -104,6 +105,7 @@ export class TypeScriptExecutor extends BaseExecutor {
         stdout: '',
         stderr: errorMsg,
         error: errorMsg,
+        outcome: 'error',
       };
     }
   }

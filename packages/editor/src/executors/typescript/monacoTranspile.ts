@@ -9,6 +9,7 @@
  */
 
 import * as monaco from 'monaco-editor';
+import { awaitTypeScriptWorker } from './awaitTypeScriptWorker.js';
 import type { TranspileDiagnostic } from './transpileDiagnostics.js';
 
 export interface MonacoTranspileResult {
@@ -21,15 +22,16 @@ let modelSeq = 0;
 
 /**
  * 使い捨てのモデルを作って worker に transpile させる。モデルは必ず dispose する。
- * `getTypeScriptWorker` は typescript 言語の setup より前だと reject するが、setup は
- * typescript のモデルが初めて作られたときに走るので、モデルを先に作ってから呼ぶ。
+ * `getTypeScriptWorker` は typescript 言語の setup より前だと reject する。setup は typescript のモデルが
+ * 初めて作られたときに走るのでモデルを先に作るが、setup 自体は言語モードのモジュールの読み込みを待つ非同期で、
+ * 初回は `getTypeScriptWorker` の方が先に解決することがある (#624)。そのため登録まで取り直す。
  */
 export async function transpileWithMonaco(code: string): Promise<MonacoTranspileResult> {
   modelSeq++;
   const uri = monaco.Uri.parse(`inmemory://typedcode-run/${modelSeq}.ts`);
   const model = monaco.editor.createModel(code, 'typescript', uri);
   try {
-    const getWorker = await monaco.typescript.getTypeScriptWorker();
+    const getWorker = await awaitTypeScriptWorker(() => monaco.typescript.getTypeScriptWorker());
     const worker = await getWorker(uri);
     const fileName = uri.toString();
     const diagnostics = await worker.getSyntacticDiagnostics(fileName);

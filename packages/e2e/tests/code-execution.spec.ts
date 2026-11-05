@@ -115,10 +115,14 @@ async function expectNoRunnerFrame(page: Page): Promise<void> {
   await expect(page.locator('iframe[data-code-runner]')).toHaveCount(0);
 }
 
-// 停止のクリックが CI の遅いランナーでも続きの前に届くよう、続きは 1.5 秒後にする
-// (停止の後はそれより長く待って、続きが出ないことを確かめる)
+// 停止は、続きを待ち始めた (WAITING が出た) のを見てから押す。TS も変換を終えて sandbox で
+// 続きを待っている所で止まる。続きは停止のクリックが CI の遅いランナーでも先に届くよう 5 秒後にする
+// (1.5 秒では、クリックが続きの終わりより遅れて run が自分で終わり failure になった = #585)。
+// 停止の後は、続きの時刻を 1 秒過ぎるまで待って、続きが出ないことを確かめる
+const LATE_DELAY_MS = 5_000;
 const LATE_SIDE_EFFECT = [
-  'await new Promise((r) => setTimeout(r, 1500));',
+  'console.log("WAITING");',
+  `await new Promise((r) => setTimeout(r, ${LATE_DELAY_MS}));`,
   'console.log("LATE");',
   'localStorage.setItem("pwned", "1");',
   '',
@@ -130,10 +134,14 @@ for (const language of ['javascript', 'typescript'] as const) {
     await replaceCode(app, LATE_SIDE_EFFECT);
 
     const run = await startRun(page);
+    await expect.poll(() => terminalText(page), { timeout: 30_000 }).toContain('WAITING');
+    const waitingSeenAt = Date.now();
     await stopRun(page);
-    expect(await waitOutcome(page, run)).toBe('aborted');
+    // 落ちたときに、続きが走ってしまった (LATE が出た) のかを読めるようにターミナルを添える
+    const outcome = await waitOutcome(page, run);
+    expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('aborted');
 
-    await page.waitForTimeout(2_500);
+    await page.waitForTimeout(Math.max(0, waitingSeenAt + LATE_DELAY_MS + 1_000 - Date.now()));
     expect(await terminalText(page)).not.toContain('LATE');
     expect(await page.evaluate(() => localStorage.getItem('pwned'))).toBeNull();
     await expectNoRunnerFrame(page);
@@ -292,6 +300,28 @@ test('typescript: 型注釈と top-level await を含むコードが transpile �
     .filter((e) => e.type === 'codeExecution' && (e.data as { phase?: string } | null)?.phase === 'result')
     .map((e) => (e.data as { outcome?: string }).outcome);
   expect(outcomes).toEqual(['success']);
+});
+
+test('typescript: C のタブから切り替えた直後に実行しても、TS の言語モードの読み込みを待って success になる (#624)', async ({
+  page,
+}) => {
+  // 初めて TS の言語モードを読み込む間に変換が走ると、Monaco の getTypeScriptWorker() が登録前に
+  // "TypeScript not registered!" で reject していた。JS / TS を経由すると読み込み済みになって再現しないので、
+  // 既定の C のタブにコードを入れ、TS への切り替えと Run を同じタスクで行う
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await replaceCode(app, 'const n: number = 1;\nconsole.log("switched " + n);\n');
+
+  await page.evaluate(() => {
+    const selector = document.getElementById('language-selector') as HTMLSelectElement;
+    selector.value = 'typescript';
+    selector.dispatchEvent(new Event('change', { bubbles: true }));
+    (document.getElementById('run-code-btn') as HTMLButtonElement).click();
+  });
+  await expect(page.locator(TERMINAL)).toHaveAttribute('data-exec-run', '1');
+  const outcome = await waitOutcome(page, 1);
+  expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
+  await expect.poll(() => terminalText(page)).toContain('switched 1');
 });
 
 test('typescript: 構文エラーは実行せずに failure になり、位置付きのエラーとマーカーがその行に出る', async ({
