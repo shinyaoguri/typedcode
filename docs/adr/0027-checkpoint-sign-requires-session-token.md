@@ -56,7 +56,7 @@
 - **exam**: root は封印束縛 (ADR-0006) で session/start を通らないため、タブ生成/復元時に**非ブロッキング best-effort** で署名専用トークンを取得する (`TabManager.acquireSigningTokenBestEffort`)。UI は出さず、試験開始をブロックしない (ADR-0006 の絶対条件)。root には焼かず proof にも同梱しない。失敗時は署名なしで劣化 = オフライン exam と同等。
 
 ### 劣化モード (トークンが得られないセッション)
-- session/start 不達で開始したセッション (root 未アンカー) は署名済み checkpoint も持たない。これは ADR-0017 の劣化系列と整合する: root がアンカーされていない proof の署名 cp は保証への寄与が限定的で、strict 運用 (`--require-root-anchor`) では元々弾かれる。verifier は署名 cp の不在を「補助情報なし」として扱う (既存挙動、ADR-0004)。
+- session/start 不達で開始したセッション (root 未アンカー) は署名済み checkpoint も持たない。ただし作成時の認証が予算 (`TAB_CREATE_VERIFICATION_BUDGET_MS`) を過ぎてから session/start の token が届いた場合は、それを exam と同じ署名専用 token (`signingOnlyToken`) として使い、以降の checkpoint と保留中の署名 (`retryPendingSignatures`) を署名する (root には焼かない。2026-11-05、#375)。これは ADR-0017 の劣化系列と整合する: root がアンカーされていない proof の署名 cp は保証への寄与が限定的で、strict 運用 (`--require-root-anchor`) では元々弾かれる。verifier は署名 cp の不在を「補助情報なし」として扱う (既存挙動、ADR-0004)。
 - デプロイ跨ぎ: 旧ビルドの editor で進行中のセッションはトークンを送らないため、リロードまで署名が失敗する (proof は valid のまま、anchored のみ欠落)。
 
 ## Consequences

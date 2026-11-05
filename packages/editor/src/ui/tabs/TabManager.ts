@@ -45,6 +45,7 @@ import {
   createSignedCheckpointServiceIfEnabled,
 } from '../../services/SignedCheckpointService.js';
 import { debugLog } from '../../utils/logger.js';
+import { TAB_CREATE_VERIFICATION_BUDGET_MS } from '../../config/timeouts.js';
 
 // PoSW Workerのファクトリ関数
 // Viteがsymlinkedパッケージ内のWorkerを正しく解決できないため、editorパッケージ内から読み込む
@@ -160,8 +161,10 @@ export class TabManager {
   private fingerprint: string | null = null;
   private fingerprintComponents: FingerprintComponents | null = null;
   /**
-   * exam 用の署名専用 sessionStartToken (ADR-0027)。root には焼かず proof にも同梱しない。
-   * casual/class/assignment はタブの TypingProof が持つ token を使うのでここには入らない。
+   * 署名専用の sessionStartToken (ADR-0027)。root には焼かず proof にも同梱しない。入るのは、
+   * exam の best-effort 取得 (`acquireSigningTokenBestEffort`) と、casual/class/assignment で
+   * 作成時の予算 (`TAB_CREATE_VERIFICATION_BUDGET_MS`) を過ぎてから届いた token (#375)。
+   * 予算内に届いた casual/class/assignment の token はタブの TypingProof が持つのでここには入らない。
    */
   private signingOnlyToken: SessionStartToken | null = null;
   /** acquireSigningTokenBestEffort の単一フライトガード */
@@ -423,13 +426,21 @@ export class TabManager {
     // root は serverNonce に依存するため、Turnstile を **initialize より先に** 実行する。
     // session/start の sessionId は署名 cp と一致させる必要があるので getCurrentSessionId() を使う
     // (verifier が token.sessionId ↔ 署名 cp sessionId の一致を要求する)。失敗時は非アンカーで継続。
+    // #375: 認証全体を TAB_CREATE_VERIFICATION_BUDGET_MS で打ち切り、超過したら非アンカーで編集を始める
+    // (#0 には failureReason 'timeout' の失敗 attestation)。予算の後に届いた token は root にも proof にも
+    // 入れず、署名専用 token に回す (root は initialize で確定済みなので後から焼けない)。
     let interactiveAuth: Awaited<ReturnType<typeof performVerificationWithUI>> | null = null;
     if (!options?.examContext && !options?.sharedAttestation && !options?.skipAttestation && isTurnstileConfigured()) {
       debugLog('[TabManager] Performing Turnstile + session/start for new tab...');
       const apiSessionId = this.sessionService.getCurrentSessionId();
       const sessionStart =
         apiSessionId && this.fingerprint ? { sessionId: apiSessionId, fingerprintHash: this.fingerprint } : undefined;
-      interactiveAuth = await performVerificationWithUI('create_tab', t, sessionStart);
+      interactiveAuth = await performVerificationWithUI('create_tab', t, sessionStart, {
+        budgetMs: TAB_CREATE_VERIFICATION_BUDGET_MS,
+      });
+      void interactiveAuth.lateSessionToken.then((lateToken) => {
+        if (lateToken) this.adoptSigningToken(lateToken, 'late tab-create token');
+      });
     }
 
     // TypingProofインスタンスの root を確定する。
@@ -614,6 +625,20 @@ export class TabManager {
   }
 
   /**
+   * 署名専用 token を受け入れ、待機中の署名を全タブで再開する (ADR-0027)。root にも proof にも入れない。
+   * exam の best-effort 取得と、作成時の予算を過ぎてから届いた token (#375) の共通の受け口。
+   * どの token で署名するかは `findSigningToken` が決める (sessionId 一致 + issuedAt 最新) ので、
+   * 別セッションの遺物になった token はここで入れても使われない。
+   */
+  private adoptSigningToken(token: SessionStartToken, source: string): void {
+    this.signingOnlyToken = token;
+    debugLog(`[TabManager] Signing-only session token adopted (${source})`);
+    for (const tab of this.tabs.values()) {
+      tab.signedCheckpointService?.retryPendingSignatures();
+    }
+  }
+
+  /**
    * exam 用の署名専用 token を非ブロッキングで取得する (ADR-0027)。
    * - UI は出さない (performTurnstileVerification を直接呼ぶ)。試験開始をブロックしない
    *   (ADR-0006 の絶対条件)。失敗したら署名なしで劣化する (オフライン exam と同等)。
@@ -630,11 +655,7 @@ export class TabManager {
         sessionStart: { sessionId, fingerprintHash: this.fingerprint },
       });
       if (result.success && result.sessionToken) {
-        this.signingOnlyToken = result.sessionToken;
-        debugLog('[TabManager] Signing-only session token acquired (exam best-effort)');
-        for (const tab of this.tabs.values()) {
-          tab.signedCheckpointService?.retryPendingSignatures();
-        }
+        this.adoptSigningToken(result.sessionToken, 'exam best-effort');
       } else {
         console.warn(
           '[TabManager] Signing-only token acquisition failed; checkpoints stay unsigned:',

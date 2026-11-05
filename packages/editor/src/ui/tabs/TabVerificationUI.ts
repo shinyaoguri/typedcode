@@ -24,7 +24,29 @@ export interface VerificationUIResult {
   result: VerificationResult;
   /** セッション開始トークン (ADR-0017)。sessionStart 指定かつ成功時のみ。root アンカーに使う。 */
   sessionToken?: SessionStartToken | null;
+  /**
+   * 予算を過ぎてから届いたセッション開始トークン (#375)。予算切れで返したときだけ、裏で走り続ける
+   * 認証が後で `sessionToken` を返せばそれに、そうでなければ null に解決する。予算内に終わったときは
+   * 即座に null に解決する (token は `sessionToken` にある)。root には焼かず、署名専用に回す。
+   */
+  lateSessionToken: Promise<SessionStartToken | null>;
 }
+
+/** performVerificationWithUI のオプション */
+export interface VerificationUIOptions {
+  /**
+   * 認証全体の予算 (ms。#375)。超過したら認証を中断し (token を得る前の段階だけ。表示中のチャレンジも
+   * 打ち切る)、モーダルを閉じて失敗 (`failureReason: 'timeout'`) を返す。省略すると従来どおり終わるまで待つ。
+   */
+  budgetMs?: number;
+}
+
+/** 予算切れのときに返す認証結果 (#375)。失敗理由は既存の 'timeout' を使う (shared の型は変えない)。 */
+const BUDGET_EXCEEDED_RESULT: VerificationResult = {
+  success: false,
+  error: 'budget_exceeded',
+  failureReason: 'timeout',
+};
 
 /** ステップ状態の型 */
 type StepStatus = 'pending' | 'active' | 'done' | 'error';
@@ -35,7 +57,8 @@ type StepStatus = 'pending' | 'active' | 'done' | 'error';
 export async function performVerificationWithUI(
   action: string,
   t: (key: string, params?: Record<string, string>) => string,
-  sessionStart?: { sessionId: string; fingerprintHash: string }
+  sessionStart?: { sessionId: string; fingerprintHash: string },
+  options?: VerificationUIOptions
 ): Promise<VerificationUIResult> {
   // ローディングモーダル要素を取得
   const loadingModal = document.getElementById('verification-loading-modal');
@@ -74,13 +97,19 @@ export async function performVerificationWithUI(
   // リトライカウントダウン用のインターバル
   let countdownInterval: number | null = null;
 
+  // モーダルを閉じた後 (予算切れで裏の認証が走り続けるとき) は、ステップ表示などの共有 DOM に触らない (#375)。
+  // 裏の実行は開始時に捕まえたこのコールバックを呼び続けるので、登録の解除だけでは止まらない。
+  let uiActive = true;
+
   // フェーズコールバックを設定
   setPhaseCallback((phase, status) => {
+    if (!uiActive) return;
     updateStepStatus(phase, status);
   });
 
   // リトライ状況のコールバックを設定
   setRetryStatusCallback((status) => {
+    if (!uiActive) return;
     if (status.isRetrying) {
       // リトライ中の表示
       modalDialog?.classList.add('verification-warning');
@@ -130,8 +159,10 @@ export async function performVerificationWithUI(
     }
   });
 
-  // 総タイムアウト計算（チャレンジ20秒 + リトライ待機 1+2+4=7秒 = 約27秒）
-  const TIMEOUT_MS = 27000;
+  // 総タイムアウト計算（チャレンジ20秒 + リトライ待機 1+2+4=7秒 = 約27秒）。
+  // 予算があれば予算にする (バーが満ちたところでモーダルが閉じる。#375)
+  const budgetMs = options?.budgetMs;
+  const TIMEOUT_MS = budgetMs ?? 27000;
   const startTime = Date.now();
   let animationFrame: number | null = null;
 
@@ -147,21 +178,48 @@ export async function performVerificationWithUI(
   };
   animationFrame = requestAnimationFrame(updateProgress);
 
-  let result: VerificationResult;
-  try {
-    // 認証実行（TurnstileService内でフェーズ・リトライ処理）。
-    // ADR-0017: sessionStart 指定時は session/start を呼び ECDSA トークンを取得する。
-    result = await performTurnstileVerification(action, sessionStart ? { sessionStart } : undefined);
-  } catch (error) {
+  // 予算があれば中断できるようにする (#375)
+  const controller = budgetMs !== undefined ? new AbortController() : null;
+
+  // 認証実行（TurnstileService内でフェーズ・リトライ処理）。
+  // ADR-0017: sessionStart 指定時は session/start を呼び ECDSA トークンを取得する。
+  const verification: Promise<VerificationResult> = performTurnstileVerification(action, {
+    ...(sessionStart ? { sessionStart } : {}),
+    ...(controller ? { signal: controller.signal } : {}),
+  }).catch((error: unknown): VerificationResult => {
     // エラー時（ネットワークエラー等）はタイムアウトとして扱う
     console.error('[TabVerificationUI] Verification error:', error);
-    result = {
+    return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
       failureReason: 'network_error',
     };
+  });
+
+  let budgetExceeded = false;
+  let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+  let result: VerificationResult;
+  try {
+    if (controller && budgetMs !== undefined) {
+      const budget = new Promise<VerificationResult>((resolve) => {
+        budgetTimer = setTimeout(() => {
+          budgetExceeded = true;
+          resolve(BUDGET_EXCEEDED_RESULT);
+          // token を得る前の段階 (スクリプト読込・チャレンジ) を止め、表示中の widget を片付けさせる。
+          // session/start に入っていれば止まらず、その結果は lateSessionToken で受ける。
+          controller.abort();
+        }, budgetMs);
+      });
+      const raced = await Promise.race([verification, budget]);
+      result = budgetExceeded ? BUDGET_EXCEEDED_RESULT : raced;
+    } else {
+      result = await verification;
+    }
   } finally {
-    // コールバックをクリア
+    clearTimeout(budgetTimer);
+    uiActive = false;
+    // コールバックをクリア。予算切れでもこの時点で外す (遅れて外すと、次のタブ作成が登録した
+    // コールバックを消してしまう)
     setPhaseCallback(null);
     setRetryStatusCallback(null);
 
@@ -226,11 +284,20 @@ export async function performVerificationWithUI(
     result.success ? `verified${token ? ' (server-anchored)' : ''}` : `failed (${result.failureReason ?? result.error})`
   );
 
+  if (budgetExceeded) {
+    console.warn(
+      `[TabVerificationUI] Verification exceeded the ${budgetMs}ms budget; continuing without a root anchor`
+    );
+  }
+
   return {
     verificationState,
     verificationDetails,
     attestationData,
     result,
     sessionToken: result.sessionToken ?? null,
+    lateSessionToken: budgetExceeded
+      ? verification.then((late) => (late.success && late.sessionToken ? late.sessionToken : null))
+      : Promise.resolve(null),
   };
 }
