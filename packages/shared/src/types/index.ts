@@ -116,8 +116,6 @@ export type {
 
 // 検証関連
 export type {
-  SampledSegmentInfo,
-  SampledVerificationResult,
   VerificationResult,
   ContentReplayVerificationResult,
   ProofMetadataVerificationResult,

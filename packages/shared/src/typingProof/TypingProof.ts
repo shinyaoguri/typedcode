@@ -11,7 +11,6 @@ import type {
   RecordEventResult,
   EventHashData,
   StoredEvent,
-  VerificationResult,
   SignatureData,
   ExportedProof,
   TypingStats,
@@ -36,7 +35,6 @@ import { buildExamProofBlock } from '../exam/examPackage.js';
 import { HashChainManager } from './HashChainManager.js';
 import { PoswManager } from './PoswManager.js';
 import { CheckpointManager } from './CheckpointManager.js';
-import { ChainVerifier, type ChainVerifyOptions } from './ChainVerifier.js';
 import type { CheckpointCreatedHook } from './CheckpointManager.js';
 import type { SignedCheckpointEnvelope } from '../types.js';
 import { StatisticsCalculator } from './StatisticsCalculator.js';
@@ -84,14 +82,12 @@ export class TypingProof {
   private hashChainManager: HashChainManager;
   private poswManager: PoswManager;
   private checkpointManager: CheckpointManager;
-  private chainVerifier: ChainVerifier;
   private statisticsCalculator: StatisticsCalculator;
 
   constructor() {
     this.hashChainManager = new HashChainManager();
     this.poswManager = new PoswManager(this.hashChainManager);
     this.checkpointManager = new CheckpointManager(this.hashChainManager);
-    this.chainVerifier = new ChainVerifier(this.hashChainManager, this.poswManager);
     this.statisticsCalculator = new StatisticsCalculator();
   }
 
@@ -731,22 +727,6 @@ export class TypingProof {
   }
 
   /**
-   * ハッシュ鎖を検証（デフォルトで PoSW 含む）
-   * @param onProgress - 進捗コールバック (current, total, hashInfo?) => void
-   * @param options - 検証オプション (skipPosw 等)
-   */
-  async verify(
-    onProgress?: (
-      current: number,
-      total: number,
-      hashInfo?: { computed: string; expected: string; poswHash: string }
-    ) => void,
-    options?: ChainVerifyOptions
-  ): Promise<VerificationResult> {
-    return await this.chainVerifier.verify(this.events, onProgress, options);
-  }
-
-  /**
    * 全てのイベントをクリアして初期状態に戻す
    */
   async reset(): Promise<void> {
@@ -761,26 +741,6 @@ export class TypingProof {
       this.hashChainManager.setCurrentHash(null);
     }
     this.startTime = performance.now();
-  }
-
-  /**
-   * チェックポイントを使用したサンプリング検証
-   * ランダムな区間をサンプリングして、開始ハッシュから再計算し終了ハッシュと一致するか検証
-   * @param checkpoints - チェックポイントデータ
-   * @param sampleCount - サンプリングする区間数（デフォルト: 3）
-   * @param onProgress - 進捗コールバック
-   */
-  async verifySampled(
-    checkpoints: CheckpointData[],
-    sampleCount: number = 3,
-    onProgress?: (
-      phase: string,
-      current: number,
-      total: number,
-      hashInfo?: { computed: string; expected: string; poswHash?: string }
-    ) => void
-  ): Promise<VerificationResult> {
-    return await this.chainVerifier.verifySampled(this.events, checkpoints, sampleCount, onProgress);
   }
 
   /**

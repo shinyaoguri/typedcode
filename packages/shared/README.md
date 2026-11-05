@@ -15,7 +15,7 @@ import type { FingerprintComponents, StoredEvent, ExportedProof } from '@typedco
 
 ### TypingProof
 
-ハッシュチェーンと Proof of Sequential Work (PoSW) を司るエンジン。モジュラ構成でハッシュ・PoSW・チェックポイント・検証・統計を内部で分担しています。
+ハッシュチェーンと Proof of Sequential Work (PoSW) を司るエンジン。モジュラ構成でハッシュ・PoSW・チェックポイント・統計を内部で分担しています。検証はしません (検証は下の「検証関数」)。
 
 ```typescript
 const proof = new TypingProof();
@@ -29,11 +29,11 @@ await proof.recordEvent({
   description: 'Character input',
 });
 
-// チェーン整合性を検証
-const result = await proof.verify();
-
 // 証明データをエクスポート
 const exported = await proof.exportProof(finalContent);
+
+// 検証は TypingProof ではなく検証関数で行う (下の「検証関数」)。editor の export 後の自己検証も同じ呼び出し
+const result = await verifyProofFile({ ...exported, content: finalContent, language: 'c' }, undefined, { mode: 'fast' });
 ```
 
 **主なメソッド:**
@@ -43,8 +43,6 @@ const exported = await proof.exportProof(finalContent);
 | `initialize(hash, components)` | フィンガープリントで初期化 |
 | `recordEvent(event)` | イベントを記録しハッシュチェーンを進める |
 | `recordHumanAttestation(data)` | 人間認証を event #0 として記録 |
-| `verify(onProgress?)` | フルチェーン検証 |
-| `verifySampled(checkpoints, count?)` | チェックポイントを使ったサンプリング検証 |
 | `exportProof(content)` | 証明データをエクスポート |
 | `isAllowedInputType(type)` | 許可された入力タイプか |
 | `isProhibitedInputType(type)` | 禁止された入力タイプか |
@@ -101,11 +99,11 @@ import { verifyProofFile, verifyChain, verifyPoSW } from '@typedcode/shared';
 // フル検証
 const result = await verifyProofFile(proof);
 
-// チェーンのみ検証
-const chainResult = await verifyChain(events, fingerprint);
+// チェーンのみ検証 (記録中の proof なら proof.events を渡す)
+const chainResult = await verifyChain(events, onProgress, { skipPosw: false });
 
 // PoSW のみ検証
-const poswResult = await verifyPoSW(event);
+const poswResult = await verifyPoSW(previousHash, eventDataString, event.posw);
 ```
 
 ## 型定義
