@@ -1,30 +1,32 @@
 /**
  * 分析器 実証評価のコーパスランナー (W5, ADR-0009)。
  *
- * 2 つの gate 付きエントリ:
- *
- * 1) GEN_FIXTURES=1 — **合成ラベル付きコーパス**を脚本生成して評価する。手打ち無しで
- *    パイプライン (proof → runAnalysis → evaluateAnalysis) を端から端まで動かし、
- *    /tmp/typedcode-fixtures/ に proof 群と評価レポートを書く。
- *      GEN_FIXTURES=1 npx vitest run analysisEvalCorpus -w @typedcode/shared
+ * 1) 常時 (環境変数なし) — **合成ラベル付きコーパス**を脚本生成し、手打ち無しでパイプライン
+ *    (proof → runAnalysis → evaluateAnalysis) をメモリ上で端から端まで動かして、回帰 assert
+ *    (`genuine-clean` は signal 0、ai-paste / transcribe / synthetic-keys / webdriver /
+ *    genuine-think-burst が期待の次元を踏む) を確かめる。通常の test:run と CI で走る (#594)。
+ *    GEN_FIXTURES=1 を付けると、同じコーパスの proof 群・labels.json と評価レポートを
+ *    /tmp/typedcode-fixtures/ にも書き出す (EVAL_CORPUS への入力や検分用)。
+ *      cd packages/shared && GEN_FIXTURES=1 npx vitest run analysisEvalCorpus
  *    注意: これは **合成データであり実証の代替ではない** (人間の打鍵分布を模していない)。
  *    本番のしきい値判断は EVAL_CORPUS で実データを食わせること。
  *
- * 2) EVAL_CORPUS=<dir> — **実データ評価**。<dir>/labels.json (収集プロトコル参照) と
+ * 2) EVAL_CORPUS=<dir> (gate 付き) — **実データ評価**。<dir>/labels.json (収集プロトコル参照) と
  *    そこに並ぶ proof JSON を読み、同じ集計を回してレポートを書く。
- *      EVAL_CORPUS=/path/to/corpus npx vitest run analysisEvalCorpus -w @typedcode/shared
+ *      cd packages/shared && EVAL_CORPUS=/path/to/corpus npx vitest run analysisEvalCorpus
  *
  * 収集手順・倫理・ラベル定義: docs/analysis-eval-protocol.md
  *
  * PoSW はテスト環境のモック値 → **fast 検証専用** (full は PoSW 再計算で落ちる)。
  */
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { TypingProof, computeHash, verifyProofFile, runAnalysis } from '../index.js';
 import { evaluateAnalysis, formatEvalReportMarkdown } from '../analysis/eval.js';
-import type { EvalLabel, LabeledAnalysis } from '../analysis/eval.js';
+import type { EvalLabel, EvalReport, LabeledAnalysis } from '../analysis/eval.js';
+import type { AnalysisReport } from '../analysis/types.js';
 import type { FingerprintComponents } from '../types.js';
 
 const OUT_DIR = '/tmp/typedcode-fixtures';
@@ -268,8 +270,13 @@ async function generateSyntheticCorpus(): Promise<CorpusEntry[]> {
   return entries;
 }
 
-/** ラベル付き proof 群を分析 → 評価し、レポートを /tmp に書く。診断のため LabeledAnalysis も返す。 */
-async function runCorpusEval(entries: CorpusEntry[]): Promise<LabeledAnalysis[]> {
+interface CorpusEval {
+  labeled: LabeledAnalysis[];
+  evalReport: EvalReport;
+}
+
+/** ラベル付き proof 群をメモリ上で検証 (fast) → 分析 → 評価する。ファイルには何も書かない。 */
+async function analyzeCorpus(entries: CorpusEntry[]): Promise<CorpusEval> {
   const labeled: LabeledAnalysis[] = [];
   for (const e of entries) {
     const verification = await verifyProofFile(e.proof as never, undefined, { mode: 'fast' });
@@ -277,12 +284,25 @@ async function runCorpusEval(entries: CorpusEntry[]): Promise<LabeledAnalysis[]>
     const report = await runAnalysis({ proof: e.proof as never, verification });
     labeled.push({ id: e.id, label: e.label, condition: e.condition, report });
   }
+  return { labeled, evalReport: evaluateAnalysis(labeled) };
+}
 
-  const evalReport = evaluateAnalysis(labeled);
+/** 生成した proof と labels.json を OUT_DIR/corpus/ に書き、EVAL_CORPUS で再利用・検分できるようにする。 */
+function writeCorpus(entries: CorpusEntry[]): void {
+  mkdirSync(join(OUT_DIR, 'corpus'), { recursive: true });
+  const labels: Record<string, { label: string; condition: string }> = {};
+  for (const e of entries) {
+    writeFileSync(join(OUT_DIR, 'corpus', `${e.id}.json`), JSON.stringify(e.proof, null, 2));
+    labels[`${e.id}.json`] = { label: e.label, condition: e.condition };
+  }
+  writeFileSync(join(OUT_DIR, 'corpus', 'labels.json'), JSON.stringify(labels, null, 2));
+}
+
+/** 評価レポートと個々の signal (診断用) を OUT_DIR に書き、Markdown を stdout に出す。 */
+function writeEvalReport({ labeled, evalReport }: CorpusEval): void {
   mkdirSync(OUT_DIR, { recursive: true });
   writeFileSync(join(OUT_DIR, 'eval-report.json'), JSON.stringify(evalReport, null, 2));
   writeFileSync(join(OUT_DIR, 'eval-report.md'), formatEvalReportMarkdown(evalReport));
-  // 個々の signal も診断用に残す。
   writeFileSync(
     join(OUT_DIR, 'eval-signals.json'),
     JSON.stringify(
@@ -298,37 +318,61 @@ async function runCorpusEval(entries: CorpusEntry[]): Promise<LabeledAnalysis[]>
     )
   );
   console.log(`\n${formatEvalReportMarkdown(evalReport)}\n→ ${OUT_DIR}/eval-report.{json,md}`);
-  return labeled;
 }
 
-describe.runIf(process.env['GEN_FIXTURES'] === '1')('synthetic analysis-eval corpus', () => {
-  it('generates a labeled corpus, runs analysis, and evaluates it', async () => {
-    const entries = await generateSyntheticCorpus();
-    // 生成した proof も書き出して再利用/検分できるようにする。
-    mkdirSync(join(OUT_DIR, 'corpus'), { recursive: true });
-    const labels: Record<string, { label: string; condition: string }> = {};
-    for (const e of entries) {
-      writeFileSync(join(OUT_DIR, 'corpus', `${e.id}.json`), JSON.stringify(e.proof, null, 2));
-      labels[`${e.id}.json`] = { label: e.label, condition: e.condition };
-    }
-    writeFileSync(join(OUT_DIR, 'corpus', 'labels.json'), JSON.stringify(labels, null, 2));
+// 合成コーパスの回帰 assert は環境変数なしで常に走らせる (#594)。分析器の変更で正規の提出物に
+// 出る signal (偽陽性) が増えたら、ここで赤くなる (ADR-0023 の「実測まで review に昇格しない」の前提)。
+// 生成・分析はメモリ上だけで行い、ファイルへの書き出しは下の GEN_FIXTURES=1 に分ける。
+describe('synthetic analysis-eval corpus', () => {
+  let entries: CorpusEntry[];
+  let corpus: CorpusEval;
+  const report = (id: string): AnalysisReport => {
+    const found = corpus.labeled.find((l) => l.id === id);
+    if (!found) throw new Error(`corpus has no entry: ${id}`);
+    return found.report;
+  };
+  const dims = (id: string): string[] => report(id).signals.map((s) => s.dimension);
 
-    const labeled = await runCorpusEval(entries);
-
-    // --- 期待される手掛かりの sanity (合成シナリオがアナライザを意図どおり踏むこと) ---
-    const byId = Object.fromEntries(labeled.map((l) => [l.id, l.report]));
-    const dims = (id: string): string[] => byId[id]!.signals.map((s) => s.dimension);
-
-    expect(dims('ai-paste')).toContain('transcription-topology'); // pureTyping (paste)
-    expect(dims('transcribe')).toContain('transcription-topology'); // 低修正率
-    expect(dims('synthetic-keys')).toContain('automation'); // isTrusted=false
-    expect(dims('webdriver')).toContain('automation'); // webdriver/globals
-    expect(byId['webdriver']!.signals.some((s) => s.severity === 'review')).toBe(true);
-    // 正直な偽陽性: 正規の think-burst が focus-burst を踏む。
-    expect(dims('genuine-think-burst')).toContain('focus-burst-correlation');
-    // clean な genuine は手掛かりゼロ。
-    expect(byId['genuine-clean']!.signals.length).toBe(0);
+  beforeAll(async () => {
+    entries = await generateSyntheticCorpus();
+    corpus = await analyzeCorpus(entries);
   }, 120_000);
+
+  // --- 期待される手掛かりの sanity (合成シナリオがアナライザを意図どおり踏むこと) ---
+  it('an AI paste raises a transcription-topology signal', () => {
+    expect(dims('ai-paste')).toContain('transcription-topology'); // pureTyping (paste)
+  });
+
+  it('a verbatim transcription with almost no corrections raises a transcription-topology signal', () => {
+    expect(dims('transcribe')).toContain('transcription-topology'); // 低修正率
+  });
+
+  it('synthetic keystrokes (isTrusted=false) raise an automation signal', () => {
+    expect(dims('synthetic-keys')).toContain('automation');
+  });
+
+  it('a webdriver session with automation globals raises an automation signal', () => {
+    expect(dims('webdriver')).toContain('automation');
+  });
+
+  it('a webdriver session raises at least one review-severity signal', () => {
+    expect(report('webdriver').signals.some((s) => s.severity === 'review')).toBe(true);
+  });
+
+  it('a genuine think-burst raises focus-burst-correlation as an honest false positive', () => {
+    expect(dims('genuine-think-burst')).toContain('focus-burst-correlation');
+  });
+
+  it('a clean genuine session raises no signal at all', () => {
+    expect(report('genuine-clean').signals).toEqual([]);
+  });
+
+  describe.runIf(process.env['GEN_FIXTURES'] === '1')('with GEN_FIXTURES=1', () => {
+    it('writes the corpus, labels and eval report to OUT_DIR', () => {
+      writeCorpus(entries);
+      writeEvalReport(corpus);
+    });
+  });
 });
 
 describe.runIf(typeof process.env['EVAL_CORPUS'] === 'string' && process.env['EVAL_CORPUS'] !== '')(
@@ -352,7 +396,7 @@ describe.runIf(typeof process.env['EVAL_CORPUS'] === 'string' && process.env['EV
         entries.push({ id: file, label: meta.label, condition: meta.condition ?? '(none)', proof });
       }
       expect(entries.length, 'corpus has labeled proofs').toBeGreaterThan(0);
-      await runCorpusEval(entries);
+      writeEvalReport(await analyzeCorpus(entries));
     }, 600_000);
   }
 );

@@ -59,9 +59,9 @@
 ### 3.1 proof の用意
 
 - **実データ**: editor で各条件のセッションを実際に行い、proof をエクスポート。1 ファイル = 1 セッション。
-- **合成スモーク (実データの代替ではない)**: パイプライン疎通とハーネス回帰確認用に合成コーパスを生成できる。
+- **合成スモーク (実データの代替ではない)**: パイプライン疎通とハーネス回帰確認用の合成コーパス。生成から `evaluateAnalysis` までをメモリ上で回す回帰 assert (正規の `genuine-clean` は signal 0 など) は、環境変数なしの `npm run test:run -w @typedcode/shared` と CI で常に走る (#594)。ファイルとして取り出したいときだけ `GEN_FIXTURES=1` を付ける。
   ```bash
-  GEN_FIXTURES=1 npx vitest run analysisEvalCorpus -w @typedcode/shared
+  cd packages/shared && GEN_FIXTURES=1 npx vitest run analysisEvalCorpus
   # → /tmp/typedcode-fixtures/corpus/*.json + labels.json, eval-report.{json,md}, eval-signals.json
   ```
   合成データは人間の打鍵分布を模していないため、**しきい値の意思決定には使わない**。
@@ -80,7 +80,7 @@
 ### 3.3 評価実行
 
 ```bash
-EVAL_CORPUS=/path/to/corpus npx vitest run analysisEvalCorpus -w @typedcode/shared
+cd packages/shared && EVAL_CORPUS=/path/to/corpus npx vitest run analysisEvalCorpus
 # → <stdout> に Markdown レポート + /tmp/typedcode-fixtures/eval-report.{json,md}
 ```
 
@@ -139,5 +139,5 @@ typedcode-verify proof.json --analyzer ./my-analyzer.mjs --analysis-json out.jso
 - ADR-0020 (三層保証語彙: 著述性は常に advisory)
 - `Analyzer` / `AnalysisInput` / `AnalysisSignal` 契約 (`packages/shared/src/analysis/types.ts`)
 - `packages/shared/src/analysis/eval.ts` (`evaluateAnalysis`)
-- `packages/shared/src/__tests__/analysisEvalCorpus.test.ts` (合成生成 + 実データ評価ランナー)
+- `packages/shared/src/__tests__/analysisEvalCorpus.test.ts` (合成コーパスの回帰 assert (常時) + 合成生成の書き出し + 実データ評価ランナー)
 - `packages/verify-cli/src/analyzers.ts` (`--analyzer` 外部分析器読込)
