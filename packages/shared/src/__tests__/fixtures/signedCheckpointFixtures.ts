@@ -243,7 +243,8 @@ export function makeSyntheticEvents(n: number, timestampAt: (i: number) => numbe
 }
 
 async function computeContentHashAt(event: StoredEvent): Promise<string> {
-  if (event.data == null) return '';
+  // CheckpointManager.createCheckpoint と verifier に合わせ、data が falsy (削除の data: '' を含む) なら空文字 (#571)
+  if (!event.data) return '';
   const stringified = typeof event.data === 'string' ? event.data : JSON.stringify(event.data);
   return computeHash(stringified);
 }
