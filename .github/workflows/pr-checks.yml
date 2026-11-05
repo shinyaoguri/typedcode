@@ -2,9 +2,10 @@ name: PR Checks
 
 # PR の中身 (変更ファイル・ラベル・本文) を見る検査 (ADR-0034)。
 #
-# require-tests: 実装 (packages/*/src) を変えた PR がテストも変えているかを判定する。
-#   テストが本当に不要な PR は、ラベル `no-test-needed` + PR 本文の `## テスト不要の理由`
-#   で通す (CONTRIBUTING.md「完了の定義」)。判定ロジックは scripts/require-tests.mjs、
+# require-tests: 実装 (packages/*/src と、vite.config.ts・public/_headers・wrangler*.toml などの配信の設定)
+#   を変えた PR がテストも変えているかを判定する。テストが本当に不要な PR は、ラベル `no-test-needed`
+#   + PR 本文の `## テスト不要の理由` で通す (CONTRIBUTING.md「完了の定義」)。タイトルの型
+#   (docs / ci / chore) で免除するのは実装を含まない PR だけ (require-visual-evidence も見た目のパスで同じ。#591)。判定ロジックは scripts/require-tests.mjs、
 #   そのテストは deploy.yml の check job で走る。
 #
 # require-visual-evidence: 見た目に効くパス (editor / verify の HTML・CSS・UI 部品) を変えた PR の
