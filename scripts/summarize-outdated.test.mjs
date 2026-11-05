@@ -27,6 +27,9 @@ const SCRIPT = fileURLToPath(new URL('./summarize-outdated.mjs', import.meta.url
 
 const info = (current, latest, dependent, wanted = current) => ({ current, wanted, latest, dependent });
 
+/** 据え置きの仕組みを確かめるためのルール (既定の IGNORED は #208 の決着で空になったので、テストでは引数で渡す) */
+const HOLD_TS7 = { name: 'typescript', from: '7.0.0', issue: '#208', reason: 'テスト用の据え置き' };
+
 /** 実際の出力に近い fixture: 0.x の minor・据え置き・stub 型の逆転・root の dev 依存・patch を 1 つずつ含む。 */
 const FIXTURE = {
   '@wasmer/sdk': info('0.10.0', '0.19.1', 'editor'),
@@ -77,7 +80,7 @@ describe('parseVersion / compareVersions', () => {
 });
 
 describe('summarizeOutdated (fixture)', () => {
-  const result = summarizeOutdated(FIXTURE);
+  const result = summarizeOutdated(FIXTURE, [HOLD_TS7]);
 
   it('lists @wasmer/sdk 0.10.0 → 0.19.1 in the breaking table (a)', () => {
     const breaking = result.markdown.split('据え置き中')[0];
@@ -113,14 +116,14 @@ describe('summarizeOutdated (boundaries)', () => {
   });
 
   it('returns an empty report (no issue comment) when only held-back rows remain', () => {
-    const result = summarizeOutdated({ typescript: info('6.0.3', '7.0.2', 'editor') });
+    const result = summarizeOutdated({ typescript: info('6.0.3', '7.0.2', 'editor') }, [HOLD_TS7]);
     assert.equal(result.count, 0);
     assert.equal(result.markdown, '');
     assert.equal(result.ignored, 1);
   });
 
   it('does not hold back typescript while the latest is still below the ignored range', () => {
-    const result = summarizeOutdated({ typescript: info('6.0.2', '6.0.3', 'editor') });
+    const result = summarizeOutdated({ typescript: info('6.0.2', '6.0.3', 'editor') }, [HOLD_TS7]);
     assert.equal(result.count, 1);
     assert.equal(result.ignored, 0);
   });
@@ -132,8 +135,12 @@ describe('summarizeOutdated (boundaries)', () => {
     assert.equal(result.ignored, 1);
   });
 
-  it('ships typescript >=7 (#208) in the default ignore list', () => {
-    assert.ok(IGNORED.some((r) => r.name === 'typescript' && r.from === '7.0.0' && r.issue === '#208'));
+  it('ships an empty default ignore list, so typescript >=7 is reported again after #208', () => {
+    assert.deepEqual(IGNORED, []);
+    const result = summarizeOutdated({ typescript: info('7.0.2', '7.1.0', 'editor') });
+    assert.equal(result.count, 1);
+    assert.equal(result.ignored, 0);
+    assert.match(result.markdown, /\| `typescript` \| 7\.0\.2 \|/);
   });
 });
 
@@ -184,7 +191,9 @@ describe('CLI', () => {
     const result = run(['--input', input, '--body-file', body], { GITHUB_OUTPUT: out });
     assert.equal(result.status, 0, result.stderr);
     assert.match(readFileSync(body, 'utf8'), /@wasmer\/sdk/);
-    assert.equal(readFileSync(out, 'utf8'), 'count=3\n');
+    // CLI は既定の IGNORED (空) を使うので、fixture の typescript 7 も数える。件数は workspace ごとの行の数
+    // (wasmer・typescript × 2 (editor / verify)・biome・marked)
+    assert.equal(readFileSync(out, 'utf8'), 'count=5\n');
   });
 
   it('treats an empty npm outdated output as 0 findings', () => {
