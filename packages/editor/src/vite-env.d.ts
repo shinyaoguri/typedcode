@@ -51,6 +51,11 @@ interface ImportMetaEnv {
   // reCAPTCHA v3 configuration
   readonly VITE_RECAPTCHA_SITE_KEY?: string;
   readonly VITE_API_URL?: string;
+  /**
+   * E2E 専用 (dev ビルドのみ読む)。起動時の空き容量の試験で書く量 (bytes) を小さくする (#626)。
+   * 本番ビルドでは読まない (`services/StorageCapacityProbe.ts` の `import.meta.env.DEV` のガードごと除去される)
+   */
+  readonly VITE_STORAGE_PROBE_BYTES?: string;
 }
 
 interface ImportMeta {

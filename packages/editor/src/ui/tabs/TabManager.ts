@@ -44,6 +44,7 @@ import {
   type SignedCheckpointService,
   createSignedCheckpointServiceIfEnabled,
 } from '../../services/SignedCheckpointService.js';
+import { isQuotaExceededError } from '../../services/StorageCapacityProbe.js';
 import { debugLog } from '../../utils/logger.js';
 import { TAB_CREATE_VERIFICATION_BUDGET_MS } from '../../config/timeouts.js';
 
@@ -176,6 +177,9 @@ export class TabManager {
   private onSyncStatusChangeCallback: OnSyncStatusChangeCallback | null = null;
   private onTabCreatedCallback: OnTabCreatedCallback | null = null;
   private onProofChangeCallback: OnProofChangeCallback | null = null;
+  /** 保存が容量切れで失敗したときの通知 (#626)。セッション中 1 回だけ呼ぶ */
+  private onStorageQuotaExceededCallback: (() => void) | null = null;
+  private storageQuotaExceededNotified = false;
   /** proof の変化の通知を microtask に積んである間 true (同じ tick の変化を 1 回にまとめる。#521) */
   private proofChangeNotifyQueued = false;
   /**
@@ -306,6 +310,15 @@ export class TabManager {
    */
   setOnProofChange(callback: OnProofChangeCallback | null): void {
     this.onProofChangeCallback = callback;
+  }
+
+  /**
+   * IndexedDB への保存が容量切れ (`QuotaExceededError`。`cause` の連鎖まで見る) で失敗したときの通知を
+   * 設定する (#626)。呼ぶのはセッション中 1 回だけ (再試行のたびに出さない)。同期状態の決め方
+   * (`syncStatus.ts`) とは独立で、表示は `degraded` / `failed` のまま変わらない。
+   */
+  setOnStorageQuotaExceeded(callback: (() => void) | null): void {
+    this.onStorageQuotaExceededCallback = callback;
   }
 
   /**
@@ -1155,6 +1168,7 @@ export class TabManager {
       idbOk = false;
       error = e;
       console.error('[TabManager] Failed to save to IndexedDB:', e);
+      if (isQuotaExceededError(e)) this.notifyStorageQuotaExceeded();
     }
 
     let sessionStorageOk: boolean;
@@ -1168,6 +1182,13 @@ export class TabManager {
     const outcome: PersistOutcome = idbOk ? { idbOk, sessionStorageOk } : { idbOk, sessionStorageOk, error };
     this.lastPersistOutcome = outcome;
     return outcome;
+  }
+
+  /** 容量切れの通知をセッション中 1 回だけ出す (#626) */
+  private notifyStorageQuotaExceeded(): void {
+    if (this.storageQuotaExceededNotified || !this.onStorageQuotaExceededCallback) return;
+    this.storageQuotaExceededNotified = true;
+    this.onStorageQuotaExceededCallback();
   }
 
   /**

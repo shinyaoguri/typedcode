@@ -27,12 +27,13 @@ tests/
 ├── helpers/verifyWeb.ts  # VerifyWebApp: 検証 Web を開き #file-input に ZIP/JSON を渡し、data-* の状態契約だけを読む
 ├── helpers/scenario.ts   # 利用シーン網羅 (scenarios/) の操作とフィクスチャ: .tcclass / テンプレート YAML、メニュー操作、問題の読み込み、マウスでのドラッグ・リサイズ、ファイルのドロップ、ノート付き export (app.ts は並行作業と衝突しないよう触らずここに置く)
 ├── helpers/examFixture.ts # exam の fixture (fixtures/exam/fixture.json) を読む: 監督コード・パッケージのパス・出題者鍵の keyId
-├── helpers/faults.ts     # 障害注入 (#435): Workers の API を 1 つずつ 503 / abort / hang (呼び出し回数を返す)、Turnstile のスクリプトの遮断、IndexedDB の open 失敗・QuotaExceeded・request の success 後の transaction の abort (#543)、保存先の注入の解除、getDisplayMedia の stream の退避とトラックの ended
+├── helpers/faults.ts     # 障害注入 (#435): Workers の API を 1 つずつ 503 / abort / hang (呼び出し回数を返す)、Turnstile のスクリプトの遮断、IndexedDB の open 失敗・QuotaExceeded・request の success 後の transaction の abort (#543)、保存先の注入の解除、起動時の空き容量の試験の書き込みだけの QuotaExceeded (`failStorageProbe`。#626)、getDisplayMedia の stream の退避とトラックの ended
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
 ├── workers-hang-export.spec.ts  # Workers 無応答 (route で応答しない) でも class の export が上限内に ZIP を出す (#324。fetch 上限 + best-effort 予算)
 ├── tab-create-auth-budget.spec.ts # Turnstile の配信元と Workers を両方無応答にしても、class の新規タブがタブ作成の予算 (`TAB_CREATE_VERIFICATION_BUDGET_MS`) + 5 秒以内に打鍵を受け付け、未アンカーの proof が verify-cli (fast) で通る (#375)
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
 ├── fault-session-start / fault-checkpoint-sign / fault-turnstile / fault-network / fault-storage  # 障害注入 (#435): session/start・checkpoint/sign の失敗 (API ごとに別ファイル。hang 待ちを含む 1 ファイルが CI で Playwright の Slow Test の閾値 5 分を超えたため / #525)、Turnstile 不達、オフラインの往復、IndexedDB の障害 (起動時の open の失敗で起動失敗のエラー画面 `boot-failure` が出る = #325。保存の QuotaExceeded で `failed` / `degraded`・その状態での export・解除後の回復とリロード後の export = #543)。transaction の abort は `fault-storage-abort` (#543)、保存先が全滅した状態からの救出ボタン (casual 2 タブ・exam の問題パネル) は `fault-storage-rescue` (#544。exam の分は fixture が無いとき CI では落とし、ローカルでは skip)
+├── storage-low.spec.ts    # 空き容量の不足 (#626): 起動時の試験で書けないと `storage-low` が出て「このまま続ける」で ready まで起動する・書けた起動では警告も試験用 DB も残らない・ランディングでは試験しない・利用中の保存の QuotaExceeded で通知 (`#block-notification[data-notice]`) が 1 回だけ出る。dev サーバの試験の書き込み量は vite.editor.config.mjs が 1MB に縮める
 ├── multi-instance / history-navigation / viewport / ime-undo / idle / screen-capture-lock / reset-url  # 環境の揺さぶり (#435): 多重起動・戻る / 進む・狭い画面・IME と undo / redo・アイドル停止・画面共有の停止・`?reset` が何も消さないこと (#323) とリセットの現在のモード限定
 ├── code-execution.spec.ts # JS / TS の実行の隔離と停止 (#290 / ADR-0041): 停止後に出力・副作用が出ない・同期ループ中も記録が進む (テスト側の watchdog)・親 DOM / IndexedDB / localStorage / ネットワーク / `/author` の `#author-jwk` に届かない・停止 → 即再実行・outcome の区別とエラーのマーカーの行・出力予算・異常の後の export と verify-cli (fast)。実行の状態は `data-exec-*`、上限は dev 限定の `window.__tcExecLimits` で縮める
 ├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)。export のダウンロードの瞬間 (自己検証より前) にも件数とハッシュが揃っている (#521)

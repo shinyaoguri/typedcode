@@ -730,6 +730,28 @@
     </div>
   </div>
 
+  <!-- Storage Low Overlay (#626): 起動時の空き容量の試験で書けなかったときの警告。続行できる (起動は止めない)。説明文は試験の書き込み量を差し込むので main.ts が埋める -->
+  <div id="storage-low-overlay" class="modal-overlay hidden" data-dialog="storage-low" style="z-index: 100000;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <i class="fas fa-hard-drive"></i>
+        <h3 data-i18n="storageLow.title">ディスクの空き容量が不足しています</h3>
+      </div>
+      <div class="modal-body">
+        <p id="storage-low-description"></p>
+        <p class="modal-hint" data-i18n="storageLow.hint">不要なファイルを削除して空き容量を増やしてから「もう一度確かめる」を押してください。</p>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-cancel" id="storage-low-retry-btn" data-action="retry">
+          <i class="fas fa-rotate-right"></i> <span data-i18n="storageLow.retry">もう一度確かめる</span>
+        </button>
+        <button class="modal-btn modal-btn-primary" id="storage-low-continue-btn" data-action="continue">
+          <i class="fas fa-arrow-right"></i> <span data-i18n="storageLow.continue">このまま続ける</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Unsupported Browser Overlay (shown for Safari and other unsupported browsers) -->
   <div id="unsupported-browser-overlay" class="modal-overlay hidden" data-dialog="unsupported-browser" style="z-index: 100000;">
     <div class="modal-dialog modal-warning">

@@ -382,6 +382,8 @@ export interface TranslationKeys {
     storageVersionChange: string;
     /** IndexedDB の接続が強制的に閉じられ、開き直せなかった (#325) */
     storageConnectionLost: string;
+    /** 保存が容量切れ (QuotaExceeded) で失敗した。セッション中 1 回だけ出す (#626) */
+    storageQuotaExceeded: string;
   };
 
   // Export
@@ -570,6 +572,15 @@ export interface TranslationKeys {
     blockedHint: string;
     reload: string;
     detail: string;
+  };
+
+  // 起動時の空き容量の試験で書けなかったときの警告 (#626)
+  storageLow: {
+    title: string;
+    description: string;
+    hint: string;
+    continue: string;
+    retry: string;
   };
 
   // Unsupported browser detection

@@ -97,6 +97,8 @@ interface PageFaultLog {
   quotaFailures: number;
   /** `getDisplayMedia` が返した stream (新しい順ではなく取得順) */
   displayStreams: MediaStream[];
+  /** `failStorageProbe` が QuotaExceeded を投げた、試験用 DB への `put` の回数 (#626) */
+  probeQuotaFailures?: number;
   /** `injectTransactionAbort` が abort させた transaction の数 (#543) */
   transactionAborts?: number;
   /** 保存先の注入で差し替える前の関数 (`restoreStorageFaults` が戻す。#543) */
@@ -156,6 +158,37 @@ export async function failSessionDbOpen(target: Page | BrowserContext): Promise<
 /** `failSessionDbOpen` が失敗させた `indexedDB.open` の回数。 */
 export function idbOpenFailureCount(page: Page): Promise<number> {
   return page.evaluate(() => (window as unknown as { __tcFaults?: PageFaultLog }).__tcFaults?.idbOpenFailures ?? 0);
+}
+
+/** 起動時の空き容量の試験が書く DB の名前 (editor の `STORAGE_PROBE_DB_NAME`。#626) */
+export const STORAGE_PROBE_DB_NAME = 'typedcode-storage-probe';
+
+/**
+ * 起動時の空き容量の試験 (#626) の書き込みを容量切れにする init script を入れる。goto の前に呼ぶ。
+ * 試験用 DB (`STORAGE_PROBE_DB_NAME`) の transaction での `put` だけが `QuotaExceededError` を投げ、
+ * セッション DB の保存は通す (試験の後の起動と打鍵の保存は本物のまま)。投げた回数は
+ * `probeQuotaFailureCount` で読む。
+ */
+export async function failStorageProbe(target: Page | BrowserContext): Promise<void> {
+  await target.addInitScript((probeDbName) => {
+    const w = window as unknown as { __tcFaults?: PageFaultLog };
+    w.__tcFaults ??= { idbOpenFailures: 0, quotaFailures: 0, displayStreams: [] };
+    const log = w.__tcFaults;
+    log.probeQuotaFailures ??= 0;
+    const originalPut = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function put(this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+      if (this.transaction.db.name === probeDbName) {
+        log.probeQuotaFailures = (log.probeQuotaFailures ?? 0) + 1;
+        throw new DOMException('injected', 'QuotaExceededError');
+      }
+      return originalPut.call(this, value, key);
+    };
+  }, STORAGE_PROBE_DB_NAME);
+}
+
+/** `failStorageProbe` が投げた回数 (= 試験が書き込みに来た回数)。 */
+export function probeQuotaFailureCount(page: Page): Promise<number> {
+  return page.evaluate(() => (window as unknown as { __tcFaults?: PageFaultLog }).__tcFaults?.probeQuotaFailures ?? 0);
 }
 
 /**

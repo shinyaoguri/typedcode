@@ -373,6 +373,8 @@ export const en: TranslationKeys = {
     storageVersionChange: 'A newer version was opened in another tab. Reload this tab to keep saving.',
     storageConnectionLost:
       'Lost the connection to storage (IndexedDB). Reload the page, or save your code with "Rescue code".',
+    storageQuotaExceeded:
+      'Could not save because the disk is almost full. Save your code with "Rescue code" and free up disk space.',
   },
 
   selfReview: {
@@ -555,6 +557,15 @@ export const en: TranslationKeys = {
     blockedHint: 'An older version of TypedCode is open in another tab. Close the other TypedCode tabs, then reload.',
     reload: 'Reload',
     detail: 'Error details',
+  },
+
+  storageLow: {
+    title: 'Not enough free disk space',
+    description:
+      'TypedCode saves your work record on this computer. It tried to write about ${size}MB and could not. If you continue, saving may stop partway through.',
+    hint: 'Delete files you no longer need to free up space, then press "Check again".',
+    continue: 'Continue anyway',
+    retry: 'Check again',
   },
 
   unsupportedBrowser: {
