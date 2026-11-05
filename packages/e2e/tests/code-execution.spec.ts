@@ -15,6 +15,7 @@ import { runVerifyCli } from './helpers/verifyCli.js';
  * ユーザーの JS (TS は transpile 後) は opaque origin の sandbox iframe の中の Worker で動く。
  * ここでは実ブラウザで次を確かめる:
  * - 停止・タイムアウト・出力予算の超過で実行環境ごと終わり、その後に出力・副作用が出ない
+ * - 停止ボタンは実行中だけ見え、実行が終わると隠れる (#620)
  * - 同期の無限ループ中もエディタが応答して記録が進み、停止できる
  * - 実行コードから親 DOM・IndexedDB・localStorage・ネットワーク・`/author` の秘密鍵に届かない
  * - 停止 → 即再実行で古い run が新しい run を壊さない
@@ -156,6 +157,42 @@ for (const language of ['javascript', 'typescript'] as const) {
     expect(outcomes).toEqual(['aborted']);
   });
 }
+
+test('停止ボタンは実行中だけ表示され、success・aborted・failure・timeout のどれで終わっても隠れる (#620)', async ({
+  page,
+}) => {
+  const app = await openJsTab(page);
+  const stopButton = page.locator('#stop-code-btn');
+  // 実行していないときは表示されない (`hidden` が付いていても隠す CSS が無く、見えて押せていた = #620)
+  await expect(stopButton).toBeHidden();
+  await expect(stopButton).toHaveCSS('display', 'none');
+
+  // success: 続きを待つ間に表示を確かめてから、自分で終わるのを待つ
+  await replaceCode(app, 'await new Promise((r) => setTimeout(r, 3000));\nconsole.log("done");\n');
+  const ok = await startRun(page);
+  await expect(stopButton).toBeVisible();
+  expect(await waitOutcome(page, ok)).toBe('success');
+  await expect(stopButton).toBeHidden();
+
+  await replaceCode(app, 'for (;;) {}\n');
+  const stopped = await startRun(page);
+  await expect(stopButton).toBeVisible();
+  await stopRun(page);
+  expect(await waitOutcome(page, stopped)).toBe('aborted');
+  await expect(stopButton).toBeHidden();
+
+  await replaceCode(app, 'null.x;\n');
+  const failed = await startRun(page);
+  expect(await waitOutcome(page, failed)).toBe('failure');
+  await expect(stopButton).toBeHidden();
+
+  await setExecLimits(page, { timeoutMs: 3_000 });
+  await replaceCode(app, 'setInterval(() => {}, 100);\n');
+  const timedOut = await startRun(page);
+  await expect(stopButton).toBeVisible();
+  expect(await waitOutcome(page, timedOut)).toBe('timeout');
+  await expect(stopButton).toBeHidden();
+});
 
 test('同期の無限ループ中もエディタが応答して記録が進み、停止して再実行できる', async ({ page }) => {
   const app = await openJsTab(page);
