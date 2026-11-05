@@ -59,6 +59,7 @@
 4. **「テストが増え続け、減らない」を CI で強制する**:
    - **完了の定義 (Definition of Done)** を CONTRIBUTING.md に置く (UI の振る舞いを変えたら E2E と data-* フック、ロジックはユニットテスト、バグ修正は先に赤いテスト)
    - **テスト必須ゲート** (`pr-checks.yml` の `require-tests`): 実装 (`packages/*/src`) を変えた PR にテストの変更が無ければ落とす。docs / ci / chore 型・依存更新は対象外。テストが本当に不要な PR はラベル `no-test-needed` + PR 本文の `## テスト不要の理由` で通す
+     - **改訂 (2026-11-06, [#591](https://github.com/shinyaoguri/typedcode/issues/591))**: 型の名乗りだけで実装の変更が素通りしていたので、docs / ci / chore 型の免除は実装の変更を含まない PR に限った (含むならラベルと理由が要る)。実装には、配信の振る舞いを変える設定 (`packages/*/vite.config.ts`・`packages/*/public/_headers`・`packages/workers/wrangler*.toml`) も数える。依存更新の免除は据え置き。ADR-0036 の `require-visual-evidence` も同じ考え方に揃えた
    - **カバレッジのラチェット**: 全パッケージで `coverage.thresholds` を実測値の切り捨てで固定し、下回ると CI の test job が落ちる。上げたら `npm run coverage:ratchet` で床を引き上げる (普段のテストでは設定を書き換えない)
    - テストファイル自体も型検査に含める (#336)
 5. **既知バグは失敗する再現を先に置く**。直す前のバグは E2E なら `test.fixme('#N ...')` で再現を置き (Issue 番号をタイトルに含める)、修正 PR で `fixme` を外して緑にする。直したことがテストの状態変化として PR に残る
