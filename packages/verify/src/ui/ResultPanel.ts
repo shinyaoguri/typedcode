@@ -896,8 +896,8 @@ export class ResultPanel {
         `<div class="anchoring-detail-section">
           <h4 class="anchoring-detail-heading">${escapeHtml(t('result.anchoringSectionTemporal'))}</h4>
           ${this.detailRow(t('result.anchoringServerSpan'), `${serverSec}s (${temporal.serverSpanMs}ms)`)}
-          ${this.detailRow(t('result.anchoringEventSpan'), `${eventSec}s (${temporal.eventSpanMs}ms)`)}
-          ${this.detailRow(t('result.anchoringEventLead'), `${leadSec}s (${temporal.maxEventLeadMs}ms)`)}
+          ${this.detailRow(t('result.anchoringEventSpan'), `${eventSec}s (${Math.round(temporal.eventSpanMs)}ms)`)}
+          ${this.detailRow(t('result.anchoringEventLead'), `${leadSec}s (${Math.round(temporal.maxEventLeadMs)}ms)`)}
           ${this.detailRow(t('result.anchoringClientSpan'), `${clientSec}s (${temporal.clientSpanMs}ms)`)}
           ${this.detailRow(t('result.anchoringRatio'), ratioStr)}
           <p class="anchoring-detail-note">${escapeHtml(t('result.anchoringPostHocCriteria'))}</p>
