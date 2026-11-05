@@ -500,8 +500,8 @@ async function initializeTabManager(
 
   // 保存が容量切れで失敗したら救出を勧める (#626)。セッション中 1 回だけ (TabManager が抑える)。
   // 同期状態の表示 (degraded / failed) はそのまま
-  ctx.tabManager.setOnStorageQuotaExceeded(() => {
-    showNotification(t('notifications.storageQuotaExceeded'), 'storage-quota-exceeded');
+  ctx.tabManager.setOnStorageFull(() => {
+    showNotification(t('notifications.storageFull'), 'storage-full');
   });
 
   let initialized: boolean;

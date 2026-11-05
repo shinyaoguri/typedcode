@@ -4,8 +4,9 @@ import {
   STORAGE_PROBE_DB_NAME,
   failStorageProbe,
   injectQuotaExceeded,
-  probeQuotaFailureCount,
+  probeFailureCount,
   quotaFailureCount,
+  type StorageProbeFailure,
 } from './helpers/faults.js';
 
 /**
@@ -13,13 +14,18 @@ import {
  * - 起動時の試験: セッション DB とは別の DB に書いて消す。書けなければ編集画面に進む前に警告
  *   (`[data-dialog="storage-low"]`) を出し、「このまま続ける」で起動を続けられる。書けたら何も出さず、試験用の
  *   DB を残さない。ランディング (`/`) では試験しない
- * - 利用中: 保存が QuotaExceeded で失敗したら、容量不足の通知 (`#block-notification[data-notice]`) を 1 回だけ出す
+ * - 利用中: 保存が容量切れらしい失敗 (editor の `isStorageFullError`) になったら、容量不足の通知
+ *   (`#block-notification[data-notice]`) を 1 回だけ出す
+ *
+ * 試験の失敗は 2 つの形で注入する: ブラウザの割り当てを超えたときの `QuotaExceededError` と、ディスクが本当に
+ * 一杯のときに Chromium が返す `DataError: Failed to write blobs (IOError)` での transaction の abort (#626 の
+ * 実ディスクでの再現。こちらは QuotaExceeded にならない)。
  *
  * dev サーバ (vite.editor.config.mjs) は試験の書き込み量を 1MB に縮めている。
  */
 
 /** 容量不足の通知の id (`showNotification` の第 2 引数。main.ts) */
-const QUOTA_NOTICE = 'storage-quota-exceeded';
+const STORAGE_FULL_NOTICE = 'storage-full';
 
 /** 試験用 DB を開いた回数を数える init script を入れる (試験が走ったか / 走らなかったかを見る)。goto の前に呼ぶ */
 async function countProbeOpens(target: Page | BrowserContext): Promise<void> {
@@ -42,31 +48,35 @@ async function databaseNames(page: Page): Promise<string[]> {
   return page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name ?? ''));
 }
 
-test('#626 起動時の試験で書けないと警告が出て、「このまま続ける」で編集できる状態まで起動する', async ({ page }) => {
-  await failStorageProbe(page);
-  const app = new EditorApp(page);
-  await page.goto('/casual');
+for (const failure of ['quota', 'ioError'] as const satisfies readonly StorageProbeFailure[]) {
+  test(`#626 起動時の試験が書けない (${failure}) と警告が出て、「このまま続ける」で編集できる状態まで起動する`, async ({
+    page,
+  }) => {
+    await failStorageProbe(page, failure);
+    const app = new EditorApp(page);
+    await page.goto('/casual');
 
-  // 試験が書き込みに来て容量切れになり、編集画面に進む前に警告が出る
-  await expect.poll(() => app.openDialogs()).toEqual(['storage-low']);
-  expect(await probeQuotaFailureCount(page)).toBe(1);
-  expect(await app.appState()).toBe('initializing');
+    // 試験が書き込みに来て失敗し、編集画面に進む前に警告が出る
+    await expect.poll(() => app.openDialogs()).toEqual(['storage-low']);
+    expect(await probeFailureCount(page)).toBe(1);
+    expect(await app.appState()).toBe('initializing');
 
-  // 「もう一度確かめる」は試験をやり直す。まだ書けないので警告は開いたまま
-  const dialog = page.locator('[data-dialog="storage-low"]');
-  await dialog.locator('[data-action="retry"]').click();
-  await expect.poll(() => probeQuotaFailureCount(page)).toBe(2);
-  await expect(dialog.locator('[data-action="retry"]')).toBeEnabled();
-  expect(await app.openDialogs()).toEqual(['storage-low']);
+    // 「もう一度確かめる」は試験をやり直す。まだ書けないので警告は開いたまま
+    const dialog = page.locator('[data-dialog="storage-low"]');
+    await dialog.locator('[data-action="retry"]').click();
+    await expect.poll(() => probeFailureCount(page)).toBe(2);
+    await expect(dialog.locator('[data-action="retry"]')).toBeEnabled();
+    expect(await app.openDialogs()).toEqual(['storage-low']);
 
-  // 「このまま続ける」で起動が続き、打鍵が保存される (セッション DB の保存は注入の対象外)
-  await dialog.locator('[data-action="continue"]').click();
-  await app.waitReady();
-  expect(await app.appState()).toBe('ready');
-  expect(await app.openDialogs()).not.toContain('storage-low');
-  await app.typeCode('int q = 1;\n');
-  await app.waitForSynced();
-});
+    // 「このまま続ける」で起動が続き、打鍵が保存される (セッション DB の保存は注入の対象外)
+    await dialog.locator('[data-action="continue"]').click();
+    await app.waitReady();
+    expect(await app.appState()).toBe('ready');
+    expect(await app.openDialogs()).not.toContain('storage-low');
+    await app.typeCode('int q = 1;\n');
+    await app.waitForSynced();
+  });
+}
 
 test('#626 試験が書けた起動では警告が出ず、試験用の DB が残らない', async ({ page }) => {
   await countProbeOpens(page);
@@ -91,7 +101,7 @@ test('#626 ランディング (/) では試験を走らせない', async ({ page
   expect(await databaseNames(page)).not.toContain(STORAGE_PROBE_DB_NAME);
 });
 
-test('#626 利用中に保存が QuotaExceeded で失敗すると、容量不足の通知が 1 回だけ出る', async ({ page }) => {
+test('#626 利用中に保存が容量切れ (QuotaExceeded) で失敗すると、容量不足の通知が 1 回だけ出る', async ({ page }) => {
   const app = new EditorApp(page);
   // 保存 (TabManager.persistAll) が IndexedDB で失敗した回数。通知の判定はこの失敗ごとに走るので、
   // 2 回目以降の失敗が起きたことを確かめてから通知の回数を見る (EventRecorder の 1 件ずつの保存の失敗は
@@ -119,7 +129,7 @@ test('#626 利用中に保存が QuotaExceeded で失敗すると、容量不足
         }
       }
     }).observe(el, { attributes: true, attributeFilter: ['data-notice'] });
-  }, QUOTA_NOTICE);
+  }, STORAGE_FULL_NOTICE);
   const notices = () => page.evaluate(() => (window as unknown as { __tcQuotaNotices?: number }).__tcQuotaNotices ?? 0);
 
   await injectQuotaExceeded(page, 'idb');

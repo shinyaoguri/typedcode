@@ -382,8 +382,8 @@ export interface TranslationKeys {
     storageVersionChange: string;
     /** IndexedDB の接続が強制的に閉じられ、開き直せなかった (#325) */
     storageConnectionLost: string;
-    /** 保存が容量切れ (QuotaExceeded) で失敗した。セッション中 1 回だけ出す (#626) */
-    storageQuotaExceeded: string;
+    /** 保存が容量切れらしい失敗 (`isStorageFullError`) になった。セッション中 1 回だけ出す (#626) */
+    storageFull: string;
   };
 
   // Export

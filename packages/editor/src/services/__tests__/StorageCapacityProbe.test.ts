@@ -8,7 +8,7 @@ import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import {
   STORAGE_PROBE_BYTES,
   STORAGE_PROBE_DB_NAME,
-  isQuotaExceededError,
+  isStorageFullError,
   probeStorageCapacity,
   resolveStorageProbeBytes,
 } from '../StorageCapacityProbe.js';
@@ -16,6 +16,14 @@ import { settleWithin } from './idbFaults.js';
 
 /** 試験で書く量 (テストでは小さくする) */
 const BYTES = 64 * 1024;
+
+/** #626 の実ディスクでの再現で Chromium が返した失敗 (空き 30MB のディスクに書いた) */
+const REAL_BLOB_IO_FAILURE = () => new DOMException('Failed to write blobs (IOError)', 'DataError');
+const REAL_NO_SPACE_FAILURE = () =>
+  new DOMException(
+    'Connection is closing because of: IO error: /tmp/profile/Default/IndexedDB/http_localhost_5173.indexeddb.leveldb/000003.log: FILE_ERROR_NO_SPACE (ChromeMethodBFE: 3::WritableFileAppend::8)',
+    'UnknownError'
+  );
 
 async function databaseNames(factory: IDBFactory): Promise<string[]> {
   return (await factory.databases()).map((d) => d.name ?? '');
@@ -60,7 +68,20 @@ describe('probeStorageCapacity (#626)', () => {
     expect(result.kind).toBe('insufficient');
   });
 
-  it('reports inconclusive rather than insufficient when the write fails for a reason other than quota', async () => {
+  it('reports insufficient when the transaction aborts with the I/O DataError Chromium raises on a full disk', async () => {
+    // 実ディスクでは put の request は通り、commit の時点で transaction が DataError で abort する (#626)
+    IDBObjectStore.prototype.put = function put(this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+      const request = originalPut.call(this, value, key);
+      const transaction = this.transaction;
+      Object.defineProperty(transaction, 'error', { value: REAL_BLOB_IO_FAILURE(), configurable: true });
+      request.addEventListener('success', () => transaction.abort());
+      return request;
+    };
+    const result = await settleWithin(probeStorageCapacity({ bytes: BYTES, factory: new IDBFactory() }));
+    expect(result.kind).toBe('insufficient');
+  });
+
+  it('reports inconclusive rather than insufficient when the write fails for a reason other than a full storage', async () => {
     IDBObjectStore.prototype.put = function put() {
       throw new DOMException('injected', 'UnknownError');
     };
@@ -150,17 +171,36 @@ describe('resolveStorageProbeBytes (#626)', () => {
   });
 });
 
-describe('isQuotaExceededError (#626)', () => {
+describe('isStorageFullError (#626)', () => {
   it('detects QuotaExceededError wrapped in a cause chain', () => {
     const quota = new DOMException('full', 'QuotaExceededError');
     const wrapped = new Error('outer', { cause: new Error('Failed to append event', { cause: quota }) });
-    expect(isQuotaExceededError(quota)).toBe(true);
-    expect(isQuotaExceededError(wrapped)).toBe(true);
+    expect(isStorageFullError(quota)).toBe(true);
+    expect(isStorageFullError(wrapped)).toBe(true);
   });
 
-  it('does not treat unrelated errors as quota errors', () => {
-    expect(isQuotaExceededError(new Error('x', { cause: new DOMException('y', 'AbortError') }))).toBe(false);
-    expect(isQuotaExceededError(undefined)).toBe(false);
-    expect(isQuotaExceededError('QuotaExceededError')).toBe(false);
+  it('detects the DataError Chromium raises when blobs cannot be written to a full disk', () => {
+    expect(isStorageFullError(REAL_BLOB_IO_FAILURE())).toBe(true);
+    expect(isStorageFullError(new Error('Failed to put to probe', { cause: REAL_BLOB_IO_FAILURE() }))).toBe(true);
+  });
+
+  it('detects the UnknownError Chromium raises with FILE_ERROR_NO_SPACE when the disk is full', () => {
+    expect(isStorageFullError(REAL_NO_SPACE_FAILURE())).toBe(true);
+    expect(isStorageFullError(new Error('Failed to append event', { cause: REAL_NO_SPACE_FAILURE() }))).toBe(true);
+  });
+
+  it('does not treat DataError or UnknownError without an I/O failure message as storage full', () => {
+    expect(
+      isStorageFullError(new DOMException('Data provided to an operation does not meet requirements.', 'DataError'))
+    ).toBe(false);
+    expect(isStorageFullError(new DOMException('Internal error opening backing store.', 'UnknownError'))).toBe(false);
+  });
+
+  it('does not treat unrelated errors as storage full', () => {
+    expect(isStorageFullError(new Error('x', { cause: new DOMException('y', 'AbortError') }))).toBe(false);
+    expect(isStorageFullError(new DOMException('IO error', 'InvalidStateError'))).toBe(false);
+    expect(isStorageFullError(new DOMException('IOError', 'AbortError'))).toBe(false);
+    expect(isStorageFullError(undefined)).toBe(false);
+    expect(isStorageFullError('QuotaExceededError')).toBe(false);
   });
 });

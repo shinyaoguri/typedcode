@@ -373,8 +373,8 @@ export const en: TranslationKeys = {
     storageVersionChange: 'A newer version was opened in another tab. Reload this tab to keep saving.',
     storageConnectionLost:
       'Lost the connection to storage (IndexedDB). Reload the page, or save your code with "Rescue code".',
-    storageQuotaExceeded:
-      'Could not save because the disk is almost full. Save your code with "Rescue code" and free up disk space.',
+    storageFull:
+      'Could not save. The disk may be almost full. Save your code with "Rescue code" and free up disk space.',
   },
 
   selfReview: {
@@ -560,9 +560,9 @@ export const en: TranslationKeys = {
   },
 
   storageLow: {
-    title: 'Not enough free disk space',
+    title: 'Free disk space may be running low',
     description:
-      'TypedCode saves your work record on this computer. It tried to write about ${size}MB and could not. If you continue, saving may stop partway through.',
+      'TypedCode saves your work record on this computer. It tried to write about ${size}MB and could not, so free disk space may be running low. If you continue, saving may stop partway through.',
     hint: 'Delete files you no longer need to free up space, then press "Check again".',
     continue: 'Continue anyway',
     retry: 'Check again',

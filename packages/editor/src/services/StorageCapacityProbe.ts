@@ -11,7 +11,8 @@
  * - 終わったら DB を close して `deleteDatabase` する。**開始時にも `deleteDatabase` する** (前回の試験が
  *   削除の前に落ちて、書いた分が残っていた場合の掃除)
  * - `timeoutMs` を超えたら transaction を abort して `inconclusive` を返す (遅い環境を容量不足と誤判定しない)。
- *   open の失敗・blocked、QuotaExceeded 以外の書き込み失敗も `inconclusive` (容量と無関係な失敗で警告しない)
+ *   open の失敗・blocked、容量切れらしくない書き込み失敗 (`isStorageFullError` が偽) も `inconclusive`
+ *   (容量と無関係な失敗で警告しない)
  *
  * これは「その時点で書けた」ことの確認で、容量の確保ではない。結果はハッシュチェーンに記録しない。
  */
@@ -46,7 +47,7 @@ export type StorageProbeInconclusiveReason =
   | 'blocked'
   /** 上限時間を超えた */
   | 'timeout'
-  /** QuotaExceeded 以外の理由で書けなかった */
+  /** 容量切れらしくない理由 (`isStorageFullError` が偽) で書けなかった */
   | 'write-failed';
 
 export type StorageProbeResult =
@@ -63,16 +64,45 @@ export interface StorageProbeOptions {
   factory?: IDBFactory;
 }
 
+/** I/O の失敗を示す Chromium のメッセージ (`IOError` / `IO error` / `FILE_ERROR_NO_SPACE`) */
+const STORAGE_IO_FAILURE_MESSAGE = /IOError|IO error|NO_SPACE/i;
+
+/** 名前だけでは容量切れと言えず、メッセージが I/O の失敗のときだけ容量切れとみなすエラー */
+const IO_FAILURE_ERROR_NAMES = new Set(['DataError', 'UnknownError']);
+
+function isStorageFullErrorItself(error: object): boolean {
+  const { name, message } = error as { name?: unknown; message?: unknown };
+  if (name === 'QuotaExceededError') return true;
+  return (
+    typeof name === 'string' &&
+    IO_FAILURE_ERROR_NAMES.has(name) &&
+    typeof message === 'string' &&
+    STORAGE_IO_FAILURE_MESSAGE.test(message)
+  );
+}
+
 /**
- * 容量切れ (`QuotaExceededError`) か。`cause` の連鎖まで見る (`settleOnCommit` は失敗を
- * `new Error(..., { cause })` で包むため)。起動時の試験と、利用中の保存失敗の通知で共用する。
+ * 容量切れらしい失敗か。`cause` の連鎖まで見る (`settleOnCommit` は失敗を `new Error(..., { cause })`
+ * で包むため)。起動時の試験と、利用中の保存失敗の通知で共用する。
+ *
+ * - `QuotaExceededError`: ブラウザの割り当て (quota) を超えた
+ * - `DataError` / `UnknownError` で、メッセージが I/O の失敗を示すもの: **ディスクが本当に一杯のとき、
+ *   Chromium は `QuotaExceededError` を返さない**。#626 の実ディスクでの再現 (空き 30MB の APFS イメージに
+ *   プロファイルを置いた) では、大きな Blob の put は `DataError: Failed to write blobs (IOError)` で、
+ *   小さな行の put を繰り返すと `UnknownError: Connection is closing because of: IO error: …:
+ *   FILE_ERROR_NO_SPACE (…)` で transaction が abort した (接続も閉じられる)
+ *
+ * メッセージの照合は Chromium の文言に合わせている。TypedCode は Chrome / Edge だけを対象にする
+ * (Safari / WebKit は起動時に止める) ので、他のエンジンの文言は追わない。容量と無関係な失敗
+ * (`AbortError`・`InvalidStateError`、I/O と書いていない `DataError` / `UnknownError`) は false にして、
+ * 容量不足だと誤って伝えない。
  */
-export function isQuotaExceededError(error: unknown): boolean {
+export function isStorageFullError(error: unknown): boolean {
   const seen = new Set<unknown>();
   let current: unknown = error;
   while (typeof current === 'object' && current !== null && !seen.has(current)) {
     seen.add(current);
-    if ((current as { name?: unknown }).name === 'QuotaExceededError') return true;
+    if (isStorageFullErrorItself(current)) return true;
     current = (current as { cause?: unknown }).cause;
   }
   return false;
@@ -213,7 +243,7 @@ async function runProbe(factory: IDBFactory, bytes: number, run: ProbeRun): Prom
     await writeProbeBlob(db, bytes, run);
     return { kind: 'ok' };
   } catch (e) {
-    if (isQuotaExceededError(e)) return { kind: 'insufficient', error: e };
+    if (isStorageFullError(e)) return { kind: 'insufficient', error: e };
     return { kind: 'inconclusive', reason: 'write-failed', error: e };
   } finally {
     run.transaction = null;
