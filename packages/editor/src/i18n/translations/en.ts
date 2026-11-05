@@ -182,7 +182,7 @@ export const en: TranslationKeys = {
     hashChainPosw:
       'Proof of Sequential Work (PoSW): Computational proof is generated at each checkpoint to prove passage of time. This computation runs in a Web Worker in the background',
     hashChainFingerprint:
-      'Browser fingerprint: Proof files include browser environment information (language, timezone, screen resolution, etc.)',
+      'Browser fingerprint: Proof files include the following browser environment information — user agent, language settings (list of preferred languages), platform, number of CPU cores, device memory, screen (resolution, color depth, pixel ratio), timezone (UTC offset), GPU vendor and renderer names, whether cookies are enabled, Do Not Track setting, and number of touch points. Canvas rendering output and the list of installed fonts are not collected',
     hashChainNote: 'This mechanism allows third parties to verify that code was typed character by character.',
 
     // Bot Detection
@@ -240,7 +240,7 @@ export const en: TranslationKeys = {
     privacyDesc: 'Please review what information TypedCode collects and how proof data is handled.',
     privacyDetailHeading: 'About collected information:',
     privacyBrowserInfo:
-      'Only commonly available browser information (language, timezone, screen resolution, etc.) is used. No personal information such as names or email addresses is collected',
+      'Only commonly available browser environment information (the items listed under "Browser fingerprint" in "Hash Chain and Proof") is used. No personal information such as names or email addresses is collected',
     privacyTypedContent: 'However, all code content entered in the editor is recorded',
     privacyScreenshots:
       'During screen sharing, the entire screen is saved as screenshots, so content from other applications or windows displayed on screen may also be recorded',

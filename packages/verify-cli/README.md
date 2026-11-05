@@ -53,7 +53,8 @@ typedcode-verify proof.zip --analyzer ./my-analyzer.mjs --no-default-analyzers
 
 # 分析結果を機械可読に書き出す
 typedcode-verify ALL_TC.zip --analysis-json out.json      # {filename, valid, policy, analysis}
-typedcode-verify ALL_TC.zip --analysis-bundle bundle.json # content-free な派生バンドル (ADR-0024 Tier A)
+typedcode-verify ALL_TC.zip --analysis-bundle bundle.json # 授業内レビュー用の派生バンドル (ADR-0024 Tier A。学外へ共有しない)
+typedcode-verify ALL_TC.zip --aggregate-bundle agg.json   # 集計・研究用の派生バンドル (ADR-0024 Tier S。数値とカテゴリだけ)
 
 # 採点に使うソースを取り出す (proof ごとに submitted / verified / report.json を書く)
 typedcode-verify ALL_TC.zip --extract-sources graded/
@@ -73,7 +74,8 @@ typedcode-verify ALL_TC.zip --extract-sources graded/
 | `--analyzer <module>` | 外部 Analyzer モジュールを読み込む (反復可、ADR-0023) |
 | `--no-default-analyzers` | 同梱の分析器を外し、`--analyzer` で指定したものだけを使う |
 | `--analysis-json <out.json>` | 分析レポートを JSON でファイル出力 |
-| `--analysis-bundle <out.json>` | content-free な派生バンドルを出力 (ADR-0024 Tier A) |
+| `--analysis-bundle <out.json>` | 授業内レビュー用の派生バンドルを出力 (ADR-0024 Tier A。[書き出し](#分析結果の書き出し)) |
+| `--aggregate-bundle <out.json>` | 集計・研究用の派生バンドルを出力 (ADR-0024 Tier S。[書き出し](#分析結果の書き出し)) |
 | `--extract-sources <dir>` | ZIP の proof ごとに、同梱ソースと `proof.content` を `<dir>` へ書き出す ([書き出し](#ソースの書き出し---extract-sources)) |
 | `--help`, `-h` | 使い方を表示 |
 
@@ -95,12 +97,31 @@ TypedCode は「判定するツール」ではなく「多様な分析手法を�
 
 ### 分析結果の書き出し
 
-| フラグ | 出力内容 |
-|---|---|
-| `--analysis-json <out.json>` | proof ごとの `{filename, valid, analysis}`。分析器の評価ハーネスやコホート集計の入口 |
-| `--analysis-bundle <out.json>` | proof ごとの `{filename, schema, integrityValid, processSummary, analysis, assurance}`。**events / ソースコード / fingerprint を含まない** content-free な派生ビュー (ADR-0024 Tier A) |
+| フラグ | 対象読者 | 出力内容 |
+|---|---|---|
+| `--analysis-json <out.json>` | 担当教員・分析器の開発者 | proof ごとの `{filename, valid, policy, analysis}`。分析器の評価ハーネスの入口 |
+| `--analysis-bundle <out.json>` (Tier A) | **その授業の採点者** (授業内レビュー) | proof ごとの `{filename, schema, notice, integrityValid, processSummary, analysis, assurance}` |
+| `--aggregate-bundle <out.json>` (Tier S) | 集計・研究 (授業の外を含む) | proof ごとの `{schema, notice, integrityValid, processSummary, analysis, assurance}` を数値とカテゴリだけに絞ったもの |
 
-どちらも advisory で exit code には影響しません。
+どれも advisory で exit code には影響しません。入力の proof / ZIP は読むだけで書き換えません。`--analysis-bundle` と `--aggregate-bundle` はどちらも検証済みの proof から作った**派生ビューで、単独では整合性を検証できません** (各要素の `notice` に固定文言で書いてあります)。整合性は full proof (Tier F) で確かめます。どちらもソース・打鍵・fingerprint は含みません。
+
+**Tier A (`--analysis-bundle`) は学外へ共有しないでください。** ソースは含みませんが、次のものを含みます:
+
+- `filename`: 入力のパスと ZIP のエントリ名 (学籍番号や氏名が入る運用がありえます)
+- `processSummary.reflectionNotes`: 学生が提出前セルフレビューで書いた振り返り (自由記述)
+- `processSummary.moments` と signal の `evidence`: イベントの位置 (event index)
+- signal の `summary` / `summaryParams` / `evidence[].note` と `analyzerId`、`analysis.analyzerStatus` の `message`: 分析器が書く文字列。`--analyzer` の外部分析器は任意の文字列を入れられます
+
+**Tier S (`--aggregate-bundle`) が含むのは次の項目だけです** (allowlist で 1 項目ずつ書き出し、上の項目と、型に無い余分なフィールドは出しません):
+
+| 欄 | 項目 |
+|---|---|
+| 直下 | `schema` (`aggregate-bundle/1`)・`notice`・`integrityValid` |
+| `processSummary` | `totalEvents`・`durationMs`・`contentChangeCount`・`insertedChars`・`deletedChars`・`deletionRatio`・`executionCount`・`hasRunResults`・`runSuccessCount`・`runFailureCount`・`pauseCount`・`longestPauseMs`・`focusLossCount`・`externalInputCount` (数値でなければ `null`) |
+| `analysis` | `reviewPriority`・`analyzerStatusCounts` (`ok` / `failed` / `timeout` / `invalid-output` の件数)・`signals[]` の `dimension` / `severity` / `score` / `confidence` |
+| `assurance` | `integrity`・`temporal`・`provenance` の `pureTyping` / `notableSignals` / `reviewPriority` |
+
+`dimension` などの列挙値が既知の値でなければ `other` になります (外部分析器の独自の次元も `other` にまとまります)。配列の順序は入力の順序のままです。Tier S もコホート基準 (ADR-0025) の入力になり、既知の次元だけなら Tier A から計算したものと同じ結果になります。
 
 ### 試験モード (ADR-0006)
 
@@ -137,7 +158,7 @@ Anchoring:   VERIFIED (12 signed checkpoints, 100.0% coverage)
 
 - 1 つでも立てると、出力に `--- Acceptance policy ---` 節が出ます。立てた要件 (`Applied:`)、結果 (`Result: all requirements met` / `N requirement(s) not met`)、違反ごとに `FAIL <code>: <理由>` の行が並びます。code は `root-anchor-missing` / `anchor-density-sparse` / `signed-checkpoints-missing` / `terminal-anchor-missing` (未署名の末尾の件数つき) です
 - 違反があれば exit 1 ですが、`Metadata` / `Hash Chain` は `PASS` のままで、改ざんとは区別できます。逆に、改ざんなどで検証そのものが失敗した proof ではポリシーを評価せず、`Result: not evaluated (verification failed)` と出します
-- `--analysis-json` の各要素に `policy` (`applied` / `evaluated` / `violations`) が入ります。`--analysis-bundle` には入りません
+- `--analysis-json` の各要素に `policy` (`applied` / `evaluated` / `violations`) が入ります。`--analysis-bundle` / `--aggregate-bundle` には入りません
 - 違反した proof があっても、残りの入力の検証と `--analysis-*` の書き出しは続きます
 - `--require-anchor-density` は署名 cp が 0 件の proof を対象にしません (署名 cp の存在を求めるのは `--require-signed-checkpoints`)。密度が疎な proof は `Anchoring: VERIFIED` と `! Anchoring is sparse` の警告のまま、受理ポリシーの違反として exit 1 になります
 - 提出期間 (time-box) と LMS の受領時刻はポリシーに含みません (ADR-0013)

@@ -26,7 +26,7 @@
 | `tracking/` | イベント検出器: `InputDetector`, `OperationDetector`, `KeystrokeTracker` (keyDown/keyUp。**合成打鍵は `data.isTrusted=false` を載せる** = ADR-0018。信頼打鍵は省略し hash 不変)、`MouseTracker`, `WindowTracker`, `VisibilityTracker`, `NetworkTracker`, `ScreenshotTracker`, `EnvironmentTracker` (起動時ワンショット `environmentProbe`。**editor-assist 宣言** = Monaco 解決済み支援オプションを `editorAssist` に焼く = ADR-0019。provider は main.ts が `recordInitial` 前に注入、正規化は `editorAssist.ts` の純関数) |
 | `editor/` | `EditorController`, `CursorTracker`, `ThemeManager` |
 | `execution/` | `CodeExecutionController`, `RuntimeManager` |
-| `executors/` | 言語別実行: C, C++ (Wasmer SDK), JavaScript, TypeScript, Python (Pyodide)。`sandbox/` = JS / TS を opaque origin の sandbox iframe 内の Blob Worker で動かす `SandboxRunner` と、その runner (srcdoc + CSP)・Worker のソース (文字列定数)・メッセージの検査・上限 (ADR-0041) |
+| `executors/` | 言語別実行: C, C++ (Wasmer SDK), JavaScript, TypeScript, Python (Pyodide)。TS は Monaco 同梱の TS worker で transpile (型チェックなし。#605)。`sandbox/` = JS / TS を opaque origin の sandbox iframe 内の Blob Worker で動かす `SandboxRunner` と、その runner (srcdoc + CSP)・Worker のソース (文字列定数)・メッセージの検査・上限 (ADR-0041) |
 | `ui/components/` | モーダル / 通知 / ドロップダウン / パネル |
 | `export/` | `ProofExporter`, README テンプレート、救出 (`rescueBundle.ts` の純関数 `buildRescueBundle` と `RescueExporter`。証明ではない `RESCUE_TC<ts>.zip`。導線は `#rescue-download-btn` / `#problem-rescue-btn`。#544 / ADR-0042) |
 | `services/` | `TurnstileService`, `StorageService`, `ScreenshotStorageService`, `SignedCheckpointService` |

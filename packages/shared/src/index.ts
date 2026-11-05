@@ -331,8 +331,19 @@ export type {
 } from './analysis/index.js';
 
 // Tier A 分析バンドル (ADR-0024): content-free な派生ビュー (events/content/fingerprint なし)
-export { buildAnalysisBundle, ANALYSIS_BUNDLE_SCHEMA } from './analysis/index.js';
+export { buildAnalysisBundle, ANALYSIS_BUNDLE_SCHEMA, DERIVED_VIEW_NOTICE } from './analysis/index.js';
 export type { AnalysisBundle } from './analysis/index.js';
+
+// Tier S 集計バンドル (ADR-0024 Amendment, #304): 数値とカテゴリだけの allowlist (自由記述・ファイル名なし)
+export { toAggregateBundle, AGGREGATE_BUNDLE_SCHEMA } from './analysis/index.js';
+export type {
+  AggregateBundle,
+  AggregateOther,
+  AggregateProcessSummary,
+  AggregateSignal,
+  AggregateAnalysis,
+  AggregateAssurance,
+} from './analysis/index.js';
 
 // コホート基準 (ADR-0025): Tier A 群 → 頑健分布 + 提出物の位置 (advisory triage・純粋関数)
 export {
@@ -343,6 +354,7 @@ export {
   COHORT_POSITION_SCHEMA,
 } from './analysis/index.js';
 export type {
+  CohortBundleInput,
   CohortMetricKey,
   MetricDistribution,
   CohortBaseline,

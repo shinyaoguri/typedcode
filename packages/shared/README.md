@@ -69,8 +69,9 @@ const hash = await Fingerprint.generate();
 - ハードウェア: hardwareConcurrency, deviceMemory, maxTouchPoints
 - 画面: width, height, colorDepth, devicePixelRatio
 - 環境: timezone, timezoneOffset, cookieEnabled, doNotTrack
-- 描画: Canvas フィンガープリント、WebGL vendor / renderer
-- フォント: システムフォント検出結果
+- GPU: WebGL の unmasked vendor / renderer (ヘッドレス検出に使う)
+
+canvas の描画結果とフォント一覧は集めない (旧 proof には入っている)。キーごとの理由は [ADR-0044](../../docs/adr/0044-fingerprint-collection-scope.md)
 
 ### ファイル処理
 

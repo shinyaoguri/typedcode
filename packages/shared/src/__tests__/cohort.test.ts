@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { computeCohortBaseline, positionInCohort, COHORT_MIN_N } from '../analysis/cohort.js';
-import type { AnalysisBundle } from '../analysis/bundle.js';
+import { DERIVED_VIEW_NOTICE, type AnalysisBundle } from '../analysis/bundle.js';
 import type { ProcessSummary } from '../processSummary.js';
 import type { AnalysisReport, AnalysisDimension, AnalysisSeverity } from '../analysis/types.js';
 
@@ -56,6 +56,7 @@ function report(
 function bundle(processSummary: ProcessSummary, analysis: AnalysisReport, integrityValid = true): AnalysisBundle {
   return {
     schema: 'analysis-bundle/1',
+    notice: DERIVED_VIEW_NOTICE,
     integrityValid,
     processSummary,
     analysis,
