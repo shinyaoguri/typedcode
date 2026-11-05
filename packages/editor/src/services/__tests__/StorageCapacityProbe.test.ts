@@ -89,6 +89,24 @@ describe('probeStorageCapacity (#626)', () => {
     expect(result).toMatchObject({ kind: 'inconclusive', reason: 'write-failed' });
   });
 
+  it('reports insufficient when opening the probe database fails with an I/O error, and inconclusive otherwise', async () => {
+    // 空きが極端に少ないと、DB のファイルを作る open の段階で失敗しうる (#626)
+    const failingOpen = (error: DOMException): IDBFactory => {
+      const factory = new IDBFactory();
+      factory.open = () => {
+        throw error;
+      };
+      return factory;
+    };
+    const full = await probeStorageCapacity({ bytes: BYTES, factory: failingOpen(REAL_NO_SPACE_FAILURE()) });
+    expect(full.kind).toBe('insufficient');
+    const other = await probeStorageCapacity({
+      bytes: BYTES,
+      factory: failingOpen(new DOMException('injected', 'UnknownError')),
+    });
+    expect(other).toMatchObject({ kind: 'inconclusive', reason: 'open-failed' });
+  });
+
   it('gives up as inconclusive without reporting insufficient once the time limit passes', async () => {
     const factory = new IDBFactory();
     // 試験用 DB を開いたまま返事をしない接続を置くと、開始時の削除と続く open がその接続の close を待ち続ける

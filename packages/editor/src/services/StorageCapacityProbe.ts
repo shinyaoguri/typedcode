@@ -233,6 +233,8 @@ async function runProbe(factory: IDBFactory, bytes: number, run: ProbeRun): Prom
   try {
     db = await openProbeDatabase(factory);
   } catch (e) {
+    // 空きが極端に少ないと、DB のファイルを作る open の段階で I/O の失敗になりうる (#626)
+    if (isStorageFullError(e)) return { kind: 'insufficient', error: e };
     const reason = e instanceof ProbeOpenError ? e.reason : 'open-failed';
     return { kind: 'inconclusive', reason, error: e };
   }
