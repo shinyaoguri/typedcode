@@ -208,10 +208,10 @@ intermediateHash = hash
 ```
 
 **意義**:
-- 各イベントに「最低限の計算時間」を強制 (約 5〜30ms / event 程度)
-- 大量のイベントを瞬時に偽造することを困難にする (10000 events なら最低 50 秒の連続計算)
-- 並列化困難 (一つのイベントの PoSW 内部は前ハッシュに依存して直列)
-- PoSW は「時間の下限」ではなく「逐次コスト」を課すだけで、高性能な CPU ほど速く回せる。並列化できるのは別 proof 同士 (別チェーン) のみで、1 本のチェーン内は event 間も直列 (各 event の PoSW の種は直前 event の最終 hash)。絶対的な防御ではないので時刻アンカリングと併用する
+- 1 本のチェーンを作り直すには、イベントの数だけ逐次のハッシュ計算が要る (一つのイベントの PoSW 内部は前ハッシュに依存して直列)
+- PoSW は「時間の下限」でも作業時間・打鍵時刻の証明でもなく、「逐次コスト」を課すだけで、高性能な CPU ほど速く回せる。偽造側の下限は 10000 反復でも 10000 events で 1 分前後 (同期の native 実装で数 ms / event) と小さい。並列化できるのは別 proof 同士 (別チェーン) のみで、1 本のチェーン内は event 間も直列 (各 event の PoSW の種は直前 event の最終 hash)。時刻の保証は署名チェックポイント (§4.6) とサーバアンカーされた root が担う
+
+**反復数の見直し** ([ADR-0045](adr/0045-lower-posw-iterations-for-recording-throughput.md)): CPU 4 倍相当の端末で記録側の処理が入力 (1 打鍵 = 5 イベント) に追いつかない実測から、反復数を 1000 に下げる。既存の 10000 反復の proof を検証し続ける版の分岐とあわせて #611 で実装する。それまでは上のとおり 10000 で記録・検証する。記録側の反復の実装 (await か同期か) は形式・安全性に影響しない。記録側の測り方は `npm run bench:posw -w @typedcode/e2e`
 
 ### 4.5. チェックポイント (Checkpoint)
 
@@ -877,6 +877,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `MAX_TABS_PER_SESSION` | 64 | `workers/src/checkpoint.ts` (ADR-0027) |
 | `WORKERS_FETCH_TIMEOUT_MS` | 10_000 | `editor/src/config/timeouts.ts` (Workers への 1 回の fetch の上限。verify-captcha / session/start / checkpoint/sign。超過は既存の失敗経路 = retry・degraded fallback・署名の backoff 再試行に合流。#324) |
 | `PRE_EXPORT_VERIFICATION_BUDGET_MS` | 15_000 | `editor/src/config/timeouts.ts` (best-effort モード = exam/class/assignment の export 前認証全体の予算。超過は失敗 attestation を記録して ZIP を出す。casual には適用しない。#324) |
+| `TAB_CREATE_VERIFICATION_BUDGET_MS` | 15_000 (`PRE_EXPORT_VERIFICATION_BUDGET_MS` と同じ値) | `editor/src/config/timeouts.ts` (casual/class/assignment のタブ作成時の認証全体 = Turnstile + session/start の予算。超過したら表示中のチャレンジも閉じ、失敗 attestation を #0 に記録して非アンカーで開始する。後から届いた token は root に使わず署名専用に回す。#375) |
 | `POST_HOC_TOLERANCE_MS` | 60_000 | `signedCheckpoints.ts` (post-hoc 照合の許容差の絶対値。署名の遅れ = fetch タイムアウト 10s + backoff 1+2+4+8+16s + PoSW 待ち。#320) |
 | `POST_HOC_TOLERANCE_RATIO` | 0.01 | `signedCheckpoints.ts` (許容差の相対値。単調時計とサーバ時計の進み方の差 = NTP slew 最大 0.05% の 20 倍。#320) |
 | `MAX_ANCHOR_GAP_EVENTS` | 500 | `signedCheckpoints.ts` (ADR-0016) |
@@ -963,3 +964,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-04 | 分析器の失敗・期限切れ・不正な出力を「手掛かりなし」と区別 (#301) | `AnalysisReport` に `analyzerStatus` (分析器ごとの `ok` / `failed` / `timeout` / `invalid-output`) を足した (`analyzerVersions` は互換のため残す。`analysis-bundle/1` は据え置き)。`runAnalysis` は分析器ごとに `ANALYZER_TIMEOUT_MS` (10 秒) の期限を付け、契約に合わない signal を捨てて `reviewPriority` に寄与させない。ok の分析器が 0 なら三層保証の著述性は「分析未実行」(null)。verify-cli は `Analysis unavailable: <id> (<status>)` 行、verify (Web) は分析カードの「分析不能」バッジ・注記で出す。検証結果 (`valid` / integrity) は変えない |
 | 2026-11-05 | post-hoc と密度をイベント時刻 × サーバ時刻で測る (#320) | post-hoc は申告値の `clientTimestamp` の幅とサーバ時刻の幅の比で判定しており、`clientTimestamp` を署名時刻どおりに名乗った事後一括署名が `anchored` になった。ハッシュ対象のイベント時刻とサーバ時刻を任意の 2 点で照合し (許容差 `max(60s, 1%)`、検証済み token の `issuedAt` を基点に含む)、`temporal` に `eventSpanMs` / `maxEventLeadMs` を足した。密度の `sparse` は生のサーバ時刻ギャップをやめ、説明できない空白 (`maxUnexplainedGapServerMs`) と署名で挟まれていないイベント時刻の幅 (`maxUnanchoredEventSpanMs`) で見る (正直な無操作では立たない)。60s を超えて遅れて署名された正直な proof は temporal が `anchored` から `partial` に下がる。§6.2 Layer 6 / §7 / §8 / §10 を反映。**判定 (`verifyProofFile` の valid / exit code) と proof フォーマットは不変** |
 | 2026-11-05 | fingerprint の収集を用途のあるコンポーネントに絞る (ADR-0044, #242) | `collectComponents` から `canvas` (描画結果の data URL) と `fonts` (フォント一覧) を外し、`webgl` を `unmaskedVendor` / `unmaskedRenderer` の 2 値にした (13 キー)。読むコードは `automationAnalyzer` の `webgl.unmaskedRenderer` だけで、root・流用検出・token 束縛は hash の等値比較で足りる。検証器は proof 同梱の components を再ハッシュするだけなので旧 proof (17 キー) はそのまま valid。`FingerprintComponents` は `canvas` / `fonts` を optional にし、新しく集める形は `CollectedFingerprintComponents`。proof 形式の番号は変えない |
+| 2026-11-05 | PoSW の反復数の見直し (ADR-0045, #241) | 記録側のベンチ (`npm run bench:posw`) で、CPU 4 倍相当では処理が入力に追いつかないことを測り、反復数を 10000 から 1000 に下げると決めた (実装は #611。それまでは 10000)。§4.4 から「最低限の計算時間を強制」「10000 events なら最低 50 秒」を消し、PoSW は時間の証明ではなく逐次コストだと揃えた |

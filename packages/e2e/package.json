@@ -13,6 +13,8 @@
     "test:ui": "playwright test --ui",
     "preshots": "npm run setup && npm run install-browsers",
     "shots": "SHOTS=1 playwright test --grep @shots",
+    "prebench:posw": "npm run setup && npm run install-browsers",
+    "bench:posw": "BENCH=1 playwright test --grep @bench --workers=1",
     "report": "playwright show-report",
     "install-browsers": "playwright install chromium",
     "typecheck": "tsc --noEmit"

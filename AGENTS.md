@@ -67,6 +67,7 @@ npm run coverage:ratchet                    # 各 vitest.config.ts の床を実�
 npm run test -w @typedcode/e2e
 # 注: CI は「ユニット (test job) + e2e (e2e job)」を全 deploy のゲートにしている
 npm run shots -w @typedcode/e2e             # 見た目・動きの証跡を packages/e2e/shots/ に撮る (検査ではない。ADR-0036)
+npm run bench:posw -w @typedcode/e2e        # 記録側 PoSW のスループットと backlog を 1 倍と CPU 4 倍相当で測る (検査ではない。ADR-0045)
 
 # 手元で CI と同じ検査を 1 コマンドで (完了の定義 = CONTRIBUTING.md / ADR-0034)
 npm run check       # typecheck → lint → lint:workflows → check-deps → test:coverage → scripts/*.test.mjs (PR ゲートのテスト) → e2e
