@@ -8,7 +8,7 @@
  */
 
 // メッセージタイプ定義
-interface ComputePoSWRequest {
+export interface ComputePoSWRequest {
   type: 'compute-posw';
   requestId: number;
   previousHash: string;
@@ -16,7 +16,7 @@ interface ComputePoSWRequest {
   iterations: number;
 }
 
-interface ComputePoSWResponse {
+export interface ComputePoSWResponse {
   type: 'posw-result';
   requestId: number;
   iterations: number;
@@ -25,7 +25,7 @@ interface ComputePoSWResponse {
   computeTimeMs: number;
 }
 
-interface VerifyPoSWRequest {
+export interface VerifyPoSWRequest {
   type: 'verify-posw';
   requestId: number;
   previousHash: string;
@@ -35,14 +35,14 @@ interface VerifyPoSWRequest {
   expectedHash: string;
 }
 
-interface VerifyPoSWResponse {
+export interface VerifyPoSWResponse {
   type: 'verify-result';
   requestId: number;
   valid: boolean;
 }
 
-type WorkerRequest = ComputePoSWRequest | VerifyPoSWRequest;
-type WorkerResponse = ComputePoSWResponse | VerifyPoSWResponse;
+export type WorkerRequest = ComputePoSWRequest | VerifyPoSWRequest;
+export type WorkerResponse = ComputePoSWResponse | VerifyPoSWResponse;
 
 // ArrayBufferを16進数文字列に変換
 function arrayBufferToHex(buffer: ArrayBuffer): string {
@@ -61,16 +61,19 @@ async function computeHash(data: string): Promise<string> {
 }
 
 // ランダムなnonce（16バイト）を生成
-function generateNonce(): string {
+export function generateNonce(): string {
   const nonceData = new Uint8Array(16);
   crypto.getRandomValues(nonceData);
   return arrayBufferToHex(nonceData.buffer);
 }
 
-// PoSW計算
-async function handleComputePoSW(request: ComputePoSWRequest): Promise<ComputePoSWResponse> {
+// PoSW計算。createNonce はテストが固定ベクタの seed を組むために差し替える (#587)
+export async function handleComputePoSW(
+  request: ComputePoSWRequest,
+  createNonce: () => string = generateNonce
+): Promise<ComputePoSWResponse> {
   const startTime = performance.now();
-  const nonce = generateNonce();
+  const nonce = createNonce();
 
   // 初期入力: 前のハッシュ + イベントデータ + nonce
   let hash = await computeHash(request.previousHash + request.eventDataString + nonce);
@@ -93,7 +96,7 @@ async function handleComputePoSW(request: ComputePoSWRequest): Promise<ComputePo
 }
 
 // PoSW検証
-async function handleVerifyPoSW(request: VerifyPoSWRequest): Promise<VerifyPoSWResponse> {
+export async function handleVerifyPoSW(request: VerifyPoSWRequest): Promise<VerifyPoSWResponse> {
   let hash = await computeHash(request.previousHash + request.eventDataString + request.nonce);
 
   for (let i = 1; i < request.iterations; i++) {
@@ -107,19 +110,19 @@ async function handleVerifyPoSW(request: VerifyPoSWRequest): Promise<VerifyPoSWR
   };
 }
 
-// メッセージハンドラ
-self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  const request = event.data;
-  let response: WorkerResponse;
-
+// リクエストの振り分け (Worker の外からも呼べる。固定ベクタのテストは __tests__/poswWorker.test.ts)
+export async function handleWorkerRequest(request: WorkerRequest): Promise<WorkerResponse> {
   switch (request.type) {
     case 'compute-posw':
-      response = await handleComputePoSW(request);
-      break;
+      return handleComputePoSW(request);
     case 'verify-posw':
-      response = await handleVerifyPoSW(request);
-      break;
+      return handleVerifyPoSW(request);
   }
+}
 
-  self.postMessage(response);
-};
+// メッセージハンドラ。本物の Worker の中でだけ張る (テストで import したときに window へ張らない)
+if (typeof (globalThis as { WorkerGlobalScope?: unknown }).WorkerGlobalScope !== 'undefined') {
+  self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+    self.postMessage(await handleWorkerRequest(event.data));
+  };
+}
