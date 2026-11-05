@@ -36,6 +36,7 @@ tests/
 ├── storage-low.spec.ts    # 空き容量の不足 (#626): 起動時の試験で書けない (QuotaExceeded と I/O の DataError の 2 形) と `storage-low` が出て「このまま続ける」で ready まで起動する・書けた起動では警告も試験用 DB も残らない・ランディングでは試験しない・利用中の保存の QuotaExceeded で通知 (`#block-notification[data-notice]`) が 1 回だけ出る。dev サーバの試験の書き込み量は vite.editor.config.mjs が小さく縮める
 ├── multi-instance / history-navigation / viewport / ime-undo / idle / screen-capture-lock / reset-url  # 環境の揺さぶり (#435): 多重起動・戻る / 進む・狭い画面・IME と undo / redo・アイドル停止・画面共有の停止・`?reset` が何も消さないこと (#323) とリセットの現在のモード限定
 ├── code-execution.spec.ts # JS / TS の実行の隔離と停止 (#290 / ADR-0041): 停止後に出力・副作用が出ない・同期ループ中も記録が進む (テスト側の watchdog)・親 DOM / IndexedDB / localStorage / ネットワーク / `/author` の `#author-jwk` に届かない・停止 → 即再実行・outcome の区別とエラーのマーカーの行・出力予算・異常の後の export と verify-cli (fast)。実行の状態は `data-exec-*`、上限は dev 限定の `window.__tcExecLimits` で縮める
+├── code-execution-c-python.spec.ts # @nightly: C (Wasmer + clang) と Python (Pyodide) の実行のスモーク (#589): hello の出力・proof の result イベント (success)・export が verify-cli (fast) を通る、C のコンパイルエラーの行番号とマーカーが利用者のコードの行を指す (#489 の回帰)。clang の webc (約 100 MB) と Pyodide を外部から取るので PR ゲートには載せない
 ├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)。export のダウンロードの瞬間 (自己検証より前) にも件数とハッシュが揃っている (#521)
 ├── export-during-verify.spec.ts # 1 回目の export のダウンロード直後 (自己検証の終わる前) に押した 2 回目の export も ZIP を出し、verify-cli (fast) で pass する (#565)。ダウンロードの瞬間に何かを読む・押すときは、`a[download]` の追加を MutationObserver で捕まえる (この 2 本が例)
 ├── exam-roundtrip.spec.ts # exam モードの round-trip (#229): 誤コードの拒否 → 正コードで解錠 → 打鍵 → export → verify-cli --exam-package (束縛 PASS) と負のオラクル。fixture が無いとき CI では落とし、ローカルでは skip
@@ -44,7 +45,7 @@ tests/
 ├── model/                # model-based E2E (#436): fast-check の fc.commands でランダムな操作列を流し、各手の後にモデル (editorModel.ts) と状態契約・snapshot・件数・エラーを突き合わせ、最後に全タブの export を verify-cli (fast) で検証する。手には、ブラウザのタブを閉じて復旧ダイアログから再開する `CloseAndResume` (IndexedDB からの復旧経路。`Reload` は sessionStorage 経路。#450) を含む。PR ゲートは固定シード 2 本 × 15 手 (手を足したら dry-run でシードを選び直す。根拠は model-based.spec.ts のコメント)、`@nightly` はランダムシードの長尺。実アプリの操作は playwrightDriver.ts、実行と失敗の報告 (シード・縮約後の操作列・再実行コマンド) は runner.ts
 ├── shots.spec.ts         # @shots: 証跡の撮影だけ (assert なし・通常実行から除外)。撮影 spec を増やすなら *.shots.spec.ts (require-tests がテストに数えない命名) にし、タイトルに @shots を付ける
 ├── posw.bench.spec.ts    # @bench: 記録側 PoSW のスループットと backlog を 1 倍と CPU 4 倍相当で測る (assert なし・通常実行と CI から除外。`npm run bench:posw` = BENCH=1)。CDP の CPU スロットルは dedicated Worker に効かないので、PoSW の Worker は route で差し込む busy-wait で処理時間を引き延ばす (ADR-0045 / #241)
-└── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)
+└── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)。`@nightly` の C の hello (@wasmer/sdk の worker は本番ビルドでしか壊れない = #364) は PR ゲートの test:build から外し、毎晩だけ回す (#589)
 playwright.config.ts       # dev 用: webServer で workers(:8787) + editor vite dev(:5173) + verify vite dev(:5174)
 ports.ts                   # 上の 3 ポート (E2E_*_PORT で上書き)。playwright.config.ts と global-setup.ts が読む (build 設定も workers の値を読む)
 global-setup.ts            # テストより前に、起こした / 再利用した 3 台がこの作業ツリーのサーバかを照合し、違えば throw (#552。下記の罠)。照合部は checkIdentities として export
@@ -67,11 +68,12 @@ npm run test:headed -w @typedcode/e2e        # 失敗調査 (ブラウザ表示)
 npm run shots -w @typedcode/e2e              # 見た目・動きの証跡を shots/ に撮る (@shots だけ。WebP の束ねに img2webp が要る。preshots が同じ準備をする)
 npm run setup -w @typedcode/e2e              # 単独で打つとき: テストキー + 署名鍵 + exam fixture の用意 (pretest / preshots が呼ぶ)
 npm run install-browsers -w @typedcode/e2e   # 単独で打つとき: Chromium の導入 (同上。OS の共有ライブラリは入れない)
-NIGHTLY=1 npm run test -w @typedcode/e2e -- --grep @nightly   # 毎晩の長い E2E だけ (model-based の長尺。FC_SEED / FC_RUNS / FC_STEPS で上書き)
+NIGHTLY=1 npm run test -w @typedcode/e2e -- --grep @nightly   # 毎晩の長い E2E だけ (model-based の長尺。FC_SEED / FC_RUNS / FC_STEPS で上書き) と C / Python の実行のスモーク
+NIGHTLY=1 npm run test:build -w @typedcode/e2e -- --grep @nightly   # 本番ビルドの @nightly だけ (C の hello。@wasmer/sdk を上げる PR では手元でも回す)
 npm run bench:posw -w @typedcode/e2e         # 記録側 PoSW のベンチ (@bench だけ。packages/e2e/bench/ に JSON。BENCH_ITERATIONS で反復数の見積もり。ADR-0045)
 ```
 
-**`@nightly` は通常の実行と CI のシャードから外れる** (`playwright.config.ts` の grepInvert。`@shots` と同じ扱いで、`NIGHTLY=1` のときだけ含める)。毎晩 `.github/workflows/e2e-nightly.yml` が `--grep @nightly --retries=0` で回し、失敗したらテストの出力ディレクトリの `model-failure.md` (シード・縮約後の操作列・再実行コマンド) を同名の open Issue に集める。model-based の失敗は報告に出る `FC_SEED=… FC_PATH=… FC_REPLAY_PATH=…` を付けて同じ列を再実行できる。fast-check の縮約は同じ列を何度も流し直すので、**列ごとに新しいブラウザコンテキストで始める** (同じページで `openCasualFresh()` を繰り返すと前の列の状態が残る)。
+**`@nightly` は通常の実行と CI のシャードから外れる** (`playwright.config.ts` と `playwright.build.config.ts` の grepInvert。`@shots` と同じ扱いで、`NIGHTLY=1` のときだけ含める)。毎晩 `.github/workflows/e2e-nightly.yml` が `--grep @nightly --retries=0` で dev 設定 (`test`) と本番ビルド (`test:build`。出力先は `test-results-build/` に分ける) の順に回し、失敗したらテストの出力ディレクトリの `model-failure.md` (シード・縮約後の操作列・再実行コマンド) を同名の open Issue に集める。model-based の失敗は報告に出る `FC_SEED=… FC_PATH=… FC_REPLAY_PATH=…` を付けて同じ列を再実行できる。fast-check の縮約は同じ列を何度も流し直すので、**列ごとに新しいブラウザコンテキストで始める** (同じページで `openCasualFresh()` を繰り返すと前の列の状態が残る)。
 
 **`pretest` / `preshots` は `npm run setup && npm run install-browsers`**。`.env` も `.dev.vars` もブラウザも無い新しい worktree・環境で、`npm ci` の直後に `npm run test` だけで通る。どちらも繰り返し実行して安全: setup は既存の `.dev.vars` を上書きせず鍵 ID の検査だけ、`playwright install` は導入済みなら何もしない。`test:headed` / `test:ui` / `test:build` には付けていない (準備済みの環境で使う前提)。`--with-deps` は sudo が要るので付けておらず、Linux で共有ライブラリが足りなければ手で `npx playwright install --with-deps chromium` を打つ (CI は deploy.yml の既存 step が入れる)。
 

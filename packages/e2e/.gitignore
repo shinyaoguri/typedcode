@@ -1,5 +1,8 @@
 test-results/
 playwright-report/
+# e2e-nightly.yml が本番ビルドの @nightly の出力を分ける先 (同じ出力先だと dev 側の結果が消える。#589)
+test-results-build/
+playwright-report-build/
 playwright/.cache/
 downloads/
 # npm run shots の出力 (画像はコミットせず Gyazo へ上げる / ADR-0036)
