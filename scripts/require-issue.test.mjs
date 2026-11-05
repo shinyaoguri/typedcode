@@ -75,25 +75,59 @@ describe('CLI', () => {
     writeFileSync(path, content);
     return path;
   }
-  function run(content, env = {}) {
-    return spawnSync(process.execPath, [SCRIPT, '--closing', closingFile(content)], {
-      encoding: 'utf8',
-      env: { PATH: process.env.PATH, GITHUB_REPOSITORY: REPO, PR_AUTHOR: 'someone', PR_LABELS: '[]', ...env },
-    });
+  /** `gh pr view --json title,body,labels,author` の出力の形。 */
+  function ghPr({ title = 'feat: foo', labels = [], login = 'someone' } = {}) {
+    return { title, body: '', labels: labels.map((name) => ({ name })), author: { login } };
+  }
+  function run(content, { pr = ghPr(), env = {} } = {}) {
+    return spawnSync(
+      process.execPath,
+      [SCRIPT, '--pr', closingFile(JSON.stringify(pr)), '--closing', closingFile(content)],
+      {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, GITHUB_REPOSITORY: REPO, ...env },
+      }
+    );
   }
 
   it('exits 0 when the PR closes an issue of its own repository', () => {
     assert.equal(run(JSON.stringify({ closingIssuesReferences: [ref(478)] })).status, 0);
   });
 
+  it('reads the PR fields and closingIssuesReferences from one gh pr view output passed to both flags', () => {
+    const path = closingFile(JSON.stringify({ ...ghPr(), closingIssuesReferences: [ref(478)] }));
+    const child = spawnSync(process.execPath, [SCRIPT, '--pr', path, '--closing', path], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, GITHUB_REPOSITORY: REPO },
+    });
+    assert.equal(child.status, 0);
+  });
+
   it('exits 1 with an ::error:: annotation when the PR closes no issue, even with a docs title', () => {
-    const child = run('{"closingIssuesReferences":[]}', { PR_TITLE: 'docs: foo' });
+    const child = run('{"closingIssuesReferences":[]}', { pr: ghPr({ title: 'docs: foo' }) });
     assert.equal(child.status, 1);
     assert.match(child.stdout, /^::error /m);
   });
 
-  it('exits 0 when the no-issue label is set', () => {
-    assert.equal(run('{"closingIssuesReferences":[]}', { PR_LABELS: '["no-issue"]' }).status, 0);
+  it('exits 0 when the no-issue label is in the PR JSON', () => {
+    assert.equal(run('{"closingIssuesReferences":[]}', { pr: ghPr({ labels: ['no-issue'] }) }).status, 0);
+  });
+
+  it('judges by the current labels and author in the PR JSON, ignoring stale PR_LABELS / PR_AUTHOR env', () => {
+    const env = { PR_LABELS: '["no-issue"]', PR_AUTHOR: 'dependabot[bot]' };
+    assert.equal(run('{"closingIssuesReferences":[]}', { env }).status, 1);
+  });
+
+  it('exempts dependabot by the gh login spelling app/dependabot', () => {
+    assert.equal(run('{"closingIssuesReferences":[]}', { pr: ghPr({ login: 'app/dependabot' }) }).status, 0);
+  });
+
+  it('exits 2 when --pr is not given', () => {
+    const child = spawnSync(process.execPath, [SCRIPT, '--closing', closingFile('{"closingIssuesReferences":[]}')], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, GITHUB_REPOSITORY: REPO },
+    });
+    assert.equal(child.status, 2);
   });
 
   it('exits 2 when the closing JSON is broken', () => {
@@ -107,6 +141,6 @@ describe('CLI', () => {
   });
 
   it('exits 2 when GITHUB_REPOSITORY is not set', () => {
-    assert.equal(run('{"closingIssuesReferences":[]}', { GITHUB_REPOSITORY: '' }).status, 2);
+    assert.equal(run('{"closingIssuesReferences":[]}', { env: { GITHUB_REPOSITORY: '' } }).status, 2);
   });
 });

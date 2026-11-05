@@ -18,13 +18,16 @@
  *     本文の `## テスト不要の理由` 節に (HTML コメントを除いて) 空でない文があれば pass
  *
  * 使い方 (CI は .github/workflows/pr-checks.yml):
- *   git diff --name-only origin/main...HEAD | PR_TITLE='feat: ...' node scripts/require-tests.mjs
- *   node scripts/require-tests.mjs --files changed-files.txt
+ *   gh pr view N --json title,body,labels,author > pr.json
+ *   git diff --name-only origin/main...HEAD | node scripts/require-tests.mjs --pr pr.json
+ *   node scripts/require-tests.mjs --pr pr.json --files changed-files.txt
  *
- * 入力 (環境変数。PR 由来の文字列はシェルに展開せず env で受け取る):
- *   PR_TITLE / PR_BODY / PR_AUTHOR — そのまま
- *   PR_LABELS                       — ラベル名の JSON 配列 (例: '["no-test-needed"]')
- *   変更ファイル一覧                 — 1 行 1 パス。`--files <path>` (`-` または省略で stdin)
+ * 入力:
+ *   PR の現在値      — `--pr <path>`: `gh pr view --json title,body,labels,author` の出力 JSON (必須)。
+ *                      event payload ではなく実行時点の PR を読む (#632。同じ PR に続けて来た event の
+ *                      run が前後しても、各 run は判定する時点のラベル・本文で決める)。PR 由来の文字列は
+ *                      ファイル経由で受け取り、シェルに展開しない
+ *   変更ファイル一覧 — 1 行 1 パス。`--files <path>` (`-` または省略で stdin)
  *
  * exit 0 = pass / 1 = テスト不足 / 2 = 入力エラー
  */
@@ -156,11 +159,46 @@ export function escapeAnnotation(text) {
   return text.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
 }
 
-export function parseLabels(raw) {
-  if (!raw) return [];
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed)) throw new Error('PR_LABELS は JSON 配列で渡す');
-  return parsed.map(String);
+/** `gh pr view --json` に渡すフィールド。workflow (pr-checks.yml) と揃える。 */
+export const PR_FIELDS = 'title,body,labels,author';
+
+/**
+ * gh の author.login を event payload (REST の user.login) と同じ綴りに揃える。gh は bot を
+ * `app/<slug>` と出す (例: `app/dependabot`) が、免除の判定は `dependabot[bot]` で書いている。
+ */
+export function normalizeAuthor(login) {
+  const bot = /^app\/(.+)$/.exec(login);
+  return bot ? `${bot[1]}[bot]` : login;
+}
+
+/**
+ * `gh pr view --json title,body,labels,author` の出力を evaluate の入力へ写す (純関数)。
+ * フィールドが欠けていたら入力エラーにする (取り忘れを「ラベル無し」「本文無し」として黙って判定しないため)。
+ *
+ * @returns {{ title: string, body: string, labels: string[], author: string }}
+ */
+export function parsePr(pr) {
+  if (pr === null || typeof pr !== 'object' || Array.isArray(pr)) throw new Error('PR の JSON がオブジェクトではない');
+  const { title, body, labels, author } = pr;
+  const hint = `(gh pr view --json ${PR_FIELDS} の出力を渡す)`;
+  if (typeof title !== 'string') throw new Error(`title が文字列ではない ${hint}`);
+  if (typeof body !== 'string') throw new Error(`body が文字列ではない ${hint}`);
+  if (!Array.isArray(labels)) throw new Error(`labels が配列ではない ${hint}`);
+  if (typeof author?.login !== 'string') throw new Error(`author.login が文字列ではない ${hint}`);
+  return {
+    title,
+    body,
+    labels: labels.map((label) => String(label?.name)),
+    author: normalizeAuthor(author.login),
+  };
+}
+
+/** `--pr <path>` の JSON (gh pr view の出力) を読み、parsePr に通す。 */
+export function readPr(argv) {
+  const index = argv.indexOf('--pr');
+  const source = index === -1 ? undefined : argv[index + 1];
+  if (source === undefined) throw new Error(`--pr に gh pr view --json ${PR_FIELDS} の出力パスを渡す`);
+  return parsePr(JSON.parse(readFileSync(source, 'utf8')));
 }
 
 export function readFiles(argv) {
@@ -177,13 +215,8 @@ export function readFiles(argv) {
 function main() {
   let outcome;
   try {
-    outcome = evaluate({
-      files: readFiles(process.argv.slice(2)),
-      title: process.env.PR_TITLE ?? '',
-      body: process.env.PR_BODY ?? '',
-      author: process.env.PR_AUTHOR ?? '',
-      labels: parseLabels(process.env.PR_LABELS),
-    });
+    const argv = process.argv.slice(2);
+    outcome = evaluate({ ...readPr(argv), files: readFiles(argv) });
   } catch (error) {
     console.error(`require-tests: 入力エラー: ${error instanceof Error ? error.message : error}`);
     process.exitCode = 2;

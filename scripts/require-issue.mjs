@@ -25,14 +25,16 @@
  *   - それ以外 → fail (他リポジトリの Issue だけを閉じる PR も fail)
  *
  * 使い方 (CI は .github/workflows/pr-checks.yml):
- *   gh pr view N --json closingIssuesReferences > closing.json
- *   GITHUB_REPOSITORY=owner/repo PR_LABELS='[]' PR_AUTHOR=someone node scripts/require-issue.mjs --closing closing.json
+ *   gh pr view N --json title,body,labels,author,closingIssuesReferences > pr.json
+ *   GITHUB_REPOSITORY=owner/repo node scripts/require-issue.mjs --pr pr.json --closing pr.json
  *
- * 入力 (環境変数。PR 由来の文字列はシェルに展開せず env で受け取る):
- *   PR_AUTHOR         — そのまま
- *   PR_LABELS         — ラベル名の JSON 配列 (例: '["no-issue"]')
+ * 入力:
+ *   PR の現在値       — `--pr <path>`: `gh pr view --json title,body,labels,author` の出力 JSON (必須)。
+ *                       ラベル・author を event payload ではなく実行時点の PR から読む (#632。読み方は
+ *                       require-tests.mjs の readPr)
  *   GITHUB_REPOSITORY — owner/repo (Actions が設定する。未設定なら入力エラー)
- *   紐づけ             — `--closing <path>`: `gh pr view --json closingIssuesReferences` の出力 JSON
+ *   紐づけ             — `--closing <path>`: `gh pr view --json closingIssuesReferences` の出力 JSON。
+ *                       `--pr` と同じ 1 回の gh pr view の出力 (同じファイル) を渡してよい
  *                       (例: '{"closingIssuesReferences":[{"number":1,"repository":{"name":"typedcode",
  *                       "owner":{"login":"shinyaoguri"}}}]}')
  *
@@ -41,7 +43,7 @@
 
 import { appendFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { escapeAnnotation, parseLabels } from './require-tests.mjs';
+import { escapeAnnotation, readPr } from './require-tests.mjs';
 
 /** 逃げ道のラベル名。CONTRIBUTING.md / PR テンプレートと揃える。 */
 export const NO_ISSUE_LABEL = 'no-issue';
@@ -119,12 +121,9 @@ function main() {
   try {
     const repo = process.env.GITHUB_REPOSITORY;
     if (!repo) throw new Error('GITHUB_REPOSITORY (owner/repo) が未設定');
-    outcome = evaluate({
-      closing: readClosing(process.argv.slice(2)),
-      labels: parseLabels(process.env.PR_LABELS),
-      author: process.env.PR_AUTHOR ?? '',
-      repo,
-    });
+    const argv = process.argv.slice(2);
+    const { labels, author } = readPr(argv);
+    outcome = evaluate({ closing: readClosing(argv), labels, author, repo });
   } catch (error) {
     console.error(`require-issue: 入力エラー: ${error instanceof Error ? error.message : error}`);
     process.exitCode = 2;

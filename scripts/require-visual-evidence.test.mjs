@@ -8,6 +8,9 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import { evaluate, hasImage, isVisualFile } from './require-visual-evidence.mjs';
@@ -177,8 +180,21 @@ describe('evaluate', () => {
 });
 
 describe('CLI', () => {
-  function run(files, env) {
-    return spawnSync(process.execPath, [SCRIPT], {
+  const dir = mkdtempSync(join(tmpdir(), 'require-visual-evidence-'));
+  /** `gh pr view --json title,body,labels,author` の出力の形で書き、そのパスを返す。 */
+  function prFile({ body = '', labels = [] } = {}) {
+    const path = join(dir, `pr-${Math.random().toString(36).slice(2)}.json`);
+    const json = {
+      title: 'feat(verify): foo',
+      body,
+      labels: labels.map((name) => ({ name })),
+      author: { login: 'someone' },
+    };
+    writeFileSync(path, JSON.stringify(json));
+    return path;
+  }
+  function run(files, args, env = {}) {
+    return spawnSync(process.execPath, [SCRIPT, ...args], {
       input: `${files.join('\n')}\n`,
       encoding: 'utf8',
       env: { PATH: process.env.PATH, ...env },
@@ -186,16 +202,25 @@ describe('CLI', () => {
   }
 
   it('exits 1 with an ::error:: annotation when the PR body has no image', () => {
-    const child = run([CSS], { PR_TITLE: 'feat: foo', PR_BODY: '', PR_LABELS: '[]' });
+    const child = run([CSS], ['--pr', prFile()]);
     assert.equal(child.status, 1);
     assert.match(child.stdout, /^::error /m);
   });
 
-  it('exits 0 when the PR body has an image', () => {
-    assert.equal(run([CSS], { PR_TITLE: 'feat: foo', PR_BODY: IMAGE_BODY }).status, 0);
+  it('exits 0 when the PR body in the PR JSON has an image', () => {
+    assert.equal(run([CSS], ['--pr', prFile({ body: IMAGE_BODY })]).status, 0);
   });
 
-  it('exits 2 when PR_LABELS is not a JSON array', () => {
-    assert.equal(run([CSS], { PR_TITLE: 'feat: foo', PR_LABELS: 'no-visual-change' }).status, 2);
+  it('waives by the no-visual-change label in the PR JSON', () => {
+    assert.equal(run([CSS], ['--pr', prFile({ labels: ['no-visual-change'] })]).status, 0);
+  });
+
+  it('judges by the current body and labels in the PR JSON, ignoring stale PR_BODY / PR_LABELS env', () => {
+    const child = run([CSS], ['--pr', prFile()], { PR_BODY: IMAGE_BODY, PR_LABELS: '["no-visual-change"]' });
+    assert.equal(child.status, 1);
+  });
+
+  it('exits 2 when --pr is not given', () => {
+    assert.equal(run([CSS], []).status, 2);
   });
 });
