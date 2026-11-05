@@ -35,6 +35,7 @@ export const ja: TranslationKeys = {
     title: 'TypedCode',
     subtitle: '使う場面を選んでください。すべての打鍵を改ざん耐性のある証明として記録します。',
     termsNotice: '利用を開始すると、利用規約に同意したものとみなします。',
+    scopeNote: '全モード共通: 手元の画面からの書き写しや外部の支援の有無は証明しません。',
     termsLink: '利用規約',
     start: '開く',
     casualDesc: 'お試し・個人利用。同意画面も画面共有もなしですぐ書けます。',
@@ -181,12 +182,12 @@ export const ja: TranslationKeys = {
       'Proof of Sequential Work (PoSW)：チェックポイントごとに計算量証明を生成し、時間の経過を証明します。この計算はWeb Workerでバックグラウンド実行されます',
     hashChainFingerprint:
       'ブラウザフィンガープリント：証明ファイルには次のブラウザ環境情報が含まれます — ユーザーエージェント、言語設定（優先言語の一覧）、プラットフォーム、CPU コア数、メモリ量、画面（解像度・色深度・表示倍率）、タイムゾーン（UTC との時差）、GPU のベンダー名とレンダラー名、Cookie の有効・無効、Do Not Track の設定、タッチ点数。描画結果（canvas）やインストール済みフォントの一覧は収集しません',
-    hashChainNote: 'この仕組みにより、コードが一文字ずつタイピングされたことを第三者が検証可能な形で証明できます。',
+    hashChainNote: 'この仕組みにより、記録された編集の列が後から書き換えられていないことを第三者が検証できます。',
 
     // Bot検出
     botDetectionTitle: 'Bot検出',
     botDetectionDesc:
-      '自動化ツールやボットによる不正な証明生成を防止するため、<a href="https://www.cloudflare.com/ja-jp/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a>を使用して人間であることを確認します。',
+      '自動化ツールやボットによる不正な証明生成を抑止するため、<a href="https://www.cloudflare.com/ja-jp/products/turnstile/" target="_blank" rel="noopener noreferrer">Cloudflare Turnstile</a>を使用して人間であることを確認します。',
     botDetectionDetailHeading: '検証タイミング：',
     botDetectionInit: 'ファイル作成時：新しいタブを作成する際に人間検証を実施',
     botDetectionExport: '証明エクスポート時：ファイル出力の直前に最終確認を実施',

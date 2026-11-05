@@ -18,6 +18,32 @@ test('ルート / はランディング (エディタ非初期化・4モード�
   }
 });
 
+// 比較表の下の全モード共通の注記 (#240) は ja / en のどちらでも出る。翻訳テキストは読まず、
+// html[lang] でロケールを確かめたうえで、要素が見えて中身が空でないことだけを見る。
+for (const [locale, lang] of [
+  ['ja-JP', 'ja'],
+  ['en-US', 'en'],
+] as const) {
+  test.describe(`ランディング (${lang})`, () => {
+    test.use({ locale });
+
+    test(`比較表の下に全モード共通の注記が ${lang} で出る`, async ({ page }) => {
+      await page.goto('/');
+      await expect(page.locator('#landing-page')).toBeVisible();
+      await expect(page.locator('html')).toHaveAttribute('lang', lang);
+      const note = page.locator('#landing-scope-note');
+      await expect(note).toBeVisible();
+      await expect(note).not.toHaveText(/^\s*$/);
+      // カード列の後ろ (= 比較表の下) にある。
+      const below = await note.evaluate((el) => {
+        const grid = document.querySelector('.landing-card-grid');
+        return grid !== null && (grid.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+      });
+      expect(below).toBe(true);
+    });
+  });
+}
+
 test('未知パスはランディングに落ちる (タイポを黙って casual にしない)', async ({ page }) => {
   await page.goto('/exsm');
   await expect(page.locator('#landing-page')).toBeVisible();

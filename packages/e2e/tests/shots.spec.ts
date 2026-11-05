@@ -12,6 +12,7 @@ import {
 } from './helpers/app.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
 import { failStorageProbe } from './helpers/faults.js';
+import { waitDialogOpen } from './helpers/scenario.js';
 
 /**
  * 見た目・動きの証跡 (`@shots`, #391 / ADR-0036)。**何も assert しない**。人が見るための画像を吐くだけ。
@@ -102,6 +103,14 @@ const SHOTS = [
     file: '14-storage-low.png',
     caption:
       'エディタ: 起動時の空き容量の試験で書き込めなかったときの警告 (このまま続ける / もう一度確かめる。書き込みを容量切れにして表示)',
+  },
+  {
+    file: '15-landing.png',
+    caption: 'エディタ: ランディング (モード選択の比較カードと、その下の全モード共通の注記)',
+  },
+  {
+    file: '16-terms-bot-detection.png',
+    caption: 'エディタ (授業モード): 利用規約の「Bot検出」を開いた状態 (Turnstile の説明)',
   },
 ] as const;
 
@@ -289,6 +298,25 @@ test.describe('見た目・動きの証跡 @shots', () => {
       animations: 'disabled',
       mask: [page.locator('#titlebar-clock')],
     });
+  });
+
+  // 15 (#240): ランディング。比較カードの下に全モード共通の注記がある
+  test('ランディングを撮る @shots', async ({ page }) => {
+    const app = new EditorApp(page);
+    await page.goto('/');
+    await expect.poll(() => app.appState()).toBe('landing');
+    await page.screenshot({ path: out('15-landing.png'), animations: 'disabled' });
+  });
+
+  // 16 (#240): 利用規約の Bot 検出の説明。規約は casual 以外で未同意なら出るので class で開く
+  test('利用規約の Bot 検出の説明を撮る @shots', async ({ page }) => {
+    const app = new EditorApp(page);
+    await app.openModeFresh('class', { acceptTerms: false, waitReady: false });
+    await waitDialogOpen(app, 'terms');
+    const bot = page.locator('[data-dialog="terms"] details:has([data-i18n="terms.botDetectionTitle"])');
+    await bot.locator('summary').click();
+    await bot.locator('[data-i18n-html="terms.botDetectionDesc"]').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: out('16-terms-bot-detection.png'), animations: 'disabled' });
   });
 
   // 11〜12 (#301): 分析器の失敗・時間切れを「シグナルなし」と区別する分析カード。同梱の分析器は通常の proof では

@@ -9,6 +9,8 @@
  *
  * **重いエディタ初期化 (Monaco/トラッカー) はせず DOM のみ描画**する (entry.ts が main.ts を読まずにここだけ描く。#302)。
  * カード選択時に利用規約同意フラグを set する (= 入口で一度同意。casual はモーダルを出さない)。
+ * 比較表の下には、全モード共通で証明しないこと (書き写し・外部の支援) の注記を置く (#240)。
+ * カードの保証の行は相対的な強さしか言わないので、どのモードでも残る限界をここで補う。
  */
 
 import { escapeHtml } from '@typedcode/shared';
@@ -179,6 +181,10 @@ export class LandingPage {
         <h1 class="landing-title">${escapeHtml(t('landing.title'))}</h1>
         <p class="landing-subtitle">${escapeHtml(t('landing.subtitle'))}</p>
         <div class="landing-card-grid">${cards}</div>
+        <p class="landing-scope-note" id="landing-scope-note">
+          <i class="fas fa-info-circle" aria-hidden="true"></i>
+          ${escapeHtml(t('landing.scopeNote'))}
+        </p>
         <p class="landing-terms">${escapeHtml(t('landing.termsNotice'))}</p>
       </div>
     `;

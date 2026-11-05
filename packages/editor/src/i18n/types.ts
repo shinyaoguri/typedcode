@@ -48,6 +48,7 @@ export interface TranslationKeys {
     title: string;
     subtitle: string;
     termsNotice: string; // 「利用を開始すると規約に同意したものとみなします」
+    scopeNote: string; // 比較表の下の注記: 全モード共通で、書き写しや外部の支援の有無は証明しない (#240)
     termsLink: string;
     start: string;
     casualDesc: string;
