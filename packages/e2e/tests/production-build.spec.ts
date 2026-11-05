@@ -241,3 +241,37 @@ test('production build: JS の実行が sandbox (iframe 内の Worker) で動き
   await expect(page.locator('iframe[data-code-runner]')).toHaveCount(0);
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
+
+/**
+ * @wasmer/sdk の worker と wasm-bindgen の glue は、本番ビルドでだけ壊れる (vite.config.ts の
+ * `wasmerSdkBundledWorkers` が差し替えている。editor/AGENTS.md の #364 の項)。dev サーバの C の実行
+ * (code-execution-c-python.spec.ts) では検出できないので、ここで本番ビルドの C の hello を実行する。
+ * clang の webc (約 100 MB) を外部 (assets.typedcode.dev) から取るので PR ゲートには載せず `@nightly` にする
+ * (playwright.build.config.ts の grepInvert。NIGHTLY=1 で含まれる)。
+ */
+test('production build: @nightly C の hello が Wasmer の clang でコンパイルされて実行され、success で終わる', async ({
+  page,
+}) => {
+  test.setTimeout(360_000);
+  const pageErrors: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('c');
+  await app.focusEditor();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.press('Delete');
+  // dev フック (`__tcTestInsertBlock`) は dist に無いので打鍵で入れる。改行の自動インデントを通らないよう 1 行にし、
+  // 計算した値を出す (コードの文字列がそのまま出ているのではなく、実行された証拠にする)
+  await page.keyboard.type('int printf(const char *, ...);int main(void){printf("hello-c-%d\\n", 6 * 7);return 0;}');
+
+  const terminal = page.locator('#xterm-container');
+  await page.locator('#run-code-btn').click();
+  await expect(terminal).toHaveAttribute('data-exec-run', '1');
+  // 1 回目の実行は Wasmer の初期化と clang の取得を含む
+  await expect(terminal).toHaveAttribute('data-exec-state', 'idle', { timeout: 240_000 });
+  await expect(terminal).toHaveAttribute('data-exec-outcome', 'success');
+  await expect(terminal.locator('.xterm-rows')).toContainText('hello-c-42');
+  expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});

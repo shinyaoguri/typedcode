@@ -1,8 +1,10 @@
 name: E2E nightly
 
 # 毎晩の長い E2E (`@nightly` の付いたテスト)。PR ゲート (deploy.yml の e2e-shard) には重すぎる、
-# ランダムシードの長い操作列を流す model-based E2E (packages/e2e/tests/model/ / #436) などを回す。
-# `@nightly` は playwright.config.ts の grepInvert で通常の実行から外れていて、NIGHTLY=1 のときだけ含まれる。
+# ランダムシードの長い操作列を流す model-based E2E (packages/e2e/tests/model/ / #436) と、外部の配信物
+# (clang の webc・Pyodide) に依存する C / Python の実行のスモーク (#589) を回す。
+# `@nightly` は playwright.config.ts と playwright.build.config.ts の grepInvert で通常の実行から外れていて、
+# NIGHTLY=1 のときだけ含まれる。dev サーバ向け (test) と本番ビルド向け (test:build) を別の step で回す。
 #
 # 失敗したら、テストが出力ディレクトリに書く model-failure.md (シード・縮約後の操作列・再実行コマンド) を
 # 集めて Issue にする。同じタイトルの open Issue があればコメント追記に切り替える (freshness.yml と同じ形)。
@@ -36,8 +38,9 @@ concurrency:
 jobs:
   nightly:
     runs-on: ubuntu-latest
-    # model-based の長尺 (既定 40 手 × 3 本) と失敗時の縮約 (テスト側で 60 分に打ち切る) を収める
-    timeout-minutes: 90
+    # model-based の長尺 (既定 40 手 × 3 本) と失敗時の縮約 (テスト側で 60 分に打ち切る) に、
+    # C / Python のスモークと本番ビルド (build + preview) の分を足して収める
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -71,6 +74,7 @@ jobs:
       # retries を 0 にする: シードを指定しない run ではリトライのたびに別のシードになり、
       # 失敗した列が「リトライで通った」として消えてしまうため。
       - name: Run @nightly E2E
+        id: nightly-dev
         env:
           NIGHTLY: '1'
           FC_SEED: ${{ inputs.seed }}
@@ -80,6 +84,21 @@ jobs:
           set -o pipefail
           npm run test -w @typedcode/e2e -- --grep @nightly --retries=0 2>&1 | tee "${RUNNER_TEMP}/e2e-nightly.log"
 
+      # 本番ビルド (vite build → vite preview) の @nightly。C の実行は @wasmer/sdk の worker の解決が本番ビルドでしか
+      # 壊れないので、dev サーバの上の step とは別に回す (#364 / #589)。上の step だけが落ちたときも走らせ、
+      # 同じ夜に両方の退行を拾う (準備の step が落ちたときは走らせない)。
+      # 出力先を上の step と分ける: Playwright は実行のたびに出力ディレクトリを空にするので、同じ test-results/ だと
+      # 上の step の model-failure.md (下の Compose failure report が集める) と Playwright レポートが消える。
+      - name: Run @nightly E2E on the production build
+        if: ${{ !cancelled() && (success() || steps.nightly-dev.outcome == 'failure') }}
+        env:
+          NIGHTLY: '1'
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-build
+        run: |
+          set -o pipefail
+          npm run test:build -w @typedcode/e2e -- --grep @nightly --retries=0 --output test-results-build 2>&1 \
+            | tee "${RUNNER_TEMP}/e2e-nightly-build.log"
+
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -88,6 +107,8 @@ jobs:
           path: |
             packages/e2e/playwright-report/
             packages/e2e/test-results/
+            packages/e2e/playwright-report-build/
+            packages/e2e/test-results-build/
           retention-days: 14
 
       - name: Compose failure report
@@ -120,6 +141,8 @@ jobs:
             {
               echo "model-failure.md が見つからない (タイムアウトや model-based 以外のテストの失敗)。"
               echo "上のシードと、実行ログの \`[model #N]\` の操作ログ・artifact の Playwright レポートから辿る。"
+              echo "C / Python の実行のスモーク (code-execution-c-python.spec.ts と production-build.spec.ts の @nightly) の失敗は、"
+              echo "artifact の \`test-results/\` (dev サーバ) と \`test-results-build/\` (本番ビルド) にある。"
             } >> "$body"
           fi
           cat "$body"

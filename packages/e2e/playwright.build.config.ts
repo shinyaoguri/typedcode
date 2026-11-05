@@ -28,6 +28,9 @@ export default defineConfig({
   // 本番ビルドを対象にできる spec だけを明示的に選ぶ。dev 前提のヘルパ
   // (`window.__tcTestInsertBlock` など) を使う spec は dist に存在しない。
   testMatch: /production-build\.spec\.ts$/,
+  // `@nightly` (外部の配信物に依存する C の実行など) は PR ゲートの test:build から外し、NIGHTLY=1 のときだけ含める。
+  // dev 設定 (playwright.config.ts) と同じ振り分けで、毎晩 .github/workflows/e2e-nightly.yml が回す (#589)。
+  grepInvert: process.env.NIGHTLY === '1' ? undefined : /@nightly/,
   timeout: 120_000,
   expect: { timeout: 15_000 },
   forbidOnly: isCI,
