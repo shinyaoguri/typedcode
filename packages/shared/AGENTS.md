@@ -35,7 +35,7 @@
 | `typingProof/ChainVerifier.ts` | full / sampling 検証 |
 | `typingProof/InputTypeValidator.ts` | 許可/禁止 InputType の判定 |
 | `typingProof/StatisticsCalculator.ts` | 統計計算 |
-| `signedCheckpoints.ts` | 署名済み cp の payload 構築・検証・冪等判定。anchoring 密度 (ADR-0016) の計量も (gate は `acceptancePolicy.ts`) |
+| `signedCheckpoints.ts` | 署名済み cp の payload 構築・検証・冪等判定。anchoring 密度 (ADR-0016) の計量も (gate は `acceptancePolicy.ts`)。post-hoc と疎は**ハッシュ対象の `event.timestamp` と `serverTimestamp` の照合**で測り、申告値の `clientTimestamp` を判定に使わない (#320。`clientSpanMs` / `ratio` は表示用)。post-hoc の基点に token の `issuedAt` を使うのは root が検証済みのときだけで、`verifyProofSignedCheckpoints` は `sessionAnchorIssuedAt` を必須で受ける |
 | `acceptancePolicy.ts` | 受理ポリシー (ADR-0043)。`evaluateAcceptancePolicy` が root / 密度 / 署名 cp の存在 / 最終署名の 4 つの opt-in 要件から違反 (列挙型の code) を列挙する純関数。`verifyProofFile` が `integrityValid` (ポリシー無しの結論) と `policy: { applied, evaluated, violations }` を分けて返し、`valid = integrityValid && violations が空`。**整合性が落ちたら評価しない** (`evaluated: false`)。`integrityValid` は `assurance.integrity` や Tier A バンドルの `integrityValid` とは別の値。密度 gate はここにあり、`verifySignedCheckpoints` は密度で `valid` を落とさない |
 | `sessionStartToken.ts` | セッション開始トークン (ADR-0017) の発行・検証 (registry-only)・`computeAnchoredChainRoot`。署名鍵は checkpoint と同一系統を流用。未登録 keyId でも `keyId` と `unknownKey: true` を返す (#329) |
 | `checkpointKeys/registry.ts` | append-only 公開鍵レジストリ (本番鍵) |

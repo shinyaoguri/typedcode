@@ -1005,8 +1005,11 @@ export async function verifyProofFile(
 
   // 3. Verify signed checkpoints (mode independent; only affects "anchored" axis)
   //    密度は計量だけで、ここでは valid を落とさない (判定は受理ポリシー = 下の 5.)。
+  //    post-hoc の照合の基点に token の issuedAt を使うのは、root が検証済みのときだけ (#320。未検証の token の
+  //    issuedAt は書き換えられる)。
   const signedCheckpointResult = await verifyProofSignedCheckpoints(proof, {
     registry: options.signedCheckpointKeyRegistry,
+    sessionAnchorIssuedAt: rootAnchored ? (proof.sessionStartToken?.payload.issuedAt ?? null) : null,
   });
 
   // 4. ADR-0017: セッション開始トークンと署名 cp の sessionId 突合 (アンカーとチェーンの結びつき)。

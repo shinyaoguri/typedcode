@@ -75,6 +75,16 @@ Option B を採用。
    セッションは export 時に最終イベントへ署名するので満たし、猶予は「直前の数打鍵だけ未署名」の
    偽造余地を残す。sessionId 不一致は改ざんの検出ではないので integrity には流さず、temporal だけ
    降格させる (総合 `valid` は従来どおり false)。`valid` の受理条件 (最終署名必須) は #296 の範囲。
+   **改訂 (#320, 2026-11)**: temporal の導出規則 (上の式) は変えず、入力の「post-hoc 疑い」と「疎」の測り方を
+   変えた (詳細は [ADR-0016 の改訂節](0016-anchoring-density-signal.md#改訂-320-2026-11))。post-hoc は申告値の
+   `clientTimestamp` ではなく、ハッシュ対象のイベント時刻 (`event.timestamp`) とサーバ時刻 (`serverTimestamp`) を
+   任意の 2 点で照合し、イベント時刻の進みがサーバ時刻の進みを `max(60s, 1%)` より超えたら立つ (root が検証済みなら
+   token の `issuedAt` を基点に含める)。疎は、サーバ時刻の空白のうちイベント時刻で説明できない分と、署名で挟まれて
+   いないイベントの時刻の幅で測り、正直な無操作では立たない。帰結として、(1) `clientTimestamp` だけを署名時刻どおりに
+   名乗った事後一括署名は `anchored` にならず `partial` になる、(2) 考え込んで長く手を止めた正直なセッションは
+   `partial` から `anchored` に上がる、(3) 通信断の後に溜まった cp を 60s を超えて遅れて署名した正直なセッションは
+   `anchored` から `partial` に下がる (過小主張側。整合性と内容は変わらない)。スリープで `performance.now` が止まる
+   環境では疎が立ちうる (これも過小主張側)。
 5. **表示**: verify (web) は結果画面最上部に三層バッジ (+ mode の参考表示)、verify-cli は
    ヘッダ直下に `--- Assurance ---` 1 行サマリ。既存の TrustCalculator (issue リスト) と
    タブ status は詳細パネルとして併存する (issue の母集団は変えない)。

@@ -618,20 +618,19 @@ describe('verifySignedCheckpoints', () => {
     expect(result.reason).toMatch(/Unknown keyId/);
   });
 
-  it('flags post-hoc batch signing when serverSpan is tiny compared to clientSpan', async () => {
-    const { events, initialEventChainHash } = await buildSmallProof(4);
+  it('flags post-hoc batch signing when event time runs far ahead of the server span (#320)', async () => {
+    // イベント時刻は 1 時間に散っているが、署名はすべて 3 秒以内 (事後一括署名)。
+    // 判定はハッシュ対象のイベント時刻で見る (clientTimestamp は申告値なので使わない)。
+    const ROOT = 'a'.repeat(64);
+    const events = makeSyntheticEvents(4, (i) => i * 20 * 60 * 1000);
     const checkpoints = await buildSignedCheckpoints({
       events,
-      initialEventChainHash,
+      initialEventChainHash: ROOT,
       key: testKey,
-      // client side: spaced over an hour
-      startClientMs: Date.parse('2026-05-28T12:00:00.000Z'),
-      clientStepMs: 20 * 60 * 1000,
-      // server side: all within 3 seconds (suspicious)
       startServerMs: Date.parse('2026-05-28T13:00:00.000Z'),
       serverStepMs: 1000,
     });
-    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+    const result = await verifySignedCheckpoints(events, checkpoints, ROOT, {
       registry: [testKey.registryEntry],
     });
     expect(result.valid).toBe(true);
@@ -639,23 +638,23 @@ describe('verifySignedCheckpoints', () => {
     expect(result.temporal!.postHocSuspected).toBe(true);
   });
 
-  it('does NOT flag natural typing where serverSpan tracks clientSpan', async () => {
-    const { events, initialEventChainHash } = await buildSmallProof(4);
+  it('does NOT flag natural typing where the server span tracks the event-time span (#320)', async () => {
+    const ROOT = 'a'.repeat(64);
+    const events = makeSyntheticEvents(4, (i) => i * 60 * 1000);
     const checkpoints = await buildSignedCheckpoints({
       events,
-      initialEventChainHash,
+      initialEventChainHash: ROOT,
       key: testKey,
       startClientMs: Date.parse('2026-05-28T12:00:00.000Z'),
       clientStepMs: 60 * 1000,
       startServerMs: Date.parse('2026-05-28T12:00:00.500Z'),
       serverStepMs: 60 * 1000,
     });
-    const result = await verifySignedCheckpoints(events, checkpoints, initialEventChainHash, {
+    const result = await verifySignedCheckpoints(events, checkpoints, ROOT, {
       registry: [testKey.registryEntry],
     });
     expect(result.valid).toBe(true);
     expect(result.temporal!.postHocSuspected).toBe(false);
-    expect(result.temporal!.ratio).toBeGreaterThan(0.5);
   });
 
   it('verifyProofSignedCheckpoints wrapper accepts a full proof object', async () => {
@@ -667,6 +666,7 @@ describe('verifySignedCheckpoints', () => {
     });
     const result = await verifyProofSignedCheckpoints(exported, {
       registry: [testKey.registryEntry],
+      sessionAnchorIssuedAt: null,
     });
     expect(result.valid).toBe(true);
   });

@@ -36,7 +36,9 @@ export type IntegrityLevel = 'proven' | 'partial' | 'failed';
  *               (token と cp の sessionId も一致)。最終状態への署名は「その時点の内容が存在した
  *               時刻の上界」を与える。各イベントの実時刻を直接証明するわけではない (#295)
  * - partial:    何らかのサーバアンカーはあるが弱い (疎 / post-hoc 疑い / 未署名の末尾 /
- *               root か cp の片方のみ)
+ *               root か cp の片方のみ)。post-hoc 疑いと疎はイベント時刻 (ハッシュ対象) とサーバ時刻の照合で
+ *               測る (#320、`signedCheckpoints.ts`)。通信断の後にまとめて署名された正直なセッションも、
+ *               署名の遅れが許容差 (60s) を超えれば partial に倒れる (過小主張側)
  * - unanchored: サーバ由来の時刻証拠なし (完全オフライン捏造の余地)
  * - exam-t0:    試験 proof。T0 束縛 (封印 + 監督コード) が時刻の regime を担う (ADR-0006)。
  *               **束縛が実際に検証済み (package 提供 + verifyExamBinding 合格) のときのみ** —
@@ -81,7 +83,9 @@ export interface AssuranceInput {
   signedCheckpoints?: {
     anchored: boolean;
     valid?: boolean;
+    /** anchoring が疎か (`density.sparse`。説明できないサーバ時刻の空白・署名で挟まれていないイベント時刻の幅など。#320) */
     sparse?: boolean;
+    /** イベント時刻がサーバ時刻を許容差より先行したか (`temporal.postHocSuspected`。#320) */
     postHocSuspected?: boolean;
     /**
      * 最後の署名 cp が最終イベントを指すか (`coverage.terminalAnchored`。#295)。false なら

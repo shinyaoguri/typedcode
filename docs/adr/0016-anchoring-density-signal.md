@@ -77,10 +77,73 @@
 - verify(web) は現状 density を **warning 表示のみ**。exam proof に対する web 側 strict-fail の配線は follow-up。
 - ADR-0017 (session/start サーバアンカー) 実装後、`firstAnchorLatencyServerMs` を gate 対象に格上げ検討。
 
+## 改訂 (#320, 2026-11)
+
+当初の判定には 2 つの穴があった。どちらも検証器だけの変更で塞ぎ、proof フォーマット (`PROOF_FORMAT_VERSION`) は変えない
+(使うのは既存の proof が持つ `event.timestamp` と `serverTimestamp` だけ)。
+
+1. **post-hoc を申告値で測っていた**: `temporal.postHocSuspected` は `clientTimestamp` の幅とサーバ時刻の幅の比
+   (`ratio < 0.1` など) で判定していた。`clientTimestamp` はクライアントが好きに書けるので、オフラインで合成した
+   イベント列を後からまとめて署名させ、`clientTimestamp` だけ署名時刻どおりに名乗れば `anchored` になった。
+2. **正直な無操作で疎になった**: `maxGapServerMs > 50s` は、考え込んで手が止まっただけの正直なセッションを `sparse`
+   (→ temporal `partial`) にした。cp はイベントのときにしか作られないため。
+
+### 判定式
+
+記号: 署名 cp j について `e_j = events[eventIndex].timestamp` (ハッシュ対象の単調時計 `performance.now() − startTime`)、
+`s_j = serverTimestamp`。正直な proof では、イベント時刻の進みは実時間の進みを超えない (セッション復元のときは
+`startTime` を詰める)。
+
+- **post-hoc**: 任意の 2 点 k < j で `(e_j − e_k) − (s_j − s_k) ≤ tol(s_j − s_k)` を要求し、破れたら
+  `postHocSuspected = true`。`tol(Δs) = max(60s, 1% × Δs)`。
+  - **累積で照合する (隣接ペアごとにしない)**: ペアごとに許容差を与えると、cp が N 個なら N × 許容差まで時間を
+    水増しできる (1 秒おきに署名させれば 60 倍速で合成できる)。任意の 2 点で照合すると、水増しの上限はセッション
+    全体で許容差 1 回分になる。
+  - **基点に token の `issuedAt` を含める**: root が検証済み (`rootAnchored`) のときだけ、仮想点
+    `(e = events[0].timestamp, s = issuedAt)` を足す。root は serverNonce に束縛済みなので、正直な proof の
+    event 0 は必ず `issuedAt` より後に起きている。未検証の token の `issuedAt` は書き換えられるので使わない
+    (基点は制約を足すだけで、判定を緩めることはない)。これで署名 cp が 1 個だけの proof も照合できる。
+  - イベント時刻が有限の数でない点があれば post-hoc 疑いに倒す (fail-closed。改ざんなら `verifyChain` でも落ちる)。
+  - `clientSpanMs` / `ratio` は表示用の参考値として残し、判定に使わない。`eventSpanMs` (最初から最後の署名 cp の
+    イベント時刻の幅) と `maxEventLeadMs` (全ペア・基点込みの `Δe − Δs` の最大) を足した。
+- **sparse**: event 件数のギャップ (500) と初アンカーまでの件数 (500) は据え置き。サーバ時刻の生のギャップ
+  `maxGapServerMs` は表示用に残し、判定は次の 2 つに置き換えた。
+  - **(A) 説明できないサーバ時刻の空白** `maxUnexplainedGapServerMs`: 連続する署名 cp 間の
+    `(s_j − s_{j−1}) − (e_j − e_{j−1})` の最大が 50s 超で sparse。無操作の区間は `Δe ≈ Δs` なので数えない。
+    先頭 (firstSeenAt → 初アンカー) はイベント時刻の対応が無いので生の差で含める (現状 ~0)。
+  - **(B) 署名で挟まれていないイベント時刻の幅** `maxUnanchoredEventSpanMs`: 連続する署名 cp k, k+1 の間にある
+    (cp を持たない) イベント x の `e_x − e_k` の最大が 50s 超で sparse。(A) だけだと現行より弱くなる: 実時間で
+    5 分待ってオフラインで答えを用意し、イベント時刻を 5 分に散らした 300 件を合成して末尾 1 個だけ署名させると、
+    `Δe ≈ Δs` で (A) を通り、件数 300 < 500 で件数ギャップも通る。正直な editor は最後の cp から 10s 経つと次の
+    イベントで cp を作る (`CheckpointManager.shouldCreateCheckpoint`) ので、cp を持たないイベントは直前の cp から
+    ~10s 以内に収まる。最初の cp より前は対象外 (時間トリガは最初の cp の後にしか効かない)、末尾は
+    `terminalAnchored` (#295) が見る。
+  - イベント時刻が有限の数でないイベントに当たったら sparse に倒す (計量からは外す)。
+
+### 許容差の根拠
+
+| 成分 | 値 | 何を吸収するか |
+|---|---|---|
+| 絶対値 | 60s | 署名の遅れ。fetch のタイムアウト 10s (editor の `WORKERS_FETCH_TIMEOUT_MS`) + backoff 1+2+4+8+16s ≒ 5 回目の再送まで、と PoSW の処理待ち |
+| 相対値 | 1% | クライアントの単調時計とサーバ時計の進み方の差 (NTP の slew は最大 500ppm = 0.05%。その 20 倍) |
+
+100 分未満のスパンでは絶対値が効く。攻撃者が水増しできるのは、累積判定のためセッション全体で max(60s, スパンの 1%)
+の 1 回分 (1 時間で 60s、10 時間で 6 分)。
+
+### 既知の限界
+
+- **スリープで `performance.now` が止まる環境**: ノート PC のスリープ中に単調時計が止まる実装では、スリープを跨いだ
+  区間で `Δe < Δs` になり、(A) が sparse を出しうる。過小主張側 (temporal が `partial` に下がるだけ) なので安全側。
+- **60s を超える署名遅れのある正直な proof は `partial` に下がる**: 通信断の後に溜まった cp をまとめて署名した
+  セッションは、イベント時刻の幅がサーバ時刻の幅を許容差より超えるので post-hoc 疑いになる。既存の proof のうち
+  この形のものは、改訂前の `anchored` から `partial` に変わる。整合性 (`integrityValid`) と内容は変わらない。
+- 「主張した時間ぶん実際にサーバへ周期的に接続し続ける」ライブ台本セッションを防げない点 (上の「正直な天井」) は
+  変わらない。
+
 ## References
 
 - 実装: [`packages/shared/src/signedCheckpoints.ts`](../../packages/shared/src/signedCheckpoints.ts) `computeDensity` / `verifySignedCheckpoints` (`requireAnchorDensity`)
 - 型: [`packages/shared/src/types/signedCheckpoint.ts`](../../packages/shared/src/types/signedCheckpoint.ts) `SignedCheckpointsVerificationResult.density`
 - 配線: [`packages/shared/src/verification.ts`](../../packages/shared/src/verification.ts) `VerifyProofFileOptions.requireAnchorDensity`、verify-cli `--require-anchor-density`
 - 関連 ADR: [ADR-0001](0001-hybrid-checkpoint-trigger.md) (cadence) / [ADR-0002](0002-signed-checkpoints-with-ecdsa-p256.md) (署名 cp) / [ADR-0004](0004-verifier-checkpoint-stance.md) (未署名 cp の扱い)
-- テスト: [`packages/shared/src/__tests__/signedCheckpoints.test.ts`](../../packages/shared/src/__tests__/signedCheckpoints.test.ts) `anchoring density gate (ADR-0016)`
+- テスト: [`packages/shared/src/__tests__/signedCheckpoints.test.ts`](../../packages/shared/src/__tests__/signedCheckpoints.test.ts) `anchoring density gate (ADR-0016)`、[`signedCheckpointEventTime.test.ts`](../../packages/shared/src/__tests__/signedCheckpointEventTime.test.ts) / [`signedCheckpointThresholds.test.ts`](../../packages/shared/src/__tests__/signedCheckpointThresholds.test.ts) / [`assurance.eventTime.test.ts`](../../packages/shared/src/__tests__/assurance.eventTime.test.ts) (#320 の判定式と境界)

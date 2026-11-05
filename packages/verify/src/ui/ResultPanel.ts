@@ -721,10 +721,11 @@ export class ResultPanel {
     const warnings: string[] = [];
     if (sc.temporal) {
       this.anchoringTemporalRow.style.display = 'flex';
+      // post-hoc はイベント時刻 (ハッシュ対象) とサーバ時刻の照合で判定する (#320)。申告の clientTimestamp は出さない。
       const serverMin = Math.round(sc.temporal.serverSpanMs / 60000);
-      const clientMin = Math.round(sc.temporal.clientSpanMs / 60000);
-      const ratioStr = sc.temporal.ratio !== null ? sc.temporal.ratio.toFixed(2) : 'n/a';
-      this.anchoringTemporal.textContent = `${ratioStr} (server ${serverMin}min / client ${clientMin}min)`;
+      const eventMin = Math.round(sc.temporal.eventSpanMs / 60000);
+      const leadSec = (sc.temporal.maxEventLeadMs / 1000).toFixed(1);
+      this.anchoringTemporal.textContent = `${leadSec}s (event ${eventMin}min / server ${serverMin}min)`;
       if (sc.temporal.postHocSuspected) warnings.push(t('result.anchoringPostHoc'));
     } else {
       this.anchoringTemporalRow.style.display = 'none';
@@ -885,6 +886,8 @@ export class ResultPanel {
     // ---- Section: 時間スパン分析 ----
     if (temporal) {
       const serverSec = (temporal.serverSpanMs / 1000).toFixed(1);
+      const eventSec = (temporal.eventSpanMs / 1000).toFixed(1);
+      const leadSec = (temporal.maxEventLeadMs / 1000).toFixed(1);
       const clientSec = (temporal.clientSpanMs / 1000).toFixed(1);
       const ratioStr = temporal.ratio !== null ? temporal.ratio.toFixed(3) : 'n/a';
       const verdictKey = temporal.postHocSuspected ? 'result.anchoringPostHocFlagged' : 'result.anchoringPostHocClear';
@@ -893,6 +896,8 @@ export class ResultPanel {
         `<div class="anchoring-detail-section">
           <h4 class="anchoring-detail-heading">${escapeHtml(t('result.anchoringSectionTemporal'))}</h4>
           ${this.detailRow(t('result.anchoringServerSpan'), `${serverSec}s (${temporal.serverSpanMs}ms)`)}
+          ${this.detailRow(t('result.anchoringEventSpan'), `${eventSec}s (${temporal.eventSpanMs}ms)`)}
+          ${this.detailRow(t('result.anchoringEventLead'), `${leadSec}s (${temporal.maxEventLeadMs}ms)`)}
           ${this.detailRow(t('result.anchoringClientSpan'), `${clientSec}s (${temporal.clientSpanMs}ms)`)}
           ${this.detailRow(t('result.anchoringRatio'), ratioStr)}
           <p class="anchoring-detail-note">${escapeHtml(t('result.anchoringPostHocCriteria'))}</p>

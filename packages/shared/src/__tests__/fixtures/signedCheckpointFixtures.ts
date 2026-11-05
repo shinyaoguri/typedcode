@@ -104,6 +104,16 @@ export interface BuildSignedCheckpointsOptions {
   startServerMs?: number;
   /** serverTimestamp 同士の間隔 (ms) */
   serverStepMs?: number;
+  /**
+   * i 番目の checkpoint の serverTimestamp (ms) を個別に決める。指定すると startServerMs / serverStepMs より優先する
+   * (等間隔でない署名時刻を作るため。#320)
+   */
+  serverMsAt?: (i: number) => number;
+  /**
+   * i 番目の checkpoint の clientTimestamp (ms) を個別に決める。指定すると startClientMs / clientStepMs より優先する
+   * (#320)
+   */
+  clientMsAt?: (i: number) => number;
   /** envelope に公開鍵を同梱するか */
   embedPublicKey?: boolean;
 }
@@ -125,6 +135,8 @@ export async function buildSignedCheckpoints(options: BuildSignedCheckpointsOpti
     clientStepMs = 1000,
     startServerMs = Date.parse('2026-05-28T12:00:01.000Z'),
     serverStepMs = 1000,
+    serverMsAt = (i: number) => startServerMs + i * serverStepMs,
+    clientMsAt = (i: number) => startClientMs + i * clientStepMs,
     embedPublicKey = false,
   } = options;
 
@@ -149,8 +161,8 @@ export async function buildSignedCheckpoints(options: BuildSignedCheckpointsOpti
       previousSignedCheckpointHash,
       totalEventsSincePrevious: eventIndex - previousEventIndexCounted,
       poswIterations: POSW_ITERATIONS,
-      clientTimestamp: new Date(startClientMs + i * clientStepMs).toISOString(),
-      serverTimestamp: new Date(startServerMs + i * serverStepMs).toISOString(),
+      clientTimestamp: new Date(clientMsAt(i)).toISOString(),
+      serverTimestamp: new Date(serverMsAt(i)).toISOString(),
       firstSeenAt,
     };
     const envelope = await signCheckpoint(payload, key, { embedPublicKey });
@@ -199,13 +211,16 @@ export async function resignCheckpoints(
  * 合成のイベント列。署名 cp の検証は cp が指す event の hash 一致しか見ない (チェーン全体は
  * verifyChain の責務) ので、密度や時刻の検査は実 PoSW を回さずにこの列で検査できる。
  * hash は index の 16 進を 64 桁に詰めたもの (列の中で一意)。
+ *
+ * `timestampAt` は i 番目のイベント時刻 (ms)。既定は 10ms 間隔。イベント時刻とサーバ時刻の照合 (#320) を
+ * 検査するときに渡す (合成列の hash は時刻に依存しないので、時刻だけを自由に置ける)。
  */
-export function makeSyntheticEvents(n: number): StoredEvent[] {
+export function makeSyntheticEvents(n: number, timestampAt: (i: number) => number = (i) => i * 10): StoredEvent[] {
   const events: StoredEvent[] = [];
   for (let i = 0; i < n; i++) {
     events.push({
       sequence: i,
-      timestamp: i * 10,
+      timestamp: timestampAt(i),
       type: 'contentChange',
       inputType: 'insertText',
       data: String.fromCharCode('a'.charCodeAt(0) + (i % 26)),

@@ -587,21 +587,33 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
   - `eventIndex` 厳密増加
   - `serverTimestamp` 厳密増加
   - `previousSignedCheckpointHash` が直前 envelope の payload hash と一致 (連鎖)
-- temporal 分析 (warning レベル):
-  - `serverSpan = lastServerTimestamp - firstServerTimestamp`
-  - `clientSpan = lastClientTimestamp - firstClientTimestamp`
-  - `ratio = serverSpan / clientSpan`
-  - `ratio < 0.1` または `serverSpan < 60s` かつ `clientSpan > 600s` の時、**post-hoc batch signing 疑い** フラグ
+- temporal 分析 (warning レベル。#320 / ADR-0016 の改訂節):
+  - 記号: 署名 cp j について `e_j = events[eventIndex].timestamp` (ハッシュ対象の単調時計の相対 ms)、`s_j = serverTimestamp`。
+  - 照合する点は検査を通った署名 cp と、root が検証済み (`rootAnchored`) なら token の基点 `(e = events[0].timestamp, s = issuedAt)`。
+    未検証の token の `issuedAt` は書き換えられるので使わない。parse できない `issuedAt` も使わない。
+  - 任意の 2 点 k < j で `(e_j − e_k) − (s_j − s_k) > max(60s, 1% × (s_j − s_k))` なら **post-hoc batch signing 疑い** フラグ
+    (`POST_HOC_TOLERANCE_MS` / `POST_HOC_TOLERANCE_RATIO`)。隣接ペアごとではなく累積で照合するので、水増しできるのは
+    セッション全体で許容差 1 回分。照合する点のイベント時刻が有限の数でなければフラグを立てる (fail-closed)。
+  - 計量: `serverSpanMs` (サーバ時刻の幅)、`eventSpanMs` (最初から最後の署名 cp のイベント時刻の幅)、`maxEventLeadMs`
+    (全ペア・基点込みの `Δe − Δs` の最大、負なら 0)。`clientSpanMs` (`clientTimestamp` の幅) と `ratio = serverSpan / clientSpan`
+    は表示用の参考値で、判定に使わない (`clientTimestamp` は申告値)。
 - アンカー密度分析 (ADR-0016、warning レベル / 任意で strict-fail):
   - `coverageRatio` (= 最終署名 cp の eventIndex / 全 event 数) は **末尾 1 点でも 1.0** になり薄いアンカーを見逃すため、
     署名 cp が指す **eventIndex / serverTimestamp のギャップ**を別途見る。
   - `maxGapEvents` = 連続署名 cp 間の eventIndex 最大ギャップ (先頭=event0 境界 / 末尾=最終 event 境界 を含む)。
     末尾 1 点なら先頭ギャップ大、先頭 1 点なら末尾ギャップ大で、どちらの偏りも捕捉する。
-  - `maxGapServerMs` = 連続署名 cp 間 serverTimestamp の最大ギャップ (先頭は firstSeenAt 起点)。
+  - `maxGapServerMs` = 連続署名 cp 間 serverTimestamp の最大ギャップ (先頭は firstSeenAt 起点)。表示用の生の値で、判定には使わない
+    (正直な無操作でも大きくなる。#320)。
+  - `maxUnexplainedGapServerMs` = 連続署名 cp 間の `(s_j − s_{j−1}) − (e_j − e_{j−1})` の最大 (= イベント時刻で説明できない
+    サーバ時刻の空白。先頭は firstSeenAt → 初アンカーの生の差)。考え込んで無操作の区間は `Δe ≈ Δs` なので数えない (#320)。
+  - `maxUnanchoredEventSpanMs` = 連続署名 cp k, k+1 の間にある (cp を持たない) イベント x の `e_x − e_k` の最大
+    (= 署名で挟まれていないイベントの時刻の幅)。最初の署名 cp より前・最後の署名 cp より後は数えない。正直な editor は
+    最後の cp から 10s で次のイベントに cp を作るので ~10s に収まる (#320)。
   - `firstAnchorLatencyEvents` = 最初の署名 cp までの未アンカー event 数。
   - `firstAnchorLatencyServerMs` = firstSeenAt → 初アンカーの ms。現アーキでは構造的に ~0 (session/start アンカー = ADR-0017 で意味化)。計測のみで gate には使わない。
-  - **疎判定 `sparse`**: `maxGapEvents > 500` または `maxGapServerMs > 50s` または `firstAnchorLatencyEvents > 500`
-    (= ハイブリッドトリガ 100 events / 10,000 ms の 5 倍。保守的な置きで実ログ調整待ち)。
+  - **疎判定 `sparse`**: `maxGapEvents > 500` または `maxUnexplainedGapServerMs > 50s` または `maxUnanchoredEventSpanMs > 50s`
+    または `firstAnchorLatencyEvents > 500` (= ハイブリッドトリガ 100 events / 10,000 ms の 5 倍。保守的な置きで実ログ調整待ち)。
+    署名 cp の間のイベント時刻が有限の数でなければ `sparse` に倒す (fail-closed)。
   - 署名 cp レイヤは密度を**計量するだけ**で、`sparse` でも `signedCheckpoints.valid` は true のまま。不受理にするのは
     受理ポリシーの `requireAnchorDensity` (違反 `anchor-density-sparse`。§6.3.1、#296) で、整合性 (`integrityValid`) は落とさない。
     `signedCount === 0` (未アンカー) は対象外 = `density=null` で、ADR-0004「未アンカーは valid のまま」を維持
@@ -687,7 +699,7 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 | signature を別 proof から流用 | Layer 6 (initialEventChainHash 不一致, chainHash 不一致) |
 | envelope を並び替え/削除 | Layer 6 (`previousSignedCheckpointHash` 連鎖違反) |
 | **sessionId 流用** で別人の checkpoint chain 末尾に自分の envelope を append | Layer 6 (`firstSeenAt` 不一致 → KV 由来の (sessionId, tabId) 単位の不変値で防御) |
-| 全 envelope を proof 完成後にバッチで署名取得 (post-hoc) | Layer 6 (serverSpan が clientSpan と乖離 → warning フラグ) |
+| 全 envelope を proof 完成後にバッチで署名取得 (post-hoc) | Layer 6 (イベント時刻の進みがサーバ時刻の進みを max(60s, 1%) より超える → warning フラグ。#320) |
 | Workers サーバを将来停止させた後に proof 改ざん | Layer 6 (公開鍵 registry が git 永続管理、envelope 同梱で完全オフライン検証可能) |
 | **(試験)** T0 前に問題を読んで事前 solve | 封印 (Argon2id + 監督コード)。T0 まで復号不可 (消費期限つき; 配布窓は数分) |
 | **(試験)** 配布と異なる別問題の解答にすり替え | §6.4 (packageHash 不一致 / 復号後 problemContentHash 不一致) |
@@ -729,7 +741,13 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 - **`fast` モード**: PoSW の正しさは検証されない。攻撃者が「PoSW iterations: 10000」と申告しつつ偽の intermediateHash を入れた場合、fast モードでは通る。しかし event の hash 入力に posw が含まれるため、`SHA256(previousHash + eventData_with_posw)` の照合で実質的に「申告 PoSW 値が proof 全体と一貫している」ことは保証される。**ただし「実際に 10000 回反復したか」は確認しない**
   - この差は**表示にも現れなければならない** (#214)。fast で検証したとき、三層保証の整合性は `proven` ではなく `partial` (一部未検証) になり、verify は信頼バッジに warning issue (`posw`) を積んでタブも警告扱い、verify-cli は合否ヘッダ直下と `--- Assurance ---` に「PoSW を再計算していない」と明記する。**判定 (`verifyProofFile` の valid / exit code) は fast でも変えない** — fast は「速い改ざん検出」という正当な用途を持つ
 - **`audit` モード** (未実装): 将来的に決定的サンプリング (verifier 提供 nonce で seed) で PoSW を一部検証する設計余地あり
-- **post-hoc 検出**: temporal ratio は統計的ヒューリスティック。閾値 0.1 は経験則。攻撃者が稼働時間と同等のサーバ時間をかけて段階的に署名取得すれば検出回避可能
+- **post-hoc 検出** (#320): ハッシュ対象のイベント時刻とサーバ時刻を任意の 2 点で照合する (申告値の `clientTimestamp` は使わない)。
+  回避するには、合成したイベント列のイベント時刻の幅に見合うだけのサーバ時間をかけて、イベント時刻の進みに遅れずに段階的に
+  署名を取る必要がある (水増しできるのはセッション全体で `max(60s, スパンの 1%)` の 1 回分。root が検証済みなら token の
+  `issuedAt` からの経過も照合するので、開始前に合成しておく分も効かない)。言い換えると、主張したイベント時刻と同じだけの実時間を
+  サーバと通信しながら使う「ライブ台本セッション」は防げない (ADR-0016 の正直な天井)。正直な側の限界: 通信断の後に溜まった cp を
+  60s を超えて遅れて署名したセッションは post-hoc 疑い (temporal `partial`) になり、スリープで `performance.now` が止まる環境では
+  スリープを跨いだ区間で `sparse` が立ちうる (どちらも過小主張側)
 - **タイピングパターン分析** (verify 側に別途実装): キーストロークの dwell/flight time から「人間っぽさ」を判定するが、これは UI 表示用の参考値で proof valid 判定には使われない
 
 ### 8.3. 守れない性質 (Out of Scope)
@@ -827,8 +845,8 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **envelope** | SignedCheckpointEnvelope。署名済み payload + 署名 + keyId |
 | **firstSeenAt** | サーバが (sessionId, tabId) を最初に見た時刻。KV 由来で、そのキーに対して不変 |
 | **anchored** | proof に signed checkpoint が 1 つ以上含まれている状態 |
-| **post-hoc batch signing** | proof 完成後に複数 envelope を短時間で一括取得する攻撃。temporal ratio で検出試行 |
-| **anchor density / sparse (ADR-0016)** | 署名 cp が主張イベント数/時間に対し十分密かを見る指標。`maxGapEvents>500` / `maxGapServerMs>50s` / `firstAnchorLatencyEvents>500` で `sparse`。末尾 1 点アンカー (coverageRatio=1.0 でも疎) を検出。既定 warning、`requireAnchorDensity` で受理ポリシーの違反 `anchor-density-sparse` (§6.3.1) |
+| **post-hoc batch signing** | proof 完成後に複数 envelope を短時間で一括取得する攻撃。イベント時刻 (`event.timestamp`) の進みがサーバ時刻の進みを `max(60s, 1%)` より超える 2 点があれば疑う (累積照合・検証済み token の `issuedAt` を基点に含む。#320) |
+| **anchor density / sparse (ADR-0016)** | 署名 cp が主張イベント数/時間に対し十分密かを見る指標。`maxGapEvents>500` / `maxUnexplainedGapServerMs>50s` / `maxUnanchoredEventSpanMs>50s` / `firstAnchorLatencyEvents>500` で `sparse` (#320 で生のサーバ時刻ギャップから置き換え)。末尾 1 点アンカー (coverageRatio=1.0 でも疎) を検出。既定 warning、`requireAnchorDensity` で受理ポリシーの違反 `anchor-density-sparse` (§6.3.1) |
 | **受理ポリシー / acceptance policy (ADR-0043)** | 整合性とは別に採点者が opt-in で足す受理要件 (`requireRootAnchor` / `requireAnchorDensity` / `requireSignedCheckpoints` / `requireTerminalAnchor`)。違反は `policy.violations` に code つきで出て `valid` だけを落とし、`integrityValid` は落とさない。整合性が落ちた proof では評価しない (`evaluated: false`)。§6.3.1 |
 | **session start token / serverNonce (ADR-0017)** | session/start が Turnstile 後に発行する ECDSA 署名トークン。`serverNonce` を root (`SHA256(fp ‖ localNonce ‖ serverNonce)`) に焼き、開始時刻をサーバアンカーする。完全オフライン捏造を封じる。Turnstile ゲート + root アンカー + 人間ゲートを兼ね、HMAC attestation の作成経路を置換 |
 | **rootAnchored (ADR-0017)** | proof の root が serverNonce トークンでアンカーされているか。`sessionStartToken` 同梱で true。false (旧 proof / オフライン劣化) は warning、`requireRootAnchor` で受理ポリシーの違反 `root-anchor-missing`。exam の免除は束縛検証合格 (`examBindingVerified`) が条件 (#131) |
@@ -859,9 +877,12 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `MAX_TABS_PER_SESSION` | 64 | `workers/src/checkpoint.ts` (ADR-0027) |
 | `WORKERS_FETCH_TIMEOUT_MS` | 10_000 | `editor/src/config/timeouts.ts` (Workers への 1 回の fetch の上限。verify-captcha / session/start / checkpoint/sign。超過は既存の失敗経路 = retry・degraded fallback・署名の backoff 再試行に合流。#324) |
 | `PRE_EXPORT_VERIFICATION_BUDGET_MS` | 15_000 | `editor/src/config/timeouts.ts` (best-effort モード = exam/class/assignment の export 前認証全体の予算。超過は失敗 attestation を記録して ZIP を出す。casual には適用しない。#324) |
-| `POST_HOC_RATIO_THRESHOLD` | 0.1 | `signedCheckpoints.ts` |
-| `POST_HOC_MIN_SERVER_SPAN_MS` | 60_000 | `signedCheckpoints.ts` |
-| `POST_HOC_MIN_CLIENT_SPAN_MS` | 600_000 | `signedCheckpoints.ts` |
+| `POST_HOC_TOLERANCE_MS` | 60_000 | `signedCheckpoints.ts` (post-hoc 照合の許容差の絶対値。署名の遅れ = fetch タイムアウト 10s + backoff 1+2+4+8+16s + PoSW 待ち。#320) |
+| `POST_HOC_TOLERANCE_RATIO` | 0.01 | `signedCheckpoints.ts` (許容差の相対値。単調時計とサーバ時計の進み方の差 = NTP slew 最大 0.05% の 20 倍。#320) |
+| `MAX_ANCHOR_GAP_EVENTS` | 500 | `signedCheckpoints.ts` (ADR-0016) |
+| `MAX_ANCHOR_GAP_SERVER_MS` | 50_000 | `signedCheckpoints.ts` (イベント時刻で説明できないサーバ時刻の空白の上限。ADR-0016 / #320) |
+| `MAX_UNANCHORED_EVENT_SPAN_MS` | 50_000 | `signedCheckpoints.ts` (署名で挟まれていないイベントの時刻の幅の上限。#320) |
+| `MAX_FIRST_ANCHOR_LATENCY_EVENTS` | 500 | `signedCheckpoints.ts` (ADR-0016) |
 | `PROOF_FORMAT_VERSION` | '1.2.0' | `version.ts` (1.1.0 = exam root 式 ADR-0006、1.2.0 = session アンカー ADR-0017。いずれも加算的で後方互換) |
 | `SESSION_TOKEN_FORMAT_VERSION` | 1 | `version.ts` (セッション開始トークン payload, ADR-0017) |
 | `COHORT_MIN_N` | 5 | `analysis/cohort.ts` (コホート基準の小 N ガード, ADR-0025) |
@@ -939,3 +960,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-04 | 検証できない sessionStartToken を改ざんにしない (#329) | token の未登録 keyId・署名不正・`fingerprintHash` の不一致で `verifyInitialHashRoot` が `valid:false` を返し、`metadataValid=false` → integrity `failed` になっていた (古い registry の検証器で正直な proof が「改ざん」と出る)。root が `serverNonce` 込みの式で合えば root を有効のまま `rootAnchored=false` とし、理由を `rootAnchorFailure` で返して総合の `valid` だけを落とす (§6.2 Layer 1 / §6.3)。`serverNonce` を書き換えて root が合わない proof は従来どおり改ざん。**proof フォーマットは不変** |
 | 2026-11-04 | JS / TS 実行の隔離 (ADR-0041, #290) | ユーザーの JS / TS を opaque origin の sandbox iframe (`allow-scripts` だけ) の中の Blob Worker で実行し、停止・タイムアウト (30 秒)・出力予算 (1,000,000 文字) の超過は iframe ごと除去して終わらせる。`codeExecution` の result の outcome に **`timeout`** を足した (加算的・`PROOF_FORMAT_VERSION` 据え置き)。`summarizeProcess` は timeout を失敗に数える。§4.1 を反映 |
 | 2026-11-04 | 分析器の失敗・期限切れ・不正な出力を「手掛かりなし」と区別 (#301) | `AnalysisReport` に `analyzerStatus` (分析器ごとの `ok` / `failed` / `timeout` / `invalid-output`) を足した (`analyzerVersions` は互換のため残す。`analysis-bundle/1` は据え置き)。`runAnalysis` は分析器ごとに `ANALYZER_TIMEOUT_MS` (10 秒) の期限を付け、契約に合わない signal を捨てて `reviewPriority` に寄与させない。ok の分析器が 0 なら三層保証の著述性は「分析未実行」(null)。verify-cli は `Analysis unavailable: <id> (<status>)` 行、verify (Web) は分析カードの「分析不能」バッジ・注記で出す。検証結果 (`valid` / integrity) は変えない |
+| 2026-11-05 | post-hoc と密度をイベント時刻 × サーバ時刻で測る (#320) | post-hoc は申告値の `clientTimestamp` の幅とサーバ時刻の幅の比で判定しており、`clientTimestamp` を署名時刻どおりに名乗った事後一括署名が `anchored` になった。ハッシュ対象のイベント時刻とサーバ時刻を任意の 2 点で照合し (許容差 `max(60s, 1%)`、検証済み token の `issuedAt` を基点に含む)、`temporal` に `eventSpanMs` / `maxEventLeadMs` を足した。密度の `sparse` は生のサーバ時刻ギャップをやめ、説明できない空白 (`maxUnexplainedGapServerMs`) と署名で挟まれていないイベント時刻の幅 (`maxUnanchoredEventSpanMs`) で見る (正直な無操作では立たない)。60s を超えて遅れて署名された正直な proof は temporal が `anchored` から `partial` に下がる。§6.2 Layer 6 / §7 / §8 / §10 を反映。**判定 (`verifyProofFile` の valid / exit code) と proof フォーマットは不変** |
