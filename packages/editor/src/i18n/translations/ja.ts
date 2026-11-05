@@ -182,7 +182,7 @@ export const ja: TranslationKeys = {
       'Proof of Sequential Work (PoSW)：チェックポイントごとに計算量証明を生成し、時間の経過を証明します。この計算はWeb Workerでバックグラウンド実行されます',
     hashChainFingerprint:
       'ブラウザフィンガープリント：証明ファイルには次のブラウザ環境情報が含まれます — ユーザーエージェント、言語設定（優先言語の一覧）、プラットフォーム、CPU コア数、メモリ量、画面（解像度・色深度・表示倍率）、タイムゾーン（UTC との時差）、GPU のベンダー名とレンダラー名、Cookie の有効・無効、Do Not Track の設定、タッチ点数。描画結果（canvas）やインストール済みフォントの一覧は収集しません',
-    hashChainNote: 'この仕組みにより、コードが一文字ずつタイピングされたことを第三者が検証可能な形で証明できます。',
+    hashChainNote: 'この仕組みにより、記録された編集の列が後から書き換えられていないことを第三者が検証できます。',
 
     // Bot検出
     botDetectionTitle: 'Bot検出',
