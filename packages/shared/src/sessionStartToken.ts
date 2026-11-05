@@ -40,7 +40,7 @@ export const SESSION_TOKEN_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 /** SHA-256 を hex 文字列で表したときの正規表現 (64 桁の小文字 hex) */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** sessionId の許容最大長 (UUID 等で十分。API 濫用対策) */
-const MAX_ID_LENGTH = 200;
+export const MAX_ID_LENGTH = 200;
 /**
  * sessionId の許容文字種 (#297)。token に焼いた sessionId はそのまま checkpoint 署名の KV キーに
  * なるので、signedCheckpoints.ts の validateSignedCheckpointInput と**同じ集合**に揃える

@@ -18,6 +18,7 @@ import {
   validateSignedCheckpointInput,
   verifyCheckpointSignature,
 } from '../index.js';
+import { MAX_ID_LENGTH, MAX_TIMESTAMP_LENGTH } from '../signedCheckpoints.js';
 import { createTestKey, type TestKey } from './fixtures/signedCheckpointFixtures.js';
 
 const baseInputRaw = {
@@ -32,6 +33,12 @@ const baseInputRaw = {
   totalEventsSincePrevious: 33,
   clientTimestamp: '2026-05-28T12:00:00.000Z',
 };
+
+/** Date.parse が受け付ける、ちょうど `length` 文字の ISO 時刻 (小数秒の桁数で長さを合わせる)。 */
+function parseableTimestampOfLength(length: number): string {
+  const prefix = '2026-05-28T12:00:00.';
+  return `${prefix}${'0'.repeat(length - prefix.length - 1)}Z`;
+}
 
 let key: TestKey;
 
@@ -135,13 +142,38 @@ describe('validateSignedCheckpointInput', () => {
     const r = validateSignedCheckpointInput({ ...baseInputRaw, tabId: 'タブ/1' });
     expect(r.ok).toBe(false);
   });
+});
 
-  it('rejects an over-long clientTimestamp even if Date.parse would tolerate it', () => {
-    const r = validateSignedCheckpointInput({
-      ...baseInputRaw,
-      clientTimestamp: `2026-05-28T12:00:00.000Z${' '.repeat(40)}`,
-    });
-    expect(r.ok).toBe(false);
+// 署名 API の入口の境界 (#580)。型を偽った値は文字列化すると検査を素通りしうるので、型の検査も固定する。
+describe('validateSignedCheckpointInput boundaries', () => {
+  const hex = 'b'.repeat(64);
+
+  it.each<[string, Record<string, unknown>]>([
+    ['a numeric sessionId', { sessionId: 12345 }],
+    ['a chainHash wrapped in an array', { chainHash: [hex] }],
+    ['a 65-char hex chainHash', { chainHash: `${hex}b` }],
+    ['a chainHash with a non-hex prefix', { chainHash: `x${hex}` }],
+    ['an eventIndex past Number.MAX_SAFE_INTEGER', { eventIndex: Number.MAX_SAFE_INTEGER + 1 }],
+    ['a previousSignedCheckpointHash wrapped in an array', { previousSignedCheckpointHash: [hex] }],
+    ['a numeric clientTimestamp', { clientTimestamp: 2026 }],
+    [
+      'a parseable clientTimestamp one char past the maximum length',
+      { clientTimestamp: parseableTimestampOfLength(MAX_TIMESTAMP_LENGTH + 1) },
+    ],
+  ])('rejects %s', (_label, override) => {
+    expect(validateSignedCheckpointInput({ ...baseInputRaw, ...override }).ok).toBe(false);
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ['a sessionId of exactly the maximum length', { sessionId: 'x'.repeat(MAX_ID_LENGTH) }],
+    ['an eventIndex of Number.MAX_SAFE_INTEGER', { eventIndex: Number.MAX_SAFE_INTEGER }],
+    ['a 64-char hex previousSignedCheckpointHash', { previousSignedCheckpointHash: hex }],
+    [
+      'a parseable clientTimestamp of exactly the maximum length',
+      { clientTimestamp: parseableTimestampOfLength(MAX_TIMESTAMP_LENGTH) },
+    ],
+  ])('accepts %s', (_label, override) => {
+    expect(validateSignedCheckpointInput({ ...baseInputRaw, ...override }).ok).toBe(true);
   });
 });
 
@@ -220,5 +252,16 @@ describe('createSignedCheckpointEnvelope', () => {
     );
     expect(envelope.publicKeyJwk).toEqual(key.publicKeyJwk);
     expect(envelope.publicKeyValidFrom).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  it('embeds publicKeyValidUntil when the signer supplies it', async () => {
+    const v = validateSignedCheckpointInput(baseInputRaw);
+    if (!v.ok) throw new Error('input invalid');
+    const envelope = await createSignedCheckpointEnvelope(
+      v.input,
+      { serverTimestamp: '2026-05-28T12:00:01.000Z', firstSeenAt: '2026-05-28T12:00:00.000Z' },
+      { keyId: key.keyId, privateKey: key.privateKey, publicKeyValidUntil: '2027-01-01T00:00:00.000Z' }
+    );
+    expect(envelope.publicKeyValidUntil).toBe('2027-01-01T00:00:00.000Z');
   });
 });

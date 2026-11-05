@@ -29,8 +29,18 @@ export {
   templateInjectionAnalyzer,
 } from './analyzers/index.js';
 
-export { buildAnalysisBundle, ANALYSIS_BUNDLE_SCHEMA } from './bundle.js';
+export { buildAnalysisBundle, ANALYSIS_BUNDLE_SCHEMA, DERIVED_VIEW_NOTICE } from './bundle.js';
 export type { AnalysisBundle } from './bundle.js';
+
+export { toAggregateBundle, AGGREGATE_BUNDLE_SCHEMA } from './aggregateBundle.js';
+export type {
+  AggregateBundle,
+  AggregateOther,
+  AggregateProcessSummary,
+  AggregateSignal,
+  AggregateAnalysis,
+  AggregateAssurance,
+} from './aggregateBundle.js';
 
 export {
   computeCohortBaseline,
@@ -40,6 +50,7 @@ export {
   COHORT_POSITION_SCHEMA,
 } from './cohort.js';
 export type {
+  CohortBundleInput,
   CohortMetricKey,
   MetricDistribution,
   CohortBaseline,

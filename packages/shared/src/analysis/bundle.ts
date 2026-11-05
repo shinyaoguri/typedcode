@@ -16,6 +16,11 @@
  *   感度クラス (ADR-0024 §4 で Tier A に含めてよいと決定済み)。コホート集計 (ADR-0025) は使わない。
  *
  * `AnalysisBundle[]` は ADR-0025 のコホート基準 (`computeCohortBaseline`) の入力フォーマット。
+ *
+ * **Tier A は学外・研究者へそのまま渡すものではない** (#304): 参照をそのまま束ねるので、
+ * `reflectionNotes`・signal の `summary` / `summaryParams` / `evidence.note`・外部 analyzer が
+ * 決める `analyzerId` / `dimension`、さらに型に無い余分なフィールドも素通しする (verify-cli は
+ * さらに `filename` を足す)。集計・研究用は `aggregateBundle.ts` の Tier S (allowlist) を使う。
  */
 
 import type { ProcessSummary } from '../processSummary.js';
@@ -25,9 +30,20 @@ import type { AnalysisReport } from './types.js';
 /** Tier A バンドルの schema 識別子 (将来の互換判定用)。 */
 export const ANALYSIS_BUNDLE_SCHEMA = 'analysis-bundle/1' as const;
 
+/**
+ * 派生ビュー (Tier A / Tier S) に必ず載せる固定文言 (ADR-0024 不変条件 6、#304)。
+ *
+ * バンドルは単独で整合性を検証できないことを、ファイルを受け取った人にも見える形で示す
+ * (overclaim 防止)。文言は固定で、proof 由来の値を補間しない。
+ */
+export const DERIVED_VIEW_NOTICE =
+  'Derived advisory view (ADR-0024): not independently verifiable. Integrity is verified only on the full proof (Tier F).' as const;
+
 /** content-free な Tier A 分析バンドル (ADR-0024)。 */
 export interface AnalysisBundle {
   schema: typeof ANALYSIS_BUNDLE_SCHEMA;
+  /** 派生ビューで単独では検証できない旨の固定文言 (#304。追記のみなので schema は据え置き)。 */
+  notice: typeof DERIVED_VIEW_NOTICE;
   /**
    * 派生元 proof が整合性検証を通ったか (Tier F での検証結果の注記)。
    * **このバンドル自体の検証ではない** — バンドルは単独で整合性検証できない (ADR-0024)。
@@ -53,6 +69,7 @@ export function buildAnalysisBundle(input: {
 }): AnalysisBundle {
   return {
     schema: ANALYSIS_BUNDLE_SCHEMA,
+    notice: DERIVED_VIEW_NOTICE,
     integrityValid: input.integrityValid,
     processSummary: input.processSummary,
     analysis: input.analysis,

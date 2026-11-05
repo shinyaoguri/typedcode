@@ -70,7 +70,12 @@ async function makeToken(key: TestKey, sessionId: string, fingerprintHash: strin
  * `tokenSessionId` と `checkpointSessionId` を別々に指定できるのは、別セッションの
  * トークンを流用した proof を再現するため。
  */
-async function buildAnchoredProof(options: { tokenSessionId: string; checkpointSessionId: string }) {
+async function buildAnchoredProof(options: {
+  tokenSessionId: string;
+  checkpointSessionId: string;
+  /** 署名 cp の payload に焼く root。省略時はこの proof 自身の root */
+  checkpointRoot?: string;
+}) {
   const components = createMockFingerprintComponents();
   const fingerprintHash = await computeHash(JSON.stringify(components, null, 0));
   const token = await makeToken(testKey, options.tokenSessionId, fingerprintHash);
@@ -91,7 +96,7 @@ async function buildAnchoredProof(options: { tokenSessionId: string; checkpointS
   const exported = await typingProof.exportProof(content);
   const checkpoints = await buildSignedCheckpoints({
     events: exported.proof.events,
-    initialEventChainHash: exported.typingProofData.initialEventChainHash ?? '',
+    initialEventChainHash: options.checkpointRoot ?? exported.typingProofData.initialEventChainHash ?? '',
     key: testKey,
     sessionId: options.checkpointSessionId,
   });
@@ -153,5 +158,26 @@ describe('verifyProofFile: invalid signed checkpoint fails the whole proof (ADR-
     expect(result.signedCheckpoints?.valid).toBe(false);
     expect(result.valid).toBe(false);
     expect(result.errorMessage).toBe('Signed checkpoint signature invalid at event 0');
+  });
+});
+
+describe('verifyProofFile: signed checkpoints anchored to another proof root (#580)', () => {
+  it('fails the signed checkpoint layer when the checkpoints carry the root of another proof', async () => {
+    // 署名・連鎖・event との一致はすべて正しく、payload の root だけが別 proof のもの。
+    // 照合は verifyProofSignedCheckpoints が proof の root を渡したときだけ働く。
+    const other = await buildAnchoredProof({ tokenSessionId: 'session-A', checkpointSessionId: 'session-A' });
+    const otherRoot = other.typingProofData.initialEventChainHash;
+    if (!otherRoot) throw new Error('fixture proof has no root');
+    const proofFile = await buildAnchoredProof({
+      tokenSessionId: 'session-A',
+      checkpointSessionId: 'session-A',
+      checkpointRoot: otherRoot,
+    });
+    const result = await verifyFast(proofFile);
+
+    expect(result.chainValid).toBe(true);
+    expect(result.signedCheckpoints?.valid).toBe(false);
+    expect(result.valid).toBe(false);
+    expect(result.errorMessage).toBe('Signed checkpoint initialEventChainHash does not match proof root');
   });
 });

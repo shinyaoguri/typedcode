@@ -1,0 +1,14 @@
+{
+  "keyId": "frozen-fixture-exam-0001",
+  "algorithm": "ECDSA-P256",
+  "publicKeyJwk": {
+    "key_ops": ["verify"],
+    "ext": true,
+    "kty": "EC",
+    "x": "FTizwl6KZmxv-4H5raEC4VgIxSMwuLXNXT88WTK8Q8M",
+    "y": "a6HM36mH_EkaZzwrfSodRtJoOq-ZzyFezqcnT5rkfsU",
+    "crv": "P-256"
+  },
+  "status": "active",
+  "validFrom": "2026-01-01T00:00:00.000Z"
+}

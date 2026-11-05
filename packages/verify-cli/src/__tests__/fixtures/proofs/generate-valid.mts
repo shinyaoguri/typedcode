@@ -10,6 +10,9 @@
  * PoSW を再計算するので、スタブ Worker の固定値ではなく本物の PoSW が要る。Node に Worker は
  * 無いため、`postMessage` が throw する偽 Worker を渡して PoswManager の main-thread
  * fallback で計算させる。proof フォーマットが変わって fixture が通らなくなったら再生成する。
+ *
+ * 互換の検査 (既存 proof を今の検証器が通すか) は shared の `fixtures/frozen-proofs/` が担う (#581)。
+ * valid.json は現行形式のスモーク用。
  */
 
 import { writeFileSync } from 'node:fs';
