@@ -123,6 +123,12 @@ interface GetTurnstileTokenOptions {
   widgetContainer?: HTMLElement;
   /** Custom parent container to show/hide (optional) */
   parentContainer?: HTMLElement;
+  /**
+   * 中断の合図 (#375)。abort されたら描画済みの widget を remove してコンテナを空にし、
+   * token が無ければ `timeout` で即座に戻る (表示中のチャレンジの打ち切り)。コンテナは次のタブ作成と
+   * 共有するので、裏で走り続けた前回の実行が後から空にしないよう、abort の時点で片付ける。
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -143,7 +149,12 @@ export async function getTurnstileToken(action: string, options?: GetTurnstileTo
     return { token: null, failureReason: 'token_acquisition_failed', isNetworkError: true };
   }
 
-  return new Promise((resolve) => {
+  const signal = options?.signal;
+  if (signal?.aborted) {
+    return { token: null, failureReason: 'timeout', isNetworkError: false };
+  }
+
+  return new Promise<TokenResult>((outerResolve) => {
     // Check for custom container from options first
     const customWidgetContainer = options?.widgetContainer;
     const customParentContainer = options?.parentContainer;
@@ -191,6 +202,32 @@ export async function getTurnstileToken(action: string, options?: GetTurnstileTo
     let resolved = false;
     let widgetId: string | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    /** 成功のチェックマークを見せる待ちのタイマー (中断されたら待たずに返す) */
+    let successDelayId: ReturnType<typeof setTimeout> | null = null;
+    /** 取得済みの token (成功表示の待ち中に中断されても、token は捨てずに返す) */
+    let acquiredToken: string | null = null;
+
+    // 中断 (#375): 待ちを打ち切り、widget とコンテナを今すぐ片付けて返す。片付けを後回しにすると、
+    // 次のタブ作成が同じコンテナに描いた widget を、この実行の後始末が消してしまう。
+    // token を得た後 (成功表示の待ち中) に中断されたら token を返す (呼び出し側は session/start へ進む)。
+    // resolve 済みの経路はリスナーを外しているので、ここに来るのは未決着か成功表示の待ち中だけ。
+    const onAbort = () => {
+      resolved = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (successDelayId) clearTimeout(successDelayId);
+      cleanup();
+      if (acquiredToken) {
+        resolve({ token: acquiredToken, isNetworkError: false });
+      } else {
+        console.warn('[Turnstile] Challenge aborted');
+        resolve({ token: null, failureReason: 'timeout', isNetworkError: false });
+      }
+    };
+
+    const resolve = (result: TokenResult) => {
+      signal?.removeEventListener('abort', onAbort);
+      outerResolve(result);
+    };
 
     const cleanup = () => {
       if (widgetId) {
@@ -213,6 +250,8 @@ export async function getTurnstileToken(action: string, options?: GetTurnstileTo
         fallbackContainer.remove();
       }
     };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
 
     // Set timeout for verification
     timeoutId = setTimeout(() => {
@@ -245,8 +284,9 @@ export async function getTurnstileToken(action: string, options?: GetTurnstileTo
             resolved = true;
             if (timeoutId) clearTimeout(timeoutId);
             console.log('[Turnstile] Token acquired for action:', action);
+            acquiredToken = token;
             // Wait a moment so user can see the success checkmark
-            setTimeout(() => {
+            successDelayId = setTimeout(() => {
               cleanup();
               resolve({ token, isNetworkError: false });
             }, 1500);
@@ -381,10 +421,51 @@ function isNetworkError(response: Response | null, error: Error | null): boolean
 }
 
 /**
- * Sleep for specified milliseconds
+ * Sleep for specified milliseconds.
+ * signal が abort されたら待ちを打ち切って即座に戻る (#375。戻った後の abort の判定は呼び出し側)。
  */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/** `untilAborted` が中断で戻ったことを表す印 */
+const ABORTED = Symbol('aborted');
+
+/**
+ * promise の決着か signal の abort の早い方で戻る (#375)。abort しても promise 自体は止めない
+ * (スクリプト読込は共有の loadPromise なので、次の呼び出しがそのまま使う)。
+ */
+function untilAborted<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T | typeof ABORTED> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.resolve(ABORTED);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => resolve(ABORTED);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      }
+    );
+  });
 }
 
 /**
@@ -392,6 +473,17 @@ function sleep(ms: number): Promise<void> {
  * Implements exponential backoff retry for network errors
  */
 export async function verifyTurnstileToken(token: string): Promise<VerificationResult> {
+  return verifyTokenWithRetry(token, retryStatusCallback);
+}
+
+/**
+ * `verifyTurnstileToken` の本体。リトライ状況の通知先は呼び出し側が捕まえたものを使う
+ * (`performTurnstileVerification` が開始時に捕まえた値。#375)。
+ */
+async function verifyTokenWithRetry(
+  token: string,
+  onRetryStatus: RetryStatusCallback | null
+): Promise<VerificationResult> {
   if (!API_URL) {
     console.warn('[Turnstile] API URL not configured');
     return { success: false, error: 'API not configured', failureReason: 'network_error' };
@@ -418,7 +510,7 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
         const result = (await response.json()) as VerificationResult;
         console.log('[Turnstile] Verification result:', result);
         // Notify success (no more retrying)
-        retryStatusCallback?.({
+        onRetryStatus?.({
           attempt,
           maxRetries: RETRY_CONFIG.maxRetries,
           nextDelayMs: 0,
@@ -432,7 +524,7 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
         // Bot detection or other non-retryable error
         const errorText = await response.text();
         console.error('[Turnstile] Verification failed (non-retryable):', response.status, errorText);
-        retryStatusCallback?.({
+        onRetryStatus?.({
           attempt,
           maxRetries: RETRY_CONFIG.maxRetries,
           nextDelayMs: 0,
@@ -459,7 +551,7 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
       console.log(`[Turnstile] Retrying in ${delayMs}ms...`);
 
       // Notify about retry
-      retryStatusCallback?.({
+      onRetryStatus?.({
         attempt,
         maxRetries: RETRY_CONFIG.maxRetries,
         nextDelayMs: delayMs,
@@ -472,7 +564,7 @@ export async function verifyTurnstileToken(token: string): Promise<VerificationR
 
   // All retries exhausted
   console.error('[Turnstile] All retry attempts exhausted');
-  retryStatusCallback?.({
+  onRetryStatus?.({
     attempt: RETRY_CONFIG.maxRetries,
     maxRetries: RETRY_CONFIG.maxRetries,
     nextDelayMs: 0,
@@ -498,6 +590,14 @@ export interface TurnstileVerificationOptions {
    * 人間ゲートを 1 リクエストで兼ねる。casual/class の作成フローで使う。
    */
   sessionStart?: { sessionId: string; fingerprintHash: string };
+  /**
+   * 中断の合図 (#375)。token を得るまで (Phase 1 のスクリプト読込・Phase 2 のチャレンジとリトライの待ち)
+   * に abort されたら、表示中の widget を片付けて `{ success: false, failureReason: 'timeout',
+   * error: 'aborted' }` を即座に返す。token を得た後 (Phase 3 の session/start / verify-captcha) の
+   * abort では fetch を止めず (fetch 自体の上限 `WORKERS_FETCH_TIMEOUT_MS` だけ)、その結果を返す。
+   * タブ作成の予算切れの後に届いた token を署名専用に回すため。
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -561,42 +661,56 @@ export async function performTurnstileVerification(
   action: string,
   options?: TurnstileVerificationOptions
 ): Promise<VerificationResult> {
+  // 通知先は開始時に捕まえる (#375)。予算切れで呼び出し側が手放した後も裏で走り続ける実行が、
+  // 次のタブ作成が登録した UI のコールバックへ書き込まないようにする。
+  const onPhase = phaseCallback;
+  const onRetryStatus = retryStatusCallback;
+  const signal = options?.signal;
+
   // If Turnstile is not configured, allow the action (development mode)
   if (!isTurnstileConfigured()) {
     console.log('[Turnstile] Not configured, allowing action');
     // Mark all phases as done immediately
-    phaseCallback?.('prepare', 'done');
-    phaseCallback?.('challenge', 'done');
-    phaseCallback?.('verify', 'done');
+    onPhase?.('prepare', 'done');
+    onPhase?.('challenge', 'done');
+    onPhase?.('verify', 'done');
     return { success: true, score: 1.0, action };
   }
 
+  // token を得る前に中断されたときの結果 (#375)。呼び出し側は既に UI を閉じているので、フェーズは通知しない。
+  const aborted = (): VerificationResult => {
+    console.warn('[Turnstile] Verification aborted before a token was acquired');
+    return { success: false, error: 'aborted', failureReason: 'timeout' };
+  };
+
   // Phase 1: Prepare - Load Turnstile script (with retry)
-  phaseCallback?.('prepare', 'active');
+  onPhase?.('prepare', 'active');
   let scriptLoaded = false;
   for (let attempt = 1; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    if (signal?.aborted) return aborted();
     try {
-      await loadTurnstileScript();
+      if ((await untilAborted(loadTurnstileScript(), signal)) === ABORTED) return aborted();
       scriptLoaded = true;
       break;
     } catch {
       console.warn(`[Turnstile] Script load attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed`);
       if (attempt < RETRY_CONFIG.maxRetries) {
         const delayMs = RETRY_CONFIG.initialDelayMs * 2 ** (attempt - 1);
-        retryStatusCallback?.({
+        onRetryStatus?.({
           attempt,
           maxRetries: RETRY_CONFIG.maxRetries,
           nextDelayMs: delayMs,
           isRetrying: true,
         });
-        await sleep(delayMs);
+        await sleep(delayMs, signal);
       }
     }
   }
 
+  if (signal?.aborted && !scriptLoaded) return aborted();
   if (!scriptLoaded) {
-    phaseCallback?.('prepare', 'error');
-    retryStatusCallback?.({
+    onPhase?.('prepare', 'error');
+    onRetryStatus?.({
       attempt: RETRY_CONFIG.maxRetries,
       maxRetries: RETRY_CONFIG.maxRetries,
       nextDelayMs: 0,
@@ -608,9 +722,9 @@ export async function performTurnstileVerification(
       failureReason: 'network_error',
     };
   }
-  phaseCallback?.('prepare', 'done');
+  onPhase?.('prepare', 'done');
   // Clear retry status after successful prepare
-  retryStatusCallback?.({
+  onRetryStatus?.({
     attempt: 1,
     maxRetries: RETRY_CONFIG.maxRetries,
     nextDelayMs: 0,
@@ -618,15 +732,18 @@ export async function performTurnstileVerification(
   });
 
   // Phase 2: Challenge - Get token from Turnstile widget (with retry)
-  phaseCallback?.('challenge', 'active');
+  onPhase?.('challenge', 'active');
   let tokenResult: TokenResult | null = null;
   for (let attempt = 1; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    if (signal?.aborted) return aborted();
     tokenResult = await getTurnstileToken(action, options);
 
-    // Success - got a token
+    // Success - got a token (中断されていても、得た token は Phase 3 に進める)
     if (tokenResult.token) {
       break;
     }
+
+    if (signal?.aborted) return aborted();
 
     // Non-retryable error (e.g., bot detection)
     if (!tokenResult.isNetworkError) {
@@ -638,19 +755,20 @@ export async function performTurnstileVerification(
     console.warn(`[Turnstile] Challenge attempt ${attempt}/${RETRY_CONFIG.maxRetries} failed (network error)`);
     if (attempt < RETRY_CONFIG.maxRetries) {
       const delayMs = RETRY_CONFIG.initialDelayMs * 2 ** (attempt - 1);
-      retryStatusCallback?.({
+      onRetryStatus?.({
         attempt,
         maxRetries: RETRY_CONFIG.maxRetries,
         nextDelayMs: delayMs,
         isRetrying: true,
       });
-      await sleep(delayMs);
+      await sleep(delayMs, signal);
     }
   }
 
+  if (signal?.aborted && !tokenResult?.token) return aborted();
   if (!tokenResult?.token) {
-    phaseCallback?.('challenge', 'error');
-    retryStatusCallback?.({
+    onPhase?.('challenge', 'error');
+    onRetryStatus?.({
       attempt: RETRY_CONFIG.maxRetries,
       maxRetries: RETRY_CONFIG.maxRetries,
       nextDelayMs: 0,
@@ -662,9 +780,9 @@ export async function performTurnstileVerification(
       failureReason: tokenResult?.failureReason ?? 'network_error',
     };
   }
-  phaseCallback?.('challenge', 'done');
+  onPhase?.('challenge', 'done');
   // Clear retry status after successful challenge
-  retryStatusCallback?.({
+  onRetryStatus?.({
     attempt: 1,
     maxRetries: RETRY_CONFIG.maxRetries,
     nextDelayMs: 0,
@@ -673,11 +791,13 @@ export async function performTurnstileVerification(
 
   // Phase 3: Verify - Verify token via backend (already has retry logic inside)
   // ADR-0017: sessionStart 指定時は session/start を呼び ECDSA トークンを取得する (root アンカー)。
-  phaseCallback?.('verify', 'active');
+  // #375: ここからは中断しても止めない (signal を渡さない)。予算切れの後に届いた token は、
+  // 呼び出し側が root に焼かず署名専用 token に回す。
+  onPhase?.('verify', 'active');
   const result = options?.sessionStart
     ? await requestSessionStart(tokenResult.token, options.sessionStart)
-    : await verifyTurnstileToken(tokenResult.token);
-  phaseCallback?.('verify', result.success ? 'done' : 'error');
+    : await verifyTokenWithRetry(tokenResult.token, onRetryStatus);
+  onPhase?.('verify', result.success ? 'done' : 'error');
 
   return result;
 }

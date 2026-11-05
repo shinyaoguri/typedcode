@@ -93,6 +93,16 @@ HMAC 署名と `ATTESTATION_SECRET_KEY` をやめた。署名を検証する場�
 いなかったため。export 前の Turnstile 検証そのものは続ける (`/api/verify-captcha` は結果を同じ形で返す)。新しい proof の
 `preExportAttestation.signature` は `'unsigned'`。旧 proof に残る HMAC 値は legacy として読むが検証しない (検証結果は変わらない)。
 
+**改訂 (2026-11-05, [#375](https://github.com/shinyaoguri/typedcode/issues/375))**: 「フォールバックは開始をブロックしない」は、
+不達と判定されるまで待つ実装より強いことを言っていた (Turnstile のスクリプト読込とチャレンジのリトライで、配信元に届かない網では
+編集の開始まで 33 秒〜3 分かかった)。作成時の認証全体 (スクリプト読込 + チャレンジ + session/start) を、export 前と同じ値の
+`TAB_CREATE_VERIFICATION_BUDGET_MS` (15 秒) で打ち切る。超過したら表示中のチャレンジも閉じ、`#0` に失敗 attestation
+(`failureReason: 'timeout'`) を記録して `initialize` (非アンカー) で開始する。予算を過ぎてから届いた session/start の token は
+root に焼かない (root は確定済みで、後から serverNonce を入れるには打鍵のバッファと再計算が要り、#0 の不変条件と PoSW の
+逐次性にぶつかる)。代わりに署名専用 token (ADR-0027) としてセッションの署名に使う。中断するのは token を得るまで (スクリプト読込と
+チャレンジ) で、session/start の fetch は自身の上限 (`WORKERS_FETCH_TIMEOUT_MS`) まで走らせる。casual の export 前認証は
+従来どおり予算なしで待つ (作成時と非対称だが、export は失敗すると中止される経路で、待ちを打ち切る理由が無い)。
+
 ## Compatibility & Availability (詰め)
 
 | proof | version | sessionStartToken | 検証器の扱い |
@@ -104,7 +114,7 @@ HMAC 署名と `ATTESTATION_SECRET_KEY` をやめた。署名を検証する場�
 
 - `MIN_SUPPORTED_VERSION` を上げないので、既存 proof は引き続き検証できる (fail-closed にしない)。
 - exam proof は root 式が別 (ADR-0006)。当面 serverNonce を足さない → 既存の exam 検証は不変。
-- editor は session/start を**非ブロッキング**に呼ぶ。失敗は warning 表示のみで編集は継続。
+- editor は session/start を**非ブロッキング**に呼ぶ。失敗は warning 表示のみで編集は継続。作成時の認証全体 (Turnstile + session/start) は `TAB_CREATE_VERIFICATION_BUDGET_MS` (15 秒) で打ち切り、超過したら非アンカーで開始する (2026-11-05 の改訂、[#375](https://github.com/shinyaoguri/typedcode/issues/375))。
 
 ## Consequences
 

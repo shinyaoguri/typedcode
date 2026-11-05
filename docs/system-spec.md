@@ -859,6 +859,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `MAX_TABS_PER_SESSION` | 64 | `workers/src/checkpoint.ts` (ADR-0027) |
 | `WORKERS_FETCH_TIMEOUT_MS` | 10_000 | `editor/src/config/timeouts.ts` (Workers への 1 回の fetch の上限。verify-captcha / session/start / checkpoint/sign。超過は既存の失敗経路 = retry・degraded fallback・署名の backoff 再試行に合流。#324) |
 | `PRE_EXPORT_VERIFICATION_BUDGET_MS` | 15_000 | `editor/src/config/timeouts.ts` (best-effort モード = exam/class/assignment の export 前認証全体の予算。超過は失敗 attestation を記録して ZIP を出す。casual には適用しない。#324) |
+| `TAB_CREATE_VERIFICATION_BUDGET_MS` | 15_000 (`PRE_EXPORT_VERIFICATION_BUDGET_MS` と同じ値) | `editor/src/config/timeouts.ts` (casual/class/assignment のタブ作成時の認証全体 = Turnstile + session/start の予算。超過したら表示中のチャレンジも閉じ、失敗 attestation を #0 に記録して非アンカーで開始する。後から届いた token は root に使わず署名専用に回す。#375) |
 | `POST_HOC_RATIO_THRESHOLD` | 0.1 | `signedCheckpoints.ts` |
 | `POST_HOC_MIN_SERVER_SPAN_MS` | 60_000 | `signedCheckpoints.ts` |
 | `POST_HOC_MIN_CLIENT_SPAN_MS` | 600_000 | `signedCheckpoints.ts` |
