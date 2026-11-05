@@ -208,10 +208,10 @@ intermediateHash = hash
 ```
 
 **意義**:
-- 各イベントに「最低限の計算時間」を強制 (約 5〜30ms / event 程度)
-- 大量のイベントを瞬時に偽造することを困難にする (10000 events なら最低 50 秒の連続計算)
-- 並列化困難 (一つのイベントの PoSW 内部は前ハッシュに依存して直列)
-- PoSW は「時間の下限」ではなく「逐次コスト」を課すだけで、高性能な CPU ほど速く回せる。並列化できるのは別 proof 同士 (別チェーン) のみで、1 本のチェーン内は event 間も直列 (各 event の PoSW の種は直前 event の最終 hash)。絶対的な防御ではないので時刻アンカリングと併用する
+- 1 本のチェーンを作り直すには、イベントの数だけ逐次のハッシュ計算が要る (一つのイベントの PoSW 内部は前ハッシュに依存して直列)
+- PoSW は「時間の下限」でも作業時間・打鍵時刻の証明でもなく、「逐次コスト」を課すだけで、高性能な CPU ほど速く回せる。偽造側の下限は 10000 反復でも 10000 events で 1 分前後 (同期の native 実装で数 ms / event) と小さい。並列化できるのは別 proof 同士 (別チェーン) のみで、1 本のチェーン内は event 間も直列 (各 event の PoSW の種は直前 event の最終 hash)。時刻の保証は署名チェックポイント (§4.6) とサーバアンカーされた root が担う
+
+**反復数の見直し** ([ADR-0045](adr/0045-lower-posw-iterations-for-recording-throughput.md)): CPU 4 倍相当の端末で記録側の処理が入力 (1 打鍵 = 5 イベント) に追いつかない実測から、反復数を 1000 に下げる。既存の 10000 反復の proof を検証し続ける版の分岐とあわせて #611 で実装する。それまでは上のとおり 10000 で記録・検証する。記録側の反復の実装 (await か同期か) は形式・安全性に影響しない。記録側の測り方は `npm run bench:posw -w @typedcode/e2e`
 
 ### 4.5. チェックポイント (Checkpoint)
 
@@ -941,3 +941,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-05 | 集計用 Tier S バンドル (ADR-0024 Amendment, #304) | shared に `toAggregateBundle` (`aggregate-bundle/1`) を足した。Tier A から数値とカテゴリだけを allowlist で 1 項目ずつ書き出し、`reflectionNotes`・分析器の `summary` / `summaryParams` / `evidence`・`analyzerId`・event index・ファイル名と、型に無い余分なフィールドを出さない (未知の列挙値は `other`、非有限数は `null`)。verify-cli `--aggregate-bundle <out.json>` で全 proof 分を出す (`filename` なし)。Tier A / Tier S の各要素に固定文言 `notice` (派生ビューで単独では検証できない) を足した (Tier A は追記のみで `analysis-bundle/1` 据え置き)。`computeCohortBaseline` / `positionInCohort` の入力を数値とカテゴリだけの `CohortBundleInput` に緩めた (計算は不変)。Tier A は授業内レビュー用で学外へ共有しないことを README に開示 (ファイル名は外さない)。proof フォーマット不変 |
 | 2026-11-04 | 分析器の失敗・期限切れ・不正な出力を「手掛かりなし」と区別 (#301) | `AnalysisReport` に `analyzerStatus` (分析器ごとの `ok` / `failed` / `timeout` / `invalid-output`) を足した (`analyzerVersions` は互換のため残す。`analysis-bundle/1` は据え置き)。`runAnalysis` は分析器ごとに `ANALYZER_TIMEOUT_MS` (10 秒) の期限を付け、契約に合わない signal を捨てて `reviewPriority` に寄与させない。ok の分析器が 0 なら三層保証の著述性は「分析未実行」(null)。verify-cli は `Analysis unavailable: <id> (<status>)` 行、verify (Web) は分析カードの「分析不能」バッジ・注記で出す。検証結果 (`valid` / integrity) は変えない |
 | 2026-11-05 | fingerprint の収集を用途のあるコンポーネントに絞る (ADR-0044, #242) | `collectComponents` から `canvas` (描画結果の data URL) と `fonts` (フォント一覧) を外し、`webgl` を `unmaskedVendor` / `unmaskedRenderer` の 2 値にした (13 キー)。読むコードは `automationAnalyzer` の `webgl.unmaskedRenderer` だけで、root・流用検出・token 束縛は hash の等値比較で足りる。検証器は proof 同梱の components を再ハッシュするだけなので旧 proof (17 キー) はそのまま valid。`FingerprintComponents` は `canvas` / `fonts` を optional にし、新しく集める形は `CollectedFingerprintComponents`。proof 形式の番号は変えない |
+| 2026-11-05 | PoSW の反復数の見直し (ADR-0045, #241) | 記録側のベンチ (`npm run bench:posw`) で、CPU 4 倍相当では処理が入力に追いつかないことを測り、反復数を 10000 から 1000 に下げると決めた (実装は #611。それまでは 10000)。§4.4 から「最低限の計算時間を強制」「10000 events なら最低 50 秒」を消し、PoSW は時間の証明ではなく逐次コストだと揃えた |

@@ -6,3 +6,5 @@ downloads/
 shots/
 # exam round-trip 用の fixture (npm run setup が生成。出題者鍵の公開鍵とパッケージ。#229)
 fixtures/
+# npm run bench:posw の出力 (記録側 PoSW のベンチの JSON。#241)
+bench/
