@@ -107,7 +107,10 @@ export interface SignedCheckpointsVerificationResult {
   density: {
     /** 最初の署名 cp が指す eventIndex */
     firstAnchorEventIndex: number;
-    /** 最初の署名 cp までの未アンカー event 数 (= firstAnchorEventIndex) */
+    /**
+     * 最初の署名 cp までの未アンカー event 数 (= firstAnchorEventIndex)。計測のみで `sparse` の判定には使わない
+     * (先頭ギャップとして maxGapEvents に必ず含まれる。#603)
+     */
     firstAnchorLatencyEvents: number;
     /**
      * firstSeenAt から最初の署名 serverTimestamp までの ms。
@@ -137,8 +140,7 @@ export interface SignedCheckpointsVerificationResult {
     /**
      * 保守的閾値を超え anchoring が疎と判定されたか (warning シグナル。`valid` は落とさない。不受理にするのは受理ポリシーの
      * `anchor-density-sparse`。#296)。maxGapEvents > 500・maxUnexplainedGapServerMs > 50s・
-     * maxUnanchoredEventSpanMs > 50s・firstAnchorLatencyEvents > 500 のどれか、または照合するイベント時刻が
-     * 有限の数でないとき true
+     * maxUnanchoredEventSpanMs > 50s のどれか、または照合するイベント時刻が有限の数でないとき true
      */
     sparse: boolean;
   } | null;
