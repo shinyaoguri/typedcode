@@ -1,0 +1,225 @@
+name: Deploy Preview
+
+# PR の Pages プレビューを Cloudflare へ出し、PR に URL をコメントする (#582)。
+#
+# なぜ deploy.yml から分けたか:
+#   pull_request の job は PR 側の workflow 定義と PR のコード (npm ci の install script・build) を
+#   走らせる。そこで staging の CLOUDFLARE_API_TOKEN を使うと、PR のコードがトークンを持てる。
+#   Cloudflare の API トークンは Pages Edit もアカウント単位でしか絞れず、プレビューと本番は
+#   同じ Pages プロジェクトなので、そのトークンで `--branch=main` (= 本番) へ書けてしまう。
+#   そこで次の 2 段に分けた (visual-evidence.yml の capture / publish と同じ形):
+#     build   — deploy.yml の build-preview。PR のコードを走らせる。**secrets を一切持たない**。
+#               成果物 (dist) を artifact `preview-dist` に上げて終わる
+#     deploy  — このファイル。workflow_run なので **default branch の定義で動く** (PR が書き換えた
+#               この YAML は使われない)。**PR のコードを checkout も実行もしない** (npm ci もしない)。
+#               artifact を静的ファイルとしてだけ読み、`pages deploy` でアップロードする
+#
+# 入力の扱い: workflow_run の payload (head_branch など) は PR を出した側が決める文字列。
+# 使う前にシェルで文字種を検査し、検査済みの値だけを step output で後続へ渡す。
+#
+# 残るリスク (このファイルの範囲外): main に入った依存の install script は、deploy.yml の
+# deploy-staging / deploy-production で同じ job のトークンと同居する。ここはレビュー
+# (依存の追加・更新の PR) とリリースの承認 (production 環境の required reviewers) で守る。
+#
+# 注: workflow_run は default branch にあるこのファイルでしか発火しない。このファイルを変える
+# PR では、変更後の挙動はマージ後の次の PR で初めて確かめられる。
+on:
+  workflow_run:
+    # deploy.yml の `name:`。変えるときはここも揃える。
+    workflows: [Deploy]
+    types: [completed]
+
+permissions: {}
+
+# PR のブランチごとに 1 run。新しい push の build が先に終わったら、古い deploy は捨てる。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    # - pull_request で動いた Deploy が全 job 成功したときだけ (test / check / e2e が通った build)
+    # - 自リポジトリのブランチの PR だけ (fork の PR は従来どおりプレビューを出さない)
+    # - dependabot の PR と `staging` という名前のブランチは除外 (build-preview の if と同じ。
+    #   `staging` は deploy-staging の `staging.<project>.pages.dev` と衝突するので予約。CONTRIBUTING.md)
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.actor.login != 'dependabot[bot]' &&
+      github.event.workflow_run.head_branch != 'staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # staging 環境の CLOUDFLARE_API_TOKEN を使う。workflow_run は default branch (main) の ref で
+    # 動くので、staging 環境の deployment_branch_policy を main だけにしてもここは通る。
+    environment:
+      name: staging
+    permissions:
+      # 別 run (Deploy) の artifact を一覧・取得する
+      actions: read
+      # PR と commit の対応を引く (pull_requests が空のときの代替)
+      contents: read
+      # プレビュー URL のコメント
+      pull-requests: write
+    # **checkout しない** (PR のコードを走らせない)。artifact はデータとしてだけ読む。
+    steps:
+      - name: Validate run metadata
+        id: meta
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # ブランチ名は wrangler の --branch へ渡す。wrangler-action はシェルを介さないが、
+          # 引数の区切り (空白・引用符) や式の文字が混ざらないよう、許す文字種をここで絞る。
+          if [[ ! "$HEAD_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::head_branch に許していない文字がある。デプロイしない"
+            exit 1
+          fi
+          # Pages はブランチ名を小文字化し英数字以外を '-' にしたものを alias に使う。
+          # `Staging` などが staging の alias を、`main` が本番 (production branch) を上書きしないよう、
+          # 正規化した形でも弾く。
+          alias="$(printf '%s' "$HEAD_BRANCH" | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9]/-/g' -e 's/^-*//' -e 's/-*$//')"
+          if [ "$alias" = "staging" ] || [ "$alias" = "main" ]; then
+            echo "::error::head_branch '${HEAD_BRANCH}' は staging / main と同じ alias になる。デプロイしない"
+            exit 1
+          fi
+          if [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::head_sha が 40 桁の 16 進ではない。デプロイしない"
+            exit 1
+          fi
+          {
+            echo "branch=${HEAD_BRANCH}"
+            echo "sha=${HEAD_SHA}"
+          } >> "$GITHUB_OUTPUT"
+
+      # build-preview が skipped (dependabot・staging など) の run には artifact が無い。そのときは静かに終わる。
+      - name: Check for preview artifact
+        id: artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          count="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts?name=preview-dist" \
+            --jq '[.artifacts[] | select(.expired == false)] | length')"
+          if [ "$count" -gt 0 ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::run ${RUN_ID} に preview-dist が無い (build-preview が走っていない)。デプロイしない"
+          fi
+
+      # 展開先は workspace の外 (runner.temp)。wrangler は cwd の wrangler.toml / functions/ を読むので、
+      # artifact の中身が cwd に並ばないようにする。
+      - name: Download preview build
+        if: steps.artifact.outputs.found == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: preview-dist
+          path: ${{ runner.temp }}/preview-dist
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Deploy to Cloudflare Pages (Preview)
+        if: steps.artifact.outputs.found == 'true'
+        id: preview-deploy
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # checkout しないので workspace に wrangler が無く、action が npm から入れる。既定 ("4") だと
+          # トークンを持つ job で毎回その時点の最新を入れることになるので、package-lock.json の
+          # wrangler と同じ版に固定する (上げるときはここも揃える)。
+          wranglerVersion: '4.152.0'
+          # --commit-message を明示的に ASCII で渡す。CF Pages API は非 ASCII
+          # コミットメッセージを 8000111 で拒否することがあるため (wrangler issue)、
+          # SHA を message として送って追跡性を保つ。
+          #
+          # ここは ${{ }} の直接展開のままでよい (#239 で「env 経由に変えるべき」と
+          # 指摘されたが、実測の結果その前提が誤りだった)。wrangler-action v4 は
+          # command: を **シェルに渡さず**トークン分割して npx を直接 exec する。
+          # 実測: env で $CF_PROJECT_NAME を渡すと wrangler がプロジェクト名として
+          # 文字列 "$CF_PROJECT_NAME" を受け取り deploy が失敗する。
+          # **env 経由に「直す」とデプロイが壊れる。**
+          # ブランチ名と SHA は payload を直接展開せず、上の Validate run metadata で文字種を
+          # 検査した step output だけを使う (空白・引用符を含まないので引数分割も起きない)。
+          command: pages deploy ${{ runner.temp }}/preview-dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=${{ steps.meta.outputs.branch }} --commit-hash=${{ steps.meta.outputs.sha }} --commit-message="${{ steps.meta.outputs.sha }}"
+
+      - name: Comment PR with preview URL
+        if: steps.artifact.outputs.found == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        # wrangler の出力にバッククォートや `${` が混ざると、テンプレートリテラルへの
+        # 直接展開ではスクリプトごと壊れて job が落ちる。env: 経由で渡し、
+        # process.env 参照にすることで出力内容に関わらず安全に扱う。
+        env:
+          PREVIEW_DEPLOY_OUTPUT: ${{ steps.preview-deploy.outputs.command-output }}
+          HEAD_BRANCH: ${{ steps.meta.outputs.branch }}
+          HEAD_SHA: ${{ steps.meta.outputs.sha }}
+          # 自リポジトリの PR なら payload に入っている。空なら下で head_sha から引く。
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        with:
+          script: |
+            const output = process.env.PREVIEW_DEPLOY_OUTPUT ?? '';
+            const urlMatch = output.match(/https:\/\/[^\s]+\.pages\.dev/);
+            const previewUrl = urlMatch ? urlMatch[0] : null;
+
+            if (!previewUrl) {
+              console.log('Could not extract preview URL from output:', output);
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const headBranch = process.env.HEAD_BRANCH;
+            const headSha = process.env.HEAD_SHA;
+
+            let prNumber = Number(process.env.PR_NUMBER) || null;
+            if (!prNumber) {
+              const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: headSha,
+              });
+              const pr = prs.find(
+                (p) => p.state === 'open' && p.head.ref === headBranch && p.head.repo?.full_name === `${owner}/${repo}`,
+              );
+              prNumber = pr?.number ?? null;
+            }
+            if (!prNumber) {
+              core.notice(`head ${headSha.slice(0, 7)} (${headBranch}) の open な PR が見つからない。コメントを省く`);
+              return;
+            }
+
+            const body = `## 🚀 Preview Deployment
+
+            | Name | URL |
+            |------|-----|
+            | Preview | ${previewUrl} |
+
+            *Deployed from commit ${headSha.substring(0, 7)}*
+            *API: staging Workers*`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: prNumber,
+            });
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('## 🚀 Preview Deployment')
+            );
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: body
+              });
+            }

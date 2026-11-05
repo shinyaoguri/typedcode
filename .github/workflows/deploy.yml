@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 # デフォルトは read-only。デプロイ等が必要な job は各 job の permissions で個別に昇格する
-# (161 / 260 / 321 行目付近)。リポジトリ設定は既に default_workflow_permissions: read だが、
+# (deploy-staging / deploy-production)。リポジトリ設定は既に default_workflow_permissions: read だが、
 # 将来の設定変更に対する防御として明示する。
 permissions:
   contents: read
@@ -26,7 +26,8 @@ concurrency:
 # 構成 (タグ式 GitHub Flow, ADR-0028):
 #   test                   — どのトリガでも必ず走る (test:coverage を持つ全 workspace のユニットテスト + カバレッジの床)
 #   check                  — どのトリガでも必ず走る (全 package typecheck/build + Worker config dry-run)
-#   deploy-preview         — feature → main PR で Pages のプレビュー URL を発行 (Workers staging 向け)
+#   build-preview          — feature → main PR で Pages プレビューを build して artifact に上げる
+#                            (secrets を持たない。プレビュー URL の発行は deploy-preview.yml。#582)
 #   deploy-staging         — main push で Workers staging + Pages staging (--branch=staging) を更新
 #   deploy-production      — v* タグ push で Workers production + Pages production を更新
 #                            (GitHub Environment "production" の Required reviewers で承認待ち)
@@ -250,28 +251,40 @@ jobs:
           fi
 
   # --------------------------------------------------------------------
-  # PR: Pages プレビューデプロイ (Workers は触らない)
-  # PR ビルドは staging API を指す。
+  # PR: Pages プレビューの build (Workers は触らない。PR ビルドは staging API を指す)
+  #
+  # **この job は secrets.* を一切参照しない** (#582)。npm ci の install script と build は PR が
+  # 書いたコードで、`$GITHUB_ENV` / `$GITHUB_PATH` に書けば同じ job の後続 step を乗っ取れる。
+  # 以前はここで staging の CLOUDFLARE_API_TOKEN を使って `pages deploy` していたが、Cloudflare の
+  # API トークンはアカウント単位でしか絞れず、本番と共通の Pages プロジェクトへ書ける。
+  # そのため build の成果物を artifact (preview-dist) に上げるだけで終わり、トークンを使う
+  # `pages deploy` と PR へのコメントは deploy-preview.yml (workflow_run。default branch の
+  # 定義で動き、PR のコードを checkout も実行もしない) が行う。
+  #
+  # VITE_API_URL / VITE_TURNSTILE_SITE_KEY はバンドルに埋め込まれる公開値なので、トークンを
+  # 持たない GitHub 環境 `preview` の variables (vars.*) から読む。値は staging と同じ
+  # (staging Workers の URL と staging の Turnstile site key)。
   # --------------------------------------------------------------------
-  deploy-preview:
+  build-preview:
     needs: [test, check, e2e]
     # head_ref != 'staging' で `staging` という名前のブランチを除外する。
     # deploy-staging が --branch=staging で `staging.<project>.pages.dev` にデプロイ
     # するため、同名 head の PR preview が走ると URL が衝突して staging を上書きする。
     # (`staging` はブランチ名として予約。CONTRIBUTING.md 参照)
+    # deploy-preview.yml 側でも同じ条件 (dependabot・staging・fork) を検査し直す。
     if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && github.head_ref != 'staging'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # 公開値の variables だけを持つ環境。secrets は置かない (置くと PR のコードに渡る)。
     environment:
-      name: staging
+      name: preview
     permissions:
       contents: read
-      deployments: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: true
+          persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -285,8 +298,8 @@ jobs:
         run: npm run build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
-          VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
 
       - name: Merge build outputs
         run: |
@@ -294,77 +307,14 @@ jobs:
           cp -r ./packages/editor/dist/* ./dist/
           cp -r ./packages/verify/dist ./dist/verify
 
-      - name: Deploy to Cloudflare Pages (Preview)
-        id: preview-deploy
-        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+      # deploy-preview.yml が run-id を指定してこの名前で落とす。名前を変えるときは両方を揃える。
+      - name: Upload preview build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # --commit-message を明示的に ASCII で渡す。CF Pages API は非 ASCII
-          # コミットメッセージを 8000111 で拒否することがあるため (wrangler issue)、
-          # SHA を message として送って追跡性を保つ。
-          #
-          # ここは ${{ }} の直接展開のままでよい (#239 で「env 経由に変えるべき」と
-          # 指摘されたが、実測の結果その前提が誤りだった)。wrangler-action v4 は
-          # command: を **シェルに渡さず**トークン分割して npx を直接 exec する。
-          # 実測: env で $CF_PROJECT_NAME を渡すと wrangler がプロジェクト名として
-          # 文字列 "$CF_PROJECT_NAME" を受け取り deploy が失敗する。
-          # シェルが介在しないので head_ref の `;` `$` バッククォートは不活性であり、
-          # git はブランチ名に空白を許さないため引数分割も起きない。
-          # **env 経由に「直す」とデプロイが壊れる。**
-          command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=${{ github.head_ref }} --commit-hash=${{ github.sha }} --commit-message="${{ github.sha }}"
-
-      - name: Comment PR with preview URL
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        # wrangler の出力にバッククォートや `${` が混ざると、テンプレートリテラルへの
-        # 直接展開ではスクリプトごと壊れて job が落ちる。env: 経由で渡し、
-        # process.env 参照にすることで出力内容に関わらず安全に扱う。
-        env:
-          PREVIEW_DEPLOY_OUTPUT: ${{ steps.preview-deploy.outputs.command-output }}
-        with:
-          script: |
-            const output = process.env.PREVIEW_DEPLOY_OUTPUT;
-            const urlMatch = output.match(/https:\/\/[^\s]+\.pages\.dev/);
-            const previewUrl = urlMatch ? urlMatch[0] : null;
-
-            if (!previewUrl) {
-              console.log('Could not extract preview URL from output:', output);
-              return;
-            }
-
-            const body = `## 🚀 Preview Deployment
-
-            | Name | URL |
-            |------|-----|
-            | Preview | ${previewUrl} |
-
-            *Deployed from commit ${context.sha.substring(0, 7)}*
-            *API: staging Workers*`;
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const botComment = comments.find(comment =>
-              comment.user.type === 'Bot' &&
-              comment.body.includes('## 🚀 Preview Deployment')
-            );
-            if (botComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: body
-              });
-            }
+          name: preview-dist
+          path: ./dist/
+          if-no-files-found: error
+          retention-days: 3
 
   # --------------------------------------------------------------------
   # main push: staging 環境 (Workers + Pages) を更新

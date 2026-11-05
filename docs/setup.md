@@ -253,13 +253,32 @@ CI が `wrangler` を使ってデプロイするので、適切な権限の API 
 
 > **`CLOUDFLARE_API_TOKEN` は repo level に置かない**。preview / staging / production で同一 token を共用すると、PR プレビュー (= fork や任意ブランチから走り得る) でも本番デプロイ権限を持つ token が露出する。**Environment secret として環境ごとに分け**、production token は production Environment (承認ゲート配下) に置く。
 >
+> PR のコードを走らせる job (`deploy.yml` の `build-preview`) にはトークンを渡さない (#582)。`build-preview` は secrets を持たない `preview` 環境で build して artifact に上げるだけで、staging のトークンで `pages deploy` するのは PR のコードを checkout しない `deploy-preview.yml` (workflow_run) の方。
+>
 > deploy job はすべて `environment:` を宣言しているので、**Environment secret は同名の repo secret を自動的に上書き**する。ワークフロー側 (`${{ secrets.CLOUDFLARE_API_TOKEN }}`) は変更不要。
 
 ### GitHub Environments の作成
 
 Settings → Environments → **New environment**:
 
-#### Environment `staging` (承認不要、main push で自動デプロイ。preview もこの環境を使う)
+#### Environment `preview` (PR プレビューの build 用。**secrets を置かない**)
+
+PR のコードを走らせる `build-preview` が使う。バンドルに埋め込まれる公開値だけを **Variables** に置く (Secrets に置くと PR のコードへ渡る)。値は staging と同じ。
+
+- Variables (Add variable):
+
+  | Variable | 値 |
+  |---|---|
+  | `VITE_API_URL` | staging Worker の URL (`https://typedcode-api-staging.<your-subdomain>.workers.dev`) |
+  | `VITE_TURNSTILE_SITE_KEY` | staging 用 Turnstile widget の Site Key |
+
+```bash
+gh api -X PUT repos/<owner>/<repo>/environments/preview
+gh variable set VITE_API_URL --env preview --body 'https://typedcode-api-staging.<your-subdomain>.workers.dev'
+gh variable set VITE_TURNSTILE_SITE_KEY --env preview --body '<staging の site key>'
+```
+
+#### Environment `staging` (承認不要、main push で自動デプロイ。PR プレビューの deploy もこの環境のトークンを使う)
 - Secrets (Add secret):
 
   | Secret | 値 |
@@ -267,6 +286,8 @@ Settings → Environments → **New environment**:
   | `CLOUDFLARE_API_TOKEN` | **staging/preview 専用 token**。Pages:Edit + 対象 staging Worker への権限に絞る (本番 Worker 編集権限は付けない) |
   | `VITE_API_URL` | staging Worker の URL (`https://typedcode-api-staging.<your-subdomain>.workers.dev`) |
   | `VITE_TURNSTILE_SITE_KEY` | staging 用 Turnstile widget の Site Key |
+
+- **Deployment branches and tags** → **Selected branches and tags** で `main` だけを許す。使うのは main push の `deploy-staging` と、default branch (main) の ref で動く `deploy-preview.yml` だけ。絞らないと、任意のブランチに workflow を足して push すれば `environment: staging` 経由でトークンを取り出せる (#582)
 
 #### Environment `production` (承認ゲート付き、`v*` タグ push でのみ動作)
 - Secrets:
@@ -401,7 +422,7 @@ GitHub Actions タブで:
 
 - ✓ `test` / `check` / `e2e`
 - ✓ `deploy-staging` (Workers staging + Pages の staging エイリアス)
-- ⊘ `deploy-preview` (skipped, push event のため)
+- ⊘ `build-preview` (skipped, push event のため。`Deploy Preview` workflow も PR の run ではないので skipped)
 - ⊘ `deploy-production` (skipped, タグ push ではないため)
 
 すべて green なら、本番リリースは `gh release create vX.Y.Z` のタグ push で自動的に承認待ちになります。
@@ -418,7 +439,7 @@ CF Pages API が非 ASCII コミットメッセージを弾くケース。`deplo
 
 ### `staging.<project>.pages.dev` が意図しない内容になる
 
-`staging` という名前のブランチで PR を開くと preview が staging エイリアスを上書きしうる。`staging` はブランチ名として予約 (CONTRIBUTING.md)。`deploy-preview` の if 条件に `github.head_ref != 'staging'` が入っているか確認。
+`staging` という名前のブランチで PR を開くと preview が staging エイリアスを上書きしうる。`staging` はブランチ名として予約 (CONTRIBUTING.md)。`deploy.yml` の `build-preview` の if 条件に `github.head_ref != 'staging'` が、`deploy-preview.yml` の if 条件と検査に `staging` の除外が入っているか確認。
 
 ### 本番デプロイが承認待ちにならず即実行される
 
