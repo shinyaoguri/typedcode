@@ -3,12 +3,9 @@
 // ストレージはモード別に名前空間化する (PR3) ので、モード間でセッションが混ざらず共存できる
 // (PR1/PR2 の「モード切替時 auto-clear」を置換)。**NS は最初期に確定**させる — 以降の storage
 // 参照が storageKeys の getter を使うため。
-// ルート (ADR-0015): `/` と未知パスは 'landing' (モード選択の入口)。`/casual` 等は該当 mode。
-// landing のときは重いエディタ初期化をせず LandingPage の DOM だけ描画する (末尾の boot で分岐)。
-const route = resolveRoute(window.location.pathname);
-const isLanding = route === 'landing';
-// landing はモードを持たない。storage/アクセント色は casual を既定に置く (landing は storage 非使用)。
-const mode: EditorMode = isLanding ? 'casual' : route;
+// ルート (ADR-0015): `/` と未知パスは 'landing' (モード選択の入口) で、entry.ts が LandingPage だけを描き
+// このモジュールを読み込まない (#302)。ここに来るのは `/casual` `/class` `/assignment` `/exam` のとき。
+const mode: EditorMode = resolveModeFromPath(window.location.pathname);
 setStorageNamespace(mode);
 const examMode = mode === 'exam';
 
@@ -37,8 +34,7 @@ import {
   type ClassPackage,
   type RecordEventInput,
 } from '@typedcode/shared';
-import { resolveRoute, capabilitiesFor, type EditorMode } from './core/mode.js';
-import { LandingPage } from './ui/components/LandingPage.js';
+import { resolveModeFromPath, capabilitiesFor, type EditorMode } from './core/mode.js';
 import { setAppState, getAppState, buildTestSnapshot } from './core/stateContract.js';
 import { ModeSwitcher } from './ui/components/ModeSwitcher.js';
 import { setStorageNamespace, tabsKey, sessionActiveKey } from './core/storageKeys.js';
@@ -114,6 +110,7 @@ import {
 import { initSessionStorageService, SessionStorageBlockedError } from './services/SessionStorageService.js';
 import { showSessionRecoveryDialog } from './ui/dialogs/SessionRecoveryDialog.js';
 import { showUnprovenContentDialog } from './ui/dialogs/UnprovenContentDialog.js';
+import { showBootFailure } from './app/bootFailure.js';
 
 // shared ライブラリのトレースログは dev サーバ時のみ有効化 (本番は no-op)。
 setSharedDebug(import.meta.env.DEV);
@@ -138,14 +135,12 @@ import type { WelcomeScreen } from './ui/components/WelcomeScreen.js';
 initDOMi18n();
 
 // モード切替ピル (ADR-0015): titlebar に現在モードを表示し、クリックで 4 モードへ切り替えられる。
-// 以前の静的バッジ (feature-badge) を置き換える。ランディングはエディタシェルを使わないので挿入しない。
-if (!isLanding) {
-  // クリック時にだけ呼ばれるので、ctx (下で const 宣言) を参照してよい。モードごとに保存先が別で現モードの作業は
-  // 失われないので、離脱確認は出さない (#445)。
-  new ModeSwitcher(mode, () => {
-    ctx.skipUnloadConfirm = true;
-  });
-}
+// 以前の静的バッジ (feature-badge) を置き換える。
+// クリック時にだけ呼ばれるので、ctx (下で const 宣言) を参照してよい。モードごとに保存先が別で現モードの作業は
+// 失われないので、離脱確認は出さない (#445)。
+new ModeSwitcher(mode, () => {
+  ctx.skipUnloadConfirm = true;
+});
 
 // Monaco Editor の Worker 設定
 configureMonacoWorkers();
@@ -1118,32 +1113,6 @@ function restoreClassProblemDisplay(appCtx: AppContext): void {
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
 }
 
-/**
- * 起動の途中で投げられた例外を画面に出す (#325)。スピナーを消し、再読み込みを案内する静的オーバーレイを開く。
- * データを消す操作は置かない (保存済みのデータは残っている)。`data-app-state` は `initializing` のまま
- * (起動を途中で止める他の画面と同じ扱い。何で止まったかは `data-dialog="boot-failure"` で見る)。
- */
-function showBootFailure(error: unknown): void {
-  console.error('[TypedCode] Initialization failed:', error);
-  initOverlay?.classList.add('hidden');
-
-  const overlay = document.getElementById('boot-failure-overlay');
-  if (!overlay) return;
-
-  const blockedHint = document.getElementById('boot-failure-blocked-hint');
-  if (blockedHint) blockedHint.hidden = !(error instanceof SessionStorageBlockedError);
-
-  const detail = document.getElementById('boot-failure-detail-text');
-  if (detail) {
-    detail.textContent = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-  }
-
-  document.getElementById('boot-failure-reload-btn')?.addEventListener('click', () => window.location.reload(), {
-    once: true,
-  });
-  overlay.classList.remove('hidden');
-}
-
 // ========================================
 // メイン初期化関数
 // ========================================
@@ -1610,17 +1579,14 @@ function notifyRestoreDivergences(): void {
   });
 }
 
-// ブート: ランディング (ADR-0015) なら重いエディタ初期化をせず DOM だけ描画する。
+// ブート (ランディングは entry.ts が描くので、ここに来るのはエディタのときだけ。#302)
 function boot(): void {
-  if (isLanding) {
-    setAppState('landing');
-    new LandingPage().render();
-    return;
-  }
   // 静的イベントリスナーを設定（DOM準備後）
   setupStaticEventListeners(ctx);
   // 起動のどこで reject しても、スピナーのまま止めずにエラー画面を出す (#325)
-  initializeApp().catch(showBootFailure);
+  initializeApp().catch((error: unknown) =>
+    showBootFailure(error, { storageBlocked: error instanceof SessionStorageBlockedError })
+  );
 }
 
 // DOMContentLoaded または即座に実行

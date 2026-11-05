@@ -7,7 +7,7 @@
  *   - casual を「すぐ書けるお試し」、他モードを授業/試験文脈の入口として導線を明確化する
  *   - 進行中セッションがあるモードには「続きから」バッジを非同期で表示する
  *
- * **重いエディタ初期化 (Monaco/トラッカー) はせず DOM のみ描画**する (main.ts が短絡)。
+ * **重いエディタ初期化 (Monaco/トラッカー) はせず DOM のみ描画**する (entry.ts が main.ts を読まずにここだけ描く。#302)。
  * カード選択時に利用規約同意フラグを set する (= 入口で一度同意。casual はモーダルを出さない)。
  */
 
@@ -96,9 +96,8 @@ export class LandingPage {
     overlay.id = 'landing-page';
     overlay.innerHTML = this.html();
     document.body.appendChild(overlay);
-    // エディタシェルは初期化しない (initializeApp を呼ばない) のでレイアウトから外す。
-    // 注: top-level で生成される Monaco エディタ (main.ts) はこの非表示コンテナ内に作られるが、
-    // 操作されないまま遷移するので無害 (完全 lazy-split は将来最適化、ADR-0015)。
+    // エディタシェルの DOM (index.html の #app) は初期化しないのでレイアウトから外す。
+    // landing では main.ts を読み込まないので、Monaco は生成されない (#302)。
     document.getElementById('app')?.style.setProperty('display', 'none');
     document.getElementById('init-overlay')?.classList.add('hidden');
 

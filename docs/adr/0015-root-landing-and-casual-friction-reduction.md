@@ -32,7 +32,7 @@ ADR-0011 でモードを URL パスに分岐したが、導線に2つの曖昧�
 **`/` をモード選択ランディング(Option B)にし、casual の起動摩擦を下げる(Option E)。**
 
 - **ルーティング**: 新 `resolveRoute(pathname): 'landing' | EditorMode`。`/casual|class|assignment|exam`→該当 mode、**`/` と未知パス→`'landing'`**。`/casual` を**明示ルート化**し、タイポは黙 casual せず入口へ。
-- **ランディング**: `LandingPage` が**重いエディタ初期化をせず DOM だけ描画**(main.ts が `route==='landing'` で `initializeApp()` を短絡)。4モードを**比較カード(料金比較ページ風)で横並び**に見せ、能力差(用途/問題配布/スクショ/封印・根束縛/証明保証)を一目で示す。カードクリックで利用規約同意フラグ (`typedcode-terms-accepted`) を set し `/<mode>` へ遷移。利用規約は**受動表示**。アクセント色は `:root[data-mode]`(landing では casual 固定)でなく**要素スコープ** (`.landing-card-mode[data-mode]`) で付ける。
+- **ランディング**: `LandingPage` が**重いエディタ初期化をせず DOM だけ描画**(エントリ `entry.ts` がルートを決め、landing では `main.ts` を読み込まない = #302。それまでは main.ts が `route==='landing'` で `initializeApp()` を短絡していた)。4モードを**比較カード(料金比較ページ風)で横並び**に見せ、能力差(用途/問題配布/スクショ/封印・根束縛/証明保証)を一目で示す。カードクリックで利用規約同意フラグ (`typedcode-terms-accepted`) を set し `/<mode>` へ遷移。利用規約は**受動表示**。アクセント色は `:root[data-mode]`(landing では casual 固定)でなく**要素スコープ** (`.landing-card-mode[data-mode]`) で付ける。
 - **進行中セッション表示**: `core/SessionDetector.ts` が各モードのセッション IndexedDB を**バージョン指定なしで read-only に開き**(存在しなければ `onupgradeneeded` を abort=空 DB を作らない)、最新セッションの tab 数を数えてカードに「続きから (N)」バッジを**非同期**で出す。
 - **モード切替 (エディタ内)**: `ui/components/ModeSwitcher.ts` が titlebar に現モードのピル+ドロップダウンを出し(旧静的バッジを置換)、別モード選択で `/<mode>` へ遷移。storage はモード別名前空間なので**現モードの作業は失われない**。キーボード操作 (Esc/上下/フォーカス戻し) 対応。設計判断: 既存セッションのある exam/class へ切り替えるとそのモードのリロード復帰が走る(`/exam` を打つのと同じ、整合性は暗号束縛が担保)。
 - **通常モード (casual) の摩擦低減**:
@@ -59,10 +59,10 @@ ADR-0011 でモードを URL パスに分岐したが、導線に2つの曖昧�
 ### Negative / Trade-offs
 - **`/` の意味が「エディタ」→「ランディング」に変わる**。casual の正規 URL は `/casual`。storage は casual=名前空間なし (`ns=''`) のままなので**互換**(既存セッションは `/casual` で見える)。
 - casual proof は既定でスクショ無し=**低保証の明示**(grader は label でなく実証拠から保証度を導く、ADR-0011 §4)。
-- ランディングは Monaco を mount しないが、現状 top-level 生成ぶんのチャンクは読む(完全 lazy-split は将来最適化)。
+- ~~ランディングは Monaco を mount しないが、現状 top-level 生成ぶんのチャンクは読む(完全 lazy-split は将来最適化)。~~ #302 で解消: `entry.ts` が landing では `main.ts` を dynamic import しないので、Monaco・実行系・xterm・Wasmer の chunk を読まず Monaco も生成しない (本番ビルドの `/` の転送量は 1.44 MB → 0.12 MB)。
 
 ### Follow-ups / 残課題
-- ランディングの完全 lazy-split(エディタチャンクを landing で読まない)。
+- ~~ランディングの完全 lazy-split(エディタチャンクを landing で読まない)。~~ #302 で実施。
 - 利用規約を受動表示→明示チェックボックスに強化するかは運用判断。
 
 ## References
@@ -71,7 +71,8 @@ ADR-0011 でモードを URL パスに分岐したが、導線に2つの曖昧�
 - `packages/editor/src/core/SessionDetector.ts` — 進行中セッション検出(空 DB を作らない read-only open)
 - `packages/editor/src/ui/components/LandingPage.ts` — 比較カードのランディング
 - `packages/editor/src/ui/components/ModeSwitcher.ts` — titlebar のモード切替ピル
-- `packages/editor/src/main.ts` — landing 短絡 / casual の terms 省略・画面共有 opt-out 分岐 / ModeSwitcher 初期化
+- `packages/editor/src/entry.ts` — ルートで分岐し、landing では `main.ts` を読まずに `LandingPage` だけ描く (#302)
+- `packages/editor/src/main.ts` — casual の terms 省略・画面共有 opt-out 分岐 / ModeSwitcher 初期化
 - `packages/editor/src/app/TermsHandler.ts` — `markTermsAccepted` / `hasAcceptedTerms`
 - [ADR-0011](0011-course-modes-and-path-routing.md) — モード体系・パス分岐(本 ADR が `/` 入口を補う)
 - [ADR-0007](0007-maximal-signal-capture.md) — 生信号 capture(本 ADR は触れない)
