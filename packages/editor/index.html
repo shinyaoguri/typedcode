@@ -565,7 +565,7 @@
                 <li data-i18n="terms.hashChainSha256">SHA-256ハッシュ：各操作イベントは直前のイベントのハッシュを含めてハッシュ化され、連鎖的につながります</li>
                 <li data-i18n="terms.hashChainCheckpoint">チェックポイント：一定間隔でチェックポイントを作成し、証明の区切りを設けます</li>
                 <li data-i18n="terms.hashChainPosw">Proof of Sequential Work (PoSW)：チェックポイントごとに計算量証明を生成し、時間の経過を証明します。この計算はWeb Workerでバックグラウンド実行されます</li>
-                <li data-i18n="terms.hashChainFingerprint">ブラウザフィンガープリント：証明ファイルにはブラウザ環境情報（言語、タイムゾーン、画面解像度など）が含まれます</li>
+                <li data-i18n="terms.hashChainFingerprint">ブラウザフィンガープリント：証明ファイルには次のブラウザ環境情報が含まれます — ユーザーエージェント、言語設定（優先言語の一覧）、プラットフォーム、CPU コア数、メモリ量、画面（解像度・色深度・表示倍率）、タイムゾーン（UTC との時差）、GPU のベンダー名とレンダラー名、Cookie の有効・無効、Do Not Track の設定、タッチ点数。描画結果（canvas）やインストール済みフォントの一覧は収集しません</li>
               </ul>
               <p class="terms-detail-note" data-i18n="terms.hashChainNote">この仕組みにより、コードが一文字ずつタイピングされたことを第三者が検証可能な形で証明できます。</p>
             </div>
@@ -662,7 +662,7 @@
               <p data-i18n="terms.privacyDesc">TypedCodeが取得する情報と、証明データの取り扱いについてご確認ください。</p>
               <p class="terms-detail-heading" data-i18n="terms.privacyDetailHeading">取得する情報について：</p>
               <ul class="terms-detail-list">
-                <li data-i18n="terms.privacyBrowserInfo">ブラウザから一般的に取得可能な情報（言語、タイムゾーン、画面解像度など）のみを使用しており、氏名やメールアドレスなどの個人情報は収集しません</li>
+                <li data-i18n="terms.privacyBrowserInfo">ブラウザから一般的に取得可能な環境情報（「ハッシュチェーンと証明」の「ブラウザフィンガープリント」に挙げた項目）のみを使用しており、氏名やメールアドレスなどの個人情報は収集しません</li>
                 <li data-i18n="terms.privacyTypedContent">ただし、エディタに入力したコードの内容はすべて記録されます</li>
                 <li data-i18n="terms.privacyScreenshots">画面共有中は画面全体がスクリーンショットとして保存されるため、画面に表示されている他のアプリケーションやウィンドウの内容も記録される可能性があります</li>
                 <li data-i18n-html="terms.privacyLocalOnly"><strong>これらのデータはすべてお使いのブラウザ内にのみ保存され、外部サーバーには送信されません</strong></li>

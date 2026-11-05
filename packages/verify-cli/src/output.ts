@@ -748,6 +748,7 @@ ${c('cyan', 'Usage:')}
                    [--require-anchor-density] [--require-root-anchor]
                    [--require-signed-checkpoints] [--require-final-anchor]
                    [--analysis-json <out.json>] [--analysis-bundle <out.json>]
+                   [--aggregate-bundle <out.json>]
                    [--analyzer <module>]... [--no-default-analyzers]
                    [--extract-sources <dir>]
 
@@ -796,6 +797,13 @@ ${c('cyan', 'Options:')}
                    content-free { processSummary, analysis, assurance } with NO
                    events / source / fingerprint. The input format for cohort
                    baselines (ADR-0025). Advisory — never affects the exit code.
+                   Includes the proof filename, reflection notes and analyzer summaries:
+                   for the course's own graders, do not share it outside the course.
+  --aggregate-bundle
+                   Write the Tier S aggregate bundle (ADR-0024, #304) for every proof:
+                   numbers and categories only (allowlist) — no filename, free text,
+                   analyzer id or event index. For research / cross-course aggregation;
+                   also accepted by cohort baselines. Advisory — never affects the exit code.
   --analyzer       Load a custom analyzer (ADR-0009 / platform): an ES module that
                    exports a default / "analyzer" / "analyzers" Analyzer. Repeatable.
                    Runs alongside the built-in analyzers. Lets graders/researchers plug
