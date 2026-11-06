@@ -42,11 +42,11 @@
 | [0008](0008-exam-fullscreen-request-not-enforce.md) | Accepted | 試験モードはフルスクリーンを要求するが強制せず状態を記録する |
 | [0009](0009-pluggable-analysis-layer.md) | Accepted | 改ざん検証と直交する pluggable な分析層フレームワークを定義する |
 | [0010](0010-exam-session-model.md) | Accepted (sticky 部分は ADR-0011 で置換) | 試験モードのセッション構造 (1問1タブ・固定・リロード復帰可能) |
-| [0011](0011-course-modes-and-path-routing.md) | Accepted (実装済み。§6 前半は未実装・後半は ADR-0020 で実現) | 授業・課題・試験を1ドメインのパスで分岐し能力プリセットでモデル化する |
+| [0011](0011-course-modes-and-path-routing.md) | Accepted (実装済み。§6 前半は未実装・後半は ADR-0020 で実現。§3 の授業と課題は ADR-0046 段階 2 で統合予定) | 授業・課題・試験を1ドメインのパスで分岐し能力プリセットでモデル化する |
 | [0012](0012-sealed-starter-template-in-exam-payload.md) | Accepted | 封印問題の平文を構造化し N問バンドル＋問題ごとのスターターコードを同梱する |
 | [0013](0013-exam-schedule-advisory-keep-manifest-format.md) | Accepted | 試験スケジュールを advisory とし manifest フォーマットは据え置く |
 | [0014](0014-class-mode-unsealed-problem-distribution.md) | Accepted | 授業モードは平文 `.tcclass` で問題を配布し受動 fullscreen を記録する (tier ①) |
-| [0015](0015-root-landing-and-casual-friction-reduction.md) | Accepted | ルート `/` をモード選択ランディングにし、通常モードの起動摩擦を下げる |
+| [0015](0015-root-landing-and-casual-friction-reduction.md) | Accepted (ランディングとモード切替は ADR-0046 が置き換え) | ルート `/` をモード選択ランディングにし、通常モードの起動摩擦を下げる |
 | [0016](0016-anchoring-density-signal.md) | Accepted | 署名 cp の「アンカー密度」をシグナル化し任意で gate する (末尾 1 点アンカー検出) |
 | [0017](0017-server-anchored-chain-root.md) | Accepted (手順 5 は未実装) | セッション開始 ECDSA トークンで casual/class の root をサーバアンカーする (format 1.2.0) |
 | [0018](0018-istrusted-capture.md) | Accepted | 合成打鍵を `isTrusted` で捕捉し advisory シグナル化する (keystroke data に hashed・加算的) |
@@ -77,6 +77,7 @@
 | [0043](0043-acceptance-policy-separated-from-integrity.md) | Accepted | 受理ポリシー (root / 密度 / 署名 cp の存在 / 最終署名の 4 つの opt-in 要件) を検証の結論から分け、`integrityValid` と `policy.violations` (列挙型の code) で返す (密度 gate を signedCheckpoints から外す・整合性が落ちたら評価しない・Web は適用しない・time-box は入れない) |
 | [0044](0044-fingerprint-collection-scope.md) | Accepted | fingerprint の収集を用途のあるコンポーネントに絞る (canvas・fonts を集めず、WebGL は `unmaskedVendor` / `unmaskedRenderer` の 2 値だけ。残す 13 キーごとに理由を書き、新しいキーは読むコードか理由を書いてから集める。旧 proof は受け付け続ける) |
 | [0045](0045-lower-posw-iterations-for-recording-throughput.md) | Accepted (実装は #611) | PoSW の反復数を 10,000 から 1,000 に下げる (CPU 4 倍相当で記録が入力に追いつかない実測が根拠・偽造側の下限は 10,000 でも分単位で防御にならない・記録側の await / 同期は形式と安全性に影響しない実装詳細・root アンカーで変える案と同期化だけの案は不採用) |
+| [0046](0046-entry-without-mode-choice.md) | Accepted (段階 1 = #644 を実装) | 学生にモードを選ばせず、`/` で練習のエディタを直接開く (モードは配布物と教員のリンクが決める・未知パスは not-found・titlebar はモード表示だけ・練習の規約は受動通知で同意を記録・段階 2 で授業と課題を `.tcclass` の方針に統合・段階 3 で保存領域を配布物単位に) |
 
 ## 参考
 
