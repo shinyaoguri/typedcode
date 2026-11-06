@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 import {
   EditorApp,
+  NEUTRAL_PATH,
   appendToStoredTabContent,
   listProofEntries,
   tamperFirstContentChange,
@@ -105,12 +106,22 @@ const SHOTS = [
       'エディタ: 起動時の空き容量の試験で書き込めなかったときの警告 (このまま続ける / もう一度確かめる。書き込みを容量切れにして表示)',
   },
   {
+    // ファイル名は以前のランディングのまま (#644 の before/after を同じ `/` の画面で対にするため)
     file: '15-landing.png',
-    caption: 'エディタ: ランディング (モード選択の比較カードと、その下の全モード共通の注記)',
+    caption: 'エディタ: `/` を開いたところ (練習のエディタが直接開き、上端に利用規約の通知が出る。#644)',
   },
   {
     file: '16-terms-bot-detection.png',
     caption: 'エディタ (授業モード): 利用規約の「Bot検出」を開いた状態 (Turnstile の説明)',
+  },
+  {
+    file: '17-not-found.png',
+    caption: 'エディタ: 未知のパス (`/exsm`) を開いたときの「このページはありません」画面 (エディタは起動しない。#644)',
+  },
+  {
+    file: '18-terms-modal.png',
+    caption:
+      'エディタ (授業モード): 利用規約のモーダルを開いた直後 (冒頭の案内の直後に、どのモードでも証明しないことの注記。#240 / #644)',
   },
 ] as const;
 
@@ -254,7 +265,7 @@ test.describe('見た目・動きの証跡 @shots', () => {
   });
 
   // 09〜10 (#413): PoSW の処理待ちを残して閉じた状態 (tabs の content にだけ打鍵が残る) から再開したときの通知。
-  // 処理待ちの状態は、閉じた後に `/` の別ページから tabs の content の末尾を書き足して作る (close-tab-recovery.spec.ts と同じ)。
+  // 処理待ちの状態は、閉じた後にエディタを起動しない別ページ (`NEUTRAL_PATH`) から tabs の content の末尾を書き足して作る (close-tab-recovery.spec.ts と同じ)。
   test('復元時に証明と食い違った元のコードの通知と差分を撮る @shots', async ({ page, context }) => {
     const app = new EditorApp(page);
     await app.openCasualFresh();
@@ -262,10 +273,10 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await app.waitForSynced();
     await page.close();
 
-    const landing = await context.newPage();
-    await landing.goto('/');
-    await appendToStoredTabContent(landing, '// typed but not in the proof yet');
-    await landing.close();
+    const neutral = await context.newPage();
+    await neutral.goto(NEUTRAL_PATH);
+    await appendToStoredTabContent(neutral, '// typed but not in the proof yet');
+    await neutral.close();
 
     const resumed = await context.newPage();
     await resumed.goto('/casual');
@@ -300,12 +311,26 @@ test.describe('見た目・動きの証跡 @shots', () => {
     });
   });
 
-  // 15 (#240): ランディング。比較カードの下に全モード共通の注記がある
-  test('ランディングを撮る @shots', async ({ page }) => {
+  // 15 (#644): `/` は練習のエディタを直接開く。規約に未同意なので上端に利用規約の通知が出る
+  test('/ を開いたところを撮る @shots', async ({ page }) => {
     const app = new EditorApp(page);
     await page.goto('/');
-    await expect.poll(() => app.appState()).toBe('landing');
-    await page.screenshot({ path: out('15-landing.png'), animations: 'disabled' });
+    await app.waitReady();
+    await expect.poll(() => app.appState()).toBe('ready');
+    await page.locator('[data-banner="terms"]').waitFor({ state: 'visible' });
+    await page.screenshot({
+      path: out('15-landing.png'),
+      animations: 'disabled',
+      mask: [page.locator('#titlebar-clock'), page.locator('#current-hash')],
+    });
+  });
+
+  // 17 (#644): 未知のパスはエディタを起動せず、`/` へのリンクだけを出す
+  test('未知のパスの not-found 画面を撮る @shots', async ({ page }) => {
+    const app = new EditorApp(page);
+    await page.goto('/exsm');
+    await expect.poll(() => app.appState()).toBe('not-found');
+    await page.screenshot({ path: out('17-not-found.png'), animations: 'disabled' });
   });
 
   // 16 (#240): 利用規約の Bot 検出の説明。規約は casual 以外で未同意なら出るので class で開く
@@ -317,6 +342,14 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await bot.locator('summary').click();
     await bot.locator('[data-i18n-html="terms.botDetectionDesc"]').scrollIntoViewIfNeeded();
     await page.screenshot({ path: out('16-terms-bot-detection.png'), animations: 'disabled' });
+  });
+
+  // 18 (#240 / #644): 利用規約のモーダルの冒頭。どのモードでも証明しないことの注記が案内の直後にある
+  test('利用規約のモーダルの冒頭を撮る @shots', async ({ page }) => {
+    const app = new EditorApp(page);
+    await app.openModeFresh('class', { acceptTerms: false, waitReady: false });
+    await waitDialogOpen(app, 'terms');
+    await page.screenshot({ path: out('18-terms-modal.png'), animations: 'disabled' });
   });
 
   // 11〜12 (#301): 分析器の失敗・時間切れを「シグナルなし」と区別する分析カード。同梱の分析器は通常の proof では

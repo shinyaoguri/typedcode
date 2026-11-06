@@ -6,7 +6,7 @@
 import { BaseThemeManager, type Theme, type ThemeManagerOptions } from '@typedcode/shared';
 import type { MonacoEditor } from './types.js';
 
-/** editor のテーマ設定。landing (entry.ts) は Monaco を持たないので、これで `BaseThemeManager` を直に使う (#302)。 */
+/** editor のテーマ設定。not-found (entry.ts) は Monaco を持たないので、これで `BaseThemeManager` を直に使う (#302)。 */
 export const EDITOR_THEME_OPTIONS: ThemeManagerOptions = {
   storageKey: 'typedcode-theme',
   lightThemeColor: '#f5f5f5',

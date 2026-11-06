@@ -14,6 +14,12 @@ import { expect } from '@playwright/test';
 export const BOOT_TIMEOUT_MS = 60_000;
 
 /**
+ * エディタを起動しない同じ origin のページ (未知パスの not-found 画面。#644)。保存データ (IndexedDB) を
+ * 開かないので、閉じたセッションの保存データを外から書き換えるときの足場に使う (以前はランディングの `/`)。
+ */
+export const NEUTRAL_PATH = '/no-such-page';
+
+/**
  * 実物の TypedCode エディタを Playwright から駆動するページオブジェクト。
  * 操作のセレクタは安定した既存 DOM id (#download-menu-btn 等) を使い、状態の判定は editor の
  * 状態契約 (data-* と dev フック `__tcTestSnapshot`。packages/editor/AGENTS.md「状態契約」) だけを読む。

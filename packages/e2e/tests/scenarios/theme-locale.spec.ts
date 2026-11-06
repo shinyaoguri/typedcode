@@ -75,25 +75,6 @@ test('表示言語を切り替えるとリロードして html[lang] が en か�
   expect(result.passed, result.stdout + result.stderr).toBe(true);
 });
 
-test('記録のあるタブで ModeSwitcher から別モードへ移るとき、離脱確認 (beforeunload) は出ずに /class へ移る (#445)', async ({
-  page,
-}) => {
-  const dialogs: string[] = [];
-  page.on('dialog', (dialog) => {
-    dialogs.push(dialog.type());
-    void dialog.dismiss();
-  });
-  const app = new EditorApp(page);
-  await app.openCasualFresh();
-  await app.typeCode('int a;');
-  await app.waitForSynced();
-
-  await page.locator('#mode-switcher-btn').click();
-  await page.locator('.mode-item[data-mode="class"]').click();
-  await expect(page).toHaveURL(/\/class$/);
-  expect(dialogs).toEqual([]);
-});
-
 test('記録のあるタブを閉じようとすると、離脱確認 (beforeunload) は今までどおり出る (#445)', async ({ page }) => {
   const dialogs: string[] = [];
   page.on('dialog', (dialog) => {

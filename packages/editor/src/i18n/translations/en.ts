@@ -31,43 +31,20 @@ export const en: TranslationKeys = {
     author: 'Author',
   },
 
-  landing: {
-    title: 'TypedCode',
-    subtitle: 'Choose how you want to use it. Every keystroke is recorded as a tamper-evident proof.',
-    termsNotice: 'By starting, you agree to the Terms of Use.',
-    scopeNote:
-      'All modes: TypedCode does not prove whether the code was copied by hand from another screen or written with outside help.',
-    termsLink: 'Terms of Use',
-    start: 'Open',
-    casualDesc: 'Try it / personal use. No consent dialog or screen share — just type.',
-    classDesc: 'In-class work. Load a problem and work under the instructor in the room.',
-    assignmentDesc: 'Take-home assignment. Privacy-first — no screenshots.',
-    examDesc: 'Exam. Unlock a sealed problem with a proctor code; bound cryptographically.',
-    resumeSession: 'Resume',
-    switchMode: 'Switch mode',
-    feat: {
-      purpose: 'Use',
-      problem: 'Problem',
-      screenshot: 'Screenshot',
-      seal: 'Seal / binding',
-      assurance: 'Assurance',
-    },
-    val: {
-      purposeCasual: 'Try it / personal',
-      purposeClass: 'In-class work',
-      purposeAssignment: 'Take-home',
-      purposeExam: 'Exam',
-      problemClass: 'Plaintext (.tcclass)',
-      problemExam: 'Sealed (.tcexam)',
-      screenshotCasual: 'Optional (later)',
-      screenshotClass: 'On',
-      screenshotAssignment: 'Off',
-      screenshotExam: 'On',
-      assuranceCasual: 'Lowest',
-      assuranceClass: 'Medium',
-      assuranceAssignment: 'Medium',
-      assuranceExam: 'Highest',
-    },
+  notFound: {
+    title: 'This page does not exist',
+    body: 'Check that the URL is correct. For a class, assignment, or exam, open the link your instructor gave you.',
+    openEditor: 'Open the editor',
+  },
+
+  termsNotice: {
+    text: 'By using TypedCode, you agree to the Terms of Use.',
+    link: 'Terms of Use',
+    ok: 'OK',
+  },
+
+  scopeNote: {
+    text: 'TypedCode does not prove whether the code was copied by hand from another screen or written with outside help.',
   },
 
   settings: {

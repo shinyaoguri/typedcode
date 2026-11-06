@@ -79,8 +79,8 @@ test('production build: エディタが console エラーなくマウントし�
 });
 
 /**
- * landing (`/`) の初期ロードで取得してはいけないもの (#302)。entry.ts は landing では main.ts を
- * dynamic import しないので、Monaco の worker・実行系・xterm・Wasmer は 1 つも来ないはず。
+ * 未知パス (not-found 画面、#644) の初期ロードで取得してはいけないもの (#302)。entry.ts は not-found では
+ * main.ts を dynamic import しないので、Monaco の worker・実行系・xterm・Wasmer は 1 つも来ないはず。
  * Monaco 本体は共有 chunk に合流して名前で引けないので、`.monaco-editor` の個数と `editor.worker`
  * (Monaco が生成されると必ず取りに行く) の不在で見る。
  */
@@ -93,7 +93,9 @@ const EDITOR_ONLY_ASSETS = [
   /\.wasm$/,
 ];
 
-test('production build: landing (/) はエディタ本体を読み込まずにカードだけ描く', async ({ page }) => {
+test('production build: 未知パスの not-found 画面はエディタ本体を読み込まずに / へのリンクだけを描く', async ({
+  page,
+}) => {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
   const requested: string[] = [];
@@ -104,23 +106,22 @@ test('production build: landing (/) はエディタ本体を読み込まずに�
   page.on('request', (req) => requested.push(new URL(req.url()).pathname));
 
   const app = new EditorApp(page);
-  await page.goto('/');
-  await expect.poll(() => app.appState()).toBe('landing');
-  await expect(page.locator('.landing-card-mode')).toHaveCount(4);
-  // テーマは editor と同じ設定で付く (Playwright の既定の配色は light)。main.ts を読まなくなっても落とさない
+  await page.goto('/exsm');
+  await expect.poll(() => app.appState()).toBe('not-found');
+  await expect(page.locator('#not-found-page a')).toHaveAttribute('href', '/');
+  // テーマは editor と同じ設定で付く (Playwright の既定の配色は light)。main.ts を読まなくても落とさない
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  // 続きからバッジの検出 (SessionDetector の遅延 import) が終わるまで待ち、遅れて来る取得も拾う
-  await expect(page.locator('.landing-card-mode .session-badge[data-tab-count]')).toHaveCount(4);
+  // 遅れて来る取得も拾う
   await page.waitForLoadState('networkidle');
 
   await expect(page.locator('.monaco-editor')).toHaveCount(0);
   const leaked = requested.filter((path) => EDITOR_ONLY_ASSETS.some((re) => re.test(path)));
-  expect(leaked, `landing で取得した URL:\n${requested.join('\n')}`).toEqual([]);
+  expect(leaked, `not-found で取得した URL:\n${requested.join('\n')}`).toEqual([]);
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
   expect(consoleErrors, consoleErrors.join('\n')).toEqual([]);
 });
 
-test('production build: landing のカードから /casual に入ると Monaco は 1 個だけ生成される', async ({ page }) => {
+test('production build: / を開くと練習のエディタが直接開き、Monaco は 1 個だけ生成される', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));
   const workerFetches: string[] = [];
@@ -130,10 +131,9 @@ test('production build: landing のカードから /casual に入ると Monaco �
 
   const app = new EditorApp(page);
   await page.goto('/');
-  await expect.poll(() => app.appState()).toBe('landing');
-  await page.locator('.landing-card-mode[data-mode="casual"]').click();
-  await expect(page).toHaveURL(/\/casual$/);
   await app.waitReady();
+  await expect.poll(() => app.appState()).toBe('ready');
+  await expect(page.locator('html')).toHaveAttribute('data-mode', 'casual');
 
   await expect(page.locator('.monaco-editor')).toHaveCount(1);
   expect(workerFetches, workerFetches.join('\n')).toHaveLength(1);

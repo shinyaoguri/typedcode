@@ -43,45 +43,23 @@ export interface TranslationKeys {
     author: string;
   };
 
-  // ルートのモード選択 (ランディング、ADR-0015)
-  landing: {
+  // 未知パスの「このページはありません」画面 (#644)
+  notFound: {
     title: string;
-    subtitle: string;
-    termsNotice: string; // 「利用を開始すると規約に同意したものとみなします」
-    scopeNote: string; // 比較表の下の注記: 全モード共通で、書き写しや外部の支援の有無は証明しない (#240)
-    termsLink: string;
-    start: string;
-    casualDesc: string;
-    classDesc: string;
-    assignmentDesc: string;
-    examDesc: string;
-    resumeSession: string; // 進行中セッションのバッジ「続きから」
-    switchMode: string; // エディタ内モード切替の見出し/ツールチップ
-    // 比較表の行ラベル
-    feat: {
-      purpose: string;
-      problem: string;
-      screenshot: string;
-      seal: string;
-      assurance: string;
-    };
-    // 比較表のテキスト値 (モード別)
-    val: {
-      purposeCasual: string;
-      purposeClass: string;
-      purposeAssignment: string;
-      purposeExam: string;
-      problemClass: string;
-      problemExam: string;
-      screenshotCasual: string;
-      screenshotClass: string;
-      screenshotAssignment: string;
-      screenshotExam: string;
-      assuranceCasual: string;
-      assuranceClass: string;
-      assuranceAssignment: string;
-      assuranceExam: string;
-    };
+    body: string;
+    openEditor: string;
+  };
+
+  // 練習で規約に未同意のときの通知バナー (#644)
+  termsNotice: {
+    text: string; // 「利用を開始すると利用規約に同意したものとみなします」
+    link: string; // 規約モーダルを開くボタン
+    ok: string;
+  };
+
+  // どのモードでも証明しないことの注記 (#240 の D3。#644 で練習の規約通知と規約モーダルの冒頭へ移した)
+  scopeNote: {
+    text: string;
   };
 
   // Settings menu

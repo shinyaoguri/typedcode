@@ -6,6 +6,7 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import {
   BOOT_TIMEOUT_MS,
   EditorApp,
+  NEUTRAL_PATH,
   appendToStoredTabContent,
   listZipEntries,
   readProofEvents,
@@ -88,10 +89,10 @@ test('tabs レコードの currentHash が古くても、再開後のチェー�
   await app.waitForSynced();
   await page.close();
 
-  // 同じ origin の入口から tabs レコードの currentHash を events 先頭の hash に巻き戻す。
-  const landing = await context.newPage();
-  await landing.goto('/');
-  const rewound = await landing.evaluate(
+  // 同じ origin の、エディタを起動しないページから tabs レコードの currentHash を events 先頭の hash に巻き戻す。
+  const neutral = await context.newPage();
+  await neutral.goto(NEUTRAL_PATH);
+  const rewound = await neutral.evaluate(
     () =>
       new Promise<{ stale: string; last: string }>((resolve, reject) => {
         const open = indexedDB.open('typedcode-session');
@@ -126,7 +127,7 @@ test('tabs レコードの currentHash が古くても、再開後のチェー�
       })
   );
   expect(rewound.stale, 'precondition: the rewound hash must differ from the chain tail').not.toBe(rewound.last);
-  await landing.close();
+  await neutral.close();
 
   const page2 = await context.newPage();
   const app2 = new EditorApp(page2);
@@ -162,10 +163,10 @@ async function closeWithUnprovenEdit(page: Page, context: BrowserContext): Promi
   await app.waitForSynced();
   await page.close();
 
-  const landing = await context.newPage();
-  await landing.goto('/');
-  const rewritten = await appendToStoredTabContent(landing, PENDING_SUFFIX);
-  await landing.close();
+  const neutral = await context.newPage();
+  await neutral.goto(NEUTRAL_PATH);
+  const rewritten = await appendToStoredTabContent(neutral, PENDING_SUFFIX);
+  await neutral.close();
   return rewritten;
 }
 

@@ -264,6 +264,13 @@
   color: var(--text-primary);
 }
 
+/* どのモードでも証明しないことの注記 (#240 の D3)。terms.intro の直後 */
+.terms-scope-note {
+  font-size: 13px;
+  margin: -8px 0 16px;
+  color: var(--text-secondary);
+}
+
 /* Accordion Styles */
 .terms-accordion {
   margin-bottom: 8px;

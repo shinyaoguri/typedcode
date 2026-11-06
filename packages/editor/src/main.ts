@@ -3,8 +3,8 @@
 // ストレージはモード別に名前空間化する (PR3) ので、モード間でセッションが混ざらず共存できる
 // (PR1/PR2 の「モード切替時 auto-clear」を置換)。**NS は最初期に確定**させる — 以降の storage
 // 参照が storageKeys の getter を使うため。
-// ルート (ADR-0015): `/` と未知パスは 'landing' (モード選択の入口) で、entry.ts が LandingPage だけを描き
-// このモジュールを読み込まない (#302)。ここに来るのは `/casual` `/class` `/assignment` `/exam` のとき。
+// ルート (#644): 未知パスは 'not-found' で、entry.ts が NotFoundPage だけを描きこのモジュールを読み込まない (#302)。
+// ここに来るのは `/` `/casual` (どちらも練習) と `/class` `/assignment` `/exam` のとき。
 const mode: EditorMode = resolveModeFromPath(window.location.pathname);
 setStorageNamespace(mode);
 const examMode = mode === 'exam';
@@ -36,7 +36,8 @@ import {
 } from '@typedcode/shared';
 import { resolveModeFromPath, capabilitiesFor, type EditorMode } from './core/mode.js';
 import { setAppState, getAppState, buildTestSnapshot } from './core/stateContract.js';
-import { ModeSwitcher } from './ui/components/ModeSwitcher.js';
+import { renderModeBadge } from './ui/components/ModeBadge.js';
+import { showTermsNotice } from './ui/components/TermsNotice.js';
 import { setStorageNamespace, tabsKey, sessionActiveKey } from './core/storageKeys.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
@@ -131,6 +132,7 @@ import {
   showWelcomeScreen,
   hideWelcomeScreen,
   hasAcceptedTerms,
+  markTermsAccepted,
   showTermsModal,
   handleTemplateImport,
 } from './app/index.js';
@@ -139,13 +141,8 @@ import type { WelcomeScreen } from './ui/components/WelcomeScreen.js';
 // i18n初期化（DOM翻訳を適用）
 initDOMi18n();
 
-// モード切替ピル (ADR-0015): titlebar に現在モードを表示し、クリックで 4 モードへ切り替えられる。
-// 以前の静的バッジ (feature-badge) を置き換える。
-// クリック時にだけ呼ばれるので、ctx (下で const 宣言) を参照してよい。モードごとに保存先が別で現モードの作業は
-// 失われないので、離脱確認は出さない (#445)。
-new ModeSwitcher(mode, () => {
-  ctx.skipUnloadConfirm = true;
-});
+// 今のモードの表示 (#644): titlebar に現在モードの名前とアイコンを出すだけ (別モードへの切替メニューは持たない)。
+renderModeBadge(mode);
 
 // Monaco Editor の Worker 設定
 configureMonacoWorkers();
@@ -888,6 +885,21 @@ function buildTermsAcceptedEvent(): RecordEventInput | null {
   }
 }
 
+/**
+ * 練習 (casual) の規約の通知 (#644)。「OK」か、通知から開いた規約モーダルでの同意で閉じたら、
+ * 同意フラグを書き (モーダル経由なら handleAgree が書き済み)、開いている全タブに termsAccepted を記録する。
+ * フラグを書くのと記録を同じ同期区間で行うので、この後に作るタブには #405 の流し直しで載り、二重にならない。
+ */
+function showCasualTermsNotice(): void {
+  showTermsNotice({
+    openTerms: showTermsModal,
+    onAccepted: () => {
+      if (!hasAcceptedTerms()) markTermsAccepted();
+      void ctx.eventRecorder?.recordTermsAcceptedToAllTabs();
+    },
+  });
+}
+
 function recordTermsAcceptance(): void {
   const activeProofForTerms = ctx.tabManager?.getActiveProof();
   if (!activeProofForTerms) return;
@@ -1224,8 +1236,8 @@ async function initializeApp(): Promise<void> {
   }
 
   // Phase 1: 利用規約の確認 (ADR-0015)。
-  // casual は「すぐ書ける」入口なので**モーダルを出さない** (同意はランディングで一度行う)。
-  // 直リンク `/casual` で未同意でも、provenance 用の `termsAccepted` イベントは後段で記録される。
+  // casual は「すぐ書ける」入口なので**モーダルを出さない**。未同意なら起動の最後に受動的な通知を出し、
+  // 閉じたら同意として記録する (#644。showCasualTermsNotice)。同意済みなら `termsAccepted` は後段で記録される。
   // 他モード (class/assignment/exam) は従来どおり未同意ならモーダルを出す。
   if (ctx.mode !== 'casual' && !hasAcceptedTerms()) {
     initOverlay?.classList.add('hidden');
@@ -1236,7 +1248,7 @@ async function initializeApp(): Promise<void> {
 
   // Phase 1.2: 空き容量の試験 (#626)。セッション DB とは別の DB に約 200MB を書いて消す。
   // 書けなければ警告を出し、続行は選べる (起動は止めない)。判定できなかったときは何も出さない。
-  // landing は boot() が initializeApp を短絡するので走らない
+  // 未知パス (not-found) は entry.ts が main.ts を読まないので走らない
   const storageProbe = await runStorageProbe();
   if (storageProbe.kind === 'insufficient') {
     initOverlay?.classList.add('hidden');
@@ -1619,6 +1631,11 @@ async function initializeApp(): Promise<void> {
 
   // 状態契約: ここから編集できる (タブ 0 本ならウェルカム画面)
   setAppState('ready');
+
+  // 練習で規約に未同意なら、規約の通知を出す (#644)。EventRecorder (Phase 4.9) の後なので、閉じたときに記録できる
+  if (ctx.mode === 'casual' && !hasAcceptedTerms()) {
+    showCasualTermsNotice();
+  }
 
   // 復元で証明と食い違った元のコードを保全したタブがあれば知らせる (#413)。待たない (編集は止めない)
   notifyRestoreDivergences();

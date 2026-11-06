@@ -3,7 +3,7 @@
  *
  * 起動のどこで止まっても、スピナーのまま残さずに `#boot-failure-overlay` を出す。
  * `entry.ts` (main の chunk の取得失敗・top-level の例外) と `main.ts` (`initializeApp` の reject)
- * の両方から呼ぶので、landing の経路に重い依存を持ち込まないよう DOM 以外を import しない (#302)。
+ * の両方から呼ぶので、not-found の経路に重い依存を持ち込まないよう DOM 以外を import しない (#302)。
  */
 
 export interface BootFailureOptions {

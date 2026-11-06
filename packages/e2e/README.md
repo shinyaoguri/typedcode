@@ -166,7 +166,7 @@ shared の main が raw TypeScript のため `node dist/cli.js` は動かない
 
 | ファイル | 検証内容 |
 |---|---|
-| mode-routing.spec.ts | `/`・未知パスはランディング (エディタ非初期化・4カード)、`/casual` は明示ルート、カードから遷移 |
+| mode-routing.spec.ts | `/` と `/casual` は練習のエディタを直接開く (打鍵 → export → verify-cli)、未知パスは not-found 画面 (エディタ非初期化・`/` へのリンクだけ) |
 | reload-recovery.spec.ts | 編集→リロード→復元→追記→export、チェーンがリロードをまたいで検証 pass |
 | screen-share.spec.ts | 画面共有有効化 → screenShareStart + スクショ記録 → ZIP に screenshots/ → 検証 pass |
 | exam-roundtrip.spec.ts | `/exam` で `.tcexam` を誤コードで拒否 (ゲートに留まる) → 正コードで解錠 → 打鍵 → export → `verify-cli --mode fast --exam-package` が exit 0 + Exam binding の PASS 行。別パッケージ・本物の registry では exit 1。署名 envelope ≥ 1 (#229) |

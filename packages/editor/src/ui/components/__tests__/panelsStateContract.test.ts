@@ -1,38 +1,16 @@
 // @vitest-environment happy-dom
 /**
- * パネル・ダイアログ・ランディングの状態契約 (data-*) のテスト (#434)。
- * E2E (`packages/e2e/tests/scenarios/`) はこの属性だけを読んで開閉・選択・進行中セッションを判定するので、
+ * パネル・ダイアログ・入口の画面の状態契約 (data-*) のテスト (#434 / #644)。
+ * E2E (`packages/e2e/tests/scenarios/`) はこの属性だけを読んで開閉・選択を判定するので、
  * `.visible` / `.hidden` などの class や表示テキストとは独立に、値そのものを固定する。
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ModeSessionInfo } from '../../../core/SessionDetector.js';
-import type { EditorMode } from '../../../core/mode.js';
-
-type Sessions = Record<EditorMode, ModeSessionInfo | null>;
-
-/** ランディングのセッション検出を、テストが解決するタイミングまで止めておく代役。 */
-const detection = vi.hoisted(() => {
-  let resolve: (value: unknown) => void = () => {};
-  return {
-    reset(): void {
-      this.promise = new Promise((r) => {
-        resolve = r;
-      });
-    },
-    promise: Promise.resolve() as Promise<unknown>,
-    finish(value: unknown): void {
-      resolve(value);
-    },
-  };
-});
-
-vi.mock('../../../core/SessionDetector.js', () => ({
-  detectModeSessions: () => detection.promise,
-}));
 
 import { ClassProblemLoader } from '../ClassProblemLoader.js';
-import { LandingPage } from '../LandingPage.js';
+import { renderModeBadge } from '../ModeBadge.js';
+import { NotFoundPage } from '../NotFoundPage.js';
+import { showTermsNotice } from '../TermsNotice.js';
 import { LogViewer } from '../LogViewer.js';
 import { ProblemPanel } from '../ProblemPanel.js';
 import { SelfReviewDialog } from '../SelfReviewDialog.js';
@@ -130,31 +108,88 @@ describe('self-review data-action', () => {
   });
 });
 
-describe('landing session badge data-tab-count', () => {
+describe('not-found page', () => {
   beforeEach(() => {
-    detection.reset();
+    document.body.innerHTML = '<div id="init-overlay"></div><div id="app"></div>';
   });
 
-  function badge(mode: EditorMode): HTMLElement {
-    return document.querySelector<HTMLElement>(`.landing-card-mode[data-mode="${mode}"] .session-badge`)!;
+  it('hides the editor shell and the boot overlay and offers only a link back to /', () => {
+    new NotFoundPage().render();
+    expect(document.getElementById('app')!.style.display).toBe('none');
+    expect(document.getElementById('init-overlay')!.classList.contains('hidden')).toBe(true);
+    const links = document.querySelectorAll<HTMLAnchorElement>('#not-found-page a');
+    expect([...links].map((a) => a.getAttribute('href'))).toEqual(['/']);
+    expect(links[0]!.dataset.action).toBe('open-editor');
+  });
+});
+
+describe('mode badge', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div class="titlebar-left"></div>';
+  });
+
+  it('shows the current mode as data-mode in the titlebar without any button or menu', () => {
+    const badge = renderModeBadge('exam');
+    expect(badge.parentElement?.className).toBe('titlebar-left');
+    expect(badge.dataset.mode).toBe('exam');
+    expect(badge.querySelectorAll('button, a, [role="menu"], [role="menuitem"]')).toHaveLength(0);
+    expect(badge.tagName).not.toBe('BUTTON');
+  });
+});
+
+describe('terms notice', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="app"><div class="titlebar"></div></div>';
+  });
+
+  function notice(): HTMLElement | null {
+    return document.querySelector<HTMLElement>('[data-banner="terms"]');
   }
 
-  it('has no data-tab-count until detection finishes, then shows N on cards with a session and 0 elsewhere', async () => {
-    new LandingPage().render();
-    expect(badge('casual').hasAttribute('data-tab-count')).toBe(false);
+  it('is inserted at the top of #app and calls onAccepted exactly once when OK is pressed, then leaves the DOM', () => {
+    const onAccepted = vi.fn();
+    showTermsNotice({ openTerms: () => new Promise(() => {}), onAccepted });
+    expect(document.getElementById('app')!.firstElementChild).toBe(notice());
 
-    const sessions: Sessions = {
-      casual: { hasSession: true, tabCount: 2, lastModifiedAt: null },
-      class: null,
-      assignment: null,
-      exam: null,
-    };
-    detection.finish(sessions);
-    await vi.waitFor(() => expect(badge('casual').dataset.tabCount).toBe('2'));
-    expect(badge('casual').hidden).toBe(false);
-    for (const mode of ['class', 'assignment', 'exam'] as const) {
-      expect(badge(mode).dataset.tabCount).toBe('0');
-      expect(badge(mode).hidden).toBe(true);
-    }
+    const ok = notice()!.querySelector<HTMLButtonElement>('[data-action="ok"]')!;
+    ok.click();
+    ok.click();
+    expect(onAccepted).toHaveBeenCalledTimes(1);
+    expect(notice()).toBeNull();
+  });
+
+  it('opens the terms through openTerms and accepts once the terms are agreed to there', async () => {
+    let agree: () => void = () => {};
+    const openTerms = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          agree = resolve;
+        })
+    );
+    const onAccepted = vi.fn();
+    showTermsNotice({ openTerms, onAccepted });
+
+    notice()!.querySelector<HTMLButtonElement>('[data-action="open-terms"]')!.click();
+    expect(openTerms).toHaveBeenCalledTimes(1);
+    // 規約を開いている間は OK を押せない (二重に進まない)
+    expect(notice()!.querySelector<HTMLButtonElement>('[data-action="ok"]')!.disabled).toBe(true);
+    expect(onAccepted).not.toHaveBeenCalled();
+
+    agree();
+    await vi.waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(1));
+    expect(notice()).toBeNull();
+  });
+
+  it('carries the scope note (#240) after the notice text', () => {
+    showTermsNotice({ openTerms: () => Promise.resolve(), onAccepted: vi.fn() });
+    const note = notice()!.querySelector<HTMLElement>('[data-note="scope"]');
+    expect(note).not.toBeNull();
+    expect(note!.textContent!.trim()).not.toBe('');
+  });
+
+  it('does not stack a second notice when shown twice', () => {
+    showTermsNotice({ openTerms: () => Promise.resolve(), onAccepted: vi.fn() });
+    showTermsNotice({ openTerms: () => Promise.resolve(), onAccepted: vi.fn() });
+    expect(document.querySelectorAll('[data-banner="terms"]')).toHaveLength(1);
   });
 });

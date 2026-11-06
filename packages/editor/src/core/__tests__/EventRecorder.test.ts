@@ -374,3 +374,57 @@ describe('EventRecorder session snapshot for tabs created later (#405)', () => {
     expect(countOf(tab, 'environmentProbe')).toBe(0);
   });
 });
+
+describe('EventRecorder.recordTermsAcceptedToAllTabs (#644)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('Worker', MockPoswWorker);
+    persistence.saveTabsToSessionStorage.mockClear();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('records termsAccepted exactly once to every open tab, skipping a tab that already has it', async () => {
+    const { recorder, addTab } = await setupWithTabs({ getTermsAcceptedEvent: () => termsAccepted });
+    const active = await addTab();
+    const alreadyAccepted = await addTab();
+    await alreadyAccepted.typingProof.recordEvent(termsAccepted);
+    const background = await addTab();
+
+    await recorder.recordTermsAcceptedToAllTabs();
+
+    expect(countOf(active, 'termsAccepted')).toBe(1);
+    expect(countOf(alreadyAccepted, 'termsAccepted')).toBe(1);
+    expect(countOf(background, 'termsAccepted')).toBe(1);
+    expect(persistence.saveTabsToSessionStorage).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a tab created after the acceptance at one copy when the snapshot replay also runs', async () => {
+    let accepted = false;
+    const { recorder, addTab } = await setupWithTabs({
+      getTermsAcceptedEvent: () => (accepted ? termsAccepted : null),
+    });
+    const before = await addTab();
+
+    accepted = true;
+    await recorder.recordTermsAcceptedToAllTabs();
+    const after = await addTab();
+    await recorder.recordSessionSnapshotTo(after);
+
+    expect(countOf(before, 'termsAccepted')).toBe(1);
+    expect(countOf(after, 'termsAccepted')).toBe(1);
+  });
+
+  it('records nothing while there is no stored acceptance', async () => {
+    const { recorder, addTab } = await setupWithTabs({ getTermsAcceptedEvent: () => null });
+    const tab = await addTab();
+
+    await recorder.recordTermsAcceptedToAllTabs();
+
+    expect(countOf(tab, 'termsAccepted')).toBe(0);
+    expect(persistence.saveTabsToSessionStorage).not.toHaveBeenCalled();
+  });
+});

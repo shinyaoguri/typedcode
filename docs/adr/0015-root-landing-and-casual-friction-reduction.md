@@ -1,6 +1,6 @@
 # ADR-0015: ルート `/` をモード選択ランディングにし、通常モードの起動摩擦を下げる
 
-- **Status**: Accepted (実装済み)
+- **Status**: Accepted (実装済み)。ただし **ランディング・「続きから」バッジ・エディタ内のモード切替は [ADR-0046](0046-entry-without-mode-choice.md) が置き換えた** (`/` は練習のエディタを直接開き、未知パスは not-found 画面、titlebar はモード表示だけ)。casual の摩擦低減 (規約モーダルを出さない・画面共有はオプトイン) は残る
 - **Date**: 2026-06-09
 - **Deciders**: (PR 上の合意者 / レビュアー)
 - **PR / Commit**: PR #97 (feat/class-mode-capabilities)
