@@ -111,7 +111,7 @@ interface PageFaultLog {
 
 /**
  * `indexedDB.open` を失敗させる init script を入れる (#325 の再現)。名前が `typedcode-session` で
- * 始まる DB (各モードのセッション DB) だけを対象にし、ランディングの SessionDetector などが開く
+ * 始まる DB (各モードのセッション DB) だけを対象にし、空き容量の試験 (`typedcode-storage-probe`) などが開く
  * 他の DB には触れない。
  *
  * 本物の open は呼ばず、偽の request を返して次のタスクで `onerror` を呼ぶ (`request.error` には

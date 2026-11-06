@@ -13,7 +13,7 @@ import {
  * 空き容量の不足を知らせる (#626)。
  * - 起動時の試験: セッション DB とは別の DB に書いて消す。書けなければ編集画面に進む前に警告
  *   (`[data-dialog="storage-low"]`) を出し、「このまま続ける」で起動を続けられる。書けたら何も出さず、試験用の
- *   DB を残さない。ランディング (`/`) では試験しない
+ *   DB を残さない。未知パスの not-found 画面 (#644) では試験しない
  * - 利用中: 保存が容量切れらしい失敗 (editor の `isStorageFullError`) になったら、容量不足の通知
  *   (`#block-notification[data-notice]`) を 1 回だけ出す
  *
@@ -89,13 +89,13 @@ test('#626 試験が書けた起動では警告が出ず、試験用の DB が�
   expect(await databaseNames(page)).not.toContain(STORAGE_PROBE_DB_NAME);
 });
 
-test('#626 ランディング (/) では試験を走らせない', async ({ page }) => {
+test('#626 未知パスの not-found 画面では試験を走らせない', async ({ page }) => {
   await countProbeOpens(page);
   const app = new EditorApp(page);
-  await page.goto('/');
-  await expect.poll(() => app.appState()).toBe('landing');
-  // 進行中セッションの検出 (IndexedDB を開く非同期処理) が終わるまで待ってから数える
-  await expect(page.locator('.landing-card-mode[data-mode] .session-badge[data-tab-count]').first()).toBeAttached();
+  await page.goto('/exsm');
+  await expect.poll(() => app.appState()).toBe('not-found');
+  // 遅れて走る処理があっても拾えるよう、読み込みが落ち着くまで待ってから数える
+  await page.waitForLoadState('networkidle');
 
   expect(await probeOpenCount(page)).toBe(0);
   expect(await databaseNames(page)).not.toContain(STORAGE_PROBE_DB_NAME);

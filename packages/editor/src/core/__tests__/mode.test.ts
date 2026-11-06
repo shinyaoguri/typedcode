@@ -51,20 +51,20 @@ describe('resolveModeFromPath', () => {
 });
 
 describe('resolveRoute', () => {
-  it('routes the bare root path to the landing chooser', () => {
-    expect(resolveRoute('/')).toBe('landing');
+  it('routes the bare root path straight to the casual editor', () => {
+    expect(resolveRoute('/')).toBe('casual');
   });
 
-  it('routes an empty path to the landing chooser', () => {
-    expect(resolveRoute('')).toBe('landing');
+  it('routes an empty path straight to the casual editor', () => {
+    expect(resolveRoute('')).toBe('casual');
   });
 
-  it('routes an unknown/typo path to the landing instead of silently casual', () => {
-    expect(resolveRoute('/exsm')).toBe('landing');
-    expect(resolveRoute('/playground')).toBe('landing');
+  it('routes an unknown/typo path to not-found instead of silently casual', () => {
+    expect(resolveRoute('/exsm')).toBe('not-found');
+    expect(resolveRoute('/playground')).toBe('not-found');
   });
 
-  it('routes /casual explicitly to casual (no longer a default fall-through)', () => {
+  it('keeps /casual as a compatible entry to the casual editor', () => {
     expect(resolveRoute('/casual')).toBe('casual');
   });
 

@@ -14,14 +14,14 @@ import { tabFullFilename } from '../ui/tabs/TabUIController.js';
 /**
  * アプリの段階。
  * - `initializing`: 起動処理中 (利用規約・画面共有の選択・復旧ダイアログもここに含む)
- * - `landing`: モード選択のランディング (`/` と未知パス。エディタは初期化しない)
+ * - `not-found`: 未知パスの「このページはありません」画面 (#644。エディタは初期化しない)
  * - `gate`: 試験のスタートゲート (`ExamStartGate`) で解錠を待っている
  * - `ready`: 編集できる状態 (タブ 0 本のウェルカム画面を含む)
  *
  * 起動を途中で止める画面 (別タブで起動中・未対応ブラウザ・認証失敗) では `initializing` のまま残る。
  * 何で止まったかは `data-dialog` で見る。
  */
-export type AppState = 'initializing' | 'landing' | 'gate' | 'ready';
+export type AppState = 'initializing' | 'not-found' | 'gate' | 'ready';
 
 export function setAppState(state: AppState, root: HTMLElement = document.documentElement): void {
   root.dataset.appState = state;

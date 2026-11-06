@@ -1,0 +1,66 @@
+/* 練習 (casual) の利用規約の通知バナー (#644)。画面共有のオプトアウトバナー (_modals.css) と同じく
+   #app の先頭に flex のフローで積む (重ならない)。色は警告ではなく案内なので、オプトアウトの橙と分ける。 */
+
+.terms-notice-banner {
+  flex-shrink: 0;
+  width: 100%;
+  background: var(--bg-secondary, #252526);
+  border-bottom: 1px solid var(--accent-info, #3794ff);
+  color: var(--text-primary, #ccc);
+  font-size: 13px;
+  padding: 6px 16px;
+}
+
+.terms-notice-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* 規約の文と、どのモードでも証明しないことの注記 (#240)。1 行に収まらなければ注記が 2 行目に回る */
+.terms-notice-texts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 8px;
+}
+
+.terms-notice-scope {
+  color: var(--text-secondary, #999);
+  font-size: 12px;
+}
+
+.terms-notice-content > i {
+  color: var(--accent-info, #3794ff);
+  font-size: 14px;
+}
+
+.terms-notice-btn {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border-color, #3e3e3e);
+  background: transparent;
+  color: var(--text-primary, #ccc);
+}
+
+.terms-notice-ok {
+  border-color: var(--accent-info, #3794ff);
+  background: var(--accent-info, #3794ff);
+  color: #fff;
+}
+
+.terms-notice-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.terms-notice-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

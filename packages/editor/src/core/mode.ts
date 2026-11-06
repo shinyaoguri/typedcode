@@ -141,16 +141,17 @@ export function resolveModeFromPath(pathname: string): EditorMode {
 }
 
 /**
- * ルート (ADR-0015): エディタモードに加え `'landing'` を持つ。`/` と**未知パス**は
- * `'landing'`(モードを選ぶ入口)に落とす — 黙って casual にせず、タイポ (`/exsm` 等) で
- * 「試験のつもりが casual」事故を防ぐ。casual は明示ルート `/casual` でのみ入る。
+ * ルート (#644。ADR-0015 のランディングを置き換え): エディタモードに加え `'not-found'` を持つ。
+ * `/` (と互換の `/casual`) は練習 (casual) のエディタを直接開く。**未知パスは黙って casual にせず**
+ * `'not-found'` に落とす — タイポ (`/exsm` 等) で「試験のつもりが練習」になる事故を防ぐ (ADR-0015 から引き継ぐ)。
  */
-export type Route = 'landing' | EditorMode;
+export type Route = 'not-found' | EditorMode;
 
-/** URL パスの先頭セグメントからルートを確定する。`/`・未知 → 'landing'。 */
+/** URL パスの先頭セグメントからルートを確定する。`/`・`/casual` → 'casual'、未知 → 'not-found'。 */
 export function resolveRoute(pathname: string): Route {
   const seg = pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase() ?? '';
   switch (seg) {
+    case '':
     case 'casual':
       return 'casual';
     case 'class':
@@ -160,7 +161,7 @@ export function resolveRoute(pathname: string): Route {
     case 'exam':
       return 'exam';
     default:
-      return 'landing'; // 空 (ルート /) と未知パスは入口へ
+      return 'not-found'; // 未知パスはエディタを起動しない
   }
 }
 

@@ -7,6 +7,7 @@ import {
   typeIntoEveryTab,
   waitDialogClosed,
   waitDialogOpen,
+  waitResumed,
 } from '../helpers/scenario.js';
 
 /**
@@ -226,11 +227,8 @@ test('casual のリセットは casual の session DB とキーだけを消し�
   expect(after.session.assignmentTabs).not.toBeNull();
   expect(after.dbs).toEqual(expect.arrayContaining(['typedcode-session-assignment', 'typedcode-session-exam']));
 
-  // assignment のセッションは、ランディングの続きからバッジが元のタブ数のまま数える。
-  const landing = await page.context().newPage();
-  await landing.goto('/');
-  await expect(landing.locator('.landing-card-mode[data-mode="assignment"] .session-badge')).toHaveAttribute(
-    'data-tab-count',
-    String(assignmentTabs.length)
-  );
+  // assignment のセッションは、/assignment を開き直すと元のタブがそのまま復元される。
+  await page.goto('/assignment');
+  await waitResumed(app);
+  expect((await app.tabs()).map((t) => t.id)).toEqual(assignmentTabs);
 });

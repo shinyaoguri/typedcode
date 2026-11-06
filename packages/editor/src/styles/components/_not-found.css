@@ -1,0 +1,57 @@
+/* 未知パスの「このページはありません」画面 (#644) — エディタを初期化せず DOM のみで描画する。 */
+
+.not-found-page {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  overflow-y: auto;
+  background: var(--bg-primary, #1e1e1e);
+  color: var(--text-primary, #ccc);
+}
+
+.not-found-content {
+  width: 100%;
+  max-width: 480px;
+  text-align: center;
+}
+
+.not-found-logo {
+  width: 52px;
+  height: 52px;
+  margin-bottom: 10px;
+}
+
+.not-found-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.not-found-body {
+  margin: 10px 0 24px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-secondary, #999);
+}
+
+.not-found-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 6px;
+  background: var(--feature-accent, var(--accent-primary, #0078d4));
+  color: var(--feature-accent-fg, #fff);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.not-found-link:hover,
+.not-found-link:focus-visible {
+  filter: brightness(1.08);
+}

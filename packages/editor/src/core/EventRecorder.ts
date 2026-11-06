@@ -271,6 +271,31 @@ export class EventRecorder {
   }
 
   /**
+   * 利用規約に起動後に同意したとき (練習の通知 = #644)、いま開いている全タブのうち termsAccepted が
+   * まだ無いタブにだけ記録する。同意の後に作るタブは recordSessionSnapshotTo が載せるので、
+   * 同意フラグを書いたのと同じ同期区間で呼べば、どのタブにもちょうど 1 件になる。
+   * @returns 全タブへの記録が完了したらresolveするPromise
+   */
+  recordTermsAcceptedToAllTabs(): Promise<void> {
+    if (!this.enabled || !this.initialized) {
+      return Promise.resolve();
+    }
+    const termsEvent = this.getTermsAcceptedEvent?.() ?? null;
+    if (!termsEvent) {
+      return Promise.resolve();
+    }
+    const targets = this.tabManager
+      .getAllTabs()
+      .filter((tab) => !tab.typingProof.events.some((e) => e.type === 'termsAccepted'));
+    if (targets.length === 0) {
+      return Promise.resolve();
+    }
+    return Promise.all(targets.map((tab) => this.recordToTab(tab, termsEvent))).then(() => {
+      this.persistence.saveTabsToSessionStorage(this.tabManager);
+    });
+  }
+
+  /**
    * 1 タブにイベントを記録する (recordToAllTabs / recordSessionSnapshotTo の共通処理)。
    * アクティブタブの場合のみ LogViewer に反映し、失敗はログに出して resolve する。
    */

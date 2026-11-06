@@ -50,3 +50,29 @@ test('class: 規約に同意するまで先へ進めず、同意すると画面�
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   await app.expectConsistent();
 });
+
+// どのモードでも証明しないことの注記 (#240 の D3) は、規約モーダルの冒頭 (terms.intro の直後) に ja / en のどちらでも
+// 出る。全モードの初回入場で見える場所。翻訳テキストは読まず、html[lang] でロケールを確かめたうえで、注記が見えて
+// 中身が空でないことと、intro の次の要素であることだけを見る。
+for (const [locale, lang] of [
+  ['ja-JP', 'ja'],
+  ['en-US', 'en'],
+] as const) {
+  test.describe(`規約モーダルの注記 (${lang})`, () => {
+    test.use({ locale });
+
+    test(`規約モーダルの冒頭に、証明しないことの注記が ${lang} で出る`, async ({ page }) => {
+      const app = new EditorApp(page);
+      await app.openModeFresh('class', { acceptTerms: false, waitReady: false });
+      await waitDialogOpen(app, 'terms');
+      await expect(page.locator('html')).toHaveAttribute('lang', lang);
+      const note = page.locator('[data-dialog="terms"] [data-note="scope"]');
+      await expect(note).toBeVisible();
+      await expect(note).not.toHaveText(/^\s*$/);
+      const followsIntro = await note.evaluate(
+        (el) => el.previousElementSibling?.getAttribute('data-i18n') === 'terms.intro'
+      );
+      expect(followsIntro).toBe(true);
+    });
+  });
+}

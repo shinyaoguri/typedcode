@@ -4,8 +4,8 @@
  * Chromium の `navigator.storage.estimate()` は、ディスクが 10GB 以上あれば `usage + 10GB` を返し、
  * 空きディスク容量を反映しない。空きが 10MB の PC でも「十分」と出るので、実際に書き込んで判定する。
  *
- * - 書く先はセッション DB とは別の専用 DB (`STORAGE_PROBE_DB_NAME`)。`core/SessionDetector.ts` は
- *   モード別のセッション DB の名前しか開かないので、進行中のセッションとして数えられない
+ * - 書く先はセッション DB とは別の専用 DB (`STORAGE_PROBE_DB_NAME`)。セッション DB (`typedcode-session*`) と
+ *   名前を分け、進行中のセッションと取り違えないようにする
  * - 擬似乱数のチャンクを並べた Blob を 1 行 put し、transaction の commit (`settleOnCommit`) を待つ。
  *   request の success では書けた保証にならない (commit の時点で容量切れになりうる)
  * - 終わったら DB を close して `deleteDatabase` する。**開始時にも `deleteDatabase` する** (前回の試験が
