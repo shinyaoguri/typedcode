@@ -3,6 +3,15 @@
  *
  * Executes Python code in the browser using Pyodide (CPython compiled to WebAssembly).
  * Supports automatic package installation via micropip.
+ *
+ * Pyodide は専用の module Worker (`pythonWorker.ts`) で動かす (#649)。メインスレッドはここで
+ * Worker を作り、メッセージを中継するだけ。
+ * - stdin: ターミナルの入力を line discipline (stdinLineDiscipline.ts) で行にして、
+ *   SharedArrayBuffer のチャネル (stdinChannel.ts) で渡す。Worker は `Atomics.wait` で待つ
+ *   (editor は cross-origin isolated なので SharedArrayBuffer を使える)
+ * - 停止とタイムアウト: Worker を `terminate()` して捨てる。次の実行で初期化し直す
+ *   (`CodeExecutionController` の `!executor.isInitialized` の分岐)
+ * - タイムアウトは入力を待っている間を数えない (pausableDeadline.ts)
  */
 
 import { BaseExecutor } from '../base/BaseExecutor.js';
@@ -13,25 +22,30 @@ import type {
   InitializationProgress,
   ParsedError,
 } from '../interfaces/ILanguageExecutor.js';
+import { PausableDeadline } from './pausableDeadline.js';
+import {
+  PYODIDE_CDN_URL,
+  PYTHON_TIMEOUT_MS,
+  isPythonRunMessage,
+  isPythonWorkerMessage,
+  type PythonRunMessage,
+  type PythonWorkerRequest,
+} from './pythonWorkerProtocol.js';
+import { StdinChannelWriter, createStdinBuffer } from './stdinChannel.js';
+import { StdinLineDiscipline } from './stdinLineDiscipline.js';
 
-// Pyodide type definitions
-interface PyodideInterface {
-  runPythonAsync(code: string): Promise<unknown>;
-  globals: {
-    get(name: string): unknown;
-    set(name: string, value: unknown): void;
-  };
-  setStdout(options: { batched: (text: string) => void }): void;
-  setStderr(options: { batched: (text: string) => void }): void;
+/** Worker の使う分だけの形 (テストでは偽物に差し替える) */
+export interface PythonWorkerHandle {
+  postMessage(message: PythonWorkerRequest): void;
+  terminate(): void;
+  onmessage: ((event: MessageEvent) => void) | null;
+  onerror: ((event: Event) => void) | null;
 }
 
-// Global declaration for loadPyodide
-declare global {
-  function loadPyodide(config?: {
-    indexURL?: string;
-    stdout?: (text: string) => void;
-    stderr?: (text: string) => void;
-  }): Promise<PyodideInterface>;
+function createPythonWorker(): PythonWorkerHandle {
+  return new Worker(new URL('./pythonWorker.ts', import.meta.url), {
+    type: 'module',
+  }) as unknown as PythonWorkerHandle;
 }
 
 const DEFAULT_PYTHON_CODE = `# Welcome to Python!
@@ -48,8 +62,6 @@ def greet(name: str) -> str:
 
 print(greet("Python"))
 `;
-
-const PYODIDE_CDN_URL = 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/';
 
 // Python standard library modules (to exclude from micropip install)
 const PYTHON_STDLIB_MODULES = new Set([
@@ -230,6 +242,36 @@ const PYTHON_STDLIB_MODULES = new Set([
   'pyodide_js',
 ]);
 
+/** コードの import 文から、micropip で入れるパッケージを拾う (標準ライブラリは除く) */
+export function findRequiredPackages(code: string): string[] {
+  const importRegex = /^\s*(?:import|from)\s+(\w+)/gm;
+  const packages = new Set<string>();
+  for (const match of code.matchAll(importRegex)) {
+    const pkg = match[1];
+    if (pkg && !PYTHON_STDLIB_MODULES.has(pkg)) packages.add(pkg);
+  }
+  return [...packages];
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+interface PendingInit {
+  resolve: () => void;
+  reject: (error: Error) => void;
+  onProgress?: (progress: InitializationProgress) => void;
+}
+
+interface ActiveRun {
+  runId: number;
+  handle(message: PythonRunMessage): void;
+  /** 停止 (Worker を捨てて aborted で終える) */
+  abort(): void;
+  /** Worker が落ちた (Worker を捨てて error で終える) */
+  fail(error: string): void;
+}
+
 export class PythonExecutor extends BaseExecutor {
   readonly config: ExecutorConfig = {
     id: 'python',
@@ -239,172 +281,203 @@ export class PythonExecutor extends BaseExecutor {
     defaultCode: DEFAULT_PYTHON_CODE,
   };
 
-  private pyodide: PyodideInterface | null = null;
-  private abortController: AbortController | null = null;
-  private installedPackages: Set<string> = new Set();
+  private worker: PythonWorkerHandle | null = null;
+  private pendingInit: PendingInit | null = null;
+  private activeRun: ActiveRun | null = null;
+  private runSeq = 0;
+
+  /**
+   * @param createWorker Worker の作り方 (テストで偽物に差し替える)
+   * @param timeoutMs 実行時間の上限 (入力を待っている間は数えない)
+   */
+  constructor(
+    private readonly createWorker: () => PythonWorkerHandle = createPythonWorker,
+    private readonly timeoutMs: number = PYTHON_TIMEOUT_MS
+  ) {
+    super();
+  }
 
   protected async _doInitialize(onProgress?: (progress: InitializationProgress) => void): Promise<void> {
+    const worker = this.createWorker();
+    this.worker = worker;
+    worker.onmessage = (event) => this.handleMessage(worker, event.data);
+    worker.onerror = (event) => this.handleWorkerError(worker, event);
     try {
-      onProgress?.({
-        stage: 'sdk',
-        message: 'Loading Python runtime (this may take a while)...',
-        percentage: 20,
-      });
-
-      // Dynamically load Pyodide script if not already loaded
-      if (typeof loadPyodide === 'undefined') {
-        await this.loadPyodideScript();
-      }
-
-      onProgress?.({
-        stage: 'compiler',
-        message: 'Initializing Python interpreter...',
-        percentage: 50,
-      });
-
-      this.pyodide = await loadPyodide({
-        indexURL: PYODIDE_CDN_URL,
-      });
-
-      onProgress?.({
-        stage: 'ready',
-        message: 'Python runtime ready!',
-        percentage: 100,
+      await new Promise<void>((resolve, reject) => {
+        this.pendingInit = { resolve, reject, ...(onProgress ? { onProgress } : {}) };
+        worker.postMessage({ type: 'init', indexURL: PYODIDE_CDN_URL });
       });
     } catch (error) {
       console.error('[PythonExecutor] Initialization failed:', error);
-      throw new Error(`Failed to initialize Python: ${error}`);
+      this.discardWorker();
+      throw new Error(`Failed to initialize Python: ${errorMessage(error)}`);
+    } finally {
+      this.pendingInit = null;
     }
   }
 
-  private async loadPyodideScript(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = `${PYODIDE_CDN_URL}pyodide.js`;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Failed to load Pyodide script'));
-      document.head.appendChild(script);
-    });
+  private handleMessage(worker: PythonWorkerHandle, data: unknown): void {
+    // 捨てた Worker の遅れたメッセージは扱わない
+    if (worker !== this.worker || !isPythonWorkerMessage(data)) return;
+    if (isPythonRunMessage(data)) {
+      // 今の run のものだけを扱う
+      if (this.activeRun?.runId === data.runId) this.activeRun.handle(data);
+      return;
+    }
+    switch (data.type) {
+      case 'progress':
+        this.pendingInit?.onProgress?.({ stage: data.stage, message: data.message, percentage: data.percentage });
+        return;
+      case 'ready':
+        this.pendingInit?.resolve();
+        return;
+      case 'init-error':
+        this.pendingInit?.reject(new Error(data.error));
+        return;
+    }
   }
 
-  /**
-   * Parse import statements and install required packages via micropip
-   */
-  private async installRequiredPackages(code: string, callbacks: ExecutionCallbacks): Promise<void> {
-    if (!this.pyodide) return;
+  private handleWorkerError(worker: PythonWorkerHandle, event: Event): void {
+    if (worker !== this.worker) return;
+    event.preventDefault();
+    const message = (event as ErrorEvent).message || 'Python worker failed to start';
+    if (this.pendingInit) this.pendingInit.reject(new Error(message));
+    else this.activeRun?.fail(message);
+  }
 
-    // Parse import statements
-    const importRegex = /^\s*(?:import|from)\s+(\w+)/gm;
-    const packages = new Set<string>();
-
-    for (const match of code.matchAll(importRegex)) {
-      const pkg = match[1];
-      // Exclude standard library and already installed packages
-      if (pkg && !PYTHON_STDLIB_MODULES.has(pkg) && !this.installedPackages.has(pkg)) {
-        packages.add(pkg);
-      }
-    }
-
-    if (packages.size === 0) return;
-
-    const packageList = [...packages];
-    callbacks.onProgress?.(`Installing packages: ${packageList.join(', ')}...`);
-
-    try {
-      const installCode = `
-import micropip
-await micropip.install([${packageList.map((p) => `'${p}'`).join(', ')}])
-`;
-      await this.pyodide.runPythonAsync(installCode);
-
-      for (const pkg of packages) {
-        this.installedPackages.add(pkg);
-      }
-
-      callbacks.onStdout(`Installed: ${packageList.join(', ')}\n`);
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      callbacks.onStderr(`Failed to install packages: ${errorMsg}\n`);
-      // Continue execution even if package installation fails
+  /** Worker を止めて捨てる。次の実行で初期化し直す (micropip で入れたパッケージも Worker と一緒に消える) */
+  private discardWorker(): void {
+    const worker = this.worker;
+    this.worker = null;
+    this._initialized = false;
+    if (worker) {
+      worker.onmessage = null;
+      worker.onerror = null;
+      worker.terminate();
     }
   }
 
   async run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult> {
-    if (!this._initialized || !this.pyodide) {
+    const worker = this.worker;
+    if (!this._initialized || !worker) {
       throw new Error('PythonExecutor not initialized. Call initialize() first.');
     }
 
     this.resetAbort();
-    this.abortController = new AbortController();
+    const runId = ++this.runSeq;
+    const stdinBuffer = createStdinBuffer();
+    const channel = new StdinChannelWriter(stdinBuffer);
+    const discipline = new StdinLineDiscipline();
+    const inputDecoder = new TextDecoder();
 
-    let stdout = '';
-    let stderr = '';
+    return new Promise<ExecutionResult>((resolve) => {
+      let stdout = '';
+      let stderr = '';
+      let settled = false;
+      /** Worker が入力を求めていて、まだ渡していない */
+      let awaitingInput = false;
 
-    try {
-      // Install required packages if any
-      await this.installRequiredPackages(code, callbacks);
+      const finish = (result: Omit<ExecutionResult, 'stdout' | 'stderr'>, discard: boolean): void => {
+        if (settled) return;
+        settled = true;
+        deadline.cancel();
+        if (this.activeRun?.runId === runId) this.activeRun = null;
+        if (discard) this.discardWorker();
+        resolve({ ...result, stdout, stderr });
+      };
+      const stop = (outcome: 'aborted' | 'timeout' | 'error', error?: string): void => {
+        finish(
+          {
+            success: false,
+            exitCode: 1,
+            outcome,
+            ...(outcome === 'timeout' ? { timeoutMs: this.timeoutMs } : {}),
+            ...(error !== undefined ? { error } : {}),
+          },
+          true
+        );
+      };
+      const deadline = new PausableDeadline(this.timeoutMs, () => stop('timeout'));
 
-      callbacks.onProgress?.('Running Python...');
+      const deliverInput = (): void => {
+        if (awaitingInput && channel.offer()) {
+          awaitingInput = false;
+          deadline.resume();
+        }
+      };
 
-      // Capture stdout/stderr
-      this.pyodide.setStdout({
-        batched: (text: string) => {
-          stdout += text + '\n';
-          callbacks.onStdout(text + '\n');
+      this.activeRun = {
+        runId,
+        abort: () => stop('aborted'),
+        fail: (error) => stop('error', error),
+        handle: (message) => {
+          switch (message.type) {
+            case 'run-progress':
+              callbacks.onProgress?.(message.message);
+              return;
+            case 'stdout':
+              stdout += message.text;
+              callbacks.onStdout(message.text);
+              return;
+            case 'stderr':
+              stderr += message.text;
+              callbacks.onStderr(message.text);
+              return;
+            case 'started':
+              callbacks.onProgress?.('Running Python...');
+              deadline.resume();
+              return;
+            case 'stdin-request':
+              // 先打ちの行があればすぐ渡す。無ければ、行が確定するまで時間を数えない
+              if (!channel.offer()) {
+                awaitingInput = true;
+                deadline.pause();
+              }
+              return;
+            case 'done': {
+              if (message.result !== null) {
+                const text = `=> ${message.result}\n`;
+                stdout += text;
+                callbacks.onStdout(text);
+              }
+              if (!message.success && message.error !== undefined) {
+                callbacks.onStderr(`${message.error}\n`);
+                stderr += message.error;
+              }
+              finish(
+                {
+                  success: message.success,
+                  exitCode: message.success ? 0 : 1,
+                  ...(message.error !== undefined ? { error: message.error } : {}),
+                },
+                false
+              );
+              return;
+            }
+          }
         },
-      });
+      };
 
-      this.pyodide.setStderr({
-        batched: (text: string) => {
-          stderr += text + '\n';
-          callbacks.onStderr(text + '\n');
-        },
-      });
-
-      // Execute with timeout
-      const result = await this.executeWithTimeout(
-        this.pyodide.runPythonAsync(code),
-        60000 // 60 second timeout (Python can have heavy computations)
+      // ターミナルの入力は C と同じ connectStdin の経路で受ける (行の記録 terminalInput もそこにある)
+      callbacks.onStdinReady?.(
+        new WritableStream<Uint8Array>({
+          write: (chunk) => {
+            if (settled) return;
+            const { echo, lines } = discipline.feed(inputDecoder.decode(chunk, { stream: true }));
+            if (echo) callbacks.onStdout(echo);
+            for (const line of lines) channel.push(line);
+            deliverInput();
+          },
+        })
       );
 
-      // Display return value if any
-      if (result !== undefined && result !== null) {
-        const resultStr = String(result);
-        if (resultStr !== 'None') {
-          callbacks.onStdout(`=> ${resultStr}\n`);
-          stdout += `=> ${resultStr}\n`;
-        }
-      }
-
-      return {
-        success: true,
-        exitCode: 0,
-        stdout,
-        stderr,
-      };
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      callbacks.onStderr(errorMsg + '\n');
-      stderr += errorMsg;
-
-      return {
-        success: false,
-        exitCode: 1,
-        stdout,
-        stderr,
-        error: errorMsg,
-      };
-    } finally {
-      this.abortController = null;
-    }
+      worker.postMessage({ type: 'run', runId, code, packages: findRequiredPackages(code), stdinBuffer });
+    });
   }
 
   protected _onAbort(): void {
-    if (this.abortController) {
-      this.abortController.abort();
-    }
-    console.log('[PythonExecutor] Abort requested');
-    // Note: Full abort of Pyodide execution is not fully supported
+    // 実行中なら Worker ごと止める (同期のループも止まる)。初期化中は止めず、読み込みを続ける
+    this.activeRun?.abort();
   }
 
   parseErrors(stderr: string): ParsedError[] {
@@ -437,13 +510,9 @@ await micropip.install([${packageList.map((p) => `'${p}'`).join(', ')}])
 
   override dispose(): void {
     super.dispose();
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
-    // Pyodide doesn't have a dispose method, so just clear the reference
-    this.pyodide = null;
-    this.installedPackages.clear();
+    this.activeRun?.abort();
+    this.pendingInit?.reject(new Error('PythonExecutor disposed'));
+    this.discardWorker();
   }
 }
 

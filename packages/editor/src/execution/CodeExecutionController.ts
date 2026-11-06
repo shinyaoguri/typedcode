@@ -245,7 +245,7 @@ export class CodeExecutionController {
       // 停止済み (abort が aborted を記録済み) の run は、結果も表示も新しい run に任せる
       if (result && isCurrent()) {
         const outcome = result.outcome ?? (result.success ? 'success' : 'failure');
-        this.writeOutcome(langName, outcome, result.exitCode, result.error);
+        this.writeOutcome(langName, outcome, result.exitCode, result.error, result.timeoutMs);
         const exitCode = outcome === 'success' || outcome === 'failure' ? (result.exitCode ?? null) : null;
         recordResult(outcome, exitCode);
       }
@@ -282,7 +282,13 @@ export class CodeExecutionController {
   }
 
   /** 実行の終わり方をターミナルに 1 行で出す (英語固定。既存の `execution aborted` と同じ流儀) */
-  private writeOutcome(langName: string, outcome: CodeExecutionOutcome, exitCode: number, error?: string): void {
+  private writeOutcome(
+    langName: string,
+    outcome: CodeExecutionOutcome,
+    exitCode: number,
+    error?: string,
+    timeoutMs?: number
+  ): void {
     switch (outcome) {
       case 'success':
         this.terminal?.writeSuccess(`\n$ ${langName} exited with code ${exitCode}\n`);
@@ -291,8 +297,9 @@ export class CodeExecutionController {
         this.terminal?.writeError(`\n$ ${langName} failed with code ${exitCode}\n`);
         return;
       case 'timeout':
+        // 上限は executor ごとに違う (Python は 60 秒)。executor が言わなければ JS / TS の sandbox の上限
         this.terminal?.writeError(
-          `\n$ ${langName} execution timed out after ${Math.round(getExecutionLimits().timeoutMs / 1000)}s\n`
+          `\n$ ${langName} execution timed out after ${Math.round((timeoutMs ?? getExecutionLimits().timeoutMs) / 1000)}s\n`
         );
         return;
       case 'aborted':

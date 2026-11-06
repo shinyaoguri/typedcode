@@ -172,6 +172,22 @@ describe('CodeExecutionController run guard', () => {
     expect(state).toMatchObject({ execState: 'idle', execOutcome: 'timeout' });
   });
 
+  it('reports the timeout with the limit the executor returns instead of the sandbox limit', async () => {
+    const { controller, written } = setup();
+    const run = controller.run(target);
+    await flush();
+    fake.runs[0]?.resolve({
+      success: false,
+      exitCode: 1,
+      stdout: '',
+      stderr: '',
+      outcome: 'timeout',
+      timeoutMs: 60_000,
+    });
+    await run;
+    expect(written.join('')).toContain('$ JavaScript execution timed out after 60s');
+  });
+
   it('derives success and failure from the result when the executor reports no outcome', async () => {
     const { controller, results } = setup();
     for (const r of [ok, { ...ok, success: false, exitCode: 1 }]) {

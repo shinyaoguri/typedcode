@@ -12,6 +12,8 @@ import { runVerifyCli } from './helpers/verifyCli.js';
  * - C と Python の hello が実行され、出力がターミナルに出て、proof の result イベントに success が載る
  * - その proof を含む export が verify-cli (fast) を通る
  * - C のコンパイルエラーが、利用者のコードの行を指す (preamble の行数分ずれない = #489 の回帰)
+ * - Python の `input()` がターミナルに打った行を読み、`window.prompt` に落ちない。案内文は入力の前に出て、
+ *   入力待ちの間に停止できる (#649。Pyodide を専用 Worker で動かし、stdin を SharedArrayBuffer で渡す)
  *
  * 本番ビルド (`vite preview`) での C の hello は production-build.spec.ts の `@nightly` が見る
  * (@wasmer/sdk の worker の解決は本番ビルドでしか壊れない。editor/AGENTS.md の #364 の項)。
@@ -166,4 +168,125 @@ test('python: @nightly hello が Pyodide で実行され、出力と success の
   await app.openCasualFresh();
   await app.setLanguage('python');
   await expectHelloRoundTrip(app, 'python', 'print("hello-py-" + str(6 * 7))\n', 'hello-py-42');
+});
+
+/**
+ * `window.prompt` を数える関数に差し替える (#649)。Python の `input()` がブラウザのダイアログに
+ * 落ちていないことを確かめる。ダイアログが出たら閉じて数える (prompt 以外の経路も拾う)
+ */
+async function countPrompts(page: Page): Promise<() => Promise<{ prompts: number; dialogs: number }>> {
+  let dialogs = 0;
+  page.on('dialog', (dialog) => {
+    dialogs++;
+    void dialog.dismiss();
+  });
+  await page.addInitScript(() => {
+    const w = window as unknown as { __tcPromptCalls: number };
+    w.__tcPromptCalls = 0;
+    window.prompt = () => {
+      w.__tcPromptCalls++;
+      return null;
+    };
+  });
+  return async () => ({
+    prompts: await page.evaluate(() => (window as unknown as { __tcPromptCalls: number }).__tcPromptCalls),
+    dialogs,
+  });
+}
+
+/** Run を押し、その run が始まった (data-exec-run が進んだ) ところで run の番号を返す */
+async function startRun(page: Page): Promise<number> {
+  const run = (await execState(page)).run + 1;
+  await page.locator('#run-code-btn').click();
+  await expect(page.locator(TERMINAL)).toHaveAttribute('data-exec-run', String(run), { timeout: 15_000 });
+  return run;
+}
+
+/** run が終わる (data-exec-run が run で data-exec-state=idle) まで待って outcome を返す */
+async function waitOutcome(page: Page, run: number, timeout: number): Promise<string | null> {
+  await expect
+    .poll(
+      async () => {
+        const s = await execState(page);
+        return s.run === run && s.state === 'idle';
+      },
+      { timeout, intervals: [500, 1_000, 2_000] }
+    )
+    .toBe(true);
+  return (await execState(page)).outcome;
+}
+
+/** ターミナルをクリックしてフォーカスし、1 行打って Enter を押す */
+async function typeLine(page: Page, line: string): Promise<void> {
+  await page.locator(TERMINAL).click();
+  await page.keyboard.type(line);
+  await page.keyboard.press('Enter');
+}
+
+const terminalLines = async (page: Page) => (await terminalText(page)).split('\n').map((l) => l.trim());
+
+test('python: @nightly input() がターミナルに打った行を読み、window.prompt を呼ばない (#649)', async ({ page }) => {
+  const prompts = await countPrompts(page);
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('python');
+  await replaceCode(app, 'a, b = map(int, input().split())\nprint(a + b)\n');
+
+  const run = await startRun(page);
+  // 利用者のコードが走り始めてから打つ (それより前はターミナルが stdin につながっていない)
+  await expect.poll(() => terminalText(page), { timeout: FIRST_RUN_TIMEOUT_MS }).toContain('Running Python...');
+  await typeLine(page, '3 5');
+
+  const outcome = await waitOutcome(page, run, 60_000);
+  expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
+  // 打った行のエコーと、計算した結果がそれぞれの行に出る
+  await expect.poll(() => terminalLines(page)).toEqual(expect.arrayContaining(['3 5', '8']));
+  expect(await prompts()).toEqual({ prompts: 0, dialogs: 0 });
+});
+
+test('python: @nightly input() の案内文が入力を待つ間にターミナルに出て、打った行で続きが動く (#649)', async ({
+  page,
+}) => {
+  const prompts = await countPrompts(page);
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('python');
+  await replaceCode(app, 'name = input("名前: ")\nprint("こんにちは " + name)\n');
+
+  const run = await startRun(page);
+  // 改行の無い案内文が、入力する前 (実行中) に出る
+  await expect
+    .poll(() => terminalLines(page), { timeout: FIRST_RUN_TIMEOUT_MS })
+    .toEqual(expect.arrayContaining(['名前:']));
+  await expect(page.locator(TERMINAL)).toHaveAttribute('data-exec-state', 'running');
+  expect(await terminalText(page)).not.toContain('こんにちは');
+
+  await typeLine(page, 'Taro');
+  const outcome = await waitOutcome(page, run, 60_000);
+  expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
+  await expect.poll(() => terminalLines(page)).toEqual(expect.arrayContaining(['名前: Taro', 'こんにちは Taro']));
+  expect(await prompts()).toEqual({ prompts: 0, dialogs: 0 });
+});
+
+test('python: @nightly 入力を待つ間に停止すると aborted で終わり、続けて別のコードを実行できる (#649)', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('python');
+  await replaceCode(app, 'value = input("wait: ")\nprint("never")\n');
+
+  const stopped = await startRun(page);
+  await expect
+    .poll(() => terminalLines(page), { timeout: FIRST_RUN_TIMEOUT_MS })
+    .toEqual(expect.arrayContaining(['wait:']));
+  await page.locator('#stop-code-btn').click();
+  expect(await waitOutcome(page, stopped, 15_000)).toBe('aborted');
+
+  // 停止で Worker ごと捨てるので、次の実行は Pyodide を読み込み直してから走る
+  await replaceCode(app, 'print("after-stop-" + str(6 * 7))\n');
+  const outcome = await runAndWait(page, FIRST_RUN_TIMEOUT_MS);
+  expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
+  await expect.poll(() => terminalText(page)).toContain('after-stop-42');
+  expect(await terminalText(page)).not.toContain('never');
 });
