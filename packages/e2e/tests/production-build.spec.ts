@@ -275,3 +275,46 @@ test('production build: @nightly C の hello が Wasmer の clang でコンパ�
   await expect(terminal.locator('.xterm-rows')).toContainText('hello-c-42');
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
+
+/**
+ * Python は専用の module Worker (`executors/python/pythonWorker.ts`) で Pyodide を動かし、stdin を
+ * SharedArrayBuffer で渡す (#649)。Worker のバンドルと、本番の COOP / COEP の下で SharedArrayBuffer を
+ * Worker に渡せることは本番ビルドでしか確かめられないので、入力付きの実行を 1 本ここで回す。
+ * Pyodide を jsDelivr から取るので `@nightly`。
+ */
+test('production build: @nightly Python の input() がターミナルに打った行を読み、success で終わる', async ({
+  page,
+}) => {
+  test.setTimeout(360_000);
+  const pageErrors: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+  let dialogs = 0;
+  page.on('dialog', (dialog) => {
+    dialogs++;
+    void dialog.dismiss();
+  });
+
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('python');
+  await app.focusEditor();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.press('Delete');
+  // dev フックは dist に無いので打鍵で入れる。自動インデントを通らないよう 1 行にする
+  await page.keyboard.type('a, b = map(int, input().split()); print("sum-" + str(a + b))');
+
+  const terminal = page.locator('#xterm-container');
+  await page.locator('#run-code-btn').click();
+  await expect(terminal).toHaveAttribute('data-exec-run', '1');
+  // 1 回目の実行は Pyodide の取得と初期化を含む。利用者のコードが走り始めてから打つ
+  await expect(terminal.locator('.xterm-rows')).toContainText('Running Python...', { timeout: 240_000 });
+  await terminal.click();
+  await page.keyboard.type('3 5');
+  await page.keyboard.press('Enter');
+
+  await expect(terminal).toHaveAttribute('data-exec-state', 'idle', { timeout: 60_000 });
+  await expect(terminal).toHaveAttribute('data-exec-outcome', 'success');
+  await expect(terminal.locator('.xterm-rows')).toContainText('sum-8');
+  expect(dialogs).toBe(0);
+  expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});

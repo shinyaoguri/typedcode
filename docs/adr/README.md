@@ -78,6 +78,7 @@
 | [0044](0044-fingerprint-collection-scope.md) | Accepted | fingerprint の収集を用途のあるコンポーネントに絞る (canvas・fonts を集めず、WebGL は `unmaskedVendor` / `unmaskedRenderer` の 2 値だけ。残す 13 キーごとに理由を書き、新しいキーは読むコードか理由を書いてから集める。旧 proof は受け付け続ける) |
 | [0045](0045-lower-posw-iterations-for-recording-throughput.md) | Accepted (実装は #611) | PoSW の反復数を 10,000 から 1,000 に下げる (CPU 4 倍相当で記録が入力に追いつかない実測が根拠・偽造側の下限は 10,000 でも分単位で防御にならない・記録側の await / 同期は形式と安全性に影響しない実装詳細・root アンカーで変える案と同期化だけの案は不採用) |
 | [0046](0046-entry-without-mode-choice.md) | Accepted (段階 1 = #644 を実装) | 学生にモードを選ばせず、`/` で練習のエディタを直接開く (モードは配布物と教員のリンクが決める・未知パスは not-found・titlebar はモード表示だけ・練習の規約は受動通知で同意を記録・段階 2 で授業と課題を `.tcclass` の方針に統合・段階 3 で保存領域を配布物単位に) |
+| [0047](0047-python-in-dedicated-worker-with-terminal-stdin.md) | Accepted | Python (Pyodide) を専用の module Worker で動かし、ターミナルの入力を SharedArrayBuffer の行チャネルで stdin に渡す (`prompt()` のまま・JSPI でメインスレッドのままを却下・行の編集はメイン側・stdout は write ハンドラで逐次・停止とタイムアウトは terminate・タイムアウトは入力待ちを数えない・opaque origin への隔離は #650) |
 
 ## 参考
 

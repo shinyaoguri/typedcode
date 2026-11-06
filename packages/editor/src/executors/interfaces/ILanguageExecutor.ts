@@ -70,6 +70,11 @@ export interface ExecutionResult {
    * (sandbox の timeout / aborted / error 等) だけ載せる。無ければ Controller が success から決める
    */
   outcome?: CodeExecutionOutcome;
+  /**
+   * outcome が timeout のときの、その executor の実行時間の上限 (ミリ秒)。ターミナルの
+   * 「timed out after Ns」に使う。無ければ JS / TS の sandbox の上限で出す
+   */
+  timeoutMs?: number;
 }
 
 /**
