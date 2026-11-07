@@ -357,6 +357,9 @@ export interface VerifyTranslationKeys {
       templateInjection: string;
       copyOperation: string;
       sessionResumed: string;
+      fullscreenChange: string;
+      environmentProbe: string;
+      examOpened: string;
     };
   };
 

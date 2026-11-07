@@ -335,6 +335,9 @@ export const en: VerifyTranslationKeys = {
       templateInjection: 'Template Injection',
       copyOperation: 'Copy Operation',
       sessionResumed: 'Session Resumed',
+      fullscreenChange: 'Fullscreen Change',
+      environmentProbe: 'Environment Probe',
+      examOpened: 'Exam Opened',
     },
   },
 
