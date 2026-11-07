@@ -7,10 +7,10 @@
  * 同じ停滞が #85 と #332 で 2 回起きたので、文書の規則に加えて機械で検知する。
  *
  * ルール:
- *   - 経過日数 = 最新タグの日時から now までの「満日数」(切り捨て)。30 日 23 時間でも 30 日と数える
+ *   - 経過日数 = 最新タグの日時から now までの「満日数」(切り捨て)。7 日 23 時間でも 7 日と数える
  *   - 件数 = タグ以降 (`<tag>..HEAD`) のコミット件名のうち `^(fix|feat)(\(.+\))?!?:` に合うもの。
  *     破壊的変更の `!` も数える。docs / chore / ci / test / refactor だけの停滞は利用者に届く差が無いので数えない
- *   - 検知 = 経過日数が閾値 (既定 30) を **超え** (ちょうど 30 日は検知しない)、かつ件数が 1 以上
+ *   - 検知 = 経過日数が閾値 (既定 7。#657) を **超え** (ちょうど 7 日は検知しない)、かつ件数が 1 以上
  *
  * 判定 (evaluateReleaseStall) は純関数。git の呼び出しは CLI 部分 (main) に閉じる。
  *
@@ -28,7 +28,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 /** 停滞とみなす日数 (これを超えたら)。CONTRIBUTING.md「リリース」と揃える。 */
-export const STALL_THRESHOLD_DAYS = 30;
+export const STALL_THRESHOLD_DAYS = 7;
 /** 専用 Issue のタイトル。同タイトルの open Issue があれば workflow はコメント追記に切り替える。 */
 export const ISSUE_TITLE = 'chore: 本番リリースの停滞 (自動)';
 /** 利用者に届く変更 (fix / feat。破壊的変更の `!` を含む) のコミット件名。 */

@@ -173,14 +173,15 @@ gh release create vX.Y.Z --target main --title "vX.Y.Z" --generate-notes
 - 直前に CHANGELOG.md の `[Unreleased]` を `## [X.Y.Z] - <日付>` に切り、末尾の比較リンクも足す (1 の bump PR に含める)。
 - **いつリリースするか** (#332): 次のどちらかに当たったら、上の手順でリリースする。リリースの見送りは、理由を Issue に残せば認める。
   - **本番に効くセキュリティ修正を main に入れたら、7 日以内**に下の「本番緊急修正」の手順でパッチタグを打つ。本番に効くセキュリティ修正とは、`security` ラベルの Issue を閉じた PR と、Dependabot の security update のこと。PR 側の `security` ラベルは付け漏れが多いので、Issue 側のラベルで判断する
-  - それ以外は、**最新タグから 30 日以内**にリリースする。超えると、次の段落の自動検知が Issue を開く
-- **リリースの停滞は自動で検知する** (#410)。週次の `freshness.yml` が、最新の `v*` タグから **30 日を超え**、かつそのタグ以降に `fix` / `feat` のコミット (`feat(scope)!:` も含む) が **1 件以上**あるとき、`chore: 本番リリースの停滞 (自動)` という Issue を開く (open のものがあればコメントを追記する。docs / chore / ci だけの 30 日超は検知しない)。通知を受けたら、上の手順でリリースする。見送るならその理由を Issue にコメントする。判定は `scripts/release-stall.mjs`
+  - それ以外は、**最新タグから 7 日以内**にリリースする (#657。1 回のリリースを、壊れたときに原因を追える大きさに保つため)。超えると、次の段落の自動検知が Issue を開く
+- **授業・試験の期間にリリースを止める期間は、利用者がいない今は設けない**。利用者が付く前に [#662](https://github.com/shinyaoguri/typedcode/issues/662) で決める
+- **リリースの停滞は自動で検知する** (#410)。週次の `freshness.yml` が、最新の `v*` タグから **7 日を超え**、かつそのタグ以降に `fix` / `feat` のコミット (`feat(scope)!:` も含む) が **1 件以上**あるとき、`chore: 本番リリースの停滞 (自動)` という Issue を開く (open のものがあればコメントを追記する。docs / chore / ci だけの 7 日超は検知しない。判定は毎週月曜なので、実際に開くのはタグから 8〜15 日の間)。通知を受けたら、上の手順でリリースする。見送るならその理由を Issue にコメントする。判定は `scripts/release-stall.mjs`
 
 ## 本番を戻す (ロールバック)
 
 本番が壊れて fix を待てないときは、Cloudflare に残っている直前のデプロイへ戻す (#656)。タグも CI も通さないので数分で済む。戻すのは応急処置で、**その後に fix を入れて次のパッチタグを打ち、前へ進める**のは上の「リリース」「本番緊急修正」と同じ (タグは付け替えない)。
 
-**戻す順序は Pages → Workers (deploy の逆順)**。まず Pages (editor / verify) だけを戻すのが基本で、それで直らず Worker 側が原因と分かったときに Worker も戻す。「新しい Worker + 1 つ前の editor / verify」は動くことが不変条件で保証されている ([packages/workers/AGENTS.md](packages/workers/AGENTS.md) の不変条件 9) が、逆の「1 つ前の Worker + 新しい editor / verify」は保証しない。Worker だけを戻すときは、そのリリースで editor / verify が Worker の新しい API や応答に依存していないかを先に確かめる (`git diff <前のタグ> <今のタグ> -- packages/workers/src`)。
+**戻す順序は Pages → Workers (deploy の逆順)**。まず Pages (editor / verify) だけを戻すのが基本で、それで直らず Worker 側が原因と分かったときに Worker も戻す。「新しい Worker + 1 つ前の editor / verify」は動くことが不変条件で保証されている ([packages/workers/AGENTS.md](packages/workers/AGENTS.md) の不変条件 10) が、逆の「1 つ前の Worker + 新しい editor / verify」は保証しない。Worker だけを戻すときは、そのリリースで editor / verify が Worker の新しい API や応答に依存していないかを先に確かめる (`git diff <前のタグ> <今のタグ> -- packages/workers/src`)。
 
 以下、`<project>` は Pages のプロジェクト名 (GitHub の secret `CLOUDFLARE_PROJECT_NAME` の値)。wrangler は `npx wrangler login` で Cloudflare アカウントに入った状態で、`packages/workers` から打つ。
 

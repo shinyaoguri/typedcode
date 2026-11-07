@@ -98,3 +98,72 @@ describe('/api/verify-captcha without an attestation secret', () => {
     });
   });
 });
+
+describe('/api/verify-captcha with a Turnstile testing-key result (#660)', () => {
+  /** Cloudflare の公開テストキーの secret で siteverify したときの結果 (#660 の実測と同じ形) */
+  const testingKeyResult = {
+    success: true,
+    hostname: 'example.com',
+    challenge_ts: '2026-11-07T00:00:00Z',
+    'error-codes': [],
+    metadata: { result_with_testing_key: true },
+  };
+
+  /** staging Worker と同じ ALLOWED_ORIGINS (wrangler.staging.toml) */
+  const STAGING_ALLOWED_ORIGINS = 'https://*.typedcode.pages.dev';
+  /** production Worker と同じ ALLOWED_ORIGINS (wrangler.production.toml) */
+  const PRODUCTION_ALLOWED_ORIGINS = 'https://typedcode.dev,https://typedcode.pages.dev';
+
+  function envFor(environment: string | undefined, allowedOrigins: string | undefined): TestEnv {
+    return {
+      TURNSTILE_SECRET_KEY: 'secret',
+      ENVIRONMENT: environment,
+      ALLOWED_ORIGINS: allowedOrigins,
+    } as unknown as TestEnv;
+  }
+
+  it('answers verified on staging even though the testing key reports hostname example.com', async () => {
+    stubSiteverify(testingKeyResult);
+
+    const res = await worker.fetch(post({ token: 'tt' }), envFor('staging', STAGING_ALLOWED_ORIGINS));
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { success: boolean; attestation?: { verified: boolean } };
+    expect(body.success).toBe(true);
+    expect(body.attestation?.verified).toBe(true);
+  });
+
+  // ALLOWED_ORIGINS が無い行は hostname 照合が飛ぶので、testing key の拒否だけが 403 の理由になる。
+  it.each([
+    ['production', 'production', PRODUCTION_ALLOWED_ORIGINS],
+    ['unset', undefined, undefined],
+    ['an unknown value', 'preview', undefined],
+  ])(
+    'answers 403 like a disallowed hostname when ENVIRONMENT is %s (fail-closed)',
+    async (_label, environment, allowedOrigins) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      stubSiteverify(testingKeyResult);
+
+      const res = await worker.fetch(post({ token: 'tt' }), envFor(environment, allowedOrigins));
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({
+        success: false,
+        score: 0,
+        message: 'Verification failed: hostname not allowed',
+      });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('testing key'), 'example.com');
+    }
+  );
+
+  it('still answers 403 for a non-testing-key result solved on a disallowed hostname on staging', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    stubSiteverify({ success: true, hostname: 'example.com', challenge_ts: '2026-11-07T00:00:00Z' });
+
+    const res = await worker.fetch(post({ token: 'tt' }), envFor('staging', STAGING_ALLOWED_ORIGINS));
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.message).toBe('Verification failed: hostname not allowed');
+  });
+});
