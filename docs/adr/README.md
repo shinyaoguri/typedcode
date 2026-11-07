@@ -80,6 +80,7 @@
 | [0046](0046-entry-without-mode-choice.md) | Accepted (段階 1 = #644 を実装) | 学生にモードを選ばせず、`/` で練習のエディタを直接開く (モードは配布物と教員のリンクが決める・未知パスは not-found・titlebar はモード表示だけ・練習の規約は受動通知で同意を記録・段階 2 で授業と課題を `.tcclass` の方針に統合・段階 3 で保存領域を配布物単位に) |
 | [0047](0047-python-in-dedicated-worker-with-terminal-stdin.md) | Accepted | Python (Pyodide) を専用の module Worker で動かし、ターミナルの入力を SharedArrayBuffer の行チャネルで stdin に渡す (`prompt()` のまま・JSPI でメインスレッドのままを却下・行の編集はメイン側・stdout は write ハンドラで逐次・停止とタイムアウトは terminate・タイムアウトは入力待ちを数えない・opaque origin への隔離は #650) |
 | [0048](0048-problem-io-examples-shown-not-judged.md) | Accepted (段階 1 = #648) | 問題に入出力例 (`examples: { name, stdin, stdout }[]`) を持たせ、受講者には判定せず問題パネルに見せるだけにする (自動判定・テストボタンを却下・「テスト」の語を UI に出さない・入力のコピーボタン・proof に記録しない・1 件以上のときだけ正準形に含めハッシュ不変・入出力例付きの `.tcexam` は新しい editor が前提・非公開テストと比較規則は段階 2) |
+| [0049](0049-staging-turnstile-testing-keys.md) | Accepted (Worker = #660、E2E = #655) | staging と PR プレビューは Turnstile の公開テストキーで動かし、main push ごとに staging の実 URL をブラウザ E2E で通す (Worker は testing key の結果を staging でだけ通し、production・未知の環境では拒否・E2E 用の迂回ヘッダと best-effort 経路だけの案を却下・production には当てない・本物の Turnstile を通すのは production だけになる) |
 
 ## 参考
 

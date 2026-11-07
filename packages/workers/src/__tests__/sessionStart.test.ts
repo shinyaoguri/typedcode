@@ -64,7 +64,31 @@ beforeEach(() => {
 
 afterEach(() => {
   registry.splice(0, registry.length);
+  vi.restoreAllMocks();
 });
+
+/**
+ * Cloudflare の公開テストキーの secret で siteverify したときの結果 (#660 の実測と同じ形)。
+ * hostname は常に example.com になる。
+ */
+function mockTurnstileTestingKey(): void {
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        success: true,
+        hostname: 'example.com',
+        challenge_ts: '2026-11-07T00:00:00.000Z',
+        'error-codes': [],
+        metadata: { result_with_testing_key: true },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )) as typeof fetch;
+}
+
+/** staging Worker と同じ ALLOWED_ORIGINS (wrangler.staging.toml) */
+const STAGING_ALLOWED_ORIGINS = 'https://*.typedcode.pages.dev';
+/** production Worker と同じ ALLOWED_ORIGINS (wrangler.production.toml) */
+const PRODUCTION_ALLOWED_ORIGINS = 'https://typedcode.dev,https://typedcode.pages.dev';
 
 function makeEnv(overrides: Partial<Record<string, string>> = {}): TestEnv {
   return {
@@ -195,5 +219,50 @@ describe('handleSessionStart (POST /api/session/start)', () => {
     expect(res.status).toBe(500);
     const body = (await res.json()) as SessionStartResponse;
     expect(body.message).toBe('Signing key is not available');
+  });
+});
+
+describe('handleSessionStart with a Turnstile testing-key result (#660)', () => {
+  it('issues a token on staging even though the testing key reports hostname example.com', async () => {
+    mockTurnstileTestingKey();
+    const env = makeEnv({ ENVIRONMENT: 'staging', ALLOWED_ORIGINS: STAGING_ALLOWED_ORIGINS });
+    const res = await worker.fetch(sessionStartReq(validBody), env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as SessionStartResponse;
+    expect(body.success).toBe(true);
+    expect(body.token!.payload.sessionId).toBe('session-A');
+  });
+
+  // ALLOWED_ORIGINS が無い行は hostname 照合が飛ぶので、testing key の拒否だけが 403 の理由になる。
+  it.each([
+    ['production', 'production', PRODUCTION_ALLOWED_ORIGINS],
+    ['unset', undefined, undefined],
+    ['an unknown value', 'preview', undefined],
+  ])(
+    'rejects a testing-key result with 403 when ENVIRONMENT is %s (fail-closed)',
+    async (_label, environment, allowedOrigins) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockTurnstileTestingKey();
+      const env = makeEnv({ ENVIRONMENT: environment, ALLOWED_ORIGINS: allowedOrigins });
+      const res = await worker.fetch(sessionStartReq(validBody), env);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ success: false, message: 'Turnstile verification failed' });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('testing key'), 'example.com');
+    }
+  );
+
+  it('keeps the development rule for a testing-key result (no ALLOWED_ORIGINS means no hostname check)', async () => {
+    mockTurnstileTestingKey();
+    const env = makeEnv({ ENVIRONMENT: 'development', ALLOWED_ORIGINS: undefined });
+    const res = await worker.fetch(sessionStartReq(validBody), env);
+    expect(res.status).toBe(200);
+  });
+
+  it('still rejects a non-testing-key result solved on a disallowed hostname on staging', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockTurnstile(true, 'example.com');
+    const env = makeEnv({ ENVIRONMENT: 'staging', ALLOWED_ORIGINS: STAGING_ALLOWED_ORIGINS });
+    const res = await worker.fetch(sessionStartReq(validBody), env);
+    expect(res.status).toBe(403);
   });
 });

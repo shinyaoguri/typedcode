@@ -270,12 +270,12 @@ PR のコードを走らせる `build-preview` が使う。バンドルに埋め
   | Variable | 値 |
   |---|---|
   | `VITE_API_URL` | staging Worker の URL (`https://typedcode-api-staging.<your-subdomain>.workers.dev`) |
-  | `VITE_TURNSTILE_SITE_KEY` | staging 用 Turnstile widget の Site Key |
+  | `VITE_TURNSTILE_SITE_KEY` | Cloudflare の公開テスト用 Site Key `1x00000000000000000000AA` (staging と同じ。[ADR-0049](adr/0049-staging-turnstile-testing-keys.md)) |
 
 ```bash
 gh api -X PUT repos/<owner>/<repo>/environments/preview
 gh variable set VITE_API_URL --env preview --body 'https://typedcode-api-staging.<your-subdomain>.workers.dev'
-gh variable set VITE_TURNSTILE_SITE_KEY --env preview --body '<staging の site key>'
+gh variable set VITE_TURNSTILE_SITE_KEY --env preview --body '1x00000000000000000000AA'
 ```
 
 #### Environment `staging` (承認不要、main push で自動デプロイ。PR プレビューの deploy もこの環境のトークンを使う)
@@ -285,7 +285,7 @@ gh variable set VITE_TURNSTILE_SITE_KEY --env preview --body '<staging の site 
   |---|---|
   | `CLOUDFLARE_API_TOKEN` | **staging/preview 専用 token**。Pages:Edit + 対象 staging Worker への権限に絞る (本番 Worker 編集権限は付けない) |
   | `VITE_API_URL` | staging Worker の URL (`https://typedcode-api-staging.<your-subdomain>.workers.dev`) |
-  | `VITE_TURNSTILE_SITE_KEY` | staging 用 Turnstile widget の Site Key |
+  | `VITE_TURNSTILE_SITE_KEY` | Cloudflare の公開テスト用 Site Key `1x00000000000000000000AA` (常に通る。main push ごとに staging の実 URL をブラウザ E2E で通すため。[ADR-0049](adr/0049-staging-turnstile-testing-keys.md)) |
 
 - **Deployment branches and tags** → **Selected branches and tags** で `main` だけを許す。使うのは main push の `deploy-staging` と、default branch (main) の ref で動く `deploy-preview.yml` だけ。絞らないと、任意のブランチに workflow を足して push すれば `environment: staging` 経由でトークンを取り出せる (#582)
 
@@ -338,14 +338,11 @@ npx wrangler kv namespace create CHECKPOINT_SESSIONS_PRODUCTION
 
 > **授業・試験で使う環境は Cloudflare の Workers Paid が前提です。** `/api/checkpoint/sign` は 1 回の署名ごとに KV の read と write を 1 回ずつ使い、Free の KV write は 1 日 1,000 回までです (40 人の授業なら開始から数分で尽きます)。操作回数の式・上限表・枯渇時の挙動は [packages/workers/AGENTS.md の「KV の容量見積もりと枯渇時の挙動」](../packages/workers/AGENTS.md#kv-の容量見積もりと枯渇時の挙動-330) を参照してください。個人で動作を試すだけなら Free でも動きます。
 
-### Turnstile widget (staging / production 別に作成推奨)
+### Turnstile widget (production のみ作成。staging と PR プレビューは公開テストキー)
 
-[Turnstile dashboard](https://dash.cloudflare.com/?to=/:account/turnstile) で:
+[Turnstile dashboard](https://dash.cloudflare.com/?to=/:account/turnstile) で **production widget** を作り、Domain に本番ドメインを許可する。**Site Key** を GitHub Environment `production` の Secret (M2 で投入)、**Secret Key** を後で wrangler secret で投入する。
 
-- **staging widget**: Domain に staging Pages URL (例: `staging.typedcode.pages.dev`) を許可
-- **production widget**: Domain に本番ドメインを許可
-
-それぞれの **Site Key** を GitHub Environment Secrets (M2 で投入)、**Secret Key** を後で wrangler secret で投入する。
+staging と PR プレビューには widget を作らず、Cloudflare の公開テストキー (常に通る) を使う。Site Key `1x00000000000000000000AA` を Environment `staging` の Secret と `preview` の Variable に、Secret Key `1x0000000000000000000000000000000AA` を staging Worker の `TURNSTILE_SECRET_KEY` に入れる。headless のブラウザでは本物の Turnstile を安定して通せないので、main push ごとに staging の実 URL を E2E で通すためにこうしている。テストキーの siteverify は `hostname: "example.com"` を返すが、Worker は `ENVIRONMENT = "staging"` のときだけそれを通し、production では拒否する。代わりに、本物の Turnstile を通すのは production だけになる。根拠と代わりに失うものは [ADR-0049](adr/0049-staging-turnstile-testing-keys.md)。
 
 ### Worker 個別シークレット投入
 
@@ -354,7 +351,7 @@ Pages bundle の `VITE_API_URL` 等は GitHub Secrets で済みますが、Worke
 ```bash
 cd packages/workers
 
-# staging Worker
+# staging Worker (TURNSTILE_SECRET_KEY は公開テスト用の 1x0000000000000000000000000000000AA)
 npx wrangler secret put TURNSTILE_SECRET_KEY --config wrangler.staging.toml
 npx wrangler secret put CHECKPOINT_SIGNING_KEY_ID --config wrangler.staging.toml   # M4 で生成
 npx wrangler secret put CHECKPOINT_SIGNING_KEY_JWK --config wrangler.staging.toml  # M4 で生成
