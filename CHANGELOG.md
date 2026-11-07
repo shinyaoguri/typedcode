@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-08
+
 ### 追加
 
 - main push で staging に deploy した後、その deploy の Pages の URL をブラウザで通す E2E (`deploy.yml` の `e2e-staging` job、`npm run test:deployed -w @typedcode/e2e`) を足した。`/casual` で打鍵 → export → verify-cli (fast) が pass し、署名付き checkpoint と session start token が staging の鍵で署名され、temporal が `anchored` になり、同じ ZIP を配信物の `/verify/` に入れて verify-cli と一致し、console エラーが出ないことを見る。staging は Turnstile の公開テストキーで動く (ADR-0049)。production には当てない (#655)
@@ -227,6 +229,7 @@
 - replay と乖離した `contentSnapshot` を外部入力相当として advisory 検出するようにした (#182)
 - Workers の dev 用 Worker 名を分離し、未捕捉例外の最終防衛を追加した (#165)
 
-[Unreleased]: https://github.com/shinyaoguri/typedcode/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/shinyaoguri/typedcode/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/shinyaoguri/typedcode/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/shinyaoguri/typedcode/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/shinyaoguri/typedcode/releases/tag/v1.1.0
