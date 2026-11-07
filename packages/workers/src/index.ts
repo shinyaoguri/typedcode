@@ -34,6 +34,8 @@ interface TurnstileResponse {
   'error-codes'?: string[];
   action?: string;
   cdata?: string;
+  /** Cloudflare の公開テストキーで検証した結果なら `result_with_testing_key: true` が付く (#660) */
+  metadata?: { result_with_testing_key?: boolean };
 }
 
 /**
@@ -99,6 +101,35 @@ function isTurnstileHostnameAllowed(hostname: string, env: CorsEnv): boolean {
     }
   }
   return false;
+}
+
+/**
+ * siteverify が成功を返した結果を、この環境で受け入れてよいかを判定する (#660)。
+ * 受け入れないときは理由を `console.warn` に残す (応答の形は呼び出し側が従来どおり作る)。
+ *
+ * Cloudflare の公開テストキーの結果 (`metadata.result_with_testing_key === true`) は
+ * hostname が常に `example.com` になるので、`ALLOWED_ORIGINS` との照合では通らない。
+ * - `ENVIRONMENT === 'staging'`: staging と PR プレビューは公開テストキーを使うので、照合を飛ばして通す
+ * - `ENVIRONMENT === 'development'`: 従来どおり照合する (ALLOWED_ORIGINS が無ければ照合自体を飛ばす)
+ * - それ以外 (production・未設定・未知の値): 拒否する (fail-closed。本番にテスト secret を入れたら気付ける)
+ *
+ * テストキーでない結果は、どの環境でも従来どおり hostname を照合する。
+ */
+function acceptTurnstileResult(result: TurnstileResponse, env: CorsEnv, logTag: string): boolean {
+  const isTestingKey = result.metadata?.result_with_testing_key === true;
+  if (isTestingKey && env.ENVIRONMENT === 'staging') return true;
+  if (isTestingKey && env.ENVIRONMENT !== 'development') {
+    console.warn(
+      `${logTag} Turnstile testing key result rejected outside staging (ENVIRONMENT=${String(env.ENVIRONMENT)}):`,
+      result.hostname
+    );
+    return false;
+  }
+  if (!isTurnstileHostnameAllowed(result.hostname, env)) {
+    console.warn(`${logTag} Turnstile solved on disallowed hostname:`, result.hostname);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -280,12 +311,8 @@ async function handleVerifyCaptcha(request: Request, env: Env): Promise<Response
     // (同一 sitekey を使う別プロパティで解かれたトークンの流用を防ぐ)。
     // action はアプリ定義で多様 (create_tab / export_proof 等) なため allowlist 強制はしない
     // (attestation に記録はするが、proof 検証側でも信頼の主軸ではない)。
-    const hostnameOk = isTurnstileHostnameAllowed(result.hostname, env);
-    const isVerified = result.success && hostnameOk;
-
-    if (result.success && !hostnameOk) {
-      console.warn('[verify-captcha] Turnstile solved on disallowed hostname:', result.hostname);
-    }
+    // 公開テストキーの結果の扱い (#660) も acceptTurnstileResult が持つ。
+    const isVerified = result.success && acceptTurnstileResult(result, env, '[verify-captcha]');
 
     // 検証結果の記録 (検証成功時のみ。署名はしない = #415)
     const attestation = isVerified ? toAttestation(result) : undefined;
@@ -356,11 +383,7 @@ async function handleSessionStart(request: Request, env: Env): Promise<Response>
     console.error('[session/start] Turnstile verification unavailable:', err);
     return json({ success: false, message: 'Turnstile verification temporarily unavailable' }, 503);
   }
-  const hostnameOk = isTurnstileHostnameAllowed(result.hostname, env);
-  if (!result.success || !hostnameOk) {
-    if (result.success && !hostnameOk) {
-      console.warn('[session/start] Turnstile solved on disallowed hostname:', result.hostname);
-    }
+  if (!result.success || !acceptTurnstileResult(result, env, '[session/start]')) {
     return json({ success: false, message: 'Turnstile verification failed' }, 403);
   }
 
