@@ -29,6 +29,8 @@ concurrency:
 #   build-preview          — feature → main PR で Pages プレビューを build して artifact に上げる
 #                            (secrets を持たない。プレビュー URL の発行は deploy-preview.yml。#582)
 #   deploy-staging         — main push で Workers staging + Pages staging (--branch=staging) を更新
+#   e2e-staging            — deploy-staging の後に、その deploy の Pages の URL をブラウザで round-trip する
+#                            (packages/e2e の test:deployed。secrets を持たない。production には無い。#655)
 #   deploy-production      — v* タグ push で Workers production + Pages production を更新
 #                            (GitHub Environment "production" の Required reviewers で承認待ち)
 #
@@ -338,6 +340,12 @@ jobs:
     permissions:
       contents: read
       deployments: write
+    # e2e-staging がこの deploy の Pages を開くための、deployment ごとのサブドメイン (`<label>.<project>.pages.dev`
+    # の `<label>`)。URL そのもの (wrangler-action の deployment-url) を出さないのは、プロジェクト名が
+    # secrets.CLOUDFLARE_PROJECT_NAME に入っていて URL がその値を含み、secret を含む job output は
+    # GitHub が渡さない (redact して空になる) ため (#655)。
+    outputs:
+      pages-deployment-label: ${{ steps.pages-label.outputs.label }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -373,6 +381,7 @@ jobs:
           command: deploy --config wrangler.staging.toml
 
       - name: Deploy to Cloudflare Pages (Staging)
+        id: pages-deploy
         # --branch=staging で staging.<project>.pages.dev という stable URL になる。
         # --branch=main は Pages プロジェクトの production branch と衝突する
         # (production デプロイ扱いになる) ため使わない。
@@ -381,6 +390,97 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=staging --commit-hash=${{ github.sha }} --commit-message="${{ github.sha }}"
+
+      # wrangler-action の deployment-url はこの deploy の不変 URL (`https://<label>.<project>.pages.dev`)。
+      # staging. の alias と違い、後続の push で別の deploy を指すようにならないので、e2e-staging はこちらを開く。
+      # job output には secret (プロジェクト名) を含まない <label> だけを出す (上の outputs のコメント)。
+      # 取り出せなくても deploy は済んでいるのでここでは落とさず、e2e-staging が空の label で落ちる。
+      - name: Extract Pages deployment label for e2e-staging
+        id: pages-label
+        env:
+          DEPLOYMENT_URL: ${{ steps.pages-deploy.outputs.deployment-url }}
+        run: |
+          host="${DEPLOYMENT_URL#https://}"
+          label="${host%%.*}"
+          if [[ "$label" =~ ^[a-z0-9-]+$ ]]; then
+            echo "label=$label" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Pages の deployment-url から deployment の label を取り出せない (e2e-staging は落ちる)"
+          fi
+
+  # --------------------------------------------------------------------
+  # main push: deploy した staging の配信物をブラウザで round-trip する (#655)
+  # 上の e2e は手元のサーバ (vite dev / 手元の dist + wrangler dev) が相手で、secrets を入れて build した
+  # 配信物・本物の staging Worker・Cloudflare の配信 (ヘッダ・CORS) の組み合わせは通らない。ここで
+  # この deploy の Pages の URL に対して packages/e2e の test:deployed (tests/deployed.spec.ts) を走らせる。
+  # staging は Turnstile の公開テストキーで動くので headless で通る (ADR-0049)。production には付けない。
+  #
+  # secrets も environment も使わない (相手は公開の URL で、検証は手元の verify-cli と配信物の /verify/)。
+  # npm run setup -w @typedcode/e2e は呼ばない: 手元の workers を起こさないので .dev.vars も E2E の署名鍵も
+  # 要らず、verify-cli が import する localKeys.ts (checkpoint 鍵と出題者鍵) は npm ci の postinstall
+  # (scripts/ensure-local-keys.mjs) が .example から作る。E2E の鍵を verifier に足さないので、
+  # staging の鍵 (registry.ts) でしか通らない状態のまま検証できる。
+  # --------------------------------------------------------------------
+  e2e-staging:
+    needs: [deploy-staging]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      # キャッシュの組み立ては e2e-shard と同じ (キーに実際に解決された Playwright のバージョンを含める)。
+      - name: Get installed Playwright version
+        id: playwright-version
+        run: echo "version=$(npx playwright --version | sed 's/Version //')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+          restore-keys: |
+            playwright-browsers-${{ runner.os }}-
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # URL は deploy-staging が出した deployment の label から組み立てる (label だけを渡す理由は
+      # deploy-staging の outputs のコメント)。Pages のプロジェクトのホストは docs と同じ公開値。
+      - name: Run deployed E2E against this staging deploy
+        env:
+          DEPLOYMENT_LABEL: ${{ needs.deploy-staging.outputs.pages-deployment-label }}
+          PAGES_HOST: typedcode.pages.dev
+        run: |
+          if [ -z "$DEPLOYMENT_LABEL" ]; then
+            echo "::error::deploy-staging が Pages の deployment の label を出していない (deployment-url を取り出せなかった)"
+            exit 1
+          fi
+          export E2E_DEPLOYED_URL="https://${DEPLOYMENT_LABEL}.${PAGES_HOST}"
+          echo "E2E_DEPLOYED_URL=$E2E_DEPLOYED_URL"
+          npm run test:deployed -w @typedcode/e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-staging
+          path: |
+            packages/e2e/playwright-report/
+            packages/e2e/test-results/
+          retention-days: 7
 
   # --------------------------------------------------------------------
   # v* タグ push: production 環境 (Workers + Pages) を更新
