@@ -189,6 +189,67 @@ body::before {
   color: var(--feature-accent-fg);
 }
 
+/* 動作確認の例 (入出力例, #648)。問題文ペインの下に置き、例が多くなったら一覧だけを中でスクロールする
+   (見出しと追加ボタンは常に見せる) */
+.author-examples {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  max-height: 45%;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  font-size: 12px;
+}
+.author-examples-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  color: var(--text-secondary);
+}
+.author-examples-hint {
+  margin-bottom: var(--spacing-sm);
+}
+.author-example-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.author-example {
+  margin-top: var(--spacing-sm);
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+.author-example-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+.author-example-head .author-input {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.author-example-io {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
+  margin-top: 6px;
+}
+.author-example-io label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-secondary);
+}
+.author-example-io .author-textarea {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
 /* スターターコードの実行ターミナル */
 .author-terminal-wrap {
   height: 200px;

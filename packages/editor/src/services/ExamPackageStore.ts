@@ -9,7 +9,7 @@
  * 現在のモードの分だけ消える (`utils/StorageClearHelper.ts`。#323)。
  */
 
-import type { ExamPackageManifest } from '@typedcode/shared';
+import type { ExamPackageManifest, ProblemExample } from '@typedcode/shared';
 import { examPackagesKey } from '../core/storageKeys.js';
 
 // 封印問題キャッシュの localStorage キーは storageKeys.examPackagesKey() (モード別。ADR-0011 PR3)。
@@ -18,6 +18,8 @@ export interface StoredExamPackage {
   manifest: ExamPackageManifest;
   /** 復号後の問題本文 (平文) */
   plaintext: string;
+  /** 問題の入出力例 (#648)。バンドルの問題が持つときだけ。v1 の単一問題と、入出力例より前に保存した分には無い */
+  examples?: ProblemExample[];
 }
 
 type PackageMap = Record<string, StoredExamPackage>;

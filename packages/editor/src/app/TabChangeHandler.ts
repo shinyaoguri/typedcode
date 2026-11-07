@@ -45,10 +45,10 @@ export function handleTabChange(ctx: AppContext, tab: TabInfo): void {
     if (ctx.examMode) {
       const problemId = activeTab?.typingProof.examContext?.problemId;
       const pkg = problemId ? ExamPackageStore.get(problemId) : null;
-      if (pkg) ctx.problemPanel.setProblemText(pkg.plaintext);
+      if (pkg) ctx.problemPanel.setProblem(pkg.plaintext, pkg.examples);
     } else {
       const problem = activeTab?.filename ? ClassProblemStore.get(activeTab.filename) : null;
-      if (problem) ctx.problemPanel.setProblemText(problem.statement);
+      if (problem) ctx.problemPanel.setProblem(problem.statement, problem.examples);
     }
   }
 }

@@ -655,6 +655,16 @@ export const ja: TranslationKeys = {
     },
   },
 
+  problemExamples: {
+    heading: '動作確認の例',
+    instructions: '▶ 実行してから、入力例をターミナルに打つか貼り、出力が同じになるか見比べてください。',
+    input: '入力',
+    output: '出力',
+    noInput: '入力なし',
+    copy: '入力をコピー',
+    copied: 'コピーしました',
+  },
+
   class: {
     loader: {
       title: '授業問題を読み込む',
@@ -720,6 +730,14 @@ export const ja: TranslationKeys = {
       starterContent: 'スターターコード',
       starterPane: 'スターターコード（雛形）',
       renameHint: 'ダブルクリックでファイル名を変更',
+      examplesHeading: '動作確認の例（入出力例）',
+      examplesHint: '受講者の問題パネルに表示します（判定はしません）。名前が空の例は書き出しません。',
+      exampleName: '名前',
+      exampleStdin: '入力（stdin）',
+      exampleStdout: '期待する出力（stdout）',
+      exampleDefaultName: '例${n}',
+      addExample: '例を追加',
+      removeExample: 'この例を削除',
     },
     token: {
       heading: '監督コード',

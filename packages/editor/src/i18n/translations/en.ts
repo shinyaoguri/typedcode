@@ -657,6 +657,17 @@ export const en: TranslationKeys = {
     },
   },
 
+  problemExamples: {
+    heading: 'Examples to check your program',
+    instructions:
+      'Run your program (▶), type or paste an input into the terminal, and compare the output with the one shown here.',
+    input: 'Input',
+    output: 'Output',
+    noInput: 'No input',
+    copy: 'Copy input',
+    copied: 'Copied',
+  },
+
   class: {
     loader: {
       title: 'Load Class Problem',
@@ -723,6 +734,15 @@ export const en: TranslationKeys = {
       starterContent: 'Starter code',
       starterPane: 'Starter code (skeleton)',
       renameHint: 'Double-click to rename the file',
+      examplesHeading: 'Examples to check (input / output)',
+      examplesHint:
+        'Shown in the student problem panel (nothing is graded). Examples with an empty name are not exported.',
+      exampleName: 'Name',
+      exampleStdin: 'Input (stdin)',
+      exampleStdout: 'Expected output (stdout)',
+      exampleDefaultName: 'Example ${n}',
+      addExample: 'Add an example',
+      removeExample: 'Remove this example',
     },
     token: {
       heading: 'Proctor code',

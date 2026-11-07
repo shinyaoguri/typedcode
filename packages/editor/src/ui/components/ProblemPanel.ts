@@ -6,8 +6,22 @@
  *
  * UX: 既存の preview/log パネルと同じ作法で、右端ドラッグで幅をリサイズ・×で閉じる・
  * タイトルバーのトグルで再表示できる。
+ *
+ * 入出力例 (#648 / ADR-0048): 問題文の下に「動作確認の例」の節 (`#problem-examples`) を置く。
+ * 判定はせず、受講者が自分で実行して見比べる。入力のコピーは proof に何も記録しない
+ * (`SessionContentRegistry` にも登録しないので、コピーした入力をコードに貼ると外部の貼り付けになる)。
  */
+import type { ProblemExample } from '@typedcode/shared';
+import { t } from '../../i18n/index.js';
 import { renderMarkdown } from '../../utils/markdown.js';
+
+/** コピー成功の表示 (`copied`) を残す時間。コードのコピー (`#copy-code-btn`) と揃える。 */
+const COPIED_FEEDBACK_MS = 2000;
+
+/** `<pre>` に出すときだけ末尾の改行 1 つを落とす (`"8\n"` の空行を見せない)。コピーには元の文字列を使う。 */
+function displayText(text: string): string {
+  return text.replace(/\r?\n$/, '');
+}
 
 export class ProblemPanel {
   private panel: HTMLElement | null = null;
@@ -80,13 +94,114 @@ export class ProblemPanel {
   }
 
   /**
-   * 問題本文 (Markdown) を設定する。`renderMarkdown` で sanitize 済み HTML に変換して表示する
-   * (出題プレビューと同一レンダラ)。
+   * 問題本文 (Markdown) と入出力例を 1 回で描き直す。本文は `renderMarkdown` で sanitize 済み HTML に
+   * 変換して表示する (出題プレビューと同一レンダラ)。例の節も毎回作り直すので、タブを切り替えたときに
+   * 前の問題の例が残らない。例が無い (省略・空配列) 問題では節を描かない。
    */
-  setProblemText(markdown: string): void {
+  setProblem(statement: string, examples?: readonly ProblemExample[]): void {
     if (!this.body) return;
     this.body.classList.add('markdown-rendered');
-    this.body.innerHTML = renderMarkdown(markdown);
+    this.body.innerHTML = renderMarkdown(statement);
+
+    this.panel?.querySelector('#problem-examples')?.remove();
+    if (examples && examples.length > 0) {
+      this.body.after(this.renderExamples(examples));
+    }
+  }
+
+  /**
+   * 「動作確認の例」の節を組み立てる。中身は配布物から来る文字列なので、innerHTML を使わず
+   * textContent で入れる。状態契約 (packages/editor/AGENTS.md「状態契約」): 節の `data-example-count`、
+   * 例ごとの `data-example-index`、名前の `[data-role="name"]`、`pre[data-role="stdin"|"stdout"]`、入力の無い例の
+   * `[data-role="no-input"]`、コピーボタンの `data-action="copy-stdin"`。
+   */
+  private renderExamples(examples: readonly ProblemExample[]): HTMLElement {
+    const section = document.createElement('section');
+    section.id = 'problem-examples';
+    section.className = 'problem-examples';
+    section.dataset.exampleCount = String(examples.length);
+
+    const heading = document.createElement('h3');
+    heading.className = 'problem-examples-heading';
+    heading.textContent = t('problemExamples.heading');
+    const instructions = document.createElement('p');
+    instructions.className = 'problem-examples-instructions';
+    instructions.textContent = t('problemExamples.instructions');
+    section.append(heading, instructions);
+
+    examples.forEach((example, index) => {
+      const block = document.createElement('div');
+      block.className = 'problem-example';
+      block.dataset.exampleIndex = String(index);
+
+      const name = document.createElement('div');
+      name.className = 'problem-example-name';
+      name.dataset.role = 'name';
+      name.textContent = example.name;
+      block.appendChild(name);
+
+      const inputHead = document.createElement('div');
+      inputHead.className = 'problem-example-label';
+      const inputLabel = document.createElement('span');
+      inputLabel.textContent = t('problemExamples.input');
+      inputHead.appendChild(inputLabel);
+      block.appendChild(inputHead);
+
+      if (example.stdin.length > 0) {
+        inputHead.appendChild(this.createCopyButton(example.stdin));
+        block.appendChild(this.createPre('stdin', example.stdin));
+      } else {
+        // 入力の無い例はコピーするものが無いので、ボタンを出さずに「入力なし」と書く
+        const none = document.createElement('p');
+        none.className = 'problem-example-noinput';
+        none.dataset.role = 'no-input';
+        none.textContent = t('problemExamples.noInput');
+        block.appendChild(none);
+      }
+
+      const outputHead = document.createElement('div');
+      outputHead.className = 'problem-example-label';
+      outputHead.textContent = t('problemExamples.output');
+      block.append(outputHead, this.createPre('stdout', example.stdout));
+
+      section.appendChild(block);
+    });
+    return section;
+  }
+
+  private createPre(role: 'stdin' | 'stdout', text: string): HTMLPreElement {
+    const pre = document.createElement('pre');
+    pre.className = 'problem-example-io';
+    pre.dataset.role = role;
+    pre.textContent = displayText(text);
+    return pre;
+  }
+
+  /** 入力のコピーボタン。`stdin` を末尾の改行込みでそのまま渡す (貼ると Enter まで入る)。 */
+  private createCopyButton(stdin: string): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'problem-example-copy';
+    button.dataset.action = 'copy-stdin';
+    const icon = document.createElement('i');
+    icon.className = 'fas fa-copy';
+    const label = document.createElement('span');
+    label.textContent = t('problemExamples.copy');
+    button.append(icon, ' ', label);
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(stdin);
+        button.classList.add('copied');
+        label.textContent = t('problemExamples.copied');
+        setTimeout(() => {
+          button.classList.remove('copied');
+          label.textContent = t('problemExamples.copy');
+        }, COPIED_FEEDBACK_MS);
+      } catch (error) {
+        console.error('[TypedCode] Copy failed:', error);
+      }
+    });
+    return button;
   }
 
   private setupResizeHandle(): void {

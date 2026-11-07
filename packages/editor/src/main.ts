@@ -977,7 +977,7 @@ async function openLegacyExamTab(
     startToken,
   };
   await appCtx.tabManager?.createTab(filename, language, '', { examContext });
-  appCtx.problemPanel.setProblemText(statement);
+  appCtx.problemPanel.setProblem(statement);
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
   ExamPackageStore.save(manifest.problemId, { manifest, plaintext: statement });
 }
@@ -1039,13 +1039,17 @@ async function openBundleTabs(
       });
     }
 
-    ExamPackageStore.save(problem.problemId, { manifest, plaintext: problem.statement });
+    ExamPackageStore.save(problem.problemId, {
+      manifest,
+      plaintext: problem.statement,
+      ...(problem.examples ? { examples: problem.examples } : {}),
+    });
   }
 
   // 先頭タブをアクティブにし、その問題文を表示する。
   const first = appCtx.tabManager?.getAllTabs()[0];
   if (first) await appCtx.tabManager?.switchTab(first.id);
-  appCtx.problemPanel.setProblemText(problems[0]?.statement ?? '');
+  appCtx.problemPanel.setProblem(problems[0]?.statement ?? '', problems[0]?.examples);
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
 }
 
@@ -1054,7 +1058,7 @@ function restoreExamProblemDisplay(appCtx: AppContext): void {
   const problemId = appCtx.tabManager?.getActiveTab()?.typingProof.examContext?.problemId;
   const pkg = problemId ? ExamPackageStore.get(problemId) : ExamPackageStore.getAny();
   if (!pkg) return;
-  appCtx.problemPanel.setProblemText(pkg.plaintext);
+  appCtx.problemPanel.setProblem(pkg.plaintext, pkg.examples);
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
 }
 
@@ -1117,13 +1121,17 @@ async function openClassTabs(appCtx: AppContext, pkg: ClassPackage): Promise<voi
       });
     }
 
-    ClassProblemStore.save(filename, { problemId: problem.problemId, statement: problem.statement });
+    ClassProblemStore.save(filename, {
+      problemId: problem.problemId,
+      statement: problem.statement,
+      ...(problem.examples ? { examples: problem.examples } : {}),
+    });
   }
 
   // 先頭タブをアクティブにし、その問題文を表示する。
   const first = appCtx.tabManager?.getAllTabs()[0];
   if (first) await appCtx.tabManager?.switchTab(first.id);
-  appCtx.problemPanel.setProblemText(problems[0]?.statement ?? '');
+  appCtx.problemPanel.setProblem(problems[0]?.statement ?? '', problems[0]?.examples);
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
 }
 
@@ -1132,7 +1140,7 @@ function restoreClassProblemDisplay(appCtx: AppContext): void {
   const filename = appCtx.tabManager?.getActiveTab()?.filename;
   const problem = filename ? ClassProblemStore.get(filename) : ClassProblemStore.getAny();
   if (!problem) return;
-  appCtx.problemPanel.setProblemText(problem.statement);
+  appCtx.problemPanel.setProblem(problem.statement, problem.examples);
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
 }
 

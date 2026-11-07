@@ -103,7 +103,7 @@ opaque origin への隔離 (Option D) は、入力の不具合と独立に決め
 
 ## References
 
-- `packages/editor/src/executors/python/PythonExecutor.ts` / `pythonWorker.ts` / `stdinChannel.ts` / `stdinLineDiscipline.ts`
+- `packages/editor/src/executors/python/PythonExecutor.ts` / `pythonWorker.ts` / `stdinChannel.ts`、`packages/editor/src/terminal/stdinLineDiscipline.ts` (#648 で C のターミナルの記録と共有するため terminal/ へ移した)
 - `packages/editor/src/terminal/CTerminal.ts` (`connectStdin`)、`packages/editor/src/execution/CodeExecutionController.ts`
 - [ADR-0041](0041-sandboxed-code-execution.md) (JS / TS の sandbox 実行。C / Python を同じ箱に入れる論点)
 - [ADR-0021](0021-code-execution-result-capture.md) (実行結果の記録)

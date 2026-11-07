@@ -30,6 +30,7 @@ import {
   type ExamBundle,
   type ExamBundleProblem,
 } from '@typedcode/shared';
+import { cleanProblemExamples } from './problemExamples.js';
 
 /** Crockford Base32 アルファベット (I L O U を除外 = 32 文字)。監督コード生成に使う。 */
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -246,6 +247,8 @@ export async function createExamBundlePackage(
       }
       cleaned.starter = { filename, language, content: p.starter.content };
     }
+    const examples = cleanProblemExamples(p.examples);
+    if (examples) cleaned.examples = examples;
     problems.push(cleaned);
   }
 

@@ -86,6 +86,94 @@
   opacity: 0.85;
 }
 
+/* 動作確認の例 (#648 / ADR-0048)。問題文の下に置く。判定はしないので、合否を思わせる色を使わない */
+.problem-examples {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color, #333);
+  font-size: 13px;
+}
+
+.problem-examples-heading {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.problem-examples-instructions {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+.problem-example {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 5px;
+}
+
+.problem-example:last-child {
+  margin-bottom: 0;
+}
+
+.problem-example-name {
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.problem-example-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 0 2px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.problem-example-io {
+  margin: 0;
+  padding: 6px 8px;
+  max-height: 160px;
+  overflow: auto;
+  background: var(--bg-primary, #111);
+  border-radius: 4px;
+  font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.problem-example-noinput {
+  margin: 0;
+  font-size: 12px;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.problem-example-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.problem-example-copy:hover {
+  background: var(--statusbar-hover-bg, rgba(255, 255, 255, 0.08));
+}
+
+.problem-example-copy.copied {
+  border-color: var(--accent-primary, #2d6cdf);
+}
+
 .problem-footer {
   flex: 0 0 auto;
   padding: 10px 12px;

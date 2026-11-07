@@ -18,6 +18,7 @@ import {
   type ExamBundle,
   type ExamBundleProblem,
 } from '@typedcode/shared';
+import { cleanProblemExamples } from './problemExamples.js';
 
 /** `buildClassPackage` の入力。1つの `.tcclass` に N 問をまとめる (ADR-0014)。 */
 export interface BuildClassPackageParams {
@@ -67,6 +68,8 @@ export function buildClassPackage(params: BuildClassPackageParams): string {
       }
       cleaned.starter = { filename, language, content: p.starter.content };
     }
+    const examples = cleanProblemExamples(p.examples);
+    if (examples) cleaned.examples = examples;
     problems.push(cleaned);
   }
 
