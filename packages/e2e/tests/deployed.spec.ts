@@ -57,7 +57,12 @@ test('deployed: casual で打鍵 → export が staging の署名付きで verif
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
   page.on('console', (msg) => {
-    if (msg.type() === 'error' && !isIrrelevant(msg.text())) consoleErrors.push(msg.text());
+    if (msg.type() !== 'error') return;
+    // 読み込みの失敗 (`Failed to load resource: net::ERR_FAILED`) は本文に URL を含まず、URL は location にだけ載る。
+    // staging の配信には Web Analytics のビーコンが差し込まれ、/cdn-cgi/rum への送信が CORS で落ちる (#655 で実測)。
+    const { url } = msg.location();
+    if (isIrrelevant(msg.text()) || isIrrelevant(url)) return;
+    consoleErrors.push(url ? `${msg.text()} (${url})` : msg.text());
   });
   page.on('pageerror', (err) => {
     if (!isIrrelevant(err.message)) pageErrors.push(err.message);
