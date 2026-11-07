@@ -11,14 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  type ComputePoSWRequest,
-  generateNonce,
-  handleComputePoSW,
-  handleVerifyPoSW,
-  handleWorkerRequest,
-  type VerifyPoSWRequest,
-} from '../poswWorker.js';
+import { type ComputePoSWRequest, generateNonce, handleComputePoSW, handleWorkerRequest } from '../poswWorker.js';
 import { POSW_FIXED_VECTORS } from './fixtures/poswVectors.js';
 
 /**
@@ -41,16 +34,6 @@ function computeRequest(seed: string, iterations: number, requestId = 7): Comput
   return { type: 'compute-posw', requestId, previousHash, eventDataString, iterations };
 }
 
-function verifyRequest(seed: string, iterations: number, expectedHash: string): VerifyPoSWRequest {
-  const { previousHash, eventDataString, nonce } = splitSeed(seed);
-  return { type: 'verify-posw', requestId: 11, previousHash, eventDataString, nonce, iterations, expectedHash };
-}
-
-/** 先頭の 16 進 1 文字だけを変える */
-function flipFirstHexChar(hash: string): string {
-  return `${hash.startsWith('0') ? '1' : '0'}${hash.slice(1)}`;
-}
-
 describe('poswWorker: handleComputePoSW', () => {
   it.each(POSW_FIXED_VECTORS)('matches the fixed vector (seed=%j, n=%i)', async (seed, iterations, expected) => {
     const { nonce } = splitSeed(seed);
@@ -70,40 +53,10 @@ describe('poswWorker: handleComputePoSW', () => {
   });
 });
 
-describe('poswWorker: handleVerifyPoSW', () => {
-  it.each(POSW_FIXED_VECTORS)('accepts the fixed vector (seed=%j, n=%i)', async (seed, iterations, expected) => {
-    expect(await handleVerifyPoSW(verifyRequest(seed, iterations, expected))).toEqual({
-      type: 'verify-result',
-      requestId: 11,
-      valid: true,
-    });
-  });
-
-  it.each(POSW_FIXED_VECTORS)(
-    'rejects a hash differing by one character (seed=%j, n=%i)',
-    async (seed, iterations, expected) => {
-      const response = await handleVerifyPoSW(verifyRequest(seed, iterations, flipFirstHexChar(expected)));
-      expect(response.valid).toBe(false);
-    }
-  );
-});
-
 describe('poswWorker: handleWorkerRequest', () => {
-  it('dispatches compute-posw and verify-posw by type', async () => {
+  it('dispatches compute-posw by type', async () => {
     const computed = await handleWorkerRequest(computeRequest('typedcode-posw', 2));
     expect(computed.type).toBe('posw-result');
-    if (computed.type !== 'posw-result') return;
-
-    const verified = await handleWorkerRequest({
-      type: 'verify-posw',
-      requestId: 3,
-      previousHash: 'typ',
-      eventDataString: 'edcode-',
-      nonce: computed.nonce,
-      iterations: 2,
-      expectedHash: computed.intermediateHash,
-    });
-    expect(verified).toEqual({ type: 'verify-result', requestId: 3, valid: true });
   });
 
   it('generateNonce returns 32 lowercase hex characters', () => {

@@ -69,12 +69,6 @@ class MockWorker {
           intermediateHash: 'mock-intermediate-hash-' + Date.now().toString(16),
           computeTimeMs: 5,
         };
-      case 'verify-posw':
-        return {
-          type: 'verify-result',
-          requestId: request.requestId,
-          valid: true,
-        };
       default:
         return {};
     }

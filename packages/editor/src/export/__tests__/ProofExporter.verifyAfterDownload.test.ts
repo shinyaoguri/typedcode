@@ -89,17 +89,15 @@ class MockPoswWorker {
   postMessage(message: Record<string, unknown>): void {
     queueMicrotask(() => {
       if (!this.onmessage) return;
-      const data =
-        message.type === 'compute-posw'
-          ? {
-              type: 'posw-result',
-              requestId: message.requestId,
-              iterations: message.iterations,
-              nonce: 'mock-nonce',
-              intermediateHash: 'mock-intermediate-hash',
-              computeTimeMs: 1,
-            }
-          : { type: 'verify-result', requestId: message.requestId, valid: true };
+      if (message.type !== 'compute-posw') return;
+      const data = {
+        type: 'posw-result',
+        requestId: message.requestId,
+        iterations: message.iterations,
+        nonce: 'mock-nonce',
+        intermediateHash: 'mock-intermediate-hash',
+        computeTimeMs: 1,
+      };
       this.onmessage({ data } as MessageEvent);
     });
   }

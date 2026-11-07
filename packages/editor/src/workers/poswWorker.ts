@@ -25,24 +25,8 @@ export interface ComputePoSWResponse {
   computeTimeMs: number;
 }
 
-export interface VerifyPoSWRequest {
-  type: 'verify-posw';
-  requestId: number;
-  previousHash: string;
-  eventDataString: string;
-  nonce: string;
-  iterations: number;
-  expectedHash: string;
-}
-
-export interface VerifyPoSWResponse {
-  type: 'verify-result';
-  requestId: number;
-  valid: boolean;
-}
-
-export type WorkerRequest = ComputePoSWRequest | VerifyPoSWRequest;
-export type WorkerResponse = ComputePoSWResponse | VerifyPoSWResponse;
+export type WorkerRequest = ComputePoSWRequest;
+export type WorkerResponse = ComputePoSWResponse;
 
 // ArrayBufferを16進数文字列に変換
 function arrayBufferToHex(buffer: ArrayBuffer): string {
@@ -95,28 +79,11 @@ export async function handleComputePoSW(
   };
 }
 
-// PoSW検証
-export async function handleVerifyPoSW(request: VerifyPoSWRequest): Promise<VerifyPoSWResponse> {
-  let hash = await computeHash(request.previousHash + request.eventDataString + request.nonce);
-
-  for (let i = 1; i < request.iterations; i++) {
-    hash = await computeHash(hash);
-  }
-
-  return {
-    type: 'verify-result',
-    requestId: request.requestId,
-    valid: hash === request.expectedHash,
-  };
-}
-
 // リクエストの振り分け (Worker の外からも呼べる。固定ベクタのテストは __tests__/poswWorker.test.ts)
 export async function handleWorkerRequest(request: WorkerRequest): Promise<WorkerResponse> {
   switch (request.type) {
     case 'compute-posw':
       return handleComputePoSW(request);
-    case 'verify-posw':
-      return handleVerifyPoSW(request);
   }
 }
 
