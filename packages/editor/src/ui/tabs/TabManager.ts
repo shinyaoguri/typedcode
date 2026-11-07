@@ -586,12 +586,20 @@ export class TabManager {
       // ADR-0027: sign は sessionStartToken 前提。token はセッション単位 (タブ横断) なので
       // 毎回セッションレベルで解決する (exam の best-effort 取得で後から届くケースに対応)。
       getSessionStartToken: () => this.findSigningToken(),
-      attachSignature: (eventIndex, envelope) => typingProof.attachSignedCheckpoint(eventIndex, envelope),
+      // 署名の付与と checkpoint の作成は、イベントの記録と違って保存を起こさない。export の後に
+      // 打鍵せず閉じると署名前の checkpoints で復元され、index が巻き戻ってサーバと 409 で衝突する (#654)。
+      // どちらでも永続化を要求する (未署名の cp も残せば、再開後に restore() の冪等な再送に乗る)。
+      attachSignature: (eventIndex, envelope) => {
+        const attached = typingProof.attachSignedCheckpoint(eventIndex, envelope);
+        if (attached) this.saveToStorage();
+        return attached;
+      },
     });
     if (!service) return null;
 
     typingProof.setOnCheckpointCreated((checkpoint) => {
       service.handleNewCheckpoint(checkpoint);
+      this.saveToStorage();
     });
 
     if (existingCheckpoints && existingCheckpoints.length > 0) {
