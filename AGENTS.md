@@ -4,9 +4,8 @@
 
 ## プロジェクト概要
 
-TypedCode はブラウザベースのコードエディタで、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録し、改ざん耐性のあるタイピング証明を生成します。さらに Cloudflare Workers による ECDSA-P256 署名付きチェックポイントで時刻アンカリングを行います。
+TypedCode はブラウザベースのコードエディタで、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録し、改ざん耐性のあるタイピング証明を生成します。さらに Cloudflare Workers による ECDSA-P256 署名付きチェックポイントで時刻アンカリングを行います。版の正本はルートの `package.json` の `version` と [CHANGELOG.md](CHANGELOG.md) で、ここには写しません (#658)。
 
-**Version**: 1.1.0
 **Tech Stack**: TypeScript 7, Vite 8 (rolldown), Monaco Editor, Wasmer SDK, Chart.js, Cloudflare Workers
 **Node.js**: ≥24
 
