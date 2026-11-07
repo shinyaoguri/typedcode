@@ -208,7 +208,7 @@ npx wrangler deployments status --config wrangler.production.toml   # 現役の�
 
 ### staging
 
-Pages のロールバックは production デプロイにしか効かない (staging は `--branch=staging` の preview デプロイなので対象外)。staging の Pages は、前の main の run の `deploy-staging` job を再実行して出し直す。同じ commit で build して Workers → Pages の順に出し直すので、Workers も一緒に戻る。
+Pages のロールバックは production デプロイにしか効かない (staging は `--branch=staging` の preview デプロイなので対象外)。staging の Pages は、前の main の run の `deploy-staging` job を再実行して出し直す。同じ commit で build して Workers → Pages の順に出し直すので、Workers も一緒に戻る。再実行は build からやり直すので、元のデプロイとバイト単位では同じにならない (`__BUILD_DATE__` が再実行の時刻になり、アセット名も変わる)。GitHub の secrets も再実行の時点の値を使う。1 回は 1 分弱で終わる (#656 の予行で実測)。
 
 ```bash
 # Pages (+ Workers): 戻す先の main の run と、その deploy-staging の job ID を引いて再実行する
