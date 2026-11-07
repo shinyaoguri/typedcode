@@ -40,7 +40,9 @@ export default defineConfig({
   // production-build.spec.ts は dist (vite preview) を対象にする専用 spec なので、
   // dev サーバ向けのこの設定からは外す。実行は playwright.build.config.ts
   // (`npm run test:build -w @typedcode/e2e`) が担う。
-  testIgnore: /production-build\.spec\.ts$/,
+  // deployed.spec.ts はデプロイ済みの staging を相手にする専用 spec (#655) で、実行は
+  // playwright.deployed.config.ts (`npm run test:deployed -w @typedcode/e2e`) が担う。
+  testIgnore: [/production-build\.spec\.ts$/, /deployed\.spec\.ts$/],
   // 下の webServer がこの作業ツリーのサーバか (別の worktree のサーバを再利用していないか) を、
   // テストより前に照合する (#552)。Playwright は webServer の準備を globalSetup より先に済ませる。
   globalSetup: './global-setup.ts',

@@ -12,6 +12,7 @@
     "tests/**/*.ts",
     "playwright.config.ts",
     "playwright.build.config.ts",
+    "playwright.deployed.config.ts",
     "global-setup.ts",
     "global-setup.build.ts",
     "ports.ts"
