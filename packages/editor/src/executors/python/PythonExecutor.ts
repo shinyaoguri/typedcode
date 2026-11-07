@@ -32,7 +32,7 @@ import {
   type PythonWorkerRequest,
 } from './pythonWorkerProtocol.js';
 import { StdinChannelWriter, createStdinBuffer } from './stdinChannel.js';
-import { StdinLineDiscipline } from './stdinLineDiscipline.js';
+import { StdinLineDiscipline } from '../../terminal/stdinLineDiscipline.js';
 
 /** Worker の使う分だけの形 (テストでは偽物に差し替える) */
 export interface PythonWorkerHandle {

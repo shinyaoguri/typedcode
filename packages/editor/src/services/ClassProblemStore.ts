@@ -11,12 +11,15 @@
  * 問題は公開前提なので localStorage 保存で機密性の損失はない。解除は設定メニューのリセット (現在のモードの分だけ消える。#323)。
  */
 
+import type { ProblemExample } from '@typedcode/shared';
 import { classProblemsKey } from '../core/storageKeys.js';
 
 export interface StoredClassProblem {
   problemId: string;
   /** 問題文 (Markdown) */
   statement: string;
+  /** 問題の入出力例 (#648)。問題が持つときだけ。入出力例より前に保存した分には無い */
+  examples?: ProblemExample[];
 }
 
 /** filename → 問題本文。タブ切替/復元時に active タブの filename で照合する。 */

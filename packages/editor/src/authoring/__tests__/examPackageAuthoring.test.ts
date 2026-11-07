@@ -267,4 +267,20 @@ describe('createExamBundlePackage', () => {
     const bad = { ...bundleParams(), problems: [{ problemId: 'p1', statement: '   ' }] };
     await expect(createExamBundlePackage(bad, signer)).rejects.toThrow();
   });
+
+  it('seals authored input/output examples so the unlocked bundle carries the same two examples (#648)', async () => {
+    const examples = [
+      { name: '例1', stdin: '3 5\n', stdout: '8\n' },
+      { name: '入力なし', stdin: '', stdout: 'hello\n' },
+    ];
+    const [p1, p2] = bundleParams().problems;
+    const params = { ...bundleParams(), problems: [{ ...p1!, examples }, p2!] };
+    const { manifest, proctorToken } = await createExamBundlePackage(params, signer);
+    const dec = await decryptExamPackage(manifest, proctorToken);
+    if (!dec.ok) throw new Error('expected the package to unlock');
+    const decoded = decodeExamPlaintext(dec.plaintext);
+    if (decoded.kind !== 'bundle') throw new Error('expected a bundle payload');
+    expect(decoded.bundle.problems[0]!.examples).toEqual(examples);
+    expect(decoded.bundle.problems[1]).not.toHaveProperty('examples');
+  });
 });

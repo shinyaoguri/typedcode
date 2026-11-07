@@ -13,7 +13,13 @@ import {
 } from './helpers/app.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
 import { failStorageProbe } from './helpers/faults.js';
-import { waitDialogOpen } from './helpers/scenario.js';
+import {
+  SAMPLE_PROBLEM_EXAMPLES,
+  classPackageFile,
+  loadClassPackage,
+  sampleClassPackageWithExamples,
+  waitDialogOpen,
+} from './helpers/scenario.js';
 
 /**
  * 見た目・動きの証跡 (`@shots`, #391 / ADR-0036)。**何も assert しない**。人が見るための画像を吐くだけ。
@@ -122,6 +128,15 @@ const SHOTS = [
     file: '18-terms-modal.png',
     caption:
       'エディタ (授業モード): 利用規約のモーダルを開いた直後 (冒頭の案内の直後に、どのモードでも証明しないことの注記。#240 / #644)',
+  },
+  {
+    file: '19-problem-examples.png',
+    caption:
+      'エディタ (授業モード): 入出力例付きの問題を読んだときの問題パネル (問題文の下に「動作確認の例」。入力のコピーボタンと、入力の無い例の「入力なし」。#648)',
+  },
+  {
+    file: '20-author-examples.png',
+    caption: '出題 (/author): 問題文の下の「動作確認の例」の欄に例を 2 件入れた状態 (#648)',
   },
 ] as const;
 
@@ -350,6 +365,40 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await app.openModeFresh('class', { acceptTerms: false, waitReady: false });
     await waitDialogOpen(app, 'terms');
     await page.screenshot({ path: out('18-terms-modal.png'), animations: 'disabled' });
+  });
+
+  // 19 (#648): 入出力例付きの .tcclass を読んだときの問題パネル。base (例を読まない版) では例の節が無い画面になる
+  test('問題パネルの入出力例の節を撮る @shots', async ({ page }) => {
+    const app = new EditorApp(page);
+    await app.openModeFresh('class', { screenShare: 'share', waitReady: false });
+    await waitDialogOpen(app, 'welcome');
+    await loadClassPackage(app, classPackageFile(sampleClassPackageWithExamples()));
+    await page.locator('#problem-panel').screenshot({ path: out('19-problem-examples.png'), animations: 'disabled' });
+  });
+
+  // 20 (#648): /author の入出力例の欄。base には欄が無いので、追加ボタンが無ければそのまま問題文のペインを撮る
+  test('/author の入出力例の欄を撮る @shots', async ({ page }) => {
+    await page.goto('/author');
+    await page.locator('#author-statement-editor .view-lines').waitFor({ state: 'visible', timeout: 60_000 });
+    const add = page.locator('#author-add-example');
+    if ((await add.count()) > 0) {
+      for (const [index, example] of SAMPLE_PROBLEM_EXAMPLES.entries()) {
+        await add.click();
+        const row = page.locator(`#author-example-list [data-example-index="${index}"]`);
+        await row.locator('[data-field="name"]').fill(example.name);
+        await row.locator('[data-field="stdin"]').fill(example.stdin);
+        await row.locator('[data-field="stdout"]').fill(example.stdout);
+      }
+      // 打った欄へのスクロールを戻し、一覧の先頭から撮る
+      await page.locator('#author-example-list').evaluate((el) => {
+        (document.activeElement as HTMLElement | null)?.blur();
+        el.scrollTop = 0;
+      });
+    }
+    await page
+      .locator('.author-pane')
+      .first()
+      .screenshot({ path: out('20-author-examples.png'), animations: 'disabled' });
   });
 
   // 11〜12 (#301): 分析器の失敗・時間切れを「シグナルなし」と区別する分析カード。同梱の分析器は通常の proof では

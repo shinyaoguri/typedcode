@@ -6,6 +6,7 @@
 import type { CodeExecutionOutcome } from '@typedcode/shared';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { StdinLineDiscipline } from './stdinLineDiscipline.js';
 
 /** Callback type for terminal input events */
 export type TerminalInputCallback = (input: string) => void;
@@ -23,8 +24,9 @@ export class CTerminal {
   private stdinWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private encoder = new TextEncoder();
 
-  // Line buffer for stdin mode (to track input until Enter)
-  private stdinLineBuffer: string = '';
+  // stdin モードで打った・貼った入力を行に区切って inputCallback (terminalInput の記録) に渡すための行バッファ。
+  // エコーは WASI 側がするので、ここでは確定した行だけを使う (Python と同じ line discipline で 1 文字ずつ処理する)
+  private stdinLineLog = new StdinLineDiscipline();
 
   // Callback for input events (called when user presses Enter)
   private inputCallback: TerminalInputCallback | null = null;
@@ -75,27 +77,9 @@ export class CTerminal {
     this.terminal.onData((data) => {
       // Stream connection mode: forward input directly to WASI stdin
       if (this.stdinWriter) {
-        // Track input for line-based logging
-        if (data === '\r' || data === '\n') {
-          // Enter key - notify callback with the complete line
-          if (this.inputCallback && this.stdinLineBuffer.length > 0) {
-            this.inputCallback(this.stdinLineBuffer);
-          }
-          this.stdinLineBuffer = '';
-        } else if (data === '\x7f' || data === '\b') {
-          // Backspace - remove last character from buffer
-          if (this.stdinLineBuffer.length > 0) {
-            this.stdinLineBuffer = this.stdinLineBuffer.slice(0, -1);
-          }
-        } else if (data === '\x03') {
-          // Ctrl+C - clear buffer
-          this.stdinLineBuffer = '';
-        } else if (data >= ' ' || data === '\t') {
-          // Regular printable character - add to buffer
-          this.stdinLineBuffer += data;
-        }
+        this.logStdinLines(data);
 
-        // Forward to stdin (no local echo - WASI program handles echo)
+        // Forward to stdin as one chunk (no local echo - WASI program handles echo)
         this.stdinWriter.write(this.encoder.encode(data)).catch(() => {
           // Ignore errors when program has ended
         });
@@ -265,8 +249,24 @@ export class CTerminal {
       }
       this.stdinWriter = null;
     }
-    this.stdinLineBuffer = ''; // Clear line buffer
+    this.stdinLineLog = new StdinLineDiscipline(); // Clear line buffer
     this.terminal.options.disableStdin = true; // Disable input after program ends
+  }
+
+  /**
+   * stdin モードの入力 (xterm の onData 1 回分) を行に区切り、確定した空でない行ごとに inputCallback を呼ぶ。
+   * 貼り付けは `"3\r5\r"` のような塊で 1 回に届くので、塊のまま判定せず 1 文字ずつ処理する (#648)。
+   * Enter (`\r` / `\n`) で確定、バックスペースで 1 文字消す、Ctrl+C (`\x03`) で書きかけの行を捨てる。
+   */
+  private logStdinLines(data: string): void {
+    const segments = data.split('\x03');
+    segments.forEach((segment, index) => {
+      if (index > 0) this.stdinLineLog = new StdinLineDiscipline(); // Ctrl+C - clear buffer
+      for (const line of this.stdinLineLog.feed(segment).lines) {
+        const text = line.slice(0, -1); // 確定した行の末尾の "\n" を外す
+        if (this.inputCallback && text.length > 0) this.inputCallback(text);
+      }
+    });
   }
 
   /**

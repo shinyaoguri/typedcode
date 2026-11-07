@@ -335,6 +335,25 @@ interface SignedCheckpointEnvelope {
 - **オーサリング**: `/author` は同じ問題から封印 (`.tcexam`) と未封印 (`.tcclass`) の両方を出せる (`buildClassPackage`、examId を classId に流用)。
 - **保証**: class proof の保証は低い (formative)。AI 写経は防げない (ADR-0011 の割り切り)。「上に偽れない (試験の保証は暗号束縛由来)・取り違えは Moodle が拾う」ので署名/封印は不要。
 
+### 4.9. 問題の入出力例 (ADR-0048)
+
+`ExamBundle` (`tcexam-exam/1`) の各問題 (`ExamBundleProblem`) は、任意で入出力例を持てる。`.tcexam` (封印) と `.tcclass` (平文) の両方に載る。
+
+```jsonc
+{
+  "problemId": "p1", "statement": "...", "starter": { /* 任意 */ },
+  "examples": [
+    { "name": "例1", "stdin": "3 5\n", "stdout": "8\n" }
+  ]
+}
+```
+
+- **用途**: 受講者が自分で実行し、入力を打って出力を見比べるための例。editor は問題パネルの問題文の下に「動作確認の例」として表示し、入力のコピーボタンを付ける。**editor は判定しない** (✓/✗・差分・比較規則を持たない)。表示とコピーは proof に記録しない (ターミナルに打った・貼った入力は既存の `terminalInput` に載る)
+- **構造検証** (`parseExamBundle`): `examples` は配列で、各要素は `name` (空でない文字列)・`stdin` (文字列)・`stdout` (文字列) を持つ。違反があればバンドル全体を不正 (`null`) にする。例の未知のキーは落とす
+- **正準化とハッシュ** (`canonicalProblem` / `computeBundleProblemHash`): `examples` が 1 件以上のときだけ含め、各例を `{ name, stdin, stdout }` に作り直して `stdin` / `stdout` の改行を LF に正規化する。**`examples` を持たない問題のハッシュは変わらない**。持つ問題では、例を 1 文字変えると `problemContentHash` が変わる (封印・root 束縛の対象)
+- **互換**: `examples` を持つ `.tcexam` は、この版以降の editor が前提。旧版の editor は `examples` を落としたハッシュを root に焼くので、検証側の `problemContentHash` と一致しない。`.tcclass` は root 束縛が無いので影響しない
+- **非公開テスト**は配布物に入れない (解錠後の `.tcexam` も受講者が読める)。教員側で再実行して採点する段階 2 は別の形式で持つ
+
 ---
 
 ## 5. 保存形式
@@ -968,3 +987,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-05 | fingerprint の収集を用途のあるコンポーネントに絞る (ADR-0044, #242) | `collectComponents` から `canvas` (描画結果の data URL) と `fonts` (フォント一覧) を外し、`webgl` を `unmaskedVendor` / `unmaskedRenderer` の 2 値にした (13 キー)。読むコードは `automationAnalyzer` の `webgl.unmaskedRenderer` だけで、root・流用検出・token 束縛は hash の等値比較で足りる。検証器は proof 同梱の components を再ハッシュするだけなので旧 proof (17 キー) はそのまま valid。`FingerprintComponents` は `canvas` / `fonts` を optional にし、新しく集める形は `CollectedFingerprintComponents`。proof 形式の番号は変えない |
 | 2026-11-05 | PoSW の反復数の見直し (ADR-0045, #241) | 記録側のベンチ (`npm run bench:posw`) で、CPU 4 倍相当では処理が入力に追いつかないことを測り、反復数を 10000 から 1000 に下げると決めた (実装は #611。それまでは 10000)。§4.4 から「最低限の計算時間を強制」「10000 events なら最低 50 秒」を消し、PoSW は時間の証明ではなく逐次コストだと揃えた |
 | 2026-11-06 | 入口からモード選択をなくす (ADR-0046 段階 1, #644) | `/` は練習のエディタを直接開き、ADR-0015 のランディング (4 モードの比較カード・「続きから」バッジ・`SessionDetector`) とエディタ内のモード切替ドロップダウンを撤去した。未知パスは not-found 画面 (`/` へのリンクだけ、エディタの chunk を読まない)。titlebar はモード表示だけ。練習で規約に未同意なら受動的な通知を出し、閉じるか規約モーダルで同意したら `termsAccepted` を記録する。`/class` `/assignment` `/exam` の直リンクと proof 形式は不変 |
+| 2026-11-07 | 問題の入出力例 (ADR-0048, #648) | `ExamBundleProblem` に任意の `examples` (`{ name, stdin, stdout }` の配列) を足した。`.tcexam` / `.tcclass` に載り、editor の問題パネルに「動作確認の例」として表示する (判定しない・proof に記録しない)。`examples` を持たない問題の `problemContentHash` は不変。§4.9 を追加 |

@@ -49,4 +49,25 @@ describe('buildClassPackage', () => {
   it('rejects when no languages are allowed', () => {
     expect(() => buildClassPackage({ classId: 'x', problems: sampleProblems(), languages: [] })).toThrow();
   });
+
+  // 入出力例 (#648)
+  const examples = [
+    { name: '例1', stdin: '3 5\n', stdout: '8\n' },
+    { name: '入力なし', stdin: '', stdout: 'hello\n' },
+  ];
+
+  it('carries two authored input/output examples through parseClassPackage unchanged', () => {
+    const problems = sampleProblems();
+    problems[0]!.examples = examples;
+    const parsed = parseClassPackage(JSON.parse(buildClassPackage({ classId: 'x', problems, languages: ['c'] })));
+    expect(parsed!.bundle.problems[0]!.examples).toEqual(examples);
+    expect(parsed!.bundle.problems[1]).not.toHaveProperty('examples');
+  });
+
+  it('drops examples whose name is blank instead of writing a package that parseClassPackage rejects', () => {
+    const problems = sampleProblems();
+    problems[0]!.examples = [{ name: '  ', stdin: '1\n', stdout: '1\n' }, examples[0]!];
+    const parsed = parseClassPackage(JSON.parse(buildClassPackage({ classId: 'x', problems, languages: ['c'] })));
+    expect(parsed!.bundle.problems[0]!.examples).toEqual([examples[0]]);
+  });
 });

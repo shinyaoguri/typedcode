@@ -15,7 +15,7 @@
  */
 
 import * as monaco from 'monaco-editor';
-import { escapeHtml, type ExamBundleProblem } from '@typedcode/shared';
+import { escapeHtml, type ExamBundleProblem, type ProblemExample } from '@typedcode/shared';
 import { t, getI18n } from '../i18n/index.js';
 import {
   createExamBundlePackage,
@@ -25,6 +25,7 @@ import {
   type CreatedExamPackage,
 } from './examPackageAuthoring.js';
 import { buildClassPackage } from './classPackageAuthoring.js';
+import { cleanProblemExamples } from './problemExamples.js';
 import { generateAuthorityKey } from './authorityKey.js';
 import { buildProctorMemo } from './proctorMemo.js';
 import { renderMarkdown } from '../utils/markdown.js';
@@ -75,6 +76,11 @@ interface AuthorProblem {
   filename: string;
   statementModel: monaco.editor.ITextModel;
   starterModel: monaco.editor.ITextModel;
+  /**
+   * 入出力例 (#648)。欄に打つたびに書き戻す (欄はアクティブな問題の分しか DOM に無いため)。
+   * 名前の空の例は書きかけとして残し、`collectProblems` で落とす。
+   */
+  examples: ProblemExample[];
 }
 
 export class AuthorPage {
@@ -153,6 +159,7 @@ export class AuthorPage {
 
     // 問題タブ追加 / 監督コード再生成 / 生成。
     this.el('author-add-tab').addEventListener('click', () => this.addProblem());
+    this.el('author-add-example').addEventListener('click', () => this.addExample());
     this.el('author-regen-token-btn').addEventListener('click', () => {
       this.input('author-token').value = generateProctorToken();
       this.updateStatusbar();
@@ -283,6 +290,7 @@ export class AuthorPage {
       filename,
       statementModel: monaco.editor.createModel('', 'markdown'),
       starterModel: monaco.editor.createModel('', extensionToLanguage(filename)),
+      examples: [],
     };
     this.problems.push(problem);
     this.switchProblem(problem.id);
@@ -299,6 +307,7 @@ export class AuthorPage {
     this.starterEditor.setModel(problem.starterModel);
     this.input('author-active-problemid').value = problem.problemId;
     this.setStatementPreview(false); // タブ切替時は編集に戻す (プレビューの取り違え防止)
+    this.renderExamples();
     this.renderTabs();
     this.updateStatusbar();
   }
@@ -382,6 +391,68 @@ export class AuthorPage {
     });
   }
 
+  // --- 入出力例 (#648) ---------------------------------------------------------
+
+  private get activeProblem(): AuthorProblem | undefined {
+    return this.problems.find((p) => p.id === this.activeId);
+  }
+
+  private addExample(): void {
+    const active = this.activeProblem;
+    if (!active) return;
+    active.examples.push({
+      name: t('author.problem.exampleDefaultName', { n: active.examples.length + 1 }),
+      stdin: '',
+      stdout: '',
+    });
+    this.renderExamples();
+  }
+
+  private removeExample(index: number): void {
+    const active = this.activeProblem;
+    if (!active) return;
+    active.examples.splice(index, 1);
+    this.renderExamples();
+  }
+
+  /**
+   * アクティブな問題の入出力例の欄を描き直す。欄の値は打つたびにモデル (`AuthorProblem.examples`) へ
+   * 書き戻すので、ここはモデルからの再描画だけを行う (問題の切り替え・追加・削除のとき)。
+   */
+  private renderExamples(): void {
+    const list = this.el('author-example-list');
+    list.innerHTML = '';
+    const active = this.activeProblem;
+    if (!active) return;
+    active.examples.forEach((example, index) => {
+      const row = document.createElement('div');
+      row.className = 'author-example';
+      row.dataset.exampleIndex = String(index);
+      row.innerHTML = `
+        <div class="author-example-head">
+          <input type="text" class="author-input author-example-name" data-field="name" aria-label="${escapeHtml(t('author.problem.exampleName'))}" placeholder="${escapeHtml(t('author.problem.exampleName'))}" autocomplete="off" spellcheck="false">
+          <button type="button" class="author-icon-btn" data-action="remove-example" title="${escapeHtml(t('author.problem.removeExample'))}"><i class="fas fa-trash"></i></button>
+        </div>
+        <div class="author-example-io">
+          <label><span>${escapeHtml(t('author.problem.exampleStdin'))}</span>
+            <textarea class="author-textarea author-mono" data-field="stdin" rows="3" spellcheck="false"></textarea></label>
+          <label><span>${escapeHtml(t('author.problem.exampleStdout'))}</span>
+            <textarea class="author-textarea author-mono" data-field="stdout" rows="3" spellcheck="false"></textarea></label>
+        </div>`;
+      for (const field of ['name', 'stdin', 'stdout'] as const) {
+        const input = row.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-field="${field}"]`)!;
+        input.value = example[field];
+        input.addEventListener('input', () => {
+          example[field] = input.value;
+        });
+      }
+      row
+        .querySelector<HTMLButtonElement>('[data-action="remove-example"]')!
+        .addEventListener('click', () => this.removeExample(index));
+      list.appendChild(row);
+    });
+  }
+
   private collectProblems(): ExamBundleProblem[] {
     this.commitActiveProblemId();
     return this.problems.map((p) => {
@@ -390,6 +461,8 @@ export class AuthorPage {
       if (content.length > 0) {
         problem.starter = { filename: p.filename, language: extensionToLanguage(p.filename), content };
       }
+      const examples = cleanProblemExamples(p.examples);
+      if (examples) problem.examples = examples;
       return problem;
     });
   }
@@ -581,6 +654,14 @@ export class AuthorPage {
                   <div class="author-monaco" id="author-statement-editor"></div>
                   <div class="markdown-rendered author-preview" id="author-statement-preview" hidden></div>
                 </div>
+                <section class="author-examples" id="author-examples">
+                  <div class="author-examples-head">
+                    <span>${escapeHtml(t('author.problem.examplesHeading'))}</span>
+                    <button class="author-pane-btn" id="author-add-example" data-action="add-example"><i class="fas fa-plus"></i> ${escapeHtml(t('author.problem.addExample'))}</button>
+                  </div>
+                  <p class="author-hint author-examples-hint">${escapeHtml(t('author.problem.examplesHint'))}</p>
+                  <div class="author-example-list" id="author-example-list"></div>
+                </section>
               </div>
               <div class="author-pane">
                 <div class="author-pane-header">

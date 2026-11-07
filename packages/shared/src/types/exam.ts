@@ -113,6 +113,24 @@ export interface ExamBundleProblem {
   statement: string;
   /** スターターコード (任意)。`TemplateFileDefinition` を再利用 (テンプレート機能と共通)。 */
   starter?: TemplateFileDefinition;
+  /**
+   * 入出力例 (任意。#648 / ADR-0048)。受講者が自分で実行して見比べるための例で、判定には使わない。
+   * 1 件以上のときだけ正準形 (問題ハッシュと封印) に入る。空配列は「無い」と同じ。
+   */
+  examples?: ProblemExample[];
+}
+
+/**
+ * 問題の入出力例 1 件 (#648 / ADR-0048)。stdin を与えたら stdout になるはず、という対。
+ * 比較規則 (改行や末尾空白の扱い) は持たない (段階 2 で決める)。
+ */
+export interface ProblemExample {
+  /** 例の名前 (空でない)。 */
+  name: string;
+  /** 標準入力 (空文字 = 入力なし)。 */
+  stdin: string;
+  /** 期待する標準出力。 */
+  stdout: string;
 }
 
 /**

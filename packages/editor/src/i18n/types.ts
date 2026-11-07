@@ -672,6 +672,17 @@ export interface TranslationKeys {
     };
   };
 
+  // 問題パネルの入出力例 (#648 / ADR-0048)。判定はせず、受講者が自分で見比べる
+  problemExamples: {
+    heading: string;
+    instructions: string;
+    input: string;
+    output: string;
+    noInput: string;
+    copy: string;
+    copied: string;
+  };
+
   // 授業モード (/class, ADR-0014)
   class: {
     loader: {
@@ -729,6 +740,15 @@ export interface TranslationKeys {
       starterContent: string;
       starterPane: string;
       renameHint: string;
+      /** 入出力例の欄 (#648) */
+      examplesHeading: string;
+      examplesHint: string;
+      exampleName: string;
+      exampleStdin: string;
+      exampleStdout: string;
+      exampleDefaultName: string;
+      addExample: string;
+      removeExample: string;
     };
     token: {
       heading: string;

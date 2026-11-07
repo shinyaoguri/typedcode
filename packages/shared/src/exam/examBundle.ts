@@ -15,7 +15,7 @@
  * 暗号コア (KDF/AES/署名/packageHash) には触れない。封印・署名は examPackage.ts のまま。
  */
 
-import type { ExamBundle, ExamBundleProblem, DecodedExamPlaintext } from '../types/exam.js';
+import type { ExamBundle, ExamBundleProblem, DecodedExamPlaintext, ProblemExample } from '../types/exam.js';
 import type { TemplateFileDefinition } from '../types/template.js';
 import { computeHash, deterministicStringify } from '../utils/hashUtils.js';
 
@@ -42,6 +42,22 @@ function parseStarter(input: unknown): TemplateFileDefinition | null | undefined
 }
 
 /**
+ * untrusted な入出力例 (任意。#648) を検証する。形が不正なら null、未指定・空配列なら undefined を返す。
+ * 各例は既知のキー (`name` / `stdin` / `stdout`) だけで作り直し、未知のキーは落とす (problem と同じ allowlist)。
+ */
+function parseExamples(input: unknown): ProblemExample[] | null | undefined {
+  if (input === undefined) return undefined;
+  if (!Array.isArray(input)) return null;
+  const examples: ProblemExample[] = [];
+  for (const raw of input) {
+    if (!isObj(raw)) return null;
+    if (!isNonEmptyStr(raw.name) || !isStr(raw.stdin) || !isStr(raw.stdout)) return null;
+    examples.push({ name: raw.name, stdin: raw.stdin, stdout: raw.stdout });
+  }
+  return examples.length > 0 ? examples : undefined;
+}
+
+/**
  * untrusted な JSON を `ExamBundle` として構造検証する。形が不正なら null。
  * 真正性 (署名) は verifyExamPackageSignature、内容束縛は per-problem ハッシュが別途担う。
  */
@@ -58,8 +74,11 @@ export function parseExamBundle(input: unknown): ExamBundle | null {
     seenIds.add(raw.problemId);
     const starter = parseStarter(raw.starter);
     if (starter === null) return null;
+    const examples = parseExamples(raw.examples);
+    if (examples === null) return null;
     const problem: ExamBundleProblem = { problemId: raw.problemId, statement: raw.statement };
     if (starter) problem.starter = starter;
+    if (examples) problem.examples = examples;
     problems.push(problem);
   }
   return { schema: EXAM_BUNDLE_SCHEMA, problems };
@@ -93,6 +112,14 @@ function canonicalProblem(problem: ExamBundleProblem): ExamBundleProblem {
       language: problem.starter.language,
       content: normalizeNewlines(problem.starter.content),
     };
+  }
+  // 入出力例は 1 件以上のときだけ含める (#648)。持たない問題の正準形 = 問題ハッシュを変えないため。
+  if (problem.examples && problem.examples.length > 0) {
+    canonical.examples = problem.examples.map((example) => ({
+      name: example.name,
+      stdin: normalizeNewlines(example.stdin),
+      stdout: normalizeNewlines(example.stdout),
+    }));
   }
   return canonical;
 }

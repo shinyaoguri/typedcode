@@ -50,13 +50,55 @@ export interface FilePayload {
   buffer: Buffer;
 }
 
-/** `sampleClassPackage` を JSON 化した `.tcclass`。 */
-export function classPackageFile(): FilePayload {
+/** p1 の入出力例 (#648)。2 件目は入力なし。stdin は複数行で、貼ったときに 2 行として記録される形。 */
+export const SAMPLE_PROBLEM_EXAMPLES = [
+  { name: '例1: 3 と 5', stdin: '3\n5\n', stdout: '8\n' },
+  { name: '例2: 入力なし', stdin: '', stdout: 'hello\nworld\n' },
+] as const;
+
+/**
+ * `sampleClassPackage` の p1 にだけ入出力例 (#648 / ADR-0048) を付けたもの。p2 は例を持たない
+ * (節が出ないことを見るため)。
+ */
+export function sampleClassPackageWithExamples() {
+  const pkg = sampleClassPackage();
+  const [p1, p2] = pkg.bundle.problems;
+  return {
+    ...pkg,
+    bundle: { ...pkg.bundle, problems: [{ ...p1!, examples: SAMPLE_PROBLEM_EXAMPLES.map((e) => ({ ...e })) }, p2!] },
+  };
+}
+
+/** 問題パッケージ (既定は `sampleClassPackage`) を JSON 化した `.tcclass`。 */
+export function classPackageFile(pkg: object = sampleClassPackage()): FilePayload {
   return {
     name: 'week3.tcclass',
     mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify(sampleClassPackage())),
+    buffer: Buffer.from(JSON.stringify(pkg)),
   };
+}
+
+/** 問題パネルの入出力例の節 (#648) を状態契約 (data-*) だけで読む。節が無ければ null。 */
+export interface RenderedProblemExamples {
+  count: string | null;
+  examples: Array<{ index: string; name: string; stdin: string | null; noInput: boolean; stdout: string | null }>;
+}
+
+export function readProblemExamples(page: Page): Promise<RenderedProblemExamples | null> {
+  return page.evaluate(() => {
+    const section = document.querySelector<HTMLElement>('#problem-examples');
+    if (!section) return null;
+    return {
+      count: section.dataset.exampleCount ?? null,
+      examples: [...section.querySelectorAll<HTMLElement>('[data-example-index]')].map((block) => ({
+        index: block.dataset.exampleIndex ?? '',
+        name: block.querySelector('[data-role="name"]')?.textContent ?? '',
+        stdin: block.querySelector('pre[data-role="stdin"]')?.textContent ?? null,
+        noInput: block.querySelector('[data-role="no-input"]') !== null,
+        stdout: block.querySelector('pre[data-role="stdout"]')?.textContent ?? null,
+      })),
+    };
+  });
 }
 
 /** テンプレート (YAML) の 1 ファイル分。 */

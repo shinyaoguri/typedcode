@@ -100,6 +100,7 @@ export type {
   ExamProofBlock,
   ExamBundleSchema,
   ExamBundleProblem,
+  ProblemExample,
   ExamBundle,
   DecodedExamPlaintext,
   ClassPackageSchema,
