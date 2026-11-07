@@ -7,6 +7,7 @@ import {
   BOOT_TIMEOUT_MS,
   EditorApp,
   NEUTRAL_PATH,
+  type ProofCheckpoint,
   appendToStoredTabContent,
   listZipEntries,
   readProofEvents,
@@ -297,4 +298,52 @@ test('#413 保全した元のコードは、打鍵を続けて保存しても、
   expect(await listZipEntries(zipPath)).toContain(unprovenPath);
   expect(await readZipEntryText(zipPath, unprovenPath)).toBe(after);
   expect(await readZipEntryText(zipPath, rescuedTab!.source)).toContain('int b = 2;');
+});
+
+/**
+ * #654: export で作った最終 checkpoint とその署名は、イベントの記録を伴わないので以前は IndexedDB に
+ * 届かなかった。export の後に打鍵せず閉じて再開すると署名前の checkpoints で復元され、次の
+ * checkpoint をサーバ側の既存 index で送って 409 CHECKPOINT_CONFLICT になり、以後そのタブは
+ * 署名されなかった。再開後の export でも 409 が出ず、最後の checkpoint が署名を持つことを見る。
+ */
+test('#654 export の後に打鍵せず閉じて再開しても、署名が 409 で衝突せず、次の export の最後の checkpoint が署名を持つ', async ({
+  page,
+  context,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+
+  // 1 回目の export。最終 checkpoint の署名 (200) が返るのを待つ
+  const signed = page.waitForResponse((res) => res.url().includes('/api/checkpoint/sign') && res.status() === 200, {
+    timeout: 60_000,
+  });
+  await app.exportCurrentTab();
+  await signed;
+  await app.waitForSynced();
+
+  // 打鍵せずに閉じて、同じ context で開き直して再開する
+  await page.close();
+  const page2 = await context.newPage();
+  const app2 = new EditorApp(page2);
+  const signStatuses: number[] = [];
+  page2.on('response', (res) => {
+    if (res.url().includes('/api/checkpoint/sign')) signStatuses.push(res.status());
+  });
+  await page2.goto('/casual');
+  const resume = page2.locator('#session-resume-btn');
+  await resume.waitFor({ state: 'visible', timeout: 15_000 });
+  await resume.click();
+  await page2.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
+  await expect.poll(() => app2.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
+
+  const zipPath = await app2.exportCurrentTab();
+
+  expect(signStatuses, 'no checkpoint signing conflicts after resume').not.toContain(409);
+  const proof = (await readProofJson(zipPath)) as { checkpoints?: ProofCheckpoint[] };
+  const last = (proof.checkpoints ?? []).at(-1);
+  expect(last?.signature, 'the final checkpoint after resume carries a signature').toBeTruthy();
+
+  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  expect(result.passed, result.stdout + result.stderr).toBe(true);
+  expect(result.stdout).toContain('Verification PASSED');
 });
