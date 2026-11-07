@@ -53,6 +53,7 @@ typedcode-verify proof.zip --analyzer ./my-analyzer.mjs --no-default-analyzers
 
 # 分析結果を機械可読に書き出す
 typedcode-verify ALL_TC.zip --analysis-json out.json      # {filename, valid, policy, analysis}
+typedcode-verify ALL_TC.zip --result-json result.json     # {filename, valid, integrityValid, failedCheck, ...} どの検査で落ちたか
 typedcode-verify ALL_TC.zip --analysis-bundle bundle.json # 授業内レビュー用の派生バンドル (ADR-0024 Tier A。学外へ共有しない)
 typedcode-verify ALL_TC.zip --aggregate-bundle agg.json   # 集計・研究用の派生バンドル (ADR-0024 Tier S。数値とカテゴリだけ)
 
@@ -74,6 +75,7 @@ typedcode-verify ALL_TC.zip --extract-sources graded/
 | `--analyzer <module>` | 外部 Analyzer モジュールを読み込む (反復可、ADR-0023) |
 | `--no-default-analyzers` | 同梱の分析器を外し、`--analyzer` で指定したものだけを使う |
 | `--analysis-json <out.json>` | 分析レポートを JSON でファイル出力 |
+| `--result-json <out.json>` | 検証の結論を JSON でファイル出力 (`failedCheck` = 最初に落ちた層。[書き出し](#分析結果の書き出し)) |
 | `--analysis-bundle <out.json>` | 授業内レビュー用の派生バンドルを出力 (ADR-0024 Tier A。[書き出し](#分析結果の書き出し)) |
 | `--aggregate-bundle <out.json>` | 集計・研究用の派生バンドルを出力 (ADR-0024 Tier S。[書き出し](#分析結果の書き出し)) |
 | `--extract-sources <dir>` | ZIP の proof ごとに、同梱ソースと `proof.content` を `<dir>` へ書き出す ([書き出し](#ソースの書き出し---extract-sources)) |
@@ -100,6 +102,7 @@ TypedCode は「判定するツール」ではなく「多様な分析手法を�
 | フラグ | 対象読者 | 出力内容 |
 |---|---|---|
 | `--analysis-json <out.json>` | 担当教員・分析器の開発者 | proof ごとの `{filename, valid, policy, analysis}`。分析器の評価ハーネスの入口 |
+| `--result-json <out.json>` | CI・E2E・集計スクリプト | 入力ごと・proof ごとの `{filename, valid, integrityValid, failedCheck, errorMessage, rootAnchored, temporal, policyViolations}`。読めなかった入力も載る (`failedCheck: "unreadable"`)。stdout の文言を assert せずに結論を読むための入口 |
 | `--analysis-bundle <out.json>` (Tier A) | **その授業の採点者** (授業内レビュー) | proof ごとの `{filename, schema, notice, integrityValid, processSummary, analysis, assurance}` |
 | `--aggregate-bundle <out.json>` (Tier S) | 集計・研究 (授業の外を含む) | proof ごとの `{schema, notice, integrityValid, processSummary, analysis, assurance}` を数値とカテゴリだけに絞ったもの |
 

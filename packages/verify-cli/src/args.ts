@@ -13,6 +13,7 @@ export const VALUE_FLAGS = new Set([
   '--exam-package',
   '--submitted-at',
   '--analysis-json',
+  '--result-json',
   '--analysis-bundle',
   '--aggregate-bundle',
   '--analyzer',

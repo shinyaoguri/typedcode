@@ -3,6 +3,7 @@
  * @typedcode/verify-cli - Typing proof file verifier
  *
  * Usage: typedcode-verify <file.json|file.zip>... [--mode <m>] [--exam-package <f>] [--submitted-at <ISO>]
+ *                          [--analysis-json <f>] [--result-json <f>]
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
@@ -10,6 +11,7 @@ import { resolve, extname } from 'node:path';
 import { verifyProof, toBundleIntegrityValid, type ProofFile } from './verify.js';
 import { extractAllProofs, extractScreenshotArtifacts, extractSubmissionSources } from './zip.js';
 import { loadExternalAnalyzers } from './analyzers.js';
+import { deriveFailedCheck, unreadableResultEntry, type ResultJsonEntry } from './resultJson.js';
 import { createDirNamer, extractProofSources, type ExtractVerification } from './extractSources.js';
 import {
   formatExtractedSources,
@@ -97,6 +99,10 @@ async function main(): Promise<void> {
   // 分析レポートの JSON 出力 (ADR-0009): 評価ハーネス/集計スクリプトの機械可読な入口。
   // advisory であって判定ではない — exit code には一切影響しない。
   const analysisJsonPath = flagValue(args, '--analysis-json');
+
+  // 検証の結論の JSON 出力 (#588): proof ごとに「どの検査で落ちたか」(failedCheck) まで載せる。
+  // e2e が stdout の文言ではなくこれを assert する。読めなかった入力も載る。advisory・exit code 非干渉。
+  const resultJsonPath = flagValue(args, '--result-json');
 
   // Tier A バンドル出力 (ADR-0024): content-free な {ProcessSummary, Analysis, Assurance}
   // をファイルへ。コホート基準 (ADR-0025) の入力フォーマット。advisory・exit code 非干渉。
@@ -191,6 +197,7 @@ async function main(): Promise<void> {
   const multiInput = positional.length > 1;
   const summary: Array<{ filename: string; valid: boolean; reason?: string }> = [];
   const analysisDump: Array<{ filename: string; valid: boolean; policy: unknown; analysis: unknown }> = [];
+  const resultDump: ResultJsonEntry[] = [];
   const bundleDump: Array<{ filename: string } & AnalysisBundle> = [];
   // filename を持たない (ファイル名に学籍番号や氏名が入る運用がありうる。#304)。順序は入力順。
   const aggregateDump: AggregateBundle[] = [];
@@ -273,6 +280,7 @@ async function main(): Promise<void> {
       // 複数入力のときは、どの入力の失敗か分かるよう入力名を前置する。
       printError(multiInput ? `${input}: ${reason}` : reason);
       summary.push({ filename: input, valid: false, reason });
+      resultDump.push(unreadableResultEntry(input, reason));
       continue;
     }
 
@@ -334,6 +342,7 @@ async function main(): Promise<void> {
         const reason = error instanceof Error ? error.message : String(error);
         printError(`${filename}: ${reason}`);
         summary.push({ filename, valid: false, reason });
+        resultDump.push(unreadableResultEntry(filename, reason));
         await extract({ kind: 'error', reason });
         continue;
       }
@@ -354,6 +363,42 @@ async function main(): Promise<void> {
         filename,
         valid,
         ...(result.valid && !valid ? { reason: 'Submission: bundled source does not match the verified proof' } : {}),
+      });
+      const failedCheck = deriveFailedCheck({
+        valid,
+        versionStatus: result.versionStatus,
+        metadataValid: result.metadataValid,
+        rootValid: result.rootValid,
+        chainValid: result.chainValid,
+        finalHashValid: result.finalHashValid,
+        contentValid: result.contentValid,
+        checkpointValid: result.checkpointValid,
+        errorAt: result.errorAt,
+        rootAnchorFailure: result.rootAnchorFailure,
+        sessionTokenMismatch: result.sessionTokenMismatch,
+        signedCheckpoints: result.signedCheckpoints,
+        policyViolationCodes: result.policy.violations.map((v) => v.code),
+      });
+      resultDump.push({
+        filename,
+        valid,
+        integrityValid: result.integrityValid,
+        failedCheck,
+        // 成功時の `result.errorMessage` は成功の文言 ("All hashes verified successfully") なので載せない。
+        // 'other' は shared の errorMessage に理由が無い (CLI の gate で落ちた) ので、gate ごとの理由を載せる。
+        errorMessage:
+          failedCheck === null
+            ? null
+            : failedCheck !== 'other'
+              ? (result.errorMessage ?? null)
+              : result.valid
+                ? 'Submission: bundled source does not match the verified proof'
+                : result.exam?.binding?.valid === false
+                  ? (result.exam.binding.reason ?? 'Exam binding verification failed')
+                  : 'Screenshot verification failed (tampered screenshot)',
+        rootAnchored: result.rootAnchored,
+        temporal: result.assurance.temporal,
+        policyViolations: result.policy.violations.map((v) => v.code),
       });
       // policy (#296) は追加のみ。--analysis-bundle (ADR-0024 の content-free 派生物) には載せない。
       analysisDump.push({ filename, valid, policy: result.policy, analysis: result.analysis });
@@ -383,6 +428,7 @@ async function main(): Promise<void> {
       console.log(formatProofHeader(filename));
       console.log(formatUnreadableProof(reason));
       summary.push({ filename, valid: false, reason });
+      resultDump.push(unreadableResultEntry(filename, reason));
     }
   }
 
@@ -392,6 +438,13 @@ async function main(): Promise<void> {
     if (analysisJsonPath !== undefined) {
       await writeFile(resolve(analysisJsonPath), JSON.stringify(analysisDump, null, 2), 'utf-8');
       console.log(`\nAnalysis report written to ${analysisJsonPath}`);
+    }
+
+    // --result-json: 検証の結論 (failedCheck まで) を機械可読でファイルへ (#588)。
+    // analysis-json と違い読めなかった入力も `failedCheck: 'unreadable'` で載る。advisory・exit code 非干渉。
+    if (resultJsonPath !== undefined) {
+      await writeFile(resolve(resultJsonPath), JSON.stringify(resultDump, null, 2), 'utf-8');
+      console.log(`\nVerification result written to ${resultJsonPath}`);
     }
 
     // --analysis-bundle: Tier A バンドル群 (ProcessSummary + Analysis + Assurance、content-free)
