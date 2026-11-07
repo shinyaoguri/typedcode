@@ -324,13 +324,6 @@ export class TypingProof {
   }
 
   /**
-   * PoSWを検証（Worker使用、フォールバックあり）
-   */
-  async verifyPoSW(previousHash: string, eventDataString: string, posw: PoSWData): Promise<boolean> {
-    return await this.poswManager.verifyPoSW(previousHash, eventDataString, posw);
-  }
-
-  /**
    * PoSW反復回数を取得（固定値）
    */
   getPoSWIterations(): number {

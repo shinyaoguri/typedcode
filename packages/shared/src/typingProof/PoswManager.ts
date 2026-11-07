@@ -1,6 +1,6 @@
 /**
  * PoswManager - Proof of Sequential Work 管理
- * PoSW計算/検証、Worker通信を担当
+ * PoSW計算、Worker通信を担当
  */
 
 import type { PoSWData } from '../types.js';
@@ -116,7 +116,6 @@ export class PoswManager {
    * computePoSW が throw → TypingProof.recordEvent の catch がイベントを push せずに脱落させ、
    * チェーンは gapless のまま content replay (検証 Layer 4) が最終内容と一致せず、正規の答案でも
    * proof 全体が無効になる。メインスレッド計算は遅い (UI が一時的にもたつく) が、脱落より遥かに良い。
-   * verifyPoSW のフォールバックと対称。
    */
   async computePoSW(previousHash: string, eventDataString: string): Promise<PoSWData> {
     if (this.worker) {
@@ -175,42 +174,6 @@ export class PoswManager {
       intermediateHash: hash,
       computeTimeMs: performance.now() - startTime,
     };
-  }
-
-  /**
-   * PoSWを検証（Worker使用、フォールバックあり）
-   */
-  async verifyPoSW(previousHash: string, eventDataString: string, posw: PoSWData): Promise<boolean> {
-    if (posw.iterations !== PoswManager.POSW_ITERATIONS) {
-      return false;
-    }
-
-    // Workerが初期化されている場合はWorkerを使用
-    if (this.worker) {
-      const response = await this.sendWorkerRequest<{
-        type: string;
-        requestId: number;
-        valid: boolean;
-      }>({
-        type: 'verify-posw',
-        previousHash,
-        eventDataString,
-        nonce: posw.nonce,
-        iterations: posw.iterations,
-        expectedHash: posw.intermediateHash,
-      });
-
-      return response.valid;
-    }
-
-    // フォールバック: メインスレッドで検証（検証ページ用）
-    let hash = await this.hashChainManager.computeHash(previousHash + eventDataString + posw.nonce);
-
-    for (let i = 1; i < posw.iterations; i++) {
-      hash = await this.hashChainManager.computeHash(hash);
-    }
-
-    return hash === posw.intermediateHash;
   }
 
   /**

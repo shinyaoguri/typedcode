@@ -36,10 +36,7 @@ class RealPoswWorkerStub {
   postMessage(message: Record<string, unknown>): void {
     queueMicrotask(() => {
       if (!this.onmessage) return;
-      if (message.type !== 'compute-posw') {
-        this.onmessage({ data: { type: 'verify-result', requestId: message.requestId, valid: true } } as MessageEvent);
-        return;
-      }
+      if (message.type !== 'compute-posw') return;
       const iterations = message.iterations as number;
       const nonce = 'ab'.repeat(16);
       const intermediateHash = iterateSha256HexSync(
