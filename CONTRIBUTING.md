@@ -14,9 +14,11 @@ feature   ●─●    ●─●        ●─●               ← 機能ごと
 
 | 対象 | 役割 | デプロイ |
 |---|---|---|
-| `main` | 唯一の長命ブランチ・常時統合 | push → **staging** 自動 (`staging.<project>.pages.dev`) |
-| `v*` タグ | 番号付きリリース | タグ push → **production** (承認ゲート付き) |
+| `main` | 唯一の長命ブランチ・常時統合 | push → **staging** 自動 (https://staging.typedcode.pages.dev) |
+| `v*` タグ | 番号付きリリース | タグ push → **production** (承認ゲート付き。https://typedcode.dev) |
 | `<type>/*` | 機能開発 (`feat/*`, `fix/*`, ...) | PR → preview URL 自動発行 |
+
+公開先は GitHub からも開ける: PR 画面の「View deployment」(その PR の preview)、リポジトリのトップ右の Deployments 欄 (環境ごとの最新)、https://github.com/shinyaoguri/typedcode/deployments (環境ごとの履歴)。
 
 - `develop` / `release/*` / `hotfix/*` ブランチは**ありません**。main が常にリリース候補です。
 - **`staging` はブランチ名として予約** (staging Pages エイリアスと衝突するため使用禁止)。
@@ -47,7 +49,7 @@ gh pr merge --squash --delete-branch
 - **PR タイトルも Conventional Commits 形式にする**。Squash and Merge では PR タイトルがマージコミットのメッセージになります。
 - マージ前に lint / type check / test / build が緑であること (main は required status checks で強制)。手元では `npm run check` で同じ検査を回せる。
 - 「完了」の基準は下記「完了の定義」。**CI が緑なら手動の動作確認は不要**にすることが目標で、そのためにテストを足す。
-- マージされると main push の CI が staging へ自動デプロイし、続く `e2e-staging` job がその deploy の URL をブラウザで通す (打鍵 → 署名付き checkpoint → export → verify-cli と `/verify/`。#655)。staging は Turnstile の公開テストキーで動くので、本物の Turnstile は production でしか通らない ([ADR-0049](docs/adr/0049-staging-turnstile-testing-keys.md))。人が触って確かめるなら `staging.<project>.pages.dev` で。
+- マージされると main push の CI が staging へ自動デプロイし、続く `e2e-staging` job がその deploy の URL をブラウザで通す (打鍵 → 署名付き checkpoint → export → verify-cli と `/verify/`。#655)。staging は Turnstile の公開テストキーで動くので、本物の Turnstile は production でしか通らない ([ADR-0049](docs/adr/0049-staging-turnstile-testing-keys.md))。人が触って確かめるなら https://staging.typedcode.pages.dev で。
 - **マージしたら、メインのチェックアウトから `git sweep` を実行して**ローカルブランチと worktree を掃除する (下記「マージ後の掃除」)。
 
 ## 完了の定義 (Definition of Done)

@@ -1,6 +1,8 @@
 name: Deploy Preview
 
 # PR の Pages プレビューを Cloudflare へ出し、PR に URL をコメントする (#582)。
+# あわせて GitHub の Deployments の `preview` 環境にも URL を記録し、PR 画面の「View deployment」
+# とリポジトリの Deployments 欄から開けるようにする (#667)。
 #
 # なぜ deploy.yml から分けたか:
 #   pull_request の job は PR 側の workflow 定義と PR のコード (npm ci の install script・build) を
@@ -52,8 +54,12 @@ jobs:
     timeout-minutes: 10
     # staging 環境の CLOUDFLARE_API_TOKEN を使う。workflow_run は default branch (main) の ref で
     # 動くので、staging 環境の deployment_branch_policy を main だけにしてもここは通る。
+    # deployment: false で、トークンを使うためだけに参照する。付けないと PR の公開が
+    # 「staging へ ref main をデプロイした」と記録され、staging の履歴が PR の preview で埋まる。
+    # preview の deployment は下の step で `preview` 環境・PR の head SHA として自分で作る (#667)。
     environment:
       name: staging
+      deployment: false
     permissions:
       # 別 run (Deploy) の artifact を一覧・取得する
       actions: read
@@ -61,6 +67,8 @@ jobs:
       contents: read
       # プレビュー URL のコメント
       pull-requests: write
+      # `preview` 環境の deployment と status を作る (PR 画面の「View deployment」。#667)
+      deployments: write
     # **checkout しない** (PR のコードを走らせない)。artifact はデータとしてだけ読む。
     steps:
       - name: Validate run metadata
@@ -146,7 +154,7 @@ jobs:
           # 検査した step output だけを使う (空白・引用符を含まないので引数分割も起きない)。
           command: pages deploy ${{ runner.temp }}/preview-dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=${{ steps.meta.outputs.branch }} --commit-hash=${{ steps.meta.outputs.sha }} --commit-message="${{ steps.meta.outputs.sha }}"
 
-      - name: Comment PR with preview URL
+      - name: Record deployment and comment PR with preview URL
         if: steps.artifact.outputs.found == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         # wrangler の出力にバッククォートや `${` が混ざると、テンプレートリテラルへの
@@ -172,6 +180,41 @@ jobs:
             const { owner, repo } = context.repo;
             const headBranch = process.env.HEAD_BRANCH;
             const headSha = process.env.HEAD_SHA;
+
+            // GitHub の Deployments に preview の URL を記録する (#667)。記録は補助なので、
+            // 失敗しても warning に留めて PR へのコメントは続ける。
+            try {
+              const { data: deployment } = await github.rest.repos.createDeployment({
+                owner,
+                repo,
+                ref: headSha,
+                environment: 'preview',
+                // 無いと既定ブランチを ref へマージしようとする
+                auto_merge: false,
+                // 無いと ref の commit status を検査し、未完了のものがあると 409 になり得る
+                required_contexts: [],
+                transient_environment: true,
+                production_environment: false,
+                description: `PR preview (${headBranch})`,
+              });
+              // 202 (マージ中) のときは id の無い応答が返る
+              if (!deployment.id) {
+                core.warning(`deployment を作れなかった: ${deployment.message ?? JSON.stringify(deployment)}`);
+              } else {
+                await github.rest.repos.createDeploymentStatus({
+                  owner,
+                  repo,
+                  deployment_id: deployment.id,
+                  state: 'success',
+                  environment_url: previewUrl,
+                  log_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+                  // 既定 (true) だと同じ環境の他の PR の preview を inactive にしてしまう
+                  auto_inactive: false,
+                });
+              }
+            } catch (error) {
+              core.warning(`deployment の記録に失敗した: ${error.message}`);
+            }
 
             let prNumber = Number(process.env.PR_NUMBER) || null;
             if (!prNumber) {

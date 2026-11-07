@@ -278,8 +278,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # 公開値の variables だけを持つ環境。secrets は置かない (置くと PR のコードに渡る)。
+    # deployment: false で、環境の variables は使うが GitHub の deployment は作らない。
+    # この job はビルドしかしないので、「preview へデプロイした」と記録されると実際の公開
+    # (deploy-preview.yml) と食い違う。preview の deployment は deploy-preview.yml が作る (#667)。
     environment:
       name: preview
+      deployment: false
     permissions:
       contents: read
     steps:
@@ -327,8 +331,12 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # url は GitHub の Deployments と PR 画面の「View deployment」に出る公開先 (#667)。
+    # 固定値で書く: Pages のプロジェクト名が secret (CLOUDFLARE_PROJECT_NAME) なので、wrangler の
+    # 出力から組むとログの伏せ字 (***) が混ざり URL が壊れ得る。
     environment:
       name: staging
+      url: https://staging.typedcode.pages.dev
     permissions:
       contents: read
       deployments: write
@@ -486,8 +494,10 @@ jobs:
     # 注: Environment "production" の承認待ち時間は timeout-minutes に含まれない
     # (job 開始 = 承認後)。実行時間のみの上限。
     timeout-minutes: 20
+    # url は固定値 (理由は deploy-staging の environment と同じ。#667)。
     environment:
       name: production
+      url: https://typedcode.dev
     permissions:
       contents: read
       deployments: write
