@@ -333,6 +333,9 @@ export const ja: VerifyTranslationKeys = {
       templateInjection: 'テンプレート挿入',
       copyOperation: 'コピー操作',
       sessionResumed: 'セッション再開',
+      fullscreenChange: 'フルスクリーン変更',
+      environmentProbe: '環境プローブ',
+      examOpened: '試験問題の開封',
     },
   },
 
