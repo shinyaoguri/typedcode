@@ -68,7 +68,18 @@ export type CLIExamResult =
 
 export interface CLIVerificationResult {
   valid: boolean;
+  /**
+   * 受理ポリシーと CLI の gate (exam 束縛・スクリーンショット・提出物) を足す前の結論
+   * (shared の `FullVerificationResult.integrityValid`)。`--result-json` が載せる。
+   */
+  integrityValid: boolean;
   metadataValid: boolean;
+  /** 以下 4 つと `sessionTokenMismatch` は shared の同名フィールド。`--result-json` の `failedCheck` を導く材料 */
+  rootValid?: boolean;
+  finalHashValid?: boolean;
+  contentValid?: boolean;
+  checkpointValid?: boolean;
+  sessionTokenMismatch?: boolean;
   chainValid: boolean;
   isPureTyping: boolean;
   eventCount: number;
@@ -347,7 +358,13 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
 
   return {
     valid,
+    integrityValid: result.integrityValid,
     metadataValid: result.metadataValid,
+    rootValid: result.rootValid,
+    finalHashValid: result.finalHashValid,
+    contentValid: result.contentValid,
+    checkpointValid: result.checkpointValid,
+    sessionTokenMismatch: result.sessionTokenMismatch,
     chainValid: result.chainValid,
     isPureTyping: result.isPureTyping,
     eventCount,

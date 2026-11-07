@@ -77,6 +77,8 @@ test('未知の新 major の proof は reject されず、verify Web と verify-
 
   const cli = runVerifyCliWithVerdicts(newerZip, ['--mode', 'fast']);
   expect(cli.exitCode, 'a newer major is a warning, not a rejection\n' + cli.stdout).toBe(0);
+  // 人向けの warning 文言そのものが検査対象: 新しい major は reject されない (valid) ので failedCheck も versionStatus も
+  // 機械可読な出力に出ない。verify Web の trustIssues (下) と対にして見る。
   expect(cli.stdout).toContain('is newer than this verifier supports');
 
   const web = new VerifyWebApp(page);
@@ -106,7 +108,8 @@ test('下限未満の version の proof を verify Web が error として出し
 
   const cli = runVerifyCliWithVerdicts(oldZip, ['--mode', 'fast']);
   expect(cli.exitCode, cli.stdout).toBe(1);
-  expect(cli.stdout).toContain('older than the minimum supported version');
+  // 下限未満の version は version ゲートで落ちる (`--result-json` の failedCheck)。
+  expect(cli.verdicts.map((v) => v.failedCheck)).toEqual(names.map(() => 'version'));
 
   const web = new VerifyWebApp(page);
   await web.open('fast');

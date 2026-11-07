@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp, readProofEvents } from './helpers/app.js';
-import { runVerifyCli } from './helpers/verifyCli.js';
+import { runVerifyCliWithVerdicts } from './helpers/verifyCli.js';
 
 /**
  * タブ切替 (フォーカス喪失→復帰) が proof に focusChange として記録されることを検証する。
@@ -24,8 +24,8 @@ test('フォーカス喪失→復帰が focusChange として記録される', a
   expect(focusChanges.some((e) => (e.data as { focused?: boolean })?.focused === true)).toBe(true);
 
   // チェーンは valid のまま。
-  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   // プロセス要約にフォーカス喪失が 1 件以上計上される。
-  expect(result.stdout).toMatch(/[1-9]\d* focus loss/);
+  expect(result.verdicts[0]!.processSummary.focusLossCount).toBeGreaterThan(0);
 });

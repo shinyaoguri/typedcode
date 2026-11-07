@@ -747,7 +747,8 @@ ${c('cyan', 'Usage:')}
                    [--exam-package <file.tcexam>] [--submitted-at <ISO>]
                    [--require-anchor-density] [--require-root-anchor]
                    [--require-signed-checkpoints] [--require-final-anchor]
-                   [--analysis-json <out.json>] [--analysis-bundle <out.json>]
+                   [--analysis-json <out.json>] [--result-json <out.json>]
+                   [--analysis-bundle <out.json>]
                    [--aggregate-bundle <out.json>]
                    [--analyzer <module>]... [--no-default-analyzers]
                    [--extract-sources <dir>]
@@ -792,6 +793,11 @@ ${c('cyan', 'Options:')}
   --analysis-json  Write the advisory analysis report (ADR-0009) for every verified
                    proof to the given file as JSON, for aggregation / evaluation
                    tooling. Advisory only — never affects the exit code.
+  --result-json    Write the verification verdict for every input to the given file as
+                   JSON: { filename, valid, integrityValid, failedCheck, errorMessage,
+                   rootAnchored, temporal, policyViolations }. failedCheck names the first
+                   layer that failed (null when valid; 'unreadable' for inputs that could
+                   not be verified, which are included). Advisory — never affects the exit code.
   --analysis-bundle
                    Write the Tier A analysis bundle (ADR-0024) for every proof:
                    content-free { processSummary, analysis, assurance } with NO

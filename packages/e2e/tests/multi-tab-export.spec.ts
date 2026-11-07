@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp, listProofEntries } from './helpers/app.js';
-import { runVerifyCli } from './helpers/verifyCli.js';
+import { allPassed, runVerifyCliWithResult } from './helpers/verifyCli.js';
 
 /**
  * シナリオ9: 複数タブで打鍵 → 全タブ ZIP export → verify-cli が ZIP 内の
@@ -21,7 +21,7 @@ test('casual: 複数タブを ZIP export → CLI が全 proof を検証', async 
   expect(entries.length).toBe(2);
 
   // CLI は ZIP を直接受け取り、全 proof を検証して exit 0。
-  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout).toContain('Verification PASSED');
+  expect(allPassed(result.results)).toBe(true);
 });

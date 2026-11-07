@@ -37,5 +37,5 @@ test('合成打鍵には isTrusted=false が付き、信頼打鍵には付かな
   // チェーンは valid。automation 分析が合成打鍵を拾う。
   const result = runVerifyCliWithAnalysis(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout.toLowerCase()).toContain('automation');
+  expect(result.analysis[0]!.analysis.signals?.some((s) => s.analyzerId === 'automation')).toBe(true);
 });

@@ -106,6 +106,9 @@ test('#293: 同梱ソースを差し替えた ZIP は Web で error、CLI で ex
 
   const cli = runVerifyCliWithVerdicts(forged, ['--mode', 'fast']);
   expect(cli.exitCode, cli.stdout + cli.stderr).toBe(1);
+  // 提出物の不一致は整合性の失敗ではなく、検証 gate での失敗 ('other')。
+  expect(cli.verdicts[0]?.failedCheck).toBe('other');
+  // stdout のまま残す理由: どの同梱ソースが期待名と不一致かは人向け出力の `Source:` 行にしか無い。
   expect(cli.stdout).toMatch(new RegExp(`^Source:\\s+${sourceName.replace('.', '\\.')}\\s+MISMATCH`, 'm'));
   expect(cli.verdicts[0]?.assurance.integrity, 'CLI も整合性は落とさない').not.toBe('failed');
 

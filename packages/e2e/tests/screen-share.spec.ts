@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp, readProofEvents, listZipEntries } from './helpers/app.js';
-import { runVerifyCli } from './helpers/verifyCli.js';
+import { allPassed, runVerifyCliWithResult } from './helpers/verifyCli.js';
 
 /**
  * 画面共有: casual のバナーから画面共有を有効化すると getDisplayMedia で本物の
@@ -37,7 +37,7 @@ test('画面共有を有効化すると screenShareStart とスクショがチ�
   ).toBe(true);
 
   // チェーンは valid。
-  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout).toContain('Verification PASSED');
+  expect(allPassed(result.results)).toBe(true);
 });
