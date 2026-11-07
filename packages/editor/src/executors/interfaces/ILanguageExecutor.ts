@@ -19,8 +19,6 @@ export interface ExecutorConfig {
   fileExtension: string;
   /** Monaco editor language identifier */
   monacoLanguage: string;
-  /** Default code shown when creating a new file */
-  defaultCode: string;
   /** Icon path or CSS class for the language */
   icon?: string;
 }

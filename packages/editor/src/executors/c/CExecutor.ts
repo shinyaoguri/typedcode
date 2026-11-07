@@ -20,14 +20,6 @@ import type {
 // Re-export ParsedError for backward compatibility
 export type { ParsedError } from '../interfaces/ILanguageExecutor.js';
 
-const DEFAULT_C_CODE = `#include <stdio.h>
-
-int main() {
-    printf("Hello, World!\\n");
-    return 0;
-}
-`;
-
 /**
  * Error patterns that indicate runtime corruption requiring reset
  */
@@ -104,7 +96,6 @@ export class CExecutor extends BaseExecutor {
     name: 'C',
     fileExtension: '.c',
     monacoLanguage: 'c',
-    defaultCode: DEFAULT_C_CODE,
     icon: 'c-icon',
   };
 

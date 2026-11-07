@@ -19,27 +19,12 @@ import type {
   ParsedError,
 } from '../interfaces/ILanguageExecutor.js';
 
-const DEFAULT_TS_CODE = `// Welcome to TypeScript!
-const message: string = "Hello, World!";
-console.log(message);
-
-// Example with types
-interface User {
-  name: string;
-  age: number;
-}
-
-const user: User = { name: "Alice", age: 30 };
-console.log(\`User: \${user.name}, Age: \${user.age}\`);
-`;
-
 export class TypeScriptExecutor extends BaseExecutor {
   readonly config: ExecutorConfig = {
     id: 'typescript',
     name: 'TypeScript',
     fileExtension: '.ts',
     monacoLanguage: 'typescript',
-    defaultCode: DEFAULT_TS_CODE,
   };
 
   protected async _doInitialize(onProgress?: (progress: InitializationProgress) => void): Promise<void> {

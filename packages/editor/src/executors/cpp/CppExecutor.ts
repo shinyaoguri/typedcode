@@ -8,21 +8,12 @@
 import { CExecutor } from '../c/CExecutor.js';
 import type { ExecutorConfig, ExecutionCallbacks, ExecutionResult } from '../interfaces/ILanguageExecutor.js';
 
-const DEFAULT_CPP_CODE = `#include <iostream>
-
-int main() {
-    std::cout << "Hello, World!" << std::endl;
-    return 0;
-}
-`;
-
 export class CppExecutor extends CExecutor {
   override readonly config: ExecutorConfig = {
     id: 'cpp',
     name: 'C++',
     fileExtension: '.cpp',
     monacoLanguage: 'cpp',
-    defaultCode: DEFAULT_CPP_CODE,
   };
 
   override async run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult> {
