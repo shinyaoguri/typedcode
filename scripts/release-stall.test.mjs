@@ -8,7 +8,13 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ISSUE_TITLE, RELEASE_SUBJECT, evaluateReleaseStall, formatIssueBody } from './release-stall.mjs';
+import {
+  ISSUE_TITLE,
+  RELEASE_SUBJECT,
+  STALL_THRESHOLD_DAYS,
+  evaluateReleaseStall,
+  formatIssueBody,
+} from './release-stall.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 const TAG_DATE = new Date('2026-07-07T00:00:00Z');
@@ -22,28 +28,28 @@ function judge(days, subjects, extraMs = 0) {
   });
 }
 
-describe('evaluateReleaseStall (Issue #410 の 4 例)', () => {
-  it('detects when 31 days have passed since the tag and there is 1 fix', () => {
-    const result = judge(31, ['fix(editor): バグを直す (#1)']);
+describe('evaluateReleaseStall (Issue #410 の 4 例を、#657 の 7 日に読み替えたもの)', () => {
+  it('detects when 8 days have passed since the tag and there is 1 fix', () => {
+    const result = judge(8, ['fix(editor): バグを直す (#1)']);
     assert.equal(result.stalled, true);
-    assert.equal(result.days, 31);
+    assert.equal(result.days, 8);
     assert.equal(result.count, 1);
   });
 
-  it('does not detect when 31 days have passed but only docs / chore commits exist', () => {
-    const result = judge(31, ['docs: 追記', 'chore(deps): bump', 'ci: 直す', 'refactor(shared): 整理', 'test: 足す']);
+  it('does not detect when 8 days have passed but only docs / chore commits exist', () => {
+    const result = judge(8, ['docs: 追記', 'chore(deps): bump', 'ci: 直す', 'refactor(shared): 整理', 'test: 足す']);
     assert.equal(result.stalled, false);
     assert.equal(result.count, 0);
   });
 
-  it('does not detect when only 29 days have passed even with 5 fixes', () => {
-    const result = judge(29, ['fix: a', 'fix: b', 'fix: c', 'fix: d', 'fix: e']);
+  it('does not detect when only 6 days have passed even with 5 fixes', () => {
+    const result = judge(6, ['fix: a', 'fix: b', 'fix: c', 'fix: d', 'fix: e']);
     assert.equal(result.stalled, false);
     assert.equal(result.count, 5);
   });
 
   it('counts a breaking feat(editor)!: commit', () => {
-    const result = judge(31, ['feat(editor)!: 形式を変える (#2)']);
+    const result = judge(8, ['feat(editor)!: 形式を変える (#2)']);
     assert.equal(result.count, 1);
     assert.deepEqual(result.matches, ['feat(editor)!: 形式を変える (#2)']);
     assert.equal(result.stalled, true);
@@ -51,18 +57,23 @@ describe('evaluateReleaseStall (Issue #410 の 4 例)', () => {
 });
 
 describe('threshold boundary', () => {
-  it('does not detect at exactly 30 days (the threshold is exceeded, not reached)', () => {
-    assert.equal(judge(30, ['fix: a']).stalled, false);
+  it('defaults to 7 days (#657)', () => {
+    assert.equal(STALL_THRESHOLD_DAYS, 7);
+    assert.equal(judge(0, []).thresholdDays, 7);
   });
 
-  it('does not detect at 30 days and 23 hours (whole elapsed days are counted)', () => {
-    const result = judge(30, ['fix: a'], 23 * 60 * 60 * 1000);
-    assert.equal(result.days, 30);
+  it('does not detect at exactly 7 days (the threshold is exceeded, not reached)', () => {
+    assert.equal(judge(7, ['fix: a']).stalled, false);
+  });
+
+  it('does not detect at 7 days and 23 hours (whole elapsed days are counted)', () => {
+    const result = judge(7, ['fix: a'], 23 * 60 * 60 * 1000);
+    assert.equal(result.days, 7);
     assert.equal(result.stalled, false);
   });
 
-  it('detects as soon as 31 whole days have elapsed', () => {
-    assert.equal(judge(31, ['fix: a']).stalled, true);
+  it('detects as soon as 8 whole days have elapsed', () => {
+    assert.equal(judge(8, ['fix: a']).stalled, true);
   });
 
   it('honors a custom thresholdDays', () => {
@@ -70,9 +81,9 @@ describe('threshold boundary', () => {
       tagDate: TAG_DATE,
       now: new Date(TAG_DATE.getTime() + 8 * DAY),
       subjects: ['fix: a'],
-      thresholdDays: 7,
+      thresholdDays: 30,
     });
-    assert.equal(result.stalled, true);
+    assert.equal(result.stalled, false);
   });
 
   it('does not detect when there are no commits at all, however old the tag is', () => {
