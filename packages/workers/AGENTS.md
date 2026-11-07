@@ -18,6 +18,7 @@
 6. **`sessionId` は信用しない**: クライアントが投げる任意の文字列。サーバ側で `firstSeenAt` を KV に保存し改ざんを防ぐ
 7. **`/api/checkpoint/sign` は `sessionStartToken` 前提** (ADR-0027): token 検証は KV read より**前**に行い、無認証リクエストに KV コストを払わない。sessionId は token に束縛され、新規 sessionId の作成コスト = Turnstile 1 回になる。exam は署名専用 token を editor が best-effort 取得する (root には焼かない)。**token の最大有効期間 `SESSION_TOKEN_MAX_AGE_MS` (30 日) は sign 経路 (`checkpoint.ts`) だけで検査し、検証器 (`verifySessionStartToken`) は age を見ない** (#227): 検証器も同じ関数を呼ぶので、そこに入れると過去の proof の採点が壊れる。無期限だと KV TTL (7 日) ごとに `signedCount` とタブ台帳がリセットされ続けるのを有界化する。未来の `issuedAt` は弾かない (作れるのは署名鍵を持つ者だけで、その者は sign を経由しなくてよい)
 8. **`serverTimestamp` は同一 record 内で厳密増加させる** (#226): 検証器は連続する署名 cp の `serverTimestamp` に厳密増加を要求するので、`clampServerTimestamp` が署名前に `max(now, lastServerTimestamp + 1ms)` へクランプし、その値で署名・保存する (発動時は `console.warn`、sessionId は出さない)。既に読んだ record を使うので KV の読み書きは増やさない。限界: KV は結果整合なので、別コロで record が stale に見える窓や、put が 429 で落ちた直後は塞げない (そこは検証器側の許容 = 別件)。冪等再送は前回 envelope を返すので対象外
+9. **Worker は 1 つ前のリリースの editor / verify と組み合わせても動く** (#656): deploy は Workers → Pages の順 (`.github/workflows/deploy.yml` の deploy-staging / deploy-production)。Pages の deploy が落ちたとき、Pages だけを戻したとき ([CONTRIBUTING.md「本番を戻す」](../../CONTRIBUTING.md#本番を戻す-ロールバック))、配信が切り替わるまでの間は「新しい Worker + 1 つ前の editor / verify」で動く。だからエンドポイントの削除、リクエストの必須項目の追加、応答の形を変えるといった非互換な変更は、editor / verify がそれを使わなくなったリリースの**次の**リリースで行う (`/api/verify-captcha` の形を残しているのはこの例)。逆の「1 つ前の Worker + 新しい editor / verify」は保証しない。Worker だけを戻すときは、ロールバック手順の側でそのリリースの依存を確かめる
 
 ## ファイル構成
 
@@ -282,8 +283,10 @@ staging URL で動作確認 (staging.<project>.pages.dev)
    ↓ gh release create vX.Y.Z (タグ push)
 [CI] test → deploy-production (承認待ち)
    ↓ Actions タブで Approve
-本番デプロイ実行
+本番デプロイ実行 (Workers → Pages の順。不変条件 9)
 ```
+
+本番が壊れて直前の版へ戻すときの手順 (Pages → Workers の順、staging では Pages の rollback が使えないこと、戻らない状態) は [CONTRIBUTING.md「本番を戻す」](../../CONTRIBUTING.md#本番を戻す-ロールバック) にある。
 
 ## よくある罠
 
