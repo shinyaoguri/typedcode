@@ -48,21 +48,6 @@ function createPythonWorker(): PythonWorkerHandle {
   }) as unknown as PythonWorkerHandle;
 }
 
-const DEFAULT_PYTHON_CODE = `# Welcome to Python!
-print("Hello, World!")
-
-# List operations
-numbers = [1, 2, 3, 4, 5]
-squared = [x ** 2 for x in numbers]
-print(f"Squared: {squared}")
-
-# Function definition
-def greet(name: str) -> str:
-    return f"Hello, {name}!"
-
-print(greet("Python"))
-`;
-
 // Python standard library modules (to exclude from micropip install)
 const PYTHON_STDLIB_MODULES = new Set([
   'sys',
@@ -278,7 +263,6 @@ export class PythonExecutor extends BaseExecutor {
     name: 'Python',
     fileExtension: '.py',
     monacoLanguage: 'python',
-    defaultCode: DEFAULT_PYTHON_CODE,
   };
 
   private worker: PythonWorkerHandle | null = null;

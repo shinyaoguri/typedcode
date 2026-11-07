@@ -18,14 +18,6 @@ import type {
 } from '../interfaces/ILanguageExecutor.js';
 import { SandboxRunner, type SandboxResult, type SandboxRun } from '../sandbox/SandboxRunner.js';
 
-const DEFAULT_JS_CODE = `// Welcome to JavaScript!
-console.log("Hello, World!");
-
-// Try some calculations
-const sum = [1, 2, 3, 4, 5].reduce((a, b) => a + b, 0);
-console.log("Sum of 1-5:", sum);
-`;
-
 /** sandbox の結果を ExecutionResult に写す (outcome はそのまま載せ、Controller が記録に使う) */
 export function toExecutionResult(result: SandboxResult): ExecutionResult {
   const success = result.outcome === 'success';
@@ -45,7 +37,6 @@ export class JavaScriptExecutor extends BaseExecutor {
     name: 'JavaScript',
     fileExtension: '.js',
     monacoLanguage: 'javascript',
-    defaultCode: DEFAULT_JS_CODE,
   };
 
   /** 実行中の run (停止の対象)。run ごとに iframe と Worker が別なので、前の run と混ざらない */
