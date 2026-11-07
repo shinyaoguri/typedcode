@@ -168,13 +168,63 @@ gh release create vX.Y.Z --target main --title "vX.Y.Z" --generate-notes
 
 - タグ push で CI (test/check/e2e) が再実行され、green 後に **production デプロイが承認待ち**になる。Actions タブで Approve すると本番反映。
 - タグは main の履歴上のコミットにのみ有効 (CI が ancestor 検証で強制)。
-- **タグの付け替え・削除はしない** (ruleset でも禁止)。本番を戻したいときは fix を入れて**次のパッチタグ**を打つ。
+- **タグの付け替え・削除はしない** (ruleset でも禁止)。本番が壊れたら、まず下の「[本番を戻す](#本番を戻す-ロールバック)」で直前のデプロイへ戻し、fix を入れて**次のパッチタグ**で前へ進める。
 - 破壊的な証明フォーマット変更は `PROOF_FORMAT_VERSION` とも対応させる。
 - 直前に CHANGELOG.md の `[Unreleased]` を `## [X.Y.Z] - <日付>` に切り、末尾の比較リンクも足す (1 の bump PR に含める)。
 - **いつリリースするか** (#332): 次のどちらかに当たったら、上の手順でリリースする。リリースの見送りは、理由を Issue に残せば認める。
   - **本番に効くセキュリティ修正を main に入れたら、7 日以内**に下の「本番緊急修正」の手順でパッチタグを打つ。本番に効くセキュリティ修正とは、`security` ラベルの Issue を閉じた PR と、Dependabot の security update のこと。PR 側の `security` ラベルは付け漏れが多いので、Issue 側のラベルで判断する
   - それ以外は、**最新タグから 30 日以内**にリリースする。超えると、次の段落の自動検知が Issue を開く
 - **リリースの停滞は自動で検知する** (#410)。週次の `freshness.yml` が、最新の `v*` タグから **30 日を超え**、かつそのタグ以降に `fix` / `feat` のコミット (`feat(scope)!:` も含む) が **1 件以上**あるとき、`chore: 本番リリースの停滞 (自動)` という Issue を開く (open のものがあればコメントを追記する。docs / chore / ci だけの 30 日超は検知しない)。通知を受けたら、上の手順でリリースする。見送るならその理由を Issue にコメントする。判定は `scripts/release-stall.mjs`
+
+## 本番を戻す (ロールバック)
+
+本番が壊れて fix を待てないときは、Cloudflare に残っている直前のデプロイへ戻す (#656)。タグも CI も通さないので数分で済む。戻すのは応急処置で、**その後に fix を入れて次のパッチタグを打ち、前へ進める**のは上の「リリース」「本番緊急修正」と同じ (タグは付け替えない)。
+
+**戻す順序は Pages → Workers (deploy の逆順)**。まず Pages (editor / verify) だけを戻すのが基本で、それで直らず Worker 側が原因と分かったときに Worker も戻す。「新しい Worker + 1 つ前の editor / verify」は動くことが不変条件で保証されている ([packages/workers/AGENTS.md](packages/workers/AGENTS.md) の不変条件 9) が、逆の「1 つ前の Worker + 新しい editor / verify」は保証しない。Worker だけを戻すときは、そのリリースで editor / verify が Worker の新しい API や応答に依存していないかを先に確かめる (`git diff <前のタグ> <今のタグ> -- packages/workers/src`)。
+
+以下、`<project>` は Pages のプロジェクト名 (GitHub の secret `CLOUDFLARE_PROJECT_NAME` の値)。wrangler は `npx wrangler login` で Cloudflare アカウントに入った状態で、`packages/workers` から打つ。
+
+### production
+
+```bash
+cd packages/workers
+
+# 1. Pages: 戻す先の production デプロイを探す (Source 列が commit。上が新しい)
+npx wrangler pages deployment list --project-name <project> --environment production
+#    → ダッシュボードの Workers & Pages → <project> → Deployments → All deployments で、
+#      戻す先の行の ⋯ → "Rollback to this deployment" (確認ダイアログが出る)
+#    API なら POST /accounts/{account_id}/pages/projects/<project>/deployments/{deployment_id}/rollback
+
+# 2. Workers (Worker 側が原因のときだけ): 戻す先の版を探して戻す
+npx wrangler versions list --config wrangler.production.toml
+npx wrangler rollback <version-id> --config wrangler.production.toml --message "<戻す理由>"
+npx wrangler deployments status --config wrangler.production.toml   # 現役の版を確認
+```
+
+- Pages の rollback の対象は**成功した production デプロイ**だけ。前へ戻すとき (fix のタグを待たずに戻した版から最新へ戻す) も同じ操作で新しい方を選べる
+- `wrangler rollback` は `--message` を付けると確認の対話を飛ばす。版 ID を省くと 1 つ前の版になる。戻せるのは直近 100 版まで。前へ戻すときも同じコマンドで新しい版の ID を指定する
+- Workers と Pages を両方まとめて出し直したいときは、前のタグの run の `deploy-production` job を再実行してもよい (`gh run rerun <run-id> --job <job-id>`。build から走り、承認も要るので数分〜)
+
+### staging
+
+Pages のロールバックは production デプロイにしか効かない (staging は `--branch=staging` の preview デプロイなので対象外)。staging の Pages は、前の main の run の `deploy-staging` job を再実行して出し直す。同じ commit で build して Workers → Pages の順に出し直すので、Workers も一緒に戻る。
+
+```bash
+# Pages (+ Workers): 戻す先の main の run と、その deploy-staging の job ID を引いて再実行する
+gh run list --workflow deploy.yml --branch main -L 5
+gh run view <run-id> --json jobs --jq '.jobs[] | select(.name == "deploy-staging") | .databaseId'
+gh run rerun <run-id> --job <job-id>
+# 前へ戻すときは最新の run の deploy-staging を同じように再実行する
+
+# Workers だけ: production と同じコマンドを wrangler.staging.toml で
+npx wrangler versions list --config wrangler.staging.toml
+npx wrangler rollback <version-id> --config wrangler.staging.toml --message "<戻す理由>"
+```
+
+### 戻るもの・戻らないもの
+
+- **戻る**: Pages の配信物 (editor / verify のバンドル。`VITE_API_URL` などビルド時に埋め込んだ値も含む)。Worker のコードと、**版ごとに記録されている secret の組・`compatibility_date`・vars** (`npx wrangler versions view <version-id> --config ...` で secret の名前と bindings が見える)。署名鍵のローテをまたいで戻すと旧 `keyId` の鍵で署名することになる。公開鍵レジストリは append-only なので、その鍵を `revoked` にしていなければ動く
+- **戻らない**: KV のデータ (`CHECKPOINT_SESSIONS`)、GitHub の secrets / Environment、Pages のカスタムドメインや設定。戻した後に `wrangler secret put` すると新しい版ができ、それが現役になる (戻した状態が上書きされる)
 
 ## 本番緊急修正 (hotfix)
 
