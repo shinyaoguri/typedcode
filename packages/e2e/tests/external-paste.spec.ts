@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp, readProofEvents } from './helpers/app.js';
-import { runVerifyCliWithAnalysis } from './helpers/verifyCli.js';
+import { runVerifyCliWithVerdicts } from './helpers/verifyCli.js';
 
 /**
  * 外部ペースト: クリップボード経由の外部テキストを実ペーストすると insertFromPaste
@@ -21,11 +21,11 @@ test('外部ペーストは insertFromPaste として記録され Pure Typing: N
   expect(pasteEvent, 'insertFromPaste event should be recorded').toBeTruthy();
   expect(pasteEvent?.data).toContain('PASTED_EXTERNAL_CODE');
 
-  const result = runVerifyCliWithAnalysis(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast']);
   // チェーンは valid (ペーストしても改ざんではない)。
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   // advisory: 純粋打鍵ではない + 外部入力あり。
-  expect(result.stdout).toContain('Pure Typing: NO');
-  expect(result.stdout).toMatch(/[1-9]\d* external input/);
-  expect(result.analysis[0]!.valid).toBe(true);
+  expect(result.verdicts[0]!.assurance.provenance.pureTyping).toBe(false);
+  expect(result.verdicts[0]!.processSummary.externalInputCount).toBeGreaterThan(0);
+  expect(result.verdicts[0]!.valid).toBe(true);
 });

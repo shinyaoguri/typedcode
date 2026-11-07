@@ -15,7 +15,7 @@ import {
   readUnprovenContents,
   readZipEntryText,
 } from './helpers/app.js';
-import { runVerifyCli } from './helpers/verifyCli.js';
+import { allPassed, runVerifyCliWithResult } from './helpers/verifyCli.js';
 
 /**
  * タブ閉じ復旧 (#130 回帰): ブラウザタブを閉じると sessionStorage は消えるが IndexedDB は
@@ -63,9 +63,9 @@ test('タブを閉じて復旧ダイアログから再開しても root アン�
   expect(proof.sessionStartToken, 'proof must carry the session start token').toBeTruthy();
 
   // チェーンは復旧をまたいでも valid (root 不一致なら fast でも即 fail する)。
-  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout).toContain('Verification PASSED');
+  expect(allPassed(result.results)).toBe(true);
 
   // sessionResumed イベントが記録されている (復旧の痕跡)。
   const events = await readProofEvents(zipPath);
@@ -145,9 +145,9 @@ test('tabs レコードの currentHash が古くても、再開後のチェー�
   await app2.waitForSynced();
   const zipPath = await app2.exportCurrentTab();
 
-  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout).toContain('Verification PASSED');
+  expect(allPassed(result.results)).toBe(true);
 });
 
 /**
@@ -213,9 +213,9 @@ test('#413 処理待ちを残して閉じた後に再開すると、バッファ
 
   // そのまま export すると verify-cli で PASS する (バッファが証明と一致している)
   const zipPath = await app.exportCurrentTab();
-  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout).toContain('Verification PASSED');
+  expect(allPassed(result.results)).toBe(true);
 });
 
 test('#413 通知から、元のコードとの差分を読み取り専用で開き、元のコードをダウンロードできる', async ({
@@ -343,7 +343,7 @@ test('#654 export の後に打鍵せず閉じて再開しても、署名が 409 
   const last = (proof.checkpoints ?? []).at(-1);
   expect(last?.signature, 'the final checkpoint after resume carries a signature').toBeTruthy();
 
-  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout).toContain('Verification PASSED');
+  expect(allPassed(result.results)).toBe(true);
 });

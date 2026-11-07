@@ -96,6 +96,8 @@ test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打
     });
     expect(ok.exitCode, ok.stdout + ok.stderr).toBe(0);
     // exit 0 だけでは束縛ブロックの欠落を見逃すので、束縛の各要素の PASS 行を個別に固定する。
+    // stdout のまま残す理由: 束縛の内訳 (署名・packageHash・root・内容ハッシュ) は人向け出力にしか無い
+    // (--result-json は exam 束縛の失敗を 'other' までしか言わない)。
     expect(ok.stdout).toContain('--- Exam binding (ADR-0006) ---');
     for (const label of ['Root binding:', 'Signature:', 'Package hash:', 'Content hash:']) {
       expect(ok.stdout, `${label} PASS`).toMatch(new RegExp(`${label}\\s+PASS`));
@@ -107,12 +109,14 @@ test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打
       examAuthorityKeys: true,
     });
     expect(other.exitCode, other.stdout + other.stderr).toBe(1);
+    // stdout のまま残す理由: どの束縛要素が落ちたかは人向け出力にしか無い (上と同じ)。
     expect(other.stdout).toMatch(/Package hash:\s+FAIL/);
   });
 
   await test.step('本物の registry は E2E の出題者鍵を信頼せず exit 1 (差し替えが効いていることの裏取り)', async () => {
     const untrusted = runVerifyCli(zipPath, ['--mode', 'fast', '--exam-package', fixture.packagePath]);
     expect(untrusted.exitCode, untrusted.stdout + untrusted.stderr).toBe(1);
+    // stdout のまま残す理由: 同上。
     expect(untrusted.stdout).toMatch(/Signature:\s+FAIL/);
   });
 

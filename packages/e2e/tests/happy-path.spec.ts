@@ -33,9 +33,8 @@ test('casual: 打鍵→export→CLI 検証が pass する', async ({ page }) => 
 
   // ① チェーン検証が pass (exit 0)。
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout).toContain('Verification PASSED');
   // 純粋打鍵 (ペースト/ドロップなし) として記録されている。
-  expect(result.stdout).toContain('Pure Typing: YES');
+  expect(result.verdicts[0]!.assurance.provenance.pureTyping).toBe(true);
 
   // ② proof ごとの判定 (`--analysis-json` の valid) も valid を返す。
   expect(result.verdicts.length).toBeGreaterThan(0);

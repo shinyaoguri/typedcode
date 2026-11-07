@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp, readProofEvents } from './helpers/app.js';
-import { runVerifyCliWithAnalysis } from './helpers/verifyCli.js';
+import { runVerifyCliWithVerdicts } from './helpers/verifyCli.js';
 
 const CODE_BLOCK = 'int compute(int a, int b) {\n  int r = a * b;\n  return r;\n}\n';
 
@@ -27,13 +27,13 @@ test('複数行コードの一括投入は記録され Pure Typing: NO / 外部�
   expect(bulk, 'a multi-line code contentChange should be recorded').toBeTruthy();
   expect(bulk?.data).toContain('int compute');
 
-  const result = runVerifyCliWithAnalysis(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast']);
   // チェーンは valid (実際の編集なので改ざんではない) が、advisory で確実に検出される。
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout).toContain('Pure Typing: NO');
-  expect(result.stdout).toMatch(/[1-9]\d* external input/);
+  expect(result.verdicts[0]!.assurance.provenance.pureTyping).toBe(false);
+  expect(result.verdicts[0]!.processSummary.externalInputCount).toBeGreaterThan(0);
   // 分析シグナルに外部入力 (bulk insertion) が立つ。
-  expect(result.analysis[0]!.valid).toBe(true);
+  expect(result.verdicts[0]!.valid).toBe(true);
 });
 
 /**
@@ -47,8 +47,8 @@ test('同じコードを打鍵した場合は Pure Typing: YES (一括投入と�
   await app.waitForSynced();
 
   const zipPath = await app.exportCurrentTab();
-  const result = runVerifyCliWithAnalysis(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout).toContain('Pure Typing: YES');
-  expect(result.stdout).toMatch(/0 external input/);
+  expect(result.verdicts[0]!.assurance.provenance.pureTyping).toBe(true);
+  expect(result.verdicts[0]!.processSummary.externalInputCount).toBe(0);
 });

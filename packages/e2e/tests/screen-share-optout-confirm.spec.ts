@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp, readProofEvents } from './helpers/app.js';
-import { runVerifyCli } from './helpers/verifyCli.js';
+import { allPassed, runVerifyCliWithResult } from './helpers/verifyCli.js';
 
 /**
  * #374: class で画面共有の選択ダイアログに「共有しない (optOut)」を選ぶと、続けて確認ダイアログ
@@ -37,7 +37,7 @@ test('class: 画面共有を optOut で開始しても確認ダイアログを�
   expect(countOf('environmentProbe'), 'environmentProbe replayed once to the tab created later').toBe(1);
   expect(countOf('termsAccepted'), 'termsAccepted replayed once to the tab created later').toBe(1);
 
-  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout).toContain('Verification PASSED');
+  expect(allPassed(result.results)).toBe(true);
 });

@@ -38,6 +38,8 @@ export interface CliAnalysisEntry {
   analysis: {
     reviewPriority?: number;
     findings?: Array<{ analyzerId: string; severity: string; summary: string }>;
+    /** 分析器が立てた signal (shared の `AnalysisSignal`)。`analyzerId` は分析器の id ('automation' など) */
+    signals?: Array<{ analyzerId: string; severity: string; summary: string }>;
     [k: string]: unknown;
   };
 }
@@ -45,6 +47,40 @@ export interface CliAnalysisEntry {
 export interface CliResultWithAnalysis extends CliResult {
   /** --analysis-json の中身 (proof ごとの配列)。advisory なので exit code とは独立。 */
   analysis: CliAnalysisEntry[];
+}
+
+/**
+ * `--result-json` の 1 要素 (verify-cli の `ResultJsonEntry`)。stdout の文言ではなく、これを assert する (#588)。
+ * `failedCheck` は最初に落ちた層 (valid なら null)。優先順位は verify-cli の `resultJson.ts` が正本。
+ */
+export type CliFailedCheck =
+  | 'unreadable'
+  | 'version'
+  | 'metadata'
+  | 'root'
+  | 'chain'
+  | 'content'
+  | 'finalHash'
+  | 'checkpoint'
+  | 'rootAnchor'
+  | 'sessionToken'
+  | 'policy'
+  | 'other';
+
+export interface CliResultEntry {
+  filename: string;
+  valid: boolean;
+  integrityValid: boolean;
+  failedCheck: CliFailedCheck | null;
+  errorMessage: string | null;
+  rootAnchored: boolean;
+  temporal: string | null;
+  policyViolations: string[];
+}
+
+export interface CliResultWithResult extends CliResult {
+  /** --result-json の中身 (入力ごと・proof ごとの配列)。advisory なので exit code とは独立。 */
+  results: CliResultEntry[];
 }
 
 export interface RunVerifyCliOptions {
@@ -92,6 +128,29 @@ export function runVerifyCliWithAnalysis(file: string, extraArgs: string[] = [])
   return { ...res, analysis };
 }
 
+/**
+ * proof を検証しつつ、検証の結論 (`valid` と、落ちたなら `failedCheck`) を `--result-json` から取得する (#588)。
+ * 「exit 1 になった」だけでなく「どの検査で落ちたか」まで assert したいときに使う。
+ */
+export function runVerifyCliWithResult(
+  file: string,
+  extraArgs: string[] = [],
+  options: RunVerifyCliOptions = {}
+): CliResultWithResult {
+  const outDir = mkdtempSync(join(tmpdir(), 'tc-e2e-result-'));
+  const resultPath = join(outDir, 'result.json');
+  const res = runVerifyCli(file, [...extraArgs, '--result-json', resultPath], options);
+  if (!existsSync(resultPath)) {
+    throw new Error(`verify-cli wrote no result (exit ${res.exitCode})\n${res.stdout}${res.stderr}`);
+  }
+  return { ...res, results: JSON.parse(readFileSync(resultPath, 'utf-8')) as CliResultEntry[] };
+}
+
+/** 1 件以上の入力がすべて valid で、落ちた層が無い (`failedCheck` が null)。0 件は false (何も検証されていない) */
+export function allPassed(results: readonly CliResultEntry[]): boolean {
+  return results.length > 0 && results.every((r) => r.valid && r.failedCheck === null);
+}
+
 /** `--analysis-bundle` 1 件 (Tier A バンドル, ADR-0024) のうち E2E が読む部分。 */
 export interface CliVerdictEntry {
   /** ZIP 内のエントリパス (JSON 単体入力ならコマンドに渡したパス)。 */
@@ -104,6 +163,10 @@ export interface CliVerdictEntry {
     temporal: string;
     provenance: { pureTyping: boolean; [k: string]: unknown };
   };
+  /** `--result-json` の `failedCheck` (valid なら null)。proof ごとに最初に落ちた層 */
+  failedCheck: CliFailedCheck | null;
+  /** `--analysis-bundle` の `processSummary` のうち E2E が数えるもの (Activity 行の元の値) */
+  processSummary: { externalInputCount: number; focusLossCount: number; [k: string]: unknown };
 }
 
 export interface CliResultWithVerdicts extends CliResult {
@@ -126,9 +189,10 @@ export function runVerifyCliWithVerdicts(
   const outDir = mkdtempSync(join(tmpdir(), 'tc-e2e-verdicts-'));
   const analysisPath = join(outDir, 'analysis.json');
   const bundlePath = join(outDir, 'bundle.json');
+  const resultPath = join(outDir, 'result.json');
   const res = runVerifyCli(
     file,
-    [...extraArgs, '--analysis-json', analysisPath, '--analysis-bundle', bundlePath],
+    [...extraArgs, '--analysis-json', analysisPath, '--analysis-bundle', bundlePath, '--result-json', resultPath],
     options
   );
   if (!existsSync(analysisPath) || !existsSync(bundlePath)) {
@@ -138,11 +202,21 @@ export function runVerifyCliWithVerdicts(
   const bundles = JSON.parse(readFileSync(bundlePath, 'utf-8')) as Array<{
     filename: string;
     assurance: CliVerdictEntry['assurance'];
+    processSummary: CliVerdictEntry['processSummary'];
   }>;
+  const results = JSON.parse(readFileSync(resultPath, 'utf-8')) as CliResultEntry[];
   const verdicts = analysis.map((a) => {
     const b = bundles.find((x) => x.filename === a.filename);
     if (!b) throw new Error(`no analysis bundle for ${a.filename}`);
-    return { filename: a.filename, valid: a.valid, assurance: b.assurance };
+    const r = results.find((x) => x.filename === a.filename);
+    if (!r) throw new Error(`no result entry for ${a.filename}`);
+    return {
+      filename: a.filename,
+      valid: a.valid,
+      failedCheck: r.failedCheck,
+      assurance: b.assurance,
+      processSummary: b.processSummary,
+    };
   });
   return { ...res, verdicts };
 }

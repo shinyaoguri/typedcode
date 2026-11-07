@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp, readProofEvents } from './helpers/app.js';
-import { runVerifyCli } from './helpers/verifyCli.js';
+import { runVerifyCliWithVerdicts } from './helpers/verifyCli.js';
 
 /**
  * 内部ペースト: エディタ内で自分が書いた内容をコピペすると、SessionContentRegistry の
@@ -22,9 +22,9 @@ test('内部コピペは insertFromInternalPaste として許可され Pure Typi
   // 外部ペースト (insertFromPaste) は無いこと。
   expect(events.some((e) => e.inputType === 'insertFromPaste')).toBe(false);
 
-  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   // 自分のコードの内部コピペは外部入力扱いにならない。
-  expect(result.stdout).toContain('Pure Typing: YES');
-  expect(result.stdout).toMatch(/0 external input/);
+  expect(result.verdicts[0]!.assurance.provenance.pureTyping).toBe(true);
+  expect(result.verdicts[0]!.processSummary.externalInputCount).toBe(0);
 });

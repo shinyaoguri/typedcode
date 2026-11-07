@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp, readProofEvents, readZipEntryText } from './helpers/app.js';
-import { runVerifyCli } from './helpers/verifyCli.js';
+import { allPassed, runVerifyCliWithResult } from './helpers/verifyCli.js';
 
 /**
  * リロード復元: 編集途中でリロードしても IndexedDB / sessionStorage からセッションが復元され、
@@ -29,9 +29,9 @@ test('リロード後もセッションが復元され、チェーンが途切�
   const zipPath = await app.exportCurrentTab();
 
   // チェーンは復元をまたいでも valid。
-  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  expect(result.stdout).toContain('Verification PASSED');
+  expect(allPassed(result.results)).toBe(true);
 
   // sessionResumed イベントが記録されている (復元の痕跡)。
   const events = await readProofEvents(zipPath);
