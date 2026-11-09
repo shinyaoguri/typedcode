@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
@@ -55,6 +56,13 @@ export interface VerifyProofSummary {
   passed: number;
   failed: number;
 }
+
+/**
+ * ドラッグ & ドロップの落とし先 (#590)。`drop-zone` は何も入れていないときの案内パネル (WelcomePanel)、
+ * `sidebar` はファイルを入れた後のサイドバー (Sidebar)。どちらも `dataTransfer.files` を `#file-input` と
+ * 同じ取込 (AppController.handleFilesSelected) へ渡す。
+ */
+export type VerifyDropTarget = 'drop-zone' | 'sidebar';
 
 /** 結果パネルのチャートタブ (`#tab-<name>` / `#panel-<name>`)。 */
 export type ChartTabName = 'integrated' | 'timeline' | 'mouse';
@@ -158,6 +166,58 @@ export class VerifyWebApp {
   /** ファイルを `#file-input` に渡すだけで、検証の完了は待たない (検証中の操作を見る spec 用。#331)。 */
   async addFiles(paths: string[]): Promise<void> {
     await this.page.locator('#file-input').setInputFiles(paths);
+  }
+
+  /**
+   * ファイルを `target` へドラッグ & ドロップで入れる (#590)。検証の完了は待たない (続けて `waitSettled` を呼ぶ)。
+   *
+   * Playwright は OS からファイルをドラッグできないので、ページ内で `DataTransfer` に File を積み、
+   * dragover → drop の DragEvent を発火する (editor 側の `dropFileOnWorkbench` と同じ手口)。人が落とせる
+   * 場所かを確かめるため、落とす前に `target` が見えていることを assert する。
+   */
+  async dropFiles(paths: string[], target: VerifyDropTarget): Promise<void> {
+    const files = await readFilesForPage(paths);
+    const dataTransfer = await this.page.evaluateHandle((items) => {
+      const dt = new DataTransfer();
+      for (const { name, base64 } of items) {
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+        dt.items.add(new File([bytes], name, { type: name.endsWith('.zip') ? 'application/zip' : 'application/json' }));
+      }
+      return dt;
+    }, files);
+    const zone = this.page.locator(`#${target}`);
+    await expect(zone).toBeVisible();
+    await zone.dispatchEvent('dragover', { dataTransfer });
+    await zone.dispatchEvent('drop', { dataTransfer });
+    await dataTransfer.dispose();
+  }
+
+  /**
+   * `paths` を 1 つのフォルダ `folderName` に入れ、メインメニューの「フォルダを開く」(`#open-folder-btn`) から
+   * 開く (#590)。検証の完了は待たない (続けて `waitSettled` を呼ぶ)。
+   *
+   * フォルダの選択ダイアログ (`showDirectoryPicker`) はブラウザの外の UI で Playwright から操作できないので、
+   * そこだけを、Origin Private File System に作った本物のディレクトリのハンドルを返す関数に差し替える。
+   * ハンドルの走査・フォルダ内の ZIP の展開・検証は本物の経路を通る。
+   */
+  async openFolder(folderName: string, paths: string[]): Promise<void> {
+    const files = await readFilesForPage(paths);
+    await this.page.evaluate(
+      async ({ folderName, files }) => {
+        const root = await navigator.storage.getDirectory();
+        const dir = await root.getDirectoryHandle(folderName, { create: true });
+        for (const { name, base64 } of files) {
+          const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
+          await writable.write(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
+          await writable.close();
+        }
+        (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker =
+          async () => dir;
+      },
+      { folderName, files }
+    );
+    await this.page.locator('#main-menu-btn').click();
+    await this.page.locator('#open-folder-btn').click();
   }
 
   /**
@@ -368,6 +428,11 @@ export class VerifyWebApp {
     for (const f of filenames) out.push(await this.readVerdict(f));
     return out;
   }
+}
+
+/** ページへ渡すためにファイルを読む (ページ側で File / OPFS のファイルに戻す)。名前はベース名。 */
+async function readFilesForPage(paths: string[]): Promise<Array<{ name: string; base64: string }>> {
+  return Promise.all(paths.map(async (p) => ({ name: basename(p), base64: (await readFile(p)).toString('base64') })));
 }
 
 /** 属性セレクタの値に入れる文字列のエスケープ (ファイル名の `"` と `\` だけ気にすればよい)。 */
