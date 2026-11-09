@@ -4,11 +4,14 @@ name: PR Title
 # squash merge では PR タイトルがそのままマージコミットのメッセージになるため、
 # タイトルの形式崩れは main の履歴に直接残る。
 #
-# pull_request_target を使う理由: fork からの PR でも base リポジトリ側の
-# 設定で走らせるため。checkout はせず PR タイトル文字列しか読まないので、
-# fork のコードを実行する経路はない。permissions も read のみに絞る。
+# pull_request を使う理由 (ADR-0050 / #685): GitHub は公開リポジトリの
+# pull_request_target を既定でブロックするポリシーを入れた (2026-12-02 に強制)。
+# この検査は読むだけなので pull_request で足りる。実行される workflow は PR 側の版に
+# なる (PR が自分の検査を書き換えられる。受け入れ済み)。checkout はせず PR タイトル
+# 文字列しか読まない。fork の PR では GITHUB_TOKEN が read のみで秘密も渡らない。
+# permissions も read のみに絞る。
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, edited, reopened, synchronize]
 
 permissions:
@@ -28,7 +31,7 @@ jobs:
         env:
           # PR タイトルはユーザー入力。${{ }} を run: の中へ直接展開すると
           # そのままシェルのコマンド文字列に埋め込まれ、コマンドインジェクション
-          # 経路になる (pull_request_target は fork からも発火するので特に危険)。
+          # 経路になる (fork の PR でも発火するので、権限が read でも塞ぐ)。
           # env 経由で受け取り、シェルは変数としてしか触らない。
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
