@@ -317,7 +317,7 @@ describe('verifyProofFile (fast) tamper detection properties (#595)', () => {
           const value = applyReplacement(event[field], replacement);
           // 文字列でも null でもない inputType では、検証器が valid を返す前に throw する
           // (`recomputeProofMetadata` の `inputType?.startsWith`)。受理はしないが結論も返さないので
-          // 別件として報告し、この性質では生成しない
+          // 別件 (#678) として報告し、この性質では生成しない。#678 を直したらこの除外を外す
           fc.pre(!(field === 'inputType' && value !== null && typeof value !== 'string'));
           (event as unknown as Record<string, unknown>)[field] = value;
           fc.pre(hashedView(events) !== before);
