@@ -8,12 +8,19 @@
  * 削除の `blocked` は猶予まで待つ (#524)。fake-indexeddb は close pending の接続では blocked を出さないので、
  * 別の接続を開いたままにして blocked を起こし、猶予のタイマーは setTimeout だけを偽にして進める
  * (fake-indexeddb 自身の進行は setImmediate なので止めない)。
+ *
+ * 同じモードの別タブが `SessionStorageService` の接続を握っていても、その接続は `versionchange` で閉じるので
+ * 削除は猶予の内に通り、DB とキーが食い違わない (#556)。
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import { setStorageNamespace } from '../../core/storageKeys.js';
-import { getSessionStorageService } from '../../services/SessionStorageService.js';
+import {
+  SessionStorageService,
+  getSessionStorageService,
+  type SessionStorageLostReason,
+} from '../../services/SessionStorageService.js';
 import { DELETE_BLOCKED_GRACE_MS, clearCurrentModeData, deleteDatabaseAndWait } from '../StorageClearHelper.js';
 
 function makeStorage(initial: Record<string, string>): Storage {
@@ -62,6 +69,20 @@ function nextDeletionBlocked(): Promise<void> {
     vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation((name: string) => {
       const request = original(name);
       request.addEventListener('blocked', () => resolve(), { once: true });
+      return request;
+    });
+  });
+}
+
+/** 次の `deleteDatabase` の request に最初に来たイベント (`blocked` か `success` か `error`) で resolve する。 */
+function nextDeletionFirstEvent(): Promise<'blocked' | 'success' | 'error'> {
+  const original = indexedDB.deleteDatabase.bind(indexedDB);
+  return new Promise((resolve) => {
+    vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation((name: string) => {
+      const request = original(name);
+      for (const type of ['blocked', 'success', 'error'] as const) {
+        request.addEventListener(type, () => resolve(type), { once: true });
+      }
       return request;
     });
   });
@@ -186,6 +207,28 @@ describe('clearCurrentModeData', () => {
     expect(sessionStorage.getItem('typedcode-tabs')).toBe('casual-tabs');
     expect(localStorage.getItem('typedcode-exam-packages')).toBe('casual-exam-cache');
     other.close();
+  });
+
+  it('deletes the db and the keys within the grace period when another tab of the same mode holds a connection, which it closes on versionchange', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    await getSessionStorageService().initialize(); // このタブの接続
+    const otherTab = new SessionStorageService(); // 同じモードを開いている別タブの接続 (#556)
+    const lost: SessionStorageLostReason[] = [];
+    otherTab.setOnConnectionLost((reason) => lost.push(reason));
+    await otherTab.initialize();
+
+    const firstEvent = nextDeletionFirstEvent();
+
+    const result = track(clearCurrentModeData());
+    // 猶予のタイマーは偽で進めない。別タブの接続が閉じなければ blocked が先に来て、削除は猶予の後の失敗になる
+    expect(await firstEvent).toBe('success');
+    expect(await result.outcome).toBeUndefined();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(await dbNames()).toEqual([]);
+    expect(sessionStorage.getItem('typedcode-tabs')).toBeNull();
+    expect(localStorage.getItem('typedcode-exam-packages')).toBeNull();
+    expect(lost).toEqual(['versionchange']);
+    otherTab.close();
   });
 });
 
