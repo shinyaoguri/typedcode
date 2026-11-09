@@ -47,7 +47,11 @@ import { removeLegacyDeviceId } from './utils/legacyStorage.js';
 import { ThemeManager } from './editor/ThemeManager.js';
 import { TabManager, type SyncStatus, type TabState } from './ui/tabs/TabManager.js';
 import type { MonacoEditor } from './editor/types.js';
-import { isTurnstileConfigured, loadTurnstileScript as preloadTurnstile } from './services/TurnstileService.js';
+import {
+  isTurnstileConfigured,
+  loadTurnstileScript as preloadTurnstile,
+  type VerificationResult,
+} from './services/TurnstileService.js';
 import {
   SingleInstanceGuard,
   showDuplicateInstanceOverlay,
@@ -946,14 +950,28 @@ function examFileExtension(language: string): string {
 async function runExamUnlock(appCtx: AppContext): Promise<void> {
   const gate = new ExamStartGate();
   setAppState('gate');
-  const { manifest, plaintext, packageHash, startToken } = await gate.prompt(); // 解錠まで block
+  const unlocked = gate.prompt(); // 解錠まで block (オーバーレイはここで描かれる)
+
+  // #236: ゲートの表示中に Turnstile + session/start を並行して先行取得する (widget はゲートの中)。
+  // 得た token は #0 の verified の印と署名専用 token (ADR-0027) に使う。解錠はこれを待たない (ADR-0006)。
+  const slot = gate.attestationSlot();
+  const preAttestation = slot
+    ? (appCtx.tabManager?.startExamPreAttestation({
+        ...slot,
+        onStateChange: (state) => gate.setAttestationState(state),
+      }) ?? null)
+    : null;
+
+  const { manifest, plaintext, packageHash, startToken } = await unlocked;
   setAppState('initializing');
+  // 解錠の瞬間に決着していなければ null (待ち猶予 0 秒。#0 は合成の印になり、遅れて届いた token は署名にだけ使う)
+  const examVerification = preAttestation?.takeResult() ?? null;
 
   const decoded = decodeExamPlaintext(plaintext);
   if (decoded.kind === 'bundle') {
-    await openBundleTabs(appCtx, manifest, packageHash, startToken, decoded.bundle.problems);
+    await openBundleTabs(appCtx, manifest, packageHash, startToken, decoded.bundle.problems, examVerification);
   } else {
-    await openLegacyExamTab(appCtx, manifest, packageHash, startToken, decoded.statement);
+    await openLegacyExamTab(appCtx, manifest, packageHash, startToken, decoded.statement, examVerification);
   }
 }
 
@@ -963,7 +981,8 @@ async function openLegacyExamTab(
   manifest: ExamPackageManifest,
   packageHash: string,
   startToken: string,
-  statement: string
+  statement: string,
+  examVerification: VerificationResult | null
 ): Promise<void> {
   const language = manifest.allowed.languages[0] ?? 'c';
   const filename = `answer.${examFileExtension(language)}`;
@@ -976,7 +995,7 @@ async function openLegacyExamTab(
     problemContentHash,
     startToken,
   };
-  await appCtx.tabManager?.createTab(filename, language, '', { examContext });
+  await appCtx.tabManager?.createTab(filename, language, '', { examContext, examVerification });
   appCtx.problemPanel.setProblem(statement);
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
   ExamPackageStore.save(manifest.problemId, { manifest, plaintext: statement });
@@ -992,7 +1011,8 @@ async function openBundleTabs(
   manifest: ExamPackageManifest,
   packageHash: string,
   startToken: string,
-  problems: ExamBundleProblem[]
+  problems: ExamBundleProblem[],
+  examVerification: VerificationResult | null
 ): Promise<void> {
   let sharedAttestation: HumanAttestationEventData | null = null;
 
@@ -1016,7 +1036,8 @@ async function openBundleTabs(
     const tab: TabState | null =
       (await appCtx.tabManager?.createTab(filename, language, starterContent, {
         examContext,
-        ...(i > 0 && sharedAttestation ? { sharedAttestation } : {}),
+        // 先頭タブの #0 をゲート中の先行取得の結果で作り、2 番目以降はそれを共有する (#236)
+        ...(i > 0 && sharedAttestation ? { sharedAttestation } : { examVerification }),
       })) ?? null;
 
     if (i === 0 && tab) {

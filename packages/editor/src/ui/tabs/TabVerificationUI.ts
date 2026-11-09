@@ -15,6 +15,7 @@ import {
   type VerificationResult,
   type VerificationPhase,
 } from '../../services/TurnstileService.js';
+import { attestationFromSessionToken } from './humanAttestation.js';
 
 /** 認証UI結果 */
 export interface VerificationUIResult {
@@ -258,16 +259,7 @@ export async function performVerificationWithUI(
   // サーバの値にかかわらず常に 'unsigned' にそろえる。
   const token = result.sessionToken;
   const attestationData: HumanAttestationEventData = token
-    ? {
-        verified: result.success,
-        score: result.score ?? (result.success ? 1.0 : 0),
-        action: token.payload.action ?? action,
-        timestamp: token.payload.issuedAt,
-        hostname: token.payload.hostname ?? window.location.hostname,
-        signature: `session-start-token:${token.keyId}`,
-        success: result.success,
-        failureReason: result.failureReason,
-      }
+    ? attestationFromSessionToken(result, token, action, window.location.hostname)
     : {
         verified: result.attestation?.verified ?? false,
         score: result.attestation?.score ?? 0,

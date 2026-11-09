@@ -1067,6 +1067,43 @@
   text-align: left;
 }
 
+/* ゲート内の人間確認 (#236): 解錠と並行して Turnstile を先行取得する。待たずに「開始」できる */
+.exam-gate-attestation {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.exam-gate-attestation[hidden] {
+  display: none;
+}
+
+.exam-gate-attestation-status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.exam-gate-attestation[data-attestation-state="verified"] .exam-gate-attestation-status i {
+  color: var(--accent-success);
+}
+
+.exam-gate-attestation[data-attestation-state="failed"] .exam-gate-attestation-status i {
+  color: var(--accent-warning);
+}
+
+.exam-gate-turnstile {
+  display: flex;
+  justify-content: center;
+  min-height: 65px; /* Turnstile の widget の高さ。描画の前後でゲートが跳ねないように */
+}
+
+.exam-gate-turnstile.hidden {
+  display: none;
+}
+
 .exam-gate-start {
   padding: 11px 20px;
   border: none;

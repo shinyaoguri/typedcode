@@ -16,8 +16,10 @@ import { VerifyWebApp, expectWebCliParity, proofNames } from './helpers/verifyWe
  * - 誤コードはゲートに留まり (sticky)、正コードで解錠できる (Argon2id の復号は本番パラメータのまま)
  * - 負のオラクル: 別の問題パッケージ (examId だけ違う) を渡すと exit 1。出題者鍵を信頼しない
  *   本物の registry で検証しても exit 1 (E2E 用の鍵が差し込まれていることが pass の前提だと確かめる)
- * - `#0` の verified / signature の値は assert しない (#236 の方針決定で変わるため)。署名 envelope が
- *   1 つ以上載っていること (ADR-0027 の `acquireSigningTokenBestEffort` 経路) だけを見る
+ * - #236: ゲートの表示中に Turnstile (公開テストキー) + session/start を先行取得するので、確認欄
+ *   (`#exam-gate-attestation[data-attestation-state]`) が `verified` になってから解錠すると、`#0 humanAttestation`
+ *   は `verified: true` で session/start の token 由来の印を持つ。同じ token を署名専用にも使うので、署名 envelope が
+ *   1 つ以上載る (ADR-0027)。解錠時に未決着だった場合は fault-exam-signing-token.spec.ts が見る
  * - 同じ ZIP を verify Web に入れ、試験束縛カードの `#exam-load-btn` から同じ package を渡すと、
  *   `#assurance-strip[data-temporal]` が `exam-t0` になり、verify-cli の `--analysis-bundle` の判定と一致する
  *   (不変条件 6)。渡す前は exam-t0 でないことも見て、空振りでないことを確かめる。束縛の内訳は Web に
@@ -65,6 +67,12 @@ test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打
     await expect(page.locator('#exam-start-gate')).toBeVisible();
   });
 
+  await test.step('ゲートの表示中に人間確認 (Turnstile + session/start) が済む (#236)', async () => {
+    await expect(page.locator('#exam-gate-attestation')).toHaveAttribute('data-attestation-state', 'verified', {
+      timeout: 30_000,
+    });
+  });
+
   await test.step('正コードで解錠できる (署名検証 → 復号 → 束縛したチェーン)', async () => {
     await app.unlockExam(fixture.packagePath, fixture.code);
   });
@@ -85,7 +93,13 @@ test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打
     events.some((e) => e.type === 'examOpened'),
     'examOpened (#1) recorded on unlock'
   ).toBe(true);
-  // ADR-0027: exam は root に署名 token を焼かず、acquireSigningTokenBestEffort で署名専用 token を取る。
+  // #236: ゲート中に得た token で #0 が verified になる (合成の 'unsigned' ではない)。
+  expect(events[0]?.type).toBe('humanAttestation');
+  const attestation = events[0]?.data as { verified?: boolean; signature?: string; action?: string } | undefined;
+  expect(attestation?.verified, JSON.stringify(attestation)).toBe(true);
+  expect(attestation?.signature).toMatch(/^session-start-token:/);
+  expect(attestation?.action).toBe('exam_start');
+  // ADR-0027: exam は root に署名 token を焼かず、ゲート中に得た token を署名専用 token として使う。
   // その経路が死ぬと署名 envelope が 0 件になるが、未アンカーの proof も valid なので verify-cli では見えない。
   const signed = (proof.checkpoints ?? []).filter((cp) => cp.signature);
   expect(signed.length, 'at least one checkpoint carries a signed envelope').toBeGreaterThan(0);

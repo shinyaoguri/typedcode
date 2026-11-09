@@ -45,8 +45,10 @@ import {
   createSignedCheckpointServiceIfEnabled,
 } from '../../services/SignedCheckpointService.js';
 import { isStorageFullError } from '../../services/StorageCapacityProbe.js';
+import { SigningTokenRetry } from '../../services/SigningTokenRetry.js';
 import { debugLog } from '../../utils/logger.js';
 import { TAB_CREATE_VERIFICATION_BUDGET_MS } from '../../config/timeouts.js';
+import { EXAM_ATTESTATION_ACTION, buildExamHumanAttestation } from './humanAttestation.js';
 
 // PoSW Workerのファクトリ関数
 // Viteがsymlinkedパッケージ内のWorkerを正しく解決できないため、editorパッケージ内から読み込む
@@ -134,6 +136,12 @@ export interface CreateTabOptions {
    */
   examContext?: ExamSessionContext;
   /**
+   * 試験開始ゲート中に先行取得した Turnstile + session/start の結果 (#236。`startExamPreAttestation`)。
+   * examContext と併用する。token があれば #0 を verified の印にし、`null` (解錠の瞬間に未決着) や
+   * 失敗なら合成 best-effort の印にする。ここでは Turnstile を待たない (ADR-0006)。
+   */
+  examVerification?: VerificationResult | null;
+  /**
    * 先頭タブの humanAttestation を共有する (ADR-0012 N問バンドルの 2 番目以降のタブ用)。
    * 指定すると Turnstile / best-effort をやり直さず、この attestation を #0 に記録する
    * (TemplateImporter の共有 attestation と同じ発想)。
@@ -163,13 +171,17 @@ export class TabManager {
   private fingerprintComponents: FingerprintComponents | null = null;
   /**
    * 署名専用の sessionStartToken (ADR-0027)。root には焼かず proof にも同梱しない。入るのは、
-   * exam の best-effort 取得 (`acquireSigningTokenBestEffort`) と、casual/class/assignment で
+   * exam の試験開始ゲート中の先行取得 (`startExamPreAttestation`、#236) と best-effort 取得
+   * (`acquireSigningToken`。`signingTokenRetry` が再取得する)、casual/class/assignment で
    * 作成時の予算 (`TAB_CREATE_VERIFICATION_BUDGET_MS`) を過ぎてから届いた token (#375)。
    * 予算内に届いた casual/class/assignment の token はタブの TypingProof が持つのでここには入らない。
    */
   private signingOnlyToken: SessionStartToken | null = null;
-  /** acquireSigningTokenBestEffort の単一フライトガード */
-  private acquiringSigningToken = false;
+  /**
+   * 署名専用 token の取得と再取得 (#236)。同時 1 本・ジッタ付き指数バックオフ (上限 5 分)・online で早める。
+   * exam のタブが attach したとき (`attachSignedCheckpointService`) に初めて動く
+   */
+  private readonly signingTokenRetry: SigningTokenRetry;
   private editor: monaco.editor.IStandaloneCodeEditor;
   private onTabChangeCallback: OnTabChangeCallback | null = null;
   private onTabUpdateCallback: OnTabUpdateCallback | null = null;
@@ -228,6 +240,14 @@ export class TabManager {
   constructor(editor: monaco.editor.IStandaloneCodeEditor) {
     this.editor = editor;
     this.sessionService = getSessionStorageService();
+    this.signingTokenRetry = new SigningTokenRetry({
+      acquire: () => this.acquireSigningToken(),
+      hasToken: () => this.findSigningToken() !== null,
+    });
+    // TabManager はアプリと同じ寿命なので解除しない。取得を頼まれる前 (exam でない) は何もしない
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => this.signingTokenRetry.notifyOnline());
+    }
   }
 
   /**
@@ -499,9 +519,19 @@ export class TabManager {
 
       // 注意: 認証失敗でもタブ作成は続行（ブロックしない）
     } else if (options?.examContext && !options?.skipAttestation) {
-      // 試験モードで Turnstile 未設定: ネット非依存の合成 best-effort attestation を #0 に記録し、
-      // 「#0 = humanAttestation」不変条件を保つ (100名・不安定網で開始を止めない＝ADR 絶対条件)。
-      await typingProof.recordHumanAttestation(this.bestEffortExamAttestation());
+      // 試験モード (#236): Turnstile は試験開始ゲートの表示中に先行取得している (startExamPreAttestation)。
+      // 解錠の瞬間に token が得られていれば #0 を verified の印に、未解決・失敗・未設定なら合成 best-effort の
+      // 印にする。ここではサーバを待たない (100名・不安定網で開始を止めない = ADR-0006 の絶対条件)。
+      // どちらでも「#0 = humanAttestation」を保つ。
+      const attestation = buildExamHumanAttestation(options.examVerification ?? null, {
+        hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+        now: new Date(),
+      });
+      await typingProof.recordHumanAttestation(attestation);
+      if (attestation.verified) {
+        verificationState = 'verified';
+        verificationDetails = { timestamp: attestation.timestamp };
+      }
     }
 
     // 試験モード: 封印問題の開封を #1 examOpened として記録 (#0 humanAttestation の直後)。
@@ -549,23 +579,6 @@ export class TabManager {
   }
 
   /**
-   * 試験モードで Turnstile が無いときの合成 best-effort attestation (ADR-0006)。
-   * ネット非依存で #0 humanAttestation を必ず置けるようにし、開始をブロックしない。
-   * verified=false / signature='unsigned' で「人間性は未検証」を正直に表す。
-   */
-  private bestEffortExamAttestation(): HumanAttestationEventData {
-    return {
-      verified: false,
-      score: 0,
-      action: 'exam_start',
-      timestamp: new Date().toISOString(),
-      hostname: window.location.hostname,
-      signature: 'unsigned',
-      success: false,
-    };
-  }
-
-  /**
    * Signed checkpoint service を tab に attach する共通処理。
    * - VITE_API_URL 未設定なら null を返す
    * - typingProof に onCheckpointCreated hook を仕掛け、新規 checkpoint を service へ流す
@@ -608,9 +621,11 @@ export class TabManager {
 
     // exam は root を exam 式で束縛するため session/start を通らず、token を持たない。
     // 署名クレデンシャルとしてだけ best-effort で取得する (ADR-0027。root には焼かない)。
-    // 復元経路でも呼ばれるので、リロード後の exam セッションもここで回復する。
+    // 復元経路でも呼ばれるので、リロード後の exam セッションもここで回復する。失敗したら
+    // signingTokenRetry がバックオフと online で取り直す (#236)。ゲート中の先行取得が走っていれば
+    // それを 1 本と数えるので、2 本目は始めない。
     if (typingProof.examContext && !this.findSigningToken()) {
-      void this.acquireSigningTokenBestEffort();
+      this.signingTokenRetry.request();
     }
     return service;
   }
@@ -660,34 +675,102 @@ export class TabManager {
   }
 
   /**
-   * exam 用の署名専用 token を非ブロッキングで取得する (ADR-0027)。
+   * exam 用の署名専用 token を 1 回取得する (ADR-0027)。`signingTokenRetry` の取得関数で、直接は呼ばない
+   * (同時 1 本とバックオフはそちらが守る)。
    * - UI は出さない (performTurnstileVerification を直接呼ぶ)。試験開始をブロックしない
-   *   (ADR-0006 の絶対条件)。失敗したら署名なしで劣化する (オフライン exam と同等)。
+   *   (ADR-0006 の絶対条件)。失敗したら署名なしで劣化し、次の再取得を待つ (#236)。
    * - root には焼かない (exam の root は封印束縛 = initializeExam)。proof にも同梱しない。
+   * @returns token を得て採用したら true
    */
-  private async acquireSigningTokenBestEffort(): Promise<void> {
-    if (this.acquiringSigningToken || this.findSigningToken()) return;
-    if (!isTurnstileConfigured()) return;
-    const sessionId = this.sessionService.getCurrentSessionId();
-    if (!sessionId || !this.fingerprint) return;
-    this.acquiringSigningToken = true;
+  private async acquireSigningToken(): Promise<boolean> {
+    if (this.findSigningToken()) return true;
+    if (!isTurnstileConfigured()) return false;
+    const sessionStart = this.sessionStartInput();
+    if (!sessionStart) return false;
     try {
-      const result = await performTurnstileVerification('checkpoint_signing', {
-        sessionStart: { sessionId, fingerprintHash: this.fingerprint },
-      });
+      const result = await performTurnstileVerification('checkpoint_signing', { sessionStart });
       if (result.success && result.sessionToken) {
         this.adoptSigningToken(result.sessionToken, 'exam best-effort');
-      } else {
-        console.warn(
-          '[TabManager] Signing-only token acquisition failed; checkpoints stay unsigned:',
-          result.error ?? result.failureReason
-        );
+        return true;
       }
+      console.warn(
+        '[TabManager] Signing-only token acquisition failed; checkpoints stay unsigned until a retry succeeds:',
+        result.error ?? result.failureReason
+      );
     } catch (err) {
-      console.warn('[TabManager] Signing-only token acquisition threw; checkpoints stay unsigned:', err);
-    } finally {
-      this.acquiringSigningToken = false;
+      console.warn(
+        '[TabManager] Signing-only token acquisition threw; checkpoints stay unsigned until a retry succeeds:',
+        err
+      );
     }
+    return false;
+  }
+
+  /** session/start に渡す sessionId と fingerprint。揃っていなければ null */
+  private sessionStartInput(): { sessionId: string; fingerprintHash: string } | null {
+    const sessionId = this.sessionService.getCurrentSessionId();
+    if (!sessionId || !this.fingerprint) return null;
+    return { sessionId, fingerprintHash: this.fingerprint };
+  }
+
+  /**
+   * 試験開始ゲートの表示中に Turnstile + session/start を先行取得する (#236)。ゲートの `prompt()` と
+   * 並行に走らせ、widget はゲートの中に描く (認証モーダルはゲートの裏に隠れるため)。対話チャレンジに
+   * なっても受験者はゲートの中で解ける (解錠前なので試験時間を使わない)。
+   *
+   * 得た token はすぐ署名専用 token に採用する (root には焼かない。exam の root は封印束縛)。
+   * 解錠の瞬間に `takeResult()` を呼ぶと、決着していればその結果を返し (#0 に使う)、未決着なら待たずに
+   * null を返す (ADR-0006: サーバを critical path に置かない)。未決着の取得は表示中のチャレンジを止め、
+   * token を得た後の段階 (session/start) なら止めずに、届いた token を署名専用に回す。失敗したら
+   * `signingTokenRetry` がバックオフで引き継ぐ。
+   *
+   * @returns Turnstile 未設定・sessionId / fingerprint が無いときは null (ゲートは確認欄を出さない)
+   */
+  startExamPreAttestation(ui: {
+    widgetContainer: HTMLElement;
+    parentContainer: HTMLElement;
+    onStateChange: (state: 'pending' | 'verified' | 'failed') => void;
+  }): { takeResult(): VerificationResult | null } | null {
+    if (!isTurnstileConfigured()) return null;
+    const sessionStart = this.sessionStartInput();
+    if (!sessionStart) return null;
+
+    const controller = new AbortController();
+    let settled: VerificationResult | null = null;
+    ui.onStateChange('pending');
+    const attempt: Promise<boolean> = performTurnstileVerification(EXAM_ATTESTATION_ACTION, {
+      sessionStart,
+      widgetContainer: ui.widgetContainer,
+      parentContainer: ui.parentContainer,
+      signal: controller.signal,
+    })
+      .catch(
+        (err: unknown): VerificationResult => ({
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+          failureReason: 'network_error',
+        })
+      )
+      .then((result) => {
+        settled = result;
+        if (result.success && result.sessionToken) {
+          this.adoptSigningToken(result.sessionToken, 'exam start gate');
+          ui.onStateChange('verified');
+          return true;
+        }
+        ui.onStateChange('failed');
+        return false;
+      });
+
+    return {
+      takeResult: () => {
+        if (settled) return settled;
+        // 解錠は待たない。token を得る前ならチャレンジを止め、得た後なら session/start の結果を待たずに進む
+        controller.abort();
+        this.signingTokenRetry.track(attempt);
+        return null;
+      },
+    };
   }
 
   /**

@@ -141,6 +141,16 @@ npm run test
 npm run test:coverage
 ```
 
+## 依存関係
+
+版は各パッケージの `package.json` を参照してください (README には書き写しません)。
+
+| パッケージ | 用途 |
+|---------|---------|
+| @noble/hashes | PoSW 検証の同期 SHA-256 反復、試験パッケージの Argon2id |
+| jszip | 証明 ZIP の展開 |
+| fast-check | 改ざん検出の性質テスト (devDependency) |
+
 ## 技術仕様
 
 ### ハッシュチェーンアルゴリズム
