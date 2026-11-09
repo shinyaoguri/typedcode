@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # .github/workflows/ を actionlint (+ shellcheck) で検査する (#351)。
 #
-# なぜ要るか: pull_request_target / schedule で動く workflow (pr-checks・pr-title・labeler・
-# freshness) は、壊れていても PR の CI には現れない。次にそのイベントが来たとき、失敗ではなく
-# 空振りとして現れるので、PR が緑のまま気付けない。式・イベント名・run: のシェルをここで見る。
+# なぜ要るか: pull_request_target / schedule で動く workflow (labeler・freshness など) は、壊れて
+# いても PR の CI には現れない。次にそのイベントが来たとき、失敗ではなく空振りとして現れるので、
+# PR が緑のまま気付けない。式・イベント名・run: のシェルをここで見る (pr-checks・pr-title は
+# ADR-0050 で pull_request へ移したが、検査は全 workflow に掛ける)。
 #
 # なぜ両方をピンするか: actionlint は shellcheck があれば run: の中身も検査するが、shellcheck の
 # 有無と版はランナーのイメージや手元の環境次第。「あれば使う」にすると CI とローカルで検査範囲が

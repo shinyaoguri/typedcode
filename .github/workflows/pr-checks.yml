@@ -20,12 +20,17 @@ name: PR Checks
 #   `no-issue` で通し、dependabot の PR は対象外。判定ロジックは scripts/require-issue.mjs、
 #   そのテストは deploy.yml の check job で走る。
 #
-# pull_request_target を使う理由: fork からの PR でも base リポジトリ側の設定で走らせるため。
-# pull_request_target の既定の checkout ref は **base ブランチ** (PR の head ではない)。
-# ここでは ref を指定せずに checkout するので、実行されるのは base 側の
-# scripts/require-*.mjs であり、fork のコードを実行する経路はない。PR から読むのは
-# 変更ファイル名 (API) と、gh pr view で読むタイトル・本文・ラベル・author・紐づけ Issue だけ。
-# permissions も read のみ。
+# pull_request を使う理由 (ADR-0050 / #685): GitHub は公開リポジトリの pull_request_target を
+# 既定でブロックするポリシーを入れた (2026-12-02 に強制)。この検査は読むだけなので pull_request へ
+# 移した。pull_request の既定の checkout ref は **PR の merge ref** (refs/pull/<番号>/merge) なので、
+# 実行されるのは PR 側の版の workflow と scripts/require-*.mjs になる。
+#   - 判定ロジックを変える PR では、変えた後のロジックがその PR 自身の検査に効く (PR が自分の
+#     ゲートを書き換えられる)。これは受け入れ済みのトレードオフで、ロジックの変更はレビューで見る
+#     (ロジックのテストは deploy.yml の check job で走る)
+#   - fork の PR では GITHUB_TOKEN が read のみで、秘密も渡らない。fork のコードを実行しても
+#     書き込みや秘密の持ち出しの経路にはならない
+# PR から読むのは変更ファイル名 (API) と、gh pr view で読むタイトル・本文・ラベル・author・
+# 紐づけ Issue だけ。permissions も read のみ。
 #
 # concurrency を置かない理由 (#632): 同じ PR に event が続けて来ると (opened の直後に labeler の
 # labeled など)、concurrency が先の run を取り消し、取り消された run の必須チェック (require-*) が
@@ -48,7 +53,7 @@ name: PR Checks
 # 順序が前後すると古い状態で判定した結論が最後に残り得るが、現在値を読めば、最後の event より
 # 後に読んだ run はどれも同じ結論になる。
 on:
-  pull_request_target:
+  pull_request:
     # labeled / unlabeled / edited: `no-test-needed` / `no-visual-change` / `no-issue` ラベルや、
     # 理由・画像・Closes の追記で再判定するため
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
@@ -66,7 +71,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # ref 未指定 = pull_request_target では base ブランチ。head (fork) を checkout しないこと。
+      # ref 未指定 = pull_request では PR の merge ref。PR 側の scripts/require-*.mjs が走る
+      # (理由と安全性は先頭のコメント。ADR-0050 / #685)。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -79,8 +85,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           # PR のタイトル・本文・ラベル・author はユーザー入力なので、run: へ ${{ }} で展開しない
-          # (シェルのコマンド文字列に埋め込まれ、コマンドインジェクション経路になる。
-          # pull_request_target は fork からも発火するので特に危険)。ここで渡すのは PR 番号だけで、
+          # (シェルのコマンド文字列に埋め込まれ、コマンドインジェクション経路になる。fork の PR でも
+          # 発火するので、権限が read でも runner 上で任意のコマンドを走らせる経路は塞ぐ)。ここで渡すのは PR 番号だけで、
           # 文字列は gh pr view の JSON をファイルに書いてスクリプトに読ませる (シェルは触らない)。
           # payload ではなく実行時点の現在値を読む理由は先頭のコメント (#632)。
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -94,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # ref 未指定 = pull_request_target では base ブランチ。head (fork) を checkout しないこと。
+      # ref 未指定 = pull_request では PR の merge ref (理由と安全性は先頭のコメント)。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -118,7 +124,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # ref 未指定 = pull_request_target では base ブランチ。head (fork) を checkout しないこと。
+      # ref 未指定 = pull_request では PR の merge ref (理由と安全性は先頭のコメント)。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
