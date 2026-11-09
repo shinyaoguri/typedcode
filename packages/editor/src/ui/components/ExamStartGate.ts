@@ -24,6 +24,21 @@ import {
 import { t } from '../../i18n/index.js';
 
 /**
+ * ゲート内の人間確認 (Turnstile) の状態 (#236)。`#exam-gate-attestation[data-attestation-state]` に出す。
+ * - `off`: 確認しない (Turnstile 未設定など。欄を出さない)
+ * - `pending`: 確認中 (widget を表示中、または session/start の応答待ち)
+ * - `verified`: 確認できた (#0 が verified になる)
+ * - `failed`: 確認できなかった (解錠はできる。#0 は合成の印になる)
+ */
+export type ExamGateAttestationState = 'off' | 'pending' | 'verified' | 'failed';
+
+/** ゲート内で Turnstile の widget を描く容器 (#236。`performTurnstileVerification` にそのまま渡す) */
+export interface ExamGateAttestationSlot {
+  widgetContainer: HTMLElement;
+  parentContainer: HTMLElement;
+}
+
+/**
  * 解錠結果 (ADR-0006/0012)。ゲートは署名検証 + 復号までを担い、セッション構築
  * (問題=タブの分解 / examContext の組み立て) は呼び出し側 (runExamUnlock) に委ねる。
  * 平文は単一 markdown (v1) か N問バンドル (v2) で、呼び出し側が decodeExamPlaintext で分岐する。
@@ -40,6 +55,39 @@ export interface ExamUnlockResult {
 export class ExamStartGate {
   private overlay: HTMLElement | null = null;
   private manifest: ExamPackageManifest | null = null;
+
+  /**
+   * ゲート内の人間確認の容器 (#236)。`prompt()` を呼んだ後 (オーバーレイを描いた後) だけ返す。
+   * 呼び出し側 (runExamUnlock) はここに Turnstile を描き、解錠と並行して先行取得する。
+   */
+  attestationSlot(): ExamGateAttestationSlot | null {
+    const widgetContainer = this.overlay?.querySelector<HTMLElement>('#exam-gate-turnstile-widget');
+    const parentContainer = this.overlay?.querySelector<HTMLElement>('#exam-gate-turnstile');
+    return widgetContainer && parentContainer ? { widgetContainer, parentContainer } : null;
+  }
+
+  /**
+   * 人間確認の状態を表示する (#236)。解錠はこの状態を待たない (確認中・失敗でも「開始」できる)。
+   * ゲートを閉じた後に呼ばれても何もしない。
+   */
+  setAttestationState(state: ExamGateAttestationState): void {
+    const section = this.overlay?.querySelector<HTMLElement>('#exam-gate-attestation');
+    const status = this.overlay?.querySelector<HTMLElement>('#exam-gate-attestation-status');
+    if (!section || !status) return;
+    section.dataset.attestationState = state;
+    section.hidden = state === 'off';
+    const messages: Record<Exclude<ExamGateAttestationState, 'off'>, { icon: string; text: string }> = {
+      pending: { icon: 'fa-spinner fa-spin', text: t('exam.gate.attestationPending') },
+      verified: { icon: 'fa-circle-check', text: t('exam.gate.attestationVerified') },
+      failed: { icon: 'fa-circle-exclamation', text: t('exam.gate.attestationFailed') },
+    };
+    if (state === 'off') {
+      status.textContent = '';
+      return;
+    }
+    const { icon, text } = messages[state];
+    status.innerHTML = `<i class="fas ${icon}" aria-hidden="true"></i> ${escapeHtml(text)}`;
+  }
 
   /** ゲートを表示し、解錠成功で result を resolve する (キャンセル経路は無い = sticky)。 */
   prompt(): Promise<ExamUnlockResult> {
@@ -231,6 +279,13 @@ export class ExamStartGate {
           <input type="text" id="exam-gate-code" class="exam-gate-code-input"
                  autocomplete="off" autocapitalize="characters" spellcheck="false"
                  placeholder="ABCD-EFGH">
+        </div>
+
+        <div class="exam-gate-attestation" id="exam-gate-attestation" data-attestation-state="off" hidden>
+          <p class="exam-gate-attestation-status" id="exam-gate-attestation-status" role="status" aria-live="polite"></p>
+          <div class="exam-gate-turnstile hidden" id="exam-gate-turnstile">
+            <div id="exam-gate-turnstile-widget"></div>
+          </div>
         </div>
 
         <p class="exam-gate-error" id="exam-gate-error" hidden></p>

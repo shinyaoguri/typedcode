@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
@@ -137,6 +137,19 @@ const SHOTS = [
   {
     file: '20-author-examples.png',
     caption: '出題 (/author): 問題文の下の「動作確認の例」の欄に例を 2 件入れた状態 (#648)',
+  },
+  {
+    file: '21-exam-gate-attestation-pending.png',
+    caption:
+      'エディタ (試験モード): 試験開始ゲートで人間確認 (Turnstile) を先行取得している最中。ゲートの中に widget が出て、確認を待たずに開始できる旨の案内 (#236)',
+  },
+  {
+    file: '22-exam-gate-attestation-verified.png',
+    caption: 'エディタ (試験モード): 試験開始ゲートで人間確認が済んだ状態 (解錠すると #0 が verified になる。#236)',
+  },
+  {
+    file: '23-exam-gate-attestation.webp',
+    caption: 'エディタ (試験モード): 試験開始ゲートを開いてから人間確認が済むまでの動き (#236)',
   },
 ] as const;
 
@@ -399,6 +412,62 @@ test.describe('見た目・動きの証跡 @shots', () => {
       .locator('.author-pane')
       .first()
       .screenshot({ path: out('20-author-examples.png'), animations: 'disabled' });
+  });
+
+  // 21〜23 (#236): 試験開始ゲートの人間確認の欄。ゲートを出している間に Turnstile (公開テストキー) と
+  // session/start を先行取得するので、確認欄 (`#exam-gate-attestation[data-attestation-state]`) が pending → verified と
+  // 進む。その間をコマ撮りしてアニメーション WebP に束ね、widget の出ている pending のコマ (その中ほど) と verified の
+  // 画面を PNG でも残す。ゲートは問題パッケージを読む前に出るので exam fixture は要らない。base (確認欄の無い版) では
+  // ゲートだけを 21 に撮る。テストキーの widget は数秒で済むので、コマは止めずに撮り続ける。
+  // 画面共有の開始で出る案内 (`.screen-share-guide`) は開始ボタンに重なるので、利用者と同じく押して閉じる。
+  test('試験開始ゲートの人間確認の欄を撮る @shots', async ({ page }) => {
+    const app = new EditorApp(page);
+    await app.openModeFresh('exam', { screenShare: 'share', waitReady: false });
+    await expect.poll(() => app.appState()).toBe('gate');
+    const content = page.locator('#exam-start-gate .exam-gate-content');
+    await content.waitFor({ state: 'visible' });
+    const guide = page.locator('.screen-share-guide');
+    if (await guide.isVisible()) await guide.click();
+
+    const attestation = page.locator('#exam-gate-attestation');
+    if ((await attestation.count()) === 0) {
+      await page.screenshot({ path: out('21-exam-gate-attestation-pending.png'), animations: 'disabled' });
+      return;
+    }
+    const state = () => attestation.getAttribute('data-attestation-state');
+    const widgetShown = () =>
+      page
+        .locator('#exam-gate-turnstile')
+        .evaluate(
+          (el) =>
+            !el.classList.contains('hidden') &&
+            ((el.querySelector('#exam-gate-turnstile-widget > *') as HTMLElement | null)?.offsetHeight ?? 0) > 0
+        );
+
+    mkdirSync(FRAMES, { recursive: true });
+    const frames: string[] = [];
+    /** widget の出ている pending のコマ */
+    const pendingFrames: string[] = [];
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      const path = join(FRAMES, `frame.${String(frames.length + 1).padStart(4, '0')}.png`);
+      const current = await state();
+      const shown = current === 'pending' && (await widgetShown());
+      // ゲートの高さは確認欄の中身で変わるので、コマの大きさを揃えるため画面全体を撮る
+      await page.screenshot({ path, animations: 'disabled' });
+      frames.push(path);
+      if (shown) pendingFrames.push(path);
+      if (current !== 'pending') break;
+      await page.waitForTimeout(FRAME_MS);
+    }
+    const pending = pendingFrames[Math.floor(pendingFrames.length / 2)];
+    if (pending) copyFileSync(pending, out('21-exam-gate-attestation-pending.png'));
+    else console.warn('[shots] widget の出ている pending を撮れなかったので 21 を飛ばす');
+    await page.screenshot({ path: out('22-exam-gate-attestation-verified.png'), animations: 'disabled' });
+    const last = frames.at(-1);
+    if (last) for (let i = 0; i < 20; i++) frames.push(last);
+    bundleWebp(frames, out('23-exam-gate-attestation.webp'));
+    rmSync(FRAMES, { recursive: true, force: true });
   });
 
   // 11〜12 (#301): 分析器の失敗・時間切れを「シグナルなし」と区別する分析カード。同梱の分析器は通常の proof では

@@ -654,6 +654,9 @@ export const en: TranslationKeys = {
       errorUntrusted: 'This problem package could not be verified against a trusted exam authority signature.',
       errorWrongCode: 'Wrong proctor code. Please try again.',
       errorUnlockFailed: 'Unlock failed. Please check the package and the code.',
+      attestationPending: 'Checking that you are human. You can start without waiting for it.',
+      attestationVerified: 'Verified that you are human.',
+      attestationFailed: 'Could not verify that you are human. You can still start.',
     },
   },
 

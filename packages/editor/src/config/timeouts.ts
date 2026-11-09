@@ -28,3 +28,18 @@ export const PRE_EXPORT_VERIFICATION_BUDGET_MS = 15_000;
  * (`TabManager.signingOnlyToken`) として署名 cp の送信だけに使う (ADR-0017 / ADR-0027)。
  */
 export const TAB_CREATE_VERIFICATION_BUDGET_MS = PRE_EXPORT_VERIFICATION_BUDGET_MS;
+
+/**
+ * 署名専用 token (ADR-0027) の再取得のバックオフ (#236。`services/SigningTokenRetry.ts`)。
+ * 失敗 n 回目の後は `min(MAX, BASE·2^(n-1))` を上限とする `[上限/2, 上限]` の乱数だけ待つ
+ * (5 → 10 → 20 → … → 300 秒で頭打ち)。上限の 5 分は「弱回線で大人数が同時に叩かない間隔」として
+ * #236 で決めた値。
+ */
+export const SIGNING_TOKEN_RETRY_BASE_MS = 5_000;
+export const SIGNING_TOKEN_RETRY_MAX_MS = 5 * 60_000;
+
+/**
+ * `online` イベントで再取得を早めるときに散らす窓 (#236)。教室の端末が同じ瞬間に online へ戻っても、
+ * Turnstile + session/start をこの幅に一様に散らす (100 台で 1 秒あたり 7 本ほど)。
+ */
+export const SIGNING_TOKEN_ONLINE_JITTER_MS = 15_000;
