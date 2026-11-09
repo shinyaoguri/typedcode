@@ -652,6 +652,9 @@ export const ja: TranslationKeys = {
       errorUntrusted: 'この問題パッケージは信頼できる出題者の署名で検証できませんでした。',
       errorWrongCode: '監督コードが違います。もう一度入力してください。',
       errorUnlockFailed: '解錠に失敗しました。パッケージとコードを確認してください。',
+      attestationPending: '人であることを確認しています。確認を待たずに開始できます。',
+      attestationVerified: '人であることを確認しました。',
+      attestationFailed: '人であることを確認できませんでした。このまま開始できます。',
     },
   },
 

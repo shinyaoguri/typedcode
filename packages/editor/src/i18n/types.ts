@@ -669,6 +669,10 @@ export interface TranslationKeys {
       errorUntrusted: string;
       errorWrongCode: string;
       errorUnlockFailed: string;
+      /** ゲート内の人間確認 (Turnstile の先行取得。#236) */
+      attestationPending: string;
+      attestationVerified: string;
+      attestationFailed: string;
     };
   };
 
