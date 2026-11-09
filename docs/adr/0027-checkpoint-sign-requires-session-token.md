@@ -53,7 +53,9 @@
 ### Editor
 - `SignedCheckpointService` は `getSessionStartToken` でセッションレベルのトークンを毎回解決し、body に同送する。トークンが無い間は**送信せず待機** (401 の無駄打ちをしない)。`TOKEN_INVALID` / `TOKEN_SESSION_MISMATCH` は恒久失敗として署名を諦め queue を空にする (export の `waitForFlush` を空回りさせない)。`TOKEN_EXPIRED` (#227) は恒久失敗にしない: queue を保ち、期限切れと返された token では再送せず、`findSigningToken` (sessionId が一致する中で `issuedAt` 最新) が別の token を返したら再開する。
 - casual / class / assignment: root アンカー時に取得済みの token (先頭タブの `TypingProof.sessionStartToken`) をタブ横断で流用する。
-- **exam**: root は封印束縛 (ADR-0006) で session/start を通らないため、タブ生成/復元時に**非ブロッキング best-effort** で署名専用トークンを取得する (`TabManager.acquireSigningTokenBestEffort`)。UI は出さず、試験開始をブロックしない (ADR-0006 の絶対条件)。root には焼かず proof にも同梱しない。失敗時は署名なしで劣化 = オフライン exam と同等。
+- **exam**: root は封印束縛 (ADR-0006) で session/start を通らないため、タブ生成/復元時に**非ブロッキング best-effort** で署名専用トークンを取得する (`TabManager.acquireSigningToken`)。UI は出さず、試験開始をブロックしない (ADR-0006 の絶対条件)。root には焼かず proof にも同梱しない。失敗時は署名なしで劣化 = オフライン exam と同等。
+- **exam の #0 と先行取得 (2026-11-10、#236)**: 初回入場では、試験開始ゲート (`ExamStartGate`) の表示中に Turnstile + session/start を並行して先行取得する (`TabManager.startExamPreAttestation`。widget はゲートの中に描き、対話チャレンジもゲート内で解かせる。解錠前なので試験時間を使わない)。得た token は署名専用トークンにし、解錠の瞬間に決着していれば `#0 humanAttestation` を verified の印 (`session-start-token:<keyId>`) にする。未決着なら**待たずに** (猶予 0 秒) 合成の印で #0 を記録し、表示中のチャレンジを止め、遅れて届いた token は署名にだけ使う (#0 にも root にも焼かない)。#0 の `verified` は監査印で、保証の導出には使わない (ADR-0004)。
+- **署名専用トークンの再取得 (2026-11-10、#236)**: 取得に失敗した exam セッションは `SigningTokenRetry` が取り直す。同時 1 本・ジッタ付き指数バックオフ (失敗 n 回目の後は `min(5 分, 5 秒·2^(n-1))` を上限とする `[上限/2, 上限]` の乱数)・`online` イベントでバックオフを初期化して 15 秒の窓に散らす (教室の端末が同時に復帰しても session/start をバーストさせない)・オフラインの間は送らない。export・保存・救出はこの成否を待たない。回復後の checkpoint は同時代の時刻証拠として残るが、それより前の checkpoint を後から署名した分は post-hoc / sparse 扱いになりうる (保証ラベルの回復ではない)。
 
 ### 劣化モード (トークンが得られないセッション)
 - session/start 不達で開始したセッション (root 未アンカー) は署名済み checkpoint も持たない。ただし作成時の認証が予算 (`TAB_CREATE_VERIFICATION_BUDGET_MS`) を過ぎてから session/start の token が届いた場合は、それを exam と同じ署名専用 token (`signingOnlyToken`) として使い、以降の checkpoint と保留中の署名 (`retryPendingSignatures`) を署名する (root には焼かない。2026-11-05、#375)。これは ADR-0017 の劣化系列と整合する: root がアンカーされていない proof の署名 cp は保証への寄与が限定的で、strict 運用 (`--require-root-anchor`) では元々弾かれる。verifier は署名 cp の不在を「補助情報なし」として扱う (既存挙動、ADR-0004)。
@@ -73,7 +75,7 @@
 - `MAX_TABS_PER_SESSION` (64) を超える正規ユースケース (巨大 class バンドル) が現れたら定数を再検討する。
 
 ### Follow-ups / 残課題
-- token の能動的な再取得 (期限切れ時に Turnstile を再実行して署名専用 token を取り直す) は #236(b) で exam と共通化して扱う。入ったら `SESSION_TOKEN_MAX_AGE_MS` を 7 日へ縮められる。
+- token の能動的な再取得 (期限切れ時に Turnstile を再実行して署名専用 token を取り直す) は #236(b) で exam と共通化して扱う。入ったら `SESSION_TOKEN_MAX_AGE_MS` を 7 日へ縮められる。(2026-11-10 追記) #236 で入ったのは「token が無い exam セッションの再取得」(`SigningTokenRetry`) までで、`TOKEN_EXPIRED` を受けたときの取り直しと casual/class/assignment への適用はまだ無い。`SESSION_TOKEN_MAX_AGE_MS` を縮めるのはそれが入ってから。
 - DO 化の再評価トリガ (上記 3 条件) の観測を Workers Logs で行う (`[checkpoint] session token rejected` / firstSeenAt mismatch の頻度)。
 - `createTabFromTemplate` のバンドルタブ非アンカー (ADR-0017 follow-up) は本 ADR の範囲外のまま。
 
@@ -81,6 +83,7 @@
 
 - `packages/workers/src/checkpoint.ts` (token 検証・タブ台帳)
 - `packages/editor/src/services/SignedCheckpointService.ts` (送出ゲート・恒久失敗処理)
-- `packages/editor/src/ui/tabs/TabManager.ts` (`findSigningToken` / `acquireSigningTokenBestEffort`)
+- `packages/editor/src/ui/tabs/TabManager.ts` (`findSigningToken` / `acquireSigningToken` / `startExamPreAttestation`)
+- `packages/editor/src/services/SigningTokenRetry.ts` (署名専用 token の再取得。#236)
 - ADR-0003 (冪等署名リトライ・DO 却下), ADR-0004 (verifier の cp 姿勢), ADR-0006 (exam の可用性絶対条件), ADR-0017 (sessionStartToken)
 - Issue #136, #151 / PR #179 (クライアント側 firstSeenAt 緩和)
