@@ -1,5 +1,13 @@
 name: Labeler
 
+# PR の変更ファイルから pkg:* ラベルを付ける (.github/labeler.yml)。
+#
+# pull_request_target のままにしている理由 (ADR-0050 / #685): fork の PR にもラベルを付けるには
+# pull-requests: write が要るが、pull_request では fork の PR の GITHUB_TOKEN が read のみになる。
+# checkout はせず、PR のコードを実行しない (actions/labeler は変更ファイル名を API で読むだけ)。
+# GitHub は公開リポジトリの pull_request_target を既定でブロックするポリシーを 2026-12-02 に
+# 強制するので、それ以降は Settings → Actions → Policies で labeler.yml だけを対象に許可が要る。
+# 読むだけの検査 (pr-checks・pr-title) は pull_request へ移した。
 on: pull_request_target
 
 permissions:
