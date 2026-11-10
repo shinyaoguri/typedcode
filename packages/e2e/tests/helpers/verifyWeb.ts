@@ -221,6 +221,36 @@ export class VerifyWebApp {
   }
 
   /**
+   * `openFolder` で作った OPFS のフォルダ `folderName` の中の同名ファイルを、`path` の中身で上書きする (#695)。
+   * 外の編集ソフトでファイルを保存し直したのと同じく、ファイルの `lastModified` が変わるので、verify の
+   * フォルダ監視 (FolderSyncManager。3 秒間隔のポーリング) が変更として拾う。拾ったかどうかは待たない。
+   */
+  async overwriteFolderFile(folderName: string, path: string): Promise<void> {
+    const [file] = await readFilesForPage([path]);
+    await this.page.evaluate(
+      async ({ folderName, file }) => {
+        const root = await navigator.storage.getDirectory();
+        const dir = await root.getDirectoryHandle(folderName);
+        // keepExistingData を付けないので、書き込みは元の中身を捨てた全置換になる
+        const writable = await (await dir.getFileHandle(file.name)).createWritable();
+        await writable.write(Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0)));
+        await writable.close();
+      },
+      { folderName, file: file! }
+    );
+  }
+
+  /**
+   * 結果パネルのコードプレビュー (`#code-preview code`) の本文 (行番号を除く)。proof の `content` を表示する場所で、
+   * 判定ではないので状態契約の外 (どの proof の本文を出しているかを見るためだけに読む)。
+   */
+  async previewContent(): Promise<string> {
+    return this.page
+      .locator('#code-preview code .line-content')
+      .evaluateAll((lines) => lines.map((el) => el.textContent ?? '').join('\n'));
+  }
+
+  /**
    * サイドバーの全 `.file-item` の `data-status` が pending / verifying でなくなるまで待つ。
    * ZIP は展開後にまとめて行が増え、複数ファイルは 1 件ずつ処理されるので、「行が `minItems` 件
    * 以上ある」かつ「確定状態が 2 回続けて同じ」を完了とみなす (途中で 1 件目だけ確定した瞬間を

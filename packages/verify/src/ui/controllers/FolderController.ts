@@ -6,20 +6,32 @@ import { FolderSyncManager } from '../../services/FolderSyncManager';
 import type { ScreenshotService } from '../../services/ScreenshotService';
 import { collectFolderChainImageHashes, loadFolderScreenshots } from '../../services/folderScreenshotLoader';
 import type { FileProcessor, ParsedFileData } from '../../services/FileProcessor';
-import type { VerifyTabManager } from '../../state/VerifyTabManager';
-import type { VerificationQueue } from '../../state/VerificationQueue';
 import type { Sidebar } from '../Sidebar';
-import type { TabBar } from '../TabBar';
 import type { StatusBarUI } from '../StatusBarUI';
 import type { FSAccessFileEntry, HierarchicalFolder, VerifyScreenshot } from '../../types';
 import { t } from '../../i18n/index';
 
+/** フォルダの screenshots/ 配下の画像か (画像タブとして並べる。それ以外は FileProcessor で読む) */
+function isScreenshotImage(path: string): boolean {
+  return path.startsWith('screenshots/') && /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(path);
+}
+
+/** screenshots/ 配下の画像を、画像タブ用の ParsedFileData にする。 */
+async function readScreenshotImage(fileEntry: FSAccessFileEntry): Promise<ParsedFileData> {
+  const file = await fileEntry.handle.getFile();
+  return {
+    filename: fileEntry.name,
+    type: 'image',
+    language: 'image',
+    rawData: '',
+    relativePath: fileEntry.path,
+    imageBlob: new Blob([await file.arrayBuffer()], { type: file.type }),
+  };
+}
+
 export interface FolderControllerDependencies {
   fileProcessor: FileProcessor;
-  tabManager: VerifyTabManager;
-  verificationQueue: VerificationQueue;
   sidebar: Sidebar;
-  tabBar: TabBar;
   statusBar: StatusBarUI;
   generateId: () => string;
   addFileToVerification: (
@@ -32,6 +44,8 @@ export interface FolderControllerDependencies {
   ) => void;
   addPlaintextFile: (fileData: ParsedFileData, folderId?: string) => void;
   addImageFile: (fileData: ParsedFileData, folderId?: string) => void;
+  /** 外部で変更されたファイルを、同じタブ ID で取り込み直す (#695) */
+  replaceFile: (tabId: string, fileData: ParsedFileData) => void;
   /** 読み込んだファイルが揃ったところで、同梱ソースと proof.content を照合する (#293) */
   settleSubmission: () => void;
   onScreenshotServiceUpdate?: (service: ScreenshotService) => void;
@@ -189,33 +203,15 @@ export class FolderController {
     const parentPath = fileEntry.path.split('/').slice(0, -1).join('/');
     const folderId = folderMap.get(parentPath);
 
-    // 画像ファイルかどうかを判定
-    const isImage = /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(filename);
-
-    // screenshots フォルダ内のファイルを特別処理
-    if (fileEntry.path.startsWith('screenshots/')) {
-      if (isImage) {
-        // 画像ファイルをファイル一覧に追加（クリックでプレビュー表示）
-        try {
-          const file = await fileEntry.handle.getFile();
-          const blob = new Blob([await file.arrayBuffer()], { type: file.type });
-          this.deps.addImageFile(
-            {
-              filename,
-              type: 'image',
-              language: 'image',
-              rawData: '',
-              relativePath: fileEntry.path,
-              imageBlob: blob,
-            },
-            folderId
-          );
-        } catch (error) {
-          console.error('Error loading image:', fileEntry.path, error);
-        }
-        return;
+    // screenshots フォルダ内の画像は、ファイル一覧に画像として追加する (クリックでプレビュー表示)。
+    // manifest.json やその他のテキストファイルは通常処理
+    if (isScreenshotImage(fileEntry.path)) {
+      try {
+        this.deps.addImageFile(await readScreenshotImage(fileEntry), folderId);
+      } catch (error) {
+        console.error('Error loading image:', fileEntry.path, error);
       }
-      // manifest.json やその他のテキストファイルは通常処理
+      return;
     }
 
     // ZIPファイルを階層的に処理
@@ -297,47 +293,23 @@ export class FolderController {
 
   /**
    * 外部でファイルが変更された時の処理
+   *
+   * 同じタブ ID での取り込み直し (#695)。状態の組み立ては FileController (`replaceFile`) が初回取り込みと
+   * 同じ関数で行う。ここで tabManager / 検証キューを直接触って状態を部分的に作り直さない (古い本文と
+   * 新しい検証結果が混ざる)。
    */
   private async handleExternalFileModified(file: FSAccessFileEntry): Promise<void> {
     const existingFileId = this.deps.sidebar.getFileIdByPath(file.path);
     if (!existingFileId) return;
 
     try {
-      const result = await this.deps.fileProcessor.processFromHandle(file.handle, file.path);
-      if (!result.success || result.files.length === 0) return;
-
-      const fileData = result.files[0];
+      // 読み方は初回取り込み (processFileFromHandle) と同じ: screenshots/ の画像は Blob、それ以外は FileProcessor
+      const fileData = isScreenshotImage(file.path)
+        ? await readScreenshotImage(file)
+        : (await this.deps.fileProcessor.processFromHandle(file.handle, file.path)).files[0];
       if (!fileData) return;
 
-      const tabState = this.deps.tabManager.getTab(existingFileId);
-
-      if (tabState) {
-        // 既存のタブ状態を更新
-        if (fileData.type === 'proof') {
-          // 検証ファイルの場合、再検証
-          this.deps.tabManager.updateTab(existingFileId, {
-            status: 'pending',
-            progress: 0,
-            verificationResult: null,
-          });
-          this.deps.sidebar.updateFileStatus(existingFileId, 'pending');
-          this.deps.tabBar.updateTabStatus(existingFileId, 'pending', 0);
-
-          this.deps.verificationQueue.enqueue({
-            id: existingFileId,
-            filename: fileData.filename,
-            rawData: fileData.rawData,
-          });
-        } else {
-          // プレーンテキストの場合、内容を更新
-          this.deps.tabManager.updateTab(existingFileId, {
-            plaintextContent: fileData.rawData,
-          });
-
-          // TODO: アクティブタブなら再表示する仕組みが必要
-        }
-      }
-
+      this.deps.replaceFile(existingFileId, fileData);
       this.deps.statusBar.setMessage(`${t('messages.fileUpdated')}: ${file.name}`);
     } catch (error) {
       console.error('Error processing modified file:', error);

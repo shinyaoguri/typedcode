@@ -46,23 +46,110 @@ function pickFile(accept: string): Promise<File | null> {
   });
 }
 
+/** proof として読めたか (#292)。読めなければ、タブ / 行に出すエラー文言を持つ。 */
+type ProofReading = { ok: true; proofData: ProofFile } | { ok: false; error: string };
+
+/** rawData を proof として読む。JSON 破損と proof 構造なしを区別したエラー文言にする (#292)。 */
+function readProof(filename: string, rawData: string): ProofReading {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawData);
+  } catch (error) {
+    console.error('Error parsing JSON:', error);
+    return { ok: false, error: t('errors.jsonParseError', { filename }) };
+  }
+  if (!isProofFile(parsed)) return { ok: false, error: t('errors.proofNotAProof', { filename }) };
+  return { ok: true, proofData: parsed as unknown as ProofFile };
+}
+
+/**
+ * 取り込み時にコンテナ (ZIP・フォルダ) が渡した入力。proof の中身からは決まらないので、
+ * 外部更新で同じタブを取り込み直すときはこれを使い回し、proof 由来の状態だけを取り直す (#695)。
+ */
+interface ImportInput {
+  /** 取り込んだときのファイル名 (照合の path・エラー文言・キューの filename) */
+  filename: string;
+  folderId?: string;
+  screenshots?: VerifyScreenshot[];
+  /** コンテナが渡した記録開始時刻。無ければ proof から計算する */
+  startTimestamp?: number;
+}
+
+/**
+ * proof タブの状態のうち、取り込んだ proof (と取り込みの入力) から決まるもの一式。
+ * 初回取り込みも外部更新もこれで組み立てる (#695)。一部だけ差し替えると、表示する本文と
+ * 検証した証明が別物になる (古い proofData と新しい検証結果が混ざる)。
+ */
+function proofSnapshot(input: ImportInput, reading: ProofReading): Omit<VerifyTabState, 'id' | 'filename'> {
+  const reset = {
+    progress: 0,
+    progressDetails: undefined,
+    verificationResult: null,
+    examManifest: undefined,
+    associatedSourceMismatch: undefined,
+  };
+  if (!reading.ok) {
+    return {
+      ...reset,
+      language: 'unknown',
+      status: 'error',
+      proofData: null,
+      error: reading.error,
+      screenshots: undefined,
+      startTimestamp: undefined,
+    };
+  }
+  const { proofData } = reading;
+  return {
+    ...reset,
+    // proof.json は攻撃者が組み立てられる入力。自己申告の language をそのまま状態に入れると
+    // 表示層の className に届く (#248)。取り込み口で allowlist に落とす。
+    language: normalizeProofLanguage(proofData.language),
+    status: 'pending',
+    proofData,
+    error: undefined,
+    screenshots: input.screenshots,
+    startTimestamp: input.startTimestamp || computeStartTimestamp(proofData),
+  };
+}
+
+/** 同梱ソース候補の照合の材料。比較はバイト厳密なので、BOM を落とさない生バイトを優先する (#293)。 */
+function sourceMaterial(fileData: ParsedFileData): { bytes: Uint8Array; text: string } {
+  return {
+    // バイト列を持たない入力 (他の経路) は再符号化で代える。BOM はここで失われるので、持てる経路では持たせている。
+    bytes: fileData.rawBytes ?? new TextEncoder().encode(fileData.rawData),
+    text: fileData.rawData,
+  };
+}
+
+/** コンテナが記録開始時刻を渡さなかったとき、export 時刻から最後のイベントの経過時間を引いて求める。 */
+function computeStartTimestamp(proofData: ProofFile): number | undefined {
+  const events = proofData.proof?.events;
+  if (!proofData.metadata?.timestamp || !(events?.length > 0)) return undefined;
+  const totalTime = events[events.length - 1]?.timestamp ?? 0;
+  return new Date(proofData.metadata.timestamp).getTime() - totalTime;
+}
+
 export interface FileControllerDependencies {
   fileProcessor: FileProcessor;
   tabManager: VerifyTabManager;
   uiState: UIStateManager;
-  verificationQueue: VerificationQueue;
+  /** `remove` は外部更新で取り込み直すとき、旧 proof の検証を止めるのに使う (#695) */
+  verificationQueue: Pick<VerificationQueue, 'enqueue' | 'remove' | 'reverifyWithManifest'>;
   sidebar: Sidebar;
   statusBar: StatusBarUI;
   generateId: () => string;
   onScreenshotServiceUpdate?: (service: ScreenshotService) => void;
   onStatusBarUpdate?: () => void;
   /** 開いているタブの見た目を更新する (照合結果が後から付いたとき用。タブが開いていなければ何もしない) */
-  tabBar?: { hasTab(id: string): boolean; updateTabStatus(id: string, status: TabStatus): void };
+  tabBar?: { hasTab(id: string): boolean; updateTabStatus(id: string, status: TabStatus, progress?: number): void };
   /**
    * 検証済みの proof タブに提出物の照合結果が付いた / 変わったときの通知。status の出所は
    * VerificationController なので、再計算はそちらに任せる (ここで status を導出し直さない)。
    */
   onSubmissionChange?: (tabId: string) => void;
+  /** 外部更新でタブを取り込み直したときの通知 (表示中なら描き直す。#695) */
+  onFileReplaced?: (tabId: string) => void;
 }
 
 /**
@@ -84,6 +171,9 @@ export class FileController {
    * 「欠落」に見える)。対応規則と比較は shared の `matchSubmissionSources` が持つ (verify-cli と同一実装)。
    */
   private submissionFolders: Map<string, SubmissionFolder> = new Map();
+
+  /** タブ ID -> 取り込み時のコンテナ由来の入力。外部更新 (`replaceFile`) で使い回す (#695) */
+  private importInputs: Map<string, ImportInput> = new Map();
 
   constructor(deps: FileControllerDependencies) {
     this.deps = deps;
@@ -254,14 +344,13 @@ export class FileController {
   addPlaintextFile(fileData: ParsedFileData, folderId?: string): void {
     const id = this.deps.generateId();
     const displayName = this.deps.uiState.generateDisplayName(fileData.filename, folderId);
+    this.importInputs.set(id, { filename: fileData.filename, folderId });
 
     if (folderId && isSubmissionSourceEntry(fileData.filename)) {
       this.submissionFolderOf(folderId).sources.push({
         tabId: id,
         path: fileData.filename,
-        // バイト列を持たない入力 (他の経路) は再符号化で代える。BOM はここで失われるので、持てる経路では持たせている。
-        bytes: fileData.rawBytes ?? new TextEncoder().encode(fileData.rawData),
-        text: fileData.rawData,
+        ...sourceMaterial(fileData),
       });
     }
 
@@ -284,6 +373,8 @@ export class FileController {
       filename: displayName,
       status: 'success',
       folderId,
+      // FSA フォルダの監視が外部更新・削除をパスで引く (#695。無いと同梱ソースの更新が届かない)
+      relativePath: fileData.relativePath,
       isProof: false, // プレーンテキストファイル
     });
 
@@ -296,6 +387,7 @@ export class FileController {
   addImageFile(fileData: ParsedFileData, folderId?: string): void {
     const id = this.deps.generateId();
     const displayName = this.deps.uiState.generateDisplayName(fileData.filename, folderId);
+    this.importInputs.set(id, { filename: fileData.filename, folderId });
 
     // Add to tab manager (image file - no verification)
     this.deps.tabManager.addTab({
@@ -316,6 +408,7 @@ export class FileController {
       filename: displayName,
       status: 'success',
       folderId,
+      relativePath: fileData.relativePath, // FSA フォルダの監視がパスで引く (#695)
       isProof: false,
       isImage: true, // 画像ファイル
     });
@@ -325,6 +418,9 @@ export class FileController {
 
   /**
    * 検証用ファイルを追加
+   *
+   * proof として読めないファイルは黙って捨てず、error のタブ/行として残す (#292)。
+   * 壊れた proof を消すと、そのタブが未検証のまま全体が通ったように見える。検証キューには載せない。
    */
   addFileToVerification(
     filename: string,
@@ -340,135 +436,135 @@ export class FileController {
       startTimestamp,
     });
 
-    // proof として読めないファイルは黙って捨てず、error のタブ/行として残す (#292)。
-    // 壊れた proof を消すと、そのタブが未検証のまま全体が通ったように見える。
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(rawData);
-    } catch (error) {
-      console.error('Error parsing JSON:', error);
-      this.addUnreadableProof(filename, t('errors.jsonParseError', { filename }), folderId, relativePath);
-      return;
+    const id = this.deps.generateId();
+    // 表示名を生成（重複がある場合は番号を付ける）
+    const displayName = this.deps.uiState.generateDisplayName(filename, folderId);
+    const input: ImportInput = { filename, folderId, screenshots, startTimestamp };
+    this.importInputs.set(id, input);
+
+    const reading = readProof(filename, rawData);
+    this.registerProofMaterial(id, input, reading);
+    const snapshot = proofSnapshot(input, reading);
+
+    this.deps.tabManager.addTab({ id, filename: displayName, ...snapshot });
+    this.deps.sidebar.addFile({
+      id,
+      filename: displayName,
+      status: snapshot.status as FileStatus,
+      folderId, // フォルダに属する場合
+      relativePath, // File System Access API用のパス
+      isProof: true, // 検証用ファイル
+    });
+
+    this.deps.uiState.incrementTotal();
+    if (reading.ok) {
+      this.deps.verificationQueue.enqueue({ id, filename, rawData });
+    } else {
+      // 読めない proof は総数と完了数の両方に数える (handleError と同じ。片方だけだと進捗表示が終わらない)。
+      this.deps.uiState.incrementCompleted();
+      this.deps.statusBar.setError(reading.error);
     }
-    if (!isProofFile(parsed)) {
-      this.addUnreadableProof(filename, t('errors.proofNotAProof', { filename }), folderId, relativePath);
-      return;
+
+    this.deps.onStatusBarUpdate?.();
+  }
+
+  /**
+   * 外部更新 (FSA フォルダの監視) で変わったファイルを、同じタブ ID で取り込み直す (#695)。
+   *
+   * 初回取り込みと同じ関数 (`readProof` / `proofSnapshot` / `sourceMaterial`) で、表示状態・照合の材料・
+   * 検証の対象を新しい内容の 1 スナップショットに揃える。コンテナ由来の入力 (フォルダ・スクリーンショット・
+   * 記録開始時刻) は取り込み時のものを使い回す。タブの種類 (proof / 平文 / 画像) は取り込み時のまま。
+   */
+  replaceFile(tabId: string, fileData: ParsedFileData): void {
+    const tab = this.deps.tabManager.getTab(tabId);
+    if (!tab) return;
+    const input = this.importInputs.get(tabId) ?? { filename: fileData.filename };
+
+    if (tab.isPlaintext) {
+      this.deps.tabManager.updateTab(tabId, { plaintextContent: fileData.rawData });
+      const source = this.findSourceMaterial(tabId);
+      if (source) Object.assign(source, sourceMaterial(fileData));
+    } else if (tab.isImage) {
+      this.deps.tabManager.updateTab(tabId, { imageBlob: fileData.imageBlob });
+    } else {
+      this.replaceProof(tabId, tab.status, input, fileData.rawData);
     }
 
-    try {
-      const proofData = parsed as unknown as ProofFile;
-      const id = this.deps.generateId();
+    if (input.folderId) this.settleSubmission(input.folderId);
+    this.deps.onFileReplaced?.(tabId);
+    this.deps.onStatusBarUpdate?.();
+  }
 
-      // 表示名を生成（重複がある場合は番号を付ける）
-      const displayName = this.deps.uiState.generateDisplayName(filename, folderId);
+  /** proof タブを新しい rawData で取り込み直す。旧 proof の検証は止め、遅れて届く旧結果は queue が捨てる。 */
+  private replaceProof(
+    tabId: string,
+    previousStatus: VerifyTabState['status'],
+    input: ImportInput,
+    rawData: string
+  ): void {
+    this.deps.verificationQueue.remove(tabId);
 
-      // 提出物照合の材料として登録 (#293)。自己申告の欄は未検証なので unknown のまま渡す。
-      if (folderId) {
-        const claim = parsed as { filename?: unknown; language?: unknown; content?: unknown };
-        this.submissionFolderOf(folderId).proofs.push({
-          tabId: id,
-          path: filename,
-          filename: claim.filename,
-          language: claim.language,
-          content: claim.content,
-        });
-      }
+    const reading = readProof(input.filename, rawData);
+    this.registerProofMaterial(tabId, input, reading);
+    const snapshot = proofSnapshot(input, reading);
+    this.deps.tabManager.updateTab(tabId, snapshot);
 
-      // startTimestampが渡されていない場合は計算
-      let computedStartTimestamp = startTimestamp;
-      if (!computedStartTimestamp && proofData.metadata?.timestamp && proofData.proof?.events?.length > 0) {
-        const exportedAt = proofData.metadata.timestamp;
-        const totalTime = proofData.proof.events[proofData.proof.events.length - 1]?.timestamp ?? 0;
-        const exportTimestamp = new Date(exportedAt).getTime();
-        computedStartTimestamp = exportTimestamp - totalTime;
-      }
+    const status = snapshot.status as FileStatus;
+    this.deps.sidebar.updateFileStatus(tabId, status, 0);
+    if (this.deps.tabBar?.hasTab(tabId)) this.deps.tabBar.updateTabStatus(tabId, status as TabStatus, 0);
 
-      // Add to tab manager (state management)
-      this.deps.tabManager.addTab({
-        id,
-        filename: displayName,
-        // proof.json は攻撃者が組み立てられる入力。自己申告の language をそのまま状態に入れると
-        // 表示層の className に届く (#248)。取り込み口で allowlist に落とす。
-        language: normalizeProofLanguage(proofData.language),
-        status: 'pending',
-        progress: 0,
-        proofData,
-        verificationResult: null,
-        screenshots, // スクリーンショットを保存
-        startTimestamp: computedStartTimestamp,
-      });
-
-      // Add to sidebar (file list)
-      this.deps.sidebar.addFile({
-        id,
-        filename: displayName,
-        status: 'pending',
-        folderId, // フォルダに属する場合
-        relativePath, // File System Access API用のパス
-        isProof: true, // 検証用ファイル
-      });
-
-      // Track counts
-      this.deps.uiState.incrementTotal();
-
-      // Enqueue for verification
-      this.deps.verificationQueue.enqueue({
-        id,
-        filename,
-        rawData,
-      });
-
-      // Update status bar
-      this.deps.onStatusBarUpdate?.();
-    } catch (error) {
-      console.error('Error adding proof for verification:', error);
-      this.deps.statusBar.setError(t('errors.jsonParseError', { filename }));
+    // 「検証中 N/M」を合わせる。検証中だった旧 proof の完了は二度と来ない (TabController.forgetFile と同じ考え方)。
+    const wasInFlight = previousStatus === 'pending' || previousStatus === 'verifying';
+    if (reading.ok) {
+      // 済んでいた proof を検証に回し直すなら、総数に 1 件足す (完了したときに済みへ数えられる)
+      if (!wasInFlight) this.deps.uiState.incrementTotal();
+      this.deps.verificationQueue.enqueue({ id: tabId, filename: input.filename, rawData });
+    } else {
+      // 検証中だった proof が読めなくなったら、検証の完了を待たずに済みへ数える
+      if (wasInFlight) this.deps.uiState.incrementCompleted();
+      this.deps.statusBar.setError(reading.error);
     }
   }
 
   /**
-   * proof として読めなかったファイルを、検証 error のタブ/サイドバー行として追加する (#292)。
-   * 検証キューには載せない (検証できないので結果は付かない)。通常の検証失敗 (handleError) と同じ
-   * `status: 'error'` なので、サイドバー/タブの `data-status` 契約もそのまま error になる。
+   * proof タブを提出物照合の材料に登録する (#293)。登録済みなら位置を保って差し替える
+   * (読める ↔ 読めないの入れ替えは、もう片方の一覧から外して移す)。
+   * 自己申告の欄は未検証なので unknown のまま渡す。読めない proof もタブ番号の欠番として渡す
+   * (後続タブのソース名を確定できなくなる)。
    */
-  private addUnreadableProof(
-    filename: string,
-    error: string,
-    folderId: string | undefined,
-    relativePath: string | undefined
-  ): void {
-    const id = this.deps.generateId();
-    const displayName = this.deps.uiState.generateDisplayName(filename, folderId);
+  private registerProofMaterial(tabId: string, input: ImportInput, reading: ProofReading): void {
+    if (!input.folderId) return;
+    const folder = this.submissionFolderOf(input.folderId);
+    const proofAt = folder.proofs.findIndex((p) => p.tabId === tabId);
+    const unreadableAt = folder.unreadable.findIndex((u) => u.tabId === tabId);
 
-    // 読めない proof もタブ番号の欠番として照合に渡す (後続タブのソース名を確定できなくなる, #293)
-    if (folderId) this.submissionFolderOf(folderId).unreadable.push({ tabId: id, path: filename });
+    if (reading.ok) {
+      const claim = reading.proofData as { filename?: unknown; language?: unknown; content?: unknown };
+      const entry = {
+        tabId,
+        path: input.filename,
+        filename: claim.filename,
+        language: claim.language,
+        content: claim.content,
+      };
+      if (unreadableAt !== -1) folder.unreadable.splice(unreadableAt, 1);
+      if (proofAt !== -1) folder.proofs[proofAt] = entry;
+      else folder.proofs.push(entry);
+    } else {
+      const entry = { tabId, path: input.filename };
+      if (proofAt !== -1) folder.proofs.splice(proofAt, 1);
+      if (unreadableAt !== -1) folder.unreadable[unreadableAt] = entry;
+      else folder.unreadable.push(entry);
+    }
+  }
 
-    this.deps.tabManager.addTab({
-      id,
-      filename: displayName,
-      language: 'unknown',
-      status: 'error',
-      progress: 0,
-      proofData: null,
-      verificationResult: null,
-      error,
-    });
-
-    this.deps.sidebar.addFile({
-      id,
-      filename: displayName,
-      status: 'error',
-      folderId,
-      relativePath,
-      isProof: true,
-    });
-
-    // 総数と完了数の両方に数える (handleError と同じ。片方だけだと進捗表示が終わらない)。
-    this.deps.uiState.incrementTotal();
-    this.deps.uiState.incrementCompleted();
-
-    this.deps.statusBar.setError(error);
-    this.deps.onStatusBarUpdate?.();
+  /** 同梱ソース候補として登録したタブの照合の材料 (候補でなければ undefined)。 */
+  private findSourceMaterial(tabId: string): SubmissionFolder['sources'][number] | undefined {
+    for (const folder of this.submissionFolders.values()) {
+      const source = folder.sources.find((s) => s.tabId === tabId);
+      if (source) return source;
+    }
+    return undefined;
   }
 
   /**
@@ -477,6 +573,7 @@ export class FileController {
    */
   forgetSubmissionFiles(tabIds: readonly string[]): void {
     const gone = new Set(tabIds);
+    for (const id of gone) this.importInputs.delete(id);
     for (const folder of this.submissionFolders.values()) {
       folder.proofs = folder.proofs.filter((p) => !gone.has(p.tabId));
       folder.unreadable = folder.unreadable.filter((u) => !gone.has(u.tabId));
