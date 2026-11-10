@@ -168,7 +168,8 @@ gh run list --branch main -L 1
 gh release create vX.Y.Z --target main --title "vX.Y.Z" --generate-notes
 ```
 
-- タグ push で CI (test/check/e2e) が再実行され、green 後に **production デプロイが承認待ち**になる。Actions タブで Approve すると本番反映。
+- タグ push で CI (test/check/e2e) と `nightly-gate` が走り、すべて green 後に **production デプロイが承認待ち**になる。`nightly-gate` は main の `e2e-nightly.yml` の最新の完了 run が `success` のときだけ通る (#593)。進行中は飛ばすが、失敗・cancelled・完了 run なし・API 取得失敗は拒否する。タグと nightly の SHA 一致は要求しない。
+- `nightly-gate` が落ちたら、原因を直し、`gh workflow run e2e-nightly.yml --ref main` で nightly を走らせて成功を待つ。その後、タグの Deploy run の失敗 job を re-run する (`gh run rerun <Deploy-run-id> --failed`、または Actions の Re-run failed jobs)。タグの付け替えは不要。ゲートは環境を持たない別 job なので、本番の承認待ちより前に止まる。
 - タグは main の履歴上のコミットにのみ有効 (CI が ancestor 検証で強制)。
 - **タグの付け替え・削除はしない** (ruleset でも禁止)。本番が壊れたら、まず下の「[本番を戻す](#本番を戻す-ロールバック)」で直前のデプロイへ戻し、fix を入れて**次のパッチタグ**で前へ進める。
 - 破壊的な証明フォーマット変更は `PROOF_FORMAT_VERSION` とも対応させる。
@@ -231,7 +232,7 @@ npx wrangler rollback <version-id> --config wrangler.staging.toml --message "<�
 
 ## 本番緊急修正 (hotfix)
 
-専用ブランチはありません。通常フローの最短経路で回します:
+専用ブランチはありません。通常フローの最短経路で回します。本番緊急修正も `nightly-gate` を通します。赤なら上の「リリース」の復旧手順で nightly を緑にしてから失敗 job を再実行します:
 
 ```bash
 git fetch origin
