@@ -46,7 +46,7 @@ src/
 | `/api/session/start` | POST | **ADR-0017**: Turnstile 検証 → `serverNonce` 入り ECDSA-P256 署名トークンを発行。クライアントは serverNonce を chain root に焼く。署名鍵は checkpoint と同一系統 (`getSigningKey`) |
 | `/api/checkpoint/sign` | POST | 未署名 cp に ECDSA-P256 署名 + `serverTimestamp` 付与。**`sessionStartToken` 前提** (ADR-0027: body に同送された token を registry で検証し `sessionId` 一致を要求) |
 | `/api/checkpoint/public-keys` | GET | 公開鍵レジストリ取得 (検証側のキャッシュ用) |
-| `/health` | GET | ヘルスチェック。dev (`npm run dev` の `--var DEV_WORKTREE_ID`) では作業ツリーの識別子 `worktree` も返す (e2e の照合用。#552)。staging / production の応答は `{ status, environment }` のまま |
+| `/health` | GET | ヘルスチェック。dev (`npm run dev` の `--var DEV_WORKTREE_ID`) では作業ツリーの識別子 `worktree` も返す (e2e の照合用。#552)。署名鍵の readiness は [README の `/health`](README.md#get-health) を参照 |
 
 `/api/session/start` (ADR-0017) は **Turnstile ゲート + root アンカー + 人間ゲート**を 1 リクエストで兼ねる。`handleSessionStart` (`src/index.ts`) が `verifyTurnstile` + hostname 照合 → `getSigningKey` (checkpoint.ts から export、鍵流用) で `createSessionStartToken` を署名発行。**KV を使わない** (ステートレス・冪等不要)。入力検証は shared の `validateSessionStartInput` (sessionId / fingerprintHash)。トークン検証 (registry-only) は shared の `verifySessionStartToken`。
 
@@ -280,7 +280,7 @@ main ブランチ push
    ↓
 [CI] test → deploy-staging (auto)
    ↓
-staging URL で動作確認 (staging.<project>.pages.dev)
+post-deploy 検査 (ヘッダ・署名鍵・CORS) → staging のブラウザ E2E
    ↓ gh release create vX.Y.Z (タグ push)
 [CI] test → deploy-production (承認待ち)
    ↓ Actions タブで Approve

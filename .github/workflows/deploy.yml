@@ -409,6 +409,13 @@ jobs:
             echo "::warning::Pages の deployment-url から deployment の label を取り出せない (e2e-staging は落ちる)"
           fi
 
+      - name: Check deployed Pages headers, signing health and CORS
+        run: node scripts/post-deploy-check.mjs
+        env:
+          PAGES_URL: https://staging.typedcode.pages.dev
+          API_URL: ${{ secrets.VITE_API_URL }}
+          CHECK_ORIGINS: https://staging.typedcode.pages.dev
+
   # --------------------------------------------------------------------
   # main push: deploy した staging の配信物をブラウザで round-trip する (#655)
   # 上の e2e は手元のサーバ (vite dev / 手元の dist + wrangler dev) が相手で、secrets を入れて build した
@@ -554,3 +561,10 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=main --commit-hash=${{ github.sha }} --commit-message="${{ github.sha }}"
+
+      - name: Check deployed Pages headers, signing health and CORS
+        run: node scripts/post-deploy-check.mjs
+        env:
+          PAGES_URL: https://typedcode.dev
+          API_URL: ${{ secrets.VITE_API_URL }}
+          CHECK_ORIGINS: https://typedcode.dev,https://typedcode.pages.dev

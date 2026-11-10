@@ -6,6 +6,7 @@
 import { handleSignCheckpoint, handlePublicKeys, getSigningKey, type CheckpointEnv } from './checkpoint.js';
 import { createSessionStartToken, validateSessionStartInput, arrayBufferToHex } from '@typedcode/shared/checkpoint';
 import type { SessionStartToken } from '@typedcode/shared/checkpoint';
+import { checkSigningHealth } from './health.js';
 import { MAX_JSON_BODY_BYTES, MAX_TURNSTILE_TOKEN_LENGTH, readJsonBodyLimited, type ReadJsonResult } from './body.js';
 
 interface Env extends CheckpointEnv {
@@ -453,12 +454,16 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   // ヘルスチェック
   if (url.pathname === '/health') {
-    // worktree は dev で DEV_WORKTREE_ID を渡したときだけ付ける (staging / production の応答は変えない)
-    const health = env.DEV_WORKTREE_ID
-      ? { status: 'ok', environment: env.ENVIRONMENT, worktree: env.DEV_WORKTREE_ID }
-      : { status: 'ok', environment: env.ENVIRONMENT };
+    const signing = await checkSigningHealth(env);
+    const health = {
+      status: signing.ok ? 'ok' : 'error',
+      environment: env.ENVIRONMENT,
+      signing,
+      ...(env.DEV_WORKTREE_ID ? { worktree: env.DEV_WORKTREE_ID } : {}),
+    };
     return new Response(JSON.stringify(health), {
-      headers: { 'Content-Type': 'application/json' },
+      status: signing.ok ? 200 : 503,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
     });
   }
 

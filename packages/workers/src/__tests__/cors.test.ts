@@ -140,9 +140,9 @@ describe('security headers', () => {
     expectSecurityHeaders(res);
   });
 
-  it('is set on /health', async () => {
+  it('is set on /health even when the signing key is missing', async () => {
     const res = await worker.fetch(new Request('https://api.test/health'), env());
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
     expectSecurityHeaders(res);
   });
 
