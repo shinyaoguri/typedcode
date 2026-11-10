@@ -170,6 +170,10 @@ export class AppController {
       tabBar: this.tabBar,
       // 提出物の照合結果 (#293) が検証後に付いたタブの status を、出所 (VerificationController) で付け直す
       onSubmissionChange: (id) => this.verificationController.recomputeStatus(id),
+      // 外部更新で取り込み直したタブが表示中なら描き直す (#695。本文・結果を新しい内容に揃える)
+      onFileReplaced: (id) => {
+        if (this.tabController.getActiveTabId() === id) this.tabController.showTabContent(id, true);
+      },
     });
 
     // 試験束縛カード (ADR-0006) の「問題パッケージを読み込む」: アクティブタブに .tcexam を読み込み再検証。
@@ -188,10 +192,7 @@ export class AppController {
     // Initialize FolderController
     this.folderController = new FolderController({
       fileProcessor: this.fileProcessor,
-      tabManager: this.tabManager,
-      verificationQueue: this.verificationQueue,
       sidebar: this.sidebar,
-      tabBar: this.tabBar,
       statusBar: this.statusBar,
       generateId: () => this.generateId(),
       addFileToVerification: (filename, rawData, folderId, relativePath, screenshots, startTimestamp) => {
@@ -206,6 +207,7 @@ export class AppController {
       },
       addPlaintextFile: (fileData, folderId) => this.fileController.addPlaintextFile(fileData, folderId),
       addImageFile: (fileData, folderId) => this.fileController.addImageFile(fileData, folderId),
+      replaceFile: (id, fileData) => this.fileController.replaceFile(id, fileData),
       settleSubmission: () => this.fileController.settleSubmission(),
       onScreenshotServiceUpdate: (service) => this.chartController.updateScreenshotService(service),
       onStatusBarUpdate: () => this.updateStatusBar(),
