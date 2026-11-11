@@ -12,6 +12,7 @@ import {
   writeZipVariant,
 } from './helpers/app.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
+import { loadExamFixture } from './helpers/examFixture.js';
 import { failStorageProbe } from './helpers/faults.js';
 import {
   SAMPLE_PROBLEM_EXAMPLES,
@@ -150,6 +151,15 @@ const SHOTS = [
   {
     file: '23-exam-gate-attestation.webp',
     caption: 'エディタ (試験モード): 試験開始ゲートを開いてから人間確認が済むまでの動き (#236)',
+  },
+  {
+    file: '24-verify-exam-starter-pass.png',
+    caption: '検証 Web: 試験束縛カードで、封印 starter と templateInjection が一致したときの Starter 行 (PASS。#718)',
+  },
+  {
+    file: '25-verify-exam-starter-fail.png',
+    caption:
+      '検証 Web: 試験束縛カードで、封印 starter と違う内容を templateInjection で注入した proof の Starter 行 (FAIL と理由。#718)',
   },
 ] as const;
 
@@ -611,5 +621,67 @@ test.describe('見た目・動きの証跡 @shots', () => {
     bundleWebp(frames, out('08-verify-cancel.webp'));
     rmSync(FRAMES, { recursive: true, force: true });
     await page.screenshot({ path: out('07-verify-cancelled.png'), animations: 'disabled' });
+  });
+
+  // 24〜25 (#718): 試験束縛カードの Starter 行。正規に解錠した proof (PASS) と、改造クライアントの再現で
+  // 封印 starter と違う内容を templateInjection として注入した proof (FAIL) を、同じ操作で verify Web に入れて撮る。
+  // base (Starter 行の無い版) ではカードの他の行だけが写る。exam fixture が無いときは飛ばす。
+  const examStarterShot = async (page: Page, file: ShotFile, forged: string | null): Promise<void> => {
+    const fixture = loadExamFixture();
+    if (!fixture) {
+      console.warn('[shots] exam fixture が無いので試験束縛カードの撮影を飛ばす (npm run setup -w @typedcode/e2e)');
+      return;
+    }
+    const app = new EditorApp(page);
+    await app.openModeFresh('exam', { screenShare: 'share', waitReady: false });
+    await expect.poll(() => app.appState()).toBe('gate');
+    await expect(page.locator('#exam-gate-attestation')).toHaveAttribute('data-attestation-state', 'verified', {
+      timeout: 30_000,
+    });
+    await app.unlockExam(fixture.packagePath, fixture.code);
+    if (forged !== null) {
+      await page.evaluate(async (content) => {
+        const forge = (window as unknown as { __tcTestForgeTemplateInjection?: (c: string) => Promise<void> })
+          .__tcTestForgeTemplateInjection;
+        if (!forge) throw new Error('__tcTestForgeTemplateInjection is not available (dev build only)');
+        await forge(content);
+      }, forged);
+    }
+    await app.typeCode('// done\n');
+    await app.waitForSynced();
+    const zipPath = await app.exportViaLogButton();
+
+    // 試験中の editor から離れると beforeunload の確認が出うるので、verify Web は別 page で開く。
+    const verifyPage = await page.context().newPage();
+    const web = new VerifyWebApp(verifyPage);
+    await web.open('fast');
+    await web.load([zipPath]);
+    const [proof] = (await listProofEntries(zipPath)).map((n) => basename(n));
+    if (!proof) {
+      console.warn('[shots] ZIP に proof が無いので試験束縛カードの撮影を飛ばす');
+      return;
+    }
+    await web.readVerdict(proof);
+    await web.loadExamPackage(fixture.packagePath);
+    // 束縛の再検証が済むと Starter 行が出る (data-starter は matched / mismatch / not-evaluated)。base では出ない。
+    const card = verifyPage.locator('#card-exam-binding');
+    const row = verifyPage.locator('#exam-starter-row[data-starter]');
+    await row.waitFor({ state: 'visible', timeout: 120_000 }).catch(() => {
+      console.warn('[shots] Starter 行が出なかったので、カードをそのまま撮る');
+    });
+    await web.waitSettled();
+    await card.waitFor({ state: 'visible' });
+    if (!(await card.evaluate((el) => el.classList.contains('expanded')))) {
+      await card.locator('.result-card-header').click();
+    }
+    await card.screenshot({ path: out(file), animations: 'disabled' });
+  };
+
+  test('検証 Web の試験束縛カードの Starter 行 (PASS) を撮る @shots', async ({ page }) => {
+    await examStarterShot(page, '24-verify-exam-starter-pass.png', null);
+  });
+
+  test('検証 Web の試験束縛カードの Starter 行 (FAIL) を撮る @shots', async ({ page }) => {
+    await examStarterShot(page, '25-verify-exam-starter-fail.png', CODE);
   });
 });
