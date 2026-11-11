@@ -73,9 +73,13 @@ test('production build: エディタが console エラーなくマウントし�
   // ガードが外れると、本番で任意の一括挿入 (`__tcTestInsertBlock`) や内部状態の読み出しができてしまう (#433)。
   const hooks = await page.evaluate(() => {
     const w = window as unknown as Record<string, unknown>;
-    return { insertBlock: typeof w.__tcTestInsertBlock, snapshot: typeof w.__tcTestSnapshot };
+    return {
+      insertBlock: typeof w.__tcTestInsertBlock,
+      snapshot: typeof w.__tcTestSnapshot,
+      forgeTemplateInjection: typeof w.__tcTestForgeTemplateInjection,
+    };
   });
-  expect(hooks).toEqual({ insertBlock: 'undefined', snapshot: 'undefined' });
+  expect(hooks).toEqual({ insertBlock: 'undefined', snapshot: 'undefined', forgeTemplateInjection: 'undefined' });
 });
 
 /**

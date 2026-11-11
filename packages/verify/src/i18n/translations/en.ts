@@ -175,6 +175,8 @@ export const en: VerifyTranslationKeys = {
     examPackageHash: 'Package hash',
     examContentHash: 'Problem content hash',
     examTimeBox: 'Submission window',
+    examStarter: 'Starter code',
+    examStarterNotEvaluated: 'Not evaluated',
     examPackageNote:
       'Problem package not provided — signature/content checks skipped. Load the .tcexam to fully verify.',
     examLoadPackage: 'Load problem package (.tcexam)',

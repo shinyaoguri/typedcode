@@ -76,6 +76,7 @@ E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく�
 | 〃 (`integrity` / `temporal` のチップ) | `data-level` | 上の `data-integrity` / `data-temporal` と同じ値 | チップ単位の判定 |
 | 〃 (`provenance` のチップ) | `data-pure-typing` | `true` / `false` | **`data-level` は付けない** (著述性はレベルを持たない。ADR-0009 / ADR-0020) |
 | 〃 (`mode` のチップ) | `data-mode` | proof の自己申告 `mode` (`normalizeProofMode` 済み) | 参考表示。保証の導出には使っていない |
+| `#exam-starter-row` | `data-starter` | `matched` / `mismatch` / `not-evaluated` | 試験束縛の starter 照合 (shared `ExamStarterCheck.status`。#718)。package 未提供・束縛の前段で失敗したときは行を隠す (照合済みと出さない) |
 | `#result-status-icon` | `data-level` | `verified` / `partial` / `failed` | 総合判定 (`TrustCalculator` の `TrustLevel`) |
 | `#trust-issues-list .trust-issue-item` | `data-component` / `data-severity` | `TrustIssueComponent` (`metadata` / `version` / `chain` / `posw` / `screenshots` / `source` / `anchoring` / `exam` / `typing`) / `error` / `warning` | 信頼バッジの issue 1 件。リストは issue が 0 件なら無い。`version` は proof の形式バージョン (#223): `newer` は warning、`tooOld` / `malformed` は error。**`VerificationController` の status と同じ軸** (`newer` → `warning`) |
 | `#file-list .file-item` | `data-status` | `pending` / `verifying` / `success` / `warning` / `error` / `cancelled` | ファイルの検証状態。`cancelled` = 利用者が検証をキャンセルした (未検証。判定ではないので `error` と区別し、色も中立色にする。#331) |

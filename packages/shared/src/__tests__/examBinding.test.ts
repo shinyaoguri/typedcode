@@ -113,6 +113,31 @@ describe('verifyExamBinding', () => {
     expect(result.timeBox?.withinWindow).toBeNull();
   });
 
+  it('reports the starter as not-evaluated for a legacy (v1) package and keeps the binding valid (#718)', async () => {
+    const { proof, manifest, registry } = await makeExamProof();
+    const withInjection = {
+      ...proof,
+      proof: {
+        ...proof.proof,
+        events: [...proof.proof.events, { type: 'templateInjection', data: { content: 'anything' } }],
+      },
+    };
+    const result = await verifyExamBinding(withInjection as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.starter?.status).toBe('not-evaluated');
+    expect(result.valid).toBe(true);
+  });
+
+  it('does not put the not-evaluated starter note into the binding failure reason (#718)', async () => {
+    const { proof, manifest, registry } = await makeExamProof();
+    const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.reason).toBeUndefined();
+    expect(result.starter?.reason).toMatch(/legacy/i);
+  });
+
   it('reports withinWindow true for a submission inside the time-box', async () => {
     const { proof, manifest, registry } = await makeExamProof();
     const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {

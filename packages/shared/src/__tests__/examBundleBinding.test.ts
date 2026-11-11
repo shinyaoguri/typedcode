@@ -251,3 +251,102 @@ describe('verifyExamBinding (v2 bundle) — identifier consistency (#273)', () =
     expect(result.verifiedIds).toEqual({ examId: manifest.examId, problemId: 'p2', variant: null });
   });
 });
+
+describe('verifyExamBinding (v2 bundle) — sealed starter vs templateInjection (#718)', () => {
+  const STARTER = '/* TODO */\n';
+  const FORGED = 'int main(void) { return 42; }\n';
+
+  function injectionEvent(content: string): { type: string; data: Record<string, unknown> } {
+    return {
+      type: 'templateInjection',
+      data: {
+        templateName: 'exam/p1',
+        templateHash: 'a'.repeat(64),
+        filename: 'p1.c',
+        content,
+        contentHash: 'b'.repeat(64),
+        contentLength: content.length,
+        totalFilesInTemplate: 1,
+        injectionSource: 'file_import',
+      },
+    };
+  }
+
+  function withEvents(proof: FabricatedExamProof, events: unknown[]): FabricatedExamProof {
+    return { ...proof, proof: { ...proof.proof, events: events as Array<{ previousHash: string }> } };
+  }
+
+  it('stays valid and reports matched when the injection equals the sealed starter', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(0);
+    const withStarter = withEvents(proof, [
+      { type: 'humanAttestation' },
+      { type: 'examOpened' },
+      injectionEvent(STARTER),
+    ]);
+    const result = await verifyExamBinding(withStarter as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.starter).toEqual({ status: 'matched' });
+  });
+
+  it('fails the binding with the starter reason when the injection differs from the sealed starter', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(0);
+    const forged = withEvents(proof, [{ type: 'humanAttestation' }, { type: 'examOpened' }, injectionEvent(FORGED)]);
+    const result = await verifyExamBinding(forged as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.starter).toMatchObject({ status: 'mismatch', eventIndex: 2 });
+    expect(result.reason).toBe('Template injection at event 2 does not match the sealed starter');
+  });
+
+  it('fails the binding when a problem without a starter carries an injection', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(1);
+    const forged = withEvents(proof, [{ type: 'humanAttestation' }, injectionEvent(FORGED)]);
+    const result = await verifyExamBinding(forged as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('Template injection at event 1 is present but the sealed problem has no starter');
+  });
+
+  it('checks against the starter of the bound problem, not of another problem in the bundle', async () => {
+    // p2 (starter 無し) に p1 の starter を注入した proof は、別の問題の starter なので mismatch。
+    const { proof, manifest, registry } = await makeBundleProof(1);
+    const forged = withEvents(proof, [{ type: 'humanAttestation' }, injectionEvent(STARTER)]);
+    const result = await verifyExamBinding(forged as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.starter?.status).toBe('mismatch');
+  });
+
+  it('fails closed when the proof has no event list to check', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(0);
+    const noEvents = { ...proof, proof: { finalHash: proof.proof.finalHash } };
+    const result = await verifyExamBinding(noEvents as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('Proof has no event list to check against the sealed starter');
+  });
+
+  it('fails closed when the proof has no proof section at all', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(0);
+    const { proof: _dropped, ...noProofSection } = proof;
+    const result = await verifyExamBinding(noProofSection as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.starter?.status).toBe('mismatch');
+  });
+
+  it('omits the starter check when an earlier binding step fails', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(0);
+    const altered = withEvents({ ...proof, exam: { ...proof.exam, examId: 'other-exam' } }, [injectionEvent(STARTER)]);
+    const result = await verifyExamBinding(altered as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.starter).toBeUndefined();
+  });
+});

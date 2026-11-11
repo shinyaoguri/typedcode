@@ -695,6 +695,18 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 3. root 再計算 (`fingerprintHash, nonce, packageHash, proof.exam.startToken`) = `initialEventChainHash` → **T0 以降に開始** (token は proof 同梱なので out-of-band 不要)
 4. `startToken` で package を復号 → 平文 `problemContentHash` = `proof.exam.problemContentHash` → 答案はこの問題のもの
 5. **識別子の照合** (#273): `proof.exam` の `examId` / `variant` (v1 は `problemId` も) は proof 側の自己申告で、packageHash・root・内容ハッシュのどれにも含まれない。署名済み manifest と一致しなければ束縛失敗 (`identifiersMatch=false`、`reason` と `mismatchedIdentifiers` に不一致の識別子名)。`variant` は `null` と未指定を同一視し、それ以外は厳密一致。**v2 の `problemId` は manifest と照合しない** (`manifest.problemId` はバンドルの固定ラベルで、実際の問題は手順 4 の bundle 検索 + per-problem hash が保護する)。合格時のみ `verifiedIds` (検証済みの識別子) を返し、Web / CLI の表示・機械可読出力はこれを使う。package 未提供・束縛失敗のときの識別子は自己申告であり、CLI は `(self-reported)`、Web は「自己申告・未検証」と明示する
+
+   **5b. スターターの照合** (#718): proof のイベント列にある `templateInjection` の `data.content` (再生で文書を置き換える値) を、手順 4 で引いた問題の封印 starter (`starter?.content ?? ''` = S) と比べる。自己申告の `templateName` / `templateHash` / `contentHash` / `contentLength` は使わない。結果は `starter: { status, reason?, eventIndex? }` で、`mismatch` は束縛失敗 (`valid=false`)。改造クライアントが完成コードを「雛形」として注入し、正規の署名・full 検証・受理ポリシーを通す経路を塞ぐ (署名 API が現実の打鍵を証明するわけではない点は変わらない)
+
+   | 場面 | status |
+   |---|---|
+   | S 非空・注入がすべて content === S (正規 editor は `#2` に 1 回。複数・編集後の同値再注入も文書を封印内容に戻すだけなので可) | `matched` |
+   | S 非空・注入なし (文書に入ったのは打鍵だけ) | `matched` |
+   | S 空 (スターターなし)・注入なし | `matched` |
+   | S 空・注入あり / content !== S の注入 (別内容・別問題の starter・後置注入) / data が `{content: string}` でない | `mismatch` (最初の該当 event の index) |
+   | v1 (legacy 平文。starter を機械的に取り出せない) | `not-evaluated` (`valid` に影響させない。保証を増やさない) |
+
+   手順 1〜5 のどれかで失敗したときは `starter` を載せない (照合済みと表示しない)。`contentSnapshot` の全文置換は照合に入れない (乖離した snapshot は既に `isPureTyping=false` になり、黙って通らない。§5)。`templateInjection` の量の開示 (#416) と `isPureTyping` の定義は変えない
 6. **time-box** (advisory): `releaseTime ≤ 提出時刻 ≤ deadline`。実際の提出時刻は外部 (Moodle)。verify-cli は `--submitted-at` で渡せ、未指定なら window 表示のみ (`withinWindow=null`)。**`withinWindow=false` は `verifyExamBinding` の `valid` には合流しない** — 提出窓の管理は Moodle が唯一の正で、遅延提出は失格条件ではない ([ADR-0013](adr/0013-exam-schedule-advisory-keep-manifest-format.md) / §4.7)
 
 配線: **verify-cli** は `--exam-package <file.tcexam>` で渡す (任意、未指定なら root 束縛のみ表示し「package 未提供」を明示)。**verify(web)** は試験束縛カードで root 束縛を常時表示し、「問題パッケージを読み込む」で `.tcexam` を取り込み当該タブを再検証して完全束縛を表示する。package 指定で束縛が失敗すれば全体を invalid とする。**package を渡したのに `exam` ブロックが無い proof も invalid** (#218) — 一斉採点で casual proof が混ざると束縛が一切検証されないまま通過するため、ゲートのサイレント無効化を許さない (ZIP では per-proof に失敗させる)。
@@ -723,6 +735,7 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 | Workers サーバを将来停止させた後に proof 改ざん | Layer 6 (公開鍵 registry が git 永続管理、envelope 同梱で完全オフライン検証可能) |
 | **(試験)** T0 前に問題を読んで事前 solve | 封印 (Argon2id + 監督コード)。T0 まで復号不可 (消費期限つき; 配布窓は数分) |
 | **(試験)** 配布と異なる別問題の解答にすり替え | §6.4 (packageHash 不一致 / 復号後 problemContentHash 不一致) |
+| **(試験)** 改造クライアントで封印 starter と別の完成コードを `templateInjection` に入れる | §6.4 手順 5b (注入内容 ≠ 封印 starter → `starter.status='mismatch'`。#718) |
 | **(試験)** T0 より前に開始したのに後に見せかける | §6.4 (root に `startToken` が焼かれる。T0 前は監督コードを知り得ないため root を作れない) |
 | **(試験)** 過去回 / 他人の試験 proof を流用 | Layer 1 (fingerprint/nonce 不一致) + §6.4 (packageHash 不一致) |
 | **(試験)** 出題者を詐称した偽問題パッケージ | §6.4 (`examAuthorityKeys` での署名検証に失敗) |
@@ -988,3 +1001,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-05 | PoSW の反復数の見直し (ADR-0045, #241) | 記録側のベンチ (`npm run bench:posw`) で、CPU 4 倍相当では処理が入力に追いつかないことを測り、反復数を 10000 から 1000 に下げると決めた (実装は #611。それまでは 10000)。§4.4 から「最低限の計算時間を強制」「10000 events なら最低 50 秒」を消し、PoSW は時間の証明ではなく逐次コストだと揃えた |
 | 2026-11-06 | 入口からモード選択をなくす (ADR-0046 段階 1, #644) | `/` は練習のエディタを直接開き、ADR-0015 のランディング (4 モードの比較カード・「続きから」バッジ・`SessionDetector`) とエディタ内のモード切替ドロップダウンを撤去した。未知パスは not-found 画面 (`/` へのリンクだけ、エディタの chunk を読まない)。titlebar はモード表示だけ。練習で規約に未同意なら受動的な通知を出し、閉じるか規約モーダルで同意したら `termsAccepted` を記録する。`/class` `/assignment` `/exam` の直リンクと proof 形式は不変 |
 | 2026-11-07 | 問題の入出力例 (ADR-0048, #648) | `ExamBundleProblem` に任意の `examples` (`{ name, stdin, stdout }` の配列) を足した。`.tcexam` / `.tcclass` に載り、editor の問題パネルに「動作確認の例」として表示する (判定しない・proof に記録しない)。`examples` を持たない問題の `problemContentHash` は不変。§4.9 を追加 |
+| 2026-11-11 | 試験の封印 starter と templateInjection の照合 (#718) | `verifyExamBinding` が v2 の該当問題の starter と proof の `templateInjection` の `data.content` を比べ、不一致を束縛失敗 (`starter.status='mismatch'`) にする。v1 は `not-evaluated`。§6.4 手順 5b と脅威表を反映 |

@@ -27,6 +27,9 @@ export {
   computeBundleProblemHash,
 } from './examBundle.js';
 
+export { matchExamStarter } from './examStarter.js';
+export type { ExamStarterCheck, ExamStarterMatchResult, ExamStarterEventLike } from './examStarter.js';
+
 export {
   CLASS_PACKAGE_SCHEMA,
   parseClassPackage,

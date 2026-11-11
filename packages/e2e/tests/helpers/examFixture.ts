@@ -15,7 +15,22 @@ export interface ExamFixture {
   otherPackagePath: string;
   /** 署名に使った出題者鍵の keyId (公開鍵は fixtures/exam/authority-keys.mjs)。 */
   keyId: string;
+  /** 封印した問題 p1 の starter の内容 (#718。正規 editor が #2 templateInjection に記録する)。 */
+  starter: string;
 }
+
+/**
+ * 採点の受理ポリシー 4 条件 (ADR-0043) を立てた verify-cli の引数 (#718)。exam-roundtrip の正の対照と
+ * exam-forged-starter の負の対照が同じ条件で走ることを揃える。PoSW は再計算しない (fast。AGENTS.md 不変条件 4)。
+ */
+export const EXAM_STRICT_FLAGS = [
+  '--mode',
+  'fast',
+  '--require-root-anchor',
+  '--require-anchor-density',
+  '--require-signed-checkpoints',
+  '--require-final-anchor',
+] as const;
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const FIXTURE_DIR = resolve(HERE, '../../fixtures/exam');
@@ -29,11 +44,13 @@ export function loadExamFixture(): ExamFixture | null {
     package: string;
     otherPackage: string;
     keyId: string;
+    starter?: string;
   };
   return {
     code: m.code,
     packagePath: join(FIXTURE_DIR, m.package),
     otherPackagePath: join(FIXTURE_DIR, m.otherPackage),
     keyId: m.keyId,
+    starter: m.starter ?? '',
   };
 }
