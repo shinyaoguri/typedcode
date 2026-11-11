@@ -31,6 +31,7 @@ concurrency:
 #   deploy-staging         — main push で Workers staging + Pages staging (--branch=staging) を更新
 #   e2e-staging            — deploy-staging の後に、その deploy の Pages の URL をブラウザで round-trip する
 #                            (packages/e2e の test:deployed。secrets を持たない。production には無い。#655)
+#   nightly-gate           — v* タグ push で main の最新の完了 nightly が success か確認 (#593)
 #   deploy-production      — v* タグ push で Workers production + Pages production を更新
 #                            (GitHub Environment "production" の Required reviewers で承認待ち)
 #
@@ -483,13 +484,35 @@ jobs:
             packages/e2e/test-results/
           retention-days: 7
 
+  # 最新の完了 nightly を承認待ちより前に確認する (#593)。環境・デプロイ権限は持たせない。
+  nightly-gate:
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      - name: Require latest completed main nightly to succeed
+        run: node scripts/nightly-gate.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   # --------------------------------------------------------------------
   # v* タグ push: production 環境 (Workers + Pages) を更新
   # リリース = `gh release create vX.Y.Z` によるタグ作成 (CONTRIBUTING.md 参照)。
   # GitHub Environment "production" の Required reviewers で承認待ち。
   # --------------------------------------------------------------------
   deploy-production:
-    needs: [test, check, e2e]
+    needs: [test, check, e2e, nightly-gate]
     if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
     runs-on: ubuntu-latest
     # 注: Environment "production" の承認待ち時間は timeout-minutes に含まれない
