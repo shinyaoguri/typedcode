@@ -951,3 +951,51 @@ describe('printUsage — acceptance policy flags (#296)', () => {
     expect(usageText()).toMatch(new RegExp(`^  ${flag}$`, 'm'));
   });
 });
+
+describe('formatResult — 封印 starter の照合 (#718)', () => {
+  function examWithStarter(
+    starter: NonNullable<NonNullable<Extract<CLIExamResult, { present: true }>['binding']>['starter']>
+  ): CLIExamResult {
+    const base = examBindingLate() as Extract<CLIExamResult, { present: true }>;
+    const valid = starter.status !== 'mismatch';
+    return {
+      ...base,
+      binding: {
+        ...base.binding!,
+        valid,
+        starter,
+        ...(valid ? {} : { reason: starter.reason }),
+      },
+    };
+  }
+
+  function starterLine(text: string): string | undefined {
+    return text.split('\n').find((line) => line.startsWith('Starter:'));
+  }
+
+  it('prints PASS on the Starter line when the injections match the sealed starter', () => {
+    const text = plain(formatResult(output({ exam: examWithStarter({ status: 'matched' }) })));
+    expect(starterLine(text)).toContain('PASS');
+  });
+
+  it('prints FAIL on the Starter line and the starter reason when an injection differs', () => {
+    const reason = 'Template injection at event 2 does not match the sealed starter';
+    const text = plain(
+      formatResult(output({ valid: false, exam: examWithStarter({ status: 'mismatch', reason, eventIndex: 2 }) }))
+    );
+    expect(starterLine(text)).toContain('FAIL');
+    expect(text).toContain(`Reason: ${reason}`);
+  });
+
+  it('prints NOT EVALUATED rather than PASS or FAIL for a legacy package', () => {
+    const text = plain(formatResult(output({ exam: examWithStarter({ status: 'not-evaluated', reason: 'legacy' }) })));
+    const line = starterLine(text) ?? '';
+    expect(line).toContain('NOT EVALUATED');
+    expect(line).not.toMatch(/PASS|FAIL/);
+  });
+
+  it('omits the Starter line when the binding result carries no starter check', () => {
+    const text = plain(formatResult(output({ exam: examBindingFailed() })));
+    expect(starterLine(text)).toBeUndefined();
+  });
+});

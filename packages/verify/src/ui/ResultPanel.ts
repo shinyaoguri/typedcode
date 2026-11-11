@@ -167,6 +167,8 @@ export class ResultPanel {
   private examPackageHash: HTMLElement;
   private examContentRow: HTMLElement;
   private examContentHash: HTMLElement;
+  private examStarterRow: HTMLElement;
+  private examStarter: HTMLElement;
   private examTimeboxRow: HTMLElement;
   private examTimebox: HTMLElement;
   private examReasonRow: HTMLElement;
@@ -298,6 +300,8 @@ export class ResultPanel {
     this.examPackageHash = document.getElementById('exam-packagehash')!;
     this.examContentRow = document.getElementById('exam-contenthash-row')!;
     this.examContentHash = document.getElementById('exam-contenthash')!;
+    this.examStarterRow = document.getElementById('exam-starter-row')!;
+    this.examStarter = document.getElementById('exam-starter')!;
     this.examTimeboxRow = document.getElementById('exam-timebox-row')!;
     this.examTimebox = document.getElementById('exam-timebox')!;
     this.examReasonRow = document.getElementById('exam-reason-row')!;
@@ -743,6 +747,27 @@ export class ResultPanel {
     this.renderAnchoringDetails(sc);
   }
 
+  /**
+   * 封印 starter の照合行 (#718)。束縛の前段で落ちた proof には starter が無いので行ごと隠す。
+   * 状態契約として生の status を `data-starter` に出す (matched / mismatch / not-evaluated)。
+   */
+  private renderExamStarterRow(b: ExamBindingVerificationResult): void {
+    const starter = b.starter;
+    if (!starter) {
+      this.examStarterRow.style.display = 'none';
+      this.examStarterRow.removeAttribute('data-starter');
+      return;
+    }
+    this.examStarterRow.style.display = 'flex';
+    this.examStarterRow.dataset.starter = starter.status;
+    if (starter.status === 'not-evaluated') {
+      this.examStarter.textContent = t('result.examStarterNotEvaluated');
+      this.examStarter.className = 'result-row-value text-warning';
+    } else {
+      this.setExamPassFail(this.examStarter, starter.status === 'matched');
+    }
+  }
+
   /** PASS/FAIL の行値を色付きで設定する。 */
   private setExamPassFail(el: HTMLElement, ok: boolean): void {
     el.textContent = ok ? t('result.examPass') : t('result.examFail');
@@ -766,7 +791,13 @@ export class ResultPanel {
     this.setExamPassFail(this.examRoot, eb.rootValid);
 
     const b = eb.binding;
-    const pkgRows = [this.examSignatureRow, this.examPackageHashRow, this.examContentRow, this.examTimeboxRow];
+    const pkgRows = [
+      this.examSignatureRow,
+      this.examPackageHashRow,
+      this.examContentRow,
+      this.examStarterRow,
+      this.examTimeboxRow,
+    ];
     if (!b) {
       // 問題パッケージ未提供: root 束縛のみ。署名/内容はスキップ。
       for (const r of pkgRows) r.style.display = 'none';
@@ -792,6 +823,7 @@ export class ResultPanel {
     this.setExamPassFail(this.examSignature, b.packageSignatureValid);
     this.setExamPassFail(this.examPackageHash, b.packageHashMatches);
     this.setExamPassFail(this.examContentHash, b.problemContentHashMatches);
+    this.renderExamStarterRow(b);
     if (b.timeBox) {
       this.examTimeboxRow.style.display = 'flex';
       this.examTimebox.textContent = `${b.timeBox.releaseTime} … ${b.timeBox.deadline}`;

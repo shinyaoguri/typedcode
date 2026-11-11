@@ -37,6 +37,7 @@ import {
   EXAM_ROOT_BINDING_V2,
 } from '../version.js';
 import { decodeExamPlaintext, computeBundleProblemHash } from './examBundle.js';
+import { matchExamStarter, type ExamStarterCheck } from './examStarter.js';
 
 // ============================================================================
 // バイト列ユーティリティ (DOM/Node 非依存)
@@ -552,6 +553,12 @@ export interface ExamBindingVerificationResult {
    *   bundle 検索 (+ per-problem hash) で保護された proof 側の値
    */
   verifiedIds?: ExamVerifiedIdentifiers;
+  /**
+   * 封印 starter と proof の templateInjection の照合 (#718)。束縛の暗号的検査と識別子照合が
+   * 通ったときだけ載る (前段で失敗した proof に「照合済み」と出さないため)。
+   * v2 は matched / mismatch (mismatch は valid=false)、v1 (legacy 平文) は not-evaluated (valid に影響しない)。
+   */
+  starter?: ExamStarterCheck;
   /** 時間窓 (advisory)。submission 時刻が無い PR1 では withinWindow=null */
   timeBox: ExamTimeBox | null;
   reason?: string;
@@ -572,7 +579,9 @@ export interface VerifyExamBindingOptions {
  * チェーン / PoSW / 署名 cp の検証は verifyProofFile が別途担う (本関数は exam 束縛のみ)。
  */
 export async function verifyExamBinding(
-  proof: Pick<ExportedProof, 'exam' | 'typingProofData' | 'fingerprint'>,
+  proof: Pick<ExportedProof, 'exam' | 'typingProofData' | 'fingerprint'> & {
+    proof: Pick<ExportedProof['proof'], 'events'>;
+  },
   manifest: ExamPackageManifest,
   options: VerifyExamBindingOptions = {}
 ): Promise<ExamBindingVerificationResult> {
@@ -653,6 +662,8 @@ export async function verifyExamBinding(
     return { ...result, reason: `Decryption failed: ${decrypted.reason}` };
   }
   let contentHash: string;
+  // v2 の該当問題の封印 starter (無ければ '')。v1 は starter を機械的に取り出せないので null (#718)。
+  let sealedStarter: string | null = null;
   if (isV2) {
     const decoded = decodeExamPlaintext(decrypted.plaintext);
     if (decoded.kind !== 'bundle') {
@@ -663,6 +674,7 @@ export async function verifyExamBinding(
       return { ...result, reason: `Bundle has no problem with id ${exam.problemId}` };
     }
     contentHash = await computeBundleProblemHash(problem);
+    sealedStarter = problem.starter?.content ?? '';
   } else {
     // ダウングレード拒否 (#137): バンドル封印された package は per-problem 束縛 (v2) でしか
     // 検証させない。rootBinding を落とした proof が平文全体ハッシュで problemId 束縛を
@@ -699,6 +711,22 @@ export async function verifyExamBinding(
   }
   result.identifiersMatch = true;
 
+  // 5b. 封印 starter と templateInjection の照合 (#718)。注入の data.content だけを比べる
+  //     (自己申告の templateName / contentHash 等は再生に使われないので見ない)。
+  //     v1 は starter を取り出せないので not-evaluated とし、保証を増やさない。
+  let starter: ExamStarterCheck;
+  if (sealedStarter === null) {
+    starter = { status: 'not-evaluated', reason: 'Legacy (v1) exam package has no machine-readable starter' };
+  } else {
+    // イベント列が無い proof は照合できないので matched にしない (fail-closed)。
+    const events = proof.proof?.events;
+    starter = Array.isArray(events)
+      ? matchExamStarter(events, sealedStarter)
+      : { status: 'mismatch', reason: 'Proof has no event list to check against the sealed starter' };
+  }
+  result.starter = starter;
+  const starterMatches = starter.status !== 'mismatch';
+
   // 6. time-box (advisory)。実際の submission 時刻は外部 (Moodle)。
   const releaseMs = Date.parse(manifest.releaseTime);
   const deadlineMs = Date.parse(manifest.deadline);
@@ -721,7 +749,11 @@ export async function verifyExamBinding(
     result.packageHashMatches &&
     result.identifiersMatch &&
     result.rootMatches &&
-    result.problemContentHashMatches;
+    result.problemContentHashMatches &&
+    starterMatches;
+  if (!starterMatches) {
+    result.reason = starter.reason;
+  }
   if (result.valid) {
     result.verifiedIds = {
       examId: manifest.examId,

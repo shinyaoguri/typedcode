@@ -56,6 +56,7 @@ import {
 } from '@typedcode/shared';
 import type {
   AcceptancePolicy,
+  ExamStarterCheck,
   AcceptancePolicyResult,
   VerificationMode,
   SignedCheckpointsVerificationResult,
@@ -273,6 +274,18 @@ function formatAssurance(a: AssuranceResult): string[] {
   return lines;
 }
 
+/** starter 照合 (#718) の 1 行。not-evaluated は PASS / FAIL と区別し、保証を増やさないことを明示する。 */
+function formatStarterStatus(status: ExamStarterCheck['status']): string {
+  switch (status) {
+    case 'matched':
+      return `${c('green', 'PASS')}  ${c('dim', '(template injections match the sealed starter)')}`;
+    case 'mismatch':
+      return `${c('red', 'FAIL')}  ${c('dim', '(a template injection is not the sealed starter)')}`;
+    case 'not-evaluated':
+      return `${c('yellow', 'NOT EVALUATED')}  ${c('dim', '(legacy package has no machine-readable starter)')}`;
+  }
+}
+
 /** 試験モード (ADR-0006) の束縛検証セクションを描画する。 */
 function formatExamSection(exam: CLIExamResult, lines: string[]): void {
   lines.push('');
@@ -311,6 +324,10 @@ function formatExamSection(exam: CLIExamResult, lines: string[]): void {
   lines.push(
     `Identifiers:  ${passFail(b.identifiersMatch)}  ${c('dim', '(examId / variant / problemId match the package)')}`
   );
+  // 封印 starter と templateInjection の照合 (#718)。束縛の前段で落ちた proof には載らないので出さない。
+  if (b.starter) {
+    lines.push(`Starter:      ${formatStarterStatus(b.starter.status)}`);
+  }
   if (b.timeBox) {
     const tb = b.timeBox;
     lines.push(`Time-box:     ${safe(tb.releaseTime)} … ${safe(tb.deadline)}`);

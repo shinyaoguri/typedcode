@@ -11,6 +11,7 @@
 
 ### 修正
 
+- 試験の束縛検証 (`verifyExamBinding`、verify-cli の `--exam-package`・verify Web の問題パッケージ読込) で、proof の `templateInjection` の内容を封印された問題の starter と照合するようにした。改造クライアントが別の完成コードを雛形として注入した proof は、正規の署名と受理ポリシーを満たしていても束縛失敗 (verify-cli は exit 1、`Starter: FAIL` と理由) になる。starter の無い問題への注入も失敗にする。正規の starter と同じ内容の注入 (複数回・編集後の再注入を含む) と注入なしは通る。旧 v1 の単一問題パッケージは starter を取り出せないので「未評価」と表示し、結論には影響させない。パッケージを渡していないときは照合済みと表示しない。照合の規則は system-spec §6.4 手順 5b (#718)
 - 試験モードで、試験開始ゲートの表示中に Turnstile + session/start を並行して先行取得するようにした。widget はゲートの中に出し、対話チャレンジもゲートで解ける (解錠前なので試験時間を使わない)。解錠の時点で取得できていれば `#0 humanAttestation` が `verified: true` (`session-start-token:<keyId>` の印) になる。これまでは Turnstile が構成済みでも #0 は常に合成の印だった。取得が済んでいない・失敗したときは待たずに解錠し、従来どおり合成の印で #0 を記録する (サーバを試験開始の critical path に置かない = ADR-0006)。ゲートの確認状態は `#exam-gate-attestation[data-attestation-state]` (`off` / `pending` / `verified` / `failed`) に出る (#236)
 - 試験モードで署名専用 token (ADR-0027) の取得に失敗したとき、取り直すようにした。これまでは起動時の 1 回きりで、起動時に Workers へ届かなかったセッションは網が戻っても checkpoint が最後まで署名されなかった。再取得は同時 1 本・ジッタ付き指数バックオフ (5 秒から倍々、上限 5 分)・`online` イベントで早める (15 秒の窓に散らし、教室の端末が同時に復帰してもバーストさせない)。export・保存・救出はこの成否を待たない。`TOKEN_EXPIRED` での取り直しと試験以外のモードへの適用はまだ (#236)
 

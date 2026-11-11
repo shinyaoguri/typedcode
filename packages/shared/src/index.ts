@@ -163,6 +163,7 @@ export {
   decodeExamPlaintext,
   encodeExamBundle,
   computeBundleProblemHash,
+  matchExamStarter,
   CLASS_PACKAGE_SCHEMA,
   parseClassPackage,
   encodeClassPackage,
@@ -181,6 +182,9 @@ export type {
   BuildExamProofBlockInput,
   ExamManifestParseResult,
   ExamManifestRejectionCode,
+  ExamStarterCheck,
+  ExamStarterMatchResult,
+  ExamStarterEventLike,
 } from './exam/index.js';
 
 // バージョン定数

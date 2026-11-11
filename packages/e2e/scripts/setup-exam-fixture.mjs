@@ -22,7 +22,7 @@
  */
 import { webcrypto } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,20 +37,33 @@ export const EXAM_FIXTURE_CODE = 'E2ETEST1';
 const MAKE_PACKAGE_SCRIPT = 'packages/workers/scripts/make-exam-package.mjs';
 
 /** 封印する平文: /author が出す v2 バンドル (tcexam-exam/1) の 1 問。 */
-const BUNDLE = {
+export const BUNDLE = {
   schema: 'tcexam-exam/1',
   problems: [
     {
       problemId: 'p1',
       statement: '# E2E 用の問題\n\n`main` を書いて 0 を返してください。\n',
-      starter: { filename: 'main.c', language: 'c', content: '' },
+      // starter は非空にする (#718): 正規 editor が #2 templateInjection に封印 starter を記録し、
+      // verify-cli --exam-package がそれを照合して通る (正の対照) / 別内容の注入を弾く (負の対照)。
+      starter: { filename: 'main.c', language: 'c', content: '/* TODO */\n' },
     },
   ],
 };
 
-/** fixture が揃っているか (中身が壊れていないかまでは見ない。壊れたら fixtures/ を消して setup し直す)。 */
+/**
+ * fixture が揃っていて、封印した平文が今の BUNDLE と同じか (中身が壊れていないかまでは見ない。
+ * 壊れたら fixtures/ を消して setup し直す)。BUNDLE を変えたら古い fixture を作り直させるため、
+ * fixture.json に封印した平文を残して突き合わせる (#718: starter を変えた後に古い package で走らない)。
+ */
 export function isFixtureComplete(dir) {
-  return ['fixture.json', 'authority-keys.mjs', 'p1.tcexam', 'other.tcexam'].every((f) => existsSync(join(dir, f)));
+  const files = ['fixture.json', 'authority-keys.mjs', 'p1.tcexam', 'other.tcexam'];
+  if (!files.every((f) => existsSync(join(dir, f)))) return false;
+  try {
+    const fixture = JSON.parse(readFileSync(join(dir, 'fixture.json'), 'utf8'));
+    return JSON.stringify(fixture.bundle) === JSON.stringify(BUNDLE);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -147,7 +160,15 @@ export async function setupExamFixture({ root = ROOT, log = console.log, error =
   writeFileSync(
     join(dir, 'fixture.json'),
     JSON.stringify(
-      { code: EXAM_FIXTURE_CODE, package: 'p1.tcexam', otherPackage: 'other.tcexam', keyId, problemId: 'p1' },
+      {
+        code: EXAM_FIXTURE_CODE,
+        package: 'p1.tcexam',
+        otherPackage: 'other.tcexam',
+        keyId,
+        problemId: 'p1',
+        starter: BUNDLE.problems[0].starter.content,
+        bundle: BUNDLE,
+      },
       null,
       2
     ) + '\n'

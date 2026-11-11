@@ -188,6 +188,8 @@ export interface VerifyTranslationKeys {
     examPackageHash: string;
     examContentHash: string;
     examTimeBox: string;
+    examStarter: string;
+    examStarterNotEvaluated: string;
     examPackageNote: string;
     examLoadPackage: string;
     examPass: string;

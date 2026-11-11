@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
 import { EditorApp, readProofEvents, readProofJson } from './helpers/app.js';
 import type { ProofCheckpoint } from './helpers/app.js';
-import { loadExamFixture } from './helpers/examFixture.js';
+import { EXAM_STRICT_FLAGS, loadExamFixture } from './helpers/examFixture.js';
 import { runVerifyCli, runVerifyCliWithVerdicts } from './helpers/verifyCli.js';
 import { VerifyWebApp, expectWebCliParity, proofNames } from './helpers/verifyWeb.js';
 
@@ -103,9 +103,14 @@ test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打
   // その経路が死ぬと署名 envelope が 0 件になるが、未アンカーの proof も valid なので verify-cli では見えない。
   const signed = (proof.checkpoints ?? []).filter((cp) => cp.signature);
   expect(signed.length, 'at least one checkpoint carries a signed envelope').toBeGreaterThan(0);
+  // #718: 封印 starter (非空) は #2 templateInjection に記録され、その content は封印 starter と同じ。
+  // verify-cli の starter 照合が「照合する注入がある」正の対照になっていることの前提。
+  expect(fixture.starter, 'precondition: the sealed problem has a non-empty starter').not.toBe('');
+  expect(events[2]?.type).toBe('templateInjection');
+  expect((events[2]?.data as { content?: string } | undefined)?.content).toBe(fixture.starter);
 
-  await test.step('正しい問題パッケージ: exit 0 と束縛 PASS', async () => {
-    const ok = runVerifyCli(zipPath, ['--mode', 'fast', '--exam-package', fixture.packagePath], {
+  await test.step('正しい問題パッケージ: 受理ポリシーの 4 条件を立てても exit 0 と束縛 PASS (starter 照合を含む)', async () => {
+    const ok = runVerifyCli(zipPath, [...EXAM_STRICT_FLAGS, '--exam-package', fixture.packagePath], {
       examAuthorityKeys: true,
     });
     expect(ok.exitCode, ok.stdout + ok.stderr).toBe(0);
@@ -113,7 +118,7 @@ test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打
     // stdout のまま残す理由: 束縛の内訳 (署名・packageHash・root・内容ハッシュ) は人向け出力にしか無い
     // (--result-json は exam 束縛の失敗を 'other' までしか言わない)。
     expect(ok.stdout).toContain('--- Exam binding (ADR-0006) ---');
-    for (const label of ['Root binding:', 'Signature:', 'Package hash:', 'Content hash:']) {
+    for (const label of ['Root binding:', 'Signature:', 'Package hash:', 'Content hash:', 'Starter:']) {
       expect(ok.stdout, `${label} PASS`).toMatch(new RegExp(`${label}\\s+PASS`));
     }
   });

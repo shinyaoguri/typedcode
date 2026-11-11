@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AssuranceResult, IntegrityLevel, TemporalLevel } from '@typedcode/shared';
+import type { AssuranceResult, ExamBindingVerificationResult, IntegrityLevel, TemporalLevel } from '@typedcode/shared';
 import { ResultPanel, type ResultData } from '../ResultPanel.js';
 import { TabController, type TabControllerDependencies } from '../controllers/TabController.js';
 import { VerifyTabManager } from '../../state/VerifyTabManager.js';
@@ -185,6 +185,69 @@ describe('ResultPanel exam binding card without a problem package (#281 v5)', ()
     expect(document.getElementById('exam-icon')?.classList.contains('warning')).toBe(true);
     expect(document.getElementById('exam-badge')?.classList.contains('warning')).toBe(true);
     expect(document.getElementById('exam-note-row')?.style.display).toBe('flex');
+  });
+});
+
+describe('ResultPanel exam binding card — sealed starter row (#718)', () => {
+  function binding(
+    starter: ExamBindingVerificationResult['starter'],
+    valid = starter?.status !== 'mismatch'
+  ): ExamBindingVerificationResult {
+    return {
+      valid,
+      packageSignatureValid: true,
+      packageHashMatches: true,
+      rootMatches: true,
+      problemContentHashMatches: true,
+      identifiersMatch: true,
+      timeBox: null,
+      ...(starter ? { starter } : {}),
+      ...(valid ? {} : { reason: starter?.reason ?? 'failed' }),
+    };
+  }
+
+  function renderWith(b: ExamBindingVerificationResult): void {
+    panel.render(
+      resultData({
+        examBinding: {
+          examId: 'exam-1',
+          problemId: 'p1',
+          variant: null,
+          rootValid: true,
+          packageProvided: true,
+          binding: b,
+        },
+      })
+    );
+  }
+
+  function starterRow(): HTMLElement {
+    return document.getElementById('exam-starter-row')!;
+  }
+
+  it.each(['matched', 'mismatch', 'not-evaluated'] as const)(
+    'exposes the raw starter status %s on data-starter',
+    (status) => {
+      renderWith(binding({ status, reason: 'r' }));
+      expect(starterRow().style.display).toBe('flex');
+      expect(starterRow().dataset.starter).toBe(status);
+    }
+  );
+
+  it('hides the starter row when the binding result carries no starter check', () => {
+    renderWith(binding({ status: 'matched' }));
+    renderWith(binding(undefined, false));
+    expect(starterRow().style.display).toBe('none');
+    expect(starterRow().hasAttribute('data-starter')).toBe(false);
+  });
+
+  it('marks a starter mismatch as FAIL and an unevaluated starter as neither PASS nor FAIL', () => {
+    renderWith(binding({ status: 'mismatch', reason: 'r' }));
+    const failText = document.getElementById('exam-starter')!.textContent;
+    renderWith(binding({ status: 'not-evaluated', reason: 'r' }));
+    const notEvaluatedText = document.getElementById('exam-starter')!.textContent;
+    expect(failText).toBe('FAIL');
+    expect(notEvaluatedText).not.toMatch(/PASS|FAIL/);
   });
 });
 

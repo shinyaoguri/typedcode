@@ -295,6 +295,32 @@ const ctx: AppContext = {
 // 両者の一致を確かめる (packages/editor/AGENTS.md「状態契約」)。
 if (import.meta.env.DEV) {
   window.__tcTestSnapshot = () => buildTestSnapshot(ctx.tabManager, getAppState());
+
+  // 改造クライアントの再現 (#718): アクティブタブに任意内容の templateInjection を記録し、
+  // contentChange を記録せずにモデルを差し替える。自己申告の contentHash / contentLength は
+  // content と整合させる (照合が再生に使われる content だけを見ることを E2E で確かめるため)。
+  // EditorController を外している間の差し替えなので、内容変更のイベントは proof に載らない。
+  window.__tcTestForgeTemplateInjection = async (content: string) => {
+    const tab = ctx.tabManager?.getActiveTab();
+    if (!tab) throw new Error('No active tab');
+    const contentHash = await computeHash(content);
+    await tab.typingProof.recordTemplateInjection({
+      templateName: 'forged',
+      templateHash: contentHash,
+      filename: tab.filename,
+      content,
+      contentHash,
+      contentLength: content.length,
+      totalFilesInTemplate: 1,
+      injectionSource: 'file_import',
+    });
+    ctx.editorController.detach();
+    try {
+      tab.model.setValue(content);
+    } finally {
+      ctx.editorController.attach(editor);
+    }
+  };
 }
 
 // editor-assist 宣言 (ADR-0019): Monaco の解決済みオプションから支援機能の実効状態を

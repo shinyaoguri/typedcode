@@ -78,5 +78,7 @@ declare global {
     __tcTestSnapshot?: () => TestSnapshot;
     /** E2E 専用 (dev ビルドのみ)。現在の選択位置に単一の executeEdits を適用する */
     __tcTestInsertBlock?: (text: string) => void;
+    /** E2E 専用 (dev ビルドのみ)。改造クライアントの再現: 任意内容の templateInjection を記録し、内容変更を記録せずにモデルを差し替える (#718) */
+    __tcTestForgeTemplateInjection?: (content: string) => Promise<void>;
   }
 }
