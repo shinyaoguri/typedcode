@@ -409,10 +409,13 @@ jobs:
             echo "::warning::Pages の deployment-url から deployment の label を取り出せない (e2e-staging は落ちる)"
           fi
 
+      # ヘッダはこの deploy の不変 URL で見る。staging. の alias は切り替えが遅れると前の deploy を返し、
+      # 今回の配信物が壊れていても緑になりうる (e2e-staging が label を使うのと同じ理由)。取り出せなければ落とす。
+      # CORS の Origin は利用者が開く alias のまま (Worker の ALLOWED_ORIGINS の検査なので、Pages の版に依らない)。
       - name: Check deployed Pages headers, signing health and CORS
         run: node scripts/post-deploy-check.mjs
         env:
-          PAGES_URL: https://staging.typedcode.pages.dev
+          PAGES_URL: ${{ steps.pages-deploy.outputs.deployment-url }}
           API_URL: ${{ secrets.VITE_API_URL }}
           CHECK_ORIGINS: https://staging.typedcode.pages.dev
 
