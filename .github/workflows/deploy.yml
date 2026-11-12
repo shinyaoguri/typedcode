@@ -559,15 +559,19 @@ jobs:
         # --branch=main (= Pages プロジェクトの production branch) を明示する。
         # タグ checkout は detached HEAD になり branch 推定が効かないため、
         # 省略すると preview デプロイ扱いになって本番 URL が更新されない。
+        id: pages-deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy ./dist --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }} --branch=main --commit-hash=${{ github.sha }} --commit-message="${{ github.sha }}"
 
+      # ヘッダは staging と同じくこの deploy の不変 URL で見る。typedcode.dev (custom domain) は切り替えが
+      # 遅れると前の deploy を返し、今回の配信物を検査しないまま合否が決まる。取り出せなければ落とす。
+      # CORS の Origin は利用者が開く custom domain と pages.dev のまま (Worker の ALLOWED_ORIGINS の検査)。
       - name: Check deployed Pages headers, signing health and CORS
         run: node scripts/post-deploy-check.mjs
         env:
-          PAGES_URL: https://typedcode.dev
+          PAGES_URL: ${{ steps.pages-deploy.outputs.deployment-url }}
           API_URL: ${{ secrets.VITE_API_URL }}
           CHECK_ORIGINS: https://typedcode.dev,https://typedcode.pages.dev
