@@ -49,7 +49,7 @@ gh pr merge --squash --delete-branch
 - **PR タイトルも Conventional Commits 形式にする**。Squash and Merge では PR タイトルがマージコミットのメッセージになります。
 - マージ前に lint / type check / test / build が緑であること (main は required status checks で強制)。手元では `npm run check` で同じ検査を回せる。
 - 「完了」の基準は下記「完了の定義」。**CI が緑なら手動の動作確認は不要**にすることが目標で、そのためにテストを足す。
-- マージされると main push の CI が staging へ自動デプロイし、続く `e2e-staging` job がその deploy の URL をブラウザで通す (打鍵 → 署名付き checkpoint → export → verify-cli と `/verify/`。#655)。staging は Turnstile の公開テストキーで動くので、本物の Turnstile は production でしか通らない ([ADR-0049](docs/adr/0049-staging-turnstile-testing-keys.md))。人が触って確かめるなら https://staging.typedcode.pages.dev で。
+- マージされると main push の CI が staging へ自動デプロイする。staging / production ともデプロイ直後に `scripts/post-deploy-check.mjs` がその deploy の不変 URL (alias・custom domain ではなく) で editor / verify の COOP・COEP、Worker の署名 readiness、Pages の Origin に対する CORS preflight を検査し、不備があれば deploy job を失敗させる (#579)。staging では続く `e2e-staging` job がその deploy の URL をブラウザで通す (打鍵 → 署名付き checkpoint → export → verify-cli と `/verify/`。#655)。staging は Turnstile の公開テストキーで動くので、本物の Turnstile は production でしか通らない ([ADR-0049](docs/adr/0049-staging-turnstile-testing-keys.md))。人が触って確かめるなら https://staging.typedcode.pages.dev で。
 - **マージしたら、メインのチェックアウトから `git sweep` を実行して**ローカルブランチと worktree を掃除する (下記「マージ後の掃除」)。
 
 ## 完了の定義 (Definition of Done)

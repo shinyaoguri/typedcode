@@ -43,11 +43,11 @@ describe('fetch top-level guard', () => {
     expect(res.headers.get('Content-Security-Policy')).toBe("default-src 'none'; frame-ancestors 'none'");
   });
 
-  it('serves /health normally with the guard in place (no behavior change on the happy path)', async () => {
+  it('preserves the /health JSON 503 when signing is unavailable', async () => {
     const env = { ENVIRONMENT: 'development' } as unknown as TestEnv;
     const res = await worker.fetch(new Request('https://workers.test/health'), env);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
     const body = (await res.json()) as { status: string };
-    expect(body.status).toBe('ok');
+    expect(body.status).toBe('error');
   });
 });

@@ -41,7 +41,7 @@ npm run gen-checkpoint-key -w @typedcode/workers
   本番鍵は通常の PR で `packages/shared/src/checkpointKeys/registry.ts` に登録します。
 - 対応する `CHECKPOINT_SIGNING_KEY_ID` と `CHECKPOINT_SIGNING_KEY_JWK`: `.dev.vars` に貼り付け。
 
-これらが未設定の場合、`/api/checkpoint/sign` は `SIGNING_KEY_NOT_CONFIGURED` (500) を返します。それ以外のエンドポイントは動作します。
+これらが未設定の場合、`/api/checkpoint/sign` は `SIGNING_KEY_NOT_CONFIGURED` (500) を返します。`/health` も 503 を返します。
 
 署名のたびに、`CHECKPOINT_SIGNING_KEY_ID` のレジストリ公開鍵が今この時点で有効で、`CHECKPOINT_SIGNING_KEY_JWK` がその公開鍵と対であることを確認します。次のときは署名せず 500 を返し、原因 (keyId・理由) は Worker のログにだけ出ます (クライアントには固定文言 `Signing key is not available`)。
 
@@ -241,15 +241,18 @@ Turnstile トークンを検証し、成功時は検証結果をアテステー�
 
 ### GET `/health`
 
-ヘルスチェック。
+署名 readiness の確認。設定の秘密鍵でダミーの checkpoint を署名し、同梱の公開鍵 registry で検証します。KV と Turnstile は使いません。
 
-**Response:**
+**Response (HTTP 200):**
 ```json
 {
   "status": "ok",
-  "environment": "development"
+  "environment": "development",
+  "signing": { "ok": true, "keyId": "..." }
 }
 ```
+
+鍵が未設定・未知の keyId・有効期間外・秘密鍵と公開鍵の不一致・署名検証失敗の場合は HTTP 503 となり、`status: "error"` と `signing: { ok: false, reason: "固定のエラーコード" }` を返します。秘密鍵・例外本文・ダミー署名は公開しません。暗号処理の結果は isolate 内で鍵の設定ごとに保持し、有効期間はリクエストごとに確認します。応答は `Cache-Control: no-store` です。
 
 `npm run dev` (`wrangler dev`) で起こしたときだけ、`worktree` (どの作業ツリーの dev サーバかの識別子。`--var DEV_WORKTREE_ID` で渡す) も返す。e2e が別の worktree の workers を再利用しないための照合に使う (#552)。staging / production の応答には付かない。
 
