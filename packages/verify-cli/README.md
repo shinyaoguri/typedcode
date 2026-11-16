@@ -75,7 +75,7 @@ typedcode-verify ALL_TC.zip --extract-sources graded/
 | `--analyzer <module>` | 外部 Analyzer モジュールを読み込む (反復可、ADR-0023) |
 | `--no-default-analyzers` | 同梱の分析器を外し、`--analyzer` で指定したものだけを使う |
 | `--analysis-json <out.json>` | 分析レポートを JSON でファイル出力 |
-| `--result-json <out.json>` | 検証の結論を JSON でファイル出力 (`failedCheck` = 最初に落ちた層。[書き出し](#分析結果の書き出し)) |
+| `--result-json <out.json>` | 検証の結論を JSON でファイル出力 (`failedCheck` = 落ちた理由の代表 1 つ。複数落ちたときは診断の優先順位で選ぶので、実行順で最初に落ちた検査や `errorMessage` の文言と一致するとは限らない。[書き出し](#分析結果の書き出し)) |
 | `--analysis-bundle <out.json>` | 授業内レビュー用の派生バンドルを出力 (ADR-0024 Tier A。[書き出し](#分析結果の書き出し)) |
 | `--aggregate-bundle <out.json>` | 集計・研究用の派生バンドルを出力 (ADR-0024 Tier S。[書き出し](#分析結果の書き出し)) |
 | `--extract-sources <dir>` | ZIP の proof ごとに、同梱ソースと `proof.content` を `<dir>` へ書き出す ([書き出し](#ソースの書き出し---extract-sources)) |
