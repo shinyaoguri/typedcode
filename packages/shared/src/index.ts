@@ -7,6 +7,8 @@ export * from './types.js';
 
 // タイピング証明
 export { TypingProof } from './typingProof.js';
+// PoSW Worker の故障の観測 (#701)。editor が Worker の生成と同じ同期区間で呼ぶ
+export { observePoswWorkerFailure } from './typingProof/PoswManager.js';
 
 // 記録キューの排出待ち (#225) — exporter が待機ポリシーを指定し、結果で export 継続を判断する
 export type { QueueDrainOptions, QueueDrainResult, QueueDrainReason } from './typingProof/queueDrain.js';
