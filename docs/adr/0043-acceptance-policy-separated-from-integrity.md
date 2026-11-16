@@ -65,7 +65,7 @@
 
 ### Follow-ups / 残課題
 - 名前付きプロファイル (Option C) は需要が示されたら足す。
-- #236(b) (署名 token の再取得) が入ったら、README の `--require-final-anchor` の運用注意を見直す。
+- #236(b) (署名 token の再取得) が入ったら、README の `--require-final-anchor` の運用注意を見直す。(2026-11-16 追記) #682 で `TOKEN_EXPIRED` での取り直しが入り、README の注意を見直した。取り直しの失敗・オフライン・時計ずれでは末尾が未署名になりうるので、短時間の試験以外で常用しない注意は残した。
 
 ## References
 
