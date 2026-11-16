@@ -32,6 +32,10 @@ export class FakeFolder {
    */
   beforeRootValues?: (call: number) => Promise<void> | void;
 
+  /** `path` のファイルの `getFile()` の n 回目 (1 始まり) の前に待つ関数 (読み込みの終わる順を決める)。 */
+  beforeGetFile?: (path: string, call: number) => Promise<void> | void;
+  private getFileCalls = new Map<string, number>();
+
   constructor(
     readonly name: string,
     files: Record<string, string | Uint8Array> = {}
@@ -93,6 +97,9 @@ export class FakeFolder {
       kind: 'file',
       name,
       async getFile() {
+        const call = (folder.getFileCalls.get(path) ?? 0) + 1;
+        folder.getFileCalls.set(path, call);
+        await folder.beforeGetFile?.(path, call);
         const entry = folder.entries.get(path);
         if (!entry) throw notFound(name);
         return new File([entry.bytes.slice()], name, { type: mimeOf(name), lastModified: entry.lastModified });

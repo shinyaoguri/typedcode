@@ -162,6 +162,32 @@ describe('folder screenshots re-checked while watching (#703)', () => {
     expect(s.enqueued.filter((id) => id === firstId)).toHaveLength(1);
   });
 
+  it('checks a proof that appears together with screenshots/ against the reloaded screenshots even when the screenshot reload finishes before the proof is read', async () => {
+    const s = folderStack();
+    const fake = new FakeFolder('submission', { 'readme.txt': 'hello' });
+    await s.folder.openFolder(fake.handle());
+
+    // 提出物一式を後から置く: proof と screenshots/ が同じ走査で現れる。proof の取り込み (監視の走査の後の
+    // 2 回目の getFile) だけを、スクショの読み直しが終わるまで止める
+    let release!: () => void;
+    const proofReadReleased = new Promise<void>((r) => (release = r));
+    fake.beforeGetFile = (path, call) => (path === 'added_proof.json' && call === 2 ? proofReadReleased : undefined);
+    fake.write('added_proof.json', VALID);
+    fake.write('screenshots/manifest.json', await manifestFor({ 'a.png': ORIGINAL }));
+    fake.write('screenshots/a.png', ORIGINAL);
+    await s.sync();
+    expect(() => s.tabAt('added_proof.json')).toThrow();
+
+    release();
+    await vi.waitFor(() => expect(() => s.tabAt('added_proof.json')).not.toThrow());
+    await s.folder.whenScreenshotsResynced();
+    await s.drain();
+
+    const added = s.tabAt('added_proof.json');
+    expect(added.screenshots?.map((shot) => shot.filename)).toEqual(['a.png']);
+    expect(screenshotSummaryOf(added)).toMatchObject({ total: 1, tampered: 0, missing: 0 });
+  });
+
   it('checks a proof added while watching as zero screenshots when the folder has no screenshots directory', async () => {
     const s = folderStack();
     const fake = new FakeFolder('submission', { [PROOF_PATH]: VALID });

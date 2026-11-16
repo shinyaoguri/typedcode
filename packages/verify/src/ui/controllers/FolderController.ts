@@ -345,7 +345,10 @@ export class FolderController {
 
       for (const fileData of result.files) {
         if (fileData.type === 'proof') {
-          // フォルダはコンテナなので、スクショが無くても未検査 (undefined) ではなく 0 枚として渡す (不変条件 8。#703)
+          // フォルダはコンテナなので、スクショが無くても未検査 (undefined) ではなく 0 枚として渡す (不変条件 8。#703)。
+          // スクショは読み込みを待った後のここで引く (待つ前に引くと、その間に終わった読み直しの結果を取り逃す)。
+          // 読み直しは folderScreenshots の更新と screenshotProofPaths の写しを同期的に続けて行うので、ここが
+          // 読み直しの前なら写しに入って取り込み直され、後なら最新のスクショを受け取る
           this.screenshotProofPaths.add(file.path);
           this.deps.addFileToVerification(
             fileData.filename,
