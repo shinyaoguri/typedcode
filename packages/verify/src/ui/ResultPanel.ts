@@ -169,6 +169,8 @@ export class ResultPanel {
   private examContentHash: HTMLElement;
   private examStarterRow: HTMLElement;
   private examStarter: HTMLElement;
+  private examLanguageRow: HTMLElement;
+  private examLanguage: HTMLElement;
   private examTimeboxRow: HTMLElement;
   private examTimebox: HTMLElement;
   private examReasonRow: HTMLElement;
@@ -307,6 +309,8 @@ export class ResultPanel {
     this.examContentHash = document.getElementById('exam-contenthash')!;
     this.examStarterRow = document.getElementById('exam-starter-row')!;
     this.examStarter = document.getElementById('exam-starter')!;
+    this.examLanguageRow = document.getElementById('exam-language-row')!;
+    this.examLanguage = document.getElementById('exam-language')!;
     this.examTimeboxRow = document.getElementById('exam-timebox-row')!;
     this.examTimebox = document.getElementById('exam-timebox')!;
     this.examReasonRow = document.getElementById('exam-reason-row')!;
@@ -809,6 +813,28 @@ export class ResultPanel {
   }
 
   /** PASS/FAIL の行値を色付きで設定する。 */
+  /**
+   * 許可言語の照合行 (#727)。starter と同じく、束縛の前段で落ちた proof には language が無いので行ごと隠す。
+   * 状態契約として生の status を `data-language-check` に出す (allowed / not-allowed / not-evaluated)。
+   * proof.language は提出時の言語の自己申告で、PASS でも試験中に実行した言語の全履歴は保証しない。
+   */
+  private renderExamLanguageRow(b: ExamBindingVerificationResult): void {
+    const language = b.language;
+    if (!language) {
+      this.examLanguageRow.style.display = 'none';
+      this.examLanguageRow.removeAttribute('data-language-check');
+      return;
+    }
+    this.examLanguageRow.style.display = 'flex';
+    this.examLanguageRow.dataset.languageCheck = language.status;
+    if (language.status === 'not-evaluated') {
+      this.examLanguage.textContent = t('result.examLanguageNotEvaluated');
+      this.examLanguage.className = 'result-row-value text-warning';
+    } else {
+      this.setExamPassFail(this.examLanguage, language.status === 'allowed');
+    }
+  }
+
   private setExamPassFail(el: HTMLElement, ok: boolean): void {
     el.textContent = ok ? t('result.examPass') : t('result.examFail');
     el.className = `result-row-value ${ok ? 'text-success' : 'text-danger'}`;
@@ -836,6 +862,7 @@ export class ResultPanel {
       this.examPackageHashRow,
       this.examContentRow,
       this.examStarterRow,
+      this.examLanguageRow,
       this.examTimeboxRow,
     ];
     if (!b) {
@@ -864,6 +891,7 @@ export class ResultPanel {
     this.setExamPassFail(this.examPackageHash, b.packageHashMatches);
     this.setExamPassFail(this.examContentHash, b.problemContentHashMatches);
     this.renderExamStarterRow(b);
+    this.renderExamLanguageRow(b);
     if (b.timeBox) {
       this.examTimeboxRow.style.display = 'flex';
       this.examTimebox.textContent = `${b.timeBox.releaseTime} … ${b.timeBox.deadline}`;

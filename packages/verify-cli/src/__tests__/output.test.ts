@@ -999,3 +999,58 @@ describe('formatResult — 封印 starter の照合 (#718)', () => {
     expect(starterLine(text)).toBeUndefined();
   });
 });
+
+describe('formatResult — 許可言語の照合 (#727)', () => {
+  function examWithLanguage(
+    language: NonNullable<NonNullable<Extract<CLIExamResult, { present: true }>['binding']>['language']>
+  ): CLIExamResult {
+    const base = examBindingLate() as Extract<CLIExamResult, { present: true }>;
+    const valid = language.status !== 'not-allowed';
+    return {
+      ...base,
+      binding: {
+        ...base.binding!,
+        valid,
+        language,
+        ...(valid ? {} : { reason: language.reason }),
+      },
+    };
+  }
+
+  function languagesLine(text: string): string | undefined {
+    return text.split('\n').find((line) => line.startsWith('Languages:'));
+  }
+
+  it('prints PASS on the Languages line when the proof language is allowed', () => {
+    const text = plain(formatResult(output({ exam: examWithLanguage({ status: 'allowed' }) })));
+    expect(languagesLine(text)).toContain('PASS');
+  });
+
+  it('prints FAIL on the Languages line and the language reason when the proof language is not allowed', () => {
+    const reason = "Proof language is not one of the exam package's allowed languages";
+    const text = plain(
+      formatResult(output({ valid: false, exam: examWithLanguage({ status: 'not-allowed', reason }) }))
+    );
+    expect(languagesLine(text)).toContain('FAIL');
+    expect(text).toContain(`Reason: ${reason}`);
+  });
+
+  it('prints NOT EVALUATED rather than PASS or FAIL when the package lists no languages', () => {
+    const text = plain(
+      formatResult(output({ exam: examWithLanguage({ status: 'not-evaluated', reason: 'none declared' }) }))
+    );
+    const line = languagesLine(text) ?? '';
+    expect(line).toContain('NOT EVALUATED');
+    expect(line).not.toMatch(/PASS|FAIL/);
+  });
+
+  it('omits the Languages line when the binding result carries no language check', () => {
+    const text = plain(formatResult(output({ exam: examBindingFailed() })));
+    expect(languagesLine(text)).toBeUndefined();
+  });
+
+  it('does not claim the whole execution history in the PASS wording', () => {
+    const text = plain(formatResult(output({ exam: examWithLanguage({ status: 'allowed' }) })));
+    expect(languagesLine(text)).toContain('self-reported');
+  });
+});

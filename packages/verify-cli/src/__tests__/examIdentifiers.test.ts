@@ -187,3 +187,28 @@ describe('formatResult — exam identifiers (#273)', () => {
     expect(plain(text)).toMatch(/Identifiers:\s+FAIL/);
   });
 });
+
+describe('verifyProof — exam allowed languages (#727)', () => {
+  function withLanguage(language: string): ProofFile {
+    return { ...examProof(examBlock), language } as ProofFile;
+  }
+
+  it('fails the result with a FAIL Languages line when proof.language is not allowed by the package', async () => {
+    silence();
+    const result = await verifyProof(withLanguage('html'), { mode: 'fast', examPackageManifest: manifest });
+
+    // 束縛の失敗は verifyProof の examValid を通じて exit 1 になる (チェーン本体の結果とは別軸)
+    expect(result.exam?.present && result.exam.binding?.valid).toBe(false);
+    expect(result.exam?.present && result.exam.binding?.language?.status).toBe('not-allowed');
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI エスケープの除去そのものが目的
+    expect(formatResult(result).replace(/\x1b\[[0-9;]*m/g, '')).toMatch(/Languages:\s+FAIL/);
+  });
+
+  it('keeps the binding valid when proof.language is allowed by the package', async () => {
+    silence();
+    const result = await verifyProof(withLanguage('c'), { mode: 'fast', examPackageManifest: manifest });
+
+    expect(result.exam?.present && result.exam.binding?.language).toEqual({ status: 'allowed' });
+    expect(result.exam?.present && result.exam.binding?.valid).toBe(true);
+  });
+});

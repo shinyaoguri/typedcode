@@ -202,3 +202,39 @@ describe('CodeExecutionController run guard', () => {
     ]);
   });
 });
+
+describe('CodeExecutionController language gate (#727)', () => {
+  it('does not start a run, record anything, or touch the terminal when the gate rejects the language', async () => {
+    const { controller, state } = setup();
+    const recorded: unknown[] = [];
+    const notices: Array<string | undefined> = [];
+    controller.setCallbacks({
+      onRecordEvent: (e) => recorded.push(e),
+      onNotification: (_message, notice) => notices.push(notice),
+    });
+    controller.setLanguageGate(() => false);
+
+    await controller.run(target);
+
+    expect([fake.runs.length, recorded.length, state.execRun, notices]).toEqual([
+      0,
+      0,
+      undefined,
+      ['language-not-allowed'],
+    ]);
+  });
+
+  it('asks the gate about the language of the run target', async () => {
+    const { controller } = setup();
+    const asked: string[] = [];
+    controller.setLanguageGate((language) => {
+      asked.push(language);
+      return true;
+    });
+
+    void controller.run(target);
+    await flush();
+
+    expect([asked, fake.runs.length]).toEqual([['javascript'], 1]);
+  });
+});

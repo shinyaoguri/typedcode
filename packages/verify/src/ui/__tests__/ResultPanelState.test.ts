@@ -251,6 +251,75 @@ describe('ResultPanel exam binding card — sealed starter row (#718)', () => {
   });
 });
 
+describe('ResultPanel exam binding card — allowed language row (#727)', () => {
+  function binding(
+    language: ExamBindingVerificationResult['language'],
+    valid = language?.status !== 'not-allowed'
+  ): ExamBindingVerificationResult {
+    return {
+      valid,
+      packageSignatureValid: true,
+      packageHashMatches: true,
+      rootMatches: true,
+      problemContentHashMatches: true,
+      identifiersMatch: true,
+      timeBox: null,
+      ...(language ? { language } : {}),
+      ...(valid ? {} : { reason: language?.reason ?? 'failed' }),
+    };
+  }
+
+  function renderWith(b: ExamBindingVerificationResult | undefined): void {
+    panel.render(
+      resultData({
+        examBinding: {
+          examId: 'exam-1',
+          problemId: 'p1',
+          variant: null,
+          rootValid: true,
+          packageProvided: b !== undefined,
+          ...(b ? { binding: b } : {}),
+        },
+      })
+    );
+  }
+
+  function languageRow(): HTMLElement {
+    return document.getElementById('exam-language-row')!;
+  }
+
+  it.each(['allowed', 'not-allowed', 'not-evaluated'] as const)(
+    'exposes the raw language check status %s on data-language-check',
+    (status) => {
+      renderWith(binding({ status, reason: 'r' }));
+      expect(languageRow().style.display).toBe('flex');
+      expect(languageRow().dataset.languageCheck).toBe(status);
+    }
+  );
+
+  it('hides the language row when the binding result carries no language check', () => {
+    renderWith(binding({ status: 'allowed' }));
+    renderWith(binding(undefined, false));
+    expect(languageRow().style.display).toBe('none');
+    expect(languageRow().hasAttribute('data-language-check')).toBe(false);
+  });
+
+  it('hides the language row when no problem package was provided', () => {
+    renderWith(binding({ status: 'allowed' }));
+    renderWith(undefined);
+    expect(languageRow().style.display).toBe('none');
+  });
+
+  it('marks a disallowed language as FAIL and an unevaluated one as neither PASS nor FAIL', () => {
+    renderWith(binding({ status: 'not-allowed', reason: 'r' }));
+    const failText = document.getElementById('exam-language')!.textContent;
+    renderWith(binding({ status: 'not-evaluated', reason: 'r' }));
+    const notEvaluatedText = document.getElementById('exam-language')!.textContent;
+    expect(failText).toBe('FAIL');
+    expect(notEvaluatedText).not.toMatch(/PASS|FAIL/);
+  });
+});
+
 describe('ResultPanel verdict while no verdict is shown', () => {
   const transitions: Array<[string, (p: ResultPanel) => void]> = [
     ['another file starts verifying', (p) => p.startProgress('other_proof.json')],

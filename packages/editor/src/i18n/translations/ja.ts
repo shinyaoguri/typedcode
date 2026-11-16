@@ -344,6 +344,7 @@ export const ja: TranslationKeys = {
     noActiveTab: 'アクティブなタブがありません',
     alreadyRunning: '既にコードを実行中です',
     languageNotExecutable: '${language} は実行できません',
+    languageNotAllowed: 'この試験では ${language} を使えません',
     runtimeNotFound: '${language} の実行環境が見つかりません',
     executionFailed: 'コードの実行に失敗しました',
     compilationStarted: 'コンパイル中...',

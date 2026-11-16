@@ -187,6 +187,8 @@ export class TabManager {
   private editor: monaco.editor.IStandaloneCodeEditor;
   private onTabChangeCallback: OnTabChangeCallback | null = null;
   private onTabUpdateCallback: OnTabUpdateCallback | null = null;
+  /** 言語変更の可否 (#727。試験の許可言語)。null は制限なし */
+  private languageGuard: ((tab: TabState, language: string) => boolean) | null = null;
   private onVerificationCallback: OnVerificationCallback | null = null;
   private onSyncStatusChangeCallback: OnSyncStatusChangeCallback | null = null;
   private onTabCreatedCallback: OnTabCreatedCallback | null = null;
@@ -1052,11 +1054,20 @@ export class TabManager {
   }
 
   /**
-   * タブの言語を変更
+   * 言語変更の可否を判定する関数を設定する (#727。試験の許可言語)。null で制限なし
+   */
+  setLanguageGuard(guard: ((tab: TabState, language: string) => boolean) | null): void {
+    this.languageGuard = guard;
+  }
+
+  /**
+   * タブの言語を変更 (言語の guard が拒否したら変えずに false)
    */
   setTabLanguage(tabId: string, language: string): boolean {
     const tab = this.tabs.get(tabId);
     if (!tab) return false;
+    // 試験の許可言語 (#727)。許可されない言語には変えない (UI の選択肢を経ない呼び出しも止める)
+    if (this.languageGuard && !this.languageGuard(tab, language)) return false;
 
     tab.language = language;
     monaco.editor.setModelLanguage(tab.model, language);
