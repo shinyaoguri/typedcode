@@ -90,6 +90,26 @@ export interface CompileOptions {
   compileArgs?: string[];
 }
 
+/**
+ * 実行 1 回分の所有権 (#711)。`abort()` はその時点の run にだけ `aborted` を立て、
+ * 保持している Process (コンパイラか利用者プログラム) を止める。run は段階の境目ごとに
+ * 自分の `aborted` を見て、立っていれば後続の段階 (特に利用者プログラムの起動) へ進まない。
+ * 基底の `_abortRequested` は次の run の `resetAbort()` で消えるので、run の判定には使わない
+ */
+interface ActiveRun {
+  aborted: boolean;
+  /** 今の段階で止める対象 (コンパイル中はコンパイラ、実行中は利用者プログラム) */
+  process: Process | null;
+  /** process が利用者プログラムか (停止の通知と既存の 137 の流儀を分ける) */
+  isProgram: boolean;
+  callbacks: ExecutionCallbacks;
+}
+
+/** 停止した run の結果。controller は aborted を自分で記録するので、ここは executor 単体の契約 */
+function abortedResult(exitCode = 1): ExecutionResult {
+  return { success: false, exitCode, stdout: '', stderr: '', outcome: 'aborted' };
+}
+
 export class CExecutor extends BaseExecutor {
   readonly config: ExecutorConfig = {
     id: 'c',
@@ -107,11 +127,8 @@ export class CExecutor extends BaseExecutor {
   /** Cached Clang binary to avoid re-downloading on reset */
   private clangBinary: Uint8Array | null = null;
 
-  /** Currently running process (for abort support) */
-  private runningInstance: Process | null = null;
-
-  /** Callbacks for the current execution (for abort messaging) */
-  private currentCallbacks: ExecutionCallbacks | null = null;
+  /** The run that `abort()` stops (null when nothing is running). See ActiveRun */
+  private activeRun: ActiveRun | null = null;
 
   protected async _doInitialize(onProgress?: (progress: InitializationProgress) => void): Promise<void> {
     try {
@@ -186,6 +203,25 @@ export class CExecutor extends BaseExecutor {
     callbacks: ExecutionCallbacks,
     options: CompileOptions
   ): Promise<ExecutionResult> {
+    // 復旧の初期化より前に run を登録し、その待ちの間の abort もこの run に効かせる (#711)
+    const run: ActiveRun = { aborted: false, process: null, isProgram: false, callbacks };
+    this.activeRun = run;
+    this.resetAbort();
+    try {
+      return await this.runOwned(run, code, callbacks, options);
+    } finally {
+      // 停止後に始まった新しい run の所有を、古い run の後始末が外さない
+      if (this.activeRun === run) this.activeRun = null;
+    }
+  }
+
+  /** runWithOptions の本体。段階の境目ごとに `run.aborted` を見て、立っていれば先へ進まない */
+  private async runOwned(
+    run: ActiveRun,
+    code: string,
+    callbacks: ExecutionCallbacks,
+    options: CompileOptions
+  ): Promise<ExecutionResult> {
     // Auto-reset and reinitialize if runtime was corrupted
     if (this._runtimeCorrupted) {
       console.log('[CExecutor] Runtime was corrupted, attempting recovery...');
@@ -198,6 +234,7 @@ export class CExecutor extends BaseExecutor {
           callbacks.onProgress?.(progress.message);
         });
       } catch (error) {
+        if (run.aborted) return abortedResult();
         // If reinitialization fails with SDK corruption, inform user to reload
         if (error instanceof WasmerSdkCorruptedError) {
           callbacks.onStderr(
@@ -214,6 +251,8 @@ export class CExecutor extends BaseExecutor {
         }
         throw error;
       }
+      // 初期化を待つ間に停止された
+      if (run.aborted) return abortedResult();
     }
 
     if (!this._initialized || !this.wasmer || !this.clangPkg) {
@@ -222,8 +261,6 @@ export class CExecutor extends BaseExecutor {
 
     const sourceFile = options.sourceFile ?? 'main.c';
     const extraArgs = options.compileArgs ?? [];
-
-    this.resetAbort();
 
     const wasmer = this.wasmer;
     const clangPkg = this.clangPkg;
@@ -239,9 +276,11 @@ export class CExecutor extends BaseExecutor {
         packages: [clangPkg],
         files: { [`${WORKSPACE_DIR}/${sourceFile}`]: modifiedCode },
       });
+      if (run.aborted) return abortedResult();
 
-      // Compile the code (clang package used as selector = its entrypoint)
-      const compileResult = await sandbox
+      // Compile the code (clang package used as selector = its entrypoint).
+      // run() ではなく spawn() で起こし、abort() がコンパイラを止められるよう Process を持つ (#711)
+      const compiler = await sandbox
         .command(clangPkg, [
           `${WORKSPACE_DIR}/${sourceFile}`,
           '-o',
@@ -251,7 +290,12 @@ export class CExecutor extends BaseExecutor {
           '-O2',
           ...extraArgs,
         ])
-        .run({ check: false });
+        .spawn({ stdin: 'closed', stdout: 'capture', stderr: 'capture' });
+      if (!this.holdProcess(run, compiler, false)) return abortedResult();
+      const compileResult = await compiler.wait({ check: false });
+      run.process = null;
+      // コンパイル中に停止された (SDK がコンパイラを殺せずに完了まで走った場合も含む)
+      if (run.aborted) return abortedResult();
 
       if (compileResult.exitCode !== 0) {
         // Compilation failed
@@ -271,12 +315,13 @@ export class CExecutor extends BaseExecutor {
 
       // Read the compiled WASM binary and install it as a package (raw wasm → command `main`)
       const wasmBinary = await sandbox.fs.readFile(`${WORKSPACE_DIR}/main.wasm`);
+      if (run.aborted) return abortedResult();
       const program = await sandbox.installPackage(wasmBinary);
+      if (run.aborted) return abortedResult();
 
       // Start the program
       const runInstance = await sandbox.command(program).spawn({ stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
-      this.runningInstance = runInstance;
-      this.currentCallbacks = callbacks;
+      if (!this.holdProcess(run, runInstance, true)) return abortedResult();
 
       // Stream stdout/stderr to callbacks. Keep the promises to ensure all output
       // is flushed before returning
@@ -293,9 +338,10 @@ export class CExecutor extends BaseExecutor {
       try {
         runResult = await runInstance.wait();
       } finally {
-        this.runningInstance = null;
-        this.currentCallbacks = null;
+        run.process = null;
       }
+      // 停止された run は、kill が間に合わずに exit 0 で終わっても success にしない
+      if (run.aborted) return abortedResult(runResult.exitCode);
 
       // Wait for output streams to flush with a timeout
       // (safety valve in case a stream doesn't close properly)
@@ -309,6 +355,8 @@ export class CExecutor extends BaseExecutor {
         stderr: '', // Already streamed via callbacks
       };
     } catch (error) {
+      // 停止済みの run の遅れた失敗は、新しい run の runtime 状態 (破損の印) にも出力にも触れない
+      if (run.aborted) return abortedResult();
       console.error('[CExecutor] Execution error:', error);
       const errorMsg = error instanceof Error ? error.message : String(error);
 
@@ -341,24 +389,49 @@ export class CExecutor extends BaseExecutor {
 
   protected _onAbort(): void {
     console.log('[CExecutor] Abort requested');
-    if (this.runningInstance) {
-      // Force-terminate the running process
-      this.runningInstance.kill().catch(() => {
-        // Ignore errors - process may already have exited
-      });
+    const run = this.activeRun;
+    if (!run) return;
+    // この run を手放す: 以後の段階の境目でこの run は先へ進まない (#711)
+    run.aborted = true;
+    this.activeRun = null;
+    if (run.process) {
+      this.killProcess(run, run.process, run.isProgram);
+    }
+  }
 
+  /**
+   * spawn した Process を run に持たせる。spawn を待つ間に停止されていたら、
+   * 起動したばかりの Process をその場で止めて false を返す (呼び出し側は先へ進まない)
+   */
+  private holdProcess(run: ActiveRun, process: Process, isProgram: boolean): boolean {
+    if (run.aborted) {
+      this.killProcess(run, process, isProgram);
+      return false;
+    }
+    run.process = process;
+    run.isProgram = isProgram;
+    return true;
+  }
+
+  /** 停止した run の Process (コンパイラか利用者プログラム) を止める */
+  private killProcess(run: ActiveRun, process: Process, isProgram: boolean): void {
+    // Force-terminate the process
+    process.kill().catch(() => {
+      // Ignore errors - process may already have exited
+    });
+
+    if (isProgram) {
       // Notify user
-      this.currentCallbacks?.onStderr(
+      run.callbacks.onStderr(
         '\n[System] Program stopped.\n' + '[System] Runtime will be automatically reset on next execution.\n'
       );
-
-      // Mark runtime for reset as a conservative fallback
-      // (in case the kill leaves the worker pool in a bad state)
-      this.markRuntimeCorrupted();
-      this.runningInstance = null;
-      this.currentCallbacks = null;
-      console.log('[CExecutor] Runtime marked for reset');
     }
+
+    // Mark runtime for reset as a conservative fallback
+    // (in case the kill leaves the worker pool in a bad state; the same holds for the compiler)
+    this.markRuntimeCorrupted();
+    run.process = null;
+    console.log('[CExecutor] Runtime marked for reset');
   }
 
   /**
@@ -408,9 +481,8 @@ export class CExecutor extends BaseExecutor {
   override async resetRuntime(): Promise<void> {
     console.log('[CExecutor] Performing full runtime reset...');
 
-    // Clear running instance references
-    this.runningInstance = null;
-    this.currentCallbacks = null;
+    // 実行中の run の所有 (activeRun) はここで外さない: 復旧のための reset は run の中から呼ばれ、
+    // その間の abort もその run に効かせる (#711)
 
     // Close the Wasmer client and clear Clang package (but keep binary cached for fast reload)
     this.closeWasmer();
@@ -458,12 +530,12 @@ export class CExecutor extends BaseExecutor {
   }
 
   override dispose(): void {
+    // 実行中の run を止めてから手放す (止めずに参照だけ外すと、その run が後続の段階へ進む)
+    this._onAbort();
     super.dispose();
     this.closeWasmer();
     this.clangPkg = null;
     this.clangBinary = null; // Release cached binary on dispose
-    this.runningInstance = null;
-    this.currentCallbacks = null;
   }
 }
 
