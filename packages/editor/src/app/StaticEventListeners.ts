@@ -10,7 +10,7 @@ import { isTurnstileConfigured } from '../services/TurnstileService.js';
 import { t } from '../i18n/index.js';
 import { showNotification } from './AppHelpers.js';
 import { handleBeforeUnload } from './beforeUnloadGuard.js';
-import { confirmReset, prepareResetDialog } from './resetDialog.js';
+import { setupResetDialog } from './resetDialog.js';
 import { handleTemplateDrop, isTemplateFile } from './TemplateHandler.js';
 import { showLanguageDescriptionInTerminal } from './TerminalHandler.js';
 
@@ -270,54 +270,8 @@ export function setupStaticEventListeners(ctx: AppContext): void {
     }
   });
 
-  // リセット機能 - イベント委任を使用して確実にキャプチャ
-  const resetDialog = document.getElementById('reset-dialog');
-
-  // リセットボタン（設定メニュー内）をクリックしてダイアログを表示
-  document.getElementById('reset-btn')?.addEventListener('click', () => {
-    document.getElementById('settings-dropdown')?.classList.remove('visible');
-    // 消えるモード名とタブ数を差し込んでから開く (#323)
-    prepareResetDialog(ctx);
-    resetDialog?.classList.remove('hidden');
-  });
-
-  // キャンセルボタン
-  document.getElementById('reset-cancel-btn')?.addEventListener('click', () => {
-    resetDialog?.classList.add('hidden');
-  });
-
-  // オーバーレイクリックで閉じる
-  resetDialog?.addEventListener('click', (e) => {
-    if (e.target === resetDialog) {
-      resetDialog.classList.add('hidden');
-    }
-  });
-
-  // Escキーで閉じる
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !resetDialog?.classList.contains('hidden')) {
-      resetDialog?.classList.add('hidden');
-    }
-  });
-
-  // リセット確認ボタン - イベント委任を使用
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    // ボタン自体またはその子要素（アイコン、テキスト）がクリックされた場合
-    const confirmBtn = target.closest('#reset-confirm-btn');
-    if (!confirmBtn) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    console.log('[TypedCode] Reset confirmed via event delegation');
-
-    // ダイアログを閉じる
-    resetDialog?.classList.add('hidden');
-
-    // 現在のモードのデータを消し、完了してからパラメータ無しでリロードする (#323)
-    void confirmReset(ctx);
-  });
+  // リセット機能 (ダイアログの開閉・確定。a11y は resetDialog.ts)
+  setupResetDialog(ctx);
 
   // ページ離脱時の確認ダイアログ
   // (セッションの isActive は書き換えない。リロードとタブ閉じの区別は下の sessionStorage フラグで行う)
