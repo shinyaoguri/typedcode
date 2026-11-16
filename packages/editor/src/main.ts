@@ -79,7 +79,7 @@ import { DownloadDropdown } from './ui/components/DownloadDropdown.js';
 import { MainMenuDropdown } from './ui/components/MainMenuDropdown.js';
 import { TerminalPanel } from './ui/components/TerminalPanel.js';
 import { CodeExecutionController } from './execution/CodeExecutionController.js';
-import { toRecordEventInput } from './execution/codeExecutionRecording.js';
+import { recordToOwnerTab } from './execution/codeExecutionRecording.js';
 import { ProofExporter } from './export/ProofExporter.js';
 import { createRescueExporter, downloadBlobAsFile, type RescueExporter } from './export/RescueExporter.js';
 import { RuntimeManager } from './execution/RuntimeManager.js';
@@ -821,7 +821,8 @@ function initializeCodeExecution(): void {
     onShowClangLoading: showClangLoading,
     onHideClangLoading: hideClangLoading,
     onUpdateClangStatus: updateClangStatus,
-    onRecordEvent: (event) => ctx.eventRecorder?.record(toRecordEventInput(event)),
+    // 記録先は表示中のタブではなく、run を始めたタブ (#698)
+    onRecordEvent: (event, ownerTabId) => recordToOwnerTab(ctx.eventRecorder, event, ownerTabId),
     onShowErrors: showErrorsInEditor,
     onClearErrors: clearEditorErrors,
   });
@@ -836,6 +837,7 @@ function initializeCodeExecution(): void {
       language: activeTab.language,
       filename: activeTab.filename,
       code: activeTab.model.getValue(),
+      ownerTabId: activeTab.id,
     });
   };
 
