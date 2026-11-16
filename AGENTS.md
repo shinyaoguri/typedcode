@@ -69,8 +69,8 @@ npm run shots -w @typedcode/e2e             # 見た目・動きの証跡を pac
 npm run bench:posw -w @typedcode/e2e        # 記録側 PoSW のスループットと backlog を 1 倍と CPU 4 倍相当で測る (検査ではない。ADR-0045)
 
 # 手元で CI と同じ検査を 1 コマンドで (完了の定義 = CONTRIBUTING.md / ADR-0034)
-npm run check       # typecheck → lint → lint:workflows → check-deps → test:coverage → scripts/*.test.mjs (PR ゲートのテスト) → e2e
-npm run check:fast  # 上から e2e を除いたもの
+npm run check       # typecheck → lint → lint:workflows → check-deps → test:coverage → scripts/*.test.mjs (PR ゲートのテスト) → build → test:dist (verify-cli) → Workers の --dry-run → e2e → test:build (本番ビルドの e2e)
+npm run check:fast  # 上から e2e と test:build を除いたもの (build・test:dist・dry-run は含む)
 ```
 
 ## 開発フロー

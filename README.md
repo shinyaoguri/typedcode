@@ -117,9 +117,9 @@ npm run build:verify-cli
 ユニットテストは shared / editor / verify / verify-cli / workers にあります (Vitest)。CI は `test:coverage` を持つ**全ワークスペース**をカバレッジ付きで回し (各パッケージのカバレッジの床を下回ると失敗)、さらに別 job で E2E (Playwright) を実行します。どちらもデプロイのゲートです。テストの方針は [ADR-0034](docs/adr/0034-replace-manual-verification-with-automated-tests.md) と [CONTRIBUTING.md](CONTRIBUTING.md) の「完了の定義」を参照。
 
 ```bash
-# CI と同じ検査を 1 コマンドで (typecheck → lint → カバレッジ付きユニットテスト → E2E)
+# CI と同じ検査を 1 コマンドで (typecheck → lint → カバレッジ付きユニットテスト → build・dry-run → E2E)
 npm run check
-npm run check:fast   # E2E を除く
+npm run check:fast   # E2E (と test:build) を除く
 
 # CI と同じユニットテスト一式 (カバレッジ付き)
 npm run test:coverage
