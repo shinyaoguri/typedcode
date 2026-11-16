@@ -7,6 +7,29 @@ import type { PoSWData } from '../types.js';
 import { POSW_ITERATIONS as REQUIRED_POSW_ITERATIONS } from '../version.js';
 import type { HashChainManager } from './HashChainManager.js';
 
+/** `error` イベントに message が無いとき (スクリプトの読み込み失敗は ErrorEvent ではなく Event) の理由 */
+const WORKER_FAILED_TO_START = 'Worker failed to start';
+
+/** observePoswWorkerFailure が生成直後から見ていて、`error` を出した PoSW Worker (#701) */
+const failedPoswWorkers = new WeakSet<Worker>();
+
+/**
+ * PoSW Worker の故障の観測を始める (#701)。**`new Worker(...)` と同じ同期区間で呼ぶこと** (間に await を挟まない)。
+ *
+ * スクリプトの読み込みに失敗した Worker は、生成の直後に 1 度だけ `error` を出す。呼び出し側は Worker を作ってから
+ * Turnstile などを待って `PoswManager.initWorker` に渡すので、attach の時点で付ける `onerror` ではその `error` を
+ * 取り逃がし、以後の要求がそれぞれ期限 (30 秒) を待つ。ここでは記録するだけで、後始末 (terminate・フォールバックへの
+ * 切り替え) は `PoswManager` が attach の時点 (それより前の故障) と `onerror` (それより後の故障) で行う。
+ *
+ * @returns 渡した Worker (生成式をそのまま包めるように)
+ */
+export function observePoswWorkerFailure(worker: Worker): Worker {
+  worker.addEventListener('error', () => {
+    failedPoswWorkers.add(worker);
+  });
+  return worker;
+}
+
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
@@ -43,6 +66,13 @@ export class PoswManager {
       this.worker = new Worker(new URL('../poswWorker.ts', import.meta.url), { type: 'module' });
     }
 
+    // attach より前に故障していた (observePoswWorkerFailure が見た) 個体は使わない (#701)
+    if (failedPoswWorkers.has(this.worker)) {
+      console.warn('[PoswManager] PoSW worker failed before it was attached; using main-thread compute');
+      this.discardFailedWorker(this.worker, WORKER_FAILED_TO_START);
+      return;
+    }
+
     this.worker.onmessage = (event) => {
       const response = event.data;
       const requestId = response.requestId;
@@ -62,12 +92,12 @@ export class PoswManager {
         lineno: error.lineno,
         colno: error.colno,
       });
-      this.discardFailedWorker(worker, error.message);
+      this.discardFailedWorker(worker, error.message || WORKER_FAILED_TO_START);
     };
   }
 
   /**
-   * Worker 自体の故障 (onerror) を受けた個体を捨てる (#701)。
+   * Worker 自体の故障 (onerror、または attach より前の故障) を受けた個体を捨てる (#701)。
    *
    * 起動に失敗した Worker (配信物の欠落・CSP など) は二度と応答しない。持ち続けると後続の要求が
    * それぞれ WORKER_REQUEST_TIMEOUT_MS を待ってからフォールバックし、記録の直列化で待ちが件数に比例する。

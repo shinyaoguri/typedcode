@@ -13,7 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TypingProof, computeHash } from '../index.js';
 import { HashChainManager } from '../typingProof/HashChainManager.js';
-import { PoswManager } from '../typingProof/PoswManager.js';
+import { PoswManager, observePoswWorkerFailure } from '../typingProof/PoswManager.js';
 import type { FingerprintComponents } from '../types.js';
 import { verifyPoSW } from '../verification.js';
 
@@ -23,17 +23,33 @@ const WORKER_REQUEST_TIMEOUT_MS = 30_000;
 const previousHash = 'a'.repeat(64);
 const eventData = (n: number) => `{"data":"${n}","sequence":${n},"type":"contentChange"}`;
 
-/** postMessage を受けても応答しない Worker。`fail()` で onerror を起こす。 */
+/**
+ * postMessage を受けても応答しない Worker。`fail()` で、本物と同じく `onerror` と `addEventListener('error')` の
+ * 両方へ error を配る。`null` を渡すとスクリプトの読み込み失敗 (message の無い Event) を模す。
+ */
 function makeFailingWorker() {
+  const listeners: Array<(event: Event) => void> = [];
   const worker = {
     onmessage: null as ((event: MessageEvent) => void) | null,
     onerror: null as ((event: ErrorEvent) => void) | null,
     postMessage: vi.fn(),
     terminate: vi.fn(),
-    fail(message = 'worker module failed to load') {
-      worker.onerror?.({ message } as ErrorEvent);
+    addEventListener(type: string, listener: (event: Event) => void) {
+      if (type === 'error') listeners.push(listener);
+    },
+    fail(message: string | null = 'worker module failed to load') {
+      const event = { type: 'error', message: message ?? undefined } as ErrorEvent;
+      worker.onerror?.(event);
+      for (const listener of listeners) listener(event);
     },
   };
+  return worker;
+}
+
+/** 生成直後に故障の観測を始めた Worker (editor の createPoswWorker と同じ形) */
+function makeObservedFailingWorker() {
+  const worker = makeFailingWorker();
+  observePoswWorkerFailure(worker as unknown as Worker);
   return worker;
 }
 
@@ -159,6 +175,101 @@ describe('PoswManager after a fatal worker error (#701)', () => {
   });
 });
 
+describe('PoswManager with a worker that failed before it was attached (#701)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  /** 生成 → 故障 (script の読み込み失敗) → attach の順。editor が Turnstile を待つ間に起きる形 */
+  function managerWithWorkerFailedBeforeAttach() {
+    const worker = makeObservedFailingWorker();
+    worker.fail(null);
+    return { worker, manager: managerWith(worker) };
+  }
+
+  it('arms no worker deadline for the first request', async () => {
+    const { manager } = managerWithWorkerFailedBeforeAttach();
+
+    const first = manager.computePoSW(previousHash, eventData(1));
+    const armedTimers = vi.getTimerCount();
+    // 赤のとき (期限を張った) でも宙づりにしない
+    await vi.advanceTimersByTimeAsync(WORKER_REQUEST_TIMEOUT_MS);
+    await first;
+
+    expect(armedTimers).toBe(0);
+  });
+
+  it('does not post any request to the worker', async () => {
+    const { worker, manager } = managerWithWorkerFailedBeforeAttach();
+
+    const first = manager.computePoSW(previousHash, eventData(1));
+    await vi.advanceTimersByTimeAsync(WORKER_REQUEST_TIMEOUT_MS);
+    await first;
+
+    expect(worker.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('terminates the worker when it is attached', () => {
+    const { worker } = managerWithWorkerFailedBeforeAttach();
+
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives the first request a PoSW that verifies against its input', async () => {
+    const { manager } = managerWithWorkerFailedBeforeAttach();
+
+    const first = manager.computePoSW(previousHash, eventData(1));
+    await vi.advanceTimersByTimeAsync(WORKER_REQUEST_TIMEOUT_MS);
+
+    expect(await verifyPoSW(previousHash, eventData(1), await first)).toBe(true);
+  });
+
+  it('keeps using a worker whose observation saw no error', async () => {
+    const worker = makeObservedFailingWorker();
+    const manager = managerWith(worker);
+
+    void manager.computePoSW(previousHash, eventData(1));
+
+    expect(worker.postMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('cleans up a failure after attach once, through onerror', () => {
+    const worker = makeObservedFailingWorker();
+    const manager = managerWith(worker);
+
+    worker.fail();
+    manager.dispose();
+
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('PoswManager worker error reason (#701)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('reports an error event without a message as a failure to start', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const worker = makeFailingWorker();
+    const manager = managerWith(worker);
+
+    const pending = manager.computePoSW(previousHash, eventData(1));
+    worker.fail(null);
+    await pending;
+
+    expect(String(warn.mock.calls[0]?.[1])).toBe('Error: Worker error: Worker failed to start');
+  });
+});
+
 const components: FingerprintComponents = {
   userAgent: 'Mozilla/5.0 (PoswWorkerFailure Test)',
   language: 'en',
@@ -211,5 +322,22 @@ describe('TypingProof with a PoSW worker that failed to start (#701)', () => {
       data: proof.events.map((e) => e.data),
       sequences: proof.events.map((e) => e.sequence),
     }).toEqual({ recorded: [true, true, true], data: ['a', 'b', 'c'], sequences: [0, 1, 2] });
+  }, 10_000);
+
+  it('catches a worker failure that happens while initialize is still awaiting', async () => {
+    const worker = makeObservedFailingWorker();
+    const proof = new TypingProof();
+    const initializing = proof.initialize(
+      await computeHash(JSON.stringify(components)),
+      components,
+      worker as unknown as Worker
+    );
+    // initialize は root の計算を await してから Worker を attach する。その間に読み込み失敗が届く
+    worker.fail(null);
+    await initializing;
+
+    await proof.recordEvent({ type: 'contentChange', inputType: 'insertText', data: 'a' });
+
+    expect(worker.postMessage).not.toHaveBeenCalled();
   }, 10_000);
 });

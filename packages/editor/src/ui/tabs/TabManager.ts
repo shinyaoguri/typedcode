@@ -49,12 +49,7 @@ import { SigningTokenRetry } from '../../services/SigningTokenRetry.js';
 import { debugLog } from '../../utils/logger.js';
 import { TAB_CREATE_VERIFICATION_BUDGET_MS } from '../../config/timeouts.js';
 import { EXAM_ATTESTATION_ACTION, buildExamHumanAttestation } from './humanAttestation.js';
-
-// PoSW Workerのファクトリ関数
-// Viteがsymlinkedパッケージ内のWorkerを正しく解決できないため、editorパッケージ内から読み込む
-function createPoswWorker(): Worker {
-  return new Worker(new URL('../../workers/poswWorker.ts', import.meta.url), { type: 'module' });
-}
+import { createPoswWorker } from '../../workers/createPoswWorker.js';
 
 // Re-export for convenience
 export type { VerificationState, VerificationDetails };
