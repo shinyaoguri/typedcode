@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_BROWSER_ENV } from './browser-env.js';
 import { E2E_PORTS } from './ports.js';
 
 /**
@@ -43,6 +44,8 @@ export default defineConfig({
 
   use: {
     baseURL: BASE_URL,
+    // 言語とタイムゾーンを実行環境に依存させない (#597)。dev 設定と同じ値 (browser-env.ts)
+    ...E2E_BROWSER_ENV,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: isCI ? 'retain-on-failure' : 'off',
