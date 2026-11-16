@@ -88,6 +88,8 @@ class MockPoswWorker {
 
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
+  // createPoswWorker が故障の観測 (#701) を付ける。このスタブは error を出さない
+  addEventListener(): void {}
   hold = false;
   held: Record<string, unknown>[] = [];
   readonly index: number;
