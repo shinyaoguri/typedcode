@@ -20,6 +20,8 @@ export class PoswManager {
   private static readonly WORKER_REQUEST_TIMEOUT_MS = 30000;
 
   private worker: Worker | null = null;
+  // Worker 自体が故障した (onerror) か。立っていたら Worker を作り直さない (#701)
+  private workerFailed = false;
   private requestIdCounter: number = 0;
   private pendingRequests: Map<number, PendingRequest> = new Map();
   private hashChainManager: HashChainManager;
@@ -33,7 +35,7 @@ export class PoswManager {
    * @param externalWorker - 外部から提供されたWorker（symlinkedパッケージ対応）
    */
   initWorker(externalWorker?: Worker): void {
-    if (this.worker) return;
+    if (this.worker || this.workerFailed) return;
 
     if (externalWorker) {
       this.worker = externalWorker;
@@ -51,6 +53,7 @@ export class PoswManager {
       }
     };
 
+    const worker = this.worker;
     this.worker.onerror = (error) => {
       console.error('[PoswManager] Worker error:', error);
       console.error('[PoswManager] Worker error details:', {
@@ -59,12 +62,29 @@ export class PoswManager {
         lineno: error.lineno,
         colno: error.colno,
       });
-      // すべてのpending requestsをreject
-      for (const [, { reject }] of this.pendingRequests) {
-        reject(new Error(`Worker error: ${error.message}`));
-      }
-      this.pendingRequests.clear();
+      this.discardFailedWorker(worker, error.message);
     };
+  }
+
+  /**
+   * Worker 自体の故障 (onerror) を受けた個体を捨てる (#701)。
+   *
+   * 起動に失敗した Worker (配信物の欠落・CSP など) は二度と応答しない。持ち続けると後続の要求が
+   * それぞれ WORKER_REQUEST_TIMEOUT_MS を待ってからフォールバックし、記録の直列化で待ちが件数に比例する。
+   * pending はそれぞれ 1 度だけ reject し (ラッパーが期限のタイマーを解除する)、個体を terminate して
+   * 参照を捨てる。以後の computePoSW は this.worker が無いのでメインスレッド計算へ直行する。
+   * 作り直しはしない (原因はたいてい配信物・CSP で、作り直しても同じになる)。
+   */
+  private discardFailedWorker(worker: Worker, message: string): void {
+    for (const [, { reject }] of this.pendingRequests) {
+      reject(new Error(`Worker error: ${message}`));
+    }
+    this.pendingRequests.clear();
+    // dispose 済み (#342) なら this.worker は別物か null。二重に terminate しない
+    if (this.worker !== worker) return;
+    this.workerFailed = true;
+    this.worker = null;
+    worker.terminate();
   }
 
   /**
