@@ -57,6 +57,7 @@ gh pr merge --squash --delete-branch
 機能追加のたびに手で動作確認するのをやめ、「CI が緑なら手動確認は不要」を成り立たせるための基準です。判断の根拠は [ADR-0034](docs/adr/0034-replace-manual-verification-with-automated-tests.md)。
 
 - **UI の振る舞いを変える / 足すなら E2E を 1 本以上** (`packages/e2e/tests/`)。検査には翻訳テキストや見た目ではなく、**生の enum 値・状態を出す `data-*` 属性** (状態契約) を使い、そのフックも同じ PR で実装に足す。証明に関わる振る舞いは、従来どおり verify-cli の結論をオラクルにする ([packages/e2e/AGENTS.md](packages/e2e/AGENTS.md))
+- **画面の a11y・i18n・レイアウトは既存の E2E が見張る** (#728): 対象画面の axe の違反が既知の基準から増えない・ja / en で翻訳キーの名前が画面に出ない・狭い画面ではみ出さない、を `packages/e2e/tests/{a11y-axe,i18n-leak,layout-overflow}.spec.ts` が検査し、ja / en のキー集合の一致は editor / verify のユニットテストが見る。新しい画面・ダイアログを足したら巡回 (`tests/helpers/uiTour.ts`) にも足す。axe が通ることはスクリーンリーダーでの実操作の確認ではない (対象・限界・基準の更新手順は [packages/e2e/README.md](packages/e2e/README.md) の「a11y・i18n・レイアウトの検査」)
 - **ロジックはユニットテスト** (各パッケージの `__tests__/` か `*.test.ts`。書き方は [packages/shared/AGENTS.md](packages/shared/AGENTS.md) の「テスト規約」)
 - **バグ修正は先に赤いテスト**: 再現するテストが落ちるのを確かめてから直す。すぐ直さない既知バグは E2E なら `test.fixme('#N ...')` で再現を置き、修正 PR で外す
 - **新しいテスト・検査は壊して赤を見てから仕上げる** (バグ修正に限らない): 検証対象の振る舞いを一時的に壊すか直した行を戻して、そのテストが赤くなるのを確かめる。壊しても緑のままのテストは書き直す。何を壊して赤くなったかは、PR の受け入れ条件の対応表の「壊すと赤になるか」列に書く。カバレッジと `require-tests` はテストの検証力を見ないため ([ADR-0037](docs/adr/0037-see-red-before-trusting-new-tests.md))
