@@ -15,7 +15,9 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { t } from '../../i18n/index.js';
 import { FileProcessor } from '../../services/FileProcessor.js';
+import type { FolderSyncManager } from '../../services/FolderSyncManager.js';
 import { runProofVerification } from '../../services/proofVerification.js';
 import { buildResultData } from '../../services/ResultDataService.js';
 import { UIStateManager } from '../../state/UIStateManager.js';
@@ -49,10 +51,11 @@ function entry(path: string, content: string): FSAccessFileEntry {
   return { handle, path, name, lastModified: Date.now() };
 }
 
-/** 監視・初回読み込みの経路は FolderController の private メソッド。テストからはこの 2 つだけを呼ぶ。 */
+/** 監視・初回読み込みの経路は FolderController の private メンバー。テストからはこれだけを触る。 */
 interface FolderInternals {
   processFileFromHandle(fileEntry: FSAccessFileEntry, folderMap: Map<string, string>): Promise<void>;
   handleExternalFileModified(file: FSAccessFileEntry): Promise<void>;
+  syncManager: FolderSyncManager;
 }
 
 function stack() {
@@ -90,6 +93,12 @@ function stack() {
   const generateId = () => `t${++n}`;
   const statusBar = { setError: vi.fn(), setMessage: vi.fn() };
   const onFileReplaced = vi.fn();
+  const onStatusBarUpdate = vi.fn();
+  /** 監視が削除を通知したときに AppController がする外し方 (tabManager とサイドバーから)。 */
+  const onFileRemove = vi.fn((id: string) => {
+    tabManager.removeTab(id);
+    sidebar.removeFile(id);
+  });
   const files = new FileController({
     fileProcessor: new FileProcessor(),
     tabManager,
@@ -113,6 +122,8 @@ function stack() {
     addImageFile: (fileData, folderId) => files.addImageFile(fileData, folderId),
     replaceFile: (id, fileData) => files.replaceFile(id, fileData),
     settleSubmission: () => files.settleSubmission(),
+    onStatusBarUpdate,
+    onFileRemove,
   } satisfies FolderControllerDependencies) as unknown as FolderInternals;
 
   sidebar.addFolder({ id: 'folder', name: 'folder', expanded: true });
@@ -156,7 +167,23 @@ function stack() {
     );
   }
 
-  return { files, uiState, waiting, calls, statusBar, onFileReplaced, open, modify, drain, tabAt, statuses };
+  return {
+    files,
+    folder,
+    sidebar,
+    uiState,
+    waiting,
+    calls,
+    statusBar,
+    onFileReplaced,
+    onStatusBarUpdate,
+    onFileRemove,
+    open,
+    modify,
+    drain,
+    tabAt,
+    statuses,
+  };
 }
 
 beforeEach(() => {
@@ -369,5 +396,73 @@ describe('external proof update in a watched folder (#695)', () => {
     await s.modify(PROOF_PATH, TAMPERED);
 
     expect(s.onFileReplaced).toHaveBeenCalledWith(s.tabAt(PROOF_PATH).id);
+  });
+});
+
+/**
+ * 監視中のフォルダが一時的に読めなくなった (#699)。読めない回を削除と取り違えて、読み込み済みのタブ・
+ * 検証結果を一覧から外してはいけない。失敗はステータスバーで分かるようにし、3 秒ごとの監視で同じ失敗が
+ * 続いても出し直さない (setError は検証集約の表示を上書きする)。復旧したら通常の表示に戻す。
+ */
+describe('read failure while watching a folder (#699)', () => {
+  /** open() で読み込んだのと同じ中身を返すフォルダのハンドル。`unreadable` の間 values() が投げる。 */
+  function watchedRoot(entries: Record<string, string>) {
+    const control = { unreadable: false };
+    const handle = {
+      kind: 'directory',
+      name: 'folder',
+      async *values() {
+        if (control.unreadable) throw new DOMException('permission temporarily denied', 'NotAllowedError');
+        for (const [path, content] of Object.entries(entries)) {
+          yield { kind: 'file', name: path, getFile: async () => ({ lastModified: 1, text: async () => content }) };
+        }
+      },
+    } as unknown as FileSystemDirectoryHandle;
+    return { handle, control };
+  }
+
+  it('keeps the loaded files and verification results and shows the sync failure once while the folder stays unreadable', async () => {
+    const s = stack();
+    const entries = { [PROOF_PATH]: VALID, 'valid.js': 'ok' };
+    await s.open(entries);
+    await s.drain();
+    const root = watchedRoot(entries);
+    await s.folder.syncManager.startWatching(root.handle, 60 * 60 * 1000);
+    const loaded = s.statuses();
+    const result = s.tabAt(PROOF_PATH).verificationResult;
+    expect(result?.valid).toBe(true);
+
+    root.control.unreadable = true;
+    await s.folder.syncManager.forceSync();
+    await s.folder.syncManager.forceSync();
+
+    expect(s.onFileRemove).not.toHaveBeenCalled();
+    expect(s.sidebar.getFileCount()).toBe(2);
+    expect(s.statuses()).toEqual(loaded);
+    expect(s.tabAt(PROOF_PATH).verificationResult).toBe(result);
+    expect(s.statusBar.setError).toHaveBeenCalledTimes(1);
+    expect(s.statusBar.setError.mock.calls[0]![0]).toContain(t('errors.folderSyncFailed'));
+    expect(s.onStatusBarUpdate).not.toHaveBeenCalled();
+
+    s.folder.syncManager.stopWatching();
+  });
+
+  it('restores the regular status bar once the folder can be read again', async () => {
+    const s = stack();
+    const entries = { [PROOF_PATH]: VALID };
+    await s.open(entries);
+    const root = watchedRoot(entries);
+    await s.folder.syncManager.startWatching(root.handle, 60 * 60 * 1000);
+
+    root.control.unreadable = true;
+    await s.folder.syncManager.forceSync();
+    root.control.unreadable = false;
+    await s.folder.syncManager.forceSync();
+    await s.folder.syncManager.forceSync();
+
+    expect(s.onStatusBarUpdate).toHaveBeenCalledTimes(1);
+    expect(s.onFileRemove).not.toHaveBeenCalled();
+
+    s.folder.syncManager.stopWatching();
   });
 });
