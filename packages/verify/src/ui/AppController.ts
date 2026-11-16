@@ -208,7 +208,7 @@ export class AppController {
       },
       addPlaintextFile: (fileData, folderId) => this.fileController.addPlaintextFile(fileData, folderId),
       addImageFile: (fileData, folderId) => this.fileController.addImageFile(fileData, folderId),
-      replaceFile: (id, fileData) => this.fileController.replaceFile(id, fileData),
+      replaceFile: (id, fileData, container) => this.fileController.replaceFile(id, fileData, container),
       settleSubmission: () => this.fileController.settleSubmission(),
       onScreenshotServiceUpdate: (service) => this.chartController.updateScreenshotService(service),
       onStatusBarUpdate: (message) => this.updateStatusBar(message),
