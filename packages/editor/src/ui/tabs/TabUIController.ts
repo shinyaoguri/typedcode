@@ -7,6 +7,7 @@ import type { TabManager, TabState } from './TabManager.js';
 import { escapeHtml } from '@typedcode/shared';
 import { getLanguageDefinition, FILE_EXTENSIONS } from '../../config/SupportedLanguages.js';
 import { t } from '../../i18n/index.js';
+import { showStaticDialog } from '../components/dialogA11y.js';
 
 /**
  * タブの完全なファイル名 (拡張子込み)。タブに表示される名前と同じで、状態契約の
@@ -600,48 +601,41 @@ export class TabUIController {
       filenameEl.textContent = `「${tabName}」`;
     }
 
-    // ダイアログを表示
-    dialog.classList.remove('hidden');
+    // a11y (#305): 名前付きの modal dialog にし、初期フォーカスは取り消し側 (破壊的な操作)。
+    // キャンセル・overlay・Escape・確定のどれも同じ冪等な close を通り、リスナーはそこで解放される。
+    // 復帰先は起点の × だが、タブ列は描き直しで要素が入れ替わり、確定ではタブごと消えるので、
+    // 閉じた時点で同じタブの × → アクティブなタブの × → 「+」の順に引き直す
+    const container = this.container;
+    const a11y = showStaticDialog(dialog, {
+      initialFocus: cancelBtn,
+      fallbackFocus: () =>
+        container.querySelector<HTMLElement>(`.editor-tab[data-tab-id="${CSS.escape(tabId)}"] .tab-close-btn`) ??
+        container.querySelector<HTMLElement>('.editor-tab[data-active="true"] .tab-close-btn') ??
+        container.querySelector<HTMLElement>('.add-tab-btn'),
+      onRequestClose: () => close(false),
+    });
 
-    // イベントハンドラーをクリーンアップするための参照
-    let handleCancel: () => void;
-    let handleConfirm: () => void;
-    let handleOverlayClick: (e: MouseEvent) => void;
-    let handleEscape: (e: KeyboardEvent) => void;
+    const handleOverlayClick = (e: MouseEvent): void => {
+      if (e.target === dialog) close(false);
+    };
+    const handleCancel = (): void => close(false);
+    const handleConfirm = (): void => close(true);
 
-    const cleanup = (): void => {
+    let closed = false;
+    const close = (confirmed: boolean): void => {
+      if (closed) return;
+      closed = true;
       cancelBtn.removeEventListener('click', handleCancel);
       confirmBtn.removeEventListener('click', handleConfirm);
       dialog.removeEventListener('click', handleOverlayClick);
-      document.removeEventListener('keydown', handleEscape);
-      dialog.classList.add('hidden');
-    };
-
-    handleCancel = (): void => {
-      cleanup();
-    };
-
-    handleConfirm = (): void => {
-      cleanup();
-      this.tabManager.closeTab(tabId);
-    };
-
-    handleOverlayClick = (e: MouseEvent): void => {
-      if (e.target === dialog) {
-        cleanup();
-      }
-    };
-
-    handleEscape = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        cleanup();
-      }
+      // 確定はタブを閉じて (タブ列が描き直されて) から、フォーカスを戻す
+      if (confirmed) this.tabManager.closeTab(tabId);
+      a11y.close();
     };
 
     cancelBtn.addEventListener('click', handleCancel);
     confirmBtn.addEventListener('click', handleConfirm);
     dialog.addEventListener('click', handleOverlayClick);
-    document.addEventListener('keydown', handleEscape);
   }
 
   /**
