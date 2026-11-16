@@ -9,33 +9,67 @@ import type { ExecutionCallbacks } from '../../interfaces/ILanguageExecutor.js';
 
 /** 偽 SDK の状態。各テストが振る舞いを差し替える */
 const sdk = vi.hoisted(() => {
+  /**
+   * 止めて待ち合わせられる段階 (#711)。`holds` に入れた段階は、そこに着いた時点で止まり、
+   * テストが `reached(stage)` で受け取った release を呼ぶまで進まない (固定の sleep に頼らない)。
+   * release に数を渡すとその段階の終了コード (compile / program)、Error を渡すとその段階を reject する
+   */
+  type Stage = 'ready' | 'sandbox' | 'compile' | 'install' | 'program';
+  type Release = (value?: number | Error) => void;
+  const arrivals = new Map<Stage, Release[]>();
+  const waiters = new Map<Stage, ((release: Release) => void)[]>();
+
   const state = {
     compile: { exitCode: 0, stdout: '', stderr: '' },
     stdoutChunks: [] as Uint8Array[],
     stderrChunks: [] as Uint8Array[],
-    /** 実行プロセスの wait() を外から解決するためのフック (null なら即時 exitCode 0) */
-    holdProcess: false,
     runExitCode: 0,
-    releaseProcess: null as null | ((code: number) => void),
+    holds: new Set<Stage>(),
+    /** kill() が効かない SDK を真似る (プロセスは release されるまで終わらない) */
+    killIgnored: false,
     sandboxFiles: [] as Record<string, string | Uint8Array>[],
     commands: [] as { selector: unknown; args: readonly string[] | undefined }[],
+    /** 利用者プログラム (コンパイル結果) を spawn した回数 */
+    programSpawns: 0,
+    /** run が入った段階の順 (後続の段階へ進んでいないかを見る) */
+    entered: [] as string[],
     sandboxClosed: 0,
     clientsClosed: 0,
     killed: 0,
     stdinStreams: [] as WritableStream<Uint8Array>[],
+    /** 段階に着いたら止まる (holds に無ければそのまま進む) */
+    arrive(stage: Stage): Promise<number | undefined> {
+      if (!state.holds.has(stage)) return Promise.resolve(undefined);
+      return new Promise((resolve, reject) => {
+        const release: Release = (value) => (value instanceof Error ? reject(value) : resolve(value));
+        const waiter = waiters.get(stage)?.shift();
+        if (waiter) waiter(release);
+        else arrivals.set(stage, [...(arrivals.get(stage) ?? []), release]);
+      });
+    },
+    /** 次にその段階へ着いた run の release を返す (着くまで待つ) */
+    reached(stage: Stage): Promise<Release> {
+      const release = arrivals.get(stage)?.shift();
+      if (release) return Promise.resolve(release);
+      return new Promise((resolve) => waiters.set(stage, [...(waiters.get(stage) ?? []), resolve]));
+    },
     reset() {
       state.compile = { exitCode: 0, stdout: '', stderr: '' };
       state.stdoutChunks = [];
       state.stderrChunks = [];
-      state.holdProcess = false;
       state.runExitCode = 0;
-      state.releaseProcess = null;
+      state.holds = new Set();
+      state.killIgnored = false;
       state.sandboxFiles = [];
       state.commands = [];
+      state.programSpawns = 0;
+      state.entered = [];
       state.sandboxClosed = 0;
       state.clientsClosed = 0;
       state.killed = 0;
       state.stdinStreams = [];
+      arrivals.clear();
+      waiters.clear();
     },
   };
   return state;
@@ -49,28 +83,68 @@ vi.mock('@wasmer/sdk', () => {
     },
   });
 
+  /**
+   * wait() が段階の release か kill() で終わるプロセス。段階に「着く」のは呼び出し側が
+   * spawn の結果を受け取って wait() を呼んだ時点 (= プロセスを手にして待っている間)
+   */
+  function fakeProcess(stage: 'compile' | 'program', defaultExitCode: () => number) {
+    let onKill: (code: number) => void = () => {};
+    const killed = new Promise<number>((resolve) => {
+      onKill = resolve;
+    });
+    let exited: Promise<number> | null = null;
+    return {
+      get exited() {
+        exited ??= Promise.race([sdk.arrive(stage).then((code) => code ?? defaultExitCode()), killed]);
+        return exited;
+      },
+      kill: async () => {
+        sdk.killed++;
+        if (!sdk.killIgnored) onKill(137);
+      },
+    };
+  }
+
   class FakeSandbox {
-    fs = { readFile: async () => new Uint8Array([0, 0x61, 0x73, 0x6d]) };
+    fs = {
+      readFile: async () => {
+        sdk.entered.push('readFile');
+        return new Uint8Array([0, 0x61, 0x73, 0x6d]);
+      },
+    };
     async installPackage() {
+      sdk.entered.push('install');
+      await sdk.arrive('install');
       return { id: 'program' };
     }
-    command(selector: unknown, args?: readonly string[]) {
+    command(selector: { id: string }, args?: readonly string[]) {
       sdk.commands.push({ selector, args });
-      const isCompile = sdk.commands.length === 1;
+      const isCompile = selector.id === 'clang';
       return {
-        run: async () => ({
-          exitCode: sdk.compile.exitCode,
-          reason: 'exited',
-          stdout: captured(sdk.compile.stdout),
-          stderr: captured(sdk.compile.stderr),
-        }),
+        run: async () => {
+          throw new Error('compile must be spawned so that it can be killed (#711)');
+        },
         spawn: async () => {
-          if (isCompile) throw new Error('compile command must be run, not spawned');
+          if (isCompile) {
+            sdk.entered.push('compile');
+            const compiler = fakeProcess('compile', () => sdk.compile.exitCode);
+            return {
+              stdin: null,
+              stdout: null,
+              stderr: null,
+              wait: async () => ({
+                exitCode: await compiler.exited,
+                reason: 'exited',
+                stdout: captured(sdk.compile.stdout),
+                stderr: captured(sdk.compile.stderr),
+              }),
+              kill: compiler.kill,
+            };
+          }
+          sdk.programSpawns++;
+          sdk.entered.push('program');
+          const program = fakeProcess('program', () => sdk.runExitCode);
           const stdin = new WritableStream<Uint8Array>();
-          const exited = new Promise<number>((resolve) => {
-            if (sdk.holdProcess) sdk.releaseProcess = resolve;
-            else resolve(sdk.runExitCode);
-          });
           return {
             stdin: {
               toWritableStream: () => {
@@ -80,11 +154,8 @@ vi.mock('@wasmer/sdk', () => {
             },
             stdout: readable(sdk.stdoutChunks),
             stderr: readable(sdk.stderrChunks),
-            wait: async () => ({ exitCode: await exited, reason: 'exited' }),
-            kill: async () => {
-              sdk.killed++;
-              sdk.releaseProcess?.(137);
-            },
+            wait: async () => ({ exitCode: await program.exited, reason: 'exited' }),
+            kill: program.kill,
           };
         },
       };
@@ -99,10 +170,13 @@ vi.mock('@wasmer/sdk', () => {
     sandboxes = {
       create: async (options: { files: Record<string, string | Uint8Array> }) => {
         sdk.sandboxFiles.push(options.files);
+        sdk.entered.push('sandbox');
+        await sdk.arrive('sandbox');
         return new FakeSandbox();
       },
     };
     async ready() {
+      await sdk.arrive('ready');
       return this;
     }
     async close() {
@@ -224,10 +298,10 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
   it('kills the running process on abort and marks the runtime for reset', async () => {
     const executor = await readyExecutor();
     const { out, callbacks } = collectCallbacks();
-    sdk.holdProcess = true;
+    sdk.holds.add('program');
 
     const running = executor.run('while(1);', callbacks);
-    await vi.waitFor(() => expect(sdk.releaseProcess).not.toBeNull());
+    await sdk.reached('program');
     executor.abort();
     const result = await running;
 
@@ -246,6 +320,159 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
 
     await executor.initialize();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+const encode = (text: string) => new TextEncoder().encode(text);
+
+describe.each([
+  ['C', () => new CExecutor()],
+  ['C++', () => new CppExecutor()],
+])('stopping a %s run before the program starts (#711)', (_language, create) => {
+  async function ready() {
+    const executor = create();
+    await executor.initialize();
+    return executor;
+  }
+
+  it.each(['sandbox', 'compile', 'install'] as const)(
+    'does not enter any later stage, nor start the user program, when stopped while %s is pending',
+    async (stage) => {
+      const executor = await ready();
+      const { out, callbacks } = collectCallbacks();
+      sdk.holds.add(stage);
+      // SDK がコンパイラを殺せない場合でも、停止した run が後続の段階へ進まないことを見る
+      sdk.killIgnored = true;
+
+      const running = executor.run('int main(void){ return 0; }', callbacks);
+      const release = await sdk.reached(stage);
+      executor.abort();
+      release(0);
+      const result = await running;
+
+      expect(sdk.entered.at(-1)).toBe(stage);
+      expect(sdk.programSpawns).toBe(0);
+      expect(result).toMatchObject({ success: false, outcome: 'aborted' });
+      expect(out.stdout).toBe('');
+      expect(sdk.sandboxClosed).toBe(1);
+    }
+  );
+
+  it('kills the compiler process when stopped during compilation', async () => {
+    const executor = await ready();
+    sdk.holds.add('compile');
+
+    const running = executor.run('int main(void){ return 0; }', collectCallbacks().callbacks);
+    await sdk.reached('compile');
+    executor.abort();
+    const result = await running;
+
+    expect(sdk.killed).toBe(1);
+    expect(sdk.programSpawns).toBe(0);
+    expect(result).toMatchObject({ success: false, outcome: 'aborted' });
+  });
+
+  it('does not start the user program when stopped while the runtime is being re-initialized', async () => {
+    const executor = await ready();
+    // 実行中のプログラムを止めると、次の run は runtime を作り直してから始まる
+    sdk.holds.add('program');
+    const stopped = executor.run('while(1);', collectCallbacks().callbacks);
+    await sdk.reached('program');
+    executor.abort();
+    await stopped;
+    expect(executor.isRuntimeCorrupted()).toBe(true);
+    sdk.holds = new Set(['ready']);
+
+    const running = executor.run('int main(void){ return 0; }', collectCallbacks().callbacks);
+    const release = await sdk.reached('ready');
+    executor.abort();
+    release();
+    const result = await running;
+
+    expect(sdk.programSpawns).toBe(1);
+    expect(sdk.sandboxFiles).toHaveLength(1);
+    expect(result).toMatchObject({ success: false, outcome: 'aborted' });
+  });
+});
+
+describe('run ownership across a stop and an immediate re-run (#711)', () => {
+  /** 1 本目をコンパイル中に止め (SDK はコンパイラを殺せない)、2 本目をプログラムの実行中まで進める */
+  async function stopFirstThenStartSecond() {
+    const executor = await readyExecutor();
+    const first = collectCallbacks();
+    const second = collectCallbacks();
+    sdk.holds.add('compile');
+    sdk.killIgnored = true;
+
+    const firstRun = executor.run('int main(void){ return 0; }', first.callbacks);
+    const releaseFirstCompile = await sdk.reached('compile');
+    executor.abort();
+
+    sdk.stdoutChunks = [encode('second\n')];
+    sdk.holds.add('program');
+    const secondRun = executor.run('int main(void){ puts("second"); }', second.callbacks);
+    (await sdk.reached('compile'))(0);
+    const releaseSecondProgram = await sdk.reached('program');
+    sdk.killIgnored = false;
+
+    return { executor, first, second, firstRun, secondRun, releaseFirstCompile, releaseSecondProgram };
+  }
+
+  it('lets the re-run succeed while the stopped run finishes late without starting its program', async () => {
+    const { first, second, firstRun, secondRun, releaseFirstCompile, releaseSecondProgram } =
+      await stopFirstThenStartSecond();
+
+    releaseFirstCompile(0);
+    const firstResult = await firstRun;
+    releaseSecondProgram(0);
+    const secondResult = await secondRun;
+
+    expect(firstResult).toMatchObject({ success: false, outcome: 'aborted' });
+    expect(secondResult).toEqual({ success: true, exitCode: 0, stdout: '', stderr: '' });
+    expect(sdk.programSpawns).toBe(1);
+    expect(first.out.stdout).toBe('');
+    expect(second.out.stdout).toBe('second\n');
+  });
+
+  it('keeps the re-run stoppable after the stopped run releases its own resources', async () => {
+    const { executor, secondRun, firstRun, releaseFirstCompile } = await stopFirstThenStartSecond();
+
+    releaseFirstCompile(0);
+    await firstRun;
+    executor.abort();
+    const secondResult = await secondRun;
+
+    expect(sdk.killed).toBe(2);
+    expect(secondResult.exitCode).toBe(137);
+  });
+
+  it('does not let a late runtime error of the stopped run mark the re-run runtime as corrupted', async () => {
+    const { executor, first, second, firstRun, secondRun, releaseFirstCompile, releaseSecondProgram } =
+      await stopFirstThenStartSecond();
+
+    releaseFirstCompile(new Error('RuntimeError: unreachable'));
+    const firstResult = await firstRun;
+    releaseSecondProgram(0);
+    await secondRun;
+
+    expect(firstResult).toMatchObject({ success: false, outcome: 'aborted' });
+    expect(executor.isRuntimeCorrupted()).toBe(false);
+    expect(first.out.stderr).toBe('');
+    expect(second.out.stderr).toBe('');
+  });
+
+  it('reports a stopped program as aborted even if it still exits with 0 afterwards', async () => {
+    const executor = await readyExecutor();
+    sdk.holds.add('program');
+    sdk.killIgnored = true;
+
+    const running = executor.run('int main(void){ return 0; }', collectCallbacks().callbacks);
+    const release = await sdk.reached('program');
+    executor.abort();
+    release(0);
+    const result = await running;
+
+    expect(result).toMatchObject({ success: false, outcome: 'aborted' });
   });
 });
 
@@ -390,5 +617,23 @@ describe('compiler diagnostics (#708)', () => {
     expect(executor.parseErrors(cppFatal)).toEqual([
       { line: 1, column: 10, severity: 'error', message: "'student.hpp' file not found" },
     ]);
+  });
+
+  it('does not forward the diagnostics of a run stopped during compilation, even if the compiler finishes with warnings (#711)', async () => {
+    const executor = await readyExecutor();
+    const { out, callbacks } = collectCallbacks();
+    sdk.compile = { exitCode: 0, stdout: '', stderr: FORMAT_WARNING };
+    sdk.holds.add('compile');
+    // SDK がコンパイラを殺せず、警告付きで完了まで走る場合
+    sdk.killIgnored = true;
+
+    const running = executor.run('int main(void){}', callbacks);
+    const release = await sdk.reached('compile');
+    executor.abort();
+    release(0);
+    const result = await running;
+
+    expect(out.stderr).toBe('');
+    expect(result).toMatchObject({ success: false, outcome: 'aborted' });
   });
 });

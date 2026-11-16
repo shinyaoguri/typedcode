@@ -27,21 +27,33 @@ vi.mock('@wasmer/sdk', () => {
     async installPackage() {
       return { id: 'program' };
     }
-    command() {
+    command(selector: { id: string }) {
       return {
-        run: async () => ({
-          exitCode: compile.exitCode,
-          reason: 'exited',
-          stdout: captured(''),
-          stderr: captured(compile.stderr),
-        }),
-        spawn: async () => ({
-          stdin: null,
-          stdout: empty,
-          stderr: empty,
-          wait: async () => ({ exitCode: 0, reason: 'exited' }),
-          kill: async () => {},
-        }),
+        run: async () => {
+          throw new Error('compile must be spawned so that it can be killed (#711)');
+        },
+        // コンパイラ (clang) は spawn + wait で結果を受け取る (#711)。プログラムは何も出さずに exit 0
+        spawn: async () =>
+          selector.id === 'clang'
+            ? {
+                stdin: null,
+                stdout: null,
+                stderr: null,
+                wait: async () => ({
+                  exitCode: compile.exitCode,
+                  reason: 'exited',
+                  stdout: captured(''),
+                  stderr: captured(compile.stderr),
+                }),
+                kill: async () => {},
+              }
+            : {
+                stdin: null,
+                stdout: empty,
+                stderr: empty,
+                wait: async () => ({ exitCode: 0, reason: 'exited' }),
+                kill: async () => {},
+              },
       };
     }
     async close() {}
