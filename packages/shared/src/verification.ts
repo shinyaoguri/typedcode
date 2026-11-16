@@ -477,7 +477,7 @@ export interface EventArrayStructureResult {
  *
  * そこで「数える対象」と「走査される対象」が必ず一致するよう、再カウント (docs/system-spec.md
  * §7 の Layer 1) の**手前**で構造を検査して弾く。検査は最低限のフィールド
- * (sequence / timestamp / type / previousHash / posw) に留め、proof フォーマット自体は
+ * (sequence / timestamp / type / previousHash / inputType / posw) に留め、proof フォーマット自体は
  * 変えない — 正規に export された proof は `MIN_SUPPORTED_VERSION` の頃から
  * これらを常に持つため、既存 proof の検証性は変わらない。
  */
@@ -519,6 +519,17 @@ export function verifyEventArrayStructure(events: unknown): EventArrayStructureR
       return {
         valid: false,
         reason: `Invalid event structure at event ${i}: previousHash must be a string or null`,
+        errorAt: i,
+      };
+    }
+
+    // 再カウントは `inputType?.startsWith('delete')` で数えるので、文字列でも null でもない値は
+    // 結論を返さず throw させる (#678)。欠落 (旧イベント) と null は正規の proof に現れるので通す
+    const inputType = candidate.inputType;
+    if (inputType !== undefined && inputType !== null && typeof inputType !== 'string') {
+      return {
+        valid: false,
+        reason: `Invalid event structure at event ${i}: inputType must be a string or null`,
         errorAt: i,
       };
     }
