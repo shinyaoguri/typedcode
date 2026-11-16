@@ -746,7 +746,7 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 | **(試験)** T0 前に問題を読んで事前 solve | 封印 (Argon2id + 監督コード)。T0 まで復号不可 (消費期限つき; 配布窓は数分) |
 | **(試験)** 配布と異なる別問題の解答にすり替え | §6.4 (packageHash 不一致 / 復号後 problemContentHash 不一致) |
 | **(試験)** 改造クライアントで封印 starter と別の完成コードを `templateInjection` に入れる | §6.4 手順 5b (注入内容 ≠ 封印 starter → `starter.status='mismatch'`。#718) |
-| **(試験)** 許可されない言語 (例: HTML) に切り替えて解答・提出する | editor は言語の選択・変更・復元後の実行/プレビュー開始で止める。提出物は §6.4 手順 5c (`proof.language` ∉ 許可集合 → `language.status='not-allowed'`。#727)。`proof.language` は提出時の申告なので、途中で別言語を実行した履歴までは言えない |
+| **(試験)** 許可されない言語 (例: HTML) に切り替えて解答・提出する | editor は言語の選択・変更・復元後の実行/プレビュー開始で止める。提出物は §6.4 手順 5c (`proof.language` ∉ 許可集合 → `language.status='not-allowed'`。#727)。`proof.language` は提出時の申告なので、途中で別言語を実行した履歴までは言えない。`language` はハッシュにも署名にも入らないので、export 後に許可された値へ書き換えた proof もこの照合は通す (#731) |
 | **(試験)** T0 より前に開始したのに後に見せかける | §6.4 (root に `startToken` が焼かれる。T0 前は監督コードを知り得ないため root を作れない) |
 | **(試験)** 過去回 / 他人の試験 proof を流用 | Layer 1 (fingerprint/nonce 不一致) + §6.4 (packageHash 不一致) |
 | **(試験)** 出題者を詐称した偽問題パッケージ | §6.4 (`examAuthorityKeys` での署名検証に失敗) |
