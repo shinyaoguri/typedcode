@@ -4,7 +4,8 @@ import { deriveFailedCheck, unreadableResultEntry, type FailedCheckInput } from 
 /**
  * `failedCheck` の優先順位 (#588)。`verifyProofFile` の `errorMessage` が採る順
  * (version → metadata/root → chain → finalHash → checkpoint → content → rootAnchor → sessionToken
- * → signed checkpoint → policy) と一致することを、分岐ごとに固定する。
+ * → signed checkpoint → policy) に沿わせた診断の優先順位を、分岐ごとに固定する。実行順や
+ * `errorMessage` の文言とは一致しない箇所がある (root を metadata より先に選ぶなど。resultJson.ts 参照)。
  */
 const OK: FailedCheckInput = {
   valid: false,
