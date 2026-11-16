@@ -49,7 +49,11 @@ export interface FolderControllerDependencies {
   /** 読み込んだファイルが揃ったところで、同梱ソースと proof.content を照合する (#293) */
   settleSubmission: () => void;
   onScreenshotServiceUpdate?: (service: ScreenshotService) => void;
-  onStatusBarUpdate?: () => void;
+  /**
+   * ステータスバーを今の状態で出し直す。`message` は操作の知らせ (フォルダを開いた等) で、集約 (data-proof-*) を
+   * 出せるときは集約が優先される (#683。メッセージで集約を消すと、出し直す契機が来ないことがある)
+   */
+  onStatusBarUpdate?: (message?: string) => void;
   onFileRemove?: (id: string) => void;
 }
 
@@ -102,7 +106,13 @@ export class FolderController {
 
     const handle = await this.fsAccessService.showDirectoryPicker();
     if (!handle) return;
+    await this.openFolder(handle);
+  }
 
+  /**
+   * 選んだフォルダを読み込み、監視を始める
+   */
+  async openFolder(handle: FileSystemDirectoryHandle): Promise<void> {
     // 既存の監視を停止
     this.syncManager.stopWatching();
 
@@ -182,8 +192,7 @@ export class FolderController {
     // 監視を開始
     await this.syncManager.startWatching(handle, 3000);
 
-    this.deps.onStatusBarUpdate?.();
-    this.deps.statusBar.setMessage(`${t('messages.folderOpened')}: ${result.rootName}`);
+    this.notify(`${t('messages.folderOpened')}: ${result.rootName}`);
   }
 
   /**
@@ -285,7 +294,7 @@ export class FolderController {
       }
 
       this.deps.settleSubmission();
-      this.deps.statusBar.setMessage(`${t('messages.fileAdded')}: ${file.name}`);
+      this.notify(`${t('messages.fileAdded')}: ${file.name}`);
     } catch (error) {
       console.error('Error processing added file:', error);
     }
@@ -310,7 +319,7 @@ export class FolderController {
       if (!fileData) return;
 
       this.deps.replaceFile(existingFileId, fileData);
-      this.deps.statusBar.setMessage(`${t('messages.fileUpdated')}: ${file.name}`);
+      this.notify(`${t('messages.fileUpdated')}: ${file.name}`);
     } catch (error) {
       console.error('Error processing modified file:', error);
     }
@@ -324,7 +333,7 @@ export class FolderController {
     if (fileId) {
       this.deps.onFileRemove?.(fileId);
       const filename = path.split('/').pop() ?? path;
-      this.deps.statusBar.setMessage(`${t('messages.fileDeleted')}: ${filename}`);
+      this.notify(`${t('messages.fileDeleted')}: ${filename}`);
     }
   }
 
@@ -347,7 +356,7 @@ export class FolderController {
     };
 
     this.deps.sidebar.addHierarchicalFolder(folder);
-    this.deps.statusBar.setMessage(`${t('messages.folderAdded')}: ${name}`);
+    this.notify(`${t('messages.folderAdded')}: ${name}`);
   }
 
   /**
@@ -356,7 +365,15 @@ export class FolderController {
   private handleExternalFolderDeleted(path: string): void {
     this.deps.sidebar.removeFolderByPath(path);
     const folderName = path.split('/').pop() ?? path;
-    this.deps.statusBar.setMessage(`${t('messages.folderDeleted')}: ${folderName}`);
+    this.notify(`${t('messages.folderDeleted')}: ${folderName}`);
+  }
+
+  /**
+   * 操作の知らせを出す。集約を消さないよう、ステータスバーの表示はいつも onStatusBarUpdate に決めさせる (#683)
+   */
+  private notify(message: string): void {
+    if (this.deps.onStatusBarUpdate) this.deps.onStatusBarUpdate(message);
+    else this.deps.statusBar.setMessage(message);
   }
 
   /**
@@ -497,7 +514,7 @@ export class FolderController {
     }
 
     this.deps.settleSubmission();
-    this.deps.statusBar.setMessage(`${t('messages.folderOpened')}: ${zipFolderName}`);
+    this.notify(`${t('messages.folderOpened')}: ${zipFolderName}`);
   }
 
   /**
