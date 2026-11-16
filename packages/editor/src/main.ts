@@ -71,6 +71,7 @@ import { EnvironmentTracker } from './tracking/EnvironmentTracker.js';
 import { buildEditorAssistDeclaration } from './tracking/editorAssist.js';
 import { ScreenshotTracker } from './tracking/ScreenshotTracker.js';
 import { ProcessingDialog } from './ui/components/ProcessingDialog.js';
+import { showStaticDialog } from './ui/components/dialogA11y.js';
 import { ProofStatusDisplay } from './ui/components/ProofStatusDisplay.js';
 import { CursorTracker } from './editor/CursorTracker.js';
 import { EditorController } from './editor/EditorController.js';
@@ -1229,10 +1230,12 @@ function showStorageLowDialog(): Promise<void> {
   }
 
   return new Promise((resolve) => {
+    // a11y (#305): 名前付きの modal dialog・Tab の閉じ込め。Escape では閉じない (選ばせる警告)
+    const dialog = showStaticDialog(overlay, { closeOnEscape: false, initialFocus: continueBtn });
     const close = () => {
       continueBtn.removeEventListener('click', onContinue);
       retryBtn.removeEventListener('click', onRetry);
-      overlay.classList.add('hidden');
+      dialog.close();
       resolve();
     };
     const onContinue = () => close();
@@ -1243,11 +1246,10 @@ function showStorageLowDialog(): Promise<void> {
       continueBtn.disabled = false;
       retryBtn.disabled = false;
       if (result.kind !== 'insufficient') close();
+      else retryBtn.focus(); // disabled の間に外れたフォーカスを、押したボタンへ戻す
     };
     continueBtn.addEventListener('click', onContinue);
     retryBtn.addEventListener('click', onRetry);
-    overlay.classList.remove('hidden');
-    continueBtn.focus();
   });
 }
 

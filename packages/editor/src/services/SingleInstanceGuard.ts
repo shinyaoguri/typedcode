@@ -9,6 +9,7 @@
  * ping → pong の判定 (500ms 待つ) のために残している。
  */
 
+import { showStaticDialog } from '../ui/components/dialogA11y.js';
 import { getSessionStorageService } from './SessionStorageService.js';
 
 const CHANNEL_NAME_BASE = 'typedcode-instance-guard';
@@ -227,21 +228,28 @@ export class SingleInstanceGuard {
 }
 
 /**
+ * 起動を止める静的 overlay を開く (a11y は #305)。閉じる経路を持たない (このページはここで止まる) ので、
+ * Escape では閉じず、`showStaticDialog` の handle も持たない。二度目の呼び出しでは何もしない
+ */
+function showBlockingOverlay(id: string): void {
+  const overlay = document.getElementById(id);
+  if (!overlay) return;
+  if (!overlay.classList.contains('hidden')) return; // 既に開いている
+  showStaticDialog(overlay, { closeOnEscape: false });
+}
+
+/**
  * 重複インスタンスブロック用のオーバーレイを表示
+ * (初期フォーカスは唯一の操作「このタブを閉じる」)
  */
 export function showDuplicateInstanceOverlay(): void {
-  const overlay = document.getElementById('duplicate-instance-overlay');
-  if (overlay) {
-    overlay.classList.remove('hidden');
-  }
+  showBlockingOverlay('duplicate-instance-overlay');
 }
 
 /**
  * 未対応ブラウザ（Safari等）用のオーバーレイを表示
+ * (操作要素が無いので、フォーカスはダイアログ自身に置く)
  */
 export function showUnsupportedBrowserOverlay(): void {
-  const overlay = document.getElementById('unsupported-browser-overlay');
-  if (overlay) {
-    overlay.classList.remove('hidden');
-  }
+  showBlockingOverlay('unsupported-browser-overlay');
 }
