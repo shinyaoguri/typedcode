@@ -1,18 +1,31 @@
 /**
  * OperationDetector - Monaco Editorの変更イベントから操作種別を推定
+ *
+ * composition 系の inputType (`insertCompositionText` / `insertFromComposition` /
+ * `deleteCompositionText`) は、`CompositionTracker` が実際の composition に対応付けた編集にだけ付ける
+ * (#720)。文字種 (CJK を含むか) では推定しない: composition を経ない長い直接挿入が IME の確定と
+ * 分類され、一括挿入の評価を素通りしていたため。
  */
 
 import type { InputType, DeleteDirection, TextRange, OperationResult } from '@typedcode/shared';
 import type { ModelContentChange, ModelContentChangedEvent } from '../editor/types.js';
 import { t } from '../i18n/index.js';
+import type { CompositionAttribution } from './compositionCorrelation.js';
 
 export class OperationDetector {
   private lastOperation: OperationResult | null = null;
 
   /**
    * Monaco Editorの変更イベントから操作種別を推定
+   *
+   * @param attribution この編集の composition への帰属 (`CompositionTracker.attribute`)。既定は `none`
+   *   (composition と対応しない = 従来の分類)。
    */
-  detectOperationType(change: ModelContentChange, event: ModelContentChangedEvent): OperationResult {
+  detectOperationType(
+    change: ModelContentChange,
+    event: ModelContentChangedEvent,
+    attribution: CompositionAttribution = 'none'
+  ): OperationResult {
     const { text, rangeLength, range } = change;
     const hasText = text.length > 0;
     const hasRangeLength = rangeLength > 0;
@@ -20,8 +33,22 @@ export class OperationDetector {
     let inputType: InputType = 'insertText';
     let operationDetail: Partial<OperationResult> = {};
 
+    // 0. composition に対応付いた編集 (#720)。改行を含む編集は composition 中でも従来の分類に回す
+    //    (IME の確定は単一行で、改行入りの塊は複数行の一括挿入として評価させる)。真正な composition には
+    //    長さの上限を置かない (長い確定を一括挿入扱いにして IME を締め出さない)。
+    const compositionType =
+      attribution !== 'none' && !/[\r\n]/.test(text)
+        ? this.detectCompositionType(attribution, hasText, hasRangeLength)
+        : null;
+    if (compositionType) {
+      inputType = compositionType;
+      operationDetail = {
+        ...(hasRangeLength && { deletedLength: rangeLength }),
+        ...(hasText && { insertedText: text, insertLength: text.length }),
+      };
+    }
     // 1. 削除操作の検出
-    if (hasRangeLength && !hasText) {
+    else if (hasRangeLength && !hasText) {
       inputType = this.detectDeleteType(change, range);
       operationDetail = {
         deletedLength: rangeLength,
@@ -75,6 +102,25 @@ export class OperationDetector {
 
     this.lastOperation = result;
     return result;
+  }
+
+  /**
+   * composition に対応付いた編集の種別。text があれば (置換・1 文字を含む) 変換中は
+   * `insertCompositionText`、確定直後の対応は `insertFromComposition`。text が無く範囲を消す編集
+   * (取消・preedit の全消去) は `deleteCompositionText`。何も変えない編集は null (従来の分類)。
+   */
+  private detectCompositionType(
+    attribution: Exclude<CompositionAttribution, 'none'>,
+    hasText: boolean,
+    hasRangeLength: boolean
+  ): InputType | null {
+    if (hasText) {
+      return attribution === 'committed' ? 'insertFromComposition' : 'insertCompositionText';
+    }
+    if (hasRangeLength) {
+      return 'deleteCompositionText';
+    }
+    return null;
   }
 
   /**
@@ -133,11 +179,9 @@ export class OperationDetector {
       return 'insertText';
     }
 
-    // 複数文字の挿入（オートコンプリートなど）
+    // 複数文字の挿入（オートコンプリート・括弧の自動閉じ・直接の編集など）。文字種で IME とは
+    // 推定しない (#720)。composition に対応付いた編集は detectOperationType の手前で分類済み
     if (text.length > 1) {
-      if (this.isLikelyIMEInput(text)) {
-        return 'insertFromComposition';
-      }
       return 'insertReplacementText';
     }
 
@@ -159,20 +203,6 @@ export class OperationDetector {
    */
   private isMultiLineChange(range: ModelContentChange['range']): boolean {
     return range.startLineNumber !== range.endLineNumber;
-  }
-
-  /**
-   * IME入力の可能性を推定（日本語、中国語など）
-   */
-  private isLikelyIMEInput(text: string): boolean {
-    // 日本語の平仮名、カタカナ、漢字
-    const japaneseRegex = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]/;
-    // 中国語の漢字
-    const chineseRegex = /[\u4e00-\u9fff]/;
-    // 韓国語のハングル
-    const koreanRegex = /[\uac00-\ud7af]/;
-
-    return japaneseRegex.test(text) || chineseRegex.test(text) || koreanRegex.test(text);
   }
 
   /**
