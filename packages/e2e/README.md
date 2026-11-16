@@ -200,6 +200,29 @@ shared の main が raw TypeScript のため `node dist/cli.js` は動かない
 > 三層保証 (`--analysis-bundle` の assurance)。success / warning・verified / partial の区別は Web だけの
 > TrustCalculator の導出で、CLI に対応する出力が無いので比べていない。
 
+**Phase F (a11y・i18n・レイアウト, #728)**
+
+| ファイル | 検証内容 |
+|---|---|
+| a11y-axe.spec.ts | 対象画面に axe をかけ、既知違反の基準 (`tests/helpers/a11yBaseline.ts`) に無い違反が出たら落ちる。負の対照: About の閉じるボタンの aria-label・ダイアログの role を外すと新しい違反として拾う |
+| i18n-leak.spec.ts | 対象画面を ja / en で巡り、翻訳キーの名前 (`statusBar.events` など) が表示テキスト・aria-label・title に出ていない、I18nService の「翻訳が無い」警告が出ていない。負の対照: キーの形の文字列を拾い、ファイル名・URL は拾わない |
+| layout-overflow.spec.ts | 768×1024 / 480×800 (viewport.spec.ts と同じ) で対象画面を巡り、文書の横スクロール・画面の左右で切られる要素・画面に収まらないダイアログが無い。負の対照: 画面より大きいダイアログと横長の要素を拾い、内部スクロールの箱の中身は拾わない |
+
+## a11y・i18n・レイアウトの検査 (#728)
+
+- **対象画面** (`tests/helpers/uiTour.ts` の `walkTour` が固定する): casual / class / assignment / exam の ready、About、
+  セルフレビュー・画面共有の選択・ウェルカム・問題の読み込み・試験ゲートのダイアログ、検証 Web の初期表示と結果表示
+  (verify-cli の fixture の `valid.json` を入れる)。どれも export を伴わない。巡回の間は localhost 以外への通信を止め、
+  Turnstile や Wasmer に届く CI と届かない手元とで画面を揃える
+- **axe の基準**: 違反は「rule id + 対象のセレクタ」と出てよい画面で記録し、直す Issue の番号を `issue` に書く。
+  rule の無効化や impact の足切りで緑にしない。基準にあって出なくなった違反は落とさず、annotation `a11y-resolved` で知らせる
+  (行を消す合図)。基準を作り直すときは `A11Y_DUMP=<ファイル> npx playwright test tests/a11y-axe.spec.ts` で
+  観測した違反を JSON Lines で書き出し、差分を確かめてから `a11yBaseline.ts` に写す。失敗の出力にも、基準に貼れる形の行が出る
+- **i18n**: ja / en のキー集合の一致と空文字は、editor / verify のユニットテスト (`src/i18n/__tests__/translationKeys.test.ts`) が見る
+  (型の索引シグネチャのため、片方にだけある最上位の名前空間は typecheck を通る)。E2E は画面に出た文字列の形だけを見て、文言は比べない
+- **限界**: axe が通ることは、機械で検出できる違反が基準から増えていないことだけを意味し、**スクリーンリーダーで実際に読み上げ・操作できることの確認ではない** (#305。人が確かめる範囲は [docs/accessibility-accommodation-policy.md](../../docs/accessibility-accommodation-policy.md) の 6 節)。
+  レイアウトは画素を比べず、要素の矩形だけを見る (重なり・色・フォントの崩れは見ない)。巡回しない画面 (復旧・リセット・タブを閉じる確認などのダイアログ、export の進捗) は対象外
+
 残り (フルスクリーン / Turnstile 失敗分岐 / staging カナリア /
 ブラウザマトリクス) は今後。macOS ネイティブ全画面・実 Turnstile チャレンジ・実ディスプレイの
 画面共有ピッカーは手動スモーク。
