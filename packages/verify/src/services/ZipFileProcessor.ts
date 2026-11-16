@@ -9,14 +9,13 @@ import {
   ZipExtractionBudget,
   assertZipWithinBudget,
   collectChainImageHashes,
-  isProofExportFilename,
   isSubmissionSourceEntry,
-  normalizeProofLanguage,
   readZipEntryBytes,
   readZipEntryText,
 } from '@typedcode/shared';
-import type { ProofFile, VerifyScreenshot } from '../types.js';
+import type { VerifyScreenshot } from '../types.js';
 import type { ParsedFileData, FileProcessResult, FileProcessCallbacks } from './FileProcessor.js';
+import { classifyJsonText } from './JsonFileProcessor.js';
 import { ScreenshotService } from './ScreenshotService.js';
 import { normalizeScreenshotManifest } from './screenshotManifest.js';
 import { isImageFile, isBinaryFile, getLanguageFromExtension } from './fileUtils.js';
@@ -218,52 +217,8 @@ export class ZipFileProcessor {
   private parseTextFile(content: string, filename: string, path: string): ParsedFileData {
     // JSONファイルの場合、証明ファイルかどうかをチェック
     if (filename.endsWith('.json')) {
-      let language = 'unknown';
-      let isValidProofFile = false;
-      let proofData: ProofFile | undefined;
-
-      try {
-        const parsed = JSON.parse(content) as ProofFile;
-        // proof フィールドがあれば証明ファイルとみなす
-        if (parsed.proof) {
-          isValidProofFile = true;
-          proofData = parsed;
-          language = normalizeProofLanguage(parsed.language);
-        }
-      } catch {
-        // パース失敗: proof の名前でなければ通常のJSONとして扱う（proof の名前なら下で error 扱い）
-      }
-
-      if (isValidProofFile) {
-        return {
-          filename,
-          type: 'proof',
-          language,
-          rawData: content,
-          proofData,
-          relativePath: path,
-        };
-      } else if (isProofExportFilename(path)) {
-        // proof の名前 (`*_proof.json`) なのに proof として読めない (JSON 破損・proof 構造なし, #292)。
-        // 通常の JSON として success で並べると、壊れたタブが未検証のまま見落とされる。
-        // type: 'proof' のまま渡し、取り込み側 (FileController) が error として表示する。
-        return {
-          filename,
-          type: 'proof',
-          language: 'unknown',
-          rawData: content,
-          relativePath: path,
-        };
-      } else {
-        // 証明ファイルではない通常のJSONファイル
-        return {
-          filename,
-          type: 'plaintext',
-          language: 'json',
-          rawData: content,
-          relativePath: path,
-        };
-      }
+      // proof / 読めない proof (#292) / 通常の JSON の分け方は単体 JSON・フォルダと共有する (#702)
+      return { ...classifyJsonText(content, filename, path), relativePath: path };
     } else {
       // JSON以外のファイル（C、TypeScript、Pythonなど）
       const language = getLanguageFromExtension(filename);
