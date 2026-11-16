@@ -36,7 +36,10 @@ export default defineConfig({
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
   workers: 1,
-  reporter: isCI ? [['list'], ['html', { open: 'never' }], ['github']] : [['list'], ['html', { open: 'never' }]],
+  // CI の json は flaky の収集の入力 (scripts/e2e-flaky.mjs / #583)。dev 設定の reports/e2e.json と分ける。
+  reporter: isCI
+    ? [['list'], ['html', { open: 'never' }], ['github'], ['json', { outputFile: 'reports/e2e-build.json' }]]
+    : [['list'], ['html', { open: 'never' }]],
 
   use: {
     baseURL: BASE_URL,
