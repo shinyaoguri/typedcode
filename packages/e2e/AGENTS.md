@@ -29,6 +29,7 @@ tests/
 ├── helpers/examFixture.ts # exam の fixture (fixtures/exam/fixture.json) を読む: 監督コード・パッケージのパス・出題者鍵の keyId
 ├── helpers/faults.ts     # 障害注入 (#435): Workers の API を 1 つずつ 503 / abort / hang (呼び出し回数を返す)、Turnstile のスクリプトの遮断、IndexedDB の open 失敗・QuotaExceeded・request の success 後の transaction の abort (#543)、保存先の注入の解除、起動時の空き容量の試験の書き込みだけの失敗 (`failStorageProbe`。QuotaExceeded か、ディスク満杯で Chromium が返す `DataError: Failed to write blobs (IOError)` での abort。#626)、getDisplayMedia の stream の退避とトラックの ended
 ├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
+├── happy-path-ja.spec.ts # ja の UI の代表往復 (#597): `test.use({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' })` で `<html lang="ja">` を確かめ、打鍵 → export → verify-cli (fast)。project は増やさない (全 spec が倍になる)
 ├── workers-hang-export.spec.ts  # Workers 無応答 (route で応答しない) でも class の export が上限内に ZIP を出す (#324。fetch 上限 + best-effort 予算)
 ├── tab-create-auth-budget.spec.ts # Turnstile の配信元と Workers を両方無応答にしても、class の新規タブがタブ作成の予算 (`TAB_CREATE_VERIFICATION_BUDGET_MS`) + 5 秒以内に打鍵を受け付け、未アンカーの proof が verify-cli (fast) で通る (#375)
 ├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
@@ -54,6 +55,7 @@ tests/
 └── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)。`@nightly` の C の hello (@wasmer/sdk の worker は本番ビルドでしか壊れない = #364) は PR ゲートの test:build から外し、毎晩だけ回す (#589)
 playwright.config.ts       # dev 用: webServer で workers(:8787) + editor vite dev(:5173) + verify vite dev(:5174)
 ports.ts                   # 上の 3 ポート (E2E_*_PORT で上書き)。playwright.config.ts と global-setup.ts が読む (build 設定も workers の値を読む)
+browser-env.ts             # ブラウザの locale / timezoneId (en-US・UTC = 従来の CI と同じ。#597)。3 つの config の `use` が読み、手元の TZ・LANG に依存させない。ja を通す spec は test.use で上書きする
 global-setup.ts            # テストより前に、起こした / 再利用した 3 台がこの作業ツリーのサーバかを照合し、違えば throw (#552。下記の罠)。照合部は checkIdentities として export
 global-setup.build.ts      # build 設定用: workers 1 台だけを checkIdentities で照合する (再実行例は test:build。#560)
 scripts/server-identity.mjs # 上の照合の判定 (純関数) と問い合わせ。テストは server-identity.test.mjs (node --test)
