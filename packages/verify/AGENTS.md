@@ -106,6 +106,7 @@ E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく�
 - `cancel(id)`: 待ち行列から外すか、処理中なら Worker を terminate して作り直して次へ進め、`onCancelled` を呼ぶ (→ `VerificationController.handleCancelled` が `cancelled` を流す)。`remove(id)` は同じ外し方でコールバックを呼ばず、その id のモード・問題パッケージも消す (ファイルを消したとき。`TabController.forgetFile` が呼ぶので、ファイル単体の削除もフォルダごとの削除も通る)
 - **パース済みの proof は完了 (result / error / cancel / remove) で手放す**。再検証 (`reverifyWithManifest(id, manifest, proofData)` / キャンセル後の `requeue(id, proofData)`) は**呼び出し側がタブの `proofData` を渡す** (キューに写しを残さない)。`requeue` はいまの既定モードで並べ直す (重い full を止め、fast に切り替えてから再検証する逃げ道)
 - 作り直す前の Worker や、処理中でない id から遅れて届いたメッセージは捨てる。`state/__tests__/VerificationQueue.test.ts` が Worker のモックで固定する
+- **Worker 自体の障害 (`onerror`・`new Worker` の失敗) では、その個体を terminate して捨てる** (読み込みに失敗した Worker は後続の要求にも応答しない)。処理中の項目を 1 度だけエラーにし、次の項目は新しい Worker で処理する。応答 (result / error) を返せないままの障害が `MAX_CONSECUTIVE_WORKER_FAILURES` 回続いたら、処理中と待ち行列の項目をすべてエラーで終える (#700)。proof 単位の `error` メッセージは Worker の障害ではないので、同じ Worker のまま次へ進む
 
 ## 信頼スコア (`TrustCalculator`)
 
