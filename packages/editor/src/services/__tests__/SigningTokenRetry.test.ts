@@ -273,3 +273,130 @@ describe('SigningTokenRetry (#236)', () => {
     expect(Math.max(...perSecond.values())).toBeLessThanOrEqual(20);
   });
 });
+
+describe('SigningTokenRetry on TOKEN_EXPIRED (#682)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * サーバと token の持ち方を模す: 取得が通ると usable な token が 1 本でき、reportRejected の前に
+   * 呼び出し側 (TabManager) がそれを使えないと記憶する (hasToken が偽に戻る)
+   */
+  function expiringTokens(retryOptions: { random?: () => number } = {}) {
+    let usable = true;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const startedAt: number[] = [];
+    const rejectedAt: number[] = [];
+    const acquire = vi.fn(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      startedAt.push(Date.now());
+      await Promise.resolve();
+      inFlight -= 1;
+      usable = true;
+      return true;
+    });
+    const retry = new SigningTokenRetry({ acquire, hasToken: () => usable, random: () => 0, ...retryOptions });
+    return {
+      retry,
+      acquire,
+      startedAt,
+      rejectedAt,
+      maxInFlight: () => maxInFlight,
+      /** sign が TOKEN_EXPIRED を返した: 今の token を使えないと記憶して報告する */
+      expire: () => {
+        rejectedAt.push(Date.now());
+        usable = false;
+        retry.reportRejected();
+      },
+    };
+  }
+
+  it('re-acquires a token right away when the server first rejects the current one as expired', async () => {
+    const { retry, acquire, expire } = expiringTokens();
+
+    expire();
+    await flushMicrotasks();
+
+    expect(acquire).toHaveBeenCalledTimes(1);
+    expect(retry.state).toBe('idle');
+    retry.dispose();
+  });
+
+  it('does not acquire on an expiry report while another usable token is already resolved', async () => {
+    const acquire = vi.fn(async () => true);
+    const retry = new SigningTokenRetry({ acquire, hasToken: () => true });
+
+    retry.reportRejected();
+    await vi.advanceTimersByTimeAsync(SIGNING_TOKEN_RETRY_MAX_MS);
+
+    expect(acquire).not.toHaveBeenCalled();
+    retry.dispose();
+  });
+
+  it('backs off exponentially up to the cap, one acquisition at a time, while re-acquired tokens keep expiring', async () => {
+    const { retry, acquire, startedAt, rejectedAt, maxInFlight, expire } = expiringTokens();
+
+    // 取り直した token もサーバが即座に期限切れと返し続ける (時計ずれ等)。取得が決着した直後の sign で拒否される
+    acquire.mockImplementation(async () => {
+      startedAt.push(Date.now());
+      setTimeout(expire, 0);
+      return true;
+    });
+    expire();
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+
+    // random=0 で拒否 n 回目 (n>=2) の後は min(max, base·2^(n-2)) / 2 を待つ。連打なら 1 時間で何千回にもなる
+    // (拒否 1 回目はすぐ取り直すので、待ちは拒否 2 回目から数える)
+    const gaps = startedAt.slice(1).map((t, i) => t - rejectedAt[i + 1]!);
+    expect(startedAt[0]).toBe(rejectedAt[0]);
+    expect(gaps[0]).toBe(SIGNING_TOKEN_RETRY_BASE_MS / 2);
+    expect(gaps[1]).toBe(SIGNING_TOKEN_RETRY_BASE_MS);
+    expect(gaps[2]).toBe(SIGNING_TOKEN_RETRY_BASE_MS * 2);
+    for (const gap of gaps) {
+      expect(gap).toBeGreaterThanOrEqual(SIGNING_TOKEN_RETRY_BASE_MS / 2);
+      expect(gap).toBeLessThanOrEqual(SIGNING_TOKEN_RETRY_MAX_MS);
+    }
+    expect(gaps.at(-1)).toBe(SIGNING_TOKEN_RETRY_MAX_MS / 2);
+    expect(acquire.mock.calls.length).toBeLessThan(30);
+    expect(maxInFlight()).toBeLessThanOrEqual(1);
+    retry.dispose();
+  });
+
+  it('ignores further expiry reports while an acquisition is in flight or waiting', async () => {
+    const { acquire, settle } = controllableAcquire();
+    const retry = new SigningTokenRetry({ acquire, hasToken: () => false, random: () => 0 });
+
+    retry.reportRejected();
+    retry.reportRejected();
+    retry.request();
+    expect(acquire).toHaveBeenCalledTimes(1);
+    await settle(false);
+    // 失敗のバックオフ待ちの間に拒否が報告されても、待機を早めない
+    retry.reportRejected();
+    await vi.advanceTimersByTimeAsync(SIGNING_TOKEN_RETRY_BASE_MS / 2 - 1);
+    expect(acquire).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(acquire).toHaveBeenCalledTimes(2);
+    retry.dispose();
+  });
+
+  it('re-acquires right away again once a re-acquired token has been accepted by the server', async () => {
+    const { retry, acquire, expire } = expiringTokens();
+
+    expire();
+    await flushMicrotasks();
+    retry.reportAccepted(); // 取り直した token で sign が通った
+    expire(); // 何十日も後に、その token も期限切れになった
+    await flushMicrotasks();
+
+    expect(acquire).toHaveBeenCalledTimes(2);
+    retry.dispose();
+  });
+});

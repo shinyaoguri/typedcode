@@ -30,7 +30,7 @@
 |---|---|
 | `typingProof/TypingProof.ts` | ハッシュチェーンのファサード。エディタが使う |
 | `typingProof/HashChainManager.ts` | SHA-256 計算とチェーン状態管理 |
-| `typingProof/PoswManager.ts` | PoSW 計算 (Web Worker 経由) |
+| `typingProof/PoswManager.ts` | PoSW 計算 (Web Worker 経由)。Worker 自体の故障 (`onerror`、または生成直後から `observePoswWorkerFailure` で観測した attach 前の故障) を受けた個体は terminate して捨て、作り直さずにメインスレッドのフォールバックへ直行する (#701。個別要求の期限切れは 1 件だけフォールバックし、Worker は使い続ける)。Worker を作る側は `observePoswWorkerFailure` を `new Worker` と同じ同期区間で呼ぶ (editor は `workers/createPoswWorker.ts`) |
 | `typingProof/CheckpointManager.ts` | ハイブリッドトリガ (N events OR T ms) で cp 作成 |
 | `typingProof/InputTypeValidator.ts` | 許可/禁止 InputType の判定 |
 | `typingProof/StatisticsCalculator.ts` | 統計計算 |
