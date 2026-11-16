@@ -75,7 +75,7 @@
 - `MAX_TABS_PER_SESSION` (64) を超える正規ユースケース (巨大 class バンドル) が現れたら定数を再検討する。
 
 ### Follow-ups / 残課題
-- token の能動的な再取得 (期限切れ時に Turnstile を再実行して署名専用 token を取り直す) は #236(b) で exam と共通化して扱う。入ったら `SESSION_TOKEN_MAX_AGE_MS` を 7 日へ縮められる。(2026-11-10 追記) #236 で入ったのは「token が無い exam セッションの再取得」(`SigningTokenRetry`) までで、`TOKEN_EXPIRED` を受けたときの取り直しと casual/class/assignment への適用はまだ無い。`SESSION_TOKEN_MAX_AGE_MS` を縮めるのはそれが入ってから。
+- token の能動的な再取得 (期限切れ時に Turnstile を再実行して署名専用 token を取り直す) は #236(b) で exam と共通化して扱う。入ったら `SESSION_TOKEN_MAX_AGE_MS` を 7 日へ縮められる。(2026-11-10 追記) #236 で入ったのは「token が無い exam セッションの再取得」(`SigningTokenRetry`) までで、`TOKEN_EXPIRED` を受けたときの取り直しと casual/class/assignment への適用はまだ無い。`SESSION_TOKEN_MAX_AGE_MS` を縮めるのはそれが入ってから。(2026-11-16 追記) #682 で、全モードで `TOKEN_EXPIRED` を受けたら署名専用 token を取り直すようにした (期限切れと返された token は `findSigningToken` の候補から外し、`SigningTokenRetry` の同じ規律で取り直す。取り直した token がまた拒否されたら連続回数のバックオフを待つ。root には焼かない)。`SESSION_TOKEN_MAX_AGE_MS` を縮めるかは別に判断する。
 - DO 化の再評価トリガ (上記 3 条件) の観測を Workers Logs で行う (`[checkpoint] session token rejected` / firstSeenAt mismatch の頻度)。
 - `createTabFromTemplate` のバンドルタブ非アンカー (ADR-0017 follow-up) は本 ADR の範囲外のまま。
 
