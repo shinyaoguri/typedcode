@@ -151,6 +151,27 @@ export class EventRecorder {
     this.trackInFlight(capturedTabId, settled);
   }
 
+  /**
+   * 指定したタブにイベントを記録する（fire-and-forget）(#698)。
+   * record() は呼び出し時点のアクティブタブ宛てなので、開始と完了の間に表示中のタブが変わりうる
+   * 非同期の処理 (コード実行の start / result) は、開始時に捕まえたタブ ID でこちらを呼ぶ。
+   * そのタブがもう無い (閉じられた) ときは記録しない: 別のタブへ付け替えず、閉じたタブの行を
+   * IndexedDB に書き戻して復元で生き返らせもしない。
+   */
+  recordToTabId(tabId: string, event: RecordEventInput): void {
+    if (!this.enabled || !this.initialized) {
+      return;
+    }
+    const tab = this.tabManager.getTab(tabId);
+    if (!tab) {
+      console.debug(`[EventRecorder] Dropping ${event.type} - tab ${tabId} is closed`);
+      return;
+    }
+    void this.recordToTab(tab, event).then(() => {
+      this.persistence.saveTabsToSessionStorage(this.tabManager);
+    });
+  }
+
   /** record() の完了待ちを tabId に紐づける。終われば自分で外れる (catch 済みなので reject しない) */
   private trackInFlight(tabId: string, settled: Promise<void>): void {
     let inFlight = this.inFlightByTab.get(tabId);
@@ -296,7 +317,7 @@ export class EventRecorder {
   }
 
   /**
-   * 1 タブにイベントを記録する (recordToAllTabs / recordSessionSnapshotTo の共通処理)。
+   * 1 タブにイベントを記録する (recordToAllTabs / recordSessionSnapshotTo / recordToTabId の共通処理)。
    * アクティブタブの場合のみ LogViewer に反映し、失敗はログに出して resolve する。
    */
   private recordToTab(tab: TabState, event: RecordEventInput): Promise<void> {

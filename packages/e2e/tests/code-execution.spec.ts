@@ -498,3 +498,86 @@ test('/author でスターターコードを TS として実行できる', async
   expect(await waitOutcome(page, run, terminal)).toBe('success');
   await expect.poll(() => terminalText(page, terminal)).toContain('ts:42');
 });
+
+/**
+ * casual の session DB に append 済みの codeExecution を、タブごとに [phase, filename, outcome] で読む (#698)。
+ * export を通らずに「どのタブの proof に載ったか」を見るため (行は確定したイベントの写し)
+ */
+function storedExecutions(page: Page, tabId: string): Promise<Array<[string, string, string | null]>> {
+  return page.evaluate(
+    (tabId) =>
+      new Promise<Array<[string, string, string | null]>>((resolve, reject) => {
+        const open = indexedDB.open('typedcode-session');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const req = db.transaction(['events'], 'readonly').objectStore('events').index('tabId').getAll(tabId);
+          req.onsuccess = () => {
+            db.close();
+            const rows = req.result as Array<{
+              eventIndex: number;
+              eventData: { type: string; data?: { phase: string; filename: string; outcome?: string } };
+            }>;
+            resolve(
+              rows
+                .sort((a, b) => a.eventIndex - b.eventIndex)
+                .filter((r) => r.eventData.type === 'codeExecution')
+                .map((r) => [r.eventData.data!.phase, r.eventData.data!.filename, r.eventData.data!.outcome ?? null])
+            );
+          };
+          req.onerror = () => reject(req.error);
+        };
+      }),
+    tabId
+  );
+}
+
+test('実行中に別タブへ切り替えても、start と result は実行を始めたタブの proof にだけ記録される (#698)', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('javascript');
+  const [tabA] = await app.tabs();
+  await app.addTab();
+  await app.setLanguage('javascript');
+  const tabB = (await app.tabs()).find((t) => t.id !== tabA!.id)!;
+
+  await app.switchToTab(tabA!.id);
+  await replaceCode(app, ['console.log("WAITING");', 'await new Promise((r) => setTimeout(r, 2000));', ''].join('\n'));
+  const run = await startRun(page);
+  await expect.poll(() => terminalText(page), { timeout: 30_000 }).toContain('WAITING');
+  // 終わる前に B へ切り替え、B に居るまま A の実行が終わる
+  await app.switchToTab(tabB.id);
+  expect(await waitOutcome(page, run)).toBe('success');
+  expect((await app.tabs()).find((t) => t.active)?.id).toBe(tabB.id);
+
+  await app.waitForSynced();
+  // 記録先はタブ ID で引く (A の result が B に入ると、A は start だけ・B に result が残る)
+  await expect
+    .poll(async () => (await storedExecutions(page, tabA!.id)).map(([phase, , outcome]) => [phase, outcome]))
+    .toEqual([
+      ['start', null],
+      ['result', 'success'],
+    ]);
+  const executionsOfA = await storedExecutions(page, tabA!.id);
+  expect(new Set(executionsOfA.map(([, filename]) => filename)).size).toBe(1);
+  expect(await storedExecutions(page, tabB.id)).toEqual([]);
+
+  // export した 2 つの proof でも、A の proof にだけ同じ start / result が載る
+  const zipPath = await app.exportAllTabs();
+  const perProof = [...(await readAllProofEvents(zipPath)).values()].map((events) =>
+    events
+      .filter((e) => e.type === 'codeExecution')
+      .map((e) => {
+        const d = e.data as { phase: string; filename: string; outcome?: string };
+        return [d.phase, d.filename, d.outcome ?? null];
+      })
+  );
+  expect(perProof).toHaveLength(2);
+  expect(perProof).toContainEqual(executionsOfA);
+  expect(perProof).toContainEqual([]);
+
+  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  expect(result.passed, result.stdout + result.stderr).toBe(true);
+});
