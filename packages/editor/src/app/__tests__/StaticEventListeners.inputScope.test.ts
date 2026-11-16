@@ -16,7 +16,11 @@ vi.mock('../AppHelpers.js', () => ({ showNotification: () => {} }));
 vi.mock('../../services/TurnstileService.js', () => ({ isTurnstileConfigured: () => false }));
 vi.mock('../beforeUnloadGuard.js', () => ({ handleBeforeUnload: () => {} }));
 vi.mock('../resetDialog.js', () => ({ confirmReset: () => {}, prepareResetDialog: () => {} }));
-vi.mock('../TemplateHandler.js', () => ({ handleTemplateDrop: () => {}, isTemplateFile: () => false }));
+const handleTemplateDrop = vi.fn();
+vi.mock('../TemplateHandler.js', () => ({
+  handleTemplateDrop: (...args: unknown[]) => handleTemplateDrop(...args),
+  isTemplateFile: (file: File) => file.name.endsWith('.yaml'),
+}));
 vi.mock('../TerminalHandler.js', () => ({ showLanguageDescriptionInTerminal: () => {} }));
 
 const { setupStaticEventListeners } = await import('../StaticEventListeners.js');
@@ -26,10 +30,17 @@ const record = vi.fn<(event: RecordEventInput) => void>();
 let contentRegistry: InstanceType<typeof SessionContentRegistry>;
 
 beforeAll(() => {
-  // Monaco のコンテナ (#editor) の中に入力要素 (EditContext の div / textarea) がある。ターミナルとフォームはその外
+  // index.html と同じ包含関係: エディタ領域 (.workbench) の中に Monaco のコンテナ (#editor。中に入力要素の
+  // EditContext の div / textarea) とターミナルがある。フォームはエディタ領域の外
   document.body.innerHTML = `
-    <div id="editor"><div class="monaco-editor"><div class="view-lines"></div><div class="native-edit-context" tabindex="0"></div></div></div>
-    <div id="xterm-container"><div class="xterm"><div class="xterm-rows"></div><textarea class="xterm-helper-textarea"></textarea></div></div>
+    <main class="workbench">
+      <div class="editor-container">
+        <div id="editor"><div class="monaco-editor"><div class="view-lines"></div><div class="native-edit-context" tabindex="0"></div></div></div>
+      </div>
+      <div id="terminal-panel">
+        <div id="xterm-container"><div class="xterm"><div class="xterm-rows"></div><textarea class="xterm-helper-textarea"></textarea></div></div>
+      </div>
+    </main>
     <form id="self-review"><input id="self-review-note" type="text"></form>`;
   contentRegistry = new SessionContentRegistry();
   const editorContainer = document.getElementById('editor')!;
@@ -48,6 +59,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   record.mockClear();
+  handleTemplateDrop.mockClear();
 });
 
 function el(selector: string): HTMLElement {
@@ -67,10 +79,12 @@ function pasteInto(target: HTMLElement, text: string): void {
   );
 }
 
-function dropInto(target: HTMLElement, text: string): void {
+/** text (と任意のファイル) を持つ drop を発火する */
+function dropInto(target: HTMLElement, text: string, file?: File): void {
   // happy-dom の DragEvent は素の Event で dataTransfer を持たないので、ブラウザと同じ形に足す
   const event = new DragEvent('drop', { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'dataTransfer', { value: dataTransferWith(text) });
+  const dataTransfer = { getData: (format: string) => (format === 'text' ? text : ''), files: file ? [file] : [] };
+  Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
   target.dispatchEvent(event);
 }
 
@@ -120,17 +134,37 @@ describe('setupStaticEventListeners: external input scope (#697)', () => {
     });
   });
 
-  it('records a drop only when it lands inside the Monaco container', () => {
-    dropInto(el('.xterm-helper-textarea'), 'DROPPED_OUTSIDE');
-    expect(record).not.toHaveBeenCalled();
+  it('records a drop on the editor area outside Monaco once as externalInput / insertFromDrop', () => {
+    dropInto(el('.workbench'), 'DROPPED_ON_WORKBENCH');
 
-    dropInto(el('.native-edit-context'), 'DROPPED_INSIDE');
     expect(record).toHaveBeenCalledTimes(1);
     expect(record.mock.calls[0]![0]).toMatchObject({
       type: 'externalInput',
       inputType: 'insertFromDrop',
-      data: 'DROPPED_INSIDE',
+      data: 'DROPPED_ON_WORKBENCH',
     });
+  });
+
+  it('records a drop inside the Monaco container exactly once', () => {
+    dropInto(el('.native-edit-context'), 'DROPPED_IN_MONACO');
+
+    expect(record).toHaveBeenCalledTimes(1);
+    expect(record.mock.calls[0]![0]).toMatchObject({ type: 'externalInput', inputType: 'insertFromDrop' });
+  });
+
+  it('records no code event for a drop outside the editor area', () => {
+    dropInto(el('#self-review-note'), 'DROPPED_ON_FORM');
+
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('records a template file drop on the editor area once and hands the file to the template import', () => {
+    const file = new File(['name: t'], 'template.yaml', { type: 'application/x-yaml' });
+
+    dropInto(el('.workbench'), '', file);
+
+    expect(handleTemplateDrop).toHaveBeenCalledTimes(1);
+    expect(record).toHaveBeenCalledTimes(1);
   });
 
   it('does not treat text copied outside the editor as internal content for a later paste into the editor', () => {
