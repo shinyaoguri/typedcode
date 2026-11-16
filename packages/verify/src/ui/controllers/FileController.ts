@@ -76,6 +76,12 @@ interface ImportInput {
 }
 
 /**
+ * コンテナが proof に渡す検証入力のうち、取り込んだ後に変わりうるもの。FSA フォルダの監視で `screenshots/` が
+ * 変わったら、フォルダが読み直して取り込み直しに渡す (#703)。
+ */
+export type ContainerInput = Required<Pick<ImportInput, 'screenshots'>> & Pick<ImportInput, 'startTimestamp'>;
+
+/**
  * proof タブの状態のうち、取り込んだ proof (と取り込みの入力) から決まるもの一式。
  * 初回取り込みも外部更新もこれで組み立てる (#695)。一部だけ差し替えると、表示する本文と
  * 検証した証明が別物になる (古い proofData と新しい検証結果が混ざる)。
@@ -474,11 +480,18 @@ export class FileController {
    * 初回取り込みと同じ関数 (`readProof` / `proofSnapshot` / `sourceMaterial`) で、表示状態・照合の材料・
    * 検証の対象を新しい内容の 1 スナップショットに揃える。コンテナ由来の入力 (フォルダ・スクリーンショット・
    * 記録開始時刻) は取り込み時のものを使い回す。タブの種類 (proof / 平文 / 画像) は取り込み時のまま。
+   *
+   * `container` を渡すと、proof のスクリーンショットと記録開始時刻をそれに差し替えて取り込み直し、以後の
+   * 取り込み直しにも使う (フォルダの `screenshots/` が変わったとき。#703)。
    */
-  replaceFile(tabId: string, fileData: ParsedFileData): void {
+  replaceFile(tabId: string, fileData: ParsedFileData, container?: ContainerInput): void {
     const tab = this.deps.tabManager.getTab(tabId);
     if (!tab) return;
-    const input = this.importInputs.get(tabId) ?? { filename: fileData.filename };
+    let input = this.importInputs.get(tabId) ?? { filename: fileData.filename };
+    if (container && !tab.isPlaintext && !tab.isImage) {
+      input = { ...input, screenshots: container.screenshots, startTimestamp: container.startTimestamp };
+      this.importInputs.set(tabId, input);
+    }
 
     if (tab.isPlaintext) {
       this.deps.tabManager.updateTab(tabId, { plaintextContent: fileData.rawData });
