@@ -175,6 +175,8 @@ export const ja: VerifyTranslationKeys = {
     examTimeBox: '提出期間',
     examStarter: 'スターターコード',
     examStarterNotEvaluated: '未評価',
+    examLanguage: '許可言語',
+    examLanguageNotEvaluated: '未評価',
     examPackageNote:
       '問題パッケージ未提供 — 署名・内容の検証はスキップされています。完全検証には .tcexam を読み込んでください。',
     examLoadPackage: '問題パッケージ (.tcexam) を読み込む',

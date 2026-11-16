@@ -7,11 +7,11 @@ import { showLanguageDescriptionInTerminal } from './TerminalHandler.js';
 import { updateProofStatus } from './AppHelpers.js';
 import { ExamPackageStore } from '../services/ExamPackageStore.js';
 import { ClassProblemStore } from '../services/ClassProblemStore.js';
+import { syncLanguageSelector, type LanguagePolicyTab } from './examLanguageGuard.js';
 
-interface TabInfo {
+interface TabInfo extends LanguagePolicyTab {
   filename: string;
   language: string;
-  typingProof: unknown;
 }
 
 /**
@@ -22,10 +22,8 @@ export function handleTabChange(ctx: AppContext, tab: TabInfo): void {
   updateProofStatus(ctx);
   document.title = `${tab.filename} - TypedCode`;
 
-  const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
-  if (languageSelector) {
-    languageSelector.value = tab.language;
-  }
+  // 値と選択肢 (試験の許可言語。#727) をタブに合わせる
+  syncLanguageSelector(ctx, tab);
 
   showLanguageDescriptionInTerminal(ctx, tab.language);
   ctx.runtime.updateIndicator(tab.language);

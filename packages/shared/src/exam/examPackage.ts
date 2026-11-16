@@ -38,6 +38,7 @@ import {
 } from '../version.js';
 import { decodeExamPlaintext, computeBundleProblemHash } from './examBundle.js';
 import { matchExamStarter, type ExamStarterCheck } from './examStarter.js';
+import { examAllowedLanguages, checkExamLanguage, type ExamLanguageCheck } from './examLanguage.js';
 
 // ============================================================================
 // バイト列ユーティリティ (DOM/Node 非依存)
@@ -559,6 +560,13 @@ export interface ExamBindingVerificationResult {
    * v2 は matched / mismatch (mismatch は valid=false)、v1 (legacy 平文) は not-evaluated (valid に影響しない)。
    */
   starter?: ExamStarterCheck;
+  /**
+   * proof の自己申告 `language` と package の許可言語 (`allowed.languages`、v2 は該当問題の starter の言語も)
+   * の照合 (#727)。starter と同じく、束縛の暗号的検査と識別子照合が通ったときだけ載る。
+   * not-allowed は valid=false、not-evaluated (package が許可言語を挙げていない) は valid に影響しない。
+   * proof.language は提出時のタブの言語の申告で、全履歴の実行言語を保証するものではない。
+   */
+  language?: ExamLanguageCheck;
   /** 時間窓 (advisory)。submission 時刻が無い PR1 では withinWindow=null */
   timeBox: ExamTimeBox | null;
   reason?: string;
@@ -577,9 +585,12 @@ export interface VerifyExamBindingOptions {
 /**
  * proof と封印 package から「この答案が、この問題に、T0 以降に紐づく」ことを検証する (ADR-0006 §5)。
  * チェーン / PoSW / 署名 cp の検証は verifyProofFile が別途担う (本関数は exam 束縛のみ)。
+ *
+ * `proof.language` は proof.json の自己申告言語 (`ProofFile.language`)。許可言語の照合 (#727) では
+ * 文字列でなければ非許可に倒すので、型も unknown で受ける。
  */
 export async function verifyExamBinding(
-  proof: Pick<ExportedProof, 'exam' | 'typingProofData' | 'fingerprint'> & {
+  proof: Pick<ExportedProof, 'exam' | 'typingProofData' | 'fingerprint'> & { language?: unknown } & {
     proof: Pick<ExportedProof['proof'], 'events'>;
   },
   manifest: ExamPackageManifest,
@@ -664,6 +675,8 @@ export async function verifyExamBinding(
   let contentHash: string;
   // v2 の該当問題の封印 starter (無ければ '')。v1 は starter を機械的に取り出せないので null (#718)。
   let sealedStarter: string | null = null;
+  // v2 の該当問題の starter の言語 (許可言語の照合に足す。#727)。v1 は starter を持たない。
+  let starterLanguage: string | undefined;
   if (isV2) {
     const decoded = decodeExamPlaintext(decrypted.plaintext);
     if (decoded.kind !== 'bundle') {
@@ -675,6 +688,7 @@ export async function verifyExamBinding(
     }
     contentHash = await computeBundleProblemHash(problem);
     sealedStarter = problem.starter?.content ?? '';
+    starterLanguage = problem.starter?.language;
   } else {
     // ダウングレード拒否 (#137): バンドル封印された package は per-problem 束縛 (v2) でしか
     // 検証させない。rootBinding を落とした proof が平文全体ハッシュで problemId 束縛を
@@ -727,6 +741,12 @@ export async function verifyExamBinding(
   result.starter = starter;
   const starterMatches = starter.status !== 'mismatch';
 
+  // 5c. 許可言語の照合 (#727)。proof.language (自己申告) が署名済み manifest の許可集合に入るか。
+  //     チェーンの整合性とは別の「試験条件の違反」として束縛結果にだけ載せる。
+  const language = checkExamLanguage(examAllowedLanguages(manifest.allowed.languages, starterLanguage), proof.language);
+  result.language = language;
+  const languageAllowed = language.status !== 'not-allowed';
+
   // 6. time-box (advisory)。実際の submission 時刻は外部 (Moodle)。
   const releaseMs = Date.parse(manifest.releaseTime);
   const deadlineMs = Date.parse(manifest.deadline);
@@ -750,9 +770,12 @@ export async function verifyExamBinding(
     result.identifiersMatch &&
     result.rootMatches &&
     result.problemContentHashMatches &&
-    starterMatches;
+    starterMatches &&
+    languageAllowed;
   if (!starterMatches) {
     result.reason = starter.reason;
+  } else if (!languageAllowed) {
+    result.reason = language.reason;
   }
   if (result.valid) {
     result.verifiedIds = {

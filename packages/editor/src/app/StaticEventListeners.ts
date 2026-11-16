@@ -140,7 +140,13 @@ export function setupStaticEventListeners(ctx: AppContext): void {
     const target = e.target as HTMLSelectElement;
     const activeTab = ctx.tabManager?.getActiveTab();
     if (activeTab) {
-      ctx.tabManager?.setTabLanguage(activeTab.id, target.value);
+      // 試験の許可言語 (#727)。選択肢を隠しても値は直接書き換えられるので、変更の境界で判定する
+      const requested = target.value;
+      if (!ctx.tabManager?.setTabLanguage(activeTab.id, requested)) {
+        target.value = activeTab.language;
+        showNotification(t('notifications.languageNotAllowed', { language: requested }), 'language-not-allowed');
+        return;
+      }
       ctx.tabUIController?.updateUI();
       showLanguageDescriptionInTerminal(ctx, target.value);
       ctx.runtime.updateIndicator(target.value);

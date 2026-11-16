@@ -20,6 +20,11 @@ export interface StoredExamPackage {
   plaintext: string;
   /** 問題の入出力例 (#648)。バンドルの問題が持つときだけ。v1 の単一問題と、入出力例より前に保存した分には無い */
   examples?: ProblemExample[];
+  /**
+   * v2 の問題の starter の言語 (#727)。許可言語の判定 (`app/examLanguageGuard.ts`) が manifest の
+   * `allowed.languages` に足す。v1 と starter の無い問題、この欄より前に保存した分には無い
+   */
+  starterLanguage?: string;
 }
 
 type PackageMap = Record<string, StoredExamPackage>;

@@ -26,7 +26,8 @@ export type RuntimeState = 'not-ready' | 'loading' | 'ready';
 export interface CodeExecutionCallbacks {
   onRunStart?: () => void;
   onRunEnd?: () => void;
-  onNotification?: (message: string) => void;
+  /** `notice` は `#block-notification[data-notice]` に出す通知の id (無ければ空) */
+  onNotification?: (message: string, notice?: string) => void;
   onRuntimeStatusChange?: (language: string, status: RuntimeState) => void;
   onShowClangLoading?: () => void;
   onHideClangLoading?: () => void;
@@ -53,12 +54,21 @@ export class CodeExecutionController {
   /** 今の run の番号。停止・終了で null。古い run はこれと比べて自分が今の run かを知る */
   private activeRunId: number | null = null;
   private callbacks: CodeExecutionCallbacks = {};
+  /** 実行を始めてよい言語かを判定する (#727。試験の許可言語)。null は制限なし */
+  private languageGate: ((language: string) => boolean) | null = null;
 
   /**
    * ターミナルを設定
    */
   setTerminal(terminal: CTerminal): void {
     this.terminal = terminal;
+  }
+
+  /**
+   * 実行開始の言語ゲートを設定する (#727)。拒否された言語は実行を始めず、run も記録しない
+   */
+  setLanguageGate(gate: ((language: string) => boolean) | null): void {
+    this.languageGate = gate;
   }
 
   /**
@@ -120,6 +130,15 @@ export class CodeExecutionController {
   async run(target: ExecutionTarget): Promise<void> {
     if (this.isRunning) {
       this.callbacks.onNotification?.(t('notifications.alreadyRunning'));
+      return;
+    }
+
+    // 試験の許可言語 (#727)。保存状態の復元や直接の状態変更で非許可の言語になったタブも、ここで止める
+    if (this.languageGate && !this.languageGate(target.language)) {
+      this.callbacks.onNotification?.(
+        t('notifications.languageNotAllowed', { language: target.language }),
+        'language-not-allowed'
+      );
       return;
     }
 

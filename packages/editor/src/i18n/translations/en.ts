@@ -345,6 +345,7 @@ export const en: TranslationKeys = {
     noActiveTab: 'No active tab',
     alreadyRunning: 'Code is already running',
     languageNotExecutable: '${language} cannot be executed',
+    languageNotAllowed: '${language} is not allowed in this exam',
     runtimeNotFound: 'Runtime for ${language} not found',
     executionFailed: 'Code execution failed',
     compilationStarted: 'Compiling...',

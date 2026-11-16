@@ -26,6 +26,7 @@ import type {
   AssuranceInput,
   CheckpointData,
   CheckpointPublicKey,
+  ExamAuthorityKey,
   ExamPackageManifest,
   ProofFile as SharedProofFile,
   SignedCheckpointsVerificationResult,
@@ -53,6 +54,8 @@ export interface RunProofVerificationOptions {
   onChainProgress?: (current: number, total: number) => void;
   /** 公開鍵レジストリ (テストから注入)。未指定なら shared の既定 registry。 */
   signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
+  /** 出題者鍵レジストリ (テストから注入)。未指定なら shared の既定 registry (`EXAM_AUTHORITY_KEYS`) */
+  examAuthorityRegistry?: readonly ExamAuthorityKey[];
   /**
    * 分析器 (テストから注入, #301)。未指定なら shared の `defaultAnalyzers`。Web は外部分析器を
    * 読み込まないので、失敗・期限切れの分析器を差して検証結果が返ることを確かめるための継ぎ目。
@@ -165,7 +168,9 @@ export async function runProofVerification(
   let examBinding: NonNullable<VerificationResultData['exam']>['binding'];
   if (options.manifest) {
     try {
-      examBinding = await verifyExamBinding(sharedProof, options.manifest);
+      examBinding = await verifyExamBinding(sharedProof, options.manifest, {
+        ...(options.examAuthorityRegistry ? { examAuthorityRegistry: options.examAuthorityRegistry } : {}),
+      });
     } catch (err) {
       examBinding = {
         valid: false,

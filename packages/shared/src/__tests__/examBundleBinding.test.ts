@@ -31,6 +31,8 @@ interface FabricatedExamProof {
   proof: { events: Array<{ previousHash: string }>; finalHash: string };
   fingerprint: { hash: string; components: Record<string, string> };
   exam: ExamProofBlock;
+  /** 提出時のタブの言語 (自己申告。許可言語の照合 #727 に使う) */
+  language?: string;
 }
 
 type BindingArg = Parameters<typeof verifyExamBinding>[0];
@@ -62,11 +64,14 @@ interface BundleProofFixture {
  */
 async function makeBundleProof(
   problemIndex: number,
-  overrides: { problemIdInBlock?: string; bundle?: ExamBundle } = {}
+  overrides: { problemIdInBlock?: string; bundle?: ExamBundle; languages?: string[] } = {}
 ): Promise<BundleProofFixture> {
   const { signer, registry } = await makeExamAuthority();
   const bundle = overrides.bundle ?? sampleBundle();
-  const { manifest, token } = await buildSamplePackage(signer, { plaintext: encodeExamBundle(bundle) });
+  const { manifest, token } = await buildSamplePackage(signer, {
+    plaintext: encodeExamBundle(bundle),
+    ...(overrides.languages ? { languages: overrides.languages } : {}),
+  });
 
   const packageHash = await computeExamPackageHash(manifest);
   const problem = bundle.problems[problemIndex]!;
@@ -94,6 +99,7 @@ async function makeBundleProof(
     typingProofData: { deviceId: fpHash, initialHashNonce: nonce, initialEventChainHash: root },
     proof: { events: [{ previousHash: root }], finalHash: root },
     fingerprint: { hash: fpHash, components },
+    language: 'c',
     exam,
   };
   return { proof, manifest, registry };
@@ -172,6 +178,7 @@ describe('verifyExamBinding (v2 bundle)', () => {
       typingProofData: { deviceId: fpHash, initialHashNonce: nonce, initialEventChainHash: root },
       proof: { events: [{ previousHash: root }], finalHash: root },
       fingerprint: { hash: fpHash, components },
+      language: 'c',
       exam,
     };
     const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {
@@ -206,6 +213,7 @@ describe('verifyExamBinding (v2 bundle)', () => {
       typingProofData: { deviceId: fpHash, initialHashNonce: nonce, initialEventChainHash: root },
       proof: { events: [{ previousHash: root }], finalHash: root },
       fingerprint: { hash: fpHash, components },
+      language: 'c',
       exam,
     };
     const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {
@@ -348,5 +356,129 @@ describe('verifyExamBinding (v2 bundle) — sealed starter vs templateInjection 
     });
     expect(result.valid).toBe(false);
     expect(result.starter).toBeUndefined();
+  });
+});
+
+describe('verifyExamBinding (v2 bundle) — allowed languages vs proof.language (#727)', () => {
+  function withLanguage(proof: FabricatedExamProof, language: unknown): FabricatedExamProof {
+    return { ...proof, language } as FabricatedExamProof;
+  }
+
+  it('stays valid and reports allowed when proof.language is an allowed language', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(1);
+    const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.language).toEqual({ status: 'allowed' });
+  });
+
+  it('fails the binding with a language reason when proof.language is not allowed', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(1);
+    const result = await verifyExamBinding(withLanguage(proof, 'html') as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.language?.status).toBe('not-allowed');
+    expect(result.reason).toBe("Proof language is not one of the exam package's allowed languages");
+  });
+
+  it('keeps the cryptographic binding steps passing when only the language is not allowed', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(1);
+    const result = await verifyExamBinding(withLanguage(proof, 'html') as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect([
+      result.packageSignatureValid,
+      result.packageHashMatches,
+      result.rootMatches,
+      result.problemContentHashMatches,
+      result.identifiersMatch,
+    ]).toEqual([true, true, true, true, true]);
+  });
+
+  it('accepts each of several allowed languages', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(1, { languages: ['c', 'python'] });
+    const statuses = [];
+    for (const language of ['c', 'python']) {
+      const result = await verifyExamBinding(withLanguage(proof, language) as unknown as BindingArg, manifest, {
+        examAuthorityRegistry: registry,
+      });
+      statuses.push([result.valid, result.language?.status]);
+    }
+    expect(statuses).toEqual([
+      [true, 'allowed'],
+      [true, 'allowed'],
+    ]);
+  });
+
+  it("allows the bound problem's starter language even when allowed.languages does not list it", async () => {
+    const bundle: ExamBundle = {
+      schema: EXAM_BUNDLE_SCHEMA,
+      problems: [
+        { problemId: 'p1', statement: '# py', starter: { filename: 'main.py', language: 'python', content: '' } },
+      ],
+    };
+    const { proof, manifest, registry } = await makeBundleProof(0, { bundle, languages: ['c'] });
+    const result = await verifyExamBinding(withLanguage(proof, 'python') as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.language).toEqual({ status: 'allowed' });
+  });
+
+  it("does not extend another problem's starter language to the bound problem", async () => {
+    // p1 の starter は c。p2 (starter 無し) に束縛した proof が p1 以外の言語を名乗っても許可されない。
+    const bundle: ExamBundle = {
+      schema: EXAM_BUNDLE_SCHEMA,
+      problems: [
+        { problemId: 'p1', statement: '# py', starter: { filename: 'main.py', language: 'python', content: '' } },
+        { problemId: 'p2', statement: '# c' },
+      ],
+    };
+    const { proof, manifest, registry } = await makeBundleProof(1, { bundle, languages: ['c'] });
+    const result = await verifyExamBinding(withLanguage(proof, 'python') as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.language?.status).toBe('not-allowed');
+  });
+
+  it('fails closed when the proof carries no language', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(1);
+    const result = await verifyExamBinding(withLanguage(proof, undefined) as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.language?.status).toBe('not-allowed');
+  });
+
+  it('reports not-evaluated and stays valid when the package lists no allowed languages', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(1, { languages: [] });
+    const result = await verifyExamBinding(withLanguage(proof, 'html') as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.language?.status).toBe('not-evaluated');
+  });
+
+  it('reports the starter reason first when both the starter and the language fail', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(1);
+    const forged = {
+      ...withLanguage(proof, 'html'),
+      proof: { ...proof.proof, events: [{ type: 'humanAttestation' }, { type: 'templateInjection', data: {} }] },
+    };
+    const result = await verifyExamBinding(forged as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.reason).toBe('Template injection at event 1 has invalid data');
+  });
+
+  it('omits the language check when an earlier binding step fails', async () => {
+    const { proof, manifest, registry } = await makeBundleProof(1);
+    const wrongExam = { ...proof, exam: { ...proof.exam, examId: 'other-exam' } };
+    const result = await verifyExamBinding(wrongExam as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.language).toBeUndefined();
   });
 });

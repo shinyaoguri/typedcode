@@ -164,6 +164,9 @@ export {
   encodeExamBundle,
   computeBundleProblemHash,
   matchExamStarter,
+  examAllowedLanguages,
+  isExamLanguageAllowed,
+  checkExamLanguage,
   CLASS_PACKAGE_SCHEMA,
   parseClassPackage,
   encodeClassPackage,
@@ -185,6 +188,7 @@ export type {
   ExamStarterCheck,
   ExamStarterMatchResult,
   ExamStarterEventLike,
+  ExamLanguageCheck,
 } from './exam/index.js';
 
 // バージョン定数

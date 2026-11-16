@@ -51,7 +51,20 @@ export interface BrowserPreviewPanelOptions {
   editorContainer: HTMLElement;
   /** TabManagerを取得するゲッター */
   getTabManager: () => TabManager | null;
+  /**
+   * タブの言語でプレビューを始めてよいか (#727。試験の許可言語)。省略時は制限なし。
+   * 許可されない HTML タブは描かない (保存状態の復元や直接の状態変更で html になったタブを含む)
+   */
+  isTabLanguageAllowed?: (tab: TabState) => boolean;
 }
+
+/**
+ * `#browser-preview[data-preview-state]` の値 (状態契約。#727)。
+ * - rendered: HTML タブを描いた
+ * - empty: HTML タブが無い (プレースホルダー)
+ * - not-allowed: HTML タブはあるが、どれも許可されない言語なので描かない (プレースホルダー)
+ */
+export type PreviewState = 'rendered' | 'empty' | 'not-allowed';
 
 export class BrowserPreviewPanel {
   private options: BrowserPreviewPanelOptions | null = null;
@@ -222,13 +235,15 @@ export class BrowserPreviewPanel {
 
     const result = this.generatePreviewContent();
 
-    if (!result) {
-      // HTMLファイルがない場合はプレースホルダーを表示
+    if ('state' in result) {
+      // HTMLファイルがない (または許可されない) 場合はプレースホルダーを表示
       this.showPlaceholder();
       this.updateFilename('');
+      this.panelEl?.setAttribute('data-preview-state', result.state);
       return;
     }
 
+    this.panelEl?.setAttribute('data-preview-state', 'rendered');
     this.hidePlaceholder();
     this.updateFilename(result.filename);
     this.setIframeContent(result.html);
@@ -328,25 +343,29 @@ export class BrowserPreviewPanel {
 
   /**
    * プレビューコンテンツを生成
-   * @returns HTMLコンテンツとファイル名のオブジェクト、またはnull
+   * @returns HTMLコンテンツとファイル名、または描かない理由 (`empty` / `not-allowed`)
    */
-  private generatePreviewContent(): { html: string; filename: string } | null {
+  private generatePreviewContent(): { html: string; filename: string } | { state: Exclude<PreviewState, 'rendered'> } {
     const tabManager = this.options?.getTabManager();
-    if (!tabManager) return null;
+    if (!tabManager) return { state: 'empty' };
 
     const tabs = tabManager.getAllTabs();
+    const isAllowed = this.options?.isTabLanguageAllowed ?? (() => true);
+    const isPreviewable = (t: TabState): boolean => t.language === 'html' && isAllowed(t);
 
-    // HTMLタブを探す（アクティブタブ優先）
+    // HTMLタブを探す（アクティブタブ優先）。許可されない言語のタブは描かない (#727)
     const activeTab = tabManager.getActiveTab();
     let htmlTab: TabState | undefined;
 
-    if (activeTab?.language === 'html') {
+    if (activeTab && isPreviewable(activeTab)) {
       htmlTab = activeTab;
     } else {
-      htmlTab = tabs.find((t) => t.language === 'html');
+      htmlTab = tabs.find(isPreviewable);
     }
 
-    if (!htmlTab) return null;
+    if (!htmlTab) {
+      return { state: tabs.some((t) => t.language === 'html') ? 'not-allowed' : 'empty' };
+    }
 
     // HTMLを取得
     let html = htmlTab.model.getValue();
