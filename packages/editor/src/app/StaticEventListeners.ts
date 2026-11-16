@@ -170,7 +170,11 @@ export function setupStaticEventListeners(ctx: AppContext): void {
   });
 
   // 入力検出器の初期化
-  new InputDetector(document.body, async (detectedEvent: DetectedEvent) => {
+  // 取り付け先は Monaco に渡したコンテナ (#editor。Monaco 以外は入らない) に限る。paste / drop / copy の
+  // target は Monaco の入力要素 (EditContext の div か textarea) でコンテナの子孫になる。document.body に
+  // 付けると、ターミナル (xterm の textarea) やエディタ外のフォームへの貼り付けまでコードへの外部入力として
+  // カーソル位置に記録してしまう (#697。stdin は terminalInput の経路で別に記録される)
+  new InputDetector(ctx.editor.getContainerDomNode(), async (detectedEvent: DetectedEvent) => {
     console.log('[TypedCode] Detected operation:', detectedEvent);
 
     if (detectedEvent.type === 'paste') {
