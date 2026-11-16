@@ -42,8 +42,7 @@
       "Bash(gh run list:*)",
       "Bash(gh release view:*)",
       "Bash(gh release list:*)",
-      "Bash(gh label list:*)",
-      "Bash(gh api repos/shinyaoguri/typedcode/:*)"
+      "Bash(gh label list:*)"
     ],
     "deny": [
       "Bash(npm run deploy:*)",

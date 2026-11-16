@@ -17,3 +17,11 @@
 - 完了報告の前に、どちらも [CONTRIBUTING.md の「完了の定義」](CONTRIBUTING.md) の検査を通す (エージェント定義にも同じ手順を書いてある)
 - 目安: **2 ファイル以上 or 数十行超**の編集は委譲する (数行の単発修正は往復のオーバーヘッドが上回る)
 - 設計判断・コードレビュー・ADR / AGENTS.md / CLAUDE.md の更新はメインループが担う (委譲しない)
+
+## 権限設定 (`.claude/settings.json`) の保証範囲
+
+リポジトリが配る `.claude/settings.json` は、確認なしで通す読み取りコマンド (allow) と、常に拒否する操作 (deny) の一覧です (#688)。個人の設定 (`settings.local.json` や `~/.claude/`) は書き換えません。
+
+- **allow に入れるのは、コマンド名だけで読み取りと分かるもの** (`gh pr view`・`gh issue list` など)。`gh api` は入れない。allow の規則はコマンド文字列の接頭辞に一致するので、`-X PATCH`・`-f`・GraphQL の mutation が後ろに付けば、同じ接頭辞のまま書き込みになる (接頭辞では GET に絞れない)。`gh api` の呼び出しと Issue / PR の更新は、そのつどの承認 (通常の許可経路) を通す
+- **deny が止めるのは Claude Code 自身のツール呼び出し**。deploy・鍵生成・破壊的な git 操作は、その文字列で始まる Bash コマンドを拒否する。`Read(.env)` などの deny は、Read ツールと、Bash のうち Claude Code がファイル操作と認識するもの (`cat`・リダイレクトなど) を止める。許可されたコマンドの子プロセス (`npm run dev` が起動する vite や wrangler など) が同じファイルを読むことは止めない
+- **実際に何ができるかは、この設定だけでは決まらない**。外側の sandbox (子プロセスのファイル・ネットワークの隔離)、GitHub トークンの権限、利用者の承認が別の層としてある。AGENTS.md の規約やこの設定の deny だけで、あらゆる副作用が遮断されるわけではない
