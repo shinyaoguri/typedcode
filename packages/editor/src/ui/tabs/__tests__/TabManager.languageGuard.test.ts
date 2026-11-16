@@ -72,6 +72,8 @@ class MockPoswWorker {
   }
 
   terminate(): void {}
+  // createPoswWorker が生成時に故障の観測 (#701) を付ける。このスタブは error を出さない
+  addEventListener(): void {}
 }
 
 async function setup(): Promise<{ tabManager: InstanceType<typeof TabManager>; tab: TabState }> {
