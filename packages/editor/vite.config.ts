@@ -160,6 +160,20 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         author: resolve(__dirname, 'author.html'),
       },
+      output: {
+        codeSplitting: {
+          groups: [
+            // `wasmerSdkBundledWorkers` が emit する Wasmer の glue (と、その import 先の pkg/snippets) だけで
+            // 1 チャンクにする。自動の分割に任せると、rolldown のランタイムヘルパ (`\0rolldown/runtime.js`) が
+            // 依存グラフ次第で glue のチャンクに同居し (#727)、ヘルパを import するエントリ側から glue が
+            // static に届いて index.html に modulepreload が載り、not-found を含む全ページが約 190KB の glue を
+            // 読む (`production-build.spec.ts` の not-found が見張る)。ランタイムは groups の test に渡って
+            // こないので直接は固定できないが、glue をグループに取ると同居先から外れ、独立した
+            // `rolldown-runtime` チャンクに戻る
+            { name: 'wasmer_sdk_js', test: /[\\/]@wasmer[\\/]sdk[\\/]pkg[\\/]wasmer_sdk_js\.js$/ },
+          ],
+        },
+      },
     },
   },
   define: {
