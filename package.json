@@ -24,8 +24,8 @@
     "postinstall": "node scripts/ensure-local-keys.mjs",
     "test:coverage": "npm run test:coverage --workspaces --if-present",
     "coverage:ratchet": "COVERAGE_RATCHET=1 npm run test:coverage --workspaces --if-present",
-    "check:fast": "npm run typecheck && npm run lint && npm run lint:workflows && node scripts/check-deps.mjs && npm run test:coverage && node --test 'scripts/*.test.mjs' 'packages/e2e/scripts/*.test.mjs'",
-    "check": "npm run check:fast && npm run test -w @typedcode/e2e"
+    "check:fast": "npm run typecheck && npm run lint && npm run lint:workflows && node scripts/check-deps.mjs && npm run test:coverage && node --test 'scripts/*.test.mjs' 'packages/e2e/scripts/*.test.mjs' && NODE_OPTIONS=--max-old-space-size=4096 npm run build && npm run test:dist -w @typedcode/verify-cli && npm run deploy:staging -w @typedcode/workers -- --dry-run --outdir /tmp/wrangler-dryrun-staging && npm run deploy:production -w @typedcode/workers -- --dry-run --outdir /tmp/wrangler-dryrun-production",
+    "check": "npm run check:fast && npm run test -w @typedcode/e2e && NODE_OPTIONS=--max-old-space-size=4096 npm run test:build -w @typedcode/e2e"
   },
   "engines": {
     "node": ">=24"
