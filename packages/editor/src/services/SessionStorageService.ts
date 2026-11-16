@@ -592,13 +592,21 @@ export class SessionStorageService {
    * 確認は接続の待ち行列 (`connectionReady`) に差し込むので、**この呼び出しより後に呼ばれた操作は確認が
    * 終わってから transaction を作る**。凍結を解かれた直後 (`resume` / `visibilitychange`) に呼べば、
    * 同じ契機で走る記録の書き込みが確認より先に入らない。`lost` ならラッチして `setOnOwnershipLost` に知らせ、
-   * 以後の書き込みを拒否する。未初期化・セッション未確定・読み出しの失敗は `unknown` でラッチしない
-   * (判定できないときに譲ると、両方が譲って誰も記録しなくなりうる)。
+   * 以後の書き込みを拒否する。未初期化・セッション未確定・接続が使えない・読み出しの失敗・確認の途中で
+   * 自分のセッションが替わった (自分の `clearSession` と重なった) ときは `unknown` でラッチしない
+   * (判定できないときに譲ると、両方が譲って誰も記録しなくなりうる。ラッチは再読み込みまで戻らない)。
+   * この Promise は reject しない (呼び出し側は結果を待たずに呼び捨ててよい)。
    */
   verifyOwnership(): Promise<OwnershipCheck> {
-    const check = this.connectionReady.then(() => this.readOwnership());
-    // readOwnership は reject しないので、待ち行列を壊さない
-    this.connectionReady = check.then(() => undefined);
+    const prior = this.connectionReady;
+    // 待ち行列が既に reject していれば判定できない (unknown)。readOwnership 自体は reject しない
+    const check = prior.then(
+      () => this.readOwnership(),
+      (): OwnershipCheck => 'unknown'
+    );
+    // 待ち行列の成否は変えない: prior が reject していれば後続も同じ理由で reject し続け (確認を挟んだことで
+    // 接続の無いまま成功に変えない)、resolve していれば確認が終わるまで後続の transaction を待たせる
+    this.connectionReady = prior.then(() => check.then(() => undefined));
     return check;
   }
 
@@ -614,6 +622,9 @@ export class SessionStorageService {
       console.error('[SessionStorage] Could not read the session to verify ownership:', e);
       return 'unknown';
     }
+    // 読んでいる間に自分のセッションが替わった・消えた (自分の clearSession など): 行が無いのは自分の操作の
+    // 結果かもしれないので、他インスタンスに再開されたとは言えない
+    if (this.sessionId !== sessionId) return 'unknown';
     if (session && session.instanceId === this.instanceId) return 'owner';
 
     this.ownershipLost = true;

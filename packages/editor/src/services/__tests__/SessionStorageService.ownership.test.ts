@@ -13,10 +13,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { IDBFactory } from 'fake-indexeddb';
+import { IDBFactory, forceCloseDatabase } from 'fake-indexeddb';
 import type { StoredEvent, StoredTabData } from '@typedcode/shared';
 import { setStorageNamespace } from '../../core/storageKeys.js';
-import { SessionOwnershipError, SessionStorageService } from '../SessionStorageService.js';
+import {
+  SessionOwnershipError,
+  SessionStorageService,
+  SessionStorageUnavailableError,
+} from '../SessionStorageService.js';
 
 function makeEvent(sequence: number, hash: string): StoredEvent {
   return {
@@ -166,6 +170,26 @@ describe('SessionStorageService ownership after another instance resumed the ses
     await expect(b.verifyOwnership()).resolves.toBe('owner');
   });
 
+  it('does not latch when its own clearSession removes the session row while the check is reading it', async () => {
+    const service = new SessionStorageService();
+    opened.push(service);
+    await service.initialize();
+    await service.createSession();
+
+    // clear の transaction が作られた後 (commit の前) に確認を始める: 確認の get は clear の後に返り
+    // (行が無い)、開始時に取った sessionId は clear 前のもの
+    const clearing = service.clearSession();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    const check = service.verifyOwnership();
+    await clearing;
+
+    await expect(check).resolves.toBe('unknown');
+    expect(service.isOwnershipLost()).toBe(false);
+    const fresh = await service.createSession();
+    await service.saveTab(makeTab('tab-1', fresh.sessionId, ''));
+    await expect(service.appendEvent('tab-1', makeEvent(0, 'hash-0'))).resolves.toBeUndefined();
+  });
+
   it('answers unknown without latching while there is no session to compare against', async () => {
     const service = new SessionStorageService();
     opened.push(service);
@@ -205,5 +229,70 @@ describe('SessionStorageService ownership after another instance resumed the ses
     });
 
     expect((await b.getUnprovenContents('tab-1')).map((r) => r.content)).toEqual(['code typed in A']);
+  });
+});
+
+/**
+ * 接続が使えないときの所有者確認。判定できないので `unknown` を返して reject せず (monitor は結果を待たずに
+ * 呼び捨てる)、接続の失敗そのものは後続の操作にそのまま残す (確認を挟んだことで成功に変えない)。
+ */
+describe('SessionStorageService ownership check without a usable connection (#237)', () => {
+  let service: SessionStorageService | null = null;
+
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory();
+    setStorageNamespace('casual');
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    service?.close();
+    service = null;
+    vi.restoreAllMocks();
+  });
+
+  async function openService(): Promise<{ service: SessionStorageService; sessionId: string }> {
+    const created = new SessionStorageService();
+    await created.initialize();
+    const session = await created.createSession();
+    return { service: created, sessionId: session.sessionId };
+  }
+
+  it('answers unknown when the connection was lost and its reopen failed, and later writes still fail as unavailable', async () => {
+    const opened = await openService();
+    service = opened.service;
+    // 再オープンを失敗させてから接続を強制的に閉じる (SessionStorageService.connection.test.ts と同じ再現)
+    vi.spyOn(indexedDB, 'open').mockImplementation(() => {
+      const request = {
+        error: new DOMException('injected open failure', 'UnknownError'),
+        onerror: null as ((ev: Event) => void) | null,
+      };
+      setTimeout(() => request.onerror?.(new Event('error')), 0);
+      return request as unknown as IDBOpenDBRequest;
+    });
+    const db = (service as unknown as { db: IDBDatabase | null }).db;
+    forceCloseDatabase(db as unknown as Parameters<typeof forceCloseDatabase>[0]);
+
+    await expect(service.verifyOwnership()).resolves.toBe('unknown');
+
+    expect(service.isOwnershipLost()).toBe(false);
+    await expect(service.saveTab(makeTab('tab-1', opened.sessionId, ''))).rejects.toBeInstanceOf(
+      SessionStorageUnavailableError
+    );
+  });
+
+  it('answers unknown instead of rejecting when the connection queue itself has failed, and keeps that failure for later operations', async () => {
+    const opened = await openService();
+    service = opened.service;
+    // いまの実装では待ち行列は reject しない (再オープンの失敗は lost に写して resolve する)。その前提が
+    // 崩れても、確認は reject せず、失敗した待ち行列を成功に変えないことを固定する
+    const failure = new Error('injected connection queue failure');
+    (service as unknown as { connectionReady: Promise<void> }).connectionReady = Promise.reject(failure);
+
+    await expect(service.verifyOwnership()).resolves.toBe('unknown');
+
+    await expect(service.saveTab(makeTab('tab-1', opened.sessionId, ''))).rejects.toBe(failure);
   });
 });
