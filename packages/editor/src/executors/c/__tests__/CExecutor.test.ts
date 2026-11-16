@@ -506,3 +506,134 @@ describe('compile error line numbers (#489)', () => {
     expect(executor.parseErrors('main.cpp:1:5: warning: unused variable')[0]?.line).toBe(1);
   });
 });
+
+/**
+ * コンパイラの診断 (#708)。文言は Issue に実測として書かれた Clang 16 の出力に合わせる。
+ * clang は `/workspace/main.c` を渡されるので、実際の行頭はパス付きになる。
+ */
+const FORMAT_WARNING = `/workspace/main.c:3:24: warning: format specifies type 'int' but the argument has type 'char *' [-Wformat]
+    if (0) printf("%d", "oops");
+                  ~~    ^~~~~~
+                  %s
+1 warning generated.
+`;
+const FATAL_ERROR = `/workspace/main.c:2:10: fatal error: 'student.h' file not found
+#include "student.h"
+         ^~~~~~~~~~~
+1 error generated.
+`;
+
+describe('compiler diagnostics (#708)', () => {
+  it('forwards compiler warnings once on a successful compile and still reports the run as a success', async () => {
+    const executor = await readyExecutor();
+    const { out, callbacks } = collectCallbacks();
+    const onStderr = vi.spyOn(callbacks, 'onStderr');
+    sdk.compile = { exitCode: 0, stdout: '', stderr: FORMAT_WARNING };
+    sdk.stdoutChunks = [new TextEncoder().encode('ran despite warning\n')];
+
+    const result = await executor.run('int main(void){}', callbacks);
+
+    expect(onStderr).toHaveBeenCalledTimes(1);
+    expect(out.stderr).toBe(FORMAT_WARNING);
+    expect(out.stdout).toBe('ran despite warning\n');
+    expect(result).toMatchObject({ success: true, exitCode: 0 });
+    expect(sdk.commands).toHaveLength(2);
+  });
+
+  it('forwards the diagnostics of a failed compile to the terminal exactly once', async () => {
+    const executor = await readyExecutor();
+    const { out, callbacks } = collectCallbacks();
+    const onStderr = vi.spyOn(callbacks, 'onStderr');
+    sdk.compile = { exitCode: 1, stdout: '', stderr: FATAL_ERROR };
+
+    const result = await executor.run('#include "student.h"', callbacks);
+
+    expect(onStderr).toHaveBeenCalledTimes(1);
+    expect(out.stderr).toBe(FATAL_ERROR);
+    expect(result).toMatchObject({ success: false, exitCode: 1, stderr: FATAL_ERROR, error: 'Compilation failed' });
+  });
+
+  it('does not write to the terminal when a successful compile prints nothing', async () => {
+    const executor = await readyExecutor();
+    const { callbacks } = collectCallbacks();
+    const onStderr = vi.spyOn(callbacks, 'onStderr');
+
+    await executor.run('int main(void){return 0;}', callbacks);
+
+    expect(onStderr).not.toHaveBeenCalled();
+  });
+
+  it('marks a fatal error as an error at its line and column', () => {
+    expect(new CExecutor().parseErrors(FATAL_ERROR)).toEqual([
+      { line: 2, column: 10, severity: 'error', message: "'student.h' file not found" },
+    ]);
+  });
+
+  it('keeps parsing error, warning and note diagnostics alongside a fatal error in one output', () => {
+    const stderr = [
+      "main.c:4:5: error: use of undeclared identifier 'x'",
+      "main.c:3:24: warning: format specifies type 'int' but the argument has type 'char *' [-Wformat]",
+      'main.c:1:5: note: previous definition is here',
+      "main.c:2:10: fatal error: 'student.h' file not found",
+    ].join('\n');
+
+    expect(new CExecutor().parseErrors(stderr).map((e) => [e.severity, e.line, e.column])).toEqual([
+      ['error', 4, 5],
+      ['warning', 3, 24],
+      ['note', 1, 5],
+      ['error', 2, 10],
+    ]);
+  });
+
+  it('reads the warning of a successful compile at its user-source line', () => {
+    expect(new CExecutor().parseErrors(FORMAT_WARNING)).toEqual([
+      {
+        line: 3,
+        column: 24,
+        severity: 'warning',
+        message: "format specifies type 'int' but the argument has type 'char *' [-Wformat]",
+      },
+    ]);
+  });
+
+  it('forwards and parses C++ diagnostics from main.cpp the same way', async () => {
+    const executor = new CppExecutor();
+    await executor.initialize();
+    const { out, callbacks } = collectCallbacks();
+    const onStderr = vi.spyOn(callbacks, 'onStderr');
+    const cppWarning =
+      "/workspace/main.cpp:2:9: warning: unused variable 'n' [-Wunused-variable]\n1 warning generated.\n";
+    const cppFatal = "/workspace/main.cpp:1:10: fatal error: 'student.hpp' file not found\n";
+    sdk.compile = { exitCode: 0, stdout: '', stderr: cppWarning };
+
+    const result = await executor.run('int main(){ int n; }', callbacks);
+
+    expect(onStderr).toHaveBeenCalledTimes(1);
+    expect(out.stderr).toBe(cppWarning);
+    expect(result).toMatchObject({ success: true, exitCode: 0 });
+    expect(executor.parseErrors(cppWarning)).toEqual([
+      { line: 2, column: 9, severity: 'warning', message: "unused variable 'n' [-Wunused-variable]" },
+    ]);
+    expect(executor.parseErrors(cppFatal)).toEqual([
+      { line: 1, column: 10, severity: 'error', message: "'student.hpp' file not found" },
+    ]);
+  });
+
+  it('does not forward the diagnostics of a run stopped during compilation, even if the compiler finishes with warnings (#711)', async () => {
+    const executor = await readyExecutor();
+    const { out, callbacks } = collectCallbacks();
+    sdk.compile = { exitCode: 0, stdout: '', stderr: FORMAT_WARNING };
+    sdk.holds.add('compile');
+    // SDK がコンパイラを殺せず、警告付きで完了まで走る場合
+    sdk.killIgnored = true;
+
+    const running = executor.run('int main(void){}', callbacks);
+    const release = await sdk.reached('compile');
+    executor.abort();
+    release(0);
+    const result = await running;
+
+    expect(out.stderr).toBe('');
+    expect(result).toMatchObject({ success: false, outcome: 'aborted' });
+  });
+});

@@ -297,11 +297,13 @@ export class CExecutor extends BaseExecutor {
       // コンパイル中に停止された (SDK がコンパイラを殺せずに完了まで走った場合も含む)
       if (run.aborted) return abortedResult();
 
-      if (compileResult.exitCode !== 0) {
-        // Compilation failed
-        const stderr = compileResult.stderr.text();
-        callbacks.onStderr(stderr);
+      // コンパイラの診断は成否を問わずここで 1 回だけ転送する (#708)。成功時の警告もターミナルと
+      // マーカーに出し、実行結果 (success / exitCode) はプログラムの終わり方だけで決める
+      const stderr = compileResult.stderr.text();
+      if (stderr) callbacks.onStderr(stderr);
 
+      if (compileResult.exitCode !== 0) {
+        // Compilation failed (診断は上で転送済み)
         return {
           success: false,
           exitCode: compileResult.exitCode,
@@ -509,7 +511,9 @@ export class CExecutor extends BaseExecutor {
     const errors: ParsedError[] = [];
     // clang error format: "filename:line:column: severity: message"
     // Matches .c, .cpp, .cc, .cxx files
-    const regex = /(?:<stdin>|main\.c(?:pp)?|[\w.]+\.(?:c|cpp|cc|cxx)):(\d+):(\d+):\s*(error|warning|note):\s*(.+)/g;
+    // `fatal error` (例: 見つからない #include) は error のマーカーにする (#708)
+    const regex =
+      /(?:<stdin>|main\.c(?:pp)?|[\w.]+\.(?:c|cpp|cc|cxx)):(\d+):(\d+):\s*(fatal error|error|warning|note):\s*(.+)/g;
 
     for (const match of stderr.matchAll(regex)) {
       const line = match[1];
@@ -520,7 +524,7 @@ export class CExecutor extends BaseExecutor {
         errors.push({
           line: parseInt(line, 10),
           column: parseInt(column, 10),
-          severity: severity as 'error' | 'warning' | 'note',
+          severity: severity === 'fatal error' ? 'error' : (severity as 'error' | 'warning' | 'note'),
           message: message,
         });
       }
