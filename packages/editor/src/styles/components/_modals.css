@@ -843,7 +843,8 @@
 }
 
 /* Screen Capture Lock Overlay */
-.screen-capture-lock-overlay {
+.screen-capture-lock-overlay,
+.instance-conflict-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -858,11 +859,13 @@
   animation: modal-fade-in 0.3s ease;
 }
 
-.screen-capture-lock-overlay.hidden {
+.screen-capture-lock-overlay.hidden,
+.instance-conflict-overlay.hidden {
   display: none;
 }
 
-.screen-capture-lock-content {
+.screen-capture-lock-content,
+.instance-conflict-content {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -881,21 +884,24 @@
   margin-bottom: 8px;
 }
 
-.screen-capture-lock-content h2 {
+.screen-capture-lock-content h2,
+.instance-conflict-content h2 {
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
 }
 
-.screen-capture-lock-content p {
+.screen-capture-lock-content p,
+.instance-conflict-content p {
   font-size: 14px;
   color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
 }
 
-.screen-capture-lock-content .btn {
+.screen-capture-lock-content .btn,
+.instance-conflict-content .btn {
   padding: 10px 20px;
   border-radius: 6px;
   font-size: 14px;
@@ -909,27 +915,32 @@
   margin-top: 8px;
 }
 
-.screen-capture-lock-content .btn-primary {
+.screen-capture-lock-content .btn-primary,
+.instance-conflict-content .btn-primary {
   background: var(--accent-primary);
   color: #ffffff;
 }
 
-.screen-capture-lock-content .btn-primary:hover {
+.screen-capture-lock-content .btn-primary:hover,
+.instance-conflict-content .btn-primary:hover {
   background: var(--accent-secondary);
 }
 
-.screen-capture-lock-content .btn-secondary {
+.screen-capture-lock-content .btn-secondary,
+.instance-conflict-content .btn-secondary {
   background: transparent;
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
 }
 
-.screen-capture-lock-content .btn-secondary:hover {
+.screen-capture-lock-content .btn-secondary:hover,
+.instance-conflict-content .btn-secondary:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
 
-.screen-capture-lock-content-buttons {
+.screen-capture-lock-content-buttons,
+.instance-conflict-content-buttons {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -937,9 +948,26 @@
   width: 100%;
 }
 
-.screen-capture-lock-content-buttons .btn {
+.screen-capture-lock-content-buttons .btn,
+.instance-conflict-content-buttons .btn {
   width: 100%;
   justify-content: center;
+}
+
+/* Instance Conflict Overlay (#237): 別のタブに同じセッションを再開されて読み取り専用になったタブ。
+   見た目は画面共有ロックと共有し、どの画面 (試験ゲート・アイドル停止を含む) よりも前面に出す */
+.instance-conflict-overlay {
+  z-index: 100000;
+}
+
+.instance-conflict-content i.fa-window-restore {
+  color: var(--accent-warning);
+  margin-bottom: 8px;
+}
+
+.instance-conflict-content-hint {
+  font-size: 13px !important;
+  color: var(--text-tertiary) !important;
 }
 
 /* ============================================================================

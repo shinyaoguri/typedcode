@@ -81,6 +81,12 @@ export class SessionStorageBlockedError extends Error {
   }
 }
 
+/**
+ * 所有者確認 (`verifyOwnership`) の結果 (#237)。`owner` = sessions 行の instanceId が自分、
+ * `lost` = 別インスタンスが再開した (または行が消えた) ので譲る、`unknown` = 比べる相手が無い・読めない (譲らない)
+ */
+export type OwnershipCheck = 'owner' | 'lost' | 'unknown';
+
 /** 接続を失った理由。`versionchange` = 新しい版が別のタブで開かれた、`closed` = 強制 close の後の再オープンに失敗した */
 export type SessionStorageLostReason = 'versionchange' | 'closed';
 
@@ -116,6 +122,12 @@ export class SessionStorageService {
   /** `close()` のたびに進める。close 後に終わった再オープンの結果を採用しないため */
   private generation = 0;
   private onConnectionLost: ((reason: SessionStorageLostReason) => void) | null = null;
+  /**
+   * 所有権を失った (別インスタンスがこのセッションを再開した) とラッチする (#237)。立つと以後の書き込みを
+   * `SessionOwnershipError` で拒否する (再読み込みまで戻らない)。読み出しと元のコードの保全は止めない
+   */
+  private ownershipLost = false;
+  private onOwnershipLost: (() => void) | null = null;
 
   constructor() {
     this.instanceId = crypto.randomUUID();
@@ -142,6 +154,16 @@ export class SessionStorageService {
    */
   setOnConnectionLost(callback: ((reason: SessionStorageLostReason) => void) | null): void {
     this.onConnectionLost = callback;
+  }
+
+  /** 所有権を失ったと分かったときに 1 回だけ呼ぶ (#237) */
+  setOnOwnershipLost(callback: (() => void) | null): void {
+    this.onOwnershipLost = callback;
+  }
+
+  /** 所有権を失ってラッチしたか (#237) */
+  isOwnershipLost(): boolean {
+    return this.ownershipLost;
   }
 
   /**
@@ -270,6 +292,18 @@ export class SessionStorageService {
       if (this.lost) throw new SessionStorageUnavailableError(this.lost);
       if (!this.db) throw new Error('Database not initialized');
       return this.db;
+    });
+  }
+
+  /**
+   * セッションの記録 (sessions / tabs / events / tabSwitches / screenshots) を書き換える操作の db (#237)。
+   * 所有権を失った後は `SessionOwnershipError` で拒否する。`connectionReady` を待った後に見るので、
+   * 所有者確認の後ろに並んだ書き込みは確認の結果で拒否される
+   */
+  private getWritableDb(): Promise<IDBDatabase> {
+    return this.getDb().then((db) => {
+      if (this.ownershipLost) throw new SessionOwnershipError(this.sessionId ?? '');
+      return db;
     });
   }
 
@@ -465,7 +499,7 @@ export class SessionStorageService {
    * セッションを更新
    */
   async updateSession(session: SessionMetadata): Promise<void> {
-    const db = await this.getDb();
+    const db = await this.getWritableDb();
     await IndexedDBHelper.put(db, STORE_SESSIONS, session);
   }
 
@@ -549,6 +583,50 @@ export class SessionStorageService {
   }
 
   /**
+   * 所有者を確かめ、失っていたら以後の書き込みを止める (#237 PR-3)。
+   *
+   * sessions 行の instanceId は最後に `createSession` / `resumeSession` した 1 インスタンスだけを指すので、
+   * 2 インスタンスが確かめても `owner` はたかだか 1 つ (両方が譲る・両方が譲らないは起きない)。時刻は見ない。
+   * 行が無い (別インスタンスが新しいセッションを作り直した) ときも `lost` とする。
+   *
+   * 確認は接続の待ち行列 (`connectionReady`) に差し込むので、**この呼び出しより後に呼ばれた操作は確認が
+   * 終わってから transaction を作る**。凍結を解かれた直後 (`resume` / `visibilitychange`) に呼べば、
+   * 同じ契機で走る記録の書き込みが確認より先に入らない。`lost` ならラッチして `setOnOwnershipLost` に知らせ、
+   * 以後の書き込みを拒否する。未初期化・セッション未確定・読み出しの失敗は `unknown` でラッチしない
+   * (判定できないときに譲ると、両方が譲って誰も記録しなくなりうる)。
+   */
+  verifyOwnership(): Promise<OwnershipCheck> {
+    const check = this.connectionReady.then(() => this.readOwnership());
+    // readOwnership は reject しないので、待ち行列を壊さない
+    this.connectionReady = check.then(() => undefined);
+    return check;
+  }
+
+  private async readOwnership(): Promise<OwnershipCheck> {
+    if (this.ownershipLost) return 'lost';
+    const sessionId = this.sessionId;
+    if (!this.initialized || !sessionId || this.lost || !this.db) return 'unknown';
+
+    let session: SessionMetadata | null;
+    try {
+      session = await IndexedDBHelper.get<SessionMetadata>(this.db, STORE_SESSIONS, sessionId);
+    } catch (e) {
+      console.error('[SessionStorage] Could not read the session to verify ownership:', e);
+      return 'unknown';
+    }
+    if (session && session.instanceId === this.instanceId) return 'owner';
+
+    this.ownershipLost = true;
+    console.error('[SessionStorage] Session was resumed by another instance; writes are stopped:', sessionId);
+    try {
+      this.onOwnershipLost?.();
+    } catch (e) {
+      console.error('[SessionStorage] onOwnershipLost listener failed:', e);
+    }
+    return 'lost';
+  }
+
+  /**
    * このインスタンスがセッションの所有者かを確かめる (#484)。
    * 別インスタンスが `resumeSession` すると sessions の instanceId が上書きされるので、
    * 後から再開された側が呼ぶと `SessionOwnershipError` で reject する。
@@ -572,7 +650,7 @@ export class SessionStorageService {
    * タブを保存
    */
   async saveTab(tab: StoredTabData): Promise<void> {
-    const db = await this.getDb();
+    const db = await this.getWritableDb();
     await IndexedDBHelper.put(db, STORE_TABS, tab);
     console.log('[SessionStorage] Tab saved:', tab.id);
   }
@@ -597,7 +675,7 @@ export class SessionStorageService {
    * タブを削除
    */
   async deleteTab(tabId: string): Promise<void> {
-    const db = await this.getDb();
+    const db = await this.getWritableDb();
 
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([STORE_TABS, STORE_EVENTS], 'readwrite');
@@ -660,7 +738,7 @@ export class SessionStorageService {
   async appendEvent(tabId: string, event: StoredEvent): Promise<void> {
     const sessionId = this.sessionId;
     if (!this.initialized || !sessionId) throw new Error('Database or session not initialized');
-    const db = await this.getDb();
+    const db = await this.getWritableDb();
 
     const eventData: StoredEventData = {
       tabId,
@@ -761,7 +839,7 @@ export class SessionStorageService {
   async saveTabSwitch(switchEvent: TabSwitchEvent): Promise<void> {
     const sessionId = this.sessionId;
     if (!this.initialized || !sessionId) throw new Error('Database or session not initialized');
-    const db = await this.getDb();
+    const db = await this.getWritableDb();
 
     const data: StoredTabSwitchData = {
       sessionId,
@@ -826,7 +904,7 @@ export class SessionStorageService {
    * スクリーンショットを保存
    */
   async saveScreenshot(screenshot: StoredScreenshotData): Promise<void> {
-    const db = await this.getDb();
+    const db = await this.getWritableDb();
     await IndexedDBHelper.put(db, STORE_SCREENSHOTS, screenshot);
     console.log('[SessionStorage] Screenshot saved:', screenshot.id);
   }
