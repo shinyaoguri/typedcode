@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { EditorApp, installTermsAccepted } from './helpers/app.js';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { EditorApp, installTermsAccepted, readZipEntryText } from './helpers/app.js';
 import { runVerifyCli } from './helpers/verifyCli.js';
 
 /**
@@ -127,4 +130,80 @@ test('window.open で開いた同じモードのページも duplicate-instance 
   const zipPath = await first.exportCurrentTab();
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
+});
+
+/**
+ * #237: ガードをすり抜けた二重インスタンスでは、セッションを後から再開された側 (凍結を解かれて戻ってきた側) が譲る。
+ *
+ * すり抜けは Web Locks を使えない経路 (ping → pong) でだけ起きる。凍結中のタブは pong を返せないが、CDP の
+ * freeze は本物のタブ凍結の再現にならない (#237 の 11-04 コメント) ので、ここでは 2 つ目のページから
+ * `navigator.locks` を外し、届いた pong を捨てて「既存のタブが答えなかった」状態を作る。2 つ目のページが
+ * 復旧ダイアログで「再開」すると sessions 行の所有者が 2 つ目に移り、1 つ目は heartbeat を受けて所有者を確かめ、
+ * 読み取り専用になって `instance-conflict` の画面と救出ボタンを出す。2 つ目の記録は続く。
+ * 実ブラウザのタブ凍結 (`chrome://discards` の Freeze) での確認は手動。
+ */
+test('ガードをすり抜けた 2 つ目のタブが再開すると、1 つ目が instance-conflict で読み取り専用になり、2 つ目の記録は続く (#237)', async ({
+  page,
+  context,
+}) => {
+  const first = new EditorApp(page);
+  await first.openCasualFresh();
+  await first.typeCode('int a = 1;\n');
+  await first.waitForSynced();
+
+  const page2 = await context.newPage();
+  await page2.addInitScript(() => {
+    // Web Locks の無い環境 (ping → pong に戻る) にする
+    Object.defineProperty(Navigator.prototype, 'locks', { configurable: true, get: () => undefined });
+    // 既存のタブが凍結中で pong を返さなかったことにする
+    const add = BroadcastChannel.prototype.addEventListener;
+    BroadcastChannel.prototype.addEventListener = function (
+      this: BroadcastChannel,
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions
+    ): void {
+      if (type !== 'message' || typeof listener !== 'function') {
+        add.call(this, type, listener, options);
+        return;
+      }
+      const filtered = (event: Event): void => {
+        if (((event as MessageEvent).data as { type?: string } | null)?.type === 'pong') return;
+        listener.call(this, event);
+      };
+      add.call(this, type, filtered, options);
+    } as typeof BroadcastChannel.prototype.addEventListener;
+  });
+  const second = new EditorApp(page2);
+  await page2.goto('/casual');
+  // すり抜けた 2 つ目は duplicate-instance で止まらず、復旧ダイアログで前のセッションを再開する
+  await page2.locator('#session-resume-btn').click({ timeout: 30_000 });
+  await second.waitReady();
+
+  // 1 つ目 (セッションを再開された側) が譲る
+  await expect.poll(() => first.openDialogs(), { timeout: 15_000 }).toContain('instance-conflict');
+  expect(await second.openDialogs()).not.toContain('instance-conflict');
+
+  // 2 つ目の記録は続き、表示と記録が整合している
+  const before = await second.eventCount();
+  await second.typeCode('int b = 2;\n');
+  await expect.poll(() => second.eventCount()).toBeGreaterThan(before);
+  await second.expectConsistent();
+  await second.waitForSynced();
+  expect(await second.openDialogs()).not.toContain('instance-conflict');
+
+  // 1 つ目はその時点のコードを救出できる (救出ファイルは証明ではない)。救出しても画面は閉じない
+  const download = page.waitForEvent('download', { timeout: 30_000 });
+  await page.locator('[data-dialog="instance-conflict"] [data-action="rescue"]').click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^RESCUE_TC\d{10}\.zip$/);
+  const dest = join(mkdtempSync(join(tmpdir(), 'tc-e2e-conflict-')), file.suggestedFilename());
+  await file.saveAs(dest);
+  const manifest = JSON.parse(await readZipEntryText(dest, 'rescue-manifest.json')) as {
+    notAProof: boolean;
+    tabs: Array<{ source?: string }>;
+  };
+  expect(manifest.notAProof).toBe(true);
+  expect(await readZipEntryText(dest, manifest.tabs[0]!.source!)).toBe((await first.snapshot()).tabs[0]!.content);
+  expect(await first.openDialogs()).toContain('instance-conflict');
 });

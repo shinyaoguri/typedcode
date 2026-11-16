@@ -58,6 +58,8 @@ import {
   showDuplicateInstanceOverlay,
   showUnsupportedBrowserOverlay,
 } from './services/SingleInstanceGuard.js';
+import { enterInstanceConflictReadOnly, startInstanceConflictMonitor } from './services/InstanceConflictMonitor.js';
+import { showInstanceConflictOverlay } from './ui/dialogs/InstanceConflictDialogs.js';
 import { CTerminal } from './terminal/CTerminal.js';
 import type { ParsedError } from './executors/c/CExecutor.js';
 import { resolveMarkerRange } from './executors/errorMarkerRange.js';
@@ -1698,6 +1700,31 @@ async function initializeApp(): Promise<void> {
 
   // 復元で証明と食い違った元のコードを保全したタブがあれば知らせる (#413)。待たない (編集は止めない)
   notifyRestoreDivergences();
+
+  // 同じセッションを別のタブに再開されたら (ガードをすり抜けた二重インスタンス)、このタブが譲って
+  // 読み取り専用になり、救出ボタン付きの画面を出す (#237。判定と停止は services/InstanceConflictMonitor)
+  startInstanceConflictMonitor({
+    guard: instanceGuard,
+    ownership: sessionService,
+    documentTarget: document,
+    windowTarget: window,
+    onYield: () =>
+      enterInstanceConflictReadOnly({
+        eventRecorder: ctx.eventRecorder,
+        tabManager: ctx.tabManager,
+        screenshotTracker: ctx.trackers.screenshot,
+        guard: instanceGuard,
+        setEditorReadOnly: () => editor.updateOptions({ readOnly: true }),
+        showConflictScreen: () =>
+          showInstanceConflictOverlay({
+            onRescue: rescueCode,
+            onClose: () => {
+              window.close();
+              window.location.href = 'about:blank';
+            },
+          }),
+      }),
+  });
 
   console.log('[TypedCode] App initialized successfully');
 }

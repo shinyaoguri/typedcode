@@ -528,6 +528,14 @@ export const ja: TranslationKeys = {
     hint: '既存のタブに戻るか、このタブを閉じてください。',
     closeThisTab: 'このタブを閉じる',
   },
+  instanceConflict: {
+    title: 'このタブは別のタブで再開されました',
+    description:
+      '同じ記録を別のタブまたはウィンドウが続けています。記録が食い違わないよう、このタブでの記録と保存を止めました。ここで編集しても保存されません。',
+    hint: 'このタブにしか無いコードがあれば救出してから、このタブを閉じて、もう一方のタブで続けてください。',
+    rescue: 'このタブのコードを救出',
+    closeThisTab: 'このタブを閉じる',
+  },
 
   bootFailure: {
     title: 'TypedCode を起動できませんでした',
