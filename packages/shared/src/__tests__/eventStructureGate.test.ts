@@ -203,6 +203,49 @@ describe('verifyEventArrayStructure', () => {
 });
 
 /**
+ * 型の違う inputType (#678)
+ *
+ * `recomputeProofMetadata` は `inputType?.startsWith('delete')` で数えるので、文字列でも null でもない
+ * inputType (数・真偽・オブジェクト) では `verifyProofFile` が結論を返さず TypeError で throw していた。
+ * 構造ゲートで弾き、`valid: false` と理由を返すことを保証する。
+ */
+describe('inputType of the wrong type (#678)', () => {
+  /** JSON を経由して events[index].inputType を `value` に書き換えた proof を作る (攻撃者の手順と同じ)。 */
+  function withInputType(value: unknown, index = 1): ProofFile {
+    const copy = JSON.parse(JSON.stringify(genuine.exported)) as ExportedProof;
+    (copy.proof.events[index] as unknown as Record<string, unknown>).inputType = value;
+    return { ...copy, content: genuine.content, language: 'text' };
+  }
+
+  it.each([
+    ['a number', -3],
+    ['a boolean', true],
+    ['an object', {}],
+  ])('returns a structure error instead of throwing when an inputType is %s', async (_label, value) => {
+    const result = await verifyProofFile(withInputType(value), undefined, { mode: 'fast' });
+
+    expect(result).toMatchObject({
+      valid: false,
+      metadataValid: false,
+      errorMessage: expect.stringContaining(
+        'Invalid event structure at event 1: inputType must be a string or null'
+      ) as unknown,
+    });
+  });
+
+  it('accepts an event whose inputType is null', () => {
+    expect(verifyEventArrayStructure(withInputType(null).proof.events)).toEqual({ valid: true });
+  });
+
+  it('accepts an event that has no inputType at all', () => {
+    const copy = JSON.parse(JSON.stringify(genuine.exported)) as ExportedProof;
+    delete (copy.proof.events[1] as unknown as Record<string, unknown>).inputType;
+
+    expect(verifyEventArrayStructure(copy.proof.events)).toEqual({ valid: true });
+  });
+});
+
+/**
  * own property の `__proto__` (#417)
  *
  * `deterministicStringify` は `sorted['__proto__'] = …` で prototype を差し替えてしまい、own property
