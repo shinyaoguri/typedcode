@@ -24,8 +24,11 @@ export interface DialogA11yOptions {
    * (消えかけの要素は focus() が一旦成功し、直後のフォーカス補正で body に落ちる)
    */
   returnFocusTo?: HTMLElement | null;
-  /** 戻し先に戻せないとき (DOM から消えた・フォーカスできない) のフォーカス先 */
-  fallbackFocus?: HTMLElement | null;
+  /**
+   * 戻し先に戻せないとき (DOM から消えた・フォーカスできない) のフォーカス先。
+   * 関数なら閉じた時点で引く (開いている間に描き直されて要素が入れ替わる場合)
+   */
+  fallbackFocus?: HTMLElement | null | (() => HTMLElement | null);
   /** false なら Escape を無視する (閉じさせたくないダイアログ)。既定 true */
   closeOnEscape?: boolean;
   /** Escape を受けた (閉じてよい) とき */
@@ -45,6 +48,7 @@ export interface DialogA11yHandle {
 const FOCUSABLE_SELECTOR = [
   'a[href]',
   'iframe',
+  'summary', // <details> の開閉 (規約・起動失敗の詳細)。無いと Shift+Tab の折り返しが飛ばす
   'button:not([disabled])',
   'input:not([disabled]):not([type="hidden"])',
   'select:not([disabled])',
@@ -57,6 +61,23 @@ const openDialogs: object[] = [];
 
 let titleIdSeq = 0;
 
+/**
+ * 起点が `aria-controls` で制御される popup (メニュー) の中にあれば、その制御元 (メニューを開いたボタン)。
+ * メニューは項目を押すと閉じるので、閉じた後に項目へは戻せない (WAI-ARIA のメニューボタンの型では
+ * フォーカスはメニューボタンへ戻る)。無ければ null
+ */
+function popupControllerOf(el: Element): HTMLElement | null {
+  for (let node: Element | null = el.parentElement; node; node = node.parentElement) {
+    if (!node.id) continue;
+    for (const controller of document.querySelectorAll<HTMLElement>('[aria-controls]')) {
+      if (controller.getAttribute('aria-controls')?.split(/\s+/).includes(node.id) && !node.contains(controller)) {
+        return controller;
+      }
+    }
+  }
+  return null;
+}
+
 function getFocusable(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)].filter((el) => !el.closest('[hidden], [inert]'));
 }
@@ -65,7 +86,8 @@ export function attachDialogA11y(dialog: HTMLElement, options: DialogA11yOptions
   const { labelledBy, initialFocus, returnFocusTo, fallbackFocus, closeOnEscape = true, onRequestClose } = options;
 
   const active = document.activeElement;
-  const opener = returnFocusTo ?? (active instanceof HTMLElement && active !== document.body ? active : null);
+  const activeOpener = active instanceof HTMLElement && active !== document.body ? active : null;
+  const opener = returnFocusTo ?? (activeOpener ? (popupControllerOf(activeOpener) ?? activeOpener) : null);
 
   if (!labelledBy.id) {
     labelledBy.id = `dialog-title-${++titleIdSeq}`;
@@ -121,7 +143,8 @@ export function attachDialogA11y(dialog: HTMLElement, options: DialogA11yOptions
   let released = false;
 
   const restoreFocus = (): void => {
-    for (const target of [opener, fallbackFocus]) {
+    const fallback = typeof fallbackFocus === 'function' ? fallbackFocus() : fallbackFocus;
+    for (const target of [opener, fallback]) {
       if (target?.isConnected) {
         target.focus();
         if (document.activeElement === target) return;
@@ -141,6 +164,38 @@ export function attachDialogA11y(dialog: HTMLElement, options: DialogA11yOptions
       const index = openDialogs.indexOf(entry);
       if (index !== -1) openDialogs.splice(index, 1);
       restoreFocus();
+    },
+  };
+}
+
+export interface StaticDialogOptions extends Omit<DialogA11yOptions, 'labelledBy' | 'onRequestClose'> {
+  /** 名前になる要素。省略時は `.modal-header h3` */
+  labelledBy?: HTMLElement;
+  /** Escape を受けたとき。`closeOnEscape: false` なら省略してよい */
+  onRequestClose?: () => void;
+}
+
+/**
+ * `index.html` に置いてある静的な overlay (`.modal-overlay.hidden` > `.modal-dialog`) を開く。
+ * `.hidden` を外して中の `.modal-dialog` に `attachDialogA11y` を付ける。返す `close()` は冪等で、
+ * リスナーを解放してフォーカスを戻し、`.hidden` を付け直す (閉じる経路はすべてこれを通す)。
+ */
+export function showStaticDialog(overlay: HTMLElement, options: StaticDialogOptions = {}): DialogA11yHandle {
+  const dialog = overlay.querySelector<HTMLElement>('.modal-dialog') ?? overlay;
+  const { labelledBy, onRequestClose, ...rest } = options;
+  overlay.classList.remove('hidden');
+  const a11y = attachDialogA11y(dialog, {
+    ...rest,
+    labelledBy: labelledBy ?? dialog.querySelector<HTMLElement>('.modal-header h3') ?? dialog,
+    onRequestClose: onRequestClose ?? (() => undefined),
+  });
+  let closed = false;
+  return {
+    close(): void {
+      if (closed) return;
+      closed = true;
+      a11y.close();
+      overlay.classList.add('hidden');
     },
   };
 }
