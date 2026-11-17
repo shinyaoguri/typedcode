@@ -158,7 +158,10 @@ function firstDifference(a: Uint8Array, b: Uint8Array): number {
  * ZIP のエントリ名が、ソースの候補か (= proof でも付属物でもないか)。
  *
  * 除くもの: ディレクトリ、`screenshots/` 配下、`.json` (proof・`tab-switches.json` など)、README
- * (`README.md` / `README.ja.md`。editor が同梱する)、隠しファイル、バイナリ。
+ * (`README.md` / `README.ja.md`。editor が同梱する)、問題文 (`<base>_problem.md` / `<base>_problem_<N>.md`。
+ * 授業・課題で editor が同梱する証明の対象外の写し。#778。名前の規則は `exportNaming.ts`)、隠しファイル、バイナリ。
+ * 問題文の形に当たらない `.md` (`notes.md` など) はソースの候補のまま (editor のソースは `.md` で終わらないので、
+ * 期待名に当たらず孤立ソースの警告になる)。
  */
 export function isSubmissionSourceEntry(path: string): boolean {
   if (path.endsWith('/')) return false;
@@ -167,6 +170,7 @@ export function isSubmissionSourceEntry(path: string): boolean {
   if (file === '' || file.startsWith('.')) return false;
   if (/\.json$/i.test(file)) return false;
   if (/^README(?:\.[A-Za-z-]+)?\.md$/i.test(file)) return false;
+  if (/_problem(?:_\d+)?\.md$/i.test(file)) return false;
   if (isBinaryFile(file)) return false;
   return true;
 }

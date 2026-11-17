@@ -14,6 +14,12 @@
  *   `_proof_1.json`, `_proof_2.json`…
  * - 2 つの数え方は**キーが違う**: ソースは拡張子込み、proof は base。だから `main.c` + `main.py` は
  *   ソースが `main.c` / `main.py` (番号なし)、proof が `main_proof.json` / `main_proof_1.json` になる
+ * - 問題文 (#778): proof と同じ base・同じ番号で `<base>_problem.md` / `<base>_problem_<N>.md`。
+ *   proof の数えをそのまま使うので、`main_proof_1.json` の問題文は必ず `main_problem_1.md` になる。
+ *   editor が入れるのは授業・課題で問題を読み込んだタブだけで、証明の対象外 (チェーン外の平文。検証器は読まない。
+ *   `submissionSources.ts` の `isSubmissionSourceEntry` がソースの候補から外す)。
+ *   ソースは常に言語の拡張子 (`LANGUAGE_FILE_EXTENSIONS` / `txt`) で終わり `.md` にはならないので、
+ *   問題文の名前がソースの名前と衝突することは無い
  */
 
 /**
@@ -65,6 +71,8 @@ export interface ExportTabName {
 export interface ExportFilenames {
   source: string;
   proof: string;
+  /** 問題文を同梱するときの名前 (#778)。proof と同じ番号。入れるかどうかは呼び出し側が決める */
+  problem: string;
 }
 
 /**
@@ -89,9 +97,11 @@ export function createExportNamer(): (tab: ExportTabName) => ExportFilenames {
     const base = proofBaseName(tab.filename);
     const proofCount = usedProofBases.get(base) ?? 0;
     usedProofBases.set(base, proofCount + 1);
-    const proof = proofCount > 0 ? `${base}_proof_${proofCount}.json` : `${base}_proof.json`;
+    const suffix = proofCount > 0 ? `_${proofCount}` : '';
+    const proof = `${base}_proof${suffix}.json`;
+    const problem = `${base}_problem${suffix}.md`;
 
-    return { source, proof };
+    return { source, proof, problem };
   };
 }
 
