@@ -11,7 +11,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SyncManagerCallbacks } from '../../types.js';
-import { FolderSyncManager } from '../FolderSyncManager.js';
+import { FolderSyncManager, type InitialListing } from '../FolderSyncManager.js';
 
 interface FakeFile {
   kind: 'file';
@@ -70,11 +70,11 @@ function callbacks() {
 
 let manager: FolderSyncManager | null = null;
 
-/** root を監視し始める (ポーリングは止めておき、forceSync で 1 回ずつ回す)。 */
-async function watch(root: FakeDir) {
+/** root を監視し始める (ポーリングは止めておき、forceSync で 1 回ずつ回す)。`initial` はフォルダを開いたときの一覧。 */
+async function watch(root: FakeDir, initial?: InitialListing) {
   const cb = callbacks();
   manager = new FolderSyncManager(cb);
-  await manager.startWatching(dirHandle('root', root), 60 * 60 * 1000);
+  await manager.startWatching(dirHandle('root', root), 60 * 60 * 1000, initial);
   return { cb, sync: () => manager!.forceSync(), state: () => manager!.getState() };
 }
 
@@ -183,5 +183,114 @@ describe('FolderSyncManager read failures (#699)', () => {
     expect(cb.onFolderDeleted).toHaveBeenCalledExactlyOnceWith('sub');
     expect(cb.onSyncError).not.toHaveBeenCalled();
     expect(cb.onSyncComplete).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * フォルダを開いたときに読み込んだ一覧を作る (`readDirectoryRecursive` の非 strict と同じく、読めないファイルは飛ばす)。
+ * `skip` のパスも読めなかったものとして飛ばす。
+ */
+function listing(root: FakeDir, skip: string[] = []): InitialListing {
+  const files: InitialListing['files'][number][] = [];
+  const folders: InitialListing['folders'][number][] = [];
+  const walk = (node: FakeDir, prefix: string) => {
+    for (const [name, child] of Object.entries(node.children)) {
+      const path = prefix ? `${prefix}/${name}` : name;
+      if (child.kind === 'directory') {
+        folders.push({ path, name, handle: dirHandle(name, child) });
+        walk(child, path);
+      } else if (!child.unreadable && !skip.includes(path)) {
+        files.push({ path, name, lastModified: child.lastModified, handle: fileHandle(name, child) });
+      }
+    }
+  };
+  walk(root, '');
+  return { files, folders };
+}
+
+describe('FolderSyncManager baseline from the folder-open listing (#734)', () => {
+  it('does not report a file loaded when the folder was opened as added, even if it is unreadable when watching starts', async () => {
+    const proof = file();
+    const root = dir({ 'main_proof.json': proof, sub: dir({ 'a.c': file() }) });
+    const opened = listing(root);
+    proof.unreadable = true;
+    const { cb, sync, state } = await watch(root, opened);
+
+    proof.unreadable = false;
+    await sync();
+
+    expectNoChangeReported(cb);
+    expect(cb.onSyncComplete).toHaveBeenCalledTimes(1);
+    expect(state()).toMatchObject({ fileCount: 2, folderCount: 1 });
+  });
+
+  it('reports a file skipped when the folder was opened as added on the next round', async () => {
+    const root = dir({ 'main_proof.json': file(), 'locked_proof.json': file() });
+    const { cb, sync } = await watch(root, listing(root, ['locked_proof.json']));
+
+    await sync();
+
+    expect(cb.onFileAdded).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ path: 'locked_proof.json' }));
+    expect(cb.onFileModified).not.toHaveBeenCalled();
+  });
+
+  it('reports changes made between opening the folder and starting to watch', async () => {
+    const proof = file(1);
+    const root = dir({ 'main_proof.json': proof, 'gone.c': file() });
+    const opened = listing(root);
+    proof.lastModified = 2;
+    delete root.children['gone.c'];
+    root.children['new.c'] = file();
+    const { cb, sync } = await watch(root, opened);
+
+    await sync();
+
+    expect(cb.onFileModified).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ path: 'main_proof.json' }));
+    expect(cb.onFileAdded).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ path: 'new.c' }));
+    expect(cb.onFileDeleted).toHaveBeenCalledExactlyOnceWith('gone.c');
+  });
+});
+
+describe('FolderSyncManager initial scan read failures without an opening listing (#734)', () => {
+  it('does not report a file the initial scan could not read as added once it becomes readable', async () => {
+    const proof: FakeFile = { kind: 'file', lastModified: 1, unreadable: true };
+    const { cb, sync, state } = await watch(dir({ 'main_proof.json': proof, 'main.c': file() }));
+
+    proof.unreadable = false;
+    await sync();
+
+    expectNoChangeReported(cb);
+    expect(state().fileCount).toBe(2);
+  });
+
+  it('does not report files under a subfolder the initial scan could not list as added', async () => {
+    const sub: FakeDir = { kind: 'directory', children: { 'a_proof.json': file() }, unreadable: true };
+    const { cb, sync } = await watch(dir({ sub }));
+
+    sub.unreadable = false;
+    await sync();
+
+    expectNoChangeReported(cb);
+  });
+
+  it('reports only real additions, modifications and deletions after the first fully readable round', async () => {
+    const proof: FakeFile = { kind: 'file', lastModified: 1, unreadable: true };
+    const root = dir({ 'main_proof.json': proof, 'gone.c': file(), old: dir({}) });
+    const { cb, sync } = await watch(root);
+    proof.unreadable = false;
+    await sync();
+    expectNoChangeReported(cb);
+
+    proof.lastModified = 2;
+    delete root.children['gone.c'];
+    delete root.children.old;
+    root.children['new.c'] = file();
+    await sync();
+
+    expect(cb.onFileModified).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ path: 'main_proof.json' }));
+    expect(cb.onFileAdded).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ path: 'new.c' }));
+    expect(cb.onFileDeleted).toHaveBeenCalledExactlyOnceWith('gone.c');
+    expect(cb.onFolderDeleted).toHaveBeenCalledExactlyOnceWith('old');
+    expect(cb.onFolderAdded).not.toHaveBeenCalled();
   });
 });
