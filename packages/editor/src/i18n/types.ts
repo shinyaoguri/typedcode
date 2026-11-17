@@ -70,6 +70,8 @@ export interface TranslationKeys {
     toggleTheme: string;
     language: string;
     about: string;
+    /** 救出 (証明ではないコードの退避。#544。#779 でダウンロードメニューから設定メニューへ移した) */
+    rescue: string;
     resetAll: string;
   };
 
@@ -83,11 +85,8 @@ export interface TranslationKeys {
     togglePreview: string;
     runCode: string;
     stopExecution: string;
+    /** 全タブの証明 ZIP を書き出すボタン (メニューを持たない。#779) */
     download: string;
-    downloadAll: string;
-    exportCurrentTab: string;
-    /** 救出 (証明ではないコードの退避。#544) */
-    rescue: string;
     settings: string;
     newTab: string;
     closeTab: string;
@@ -388,11 +387,13 @@ export interface TranslationKeys {
     preAuthFailed: string;
     cancelled: string;
     success: string;
-    successVerified: string;
+    /** 書き出した全タブの proof.json が自己検証に通った (#586 / #779)。`${count}` = ファイル数 */
+    zipSuccessVerified: string;
+    /** 自己検証で 1 つでも invalid か throw があった (#586) */
     verifyFailed: string;
-    failed: string;
-    zipSuccess: string;
     zipFailed: string;
+    /** 書き出すタブが無い (#779) */
+    noTabs: string;
     /** 救出 ZIP を出した (#544) */
     rescueSuccess: string;
     /** ZIP を作れず単一 JSON で救出した (#544) */

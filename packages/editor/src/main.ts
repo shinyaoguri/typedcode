@@ -79,7 +79,6 @@ import { ProofStatusDisplay } from './ui/components/ProofStatusDisplay.js';
 import { CursorTracker } from './editor/CursorTracker.js';
 import { EditorController } from './editor/EditorController.js';
 import { SettingsDropdown } from './ui/components/SettingsDropdown.js';
-import { DownloadDropdown } from './ui/components/DownloadDropdown.js';
 import { MainMenuDropdown } from './ui/components/MainMenuDropdown.js';
 import { TerminalPanel } from './ui/components/TerminalPanel.js';
 import { CodeExecutionController } from './execution/CodeExecutionController.js';
@@ -269,7 +268,6 @@ const ctx: AppContext = {
   processingDialog: new ProcessingDialog(),
   proofStatusDisplay: new ProofStatusDisplay(),
   settingsDropdown: new SettingsDropdown(),
-  downloadDropdown: new DownloadDropdown(),
   mainMenuDropdown: new MainMenuDropdown(),
   terminalPanel: new TerminalPanel(),
   browserPreviewPanel: new BrowserPreviewPanel(),
@@ -361,14 +359,15 @@ ctx.proofExporter.setPreExportBestEffort(ctx.capabilities.preExportBestEffort);
 // 提出前セルフレビュー (ADR-0022): 自分の過程を確認し任意の振り返りを残す (exam は off)。
 ctx.proofExporter.setSelfReviewEnabled(ctx.capabilities.selfReview);
 
-// exam 固有のクロム (タブ追加/削除・汎用DLメニューの非表示、unify) は body.exam-mode が駆動する。
+// exam 固有のクロム (タブ追加/削除・左のダウンロードボタンの非表示、unify) は body.exam-mode が駆動する。
 if (ctx.examMode) {
   document.body.classList.add('exam-mode');
 }
 
 // 救出 (#544 / ADR-0042): 証明ではない救出ファイルで、メモリ上の最新のコードと記録を出す。
 // 保存先・認証・PoSW の排出のどれも待たない (それらが壊れているときに押すボタンなので)。
-// 導線は左の DL メニュー (#rescue-download-btn) と問題パネル (#problem-rescue-btn。exam は DL メニューを隠す)
+// 導線は設定メニュー (#rescue-download-btn) と問題パネル (#problem-rescue-btn)。
+// #779 でダウンロードをメニューの無い 1 ボタンにしたので、設定メニューへ移した
 let rescueExporter: RescueExporter | null = null;
 function rescueCode(): void {
   const tabManager = ctx.tabManager;
@@ -376,10 +375,13 @@ function rescueCode(): void {
   rescueExporter ??= createRescueExporter(tabManager, { mode: ctx.mode, notify: showNotification });
   void rescueExporter.rescueAll();
 }
-document.getElementById('rescue-download-btn')?.addEventListener('click', (e) => {
-  // タブが無いと DL メニューの項目は無効になる (DownloadDropdown)
-  if ((e.currentTarget as HTMLElement).classList.contains('disabled')) return;
-  ctx.downloadDropdown.close();
+document.getElementById('rescue-download-btn')?.addEventListener('click', () => {
+  ctx.settingsDropdown.close();
+  // 設定メニューは項目をタブの有無で無効にしないので、ここで知らせて戻る
+  if (!ctx.tabManager?.hasAnyTabs()) {
+    showNotification(t('export.noTabs'));
+    return;
+  }
   rescueCode();
 });
 
@@ -395,7 +397,7 @@ if (ctx.capabilities.problemPanel) {
     ctx.problemPanel.setTitle(t(`feature.${ctx.mode}`));
   }
   // 提出用ログのダウンロード導線 (全タブ ZIP = 証明 + コード)。提出は Moodle で行うため
-  // TypedCode 側に「提出」操作は持たない。exam では unify で左の汎用DLメニューを隠し一本化する。
+  // TypedCode 側に「提出」操作は持たない。exam では unify で左のダウンロードボタン (#download-btn) を隠し一本化する。
   document.getElementById('download-log-btn')?.addEventListener('click', () => {
     void ctx.proofExporter.exportAllTabsAsZip();
   });
@@ -630,12 +632,6 @@ function initializeTerminal(): void {
     buttonId: 'settings-btn',
     dropdownId: 'settings-dropdown',
   });
-
-  ctx.downloadDropdown.initialize({
-    buttonId: 'download-menu-btn',
-    dropdownId: 'download-dropdown',
-  });
-  ctx.downloadDropdown.setHasTabsCallback(() => ctx.tabManager?.hasAnyTabs() ?? false);
 
   ctx.mainMenuDropdown.initialize({
     buttonId: 'main-menu-btn',

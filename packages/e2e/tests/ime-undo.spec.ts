@@ -26,7 +26,7 @@ test('IME の変換中入力 (imeSetComposition → insertText) が記録され�
   expect((await app.snapshot()).tabs[0]!.content).toBe(expected);
 
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const proof = (await readProofJson(zipPath)) as { content?: string };
   expect(proof.content).toBe(expected);
   // 確定した文字列が編集イベントとしてチェーンに載っている (content replay が通る根拠)。実測では、変換中の
@@ -68,7 +68,7 @@ test('undo / redo の後の最終内容が proof と一致し、historyUndo / hi
   expect((await app.snapshot()).tabs[0]!.content).toBe(expected);
 
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const proof = (await readProofJson(zipPath)) as { content?: string };
   expect(proof.content).toBe(expected);
 

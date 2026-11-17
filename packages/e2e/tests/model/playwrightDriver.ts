@@ -203,16 +203,19 @@ export class PlaywrightEditorDriver implements EditorDriver {
     await this.app.simulateFocusLossAndReturn();
   }
 
-  async exportCurrentTab(tab: Readonly<ModelTab>): Promise<void> {
-    const zipPath = await this.app.exportCurrentTab();
-    await expectProofsMatch(zipPath, [tab]);
-  }
-
-  /** 全タブを export し、verify-cli の判定と proof の中身をモデルの全タブと突き合わせる (列の最後)。 */
+  /**
+   * 手としての export (`ExportAllTabs`): 同期を待たずに全タブを export し、書き出しの時点のモデルの全タブと
+   * 突き合わせる (PoSW の処理待ちが残っていれば、export の排出待ちの経路も通る)。
+   */
   async exportAllTabs(model: Readonly<EditorModel>): Promise<void> {
-    await this.app.waitForSynced();
     const zipPath = await this.app.exportAllTabs();
     await expectProofsMatch(zipPath, model.tabs);
+  }
+
+  /** 列の最後: 同期を待ってから全タブを export し、モデルの全タブと突き合わせる。 */
+  async exportAllTabsAfterSync(model: Readonly<EditorModel>): Promise<void> {
+    await this.app.waitForSynced();
+    await this.exportAllTabs(model);
   }
 
   async expectMatches(model: EditorModel): Promise<void> {

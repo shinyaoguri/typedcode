@@ -241,21 +241,20 @@ export async function dropFileOnWorkbench(page: Page, file: { name: string; mime
 }
 
 /**
- * 現在のタブをダウンロードメニューから export し、セルフレビュー (`data-dialog="self-review"`) に
+ * 左のダウンロードボタン (`#download-btn`) で全タブを export し、セルフレビュー (`data-dialog="self-review"`) に
  * ノートを書いて続行する。保存した ZIP のパスを返す。
  */
-export async function exportCurrentTabWithNote(app: EditorApp, note: string): Promise<string> {
+export async function exportWithNote(app: EditorApp, note: string): Promise<string> {
   const downloadPromise = app.page.waitForEvent('download', { timeout: 90_000 });
-  await openSelfReviewForCurrentTab(app);
+  await openSelfReviewForExport(app);
   await app.page.locator('#self-review-note').fill(note);
   await app.page.locator('[data-dialog="self-review"] [data-action="proceed"]').click();
   return saveDownload(await downloadPromise);
 }
 
-/** 現在のタブの export を始め、セルフレビューが開くまで待つ。 */
-export async function openSelfReviewForCurrentTab(app: EditorApp): Promise<void> {
-  await app.page.locator('#download-menu-btn').click();
-  await app.page.locator('#export-current-tab-btn').click();
+/** 左のダウンロードボタンで export を始め (メニューは開かない。#779)、セルフレビューが開くまで待つ。 */
+export async function openSelfReviewForExport(app: EditorApp): Promise<void> {
+  await app.page.locator('#download-btn').click();
   await waitDialogOpen(app, 'self-review');
 }
 

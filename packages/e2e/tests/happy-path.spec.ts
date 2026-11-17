@@ -28,7 +28,7 @@ test('casual: 打鍵→export→CLI 検証が pass する', async ({ page }) => 
   expect(await app.editorValue()).toContain('int f()');
   expect(await app.eventCount()).toBeGreaterThan(initialCount);
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const result = runVerifyCliWithVerdicts(zipPath);
 
   // ① チェーン検証が pass (exit 0)。

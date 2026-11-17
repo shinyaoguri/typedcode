@@ -13,7 +13,7 @@ test('casual: 打鍵せずに現タブを export しても同期状態が synced
   const app = new EditorApp(page);
   await app.openCasualFresh();
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   expect(await listProofEntries(zipPath)).toHaveLength(1);
 
   await app.waitForSynced();

@@ -32,7 +32,7 @@ test('テーマを切り替えると html[data-theme] が light と dark を往�
   await app.expectConsistent();
   expect(await app.eventCount()).toBeGreaterThan(before);
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
 });
@@ -70,7 +70,7 @@ test('表示言語を切り替えるとリロードして html[lang] が en か�
   await app.expectConsistent();
   expect(await app.eventCount()).toBeGreaterThan(before);
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
 });

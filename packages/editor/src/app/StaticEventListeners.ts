@@ -302,20 +302,9 @@ export function setupStaticEventListeners(ctx: AppContext): void {
     if (e.persisted) ctx.skipUnloadConfirm = false;
   });
 
-  // 現在のタブをZIPでエクスポート（ファイル + 検証ログ）
-  const exportCurrentTabBtn = document.getElementById('export-current-tab-btn');
-  exportCurrentTabBtn?.addEventListener('click', (e) => {
-    // 無効時は何もしない
-    if ((e.currentTarget as HTMLElement).classList.contains('disabled')) return;
-    ctx.downloadDropdown.close();
-    void ctx.proofExporter.exportCurrentTab();
-  });
-
-  const exportZipBtn = document.getElementById('export-zip-btn');
-  exportZipBtn?.addEventListener('click', (e) => {
-    // 無効時は何もしない
-    if ((e.currentTarget as HTMLElement).classList.contains('disabled')) return;
-    ctx.downloadDropdown.close();
+  // 全タブの証明 ZIP を書き出す (書き出しは 1 系統・ボタン 1 つ。#779)。タブが無いときの通知は
+  // exportAllTabsAsZip が出す
+  document.getElementById('download-btn')?.addEventListener('click', () => {
     void ctx.proofExporter.exportAllTabsAsZip();
   });
 }

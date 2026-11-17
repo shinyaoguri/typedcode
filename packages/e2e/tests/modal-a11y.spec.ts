@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { EditorApp } from './helpers/app.js';
 import { failStorageProbe } from './helpers/faults.js';
-import { openSelfReviewForCurrentTab, waitDialogClosed, waitDialogOpen } from './helpers/scenario.js';
+import { openSelfReviewForExport, waitDialogClosed, waitDialogOpen } from './helpers/scenario.js';
 
 /**
  * 共通ダイアログのフォーカス管理 (#305)。About ダイアログ (設定メニュー → About) を実ブラウザで開き、
@@ -135,7 +135,7 @@ test('the self-review dialog is a named modal dialog that traps Tab and keeps a 
   await app.typeCode('int a;');
   await app.waitForSynced();
 
-  await openSelfReviewForCurrentTab(app);
+  await openSelfReviewForExport(app);
   const dialog = dialogOf(page, 'self-review');
   await expect(dialog).toHaveAttribute('aria-modal', 'true');
   const labelId = await dialog.getAttribute('aria-labelledby');
@@ -270,7 +270,7 @@ test('the tab close confirmation is a named modal that traps Tab and returns foc
   await app.expectConsistent();
 });
 
-test('a dialog opened from the download menu returns focus to the download menu button when it closes', async ({
+test('a dialog opened from the download button returns focus to the download button when it closes', async ({
   page,
 }) => {
   const app = new EditorApp(page);
@@ -278,10 +278,10 @@ test('a dialog opened from the download menu returns focus to the download menu 
   await app.typeCode('int a;');
   await app.waitForSynced();
 
-  await openSelfReviewForCurrentTab(app);
+  await openSelfReviewForExport(app);
   await page.locator('[data-dialog="self-review"] .self-review-btn-cancel').click();
   await waitDialogClosed(app, 'self-review');
-  await expect(page.locator('#download-menu-btn')).toBeFocused();
+  await expect(page.locator('#download-btn')).toBeFocused();
 });
 
 test('the terms modal at startup is a named modal that traps Tab and cannot be dismissed with Escape', async ({

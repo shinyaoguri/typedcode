@@ -17,7 +17,7 @@ test('複数行コードの一括投入は記録され Pure Typing: NO / 外部�
   await app.injectCodeBlock(CODE_BLOCK);
   await app.waitForSynced();
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   // 単一の contentChange に複数行コードが載っている (1 文字ずつではない)。
   const events = await readProofEvents(zipPath);
@@ -46,7 +46,7 @@ test('同じコードを打鍵した場合は Pure Typing: YES (一括投入と�
   await app.typeCode('int g() {\n  return 1;\n}\n');
   await app.waitForSynced();
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const result = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   expect(result.verdicts[0]!.assurance.provenance.pureTyping).toBe(true);

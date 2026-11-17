@@ -5,9 +5,9 @@
  * `preExportBestEffort=true` で、不達/失敗でも**失敗 attestation を記録して**提出 ZIP を出す
  * (ADR-0006/0011: 教室の不安定網で提出そのものを不能にしない)。casual は従来どおりブロックする。
  *
- * #224: 単一タブ用の `performPreExportVerification` にだけこの分岐が無く、class/assignment の
- * 受講者が Turnstile 不達で単一タブ ZIP を一切出せなくなっていた。全タブ版と同じ意味論
- * (失敗 attestation を記録してから続行) に揃えたことをここで固定する。
+ * #224: 単一タブ用の検証にだけこの分岐が無く、class/assignment の受講者が Turnstile 不達で単一タブ
+ * ZIP を一切出せなくなっていた。#779 で書き出しを全タブの 1 系統にしたので、検証も全タブ版
+ * (`performPreExportVerificationForAllTabs`) だけになった。単一タブ版で固定していた観点はここへ移した。
  *
  * #415: export 前 attestation は署名しない。サーバ (旧 Worker) が signature を返しても記録は常に
  * `'unsigned'` で、成功の判定は `success` だけで行う (attestation の無い成功応答でも export を続ける)。
@@ -65,7 +65,6 @@ const { ProofExporter } = await import('../ProofExporter.js');
 
 /** private な検証メソッドを直接叩くためのビュー (export 全体は DOM/ZIP 依存が厚い)。 */
 interface PreExportVerifier {
-  performPreExportVerification(activeTab: TabState): Promise<boolean>;
   performPreExportVerificationForAllTabs(): Promise<boolean>;
 }
 
@@ -124,7 +123,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('ProofExporter.performPreExportVerification (single tab, #224)', () => {
+describe('ProofExporter.performPreExportVerificationForAllTabs (#224)', () => {
   it('continues the export when the Turnstile script cannot be loaded in best-effort mode', async () => {
     const tab = makeTab('tab-1');
     const { verifier } = createExporter([tab], true);
@@ -132,17 +131,17 @@ describe('ProofExporter.performPreExportVerification (single tab, #224)', () => 
       throw new Error('network down');
     };
 
-    await expect(verifier.performPreExportVerification(tab.tab)).resolves.toBe(true);
+    await expect(verifier.performPreExportVerificationForAllTabs()).resolves.toBe(true);
   });
 
-  it('records a failure attestation on the active tab when Turnstile is unreachable in best-effort mode', async () => {
+  it('records a failure attestation on the tab when Turnstile is unreachable in best-effort mode', async () => {
     const tab = makeTab('tab-1');
     const { verifier } = createExporter([tab], true);
     turnstile.loadScript = async () => {
       throw new Error('network down');
     };
 
-    await verifier.performPreExportVerification(tab.tab);
+    await verifier.performPreExportVerificationForAllTabs();
 
     expect(tab.attestations).toEqual([
       {
@@ -162,20 +161,8 @@ describe('ProofExporter.performPreExportVerification (single tab, #224)', () => 
     const { verifier } = createExporter([tab], true);
     turnstile.verify = async () => ({ success: false, error: 'timeout' });
 
-    await expect(verifier.performPreExportVerification(tab.tab)).resolves.toBe(true);
+    await expect(verifier.performPreExportVerificationForAllTabs()).resolves.toBe(true);
     expect(tab.attestations[0]?.success).toBe(false);
-  });
-
-  it('records the best-effort failure attestation only on the active tab', async () => {
-    const active = makeTab('tab-1');
-    const other = makeTab('tab-2');
-    const { verifier } = createExporter([active, other], true);
-    turnstile.verify = async () => ({ success: false, error: 'timeout' });
-
-    await verifier.performPreExportVerification(active.tab);
-
-    expect(active.attestations).toHaveLength(1);
-    expect(other.attestations).toHaveLength(0);
   });
 
   it('aborts the export and notifies the user when Turnstile fails and best-effort is disabled', async () => {
@@ -183,17 +170,17 @@ describe('ProofExporter.performPreExportVerification (single tab, #224)', () => 
     const { verifier, notifications } = createExporter([tab], false);
     turnstile.verify = async () => ({ success: false, error: 'timeout' });
 
-    await expect(verifier.performPreExportVerification(tab.tab)).resolves.toBe(false);
+    await expect(verifier.performPreExportVerificationForAllTabs()).resolves.toBe(false);
     expect(tab.attestations).toHaveLength(0);
     expect(notifications).toHaveLength(1);
     expect(progressDialog.hideCount).toBe(1);
   });
 
-  it('records an unsigned successful attestation on the active tab even when the server returns a signature', async () => {
+  it('records an unsigned successful attestation in best-effort mode even when the server returns a signature', async () => {
     const tab = makeTab('tab-1');
     const { verifier } = createExporter([tab], true);
 
-    await expect(verifier.performPreExportVerification(tab.tab)).resolves.toBe(true);
+    await expect(verifier.performPreExportVerificationForAllTabs()).resolves.toBe(true);
     expect(tab.attestations).toEqual([
       {
         success: true,
@@ -212,7 +199,7 @@ describe('ProofExporter.performPreExportVerification (single tab, #224)', () => 
     const { verifier, notifications } = createExporter([tab], false);
     turnstile.verify = async () => ({ success: true });
 
-    await expect(verifier.performPreExportVerification(tab.tab)).resolves.toBe(true);
+    await expect(verifier.performPreExportVerificationForAllTabs()).resolves.toBe(true);
     expect(tab.attestations).toEqual([
       {
         success: true,
@@ -232,12 +219,10 @@ describe('ProofExporter.performPreExportVerification (single tab, #224)', () => 
     const { verifier } = createExporter([tab], false);
     turnstile.configured = false;
 
-    await expect(verifier.performPreExportVerification(tab.tab)).resolves.toBe(true);
+    await expect(verifier.performPreExportVerificationForAllTabs()).resolves.toBe(true);
     expect(tab.attestations).toHaveLength(0);
   });
-});
 
-describe('ProofExporter.performPreExportVerificationForAllTabs', () => {
   it('records an unsigned successful attestation on every tab even when the server returns a signature', async () => {
     const first = makeTab('tab-1');
     const second = makeTab('tab-2');
@@ -260,16 +245,6 @@ describe('ProofExporter.performPreExportVerificationForAllTabs', () => {
     await expect(verifier.performPreExportVerificationForAllTabs()).resolves.toBe(true);
     expect(first.attestations[0]?.success).toBe(false);
     expect(second.attestations[0]?.success).toBe(false);
-  });
-
-  it('aborts the export when Turnstile fails and best-effort is disabled', async () => {
-    const first = makeTab('tab-1');
-    const { verifier, notifications } = createExporter([first], false);
-    turnstile.verify = async () => ({ success: false, error: 'timeout' });
-
-    await expect(verifier.performPreExportVerificationForAllTabs()).resolves.toBe(false);
-    expect(first.attestations).toHaveLength(0);
-    expect(notifications).toHaveLength(1);
   });
 });
 
@@ -311,7 +286,7 @@ describe('pre-export verification budget (#324)', () => {
     const { verifier } = createExporter([tab], true);
     hangVerification();
 
-    const pending = verifier.performPreExportVerification(tab.tab);
+    const pending = verifier.performPreExportVerificationForAllTabs();
     await vi.advanceTimersByTimeAsync(PRE_EXPORT_VERIFICATION_BUDGET_MS);
 
     await expect(pending).resolves.toBe(true);
@@ -324,7 +299,7 @@ describe('pre-export verification budget (#324)', () => {
     const { verifier } = createExporter([tab], true);
     const hung = hangVerification();
 
-    const pending = verifier.performPreExportVerification(tab.tab);
+    const pending = verifier.performPreExportVerificationForAllTabs();
     await vi.advanceTimersByTimeAsync(PRE_EXPORT_VERIFICATION_BUDGET_MS);
     await pending;
 
@@ -355,7 +330,7 @@ describe('pre-export verification budget (#324)', () => {
     const hung = hangVerification();
 
     let settled = false;
-    const pending = verifier.performPreExportVerification(tab.tab).then((value) => {
+    const pending = verifier.performPreExportVerificationForAllTabs().then((value) => {
       settled = true;
       return value;
     });
@@ -372,7 +347,7 @@ describe('pre-export verification budget (#324)', () => {
     const tab = makeTab('tab-1');
     const { verifier } = createExporter([tab], true);
 
-    await expect(verifier.performPreExportVerification(tab.tab)).resolves.toBe(true);
+    await expect(verifier.performPreExportVerificationForAllTabs()).resolves.toBe(true);
     expect(tab.attestations[0]?.success).toBe(true);
   });
 });

@@ -176,13 +176,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('ProofExporter.exportCurrentTab drain consistency (#225)', () => {
-  it('aborts the export when the record queue could not be drained', async () => {
+describe('ProofExporter.exportAllTabsAsZip drain consistency (#225)', () => {
+  it('aborts the export of a single tab when its record queue could not be drained', async () => {
     const tab = await makeTab('tab-1', 'ab', 'abc');
     stallQueue(tab);
     const { exporter, downloads, notifications } = createExporter([tab]);
 
-    await exporter.exportCurrentTab();
+    await exporter.exportAllTabsAsZip();
 
     expect(downloads).toHaveLength(0);
     expect(notifications).toEqual([expect.any(String)]);
@@ -194,7 +194,7 @@ describe('ProofExporter.exportCurrentTab drain consistency (#225)', () => {
     const exportProof = vi.spyOn(tab.typingProof, 'exportProof');
     const { exporter } = createExporter([tab]);
 
-    await exporter.exportCurrentTab();
+    await exporter.exportAllTabsAsZip();
 
     expect(exportProof).not.toHaveBeenCalled();
   });
@@ -203,15 +203,13 @@ describe('ProofExporter.exportCurrentTab drain consistency (#225)', () => {
     const tab = await makeTab('tab-1', 'abc', 'abc');
     const { exporter, downloads } = createExporter([tab]);
 
-    await exporter.exportCurrentTab();
+    await exporter.exportAllTabsAsZip();
 
     expect(downloads).toHaveLength(1);
     const exported = await readProof(downloads[0]!);
     expect(verifyContentReplay(exported.proof.events as never, exported.content)).toMatchObject({ valid: true });
   });
-});
 
-describe('ProofExporter.exportAllTabsAsZip drain consistency (#225)', () => {
   it('aborts the whole export when any tab could not drain its record queue', async () => {
     const first = await makeTab('tab-1', 'abc', 'abc');
     const second = await makeTab('tab-2', 'ab', 'abc');
@@ -248,15 +246,6 @@ describe('ProofExporter when saving before export fails (#543)', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  it('still downloads the current tab proof when neither IndexedDB nor sessionStorage could be written', async () => {
-    const tab = await makeTab('tab-1', 'abc', 'abc');
-    const { exporter, downloads } = createExporter([tab], NOTHING_SAVED);
-
-    await exporter.exportCurrentTab();
-
-    expect(downloads).toHaveLength(1);
   });
 
   it('still downloads the all-tabs ZIP when neither IndexedDB nor sessionStorage could be written', async () => {

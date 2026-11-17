@@ -17,7 +17,7 @@ test('合成打鍵には isTrusted=false が付き、信頼打鍵には付かな
   await app.typeCode('ab'); // 信頼打鍵 (CDP 経由 = isTrusted true)
   await app.injectSyntheticKeystroke('x'); // 合成打鍵 (dispatchEvent = isTrusted false)
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const events = await readProofEvents(zipPath);
   const keyEvents = events.filter((e) => e.type === 'keyDown' || e.type === 'keyUp');
 

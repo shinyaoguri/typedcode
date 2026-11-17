@@ -93,11 +93,11 @@ export function defaultVerifyUrl(): string {
 
 const SAMPLE_CODE = 'int main(void) {\n  return 0;\n}\n';
 
-/** editor を開いて SAMPLE_CODE を打鍵し、現在のタブを export した ZIP のパスを返す。 */
+/** editor を開いて SAMPLE_CODE を打鍵し、export (全タブの ZIP。タブは 1 つ) した ZIP のパスを返す。 */
 export async function typeAndExport(app: EditorApp): Promise<string> {
   await app.openCasualFresh();
   await app.typeCode(SAMPLE_CODE);
-  return app.exportCurrentTab();
+  return app.exportAllTabs();
 }
 
 /**

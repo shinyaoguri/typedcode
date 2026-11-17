@@ -62,7 +62,7 @@ test('ターミナルへの貼り付けは記録せず、エディタへの貼�
   await expectTerminalPasteRecordsNothing(app);
   await app.pasteExternalText(EDITOR_PASTE);
 
-  const events = await readProofEvents(await app.exportCurrentTab());
+  const events = await readProofEvents(await app.exportAllTabs());
 
   // 負の対照: ターミナルへ貼った文字列はソースへの編集として載らない
   expect(codeEventsContaining(events, STDIN_SAMPLE)).toEqual([]);
@@ -80,7 +80,7 @@ test('ターミナルにだけ貼り付けた proof は Pure Typing のまま', 
 
   await expectTerminalPasteRecordsNothing(app);
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const events = await readProofEvents(zipPath);
   expect(events.filter((e) => e.type === 'externalInput')).toEqual([]);
 

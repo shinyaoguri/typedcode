@@ -12,8 +12,8 @@ import { injectQuotaExceeded, quotaFailureCount } from './helpers/faults.js';
  *
  * - `src/` の各ファイルが、エディタの内容 (`__tcTestSnapshot` の content) と一致する
  * - 証明ではない: `*_proof.json` が無く、manifest (`rescue-manifest.json`) が `notAProof: true` でタブ数が合う
- * - casual は左の DL メニュー (`#rescue-download-btn`)、exam は問題パネル (`#problem-rescue-btn`。exam は
- *   DL メニューを隠す) から出す
+ * - casual は設定メニュー (`#settings-btn` → `#rescue-download-btn`。#779 で DL メニューから移した)、exam は
+ *   問題パネル (`#problem-rescue-btn`。提出の入口の隣) から出す
  *
  * 救出 ZIP は verify-cli に通さない (検証できるものではないことが仕様。証明の export は fault-storage.spec.ts)。
  */
@@ -26,10 +26,10 @@ interface RescueManifest {
 }
 
 /** 救出ボタンを押してダウンロードを保存し、そのパスを返す */
-async function rescue(page: Page, route: 'downloadMenu' | 'problemPanel'): Promise<string> {
+async function rescue(page: Page, route: 'settingsMenu' | 'problemPanel'): Promise<string> {
   const download = page.waitForEvent('download', { timeout: 30_000 });
-  if (route === 'downloadMenu') {
-    await page.locator('#download-menu-btn').click();
+  if (route === 'settingsMenu') {
+    await page.locator('#settings-btn').click();
     await page.locator('#rescue-download-btn').click();
   } else {
     await page.locator('#problem-rescue-btn').click();
@@ -73,7 +73,7 @@ test('#300 保存先が全滅して failed でも、救出ボタンで 2 タブ�
   await expect(page.locator('#sync-status-item')).toHaveAttribute('data-state', 'failed', { timeout: 15_000 });
   expect(await quotaFailureCount(page)).toBeGreaterThan(0);
 
-  const zipPath = await rescue(page, 'downloadMenu');
+  const zipPath = await rescue(page, 'settingsMenu');
 
   await expectRescueMatchesEditor(app, zipPath, 'casual');
   expect((await app.snapshot()).tabs.map((t) => t.content).join('')).toContain('int third = 3;');

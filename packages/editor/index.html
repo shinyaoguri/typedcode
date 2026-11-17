@@ -136,26 +136,10 @@
             <i class="fas fa-stop"></i>
           </button>
           <div class="activitybar-divider"></div>
-          <div class="activitybar-menu-container">
-            <button class="activitybar-item" id="download-menu-btn" aria-controls="download-dropdown" data-i18n-title="activityBar.download" title="Download">
-              <i class="fas fa-download"></i>
-            </button>
-            <div class="activitybar-dropdown" id="download-dropdown">
-              <button class="dropdown-item" id="export-zip-btn">
-                <i class="fas fa-file-zipper"></i>
-                <span data-i18n="activityBar.downloadAll">Download All (ZIP)</span>
-              </button>
-              <button class="dropdown-item" id="export-current-tab-btn">
-                <i class="fas fa-file-zipper"></i>
-                <span data-i18n="activityBar.exportCurrentTab">Download Current Tab</span>
-              </button>
-              <!-- 救出 (#544): 証明ではなく、認証・保存・排出待ちを通さずにコードだけを出す -->
-              <button class="dropdown-item" id="rescue-download-btn">
-                <i class="fas fa-life-ring"></i>
-                <span data-i18n="activityBar.rescue">Rescue code (not a proof)</span>
-              </button>
-            </div>
-          </div>
+          <!-- 全タブの証明 ZIP を書き出す (#779)。メニューを持たないので aria-controls は付けない -->
+          <button class="activitybar-item" id="download-btn" data-i18n-title="activityBar.download" title="Download proof (ZIP)">
+            <i class="fas fa-download"></i>
+          </button>
           <div class="activitybar-divider"></div>
           <!-- 問題を読み込む (授業/課題のみ表示。CSS で body.can-load-problem 以外は非表示。ADR-0015) -->
           <button class="activitybar-item" id="load-problem-btn" data-i18n-title="activityBar.loadProblem" title="Load Problem">
@@ -197,6 +181,12 @@
                 <span data-i18n="settings.about">About</span>
               </button>
               <div class="dropdown-divider"></div>
+              <!-- 救出 (#544): 証明ではなく、認証・保存・排出待ちを通さずにコードだけを出す (#779 でダウンロードメニューから移した) -->
+              <button class="dropdown-item" id="rescue-download-btn">
+                <i class="fas fa-life-ring"></i>
+                <span data-i18n="settings.rescue">Rescue code (not a proof)</span>
+              </button>
+              <div class="dropdown-divider"></div>
               <button class="dropdown-item dropdown-item-danger" id="reset-btn">
                 <i class="fas fa-rotate-left"></i>
                 <span data-i18n="settings.resetAll">Reset This Mode</span>
@@ -227,7 +217,7 @@
               <button id="download-log-btn" class="download-log-btn">
                 <i class="fas fa-download"></i> <span data-i18n="exam.downloadButton">Download log</span>
               </button>
-              <!-- 救出 (#544): exam は左の DL メニューを隠すので、ここにも置く -->
+              <!-- 救出 (#544): 提出の入口 (ログのダウンロード) の隣にも置く。設定メニューの #rescue-download-btn と同じ動き -->
               <button id="problem-rescue-btn" class="problem-rescue-btn">
                 <i class="fas fa-life-ring"></i> <span data-i18n="exam.rescueButton">Rescue code (not a proof)</span>
               </button>

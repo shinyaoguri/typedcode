@@ -123,7 +123,7 @@ async function finish(model: EditorModel, driver: PlaywrightEditorDriver): Promi
     await new AddTab().run(model, driver);
   }
   driver.log('finish: ExportAllTabs()');
-  await driver.exportAllTabs(model);
+  await driver.exportAllTabsAfterSync(model);
 }
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI のエスケープ列を落とすための意図した制御文字

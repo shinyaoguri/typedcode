@@ -37,7 +37,7 @@ test('規約に未同意で / を開くと規約モーダルは出ず通知が�
   await app.typeCode('int a;');
   await app.waitForSynced();
   await app.expectConsistent();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const events = await readProofEvents(zipPath);
   expect(events.filter((e) => e.type === 'termsAccepted')).toHaveLength(1);
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);

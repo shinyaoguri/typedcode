@@ -21,7 +21,7 @@ export const NEUTRAL_PATH = '/no-such-page';
 
 /**
  * 実物の TypedCode エディタを Playwright から駆動するページオブジェクト。
- * 操作のセレクタは安定した既存 DOM id (#download-menu-btn 等) を使い、状態の判定は editor の
+ * 操作のセレクタは安定した既存 DOM id (#download-btn 等) を使い、状態の判定は editor の
  * 状態契約 (data-* と dev フック `__tcTestSnapshot`。packages/editor/AGENTS.md「状態契約」) だけを読む。
  */
 export class EditorApp {
@@ -346,17 +346,12 @@ export class EditorApp {
    * エクスポートをトリガしてダウンロード ZIP を一時ファイルに保存し、そのパスを返す。
    * casual の pre-export Turnstile はテストキーで自動 pass する。
    *
-   * 導線は 2 つある: 左のダウンロードメニュー (`#download-menu-btn` → 項目) と、問題パネルの
-   * 「ログをダウンロード」(`#download-log-btn`。全タブ ZIP。exam はこちらに一本化される)。
+   * 導線は 2 つある: 左のダウンロードボタン (`#download-btn`。メニューを開かずに書き出す) と、問題パネルの
+   * 「ログをダウンロード」(`#download-log-btn`。exam はこちらに一本化される)。どちらも全タブの ZIP (#779)。
    */
   private async exportAndSave(route: ExportRoute): Promise<string> {
     const downloadPromise = this.page.waitForEvent('download', { timeout: 90_000 });
-    if (route === 'logButton') {
-      await this.page.locator('#download-log-btn').click();
-    } else {
-      await this.page.locator('#download-menu-btn').click();
-      await this.page.locator(route === 'currentTab' ? '#export-current-tab-btn' : '#export-zip-btn').click();
-    }
+    await this.page.locator(route === 'logButton' ? '#download-log-btn' : '#download-btn').click();
     // casual/class/assignment は提出前セルフレビュー (ADR-0022) が割り込むので続行する。
     // exam には無いので未出現でも握り潰す。
     await this.proceedSelfReviewIfPresent();
@@ -405,12 +400,10 @@ export class EditorApp {
     await this.waitReady();
   }
 
-  /** 現在のタブだけをエクスポート (`<name>_TC<ts>.zip`)。保存パスを返す。 */
-  exportCurrentTab(): Promise<string> {
-    return this.exportAndSave('currentTab');
-  }
-
-  /** 全タブをエクスポート (`ALL_TC<ts>.zip`)。保存パスを返す。 */
+  /**
+   * 左のダウンロードボタン (`#download-btn`) で全タブをエクスポートする。保存パスを返す。
+   * ZIP 名はタブ 1 つなら `<name>_TC<ts>.zip`、2 つ以上なら `ALL_TC<ts>.zip` (#779)。
+   */
   exportAllTabs(): Promise<string> {
     return this.exportAndSave('allTabs');
   }
@@ -517,8 +510,8 @@ function readContractMismatches(tabSelector: string): string[] {
 /** エディタのモード (URL の 1 段目)。 */
 export type EditorMode = 'casual' | 'class' | 'assignment' | 'exam';
 
-/** export の導線。`currentTab` / `allTabs` はダウンロードメニュー、`logButton` は問題パネルのボタン。 */
-export type ExportRoute = 'currentTab' | 'allTabs' | 'logButton';
+/** export の導線。`allTabs` は左のダウンロードボタン (`#download-btn`)、`logButton` は問題パネルのボタン。どちらも全タブの ZIP (#779)。 */
+export type ExportRoute = 'allTabs' | 'logButton';
 
 export interface OpenModeOptions {
   /** 利用規約を同意済みにしてモーダルを飛ばす。既定: casual 以外で true。 */

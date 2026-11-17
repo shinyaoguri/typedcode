@@ -38,14 +38,6 @@ function exporterWithoutTabs(onProofChanged: () => void): InstanceType<typeof Pr
 }
 
 describe('ProofExporter onProofChanged', () => {
-  it('notifies onProofChanged once when a current-tab export finishes, even if it returns early', async () => {
-    const onProofChanged = vi.fn();
-
-    await exporterWithoutTabs(onProofChanged).exportCurrentTab();
-
-    expect(onProofChanged).toHaveBeenCalledTimes(1);
-  });
-
   it('notifies onProofChanged once when an all-tabs export finishes, even if it returns early', async () => {
     const onProofChanged = vi.fn();
 

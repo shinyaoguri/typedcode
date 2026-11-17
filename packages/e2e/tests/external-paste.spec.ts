@@ -13,7 +13,7 @@ test('外部ペーストは insertFromPaste として記録され Pure Typing: N
   await app.typeCode('int x = 1;\n');
   await app.pasteExternalText('PASTED_EXTERNAL_CODE');
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   // proof に insertFromPaste イベントが残っている (ホワイトボックス)。
   const events = await readProofEvents(zipPath);

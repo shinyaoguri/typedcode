@@ -26,7 +26,7 @@ test('リロード後もセッションが復元され、チェーンが途切�
   await app.typeCode('int b = 2;\n');
   expect(await app.editorValue()).toContain('int b = 2;');
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   // チェーンは復元をまたいでも valid。
   const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
@@ -42,7 +42,7 @@ test('リロード後もセッションが復元され、チェーンが途切�
  * 復元時に switchTab が合成の「null → 最初のタブ」切替を足し、リロードのたびに
  * tab-switches.json へ蓄積していた (#284)。復元中は復元済みの履歴を使うので足さない。
  * 最初のタブを開いたときの 1 件 (fromTabId: null) だけが残る。
- * 注: 単一タブ export の ZIP には tab-switches.json が入らないので、全タブ export で読む。
+ * 注: export は全タブの ZIP だけで (#779)、tab-switches.json は切替の記録が 1 件でもあれば入る。
  */
 test('リロードを重ねても tab-switches.json に fromTabId: null の合成切替が蓄積しない', async ({ page }) => {
   const app = new EditorApp(page);

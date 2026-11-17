@@ -13,7 +13,7 @@ test('内部コピペは insertFromInternalPaste として許可され Pure Typi
   await app.typeCode('int helper = 7;');
   await app.selectAllCopyPaste();
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   // proof に insertFromInternalPaste の監査イベントが残っている。
   const events = await readProofEvents(zipPath);

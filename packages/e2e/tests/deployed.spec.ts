@@ -73,7 +73,7 @@ test('deployed: casual で打鍵 → export が staging の署名付きで verif
   const app = new EditorApp(page);
   await app.openCasualFresh();
   await app.typeCode('int main(){return 0;}\n');
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   // ② verify-cli (fast) が pass する。三層保証は `--analysis-bundle` から読む。
   const cli = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast']);

@@ -146,7 +146,7 @@ test('casual: 2 本目のタブを閉じた後の export で、ダウンロー�
     observer.observe(document.body, { childList: true });
   });
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const atDownload = await page.evaluate(
     () => (window as unknown as { __tc521AtDownload?: AtDownload }).__tc521AtDownload
   );

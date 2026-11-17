@@ -45,7 +45,7 @@ test('not-found → リンクで / → 戻る → 進む、と移動してもセ
 
   await app.typeCode(' int b = 2;');
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   const proof = (await readProofJson(zipPath)) as { content?: string };
   expect(proof.content).toBe('int a = 1; int b = 2;');

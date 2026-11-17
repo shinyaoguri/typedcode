@@ -36,7 +36,7 @@ test('署名 cp の無い proof は --require-root-anchor で受理ポリシー�
 
   await app.typeCode(CHECKPOINT_TRIGGER_CODE);
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   const proof = (await readProofJson(zipPath)) as ProofForPolicy;
   expect(proof.rootAnchored, 'precondition: root is not server-anchored').toBe(false);
@@ -60,7 +60,7 @@ test('root がアンカーされ署名 cp が密に付いた proof は --require
   await typeAtRecordingPace(app, CHECKPOINT_TRIGGER_CODE);
   await signed;
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   const proof = (await readProofJson(zipPath)) as ProofForPolicy;
   expect(proof.rootAnchored, 'precondition: root is server-anchored').toBe(true);

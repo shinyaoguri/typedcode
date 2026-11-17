@@ -121,7 +121,7 @@ test.describe('検証のキャンセル (#331)', () => {
     const app = new EditorApp(page);
     await app.openCasualFresh();
     await app.typeCode(CANCELLABLE_CODE);
-    const zipPath = await app.exportCurrentTab();
+    const zipPath = await app.exportAllTabs();
     const zips = [
       await writeZipVariant(zipPath, { renameProof: 'a', outName: 'a.zip' }),
       await writeZipVariant(zipPath, { renameProof: 'b', outName: 'b.zip' }),

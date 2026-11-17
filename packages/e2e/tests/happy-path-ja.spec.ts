@@ -27,7 +27,7 @@ test('casual (ja-JP / Asia/Tokyo): ja の UI で打鍵→export→CLI 検証 (fa
   expect(await app.editorValue()).toContain('int f()');
   expect(await app.eventCount()).toBeGreaterThan(initialCount);
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const result = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast']);
 
   expect(result.passed, result.stdout + result.stderr).toBe(true);

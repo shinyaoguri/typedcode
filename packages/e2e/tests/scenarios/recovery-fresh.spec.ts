@@ -38,7 +38,7 @@ test('タブを閉じて再訪し、復旧ダイアログで新規開始を選�
 
   await app2.typeCode('int fresh = 2;\n');
   await app2.waitForSynced();
-  const zipPath = await app2.exportCurrentTab();
+  const zipPath = await app2.exportAllTabs();
   const events = await readProofEvents(zipPath);
   expect(events.some((e) => e.type === 'sessionResumed')).toBe(false);
   expect(JSON.stringify(events)).not.toContain('old = 1');

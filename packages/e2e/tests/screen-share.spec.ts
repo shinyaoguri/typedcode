@@ -19,7 +19,7 @@ test('画面共有を有効化すると screenShareStart とスクショがチ�
   // 画面共有開始時の初期キャプチャがチェーンと IndexedDB に載るのを待つ。
   await app.waitForSynced();
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const events = await readProofEvents(zipPath);
 
   // 画面共有開始とスクショキャプチャが記録されている。

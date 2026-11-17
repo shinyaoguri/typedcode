@@ -149,7 +149,7 @@ for (const language of ['javascript', 'typescript'] as const) {
 
     // proof の result イベントにも aborted が載る
     await app.waitForSynced();
-    const zipPath = await app.exportCurrentTab();
+    const zipPath = await app.exportAllTabs();
     const events = [...(await readAllProofEvents(zipPath)).values()][0] ?? [];
     const outcomes = events
       .filter((e) => e.type === 'codeExecution' && (e.data as { phase?: string } | null)?.phase === 'result')
@@ -331,7 +331,7 @@ test('typescript: 型注釈と top-level await を含むコードが transpile �
   await expect.poll(() => terminalText(page)).toContain('ok');
 
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const events = [...(await readAllProofEvents(zipPath)).values()][0] ?? [];
   const outcomes = events
     .filter((e) => e.type === 'codeExecution' && (e.data as { phase?: string } | null)?.phase === 'result')
