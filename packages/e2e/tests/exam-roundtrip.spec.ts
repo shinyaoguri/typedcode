@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
-import { EditorApp, readProofEvents, readProofJson } from './helpers/app.js';
+import { EditorApp, listZipEntries, readProofEvents, readProofJson } from './helpers/app.js';
 import type { ProofCheckpoint } from './helpers/app.js';
 import { EXAM_STRICT_FLAGS, loadExamFixture } from './helpers/examFixture.js';
 import { runVerifyCli, runVerifyCliWithVerdicts } from './helpers/verifyCli.js';
@@ -83,6 +83,8 @@ test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打
   await app.waitForSynced();
 
   const zipPath = await app.exportViaLogButton();
+  // #778: 問題文を ZIP に入れるのは授業・課題だけ。試験の ZIP には入れない。
+  expect((await listZipEntries(zipPath)).filter((name) => name.includes('_problem'))).toEqual([]);
 
   // proof は exam として束縛され、開封イベントと署名 envelope が載っている。
   const proof = (await readProofJson(zipPath)) as { mode?: string; exam?: unknown; checkpoints?: ProofCheckpoint[] };
