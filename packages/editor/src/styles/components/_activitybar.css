@@ -166,8 +166,7 @@
 }
 
 /* Top dropdowns: align to top of button */
-#main-menu-dropdown,
-#download-dropdown {
+#main-menu-dropdown {
   bottom: auto;
   top: 0;
 }

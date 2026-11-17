@@ -1,6 +1,7 @@
 /**
  * ProofExporter - 証明データのエクスポート機能
- * 単一タブおよび複数タブのエクスポートを管理
+ * 書き出しは全タブの ZIP の 1 系統 (`exportAllTabsAsZip`)。単一タブ版は #779 で取り除いた
+ * (2 系統が別々に変わってきたため。#224)
  */
 
 import JSZip from 'jszip';
@@ -24,7 +25,6 @@ import {
   proofBaseName,
   summarizeProcess,
   verifyProofFile,
-  withLanguageExtension,
   type HumanAttestationEventData,
   type ProofFile,
 } from '@typedcode/shared';
@@ -186,7 +186,7 @@ export class ProofExporter {
   }
 
   /**
-   * エクスポート前 Turnstile 認証が失敗/不達だったときの分岐 (単一タブ / 全タブ共通)。
+   * エクスポート前 Turnstile 認証が失敗/不達だったときの分岐。
    *
    * best-effort (`preExportBestEffort`) が有効なら、対象タブへ失敗 attestation を記録した
    * うえで export を続行する (ADR-0006: サーバを critical path に置かない。教室の不安定網で
@@ -194,9 +194,10 @@ export class ProofExporter {
    * 事実を必ずチェーンに残す。無効なら従来どおり通知して export を中止する。
    *
    * #224: 元は全タブ版の中にだけ定義されていて単一タブ版に分岐が無く、class/assignment が
-   * Turnstile 不達で単一タブ ZIP を出せなかった。二重定義を避けるためここへ集約する。
+   * Turnstile 不達で単一タブ ZIP を出せなかった。二重定義を避けるためここへ集約した (#779 で書き出し自体も
+   * 全タブの 1 系統になった)。
    *
-   * @param tabs 失敗 attestation を記録する対象タブ (単一タブ export はアクティブタブのみ)
+   * @param tabs 失敗 attestation を記録する対象タブ (全タブ)
    * @returns export を続行してよいか
    */
   private async failOrBestEffort(tabs: TabState[], reason: string): Promise<boolean> {
@@ -212,7 +213,7 @@ export class ProofExporter {
 
   /**
    * export 前 Turnstile 認証の取得部 (スクリプト読込 + チャレンジ + 検証)。attestation の記録は
-   * 呼び出し側が結果を受けて行う (単一タブ / 全タブで記録先が違うため)。
+   * 呼び出し側が結果を受けて全タブへ行う。
    *
    * best-effort (`preExportBestEffort`) のときだけ全体を `PRE_EXPORT_VERIFICATION_BUDGET_MS` で
    * 打ち切る (#324。Workers 無応答でも提出 ZIP を出せるように)。超過は `budget_exceeded` の失敗として
@@ -261,35 +262,6 @@ export class ProofExporter {
     } finally {
       clearTimeout(timer);
     }
-  }
-
-  /**
-   * エクスポート前にTurnstile検証を実行し、attestationを記録
-   * ExportProgressDialogを使用して進行状況を表示
-   */
-  private async performPreExportVerification(activeTab: TabState): Promise<boolean> {
-    // 進行状況ダイアログを表示（検証フェーズから開始）
-    this.exportProgressDialog.show();
-    this.exportProgressDialog.updatePhase('verification');
-
-    if (!isTurnstileConfigured()) {
-      // 開発環境ではスキップ、次のフェーズへ
-      return true;
-    }
-
-    // 失敗時は best-effort 判定へ。記録対象は成功経路と同じくアクティブタブのみ。
-    const failOrBestEffort = (reason: string): Promise<boolean> => this.failOrBestEffort([activeTab], reason);
-
-    const result = await this.acquirePreExportAttestation();
-    if (!result.ok) {
-      return failOrBestEffort(result.reason);
-    }
-
-    // アクティブタブのTypingProofにエクスポート前attestationを記録
-    await activeTab.typingProof.recordPreExportAttestation(result.attestation);
-    console.log('[Export] Pre-export attestation recorded');
-
-    return true;
   }
 
   /**
@@ -394,166 +366,28 @@ export class ProofExporter {
   }
 
   /**
-   * 現在のタブをZIPでエクスポート（ソースファイル + 検証ログ）
-   */
-  async exportCurrentTab(): Promise<void> {
-    console.log('[Export] exportCurrentTab called');
-
-    if (this.isExporting) {
-      console.warn('[Export] Export already in progress; ignoring re-entrant call');
-      return;
-    }
-    this.isExporting = true;
-    /** ダウンロードした ZIP に入れた proof.json。ダウンロード後の自己検証は export の区間 (isExporting) の外で行う (#565) */
-    let downloadedProofJson: string | null = null;
-
-    try {
-      const activeTab = this.tabManager?.getActiveTab();
-      console.log('[Export] activeTab:', activeTab?.filename);
-      if (!activeTab) {
-        console.log('[Export] No active tab');
-        return;
-      }
-
-      // 提出前セルフレビュー (ADR-0022): チェーン完了待ちより前に行い、
-      // 記録した reflectionNote も後段の待機/最終 checkpoint に含める。
-      const reviewOk = await this.performSelfReview(activeTab);
-      if (!reviewOk) {
-        this.callbacks.onNotification?.(t('export.cancelled'));
-        return;
-      }
-
-      // ハッシュチェーン生成完了を待機
-      const completed = await this.waitForProcessingComplete();
-      if (!completed) {
-        this.callbacks.onNotification?.(t('export.cancelled'));
-        return;
-      }
-
-      // エクスポート前にTurnstile検証を実行（ダイアログはここで表示される）
-      const verified = await this.performPreExportVerification(activeTab);
-      if (!verified) {
-        return;
-      }
-
-      // 準備フェーズへ移行
-      this.exportProgressDialog.updatePhase('preparing');
-
-      // エクスポート前にIndexedDBへの保存を完了させる
-      // V2フォーマットではsessionStorageとIndexedDBの同期が非同期のため、
-      // エクスポート前に明示的に同期を取る必要がある
-      const flushOutcome = await this.tabManager?.flushToIndexedDB();
-      if (flushOutcome) warnIfFlushFailed(flushOutcome);
-
-      // #143/#225: 直前の打鍵がまだ PoSW キューにあると「content には載っているのに
-      // チェーンに無い」export になり content replay で fail する。先に排出を待ち、
-      // 待ちきれなければ export を中止する。
-      if (!(await this.drainQueueOrAbort(activeTab))) {
-        return;
-      }
-      const content = activeTab.model.getValue();
-      // exportProof() は最終 checkpoint を作成して onCheckpointCreated フックを発火する。
-      // 戻り値の checkpoints は要素オブジェクトを CheckpointManager と共有するので、後段で
-      // waitForFlush している間に signature が attach される (#143 でスナップショット外の
-      // checkpoint は同梱されなくなったが、要素共有は変わらない)。
-      const proof = await activeTab.typingProof.exportProof(content);
-
-      // Signed checkpoint の pending リクエストを最大 5 秒待機 (オンライン時のみ意味あり)
-      const flushResult = await activeTab.signedCheckpointService?.waitForFlush(5000);
-      if (flushResult && !flushResult.flushed) {
-        console.warn(`[ProofExporter] ${flushResult.remaining} signed checkpoint(s) remain unsigned at export time`);
-      }
-
-      // ZIPファイルを作成
-      const zip = new JSZip();
-      const timestamp = this.generateTimestamp();
-
-      // ソースファイル名を生成（拡張子付き）。名前の付け方は shared が正本 (#293: 検証側が同じ手順で再現する)
-      const sourceFilename = withLanguageExtension(activeTab.filename, activeTab.language);
-
-      // ソースコードを追加
-      zip.file(sourceFilename, content);
-
-      // ログファイル名を生成（ファイル名_proof.json形式）
-      const baseFilename = proofBaseName(activeTab.filename);
-      const logFilename = `${baseFilename}_proof.json`;
-
-      // 証明JSONを追加
-      const proofWithContent = {
-        ...proof,
-        mode: this.mode,
-        filename: activeTab.filename,
-        content,
-        language: activeTab.language,
-      };
-      const proofJson = JSON.stringify(proofWithContent, null, 2);
-      zip.file(logFilename, proofJson);
-
-      // スクリーンショットを追加
-      this.exportProgressDialog.updatePhase('screenshots');
-      const screenshotCount = await this.addScreenshotsToZip(zip);
-
-      // READMEファイルを追加
-      const readmeParams = {
-        timestamp: new Date().toISOString(),
-        totalFiles: 1,
-        totalScreenshots: screenshotCount,
-        sourceFiles: [sourceFilename],
-        proofFiles: [logFilename],
-      };
-      zip.file('README.md', generateReadmeEn(readmeParams));
-      zip.file('README.ja.md', generateReadmeJa(readmeParams));
-
-      // ZIPを生成してダウンロード（最大圧縮）
-      this.exportProgressDialog.updatePhase('generating');
-      console.log('[Export] Generating ZIP...');
-      const blob = await zip.generateAsync({
-        type: 'blob',
-        compression: 'DEFLATE',
-        compressionOptions: {
-          level: 9,
-        },
-        streamFiles: true,
-      });
-      console.log('[Export] ZIP generated, size:', blob.size);
-
-      // 進行状況ダイアログを非表示
-      this.exportProgressDialog.hide();
-
-      // ダウンロード実行
-      // ファイル名プレフィックス: ファイル名（拡張子なし）- baseFilenameは上で定義済み
-      const zipFilename = `${baseFilename}_TC${timestamp}.zip`;
-      this.downloadBlob(blob, zipFilename);
-      console.log('[Export] Download triggered:', zipFilename);
-      downloadedProofJson = proofJson;
-    } catch (error) {
-      console.error('[TypedCode] Export failed:', error);
-      this.exportProgressDialog.hide();
-      this.callbacks.onNotification?.(t('export.failed'));
-    } finally {
-      this.isExporting = false;
-      this.callbacks.onProofChanged?.();
-    }
-
-    if (downloadedProofJson !== null) {
-      await this.verifyAfterDownload(downloadedProofJson);
-    }
-  }
-
-  /**
-   * ダウンロードの後に、ZIP に入れたのと同じ proof.json を検証器 (`verifyProofFile`) にかけて結果を通知する (#586)。
+   * ダウンロードの後に、ZIP に入れたのと同じ proof.json (全タブ分) を検証器 (`verifyProofFile`) にかけて
+   * 結果を通知する (#586。#779 で全タブ版へ移した)。
    *
+   * 全部 valid なら成功、1 つでも invalid か検証の throw があれば `export.verifyFailed` を 1 回だけ出す
+   * (通知の欄は 1 つで、続けて出すと上書きされるため)。
    * ZIP と同じスナップショットを検証するので、検証中に次の export が同じ proof へ追記しても関係ない。
    * PoSW は再計算しない (fast)。受理ポリシー (`require*`) は立てない = verify-cli の既定と同じで、
    * 通知の結論は同じ ZIP を verify-cli に通したときの結論と一致する。
    * export はダウンロードで終わっているので、これは export の区間 (isExporting) の外で行い、
    * その間に押された次の export を無視しない (#565)。
    */
-  private async verifyAfterDownload(proofJson: string): Promise<void> {
+  private async verifyAfterDownload(proofJsons: readonly string[]): Promise<void> {
     try {
-      const verification = await verifyProofFile(JSON.parse(proofJson) as ProofFile, undefined, { mode: 'fast' });
-      console.log('[TypedCode] Verification result:', verification);
-      this.callbacks.onNotification?.(t(verification.valid ? 'export.successVerified' : 'export.verifyFailed'));
+      let allValid = true;
+      for (const proofJson of proofJsons) {
+        const verification = await verifyProofFile(JSON.parse(proofJson) as ProofFile, undefined, { mode: 'fast' });
+        console.log('[TypedCode] Verification result:', verification);
+        if (!verification.valid) allValid = false;
+      }
+      this.callbacks.onNotification?.(
+        allValid ? t('export.zipSuccessVerified', { count: proofJsons.length }) : t('export.verifyFailed')
+      );
     } catch (error) {
       // ZIP は既に出ているので「export に失敗した」とは言わない。検証できなかったことだけを伝える。
       console.error('[TypedCode] Verification after export failed:', error);
@@ -562,7 +396,7 @@ export class ProofExporter {
   }
 
   /**
-   * 全タブをZIPでエクスポート
+   * 全タブをZIPでエクスポート (書き出しの唯一の経路。#779)
    */
   async exportAllTabsAsZip(): Promise<void> {
     if (this.isExporting) {
@@ -570,13 +404,16 @@ export class ProofExporter {
       return;
     }
     this.isExporting = true;
+    /** ダウンロードした ZIP に入れた proof.json (全タブ分)。ダウンロード後の自己検証は export の区間 (isExporting) の外で行う (#565) */
+    let downloadedProofJsons: string[] | null = null;
 
     try {
       if (!this.tabManager) return;
 
-      // タブが存在しない場合は何もしない
+      // タブが無いときは知らせて戻る (ダウンロードはメニューを持たないボタンなので、項目の無効化で防げない。#779)
       if (this.tabManager.getAllTabs().length === 0) {
         console.log('[Export] No tabs to export');
+        this.callbacks.onNotification?.(t('export.noTabs'));
         return;
       }
 
@@ -629,6 +466,8 @@ export class ProofExporter {
       // 各タブをエクスポート
       const fileList: string[] = [];
       const logList: string[] = [];
+      /** ZIP に入れたとおりの proof.json の文字列 (ダウンロード後の自己検証にかける。#586) */
+      const proofJsons: string[] = [];
 
       let tabIndex = 0;
       for (const tab of allTabs) {
@@ -672,8 +511,10 @@ export class ProofExporter {
           content,
           language: tab.language,
         };
-        zip.file(logFilename, JSON.stringify(proofWithContent, null, 2));
+        const proofJson = JSON.stringify(proofWithContent, null, 2);
+        zip.file(logFilename, proofJson);
         logList.push(logFilename);
+        proofJsons.push(proofJson);
         tabIndex++;
       }
 
@@ -715,13 +556,11 @@ export class ProofExporter {
       // 進行状況ダイアログを非表示
       this.exportProgressDialog.hide();
 
-      // ダウンロード実行
-      // 全ファイルエクスポート時のプレフィックス: ALL_
-      const zipFilename = `ALL_TC${timestamp}.zip`;
+      // ダウンロード実行。成功の通知はダウンロード後の自己検証の結果で 1 回だけ出す (#779)
+      const zipFilename = `${this.zipBaseName(allTabs)}_TC${timestamp}.zip`;
       this.downloadBlob(blob, zipFilename);
       console.log('[Export] Download triggered:', zipFilename);
-
-      this.callbacks.onNotification?.(t('export.zipSuccess', { count: allTabs.length }));
+      downloadedProofJsons = proofJsons;
     } catch (error) {
       console.error('[TypedCode] ZIP export failed:', error);
       this.exportProgressDialog.hide();
@@ -730,6 +569,19 @@ export class ProofExporter {
       this.isExporting = false;
       this.callbacks.onProofChanged?.();
     }
+
+    if (downloadedProofJsons !== null) {
+      await this.verifyAfterDownload(downloadedProofJsons);
+    }
+  }
+
+  /**
+   * ZIP 名の接頭辞。タブ 1 つならそのファイルの名前 (`proofBaseName`)、2 つ以上なら `ALL`。
+   * 練習で 1 ファイルだけ書く人の ZIP 名を、単一タブ版を取り除く前 (#779) と変えないため。
+   */
+  private zipBaseName(tabs: readonly TabState[]): string {
+    const [only] = tabs;
+    return tabs.length === 1 && only ? proofBaseName(only.filename) : 'ALL';
   }
 
   /**

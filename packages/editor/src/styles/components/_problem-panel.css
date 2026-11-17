@@ -238,8 +238,8 @@ body.exam-mode .tab-close-btn {
   display: none !important;
 }
 
-/* 試験モード: ダウンロードは問題パネルのボタンに一本化するため、左の汎用DLメニューは隠す。 */
-body.exam-mode #download-menu-btn {
+/* 試験モード: ダウンロードは問題パネルのボタンに一本化するため、左のダウンロードボタンは隠す。 */
+body.exam-mode #download-btn {
   display: none !important;
 }
 
