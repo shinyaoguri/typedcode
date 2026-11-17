@@ -1,3 +1,7 @@
+import { mkdtempSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { EditorApp, tamperFirstContentChange, writeZipVariant } from './helpers/app.js';
@@ -115,4 +119,59 @@ test('フォルダを開いて入れた proof は #file-input で入れたとき
   const opened = await readConclusion(web, sub.names, sub.names.length);
 
   expect(opened).toEqual(expected);
+});
+
+/**
+ * #702: proof の名前 (`*_proof.json` / `*_proof_N.json`) なのに読めない JSON は、ZIP 以外の経路 (`#file-input` での
+ * 単体投入・フォルダを開く) でも error の行になる (verify/AGENTS.md 不変条件 11 / #292)。名前の違う普通の JSON は
+ * 平文 (success) のまま。editor の export は要らないので、壊れたファイルをその場で書いて入れる。
+ */
+const BROKEN_JSON: Record<string, string> = {
+  'broken_proof.json': '{"proof":', // JSON として壊れている
+  'empty_proof_1.json': '{}', // JSON だが proof 構造が無い (重複名の形)
+  'settings.json': '{"tabSize":2}', // proof の名前でない普通の JSON
+};
+const BROKEN_JSON_EXPECTED = [
+  { filename: 'broken_proof.json', status: 'error' },
+  { filename: 'empty_proof_1.json', status: 'error' },
+  { filename: 'settings.json', status: 'success' },
+];
+
+async function writeBrokenJson(): Promise<string[]> {
+  const dir = mkdtempSync(join(tmpdir(), 'tc-e2e-broken-json-'));
+  return Promise.all(
+    Object.entries(BROKEN_JSON).map(async ([name, content]) => {
+      const path = join(dir, name);
+      await writeFile(path, content);
+      return path;
+    })
+  );
+}
+
+function sortedStates(states: VerifyFileState[]): VerifyFileState[] {
+  return [...states].sort((a, b) => a.filename.localeCompare(b.filename));
+}
+
+test('#702: #file-input で単体で入れた読めない *_proof.json は error の行になり、普通の JSON は平文のまま', async ({
+  page,
+}) => {
+  const paths = await writeBrokenJson();
+  const web = new VerifyWebApp(page);
+
+  await web.open('fast');
+  await web.addFiles(paths);
+
+  expect(sortedStates(await web.waitSettled(paths.length))).toEqual(BROKEN_JSON_EXPECTED);
+});
+
+test('#702: フォルダを開いて入れた読めない *_proof.json は error の行になり、普通の JSON は平文のまま', async ({
+  page,
+}) => {
+  const paths = await writeBrokenJson();
+  const web = new VerifyWebApp(page);
+
+  await web.open('fast');
+  await web.openFolder('broken', paths);
+
+  expect(sortedStates(await web.waitSettled(paths.length))).toEqual(BROKEN_JSON_EXPECTED);
 });
