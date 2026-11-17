@@ -79,8 +79,10 @@ gh pr merge --squash --delete-branch
 # 設定にある全ファイル (数分)。ファイルごとの killed / survived / timeout / no coverage が端末に出る
 npm run mutate -w @typedcode/shared
 
-# 範囲を絞る (--mutate は設定の mutate を置き換える)。`ファイル:開始行-終了行`、1 行なら `ファイル:行`
+# 範囲を絞る (--mutate は設定の mutate を置き換える)。`ファイル:開始行-終了行`、1 行なら `ファイル:行-行`
 npm run mutate -w @typedcode/shared -- --mutate 'src/verification.ts:100-150'
+# 1 行 (行範囲なしの `ファイル:行` は Stryker が `did not result in any files` と警告して対象 0 件になり、変異を 1 件も作らないので、必ず `行-行` と書く)
+npm run mutate -w @typedcode/shared -- --mutate 'src/verification.ts:259-259'
 # 複数ファイル・複数範囲はコンマ区切り
 npm run mutate -w @typedcode/shared -- --mutate 'src/verification.ts:100-150,src/utils/hashUtils.ts'
 ```
