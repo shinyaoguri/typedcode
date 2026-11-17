@@ -92,6 +92,11 @@ export function attachDialogA11y(dialog: HTMLElement, options: DialogA11yOptions
   if (!labelledBy.id) {
     labelledBy.id = `dialog-title-${++titleIdSeq}`;
   }
+  // ダイアログの見出しは、ページの h1 (titlebar のロゴ) の下の 2 段目として読ませる (#738)。
+  // タグ (h3 など) は CSS が選んでいるので替えず、段だけを aria-level で直す (h1 → h3 の飛びを作らない)
+  if (/^H[3-6]$/.test(labelledBy.tagName) && !labelledBy.hasAttribute('aria-level')) {
+    labelledBy.setAttribute('aria-level', '2');
+  }
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
   dialog.setAttribute('aria-labelledby', labelledBy.id);

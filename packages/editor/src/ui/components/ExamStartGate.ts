@@ -96,6 +96,9 @@ export class ExamStartGate {
       overlay.className = 'exam-gate-overlay';
       overlay.dataset.dialog = 'exam-gate';
       overlay.id = 'exam-start-gate';
+      // ゲートはダイアログではなく画面の本体なので、名前付きの region にしてランドマークの中に置く (#738)
+      overlay.setAttribute('role', 'region');
+      overlay.setAttribute('aria-labelledby', 'exam-gate-title');
       overlay.innerHTML = this.render();
       document.body.appendChild(overlay);
       this.overlay = overlay;
@@ -262,7 +265,7 @@ export class ExamStartGate {
     return `
       <div class="exam-gate-content">
         <i class="fas fa-lock fa-3x exam-gate-icon"></i>
-        <h2>${escapeHtml(t('exam.gate.title'))}</h2>
+        <h2 id="exam-gate-title">${escapeHtml(t('exam.gate.title'))}</h2>
         <p class="exam-gate-desc">${escapeHtml(t('exam.gate.description'))}</p>
 
         <div class="exam-gate-field">

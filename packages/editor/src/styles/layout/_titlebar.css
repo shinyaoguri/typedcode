@@ -18,6 +18,7 @@
 }
 
 .titlebar-title {
+  margin: 0; /* index.html では h1 (ページの見出し。#738)。UA の h1 の余白を消して div のときと同じ箱にする */
   font-weight: 400;
   font-size: 13px;
   display: flex;

@@ -76,9 +76,9 @@
 
   <div id="app">
     <!-- Title Bar -->
-    <div class="titlebar">
+    <header class="titlebar">
       <div class="titlebar-left">
-        <div class="titlebar-title"><img src="/icon-192.png" alt="TypedCode" class="titlebar-logo"></div>
+        <h1 class="titlebar-title"><img src="/icon-192.png" alt="TypedCode" class="titlebar-logo"></h1>
       </div>
       <div class="titlebar-clock" id="titlebar-clock">
         <span id="clock-display">----/--/-- / --:--:--</span>
@@ -94,13 +94,13 @@
           <i class="fas fa-columns"></i>
         </button>
       </div>
-    </div>
+    </header>
 
     <!-- Fullscreen Warning Banner (Exam Mode, ADR-0008) — 非フルスクリーン時のみ表示 -->
-    <div id="fullscreen-warning-banner">
-      <span class="fullscreen-warning-text" data-i18n="exam.fullscreenWarning">You are outside fullscreen.</span>
+    <section id="fullscreen-warning-banner" aria-labelledby="fullscreen-warning-text">
+      <span class="fullscreen-warning-text" id="fullscreen-warning-text" data-i18n="exam.fullscreenWarning">You are outside fullscreen.</span>
       <button id="enter-fullscreen-btn" class="fullscreen-warning-btn" data-i18n="exam.enterFullscreen">Enter fullscreen</button>
-    </div>
+    </section>
 
     <!-- Block Notification -->
     <div id="block-notification" class="hidden">
@@ -306,7 +306,7 @@
     </div>
 
     <!-- Status Bar -->
-    <div class="statusbar">
+    <footer class="statusbar">
       <div class="statusbar-left">
         <div class="status-item" id="proof-status-item" title="Typing proof status">
           <div class="proof-progress-ring" id="proof-progress-ring">
@@ -349,7 +349,7 @@
           <span data-i18n="statusBar.line">行</span> <span id="cursor-line">1</span>, <span data-i18n="statusBar.column">列</span> <span id="cursor-col">1</span>
         </div>
       </div>
-    </div>
+    </footer>
 
     <!-- Reset Confirmation Dialog -->
     <div id="reset-dialog" class="modal-overlay hidden" data-dialog="reset">

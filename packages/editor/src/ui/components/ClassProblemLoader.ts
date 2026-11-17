@@ -23,6 +23,9 @@ export class ClassProblemLoader {
       const overlay = document.createElement('div');
       overlay.className = 'exam-gate-overlay';
       overlay.id = 'class-problem-loader';
+      // 試験ゲートと同じく名前付きの region にしてランドマークの中に置く (#738)
+      overlay.setAttribute('role', 'region');
+      overlay.setAttribute('aria-labelledby', 'class-loader-title');
       // 状態契約 (packages/editor/AGENTS.md「状態契約」): 閉じると `.hidden` が付いてから DOM を外れる。
       overlay.dataset.dialog = 'class-problem-loader';
       overlay.innerHTML = this.render();
@@ -118,7 +121,7 @@ export class ClassProblemLoader {
     return `
       <div class="exam-gate-content">
         <i class="fas fa-book-open fa-3x exam-gate-icon"></i>
-        <h2>${escapeHtml(t('class.loader.title'))}</h2>
+        <h2 id="class-loader-title">${escapeHtml(t('class.loader.title'))}</h2>
         <p class="exam-gate-desc">${escapeHtml(t('class.loader.description'))}</p>
 
         <div class="exam-gate-field">
