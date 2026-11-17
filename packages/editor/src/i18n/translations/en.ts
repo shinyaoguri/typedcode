@@ -310,6 +310,7 @@ export const en: TranslationKeys = {
     pending: 'Pending',
     degraded: 'Partially saved',
     failed: 'Save failed',
+    selectLanguage: 'Select language',
   },
 
   tabs: {

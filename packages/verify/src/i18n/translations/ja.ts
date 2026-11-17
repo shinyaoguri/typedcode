@@ -542,6 +542,7 @@ export const ja: VerifyTranslationKeys = {
     pause: '停止',
     next: '次',
     end: '最後',
+    position: '再生位置',
   },
 
   errors: {

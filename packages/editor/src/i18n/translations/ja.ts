@@ -309,6 +309,7 @@ export const ja: TranslationKeys = {
     pending: '保存待ち',
     degraded: '一部のみ保存',
     failed: '保存失敗',
+    selectLanguage: 'プログラミング言語を選択',
   },
 
   tabs: {

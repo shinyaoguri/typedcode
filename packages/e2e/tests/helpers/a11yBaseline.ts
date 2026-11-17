@@ -38,10 +38,6 @@ const EDITOR_SCREENS: readonly ScreenId[] = [
 ];
 
 export const KNOWN_A11Y_VIOLATIONS: readonly KnownA11yViolation[] = [
-  // select-name (critical): ステータスバーの言語の選択 (#language-selector) に名前が無い
-  { rule: 'select-name', target: '#language-selector', screens: EDITOR_SCREENS, issue: 736 },
-  // label (critical): 検証 Web の再生シークバー (#seekbar-slider) に名前が無い
-  { rule: 'label', target: '#seekbar-slider', screens: ['verify-result'], issue: 736 },
   // color-contrast (serious): 文字と背景のコントラスト不足 (WCAG 1.4.3。ダイアログの背後で暗くなった要素を含む)
   { rule: 'color-contrast', target: '#class-loader-filename', screens: ['class-problem-loader'], issue: 737 },
   { rule: 'color-contrast', target: '#current-hash', screens: ['class-ready', 'assignment-ready'], issue: 737 },
