@@ -10,6 +10,8 @@
  * - パース済みの proof は完了 (result / error / cancel / remove) で手放す。再検証 (`reverifyWithManifest` /
  *   `requeue`) は呼び出し側がタブの持つ proof を渡す (タブは表示のために元から proof を持っている)
  * - Worker から遅れて届いたメッセージ (作り直す前の Worker のもの・処理中でない id のもの) は捨てる
+ * - Worker 自体の障害 (`onerror`・構築の失敗) では、その個体を terminate して捨て、処理中の項目を
+ *   エラーにし、次の項目は新しい Worker で処理する。障害が続けば待ち項目をエラーで終える (#700)
  */
 
 import type {
@@ -48,12 +50,24 @@ function eventCount(proofData: ProofFile): number {
   return Array.isArray(events) ? events.length : 0;
 }
 
+/**
+ * 応答 (result / error) を 1 件も返せないまま Worker 自体の障害が続いてよい回数。これに達したら
+ * 処理中と待ち行列の項目をすべてエラーで終える (#700)。モジュールの読み込み失敗のように作り直しても
+ * 直らない障害で、項目の数だけ Worker を作り直し続けないため。一過性の障害は 1〜2 回の作り直しで
+ * 抜けられるよう、1 ではなく小さい数にする。到達後に新しく enqueue された項目は、カウンタを戻さないので
+ * 新しい Worker を 1 本だけ試し、それも障害ならその時点の項目をすべてエラーで終える (利用者の操作 1 回に
+ * Worker 1 本で、自動の無限再試行にはならない)。
+ */
+export const MAX_CONSECUTIVE_WORKER_FAILURES = 3;
+
 export class VerificationQueue {
   private queue: QueueEntry[] = [];
   private processing: QueueEntry | null = null;
   private worker: Worker | null = null;
   private isProcessing = false;
   private mode: VerificationMode = 'full';
+  /** 応答を返せないまま続いた Worker 障害の回数 (Worker が result / error を返せば 0 に戻す)。 */
+  private consecutiveWorkerFailures = 0;
 
   private onProgressCallback: ProgressCallback | null = null;
   private onCompleteCallback: CompleteCallback | null = null;
@@ -80,14 +94,11 @@ export class VerificationQueue {
       this.handleWorkerMessage(event.data);
     };
 
+    // Worker 自体の障害。読み込みに失敗した Worker は後続の要求にも応答しないので、使い回さない。
     worker.onerror = (error) => {
       if (worker !== this.worker) return;
       console.error('[VerificationQueue] Worker error:', error);
-      if (this.processing) {
-        const { id } = this.processing;
-        this.finishProcessing();
-        this.onErrorCallback?.(id, `Worker error: ${error.message}`);
-      }
+      this.handleWorkerFailure(`Worker error: ${error.message}`);
     };
 
     this.worker = worker;
@@ -182,14 +193,52 @@ export class VerificationQueue {
     const wasProcessing = this.processing?.id === id;
 
     if (wasProcessing) {
-      this.worker?.terminate();
-      this.worker = null;
-      this.initialize();
+      this.discardWorker();
       this.finishProcessing();
     } else if (wasWaiting) {
       this.parsedDataMap.delete(id);
     }
     return wasWaiting || wasProcessing;
+  }
+
+  /** いまの Worker を terminate して参照を捨てる。次の項目は `processNext` が新しい Worker で処理する。 */
+  private discardWorker(): void {
+    this.worker?.terminate();
+    this.worker = null;
+  }
+
+  /**
+   * Worker 自体の障害。個体を捨て、処理中の項目を 1 度だけエラーにして次へ進む。障害の連続が上限に
+   * 達したら、処理中と待ち行列の項目をすべてエラーで終える (Worker をそれ以上作らない)。
+   */
+  private handleWorkerFailure(reason: string): void {
+    this.discardWorker();
+    this.consecutiveWorkerFailures++;
+
+    if (this.consecutiveWorkerFailures >= MAX_CONSECUTIVE_WORKER_FAILURES) {
+      this.failAll(reason);
+      return;
+    }
+    if (this.processing) {
+      const { id } = this.processing;
+      this.finishProcessing();
+      this.onErrorCallback?.(id, reason);
+    }
+  }
+
+  /** 処理中と待ち行列の項目をすべてエラーで終える (Worker 障害が続いたとき)。 */
+  private failAll(reason: string): void {
+    const entries = [...(this.processing ? [this.processing] : []), ...this.queue];
+    this.queue = [];
+    this.processing = null;
+    this.isProcessing = false;
+    for (const { id } of entries) this.parsedDataMap.delete(id);
+    for (const [index, { id }] of entries.entries()) {
+      this.onErrorCallback?.(
+        id,
+        index === 0 ? reason : `${reason} (verification worker failed repeatedly; not verified)`
+      );
+    }
   }
 
   /** 処理中の項目を終え (proof を手放し)、次へ進む。 */
@@ -228,7 +277,13 @@ export class VerificationQueue {
     }
 
     if (!this.worker) {
-      this.initialize();
+      try {
+        this.initialize();
+      } catch (error) {
+        console.error('[VerificationQueue] Failed to create worker:', error);
+        this.handleWorkerFailure(`Worker error: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
     }
 
     const message: WorkerRequestMessage = {
@@ -248,6 +303,8 @@ export class VerificationQueue {
   private handleWorkerMessage(msg: WorkerResponseMessage): void {
     // 処理中でない id のメッセージ (キャンセル済み・消した項目の遅延メッセージ) は捨てる
     if (msg.id !== this.processing?.id) return;
+    // 応答を返せた Worker は動いている。連続障害の数え直し。
+    if (msg.type === 'result' || msg.type === 'error') this.consecutiveWorkerFailures = 0;
 
     switch (msg.type) {
       case 'progress':
