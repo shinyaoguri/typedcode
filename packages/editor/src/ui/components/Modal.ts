@@ -445,24 +445,32 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
   };
   overlayDisposers.set(overlayId, dispose);
 
-  resumeBtn?.addEventListener('click', async () => {
-    const result = await onResume();
+  // コールバックの実行中は、どちらのボタンからも新しい操作を受けない (showModal と同じ。#744)。
+  // disabled にするとフォーカスが外れて Tab の閉じ込めに響くので、ハンドラ側で弾く。
+  // false を返した・throw した後は再び押せるよう、finally で戻す
+  let busy = false;
+  // biome-ignore lint/suspicious/noConfusingVoidType: onResume / onSecondaryAction と同じ型を受けるため
+  const runAction = async (action: () => void | Promise<boolean | undefined>): Promise<void> => {
+    if (busy) return;
+    busy = true;
+    let result: unknown;
+    try {
+      result = await action();
+    } finally {
+      busy = false;
+    }
     // If callback returns true or void, hide the overlay
     if (result !== false) {
       hide();
     }
-  });
+  };
+
+  resumeBtn?.addEventListener('click', () => runAction(onResume));
 
   // Secondary button handler
   if (secondaryButtonText && onSecondaryAction) {
     const secondaryBtn = overlay.querySelector(`.${contentClass}-btn-secondary`);
-    secondaryBtn?.addEventListener('click', async () => {
-      const result = await onSecondaryAction();
-      // If callback returns true or void, hide the overlay
-      if (result !== false) {
-        hide();
-      }
-    });
+    secondaryBtn?.addEventListener('click', () => runAction(onSecondaryAction));
   }
 
   const hide = (): void => {
