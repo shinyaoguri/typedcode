@@ -375,6 +375,7 @@ interface SignedCheckpointEnvelope {
 <base>_TC<ts>.zip            // タブが 1 つのとき。2 つ以上なら ALL_TC<ts>.zip (export は全タブの 1 系統。#779)
 ├── <source>.{c,py,...}      // ソースコード本体 (フラット。同名は <name>_N.<ext>)
 ├── <base>_proof.json        // タブごとの proof (下記 §5.3。同名は <base>_proof_N.json)
+├── <base>_problem.md        // 授業・課題で問題を読み込んだタブだけ。問題文 (チェーン外の平文。番号は proof と同じ <base>_problem_N.md)
 ├── README.md                // 人間可読の説明 (en)
 ├── README.ja.md             // 同 (ja)
 ├── tab-switches.json        // 切替が 1 件以上あるときのみ
@@ -386,11 +387,14 @@ interface SignedCheckpointEnvelope {
 
 - export は常に開いている全タブを書き出す (editor の左のダウンロードボタンと、問題パネルの「ログをダウンロード」はどちらも同じ全タブの ZIP。#779)。タブが N 個なら `*_proof.json` も N 個になる。各タブは独立した proof で、**タブ間をつなぐハッシュ鎖は無い**
 - `tab-switches.json` はチェーン外の平文サイドファイルで、ハッシュに入らず、どの検証器 (verify / verify-cli) も読まない (監査用の人間向け情報)
+- `<base>_problem.md` (#778) は、授業・課題 (`/class` / `/assignment`) で `.tcclass` から問題を読み込んだタブだけに入る。中身は配布ファイルのその問題の `statement` をそのまま UTF-8 で書いたもの。名前は proof と同じ base・同じ番号 (`<base>_proof_N.json` なら `<base>_problem_N.md`。shared の `createExportNamer`)。問題文は editor の `ClassProblemStore` (filename キー) から引くので、読み込んだ後に改名したタブには入らない。`tab-switches.json` と同じくチェーン外の平文で、proof JSON にもハッシュにも入らず、どの検証器も読まない (ソースの候補からも外す。§5.2.1)。試験 (`/exam`) と練習には入れない。ZIP の README の一覧には「証明の対象外」として載る
 - `screenshots/` は撮影があった場合のみ含まれる
 
 #### 5.2.1. 提出物の対応規則と比較 (#293)
 
 proof を検証しても、同梱ソースが `proof.content` と同じである保証にはならない。ZIP からソースを取り出して採点する運用で「検証したもの」と「採点するもの」がずれないよう、検証器 (verify-cli / verify Web) は同梱ソースを `proof.content` と照合する。実装は shared の `matchSubmissionSources` (`fileProcessing/submissionSources.ts`) の 1 つで、CLI と Web が同じ結論を出す。
+
+**ソースの候補**: ZIP のエントリのうち、ディレクトリ・`screenshots/` 配下・`.json` (proof・`tab-switches.json` など)・README (`README.md` / `README.ja.md`)・問題文 (`<base>_problem.md` / `<base>_problem_N.md`。§5.2、#778)・隠しファイル・バイナリを除いたもの (`isSubmissionSourceEntry`)。editor のソースは常に言語の拡張子で終わり `.md` にならないので、問題文の名前とソースの名前は衝突しない。問題文の形に当たらない `.md` (`notes.md` など) は候補のままで、どの proof の期待名にも当たらなければ孤立ソースになる。
 
 **対応規則**: proof 1 件につき、期待されるソース名を 1 つだけ作る。名前の推測 (ベース名の一致など) は使わない。
 
@@ -1030,3 +1034,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-16 | fast の保証と改ざん検出の範囲を実際の検証に合わせる (#677) | §8.1 の「任意 1 ビットの改ざんを検出」は、ハッシュ・署名の対象外 (イベントの派生フィールド・`proof.signature`・自己申告の `mode` など) まで含むように読めた。対象 (`pickHashedEventFields` と `posw`、`typingProofData`、root の入力、cp の照合値と署名 payload) と対象外を列挙し、fast / full で同じであること、検証器が版で対象を切り替えないことを書いた。§8.2 は「PoSW の値だけを書き換える」(fast・full とも拒否) と「偽の PoSW のまま作り直す」(fast は通し、full だけが拒否) を分け、固定しているテストを示した。**判定 (`verifyProofFile` の valid / exit code)・proof フォーマット・verify-cli の `failedCheck` の値は不変** |
 | 2026-11-16 | composition に対応付けて IME を分類する (#720) | editor の `OperationDetector` が CJK を含む複数文字の挿入を文字種だけで `insertFromComposition` にしていたのをやめ、Monaco の `onDidCompositionStart` / `End` と編集の範囲を対応付けた編集だけを composition 系にした (§4.1)。composition に対応しない直接挿入は `insertReplacementText` として既存の一括挿入の評価に掛かる。shared の判定式・`InputType` の値域・記録形式・`PROOF_FORMAT_VERSION` は不変 |
 | 2026-11-16 | 試験の許可言語の照合 (#727) | `verifyExamBinding` が proof の自己申告 `language` を manifest の `allowed.languages` (v2 は該当問題の starter の言語も) と完全一致で照合し、外れたら束縛失敗 (`language.status='not-allowed'`) にする。許可言語が空なら `not-evaluated`。§6.4 手順 5c と脅威表を反映 |
+| 2026-11-17 | 書き出す ZIP に授業・課題の問題文を入れる (#778) | §5.2 に `<base>_problem.md` (授業・課題で問題を読み込んだタブだけ。番号は proof と同じ。チェーン外の平文で検証器は読まない) を足し、§5.2.1 にソースの候補から問題文を外す規則を書いた。試験と練習には入れない。**proof JSON・ハッシュチェーン・`PROOF_FORMAT_VERSION` は不変** |
