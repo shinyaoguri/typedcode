@@ -113,6 +113,11 @@ export class FolderController {
   private folderScreenshots: FolderScreenshots | null = null;
   /** フォルダのスクショを渡した proof の FSA パス。スクショが変わったらこれらを取り込み直す (#703) */
   private screenshotProofPaths = new Set<string>();
+  /**
+   * screenshotProofPaths のうち、フォルダのスクショへ落とした ZIP の proof (タブのパス → ZIP から読んだ内容。#742)。
+   * ディスク上の単独のファイルではないので、取り込み直しはディスクではなくここから行う
+   */
+  private zipScreenshotProofs = new Map<string, ParsedFileData>();
   /** スクショの読み直しの世代。フォルダを開き直す・次の読み直しを予約すると、古い読み直しの結果を捨てる */
   private screenshotGeneration = 0;
   /** 予約したがまだ始まっていない読み直しがあるか (同じ走査の通知を 1 回にまとめる) */
@@ -191,6 +196,7 @@ export class FolderController {
     this.screenshotGeneration++;
     this.folderScreenshots = null;
     this.screenshotProofPaths.clear();
+    this.zipScreenshotProofs.clear();
     this.screenshotResyncDemand = null;
     this.screenshotResyncFailing = false;
     this.failedChanges.clear();
@@ -323,7 +329,7 @@ export class FolderController {
 
     const parentPath = fileEntry.path.split('/').slice(0, -1).join('/');
     try {
-      await this.loadNewFile(fileEntry, folderMap.get(parentPath), folderMap, this.folderContainer());
+      await this.loadNewFile(fileEntry, folderMap.get(parentPath), folderMap);
     } catch (error) {
       // 読めなかったファイルを黙って飛ばさない。監視で足されたファイルと同じく、次に走査が成功した回にやり直す (#773)
       console.error('Error processing file:', fileEntry.path, error);
@@ -338,8 +344,7 @@ export class FolderController {
   private async loadNewFile(
     fileEntry: FSAccessFileEntry,
     folderId: string | undefined,
-    folderMap: Map<string, string>,
-    zipFallback?: { screenshots: VerifyScreenshot[] | undefined; startTimestamp?: number }
+    folderMap: Map<string, string>
   ): Promise<void> {
     // screenshots フォルダ内の画像は、ファイル一覧に画像として追加する (クリックでプレビュー表示)。
     // manifest.json やその他のテキストファイルは通常処理 (FileProcessor に回すと平文で読まれる)
@@ -351,14 +356,7 @@ export class FolderController {
     // ZIPファイルを階層的に処理
     if (fileEntry.name.endsWith('.zip')) {
       const parentPath = fileEntry.path.split('/').slice(0, -1).join('/');
-      await this.processZipWithinFolder(
-        fileEntry,
-        parentPath,
-        folderId,
-        folderMap,
-        zipFallback?.screenshots,
-        zipFallback?.startTimestamp
-      );
+      await this.processZipWithinFolder(fileEntry, parentPath, folderId, folderMap);
       return;
     }
 
@@ -512,6 +510,7 @@ export class FolderController {
     // 読み込みに失敗していた変更はやり直さない (削除として扱う。#773)
     this.failedChanges.delete(path);
     this.screenshotProofPaths.delete(path);
+    this.zipScreenshotProofs.delete(path);
     if (affectsFolderScreenshots(path)) this.scheduleScreenshotResync(path);
     const fileId = this.deps.sidebar.getFileIdByPath(path);
     if (fileId) {
@@ -590,6 +589,12 @@ export class FolderController {
           if (pending.length === 0) break;
           for (const path of pending) {
             const tabId = this.deps.sidebar.getFileIdByPath(path);
+            // フォルダのスクショへ落とした ZIP の proof は、ZIP から読んだ内容で取り込み直す (#742)
+            const zipProof = this.zipScreenshotProofs.get(path);
+            if (zipProof) {
+              reread.set(path, tabId ? { tabId, fileData: zipProof } : null);
+              continue;
+            }
             const entry = entries.get(path) ?? (await this.findFileEntry(current.rootHandle, path));
             if (!tabId || !entry) {
               reread.set(path, null);
@@ -722,9 +727,7 @@ export class FolderController {
     fileEntry: FSAccessFileEntry,
     parentPath: string,
     parentFolderId: string | undefined,
-    folderMap: Map<string, string>,
-    folderScreenshots?: VerifyScreenshot[],
-    folderStartTimestamp?: number
+    folderMap: Map<string, string>
   ): Promise<void> {
     // ZIP の読み取りの失敗は投げる (呼び出し側がやり直しに回す。#773)。中身が壊れた ZIP (下の success: false) は
     // 読み直しても変わらないので、やり直さない
@@ -789,17 +792,15 @@ export class FolderController {
       }
     }
 
-    // ZIPからスクリーンショットを読み込む
-    let zipScreenshots = folderScreenshots;
-    let zipStartTimestamp = folderStartTimestamp;
-
-    if (result.screenshots && result.screenshots.length > 0) {
-      zipScreenshots = result.screenshots;
-      zipStartTimestamp = result.startTimestamp;
-
-      if (result.screenshotService) {
-        this.deps.onScreenshotServiceUpdate?.(result.screenshotService);
-      }
+    // スクショは ZIP に同梱のものがあればそれ、無ければフォルダのスクショ (screenshots/ が無ければ 0 枚。
+    // 開いたときに読めていなければ未検査。#773)。開いたときも監視中に足したときもこの規則を通る (#742)。
+    // フォルダのスクショは ZIP を読み終えた後のここで引く (待つ前に引くと、その間に終わった読み直しの結果を取り逃す)
+    const usesFolderScreenshots = !(result.screenshots && result.screenshots.length > 0);
+    const container = usesFolderScreenshots
+      ? this.folderContainer()
+      : { screenshots: result.screenshots, startTimestamp: result.startTimestamp };
+    if (!usesFolderScreenshots && result.screenshotService) {
+      this.deps.onScreenshotServiceUpdate?.(result.screenshotService);
     }
 
     // ZIPからファイルを処理
@@ -815,13 +816,18 @@ export class FolderController {
       const fileFolderId = folderMap.get(fileParentPath) ?? zipFolderId;
 
       if (fileData.type === 'proof') {
+        // フォルダのスクショを渡した proof は、フォルダのスクショが変わったら取り込み直す (#703 / #742)
+        if (usesFolderScreenshots) {
+          this.screenshotProofPaths.add(fullRelativePath);
+          this.zipScreenshotProofs.set(fullRelativePath, { ...fileData, relativePath: fullRelativePath });
+        }
         this.deps.addFileToVerification(
           fileData.filename,
           fileData.rawData,
           fileFolderId,
           fullRelativePath,
-          zipScreenshots,
-          zipStartTimestamp
+          container.screenshots,
+          container.startTimestamp
         );
       } else if (fileData.type === 'image') {
         this.deps.addImageFile({ ...fileData, relativePath: fullRelativePath }, fileFolderId);

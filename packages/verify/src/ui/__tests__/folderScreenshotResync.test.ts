@@ -11,6 +11,7 @@
  */
 
 import { sha256HexOfBytes, type StoredEvent } from '@typedcode/shared';
+import JSZip from 'jszip';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '../../i18n/index.js';
 import { summarizeTabScreenshots } from '../../services/screenshotSummary.js';
@@ -497,5 +498,129 @@ describe('transient read failures of files changed while watching (#773)', () =>
     await settle();
 
     expect(fake.getFileCount('notes.txt')).toBe(reads);
+  });
+});
+
+/** `entries` を詰めた ZIP のバイト列。 */
+async function zipBytes(entries: Record<string, string | Uint8Array>): Promise<Uint8Array> {
+  const zip = new JSZip();
+  for (const [name, content] of Object.entries(entries)) zip.file(name, content);
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
+/** スクショを同梱しない ZIP と、`z.png` を同梱する ZIP。 */
+const plainZip = () => zipBytes({ [PROOF_PATH]: VALID });
+async function zipWithScreenshots(): Promise<Uint8Array> {
+  return zipBytes({
+    [PROOF_PATH]: VALID,
+    'screenshots/manifest.json': await manifestFor({ 'z.png': ORIGINAL }),
+    'screenshots/z.png': ORIGINAL,
+  });
+}
+/** `sub.zip` の proof のタブのパス */
+const ZIP_PROOF = `sub/${PROOF_PATH}`;
+
+/**
+ * フォルダの中の ZIP のスクショは、同梱があればそれ、無ければフォルダのスクショ (`screenshots/` が無ければ 0 枚)
+ * (#742)。開いたときに入っていた ZIP も、監視中に足した ZIP も同じ規則で、フォルダのスクショへ落とした ZIP の
+ * proof はフォルダのスクショが変わったら取り込み直す (#703 と同じ)。
+ */
+describe('screenshots of a ZIP inside a watched folder (#742)', () => {
+  it("checks the proof of a ZIP without screenshots added while watching against the folder's screenshots", async () => {
+    const s = folderStack();
+    const fake = await exportFolder({ 'a.png': ORIGINAL });
+    await s.folder.openFolder(fake.handle());
+
+    fake.write('sub.zip', await plainZip());
+    await s.sync();
+    await vi.waitFor(() => expect(() => s.tabAt(ZIP_PROOF)).not.toThrow());
+
+    expect(s.tabAt(ZIP_PROOF).screenshots?.map((shot) => shot.filename)).toEqual(['a.png']);
+  });
+
+  it('checks the proof of a ZIP without screenshots added while watching as zero screenshots when the folder has no screenshots directory', async () => {
+    const s = folderStack();
+    const fake = new FakeFolder('submission', { [PROOF_PATH]: VALID });
+    await s.folder.openFolder(fake.handle());
+
+    fake.write('sub.zip', await plainZip());
+    await s.sync();
+    await vi.waitFor(() => expect(() => s.tabAt(ZIP_PROOF)).not.toThrow());
+
+    expect(s.tabAt(ZIP_PROOF).screenshots).toEqual([]);
+  });
+
+  it('checks the proof of a ZIP with its own screenshots added while watching against the bundled screenshots', async () => {
+    const s = folderStack();
+    const fake = await exportFolder({ 'a.png': ORIGINAL });
+    await s.folder.openFolder(fake.handle());
+
+    fake.write('sub.zip', await zipWithScreenshots());
+    await s.sync();
+    await vi.waitFor(() => expect(() => s.tabAt(ZIP_PROOF)).not.toThrow());
+
+    expect(s.tabAt(ZIP_PROOF).screenshots?.map((shot) => shot.filename)).toEqual(['z.png']);
+  });
+
+  it.each([
+    ['in the folder when it is opened', true],
+    ['added while watching', false],
+  ])(
+    "re-checks the proof of a ZIP without screenshots %s after the folder's screenshots change",
+    async (_when, atOpen) => {
+      const s = folderStack();
+      const fake = await exportFolder({ 'a.png': ORIGINAL });
+      if (atOpen) fake.write('sub.zip', await plainZip());
+      await s.folder.openFolder(fake.handle());
+      if (!atOpen) {
+        fake.write('sub.zip', await plainZip());
+        await s.sync();
+        await vi.waitFor(() => expect(() => s.tabAt(ZIP_PROOF)).not.toThrow());
+      }
+      await s.drain();
+      const id = s.tabAt(ZIP_PROOF).id;
+      expect(screenshotSummaryOf(s.tabAt(ZIP_PROOF))?.tampered).toBe(0);
+
+      fake.write('screenshots/a.png', REPLACED);
+      await s.sync();
+      await s.drain();
+
+      expect(s.enqueued.filter((queued) => queued === id)).toHaveLength(2);
+      const tab = s.tabAt(ZIP_PROOF);
+      expect(tab.status).toBe('error');
+      expect(screenshotSummaryOf(tab)?.tampered).toBe(1);
+    }
+  );
+
+  it("does not re-check the proof of a ZIP with its own screenshots after the folder's screenshots change", async () => {
+    const s = folderStack();
+    const fake = await exportFolder({ 'a.png': ORIGINAL }, {});
+    fake.write('sub.zip', await zipWithScreenshots());
+    await s.folder.openFolder(fake.handle());
+    await s.drain();
+    const id = s.tabAt(ZIP_PROOF).id;
+
+    fake.write('screenshots/a.png', REPLACED);
+    await s.sync();
+    await s.drain();
+
+    expect(s.enqueued.filter((queued) => queued === id)).toHaveLength(1);
+    expect(s.tabAt(ZIP_PROOF).screenshots?.map((shot) => shot.filename)).toEqual(['z.png']);
+  });
+
+  it("leaves the proof of a ZIP without screenshots unchecked while the folder's screenshots could not be read, and checks it once they can", async () => {
+    const s = folderStack();
+    const fake = await exportFolder({ 'a.png': ORIGINAL });
+    fake.write('sub.zip', await plainZip());
+    fake.beforeGetFile = (path, call) => {
+      if (path === 'screenshots/a.png' && call === 2) throw new DOMException('busy', 'NotReadableError');
+    };
+    await s.folder.openFolder(fake.handle());
+    expect(s.tabAt(ZIP_PROOF).screenshots).toBeUndefined();
+
+    await s.sync();
+    await s.drain();
+
+    expect(screenshotSummaryOf(s.tabAt(ZIP_PROOF))).toMatchObject({ total: 1, tampered: 0, missing: 0 });
   });
 });
