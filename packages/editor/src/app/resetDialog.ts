@@ -61,7 +61,9 @@ export async function confirmReset(ctx: Pick<AppContext, 'skipBeforeUnload' | 't
  * どれで閉じても同じ冪等な `close` を通り、Escape のリスナーはそこで解放される。閉じた後のフォーカスは、
  * 閉じた設定メニューの項目ではなく設定ボタン (`aria-controls` の制御元) へ戻る。
  */
-export function setupResetDialog(ctx: Pick<AppContext, 'mode' | 'tabManager' | 'skipBeforeUnload'>): void {
+export function setupResetDialog(
+  ctx: Pick<AppContext, 'mode' | 'tabManager' | 'skipBeforeUnload' | 'settingsDropdown'>
+): void {
   const resetDialog = document.getElementById('reset-dialog');
   if (!resetDialog) return;
   let handle: DialogA11yHandle | null = null;
@@ -73,7 +75,8 @@ export function setupResetDialog(ctx: Pick<AppContext, 'mode' | 'tabManager' | '
 
   // リセットボタン（設定メニュー内）をクリックしてダイアログを表示
   document.getElementById('reset-btn')?.addEventListener('click', () => {
-    document.getElementById('settings-dropdown')?.classList.remove('visible');
+    // 設定ボタンの aria-expanded も一緒に戻すため、クラスを直に外さず SettingsDropdown を通す (#743)
+    ctx.settingsDropdown.close();
     // 消えるモード名とタブ数を差し込んでから開く (#323)
     prepareResetDialog(ctx);
     close();

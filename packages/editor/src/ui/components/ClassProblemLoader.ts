@@ -12,9 +12,12 @@
 
 import { parseClassPackage, escapeHtml, type ClassPackage } from '@typedcode/shared';
 import { t } from '../../i18n/index.js';
+import { attachDialogA11y, type DialogA11yHandle } from './dialogA11y.js';
+import { makeDropzoneKeyboardOperable } from './dropzoneKeyboard.js';
 
 export class ClassProblemLoader {
   private overlay: HTMLElement | null = null;
+  private a11y: DialogA11yHandle | null = null;
   private pkg: ClassPackage | null = null;
 
   /** ローダを表示し、読み込んだ ClassPackage、またはスキップ時は null を resolve する。 */
@@ -23,9 +26,6 @@ export class ClassProblemLoader {
       const overlay = document.createElement('div');
       overlay.className = 'exam-gate-overlay';
       overlay.id = 'class-problem-loader';
-      // 試験ゲートと同じく名前付きの region にしてランドマークの中に置く (#738)
-      overlay.setAttribute('role', 'region');
-      overlay.setAttribute('aria-labelledby', 'class-loader-title');
       // 状態契約 (packages/editor/AGENTS.md「状態契約」): 閉じると `.hidden` が付いてから DOM を外れる。
       overlay.dataset.dialog = 'class-problem-loader';
       overlay.innerHTML = this.render();
@@ -72,8 +72,9 @@ export class ClassProblemLoader {
         reader.readAsText(file);
       };
 
-      // ファイル取込 (ピッカー)
+      // ファイル取込 (ピッカー。キーボードでは Enter / Space。#743)
       dropzone.addEventListener('click', () => fileInput.click());
+      makeDropzoneKeyboardOperable(dropzone, () => fileInput.click());
       fileInput.addEventListener('change', () => {
         const file = fileInput.files?.[0];
         if (file) handleFile(file);
@@ -107,10 +108,20 @@ export class ClassProblemLoader {
         this.close();
         resolve(null);
       });
+
+      // a11y (#743): 名前付きの modal dialog にし、Tab を閉じ込める。閉じる経路は「読み込む」「スキップ」だけで、
+      // Escape では閉じない (閉鎖規則は #305 以前のまま)。閉じるとフォーカスは開いた起点 (「問題を読み込む」) へ戻る
+      this.a11y = attachDialogA11y(overlay.querySelector<HTMLElement>('.exam-gate-content')!, {
+        labelledBy: overlay.querySelector<HTMLElement>('h2')!,
+        closeOnEscape: false,
+        onRequestClose: () => undefined,
+      });
     });
   }
 
   private close(): void {
+    this.a11y?.close();
+    this.a11y = null;
     this.overlay?.classList.add('hidden');
     const overlay = this.overlay;
     setTimeout(() => overlay?.remove(), 200);
@@ -125,8 +136,9 @@ export class ClassProblemLoader {
         <p class="exam-gate-desc">${escapeHtml(t('class.loader.description'))}</p>
 
         <div class="exam-gate-field">
-          <label>${escapeHtml(t('class.loader.packageLabel'))}</label>
-          <div class="exam-gate-dropzone" id="class-loader-dropzone">
+          <label id="class-loader-package-label">${escapeHtml(t('class.loader.packageLabel'))}</label>
+          <div class="exam-gate-dropzone" id="class-loader-dropzone" role="button" tabindex="0"
+               aria-labelledby="class-loader-package-label class-loader-filename">
             <i class="fas fa-file-arrow-up"></i>
             <span id="class-loader-filename">${escapeHtml(t('class.loader.dropHint'))}</span>
             <input type="file" id="class-loader-file" accept=".tcclass,application/json" hidden>

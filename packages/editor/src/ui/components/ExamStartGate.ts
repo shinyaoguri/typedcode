@@ -22,6 +22,8 @@ import {
   type ExamPackageManifest,
 } from '@typedcode/shared';
 import { t } from '../../i18n/index.js';
+import { attachDialogA11y, type DialogA11yHandle } from './dialogA11y.js';
+import { makeDropzoneKeyboardOperable } from './dropzoneKeyboard.js';
 
 /**
  * ゲート内の人間確認 (Turnstile) の状態 (#236)。`#exam-gate-attestation[data-attestation-state]` に出す。
@@ -54,6 +56,7 @@ export interface ExamUnlockResult {
 
 export class ExamStartGate {
   private overlay: HTMLElement | null = null;
+  private a11y: DialogA11yHandle | null = null;
   private manifest: ExamPackageManifest | null = null;
 
   /**
@@ -96,9 +99,6 @@ export class ExamStartGate {
       overlay.className = 'exam-gate-overlay';
       overlay.dataset.dialog = 'exam-gate';
       overlay.id = 'exam-start-gate';
-      // ゲートはダイアログではなく画面の本体なので、名前付きの region にしてランドマークの中に置く (#738)
-      overlay.setAttribute('role', 'region');
-      overlay.setAttribute('aria-labelledby', 'exam-gate-title');
       overlay.innerHTML = this.render();
       document.body.appendChild(overlay);
       this.overlay = overlay;
@@ -161,8 +161,9 @@ export class ExamStartGate {
         reader.readAsText(file);
       };
 
-      // ファイル取込 (ピッカー)
+      // ファイル取込 (ピッカー。キーボードでは Enter / Space。#743)
       dropzone.addEventListener('click', () => fileInput.click());
+      makeDropzoneKeyboardOperable(dropzone, () => fileInput.click());
       fileInput.addEventListener('change', () => {
         const file = fileInput.files?.[0];
         if (file) handleFile(file);
@@ -201,7 +202,13 @@ export class ExamStartGate {
         });
       });
 
-      setTimeout(() => codeInput.focus(), 50);
+      // a11y (#743): 名前付きの modal dialog にし、Tab を閉じ込める。キャンセル経路は無い (sticky) ので Escape は無視する
+      this.a11y = attachDialogA11y(overlay.querySelector<HTMLElement>('.exam-gate-content')!, {
+        labelledBy: overlay.querySelector<HTMLElement>('h2')!,
+        initialFocus: codeInput,
+        closeOnEscape: false,
+        onRequestClose: () => undefined,
+      });
     });
   }
 
@@ -255,6 +262,8 @@ export class ExamStartGate {
   }
 
   private close(): void {
+    this.a11y?.close();
+    this.a11y = null;
     this.overlay?.classList.add('hidden');
     const overlay = this.overlay;
     setTimeout(() => overlay?.remove(), 200);
@@ -269,8 +278,9 @@ export class ExamStartGate {
         <p class="exam-gate-desc">${escapeHtml(t('exam.gate.description'))}</p>
 
         <div class="exam-gate-field">
-          <label>${escapeHtml(t('exam.gate.packageLabel'))}</label>
-          <div class="exam-gate-dropzone" id="exam-gate-dropzone">
+          <label id="exam-gate-package-label">${escapeHtml(t('exam.gate.packageLabel'))}</label>
+          <div class="exam-gate-dropzone" id="exam-gate-dropzone" role="button" tabindex="0"
+               aria-labelledby="exam-gate-package-label exam-gate-filename">
             <i class="fas fa-file-arrow-up"></i>
             <span id="exam-gate-filename">${escapeHtml(t('exam.gate.dropHint'))}</span>
             <input type="file" id="exam-gate-file" accept=".tcexam,application/json" hidden>

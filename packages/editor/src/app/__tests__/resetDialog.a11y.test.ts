@@ -18,6 +18,7 @@ vi.mock('../../utils/StorageClearHelper.js', () => ({
 vi.mock('../AppHelpers.js', () => ({ showNotification: vi.fn() }));
 
 const { setupResetDialog } = await import('../resetDialog.js');
+const { SettingsDropdown } = await import('../../ui/components/SettingsDropdown.js');
 
 const HTML = `
   <button id="settings-btn" aria-controls="settings-dropdown">settings</button>
@@ -48,15 +49,23 @@ function open(): void {
 }
 
 describe('reset dialog a11y', () => {
-  let ctx: { mode: 'casual'; tabManager: null; skipBeforeUnload: boolean };
+  let ctx: {
+    mode: 'casual';
+    tabManager: null;
+    skipBeforeUnload: boolean;
+    settingsDropdown: InstanceType<typeof SettingsDropdown>;
+  };
 
   beforeEach(() => {
     document.body.innerHTML = HTML;
-    ctx = { mode: 'casual', tabManager: null, skipBeforeUnload: false };
+    const settingsDropdown = new SettingsDropdown();
+    settingsDropdown.initialize({ buttonId: 'settings-btn', dropdownId: 'settings-dropdown' });
+    ctx = { mode: 'casual', tabManager: null, skipBeforeUnload: false, settingsDropdown };
     setupResetDialog(ctx);
   });
 
   afterEach(() => {
+    ctx.settingsDropdown.dispose();
     vi.restoreAllMocks();
     document.body.innerHTML = '';
   });
@@ -68,6 +77,13 @@ describe('reset dialog a11y', () => {
     expect(dialog().getAttribute('aria-modal')).toBe('true');
     expect($(dialog().getAttribute('aria-labelledby')!).textContent).toBe('Reset this mode');
     expect(document.activeElement).toBe($('reset-cancel-btn'));
+  });
+
+  it('reports the settings menu as collapsed (aria-expanded="false") once the reset item has closed it', () => {
+    expect($('settings-btn').getAttribute('aria-expanded')).toBe('true');
+    open();
+    expect($('settings-dropdown').classList.contains('visible')).toBe(false);
+    expect($('settings-btn').getAttribute('aria-expanded')).toBe('false');
   });
 
   it.each([
