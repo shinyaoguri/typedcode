@@ -221,6 +221,11 @@ export class ResultPanel {
   onRetryRequested?: () => void;
   private progressStartTime: number = 0;
   private progressTimerInterval: number | null = null;
+  /**
+   * 表示中の画像プレビューの Blob URL を解放する関数 (#729)。読み込み (load / error) か、プレビューを
+   * 差し替えるときに呼ぶ。同じ URL には 1 回だけ効く。プレビューが無ければ null。
+   */
+  private releaseImagePreview: (() => void) | null = null;
 
   constructor() {
     this.container = document.getElementById('result-container')!;
@@ -435,6 +440,8 @@ export class ResultPanel {
 
     const codeEl = this.plaintextCode.querySelector('code');
     if (codeEl) {
+      // 画像プレビューを平文で上書きする前に、読み込み前の Blob URL を残さない (#729)
+      this.disposeImagePreview();
       if (data.hasContentMismatch && data.diffResult) {
         // 差分がある場合: 警告バナー + 差分ビュー
         this.showDiffWarningBanner(data.diffResult.stats);
@@ -521,14 +528,10 @@ export class ResultPanel {
 
     const codeEl = this.plaintextCode.querySelector('code');
     if (codeEl) {
-      // 画像プレビューを表示
+      // 前のプレビューを差し替える前に、読み込み前の Blob URL を残さない
+      this.disposeImagePreview();
       if (data.imageBlob) {
-        const url = URL.createObjectURL(data.imageBlob);
-        codeEl.innerHTML = `
-          <div class="image-preview-container">
-            <img src="${url}" alt="${escapeHtml(data.filename)}" class="image-preview" onload="URL.revokeObjectURL(this.src)" />
-          </div>
-        `;
+        codeEl.replaceChildren(this.createImagePreview(data.imageBlob, data.filename));
       } else {
         codeEl.innerHTML = `<p style="color: var(--text-tertiary);">${escapeHtml(t('result.imageLoadFailed'))}</p>`;
       }
@@ -537,6 +540,43 @@ export class ResultPanel {
 
     this.show();
     this.showPlaintext();
+  }
+
+  /**
+   * 画像プレビューの要素を作る (#729)。
+   *
+   * Blob URL は読み込みが終わる (load / error) か、プレビューを差し替えるまで解放しない (先に解放すると
+   * 画像が出ない)。inline の `onload="URL.revokeObjectURL(this.src)"` は、ハンドラの中で `URL` が
+   * `document.URL` (文字列) に解決されて TypeError になっていたので、作った URL を直接持つリスナーで
+   * 解放する。inline の JavaScript は足さない (#411 の CSP)。
+   */
+  private createImagePreview(imageBlob: Blob, filename: string): HTMLElement {
+    const url = URL.createObjectURL(imageBlob);
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      URL.revokeObjectURL(url);
+      if (this.releaseImagePreview === release) this.releaseImagePreview = null;
+    };
+    this.releaseImagePreview = release;
+
+    const img = document.createElement('img');
+    img.className = 'image-preview';
+    img.alt = filename;
+    img.addEventListener('load', release, { once: true });
+    img.addEventListener('error', release, { once: true });
+    img.src = url;
+
+    const container = document.createElement('div');
+    container.className = 'image-preview-container';
+    container.appendChild(img);
+    return container;
+  }
+
+  /** 表示中の画像プレビューの Blob URL を (まだなら) 解放する。 */
+  private disposeImagePreview(): void {
+    this.releaseImagePreview?.();
   }
 
   render(data: ResultData): void {

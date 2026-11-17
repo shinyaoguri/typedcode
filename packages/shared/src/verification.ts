@@ -118,7 +118,8 @@ export interface FullVerificationResult {
 
 /**
  * 検証モード。
- * - fast: PoSW 再計算をスキップ。chain integrity / content replay / metadata / signed checkpoint は実施
+ * - fast: PoSW 再計算をスキップ。chain integrity / content replay / metadata / signed checkpoint は実施。
+ *   PoSW の値と proof の一貫性は見るが、反復を実際に計算したかは確かめない (docs/system-spec.md §8.2)
  * - audit: fast + 決定的 PoSW サンプリング (現実装は full と同等のプレースホルダ)
  * - full: 全 PoSW 再計算を含む完全検証
  */
@@ -477,7 +478,7 @@ export interface EventArrayStructureResult {
  *
  * そこで「数える対象」と「走査される対象」が必ず一致するよう、再カウント (docs/system-spec.md
  * §7 の Layer 1) の**手前**で構造を検査して弾く。検査は最低限のフィールド
- * (sequence / timestamp / type / previousHash / posw) に留め、proof フォーマット自体は
+ * (sequence / timestamp / type / previousHash / inputType / posw) に留め、proof フォーマット自体は
  * 変えない — 正規に export された proof は `MIN_SUPPORTED_VERSION` の頃から
  * これらを常に持つため、既存 proof の検証性は変わらない。
  */
@@ -519,6 +520,17 @@ export function verifyEventArrayStructure(events: unknown): EventArrayStructureR
       return {
         valid: false,
         reason: `Invalid event structure at event ${i}: previousHash must be a string or null`,
+        errorAt: i,
+      };
+    }
+
+    // 再カウントは `inputType?.startsWith('delete')` で数えるので、文字列でも null でもない値は
+    // 結論を返さず throw させる (#678)。欠落 (旧イベント) と null は正規の proof に現れるので通す
+    const inputType = candidate.inputType;
+    if (inputType !== undefined && inputType !== null && typeof inputType !== 'string') {
+      return {
+        valid: false,
+        reason: `Invalid event structure at event ${i}: inputType must be a string or null`,
         errorAt: i,
       };
     }
@@ -941,9 +953,14 @@ export async function verifyChain(
  * - 'audit' → 現状は 'full' と同等 (将来: 決定的 PoSW サンプリングを追加)
  * - 'full'  → デフォルト。全 PoSW を再計算
  *
- * 注: 'fast' モードでも、PoSW の **正しさ** だけは保証されないが、proof の
- *     tamper resistance (event 改ざん / reorder / 内容書き換え) は完全に検出される。
- *     signed checkpoint があれば、サーバ署名による temporal anchoring も検証される。
+ * 注: 'fast' と 'full' の違いは `skipPosw` (`verifyChain` の `intermediateHash` 再計算) だけで、
+ *     他の検査はモードに依らず同じ。ハッシュ・署名の対象 (イベントは `pickHashedEventFields` と
+ *     `posw`、proof は `typingProofData` と root の入力、cp の照合値と署名 payload) を書き換えた
+ *     proof はどちらのモードでも落ちる。対象外のフィールド (`description` などの派生フィールド・
+ *     `proof.signature`・自己申告の `mode` など) は書き換えても落ちない。
+ *     fast が保証しないのは PoSW の計算そのもの: 偽の PoSW のまま `event.hash` 以降と
+ *     `typingProofHash` を作り直した proof は fast を通り、full だけが拒否する
+ *     (docs/system-spec.md §8.1 / §8.2)。
  */
 export async function verifyProofFile(
   proof: ProofFile,
