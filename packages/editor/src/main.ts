@@ -40,6 +40,7 @@ import { renderModeBadge } from './ui/components/ModeBadge.js';
 import { showTermsNotice } from './ui/components/TermsNotice.js';
 import { setStorageNamespace, tabsKey, sessionActiveKey } from './core/storageKeys.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
+import { CompositionTracker } from './tracking/CompositionTracker.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
 import { MouseTracker } from './tracking/MouseTracker.js';
 import { initializeTrackers } from './tracking/TrackersInitializer.js';
@@ -247,6 +248,7 @@ const ctx: AppContext = {
   },
   editorController: new EditorController({
     operationDetector: new OperationDetector(),
+    compositionTracker: new CompositionTracker(),
     debug: import.meta.env.DEV,
   }),
 

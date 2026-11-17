@@ -30,7 +30,8 @@ test('IME の変換中入力 (imeSetComposition → insertText) が記録され�
   const proof = (await readProofJson(zipPath)) as { content?: string };
   expect(proof.content).toBe(expected);
   // 確定した文字列が編集イベントとしてチェーンに載っている (content replay が通る根拠)。実測では、変換中の
-  // `にほん` が 1 文字ずつの insertText、確定が `日本` の replaceContent として記録される。
+  // `にほん` が 1 文字ずつ、確定が `日本` の置換として、どれも composition 系 (`insertCompositionText`) で記録
+  // される (Monaco の compositionStart / End に対応付けた分類 = #720。分類の検査は ime-provenance.spec.ts)。
   const events = await readProofEvents(zipPath);
   const imeChanges = events.filter(
     (e) => e.type === 'contentChange' && typeof e.data === 'string' && (e.data as string).includes('日本')
