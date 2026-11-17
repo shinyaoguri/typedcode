@@ -15,7 +15,7 @@ vi.mock('../../i18n/index.js', () => ({ t: (key: string) => key }));
 vi.mock('../AppHelpers.js', () => ({ showNotification: () => {} }));
 vi.mock('../../services/TurnstileService.js', () => ({ isTurnstileConfigured: () => false }));
 vi.mock('../beforeUnloadGuard.js', () => ({ handleBeforeUnload: () => {} }));
-vi.mock('../resetDialog.js', () => ({ confirmReset: () => {}, prepareResetDialog: () => {} }));
+vi.mock('../resetDialog.js', () => ({ confirmReset: () => {}, prepareResetDialog: () => {}, setupResetDialog: () => {} }));
 const handleTemplateDrop = vi.fn();
 vi.mock('../TemplateHandler.js', () => ({
   handleTemplateDrop: (...args: unknown[]) => handleTemplateDrop(...args),
