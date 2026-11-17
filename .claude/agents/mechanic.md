@@ -18,7 +18,7 @@ model: sonnet
 
 - **少しでも設計判断が必要になったら手を止めて報告する** (勝手に決めない)。「機械的ではなかった」と分かった時点で、何が判断点かを書いて終了してよい
 - 変更は指示された範囲に限定する。ついでのリファクタをしない
-- 完了報告の前に `npm run check:fast` (typecheck → lint → lint:workflows → カバレッジ付きユニットテスト → require-tests のテスト) が green なことを確認する
+- 完了報告の前に `npm run check:fast` (typecheck → lint → lint:workflows → カバレッジ付きユニットテスト → require-tests のテスト → build → verify-cli の test:dist → Workers の --dry-run) が green なことを確認する
 
 ## 報告形式
 

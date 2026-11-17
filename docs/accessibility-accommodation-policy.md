@@ -21,10 +21,11 @@ TypedCode の捕捉・分析・コホート基準が、**IME (各言語の入力
 
 ### IME (日本語/中国語/韓国語などの変換入力) — 不利にならない
 - `insertCompositionText` / `deleteCompositionText` / `insertFromComposition` は**許可リスト**にある。→ **IME は `isPureTyping` を false にしない。** 捕捉層では通常タイピングと同等。
+- editor がこれらのラベルを付けるのは、Monaco が知らせる composition (開始から終了まで) に範囲で対応付いた編集だけ (#720)。文字種では付けないので、composition を経ずに入った複数文字の 1 行は、日本語などを含んでいても `insertReplacementText` になる。IME の確定は長さによらず composition 系のまま。この対応付けは CDP の合成 composition で確かめたもので、各言語の実 IME での確認は済んでいない。
 - リスクは**分析層のみ**: 変換確定でまとまった文字が一度に入る・1 文字あたりの離散打鍵が少ない・打鍵動態が Latin と異なる。これらが focus-burst (バースト挿入) や将来の打鍵動態系アナライザを誤って踏みうる。→ §2 の偽陽性モードで扱う。
 
 ### ディクテーション / 音声入力 / 自動修正 / 単語予測 — 不利になりうる (要注意)
-- これらは環境により `insertReplacementText` で挿入することがある。`insertReplacementText` は**禁止リスト**にある。→ **`isPureTyping` が false になりうる。**
+- これらは環境により `insertReplacementText` で挿入することがある (composition として届く場合は、上の IME と同じく composition 系になる)。`insertReplacementText` は**禁止リスト**にある。→ **`isPureTyping` が false になりうる。**
 - つまり **`isPureTyping=false` は「ペースト等の不正」とは限らず、「支援技術による入力」でもありうる。** 両者を捕捉層は区別できない (ブラウザが提供する inputType が同じ)。これは検出で塞げる穴ではなく**原理的な曖昧性**。
 - 帰結: `isPureTyping=false` / 「外部入力」signal を**単独でクロと解釈してはならない**。過程リプレイ (ProcessSummary の見どころ) と本人の振り返り (reflectionNote)、そして事前の配慮申請を併せて人間が判断する。
 
@@ -80,8 +81,11 @@ TypedCode の捕捉・分析・コホート基準が、**IME (各言語の入力
 - 閉じさせないダイアログ (`closeOnOverlayClick: false`) は Escape でも閉じない。閉じる手段はダイアログ内のボタンで必ず用意する
 - ネイティブ `<dialog>` + `showModal()` は使わない。top layer に出るため `ExamStartGate` (`z-index: 40000`) など既存の重なり規則が変わる
 - 破壊的な選択肢があるダイアログは、初期フォーカスを破壊的でない側 (取り消し・再開) に置く。選択が必須のダイアログ (復旧)・書きかけの入力を持つダイアログ (セルフレビューのノート)・進行表示 (書き出し・テンプレート取込の進捗) は Escape で閉じない (`closeOnEscape: false`)
-- 移行状況: DOM を JS で組むダイアログ (`showModal` 経由・`AboutDialog`・`SessionRecoveryDialog`・`SelfReviewDialog`・`ExportProgressDialog`・`TemplateImportDialog` の確認と進捗・`ScreenCaptureDialogs` の画面共有選択とオプトアウト確認) は移行済み。**未移行**: `index.html` の静的モーダル (`hidden` クラスで開閉する。`ProcessingDialog` もこれを操作する) / タブ閉じ確認 (`TabUIController`) / `CountdownDialog` / lock overlay (段階的に移す)
-- メニュー項目から始まる操作 (書き出しのセルフレビュー・進捗) は、閉じたあとの復帰先がメニュー内の項目 (閉じたメニューの中) になる。復帰先を明示する設計 (呼び出し元から `returnFocusTo` を渡す) は未対応
+- `index.html` に置いた静的な overlay (`.modal-overlay.hidden` > `.modal-dialog`) は `showStaticDialog(overlay, opts)` で開く。`.hidden` を外して `attachDialogA11y` を付け (名前は `.modal-header h3`)、返す `close()` で解放と `.hidden` の付け直しを 1 回だけ行う
+- 閉じさせない画面 (起動を止める `duplicate-instance` / `unsupported-browser` / `boot-failure`、同意が必須の規約、`storage-low` / `processing`、アイドルの警告 (`CountdownDialog`)、lock overlay) も意味付けとフォーカスの置き場は同じにする。閉鎖規則は変えず、Escape は無視する (`closeOnEscape: false`)
+- 移行状況: editor のダイアログは移行済み (DOM 生成型・`index.html` の静的 overlay・タブ閉じ確認・`CountdownDialog`・lock overlay)。**未移行**: `ExamStartGate` と `ClassProblemLoader` (全画面のゲート / ローダ)、`#clang-loading-overlay` (状態契約の無い進捗表示)
+- role は `dialog` で統一している (確認・警告も含む)。`alertdialog` にするかは未決 (#305)
+- メニュー項目から始まる操作は、起点がメニューの中にあれば、閉じたあとの復帰先を**メニューを開いたボタン**にする。ヘルパはメニューボタンの `aria-controls` から辿るので、**メニューボタンには開く popup の id を `aria-controls` で付ける** (`#main-menu-btn` / `#download-menu-btn` / `#settings-btn`)。描き直しで起点が入れ替わるもの (タブの ×) は `fallbackFocus` に関数を渡し、閉じた時点で引き直す
 - 自動検査は単体テスト (`ui/components/__tests__/`) と E2E (`packages/e2e/tests/modal-a11y.spec.ts`)。**スクリーンリーダー (VoiceOver + Chrome など) での読み上げは自動化できないので、ダイアログの構造を変えたときは人が確認する**
 
 ---

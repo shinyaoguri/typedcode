@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { EditorApp } from './helpers/app.js';
+import { failStorageProbe } from './helpers/faults.js';
 import { openSelfReviewForCurrentTab, waitDialogClosed, waitDialogOpen } from './helpers/scenario.js';
 
 /**
@@ -162,4 +163,200 @@ test('the self-review dialog is a named modal dialog that traps Tab and keeps a 
   await waitDialogClosed(app, 'self-review');
   expect(await focusInside(page, 'self-review')).toBe(false);
   await app.expectConsistent();
+});
+
+// ---------------------------------------------------------------------------
+// 残りの overlay (#305 の残作業): index.html の静的 overlay・タブ閉じ確認・countdown / lock overlay、
+// メニュー項目から開いたダイアログの閉じた後のフォーカス
+// ---------------------------------------------------------------------------
+
+/** 指定ダイアログの role / aria-modal / aria-labelledby (名前が空でない) を見る。 */
+async function expectNamedModal(page: Page, name: string): Promise<void> {
+  const dialog = dialogOf(page, name);
+  await expect(dialog).toHaveCount(1);
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  const labelId = await dialog.getAttribute('aria-labelledby');
+  expect(labelId, `aria-labelledby of ${name} must be set`).toBeTruthy();
+  await expect(page.locator(`[id="${labelId}"]`)).not.toBeEmpty();
+}
+
+/** Tab / Shift+Tab を何度押してもフォーカスがダイアログの内側に留まる。 */
+async function expectTabTrapped(page: Page, name: string, presses = 6): Promise<void> {
+  for (let i = 0; i < presses; i++) {
+    await page.keyboard.press('Tab');
+    expect(await focusInside(page, name), `${name}: Tab #${i + 1}`).toBe(true);
+  }
+  for (let i = 0; i < presses; i++) {
+    await page.keyboard.press('Shift+Tab');
+    expect(await focusInside(page, name), `${name}: Shift+Tab #${i + 1}`).toBe(true);
+  }
+}
+
+/** フォーカスが Monaco の中 (エディタ) にあるか。 */
+function focusInEditor(page: Page): Promise<boolean> {
+  return page.evaluate(() => document.querySelector('.monaco-editor')?.contains(document.activeElement) ?? false);
+}
+
+async function openReset(page: Page): Promise<void> {
+  await page.locator('#settings-btn').click();
+  await page.locator('#reset-btn').click();
+}
+
+test('the reset dialog is a named modal that traps Tab and returns focus to the settings button by every close route', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+
+  await openReset(page);
+  await waitDialogOpen(app, 'reset');
+  await expectNamedModal(page, 'reset');
+  // 破壊的な操作のダイアログなので、初期フォーカスは取り消し側
+  await expect(page.locator('#reset-cancel-btn')).toBeFocused();
+  await expectTabTrapped(page, 'reset');
+
+  // Escape → 閉じた設定メニューの項目ではなく設定ボタンへ戻る
+  await page.keyboard.press('Escape');
+  await waitDialogClosed(app, 'reset');
+  await expect(page.locator('#settings-btn')).toBeFocused();
+
+  // 再表示してキャンセル
+  await openReset(page);
+  await waitDialogOpen(app, 'reset');
+  expect(await focusInside(page, 'reset')).toBe(true);
+  await page.locator('#reset-cancel-btn').click();
+  await waitDialogClosed(app, 'reset');
+  await expect(page.locator('#settings-btn')).toBeFocused();
+
+  // 再表示して overlay のクリック。閉じた後の Escape で何も起きない (古いリスナーが残っていない)
+  await openReset(page);
+  await waitDialogOpen(app, 'reset');
+  await page.locator('[data-dialog="reset"]').click({ position: { x: 5, y: 5 } });
+  await waitDialogClosed(app, 'reset');
+  await expect(page.locator('#settings-btn')).toBeFocused();
+  await page.keyboard.press('Escape');
+  expect(await app.openDialogs()).toEqual([]);
+  await app.expectConsistent();
+});
+
+test('the tab close confirmation is a named modal that traps Tab and returns focus to the tab close button', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  const [tab] = await app.tabs();
+  const closeBtn = page.locator(`.editor-tab[data-tab-id="${tab!.id}"] .tab-close-btn`);
+
+  await app.requestCloseTab(tab!.id);
+  await expectNamedModal(page, 'tab-close');
+  await expect(page.locator('#tab-close-cancel-btn')).toBeFocused();
+  await expectTabTrapped(page, 'tab-close');
+
+  await page.keyboard.press('Escape');
+  await waitDialogClosed(app, 'tab-close');
+  await expect(closeBtn).toBeFocused();
+
+  // 再表示してキャンセル
+  await app.requestCloseTab(tab!.id);
+  await app.answerCloseTab('cancel');
+  await expect(closeBtn).toBeFocused();
+
+  // 再表示して overlay のクリック
+  await app.requestCloseTab(tab!.id);
+  await page.locator('[data-dialog="tab-close"]').click({ position: { x: 5, y: 5 } });
+  await waitDialogClosed(app, 'tab-close');
+  await expect(closeBtn).toBeFocused();
+  expect((await app.tabs()).map((t) => t.id)).toEqual([tab!.id]);
+  await app.expectConsistent();
+});
+
+test('a dialog opened from the download menu returns focus to the download menu button when it closes', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.typeCode('int a;');
+  await app.waitForSynced();
+
+  await openSelfReviewForCurrentTab(app);
+  await page.locator('[data-dialog="self-review"] .self-review-btn-cancel').click();
+  await waitDialogClosed(app, 'self-review');
+  await expect(page.locator('#download-menu-btn')).toBeFocused();
+});
+
+test('the terms modal at startup is a named modal that traps Tab and cannot be dismissed with Escape', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  // class は未同意なら起動時に規約モーダルを出す (casual は出さない = ADR-0015)
+  await app.openModeFresh('class', { acceptTerms: false, waitReady: false });
+  await waitDialogOpen(app, 'terms');
+  await expectNamedModal(page, 'terms');
+  expect(await focusInside(page, 'terms')).toBe(true);
+  await expectTabTrapped(page, 'terms', 12);
+
+  await page.keyboard.press('Escape');
+  expect(await app.openDialogs()).toContain('terms');
+
+  await page.locator('#terms-agree-checkbox').check();
+  await page.locator('#terms-agree-btn').click();
+  await waitDialogClosed(app, 'terms');
+  expect(await focusInside(page, 'terms')).toBe(false);
+});
+
+test('the storage-low warning is a named modal that traps Tab and cannot be dismissed with Escape', async ({
+  page,
+}) => {
+  await failStorageProbe(page, 'quota');
+  const app = new EditorApp(page);
+  await page.goto('/casual');
+  await waitDialogOpen(app, 'storage-low');
+  await expectNamedModal(page, 'storage-low');
+  await expect(page.locator('#storage-low-continue-btn')).toBeFocused();
+  await expectTabTrapped(page, 'storage-low');
+
+  await page.keyboard.press('Escape');
+  expect(await app.openDialogs()).toContain('storage-low');
+
+  await page.locator('#storage-low-continue-btn').click();
+  await waitDialogClosed(app, 'storage-low');
+  await app.waitReady();
+});
+
+test('the idle warning and the suspended lock are named modals that trap Tab, ignore Escape and return focus to the editor', async ({
+  page,
+}) => {
+  await page.clock.install();
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.focusEditor();
+
+  // 1 回目: 警告に「続ける」で答える → エディタへ戻る
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await page.clock.fastForward('01:00:00');
+  await waitDialogOpen(app, 'idle-warning');
+  await expectNamedModal(page, 'idle-warning');
+  await expect(page.locator('[data-dialog="idle-warning"] .countdown-continue-btn')).toBeFocused();
+  await expectTabTrapped(page, 'idle-warning', 3);
+  await page.keyboard.press('Escape');
+  expect(await app.openDialogs()).toContain('idle-warning');
+  await page.locator('[data-dialog="idle-warning"] .countdown-continue-btn').click();
+  await waitDialogClosed(app, 'idle-warning');
+  expect(await focusInEditor(page)).toBe(true);
+
+  // 2 回目 (再表示): 時間切れでロック画面へ。再開ボタンで閉じる → エディタへ戻る
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await page.clock.fastForward('01:00:00');
+  await waitDialogOpen(app, 'idle-warning');
+  expect(await focusInside(page, 'idle-warning')).toBe(true);
+  await page.clock.runFor('05:01');
+  await waitDialogOpen(app, 'idle-suspended');
+  await expectNamedModal(page, 'idle-suspended');
+  await expect(page.locator('[data-dialog="idle-suspended"] .btn-primary')).toBeFocused();
+  await expectTabTrapped(page, 'idle-suspended', 3);
+  await page.keyboard.press('Escape');
+  expect(await app.openDialogs()).toContain('idle-suspended');
+  await page.locator('[data-dialog="idle-suspended"] .btn-primary').click();
+  await waitDialogClosed(app, 'idle-suspended');
+  expect(await focusInEditor(page)).toBe(true);
 });

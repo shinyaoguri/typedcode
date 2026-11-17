@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_BROWSER_ENV } from './browser-env.js';
 import { E2E_PORTS } from './ports.js';
 
 /**
@@ -36,10 +37,15 @@ export default defineConfig({
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
   workers: 1,
-  reporter: isCI ? [['list'], ['html', { open: 'never' }], ['github']] : [['list'], ['html', { open: 'never' }]],
+  // CI の json は flaky の収集の入力 (scripts/e2e-flaky.mjs / #583)。dev 設定の reports/e2e.json と分ける。
+  reporter: isCI
+    ? [['list'], ['html', { open: 'never' }], ['github'], ['json', { outputFile: 'reports/e2e-build.json' }]]
+    : [['list'], ['html', { open: 'never' }]],
 
   use: {
     baseURL: BASE_URL,
+    // 言語とタイムゾーンを実行環境に依存させない (#597)。dev 設定と同じ値 (browser-env.ts)
+    ...E2E_BROWSER_ENV,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: isCI ? 'retain-on-failure' : 'off',

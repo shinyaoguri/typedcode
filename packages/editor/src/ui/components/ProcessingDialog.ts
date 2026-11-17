@@ -1,9 +1,15 @@
 /**
  * ProcessingDialog - ハッシュチェーン処理待機ダイアログ
  * エクスポート前に未処理のイベントが完了するまで表示
+ *
+ * `index.html` の静的 overlay (`#processing-dialog`)。a11y (#305) は `dialogA11y` の `showStaticDialog`:
+ * 名前付きの modal dialog にしてキャンセルへフォーカスし、Tab を閉じ込める。Escape では閉じない
+ * (従来どおり。中止はキャンセルボタン)。完了・キャンセル・`forceClose` のどれでも `cleanup` を通り、
+ * interval とリスナーはそこで解放される。
  */
 
 import { t } from '../../i18n/index.js';
+import { showStaticDialog, type DialogA11yHandle } from './dialogA11y.js';
 
 export interface ProcessingStats {
   pendingCount: number;
@@ -19,6 +25,7 @@ export class ProcessingDialog {
   private cancelBtn: HTMLElement | null;
   private cancelled = false;
   private checkInterval: ReturnType<typeof setInterval> | null = null;
+  private a11y: DialogA11yHandle | null = null;
 
   constructor() {
     this.dialog = document.getElementById('processing-dialog');
@@ -45,7 +52,10 @@ export class ProcessingDialog {
 
     // ダイアログを表示
     this.cancelled = false;
-    this.dialog?.classList.remove('hidden');
+    if (this.dialog) {
+      this.a11y?.close();
+      this.a11y = showStaticDialog(this.dialog, { closeOnEscape: false });
+    }
 
     const initialPending = initialStats.pendingCount;
 
@@ -100,6 +110,8 @@ export class ProcessingDialog {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
     }
+    this.a11y?.close();
+    this.a11y = null;
     this.dialog?.classList.add('hidden');
   }
 

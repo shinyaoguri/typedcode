@@ -10,7 +10,7 @@ import { isTurnstileConfigured } from '../services/TurnstileService.js';
 import { t } from '../i18n/index.js';
 import { showNotification } from './AppHelpers.js';
 import { handleBeforeUnload } from './beforeUnloadGuard.js';
-import { confirmReset, prepareResetDialog } from './resetDialog.js';
+import { setupResetDialog } from './resetDialog.js';
 import { handleTemplateDrop, isTemplateFile } from './TemplateHandler.js';
 import { showLanguageDescriptionInTerminal } from './TerminalHandler.js';
 
@@ -123,7 +123,8 @@ export function setupStaticEventListeners(ctx: AppContext): void {
             showNotification(t('template.error'));
           }
         }
-        // テンプレートファイル以外はデフォルト動作（InputDetectorでexternalInput検出）
+        // テンプレートファイル以外は取り込まない。外部入力 (externalInput / insertFromDrop) としての記録は、
+        // この要素に capture で付けた drop 用の InputDetector (下の「入力検出器の初期化」) が先に行っている
       }
     });
 
@@ -175,8 +176,8 @@ export function setupStaticEventListeners(ctx: AppContext): void {
     showNotification(t('notifications.newTabCreated'));
   });
 
-  // 入力検出器の初期化
-  new InputDetector(document.body, async (detectedEvent: DetectedEvent) => {
+  // 入力検出器の初期化 (#697)
+  const onDetected = async (detectedEvent: DetectedEvent) => {
     console.log('[TypedCode] Detected operation:', detectedEvent);
 
     if (detectedEvent.type === 'paste') {
@@ -274,56 +275,22 @@ export function setupStaticEventListeners(ctx: AppContext): void {
         ctx.eventRecorder?.record(event);
       }
     }
-  });
+  };
 
-  // リセット機能 - イベント委任を使用して確実にキャプチャ
-  const resetDialog = document.getElementById('reset-dialog');
+  // paste / copy は Monaco に渡したコンテナ (#editor。Monaco 以外は入らない) で拾う。target は Monaco の
+  // 入力要素 (EditContext の div か textarea) でコンテナの子孫になる。document.body で拾うと、ターミナル
+  // (xterm の textarea) やエディタ外のフォームへの貼り付けまでコードへの外部入力としてカーソル位置に
+  // 記録してしまう (stdin は terminalInput の経路で別に記録される)
+  new InputDetector(ctx.editor.getContainerDomNode(), onDetected, ['paste', 'copy']);
+  // drop はファイルのドロップを受け付けている領域 (editorArea = .workbench。テンプレートの取込とオーバーレイの
+  // 範囲) で拾う。検出漏れは証明の信頼性を下げるので、Monaco の外への drop も外部入力として残す。
+  // 1 つの検出器だけが drop を聞くので、Monaco の中への drop も 1 回だけ記録される
+  new InputDetector(editorArea instanceof HTMLElement ? editorArea : ctx.editor.getContainerDomNode(), onDetected, [
+    'drop',
+  ]);
 
-  // リセットボタン（設定メニュー内）をクリックしてダイアログを表示
-  document.getElementById('reset-btn')?.addEventListener('click', () => {
-    document.getElementById('settings-dropdown')?.classList.remove('visible');
-    // 消えるモード名とタブ数を差し込んでから開く (#323)
-    prepareResetDialog(ctx);
-    resetDialog?.classList.remove('hidden');
-  });
-
-  // キャンセルボタン
-  document.getElementById('reset-cancel-btn')?.addEventListener('click', () => {
-    resetDialog?.classList.add('hidden');
-  });
-
-  // オーバーレイクリックで閉じる
-  resetDialog?.addEventListener('click', (e) => {
-    if (e.target === resetDialog) {
-      resetDialog.classList.add('hidden');
-    }
-  });
-
-  // Escキーで閉じる
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !resetDialog?.classList.contains('hidden')) {
-      resetDialog?.classList.add('hidden');
-    }
-  });
-
-  // リセット確認ボタン - イベント委任を使用
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    // ボタン自体またはその子要素（アイコン、テキスト）がクリックされた場合
-    const confirmBtn = target.closest('#reset-confirm-btn');
-    if (!confirmBtn) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    console.log('[TypedCode] Reset confirmed via event delegation');
-
-    // ダイアログを閉じる
-    resetDialog?.classList.add('hidden');
-
-    // 現在のモードのデータを消し、完了してからパラメータ無しでリロードする (#323)
-    void confirmReset(ctx);
-  });
+  // リセット機能 (ダイアログの開閉・確定。a11y は resetDialog.ts)
+  setupResetDialog(ctx);
 
   // ページ離脱時の確認ダイアログ
   // (セッションの isActive は書き換えない。リロードとタブ閉じの区別は下の sessionStorage フラグで行う)

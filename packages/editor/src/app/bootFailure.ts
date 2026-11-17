@@ -4,7 +4,10 @@
  * 起動のどこで止まっても、スピナーのまま残さずに `#boot-failure-overlay` を出す。
  * `entry.ts` (main の chunk の取得失敗・top-level の例外) と `main.ts` (`initializeApp` の reject)
  * の両方から呼ぶので、not-found の経路に重い依存を持ち込まないよう DOM 以外を import しない (#302)。
+ * (`dialogA11y` は依存を持たない DOM だけのモジュール)
  */
+
+import { showStaticDialog } from '../ui/components/dialogA11y.js';
 
 export interface BootFailureOptions {
   /** 別タブが古い版の IndexedDB 接続を握っていて開けなかった (`SessionStorageBlockedError`)。案内を足す。 */
@@ -13,7 +16,8 @@ export interface BootFailureOptions {
 
 /**
  * 起動の途中で投げられた例外を画面に出す (#325)。スピナーを消し、再読み込みを案内する静的オーバーレイを開く。
- * データを消す操作は置かない (保存済みのデータは残っている)。`data-app-state` は `initializing` のまま
+ * データを消す操作は置かない (保存済みのデータは残っている)。閉じる経路は無く、Escape でも閉じない (a11y は #305:
+ * 名前付きの modal dialog にして「再読み込み」へフォーカスする)。`data-app-state` は `initializing` のまま
  * (起動を途中で止める他の画面と同じ扱い。何で止まったかは `data-dialog="boot-failure"` で見る)。
  */
 export function showBootFailure(error: unknown, opts: BootFailureOptions = {}): void {
@@ -31,8 +35,12 @@ export function showBootFailure(error: unknown, opts: BootFailureOptions = {}): 
     detail.textContent = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   }
 
-  document.getElementById('boot-failure-reload-btn')?.addEventListener('click', () => window.location.reload(), {
+  const reloadBtn = document.getElementById('boot-failure-reload-btn');
+  reloadBtn?.addEventListener('click', () => window.location.reload(), {
     once: true,
   });
-  overlay.classList.remove('hidden');
+  // 二度呼ばれても (entry.ts と main.ts の両方) 開くのは 1 回
+  if (overlay.classList.contains('hidden')) {
+    showStaticDialog(overlay, { closeOnEscape: false, initialFocus: reloadBtn });
+  }
 }

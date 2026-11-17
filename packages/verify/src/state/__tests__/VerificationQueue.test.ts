@@ -10,7 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExamPackageManifest } from '@typedcode/shared';
-import { VerificationQueue } from '../VerificationQueue.js';
+import { MAX_CONSECUTIVE_WORKER_FAILURES, VerificationQueue } from '../VerificationQueue.js';
 import type { ProofFile, VerificationResultData, WorkerRequestMessage, WorkerResponseMessage } from '../../types.js';
 
 interface QueueInternals {
@@ -63,6 +63,14 @@ class MockWorker {
 
   terminate(): void {
     this.terminated = true;
+  }
+
+  /**
+   * Worker 自体の障害 (モジュールの読み込み失敗など) を起こす。この後この個体は何にも応答しない
+   * (テストが `respond` を呼ばない限り)。
+   */
+  fail(message = 'Failed to fetch dynamically imported module'): void {
+    this.onerror?.({ message });
   }
 
   /** この Worker から応答を返す (本物の Worker の onmessage と同じ形)。 */
@@ -243,5 +251,150 @@ describe('VerificationQueue scheduling with a mocked worker', () => {
 
     expect(onProgress).not.toHaveBeenCalled();
     expect(onComplete).not.toHaveBeenCalled();
+  });
+});
+
+describe('VerificationQueue recovery from worker failures (#700)', () => {
+  const originalWorker = globalThis.Worker;
+
+  beforeEach(() => {
+    MockWorker.instances = [];
+    globalThis.Worker = MockWorker as unknown as typeof Worker;
+  });
+
+  afterEach(() => {
+    globalThis.Worker = originalWorker;
+  });
+
+  it('fails the processing item once and sends the next item to a new worker instead of the broken one', () => {
+    const { queue, onError, onComplete } = setup();
+    queue.enqueue({ id: 'a', filename: 'a', rawData: proofJson(3) });
+    queue.enqueue({ id: 'b', filename: 'b', rawData: proofJson(3) });
+    const broken = currentWorker();
+
+    broken.fail();
+    currentWorker().respond({ type: 'result', id: 'b', result: RESULT });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith('a', expect.stringContaining('Worker error'));
+    expect(broken.terminated).toBe(true);
+    expect(broken.posted.map((m) => m.id)).toEqual(['a']);
+    expect(currentWorker()).not.toBe(broken);
+    expect(onComplete).toHaveBeenCalledWith('b', RESULT);
+  });
+
+  it('does not reuse a worker that failed while idle for the next enqueued item', () => {
+    const { queue } = setup();
+    const broken = currentWorker();
+
+    broken.fail();
+    queue.enqueue({ id: 'a', filename: 'a', rawData: proofJson(3) });
+
+    expect(broken.terminated).toBe(true);
+    expect(broken.posted).toEqual([]);
+    expect(currentWorker()).not.toBe(broken);
+    expect(currentWorker().posted.map((m) => m.id)).toEqual(['a']);
+  });
+
+  it('ignores late messages from a worker that was replaced after a worker failure', () => {
+    const { queue, onComplete, onProgress, onError } = setup();
+    queue.enqueue({ id: 'a', filename: 'a', rawData: proofJson(3) });
+    queue.enqueue({ id: 'b', filename: 'b', rawData: proofJson(3) });
+    const broken = currentWorker();
+    broken.fail();
+
+    broken.respond({ type: 'progress', id: 'b', current: 1, total: 3, phase: 'chain' });
+    broken.respond({ type: 'result', id: 'b', result: RESULT });
+    broken.respond({ type: 'error', id: 'b', error: 'late' });
+
+    expect(onProgress).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(queue.getCurrentProcessing()?.id).toBe('b');
+  });
+
+  it('stops creating workers after repeated failures and ends every remaining item with an explicit error', () => {
+    const { queue, onError } = setup();
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+    for (const id of ids) queue.enqueue({ id, filename: id, rawData: proofJson(3) });
+
+    // 毎回、いま送られた Worker を壊す。上限が無ければ項目の数だけ Worker を作り直し続ける。
+    for (let i = 0; i < 20 && queue.isCurrentlyProcessing(); i++) currentWorker().fail();
+
+    expect(queue.isCurrentlyProcessing()).toBe(false);
+    expect(queue.getQueueLength()).toBe(0);
+    expect(MockWorker.instances).toHaveLength(MAX_CONSECUTIVE_WORKER_FAILURES);
+    expect(MAX_CONSECUTIVE_WORKER_FAILURES).toBeLessThan(ids.length);
+    expect(onError.mock.calls.map(([id]) => id).sort()).toEqual(ids);
+  });
+
+  it('gives an item enqueued after the failure limit a single new worker and fails it explicitly if that worker also fails', () => {
+    const { queue, onError } = setup();
+    for (let i = 0; i < MAX_CONSECUTIVE_WORKER_FAILURES; i++) {
+      queue.enqueue({ id: `q${i}`, filename: `q${i}`, rawData: proofJson(3) });
+    }
+    for (let i = 0; i < 20 && queue.isCurrentlyProcessing(); i++) currentWorker().fail();
+    const before = MockWorker.instances.length;
+
+    queue.enqueue({ id: 'late', filename: 'late', rawData: proofJson(3) });
+    queue.enqueue({ id: 'later', filename: 'later', rawData: proofJson(3) });
+    currentWorker().fail();
+
+    expect(MockWorker.instances).toHaveLength(before + 1);
+    expect(queue.isCurrentlyProcessing()).toBe(false);
+    expect(onError).toHaveBeenCalledWith('late', expect.any(String));
+    expect(onError).toHaveBeenCalledWith('later', expect.any(String));
+  });
+
+  it('counts only consecutive failures: a worker that answers resets the failure limit', () => {
+    const { queue, onComplete } = setup();
+    const ids = Array.from({ length: MAX_CONSECUTIVE_WORKER_FAILURES * 3 }, (_, i) => `p${i}`);
+    for (const id of ids) queue.enqueue({ id, filename: id, rawData: proofJson(3) });
+
+    // 上限の 1 手前まで壊し、1 件答えさせ、また上限の 1 手前まで壊す。
+    for (let i = 0; i < MAX_CONSECUTIVE_WORKER_FAILURES - 1; i++) currentWorker().fail();
+    const answered = queue.getCurrentProcessing()?.id;
+    currentWorker().respond({ type: 'result', id: answered ?? '', result: RESULT });
+    for (let i = 0; i < MAX_CONSECUTIVE_WORKER_FAILURES - 1; i++) currentWorker().fail();
+
+    expect(onComplete).toHaveBeenCalledWith(answered, RESULT);
+    expect(queue.isCurrentlyProcessing()).toBe(true);
+    expect(queue.getQueueLength()).toBeGreaterThan(0);
+  });
+
+  it('keeps the same worker and moves on to the next item when the worker reports a per-proof error', () => {
+    const { queue, onError, onComplete } = setup();
+    queue.enqueue({ id: 'a', filename: 'a', rawData: proofJson(3) });
+    queue.enqueue({ id: 'b', filename: 'b', rawData: proofJson(3) });
+    const worker = currentWorker();
+
+    worker.respond({ type: 'error', id: 'a', error: 'hash chain broken' });
+    worker.respond({ type: 'result', id: 'b', result: RESULT });
+
+    expect(onError).toHaveBeenCalledWith('a', 'hash chain broken');
+    expect(worker.terminated).toBe(false);
+    expect(MockWorker.instances).toEqual([worker]);
+    expect(worker.posted.map((m) => m.id)).toEqual(['a', 'b']);
+    expect(onComplete).toHaveBeenCalledWith('b', RESULT);
+  });
+
+  it('ends items with an error instead of throwing when the worker cannot even be constructed', () => {
+    globalThis.Worker = class {
+      constructor() {
+        throw new Error('SecurityError');
+      }
+    } as unknown as typeof Worker;
+    const queue = new VerificationQueue();
+    const onError = vi.fn();
+    queue.setOnError(onError);
+
+    expect(() => {
+      queue.enqueue({ id: 'a', filename: 'a', rawData: proofJson(3) });
+      queue.enqueue({ id: 'b', filename: 'b', rawData: proofJson(3) });
+    }).not.toThrow();
+
+    expect(queue.isCurrentlyProcessing()).toBe(false);
+    expect(onError).toHaveBeenCalledWith('a', expect.stringContaining('SecurityError'));
+    expect(onError).toHaveBeenCalledWith('b', expect.any(String));
   });
 });

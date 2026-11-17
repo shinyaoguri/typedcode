@@ -6,13 +6,28 @@
 import type { DetectedEvent, DetectedEventType, DetectedEventData, OnDetectedCallback } from '@typedcode/shared';
 import { t } from '../i18n/index.js';
 
+/** 検出するイベントの種類 (既定は全部) */
+export type InputDetectorEventType = 'paste' | 'drop' | 'copy';
+
+const ALL_EVENT_TYPES: readonly InputDetectorEventType[] = ['paste', 'drop', 'copy'];
+
 export class InputDetector {
   private element: HTMLElement | null;
   private onDetectedAction: OnDetectedCallback;
+  private readonly eventTypes: readonly InputDetectorEventType[];
 
-  constructor(domElement: HTMLElement, onDetectedAction?: OnDetectedCallback) {
+  /**
+   * @param domElement - capture で聞く要素。この要素の中が target のイベントだけを拾う
+   * @param eventTypes - 拾うイベントの種類 (要素ごとに範囲を分けるときに絞る)
+   */
+  constructor(
+    domElement: HTMLElement,
+    onDetectedAction?: OnDetectedCallback,
+    eventTypes: readonly InputDetectorEventType[] = ALL_EVENT_TYPES
+  ) {
     this.element = domElement;
     this.onDetectedAction = onDetectedAction ?? (() => {});
+    this.eventTypes = eventTypes;
     this.setupDetectors();
   }
 
@@ -23,48 +38,54 @@ export class InputDetector {
     if (!this.element) return;
 
     // paste イベントを検出
-    this.element.addEventListener(
-      'paste',
-      (e: ClipboardEvent) => {
-        const clipboardData = e.clipboardData ?? window.clipboardData;
-        const pastedText = clipboardData?.getData('text') ?? '';
+    if (this.eventTypes.includes('paste')) {
+      this.element.addEventListener(
+        'paste',
+        (e: ClipboardEvent) => {
+          const clipboardData = e.clipboardData ?? window.clipboardData;
+          const pastedText = clipboardData?.getData('text') ?? '';
 
-        this.notifyDetected('paste', t('events.paste', { length: String(pastedText.length) }), {
-          text: pastedText,
-          length: pastedText.length,
-        });
-      },
-      true
-    );
+          this.notifyDetected('paste', t('events.paste', { length: String(pastedText.length) }), {
+            text: pastedText,
+            length: pastedText.length,
+          });
+        },
+        true
+      );
+    }
 
     // drop イベントを検出
-    this.element.addEventListener(
-      'drop',
-      (e: DragEvent) => {
-        const droppedText = e.dataTransfer?.getData('text') ?? '';
+    if (this.eventTypes.includes('drop')) {
+      this.element.addEventListener(
+        'drop',
+        (e: DragEvent) => {
+          const droppedText = e.dataTransfer?.getData('text') ?? '';
 
-        this.notifyDetected('drop', t('events.drop', { length: String(droppedText.length) }), {
-          text: droppedText,
-          length: droppedText.length,
-        });
-      },
-      true
-    );
+          this.notifyDetected('drop', t('events.drop', { length: String(droppedText.length) }), {
+            text: droppedText,
+            length: droppedText.length,
+          });
+        },
+        true
+      );
+    }
 
     // copy イベント（監査用に記録）
-    this.element.addEventListener(
-      'copy',
-      () => {
-        const selection = window.getSelection();
-        const copiedText = selection?.toString() ?? '';
+    if (this.eventTypes.includes('copy')) {
+      this.element.addEventListener(
+        'copy',
+        () => {
+          const selection = window.getSelection();
+          const copiedText = selection?.toString() ?? '';
 
-        this.notifyDetected('copy', t('events.copy', { length: String(copiedText.length) }), {
-          text: copiedText,
-          length: copiedText.length,
-        });
-      },
-      true
-    );
+          this.notifyDetected('copy', t('events.copy', { length: String(copiedText.length) }), {
+            text: copiedText,
+            length: copiedText.length,
+          });
+        },
+        true
+      );
+    }
   }
 
   /**

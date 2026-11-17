@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_BROWSER_ENV } from './browser-env.js';
 import { E2E_PORTS } from './ports.js';
 
 /**
@@ -65,10 +66,16 @@ export default defineConfig({
   // 打鍵待ち・sync 待ちの wall-clock なので 2 並列までは安全域 (CI ランナーは 4 vCPU)。
   // flake が再発したら 1 に戻す (その場合も spec の --mode fast 整合は維持する)。
   workers: 2,
-  reporter: isCI ? [['list'], ['html', { open: 'never' }], ['github']] : [['list'], ['html', { open: 'never' }]],
+  // CI の json は retry で通った flaky を拾う入力 (scripts/e2e-flaky.mjs / #583)。出力先は固定で、
+  // deploy.yml の e2e-shard が読む。本番ビルド向け (playwright.build.config.ts) は reports/e2e-build.json に分ける。
+  reporter: isCI
+    ? [['list'], ['html', { open: 'never' }], ['github'], ['json', { outputFile: 'reports/e2e.json' }]]
+    : [['list'], ['html', { open: 'never' }]],
 
   use: {
     baseURL: BASE_URL,
+    // 言語とタイムゾーンを実行環境 (CI は UTC、手元は JST など) に依存させない (#597)。値は browser-env.ts
+    ...E2E_BROWSER_ENV,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: isCI ? 'retain-on-failure' : 'off',

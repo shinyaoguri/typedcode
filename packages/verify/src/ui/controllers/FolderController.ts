@@ -6,6 +6,7 @@ import { FolderSyncManager } from '../../services/FolderSyncManager';
 import type { ScreenshotService } from '../../services/ScreenshotService';
 import { collectFolderChainImageHashes, loadFolderScreenshots } from '../../services/folderScreenshotLoader';
 import type { FileProcessor, ParsedFileData } from '../../services/FileProcessor';
+import type { ContainerInput } from './FileController';
 import type { Sidebar } from '../Sidebar';
 import type { StatusBarUI } from '../StatusBarUI';
 import type { FSAccessFileEntry, HierarchicalFolder, VerifyScreenshot } from '../../types';
@@ -29,6 +30,28 @@ async function readScreenshotImage(fileEntry: FSAccessFileEntry): Promise<Parsed
   };
 }
 
+/**
+ * 変わるとフォルダのスクショの判定が変わりうるファイルか (#703)。`screenshots/` 配下 (画像・manifest) と、
+ * チェーン側の imageHash 集合の材料になる proof 候補 (`collectFolderChainImageHashes` が読む `*.json`)。
+ */
+function affectsFolderScreenshots(path: string): boolean {
+  if (path.startsWith('screenshots/')) return true;
+  const name = path.split('/').pop() ?? path;
+  return !name.startsWith('.') && name.toLowerCase().endsWith('.json');
+}
+
+/** スクショの判定 (読み直しで変わったか) の比較に使う値。画像の中身は判定 (verified / tampered) に表れる */
+function screenshotVerdicts(screenshots: readonly VerifyScreenshot[]): string {
+  return JSON.stringify(
+    screenshots.map((s) => [s.filename, s.imageHash, s.eventSequence, s.timestamp, s.verified, s.missing, s.tampered])
+  );
+}
+
+/** 監視中のフォルダのスクショ (proof のスクショ検証の入力)。フォルダを開いたとき・監視で変わったときに読む */
+interface FolderScreenshots extends ContainerInput {
+  rootHandle: FileSystemDirectoryHandle;
+}
+
 export interface FolderControllerDependencies {
   fileProcessor: FileProcessor;
   sidebar: Sidebar;
@@ -44,12 +67,19 @@ export interface FolderControllerDependencies {
   ) => void;
   addPlaintextFile: (fileData: ParsedFileData, folderId?: string) => void;
   addImageFile: (fileData: ParsedFileData, folderId?: string) => void;
-  /** 外部で変更されたファイルを、同じタブ ID で取り込み直す (#695) */
-  replaceFile: (tabId: string, fileData: ParsedFileData) => void;
+  /**
+   * 外部で変更されたファイルを、同じタブ ID で取り込み直す (#695)。`container` を渡すと proof のスクショ・
+   * 記録開始時刻をそれに差し替える (フォルダの `screenshots/` が変わったとき。#703)
+   */
+  replaceFile: (tabId: string, fileData: ParsedFileData, container?: ContainerInput) => void;
   /** 読み込んだファイルが揃ったところで、同梱ソースと proof.content を照合する (#293) */
   settleSubmission: () => void;
   onScreenshotServiceUpdate?: (service: ScreenshotService) => void;
-  onStatusBarUpdate?: () => void;
+  /**
+   * ステータスバーを今の状態で出し直す。`message` は操作の知らせ (フォルダを開いた等) で、集約 (data-proof-*) を
+   * 出せるときは集約が優先される (#683。メッセージで集約を消すと、出し直す契機が来ないことがある)
+   */
+  onStatusBarUpdate?: (message?: string) => void;
   onFileRemove?: (id: string) => void;
 }
 
@@ -60,6 +90,27 @@ export class FolderController {
   private watchedRootFolderId: string | null = null;
   /** 監視の走査が失敗し続けている間 true。失敗の表示は失敗に入った回だけ出す (#699) */
   private syncFailing = false;
+
+  /** 監視中のフォルダのスクショ (#703)。フォルダを開いていなければ null */
+  private folderScreenshots: FolderScreenshots | null = null;
+  /** フォルダのスクショを渡した proof の FSA パス。スクショが変わったらこれらを取り込み直す (#703) */
+  private screenshotProofPaths = new Set<string>();
+  /** スクショの読み直しの世代。フォルダを開き直す・次の読み直しを予約すると、古い読み直しの結果を捨てる */
+  private screenshotGeneration = 0;
+  /** 予約したがまだ始まっていない読み直しがあるか (同じ走査の通知を 1 回にまとめる) */
+  private pendingScreenshotResync = false;
+  /** 走っている読み直しの数 (監視の周期でのやり直しを、走っている間は重ねない) */
+  private runningScreenshotResyncs = 0;
+  /**
+   * まだ済んでいない読み直しの求め。読み直しが最後まで済んだときだけ消す。読み取りに失敗した・新しい読み直しに
+   * 譲った読み直しは求めを残し、次に監視の走査が成功したときにやり直す (変化の通知は 1 回しか来ない)。
+   * `force` は screenshots/ 自体が変わったか (判定が同じでも proof を取り込み直す)
+   */
+  private screenshotResyncDemand: { force: boolean } | null = null;
+  /** 読み直しが読み取りに失敗し続けている間 true。失敗の表示は失敗に入った回だけ出す (#699 と同じ流儀) */
+  private screenshotResyncFailing = false;
+  /** 最後に予約した読み直し */
+  private screenshotResync: Promise<void> = Promise.resolve();
 
   constructor(deps: FolderControllerDependencies) {
     this.deps = deps;
@@ -100,10 +151,22 @@ export class FolderController {
 
     const handle = await this.fsAccessService.showDirectoryPicker();
     if (!handle) return;
+    await this.openFolder(handle);
+  }
 
+  /**
+   * 選んだフォルダを読み込み、監視を始める
+   */
+  async openFolder(handle: FileSystemDirectoryHandle): Promise<void> {
     // 既存の監視を停止
     this.syncManager.stopWatching();
     this.syncFailing = false;
+    // 前のフォルダのスクショの読み直しが遅れて終わっても、こちらに当てない
+    this.screenshotGeneration++;
+    this.folderScreenshots = null;
+    this.screenshotProofPaths.clear();
+    this.screenshotResyncDemand = null;
+    this.screenshotResyncFailing = false;
 
     // ディレクトリを読み取り
     const result = await this.fsAccessService.readDirectoryRecursive(handle);
@@ -123,6 +186,11 @@ export class FolderController {
     if (loadResult.screenshotService) {
       this.deps.onScreenshotServiceUpdate?.(loadResult.screenshotService);
     }
+    this.folderScreenshots = {
+      rootHandle: handle,
+      screenshots: folderScreenshots,
+      startTimestamp: folderStartTimestamp,
+    };
 
     // ルートフォルダを作成
     const rootFolderId = this.deps.generateId();
@@ -181,8 +249,7 @@ export class FolderController {
     // 監視を開始
     await this.syncManager.startWatching(handle, 3000);
 
-    this.deps.onStatusBarUpdate?.();
-    this.deps.statusBar.setMessage(`${t('messages.folderOpened')}: ${result.rootName}`);
+    this.notify(`${t('messages.folderOpened')}: ${result.rootName}`);
   }
 
   /**
@@ -235,6 +302,8 @@ export class FolderController {
 
       for (const fileData of result.files) {
         if (fileData.type === 'proof') {
+          // フォルダのスクショが変わったら取り込み直す (#703)
+          if (folderScreenshots) this.screenshotProofPaths.add(fileEntry.path);
           // フォルダからスクリーンショットが読み込まれている場合は渡す
           this.deps.addFileToVerification(
             fileData.filename,
@@ -271,6 +340,8 @@ export class FolderController {
 
   /** 走査が最後まで読めた時の処理。失敗の表示を出していたら通常の表示に戻す (#699) */
   private handleSyncComplete(): void {
+    // 読み取りに失敗して済んでいないスクショの読み直しは、走査が成功したこの周期でやり直す (#703)
+    this.retryScreenshotResync();
     if (!this.syncFailing) return;
     this.syncFailing = false;
     this.deps.onStatusBarUpdate?.();
@@ -280,8 +351,20 @@ export class FolderController {
    * 外部でファイルが追加された時の処理
    */
   private async handleExternalFileAdded(file: FSAccessFileEntry): Promise<void> {
+    if (affectsFolderScreenshots(file.path)) this.scheduleScreenshotResync(file.path);
     const parentPath = file.path.split('/').slice(0, -1).join('/');
     const folderId = this.deps.sidebar.getFolderIdByPath(parentPath) ?? this.watchedRootFolderId ?? undefined;
+
+    // screenshots/ の画像は初回取り込みと同じく画像タブにする (FileProcessor に回すと平文で読まれる)
+    if (isScreenshotImage(file.path)) {
+      try {
+        this.deps.addImageFile(await readScreenshotImage(file), folderId);
+        this.notify(`${t('messages.fileAdded')}: ${file.name}`);
+      } catch (error) {
+        console.error('Error loading added image:', file.path, error);
+      }
+      return;
+    }
 
     // ZIPファイルを階層的に処理
     if (file.name.endsWith('.zip')) {
@@ -296,7 +379,19 @@ export class FolderController {
 
       for (const fileData of result.files) {
         if (fileData.type === 'proof') {
-          this.deps.addFileToVerification(fileData.filename, fileData.rawData, folderId, fileData.relativePath);
+          // フォルダはコンテナなので、スクショが無くても未検査 (undefined) ではなく 0 枚として渡す (不変条件 8。#703)。
+          // スクショは読み込みを待った後のここで引く (待つ前に引くと、その間に終わった読み直しの結果を取り逃す)。
+          // 読み直しは folderScreenshots の更新と screenshotProofPaths の写しを同期的に続けて行うので、ここが
+          // 読み直しの前なら写しに入って取り込み直され、後なら最新のスクショを受け取る
+          this.screenshotProofPaths.add(file.path);
+          this.deps.addFileToVerification(
+            fileData.filename,
+            fileData.rawData,
+            folderId,
+            fileData.relativePath,
+            this.folderScreenshots?.screenshots ?? [],
+            this.folderScreenshots?.startTimestamp
+          );
         } else if (fileData.type === 'image') {
           this.deps.addImageFile(fileData, folderId);
         } else {
@@ -305,7 +400,7 @@ export class FolderController {
       }
 
       this.deps.settleSubmission();
-      this.deps.statusBar.setMessage(`${t('messages.fileAdded')}: ${file.name}`);
+      this.notify(`${t('messages.fileAdded')}: ${file.name}`);
     } catch (error) {
       console.error('Error processing added file:', error);
     }
@@ -319,6 +414,7 @@ export class FolderController {
    * 新しい検証結果が混ざる)。
    */
   private async handleExternalFileModified(file: FSAccessFileEntry): Promise<void> {
+    if (affectsFolderScreenshots(file.path)) this.scheduleScreenshotResync(file.path);
     const existingFileId = this.deps.sidebar.getFileIdByPath(file.path);
     if (!existingFileId) return;
 
@@ -330,7 +426,7 @@ export class FolderController {
       if (!fileData) return;
 
       this.deps.replaceFile(existingFileId, fileData);
-      this.deps.statusBar.setMessage(`${t('messages.fileUpdated')}: ${file.name}`);
+      this.notify(`${t('messages.fileUpdated')}: ${file.name}`);
     } catch (error) {
       console.error('Error processing modified file:', error);
     }
@@ -340,11 +436,141 @@ export class FolderController {
    * 外部でファイルが削除された時の処理
    */
   private handleExternalFileDeleted(path: string): void {
+    this.screenshotProofPaths.delete(path);
+    if (affectsFolderScreenshots(path)) this.scheduleScreenshotResync(path);
     const fileId = this.deps.sidebar.getFileIdByPath(path);
     if (fileId) {
       this.deps.onFileRemove?.(fileId);
       const filename = path.split('/').pop() ?? path;
-      this.deps.statusBar.setMessage(`${t('messages.fileDeleted')}: ${filename}`);
+      this.notify(`${t('messages.fileDeleted')}: ${filename}`);
+    }
+  }
+
+  /**
+   * フォルダのスクショの読み直しを予約する (#703)。監視の 1 回の走査は通知を同期的に続けて出すので、
+   * 次のマイクロタスクで 1 回だけ読み直せば、同じ走査で複数のファイルが変わっても proof の取り込み直しは
+   * proof ごとに 1 回で済む。
+   */
+  private scheduleScreenshotResync(path: string): void {
+    if (!this.folderScreenshots) return;
+    const force = path.startsWith('screenshots/') || (this.screenshotResyncDemand?.force ?? false);
+    this.screenshotResyncDemand = { force };
+    this.startScreenshotResync();
+  }
+
+  /** 済んでいない読み直しの求めが残っていて、読み直しが走っていなければ始める (監視の走査が成功したとき)。 */
+  private retryScreenshotResync(): void {
+    if (!this.screenshotResyncDemand || this.pendingScreenshotResync || this.runningScreenshotResyncs > 0) return;
+    this.startScreenshotResync();
+  }
+
+  private startScreenshotResync(): void {
+    if (this.pendingScreenshotResync) return;
+    this.pendingScreenshotResync = true;
+    const generation = ++this.screenshotGeneration;
+    this.screenshotResync = Promise.resolve().then(() => {
+      this.pendingScreenshotResync = false;
+      return this.resyncFolderScreenshots(generation);
+    });
+  }
+
+  /**
+   * フォルダのスクショを読み直し、フォルダのスクショを渡した proof を同じタブ ID で取り込み直す (#703)。
+   *
+   * 読み方は開いたときと同じ (チェーン側の imageHash 集合を集め直してから `loadFolderScreenshots`)。
+   * proof はディスクから読み直して `replaceFile` に渡す (#695 と同じ経路。本文・照合・検証を新しい内容の
+   * 1 スナップショットに揃える)。`screenshots/` 自体が変わっていない (proof だけが変わった) ときは、判定が
+   * 変わったときだけ取り込み直す。
+   *
+   * 読み取りに失敗したら何も確定しない (#699 と同じ考え方)。読めなかった画像・manifest・proof を「無い」と
+   * 見ると、スクショ 0 枚 (剥ぎ取り疑い) や改竄の誤判定を確定してしまう。そのため読みはすべて失敗を伝える形
+   * (`strict`) で行い、全部読めてから、スクショの更新と proof の取り込み直しを同期的に続けて行う。
+   * 失敗した求めは残り、次に監視の走査が成功したときにやり直す。
+   */
+  private async resyncFolderScreenshots(generation: number): Promise<void> {
+    const current = this.folderScreenshots;
+    const demand = this.screenshotResyncDemand;
+    const rootFolderId = this.watchedRootFolderId;
+    if (!current || !demand || generation !== this.screenshotGeneration) return;
+    this.runningScreenshotResyncs++;
+    try {
+      const listing = await this.fsAccessService.readDirectoryRecursive(current.rootHandle, '', { strict: true });
+      if (!listing.success) throw new Error(listing.error ?? 'folder read failed');
+      const chainImageHashes = await collectFolderChainImageHashes(listing.files, { strict: true });
+      const loaded = await loadFolderScreenshots(current.rootHandle, chainImageHashes, { strict: true });
+
+      const changed =
+        screenshotVerdicts(current.screenshots) !== screenshotVerdicts(loaded.screenshots) ||
+        current.startTimestamp !== loaded.startTimestamp;
+      // 取り込み直す proof を先にすべて読む。読んでいる間に足された proof も読み、残りが無くなったところで
+      // (await を挟まずに) スクショを更新して取り込み直す。足された proof の取り込み口はスクショを待った後で
+      // 引くので、ここより後なら新しいスクショを受け取る
+      const reread = new Map<string, { tabId: string; fileData: ParsedFileData } | null>();
+      if (demand.force || changed) {
+        const entries = new Map(listing.files.map((entry) => [entry.path, entry]));
+        for (;;) {
+          const pending = [...this.screenshotProofPaths].filter((path) => !reread.has(path));
+          if (pending.length === 0) break;
+          for (const path of pending) {
+            const tabId = this.deps.sidebar.getFileIdByPath(path);
+            const entry = entries.get(path) ?? (await this.findFileEntry(current.rootHandle, path));
+            if (!tabId || !entry) {
+              reread.set(path, null);
+              continue;
+            }
+            const result = await this.deps.fileProcessor.processFromHandle(entry.handle, entry.path);
+            if (!result.success) throw new Error(result.error ?? `cannot read ${path}`);
+            const fileData = result.files[0];
+            reread.set(path, fileData ? { tabId, fileData } : null);
+          }
+        }
+      }
+
+      // 読んでいる間に次の読み直しが予約された・別のフォルダを開いた (求めは残し、新しい読み直しに任せる)
+      if (generation !== this.screenshotGeneration || this.watchedRootFolderId !== rootFolderId) return;
+      this.folderScreenshots = {
+        rootHandle: current.rootHandle,
+        screenshots: loaded.screenshots,
+        startTimestamp: loaded.startTimestamp,
+      };
+      if (loaded.screenshotService) this.deps.onScreenshotServiceUpdate?.(loaded.screenshotService);
+      for (const proof of reread.values()) {
+        if (!proof) continue;
+        this.deps.replaceFile(proof.tabId, proof.fileData, {
+          screenshots: loaded.screenshots,
+          startTimestamp: loaded.startTimestamp,
+        });
+      }
+      if (this.screenshotResyncDemand === demand) this.screenshotResyncDemand = null;
+      if (this.screenshotResyncFailing) {
+        this.screenshotResyncFailing = false;
+        this.deps.onStatusBarUpdate?.();
+      }
+    } catch (error) {
+      // 何も確定しない。求めは残し (取り込み直しを省かないよう force にする)、次の成功した走査でやり直す
+      console.error('Error reloading folder screenshots:', error);
+      if (this.watchedRootFolderId !== rootFolderId) return;
+      this.screenshotResyncDemand = { force: true };
+      if (!this.screenshotResyncFailing) {
+        this.screenshotResyncFailing = true;
+        this.deps.statusBar.setError(`${t('errors.folderSyncFailed')}: ${(error as Error).message}`);
+      }
+    } finally {
+      this.runningScreenshotResyncs--;
+    }
+  }
+
+  /** 走査の一覧に無い proof (読み直しの間に足されたもの) のハンドルを引く。 */
+  private async findFileEntry(root: FileSystemDirectoryHandle, path: string): Promise<FSAccessFileEntry | null> {
+    const parts = path.split('/');
+    const name = parts.pop() ?? path;
+    let dir = root;
+    try {
+      for (const part of parts) dir = await dir.getDirectoryHandle(part);
+      const handle = await dir.getFileHandle(name);
+      return { handle, path, name, lastModified: 0 };
+    } catch {
+      return null;
     }
   }
 
@@ -367,7 +593,7 @@ export class FolderController {
     };
 
     this.deps.sidebar.addHierarchicalFolder(folder);
-    this.deps.statusBar.setMessage(`${t('messages.folderAdded')}: ${name}`);
+    this.notify(`${t('messages.folderAdded')}: ${name}`);
   }
 
   /**
@@ -376,7 +602,15 @@ export class FolderController {
   private handleExternalFolderDeleted(path: string): void {
     this.deps.sidebar.removeFolderByPath(path);
     const folderName = path.split('/').pop() ?? path;
-    this.deps.statusBar.setMessage(`${t('messages.folderDeleted')}: ${folderName}`);
+    this.notify(`${t('messages.folderDeleted')}: ${folderName}`);
+  }
+
+  /**
+   * 操作の知らせを出す。集約を消さないよう、ステータスバーの表示はいつも onStatusBarUpdate に決めさせる (#683)
+   */
+  private notify(message: string): void {
+    if (this.deps.onStatusBarUpdate) this.deps.onStatusBarUpdate(message);
+    else this.deps.statusBar.setMessage(message);
   }
 
   /**
@@ -517,7 +751,7 @@ export class FolderController {
     }
 
     this.deps.settleSubmission();
-    this.deps.statusBar.setMessage(`${t('messages.folderOpened')}: ${zipFolderName}`);
+    this.notify(`${t('messages.folderOpened')}: ${zipFolderName}`);
   }
 
   /**
@@ -540,6 +774,11 @@ export class FolderController {
     }
 
     return folderMap;
+  }
+
+  /** 最後に予約したスクショの読み直し (#703) が終わるのを待つ */
+  whenScreenshotsResynced(): Promise<void> {
+    return this.screenshotResync;
   }
 
   /**

@@ -138,6 +138,10 @@ interface EventHashData {
 
 加えて `StoredEvent` には UI 表示用のメタ情報 (`description`, `selectedText` 等) が含まれるが、**ハッシュ計算には使わない**。
 
+**`contentChange` の `inputType` の付け方 (editor 側、#720)**: Monaco の変更イベントは入力の出自を持たないので、editor の `OperationDetector` が範囲と文字列から推定する。composition 系 (`insertCompositionText` / `insertFromComposition` / `deleteCompositionText`) は、Monaco の `onDidCompositionStart` / `onDidCompositionEnd` の間 (と end の直後の 1 件) に、composition の領域 (開始時の選択範囲から、対応した編集ごとに伸縮する offset の範囲) と交差または接する編集にだけ付ける (`tracking/compositionCorrelation.ts` + `CompositionTracker.ts`)。改行を含む編集は composition 中でも通常の分類にし、真正な composition には長さの上限を置かない。文字種 (CJK を含むか) では推定しない: composition に対応しない複数文字・単一行の挿入は文字種によらず `insertReplacementText` になり、§7.1 の一括挿入の評価に掛かる (#720 以前は CJK を 1 文字でも含むと `insertFromComposition` になり、長い直接挿入が評価を素通りした)。検証側は `inputType` をそのまま読み、旧 proof の `insertFromComposition` を文字種で読み直さない。記録形式と `PROOF_FORMAT_VERSION` は変えていない。
+
+残る限界 (#720): composition 中に領域へ接する位置に入る直接の編集は composition に帰属する。main world のスクリプトは composition の開始を偽装できる (1 文字ずつ打鍵を偽装するのと同格)。手製 proof は任意のラベルを書ける (ラベルは自己申告)。IME のユーザー辞書や音声入力 (composition として届く場合) による長文の確定は正規の composition として扱う。出自が分からない編集を独立した値として記録するかは #721 で決める。
+
 ### 4.2. 初期ハッシュ (ルート) の構築
 
 セッション開始時に **fingerprint** からチェーンルートを生成する。
@@ -762,6 +766,7 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 | (#138) 手製 proof で内部ペーストの監査マーカー (data=AI コード) と同一 data の `insertParagraph` を並べ、自分のコードのコピペに偽装する | `SessionProvenanceLedger` が replay で再現した**セッション内在性**を要求する: (a) それ以前の `copyOperation` に完全一致し、かつその data がコピー時点の replay 文書の部分文字列、または (b) 適用前の replay 文書の部分文字列。マーカー自体は判定入力にしない (ADR-0020)。不成立なら複数行 bulk 挿入として `isPureTyping=false` |
 | (#175) 挿入イベント無しで `contentSnapshot` により文書を丸ごと差し替える | replay 文書と乖離した snapshot を `divergentContentSnapshotEventIndexes` に記録し、台帳には取り込まない。1 件でもあれば `isPureTyping=false`。editor の正規 snapshot は常に replay と一致する no-op |
 | (#139) minify した 1 行プログラムを `insertText` 1 イベントで投入する | 構造文字のみでない単一行 insertText は `MAX_BENIGN_SINGLE_LINE_INSERT_CHARS` を超えると benign から外れ、bulk 扱い |
+| (#720) composition を経ずに、CJK を含む長い 1 行を 1 編集で直接挿入する (拡張機能の executeEdits など) | editor が composition に対応付かない複数文字・単一行の挿入を `insertReplacementText` と記録し (§4.1)、`MAX_BENIGN_SINGLE_LINE_INSERT_CHARS` を超えれば bulk 扱い・外部入力に数える。検証側の式は変えていない |
 | (限界・誤検知方向) 別タブでコピーした内容を貼る正規操作 | 1 proof = 1 タブなので内部ペースト検証が成立せず bulk 扱い。`valid` は不変 |
 
 `metadata.bulkInsertEvents` の定義は変えない (申告値と再計算値の完全一致を `verifyProofMetadata` が要求するため。変えると既存 proof が invalid になる)。
@@ -1023,4 +1028,5 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-07 | 問題の入出力例 (ADR-0048, #648) | `ExamBundleProblem` に任意の `examples` (`{ name, stdin, stdout }` の配列) を足した。`.tcexam` / `.tcclass` に載り、editor の問題パネルに「動作確認の例」として表示する (判定しない・proof に記録しない)。`examples` を持たない問題の `problemContentHash` は不変。§4.9 を追加 |
 | 2026-11-11 | 試験の封印 starter と templateInjection の照合 (#718) | `verifyExamBinding` が v2 の該当問題の starter と proof の `templateInjection` の `data.content` を比べ、不一致を束縛失敗 (`starter.status='mismatch'`) にする。v1 は `not-evaluated`。§6.4 手順 5b と脅威表を反映 |
 | 2026-11-16 | fast の保証と改ざん検出の範囲を実際の検証に合わせる (#677) | §8.1 の「任意 1 ビットの改ざんを検出」は、ハッシュ・署名の対象外 (イベントの派生フィールド・`proof.signature`・自己申告の `mode` など) まで含むように読めた。対象 (`pickHashedEventFields` と `posw`、`typingProofData`、root の入力、cp の照合値と署名 payload) と対象外を列挙し、fast / full で同じであること、検証器が版で対象を切り替えないことを書いた。§8.2 は「PoSW の値だけを書き換える」(fast・full とも拒否) と「偽の PoSW のまま作り直す」(fast は通し、full だけが拒否) を分け、固定しているテストを示した。**判定 (`verifyProofFile` の valid / exit code)・proof フォーマット・verify-cli の `failedCheck` の値は不変** |
+| 2026-11-16 | composition に対応付けて IME を分類する (#720) | editor の `OperationDetector` が CJK を含む複数文字の挿入を文字種だけで `insertFromComposition` にしていたのをやめ、Monaco の `onDidCompositionStart` / `End` と編集の範囲を対応付けた編集だけを composition 系にした (§4.1)。composition に対応しない直接挿入は `insertReplacementText` として既存の一括挿入の評価に掛かる。shared の判定式・`InputType` の値域・記録形式・`PROOF_FORMAT_VERSION` は不変 |
 | 2026-11-16 | 試験の許可言語の照合 (#727) | `verifyExamBinding` が proof の自己申告 `language` を manifest の `allowed.languages` (v2 は該当問題の starter の言語も) と完全一致で照合し、外れたら束縛失敗 (`language.status='not-allowed'`) にする。許可言語が空なら `not-evaluated`。§6.4 手順 5c と脅威表を反映 |

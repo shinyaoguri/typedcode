@@ -11,3 +11,5 @@ shots/
 fixtures/
 # npm run bench:posw の出力 (記録側 PoSW のベンチの JSON。#241)
 bench/
+# CI の Playwright の json レポート (flaky の収集の入力。scripts/e2e-flaky.mjs / #583)
+reports/
