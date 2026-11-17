@@ -15,6 +15,7 @@
     "playwright.deployed.config.ts",
     "global-setup.ts",
     "global-setup.build.ts",
-    "ports.ts"
+    "ports.ts",
+    "browser-env.ts"
   ]
 }

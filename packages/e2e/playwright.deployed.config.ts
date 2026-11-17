@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_BROWSER_ENV } from './browser-env.js';
 
 /**
  * デプロイ済みの配信物 (staging の Pages) に対して round-trip を通す Playwright 設定 (#655)。
@@ -45,6 +46,8 @@ export default defineConfig({
 
   use: {
     baseURL: DEPLOYED_URL,
+    // 言語とタイムゾーンを実行環境に依存させない (#597)。dev / build 設定と同じ値 (browser-env.ts)
+    ...E2E_BROWSER_ENV,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: isCI ? 'retain-on-failure' : 'off',
