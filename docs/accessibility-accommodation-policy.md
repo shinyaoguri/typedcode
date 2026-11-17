@@ -86,7 +86,7 @@ TypedCode の捕捉・分析・コホート基準が、**IME (各言語の入力
 - 移行状況: editor のダイアログは移行済み (DOM 生成型・`index.html` の静的 overlay・タブ閉じ確認・`CountdownDialog`・lock overlay)。**未移行**: `ExamStartGate` と `ClassProblemLoader` (全画面のゲート / ローダ)、`#clang-loading-overlay` (状態契約の無い進捗表示)
 - role は `dialog` で統一している (確認・警告も含む)。`alertdialog` にするかは未決 (#305)
 - メニュー項目から始まる操作は、起点がメニューの中にあれば、閉じたあとの復帰先を**メニューを開いたボタン**にする。ヘルパはメニューボタンの `aria-controls` から辿るので、**メニューボタンには開く popup の id を `aria-controls` で付ける** (`#main-menu-btn` / `#download-menu-btn` / `#settings-btn`)。描き直しで起点が入れ替わるもの (タブの ×) は `fallbackFocus` に関数を渡し、閉じた時点で引き直す
-- 自動検査は単体テスト (`ui/components/__tests__/`) と E2E (`packages/e2e/tests/modal-a11y.spec.ts`)。**スクリーンリーダー (VoiceOver + Chrome など) での読み上げは自動化できないので、ダイアログの構造を変えたときは人が確認する**
+- 自動検査は単体テスト (`ui/components/__tests__/`) と E2E (`packages/e2e/tests/modal-a11y.spec.ts`)。主な画面とダイアログには axe もかけ、既知違反の基準から増えたら落とす (`packages/e2e/tests/a11y-axe.spec.ts`。#728)。axe が見るのは機械で検出できる違反だけで、読み上げの質や操作の通しは見ない。**スクリーンリーダー (VoiceOver + Chrome など) での読み上げは自動化できないので、ダイアログの構造を変えたときは人が確認する**
 
 ---
 
