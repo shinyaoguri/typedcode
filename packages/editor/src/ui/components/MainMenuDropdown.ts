@@ -39,6 +39,11 @@ export class MainMenuDropdown {
   private attach(): void {
     if (!this.button || !this.dropdown) return;
 
+    // a11y (#743): popup を持つボタンであることと、その開閉を支援技術に伝える。開閉は下の open / close / toggle に
+    // 集約し、aria-expanded は `visible` クラスと必ず一緒に変える (メニューの外から直接クラスを外さない)
+    this.button.setAttribute('aria-haspopup', 'true');
+    this.syncExpanded();
+
     this.button.addEventListener('click', (e) => {
       e.stopPropagation();
       this.toggle();
@@ -64,6 +69,7 @@ export class MainMenuDropdown {
    */
   open(): void {
     this.dropdown?.classList.add('visible');
+    this.syncExpanded();
   }
 
   /**
@@ -71,6 +77,7 @@ export class MainMenuDropdown {
    */
   close(): void {
     this.dropdown?.classList.remove('visible');
+    this.syncExpanded();
   }
 
   /**
@@ -78,6 +85,12 @@ export class MainMenuDropdown {
    */
   toggle(): void {
     this.dropdown?.classList.toggle('visible');
+    this.syncExpanded();
+  }
+
+  /** ボタンの aria-expanded を表示状態に合わせる */
+  private syncExpanded(): void {
+    this.button?.setAttribute('aria-expanded', String(this.isVisible));
   }
 
   /**

@@ -1,7 +1,7 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect, type FileChooser, type Locator, type Page } from '@playwright/test';
 import { EditorApp } from './helpers/app.js';
 import { failStorageProbe } from './helpers/faults.js';
-import { openSelfReviewForExport, waitDialogClosed, waitDialogOpen } from './helpers/scenario.js';
+import { classPackageFile, openSelfReviewForExport, waitDialogClosed, waitDialogOpen } from './helpers/scenario.js';
 
 /**
  * 共通ダイアログのフォーカス管理 (#305)。About ダイアログ (設定メニュー → About) を実ブラウザで開き、
@@ -359,4 +359,121 @@ test('the idle warning and the suspended lock are named modals that trap Tab, ig
   await page.locator('[data-dialog="idle-suspended"] .btn-primary').click();
   await waitDialogClosed(app, 'idle-suspended');
   expect(await focusInEditor(page)).toBe(true);
+});
+
+// ---------------------------------------------------------------------------
+// 試験のスタートゲート・授業の問題ローダ・メニューボタン (#743)
+// ---------------------------------------------------------------------------
+
+/**
+ * ファイル選択 (filechooser) の受け口。テストの初めに 1 回だけ張る。
+ * `waitForEvent('filechooser')` を押すたびに張り直すと、input の click は起きているのに event を取りこぼすことがあった
+ * (実測。横取りの有効化が押下に間に合っていないと見ている)。リスナーを張りっぱなしにして横取りを有効のまま保つ。
+ */
+function watchFileChoosers(page: Page): { pressOpens(key: string): Promise<FileChooser> } {
+  const seen: FileChooser[] = [];
+  page.on('filechooser', (chooser) => seen.push(chooser));
+  return {
+    /** フォーカスしたドロップゾーンで key を押すと、ファイル選択が 1 つ開く。開いた chooser を返す。 */
+    async pressOpens(key: string): Promise<FileChooser> {
+      const before = seen.length;
+      await page.keyboard.press(key);
+      await expect.poll(() => seen.length, { message: `${key} must open the file picker` }).toBe(before + 1);
+      return seen[before]!;
+    },
+  };
+}
+
+test('the class problem loader is a named modal whose drop zone opens the file picker from the keyboard', async ({
+  page,
+}) => {
+  const choosers = watchFileChoosers(page);
+  const app = new EditorApp(page);
+  await app.openModeFresh('class', { screenShare: 'share', waitReady: false });
+  await waitDialogOpen(app, 'welcome');
+  const opener = page.locator('#load-problem-btn');
+  await opener.focus();
+  await page.keyboard.press('Enter');
+  await waitDialogOpen(app, 'class-problem-loader');
+
+  await expectNamedModal(page, 'class-problem-loader');
+  const dropzone = page.locator('#class-loader-dropzone');
+  await expect(dropzone).toHaveAttribute('role', 'button');
+  await expect(dropzone).toBeFocused();
+  await expectTabTrapped(page, 'class-problem-loader');
+
+  // スキップできるローダでも、閉じる経路は「読み込む」「スキップ」だけ (Escape では閉じない)
+  await page.keyboard.press('Escape');
+  expect(await app.openDialogs()).toContain('class-problem-loader');
+
+  // Tab で巡ってドロップゾーンに戻り、Space / Enter でファイル選択が開く
+  await page.locator('#class-loader-skip').focus();
+  await page.keyboard.press('Tab');
+  await expect(dropzone).toBeFocused();
+  await choosers.pressOpens('Space');
+  await expect(dropzone).toBeFocused();
+  const chooser = await choosers.pressOpens('Enter');
+  await chooser.setFiles(classPackageFile());
+  await expect(page.locator('#class-loader-load')).toBeEnabled();
+
+  // スキップで閉じると、開いた起点 (「問題を読み込む」) へフォーカスが戻る
+  await page.locator('#class-loader-skip').click();
+  await waitDialogClosed(app, 'class-problem-loader');
+  await expect(opener).toBeFocused();
+});
+
+test('the exam start gate is a named modal that traps Tab, ignores Escape and opens the file picker from its drop zone', async ({
+  page,
+}) => {
+  const choosers = watchFileChoosers(page);
+  const app = new EditorApp(page);
+  await app.openModeFresh('exam', { screenShare: 'share', waitReady: false });
+  await expect.poll(() => app.appState()).toBe('gate');
+  await waitDialogOpen(app, 'exam-gate');
+
+  await expectNamedModal(page, 'exam-gate');
+  await expect(page.locator('#exam-gate-code')).toBeFocused();
+  await expectTabTrapped(page, 'exam-gate');
+
+  // 解錠まで閉じない (sticky)
+  await page.keyboard.press('Escape');
+  expect(await app.openDialogs()).toContain('exam-gate');
+  expect(await app.appState()).toBe('gate');
+
+  // 監督コード欄の 1 つ前がドロップゾーン
+  await page.locator('#exam-gate-code').focus();
+  await page.keyboard.press('Shift+Tab');
+  const dropzone = page.locator('#exam-gate-dropzone');
+  await expect(dropzone).toHaveAttribute('role', 'button');
+  await expect(dropzone).toBeFocused();
+  await choosers.pressOpens('Enter');
+  await expect(dropzone).toBeFocused();
+  await choosers.pressOpens('Space');
+});
+
+test('the menu buttons announce their popup and report aria-expanded as the menus open and close', async ({ page }) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+
+  for (const id of ['main-menu-btn', 'settings-btn']) {
+    const button = page.locator(`#${id}`);
+    await expect(button).toHaveAttribute('aria-haspopup', 'true');
+    await expect(button).toHaveAttribute('aria-expanded', 'false');
+    await button.click();
+    await expect(button).toHaveAttribute('aria-expanded', 'true');
+    await button.click();
+    await expect(button).toHaveAttribute('aria-expanded', 'false');
+    // 外側のクリックで閉じたときも追従する
+    await button.click();
+    await expect(button).toHaveAttribute('aria-expanded', 'true');
+    await page.locator('#editor').click();
+    await expect(button).toHaveAttribute('aria-expanded', 'false');
+  }
+
+  // メニュー項目 (リセット) から開いたダイアログでも、閉じたメニューのボタンは "false"
+  await openReset(page);
+  await waitDialogOpen(app, 'reset');
+  await expect(page.locator('#settings-btn')).toHaveAttribute('aria-expanded', 'false');
+  await page.keyboard.press('Escape');
+  await waitDialogClosed(app, 'reset');
 });
