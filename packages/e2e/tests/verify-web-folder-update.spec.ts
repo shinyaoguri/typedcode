@@ -59,7 +59,7 @@ function tamperContent(proof: Record<string, unknown>): void {
 
 /**
  * フォルダのファイルを `file` で上書きし、proof の行の `data-status` が `reached` を満たすまで待つ。
- * 監視の開始 (初期スナップショット) より前に書き込むと変更として拾われないので、拾われなければ書き直す。
+ * フォルダを開く処理の一覧の読み取り (監視の基準。#734) より前に書き込むと変更として拾われないので、拾われなければ書き直す。
  */
 async function overwriteAndWait(
   web: VerifyWebApp,

@@ -24,13 +24,6 @@ function mimeOf(name: string): string {
 export class FakeFolder {
   private entries = new Map<string, FakeEntry>();
   private clock = 1_000;
-  private rootValuesCalls = 0;
-
-  /**
-   * ルートの `values()` の n 回目 (1 始まり) の前に待つ関数。フォルダを開く処理の走査は 1 回目、
-   * 監視の初期スナップショットは 2 回目 (#683 の再現: 2 回目だけを遅らせる)。
-   */
-  beforeRootValues?: (call: number) => Promise<void> | void;
 
   /** `path` のファイルの `getFile()` の n 回目 (1 始まり) の前に待つ関数 (読み込みの終わる順を決める)。 */
   beforeGetFile?: (path: string, call: number) => Promise<void> | void;
@@ -64,12 +57,10 @@ export class FakeFolder {
 
   private directory(prefix: string, name: string): FileSystemDirectoryHandle {
     const folder = this;
-    const isRoot = prefix === '';
     return {
       kind: 'directory',
       name,
       async *values() {
-        if (isRoot) await folder.beforeRootValues?.(++folder.rootValuesCalls);
         const seenDirs = new Set<string>();
         for (const path of [...folder.entries.keys()].sort()) {
           if (!path.startsWith(prefix)) continue;

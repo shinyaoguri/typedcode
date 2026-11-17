@@ -247,7 +247,7 @@ export class FolderController {
     this.deps.settleSubmission();
 
     // 監視を開始
-    await this.syncManager.startWatching(handle, 3000);
+    await this.syncManager.startWatching(handle, 3000, result);
 
     this.notify(`${t('messages.folderOpened')}: ${result.rootName}`);
   }

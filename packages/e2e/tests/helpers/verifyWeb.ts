@@ -205,19 +205,11 @@ export class VerifyWebApp {
    * フォルダの選択ダイアログ (`showDirectoryPicker`) はブラウザの外の UI で Playwright から操作できないので、
    * そこだけを、Origin Private File System に作った本物のディレクトリのハンドルを返す関数に差し替える。
    * ハンドルの走査・フォルダ内の ZIP の展開・検証は本物の経路を通る。
-   *
-   * `delayWatchStartMs` を渡すと、フォルダの監視の初期スナップショット (ルートの 2 回目の `values()`) だけを
-   * その時間遅らせる (#683 の再現: フォルダを開く処理の末尾より先に検証を終わらせる)。遅らせた走査が終わった
-   * ことは `waitFolderWatchStarted` で待つ。
    */
-  async openFolder(
-    folderName: string,
-    files: VerifyFolderFile[],
-    options: { delayWatchStartMs?: number } = {}
-  ): Promise<void> {
+  async openFolder(folderName: string, files: VerifyFolderFile[]): Promise<void> {
     const entries = await readFolderFilesForPage(files);
     await this.page.evaluate(
-      async ({ folderName, entries, delay }) => {
+      async ({ folderName, entries }) => {
         const root = await navigator.storage.getDirectory();
         const dir = await root.getDirectoryHandle(folderName, { create: true });
         for (const { path, base64 } of entries) {
@@ -229,46 +221,13 @@ export class VerifyWebApp {
           await writable.write(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
           await writable.close();
         }
-        const flags = window as unknown as { __tcFolderWatchStarted?: boolean };
-        flags.__tcFolderWatchStarted = false;
-        let picked: FileSystemDirectoryHandle = dir;
-        if (delay !== undefined) {
-          let calls = 0;
-          // ネイティブのメソッドは this が本物のハンドルでないと動かないので、values 以外は束縛して返す
-          picked = new Proxy(dir, {
-            get(target, prop) {
-              if (prop === 'values') {
-                return () => {
-                  const inner = (target as unknown as { values(): AsyncIterable<FileSystemHandle> }).values();
-                  if (++calls !== 2) return inner;
-                  return (async function* () {
-                    await new Promise((resolve) => setTimeout(resolve, delay));
-                    for await (const entry of inner) yield entry;
-                    flags.__tcFolderWatchStarted = true;
-                  })();
-                };
-              }
-              const value = Reflect.get(target, prop, target);
-              return typeof value === 'function' ? value.bind(target) : value;
-            },
-          });
-        }
         (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker =
-          async () => picked;
+          async () => dir;
       },
-      { folderName, entries, delay: options.delayWatchStartMs }
+      { folderName, entries }
     );
     await this.page.locator('#main-menu-btn').click();
     await this.page.locator('#open-folder-btn').click();
-  }
-
-  /** `openFolder(..., { delayWatchStartMs })` で遅らせた監視の初期スナップショットが終わるまで待つ (#683)。 */
-  async waitFolderWatchStarted(timeout = 60_000): Promise<void> {
-    await this.page.waitForFunction(
-      () => (window as unknown as { __tcFolderWatchStarted?: boolean }).__tcFolderWatchStarted === true,
-      undefined,
-      { timeout }
-    );
   }
 
   /**
