@@ -47,9 +47,27 @@ function screenshotVerdicts(screenshots: readonly VerifyScreenshot[]): string {
   );
 }
 
-/** 監視中のフォルダのスクショ (proof のスクショ検証の入力)。フォルダを開いたとき・監視で変わったときに読む */
-interface FolderScreenshots extends ContainerInput {
+/**
+ * 監視中のフォルダのスクショ (proof のスクショ検証の入力)。フォルダを開いたとき・監視で変わったときに読む。
+ * `screenshots` が undefined = 開いたときに読み取りに失敗してまだ読めていない (#773)。proof には未検査として渡し、
+ * 「0 枚」(剥ぎ取り疑い) や欠損で確定しない。読み直しの求めを残し、読めたら取り込み直す
+ */
+interface FolderScreenshots {
   rootHandle: FileSystemDirectoryHandle;
+  screenshots: VerifyScreenshot[] | undefined;
+  startTimestamp?: number;
+}
+
+/** 読み込みに失敗した監視の変更 (#773)。次に監視の走査が成功した回にやり直す */
+interface FailedChange {
+  entry: FSAccessFileEntry;
+  /** 追加 (まだタブが無い) か変更 (タブを取り込み直す) か */
+  kind: 'added' | 'modified';
+  error: unknown;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export interface FolderControllerDependencies {
@@ -111,6 +129,14 @@ export class FolderController {
   private screenshotResyncFailing = false;
   /** 最後に予約した読み直し */
   private screenshotResync: Promise<void> = Promise.resolve();
+  /**
+   * 読み込みに失敗した変更 (パス → 変更)。監視は変更を通知済みとして記録するので、ここで覚えて次に走査が成功した
+   * 回にやり直す (#773。スクショの読み直しの求めと同じ形)。やり直しが成功したら消し、その間に消えたファイルは
+   * やり直さない (削除の通知で消す)
+   */
+  private failedChanges = new Map<string, FailedChange>();
+  /** 変更の読み込みが失敗し続けている間 true。失敗の表示は失敗に入った回だけ出す (#699 と同じ流儀) */
+  private changeLoadFailing = false;
 
   constructor(deps: FolderControllerDependencies) {
     this.deps = deps;
@@ -167,30 +193,48 @@ export class FolderController {
     this.screenshotProofPaths.clear();
     this.screenshotResyncDemand = null;
     this.screenshotResyncFailing = false;
+    this.failedChanges.clear();
+    this.changeLoadFailing = false;
 
-    // ディレクトリを読み取り
-    const result = await this.fsAccessService.readDirectoryRecursive(handle);
+    // ディレクトリを読み取り。まず個々のファイルの読み取りの失敗も失敗にする strict で読む (#773)。読めない
+    // ファイルがあれば、それを飛ばした一覧で開く (読めないファイル 1 つでフォルダごと開けなくしない)。飛ばした
+    // ファイルは監視の基準 (= この一覧。#734) に無いので、次に監視の走査が成功した回に追加として入る
+    const strictListing = await this.fsAccessService.readDirectoryRecursive(handle, '', { strict: true });
+    const result = strictListing.success ? strictListing : await this.fsAccessService.readDirectoryRecursive(handle);
     if (!result.success) {
       this.deps.statusBar.setError(result.error ?? t('errors.folderReadError'));
       return;
     }
+    // 一覧が不完全 (飛ばしたファイルがある) なら、飛ばした proof がチェーン側の imageHash 集合から抜けている
+    const listingError = strictListing.success ? null : new Error(strictListing.error ?? 'folder read failed');
 
     // スクリーンショットを読み込む。フォルダはエクスポート ZIP を展開したものと同じコンテナなので、
     // screenshots/ が無くても「未検査」ではなく **0 枚** として扱う (剥ぎ取りを chainOnly で検出させる #213)。
     // チェーン裏付け (#212) のため、先にフォルダ内の proof から imageHash 集合を集めて渡す。
-    const chainImageHashes = await collectFolderChainImageHashes(result.files);
-    const loadResult = await loadFolderScreenshots(handle, chainImageHashes);
-    const folderScreenshots: VerifyScreenshot[] = loadResult.screenshots;
-    const folderStartTimestamp = loadResult.startTimestamp;
-    console.log(`[FolderController] Loaded ${folderScreenshots.length} screenshots from folder`);
-    if (loadResult.screenshotService) {
-      this.deps.onScreenshotServiceUpdate?.(loadResult.screenshotService);
+    // 読みは監視中の読み直し (#703) と同じく strict: 無い (`NotFoundError`) 以外の読み取りの失敗では 0 枚・欠損と
+    // 確定せず、まだ読めていない (proof には未検査) として読み直しの求めを残す (#773)
+    let screenshotReadError: unknown = null;
+    try {
+      // 一覧が不完全なうちはスクショの判定を確定しない (未検査で渡し、読み直しで揃える)
+      if (listingError) throw listingError;
+      const chainImageHashes = await collectFolderChainImageHashes(result.files, { strict: true });
+      const loadResult = await loadFolderScreenshots(handle, chainImageHashes, { strict: true });
+      console.log(`[FolderController] Loaded ${loadResult.screenshots.length} screenshots from folder`);
+      if (loadResult.screenshotService) {
+        this.deps.onScreenshotServiceUpdate?.(loadResult.screenshotService);
+      }
+      this.folderScreenshots = {
+        rootHandle: handle,
+        screenshots: loadResult.screenshots,
+        startTimestamp: loadResult.startTimestamp,
+      };
+    } catch (error) {
+      console.error('Error loading folder screenshots:', error);
+      screenshotReadError = error;
+      this.folderScreenshots = { rootHandle: handle, screenshots: undefined };
+      this.screenshotResyncDemand = { force: true };
+      this.screenshotResyncFailing = true;
     }
-    this.folderScreenshots = {
-      rootHandle: handle,
-      screenshots: folderScreenshots,
-      startTimestamp: folderStartTimestamp,
-    };
 
     // ルートフォルダを作成
     const rootFolderId = this.deps.generateId();
@@ -242,85 +286,107 @@ export class FolderController {
 
     // ファイルを処理（スクリーンショット情報を渡す）
     for (const fileEntry of result.files) {
-      await this.processFileFromHandle(fileEntry, folderMap, folderScreenshots, folderStartTimestamp);
+      await this.processFileFromHandle(fileEntry, folderMap);
     }
     this.deps.settleSubmission();
 
     // 監視を開始
     await this.syncManager.startWatching(handle, 3000, result);
 
-    this.notify(`${t('messages.folderOpened')}: ${result.rootName}`);
+    // 読めなかったものがあれば、開いた知らせの代わりに失敗を出す (次に監視の走査が成功した回にやり直す)
+    this.changeLoadFailing = this.failedChanges.size > 0;
+    const readError = screenshotReadError ?? this.failedChanges.values().next().value?.error;
+    if (readError) this.showReadFailure(readError);
+    else this.notify(`${t('messages.folderOpened')}: ${result.rootName}`);
+  }
+
+  /** フォルダの読み取りに失敗して、変更を反映していないことを知らせる */
+  private showReadFailure(error: unknown): void {
+    this.deps.statusBar.setError(`${t('errors.folderSyncFailed')}: ${errorMessage(error)}`);
+  }
+
+  /**
+   * proof に渡すフォルダのスクショ (#703)。フォルダはコンテナなので、スクショが無くても未検査 (undefined) ではなく
+   * 0 枚として渡す (不変条件 8)。開いたときに読めなかった間だけ未検査 (#773)
+   */
+  private folderContainer(): { screenshots: VerifyScreenshot[] | undefined; startTimestamp?: number } {
+    if (!this.folderScreenshots) return { screenshots: [] };
+    return { screenshots: this.folderScreenshots.screenshots, startTimestamp: this.folderScreenshots.startTimestamp };
   }
 
   /**
    * FileSystemFileHandle からファイルを処理
    */
-  private async processFileFromHandle(
-    fileEntry: FSAccessFileEntry,
-    folderMap: Map<string, string>,
-    folderScreenshots?: VerifyScreenshot[],
-    folderStartTimestamp?: number
-  ): Promise<void> {
-    const filename = fileEntry.name;
-
+  private async processFileFromHandle(fileEntry: FSAccessFileEntry, folderMap: Map<string, string>): Promise<void> {
     // 隠しファイル（.で始まるファイル）はスキップ
-    if (filename.startsWith('.')) return;
+    if (fileEntry.name.startsWith('.')) return;
 
     const parentPath = fileEntry.path.split('/').slice(0, -1).join('/');
-    const folderId = folderMap.get(parentPath);
+    try {
+      await this.loadNewFile(fileEntry, folderMap.get(parentPath), folderMap, this.folderContainer());
+    } catch (error) {
+      // 読めなかったファイルを黙って飛ばさない。監視で足されたファイルと同じく、次に走査が成功した回にやり直す (#773)
+      console.error('Error processing file:', fileEntry.path, error);
+      this.failedChanges.set(fileEntry.path, { entry: fileEntry, kind: 'added', error });
+    }
+  }
 
+  /**
+   * 新しいファイル (開いたときのファイル・監視中に足されたファイル) を読み込んでタブにする。読み取りに失敗したら
+   * 投げる (呼び出し側がやり直しに回す。#773)。読み方は開いたときも監視中も同じ
+   */
+  private async loadNewFile(
+    fileEntry: FSAccessFileEntry,
+    folderId: string | undefined,
+    folderMap: Map<string, string>,
+    zipFallback?: { screenshots: VerifyScreenshot[] | undefined; startTimestamp?: number }
+  ): Promise<void> {
     // screenshots フォルダ内の画像は、ファイル一覧に画像として追加する (クリックでプレビュー表示)。
-    // manifest.json やその他のテキストファイルは通常処理
+    // manifest.json やその他のテキストファイルは通常処理 (FileProcessor に回すと平文で読まれる)
     if (isScreenshotImage(fileEntry.path)) {
-      try {
-        this.deps.addImageFile(await readScreenshotImage(fileEntry), folderId);
-      } catch (error) {
-        console.error('Error loading image:', fileEntry.path, error);
-      }
+      this.deps.addImageFile(await readScreenshotImage(fileEntry), folderId);
       return;
     }
 
     // ZIPファイルを階層的に処理
-    if (filename.endsWith('.zip')) {
+    if (fileEntry.name.endsWith('.zip')) {
+      const parentPath = fileEntry.path.split('/').slice(0, -1).join('/');
       await this.processZipWithinFolder(
         fileEntry,
         parentPath,
         folderId,
         folderMap,
-        folderScreenshots,
-        folderStartTimestamp
+        zipFallback?.screenshots,
+        zipFallback?.startTimestamp
       );
       return;
     }
 
-    try {
-      const result = await this.deps.fileProcessor.processFromHandle(fileEntry.handle, fileEntry.path);
+    const result = await this.deps.fileProcessor.processFromHandle(fileEntry.handle, fileEntry.path);
+    // JSON・平文の success: false は読み取りの失敗 (壊れた JSON は error の proof として success で返る。#702)
+    if (!result.success) throw new Error(result.error ?? `cannot read ${fileEntry.path}`);
 
-      if (!result.success) {
-        return;
+    for (const fileData of result.files) {
+      if (fileData.type === 'proof') {
+        // フォルダはコンテナなので、スクショが無くても未検査 (undefined) ではなく 0 枚として渡す (不変条件 8。#703)。
+        // スクショは読み込みを待った後のここで引く (待つ前に引くと、その間に終わった読み直しの結果を取り逃す)。
+        // 読み直しは folderScreenshots の更新と screenshotProofPaths の写しを同期的に続けて行うので、ここが
+        // 読み直しの前なら写しに入って取り込み直され、後なら最新のスクショを受け取る
+        const container = this.folderContainer();
+        this.screenshotProofPaths.add(fileEntry.path);
+        this.deps.addFileToVerification(
+          fileData.filename,
+          fileData.rawData,
+          folderId,
+          fileData.relativePath,
+          container.screenshots,
+          container.startTimestamp
+        );
+      } else if (fileData.type === 'image') {
+        this.deps.addImageFile(fileData, folderId);
+      } else {
+        this.deps.addPlaintextFile(fileData, folderId);
       }
-
-      for (const fileData of result.files) {
-        if (fileData.type === 'proof') {
-          // フォルダのスクショが変わったら取り込み直す (#703)
-          if (folderScreenshots) this.screenshotProofPaths.add(fileEntry.path);
-          // フォルダからスクリーンショットが読み込まれている場合は渡す
-          this.deps.addFileToVerification(
-            fileData.filename,
-            fileData.rawData,
-            folderId,
-            fileData.relativePath,
-            folderScreenshots,
-            folderStartTimestamp
-          );
-        } else if (fileData.type === 'image') {
-          this.deps.addImageFile(fileData, folderId);
-        } else {
-          this.deps.addPlaintextFile(fileData, folderId);
-        }
-      }
-    } catch (error) {
-      console.error('Error processing file:', fileEntry.path, error);
     }
   }
 
@@ -342,6 +408,8 @@ export class FolderController {
   private handleSyncComplete(): void {
     // 読み取りに失敗して済んでいないスクショの読み直しは、走査が成功したこの周期でやり直す (#703)
     this.retryScreenshotResync();
+    // 読み込みに失敗した変更も同じくやり直す (#773。変化の通知は 1 回しか来ない)
+    this.retryFailedChanges();
     if (!this.syncFailing) return;
     this.syncFailing = false;
     this.deps.onStatusBarUpdate?.();
@@ -351,59 +419,55 @@ export class FolderController {
    * 外部でファイルが追加された時の処理
    */
   private async handleExternalFileAdded(file: FSAccessFileEntry): Promise<void> {
+    // 新しい通知が優先する (覚えていた失敗はこの読み込みで置き換わる)
+    this.failedChanges.delete(file.path);
     if (affectsFolderScreenshots(file.path)) this.scheduleScreenshotResync(file.path);
+    await this.loadChange(file, 'added');
+  }
+
+  /** 監視で足されたファイルを読み込む。読み取りに失敗したら投げる */
+  private async loadAddedFile(file: FSAccessFileEntry): Promise<void> {
     const parentPath = file.path.split('/').slice(0, -1).join('/');
     const folderId = this.deps.sidebar.getFolderIdByPath(parentPath) ?? this.watchedRootFolderId ?? undefined;
+    const isZip = file.name.endsWith('.zip');
+    await this.loadNewFile(file, folderId, isZip ? this.buildFolderMapFromSidebar() : new Map());
+    // ZIP は processZipWithinFolder が照合と知らせを済ませる
+    if (isZip) return;
+    if (!isScreenshotImage(file.path)) this.deps.settleSubmission();
+    this.notify(`${t('messages.fileAdded')}: ${file.name}`);
+  }
 
-    // screenshots/ の画像は初回取り込みと同じく画像タブにする (FileProcessor に回すと平文で読まれる)
-    if (isScreenshotImage(file.path)) {
-      try {
-        this.deps.addImageFile(await readScreenshotImage(file), folderId);
-        this.notify(`${t('messages.fileAdded')}: ${file.name}`);
-      } catch (error) {
-        console.error('Error loading added image:', file.path, error);
-      }
-      return;
-    }
-
-    // ZIPファイルを階層的に処理
-    if (file.name.endsWith('.zip')) {
-      const folderMap = this.buildFolderMapFromSidebar();
-      await this.processZipWithinFolder(file, parentPath, folderId, folderMap);
-      return;
-    }
-
+  /**
+   * 監視で変わったファイルを読み込む。読み込みに失敗したら覚えておき、次に走査が成功した回にやり直す (#773)。
+   * 監視は変更を通知済みとして記録するので、ここで落とすと二度と通知されず、タブが古い内容のまま残る
+   */
+  private async loadChange(file: FSAccessFileEntry, kind: FailedChange['kind']): Promise<void> {
+    const rootFolderId = this.watchedRootFolderId;
     try {
-      const result = await this.deps.fileProcessor.processFromHandle(file.handle, file.path);
-      if (!result.success) return;
-
-      for (const fileData of result.files) {
-        if (fileData.type === 'proof') {
-          // フォルダはコンテナなので、スクショが無くても未検査 (undefined) ではなく 0 枚として渡す (不変条件 8。#703)。
-          // スクショは読み込みを待った後のここで引く (待つ前に引くと、その間に終わった読み直しの結果を取り逃す)。
-          // 読み直しは folderScreenshots の更新と screenshotProofPaths の写しを同期的に続けて行うので、ここが
-          // 読み直しの前なら写しに入って取り込み直され、後なら最新のスクショを受け取る
-          this.screenshotProofPaths.add(file.path);
-          this.deps.addFileToVerification(
-            fileData.filename,
-            fileData.rawData,
-            folderId,
-            fileData.relativePath,
-            this.folderScreenshots?.screenshots ?? [],
-            this.folderScreenshots?.startTimestamp
-          );
-        } else if (fileData.type === 'image') {
-          this.deps.addImageFile(fileData, folderId);
-        } else {
-          this.deps.addPlaintextFile(fileData, folderId);
-        }
-      }
-
-      this.deps.settleSubmission();
-      this.notify(`${t('messages.fileAdded')}: ${file.name}`);
+      if (kind === 'added') await this.loadAddedFile(file);
+      else await this.loadModifiedFile(file);
     } catch (error) {
-      console.error('Error processing added file:', error);
+      console.error(`Error processing ${kind} file:`, file.path, error);
+      // 読んでいる間に別のフォルダを開いた
+      if (this.watchedRootFolderId !== rootFolderId) return;
+      this.failedChanges.set(file.path, { entry: file, kind, error });
+      if (!this.changeLoadFailing) {
+        this.changeLoadFailing = true;
+        this.showReadFailure(error);
+      }
+      return;
     }
+    if (this.changeLoadFailing && this.failedChanges.size === 0) {
+      // やり直しが済んだ。ステータスバーは知らせ (notify) が通常の表示に戻している
+      this.changeLoadFailing = false;
+    }
+  }
+
+  /** 読み込みに失敗した変更をやり直す (監視の走査が成功したとき)。 */
+  private retryFailedChanges(): void {
+    const failed = [...this.failedChanges.values()];
+    this.failedChanges.clear();
+    for (const change of failed) void this.loadChange(change.entry, change.kind);
   }
 
   /**
@@ -414,28 +478,39 @@ export class FolderController {
    * 新しい検証結果が混ざる)。
    */
   private async handleExternalFileModified(file: FSAccessFileEntry): Promise<void> {
+    // 足されたときの読み込みに失敗したファイルはまだタブが無い。変更の通知でも追加として読み込む (#773)
+    const kind = this.failedChanges.get(file.path)?.kind === 'added' ? 'added' : 'modified';
+    this.failedChanges.delete(file.path);
     if (affectsFolderScreenshots(file.path)) this.scheduleScreenshotResync(file.path);
+    await this.loadChange(file, kind);
+  }
+
+  /** 監視で変わったファイルを読み込んで取り込み直す。読み取りに失敗したら投げる */
+  private async loadModifiedFile(file: FSAccessFileEntry): Promise<void> {
     const existingFileId = this.deps.sidebar.getFileIdByPath(file.path);
     if (!existingFileId) return;
 
-    try {
-      // 読み方は初回取り込み (processFileFromHandle) と同じ: screenshots/ の画像は Blob、それ以外は FileProcessor
-      const fileData = isScreenshotImage(file.path)
-        ? await readScreenshotImage(file)
-        : (await this.deps.fileProcessor.processFromHandle(file.handle, file.path)).files[0];
-      if (!fileData) return;
-
-      this.deps.replaceFile(existingFileId, fileData);
-      this.notify(`${t('messages.fileUpdated')}: ${file.name}`);
-    } catch (error) {
-      console.error('Error processing modified file:', error);
+    // 読み方は初回取り込み (loadNewFile) と同じ: screenshots/ の画像は Blob、それ以外は FileProcessor
+    let fileData: ParsedFileData | undefined;
+    if (isScreenshotImage(file.path)) {
+      fileData = await readScreenshotImage(file);
+    } else {
+      const result = await this.deps.fileProcessor.processFromHandle(file.handle, file.path);
+      if (!result.success) throw new Error(result.error ?? `cannot read ${file.path}`);
+      fileData = result.files[0];
     }
+    if (!fileData) return;
+
+    this.deps.replaceFile(existingFileId, fileData);
+    this.notify(`${t('messages.fileUpdated')}: ${file.name}`);
   }
 
   /**
    * 外部でファイルが削除された時の処理
    */
   private handleExternalFileDeleted(path: string): void {
+    // 読み込みに失敗していた変更はやり直さない (削除として扱う。#773)
+    this.failedChanges.delete(path);
     this.screenshotProofPaths.delete(path);
     if (affectsFolderScreenshots(path)) this.scheduleScreenshotResync(path);
     const fileId = this.deps.sidebar.getFileIdByPath(path);
@@ -499,7 +574,9 @@ export class FolderController {
       const chainImageHashes = await collectFolderChainImageHashes(listing.files, { strict: true });
       const loaded = await loadFolderScreenshots(current.rootHandle, chainImageHashes, { strict: true });
 
+      // 開いたときに読めなかった (undefined) スクショは、読めたら必ず取り込み直す (#773)
       const changed =
+        current.screenshots === undefined ||
         screenshotVerdicts(current.screenshots) !== screenshotVerdicts(loaded.screenshots) ||
         current.startTimestamp !== loaded.startTimestamp;
       // 取り込み直す proof を先にすべて読む。読んでいる間に足された proof も読み、残りが無くなったところで
@@ -553,7 +630,7 @@ export class FolderController {
       this.screenshotResyncDemand = { force: true };
       if (!this.screenshotResyncFailing) {
         this.screenshotResyncFailing = true;
-        this.deps.statusBar.setError(`${t('errors.folderSyncFailed')}: ${(error as Error).message}`);
+        this.showReadFailure(error);
       }
     } finally {
       this.runningScreenshotResyncs--;
@@ -649,8 +726,11 @@ export class FolderController {
     folderScreenshots?: VerifyScreenshot[],
     folderStartTimestamp?: number
   ): Promise<void> {
+    // ZIP の読み取りの失敗は投げる (呼び出し側がやり直しに回す。#773)。中身が壊れた ZIP (下の success: false) は
+    // 読み直しても変わらないので、やり直さない
     const file = await fileEntry.handle.getFile();
-    const result = await this.deps.fileProcessor.process(file);
+    const bytes = await file.arrayBuffer();
+    const result = await this.deps.fileProcessor.process(new File([bytes], file.name, { type: file.type }));
 
     if (!result.success) {
       console.error('[FolderController] Failed to process ZIP:', result.error);

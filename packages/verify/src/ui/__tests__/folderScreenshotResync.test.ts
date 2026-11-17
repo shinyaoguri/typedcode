@@ -12,6 +12,7 @@
 
 import { sha256HexOfBytes, type StoredEvent } from '@typedcode/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { t } from '../../i18n/index.js';
 import { summarizeTabScreenshots } from '../../services/screenshotSummary.js';
 import { TrustCalculator } from '../../services/TrustCalculator.js';
 import type { VerifyTabState } from '../../types.js';
@@ -283,5 +284,218 @@ describe('folder screenshots re-checked while watching (#703)', () => {
     const tab = s.tabAt('screenshots/b.png');
     expect(tab.isImage).toBe(true);
     expect(tab.isPlaintext).toBeFalsy();
+  });
+});
+
+/** ステータスバーの表示 (`#queue-status`)。 */
+function statusBarText(): string {
+  return document.getElementById('queue-status')?.textContent ?? '';
+}
+
+/** 画像タブの中身 (バイト列を文字列にしたもの)。 */
+async function imageTextOf(tab: VerifyTabState): Promise<string> {
+  return new TextDecoder().decode(await (tab.imageBlob as Blob).arrayBuffer());
+}
+
+/**
+ * 一時的な読み取りの失敗を「無い」「変わっていない」と取り違えない (#773)。#699 (監視の走査) / #703 (スクショの
+ * 読み直し) と同じ考え方を、フォルダを開くときの読みと、監視で変わったファイルの読み込みにも通す。
+ */
+describe('transient read failures when opening a folder (#773)', () => {
+  // 開くときは 一覧 (1)・スクショの読み込み (チェーン側の imageHash 集合と manifest・画像) (2) の順に読まれる
+  it.each([
+    ['the screenshot image', 'screenshots/a.png'],
+    ['the manifest', 'screenshots/manifest.json'],
+    ['the proof read for the chain image hashes', PROOF_PATH],
+  ])(
+    'leaves the screenshots of the proof unchecked instead of zero or missing when %s cannot be read, and shows the failure',
+    async (_what, failingPath) => {
+      const s = folderStack();
+      const fake = await exportFolder({ 'a.png': ORIGINAL });
+      let failures = 0;
+      fake.beforeGetFile = (path, call) => {
+        if (path !== failingPath || call !== 2) return;
+        failures++;
+        throw new DOMException('busy', 'NotReadableError');
+      };
+      await s.folder.openFolder(fake.handle());
+
+      expect(failures).toBe(1);
+      const tab = s.tabAt(PROOF_PATH);
+      expect(tab.screenshots).toBeUndefined();
+      expect(screenshotSummaryOf(tab)).toBeUndefined();
+      expect(statusBarText()).toContain(t('errors.folderSyncFailed'));
+    }
+  );
+
+  it('checks the proof against the screenshots on the next successful watch scan after they could not be read when opening', async () => {
+    const s = folderStack();
+    const fake = await exportFolder({ 'a.png': ORIGINAL });
+    fake.beforeGetFile = (path, call) => {
+      if (path === 'screenshots/a.png' && call === 2) throw new DOMException('busy', 'NotReadableError');
+    };
+    await s.folder.openFolder(fake.handle());
+    await s.drain();
+    const id = s.tabAt(PROOF_PATH).id;
+
+    await s.sync();
+    await s.drain();
+
+    expect(s.enqueued).toEqual([id, id]);
+    expect(screenshotSummaryOf(s.tabAt(PROOF_PATH))).toMatchObject({ total: 1, tampered: 0, missing: 0 });
+  });
+
+  it('treats a folder without a screenshots directory as zero screenshots when opening it', async () => {
+    const s = folderStack();
+    const fake = new FakeFolder('submission', { [PROOF_PATH]: VALID });
+    await s.folder.openFolder(fake.handle());
+
+    expect(s.tabAt(PROOF_PATH).screenshots).toEqual([]);
+    expect(statusBarText()).not.toContain(t('errors.folderSyncFailed'));
+  });
+
+  it('loads a proof that could not be read when opening the folder on the next successful watch scan', async () => {
+    const s = folderStack();
+    const fake = await exportFolder({ 'a.png': ORIGINAL });
+    // 一覧 (1)・チェーン側の imageHash 集合 (2) の後の、proof の取り込み (3) だけを失敗させる
+    fake.beforeGetFile = (path, call) => {
+      if (path === PROOF_PATH && call === 3) throw new DOMException('busy', 'NotReadableError');
+    };
+    await s.folder.openFolder(fake.handle());
+    expect(() => s.tabAt(PROOF_PATH)).toThrow();
+    expect(statusBarText()).toContain(t('errors.folderSyncFailed'));
+
+    await s.sync();
+    await vi.waitFor(() => expect(s.tabAt(PROOF_PATH).screenshots?.map((shot) => shot.filename)).toEqual(['a.png']));
+
+    // 一覧には載った (= 監視の基準 #734 に入っている) ので、追加の通知とやり直しで二重に取り込まれない
+    await s.sync();
+    await s.sync();
+    expect(document.querySelectorAll(`#file-list .file-item[data-filename="${PROOF_PATH}"]`)).toHaveLength(1);
+    expect(s.enqueued).toHaveLength(1);
+  });
+
+  it('opens the folder without a file that cannot be listed, leaving the screenshots unchecked until that file comes in on the next successful watch scan', async () => {
+    const s = folderStack();
+    const fake = await exportFolder({ 'a.png': ORIGINAL }, { 'b_proof.json': VALID });
+    // 開くときの一覧 (strict の 1 回目と、飛ばして読み直す 2 回目) でだけ読めない
+    fake.beforeGetFile = (path, call) => {
+      if (path === 'b_proof.json' && call <= 2) throw new DOMException('busy', 'NotReadableError');
+    };
+    await s.folder.openFolder(fake.handle());
+
+    // 開けるが、飛ばした proof がチェーン側の imageHash 集合から抜けているので、スクショの判定は確定しない
+    expect(() => s.tabAt('b_proof.json')).toThrow();
+    expect(s.tabAt(PROOF_PATH).screenshots).toBeUndefined();
+    expect(statusBarText()).toContain(t('errors.folderSyncFailed'));
+    await s.drain();
+
+    // 飛ばした proof は監視の基準 (#734) に無いので追加として入り、スクショの読み直しで両方の判定が揃う
+    await s.sync();
+    await vi.waitFor(() => expect(() => s.tabAt('b_proof.json')).not.toThrow());
+    await s.folder.whenScreenshotsResynced();
+    await s.drain();
+
+    for (const path of [PROOF_PATH, 'b_proof.json']) {
+      expect(screenshotSummaryOf(s.tabAt(path))).toMatchObject({ total: 1, tampered: 0, missing: 0 });
+    }
+  });
+});
+
+describe('transient read failures of files changed while watching (#773)', () => {
+  /** 監視の走査 (+1) の後、`path` の取り込み (+2) だけを 1 回失敗させる。 */
+  function failNextLoad(fake: FakeFolder, path: string): void {
+    const failAt = fake.getFileCount(path) + 2;
+    fake.beforeGetFile = (p, call) => {
+      if (p === path && call === failAt) throw new DOMException('busy', 'NotReadableError');
+    };
+  }
+
+  /** 監視の通知から始まった読み込み (await していない) が片付くまで待つ。 */
+  async function settle(): Promise<void> {
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it('loads a modified proof on the next successful watch scan after reading it failed, without another change', async () => {
+    const s = folderStack();
+    const fake = new FakeFolder('submission', { [PROOF_PATH]: VALID });
+    await s.folder.openFolder(fake.handle());
+    await s.drain();
+
+    fake.write(PROOF_PATH, TAMPERED);
+    failNextLoad(fake, PROOF_PATH);
+    await s.sync();
+    await settle();
+    expect(s.tabAt(PROOF_PATH).proofData?.content).toBe('ok');
+
+    await s.sync();
+    await vi.waitFor(() => expect(s.tabAt(PROOF_PATH).proofData?.content).toBe('TAMPERED CONTENT'));
+  });
+
+  it('loads a modified screenshot image on the next successful watch scan after reading it failed', async () => {
+    const s = folderStack();
+    const fake = await exportFolder({ 'a.png': ORIGINAL });
+    await s.folder.openFolder(fake.handle());
+
+    fake.write('screenshots/a.png', REPLACED);
+    failNextLoad(fake, 'screenshots/a.png');
+    await s.sync();
+    await settle();
+    expect(await imageTextOf(s.tabAt('screenshots/a.png'))).toBe('original image');
+
+    await s.sync();
+    await vi.waitFor(async () => expect(await imageTextOf(s.tabAt('screenshots/a.png'))).toBe('replaced image'));
+  });
+
+  it('adds a proof on the next successful watch scan after reading the added file failed', async () => {
+    const s = folderStack();
+    const fake = new FakeFolder('submission', { [PROOF_PATH]: VALID });
+    await s.folder.openFolder(fake.handle());
+
+    fake.write('added_proof.json', VALID);
+    failNextLoad(fake, 'added_proof.json');
+    await s.sync();
+    await settle();
+    expect(() => s.tabAt('added_proof.json')).toThrow();
+    expect(statusBarText()).toContain(t('errors.folderSyncFailed'));
+
+    await s.sync();
+    await vi.waitFor(() => expect(s.tabAt('added_proof.json').screenshots).toEqual([]));
+  });
+
+  it('adds a file whose first read failed when it is modified again before the next scan', async () => {
+    const s = folderStack();
+    const fake = new FakeFolder('submission', { [PROOF_PATH]: VALID });
+    await s.folder.openFolder(fake.handle());
+
+    fake.write('added_proof.json', VALID);
+    failNextLoad(fake, 'added_proof.json');
+    await s.sync();
+    await settle();
+
+    // 次の走査では「変更」として通知される (監視のスナップショットには入っている)
+    fake.write('added_proof.json', TAMPERED);
+    await s.sync();
+    await vi.waitFor(() => expect(s.tabAt('added_proof.json').proofData?.content).toBe('TAMPERED CONTENT'));
+  });
+
+  it('does not retry loading a file that was deleted after reading its change failed', async () => {
+    const s = folderStack();
+    const fake = new FakeFolder('submission', { [PROOF_PATH]: VALID, 'notes.txt': 'v1' });
+    await s.folder.openFolder(fake.handle());
+
+    fake.write('notes.txt', 'v2');
+    failNextLoad(fake, 'notes.txt');
+    await s.sync();
+    await settle();
+    fake.remove('notes.txt');
+    const reads = fake.getFileCount('notes.txt');
+
+    await s.sync();
+    await settle();
+    await s.sync();
+    await settle();
+
+    expect(fake.getFileCount('notes.txt')).toBe(reads);
   });
 });
