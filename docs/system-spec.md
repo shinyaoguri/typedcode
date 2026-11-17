@@ -372,19 +372,19 @@ interface SignedCheckpointEnvelope {
 ### 5.2. エクスポート ZIP
 
 ```
-<base>_TC<ts>.zip            // 単一タブ export。一括 export は ALL_TC<ts>.zip
+<base>_TC<ts>.zip            // タブが 1 つのとき。2 つ以上なら ALL_TC<ts>.zip (export は全タブの 1 系統。#779)
 ├── <source>.{c,py,...}      // ソースコード本体 (フラット。同名は <name>_N.<ext>)
 ├── <base>_proof.json        // タブごとの proof (下記 §5.3。同名は <base>_proof_N.json)
 ├── README.md                // 人間可読の説明 (en)
 ├── README.ja.md             // 同 (ja)
-├── tab-switches.json        // 複数タブ一括 export で切替が 1 件以上あるときのみ
+├── tab-switches.json        // 切替が 1 件以上あるときのみ
 └── screenshots/             // 撮影があった場合のみ
     ├── screenshot_<seq6>_<ts>.jpg
     ├── ...
     └── manifest.json
 ```
 
-- 複数タブの一括 export では `*_proof.json` が N 個になる。各タブは独立した proof で、**タブ間をつなぐハッシュ鎖は無い**
+- export は常に開いている全タブを書き出す (editor の左のダウンロードボタンと、問題パネルの「ログをダウンロード」はどちらも同じ全タブの ZIP。#779)。タブが N 個なら `*_proof.json` も N 個になる。各タブは独立した proof で、**タブ間をつなぐハッシュ鎖は無い**
 - `tab-switches.json` はチェーン外の平文サイドファイルで、ハッシュに入らず、どの検証器 (verify / verify-cli) も読まない (監査用の人間向け情報)
 - `screenshots/` は撮影があった場合のみ含まれる
 

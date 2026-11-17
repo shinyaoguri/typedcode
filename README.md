@@ -150,7 +150,7 @@ npm run test -w @typedcode/e2e
 
 ### エクスポートファイル形式 (ZIP)
 
-単一タブは `{filename}_TC{timestamp}.zip`、全タブ一括は `ALL_TC{timestamp}.zip` として出力され、以下を含みます:
+左のダウンロードボタン (試験では問題パネルの「ログをダウンロード」) で、開いている全タブを 1 つの ZIP に書き出します。ZIP 名はタブが 1 つなら `{filename}_TC{timestamp}.zip`、2 つ以上なら `ALL_TC{timestamp}.zip` で、以下を含みます (タブごとのファイルはタブの数だけ入ります):
 
 - `{filename}.{ext}` — ソースコード
 - `{filename}_proof.json` — 証明 JSON (下記構造)
@@ -158,6 +158,7 @@ npm run test -w @typedcode/e2e
 - `screenshots/manifest.json` — スクリーンショットのハッシュとメタデータ
 - `README.md` — 検証手順 (英語)
 - `README.ja.md` — 検証手順 (日本語)
+- `tab-switches.json` — タブ間の切替の記録 (切替が 1 件以上あるときのみ。ハッシュ鎖の外の監査用情報)
 
 **証明 JSON の構造:**
 ```json
