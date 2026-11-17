@@ -1,7 +1,7 @@
 /**
  * コード実行の結果 (ADR-0021) が、実際のハッシュチェーンに data ごと載ることの検査 (#491)。
  *
- * CodeExecutionController → toRecordEventInput → EventRecorder → TypingProof の経路を
+ * CodeExecutionController → recordToOwnerTab (→ toRecordEventInput) → EventRecorder → TypingProof の経路を
  * 本物のまま通す。差し替えるのは言語ランタイム (Wasmer / Worker など) と永続化だけ。
  * main.ts の onRecordEvent が data を落とすと、export した proof の codeExecution が全件
  * data: null になり、processSummary は実行結果を「不明」と読む。
@@ -52,7 +52,7 @@ vi.mock('../../executors/python/PythonExecutor.js', () => ({ getPythonExecutor: 
 
 const { CodeExecutionController } = await import('../CodeExecutionController.js');
 const { EventRecorder } = await import('../../core/EventRecorder.js');
-const { toRecordEventInput } = await import('../codeExecutionRecording.js');
+const { recordToOwnerTab } = await import('../codeExecutionRecording.js');
 
 const components: FingerprintComponents = {
   userAgent: 'Mozilla/5.0 (CodeExecution Test)',
@@ -111,6 +111,7 @@ async function setup() {
     getActiveTab: () => tab,
     getActiveProof: () => typingProof,
     getAllTabs: () => [tab],
+    getTab: (id: string) => (id === tab.id ? tab : null),
     saveToStorage: vi.fn(),
   } as unknown as TabManager;
   const logViewer = { isVisible: false, addLogEntry: vi.fn() } as unknown as LogViewer;
@@ -119,7 +120,9 @@ async function setup() {
 
   // main.ts と同じ配線 (setCallbacks の onRecordEvent)
   const controller = new CodeExecutionController();
-  controller.setCallbacks({ onRecordEvent: (event) => recorder.record(toRecordEventInput(event)) });
+  controller.setCallbacks({
+    onRecordEvent: (event, ownerTabId) => recordToOwnerTab(recorder, event, ownerTabId),
+  });
   return { typingProof, controller };
 }
 
@@ -146,7 +149,7 @@ describe('code execution results reach the hash chain with their data (ADR-0021,
   it('records a start and a success result with phase / outcome / exitCode / elapsedMs in the chain', async () => {
     const { typingProof, controller } = await setup();
 
-    await controller.run({ language: 'c', filename: 'hello.c', code: 'int main(){}' });
+    await controller.run({ ownerTabId: 'tab-1', language: 'c', filename: 'hello.c', code: 'int main(){}' });
 
     const [start, result] = await recordedExecutionData(typingProof, 2);
     expect(start).toEqual({ phase: 'start', filename: 'hello.c', language: 'c' });
@@ -164,7 +167,7 @@ describe('code execution results reach the hash chain with their data (ADR-0021,
     const { typingProof, controller } = await setup();
     fakeRun.impl = async () => ({ success: false, exitCode: 1 }) as ExecutionResult;
 
-    await controller.run({ language: 'c', filename: 'bad.c', code: 'oops' });
+    await controller.run({ ownerTabId: 'tab-1', language: 'c', filename: 'bad.c', code: 'oops' });
 
     const [, result] = await recordedExecutionData(typingProof, 2);
     expect(result).toMatchObject({ phase: 'result', outcome: 'failure', exitCode: 1 });
@@ -175,7 +178,7 @@ describe('code execution results reach the hash chain with their data (ADR-0021,
     let finishRun: (r: ExecutionResult) => void = () => {};
     fakeRun.impl = () => new Promise<ExecutionResult>((resolve) => (finishRun = resolve));
 
-    const running = controller.run({ language: 'c', filename: 'loop.c', code: 'for(;;);' });
+    const running = controller.run({ ownerTabId: 'tab-1', language: 'c', filename: 'loop.c', code: 'for(;;);' });
     await vi.waitFor(() => expect(controller.running).toBe(true));
     controller.abort();
     finishRun({ success: false, exitCode: 1 } as ExecutionResult);
@@ -189,9 +192,9 @@ describe('code execution results reach the hash chain with their data (ADR-0021,
     const { typingProof, controller } = await setup();
 
     fakeRun.impl = async () => ({ success: false, exitCode: 1 }) as ExecutionResult;
-    await controller.run({ language: 'c', filename: 'a.c', code: 'x' });
+    await controller.run({ ownerTabId: 'tab-1', language: 'c', filename: 'a.c', code: 'x' });
     fakeRun.impl = async () => ({ success: true, exitCode: 0 }) as ExecutionResult;
-    await controller.run({ language: 'c', filename: 'a.c', code: 'y' });
+    await controller.run({ ownerTabId: 'tab-1', language: 'c', filename: 'a.c', code: 'y' });
     await recordedExecutionData(typingProof, 4);
 
     const summary = summarizeProcess(typingProof.events);

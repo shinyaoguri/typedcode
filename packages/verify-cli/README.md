@@ -75,7 +75,7 @@ typedcode-verify ALL_TC.zip --extract-sources graded/
 | `--analyzer <module>` | 外部 Analyzer モジュールを読み込む (反復可、ADR-0023) |
 | `--no-default-analyzers` | 同梱の分析器を外し、`--analyzer` で指定したものだけを使う |
 | `--analysis-json <out.json>` | 分析レポートを JSON でファイル出力 |
-| `--result-json <out.json>` | 検証の結論を JSON でファイル出力 (`failedCheck` = 最初に落ちた層。[書き出し](#分析結果の書き出し)) |
+| `--result-json <out.json>` | 検証の結論を JSON でファイル出力 (`failedCheck` = 落ちた理由の代表 1 つ。複数落ちたときは診断の優先順位で選ぶので、実行順で最初に落ちた検査や `errorMessage` の文言と一致するとは限らない。[書き出し](#分析結果の書き出し)) |
 | `--analysis-bundle <out.json>` | 授業内レビュー用の派生バンドルを出力 (ADR-0024 Tier A。[書き出し](#分析結果の書き出し)) |
 | `--aggregate-bundle <out.json>` | 集計・研究用の派生バンドルを出力 (ADR-0024 Tier S。[書き出し](#分析結果の書き出し)) |
 | `--extract-sources <dir>` | ZIP の proof ごとに、同梱ソースと `proof.content` を `<dir>` へ書き出す ([書き出し](#ソースの書き出し---extract-sources)) |
@@ -166,7 +166,7 @@ Anchoring:   VERIFIED (12 signed checkpoints, 100.0% coverage)
 - `--require-anchor-density` は署名 cp が 0 件の proof を対象にしません (署名 cp の存在を求めるのは `--require-signed-checkpoints`)。密度が疎な proof は `Anchoring: VERIFIED` と `! Anchoring is sparse` の警告のまま、受理ポリシーの違反として exit 1 になります
 - 提出期間 (time-box) と LMS の受領時刻はポリシーに含みません (ADR-0013)
 
-> **注意: `--require-final-anchor` は、署名 token の再取得 (#236(b)) が入るまで、短時間の試験以外で常用しないでください。** 長い課題のセッションでは、token の期限切れなどで最終イベントへの署名を取れないことがあり、改ざんしていない正直な提出が不受理 (exit 1) になりえます。
+> **注意: `--require-final-anchor` は、短時間の試験以外で常用しないでください。** editor は署名 token の期限切れ (`TOKEN_EXPIRED`) を受けると token を取り直して署名を続けます (#682) が、取り直しが失敗している間 (画面に出さない人間確認なので、対話チャレンジを求められると通らない)・オフラインの間・サーバとの時計ずれで取り直した token もすぐ拒否される間は、最終イベントへの署名を取れないことがあります。長い課題のセッションでは、改ざんしていない正直な提出が不受理 (exit 1) になりえます。
 
 ## 終了コード
 

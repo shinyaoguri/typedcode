@@ -14,7 +14,10 @@ import {
   type TemporalLevel,
 } from '@typedcode/shared';
 
-/** 最初に落ちた層。valid なら null。 */
+/**
+ * 落ちた理由の代表 1 つ (`deriveFailedCheck` の優先順位で選ぶ)。valid なら null。
+ * 検査の実行順で最初に落ちたものとは限らない。
+ */
 export type FailedCheck =
   | 'unreadable'
   | 'version'
@@ -50,8 +53,15 @@ export interface FailedCheckInput {
 }
 
 /**
- * 最初に落ちた層を返す。**優先順位は `verifyProofFile` が `errorMessage` に採る順と同じ**
- * (shared/src/verification.ts の `verificationError`)。人が読む Error 行と機械可読の結論が食い違わないため。
+ * 落ちた理由の代表 1 つを、下の優先順位で選んで返す。複数の検査が同時に落ちたときは、番号の小さい
+ * (同じ番号の中では上の) ものを返し、ほかの失敗は返さない。
+ *
+ * これは診断の優先順位であって、検査の実行順ではない (`verifyProofFile` は root・token の検証を
+ * チェーンより先に実行するが、token の失敗 = rootAnchor はチェーン・内容の失敗より後に選ぶ)。
+ * 優先順位は `verifyProofFile` が `errorMessage` に採る順 (shared/src/verification.ts の
+ * `verificationError`) に沿わせてあるが、同じではない: root は metadata より先に選ぶので、
+ * `errorMessage` がハッシュ不一致の文言でも 'root' を返すことがある。下の「既知の限界」も参照。
+ * `errorMessage` の文言から `failedCheck` を推さないこと。
  *
  *  1. version        バージョンゲート (tooOld / malformed)。`errorMessage` の先頭
  *  2. root           root の不一致 (fingerprint / nonce / deviceId / 初期ハッシュ)。metadata の一部だが、より具体的。

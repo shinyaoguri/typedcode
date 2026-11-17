@@ -12,6 +12,10 @@
  *   教室の 100 台が同じ瞬間に online へ戻っても、取得 (Turnstile + session/start) を窓に散らす
  * - **オフラインの間は送らない**: 時刻が来ても `isOnline()` が偽なら取得せずに次のバックオフへ回す
  * - token が得られたら止まる。取得を一度も頼まれていない (exam でない) 間は `online` でも動かない
+ * - **期限切れ (`TOKEN_EXPIRED`) での取り直し** (#682): `reportRejected()` で取り直す。取り直した token が
+ *   また拒否されたら (サーバとの時計ずれ等)、その連続回数で同じバックオフを待ってから取り直す
+ *   (取得の成功ではこの回数を戻さない。戻すと「取得 → 拒否 → 即取得」がバーストする)。
+ *   sign が通ったら `reportAccepted()` で 0 に戻す
  *
  * export・保存・救出はこの成否を一切待たない (呼び出し側は fire-and-forget で使う)。
  * 時計と乱数は注入できる (unit テストは fake timers と固定の乱数で回す)。
@@ -76,6 +80,11 @@ export class SigningTokenRetry {
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** 連続した失敗の回数 (成功と online で 0 に戻す) */
   private failures = 0;
+  /**
+   * サーバに拒否された (TOKEN_EXPIRED) 回数の連続 (#682)。sign が通る (`reportAccepted`) まで戻さない。
+   * 取得の成功で戻すと、取り直した token がすぐ拒否されるときに取得が連打になる
+   */
+  private rejections = 0;
   private disposed = false;
 
   constructor(options: SigningTokenRetryOptions) {
@@ -119,6 +128,28 @@ export class SigningTokenRetry {
     if (this.inFlight) return;
     this.cancelTimer();
     this.run(() => attempt);
+  }
+
+  /**
+   * 使っていた token をサーバが期限切れ (TOKEN_EXPIRED) と返した (#682)。呼び出し側はその token を
+   * `hasToken()` が数えないようにしてから呼ぶ。最初の拒否はすぐ取り直し、取り直した token がまた拒否
+   * されたら連続回数のバックオフを待つ。取得中・待機中なら何もしない (同時 1 本。待機を早めない)。
+   */
+  reportRejected(): void {
+    if (this.disposed) return;
+    this.armed = true;
+    if (this.hasToken() || this.inFlight || this.timer !== null) return;
+    this.rejections += 1;
+    if (this.rejections === 1) {
+      this.run(this.acquire);
+      return;
+    }
+    this.schedule(signingTokenBackoffMs(this.rejections - 1, this.random, this.baseDelayMs, this.maxDelayMs));
+  }
+
+  /** token で sign が通った (#682)。拒否の連続を 0 に戻す */
+  reportAccepted(): void {
+    this.rejections = 0;
   }
 
   /** 網が戻った (`online` イベント)。バックオフを初期化して、窓の中の乱数の時刻に試す */
