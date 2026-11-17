@@ -5,7 +5,8 @@
  * `index.html` の静的 overlay (`#processing-dialog`)。a11y (#305) は `dialogA11y` の `showStaticDialog`:
  * 名前付きの modal dialog にしてキャンセルへフォーカスし、Tab を閉じ込める。Escape では閉じない
  * (従来どおり。中止はキャンセルボタン)。完了・キャンセル・`forceClose` のどれでも `cleanup` を通り、
- * interval とリスナーはそこで解放される。
+ * interval とリスナーはそこで解放され、待ちの Promise もそこで settle する (完了なら true、それ以外は false)。
+ * 前の待ちが残ったまま `waitForComplete` を呼ぶと、前の待ちは false で終わる (#744)。
  */
 
 import { t } from '../../i18n/index.js';
@@ -25,6 +26,8 @@ export class ProcessingDialog {
   private cancelBtn: HTMLElement | null;
   private cancelled = false;
   private checkInterval: ReturnType<typeof setInterval> | null = null;
+  /** 待っている `waitForComplete` の resolve。閉じる・置き換えるときに必ず settle する (#744) */
+  private resolvePending: ((completed: boolean) => void) | null = null;
   private a11y: DialogA11yHandle | null = null;
 
   constructor() {
@@ -50,6 +53,9 @@ export class ProcessingDialog {
       return true; // 待機不要
     }
 
+    // 前の待ちが残っていれば interval を止め、その Promise は中止 (false) で settle する (#744)
+    this.stopWaiting(false);
+
     // ダイアログを表示
     this.cancelled = false;
     if (this.dialog) {
@@ -60,18 +66,17 @@ export class ProcessingDialog {
     const initialPending = initialStats.pendingCount;
 
     return new Promise<boolean>((resolve) => {
+      this.resolvePending = resolve;
       this.checkInterval = setInterval(() => {
         const currentStats = getStats();
 
         if (this.cancelled) {
           this.cleanup();
-          resolve(false);
           return;
         }
 
         if (currentStats.pendingCount === 0) {
-          this.cleanup();
-          resolve(true);
+          this.cleanup(true);
           return;
         }
 
@@ -103,13 +108,23 @@ export class ProcessingDialog {
   }
 
   /**
-   * クリーンアップ
+   * 待ちを終える: interval を止め、待っている Promise を settle する
    */
-  private cleanup(): void {
+  private stopWaiting(completed: boolean): void {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
     }
+    const resolve = this.resolvePending;
+    this.resolvePending = null;
+    resolve?.(completed);
+  }
+
+  /**
+   * クリーンアップ (待ちが残っていれば completed で settle する。既定は中止 = false)
+   */
+  private cleanup(completed = false): void {
+    this.stopWaiting(completed);
     this.a11y?.close();
     this.a11y = null;
     this.dialog?.classList.add('hidden');

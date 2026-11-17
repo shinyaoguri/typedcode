@@ -155,6 +155,28 @@ describe('showLockOverlay a11y', () => {
     hideLockOverlay('lock');
   });
 
+  it('runs an async resume only once when the resume button is clicked again before it settles (#744)', async () => {
+    let finish: (v: boolean) => void = () => undefined;
+    const onResume = vi.fn(() => new Promise<boolean>((r) => (finish = r)));
+    open(onResume);
+    resumeBtn().click();
+    resumeBtn().click();
+    expect(onResume).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(resumeBtn()); // 待つ間もフォーカスはボタンに残る
+    finish(true);
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it('accepts the resume button again after the async resume returns false (#744)', async () => {
+    const onResume = vi.fn(() => Promise.resolve(false));
+    open(onResume);
+    resumeBtn().click();
+    await vi.advanceTimersByTimeAsync(0);
+    resumeBtn().click();
+    expect(onResume).toHaveBeenCalledTimes(2);
+    hideLockOverlay('lock');
+  });
+
   it('releases its listener and returns focus when hidden by id from outside', () => {
     const balance = keydownBalance();
     open();
