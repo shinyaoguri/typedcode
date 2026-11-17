@@ -235,11 +235,18 @@ export class PoswManager {
 
   /**
    * Workerをクリーンアップ
+   *
+   * 破棄の時点で飛んでいた要求は、それぞれ 1 度だけ reject する (ラッパーが期限のタイマーを解除する。#735)。
+   * computePoSW の catch がその場でメインスレッド計算に回すので、イベントは捨てない。reject しないと、
+   * 期限 (WORKER_REQUEST_TIMEOUT_MS) が切れるまでタイマーと要求が破棄後に残り、フォールバックが遅れて走る。
    */
   dispose(): void {
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;
+    }
+    for (const [, { reject }] of this.pendingRequests) {
+      reject(new Error('Worker disposed'));
     }
     this.pendingRequests.clear();
   }
