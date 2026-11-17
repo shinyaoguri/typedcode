@@ -12,7 +12,7 @@ import type { ScreenId } from './uiTour.js';
  * - 作り直しの手順は packages/e2e/README.md の「a11y・i18n・レイアウトの検査」
  *
  * 基準は外部への通信を止めた状態 (helpers/uiTour.ts の walkTour) と表示言語 en で取ったもの。
- * セレクタに英語の title を含む行があるので、a11y-axe.spec.ts は en に固定している。
+ * a11y-axe.spec.ts も en に固定している。セレクタは title などの文言に依存させない (id か data-* で指す。#739)。
  */
 
 export interface KnownA11yViolation {
@@ -38,10 +38,6 @@ const EDITOR_SCREENS: readonly ScreenId[] = [
 ];
 
 export const KNOWN_A11Y_VIOLATIONS: readonly KnownA11yViolation[] = [
-  // select-name (critical): ステータスバーの言語の選択 (#language-selector) に名前が無い
-  { rule: 'select-name', target: '#language-selector', screens: EDITOR_SCREENS, issue: 736 },
-  // label (critical): 検証 Web の再生シークバー (#seekbar-slider) に名前が無い
-  { rule: 'label', target: '#seekbar-slider', screens: ['verify-result'], issue: 736 },
   // color-contrast (serious): 文字と背景のコントラスト不足 (WCAG 1.4.3。ダイアログの背後で暗くなった要素を含む)
   { rule: 'color-contrast', target: '#class-loader-filename', screens: ['class-problem-loader'], issue: 737 },
   { rule: 'color-contrast', target: '#current-hash', screens: ['class-ready', 'assignment-ready'], issue: 737 },
@@ -262,7 +258,7 @@ export const KNOWN_A11Y_VIOLATIONS: readonly KnownA11yViolation[] = [
     issue: 738,
   },
   { rule: 'region', target: '.titlebar-title', screens: EDITOR_SCREENS, issue: 738 },
-  { rule: 'region', target: 'div[title="Total events recorded"]', screens: EDITOR_SCREENS, issue: 738 },
+  { rule: 'region', target: '#event-count-item', screens: EDITOR_SCREENS, issue: 738 },
   {
     rule: 'region',
     target: 'h3[data-i18n="sidebar.title"]',

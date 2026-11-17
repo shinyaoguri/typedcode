@@ -7,7 +7,7 @@ import { FLOW_SCREENS, TOUR_FLOWS, blockExternalRequests, settle, walkTour } fro
  * a11y の退行検査 (#728 / #346 PR 6)。対象画面 (helpers/uiTour.ts) を巡り、各画面に axe をかけて、
  * 既知違反の基準 (helpers/a11yBaseline.ts) から増えていないことを見る。
  *
- * 基準の selector に英語の title を含むものがあるので、表示言語は en に固定する。
+ * 基準は表示言語 en で取ったものなので、表示言語は en に固定する (基準の selector は title の文言に依存しない。#739)。
  * axe が通ることはスクリーンリーダーで実際に操作できることの確認ではない (#305。docs は packages/e2e/README.md)。
  */
 

@@ -567,6 +567,8 @@ export interface VerifyTranslationKeys {
     pause: string;
     next: string;
     end: string;
+    /** 再生シークバー (`#seekbar-slider`) の名前 (aria-label。#736) */
+    position: string;
   };
 
   // Errors

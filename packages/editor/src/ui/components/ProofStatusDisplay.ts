@@ -12,6 +12,8 @@ export interface ProofStats {
 export type GetStatsCallback = () => ProofStats | null;
 export type SnapshotCallback = (content: string) => Promise<{ index: number; recorded: boolean }>;
 
+import { t } from '../../i18n/index.js';
+
 const PROGRESS_RING_CIRCUMFERENCE = 2 * Math.PI * 8; // 円周 = 2πr (r=8)
 
 export class ProofStatusDisplay {
@@ -99,17 +101,21 @@ export class ProofStatusDisplay {
       const offset = PROGRESS_RING_CIRCUMFERENCE * (1 - progress);
       this.progressBar.style.strokeDashoffset = String(offset);
 
-      // ツールチップを更新
+      // ツールチップを更新 (表示言語で。index.html の data-i18n-title と同じく翻訳する = #739)
       this.proofStatusItemEl?.setAttribute(
         'title',
-        `Processing: ${stats.pendingCount} remaining (${processed}/${this.peakPendingCount} done)`
+        t('processingDialog.statusWithProgress', {
+          count: stats.pendingCount,
+          processed,
+          total: this.peakPendingCount,
+        })
       );
     } else {
       // 待機中: プログレスリングを非表示、ピークをリセット
       this.proofProgressRing.classList.remove('processing');
       this.peakPendingCount = 0;
       this.progressBar.style.strokeDashoffset = String(PROGRESS_RING_CIRCUMFERENCE);
-      this.proofStatusItemEl?.setAttribute('title', 'Typing proof status');
+      this.proofStatusItemEl?.setAttribute('title', t('statusBar.proofStatusTitle'));
     }
   }
 
