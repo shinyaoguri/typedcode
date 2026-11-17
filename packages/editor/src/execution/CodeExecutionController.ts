@@ -40,8 +40,12 @@ export interface CodeExecutionCallbacks {
     event: { type: EventType; data?: CodeExecutionEventData; description: string },
     ownerTabId: string | undefined
   ) => void;
-  onShowErrors?: (errors: ParsedError[]) => void;
-  onClearErrors?: () => void;
+  /**
+   * 実行の診断をマーカーにする / 消す。`ownerTabId` は onRecordEvent と同じ run の所有タブで、
+   * マーカーは表示中のタブではなくこのタブのモデルに付ける・消す (#741)。消すのはこのタブの次の run の開始時。
+   */
+  onShowErrors?: (errors: ParsedError[], ownerTabId: string | undefined) => void;
+  onClearErrors?: (ownerTabId: string | undefined) => void;
 }
 
 export interface ExecutionTarget {
@@ -172,10 +176,11 @@ export class CodeExecutionController {
     // Check if runtime needs recovery (for C/C++ after forced stop)
     const needsRecovery = executor.isRuntimeCorrupted?.() ?? false;
 
+    const ownerTabId = target.ownerTabId;
     this.currentExecutor = executor;
     this.isRunning = true;
     this.callbacks.onRunStart?.();
-    this.callbacks.onClearErrors?.();
+    this.callbacks.onClearErrors?.(ownerTabId);
 
     const isCompiled = this.isCompiled(target.language);
     const langName = executor.config.name;
@@ -197,7 +202,6 @@ export class CodeExecutionController {
 
     // コード実行イベントを記録 (ADR-0021: start / result の 2 イベント)
     const executionStartedAt = performance.now();
-    const ownerTabId = target.ownerTabId;
     this.callbacks.onRecordEvent?.(
       {
         type: 'codeExecution',
@@ -269,7 +273,7 @@ export class CodeExecutionController {
           this.terminal?.writeError(text);
           const errors = executor.parseErrors(text) ?? [];
           if (errors.length > 0) {
-            this.callbacks.onShowErrors?.(errors);
+            this.callbacks.onShowErrors?.(errors, ownerTabId);
           }
         },
         onStdinReady: (stdinStream: WritableStream<Uint8Array>) => {
