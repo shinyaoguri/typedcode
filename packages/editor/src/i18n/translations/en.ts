@@ -311,6 +311,11 @@ export const en: TranslationKeys = {
     degraded: 'Partially saved',
     failed: 'Save failed',
     selectLanguage: 'Select language',
+    proofStatusTitle: 'Typing proof status',
+    eventCountTitle: 'Total events recorded',
+    hashTitle: 'Current hash chain',
+    syncTitle: 'IndexedDB sync status',
+    cursorPositionTitle: 'Cursor position',
   },
 
   tabs: {

@@ -310,6 +310,11 @@ export const ja: TranslationKeys = {
     degraded: '一部のみ保存',
     failed: '保存失敗',
     selectLanguage: 'プログラミング言語を選択',
+    proofStatusTitle: 'タイピング証明の状態',
+    eventCountTitle: '記録したイベントの総数',
+    hashTitle: '現在のハッシュチェーン',
+    syncTitle: 'IndexedDB への同期状態',
+    cursorPositionTitle: 'カーソル位置',
   },
 
   tabs: {

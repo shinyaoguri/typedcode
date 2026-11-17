@@ -12,7 +12,7 @@ import type { ScreenId } from './uiTour.js';
  * - 作り直しの手順は packages/e2e/README.md の「a11y・i18n・レイアウトの検査」
  *
  * 基準は外部への通信を止めた状態 (helpers/uiTour.ts の walkTour) と表示言語 en で取ったもの。
- * セレクタに英語の title を含む行があるので、a11y-axe.spec.ts は en に固定している。
+ * a11y-axe.spec.ts も en に固定している。セレクタは title などの文言に依存させない (id か data-* で指す。#739)。
  */
 
 export interface KnownA11yViolation {
@@ -258,7 +258,7 @@ export const KNOWN_A11Y_VIOLATIONS: readonly KnownA11yViolation[] = [
     issue: 738,
   },
   { rule: 'region', target: '.titlebar-title', screens: EDITOR_SCREENS, issue: 738 },
-  { rule: 'region', target: 'div[title="Total events recorded"]', screens: EDITOR_SCREENS, issue: 738 },
+  { rule: 'region', target: '#event-count-item', screens: EDITOR_SCREENS, issue: 738 },
   {
     rule: 'region',
     target: 'h3[data-i18n="sidebar.title"]',

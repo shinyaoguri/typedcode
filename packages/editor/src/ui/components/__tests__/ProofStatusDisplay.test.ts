@@ -5,6 +5,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { getI18n } from '../../../i18n/index.js';
+import { ja } from '../../../i18n/translations/ja.js';
 import { ProofStatusDisplay, type ProofStats } from '../ProofStatusDisplay.js';
 
 const FULL_HASH = 'a'.repeat(32) + 'b'.repeat(32);
@@ -67,5 +69,33 @@ describe('ProofStatusDisplay state contract', () => {
 
     expect(eventCount().dataset.count).toBe('0');
     expect(currentHash().dataset.hash).toBe('');
+  });
+});
+
+// 証明ステータスのツールチップは index.html では data-i18n-title で訳すが、表示の更新のたびに書き直すので、
+// 書き直す側も表示言語で出す (ja の UI で英語に戻さない。#739)
+describe('ProofStatusDisplay tooltip', () => {
+  const statusItem = (): HTMLElement => document.getElementById('proof-status-item')!;
+
+  beforeEach(() => {
+    getI18n().setLocale('ja');
+    document.body.innerHTML = `
+      <div id="proof-status-item" title="">
+        <div id="proof-progress-ring"><svg><circle id="progress-bar"></circle></svg></div>
+      </div>`;
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('writes the idle tooltip in the display language', () => {
+    display({ totalEvents: 1, currentHash: FULL_HASH, pendingCount: 0 }).update();
+    expect(statusItem().title).toBe(ja.statusBar.proofStatusTitle);
+  });
+
+  it('writes the processing tooltip in the display language', () => {
+    display({ totalEvents: 1, currentHash: FULL_HASH, pendingCount: 3 }).update();
+    expect(statusItem().title).toBe('処理中: 3 件待機中 (0/3 完了)');
   });
 });
