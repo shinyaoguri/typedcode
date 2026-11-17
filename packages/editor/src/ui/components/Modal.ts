@@ -6,6 +6,12 @@
 
 import { attachDialogA11y } from './dialogA11y.js';
 
+/**
+ * 同じ id で出し直されたときに前の countdown / lock overlay の片付け (timer・keydown リスナーの解放) を
+ * 呼ぶための表 (#305)。DOM から外すだけだと、前の回の interval とフォーカスの閉じ込めが残る
+ */
+const overlayDisposers = new Map<string, () => void>();
+
 export interface ModalButton {
   /** Button text */
   text: string;
@@ -227,9 +233,9 @@ export function showCountdownDialog(options: CountdownDialogOptions): Promise<bo
   } = options;
 
   return new Promise((resolve) => {
-    // Remove existing dialog
-    const existing = document.getElementById(dialogId);
-    existing?.remove();
+    // Remove existing dialog (前の回の timer とリスナーも解放する)
+    overlayDisposers.get(dialogId)?.();
+    document.getElementById(dialogId)?.remove();
 
     let remainingSeconds = seconds;
     let countdownInterval: ReturnType<typeof setInterval> | null = null;
@@ -248,7 +254,7 @@ export function showCountdownDialog(options: CountdownDialogOptions): Promise<bo
     overlay.innerHTML = `
       <div class="modal-dialog modal-info countdown-dialog">
         <div class="modal-header">
-          <i class="fas ${icon}"></i>
+          <i class="fas ${icon}" aria-hidden="true"></i>
           <h3>${title}</h3>
         </div>
         <div class="modal-body">
@@ -270,13 +276,34 @@ export function showCountdownDialog(options: CountdownDialogOptions): Promise<bo
     document.body.appendChild(overlay);
 
     const countdownTimeEl = overlay.querySelector('.countdown-time');
-    const continueBtn = overlay.querySelector('.countdown-continue-btn');
+    const continueBtn = overlay.querySelector<HTMLElement>('.countdown-continue-btn');
+    const dialog = overlay.querySelector<HTMLElement>('.countdown-dialog')!;
 
-    const cleanup = (): void => {
+    // a11y (#305): 名前付きの modal dialog、続行ボタンへの初期フォーカス、Tab の閉じ込め。
+    // 閉じる手段は続行ボタンと時間切れだけ (Escape では閉じない = 従来どおり)
+    const a11y = attachDialogA11y(dialog, {
+      labelledBy: dialog.querySelector<HTMLElement>('.modal-header h3')!,
+      initialFocus: continueBtn,
+      closeOnEscape: false,
+      onRequestClose: () => undefined,
+    });
+
+    // 冪等: 続行・時間切れ・出し直しのどれから呼ばれても片付けは 1 回
+    let disposed = false;
+    const dispose = (): void => {
+      if (disposed) return;
+      disposed = true;
       if (countdownInterval) {
         clearInterval(countdownInterval);
         countdownInterval = null;
       }
+      if (overlayDisposers.get(dialogId) === dispose) overlayDisposers.delete(dialogId);
+      a11y.close();
+    };
+    overlayDisposers.set(dialogId, dispose);
+
+    const cleanup = (): void => {
+      dispose();
       overlay.classList.add('hidden');
       setTimeout(() => overlay.remove(), 200);
     };
@@ -356,9 +383,9 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
     dialogName,
   } = options;
 
-  // Remove existing overlay
-  const existing = document.getElementById(overlayId);
-  existing?.remove();
+  // Remove existing overlay (前の回のリスナーも解放する)
+  overlayDisposers.get(overlayId)?.();
+  document.getElementById(overlayId)?.remove();
 
   const overlay = document.createElement('div');
   overlay.id = overlayId;
@@ -386,7 +413,7 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
 
   overlay.innerHTML = `
     <div class="${contentClass}">
-      <i class="fas fa-${icon} fa-4x"></i>
+      <i class="fas fa-${icon} fa-4x" aria-hidden="true"></i>
       <h2>${title}</h2>
       <p>${description}</p>
       ${hint ? `<p class="${contentClass}-hint">${hint}</p>` : ''}
@@ -398,7 +425,26 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
 
   document.body.appendChild(overlay);
 
-  const resumeBtn = overlay.querySelector(`.${contentClass}-btn`);
+  const content = overlay.querySelector<HTMLElement>(`.${contentClass}`)!;
+  const resumeBtn = overlay.querySelector<HTMLElement>(`.${contentClass}-btn`);
+
+  // a11y (#305): 名前付きの modal dialog、再開ボタンへの初期フォーカス、Tab の閉じ込め。
+  // 閉じる手段はボタン (と呼び出し側の hide / hideLockOverlay) だけ (Escape では閉じない = 従来どおり)
+  const a11y = attachDialogA11y(content, {
+    labelledBy: content.querySelector<HTMLElement>('h2')!,
+    initialFocus: resumeBtn,
+    closeOnEscape: false,
+    onRequestClose: () => undefined,
+  });
+  let disposed = false;
+  const dispose = (): void => {
+    if (disposed) return;
+    disposed = true;
+    if (overlayDisposers.get(overlayId) === dispose) overlayDisposers.delete(overlayId);
+    a11y.close();
+  };
+  overlayDisposers.set(overlayId, dispose);
+
   resumeBtn?.addEventListener('click', async () => {
     const result = await onResume();
     // If callback returns true or void, hide the overlay
@@ -420,6 +466,7 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
   }
 
   const hide = (): void => {
+    dispose();
     overlay.classList.add('hidden');
     setTimeout(() => overlay.remove(), 200);
   };
@@ -431,6 +478,7 @@ export function showLockOverlay(options: LockOverlayOptions): { hide: () => void
  * Hide a lock overlay by ID
  */
 export function hideLockOverlay(overlayId: string): void {
+  overlayDisposers.get(overlayId)?.();
   const overlay = document.getElementById(overlayId);
   if (overlay) {
     overlay.classList.add('hidden');

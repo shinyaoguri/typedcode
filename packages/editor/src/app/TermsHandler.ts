@@ -3,6 +3,8 @@
  * 利用規約の確認と同意処理を担当
  */
 
+import { showStaticDialog } from '../ui/components/dialogA11y.js';
+
 // 利用規約関連の定数
 const TERMS_ACCEPTED_KEY = 'typedcode-terms-accepted';
 const TERMS_VERSION = '1.0';
@@ -43,6 +45,10 @@ export function markTermsAccepted(): void {
 
 /**
  * 利用規約モーダルを表示
+ *
+ * a11y (#305): `index.html` の静的 overlay を `showStaticDialog` で開く (名前付きの modal dialog、
+ * Tab の閉じ込め、最初のアコーディオンへの初期フォーカス)。同意が必須なので Escape では閉じない。
+ * 練習の規約通知から開いた場合、起点のボタンは disabled で通知ごと消えるので、閉じた後は body に落ちる。
  */
 export async function showTermsModal(): Promise<void> {
   const termsModal = document.getElementById('terms-modal');
@@ -55,7 +61,7 @@ export async function showTermsModal(): Promise<void> {
   }
 
   return new Promise((resolve) => {
-    termsModal.classList.remove('hidden');
+    const dialog = showStaticDialog(termsModal, { closeOnEscape: false });
 
     const handleCheckboxChange = (): void => {
       termsAgreeBtn.disabled = !termsAgreeCheckbox.checked;
@@ -73,7 +79,7 @@ export async function showTermsModal(): Promise<void> {
       );
       termsAgreeCheckbox.removeEventListener('change', handleCheckboxChange);
       termsAgreeBtn.removeEventListener('click', handleAgree);
-      termsModal.classList.add('hidden');
+      dialog.close();
       console.log('[TypedCode] Terms accepted at', new Date(timestamp).toISOString());
       resolve();
     };

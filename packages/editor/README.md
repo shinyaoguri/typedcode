@@ -42,7 +42,7 @@ User Action
     ↓
 InputDetector (paste/drop 検出)
     ↓
-OperationDetector (Monaco 変更イベント → 操作種別)
+OperationDetector (Monaco 変更イベント → 操作種別。IME の composition 系は CompositionTracker が composition に対応付けた編集にだけ付ける)
     ↓
 KeystrokeTracker / MouseTracker など
     ↓
@@ -54,6 +54,8 @@ HashChainManager → PoswManager (Web Worker)
     ↓
 StoredEvent → IndexedDB (イベント本体) + sessionStorage (タブ状態)
 ```
+
+> IME の変換入力 (`insertCompositionText` / `insertFromComposition` / `deleteCompositionText`) は、Monaco の `onDidCompositionStart` / `onDidCompositionEnd` と編集の範囲を対応付けて分類します (#720)。文字種では推定しないので、composition を経ない複数文字の 1 行の挿入は、日本語などを含んでいても `insertReplacementText` として記録されます。
 
 > proof データを localStorage に置くことはありません。イベント本体は IndexedDB (`typedcode-session`)、タブ状態は sessionStorage (`typedcode-tabs`) に保存されます (モード別に名前空間化)。
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -5,7 +6,13 @@ import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { EditorApp, readProofJson } from './helpers/app.js';
 import { runVerifyCliWithVerdicts } from './helpers/verifyCli.js';
-import { VerifyWebApp, expectWebCliParity, typeAndExport, type VerifyFileStatus } from './helpers/verifyWeb.js';
+import {
+  VerifyWebApp,
+  expectWebCliParity,
+  typeAndExport,
+  type VerifyFileStatus,
+  type VerifyFolderFile,
+} from './helpers/verifyWeb.js';
 
 /**
  * verify Web の「フォルダを開く」で監視中の proof を外部で書き換えると、開いているタブの判定・本文が
@@ -16,6 +23,8 @@ import { VerifyWebApp, expectWebCliParity, typeAndExport, type VerifyFileStatus 
  * 検出は verify のフォルダ監視 (3 秒間隔のポーリング) に任せる。判定は data-* の状態契約で読み、
  * 書き換え後の proof に対する verify-cli の判定と突き合わせる (不変条件 6)。本文は結果パネルの
  * コードプレビュー (イベントの再生) に、改ざんで差し込んだ印が出ているかで見る。検証は fast (不変条件 4)。
+ *
+ * `screenshots/` の画像を書き換えたときは、同じフォルダの proof のスクショ検証が取り直される (#703)。
  */
 
 const FOLDER = 'watched';
@@ -49,20 +58,52 @@ function tamperContent(proof: Record<string, unknown>): void {
 }
 
 /**
- * フォルダの proof を `path` で上書きし、行の `data-status` が `reached` を満たすまで待つ。
+ * フォルダのファイルを `file` で上書きし、proof の行の `data-status` が `reached` を満たすまで待つ。
  * 監視の開始 (初期スナップショット) より前に書き込むと変更として拾われないので、拾われなければ書き直す。
  */
 async function overwriteAndWait(
   web: VerifyWebApp,
-  path: string,
+  file: VerifyFolderFile,
   reached: (status: VerifyFileStatus | undefined) => boolean
 ): Promise<void> {
   await expect(async () => {
-    await web.overwriteFolderFile(FOLDER, path);
+    await web.overwriteFolderFile(FOLDER, file);
     await expect
-      .poll(async () => reached((await web.fileStates())[0]?.status), { timeout: 10_000, intervals: [250, 500] })
+      .poll(async () => reached((await web.fileStates()).find((f) => f.filename === PROOF_NAME)?.status), {
+        timeout: 10_000,
+        intervals: [250, 500],
+      })
       .toBe(true);
   }).toPass({ timeout: 60_000 });
+}
+
+/** 一時ディレクトリに `name` で `bytes` を書き、そのパスを返す。 */
+async function writeTemp(name: string, bytes: string | Uint8Array): Promise<string> {
+  const dest = join(mkdtempSync(join(tmpdir(), 'tc-e2e-folder-update-')), name);
+  await writeFile(dest, bytes);
+  return dest;
+}
+
+/** `screenshots/manifest.json`: `image` を 1 枚だけ指す (imageHash は `image` の SHA-256)。 */
+function screenshotManifest(filename: string, image: Uint8Array): string {
+  return JSON.stringify({
+    version: '1.0',
+    exportedAt: new Date().toISOString(),
+    totalScreenshots: 1,
+    screenshots: [
+      {
+        index: 0,
+        filename,
+        imageHash: createHash('sha256').update(image).digest('hex'),
+        captureType: 'periodic',
+        eventSequence: 1,
+        timestamp: 0,
+        createdAt: Date.now(),
+        displayInfo: {},
+        fileSizeBytes: image.length,
+      },
+    ],
+  });
 }
 
 test('#695: 監視中のフォルダで改ざんした proof を正常な proof で上書きすると、開いているタブの判定と本文が新しい proof になる', async ({
@@ -113,4 +154,40 @@ test('#695: 監視中のフォルダで正常な proof を改ざんした proof 
   expect(after.level).toBe('failed');
   expect(await web.displayedFilename()).toBe(PROOF_NAME);
   expect(await web.previewContent()).toContain(MARK);
+});
+
+test('#703: 監視中のフォルダで screenshots/ の画像を別の画像に置き換えると、proof のスクショ検証が取り直されて改竄が出る', async ({
+  page,
+}) => {
+  const zipPath = await typeAndExport(new EditorApp(page));
+  const proof = await writeProofVariant(zipPath);
+  // casual の export はスクショを撮らない (チェーンに screenshotCapture が無い) ので、画像は manifest のハッシュとだけ突き合わされる
+  const shot = 'shot-0.png';
+  const original = new TextEncoder().encode('original screenshot');
+  const replaced = new TextEncoder().encode('replaced screenshot');
+  const web = new VerifyWebApp(page);
+
+  await web.open('fast');
+  await web.openFolder(FOLDER, [
+    proof,
+    { path: 'screenshots/manifest.json', from: await writeTemp('manifest.json', screenshotManifest(shot, original)) },
+    { path: `screenshots/${shot}`, from: await writeTemp(shot, original) },
+  ]);
+  await web.waitSettled(1);
+  const before = await web.readVerdict(PROOF_NAME);
+  expect(before.status).not.toBe('error');
+  expect(await web.trustIssues()).not.toContainEqual({ component: 'screenshots', severity: 'error' });
+
+  await overwriteAndWait(
+    web,
+    { path: `screenshots/${shot}`, from: await writeTemp(shot, replaced) },
+    (s) => s === 'error'
+  );
+
+  const after = await web.readVerdict(PROOF_NAME);
+  expect(after.level).toBe('failed');
+  expect(await web.trustIssues()).toContainEqual({ component: 'screenshots', severity: 'error' });
+  // proof 本文は書き換えていないので、表示する本文は元の proof のまま (#695 の 1 スナップショット)
+  expect(await web.displayedFilename()).toBe(PROOF_NAME);
+  expect(await web.previewContent()).not.toContain(MARK);
 });

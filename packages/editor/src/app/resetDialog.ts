@@ -9,6 +9,7 @@
 import type { AppContext } from '../core/AppContext.js';
 import type { EditorMode } from '../core/mode.js';
 import { t } from '../i18n/index.js';
+import { showStaticDialog, type DialogA11yHandle } from '../ui/components/dialogA11y.js';
 import { clearCurrentModeData } from '../utils/StorageClearHelper.js';
 import { showNotification } from './AppHelpers.js';
 
@@ -50,4 +51,62 @@ export async function confirmReset(ctx: Pick<AppContext, 'skipBeforeUnload' | 't
   }
 
   window.location.href = window.location.origin + window.location.pathname;
+}
+
+/**
+ * 設定メニューの「このモードをリセット」(`#reset-btn`) とダイアログの開閉・確定を配線する。
+ *
+ * a11y (#305): 開くと `dialogA11y` の `showStaticDialog` が role / aria-modal / aria-labelledby を付け、
+ * 初期フォーカスを取り消し側 (キャンセル) に置き、Tab を閉じ込める。キャンセル・overlay・Escape・確定の
+ * どれで閉じても同じ冪等な `close` を通り、Escape のリスナーはそこで解放される。閉じた後のフォーカスは、
+ * 閉じた設定メニューの項目ではなく設定ボタン (`aria-controls` の制御元) へ戻る。
+ */
+export function setupResetDialog(ctx: Pick<AppContext, 'mode' | 'tabManager' | 'skipBeforeUnload'>): void {
+  const resetDialog = document.getElementById('reset-dialog');
+  if (!resetDialog) return;
+  let handle: DialogA11yHandle | null = null;
+
+  const close = (): void => {
+    handle?.close();
+    handle = null;
+  };
+
+  // リセットボタン（設定メニュー内）をクリックしてダイアログを表示
+  document.getElementById('reset-btn')?.addEventListener('click', () => {
+    document.getElementById('settings-dropdown')?.classList.remove('visible');
+    // 消えるモード名とタブ数を差し込んでから開く (#323)
+    prepareResetDialog(ctx);
+    close();
+    handle = showStaticDialog(resetDialog, {
+      initialFocus: document.getElementById('reset-cancel-btn'),
+      onRequestClose: close,
+    });
+  });
+
+  // キャンセルボタン
+  document.getElementById('reset-cancel-btn')?.addEventListener('click', close);
+
+  // オーバーレイクリックで閉じる
+  resetDialog.addEventListener('click', (e) => {
+    if (e.target === resetDialog) close();
+  });
+
+  // リセット確認ボタン - イベント委任を使用
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    // ボタン自体またはその子要素（アイコン、テキスト）がクリックされた場合
+    const confirmBtn = target.closest('#reset-confirm-btn');
+    if (!confirmBtn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    console.log('[TypedCode] Reset confirmed via event delegation');
+
+    // ダイアログを閉じる
+    close();
+
+    // 現在のモードのデータを消し、完了してからパラメータ無しでリロードする (#323)
+    void confirmReset(ctx);
+  });
 }

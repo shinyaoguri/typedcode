@@ -131,6 +131,7 @@ jobs:
       #   - setup-env: e2e の環境準備。既存の .dev.vars の署名鍵と localKeys.ts の食い違いを検知する (#388)。
       #     setup の後も git status が clean であること (#338)
       #   - server-identity: e2e が使う dev サーバがこの作業ツリーのものかの照合 (#552)
+      # - scripts/e2e-flaky.test.mjs: e2e-shard / e2e-flaky-report が使う flaky の収集 (#583)。
       - name: Test scripts (node:test)
         run: node --test 'scripts/*.test.mjs' 'packages/e2e/scripts/*.test.mjs'
 
@@ -224,6 +225,27 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
+      # retry で通った flaky (最終的には通ったが 1 回目は落ちた) は run を緑にし、notice しか残さない (#583)。
+      # Playwright の json レポート (CI のときだけ packages/e2e/reports/ に出る) から拾って job summary に出す。
+      # PR の run はこれだけ (Issue には書かない)。観測であって検査ではないので、レポートが無い・壊れていても
+      # スクリプトは exit 0 で、この job を赤くしない。テストが落ちたときも、通ったテストの flaky を見るため走らせる。
+      - name: Summarize flaky tests (retry で通ったテスト)
+        if: ${{ !cancelled() }}
+        run: node scripts/e2e-flaky.mjs summary --dir packages/e2e/reports --label "shard ${{ matrix.shard }}/2"
+
+      # main への push の run では、下の e2e-flaky-report が全 shard の分を集めて Issue に追記する。
+      # PR の run では上げない (Issue に書かないので要らない)。
+      - name: Upload Playwright JSON reports for the flaky issue
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-flaky-report-shard-${{ matrix.shard }}
+          path: packages/e2e/reports/
+          if-no-files-found: ignore
+          # job の re-run で同じ名前を上げ直せるように
+          overwrite: true
+          retention-days: 3
+
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -253,6 +275,43 @@ jobs:
             echo "::error::E2E shard が成功していない (result=$SHARD_RESULT)"
             exit 1
           fi
+
+  # retry で通った flaky を `test: E2E の flaky (自動)` の Issue に集める (#583。e2e-nightly.yml が nightly の
+  # 失敗を集めるのと同じ形: タイトル一致で open Issue を探し、あればコメント追記、無ければ作る)。
+  # - main への push の run でだけ走る。PR の run (fork を含む) では skipped で、Issue への書き込みは一切しない
+  # - issues: write はこの job にだけ付ける (e2e-shard の権限は広げない)。PR のコードは走らない (main の checkout)
+  # - shard ごとに書かず、全 shard のレポートをここで 1 回にまとめて追記する (shard 同士の同時書き込みを起こさない)。
+  #   同じ run の re-run で同じテストを二重に追記しないよう、スクリプトが本文の印と照合する
+  # - 観測なので e2e の集約 job にも deploy-* の needs にも入れない (この job が落ちても deploy は止まらない)。
+  #   gh で書けなかったときだけ赤くなる
+  e2e-flaky-report:
+    needs: [e2e-shard]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # スクリプトは node の標準モジュールと gh だけを使うので npm ci はしない
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # shard がレポートを出す前に落ちたときは artifact が無い。その旨はスクリプトが summary に出す
+      - name: Download Playwright JSON reports
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: e2e-flaky-report-shard-*
+          path: flaky-reports
+
+      - name: Append flaky tests to the aggregate issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/e2e-flaky.mjs issue --dir flaky-reports --label "全 shard"
 
   # --------------------------------------------------------------------
   # PR: Pages プレビューの build (Workers は触らない。PR ビルドは staging API を指す)
