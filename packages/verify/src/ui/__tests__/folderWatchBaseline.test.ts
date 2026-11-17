@@ -52,9 +52,9 @@ describe('folder watch baseline (#734)', () => {
   it('loads a proof that could not be read when the folder was opened on the next watch round', async () => {
     const s = folderStack();
     const fake = new FakeFolder('submissions', { 'a_proof.json': VALID, 'b_proof.json': VALID });
-    // 開くときの一覧の読み取りでだけ読めない (飛ばされる)
+    // 開くときの一覧の読み取り (strict の 1 回目と、飛ばして読み直す 2 回目。#773) でだけ読めない (飛ばされる)
     fake.beforeGetFile = (path, call) => {
-      if (path === 'b_proof.json' && call === 1) throw denied();
+      if (path === 'b_proof.json' && call <= 2) throw denied();
     };
     await s.folder.openFolder(fake.handle());
     expect(fileRows('b_proof.json')).toBe(0);
@@ -63,6 +63,7 @@ describe('folder watch baseline (#734)', () => {
 
     await vi.waitFor(() => expect(fileRows('b_proof.json')).toBe(1));
     expect(fileRows('a_proof.json')).toBe(1);
-    expect(s.enqueued).toHaveLength(2);
+    // 一覧が不完全だった間のスクショの判定を揃えるため同じタブで検証し直すことはある (#773) が、タブは 2 つのまま
+    expect(new Set(s.enqueued).size).toBe(2);
   });
 });
