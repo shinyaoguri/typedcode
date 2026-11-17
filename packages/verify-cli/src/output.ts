@@ -57,6 +57,7 @@ import {
 import type {
   AcceptancePolicy,
   ExamStarterCheck,
+  ExamLanguageCheck,
   AcceptancePolicyResult,
   VerificationMode,
   SignedCheckpointsVerificationResult,
@@ -286,6 +287,21 @@ function formatStarterStatus(status: ExamStarterCheck['status']): string {
   }
 }
 
+/**
+ * 許可言語の照合 (#727) の 1 行。proof.language は提出時のタブの言語の自己申告なので、PASS でも
+ * 試験中に実行した言語の全履歴を保証するとは書かない。not-evaluated は PASS / FAIL と区別する。
+ */
+function formatLanguageStatus(status: ExamLanguageCheck['status']): string {
+  switch (status) {
+    case 'allowed':
+      return `${c('green', 'PASS')}  ${c('dim', "(self-reported proof language is one of the package's allowed languages)")}`;
+    case 'not-allowed':
+      return `${c('red', 'FAIL')}  ${c('dim', "(proof language is not one of the package's allowed languages)")}`;
+    case 'not-evaluated':
+      return `${c('yellow', 'NOT EVALUATED')}  ${c('dim', '(package declares no allowed languages)')}`;
+  }
+}
+
 /** 試験モード (ADR-0006) の束縛検証セクションを描画する。 */
 function formatExamSection(exam: CLIExamResult, lines: string[]): void {
   lines.push('');
@@ -327,6 +343,10 @@ function formatExamSection(exam: CLIExamResult, lines: string[]): void {
   // 封印 starter と templateInjection の照合 (#718)。束縛の前段で落ちた proof には載らないので出さない。
   if (b.starter) {
     lines.push(`Starter:      ${formatStarterStatus(b.starter.status)}`);
+  }
+  // 許可言語の照合 (#727)。starter と同じく、束縛の前段で落ちた proof には載らないので出さない。
+  if (b.language) {
+    lines.push(`Languages:    ${formatLanguageStatus(b.language.status)}`);
   }
   if (b.timeBox) {
     const tb = b.timeBox;

@@ -352,6 +352,7 @@ export interface TranslationKeys {
     noActiveTab: string;
     alreadyRunning: string;
     languageNotExecutable: string;
+    languageNotAllowed: string;
     runtimeNotFound: string;
     executionFailed: string;
     compilationStarted: string;

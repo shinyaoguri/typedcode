@@ -32,6 +32,8 @@ interface FabricatedExamProof {
   proof: { events: Array<{ previousHash: string }>; finalHash: string };
   fingerprint: { hash: string; components: Record<string, string> };
   exam: ExamProofBlock;
+  /** 提出時のタブの言語 (自己申告。許可言語の照合 #727 に使う) */
+  language?: string;
 }
 
 interface ExamProofFixture {
@@ -68,6 +70,7 @@ async function makeExamProof(opts: SamplePackageOptions = {}): Promise<ExamProof
     typingProofData: { deviceId: fpHash, initialHashNonce: nonce, initialEventChainHash: root },
     proof: { events: [{ previousHash: root }], finalHash: root },
     fingerprint: { hash: fpHash, components },
+    language: 'c',
     exam,
   };
   return { proof, manifest, registry, signer, token };
@@ -310,5 +313,25 @@ describe('verifyExamBinding', () => {
       expect(result.identifiersMatch).toBe(false);
       expect(result.verifiedIds).toBeUndefined();
     });
+  });
+});
+
+describe('verifyExamBinding (v1) — allowed languages vs proof.language (#727)', () => {
+  it('rejects a legacy single-problem proof whose language is not in allowed.languages', async () => {
+    const { proof, manifest, registry } = await makeExamProof({ languages: ['c'] });
+    const result = await verifyExamBinding({ ...proof, language: 'html' } as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.language?.status).toBe('not-allowed');
+  });
+
+  it('accepts a legacy single-problem proof whose language is in allowed.languages', async () => {
+    const { proof, manifest, registry } = await makeExamProof({ languages: ['python', 'c'] });
+    const result = await verifyExamBinding(proof as unknown as BindingArg, manifest, {
+      examAuthorityRegistry: registry,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.language).toEqual({ status: 'allowed' });
   });
 });

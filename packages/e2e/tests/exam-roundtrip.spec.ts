@@ -109,7 +109,7 @@ test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打
   expect(events[2]?.type).toBe('templateInjection');
   expect((events[2]?.data as { content?: string } | undefined)?.content).toBe(fixture.starter);
 
-  await test.step('正しい問題パッケージ: 受理ポリシーの 4 条件を立てても exit 0 と束縛 PASS (starter 照合を含む)', async () => {
+  await test.step('正しい問題パッケージ: 受理ポリシーの 4 条件を立てても exit 0 と束縛 PASS (starter・許可言語の照合を含む)', async () => {
     const ok = runVerifyCli(zipPath, [...EXAM_STRICT_FLAGS, '--exam-package', fixture.packagePath], {
       examAuthorityKeys: true,
     });
@@ -118,7 +118,8 @@ test('exam: 誤コードはゲートに留まり、正コードで解錠 → 打
     // stdout のまま残す理由: 束縛の内訳 (署名・packageHash・root・内容ハッシュ) は人向け出力にしか無い
     // (--result-json は exam 束縛の失敗を 'other' までしか言わない)。
     expect(ok.stdout).toContain('--- Exam binding (ADR-0006) ---');
-    for (const label of ['Root binding:', 'Signature:', 'Package hash:', 'Content hash:', 'Starter:']) {
+    // Languages: proof.language (c) が package の allowed.languages に入る (#727 の正の対照)。
+    for (const label of ['Root binding:', 'Signature:', 'Package hash:', 'Content hash:', 'Starter:', 'Languages:']) {
       expect(ok.stdout, `${label} PASS`).toMatch(new RegExp(`${label}\\s+PASS`));
     }
   });

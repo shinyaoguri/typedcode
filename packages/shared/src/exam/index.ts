@@ -28,6 +28,8 @@ export {
 } from './examBundle.js';
 
 export { matchExamStarter } from './examStarter.js';
+export { examAllowedLanguages, isExamLanguageAllowed, checkExamLanguage } from './examLanguage.js';
+export type { ExamLanguageCheck } from './examLanguage.js';
 export type { ExamStarterCheck, ExamStarterMatchResult, ExamStarterEventLike } from './examStarter.js';
 
 export {

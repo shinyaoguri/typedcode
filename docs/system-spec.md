@@ -711,6 +711,16 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
    | v1 (legacy 平文。starter を機械的に取り出せない) | `not-evaluated` (`valid` に影響させない。保証を増やさない) |
 
    手順 1〜5 のどれかで失敗したときは `starter` を載せない (照合済みと表示しない)。`contentSnapshot` の全文置換は照合に入れない (乖離した snapshot は既に `isPureTyping=false` になり、黙って通らない。§5)。`templateInjection` の量の開示 (#416) と `isPureTyping` の定義は変えない
+
+   **5c. 許可言語の照合** (#727): proof の自己申告 `language` (提出時のタブの言語) を、署名済み manifest の `allowed.languages` と比べる。v2 は手順 4 で引いた問題が starter を持てば、その `starter.language` も許可集合に入れる (`/author` は starter の言語を拡張子から決め、許可言語と突き合わせないので、入れないと正規の package の starter の言語で落ちる)。比較は完全一致で、大文字小文字や空白を正規化しない (manifest は署名対象で、editor はその文字列をそのまま言語 id と `proof.language` にする)。結果は `language: { status, reason? }` に載せ、判定は shared の `exam/examLanguage.ts` (editor の言語の選択・変更・実行・HTML プレビュー開始の各境界も同じ関数を呼ぶ)。
+
+   | 場面 | status |
+   |---|---|
+   | `language` が許可集合に入る | `allowed` |
+   | 入らない / 文字列でない・欠落 (fail-closed) | `not-allowed` (束縛失敗。`valid=false`) |
+   | `allowed.languages` が空 (制限なし。editor も制限しない) | `not-evaluated` (`valid` に影響させない) |
+
+   手順 1〜5 のどれかで失敗したときは `language` を載せない。starter と言語の両方が落ちたときの `reason` は starter のもの。`proof.language` は提出時の言語の申告で、試験中に実行した言語の全履歴を保証しない (チェーンの整合性とは別の「試験条件の違反」として束縛結果にだけ出す)
 6. **time-box** (advisory): `releaseTime ≤ 提出時刻 ≤ deadline`。実際の提出時刻は外部 (Moodle)。verify-cli は `--submitted-at` で渡せ、未指定なら window 表示のみ (`withinWindow=null`)。**`withinWindow=false` は `verifyExamBinding` の `valid` には合流しない** — 提出窓の管理は Moodle が唯一の正で、遅延提出は失格条件ではない ([ADR-0013](adr/0013-exam-schedule-advisory-keep-manifest-format.md) / §4.7)
 
 配線: **verify-cli** は `--exam-package <file.tcexam>` で渡す (任意、未指定なら root 束縛のみ表示し「package 未提供」を明示)。**verify(web)** は試験束縛カードで root 束縛を常時表示し、「問題パッケージを読み込む」で `.tcexam` を取り込み当該タブを再検証して完全束縛を表示する。package 指定で束縛が失敗すれば全体を invalid とする。**package を渡したのに `exam` ブロックが無い proof も invalid** (#218) — 一斉採点で casual proof が混ざると束縛が一切検証されないまま通過するため、ゲートのサイレント無効化を許さない (ZIP では per-proof に失敗させる)。
@@ -740,6 +750,7 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 | **(試験)** T0 前に問題を読んで事前 solve | 封印 (Argon2id + 監督コード)。T0 まで復号不可 (消費期限つき; 配布窓は数分) |
 | **(試験)** 配布と異なる別問題の解答にすり替え | §6.4 (packageHash 不一致 / 復号後 problemContentHash 不一致) |
 | **(試験)** 改造クライアントで封印 starter と別の完成コードを `templateInjection` に入れる | §6.4 手順 5b (注入内容 ≠ 封印 starter → `starter.status='mismatch'`。#718) |
+| **(試験)** 許可されない言語 (例: HTML) に切り替えて解答・提出する | editor は言語の選択・変更・復元後の実行/プレビュー開始で止める。提出物は §6.4 手順 5c (`proof.language` ∉ 許可集合 → `language.status='not-allowed'`。#727)。`proof.language` は提出時の申告なので、途中で別言語を実行した履歴までは言えない。`language` はハッシュにも署名にも入らないので、export 後に許可された値へ書き換えた proof もこの照合は通す (#731) |
 | **(試験)** T0 より前に開始したのに後に見せかける | §6.4 (root に `startToken` が焼かれる。T0 前は監督コードを知り得ないため root を作れない) |
 | **(試験)** 過去回 / 他人の試験 proof を流用 | Layer 1 (fingerprint/nonce 不一致) + §6.4 (packageHash 不一致) |
 | **(試験)** 出題者を詐称した偽問題パッケージ | §6.4 (`examAuthorityKeys` での署名検証に失敗) |
@@ -774,7 +785,7 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
   - root 式の入力 (fingerprint の `hash` と `components`、`initialHashNonce`、`exam` ブロックの root の入力、`sessionStartToken` の `serverNonce`。Layer 1)。token のそれ以外 (署名された `payload`・`signature`・`keyId`・`algorithm`) を書き換えると token を検証できず `valid` が落ちる (改ざんではなく時刻アンカーの失敗として `rootAnchorFailure` で返す。#329)
   - 未署名 cp の照合値 (Layer 5) と、署名 cp の `payload` (ECDSA。Layer 6)
 
-  検証器は `proof.version` で対象を切り替えない (`MIN_SUPPORTED_VERSION` 以降のどの版も同じ規則で検証する)。版で違うのは proof が持ちうるブロックで、1.1.0 で加わった `exam` と 1.2.0 で加わった `sessionStartToken` は、proof にあれば root の入力に加わる (分岐は版ではなくブロックの有無で決まる。`verifyInitialHashRoot`)。**上のどれにも入らないフィールドは、書き換えても `valid` が変わらない**: イベントの派生フィールド (`description` / `insertLength` / `selectedText` など。#328)、`version` (§6.3 のバージョンゲートで分類するだけ。下限未満・不正形式にすれば拒否されるが、受理する版の間で名乗り替えても検出しない)、`proof` ブロックの `totalEvents` / `startTime` / `endTime` / `signature`、トップレベルの `metadata` (`typingProofData.metadata` はハッシュ対象)、§5.3 で自己申告とした `rootAnchored` / `mode` / `filename` / `language`。表示や判断にこれらを使うときは、検証済みの値から導き直す (分析器は `pickHashedEventFields` へ射影する。shared/AGENTS.md 不変条件 12)
+  検証器は `proof.version` で対象を切り替えない (`MIN_SUPPORTED_VERSION` 以降のどの版も同じ規則で検証する)。版で違うのは proof が持ちうるブロックで、1.1.0 で加わった `exam` と 1.2.0 で加わった `sessionStartToken` は、proof にあれば root の入力に加わる (分岐は版ではなくブロックの有無で決まる。`verifyInitialHashRoot`)。**上のどれにも入らないフィールドは、書き換えても `valid` が変わらない**: イベントの派生フィールド (`description` / `insertLength` / `selectedText` など。#328)、`version` (§6.3 のバージョンゲートで分類するだけ。下限未満・不正形式にすれば拒否されるが、受理する版の間で名乗り替えても検出しない)、`proof` ブロックの `totalEvents` / `startTime` / `endTime` / `signature`、トップレベルの `metadata` (`typingProofData.metadata` はハッシュ対象)、§5.3 で自己申告とした `rootAnchored` / `mode` / `filename` / `language`。このうち `language` は試験の許可言語の照合 (§6.4 手順 5c) が読むので、許可されない値にすれば束縛は落ちるが、許可された値への書き換えはこの照合では検出できない (照合は申告値を見るだけで、`language` はハッシュにも署名にも入らない。#731)。表示や判断にこれらを使うときは、検証済みの値から導き直す (分析器は `pickHashedEventFields` へ射影する。shared/AGENTS.md 不変条件 12)
   - テスト: fast で「どのイベントのどのハッシュ対象フィールドを 1 つ変えても拒否する」ことは `verification.property.test.ts` の `rejects a proof in which any one hashed field of any one event was changed` が生成した proof で固定する。正規の proof が full で通る正の対照は `frozenProofs.test.ts` (凍結 fixture)
 - **流用検出**: 別の fingerprint / sessionId / initialEventChainHash 由来のデータ流用は決定的に検出される
 - **時刻アンカリング (signed checkpoints 利用時)**: 各 envelope の `serverTimestamp` は「サーバが署名要求を受け取った時刻」を証明する → proof は最古の `serverTimestamp` 以降に存在していたことが証明される
@@ -1018,3 +1029,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-11 | 試験の封印 starter と templateInjection の照合 (#718) | `verifyExamBinding` が v2 の該当問題の starter と proof の `templateInjection` の `data.content` を比べ、不一致を束縛失敗 (`starter.status='mismatch'`) にする。v1 は `not-evaluated`。§6.4 手順 5b と脅威表を反映 |
 | 2026-11-16 | fast の保証と改ざん検出の範囲を実際の検証に合わせる (#677) | §8.1 の「任意 1 ビットの改ざんを検出」は、ハッシュ・署名の対象外 (イベントの派生フィールド・`proof.signature`・自己申告の `mode` など) まで含むように読めた。対象 (`pickHashedEventFields` と `posw`、`typingProofData`、root の入力、cp の照合値と署名 payload) と対象外を列挙し、fast / full で同じであること、検証器が版で対象を切り替えないことを書いた。§8.2 は「PoSW の値だけを書き換える」(fast・full とも拒否) と「偽の PoSW のまま作り直す」(fast は通し、full だけが拒否) を分け、固定しているテストを示した。**判定 (`verifyProofFile` の valid / exit code)・proof フォーマット・verify-cli の `failedCheck` の値は不変** |
 | 2026-11-16 | composition に対応付けて IME を分類する (#720) | editor の `OperationDetector` が CJK を含む複数文字の挿入を文字種だけで `insertFromComposition` にしていたのをやめ、Monaco の `onDidCompositionStart` / `End` と編集の範囲を対応付けた編集だけを composition 系にした (§4.1)。composition に対応しない直接挿入は `insertReplacementText` として既存の一括挿入の評価に掛かる。shared の判定式・`InputType` の値域・記録形式・`PROOF_FORMAT_VERSION` は不変 |
+| 2026-11-16 | 試験の許可言語の照合 (#727) | `verifyExamBinding` が proof の自己申告 `language` を manifest の `allowed.languages` (v2 は該当問題の starter の言語も) と完全一致で照合し、外れたら束縛失敗 (`language.status='not-allowed'`) にする。許可言語が空なら `not-evaluated`。§6.4 手順 5c と脅威表を反映 |

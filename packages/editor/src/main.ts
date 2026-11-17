@@ -125,6 +125,7 @@ import {
 import { showSessionRecoveryDialog } from './ui/dialogs/SessionRecoveryDialog.js';
 import { showUnprovenContentDialog } from './ui/dialogs/UnprovenContentDialog.js';
 import { showBootFailure } from './app/bootFailure.js';
+import { languagePolicyFor, syncLanguageSelector } from './app/examLanguageGuard.js';
 
 // shared ライブラリのトレースログは dev サーバ時のみ有効化 (本番は no-op)。
 setSharedDebug(import.meta.env.DEV);
@@ -458,6 +459,8 @@ async function initializeTabManager(
   recoverySessionId?: string
 ): Promise<boolean> {
   ctx.tabManager = new TabManager(ctx.editor);
+  // 試験の許可言語 (#727): 言語変更の境界。UI の選択肢を経ない変更もここで止める
+  ctx.tabManager.setLanguageGuard((tab, language) => languagePolicyFor(ctx).isAllowed(tab, language));
 
   const editorTabsContainer = document.getElementById('editor-tabs');
   if (editorTabsContainer) {
@@ -804,6 +807,11 @@ function initializeCodeExecution(): void {
   };
 
   ctx.codeExecution.setTerminal(ctx.terminal!);
+  // 試験の許可言語 (#727): 実行開始の境界。復元や直接の状態変更で非許可の言語になったタブも止める
+  ctx.codeExecution.setLanguageGate((language) => {
+    const activeTab = ctx.tabManager?.getActiveTab();
+    return activeTab ? languagePolicyFor(ctx).isAllowed(activeTab, language) : false;
+  });
   ctx.codeExecution.setCallbacks({
     onRunStart: () => {
       runCodeBtn?.classList.add('running');
@@ -880,6 +888,8 @@ function initializeCodeExecution(): void {
     resizeHandleId: 'preview-resize-handle',
     editorContainer: editorContainer!,
     getTabManager: () => ctx.tabManager,
+    // 試験の許可言語 (#727): HTML プレビュー開始の境界
+    isTabLanguageAllowed: (tab) => languagePolicyFor(ctx).isAllowed(tab, tab.language),
   });
 
   const copyCodeBtn = document.getElementById('copy-code-btn');
@@ -1028,10 +1038,12 @@ async function openLegacyExamTab(
     problemContentHash,
     startToken,
   };
+  // タブを作る前に保存する: タブの許可言語 (#727) はこのストアの manifest から引くので、作成時の
+  // タブ切替で言語セレクタを合わせる時点でパッケージが引けないと全言語が塞がる
+  ExamPackageStore.save(manifest.problemId, { manifest, plaintext: statement });
   await appCtx.tabManager?.createTab(filename, language, '', { examContext, examVerification });
   appCtx.problemPanel.setProblem(statement);
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
-  ExamPackageStore.save(manifest.problemId, { manifest, plaintext: statement });
 }
 
 /**
@@ -1066,6 +1078,15 @@ async function openBundleTabs(
       rootBinding: 'v2',
     };
 
+    // タブを作る前に保存する (許可言語 #727 をこのストアから引くため。openLegacyExamTab と同じ)。
+    // starter の言語は manifest の allowed.languages に無くてもその問題で許可される (shared の規則)
+    ExamPackageStore.save(problem.problemId, {
+      manifest,
+      plaintext: problem.statement,
+      ...(problem.examples ? { examples: problem.examples } : {}),
+      ...(problem.starter ? { starterLanguage: problem.starter.language } : {}),
+    });
+
     const tab: TabState | null =
       (await appCtx.tabManager?.createTab(filename, language, starterContent, {
         examContext,
@@ -1092,12 +1113,6 @@ async function openBundleTabs(
         injectionSource: 'file_import',
       });
     }
-
-    ExamPackageStore.save(problem.problemId, {
-      manifest,
-      plaintext: problem.statement,
-      ...(problem.examples ? { examples: problem.examples } : {}),
-    });
   }
 
   // 先頭タブをアクティブにし、その問題文を表示する。
@@ -1582,11 +1597,10 @@ async function initializeApp(): Promise<void> {
   } else {
     ctx.tabUIController?.updateUI();
 
-    // 言語セレクタを更新
+    // 言語セレクタを更新 (値と、試験の許可言語に絞った選択肢。#727)
     const activeTab = ctx.tabManager?.getActiveTab();
-    const languageSelector = document.getElementById('language-selector') as HTMLSelectElement | null;
-    if (activeTab && languageSelector) {
-      languageSelector.value = activeTab.language;
+    if (activeTab) {
+      syncLanguageSelector(ctx, activeTab);
     }
 
     updateProofStatus(ctx);

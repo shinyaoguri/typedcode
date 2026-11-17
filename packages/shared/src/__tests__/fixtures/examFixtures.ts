@@ -52,6 +52,8 @@ export interface SamplePackageOptions {
   deadline?: string;
   /** manifest の formatVersion (既定 1)。未知バージョンの正規署名 package を作る (#223) */
   formatVersion?: number;
+  /** manifest の allowed.languages (既定 ['c']。#727) */
+  languages?: string[];
 }
 
 /** テスト用の封印問題パッケージを 1 つ作る */
@@ -69,7 +71,7 @@ export async function buildSamplePackage(
     kdf: { algorithm: 'argon2id', salt: 'ab'.repeat(16), params: { ...FAST_KDF_PARAMS } },
     releaseTime: opts.releaseTime ?? '2026-06-06T00:00:00.000Z',
     deadline: opts.deadline ?? '2026-06-06T03:00:00.000Z',
-    allowed: { languages: ['c'] },
+    allowed: { languages: opts.languages ?? ['c'] },
     keyId: signer.keyId,
     algorithm: 'ECDSA-P256',
   };
