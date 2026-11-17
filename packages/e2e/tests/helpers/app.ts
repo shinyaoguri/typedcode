@@ -327,9 +327,10 @@ export class EditorApp {
    *
    * 件数とハッシュは PoSW の非同期処理で動くので、アクティブなタブの pending が 0 になり DOM が
    * 追いつくまで待つ (DOM と snapshot は 1 回の evaluate で同時に読む)。上限までに揃わなければ
-   * 食い違いの一覧を添えて落ちる。
+   * 食い違いの一覧を添えて落ちる。`timeoutMs` は上限を延ばす。1 回の操作で多数のイベントを積む手順
+   * (長い composition など) の後だけに使い、既定は `CONSISTENT_TIMEOUT_MS` (#783)。
    */
-  async expectConsistent(): Promise<void> {
+  async expectConsistent(options: { timeoutMs?: number } = {}): Promise<void> {
     let last: string[] = [];
     await expect
       .poll(
@@ -337,7 +338,7 @@ export class EditorApp {
           last = await this.page.evaluate(readContractMismatches, TAB_SELECTOR);
           return last;
         },
-        { timeout: CONSISTENT_TIMEOUT_MS, intervals: [100, 250, 500] }
+        { timeout: options.timeoutMs ?? CONSISTENT_TIMEOUT_MS, intervals: [100, 250, 500] }
       )
       .toEqual([]);
   }
