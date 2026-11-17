@@ -132,7 +132,7 @@ CI には `.dev.vars` も `editor/.env` も存在しない (gitignore)。`npm ru
 (片方だけ別の worktree から持ってきた、`localKeys.ts` が `.example` から作り直された、など)、
 食い違ったままだと workers が署名を拒否して e2e が「署名 0 件」で落ちるため。
 
-CI ジョブは `.github/workflows/deploy.yml` の `e2e-shard` (Playwright の `--shard` で 2 分割した
+CI ジョブは `.github/workflows/deploy.yml` の `e2e-shard` (Playwright の `--shard` で 3 分割した
 matrix。`test:build` は shard 1 だけ) と、全 shard の成功を要求する集約 job `e2e`。
 `build-preview` / `deploy-staging` / `deploy-production` は `[test, check, e2e]` でゲートされ、
 main ruleset の required check も `e2e`。
