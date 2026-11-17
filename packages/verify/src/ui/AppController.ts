@@ -23,6 +23,7 @@ import { showAboutDialog } from './AboutDialog';
 import { bindFileInput, processFilesInOrder } from './fileInput';
 import { resolveInitialVerifyMode } from '../services/verifyModeQuery';
 import { summarizeVerification } from '../services/verificationSummary';
+import { renderStatusBar } from './statusBarView';
 
 export class AppController {
   private themeManager: ThemeManager;
@@ -207,10 +208,10 @@ export class AppController {
       },
       addPlaintextFile: (fileData, folderId) => this.fileController.addPlaintextFile(fileData, folderId),
       addImageFile: (fileData, folderId) => this.fileController.addImageFile(fileData, folderId),
-      replaceFile: (id, fileData) => this.fileController.replaceFile(id, fileData),
+      replaceFile: (id, fileData, container) => this.fileController.replaceFile(id, fileData, container),
       settleSubmission: () => this.fileController.settleSubmission(),
       onScreenshotServiceUpdate: (service) => this.chartController.updateScreenshotService(service),
-      onStatusBarUpdate: () => this.updateStatusBar(),
+      onStatusBarUpdate: (message) => this.updateStatusBar(message),
       onFileRemove: (id) => this.handleFileRemove(id),
     });
 
@@ -356,33 +357,10 @@ export class AppController {
     this.tabController.showTabContent(id, forceRefresh);
   }
 
-  private updateStatusBar(): void {
-    const fileCount = this.sidebar.getFileCount();
-    this.statusBar.setFileCount(fileCount);
-
-    // TabManagerの状態に基づいて検証中かどうかを判定
-    let pendingOrVerifyingCount = 0;
-    const allTabs = this.tabManager.getAllTabs();
-
-    for (const tab of allTabs) {
-      if (tab.status === 'pending' || tab.status === 'verifying') {
-        pendingOrVerifyingCount++;
-      }
-    }
-
-    if (pendingOrVerifyingCount > 0) {
-      const state = this.uiState.getState();
-      this.statusBar.setVerifying(state.completedCount, state.totalCount);
-    } else {
-      // 検証が全件済んだら件数を残す (#282)。自動で開くのは 1 件だけなので、赤い proof を見落とさないため。
-      // 入力はタブの status (VerificationController が流した値) だけ。proof が 0 件 (plaintext のみ等) なら Ready。
-      const summary = summarizeVerification(allTabs);
-      if (summary.done && summary.total > 0) {
-        this.statusBar.setSummary(summary);
-      } else {
-        this.statusBar.setReady();
-      }
-    }
+  /** `message` は操作の知らせ (フォルダを開いた等)。集約を出せるときは集約を優先する (statusBarView。#683) */
+  private updateStatusBar(message?: string): void {
+    this.statusBar.setFileCount(this.sidebar.getFileCount());
+    renderStatusBar(this.statusBar, this.tabManager.getAllTabs(), this.uiState.getState(), message);
   }
 
   /** 表示中のタブの検証を止める (#331)。待機中・検証中のタブだけが対象。 */

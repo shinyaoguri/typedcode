@@ -64,6 +64,12 @@ export interface VerifyProofSummary {
  */
 export type VerifyDropTarget = 'drop-zone' | 'sidebar';
 
+/**
+ * `openFolder` / `overwriteFolderFile` で置くファイル。文字列はフォルダ直下に同じ名前で、`{ path, from }` は
+ * フォルダ内の相対パス `path` (例: `screenshots/manifest.json`) に `from` の中身を置く。
+ */
+export type VerifyFolderFile = string | { path: string; from: string };
+
 /** 結果パネルのチャートタブ (`#tab-<name>` / `#panel-<name>`)。 */
 export type ChartTabName = 'integrated' | 'timeline' | 'mouse';
 
@@ -193,50 +199,99 @@ export class VerifyWebApp {
   }
 
   /**
-   * `paths` を 1 つのフォルダ `folderName` に入れ、メインメニューの「フォルダを開く」(`#open-folder-btn`) から
+   * `files` を 1 つのフォルダ `folderName` に入れ、メインメニューの「フォルダを開く」(`#open-folder-btn`) から
    * 開く (#590)。検証の完了は待たない (続けて `waitSettled` を呼ぶ)。
    *
    * フォルダの選択ダイアログ (`showDirectoryPicker`) はブラウザの外の UI で Playwright から操作できないので、
    * そこだけを、Origin Private File System に作った本物のディレクトリのハンドルを返す関数に差し替える。
    * ハンドルの走査・フォルダ内の ZIP の展開・検証は本物の経路を通る。
+   *
+   * `delayWatchStartMs` を渡すと、フォルダの監視の初期スナップショット (ルートの 2 回目の `values()`) だけを
+   * その時間遅らせる (#683 の再現: フォルダを開く処理の末尾より先に検証を終わらせる)。遅らせた走査が終わった
+   * ことは `waitFolderWatchStarted` で待つ。
    */
-  async openFolder(folderName: string, paths: string[]): Promise<void> {
-    const files = await readFilesForPage(paths);
+  async openFolder(
+    folderName: string,
+    files: VerifyFolderFile[],
+    options: { delayWatchStartMs?: number } = {}
+  ): Promise<void> {
+    const entries = await readFolderFilesForPage(files);
     await this.page.evaluate(
-      async ({ folderName, files }) => {
+      async ({ folderName, entries, delay }) => {
         const root = await navigator.storage.getDirectory();
         const dir = await root.getDirectoryHandle(folderName, { create: true });
-        for (const { name, base64 } of files) {
-          const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
+        for (const { path, base64 } of entries) {
+          const parts = path.split('/');
+          let parent = dir;
+          for (const part of parts.slice(0, -1)) parent = await parent.getDirectoryHandle(part, { create: true });
+          const handle = await parent.getFileHandle(parts[parts.length - 1]!, { create: true });
+          const writable = await handle.createWritable();
           await writable.write(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
           await writable.close();
         }
+        const flags = window as unknown as { __tcFolderWatchStarted?: boolean };
+        flags.__tcFolderWatchStarted = false;
+        let picked: FileSystemDirectoryHandle = dir;
+        if (delay !== undefined) {
+          let calls = 0;
+          // ネイティブのメソッドは this が本物のハンドルでないと動かないので、values 以外は束縛して返す
+          picked = new Proxy(dir, {
+            get(target, prop) {
+              if (prop === 'values') {
+                return () => {
+                  const inner = (target as unknown as { values(): AsyncIterable<FileSystemHandle> }).values();
+                  if (++calls !== 2) return inner;
+                  return (async function* () {
+                    await new Promise((resolve) => setTimeout(resolve, delay));
+                    for await (const entry of inner) yield entry;
+                    flags.__tcFolderWatchStarted = true;
+                  })();
+                };
+              }
+              const value = Reflect.get(target, prop, target);
+              return typeof value === 'function' ? value.bind(target) : value;
+            },
+          });
+        }
         (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker =
-          async () => dir;
+          async () => picked;
       },
-      { folderName, files }
+      { folderName, entries, delay: options.delayWatchStartMs }
     );
     await this.page.locator('#main-menu-btn').click();
     await this.page.locator('#open-folder-btn').click();
   }
 
+  /** `openFolder(..., { delayWatchStartMs })` で遅らせた監視の初期スナップショットが終わるまで待つ (#683)。 */
+  async waitFolderWatchStarted(timeout = 60_000): Promise<void> {
+    await this.page.waitForFunction(
+      () => (window as unknown as { __tcFolderWatchStarted?: boolean }).__tcFolderWatchStarted === true,
+      undefined,
+      { timeout }
+    );
+  }
+
   /**
-   * `openFolder` で作った OPFS のフォルダ `folderName` の中の同名ファイルを、`path` の中身で上書きする (#695)。
-   * 外の編集ソフトでファイルを保存し直したのと同じく、ファイルの `lastModified` が変わるので、verify の
-   * フォルダ監視 (FolderSyncManager。3 秒間隔のポーリング) が変更として拾う。拾ったかどうかは待たない。
+   * `openFolder` で作った OPFS のフォルダ `folderName` の中の同じパスのファイルを、`file` の中身で上書きする
+   * (無ければ作る。#695 / #703)。外の編集ソフトでファイルを保存し直したのと同じく、ファイルの `lastModified` が
+   * 変わるので、verify のフォルダ監視 (FolderSyncManager。3 秒間隔のポーリング) が変更として拾う。拾ったかどうかは
+   * 待たない。
    */
-  async overwriteFolderFile(folderName: string, path: string): Promise<void> {
-    const [file] = await readFilesForPage([path]);
+  async overwriteFolderFile(folderName: string, file: VerifyFolderFile): Promise<void> {
+    const [entry] = await readFolderFilesForPage([file]);
     await this.page.evaluate(
-      async ({ folderName, file }) => {
+      async ({ folderName, entry }) => {
         const root = await navigator.storage.getDirectory();
-        const dir = await root.getDirectoryHandle(folderName);
+        let parent = await root.getDirectoryHandle(folderName);
+        const parts = entry.path.split('/');
+        for (const part of parts.slice(0, -1)) parent = await parent.getDirectoryHandle(part, { create: true });
         // keepExistingData を付けないので、書き込みは元の中身を捨てた全置換になる
-        const writable = await (await dir.getFileHandle(file.name)).createWritable();
-        await writable.write(Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0)));
+        const handle = await parent.getFileHandle(parts[parts.length - 1]!, { create: true });
+        const writable = await handle.createWritable();
+        await writable.write(Uint8Array.from(atob(entry.base64), (c) => c.charCodeAt(0)));
         await writable.close();
       },
-      { folderName, file: file! }
+      { folderName, entry: entry! }
     );
   }
 
@@ -458,6 +513,16 @@ export class VerifyWebApp {
     for (const f of filenames) out.push(await this.readVerdict(f));
     return out;
   }
+}
+
+/** フォルダ内の相対パス (`/` 区切り) で置く。無ければ常に読み元のファイル名にする。 */
+async function readFolderFilesForPage(files: VerifyFolderFile[]): Promise<Array<{ path: string; base64: string }>> {
+  return Promise.all(
+    files.map(async (f) => {
+      const { path, from } = typeof f === 'string' ? { path: basename(f), from: f } : f;
+      return { path, base64: (await readFile(from)).toString('base64') };
+    })
+  );
 }
 
 /** ページへ渡すためにファイルを読む (ページ側で File / OPFS のファイルに戻す)。名前はベース名。 */
