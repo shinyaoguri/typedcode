@@ -43,6 +43,11 @@ export class FakeFolder {
     for (const [path, content] of Object.entries(files)) this.write(path, content);
   }
 
+  /** `path` の `getFile()` がこれまでに呼ばれた回数 (`beforeGetFile` で何回目を止める・失敗させるかを決める)。 */
+  getFileCount(path: string): number {
+    return this.getFileCalls.get(path) ?? 0;
+  }
+
   /** ファイルを作る / 上書きする (`lastModified` が進む)。 */
   write(path: string, content: string | Uint8Array): void {
     const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;

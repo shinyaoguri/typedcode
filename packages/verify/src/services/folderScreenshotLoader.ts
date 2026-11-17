@@ -14,6 +14,7 @@
 
 import { collectChainImageHashes, type StoredEvent } from '@typedcode/shared';
 import type { FSAccessFileEntry, ProofFile, VerifyScreenshot } from '../types.js';
+import { isNotFound } from './fsaErrors.js';
 import { ScreenshotService } from './ScreenshotService.js';
 import { normalizeScreenshotManifest } from './screenshotManifest.js';
 
@@ -29,7 +30,11 @@ export interface FolderScreenshotLoadResult {
  * フォルダ内の proof (`*.json`) から、チェーンに焼かれた screenshot ハッシュ集合を集める。
  * 実体は shared (`collectChainImageHashes`) — ZIP 経路と同一実装。
  */
-export async function collectFolderChainImageHashes(files: readonly FSAccessFileEntry[]): Promise<Set<string>> {
+export async function collectFolderChainImageHashes(
+  files: readonly FSAccessFileEntry[],
+  /** `strict`: 読み取りの失敗を無視せず投げる (読めなかった proof のハッシュが集合から抜けたまま判定しない。#703) */
+  options: { strict?: boolean } = {}
+): Promise<Set<string>> {
   const eventsList: StoredEvent[][] = [];
 
   for (const entry of files) {
@@ -37,13 +42,20 @@ export async function collectFolderChainImageHashes(files: readonly FSAccessFile
     // screenshots/manifest.json 等は proof ではない
     if (entry.path.startsWith('screenshots/')) continue;
 
+    let text: string;
     try {
-      const file = await entry.handle.getFile();
-      const parsed = JSON.parse(await file.text()) as ProofFile;
+      text = await (await entry.handle.getFile()).text();
+    } catch (error) {
+      // 読めないファイルは無視 (strict のときは失敗にする)
+      if (options.strict) throw error;
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(text) as ProofFile;
       const events = parsed?.proof?.events;
       if (Array.isArray(events)) eventsList.push(events);
     } catch {
-      // proof ではない JSON / 読めないファイルは無視
+      // proof ではない JSON は無視
     }
   }
 
@@ -59,28 +71,51 @@ export async function collectFolderChainImageHashes(files: readonly FSAccessFile
  */
 export async function loadFolderScreenshots(
   rootHandle: FileSystemDirectoryHandle,
-  chainImageHashes: ReadonlySet<string>
+  chainImageHashes: ReadonlySet<string>,
+  /**
+   * `strict`: 読み取りの失敗 (画像・manifest が一時的に読めない) を「無い」と見ず投げる (#703)。
+   * screenshots フォルダ・manifest.json・画像が本当に無い (`NotFoundError`) ときは従来どおり 0 枚 / 欠損として扱う
+   */
+  options: { strict?: boolean } = {}
 ): Promise<FolderScreenshotLoadResult> {
+  const strict = options.strict ?? false;
   try {
-    const screenshotsFolderHandle = await rootHandle.getDirectoryHandle('screenshots');
-    const manifestHandle = await screenshotsFolderHandle.getFileHandle('manifest.json');
-    const manifestText = await (await manifestHandle.getFile()).text();
+    let screenshotsFolderHandle: FileSystemDirectoryHandle;
+    let manifestText: string;
+    try {
+      screenshotsFolderHandle = await rootHandle.getDirectoryHandle('screenshots');
+      const manifestHandle = await screenshotsFolderHandle.getFileHandle('manifest.json');
+      manifestText = await (await manifestHandle.getFile()).text();
+    } catch (error) {
+      // screenshots フォルダ / manifest.json が無い (strict のときは、無い以外の読み取りの失敗を投げる)
+      if (strict && !isNotFound(error)) throw error;
+      return { screenshots: [] };
+    }
 
-    const manifest = normalizeScreenshotManifest(JSON.parse(manifestText));
+    let manifest: ReturnType<typeof normalizeScreenshotManifest>;
+    try {
+      manifest = normalizeScreenshotManifest(JSON.parse(manifestText));
+    } catch {
+      // manifest が JSON として壊れている (読み取りの失敗ではない)
+      return { screenshots: [] };
+    }
     if (!manifest || manifest.screenshots.length === 0) {
       return { screenshots: [] };
     }
 
     const screenshotService = new ScreenshotService();
-    const screenshots = await screenshotService.loadFromFolder(screenshotsFolderHandle, manifest, chainImageHashes);
+    const screenshots = await screenshotService.loadFromFolder(screenshotsFolderHandle, manifest, chainImageHashes, {
+      strict,
+    });
 
     return {
       screenshots,
       startTimestamp: calculateStartTimestamp(screenshots, manifest.exportedAt),
       screenshotService,
     };
-  } catch {
-    // screenshots フォルダ / manifest.json が無い、または読めない
+  } catch (error) {
+    if (strict) throw error;
+    // 読めない
     return { screenshots: [] };
   }
 }

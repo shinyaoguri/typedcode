@@ -188,6 +188,77 @@ describe('folder screenshots re-checked while watching (#703)', () => {
     expect(screenshotSummaryOf(added)).toMatchObject({ total: 1, tampered: 0, missing: 0 });
   });
 
+  // 1 回の走査で、変わったファイルは 監視の走査 (+1)・タブの取り込み直し (+2)・読み直しの一覧 (+3)・
+  // 読み直しのスクショの読み込み (+4) の順に読まれる。そのうち 1 回だけを一時的な読み取りの失敗にする
+  it.each([
+    ['the folder listing', 'screenshots/a.png', 3],
+    ['the screenshot image', 'screenshots/a.png', 4],
+    ['the manifest', 'screenshots/manifest.json', 4],
+  ])('commits nothing when %s cannot be read during the screenshot reload', async (_what, failingPath, offset) => {
+    const s = folderStack();
+    const fake = await exportFolder({ 'a.png': ORIGINAL });
+    await s.folder.openFolder(fake.handle());
+    await s.drain();
+    const id = s.tabAt(PROOF_PATH).id;
+
+    if (failingPath === 'screenshots/a.png') fake.write('screenshots/a.png', REPLACED);
+    else fake.write('screenshots/manifest.json', await manifestFor({ 'a.png': REPLACED }));
+    const failAt = fake.getFileCount(failingPath) + offset;
+    let failures = 0;
+    fake.beforeGetFile = (path, call) => {
+      if (path !== failingPath || call !== failAt) return;
+      failures++;
+      throw new DOMException('busy', 'NotReadableError');
+    };
+    await s.sync();
+
+    expect(failures).toBe(1);
+    expect(s.enqueued).toEqual([id]);
+    const tab = s.tabAt(PROOF_PATH);
+    expect(tab.status).not.toBe('error');
+    expect(screenshotSummaryOf(tab)).toMatchObject({ total: 1, tampered: 0, missing: 0 });
+  });
+
+  it('reloads the screenshots on the next successful watch scan after a failed reload, without another change notification', async () => {
+    const s = folderStack();
+    const fake = await exportFolder({ 'a.png': ORIGINAL });
+    await s.folder.openFolder(fake.handle());
+    await s.drain();
+    const id = s.tabAt(PROOF_PATH).id;
+
+    fake.write('screenshots/a.png', REPLACED);
+    const failAt = fake.getFileCount('screenshots/a.png') + 4;
+    fake.beforeGetFile = (path, call) => {
+      if (path === 'screenshots/a.png' && call === failAt) throw new DOMException('busy', 'NotReadableError');
+    };
+    await s.sync();
+    expect(s.enqueued).toEqual([id]);
+
+    // 読めるようになった。ファイルは変わっていないので変化の通知は出ない
+    await s.sync();
+    await s.drain();
+
+    expect(s.enqueued).toEqual([id, id]);
+    const tab = s.tabAt(PROOF_PATH);
+    expect(tab.status).toBe('error');
+    expect(screenshotSummaryOf(tab)?.tampered).toBe(1);
+  });
+
+  it('treats a screenshots directory removed while watching as zero screenshots, not as a read failure', async () => {
+    const s = folderStack();
+    const fake = await exportFolder({ 'a.png': ORIGINAL });
+    await s.folder.openFolder(fake.handle());
+    await s.drain();
+    const id = s.tabAt(PROOF_PATH).id;
+
+    fake.remove('screenshots/a.png');
+    fake.remove('screenshots/manifest.json');
+    await s.sync();
+
+    expect(s.enqueued).toEqual([id, id]);
+    expect(s.tabAt(PROOF_PATH).screenshots).toEqual([]);
+  });
+
   it('checks a proof added while watching as zero screenshots when the folder has no screenshots directory', async () => {
     const s = folderStack();
     const fake = new FakeFolder('submission', { [PROOF_PATH]: VALID });

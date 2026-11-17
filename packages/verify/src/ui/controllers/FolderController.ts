@@ -97,8 +97,18 @@ export class FolderController {
   private screenshotProofPaths = new Set<string>();
   /** スクショの読み直しの世代。フォルダを開き直す・次の読み直しを予約すると、古い読み直しの結果を捨てる */
   private screenshotGeneration = 0;
-  /** 予約済みの読み直し (同じ走査の通知を 1 回にまとめる)。`force` は screenshots/ 自体が変わったか */
-  private pendingScreenshotResync: { force: boolean } | null = null;
+  /** 予約したがまだ始まっていない読み直しがあるか (同じ走査の通知を 1 回にまとめる) */
+  private pendingScreenshotResync = false;
+  /** 走っている読み直しの数 (監視の周期でのやり直しを、走っている間は重ねない) */
+  private runningScreenshotResyncs = 0;
+  /**
+   * まだ済んでいない読み直しの求め。読み直しが最後まで済んだときだけ消す。読み取りに失敗した・新しい読み直しに
+   * 譲った読み直しは求めを残し、次に監視の走査が成功したときにやり直す (変化の通知は 1 回しか来ない)。
+   * `force` は screenshots/ 自体が変わったか (判定が同じでも proof を取り込み直す)
+   */
+  private screenshotResyncDemand: { force: boolean } | null = null;
+  /** 読み直しが読み取りに失敗し続けている間 true。失敗の表示は失敗に入った回だけ出す (#699 と同じ流儀) */
+  private screenshotResyncFailing = false;
   /** 最後に予約した読み直し */
   private screenshotResync: Promise<void> = Promise.resolve();
 
@@ -155,6 +165,8 @@ export class FolderController {
     this.screenshotGeneration++;
     this.folderScreenshots = null;
     this.screenshotProofPaths.clear();
+    this.screenshotResyncDemand = null;
+    this.screenshotResyncFailing = false;
 
     // ディレクトリを読み取り
     const result = await this.fsAccessService.readDirectoryRecursive(handle);
@@ -328,6 +340,8 @@ export class FolderController {
 
   /** 走査が最後まで読めた時の処理。失敗の表示を出していたら通常の表示に戻す (#699) */
   private handleSyncComplete(): void {
+    // 読み取りに失敗して済んでいないスクショの読み直しは、走査が成功したこの周期でやり直す (#703)
+    this.retryScreenshotResync();
     if (!this.syncFailing) return;
     this.syncFailing = false;
     this.deps.onStatusBarUpdate?.();
@@ -439,17 +453,24 @@ export class FolderController {
    */
   private scheduleScreenshotResync(path: string): void {
     if (!this.folderScreenshots) return;
-    const force = path.startsWith('screenshots/');
-    if (this.pendingScreenshotResync) {
-      this.pendingScreenshotResync.force ||= force;
-      return;
-    }
-    const pending = { force };
-    this.pendingScreenshotResync = pending;
+    const force = path.startsWith('screenshots/') || (this.screenshotResyncDemand?.force ?? false);
+    this.screenshotResyncDemand = { force };
+    this.startScreenshotResync();
+  }
+
+  /** 済んでいない読み直しの求めが残っていて、読み直しが走っていなければ始める (監視の走査が成功したとき)。 */
+  private retryScreenshotResync(): void {
+    if (!this.screenshotResyncDemand || this.pendingScreenshotResync || this.runningScreenshotResyncs > 0) return;
+    this.startScreenshotResync();
+  }
+
+  private startScreenshotResync(): void {
+    if (this.pendingScreenshotResync) return;
+    this.pendingScreenshotResync = true;
     const generation = ++this.screenshotGeneration;
     this.screenshotResync = Promise.resolve().then(() => {
-      this.pendingScreenshotResync = null;
-      return this.resyncFolderScreenshots(generation, pending.force);
+      this.pendingScreenshotResync = false;
+      return this.resyncFolderScreenshots(generation);
     });
   }
 
@@ -460,48 +481,96 @@ export class FolderController {
    * proof はディスクから読み直して `replaceFile` に渡す (#695 と同じ経路。本文・照合・検証を新しい内容の
    * 1 スナップショットに揃える)。`screenshots/` 自体が変わっていない (proof だけが変わった) ときは、判定が
    * 変わったときだけ取り込み直す。
+   *
+   * 読み取りに失敗したら何も確定しない (#699 と同じ考え方)。読めなかった画像・manifest・proof を「無い」と
+   * 見ると、スクショ 0 枚 (剥ぎ取り疑い) や改竄の誤判定を確定してしまう。そのため読みはすべて失敗を伝える形
+   * (`strict`) で行い、全部読めてから、スクショの更新と proof の取り込み直しを同期的に続けて行う。
+   * 失敗した求めは残り、次に監視の走査が成功したときにやり直す。
    */
-  private async resyncFolderScreenshots(generation: number, force: boolean): Promise<void> {
+  private async resyncFolderScreenshots(generation: number): Promise<void> {
     const current = this.folderScreenshots;
+    const demand = this.screenshotResyncDemand;
     const rootFolderId = this.watchedRootFolderId;
-    if (!current || generation !== this.screenshotGeneration) return;
+    if (!current || !demand || generation !== this.screenshotGeneration) return;
+    this.runningScreenshotResyncs++;
     try {
-      const listing = await this.fsAccessService.readDirectoryRecursive(current.rootHandle);
-      if (!listing.success) return;
-      const chainImageHashes = await collectFolderChainImageHashes(listing.files);
-      const loaded = await loadFolderScreenshots(current.rootHandle, chainImageHashes);
-      // 読んでいる間に次の読み直しが予約された・別のフォルダを開いた
-      if (generation !== this.screenshotGeneration) return;
+      const listing = await this.fsAccessService.readDirectoryRecursive(current.rootHandle, '', { strict: true });
+      if (!listing.success) throw new Error(listing.error ?? 'folder read failed');
+      const chainImageHashes = await collectFolderChainImageHashes(listing.files, { strict: true });
+      const loaded = await loadFolderScreenshots(current.rootHandle, chainImageHashes, { strict: true });
 
       const changed =
         screenshotVerdicts(current.screenshots) !== screenshotVerdicts(loaded.screenshots) ||
         current.startTimestamp !== loaded.startTimestamp;
+      // 取り込み直す proof を先にすべて読む。読んでいる間に足された proof も読み、残りが無くなったところで
+      // (await を挟まずに) スクショを更新して取り込み直す。足された proof の取り込み口はスクショを待った後で
+      // 引くので、ここより後なら新しいスクショを受け取る
+      const reread = new Map<string, { tabId: string; fileData: ParsedFileData } | null>();
+      if (demand.force || changed) {
+        const entries = new Map(listing.files.map((entry) => [entry.path, entry]));
+        for (;;) {
+          const pending = [...this.screenshotProofPaths].filter((path) => !reread.has(path));
+          if (pending.length === 0) break;
+          for (const path of pending) {
+            const tabId = this.deps.sidebar.getFileIdByPath(path);
+            const entry = entries.get(path) ?? (await this.findFileEntry(current.rootHandle, path));
+            if (!tabId || !entry) {
+              reread.set(path, null);
+              continue;
+            }
+            const result = await this.deps.fileProcessor.processFromHandle(entry.handle, entry.path);
+            if (!result.success) throw new Error(result.error ?? `cannot read ${path}`);
+            const fileData = result.files[0];
+            reread.set(path, fileData ? { tabId, fileData } : null);
+          }
+        }
+      }
+
+      // 読んでいる間に次の読み直しが予約された・別のフォルダを開いた (求めは残し、新しい読み直しに任せる)
+      if (generation !== this.screenshotGeneration || this.watchedRootFolderId !== rootFolderId) return;
       this.folderScreenshots = {
         rootHandle: current.rootHandle,
         screenshots: loaded.screenshots,
         startTimestamp: loaded.startTimestamp,
       };
       if (loaded.screenshotService) this.deps.onScreenshotServiceUpdate?.(loaded.screenshotService);
-      if (!force && !changed) return;
-
-      const entries = new Map(listing.files.map((entry) => [entry.path, entry]));
-      for (const path of [...this.screenshotProofPaths]) {
-        const tabId = this.deps.sidebar.getFileIdByPath(path);
-        const entry = entries.get(path);
-        if (!tabId || !entry) continue;
-        const fileData = (await this.deps.fileProcessor.processFromHandle(entry.handle, entry.path)).files[0];
-        // 待っている間に別のフォルダを開いたらやめる。次の読み直しが始まっていても、ここではやめずに最新の
-        // スクショを渡す (途中でやめると、判定が同じと見た次の読み直しが残りの proof を取り込み直さない)
-        const latest = this.folderScreenshots;
-        if (!latest || this.watchedRootFolderId !== rootFolderId) return;
-        if (!fileData) continue;
-        this.deps.replaceFile(tabId, fileData, {
-          screenshots: latest.screenshots,
-          startTimestamp: latest.startTimestamp,
+      for (const proof of reread.values()) {
+        if (!proof) continue;
+        this.deps.replaceFile(proof.tabId, proof.fileData, {
+          screenshots: loaded.screenshots,
+          startTimestamp: loaded.startTimestamp,
         });
       }
+      if (this.screenshotResyncDemand === demand) this.screenshotResyncDemand = null;
+      if (this.screenshotResyncFailing) {
+        this.screenshotResyncFailing = false;
+        this.deps.onStatusBarUpdate?.();
+      }
     } catch (error) {
+      // 何も確定しない。求めは残し (取り込み直しを省かないよう force にする)、次の成功した走査でやり直す
       console.error('Error reloading folder screenshots:', error);
+      if (this.watchedRootFolderId !== rootFolderId) return;
+      this.screenshotResyncDemand = { force: true };
+      if (!this.screenshotResyncFailing) {
+        this.screenshotResyncFailing = true;
+        this.deps.statusBar.setError(`${t('errors.folderSyncFailed')}: ${(error as Error).message}`);
+      }
+    } finally {
+      this.runningScreenshotResyncs--;
+    }
+  }
+
+  /** 走査の一覧に無い proof (読み直しの間に足されたもの) のハンドルを引く。 */
+  private async findFileEntry(root: FileSystemDirectoryHandle, path: string): Promise<FSAccessFileEntry | null> {
+    const parts = path.split('/');
+    const name = parts.pop() ?? path;
+    let dir = root;
+    try {
+      for (const part of parts) dir = await dir.getDirectoryHandle(part);
+      const handle = await dir.getFileHandle(name);
+      return { handle, path, name, lastModified: 0 };
+    } catch {
+      return null;
     }
   }
 

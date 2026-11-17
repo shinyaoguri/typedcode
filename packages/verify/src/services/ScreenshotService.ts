@@ -8,6 +8,17 @@ import type JSZip from 'jszip';
 import { checkScreenshotImage, readZipEntryBytes } from '@typedcode/shared';
 import type { ZipExtractionBudget } from '@typedcode/shared';
 import type { VerifyScreenshot, ScreenshotManifest, ScreenshotManifestEntry } from '../types.js';
+import { isNotFound } from './fsaErrors.js';
+
+/** strict の読み込みで、欠損と見ずに呼び出し元へ伝える読み取りの失敗 */
+class ScreenshotReadError extends Error {
+  constructor(
+    filename: string,
+    readonly reason: unknown
+  ) {
+    super(`cannot read screenshot ${filename}`);
+  }
+}
 
 /**
  * スクリーンショット管理サービス
@@ -137,7 +148,9 @@ export class ScreenshotService {
     screenshotsFolderHandle: FileSystemDirectoryHandle,
     manifest: ScreenshotManifest,
     /** loadFromZip と同じ (必須)。検証済みチェーンが記録した imageHash 集合。 */
-    chainImageHashes: ReadonlySet<string>
+    chainImageHashes: ReadonlySet<string>,
+    /** `strict`: 画像が無い (`NotFoundError`) 以外の読み取りの失敗を欠損と見ず投げる (#703) */
+    options: { strict?: boolean } = {}
   ): Promise<VerifyScreenshot[]> {
     const screenshots: VerifyScreenshot[] = [];
 
@@ -145,9 +158,15 @@ export class ScreenshotService {
 
     for (const entry of manifest.screenshots) {
       try {
-        const fileHandle = await screenshotsFolderHandle.getFileHandle(entry.filename);
-        const file = await fileHandle.getFile();
-        const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+        let blob: Blob;
+        try {
+          const fileHandle = await screenshotsFolderHandle.getFileHandle(entry.filename);
+          const file = await fileHandle.getFile();
+          blob = new Blob([await file.arrayBuffer()], { type: file.type });
+        } catch (error) {
+          if (options.strict && !isNotFound(error)) throw new ScreenshotReadError(entry.filename, error);
+          throw error;
+        }
 
         // ハッシュ検証 (チェーン突合は loadFromZip と同じ。判定は shared の単一実装 #147)
         const { verified, tampered } = await checkScreenshotImage(
@@ -175,7 +194,8 @@ export class ScreenshotService {
 
         this.screenshots.set(screenshot.id, screenshot);
         screenshots.push(screenshot);
-      } catch {
+      } catch (error) {
+        if (error instanceof ScreenshotReadError) throw error.reason;
         // 画像ファイルが見つからない場合
         console.warn(`[ScreenshotService] Image file missing: ${entry.filename}`);
         const screenshot = this.createMissingScreenshot(entry);

@@ -59,13 +59,20 @@ export class FileSystemAccessService {
 
   /**
    * ディレクトリを再帰的に読み取り
+   *
+   * `strict` を付けると、個々のファイルの読み取りの失敗も飛ばさず失敗 (`success: false`) にする。一時的に
+   * 読めなかったファイルを「無い」と見て判定を確定させないため (フォルダのスクショの読み直し。#703)
    */
-  async readDirectoryRecursive(handle: FileSystemDirectoryHandle, basePath: string = ''): Promise<ReadDirectoryResult> {
+  async readDirectoryRecursive(
+    handle: FileSystemDirectoryHandle,
+    basePath: string = '',
+    options: { strict?: boolean } = {}
+  ): Promise<ReadDirectoryResult> {
     const files: FSAccessFileEntry[] = [];
     const folders: FSAccessFolderEntry[] = [];
 
     try {
-      await this.traverseDirectory(handle, basePath, files, folders);
+      await this.traverseDirectory(handle, basePath, files, folders, options.strict ?? false);
 
       return {
         success: true,
@@ -91,7 +98,8 @@ export class FileSystemAccessService {
     handle: FileSystemDirectoryHandle,
     currentPath: string,
     files: FSAccessFileEntry[],
-    folders: FSAccessFolderEntry[]
+    folders: FSAccessFolderEntry[],
+    strict: boolean
   ): Promise<void> {
     for await (const entry of handle.values()) {
       const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
@@ -104,7 +112,7 @@ export class FileSystemAccessService {
           name: entry.name,
         });
 
-        await this.traverseDirectory(dirHandle, entryPath, files, folders);
+        await this.traverseDirectory(dirHandle, entryPath, files, folders, strict);
       } else {
         const fileHandle = entry as FileSystemFileHandle;
         try {
@@ -115,8 +123,9 @@ export class FileSystemAccessService {
             name: entry.name,
             lastModified: file.lastModified,
           });
-        } catch {
-          // ファイル読み取りエラーはスキップ
+        } catch (error) {
+          // ファイル読み取りエラーはスキップ (strict のときは失敗にする)
+          if (strict) throw error;
         }
       }
     }
