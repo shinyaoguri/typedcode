@@ -56,12 +56,15 @@ ProofExporter.exportAllTabsAsZip() (#download-btn / 問題パネルの #download
   → performPreExportVerificationForAllTabs() (Turnstile。全タブに記録。exam/class/assignment は best-effort)
   → タブごとに drainQueueOrAbort() → exportProof()
   → getProofData() → ScreenshotTracker.getAllScreenshots()
+  → (授業・課題で問題を読み込んだタブだけ) 問題文を <base>_problem(_N).md として同梱 (#778。証明の対象外)
   → JSZip → ダウンロード (タブ 1 つなら <proofBaseName>_TC<ts>.zip、2 つ以上なら ALL_TC<ts>.zip)
   ── ここで export の区間 (isExporting) を閉じる ──
   → ZIP に入れた全タブの proof.json に verifyProofFile (fast) をかけて自己検証 → 結果の通知 (全部 valid なら export.zipSuccessVerified、1 つでも invalid / throw なら export.verifyFailed)
 ```
 
 単一フライトのガード (`isExporting`) はダウンロードまでの区間だけを閉じる。ダウンロード後の自己検証 (`verifyAfterDownload`) は区間の外で走らせ、その間に押された次の export を無視しない (#565)。自己検証は ZIP に入れたのと同じ proof.json の文字列 (全タブ分) に shared の `verifyProofFile` を `{ mode: 'fast' }` (PoSW を再計算しない) でかけ、全部の `valid` で通知を選ぶ (#586。#779 で全タブ版へ移した)。通知の欄は 1 つで続けて出すと上書きされるので、ダウンロード直後には通知を出さず、検証後の 1 回にまとめる。受理ポリシー (`require*`) は立てないので、結論は同じ ZIP を verify-cli の既定で検証したときと一致する。記録中のメモリ (`TypingProof`) ではなく ZIP と同じスナップショットを検証するので、検証の途中に次の export が同じ proof へ記録しても関係ない (`export/__tests__/ProofExporter.verifyAfterDownload.test.ts`)。検証の throw は ZIP が出た後なので `export.zipFailed` ではなく `export.verifyFailed` で知らせる。
+
+問題文の同梱 (#778) は `ProofExporter.setProblemStatementResolver` で main が注入し、授業・課題 (`capabilities.problemPanel && !sealedProblem`) でだけ `ClassProblemStore` を filename で引く。試験 (封印) と練習には注入しない (試験に入れないのは、復号した問題文が開けるファイルとして残り、使い回しで流出しやすくなるため)。問題文は proof にもチェーンにも入れない (ADR-0014)。名前は shared の `createExportNamer` の `problem` (proof と同じ番号)、検証側は `isSubmissionSourceEntry` がソースの候補から外す。問題を読み込んだ後に改名したタブは引けず、同梱されない (問題パネルの再表示と同じ制約)。
 
 ## 状態契約 (data-* 属性)
 

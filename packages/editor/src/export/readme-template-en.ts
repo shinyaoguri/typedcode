@@ -9,6 +9,8 @@ export interface ReadmeTemplateParams {
   totalScreenshots: number;
   sourceFiles: string[];
   proofFiles: string[];
+  /** 同梱した問題文 (#778。授業・課題で問題を読み込んだタブだけ)。空・省略なら節を出さない */
+  problemFiles?: string[];
 }
 
 export function generateReadmeEn(params: ReadmeTemplateParams): string {
@@ -16,6 +18,7 @@ export function generateReadmeEn(params: ReadmeTemplateParams): string {
 
   const sourceFilesList = sourceFiles.map((f) => `- \`${f}\``).join('\n');
   const proofFilesList = proofFiles.map((f) => `- \`${f}\``).join('\n');
+  const problemSection = formatProblemSection(params.problemFiles ?? []);
 
   return `# TypedCode Proof Archive
 
@@ -36,7 +39,7 @@ ${sourceFilesList}
 
 ### Proof Files
 ${proofFilesList}
-
+${problemSection}
 ### Screenshots
 - \`screenshots/\` - Periodic screen captures
 - \`screenshots/manifest.json\` - Screenshot metadata and hash mappings
@@ -304,5 +307,18 @@ For more information, visit: https://github.com/sny/typedcode
 ---
 
 *This README was automatically generated at export time.*
+`;
+}
+
+/**
+ * The problem statement section (#778). Says the files are not covered by the proof. Empty when there are none.
+ */
+function formatProblemSection(problemFiles: readonly string[]): string {
+  if (problemFiles.length === 0) return '';
+  const list = problemFiles.map((f) => `- \`${f}\``).join('\n');
+  return `
+### Problem Statements (not covered by the proof)
+The statements of the problems loaded in class / assignment mode. They are copies of the statements in the distributed problem file, are not part of the hash chain or the proof files, and are not read by verification.
+${list}
 `;
 }

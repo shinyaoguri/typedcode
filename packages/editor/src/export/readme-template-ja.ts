@@ -9,6 +9,8 @@ export interface ReadmeTemplateParams {
   totalScreenshots: number;
   sourceFiles: string[];
   proofFiles: string[];
+  /** 同梱した問題文 (#778。授業・課題で問題を読み込んだタブだけ)。空・省略なら節を出さない */
+  problemFiles?: string[];
 }
 
 export function generateReadmeJa(params: ReadmeTemplateParams): string {
@@ -16,6 +18,7 @@ export function generateReadmeJa(params: ReadmeTemplateParams): string {
 
   const sourceFilesList = sourceFiles.map((f) => `- \`${f}\``).join('\n');
   const proofFilesList = proofFiles.map((f) => `- \`${f}\``).join('\n');
+  const problemSection = formatProblemSection(params.problemFiles ?? []);
 
   return `# TypedCode 証明アーカイブ
 
@@ -36,7 +39,7 @@ ${sourceFilesList}
 
 ### 証明ファイル
 ${proofFilesList}
-
+${problemSection}
 ### スクリーンショット
 - \`screenshots/\` - 定期的な画面キャプチャ
 - \`screenshots/manifest.json\` - スクリーンショットのメタデータとハッシュマッピング
@@ -304,5 +307,18 @@ TypedCodeの検証ページにアクセスし、証明JSONファイルをアッ�
 ---
 
 *このREADMEはエクスポート時に自動生成されました。*
+`;
+}
+
+/**
+ * 問題文の節 (#778)。証明の対象外であることを書く。問題文が 1 つも無ければ空文字 (節を出さない)。
+ */
+function formatProblemSection(problemFiles: readonly string[]): string {
+  if (problemFiles.length === 0) return '';
+  const list = problemFiles.map((f) => `- \`${f}\``).join('\n');
+  return `
+### 問題文（証明の対象外）
+授業・課題で読み込んだ問題の問題文です。配布ファイルの問題文の写しで、ハッシュチェーンにも証明ファイルにも含まれず、検証では読みません。
+${list}
 `;
 }

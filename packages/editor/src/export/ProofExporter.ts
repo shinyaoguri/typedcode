@@ -98,6 +98,11 @@ export class ProofExporter {
   /** 提出前セルフレビュー (ADR-0022, `capabilities.selfReview` で駆動)。 */
   private selfReviewEnabled = false;
   private selfReviewDialog = new SelfReviewDialog();
+  /**
+   * タブの問題文を返す (#778)。授業・課題 (`capabilities.problemPanel && !sealedProblem`) でだけ main が注入する。
+   * 文字列を返したタブだけ ZIP に `<base>_problem(_N).md` を入れる。未設定 (casual / exam) では入れない。
+   */
+  private problemStatementResolver: ((tab: TabState) => string | null) | null = null;
 
   constructor() {
     this.exportProgressDialog = new ExportProgressDialog();
@@ -121,6 +126,14 @@ export class ProofExporter {
   /** 提出前セルフレビュー (ADR-0022) の有効化 (`capabilities.selfReview` で駆動)。 */
   setSelfReviewEnabled(enabled: boolean): void {
     this.selfReviewEnabled = enabled;
+  }
+
+  /**
+   * 問題文の同梱 (#778): タブの問題文を返す関数を設定する (授業・課題で `ClassProblemStore` を引く)。
+   * 問題文は証明の対象外の平文で、proof JSON にもハッシュチェーンにも入れない (ADR-0014 の「証明に項目を足さない」)。
+   */
+  setProblemStatementResolver(resolver: (tab: TabState) => string | null): void {
+    this.problemStatementResolver = resolver;
   }
 
   /**
@@ -466,6 +479,8 @@ export class ProofExporter {
       // 各タブをエクスポート
       const fileList: string[] = [];
       const logList: string[] = [];
+      /** ZIP に入れた問題文 (#778。授業・課題で問題を読み込んだタブだけ) */
+      const problemList: string[] = [];
       /** ZIP に入れたとおりの proof.json の文字列 (ダウンロード後の自己検証にかける。#586) */
       const proofJsons: string[] = [];
 
@@ -494,7 +509,11 @@ export class ProofExporter {
           console.warn(`[ProofExporter] tab ${tab.id}: ${flushResult.remaining} unsigned checkpoint(s) at export time`);
         }
 
-        const { source: uniqueSourceFilename, proof: logFilename } = exportNames({
+        const {
+          source: uniqueSourceFilename,
+          proof: logFilename,
+          problem: problemFilename,
+        } = exportNames({
           filename: tab.filename,
           language: tab.language,
         });
@@ -515,6 +534,14 @@ export class ProofExporter {
         zip.file(logFilename, proofJson);
         logList.push(logFilename);
         proofJsons.push(proofJson);
+
+        // 問題文 (#778): 配布ファイルの statement をそのまま (UTF-8) 入れる。証明の対象外で、proof には触れない。
+        // 保存先 (localStorage) は壊れうるので、文字列のときだけ入れる。
+        const statement = this.problemStatementResolver?.(tab) ?? null;
+        if (typeof statement === 'string') {
+          zip.file(problemFilename, statement);
+          problemList.push(problemFilename);
+        }
         tabIndex++;
       }
 
@@ -529,6 +556,7 @@ export class ProofExporter {
         totalScreenshots: screenshotCount,
         sourceFiles: fileList,
         proofFiles: logList,
+        problemFiles: problemList,
       };
       zip.file('README.md', generateReadmeEn(readmeParams));
       zip.file('README.ja.md', generateReadmeJa(readmeParams));

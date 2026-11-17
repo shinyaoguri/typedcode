@@ -40,8 +40,8 @@ describe('planExportFilenames (editor export naming)', () => {
       { filename: 'main.c', language: 'c' },
     ]);
     expect(names).toEqual([
-      { source: 'main.c', proof: 'main_proof.json' },
-      { source: 'main_1.c', proof: 'main_proof_1.json' },
+      { source: 'main.c', proof: 'main_proof.json', problem: 'main_problem.md' },
+      { source: 'main_1.c', proof: 'main_proof_1.json', problem: 'main_problem_1.md' },
     ]);
   });
 
@@ -51,8 +51,26 @@ describe('planExportFilenames (editor export naming)', () => {
       { filename: 'main.py', language: 'python' },
     ]);
     expect(names).toEqual([
-      { source: 'main.c', proof: 'main_proof.json' },
-      { source: 'main.py', proof: 'main_proof_1.json' },
+      { source: 'main.c', proof: 'main_proof.json', problem: 'main_problem.md' },
+      { source: 'main.py', proof: 'main_proof_1.json', problem: 'main_problem_1.md' },
+    ]);
+  });
+
+  it('names the problem statement <base>_problem.md without a number for the first tab of a base (#778)', () => {
+    const next = createExportNamer();
+    expect(next({ filename: 'p1.c', language: 'c' }).problem).toBe('p1_problem.md');
+  });
+
+  it('gives the problem statement the same number as the proof in a mixed order (main.c / main.py / main.c)', () => {
+    const names = planExportFilenames([
+      { filename: 'main.c', language: 'c' },
+      { filename: 'main.py', language: 'python' },
+      { filename: 'main.c', language: 'c' },
+    ]);
+    expect(names.map((n) => [n.proof, n.problem])).toEqual([
+      ['main_proof.json', 'main_problem.md'],
+      ['main_proof_1.json', 'main_problem_1.md'],
+      ['main_proof_2.json', 'main_problem_2.md'],
     ]);
   });
 
@@ -254,7 +272,16 @@ describe('matchSubmissionSources', () => {
 });
 
 describe('isSubmissionSourceEntry', () => {
-  it.each(['main.c', 'main_1.c', 'sub/main.py', 'notes.txt'])('treats %s as a source candidate', (name) => {
+  it.each([
+    'main.c',
+    'main_1.c',
+    'sub/main.py',
+    'notes.txt',
+    'notes.md',
+    'problem.md',
+    'main_problem.txt',
+    'main_problem_x.md',
+  ])('treats %s as a source candidate', (name) => {
     expect(isSubmissionSourceEntry(name)).toBe(true);
   });
 
@@ -263,6 +290,10 @@ describe('isSubmissionSourceEntry', () => {
     'tab-switches.json',
     'README.md',
     'README.ja.md',
+    'main_problem.md',
+    'main_problem_1.md',
+    'sub/p1_problem_12.md',
+    'P1_PROBLEM.MD',
     'screenshots/manifest.json',
     'screenshots/shot.png',
     'sub/screenshots/a.png',
@@ -271,6 +302,36 @@ describe('isSubmissionSourceEntry', () => {
     'logo.png',
   ])('does not treat %s as a source candidate', (name) => {
     expect(isSubmissionSourceEntry(name)).toBe(false);
+  });
+});
+
+describe('problem statements bundled next to the proofs (#778)', () => {
+  it('keeps every source name the export namer produces as a source candidate, even for tabs named like a problem', () => {
+    const names = planExportFilenames([
+      { filename: 'main_problem.c', language: 'c' },
+      { filename: 'x_problem_1.py', language: 'python' },
+      { filename: 'p_problem.md', language: 'plaintext' },
+      { filename: 'notes.md', language: 'markdown' },
+    ]);
+    expect(names.map((n) => n.source).filter((s) => !isSubmissionSourceEntry(s))).toEqual([]);
+  });
+
+  it('does not report a bundled <base>_problem.md as an orphan source', () => {
+    const paths = ['p1.c', 'p1_problem.md', 'p2.c', 'p2_problem.md'];
+    const report = matchSubmissionSources({
+      proofs: [proof('p1_proof.json', 'p1.c', 'c', 'a'), proof('p2_proof.json', 'p2.c', 'c', 'b')],
+      sources: paths.filter(isSubmissionSourceEntry).map((p) => source(p, p.startsWith('p1') ? 'a' : 'b')),
+    });
+    expect(report.orphanSources).toEqual([]);
+  });
+
+  it('still reports a markdown file that is not a problem statement (notes.md) as an orphan source', () => {
+    const paths = ['p1.c', 'p1_problem.md', 'notes.md'];
+    const report = matchSubmissionSources({
+      proofs: [proof('p1_proof.json', 'p1.c', 'c', 'a')],
+      sources: paths.filter(isSubmissionSourceEntry).map((p) => source(p, 'a')),
+    });
+    expect(report.orphanSources).toEqual(['notes.md']);
   });
 });
 

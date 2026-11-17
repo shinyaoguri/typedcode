@@ -154,6 +154,7 @@ npm run test -w @typedcode/e2e
 
 - `{filename}.{ext}` — ソースコード
 - `{filename}_proof.json` — 証明 JSON (下記構造)
+- `{filename}_problem.md` — 問題文 (授業・課題で問題を読み込んだタブだけ。配布ファイルの問題文の写しで、証明の対象外。番号は証明 JSON と同じ)
 - `screenshots/` — 撮影された画面 (JPEG)
 - `screenshots/manifest.json` — スクリーンショットのハッシュとメタデータ
 - `README.md` — 検証手順 (英語)

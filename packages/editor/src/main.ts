@@ -358,6 +358,11 @@ ctx.proofExporter.setMode(ctx.mode);
 ctx.proofExporter.setPreExportBestEffort(ctx.capabilities.preExportBestEffort);
 // 提出前セルフレビュー (ADR-0022): 自分の過程を確認し任意の振り返りを残す (exam は off)。
 ctx.proofExporter.setSelfReviewEnabled(ctx.capabilities.selfReview);
+// 問題文の同梱 (#778): 授業・課題 (平文の問題を読み込むモード) だけ、問題を読み込んだタブの問題文を ZIP に入れる。
+// 問題は filename キーで保存しているので ClassProblemStore を filename で引く。試験 (封印) と練習には入れない。
+if (ctx.capabilities.problemPanel && !ctx.capabilities.sealedProblem) {
+  ctx.proofExporter.setProblemStatementResolver((tab) => ClassProblemStore.get(tab.filename)?.statement ?? null);
+}
 
 // exam 固有のクロム (タブ追加/削除・左のダウンロードボタンの非表示、unify) は body.exam-mode が駆動する。
 if (ctx.examMode) {
