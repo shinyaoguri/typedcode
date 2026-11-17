@@ -1,4 +1,5 @@
 import { test } from '@playwright/test';
+import { PR_MODEL_TIME_BUDGET } from '../../scripts/model-time-budget.mjs';
 import { envInt, runModelBased } from './runner.js';
 
 /**
@@ -32,7 +33,11 @@ for (const [i, seed] of PR_SEEDS.entries()) {
   test(`${grepToken}: 固定シード ${seed} の操作列で、各手の後に実アプリがモデルと一致し、全 proof が検証を通る`, async ({
     browser,
   }, testInfo) => {
-    test.setTimeout(12 * 60_000);
+    // 失敗したとき、1 回目は縮約まで走り、Playwright の retry では縮約せず同じ列を流し直して報告する
+    // (固定シードなので縮約しても同じ反例を探し直すだけ)。上限と、それが e2e-shard job の timeout-minutes に
+    // 収まることの検査は scripts/model-time-budget.mjs / .test.mjs (#771)。
+    const retry = testInfo.retry > 0;
+    test.setTimeout(retry ? PR_MODEL_TIME_BUDGET.retryAttemptMs : PR_MODEL_TIME_BUDGET.firstAttemptMs);
     await runModelBased({
       browser,
       testInfo,
@@ -40,8 +45,8 @@ for (const [i, seed] of PR_SEEDS.entries()) {
       seed: envInt('FC_SEED') ?? seed,
       steps: envInt('FC_STEPS') ?? PR_STEPS,
       runs: envInt('FC_RUNS') ?? 1,
-      // 1 列 (~数分) + 失敗時の縮約。超えたらそこまでの最小の反例で報告する (シャードの 30 分に収める)。
-      timeLimitMs: 8 * 60_000,
+      timeLimitMs: PR_MODEL_TIME_BUDGET.shrinkLimitMs,
+      shrink: !retry,
       nightly: false,
     });
   });
@@ -59,6 +64,7 @@ test('model-nightly: @nightly ランダムシードの長い操作列で、各�
     steps: envInt('FC_STEPS') ?? 40,
     runs: envInt('FC_RUNS') ?? 3,
     timeLimitMs: 60 * 60_000,
+    shrink: true,
     nightly: true,
   });
 });
