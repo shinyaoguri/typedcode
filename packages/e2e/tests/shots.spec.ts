@@ -161,6 +161,11 @@ const SHOTS = [
     caption:
       '検証 Web: 試験束縛カードで、封印 starter と違う内容を templateInjection で注入した proof の Starter 行 (FAIL と理由。#718)',
   },
+  {
+    file: '26-settings-menu.png',
+    caption:
+      'エディタ (通常モード): 設定メニューを開いた状態。救出 (証明ではない) はここにある。左のダウンロードはメニューを持たないボタン 1 つ (#779。時計とハッシュは隠している)',
+  },
 ] as const;
 
 type ShotFile = (typeof SHOTS)[number]['file'];
@@ -273,6 +278,16 @@ test.describe('見た目・動きの証跡 @shots', () => {
       mask: [page.locator('#titlebar-clock'), page.locator('#current-hash')],
     });
     await page.locator('#main-menu-btn').click();
+
+    // 26 (#779): 設定メニュー。救出 (#rescue-download-btn) はダウンロードのメニューからここへ移った
+    await page.locator('#settings-btn').click();
+    await page.locator('#settings-dropdown').waitFor({ state: 'visible' });
+    await page.screenshot({
+      path: out('26-settings-menu.png'),
+      animations: 'disabled',
+      mask: [page.locator('#titlebar-clock'), page.locator('#current-hash')],
+    });
+    await page.locator('#settings-btn').click();
 
     // 03: export した ZIP を検証 Web (fast) に入れ、proof の結果画面を撮る。
     const zipPath = await app.exportAllTabs();
