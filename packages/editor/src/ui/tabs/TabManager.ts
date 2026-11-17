@@ -712,7 +712,8 @@ export class TabManager {
     const sessionStart = this.sessionStartInput();
     if (!sessionStart) return false;
     try {
-      const result = await performTurnstileVerification('checkpoint_signing', { sessionStart });
+      // 前面の認証 (タブ作成) の widget を消さないよう、専用の隠し容器に描く (#733)
+      const result = await performTurnstileVerification('checkpoint_signing', { sessionStart, background: true });
       if (result.success && result.sessionToken) {
         this.adoptSigningToken(result.sessionToken, 'best-effort');
         return true;
