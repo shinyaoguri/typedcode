@@ -225,7 +225,7 @@ export async function showScreenShareErrorDialog(
       <p class="error-description">${description}</p>
 
       <div class="solutions-section">
-        <h4>${solutionTitle}</h4>
+        <h4 aria-level="3">${solutionTitle}</h4>
         <ul class="solutions-list">
           ${solutions.map((s) => `<li><i class="fas fa-check"></i> ${s}</li>`).join('')}
         </ul>

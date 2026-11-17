@@ -44,6 +44,22 @@ describe('attachDialogA11y', () => {
     expect(dialog.getAttribute('aria-labelledby')).toBe(title.id);
   });
 
+  it('reads an h3-h6 dialog title as level 2 under the page h1 and keeps an explicit aria-level', () => {
+    const { title } = mount();
+    expect(title.getAttribute('aria-level')).toBe('2');
+    const own = document.createElement('h4');
+    own.setAttribute('aria-level', '3');
+    const h2 = document.createElement('h2');
+    for (const labelledBy of [own, h2]) {
+      const dialog = document.createElement('div');
+      dialog.appendChild(labelledBy);
+      document.body.appendChild(dialog);
+      attachDialogA11y(dialog, { labelledBy, onRequestClose: () => {} }).close();
+    }
+    expect(own.getAttribute('aria-level')).toBe('3');
+    expect(h2.hasAttribute('aria-level')).toBe(false);
+  });
+
   it('keeps an existing id on the labelling element', () => {
     const dialog = document.createElement('div');
     dialog.innerHTML = '<h3 id="mine">T</h3><button>x</button>';
