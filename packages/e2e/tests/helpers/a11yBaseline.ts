@@ -22,21 +22,6 @@ export interface KnownA11yViolation {
   issue: number | null;
 }
 
-/** editor のすべての画面 (titlebar / statusbar を共有する) */
-const EDITOR_SCREENS: readonly ScreenId[] = [
-  'casual-ready',
-  'casual-about',
-  'casual-self-review',
-  'class-screen-share-choice',
-  'class-welcome',
-  'class-problem-loader',
-  'class-ready',
-  'assignment-welcome',
-  'assignment-ready',
-  'exam-gate',
-  'exam-ready',
-];
-
 export const KNOWN_A11Y_VIOLATIONS: readonly KnownA11yViolation[] = [
   // color-contrast (serious): 文字と背景のコントラスト不足 (WCAG 1.4.3。ダイアログの背後で暗くなった要素を含む)
   { rule: 'color-contrast', target: '#class-loader-filename', screens: ['class-problem-loader'], issue: 737 },
