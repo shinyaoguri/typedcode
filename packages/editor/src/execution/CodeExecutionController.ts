@@ -31,7 +31,14 @@ export interface CodeExecutionCallbacks {
   onShowClangLoading?: () => void;
   onHideClangLoading?: () => void;
   onUpdateClangStatus?: (message: string) => void;
-  onRecordEvent?: (event: { type: EventType; data?: CodeExecutionEventData; description: string }) => void;
+  /**
+   * 実行の start / result を記録する。`ownerTabId` は run() に渡された `ExecutionTarget.ownerTabId`
+   * (実行を始めたタブ) で、run の間ずっと同じ値を渡す (#698)。記録先は表示中のタブではなくこれで決める。
+   */
+  onRecordEvent?: (
+    event: { type: EventType; data?: CodeExecutionEventData; description: string },
+    ownerTabId: string | undefined
+  ) => void;
   onShowErrors?: (errors: ParsedError[]) => void;
   onClearErrors?: () => void;
 }
@@ -40,6 +47,11 @@ export interface ExecutionTarget {
   language: string;
   filename: string;
   code: string;
+  /**
+   * この run の所有者 = 実行を始めたタブの ID (#698)。開始時に固定し、start / result の記録先にする。
+   * filename は改名・重複があるので所有者の判別に使わない。タブを持たない呼び出し (/author) は省略する。
+   */
+  ownerTabId?: string;
 }
 
 export class CodeExecutionController {
@@ -166,15 +178,19 @@ export class CodeExecutionController {
 
     // コード実行イベントを記録 (ADR-0021: start / result の 2 イベント)
     const executionStartedAt = performance.now();
-    this.callbacks.onRecordEvent?.({
-      type: 'codeExecution',
-      data: {
-        phase: 'start',
-        filename: target.filename,
-        language: target.language,
+    const ownerTabId = target.ownerTabId;
+    this.callbacks.onRecordEvent?.(
+      {
+        type: 'codeExecution',
+        data: {
+          phase: 'start',
+          filename: target.filename,
+          language: target.language,
+        },
+        description: t('notifications.codeExecution', { filename: target.filename }),
       },
-      description: t('notifications.codeExecution', { filename: target.filename }),
-    });
+      ownerTabId
+    );
 
     // 実行結果を記録する (ADR-0021)。catch/abort を含む全終端経路から 1 回だけ呼ぶ。
     let resultRecorded = false;
@@ -182,18 +198,21 @@ export class CodeExecutionController {
       if (resultRecorded) return;
       resultRecorded = true;
       this.terminal?.markRunFinished(outcome);
-      this.callbacks.onRecordEvent?.({
-        type: 'codeExecution',
-        data: {
-          phase: 'result',
-          filename: target.filename,
-          language: target.language,
-          outcome,
-          exitCode,
-          elapsedMs: Math.round(performance.now() - executionStartedAt),
+      this.callbacks.onRecordEvent?.(
+        {
+          type: 'codeExecution',
+          data: {
+            phase: 'result',
+            filename: target.filename,
+            language: target.language,
+            outcome,
+            exitCode,
+            elapsedMs: Math.round(performance.now() - executionStartedAt),
+          },
+          description: `${target.filename}: ${outcome}${exitCode !== null ? ` (exit ${exitCode})` : ''}`,
         },
-        description: `${target.filename}: ${outcome}${exitCode !== null ? ` (exit ${exitCode})` : ''}`,
-      });
+        ownerTabId
+      );
     };
     this.recordAbortedResult = () => recordResult('aborted', null);
 

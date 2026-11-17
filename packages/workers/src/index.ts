@@ -14,7 +14,8 @@ interface Env extends CheckpointEnv {
   ENVIRONMENT: string;
   /**
    * CORS 許可オリジン (カンマ区切り)。例: "https://app.example.com,https://verify.example.com"。
-   * production / staging では設定必須 (未設定だと後方互換で任意 Origin を reflect する)。
+   * production / staging では設定必須 (未設定だと fail-closed で、development の localhost 以外の Origin には
+   * `Access-Control-Allow-Origin` を付けない)。
    */
   ALLOWED_ORIGINS?: string;
   /**

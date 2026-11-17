@@ -262,7 +262,7 @@ Visit the TypedCode verification page and upload the proof JSON file for automat
 ## Security Considerations
 
 ### What This Proves
-- Tamper-evidence: any change to the recorded events after export breaks the SHA-256 hash chain and PoSW
+- Tamper-evidence: changing any hashed value of a recorded event (its type, timestamp, input data or position) after export makes the SHA-256 hash chain / PoSW verification fail (fields outside the hash, such as the display description, are not covered)
 - The exported final code matches the recorded edit sequence (content replay)
 - Time anchoring (only when signed checkpoints are present): the chain existed at the server-attested timestamps
 

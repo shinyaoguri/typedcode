@@ -34,6 +34,11 @@ export interface SignedCheckpointServiceOptions {
    * 毎回引く)。sessionId が token.payload.sessionId と一致している必要がある。
    */
   getSessionStartToken: () => SessionStartToken | null;
+  /**
+   * サーバが token を TOKEN_EXPIRED で拒否したときに呼ぶ (#682)。呼び出し側はその token を使えないと
+   * 記憶して取り直す。期限の判定はサーバの応答だけに従う (editor の時計で先読みしない)
+   */
+  onTokenExpired?: (token: SessionStartToken) => void;
   /** 署名取得後、checkpoint に envelope を反映する callback */
   attachSignature: (eventIndex: number, envelope: SignedCheckpointEnvelope) => boolean;
   /** デフォルト: navigator.onLine 連動 */
@@ -86,6 +91,7 @@ export class SignedCheckpointService {
   private readonly tabId: string;
   private readonly getInitialEventChainHash: () => string | null;
   private readonly getSessionStartToken: () => SessionStartToken | null;
+  private readonly onTokenExpired: ((token: SessionStartToken) => void) | null;
   private readonly attachSignature: (eventIndex: number, envelope: SignedCheckpointEnvelope) => boolean;
   private readonly isOnline: () => boolean;
   private readonly fetchImpl: typeof fetch;
@@ -144,6 +150,7 @@ export class SignedCheckpointService {
     this.tabId = options.tabId;
     this.getInitialEventChainHash = options.getInitialEventChainHash;
     this.getSessionStartToken = options.getSessionStartToken;
+    this.onTokenExpired = options.onTokenExpired ?? null;
     this.attachSignature = options.attachSignature;
     this.isOnline = options.isOnline ?? (() => (typeof navigator === 'undefined' ? true : navigator.onLine));
     // fetch は this===window バインディングを要求するので、参照を渡しただけだと
@@ -372,6 +379,8 @@ export class SignedCheckpointService {
           );
           this.expiredTokenSignature = sessionStartToken.signature;
           entry.attempts--;
+          // 取り直しを頼む (#682)。取り直した token は getSessionStartToken から返り、queue はそのまま送られる
+          this.onTokenExpired?.(sessionStartToken);
           // 応答待ちの間に別タブが新しい token を解決していたら、flush のループを続けてそのまま再送する
           // (return false だとループを抜け、次の checkpoint まで再開しない)。無ければガードで待機に入る。
           return this.resolveUsableToken() !== null;

@@ -150,6 +150,7 @@ shared の main が raw TypeScript のため `node dist/cli.js` は動かない
 | # | ファイル | 検証内容 |
 |---|---|---|
 | 1 | happy-path.spec.ts | /casual で入力 (括弧含む) → export → CLI 検証 pass、Pure Typing: YES |
+| 1b | happy-path-ja.spec.ts | 同じ往復を ja-JP・Asia/Tokyo で (`<html lang="ja">` を確認、verify-cli は fast)。他の spec は config で en-US・UTC に固定 (#597) |
 | 9 | multi-tab-export.spec.ts | 複数タブ ZIP export → CLI が全 proof を検証 |
 | 10 | tamper-detection.spec.ts | export 済み proof を改ざん → CLI が exit 1 (負のオラクル) |
 

@@ -8,7 +8,7 @@ export { TypingProof } from './TypingProof.js';
 
 // 内部マネージャー（必要に応じてエクスポート）
 export { HashChainManager } from './HashChainManager.js';
-export { PoswManager } from './PoswManager.js';
+export { PoswManager, observePoswWorkerFailure } from './PoswManager.js';
 export { CheckpointManager } from './CheckpointManager.js';
 export { StatisticsCalculator } from './StatisticsCalculator.js';
 

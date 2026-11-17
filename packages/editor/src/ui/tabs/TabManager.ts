@@ -49,12 +49,7 @@ import { SigningTokenRetry } from '../../services/SigningTokenRetry.js';
 import { debugLog } from '../../utils/logger.js';
 import { TAB_CREATE_VERIFICATION_BUDGET_MS } from '../../config/timeouts.js';
 import { EXAM_ATTESTATION_ACTION, buildExamHumanAttestation } from './humanAttestation.js';
-
-// PoSW Workerのファクトリ関数
-// Viteがsymlinkedパッケージ内のWorkerを正しく解決できないため、editorパッケージ内から読み込む
-function createPoswWorker(): Worker {
-  return new Worker(new URL('../../workers/poswWorker.ts', import.meta.url), { type: 'module' });
-}
+import { createPoswWorker } from '../../workers/createPoswWorker.js';
 
 // Re-export for convenience
 export type { VerificationState, VerificationDetails };
@@ -173,13 +168,20 @@ export class TabManager {
    * 署名専用の sessionStartToken (ADR-0027)。root には焼かず proof にも同梱しない。入るのは、
    * exam の試験開始ゲート中の先行取得 (`startExamPreAttestation`、#236) と best-effort 取得
    * (`acquireSigningToken`。`signingTokenRetry` が再取得する)、casual/class/assignment で
-   * 作成時の予算 (`TAB_CREATE_VERIFICATION_BUDGET_MS`) を過ぎてから届いた token (#375)。
+   * 作成時の予算 (`TAB_CREATE_VERIFICATION_BUDGET_MS`) を過ぎてから届いた token (#375)、全モードで
+   * TOKEN_EXPIRED の後に取り直した token (#682)。
    * 予算内に届いた casual/class/assignment の token はタブの TypingProof が持つのでここには入らない。
    */
   private signingOnlyToken: SessionStartToken | null = null;
   /**
+   * サーバが TOKEN_EXPIRED で拒否した token の signature (#682)。`findSigningToken` の候補から外す
+   * (期限はサーバの応答だけで決め、editor の時計では判定しない)。root の token は proof に残したまま
+   */
+  private readonly expiredSigningTokens = new Set<string>();
+  /**
    * 署名専用 token の取得と再取得 (#236)。同時 1 本・ジッタ付き指数バックオフ (上限 5 分)・online で早める。
-   * exam のタブが attach したとき (`attachSignedCheckpointService`) に初めて動く
+   * exam のタブが attach したとき (`attachSignedCheckpointService`) か、どのモードでも sign が
+   * TOKEN_EXPIRED を返したとき (#682) に初めて動く
    */
   private readonly signingTokenRetry: SigningTokenRetry;
   private editor: monaco.editor.IStandaloneCodeEditor;
@@ -599,10 +601,15 @@ export class TabManager {
       // ADR-0027: sign は sessionStartToken 前提。token はセッション単位 (タブ横断) なので
       // 毎回セッションレベルで解決する (exam の best-effort 取得で後から届くケースに対応)。
       getSessionStartToken: () => this.findSigningToken(),
+      // TOKEN_EXPIRED (#682): その token をセッション単位で使えないと記憶し、署名専用 token を取り直す。
+      // 取り直した token は signingOnlyToken に入れて root には焼かない (不変条件 1・3)
+      onTokenExpired: (token) => this.handleSigningTokenExpired(token),
       // 署名の付与と checkpoint の作成は、イベントの記録と違って保存を起こさない。export の後に
       // 打鍵せず閉じると署名前の checkpoints で復元され、index が巻き戻ってサーバと 409 で衝突する (#654)。
       // どちらでも永続化を要求する (未署名の cp も残せば、再開後に restore() の冪等な再送に乗る)。
       attachSignature: (eventIndex, envelope) => {
+        // sign が通った = 今の token は使える。取り直しの拒否の連続を戻す (#682)
+        this.signingTokenRetry.reportAccepted();
         const attached = typingProof.attachSignedCheckpoint(eventIndex, envelope);
         if (attached) this.saveToStorage();
         return attached;
@@ -647,6 +654,8 @@ export class TabManager {
     let latestIssuedAt = Number.NEGATIVE_INFINITY;
     const consider = (token: SessionStartToken | null | undefined): void => {
       if (token?.payload.sessionId !== sessionId) return;
+      // サーバが期限切れと返した token は送らない (#682。取り直しが要るかは `hasToken` がこれで判断する)
+      if (this.expiredSigningTokens.has(token.signature)) return;
       const issuedAt = Date.parse(token.payload.issuedAt);
       // 解釈できない issuedAt は最古扱い (他に候補が無ければそれでも返す)
       const rank = Number.isFinite(issuedAt) ? issuedAt : Number.NEGATIVE_INFINITY;
@@ -675,11 +684,24 @@ export class TabManager {
   }
 
   /**
-   * exam 用の署名専用 token を 1 回取得する (ADR-0027)。`signingTokenRetry` の取得関数で、直接は呼ばない
+   * sign が TOKEN_EXPIRED を返した (#682)。その token を候補から外し、署名専用 token の取り直しを頼む。
+   * 複数のタブが同じ token の拒否を報告しても取り直しは重ならない (`SigningTokenRetry` が取得中・待機中の
+   * 報告を無視し、取り直した token や別タブのより新しい token が既にあれば取得しない)。
+   */
+  private handleSigningTokenExpired(token: SessionStartToken): void {
+    this.expiredSigningTokens.add(token.signature);
+    debugLog('[TabManager] Signing token expired (TOKEN_EXPIRED); re-acquiring a signing-only token');
+    this.signingTokenRetry.reportRejected();
+  }
+
+  /**
+   * 署名専用 token を 1 回取得する (ADR-0027)。exam の token が無いときと、どのモードでも TOKEN_EXPIRED の
+   * 後の取り直し (#682) に使う。`signingTokenRetry` の取得関数で、直接は呼ばない
    * (同時 1 本とバックオフはそちらが守る)。
    * - UI は出さない (performTurnstileVerification を直接呼ぶ)。試験開始をブロックしない
    *   (ADR-0006 の絶対条件)。失敗したら署名なしで劣化し、次の再取得を待つ (#236)。
-   * - root には焼かない (exam の root は封印束縛 = initializeExam)。proof にも同梱しない。
+   * - root には焼かない (exam の root は封印束縛 = initializeExam、casual/class/assignment の root は作成時に
+   *   確定済み)。proof にも同梱しない。
    * @returns token を得て採用したら true
    */
   private async acquireSigningToken(): Promise<boolean> {
@@ -690,7 +712,7 @@ export class TabManager {
     try {
       const result = await performTurnstileVerification('checkpoint_signing', { sessionStart });
       if (result.success && result.sessionToken) {
-        this.adoptSigningToken(result.sessionToken, 'exam best-effort');
+        this.adoptSigningToken(result.sessionToken, 'best-effort');
         return true;
       }
       console.warn(
