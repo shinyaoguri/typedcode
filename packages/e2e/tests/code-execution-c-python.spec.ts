@@ -92,7 +92,7 @@ async function expectHelloRoundTrip(app: EditorApp, language: 'c' | 'python', co
   await expect.poll(() => terminalText(page)).toContain(expected);
 
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   expect(await resultEvents(zipPath)).toEqual([{ language, outcome: 'success', exitCode: 0 }]);
 
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);

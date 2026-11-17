@@ -91,8 +91,11 @@ export interface EditorDriver {
    */
   closeAndResume(): Promise<void>;
   focusLossAndReturn(): Promise<void>;
-  /** 現タブを export し、verify-cli (--mode fast) の判定と proof の中身を `tab` と突き合わせる。 */
-  exportCurrentTab(tab: Readonly<ModelTab>): Promise<void>;
+  /**
+   * 全タブを export し (書き出しは全タブの ZIP の 1 系統。#779)、verify-cli (--mode fast) の判定と proof の中身を
+   * 書き出しの時点のモデルの全タブと突き合わせる。
+   */
+  exportAllTabs(model: Readonly<EditorModel>): Promise<void>;
   /** モデルと実アプリの状態が一致することを確かめる (各手の後)。件数の最大値はここで更新する。 */
   expectMatches(model: EditorModel): Promise<void>;
 }
@@ -335,16 +338,16 @@ export class FocusLoss extends EditorCommand {
   }
 }
 
-export class ExportCurrentTab extends EditorCommand {
+export class ExportAllTabs extends EditorCommand {
   check(m: Readonly<EditorModel>): boolean {
     // 空のタブも export する (空のソースを含む ZIP が verify-cli で pass することも見る / #447)。
     return m.tabs.length >= 1;
   }
   protected async step(m: EditorModel, d: EditorDriver): Promise<void> {
-    await d.exportCurrentTab(activeTab(m)!);
+    await d.exportAllTabs(m);
   }
   toString(): string {
-    return 'ExportCurrentTab()';
+    return 'ExportAllTabs()';
   }
 }
 
@@ -383,6 +386,6 @@ export function editorCommandArbitraries(): fc.Arbitrary<ModelCommand>[] {
     fc.constant(new Reload()),
     fc.constant(new CloseAndResume()),
     fc.constant(new FocusLoss()),
-    fc.constant(new ExportCurrentTab()),
+    fc.constant(new ExportAllTabs()),
   ];
 }

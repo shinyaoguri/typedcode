@@ -112,7 +112,7 @@ test('casual: リセットを確定すると前のタブは残らず、新しい
 
   await app.typeCode('int fresh;');
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   expect(JSON.stringify(await readProofEvents(zipPath))).not.toContain('old;');
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);

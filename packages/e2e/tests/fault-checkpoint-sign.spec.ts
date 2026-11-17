@@ -31,7 +31,7 @@ for (const fault of ['503', 'abort'] as const satisfies readonly ApiFault[]) {
     await expect.poll(() => injected.calls(), { timeout: 30_000 }).toBeGreaterThan(0);
     await app.waitForSynced();
 
-    const zipPath = await app.exportCurrentTab();
+    const zipPath = await app.exportAllTabs();
     const proof = (await readProofJson(zipPath)) as { rootAnchored?: boolean; checkpoints?: ProofCheckpoint[] };
     // session/start は生きているので root はアンカーされている。
     expect(proof.rootAnchored).toBe(true);

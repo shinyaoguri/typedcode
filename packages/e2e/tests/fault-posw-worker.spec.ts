@@ -49,7 +49,7 @@ test('casual: PoSW Worker の起動失敗を注入しても、backlog が掃け�
   expect(workerScriptRequests).toBeGreaterThan(0);
   await app.expectConsistent();
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   expect(await listProofEntries(zipPath)).toHaveLength(1);
 
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);

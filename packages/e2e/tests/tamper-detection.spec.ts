@@ -15,7 +15,7 @@ test('改ざんした proof を CLI が拒否する (無改ざんは pass)', asy
   await app.openCasualFresh();
   await app.typeCode('int main(void) {\n  return 0;\n}\n');
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   // positive control: 無改ざんで取り出した proof.json は pass (exit 0)。
   const cleanPath = await extractProofJson(zipPath);

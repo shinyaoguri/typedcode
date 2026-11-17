@@ -6,7 +6,7 @@ import { loadExamFixture } from './examFixture.js';
 import {
   classPackageFile,
   loadClassPackage,
-  openSelfReviewForCurrentTab,
+  openSelfReviewForExport,
   waitDialogClosed,
   waitDialogOpen,
 } from './scenario.js';
@@ -115,7 +115,7 @@ export async function walkTour(page: Page, flow: TourFlow, visit: ScreenVisitor)
       await expect(page.locator('.modal-about')).toHaveCount(0);
 
       await app.typeCode('int a;');
-      await openSelfReviewForCurrentTab(app);
+      await openSelfReviewForExport(app);
       await at('casual-self-review');
       await page.locator('[data-dialog="self-review"] .self-review-btn-cancel').click();
       await waitDialogClosed(app, 'self-review');

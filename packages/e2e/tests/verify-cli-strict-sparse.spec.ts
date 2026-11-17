@@ -49,7 +49,7 @@ test('署名が途中で止まり末尾 500 イベント超が未署名の proof
   }
   // 署名が止まった後も checkpoint ができて sign が呼ばれた (注入が空振りしていない)。
   await expect.poll(() => injected.calls(), { timeout: 30_000 }).toBeGreaterThan(0);
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   const proof = (await readProofJson(zipPath)) as ProofForPolicy;
   expect(proof.rootAnchored, 'precondition: root is server-anchored').toBe(true);

@@ -55,7 +55,7 @@ test('タブを閉じて復旧ダイアログから再開しても root アン�
   // 復旧後にさらに打鍵してチェーンを伸ばし、export する。
   await app2.typeCode('int b = 2;\n');
   await app2.waitForSynced();
-  const zipPath = await app2.exportCurrentTab();
+  const zipPath = await app2.exportAllTabs();
 
   // #130 の核心: アンカー済みセッションの token が IndexedDB 復旧をまたいで proof に残る。
   const proof = await readProofJson(zipPath);
@@ -143,7 +143,7 @@ test('tabs レコードの currentHash が古くても、再開後のチェー�
 
   await app2.typeCode('int b = 2;\n');
   await app2.waitForSynced();
-  const zipPath = await app2.exportCurrentTab();
+  const zipPath = await app2.exportAllTabs();
 
   const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
@@ -212,7 +212,7 @@ test('#413 処理待ちを残して閉じた後に再開すると、バッファ
   await closeUnprovenDialog(app.page);
 
   // そのまま export すると verify-cli で PASS する (バッファが証明と一致している)
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   expect(allPassed(result.results)).toBe(true);
@@ -275,7 +275,7 @@ test('#413 保全した元のコードは、打鍵を続けて保存しても、
 
   // 救出 ZIP: 元のコードは src/ とは別の場所 (unproven/) に入り、manifest に文字数が載る
   const downloading = app.page.waitForEvent('download', { timeout: 30_000 });
-  await app.page.locator('#download-menu-btn').click();
+  await app.page.locator('#settings-btn').click();
   await app.page.locator('#rescue-download-btn').click();
   const rescue = await downloading;
   const zipPath = join(mkdtempSync(join(tmpdir(), 'tc-e2e-rescue-')), rescue.suggestedFilename());
@@ -317,7 +317,7 @@ test('#654 export の後に打鍵せず閉じて再開しても、署名が 409 
   const signed = page.waitForResponse((res) => res.url().includes('/api/checkpoint/sign') && res.status() === 200, {
     timeout: 60_000,
   });
-  await app.exportCurrentTab();
+  await app.exportAllTabs();
   await signed;
   await app.waitForSynced();
 
@@ -336,7 +336,7 @@ test('#654 export の後に打鍵せず閉じて再開しても、署名が 409 
   await page2.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
   await expect.poll(() => app2.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
 
-  const zipPath = await app2.exportCurrentTab();
+  const zipPath = await app2.exportAllTabs();
 
   expect(signStatuses, 'no checkpoint signing conflicts after resume').not.toContain(409);
   const proof = (await readProofJson(zipPath)) as { checkpoints?: ProofCheckpoint[] };

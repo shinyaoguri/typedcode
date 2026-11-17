@@ -107,7 +107,7 @@ test('テンプレートでないファイルのドロップは取り込まれ�
   expect((await app.tabs()).map((t) => t.id)).toEqual(before.map((t) => t.id));
 
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const events = await readProofEvents(zipPath);
   expect(events.filter((e) => e.type === 'externalInput' && e.inputType === 'insertFromDrop')).toHaveLength(1);
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);

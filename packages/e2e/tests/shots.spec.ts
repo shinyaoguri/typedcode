@@ -275,7 +275,7 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await page.locator('#main-menu-btn').click();
 
     // 03: export した ZIP を検証 Web (fast) に入れ、proof の結果画面を撮る。
-    const zipPath = await app.exportCurrentTab();
+    const zipPath = await app.exportAllTabs();
     const [proof] = (await listProofEntries(zipPath)).map((n) => basename(n));
     const web = new VerifyWebApp(page);
     await web.open('fast');
@@ -548,7 +548,7 @@ test.describe('見た目・動きの証跡 @shots', () => {
     const app = new EditorApp(page);
     await app.openCasualFresh();
     await app.typeCode(CODE);
-    const zipPath = await app.exportCurrentTab();
+    const zipPath = await app.exportAllTabs();
     const [proof] = (await listProofEntries(zipPath)).map((n) => basename(n));
     if (!proof) {
       console.warn('[shots] ZIP に proof が無いので 13 を飛ばす');
@@ -580,7 +580,7 @@ test.describe('見た目・動きの証跡 @shots', () => {
     const app = new EditorApp(page);
     await app.openCasualFresh();
     await app.typeCode(`// padding line for a slower full verification\n${CODE}`);
-    const zipPath = await app.exportCurrentTab();
+    const zipPath = await app.exportAllTabs();
     const first = await writeZipVariant(zipPath, { renameProof: 'first', outName: 'first.zip' });
     const second = await writeZipVariant(zipPath, { renameProof: 'second', outName: 'second.zip' });
     const web = new VerifyWebApp(page);

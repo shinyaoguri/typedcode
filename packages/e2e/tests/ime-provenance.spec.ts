@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { EditorApp, readProofEvents, type ProofEvent } from './helpers/app.js';
+import { EditorApp, readAllProofEvents, type ProofEvent } from './helpers/app.js';
 import { runVerifyCliWithVerdicts, type CliVerdictEntry } from './helpers/verifyCli.js';
 
 /**
@@ -31,16 +31,23 @@ interface Observed {
   verdict: CliVerdictEntry;
 }
 
-/** 現在のタブを export し、contentChange と verify-cli (fast) の判定を読む。 */
+/**
+ * 全タブを export し、アクティブなタブの proof の contentChange と verify-cli (fast) の判定を読む。
+ * export は全タブの ZIP だけなので (#779)、タブが 2 つあるときはアクティブなタブの proof を名前で引く。
+ */
 async function exportAndVerify(app: EditorApp): Promise<Observed> {
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
-  const events = await readProofEvents(zipPath);
+  const active = (await app.tabs()).find((t) => t.active);
+  const proofName = `${active!.filename.replace(/\.[^.]+$/, '')}_proof.json`;
+  const zipPath = await app.exportAllTabs();
+  const events = (await readAllProofEvents(zipPath)).get(proofName);
+  expect(events, `${proofName} in the ZIP`).toBeDefined();
   const result = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
-  const verdict = result.verdicts[0]!;
-  expect(verdict.valid).toBe(true);
-  return { events, changes: events.filter((e) => e.type === 'contentChange'), verdict };
+  const verdict = result.verdicts.find((v) => v.filename.endsWith(proofName));
+  expect(verdict, `verdict for ${proofName}`).toBeDefined();
+  expect(verdict!.valid).toBe(true);
+  return { events: events!, changes: events!.filter((e) => e.type === 'contentChange'), verdict: verdict! };
 }
 
 /** CDP の合成 composition。`commit` を渡せばその文字列で確定する。 */

@@ -21,7 +21,7 @@ test('class: 画面共有を optOut で開始しても確認ダイアログを�
   await app.typeCode('int o = 1;\n');
   expect(await app.editorValue()).toContain('int o = 1;');
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   // optOut なので画面共有は始まっていない。
   const events = await readProofEvents(zipPath);

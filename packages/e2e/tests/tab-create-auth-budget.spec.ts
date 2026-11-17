@@ -50,7 +50,7 @@ test('class: Turnstile も Workers も無応答でも、新規タブは予算内
   await app.expectConsistent();
   expect((await app.snapshot()).tabs[0]!.content).toBe('int late = 1;');
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   expect(await listProofEntries(zipPath)).toHaveLength(1);
 
   // root は session/start の token 無しで確定している (予算切れ = 非アンカー)

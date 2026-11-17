@@ -6,11 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 /**
- * #565: 現在のタブの export は、ZIP をダウンロードさせた後も、ダウンロード後の自己検証が終わるまで
+ * #565: export は、ZIP をダウンロードさせた後も、ダウンロード後の自己検証が終わるまで
  * 次の export を受け付けず、その間に押した export は何も出さずに無視されていた。
  *
  * 検証の長さに頼らず決定的に見るため、1 回目のダウンロードのアンカー (`a[download]`) が DOM に入った
- * 瞬間 (= 1 回目の自己検証が終わる前) に、ページの中から 2 回目の「現在のタブ」の export を押す。
+ * 瞬間 (= 1 回目の自己検証が終わる前) に、ページの中から 2 回目の export (`#download-btn`。全タブの ZIP。#779) を押す。
  * 2 回目は 1 回目の検証の途中で同じ proof に記録する (reflectionNote / preExportAttestation) ので、
  * その proof が verify-cli で pass することもあわせて見る。
  *
@@ -47,12 +47,12 @@ test('casual: 1 回目の export の検証が終わる前に押した 2 回目�
       if (!added || w.__tc565SecondClicked) return;
       w.__tc565SecondClicked = true;
       observer.disconnect();
-      document.getElementById('export-current-tab-btn')?.click();
+      document.getElementById('download-btn')?.click();
     });
     observer.observe(document.body, { childList: true });
   });
 
-  await app.exportCurrentTab();
+  await app.exportAllTabs();
   expect(
     await page.evaluate(() => (window as unknown as { __tc565SecondClicked?: boolean }).__tc565SecondClicked)
   ).toBe(true);

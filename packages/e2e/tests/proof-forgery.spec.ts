@@ -39,7 +39,7 @@ test('export した proof への各種偽造を verify-cli がすべて拒否す
   await app.openCasualFresh();
   await app.typeCode('int total = 0;\ntotal = total + 1;\n');
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   // positive control: 無改ざんは pass。
   const clean = runVerifyCliWithResult(await extractProofJson(zipPath), ['--mode', 'fast']);

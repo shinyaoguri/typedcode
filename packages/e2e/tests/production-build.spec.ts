@@ -194,7 +194,7 @@ test('production build: verify (/verify/) が proof を読んで判定の状態�
   const app = new EditorApp(page);
   await app.openCasualFresh();
   await app.typeCode('int main(){return 0;}\n');
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const names = (await listProofEntries(zipPath)).map((n) => basename(n));
   expect(names.length).toBeGreaterThan(0);
 

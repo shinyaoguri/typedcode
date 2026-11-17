@@ -127,7 +127,7 @@ test('window.open で開いた同じモードのページも duplicate-instance 
   await first.typeCode('int b = 2;\n');
   await first.expectConsistent();
   await first.waitForSynced();
-  const zipPath = await first.exportCurrentTab();
+  const zipPath = await first.exportAllTabs();
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
 });

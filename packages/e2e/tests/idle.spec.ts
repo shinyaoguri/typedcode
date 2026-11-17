@@ -36,7 +36,7 @@ test('blur から 60 分で警告、さらに 5 分で記録停止。復帰し�
   expect((await app.snapshot()).tabs[0]!.content).toBe('int a = 1; int b = 2;');
 
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
 });

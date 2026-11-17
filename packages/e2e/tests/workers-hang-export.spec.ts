@@ -35,7 +35,7 @@ test('class: Workers が無応答でも export が上限時間内に ZIP を出�
   await app.typeCode('let hung = 1;\n');
 
   const startedAt = Date.now();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const elapsedMs = Date.now() - startedAt;
 
   expect(elapsedMs).toBeLessThan(EXPORT_DEADLINE_MS);

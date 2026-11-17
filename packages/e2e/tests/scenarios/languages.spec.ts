@@ -30,7 +30,7 @@ test('8 つの言語に順に切り替えてそれぞれで打鍵しても記録
   }
 
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   await app.expectConsistent();

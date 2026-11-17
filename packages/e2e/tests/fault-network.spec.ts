@@ -31,7 +31,7 @@ test('読込後のオフライン → オンラインが proof に記録され�
 
   await app.typeCode('int m = 2;\n');
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
 
   // 起動時の 1 件 (true) → オフライン (false) → 復帰 (true) の順に並ぶ。
   const events = await readProofEvents(zipPath);

@@ -22,7 +22,7 @@ test('assignment: ウェルカム画面から作ったタブの proof に enviro
   await app.waitReady();
   await app.typeCode('int a = 1;\n');
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const events = await readProofEvents(zipPath);
   expect(countOf(events, 'environmentProbe'), 'environmentProbe replayed once to the tab created later').toBe(1);
   expect(countOf(events, 'screenShareOptOut'), 'assignment never opts out of screen sharing').toBe(0);

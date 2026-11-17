@@ -15,7 +15,7 @@ test('フォーカス喪失→復帰が focusChange として記録される', a
   await app.simulateFocusLossAndReturn();
   await app.typeCode(' int z = 3;');
 
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const events = await readProofEvents(zipPath);
   const focusChanges = events.filter((e) => e.type === 'focusChange');
 

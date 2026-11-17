@@ -20,7 +20,7 @@ test('/ を開くと練習のエディタが直接開き、打鍵 → export →
   await app.typeCode('int a = 1;');
   await app.waitForSynced();
   await app.expectConsistent();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
 });

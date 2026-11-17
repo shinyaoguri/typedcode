@@ -37,7 +37,7 @@ test('casual: 画面共有のトラックが止まると screen-capture-lock が
   await expect.poll(() => app.openDialogs()).toEqual([]);
 
   await app.waitForSynced();
-  const zipPath = await app.exportCurrentTab();
+  const zipPath = await app.exportAllTabs();
   const types = (await readProofEvents(zipPath)).map((e) => e.type);
   // 開始 → 停止の順に記録されている。
   expect(types).toContain('screenShareStart');
