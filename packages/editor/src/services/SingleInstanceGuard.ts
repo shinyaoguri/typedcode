@@ -34,15 +34,18 @@ export class SingleInstanceGuard {
   private isActive = false;
   /** 保持中のロックを解放する (ロックの callback が返した Promise を resolve する) */
   private releaseLock: (() => void) | null = null;
+  /** active 中に自分以外の active (instance-active) を見つけたときに呼ぶ (#237) */
+  private onDuplicateDetected: ((senderId: string) => void) | null = null;
 
   /**
    * @param namespace モード等の名前空間。指定するとチャンネルとロックを分離し、別モードのタブ
    *   (例: /casual を開いた状態で /exam を別タブで開く) を「重複インスタンス」と誤判定しない。
    *   storage は既にモード別名前空間化されているので共存して問題ない。
+   * @param options.instanceId テストで 2 つのインスタンスを並べるときだけ渡す。既定は SessionStorageService の id
    */
-  constructor(namespace?: string) {
+  constructor(namespace?: string, options: { instanceId?: string } = {}) {
     // instanceId の権威は永続化される SessionStorageService 側 (生成箇所を 1 つに保つ)
-    this.instanceId = getSessionStorageService().getInstanceId();
+    this.instanceId = options.instanceId ?? getSessionStorageService().getInstanceId();
     // ロック名もチャンネル名と同じ `typedcode-instance-guard:<mode>`
     this.channelName = namespace ? `${CHANNEL_NAME_BASE}:${namespace}` : CHANNEL_NAME_BASE;
   }
@@ -170,9 +173,16 @@ export class SingleInstanceGuard {
       this.channel.addEventListener('message', (event: MessageEvent<MessageType>) => {
         const message = event.data;
 
-        if (message.type === 'ping' && message.senderId !== this.instanceId) {
+        if (message.senderId === this.instanceId) return;
+        if (message.type === 'ping') {
           console.log('[SingleInstanceGuard] Received ping from:', message.senderId);
           this.channel?.postMessage({ type: 'pong', senderId: this.instanceId } as MessageType);
+        } else if (message.type === 'instance-active') {
+          // 自分以外にも active なインスタンスがいる (#237)。ping → pong の経路で、凍結中で pong を
+          // 返せなかった既存インスタンスを後発がすり抜けたときに起きる (Web Locks の経路では、ロックを
+          // 持つ側がいる間は後発が active にならない)。どちらが譲るかはここでは決めない
+          // (sessions の所有権の記録で決める = InstanceConflictMonitor)。heartbeat ごとに呼ぶ
+          this.onDuplicateDetected?.(message.senderId);
         }
       });
 
@@ -191,10 +201,19 @@ export class SingleInstanceGuard {
     // Chromium では、bfcache 中のページが持つロックを別のページが求めると、そのページは bfcache から
     // 追い出され (WebLocksContention)、求めた側がロックを取る。戻る操作では読み直しになり、
     // 起動し直したガードが判定をやり直す (#494 で実測)。凍結中 (bfcache 以外) は ping に答えられないが、
-    // ロックは持ち続けるので後から開いた側が止まる。凍結中の競合の扱いは #237 の範囲。
+    // ロックは持ち続けるので後から開いた側が止まる。ロックを使えない経路ですり抜けたときの競合は、
+    // instance-active の受信 (setOnDuplicateDetected) から InstanceConflictMonitor が解く (#237)。
     window.addEventListener('pagehide', (event) => {
       if (!event.persisted) this.dispose();
     });
+  }
+
+  /**
+   * active 中に自分以外の active なインスタンスの heartbeat (`instance-active`) を受けたときのコールバック (#237)。
+   * 相手が active でいる間は heartbeat (1 秒) ごとに呼ぶ
+   */
+  setOnDuplicateDetected(callback: ((senderId: string) => void) | null): void {
+    this.onDuplicateDetected = callback;
   }
 
   /**

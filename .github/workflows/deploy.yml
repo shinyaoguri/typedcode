@@ -158,12 +158,14 @@ jobs:
   # コピペ/フルスクリーン等のブラウザ依存挙動もここで自動検証していく。
   # 本番ビルド (vite preview) のスモーク (#255) は shard 1 だけで踏む。
   #
-  # spec の増加 (#346) を吸収するため Playwright の --shard で 2 分割して並列に走らせる。
-  # matrix の job の check 名は `e2e (shard 1/2)` のように変わるので、required check と
+  # spec の増加 (#346) を吸収するため Playwright の --shard で分割して並列に走らせる。
+  # 分割数は下の matrix の 1 か所でだけ決め、--shard の分母・job 名・summary の見出しは
+  # strategy.job-total から取る (#772: 2 分割では shard が 30 分の timeout に届いたので 3 分割にした)。
+  # matrix の job の check 名は `e2e (shard 1/3)` のように変わるので、required check と
   # deploy-* の `needs: [test, check, e2e]` が参照する `e2e` は下の集約 job が名乗る。
   # --------------------------------------------------------------------
   e2e-shard:
-    name: e2e (shard ${{ matrix.shard }}/2)
+    name: e2e (shard ${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
     # e2e は wrangler dev + vite dev を Playwright が起動する構成でハングの余地があり、
     # 過去に PoSW full 検証でタイムアウト間際になった実績もある (a6079d0)。
@@ -174,7 +176,7 @@ jobs:
       # 片方の shard が落ちても、もう片方の失敗も見えるよう最後まで走らせる。
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -212,13 +214,13 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
-      - name: Run E2E shard ${{ matrix.shard }}/2 (editor → export → verify-cli / verify Web)
-        run: npm run test -w @typedcode/e2e -- --shard=${{ matrix.shard }}/2
+      - name: Run E2E shard ${{ matrix.shard }}/${{ strategy.job-total }} (editor → export → verify-cli / verify Web)
+        run: npm run test -w @typedcode/e2e -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
       # 本番ビルド (vite build → vite preview) のスモーク。上の round-trip は
       # vite dev サーバに対して走るため、バンドル変換やチャンク分割に起因する退行を
       # 原理的に検出できない (#255)。editor と verify (/verify/) の dist を実際に配信して踏む。
-      # 2 本だけなので shard 1 に寄せる (両 shard で build を二重に回さない)。
+      # 本数が少ないので shard 1 に寄せる (各 shard で build を重ねて回さない)。
       - name: Run production-build smoke (vite build → vite preview)
         if: matrix.shard == 1
         run: npm run test:build -w @typedcode/e2e
@@ -231,7 +233,7 @@ jobs:
       # スクリプトは exit 0 で、この job を赤くしない。テストが落ちたときも、通ったテストの flaky を見るため走らせる。
       - name: Summarize flaky tests (retry で通ったテスト)
         if: ${{ !cancelled() }}
-        run: node scripts/e2e-flaky.mjs summary --dir packages/e2e/reports --label "shard ${{ matrix.shard }}/2"
+        run: node scripts/e2e-flaky.mjs summary --dir packages/e2e/reports --label "shard ${{ matrix.shard }}/${{ strategy.job-total }}"
 
       # main への push の run では、下の e2e-flaky-report が全 shard の分を集めて Issue に追記する。
       # PR の run では上げない (Issue に書かないので要らない)。

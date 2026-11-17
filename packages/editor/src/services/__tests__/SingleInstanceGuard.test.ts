@@ -16,11 +16,18 @@ import { SingleInstanceGuard } from '../SingleInstanceGuard.js';
 
 type Handler = (event: MessageEvent) => void;
 
-/** postMessage の中身を記録するだけの最小の BroadcastChannel モック */
+/**
+ * postMessage の中身を記録する最小の BroadcastChannel モック。同じ名前の (閉じていない) 他のチャンネルにも
+ * 届ける。`frozen` のチャンネルは凍結中のページを表し、届いたメッセージを溜めて `unfreeze` で処理する
+ * (実物も、凍結中に届いたメッセージはタスクとして残り、凍結を解かれてから処理される)。
+ */
 class FakeBroadcastChannel {
   static instances: FakeBroadcastChannel[] = [];
   readonly posted: unknown[] = [];
   private handlers: Handler[] = [];
+  private closed = false;
+  frozen = false;
+  private queued: unknown[] = [];
 
   constructor(readonly name: string) {
     FakeBroadcastChannel.instances.push(this);
@@ -28,6 +35,9 @@ class FakeBroadcastChannel {
 
   postMessage(message: unknown): void {
     this.posted.push(message);
+    for (const other of FakeBroadcastChannel.instances) {
+      if (other !== this && !other.closed && other.name === this.name) other.receive(message);
+    }
   }
 
   addEventListener(_type: string, handler: Handler): void {
@@ -38,11 +48,25 @@ class FakeBroadcastChannel {
     this.handlers = this.handlers.filter((h) => h !== handler);
   }
 
-  close(): void {}
+  close(): void {
+    this.closed = true;
+  }
 
   /** 他のインスタンスからのメッセージが届いたことにする */
   receive(data: unknown): void {
-    for (const handler of this.handlers) handler({ data } as MessageEvent);
+    if (this.frozen) {
+      this.queued.push(data);
+      return;
+    }
+    for (const handler of [...this.handlers]) handler({ data } as MessageEvent);
+  }
+
+  /** 凍結を解き、溜まっていたメッセージを処理する */
+  unfreeze(): void {
+    this.frozen = false;
+    const queued = this.queued;
+    this.queued = [];
+    for (const data of queued) this.receive(data);
   }
 }
 
@@ -257,6 +281,19 @@ describe('SingleInstanceGuard with Web Locks', () => {
     guard.dispose();
   });
 
+  it('never reports a duplicate to the lock holder because a later instance is blocked before it becomes active', async () => {
+    const first = new SingleInstanceGuard('test');
+    const onDuplicate = vi.fn();
+    first.setOnDuplicateDetected(onDuplicate);
+    await expect(first.checkForExistingInstance()).resolves.toBe(false);
+
+    await expect(new SingleInstanceGuard('test').checkForExistingInstance()).resolves.toBe(true);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(onDuplicate).not.toHaveBeenCalled();
+    first.dispose();
+  });
+
   it('falls back to ping/pong when the lock request itself fails', async () => {
     locks.rejectWith = new Error('SecurityError');
     const guard = new SingleInstanceGuard('test');
@@ -268,5 +305,103 @@ describe('SingleInstanceGuard with Web Locks', () => {
     await vi.advanceTimersByTimeAsync(500);
 
     await expect(pending).resolves.toBe(true);
+  });
+});
+
+/**
+ * 重複の事後検出 (#237 PR-3)。active なインスタンスは 1 秒ごとに `instance-active` を送る。自分以外の
+ * active からそれを受けたら、重複を検出するコールバックを呼ぶ (どちらが譲るかはガードでは決めない。
+ * sessions の所有権の記録で決める = InstanceConflictMonitor)。
+ *
+ * 二重インスタンスが成立するのは ping → pong の経路 (Web Locks が無い・request が失敗した) だけ:
+ * 凍結中の A は pong を返せず、B が 500ms で active になる。凍結を解かれた A は B の heartbeat を受け取る。
+ */
+describe('SingleInstanceGuard duplicate detection on the ping/pong fallback (#237)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    FakeBroadcastChannel.instances = [];
+    windowListeners = {};
+    vi.stubGlobal('navigator', {});
+    vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
+    vi.stubGlobal('window', {
+      addEventListener: (type: string, listener: (e: unknown) => void) => {
+        const listeners = windowListeners[type] ?? [];
+        listeners.push(listener);
+        windowListeners[type] = listeners;
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  async function activate(instanceId: string): Promise<{ guard: SingleInstanceGuard; channel: FakeBroadcastChannel }> {
+    const guard = new SingleInstanceGuard('test', { instanceId });
+    const pending = guard.checkForExistingInstance();
+    const channel = FakeBroadcastChannel.instances.at(-1)!;
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(pending).resolves.toBe(false);
+    return { guard, channel };
+  }
+
+  it('calls the duplicate callback when an active instance receives instance-active from another instance', async () => {
+    const { guard, channel } = await activate('instance-a');
+    const onDuplicate = vi.fn();
+    guard.setOnDuplicateDetected(onDuplicate);
+
+    channel.receive({ type: 'instance-active', senderId: 'instance-b' });
+
+    expect(onDuplicate).toHaveBeenCalledWith('instance-b');
+    guard.dispose();
+  });
+
+  it('does not treat its own instance-active heartbeat as a duplicate', async () => {
+    const { guard, channel } = await activate('instance-a');
+    const onDuplicate = vi.fn();
+    guard.setOnDuplicateDetected(onDuplicate);
+
+    channel.receive({ type: 'instance-active', senderId: 'instance-a' });
+
+    expect(onDuplicate).not.toHaveBeenCalled();
+    guard.dispose();
+  });
+
+  it('lets a frozen instance and the instance that slipped past it both detect each other once the frozen one resumes', async () => {
+    const a = await activate('instance-a');
+    const onDuplicateA = vi.fn();
+    a.guard.setOnDuplicateDetected(onDuplicateA);
+    a.channel.frozen = true;
+
+    // A が凍結中なので pong が返らず、B が active になる (すり抜け)
+    const b = await activate('instance-b');
+    const onDuplicateB = vi.fn();
+    b.guard.setOnDuplicateDetected(onDuplicateB);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(onDuplicateA).not.toHaveBeenCalled();
+
+    // 凍結を解かれた A は B の heartbeat を処理し、A の heartbeat は B に届く
+    a.channel.unfreeze();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(onDuplicateA).toHaveBeenCalledWith('instance-b');
+    expect(onDuplicateB).toHaveBeenCalledWith('instance-a');
+    a.guard.dispose();
+    b.guard.dispose();
+  });
+
+  it('stops sending instance-active once disposed, so the remaining instance is no longer told about it', async () => {
+    const a = await activate('instance-a');
+    a.channel.frozen = true;
+    const b = await activate('instance-b');
+    const onDuplicateB = vi.fn();
+    b.guard.setOnDuplicateDetected(onDuplicateB);
+
+    a.guard.dispose();
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(onDuplicateB).not.toHaveBeenCalled();
+    b.guard.dispose();
   });
 });

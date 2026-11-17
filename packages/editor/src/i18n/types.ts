@@ -544,6 +544,15 @@ export interface TranslationKeys {
     closeThisTab: string;
   };
 
+  // 別のタブに同じセッションを再開され、このタブが読み取り専用になった (#237)
+  instanceConflict: {
+    title: string;
+    description: string;
+    hint: string;
+    rescue: string;
+    closeThisTab: string;
+  };
+
   // 起動失敗の画面 (#325)
   bootFailure: {
     title: string;

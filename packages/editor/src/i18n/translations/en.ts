@@ -530,6 +530,14 @@ export const en: TranslationKeys = {
     hint: 'Please return to the existing tab or close this one.',
     closeThisTab: 'Close this tab',
   },
+  instanceConflict: {
+    title: 'This session was resumed in another tab',
+    description:
+      'Another tab or window is continuing the same record. To keep the record consistent, recording and saving have stopped in this tab. Edits made here will not be saved.',
+    hint: 'If this tab has code that the other tab does not, rescue it first, then close this tab and continue in the other one.',
+    rescue: 'Rescue the code in this tab',
+    closeThisTab: 'Close this tab',
+  },
 
   bootFailure: {
     title: 'TypedCode could not start',
