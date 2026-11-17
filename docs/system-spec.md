@@ -774,7 +774,14 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 
 以下は SHA-256/ECDSA-P256 の安全性が破られない限り **数学的に保証**される。
 
-- **改ざん検出**: 過去に発行された proof の任意 1 ビットの改ざんは、Layer 2/4/6 のいずれかで決定的に検出される
+- **改ざん検出**: 過去に発行された proof の**ハッシュ・署名の対象**の値を書き換える (直列化が変わる) と、検証は決定的に失敗する。fast でも full でも同じ (full は fast の検査をすべて行ったうえで PoSW の再計算を足すだけ。`verifyProofFile` の `skipPosw`)。どの Layer で落ちるかは書き換えた場所による。対象は次のとおり:
+  - 各イベントのハッシュ対象 (`verification.ts` の `pickHashedEventFields` が返すフィールドと `posw`。§4.3) と、`event.hash` / `previousHash` の連鎖・最終ハッシュ (Layer 2/3)
+  - `typingProofData` 全体 (`typingProofHash`) と、`finalContentHash` に照合する `content` (Layer 1/4)
+  - root 式の入力 (fingerprint の `hash` と `components`、`initialHashNonce`、`exam` ブロックの root の入力、`sessionStartToken` の `serverNonce`。Layer 1)。token のそれ以外 (署名された `payload`・`signature`・`keyId`・`algorithm`) を書き換えると token を検証できず `valid` が落ちる (改ざんではなく時刻アンカーの失敗として `rootAnchorFailure` で返す。#329)
+  - 未署名 cp の照合値 (Layer 5) と、署名 cp の `payload` (ECDSA。Layer 6)
+
+  検証器は `proof.version` で対象を切り替えない (`MIN_SUPPORTED_VERSION` 以降のどの版も同じ規則で検証する)。版で違うのは proof が持ちうるブロックで、1.1.0 で加わった `exam` と 1.2.0 で加わった `sessionStartToken` は、proof にあれば root の入力に加わる (分岐は版ではなくブロックの有無で決まる。`verifyInitialHashRoot`)。**上のどれにも入らないフィールドは、書き換えても `valid` が変わらない**: イベントの派生フィールド (`description` / `insertLength` / `selectedText` など。#328)、`version` (§6.3 のバージョンゲートで分類するだけ。下限未満・不正形式にすれば拒否されるが、受理する版の間で名乗り替えても検出しない)、`proof` ブロックの `totalEvents` / `startTime` / `endTime` / `signature`、トップレベルの `metadata` (`typingProofData.metadata` はハッシュ対象)、§5.3 で自己申告とした `rootAnchored` / `mode` / `filename` / `language`。このうち `language` は試験の許可言語の照合 (§6.4 手順 5c) が読むので、許可されない値にすれば束縛は落ちるが、許可された値への書き換えはこの照合では検出できない (照合は申告値を見るだけで、`language` はハッシュにも署名にも入らない。#731)。表示や判断にこれらを使うときは、検証済みの値から導き直す (分析器は `pickHashedEventFields` へ射影する。shared/AGENTS.md 不変条件 12)
+  - テスト: fast で「どのイベントのどのハッシュ対象フィールドを 1 つ変えても拒否する」ことは `verification.property.test.ts` の `rejects a proof in which any one hashed field of any one event was changed` が生成した proof で固定する。正規の proof が full で通る正の対照は `frozenProofs.test.ts` (凍結 fixture)
 - **流用検出**: 別の fingerprint / sessionId / initialEventChainHash 由来のデータ流用は決定的に検出される
 - **時刻アンカリング (signed checkpoints 利用時)**: 各 envelope の `serverTimestamp` は「サーバが署名要求を受け取った時刻」を証明する → proof は最古の `serverTimestamp` 以降に存在していたことが証明される
 - **長期検証可能性**: 公開鍵 registry が git で永続管理され verify-cli にバンドルされる → Cloudflare Workers が停止しても永続的に検証可能。**信頼アンカーは常に registry**。envelope 同梱の公開鍵は registry 一致の cross-check 用であって信頼の源ではない (未登録 keyId は埋め込み鍵があっても拒否)
@@ -782,7 +789,9 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 
 ### 8.2. 弱い保証 (Probabilistic / Heuristic)
 
-- **`fast` モード**: PoSW の正しさは検証されない。攻撃者が「PoSW iterations: 10000」と申告しつつ偽の intermediateHash を入れた場合、fast モードでは通る。しかし event の hash 入力に posw が含まれるため、`SHA256(previousHash + eventData_with_posw)` の照合で実質的に「申告 PoSW 値が proof 全体と一貫している」ことは保証される。**ただし「実際に 10000 回反復したか」は確認しない**
+- **`fast` モード**: PoSW の正しさは検証されない。fast が省くのは各イベントの `posw.intermediateHash` の再計算 (`verifyPoSW`) だけで、`posw.iterations === POSW_ITERATIONS` の照合とチェーン・最終ハッシュ・`typingProofHash`・内容再生・メタデータ・cp・署名 cp の検査は full と同じく行う (§6.1)。サンプリングや一部の区間だけを再計算する仕組みは無い (`audit` は未実装で full と同じ)。次の 2 つを区別する:
+  - **既存の proof の PoSW の値だけを書き換える** (偽の `intermediateHash` に差し替える等): `posw` はイベントのハッシュ入力に入る (§4.3) ので、そのイベントの `event.hash` が合わなくなり、fast でも full でも拒否される (fast は `Hash mismatch`、full は先に PoSW の不一致で落ちる)。これは §8.1 の改ざん検出の一部
+  - **PoSW を計算せずに、偽の値を含めて `event.hash` 以降・最終ハッシュ・`typingProofHash` を一貫させて作り直す**: fast は通す。fast が保証するのは「申告された PoSW の値が proof 全体と一貫している」ことまでで、**反復を実際に計算したかは確かめない**。full は PoSW を再計算するのでこの proof を拒否する (負の対照: `verificationRootAnchorAndPosw.test.ts` の `makes verifyProofFile fail in full mode on the same tampered chain, reporting the PoSW error and the event index`。同じ proof を fast が通すことも同じテストが確かめる)
   - この差は**表示にも現れなければならない** (#214)。fast で検証したとき、三層保証の整合性は `proven` ではなく `partial` (一部未検証) になり、verify は信頼バッジに warning issue (`posw`) を積んでタブも警告扱い、verify-cli は合否ヘッダ直下と `--- Assurance ---` に「PoSW を再計算していない」と明記する。**判定 (`verifyProofFile` の valid / exit code) は fast でも変えない** — fast は「速い改ざん検出」という正当な用途を持つ
 - **`audit` モード** (未実装): 将来的に決定的サンプリング (verifier 提供 nonce で seed) で PoSW を一部検証する設計余地あり
 - **post-hoc 検出** (#320): ハッシュ対象のイベント時刻とサーバ時刻を任意の 2 点で照合する (申告値の `clientTimestamp` は使わない)。
@@ -1013,4 +1022,5 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-06 | 入口からモード選択をなくす (ADR-0046 段階 1, #644) | `/` は練習のエディタを直接開き、ADR-0015 のランディング (4 モードの比較カード・「続きから」バッジ・`SessionDetector`) とエディタ内のモード切替ドロップダウンを撤去した。未知パスは not-found 画面 (`/` へのリンクだけ、エディタの chunk を読まない)。titlebar はモード表示だけ。練習で規約に未同意なら受動的な通知を出し、閉じるか規約モーダルで同意したら `termsAccepted` を記録する。`/class` `/assignment` `/exam` の直リンクと proof 形式は不変 |
 | 2026-11-07 | 問題の入出力例 (ADR-0048, #648) | `ExamBundleProblem` に任意の `examples` (`{ name, stdin, stdout }` の配列) を足した。`.tcexam` / `.tcclass` に載り、editor の問題パネルに「動作確認の例」として表示する (判定しない・proof に記録しない)。`examples` を持たない問題の `problemContentHash` は不変。§4.9 を追加 |
 | 2026-11-11 | 試験の封印 starter と templateInjection の照合 (#718) | `verifyExamBinding` が v2 の該当問題の starter と proof の `templateInjection` の `data.content` を比べ、不一致を束縛失敗 (`starter.status='mismatch'`) にする。v1 は `not-evaluated`。§6.4 手順 5b と脅威表を反映 |
+| 2026-11-16 | fast の保証と改ざん検出の範囲を実際の検証に合わせる (#677) | §8.1 の「任意 1 ビットの改ざんを検出」は、ハッシュ・署名の対象外 (イベントの派生フィールド・`proof.signature`・自己申告の `mode` など) まで含むように読めた。対象 (`pickHashedEventFields` と `posw`、`typingProofData`、root の入力、cp の照合値と署名 payload) と対象外を列挙し、fast / full で同じであること、検証器が版で対象を切り替えないことを書いた。§8.2 は「PoSW の値だけを書き換える」(fast・full とも拒否) と「偽の PoSW のまま作り直す」(fast は通し、full だけが拒否) を分け、固定しているテストを示した。**判定 (`verifyProofFile` の valid / exit code)・proof フォーマット・verify-cli の `failedCheck` の値は不変** |
 | 2026-11-16 | 試験の許可言語の照合 (#727) | `verifyExamBinding` が proof の自己申告 `language` を manifest の `allowed.languages` (v2 は該当問題の starter の言語も) と完全一致で照合し、外れたら束縛失敗 (`language.status='not-allowed'`) にする。許可言語が空なら `not-evaluated`。§6.4 手順 5c と脅威表を反映 |

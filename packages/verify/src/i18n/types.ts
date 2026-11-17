@@ -574,6 +574,7 @@ export interface VerifyTranslationKeys {
     accessDenied: string;
     fileReadError: string;
     folderReadError: string;
+    folderSyncFailed: string;
     browserNotSupported: string;
     browserNotSupportedDesc: string;
     examInvalidPackage: string;

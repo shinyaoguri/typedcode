@@ -58,6 +58,8 @@ export class FolderController {
   private fsAccessService: FileSystemAccessService;
   private syncManager: FolderSyncManager;
   private watchedRootFolderId: string | null = null;
+  /** 監視の走査が失敗し続けている間 true。失敗の表示は失敗に入った回だけ出す (#699) */
+  private syncFailing = false;
 
   constructor(deps: FolderControllerDependencies) {
     this.deps = deps;
@@ -75,12 +77,8 @@ export class FolderController {
       onFileDeleted: (path) => this.handleExternalFileDeleted(path),
       onFolderAdded: (path, name) => this.handleExternalFolderAdded(path, name),
       onFolderDeleted: (path) => this.handleExternalFolderDeleted(path),
-      onSyncComplete: () => {
-        // 同期完了時の処理（必要に応じて）
-      },
-      onSyncError: (error) => {
-        console.error('Sync error:', error);
-      },
+      onSyncComplete: () => this.handleSyncComplete(),
+      onSyncError: (error) => this.handleSyncError(error),
     });
   }
 
@@ -105,6 +103,7 @@ export class FolderController {
 
     // 既存の監視を停止
     this.syncManager.stopWatching();
+    this.syncFailing = false;
 
     // ディレクトリを読み取り
     const result = await this.fsAccessService.readDirectoryRecursive(handle);
@@ -254,6 +253,27 @@ export class FolderController {
     } catch (error) {
       console.error('Error processing file:', fileEntry.path, error);
     }
+  }
+
+  /**
+   * 監視の走査が読めなかった時の処理 (#699)
+   *
+   * FolderSyncManager はこの回の差分を確定していない (タブ・検証結果はそのまま)。利用者には
+   * 「変更を反映していない」ことだけを知らせる。監視は 3 秒ごとなので、同じ失敗が続いても出し直さない
+   * (setError は検証集約の表示と data-proof-* を上書きする)。
+   */
+  private handleSyncError(error: Error): void {
+    console.error('Sync error:', error);
+    if (this.syncFailing) return;
+    this.syncFailing = true;
+    this.deps.statusBar.setError(`${t('errors.folderSyncFailed')}: ${error.message}`);
+  }
+
+  /** 走査が最後まで読めた時の処理。失敗の表示を出していたら通常の表示に戻す (#699) */
+  private handleSyncComplete(): void {
+    if (!this.syncFailing) return;
+    this.syncFailing = false;
+    this.deps.onStatusBarUpdate?.();
   }
 
   /**

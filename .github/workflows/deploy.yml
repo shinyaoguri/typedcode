@@ -166,7 +166,8 @@ jobs:
     runs-on: ubuntu-latest
     # e2e は wrangler dev + vite dev を Playwright が起動する構成でハングの余地があり、
     # 過去に PoSW full 検証でタイムアウト間際になった実績もある (a6079d0)。
-    # 実測 ~7 分 (分割前の全体。--mode fast 整合 + workers:2 後。full は happy-path のみ)。
+    # 所要時間は shard ごとの実測 run を見ること (spec の増加で伸びるので、ここには数値を書かない)。
+    # timeout はその実測に余裕を持たせた上限。実測が近づいたら見直す。
     timeout-minutes: 30
     strategy:
       # 片方の shard が落ちても、もう片方の失敗も見えるよう最後まで走らせる。

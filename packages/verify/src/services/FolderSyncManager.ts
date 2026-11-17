@@ -107,6 +107,10 @@ export class FolderSyncManager {
 
   /**
    * 前回のスナップショットからの変更をチェック
+   *
+   * 走査が 1 か所でも読めなかった回は不完全な回として扱い、追加・変更・削除を一切確定しない (#699)。
+   * 差分の通知とスナップショットの更新は走査が最後まで読めた後にだけ行い、失敗した回は前回の
+   * スナップショットを保ったまま onSyncError で知らせる。その間の変更は、次に完全に読めた回の差分で拾う。
    */
   private async checkForChanges(): Promise<void> {
     if (!this.rootHandle || !this.isRunning) return;
@@ -174,6 +178,10 @@ export class FolderSyncManager {
 
   /**
    * 比較用にディレクトリを走査
+   *
+   * 読み取りの失敗 (ディレクトリの values()・個別の getFile()) は握り潰さずに投げる (#699)。
+   * 読めなかったエントリを結果から黙って抜くと、checkForChanges が「消えた」と見て削除を通知し、
+   * 読み込み済みのタブ・検証結果を一覧から外してしまう。失敗した回は checkForChanges が丸ごと捨てる。
    */
   private async traverseForComparison(
     handle: FileSystemDirectoryHandle,
@@ -181,29 +189,21 @@ export class FolderSyncManager {
     files: Map<string, FileSnapshot>,
     folders: Set<string>
   ): Promise<void> {
-    try {
-      for await (const entry of handle.values()) {
-        const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+    for await (const entry of handle.values()) {
+      const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
 
-        if (entry.kind === 'directory') {
-          folders.add(entryPath);
-          await this.traverseForComparison(entry as FileSystemDirectoryHandle, entryPath, files, folders);
-        } else {
-          const fileHandle = entry as FileSystemFileHandle;
-          try {
-            const file = await fileHandle.getFile();
-            files.set(entryPath, {
-              path: entryPath,
-              lastModified: file.lastModified,
-              handle: fileHandle,
-            });
-          } catch {
-            // ファイル読み取りエラーはスキップ
-          }
-        }
+      if (entry.kind === 'directory') {
+        folders.add(entryPath);
+        await this.traverseForComparison(entry as FileSystemDirectoryHandle, entryPath, files, folders);
+      } else {
+        const fileHandle = entry as FileSystemFileHandle;
+        const file = await fileHandle.getFile();
+        files.set(entryPath, {
+          path: entryPath,
+          lastModified: file.lastModified,
+          handle: fileHandle,
+        });
       }
-    } catch {
-      // ディレクトリアクセスエラーはスキップ
     }
   }
 

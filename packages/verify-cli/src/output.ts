@@ -822,8 +822,9 @@ ${c('cyan', 'Options:')}
   --require-final-anchor
                    Fail (exit 1) when the final event is not covered by a signed
                    checkpoint, i.e. the proof has an unsigned tail (#296). Avoid it for
-                   long sessions until the signing token can be renewed (#236): an
-                   honest submission may miss its final signature.
+                   long sessions: the editor re-acquires an expired signing token
+                   (#682), but while that fails, while offline, or under clock skew an
+                   honest submission may still miss its final signature.
                    The --require-* options form the acceptance policy: violations are
                    listed under "--- Acceptance policy ---", apart from tampering, and
                    are not evaluated for a proof that already failed verification.

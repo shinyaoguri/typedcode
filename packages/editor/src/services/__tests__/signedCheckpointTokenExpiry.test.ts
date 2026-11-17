@@ -53,7 +53,11 @@ function makeCheckpoint(eventIndex: number): CheckpointData {
 }
 
 /** 送った token の signature が `acceptedSignature` なら 200、それ以外は 401 TOKEN_EXPIRED を返す fetch */
-function createService(initialToken: SessionStartToken, acceptedSignature: string) {
+function createService(
+  initialToken: SessionStartToken,
+  acceptedSignature: string,
+  onTokenExpired?: (token: SessionStartToken) => void
+) {
   let currentToken: SessionStartToken | null = initialToken;
   const sentSignatures: string[] = [];
   const attached: number[] = [];
@@ -76,6 +80,7 @@ function createService(initialToken: SessionStartToken, acceptedSignature: strin
     tabId: TAB,
     getInitialEventChainHash: () => 'a'.repeat(64),
     getSessionStartToken: () => currentToken,
+    onTokenExpired,
     attachSignature: (eventIndex) => {
       attached.push(eventIndex);
       return true;
@@ -162,5 +167,31 @@ describe('SignedCheckpointService TOKEN_EXPIRED (#227)', () => {
     expect(Date.now() - startedAt).toBeLessThan(1000);
     expect(result).toEqual({ flushed: false, remaining: 1 });
     service.dispose();
+  });
+
+  it('reports the token the server rejected as expired so the caller can re-acquire one (#682)', async () => {
+    const reported: string[] = [];
+    const { service, sentSignatures } = createService(makeToken('old'), 'sig-new', (token) =>
+      reported.push(token.signature)
+    );
+    service.handleNewCheckpoint(makeCheckpoint(1));
+    await vi.waitFor(() => expect(reported).toEqual(['sig-old']));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // 同じ token では再送しないので、報告も 1 回だけ
+    expect(reported).toEqual(['sig-old']);
+    expect(sentSignatures).toEqual(['sig-old']);
+    service.dispose();
+  });
+
+  it('sends the queued checkpoint with the re-acquired token when the expiry callback resolves one before the loop resumes (#682)', async () => {
+    let setToken: (t: SessionStartToken | null) => void = () => {};
+    const created = createService(makeToken('old'), 'sig-new', () => setToken(makeToken('new')));
+    setToken = created.setToken;
+    created.service.handleNewCheckpoint(makeCheckpoint(1));
+
+    await vi.waitFor(() => expect(created.attached).toEqual([1]));
+    expect(created.sentSignatures).toEqual(['sig-old', 'sig-new']);
+    created.service.dispose();
   });
 });

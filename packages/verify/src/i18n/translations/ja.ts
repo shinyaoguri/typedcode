@@ -548,6 +548,7 @@ export const ja: VerifyTranslationKeys = {
     accessDenied: 'アクセス拒否',
     fileReadError: 'ファイル読み込みエラー',
     folderReadError: 'フォルダ読み取りエラー',
+    folderSyncFailed: 'フォルダを読み取れないため変更を反映していません (読み込み済みの結果はそのまま)',
     browserNotSupported: 'File System Access API は Chrome / Edge でのみ利用可能です',
     browserNotSupportedDesc: '代わりにファイル選択またはドラッグ＆ドロップをご利用ください',
     examInvalidPackage: '問題パッケージ (.tcexam) が不正です',

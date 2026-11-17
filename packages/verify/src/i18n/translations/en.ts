@@ -555,6 +555,7 @@ export const en: VerifyTranslationKeys = {
     accessDenied: 'Access Denied',
     fileReadError: 'File read error',
     folderReadError: 'Folder read error',
+    folderSyncFailed: 'Cannot read the folder; changes are not applied (loaded results are kept)',
     browserNotSupported: 'File System Access API is only available in Chrome / Edge',
     browserNotSupportedDesc: 'Please use file selection or drag and drop instead',
     examInvalidPackage: 'Invalid problem package (.tcexam)',
