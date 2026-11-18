@@ -6,8 +6,8 @@
  *   テキストとして開ける
  * - 試験: `*.exam.yaml` (この段階ではテキストで開くだけ)
  * - 状態契約: 項目は `data-explorer-path` (根からの相対パス) と `data-role` (`problem` / `statement` / `starter` /
- *   `hint` / `solution` / `cases` / `exam` / `invalid`)。問題ごとの操作は `data-action` (`add-part` / `assign-part`) と
- *   `data-problem-path`。上の操作は `data-action` (`new-problem` / `refresh` / `open-other`)
+ *   `hint` / `solution` / `cases` / `exam` / `invalid`)。問題ごとの操作は `data-action` (`add-part` / `assign-part` /
+ *   `verify` (#799)) と `data-problem-path`。上の操作は `data-action` (`new-problem` / `refresh` / `open-other`)
  *
  * 項目はどれも button なので Tab と Enter / Space で操作できる。
  */
@@ -25,6 +25,8 @@ export interface ExplorerHandlers {
   onOpenOther(): void;
   onAddPart(problemPath: string): void;
   onAssignPart(problemPath: string): void;
+  /** 解答例をテストケースで検証する (#799) */
+  onVerify(problemPath: string): void;
 }
 
 const ROLE_ICONS: Record<string, string> = {
@@ -85,6 +87,10 @@ export class ExplorerView {
       this.handlers.onAssignPart(problemPath);
       return;
     }
+    if (target.dataset.action === 'verify' && problemPath) {
+      this.handlers.onVerify(problemPath);
+      return;
+    }
     const path = target.dataset.explorerPath;
     if (path && target.getAttribute('aria-disabled') !== 'true') this.handlers.onOpenFile(path);
   }
@@ -125,6 +131,12 @@ export class ExplorerView {
         'assign-part',
         `${t('author.explorer.assignPart')}: ${name}`,
         'fa-link',
+        ` data-problem-path="${escapeHtml(problem.path)}"`
+      ),
+      iconButton(
+        'verify',
+        `${t('author.verify.explorerAction')}: ${name}`,
+        'fa-list-check',
         ` data-problem-path="${escapeHtml(problem.path)}"`
       ),
     ].join('');

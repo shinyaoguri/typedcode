@@ -7,6 +7,7 @@ import { t } from '../../i18n/index.js';
 import type { ProblemPartRole, WorkspaceOpError } from '../workspace/authorWorkspace.js';
 import type { WorkspaceIssue } from '../workspace/examBundle.js';
 import type { FolderWriteResult } from '../workspace/materialFolder.js';
+import type { VerificationBlockReason } from '../verification/collectTargets.js';
 
 export function roleLabel(role: ProblemPartRole): string {
   return t(`author.roles.${role}`);
@@ -72,5 +73,27 @@ export function describeWorkspaceIssue(issue: WorkspaceIssue): string {
       return t('author.issues.duplicateId', { id: issue.id, problems: issue.problems.join(', ') });
     case 'duplicate-filename':
       return t('author.issues.duplicateFilename', { filename: issue.filename, problems: issue.problems.join(', ') });
+  }
+}
+
+/** 検証を始めなかった理由を文にする (#799) */
+export function describeVerificationBlock(reason: VerificationBlockReason | { kind: 'terminal-busy' }): string {
+  switch (reason.kind) {
+    case 'problem-invalid':
+      return t('author.verify.reasons.problemInvalid', { path: reason.path });
+    case 'no-solutions':
+      return t('author.verify.reasons.noSolutions');
+    case 'no-cases':
+      return t('author.verify.reasons.noCases');
+    case 'missing-file':
+      return t('author.verify.reasons.missingFile', { path: reason.path });
+    case 'read-failed':
+      return t('author.verify.reasons.readFailed', { path: reason.path });
+    case 'cases-invalid':
+      return t('author.verify.reasons.casesInvalid', { path: reason.path });
+    case 'empty-cases':
+      return t('author.verify.reasons.emptyCases', { path: reason.path });
+    case 'terminal-busy':
+      return t('author.verify.reasons.terminalBusy');
   }
 }

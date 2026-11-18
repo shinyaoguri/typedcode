@@ -9,6 +9,8 @@
  * - `document(path)`: 画面が開いている文書の状態 (保存済みのテキスト・今のテキスト・未保存か)。Monaco の表示は
  *   空白や折り返しで読みにくいので、テキストの照合はこちらで行う
  * - `open` / `resume` / `list` / `read` / `write`: 画面を通さずにフォルダの読み書きと再開を試す (#795)
+ * - `setFakeVerification(entries)` / `fakeVerificationCalls()`: 検証の実行の入口を偽物 (`verification/fakeRunner.ts`)
+ *   に差し替え、呼ばれた順を読む (#799)
  *
  * `authorMain.ts` が `import.meta.env.DEV` のガードの中で dynamic import するので、本番ビルドには入らない
  * (production-build.spec が `/author` で undefined であることを見張る)。返す値はどれも `page.evaluate` で
@@ -18,11 +20,18 @@
 import { openMaterialFolderHandle, resumeMaterialFolder } from './folderAccess.js';
 import { FolderHandleStore } from './folderHandleStore.js';
 import type { MaterialFolder } from './materialFolder.js';
+import type { NonInteractiveRunner } from '../../executors/nonInteractive/runNonInteractive.js';
+import {
+  createFakeVerificationRunner,
+  type FakeVerificationEntry,
+  type FakeVerificationRunner,
+} from '../verification/fakeRunner.js';
 
 /** フックが画面に求める入口 (`AuthorPage` が満たす) */
 export interface AuthorPageTestSurface {
   openFolderHandle(handle: FileSystemDirectoryHandle): Promise<void>;
   documentState(path: string): { path: string; savedText: string; text: string; dirty: boolean } | null;
+  setVerificationRunner(runner: NonInteractiveRunner | null): void;
 }
 
 export interface TestAuthorWorkspace {
@@ -38,6 +47,13 @@ export interface TestAuthorWorkspace {
   read(path: string): Promise<string>;
   /** 書き込みの結果 (`saved` / `conflict` / `failed`) と、競合の理由 */
   write(path: string, text: string, overwrite?: boolean): Promise<{ status: string; reason?: string }>;
+  /**
+   * 検証の実行の入口を、対応表どおりに結果を返す偽物に差し替える (#799)。null で実物 (`runNonInteractive`) に戻す。
+   * PR ごとの E2E が実物のコンパイラを使わずに結果表・差分・中止を確かめるため
+   */
+  setFakeVerification(entries: FakeVerificationEntry[] | null): void;
+  /** 偽物の入口が呼ばれた順の (ファイル名, stdin)。偽物でなければ空 */
+  fakeVerificationCalls(): { filename: string; stdin: string }[];
 }
 
 declare global {
@@ -50,6 +66,7 @@ declare global {
 export function installAuthorWorkspaceHook(page: AuthorPageTestSurface | null): void {
   const store = new FolderHandleStore();
   let current: MaterialFolder | null = null;
+  let fake: FakeVerificationRunner | null = null;
   const folder = (): MaterialFolder => {
     if (!current) throw new Error('No material folder is open');
     return current;
@@ -93,5 +110,10 @@ export function installAuthorWorkspaceHook(page: AuthorPageTestSurface | null): 
         ? { status: result.status, reason: result.reason }
         : { status: result.status };
     },
+    setFakeVerification(entries) {
+      fake = entries ? createFakeVerificationRunner(entries) : null;
+      surface().setVerificationRunner(fake ? fake.run : null);
+    },
+    fakeVerificationCalls: () => fake?.calls() ?? [],
   };
 }

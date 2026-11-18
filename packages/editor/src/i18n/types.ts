@@ -849,6 +849,53 @@ export interface TranslationKeys {
       duplicateId: string;
       duplicateFilename: string;
     };
+    /** 教員用の一括検証 (#799) */
+    verify: {
+      explorerAction: string;
+      tab: string;
+      heading: string;
+      empty: string;
+      start: string;
+      abort: string;
+      runningHint: string;
+      stateDone: string;
+      stateAborted: string;
+      solutionHeader: string;
+      verdicts: {
+        pending: string;
+        running: string;
+        match: string;
+        mismatch: string;
+        runtimeError: string;
+        timeout: string;
+        unsupported: string;
+      };
+      reasons: {
+        problemInvalid: string;
+        noSolutions: string;
+        noCases: string;
+        missingFile: string;
+        readFailed: string;
+        casesInvalid: string;
+        emptyCases: string;
+        terminalBusy: string;
+      };
+      runBlocked: string;
+      detail: {
+        selectHint: string;
+        cellTitle: string;
+        expected: string;
+        actual: string;
+        noLine: string;
+        noNewline: string;
+        stderr: string;
+        exitCode: string;
+        exitNone: string;
+        modeTrim: string;
+        modeExact: string;
+        notRun: string;
+      };
+    };
     token: {
       heading: string;
       label: string;
