@@ -11,6 +11,9 @@
  *   クリックのハンドラの中で権限を求める
  * - 保存: Ctrl/Cmd+S とボタンで今の文書、「すべて保存」。競合は「読み直す / 上書きする / やめる」を選ばせ、失敗は
  *   理由を出して未保存のまま残す。未保存のまま離れる・言語を切り替える・別のフォルダを開くときは確かめる
+ * - 検証 (#799): エクスプローラーの問題ごとの「検証」で、下のパネル (ターミナルの隣) に解答例 × テストケースの
+ *   結果表を出す (`ui/VerificationPanel.ts`・`verification/`)。executor を共有するので、ターミナルの実行とは
+ *   `ExecutionLock` で排他にする。結果は画面の状態だけで、proof にも教材フォルダにも IndexedDB にも記録しない
  * - 書き出し (#797): 書き出しのパネルで試験定義を選び (開いている試験定義が既定)、その採用問題 (出題順。保存済みの内容
  *   だけ) を配布物の問題列にして、種類 (`kind`) に応じて `.tcexam` / `.tcclass` を 1 ファイル書き出す (`distribution.ts`)。
  *   examId・種類・許可言語は試験定義から取る。欠損・重複・読めない定義、未保存の文書があれば書き出さない
@@ -62,10 +65,14 @@ import type { GroupIndex } from './ui/editorLayout.js';
 import { ExplorerView } from './ui/ExplorerView.js';
 import { runLanguageFor } from './ui/fileKinds.js';
 import { renderIssueList } from './ui/issueList.js';
-import { causeMessage, describeOpError } from './ui/messages.js';
+import { causeMessage, describeOpError, describeVerificationBlock } from './ui/messages.js';
 import type { WorkspaceIssue } from './workspace/examBundle.js';
 import { defaultPartName } from './ui/partNames.js';
+import { VerificationPanel } from './ui/VerificationPanel.js';
 import { WelcomeView } from './ui/WelcomeView.js';
+import { collectVerificationTargets } from './verification/collectTargets.js';
+import { createVerificationTable, ExecutionLock, runVerificationTable } from './verification/verificationTable.js';
+import type { NonInteractiveRunner } from '../executors/nonInteractive/runNonInteractive.js';
 // 実行系は重い (Wasmer/xterm) ので**初回実行時に動的 import** する (型のみ静的)。
 import type { CodeExecutionController } from '../execution/CodeExecutionController.js';
 import type { CTerminal } from '../terminal/CTerminal.js';
@@ -118,6 +125,16 @@ export class AuthorPage {
   private building = false;
   private exec: CodeExecutionController | null = null;
   private terminal: CTerminal | null = null;
+  /** 教員用の検証 (#799)。ターミナルの実行とは `lock` で排他にする (executor を共有するため) */
+  private verifyPanel!: VerificationPanel;
+  private readonly lock = new ExecutionLock();
+  /** 検証の対象の問題定義のパス */
+  private verifyTarget: string | null = null;
+  private verifyAbort: AbortController | null = null;
+  /** 検証の実行の入口の差し替え (dev フックの偽物)。null は実物 (`runNonInteractive`) */
+  private verificationRunner: NonInteractiveRunner | null = null;
+  /** 今のターミナルの実行の排他を外す関数 (実行していなければ null。#820) */
+  private releaseTerminal: (() => void) | null = null;
   /** 開いている教材フォルダのハンドル (コピー先が同じフォルダかを調べる。#800) */
   private folderHandle: FileSystemDirectoryHandle | null = null;
   /** 次にフォルダのピッカーを開いたときの結果の差し替え (dev フックだけが入れる。1 回使ったら戻る) */
@@ -147,6 +164,11 @@ export class AuthorPage {
       onAddPart: (path) => void this.handleAddPart(path),
       onAssignPart: (path) => void this.handleAssignPart(path),
       onCopyProblem: (path) => void this.handleCopyProblem(path),
+      onVerify: (path) => void this.handleVerify(path),
+    });
+    this.verifyPanel = new VerificationPanel({
+      onStart: () => void this.startVerification(),
+      onAbort: () => this.verifyAbort?.abort(),
     });
     this.area = new EditorArea(
       {
@@ -159,6 +181,11 @@ export class AuthorPage {
     this.el('author-welcome-slot').replaceWith(this.welcome.element);
     this.el('author-explorer-slot').replaceWith(this.explorer.element);
     this.el('author-groups-slot').replaceWith(this.area.element);
+    this.el('author-verify-slot').replaceWith(this.verifyPanel.element);
+    this.verifyPanel.element.hidden = true;
+    this.verifyPanel.element.setAttribute('role', 'tabpanel');
+    // 停止はターミナルの実行中だけ押せる (#820)
+    (this.el('author-stop-btn') as HTMLButtonElement).disabled = true;
     this.wire();
     this.input('author-token').value = generateProctorToken();
     this.welcome.setPickerSupported(isFolderPickerSupported());
@@ -356,6 +383,11 @@ export class AuthorPage {
     return doc ? { path: doc.path, savedText: doc.savedText, text: doc.text, dirty: doc.dirty } : null;
   }
 
+  /** 検証の実行の入口を差し替える (dev フックが偽物を渡す。null で実物に戻す。#799) */
+  setVerificationRunner(runner: NonInteractiveRunner | null): void {
+    this.verificationRunner = runner;
+  }
+
   /** 開いた (権限のある) フォルダで作業画面にする */
   private async openFolder(folder: MaterialFolder): Promise<void> {
     const seq = ++this.openSeq;
@@ -379,6 +411,7 @@ export class AuthorPage {
       this.onEditorStateChange();
     });
     this.area?.setWorkspace(workspace);
+    this.resetVerification();
     this.root.dataset.folderName = workspace.folderName;
     this.welcome.showMessage(null);
     this.showNotice(null);
@@ -585,6 +618,104 @@ export class AuthorPage {
     if (!result.ok) this.showNotice(describeOpError(result.error), 'error', 'op-failed');
   }
 
+  // ==========================================================================
+  // 検証 (#799)
+  // ==========================================================================
+
+  /** エクスプローラーの「検証」: 下のパネルを検証にして、その問題で始める (検証中ならパネルを出すだけ) */
+  private async handleVerify(problemPath: string): Promise<void> {
+    this.showBottom('verify');
+    if (this.lock.verificationRunning) return;
+    this.verifyTarget = problemPath;
+    await this.startVerification();
+  }
+
+  private problemDisplayName(problemPath: string): string {
+    const problem = this.workspace?.problem(problemPath);
+    if (problem?.status === 'ok') return problem.definition.title ?? problem.definition.id;
+    return workspaceBasename(problemPath);
+  }
+
+  /**
+   * 対象の問題の解答例をケースで走らせる。内容は開いている文書の今のテキスト (未保存を含む)。
+   * ターミナルの実行中は始めず、理由を出す。結果は画面の状態だけで、proof にも教材フォルダにも記録しない
+   */
+  private async startVerification(): Promise<void> {
+    const workspace = this.workspace;
+    const problemPath = this.verifyTarget;
+    if (!workspace || problemPath === null || this.lock.verificationRunning) return;
+    const name = this.problemDisplayName(problemPath);
+    const problem = workspace.problem(problemPath);
+    if (!problem) {
+      this.verifyPanel.showBlocked(
+        problemPath,
+        name,
+        'problem-invalid',
+        describeVerificationBlock({ kind: 'problem-invalid', path: problemPath })
+      );
+      return;
+    }
+    if (!this.lock.beginVerification()) {
+      this.verifyPanel.showBlocked(
+        problem.path,
+        name,
+        'terminal-busy',
+        describeVerificationBlock({ kind: 'terminal-busy' })
+      );
+      return;
+    }
+    this.updateRunAvailability();
+    const controller = new AbortController();
+    this.verifyAbort = controller;
+    try {
+      const targets = await collectVerificationTargets(problem, {
+        readText: (path) => workspace.readCurrentText(path),
+      });
+      if (this.workspace !== workspace) return;
+      if (!targets.ok) {
+        this.verifyPanel.showBlocked(
+          problem.path,
+          name,
+          targets.reason.kind,
+          describeVerificationBlock(targets.reason)
+        );
+        return;
+      }
+      const run = this.verificationRunner ?? (await this.realVerificationRunner());
+      const table = createVerificationTable(problem.path, targets.solutions, targets.cases);
+      await runVerificationTable(table, targets.solutions, targets.cases, {
+        run,
+        signal: controller.signal,
+        onChange: (next) => {
+          if (this.workspace === workspace) this.verifyPanel.showTable(name, next);
+        },
+      });
+    } finally {
+      if (this.verifyAbort === controller) this.verifyAbort = null;
+      this.lock.endVerification();
+      this.updateRunAvailability();
+    }
+  }
+
+  /** 実物の入口 (実行系は重いので初回の検証で dynamic import する) */
+  private async realVerificationRunner(): Promise<NonInteractiveRunner> {
+    const { runNonInteractive } = await import('../executors/nonInteractive/runNonInteractive.js');
+    return (request, options) => runNonInteractive(request, options);
+  }
+
+  /** フォルダを開き直したとき: 走っている検証を止め、パネルを空にする */
+  private resetVerification(): void {
+    this.verifyAbort?.abort();
+    this.verifyTarget = null;
+    this.verifyPanel.showEmpty();
+  }
+
+  /** 検証の実行中はターミナルの「実行」を止める */
+  private updateRunAvailability(): void {
+    const runBtn = this.el('author-run-btn') as HTMLButtonElement;
+    runBtn.disabled = this.lock.verificationRunning || (this.exec?.running ?? false);
+  }
+
   /**
    * 問題を参照ファイルごと別の教材フォルダへコピーする (#800 / ADR-0051 Decision 8)。未保存の編集があればピッカーを
    * 開かずに知らせる。コピー先は「前回のフォルダ」として覚えない (今開いている教材フォルダはそのまま)。
@@ -685,10 +816,14 @@ export class AuthorPage {
     this.el('author-save-all-btn').addEventListener('click', () => void this.saveAll());
     this.el('author-split-btn').addEventListener('click', () => this.area?.split());
     this.el('author-run-btn').addEventListener('click', () => void this.handleRun());
+    this.el('author-stop-btn').addEventListener('click', () => this.handleStop());
     this.el('author-term-toggle').addEventListener('click', () => {
-      const w = this.el('author-terminal-wrap');
-      this.showTerminal(w.hidden !== false);
+      const bottom = this.el('author-bottom');
+      this.showTerminal(bottom.hidden !== false || bottom.dataset.bottomView !== 'terminal');
     });
+    this.el('author-bottom-tab-terminal').addEventListener('click', () => this.showBottom('terminal'));
+    this.el('author-bottom-tab-verify').addEventListener('click', () => this.showBottom('verify'));
+    this.el('author-bottom-close').addEventListener('click', () => this.showBottom(null));
 
     // Ctrl/Cmd+S (Monaco の中でも外でも)。capture で Monaco より先に受ける
     document.addEventListener(
@@ -723,10 +858,26 @@ export class AuthorPage {
 
   /** ターミナル領域の表示/非表示。表示時は fit して xterm を再計算する。 */
   private showTerminal(show: boolean): void {
-    this.el('author-terminal-wrap').hidden = !show;
-    this.el('author-term-toggle').classList.toggle('active', show);
-    this.el('author-term-toggle').setAttribute('aria-pressed', String(show));
-    if (show && this.terminal) setTimeout(() => this.terminal?.fit(), 0);
+    this.showBottom(show ? 'terminal' : null);
+  }
+
+  /**
+   * 下のパネル (`#author-bottom`) に出すもの: ターミナル / 検証 (#799) / 閉じる (null)。
+   * 状態契約は `#author-bottom` の `data-bottom-view` (最後に出したもの) と `hidden`
+   */
+  private showBottom(view: 'terminal' | 'verify' | null): void {
+    const bottom = this.el('author-bottom');
+    bottom.hidden = view === null;
+    if (view !== null) bottom.dataset.bottomView = view;
+    const shown = view ?? (bottom.dataset.bottomView as 'terminal' | 'verify' | undefined) ?? 'terminal';
+    this.el('author-terminal-wrap').hidden = shown !== 'terminal';
+    this.verifyPanel.element.hidden = shown !== 'verify';
+    this.el('author-bottom-tab-terminal').setAttribute('aria-selected', String(shown === 'terminal'));
+    this.el('author-bottom-tab-verify').setAttribute('aria-selected', String(shown === 'verify'));
+    const terminalShown = view === 'terminal';
+    this.el('author-term-toggle').classList.toggle('active', terminalShown);
+    this.el('author-term-toggle').setAttribute('aria-pressed', String(terminalShown));
+    if (terminalShown && this.terminal) setTimeout(() => this.terminal?.fit(), 0);
   }
 
   /** 実行系 (Wasmer C executor + xterm) を初回のみ動的 import で用意する。 */
@@ -740,14 +891,19 @@ export class AuthorPage {
     const exec = new CodeExecutionController();
     exec.setTerminal(terminal);
     const runBtn = this.el('author-run-btn') as HTMLButtonElement;
+    const stopBtn = this.el('author-stop-btn') as HTMLButtonElement;
     exec.setCallbacks({
       onRunStart: () => {
         runBtn.disabled = true;
         runBtn.innerHTML = `<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> ${escapeHtml(t('author.run.running'))}`;
+        stopBtn.disabled = false;
       },
       onRunEnd: () => {
         runBtn.disabled = false;
         runBtn.innerHTML = `<i class="fas fa-play" aria-hidden="true"></i> ${escapeHtml(t('author.run.label'))}`;
+        stopBtn.disabled = true;
+        // 停止 (abort) は run の promise の終わりを待たずに onRunEnd を呼ぶので、ここで排他を外す (#820)
+        this.releaseTerminal?.();
       },
       onNotification: (m) => terminal.writeLine(m),
       onShowClangLoading: () => terminal.writeInfo(t('author.run.compilerLoading')),
@@ -760,18 +916,42 @@ export class AuthorPage {
 
   /** アクティブなコードの文書の今のテキストを、拡張子の言語で editor と同じ実行系で動かす。 */
   private async handleRun(): Promise<void> {
-    const path = this.area?.activePath ?? null;
-    const doc = path ? this.workspace?.document(path) : undefined;
-    this.showTerminal(true);
-    const { exec, terminal } = await this.ensureRuntime();
-    terminal.clear();
-    terminal.fit();
-    if (!path || !doc) {
-      terminal.writeLine(t('author.editor.runNoFile'));
+    // 検証の実行中は executor を共有しているので走らせない (#799)
+    if (!this.lock.beginTerminal()) {
+      this.showNotice(t('author.verify.runBlocked'), 'error', 'run-blocked');
       return;
     }
-    const filename = workspaceBasename(path);
-    await exec.run({ language: runLanguageFor(path), filename, code: doc.text });
+    // 排他は「run が終わった (onRunEnd)」か「この呼び出しが戻った」の早い方で 1 回だけ外す。
+    // 停止した run の promise が後から戻っても、次の run の排他は外さない
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      this.lock.endTerminal();
+      if (this.releaseTerminal === release) this.releaseTerminal = null;
+    };
+    this.releaseTerminal = release;
+    try {
+      const path = this.area?.activePath ?? null;
+      const doc = path ? this.workspace?.document(path) : undefined;
+      this.showTerminal(true);
+      const { exec, terminal } = await this.ensureRuntime();
+      terminal.clear();
+      terminal.fit();
+      if (!path || !doc) {
+        terminal.writeLine(t('author.editor.runNoFile'));
+        return;
+      }
+      const filename = workspaceBasename(path);
+      await exec.run({ language: runLanguageFor(path), filename, code: doc.text });
+    } finally {
+      release();
+    }
+  }
+
+  /** ターミナルの実行を止める (学生側の停止と同じ `CodeExecutionController.abort`。#820) */
+  private handleStop(): void {
+    this.exec?.abort();
   }
 
   private toggleTheme(): void {
@@ -1051,12 +1231,21 @@ export class AuthorPage {
                   ${button('author-split-btn', 'split', 'fa-table-columns', t('author.editor.split'), true)}
                   <span class="author-toolbar-sep" aria-hidden="true"></span>
                   ${button('author-run-btn', 'run', 'fa-play', t('author.run.label'))}
+                  ${button('author-stop-btn', 'stop', 'fa-stop', t('author.run.stop'))}
                   ${button('author-term-toggle', 'toggle-terminal', 'fa-terminal', t('author.run.terminal'), true)}
                   <span class="author-notice" id="author-notice" role="status" hidden></span>
                 </div>
                 <div id="author-groups-slot"></div>
-                <div class="author-terminal-wrap" id="author-terminal-wrap" hidden>
-                  <div class="author-terminal" id="author-terminal"></div>
+                <div class="author-bottom" id="author-bottom" hidden>
+                  <div class="author-bottom-tabs" role="tablist">
+                    <button type="button" role="tab" class="author-bottom-tab" id="author-bottom-tab-terminal" data-action="bottom-terminal" aria-controls="author-terminal-wrap" aria-selected="true"><i class="fas fa-terminal" aria-hidden="true"></i> ${escapeHtml(t('author.run.terminal'))}</button>
+                    <button type="button" role="tab" class="author-bottom-tab" id="author-bottom-tab-verify" data-action="bottom-verify" aria-controls="author-verify-panel" aria-selected="false"><i class="fas fa-list-check" aria-hidden="true"></i> ${escapeHtml(t('author.verify.tab'))}</button>
+                    <button type="button" class="author-icon-btn author-bottom-close" id="author-bottom-close" data-action="close-bottom" title="${escapeHtml(t('common.close'))}" aria-label="${escapeHtml(t('common.close'))}"><i class="fas fa-times" aria-hidden="true"></i></button>
+                  </div>
+                  <div class="author-terminal-wrap" id="author-terminal-wrap" role="tabpanel">
+                    <div class="author-terminal" id="author-terminal"></div>
+                  </div>
+                  <div id="author-verify-slot"></div>
                 </div>
               </div>
             </div>

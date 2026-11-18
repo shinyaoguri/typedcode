@@ -1,7 +1,12 @@
-import { basename } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
 import { EditorApp, listProofEntries } from './helpers/app.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
+
+/** `vite preview` が配る editor の dist */
+const EDITOR_DIST = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../editor/dist');
 
 /**
  * 本番ビルド (vite build の出力) に対するスモーク。
@@ -154,6 +159,14 @@ test('production build: /author に教材フォルダの dev 限定フックが�
   await page.waitForLoadState('networkidle');
   const hook = await page.evaluate(() => typeof (window as unknown as Record<string, unknown>).__tcTestAuthorWorkspace);
   expect(hook).toBe('undefined');
+
+  // 検証の偽の実行の入口 (`verification/fakeRunner.ts`。#799) はフックからしか読まれないので、dist の JS に
+  // その文字列が無いことも見る (フックの外から import されるようになったら気付く)
+  const distAssets = join(EDITOR_DIST, 'assets');
+  const leaked = readdirSync(distAssets)
+    .filter((file) => file.endsWith('.js'))
+    .filter((file) => readFileSync(join(distAssets, file), 'utf8').includes('[fake] no entry for'));
+  expect(leaked).toEqual([]);
 });
 
 test('production build: エディタ本体の chunk を取得できないとき、スピナーのまま止めずに起動失敗の画面を出す', async ({

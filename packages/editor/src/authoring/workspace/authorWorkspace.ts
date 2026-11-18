@@ -331,6 +331,14 @@ export class AuthorWorkspace {
   }
 
   /**
+   * ファイルの今のテキスト (教員用の検証が読む口。#799)。開いている文書は今のテキスト (未保存を含む) を返し、
+   * フォルダを読み直さない。開いていなければフォルダから読む
+   */
+  readCurrentText(path: string): Promise<string> {
+    return this.previewReader().readText(path);
+  }
+
+  /**
    * 学生プレビューが読む口。開いている文書は**未保存の内容** (今のテキスト) を返し、それ以外はファイルを読む。
    * 在るかは索引と開いている文書で答える (索引は `refresh()` の時点のもの)。
    */

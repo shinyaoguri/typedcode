@@ -162,6 +162,147 @@ export function dialog(page: Page, name: string): Locator {
   return page.locator(`.modal-overlay[data-dialog="${name}"]:not(.hidden)`);
 }
 
+// ============================================================================
+// 検証 (#799)
+// ============================================================================
+
+/** 偽の検証の入口の対応表の 1 行 (packages/editor/src/authoring/verification/fakeRunner.ts) */
+export interface FakeVerificationEntry {
+  filename: string;
+  stdin?: string;
+  outcome?: 'success' | 'runtime-error' | 'timeout' | 'unsupported';
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number | null;
+  hang?: boolean;
+}
+
+interface VerifyHookWindow {
+  __tcTestAuthorWorkspace?: {
+    setFakeVerification(entries: FakeVerificationEntry[] | null): void;
+    fakeVerificationCalls(): { filename: string; stdin: string }[];
+  };
+}
+
+/** 最大値を求める解答例 2 つ (先頭要素で初期化する / 0 で初期化する誤り) とケース 2 つの問題 */
+export const MAX_PROBLEM: Record<string, string> = {
+  'max.problem.yaml':
+    'format: tc-problem/1\nid: max\ntitle: 最大値\nstatement: max.md\nsolutions: [max-first.c, max-zero.c]\ncases: max.cases.yaml\n',
+  'max.md': '# 最大値\n',
+  'max-first.c': [
+    '#include <stdio.h>',
+    'int main(void) {',
+    '  int n, x, max;',
+    '  if (scanf("%d", &n) != 1 || n <= 0) return 1;',
+    '  scanf("%d", &max);',
+    '  for (int i = 1; i < n; i++) {',
+    '    scanf("%d", &x);',
+    '    if (x > max) max = x;',
+    '  }',
+    '  printf("%d\\n", max);',
+    '  return 0;',
+    '}',
+    '',
+  ].join('\n'),
+  'max-zero.c': [
+    '#include <stdio.h>',
+    'int main(void) {',
+    '  int n, x, max = 0;',
+    '  if (scanf("%d", &n) != 1) return 1;',
+    '  for (int i = 0; i < n; i++) {',
+    '    scanf("%d", &x);',
+    '    if (x > max) max = x;',
+    '  }',
+    '  printf("%d\\n", max);',
+    '  return 0;',
+    '}',
+    '',
+  ].join('\n'),
+  'max.cases.yaml': [
+    'format: tc-cases/1',
+    'cases:',
+    '  - name: 正の数',
+    '    stdin: "3\\n1 8 4\\n"',
+    '    stdout: "8\\n"',
+    '  - name: 負の数だけ',
+    '    stdin: "3\\n-5 -2 -8\\n"',
+    '    stdout: "-2\\n"',
+    '',
+  ].join('\n'),
+};
+
+/** 偽の入口で MAX_PROBLEM を走らせたときの「実物どおり」の結果 (0 で初期化した解答だけ負の数で 0 を出す) */
+export const MAX_FAKE_RESULTS: FakeVerificationEntry[] = [
+  { filename: 'max-first.c', stdin: '3\n1 8 4\n', stdout: '8\n' },
+  { filename: 'max-first.c', stdin: '3\n-5 -2 -8\n', stdout: '-2\n' },
+  { filename: 'max-zero.c', stdin: '3\n1 8 4\n', stdout: '8\n' },
+  { filename: 'max-zero.c', stdin: '3\n-5 -2 -8\n', stdout: '0\n' },
+];
+
+/** 検証の実行の入口を偽物にする (null で実物に戻す) */
+export async function setFakeVerification(page: Page, entries: FakeVerificationEntry[] | null): Promise<void> {
+  await page.evaluate((entries) => {
+    const hook = (window as unknown as VerifyHookWindow).__tcTestAuthorWorkspace;
+    if (!hook) throw new Error('hook missing');
+    hook.setFakeVerification(entries);
+  }, entries);
+}
+
+/** 偽物の入口が呼ばれた順の (ファイル名, stdin) */
+export function fakeVerificationCalls(page: Page): Promise<{ filename: string; stdin: string }[]> {
+  return page.evaluate(
+    () => (window as unknown as VerifyHookWindow).__tcTestAuthorWorkspace?.fakeVerificationCalls() ?? []
+  );
+}
+
+/** 検証のパネル */
+export function verifyPanel(page: Page): Locator {
+  return page.locator('#author-verify-panel');
+}
+
+/** 結果表のセル */
+export function verifyCell(page: Page, solutionIndex: number, caseIndex: number): Locator {
+  return verifyPanel(page).locator(
+    `[data-verify-cell][data-solution-index="${solutionIndex}"][data-case-index="${caseIndex}"]`
+  );
+}
+
+/** 結果表の全セルの判定 (行 = 解答例) */
+export async function verifyVerdicts(page: Page): Promise<string[][]> {
+  return verifyPanel(page)
+    .locator('[data-verify-cell]')
+    .evaluateAll((cells) => {
+      const rows: string[][] = [];
+      for (const cell of cells as HTMLElement[]) {
+        const s = Number(cell.dataset.solutionIndex);
+        const row = rows[s] ?? [];
+        rows[s] = row;
+        row[Number(cell.dataset.caseIndex)] = cell.dataset.verdict ?? '';
+      }
+      return rows;
+    });
+}
+
+/** エクスプローラーの問題の「検証」を押す */
+export async function startVerifyFromExplorer(page: Page, problemPath: string): Promise<void> {
+  await page.locator(`#author-explorer [data-action="verify"][data-problem-path="${problemPath}"]`).click();
+  await expect(verifyPanel(page)).toBeVisible();
+  await expect(verifyPanel(page)).toHaveAttribute('data-problem-path', problemPath);
+}
+
+/** 選んだセルの差分の行 ([data-diff, 期待, 実際]) */
+export async function verifyDiffRows(page: Page): Promise<string[][]> {
+  return page
+    .locator('#author-verify-detail [data-diff-line]')
+    .evaluateAll((rows) =>
+      (rows as HTMLElement[]).map((row) => [
+        row.dataset.diff ?? '',
+        row.querySelector('[data-diff-side="expected"]')?.textContent ?? '',
+        row.querySelector('[data-diff-side="actual"]')?.textContent ?? '',
+      ])
+    );
+}
+
 /** 画面の外 (別のエディタ・エクスプローラー) での削除の代役 (#797) */
 export async function deleteFolderFileExternally(page: Page, folder: string, path: string): Promise<void> {
   await page.evaluate(

@@ -463,6 +463,28 @@ describe('AuthorWorkspace exam export', () => {
     });
   });
 
+  it('readCurrentText returns the unsaved text of an open document (#799)', async () => {
+    const { workspace } = await setup();
+    await workspace.open('最大値-解答.c');
+    workspace.setText('最大値-解答.c', 'mine');
+    expect(await workspace.readCurrentText('最大値-解答.c')).toBe('mine');
+  });
+
+  it('readCurrentText of an open document does not re-read the file, so a later save still detects the external change (#799)', async () => {
+    const { fs, workspace } = await setup();
+    await workspace.open('最大値-解答.c');
+    workspace.setText('最大値-解答.c', 'mine');
+    fs.writeExternally('最大値-解答.c', 'theirs');
+    await workspace.readCurrentText('最大値-解答.c');
+    expect((await workspace.save('最大値-解答.c')).status).toBe('conflict');
+  });
+
+  it('readCurrentText reads a file that is not open from the folder (#799)', async () => {
+    const { fs, workspace } = await setup();
+    fs.writeExternally('最大値-解答.c', 'on disk');
+    expect(await workspace.readCurrentText('最大値-解答.c')).toBe('on disk');
+  });
+
   it('reads NFD-listed files through NFC references when building', async () => {
     const nfd = 'がっこう'.normalize('NFD');
     const nfcName = 'がっこう'.normalize('NFC');

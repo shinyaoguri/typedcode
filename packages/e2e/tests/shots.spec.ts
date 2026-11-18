@@ -13,13 +13,19 @@ import {
 } from './helpers/app.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
 import {
+  MAX_FAKE_RESULTS,
+  MAX_PROBLEM,
   TWO_PROBLEMS,
   appendToEditor,
   createOpfsFolder,
   editorGroup,
   openAuthorFolder,
   openFromExplorer,
+  setFakeVerification,
   setNextPickedFolder,
+  startVerifyFromExplorer,
+  verifyCell,
+  verifyPanel,
 } from './helpers/author.js';
 import { loadExamFixture } from './helpers/examFixture.js';
 import { failStorageProbe } from './helpers/faults.js';
@@ -223,6 +229,15 @@ const SHOTS = [
     file: '31-author-cases-form-en.png',
     caption: '出題 (/author): 31 と同じケースファイルのフォームを英語の画面で (#798)',
   },
+  {
+    file: '32-author-verify.png',
+    caption:
+      '出題 (/author): 問題の「検証」で下のパネルに出る解答例 × テストケースの結果表と、不一致のセルの差分 (期待 -2 / 実際 0)。実行の入口は偽物で作る (#799)',
+  },
+  {
+    file: '32-author-verify-en.png',
+    caption: '出題 (/author): 32 と同じ検証のパネルを英語の画面で (#799)',
+  },
 ] as const;
 
 type ShotFile = (typeof SHOTS)[number]['file'];
@@ -308,6 +323,26 @@ async function shootAuthorWorkspace(page: Page, file: ShotFile): Promise<void> {
   await editorGroup(page, 1).locator('[data-action="view-preview"]').click();
   await expect(editorGroup(page, 1)).toHaveAttribute('data-view', 'preview');
   await appendToEditor(page, '\n出力の末尾に改行を付けること。');
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
+}
+
+/**
+ * /author の検証のパネルを撮る (#799)。実行の入口は dev フックの偽物で、解答例 3 つ (一致 / 不一致 / 時間切れ) ×
+ * ケース 2 つの表を作り、不一致のセルを選んで差分を出す
+ */
+async function shootAuthorVerify(page: Page, file: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-799', {
+    ...MAX_PROBLEM,
+    'max.problem.yaml':
+      'format: tc-problem/1\nid: max\ntitle: 最大値\nstatement: max.md\nsolutions: [max-first.c, max-zero.c, max-loop.c]\ncases: max.cases.yaml\n',
+    'max-loop.c': 'int main(void) {\n  for (;;) {}\n}\n',
+  });
+  await setFakeVerification(page, [...MAX_FAKE_RESULTS, { filename: 'max-loop.c', outcome: 'timeout' }]);
+  await openFromExplorer(page, 'max-zero.c', 'solution');
+  await startVerifyFromExplorer(page, 'max.problem.yaml');
+  await expect(verifyPanel(page)).toHaveAttribute('data-verify-state', 'done');
+  await verifyCell(page, 1, 1).click();
   await page.locator('body').click({ position: { x: 5, y: 5 } });
   await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
 }
@@ -616,7 +651,12 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await shootAuthorCases(page, '31-author-cases-form.png');
   });
 
-  // 20-en / 27-en (#796)・28-en / 29-en (#797): 同じ画面を英語で (画面の言語はブラウザの言語から決まる)
+  // 32 (#799): /author の検証のパネル (結果表と不一致のセルの差分)。実行の入口は dev フックの偽物
+  test('/author の検証のパネルを撮る @shots', async ({ page }) => {
+    await shootAuthorVerify(page, '32-author-verify.png');
+  });
+
+  // 20-en / 27-en (#796)・28-en / 29-en (#797)・32-en (#799) ほか: 同じ画面を英語で (画面の言語はブラウザの言語から決まる)
   test.describe('英語', () => {
     test.use({ locale: 'en-US' });
 
@@ -638,6 +678,10 @@ test.describe('見た目・動きの証跡 @shots', () => {
 
     test('/author のケースファイルのフォームを英語で撮る @shots (#798)', async ({ page }) => {
       await shootAuthorCases(page, '31-author-cases-form-en.png');
+    });
+
+    test('/author の検証のパネルを英語で撮る @shots', async ({ page }) => {
+      await shootAuthorVerify(page, '32-author-verify-en.png');
     });
   });
 

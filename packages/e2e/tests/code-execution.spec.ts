@@ -7,7 +7,14 @@ import {
   readZipEntryText,
 } from './helpers/app.js';
 import { runVerifyCli } from './helpers/verifyCli.js';
-import { editorGroup, openAuthorFolder, openFromExplorer } from './helpers/author.js';
+import {
+  editorGroup,
+  openAuthorFolder,
+  openFromExplorer,
+  setFakeVerification,
+  startVerifyFromExplorer,
+  verifyPanel,
+} from './helpers/author.js';
 
 /**
  * JS / TS のコード実行の隔離と停止の回帰テスト (#290 / ADR-0041)。
@@ -455,12 +462,27 @@ test('実行の異常 (非同期・同期の無限処理・大量出力・Worker
  * `/author` で、初期コードを `starter` に持つ 1 問だけの教材フォルダを開き、初期コードを群 0 で開く (#796)。
  * 種類が試験の試験定義も置く (書き出しのパネルは、書き出す試験が `.tcexam` のときだけ署名鍵の欄を出す。#797)
  */
-async function openAuthorStarter(page: Page, starter: string): Promise<void> {
+async function openAuthorStarter(
+  page: Page,
+  starter: string,
+  options: { code?: string; withVerification?: boolean } = {}
+): Promise<void> {
   await installTermsAccepted(page);
+  // 検証 (#799 / #820) を回すときは、解答例 1 つと空のケース 1 つを足す (結果は偽の入口が返す)
+  const verification: { fields: string; files: Record<string, string> } = options.withVerification
+    ? {
+        fields: 'solutions: [p1-解答.c]\ncases: p1.cases.yaml\n',
+        files: {
+          'p1-解答.c': 'int main(void) { return 0; }\n',
+          'p1.cases.yaml': 'format: tc-cases/1\ncases:\n  - name: 空\n    stdin: ""\n    stdout: ""\n',
+        },
+      }
+    : { fields: '', files: {} };
   await openAuthorFolder(page, 'e2e-material-exec', {
-    'p1.problem.yaml': `format: tc-problem/1\nid: p1\nstatement: p1.md\nstarter: ${starter}\n`,
+    'p1.problem.yaml': `format: tc-problem/1\nid: p1\nstatement: p1.md\nstarter: ${starter}\n${verification.fields}`,
     'p1.md': '# p1\n',
-    [starter]: '',
+    [starter]: options.code ?? '',
+    ...verification.files,
     'exam.exam.yaml':
       'format: tc-exam/1\nexamId: exec\nkind: exam\nlanguages: [javascript]\nproblems: [p1.problem.yaml]\n',
   });
@@ -497,6 +519,46 @@ test('/author で初期コードを TS として実行できる', async ({ page 
   const run = await startRun(page, '#author-run-btn', terminal);
   expect(await waitOutcome(page, run, terminal)).toBe('success');
   await expect.poll(() => terminalText(page, terminal)).toContain('ts:42');
+});
+
+test('/author で終わらない実行を「停止」で止めると aborted で終わり、その後に検証を始められる。実行していない間は停止を押せない (#820)', async ({
+  page,
+}) => {
+  await openAuthorStarter(page, 'p1.js', { code: 'while (true) {}\n', withVerification: true });
+  await setFakeVerification(page, [{ filename: 'p1-解答.c', stdout: '' }]);
+  const stop = page.locator('#author-stop-btn');
+  await expect(stop).toBeDisabled();
+
+  const terminal = '#author-terminal';
+  const run = await startRun(page, '#author-run-btn', terminal);
+  await expect(stop).toBeEnabled();
+  await stop.click();
+  expect(await waitOutcome(page, run, terminal)).toBe('aborted');
+  await expect(page.locator(terminal)).toHaveAttribute('data-exec-state', 'idle');
+  await expect(stop).toBeDisabled();
+  await expect(page.locator('#author-run-btn')).toBeEnabled();
+
+  // 止めた後は排他が外れていて、検証を始められる (blocked / terminal-busy にならない)
+  await startVerifyFromExplorer(page, 'p1.problem.yaml');
+  await expect(verifyPanel(page)).toHaveAttribute('data-verify-state', 'done');
+});
+
+test('/author で C の実行系の読み込み中に「停止」しても、読み込みの終わりを待たずに検証を始められる (#820)', async ({
+  page,
+}) => {
+  // clang の webc の取得を応答しないまま止め、初回の initialize の中に居続けさせる。停止は initialize の終わりを
+  // 待たずに run を終わらせる (CodeExecutionController.abort が onRunEnd を呼ぶ) ので、排他もそこで外れる必要がある
+  await page.route('https://assets.typedcode.dev/**', () => undefined);
+  await openAuthorStarter(page, 'p1.c', { code: 'int main(void) { return 0; }\n', withVerification: true });
+  await setFakeVerification(page, [{ filename: 'p1-解答.c', stdout: '' }]);
+
+  const terminal = '#author-terminal';
+  const run = await startRun(page, '#author-run-btn', terminal);
+  await page.locator('#author-stop-btn').click();
+  expect(await waitOutcome(page, run, terminal)).toBe('aborted');
+
+  await startVerifyFromExplorer(page, 'p1.problem.yaml');
+  await expect(verifyPanel(page)).toHaveAttribute('data-verify-state', 'done');
 });
 
 /**

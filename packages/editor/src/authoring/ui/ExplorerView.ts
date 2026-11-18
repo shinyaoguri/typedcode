@@ -7,7 +7,7 @@
  * - 試験: `*.exam.yaml` (開くとフォーム。#797)。節の見出しの「新しい試験」(`data-action="new-exam"`) で作る
  * - 状態契約: 項目は `data-explorer-path` (根からの相対パス) と `data-role` (`problem` / `statement` / `starter` /
  *   `hint` / `solution` / `cases` / `exam` / `invalid`)。問題ごとの操作は `data-action` (`add-part` / `assign-part` /
- *   `copy-problem` (#800。読めない定義には出さない)) と
+ *   `copy-problem` (#800) / `verify` (#799)。読めない定義には出さない) と
  *   `data-problem-path`。上の操作は `data-action` (`new-problem` / `refresh` / `open-other`)
  *
  * 項目はどれも button なので Tab と Enter / Space で操作できる。
@@ -27,6 +27,8 @@ export interface ExplorerHandlers {
   onOpenOther(): void;
   onAddPart(problemPath: string): void;
   onAssignPart(problemPath: string): void;
+  /** 解答例をテストケースで検証する (#799) */
+  onVerify(problemPath: string): void;
   /** 問題を参照ファイルごと別の教材フォルダへコピーする (#800) */
   onCopyProblem(problemPath: string): void;
 }
@@ -97,6 +99,10 @@ export class ExplorerView {
       this.handlers.onCopyProblem(problemPath);
       return;
     }
+    if (target.dataset.action === 'verify' && problemPath) {
+      this.handlers.onVerify(problemPath);
+      return;
+    }
     const path = target.dataset.explorerPath;
     if (path && target.getAttribute('aria-disabled') !== 'true') this.handlers.onOpenFile(path);
   }
@@ -146,6 +152,12 @@ export class ExplorerView {
         'copy-problem',
         `${t('author.explorer.copyProblem')}: ${name}`,
         'fa-copy',
+        ` data-problem-path="${escapeHtml(problem.path)}"`
+      ),
+      iconButton(
+        'verify',
+        `${t('author.verify.explorerAction')}: ${name}`,
+        'fa-list-check',
         ` data-problem-path="${escapeHtml(problem.path)}"`
       ),
     ].join('');

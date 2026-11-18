@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { getI18n } from '../../../i18n/index.js';
 import type { WorkspaceOpError } from '../../workspace/authorWorkspace.js';
 import type { WorkspaceIssue } from '../../workspace/examBundle.js';
-import { describeOpError, describeWorkspaceIssue } from '../messages.js';
+import { describeOpError, describeVerificationBlock, describeWorkspaceIssue } from '../messages.js';
 
 /** 失敗の種類ごとに 1 つ。どれも文の中に名指しのパスか名前を持つ */
 const OP_ERRORS: Array<[WorkspaceOpError, string]> = [
@@ -49,6 +49,18 @@ const ISSUES: Array<[WorkspaceIssue, string]> = [
   [{ kind: 'duplicate-filename', filename: 'main.c', problems: ['a.problem.yaml', 'b.problem.yaml'] }, 'main.c'],
 ];
 
+/** 検証を始めなかった理由ごとに 1 つ (#799)。パスを持つものは文の中に名指しする */
+const VERIFY_BLOCKS: Array<[Parameters<typeof describeVerificationBlock>[0], string]> = [
+  [{ kind: 'problem-invalid', path: 'a.problem.yaml' }, 'a.problem.yaml'],
+  [{ kind: 'no-solutions' }, ''],
+  [{ kind: 'no-cases' }, ''],
+  [{ kind: 'missing-file', path: 'x.c' }, 'x.c'],
+  [{ kind: 'read-failed', path: 'x.c', cause: new Error('locked') }, 'x.c'],
+  [{ kind: 'cases-invalid', path: 'a.cases.yaml', issues: [] }, 'a.cases.yaml'],
+  [{ kind: 'empty-cases', path: 'a.cases.yaml' }, 'a.cases.yaml'],
+  [{ kind: 'terminal-busy' }, ''],
+];
+
 afterEach(() => {
   getI18n().setLocale('ja');
 });
@@ -65,4 +77,13 @@ describe.each(['ja', 'en'] as const)('author messages (%s)', (locale) => {
     const text = describeWorkspaceIssue(issue);
     expect([text.startsWith('author.'), text.includes(named)]).toEqual([false, true]);
   });
+
+  it.each(VERIFY_BLOCKS)(
+    'describes the verification block %j with a translated sentence naming it',
+    (reason, named) => {
+      getI18n().setLocale(locale);
+      const text = describeVerificationBlock(reason);
+      expect([text.startsWith('author.'), text.includes(named)]).toEqual([false, true]);
+    }
+  );
 });
