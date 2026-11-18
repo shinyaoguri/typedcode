@@ -48,6 +48,8 @@ export class StdinChannelWriter {
   private readonly encoder = new TextEncoder();
   /** まだ領域に書いていない入力 (先打ちの行もここに貯まる) */
   private queue: Uint8Array[] = [];
+  /** close 済み (貯めを渡し切った後は、読み手に EOF = 長さ 0 を渡す) */
+  private closed = false;
 
   constructor(buffer: SharedArrayBuffer) {
     ({ control: this.control, data: this.data } = views(buffer));
@@ -55,6 +57,7 @@ export class StdinChannelWriter {
 
   /** 入力を貯める。領域にはまだ書かない (書くのは offer) */
   push(text: string): void {
+    if (this.closed) return;
     const bytes = this.encoder.encode(text);
     if (bytes.length > 0) this.queue.push(bytes);
   }
@@ -65,11 +68,20 @@ export class StdinChannelWriter {
   }
 
   /**
+   * 入力の終わりを知らせる (#802。非対話の実行だけが使う。対話の実行は閉じない)。
+   * 以後の push は無視し、貯めを渡し切った後の offer は長さ 0 (= EOF) を書く
+   */
+  close(): void {
+    this.closed = true;
+  }
+
+  /**
    * 領域が空いていて貯めた入力があれば、領域に入るだけ書いて読み手を起こす。書いたら true。
-   * 読み手がまだ読んでいない (FULL) あいだは書かない
+   * 読み手がまだ読んでいない (FULL) あいだは書かない。close 済みで貯めが空なら、長さ 0 (EOF) を書く
    */
   offer(): boolean {
-    if (Atomics.load(this.control, STATE) !== EMPTY || this.queue.length === 0) return false;
+    if (Atomics.load(this.control, STATE) !== EMPTY) return false;
+    if (this.queue.length === 0 && !this.closed) return false;
     let written = 0;
     while (this.queue.length > 0 && written < this.data.length) {
       const head = this.queue[0] as Uint8Array;
@@ -97,7 +109,7 @@ export class StdinChannelReader {
 
   /**
    * 書かれたバイト列を取り出して領域を空ける。まだ書かれていなければ、onWait を 1 回呼んでから
-   * 書かれるまで待つ (onWait で書き手に入力を求める)
+   * 書かれるまで待つ (onWait で書き手に入力を求める)。長さ 0 のバイト列は EOF (書き手が close 済み)
    */
   read(onWait?: () => void): Uint8Array {
     if (Atomics.load(this.control, STATE) !== FULL) {

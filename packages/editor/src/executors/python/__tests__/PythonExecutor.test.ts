@@ -194,6 +194,88 @@ describe('PythonExecutor', () => {
   });
 });
 
+describe('PythonExecutor non-interactive run (#802)', () => {
+  function startBatchRun(executor: PythonExecutor, stdin: string, showLastValue?: boolean) {
+    const out: string[] = [];
+    let stdinReady = false;
+    let programStarts = 0;
+    const promise = executor.run(
+      'x = input()',
+      {
+        onStdout: (t) => out.push(t),
+        onStderr: () => {},
+        onStdinReady: () => {
+          stdinReady = true;
+        },
+        onProgramStart: () => {
+          programStarts++;
+        },
+      },
+      { stdin, ...(showLastValue !== undefined ? { showLastValue } : {}) }
+    );
+    return { promise, out, stdinReady: () => stdinReady, programStarts: () => programStarts };
+  }
+
+  it('hands the whole stdin to the worker and then reports EOF as an empty read', async () => {
+    const { executor, workers } = setup();
+    const worker = await initialize(executor, workers);
+    startBatchRun(executor, '3\n1 8 4\n');
+    const { runId, stdinBuffer } = worker.lastRun();
+    const reader = new StdinChannelReader(stdinBuffer);
+    const state = new Int32Array(stdinBuffer, 0, 1);
+
+    // Worker の read を真似る: 入力を求め、書かれていれば読む (書かれていなければ待たずに null)
+    const reads: (string | null)[] = [];
+    for (let i = 0; i < 2; i++) {
+      worker.emit({ type: 'stdin-request', runId });
+      reads.push(Atomics.load(state, 0) === 1 ? new TextDecoder().decode(reader.read()) : null);
+    }
+
+    expect(reads).toEqual(['3\n1 8 4\n', '']);
+  });
+
+  it('neither connects the terminal nor echoes the given stdin to stdout', async () => {
+    const { executor, workers } = setup();
+    const worker = await initialize(executor, workers);
+    const run = startBatchRun(executor, 'Taro\n');
+    const { runId } = worker.lastRun();
+    worker.emit({ type: 'stdin-request', runId });
+    worker.emit({ type: 'done', runId, success: true, result: null });
+    await run.promise;
+
+    expect({ stdinReady: run.stdinReady(), out: run.out.join('') }).toEqual({ stdinReady: false, out: '' });
+  });
+
+  it('reports the start of the user program when the worker starts running it', async () => {
+    const { executor, workers } = setup();
+    const worker = await initialize(executor, workers);
+    const run = startBatchRun(executor, '');
+    expect(run.programStarts()).toBe(0);
+
+    worker.emit({ type: 'started', runId: worker.lastRun().runId });
+
+    expect(run.programStarts()).toBe(1);
+  });
+
+  it('leaves the value of the last expression out of stdout when showLastValue is false', async () => {
+    const { executor, workers } = setup();
+    const worker = await initialize(executor, workers);
+    const run = startBatchRun(executor, '', false);
+    worker.emit({ type: 'done', runId: worker.lastRun().runId, success: true, result: '42' });
+
+    expect((await run.promise).stdout).toBe('');
+  });
+
+  it('still appends the value of the last expression to stdout by default', async () => {
+    const { executor, workers } = setup();
+    const worker = await initialize(executor, workers);
+    const run = startBatchRun(executor, '');
+    worker.emit({ type: 'done', runId: worker.lastRun().runId, success: true, result: '42' });
+
+    expect((await run.promise).stdout).toBe('=> 42\n');
+  });
+});
+
 describe('findRequiredPackages', () => {
   it('lists third-party imports and leaves out the standard library', () => {
     expect(findRequiredPackages('import sys\nimport numpy as np\nfrom pandas import DataFrame\nimport math\n')).toEqual(

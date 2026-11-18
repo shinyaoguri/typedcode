@@ -47,6 +47,27 @@ export interface ExecutionCallbacks {
   onStdinReady?: (stdinStream: WritableStream<Uint8Array>) => void;
   /** Called to report execution progress */
   onProgress?: (message: string) => void;
+  /**
+   * 利用者のプログラムが動き始めたときに 1 回呼ぶ (#802)。初期化・コンパイル・パッケージの導入は
+   * 済んでいる。非対話の実行は、ここから実行時間の上限を数える
+   */
+  onProgramStart?: () => void;
+}
+
+/**
+ * 実行 1 回分の指定 (#802)。省略すると対話の実行 (ターミナルからの実行) と同じ
+ */
+export interface ExecutionOptions {
+  /**
+   * 非対話の実行の stdin。指定すると、その全体をプログラムに渡してから EOF を送り、
+   * `onStdinReady` は呼ばない (ターミナルにつながない)。対応するのは C / C++ / Python
+   */
+  stdin?: string;
+  /**
+   * 最後の式の値を `=> 値` として stdout に足すか (Python だけ。既定は true = 対話の実行と同じ)。
+   * 非対話の実行は false にする (期待の出力との比較に混ぜない)
+   */
+  showLastValue?: boolean;
 }
 
 /**
@@ -121,9 +142,10 @@ export interface ILanguageExecutor {
    *
    * @param code - Source code to execute
    * @param callbacks - Callbacks for handling I/O
+   * @param options - 非対話の実行の指定 (#802)。対応しない executor は無視する
    * @returns Execution result
    */
-  run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult>;
+  run(code: string, callbacks: ExecutionCallbacks, options?: ExecutionOptions): Promise<ExecutionResult>;
 
   /**
    * Abort the currently running program

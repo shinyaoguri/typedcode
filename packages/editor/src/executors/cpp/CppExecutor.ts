@@ -6,7 +6,12 @@
  */
 
 import { CExecutor } from '../c/CExecutor.js';
-import type { ExecutorConfig, ExecutionCallbacks, ExecutionResult } from '../interfaces/ILanguageExecutor.js';
+import type {
+  ExecutorConfig,
+  ExecutionCallbacks,
+  ExecutionOptions,
+  ExecutionResult,
+} from '../interfaces/ILanguageExecutor.js';
 
 export class CppExecutor extends CExecutor {
   override readonly config: ExecutorConfig = {
@@ -16,11 +21,20 @@ export class CppExecutor extends CExecutor {
     monacoLanguage: 'cpp',
   };
 
-  override async run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult> {
-    return this.runWithOptions(code, callbacks, {
-      sourceFile: 'main.cpp',
-      compileArgs: ['-xc++', '-std=c++17'],
-    });
+  override async run(
+    code: string,
+    callbacks: ExecutionCallbacks,
+    execution: ExecutionOptions = {}
+  ): Promise<ExecutionResult> {
+    return this.runWithOptions(
+      code,
+      callbacks,
+      {
+        sourceFile: 'main.cpp',
+        compileArgs: ['-xc++', '-std=c++17'],
+      },
+      execution
+    );
   }
 }
 
