@@ -197,6 +197,15 @@ const SHOTS = [
     file: '29-author-student-preview-en.png',
     caption: '出題 (/author): 29 と同じ学生プレビューを英語の画面で (#797)',
   },
+  {
+    file: '30-author-cases-form.png',
+    caption:
+      '出題 (/author): ケースファイルをフォームで開いた画面。左にケースの一覧 (入出力例・完全一致の印)、右に選んだケースの名前・入出力例として配る・照合・入力・期待する出力と末尾の改行の個数 (#798)',
+  },
+  {
+    file: '30-author-cases-form-en.png',
+    caption: '出題 (/author): 30 と同じケースファイルのフォームを英語の画面で (#798)',
+  },
 ] as const;
 
 type ShotFile = (typeof SHOTS)[number]['file'];
@@ -314,6 +323,40 @@ async function shootAuthorExam(page: Page, formFile: ShotFile, previewFile: Shot
   await editorGroup(page).locator('[data-action="view-preview"]').click();
   await expect(editorGroup(page).locator('[data-exam-preview]')).toHaveAttribute('data-preview-state', 'ok');
   await page.screenshot({ path: out(previewFile), animations: 'disabled', mask });
+}
+
+/** /author のケースファイルをフォームで撮る (#798)。公開・非公開・完全一致・CRLF の値を混ぜ、2 件目を選んだ状態 */
+async function shootAuthorCases(page: Page, file: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-798', {
+    ...TWO_PROBLEMS,
+    'p1.problem.yaml':
+      'format: tc-problem/1\nid: p1\ntitle: 最大値\nstatement: p1.md\nsolutions: [p1-解答.c]\ncases: p1.cases.yaml\n',
+    'p1.cases.yaml': [
+      'format: tc-cases/1',
+      'cases:',
+      '  - name: 例1',
+      '    stdin: "3\\n1 8 4\\n"',
+      '    stdout: "8\\n"',
+      '    public: true',
+      '  - name: 負の数',
+      '    stdin: "4\\n  -3 -8\\n\\n-1 -5\\n\\n"',
+      '    stdout: "-1\\n"',
+      '    match: exact',
+      '  - name: Windows の改行',
+      '    stdin: "1\\r\\n5\\r\\n"',
+      '    stdout: "5\\r\\n"',
+      '',
+    ].join('\n'),
+  });
+  await page.locator('#author-explorer [data-explorer-path="p1.cases.yaml"]').click();
+  const form = editorGroup(page).locator('[data-cases-form]');
+  await expect(form).toHaveAttribute('data-state', 'ok');
+  await form.locator('[data-case-index="1"] [data-action="select-case"]').click();
+  await expect(form.locator('[data-case-index="1"]')).toHaveAttribute('data-selected', 'true');
+  // ボタンの title (ツールチップ) とフォーカスの枠を写さない
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.mouse.move(640, 790);
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
 }
 
 test.describe('見た目・動きの証跡 @shots', () => {
@@ -526,6 +569,11 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await shootAuthorExam(page, '28-author-exam-form.png', '29-author-student-preview.png');
   });
 
+  // 30 (#798): /author のケースファイルのフォーム
+  test('/author のケースファイルのフォームを撮る @shots', async ({ page }) => {
+    await shootAuthorCases(page, '30-author-cases-form.png');
+  });
+
   // 20-en / 27-en (#796)・28-en / 29-en (#797): 同じ画面を英語で (画面の言語はブラウザの言語から決まる)
   test.describe('英語', () => {
     test.use({ locale: 'en-US' });
@@ -540,6 +588,10 @@ test.describe('見た目・動きの証跡 @shots', () => {
 
     test('/author の試験定義のフォームと学生プレビューを英語で撮る @shots', async ({ page }) => {
       await shootAuthorExam(page, '28-author-exam-form-en.png', '29-author-student-preview-en.png');
+    });
+
+    test('/author のケースファイルのフォームを英語で撮る @shots (#798)', async ({ page }) => {
+      await shootAuthorCases(page, '30-author-cases-form-en.png');
     });
   });
 
