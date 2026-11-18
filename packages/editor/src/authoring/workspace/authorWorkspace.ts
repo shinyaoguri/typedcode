@@ -293,6 +293,17 @@ export class AuthorWorkspace {
   }
 
   /**
+   * ファイルの今のテキスト (教員用の検証が読む口。#799)。開いている文書は今のテキスト (未保存を含む) を返し、
+   * フォルダを読み直さない。開いていなければフォルダから読む
+   */
+  async readCurrentText(path: string): Promise<string> {
+    const actual = this.actual(path);
+    const doc = this.docs.get(actual);
+    if (doc) return doc.text;
+    return this.folder.readText(actual);
+  }
+
+  /**
    * 開いたフォルダの問題定義すべて (パス順) を配布物の問題列にする。未保存の文書があれば作らない。
    * 索引を読み直してから作る。
    */
