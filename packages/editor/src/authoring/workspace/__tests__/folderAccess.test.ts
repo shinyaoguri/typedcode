@@ -193,7 +193,9 @@ describe('createMaterialFolderIn', () => {
   it('rejects names that are empty, nested or hidden without creating anything', async () => {
     const fs = folderWith({});
     const store = new FolderHandleStore({ indexedDB: factory });
-    const results = await Promise.all(['  ', 'a/b', 'a\\b', '.git'].map((n) => createMaterialFolderIn(fs.root(), n, store)));
+    const results = await Promise.all(
+      ['  ', 'a/b', 'a\\b', '.git'].map((n) => createMaterialFolderIn(fs.root(), n, store))
+    );
     expect([results.map((r) => r.status), fs.hasFolder('a')]).toEqual([
       ['invalid-name', 'invalid-name', 'invalid-name', 'invalid-name'],
       false,

@@ -23,6 +23,8 @@ export interface ModalButton {
   disabled?: boolean;
   /** Optional icon class (Font Awesome) */
   icon?: string;
+  /** 状態契約の `data-action` に出す値 (E2E がボタンを翻訳テキストに依らず選ぶため) */
+  action?: string;
 }
 
 export interface ModalOptions {
@@ -119,6 +121,7 @@ export async function showModal(options: ModalOptions): Promise<void> {
     buttons.forEach((btn) => {
       const button = document.createElement('button');
       button.className = `modal-btn modal-btn-${btn.type}`;
+      if (btn.action) button.dataset.action = btn.action;
       if (btn.disabled) {
         button.disabled = true;
       }

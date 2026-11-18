@@ -307,8 +307,10 @@ describe('AuthorWorkspace problem operations', () => {
   it('adding cases creates an empty cases file the definition refers to', async () => {
     const { fs, workspace } = await setup();
     await workspace.addPart('最大値.problem.yaml', 'cases', '最大値.cases.yaml');
-    expect([parseCasesDefinition(fs.readFile('最大値.cases.yaml') ?? ''), definitionOf(fs, '最大値.problem.yaml').cases])
-      .toEqual([{ ok: true, value: [] }, '最大値.cases.yaml']);
+    expect([
+      parseCasesDefinition(fs.readFile('最大値.cases.yaml') ?? ''),
+      definitionOf(fs, '最大値.problem.yaml').cases,
+    ]).toEqual([{ ok: true, value: [] }, '最大値.cases.yaml']);
   });
 
   it('adding a part keeps the comments and unknown keys of the definition', async () => {

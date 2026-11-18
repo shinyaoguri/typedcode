@@ -149,7 +149,8 @@ test('production build: /author に教材フォルダの dev 限定フックが�
   // 任意のハンドルを教材フォルダとして覚えさせられるので、本番に残してはいけない。preview は clean URL を
   // 解決しないので author.html を直接開く。dev では mount の後に dynamic import で入るので、通信が落ち着くまで待つ
   await page.goto('/author.html');
-  await page.locator('#author-starter-editor .view-lines').waitFor({ state: 'visible' });
+  // 覚えているフォルダが無いので起動画面になる (#796。前回のフォルダの再開を待ち終えた印)
+  await expect(page.locator('#author-root')).toHaveAttribute('data-workspace-state', 'welcome');
   await page.waitForLoadState('networkidle');
   const hook = await page.evaluate(() => typeof (window as unknown as Record<string, unknown>).__tcTestAuthorWorkspace);
   expect(hook).toBe('undefined');

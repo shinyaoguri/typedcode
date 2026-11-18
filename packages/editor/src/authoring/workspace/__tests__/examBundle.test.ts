@@ -249,7 +249,9 @@ describe('buildBundleProblemsFromPaths', () => {
     );
     expect(result).toEqual({
       ok: false,
-      issues: [{ kind: 'duplicate-problem-id', id: '探索', problems: ['合計.problem.yaml', '過去問/探索.problem.yaml'] }],
+      issues: [
+        { kind: 'duplicate-problem-id', id: '探索', problems: ['合計.problem.yaml', '過去問/探索.problem.yaml'] },
+      ],
     });
   });
 });

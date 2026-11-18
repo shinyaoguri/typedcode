@@ -185,7 +185,6 @@ function writeFailure(result: FolderWriteResult): WorkspaceOpError | null {
 }
 
 export class AuthorWorkspace {
-  private files: string[] = [];
   /** NFC にそろえたパス → 一覧の綴り */
   private listed = new Map<string, string>();
   private currentIndex: WorkspaceIndex = { files: [], problems: [], exams: [] };
@@ -241,7 +240,6 @@ export class AuthorWorkspace {
     const exams = files.filter((path) => path.endsWith(EXAM_DEFINITION_SUFFIX));
     // 後から始まった読み直しが先に終わっていれば、古い結果で上書きしない
     if (generation === this.refreshGeneration) {
-      this.files = files;
       this.listed = listed;
       this.currentIndex = { files, problems, exams };
       this.emit({ kind: 'index' });
