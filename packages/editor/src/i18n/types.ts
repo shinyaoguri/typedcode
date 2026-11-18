@@ -725,9 +725,69 @@ export interface TranslationKeys {
     title: string;
     subtitle: string;
     copy: string;
-    settings: { heading: string };
     statusbar: { noExamId: string; problems: string };
-    preview: { edit: string; preview: string };
+    /** 文書の表示の切り替え (#796 / #797) */
+    views: { edit: string; preview: string; form: string; text: string; studentPreview: string };
+    /** 試験定義のフォーム (#797) */
+    exam: {
+      examId: string;
+      kind: string;
+      kindExam: string;
+      kindClass: string;
+      languages: string;
+      adopted: string;
+      available: string;
+      noAdopted: string;
+      noAvailable: string;
+      moveUp: string;
+      moveDown: string;
+      remove: string;
+      adopt: string;
+      missing: string;
+      invalid: string;
+      duplicate: string;
+      dragHint: string;
+      invalidDefinition: string;
+      openText: string;
+      fieldInvalid: string;
+      newExamTitle: string;
+      newExamLabel: string;
+    };
+    /** 学生プレビュー (#797) */
+    preview: {
+      note: string;
+      problem: string;
+      starter: string;
+      examples: string;
+      loading: string;
+      empty: string;
+      issuesHeading: string;
+    };
+    /** 書き出しのパネル (#797) */
+    export: {
+      heading: string;
+      target: string;
+      noExam: string;
+      createExam: string;
+      examId: string;
+      kind: string;
+      languages: string;
+      problems: string;
+      kindExam: string;
+      kindClass: string;
+      invalidTarget: string;
+      classHint: string;
+      buttonExam: string;
+      buttonClass: string;
+      working: string;
+      errorNoTarget: string;
+      errorUnknownExam: string;
+      errorNoKey: string;
+      errorGeneric: string;
+      errorDirty: string;
+      errorEmpty: string;
+      errorNoLanguages: string;
+    };
     run: { label: string; running: string; stop: string; terminal: string; compilerLoading: string };
     key: {
       heading: string;
@@ -744,10 +804,6 @@ export interface TranslationKeys {
       registryEntryLabel: string;
       registryHint: string;
       downloadPrivate: string;
-    };
-    problem: {
-      examId: string;
-      languages: string;
     };
     /** 教材フォルダの起動画面 (#796) */
     welcome: {
@@ -775,6 +831,7 @@ export interface TranslationKeys {
       noProblems: string;
       noExams: string;
       newProblem: string;
+      newExam: string;
       refresh: string;
       openOther: string;
       addPart: string;
@@ -903,14 +960,6 @@ export interface TranslationKeys {
       hint: string;
       embedPubkey: string;
     };
-    build: {
-      button: string;
-      working: string;
-      errorNoKey: string;
-      errorGeneric: string;
-      errorNoFolder: string;
-      errorDirty: string;
-    };
     result: {
       title: string;
       redownload: string;
@@ -927,11 +976,6 @@ export interface TranslationKeys {
       note1: string;
       note2: string;
       note3: string;
-    };
-    classExport: {
-      button: string;
-      hint: string;
-      errorNoProblems: string;
     };
   };
 }

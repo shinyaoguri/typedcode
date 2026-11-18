@@ -12,6 +12,7 @@
 @import "./components/_tabs.css";
 @import "./components/_markdown.css";
 @import "./components/_modals.css";
+@import "./components/_problem-panel.css";
 
 * {
   box-sizing: border-box;
@@ -1000,4 +1001,118 @@ body::before {
 .author-hash {
   word-break: break-all;
   font-size: 12px;
+}
+
+/* ===== 試験定義のフォーム・学生プレビュー・書き出しのパネル (#797) ===== */
+.author-settings-panel [hidden],
+.author-preview [hidden] {
+  display: none !important;
+}
+.author-explorer-section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 8px;
+}
+.author-exam-form,
+.author-exam-preview {
+  max-width: 760px;
+}
+.author-exam-fields .author-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+.author-field-label {
+  font-weight: 500;
+}
+.author-exam-field-error {
+  margin: 0;
+  color: var(--accent-danger);
+  font-size: 12px;
+}
+.author-exam-heading {
+  margin: var(--spacing-lg) 0 var(--spacing-xs);
+  font-size: 13px;
+  font-weight: 600;
+}
+.author-exam-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+.author-exam-list:empty {
+  display: none;
+}
+.author-exam-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+.author-exam-row:last-child {
+  border-bottom: none;
+}
+.author-exam-row[draggable="true"] {
+  cursor: grab;
+}
+.author-exam-row.dragging {
+  opacity: 0.5;
+}
+.author-exam-row.drop-target {
+  box-shadow: inset 0 2px 0 var(--feature-accent);
+}
+.author-exam-order {
+  color: var(--text-secondary);
+  min-width: 2em;
+}
+.author-exam-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.author-exam-mark {
+  color: var(--accent-danger);
+  font-size: 12px;
+}
+.author-exam-actions {
+  display: inline-flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.author-exam-actions .author-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.author-exam-issues,
+.author-issues {
+  margin: var(--spacing-xs) 0 var(--spacing-sm);
+  padding-left: 1.4em;
+}
+.author-exam-preview > .author-hint {
+  margin: 0 0 var(--spacing-lg);
+}
+.author-preview-problem {
+  padding-bottom: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+}
+.author-preview-title {
+  margin: 0 0 var(--spacing-sm);
+  font-size: 15px;
+  color: var(--feature-accent);
+}
+.author-preview-starter {
+  margin: var(--spacing-md) 0 0;
+}
+.author-preview-starter pre {
+  max-height: 240px;
+}
+.author-export-summary {
+  margin: 0 0 var(--spacing-md);
 }

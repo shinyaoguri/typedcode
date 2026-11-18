@@ -302,3 +302,28 @@ export async function verifyDiffRows(page: Page): Promise<string[][]> {
       ])
     );
 }
+
+/** 画面の外 (別のエディタ・エクスプローラー) での削除の代役 (#797) */
+export async function deleteFolderFileExternally(page: Page, folder: string, path: string): Promise<void> {
+  await page.evaluate(
+    async ({ folder, path }) => {
+      let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folder);
+      const segments = path.split('/');
+      for (const segment of segments.slice(0, -1)) dir = await dir.getDirectoryHandle(segment);
+      await dir.removeEntry(segments[segments.length - 1]!);
+    },
+    { folder, path }
+  );
+}
+
+/** 群 0 の試験定義のフォーム (#797) */
+export function examForm(page: Page): Locator {
+  return editorGroup(page).locator('[data-exam-form]');
+}
+
+/** フォームの採用した問題の行の、問題定義のパス (出題順) */
+export function adoptedProblems(page: Page): Promise<string[]> {
+  return examForm(page)
+    .locator('[data-exam-problem]')
+    .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.examProblem ?? ''));
+}

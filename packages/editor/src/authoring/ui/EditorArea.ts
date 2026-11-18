@@ -1,12 +1,14 @@
 /**
  * 作問画面のタブと分割エディタ (#796)。
  *
- * - 配置 (どの群でどの文書を開いているか・Markdown の編集 / プレビュー) は `EditorLayout` が持ち、ここは描くだけ
+ * - 配置 (どの群でどの文書を開いているか・群ごとの表示) は `EditorLayout` が持ち、ここは描くだけ
  * - Monaco のモデルは文書ごとに 1 つ (両方の群で同じ文書を開くと同じモデルを見る)。打鍵は `AuthorWorkspace.setText` へ
  *   流し、状態の側の変更 (読み直し・問題定義の書き戻し) はモデルへ戻す
- * - Markdown は群ごとにプレビュー (`renderMarkdown`。受験者の問題パネルと同じレンダラ) に切り替えられる
+ * - 文書の表示はファイルの種類ごとに `documentViews.ts` に登録したもの (Markdown の編集 / プレビュー、試験定義の
+ *   フォーム / テキスト / 学生プレビューなど)。`edit` は Monaco、それ以外は群の表示領域に部品が描く (#797)
  * - 状態契約: 群 `[data-editor-group]` (`0` / `1`) に `data-active-path` (空文字 = 何も開いていない) と `data-view`
- *   (`edit` / `preview`)。タブ `.editor-tab` に `data-path` / `data-dirty` / `data-active` / `data-group`
+ *   (表示の名前。種類の既定は `documentViews.ts`)。表示が 2 つ以上ある種類だけ、群のツールに切り替えのボタン
+ *   `data-action="view-<名前>"` を出す。タブ `.editor-tab` に `data-path` / `data-dirty` / `data-active` / `data-group`
  *
  * タブを閉じる (未保存なら確かめる) かどうかはページが決めるので、閉じる操作は `onRequestClose` で渡す。
  */
@@ -14,10 +16,10 @@
 import * as monaco from 'monaco-editor';
 import { escapeHtml } from '@typedcode/shared';
 import { t } from '../../i18n/index.js';
-import { renderMarkdown } from '../../utils/markdown.js';
 import type { AuthorWorkspace, WorkspaceChange } from '../workspace/authorWorkspace.js';
 import { workspaceBasename } from '../workspace/paths.js';
-import { type DocumentView, EditorLayout, type GroupIndex, MAX_GROUPS } from './editorLayout.js';
+import { documentKindFor, resolveView, type ViewInstance } from './documentViews.js';
+import { EditorLayout, type GroupIndex, MAX_GROUPS } from './editorLayout.js';
 import { isMarkdownPath, monacoLanguageFor } from './fileKinds.js';
 
 export interface EditorAreaHandlers {
@@ -34,9 +36,12 @@ interface GroupSlot {
   readonly tabs: HTMLElement;
   readonly tools: HTMLElement;
   readonly host: HTMLElement;
-  readonly preview: HTMLElement;
+  /** Monaco 以外の表示を描く領域 */
+  readonly view: HTMLElement;
   readonly empty: HTMLElement;
   editor: monaco.editor.IStandaloneCodeEditor | null;
+  /** 表示領域に描いている表示 (どの文書のどの表示か) */
+  mounted: { path: string; view: string; instance: ViewInstance } | null;
 }
 
 const TAB_ICONS: Record<string, string> = {
@@ -75,7 +80,10 @@ export class EditorArea {
   setWorkspace(workspace: AuthorWorkspace | null): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
-    for (const slot of this.slots) slot.editor?.setModel(null);
+    for (const slot of this.slots) {
+      slot.editor?.setModel(null);
+      this.unmountView(slot);
+    }
     for (const listener of this.modelListeners.values()) listener.dispose();
     for (const model of this.models.values()) model.dispose();
     this.modelListeners.clear();
@@ -159,28 +167,32 @@ export class EditorArea {
       path,
       model.onDidChangeContent(() => {
         if (this.applyingFromWorkspace) return;
+        // 文書の変更の通知 (`onWorkspaceChange`) で表示とタブを描き直す
         this.workspace?.setText(path, model.getValue());
-        this.refreshPreviews(path);
       })
     );
     return model;
   }
 
   private onWorkspaceChange(change: WorkspaceChange): void {
-    if (change.kind !== 'document') return;
-    const model = this.models.get(change.path);
-    const doc = this.workspace?.document(change.path);
-    if (model && doc && model.getValue() !== doc.text) {
-      this.applyingFromWorkspace = true;
-      try {
-        model.setValue(doc.text);
-      } finally {
-        this.applyingFromWorkspace = false;
+    if (change.kind === 'document') {
+      const model = this.models.get(change.path);
+      const doc = this.workspace?.document(change.path);
+      if (model && doc && model.getValue() !== doc.text) {
+        this.applyingFromWorkspace = true;
+        try {
+          model.setValue(doc.text);
+        } finally {
+          this.applyingFromWorkspace = false;
+        }
       }
-      this.refreshPreviews(change.path);
     }
-    this.renderTabs();
-    this.handlers.onStateChange();
+    // 表示は他の文書や索引も読む (学生プレビュー・フォームの一覧) ので、どの変更でも知らせる
+    for (const slot of this.slots) slot.mounted?.instance.update();
+    if (change.kind === 'document') {
+      this.renderTabs();
+      this.handlers.onStateChange();
+    }
   }
 
   private createSlot(index: GroupIndex): GroupSlot {
@@ -196,7 +208,7 @@ export class EditorArea {
       </div>
       <div class="author-group-body">
         <div class="author-monaco"></div>
-        <div class="markdown-rendered author-preview" hidden></div>
+        <div class="author-preview" hidden></div>
         <p class="author-group-empty">${escapeHtml(t('author.editor.empty'))}</p>
       </div>`;
     const slot: GroupSlot = {
@@ -204,9 +216,10 @@ export class EditorArea {
       tabs: element.querySelector<HTMLElement>('.editor-tabs')!,
       tools: element.querySelector<HTMLElement>('.author-group-tools')!,
       host: element.querySelector<HTMLElement>('.author-monaco')!,
-      preview: element.querySelector<HTMLElement>('.author-preview')!,
+      view: element.querySelector<HTMLElement>('.author-preview')!,
       empty: element.querySelector<HTMLElement>('.author-group-empty')!,
       editor: null,
+      mounted: null,
     };
     slot.tabs.addEventListener('click', (e) => this.onTabClick(e, index));
     slot.tabs.addEventListener('keydown', (e) => this.onTabKeydown(e, index));
@@ -257,19 +270,21 @@ export class EditorArea {
       this.handlers.onRequestCloseGroup(index);
       return;
     }
-    if (!path || (action !== 'view-edit' && action !== 'view-preview')) return;
-    const view: DocumentView = action === 'view-preview' ? 'preview' : 'edit';
+    if (!path || !action?.startsWith('view-')) return;
+    this.setView(path, index, action.slice('view-'.length));
+  }
+
+  /** 群の表示を切り替える (その種類に無い表示なら何もしない) */
+  private setView(path: string, index: GroupIndex, view: string): void {
+    if (!documentKindFor(path).views.some((v) => v.name === view)) return;
     this.layout.setView(path, index, view);
     this.render();
   }
 
-  private refreshPreviews(path: string): void {
-    this.slots.forEach((slot, i) => {
-      const group = this.layout.group(i as GroupIndex);
-      if (group?.active === path && this.layout.view(path, i as GroupIndex) === 'preview') {
-        slot.preview.innerHTML = renderMarkdown(this.models.get(path)?.getValue() ?? '');
-      }
-    });
+  private unmountView(slot: GroupSlot): void {
+    slot.mounted?.instance.dispose();
+    slot.mounted = null;
+    slot.view.className = 'author-preview';
   }
 
   render(): void {
@@ -315,6 +330,7 @@ export class EditorArea {
     slot.element.hidden = group === undefined;
     if (!group) {
       slot.editor?.setModel(null);
+      this.unmountView(slot);
       slot.element.dataset.activePath = '';
       slot.element.dataset.view = 'edit';
       return;
@@ -322,25 +338,41 @@ export class EditorArea {
     const path = group.active;
     const model = path ? this.models.get(path) : undefined;
     const markdown = path !== null && isMarkdownPath(path);
-    const view: DocumentView = path && markdown ? this.layout.view(path, index) : 'edit';
+    const kind = documentKindFor(path ?? '');
+    const definition = resolveView(kind, path ? this.layout.view(path, index, kind.defaultView) : undefined);
+    const view = model ? definition.name : 'edit';
     slot.element.dataset.activePath = path ?? '';
     slot.element.dataset.view = view;
 
     slot.tools.innerHTML = [
-      markdown
-        ? `<span class="author-seg" role="group">
-            <button type="button" class="author-seg-btn${view === 'edit' ? ' active' : ''}" data-action="view-edit" aria-pressed="${view === 'edit'}">${escapeHtml(t('author.preview.edit'))}</button>
-            <button type="button" class="author-seg-btn${view === 'preview' ? ' active' : ''}" data-action="view-preview" aria-pressed="${view === 'preview'}">${escapeHtml(t('author.preview.preview'))}</button>
-          </span>`
+      model && kind.views.length > 1
+        ? `<span class="author-seg" role="group">${kind.views
+            .map(
+              (v) =>
+                `<button type="button" class="author-seg-btn${v.name === view ? ' active' : ''}" data-action="view-${v.name}" aria-pressed="${v.name === view}">${escapeHtml(v.label())}</button>`
+            )
+            .join('')}</span>`
         : '',
       this.layout.groupCount > 1
         ? `<button type="button" class="author-icon-btn" data-action="close-group" title="${escapeHtml(t('author.editor.closeGroup'))}" aria-label="${escapeHtml(t('author.editor.closeGroup'))}"><i class="fas fa-xmark" aria-hidden="true"></i></button>`
         : '',
     ].join('');
 
+    const custom = model !== undefined && path !== null && definition.mount !== undefined;
     slot.empty.hidden = model !== undefined;
-    slot.host.hidden = model === undefined || view === 'preview';
-    slot.preview.hidden = model === undefined || view !== 'preview';
+    slot.host.hidden = model === undefined || custom;
+    slot.view.hidden = !custom;
+    if (!custom || slot.mounted?.path !== path || slot.mounted.view !== view) this.unmountView(slot);
+    if (custom && path !== null && !slot.mounted) {
+      if (definition.className) slot.view.classList.add(definition.className);
+      const instance = definition.mount!({
+        path,
+        host: slot.view,
+        workspace: this.workspace!,
+        setView: (next) => this.setView(path, index, next),
+      });
+      slot.mounted = { path, view, instance };
+    }
     if (model && !slot.editor) {
       slot.editor = monaco.editor.create(slot.host, {
         theme: this.theme(),
@@ -351,6 +383,5 @@ export class EditorArea {
     }
     if (slot.editor && slot.editor.getModel() !== (model ?? null)) slot.editor.setModel(model ?? null);
     slot.editor?.updateOptions({ wordWrap: markdown ? 'on' : 'off' });
-    if (model && view === 'preview') slot.preview.innerHTML = renderMarkdown(model.getValue());
   }
 }

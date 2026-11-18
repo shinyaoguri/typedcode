@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { AuthorWorkspace } from '../authorWorkspace.js';
-import { parseCasesDefinition, parseProblemDefinition } from '../definitions.js';
+import { parseCasesDefinition, parseExamDefinition, parseProblemDefinition } from '../definitions.js';
 import { MaterialFolder } from '../materialFolder.js';
 import { FakeFileSystem } from './fakeDirectoryHandle.js';
 
@@ -409,42 +409,58 @@ describe('AuthorWorkspace problem operations', () => {
   });
 });
 
-describe('AuthorWorkspace bundle', () => {
-  it('builds the bundle problems from every problem definition in path order', async () => {
-    const { workspace } = await setup({
-      'b.problem.yaml': 'format: tc-problem/1\nid: b\nstatement: b.md\n',
-      'b.md': '# b\n',
-      'a.problem.yaml': 'format: tc-problem/1\nid: a\nstatement: a.md\nstarter: a.c\n',
-      'a.md': '# a\n',
-      'a.c': 'int x;\n',
-    });
-    expect(await workspace.buildBundle()).toEqual({
-      status: 'ok',
-      problems: [
-        { problemId: 'a', statement: '# a\n', starter: { filename: 'a.c', language: 'c', content: 'int x;\n' } },
-        { problemId: 'b', statement: '# b\n' },
-      ],
-    });
+describe('AuthorWorkspace exam export', () => {
+  const EXAM = {
+    'a.problem.yaml': 'format: tc-problem/1\nid: a\nstatement: a.md\nstarter: a.c\n',
+    'a.md': '# a\n',
+    'a.c': 'int x;\n',
+    'b.problem.yaml': 'format: tc-problem/1\nid: b\nstatement: b.md\n',
+    'b.md': '# b\n',
+    't.exam.yaml':
+      'format: tc-exam/1\nexamId: t\nkind: class\nlanguages: [c]\nproblems: [b.problem.yaml, a.problem.yaml]\n',
+  };
+
+  it('builds only the problems the exam adopts, in its order', async () => {
+    const { workspace } = await setup(EXAM);
+    const result = await workspace.buildExamBundle('t.exam.yaml');
+    expect(result.status === 'ok' && result.problems.map((p) => p.problemId)).toEqual(['b', 'a']);
   });
 
   it('refuses to build while a document has unsaved edits', async () => {
-    const { workspace } = await setup();
-    await workspace.open('最大値.md');
-    workspace.setText('最大値.md', 'mine');
-    expect(await workspace.buildBundle()).toEqual({ status: 'dirty', paths: ['最大値.md'] });
+    const { workspace } = await setup(EXAM);
+    await workspace.open('a.md');
+    workspace.setText('a.md', 'mine');
+    expect(await workspace.buildExamBundle('t.exam.yaml')).toEqual({ status: 'dirty', paths: ['a.md'] });
   });
 
-  it('reports missing parts instead of building', async () => {
-    const { workspace } = await setup();
-    const result = await workspace.buildBundle();
+  it('reports a missing starter of an adopted problem instead of building', async () => {
+    const { fs, workspace } = await setup(EXAM);
+    fs.deleteExternally('a.c');
+    const result = await workspace.buildExamBundle('t.exam.yaml');
     expect(result.status === 'invalid' && result.issues).toEqual([
-      { kind: 'missing-file', problem: '過去問/探索.problem.yaml', path: '過去問/探索.py' },
+      { kind: 'missing-file', problem: 'a.problem.yaml', path: 'a.c' },
     ]);
   });
 
-  it('reports an empty folder as having no problems', async () => {
-    const { workspace } = await setup({});
-    expect(await workspace.buildBundle()).toEqual({ status: 'empty' });
+  it('reports an exam that adopts no problem as empty', async () => {
+    const { workspace } = await setup({
+      ...EXAM,
+      't.exam.yaml': EXAM['t.exam.yaml'].replace(/problems: .*/, 'problems: []'),
+    });
+    expect(await workspace.buildExamBundle('t.exam.yaml')).toEqual({ status: 'empty' });
+  });
+
+  it('reports an exam without allowed languages', async () => {
+    const { workspace } = await setup({ ...EXAM, 't.exam.yaml': EXAM['t.exam.yaml'].replace('[c]', '[]') });
+    expect(await workspace.buildExamBundle('t.exam.yaml')).toEqual({ status: 'no-languages' });
+  });
+
+  it('reports an exam definition that is not in the folder', async () => {
+    const { workspace } = await setup(EXAM);
+    expect(await workspace.buildExamBundle('無い.exam.yaml')).toEqual({
+      status: 'unknown-exam',
+      path: '無い.exam.yaml',
+    });
   });
 
   it('readCurrentText returns the unsaved text of an open document (#799)', async () => {
@@ -471,10 +487,61 @@ describe('AuthorWorkspace bundle', () => {
 
   it('reads NFD-listed files through NFC references when building', async () => {
     const nfd = 'がっこう'.normalize('NFD');
+    const nfcName = 'がっこう'.normalize('NFC');
     const { workspace } = await setup({
-      [`${nfd}.problem.yaml`]: `format: tc-problem/1\nid: x\nstatement: ${'がっこう'.normalize('NFC')}.md\n`,
+      [`${nfd}.problem.yaml`]: `format: tc-problem/1\nid: x\nstatement: ${nfcName}.md\n`,
       [`${nfd}.md`]: '# x\n',
+      't.exam.yaml': `format: tc-exam/1\nexamId: t\nkind: class\nlanguages: [c]\nproblems: [${nfcName}.problem.yaml]\n`,
     });
-    expect(await workspace.buildBundle()).toEqual({ status: 'ok', problems: [{ problemId: 'x', statement: '# x\n' }] });
+    const result = await workspace.buildExamBundle('t.exam.yaml');
+    expect(result.status === 'ok' && result.problems).toEqual([{ problemId: 'x', statement: '# x\n' }]);
+  });
+
+  it('previews the unsaved text of open documents, including the exam definition itself', async () => {
+    const { workspace } = await setup(EXAM);
+    await workspace.open('b.md');
+    workspace.setText('b.md', '# b (unsaved)\n');
+    await workspace.open('t.exam.yaml');
+    workspace.setText(
+      't.exam.yaml',
+      EXAM['t.exam.yaml'].replace('[b.problem.yaml, a.problem.yaml]', '[b.problem.yaml]')
+    );
+    const result = await workspace.previewExam('t.exam.yaml');
+    expect(result.ok && result.problems).toEqual([{ problemId: 'b', statement: '# b (unsaved)\n' }]);
+  });
+
+  it('indexes exam definitions with their parse results', async () => {
+    const { workspace } = await setup({ ...EXAM, '壊れた.exam.yaml': 'format: tc-exam/1\n' });
+    expect([workspace.exam('t.exam.yaml')?.status, workspace.exam('壊れた.exam.yaml')?.status]).toEqual([
+      'ok',
+      'invalid',
+    ]);
+  });
+});
+
+describe('AuthorWorkspace createExam', () => {
+  it('creates an exam definition named after the stem with kind exam, language c and no problems', async () => {
+    const { fs, workspace } = await setup({});
+    expect(await workspace.createExam('過去問/中間')).toEqual({ ok: true, path: '過去問/中間.exam.yaml' });
+    expect(parseExamDefinition(fs.readFile('過去問/中間.exam.yaml') ?? '')).toEqual({
+      ok: true,
+      value: { examId: '中間', kind: 'exam', languages: ['c'], problems: [] },
+    });
+    expect(workspace.index.exams).toEqual(['過去問/中間.exam.yaml']);
+  });
+
+  it('does not overwrite an existing exam definition', async () => {
+    const { fs, workspace } = await setup();
+    const before = fs.readFile('中間.exam.yaml');
+    const result = await workspace.createExam('中間.exam.yaml');
+    expect([result, fs.readFile('中間.exam.yaml')]).toEqual([
+      { ok: false, error: { kind: 'exists', path: '中間.exam.yaml' } },
+      before,
+    ]);
+  });
+
+  it('rejects a name that cannot be a path', async () => {
+    const { workspace } = await setup({});
+    expect(await workspace.createExam('.隠し')).toEqual({ ok: false, error: { kind: 'invalid-name', name: '.隠し' } });
   });
 });

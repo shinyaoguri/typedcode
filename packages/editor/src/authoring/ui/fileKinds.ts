@@ -6,6 +6,7 @@
  */
 
 import { extensionToLanguage } from '../starterLanguage.js';
+import { EXAM_DEFINITION_SUFFIX } from '../workspace/authorWorkspace.js';
 import { workspaceBasename } from '../workspace/paths.js';
 
 function extensionOf(path: string): string {
@@ -24,6 +25,11 @@ export function monacoLanguageFor(path: string): string {
 
 export function isMarkdownPath(path: string): boolean {
   return monacoLanguageFor(path) === 'markdown';
+}
+
+/** 試験定義 (`*.exam.yaml`) か */
+export function isExamDefinitionPath(path: string): boolean {
+  return path.endsWith(EXAM_DEFINITION_SUFFIX);
 }
 
 /** 実行の言語 (実行できない拡張子は `plaintext` などになり、実行系が「実行できない」と知らせる) */

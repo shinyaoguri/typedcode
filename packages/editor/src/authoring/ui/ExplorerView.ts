@@ -4,7 +4,7 @@
  * - 問題: 問題定義を `title` (無ければ `id`) で出し、その下に本文・初期コード・ヒント・解答例・ケースを並べる。
  *   参照先の無いものは欠損の印 (`data-missing="true"`)。読めない定義は誤りの印 (`data-role="invalid"`) つきで出し、
  *   テキストとして開ける
- * - 試験: `*.exam.yaml` (この段階ではテキストで開くだけ)
+ * - 試験: `*.exam.yaml` (開くとフォーム。#797)。節の見出しの「新しい試験」(`data-action="new-exam"`) で作る
  * - 状態契約: 項目は `data-explorer-path` (根からの相対パス) と `data-role` (`problem` / `statement` / `starter` /
  *   `hint` / `solution` / `cases` / `exam` / `invalid`)。問題ごとの操作は `data-action` (`add-part` / `assign-part` /
  *   `verify` (#799)) と `data-problem-path`。上の操作は `data-action` (`new-problem` / `refresh` / `open-other`)
@@ -21,6 +21,7 @@ import { roleLabel } from './messages.js';
 export interface ExplorerHandlers {
   onOpenFile(path: string): void;
   onNewProblem(): void;
+  onNewExam(): void;
   onRefresh(): void;
   onOpenOther(): void;
   onAddPart(problemPath: string): void;
@@ -79,6 +80,10 @@ export class ExplorerView {
     const target = (e.target as HTMLElement).closest<HTMLElement>('button');
     if (!target || !this.body.contains(target)) return;
     const problemPath = target.dataset.problemPath;
+    if (target.dataset.action === 'new-exam') {
+      this.handlers.onNewExam();
+      return;
+    }
     if (target.dataset.action === 'add-part' && problemPath) {
       this.handlers.onAddPart(problemPath);
       return;
@@ -108,7 +113,10 @@ export class ExplorerView {
         ${problems ? `<ul class="author-explorer-list">${problems}</ul>` : `<p class="author-explorer-empty">${escapeHtml(t('author.explorer.noProblems'))}</p>`}
       </section>
       <section class="author-explorer-section" aria-labelledby="author-explorer-exams">
-        <h2 class="author-explorer-section-head" id="author-explorer-exams">${escapeHtml(t('author.explorer.exams'))}</h2>
+        <div class="author-explorer-section-row">
+          <h2 class="author-explorer-section-head" id="author-explorer-exams">${escapeHtml(t('author.explorer.exams'))}</h2>
+          <span class="author-explorer-actions">${iconButton('new-exam', t('author.explorer.newExam'), 'fa-file-circle-plus')}</span>
+        </div>
         ${exams ? `<ul class="author-explorer-list">${exams}</ul>` : `<p class="author-explorer-empty">${escapeHtml(t('author.explorer.noExams'))}</p>`}
       </section>`;
   }

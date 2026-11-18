@@ -40,7 +40,7 @@ const EXAM_PACKAGE_FORMAT_VERSION = 1;
 const DEFAULT_KDF_PARAMS = { memKiB: 65536, iterations: 3, parallelism: 1 };
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // I L O U を除外 (32 文字)
 
-// --- packages/editor/src/authoring/AuthorPage.ts の OPEN_DEADLINE と同値 (ADR-0013) ---
+// --- packages/editor/src/authoring/distribution.ts の OPEN_DEADLINE と同値 (ADR-0013) ---
 // スケジュールは Moodle 管理なので deadline は「オープン」を既定にする (manifest 仕様上は必須)。
 // .mjs からは raw TS の shared/editor を import できないため同値リテラルで持つ。変えるなら両方を直すこと。
 const OPEN_DEADLINE = '2999-12-31T23:59:59.999Z';

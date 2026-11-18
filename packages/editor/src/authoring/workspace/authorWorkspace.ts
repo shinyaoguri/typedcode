@@ -2,8 +2,10 @@
  * 作問画面 (`/author`) の状態 (#796 / ADR-0051、docs/system-spec.md §4.10)。DOM・Monaco に触れない。
  *
  * 開いた教材フォルダについて、次の 3 つを持つ:
- * - **索引**: ファイル一覧、問題定義 (`*.problem.yaml`) の parse 結果と参照先の解決、試験定義 (`*.exam.yaml`) の一覧。
- *   読めない定義は理由つきで残す (一覧から黙って消さない)。`refresh()` で読み直す
+ * - **索引**: ファイル一覧、問題定義 (`*.problem.yaml`) の parse 結果と参照先の解決、試験定義 (`*.exam.yaml`) の一覧と
+ *   parse 結果。読めない定義は理由つきで残す (一覧から黙って消さない)。`refresh()` で読み直す
+ * - **試験の変換** (#797): 学生プレビュー (`previewExam`。開いている文書の未保存の内容を重ねる) と書き出し
+ *   (`buildExamBundle`。保存済みの内容だけ。未保存の文書があれば作らない)。どちらもフォルダに書かない
  * - **文書**: 開いているファイルごとの「保存済みのテキスト・今のテキスト・未保存か」。保存は `MaterialFolder` の結果
  *   (`saved` / `conflict` / `failed`) をそのまま返し、競合・失敗では手元の編集を残す
  * - **問題の操作**: 問題を作る、要素 (初期コード・ヒント・解答例・ケース) を新しいファイルで足す、既存のファイルを割り当てる。
@@ -22,14 +24,17 @@
 import type { ExamBundleProblem } from '@typedcode/shared';
 import {
   createCasesDefinitionText,
+  createExamDefinitionText,
   createProblemDefinitionText,
   type DefinitionIssue,
+  type ExamDefinition,
+  parseExamDefinition,
   parseProblemDefinition,
   type ProblemDefinition,
   type ProblemDefinitionPatch,
   updateProblemDefinitionText,
 } from './definitions.js';
-import { buildBundleProblemsFromPaths, type WorkspaceIssue } from './examBundle.js';
+import { buildExamBundleProblems, type ExamBundleBuildResult, type WorkspaceIssue } from './examBundle.js';
 import type { FolderWriteResult, WriteTextOptions } from './materialFolder.js';
 import {
   problemIdFromPath,
@@ -80,6 +85,12 @@ export type IndexedProblem =
   | { readonly status: 'invalid'; readonly path: string; readonly issues: readonly DefinitionIssue[] }
   | { readonly status: 'unreadable'; readonly path: string; readonly message: string };
 
+/** 試験定義 1 つ (索引)。読めない定義は理由つきで残す。 */
+export type IndexedExam =
+  | { readonly status: 'ok'; readonly path: string; readonly definition: ExamDefinition }
+  | { readonly status: 'invalid'; readonly path: string; readonly issues: readonly DefinitionIssue[] }
+  | { readonly status: 'unreadable'; readonly path: string; readonly message: string };
+
 export interface WorkspaceIndex {
   /** すべてのファイル (一覧の綴り・パス順) */
   readonly files: readonly string[];
@@ -87,6 +98,8 @@ export interface WorkspaceIndex {
   readonly problems: readonly IndexedProblem[];
   /** 試験定義のパス (パス順) */
   readonly exams: readonly string[];
+  /** 試験定義の parse 結果 (`exams` と同じ順。開いている文書は保存済みのテキストで読む) */
+  readonly examDefinitions: readonly IndexedExam[];
 }
 
 export interface WorkspaceDocument {
@@ -129,15 +142,19 @@ export type WorkspaceOpResult =
   | { readonly ok: true; readonly path: string }
   | { readonly ok: false; readonly error: WorkspaceOpError };
 
-/** 書き出し用の問題列を作った結果。 */
-export type WorkspaceBundleResult =
+/** 試験定義から書き出し用の問題列を作った結果。 */
+export type ExamExportResult =
   /** 未保存の文書がある (書き出さない) */
   | { readonly status: 'dirty'; readonly paths: readonly string[] }
-  /** 問題定義が 1 つも無い */
-  | { readonly status: 'empty' }
+  /** 試験定義がフォルダに無い */
+  | { readonly status: 'unknown-exam'; readonly path: string }
   /** 欠損・重複・読めない定義がある */
   | { readonly status: 'invalid'; readonly issues: readonly WorkspaceIssue[] }
-  | { readonly status: 'ok'; readonly problems: ExamBundleProblem[] };
+  /** 採用した問題が 1 つも無い */
+  | { readonly status: 'empty' }
+  /** 許可言語が 1 つも無い */
+  | { readonly status: 'no-languages' }
+  | { readonly status: 'ok'; readonly exam: ExamDefinition; readonly problems: ExamBundleProblem[] };
 
 export type WorkspaceChange =
   | { readonly kind: 'index' }
@@ -187,7 +204,7 @@ function writeFailure(result: FolderWriteResult): WorkspaceOpError | null {
 export class AuthorWorkspace {
   /** NFC にそろえたパス → 一覧の綴り */
   private listed = new Map<string, string>();
-  private currentIndex: WorkspaceIndex = { files: [], problems: [], exams: [] };
+  private currentIndex: WorkspaceIndex = { files: [], problems: [], exams: [], examDefinitions: [] };
   private refreshGeneration = 0;
   /** 一覧の綴り → 文書 */
   private readonly docs = new Map<string, DocumentRecord>();
@@ -238,10 +255,12 @@ export class AuthorWorkspace {
       problems.push(await this.indexProblem(path, listed));
     }
     const exams = files.filter((path) => path.endsWith(EXAM_DEFINITION_SUFFIX));
+    const examDefinitions: IndexedExam[] = [];
+    for (const path of exams) examDefinitions.push(await this.indexExam(path));
     // 後から始まった読み直しが先に終わっていれば、古い結果で上書きしない
     if (generation === this.refreshGeneration) {
       this.listed = listed;
-      this.currentIndex = { files, problems, exams };
+      this.currentIndex = { files, problems, exams, examDefinitions };
       this.emit({ kind: 'index' });
     }
     return this.currentIndex;
@@ -251,6 +270,25 @@ export class AuthorWorkspace {
   problem(path: string): IndexedProblem | undefined {
     const key = nfc(path);
     return this.currentIndex.problems.find((problem) => nfc(problem.path) === key);
+  }
+
+  /** 試験定義 (一覧の綴りでも NFC でもよい) */
+  exam(path: string): IndexedExam | undefined {
+    const key = nfc(path);
+    return this.currentIndex.examDefinitions.find((exam) => nfc(exam.path) === key);
+  }
+
+  private async indexExam(path: string): Promise<IndexedExam> {
+    let text: string;
+    try {
+      text = await this.readForIndex(path);
+    } catch (error) {
+      return { status: 'unreadable', path, message: error instanceof Error ? error.message : String(error) };
+    }
+    const parsed = parseExamDefinition(text);
+    return parsed.ok
+      ? { status: 'ok', path, definition: parsed.value }
+      : { status: 'invalid', path, issues: parsed.issues };
   }
 
   private async indexProblem(path: string, listed: ReadonlyMap<string, string>): Promise<IndexedProblem> {
@@ -284,7 +322,7 @@ export class AuthorWorkspace {
     return this.folder.readText(path);
   }
 
-  /** 書き出し (`buildBundleProblemsFromPaths`) が読む口。照合は NFC、在るかは索引で答える */
+  /** 書き出しが読む口 (保存済みの内容だけ)。照合は NFC、在るかは索引で答える */
   reader(): WorkspaceReader {
     return {
       readText: (path) => this.readForIndex(this.actual(path)),
@@ -296,25 +334,45 @@ export class AuthorWorkspace {
    * ファイルの今のテキスト (教員用の検証が読む口。#799)。開いている文書は今のテキスト (未保存を含む) を返し、
    * フォルダを読み直さない。開いていなければフォルダから読む
    */
-  async readCurrentText(path: string): Promise<string> {
-    const actual = this.actual(path);
-    const doc = this.docs.get(actual);
-    if (doc) return doc.text;
-    return this.folder.readText(actual);
+  readCurrentText(path: string): Promise<string> {
+    return this.previewReader().readText(path);
   }
 
   /**
-   * 開いたフォルダの問題定義すべて (パス順) を配布物の問題列にする。未保存の文書があれば作らない。
-   * 索引を読み直してから作る。
+   * 学生プレビューが読む口。開いている文書は**未保存の内容** (今のテキスト) を返し、それ以外はファイルを読む。
+   * 在るかは索引と開いている文書で答える (索引は `refresh()` の時点のもの)。
    */
-  async buildBundle(): Promise<WorkspaceBundleResult> {
+  previewReader(): WorkspaceReader {
+    return {
+      readText: async (path) => {
+        const actual = this.actual(path);
+        const doc = this.docs.get(actual);
+        return doc ? doc.text : this.folder.readText(actual);
+      },
+      exists: async (path) => this.listedPath(path) !== undefined || this.docs.has(this.actual(path)),
+    };
+  }
+
+  /** 学生プレビュー用: 試験定義の採用問題を、開いている文書の未保存の内容を重ねて変換する */
+  previewExam(examPath: string): Promise<ExamBundleBuildResult> {
+    return buildExamBundleProblems(this.actual(examPath), this.previewReader());
+  }
+
+  /**
+   * 書き出し用: 試験定義の採用問題を出題順に配布物の問題列にする。**保存済みの内容だけ**を対象にし、未保存の文書が
+   * あれば作らない。索引を読み直してから作る。フォルダには何も書かない。
+   */
+  async buildExamBundle(examPath: string): Promise<ExamExportResult> {
     const dirty = this.dirtyPaths();
     if (dirty.length > 0) return { status: 'dirty', paths: dirty };
-    const index = await this.refresh();
-    const paths = index.problems.map((problem) => problem.path);
-    if (paths.length === 0) return { status: 'empty' };
-    const result = await buildBundleProblemsFromPaths(paths, this.reader());
-    return result.ok ? { status: 'ok', problems: result.problems } : { status: 'invalid', issues: result.issues };
+    await this.refresh();
+    const path = this.listedPath(examPath);
+    if (path === undefined || !path.endsWith(EXAM_DEFINITION_SUFFIX)) return { status: 'unknown-exam', path: examPath };
+    const result = await buildExamBundleProblems(path, this.reader());
+    if (!result.ok) return { status: 'invalid', issues: result.issues };
+    if (result.problems.length === 0) return { status: 'empty' };
+    if (result.exam.languages.length === 0) return { status: 'no-languages' };
+    return { status: 'ok', exam: result.exam, problems: result.problems };
   }
 
   // ==========================================================================
@@ -453,6 +511,32 @@ export class AuthorWorkspace {
     await this.refresh();
     if (createdError) return fail(createdError);
     return { ok: true, path: definitionPath };
+  }
+
+  /**
+   * 試験定義を作る。`name` はファイル名の語幹 (サブフォルダを含めてよい)。`<name>.exam.yaml` を、examId = 名前の語幹・
+   * 種類 `exam`・許可言語 `c`・問題なしで作る。既に在れば何も作らない。
+   */
+  async createExam(name: string): Promise<WorkspaceOpResult> {
+    let stem = name.trim();
+    if (stem.endsWith(EXAM_DEFINITION_SUFFIX)) stem = stem.slice(0, -EXAM_DEFINITION_SUFFIX.length);
+    if (!isUsablePath(stem)) return fail({ kind: 'invalid-name', name });
+    const path = `${stem}${EXAM_DEFINITION_SUFFIX}`;
+    await this.refresh();
+    const found = this.listedPath(path);
+    if (found !== undefined) return fail({ kind: 'exists', path: found });
+    const definition = createExamDefinitionText({
+      examId: workspaceBasename(stem),
+      kind: 'exam',
+      languages: ['c'],
+      problems: [],
+    });
+    if (!definition.ok) return fail({ kind: 'definition-invalid', path, issues: definition.issues });
+    const created = await this.folder.createFile(path, definition.text);
+    const error = writeFailure(created);
+    await this.refresh();
+    if (error) return fail(error);
+    return { ok: true, path };
   }
 
   /**
