@@ -243,6 +243,38 @@ export async function openExistingFolder(page: Page, folder: string): Promise<vo
   await waitForOpenFolder(page, folder);
 }
 
+/** 群 0 のケースファイルのフォーム (#798) */
+export function casesForm(page: Page): Locator {
+  return editorGroup(page).locator('[data-cases-form]');
+}
+
+/** ケースファイルのフォームの一覧の名前 (並び順) */
+export function caseNames(page: Page): Promise<string[]> {
+  return casesForm(page)
+    .locator('[data-case-index]')
+    .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.caseName ?? ''));
+}
+
+export interface ParsedCase {
+  name: string;
+  stdin: string;
+  stdout: string;
+  public: boolean;
+  match: string;
+}
+
+/**
+ * ケースファイルのテキストを、画面と同じ parser (`authoring/workspace/definitions.ts` の `parseCasesDefinition`) で読む
+ * (#798)。e2e は yaml を依存に持たないので、dev サーバが配る editor のモジュールをページの中で import する。読めなければ例外
+ */
+export async function parseCasesText(page: Page, text: string): Promise<ParsedCase[]> {
+  const result = (await page.evaluate(
+    `import('/src/authoring/workspace/definitions.ts').then((m) => m.parseCasesDefinition(${JSON.stringify(text)}))`
+  )) as { ok: true; value: ParsedCase[] } | { ok: false; issues: unknown };
+  if (!result.ok) throw new Error(`cases file is not readable: ${JSON.stringify(result.issues)}`);
+  return result.value;
+}
+
 /** フォームの採用した問題の行の、問題定義のパス (出題順) */
 export function adoptedProblems(page: Page): Promise<string[]> {
   return examForm(page)

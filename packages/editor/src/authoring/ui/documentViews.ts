@@ -9,6 +9,7 @@
  * - 状態契約: 群の `data-view` は表示の `name`、群のツールの切り替えボタンは `data-action="view-<name>"`
  *   (表示が 2 つ以上ある種類だけに出す)
  * - 今の種類: 試験定義 (`*.exam.yaml`) = `form` (既定)・`edit` (YAML のテキスト)・`preview` (学生プレビュー)、
+ *   ケースファイル (`*.cases.yaml`) = `form` (既定。#798)・`edit` (YAML のテキスト)、
  *   Markdown = `edit` (既定)・`preview`、それ以外 = `edit` だけ
  *
  * **種類を足すとき** (例: ケースファイルの表を #798 で足す): 表示の部品 (`ViewDefinition` の `mount`) を作り、
@@ -18,9 +19,10 @@
 import { t } from '../../i18n/index.js';
 import { renderMarkdown } from '../../utils/markdown.js';
 import type { AuthorWorkspace } from '../workspace/authorWorkspace.js';
+import { mountCasesForm } from './CasesFormView.js';
 import { mountExamForm } from './ExamFormView.js';
 import { mountExamPreview } from './ExamPreviewView.js';
-import { isExamDefinitionPath, isMarkdownPath } from './fileKinds.js';
+import { isCasesDefinitionPath, isExamDefinitionPath, isMarkdownPath } from './fileKinds.js';
 
 /** 表示を描く場所と、描くのに使えるもの */
 export interface ViewContext {
@@ -81,6 +83,15 @@ export const DOCUMENT_KINDS: readonly DocumentKind[] = [
       { name: 'form', label: () => t('author.views.form'), mount: mountExamForm },
       { name: 'edit', label: () => t('author.views.text') },
       { name: 'preview', label: () => t('author.views.studentPreview'), mount: mountExamPreview },
+    ],
+    defaultView: 'form',
+  },
+  {
+    id: 'cases',
+    matches: isCasesDefinitionPath,
+    views: [
+      { name: 'form', label: () => t('author.views.form'), mount: mountCasesForm },
+      { name: 'edit', label: () => t('author.views.text') },
     ],
     defaultView: 'form',
   },

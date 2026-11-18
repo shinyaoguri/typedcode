@@ -9,6 +9,8 @@ import { extensionToLanguage } from '../starterLanguage.js';
 import { EXAM_DEFINITION_SUFFIX } from '../workspace/authorWorkspace.js';
 import { workspaceBasename } from '../workspace/paths.js';
 
+const CASES_DEFINITION_SUFFIX = '.cases.yaml';
+
 function extensionOf(path: string): string {
   const name = workspaceBasename(path);
   const dot = name.lastIndexOf('.');
@@ -30,6 +32,11 @@ export function isMarkdownPath(path: string): boolean {
 /** 試験定義 (`*.exam.yaml`) か */
 export function isExamDefinitionPath(path: string): boolean {
   return path.endsWith(EXAM_DEFINITION_SUFFIX);
+}
+
+/** ケースファイル (`*.cases.yaml`。system-spec §4.10) か (#798) */
+export function isCasesDefinitionPath(path: string): boolean {
+  return path.endsWith(CASES_DEFINITION_SUFFIX);
 }
 
 /** 実行の言語 (実行できない拡張子は `plaintext` などになり、実行系が「実行できない」と知らせる) */
