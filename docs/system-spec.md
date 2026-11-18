@@ -356,7 +356,87 @@ interface SignedCheckpointEnvelope {
 - **構造検証** (`parseExamBundle`): `examples` は配列で、各要素は `name` (空でない文字列)・`stdin` (文字列)・`stdout` (文字列) を持つ。違反があればバンドル全体を不正 (`null`) にする。例の未知のキーは落とす
 - **正準化とハッシュ** (`canonicalProblem` / `computeBundleProblemHash`): `examples` が 1 件以上のときだけ含め、各例を `{ name, stdin, stdout }` に作り直して `stdin` / `stdout` の改行を LF に正規化する。**`examples` を持たない問題のハッシュは変わらない**。持つ問題では、例を 1 文字変えると `problemContentHash` が変わる (封印・root 束縛の対象)
 - **互換**: `examples` を持つ `.tcexam` は、この版以降の editor が前提。旧版の editor は `examples` を落としたハッシュを root に焼くので、検証側の `problemContentHash` と一致しない。`.tcclass` は root 束縛が無いので影響しない
-- **非公開テスト**は配布物に入れない (解錠後の `.tcexam` も受講者が読める)。教員側で再実行して採点する段階 2 は別の形式で持つ
+- **非公開テスト**は配布物に入れない (解錠後の `.tcexam` も受講者が読める)。教員側で再実行して採点する段階 2 は別の形式で持つ。その形式は教材フォルダのケースファイル (§4.10) で、公開する例 (`public: true`) と同じファイルに置く
+
+### 4.10. 教材フォルダ (ADR-0051)
+
+`/author` は手元の教材フォルダを正本として開き、その中のファイルを直接読み書きする (File System Access API の `readwrite`。Chrome / Edge)。教材は 3 種の YAML の定義ファイルと、それが参照する通常のファイル (Markdown・ソースコード) からなる。ファイル名は自由で、1 つのフォルダに複数の問題と試験を置ける。
+
+```text
+教材/
+  最大値.problem.yaml   最大値.md   最大値-初期.c   最大値-解答.c   最大値-別解.c
+  最大値-ヒント.md      最大値.cases.yaml
+  過去問/探索.problem.yaml  ...
+  中間試験.exam.yaml
+```
+
+**問題定義** (`*.problem.yaml`):
+
+```yaml
+format: tc-problem/1
+id: 最大値                 # 配布物の problemId。作成時にファイル名の語幹で書き、改名で変えない
+title: 数列の最大値        # 任意。作問画面の表示用 (配らない)
+statement: 最大値.md       # 必須。問題文 (Markdown)
+starter: 最大値-初期.c     # 任意。初期コード
+hints: [最大値-ヒント.md]  # 任意。教員用 (配らない)
+solutions: [最大値-解答.c, 最大値-別解.c]  # 任意。解答例 (配らない)。1 ファイル = 1 解答
+cases: 最大値.cases.yaml   # 任意。テストケース
+```
+
+**ケース** (`*.cases.yaml`):
+
+```yaml
+format: tc-cases/1
+cases:
+  - name: 正の数
+    stdin: |
+      3
+      1 8 4
+    stdout: |
+      8
+    public: true    # 任意 (既定 false)。true のケースは配布物の examples になる
+  - name: 負の数だけ
+    stdin: "3\n-5 -2 -8\n"
+    stdout: "-2\n"
+    match: exact    # 任意。trim (既定) / exact
+```
+
+- `name` は空でない文字列で、ファイル内で一意。`stdin` / `stdout` は文字列 (空文字可)。値は空白・空行・末尾の改行の個数まで、保存と読み込みで変えない。YAML の書き方 (ブロックスカラーの `|` / `|-` / `|+`、引用符) は値を保てればどれでもよく、アプリが書くときは `yaml` ライブラリに選ばせる
+- **比較** (教員用の一括検証だけが使う。editor の受講者側は判定しない = §4.9): 実際と期待の両方の CRLF を LF にしてから、`trim` は各行の末尾の空白 (スペース・タブ) と末尾の空行を取り除いて完全一致で比べ、`exact` はそのまま完全一致で比べる。行頭の空白・途中の空行の違いはどちらでも不一致
+- **実行条件**: 対応言語は C / C++ / Python から始める。1 ケースの実行時間に上限を設けて打ち切り (値は実装 (#799) の定数が正本。目安は ADR-0051)、`stdin` を一括で与えて EOF を送る。結果は proof にも教材フォルダにも記録しない
+
+**試験定義** (`*.exam.yaml`):
+
+```yaml
+format: tc-exam/1
+examId: midterm-2026   # .tcexam の examId / .tcclass の classId
+kind: exam             # exam (.tcexam) / class (.tcclass)
+languages: [c]         # 許可言語
+problems:              # 採用する問題を出題順に並べる
+  - 最大値.problem.yaml
+  - 過去問/探索.problem.yaml
+```
+
+署名鍵・監督コードは試験定義にも教材フォルダのどこにも書かない。鍵は書き出しのときに入力し、監督コードは書き出し後の控え (`proctorMemo`) で残す。
+
+**共通の規則**:
+
+- `format` が知らない値 (新しい版) のファイルは開かず、上書き保存もしない。アプリが書き戻すときは変えたキーだけを更新し、コメントと未知のキーを残す
+- 参照パスは、それを書いた定義ファイルからの相対パスで、区切りは `/`。絶対パスと、開いたフォルダの外に出るパス (`..` で出る) は拒否する
+- 保存の前に、読み込んだときの `lastModified` と今の値を比べ、変わっていれば上書きせずに知らせる
+- 開いたフォルダのハンドルは、セッション DB とは別の IndexedDB に保存し、再訪時に権限を確かめて開き直す
+
+**配布物 (`ExamBundleProblem`, §4.9) への写像**:
+
+| 教材 | 配布物 | 備考 |
+|---|---|---|
+| 問題定義の `id` | `problemId` | 試験内で重複したら書き出さない |
+| `statement` の内容 | `statement` | |
+| `starter` の内容 | `starter` (`filename` = starter の basename、`language` = 拡張子から) | 試験内で `filename` が重複したら書き出さない (授業モードは filename で問題を引く) |
+| `public: true` のケース | `examples` (`{ name, stdin, stdout }`) | |
+| `title`・`hints`・`solutions`・非公開のケース・`match` | (配らない) | |
+
+採用問題の参照ファイルが 1 つでも見つからなければ、問題とパスを示して書き出さない (黙って除外しない)。配布物の形・正準化・ハッシュは §4.9 のままで、教材フォルダの導入で変わらない。
 
 ---
 
@@ -1035,3 +1115,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-16 | composition に対応付けて IME を分類する (#720) | editor の `OperationDetector` が CJK を含む複数文字の挿入を文字種だけで `insertFromComposition` にしていたのをやめ、Monaco の `onDidCompositionStart` / `End` と編集の範囲を対応付けた編集だけを composition 系にした (§4.1)。composition に対応しない直接挿入は `insertReplacementText` として既存の一括挿入の評価に掛かる。shared の判定式・`InputType` の値域・記録形式・`PROOF_FORMAT_VERSION` は不変 |
 | 2026-11-16 | 試験の許可言語の照合 (#727) | `verifyExamBinding` が proof の自己申告 `language` を manifest の `allowed.languages` (v2 は該当問題の starter の言語も) と完全一致で照合し、外れたら束縛失敗 (`language.status='not-allowed'`) にする。許可言語が空なら `not-evaluated`。§6.4 手順 5c と脅威表を反映 |
 | 2026-11-17 | 書き出す ZIP に授業・課題の問題文を入れる (#778) | §5.2 に `<base>_problem.md` (授業・課題で問題を読み込んだタブだけ。番号は proof と同じ。チェーン外の平文で検証器は読まない) を足し、§5.2.1 にソースの候補から問題文を外す規則を書いた。試験と練習には入れない。**proof JSON・ハッシュチェーン・`PROOF_FORMAT_VERSION` は不変** |
+| 2026-11-18 | 教材フォルダの形式 (ADR-0051, #793) | §4.10 を追加。`/author` の正本を手元の教材フォルダにし、問題 (`tc-problem/1`)・ケース (`tc-cases/1`)・試験 (`tc-exam/1`) の YAML 定義、参照パスの規則、教員用検証の比較規則 (既定 trim / `exact`)、配布物 (`ExamBundleProblem`) への写像 (`public: true` のケースだけを `examples` に。ヒント・解答例・非公開ケースは配らない) を定めた。配布物の形・正準化・ハッシュは不変 |
