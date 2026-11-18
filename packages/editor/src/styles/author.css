@@ -473,6 +473,20 @@ body::before {
 .author-dialog .modal-body p {
   line-height: 1.6;
 }
+/* 問題のコピーの結果 (#800) */
+.author-copy-result-label {
+  margin: var(--spacing-sm) 0 0;
+  font-weight: 500;
+}
+.author-copy-result-paths {
+  margin: var(--spacing-xs) 0 var(--spacing-sm);
+  padding-left: 1.4em;
+  max-height: 12em;
+  overflow-y: auto;
+  font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
 
 /* ===== パッケージ設定パネル (右サイド、トグル) ===== */
 .author-settings-panel {

@@ -12,7 +12,15 @@ import {
   writeZipVariant,
 } from './helpers/app.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
-import { TWO_PROBLEMS, appendToEditor, editorGroup, openAuthorFolder, openFromExplorer } from './helpers/author.js';
+import {
+  TWO_PROBLEMS,
+  appendToEditor,
+  createOpfsFolder,
+  editorGroup,
+  openAuthorFolder,
+  openFromExplorer,
+  setNextPickedFolder,
+} from './helpers/author.js';
 import { loadExamFixture } from './helpers/examFixture.js';
 import { failStorageProbe } from './helpers/faults.js';
 import {
@@ -198,13 +206,22 @@ const SHOTS = [
     caption: '出題 (/author): 29 と同じ学生プレビューを英語の画面で (#797)',
   },
   {
-    file: '30-author-cases-form.png',
+    file: '30-author-copy-conflict.png',
+    caption:
+      '出題 (/author): 問題を別のフォルダへコピーしようとして、コピー先に同じ名前のファイルがあったときの結果 (何も書かずに衝突したパスを並べる。#800)',
+  },
+  {
+    file: '30-author-copy-conflict-en.png',
+    caption: '出題 (/author): 30 と同じコピーの衝突の結果を英語の画面で (#800)',
+  },
+  {
+    file: '31-author-cases-form.png',
     caption:
       '出題 (/author): ケースファイルをフォームで開いた画面。左にケースの一覧 (入出力例・完全一致の印)、右に選んだケースの名前・入出力例として配る・照合・入力・期待する出力と末尾の改行の個数 (#798)',
   },
   {
-    file: '30-author-cases-form-en.png',
-    caption: '出題 (/author): 30 と同じケースファイルのフォームを英語の画面で (#798)',
+    file: '31-author-cases-form-en.png',
+    caption: '出題 (/author): 31 と同じケースファイルのフォームを英語の画面で (#798)',
   },
 ] as const;
 
@@ -323,6 +340,26 @@ async function shootAuthorExam(page: Page, formFile: ShotFile, previewFile: Shot
   await editorGroup(page).locator('[data-action="view-preview"]').click();
   await expect(editorGroup(page).locator('[data-exam-preview]')).toHaveAttribute('data-preview-state', 'ok');
   await page.screenshot({ path: out(previewFile), animations: 'disabled', mask });
+}
+
+/**
+ * /author の「別のフォルダへコピー」で、コピー先に同じ名前のファイルがあったときの結果のダイアログを撮る (#800)。
+ * コピー先は OPFS の別のフォルダで、dev フックでピッカーの結果を差し替える
+ */
+async function shootAuthorCopyConflict(page: Page, file: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-800', {
+    ...TWO_PROBLEMS,
+    'p1.problem.yaml':
+      'format: tc-problem/1\nid: p1\ntitle: 最大値\nstatement: p1.md\nstarter: p1.c\nsolutions: [p1-解答.c]\n',
+    'p1.c': 'int main(void) {\n  return 0;\n}\n',
+  });
+  await createOpfsFolder(page, 'shots-shared-800', { 'p1.md': '# 最大値 (前年度)\n', 'p1.c': '/* 前年度 */\n' });
+  await setNextPickedFolder(page, 'shots-shared-800');
+  await page.locator('#author-explorer [data-action="copy-problem"][data-problem-path="p1.problem.yaml"]').click();
+  const result = page.locator('.modal-overlay[data-dialog="copy-result"]:not(.hidden)');
+  await expect(result).toHaveAttribute('data-copy-status', 'conflict');
+  await page.mouse.move(640, 790);
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
 }
 
 /** /author のケースファイルをフォームで撮る (#798)。公開・非公開・完全一致・CRLF の値を混ぜ、2 件目を選んだ状態 */
@@ -569,9 +606,14 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await shootAuthorExam(page, '28-author-exam-form.png', '29-author-student-preview.png');
   });
 
-  // 30 (#798): /author のケースファイルのフォーム
+  // 30 (#800): /author の問題のコピーで、コピー先に同じ名前のファイルがあったときの結果
+  test('/author の問題のコピーの衝突の結果を撮る @shots', async ({ page }) => {
+    await shootAuthorCopyConflict(page, '30-author-copy-conflict.png');
+  });
+
+  // 31 (#798): /author のケースファイルのフォーム
   test('/author のケースファイルのフォームを撮る @shots', async ({ page }) => {
-    await shootAuthorCases(page, '30-author-cases-form.png');
+    await shootAuthorCases(page, '31-author-cases-form.png');
   });
 
   // 20-en / 27-en (#796)・28-en / 29-en (#797): 同じ画面を英語で (画面の言語はブラウザの言語から決まる)
@@ -590,8 +632,12 @@ test.describe('見た目・動きの証跡 @shots', () => {
       await shootAuthorExam(page, '28-author-exam-form-en.png', '29-author-student-preview-en.png');
     });
 
+    test('/author の問題のコピーの衝突の結果を英語で撮る @shots', async ({ page }) => {
+      await shootAuthorCopyConflict(page, '30-author-copy-conflict-en.png');
+    });
+
     test('/author のケースファイルのフォームを英語で撮る @shots (#798)', async ({ page }) => {
-      await shootAuthorCases(page, '30-author-cases-form-en.png');
+      await shootAuthorCases(page, '31-author-cases-form-en.png');
     });
   });
 
