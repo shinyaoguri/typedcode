@@ -753,6 +753,35 @@ export interface TranslationKeys {
       newExamTitle: string;
       newExamLabel: string;
     };
+    /** ケースファイルのフォーム (#798) */
+    cases: {
+      heading: string;
+      list: string;
+      add: string;
+      duplicate: string;
+      remove: string;
+      empty: string;
+      name: string;
+      public: string;
+      publicHint: string;
+      match: string;
+      matchTrim: string;
+      matchExact: string;
+      stdin: string;
+      stdout: string;
+      trailingNone: string;
+      trailingCount: string;
+      crlfNote: string;
+      nameEmpty: string;
+      nameDuplicate: string;
+      defaultName: string;
+      copyName: string;
+      publicMark: string;
+      exactMark: string;
+      invalidDefinition: string;
+      openText: string;
+      opFailed: string;
+    };
     /** 学生プレビュー (#797) */
     preview: {
       note: string;

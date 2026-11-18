@@ -898,3 +898,86 @@ body::before {
 .author-export-summary {
   margin: 0 0 var(--spacing-md);
 }
+
+/* ===== ケースファイルのフォーム (#798) ===== */
+.author-cases-form {
+  max-width: 1100px;
+}
+.author-cases-body {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  gap: var(--spacing-xl);
+  align-items: start;
+}
+.author-cases-side .author-exam-heading {
+  margin-top: 0;
+}
+.author-cases-ops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-sm);
+}
+.author-cases-op {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.author-cases-row {
+  padding: 0;
+}
+.author-cases-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.author-cases-item:hover {
+  background: var(--bg-tertiary);
+}
+.author-cases-row[data-selected="true"] .author-cases-item {
+  background: var(--bg-tertiary);
+  box-shadow: inset 3px 0 0 var(--feature-accent);
+}
+.author-cases-badge {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border: 1px solid var(--feature-accent);
+  border-radius: var(--radius-sm);
+  color: var(--feature-accent);
+  font-size: 11px;
+}
+.author-cases-badge-exact {
+  border-color: var(--border-input);
+  color: var(--text-secondary);
+}
+.author-cases-detail .author-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+.author-cases-detail .author-check {
+  margin-top: 0;
+}
+.author-cases-text {
+  white-space: pre;
+  overflow-x: auto;
+  font-size: 13px;
+  tab-size: 4;
+}
+.author-cases-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  margin: 0;
+}
+.author-cases-crlf {
+  color: var(--accent-danger);
+}
