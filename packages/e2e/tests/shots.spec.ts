@@ -171,6 +171,14 @@ const SHOTS = [
     file: '27-author-welcome.png',
     caption: '出題 (/author): 教材フォルダを開く前の起動画面 (フォルダを開く / 新しいフォルダを作る。#796)',
   },
+  {
+    file: '20-author-workspace-en.png',
+    caption: '出題 (/author): 20 と同じ作業画面を英語の画面で (#796)',
+  },
+  {
+    file: '27-author-welcome-en.png',
+    caption: '出題 (/author): 27 と同じ起動画面を英語の画面で (#796)',
+  },
 ] as const;
 
 type ShotFile = (typeof SHOTS)[number]['file'];
@@ -222,6 +230,42 @@ function bundleWebp(frames: string[], dest: string): void {
     console.warn(`[shots] img2webp が失敗したので WebP を飛ばす: ${result.stderr || result.error}`);
     rmSync(dest, { force: true });
   }
+}
+
+/** /author の起動画面 (覚えているフォルダが無い新しい context) を撮る (#796) */
+async function shootAuthorWelcome(page: Page, file: ShotFile): Promise<void> {
+  await page.goto('/author');
+  await expect(page.locator('#author-root')).toHaveAttribute('data-workspace-state', 'welcome', { timeout: 60_000 });
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
+}
+
+/** /author の作業画面を撮る (#796)。OPFS の教材フォルダを dev フックで開き、本文を左で編集・右でプレビューする */
+async function shootAuthorWorkspace(page: Page, file: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-796', {
+    ...TWO_PROBLEMS,
+    'p1.md': [
+      '# 最大値',
+      '',
+      '1 行目に個数 n、2 行目に n 個の整数が与えられる。最大値を出力せよ。',
+      '',
+      '## 入力例',
+      '',
+      '```',
+      '3',
+      '1 8 4',
+      '```',
+      '',
+    ].join('\n'),
+    '中間試験.exam.yaml':
+      'format: tc-exam/1\nexamId: midterm\nkind: exam\nlanguages: [c]\nproblems: [p1.problem.yaml, p2.problem.yaml]\n',
+  });
+  await openFromExplorer(page, 'p1.md', 'statement');
+  await page.locator('#author-split-btn').click();
+  await editorGroup(page, 1).locator('[data-action="view-preview"]').click();
+  await expect(editorGroup(page, 1)).toHaveAttribute('data-view', 'preview');
+  await appendToEditor(page, '\n出力の末尾に改行を付けること。');
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
 }
 
 test.describe('見た目・動きの証跡 @shots', () => {
@@ -421,47 +465,24 @@ test.describe('見た目・動きの証跡 @shots', () => {
 
   // 27 (#796): /author の起動画面 (覚えているフォルダが無い新しい context)
   test('/author の起動画面を撮る @shots', async ({ page }) => {
-    await page.goto('/author');
-    await expect(page.locator('#author-root')).toHaveAttribute('data-workspace-state', 'welcome', {
-      timeout: 60_000,
-    });
-    await page.screenshot({
-      path: out('27-author-welcome.png'),
-      animations: 'disabled',
-      mask: [page.locator('#author-sb-token')],
-    });
+    await shootAuthorWelcome(page, '27-author-welcome.png');
   });
 
   // 20 (#796): /author の作業画面。OPFS の教材フォルダを dev フックで開き、本文を左で編集・右でプレビューする
   test('/author の作業画面を撮る @shots', async ({ page }) => {
-    await openAuthorFolder(page, 'shots-material-796', {
-      ...TWO_PROBLEMS,
-      'p1.md': [
-        '# 最大値',
-        '',
-        '1 行目に個数 n、2 行目に n 個の整数が与えられる。最大値を出力せよ。',
-        '',
-        '## 入力例',
-        '',
-        '```',
-        '3',
-        '1 8 4',
-        '```',
-        '',
-      ].join('\n'),
-      '中間試験.exam.yaml':
-        'format: tc-exam/1\nexamId: midterm\nkind: exam\nlanguages: [c]\nproblems: [p1.problem.yaml, p2.problem.yaml]\n',
+    await shootAuthorWorkspace(page, '20-author-workspace.png');
+  });
+
+  // 20-en / 27-en (#796): 同じ 2 画面を英語で (画面の言語はブラウザの言語から決まる)
+  test.describe('英語', () => {
+    test.use({ locale: 'en-US' });
+
+    test('/author の起動画面を英語で撮る @shots', async ({ page }) => {
+      await shootAuthorWelcome(page, '27-author-welcome-en.png');
     });
-    await openFromExplorer(page, 'p1.md', 'statement');
-    await page.locator('#author-split-btn').click();
-    await editorGroup(page, 1).locator('[data-action="view-preview"]').click();
-    await expect(editorGroup(page, 1)).toHaveAttribute('data-view', 'preview');
-    await appendToEditor(page, '\n出力の末尾に改行を付けること。');
-    await page.locator('body').click({ position: { x: 5, y: 5 } });
-    await page.screenshot({
-      path: out('20-author-workspace.png'),
-      animations: 'disabled',
-      mask: [page.locator('#author-sb-token')],
+
+    test('/author の作業画面を英語で撮る @shots', async ({ page }) => {
+      await shootAuthorWorkspace(page, '20-author-workspace-en.png');
     });
   });
 
