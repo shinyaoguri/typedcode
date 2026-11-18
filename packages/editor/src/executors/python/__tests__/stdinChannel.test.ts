@@ -87,4 +87,32 @@ describe('stdin channel', () => {
     });
     expect(asked).toBe(1);
   });
+
+  it('hands an empty read (EOF) to the reader once the closed writer has delivered everything (#802)', () => {
+    const { writer, reader } = channel();
+    writer.push('last\n');
+    writer.close();
+    // offer できなかったときに read で待たない (同じスレッドで永久に待つ) よう、offer の成否を先に見る
+    const reads = [0, 1].map(() => (writer.offer() ? decode([reader.read()]) : null));
+    expect(reads).toEqual(['last\n', '']);
+  });
+
+  it('keeps reporting EOF to every read after the closed writer runs dry (#802)', () => {
+    const { writer, reader } = channel();
+    writer.close();
+    const reads = [0, 1].map(() => (writer.offer() ? reader.read().length : null));
+    expect(reads).toEqual([0, 0]);
+  });
+
+  it('ignores input pushed after the writer is closed (#802)', () => {
+    const { writer } = channel();
+    writer.close();
+    writer.push('late\n');
+    expect(writer.pendingBytes).toBe(0);
+  });
+
+  it('offers nothing when the queue is empty and the writer is still open', () => {
+    const { writer } = channel();
+    expect(writer.offer()).toBe(false);
+  });
 });

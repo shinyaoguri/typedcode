@@ -37,6 +37,8 @@ const sdk = vi.hoisted(() => {
     clientsClosed: 0,
     killed: 0,
     stdinStreams: [] as WritableStream<Uint8Array>[],
+    /** 利用者プログラムの stdin への書き込みと close の順 (非対話の実行 #802) */
+    stdinLog: [] as string[],
     /** 段階に着いたら止まる (holds に無ければそのまま進む) */
     arrive(stage: Stage): Promise<number | undefined> {
       if (!state.holds.has(stage)) return Promise.resolve(undefined);
@@ -68,6 +70,7 @@ const sdk = vi.hoisted(() => {
       state.clientsClosed = 0;
       state.killed = 0;
       state.stdinStreams = [];
+      state.stdinLog = [];
       arrivals.clear();
       waiters.clear();
     },
@@ -150,6 +153,12 @@ vi.mock('@wasmer/sdk', () => {
               toWritableStream: () => {
                 sdk.stdinStreams.push(stdin);
                 return stdin;
+              },
+              write: async (data: string) => {
+                sdk.stdinLog.push(`write:${data}`);
+              },
+              close: async () => {
+                sdk.stdinLog.push('close');
               },
             },
             stdout: readable(sdk.stdoutChunks),
@@ -635,5 +644,43 @@ describe('compiler diagnostics (#708)', () => {
 
     expect(out.stderr).toBe('');
     expect(result).toMatchObject({ success: false, outcome: 'aborted' });
+  });
+});
+
+describe.each([
+  ['C', () => new CExecutor()],
+  ['C++', () => new CppExecutor()],
+])('non-interactive %s run (#802)', (_language, create) => {
+  async function ready() {
+    const executor = create();
+    await executor.initialize();
+    return executor;
+  }
+
+  it('writes the whole stdin to the program and then closes it to send EOF', async () => {
+    const executor = await ready();
+
+    await executor.run('int main(void){}', collectCallbacks().callbacks, { stdin: '3\n1 8 4\n' });
+
+    await vi.waitFor(() => expect(sdk.stdinLog).toEqual(['write:3\n1 8 4\n', 'close']));
+  });
+
+  it('does not hand the stdin stream to the caller when stdin is given', async () => {
+    const executor = await ready();
+    const { out, callbacks } = collectCallbacks();
+
+    await executor.run('int main(void){}', callbacks, { stdin: '' });
+
+    expect(out.stdin).toBeNull();
+  });
+
+  it('reports the start of the user program once, after it has been spawned', async () => {
+    const executor = await ready();
+    const starts: string[] = [];
+    const { callbacks } = collectCallbacks();
+
+    await executor.run('int main(void){}', { ...callbacks, onProgramStart: () => starts.push(sdk.entered.join(',')) });
+
+    expect(starts).toEqual(['sandbox,compile,readFile,install,program']);
   });
 });
