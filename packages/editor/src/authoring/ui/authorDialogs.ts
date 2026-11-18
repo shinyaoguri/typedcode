@@ -7,6 +7,7 @@
  * - `assign-part`: `select[data-field="role"]`・`select[data-field="path"]`、`ok` / `cancel`
  * - `conflict`: `reload` / `overwrite` / `cancel`
  * - `unsaved` (未保存のまま進むか): `discard` / `cancel`
+ * - `copy-result` (問題のコピーの結果。#800): `close`。overlay に `data-copy-status`
  *
  * 利用者の文字列 (パス・名前) はすべて escape してから HTML に入れる。
  */
@@ -16,6 +17,8 @@ import { t } from '../../i18n/index.js';
 import { type ModalButton, showModal } from '../../ui/components/Modal.js';
 import type { AddableRole } from '../workspace/authorWorkspace.js';
 import type { FolderConflictReason } from '../workspace/materialFolder.js';
+import type { CopyResultView } from './copyResult.js';
+import { renderIssueList } from './issueList.js';
 import { roleLabel } from './messages.js';
 
 interface FormDialogOptions {
@@ -240,6 +243,55 @@ export async function chooseConflict(path: string, reason: FolderConflictReason)
     ],
   });
   return choice;
+}
+
+/**
+ * 問題のコピーの結果を出す (#800)。overlay に `data-copy-status`、パスの一覧は `ul[data-copy-paths="<種類>"] > li[data-path]`、
+ * コピー元の理由は `ul[data-issues]` (`issueList.ts`)。文字列はすべて textContent で入れる。
+ */
+export async function showCopyResult(view: CopyResultView): Promise<void> {
+  const closed = showModal({
+    title: escapeHtml(t('author.copyProblem.title')),
+    icon: view.status === 'copied' ? 'fa-circle-check' : 'fa-triangle-exclamation',
+    variant: view.status === 'copied' ? 'info' : 'danger',
+    content: '<div class="author-copy-result"></div>',
+    dialogName: 'copy-result',
+    className: 'author-dialog',
+    buttons: [{ text: escapeHtml(t('author.copyProblem.close')), type: 'primary', action: 'close' }],
+  });
+  // showModal は overlay を同期で body に足す
+  const overlays = document.querySelectorAll<HTMLElement>('.modal-overlay[data-dialog="copy-result"]');
+  const overlay = overlays[overlays.length - 1];
+  const body = overlay?.querySelector<HTMLElement>('.author-copy-result');
+  if (overlay && body) {
+    overlay.dataset.copyStatus = view.status;
+    const message = document.createElement('p');
+    message.textContent = view.message;
+    body.appendChild(message);
+    for (const list of view.lists) {
+      const label = document.createElement('p');
+      label.className = 'author-copy-result-label';
+      label.textContent = list.label;
+      const ul = document.createElement('ul');
+      ul.className = 'author-copy-result-paths';
+      ul.dataset.copyPaths = list.kind;
+      for (const path of list.paths) {
+        const li = document.createElement('li');
+        li.dataset.path = path;
+        li.textContent = path;
+        ul.appendChild(li);
+      }
+      body.append(label, ul);
+    }
+    if (view.issues.length > 0) body.appendChild(renderIssueList(view.issues));
+    if (view.note !== null) {
+      const note = document.createElement('p');
+      note.className = 'author-hint';
+      note.textContent = view.note;
+      body.appendChild(note);
+    }
+  }
+  await closed;
 }
 
 /** 未保存の変更を捨てて進むか。進むなら true */
