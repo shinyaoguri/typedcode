@@ -6,12 +6,21 @@
 
 // 0.19 以降の SDK は wasm 本体と worker を自分で `new URL(..., import.meta.url)` で解決する
 // (旧 `init({ module })` と `@wasmer/sdk/wasm?url` は廃止。#364)
-import { Wasmer, type Output, type Package, type Process, type ReadableBytes, type Sandbox } from '@wasmer/sdk';
+import {
+  Wasmer,
+  type Output,
+  type Package,
+  type Process,
+  type ReadableBytes,
+  type Sandbox,
+  type WritableBytes,
+} from '@wasmer/sdk';
 
 import { BaseExecutor } from '../base/BaseExecutor.js';
 import type {
   ExecutorConfig,
   ExecutionCallbacks,
+  ExecutionOptions,
   ExecutionResult,
   InitializationProgress,
   ParsedError,
@@ -191,8 +200,8 @@ export class CExecutor extends BaseExecutor {
     }
   }
 
-  async run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult> {
-    return this.runWithOptions(code, callbacks, {});
+  async run(code: string, callbacks: ExecutionCallbacks, execution: ExecutionOptions = {}): Promise<ExecutionResult> {
+    return this.runWithOptions(code, callbacks, {}, execution);
   }
 
   /**
@@ -201,14 +210,15 @@ export class CExecutor extends BaseExecutor {
   protected async runWithOptions(
     code: string,
     callbacks: ExecutionCallbacks,
-    options: CompileOptions
+    options: CompileOptions,
+    execution: ExecutionOptions = {}
   ): Promise<ExecutionResult> {
     // 復旧の初期化より前に run を登録し、その待ちの間の abort もこの run に効かせる (#711)
     const run: ActiveRun = { aborted: false, process: null, isProgram: false, callbacks };
     this.activeRun = run;
     this.resetAbort();
     try {
-      return await this.runOwned(run, code, callbacks, options);
+      return await this.runOwned(run, code, callbacks, options, execution);
     } finally {
       // 停止後に始まった新しい run の所有を、古い run の後始末が外さない
       if (this.activeRun === run) this.activeRun = null;
@@ -220,7 +230,8 @@ export class CExecutor extends BaseExecutor {
     run: ActiveRun,
     code: string,
     callbacks: ExecutionCallbacks,
-    options: CompileOptions
+    options: CompileOptions,
+    execution: ExecutionOptions
   ): Promise<ExecutionResult> {
     // Auto-reset and reinitialize if runtime was corrupted
     if (this._runtimeCorrupted) {
@@ -330,10 +341,16 @@ export class CExecutor extends BaseExecutor {
       const stdoutPromise = pumpOutput(runInstance.stdout, callbacks.onStdout);
       const stderrPromise = pumpOutput(runInstance.stderr, callbacks.onStderr);
 
-      // Notify caller that stdin is ready for connection
       if (runInstance.stdin) {
-        callbacks.onStdinReady?.(runInstance.stdin.toWritableStream());
+        if (execution.stdin !== undefined) {
+          // 非対話の実行 (#802): 全体を書いてから閉じる (EOF)。ターミナルにはつながない
+          feedAndClose(runInstance.stdin, execution.stdin);
+        } else {
+          // Notify caller that stdin is ready for connection
+          callbacks.onStdinReady?.(runInstance.stdin.toWritableStream());
+        }
       }
+      callbacks.onProgramStart?.();
 
       // Wait for the program to finish
       let runResult: Output;
@@ -541,6 +558,25 @@ export class CExecutor extends BaseExecutor {
     this.clangPkg = null;
     this.clangBinary = null; // Release cached binary on dispose
   }
+}
+
+/**
+ * 非対話の実行の stdin を書いて閉じる (#802)。待たない: 読まずに終わるプログラムでも run を止めない。
+ * 書けなかった (プログラムが先に終わった) ときの失敗は捨てる
+ */
+function feedAndClose(stdin: WritableBytes, text: string): void {
+  void (async () => {
+    try {
+      if (text) await stdin.write(text);
+    } catch {
+      // 読まずに終わったプログラム
+    }
+    try {
+      await stdin.close();
+    } catch {
+      // 既に閉じている
+    }
+  })();
 }
 
 /**
