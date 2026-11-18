@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBundleProblemsFromPaths, buildExamBundleProblems } from '../examBundle.js';
+import { buildExamBundleProblems } from '../examBundle.js';
 import { memoryReader } from './memoryReader.js';
 
 /** 3 問を持つ教材 (最大値・合計・過去問/探索)。 */
@@ -200,58 +200,6 @@ describe('buildExamBundleProblems', () => {
       kind: 'exam',
       languages: ['c', 'python'],
       problems: ['過去問/探索.problem.yaml', '最大値.problem.yaml'],
-    });
-  });
-});
-
-describe('buildBundleProblemsFromPaths', () => {
-  it('converts the given problem definitions in the given order', async () => {
-    const result = await buildBundleProblemsFromPaths(
-      ['合計.problem.yaml', '過去問/探索.problem.yaml'],
-      memoryReader(material())
-    );
-    expect(result).toEqual({
-      ok: true,
-      problems: [
-        { problemId: '合計', statement: '# 合計\n' },
-        {
-          problemId: '探索',
-          statement: '# 探索\n',
-          starter: { filename: '探索.py', language: 'python', content: 'print()\n' },
-        },
-      ],
-    });
-  });
-
-  it('reports missing files of every given problem and returns no problems', async () => {
-    const files = material();
-    delete files['合計.md'];
-    delete files['過去問/探索-解答.py'];
-    const result = await buildBundleProblemsFromPaths(
-      ['合計.problem.yaml', '過去問/探索.problem.yaml'],
-      memoryReader(files)
-    );
-    expect(result).toEqual({
-      ok: false,
-      issues: [
-        { kind: 'missing-file', problem: '合計.problem.yaml', path: '合計.md' },
-        { kind: 'missing-file', problem: '過去問/探索.problem.yaml', path: '過去問/探索-解答.py' },
-      ],
-    });
-  });
-
-  it('rejects two given problems that share an id', async () => {
-    const files = material();
-    files['合計.problem.yaml'] = 'format: tc-problem/1\nid: 探索\nstatement: 合計.md\n';
-    const result = await buildBundleProblemsFromPaths(
-      ['合計.problem.yaml', '過去問/探索.problem.yaml'],
-      memoryReader(files)
-    );
-    expect(result).toEqual({
-      ok: false,
-      issues: [
-        { kind: 'duplicate-problem-id', id: '探索', problems: ['合計.problem.yaml', '過去問/探索.problem.yaml'] },
-      ],
     });
   });
 });

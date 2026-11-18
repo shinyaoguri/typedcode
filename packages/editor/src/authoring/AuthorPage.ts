@@ -4,35 +4,32 @@
  * 手元の教材フォルダ (File System Access API) を開き、エクスプローラーとタブ・分割エディタで問題の本文・初期コード・
  * ヒント・解答例・ケースのファイルを編集して保存する。フォルダ無しのメモリ上の作問はしない (ADR-0051 D6)。
  *
- * このファイルは殻: 部品 (`ui/`) と状態 (`workspace/authorWorkspace.ts`) を組み立て、パッケージ設定パネル・
- * 配布物の書き出し・実行をつなぐ。
+ * このファイルは殻: 部品 (`ui/`) と状態 (`workspace/authorWorkspace.ts`) を組み立て、書き出しのパネル・
+ * 実行をつなぐ。
  *
  * - 起動: 前回のフォルダの権限が `granted` ならそのまま開く。`prompt` なら「前回のフォルダを開く」を出し、
  *   クリックのハンドラの中で権限を求める
  * - 保存: Ctrl/Cmd+S とボタンで今の文書、「すべて保存」。競合は「読み直す / 上書きする / やめる」を選ばせ、失敗は
  *   理由を出して未保存のまま残す。未保存のまま離れる・言語を切り替える・別のフォルダを開くときは確かめる
- * - 書き出し: 開いたフォルダの問題定義すべて (パス順) を配布物の問題列にして、今の生成器 (`createExamBundlePackage` /
- *   `buildClassPackage`) に渡す。欠損・重複・読めない定義、未保存の文書があれば書き出さない
+ * - 書き出し (#797): 書き出しのパネルで試験定義を選び (開いている試験定義が既定)、その採用問題 (出題順。保存済みの内容
+ *   だけ) を配布物の問題列にして、種類 (`kind`) に応じて `.tcexam` / `.tcclass` を 1 ファイル書き出す (`distribution.ts`)。
+ *   examId・種類・許可言語は試験定義から取る。欠損・重複・読めない定義、未保存の文書があれば書き出さない
+ * - 書き出しの状態契約: 対象の `select#author-export-target`、ボタン `#author-build-btn` の `data-kind` (`exam` / `class`。
+ *   対象が読めないか無ければ属性なし)、誤りの `#author-build-error` の `data-reason` (`no-target` / `unknown-exam` /
+ *   `dirty` / `invalid` / `empty` / `no-languages` / `no-key` / `failed`) と、欠損の一覧 `[data-issues]` (`ui/issueList.ts`)
  * - 状態契約: `#author-root` に `data-workspace-state` (`welcome` / `opening` / `open`)・`data-folder-name`・
  *   `data-dirty-count`。部品の契約は各部品の冒頭を参照 (packages/editor/AGENTS.md「状態契約」)
  *
- * 署名鍵 (JWK)・監督コードは設定パネルの入力欄にだけ置き、教材フォルダにも IndexedDB にも localStorage にも書かない
+ * 署名鍵 (JWK)・監督コードは書き出しのパネルの入力欄にだけ置き、教材フォルダにも IndexedDB にも localStorage にも書かない
  * (ADR-0051 D7)。Monaco は proof / tracking に依らず単体で使う (authoring は proof を記録しない)。
  */
 
 import * as monaco from 'monaco-editor';
 import { escapeHtml } from '@typedcode/shared';
 import { t, getI18n } from '../i18n/index.js';
-import {
-  createExamBundlePackage,
-  formatProctorTokenForDisplay,
-  generateProctorToken,
-  importAuthoritySigner,
-  type CreatedExamPackage,
-} from './examPackageAuthoring.js';
-import type { ExamBundleProblem } from '@typedcode/shared';
-import { buildClassPackage } from './classPackageAuthoring.js';
+import { formatProctorTokenForDisplay, generateProctorToken, type CreatedExamPackage } from './examPackageAuthoring.js';
 import { generateAuthorityKey } from './authorityKey.js';
+import { createDistribution, type ExamSecrets } from './distribution.js';
 import { buildProctorMemo } from './proctorMemo.js';
 import { ADDABLE_ROLES, type AddableRole, AuthorWorkspace } from './workspace/authorWorkspace.js';
 import {
@@ -52,20 +49,27 @@ import { EditorArea } from './ui/EditorArea.js';
 import type { GroupIndex } from './ui/editorLayout.js';
 import { ExplorerView } from './ui/ExplorerView.js';
 import { runLanguageFor } from './ui/fileKinds.js';
-import { causeMessage, describeOpError, describeWorkspaceIssue } from './ui/messages.js';
+import { renderIssueList } from './ui/issueList.js';
+import { causeMessage, describeOpError } from './ui/messages.js';
+import type { WorkspaceIssue } from './workspace/examBundle.js';
 import { defaultPartName } from './ui/partNames.js';
 import { WelcomeView } from './ui/WelcomeView.js';
 // 実行系は重い (Wasmer/xterm) ので**初回実行時に動的 import** する (型のみ静的)。
 import type { CodeExecutionController } from '../execution/CodeExecutionController.js';
 import type { CTerminal } from '../terminal/CTerminal.js';
 
-/**
- * オープンな締切 (ADR-0013: スケジュールは Moodle 管理)。manifest 仕様上 deadline は必須。
- * `packages/workers/scripts/make-exam-package.mjs` の `OPEN_DEADLINE` (既定 deadline) と同値に保つこと。
- */
-const OPEN_DEADLINE = '2999-12-31T23:59:59.999Z';
-
 export type WorkspaceState = 'welcome' | 'opening' | 'open';
+
+/** 書き出しを止めた理由 (`#author-build-error` の `data-reason`) */
+type BuildErrorReason =
+  | 'no-target'
+  | 'unknown-exam'
+  | 'dirty'
+  | 'invalid'
+  | 'empty'
+  | 'no-languages'
+  | 'no-key'
+  | 'failed';
 
 /** Blob をファイル名つきでダウンロードさせる。 */
 function downloadBlob(filename: string, content: string, mime: string): void {
@@ -94,6 +98,12 @@ export class AuthorPage {
   private skipUnloadConfirm = false;
   /** フォルダを開く操作の通し番号 (後から始めた操作が勝つ。起動時の再開と競合させない) */
   private openSeq = 0;
+  /** 書き出しの対象に選んだ試験定義 (開いた試験定義に追従する) */
+  private exportTarget: string | null = null;
+  /** 直前のアクティブな文書 (試験定義を開いたら書き出しの対象にする) */
+  private lastActivePath: string | null = null;
+  /** 書き出しの最中 (ボタンを押せなくしておく) */
+  private building = false;
   private exec: CodeExecutionController | null = null;
   private terminal: CTerminal | null = null;
 
@@ -115,6 +125,7 @@ export class AuthorPage {
     this.explorer = new ExplorerView({
       onOpenFile: (path) => void this.openFile(path),
       onNewProblem: () => void this.handleNewProblem(),
+      onNewExam: () => void this.handleNewExam(),
       onRefresh: () => void this.workspace?.refresh(),
       onOpenOther: () => void this.handleOpenFolder(),
       onAddPart: (path) => void this.handleAddPart(path),
@@ -350,7 +361,7 @@ export class AuthorPage {
     const workspace = this.workspace;
     if (!workspace) return;
     this.explorer.render(workspace.index, workspace.folderName, this.area?.activePath ?? null);
-    this.updateStatusbar();
+    this.renderExportPanel();
   }
 
   /** 部品の状態が変わったとき (アクティブな文書・未保存の印) */
@@ -359,6 +370,14 @@ export class AuthorPage {
     const dirty = this.workspace?.dirtyCount() ?? 0;
     this.root.dataset.dirtyCount = String(dirty);
     const active = this.area.activePath;
+    if (active !== this.lastActivePath) {
+      this.lastActivePath = active;
+      // 開いている試験定義が書き出しの既定の対象
+      if (active && this.workspace?.exam(active)) {
+        this.exportTarget = active;
+        this.renderExportPanel();
+      }
+    }
     for (const item of this.explorer.element.querySelectorAll<HTMLElement>('.author-explorer-item')) {
       const isActive = item.dataset.explorerPath === active;
       item.classList.toggle('active', isActive);
@@ -469,6 +488,24 @@ export class AuthorPage {
     await this.openFile(statement);
   }
 
+  private async handleNewExam(): Promise<void> {
+    const workspace = this.workspace;
+    if (!workspace) return;
+    const name = await promptName({
+      dialogName: 'new-exam',
+      title: t('author.exam.newExamTitle'),
+      label: t('author.exam.newExamLabel'),
+    });
+    if (name === null) return;
+    const result = await workspace.createExam(name);
+    if (!result.ok) {
+      this.showNotice(describeOpError(result.error), 'error', 'op-failed');
+      return;
+    }
+    this.exportTarget = result.path;
+    await this.openFile(result.path);
+  }
+
   /** 問題に足せる役割 (初期コードとケースは 1 つまで) */
   private addableRoles(problemPath: string): AddableRole[] {
     const problem = this.workspace?.problem(problemPath);
@@ -528,12 +565,19 @@ export class AuthorPage {
   // ==========================================================================
 
   private wire(): void {
-    // パッケージ設定パネルのトグル。
+    // 書き出しのパネルのトグル。
     this.el('author-settings-toggle').addEventListener('click', () => {
       const p = this.el('author-settings-panel');
       p.hidden = !p.hidden;
       this.el('author-settings-toggle').setAttribute('aria-expanded', String(!p.hidden));
+      if (!p.hidden) this.renderExportPanel();
     });
+    this.el('author-export-target').addEventListener('change', () => {
+      this.exportTarget = (this.el('author-export-target') as HTMLSelectElement).value || null;
+      this.el('author-build-error').hidden = true;
+      this.renderExportPanel();
+    });
+    this.el('author-export-create').addEventListener('click', () => void this.handleNewExam());
     this.el('author-settings-close').addEventListener('click', () => {
       this.el('author-settings-panel').hidden = true;
       this.el('author-settings-toggle').setAttribute('aria-expanded', 'false');
@@ -557,10 +601,8 @@ export class AuthorPage {
       this.updateStatusbar();
     });
     this.el('author-build-btn').addEventListener('click', () => void this.handleBuild());
-    this.el('author-build-class-btn').addEventListener('click', () => void this.handleBuildClass());
 
-    // examId / token 変更で statusbar を更新。
-    this.input('author-exam-id').addEventListener('input', () => this.updateStatusbar());
+    // 監督コードの変更で statusbar を更新。
     this.input('author-token').addEventListener('input', () => this.updateStatusbar());
 
     // 保存・分割・実行・ターミナル。
@@ -682,7 +724,9 @@ export class AuthorPage {
   }
 
   private updateStatusbar(): void {
-    const examId = this.input('author-exam-id').value.trim();
+    const target = this.currentExportTarget();
+    const entry = target ? this.workspace?.exam(target) : undefined;
+    const examId = entry?.status === 'ok' ? entry.definition.examId : '';
     this.el('author-sb-exam').textContent = examId || t('author.statusbar.noExamId');
     this.el('author-sb-count').textContent = String(this.workspace?.index.problems.length ?? 0);
     this.el('author-sb-folder').textContent = this.workspace?.folderName ?? '';
@@ -722,105 +766,137 @@ export class AuthorPage {
     }
   }
 
-  /**
-   * 開いたフォルダの問題定義すべてを配布物の問題列にする。書き出せないときは理由を出して null。
-   */
-  private async collectProblems(): Promise<ExamBundleProblem[] | null> {
-    const workspace = this.workspace;
-    if (!workspace) {
-      this.showBuildError(t('author.build.errorNoFolder'));
-      return null;
-    }
-    const result = await workspace.buildBundle();
-    switch (result.status) {
-      case 'ok':
-        return result.problems;
-      case 'dirty':
-        this.showBuildError(t('author.build.errorDirty', { paths: result.paths.join(', ') }));
-        return null;
-      case 'empty':
-        this.showBuildError(t('author.classExport.errorNoProblems'));
-        return null;
-      case 'invalid':
-        this.showBuildError(t('author.issues.heading'), result.issues.map(describeWorkspaceIssue));
-        return null;
-    }
+  /** 書き出しの対象 (選んだもの、無ければ最初の試験定義)。試験定義が無ければ null */
+  private currentExportTarget(): string | null {
+    const exams = this.workspace?.index.exams ?? [];
+    if (this.exportTarget && exams.includes(this.exportTarget)) return this.exportTarget;
+    return exams[0] ?? null;
   }
 
+  /** 書き出しのパネルを索引と対象に合わせる (examId・種類・許可言語は試験定義の保存済みの値を読み取り専用で出す) */
+  private renderExportPanel(): void {
+    const exams = this.workspace?.index.exams ?? [];
+    const target = this.currentExportTarget();
+    const select = this.el('author-export-target') as HTMLSelectElement;
+    const options = [...select.options].map((o) => o.value);
+    if (options.length !== exams.length || options.some((value, i) => value !== exams[i])) {
+      select.replaceChildren(
+        ...exams.map((path) => {
+          const option = document.createElement('option');
+          option.value = path;
+          option.textContent = path;
+          return option;
+        })
+      );
+    }
+    select.value = target ?? '';
+    this.el('author-export-target-field').hidden = target === null;
+    this.el('author-export-empty').hidden = target !== null;
+
+    const entry = target ? this.workspace?.exam(target) : undefined;
+    const summary = this.el('author-export-summary');
+    const button = this.el('author-build-btn') as HTMLButtonElement;
+    const ok = entry?.status === 'ok' ? entry.definition : null;
+    summary.hidden = ok === null;
+    this.el('author-export-invalid').hidden = !(entry && entry.status !== 'ok');
+    if (ok) {
+      const values: Record<string, string> = {
+        'exam-id': ok.examId,
+        kind: ok.kind === 'exam' ? t('author.export.kindExam') : t('author.export.kindClass'),
+        languages: ok.languages.join(', '),
+        problems: String(ok.problems.length),
+      };
+      for (const [field, value] of Object.entries(values)) {
+        summary.querySelector<HTMLElement>(`[data-summary="${field}"]`)!.textContent = value;
+      }
+      button.dataset.kind = ok.kind;
+    } else {
+      delete button.dataset.kind;
+    }
+    const kind = ok?.kind ?? null;
+    this.el('author-export-secrets').hidden = kind !== 'exam';
+    this.el('author-export-class-hint').hidden = kind !== 'class';
+    if (!this.building) {
+      button.disabled = ok === null;
+      button.innerHTML = this.buildButtonLabel(kind);
+    }
+    this.updateStatusbar();
+  }
+
+  private buildButtonLabel(kind: 'exam' | 'class' | null): string {
+    const label = kind === 'class' ? t('author.export.buttonClass') : t('author.export.buttonExam');
+    const icon = kind === 'class' ? 'fa-book-open' : 'fa-box-archive';
+    return `<i class="fas ${icon}" aria-hidden="true"></i> ${escapeHtml(label)}`;
+  }
+
+  /** 書き出す: 対象の試験定義の採用問題 (保存済みの内容) を、種類に応じた配布物にしてダウンロードさせる */
   private async handleBuild(): Promise<void> {
     this.el('author-build-error').hidden = true;
-
-    const keyId = this.input('author-keyid').value.trim();
-    const jwkRaw = this.textarea('author-jwk').value.trim();
-    if (!keyId || !jwkRaw) {
-      this.showBuildError(t('author.build.errorNoKey'));
+    const workspace = this.workspace;
+    const target = this.currentExportTarget();
+    if (!workspace || !target) {
+      this.showBuildError('no-target', t('author.export.errorNoTarget'));
       return;
     }
-    const languages = this.languages();
-    const examId = this.input('author-exam-id').value.trim();
-
-    const buildBtn = this.el('author-build-btn') as HTMLButtonElement;
-    const originalLabel = buildBtn.innerHTML;
-    buildBtn.disabled = true;
-    buildBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(t('author.build.working'))}`;
+    const button = this.el('author-build-btn') as HTMLButtonElement;
+    this.building = true;
+    button.disabled = true;
+    button.innerHTML = `<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> ${escapeHtml(t('author.export.working'))}`;
     try {
-      const problems = await this.collectProblems();
-      if (!problems) return;
-      const signer = await importAuthoritySigner(jwkRaw, keyId, {
-        embedPublicKey: this.input('author-embed-pubkey').checked,
-      });
-      const result = await createExamBundlePackage(
-        {
-          examId,
-          problems,
-          languages,
-          releaseTime: new Date().toISOString(),
-          deadline: OPEN_DEADLINE,
+      const result = await workspace.buildExamBundle(target);
+      switch (result.status) {
+        case 'dirty':
+          this.showBuildError('dirty', t('author.export.errorDirty', { paths: result.paths.join(', ') }));
+          return;
+        case 'unknown-exam':
+          this.showBuildError('unknown-exam', t('author.export.errorUnknownExam', { path: result.path }));
+          return;
+        case 'invalid':
+          this.showBuildError('invalid', t('author.issues.heading'), result.issues);
+          return;
+        case 'empty':
+          this.showBuildError('empty', t('author.export.errorEmpty'));
+          return;
+        case 'no-languages':
+          this.showBuildError('no-languages', t('author.export.errorNoLanguages'));
+          return;
+        case 'ok':
+          break;
+      }
+      let secrets: ExamSecrets | undefined;
+      if (result.exam.kind === 'exam') {
+        const keyId = this.input('author-keyid').value.trim();
+        const jwk = this.textarea('author-jwk').value.trim();
+        if (!keyId || !jwk) {
+          this.showBuildError('no-key', t('author.export.errorNoKey'));
+          return;
+        }
+        secrets = {
+          keyId,
+          jwk,
+          embedPublicKey: this.input('author-embed-pubkey').checked,
           proctorToken: this.input('author-token').value,
-        },
-        signer
-      );
-      const filename = `${examId || 'exam'}.tcexam`;
-      downloadBlob(filename, JSON.stringify(result.manifest, null, 2) + '\n', 'application/json');
-      this.showResult(result, filename);
+        };
+      }
+      const distribution = await createDistribution(result.exam, result.problems, { secrets, now: new Date() });
+      downloadBlob(distribution.filename, distribution.content, 'application/json');
+      if (distribution.kind === 'exam') this.showResult(distribution.created, distribution.filename);
     } catch (err) {
-      this.showBuildError(err instanceof Error ? err.message : t('author.build.errorGeneric'));
+      this.showBuildError('failed', err instanceof Error ? err.message : t('author.export.errorGeneric'));
     } finally {
-      buildBtn.disabled = false;
-      buildBtn.innerHTML = originalLabel;
+      this.building = false;
+      this.renderExportPanel();
     }
   }
 
-  /**
-   * 授業モード用の**未封印**配布物 (`.tcclass`) を生成する (ADR-0014)。
-   * 鍵も監督コードも使わず、examId を classId として平文バンドルを出力する。
-   */
-  private async handleBuildClass(): Promise<void> {
-    this.el('author-build-error').hidden = true;
-    const classId = this.input('author-exam-id').value.trim();
-    const problems = await this.collectProblems();
-    if (!problems) return;
-    try {
-      const content = buildClassPackage({ classId, problems, languages: this.languages() });
-      downloadBlob(`${classId || 'class'}.tcclass`, content + '\n', 'application/json');
-    } catch (err) {
-      this.showBuildError(err instanceof Error ? err.message : t('author.classExport.errorNoProblems'));
-    }
-  }
-
-  private languages(): string[] {
-    return this.input('author-languages')
-      .value.split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-
-  /** 書き出しの誤りを設定パネルに出す (パネルが閉じていれば開く)。`items` は箇条書きにする */
-  private showBuildError(msg: string, items: readonly string[] = []): void {
+  /** 書き出しの誤りを書き出しのパネルに出す (パネルが閉じていれば開く)。欠損は一覧 (`[data-issues]`) にする */
+  private showBuildError(reason: BuildErrorReason, msg: string, issues: readonly WorkspaceIssue[] = []): void {
     const errorEl = this.el('author-build-error');
-    errorEl.innerHTML =
-      escapeHtml(msg) +
-      (items.length > 0 ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : '');
+    const text = document.createElement('p');
+    text.textContent = msg;
+    errorEl.replaceChildren(text);
+    if (issues.length > 0) errorEl.appendChild(renderIssueList(issues));
+    errorEl.dataset.reason = reason;
     errorEl.hidden = false;
     this.el('author-settings-panel').hidden = false;
     this.el('author-settings-toggle').setAttribute('aria-expanded', 'true');
@@ -880,7 +956,7 @@ export class AuthorPage {
         <div class="main-layout">
           <nav class="activitybar">
             <div class="activitybar-top">
-              <button class="activitybar-item" id="author-settings-toggle" aria-controls="author-settings-panel" aria-expanded="false" title="${escapeHtml(t('author.settings.heading'))}" aria-label="${escapeHtml(t('author.settings.heading'))}"><i class="fas fa-sliders"></i></button>
+              <button class="activitybar-item" id="author-settings-toggle" aria-controls="author-settings-panel" aria-expanded="false" title="${escapeHtml(t('author.export.heading'))}" aria-label="${escapeHtml(t('author.export.heading'))}"><i class="fas fa-box-archive"></i></button>
             </div>
             <div class="activitybar-bottom">
               <a class="activitybar-item" href="/verify/" target="_blank" rel="noopener noreferrer" title="${escapeHtml(t('settings.verifyProof'))}" aria-label="${escapeHtml(t('settings.verifyProof'))}"><i class="fas fa-circle-check"></i></a>
@@ -911,62 +987,71 @@ export class AuthorPage {
             </div>
           </div>
 
-          <aside class="author-settings-panel" id="author-settings-panel" hidden>
+          <aside class="author-settings-panel" id="author-settings-panel" aria-labelledby="author-export-heading" hidden>
             <div class="author-settings-head">
-              <span>${escapeHtml(t('author.settings.heading'))}</span>
+              <span id="author-export-heading">${escapeHtml(t('author.export.heading'))}</span>
               <button class="author-icon-btn" id="author-settings-close" title="${escapeHtml(t('common.close'))}" aria-label="${escapeHtml(t('common.close'))}"><i class="fas fa-times"></i></button>
             </div>
             <div class="author-settings-body">
-              <div class="author-field">
-                <label for="author-exam-id">${escapeHtml(t('author.problem.examId'))}</label>
-                <input type="text" id="author-exam-id" class="author-input" placeholder="2026-spring-cs101-final" autocomplete="off" spellcheck="false">
+              <div id="author-export-empty" hidden>
+                <p class="author-hint">${escapeHtml(t('author.export.noExam'))}</p>
+                <button type="button" class="author-btn" id="author-export-create" data-action="new-exam"><i class="fas fa-file-circle-plus" aria-hidden="true"></i> ${escapeHtml(t('author.export.createExam'))}</button>
               </div>
-              <div class="author-field">
-                <label for="author-languages">${escapeHtml(t('author.problem.languages'))}</label>
-                <input type="text" id="author-languages" class="author-input" value="c" placeholder="c, python" autocomplete="off" spellcheck="false">
+              <div class="author-field" id="author-export-target-field">
+                <label for="author-export-target">${escapeHtml(t('author.export.target'))}</label>
+                <select id="author-export-target" class="author-input"></select>
               </div>
-              <div class="author-field">
-                <label for="author-token">${escapeHtml(t('author.token.label'))}</label>
-                <div class="author-btn-row">
-                  <input type="text" id="author-token" class="author-input author-mono" autocomplete="off" autocapitalize="characters" spellcheck="false">
-                  <button class="author-btn" id="author-regen-token-btn"><i class="fas fa-rotate"></i> ${escapeHtml(t('author.token.regenerate'))}</button>
-                </div>
-                <p class="author-hint">${escapeHtml(t('author.token.hint'))}</p>
-              </div>
+              <p class="author-error" id="author-export-invalid" hidden>${escapeHtml(t('author.export.invalidTarget'))}</p>
+              <dl class="author-meta author-export-summary" id="author-export-summary" hidden>
+                <dt>${escapeHtml(t('author.export.examId'))}</dt><dd data-summary="exam-id"></dd>
+                <dt>${escapeHtml(t('author.export.kind'))}</dt><dd data-summary="kind"></dd>
+                <dt>${escapeHtml(t('author.export.languages'))}</dt><dd data-summary="languages"></dd>
+                <dt>${escapeHtml(t('author.export.problems'))}</dt><dd data-summary="problems"></dd>
+              </dl>
+              <p class="author-hint" id="author-export-class-hint" hidden>${escapeHtml(t('author.export.classHint'))}</p>
 
-              <div class="author-settings-divider"></div>
-              <div class="author-field"><label>${escapeHtml(t('author.key.heading'))}</label></div>
-              <div class="author-tabs">
-                <button class="author-tab-btn active" id="author-key-tab-existing">${escapeHtml(t('author.key.tabExisting'))}</button>
-                <button class="author-tab-btn" id="author-key-tab-generate">${escapeHtml(t('author.key.tabGenerate'))}</button>
-              </div>
-              <div id="author-key-pane-existing">
+              <div id="author-export-secrets" hidden>
+                <div class="author-settings-divider"></div>
                 <div class="author-field">
-                  <label for="author-keyid">${escapeHtml(t('author.key.keyIdLabel'))}</label>
-                  <input type="text" id="author-keyid" class="author-input" placeholder="exam-202606-ab12cd" autocomplete="off" spellcheck="false">
+                  <label for="author-token">${escapeHtml(t('author.token.label'))}</label>
+                  <div class="author-btn-row">
+                    <input type="text" id="author-token" class="author-input author-mono" autocomplete="off" autocapitalize="characters" spellcheck="false">
+                    <button class="author-btn" id="author-regen-token-btn"><i class="fas fa-rotate"></i> ${escapeHtml(t('author.token.regenerate'))}</button>
+                  </div>
+                  <p class="author-hint">${escapeHtml(t('author.token.hint'))}</p>
                 </div>
-                <div class="author-field">
-                  <label for="author-jwk">${escapeHtml(t('author.key.jwkLabel'))}</label>
-                  <textarea id="author-jwk" class="author-textarea author-mono" rows="3" placeholder='{"kty":"EC","crv":"P-256","d":"...","x":"...","y":"..."}' spellcheck="false"></textarea>
-                  <p class="author-hint">${escapeHtml(t('author.key.jwkHint'))}</p>
+
+                <div class="author-settings-divider"></div>
+                <div class="author-field"><label>${escapeHtml(t('author.key.heading'))}</label></div>
+                <div class="author-tabs">
+                  <button class="author-tab-btn active" id="author-key-tab-existing">${escapeHtml(t('author.key.tabExisting'))}</button>
+                  <button class="author-tab-btn" id="author-key-tab-generate">${escapeHtml(t('author.key.tabGenerate'))}</button>
                 </div>
+                <div id="author-key-pane-existing">
+                  <div class="author-field">
+                    <label for="author-keyid">${escapeHtml(t('author.key.keyIdLabel'))}</label>
+                    <input type="text" id="author-keyid" class="author-input" placeholder="exam-202606-ab12cd" autocomplete="off" spellcheck="false">
+                  </div>
+                  <div class="author-field">
+                    <label for="author-jwk">${escapeHtml(t('author.key.jwkLabel'))}</label>
+                    <textarea id="author-jwk" class="author-textarea author-mono" rows="3" placeholder='{"kty":"EC","crv":"P-256","d":"...","x":"...","y":"..."}' spellcheck="false"></textarea>
+                    <p class="author-hint">${escapeHtml(t('author.key.jwkHint'))}</p>
+                  </div>
+                </div>
+                <div id="author-key-pane-generate" hidden>
+                  <p class="author-hint">${escapeHtml(t('author.key.generateIntro'))}</p>
+                  <button class="author-btn author-btn-primary" id="author-generate-key-btn"><i class="fas fa-key"></i> ${escapeHtml(t('author.key.generateButton'))}</button>
+                  <div id="author-genkey-output" hidden></div>
+                </div>
+                <label class="author-check">
+                  <input type="checkbox" id="author-embed-pubkey">
+                  <span>${escapeHtml(t('author.token.embedPubkey'))}</span>
+                </label>
               </div>
-              <div id="author-key-pane-generate" hidden>
-                <p class="author-hint">${escapeHtml(t('author.key.generateIntro'))}</p>
-                <button class="author-btn author-btn-primary" id="author-generate-key-btn"><i class="fas fa-key"></i> ${escapeHtml(t('author.key.generateButton'))}</button>
-                <div id="author-genkey-output" hidden></div>
-              </div>
-              <label class="author-check">
-                <input type="checkbox" id="author-embed-pubkey">
-                <span>${escapeHtml(t('author.token.embedPubkey'))}</span>
-              </label>
             </div>
             <div class="author-settings-foot">
               <div class="author-error" id="author-build-error" role="alert" hidden></div>
-              <button class="author-btn author-btn-primary author-btn-block" id="author-build-btn"><i class="fas fa-box-archive"></i> ${escapeHtml(t('author.build.button'))}</button>
-              <div class="author-settings-divider"></div>
-              <button class="author-btn author-btn-block" id="author-build-class-btn"><i class="fas fa-book-open"></i> ${escapeHtml(t('author.classExport.button'))}</button>
-              <p class="author-hint">${escapeHtml(t('author.classExport.hint'))}</p>
+              <button class="author-btn author-btn-primary author-btn-block" id="author-build-btn" disabled>${this.buildButtonLabel(null)}</button>
             </div>
           </aside>
         </div>

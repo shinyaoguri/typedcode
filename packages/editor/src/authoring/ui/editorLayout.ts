@@ -3,12 +3,14 @@
  *
  * - エディタ群は最大 2 つ (左右)。群ごとにタブ (開いている文書のパス) とアクティブなタブを持つ
  * - 同じ文書を両方の群で開ける (Monaco のモデルは文書ごとに 1 つで、群は表示だけを持つ)
- * - Markdown は群ごとに編集 / プレビューを切り替える (群とパスの組で覚える)
+ * - 文書の表示 (Markdown の編集 / プレビュー、試験定義のフォーム / テキスト / 学生プレビューなど) は群ごとに切り替える
+ *   (群とパスの組で覚える)。表示の名前と種類ごとの既定は `documentViews.ts` が持ち、ここは名前を覚えるだけ
  * - 群のタブが空になったら群を畳む (2 つ目なら消す。1 つ目が空になったら 2 つ目を 1 つ目に繰り上げる)
  */
 
 export type GroupIndex = 0 | 1;
-export type DocumentView = 'edit' | 'preview';
+/** 表示の名前 (`documentViews.ts` の `ViewName`)。覚えるだけなので文字列で持つ */
+export type DocumentView = string;
 
 export const MAX_GROUPS = 2;
 
@@ -122,15 +124,15 @@ export class EditorLayout {
     return [...new Set(this.groups.flatMap((group) => group.tabs))];
   }
 
-  view(path: string, index: GroupIndex): DocumentView {
-    return this.groups[index]?.views.get(path) ?? 'edit';
+  /** 群で選んだ表示。選んでいなければ `fallback` (種類ごとの既定) */
+  view(path: string, index: GroupIndex, fallback: DocumentView = 'edit'): DocumentView {
+    return this.groups[index]?.views.get(path) ?? fallback;
   }
 
   setView(path: string, index: GroupIndex, view: DocumentView): void {
     const group = this.groups[index];
     if (!group?.tabs.includes(path)) return;
-    if (view === 'edit') group.views.delete(path);
-    else group.views.set(path, view);
+    group.views.set(path, view);
   }
 
   /** すべて閉じる (別のフォルダを開くとき) */
