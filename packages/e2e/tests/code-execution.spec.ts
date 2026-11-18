@@ -7,7 +7,14 @@ import {
   readZipEntryText,
 } from './helpers/app.js';
 import { runVerifyCli } from './helpers/verifyCli.js';
-import { editorGroup, openAuthorFolder, openFromExplorer } from './helpers/author.js';
+import {
+  editorGroup,
+  openAuthorFolder,
+  openFromExplorer,
+  setFakeVerification,
+  startVerifyFromExplorer,
+  verifyPanel,
+} from './helpers/author.js';
 
 /**
  * JS / TS のコード実行の隔離と停止の回帰テスト (#290 / ADR-0041)。
@@ -491,6 +498,64 @@ test('/author で初期コードを TS として実行できる', async ({ page 
   const run = await startRun(page, '#author-run-btn', terminal);
   expect(await waitOutcome(page, run, terminal)).toBe('success');
   await expect.poll(() => terminalText(page, terminal)).toContain('ts:42');
+});
+
+test('/author で終わらない実行を「停止」で止めると aborted で終わり、その後に検証を始められる。実行していない間は停止を押せない (#820)', async ({
+  page,
+}) => {
+  await installTermsAccepted(page);
+  await openAuthorFolder(page, 'e2e-material-exec', {
+    'p1.problem.yaml':
+      'format: tc-problem/1\nid: p1\nstatement: p1.md\nstarter: p1.js\nsolutions: [p1-解答.c]\ncases: p1.cases.yaml\n',
+    'p1.md': '# p1\n',
+    'p1.js': 'while (true) {}\n',
+    'p1-解答.c': 'int main(void) { return 0; }\n',
+    'p1.cases.yaml': 'format: tc-cases/1\ncases:\n  - name: 空\n    stdin: ""\n    stdout: ""\n',
+  });
+  await setFakeVerification(page, [{ filename: 'p1-解答.c', stdout: '' }]);
+  await openFromExplorer(page, 'p1.js', 'starter');
+  const stop = page.locator('#author-stop-btn');
+  await expect(stop).toBeDisabled();
+
+  const terminal = '#author-terminal';
+  const run = await startRun(page, '#author-run-btn', terminal);
+  await expect(stop).toBeEnabled();
+  await stop.click();
+  expect(await waitOutcome(page, run, terminal)).toBe('aborted');
+  await expect(page.locator(terminal)).toHaveAttribute('data-exec-state', 'idle');
+  await expect(stop).toBeDisabled();
+  await expect(page.locator('#author-run-btn')).toBeEnabled();
+
+  // 止めた後は排他が外れていて、検証を始められる (blocked / terminal-busy にならない)
+  await startVerifyFromExplorer(page, 'p1.problem.yaml');
+  await expect(verifyPanel(page)).toHaveAttribute('data-verify-state', 'done');
+});
+
+test('/author で C の実行系の読み込み中に「停止」しても、読み込みの終わりを待たずに検証を始められる (#820)', async ({
+  page,
+}) => {
+  // clang の webc の取得を応答しないまま止め、初回の initialize の中に居続けさせる。停止は initialize の終わりを
+  // 待たずに run を終わらせる (CodeExecutionController.abort が onRunEnd を呼ぶ) ので、排他もそこで外れる必要がある
+  await page.route('https://assets.typedcode.dev/**', () => undefined);
+  await installTermsAccepted(page);
+  await openAuthorFolder(page, 'e2e-material-exec', {
+    'p1.problem.yaml':
+      'format: tc-problem/1\nid: p1\nstatement: p1.md\nstarter: p1.c\nsolutions: [p1-解答.c]\ncases: p1.cases.yaml\n',
+    'p1.md': '# p1\n',
+    'p1.c': 'int main(void) { return 0; }\n',
+    'p1-解答.c': 'int main(void) { return 0; }\n',
+    'p1.cases.yaml': 'format: tc-cases/1\ncases:\n  - name: 空\n    stdin: ""\n    stdout: ""\n',
+  });
+  await setFakeVerification(page, [{ filename: 'p1-解答.c', stdout: '' }]);
+  await openFromExplorer(page, 'p1.c', 'starter');
+
+  const terminal = '#author-terminal';
+  const run = await startRun(page, '#author-run-btn', terminal);
+  await page.locator('#author-stop-btn').click();
+  expect(await waitOutcome(page, run, terminal)).toBe('aborted');
+
+  await startVerifyFromExplorer(page, 'p1.problem.yaml');
+  await expect(verifyPanel(page)).toHaveAttribute('data-verify-state', 'done');
 });
 
 /**

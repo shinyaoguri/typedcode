@@ -708,6 +708,7 @@ export const en: TranslationKeys = {
     run: {
       label: 'Run',
       running: 'Running…',
+      stop: 'Stop',
       terminal: 'Terminal',
       compilerLoading: 'Preparing the C compiler (first run only; this may take a moment)…',
     },

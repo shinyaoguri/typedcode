@@ -704,6 +704,7 @@ export const ja: TranslationKeys = {
     run: {
       label: '実行',
       running: '実行中…',
+      stop: '停止',
       terminal: 'ターミナル',
       compilerLoading: 'Cコンパイラを準備中（初回のみ・少し時間がかかります）…',
     },

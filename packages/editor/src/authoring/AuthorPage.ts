@@ -111,6 +111,8 @@ export class AuthorPage {
   private verifyAbort: AbortController | null = null;
   /** 検証の実行の入口の差し替え (dev フックの偽物)。null は実物 (`runNonInteractive`) */
   private verificationRunner: NonInteractiveRunner | null = null;
+  /** 今のターミナルの実行の排他を外す関数 (実行していなければ null。#820) */
+  private releaseTerminal: (() => void) | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -154,6 +156,8 @@ export class AuthorPage {
     this.el('author-verify-slot').replaceWith(this.verifyPanel.element);
     this.verifyPanel.element.hidden = true;
     this.verifyPanel.element.setAttribute('role', 'tabpanel');
+    // 停止はターミナルの実行中だけ押せる (#820)
+    (this.el('author-stop-btn') as HTMLButtonElement).disabled = true;
     this.wire();
     this.input('author-token').value = generateProctorToken();
     this.welcome.setPickerSupported(isFolderPickerSupported());
@@ -695,6 +699,7 @@ export class AuthorPage {
     this.el('author-save-all-btn').addEventListener('click', () => void this.saveAll());
     this.el('author-split-btn').addEventListener('click', () => this.area?.split());
     this.el('author-run-btn').addEventListener('click', () => void this.handleRun());
+    this.el('author-stop-btn').addEventListener('click', () => this.handleStop());
     this.el('author-term-toggle').addEventListener('click', () => {
       const bottom = this.el('author-bottom');
       this.showTerminal(bottom.hidden !== false || bottom.dataset.bottomView !== 'terminal');
@@ -769,14 +774,19 @@ export class AuthorPage {
     const exec = new CodeExecutionController();
     exec.setTerminal(terminal);
     const runBtn = this.el('author-run-btn') as HTMLButtonElement;
+    const stopBtn = this.el('author-stop-btn') as HTMLButtonElement;
     exec.setCallbacks({
       onRunStart: () => {
         runBtn.disabled = true;
         runBtn.innerHTML = `<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> ${escapeHtml(t('author.run.running'))}`;
+        stopBtn.disabled = false;
       },
       onRunEnd: () => {
         runBtn.disabled = false;
         runBtn.innerHTML = `<i class="fas fa-play" aria-hidden="true"></i> ${escapeHtml(t('author.run.label'))}`;
+        stopBtn.disabled = true;
+        // 停止 (abort) は run の promise の終わりを待たずに onRunEnd を呼ぶので、ここで排他を外す (#820)
+        this.releaseTerminal?.();
       },
       onNotification: (m) => terminal.writeLine(m),
       onShowClangLoading: () => terminal.writeInfo(t('author.run.compilerLoading')),
@@ -794,6 +804,16 @@ export class AuthorPage {
       this.showNotice(t('author.verify.runBlocked'), 'error', 'run-blocked');
       return;
     }
+    // 排他は「run が終わった (onRunEnd)」か「この呼び出しが戻った」の早い方で 1 回だけ外す。
+    // 停止した run の promise が後から戻っても、次の run の排他は外さない
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      this.lock.endTerminal();
+      if (this.releaseTerminal === release) this.releaseTerminal = null;
+    };
+    this.releaseTerminal = release;
     try {
       const path = this.area?.activePath ?? null;
       const doc = path ? this.workspace?.document(path) : undefined;
@@ -808,8 +828,13 @@ export class AuthorPage {
       const filename = workspaceBasename(path);
       await exec.run({ language: runLanguageFor(path), filename, code: doc.text });
     } finally {
-      this.lock.endTerminal();
+      release();
     }
+  }
+
+  /** ターミナルの実行を止める (学生側の停止と同じ `CodeExecutionController.abort`。#820) */
+  private handleStop(): void {
+    this.exec?.abort();
   }
 
   private toggleTheme(): void {
@@ -1055,6 +1080,7 @@ export class AuthorPage {
                   ${button('author-split-btn', 'split', 'fa-table-columns', t('author.editor.split'), true)}
                   <span class="author-toolbar-sep" aria-hidden="true"></span>
                   ${button('author-run-btn', 'run', 'fa-play', t('author.run.label'))}
+                  ${button('author-stop-btn', 'stop', 'fa-stop', t('author.run.stop'))}
                   ${button('author-term-toggle', 'toggle-terminal', 'fa-terminal', t('author.run.terminal'), true)}
                   <span class="author-notice" id="author-notice" role="status" hidden></span>
                 </div>
