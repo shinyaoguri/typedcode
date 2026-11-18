@@ -839,6 +839,26 @@ export interface TranslationKeys {
       missing: string;
       invalid: string;
       definition: string;
+      /** 問題ごとの操作「別のフォルダへコピー」(#800) */
+      copyProblem: string;
+    };
+    /** 問題を別の教材フォルダへコピーした結果 (#800) */
+    copyProblem: {
+      title: string;
+      close: string;
+      copied: string;
+      conflict: string;
+      sourceInvalid: string;
+      failed: string;
+      failedNote: string;
+      dirty: string;
+      sameFolder: string;
+      unsupported: string;
+      writtenLabel: string;
+      writtenBeforeFailureLabel: string;
+      conflictLabel: string;
+      dirtyLabel: string;
+      failedLabel: string;
     };
     /** 問題定義が参照するファイルの役割 */
     roles: { statement: string; starter: string; hint: string; solution: string; cases: string };

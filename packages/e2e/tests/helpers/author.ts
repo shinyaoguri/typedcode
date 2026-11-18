@@ -180,6 +180,69 @@ export function examForm(page: Page): Locator {
   return editorGroup(page).locator('[data-exam-form]');
 }
 
+interface PickerHookWindow {
+  __tcTestAuthorWorkspace?: {
+    openInPage(handle: FileSystemDirectoryHandle): Promise<string>;
+    setNextPickedDirectory(handle: FileSystemDirectoryHandle | null): void;
+  };
+}
+
+/** OPFS にフォルダを作り直してファイルを置く (画面には開かない。コピー先など。#800) */
+export async function createOpfsFolder(page: Page, folder: string, files: Record<string, string>): Promise<void> {
+  await page.evaluate(
+    async ({ folder, files }) => {
+      const root = await navigator.storage.getDirectory();
+      await root.removeEntry(folder, { recursive: true }).catch(() => undefined);
+      const dir = await root.getDirectoryHandle(folder, { create: true });
+      for (const [path, text] of Object.entries(files)) {
+        const segments = path.split('/');
+        let parent = dir;
+        for (const segment of segments.slice(0, -1))
+          parent = await parent.getDirectoryHandle(segment, { create: true });
+        const file = await parent.getFileHandle(segments[segments.length - 1]!, { create: true });
+        const writable = await file.createWritable();
+        await writable.write(text);
+        await writable.close();
+      }
+    },
+    { folder, files }
+  );
+}
+
+/** OPFS のフォルダのファイルの一覧 (サブフォルダを含む相対パス、辞書順。#800) */
+export function listFolderFiles(page: Page, folder: string): Promise<string[]> {
+  return page.evaluate(async (folder) => {
+    const paths: string[] = [];
+    const walk = async (dir: FileSystemDirectoryHandle, prefix: string): Promise<void> => {
+      for await (const entry of dir.values()) {
+        if (entry.kind === 'directory') await walk(entry as FileSystemDirectoryHandle, `${prefix}${entry.name}/`);
+        else paths.push(`${prefix}${entry.name}`);
+      }
+    };
+    await walk(await (await navigator.storage.getDirectory()).getDirectoryHandle(folder), '');
+    return paths.sort();
+  }, folder);
+}
+
+/** 画面が次に開くフォルダのピッカーの結果を、OPFS のこのフォルダに差し替える (dev フック。#800) */
+export async function setNextPickedFolder(page: Page, folder: string): Promise<void> {
+  await page.evaluate(async (folder) => {
+    const hook = (window as unknown as PickerHookWindow).__tcTestAuthorWorkspace;
+    if (!hook) throw new Error('hook missing');
+    hook.setNextPickedDirectory(await (await navigator.storage.getDirectory()).getDirectoryHandle(folder));
+  }, folder);
+}
+
+/** OPFS に既にあるフォルダを、作り直さずに画面に開かせる (#800) */
+export async function openExistingFolder(page: Page, folder: string): Promise<void> {
+  await page.evaluate(async (folder) => {
+    const hook = (window as unknown as PickerHookWindow).__tcTestAuthorWorkspace;
+    if (!hook) throw new Error('hook missing');
+    await hook.openInPage(await (await navigator.storage.getDirectory()).getDirectoryHandle(folder));
+  }, folder);
+  await waitForOpenFolder(page, folder);
+}
+
 /** フォームの採用した問題の行の、問題定義のパス (出題順) */
 export function adoptedProblems(page: Page): Promise<string[]> {
   return examForm(page)
