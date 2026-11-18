@@ -88,9 +88,9 @@
       </div>
 
       <!-- Sidebar -->
-      <div class="sidebar" id="sidebar">
+      <nav class="sidebar" id="sidebar" aria-labelledby="sidebar-title">
         <div class="sidebar-header">
-          <h3 data-i18n="sidebar.title">エクスプローラー</h3>
+          <h3 id="sidebar-title" data-i18n="sidebar.title">エクスプローラー</h3>
           <div class="sidebar-actions">
             <button class="sidebar-action-btn" id="add-file-btn" data-i18n-title="sidebar.addFile">
               <i class="fas fa-file-circle-plus"></i>
@@ -106,7 +106,7 @@
             <p data-i18n-html="sidebar.emptyMessage">ファイルを読み込むと<br>ここに表示されます</p>
           </div>
         </div>
-      </div>
+      </nav>
 
       <!-- Resize Handle -->
       <div class="resize-handle" id="resize-handle"></div>
@@ -152,6 +152,8 @@
 
           <!-- Result Container -->
           <div class="result-container" id="result-container" style="display: none;">
+            <!-- 結果表示のページ見出し (読み上げ専用。案内パネルの h1 は結果表示では隠れる。#738) -->
+            <h1 class="visually-hidden" data-i18n="welcome.title">TypedCode Verify</h1>
             <!-- Loading / Verification Progress -->
             <div class="result-loading" id="result-loading" style="display: none;">
               <div class="verification-progress">
@@ -390,7 +392,7 @@
                     </div>
                     <div class="seekbar-track-container">
                       <div class="seek-track">
-                        <input type="range" class="seek-slider" id="seekbar-slider" min="0" max="100" value="100" step="1">
+                        <input type="range" class="seek-slider" id="seekbar-slider" data-i18n-aria="seekbar.position" min="0" max="100" value="100" step="1">
                         <div class="seek-progress" id="seekbar-progress"></div>
                         <div class="seek-markers" id="seekbar-markers"></div>
                       </div>
@@ -682,7 +684,7 @@
     </div>
 
     <!-- Status Bar -->
-    <div class="statusbar" id="statusbar">
+    <footer class="statusbar" id="statusbar">
       <div class="statusbar-left">
         <div class="status-item" id="queue-status">
           <i class="fas fa-check-circle"></i>
@@ -694,7 +696,7 @@
           <span>0 files</span>
         </div>
       </div>
-    </div>
+    </footer>
 
   </div>
 

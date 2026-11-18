@@ -549,6 +549,7 @@ export const en: VerifyTranslationKeys = {
     pause: 'Pause',
     next: 'Next',
     end: 'End',
+    position: 'Playback position',
   },
 
   errors: {

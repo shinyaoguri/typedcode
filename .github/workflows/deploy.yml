@@ -224,9 +224,12 @@ jobs:
       # 本数が少ないので shard 1 に寄せる (各 shard で build を重ねて回さない)。
       - name: Run production-build smoke (vite build → vite preview)
         if: matrix.shard == 1
-        run: npm run test:build -w @typedcode/e2e
+        run: npm run test:build -w @typedcode/e2e -- --output test-results-build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
+          # 出力先を上の step と分ける (#740): Playwright は実行のたびに出力ディレクトリを空にするので、
+          # 同じ playwright-report/ と test-results/ だと shard 1 で上の step の失敗の分が消える。e2e-nightly.yml と同じ形。
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-build
 
       # retry で通った flaky (最終的には通ったが 1 回目は落ちた) は run を緑にし、notice しか残さない (#583)。
       # Playwright の json レポート (CI のときだけ packages/e2e/reports/ に出る) から拾って job summary に出す。
@@ -258,6 +261,8 @@ jobs:
           path: |
             packages/e2e/playwright-report/
             packages/e2e/test-results/
+            packages/e2e/playwright-report-build/
+            packages/e2e/test-results-build/
           retention-days: 7
 
   # 全 shard の成否を 1 つの check `e2e` に集約する。main の ruleset の required check と

@@ -22,9 +22,12 @@ export class ScreenShareGuide {
 
     this.element = document.createElement('div');
     this.element.className = 'screen-share-guide';
+    // 本文を名前にした region にしてランドマークの中に置く (#738)
+    this.element.setAttribute('role', 'region');
+    this.element.setAttribute('aria-labelledby', 'screen-share-guide-text');
     this.element.innerHTML = `
       <div class="screen-share-guide-content">
-        <div class="screen-share-guide-text">
+        <div class="screen-share-guide-text" id="screen-share-guide-text">
           ${t('screenCapture.guideText')}
         </div>
         <div class="screen-share-guide-hint">

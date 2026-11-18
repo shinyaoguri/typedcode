@@ -29,13 +29,33 @@ const DOC_END = 'Control+End';
 const SAME_TAB_CLICK_GAP_MS = 350;
 
 /**
- * console.error のうち、既知のノイズとして許すもの。根拠を書けるものだけを足す (無闇に広げない)。
- * 判定は部分一致。
+ * C ランタイムの取得先 (CExecutor が clang の webc を取る外部配信)。editor は起動のたびに C ランタイムを
+ * バックグラウンドで初期化するので、model の列はリロード・再開のたびにここへ取りに行く。到達できる日と
+ * できない日で結果が変わらないよう、model では常に route で止める (`start()`。#771)。model の手に
+ * コードを実行する手は無く、C の実物の実行は `@nightly` の code-execution-c-python.spec.ts /
+ * production-build.spec.ts が外部配信で見る。
  */
-const ALLOWED_CONSOLE_ERRORS: readonly { pattern: string; reason: string }[] = [];
+const EXTERNAL_C_RUNTIME_ORIGIN = 'https://assets.typedcode.dev/';
 
-function isAllowedConsoleError(text: string): boolean {
-  return ALLOWED_CONSOLE_ERRORS.some((a) => text.includes(a.pattern));
+const BLOCKED_C_RUNTIME = 'C ランタイムの取得先を route で止めた結果 (EXTERNAL_C_RUNTIME_ORIGIN。#771)';
+
+/**
+ * console.error のうち、既知のノイズとして許すもの。根拠を書けるものだけを足す (無闇に広げない)。
+ * 判定は文言 (`msg.text()`) の 1 行目の完全一致と、`url` があれば発生元 (`msg.location().url`) の前方一致。
+ * 1 行目だけを見るのは、console.error に Error を渡すと 2 行目以降にスタック (dev と build で行番号が変わる) が付くため。
+ */
+const ALLOWED_CONSOLE_ERRORS: readonly { text: string; url?: string; reason: string }[] = [
+  { text: 'Failed to load resource: net::ERR_FAILED', url: EXTERNAL_C_RUNTIME_ORIGIN, reason: BLOCKED_C_RUNTIME },
+  { text: '[CExecutor] Initialization failed: TypeError: Failed to fetch', reason: BLOCKED_C_RUNTIME },
+  {
+    text: '[RuntimeManager] C runtime initialization failed: Error: Failed to initialize C compiler: Failed to fetch',
+    reason: BLOCKED_C_RUNTIME,
+  },
+];
+
+function isAllowedConsoleError(text: string, url: string): boolean {
+  const firstLine = text.split('\n', 1)[0];
+  return ALLOWED_CONSOLE_ERRORS.some((a) => firstLine === a.text && (a.url === undefined || url.startsWith(a.url)));
 }
 
 /**
@@ -66,7 +86,7 @@ export class PlaywrightEditorDriver implements EditorDriver {
   private watchErrors(page: Page): void {
     page.on('pageerror', (e) => this.errors.push(`pageerror: ${e.message}`));
     page.on('console', (msg) => {
-      if (msg.type() === 'error' && !isAllowedConsoleError(msg.text())) {
+      if (msg.type() === 'error' && !isAllowedConsoleError(msg.text(), msg.location().url)) {
         this.errors.push(`console.error: ${msg.text()} (${msg.location().url})`);
       }
     });
@@ -79,6 +99,8 @@ export class PlaywrightEditorDriver implements EditorDriver {
     this.lines.length = 0;
     this.lastTabClick = null;
     this.log('start (openCasualFresh)');
+    // 列ごとのコンテキストに張る (CloseAndResume で開き直すページも同じコンテキスト)。上の EXTERNAL_C_RUNTIME_ORIGIN
+    await this.page.context().route(`${EXTERNAL_C_RUNTIME_ORIGIN}**`, (route) => route.abort());
     await this.app.openCasualFresh();
     const tabs = await this.app.tabs();
     expect(tabs, 'casual starts with exactly one tab').toHaveLength(1);

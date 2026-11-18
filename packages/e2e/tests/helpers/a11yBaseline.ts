@@ -12,7 +12,7 @@ import type { ScreenId } from './uiTour.js';
  * - 作り直しの手順は packages/e2e/README.md の「a11y・i18n・レイアウトの検査」
  *
  * 基準は外部への通信を止めた状態 (helpers/uiTour.ts の walkTour) と表示言語 en で取ったもの。
- * セレクタに英語の title を含む行があるので、a11y-axe.spec.ts は en に固定している。
+ * a11y-axe.spec.ts も en に固定している。セレクタは title などの文言に依存させない (id か data-* で指す。#739)。
  */
 
 export interface KnownA11yViolation {
@@ -22,26 +22,7 @@ export interface KnownA11yViolation {
   issue: number | null;
 }
 
-/** editor のすべての画面 (titlebar / statusbar を共有する) */
-const EDITOR_SCREENS: readonly ScreenId[] = [
-  'casual-ready',
-  'casual-about',
-  'casual-self-review',
-  'class-screen-share-choice',
-  'class-welcome',
-  'class-problem-loader',
-  'class-ready',
-  'assignment-welcome',
-  'assignment-ready',
-  'exam-gate',
-  'exam-ready',
-];
-
 export const KNOWN_A11Y_VIOLATIONS: readonly KnownA11yViolation[] = [
-  // select-name (critical): ステータスバーの言語の選択 (#language-selector) に名前が無い
-  { rule: 'select-name', target: '#language-selector', screens: EDITOR_SCREENS, issue: 736 },
-  // label (critical): 検証 Web の再生シークバー (#seekbar-slider) に名前が無い
-  { rule: 'label', target: '#seekbar-slider', screens: ['verify-result'], issue: 736 },
   // color-contrast (serious): 文字と背景のコントラスト不足 (WCAG 1.4.3。ダイアログの背後で暗くなった要素を含む)
   { rule: 'color-contrast', target: '#class-loader-filename', screens: ['class-problem-loader'], issue: 737 },
   { rule: 'color-contrast', target: '#current-hash', screens: ['class-ready', 'assignment-ready'], issue: 737 },
@@ -209,64 +190,5 @@ export const KNOWN_A11Y_VIOLATIONS: readonly KnownA11yViolation[] = [
     target: 'span[data-i18n="welcome.browseButton"]',
     screens: ['verify-initial'],
     issue: 737,
-  },
-  // page-has-heading-one (moderate): ページに h1 が無い (best practice)
-  { rule: 'page-has-heading-one', target: 'html', screens: ['casual-ready', 'verify-result'], issue: 738 },
-  // region (moderate): ランドマーク (header / main / nav など) の外にある内容 (best practice)
-  { rule: 'region', target: '#class-loader-filename', screens: ['class-problem-loader'], issue: 738 },
-  { rule: 'region', target: '#cursor-position', screens: ['class-screen-share-choice'], issue: 738 },
-  { rule: 'region', target: '#exam-gate-filename', screens: ['exam-gate'], issue: 738 },
-  { rule: 'region', target: '#file-list', screens: ['verify-initial'], issue: 738 },
-  { rule: 'region', target: '#hash-status-item', screens: EDITOR_SCREENS, issue: 738 },
-  { rule: 'region', target: '#language-selector', screens: ['class-screen-share-choice'], issue: 738 },
-  { rule: 'region', target: '#proof-status', screens: EDITOR_SCREENS, issue: 738 },
-  { rule: 'region', target: '#statusbar', screens: ['verify-initial', 'verify-result'], issue: 738 },
-  { rule: 'region', target: '#sync-status-item', screens: EDITOR_SCREENS, issue: 738 },
-  { rule: 'region', target: '#titlebar-clock', screens: EDITOR_SCREENS, issue: 738 },
-  {
-    rule: 'region',
-    target: '.banner-text',
-    screens: ['casual-ready', 'casual-about', 'casual-self-review'],
-    issue: 738,
-  },
-  { rule: 'region', target: '.exam-gate-content > h2', screens: ['class-problem-loader', 'exam-gate'], issue: 738 },
-  { rule: 'region', target: '.exam-gate-desc', screens: ['class-problem-loader', 'exam-gate'], issue: 738 },
-  { rule: 'region', target: '.exam-gate-field > label', screens: ['class-problem-loader'], issue: 738 },
-  { rule: 'region', target: '.exam-gate-field:nth-child(4) > label', screens: ['exam-gate'], issue: 738 },
-  { rule: 'region', target: '.exam-gate-field:nth-child(5)', screens: ['exam-gate'], issue: 738 },
-  { rule: 'region', target: '.feature-badge', screens: ['verify-initial', 'verify-result'], issue: 738 },
-  { rule: 'region', target: '.file-item-name', screens: ['verify-result'], issue: 738 },
-  { rule: 'region', target: '.fullscreen-warning-text', screens: ['exam-ready'], issue: 738 },
-  { rule: 'region', target: '.mode-badge-label', screens: EDITOR_SCREENS, issue: 738 },
-  {
-    rule: 'region',
-    target: '.screen-share-guide',
-    screens: ['class-welcome', 'class-problem-loader', 'class-ready', 'exam-gate', 'exam-ready'],
-    issue: 738,
-  },
-  {
-    rule: 'region',
-    target: '.statusbar-right',
-    screens: [
-      'casual-ready',
-      'casual-about',
-      'casual-self-review',
-      'class-welcome',
-      'class-problem-loader',
-      'class-ready',
-      'assignment-welcome',
-      'assignment-ready',
-      'exam-gate',
-      'exam-ready',
-    ],
-    issue: 738,
-  },
-  { rule: 'region', target: '.titlebar-title', screens: EDITOR_SCREENS, issue: 738 },
-  { rule: 'region', target: 'div[title="Total events recorded"]', screens: EDITOR_SCREENS, issue: 738 },
-  {
-    rule: 'region',
-    target: 'h3[data-i18n="sidebar.title"]',
-    screens: ['verify-initial', 'verify-result'],
-    issue: 738,
   },
 ];

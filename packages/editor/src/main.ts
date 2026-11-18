@@ -61,8 +61,6 @@ import {
 import { enterInstanceConflictReadOnly, startInstanceConflictMonitor } from './services/InstanceConflictMonitor.js';
 import { showInstanceConflictOverlay } from './ui/dialogs/InstanceConflictDialogs.js';
 import { CTerminal } from './terminal/CTerminal.js';
-import type { ParsedError } from './executors/c/CExecutor.js';
-import { resolveMarkerRange } from './executors/errorMarkerRange.js';
 import '@xterm/xterm/css/xterm.css';
 
 // モジュールのインポート
@@ -83,6 +81,7 @@ import { MainMenuDropdown } from './ui/components/MainMenuDropdown.js';
 import { TerminalPanel } from './ui/components/TerminalPanel.js';
 import { CodeExecutionController } from './execution/CodeExecutionController.js';
 import { recordToOwnerTab } from './execution/codeExecutionRecording.js';
+import { clearErrorsInOwnerTab, showErrorsInOwnerTab, type ExecutionMarker } from './execution/compilerMarkers.js';
 import { ProofExporter } from './export/ProofExporter.js';
 import { createRescueExporter, downloadBlobAsFile, type RescueExporter } from './export/RescueExporter.js';
 import { RuntimeManager } from './execution/RuntimeManager.js';
@@ -782,29 +781,21 @@ function initializeCodeExecution(): void {
     if (clangStatus) clangStatus.textContent = message;
   };
 
-  const showErrorsInEditor = (errors: ParsedError[]): void => {
-    const activeTab = ctx.tabManager?.getActiveTab();
-    if (!activeTab) return;
-
-    const markers = errors.map((err) => ({
-      ...resolveMarkerRange(activeTab.model, err),
-      message: err.message,
-      severity:
-        err.severity === 'error'
-          ? monaco.MarkerSeverity.Error
-          : err.severity === 'warning'
-            ? monaco.MarkerSeverity.Warning
-            : monaco.MarkerSeverity.Info,
-    }));
-
-    monaco.editor.setModelMarkers(activeTab.model, 'c-compiler', markers);
-  };
-
-  const clearEditorErrors = (): void => {
-    const activeTab = ctx.tabManager?.getActiveTab();
-    if (activeTab) {
-      monaco.editor.setModelMarkers(activeTab.model, 'c-compiler', []);
-    }
+  // マーカーは表示中のタブではなく run を始めたタブのモデルに付ける・消す (#741)
+  const setModelMarkers = (model: monaco.editor.ITextModel, owner: string, markers: ExecutionMarker[]): void => {
+    monaco.editor.setModelMarkers(
+      model,
+      owner,
+      markers.map((marker) => ({
+        ...marker,
+        severity:
+          marker.severity === 'error'
+            ? monaco.MarkerSeverity.Error
+            : marker.severity === 'warning'
+              ? monaco.MarkerSeverity.Warning
+              : monaco.MarkerSeverity.Info,
+      }))
+    );
   };
 
   ctx.codeExecution.setTerminal(ctx.terminal!);
@@ -817,7 +808,6 @@ function initializeCodeExecution(): void {
     onRunStart: () => {
       runCodeBtn?.classList.add('running');
       stopCodeBtn?.classList.remove('hidden');
-      clearEditorErrors();
       ctx.terminalPanel.show();
     },
     onRunEnd: () => {
@@ -837,8 +827,8 @@ function initializeCodeExecution(): void {
     onUpdateClangStatus: updateClangStatus,
     // 記録先は表示中のタブではなく、run を始めたタブ (#698)
     onRecordEvent: (event, ownerTabId) => recordToOwnerTab(ctx.eventRecorder, event, ownerTabId),
-    onShowErrors: showErrorsInEditor,
-    onClearErrors: clearEditorErrors,
+    onShowErrors: (errors, ownerTabId) => showErrorsInOwnerTab(ctx.tabManager, ownerTabId, errors, setModelMarkers),
+    onClearErrors: (ownerTabId) => clearErrorsInOwnerTab(ctx.tabManager, ownerTabId, setModelMarkers),
   });
 
   const handleRunCode = async (): Promise<void> => {

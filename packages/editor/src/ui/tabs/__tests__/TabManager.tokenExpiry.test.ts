@@ -207,6 +207,21 @@ describe('TabManager re-acquires the signing token on TOKEN_EXPIRED (#682)', () 
     vi.unstubAllGlobals();
   });
 
+  it('acquires the signing-only token in the background so it never draws into the foreground verification widget (#733)', async () => {
+    const { tabManager } = await setup();
+    ui.performVerificationWithUI.mockResolvedValue(anchoredVerification(rootToken));
+    turnstile.performTurnstileVerification.mockReturnValue(new Promise(() => {}));
+    await tabManager.createTab('a.c', 'c', '');
+
+    reportExpired(0, rootToken);
+    await flushMicrotasks();
+
+    expect(turnstile.performTurnstileVerification).toHaveBeenCalledWith(
+      'checkpoint_signing',
+      expect.objectContaining({ background: true })
+    );
+  });
+
   it('re-acquires a signing-only token in casual mode and resumes signing on every tab, keeping the root token in the proof', async () => {
     const { tabManager, internals } = await setup();
     ui.performVerificationWithUI.mockResolvedValue(anchoredVerification(rootToken));

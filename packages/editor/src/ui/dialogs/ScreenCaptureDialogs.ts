@@ -160,11 +160,14 @@ export function showScreenShareOptOutBanner(onEnableScreenShare: () => Promise<b
   const banner = document.createElement('div');
   banner.id = SCREEN_SHARE_OPT_OUT_BANNER_ID;
   banner.className = 'screen-share-opt-out-banner';
+  // 文言を名前にした region にしてランドマークの中に置く (#738)
+  banner.setAttribute('role', 'region');
+  banner.setAttribute('aria-labelledby', 'screen-share-opt-out-banner-text');
 
   banner.innerHTML = `
     <div class="banner-content">
       <i class="fas fa-exclamation-triangle"></i>
-      <span class="banner-text">${t('screenCapture.optedOutBanner') ?? 'Running without screen sharing'}</span>
+      <span class="banner-text" id="screen-share-opt-out-banner-text">${t('screenCapture.optedOutBanner') ?? 'Running without screen sharing'}</span>
       <button class="banner-btn" type="button">
         <i class="fas fa-desktop"></i>
         ${t('screenCapture.enableScreenShare') ?? 'Enable Screen Sharing'}

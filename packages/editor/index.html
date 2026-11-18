@@ -76,9 +76,9 @@
 
   <div id="app">
     <!-- Title Bar -->
-    <div class="titlebar">
+    <header class="titlebar">
       <div class="titlebar-left">
-        <div class="titlebar-title"><img src="/icon-192.png" alt="TypedCode" class="titlebar-logo"></div>
+        <h1 class="titlebar-title"><img src="/icon-192.png" alt="TypedCode" class="titlebar-logo"></h1>
       </div>
       <div class="titlebar-clock" id="titlebar-clock">
         <span id="clock-display">----/--/-- / --:--:--</span>
@@ -94,13 +94,13 @@
           <i class="fas fa-columns"></i>
         </button>
       </div>
-    </div>
+    </header>
 
     <!-- Fullscreen Warning Banner (Exam Mode, ADR-0008) — 非フルスクリーン時のみ表示 -->
-    <div id="fullscreen-warning-banner">
-      <span class="fullscreen-warning-text" data-i18n="exam.fullscreenWarning">You are outside fullscreen.</span>
+    <section id="fullscreen-warning-banner" aria-labelledby="fullscreen-warning-text">
+      <span class="fullscreen-warning-text" id="fullscreen-warning-text" data-i18n="exam.fullscreenWarning">You are outside fullscreen.</span>
       <button id="enter-fullscreen-btn" class="fullscreen-warning-btn" data-i18n="exam.enterFullscreen">Enter fullscreen</button>
-    </div>
+    </section>
 
     <!-- Block Notification -->
     <div id="block-notification" class="hidden">
@@ -255,7 +255,7 @@
               </div>
             </div>
             <div class="preview-content">
-              <iframe id="preview-iframe" class="preview-iframe" title="Preview" credentialless sandbox="allow-scripts allow-modals allow-forms"></iframe>
+              <iframe id="preview-iframe" class="preview-iframe" data-i18n-title="preview.title" title="Preview" credentialless sandbox="allow-scripts allow-modals allow-forms"></iframe>
               <div id="preview-placeholder" class="preview-placeholder">
                 <i class="fas fa-file-code"></i>
                 <p data-i18n="preview.noHtml">No HTML file found. Create an HTML tab to see a preview.</p>
@@ -306,9 +306,9 @@
     </div>
 
     <!-- Status Bar -->
-    <div class="statusbar">
+    <footer class="statusbar">
       <div class="statusbar-left">
-        <div class="status-item" id="proof-status-item" title="Typing proof status">
+        <div class="status-item" id="proof-status-item" data-i18n-title="statusBar.proofStatusTitle" title="Typing proof status">
           <div class="proof-progress-ring" id="proof-progress-ring">
             <svg viewBox="0 0 20 20">
               <circle class="progress-bg" cx="10" cy="10" r="8" />
@@ -318,22 +318,22 @@
           </div>
           <span id="proof-status" data-i18n="statusBar.recording">Recording</span>
         </div>
-        <div class="status-item" title="Total events recorded">
+        <div class="status-item" id="event-count-item" data-i18n-title="statusBar.eventCountTitle" title="Total events recorded">
           <i class="fas fa-list-ol"></i>
           <span id="event-count" data-count="0">0</span> <span data-i18n="statusBar.events">events</span>
         </div>
-        <div class="status-item hash-status" id="hash-status-item" title="Current hash chain">
+        <div class="status-item hash-status" id="hash-status-item" data-i18n-title="statusBar.hashTitle" title="Current hash chain">
           <i class="fas fa-link"></i>
           <span id="current-hash" data-hash="">-</span>
         </div>
-        <div class="status-item sync-status" id="sync-status-item" title="IndexedDB sync status">
+        <div class="status-item sync-status" id="sync-status-item" data-i18n-title="statusBar.syncTitle" title="IndexedDB sync status">
           <i class="fas fa-database" id="sync-icon"></i>
           <span id="sync-status" data-i18n="statusBar.synced">Synced</span>
         </div>
       </div>
       <div class="statusbar-right">
-        <div class="status-item language-runtime-status" id="language-status" title="Select language">
-          <select id="language-selector">
+        <div class="status-item language-runtime-status" id="language-status" data-i18n-title="statusBar.selectLanguage" title="Select language">
+          <select id="language-selector" data-i18n-aria="statusBar.selectLanguage" aria-label="Select language">
             <option value="c">C</option>
             <option value="cpp">C++</option>
             <option value="javascript">JavaScript</option>
@@ -345,11 +345,11 @@
           </select>
           <span class="runtime-state-indicator" id="runtime-state-indicator"></span>
         </div>
-        <div class="status-item" id="cursor-position" title="Cursor position">
+        <div class="status-item" id="cursor-position" data-i18n-title="statusBar.cursorPositionTitle" title="Cursor position">
           <span data-i18n="statusBar.line">行</span> <span id="cursor-line">1</span>, <span data-i18n="statusBar.column">列</span> <span id="cursor-col">1</span>
         </div>
       </div>
-    </div>
+    </footer>
 
     <!-- Reset Confirmation Dialog -->
     <div id="reset-dialog" class="modal-overlay hidden" data-dialog="reset">
@@ -402,7 +402,7 @@
     <div id="page-transition-overlay" class="page-transition-overlay"></div>
 
     <!-- C Compiler Loading Overlay -->
-    <div id="clang-loading-overlay" class="modal-overlay hidden">
+    <div id="clang-loading-overlay" class="modal-overlay hidden" role="status" aria-live="polite">
       <div class="modal-dialog modal-info">
         <div class="modal-header">
           <i class="fas fa-spinner fa-spin"></i>

@@ -316,6 +316,14 @@ export interface TranslationKeys {
     degraded: string;
     /** どちらにも保存できなかった (#543) */
     failed: string;
+    /** 言語の選択 (`#language-selector`) の名前 (aria-label) と、それを囲む `#language-status` の title (#736) */
+    selectLanguage: string;
+    /** ステータスバーの各項目の title (ツールチップ。#739) */
+    proofStatusTitle: string;
+    eventCountTitle: string;
+    hashTitle: string;
+    syncTitle: string;
+    cursorPositionTitle: string;
   };
 
   // Tab management

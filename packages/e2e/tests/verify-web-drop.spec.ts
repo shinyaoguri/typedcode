@@ -111,11 +111,10 @@ test('フォルダを開いて入れた proof は #file-input で入れたとき
   const expected = await fileInputConclusion(web, sub);
 
   await web.open('fast');
-  // ステータスバーの集約 (`#queue-status[data-proof-*]`) も比べる。フォルダを開く処理の末尾 (監視の初期スナップショット)
-  // を遅らせ、検証を先に終わらせてから末尾の「フォルダを開いた」の知らせを出させる。知らせが集約を消すと、
-  // 出し直す契機が無く集約は出ないまま残っていた (#683)。末尾が済んでから読む。
-  await web.openFolder('submissions', [sub.clean, sub.tampered], { delayWatchStartMs: 5_000 });
-  await web.waitFolderWatchStarted();
+  // ステータスバーの集約 (`#queue-status[data-proof-*]`) も比べる。検証が「フォルダを開いた」の知らせより先に終わる
+  // 競合 (#683) は、ユニット (verify の `folderStatusSummary.test.ts`) が開く処理の末尾を止めて固定する。以前ここで
+  // 遅らせていた監視の初期スナップショットは、監視が開いたときの一覧を基準にするようになって無くなった (#734)。
+  await web.openFolder('submissions', [sub.clean, sub.tampered]);
   const opened = await readConclusion(web, sub.names, sub.names.length);
 
   expect(opened).toEqual(expected);

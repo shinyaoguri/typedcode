@@ -25,8 +25,9 @@ TypedCode の捕捉・分析・コホート基準が、**IME (各言語の入力
 - リスクは**分析層のみ**: 変換確定でまとまった文字が一度に入る・1 文字あたりの離散打鍵が少ない・打鍵動態が Latin と異なる。これらが focus-burst (バースト挿入) や将来の打鍵動態系アナライザを誤って踏みうる。→ §2 の偽陽性モードで扱う。
 
 ### ディクテーション / 音声入力 / 自動修正 / 単語予測 — 不利になりうる (要注意)
-- これらは環境により `insertReplacementText` で挿入することがある (composition として届く場合は、上の IME と同じく composition 系になる)。`insertReplacementText` は**禁止リスト**にある。→ **`isPureTyping` が false になりうる。**
-- つまり **`isPureTyping=false` は「ペースト等の不正」とは限らず、「支援技術による入力」でもありうる。** 両者を捕捉層は区別できない (ブラウザが提供する inputType が同じ)。これは検出で塞げる穴ではなく**原理的な曖昧性**。
+- editor は編集の inputType をブラウザ (`beforeinput`) から受け取らない。Monaco の content change (挿入・置換・削除の形と長さ) から `OperationDetector` が推定し、composition 系だけは Monaco が知らせる composition との対応付けで決める (#720)。したがって音声入力・支援技術の入力がどの inputType になるかは、**Monaco にどういう編集として届くか**で決まる。各環境で実際にどう届くかの確認は #720 に残っている。
+- これらは環境により `insertReplacementText` と記録されることがある (composition として届く場合は、上の IME と同じく composition 系になる)。`insertReplacementText` は**禁止リスト**にある。→ **`isPureTyping` が false になりうる。**
+- つまり **`isPureTyping=false` は「ペースト等の不正」とは限らず、「支援技術による入力」でもありうる。** 両者を捕捉層は区別できない (inputType は Monaco に届いた編集の形から推定するので、同じ形で届いた編集は出自によらず同じ inputType になる)。これは検出で塞げる穴ではなく**原理的な曖昧性**。
 - 帰結: `isPureTyping=false` / 「外部入力」signal を**単独でクロと解釈してはならない**。過程リプレイ (ProcessSummary の見どころ) と本人の振り返り (reflectionNote)、そして事前の配慮申請を併せて人間が判断する。
 
 ### スイッチ/スキャン入力・視線入力・オンスクリーンキーボード — 分析層で要注意
@@ -66,7 +67,7 @@ TypedCode の捕捉・分析・コホート基準が、**IME (各言語の入力
 
 ## 5. 将来課題
 
-- 捕捉層がプラットフォームから支援入力と敵対的ペーストを区別できる信号を得られるなら、偽陽性の一部を減らせる可能性 (ただし現状ブラウザの inputType では区別不能 — 期待しない)。
+- 捕捉層がプラットフォームから支援入力と敵対的ペーストを区別できる信号を得られるなら、偽陽性の一部を減らせる可能性 (ただし現状 editor が記録する inputType (Monaco の編集の形から推定) では区別不能 — 期待しない)。
 - ★5 コホート基準の実装時、AT/IME 利用者を基準母集団でどう扱うか (除外/別基準) の具体化。
 - 配慮申請の受け渡し (ツール外) を採点ワークフローにどう接続するかの運用テンプレート。
 
@@ -83,7 +84,7 @@ TypedCode の捕捉・分析・コホート基準が、**IME (各言語の入力
 - 破壊的な選択肢があるダイアログは、初期フォーカスを破壊的でない側 (取り消し・再開) に置く。選択が必須のダイアログ (復旧)・書きかけの入力を持つダイアログ (セルフレビューのノート)・進行表示 (書き出し・テンプレート取込の進捗) は Escape で閉じない (`closeOnEscape: false`)
 - `index.html` に置いた静的な overlay (`.modal-overlay.hidden` > `.modal-dialog`) は `showStaticDialog(overlay, opts)` で開く。`.hidden` を外して `attachDialogA11y` を付け (名前は `.modal-header h3`)、返す `close()` で解放と `.hidden` の付け直しを 1 回だけ行う
 - 閉じさせない画面 (起動を止める `duplicate-instance` / `unsupported-browser` / `boot-failure`、同意が必須の規約、`storage-low` / `processing`、アイドルの警告 (`CountdownDialog`)、lock overlay) も意味付けとフォーカスの置き場は同じにする。閉鎖規則は変えず、Escape は無視する (`closeOnEscape: false`)
-- 移行状況: editor のダイアログは移行済み (DOM 生成型・`index.html` の静的 overlay・タブ閉じ確認・`CountdownDialog`・lock overlay)。**未移行**: `ExamStartGate` と `ClassProblemLoader` (全画面のゲート / ローダ)、`#clang-loading-overlay` (状態契約の無い進捗表示)
+- 移行状況: editor のダイアログは移行済み (DOM 生成型・`index.html` の静的 overlay・タブ閉じ確認・`CountdownDialog`・lock overlay・`ExamStartGate` と `ClassProblemLoader` (全画面のゲート / ローダ。Escape では閉じない。#743))。`#clang-loading-overlay` は操作を持たない進捗表示なので dialog にせず `role="status"` にしている (#743)。ゲート / ローダのドロップゾーンは見た目を保つため div のまま `role="button"` + `tabindex="0"` にし、Enter / Space でファイル選択を開く (`ui/components/dropzoneKeyboard.ts`)。メニューボタン (`#main-menu-btn` / `#settings-btn`) は `aria-haspopup` と、開閉に追従する `aria-expanded` を持つ (更新は `MainMenuDropdown` / `SettingsDropdown` の open / close / toggle に集約し、メニューの外から `.visible` を直に外さない)
 - role は `dialog` で統一している (確認・警告も含む)。`alertdialog` にするかは未決 (#305)
 - メニュー項目から始まる操作は、起点がメニューの中にあれば、閉じたあとの復帰先を**メニューを開いたボタン**にする。ヘルパはメニューボタンの `aria-controls` から辿るので、**メニューボタンには開く popup の id を `aria-controls` で付ける** (`#main-menu-btn` / `#settings-btn`。メニューを開かないボタン `#download-btn` には付けない)。描き直しで起点が入れ替わるもの (タブの ×) は `fallbackFocus` に関数を渡し、閉じた時点で引き直す
 - 自動検査は単体テスト (`ui/components/__tests__/`) と E2E (`packages/e2e/tests/modal-a11y.spec.ts`)。主な画面とダイアログには axe もかけ、既知違反の基準から増えたら落とす (`packages/e2e/tests/a11y-axe.spec.ts`。#728)。axe が見るのは機械で検出できる違反だけで、読み上げの質や操作の通しは見ない。**スクリーンリーダー (VoiceOver + Chrome など) での読み上げは自動化できないので、ダイアログの構造を変えたときは人が確認する**

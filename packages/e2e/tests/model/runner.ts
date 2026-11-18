@@ -31,6 +31,11 @@ export interface ModelRunOptions {
   runs: number;
   /** 縮約を含めた fast-check の持ち時間。超えたらそこまでの最小の反例で報告する */
   timeLimitMs: number;
+  /**
+   * 失敗したら縮約するか。false なら最初の失敗で止めて縮約前の列を報告する (PR ゲートの retry。#771)。
+   * FC_NO_SHRINK=1 はどちらでも縮約しない
+   */
+  shrink: boolean;
   /** `@nightly` のテストか (再実行コマンドに NIGHTLY=1 を付ける) */
   nightly: boolean;
 }
@@ -87,7 +92,7 @@ export async function runModelBased(o: ModelRunOptions): Promise<void> {
       seed: o.seed,
       numRuns: o.runs,
       path,
-      endOnFailure: process.env.FC_NO_SHRINK === '1',
+      endOnFailure: !o.shrink || process.env.FC_NO_SHRINK === '1',
       plugins: [fc.interruptAfterTimeLimit(o.timeLimitMs)],
     });
   } finally {
@@ -149,7 +154,7 @@ function formatReport(o: ModelRunOptions, details: fc.RunDetails<unknown>, faili
     '',
     `- seed: \`${details.seed}\``,
     `- path: \`${details.counterexamplePath ?? ''}\``,
-    `- shrinks: ${details.numShrinks}${details.interrupted ? ' (interrupted by the time limit: may not be minimal)' : ''}`,
+    `- shrinks: ${details.numShrinks}${details.interrupted ? ' (interrupted by the time limit: may not be minimal)' : ''}${o.shrink ? '' : ' (not shrunk on this attempt: see the first attempt for the shrunk sequence)'}`,
     '',
     '縮約後の操作列 (実行された手だけ):',
     '',

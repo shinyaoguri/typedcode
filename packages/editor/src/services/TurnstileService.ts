@@ -129,6 +129,22 @@ interface GetTurnstileTokenOptions {
    * 共有するので、裏で走り続けた前回の実行が後から空にしないよう、abort の時点で片付ける。
    */
   signal?: AbortSignal;
+  /**
+   * 画面に出さない背景の取得 (#733。`TabManager.acquireSigningToken`)。呼び出しごとに `hidden` の専用容器を
+   * body に作って描き、後始末で容器ごと外す。前面の認証モーダルの `#turnstile-widget-container` と
+   * `#verification-challenge-container` には触れない (同じ容器を空にして描くと、互いの widget を消す)。
+   */
+  background?: boolean;
+}
+
+/** 背景の取得用の隠し容器 (#733)。表示も読み上げもしない */
+function createBackgroundWidgetContainer(): HTMLElement {
+  const container = document.createElement('div');
+  container.hidden = true;
+  container.setAttribute('aria-hidden', 'true');
+  container.setAttribute('data-turnstile-background', '');
+  document.body.appendChild(container);
+  return container;
 }
 
 /**
@@ -155,13 +171,18 @@ export async function getTurnstileToken(action: string, options?: GetTurnstileTo
   }
 
   return new Promise<TokenResult>((outerResolve) => {
+    // 背景の取得は専用の隠し容器に描き、前面のモーダルの容器と表示に触れない (#733)
+    const backgroundContainer = options?.background ? createBackgroundWidgetContainer() : null;
+
     // Check for custom container from options first
-    const customWidgetContainer = options?.widgetContainer;
+    const customWidgetContainer = backgroundContainer ?? options?.widgetContainer;
     const customParentContainer = options?.parentContainer;
 
     // Get the modal's widget container (fallback to default verification modal)
     const modalWidgetContainer = customWidgetContainer ?? document.getElementById('turnstile-widget-container');
-    const challengeContainer = customParentContainer ?? document.getElementById('verification-challenge-container');
+    const challengeContainer = backgroundContainer
+      ? null
+      : (customParentContainer ?? document.getElementById('verification-challenge-container'));
 
     // Use modal container if available, otherwise create a fallback
     let widgetContainer: HTMLElement;
@@ -249,6 +270,7 @@ export async function getTurnstileToken(action: string, options?: GetTurnstileTo
       if (fallbackContainer) {
         fallbackContainer.remove();
       }
+      backgroundContainer?.remove();
     };
 
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -598,6 +620,11 @@ export interface TurnstileVerificationOptions {
    * タブ作成の予算切れの後に届いた token を署名専用に回すため。
    */
   signal?: AbortSignal;
+  /**
+   * 画面に出さない背景の取得 (#733)。widget を専用の隠し容器に描き (`getTurnstileToken`)、前面の認証 UI の
+   * フェーズ・リトライ状況の通知も呼ばない。隠し容器なので対話チャレンジは解けず、失敗で返る。
+   */
+  background?: boolean;
 }
 
 /**
@@ -663,8 +690,9 @@ export async function performTurnstileVerification(
 ): Promise<VerificationResult> {
   // 通知先は開始時に捕まえる (#375)。予算切れで呼び出し側が手放した後も裏で走り続ける実行が、
   // 次のタブ作成が登録した UI のコールバックへ書き込まないようにする。
-  const onPhase = phaseCallback;
-  const onRetryStatus = retryStatusCallback;
+  // 背景の取得は前面の UI のコールバックを捕まえない (#733)。
+  const onPhase = options?.background ? null : phaseCallback;
+  const onRetryStatus = options?.background ? null : retryStatusCallback;
   const signal = options?.signal;
 
   // If Turnstile is not configured, allow the action (development mode)

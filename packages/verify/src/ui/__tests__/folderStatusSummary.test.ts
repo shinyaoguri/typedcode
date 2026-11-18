@@ -3,8 +3,8 @@
  * フォルダを開く・監視する操作の知らせで、ステータスバーの集約 (`#queue-status` の data-proof-*) を消さない (#683)。
  *
  * 集約を出し直す契機は検証の完了だけなので、検証が先に終わった後に「フォルダを開いた」などのメッセージで
- * 集約を上書きすると、集約は消えたまま二度と出ない。フォルダを開く処理の末尾 (監視の初期スナップショット) が
- * 検証より遅れたときに起きていた。
+ * 集約を上書きすると、集約は消えたまま二度と出ない。フォルダを開く処理の末尾が検証より遅れたときに起きていた
+ * (当時の末尾は監視の初期スナップショット。#734 で監視は開いたときの一覧を基準にし、始めるときに走査しなくなった)。
  *
  * 組み立ては `folderStack` (実物の FolderController / FileController / VerificationController / StatusBarUI。
  * ステータスバーの表示は AppController と同じ `renderStatusBar`)。フォルダは FSA のハンドルの fake (`FakeFolder`)。
@@ -35,14 +35,16 @@ afterEach(() => {
 describe('status bar summary around opening a folder (#683)', () => {
   it('keeps the proof summary when verification finishes before opening the folder completes', async () => {
     const s = folderStack();
-    const fake = new FakeFolder('submissions', { 'valid_proof.json': VALID });
-    // 監視の初期スナップショット (ルートの 2 回目の走査) を、検証が終わるまで止める
+    // 開く処理で最後に読むファイル (平文。名前の順で proof の後) の読み込みを、検証が終わるまで止める。
+    // 監視は開いたときの一覧を基準にして走査しない (#734) ので、末尾を遅らせるのはここになる
+    const fake = new FakeFolder('submissions', { 'valid_proof.json': VALID, 'zz_notes.txt': 'notes' });
     let reached!: () => void;
     const snapshotReached = new Promise<void>((r) => (reached = r));
     let release!: () => void;
     const snapshotReleased = new Promise<void>((r) => (release = r));
-    fake.beforeRootValues = (call) => {
-      if (call !== 2) return;
+    fake.beforeGetFile = (path, call) => {
+      // 1 回目は一覧の読み取り、2 回目が中身の読み込み
+      if (path !== 'zz_notes.txt' || call !== 2) return;
       reached();
       return snapshotReleased;
     };

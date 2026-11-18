@@ -98,6 +98,23 @@ describe('ProcessingDialog a11y', () => {
     expect(count(remove)).toBe(1);
   });
 
+  it('keeps a single interval and settles the superseded wait as cancelled when waiting twice in a row (#744)', async () => {
+    const dialog = new ProcessingDialog();
+    const first = dialog.waitForComplete(() => ({ pendingCount: 3 }));
+    void dialog.waitForComplete(() => ({ pendingCount: 3 }));
+    expect(vi.getTimerCount()).toBe(1);
+    await expect(first).resolves.toBe(false);
+    dialog.forceClose();
+  });
+
+  it('settles the pending wait as cancelled when force-closed', async () => {
+    const dialog = new ProcessingDialog();
+    const result = dialog.waitForComplete(() => ({ pendingCount: 3 }));
+    dialog.forceClose();
+    await expect(result).resolves.toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('does not open when nothing is pending', async () => {
     const dialog = new ProcessingDialog();
     await expect(dialog.waitForComplete(() => ({ pendingCount: 0 }))).resolves.toBe(true);
