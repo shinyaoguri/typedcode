@@ -179,6 +179,24 @@ const SHOTS = [
     file: '27-author-welcome-en.png',
     caption: '出題 (/author): 27 と同じ起動画面を英語の画面で (#796)',
   },
+  {
+    file: '28-author-exam-form.png',
+    caption:
+      '出題 (/author): 試験定義をフォームで開いた画面。3 問のうち 2 問を採用して出題順に並べ、右に書き出しのパネル (署名鍵と監督コードの欄。#797。監督コードは隠している)',
+  },
+  {
+    file: '29-author-student-preview.png',
+    caption:
+      '出題 (/author): 試験定義の学生プレビュー。採用した問題を出題順に、問題文・初期コード・公開ケースの入出力例で見せる (#797)',
+  },
+  {
+    file: '28-author-exam-form-en.png',
+    caption: '出題 (/author): 28 と同じ試験定義のフォームを英語の画面で (#797)',
+  },
+  {
+    file: '29-author-student-preview-en.png',
+    caption: '出題 (/author): 29 と同じ学生プレビューを英語の画面で (#797)',
+  },
 ] as const;
 
 type ShotFile = (typeof SHOTS)[number]['file'];
@@ -266,6 +284,36 @@ async function shootAuthorWorkspace(page: Page, file: ShotFile): Promise<void> {
   await appendToEditor(page, '\n出力の末尾に改行を付けること。');
   await page.locator('body').click({ position: { x: 5, y: 5 } });
   await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
+}
+
+/** /author の試験定義をフォームと学生プレビューで撮る (#797)。3 問の教材で 2 問を採用した試験定義を開く */
+async function shootAuthorExam(page: Page, formFile: ShotFile, previewFile: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-797', {
+    ...TWO_PROBLEMS,
+    'p1.problem.yaml':
+      'format: tc-problem/1\nid: p1\ntitle: 最大値\nstatement: p1.md\nstarter: p1.c\nsolutions: [p1-解答.c]\ncases: p1.cases.yaml\n',
+    'p1.md': '# 最大値\n\n1 行目に個数 n、2 行目に n 個の整数が与えられる。最大値を出力せよ。\n',
+    'p1.c': '#include <stdio.h>\n\nint main(void) {\n  /* ここに書く */\n  return 0;\n}\n',
+    'p1.cases.yaml':
+      'format: tc-cases/1\ncases:\n  - name: 例1\n    stdin: "3\\n1 8 4\\n"\n    stdout: "8\\n"\n    public: true\n  - name: 非公開\n    stdin: "1\\n5\\n"\n    stdout: "5\\n"\n',
+    'p3.problem.yaml': 'format: tc-problem/1\nid: p3\ntitle: 探索\nstatement: p3.md\n',
+    'p3.md': '# 探索\n',
+    '中間試験.exam.yaml':
+      'format: tc-exam/1\n# 前期の中間試験\nexamId: midterm\nkind: exam\nlanguages: [c]\nproblems:\n  - p2.problem.yaml\n  - p1.problem.yaml\n',
+  });
+  await page.locator('#author-explorer [data-explorer-path="中間試験.exam.yaml"]').click();
+  await expect(editorGroup(page).locator('[data-exam-form]')).toHaveAttribute('data-state', 'ok');
+  await page.locator('#author-settings-toggle').click();
+  await expect(page.locator('#author-build-btn')).toHaveAttribute('data-kind', 'exam');
+  const mask = [page.locator('#author-sb-token'), page.locator('#author-token')];
+  // ボタンの title (ツールチップ) を写さない
+  await page.mouse.move(640, 790);
+  await page.screenshot({ path: out(formFile), animations: 'disabled', mask });
+
+  await page.locator('#author-settings-toggle').click();
+  await editorGroup(page).locator('[data-action="view-preview"]').click();
+  await expect(editorGroup(page).locator('[data-exam-preview]')).toHaveAttribute('data-preview-state', 'ok');
+  await page.screenshot({ path: out(previewFile), animations: 'disabled', mask });
 }
 
 test.describe('見た目・動きの証跡 @shots', () => {
@@ -473,7 +521,12 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await shootAuthorWorkspace(page, '20-author-workspace.png');
   });
 
-  // 20-en / 27-en (#796): 同じ 2 画面を英語で (画面の言語はブラウザの言語から決まる)
+  // 28 / 29 (#797): /author の試験定義のフォームと学生プレビュー
+  test('/author の試験定義のフォームと学生プレビューを撮る @shots', async ({ page }) => {
+    await shootAuthorExam(page, '28-author-exam-form.png', '29-author-student-preview.png');
+  });
+
+  // 20-en / 27-en (#796)・28-en / 29-en (#797): 同じ画面を英語で (画面の言語はブラウザの言語から決まる)
   test.describe('英語', () => {
     test.use({ locale: 'en-US' });
 
@@ -483,6 +536,10 @@ test.describe('見た目・動きの証跡 @shots', () => {
 
     test('/author の作業画面を英語で撮る @shots', async ({ page }) => {
       await shootAuthorWorkspace(page, '20-author-workspace-en.png');
+    });
+
+    test('/author の試験定義のフォームと学生プレビューを英語で撮る @shots', async ({ page }) => {
+      await shootAuthorExam(page, '28-author-exam-form-en.png', '29-author-student-preview-en.png');
     });
   });
 

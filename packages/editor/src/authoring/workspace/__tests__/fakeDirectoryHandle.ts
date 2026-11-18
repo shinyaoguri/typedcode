@@ -88,6 +88,13 @@ export class FakeFileSystem {
     return this.files.get(path)?.lastModified;
   }
 
+  /** すべてのファイルのパス → 内容 (パス順)。書き込みが起きていないことの照合に使う */
+  snapshot(): Record<string, string> {
+    return Object.fromEntries(
+      [...this.files.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([p, f]) => [p, f.text])
+    );
+  }
+
   hasFolder(path: string): boolean {
     return this.folders.has(path);
   }

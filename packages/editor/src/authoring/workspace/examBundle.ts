@@ -68,23 +68,6 @@ export async function buildExamBundleProblems(
   return issues.length > 0 ? { ok: false, issues } : { ok: true, exam, problems };
 }
 
-export type ProblemPathsBuildResult =
-  | { ok: true; problems: ExamBundleProblem[] }
-  | { ok: false; issues: WorkspaceIssue[] };
-
-/**
- * 問題定義のパス (根からの相対パス) の並びから、その順に配布物の形へ変換する。欠損・誤り・重なりの検出は
- * `buildExamBundleProblems` と同じ。試験定義を経ずに書き出す入口 (段階 5 (#797) で試験定義の採否に差し替える)。
- */
-export async function buildBundleProblemsFromPaths(
-  problemPaths: readonly string[],
-  reader: WorkspaceReader
-): Promise<ProblemPathsBuildResult> {
-  const issues: WorkspaceIssue[] = [];
-  const problems = await collectProblems(problemPaths, reader, issues);
-  return issues.length > 0 ? { ok: false, issues } : { ok: true, problems };
-}
-
 /** 問題を順に組み立て、重なりまで調べる。理由は `issues` に足す。 */
 async function collectProblems(
   problemPaths: readonly string[],
