@@ -26,3 +26,9 @@ const root = document.getElementById('author-root');
 if (root) {
   new AuthorPage(root).mount();
 }
+
+// E2E テスト専用フック (dev ビルドのみ。本番では import.meta.env.DEV=false でガードごと除去され、
+// dynamic import も残らない)。OPFS のハンドルを教材フォルダとして渡して読み書き・再開を試す (#795)。
+if (import.meta.env.DEV) {
+  void import('./workspace/devWorkspaceHook.js').then((hook) => hook.installAuthorWorkspaceHook());
+}

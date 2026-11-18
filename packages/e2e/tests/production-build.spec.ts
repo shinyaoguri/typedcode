@@ -144,6 +144,17 @@ test('production build: / を開くと練習のエディタが直接開き、Mon
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
 
+test('production build: /author に教材フォルダの dev 限定フックが残っていない', async ({ page }) => {
+  // dev フック `__tcTestAuthorWorkspace` (authorMain.ts の `import.meta.env.DEV` ガード内の dynamic import。#795) は
+  // 任意のハンドルを教材フォルダとして覚えさせられるので、本番に残してはいけない。preview は clean URL を
+  // 解決しないので author.html を直接開く。dev では mount の後に dynamic import で入るので、通信が落ち着くまで待つ
+  await page.goto('/author.html');
+  await page.locator('#author-starter-editor .view-lines').waitFor({ state: 'visible' });
+  await page.waitForLoadState('networkidle');
+  const hook = await page.evaluate(() => typeof (window as unknown as Record<string, unknown>).__tcTestAuthorWorkspace);
+  expect(hook).toBe('undefined');
+});
+
 test('production build: エディタ本体の chunk を取得できないとき、スピナーのまま止めずに起動失敗の画面を出す', async ({
   page,
   request,
