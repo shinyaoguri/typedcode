@@ -753,6 +753,35 @@ export interface TranslationKeys {
       newExamTitle: string;
       newExamLabel: string;
     };
+    /** ケースファイルのフォーム (#798) */
+    cases: {
+      heading: string;
+      list: string;
+      add: string;
+      duplicate: string;
+      remove: string;
+      empty: string;
+      name: string;
+      public: string;
+      publicHint: string;
+      match: string;
+      matchTrim: string;
+      matchExact: string;
+      stdin: string;
+      stdout: string;
+      trailingNone: string;
+      trailingCount: string;
+      crlfNote: string;
+      nameEmpty: string;
+      nameDuplicate: string;
+      defaultName: string;
+      copyName: string;
+      publicMark: string;
+      exactMark: string;
+      invalidDefinition: string;
+      openText: string;
+      opFailed: string;
+    };
     /** 学生プレビュー (#797) */
     preview: {
       note: string;
@@ -839,6 +868,26 @@ export interface TranslationKeys {
       missing: string;
       invalid: string;
       definition: string;
+      /** 問題ごとの操作「別のフォルダへコピー」(#800) */
+      copyProblem: string;
+    };
+    /** 問題を別の教材フォルダへコピーした結果 (#800) */
+    copyProblem: {
+      title: string;
+      close: string;
+      copied: string;
+      conflict: string;
+      sourceInvalid: string;
+      failed: string;
+      failedNote: string;
+      dirty: string;
+      sameFolder: string;
+      unsupported: string;
+      writtenLabel: string;
+      writtenBeforeFailureLabel: string;
+      conflictLabel: string;
+      dirtyLabel: string;
+      failedLabel: string;
     };
     /** 問題定義が参照するファイルの役割 */
     roles: { statement: string; starter: string; hint: string; solution: string; cases: string };

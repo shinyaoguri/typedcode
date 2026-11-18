@@ -17,10 +17,12 @@ import {
   MAX_PROBLEM,
   TWO_PROBLEMS,
   appendToEditor,
+  createOpfsFolder,
   editorGroup,
   openAuthorFolder,
   openFromExplorer,
   setFakeVerification,
+  setNextPickedFolder,
   startVerifyFromExplorer,
   verifyCell,
   verifyPanel,
@@ -210,13 +212,31 @@ const SHOTS = [
     caption: '出題 (/author): 29 と同じ学生プレビューを英語の画面で (#797)',
   },
   {
-    file: '30-author-verify.png',
+    file: '30-author-copy-conflict.png',
+    caption:
+      '出題 (/author): 問題を別のフォルダへコピーしようとして、コピー先に同じ名前のファイルがあったときの結果 (何も書かずに衝突したパスを並べる。#800)',
+  },
+  {
+    file: '30-author-copy-conflict-en.png',
+    caption: '出題 (/author): 30 と同じコピーの衝突の結果を英語の画面で (#800)',
+  },
+  {
+    file: '31-author-cases-form.png',
+    caption:
+      '出題 (/author): ケースファイルをフォームで開いた画面。左にケースの一覧 (入出力例・完全一致の印)、右に選んだケースの名前・入出力例として配る・照合・入力・期待する出力と末尾の改行の個数 (#798)',
+  },
+  {
+    file: '31-author-cases-form-en.png',
+    caption: '出題 (/author): 31 と同じケースファイルのフォームを英語の画面で (#798)',
+  },
+  {
+    file: '32-author-verify.png',
     caption:
       '出題 (/author): 問題の「検証」で下のパネルに出る解答例 × テストケースの結果表と、不一致のセルの差分 (期待 -2 / 実際 0)。実行の入口は偽物で作る (#799)',
   },
   {
-    file: '30-author-verify-en.png',
-    caption: '出題 (/author): 30 と同じ検証のパネルを英語の画面で (#799)',
+    file: '32-author-verify-en.png',
+    caption: '出題 (/author): 32 と同じ検証のパネルを英語の画面で (#799)',
   },
 ] as const;
 
@@ -355,6 +375,60 @@ async function shootAuthorExam(page: Page, formFile: ShotFile, previewFile: Shot
   await editorGroup(page).locator('[data-action="view-preview"]').click();
   await expect(editorGroup(page).locator('[data-exam-preview]')).toHaveAttribute('data-preview-state', 'ok');
   await page.screenshot({ path: out(previewFile), animations: 'disabled', mask });
+}
+
+/**
+ * /author の「別のフォルダへコピー」で、コピー先に同じ名前のファイルがあったときの結果のダイアログを撮る (#800)。
+ * コピー先は OPFS の別のフォルダで、dev フックでピッカーの結果を差し替える
+ */
+async function shootAuthorCopyConflict(page: Page, file: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-800', {
+    ...TWO_PROBLEMS,
+    'p1.problem.yaml':
+      'format: tc-problem/1\nid: p1\ntitle: 最大値\nstatement: p1.md\nstarter: p1.c\nsolutions: [p1-解答.c]\n',
+    'p1.c': 'int main(void) {\n  return 0;\n}\n',
+  });
+  await createOpfsFolder(page, 'shots-shared-800', { 'p1.md': '# 最大値 (前年度)\n', 'p1.c': '/* 前年度 */\n' });
+  await setNextPickedFolder(page, 'shots-shared-800');
+  await page.locator('#author-explorer [data-action="copy-problem"][data-problem-path="p1.problem.yaml"]').click();
+  const result = page.locator('.modal-overlay[data-dialog="copy-result"]:not(.hidden)');
+  await expect(result).toHaveAttribute('data-copy-status', 'conflict');
+  await page.mouse.move(640, 790);
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
+}
+
+/** /author のケースファイルをフォームで撮る (#798)。公開・非公開・完全一致・CRLF の値を混ぜ、2 件目を選んだ状態 */
+async function shootAuthorCases(page: Page, file: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-798', {
+    ...TWO_PROBLEMS,
+    'p1.problem.yaml':
+      'format: tc-problem/1\nid: p1\ntitle: 最大値\nstatement: p1.md\nsolutions: [p1-解答.c]\ncases: p1.cases.yaml\n',
+    'p1.cases.yaml': [
+      'format: tc-cases/1',
+      'cases:',
+      '  - name: 例1',
+      '    stdin: "3\\n1 8 4\\n"',
+      '    stdout: "8\\n"',
+      '    public: true',
+      '  - name: 負の数',
+      '    stdin: "4\\n  -3 -8\\n\\n-1 -5\\n\\n"',
+      '    stdout: "-1\\n"',
+      '    match: exact',
+      '  - name: Windows の改行',
+      '    stdin: "1\\r\\n5\\r\\n"',
+      '    stdout: "5\\r\\n"',
+      '',
+    ].join('\n'),
+  });
+  await page.locator('#author-explorer [data-explorer-path="p1.cases.yaml"]').click();
+  const form = editorGroup(page).locator('[data-cases-form]');
+  await expect(form).toHaveAttribute('data-state', 'ok');
+  await form.locator('[data-case-index="1"] [data-action="select-case"]').click();
+  await expect(form.locator('[data-case-index="1"]')).toHaveAttribute('data-selected', 'true');
+  // ボタンの title (ツールチップ) とフォーカスの枠を写さない
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.mouse.move(640, 790);
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
 }
 
 test.describe('見た目・動きの証跡 @shots', () => {
@@ -567,7 +641,22 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await shootAuthorExam(page, '28-author-exam-form.png', '29-author-student-preview.png');
   });
 
-  // 20-en / 27-en (#796)・28-en / 29-en (#797)・30-en (#799): 同じ画面を英語で (画面の言語はブラウザの言語から決まる)
+  // 30 (#800): /author の問題のコピーで、コピー先に同じ名前のファイルがあったときの結果
+  test('/author の問題のコピーの衝突の結果を撮る @shots', async ({ page }) => {
+    await shootAuthorCopyConflict(page, '30-author-copy-conflict.png');
+  });
+
+  // 31 (#798): /author のケースファイルのフォーム
+  test('/author のケースファイルのフォームを撮る @shots', async ({ page }) => {
+    await shootAuthorCases(page, '31-author-cases-form.png');
+  });
+
+  // 32 (#799): /author の検証のパネル (結果表と不一致のセルの差分)。実行の入口は dev フックの偽物
+  test('/author の検証のパネルを撮る @shots', async ({ page }) => {
+    await shootAuthorVerify(page, '32-author-verify.png');
+  });
+
+  // 20-en / 27-en (#796)・28-en / 29-en (#797)・32-en (#799) ほか: 同じ画面を英語で (画面の言語はブラウザの言語から決まる)
   test.describe('英語', () => {
     test.use({ locale: 'en-US' });
 
@@ -583,14 +672,17 @@ test.describe('見た目・動きの証跡 @shots', () => {
       await shootAuthorExam(page, '28-author-exam-form-en.png', '29-author-student-preview-en.png');
     });
 
-    test('/author の検証のパネルを英語で撮る @shots', async ({ page }) => {
-      await shootAuthorVerify(page, '30-author-verify-en.png');
+    test('/author の問題のコピーの衝突の結果を英語で撮る @shots', async ({ page }) => {
+      await shootAuthorCopyConflict(page, '30-author-copy-conflict-en.png');
     });
-  });
 
-  // 30 (#799): /author の検証のパネル (結果表と不一致のセルの差分)。実行の入口は dev フックの偽物
-  test('/author の検証のパネルを撮る @shots', async ({ page }) => {
-    await shootAuthorVerify(page, '30-author-verify.png');
+    test('/author のケースファイルのフォームを英語で撮る @shots (#798)', async ({ page }) => {
+      await shootAuthorCases(page, '31-author-cases-form-en.png');
+    });
+
+    test('/author の検証のパネルを英語で撮る @shots', async ({ page }) => {
+      await shootAuthorVerify(page, '32-author-verify-en.png');
+    });
   });
 
   // 21〜23 (#236): 試験開始ゲートの人間確認の欄。ゲートを出している間に Turnstile (公開テストキー) と

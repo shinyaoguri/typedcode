@@ -8,6 +8,8 @@
  *   フォルダとして再開する)。画面の操作と保存はここからではなく画面の部品で行う
  * - `document(path)`: 画面が開いている文書の状態 (保存済みのテキスト・今のテキスト・未保存か)。Monaco の表示は
  *   空白や折り返しで読みにくいので、テキストの照合はこちらで行う
+ * - `setNextPickedDirectory(handle)`: 画面が次に開くフォルダのピッカーの結果を、渡したハンドルに差し替える (1 回だけ。
+ *   問題のコピー先の選択など。#800)
  * - `open` / `resume` / `list` / `read` / `write`: 画面を通さずにフォルダの読み書きと再開を試す (#795)
  * - `setFakeVerification(entries)` / `fakeVerificationCalls()`: 検証の実行の入口を偽物 (`verification/fakeRunner.ts`)
  *   に差し替え、呼ばれた順を読む (#799)
@@ -32,6 +34,7 @@ export interface AuthorPageTestSurface {
   openFolderHandle(handle: FileSystemDirectoryHandle): Promise<void>;
   documentState(path: string): { path: string; savedText: string; text: string; dirty: boolean } | null;
   setVerificationRunner(runner: NonInteractiveRunner | null): void;
+  setNextPickedDirectory(handle: FileSystemDirectoryHandle | null): void;
 }
 
 export interface TestAuthorWorkspace {
@@ -39,6 +42,11 @@ export interface TestAuthorWorkspace {
   openInPage(handle: FileSystemDirectoryHandle): Promise<string>;
   /** 画面が開いている文書の状態。開いていなければ null */
   document(path: string): { path: string; savedText: string; text: string; dirty: boolean } | null;
+  /**
+   * 画面が次にフォルダのピッカーを開いたとき、ピッカーを出さずにこのハンドルを選んだことにする (1 回使ったら戻る。
+   * null で取り消す。#800)。コピー先の選択などに使う
+   */
+  setNextPickedDirectory(handle: FileSystemDirectoryHandle | null): void;
   /** ハンドルを教材フォルダとして開き、再訪用に覚える (画面は変えない)。フォルダ名を返す */
   open(handle: FileSystemDirectoryHandle): Promise<string>;
   /** 前回のフォルダで再開する。`opened` なら以後の list / read / write はそのフォルダに対して行う */
@@ -82,6 +90,7 @@ export function installAuthorWorkspaceHook(page: AuthorPageTestSurface | null): 
       return handle.name;
     },
     document: (path) => surface().documentState(path),
+    setNextPickedDirectory: (handle) => surface().setNextPickedDirectory(handle),
     async open(handle) {
       const result = await openMaterialFolderHandle(handle, store);
       if (result.status !== 'opened') throw new Error(`open failed: ${result.status}`);

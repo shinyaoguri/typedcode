@@ -7,7 +7,8 @@
  * - 試験: `*.exam.yaml` (開くとフォーム。#797)。節の見出しの「新しい試験」(`data-action="new-exam"`) で作る
  * - 状態契約: 項目は `data-explorer-path` (根からの相対パス) と `data-role` (`problem` / `statement` / `starter` /
  *   `hint` / `solution` / `cases` / `exam` / `invalid`)。問題ごとの操作は `data-action` (`add-part` / `assign-part` /
- *   `verify` (#799)) と `data-problem-path`。上の操作は `data-action` (`new-problem` / `refresh` / `open-other`)
+ *   `copy-problem` (#800) / `verify` (#799)。読めない定義には出さない) と
+ *   `data-problem-path`。上の操作は `data-action` (`new-problem` / `refresh` / `open-other`)
  *
  * 項目はどれも button なので Tab と Enter / Space で操作できる。
  */
@@ -28,6 +29,8 @@ export interface ExplorerHandlers {
   onAssignPart(problemPath: string): void;
   /** 解答例をテストケースで検証する (#799) */
   onVerify(problemPath: string): void;
+  /** 問題を参照ファイルごと別の教材フォルダへコピーする (#800) */
+  onCopyProblem(problemPath: string): void;
 }
 
 const ROLE_ICONS: Record<string, string> = {
@@ -92,6 +95,10 @@ export class ExplorerView {
       this.handlers.onAssignPart(problemPath);
       return;
     }
+    if (target.dataset.action === 'copy-problem' && problemPath) {
+      this.handlers.onCopyProblem(problemPath);
+      return;
+    }
     if (target.dataset.action === 'verify' && problemPath) {
       this.handlers.onVerify(problemPath);
       return;
@@ -139,6 +146,12 @@ export class ExplorerView {
         'assign-part',
         `${t('author.explorer.assignPart')}: ${name}`,
         'fa-link',
+        ` data-problem-path="${escapeHtml(problem.path)}"`
+      ),
+      iconButton(
+        'copy-problem',
+        `${t('author.explorer.copyProblem')}: ${name}`,
+        'fa-copy',
         ` data-problem-path="${escapeHtml(problem.path)}"`
       ),
       iconButton(

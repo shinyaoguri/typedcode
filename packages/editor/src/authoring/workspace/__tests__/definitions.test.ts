@@ -168,6 +168,27 @@ describe('cases: parse rules', () => {
     const text = textOf(updateCasesDefinitionText(original, [{ name: 'a', stdin: '', stdout: '' }]));
     expect(/public:|match:/.test(text)).toBe(false);
   });
+
+  it('builds each case from the original node named by sources, using an original node at most once', () => {
+    const original =
+      'format: tc-cases/1\ncases:\n  - name: a\n    stdin: ""\n    stdout: ""\n    weight: 1\n  - name: b # 2 件目\n    stdin: ""\n    stdout: ""\n';
+    // b を先頭へ、a は 2 回 (2 回目は新しい節点なので未知のキーを持たない)
+    const text = textOf(
+      updateCasesDefinitionText(
+        original,
+        [
+          { name: 'b', stdin: '', stdout: '' },
+          { name: 'a', stdin: '', stdout: '' },
+          { name: 'a2', stdin: '', stdout: '' },
+        ],
+        [1, 0, 0]
+      )
+    );
+    expect(text.indexOf('# 2 件目')).toBeLessThan(text.indexOf('name: a'));
+    expect(text.match(/weight: 1/g)?.length).toBe(1);
+    const parsed = parseCasesDefinition(text);
+    expect(parsed.ok && parsed.value.map((c) => c.name)).toEqual(['b', 'a', 'a2']);
+  });
 });
 
 describe('problem definitions', () => {

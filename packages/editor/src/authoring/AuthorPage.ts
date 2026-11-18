@@ -20,6 +20,8 @@
  * - 書き出しの状態契約: 対象の `select#author-export-target`、ボタン `#author-build-btn` の `data-kind` (`exam` / `class`。
  *   対象が読めないか無ければ属性なし)、誤りの `#author-build-error` の `data-reason` (`no-target` / `unknown-exam` /
  *   `dirty` / `invalid` / `empty` / `no-languages` / `no-key` / `failed`) と、欠損の一覧 `[data-issues]` (`ui/issueList.ts`)
+ * - 問題のコピー (#800): エクスプローラーの「別のフォルダへコピー」で、ピッカーで選んだフォルダへ問題定義と参照ファイルを
+ *   保存済みの内容で写す (`workspace/problemCopy.ts`)。結果は `copy-result` のダイアログ。コピー先は覚えない
  * - 状態契約: `#author-root` に `data-workspace-state` (`welcome` / `opening` / `open`)・`data-folder-name`・
  *   `data-dirty-count`。部品の契約は各部品の冒頭を参照 (packages/editor/AGENTS.md「状態契約」)
  *
@@ -42,12 +44,22 @@ import {
   pickDirectoryHandle,
   pickMaterialFolder,
   resumeMaterialFolder,
+  type DirectoryPicker,
   type GrantResult,
 } from './workspace/folderAccess.js';
 import { FolderHandleStore } from './workspace/folderHandleStore.js';
-import type { MaterialFolder } from './workspace/materialFolder.js';
+import { MaterialFolder } from './workspace/materialFolder.js';
+import { copyProblemToFolder, isSameFolder, problemCopyBlocker } from './workspace/problemCopy.js';
 import { workspaceBasename } from './workspace/paths.js';
-import { addPartDialog, assignPartDialog, chooseConflict, confirmDiscard, promptName } from './ui/authorDialogs.js';
+import {
+  addPartDialog,
+  assignPartDialog,
+  chooseConflict,
+  confirmDiscard,
+  promptName,
+  showCopyResult,
+} from './ui/authorDialogs.js';
+import { describeCopyResult } from './ui/copyResult.js';
 import { EditorArea } from './ui/EditorArea.js';
 import type { GroupIndex } from './ui/editorLayout.js';
 import { ExplorerView } from './ui/ExplorerView.js';
@@ -123,6 +135,10 @@ export class AuthorPage {
   private verificationRunner: NonInteractiveRunner | null = null;
   /** 今のターミナルの実行の排他を外す関数 (実行していなければ null。#820) */
   private releaseTerminal: (() => void) | null = null;
+  /** 開いている教材フォルダのハンドル (コピー先が同じフォルダかを調べる。#800) */
+  private folderHandle: FileSystemDirectoryHandle | null = null;
+  /** 次にフォルダのピッカーを開いたときの結果の差し替え (dev フックだけが入れる。1 回使ったら戻る) */
+  private nextPickedDirectory: FileSystemDirectoryHandle | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -147,6 +163,7 @@ export class AuthorPage {
       onOpenOther: () => void this.handleOpenFolder(),
       onAddPart: (path) => void this.handleAddPart(path),
       onAssignPart: (path) => void this.handleAssignPart(path),
+      onCopyProblem: (path) => void this.handleCopyProblem(path),
       onVerify: (path) => void this.handleVerify(path),
     });
     this.verifyPanel = new VerificationPanel({
@@ -254,7 +271,7 @@ export class AuthorPage {
 
   private async handleOpenFolder(): Promise<void> {
     if (!(await this.confirmLeaveFolder())) return;
-    const result = await pickMaterialFolder({ store: this.store });
+    const result = await pickMaterialFolder({ store: this.store, showDirectoryPicker: this.takePicker() });
     switch (result.status) {
       case 'opened':
         await this.openFolder(result.folder);
@@ -272,7 +289,7 @@ export class AuthorPage {
 
   private async handleCreateFolder(): Promise<void> {
     if (!(await this.confirmLeaveFolder())) return;
-    const parent = await pickDirectoryHandle();
+    const parent = await pickDirectoryHandle(this.takePicker());
     if (parent.status === 'unsupported') {
       this.welcome.setPickerSupported(false);
       return;
@@ -344,6 +361,22 @@ export class AuthorPage {
     await this.openFolder(result.folder);
   }
 
+  /**
+   * 次にフォルダのピッカーを開いたとき、ピッカーを出さずにこのハンドルを選んだことにする (dev フックが OPFS のハンドルを
+   * 渡す。1 回使ったら元に戻る。null で取り消す)
+   */
+  setNextPickedDirectory(handle: FileSystemDirectoryHandle | null): void {
+    this.nextPickedDirectory = handle;
+  }
+
+  /** 差し替えがあればそれを返すピッカー (無ければ undefined = 本物のピッカー) */
+  private takePicker(): DirectoryPicker | undefined {
+    const handle = this.nextPickedDirectory;
+    if (!handle) return undefined;
+    this.nextPickedDirectory = null;
+    return async () => handle;
+  }
+
   /** 開いている文書の状態 (dev フックが E2E に返す) */
   documentState(path: string): { path: string; savedText: string; text: string; dirty: boolean } | null {
     const doc = this.workspace?.document(path);
@@ -372,6 +405,7 @@ export class AuthorPage {
     if (seq !== this.openSeq) return;
     this.unsubscribeWorkspace?.();
     this.workspace = workspace;
+    this.folderHandle = folder.handle;
     this.unsubscribeWorkspace = workspace.onChange((change) => {
       if (change.kind === 'index') this.renderExplorer();
       this.onEditorStateChange();
@@ -680,6 +714,47 @@ export class AuthorPage {
   private updateRunAvailability(): void {
     const runBtn = this.el('author-run-btn') as HTMLButtonElement;
     runBtn.disabled = this.lock.verificationRunning || (this.exec?.running ?? false);
+  }
+
+  /**
+   * 問題を参照ファイルごと別の教材フォルダへコピーする (#800 / ADR-0051 Decision 8)。未保存の編集があればピッカーを
+   * 開かずに知らせる。コピー先は「前回のフォルダ」として覚えない (今開いている教材フォルダはそのまま)。
+   */
+  private async handleCopyProblem(problemPath: string): Promise<void> {
+    const workspace = this.workspace;
+    const current = this.folderHandle;
+    if (!workspace || !current) return;
+    // ピッカーはクリックの中で開く必要があるので、ここまで await を挟まない
+    const blocker = problemCopyBlocker(workspace, problemPath);
+    if (blocker?.status === 'unknown-problem') {
+      this.showNotice(describeOpError({ kind: 'unknown-problem', path: blocker.path }), 'error', 'op-failed');
+      return;
+    }
+    if (blocker) {
+      await showCopyResult(describeCopyResult(blocker, ''));
+      return;
+    }
+    const picked = await pickDirectoryHandle(this.takePicker());
+    if (picked.status === 'unsupported') {
+      this.showNotice(t('author.copyProblem.unsupported'), 'error', 'op-failed');
+      return;
+    }
+    if (picked.status === 'failed') {
+      this.reportOpenFailure(picked.cause);
+      return;
+    }
+    if (picked.status !== 'picked') return;
+    const destination = picked.handle;
+    if ((await isSameFolder(current, destination)) === true) {
+      await showCopyResult(describeCopyResult({ status: 'same-folder' }, destination.name));
+      return;
+    }
+    const outcome = await copyProblemToFolder(workspace, problemPath, new MaterialFolder(destination));
+    if (outcome.status === 'unknown-problem') {
+      this.showNotice(describeOpError({ kind: 'unknown-problem', path: outcome.path }), 'error', 'op-failed');
+      return;
+    }
+    await showCopyResult(describeCopyResult(outcome, destination.name));
   }
 
   /** ツールバーの知らせ。`id` は状態契約の `data-notice` (E2E 用) */
