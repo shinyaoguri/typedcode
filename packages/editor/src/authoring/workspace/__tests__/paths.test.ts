@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { problemIdFromPath, resolveWorkspaceReference, workspaceBasename } from '../paths.js';
+import {
+  problemIdFromPath,
+  relativeWorkspaceReference,
+  resolveWorkspaceReference,
+  workspaceBasename,
+} from '../paths.js';
 
 describe('resolveWorkspaceReference', () => {
   it('resolves a reference relative to the directory of the definition file', () => {
@@ -42,6 +47,28 @@ describe('resolveWorkspaceReference', () => {
 
   it('rejects a blank reference', () => {
     expect(resolveWorkspaceReference('x.problem.yaml', '  ')).toEqual({ ok: false, reason: 'empty' });
+  });
+});
+
+describe('relativeWorkspaceReference', () => {
+  const cases: Array<[string, string, string]> = [
+    ['最大値.problem.yaml', '最大値-解答.c', '最大値-解答.c'],
+    ['過去問/探索.problem.yaml', '過去問/探索-解答.py', '探索-解答.py'],
+    ['過去問/探索.problem.yaml', '共通.md', '../共通.md'],
+    ['a/b/x.problem.yaml', 'a/c/y.c', '../c/y.c'],
+    ['x.problem.yaml', 'sub/dir/y.c', 'sub/dir/y.c'],
+    ['a/x.problem.yaml', 'a', '../a'],
+  ];
+
+  it.each(cases)('from %s to %s gives %s', (definition, target, expected) => {
+    expect(relativeWorkspaceReference(definition, target)).toBe(expected);
+  });
+
+  it.each(cases)('resolving the reference from %s returns to %s', (definition, target) => {
+    expect(resolveWorkspaceReference(definition, relativeWorkspaceReference(definition, target))).toEqual({
+      ok: true,
+      path: target,
+    });
   });
 });
 

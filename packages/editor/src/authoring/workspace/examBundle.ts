@@ -54,22 +54,53 @@ export async function buildExamBundleProblems(
   const exam = await readDefinition(reader, examPath, null, parseExamDefinition, issues);
   if (!exam) return { ok: false, issues };
 
-  const problems: ExamBundleProblem[] = [];
-  const owners: Owner[] = [];
+  const paths: string[] = [];
   for (const reference of exam.problems) {
     const resolved = resolveWorkspaceReference(examPath, reference);
     if (!resolved.ok) {
       issues.push({ kind: 'invalid-reference', problem: null, source: examPath, reference, reason: resolved.reason });
       continue;
     }
-    const built = await buildProblem(reader, resolved.path, issues);
-    if (!built) continue;
-    problems.push(built.problem);
-    owners.push({ problemPath: resolved.path, id: built.problem.problemId, filename: built.problem.starter?.filename });
+    paths.push(resolved.path);
   }
 
-  issues.push(...findDuplicates(owners));
+  const problems = await collectProblems(paths, reader, issues);
   return issues.length > 0 ? { ok: false, issues } : { ok: true, exam, problems };
+}
+
+export type ProblemPathsBuildResult =
+  | { ok: true; problems: ExamBundleProblem[] }
+  | { ok: false; issues: WorkspaceIssue[] };
+
+/**
+ * 問題定義のパス (根からの相対パス) の並びから、その順に配布物の形へ変換する。欠損・誤り・重なりの検出は
+ * `buildExamBundleProblems` と同じ。試験定義を経ずに書き出す入口 (段階 5 (#797) で試験定義の採否に差し替える)。
+ */
+export async function buildBundleProblemsFromPaths(
+  problemPaths: readonly string[],
+  reader: WorkspaceReader
+): Promise<ProblemPathsBuildResult> {
+  const issues: WorkspaceIssue[] = [];
+  const problems = await collectProblems(problemPaths, reader, issues);
+  return issues.length > 0 ? { ok: false, issues } : { ok: true, problems };
+}
+
+/** 問題を順に組み立て、重なりまで調べる。理由は `issues` に足す。 */
+async function collectProblems(
+  problemPaths: readonly string[],
+  reader: WorkspaceReader,
+  issues: WorkspaceIssue[]
+): Promise<ExamBundleProblem[]> {
+  const problems: ExamBundleProblem[] = [];
+  const owners: Owner[] = [];
+  for (const problemPath of problemPaths) {
+    const built = await buildProblem(reader, problemPath, issues);
+    if (!built) continue;
+    problems.push(built.problem);
+    owners.push({ problemPath, id: built.problem.problemId, filename: built.problem.starter?.filename });
+  }
+  issues.push(...findDuplicates(owners));
+  return problems;
 }
 
 /** 問題 1 つを組み立てる。理由は `issues` に足し、1 件でも足したら null。 */

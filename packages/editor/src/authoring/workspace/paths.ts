@@ -49,6 +49,20 @@ export function resolveWorkspaceReference(definitionPath: string, reference: str
   return { ok: true, path: segments.join('/') };
 }
 
+/**
+ * `resolveWorkspaceReference` の逆。定義ファイルのパスと、根からの相対パス (ファイル) から、
+ * 定義ファイルに書く参照 (定義ファイルのあるフォルダからの相対パス) を作る。共通の祖先より上は `..` で辿る
+ * (`過去問/x.problem.yaml` と `共通.md` → `../共通.md`)。綴りは変えない。
+ */
+export function relativeWorkspaceReference(definitionPath: string, targetPath: string): string {
+  const from = dirSegments(definitionPath);
+  const to = targetPath.split('/').filter((s) => s !== '' && s !== '.');
+  let common = 0;
+  while (common < from.length && common < to.length - 1 && from[common] === to[common]) common++;
+  const ups = from.slice(common).map(() => '..');
+  return [...ups, ...to.slice(common)].join('/');
+}
+
 /** パスの最後の要素 (ファイル名)。 */
 export function workspaceBasename(path: string): string {
   const index = path.lastIndexOf('/');

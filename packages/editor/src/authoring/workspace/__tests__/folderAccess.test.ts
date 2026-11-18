@@ -13,7 +13,12 @@ import { IDBFactory } from 'fake-indexeddb';
 import { ALL_EDITOR_MODES } from '../../../core/mode.js';
 import { sessionDbName, setStorageNamespace } from '../../../core/storageKeys.js';
 import { clearCurrentModeData } from '../../../utils/StorageClearHelper.js';
-import { pickMaterialFolder, resumeMaterialFolder } from '../folderAccess.js';
+import {
+  createMaterialFolderIn,
+  pickDirectoryHandle,
+  pickMaterialFolder,
+  resumeMaterialFolder,
+} from '../folderAccess.js';
 import { FolderHandleStore, WORKSPACE_DB_NAME } from '../folderHandleStore.js';
 import { FakeFileSystem, isFakeHandle } from './fakeDirectoryHandle.js';
 
@@ -159,6 +164,55 @@ describe('pickMaterialFolder', () => {
     expect(await pickMaterialFolder({ store: new FolderHandleStore({ indexedDB: factory }) })).toEqual({
       status: 'unsupported',
     });
+  });
+});
+
+describe('createMaterialFolderIn', () => {
+  it('creates a new folder inside the parent, opens it and remembers it for the next visit', async () => {
+    const fs = folderWith();
+    const result = await createMaterialFolderIn(fs.root(), '情報基礎', new FolderHandleStore({ indexedDB: factory }));
+    const loaded = await new FolderHandleStore({ indexedDB: factory }).load();
+    expect([result.status, fs.hasFolder('情報基礎'), loaded?.name]).toEqual(['opened', true, '情報基礎']);
+  });
+
+  it('does not reuse a folder that already exists', async () => {
+    const fs = folderWith({ '情報基礎/a.md': 'x' });
+    const result = await createMaterialFolderIn(fs.root(), '情報基礎', new FolderHandleStore({ indexedDB: factory }));
+    expect([result, await new FolderHandleStore({ indexedDB: factory }).load()]).toEqual([
+      { status: 'exists', name: '情報基礎' },
+      null,
+    ]);
+  });
+
+  it('treats a file of the same name as existing', async () => {
+    const fs = folderWith({ 情報基礎: 'x' });
+    const result = await createMaterialFolderIn(fs.root(), '情報基礎', new FolderHandleStore({ indexedDB: factory }));
+    expect(result).toEqual({ status: 'exists', name: '情報基礎' });
+  });
+
+  it('rejects names that are empty, nested or hidden without creating anything', async () => {
+    const fs = folderWith({});
+    const store = new FolderHandleStore({ indexedDB: factory });
+    const results = await Promise.all(['  ', 'a/b', 'a\\b', '.git'].map((n) => createMaterialFolderIn(fs.root(), n, store)));
+    expect([results.map((r) => r.status), fs.hasFolder('a')]).toEqual([
+      ['invalid-name', 'invalid-name', 'invalid-name', 'invalid-name'],
+      false,
+    ]);
+  });
+});
+
+describe('pickDirectoryHandle', () => {
+  it('returns the picked handle without remembering it', async () => {
+    const fs = folderWith();
+    const result = await pickDirectoryHandle(async () => fs.root());
+    expect([result.status, await new FolderHandleStore({ indexedDB: factory }).load()]).toEqual(['picked', null]);
+  });
+
+  it('reports cancelled when the user cancels the picker', async () => {
+    const result = await pickDirectoryHandle(async () => {
+      throw new DOMException('aborted', 'AbortError');
+    });
+    expect(result).toEqual({ status: 'cancelled' });
   });
 });
 
