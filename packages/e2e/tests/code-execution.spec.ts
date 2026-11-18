@@ -451,21 +451,27 @@ test('実行の異常 (非同期・同期の無限処理・大量出力・Worker
   expect(result.passed, result.stdout + result.stderr).toBe(true);
 });
 
-/** `/author` で、初期コードを `starter` に持つ 1 問だけの教材フォルダを開き、初期コードを群 0 で開く (#796) */
+/**
+ * `/author` で、初期コードを `starter` に持つ 1 問だけの教材フォルダを開き、初期コードを群 0 で開く (#796)。
+ * 種類が試験の試験定義も置く (書き出しのパネルは、書き出す試験が `.tcexam` のときだけ署名鍵の欄を出す。#797)
+ */
 async function openAuthorStarter(page: Page, starter: string): Promise<void> {
   await installTermsAccepted(page);
   await openAuthorFolder(page, 'e2e-material-exec', {
     'p1.problem.yaml': `format: tc-problem/1\nid: p1\nstatement: p1.md\nstarter: ${starter}\n`,
     'p1.md': '# p1\n',
     [starter]: '',
+    'exam.exam.yaml':
+      'format: tc-exam/1\nexamId: exec\nkind: exam\nlanguages: [javascript]\nproblems: [p1.problem.yaml]\n',
   });
   await openFromExplorer(page, starter, 'starter');
 }
 
 test('/author で初期コードを JS で実行しても #author-jwk に届かない', async ({ page }) => {
   await openAuthorStarter(page, 'p1.js');
-  // 署名鍵の欄は設定パネルにある (既定で閉じている)
+  // 署名鍵の欄は書き出しのパネルにある (既定で閉じている。書き出す試験が .tcexam のときだけ出る)
   await page.locator('#author-settings-toggle').click();
+  await expect(page.locator('#author-build-btn')).toHaveAttribute('data-kind', 'exam');
   await page.locator('#author-jwk').fill('{"d":"SECRET-AUTHOR-KEY"}');
 
   await editorGroup(page).locator('.view-lines').click();
