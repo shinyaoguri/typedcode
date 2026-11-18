@@ -44,7 +44,7 @@ const ISSUES: Array<[WorkspaceIssue, string]> = [
     },
     'statement',
   ],
-  [{ kind: 'unreadable-file', problem: null, path: 'b.md' }, 'b.md'],
+  [{ kind: 'unreadable-file', problem: null, path: 'b.md', message: 'denied' }, 'b.md'],
   [{ kind: 'duplicate-problem-id', id: 'p1', problems: ['a.problem.yaml', 'b.problem.yaml'] }, 'b.problem.yaml'],
   [{ kind: 'duplicate-filename', filename: 'main.c', problems: ['a.problem.yaml', 'b.problem.yaml'] }, 'main.c'],
 ];
