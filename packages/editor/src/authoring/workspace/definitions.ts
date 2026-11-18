@@ -285,26 +285,37 @@ export function updateExamDefinitionText(text: string, patch: ExamDefinitionPatc
 /**
  * 元のケースファイルのテキストを、`cases` が与えた並びになるよう書き換える。添字ごとに欄を比べ、
  * 変わった欄だけを差し替える (各ケースのコメントと未知のキーを残す)。増えた分は末尾に足し、減った分は消す。
+ *
+ * `sources` を渡すと、`cases[i]` を元のファイルの `sources[i]` 番目のケースの節点 (コメントごと) から作る
+ * (`null` は新しい節点)。途中のケースを消す・途中に足すときに、後ろのケースのコメントが前のケースへずれない
+ * (#798)。同じ元の節点を 2 回使うと、2 回目は新しい節点になる。省くと添字どおり (`sources[i] = i`)。
  */
-export function updateCasesDefinitionText(text: string, cases: readonly CaseInput[]): SerializeResult {
+export function updateCasesDefinitionText(
+  text: string,
+  cases: readonly CaseInput[],
+  sources?: readonly (number | null)[]
+): SerializeResult {
   const current = parseCasesDefinition(text);
   if (!current.ok) return current;
   const desired = cases.map(normalizeCase);
   if (JSON.stringify(desired) === JSON.stringify(current.value)) return { ok: true, text };
   const doc = parseDocument(text);
   const seq = doc.get('cases', true) as YAMLSeq;
-  desired.forEach((next, index) => {
-    const node = seq.items[index];
-    const previous = current.value[index];
-    if (previous && isMap(node)) {
+  const original = [...seq.items];
+  const used = new Set<number>();
+  seq.items = desired.map((next, index) => {
+    const source = sources ? (sources[index] ?? null) : index;
+    const node = source === null ? undefined : original[source];
+    const previous = source === null ? undefined : current.value[source];
+    if (source !== null && previous && isMap(node) && !used.has(source)) {
+      used.add(source);
       updateCaseNode(doc, node, previous, next);
-    } else {
-      // flow の列にブロックのマッピングは足せないので、足すときはブロックにする
-      seq.flow = false;
-      seq.items.push(createCaseNode(doc, next));
+      return node;
     }
+    // flow の列にブロックのマッピングは足せないので、足すときはブロックにする
+    seq.flow = false;
+    return createCaseNode(doc, next);
   });
-  seq.items.splice(desired.length);
   return finishCases(doc, desired);
 }
 
