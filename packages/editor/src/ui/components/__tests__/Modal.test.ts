@@ -231,6 +231,16 @@ describe('dialog state contract', () => {
     expect(openDialogNames()).toEqual([]);
   });
 
+  it('puts the action of each showModal button on its data-action', () => {
+    open({
+      buttons: [
+        { text: 'A', type: 'primary', action: 'overwrite' },
+        { text: 'B', type: 'cancel' },
+      ],
+    });
+    expect(buttons().map((b) => b.dataset.action ?? null)).toEqual(['overwrite', null]);
+  });
+
   it('puts the dialogName of countdown dialogs and lock overlays on their overlay', () => {
     void showCountdownDialog({
       title: 'T',

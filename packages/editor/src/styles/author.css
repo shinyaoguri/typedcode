@@ -11,6 +11,7 @@
 @import "./components/_statusbar.css";
 @import "./components/_tabs.css";
 @import "./components/_markdown.css";
+@import "./components/_modals.css";
 
 * {
   box-sizing: border-box;
@@ -83,7 +84,201 @@ body::before {
   gap: var(--spacing-sm);
 }
 
-/* ===== ワークベンチ (タブ + 左右分割エディタ) ===== */
+/* ===== 本体 (起動画面 / 作業画面) ===== */
+.author-main {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.author-main [hidden],
+.author-workspace[hidden],
+.author-welcome[hidden] {
+  display: none !important;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 起動画面 (#796) */
+.author-welcome {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  overflow-y: auto;
+}
+.author-welcome-card {
+  width: 560px;
+  max-width: 100%;
+  padding: var(--spacing-xl);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+.author-welcome-card h1 {
+  margin: 0 0 var(--spacing-md);
+  font-size: 20px;
+}
+.author-welcome-card h1 i {
+  color: var(--feature-accent);
+}
+.author-welcome-intro {
+  margin: 0 0 var(--spacing-lg);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.author-welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+.author-welcome-status {
+  margin: var(--spacing-md) 0 0;
+  color: var(--text-secondary);
+}
+.author-welcome-message {
+  margin: var(--spacing-md) 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-warning);
+  border-radius: var(--radius-sm);
+  background: rgba(138, 122, 30, 0.18);
+  line-height: 1.5;
+}
+
+/* 作業画面 = エクスプローラー + ワークベンチ */
+.author-workspace {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* エクスプローラー (#796) */
+.author-explorer {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  font-size: 13px;
+  min-height: 0;
+}
+.author-explorer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+  height: 35px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.author-explorer-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.author-explorer-tools,
+.author-explorer-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.author-explorer-tools .author-icon-btn,
+.author-explorer-actions .author-icon-btn {
+  font-size: 12px;
+  padding: 4px 5px;
+}
+.author-explorer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0 12px;
+}
+.author-explorer-section-head {
+  margin: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.author-explorer-empty {
+  margin: 4px 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.author-explorer-list,
+.author-explorer-parts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.author-explorer-parts .author-explorer-item {
+  padding-left: 28px;
+}
+.author-explorer-row {
+  display: flex;
+  align-items: center;
+}
+.author-explorer-row .author-explorer-item {
+  flex: 1;
+  font-weight: 600;
+}
+.author-explorer-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 12px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.author-explorer-item i {
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--feature-accent);
+  font-size: 12px;
+}
+.author-explorer-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.author-explorer-item:hover {
+  background: var(--bg-hover);
+}
+.author-explorer-item.active {
+  background: var(--bg-tertiary);
+  box-shadow: inset 2px 0 0 var(--feature-accent);
+}
+.author-explorer-item.missing {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+  cursor: default;
+}
+.author-explorer-item i.author-explorer-missing,
+.author-explorer-item[data-role="invalid"] i {
+  color: var(--accent-warning);
+}
+
+/* ワークベンチ (ツールバー + 分割エディタ + ターミナル) */
 .author-workbench {
   flex: 1;
   display: flex;
@@ -91,65 +286,34 @@ body::before {
   min-width: 0;
   min-height: 0;
 }
-
-/* 問題タブ = スターターファイル。editor の .editor-tab を流用するので追加調整のみ。 */
-.editor-tab .tab-icon {
-  color: var(--feature-accent);
-  font-size: 13px;
-}
-
-.author-editor-split {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-.author-pane {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  border-right: 1px solid var(--border-color);
-}
-.author-pane:last-child {
-  border-right: none;
-}
-.author-pane-header {
+.author-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-  padding: 4px 12px;
-  font-size: 12px;
-  color: var(--text-secondary);
+  gap: var(--spacing-xs);
+  padding: 4px 8px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
+  min-width: 0;
 }
-.author-inline-input {
-  width: 130px;
-  padding: 1px 6px;
+.author-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border-color);
+}
+.author-notice {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
-  background: var(--bg-input);
-  color: var(--text-primary);
-  border: 1px solid var(--border-input);
-  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
 }
-.author-pane-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-}
-.author-starter-body {
-  flex-direction: column;
-}
-.author-monaco {
-  flex: 1;
-  min-height: 0;
-}
-.author-pane-tools {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-xs);
+.author-notice-error {
+  color: var(--accent-danger);
+  white-space: normal;
 }
 .author-pane-btn {
   display: inline-flex;
@@ -166,13 +330,14 @@ body::before {
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
+  white-space: nowrap;
 }
 .author-pane-btn i {
   font-size: 12px;
   line-height: 1;
 }
-/* アイコンのみのボタン (ターミナルトグル) は正方形に揃える */
-#author-term-toggle {
+/* アイコンのみのボタン (分割・ターミナルトグル) は正方形に揃える */
+.author-pane-btn-icon {
   width: 24px;
   padding: 0;
 }
@@ -189,76 +354,65 @@ body::before {
   color: var(--feature-accent-fg);
 }
 
-/* 動作確認の例 (入出力例, #648)。問題文ペインの下に置き、例が多くなったら一覧だけを中でスクロールする
-   (見出しと追加ボタンは常に見せる) */
-.author-examples {
+/* エディタ群 (最大 2 つを左右に) */
+.author-groups {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.author-group {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
-  max-height: 45%;
-  padding: 8px 12px 10px;
-  border-top: 1px solid var(--border-color);
-  background: var(--bg-secondary);
-  font-size: 12px;
+  min-width: 0;
+  border-right: 1px solid var(--border-color);
 }
-.author-examples-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-  color: var(--text-secondary);
+.author-group:last-child {
+  border-right: none;
 }
-.author-examples-hint {
-  margin-bottom: var(--spacing-sm);
+.author-group.active .editor-tabs-container {
+  box-shadow: inset 0 -2px 0 var(--feature-accent);
 }
-.author-example-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
-.author-example {
-  margin-top: var(--spacing-sm);
-  padding: 8px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-primary);
-}
-.author-example-head {
-  display: flex;
+.author-group-tools {
+  display: inline-flex;
   align-items: center;
   gap: var(--spacing-xs);
+  padding: 0 8px;
+  flex-shrink: 0;
 }
-.author-example-head .author-input {
+.author-group-body {
   flex: 1;
-  padding: 4px 8px;
-  font-size: 12px;
-}
-.author-example-io {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-sm);
-  margin-top: 6px;
-}
-.author-example-io label {
+  min-height: 0;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--text-secondary);
 }
-.author-example-io .author-textarea {
-  padding: 4px 8px;
-  font-size: 12px;
+.author-group-empty {
+  margin: auto;
+  padding: var(--spacing-lg);
+  color: var(--text-secondary);
+  text-align: center;
+}
+.author-monaco {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
-/* スターターコードの実行ターミナル */
+/* タブは editor の .editor-tab を流用するので追加調整のみ。 */
+.editor-tab .tab-icon {
+  color: var(--feature-accent);
+  font-size: 13px;
+}
+.author-tab-dirty {
+  font-size: 10px;
+  color: var(--feature-accent);
+}
+
+/* 実行ターミナル */
 .author-terminal-wrap {
   height: 200px;
   flex-shrink: 0;
   border-top: 1px solid var(--border-color);
   background: #1e1e1e;
-}
-.author-terminal-wrap[hidden] {
-  display: none;
 }
 .author-terminal {
   height: 100%;
@@ -295,6 +449,28 @@ body::before {
 .author-seg-btn.active {
   background: var(--feature-accent);
   color: var(--feature-accent-fg);
+}
+
+/* 作問画面のダイアログ (Modal の中身) */
+.author-dialog {
+  max-width: 520px;
+}
+.author-dialog-form .author-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}
+.author-dialog-form .author-field span {
+  font-weight: 500;
+}
+.author-dialog-error {
+  margin: 0;
+  color: var(--accent-danger);
+  font-size: 13px;
+}
+.author-dialog .modal-body p {
+  line-height: 1.6;
 }
 
 /* ===== パッケージ設定パネル (右サイド、トグル) ===== */

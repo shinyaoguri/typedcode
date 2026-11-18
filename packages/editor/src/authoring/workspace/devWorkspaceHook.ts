@@ -1,9 +1,14 @@
 /**
- * `/author` の E2E 専用フック `window.__tcTestAuthorWorkspace` (dev ビルドのみ。#795)。
+ * `/author` の E2E 専用フック `window.__tcTestAuthorWorkspace` (dev ビルドのみ。#795 / #796)。
  *
  * ネイティブのフォルダのピッカーは Playwright で操作できないので、テストが OPFS
- * (`navigator.storage.getDirectory()`) のディレクトリハンドルを教材フォルダとして渡し、保存 → 読み直し →
- * 前回のフォルダで再開、の経路を本物の IndexedDB と File System Access API で通す。
+ * (`navigator.storage.getDirectory()`) のディレクトリハンドルを教材フォルダとして渡す。
+ *
+ * - `openInPage(handle)`: ピッカーの代わりに、実際の作問画面がそのフォルダを開く (覚えるので、読み直すと前回の
+ *   フォルダとして再開する)。画面の操作と保存はここからではなく画面の部品で行う
+ * - `document(path)`: 画面が開いている文書の状態 (保存済みのテキスト・今のテキスト・未保存か)。Monaco の表示は
+ *   空白や折り返しで読みにくいので、テキストの照合はこちらで行う
+ * - `open` / `resume` / `list` / `read` / `write`: 画面を通さずにフォルダの読み書きと再開を試す (#795)
  *
  * `authorMain.ts` が `import.meta.env.DEV` のガードの中で dynamic import するので、本番ビルドには入らない
  * (production-build.spec が `/author` で undefined であることを見張る)。返す値はどれも `page.evaluate` で
@@ -14,8 +19,18 @@ import { openMaterialFolderHandle, resumeMaterialFolder } from './folderAccess.j
 import { FolderHandleStore } from './folderHandleStore.js';
 import type { MaterialFolder } from './materialFolder.js';
 
+/** フックが画面に求める入口 (`AuthorPage` が満たす) */
+export interface AuthorPageTestSurface {
+  openFolderHandle(handle: FileSystemDirectoryHandle): Promise<void>;
+  documentState(path: string): { path: string; savedText: string; text: string; dirty: boolean } | null;
+}
+
 export interface TestAuthorWorkspace {
-  /** ハンドルを教材フォルダとして開き、再訪用に覚える。フォルダ名を返す */
+  /** 作問画面でハンドルを教材フォルダとして開く (作業画面になるまで待つ)。フォルダ名を返す */
+  openInPage(handle: FileSystemDirectoryHandle): Promise<string>;
+  /** 画面が開いている文書の状態。開いていなければ null */
+  document(path: string): { path: string; savedText: string; text: string; dirty: boolean } | null;
+  /** ハンドルを教材フォルダとして開き、再訪用に覚える (画面は変えない)。フォルダ名を返す */
   open(handle: FileSystemDirectoryHandle): Promise<string>;
   /** 前回のフォルダで再開する。`opened` なら以後の list / read / write はそのフォルダに対して行う */
   resume(): Promise<{ status: string; name?: string; reason?: string }>;
@@ -32,15 +47,24 @@ declare global {
   }
 }
 
-export function installAuthorWorkspaceHook(): void {
+export function installAuthorWorkspaceHook(page: AuthorPageTestSurface | null): void {
   const store = new FolderHandleStore();
   let current: MaterialFolder | null = null;
   const folder = (): MaterialFolder => {
     if (!current) throw new Error('No material folder is open');
     return current;
   };
+  const surface = (): AuthorPageTestSurface => {
+    if (!page) throw new Error('The author page is not mounted');
+    return page;
+  };
 
   window.__tcTestAuthorWorkspace = {
+    async openInPage(handle) {
+      await surface().openFolderHandle(handle);
+      return handle.name;
+    },
+    document: (path) => surface().documentState(path),
     async open(handle) {
       const result = await openMaterialFolderHandle(handle, store);
       if (result.status !== 'opened') throw new Error(`open failed: ${result.status}`);

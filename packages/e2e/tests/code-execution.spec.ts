@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
 import {
-  BOOT_TIMEOUT_MS,
   EditorApp,
   installTermsAccepted,
   listZipEntries,
@@ -8,6 +7,7 @@ import {
   readZipEntryText,
 } from './helpers/app.js';
 import { runVerifyCli } from './helpers/verifyCli.js';
+import { editorGroup, openAuthorFolder, openFromExplorer } from './helpers/author.js';
 
 /**
  * JS / TS のコード実行の隔離と停止の回帰テスト (#290 / ADR-0041)。
@@ -451,21 +451,24 @@ test('実行の異常 (非同期・同期の無限処理・大量出力・Worker
   expect(result.passed, result.stdout + result.stderr).toBe(true);
 });
 
-test('/author でスターターコードを JS で実行しても #author-jwk に届かない', async ({ page }) => {
+/** `/author` で、初期コードを `starter` に持つ 1 問だけの教材フォルダを開き、初期コードを群 0 で開く (#796) */
+async function openAuthorStarter(page: Page, starter: string): Promise<void> {
   await installTermsAccepted(page);
-  await page.goto('/author');
-  await page.locator('#author-starter-editor .view-lines').waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
+  await openAuthorFolder(page, 'e2e-material-exec', {
+    'p1.problem.yaml': `format: tc-problem/1\nid: p1\nstatement: p1.md\nstarter: ${starter}\n`,
+    'p1.md': '# p1\n',
+    [starter]: '',
+  });
+  await openFromExplorer(page, starter, 'starter');
+}
+
+test('/author で初期コードを JS で実行しても #author-jwk に届かない', async ({ page }) => {
+  await openAuthorStarter(page, 'p1.js');
+  // 署名鍵の欄は設定パネルにある (既定で閉じている)
+  await page.locator('#author-settings-toggle').click();
   await page.locator('#author-jwk').fill('{"d":"SECRET-AUTHOR-KEY"}');
 
-  // スターターのファイル名を .js にする (タブのダブルクリックで改名)。本物の 2 回クリックは
-  // 1 回目のクリックでタブが描き直されて dblclick が届かないので、dblclick だけを送る
-  await page.locator('#author-tabs .tab-filename').first().dispatchEvent('dblclick');
-  const input = page.locator('#author-tabs .tab-filename-input');
-  await input.fill('p1.js');
-  await input.press('Enter');
-  await expect(page.locator('#author-tabs .tab-filename').first()).toHaveText('p1.js');
-
-  await page.locator('#author-starter-editor .view-lines').click();
+  await editorGroup(page).locator('.view-lines').click();
   await page.keyboard.insertText(
     'try { console.log("jwk:" + document.getElementById("author-jwk").value); } catch (e) { console.error("jwk:blocked"); }'
   );
@@ -477,20 +480,11 @@ test('/author でスターターコードを JS で実行しても #author-jwk �
   expect(await terminalText(page, terminal)).not.toContain('SECRET-AUTHOR-KEY');
 });
 
-test('/author でスターターコードを TS として実行できる', async ({ page }) => {
-  await installTermsAccepted(page);
-  await page.goto('/author');
-  await page.locator('#author-starter-editor .view-lines').waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
-
-  // スターターのファイル名を .ts にする (上の JS の test と同じく dblclick だけを送る)
-  await page.locator('#author-tabs .tab-filename').first().dispatchEvent('dblclick');
-  const input = page.locator('#author-tabs .tab-filename-input');
-  await input.fill('p1.ts');
-  await input.press('Enter');
-  await expect(page.locator('#author-tabs .tab-filename').first()).toHaveText('p1.ts');
+test('/author で初期コードを TS として実行できる', async ({ page }) => {
+  await openAuthorStarter(page, 'p1.ts');
 
   // 改行を含めない 1 行で入れる (上の JS の test と同じ流儀。改行で自動インデント・補完を通さない)
-  await page.locator('#author-starter-editor .view-lines').click();
+  await editorGroup(page).locator('.view-lines').click();
   await page.keyboard.insertText('interface P { n: number } const p: P = { n: 41 }; console.log("ts:" + (p.n + 1));');
 
   const terminal = '#author-terminal';

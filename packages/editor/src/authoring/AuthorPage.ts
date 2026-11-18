@@ -1,21 +1,27 @@
 /**
- * AuthorPage - 教員向け試験問題オーサリング UI (#80, ADR-0006/0012)。
+ * AuthorPage - 教員向けの作問画面 (`/author`。#80 / ADR-0012、教材フォルダは #796 / ADR-0051)。
  *
- * `/author` で開く editor ライクなページ。editor と同じクロム構造
- * (titlebar / activitybar / workbench / statusbar) を採り、出題の見た目を作成アプリに揃える。
- * 教員は CLI / git を触らずに:
- *   ① パッケージ設定 (examId / 許可言語 / 監督コード / 出題者署名鍵) を設定パネルで入力
- *   ② 問題を **タブ = スターターファイル**で複数編集 (タブ名=ファイル名、ダブルクリックで改名)。
- *      各問は「問題文 (Monaco/Markdown) | スターターコード (Monaco)」の左右分割で書く。
- *   ③「生成」→ 署名済み N問バンドル `.tcexam` を DL + 監督コードを明示
- * を行えるようにする。暗号は authoring seam 経由で shared に委譲し、鍵・問題はこのページの
- * 外 (ストレージ/ネットワーク) に一切出さない。
+ * 手元の教材フォルダ (File System Access API) を開き、エクスプローラーとタブ・分割エディタで問題の本文・初期コード・
+ * ヒント・解答例・ケースのファイルを編集して保存する。フォルダ無しのメモリ上の作問はしない (ADR-0051 D6)。
  *
- * Monaco は proof/tracking 非依存に**単体で**使う (proof 密結合の EditorController は使わない)。
+ * このファイルは殻: 部品 (`ui/`) と状態 (`workspace/authorWorkspace.ts`) を組み立て、パッケージ設定パネル・
+ * 配布物の書き出し・実行をつなぐ。
+ *
+ * - 起動: 前回のフォルダの権限が `granted` ならそのまま開く。`prompt` なら「前回のフォルダを開く」を出し、
+ *   クリックのハンドラの中で権限を求める
+ * - 保存: Ctrl/Cmd+S とボタンで今の文書、「すべて保存」。競合は「読み直す / 上書きする / やめる」を選ばせ、失敗は
+ *   理由を出して未保存のまま残す。未保存のまま離れる・言語を切り替える・別のフォルダを開くときは確かめる
+ * - 書き出し: 開いたフォルダの問題定義すべて (パス順) を配布物の問題列にして、今の生成器 (`createExamBundlePackage` /
+ *   `buildClassPackage`) に渡す。欠損・重複・読めない定義、未保存の文書があれば書き出さない
+ * - 状態契約: `#author-root` に `data-workspace-state` (`welcome` / `opening` / `open`)・`data-folder-name`・
+ *   `data-dirty-count`。部品の契約は各部品の冒頭を参照 (packages/editor/AGENTS.md「状態契約」)
+ *
+ * 署名鍵 (JWK)・監督コードは設定パネルの入力欄にだけ置き、教材フォルダにも IndexedDB にも localStorage にも書かない
+ * (ADR-0051 D7)。Monaco は proof / tracking に依らず単体で使う (authoring は proof を記録しない)。
  */
 
 import * as monaco from 'monaco-editor';
-import { escapeHtml, type ExamBundleProblem, type ProblemExample } from '@typedcode/shared';
+import { escapeHtml } from '@typedcode/shared';
 import { t, getI18n } from '../i18n/index.js';
 import {
   createExamBundlePackage,
@@ -24,12 +30,31 @@ import {
   importAuthoritySigner,
   type CreatedExamPackage,
 } from './examPackageAuthoring.js';
+import type { ExamBundleProblem } from '@typedcode/shared';
 import { buildClassPackage } from './classPackageAuthoring.js';
-import { cleanProblemExamples } from './problemExamples.js';
-import { extensionToLanguage } from './starterLanguage.js';
 import { generateAuthorityKey } from './authorityKey.js';
 import { buildProctorMemo } from './proctorMemo.js';
-import { renderMarkdown } from '../utils/markdown.js';
+import { ADDABLE_ROLES, type AddableRole, AuthorWorkspace } from './workspace/authorWorkspace.js';
+import {
+  createMaterialFolderIn,
+  isFolderPickerSupported,
+  openMaterialFolderHandle,
+  pickDirectoryHandle,
+  pickMaterialFolder,
+  resumeMaterialFolder,
+  type GrantResult,
+} from './workspace/folderAccess.js';
+import { FolderHandleStore } from './workspace/folderHandleStore.js';
+import type { MaterialFolder } from './workspace/materialFolder.js';
+import { workspaceBasename } from './workspace/paths.js';
+import { addPartDialog, assignPartDialog, chooseConflict, confirmDiscard, promptName } from './ui/authorDialogs.js';
+import { EditorArea } from './ui/EditorArea.js';
+import type { GroupIndex } from './ui/editorLayout.js';
+import { ExplorerView } from './ui/ExplorerView.js';
+import { runLanguageFor } from './ui/fileKinds.js';
+import { causeMessage, describeOpError, describeWorkspaceIssue } from './ui/messages.js';
+import { defaultPartName } from './ui/partNames.js';
+import { WelcomeView } from './ui/WelcomeView.js';
 // 実行系は重い (Wasmer/xterm) ので**初回実行時に動的 import** する (型のみ静的)。
 import type { CodeExecutionController } from '../execution/CodeExecutionController.js';
 import type { CTerminal } from '../terminal/CTerminal.js';
@@ -39,6 +64,8 @@ import type { CTerminal } from '../terminal/CTerminal.js';
  * `packages/workers/scripts/make-exam-package.mjs` の `OPEN_DEADLINE` (既定 deadline) と同値に保つこと。
  */
 const OPEN_DEADLINE = '2999-12-31T23:59:59.999Z';
+
+export type WorkspaceState = 'welcome' | 'opening' | 'open';
 
 /** Blob をファイル名つきでダウンロードさせる。 */
 function downloadBlob(filename: string, content: string, mime: string): void {
@@ -53,27 +80,20 @@ function downloadBlob(filename: string, content: string, mime: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** 1問の編集状態。問題文/スターターは Monaco モデルで保持する (タブ切替でエディタに付替)。 */
-interface AuthorProblem {
-  id: string;
-  problemId: string;
-  filename: string;
-  statementModel: monaco.editor.ITextModel;
-  starterModel: monaco.editor.ITextModel;
-  /**
-   * 入出力例 (#648)。欄に打つたびに書き戻す (欄はアクティブな問題の分しか DOM に無いため)。
-   * 名前の空の例は書きかけとして残し、`collectProblems` で落とす。
-   */
-  examples: ProblemExample[];
-}
-
 export class AuthorPage {
-  private root: HTMLElement;
-  private problems: AuthorProblem[] = [];
-  private activeId: string | null = null;
-  private seq = 0;
-  private statementEditor!: monaco.editor.IStandaloneCodeEditor;
-  private starterEditor!: monaco.editor.IStandaloneCodeEditor;
+  private readonly root: HTMLElement;
+  private readonly store = new FolderHandleStore();
+  private workspace: AuthorWorkspace | null = null;
+  private unsubscribeWorkspace: (() => void) | null = null;
+  private welcome!: WelcomeView;
+  private explorer!: ExplorerView;
+  private area: EditorArea | null = null;
+  /** 前回のフォルダの権限を求める関数 (`needs-permission` のとき)。クリックの中で呼ぶ */
+  private pendingGrant: (() => Promise<GrantResult>) | null = null;
+  /** 確かめた上で離れるとき (言語の切り替え) は beforeunload の確認を出さない */
+  private skipUnloadConfirm = false;
+  /** フォルダを開く操作の通し番号 (後から始めた操作が勝つ。起動時の再開と競合させない) */
+  private openSeq = 0;
   private exec: CodeExecutionController | null = null;
   private terminal: CTerminal | null = null;
 
@@ -87,26 +107,35 @@ export class AuthorPage {
 
   mount(): void {
     this.root.innerHTML = this.render();
-    this.statementEditor = monaco.editor.create(this.el('author-statement-editor'), {
-      language: 'markdown',
-      theme: this.monacoTheme,
-      minimap: { enabled: false },
-      automaticLayout: true,
-      wordWrap: 'on',
-      lineNumbers: 'off',
-      fontSize: 13,
+    this.welcome = new WelcomeView({
+      onOpen: () => void this.handleOpenFolder(),
+      onCreate: () => void this.handleCreateFolder(),
+      onResume: () => void this.handleResume(),
     });
-    this.starterEditor = monaco.editor.create(this.el('author-starter-editor'), {
-      language: 'c',
-      theme: this.monacoTheme,
-      minimap: { enabled: false },
-      automaticLayout: true,
-      fontSize: 13,
+    this.explorer = new ExplorerView({
+      onOpenFile: (path) => void this.openFile(path),
+      onNewProblem: () => void this.handleNewProblem(),
+      onRefresh: () => void this.workspace?.refresh(),
+      onOpenOther: () => void this.handleOpenFolder(),
+      onAddPart: (path) => void this.handleAddPart(path),
+      onAssignPart: (path) => void this.handleAssignPart(path),
     });
+    this.area = new EditorArea(
+      {
+        onStateChange: () => this.onEditorStateChange(),
+        onRequestClose: (path, group) => void this.handleCloseTab(path, group),
+        onRequestCloseGroup: (group) => void this.handleCloseGroup(group),
+      },
+      () => this.monacoTheme
+    );
+    this.el('author-welcome-slot').replaceWith(this.welcome.element);
+    this.el('author-explorer-slot').replaceWith(this.explorer.element);
+    this.el('author-groups-slot').replaceWith(this.area.element);
     this.wire();
     this.input('author-token').value = generateProctorToken();
-    this.addProblem();
+    this.welcome.setPickerSupported(isFolderPickerSupported());
     this.updateStatusbar();
+    void this.start();
   }
 
   private input(id: string): HTMLInputElement {
@@ -119,14 +148,395 @@ export class AuthorPage {
     return this.root.querySelector<HTMLElement>(`#${id}`)!;
   }
 
+  // ==========================================================================
+  // フォルダを開く
+  // ==========================================================================
+
+  private setState(state: WorkspaceState): void {
+    this.root.dataset.workspaceState = state;
+    this.welcome.element.hidden = state === 'open';
+    this.el('author-workspace').hidden = state !== 'open';
+    this.welcome.setBusy(state === 'opening');
+  }
+
+  /** ページを開いたとき: 前回のフォルダで再開を試みる */
+  private async start(): Promise<void> {
+    this.setState('opening');
+    const seq = this.openSeq;
+    let result: Awaited<ReturnType<typeof resumeMaterialFolder>>;
+    try {
+      result = await resumeMaterialFolder(this.store);
+    } catch {
+      result = { status: 'none' };
+    }
+    // 再開を待つ間に別のフォルダを開き始めていたら何もしない
+    if (seq !== this.openSeq) return;
+    switch (result.status) {
+      case 'opened':
+        await this.openFolder(result.folder);
+        return;
+      case 'needs-permission':
+        this.pendingGrant = result.grant;
+        this.welcome.showResume(result.name);
+        break;
+      case 'unavailable':
+        await this.forgetFolder();
+        this.showUnavailable(result.name, result.reason);
+        break;
+      default:
+        break;
+    }
+    this.setState('welcome');
+  }
+
+  private showUnavailable(name: string, reason: 'denied' | 'missing' | 'error'): void {
+    const key =
+      reason === 'denied'
+        ? 'author.welcome.unavailableDenied'
+        : reason === 'missing'
+          ? 'author.welcome.unavailableMissing'
+          : 'author.welcome.unavailableError';
+    this.welcome.showMessage(t(key, { name }), reason);
+  }
+
+  private async forgetFolder(): Promise<void> {
+    try {
+      await this.store.clear();
+    } catch {
+      /* 覚えている場所を消せなくても、開き直せばよい */
+    }
+  }
+
+  /** 別のフォルダに移る前に未保存の変更を確かめる。進めるなら true */
+  private async confirmLeaveFolder(): Promise<boolean> {
+    const dirty = this.workspace?.dirtyCount() ?? 0;
+    if (dirty === 0) return true;
+    return confirmDiscard(t('author.dialogs.unsavedBody', { n: dirty }));
+  }
+
+  private async handleOpenFolder(): Promise<void> {
+    if (!(await this.confirmLeaveFolder())) return;
+    const result = await pickMaterialFolder({ store: this.store });
+    switch (result.status) {
+      case 'opened':
+        await this.openFolder(result.folder);
+        return;
+      case 'unsupported':
+        this.welcome.setPickerSupported(false);
+        return;
+      case 'failed':
+        this.reportOpenFailure(result.cause);
+        return;
+      default:
+        return;
+    }
+  }
+
+  private async handleCreateFolder(): Promise<void> {
+    if (!(await this.confirmLeaveFolder())) return;
+    const parent = await pickDirectoryHandle();
+    if (parent.status === 'unsupported') {
+      this.welcome.setPickerSupported(false);
+      return;
+    }
+    if (parent.status === 'failed') {
+      this.reportOpenFailure(parent.cause);
+      return;
+    }
+    if (parent.status !== 'picked') return;
+    const name = await promptName({
+      dialogName: 'create-folder',
+      title: t('author.welcome.createTitle'),
+      label: t('author.welcome.createLabel'),
+      validate: (value) => {
+        const trimmed = value.trim();
+        if (trimmed === '' || /[/\\]/.test(trimmed) || trimmed.startsWith('.')) {
+          return t('author.welcome.createInvalid');
+        }
+        return null;
+      },
+    });
+    if (name === null) return;
+    const created = await createMaterialFolderIn(parent.handle, name, this.store);
+    switch (created.status) {
+      case 'opened':
+        await this.openFolder(created.folder);
+        return;
+      case 'exists':
+        this.welcome.showMessage(t('author.welcome.createExists', { name: created.name }), 'error');
+        return;
+      case 'invalid-name':
+        this.welcome.showMessage(t('author.welcome.createInvalid'), 'error');
+        return;
+      case 'failed':
+        this.reportOpenFailure(created.cause);
+        return;
+      default:
+        return;
+    }
+  }
+
+  /** 「前回のフォルダを開く」(クリックのハンドラの中で権限を求める) */
+  private async handleResume(): Promise<void> {
+    const grant = this.pendingGrant;
+    if (!grant) return;
+    const result = await grant();
+    if (result.status === 'opened') {
+      this.pendingGrant = null;
+      this.welcome.showResume(null);
+      await this.openFolder(result.folder);
+      return;
+    }
+    this.pendingGrant = null;
+    this.welcome.showResume(null);
+    await this.forgetFolder();
+    this.showUnavailable(result.name, result.reason);
+  }
+
+  private reportOpenFailure(cause: unknown): void {
+    const message = t('author.welcome.openFailed', { message: causeMessage(cause) });
+    if (this.workspace) this.showNotice(message, 'error');
+    else this.welcome.showMessage(message, 'open-failed');
+  }
+
+  /** ハンドルを教材フォルダとして開き、覚える (dev フックがピッカーの代わりに OPFS のハンドルを渡す) */
+  async openFolderHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+    const result = await openMaterialFolderHandle(handle, this.store);
+    if (result.status !== 'opened') throw new Error(`open failed: ${result.status}`);
+    await this.openFolder(result.folder);
+  }
+
+  /** 開いている文書の状態 (dev フックが E2E に返す) */
+  documentState(path: string): { path: string; savedText: string; text: string; dirty: boolean } | null {
+    const doc = this.workspace?.document(path);
+    return doc ? { path: doc.path, savedText: doc.savedText, text: doc.text, dirty: doc.dirty } : null;
+  }
+
+  /** 開いた (権限のある) フォルダで作業画面にする */
+  private async openFolder(folder: MaterialFolder): Promise<void> {
+    const seq = ++this.openSeq;
+    this.setState('opening');
+    const workspace = new AuthorWorkspace(folder);
+    try {
+      await workspace.refresh();
+    } catch (cause) {
+      if (seq !== this.openSeq) return;
+      this.setState(this.workspace ? 'open' : 'welcome');
+      this.reportOpenFailure(cause);
+      return;
+    }
+    // 読み込む間に別のフォルダを開き始めていたら、こちらは捨てる
+    if (seq !== this.openSeq) return;
+    this.unsubscribeWorkspace?.();
+    this.workspace = workspace;
+    this.unsubscribeWorkspace = workspace.onChange((change) => {
+      if (change.kind === 'index') this.renderExplorer();
+      this.onEditorStateChange();
+    });
+    this.area?.setWorkspace(workspace);
+    this.root.dataset.folderName = workspace.folderName;
+    this.welcome.showMessage(null);
+    this.showNotice(null);
+    this.renderExplorer();
+    this.updateStatusbar();
+    this.setState('open');
+  }
+
+  // ==========================================================================
+  // エクスプローラーと文書
+  // ==========================================================================
+
+  private renderExplorer(): void {
+    const workspace = this.workspace;
+    if (!workspace) return;
+    this.explorer.render(workspace.index, workspace.folderName, this.area?.activePath ?? null);
+    this.updateStatusbar();
+  }
+
+  /** 部品の状態が変わったとき (アクティブな文書・未保存の印) */
+  private onEditorStateChange(): void {
+    if (!this.area) return; // EditorArea の生成中
+    const dirty = this.workspace?.dirtyCount() ?? 0;
+    this.root.dataset.dirtyCount = String(dirty);
+    const active = this.area.activePath;
+    for (const item of this.explorer.element.querySelectorAll<HTMLElement>('.author-explorer-item')) {
+      const isActive = item.dataset.explorerPath === active;
+      item.classList.toggle('active', isActive);
+      if (isActive) item.setAttribute('aria-current', 'true');
+      else item.removeAttribute('aria-current');
+    }
+    const hasActive = active !== null;
+    (this.el('author-save-btn') as HTMLButtonElement).disabled = !hasActive;
+    (this.el('author-save-all-btn') as HTMLButtonElement).disabled = dirty === 0;
+    (this.el('author-split-btn') as HTMLButtonElement).disabled = !hasActive || this.area.layout.groupCount > 1;
+  }
+
+  private async openFile(path: string): Promise<void> {
+    const opened = await this.area?.open(path);
+    if (opened && !opened.ok) {
+      this.showNotice(t('author.notices.openFailed', { path, message: causeMessage(opened.cause) }), 'error');
+    }
+  }
+
+  private async handleCloseTab(path: string, group: GroupIndex): Promise<void> {
+    const area = this.area;
+    if (!area) return;
+    const other = area.layout.group(group === 0 ? 1 : 0)?.tabs ?? [];
+    const dirty = this.workspace?.document(path)?.dirty === true;
+    if (dirty && !other.includes(path)) {
+      const ok = await confirmDiscard(t('author.dialogs.closeDirtyBody', { path }), t('author.dialogs.closeDiscard'));
+      if (!ok) return;
+    }
+    area.close(path, group);
+  }
+
+  private async handleCloseGroup(group: GroupIndex): Promise<void> {
+    const area = this.area;
+    if (!area) return;
+    const dirty = area.pathsOnlyIn(group).filter((path) => this.workspace?.document(path)?.dirty === true);
+    if (dirty.length > 0) {
+      const ok = await confirmDiscard(t('author.dialogs.unsavedBody', { n: dirty.length }));
+      if (!ok) return;
+    }
+    area.closeGroup(group);
+  }
+
+  // ==========================================================================
+  // 保存
+  // ==========================================================================
+
+  /** 文書を保存する。競合なら選ばせ、失敗なら理由を出して未保存のまま残す */
+  private async saveDocument(path: string, overwrite = false): Promise<void> {
+    const workspace = this.workspace;
+    if (!workspace) return;
+    const result = await workspace.save(path, { overwrite });
+    if (result.status === 'saved') {
+      this.showNotice(t('author.notices.saved', { path: result.path }), 'info', 'saved');
+      return;
+    }
+    if (result.status === 'failed') {
+      this.showNotice(
+        t('author.notices.saveFailed', { path: result.path, message: causeMessage(result.cause) }),
+        'error',
+        'save-failed'
+      );
+      return;
+    }
+    const choice = await chooseConflict(result.path, result.reason);
+    if (choice === 'overwrite') {
+      await this.saveDocument(path, true);
+    } else if (choice === 'reload') {
+      const reloaded = await workspace.reload(path);
+      if (!reloaded.ok) {
+        this.showNotice(
+          t('author.notices.reloadFailed', { path: reloaded.path, message: causeMessage(reloaded.cause) }),
+          'error',
+          'reload-failed'
+        );
+      }
+    }
+  }
+
+  private async saveActive(): Promise<void> {
+    const path = this.area?.activePath;
+    if (path) await this.saveDocument(path);
+  }
+
+  private async saveAll(): Promise<void> {
+    for (const path of this.workspace?.dirtyPaths() ?? []) await this.saveDocument(path);
+  }
+
+  // ==========================================================================
+  // 問題の操作
+  // ==========================================================================
+
+  private async handleNewProblem(): Promise<void> {
+    const workspace = this.workspace;
+    if (!workspace) return;
+    const name = await promptName({
+      dialogName: 'new-problem',
+      title: t('author.dialogs.newProblemTitle'),
+      label: t('author.dialogs.newProblemLabel'),
+    });
+    if (name === null) return;
+    const result = await workspace.createProblem(name);
+    if (!result.ok) {
+      this.showNotice(describeOpError(result.error), 'error', 'op-failed');
+      return;
+    }
+    // 作った本文を開く
+    const statement = result.path.slice(0, -'.problem.yaml'.length) + '.md';
+    await this.openFile(statement);
+  }
+
+  /** 問題に足せる役割 (初期コードとケースは 1 つまで) */
+  private addableRoles(problemPath: string): AddableRole[] {
+    const problem = this.workspace?.problem(problemPath);
+    if (problem?.status !== 'ok') return [];
+    return ADDABLE_ROLES.filter((role) => {
+      if (role === 'starter') return problem.definition.starter === undefined;
+      if (role === 'cases') return problem.definition.cases === undefined;
+      return true;
+    });
+  }
+
+  private async handleAddPart(problemPath: string): Promise<void> {
+    const workspace = this.workspace;
+    const problem = workspace?.problem(problemPath);
+    if (!workspace || problem?.status !== 'ok') return;
+    const words = {
+      starter: t('author.partWords.starter'),
+      hint: t('author.partWords.hint'),
+      solution: t('author.partWords.solution'),
+    };
+    const chosen = await addPartDialog({
+      roles: this.addableRoles(problemPath),
+      defaultName: (role) =>
+        defaultPartName({ problemPath: problem.path, role, words, parts: problem.parts, files: workspace.index.files }),
+    });
+    if (!chosen) return;
+    const result = await workspace.addPart(problem.path, chosen.role, chosen.name);
+    if (!result.ok) {
+      this.showNotice(describeOpError(result.error), 'error', 'op-failed');
+      return;
+    }
+    await this.openFile(result.path);
+  }
+
+  private async handleAssignPart(problemPath: string): Promise<void> {
+    const workspace = this.workspace;
+    const problem = workspace?.problem(problemPath);
+    if (!workspace || problem?.status !== 'ok') return;
+    const files = workspace.index.files.filter((file) => file !== problem.path);
+    const chosen = await assignPartDialog({ roles: this.addableRoles(problemPath), files });
+    if (!chosen) return;
+    const result = await workspace.assignPart(problem.path, chosen.role, chosen.path);
+    if (!result.ok) this.showNotice(describeOpError(result.error), 'error', 'op-failed');
+  }
+
+  /** ツールバーの知らせ。`id` は状態契約の `data-notice` (E2E 用) */
+  private showNotice(text: string | null, kind: 'info' | 'error' = 'info', id = ''): void {
+    const notice = this.el('author-notice');
+    notice.textContent = text ?? '';
+    notice.hidden = text === null;
+    notice.classList.toggle('author-notice-error', kind === 'error');
+    notice.dataset.notice = text === null ? '' : id;
+  }
+
+  // ==========================================================================
+  // 配線とクロム
+  // ==========================================================================
+
   private wire(): void {
     // パッケージ設定パネルのトグル。
     this.el('author-settings-toggle').addEventListener('click', () => {
       const p = this.el('author-settings-panel');
       p.hidden = !p.hidden;
+      this.el('author-settings-toggle').setAttribute('aria-expanded', String(!p.hidden));
     });
     this.el('author-settings-close').addEventListener('click', () => {
       this.el('author-settings-panel').hidden = true;
+      this.el('author-settings-toggle').setAttribute('aria-expanded', 'false');
     });
 
     // 署名鍵: 既存貼付 / 新規生成 のタブ切替。
@@ -141,34 +551,52 @@ export class AuthorPage {
     this.el('author-key-tab-generate').addEventListener('click', () => selectKeyTab('generate'));
     this.el('author-generate-key-btn').addEventListener('click', () => void this.handleGenerateKey());
 
-    // 問題タブ追加 / 監督コード再生成 / 生成。
-    this.el('author-add-tab').addEventListener('click', () => this.addProblem());
-    this.el('author-add-example').addEventListener('click', () => this.addExample());
+    // 監督コード再生成 / 生成。
     this.el('author-regen-token-btn').addEventListener('click', () => {
       this.input('author-token').value = generateProctorToken();
       this.updateStatusbar();
     });
     this.el('author-build-btn').addEventListener('click', () => void this.handleBuild());
-    this.el('author-build-class-btn').addEventListener('click', () => this.handleBuildClass());
+    this.el('author-build-class-btn').addEventListener('click', () => void this.handleBuildClass());
 
     // examId / token 変更で statusbar を更新。
     this.input('author-exam-id').addEventListener('input', () => this.updateStatusbar());
     this.input('author-token').addEventListener('input', () => this.updateStatusbar());
 
-    // 問題文の 編集 / プレビュー 切替。
-    this.el('author-stmt-edit').addEventListener('click', () => this.setStatementPreview(false));
-    this.el('author-stmt-preview').addEventListener('click', () => this.setStatementPreview(true));
-
-    // スターターコードの 実行 / ターミナル。
+    // 保存・分割・実行・ターミナル。
+    this.el('author-save-btn').addEventListener('click', () => void this.saveActive());
+    this.el('author-save-all-btn').addEventListener('click', () => void this.saveAll());
+    this.el('author-split-btn').addEventListener('click', () => this.area?.split());
     this.el('author-run-btn').addEventListener('click', () => void this.handleRun());
     this.el('author-term-toggle').addEventListener('click', () => {
       const w = this.el('author-terminal-wrap');
       this.showTerminal(w.hidden !== false);
     });
 
+    // Ctrl/Cmd+S (Monaco の中でも外でも)。capture で Monaco より先に受ける
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') {
+          if (this.root.dataset.workspaceState !== 'open') return;
+          e.preventDefault();
+          if (e.shiftKey) void this.saveAll();
+          else void this.saveActive();
+        }
+      },
+      true
+    );
+
+    // 未保存のまま離れるときは確かめる。
+    window.addEventListener('beforeunload', (e) => {
+      if (this.skipUnloadConfirm || (this.workspace?.dirtyCount() ?? 0) === 0) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+
     // アプリ設定: テーマ / 言語。
     this.el('author-theme-toggle').addEventListener('click', () => this.toggleTheme());
-    this.el('author-lang-toggle').addEventListener('click', () => this.toggleLocale());
+    this.el('author-lang-toggle').addEventListener('click', () => void this.toggleLocale());
 
     // 結果モーダルを閉じる。
     this.el('author-result-close').addEventListener('click', () => {
@@ -176,27 +604,11 @@ export class AuthorPage {
     });
   }
 
-  /** 問題文ペインを 編集(Monaco) / プレビュー(レンダリング) で切り替える。 */
-  private setStatementPreview(preview: boolean): void {
-    this.el('author-stmt-edit').classList.toggle('active', !preview);
-    this.el('author-stmt-preview').classList.toggle('active', preview);
-    const editor = this.el('author-statement-editor');
-    const previewEl = this.el('author-statement-preview');
-    if (preview) {
-      previewEl.innerHTML = renderMarkdown(this.statementEditor.getModel()?.getValue() ?? '');
-      editor.hidden = true;
-      previewEl.hidden = false;
-    } else {
-      previewEl.hidden = true;
-      editor.hidden = false;
-      this.statementEditor.layout();
-    }
-  }
-
   /** ターミナル領域の表示/非表示。表示時は fit して xterm を再計算する。 */
   private showTerminal(show: boolean): void {
     this.el('author-terminal-wrap').hidden = !show;
     this.el('author-term-toggle').classList.toggle('active', show);
+    this.el('author-term-toggle').setAttribute('aria-pressed', String(show));
     if (show && this.terminal) setTimeout(() => this.terminal?.fit(), 0);
   }
 
@@ -214,11 +626,11 @@ export class AuthorPage {
     exec.setCallbacks({
       onRunStart: () => {
         runBtn.disabled = true;
-        runBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(t('author.run.running'))}`;
+        runBtn.innerHTML = `<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> ${escapeHtml(t('author.run.running'))}`;
       },
       onRunEnd: () => {
         runBtn.disabled = false;
-        runBtn.innerHTML = `<i class="fas fa-play"></i> ${escapeHtml(t('author.run.label'))}`;
+        runBtn.innerHTML = `<i class="fas fa-play" aria-hidden="true"></i> ${escapeHtml(t('author.run.label'))}`;
       },
       onNotification: (m) => terminal.writeLine(m),
       onShowClangLoading: () => terminal.writeInfo(t('author.run.compilerLoading')),
@@ -229,19 +641,20 @@ export class AuthorPage {
     return { exec, terminal };
   }
 
-  /** アクティブ問題のスターターコードを editor と同じ実行系で動かす (Cコンパイラ等)。 */
+  /** アクティブなコードの文書の今のテキストを、拡張子の言語で editor と同じ実行系で動かす。 */
   private async handleRun(): Promise<void> {
-    const active = this.problems.find((p) => p.id === this.activeId);
-    if (!active) return;
+    const path = this.area?.activePath ?? null;
+    const doc = path ? this.workspace?.document(path) : undefined;
     this.showTerminal(true);
     const { exec, terminal } = await this.ensureRuntime();
     terminal.clear();
     terminal.fit();
-    await exec.run({
-      language: extensionToLanguage(active.filename),
-      filename: active.filename,
-      code: active.starterModel.getValue(),
-    });
+    if (!path || !doc) {
+      terminal.writeLine(t('author.editor.runNoFile'));
+      return;
+    }
+    const filename = workspaceBasename(path);
+    await exec.run({ language: runLanguageFor(path), filename, code: doc.text });
   }
 
   private toggleTheme(): void {
@@ -255,210 +668,30 @@ export class AuthorPage {
     monaco.editor.setTheme(next === 'light' ? 'vs' : 'vs-dark');
   }
 
-  private toggleLocale(): void {
+  /**
+   * 言語を切り替えてページを読み直す (クロムを作り直す手間を避ける)。教材は保存済みならフォルダから再開できるので、
+   * 未保存の文書があるときだけ確かめる。
+   */
+  private async toggleLocale(): Promise<void> {
+    const dirty = this.workspace?.dirtyCount() ?? 0;
+    if (dirty > 0 && !(await confirmDiscard(t('author.dialogs.unsavedBody', { n: dirty })))) return;
     const i18n = getI18n();
     i18n.setLocale(i18n.getLocale() === 'ja' ? 'en' : 'ja');
-    // Monaco モデルを保ったまま再描画するため、ページをリロードせず chrome を作り直す手間を避け、
-    // 簡潔さのためロケールのみ localStorage に保存してリロード (編集中の内容は確認ダイアログで保護)。
-    if (confirm(t('author.reloadForLocale'))) location.reload();
-  }
-
-  // --- 問題タブ管理 -----------------------------------------------------------
-
-  private addProblem(): void {
-    const n = this.seq++;
-    const filename = `p${n + 1}.c`;
-    const problem: AuthorProblem = {
-      id: `prob-${n}`,
-      problemId: `p${n + 1}`,
-      filename,
-      statementModel: monaco.editor.createModel('', 'markdown'),
-      starterModel: monaco.editor.createModel('', extensionToLanguage(filename)),
-      examples: [],
-    };
-    this.problems.push(problem);
-    this.switchProblem(problem.id);
-    this.renderTabs();
-    this.updateStatusbar();
-  }
-
-  private switchProblem(id: string): void {
-    this.commitActiveProblemId();
-    const problem = this.problems.find((p) => p.id === id);
-    if (!problem) return;
-    this.activeId = id;
-    this.statementEditor.setModel(problem.statementModel);
-    this.starterEditor.setModel(problem.starterModel);
-    this.input('author-active-problemid').value = problem.problemId;
-    this.setStatementPreview(false); // タブ切替時は編集に戻す (プレビューの取り違え防止)
-    this.renderExamples();
-    this.renderTabs();
-    this.updateStatusbar();
-  }
-
-  private commitActiveProblemId(): void {
-    if (!this.activeId) return;
-    const active = this.problems.find((p) => p.id === this.activeId);
-    const field = this.root.querySelector<HTMLInputElement>('#author-active-problemid');
-    if (active && field) active.problemId = field.value.trim();
-  }
-
-  private removeProblem(id: string): void {
-    if (this.problems.length <= 1) return;
-    const idx = this.problems.findIndex((p) => p.id === id);
-    if (idx < 0) return;
-    const [removed] = this.problems.splice(idx, 1);
-    removed?.statementModel.dispose();
-    removed?.starterModel.dispose();
-    if (this.activeId === id) {
-      this.activeId = null;
-      this.switchProblem(this.problems[Math.max(0, idx - 1)]!.id);
-    } else {
-      this.renderTabs();
-    }
-    this.updateStatusbar();
-  }
-
-  private renameProblem(id: string, newName: string): void {
-    const problem = this.problems.find((p) => p.id === id);
-    const filename = newName.trim();
-    if (!problem || !filename) {
-      this.renderTabs();
-      return;
-    }
-    problem.filename = filename;
-    monaco.editor.setModelLanguage(problem.starterModel, extensionToLanguage(filename));
-    this.renderTabs();
-  }
-
-  private renderTabs(): void {
-    const strip = this.el('author-tabs');
-    strip.innerHTML = '';
-    for (const problem of this.problems) {
-      const tab = document.createElement('div');
-      tab.className = 'editor-tab' + (problem.id === this.activeId ? ' active' : '');
-      tab.dataset.id = problem.id;
-      tab.innerHTML = `
-        <i class="fas fa-file-code tab-icon"></i>
-        <span class="tab-filename" title="${escapeHtml(t('author.problem.renameHint'))}">${escapeHtml(problem.filename)}</span>
-        <button class="tab-close-btn" type="button" title="${escapeHtml(t('author.problem.removeProblem'))}" ${this.problems.length <= 1 ? 'disabled' : ''}><i class="fas fa-times"></i></button>
-      `;
-      tab.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).closest('.tab-close-btn')) return;
-        this.switchProblem(problem.id);
-      });
-      tab
-        .querySelector<HTMLElement>('.tab-filename')!
-        .addEventListener('dblclick', (e) => this.startRename(problem, e.currentTarget as HTMLElement));
-      tab
-        .querySelector<HTMLButtonElement>('.tab-close-btn')!
-        .addEventListener('click', () => this.removeProblem(problem.id));
-      strip.appendChild(tab);
-    }
-  }
-
-  private startRename(problem: AuthorProblem, label: HTMLElement): void {
-    const input = document.createElement('input');
-    input.className = 'tab-filename-input';
-    input.value = problem.filename;
-    label.replaceWith(input);
-    input.focus();
-    input.select();
-    const commit = (): void => this.renameProblem(problem.id, input.value);
-    input.addEventListener('blur', commit);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') input.blur();
-      if (e.key === 'Escape') {
-        input.value = problem.filename;
-        input.blur();
-      }
-    });
-  }
-
-  // --- 入出力例 (#648) ---------------------------------------------------------
-
-  private get activeProblem(): AuthorProblem | undefined {
-    return this.problems.find((p) => p.id === this.activeId);
-  }
-
-  private addExample(): void {
-    const active = this.activeProblem;
-    if (!active) return;
-    active.examples.push({
-      name: t('author.problem.exampleDefaultName', { n: active.examples.length + 1 }),
-      stdin: '',
-      stdout: '',
-    });
-    this.renderExamples();
-  }
-
-  private removeExample(index: number): void {
-    const active = this.activeProblem;
-    if (!active) return;
-    active.examples.splice(index, 1);
-    this.renderExamples();
-  }
-
-  /**
-   * アクティブな問題の入出力例の欄を描き直す。欄の値は打つたびにモデル (`AuthorProblem.examples`) へ
-   * 書き戻すので、ここはモデルからの再描画だけを行う (問題の切り替え・追加・削除のとき)。
-   */
-  private renderExamples(): void {
-    const list = this.el('author-example-list');
-    list.innerHTML = '';
-    const active = this.activeProblem;
-    if (!active) return;
-    active.examples.forEach((example, index) => {
-      const row = document.createElement('div');
-      row.className = 'author-example';
-      row.dataset.exampleIndex = String(index);
-      row.innerHTML = `
-        <div class="author-example-head">
-          <input type="text" class="author-input author-example-name" data-field="name" aria-label="${escapeHtml(t('author.problem.exampleName'))}" placeholder="${escapeHtml(t('author.problem.exampleName'))}" autocomplete="off" spellcheck="false">
-          <button type="button" class="author-icon-btn" data-action="remove-example" title="${escapeHtml(t('author.problem.removeExample'))}"><i class="fas fa-trash"></i></button>
-        </div>
-        <div class="author-example-io">
-          <label><span>${escapeHtml(t('author.problem.exampleStdin'))}</span>
-            <textarea class="author-textarea author-mono" data-field="stdin" rows="3" spellcheck="false"></textarea></label>
-          <label><span>${escapeHtml(t('author.problem.exampleStdout'))}</span>
-            <textarea class="author-textarea author-mono" data-field="stdout" rows="3" spellcheck="false"></textarea></label>
-        </div>`;
-      for (const field of ['name', 'stdin', 'stdout'] as const) {
-        const input = row.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-field="${field}"]`)!;
-        input.value = example[field];
-        input.addEventListener('input', () => {
-          example[field] = input.value;
-        });
-      }
-      row
-        .querySelector<HTMLButtonElement>('[data-action="remove-example"]')!
-        .addEventListener('click', () => this.removeExample(index));
-      list.appendChild(row);
-    });
-  }
-
-  private collectProblems(): ExamBundleProblem[] {
-    this.commitActiveProblemId();
-    return this.problems.map((p) => {
-      const problem: ExamBundleProblem = { problemId: p.problemId, statement: p.statementModel.getValue() };
-      const content = p.starterModel.getValue();
-      if (content.length > 0) {
-        problem.starter = { filename: p.filename, language: extensionToLanguage(p.filename), content };
-      }
-      const examples = cleanProblemExamples(p.examples);
-      if (examples) problem.examples = examples;
-      return problem;
-    });
+    this.skipUnloadConfirm = true;
+    location.reload();
   }
 
   private updateStatusbar(): void {
     const examId = this.input('author-exam-id').value.trim();
     this.el('author-sb-exam').textContent = examId || t('author.statusbar.noExamId');
-    this.el('author-sb-count').textContent = String(this.problems.length);
+    this.el('author-sb-count').textContent = String(this.workspace?.index.problems.length ?? 0);
+    this.el('author-sb-folder').textContent = this.workspace?.folderName ?? '';
     this.el('author-sb-token').textContent = formatProctorTokenForDisplay(this.input('author-token').value);
   }
 
-  // --- 鍵生成 / ビルド ---------------------------------------------------------
+  // ==========================================================================
+  // 鍵生成 / ビルド
+  // ==========================================================================
 
   private async handleGenerateKey(): Promise<void> {
     const out = this.el('author-genkey-output');
@@ -489,20 +722,41 @@ export class AuthorPage {
     }
   }
 
+  /**
+   * 開いたフォルダの問題定義すべてを配布物の問題列にする。書き出せないときは理由を出して null。
+   */
+  private async collectProblems(): Promise<ExamBundleProblem[] | null> {
+    const workspace = this.workspace;
+    if (!workspace) {
+      this.showBuildError(t('author.build.errorNoFolder'));
+      return null;
+    }
+    const result = await workspace.buildBundle();
+    switch (result.status) {
+      case 'ok':
+        return result.problems;
+      case 'dirty':
+        this.showBuildError(t('author.build.errorDirty', { paths: result.paths.join(', ') }));
+        return null;
+      case 'empty':
+        this.showBuildError(t('author.classExport.errorNoProblems'));
+        return null;
+      case 'invalid':
+        this.showBuildError(t('author.issues.heading'), result.issues.map(describeWorkspaceIssue));
+        return null;
+    }
+  }
+
   private async handleBuild(): Promise<void> {
     this.el('author-build-error').hidden = true;
 
     const keyId = this.input('author-keyid').value.trim();
     const jwkRaw = this.textarea('author-jwk').value.trim();
     if (!keyId || !jwkRaw) {
-      this.el('author-settings-panel').hidden = false;
       this.showBuildError(t('author.build.errorNoKey'));
       return;
     }
-    const languages = this.input('author-languages')
-      .value.split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const languages = this.languages();
     const examId = this.input('author-exam-id').value.trim();
 
     const buildBtn = this.el('author-build-btn') as HTMLButtonElement;
@@ -510,13 +764,15 @@ export class AuthorPage {
     buildBtn.disabled = true;
     buildBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(t('author.build.working'))}`;
     try {
+      const problems = await this.collectProblems();
+      if (!problems) return;
       const signer = await importAuthoritySigner(jwkRaw, keyId, {
         embedPublicKey: this.input('author-embed-pubkey').checked,
       });
       const result = await createExamBundlePackage(
         {
           examId,
-          problems: this.collectProblems(),
+          problems,
           languages,
           releaseTime: new Date().toISOString(),
           deadline: OPEN_DEADLINE,
@@ -539,26 +795,35 @@ export class AuthorPage {
    * 授業モード用の**未封印**配布物 (`.tcclass`) を生成する (ADR-0014)。
    * 鍵も監督コードも使わず、examId を classId として平文バンドルを出力する。
    */
-  private handleBuildClass(): void {
+  private async handleBuildClass(): Promise<void> {
     this.el('author-build-error').hidden = true;
-    const languages = this.input('author-languages')
-      .value.split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
     const classId = this.input('author-exam-id').value.trim();
+    const problems = await this.collectProblems();
+    if (!problems) return;
     try {
-      const content = buildClassPackage({ classId, problems: this.collectProblems(), languages });
+      const content = buildClassPackage({ classId, problems, languages: this.languages() });
       downloadBlob(`${classId || 'class'}.tcclass`, content + '\n', 'application/json');
     } catch (err) {
-      this.el('author-settings-panel').hidden = false;
       this.showBuildError(err instanceof Error ? err.message : t('author.classExport.errorNoProblems'));
     }
   }
 
-  private showBuildError(msg: string): void {
+  private languages(): string[] {
+    return this.input('author-languages')
+      .value.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  /** 書き出しの誤りを設定パネルに出す (パネルが閉じていれば開く)。`items` は箇条書きにする */
+  private showBuildError(msg: string, items: readonly string[] = []): void {
     const errorEl = this.el('author-build-error');
-    errorEl.textContent = msg;
+    errorEl.innerHTML =
+      escapeHtml(msg) +
+      (items.length > 0 ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : '');
     errorEl.hidden = false;
+    this.el('author-settings-panel').hidden = false;
+    this.el('author-settings-toggle').setAttribute('aria-expanded', 'true');
   }
 
   private showResult(result: CreatedExamPackage, filename: string): void {
@@ -599,6 +864,10 @@ export class AuthorPage {
   }
 
   private render(): string {
+    const button = (id: string, action: string, icon: string, label: string, iconOnly = false): string => {
+      const text = escapeHtml(label);
+      return `<button type="button" class="author-pane-btn${iconOnly ? ' author-pane-btn-icon' : ''}" id="${id}" data-action="${action}" title="${text}"${iconOnly ? ` aria-label="${text}"` : ''}><i class="fas ${icon}" aria-hidden="true"></i>${iconOnly ? '' : ` ${text}`}</button>`;
+    };
     return `
       <div class="author-shell">
         <header class="titlebar">
@@ -611,64 +880,41 @@ export class AuthorPage {
         <div class="main-layout">
           <nav class="activitybar">
             <div class="activitybar-top">
-              <button class="activitybar-item" id="author-settings-toggle" title="${escapeHtml(t('author.settings.heading'))}"><i class="fas fa-sliders"></i></button>
+              <button class="activitybar-item" id="author-settings-toggle" aria-controls="author-settings-panel" aria-expanded="false" title="${escapeHtml(t('author.settings.heading'))}" aria-label="${escapeHtml(t('author.settings.heading'))}"><i class="fas fa-sliders"></i></button>
             </div>
             <div class="activitybar-bottom">
-              <a class="activitybar-item" href="/verify/" target="_blank" rel="noopener noreferrer" title="${escapeHtml(t('settings.verifyProof'))}"><i class="fas fa-circle-check"></i></a>
-              <button class="activitybar-item" id="author-lang-toggle" title="${escapeHtml(t('settings.language'))}"><i class="fas fa-globe"></i></button>
-              <button class="activitybar-item" id="author-theme-toggle" title="${escapeHtml(t('settings.toggleTheme'))}"><i class="fas fa-moon"></i></button>
+              <a class="activitybar-item" href="/verify/" target="_blank" rel="noopener noreferrer" title="${escapeHtml(t('settings.verifyProof'))}" aria-label="${escapeHtml(t('settings.verifyProof'))}"><i class="fas fa-circle-check"></i></a>
+              <button class="activitybar-item" id="author-lang-toggle" title="${escapeHtml(t('settings.language'))}" aria-label="${escapeHtml(t('settings.language'))}"><i class="fas fa-globe"></i></button>
+              <button class="activitybar-item" id="author-theme-toggle" title="${escapeHtml(t('settings.toggleTheme'))}" aria-label="${escapeHtml(t('settings.toggleTheme'))}"><i class="fas fa-moon"></i></button>
             </div>
           </nav>
 
-          <div class="author-workbench">
-            <div class="editor-tabs-container">
-              <div class="editor-tabs" id="author-tabs"></div>
-              <button class="add-tab-btn" id="author-add-tab" title="${escapeHtml(t('author.problem.addProblem'))}"><i class="fas fa-plus"></i></button>
-            </div>
-            <div class="author-editor-split">
-              <div class="author-pane">
-                <div class="author-pane-header">
-                  <span class="author-seg">
-                    <button class="author-seg-btn active" id="author-stmt-edit">${escapeHtml(t('author.preview.edit'))}</button>
-                    <button class="author-seg-btn" id="author-stmt-preview">${escapeHtml(t('author.preview.preview'))}</button>
-                  </span>
-                  <span class="author-pane-sub">problemId: <input type="text" id="author-active-problemid" class="author-inline-input" autocomplete="off" spellcheck="false"></span>
+          <div class="author-main">
+            <div id="author-welcome-slot"></div>
+            <div class="author-workspace" id="author-workspace" hidden>
+              <div id="author-explorer-slot"></div>
+              <div class="author-workbench">
+                <div class="author-toolbar">
+                  ${button('author-save-btn', 'save', 'fa-floppy-disk', t('author.editor.save'))}
+                  ${button('author-save-all-btn', 'save-all', 'fa-layer-group', t('author.editor.saveAll'))}
+                  ${button('author-split-btn', 'split', 'fa-table-columns', t('author.editor.split'), true)}
+                  <span class="author-toolbar-sep" aria-hidden="true"></span>
+                  ${button('author-run-btn', 'run', 'fa-play', t('author.run.label'))}
+                  ${button('author-term-toggle', 'toggle-terminal', 'fa-terminal', t('author.run.terminal'), true)}
+                  <span class="author-notice" id="author-notice" role="status" hidden></span>
                 </div>
-                <div class="author-pane-body">
-                  <div class="author-monaco" id="author-statement-editor"></div>
-                  <div class="markdown-rendered author-preview" id="author-statement-preview" hidden></div>
-                </div>
-                <section class="author-examples" id="author-examples">
-                  <div class="author-examples-head">
-                    <span>${escapeHtml(t('author.problem.examplesHeading'))}</span>
-                    <button class="author-pane-btn" id="author-add-example" data-action="add-example"><i class="fas fa-plus"></i> ${escapeHtml(t('author.problem.addExample'))}</button>
-                  </div>
-                  <p class="author-hint author-examples-hint">${escapeHtml(t('author.problem.examplesHint'))}</p>
-                  <div class="author-example-list" id="author-example-list"></div>
-                </section>
-              </div>
-              <div class="author-pane">
-                <div class="author-pane-header">
-                  <span>${escapeHtml(t('author.problem.starterPane'))}</span>
-                  <span class="author-pane-tools">
-                    <button class="author-pane-btn" id="author-run-btn"><i class="fas fa-play"></i> ${escapeHtml(t('author.run.label'))}</button>
-                    <button class="author-pane-btn" id="author-term-toggle" title="${escapeHtml(t('author.run.terminal'))}"><i class="fas fa-terminal"></i></button>
-                  </span>
-                </div>
-                <div class="author-pane-body author-starter-body">
-                  <div class="author-monaco" id="author-starter-editor"></div>
-                  <div class="author-terminal-wrap" id="author-terminal-wrap" hidden>
-                    <div class="author-terminal" id="author-terminal"></div>
-                  </div>
+                <div id="author-groups-slot"></div>
+                <div class="author-terminal-wrap" id="author-terminal-wrap" hidden>
+                  <div class="author-terminal" id="author-terminal"></div>
                 </div>
               </div>
             </div>
           </div>
 
-          <aside class="author-settings-panel" id="author-settings-panel">
+          <aside class="author-settings-panel" id="author-settings-panel" hidden>
             <div class="author-settings-head">
               <span>${escapeHtml(t('author.settings.heading'))}</span>
-              <button class="author-icon-btn" id="author-settings-close" title="${escapeHtml(t('common.close'))}"><i class="fas fa-times"></i></button>
+              <button class="author-icon-btn" id="author-settings-close" title="${escapeHtml(t('common.close'))}" aria-label="${escapeHtml(t('common.close'))}"><i class="fas fa-times"></i></button>
             </div>
             <div class="author-settings-body">
               <div class="author-field">
@@ -716,7 +962,7 @@ export class AuthorPage {
               </label>
             </div>
             <div class="author-settings-foot">
-              <p class="author-error" id="author-build-error" hidden></p>
+              <div class="author-error" id="author-build-error" role="alert" hidden></div>
               <button class="author-btn author-btn-primary author-btn-block" id="author-build-btn"><i class="fas fa-box-archive"></i> ${escapeHtml(t('author.build.button'))}</button>
               <div class="author-settings-divider"></div>
               <button class="author-btn author-btn-block" id="author-build-class-btn"><i class="fas fa-book-open"></i> ${escapeHtml(t('author.classExport.button'))}</button>
@@ -727,6 +973,7 @@ export class AuthorPage {
 
         <footer class="statusbar">
           <div class="statusbar-left">
+            <div class="status-item"><i class="fas fa-folder"></i> <span id="author-sb-folder"></span></div>
             <div class="status-item"><i class="fas fa-feather-pointed"></i> <span id="author-sb-exam"></span></div>
             <div class="status-item"><i class="fas fa-layer-group"></i> <span id="author-sb-count">0</span> ${escapeHtml(t('author.statusbar.problems'))}</div>
           </div>

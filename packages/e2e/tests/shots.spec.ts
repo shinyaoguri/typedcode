@@ -12,10 +12,10 @@ import {
   writeZipVariant,
 } from './helpers/app.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
+import { TWO_PROBLEMS, appendToEditor, editorGroup, openAuthorFolder, openFromExplorer } from './helpers/author.js';
 import { loadExamFixture } from './helpers/examFixture.js';
 import { failStorageProbe } from './helpers/faults.js';
 import {
-  SAMPLE_PROBLEM_EXAMPLES,
   classPackageFile,
   loadClassPackage,
   sampleClassPackageWithExamples,
@@ -136,8 +136,9 @@ const SHOTS = [
       'エディタ (授業モード): 入出力例付きの問題を読んだときの問題パネル (問題文の下に「動作確認の例」。入力のコピーボタンと、入力の無い例の「入力なし」。#648)',
   },
   {
-    file: '20-author-examples.png',
-    caption: '出題 (/author): 問題文の下の「動作確認の例」の欄に例を 2 件入れた状態 (#648)',
+    file: '20-author-workspace.png',
+    caption:
+      '出題 (/author): 教材フォルダを開いた作業画面。左がエクスプローラー (問題・試験)、中央が左右に分けたエディタ (左で本文を編集、右でそのプレビュー)。本文は未保存の印つき (#796。監督コードは隠している)',
   },
   {
     file: '21-exam-gate-attestation-pending.png',
@@ -165,6 +166,18 @@ const SHOTS = [
     file: '26-settings-menu.png',
     caption:
       'エディタ (通常モード): 設定メニューを開いた状態。救出 (証明ではない) はここにある。左のダウンロードはメニューを持たないボタン 1 つ (#779。時計とハッシュは隠している)',
+  },
+  {
+    file: '27-author-welcome.png',
+    caption: '出題 (/author): 教材フォルダを開く前の起動画面 (フォルダを開く / 新しいフォルダを作る。#796)',
+  },
+  {
+    file: '20-author-workspace-en.png',
+    caption: '出題 (/author): 20 と同じ作業画面を英語の画面で (#796)',
+  },
+  {
+    file: '27-author-welcome-en.png',
+    caption: '出題 (/author): 27 と同じ起動画面を英語の画面で (#796)',
   },
 ] as const;
 
@@ -217,6 +230,42 @@ function bundleWebp(frames: string[], dest: string): void {
     console.warn(`[shots] img2webp が失敗したので WebP を飛ばす: ${result.stderr || result.error}`);
     rmSync(dest, { force: true });
   }
+}
+
+/** /author の起動画面 (覚えているフォルダが無い新しい context) を撮る (#796) */
+async function shootAuthorWelcome(page: Page, file: ShotFile): Promise<void> {
+  await page.goto('/author');
+  await expect(page.locator('#author-root')).toHaveAttribute('data-workspace-state', 'welcome', { timeout: 60_000 });
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
+}
+
+/** /author の作業画面を撮る (#796)。OPFS の教材フォルダを dev フックで開き、本文を左で編集・右でプレビューする */
+async function shootAuthorWorkspace(page: Page, file: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-796', {
+    ...TWO_PROBLEMS,
+    'p1.md': [
+      '# 最大値',
+      '',
+      '1 行目に個数 n、2 行目に n 個の整数が与えられる。最大値を出力せよ。',
+      '',
+      '## 入力例',
+      '',
+      '```',
+      '3',
+      '1 8 4',
+      '```',
+      '',
+    ].join('\n'),
+    '中間試験.exam.yaml':
+      'format: tc-exam/1\nexamId: midterm\nkind: exam\nlanguages: [c]\nproblems: [p1.problem.yaml, p2.problem.yaml]\n',
+  });
+  await openFromExplorer(page, 'p1.md', 'statement');
+  await page.locator('#author-split-btn').click();
+  await editorGroup(page, 1).locator('[data-action="view-preview"]').click();
+  await expect(editorGroup(page, 1)).toHaveAttribute('data-view', 'preview');
+  await appendToEditor(page, '\n出力の末尾に改行を付けること。');
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
 }
 
 test.describe('見た目・動きの証跡 @shots', () => {
@@ -414,29 +463,27 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await page.locator('#problem-panel').screenshot({ path: out('19-problem-examples.png'), animations: 'disabled' });
   });
 
-  // 20 (#648): /author の入出力例の欄。base には欄が無いので、追加ボタンが無ければそのまま問題文のペインを撮る
-  test('/author の入出力例の欄を撮る @shots', async ({ page }) => {
-    await page.goto('/author');
-    await page.locator('#author-statement-editor .view-lines').waitFor({ state: 'visible', timeout: 60_000 });
-    const add = page.locator('#author-add-example');
-    if ((await add.count()) > 0) {
-      for (const [index, example] of SAMPLE_PROBLEM_EXAMPLES.entries()) {
-        await add.click();
-        const row = page.locator(`#author-example-list [data-example-index="${index}"]`);
-        await row.locator('[data-field="name"]').fill(example.name);
-        await row.locator('[data-field="stdin"]').fill(example.stdin);
-        await row.locator('[data-field="stdout"]').fill(example.stdout);
-      }
-      // 打った欄へのスクロールを戻し、一覧の先頭から撮る
-      await page.locator('#author-example-list').evaluate((el) => {
-        (document.activeElement as HTMLElement | null)?.blur();
-        el.scrollTop = 0;
-      });
-    }
-    await page
-      .locator('.author-pane')
-      .first()
-      .screenshot({ path: out('20-author-examples.png'), animations: 'disabled' });
+  // 27 (#796): /author の起動画面 (覚えているフォルダが無い新しい context)
+  test('/author の起動画面を撮る @shots', async ({ page }) => {
+    await shootAuthorWelcome(page, '27-author-welcome.png');
+  });
+
+  // 20 (#796): /author の作業画面。OPFS の教材フォルダを dev フックで開き、本文を左で編集・右でプレビューする
+  test('/author の作業画面を撮る @shots', async ({ page }) => {
+    await shootAuthorWorkspace(page, '20-author-workspace.png');
+  });
+
+  // 20-en / 27-en (#796): 同じ 2 画面を英語で (画面の言語はブラウザの言語から決まる)
+  test.describe('英語', () => {
+    test.use({ locale: 'en-US' });
+
+    test('/author の起動画面を英語で撮る @shots', async ({ page }) => {
+      await shootAuthorWelcome(page, '27-author-welcome-en.png');
+    });
+
+    test('/author の作業画面を英語で撮る @shots', async ({ page }) => {
+      await shootAuthorWorkspace(page, '20-author-workspace-en.png');
+    });
   });
 
   // 21〜23 (#236): 試験開始ゲートの人間確認の欄。ゲートを出している間に Turnstile (公開テストキー) と

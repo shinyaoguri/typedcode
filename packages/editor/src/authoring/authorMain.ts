@@ -1,10 +1,9 @@
 /**
- * `/author` ページのエントリ (#80)。教員向けオーサリング UI を mount する。
+ * `/author` ページのエントリ (#80)。教員向けの作問画面を mount する。
  *
- * ADR-0012 改良: 問題文/スターターコードを Monaco で編集し、スターターは Cコンパイラで
- * 動作確認できる editor ライクな環境にする。proof/tracking 機構は使わない (authoring は
- * proof を記録しない) ので、Monaco / C executor / xterm を**単体で**再利用する
- * (proof 密結合の TabManager / EditorController は使わない)。
+ * ADR-0012 改良 / ADR-0051: 教材フォルダのファイル (問題文・初期コード・ヒント・解答例・ケース) を Monaco で編集し、
+ * コードは editor と同じ実行系で動作確認できる。proof/tracking 機構は使わない (authoring は proof を記録しない) ので、
+ * Monaco / 実行系 / xterm を**単体で**再利用する (proof 密結合の TabManager / EditorController は使わない)。
  */
 
 import '@xterm/xterm/css/xterm.css';
@@ -23,12 +22,11 @@ configureMonacoWorkers();
 initDOMi18n();
 
 const root = document.getElementById('author-root');
-if (root) {
-  new AuthorPage(root).mount();
-}
+const page = root ? new AuthorPage(root) : null;
+page?.mount();
 
 // E2E テスト専用フック (dev ビルドのみ。本番では import.meta.env.DEV=false でガードごと除去され、
-// dynamic import も残らない)。OPFS のハンドルを教材フォルダとして渡して読み書き・再開を試す (#795)。
+// dynamic import も残らない)。OPFS のハンドルを教材フォルダとして画面に開かせる (#795 / #796)。
 if (import.meta.env.DEV) {
-  void import('./workspace/devWorkspaceHook.js').then((hook) => hook.installAuthorWorkspaceHook());
+  void import('./workspace/devWorkspaceHook.js').then((hook) => hook.installAuthorWorkspaceHook(page));
 }

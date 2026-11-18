@@ -101,6 +101,67 @@ export async function pickMaterialFolder(deps: PickFolderDeps): Promise<OpenFold
   return openMaterialFolderHandle(handle, deps.store);
 }
 
+/** ピッカーでフォルダを選ばせ、ハンドルだけを返す (覚えない)。「新しいフォルダを作る」の親を選ぶのに使う */
+export async function pickDirectoryHandle(
+  showDirectoryPicker?: DirectoryPicker
+): Promise<
+  | { readonly status: 'picked'; readonly handle: FileSystemDirectoryHandle }
+  | { readonly status: 'cancelled' }
+  | { readonly status: 'unsupported' }
+  | { readonly status: 'failed'; readonly cause: unknown }
+> {
+  const picker = showDirectoryPicker ?? defaultPicker();
+  if (!picker) return { status: 'unsupported' };
+  try {
+    return { status: 'picked', handle: await picker({ mode: 'readwrite' }) };
+  } catch (cause) {
+    if (errorName(cause) === 'AbortError') return { status: 'cancelled' };
+    return { status: 'failed', cause };
+  }
+}
+
+/** 新しいフォルダを作った結果。`exists` = 同じ名前のフォルダかファイルが既に在る (何も作らない) */
+export type CreateFolderResult =
+  | OpenFolderResult
+  | { readonly status: 'exists'; readonly name: string }
+  | { readonly status: 'invalid-name'; readonly name: string };
+
+/** ピッカーが使えるブラウザか (Chrome / Edge) */
+export function isFolderPickerSupported(): boolean {
+  return defaultPicker() !== undefined;
+}
+
+/**
+ * 親フォルダの中に新しい教材フォルダを作って開き、再訪用に覚える。名前は 1 区間だけ (`/`・`\`・`.` で始まる名前は不可)。
+ * 同じ名前が既に在れば作らない (既存のフォルダを新しい教材として開いてしまわない)。
+ */
+export async function createMaterialFolderIn(
+  parent: FileSystemDirectoryHandle,
+  name: string,
+  store: FolderHandleStore
+): Promise<CreateFolderResult> {
+  const trimmed = name.trim();
+  if (trimmed === '' || /[/\\]/.test(trimmed) || trimmed.startsWith('.')) {
+    return { status: 'invalid-name', name };
+  }
+  try {
+    await parent.getDirectoryHandle(trimmed);
+    return { status: 'exists', name: trimmed };
+  } catch (cause) {
+    const errName = errorName(cause);
+    // TypeMismatchError: 同じ名前のファイルが在る
+    if (errName === 'TypeMismatchError') return { status: 'exists', name: trimmed };
+    if (errName !== 'NotFoundError') return { status: 'failed', cause };
+  }
+  let handle: FileSystemDirectoryHandle;
+  try {
+    handle = await parent.getDirectoryHandle(trimmed, { create: true });
+  } catch (cause) {
+    return { status: 'failed', cause };
+  }
+  return openMaterialFolderHandle(handle, store);
+}
+
 /** 権限がある前提で、フォルダが今も在るかを 1 件読んで確かめて開く */
 async function openIfPresent(handle: FileSystemDirectoryHandle): Promise<GrantResult> {
   try {
