@@ -26,6 +26,7 @@ import {
 } from './examPackageAuthoring.js';
 import { buildClassPackage } from './classPackageAuthoring.js';
 import { cleanProblemExamples } from './problemExamples.js';
+import { extensionToLanguage } from './starterLanguage.js';
 import { generateAuthorityKey } from './authorityKey.js';
 import { buildProctorMemo } from './proctorMemo.js';
 import { renderMarkdown } from '../utils/markdown.js';
@@ -38,23 +39,6 @@ import type { CTerminal } from '../terminal/CTerminal.js';
  * `packages/workers/scripts/make-exam-package.mjs` の `OPEN_DEADLINE` (既定 deadline) と同値に保つこと。
  */
 const OPEN_DEADLINE = '2999-12-31T23:59:59.999Z';
-
-/** ファイル拡張子 → Monaco/実行の言語 ID。 */
-function extensionToLanguage(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-  const map: Record<string, string> = {
-    c: 'c',
-    h: 'c',
-    cpp: 'cpp',
-    cc: 'cpp',
-    cxx: 'cpp',
-    hpp: 'cpp',
-    py: 'python',
-    js: 'javascript',
-    ts: 'typescript',
-  };
-  return map[ext] ?? 'plaintext';
-}
 
 /** Blob をファイル名つきでダウンロードさせる。 */
 function downloadBlob(filename: string, content: string, mime: string): void {
