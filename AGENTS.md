@@ -4,7 +4,7 @@
 
 ## プロジェクト概要
 
-TypedCode はブラウザベースのコードエディタで、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録し、改ざん耐性のあるタイピング証明を生成します。さらに Cloudflare Workers による ECDSA-P256 署名付きチェックポイントで時刻アンカリングを行います。版の正本はルートの `package.json` の `version` と [CHANGELOG.md](CHANGELOG.md) で、ここには写しません (#658)。
+TypedCode はブラウザベースのコードエディタで、すべてのキーストロークを SHA-256 ハッシュチェーンと Proof of Sequential Work (PoSW) に記録し、改ざん耐性のあるタイピング証明を生成します。さらに Cloudflare Workers による ECDSA-P256 署名付きチェックポイントで時刻アンカリングを行います。版の正本は git の `v*` タグと [GitHub Releases](https://github.com/shinyaoguri/typedcode/releases) で、ここには写しません ([ADR-0055](docs/adr/0055-release-channels-and-calendar-versioning.md))。ルートの `package.json` の `version` は `0.0.0` のままで、ビルドは読みません (About の版はビルドに渡したタグ名から決まる。#842)。
 
 **Tech Stack**: TypeScript 7, Vite 8 (rolldown), Monaco Editor, Wasmer SDK, Chart.js, Cloudflare Workers
 **Node.js**: ≥24
@@ -50,10 +50,12 @@ npm run dev:editor / dev:verify / dev:workers
 npm run build
 
 # Lint / Format (Biome, #157。CI の check job も同じコマンド)
-npm run lint        # biome ci . + lint:docs (チェックのみ。CI の check job も同じコマンド)
+npm run lint        # biome ci . + lint:docs + lint:changelog (チェックのみ。CI の check job も同じコマンド)
 npm run lint:docs   # docs/ とルートの *.md に [[...]] 形式のローカル記憶参照が残っていないか (#343)
 npm run lint:fix    # biome check --write . (安全な自動修正 + format)
 npm run lint:workflows  # .github/workflows を actionlint + shellcheck で検査 (版と sha256 を固定して .cache/ に落とす。#351)
+npm run lint:changelog  # changelog.d/ の断片の名前と本文を検査 (= node scripts/release.mjs lint。書き方は changelog.d/README.md)
+node scripts/release.mjs notes  # 前回の v* タグ以降に追加された changelog.d/ の断片 (と断片の無い fix / feat の件名) から Release ノートを組む (stdout)
 node scripts/check-deps.mjs  # packages/*/README.md の依存表 (名前と用途だけ。版は書かない) と package.json を名前で突合 (#269)
 
 # ユニットテスト (カバレッジ付き。test:coverage を持つ全パッケージ。CI の test job も同じコマンド)
@@ -76,6 +78,7 @@ npm run check:fast  # 上から e2e と test:build を除いたもの (build・t
 ## 開発フロー
 
 - ブランチ運用は**タグ式 GitHub Flow** (main 1 本 + `v*` タグ → production)。手順は [CONTRIBUTING.md](CONTRIBUTING.md)、根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md)
+- **利用者に見える変更は `changelog.d/` に断片を 1 つ足す** (リリースのノートの材料。書き方は [changelog.d/README.md](changelog.d/README.md))
 - **作業は git worktree で行う** (メインのチェックアウトのブランチを切り替えない)
 - **マージしたら、メインのチェックアウトから `git sweep` を実行して** worktree とローカルブランチを掃除する (使用中・dirty な worktree は自動スキップ。[ADR-0029](docs/adr/0029-merge-cleanup-script.md))
 - PR タイトルは CI (`pr-title` job) が Conventional Commits を検査する。落ちたら型を `feat|fix|docs|refactor|test|chore|ci` から選び直す
@@ -93,7 +96,7 @@ Issue の起票から PR の close までの規律はこの節で完結する。
 3. 着手時に、Issue 本文と全コメントを読み、各受け入れ条件を現行コードと突き合わせて「まだ有効 / 既に満たされている / 差し替えが要る」をプランに書く。事実のずれ (行番号・綴り・数) は先に本文を直す。条件を緩める・絞る・差し替えるときは、本文は直さず根拠をコメントして人の判断を待つ
 4. プラン (変更点・確認方法) を Issue にコメントする。PR を出した後に変わったら、差分を PR にコメントする
 5. PR 本文の「Test plan」に、閉じる Issue ごとに受け入れ条件と確かめ方の対応表を置く (形は [PR テンプレート](.github/pull_request_template.md))。`Closes #N` は PR 本文に書く
-6. **PR は必ず Issue を閉じる**。閉じる Issue が無い PR は CI の `require-issue` が落とす。見るのは本文の文字列ではなく、GitHub が実際に作った紐づけ (`Closes #N` が効いているか) なので、コードスパン・引用の中に書いた `Closes` は数えない。段階に分けて進める作業は、親を `Refs` で開いたままにせず、段階ごとに sub-issue を切ってそれを閉じる。受け入れ条件を持たない PR (依存の手動更新・リリース準備など) だけ、ラベル `no-issue` を付けて通す ([ADR-0038](docs/adr/0038-every-pr-closes-an-issue.md))
+6. **PR は必ず Issue を閉じる**。閉じる Issue が無い PR は CI の `require-issue` が落とす。見るのは本文の文字列ではなく、GitHub が実際に作った紐づけ (`Closes #N` が効いているか) なので、コードスパン・引用の中に書いた `Closes` は数えない。段階に分けて進める作業は、親を `Refs` で開いたままにせず、段階ごとに sub-issue を切ってそれを閉じる。受け入れ条件を持たない PR (依存の手動更新など) だけ、ラベル `no-issue` を付けて通す ([ADR-0038](docs/adr/0038-every-pr-closes-an-issue.md))
 
 移行: ゲートを入れた時点 (#377) で既に `status: in progress` の Issue は、印が無くても続けてよい。
 
@@ -144,7 +147,7 @@ Issue の起票から PR の close までの規律はこの節で完結する。
 
 ## ドキュメント階層
 
-仕様は [docs/system-spec.md](docs/system-spec.md) (定数・アルゴリズム・用語集)、判断の根拠は [docs/adr/](docs/adr/)、開発の進め方は [CONTRIBUTING.md](CONTRIBUTING.md)、変更履歴は [CHANGELOG.md](CHANGELOG.md) が真実の在処です。コードの触り方は本ファイルと `packages/*/AGENTS.md`、利用者視点の使い方は `packages/*/README.md` にあります。
+仕様は [docs/system-spec.md](docs/system-spec.md) (定数・アルゴリズム・用語集)、判断の根拠は [docs/adr/](docs/adr/)、開発の進め方は [CONTRIBUTING.md](CONTRIBUTING.md)、変更履歴は [GitHub Releases](https://github.com/shinyaoguri/typedcode/releases) (材料は [`changelog.d/`](changelog.d/README.md) の断片。[CHANGELOG.md](CHANGELOG.md) は 1.4.0 までの記録) が真実の在処です。コードの触り方は本ファイルと `packages/*/AGENTS.md`、利用者視点の使い方は `packages/*/README.md` にあります。
 
 ## 環境設定
 

@@ -118,7 +118,7 @@ UI をブロックせずにイベントを記録します。
 ビルドプロセスは以下の変数をソースに注入します。
 
 ```typescript
-__APP_VERSION__      // package.json の version
+__APP_VERSION__      // ビルドに渡した版 (TYPEDCODE_VERSION。タグ名から v を除いたもの。未指定なら dev+<コミット>)
 __GIT_COMMIT__       // Git commit hash
 __GIT_COMMIT_DATE__  // Git commit の日付
 __BUILD_DATE__       // ビルド時刻

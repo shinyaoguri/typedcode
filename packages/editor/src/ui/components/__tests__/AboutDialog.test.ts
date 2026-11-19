@@ -40,6 +40,13 @@ describe('showAboutDialog accessibility', () => {
     expect(document.getElementById(dialog.getAttribute('aria-labelledby')!)?.textContent).toBe('TypedCode');
   });
 
+  it('shows the build version without a v prefix when no tag version was passed to the build', () => {
+    showAboutDialog(i18n);
+    const version = document.querySelector<HTMLElement>('.about-version')!.textContent!;
+    expect(version).toBe('dev');
+    expect(version.startsWith('v')).toBe(false);
+  });
+
   it('moves initial focus to the close button', () => {
     showAboutDialog(i18n);
     expect(document.activeElement).toBe(document.querySelector('.modal-close-btn'));

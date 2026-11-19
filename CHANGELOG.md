@@ -1,13 +1,13 @@
 # Changelog
 
-このファイルは TypedCode の主要な変更を記録します。
+このファイルは TypedCode の 1.4.0 までの主要な変更の記録で、これ以上は書き足しません。
+以後の変更履歴は [GitHub Releases](https://github.com/shinyaoguri/typedcode/releases) にあり、
+ノートの材料は [`changelog.d/`](changelog.d/README.md) の断片です ([ADR-0055](docs/adr/0055-release-channels-and-calendar-versioning.md))。
 
-書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
-バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) に従います。
+1.4.0 までの記録は、書式を [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
+バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) に従っています。
 
 リリースは `v*` タグの push で production へ配信されます (タグ式 GitHub Flow、[ADR-0028](docs/adr/0028-tag-based-github-flow.md))。
-
-## [Unreleased]
 
 ## [1.4.0] - 2026-11-19
 
@@ -263,7 +263,6 @@
 - replay と乖離した `contentSnapshot` を外部入力相当として advisory 検出するようにした (#182)
 - Workers の dev 用 Worker 名を分離し、未捕捉例外の最終防衛を追加した (#165)
 
-[Unreleased]: https://github.com/shinyaoguri/typedcode/compare/v1.4.0...HEAD
 [1.4.0]: https://github.com/shinyaoguri/typedcode/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/shinyaoguri/typedcode/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/shinyaoguri/typedcode/compare/v1.1.0...v1.2.0
