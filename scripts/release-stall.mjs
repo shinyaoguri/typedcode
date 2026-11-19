@@ -83,7 +83,7 @@ export function formatIssueBody(result, { tag, tagDate, sha, repo, serverUrl = '
   if (sha) lines.push(`- 対象コミット: \`${sha}\``);
   lines.push(
     '',
-    `手順は [CONTRIBUTING.md「リリース」](${guide}) (バージョン bump PR → \`gh release create\` → Actions で production を Approve)。`,
+    `手順は [CONTRIBUTING.md「リリース」](${guide}) (\`node scripts/release.mjs notes\` でノートを組む → \`gh release create\` → Actions で production を Approve)。`,
     '',
     `<details><summary>未リリースの fix / feat (${result.count} 件)</summary>`,
     '',

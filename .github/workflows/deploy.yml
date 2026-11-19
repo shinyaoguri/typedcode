@@ -630,6 +630,9 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
           VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          # タグ名 (v*) が About の版になる (scripts/app-version.mjs。#842)。staging・PR プレビューの
+          # ビルドには渡さないので、そちらの About は dev+<コミット> になる
+          TYPEDCODE_VERSION: ${{ github.ref_name }}
 
       - name: Merge build outputs
         run: |

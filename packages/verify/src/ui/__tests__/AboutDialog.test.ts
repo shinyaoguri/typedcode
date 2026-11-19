@@ -46,6 +46,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('showAboutDialog: version', () => {
+  it('shows the build version without a v prefix when no tag version was passed to the build', () => {
+    showAboutDialog(i18n);
+    const version = (document.querySelector('.about-version') as HTMLElement).textContent!;
+    expect(version).toBe('dev');
+    expect(version.startsWith('v')).toBe(false);
+  });
+});
+
 describe('showAboutDialog: closing', () => {
   it('removes the keydown listener when closed with the close button', () => {
     showAboutDialog(i18n);

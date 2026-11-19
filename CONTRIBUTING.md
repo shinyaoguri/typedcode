@@ -163,21 +163,22 @@ Issue の起票・着手してよい条件 (`verify: triaged`)・着手時の確
 ## リリース (v* タグ)
 
 ```bash
-# 1. バージョン bump PR (ルート package.json。UI の About 表示に使われる)
-npm version <X.Y.Z> --no-git-tag-version --workspaces-update=false
-# → PR → squash merge
-
-# 2. main 先端の CI が green なことを確認してからタグを打つ
+# 1. main 先端の CI が green なことを確認する
 gh run list --branch main -L 1
-gh release create vX.Y.Z --target main --title "vX.Y.Z" --generate-notes
+
+# 2. 前回のタグ以降の changelog.d/ の断片からノートを組み、タグを打つ (全履歴とタグが要る)
+git fetch --tags origin
+notes=$(mktemp)
+node scripts/release.mjs notes --to origin/main > "$notes"
+gh release create vX.Y.Z --target main --title "vX.Y.Z" --notes-file "$notes"
 ```
 
+- About に出る版はタグ名から決まる (`deploy-production` がタグ名を `TYPEDCODE_VERSION` としてビルドに渡す) ので、版の bump の PR は要らない。ノートの材料と書き方は [changelog.d/README.md](changelog.d/README.md)
 - タグ push で CI (test/check/e2e) と `nightly-gate` が走り、すべて green 後に **production デプロイが承認待ち**になる。`nightly-gate` は main の `e2e-nightly.yml` の最新の完了 run が `success` のときだけ通る (#593)。進行中は飛ばすが、失敗・cancelled・完了 run なし・API 取得失敗は拒否する。タグと nightly の SHA 一致は要求しない。
 - `nightly-gate` が落ちたら、原因を直し、`gh workflow run e2e-nightly.yml --ref main` で nightly を走らせて成功を待つ。その後、タグの Deploy run の失敗 job を re-run する (`gh run rerun <Deploy-run-id> --failed`、または Actions の Re-run failed jobs)。タグの付け替えは不要。ゲートは環境を持たない別 job なので、本番の承認待ちより前に止まる。
 - タグは main の履歴上のコミットにのみ有効 (CI が ancestor 検証で強制)。
 - **タグの付け替え・削除はしない** (ruleset でも禁止)。本番が壊れたら、まず下の「[本番を戻す](#本番を戻す-ロールバック)」で直前のデプロイへ戻し、fix を入れて**次のパッチタグ**で前へ進める。
 - 破壊的な証明フォーマット変更は `PROOF_FORMAT_VERSION` とも対応させる。
-- 直前に CHANGELOG.md の `[Unreleased]` を `## [X.Y.Z] - <日付>` に切り、末尾の比較リンクも足す (1 の bump PR に含める)。
 - **いつリリースするか** (#332): 次のどちらかに当たったら、上の手順でリリースする。リリースの見送りは、理由を Issue に残せば認める。
   - **本番に効くセキュリティ修正を main に入れたら、7 日以内**に下の「本番緊急修正」の手順でパッチタグを打つ。本番に効くセキュリティ修正とは、`security` ラベルの Issue を閉じた PR と、Dependabot の security update のこと。PR 側の `security` ラベルは付け漏れが多いので、Issue 側のラベルで判断する
   - それ以外は、**最新タグから 7 日以内**にリリースする (#657。1 回のリリースを、壊れたときに原因を追える大きさに保つため)。超えると、次の段落の自動検知が Issue を開く
@@ -242,7 +243,10 @@ npx wrangler rollback <version-id> --config wrangler.staging.toml --message "<�
 git fetch origin
 git worktree add .claude/worktrees/critical-bug -b fix/critical-bug origin/main
 # 修正 → PR → squash merge → staging で確認
-gh release create vX.Y.(Z+1) --target main --generate-notes   # 即パッチリリース
+git fetch --tags origin
+notes=$(mktemp)
+node scripts/release.mjs notes --to origin/main > "$notes"
+gh release create vX.Y.(Z+1) --target main --title "vX.Y.(Z+1)" --notes-file "$notes"   # 即パッチリリース
 ```
 
 main が唯一のブランチなので、旧 Git Flow のような「main と develop の両方へ反映」という手当ては不要です。

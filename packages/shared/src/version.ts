@@ -152,7 +152,7 @@ export function proofVersionRejectionMessage(status: ProofVersionStatus, version
 
 /** ビルド情報の型定義 */
 export interface BuildInfo {
-  /** アプリバージョン (package.json) */
+  /** アプリバージョン。ビルドに渡した版 (タグ名から `v` を除いたもの)。タグでないビルドは `dev+<コミット>` (#842) */
   appVersion: string;
   /** Gitコミットハッシュ (短縮形) */
   gitCommit: string;
@@ -176,6 +176,14 @@ export function getBuildInfo(): BuildInfo {
     gitCommitDate: typeof __GIT_COMMIT_DATE__ !== 'undefined' ? __GIT_COMMIT_DATE__ : '',
     buildDate: typeof __BUILD_DATE__ !== 'undefined' ? __BUILD_DATE__ : new Date().toISOString(),
   };
+}
+
+/**
+ * About に出す版の表記。数字で始まる版 (`2027.2.0-beta.3`) にだけ先頭に `v` を付け、
+ * タグでないビルドの版 (`dev+abc1234`・`dev`) はそのまま返す (#842)。
+ */
+export function formatAppVersion(appVersion: string): string {
+  return /^\d/.test(appVersion) ? `v${appVersion}` : appVersion;
 }
 
 /** GitHub リポジトリ情報 */

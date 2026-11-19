@@ -213,6 +213,7 @@ export {
   isProofVersionRejected,
   proofVersionRejectionMessage,
   getBuildInfo,
+  formatAppVersion,
   GITHUB_REPO,
   GITHUB_URL,
   AUTHOR_GITHUB,
