@@ -54,8 +54,42 @@ function entry(path: string, content: string): FSAccessFileEntry {
 /** 監視・初回読み込みの経路は FolderController の private メンバー。テストからはこれだけを触る。 */
 interface FolderInternals {
   processFileFromHandle(fileEntry: FSAccessFileEntry, folderMap: Map<string, string>): Promise<void>;
+  handleExternalFileAdded(file: FSAccessFileEntry): Promise<void>;
   handleExternalFileModified(file: FSAccessFileEntry): Promise<void>;
+  handleSyncComplete(): void;
   syncManager: FolderSyncManager;
+}
+
+/**
+ * `getFile()` の読み取りを手で進める FSA のファイル。呼ばれるたびに `reads` の次の手順で読む: 文字列はその内容を
+ * すぐ返し、`'fail'` は読み取りの失敗、`'hold'` は `release(content)` されるまで止めてからその内容を返す
+ * (`release('fail')` なら読み取りの失敗)。
+ * 呼ばれた時点の内容を返すのは実物と同じ (`getFile()` はその時点のスナップショット)。
+ */
+function scriptedEntry(path: string, reads: Array<string | 'fail' | 'hold'>) {
+  const name = path.split('/').pop() ?? path;
+  const held: Array<(content: string) => void> = [];
+  let call = 0;
+  const handle = {
+    getFile: async () => {
+      const step = reads[Math.min(call++, reads.length - 1)];
+      if (step === 'fail') throw new DOMException('file is busy', 'NotReadableError');
+      const content = step === 'hold' ? await new Promise<string>((resolve) => held.push(resolve)) : step!;
+      if (content === 'fail') throw new DOMException('file is busy', 'NotReadableError');
+      return new File([content], name);
+    },
+  } as unknown as FileSystemFileHandle;
+  const entry: FSAccessFileEntry = { handle, path, name, lastModified: Date.now() };
+  /** 止めている読み取りを、古い順に 1 本ずつ `content` で終わらせる */
+  const release = (content: string) => held.shift()?.(content);
+  /** 止めている読み取りがあるか (読み取りが getFile() まで進んだか) */
+  const holding = () => held.length > 0;
+  return { entry, release, holding };
+}
+
+/** 止めた読み込みが getFile() に入るまで待つ */
+async function untilHeld(holding: () => boolean): Promise<void> {
+  await vi.waitFor(() => expect(holding()).toBe(true));
 }
 
 function stack() {
@@ -396,6 +430,106 @@ describe('external proof update in a watched folder (#695)', () => {
     await s.modify(PROOF_PATH, TAMPERED);
 
     expect(s.onFileReplaced).toHaveBeenCalledWith(s.tabAt(PROOF_PATH).id);
+  });
+});
+
+/**
+ * 同じパスの読み込みが重なる (#787)。監視の通知・読み込みに失敗した変更のやり直しは、同じパスについて直列では
+ * ない。先に始めた読み込み (古い内容) が後から終わっても、後に始めた読み込み (新しい内容) の結果を上書きしない。
+ * 順序はタイマーではなく、止めた getFile() を手で終わらせて作る。
+ */
+describe('overlapping loads of the same path in a watched folder (#787)', () => {
+  /** 本文が "ok" の proof と、それを書き換えた古い内容の proof (検証は失敗する) */
+  const OLDER = TAMPERED;
+  const NEWER = VALID;
+
+  it('keeps the newer content and result when an older modification finishes after a newer one', async () => {
+    const s = stack();
+    await s.open({ [PROOF_PATH]: JSON.stringify({ ...VALID_PROOF, content: 'initial' }) });
+    const older = scriptedEntry(PROOF_PATH, ['hold']);
+
+    const olderLoad = s.folder.handleExternalFileModified(older.entry);
+    await untilHeld(older.holding);
+    await s.folder.handleExternalFileModified(scriptedEntry(PROOF_PATH, [NEWER]).entry);
+    older.release(OLDER);
+    await olderLoad;
+    await s.drain();
+
+    const tab = s.tabAt(PROOF_PATH);
+    expect(buildResultData(tab)?.content).toBe('ok');
+    expect(tab.verificationResult?.valid).toBe(true);
+    expect(s.statuses()[PROOF_PATH]).not.toBe('error');
+  });
+
+  it('keeps the newer content when the retry of a failed change finishes after a newer notification', async () => {
+    const s = stack();
+    await s.open({ [PROOF_PATH]: JSON.stringify({ ...VALID_PROOF, content: 'initial' }) });
+    // 1 回目の通知は読めずに覚えられ、走査が成功した回のやり直しは古い内容を読んだところで止まる
+    const failing = scriptedEntry(PROOF_PATH, ['fail', 'hold']);
+    await s.folder.handleExternalFileModified(failing.entry);
+    s.folder.handleSyncComplete();
+    await untilHeld(failing.holding);
+
+    await s.folder.handleExternalFileModified(scriptedEntry(PROOF_PATH, [NEWER]).entry);
+    failing.release(OLDER);
+    await vi.waitFor(() => expect(failing.holding()).toBe(false));
+    await s.drain();
+
+    expect(buildResultData(s.tabAt(PROOF_PATH))?.content).toBe('ok');
+    expect(s.tabAt(PROOF_PATH).verificationResult?.valid).toBe(true);
+  });
+
+  it('does not count an older load that succeeds after a newer one failed as the change being loaded, and retries the newer change', async () => {
+    const s = stack();
+    await s.open({ [PROOF_PATH]: JSON.stringify({ ...VALID_PROOF, content: 'initial' }) });
+    const older = scriptedEntry(PROOF_PATH, ['hold']);
+    const olderLoad = s.folder.handleExternalFileModified(older.entry);
+    await untilHeld(older.holding);
+    await s.folder.handleExternalFileModified(scriptedEntry(PROOF_PATH, ['fail', NEWER]).entry);
+    expect(s.statusBar.setError).toHaveBeenCalledTimes(1);
+
+    older.release(OLDER);
+    await olderLoad;
+    // 古い読み込みの結果は捨てる (新しい変更はまだ読めていない)
+    expect(s.tabAt(PROOF_PATH).proofData?.content).toBe('initial');
+
+    // 新しい変更は失敗として覚えられたままで、次に走査が成功した回にやり直す
+    s.folder.handleSyncComplete();
+    await vi.waitFor(() => expect(s.tabAt(PROOF_PATH).proofData?.content).toBe('ok'));
+  });
+
+  it('does not remember an older load that fails after a newer one succeeded as a failed change', async () => {
+    const s = stack();
+    await s.open({ [PROOF_PATH]: JSON.stringify({ ...VALID_PROOF, content: 'initial' }) });
+    const older = scriptedEntry(PROOF_PATH, ['hold']);
+    const olderLoad = s.folder.handleExternalFileModified(older.entry);
+    await untilHeld(older.holding);
+    await s.folder.handleExternalFileModified(scriptedEntry(PROOF_PATH, [NEWER]).entry);
+
+    older.release('fail');
+    await olderLoad;
+    s.folder.handleSyncComplete();
+
+    expect(s.statusBar.setError).not.toHaveBeenCalled();
+    expect(older.holding()).toBe(false);
+    expect(s.tabAt(PROOF_PATH).proofData?.content).toBe('ok');
+  });
+
+  it('loads the newer content into a single tab when a file is modified while it is still being added', async () => {
+    const s = stack();
+    const path = 'added_proof.json';
+    const older = scriptedEntry(path, ['hold']);
+
+    const olderLoad = s.folder.handleExternalFileAdded(older.entry);
+    await untilHeld(older.holding);
+    await s.folder.handleExternalFileModified(scriptedEntry(path, [NEWER]).entry);
+    older.release(OLDER);
+    await olderLoad;
+    await s.drain();
+
+    expect(document.querySelectorAll(`#file-list .file-item[data-filename="${path}"]`)).toHaveLength(1);
+    expect(buildResultData(s.tabAt(path))?.content).toBe('ok');
+    expect(s.tabAt(path).verificationResult?.valid).toBe(true);
   });
 });
 
