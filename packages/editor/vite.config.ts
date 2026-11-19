@@ -93,8 +93,6 @@ export default defineConfig({
     // 関数宣言の巻き上げに依存している monaco (vs/platform/instantiation) が壊れ、
     // 本番ビルドのエディタが起動しなくなる。build.target: 'esnext' と
     // worker.format: 'es' でネイティブ TLA が使えるので、そもそも不要。
-    // dev サーバで `/author` (拡張子なし) を `/author.html` に解決する。
-    // 本番 (Cloudflare Pages) は clean URL で `/author` → `author.html` を自動配信するため不要。
     // dev サーバで `/verify` と `/verify/...` を verify の dev サーバへ 302 でリダイレクトする (#829)。
     // 転送 (server.proxy) にすると、verify の dev は `base: '/'` なので返る HTML の `/src/main.ts` を
     // ブラウザが editor のオリジンで解決し、editor の main.ts が verify の HTML の上で走って落ちる。
@@ -111,6 +109,8 @@ export default defineConfig({
         });
       },
     },
+    // dev サーバで `/author` (拡張子なし) を `/author.html` に解決する。
+    // 本番 (Cloudflare Pages) は clean URL で `/author` → `author.html` を自動配信するため不要。
     {
       name: 'author-clean-url',
       configureServer(server) {
