@@ -35,7 +35,7 @@ export default defineConfig({
   base: isDev ? '/' : '/verify/',
   server: {
     port: verifyPort,
-    // ランチャー割当時 (VERIFY_PORT あり) は strictPort。editor の /verify プロキシが
+    // ランチャー割当時 (VERIFY_PORT あり) は strictPort。editor の /verify のリダイレクト先が
     // このポート固定で追従するため、ずれると配線が壊れる。黙ってずらさず失敗させる。
     // 手動の個別起動 (VERIFY_PORT なし) は従来どおりフォールバック可。
     strictPort: Boolean(process.env.VERIFY_PORT),

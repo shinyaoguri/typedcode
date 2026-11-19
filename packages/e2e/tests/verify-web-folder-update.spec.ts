@@ -4,11 +4,12 @@ import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
-import { EditorApp, readProofJson } from './helpers/app.js';
+import { EditorApp, readProofJson, writeZipVariant } from './helpers/app.js';
 import { runVerifyCliWithVerdicts } from './helpers/verifyCli.js';
 import {
   VerifyWebApp,
   expectWebCliParity,
+  proofNames,
   typeAndExport,
   type VerifyFileStatus,
   type VerifyFolderFile,
@@ -25,6 +26,7 @@ import {
  * コードプレビュー (イベントの再生) に、改ざんで差し込んだ印が出ているかで見る。検証は fast (不変条件 4)。
  *
  * `screenshots/` の画像を書き換えたときは、同じフォルダの proof のスクショ検証が取り直される (#703)。
+ * フォルダの中の ZIP を書き換えたときは、その ZIP から開いたタブが新しい ZIP の内容で取り込み直される (#785)。
  */
 
 const FOLDER = 'watched';
@@ -58,18 +60,19 @@ function tamperContent(proof: Record<string, unknown>): void {
 }
 
 /**
- * フォルダのファイルを `file` で上書きし、proof の行の `data-status` が `reached` を満たすまで待つ。
+ * フォルダのファイルを `file` で上書きし、proof の行 (`filename`。既定は `PROOF_NAME`) の `data-status` が `reached` を満たすまで待つ。
  * フォルダを開く処理の一覧の読み取り (監視の基準。#734) より前に書き込むと変更として拾われないので、拾われなければ書き直す。
  */
 async function overwriteAndWait(
   web: VerifyWebApp,
   file: VerifyFolderFile,
-  reached: (status: VerifyFileStatus | undefined) => boolean
+  reached: (status: VerifyFileStatus | undefined) => boolean,
+  filename: string = PROOF_NAME
 ): Promise<void> {
   await expect(async () => {
     await web.overwriteFolderFile(FOLDER, file);
     await expect
-      .poll(async () => reached((await web.fileStates()).find((f) => f.filename === PROOF_NAME)?.status), {
+      .poll(async () => reached((await web.fileStates()).find((f) => f.filename === filename)?.status), {
         timeout: 10_000,
         intervals: [250, 500],
       })
@@ -189,5 +192,32 @@ test('#703: 監視中のフォルダで screenshots/ の画像を別の画像に
   expect(await web.trustIssues()).toContainEqual({ component: 'screenshots', severity: 'error' });
   // proof 本文は書き換えていないので、表示する本文は元の proof のまま (#695 の 1 スナップショット)
   expect(await web.displayedFilename()).toBe(PROOF_NAME);
+  expect(await web.previewContent()).not.toContain(MARK);
+});
+
+test('#785: 監視中のフォルダの ZIP を別の proof の ZIP で上書きすると、その ZIP から開いたタブの判定と本文が新しい ZIP のものになる', async ({
+  page,
+}) => {
+  const zipPath = await typeAndExport(new EditorApp(page));
+  const proofName = (await proofNames(zipPath))[0]!;
+  const tampered = await writeZipVariant(zipPath, { mutateProof: tamperContent, outName: 'sub.zip' });
+  const clean = await writeZipVariant(zipPath, { outName: 'sub.zip' });
+  const web = new VerifyWebApp(page);
+
+  await web.open('fast');
+  await web.openFolder(FOLDER, [{ path: 'sub.zip', from: tampered }]);
+  await web.waitSettled(1);
+  const before = await web.readVerdict(proofName);
+  expect(before.status).toBe('error');
+  expect(await web.previewContent()).toContain(MARK);
+
+  await overwriteAndWait(web, { path: 'sub.zip', from: clean }, (s) => s === 'success' || s === 'warning', proofName);
+
+  // 古い ZIP の行は外してから取り込み直すので、proof の行は 1 つのまま
+  expect((await web.fileStates()).filter((f) => f.filename === proofName)).toHaveLength(1);
+  const after = await web.readVerdict(proofName);
+  expectWebCliParity([after], runVerifyCliWithVerdicts(clean, ['--mode', 'fast']));
+  expect(after.level).not.toBe('failed');
+  expect(await web.displayedFilename()).toBe(proofName);
   expect(await web.previewContent()).not.toContain(MARK);
 });

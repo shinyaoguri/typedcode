@@ -7,6 +7,6 @@ export { hasAcceptedTerms, markTermsAccepted, showTermsModal } from './TermsHand
 export { showNotification, initializeLogViewer, updateProofStatus, handleTemplateImport } from './AppHelpers.js';
 export { isTemplateFile, importTemplateContent, handleTemplateDrop } from './TemplateHandler.js';
 export { showLanguageDescriptionInTerminal } from './TerminalHandler.js';
-export { handleTabChange } from './TabChangeHandler.js';
+export { handleTabChange, documentTitleFor } from './TabChangeHandler.js';
 export { setupStaticEventListeners } from './StaticEventListeners.js';
 export { showWelcomeScreen, hideWelcomeScreen } from './WelcomeScreenHandler.js';

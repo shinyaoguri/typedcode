@@ -13,6 +13,8 @@ Playwright (Chromium) でシナリオ実行 → export → verify-cli で検証
   ② 記録イベント列がシナリオ台本と一致すること (--analysis-json で機械判定)
 ```
 
+各 spec の成功が何を保証し、何を観測しないか (fast / full の別、model-based E2E の探索範囲と既知の未観測の経路) は [docs/assurance-map.md](../../docs/assurance-map.md) にまとめている。
+
 Playwright の `webServer` が 3 つのローカルサーバを自動起動する:
 
 - **workers** (`wrangler dev` :8787) — `/api/session/start`・`/api/verify-captcha`・署名 CP
@@ -139,8 +141,9 @@ main ruleset の required check も `e2e`。
 
 ## verify-cli の起動
 
-shared の main が raw TypeScript のため `node dist/cli.js` は動かない
-(verify-cli/AGENTS.md の既知課題)。E2E は `tsx` で `src/cli.ts` を直接実行する。
+E2E は `tsx` で `src/cli.ts` を直接実行する (verify-cli の build を待たずに回すため)。
+配布物の `dist/cli.js` (esbuild の単一 bundle。#298) は素の node で動き、verify-cli の
+`npm run test:dist` が確かめる ([packages/verify-cli/AGENTS.md](../verify-cli/AGENTS.md))。
 ヘルパーは [tests/helpers/verifyCli.ts](tests/helpers/verifyCli.ts)。
 
 ## シナリオ (段階的に拡充)

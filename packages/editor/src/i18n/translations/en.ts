@@ -584,6 +584,7 @@ export const en: TranslationKeys = {
     suspendedMessage: 'Keystroke and screenshot recording has been paused due to extended inactivity.',
     suspendedHint: 'Click the button below to resume recording.',
     resumeButton: 'Resume Recording',
+    titleFlash: '⚠️ Action required',
   },
 
   template: {

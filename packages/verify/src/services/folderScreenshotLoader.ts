@@ -17,6 +17,7 @@ import type { FSAccessFileEntry, ProofFile, VerifyScreenshot } from '../types.js
 import { isNotFound } from './fsaErrors.js';
 import { ScreenshotService } from './ScreenshotService.js';
 import { normalizeScreenshotManifest } from './screenshotManifest.js';
+import { ZipFileProcessor } from './ZipFileProcessor.js';
 
 export interface FolderScreenshotLoadResult {
   /** manifest 由来のスクショ一覧。**空配列 = コンテナはあったが manifest entry 0** (未検査ではない)。 */
@@ -27,8 +28,23 @@ export interface FolderScreenshotLoadResult {
 }
 
 /**
- * フォルダ内の proof (`*.json`) から、チェーンに焼かれた screenshot ハッシュ集合を集める。
+ * フォルダ内のファイルを ZIP として展開するか (`FolderController` の取り込みと同じ規則)。チェーン側の imageHash
+ * 集合に入れる ZIP (#786) と、開いて proof を取り出す ZIP をこの 1 つの規則で揃える
+ */
+export function isZipInFolder(name: string): boolean {
+  return name.endsWith('.zip');
+}
+
+/**
+ * フォルダ内の proof から、チェーンに焼かれた screenshot ハッシュ集合を集める。
  * 実体は shared (`collectChainImageHashes`) — ZIP 経路と同一実装。
+ *
+ * proof はフォルダ内の `*.json` と、フォルダ内の ZIP に入った proof (#786)。ZIP の proof もフォルダの
+ * スクショを受け取る (同梱のスクショが無いとき。#742) ので、単独の `*_proof.json` と同じく集合に入れる
+ * (入れないと、集合が空ならチェーン裏付けが対象外に退化して改竄を見逃し、ほかの proof のハッシュだけなら
+ * ZIP の proof 自身の画像が改竄と出る)。ZIP は開く経路と同じ `ZipFileProcessor` で展開し、proof の判定
+ * (`classifyJsonText`) も同じものを使う。そのためフォルダを開くとき・スクショを読み直すときに、各 ZIP は
+ * ここと取り込み (`processZipWithinFolder`) とで 2 回展開される
  */
 export async function collectFolderChainImageHashes(
   files: readonly FSAccessFileEntry[],
@@ -38,7 +54,13 @@ export async function collectFolderChainImageHashes(
   const eventsList: StoredEvent[][] = [];
 
   for (const entry of files) {
-    if (entry.name.startsWith('.') || !entry.name.toLowerCase().endsWith('.json')) continue;
+    // 隠しファイルはフォルダを開く経路も読まない
+    if (entry.name.startsWith('.')) continue;
+    if (isZipInFolder(entry.name)) {
+      eventsList.push(...(await zipProofEvents(entry, options)));
+      continue;
+    }
+    if (!entry.name.toLowerCase().endsWith('.json')) continue;
     // screenshots/manifest.json 等は proof ではない
     if (entry.path.startsWith('screenshots/')) continue;
 
@@ -60,6 +82,28 @@ export async function collectFolderChainImageHashes(
   }
 
   return collectChainImageHashes(eventsList);
+}
+
+/**
+ * フォルダ内の ZIP 1 つに入った proof のイベント列。読み取りの失敗は `.json` と同じ扱い (strict のときだけ投げる)。
+ * 中身が壊れた ZIP は読み直しても変わらないので、strict でも投げずに飛ばす (取り込み側も同じ。#773)
+ */
+async function zipProofEvents(entry: FSAccessFileEntry, options: { strict?: boolean }): Promise<StoredEvent[][]> {
+  let file: File;
+  let bytes: ArrayBuffer;
+  try {
+    file = await entry.handle.getFile();
+    bytes = await file.arrayBuffer();
+  } catch (error) {
+    if (options.strict) throw error;
+    return [];
+  }
+  const result = await new ZipFileProcessor().process(new File([bytes], file.name, { type: file.type }));
+  if (!result.success) return [];
+  return result.files.flatMap((f) => {
+    const events = f.proofData?.proof?.events;
+    return Array.isArray(events) ? [events] : [];
+  });
 }
 
 /**

@@ -751,7 +751,7 @@ async function readFileBuffer(path: string): Promise<Buffer> {
 }
 
 /** casual の session DB の名前 (editor の `storageKeys.sessionDbName()`。casual は名前空間なし) */
-const CASUAL_SESSION_DB = 'typedcode-session';
+export const CASUAL_SESSION_DB = 'typedcode-session';
 
 /**
  * casual の session DB で、ただ 1 つの tabs レコードの content の末尾に `suffix` を足す (#413)。

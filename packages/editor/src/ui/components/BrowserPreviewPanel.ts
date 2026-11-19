@@ -13,6 +13,7 @@
 import type { TabManager, TabState } from '../tabs/TabManager.js';
 import type * as monaco from 'monaco-editor';
 import { escapeHtml } from '@typedcode/shared';
+import { tabFullFilename } from '../tabs/TabUIController.js';
 
 /** プレビュー → 親: 現在のスクロール位置 */
 const MSG_SCROLL = 'tc-preview-scroll';
@@ -405,7 +406,8 @@ export class BrowserPreviewPanel {
       }
     }
 
-    return { html, filename: `${htmlTab.filename}.html` };
+    // 見出しはタブに見える名前と同じにする (`index.html` のタブに `.html` を重ねない。#831)
+    return { html, filename: tabFullFilename(htmlTab) };
   }
 
   /**
