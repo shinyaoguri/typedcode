@@ -486,3 +486,107 @@ describe('TabManager closing a tab while record requests keep arriving (#788)', 
     expect((await service.getEvents(b.id)).map((e) => e.sequence)).toEqual([1, 2]);
   });
 });
+
+/**
+ * export 前の保存 (flushToIndexedDB) とタブを閉じる後始末の競合 (#833)。flush の走行は
+ * `currentSavePromise` に載らないので、閉じたタブの削除がそれを待たないと、flush が閉じたタブを
+ * 書いている最中に閉じたとき、削除の後に tabs 行と events 行が書き戻される。
+ */
+describe('TabManager closing a tab while flushToIndexedDB is saving (#833)', () => {
+  let service: SessionStorageService | null = null;
+
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory();
+    setStorageNamespace('casual');
+    log = [];
+    appendDelayMs = 0;
+    MockPoswWorker.instances = [];
+    vi.stubGlobal('Worker', MockPoswWorker);
+    vi.stubGlobal('sessionStorage', { removeItem: vi.fn(), getItem: vi.fn(), setItem: vi.fn() });
+    vi.spyOn(TabManager.prototype, 'saveToStorage').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    service?.close();
+    service = null;
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('leaves no rows for a tab closed while flushToIndexedDB is writing it, and still saves the open tab', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c');
+    const b = await s.openTab('b.c');
+
+    // flush が a の events を書く手前で止める
+    const writingA = gate();
+    const releaseA = gate();
+    const appendEvent = vi.mocked(s.service.appendEvent).getMockImplementation()!;
+    vi.mocked(s.service.appendEvent).mockImplementation(async (tabId, event) => {
+      if (tabId === a.id) {
+        writingA.open();
+        await releaseA.opened;
+      }
+      await appendEvent(tabId, event);
+    });
+    // 後始末が「記録の確定を待ち終えて、行を消す段」に来たことを知る
+    const settled = gate();
+    s.tabManager.setTabSettleBarrier(async (tabId) => {
+      await s.recorder.whenTabSettled(tabId);
+      if (tabId === a.id) settled.open();
+    });
+
+    const flushing = s.tabManager.flushToIndexedDB();
+    await writingA.opened;
+    s.tabManager.closeTab(a.id);
+    await settled.opened;
+    // flush が a を書いている間は、a の行を消さずに待つ
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(log).not.toContain(`deleted:${a.id}`);
+
+    releaseA.open();
+    const outcome = await flushing;
+    await s.tabManager.whenTabsRetired();
+
+    expect(outcome).toEqual({ idbOk: true, sessionStorageOk: true });
+    expect(log.indexOf(`appended:${a.id}`)).toBeLessThan(log.indexOf(`deleted:${a.id}`));
+    expect(await service.getTab(a.id)).toBeNull();
+    expect(await service.getEvents(a.id)).toEqual([]);
+    // 開いたままの B は flush で保存されている
+    expect(await service.getTab(b.id)).not.toBeNull();
+    expect((await service.getEvents(b.id)).map((e) => e.sequence)).toEqual(b.typingProof.events.map((e) => e.sequence));
+  });
+
+  it('does not write back a closed tab when flushToIndexedDB starts while its rows are being deleted', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c');
+    const b = await s.openTab('b.c');
+
+    // 行を消し終えた直後 (dispose の前) で後始末を止める
+    const deleted = gate();
+    const releaseDelete = gate();
+    const deleteTab = s.deleteTabSpy.getMockImplementation()!;
+    s.deleteTabSpy.mockImplementationOnce(async (tabId) => {
+      await deleteTab(tabId);
+      deleted.open();
+      await releaseDelete.opened;
+    });
+
+    s.tabManager.closeTab(a.id);
+    await deleted.opened;
+    // 削除の途中に flush が始まり、終わる。閉じたタブは this.tabs から外れているので書かない
+    const outcome = await s.tabManager.flushToIndexedDB();
+    releaseDelete.open();
+    await s.tabManager.whenTabsRetired();
+
+    expect(outcome).toEqual({ idbOk: true, sessionStorageOk: true });
+    expect(await service.getTab(a.id)).toBeNull();
+    expect(await service.getEvents(a.id)).toEqual([]);
+    expect(await service.getTab(b.id)).not.toBeNull();
+    expect((await service.getEvents(b.id)).map((e) => e.sequence)).toEqual(b.typingProof.events.map((e) => e.sequence));
+  });
+});

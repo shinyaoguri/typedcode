@@ -210,6 +210,12 @@ export class TabManager {
 
   /** 現在実行中の保存処理 */
   private currentSavePromise: Promise<void> | null = null;
+  /**
+   * flushToIndexedDB が直接走らせている保存 (#833)。currentSavePromise には載せない (載せると
+   * デバウンス・再試行がそれを見て何もせずに戻り、flush 中に来た保存要求が走らなくなる。flush 末尾の
+   * 同期状態の確定の条件も変わる)。閉じたタブの削除はこちらも待つ
+   */
+  private flushPersists = new Set<Promise<PersistOutcome>>();
   /** 次の保存が必要かどうか */
   private needsSave: boolean = false;
   /** デバウンス用タイマー */
@@ -887,13 +893,17 @@ export class TabManager {
 
   /**
    * 閉じたタブの IndexedDB 行とイベントを削除する (#145)。
-   * 実行中の保存処理がタブを書き戻す競合を避けるため、完了を待ってから消す。
+   * 実行中の保存処理がタブを書き戻す競合を避けるため、完了を待ってから消す。デバウンスの保存
+   * (currentSavePromise) に加えて flushToIndexedDB の保存も待つ (#833。flush が閉じたタブを書いている
+   * 最中に消すと、その後に tabs 行と events 行が書き戻される)。ここより後に始まる保存は、もう
+   * this.tabs に無いこのタブを書かない。
    * 削除は best-effort (失敗しても UI は既に閉じている)。
    */
   private async deleteTabFromIndexedDB(tabId: string): Promise<void> {
     if (!this.sessionService.isInitialized()) return;
     try {
-      await (this.currentSavePromise ?? Promise.resolve()).catch(() => undefined);
+      const running: Promise<unknown>[] = [this.currentSavePromise ?? Promise.resolve(), ...this.flushPersists];
+      await Promise.all(running.map((p) => p.catch(() => undefined)));
       await this.sessionService.deleteTab(tabId);
     } catch (e) {
       console.warn('[TabManager] Failed to delete closed tab from IndexedDB:', e);
@@ -1550,7 +1560,15 @@ export class TabManager {
     // saveToStorage() は needsSave を立て直すので、その要求を握りつぶさずに残せる
     this.needsSave = false;
     debugLog('[TabManager] Saving latest state to IndexedDB...');
-    const outcome = await this.persistAll();
+    // 閉じたタブの削除がこの保存を待てるように登録する (#833)
+    const persisting = this.persistAll();
+    this.flushPersists.add(persisting);
+    let outcome: PersistOutcome;
+    try {
+      outcome = await persisting;
+    } finally {
+      this.flushPersists.delete(persisting);
+    }
 
     // 4. 同期状態を確定する (#456)
     // 1. でデバウンスタイマーを取り消したので、状態を決める executeSave の完了処理は走らない。
