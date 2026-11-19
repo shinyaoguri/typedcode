@@ -41,7 +41,7 @@ function collectTitles(locale: SupportedLocale): string[] {
   return titles;
 }
 
-describe('IdleTimeoutManager タイトル点滅 (#784)', () => {
+describe('IdleTimeoutManager title flash during the idle warning (#784)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -50,7 +50,7 @@ describe('IdleTimeoutManager タイトル点滅 (#784)', () => {
     getI18n().setLocale('ja');
   });
 
-  it('en では英語の文言と元のタイトルを交互に出す', () => {
+  it('alternates the English flash text and the original title when the locale is en', () => {
     expect(collectTitles('en')).toEqual([
       en.idleTimeout.titleFlash,
       ORIGINAL_TITLE,
@@ -59,7 +59,7 @@ describe('IdleTimeoutManager タイトル点滅 (#784)', () => {
     ]);
   });
 
-  it('ja では日本語の文言と元のタイトルを交互に出す', () => {
+  it('alternates the Japanese flash text and the original title when the locale is ja', () => {
     expect(collectTitles('ja')).toEqual([
       ja.idleTimeout.titleFlash,
       ORIGINAL_TITLE,
@@ -68,14 +68,14 @@ describe('IdleTimeoutManager タイトル点滅 (#784)', () => {
     ]);
   });
 
-  it('en の文言は日本語を含まず、ja の文言は日本語を含む', () => {
+  it('keeps Japanese characters out of the en flash text and in the ja flash text', () => {
     expect(en.idleTimeout.titleFlash).not.toMatch(JAPANESE);
     expect(ja.idleTimeout.titleFlash).toMatch(JAPANESE);
   });
 });
 
-describe('IdleTimeoutManager.ts のソース (#784)', () => {
-  it('コメントを除いた部分に日本語の固定文字列が無い (console.* も含め翻訳キー経由にする)', () => {
+describe('IdleTimeoutManager.ts source (#784)', () => {
+  it('has no hard-coded Japanese text outside comments and console.* log lines', () => {
     const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../IdleTimeoutManager.ts'), 'utf8');
     const code = source
       .replace(/\/\*[\s\S]*?\*\//g, '')
