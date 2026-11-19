@@ -105,6 +105,13 @@ export function folderStack() {
     replaceFile: (id, fileData, container) => files.replaceFile(id, fileData, container),
     settleSubmission: () => files.settleSubmission(),
     onStatusBarUpdate: (message) => render(message),
+    // AppController.handleFileRemove と同じ外し方 (検証キュー・tabManager・サイドバー・照合の材料から)
+    onFileRemove: (id) => {
+      queue.remove(id);
+      tabManager.removeTab(id);
+      sidebar.removeFile(id);
+      files.forgetSubmissionFiles([id]);
+    },
   });
   opened.push(folder);
 
@@ -130,5 +137,5 @@ export function folderStack() {
     return tab;
   }
 
-  return { folder, waiting, enqueued, drain, sync, tabAt };
+  return { folder, sidebar, tabManager, waiting, enqueued, drain, sync, tabAt };
 }

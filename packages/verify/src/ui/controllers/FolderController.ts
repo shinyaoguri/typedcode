@@ -161,6 +161,12 @@ export class FolderController {
    * 読み込みが終わったら消し、削除の通知・フォルダを開き直すときにも消す (走っている読み込みは捨てられる)
    */
   private changeLoads = new Map<string, ChangeLoad>();
+  /**
+   * フォルダ内の ZIP (FSA パス) → その ZIP から開いたフォルダ行とタブのパス (#785)。ZIP のタブは ZIP のフォルダ
+   * (`sub.zip` なら `sub/…`) の下にあり ZIP 自体のパスでは引けないので、ZIP が変わった・消えたときはここから引く
+   * (パスの接頭辞では引かない。`sub.zip` と `sub2.zip`、同名の実フォルダを取り違える)
+   */
+  private zipContents = new Map<string, { folderId: string; tabPaths: string[] }>();
 
   constructor(deps: FolderControllerDependencies) {
     this.deps = deps;
@@ -221,6 +227,7 @@ export class FolderController {
     this.failedChanges.clear();
     this.changeLoadFailing = false;
     this.changeLoads.clear();
+    this.zipContents.clear();
 
     // ディレクトリを読み取り。まず個々のファイルの読み取りの失敗も失敗にする strict で読む (#773)。読めない
     // ファイルがあれば、それを飛ばした一覧で開く (読めないファイル 1 つでフォルダごと開けなくしない)。飛ばした
@@ -519,6 +526,11 @@ export class FolderController {
 
   /** 監視で変わったファイルを読み込んで取り込み直す。読み取りに失敗したら投げる */
   private async loadModifiedFile(file: FSAccessFileEntry, isCurrent: () => boolean): Promise<void> {
+    // ZIP は開いたときと同じ読み方で取り込み直す (古い配下は processZipWithinFolder が読み終えてから外す。#785)
+    if (file.name.endsWith('.zip')) {
+      await this.loadAddedFile(file, isCurrent);
+      return;
+    }
     if (!this.deps.sidebar.getFileIdByPath(file.path)) return;
 
     // 読み方は初回取り込み (loadNewFile) と同じ: screenshots/ の画像は Blob、それ以外は FileProcessor
@@ -548,12 +560,36 @@ export class FolderController {
     this.screenshotProofPaths.delete(path);
     this.zipScreenshotProofs.delete(path);
     if (affectsFolderScreenshots(path)) this.scheduleScreenshotResync(path);
+    const filename = path.split('/').pop() ?? path;
+    // ZIP から開いたタブとフォルダ行は ZIP のパスでは引けない (#785)
+    if (this.removeZipContents(path)) {
+      this.notify(`${t('messages.fileDeleted')}: ${filename}`);
+      return;
+    }
     const fileId = this.deps.sidebar.getFileIdByPath(path);
     if (fileId) {
       this.deps.onFileRemove?.(fileId);
-      const filename = path.split('/').pop() ?? path;
       this.notify(`${t('messages.fileDeleted')}: ${filename}`);
     }
+  }
+
+  /**
+   * フォルダ内の ZIP から開いたタブとフォルダ行を外す (#785)。フォルダのスクショの読み直しの対象 (#742) からも外す。
+   * その ZIP から開いたものが無ければ false
+   */
+  private removeZipContents(zipPath: string): boolean {
+    const contents = this.zipContents.get(zipPath);
+    if (!contents) return false;
+    this.zipContents.delete(zipPath);
+    for (const tabPath of contents.tabPaths) {
+      this.screenshotProofPaths.delete(tabPath);
+      this.zipScreenshotProofs.delete(tabPath);
+    }
+    for (const fileId of this.deps.sidebar.getFileIdsInFolderTree(contents.folderId)) {
+      this.deps.onFileRemove?.(fileId);
+    }
+    this.deps.sidebar.removeFolder(contents.folderId);
+    return true;
   }
 
   /**
@@ -774,6 +810,13 @@ export class FolderController {
     // 読んでいる間に同じ ZIP の新しい読み込みが始まった (#787)。ここから先は await を挟まずに一覧を書き換える
     if (!isCurrent()) return;
 
+    // 同じ ZIP から前に開いたもの (監視で ZIP が変わった) は外してから取り込み直す (#785)。新しい ZIP が壊れていても
+    // 古い提出物のタブは残さない。外したフォルダ行を指す folderMap の項目も消す
+    if (this.removeZipContents(fileEntry.path)) {
+      const liveFolders = new Set(this.deps.sidebar.getAllFolders().map((folder) => folder.id));
+      for (const [path, id] of folderMap) if (!liveFolders.has(id)) folderMap.delete(path);
+    }
+
     if (!result.success) {
       console.error('[FolderController] Failed to process ZIP:', result.error);
       return;
@@ -799,6 +842,8 @@ export class FolderController {
 
     this.deps.sidebar.addHierarchicalFolder(zipFolder);
     folderMap.set(zipFolderPath, zipFolderId);
+    const tabPaths: string[] = [];
+    this.zipContents.set(fileEntry.path, { folderId: zipFolderId, tabPaths });
 
     // ZIP内のフォルダ構造を作成
     if (result.folderPaths) {
@@ -853,6 +898,7 @@ export class FolderController {
       const fileParts = fullRelativePath.split('/');
       const fileParentPath = fileParts.slice(0, -1).join('/');
       const fileFolderId = folderMap.get(fileParentPath) ?? zipFolderId;
+      tabPaths.push(fullRelativePath);
 
       if (fileData.type === 'proof') {
         // フォルダのスクショを渡した proof は、フォルダのスクショが変わったら取り込み直す (#703 / #742)
