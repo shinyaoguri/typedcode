@@ -147,3 +147,137 @@ describe("chain backing of the folder's screenshots for the proof of a ZIP witho
     expect(screenshotSummaryOf(tab)).toMatchObject({ total: 1, tampered: 0 });
   });
 });
+
+/**
+ * 監視中にフォルダ内の ZIP が足される・変わる・消える (#834)。ZIP の proof もチェーン側の imageHash 集合の材料
+ * (#786) なので、集合を取り直してフォルダのスクショを読み直す。期待は「その状態のフォルダを開き直したときと同じ判定」。
+ */
+describe("chain backing of the folder's screenshots while a ZIP in the watched folder changes (#834)", () => {
+  /** `files` のフォルダを新しく開いたときの、`path` のタブのスクショの集計 */
+  async function summaryOnOpen(files: Record<string, string | Uint8Array>, path: string) {
+    stopAllWatching();
+    mountVerifyIndexHtml();
+    const fresh = folderStack();
+    await fresh.folder.openFolder(new FakeFolder('submission', files).handle());
+    return screenshotSummaryOf(fresh.tabAt(path));
+  }
+
+  /** 監視を 1 回回し、ZIP の取り込みとスクショの読み直しが落ち着くまで待つ */
+  async function syncZip(s: ReturnType<typeof folderStack>, settled: () => void): Promise<void> {
+    await s.sync();
+    await vi.waitFor(settled);
+    await s.folder.whenScreenshotsResynced();
+  }
+
+  it.each([
+    ['the folder holds no other proof (a forged screenshot)', FORGED, {}],
+    [
+      'the folder holds another proof (the genuine screenshot of the ZIP proof)',
+      GENUINE,
+      { 'other_proof.json': 'OTHER' },
+    ],
+  ] as const)(
+    'gives the proof of a ZIP without screenshots added while watching the same screenshot verdict as opening the folder with it when %s',
+    async (_case, image, extra) => {
+      const base: Record<string, string | Uint8Array> = { ...(await screenshotsDir({ 'a.png': image })) };
+      if ('other_proof.json' in extra) base['other_proof.json'] = await proofCapturing(OTHER);
+      const zip = await zipBytes({ 'sub_proof.json': await proofCapturing(GENUINE) });
+
+      const s = folderStack();
+      const fake = new FakeFolder('submission', base);
+      await s.folder.openFolder(fake.handle());
+      fake.write('sub.zip', zip);
+      await syncZip(s, () => expect(() => s.tabAt('sub/sub_proof.json')).not.toThrow());
+      const watched = screenshotSummaryOf(s.tabAt('sub/sub_proof.json'));
+
+      const opened = await summaryOnOpen({ ...base, 'sub.zip': zip }, 'sub/sub_proof.json');
+      expect(watched).toEqual(opened);
+    }
+  );
+
+  it('gives the proof of a ZIP reloaded while the screenshots are being re-read the verdict of the new chain hashes, as when opening the folder with it', async () => {
+    const files: Record<string, string | Uint8Array> = {
+      ...(await screenshotsDir({ 'a.png': GENUINE })),
+      'z_other_proof.json': await proofCapturing(OTHER),
+      'sub.zip': await zipBytes({ 'sub_proof.json': await proofCapturing(FORGED) }),
+    };
+    const s = folderStack();
+    const fake = new FakeFolder('submission', files);
+    await s.folder.openFolder(fake.handle());
+    expect(screenshotSummaryOf(s.tabAt('sub/sub_proof.json'))).toMatchObject({ total: 1, tampered: 1 });
+
+    // 読み直しは ZIP の proof (先に取り込んだ) を控えてから、単独の proof (z_ で後に並ぶ) を読む。
+    // 監視の 1 回の走査での getFile(): ZIP は 走査 → 取り込み → 読み直しの一覧 → 集合、単独の proof は
+    // 走査 → 読み直しの一覧 → 集合 → 取り込み直し。ZIP の取り込みを、読み直しが単独の proof を読み直している
+    // 途中まで止め、取り込み (タブ ID が変わる) を読み直しの確定の前・ZIP の proof を控えた後に終わらせる
+    const zipCalls = fake.getFileCount('sub.zip');
+    const otherCalls = fake.getFileCount('z_other_proof.json');
+    let releaseImport!: () => void;
+    let releaseReread!: () => void;
+    const importGate = new Promise<void>((resolve) => (releaseImport = resolve));
+    const rereadGate = new Promise<void>((resolve) => (releaseReread = resolve));
+    let rereading = false;
+    fake.beforeGetFile = async (path, call) => {
+      if (path === 'sub.zip' && call === zipCalls + 2) await importGate;
+      if (path === 'z_other_proof.json' && call === otherCalls + 4) {
+        rereading = true;
+        await rereadGate;
+      }
+    };
+    const replaced = await zipBytes({ 'sub_proof.json': await proofCapturing(GENUINE) });
+    const before = s.tabAt('sub/sub_proof.json').id;
+    fake.write('sub.zip', replaced);
+    const synced = s.sync();
+    await vi.waitFor(() => expect(rereading).toBe(true));
+    releaseImport();
+    await vi.waitFor(() => expect(s.tabAt('sub/sub_proof.json').id).not.toBe(before));
+    releaseReread();
+    await synced;
+    await s.folder.whenScreenshotsResynced();
+
+    const watched = screenshotSummaryOf(s.tabAt('sub/sub_proof.json'));
+    expect(watched).toEqual(await summaryOnOpen({ ...files, 'sub.zip': replaced }, 'sub/sub_proof.json'));
+    expect(watched).toMatchObject({ total: 1, tampered: 0 });
+  });
+
+  /** a.png を撮ったのは ZIP の proof だけ。単独の other_proof.json もフォルダのスクショを受け取る */
+  async function folderWithZipBackingTheScreenshot() {
+    return {
+      ...(await screenshotsDir({ 'a.png': GENUINE })),
+      'other_proof.json': await proofCapturing(OTHER),
+      'sub.zip': await zipBytes({ 'sub_proof.json': await proofCapturing(GENUINE) }),
+    };
+  }
+
+  it('gives a standalone proof the same screenshot verdict as reopening the folder after the ZIP is overwritten with another proof', async () => {
+    const files = await folderWithZipBackingTheScreenshot();
+    const s = folderStack();
+    const fake = new FakeFolder('submission', files);
+    await s.folder.openFolder(fake.handle());
+    expect(screenshotSummaryOf(s.tabAt('other_proof.json'))).toMatchObject({ total: 1, tampered: 0 });
+
+    const replaced = await zipBytes({ 'sub_proof.json': await proofCapturing(OTHER) });
+    const before = s.tabAt('sub/sub_proof.json').id;
+    fake.write('sub.zip', replaced);
+    await syncZip(s, () => expect(s.tabAt('sub/sub_proof.json').id).not.toBe(before));
+    const watched = screenshotSummaryOf(s.tabAt('other_proof.json'));
+
+    expect(watched).toEqual(await summaryOnOpen({ ...files, 'sub.zip': replaced }, 'other_proof.json'));
+    expect(watched).toMatchObject({ total: 1, tampered: 1 });
+  });
+
+  it('gives a standalone proof the same screenshot verdict as reopening the folder after the ZIP is deleted', async () => {
+    const files = await folderWithZipBackingTheScreenshot();
+    const s = folderStack();
+    const fake = new FakeFolder('submission', files);
+    await s.folder.openFolder(fake.handle());
+
+    fake.remove('sub.zip');
+    await syncZip(s, () => expect(s.sidebar.getFileIdByPath('sub/sub_proof.json')).toBeUndefined());
+    const watched = screenshotSummaryOf(s.tabAt('other_proof.json'));
+
+    const { 'sub.zip': _removed, ...rest } = files;
+    expect(watched).toEqual(await summaryOnOpen(rest, 'other_proof.json'));
+    expect(watched).toMatchObject({ total: 1, tampered: 1 });
+  });
+});

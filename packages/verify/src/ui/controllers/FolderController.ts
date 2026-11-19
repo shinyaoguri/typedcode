@@ -41,7 +41,8 @@ async function readScreenshotImage(fileEntry: FSAccessFileEntry): Promise<Parsed
 function affectsFolderScreenshots(path: string): boolean {
   if (path.startsWith('screenshots/')) return true;
   const name = path.split('/').pop() ?? path;
-  return !name.startsWith('.') && name.toLowerCase().endsWith('.json');
+  // ZIP の proof も集合の材料 (#786)。ZIP と見なす規則は集合づくりと同じ isZipInFolder (#834)
+  return !name.startsWith('.') && (name.toLowerCase().endsWith('.json') || isZipInFolder(name));
 }
 
 /** スクショの判定 (読み直しで変わったか) の比較に使う値。画像の中身は判定 (verified / tampered) に表れる */
@@ -459,7 +460,7 @@ export class FolderController {
   private async loadAddedFile(file: FSAccessFileEntry, isCurrent: () => boolean): Promise<void> {
     const parentPath = file.path.split('/').slice(0, -1).join('/');
     const folderId = this.deps.sidebar.getFolderIdByPath(parentPath) ?? this.watchedRootFolderId ?? undefined;
-    const isZip = file.name.endsWith('.zip');
+    const isZip = isZipInFolder(file.name);
     await this.loadNewFile(file, folderId, isZip ? this.buildFolderMapFromSidebar() : new Map(), isCurrent);
     // ZIP は processZipWithinFolder が照合と知らせを済ませる。新しい読み込みに譲ったら、そちらが済ませる
     if (isZip || !isCurrent()) return;
@@ -527,7 +528,7 @@ export class FolderController {
   /** 監視で変わったファイルを読み込んで取り込み直す。読み取りに失敗したら投げる */
   private async loadModifiedFile(file: FSAccessFileEntry, isCurrent: () => boolean): Promise<void> {
     // ZIP は開いたときと同じ読み方で取り込み直す (古い配下は processZipWithinFolder が読み終えてから外す。#785)
-    if (file.name.endsWith('.zip')) {
+    if (isZipInFolder(file.name)) {
       await this.loadAddedFile(file, isCurrent);
       return;
     }
@@ -653,20 +654,21 @@ export class FolderController {
       // 取り込み直す proof を先にすべて読む。読んでいる間に足された proof も読み、残りが無くなったところで
       // (await を挟まずに) スクショを更新して取り込み直す。足された proof の取り込み口はスクショを待った後で
       // 引くので、ここより後なら新しいスクショを受け取る
-      const reread = new Map<string, { tabId: string; fileData: ParsedFileData } | null>();
+      // ZIP の proof ('zip') はタブと内容を確定の時点で引く (#834)。ZIP の取り込み直し (#785) は読み直しと並んで
+      // 走り、途中で終わるとタブ ID と内容が入れ替わる。ここで控えると、新しいタブを古いスクショのまま取りこぼす
+      const reread = new Map<string, { tabId: string; fileData: ParsedFileData } | 'zip' | null>();
       if (demand.force || changed) {
         const entries = new Map(listing.files.map((entry) => [entry.path, entry]));
         for (;;) {
           const pending = [...this.screenshotProofPaths].filter((path) => !reread.has(path));
           if (pending.length === 0) break;
           for (const path of pending) {
-            const tabId = this.deps.sidebar.getFileIdByPath(path);
             // フォルダのスクショへ落とした ZIP の proof は、ZIP から読んだ内容で取り込み直す (#742)
-            const zipProof = this.zipScreenshotProofs.get(path);
-            if (zipProof) {
-              reread.set(path, tabId ? { tabId, fileData: zipProof } : null);
+            if (this.zipScreenshotProofs.has(path)) {
+              reread.set(path, 'zip');
               continue;
             }
+            const tabId = this.deps.sidebar.getFileIdByPath(path);
             const entry = entries.get(path) ?? (await this.findFileEntry(current.rootHandle, path));
             if (!tabId || !entry) {
               reread.set(path, null);
@@ -688,7 +690,8 @@ export class FolderController {
         startTimestamp: loaded.startTimestamp,
       };
       if (loaded.screenshotService) this.deps.onScreenshotServiceUpdate?.(loaded.screenshotService);
-      for (const proof of reread.values()) {
+      for (const [path, entry] of reread) {
+        const proof = entry === 'zip' ? this.zipProofToReplace(path) : entry;
         if (!proof) continue;
         this.deps.replaceFile(proof.tabId, proof.fileData, {
           screenshots: loaded.screenshots,
@@ -712,6 +715,13 @@ export class FolderController {
     } finally {
       this.runningScreenshotResyncs--;
     }
+  }
+
+  /** フォルダのスクショへ落とした ZIP の proof の、いまのタブと ZIP から読んだ内容 (無くなっていれば null) */
+  private zipProofToReplace(path: string): { tabId: string; fileData: ParsedFileData } | null {
+    const fileData = this.zipScreenshotProofs.get(path);
+    const tabId = this.deps.sidebar.getFileIdByPath(path);
+    return fileData && tabId ? { tabId, fileData } : null;
   }
 
   /** 走査の一覧に無い proof (読み直しの間に足されたもの) のハンドルを引く。 */
