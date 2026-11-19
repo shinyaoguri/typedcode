@@ -10,16 +10,26 @@ import { t } from '../../i18n/index.js';
 import { showStaticDialog } from '../components/dialogA11y.js';
 
 /**
- * タブの完全なファイル名 (拡張子込み)。タブに表示される名前と同じで、状態契約の
- * `data-filename` と dev フック `__tcTestSnapshot` の filename はこの表現に揃える。
+ * タブに描く名前の 2 つの部分 (`.tab-filename` と `.tab-extension`)。つなげると tabFullFilename と一致する。
  *
  * `tab.filename` は拡張子なし (`Untitled-1`) でも拡張子込み (class の starter・テンプレート・exam の
- * `p1.c`) でも入ってくるので、既にその言語の拡張子で終わっていれば足さない (`ProofExporter` の
- * ZIP 内ファイル名の補正と同じ形。#441)。
+ * `p1.c`、改名で入れた `q.c`) でも入ってくるので、既にその言語の拡張子で終わっていれば name から外す
+ * (外さずに拡張子を並べると `p1.c.c` と見える。#828)。別の拡張子 (`a.py` の c タブ) は name に残す。
+ */
+export function tabDisplayParts(tab: Pick<TabState, 'filename' | 'language'>): { name: string; extension: string } {
+  const extension = `.${FILE_EXTENSIONS[tab.language] ?? 'txt'}`;
+  const name = tab.filename.endsWith(extension) ? tab.filename.slice(0, -extension.length) : tab.filename;
+  return { name, extension };
+}
+
+/**
+ * タブの完全なファイル名 (拡張子込み)。状態契約の `data-filename` と dev フック `__tcTestSnapshot` の
+ * filename はこの表現に揃える。タブに見える文字と出どころを 1 つにするため、tabDisplayParts をつなげて作る
+ * (#828)。拡張子は 1 つだけ付く (`ProofExporter` の ZIP 内ファイル名の補正と同じ形。#441)。
  */
 export function tabFullFilename(tab: Pick<TabState, 'filename' | 'language'>): string {
-  const ext = FILE_EXTENSIONS[tab.language] ?? 'txt';
-  return tab.filename.endsWith(`.${ext}`) ? tab.filename : `${tab.filename}.${ext}`;
+  const { name, extension } = tabDisplayParts(tab);
+  return `${name}${extension}`;
 }
 
 export interface TabUIControllerOptions {
@@ -83,13 +93,6 @@ export class TabUIController {
   }
 
   /**
-   * ファイル拡張子を取得
-   */
-  getFileExtension(language: string): string {
-    return FILE_EXTENSIONS[language] ?? 'txt';
-  }
-
-  /**
    * 次の Untitled 番号を取得
    */
   getNextUntitledNumber(): number {
@@ -122,7 +125,8 @@ export class TabUIController {
     tabEl.dataset.filename = tabFullFilename(tab);
     tabEl.dataset.language = tab.language;
     tabEl.dataset.verification = tab.verificationState;
-    const ext = '.' + this.getFileExtension(tab.language);
+    // 見える文字 (name + extension) と data-filename は同じ分け方から作る (#828)
+    const parts = tabDisplayParts(tab);
 
     // SVGアイコンがあればimgタグ、なければFont Awesomeのデフォルトアイコン
     const langDef = getLanguageDefinition(tab.language);
@@ -136,8 +140,8 @@ export class TabUIController {
 
     tabEl.innerHTML = `
       ${iconHtml}
-      <span class="tab-filename">${escapeHtml(tab.filename)}</span>
-      <span class="tab-extension">${ext}</span>
+      <span class="tab-filename">${escapeHtml(parts.name)}</span>
+      <span class="tab-extension">${escapeHtml(parts.extension)}</span>
       ${verificationIndicator}
       <button class="tab-close-btn" title="Close Tab"><i class="fas fa-times"></i></button>
     `;
@@ -216,10 +220,13 @@ export class TabUIController {
   startFilenameEdit(tabEl: HTMLElement, tabId: string): void {
     const filenameSpan = tabEl.querySelector('.tab-filename') as HTMLElement | null;
     if (!filenameSpan) return;
+    const extensionSpan = tabEl.querySelector('.tab-extension') as HTMLElement | null;
 
     const tab = this.tabManager.getTab(tabId);
     if (!tab) return;
 
+    // 入力欄には保存されている名前をそのまま出し、確定した入力もそのまま renameTab に渡す
+    // (tab.filename の意味は変えない。問題の照合キー・document.title・export 名が読む)
     const currentName = tab.filename;
     const input = document.createElement('input');
     input.type = 'text';
@@ -229,12 +236,12 @@ export class TabUIController {
     const finishEdit = (): void => {
       const newName = input.value.trim() || 'untitled';
       this.tabManager.renameTab(tabId, newName);
-      filenameSpan.textContent = newName;
-      // renameTab の onTabUpdate が updateUI で描き直さない構成でも契約が古い名前を指さないよう、
-      // 表示と同じ箇所で data-filename も追従させる
+      // renameTab の onTabUpdate が updateUI で描き直さない構成でも表示と契約が古い名前を指さないよう、
+      // 見える文字と data-filename をここで同じ分け方から更新する (描き直す構成では tabEl は DOM から外れていて無害)
       const renamed = this.tabManager.getTab(tabId);
-      if (renamed) tabEl.dataset.filename = tabFullFilename(renamed);
+      if (renamed) this.applyTabName(tabEl, renamed);
       filenameSpan.style.display = '';
+      if (extensionSpan) extensionSpan.style.display = '';
       input.remove();
     };
 
@@ -250,9 +257,21 @@ export class TabUIController {
     });
 
     filenameSpan.style.display = 'none';
+    // 保存されている名前が拡張子込み (p1.c) なら、入力欄の右に拡張子を並べると編集中だけ p1.c.c と見えるので隠す
+    if (extensionSpan && tabDisplayParts(tab).name !== tab.filename) extensionSpan.style.display = 'none';
     filenameSpan.parentElement?.insertBefore(input, filenameSpan);
     input.focus();
     input.select();
+  }
+
+  /** タブ要素 1 つに、見える名前 (`.tab-filename` + `.tab-extension`) と `data-filename` を当てる */
+  private applyTabName(tabEl: HTMLElement, tab: Pick<TabState, 'filename' | 'language'>): void {
+    const { name, extension } = tabDisplayParts(tab);
+    const filenameSpan = tabEl.querySelector('.tab-filename');
+    const extensionSpan = tabEl.querySelector('.tab-extension');
+    if (filenameSpan) filenameSpan.textContent = name;
+    if (extensionSpan) extensionSpan.textContent = extension;
+    tabEl.dataset.filename = tabFullFilename(tab);
   }
 
   // ========================================
