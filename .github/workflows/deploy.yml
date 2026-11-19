@@ -31,8 +31,9 @@ concurrency:
 #   deploy-staging         — main push で Workers staging + Pages staging (--branch=staging) を更新
 #   e2e-staging            — deploy-staging の後に、その deploy の Pages の URL をブラウザで round-trip する
 #                            (packages/e2e の test:deployed。secrets を持たない。production には無い。#655)
-#   nightly-gate           — v* タグ push で main の最新の完了 nightly が success か確認 (#593)
-#   deploy-production      — v* タグ push で Workers production + Pages production を更新
+#   nightly-gate           — `-` を含まない v* タグ (正式版と patch) の push で main の最新の完了 nightly が
+#                            success か確認 (#593)。beta 形のタグ (`-beta.N`) では走らない (ADR-0055)
+#   deploy-production      — `-` を含まない v* タグ (正式版と patch) の push で Workers production + Pages production を更新
 #                            (GitHub Environment "production" の Required reviewers で承認待ち)
 #
 # 設計判断:
@@ -562,8 +563,10 @@ jobs:
           retention-days: 7
 
   # 最新の完了 nightly を承認待ちより前に確認する (#593)。環境・デプロイ権限は持たせない。
+  # beta 形のタグ (`vYYYY.M.0-beta.N`。`-` を含む) は production へ出さないので走らせない
+  # (ADR-0055 の決定 4。scripts/release.test.mjs がこの条件を固定する)。
   nightly-gate:
-    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push' && !contains(github.ref_name, '-')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -590,7 +593,8 @@ jobs:
   # --------------------------------------------------------------------
   deploy-production:
     needs: [test, check, e2e, nightly-gate]
-    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    # 正式版と patch (`-` を含まない v* タグ) だけ。beta 形のタグでは production へ配信しない (ADR-0055 の決定 4)
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push' && !contains(github.ref_name, '-')
     runs-on: ubuntu-latest
     # 注: Environment "production" の承認待ち時間は timeout-minutes に含まれない
     # (job 開始 = 承認後)。実行時間のみの上限。

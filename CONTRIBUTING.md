@@ -15,7 +15,8 @@ feature   ●─●    ●─●        ●─●               ← 機能ごと
 | 対象 | 役割 | デプロイ |
 |---|---|---|
 | `main` | 唯一の長命ブランチ・常時統合 | push → **staging** 自動 (https://staging.typedcode.pages.dev) |
-| `v*` タグ | 番号付きリリース | タグ push → **production** (承認ゲート付き。https://typedcode.dev) |
+| `vYYYY.M.0-beta.N` タグ | beta 版 (日次・自動。[ADR-0055](docs/adr/0055-release-channels-and-calendar-versioning.md)) | タグと prerelease の Release だけ。配信はまだ無い (beta 環境は #845) |
+| `-` を含まない `v*` タグ | 正式版・patch | タグ push → **production** (承認ゲート付き。https://typedcode.dev) |
 | `<type>/*` | 機能開発 (`feat/*`, `fix/*`, ...) | PR → preview URL 自動発行 |
 
 公開先は GitHub からも開ける: PR 画面の「View deployment」(その PR の preview)、リポジトリのトップ右の Deployments 欄 (環境ごとの最新)、https://github.com/shinyaoguri/typedcode/deployments (環境ごとの履歴)。
@@ -179,11 +180,21 @@ gh release create vX.Y.Z --target main --title "vX.Y.Z" --notes-file "$notes"
 - タグは main の履歴上のコミットにのみ有効 (CI が ancestor 検証で強制)。
 - **タグの付け替え・削除はしない** (ruleset でも禁止)。本番が壊れたら、まず下の「[本番を戻す](#本番を戻す-ロールバック)」で直前のデプロイへ戻し、fix を入れて**次のパッチタグ**で前へ進める。
 - 破壊的な証明フォーマット変更は `PROOF_FORMAT_VERSION` とも対応させる。
-- **いつリリースするか** (#332): 次のどちらかに当たったら、上の手順でリリースする。リリースの見送りは、理由を Issue に残せば認める。
+- **いつリリースするか** ([ADR-0055](docs/adr/0055-release-channels-and-calendar-versioning.md)): 正式版 (production) は授業の無い 2 月と 8 月に、上の手順で出す (beta からの昇格のワークフローは #844 で入る。それまでは上の `gh release create` で手で出す)。それ以外の時期の変更は、下の「beta 版」として毎日自動で積まれる。
   - **本番に効くセキュリティ修正を main に入れたら、7 日以内**に下の「本番緊急修正」の手順でパッチタグを打つ。本番に効くセキュリティ修正とは、`security` ラベルの Issue を閉じた PR と、Dependabot の security update のこと。PR 側の `security` ラベルは付け漏れが多いので、Issue 側のラベルで判断する
-  - それ以外は、**最新タグから 7 日以内**にリリースする (#657。1 回のリリースを、壊れたときに原因を追える大きさに保つため)。超えると、次の段落の自動検知が Issue を開く
-- **授業・試験の期間にリリースを止める期間は、利用者がいない今は設けない**。利用者が付く前に [#662](https://github.com/shinyaoguri/typedcode/issues/662) で決める
-- **リリースの停滞は自動で検知する** (#410)。週次の `freshness.yml` が、最新の `v*` タグから **7 日を超え**、かつそのタグ以降に `fix` / `feat` のコミット (`feat(scope)!:` も含む) が **1 件以上**あるとき、`chore: 本番リリースの停滞 (自動)` という Issue を開く (open のものがあればコメントを追記する。docs / chore / ci だけの 7 日超は検知しない。判定は毎週月曜なので、実際に開くのはタグから 8〜15 日の間)。通知を受けたら、上の手順でリリースする。見送るならその理由を Issue にコメントする。判定は `scripts/release-stall.mjs`
+- **授業・試験の期間の凍結は別に設けない** (#662 は ADR-0055 で決着した)。学期中に production へ入るのは patch だけになる
+
+### beta 版 (日次・自動)
+
+- 毎日 05:47 JST 頃に [`release.yml`](.github/workflows/release.yml) が走り、main の変更に beta 版 (`vYYYY.M.0-beta.N`) のタグを打って、prerelease の GitHub Release を作る (Latest にはしない)。beta 形のタグ (`-` を含む) では production へ配信しない
+- 出すのは次をすべて満たす日だけ。満たさない日は見送り、run は緑で終わる (理由は run の summary と notice に出る)。判定そのものができなかったとき (git・GitHub API の失敗) は見送りにせず、run を赤にする
+  - 最新のタグ (beta を含む) 以降に `fix` / `feat` のコミット (`feat(scope)!:` も含む) がある
+  - タグは main のコミットのうち、`Deploy` (staging への配信と実 URL の E2E) が success の最新のものに打つ。main の先端とは限らない。fix / feat を数えるのも、そのコミットまで
+  - main の最新の完了 nightly が success (`nightly-gate.mjs` と同じ判定)
+- 版の決め方: 向かうサイクル (`YYYY.M`) は、その日 (JST) 以降で最初に来る 2 月か 8 月で、その正式版が既に出ていれば次のサイクル。`N` は同じサイクルの beta タグの最大 + 1 (根拠と例は [ADR-0055 の決定 2](docs/adr/0055-release-channels-and-calendar-versioning.md#2-版の形と決め方))
+- 急ぐときは `gh workflow run release.yml`。打たずに選ぶコミット・版・ノートだけを見るなら `gh workflow run release.yml -f dry_run=true`
+- 手元の下見は `git fetch --tags origin` の後に `GITHUB_REPOSITORY=shinyaoguri/typedcode node scripts/release.mjs beta` (`--today YYYY-MM-DD` で日付を変えられる。見送りは exit 3)
+- **打ったタグは消せない** (ruleset)。間違えたら消さずに、次の番号で前へ進める
 
 ## 本番を戻す (ロールバック)
 

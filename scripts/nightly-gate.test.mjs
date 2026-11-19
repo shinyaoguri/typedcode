@@ -89,7 +89,8 @@ it('CLI returns 0 only for success and prints the recovery instructions exactly 
     [[success], 0, 0],
     [[failure, success], 0, 1],
     [[], 0, 1],
-    [[success], 1, 1],
+    // API の失敗は判定の赤 (1) と分けて 2 で終える (release.yml が見送りと失敗を区別する。#843)
+    [[success], 1, 2],
   ]) {
     const result = spawnSync(process.execPath, ['scripts/nightly-gate.mjs'], {
       encoding: 'utf8',
