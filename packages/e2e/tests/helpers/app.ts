@@ -250,8 +250,9 @@ export class EditorApp {
   }
 
   /**
-   * タブをダブルクリックして改名し、Enter で確定する。`newName` は拡張子を除いた名前
-   * (拡張子は言語で決まり、`data-filename` は拡張子込みになる)。
+   * タブをダブルクリックして改名し、Enter で確定する。`newName` は入力欄に入れる文字そのまま
+   * (拡張子を除いた名前でも、言語の拡張子込みの名前でもよい。拡張子は言語で決まり、`data-filename` は
+   * 拡張子が 1 つだけ付いた名前になる。#828)。
    */
   async renameTab(tabId: string, newName: string): Promise<void> {
     await this.tabLocator(tabId).locator('.tab-filename').dblclick();
@@ -310,6 +311,21 @@ export class EditorApp {
     );
   }
 
+  /**
+   * タブに見える名前 (表示順)。各タブの `.tab-filename` と `.tab-extension` の textContent をつなげたもの (#828)。
+   * ファイル名は翻訳されないので、文字のまま比べてよい。
+   */
+  visibleTabNames(): Promise<string[]> {
+    return this.page
+      .locator(TAB_SELECTOR)
+      .evaluateAll((els) =>
+        (els as HTMLElement[]).map(
+          (el) =>
+            `${el.querySelector('.tab-filename')?.textContent ?? ''}${el.querySelector('.tab-extension')?.textContent ?? ''}`
+        )
+      );
+  }
+
   /** 開いているダイアログの名前。開いている = `[data-dialog]` が DOM にあって `.hidden` が付いていない。 */
   openDialogs(): Promise<string[]> {
     return this.page
@@ -322,7 +338,8 @@ export class EditorApp {
   /**
    * DOM の状態契約と内部状態 (`__tcTestSnapshot`) が一致することを確かめる。比べるのは
    * タブの順序と id、active (DOM でちょうど 1 つ ⇔ snapshot の activeTabId。タブ 0 本ならどちらも無し)、
-   * filename、language、アクティブなタブの件数 (`#event-count[data-count]`) とハッシュ
+   * filename、タブに見える名前 (`.tab-filename` + `.tab-extension` が `data-filename` と同じ。改名の編集中の
+   * タブは除く。#828)、language、アクティブなタブの件数 (`#event-count[data-count]`) とハッシュ
    * (`#current-hash[data-hash]`)、`#language-selector` の値。
    *
    * 件数とハッシュは PoSW の非同期処理で動くので、アクティブなタブの pending が 0 になり DOM が
@@ -461,13 +478,23 @@ function readContractMismatches(tabSelector: string): string[] {
   const fn = (window as unknown as { __tcTestSnapshot?: () => EditorSnapshot }).__tcTestSnapshot;
   if (!fn) return ['__tcTestSnapshot not available (dev hook missing)'];
   const snap = fn();
-  const domTabs = [...document.querySelectorAll<HTMLElement>(tabSelector)].map((el) => ({
+  const tabEls = [...document.querySelectorAll<HTMLElement>(tabSelector)];
+  const domTabs = tabEls.map((el) => ({
     id: el.dataset.tabId ?? '',
     filename: el.dataset.filename,
     language: el.dataset.language,
     active: el.dataset.active,
   }));
   const out: string[] = [];
+  // タブに見える文字 (.tab-filename + .tab-extension) は data-filename と同じ (#828)。
+  // 改名の編集中 (.tab-filename-input がある間) は名前の span が隠れて入力欄が出ているので見ない。
+  for (const el of tabEls) {
+    if (el.querySelector('.tab-filename-input')) continue;
+    const visible = `${el.querySelector('.tab-filename')?.textContent ?? ''}${el.querySelector('.tab-extension')?.textContent ?? ''}`;
+    if (visible !== el.dataset.filename) {
+      out.push(`visible name: tab ${el.dataset.tabId} shows "${visible}" but data-filename="${el.dataset.filename}"`);
+    }
+  }
   const domIds = domTabs.map((t) => t.id);
   const snapIds = snap.tabs.map((t) => t.id);
   if (JSON.stringify(domIds) !== JSON.stringify(snapIds)) {

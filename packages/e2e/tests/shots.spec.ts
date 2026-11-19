@@ -238,6 +238,11 @@ const SHOTS = [
     file: '32-author-verify-en.png',
     caption: '出題 (/author): 32 と同じ検証のパネルを英語の画面で (#799)',
   },
+  {
+    file: '33-class-tabs.png',
+    caption:
+      'エディタ (授業モード): 問題を読み込んだ直後のタブ。タブ名は配布した初期コードのファイル名のまま (`p1.c`)。拡張子が二重に付かない (#828)',
+  },
 ] as const;
 
 type ShotFile = (typeof SHOTS)[number]['file'];
@@ -624,6 +629,16 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await waitDialogOpen(app, 'welcome');
     await loadClassPackage(app, classPackageFile(sampleClassPackageWithExamples()));
     await page.locator('#problem-panel').screenshot({ path: out('19-problem-examples.png'), animations: 'disabled' });
+  });
+
+  // 33 (#828): .tcclass を読んだ直後のタブ列。base (#828 の修正前) では `p1.c.c` / `p2.c.c` と写る
+  test('授業モードで問題を読み込んだ直後のタブ列を撮る @shots', async ({ page }) => {
+    const app = new EditorApp(page);
+    await app.openModeFresh('class', { screenShare: 'share', waitReady: false });
+    await waitDialogOpen(app, 'welcome');
+    await loadClassPackage(app);
+    // タブ列の帯だけを撮る (時計・ハッシュは入らない)
+    await page.locator('#editor-tabs').screenshot({ path: out('33-class-tabs.png'), animations: 'disabled' });
   });
 
   // 27 (#796): /author の起動画面 (覚えているフォルダが無い新しい context)
