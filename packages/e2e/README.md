@@ -141,8 +141,9 @@ main ruleset の required check も `e2e`。
 
 ## verify-cli の起動
 
-shared の main が raw TypeScript のため `node dist/cli.js` は動かない
-(verify-cli/AGENTS.md の既知課題)。E2E は `tsx` で `src/cli.ts` を直接実行する。
+E2E は `tsx` で `src/cli.ts` を直接実行する (verify-cli の build を待たずに回すため)。
+配布物の `dist/cli.js` (esbuild の単一 bundle。#298) は素の node で動き、verify-cli の
+`npm run test:dist` が確かめる ([packages/verify-cli/AGENTS.md](../verify-cli/AGENTS.md))。
 ヘルパーは [tests/helpers/verifyCli.ts](tests/helpers/verifyCli.ts)。
 
 ## シナリオ (段階的に拡充)
