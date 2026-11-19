@@ -118,7 +118,7 @@ function errorText(e: unknown): string {
 }
 
 /**
- * 列の最後: 全タブを export して verify-cli で検証し、proof をモデルと突き合わせる。
+ * 列の最後: 全タブを export して verify-cli で検証し、proof (と `tab-switches.json`) と保存データをモデルと突き合わせる。
  * タブ 0 本 (全部閉じてウェルカム) で終わった列は、ウェルカム画面からタブを 1 本足してから export する
  * (export するものが無いと検証が空振りになるため)。足した手は縮約後の操作列には出ない (操作ログには出る)。
  */
@@ -129,6 +129,9 @@ async function finish(model: EditorModel, driver: PlaywrightEditorDriver): Promi
   }
   driver.log('finish: ExportAllTabs()');
   await driver.exportAllTabsAfterSync(model);
+  // 保存データ (tabs レコードの集合・内容・保存されたチェーン) もモデルと一致する (#616)
+  driver.log('finish: expectStoredStateMatches()');
+  await driver.expectStoredStateMatches(model);
 }
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI のエスケープ列を落とすための意図した制御文字

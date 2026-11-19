@@ -4,7 +4,8 @@ import fc from 'fast-check';
  * model-based E2E (#436) のモデルとコマンド。
  *
  * モデルは「利用者から見えるエディタの状態」の仕様で、実アプリの実装を読まずに次の状態を決める
- * (タブ列・active・各タブの内容・言語・ファイル名・外部ペーストの有無・観測した件数の最大値)。
+ * (タブ列・active・各タブの内容・言語・ファイル名・外部ペーストの有無・観測した件数の最大値・
+ * タブ切替の履歴)。
  * 実アプリへの操作と観測は `EditorDriver` に閉じる (Playwright の実装は playwrightDriver.ts)。
  * コマンドは「ドライバで操作 → モデルを進める → ドライバでモデルと実アプリを突き合わせる」を 1 手とする。
  *
@@ -38,11 +39,33 @@ export interface ModelTab {
   maxEventCount: number;
 }
 
+/** タブ切替の履歴の 1 件 (export の `tab-switches.json` の 1 要素のうち、id の組だけ)。 */
+export interface ModelTabSwitch {
+  from: string | null;
+  to: string;
+}
+
 export interface EditorModel {
   tabs: ModelTab[];
   activeId: string | null;
   /** 外部ペーストの通し番号 (ペーストする文字列を 1 本の列の中で一意にする) */
   pasteSeq: number;
+  /**
+   * active が変わった手の履歴 (追記順。#616)。export の `tab-switches.json` はこの順に並ぶ
+   * (閉じて再開をまたいでも追記順で戻す = #401)。active が変わらない手 (同じタブへの切替・復元) は積まない。
+   * timestamp の値はモデルで決められないので持たない
+   */
+  switches: ModelTabSwitch[];
+}
+
+/**
+ * active を `to` にする。変わるときは切替の履歴に積む (from は直前の active。0 本からの作成は null)。
+ * 実アプリは switchTab のたびに `fromTabId = 直前の activeTabId` で記録する (同じタブ・復元中は記録しない)。
+ * アクティブなタブを閉じたときの切替も、from は閉じたタブの id になる。
+ */
+export function activate(model: EditorModel, to: string): void {
+  if (model.activeId !== to) model.switches.push({ from: model.activeId, to });
+  model.activeId = to;
 }
 
 /** 拡張子込みの名前 (状態契約の `data-filename` と同じ表現)。 */
@@ -89,11 +112,17 @@ export interface EditorDriver {
    * ブラウザのタブを閉じて開き直し、復旧ダイアログから再開する。sessionStorage は消え、IndexedDB だけが
    * 残るので、リロードとは別の復元経路 (IndexedDB からの復旧) を通る。
    */
-  closeAndResume(): Promise<void>;
+  closeAndResume(tamper: ResumeTamper): Promise<void>;
+  /**
+   * 保存データ (IndexedDB) がモデルと一致することを確かめる (#616): tabs レコードの集合と内容がモデルの全タブと
+   * 一致し、各タブの保存された events が前の hash でつながり、tabs レコードの `currentHash` が events 末尾の hash
+   * と一致する。保存は非同期なので、一致するまで待つ。
+   */
+  expectStoredStateMatches(model: Readonly<EditorModel>): Promise<void>;
   focusLossAndReturn(): Promise<void>;
   /**
    * 全タブを export し (書き出しは全タブの ZIP の 1 系統。#779)、verify-cli (--mode fast) の判定と proof の中身を
-   * 書き出しの時点のモデルの全タブと突き合わせる。
+   * 書き出しの時点のモデルの全タブと突き合わせる。`tab-switches.json` の並びもモデルの切替の履歴と突き合わせる。
    */
   exportAllTabs(model: Readonly<EditorModel>): Promise<void>;
   /** モデルと実アプリの状態が一致することを確かめる (各手の後)。件数の最大値はここで更新する。 */
@@ -135,7 +164,7 @@ export class AddTab extends EditorCommand {
     );
     // 新しいタブは末尾に並び、アクティブになる。
     m.tabs.push(newTab(id, name));
-    m.activeId = id;
+    activate(m, id);
   }
   toString(): string {
     return 'AddTab()';
@@ -152,7 +181,7 @@ export class SwitchTab extends EditorCommand {
   protected async step(m: EditorModel, d: EditorDriver): Promise<void> {
     const target = pick(m, this.index);
     await d.switchTab(target.id);
-    m.activeId = target.id;
+    activate(m, target.id);
   }
   toString(): string {
     return `SwitchTab(${this.index})`;
@@ -174,7 +203,7 @@ export class RenameTab extends EditorCommand {
     await d.renameTab(target.id, this.name);
     target.name = this.name;
     // ダブルクリックの 1 回目がシングルクリックとしてタブを切り替える。
-    m.activeId = target.id;
+    activate(m, target.id);
   }
   toString(): string {
     return `RenameTab(${this.index}, ${JSON.stringify(this.name)})`;
@@ -197,11 +226,11 @@ export class CloseTab extends EditorCommand {
     if (this.answer === 'cancel') return;
     m.tabs = m.tabs.filter((t) => t.id !== target.id);
     if (m.tabs.length === 0) {
-      // 最後のタブを閉じるとウェルカム画面になる。
+      // 最後のタブを閉じるとウェルカム画面になる (切替は記録されない)。
       m.activeId = null;
     } else if (m.activeId === target.id) {
-      // アクティブなタブを閉じると、残ったうち先頭のタブがアクティブになる。
-      m.activeId = m.tabs[0]!.id;
+      // アクティブなタブを閉じると、残ったうち先頭のタブがアクティブになる (from は閉じたタブ)。
+      activate(m, m.tabs[0]!.id);
     }
   }
   toString(): string {
@@ -294,9 +323,9 @@ export class Reload extends EditorCommand {
       // casual はタブ 0 本で起動すると既定タブを 1 本開く (ADR-0015)。
       if (!createdId) throw new Error('reload with no tabs should create the default tab');
       m.tabs.push(newTab(createdId, name));
-      m.activeId = createdId;
+      activate(m, createdId);
     }
-    // それ以外は全部そのまま復元される (順序・active・内容・言語・名前)。
+    // それ以外は全部そのまま復元される (順序・active・内容・言語・名前・切替の履歴)。
   }
   toString(): string {
     return 'Reload()';
@@ -304,25 +333,48 @@ export class Reload extends EditorCommand {
 }
 
 /**
+ * 閉じてから再開するまでの間に、保存データ (IndexedDB) に入れる手 (#616)。どちらも実際に起きた保存の状態を
+ * 再現するもので、閉じた後に、エディタを起動しない別のページから書き換える (close-tab-recovery.spec.ts と同じ)。
+ * - `staleHash`: 全タブの tabs レコードの `currentHash` を 1 つ前のイベントの hash に戻す (定期保存と append の
+ *   競合で古い値に戻った状態 = #322)。復元は events 末尾の hash を正とするので、モデルは何も変えない
+ * - `emptyTabOrder`: session の `tabOrder` を空にする (`createSession` の初期値のまま = #367)。復元は保存された
+ *   タブ行を取りこぼさず、行の並び (tabs ストアの主キー = タブ id の昇順) で戻す。active は session の値のまま
+ */
+export type ResumeTamper = 'none' | 'staleHash' | 'emptyTabOrder';
+
+/**
  * ブラウザのタブを閉じて、開き直して復旧ダイアログの「再開」を押す (#450)。
- * Reload が通るのは sessionStorage からの復元で、IndexedDB からの復旧 (古い currentHash の採用・
- * タブ復元順の解決・タブ切替履歴の並び。#322 / #367 / #401) はこの手でしか通らない。
+ * Reload が通るのは sessionStorage からの復元で、IndexedDB からの復旧はこの手でしか通らない。
+ * この経路で直したバグのうち、モデルが観測するもの (#616):
+ * - #401 (切替の履歴を追記順で戻す): 列の中の export ごとに `tab-switches.json` の並びを `switches` と突き合わせる
+ * - #322 (古い currentHash でチェーンを切らない): `staleHash` の手で古い値を作り、再開後に保存された
+ *   チェーン (末尾 hash・前の hash へのつながり) とタブ集合・内容をモデルと突き合わせ、export を verify-cli で検証する
+ * - #367 (空の tabOrder で全タブを戻す): `emptyTabOrder` の手で空にし、再開後のタブ列・保存された状態を突き合わせる
  *
- * モデルは何も変えない (タブ列・active・内容・言語・名前がそのまま復元される)。active の根拠:
- * TabManager は保存のたびに session へ activeTabId を書き (`saveToIndexedDB` の `updateActiveTabId`)、
- * 復旧で `session.activeTabId` を `switchTab` で戻す (`loadFromIndexedDB`)。閉じる前に同期を待つので、
- * 閉じる前の active のまま復元される。件数は復旧で `sessionResumed` が足されるだけで減らない。
+ * モデルは `emptyTabOrder` のタブの並び替えのほかは何も変えない (タブ列・active・内容・言語・名前・切替の履歴が
+ * そのまま復元される)。active の根拠: TabManager は保存のたびに session へ activeTabId を書き
+ * (`saveToIndexedDB` の `updateActiveTabId`)、復旧で `session.activeTabId` を `switchTab` で戻す
+ * (`loadFromIndexedDB`。復元中の switchTab は切替の履歴に積まない)。閉じる前に同期を待つので、閉じる前の
+ * active のまま復元される。件数は復旧で `sessionResumed` が足されるだけで減らない。
  * タブ 0 本では復旧する保存済みのタブ行が無く、復旧ダイアログの前提が崩れるので生成しない。
  */
 export class CloseAndResume extends EditorCommand {
+  constructor(readonly tamper: ResumeTamper = 'none') {
+    super();
+  }
   check(m: Readonly<EditorModel>): boolean {
     return m.tabs.length >= 1;
   }
-  protected async step(_m: EditorModel, d: EditorDriver): Promise<void> {
-    await d.closeAndResume();
+  protected async step(m: EditorModel, d: EditorDriver): Promise<void> {
+    await d.closeAndResume(this.tamper);
+    if (this.tamper === 'emptyTabOrder') {
+      // IndexedDB の文字列キーの順 (コード単位の比較) = JS の文字列比較 (id は ASCII の UUID)
+      m.tabs.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    }
+    await d.expectStoredStateMatches(m);
   }
   toString(): string {
-    return 'CloseAndResume()';
+    return this.tamper === 'none' ? 'CloseAndResume()' : `CloseAndResume(${this.tamper})`;
   }
 }
 
@@ -368,6 +420,7 @@ const tabName = fc.stringMatching(/^[a-z][a-z0-9_]{0,7}$/);
 
 /**
  * コマンドの生成器。打鍵は他より多く選ばれるよう 2 つ置く (fc.commands は配列から一様に選ぶ)。
+ * 保存データに手を入れる再開 (#616) は 2 種で 1 つの枠を分ける。
  * 外部ペーストの接尾辞は縮約で縮めない (同じ文字列が 2 回ペーストされると内部扱いに変わるため)。
  */
 export function editorCommandArbitraries(): fc.Arbitrary<ModelCommand>[] {
@@ -385,6 +438,9 @@ export function editorCommandArbitraries(): fc.Arbitrary<ModelCommand>[] {
     fc.constantFrom(...MODEL_LANGUAGES).map((l) => new SetLanguage(l)),
     fc.constant(new Reload()),
     fc.constant(new CloseAndResume()),
+    // 保存データに手を入れてからの再開 (#616)。2 種を 1 つの枠にまとめ、既存の手の選ばれる率を 1/14 → 1/15 に
+    // とどめる (別々に置くと 1/16)。閉じて再開する手は全体で 2/15
+    fc.constantFrom<ResumeTamper>('staleHash', 'emptyTabOrder').map((t) => new CloseAndResume(t)),
     fc.constant(new FocusLoss()),
     fc.constant(new ExportAllTabs()),
   ];
