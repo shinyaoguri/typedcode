@@ -158,3 +158,42 @@ test('casual: 2 本目のタブを閉じた後の export で、ダウンロー�
   const result = runVerifyCli(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
 });
+
+/**
+ * ブラウザのタイトルは、アクティブなタブに見える名前 (`data-filename` = `tabFullFilename`) と揃う (#831)。
+ * 保存される `tab.filename` は拡張子なし (`Untitled-1`) でも拡張子込み (改名で入れた `p1.c`) でもあるので、
+ * それを直に使うと拡張子の有無がタブの表示と食い違う。切替と改名の後で、タイトルを `data-filename` と突き合わせる。
+ */
+test('casual: タブの切替と改名の後で、document.title がアクティブなタブの data-filename と揃う (#831)', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  const [first] = await app.tabs();
+  await app.addTab();
+  const second = (await app.tabs())[1]!;
+
+  const expectTitleOf = async (tabId: string, filename: string): Promise<void> => {
+    await expect(page.locator(`#editor-tabs .editor-tab[data-tab-id="${tabId}"]`)).toHaveAttribute(
+      'data-filename',
+      filename
+    );
+    await expect(page).toHaveTitle(`${filename} - TypedCode`);
+  };
+
+  // 切替: 拡張子なしで保存されている既定のタブ
+  await app.switchToTab(first!.id);
+  await expectTitleOf(first!.id, 'Untitled-1.c');
+
+  // 改名 (拡張子込みの名前 / 拡張子なしの名前)
+  await app.switchToTab(second.id);
+  await expectTitleOf(second.id, 'Untitled-2.c');
+  await app.renameTab(second.id, 'p1.c');
+  await expectTitleOf(second.id, 'p1.c');
+  await app.renameTab(second.id, 'q');
+  await expectTitleOf(second.id, 'q.c');
+
+  // 切替で戻る
+  await app.switchToTab(first!.id);
+  await expectTitleOf(first!.id, 'Untitled-1.c');
+});

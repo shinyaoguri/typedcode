@@ -135,6 +135,7 @@ import {
   updateProofStatus,
   showLanguageDescriptionInTerminal,
   handleTabChange,
+  documentTitleFor,
   setupStaticEventListeners,
   showWelcomeScreen,
   hideWelcomeScreen,
@@ -521,7 +522,7 @@ async function initializeTabManager(
     ctx.tabUIController?.updateUI();
     const activeTab = ctx.tabManager?.getActiveTab();
     if (activeTab) {
-      document.title = `${activeTab.filename} - TypedCode`;
+      document.title = documentTitleFor(activeTab);
     }
   });
 
