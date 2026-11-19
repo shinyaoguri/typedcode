@@ -121,7 +121,7 @@ CI では `deploy.yml` の `e2e-shard` job が Playwright の `--shard` で 3 �
 - **URL を開くだけで保存データは消えない (#323)**: `?reset` の全消去は撤去済み (`?reset` も `?reset=1` も何も消さない)。テストの独立は Playwright の context 分離に頼る。同じ context で `openCasualFresh()` を繰り返しても前のセッションは残る (復旧ダイアログ・復元が出る)。init script で入れた localStorage の値 (`installTermsAccepted`) もそのまま残る。消去を検査するのは設定メニューのリセット (`scenarios/reset.spec.ts`。現在のモードの DB とキーだけが消える)
 - **verify Web の判定は「選んだファイル」のもの**: `#assurance-strip` / `#result-status-icon` は表示中のタブ 1 つ分しか持たない。`VerifyWebApp.readVerdict` はサイドバーの行を選んでから読む。同じ export から作った ZIP を 2 つ入れると表示名 (`data-filename`) が重なって行が定まらないので、`writeZipVariant({ renameProof })` で proof 名を変える。`data-status` が `success` のプレーンテキスト (README・ソース) に判定は付かないので、読むのは `*_proof.json` だけ
 - **verify Web の完了待ちはサイドバーの全行で見る**: `#vp-step-*` は表示中のタブの進捗表示 (状態契約の外) なので待ちに使わない。`waitSettled` は全 `.file-item` の `data-status` が pending / verifying でなく、それが 2 回続けて同じになるまで待つ
-- **`vite preview` は `server.proxy` を引き継ぐ**: editor の `preview.proxy: {}` を外すと `/verify` が dev の verify サーバへ転送され、本番ビルドのスモークで 502 になる
+- **`vite preview` は `server.proxy` を引き継ぐ**: editor の dev は `/verify` を転送せず verify の dev サーバへリダイレクトする (#829) ので、いまは引き継ぐ proxy が無い。editor の `server.proxy` に `/verify` を足すときは `preview.proxy: {}` で打ち消す (しないと本番ビルドのスモークで `/verify` が dev の verify サーバへ転送され 502 になる)
 - **headless では本物の window blur が出ない**: `window.dispatchEvent(new Event('blur'))` で発火させる (handleBlur は isTrusted 非依存)
 - **画面共有は fake-media フラグで動く**: `playwright.config.ts` の chromium 引数で `getDisplayMedia` が monitor の fake stream を返す
 - **画面共有の停止は `track.stop()` では再現できない**: ページ自身が止めたトラックには `ended` が発火しない。`faults.ts` の `captureDisplayStreams` で stream を退避し、`endLastScreenShare` でトラックに `ended` を直接投げる

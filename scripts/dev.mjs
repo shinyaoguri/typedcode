@@ -6,7 +6,7 @@
  *   root の `npm run dev` は editor(5173) / verify(5174) / workers(8787) を
  *   concurrently で同時起動する。別 worktree や別プロジェクトの dev サーバが
  *   これらを占有していると vite は黙って +1 ずつポートをずらし、editor の
- *   `/verify` プロキシ (5174 固定) や `VITE_API_URL` (8787 固定) の配線が壊れたり
+ *   `/verify` のリダイレクト先 (5174 固定) や `VITE_API_URL` (8787 固定) の配線が壊れたり
  *   古いプロセスへつながる。
  *
  * 設計方針:
@@ -14,7 +14,7 @@
  *     3 つすべて空いているセットだけを採用する。1 つでも埋まっていればセットごと
  *     +STEP して再試行する (5173/5174/8787 → 5183/5184/8797 → …)。
  *   - **配線を追従させる**: 割り当てたポートを環境変数 (EDITOR_PORT / VERIFY_PORT /
- *     WORKERS_PORT) で各 dev サーバへ渡す。vite.config が server.port・proxy target・
+ *     WORKERS_PORT) で各 dev サーバへ渡す。vite.config が server.port・/verify のリダイレクト先・
  *     VITE_API_URL をそのポートへ向け、workers は --port で wrangler dev を固定する。
  *   - **空きチェックは IPv4/IPv6 両方**: vite は `::1`、workerd は両スタックで listen
  *     するため、`127.0.0.1` と `::1` の双方が空いて初めて「空き」と判定する。
@@ -119,7 +119,7 @@ console.log('');
 
 // ---- 起動 ----
 // 割り当てポートを環境変数で各 dev サーバへ渡す。editor/verify の vite.config は
-// EDITOR_PORT/VERIFY_PORT で server.port と proxy/VITE_API_URL を追従させ、workers は
+// EDITOR_PORT/VERIFY_PORT で server.port と /verify のリダイレクト先/VITE_API_URL を追従させ、workers は
 // --port フラグで wrangler dev のポートを固定する (env の WORKERS_PORT は editor 側の
 // VITE_API_URL 追従にも使う)。各サーバは作業ツリーの識別子 (scripts/worktree-id.mjs) を名乗る:
 // editor / verify は vite.config.ts の server.headers、workers は packages/workers の dev スクリプトが
