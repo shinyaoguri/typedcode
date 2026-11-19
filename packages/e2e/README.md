@@ -13,6 +13,8 @@ Playwright (Chromium) でシナリオ実行 → export → verify-cli で検証
   ② 記録イベント列がシナリオ台本と一致すること (--analysis-json で機械判定)
 ```
 
+各 spec の成功が何を保証し、何を観測しないか (fast / full の別、model-based E2E の探索範囲と既知の未観測の経路) は [docs/assurance-map.md](../../docs/assurance-map.md) にまとめている。
+
 Playwright の `webServer` が 3 つのローカルサーバを自動起動する:
 
 - **workers** (`wrangler dev` :8787) — `/api/session/start`・`/api/verify-captcha`・署名 CP

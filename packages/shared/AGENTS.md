@@ -66,6 +66,7 @@
 - 純粋関数は実体を直接使う (モックしない)。`HashChainManager` のような副作用のないクラスはそのまま `new` する
 - 時計や乱数は注入可能にする (`now: () => number` パターン)。`CheckpointManager` 参照
 - 新規モジュール追加時は `__tests__/<module>Trigger.test.ts` のように **対象モジュール名 + 観点** で命名
+- 検証系のテストが何を保証し何を観測しないか (fast / full、MockWorker の偽 PoSW、凍結 fixture、既知の除外) は [docs/assurance-map.md](../../docs/assurance-map.md) にまとめる
 
 ### テストの基準値
 
