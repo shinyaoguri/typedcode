@@ -4,7 +4,11 @@
 import { FileSystemAccessService } from '../../services/FileSystemAccessService';
 import { FolderSyncManager } from '../../services/FolderSyncManager';
 import type { ScreenshotService } from '../../services/ScreenshotService';
-import { collectFolderChainImageHashes, loadFolderScreenshots } from '../../services/folderScreenshotLoader';
+import {
+  collectFolderChainImageHashes,
+  isZipInFolder,
+  loadFolderScreenshots,
+} from '../../services/folderScreenshotLoader';
 import type { FileProcessor, ParsedFileData } from '../../services/FileProcessor';
 import type { ContainerInput } from './FileController';
 import type { Sidebar } from '../Sidebar';
@@ -353,8 +357,8 @@ export class FolderController {
       return;
     }
 
-    // ZIPファイルを階層的に処理
-    if (fileEntry.name.endsWith('.zip')) {
+    // ZIPファイルを階層的に処理 (チェーン側の imageHash 集合も同じ規則で ZIP を読む。#786)
+    if (isZipInFolder(fileEntry.name)) {
       const parentPath = fileEntry.path.split('/').slice(0, -1).join('/');
       await this.processZipWithinFolder(fileEntry, parentPath, folderId, folderMap);
       return;
