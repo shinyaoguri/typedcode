@@ -56,6 +56,7 @@ npm run lint:fix    # biome check --write . (安全な自動修正 + format)
 npm run lint:workflows  # .github/workflows を actionlint + shellcheck で検査 (版と sha256 を固定して .cache/ に落とす。#351)
 npm run lint:changelog  # changelog.d/ の断片の名前と本文を検査 (= node scripts/release.mjs lint。書き方は changelog.d/README.md)
 node scripts/release.mjs notes  # 前回の v* タグ以降に追加された changelog.d/ の断片 (と断片の無い fix / feat の件名) から Release ノートを組む (stdout)
+node scripts/release.mjs beta   # 次の beta 版と打つコミットを決める (tag= / sha= を stdout。見送りは exit 3。Deploy の run を gh api で読むので GITHUB_REPOSITORY が要る)
 node scripts/check-deps.mjs  # packages/*/README.md の依存表 (名前と用途だけ。版は書かない) と package.json を名前で突合 (#269)
 
 # ユニットテスト (カバレッジ付き。test:coverage を持つ全パッケージ。CI の test job も同じコマンド)
@@ -77,7 +78,7 @@ npm run check:fast  # 上から e2e と test:build を除いたもの (build・t
 
 ## 開発フロー
 
-- ブランチ運用は**タグ式 GitHub Flow** (main 1 本 + `v*` タグ → production)。手順は [CONTRIBUTING.md](CONTRIBUTING.md)、根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md)
+- ブランチ運用は**タグ式 GitHub Flow** (main 1 本 + `v*` タグ。beta 版 `vYYYY.M.0-beta.N` は日次で自動、production へ出るのは `-` を含まないタグ)。手順は [CONTRIBUTING.md](CONTRIBUTING.md)、根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md) と [ADR-0055](docs/adr/0055-release-channels-and-calendar-versioning.md)
 - **利用者に見える変更は `changelog.d/` に断片を 1 つ足す** (リリースのノートの材料。書き方は [changelog.d/README.md](changelog.d/README.md))
 - **作業は git worktree で行う** (メインのチェックアウトのブランチを切り替えない)
 - **マージしたら、メインのチェックアウトから `git sweep` を実行して** worktree とローカルブランチを掃除する (使用中・dirty な worktree は自動スキップ。[ADR-0029](docs/adr/0029-merge-cleanup-script.md))
