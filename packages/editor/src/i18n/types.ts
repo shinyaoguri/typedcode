@@ -608,6 +608,7 @@ export interface TranslationKeys {
     suspendedMessage: string;
     suspendedHint: string;
     resumeButton: string;
+    titleFlash: string;
   };
 
   // Template import

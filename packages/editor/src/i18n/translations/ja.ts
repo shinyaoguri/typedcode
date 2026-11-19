@@ -584,6 +584,7 @@ export const ja: TranslationKeys = {
     suspendedMessage: '長時間の非アクティブ状態により、キーストロークとスクリーンショットの記録を一時停止しました。',
     suspendedHint: '作業を再開するには下のボタンをクリックしてください。',
     resumeButton: '記録を再開',
+    titleFlash: '⚠️ 確認が必要です',
   },
 
   template: {
