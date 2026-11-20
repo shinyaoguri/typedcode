@@ -2,11 +2,11 @@
  * PythonExecutor (メイン側のアダプタ) の振る舞い (#649)。
  *
  * Pyodide を動かす Worker だけを偽物に差し替える。偽の Worker は受け取ったメッセージを貯め、
- * テストが Worker からのメッセージを手で送る。stdin のチャネル・line discipline・期限は本物を使う。
+ * テストが Worker からのメッセージを手で送る。stdin のチャネル・期限は本物を使う (line discipline はターミナル側。#707)。
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import type { ExecutionCallbacks, ExecutionResult } from '../../interfaces/ILanguageExecutor.js';
+import type { ExecutionCallbacks, ExecutionResult, InteractiveStdin } from '../../interfaces/ILanguageExecutor.js';
 import { PythonExecutor, findRequiredPackages, type PythonWorkerHandle } from '../PythonExecutor.js';
 import type { PythonWorkerMessage, PythonWorkerRequest } from '../pythonWorkerProtocol.js';
 import { StdinChannelReader } from '../stdinChannel.js';
@@ -57,7 +57,7 @@ async function initialize(executor: PythonExecutor, workers: FakeWorker[]): Prom
 function startRun(executor: PythonExecutor, code = 'x = input()') {
   const out: string[] = [];
   const err: string[] = [];
-  let stdin: WritableStream<Uint8Array> | null = null;
+  let stdin: InteractiveStdin | null = null;
   const callbacks: ExecutionCallbacks = {
     onStdout: (t) => out.push(t),
     onStderr: (t) => err.push(t),
@@ -70,13 +70,14 @@ function startRun(executor: PythonExecutor, code = 'x = input()') {
     result = r;
     return r;
   });
-  const type = async (text: string) => {
+  // ターミナル (CTerminal の line discipline) が確定した行と EOF を渡すのを真似る (#707)
+  const connected = (): InteractiveStdin => {
     if (!stdin) throw new Error('stdin not ready');
-    const writer = stdin.getWriter();
-    await writer.write(new TextEncoder().encode(text));
-    writer.releaseLock();
+    return stdin;
   };
-  return { promise, out, err, type, result: () => result };
+  const line = (text: string) => connected().writeLine(text);
+  const eof = () => connected().close();
+  return { promise, out, err, line, eof, result: () => result };
 }
 
 afterEach(() => {
@@ -85,7 +86,7 @@ afterEach(() => {
 });
 
 describe('PythonExecutor', () => {
-  it('echoes typed input and hands the completed line to the worker through the stdin channel', async () => {
+  it('hands the line committed by the terminal to the waiting worker without echoing it again', async () => {
     const { executor, workers } = setup();
     const worker = await initialize(executor, workers);
     const run = startRun(executor);
@@ -94,13 +95,38 @@ describe('PythonExecutor', () => {
     worker.emit({ type: 'started', runId });
     worker.emit({ type: 'stdout', runId, text: 'name: ' });
     worker.emit({ type: 'stdin-request', runId });
-    await run.type('Taro\r');
+    run.line('Taro\n');
 
-    expect(run.out.join('')).toBe('name: Taro\n');
+    // エコーはターミナルがする (#707)。ここで stdout に足すと二重に出る
+    expect(run.out.join('')).toBe('name: ');
     expect(new TextDecoder().decode(new StdinChannelReader(stdinBuffer).read())).toBe('Taro\n');
 
     worker.emit({ type: 'done', runId, success: true, result: null });
     expect(await run.promise).toMatchObject({ success: true, exitCode: 0 });
+  });
+
+  it('reports EOF to the waiting worker as an empty read once the terminal closes stdin (#707)', async () => {
+    const { executor, workers } = setup();
+    const worker = await initialize(executor, workers);
+    const run = startRun(executor);
+    const { runId, stdinBuffer } = worker.lastRun();
+    const reader = new StdinChannelReader(stdinBuffer);
+    const state = new Int32Array(stdinBuffer, 0, 1);
+
+    worker.emit({ type: 'started', runId });
+    run.line('last\n');
+    run.eof();
+    run.line('after-eof\n');
+    // Worker の read を真似る: 入力を求め、書かれていれば読む (書かれていなければ待たずに null)
+    const reads: (string | null)[] = [];
+    for (let i = 0; i < 2; i++) {
+      worker.emit({ type: 'stdin-request', runId });
+      reads.push(Atomics.load(state, 0) === 1 ? new TextDecoder().decode(reader.read()) : null);
+    }
+
+    expect(reads).toEqual(['last\n', '']);
+    worker.emit({ type: 'done', runId, success: true, result: null });
+    expect(await run.promise).toMatchObject({ success: true });
   });
 
   it('stops the worker on abort, resolves the run as aborted, and initializes a new worker for the next run', async () => {
@@ -135,7 +161,7 @@ describe('PythonExecutor', () => {
     expect(run.result()).toBeNull();
     expect(worker.terminated).toBe(false);
 
-    await run.type('ok\r');
+    run.line('ok\n');
     await vi.advanceTimersByTimeAsync(100);
     expect(await run.promise).toMatchObject({ success: false, outcome: 'timeout', timeoutMs: 1_000 });
     expect(worker.terminated).toBe(true);

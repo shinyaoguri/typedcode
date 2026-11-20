@@ -5,7 +5,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ExecutionCallbacks } from '../../interfaces/ILanguageExecutor.js';
+import type { WritableBytes } from '@wasmer/sdk';
+import type { ExecutionCallbacks, InteractiveStdin } from '../../interfaces/ILanguageExecutor.js';
 
 /** 偽 SDK の状態。各テストが振る舞いを差し替える */
 const sdk = vi.hoisted(() => {
@@ -196,11 +197,11 @@ vi.mock('@wasmer/sdk', () => {
   return { Wasmer };
 });
 
-const { CExecutor, buildSourceWithPreamble } = await import('../CExecutor.js');
+const { CExecutor, buildSourceWithPreamble, pipeInteractiveStdin } = await import('../CExecutor.js');
 const { CppExecutor } = await import('../../cpp/CppExecutor.js');
 
 function collectCallbacks() {
-  const out = { stdout: '', stderr: '', stdin: null as WritableStream<Uint8Array> | null };
+  const out = { stdout: '', stderr: '', stdin: null as InteractiveStdin | null };
   const callbacks: ExecutionCallbacks = {
     onStdout: (text) => {
       out.stdout += text;
@@ -283,7 +284,7 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
     expect(out.stderr).toBe('warn\n');
   });
 
-  it('returns the exit code of the program and hands its stdin stream to the caller', async () => {
+  it('returns the exit code of the program and hands its stdin to the caller', async () => {
     const executor = await readyExecutor();
     const { out, callbacks } = collectCallbacks();
     sdk.runExitCode = 3;
@@ -292,7 +293,6 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
 
     expect(result).toEqual({ success: false, exitCode: 3, stdout: '', stderr: '' });
     expect(out.stdin).not.toBeNull();
-    expect(out.stdin).toBe(sdk.stdinStreams[0]);
   });
 
   it('closes the per-run sandbox whether compilation succeeds or fails', async () => {
@@ -682,5 +682,87 @@ describe.each([
     await executor.run('int main(void){}', { ...callbacks, onProgramStart: () => starts.push(sdk.entered.join(',')) });
 
     expect(starts).toEqual(['sandbox,compile,readFile,install,program']);
+  });
+});
+
+describe.each([
+  ['C', () => new CExecutor()],
+  ['C++', () => new CppExecutor()],
+])('interactive %s stdin (#707)', (_language, create) => {
+  it('passes the committed lines to the program pipe in order and sends EOF on close, ignoring lines after it', async () => {
+    const executor = create();
+    await executor.initialize();
+    sdk.holds.add('program');
+    const { out, callbacks } = collectCallbacks();
+    const running = executor.run('int main(void){}', callbacks);
+    const release = await sdk.reached('program');
+
+    out.stdin?.writeLine('13\n');
+    out.stdin?.writeLine('日本\n');
+    out.stdin?.close();
+    out.stdin?.writeLine('late\n');
+    out.stdin?.close();
+
+    await vi.waitFor(() => expect(sdk.stdinLog).toEqual(['write:13\n', 'write:日本\n', 'close']));
+    release(0);
+    expect(await running).toMatchObject({ success: true });
+  });
+});
+
+describe('pipeInteractiveStdin (#707)', () => {
+  /** write が手で解決されるまで終わらない stdin (遅い pipe) */
+  function slowPipe() {
+    const log: string[] = [];
+    const pending: (() => void)[] = [];
+    const stdin = {
+      write: (data: string) =>
+        new Promise<void>((resolve) => {
+          pending.push(() => {
+            log.push(`write:${data}`);
+            resolve();
+          });
+        }),
+      close: async () => {
+        log.push('close');
+      },
+    };
+    return { stdin: stdin as unknown as WritableBytes, log, finishNextWrite: () => pending.shift()?.() };
+  }
+
+  it('closes the pipe only after the lines written before close have been delivered', async () => {
+    const pipe = slowPipe();
+    const stdin = pipeInteractiveStdin(pipe.stdin);
+
+    stdin.writeLine('a\n');
+    stdin.close();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // 書き込みが終わるまで close しない (先に閉じると、プログラムが行を読む前に EOF になる)
+    expect(pipe.log).toEqual([]);
+
+    pipe.finishNextWrite();
+    await vi.waitFor(() => expect(pipe.log).toEqual(['write:a\n', 'close']));
+  });
+
+  it('keeps delivering later lines after a write fails because the program stopped reading', async () => {
+    const log: string[] = [];
+    let failNext = true;
+    const stdin = pipeInteractiveStdin({
+      write: async (data: string) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error('broken pipe');
+        }
+        log.push(`write:${data}`);
+      },
+      close: async () => {
+        log.push('close');
+      },
+    } as unknown as WritableBytes);
+
+    stdin.writeLine('lost\n');
+    stdin.writeLine('kept\n');
+    stdin.close();
+
+    await vi.waitFor(() => expect(log).toEqual(['write:kept\n', 'close']));
   });
 });

@@ -290,6 +290,11 @@
               </button>
             </div>
             <div class="terminal-controls">
+              <!-- 実行中のプログラムが stdin を読めるあいだだけ出す (#707。CTerminal の stdin の状態で main.ts が付け外しする) -->
+              <button id="stdin-eof-btn" class="terminal-control-btn terminal-eof-btn" hidden data-i18n-title="terminal.endInputTitle" title="End input (EOF)">
+                <i class="fas fa-flag-checkered" aria-hidden="true"></i>
+                <span data-i18n="terminal.endInput">End input</span>
+              </button>
               <button id="reset-runtime-btn" class="terminal-control-btn" data-i18n-title="terminal.resetRuntime" title="Reset Runtime">
                 <i class="fas fa-rotate"></i>
               </button>

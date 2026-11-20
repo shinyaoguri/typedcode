@@ -426,6 +426,8 @@ export const en: TranslationKeys = {
     runtimeResetComplete: 'Runtime reset complete.',
     runtimeCorruptionDetected: 'Runtime error detected. Will auto-reset on next execution.',
     runtimeResetting: 'Resetting runtime...',
+    endInput: 'End input',
+    endInputTitle: 'End input (send EOF; same as Ctrl+D on an empty line)',
   },
 
   logViewer: {
