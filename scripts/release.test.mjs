@@ -5,7 +5,8 @@
  *
  * notes と beta の git の扱い (前回のタグ・追加された断片・断片を足したコミットの除外・タグ以降のコミット) は、
  * 使い捨ての git リポジトリを組み立てて CLI を実際に打って確かめる。beta が読む Deploy の run は
- * RELEASE_DEPLOY_RUNS_FILE で差し替える。末尾で deploy.yml と release.yml の条件も固定する。
+ * RELEASE_DEPLOY_RUNS_FILE で差し替える。正式版の昇格・patch・タグの位置の検証 (#844) は純関数で決め、
+ * promote / patch / verify-tag の CLI も同じ足場で打つ。末尾で deploy.yml と release.yml の条件も固定する。
  */
 
 import assert from 'node:assert/strict';
@@ -17,6 +18,7 @@ import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   buildReleaseNotes,
+  checkTagPlacement,
   cycleFor,
   EMPTY_NOTES,
   EXIT_SKIP,
@@ -24,8 +26,11 @@ import {
   jstYearMonth,
   lintFragments,
   nextBetaVersion,
+  parseVersionTag,
   pickVerifiedCommit,
   planBeta,
+  planPatch,
+  planPromotion,
   verifiedShasFromRuns,
 } from './release.mjs';
 
@@ -515,49 +520,470 @@ describe('release.mjs beta (CLI on a throwaway git repository)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 正式版の昇格と patch (#844 / ADR-0055 の決定 5・6)
+// ---------------------------------------------------------------------------
+
+describe('parseVersionTag', () => {
+  it('reads release, patch and beta tags and rejects anything else', () => {
+    assert.deepEqual(parseVersionTag('v2027.2.0-beta.40'), { a: 2027, b: 2, patch: 0, beta: 40 });
+    assert.deepEqual(parseVersionTag('v1.5.10'), { a: 1, b: 5, patch: 10, beta: null });
+    for (const tag of ['main', 'v1.5', 'v1.5.0-rc.1', '1.5.0', 'v1.5.0-beta.']) {
+      assert.equal(parseVersionTag(tag), null, tag);
+    }
+  });
+});
+
+describe('planPromotion', () => {
+  const ym = (year, month) => ({ year, month });
+
+  const accepted = [
+    { betaTag: 'v2027.2.0-beta.7', tags: ['v1.5.0', 'v2027.2.0-beta.7'], today: ym(2027, 2), expected: 'v2027.2.0' },
+    {
+      betaTag: 'v2027.2.0-beta.40',
+      tags: ['v1.5.0', 'v2027.2.0-beta.40', 'v2027.8.0-beta.1'],
+      today: ym(2027, 3),
+      expected: 'v2027.2.0',
+    },
+    { betaTag: 'v2027.8.0-beta.3', tags: ['v2027.2.0', 'v2027.8.0-beta.3'], today: ym(2027, 8), expected: 'v2027.8.0' },
+    { betaTag: 'v2028.2.0-beta.1', tags: ['v2027.8.0', 'v2028.2.0-beta.1'], today: ym(2028, 2), expected: 'v2028.2.0' },
+  ];
+  for (const { betaTag, tags, today, expected } of accepted) {
+    it(`promotes ${betaTag} to ${expected} on ${today.year}-${today.month}`, () => {
+      assert.deepEqual(planPromotion({ betaTag, tags, today }), { ok: true, tag: expected });
+    });
+  }
+
+  for (const betaTag of ['v2027.2.0', 'v1.5.0', 'main', 'v2027.2.1-beta.1']) {
+    it(`rejects ${betaTag}, which is not a beta tag`, () => {
+      const plan = planPromotion({ betaTag, tags: [betaTag], today: ym(2027, 2) });
+      assert.equal(plan.ok, false);
+      assert.match(plan.reason, /beta 形/);
+    });
+  }
+
+  it('rejects a beta tag that does not exist', () => {
+    const plan = planPromotion({ betaTag: 'v2027.2.0-beta.7', tags: ['v2027.2.0-beta.6'], today: ym(2027, 2) });
+    assert.equal(plan.ok, false);
+    assert.match(plan.reason, /タグが無い/);
+  });
+
+  it('rejects a beta of a cycle whose release is already out', () => {
+    const plan = planPromotion({
+      betaTag: 'v2027.2.0-beta.7',
+      tags: ['v2027.2.0-beta.7', 'v2027.2.0'],
+      today: ym(2027, 2),
+    });
+    assert.equal(plan.ok, false);
+    assert.match(plan.reason, /既に出ている/);
+  });
+
+  const notYet = [
+    { betaTag: 'v2027.8.0-beta.1', today: ym(2027, 3) },
+    { betaTag: 'v2027.2.0-beta.1', today: ym(2026, 11) },
+    { betaTag: 'v2028.2.0-beta.1', today: ym(2027, 12) },
+    { betaTag: 'v2028.2.0-beta.1', today: ym(2028, 1) },
+  ];
+  for (const { betaTag, today } of notYet) {
+    it(`rejects ${betaTag} on ${today.year}-${today.month} because the cycle's month has not come yet`, () => {
+      const plan = planPromotion({ betaTag, tags: [betaTag], today });
+      assert.equal(plan.ok, false);
+      assert.match(plan.reason, /月がまだ来ていない/);
+    });
+  }
+});
+
+describe('planPatch', () => {
+  it('numbers the first patch of release/1.5 as v1.5.1', () => {
+    assert.deepEqual(planPatch({ branch: 'release/1.5', tags: ['v1.4.0', 'v1.5.0'] }), {
+      ok: true,
+      tag: 'v1.5.1',
+      base: 'v1.5.0',
+    });
+  });
+
+  it('compares P as a number, so v1.5.9 is followed by v1.5.10', () => {
+    const tags = ['v1.5.0', ...Array.from({ length: 9 }, (_, i) => `v1.5.${i + 1}`)].reverse();
+    assert.equal(planPatch({ branch: 'release/1.5', tags }).tag, 'v1.5.10');
+    assert.equal(planPatch({ branch: 'release/1.5', tags: ['v1.5.0', 'v1.5.2', 'v1.5.10'] }).tag, 'v1.5.11');
+  });
+
+  it('does not count beta tags of the same cycle', () => {
+    const plan = planPatch({ branch: 'release/2027.2', tags: ['v2027.2.0', 'v2027.2.0-beta.3'] });
+    assert.deepEqual(plan, { ok: true, tag: 'v2027.2.1', base: 'v2027.2.0' });
+    assert.equal(planPatch({ branch: 'release/1.5', tags: ['v1.5.0', 'v1.5.3-beta.1'] }).tag, 'v1.5.1');
+  });
+
+  it('does not count patch tags of another series', () => {
+    const plan = planPatch({ branch: 'release/1.5', tags: ['v1.5.0', 'v1.4.3', 'v11.5.2', 'v1.55.4'] });
+    assert.equal(plan.tag, 'v1.5.1');
+  });
+
+  it('rejects release/1.5 when v1.5.0 does not exist', () => {
+    const plan = planPatch({ branch: 'release/1.5', tags: ['v1.4.0', 'v1.5.1'] });
+    assert.equal(plan.ok, false);
+    assert.match(plan.reason, /v1\.5\.0 が無い/);
+  });
+
+  for (const branch of ['main', 'release/1', 'release/1.5.0', 'feat/release/1.5']) {
+    it(`rejects the branch ${branch}, which is not release/A.B`, () => {
+      const plan = planPatch({ branch, tags: ['v1.5.0'] });
+      assert.equal(plan.ok, false);
+      assert.match(plan.reason, /release\/A\.B の形/);
+    });
+  }
+});
+
+describe('checkTagPlacement', () => {
+  /** 与えた「祖先 → 子孫」の組だけを真と答える偽物。呼ばれた引数を記録する。 */
+  const fakeAncestry = (pairs) => {
+    const known = new Set(pairs.map(([ancestor, descendant]) => `${ancestor} ${descendant}`));
+    const calls = [];
+    const isAncestorOf = (ancestor, descendant) => {
+      calls.push([ancestor, descendant]);
+      return known.has(`${ancestor} ${descendant}`);
+    };
+    return { isAncestorOf, calls };
+  };
+
+  it('accepts a release (.0) that is an ancestor of origin/main', () => {
+    const { isAncestorOf, calls } = fakeAncestry([['v2027.2.0', 'origin/main']]);
+    assert.deepEqual(checkTagPlacement({ tag: 'v2027.2.0', isAncestorOf }), { ok: true });
+    assert.deepEqual(calls, [['v2027.2.0', 'origin/main']]);
+  });
+
+  it('rejects a release (.0) that is not on main', () => {
+    const { isAncestorOf } = fakeAncestry([['v2027.2.0', 'origin/release/2027.2']]);
+    const result = checkTagPlacement({ tag: 'v2027.2.0', isAncestorOf });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /origin\/main の祖先ではない/);
+  });
+
+  it('accepts a patch on origin/release/2027.2 that descends from v2027.2.0', () => {
+    const { isAncestorOf, calls } = fakeAncestry([
+      ['v2027.2.1', 'origin/release/2027.2'],
+      ['v2027.2.0', 'v2027.2.1'],
+    ]);
+    assert.deepEqual(checkTagPlacement({ tag: 'v2027.2.1', isAncestorOf }), { ok: true });
+    assert.deepEqual(calls, [
+      ['v2027.2.1', 'origin/release/2027.2'],
+      ['v2027.2.0', 'v2027.2.1'],
+    ]);
+  });
+
+  it('rejects a patch that is on main but not on its release branch', () => {
+    const { isAncestorOf } = fakeAncestry([
+      ['v2027.2.1', 'origin/main'],
+      ['v2027.2.0', 'v2027.2.1'],
+    ]);
+    const result = checkTagPlacement({ tag: 'v2027.2.1', isAncestorOf });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /origin\/release\/2027\.2 の祖先ではない/);
+    assert.doesNotMatch(result.reason, /子孫ではない/);
+  });
+
+  it('accepts v1.5.1 on origin/release/1.5 that descends from v1.5.0', () => {
+    const { isAncestorOf } = fakeAncestry([
+      ['v1.5.1', 'origin/release/1.5'],
+      ['v1.5.0', 'v1.5.1'],
+    ]);
+    assert.deepEqual(checkTagPlacement({ tag: 'v1.5.1', isAncestorOf }), { ok: true });
+  });
+
+  it('rejects a patch on its release branch that does not descend from the .0 release', () => {
+    const { isAncestorOf } = fakeAncestry([['v2027.2.1', 'origin/release/2027.2']]);
+    const result = checkTagPlacement({ tag: 'v2027.2.1', isAncestorOf });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /v2027\.2\.0 の子孫ではない/);
+    assert.doesNotMatch(result.reason, /祖先ではない/);
+  });
+
+  for (const tag of ['v2027.2.0-beta.3', 'main', 'v1.5']) {
+    it(`rejects ${tag} as outside production wherever it is`, () => {
+      const everywhere = () => true;
+      const result = checkTagPlacement({ tag, isAncestorOf: everywhere });
+      assert.equal(result.ok, false);
+      assert.match(result.reason, /production の対象外/);
+    });
+  }
+});
+
+describe('release.mjs promote (CLI on a throwaway git repository)', () => {
+  let repo;
+  let git;
+  let commit;
+  let betaSha;
+  const run = (...args) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd: repo, encoding: 'utf8' });
+
+  before(() => {
+    ({ repo, git, commit } = throwawayRepo('release-promote-'));
+    commit('chore: init', { 'README.md': 'repo\n' });
+    git('tag', 'v1.5.0');
+    commit('fix: a', { 'changelog.d/fragment-a.fix.md': 'Fragment A body.\n' });
+    git('tag', 'v2027.2.0-beta.1');
+    betaSha = commit('feat: b', { 'changelog.d/fragment-b.feature.md': 'Fragment B body.\n' });
+    git('tag', 'v2027.2.0-beta.2');
+  });
+  after(() => rmSync(repo, { recursive: true, force: true }));
+
+  it('prints the release tag, the beta commit and the previous release, skipping intermediate betas', () => {
+    const result = run('promote', '--beta', 'v2027.2.0-beta.2', '--today', '2027-02-10');
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, `tag=v2027.2.0\nsha=${betaSha}\nsince=v1.5.0\n`);
+  });
+
+  it('builds release notes from every fragment since the previous release, across beta tags', () => {
+    const result = run('notes', '--since', 'v1.5.0', '--to', betaSha);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Fragment A body\./);
+    assert.match(result.stdout, /Fragment B body\./);
+  });
+
+  it('exits 2 with a reason when the cycle month has not come yet', () => {
+    const result = run('promote', '--beta', 'v2027.2.0-beta.2', '--today', '2026-11-20');
+    assert.equal(result.status, 2);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /月がまだ来ていない/);
+  });
+
+  it('exits 2 when the beta tag does not exist', () => {
+    const result = run('promote', '--beta', 'v2027.2.0-beta.9', '--today', '2027-02-10');
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /タグが無い/);
+  });
+});
+
+describe('release.mjs patch (CLI on a throwaway git repository)', () => {
+  let repo;
+  let git;
+  let commit;
+  let tipSha;
+  const patch = (...args) => spawnSync(process.execPath, [SCRIPT, 'patch', ...args], { cwd: repo, encoding: 'utf8' });
+
+  before(() => {
+    ({ repo, git, commit } = throwawayRepo('release-patch-'));
+    commit('chore: init', { 'README.md': 'repo\n' });
+    git('branch', 'before-release');
+    commit('feat: released');
+    git('tag', 'v1.5.0');
+    commit('feat: main only');
+    git('branch', 'stale-1.5', 'v1.5.0');
+    git('checkout', '-q', '-b', 'release/1.5', 'v1.5.0');
+    tipSha = commit('fix: backport');
+    git('checkout', '-q', 'main');
+  });
+  after(() => rmSync(repo, { recursive: true, force: true }));
+
+  it('prints the next patch tag and the tip of the release branch', () => {
+    const result = patch('--branch', 'release/1.5', '--ref', 'release/1.5');
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, `tag=v1.5.1\nsha=${tipSha}\n`);
+  });
+
+  it('exits 2 when no commit was added on top of v1.5.0', () => {
+    const result = patch('--branch', 'release/1.5', '--ref', 'stale-1.5');
+    assert.equal(result.status, 2);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /既に v1\.5\.0 が付いている/);
+  });
+
+  it('exits 2 when the tip does not descend from v1.5.0', () => {
+    const result = patch('--branch', 'release/1.5', '--ref', 'before-release');
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /v1\.5\.0 の子孫ではない/);
+  });
+
+  it('exits 2 when the base release v1.6.0 does not exist', () => {
+    const result = patch('--branch', 'release/1.6', '--ref', 'release/1.5');
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /v1\.6\.0 が無い/);
+  });
+});
+
+describe('release.mjs verify-tag (CLI on a throwaway git repository with origin/* refs)', () => {
+  let repo;
+  let git;
+  let commit;
+  const verify = (tag) => spawnSync(process.execPath, [SCRIPT, 'verify-tag', tag], { cwd: repo, encoding: 'utf8' });
+
+  before(() => {
+    ({ repo, git, commit } = throwawayRepo('release-verify-'));
+    commit('chore: init', { 'README.md': 'repo\n' });
+    git('tag', 'v1.5.0');
+    git('tag', 'v1.7.0');
+    git('checkout', '-q', '-b', 'release/1.5', 'v1.5.0');
+    commit('fix: backport');
+    git('tag', 'v1.5.1');
+    git('checkout', '-q', 'main');
+    commit('feat: main only');
+    git('tag', 'v1.5.2');
+    git('tag', 'v1.7.1');
+    git('tag', 'v2027.2.0-beta.3');
+    // deploy.yml が fetch するリモート追跡の参照を、手元のブランチから作る
+    git('update-ref', 'refs/remotes/origin/main', 'main');
+    git('update-ref', 'refs/remotes/origin/release/1.5', 'release/1.5');
+  });
+  after(() => rmSync(repo, { recursive: true, force: true }));
+
+  for (const tag of ['v1.5.0', 'v1.5.1']) {
+    it(`exits 0 for ${tag}, which is in place`, () => {
+      const result = verify(tag);
+      assert.equal(result.status, 0, result.stderr);
+    });
+  }
+
+  it('exits 1 for a patch tag that is on main but not on its release branch', () => {
+    const result = verify('v1.5.2');
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /origin\/release\/1\.5 の祖先ではない/);
+  });
+
+  it('exits 1 naming the unresolved ref when the release branch is not fetched', () => {
+    const result = verify('v1.7.1');
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /origin\/release\/1\.7 が解決できない/);
+  });
+
+  it('exits 1 when the tag itself does not exist', () => {
+    const result = verify('v1.8.0');
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /v1\.8\.0 が解決できない/);
+  });
+
+  for (const tag of ['v2027.2.0-beta.3', 'main']) {
+    it(`exits 1 for ${tag}, which is outside production`, () => {
+      const result = verify(tag);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /production の対象外/);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // ワークフローの条件の固定 (YAML の依存を足さないため、行で job の範囲を切り出して読む)
 // ---------------------------------------------------------------------------
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const readWorkflow = (name) => readFileSync(join(ROOT, '.github', 'workflows', name), 'utf8');
 
+/**
+ * `header` に一致する行の下の、インデントが `indent` より深い行 (空行とコメントは素通し)。
+ * header が無ければ throw。
+ */
+function section(lines, header, indent) {
+  const start = lines.findIndex((line) => header.test(line));
+  if (start < 0) throw new Error(`${header} not found`);
+  const body = [];
+  for (const line of lines.slice(start + 1)) {
+    const trimmed = line.trim();
+    if (trimmed !== '' && !trimmed.startsWith('#') && line.length - line.trimStart().length <= indent) break;
+    body.push(line);
+  }
+  return body;
+}
+
+/** job の範囲の行。 */
+const jobLines = (workflowText, job) => section(workflowText.split('\n'), new RegExp(`^ {2}${job}:\\s*$`), 2);
+
 /** job の直下の `if:` の値。job か `if:` が無ければ throw。 */
 function jobIf(workflowText, job) {
-  const lines = workflowText.split('\n');
-  const start = lines.findIndex((line) => new RegExp(`^ {2}${job}:\\s*$`).test(line));
-  if (start < 0) throw new Error(`job ${job} not found`);
-  for (const line of lines.slice(start + 1)) {
-    if (/^ {2}[\w-]+:\s*$/.test(line)) break;
+  for (const line of jobLines(workflowText, job)) {
     const match = /^ {4}if:\s*(.+)$/.exec(line);
     if (match) return match[1];
   }
   throw new Error(`if: not found directly under job ${job}`);
 }
 
-describe('deploy.yml keeps beta tags away from production', () => {
+/** job の step ごとに、`if:` の値 (無ければ null) とコメントを除いた本文。 */
+function jobSteps(workflowText, job) {
+  const steps = [];
+  for (const line of jobLines(workflowText, job)) {
+    if (/^ {6}- /.test(line)) steps.push({ if: null, text: [] });
+    const step = steps.at(-1);
+    if (!step || line.trim().startsWith('#')) continue;
+    const match = /^ {8}if:\s*(.+)$/.exec(line);
+    if (match) step.if = match[1];
+    step.text.push(line);
+  }
+  return steps.map((step) => ({ if: step.if, text: step.text.join('\n') }));
+}
+
+/** `on:` の下の、あるトリガの範囲の行。 */
+const triggerLines = (workflowText, trigger) =>
+  section(section(workflowText.split('\n'), /^on:\s*$/, 0), new RegExp(`^ {2}${trigger}:`), 2);
+
+describe('deploy.yml sends only release and patch tags to production, by workflow_dispatch on the tag ref', () => {
   const deploy = readWorkflow('deploy.yml');
-  for (const job of ['nightly-gate', 'deploy-production']) {
-    it(`runs ${job} only for v* tags without "-"`, () => {
-      const condition = jobIf(deploy, job);
-      assert.ok(condition.includes("startsWith(github.ref, 'refs/tags/v')"), condition);
-      assert.ok(condition.includes("!contains(github.ref_name, '-')"), condition);
+
+  it('does not trigger on tag pushes', () => {
+    const on = section(deploy.split('\n'), /^on:\s*$/, 0);
+    assert.ok(!on.some((line) => /^\s+tags:/.test(line)), on.join('\n'));
+  });
+
+  it('can be started by workflow_dispatch', () => {
+    assert.doesNotThrow(() => triggerLines(deploy, 'workflow_dispatch'));
+  });
+
+  for (const trigger of ['push', 'pull_request']) {
+    it(`runs on ${trigger} for main and release/**`, () => {
+      const branches = triggerLines(deploy, trigger).find((line) => /^\s+branches:/.test(line)) ?? '';
+      assert.match(branches, /\bmain\b/);
+      assert.ok(branches.includes("'release/**'"), branches);
     });
   }
+
+  for (const job of ['nightly-gate', 'deploy-production']) {
+    it(`runs ${job} only for workflow_dispatch on v* tags without "-"`, () => {
+      const condition = jobIf(deploy, job);
+      assert.ok(condition.includes("github.event_name == 'workflow_dispatch'"), condition);
+      assert.ok(condition.includes("startsWith(github.ref, 'refs/tags/v')"), condition);
+      assert.ok(condition.includes("!contains(github.ref_name, '-')"), condition);
+      assert.ok(!condition.includes("'push'"), condition);
+    });
+  }
+
+  it('verifies the tag placement with release.mjs verify-tag before deploying to production', () => {
+    const steps = jobSteps(deploy, 'deploy-production');
+    const verify = steps.findIndex((step) => step.text.includes('node scripts/release.mjs verify-tag'));
+    const install = steps.findIndex((step) => step.text.includes('npm ci'));
+    assert.ok(verify >= 0, 'deploy-production does not call release.mjs verify-tag');
+    assert.ok(verify < install, 'verify-tag must run before npm ci');
+  });
 });
 
-describe('release.yml creates beta releases as prereleases, one run at a time', () => {
+describe('release.yml creates beta prereleases, promotes and patches, one run at a time', () => {
   const release = readWorkflow('release.yml');
 
-  it('passes --prerelease and --latest=false to every gh release create', () => {
-    const creates = release
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('#') && line.includes('gh release create'));
-    assert.ok(creates.length > 0, 'no gh release create in release.yml');
-    for (const line of creates) {
-      assert.ok(line.includes('--prerelease'), line);
-      assert.ok(line.includes('--latest=false'), line);
+  it('passes --prerelease and --latest=false to gh release create in the beta job', () => {
+    const creates = jobSteps(release, 'beta').filter((step) => step.text.includes('gh release create'));
+    assert.ok(creates.length > 0, 'no gh release create in the beta job');
+    for (const { text } of creates) {
+      assert.ok(text.includes('--prerelease'), text);
+      assert.ok(text.includes('--latest=false'), text);
     }
   });
+
+  it('runs the beta job on schedule or when action is beta', () => {
+    const condition = jobIf(release, 'beta');
+    assert.ok(condition.includes("github.event_name == 'schedule'"), condition);
+    assert.ok(condition.includes("inputs.action == 'beta'"), condition);
+  });
+
+  it('marks the promoted release as Latest and not as a prerelease', () => {
+    const creates = jobSteps(release, 'promote').filter((step) => step.text.includes('gh release create'));
+    assert.equal(creates.length, 1);
+    assert.match(creates[0].text, /--latest(\s|$)/);
+    assert.doesNotMatch(creates[0].text, /--prerelease/);
+  });
+
+  for (const job of ['promote', 'patch']) {
+    for (const command of ['gh release create', 'gh workflow run deploy.yml']) {
+      it(`skips "${command}" in the ${job} job on a dry run`, () => {
+        const steps = jobSteps(release, job).filter((step) => step.text.includes(command));
+        assert.ok(steps.length > 0, `no "${command}" in the ${job} job`);
+        for (const step of steps) assert.ok(step.if?.includes('!inputs.dry_run'), step.text);
+      });
+    }
+  }
 
   it('has a top-level concurrency group', () => {
     assert.match(release, /^concurrency:\s*$/m);

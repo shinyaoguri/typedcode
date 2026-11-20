@@ -622,7 +622,7 @@ function checkDeployedWorker(envName, configFile) {
     report(
       'warn',
       `${workerName} がまだデプロイされていない`,
-      `${envName === 'staging' ? 'main ブランチに push すると CI が自動デプロイ' : 'v* タグを push (gh release create) すると CI が承認待ちデプロイ'}`
+      `${envName === 'staging' ? 'main ブランチに push すると CI が自動デプロイ' : '正式版の昇格か patch (release.yml) がタグの ref で deploy.yml を起こすと CI が承認待ちデプロイ'}`
     );
   }
 

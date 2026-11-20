@@ -197,7 +197,7 @@ wrangler login
 
 # CI / 本番デプロイの設定 (メンテナ向け)
 
-メンテナとして GitHub Actions から自動でデプロイを enable する場合、以下を 1 回設定すれば以降は `main` push → staging 自動、`v*` タグ push → production 承認待ちのフローで回ります (タグ式 GitHub Flow、[ADR-0028](adr/0028-tag-based-github-flow.md))。
+メンテナとして GitHub Actions から自動でデプロイを enable する場合、以下を 1 回設定すれば以降は `main` push → staging 自動、正式版の昇格と patch (`release.yml`) → タグの ref の `workflow_dispatch` で `deploy.yml` → production 承認待ちのフローで回ります (タグ式 GitHub Flow、[ADR-0028](adr/0028-tag-based-github-flow.md) / [ADR-0055](adr/0055-release-channels-and-calendar-versioning.md))。タグの push では production へ出ません。
 
 ## M1. Cloudflare API トークンの発行
 
@@ -236,13 +236,27 @@ CI が `wrangler` を使ってデプロイするので、適切な権限の API 
 
 - **Automatically delete head branches** → **ON**
   (= API: `delete_branch_on_merge: true`)
-  長命ブランチは `main` のみで、ruleset が削除から保護しているため、feature ブランチはマージ時に自動削除してよい。
+  消えては困るブランチ (`main` と、緊急修正のときだけ作る `release/*`) は ruleset が削除から保護しているため、feature ブランチはマージ時に自動削除してよい。
 
   ```bash
   gh api -X PATCH repos/<owner>/<repo> -F delete_branch_on_merge=true
   ```
 
   > 歴史的経緯: 旧 Git Flow 時代は「PR マージで `develop` (staging のソース) が消える」事故を防ぐため OFF を必須としていた。develop 廃止 (ADR-0028) で理由が消滅し、推奨が逆転している。
+
+### Rulesets (Settings → Rules → Rulesets)
+
+- **`protect-key-branches`** (ブランチ): `main` の削除・force push を禁じ、PR と必須チェックを求める。学期中の patch のブランチ `release/*` ([ADR-0055](adr/0055-release-channels-and-calendar-versioning.md) の決定 6) も同じ規則で守るため、**Target branches に `release/*` を足す** (規則を別の ruleset に二重に持たない)
+  - 画面: Settings → Rules → Rulesets → `protect-key-branches` → Target branches → Add target → Include by pattern → `release/*`
+  - 同じ画面の「Require status checks to pass」で **Do not require status checks on creation** を有効にしてから Save changes。必須チェックには PR でしか走らない検査 (`pr-title`・`require-issue` など) が入っているので、有効にしないと、正式版のタグから `release/A.B` を切る push (CONTRIBUTING.md「本番緊急修正」の手順 2) が作成の時点で拒否される
+  - 設定の確認 (読むだけ):
+
+    ```bash
+    gh api repos/<owner>/<repo>/rulesets --jq '.[] | select(.name == "protect-key-branches") | .id'
+    gh api repos/<owner>/<repo>/rulesets/<ruleset-id> --jq '{include: .conditions.ref_name.include, on_creation: [.rules[] | select(.type == "required_status_checks") | .parameters.do_not_enforce_on_create]}'
+    ```
+
+- **`v*` タグ**: 削除と更新を禁じる (作成は許す)。打ったタグは付け替えない
 
 ### Repo level secrets (Settings → Secrets and variables → Actions → New repository secret)
 
@@ -289,7 +303,7 @@ gh variable set VITE_TURNSTILE_SITE_KEY --env preview --body '1x0000000000000000
 
 - **Deployment branches and tags** → **Selected branches and tags** で `main` だけを許す。使うのは main push の `deploy-staging` と、default branch (main) の ref で動く `deploy-preview.yml` だけ。絞らないと、任意のブランチに workflow を足して push すれば `environment: staging` 経由でトークンを取り出せる (#582)
 
-#### Environment `production` (承認ゲート付き、`v*` タグ push でのみ動作)
+#### Environment `production` (承認ゲート付き、`v*` タグの ref の `workflow_dispatch` でのみ動作)
 - Secrets:
 
   | Secret | 値 |
@@ -299,9 +313,9 @@ gh variable set VITE_TURNSTILE_SITE_KEY --env preview --body '1x0000000000000000
   | `VITE_TURNSTILE_SITE_KEY` | 本番 Turnstile Site Key |
 
 - **Deployment protection rules** → **Required reviewers** を ON にして自分 (またはチーム) を 1 名以上追加
-  → これで `v*` タグ push 時に Actions タブで Approve を押すまで本番デプロイが保留される
+  → これで昇格・patch が起こした Deploy の run (タグの ref) で、Actions タブの Approve を押すまで本番デプロイが保留される
   → 本番 `CLOUDFLARE_API_TOKEN` もこのゲートの内側にあるため、承認なしには使われない
-- **Deployment branches and tags** を絞る場合は **tag rule `v*` を必ず含める** (branch のみに制限するとタグからのデプロイが拒否され、リリースが不能になる)
+- **Deployment branches and tags** は今は絞っていない (production へ出るかは `deploy.yml` の `if` と承認が決める)。絞る場合は **tag rule `v*` を必ず含める** (配信はタグの ref で走るので、branch のみに制限するとタグからのデプロイが拒否され、リリースが不能になる)
 
 ## M3. Cloudflare 側の準備
 
@@ -420,9 +434,9 @@ GitHub Actions タブで:
 - ✓ `test` / `check` / `e2e`
 - ✓ `deploy-staging` (Workers staging + Pages の staging エイリアス)
 - ⊘ `build-preview` (skipped, push event のため。`Deploy Preview` workflow も PR の run ではないので skipped)
-- ⊘ `deploy-production` (skipped, タグ push ではないため)
+- ⊘ `nightly-gate` / `deploy-production` (skipped, タグの ref の `workflow_dispatch` ではないため)
 
-すべて green なら、本番リリースは `gh release create vX.Y.Z` のタグ push で自動的に承認待ちになります。
+すべて green なら、本番リリースは正式版の昇格 (`gh workflow run release.yml -f action=promote -f beta_tag=<beta タグ>`) か patch (`-f action=patch -f branch=release/A.B`) で、タグの ref の Deploy の run が承認待ちになります (手順は [CONTRIBUTING.md](../CONTRIBUTING.md)「リリース」「本番緊急修正」)。
 
 ## トラブルシューティング (CI)
 
@@ -442,10 +456,12 @@ CF Pages API が非 ASCII コミットメッセージを弾くケース。`deplo
 
 `production` Environment に Required reviewers が設定されていない。M2 を再確認。
 
-### タグを push したのに本番デプロイが走らない / 拒否される
+### タグを打ったのに本番デプロイが走らない / 拒否される
 
-- タグが `v` 始まりか (`v1.1.0`)。トリガは `tags: ['v*']`。
-- タグのコミットが main の履歴上にあるか (`deploy-production` の ancestor 検証で拒否される)。
+- タグの push では走らない。本番デプロイは、タグの ref を指定した `deploy.yml` の `workflow_dispatch` でだけ走る (昇格・patch の `release.yml` が起こす)。起こし直すなら `gh workflow run deploy.yml --ref <tag>`
+- タグが `-` を含まない `v` 始まりか (`v1.5.0`)。beta 形 (`-beta.N`) では `nightly-gate` / `deploy-production` が skipped になる
+- タグのコミットの `deploy.yml` が `workflow_dispatch` を持つか。`workflow_dispatch` が入る前 (#844 より前) のコミットに打ったタグでは起こせない
+- タグの位置 (`deploy-production` の `node scripts/release.mjs verify-tag` で拒否される): 正式版 `vA.B.0` は main の祖先、patch `vA.B.P` は `release/A.B` の祖先で `vA.B.0` の子孫であること
 - `production` Environment の Deployment branches/tags 制限に tag rule `v*` が含まれているか (branch のみに絞るとタグデプロイが拒否される)。
 
 ### 本番デプロイが Pages の preview 扱いになる
