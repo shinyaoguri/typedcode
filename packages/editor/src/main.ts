@@ -767,6 +767,19 @@ function initializeTerminal(): void {
         description: `${t('events.terminalInput')}: ${input}`,
       });
     });
+
+    // 「入力終了」(#707): stdin を読めるあいだだけ出し、押すと残りの行を確定してから EOF を送る
+    const stdinEofBtn = document.getElementById('stdin-eof-btn') as HTMLButtonElement | null;
+    if (stdinEofBtn) {
+      const terminal = ctx.terminal;
+      terminal.setStdinStateListener((state) => {
+        stdinEofBtn.hidden = state !== 'open';
+      });
+      stdinEofBtn.addEventListener('click', () => {
+        terminal.endInput();
+        terminal.focus();
+      });
+    }
   }
 }
 

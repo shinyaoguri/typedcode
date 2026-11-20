@@ -122,6 +122,17 @@
   color: var(--text-primary);
 }
 
+/* 「入力終了」(#707): 文字付きのボタン。hidden 属性は display: flex より弱いので明示する */
+.terminal-eof-btn {
+  width: auto;
+  gap: 4px;
+  padding: 0 6px;
+}
+
+.terminal-eof-btn[hidden] {
+  display: none;
+}
+
 /* Terminal Content */
 .terminal-content {
   flex: 1;

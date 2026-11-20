@@ -36,6 +36,21 @@ export interface InitializationProgress {
 }
 
 /**
+ * 対話の実行の stdin (#707)。行の編集 (エコー・バックスペース・Enter での確定・Ctrl+D) はターミナル
+ * (`CTerminal` + `terminal/stdinLineDiscipline.ts`) が受け持ち、プログラムには確定した行と EOF だけを渡す。
+ * プログラムが受け取るバイト列と `terminalInput` の記録は、どちらも同じ確定した行から作る
+ */
+export interface InteractiveStdin {
+  /** 確定した 1 行 (末尾の `"\n"` を含む) を渡す。渡した順にプログラムへ届く。`close` の後は捨てる */
+  writeLine(line: string): void;
+  /**
+   * 入力の終わり (EOF) を送る。先に渡した行を届けてから閉じ、以後の `writeLine` は捨てる。何度呼んでもよい。
+   * プログラムは止めない (止めるのは `ILanguageExecutor.abort`)
+   */
+  close(): void;
+}
+
+/**
  * Callbacks for handling program execution I/O
  */
 export interface ExecutionCallbacks {
@@ -43,8 +58,8 @@ export interface ExecutionCallbacks {
   onStdout: (text: string) => void;
   /** Called when program writes to stderr */
   onStderr: (text: string) => void;
-  /** Called when stdin stream is ready for input */
-  onStdinReady?: (stdinStream: WritableStream<Uint8Array>) => void;
+  /** 対話の実行で、プログラムの stdin が入力を受け取れるようになったときに 1 回呼ぶ (#707) */
+  onStdinReady?: (stdin: InteractiveStdin) => void;
   /** Called to report execution progress */
   onProgress?: (message: string) => void;
   /**
