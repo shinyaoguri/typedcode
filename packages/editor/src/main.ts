@@ -1279,6 +1279,9 @@ async function startScreenShareForPolicy(appCtx: AppContext): Promise<void> {
   tracker.setCallback((event) => {
     void appCtx.eventRecorder?.recordToAllTabs({ type: event.type, data: event.data, description: event.description });
   });
+  // タブが無い間は撮らない (起動時と同じ。撮っても記録先のチェーンが無く、検証で「チェーンに裏付けの無い画像」になる)。
+  // 問題のタブを作った後に runClassLoad が有効に戻す
+  if (!appCtx.tabManager?.hasAnyTabs()) tracker.setCaptureEnabled(false);
   // ロック画面とバナーのボタン (resumeScreenShare など) は ctx.trackers.screenshot を見るので、選択の前に入れる
   appCtx.trackers.screenshot = tracker;
   appCtx.proofExporter.setScreenshotTracker(tracker);
