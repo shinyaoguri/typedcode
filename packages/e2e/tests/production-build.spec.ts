@@ -82,9 +82,16 @@ test('production build: エディタが console エラーなくマウントし�
       insertBlock: typeof w.__tcTestInsertBlock,
       snapshot: typeof w.__tcTestSnapshot,
       forgeTemplateInjection: typeof w.__tcTestForgeTemplateInjection,
+      // export の容量の測定 (#628) 用の水増し。本番に残るとイベント列を書き換えられる
+      capacity: typeof w.__tcTestCapacity,
     };
   });
-  expect(hooks).toEqual({ insertBlock: 'undefined', snapshot: 'undefined', forgeTemplateInjection: 'undefined' });
+  expect(hooks).toEqual({
+    insertBlock: 'undefined',
+    snapshot: 'undefined',
+    forgeTemplateInjection: 'undefined',
+    capacity: 'undefined',
+  });
 });
 
 /**
