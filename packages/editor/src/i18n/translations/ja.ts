@@ -424,6 +424,8 @@ export const ja: TranslationKeys = {
     runtimeResetComplete: 'ランタイムのリセットが完了しました。',
     runtimeCorruptionDetected: 'ランタイムエラーを検出しました。次回実行時に自動リセットします。',
     runtimeResetting: 'ランタイムをリセット中...',
+    endInput: '入力終了',
+    endInputTitle: '入力を終える (EOF を送る。空の行で Ctrl+D と同じ)',
   },
 
   logViewer: {

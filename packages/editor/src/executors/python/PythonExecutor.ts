@@ -6,9 +6,10 @@
  *
  * Pyodide は専用の module Worker (`pythonWorker.ts`) で動かす (#649)。メインスレッドはここで
  * Worker を作り、メッセージを中継するだけ。
- * - stdin: ターミナルの入力を line discipline (stdinLineDiscipline.ts) で行にして、
+ * - stdin: ターミナル (`CTerminal`) が line discipline (stdinLineDiscipline.ts) で行にした入力を、
  *   SharedArrayBuffer のチャネル (stdinChannel.ts) で渡す。Worker は `Atomics.wait` で待つ
- *   (editor は cross-origin isolated なので SharedArrayBuffer を使える)
+ *   (editor は cross-origin isolated なので SharedArrayBuffer を使える)。EOF (空の行の Ctrl+D・「入力終了」)
+ *   はチャネルを閉じて渡す (#707。`input()` は EOFError になる)
  * - 停止とタイムアウト: Worker を `terminate()` して捨てる。次の実行で初期化し直す
  *   (`CodeExecutionController` の `!executor.isInitialized` の分岐)
  * - タイムアウトは入力を待っている間を数えない (pausableDeadline.ts)
@@ -35,7 +36,6 @@ import {
   type PythonWorkerRequest,
 } from './pythonWorkerProtocol.js';
 import { StdinChannelWriter, createStdinBuffer } from './stdinChannel.js';
-import { StdinLineDiscipline } from '../../terminal/stdinLineDiscipline.js';
 
 /** Worker の使う分だけの形 (テストでは偽物に差し替える) */
 export interface PythonWorkerHandle {
@@ -355,8 +355,6 @@ export class PythonExecutor extends BaseExecutor {
     const runId = ++this.runSeq;
     const stdinBuffer = createStdinBuffer();
     const channel = new StdinChannelWriter(stdinBuffer);
-    const discipline = new StdinLineDiscipline();
-    const inputDecoder = new TextDecoder();
 
     return new Promise<ExecutionResult>((resolve) => {
       let stdout = '';
@@ -453,18 +451,20 @@ export class PythonExecutor extends BaseExecutor {
         channel.push(options.stdin);
         channel.close();
       } else {
-        // ターミナルの入力は C と同じ connectStdin の経路で受ける (行の記録 terminalInput もそこにある)
-        callbacks.onStdinReady?.(
-          new WritableStream<Uint8Array>({
-            write: (chunk) => {
-              if (settled) return;
-              const { echo, lines } = discipline.feed(inputDecoder.decode(chunk, { stream: true }));
-              if (echo) callbacks.onStdout(echo);
-              for (const line of lines) channel.push(line);
-              deliverInput();
-            },
-          })
-        );
+        // ターミナルの入力は C と同じ connectStdin の経路で受ける (#707)。エコーと行の編集はターミナルの
+        // line discipline がしていて、ここには確定した行と EOF (空の行の Ctrl+D・「入力終了」) だけが来る
+        callbacks.onStdinReady?.({
+          writeLine: (line) => {
+            if (settled) return;
+            channel.push(line);
+            deliverInput();
+          },
+          close: () => {
+            if (settled) return;
+            channel.close();
+            deliverInput();
+          },
+        });
       }
 
       worker.postMessage({ type: 'run', runId, code, packages: findRequiredPackages(code), stdinBuffer });
