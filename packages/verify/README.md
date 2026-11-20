@@ -22,6 +22,10 @@ TypedCode のエクスポートファイルを検証する Web アプリ。VSCod
 
 検証はすべてブラウザ内で完結します (ネットワークアクセスなし)。
 
+## 対応ブラウザ
+
+動作確認は Chromium のみ (E2E は Chromium でしか回していない。[ADR-0033](../../docs/adr/0033-e2e-round-trip-harness-as-deploy-gate.md))。他のブラウザ (Safari・Firefox など) は保証しません。editor と違って遮断はしていないので開けますが、壊れたときの報告を受けてから確かめます (#596)。
+
 ## 開発
 
 ```bash

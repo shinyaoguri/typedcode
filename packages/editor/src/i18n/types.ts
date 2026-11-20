@@ -589,7 +589,7 @@ export interface TranslationKeys {
   unsupportedBrowser: {
     title: string;
     description: string;
-    safariNote: string;
+    untestedNote: string;
     hint: string;
   };
 

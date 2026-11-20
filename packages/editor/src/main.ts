@@ -123,6 +123,7 @@ import {
 import { showSessionRecoveryDialog } from './ui/dialogs/SessionRecoveryDialog.js';
 import { showUnprovenContentDialog } from './ui/dialogs/UnprovenContentDialog.js';
 import { showBootFailure } from './app/bootFailure.js';
+import { detectUnsupportedBrowser } from './app/browserSupport.js';
 import { languagePolicyFor, syncLanguageSelector } from './app/examLanguageGuard.js';
 
 // shared ライブラリのトレースログは dev サーバ時のみ有効化 (本番は no-op)。
@@ -1306,13 +1307,12 @@ async function initializeApp(): Promise<void> {
     return; // 初期化を中止
   }
 
-  // Phase 0.5: 未対応ブラウザの検出（Safari等）
-  // Safari/WebKitベースブラウザはScreen Capture APIのサポートが不十分なためブロック
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  const isWebKit = /AppleWebKit/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+  // Phase 0.5: 未対応ブラウザの検出 (#596)
+  // E2E で確かめている Chromium 系だけで記録させ、Safari (WebKit)・Firefox (Gecko) などは止める (app/browserSupport.ts)
+  const unsupportedBrowser = detectUnsupportedBrowser(navigator.userAgent);
 
-  if (isSafari || isWebKit) {
-    console.log('[TypedCode] Unsupported browser detected (Safari/WebKit), blocking');
+  if (unsupportedBrowser) {
+    console.log(`[TypedCode] Unsupported browser detected (${unsupportedBrowser}), blocking`);
     initOverlay?.classList.add('hidden');
     showUnsupportedBrowserOverlay();
     return; // 初期化を中止
