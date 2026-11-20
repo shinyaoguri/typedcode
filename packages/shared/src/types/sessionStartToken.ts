@@ -10,6 +10,7 @@
  */
 
 import type { RegistryKeyTrustStatus } from '../checkpointKeys/keyValidity.js';
+import type { CheckpointKeyEnvironment } from '../checkpointKeys/registry.js';
 
 /** 署名対象の payload */
 export interface SessionStartTokenPayload {
@@ -63,4 +64,9 @@ export interface SessionStartTokenVerificationResult {
    * 署名の成否とは別の値で、`trusted` でも署名が合わなければ `valid: false`。
    */
   keyStatus?: RegistryKeyTrustStatus;
+  /**
+   * registry にある鍵の環境 (#321)。鍵の判定まで進んだときに付く (署名の成否とは別)。この関数は環境で
+   * 拒否しない: 信頼する環境の判定は呼び出し側 (検証器の `verifyInitialHashRoot`、Worker の sign 経路) が持つ。
+   */
+  environment?: CheckpointKeyEnvironment;
 }

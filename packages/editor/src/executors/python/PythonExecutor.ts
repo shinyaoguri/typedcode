@@ -4,15 +4,20 @@
  * Executes Python code in the browser using Pyodide (CPython compiled to WebAssembly).
  * Supports automatic package installation via micropip.
  *
- * Pyodide は専用の module Worker (`pythonWorker.ts`) で動かす (#649)。メインスレッドはここで
- * Worker を作り、メッセージを中継するだけ。
- * - stdin: ターミナルの入力を line discipline (stdinLineDiscipline.ts) で行にして、
- *   SharedArrayBuffer のチャネル (stdinChannel.ts) で渡す。Worker は `Atomics.wait` で待つ
- *   (editor は cross-origin isolated なので SharedArrayBuffer を使える)
- * - 停止とタイムアウト: Worker を `terminate()` して捨てる。次の実行で初期化し直す
+ * Pyodide は opaque origin の sandbox iframe の中の Worker (runner。PythonRunner.ts /
+ * pythonRunnerDocument.ts) で動かす (#649 / #719)。実行コードから editor の IndexedDB (proof)・
+ * localStorage・DOM に届かない。runner が cross-origin isolated でなければ実行しない (fail closed)。
+ * メインスレッドはここで runner を作り、メッセージを中継するだけ。
+ * - stdin: ターミナル (`CTerminal`) が line discipline (stdinLineDiscipline.ts) で行にした入力を、
+ *   postMessage で runner へ送る。runner は自分の SharedArrayBuffer のチャネル (stdinChannelSource.ts) に
+ *   書き、Worker は `Atomics.wait` で待つ。EOF (空の行の Ctrl+D・「入力終了」) は `stdin-eof` で渡す
+ *   (#707。`input()` は EOFError になる)
+ * - 停止とタイムアウト: runner を `terminate()` (iframe ごと除去) して捨てる。次の実行で初期化し直す
  *   (`CodeExecutionController` の `!executor.isInitialized` の分岐)
  * - タイムアウトは入力を待っている間を数えない (pausableDeadline.ts)
- * - 非対話の実行 (#802。`run` の options.stdin): stdin の全体をチャネルに積んで閉じ、渡し切った後の
+ * - 出力の予算 (stdout + stderr の文字数。JS / TS の sandbox と同じ `OUTPUT_BUDGET_CHARS`) を超えたら、
+ *   打ち切りを stderr に一度だけ出して runner を捨て、`error` で終える
+ * - 非対話の実行 (#802。`run` の options.stdin): stdin の全体を送って閉じ、渡し切った後の
  *   読み込みに EOF を返す。ターミナルにはつながない。`showLastValue: false` で `=> 値` を出さない
  */
 
@@ -25,31 +30,16 @@ import type {
   InitializationProgress,
   ParsedError,
 } from '../interfaces/ILanguageExecutor.js';
+import { getExecutionLimits } from '../sandbox/limits.js';
+import { outputLimitNotice } from '../sandbox/SandboxRunner.js';
 import { PausableDeadline } from './pausableDeadline.js';
+import { createPythonRunner, type PythonRunnerHandle } from './PythonRunner.js';
 import {
-  PYODIDE_CDN_URL,
   PYTHON_TIMEOUT_MS,
   isPythonRunMessage,
-  isPythonWorkerMessage,
+  type PythonExecMessage,
   type PythonRunMessage,
-  type PythonWorkerRequest,
-} from './pythonWorkerProtocol.js';
-import { StdinChannelWriter, createStdinBuffer } from './stdinChannel.js';
-import { StdinLineDiscipline } from '../../terminal/stdinLineDiscipline.js';
-
-/** Worker の使う分だけの形 (テストでは偽物に差し替える) */
-export interface PythonWorkerHandle {
-  postMessage(message: PythonWorkerRequest): void;
-  terminate(): void;
-  onmessage: ((event: MessageEvent) => void) | null;
-  onerror: ((event: Event) => void) | null;
-}
-
-function createPythonWorker(): PythonWorkerHandle {
-  return new Worker(new URL('./pythonWorker.ts', import.meta.url), {
-    type: 'module',
-  }) as unknown as PythonWorkerHandle;
-}
+} from './pythonRunnerProtocol.js';
 
 // Python standard library modules (to exclude from micropip install)
 const PYTHON_STDLIB_MODULES = new Set([
@@ -268,18 +258,20 @@ export class PythonExecutor extends BaseExecutor {
     monacoLanguage: 'python',
   };
 
-  private worker: PythonWorkerHandle | null = null;
+  private worker: PythonRunnerHandle | null = null;
   private pendingInit: PendingInit | null = null;
   private activeRun: ActiveRun | null = null;
   private runSeq = 0;
 
   /**
-   * @param createWorker Worker の作り方 (テストで偽物に差し替える)
+   * @param createWorker runner の作り方 (テストで偽物に差し替える)
    * @param timeoutMs 実行時間の上限 (入力を待っている間は数えない)
+   * @param outputBudgetChars stdout + stderr の合計文字数の上限 (run ごとに読む。E2E は dev 限定の上書きで縮める)
    */
   constructor(
-    private readonly createWorker: () => PythonWorkerHandle = createPythonWorker,
-    private readonly timeoutMs: number = PYTHON_TIMEOUT_MS
+    private readonly createWorker: () => PythonRunnerHandle = () => createPythonRunner(),
+    private readonly timeoutMs: number = PYTHON_TIMEOUT_MS,
+    private readonly outputBudgetChars: () => number = () => getExecutionLimits().outputBudgetChars
   ) {
     super();
   }
@@ -287,12 +279,12 @@ export class PythonExecutor extends BaseExecutor {
   protected async _doInitialize(onProgress?: (progress: InitializationProgress) => void): Promise<void> {
     const worker = this.createWorker();
     this.worker = worker;
-    worker.onmessage = (event) => this.handleMessage(worker, event.data);
-    worker.onerror = (event) => this.handleWorkerError(worker, event);
+    worker.onmessage = (message) => this.handleMessage(worker, message);
+    worker.onerror = (error) => this.handleWorkerError(worker, error);
     try {
       await new Promise<void>((resolve, reject) => {
         this.pendingInit = { resolve, reject, ...(onProgress ? { onProgress } : {}) };
-        worker.postMessage({ type: 'init', indexURL: PYODIDE_CDN_URL });
+        worker.postMessage({ type: 'init' });
       });
     } catch (error) {
       console.error('[PythonExecutor] Initialization failed:', error);
@@ -303,9 +295,9 @@ export class PythonExecutor extends BaseExecutor {
     }
   }
 
-  private handleMessage(worker: PythonWorkerHandle, data: unknown): void {
-    // 捨てた Worker の遅れたメッセージは扱わない
-    if (worker !== this.worker || !isPythonWorkerMessage(data)) return;
+  private handleMessage(worker: PythonRunnerHandle, data: PythonExecMessage): void {
+    // 捨てた runner の遅れたメッセージは扱わない
+    if (worker !== this.worker) return;
     if (isPythonRunMessage(data)) {
       // 今の run のものだけを扱う
       if (this.activeRun?.runId === data.runId) this.activeRun.handle(data);
@@ -324,15 +316,15 @@ export class PythonExecutor extends BaseExecutor {
     }
   }
 
-  private handleWorkerError(worker: PythonWorkerHandle, event: Event): void {
+  private handleWorkerError(worker: PythonRunnerHandle, error: string): void {
     if (worker !== this.worker) return;
-    event.preventDefault();
-    const message = (event as ErrorEvent).message || 'Python worker failed to start';
-    if (this.pendingInit) this.pendingInit.reject(new Error(message));
-    else this.activeRun?.fail(message);
+    if (this.pendingInit) this.pendingInit.reject(new Error(error));
+    else if (this.activeRun) this.activeRun.fail(error);
+    // どの run にも属さない異常 (実行の合間に Worker が落ちた) でも、次の実行で作り直す
+    else this.discardWorker();
   }
 
-  /** Worker を止めて捨てる。次の実行で初期化し直す (micropip で入れたパッケージも Worker と一緒に消える) */
+  /** runner を止めて捨てる。次の実行で初期化し直す (micropip で入れたパッケージも一緒に消える) */
   private discardWorker(): void {
     const worker = this.worker;
     this.worker = null;
@@ -353,17 +345,18 @@ export class PythonExecutor extends BaseExecutor {
 
     this.resetAbort();
     const runId = ++this.runSeq;
-    const stdinBuffer = createStdinBuffer();
-    const channel = new StdinChannelWriter(stdinBuffer);
-    const discipline = new StdinLineDiscipline();
-    const inputDecoder = new TextDecoder();
+    const budget = this.outputBudgetChars();
 
     return new Promise<ExecutionResult>((resolve) => {
       let stdout = '';
       let stderr = '';
       let settled = false;
-      /** Worker が入力を求めていて、まだ渡していない */
+      /** runner が入力を求めていて、まだ渡していない */
       let awaitingInput = false;
+      /** この run で runner へ送った stdin のメッセージの数 (stdin-request の received と比べる) */
+      let sent = 0;
+      /** 受け取った出力の文字数 (stdout + stderr) */
+      let received = 0;
 
       const finish = (result: Omit<ExecutionResult, 'stdout' | 'stderr'>, discard: boolean): void => {
         if (settled) return;
@@ -387,10 +380,35 @@ export class PythonExecutor extends BaseExecutor {
       };
       const deadline = new PausableDeadline(this.timeoutMs, () => stop('timeout'));
 
-      const deliverInput = (): void => {
-        if (awaitingInput && channel.offer()) {
+      // 入力を runner へ送る。runner はそれを貯め、Worker が求めたら渡す
+      const sendInput = (request: { type: 'stdin'; text: string } | { type: 'stdin-eof' }): void => {
+        sent++;
+        worker.postMessage({ ...request, runId });
+        if (awaitingInput) {
           awaitingInput = false;
           deadline.resume();
+        }
+      };
+
+      // 出力を予算の内側だけ渡す。超えたら打ち切りを一度だけ出して runner ごと止める (ADR-0041 と同じ)
+      const deliver = (stream: 'stdout' | 'stderr', text: string): void => {
+        const room = Math.max(0, budget - received);
+        received += text.length;
+        const part = text.length > room ? text.slice(0, room) : text;
+        if (part.length > 0) {
+          if (stream === 'stdout') {
+            stdout += part;
+            callbacks.onStdout(part);
+          } else {
+            stderr += part;
+            callbacks.onStderr(part);
+          }
+        }
+        if (received > budget) {
+          const notice = outputLimitNotice(budget);
+          stderr += notice;
+          callbacks.onStderr(notice);
+          stop('error', 'Output limit exceeded');
         }
       };
 
@@ -404,12 +422,8 @@ export class PythonExecutor extends BaseExecutor {
               callbacks.onProgress?.(message.message);
               return;
             case 'stdout':
-              stdout += message.text;
-              callbacks.onStdout(message.text);
-              return;
             case 'stderr':
-              stderr += message.text;
-              callbacks.onStderr(message.text);
+              deliver(message.type, message.text);
               return;
             case 'started':
               callbacks.onProgress?.('Running Python...');
@@ -417,8 +431,9 @@ export class PythonExecutor extends BaseExecutor {
               callbacks.onProgramStart?.();
               return;
             case 'stdin-request':
-              // 先打ちの行があればすぐ渡す。無ければ、行が確定するまで時間を数えない
-              if (!channel.offer()) {
+              // runner は貯めた入力が無いときだけ求めてくる。送った入力がまだ届いていない (received < sent)
+              // なら、届けば runner が渡すので待ちにしない。そうでなければ、行が確定するまで時間を数えない
+              if (message.received >= sent) {
                 awaitingInput = true;
                 deadline.pause();
               }
@@ -447,27 +462,35 @@ export class PythonExecutor extends BaseExecutor {
         },
       };
 
-      if (options.stdin !== undefined) {
-        // 非対話の実行 (#802): 全体を先に積んで閉じる (渡し切った後の読み込みは EOF)。
-        // ターミナルにはつながず、エコーもしない (line discipline を通さない)
-        channel.push(options.stdin);
-        channel.close();
-      } else {
-        // ターミナルの入力は C と同じ connectStdin の経路で受ける (行の記録 terminalInput もそこにある)
-        callbacks.onStdinReady?.(
-          new WritableStream<Uint8Array>({
-            write: (chunk) => {
-              if (settled) return;
-              const { echo, lines } = discipline.feed(inputDecoder.decode(chunk, { stream: true }));
-              if (echo) callbacks.onStdout(echo);
-              for (const line of lines) channel.push(line);
-              deliverInput();
-            },
-          })
-        );
-      }
+      worker.postMessage({
+        type: 'run',
+        runId,
+        code,
+        packages: findRequiredPackages(code),
+        outputBudgetChars: budget,
+      });
 
-      worker.postMessage({ type: 'run', runId, code, packages: findRequiredPackages(code), stdinBuffer });
+      if (options.stdin !== undefined) {
+        // 非対話の実行 (#802): 全体を先に送って閉じる (渡し切った後の読み込みは EOF)。
+        // ターミナルにはつながず、エコーもしない (line discipline を通さない)
+        if (options.stdin.length > 0) sendInput({ type: 'stdin', text: options.stdin });
+        sendInput({ type: 'stdin-eof' });
+      } else {
+        // ターミナルの入力は C と同じ connectStdin の経路で受ける (#707)。エコーと行の編集はターミナルの
+        // line discipline がしていて、ここには確定した行と EOF (空の行の Ctrl+D・「入力終了」) だけが来る
+        let closed = false;
+        callbacks.onStdinReady?.({
+          writeLine: (line) => {
+            if (settled || closed) return;
+            sendInput({ type: 'stdin', text: line });
+          },
+          close: () => {
+            if (settled || closed) return;
+            closed = true;
+            sendInput({ type: 'stdin-eof' });
+          },
+        });
+      }
     });
   }
 

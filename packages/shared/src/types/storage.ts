@@ -164,6 +164,30 @@ export interface StoredTabData {
   examContext?: ExamSessionContext | null;
   /** セッション開始トークン (ADR-0017)。casual/class で session/start 成功時のみ。リロード復帰で保持 */
   sessionStartToken?: SessionStartToken | null;
+  /**
+   * 閉じたタブ (#317)。true の行は復元の対象 (`loadTabs`) と復旧ダイアログの件数から外れ、メインメニューの
+   * 「閉じたタブ」から開き直せる。旧い行には欄が無い (`undefined` は false と読む)。exam は付けずに削除する
+   */
+  archived?: boolean;
+  /** 閉じた時刻 (epoch ms)。`archived` が true の行だけが持つ */
+  archivedAt?: number;
+}
+
+/**
+ * タブのチェーンの書き込み位置 (IndexedDB の `tabProgress`。#627)。
+ *
+ * イベントを append するたびに変わる小さな状態だけを、全文とチェックポイントを持つ tabs 行から分けて持つ。
+ * `SessionStorageService.appendEvent` が events の add と同じ transaction で put する (片方だけ残らない)。
+ * 読み出し (`getTab` / `loadTabs`) は tabs 行と重ね、`lastWrittenEventIndex` の大きい方の
+ * `lastWrittenEventIndex` / `currentHash` を採る。復元のチェーンの続きは、これではなく events 末尾の hash を正とする (#322)。
+ */
+export interface StoredTabProgressData {
+  tabId: string;
+  sessionId: string;
+  lastWrittenEventIndex: number;
+  currentHash: string | null;
+  /** 最後に append した時刻 (epoch ms) */
+  lastModifiedAt: number;
 }
 
 /** イベントデータ（IndexedDB格納用） */

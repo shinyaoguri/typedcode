@@ -80,6 +80,8 @@ export interface TranslationKeys {
     menu: string;
     newFile: string;
     importTemplate: string;
+    /** メインメニューの「閉じたタブ」(#317) */
+    closedTabs: string;
     toggleTerminal: string;
     toggleLogPanel: string;
     togglePreview: string;
@@ -441,6 +443,10 @@ export interface TranslationKeys {
     runtimeResetComplete: string;
     runtimeCorruptionDetected: string;
     runtimeResetting: string;
+    /** 「入力終了」ボタンの文字 (#707) */
+    endInput: string;
+    /** 「入力終了」ボタンの title (EOF の説明) */
+    endInputTitle: string;
   };
 
   // Log viewer
@@ -585,7 +591,7 @@ export interface TranslationKeys {
   unsupportedBrowser: {
     title: string;
     description: string;
-    safariNote: string;
+    untestedNote: string;
     hint: string;
   };
 
@@ -644,6 +650,29 @@ export interface TranslationKeys {
     startFresh: string;
     resuming: string;
     clearing: string;
+    /** exam 以外の注意書き (「新規」の後に残すか消すかを選べる。#317) */
+    warningKeep: string;
+    /** 「新規」の 2 段目 (#317) */
+    freshMessage: string;
+    keepHint: string;
+    deleteHint: string;
+    keepPrevious: string;
+    deleteAll: string;
+    back: string;
+    starting: string;
+  };
+
+  // 閉じたタブの一覧 (#317)
+  closedTabs: {
+    title: string;
+    description: string;
+    empty: string;
+    /** ${language} / ${count} / ${time} */
+    itemMeta: string;
+    reopen: string;
+    close: string;
+    loadFailed: string;
+    reopenFailed: string;
   };
 
   // 復元時に証明と食い違った元のコードの通知 (#413)
@@ -807,12 +836,18 @@ export interface TranslationKeys {
       kindClass: string;
       invalidTarget: string;
       classHint: string;
+      policy: string;
+      policyClassroom: string;
+      policyClassroomHint: string;
+      policyTakeHome: string;
+      policyTakeHomeHint: string;
       buttonExam: string;
       buttonClass: string;
       working: string;
       errorNoTarget: string;
       errorUnknownExam: string;
       errorNoKey: string;
+      errorNoPolicy: string;
       errorGeneric: string;
       errorDirty: string;
       errorEmpty: string;

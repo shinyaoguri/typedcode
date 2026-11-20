@@ -201,7 +201,7 @@ Turnstile トークンを検証し、成功時は検証結果をアテステー�
 |---|---|---|
 | `SCHEMA_INVALID` | 400 | リクエスト body のスキーマ違反 |
 | `TOKEN_REQUIRED` | 401 | `sessionStartToken` が無い |
-| `TOKEN_INVALID` | 401 | トークンの署名 / 鍵レジストリ / 形式が不正 |
+| `TOKEN_INVALID` | 401 | トークンの署名 / 鍵レジストリ / 形式が不正、またはトークンの鍵の環境がこの Worker の署名鍵の環境と違う (staging の token を本番の Worker に送った、など。#321) |
 | `TOKEN_SESSION_MISMATCH` | 401 | トークンの `sessionId` がリクエストの `sessionId` と不一致 |
 | `TOKEN_EXPIRED` | 401 | トークンの `issuedAt` から 30 日 (`SESSION_TOKEN_MAX_AGE_MS`) を超えている |
 | `NON_MONOTONIC` | 409 | `checkpointIndex` が単調増加していない |
@@ -231,11 +231,14 @@ Turnstile トークンを検証し、成功時は検証結果をアテステー�
       "algorithm": "ECDSA-P256",
       "publicKeyJwk": { "kty": "EC", "crv": "P-256", "x": "...", "y": "..." },
       "status": "active",
-      "validFrom": "..."
+      "validFrom": "...",
+      "environment": "production"
     }
   ]
 }
 ```
+
+`environment` は鍵を運用する環境 (`production` / `staging`。手元の開発用の鍵は `development`) です (#321)。registry には本番と staging の鍵が並び、検証器は既定で本番の鍵だけを時刻証拠に数えます。
 
 注: キャッシュは HTTP の `Cache-Control: public, max-age=3600` に一本化している (body に TTL のフィールドは無い)。verify / verify-cli / editor はこの endpoint を使わず、registry をビルド時に shared へ同梱する (鍵の追加・revoke の反映は再ビルド・再リリース)。
 

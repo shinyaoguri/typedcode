@@ -70,4 +70,16 @@ describe('buildClassPackage', () => {
     const parsed = parseClassPackage(JSON.parse(buildClassPackage({ classId: 'x', problems, languages: ['c'] })));
     expect(parsed!.bundle.problems[0]!.examples).toEqual([examples[0]]);
   });
+
+  // 方針 (#645)
+  it('writes the given policy so that parseClassPackage reads it back', () => {
+    const policy = { screenshots: false, fullscreenTracking: false, preExportBestEffort: false };
+    const out = buildClassPackage({ classId: 'x', problems: sampleProblems(), languages: ['c'], policy });
+    expect(parseClassPackage(JSON.parse(out))!.policy).toEqual(policy);
+  });
+
+  it('writes no policy when none is given (a package that opens with the entry capabilities)', () => {
+    const out = buildClassPackage({ classId: 'x', problems: sampleProblems(), languages: ['c'] });
+    expect(JSON.parse(out)).not.toHaveProperty('policy');
+  });
 });

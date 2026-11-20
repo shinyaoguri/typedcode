@@ -26,10 +26,14 @@ import { POSW_ITERATIONS, SIGNED_CHECKPOINT_FORMAT_VERSION } from './version.js'
 import { computeHash, deterministicStringify } from './utils/hashUtils.js';
 import {
   CHECKPOINT_PUBLIC_KEYS,
+  DEFAULT_TRUSTED_CHECKPOINT_KEY_ENVIRONMENTS,
   checkRegistryKeyValidityAt,
   findCheckpointPublicKey,
+  isCheckpointKeyEnvironmentTrusted,
   registryKeyTrustStatus,
+  type CheckpointKeyEnvironment,
   type CheckpointPublicKey,
+  type UntrustedEnvironmentKey,
 } from './checkpointKeys/index.js';
 
 // post-hoc と密度 (下) の閾値は system-spec §10 の定数。境界のテスト (`signedCheckpointThresholds.test.ts`) が
@@ -403,6 +407,12 @@ interface VerifySignedCheckpointsOptions {
    * 本番の経路 (`verifyProofSignedCheckpoints`) では必須にして渡し忘れを型で止める。
    */
   sessionAnchorIssuedAt?: string | null;
+  /**
+   * 時刻証拠に数える鍵の環境 (#321)。既定は `DEFAULT_TRUSTED_CHECKPOINT_KEY_ENVIRONMENTS` (production と
+   * development)。署名は registry の全鍵で検証し、検査をすべて通った後でこの範囲の外の鍵があれば
+   * `untrustedKeys` を付けて「署名 cp が無い」と同じ結果を返す。
+   */
+  trustedKeyEnvironments?: readonly CheckpointKeyEnvironment[];
 }
 
 /** `verifyProofSignedCheckpoints` の options。root アンカーの基点を渡し忘れないよう必須にする (#320)。 */
@@ -456,6 +466,7 @@ export async function verifySignedCheckpoints(
   options: VerifySignedCheckpointsOptions = {}
 ): Promise<SignedCheckpointsVerificationResult> {
   const registry = options.registry ?? CHECKPOINT_PUBLIC_KEYS;
+  const trustedKeyEnvironments = options.trustedKeyEnvironments ?? DEFAULT_TRUSTED_CHECKPOINT_KEY_ENVIRONMENTS;
   // root が検証済みのときだけ呼び出し側が渡す token の issuedAt を、post-hoc 照合の基点にする (#320)。
   const issuedAtMs =
     typeof options.sessionAnchorIssuedAt === 'string' ? Date.parse(options.sessionAnchorIssuedAt) : NaN;
@@ -663,9 +674,10 @@ export async function verifySignedCheckpoints(
       // registry の日時が parse 不能なエントリは信頼しない (fail-closed)。
       const verdict = checkRegistryKeyValidityAt(entry, serverTs);
       // 鍵の信頼状態を機械可読で残す (#809。加算のみで、判定と reason は変えない)
-      const keyFields: Pick<SignedCheckpointVerificationDetail, 'keyId' | 'keyStatus'> = {
+      const keyFields: Pick<SignedCheckpointVerificationDetail, 'keyId' | 'keyStatus' | 'keyEnvironment'> = {
         keyId: entry.keyId,
         keyStatus: registryKeyTrustStatus(verdict),
+        keyEnvironment: entry.environment,
       };
       if (!verdict.ok) {
         const at = `at event ${payload.eventIndex}`;
@@ -720,6 +732,14 @@ export async function verifySignedCheckpoints(
     previousServerTimestamp = serverTs;
   }
 
+  // 信頼しない環境 (既定では staging) の鍵の署名は、検査をすべて通っても時刻証拠に数えない (#321)。
+  // 「署名 cp が無い」ときと同じ結論 (anchored=false、coverage は 0 件) にして、受理ポリシー・三層保証・
+  // 表示が staging の署名を本番の署名と同じに扱わないようにする。改ざんではないので reason は付けない。
+  const untrustedKeys = collectUntrustedKeys(details, trustedKeyEnvironments);
+  if (untrustedKeys.length > 0) {
+    return { ...baseResult, coverage: computeCoverage(events, []), details, untrustedKeys };
+  }
+
   const density = computeDensity(events, signedCheckpoints);
   const coverage = computeCoverage(events, signedCheckpoints);
   const temporal = computeTemporal(timedAnchors, sessionAnchor);
@@ -736,6 +756,29 @@ export async function verifySignedCheckpoints(
     temporal,
     density,
   };
+}
+
+/**
+ * 信頼しない環境の鍵を、検査を通った cp の detail から重複なく集める (#321)。
+ * `keyEnvironment` は registry のエントリの値で、proof 由来ではない。
+ */
+function collectUntrustedKeys(
+  details: readonly SignedCheckpointVerificationDetail[],
+  trusted: readonly CheckpointKeyEnvironment[]
+): UntrustedEnvironmentKey[] {
+  const byKeyId = new Map<string, UntrustedEnvironmentKey>();
+  for (const detail of details) {
+    // 検査を通った cp には必ず keyId が付く (registry の値)。環境の無いエントリは信頼しない (fail-closed)
+    if (detail.keyId === undefined) continue;
+    if (isCheckpointKeyEnvironmentTrusted(detail.keyEnvironment, trusted)) continue;
+    byKeyId.set(
+      detail.keyId,
+      detail.keyEnvironment === undefined
+        ? { keyId: detail.keyId }
+        : { keyId: detail.keyId, environment: detail.keyEnvironment }
+    );
+  }
+  return [...byKeyId.values()];
 }
 
 function computeCoverage(

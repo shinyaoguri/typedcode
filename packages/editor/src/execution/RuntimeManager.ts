@@ -3,8 +3,7 @@
  * 各言語の実行環境の初期化状態、説明文、インジケーター更新を管理
  */
 
-import { getCExecutor } from '../executors/c/CExecutor.js';
-import type { InitializationProgress } from '../executors/interfaces/ILanguageExecutor.js';
+import { getLazyCExecutor } from '../executors/c/LazyClangExecutor.js';
 import { SUPPORTED_LANGUAGES, type LanguageId } from '../config/SupportedLanguages.js';
 import { t } from '../i18n/index.js';
 
@@ -127,11 +126,13 @@ export class RuntimeManager {
     if (!displayName) {
       indicator.textContent = '';
       indicator.className = 'runtime-state-indicator';
+      indicator.removeAttribute('data-runtime-state');
       return;
     }
 
-    // 状態クラスを更新
+    // 状態クラスを更新 (状態契約は data-runtime-state。#617)
     indicator.className = `runtime-state-indicator ${state}`;
+    indicator.setAttribute('data-runtime-state', state);
 
     // 表示テキストを更新
     const stateText: Record<RuntimeState, string> = {
@@ -140,41 +141,6 @@ export class RuntimeManager {
       ready: `${displayName} ✓`,
     };
     indicator.textContent = stateText[state];
-  }
-
-  /**
-   * C言語実行環境をバックグラウンドで初期化
-   * エディタの操作をブロックせずに非同期でダウンロード
-   */
-  async initializeCRuntime(): Promise<void> {
-    // 既にreadyなら何もしない
-    if (this.status['c'] === 'ready') {
-      console.log('[RuntimeManager] C runtime already initialized');
-      return;
-    }
-
-    // loadingなら既に初期化中
-    if (this.status['c'] === 'loading') {
-      console.log('[RuntimeManager] C runtime initialization already in progress');
-      return;
-    }
-
-    console.log('[RuntimeManager] Starting background C runtime initialization...');
-    this.setStatus('c', 'loading');
-
-    try {
-      const executor = getCExecutor();
-      await executor.initialize((progress: InitializationProgress) => {
-        console.log('[RuntimeManager] C runtime:', progress.message);
-      });
-
-      this.setStatus('c', 'ready');
-      console.log('[RuntimeManager] C runtime initialization complete');
-    } catch (error) {
-      console.error('[RuntimeManager] C runtime initialization failed:', error);
-      // 失敗時は not-ready に戻す
-      this.setStatus('c', 'not-ready');
-    }
   }
 
   /**
@@ -188,8 +154,8 @@ export class RuntimeManager {
     this.setStatus('c', 'not-ready');
 
     try {
-      const executor = getCExecutor();
-      await executor.resetRuntime();
+      // 読み込む前 (まだ C を実行していない) なら作り直すものが無いので、何も読み込まない (#617)
+      await getLazyCExecutor().resetRuntime();
       console.log('[RuntimeManager] C runtime reset complete');
     } catch (error) {
       console.error('[RuntimeManager] C runtime reset failed:', error);

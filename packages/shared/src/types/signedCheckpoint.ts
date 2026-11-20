@@ -6,6 +6,8 @@
  */
 
 import type { RegistryKeyTrustStatus } from '../checkpointKeys/keyValidity.js';
+import type { UntrustedEnvironmentKey } from '../checkpointKeys/keyEnvironment.js';
+import type { CheckpointKeyEnvironment } from '../checkpointKeys/registry.js';
 
 /** 署名対象の payload */
 export interface SignedCheckpointPayload {
@@ -59,6 +61,11 @@ export interface SignedCheckpointVerificationDetail {
    * 署名が合わなかった・署名より前の検査で落ちた cp には付かない (鍵の判定まで進んでいない)。
    */
   keyStatus?: RegistryKeyTrustStatus;
+  /**
+   * registry にある鍵の環境 (#321)。署名が合って鍵の判定まで進んだ cp にだけ付く。信頼するかどうかは
+   * 呼び出し側の信頼する環境で決まり、信頼しない環境の鍵は結果の `untrustedKeys` に出る。
+   */
+  keyEnvironment?: CheckpointKeyEnvironment;
 }
 
 /** signed checkpoint 全体の検証結果 */
@@ -159,4 +166,11 @@ export interface SignedCheckpointsVerificationResult {
   /** 失敗理由 (valid=false 時) */
   reason?: string;
   errorAt?: number;
+  /**
+   * 署名・連鎖の検査はすべて通ったが、信頼しない環境 (既定では staging) の鍵で署名されていた (#321)。
+   * このときは署名 cp を時刻証拠に数えない: `anchored: false`・`valid: false`、`coverage` は署名 cp が
+   * 無いときと同じ値 (`signedCount: 0`)、`temporal` / `density` は null (受理ポリシーと三層保証が
+   * 「署名 cp が無い」と同じ結論を出す)。`details` は検査した cp ぶん残る。重複を除いた鍵の一覧。
+   */
+  untrustedKeys?: UntrustedEnvironmentKey[];
 }

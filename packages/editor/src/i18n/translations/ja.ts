@@ -62,6 +62,7 @@ export const ja: TranslationKeys = {
     menu: 'メニュー',
     newFile: '新規ファイル',
     importTemplate: 'テンプレート読込',
+    closedTabs: '閉じたタブ',
     toggleTerminal: 'ターミナルの表示切替',
     toggleLogPanel: 'ログパネルの表示切替',
     togglePreview: 'プレビューの表示切替',
@@ -96,8 +97,8 @@ export const ja: TranslationKeys = {
 
   tabCloseDialog: {
     title: 'タブを閉じる',
-    warning: 'この操作は取り消せません！',
-    description: '以下のデータが完全に削除されます：',
+    warning: '閉じたタブは、メインメニューの「閉じたタブ」から開き直せます。',
+    description: '以下のデータはこのブラウザに残ります：',
     itemKeystrokes: '記録されたキーストローク',
     itemHashChain: 'ハッシュチェーン（証明データ）',
     itemScreenshots: '関連するスクリーンショット',
@@ -322,7 +323,7 @@ export const ja: TranslationKeys = {
     newTab: '新しいタブ',
     closeTab: 'Close Tab',
     lastTabWarning: '最後のタブは閉じられません',
-    closeConfirm: '「${tabName}」を閉じますか？\n記録された操作ログも削除されます。',
+    closeConfirm: '「${tabName}」を閉じますか？\nメインメニューの「閉じたタブ」から開き直せます。',
     verifiedTooltip: '認証済み',
     failedTooltip: '認証失敗',
     failureTimeout: 'タイムアウト',
@@ -424,6 +425,8 @@ export const ja: TranslationKeys = {
     runtimeResetComplete: 'ランタイムのリセットが完了しました。',
     runtimeCorruptionDetected: 'ランタイムエラーを検出しました。次回実行時に自動リセットします。',
     runtimeResetting: 'ランタイムをリセット中...',
+    endInput: '入力終了',
+    endInputTitle: '入力を終える (EOF を送る。空の行で Ctrl+D と同じ)',
   },
 
   logViewer: {
@@ -561,9 +564,9 @@ export const ja: TranslationKeys = {
 
   unsupportedBrowser: {
     title: 'サポートされていないブラウザです',
-    description:
-      'TypedCode は画面キャプチャ機能（Screen Capture API）を使用するため、Chrome または Edge ブラウザでのみ動作します。',
-    safariNote: 'Safari では Screen Capture API が十分にサポートされていないため、ご利用いただけません。',
+    description: 'TypedCode は Chrome や Edge などの Chromium 系ブラウザでのみ動作します。',
+    untestedNote:
+      'Safari や Firefox など、それ以外のブラウザでは記録の動作（画面キャプチャや日本語入力など）を確かめていないため、証明を記録できません。',
     hint: '以下のブラウザでアクセスしてください：',
   },
 
@@ -594,7 +597,7 @@ export const ja: TranslationKeys = {
     author: '作成者',
     description: '説明',
     filesToCreate: '作成されるファイル',
-    warningExistingTabs: '既存のタブはすべて閉じられます。保存されていないデータは失われます。',
+    warningExistingTabs: '既存のタブはすべて閉じられます。閉じたタブはメインメニューの「閉じたタブ」から開き直せます。',
     import: '読み込む',
     importing: 'テンプレートを読み込み中...',
     success: '${count}個のファイルを作成しました',
@@ -618,6 +621,27 @@ export const ja: TranslationKeys = {
     startFresh: '新規セッション',
     resuming: 'セッションを再開中...',
     clearing: 'データをクリア中...',
+    warningKeep: '「新規セッション」を選ぶと、前回のファイルを残すか、完全に削除するかを選べます。',
+    freshMessage: '前回のセッションのファイルをどうしますか？',
+    keepHint:
+      '「前回のファイルを残す」を選ぶと、前回のファイルと記録はこのブラウザに残り、メインメニューの「閉じたタブ」から開き直せます。',
+    deleteHint:
+      '「完全に削除する」を選ぶと、前回のセッションのコード・記録・スクリーンショットがすべて削除され、元に戻せません。共有のコンピュータでは、こちらを選んでください。',
+    keepPrevious: '前回のファイルを残す',
+    deleteAll: '完全に削除する',
+    back: '戻る',
+    starting: '新しいセッションを開始中...',
+  },
+
+  closedTabs: {
+    title: '閉じたタブ',
+    description: '閉じたタブのコードと記録はこのブラウザに残っています。開き直すと、続きから記録されます。',
+    empty: '閉じたタブはありません。',
+    itemMeta: '${language} ・ ${count}件のイベント ・ ${time}に閉じました',
+    reopen: '開き直す',
+    close: '閉じる',
+    loadFailed: '閉じたタブの一覧を読み込めませんでした。',
+    reopenFailed: '閉じたタブを開き直せませんでした。',
   },
 
   // 復元時に証明と食い違った元のコードの通知 (#413)
@@ -782,12 +806,19 @@ export const ja: TranslationKeys = {
       kindClass: '授業（.tcclass）',
       invalidTarget: 'この試験定義は読めません。テキストで開いて直してください。',
       classHint: '授業用の .tcclass は封印・署名をしません。署名鍵と監督コードは要りません。',
+      policy: '実施のしかた',
+      policyClassroom: '教室で実施',
+      policyClassroomHint:
+        '開いたときに画面共有を求め、全画面かどうかを記録します。提出は認証サーバに届かなくても出せます。',
+      policyTakeHome: '持ち帰り',
+      policyTakeHomeHint: '画面共有を求めず、全画面かどうかも記録しません。',
       buttonExam: '.tcexam を書き出す',
       buttonClass: '.tcclass を書き出す',
       working: '書き出し中…',
       errorNoTarget: '書き出す試験を選んでください。',
       errorUnknownExam: '試験定義「${path}」が見つかりません。フォルダを読み直してください。',
       errorNoKey: 'keyId と私的署名鍵（JWK）を入力してください。',
+      errorNoPolicy: '実施のしかた（教室で実施 / 持ち帰り）を選んでください。',
       errorGeneric: '書き出しに失敗しました。入力を確認してください。',
       errorDirty: '保存していないファイルがあります。保存してから書き出してください: ${paths}',
       errorEmpty: '採用した問題がありません。試験定義で問題を採用してください。',

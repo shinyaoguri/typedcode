@@ -1,10 +1,13 @@
 /**
- * 閉じたタブの後始末のテスト (#342)。
+ * 閉じたタブの後始末のテスト (#342 / #317)。
  *
  * - closeTab / closeAllTabs のあと、そのタブの PoSW Worker が terminate される。
- * - 計算中のイベントがあるタブを閉じても、そのイベントの append が済んでから tabs 行と events 行を
- *   消し、その後に Worker を終了する。`deleteTab` が先に走ると、後から append された events 行が
- *   どのタブにも属さない孤児として IndexedDB に残る。
+ * - exam 以外 (`closedTabPolicy: 'archive'`。#317) は、閉じたタブの tabs 行を `archived: true` + `archivedAt` で
+ *   残し、events も残す。計算中のイベントがあれば、その append が済んでから (= チェーンを欠けなく) 閉じたタブとして
+ *   書き、その後に Worker を終了する。閉じたタブは IndexedDB からの再開で開いたタブとして戻らない (#145)。
+ * - exam (`'delete'`) は従来どおり tabs 行と events 行を消す。`deleteTab` が append より先に走ると、
+ *   後から append された events 行がどのタブにも属さない孤児として残る。
+ * - 閉じたタブは `reopenArchivedTab` で今のセッションへ開き直せ、記録はチェーンの続きから進む。
  *
  * 本物の TabManager / EventRecorder / SessionStorageService (fake-indexeddb) を使い、境界の
  * Monaco / Turnstile / PoSW Worker だけスタブする。PoSW の返答は Worker ごとに止められる
@@ -17,6 +20,7 @@ import { computeHash } from '@typedcode/shared';
 import type { FingerprintComponents, HumanAttestationEventData, StoredTabData } from '@typedcode/shared';
 import { setStorageNamespace } from '../../../core/storageKeys.js';
 import { initSessionStorageService, type SessionStorageService } from '../../../services/SessionStorageService.js';
+import { abortTransactionsAfterWriteSuccess } from '../../../services/__tests__/idbFaults.js';
 
 vi.mock('monaco-editor', () => ({
   editor: {
@@ -77,7 +81,7 @@ const sharedAttestation: HumanAttestationEventData = {
   success: true,
 };
 
-/** 起きた順に並べる印 (appended:<tabId> / deleted:<tabId> / terminated:<workerIndex>) */
+/** 起きた順に並べる印 (appended:<tabId> / archived:<tabId> / deleted:<tabId> / terminated:<workerIndex>) */
 let log: string[] = [];
 /** appendEvent を遅くする (IndexedDB が詰まっている状況)。drain が済んでも append は終わっていない窓を作る */
 let appendDelayMs = 0;
@@ -160,6 +164,21 @@ const keystroke = {
   rangeLength: 0,
 } as const;
 
+type Internals = {
+  fingerprint: string;
+  fingerprintComponents: FingerprintComponents;
+};
+
+async function newTabManager() {
+  const editor = { setModel: vi.fn() };
+  const tabManager = new TabManager(editor as unknown as ConstructorParameters<typeof TabManager>[0]);
+  // initialize() は sessionStorage を読むので、fingerprint だけ直接入れる
+  const internals = tabManager as unknown as Internals;
+  internals.fingerprint = await computeHash(JSON.stringify(components));
+  internals.fingerprintComponents = components;
+  return tabManager;
+}
+
 async function setup() {
   const service: SessionStorageService = await initSessionStorageService();
   const session = await service.createSession();
@@ -176,32 +195,34 @@ async function setup() {
     await deleteTab(tabId);
     log.push(`deleted:${tabId}`);
   });
+  const archiveTab = service.archiveTab.bind(service);
+  const archiveTabSpy = vi.spyOn(service, 'archiveTab').mockImplementation(async (tab, events) => {
+    await archiveTab(tab, events);
+    log.push(`archived:${tab.id}`);
+  });
 
-  const editor = { setModel: vi.fn() };
-  const tabManager = new TabManager(editor as unknown as ConstructorParameters<typeof TabManager>[0]);
-  // initialize() は sessionStorage を読むので、fingerprint だけ直接入れる
-  const internals = tabManager as unknown as {
-    fingerprint: string;
-    fingerprintComponents: FingerprintComponents;
-  };
-  internals.fingerprint = await computeHash(JSON.stringify(components));
-  internals.fingerprintComponents = components;
+  const tabManager = await newTabManager();
 
   const recorder = new EventRecorder({ tabManager, getLogViewer: () => null });
   recorder.setInitialized(true);
   tabManager.setTabSettleBarrier((tabId) => recorder.whenTabSettled(tabId));
 
   /** タブを作り、IndexedDB に tabs 行も置く (実機では保存のデバウンスが置く) */
-  async function openTab(filename: string) {
-    const tab = await tabManager.createTab(filename, 'c', '', { sharedAttestation });
-    await service.saveTab(storedTab(tab!.id, session.sessionId));
+  async function openTab(filename: string, content = '') {
+    const tab = await tabManager.createTab(filename, 'c', content, { sharedAttestation });
+    await service.saveTab({ ...storedTab(tab!.id, session.sessionId), content });
     return tab!;
   }
 
-  return { service, tabManager, recorder, openTab, deleteTabSpy };
+  return { service, session, tabManager, recorder, openTab, deleteTabSpy, archiveTabSpy };
 }
 
-describe('TabManager closing a tab (#342)', () => {
+/** 保存済みの events の seq と hash (チェーンの並び) */
+async function storedChain(service: SessionStorageService, tabId: string) {
+  return (await service.getEvents(tabId)).map((e) => ({ sequence: e.sequence, hash: e.hash }));
+}
+
+describe('TabManager closing a tab (#342 / #317)', () => {
   let service: SessionStorageService | null = null;
 
   beforeEach(() => {
@@ -218,6 +239,7 @@ describe('TabManager closing a tab (#342)', () => {
     vi.spyOn(TabManager.prototype, 'saveToStorage').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -251,19 +273,139 @@ describe('TabManager closing a tab (#342)', () => {
     expect(MockPoswWorker.instances.map((w) => w.terminated)).toEqual([1, 1]);
   });
 
-  it('terminates the worker even when deleting the closed tab from IndexedDB fails', async () => {
+  it('keeps the closed tab as an archived tabs row with archivedAt, its final content and its whole chain', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c', 'int x;');
+    await s.openTab('b.c');
+    s.recorder.record(keystroke);
+    await s.recorder.whenTabSettled(a.id);
+
+    const before = Date.now();
+    s.tabManager.closeTab(a.id);
+    await s.tabManager.whenTabsRetired();
+    const after = Date.now();
+
+    const row = await service.getTab(a.id);
+    expect(row).toMatchObject({ archived: true, content: 'int x;', filename: 'a.c', sessionId: s.session.sessionId });
+    expect(row!.archivedAt).toBeGreaterThanOrEqual(before);
+    expect(row!.archivedAt).toBeLessThanOrEqual(after);
+    // チェーンはメモリと同じ並びで残り、位置は events 末尾を指す
+    const chain = a.typingProof.events.map((e) => ({ sequence: e.sequence, hash: e.hash }));
+    expect(await storedChain(service, a.id)).toEqual(chain);
+    expect(row).toMatchObject({ lastWrittenEventIndex: chain.length - 1, currentHash: chain.at(-1)!.hash });
+    expect(s.deleteTabSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not restore an archived tab as an open tab when the session is resumed from IndexedDB (#145)', async () => {
     const s = await setup();
     service = s.service;
     const a = await s.openTab('a.c');
-    s.deleteTabSpy.mockRejectedValueOnce(new Error('quota'));
+    const b = await s.openTab('b.c');
+    s.tabManager.closeTab(a.id);
+    await s.tabManager.whenTabsRetired();
+
+    const resumed = await newTabManager();
+    expect(await resumed.loadFromIndexedDB(s.session.sessionId)).toBe(true);
+
+    expect(resumed.getAllTabs().map((t) => t.id)).toEqual([b.id]);
+  });
+
+  it('archives the last remaining tab too, instead of deleting it', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c');
 
     s.tabManager.closeTab(a.id);
     await s.tabManager.whenTabsRetired();
 
+    expect(s.tabManager.hasAnyTabs()).toBe(false);
+    expect((await service.getTab(a.id))?.archived).toBe(true);
+    expect(await storedChain(service, a.id)).toHaveLength(a.typingProof.events.length);
+  });
+
+  it('archives every tab with its events on closeAllTabs (template import)', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c', 'int a;');
+    const b = await s.openTab('b.c', 'int b;');
+
+    await s.tabManager.closeAllTabs();
+    await s.tabManager.whenTabsRetired();
+
+    for (const tab of [a, b]) {
+      expect(await service.getTab(tab.id)).toMatchObject({ archived: true });
+      expect(await storedChain(service, tab.id)).toHaveLength(tab.typingProof.events.length);
+    }
+    expect((await service.getTab(b.id))?.content).toBe('int b;');
+    expect(await service.loadTabs(s.session.sessionId)).toEqual([]);
+  });
+
+  it('writes events that were never appended (recorded straight to the proof) into the archive', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c');
+    // EventRecorder を通らない記録 (contentSnapshot など) は append されず、保存のデバウンスが書く
+    await a.typingProof.recordContentSnapshot('snapshot');
+    await a.typingProof.waitForQueueDrain();
+    expect(await storedChain(service, a.id)).toHaveLength(0);
+
+    s.tabManager.closeTab(a.id);
+    await s.tabManager.whenTabsRetired();
+
+    expect(await storedChain(service, a.id)).toEqual(
+      a.typingProof.events.map((e) => ({ sequence: e.sequence, hash: e.hash }))
+    );
+  });
+
+  it('keeps the previous tabs row and events, and still terminates the worker, when the archive write is aborted', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c', 'int kept;');
+    await a.typingProof.recordContentSnapshot('not yet appended');
+    await a.typingProof.waitForQueueDrain();
+    const fault = abortTransactionsAfterWriteSuccess(['put']);
+
+    try {
+      s.tabManager.closeTab(a.id);
+      await s.tabManager.whenTabsRetired();
+      expect(fault.aborted()).toBeGreaterThan(0);
+    } finally {
+      fault.restore();
+    }
+
+    // 閉じる前の行のまま (archived でない = 削除にも、events だけ増えた状態にも倒れない)
+    const row = await service.getTab(a.id);
+    expect(row).not.toBeNull();
+    expect(row?.archived).toBeUndefined();
+    expect(row?.content).toBe('int kept;');
+    expect(await storedChain(service, a.id)).toEqual([]);
+    expect(log).not.toContain(`archived:${a.id}`);
     expect(MockPoswWorker.instances[0]?.terminated).toBe(1);
   });
 
-  it('waits for an in-flight event to be appended before deleting the tab rows and terminating the worker', async () => {
+  it('refuses to archive once another instance has taken the session over, keeping its rows untouched (#237)', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c', 'int mine;');
+    const other = await initSessionStorageServiceForTakeover(s.session.sessionId);
+    try {
+      expect(await service.verifyOwnership()).toBe('lost');
+
+      s.tabManager.closeTab(a.id);
+      await s.tabManager.whenTabsRetired();
+
+      expect((await other.getTab(a.id))?.archived).toBeUndefined();
+      expect((await other.getTab(a.id))?.content).toBe('int mine;');
+      expect(MockPoswWorker.instances[0]?.terminated).toBe(1);
+    } finally {
+      other.close();
+      // ラッチは再読み込みまで戻らない。共有のシングルトンなので、次のテストのために外す
+      (service as unknown as { ownershipLost: boolean }).ownershipLost = false;
+    }
+  });
+
+  it('waits for an in-flight event to be appended before archiving the tab and terminating the worker', async () => {
     const s = await setup();
     service = s.service;
     const a = await s.openTab('a.c');
@@ -273,14 +415,16 @@ describe('TabManager closing a tab (#342)', () => {
     await vi.waitFor(() => expect(worker.held).toHaveLength(1));
 
     s.tabManager.closeTab(a.id);
-    // PoSW がまだ返っていない間は、行の削除も Worker の終了も起きない
+    // PoSW がまだ返っていない間は、行の書き込みも Worker の終了も起きない
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(log).toEqual([]);
 
     worker.release();
     await s.tabManager.whenTabsRetired();
 
-    expect(log).toEqual([`appended:${a.id}`, `deleted:${a.id}`, 'terminated:0']);
+    expect(log).toEqual([`appended:${a.id}`, `archived:${a.id}`, 'terminated:0']);
+    // 計算中だったイベントも閉じたタブの記録に入っている
+    expect((await storedChain(service, a.id)).map((e) => e.sequence)).toEqual([0, 1]);
   });
 
   it('waits for a slow append even after the PoSW queue has drained', async () => {
@@ -295,28 +439,11 @@ describe('TabManager closing a tab (#342)', () => {
     s.tabManager.closeTab(a.id);
     await s.tabManager.whenTabsRetired();
 
-    expect(log).toEqual([`appended:${a.id}`, `deleted:${a.id}`, 'terminated:0']);
-    expect(await service.getEvents(a.id)).toEqual([]);
+    expect(log).toEqual([`appended:${a.id}`, `archived:${a.id}`, 'terminated:0']);
+    expect((await storedChain(service, a.id)).map((e) => e.sequence)).toEqual([0, 1]);
   });
 
-  it('leaves no events row for a tab id whose tabs row is gone after closing a tab with an in-flight event', async () => {
-    const s = await setup();
-    service = s.service;
-    const a = await s.openTab('a.c');
-    const worker = MockPoswWorker.instances[0]!;
-    worker.hold = true;
-    s.recorder.record(keystroke);
-    await vi.waitFor(() => expect(worker.held).toHaveLength(1));
-
-    s.tabManager.closeTab(a.id);
-    worker.release();
-    await s.tabManager.whenTabsRetired();
-
-    expect(await service.getTab(a.id)).toBeNull();
-    expect(await service.getEvents(a.id)).toEqual([]);
-  });
-
-  it('waits for the append of an event recorded to every tab before deleting the closed tab rows (#471)', async () => {
+  it('waits for the append of an event recorded to every tab before archiving the closed tab (#471)', async () => {
     const s = await setup();
     service = s.service;
     const a = await s.openTab('a.c');
@@ -333,11 +460,11 @@ describe('TabManager closing a tab (#342)', () => {
     await s.tabManager.whenTabsRetired();
     await recordedToAll;
 
-    // A の append は削除より前に終わり、削除のあとに A の events 行は残らない
+    // A の append は閉じたタブの書き込みより前に終わり、A のチェーンは欠番なく残る
     expect(log.indexOf(`appended:${a.id}`)).toBeGreaterThanOrEqual(0);
-    expect(log.indexOf(`appended:${a.id}`)).toBeLessThan(log.indexOf(`deleted:${a.id}`));
-    expect(await service.getTab(a.id)).toBeNull();
-    expect(await service.getEvents(a.id)).toEqual([]);
+    expect(log.indexOf(`appended:${a.id}`)).toBeLessThan(log.indexOf(`archived:${a.id}`));
+    expect((await service.getTab(a.id))?.archived).toBe(true);
+    expect((await storedChain(service, a.id)).map((e) => e.sequence)).toEqual([0, 1]);
     // 開いたままの B には全タブ記録のイベントが入っている
     expect((await service.getEvents(b.id)).map((e) => e.sequence)).toEqual([1]);
   });
@@ -366,7 +493,100 @@ describe('TabManager closing a tab (#342)', () => {
 
     expect(workerB.terminated).toBe(0);
     expect(await service.getEvents(b.id)).toHaveLength(1);
+    expect((await storedChain(service, a.id)).map((e) => e.sequence)).toEqual([0, 1]);
+  });
+});
+
+/** 同じセッションを別インスタンスが再開した状態を作る (所有権の喪失。#237) */
+async function initSessionStorageServiceForTakeover(sessionId: string): Promise<SessionStorageService> {
+  const { SessionStorageService: Service } = await import('../../../services/SessionStorageService.js');
+  const other = new Service();
+  await other.initialize();
+  await other.resumeSession(sessionId);
+  return other;
+}
+
+describe('TabManager closing a tab in exam mode (closedTabPolicy: delete)', () => {
+  let service: SessionStorageService | null = null;
+
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory();
+    setStorageNamespace('exam');
+    log = [];
+    appendDelayMs = 0;
+    MockPoswWorker.instances = [];
+    vi.stubGlobal('Worker', MockPoswWorker);
+    vi.stubGlobal('sessionStorage', { removeItem: vi.fn(), getItem: vi.fn(), setItem: vi.fn() });
+    vi.spyOn(TabManager.prototype, 'saveToStorage').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    service?.close();
+    service = null;
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('deletes the tabs row and events of a closed tab instead of archiving them', async () => {
+    const s = await setup();
+    service = s.service;
+    s.tabManager.setClosedTabPolicy('delete');
+    const a = await s.openTab('a.c');
+    s.recorder.record(keystroke);
+    await s.recorder.whenTabSettled(a.id);
+
+    s.tabManager.closeTab(a.id);
+    await s.tabManager.whenTabsRetired();
+
+    expect(await service.getTab(a.id)).toBeNull();
     expect(await service.getEvents(a.id)).toEqual([]);
+    expect(s.archiveTabSpy).not.toHaveBeenCalled();
+  });
+
+  it('waits for an in-flight event to be appended before deleting the rows, leaving no orphan events', async () => {
+    const s = await setup();
+    service = s.service;
+    s.tabManager.setClosedTabPolicy('delete');
+    const a = await s.openTab('a.c');
+    const worker = MockPoswWorker.instances[0]!;
+    worker.hold = true;
+    s.recorder.record(keystroke);
+    await vi.waitFor(() => expect(worker.held).toHaveLength(1));
+
+    s.tabManager.closeTab(a.id);
+    worker.release();
+    await s.tabManager.whenTabsRetired();
+
+    expect(log).toEqual([`appended:${a.id}`, `deleted:${a.id}`, 'terminated:0']);
+    expect(await service.getTab(a.id)).toBeNull();
+    expect(await service.getEvents(a.id)).toEqual([]);
+  });
+
+  it('terminates the worker even when deleting the closed tab from IndexedDB fails', async () => {
+    const s = await setup();
+    service = s.service;
+    s.tabManager.setClosedTabPolicy('delete');
+    const a = await s.openTab('a.c');
+    s.deleteTabSpy.mockRejectedValueOnce(new Error('quota'));
+
+    s.tabManager.closeTab(a.id);
+    await s.tabManager.whenTabsRetired();
+
+    expect(MockPoswWorker.instances[0]?.terminated).toBe(1);
+  });
+
+  it('does not reopen anything while the exam tab lock is on', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c');
+    s.tabManager.closeTab(a.id);
+    await s.tabManager.whenTabsRetired();
+    s.tabManager.setExamLock(true);
+
+    expect(await s.tabManager.reopenArchivedTab(a.id)).toBeNull();
+    expect((await service.getTab(a.id))?.archived).toBe(true);
   });
 });
 
@@ -380,8 +600,8 @@ function gate() {
 }
 
 /**
- * 閉じたタブの後始末の途中 (完了待ちの後・削除の最中・削除の後で dispose の前・dispose の後) に
- * 記録の要求が届いても、そのタブの events 行が残らない (#788)。
+ * 閉じたタブの後始末の途中 (完了待ちの後・書き込みの最中・書き込みの後で dispose の前・dispose の後) に
+ * 記録の要求が届いても、閉じたタブの events は閉じた時点のチェーンのまま増えない (#788 / #317)。
  *
  * 防いでいるのは、closeTab が retireTab を始める前に同期でタブを `tabs` から外すこと
  * (TabManager.closeTab)。EventRecorder の記録の入口 (record / recordToTabId / recordToAllTabs) は
@@ -424,19 +644,19 @@ describe('TabManager closing a tab while record requests keep arriving (#788)', 
       await stop.release;
     });
   };
-  const holdDuringDelete: Hold = (s, _closedTabId, stop) => {
-    const deleteTab = s.deleteTabSpy.getMockImplementation()!;
-    s.deleteTabSpy.mockImplementationOnce(async (tabId) => {
-      const deleting = deleteTab(tabId);
+  const holdDuringArchive: Hold = (s, _closedTabId, stop) => {
+    const archiveTab = s.archiveTabSpy.getMockImplementation()!;
+    s.archiveTabSpy.mockImplementationOnce(async (tab, events) => {
+      const archiving = archiveTab(tab, events);
       stop.reached();
       await stop.release;
-      await deleting;
+      await archiving;
     });
   };
-  const holdAfterDeleteBeforeDispose: Hold = (s, _closedTabId, stop) => {
-    const deleteTab = s.deleteTabSpy.getMockImplementation()!;
-    s.deleteTabSpy.mockImplementationOnce(async (tabId) => {
-      await deleteTab(tabId);
+  const holdAfterArchiveBeforeDispose: Hold = (s, _closedTabId, stop) => {
+    const archiveTab = s.archiveTabSpy.getMockImplementation()!;
+    s.archiveTabSpy.mockImplementationOnce(async (tab, events) => {
+      await archiveTab(tab, events);
       // この後 retireTab は同期で TypingProof.dispose() に進む
       stop.reached();
       await stop.release;
@@ -446,16 +666,17 @@ describe('TabManager closing a tab while record requests keep arriving (#788)', 
   const afterDisposed = null;
 
   it.each([
-    ['right after the closed tab settled, before its rows are deleted', holdAfterSettled],
-    ['while the closed tab rows are being deleted', holdDuringDelete],
-    ['after the closed tab rows are deleted, before its worker is disposed', holdAfterDeleteBeforeDispose],
+    ['right after the closed tab settled, before it is archived', holdAfterSettled],
+    ['while the closed tab is being archived', holdDuringArchive],
+    ['after the closed tab is archived, before its worker is disposed', holdAfterArchiveBeforeDispose],
     ['after the closed tab worker is disposed', afterDisposed],
-  ] as const)('leaves no events row for the closed tab when record requests arrive %s', async (_label, hold) => {
+  ] as const)('adds no event to the closed tab when record requests arrive %s', async (_label, hold) => {
     const s = await setup();
     service = s.service;
     const a = await s.openTab('a.c');
     const b = await s.openTab('b.c');
     await s.tabManager.switchTab(a.id);
+    const chainAtClose = a.typingProof.events.map((e) => ({ sequence: e.sequence, hash: e.hash }));
 
     const reached = gate();
     const release = gate();
@@ -480,8 +701,8 @@ describe('TabManager closing a tab while record requests keep arriving (#788)', 
     await s.recorder.whenTabSettled(a.id);
     await s.recorder.whenTabSettled(b.id);
 
-    expect(await service.getTab(a.id)).toBeNull();
-    expect(await service.getEvents(a.id)).toEqual([]);
+    expect((await service.getTab(a.id))?.archived).toBe(true);
+    expect(await storedChain(service, a.id)).toEqual(chainAtClose);
     // 要求は捨てられず、開いたままの B に載っている (record と recordToAllTabs の 2 件)
     expect((await service.getEvents(b.id)).map((e) => e.sequence)).toEqual([1, 2]);
   });
@@ -489,8 +710,8 @@ describe('TabManager closing a tab while record requests keep arriving (#788)', 
 
 /**
  * export 前の保存 (flushToIndexedDB) とタブを閉じる後始末の競合 (#833)。flush の走行は
- * `currentSavePromise` に載らないので、閉じたタブの削除がそれを待たないと、flush が閉じたタブを
- * 書いている最中に閉じたとき、削除の後に tabs 行と events 行が書き戻される。
+ * `currentSavePromise` に載らないので、閉じたタブの書き込みがそれを待たないと、flush が閉じたタブを
+ * 書いている最中に閉じたとき、閉じたタブの行が flush の (archived の無い) 行で上書きされ、復元で蘇る。
  */
 describe('TabManager closing a tab while flushToIndexedDB is saving (#833)', () => {
   let service: SessionStorageService | null = null;
@@ -515,7 +736,7 @@ describe('TabManager closing a tab while flushToIndexedDB is saving (#833)', () 
     vi.unstubAllGlobals();
   });
 
-  it('leaves no rows for a tab closed while flushToIndexedDB is writing it, and still saves the open tab', async () => {
+  it('archives a tab closed while flushToIndexedDB is writing it only after the flush, and still saves the open tab', async () => {
     const s = await setup();
     service = s.service;
     const a = await s.openTab('a.c');
@@ -532,7 +753,7 @@ describe('TabManager closing a tab while flushToIndexedDB is saving (#833)', () 
       }
       await appendEvent(tabId, event);
     });
-    // 後始末が「記録の確定を待ち終えて、行を消す段」に来たことを知る
+    // 後始末が「記録の確定を待ち終えて、行を書く段」に来たことを知る
     const settled = gate();
     s.tabManager.setTabSettleBarrier(async (tabId) => {
       await s.recorder.whenTabSettled(tabId);
@@ -543,50 +764,186 @@ describe('TabManager closing a tab while flushToIndexedDB is saving (#833)', () 
     await writingA.opened;
     s.tabManager.closeTab(a.id);
     await settled.opened;
-    // flush が a を書いている間は、a の行を消さずに待つ
+    // flush が a を書いている間は、閉じたタブとして書かずに待つ
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(log).not.toContain(`deleted:${a.id}`);
+    expect(log).not.toContain(`archived:${a.id}`);
 
     releaseA.open();
     const outcome = await flushing;
     await s.tabManager.whenTabsRetired();
 
     expect(outcome).toEqual({ idbOk: true, sessionStorageOk: true });
-    expect(log.indexOf(`appended:${a.id}`)).toBeLessThan(log.indexOf(`deleted:${a.id}`));
-    expect(await service.getTab(a.id)).toBeNull();
-    expect(await service.getEvents(a.id)).toEqual([]);
+    expect(log.indexOf(`appended:${a.id}`)).toBeLessThan(log.indexOf(`archived:${a.id}`));
+    // flush の行で上書きされず、閉じたタブのまま (復元の対象に入らない)
+    expect((await service.getTab(a.id))?.archived).toBe(true);
+    expect((await service.loadTabs(s.session.sessionId)).map((t) => t.id)).toEqual([b.id]);
+    expect(await storedChain(service, a.id)).toEqual(
+      a.typingProof.events.map((e) => ({ sequence: e.sequence, hash: e.hash }))
+    );
     // 開いたままの B は flush で保存されている
     expect(await service.getTab(b.id)).not.toBeNull();
     expect((await service.getEvents(b.id)).map((e) => e.sequence)).toEqual(b.typingProof.events.map((e) => e.sequence));
   });
 
-  it('does not write back a closed tab when flushToIndexedDB starts while its rows are being deleted', async () => {
+  it('does not write back a closed tab as open when flushToIndexedDB starts while it is being archived', async () => {
     const s = await setup();
     service = s.service;
     const a = await s.openTab('a.c');
     const b = await s.openTab('b.c');
 
-    // 行を消し終えた直後 (dispose の前) で後始末を止める
-    const deleted = gate();
-    const releaseDelete = gate();
-    const deleteTab = s.deleteTabSpy.getMockImplementation()!;
-    s.deleteTabSpy.mockImplementationOnce(async (tabId) => {
-      await deleteTab(tabId);
-      deleted.open();
-      await releaseDelete.opened;
+    // 閉じたタブとして書き終えた直後 (dispose の前) で後始末を止める
+    const archived = gate();
+    const releaseArchive = gate();
+    const archiveTab = s.archiveTabSpy.getMockImplementation()!;
+    s.archiveTabSpy.mockImplementationOnce(async (tab, events) => {
+      await archiveTab(tab, events);
+      archived.open();
+      await releaseArchive.opened;
     });
 
     s.tabManager.closeTab(a.id);
-    await deleted.opened;
-    // 削除の途中に flush が始まり、終わる。閉じたタブは this.tabs から外れているので書かない
+    await archived.opened;
+    // 書き込みの途中に flush が始まり、終わる。閉じたタブは this.tabs から外れているので書かない
     const outcome = await s.tabManager.flushToIndexedDB();
-    releaseDelete.open();
+    releaseArchive.open();
     await s.tabManager.whenTabsRetired();
 
     expect(outcome).toEqual({ idbOk: true, sessionStorageOk: true });
-    expect(await service.getTab(a.id)).toBeNull();
-    expect(await service.getEvents(a.id)).toEqual([]);
+    expect((await service.getTab(a.id))?.archived).toBe(true);
     expect(await service.getTab(b.id)).not.toBeNull();
     expect((await service.getEvents(b.id)).map((e) => e.sequence)).toEqual(b.typingProof.events.map((e) => e.sequence));
+  });
+});
+
+/**
+ * 閉じたタブを開き直す (#317)。同じ中身とチェーンのタブが今のセッションの開いたタブとしてアクティブになり、
+ * 記録はチェーンの続きから進む。前のセッションのタブも開き直せる。書き直しに失敗したら閉じたタブのまま残る。
+ */
+describe('TabManager reopening a closed tab (#317)', () => {
+  let service: SessionStorageService | null = null;
+
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory();
+    setStorageNamespace('casual');
+    log = [];
+    appendDelayMs = 0;
+    MockPoswWorker.instances = [];
+    vi.stubGlobal('Worker', MockPoswWorker);
+    vi.stubGlobal('sessionStorage', { removeItem: vi.fn(), getItem: vi.fn(), setItem: vi.fn() });
+    vi.spyOn(TabManager.prototype, 'saveToStorage').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    service?.close();
+    service = null;
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  async function closeWithTyping(s: Awaited<ReturnType<typeof setup>>, content: string) {
+    const a = await s.openTab('a.c', content);
+    await s.openTab('b.c');
+    await s.tabManager.switchTab(a.id);
+    s.recorder.record(keystroke);
+    await s.recorder.whenTabSettled(a.id);
+    const chain = a.typingProof.events.map((e) => ({ sequence: e.sequence, hash: e.hash }));
+    s.tabManager.closeTab(a.id);
+    await s.tabManager.whenTabsRetired();
+    return { a, chain };
+  }
+
+  it('reopens a closed tab as the active open tab with the same content and chain, and lists it no more', async () => {
+    const s = await setup();
+    service = s.service;
+    const { a, chain } = await closeWithTyping(s, 'a');
+    expect((await s.tabManager.listArchivedTabs()).map((t) => t.id)).toEqual([a.id]);
+
+    const reopened = await s.tabManager.reopenArchivedTab(a.id);
+
+    expect(reopened?.id).toBe(a.id);
+    expect(s.tabManager.getActiveTab()?.id).toBe(a.id);
+    expect(reopened!.model.getValue()).toBe('a');
+    expect(reopened!.typingProof.events.map((e) => ({ sequence: e.sequence, hash: e.hash }))).toEqual(chain);
+    const row = await service.getTab(a.id);
+    expect(row?.archived).toBeUndefined();
+    expect(row?.archivedAt).toBeUndefined();
+    expect(await s.tabManager.listArchivedTabs()).toEqual([]);
+    expect((await service.loadTabs(s.session.sessionId)).map((t) => t.id).sort()).toEqual(
+      s.tabManager
+        .getAllTabs()
+        .map((t) => t.id)
+        .sort()
+    );
+  });
+
+  it('continues the reopened chain from the stored tail when recording resumes', async () => {
+    const s = await setup();
+    service = s.service;
+    const { a, chain } = await closeWithTyping(s, '');
+    await s.tabManager.reopenArchivedTab(a.id);
+
+    s.recorder.record(keystroke);
+    await s.recorder.whenTabSettled(a.id);
+
+    const stored = await service.getEvents(a.id);
+    expect(stored.map((e) => e.sequence)).toEqual([...chain.map((e) => e.sequence), chain.length]);
+    expect(stored.at(-1)!.previousHash).toBe(chain.at(-1)!.hash);
+  });
+
+  it('reopens a tab closed in a previous session into the current session', async () => {
+    const s = await setup();
+    service = s.service;
+    const { a, chain } = await closeWithTyping(s, 'a');
+    const next = await service.createSession();
+
+    const resumed = await newTabManager();
+    const reopened = await resumed.reopenArchivedTab(a.id);
+
+    expect(reopened?.model.getValue()).toBe('a');
+    expect(reopened!.typingProof.events.map((e) => ({ sequence: e.sequence, hash: e.hash }))).toEqual(chain);
+    expect((await service.getTab(a.id))?.sessionId).toBe(next.sessionId);
+    expect((await service.loadTabs(next.sessionId)).map((t) => t.id)).toEqual([a.id]);
+  });
+
+  it('returns null and leaves the row archived when the reopened row cannot be written', async () => {
+    const s = await setup();
+    service = s.service;
+    const { a } = await closeWithTyping(s, '');
+    vi.spyOn(service, 'saveTab').mockRejectedValueOnce(new Error('quota'));
+    const workersBefore = MockPoswWorker.instances.length;
+
+    expect(await s.tabManager.reopenArchivedTab(a.id)).toBeNull();
+
+    expect(s.tabManager.getTab(a.id)).toBeNull();
+    expect((await service.getTab(a.id))?.archived).toBe(true);
+    // 組み立てたタブの Worker は残さない
+    expect(MockPoswWorker.instances.slice(workersBefore).map((w) => w.terminated)).toEqual([1]);
+  });
+
+  it('does not reopen an open tab or an unknown id', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c');
+
+    expect(await s.tabManager.reopenArchivedTab(a.id)).toBeNull();
+    expect(await s.tabManager.reopenArchivedTab('missing')).toBeNull();
+    expect(s.tabManager.getAllTabs()).toHaveLength(1);
+  });
+
+  it('builds only one tab when the same closed tab is reopened twice at once', async () => {
+    const s = await setup();
+    service = s.service;
+    const { a } = await closeWithTyping(s, '');
+
+    const [first, second] = await Promise.all([
+      s.tabManager.reopenArchivedTab(a.id),
+      s.tabManager.reopenArchivedTab(a.id),
+    ]);
+
+    expect([first, second].filter((t) => t !== null)).toHaveLength(1);
+    expect(s.tabManager.getAllTabs().filter((t) => t.id === a.id)).toHaveLength(1);
   });
 });

@@ -17,12 +17,14 @@ import {
 } from '@wasmer/sdk';
 
 import { BaseExecutor } from '../base/BaseExecutor.js';
+import { WasmerSdkCorruptedError } from './errors.js';
 import type {
   ExecutorConfig,
   ExecutionCallbacks,
   ExecutionOptions,
   ExecutionResult,
   InitializationProgress,
+  InteractiveStdin,
   ParsedError,
 } from '../interfaces/ILanguageExecutor.js';
 
@@ -39,7 +41,17 @@ export type { ParsedError } from '../interfaces/ILanguageExecutor.js';
 const CLANG_VERSION = '0.1.1';
 
 /** Guest directory where the source and compiled binary are placed */
-const WORKSPACE_DIR = '/workspace';
+export const WORKSPACE_DIR = '/workspace';
+
+/**
+ * 利用者のコードの後ろに付けるリンクの引数 (C / C++ 共通)。
+ *
+ * webc のドライバは `-D_WASI_EMULATED_PROCESS_CLOCKS` を自分で足して `<time.h>` に `clock()` を宣言させるが、
+ * リンクには `-lc` しか渡さず、実体のある `libwasi-emulated-process-clocks.a` (sysroot にある) を足さない。
+ * そのままでは `clock()` が `undefined symbol: clock` でリンクに落ちる (#714)。
+ * このライブラリの `clock()` はプログラムの開始からの CLOCK_MONOTONIC の経過 (= 実時間) を返し、CPU 時間ではない
+ */
+const LINK_ARGS = ['-lwasi-emulated-process-clocks'];
 
 const RUNTIME_ERROR_PATTERNS = [
   'runtimeerror',
@@ -61,42 +73,50 @@ const RUNTIME_ERROR_PATTERNS = [
   'atomics.wait',
 ];
 
-/**
- * Error class for unrecoverable Wasmer SDK corruption
- * When this error is thrown, user must reload the page
- */
-export class WasmerSdkCorruptedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'WasmerSdkCorruptedError';
-  }
-}
+// 判定する側が Wasmer を読まずに済むよう、型は errors.ts に置く (#617)
+export { WasmerSdkCorruptedError };
+
+/** stdout を非バッファにする支援コードのファイル名 (拡張子を除く)。利用者のソースの隣に置く */
+const STDOUT_SUPPORT_BASENAME = '__typedcode_stdout';
 
 /**
- * clang に渡すソースを組み立てる: stdout を非バッファ化する preamble + ユーザーのコード。
- * stdout は行バッファから非バッファに切り替わり、ローカル端末と同じ見え方になる。
+ * stdout を非バッファにする支援コード (#709)。利用者のソースとは**別の翻訳単位**としてコンパイル・リンクする。
  *
- * preamble の最後の `#line 1` で、直後のユーザーのコードの 1 行目を 1 行目として数え直させる。
- * これが無いと clang のエラー行が preamble の行数分ずれ、エディタのマーカーが範囲外になる (#489)。
- * ファイル名は指定しない (`main.c` / `main.cpp` のまま。`parseErrors` が読む形を変えない)。
- * 行数を変える編集をするときは `#line 1` を必ずユーザーのコードの直前に置くこと。
+ * 利用者のプログラムの stdin / stdout は pipe で (#707。tty にしない)、そのままでは stdout がフルバッファになり、
+ * 改行の無いプロンプト (`printf("name? ")`) が入力を待つ間に出ない。constructor で main より前に
+ * `setvbuf(stdout, NULL, _IONBF, 0)` を呼び、書いた分がすぐターミナルに出るようにする。
+ * 利用者が main の中で自分でバッファを渡して `setvbuf(stdout, buf, _IOFBF, sizeof buf)` を呼べば、その設定が後から
+ * 上書きする (`fflush` もそのまま効く)。ただし wasi-libc (musl) の `setvbuf` はバッファを渡されたときだけ大きさを
+ * 変えるので、`setvbuf(stdout, NULL, _IOFBF, n)` では非バッファのまま (ネイティブの pipe の既定のフルバッファとは違う。
+ * 回帰は `packages/e2e/tests/code-execution-c-stdout.spec.ts`)。
+ *
+ * 利用者のソースには何も前置しない: 前置すると `stdio.h` を書き忘れたコードが通り、利用者の翻訳単位に
+ * `FILE` や `EOF` などの宣言が入る (#709)。行番号・`__LINE__`・`__FILE__` も利用者のソースのまま (#489)。
+ * C++ では同じ内容を `.cpp` としてコンパイルする (C++ の実行の `-std=c++17` は C の入力に付けられない)。
+ * C++ のとき libc++ の `<stdio.h>` が出す「Clang 17 以降」の警告は、CppExecutor が `-include` する guard
+ * (`LIBCXX_VERSION_WARNING_GUARD`。#871) が、利用者のソースとこの翻訳単位の両方で黙らせる。ここに `#pragma` を
+ * 重ねない (同じ原因 (#573) の手当てを 1 か所にまとめ、版の揃った webc に替えたときに一緒に外せるようにする)
  */
-export function buildSourceWithPreamble(code: string): string {
-  const preamble = `#include <stdio.h>
-/* TypedCode: Force unbuffered stdout for immediate output */
+export const STDOUT_SUPPORT_SOURCE = `/* TypedCode: unbuffered stdout for immediate output (#709) */
+#include <stdio.h>
 __attribute__((constructor))
 static void __typedcode_init_stdout(void) {
     setvbuf(stdout, (char *)0, _IONBF, 0);
 }
-#line 1
 `;
-  return preamble + code;
+
+/** 支援コードのファイル名。利用者のソースと同じ拡張子にして、clang に同じ言語として扱わせる */
+export function stdoutSupportFileName(sourceFile: string): string {
+  const dot = sourceFile.lastIndexOf('.');
+  return `${STDOUT_SUPPORT_BASENAME}${dot >= 0 ? sourceFile.slice(dot) : '.c'}`;
 }
 
 /** Options for compiling with different settings */
 export interface CompileOptions {
   sourceFile?: string;
   compileArgs?: string[];
+  /** 利用者のソースと一緒に sandbox に置くファイル (ゲストの絶対パス → 内容)。`-include` で読ませるヘッダなど (#871) */
+  extraFiles?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -185,6 +205,9 @@ export class CExecutor extends BaseExecutor {
       });
     } catch (error) {
       console.error('[CExecutor] Initialization failed:', error);
+      // 失敗した回の client (worker pool) を手放す。次の initialize が作り直す (#617。再試行で client を溜めない)
+      this.closeWasmer();
+      this.clangPkg = null;
 
       // Check if this is an unrecoverable Wasmer SDK corruption
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -280,12 +303,17 @@ export class CExecutor extends BaseExecutor {
     try {
       callbacks.onProgress?.('Compiling...');
 
-      const modifiedCode = buildSourceWithPreamble(code);
+      // 利用者のソースはそのまま置き、stdout の支援コードは別の翻訳単位として隣に置く (#709)
+      const supportFile = stdoutSupportFileName(sourceFile);
 
-      // Each run gets a fresh sandbox holding clang and the source file
+      // Each run gets a fresh sandbox holding clang and the source files
       sandbox = await wasmer.sandboxes.create({
         packages: [clangPkg],
-        files: { [`${WORKSPACE_DIR}/${sourceFile}`]: modifiedCode },
+        files: {
+          ...options.extraFiles,
+          [`${WORKSPACE_DIR}/${sourceFile}`]: code,
+          [`${WORKSPACE_DIR}/${supportFile}`]: STDOUT_SUPPORT_SOURCE,
+        },
       });
       if (run.aborted) return abortedResult();
 
@@ -294,12 +322,14 @@ export class CExecutor extends BaseExecutor {
       const compiler = await sandbox
         .command(clangPkg, [
           `${WORKSPACE_DIR}/${sourceFile}`,
+          `${WORKSPACE_DIR}/${supportFile}`,
           '-o',
           `${WORKSPACE_DIR}/main.wasm`,
           '-target',
           'wasm32-wasi',
           '-O2',
           ...extraArgs,
+          ...LINK_ARGS,
         ])
         .spawn({ stdin: 'closed', stdout: 'capture', stderr: 'capture' });
       if (!this.holdProcess(run, compiler, false)) return abortedResult();
@@ -346,8 +376,9 @@ export class CExecutor extends BaseExecutor {
           // 非対話の実行 (#802): 全体を書いてから閉じる (EOF)。ターミナルにはつながない
           feedAndClose(runInstance.stdin, execution.stdin);
         } else {
-          // Notify caller that stdin is ready for connection
-          callbacks.onStdinReady?.(runInstance.stdin.toWritableStream());
+          // 対話の実行 (#707): ターミナルが確定した行と EOF を pipe に渡す。tty (`terminal: true`) は使わない
+          // (行の編集は Python と同じ line discipline が受け持ち、記録と受け取る行を同じ文字列にする)
+          callbacks.onStdinReady?.(pipeInteractiveStdin(runInstance.stdin));
         }
       }
       callbacks.onProgramStart?.();
@@ -530,13 +561,15 @@ export class CExecutor extends BaseExecutor {
     // Matches .c, .cpp, .cc, .cxx files
     // `fatal error` (例: 見つからない #include) は error のマーカーにする (#708)
     const regex =
-      /(?:<stdin>|main\.c(?:pp)?|[\w.]+\.(?:c|cpp|cc|cxx)):(\d+):(\d+):\s*(fatal error|error|warning|note):\s*(.+)/g;
+      /(<stdin>|main\.c(?:pp)?|[\w.]+\.(?:c|cpp|cc|cxx)):(\d+):(\d+):\s*(fatal error|error|warning|note):\s*(.+)/g;
 
     for (const match of stderr.matchAll(regex)) {
-      const line = match[1];
-      const column = match[2];
-      const severity = match[3];
-      const message = match[4];
+      // 支援コード (別の翻訳単位。#709) の診断は利用者のソースの行ではないので、マーカーにしない
+      if (match[1]?.startsWith(`${STDOUT_SUPPORT_BASENAME}.`)) continue;
+      const line = match[2];
+      const column = match[3];
+      const severity = match[4];
+      const message = match[5];
       if (line && column && severity && message) {
         errors.push({
           line: parseInt(line, 10),
@@ -577,6 +610,32 @@ function feedAndClose(stdin: WritableBytes, text: string): void {
       // 既に閉じている
     }
   })();
+}
+
+/**
+ * 対話の実行の stdin (#707) を Wasmer の pipe に写す。書き込みと close を 1 本の列に並べ、渡した行を
+ * 順に届けてから閉じる (close で EOF。プログラムは止めない)。close の後の行は捨てる。
+ * プログラムが先に終わって書けなかったときの失敗は捨てる
+ */
+export function pipeInteractiveStdin(stdin: WritableBytes): InteractiveStdin {
+  let closed = false;
+  let queue: Promise<void> = Promise.resolve();
+  const enqueue = (op: () => Promise<void>): void => {
+    queue = queue.then(op).catch(() => {
+      // 読まずに終わった・既に閉じている
+    });
+  };
+  return {
+    writeLine(line) {
+      if (closed) return;
+      enqueue(() => stdin.write(line));
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      enqueue(() => stdin.close());
+    },
+  };
 }
 
 /**

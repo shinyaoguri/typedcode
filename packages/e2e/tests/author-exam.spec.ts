@@ -1,4 +1,5 @@
 import { webcrypto } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import { EditorApp } from './helpers/app.js';
 import {
@@ -12,6 +13,13 @@ import {
   tab,
 } from './helpers/author.js';
 import { loadExamFixture } from './helpers/examFixture.js';
+import {
+  CLASS_POLICIES,
+  capabilityContract,
+  contractOf,
+  loadClassPackage,
+  waitDialogOpen,
+} from './helpers/scenario.js';
 
 /**
  * `/author` の試験定義: 採用問題と出題順の編集・学生プレビュー・配布物の書き出し (#797 / ADR-0051)。
@@ -138,6 +146,50 @@ test('/author: 採用問題の初期コードのファイルを消してから�
   await expect(issue).toHaveAttribute('data-path', 'p1.c');
   await expect(page.locator('#author-build-btn')).toBeEnabled();
   expect(downloads).toBe(0);
+});
+
+// #645: 授業の配布物は「教室で実施」/「持ち帰り」を選んでから書き出す。既定は当てない
+test('/author: 授業の配布物を実施のしかたを選ばずに書き出そうとすると、no-policy で止めてダウンロードしない', async ({
+  page,
+}) => {
+  await openAuthorFolder(page, FOLDER, {
+    ...THREE_PROBLEMS,
+    '授業.exam.yaml': 'format: tc-exam/1\nexamId: lesson\nkind: class\nlanguages: [c]\nproblems: [p2.problem.yaml]\n',
+  });
+  let downloads = 0;
+  page.on('download', () => {
+    downloads += 1;
+  });
+  await openExportPanel(page);
+  await expect(page.locator('#author-export-class-policy')).toBeVisible();
+  await page.locator('#author-build-btn').click();
+  await expect(page.locator('#author-build-error')).toHaveAttribute('data-reason', 'no-policy');
+  expect(downloads).toBe(0);
+});
+
+test('/author: 「持ち帰り」で書き出した .tcclass を /class で読み込むと、/assignment と同じ能力になる', async ({
+  page,
+}) => {
+  await openAuthorFolder(page, FOLDER, {
+    ...THREE_PROBLEMS,
+    '授業.exam.yaml': 'format: tc-exam/1\nexamId: lesson\nkind: class\nlanguages: [c]\nproblems: [p2.problem.yaml]\n',
+  });
+  await openExportPanel(page);
+  await page.locator('input[name="author-class-policy"][value="take-home"]').check();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#author-build-btn').click()]);
+  expect(download.suggestedFilename()).toBe('lesson.tcclass');
+  const packagePath = test.info().outputPath('lesson.tcclass');
+  await download.saveAs(packagePath);
+
+  const app = new EditorApp(page);
+  await app.openModeFresh('class', { screenShare: 'share', waitReady: false });
+  await waitDialogOpen(app, 'welcome');
+  await loadClassPackage(app, {
+    name: 'lesson.tcclass',
+    mimeType: 'application/json',
+    buffer: readFileSync(packagePath),
+  });
+  expect(await capabilityContract(page)).toEqual(contractOf(CLASS_POLICIES.takeHome));
 });
 
 test('/author: 書き出した .tcexam を /exam のゲートで開くと、初期コードの入ったタブと公開ケースの入出力例が見える', async ({

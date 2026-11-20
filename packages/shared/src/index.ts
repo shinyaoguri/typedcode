@@ -155,12 +155,20 @@ export type {
 export {
   CHECKPOINT_PUBLIC_KEYS,
   findCheckpointPublicKey,
+  ALL_CHECKPOINT_KEY_ENVIRONMENTS,
+  DEFAULT_TRUSTED_CHECKPOINT_KEY_ENVIRONMENTS,
+  isCheckpointKeyEnvironmentTrusted,
+  trustedCheckpointKeyEnvironments,
 } from './checkpointKeys/index.js';
 
 export type {
   CheckpointPublicKey,
   CheckpointPublicKeyStatus,
+  CheckpointKeyEnvironment,
+  LocalCheckpointPublicKey,
+  RegistryCheckpointPublicKey,
   RegistryKeyTrustStatus,
+  UntrustedEnvironmentKey,
 } from './checkpointKeys/index.js';
 
 // 試験モード (ADR-0006): 封印問題パッケージ + 監督コード束縛
@@ -200,6 +208,7 @@ export {
   checkExamLanguage,
   CLASS_PACKAGE_SCHEMA,
   parseClassPackage,
+  parseClassPolicy,
   encodeClassPackage,
 } from './exam/index.js';
 

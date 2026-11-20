@@ -181,6 +181,40 @@ describe('TrustCalculator.calculate — level determination', () => {
     });
   });
 
+  describe('evidence signed by a staging key in a build that does not trust staging (#321)', () => {
+    /** staging の Worker と正直にやり取りした proof を、本番のビルドで見た結果 (shared が証拠を数えなかった) */
+    const stagingSigned = () =>
+      ({
+        ...healthyResult(),
+        rootAnchored: false,
+        rootAnchorUntrustedKey: { keyId: 'tcp-202606-0e46c9', environment: 'staging' },
+        signedCheckpointAnchored: false,
+        signedCheckpointValid: undefined,
+        signedCheckpointUntrustedKeys: [{ keyId: 'tcp-202606-0e46c9', environment: 'staging' }],
+      }) as VerificationResultData;
+
+    it('warns rather than fails, because staging evidence is absent evidence and not tampering', () => {
+      const r = calc(stagingSigned());
+
+      expect(r.level).toBe('partial');
+      expect(r.issues.filter((i) => i.severity === 'error')).toHaveLength(0);
+    });
+
+    it('names the staging key as the reason the root is unanchored instead of a missing token', () => {
+      const messages = calc(stagingSigned()).issues.map((i) => i.message);
+
+      expect(messages).toContain(t('trust.issueRootUntrustedKeyEnvironment', { keyId: 'tcp-202606-0e46c9' }));
+      expect(messages).not.toContain(t('trust.issueRootNotAnchored'));
+    });
+
+    it('names the staging key as the reason the checkpoints do not anchor instead of missing checkpoints', () => {
+      const messages = calc(stagingSigned()).issues.map((i) => i.message);
+
+      expect(messages).toContain(t('trust.issueAnchoringUntrustedKeyEnvironment', { keyId: 'tcp-202606-0e46c9' }));
+      expect(messages).not.toContain(t('trust.issueAnchoringMissing'));
+    });
+  });
+
   it('does not warn about root anchoring for an exam proof (own T0 binding)', () => {
     const r = calc({
       ...healthyResult(),

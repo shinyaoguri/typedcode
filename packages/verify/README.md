@@ -22,6 +22,10 @@ TypedCode のエクスポートファイルを検証する Web アプリ。VSCod
 
 検証はすべてブラウザ内で完結します (ネットワークアクセスなし)。
 
+## 対応ブラウザ
+
+動作確認は Chromium のみ (E2E は Chromium でしか回していない。[ADR-0033](../../docs/adr/0033-e2e-round-trip-harness-as-deploy-gate.md))。他のブラウザ (Safari・Firefox など) は保証しません。editor と違って遮断はしていないので開けますが、壊れたときの報告を受けてから確かめます (#596)。
+
 ## 開発
 
 ```bash
@@ -29,6 +33,8 @@ npm run dev      # http://localhost:5174
 npm run build
 npm run preview
 ```
+
+ビルドに `TYPEDCODE_TRUST_STAGING_KEYS=true` を渡すと、staging の Worker の鍵で署名された proof も時刻アンカーに数えるビルドになります (#321。deploy.yml が staging と PR プレビューのビルドにだけ渡す)。渡さないビルド (本番・手元) は本番の鍵 (と手元の開発用の鍵) だけを数え、staging の鍵の proof は整合性を落とさずに「アンカーなし」と理由を表示します。値は `true` / `false` のどちらかで、それ以外はビルドを止めます。
 
 ## 主要な仕組み
 

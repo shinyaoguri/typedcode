@@ -15,12 +15,16 @@
 - **エクスポート**: 証明 JSON・ソースコード・スクリーンショット・README を含む ZIP アーカイブ
 - **i18n**: 日本語と英語の UI
 
+## 対応ブラウザ
+
+Chromium 系のブラウザ (Chrome・Edge・Opera・Brave など) だけで記録できます。E2E を Chromium でしか回していないため ([ADR-0033](../../docs/adr/0033-e2e-round-trip-harness-as-deploy-gate.md))、Safari と Firefox (と iOS のブラウザ。iOS では Chrome も WebKit で動く) は起動時に「サポートされていないブラウザです」の画面で止め、証明を記録させません (#596)。判定はユーザーエージェント (UA) の文字列だけで行います (`src/app/browserSupport.ts`)。
+
 ## ブラウザ内コード実行
 
 | 言語 | ランタイム | 補足 |
 |----------|---------|---------|
-| C | Wasmer SDK | Clang WASM、stdin/stdout 対応 |
-| C++ | Wasmer SDK | C と同じ Clang WASM。**`<iostream>` は使えない** (コンパイルが終わらない)。`<string>` / `<vector>` / `<array>` / `<memory>` / `<algorithm>` など C++ 標準ライブラリのヘッダも同じく、終わらないかコンパイラが落ちる。入出力は `<cstdio>` (`std::printf` / `std::scanf`) を使う。原因はコンパイラ (clang 16) と同梱の libc++ ヘッダ (19) の版の食い違い ([#490](https://github.com/shinyaoguri/typedcode/issues/490)) |
+| C | Wasmer SDK | Clang WASM、stdin/stdout 対応。**`clock()` は実時間** (プログラムの開始からの経過時間) を返す。ネイティブの C のような CPU 時間ではなく、入力待ちや `sleep` の間も進む。`CLOCK_PROCESS_CPUTIME_ID` も実時間で、この環境で CPU 時間を測る手段は無い (`getrusage` / `times` は正しい値を返さない)。刻みは 1 ミリ秒程度。値はブラウザ上の WebAssembly (`-O2`。ランタイムの初期化は含まない) での経過時間なので、ネイティブ環境の計測とは比べられない (#714) |
+| C++ | Wasmer SDK | C と同じ Clang WASM。**`<iostream>` は使えない** (コンパイルが終わらない)。`<string>` / `<vector>` / `<array>` / `<memory>` / `<algorithm>` など C++ 標準ライブラリのヘッダも同じく、終わらないかコンパイラが落ちる。入出力は `<cstdio>` (`std::printf` / `std::scanf`) を使う。原因はコンパイラ (clang 16) と同梱の libc++ ヘッダ (19) の版の食い違い ([#490](https://github.com/shinyaoguri/typedcode/issues/490))。この食い違いで libc++ が出す版の警告 (`#warning`) は、ターミナルに出さない ([#871](https://github.com/shinyaoguri/typedcode/issues/871)) |
 | Python | Pyodide | CPython を WebAssembly にしたもの。jsdelivr から読み込む |
 | JavaScript | ネイティブ | ブラウザ eval + console キャプチャ |
 | TypeScript | Monaco 同梱の TypeScript worker (`getEmitOutput`。型チェックなし) | JS にトランスパイルしてから JavaScript と同じ sandbox で実行 |

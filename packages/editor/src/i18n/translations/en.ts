@@ -62,6 +62,7 @@ export const en: TranslationKeys = {
     menu: 'Menu',
     newFile: 'New File',
     importTemplate: 'Import Template',
+    closedTabs: 'Closed tabs',
     toggleTerminal: 'Toggle Terminal',
     toggleLogPanel: 'Toggle Log Panel',
     togglePreview: 'Toggle Preview',
@@ -96,8 +97,8 @@ export const en: TranslationKeys = {
 
   tabCloseDialog: {
     title: 'Close Tab',
-    warning: 'This action cannot be undone!',
-    description: 'The following data will be permanently deleted:',
+    warning: 'You can reopen a closed tab from "Closed tabs" in the main menu.',
+    description: 'The following data is kept in this browser:',
     itemKeystrokes: 'Recorded keystrokes',
     itemHashChain: 'Hash chain (proof data)',
     itemScreenshots: 'Associated screenshots',
@@ -323,7 +324,7 @@ export const en: TranslationKeys = {
     newTab: 'New Tab',
     closeTab: 'Close Tab',
     lastTabWarning: 'Cannot close the last tab',
-    closeConfirm: 'Close "${tabName}"?\nRecorded operation logs will also be deleted.',
+    closeConfirm: 'Close "${tabName}"?\nYou can reopen it from "Closed tabs" in the main menu.',
     verifiedTooltip: 'Verified',
     failedTooltip: 'Verification Failed',
     failureTimeout: 'Timeout',
@@ -426,6 +427,8 @@ export const en: TranslationKeys = {
     runtimeResetComplete: 'Runtime reset complete.',
     runtimeCorruptionDetected: 'Runtime error detected. Will auto-reset on next execution.',
     runtimeResetting: 'Resetting runtime...',
+    endInput: 'End input',
+    endInputTitle: 'End input (send EOF; same as Ctrl+D on an empty line)',
   },
 
   logViewer: {
@@ -562,8 +565,9 @@ export const en: TranslationKeys = {
 
   unsupportedBrowser: {
     title: 'Unsupported Browser',
-    description: 'TypedCode uses the Screen Capture API and only works in Chrome or Edge browsers.',
-    safariNote: 'Safari does not fully support the Screen Capture API, so it cannot be used.',
+    description: 'TypedCode only works in Chromium-based browsers such as Chrome and Edge.',
+    untestedNote:
+      'Other browsers, such as Safari and Firefox, cannot record proofs because recording (screen capture, IME input, and so on) has not been tested on them.',
     hint: 'Please access using one of the following browsers:',
   },
 
@@ -594,7 +598,7 @@ export const en: TranslationKeys = {
     author: 'Author',
     description: 'Description',
     filesToCreate: 'Files to Create',
-    warningExistingTabs: 'All existing tabs will be closed. Unsaved data will be lost.',
+    warningExistingTabs: 'All existing tabs will be closed. You can reopen them from "Closed tabs" in the main menu.',
     import: 'Import',
     importing: 'Importing template...',
     success: 'Created ${count} files',
@@ -618,6 +622,27 @@ export const en: TranslationKeys = {
     startFresh: 'New Session',
     resuming: 'Resuming session...',
     clearing: 'Clearing data...',
+    warningKeep: 'If you choose "New Session", you can keep your previous files or delete them permanently.',
+    freshMessage: 'What should happen to the files of your previous session?',
+    keepHint:
+      '"Keep previous files" keeps your previous files and records in this browser. You can reopen them from "Closed tabs" in the main menu.',
+    deleteHint:
+      '"Delete permanently" deletes all code, records and screenshots of the previous session. This cannot be undone. Choose this on a shared computer.',
+    keepPrevious: 'Keep previous files',
+    deleteAll: 'Delete permanently',
+    back: 'Back',
+    starting: 'Starting a new session...',
+  },
+
+  closedTabs: {
+    title: 'Closed tabs',
+    description: 'The code and records of closed tabs are kept in this browser. Reopen a tab to continue recording it.',
+    empty: 'There are no closed tabs.',
+    itemMeta: '${language} · ${count} events · closed ${time}',
+    reopen: 'Reopen',
+    close: 'Close',
+    loadFailed: 'Could not load the closed tabs.',
+    reopenFailed: 'Could not reopen the closed tab.',
   },
 
   // Original code that did not match the proof on restore (#413)
@@ -781,12 +806,19 @@ export const en: TranslationKeys = {
       kindClass: 'Class (.tcclass)',
       invalidTarget: 'This exam definition cannot be read. Please open it as text and fix it.',
       classHint: 'A class .tcclass is neither sealed nor signed. No signing key or proctor code is needed.',
+      policy: 'How it is run',
+      policyClassroom: 'In the classroom',
+      policyClassroomHint:
+        'Asks students to share their screen when they open it and records whether the window is full screen. Submissions can be downloaded even if the verification server is unreachable.',
+      policyTakeHome: 'Take-home',
+      policyTakeHomeHint: 'Does not ask for screen sharing and does not record full screen.',
       buttonExam: 'Export .tcexam',
       buttonClass: 'Export .tcclass',
       working: 'Exporting…',
       errorNoTarget: 'Please choose an exam to export.',
       errorUnknownExam: 'The exam definition "${path}" was not found. Please reload the folder.',
       errorNoKey: 'Enter the keyId and the private signing key (JWK).',
+      errorNoPolicy: 'Choose how it is run (in the classroom or take-home).',
       errorGeneric: 'Export failed. Please check your input.',
       errorDirty: 'Some files have unsaved changes. Save them before exporting: ${paths}',
       errorEmpty: 'No problems are added. Add problems in the exam definition.',

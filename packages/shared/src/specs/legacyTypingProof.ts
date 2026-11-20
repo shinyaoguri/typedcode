@@ -12,6 +12,7 @@
  */
 
 import { normalizeAcceptancePolicy, type AcceptancePolicyResult } from '../acceptancePolicy.js';
+import { ALL_CHECKPOINT_KEY_ENVIRONMENTS } from '../checkpointKeys/keyEnvironment.js';
 import type { RegistryKeyTrustStatus } from '../checkpointKeys/keyValidity.js';
 import {
   parseExamPackageManifest,
@@ -251,6 +252,9 @@ export async function verifyLegacyTypingProof(
     ...normalizeAcceptancePolicy(context.policy ?? {}),
     mode,
     signedCheckpointKeyRegistry: context.trust.checkpointKeys,
+    // 信頼の範囲は呼び出し側が渡した鍵の一覧そのもの (#321)。鍵の環境では絞らない: 一覧に staging の鍵を
+    // 入れるかどうかを呼び出し側が決める (既定の環境の範囲に黙って落とさない。不変条件 15)
+    trustedKeyEnvironments: ALL_CHECKPOINT_KEY_ENVIRONMENTS,
     // 入口が自分で検証した束縛の結果だけを渡す (呼び出し側の申告は受けない。ADR-0054 §1)
     examBindingVerified: problem.binding?.valid === true,
   });

@@ -32,29 +32,21 @@ const DOC_END = 'Control+End';
 const SAME_TAB_CLICK_GAP_MS = 350;
 
 /**
- * C ランタイムの取得先 (CExecutor が clang の webc を取る外部配信)。editor は起動のたびに C ランタイムを
- * バックグラウンドで初期化するので、model の列はリロード・再開のたびにここへ取りに行く。到達できる日と
- * できない日で結果が変わらないよう、model では常に route で止める (`start()`。#771)。model の手に
- * コードを実行する手は無く、C の実物の実行は `@nightly` の code-execution-c-python.spec.ts /
- * production-build.spec.ts が外部配信で見る。
+ * C ランタイムの取得先 (CExecutor が clang の webc を取る外部配信)。editor は C / C++ を実行するまで C ランタイムを
+ * 取らない (#617) ので、コードを実行する手の無い model の列はここへ取りに行かないはず。到達できる日とできない日で
+ * 結果が変わらないよう、model では常に route で止める (`start()`。#771)。万一起動や再開で取りに行けば、止めた結果の
+ * console.error が許可リストに無いので列が落ちる (起動で取らないことの見張りを兼ねる)。C の実物の実行は `@nightly` の
+ * code-execution-c-python.spec.ts / production-build.spec.ts が外部配信で見る。
  */
 const EXTERNAL_C_RUNTIME_ORIGIN = 'https://assets.typedcode.dev/';
-
-const BLOCKED_C_RUNTIME = 'C ランタイムの取得先を route で止めた結果 (EXTERNAL_C_RUNTIME_ORIGIN。#771)';
 
 /**
  * console.error のうち、既知のノイズとして許すもの。根拠を書けるものだけを足す (無闇に広げない)。
  * 判定は文言 (`msg.text()`) の 1 行目の完全一致と、`url` があれば発生元 (`msg.location().url`) の前方一致。
  * 1 行目だけを見るのは、console.error に Error を渡すと 2 行目以降にスタック (dev と build で行番号が変わる) が付くため。
+ * (起動のたびの C ランタイムの取得を止めた結果の 3 件 = #771 は、起動で取らなくなったので外した。#617)
  */
-const ALLOWED_CONSOLE_ERRORS: readonly { text: string; url?: string; reason: string }[] = [
-  { text: 'Failed to load resource: net::ERR_FAILED', url: EXTERNAL_C_RUNTIME_ORIGIN, reason: BLOCKED_C_RUNTIME },
-  { text: '[CExecutor] Initialization failed: TypeError: Failed to fetch', reason: BLOCKED_C_RUNTIME },
-  {
-    text: '[RuntimeManager] C runtime initialization failed: Error: Failed to initialize C compiler: Failed to fetch',
-    reason: BLOCKED_C_RUNTIME,
-  },
-];
+const ALLOWED_CONSOLE_ERRORS: readonly { text: string; url?: string; reason: string }[] = [];
 
 function isAllowedConsoleError(text: string, url: string): boolean {
   const firstLine = text.split('\n', 1)[0];
@@ -402,7 +394,11 @@ interface StoredTabState {
   events: { index: number; hash: string; previousHash: string | null }[];
 }
 
-/** casual の session DB から全タブのレコードと events を読む (読み取りだけ。開いているエディタのページから呼ぶ)。 */
+/**
+ * casual の session DB から全タブのレコードと events を読む (読み取りだけ。開いているエディタのページから呼ぶ)。
+ * currentHash は editor の `getTab` / `loadTabs` と同じく、tabs 行と tabProgress (#627) の位置の大きい方
+ * (同じなら tabProgress) から採る。
+ */
 function readStoredSession(page: Page): Promise<StoredTabState[]> {
   return page.evaluate(
     (dbName) =>
@@ -411,16 +407,31 @@ function readStoredSession(page: Page): Promise<StoredTabState[]> {
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
           const db = open.result;
-          const tx = db.transaction(['tabs', 'events'], 'readonly');
+          const tx = db.transaction(['tabs', 'tabProgress', 'events'], 'readonly');
           const tabsReq = tx.objectStore('tabs').getAll();
+          const progressReq = tx.objectStore('tabProgress').getAll();
           const eventsReq = tx.objectStore('events').getAll();
           tx.onerror = () => reject(tx.error);
           tx.oncomplete = () => {
             db.close();
             type Row = { tabId: string; eventIndex: number; eventData: { hash: string; previousHash: string | null } };
+            type Position = { lastWrittenEventIndex: number; currentHash: string };
             const events = (eventsReq.result as Row[]).sort((a, b) => a.eventIndex - b.eventIndex);
+            const progress = new Map(
+              (progressReq.result as (Position & { tabId: string })[]).map((p) => [p.tabId, p] as const)
+            );
             resolve(
-              (tabsReq.result as { id: string; content: string; currentHash: string }[])
+              (tabsReq.result as (Position & { id: string; content: string; archived?: boolean })[])
+                // 閉じたタブ (#317) は行と events が残るが、開いているタブ (モデルの tabs) ではない
+                .filter((t) => !t.archived)
+                .map((t) => {
+                  const p = progress.get(t.id);
+                  return {
+                    ...t,
+                    currentHash:
+                      p && p.lastWrittenEventIndex >= t.lastWrittenEventIndex ? p.currentHash : t.currentHash,
+                  };
+                })
                 .map((t) => ({
                   id: t.id,
                   content: t.content,
@@ -455,7 +466,7 @@ function tamperStoredSession(page: Page, tamper: Exclude<ResumeTamper, 'none'>):
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
           const db = open.result;
-          const tx = db.transaction(['sessions', 'tabs', 'events'], 'readwrite');
+          const tx = db.transaction(['sessions', 'tabs', 'tabProgress', 'events'], 'readwrite');
           let summary = '';
           let failure: Error | null = null;
           tx.onerror = () => reject(tx.error);
@@ -481,28 +492,38 @@ function tamperStoredSession(page: Page, tamper: Exclude<ResumeTamper, 'none'>):
             };
             return;
           }
-          // staleHash: 各タブの currentHash を、events の 1 つ前の hash に戻す (#322 の手本は先頭の hash)
+          // staleHash: 各タブの currentHash を、events の 1 つ前の hash に戻す (#322 の手本は先頭の hash)。
+          // append の位置は tabProgress にもあり、読み出しは同じ位置なら tabProgress を採るので両方戻す (#627)
           const tabsReq = tx.objectStore('tabs').getAll();
+          const progressReq = tx.objectStore('tabProgress').getAll();
           const eventsReq = tx.objectStore('events').getAll();
-          let pending = 2;
+          let pending = 3;
           const done = () => {
             if (--pending > 0) return;
             type Row = { tabId: string; eventIndex: number; eventData: { hash: string } };
             const events = (eventsReq.result as Row[]).sort((a, b) => a.eventIndex - b.eventIndex);
+            const progressRows = progressReq.result as { tabId: string; currentHash: string }[];
             let rewound = 0;
-            for (const tab of tabsReq.result as { id: string; currentHash: string }[]) {
+            for (const tab of tabsReq.result as { id: string; currentHash: string; archived?: boolean }[]) {
+              // 閉じたタブ (#317) は再開で開かないので、手を入れても観測されない
+              if (tab.archived) continue;
               const own = events.filter((e) => e.tabId === tab.id);
               const tail = own.at(-1)?.eventData.hash;
               const previous = own.at(-2)?.eventData.hash;
               if (!previous || !tail) continue;
               tab.currentHash = previous;
               tx.objectStore('tabs').put(tab);
+              for (const progress of progressRows.filter((p) => p.tabId === tab.id)) {
+                progress.currentHash = previous;
+                tx.objectStore('tabProgress').put(progress);
+              }
               rewound += 1;
             }
             if (rewound === 0) return fail('staleHash: no stored tab had 2+ events to rewind to');
             summary = `rewound currentHash of ${rewound}/${tabsReq.result.length} tabs`;
           };
           tabsReq.onsuccess = done;
+          progressReq.onsuccess = done;
           eventsReq.onsuccess = done;
         };
       }),

@@ -265,6 +265,7 @@ interface CheckpointData {
 **Workers 側処理** (`/api/checkpoint/sign`):
 1. スキーマ検証
 2. **sessionStartToken 検証 (ADR-0027)**: 同送された token の ECDSA 署名を registry で検証し、`token.payload.sessionId === input.sessionId` を要求 (KV read より前。無認証リクエストに KV コストを払わない)
+2a. **token の鍵の環境 (#321)**: token の鍵 (registry のエントリ) の `environment` が、この Worker の署名鍵 (`CHECKPOINT_SIGNING_KEY_ID` のエントリ) の `environment` と一致しなければ 401 `TOKEN_INVALID` (KV read より前。どちらかに環境が無ければ一致としない)。registry には production と staging の鍵が並ぶので、これが無いと本番の Worker が staging の Worker の発行した token で署名する。署名鍵が registry に無いときはここで判定せず、署名鍵のガード (500) が止める
 2b. **token の最大有効期間 (#227)**: `now - token.payload.issuedAt > SESSION_TOKEN_MAX_AGE_MS` (30 日) なら 401 `TOKEN_EXPIRED` (KV read より前)。この検査は sign 経路だけで行い、検証器 (`verifySessionStartToken`) は age を見ない (採点時に過去の proof が落ちないように)。未来の `issuedAt` は弾かない
 3. KV から `session:{sessionId}:{tabId}` を取得
 4. **firstSeenAt 確定**: 既存があればその値、なければ `now` で初回書込
@@ -333,10 +334,11 @@ interface SignedCheckpointEnvelope {
 
 授業モード (`/class`) は「**監督下だが封印しない**(問題は公開)」モード (ADR-0011 §3)。試験の暗号機構 (封印・監督コード・根束縛) は持たず、問題配布の真正性は **tier ① 自己申告** (ADR-0011 §4①) に拠る。
 
-- **配布フォーマット (`*.tcclass`, JSON)**: `{ schema: 'tcclass/1', classId, allowed:{languages}, bundle }`。`bundle` は試験と**同一の `ExamBundle` (`tcexam-exam/1`)** を**平文**で内包する (暗号化・署名なし)。受講者は `/class` の非ブロッキングローダで読み込む (監督コード不要・スキップ可)。`parseClassPackage` は構造検証のみ。
+- **配布フォーマット (`*.tcclass`, JSON)**: `{ schema: 'tcclass/1', classId, allowed:{languages}, policy?, bundle }`。`bundle` は試験と**同一の `ExamBundle` (`tcexam-exam/1`)** を**平文**で内包する (暗号化・署名なし)。受講者は `/class` の非ブロッキングローダで読み込む (監督コード不要・スキップ可)。`parseClassPackage` は構造検証のみ。
 - **タブ展開**: 各問を 1 タブで開く (1問1タブ)。class タブは **casual タブ** (`examContext` なし → 通常の genesis、**root 束縛なし**)。スターターコードは `templateInjectionEvent` で「与えられた雛形」として注入し、`templateName='tcclass/${classId}/${problemId}'` が **self-asserted problemId を proof に残す**。`mode:'class'` は自己申告で記録される。**新イベント型/proof フィールドは増えず `PROOF_FORMAT_VERSION` は据え置き** (完全後方互換)。
 - **能力差** (`core/mode.ts`): casual に対し問題表示 (`problemPanel`) と**受動的 fullscreen 記録** (`fullscreenTracking` だが要求バナーは出さない = `fullscreenBanner:false`) を足す。タブは緩 (`tabLock:false`)、汎用 DL も残す。教室・多人数・不安定網ゆえ export は best-effort。
-- **オーサリング**: `/author` は同じ問題から封印 (`.tcexam`) と未封印 (`.tcclass`) の両方を出せる (`buildClassPackage`、examId を classId に流用)。
+- **方針 (`policy`, #645)**: 教員が配布物で決める能力。`{ screenshots, fullscreenTracking, preExportBestEffort }` の 3 つで、**ある場合は全て boolean で必須**。欠け・型違い (`'false'`・`0`・`null` など)・`policy` 自体が object でないものは補完も変換もせず、`parseClassPackage` がファイルごと拒否する (知らないキーは落とす)。`policy` の無いファイル (#645 より前のもの) は従来どおり読め、開いた入口 (`/class` / `/assignment`) の能力のまま開く。ある場合は入口より優先し、editor は問題のタブを作る前に能力を切り替える (`capabilitiesWithPolicy`: 3 つを上書きし、起動時の画面共有の勧誘は `screenshots` に従う)。スクリーンショットを撮る方針を画面共有していない入口で読むと、その場で画面共有の選択を出す。撮らない方針なら画面共有を止める。当てた方針はモード別の localStorage (`typedcode-class-policy-<mode>`) に覚え、リロード後もその能力で起動する (方針の無い問題を読むか、リセットで消える)。schema は `tcclass/1` のまま、proof の形式と `proof.mode` (パスで決まる自己申告) は変わらない。試験 (`.tcexam`) と練習は方針を見ない。
+- **オーサリング**: `/author` は同じ問題から封印 (`.tcexam`) と未封印 (`.tcclass`) の両方を出せる (`buildClassPackage`、examId を classId に流用)。`.tcclass` は書き出しのパネルで「教室で実施」(= `/class` の能力値: 3 つとも `true`) か「持ち帰り」(= `/assignment` の能力値: 3 つとも `false`) を選んで方針を書く。選ばないと書き出さない (既定は当てない)。
 - **保証**: class proof の保証は低い (formative)。AI 写経は防げない (ADR-0011 の割り切り)。「上に偽れない (試験の保証は暗号束縛由来)・取り違えは Moodle が拾う」ので署名/封印は不要。
 
 ### 4.9. 問題の入出力例 (ADR-0048)
@@ -450,6 +452,19 @@ problems:              # 採用する問題を出題順に並べる
 - **localStorage**: proof データ (events・チェーン) は置かない。置くのは利用規約同意 (`typedcode-terms-accepted`)、テーマ / 言語 (`typedcode-theme` / `typedcode-locale`)、問題キャッシュ (`typedcode-exam-packages[-<mode>]` / `typedcode-class-problems[-<mode>]`。問題は T0 後公開値)。いずれも証明の入力ではない
 
 ローカル保存は **生存中のみ意味があり、検証可能性とは独立**。エクスポート時に proof.json へ凝縮される。
+
+**閉じたタブ (#317)**: exam 以外 (casual / class / assignment) では、利用者の明示の操作 (復旧ダイアログの「完全に削除する」と、設定メニューのリセット) なしにコードとイベントを IndexedDB から消さない。保持期間は無期限で、自動では消さない。
+
+| 操作 | IndexedDB に起きること |
+|---|---|
+| タブを閉じる (最後の 1 本を含む) | tabs 行に `archived: true` と `archivedAt` (epoch ms) を付けて残す。events・位置 (`tabProgress`) も残す。書き込みは 1 つの transaction (メモリ上の確定したチェーンのうち未保存のイベントの add・tabs 行の put・位置の put)。失敗・中断なら何も変わらず、閉じる前の行と events が残る。スクリーンショットは消さない |
+| テンプレートを取り込む | 取り込む前の全タブを上と同じく閉じたタブにする |
+| 復旧ダイアログで「新規」→「前のファイルを残す」(既定) | 前のセッションの開いているタブを 1 つの transaction で閉じたタブにする。events・スクリーンショットは残す |
+| 復旧ダイアログで「新規」→「完全に削除する」 | 全ストアを消す (`clearSession`。従来の「新規」と同じ) |
+| メインメニューの「閉じたタブ」から開き直す | tabs 行の `archived` / `archivedAt` を外し、`sessionId` を今のセッションにして書き直す。前のセッションのタブも開ける。チェーンは events 末尾の hash から続く (#322)。署名 checkpoint は proof が既に結びついたセッション (署名済み cp か root の token の sessionId) で続ける (1 つの proof に sessionId を混ぜない) |
+| 設定メニューのリセット | 現在のモードの DB ごと消す (閉じたタブを含む) |
+
+閉じたタブは復元の対象 (`loadTabs`) と復旧ダイアログの件数 (`hasExistingSession`) から外れる (#145 の「閉じたタブが蘇る」を起こさない)。列を足しただけなので DB の版は上げない (旧い行には欄が無く、`undefined` を false と読む)。exam はこれまでどおり、タブを閉じると tabs 行・events・位置を消し、「新規」は全ストアを消し、最後のタブを閉じるとスクリーンショットを消す (exam はタブロックで閉じられない)。容量の監視と、容量が逼迫したときの削除は扱わない。
 
 ### 5.2. エクスポート ZIP
 
@@ -639,6 +654,7 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 - `initialEventChainHash` の照合。root 式は proof の種別で分岐 (`verifyInitialHashRoot`):
   - **exam** (`proof.exam` あり): 試験モードの root 式 (v1 = `SHA256(fp ‖ nonce ‖ packageHash ‖ startToken)`、v2 = 末尾に `‖ problemContentHash`。`proof.exam.rootBinding` で分岐。§4.2)。proof 自己完結・package 不要
   - **anchored casual/class** (`proof.sessionStartToken` あり, ADR-0017): `SHA256(fp ‖ nonce ‖ serverNonce)`。加えてトークンの ECDSA を **registry で検証** (registry-only = C1。未登録 keyId は信頼しない)、鍵の有効期間/失効を `issuedAt` を anchor に判定、`token.fingerprintHash === proof.fingerprint.hash` (端末束縛)。成立で `rootAnchored=true`
+    - **信頼しない環境の鍵の token (#321)**: 署名・鍵の有効期間・端末束縛がすべて通っても、token の鍵の `environment` が検証器の信頼する環境 (既定は `production` と `development`。§8.4) に無ければ `rootAnchored=false` とし、`untrustedTokenKey` (`FullVerificationResult.rootAnchorUntrustedKey`: `keyId` と `environment`) を返す。失敗ではないので `rootAnchorFailure` は付けず、`valid` / `integrityValid` / `metadataValid` は落とさない (token の無い proof と同じ扱い。`requireRootAnchor` なら `root-anchor-missing` の違反)。署名が壊れた token は環境によらず下の失敗
     - **token を検証できないとき (#329)**: 未登録 keyId・署名不正・端末束縛の不一致は、それだけでは改ざんとしない。root を token の `serverNonce` 込みの式で照合し、**合えば root は有効** (`metadataValid` は落ちない = 整合性 `proven` のまま) で `rootAnchored=false`、理由を `rootAnchorFailure` (`code`: `token-unknown-key` / `token-invalid` / `token-fingerprint-mismatch`、`reason`、`keyId`) で返す。総合の `valid` は false (exit 1)、`errorMessage` は `reason`。未登録 keyId のときだけ「検証器の registry が古い可能性」を出す (registry は append-only なので、実際に起きるのは古い検証器で新しい鍵の token を見る場合)。**合わなければ従来どおり root 不一致 = 改ざん** (`serverNonce` の書き換えはここで落ちる)。token を剥がしても、token の無い proof は `serverNonce` を含まない従来式で照合されるので root は合わない
   - **従来 casual/class**: `SHA256(fp ‖ nonce)`。`rootAnchored=false`
 - `metadata` (pasteEvents, dropEvents, insertEvents, ...) を全イベント走査で再カウントして照合。`isPureTyping` は `evaluatePureTyping` (`typingProof/structuralEdit.ts`) が再計算する (advisory。`valid` を変えない。§7.1)
@@ -689,6 +705,11 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
     スキップされ、失効済みの鍵が黙って信頼されていた。fail-closed の粒度は **entry 単位**
     (registry 全体を無効化しない)。判定は `checkpointKeys/keyValidity.ts` に一本化されており、
     署名 cp / sessionStartToken / 出題者鍵 (`releaseTime` anchor) の 3 消費者が同じ実装を使う
+  - **鍵の環境 (#321)**: 上の検査を全 envelope が通った後で、どれかの鍵の `environment` が検証器の信頼する環境
+    (§8.4) に無ければ、署名 cp を時刻証拠に数えない: `anchored=false`・`valid=false`・`coverage` は署名 cp が
+    0 件のときと同じ・`temporal` / `density` は null、`untrustedKeys` (`keyId` と `environment`) を付ける。
+    改ざんではないので `reason` は付けず、総合の `valid` も落とさない (`requireSignedCheckpoints` なら違反)。
+    環境の無い registry のエントリ (型を通らない JSON の registry) は信頼しない (fail-closed)
 - envelope 配列全体:
   - 全 envelope で `sessionId` 一致
   - 全 envelope で `firstSeenAt` 一致 ← sessionId 流用防御
@@ -977,6 +998,7 @@ legacy 1.2.0 の中の方式は、版ではなくブロックの有無で分か�
 - 漏洩発覚時の対処: `revokedAt` を設定して registry に残す。`serverTimestamp < revokedAt` の envelope は warning 付きで trust、`>=` は fail。配布済みの verify / verify-cli は再リリースまで旧 registry のまま
 - registry の日時は手書きなので **parse 不能な entry は信頼しない** (fail-closed)。typo は `__tests__/registryFormat.test.ts` が CI で止める (厳密 ISO-8601 UTC・実在する日時・`revoked` なら `revokedAt` 必須)
 - 鍵ローテーション: 新旧並走運用 (新鍵 validFrom = 旧鍵 validUntil)
+- **鍵の環境 (#321)**: registry (`checkpointKeys/registry.ts`) の各エントリは `environment: 'production' | 'staging'` を必ず持つ (`registryFormat.test.ts` が強制)。localKeys.ts (gitignore 済み) の鍵は `checkpointKeys/index.ts` が `development` にする。staging の Worker は main への push ごとに自動デプロイされ、鍵の管理水準も本番より低いので、検証器は既定で `production` と `development` の鍵だけを時刻証拠 (token による root のアンカー・署名 cp) に数える。staging の鍵を数えるのは verify-cli の `--allow-staging-keys` と、`TYPEDCODE_TRUST_STAGING_KEYS=true` でビルドした verify (deploy.yml の staging と PR プレビューのビルド) だけ。範囲は shared の `trustedCheckpointKeyEnvironments` が決める。数えない証拠は「無い」扱いで、整合性・総合の `valid` は落とさない (§6.2 Layer 1 / Layer 6)。署名は全鍵で検証するので、署名の壊れた staging の証拠は従来どおり失敗。仕様別の入口 (`verifyProofBySpec`) は渡された鍵の一覧そのものを信頼し、環境では絞らない。Worker は自分の署名鍵と同じ環境の鍵の token だけを受け付ける (§4.6 手順 2a)。`/api/checkpoint/public-keys` は各鍵の `environment` も返す
 
 ---
 
@@ -991,7 +1013,7 @@ legacy 1.2.0 の中の方式は、版ではなくブロックの有無で分か�
    ```
    出力 ID を `packages/workers/wrangler.toml` の対応箇所に投入
 2. **本番鍵生成**: `npm run gen-checkpoint-key -w @typedcode/workers`
-   - 出力された公開鍵 entry を `packages/shared/src/checkpointKeys/registry.ts` に append、PR レビュー
+   - 出力された公開鍵 entry を `packages/shared/src/checkpointKeys/registry.ts` に append し、`environment` (`production` か `staging`) を書いて PR レビュー (§8.4)
    - 秘密鍵 JWK を `wrangler secret put CHECKPOINT_SIGNING_KEY_JWK`
    - keyId を `wrangler secret put CHECKPOINT_SIGNING_KEY_ID`
 3. **デプロイ**: `npm run deploy:production -w @typedcode/workers` (staging は `deploy:staging`。通常は CI 経由。`deploy` 単体は誤実行防止でエラー終了する)
@@ -1065,7 +1087,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **入口 / `/`** | `/` と `/casual` は練習 (casual) のエディタを直接開く (ADR-0046。学生にモードを選ばせない)。`/class` `/assignment` `/exam` は教員が配る直リンクの入口。それ以外のパスは not-found 画面 (`/` へのリンクだけ。エディタは初期化せず chunk も読まない) に落とし、タイポ (`/exsm` 等) を黙って練習にしない。ADR-0015 の 4 モード比較カードと「続きから」バッジは撤去した |
 | **(練習) 練習モード / `/casual`** | 素のエディタ・お試し/個人・最低保証 (ADR-0015。表示名「練習/Demo」、内部 id/ルートは `casual`)。利用規約モーダルなし (同意は入口で一度)・画面共有は既定オフでバナーからオプトイン。Turnstile `#0` は維持。proof 整合は不変 |
 | **モード表示** | エディタ titlebar に現在のモード名を出すだけ (ADR-0046)。別モードへ移るメニューは持たない (ADR-0015 のドロップダウンを撤去)。他モードのセッションへは配られたリンクで戻る |
-| **(授業) 授業モード / `.tcclass`** | URL パス `/class` で入る封印なしモード (ADR-0014)。平文問題ファイル `.tcclass` (`{schema:'tcclass/1', classId, allowed, bundle}`、暗号・署名なし) を読み込み問題表示 + N タブ展開。tier ① 自己申告 (root 束縛なし)。fullscreen は受動記録 (要求バナーなし) |
+| **(授業) 授業モード / `.tcclass`** | URL パス `/class` で入る封印なしモード (ADR-0014)。平文問題ファイル `.tcclass` (`{schema:'tcclass/1', classId, allowed, policy?, bundle}`、暗号・署名なし。`policy` は教員が決める方針 = #645) を読み込み問題表示 + N タブ展開。tier ① 自己申告 (root 束縛なし)。fullscreen は受動記録 (要求バナーなし) |
 | **(試験) 封印問題パッケージ / `.tcexam`** | 出題者が Argon2id + AES-256-GCM で封印し ECDSA-P256 署名した問題ファイル。Moodle で事前配布 |
 | **(試験) 監督コード / `startToken`** | T0 に監督が解禁する 8 文字 Crockford Base32 (40bit)。封印を解錠しチェーン根に焼かれる |
 | **(試験) packageHash** | manifest の canonical core (− `{signature, publicKeyJwk}`) の SHA-256。root と `proof.exam` に束縛 |
@@ -1187,4 +1209,6 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-18 | 一括検証の基盤 (#802) | §4.10 の実行条件に、時間上限の正本の定数・数え始め (プログラムの開始から。コンパイルは数えない)・対話の実行には掛けないこと・Python の最後の式の値を出力に足さないことを追記 |
 | 2026-11-19 | ケースファイルのフォーム (#798) | §4.10 に、フォームで編集した値の改行は LF になり、編集していない値の CRLF は変えないことを追記 |
 | 2026-11-19 | 一括検証の画面 (#799) | §4.10 の実行条件に、コンパイルが終わらない解答は中止で抜けること・未保存の内容を対象にすること・ターミナルの実行と排他にすることを追記 |
+| 2026-11-20 | `.tcclass` の方針 (#645) | §4.8 に任意の `policy` (`screenshots` / `fullscreenTracking` / `preExportBestEffort`。ある場合は全て boolean 必須、部分指定・型違いは拒否) を追加。方針が入口 (`/class` / `/assignment`) の能力より優先し、無い旧ファイルは入口の能力のまま。`/author` は「教室で実施」「持ち帰り」を選んで書き出す。schema・proof の形式は不変 |
 | 2026-11-20 | 仕様別の検証の入口 (#809, ADR-0053) | §6.5 を追加: shared の `verifyProofBySpec` は版の完全一致で検証器を選び、いまは proof `1.2.0` だけを legacy の検証器 (`verifyProofFile`) で読む (1.0.0・1.1.0 などは `unsupported`)。対応状況・項目別の検査・保証範囲・鍵の信頼・受理を分けた結果と、legacy の制限 (版の未束縛など)・不具合修正時の扱いを記述。署名 cp・token・出題者鍵の検証結果に鍵の信頼状態 `keyStatus`、`verifyChain` に `failure`、`FullVerificationResult` に `chainFailure` などを加算 (既存の判定は不変)。§8.1 の「版で切り替えない」を、`verifyProofFile` と新しい入口の現状に合わせて直した。公式 Web / CLI の切り替えは #811 |
+| 2026-11-20 | staging の鍵を本番の検証器・Worker が信頼しない (#321) | registry のエントリに `environment` (`production` / `staging`) を必須にし、localKeys は `development` にした。検証器は既定で production と development の鍵だけを時刻証拠に数え、staging の鍵の token・署名 cp は `rootAnchorUntrustedKey` / `untrustedKeys` を付けて「無い」扱いにする (整合性・総合の `valid` は落とさない)。staging を数えるのは verify-cli `--allow-staging-keys` と staging 用にビルドした verify だけ。Worker は署名鍵と同じ環境の鍵の token だけを受け付ける。§4.6 手順 2a / §6.2 Layer 1・6 / §8.4 / §9.1 を反映。**proof フォーマットと既存の鍵 ID は不変** |

@@ -3,11 +3,12 @@
  * 言語に応じたExecutorの選択、実行、中断を管理
  */
 
-import type { ILanguageExecutor, ParsedError } from '../executors/interfaces/ILanguageExecutor.js';
+import type { ILanguageExecutor, InteractiveStdin, ParsedError } from '../executors/interfaces/ILanguageExecutor.js';
 import type { CTerminal } from '../terminal/CTerminal.js';
 import type { CodeExecutionEventData, CodeExecutionOutcome, EventType } from '@typedcode/shared';
-import { getCExecutor, WasmerSdkCorruptedError } from '../executors/c/CExecutor.js';
-import { getCppExecutor } from '../executors/cpp/CppExecutor.js';
+// C / C++ は最初の実行まで Wasmer を読まない入口を通す (#617。CExecutor / CppExecutor を静的に import しない)
+import { getLazyCExecutor, getLazyCppExecutor } from '../executors/c/LazyClangExecutor.js';
+import { WasmerSdkCorruptedError } from '../executors/c/errors.js';
 import { getJavaScriptExecutor } from '../executors/javascript/JavaScriptExecutor.js';
 import { getTypeScriptExecutor } from '../executors/typescript/TypeScriptExecutor.js';
 import { getPythonExecutor } from '../executors/python/PythonExecutor.js';
@@ -100,9 +101,9 @@ export class CodeExecutionController {
   private getExecutorForLanguage(language: string): ILanguageExecutor | null {
     switch (language) {
       case 'c':
-        return getCExecutor();
+        return getLazyCExecutor();
       case 'cpp':
-        return getCppExecutor();
+        return getLazyCppExecutor();
       case 'javascript':
         return getJavaScriptExecutor();
       case 'typescript':
@@ -240,25 +241,33 @@ export class CodeExecutionController {
     this.recordAbortedResult = () => recordResult('aborted', null);
 
     try {
-      // 初回は初期化
+      // 初回は初期化 (C / C++ はここで初めて実行系を読み込む = #617。並行する初期化は executor が 1 つにまとめる)
       if (!executor.isInitialized) {
         if (isCompiled) {
           this.callbacks.onShowClangLoading?.();
         }
         this.callbacks.onRuntimeStatusChange?.(target.language, 'loading');
 
-        await executor.initialize((progress) => {
-          if (!isCurrent()) return;
+        try {
+          await executor.initialize((progress) => {
+            if (!isCurrent()) return;
+            if (isCompiled) {
+              this.callbacks.onUpdateClangStatus?.(progress.message);
+            }
+            this.terminal?.writeInfo(progress.message + '\n');
+          });
+        } catch (error) {
+          // 失敗した初期化は残らない (次の実行で取り直す)。表示を loading のまま残さない
+          this.callbacks.onRuntimeStatusChange?.(target.language, 'not-ready');
+          throw error;
+        } finally {
+          // 待ちが終われば、成否と停止を問わず読み込みの表示を外す (停止した run の待ちの後も残さない)
           if (isCompiled) {
-            this.callbacks.onUpdateClangStatus?.(progress.message);
+            this.callbacks.onHideClangLoading?.();
           }
-          this.terminal?.writeInfo(progress.message + '\n');
-        });
+        }
 
         this.callbacks.onRuntimeStatusChange?.(target.language, 'ready');
-        if (isCompiled) {
-          this.callbacks.onHideClangLoading?.();
-        }
       }
 
       // 初期化を待つ間に停止された run は実行しない
@@ -276,8 +285,15 @@ export class CodeExecutionController {
             this.callbacks.onShowErrors?.(errors, ownerTabId);
           }
         },
-        onStdinReady: (stdinStream: WritableStream<Uint8Array>) => {
-          if (isCurrent()) this.terminal?.connectStdin(stdinStream);
+        onStdinReady: (stdin: InteractiveStdin) => {
+          // 選択の無い Ctrl+C は停止ボタンと同じ abort (#707)。古い run の Ctrl+C は新しい run を止めない
+          if (isCurrent()) {
+            this.terminal?.connectStdin(stdin, {
+              onInterrupt: () => {
+                if (isCurrent()) this.abort();
+              },
+            });
+          }
         },
         onProgress: (msg: string) => {
           if (isCurrent()) this.terminal?.writeInfo(msg + '\n');

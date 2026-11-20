@@ -16,6 +16,8 @@
  * **未実装の繰り越し**: assignment 固有の問題配布 UX、per-student variant (tier ② 署名記述子)。
  */
 
+import type { ClassPolicy } from '@typedcode/shared';
+
 export type EditorMode = 'casual' | 'class' | 'assignment' | 'exam';
 
 /** proof に記録する mode 文字列 (shared の ExportedProof.mode と一致させる) */
@@ -167,4 +169,53 @@ export function resolveRoute(pathname: string): Route {
 
 export function capabilitiesFor(mode: EditorMode): ModeCapabilities {
   return MODE_CAPABILITIES[mode];
+}
+
+// ========================================
+// `.tcclass` の方針 (#645)
+// ========================================
+
+/** /author で選ぶ方針のプリセット。`classroom` = 教室で実施、`take-home` = 持ち帰り。 */
+export type ClassPolicyPreset = 'classroom' | 'take-home';
+
+/** 能力のうち方針が決める 3 つを取り出す。 */
+function classPolicyOf(caps: ModeCapabilities): ClassPolicy {
+  return {
+    screenshots: caps.screenshots,
+    fullscreenTracking: caps.fullscreenTracking,
+    preExportBestEffort: caps.preExportBestEffort,
+  };
+}
+
+/**
+ * プリセットの方針 (#645)。値は入口の能力から取る: 「教室で実施」= `/class`、「持ち帰り」= `/assignment`。
+ * 入口の能力を変えるとプリセット (= /author が書く値) も一緒に変わる。
+ */
+export const CLASS_POLICY_PRESETS: Readonly<Record<ClassPolicyPreset, Readonly<ClassPolicy>>> = {
+  classroom: classPolicyOf(CLASS),
+  'take-home': classPolicyOf(ASSIGNMENT),
+};
+
+/** 方針を持つ `.tcclass` を読み込むモードか (平文の問題を読み込む授業/課題だけ。試験・練習は方針を見ない)。 */
+export function acceptsClassPolicy(mode: EditorMode): boolean {
+  const caps = MODE_CAPABILITIES[mode];
+  return caps.problemPanel && !caps.sealedProblem;
+}
+
+/**
+ * 入口 (`mode`) の能力に、読み込んだ `.tcclass` の方針を重ねた実効の能力 (#645)。
+ * 方針が無い (旧ファイル・未読込) ときは入口の能力そのまま。方針は 3 つの能力を上書きし、
+ * 起動時の画面共有の勧誘はスクリーンショットを撮るときだけ出す (class / assignment の現行値と一致する)。
+ * 方針を受け付けないモード (`acceptsClassPolicy` が偽) では方針を無視する。
+ */
+export function capabilitiesWithPolicy(mode: EditorMode, policy: ClassPolicy | null): ModeCapabilities {
+  const base = MODE_CAPABILITIES[mode];
+  if (!policy || !acceptsClassPolicy(mode)) return base;
+  return {
+    ...base,
+    screenshots: policy.screenshots,
+    promptScreenShareAtStart: policy.screenshots,
+    fullscreenTracking: policy.fullscreenTracking,
+    preExportBestEffort: policy.preExportBestEffort,
+  };
 }

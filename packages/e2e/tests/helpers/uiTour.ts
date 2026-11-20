@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { basename } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { EditorApp } from './app.js';
+import { closeClosedTabs, openClosedTabsUntilListed } from './closedTabs.js';
 import { loadExamFixture } from './examFixture.js';
 import {
   classPackageFile,
@@ -16,7 +17,7 @@ import { VerifyWebApp } from './verifyWeb.js';
  * a11y (axe)・i18n の漏れ・レイアウトの退行検査 (#728) が共通に回る「画面の巡回」。
  *
  * 対象の画面をここで固定する: 各モード (casual / class / assignment / exam) の ready、About、
- * 共通のダイアログ (セルフレビュー・画面共有の選択・ウェルカム・問題の読み込み・試験ゲート)、
+ * 共通のダイアログ (セルフレビュー・閉じたタブ (#317)・画面共有の選択・ウェルカム・問題の読み込み・試験ゲート)、
  * 検証 Web の初期 / 結果表示。巡回は 5 本の流れ (`TourFlow`) に分け、各画面に着いたら `visit(screen)` を呼ぶ。
  * 検査の中身 (axe / キー名の漏れ / はみ出し) は呼び出し側の spec が決める。
  *
@@ -28,6 +29,7 @@ export type ScreenId =
   | 'casual-ready'
   | 'casual-about'
   | 'casual-self-review'
+  | 'casual-closed-tabs'
   | 'class-screen-share-choice'
   | 'class-welcome'
   | 'class-problem-loader'
@@ -45,7 +47,7 @@ export const TOUR_FLOWS: readonly TourFlow[] = ['casual', 'class', 'assignment',
 
 /** 流れごとに訪れる画面 (表示順)。spec のタイトルと、基準の画面名の値域に使う。 */
 export const FLOW_SCREENS: Readonly<Record<TourFlow, readonly ScreenId[]>> = {
-  casual: ['casual-ready', 'casual-about', 'casual-self-review'],
+  casual: ['casual-ready', 'casual-about', 'casual-self-review', 'casual-closed-tabs'],
   class: ['class-screen-share-choice', 'class-welcome', 'class-problem-loader', 'class-ready'],
   assignment: ['assignment-welcome', 'assignment-ready'],
   exam: ['exam-gate', 'exam-ready'],
@@ -62,10 +64,10 @@ const VALID_PROOF = fileURLToPath(
 /**
  * 同じ origin (dev サーバの localhost) 以外への通信を全部止める。
  *
- * 手元 (外部に届かない) と CI (Turnstile・Wasmer の配信元に届く) で画面を揃えるため。届くと
- * Turnstile の widget (cross-origin の iframe。製品の DOM ではない) やランタイムの状態表示が変わり、
- * axe の結果・表示テキストが環境で食い違う。止めたときの表示 (認証は失敗のフォールバック、C の
- * ランタイムは初期化失敗) は製品の正規の経路で、検査の対象として扱う。
+ * 手元 (外部に届かない) と CI (Turnstile の配信元に届く) で画面を揃えるため。届くと
+ * Turnstile の widget (cross-origin の iframe。製品の DOM ではない) が変わり、
+ * axe の結果・表示テキストが環境で食い違う。止めたときの表示 (認証は失敗のフォールバック) は製品の
+ * 正規の経路で、検査の対象として扱う。C の実行系 (Wasmer の配信元) は最初の C の実行まで取らない (#617)。
  */
 export async function blockExternalRequests(page: Page): Promise<void> {
   await page.context().route(
@@ -119,6 +121,17 @@ export async function walkTour(page: Page, flow: TourFlow, visit: ScreenVisitor)
       await at('casual-self-review');
       await page.locator('[data-dialog="self-review"] .self-review-btn-cancel').click();
       await waitDialogClosed(app, 'self-review');
+
+      // 閉じたタブの一覧 (#317)。1 本閉じて、行のある状態で巡る
+      const closing = (await app.tabs())[0]!.id;
+      await app.addTab();
+      await app.requestCloseTab(closing);
+      await app.answerCloseTab('confirm');
+      await openClosedTabsUntilListed(app, closing);
+      // タブを足したときの通知 (2 秒で消える) が残っていない状態で巡る (他の画面と条件を揃える)
+      await expect(page.locator('#block-notification')).toHaveClass(/hidden/, { timeout: 10_000 });
+      await at('casual-closed-tabs');
+      await closeClosedTabs(app);
       return;
     }
     case 'class': {

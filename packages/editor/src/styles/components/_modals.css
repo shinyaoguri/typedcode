@@ -2172,3 +2172,87 @@
 .unproven-diff-label.hidden {
   display: none;
 }
+
+/* 「新規」の 2 段目 (#317): 前のセッションのファイルを残すか、完全に削除するか */
+.session-fresh-step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-fresh-message {
+  color: var(--text-primary);
+  font-size: 14px;
+  margin: 0;
+}
+
+.session-fresh-hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.session-fresh-delete-hint i {
+  color: #ff9800;
+  margin-right: 4px;
+}
+
+.session-recovery-dialog [hidden] {
+  display: none !important;
+}
+
+/* ================================================
+   Closed tabs dialog (#317)
+   閉じたタブの一覧と開き直し
+   ================================================ */
+
+.closed-tabs-dialog {
+  max-width: 560px;
+}
+
+.closed-tabs-description,
+.closed-tabs-empty {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+
+.closed-tabs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.closed-tab-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.closed-tab-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.closed-tab-name {
+  color: var(--text-primary);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.closed-tab-meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}

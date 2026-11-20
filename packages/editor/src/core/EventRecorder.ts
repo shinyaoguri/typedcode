@@ -6,7 +6,7 @@
  * ブラウザタブを閉じた後も復旧可能
  */
 
-import type { EventType, RecordEventInput, StoredEvent } from '@typedcode/shared';
+import type { EventType, RecordEventInput, RecordEventResult, StoredEvent } from '@typedcode/shared';
 import type { TabManager, TabState } from '../ui/tabs/TabManager.js';
 import type { LogViewer } from '../ui/components/LogViewer.js';
 import { t } from '../i18n/index.js';
@@ -172,6 +172,33 @@ export class EventRecorder {
     });
   }
 
+  /**
+   * アクティブタブに contentSnapshot を記録し、確定したら IndexedDB へ append する (#873)。
+   * ProofStatusDisplay が 100 イベントごとに呼ぶ。以前は proof へ直接記録して append せず、保存を
+   * TabManager のデバウンス保存 (saveToIndexedDB) に任せていた。PoSW の処理待ちが続く間はデバウンスが
+   * 発火しないので、その間に読み直すと、保存済みの events にスナップショットの分だけ sequence の飛びが残った。
+   * 他のイベントと同じく「確定の通知順」に append を始める (recordToTab と同じ。#471)。
+   * `enabled` は見ない (直接記録していた従来どおり、スナップショットの記録の有無は変えない)。
+   */
+  recordContentSnapshot(content: string): Promise<RecordEventResult> {
+    const tab = this.tabManager.getActiveTab();
+    if (!tab) return Promise.reject(new Error('No active proof'));
+
+    const recordPromise = tab.typingProof.recordContentSnapshot(content);
+    const settled = recordPromise
+      .then(async (result) => {
+        if (!result.recorded) return;
+        const recordedEvent = tab.typingProof.events[result.index];
+        if (recordedEvent) await this.persistEvent(tab.id, recordedEvent);
+      })
+      .catch(() => {
+        // 記録の失敗は呼び出し側 (ProofStatusDisplay) が recordPromise で受けてログに出す
+      });
+    // タブを閉じるとき、この append も待つ (#342)
+    this.trackInFlight(tab.id, settled);
+    return recordPromise;
+  }
+
   /** record() の完了待ちを tabId に紐づける。終われば自分で外れる (catch 済みなので reject しない) */
   private trackInFlight(tabId: string, settled: Promise<void>): void {
     let inFlight = this.inFlightByTab.get(tabId);
@@ -199,6 +226,15 @@ export class EventRecorder {
       if (!inFlight || inFlight.size === 0) return;
       await Promise.all([...inFlight]);
     }
+  }
+
+  /**
+   * スナップショット型のイベントを、以降に作るタブへ流し直さないようにする。記録済みのタブのチェーンは変えない。
+   * スクリーンショットを撮らない方針の問題を読み込んだとき (#645)、起動時の画面共有のオプトアウトを
+   * 問題のタブに載せないために使う (スクリーンショットの無い入口 `/assignment` と同じ記録にする)。
+   */
+  forgetSessionSnapshot(type: EventType): void {
+    this.sessionSnapshot.delete(type);
   }
 
   /**

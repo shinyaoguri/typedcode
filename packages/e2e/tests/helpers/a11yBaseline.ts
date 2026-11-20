@@ -127,7 +127,7 @@ export const KNOWN_A11Y_VIOLATIONS: readonly KnownA11yViolation[] = [
   {
     rule: 'color-contrast',
     target: '.terms-notice-ok',
-    screens: ['casual-ready', 'casual-about', 'casual-self-review'],
+    screens: ['casual-ready', 'casual-about', 'casual-self-review', 'casual-closed-tabs'],
     issue: 737,
   },
   {
