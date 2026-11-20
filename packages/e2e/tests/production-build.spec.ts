@@ -3,6 +3,7 @@ import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
 import { EditorApp, listProofEntries } from './helpers/app.js';
+import { enlargeTerminal } from './helpers/cExecution.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
 
 /** `vite preview` が配る editor の dist */
@@ -348,6 +349,47 @@ test('production build: @nightly C の hello が Wasmer の clang でコンパ�
   await expect(terminal).toHaveAttribute('data-exec-state', 'idle', { timeout: 60_000 });
   await expect(terminal).toHaveAttribute('data-exec-outcome', 'success');
   expect(clangFetches).toHaveLength(1);
+  expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});
+
+/**
+ * コンパイラの警告 (#708) を本番ビルドで確かめる: 警告だけのコンパイルは success のまま実行まで進み、
+ * 警告がターミナルに出て、その行に warning のマーカー (Monaco の squiggly) が付く。コンパイルの stderr は
+ * `spawn({ stderr: 'capture' })` + `wait()` で取っており、その経路が本番の worker の差し替えの下でも動くことはここでしか見えない。
+ * 行・列と fatal error・C++ の診断は dev の `code-execution-c-diagnostics.spec.ts` が見る。clang の webc を外部から取るので `@nightly`。
+ */
+test('production build: @nightly C の警告だけのコンパイルは success のまま、警告がターミナルとその行のマーカーに出る', async ({
+  page,
+}) => {
+  test.setTimeout(360_000);
+  const pageErrors: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('c');
+  await app.focusEditor();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.press('Delete');
+  // dev フックは dist に無いので打鍵で入れる。自動インデントを通らないよう 1 行にする。
+  // `if (0)` の中の誤った printf は実行されず、警告だけが出る (#708 の再現の例)
+  await page.keyboard.type(
+    'int printf(const char *, ...);int main(void){if(0)printf("%d","oops");printf("ran-despite-warning\\n");return 0;}'
+  );
+
+  const terminal = page.locator('#xterm-container');
+  await page.locator('#run-code-btn').click();
+  await expect(terminal).toHaveAttribute('data-exec-run', '1');
+  await expect(terminal).toHaveAttribute('data-exec-state', 'idle', { timeout: 240_000 });
+  await expect(terminal).toHaveAttribute('data-exec-outcome', 'success');
+  // 既定のターミナルは 10 行ほどで、警告の行が流れうるので広げてから読む
+  await enlargeTerminal(page);
+  const rows = terminal.locator('.xterm-rows');
+  await expect(rows).toContainText('ran-despite-warning');
+  await expect(rows).toContainText(/main\.c:1:\d+: warning: format specifies type 'int'/);
+  // C には Monaco 自身の診断が無いので、squiggly は実行のマーカーだけ (コードは 1 行なので 1 個)
+  await expect(page.locator('.monaco-editor .squiggly-warning')).toHaveCount(1);
+  await expect(page.locator('.monaco-editor .squiggly-error')).toHaveCount(0);
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
 
