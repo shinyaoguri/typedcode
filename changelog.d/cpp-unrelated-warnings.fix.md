@@ -1,0 +1,1 @@
+C++ の実行のたびに、書いたコードと関係の無い警告 (`'-x c++' after last input file has no effect` と `"Libc++ only supports Clang 17 and later"`) がターミナルに 2 つ出ていたのを止めました。自分のコードの警告 (`printf` の書式の食い違いなど) と、自分で書いた `#warning` は、これまでどおりターミナルとエディタの行の印に出ます。

@@ -41,7 +41,7 @@ export type { ParsedError } from '../interfaces/ILanguageExecutor.js';
 const CLANG_VERSION = '0.1.1';
 
 /** Guest directory where the source and compiled binary are placed */
-const WORKSPACE_DIR = '/workspace';
+export const WORKSPACE_DIR = '/workspace';
 
 /**
  * 利用者のコードの後ろに付けるリンクの引数 (C / C++ 共通)。
@@ -93,11 +93,11 @@ const STDOUT_SUPPORT_BASENAME = '__typedcode_stdout';
  * 利用者のソースには何も前置しない: 前置すると `stdio.h` を書き忘れたコードが通り、利用者の翻訳単位に
  * `FILE` や `EOF` などの宣言が入る (#709)。行番号・`__LINE__`・`__FILE__` も利用者のソースのまま (#489)。
  * C++ では同じ内容を `.cpp` としてコンパイルする (C++ の実行の `-std=c++17` は C の入力に付けられない)。
- * libc++ の `<stdio.h>` が出す「Clang 17 以降」の警告は、この翻訳単位の中だけで黙らせる
- * (利用者のソースの診断に、支援コードの分を混ぜない)
+ * C++ のとき libc++ の `<stdio.h>` が出す「Clang 17 以降」の警告は、CppExecutor が `-include` する guard
+ * (`LIBCXX_VERSION_WARNING_GUARD`。#871) が、利用者のソースとこの翻訳単位の両方で黙らせる。ここに `#pragma` を
+ * 重ねない (同じ原因 (#573) の手当てを 1 か所にまとめ、版の揃った webc に替えたときに一緒に外せるようにする)
  */
 export const STDOUT_SUPPORT_SOURCE = `/* TypedCode: unbuffered stdout for immediate output (#709) */
-#pragma clang diagnostic ignored "-W#warnings"
 #include <stdio.h>
 __attribute__((constructor))
 static void __typedcode_init_stdout(void) {
@@ -115,6 +115,8 @@ export function stdoutSupportFileName(sourceFile: string): string {
 export interface CompileOptions {
   sourceFile?: string;
   compileArgs?: string[];
+  /** 利用者のソースと一緒に sandbox に置くファイル (ゲストの絶対パス → 内容)。`-include` で読ませるヘッダなど (#871) */
+  extraFiles?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -308,6 +310,7 @@ export class CExecutor extends BaseExecutor {
       sandbox = await wasmer.sandboxes.create({
         packages: [clangPkg],
         files: {
+          ...options.extraFiles,
           [`${WORKSPACE_DIR}/${sourceFile}`]: code,
           [`${WORKSPACE_DIR}/${supportFile}`]: STDOUT_SUPPORT_SOURCE,
         },

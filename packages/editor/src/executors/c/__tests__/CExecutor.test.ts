@@ -198,7 +198,9 @@ vi.mock('@wasmer/sdk', () => {
 });
 
 const { CExecutor, STDOUT_SUPPORT_SOURCE, pipeInteractiveStdin } = await import('../CExecutor.js');
-const { CppExecutor } = await import('../../cpp/CppExecutor.js');
+const { CppExecutor, LIBCXX_VERSION_WARNING_GUARD, LIBCXX_VERSION_WARNING_GUARD_PATH } = await import(
+  '../../cpp/CppExecutor.js'
+);
 const { C_EXECUTOR_CONFIG, CPP_EXECUTOR_CONFIG, getLazyCExecutor, getLazyCppExecutor } = await import(
   '../LazyClangExecutor.js'
 );
@@ -543,7 +545,9 @@ describe('stdout support in a separate translation unit (#709)', () => {
       await executor.initialize();
       await executor.run('int main(){return 0;}', collectCallbacks().callbacks);
 
-      expect(Object.keys(sdk.sandboxFiles[0] ?? {})).toEqual([source, support]);
+      // C++ の libc++ の警告の guard (#871) は入力ではなく `-include` で読ませるヘッダなので、ここでは除いて見る
+      const files = Object.keys(sdk.sandboxFiles[0] ?? {}).filter((f) => f !== LIBCXX_VERSION_WARNING_GUARD_PATH);
+      expect(files).toEqual([source, support]);
       expect(sdk.sandboxFiles[0]?.[support]).toBe(STDOUT_SUPPORT_SOURCE);
       expect(sdk.commands[0]?.args?.slice(0, 2)).toEqual([source, support]);
     }
@@ -594,6 +598,42 @@ const FATAL_ERROR = `/workspace/main.c:2:10: fatal error: 'student.h' file not f
          ^~~~~~~~~~~
 1 error generated.
 `;
+
+describe('C++ compile arguments (#871)', () => {
+  async function cppCompileArgs(): Promise<readonly string[]> {
+    const executor = new CppExecutor();
+    await executor.initialize();
+    await executor.run('int main(){return 0;}', collectCallbacks().callbacks);
+    return sdk.commands[0]?.args ?? [];
+  }
+
+  it('passes no -x language option after the C++ input file, where clang ignores it with a warning', async () => {
+    const args = await cppCompileArgs();
+
+    const input = args.indexOf('/workspace/main.cpp');
+    expect(input).toBeGreaterThanOrEqual(0);
+    expect(args.slice(input + 1).filter((arg) => arg.startsWith('-x'))).toEqual([]);
+    expect(args).toContain('-std=c++17');
+  });
+
+  it('force-includes the guard header it places next to the source, so libc++ is configured inside the guard', async () => {
+    const args = await cppCompileArgs();
+
+    const include = args.indexOf('-include');
+    expect(args.slice(include, include + 2)).toEqual(['-include', LIBCXX_VERSION_WARNING_GUARD_PATH]);
+    expect(sdk.sandboxFiles[0]?.[LIBCXX_VERSION_WARNING_GUARD_PATH]).toBe(LIBCXX_VERSION_WARNING_GUARD);
+  });
+
+  it('silences only -W#warnings, only while <__config> is included, and restores the diagnostic state afterwards', () => {
+    expect(LIBCXX_VERSION_WARNING_GUARD.split('\n')).toEqual([
+      '#pragma clang diagnostic push',
+      '#pragma clang diagnostic ignored "-W#warnings"',
+      '#include <__config>',
+      '#pragma clang diagnostic pop',
+      '',
+    ]);
+  });
+});
 
 describe('compiler diagnostics (#708)', () => {
   it('forwards compiler warnings once on a successful compile and still reports the run as a success', async () => {
