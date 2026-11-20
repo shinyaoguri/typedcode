@@ -33,8 +33,9 @@ export type {
 } from './registry.js';
 
 // 有効期間 / 失効の判定は checkpoint 鍵と出題者鍵で共通 (#233)。
-export { checkRegistryKeyValidityAt } from './keyValidity.js';
+export { checkRegistryKeyValidityAt, registryKeyTrustStatus } from './keyValidity.js';
 export type {
+  RegistryKeyTrustStatus,
   RegistryKeyDateField,
   RegistryKeyValidityFields,
   RegistryKeyVerdict,

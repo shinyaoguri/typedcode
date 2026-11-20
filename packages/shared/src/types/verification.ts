@@ -4,10 +4,26 @@
 
 import type { StoredEvent, EventHashData, ProofMetadata } from './proof.js';
 
+/**
+ * `verifyChain` がどの検査で止まったか (#809)。`message` の文字列を parse せずに、チェーンの連結と
+ * PoSW の再計算のどちらで落ちたかを分けるための機械可読の値。
+ * - `posw-iterations-mismatch` は fast でも full でも見る反復数の照合 (チェーンの検査に数える)
+ * - `posw-mismatch` は full だけが行う `intermediateHash` の再計算の不一致
+ */
+export type ChainFailureCode =
+  | 'sequence-mismatch'
+  | 'timestamp-regression'
+  | 'previous-hash-mismatch'
+  | 'posw-iterations-mismatch'
+  | 'posw-mismatch'
+  | 'hash-mismatch';
+
 /** ハッシュ検証結果 */
 export interface VerificationResult {
   valid: boolean;
   message: string;
+  /** `valid: false` のときだけ付く、止まった検査の種類 (#809) */
+  failure?: ChainFailureCode;
   errorAt?: number;
   event?: StoredEvent;
   eventData?: EventHashData;

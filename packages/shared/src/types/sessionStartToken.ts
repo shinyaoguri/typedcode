@@ -9,6 +9,8 @@
  * 他の types/* ファイルに依存しない独立した型ファイルにしている (signedCheckpoint.ts と同方針)。
  */
 
+import type { RegistryKeyTrustStatus } from '../checkpointKeys/keyValidity.js';
+
 /** 署名対象の payload */
 export interface SessionStartTokenPayload {
   version: 1;
@@ -55,4 +57,10 @@ export interface SessionStartTokenVerificationResult {
    * 「署名が壊れている」と「この検証器が鍵を知らない」を分けて表示するために返す。
    */
   unknownKey?: boolean;
+  /**
+   * 鍵の信頼状態 (#809)。未登録なら `unknown`、`issuedAt` を anchor に有効期間を判定したらその結果を返す。
+   * 鍵の判定より前で落ちた (version・反復数・algorithm・issuedAt が parse 不能) ときは付かない。
+   * 署名の成否とは別の値で、`trusted` でも署名が合わなければ `valid: false`。
+   */
+  keyStatus?: RegistryKeyTrustStatus;
 }

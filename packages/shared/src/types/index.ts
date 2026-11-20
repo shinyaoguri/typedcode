@@ -117,6 +117,7 @@ export type {
 
 // 検証関連
 export type {
+  ChainFailureCode,
   VerificationResult,
   ContentReplayVerificationResult,
   ProofMetadataVerificationResult,
