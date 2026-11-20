@@ -199,6 +199,9 @@ vi.mock('@wasmer/sdk', () => {
 
 const { CExecutor, buildSourceWithPreamble, pipeInteractiveStdin } = await import('../CExecutor.js');
 const { CppExecutor } = await import('../../cpp/CppExecutor.js');
+const { C_EXECUTOR_CONFIG, CPP_EXECUTOR_CONFIG, getLazyCExecutor, getLazyCppExecutor } = await import(
+  '../LazyClangExecutor.js'
+);
 
 function collectCallbacks() {
   const out = { stdout: '', stderr: '', stdin: null as InteractiveStdin | null };
@@ -235,7 +238,7 @@ async function readyExecutor() {
 }
 
 describe('CExecutor on @wasmer/sdk 0.19', () => {
-  it('compiles /workspace/<source> with the same clang arguments as before', async () => {
+  it('compiles /workspace/<source> and links the emulated process clocks that declare clock() (#714)', async () => {
     const executor = await readyExecutor();
     const { callbacks } = collectCallbacks();
 
@@ -250,6 +253,7 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
       '-target',
       'wasm32-wasi',
       '-O2',
+      '-lwasi-emulated-process-clocks',
     ]);
   });
 
@@ -329,6 +333,35 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
 
     await executor.initialize();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the Wasmer client of a failed clang download and downloads again on the next initialize (#617)', async () => {
+    const executor = new CExecutor();
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 503, statusText: 'Service Unavailable' }));
+
+    await expect(executor.initialize()).rejects.toThrow('Failed to initialize C compiler');
+    expect(executor.isInitialized).toBe(false);
+    expect(sdk.clientsClosed).toBe(1);
+
+    await executor.initialize();
+    expect(executor.isInitialized).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('the lazy C / C++ entry (#617)', () => {
+  it('carries the same config as the executors it loads', () => {
+    expect(C_EXECUTOR_CONFIG).toEqual(new CExecutor().config);
+    expect(CPP_EXECUTOR_CONFIG).toEqual(new CppExecutor().config);
+  });
+
+  it('initializes the shared CExecutor and CppExecutor singletons on the first initialize', async () => {
+    const { getCExecutor } = await import('../CExecutor.js');
+    const { getCppExecutor } = await import('../../cpp/CppExecutor.js');
+    await getLazyCExecutor().initialize();
+    await getLazyCppExecutor().initialize();
+    expect(getCExecutor().isInitialized).toBe(true);
+    expect(getCppExecutor().isInitialized).toBe(true);
   });
 });
 

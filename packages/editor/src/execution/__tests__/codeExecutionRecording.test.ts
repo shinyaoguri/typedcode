@@ -40,6 +40,7 @@ vi.mock('../../executors/c/CExecutor.js', () => ({
   getCExecutor: () => ({
     config: { id: 'c', name: 'C' },
     isInitialized: true,
+    initialize: async () => {},
     run: () => fakeRun.impl(),
     parseErrors: () => [],
     abort: () => {},

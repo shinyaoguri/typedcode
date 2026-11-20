@@ -13,7 +13,9 @@ import type {
   ExecutionResult,
   ILanguageExecutor,
 } from '../../interfaces/ILanguageExecutor.js';
+import { getLazyCExecutor, getLazyCppExecutor } from '../../c/LazyClangExecutor.js';
 import {
+  defaultNonInteractiveExecutor,
   NON_INTERACTIVE_TIMEOUT_MS,
   runNonInteractive,
   type NonInteractiveOptions,
@@ -284,5 +286,13 @@ describe('runNonInteractive abort', () => {
     executor.abort();
 
     expect((await running).outcome).toBe('aborted');
+  });
+});
+
+describe('runNonInteractive default executors (#617)', () => {
+  it('uses the same lazy C / C++ entries as the terminal, so that both share one initialization', () => {
+    expect(defaultNonInteractiveExecutor('c')).toBe(getLazyCExecutor());
+    expect(defaultNonInteractiveExecutor('cpp')).toBe(getLazyCppExecutor());
+    expect(getLazyCExecutor().isLoaded).toBe(false);
   });
 });

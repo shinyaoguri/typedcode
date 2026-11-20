@@ -14,8 +14,8 @@
  */
 
 import type { ILanguageExecutor } from '../interfaces/ILanguageExecutor.js';
-import { getCExecutor } from '../c/CExecutor.js';
-import { getCppExecutor } from '../cpp/CppExecutor.js';
+// C / C++ は対話の実行と同じ入口を通す: 初期化を 1 つにまとめ、Wasmer は最初の実行まで読まない (#617)
+import { getLazyCExecutor, getLazyCppExecutor } from '../c/LazyClangExecutor.js';
 import { getPythonExecutor } from '../python/PythonExecutor.js';
 
 /** 非対話の実行 1 回 (1 ケース) の実行時間の上限 (ミリ秒)。ADR-0051 Decision 6 の値の正本 */
@@ -79,9 +79,9 @@ export type NonInteractiveRunner = (
 export function defaultNonInteractiveExecutor(language: string): ILanguageExecutor | null {
   switch (language) {
     case 'c':
-      return getCExecutor();
+      return getLazyCExecutor();
     case 'cpp':
-      return getCppExecutor();
+      return getLazyCppExecutor();
     case 'python':
       return getPythonExecutor();
     default:
