@@ -42,7 +42,7 @@
 | [0008](0008-exam-fullscreen-request-not-enforce.md) | Accepted | 試験モードはフルスクリーンを要求するが強制せず状態を記録する |
 | [0009](0009-pluggable-analysis-layer.md) | Accepted | 改ざん検証と直交する pluggable な分析層フレームワークを定義する |
 | [0010](0010-exam-session-model.md) | Accepted (sticky 部分は ADR-0011 で置換) | 試験モードのセッション構造 (1問1タブ・固定・リロード復帰可能) |
-| [0011](0011-course-modes-and-path-routing.md) | Accepted (実装済み。§6 前半は未実装・後半は ADR-0020 で実現。§3 の授業と課題は ADR-0046 段階 2 で統合予定) | 授業・課題・試験を1ドメインのパスで分岐し能力プリセットでモデル化する |
+| [0011](0011-course-modes-and-path-routing.md) | Accepted (実装済み。§6 前半は未実装・後半は ADR-0020 で実現。§3 の授業と課題は ADR-0046 段階 2 で統合予定。author/verify 配信は ADR-0052 で分離予定、学生モードのパスは維持) | 授業・課題・試験を1ドメインのパスで分岐し能力プリセットでモデル化する |
 | [0012](0012-sealed-starter-template-in-exam-payload.md) | Accepted | 封印問題の平文を構造化し N問バンドル＋問題ごとのスターターコードを同梱する |
 | [0013](0013-exam-schedule-advisory-keep-manifest-format.md) | Accepted | 試験スケジュールを advisory とし manifest フォーマットは据え置く |
 | [0014](0014-class-mode-unsealed-problem-distribution.md) | Accepted | 授業モードは平文 `.tcclass` で問題を配布し受動 fullscreen を記録する (tier ①) |
@@ -59,7 +59,7 @@
 | [0025](0025-grader-cohort-baseline.md) | Accepted | 採点者向けコホート基準を content-free な分布として定義 (外れ値は triage であって違反ではない・norms は配らない) |
 | [0026](0026-lightweight-git-flow-branching.md) | Superseded by 0028 | ブランチ運用を軽量 Git Flow にする (release/* を省き develop→main は merge commit・feature→develop は squash) |
 | [0027](0027-checkpoint-sign-requires-session-token.md) | Accepted | /api/checkpoint/sign を sessionStartToken 前提にする (DO 化は据え置き・無認証リクエストに KV コストを払わない) |
-| [0028](0028-tag-based-github-flow.md) | Accepted (production へ出す契機・緊急修正の経路・`release/*` の扱い・タグの打ち方は ADR-0055 が置換する。実装は #842〜#845 で、それまでは 0028 の手順が現行) | ブランチ運用をタグ式 GitHub Flow にする (main 1 本 + v* タグで production リリース・0026 を supersede) |
+| [0028](0028-tag-based-github-flow.md) | Accepted (production へ出す契機・緊急修正の経路・`release/*` の扱い・タグの打ち方は ADR-0055 が置換する。実装は #842〜#845 で、それまでは 0028 の手順が現行。アプリ一括公開は ADR-0052 がアプリ別の公開へ置換する予定で、実装は #808) | ブランチ運用をタグ式 GitHub Flow にする (main 1 本 + v* タグで production リリース・0026 を supersede) |
 | [0029](0029-merge-cleanup-script.md) | Accepted | マージ後の掃除はバージョン管理されたスクリプト (git sweep) に集約する |
 | [0030](0030-dev-port-autoswitch.md) | Accepted | dev サーバのポートはランチャーがセット単位で自動割当し、配線 (プロキシ / VITE_API_URL) を環境変数で追従させる |
 | [0031](0031-integrity-partial-when-posw-skipped.md) | Accepted | 検証モードで省略した検査を整合性層に反映する (integrity に `partial` を追加・ADR-0020 の値域を拡張) |
@@ -83,7 +83,10 @@
 | [0049](0049-staging-turnstile-testing-keys.md) | Accepted (Worker = #660、E2E = #655) | staging と PR プレビューは Turnstile の公開テストキーで動かし、main push ごとに staging の実 URL をブラウザ E2E で通す (Worker は testing key の結果を staging でだけ通し、production・未知の環境では拒否・E2E 用の迂回ヘッダと best-effort 経路だけの案を却下・production には当てない・本物の Turnstile を通すのは production だけになる) |
 | [0050](0050-pull-request-event-for-pr-checks.md) | Accepted (#685) | PR の検査 (pr-title・pr-checks) は `pull_request` で走らせ、`pull_request_target` は書き込みの要る labeler だけにポリシーで許可する (GitHub が 2026-12-02 に公開リポジトリの `pull_request_target` を既定で止めるため・3 本とも許可する案と labeler を `workflow_run` に分ける案を却下・PR が自分のゲートを書き換えられる点は差分に出るので受け入れる) |
 | [0051](0051-authoring-from-local-material-folder.md) | Accepted (実装は #794〜#800) | 作問の正本を手元の教材フォルダに置き、問題・ケース・試験を YAML の定義ファイル (`tc-problem/1` / `tc-cases/1` / `tc-exam/1`) で表す (本文・コードは通常のファイルを相対パスで参照・ケースは `{ name, stdin, stdout, public?, match? }` で `public` を入出力例に流す・教員用検証の比較は既定 trim で `exact` を選べる・ヒントはまだ配らない・共有は別フォルダへのコピー・フォルダ無しの作問をやめる・鍵と監督コードをフォルダに書かない・配布物の形とハッシュは不変) |
-| [0055](0055-release-channels-and-calendar-versioning.md) | Accepted (実装は #842〜#845。0052〜0054 は未マージの設計 PR #814 が使う) | リリースを main → beta → 正式版 (年 2 回) の 3 チャンネルにし、版を暦の形でタグから自動採番する (正式版は 2 月・8 月に beta を昇格・beta は日次で専用環境へ・版は `vYYYY.M.0-beta.N` → `vYYYY.M.0` → `vYYYY.M.P`・正本はタグと GitHub Releases でリリースはファイルを変えない・変更履歴は `changelog.d/` の断片・学期中の patch は `release/A.B` へ cherry-pick・bump の PR と 7 日の規則と停滞検知をやめる・ADR-0028 の一部を置換) |
+| [0052](0052-independent-app-packages-and-deployments.md) | Accepted (実装は #807・#808。#808 は #857〜#859 に分割) | author・editor・verify を同じモノレポの独立パッケージ・origin・成果物として公開し、対象別に復旧する |
+| [0053](0053-versioned-verification-contracts.md) | Accepted (実装は #809・#810。legacy は proof 1.2.0 だけ・#611 は #810 に含める) | 仕様別の検証器を維持し、新仕様の識別子を暗号的に束縛する。legacy の保証限界と現在の信頼・受理を分ける |
+| [0054](0054-public-verification-and-replay-sdk.md) | Accepted (実装は #811・#812。§5 の配布 = #813 は保留) | 検証とログ再生を公開 SDK にし、公式 Web・CLI と外部アプリが同じ API を使う |
+| [0055](0055-release-channels-and-calendar-versioning.md) | Accepted (実装は #842〜#845) | リリースを main → beta → 正式版 (年 2 回) の 3 チャンネルにし、版を暦の形でタグから自動採番する (正式版は 2 月・8 月に beta を昇格・beta は日次で専用環境へ・版は `vYYYY.M.0-beta.N` → `vYYYY.M.0` → `vYYYY.M.P`・正本はタグと GitHub Releases でリリースはファイルを変えない・変更履歴は `changelog.d/` の断片・学期中の patch は `release/A.B` へ cherry-pick・bump の PR と 7 日の規則と停滞検知をやめる・ADR-0028 の一部を置換) |
 
 ## 参考
 
