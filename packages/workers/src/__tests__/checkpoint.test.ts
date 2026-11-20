@@ -53,6 +53,7 @@ beforeAll(async () => {
       publicKeyJwk: await crypto.subtle.exportKey('jwk', keyPair.publicKey),
       status: 'active',
       validFrom: '2026-01-01T00:00:00.000Z',
+      environment: 'production',
     },
   ];
   const serverContext = {
@@ -460,6 +461,83 @@ describe('handleSignCheckpoint', () => {
     expect(kv.store.size).toBe(0);
   });
 
+  // ---------- token の鍵の環境 (#321) ----------
+
+  describe('session token key environment', () => {
+    /** staging の Worker の署名鍵。registry には production の TOKEN_KEY_ID と並んで載る */
+    const STAGING_KEY_ID = 'tcp-test-staging-key';
+    let stagingPrivateJwk: string;
+    let stagingEntry: CheckpointPublicKey;
+    let stagingToken: SessionStartToken;
+    /** production と staging の鍵が並ぶ registry (本番の registry.ts と同じ形) */
+    let mixedRegistry: readonly CheckpointPublicKey[];
+
+    beforeAll(async () => {
+      const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+      stagingPrivateJwk = JSON.stringify(await crypto.subtle.exportKey('jwk', pair.privateKey));
+      stagingEntry = {
+        keyId: STAGING_KEY_ID,
+        algorithm: 'ECDSA-P256',
+        publicKeyJwk: await crypto.subtle.exportKey('jwk', pair.publicKey),
+        status: 'active',
+        validFrom: '2026-01-01T00:00:00.000Z',
+        environment: 'staging',
+      };
+      mixedRegistry = [...tokenRegistry, stagingEntry];
+      stagingToken = await createSessionStartToken(
+        { sessionId: 'test-session', fingerprintHash: 'f'.repeat(64) },
+        {
+          serverNonce: '0'.repeat(64),
+          issuedAt: new Date(NOW_MS - 60_000).toISOString(),
+          turnstileVerified: true,
+          hostname: 'workers.test',
+          action: 'session_start',
+        },
+        { keyId: STAGING_KEY_ID, privateKey: pair.privateKey }
+      );
+    });
+
+    /** staging の鍵で署名する Worker (staging の Worker と同じ設定) */
+    const stagingWorkerEnv = (): CheckpointEnv => ({
+      ...env,
+      CHECKPOINT_SIGNING_KEY_ID: STAGING_KEY_ID,
+      CHECKPOINT_SIGNING_KEY_JWK: stagingPrivateJwk,
+    });
+
+    it('rejects a staging-key token at a Worker that signs with a production key, before reading KV', async () => {
+      const res = await sign(makeRequest(makeInput(), stagingToken), env, mixedRegistry);
+
+      expect(res.status).toBe(401);
+      expect(((await res.json()) as ErrorResponseBody).code).toBe('TOKEN_INVALID');
+      expect(kv.getCount).toBe(0);
+    });
+
+    it('rejects a production-key token at a Worker that signs with a staging key', async () => {
+      const res = await sign(makeRequest(makeInput(), validToken), stagingWorkerEnv(), mixedRegistry);
+
+      expect(res.status).toBe(401);
+      expect(((await res.json()) as ErrorResponseBody).code).toBe('TOKEN_INVALID');
+    });
+
+    it('signs with a staging-key token at a Worker that signs with the staging key', async () => {
+      const res = await sign(makeRequest(makeInput(), stagingToken), stagingWorkerEnv(), mixedRegistry);
+
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as SignResponseBody).envelope.keyId).toBe(STAGING_KEY_ID);
+    });
+
+    it('rejects a token whose registry entry has no environment, even when it is the signing key (fail-closed)', async () => {
+      // token の鍵と署名鍵が同じエントリでも、環境が無ければ「同じ環境」とは言えない (undefined 同士を一致にしない)
+      const { environment: _omitted, ...withoutEnvironment } = tokenRegistry[0]!;
+      const registry = [withoutEnvironment as CheckpointPublicKey];
+
+      const res = await sign(makeRequest(makeInput(), validToken), env, registry);
+
+      expect(res.status).toBe(401);
+      expect(((await res.json()) as ErrorResponseBody).code).toBe('TOKEN_INVALID');
+    });
+  });
+
   // ---------- token の最大有効期間 (#227) ----------
 
   describe('session token max age', () => {
@@ -680,6 +758,7 @@ describe('handleSignCheckpoint', () => {
         status: 'active',
         validFrom: '2026-01-01T00:00:00.000Z',
         ...overrides,
+        environment: overrides.environment ?? 'production',
       };
       const guardEnv: CheckpointEnv = {
         CHECKPOINT_SESSIONS: kv as unknown as KVNamespace,

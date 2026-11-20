@@ -88,6 +88,7 @@ editor の JavaScript 実行 (`JavaScriptExecutor`) は、ユーザーのコー�
 
 - **#411 (親ページに CSP を入れる) への注意**: srcdoc の iframe は親の CSP も継承する。親に CSP を入れるときは、runner の `blob:` Worker と `'unsafe-eval'` を塞がないこと (`worker-src blob:` と、runner の inline script を通す設定が要る)。塞ぐと JS / TS の実行が runner の準備応答なしの `error` になる
 - C / C++ (Wasmer) と Python (Pyodide) は今回は対象外で、これまでどおり親の realm で動く。同じ箱に入れるかは Option D とあわせて別 Issue で扱う
+  - **2026-11-20 追記**: Python は [ADR-0056](0056-python-in-opaque-origin-runner.md) (#719) で、同じ考え方の opaque origin の iframe + Worker に隔離した (別 origin = Option D は要らなかった)。C / C++ は引き続き親の realm で動く
 - TypeScript の transpile 部は #208 で差し替える。実行の経路 (この ADR) は変えない
 
 ## References

@@ -396,12 +396,13 @@ test('production build: @nightly C の行入力と EOF (Ctrl+D・「入力終了
 });
 
 /**
- * Python は専用の module Worker (`executors/python/pythonWorker.ts`) で Pyodide を動かし、stdin を
- * SharedArrayBuffer で渡す (#649)。Worker のバンドルと、本番の COOP / COEP の下で SharedArrayBuffer を
- * Worker に渡せることは本番ビルドでしか確かめられないので、入力付きの実行を 1 本ここで回す。
+ * Python は opaque origin の sandbox iframe (`allow="cross-origin-isolated"`) の中の Worker で Pyodide を動かし、
+ * stdin は runner が作った SharedArrayBuffer で渡す (#649 / #719)。本番の COOP / COEP の下で runner が
+ * cross-origin isolated になり (ならなければ実行しない = fail closed)、opaque origin で動くことは本番ビルドでも
+ * 確かめたいので、入力付きの実行を 1 本ここで回し、実行コードから見た origin と isolation も出させる。
  * Pyodide を jsDelivr から取るので `@nightly`。
  */
-test('production build: @nightly Python の input() がターミナルに打った行を読み、success で終わる', async ({
+test('production build: @nightly Python が隔離した runner で input() の行を読み、success で終わる', async ({
   page,
 }) => {
   test.setTimeout(360_000);
@@ -420,11 +421,16 @@ test('production build: @nightly Python の input() がターミナルに打っ�
   await page.keyboard.press('Control+A');
   await page.keyboard.press('Delete');
   // dev フックは dist に無いので打鍵で入れる。自動インデントを通らないよう 1 行にする
-  await page.keyboard.type('a, b = map(int, input().split()); print("sum-" + str(a + b))');
+  await page.keyboard.type(
+    'a, b = map(int, input().split()); import js; print("sum-" + str(a + b), js.self.origin, js.self.crossOriginIsolated)'
+  );
 
   const terminal = page.locator('#xterm-container');
   await page.locator('#run-code-btn').click();
   await expect(terminal).toHaveAttribute('data-exec-run', '1');
+  const runner = page.locator('iframe[data-python-runner]');
+  await expect(runner).toHaveAttribute('sandbox', 'allow-scripts');
+  await expect(runner).toHaveAttribute('allow', 'cross-origin-isolated');
   // 1 回目の実行は Pyodide の取得と初期化を含む。利用者のコードが走り始めてから打つ
   await expect(terminal.locator('.xterm-rows')).toContainText('Running Python...', { timeout: 240_000 });
   await terminal.click();
@@ -433,7 +439,8 @@ test('production build: @nightly Python の input() がターミナルに打っ�
 
   await expect(terminal).toHaveAttribute('data-exec-state', 'idle', { timeout: 60_000 });
   await expect(terminal).toHaveAttribute('data-exec-outcome', 'success');
-  await expect(terminal.locator('.xterm-rows')).toContainText('sum-8');
+  // 実行コードは opaque origin (null) で、cross-origin isolated (SharedArrayBuffer の stdin が使える)
+  await expect(terminal.locator('.xterm-rows')).toContainText('sum-8 null True');
   expect(dialogs).toBe(0);
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });

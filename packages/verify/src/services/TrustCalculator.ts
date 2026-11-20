@@ -4,7 +4,7 @@
  * 注意: メインスレッド専用 (TabController から呼ばれる)。
  * t() を使うため Web Worker 内では使用しないこと。
  */
-import type { RootAnchorFailure } from '@typedcode/shared';
+import type { RootAnchorFailure, UntrustedEnvironmentKey } from '@typedcode/shared';
 import { t } from '../i18n/index';
 import type {
   TrustLevel,
@@ -51,6 +51,14 @@ function sessionTokenUntrustedMessage(failure: RootAnchorFailure): string {
     case 'token-invalid':
       return t('trust.issueSessionTokenUntrusted.invalid');
   }
+}
+
+/**
+ * 信頼しない環境の鍵の keyId をカンマ区切りで並べる (#321)。registry の値だが、issue の message は
+ * ResultPanel が `escapeHtml` を通して描画する。
+ */
+function untrustedKeyIds(keys: readonly UntrustedEnvironmentKey[]): string {
+  return keys.map((k) => k.keyId).join(', ');
 }
 
 export class TrustCalculator {
@@ -174,6 +182,16 @@ export class TrustCalculator {
           severity: 'error',
           message: t('trust.issueAnchoringInvalid'),
         });
+      } else if (verificationResult.signedCheckpointUntrustedKeys?.length) {
+        // #321: 署名 cp は検査を通ったが、このビルドが信頼しない環境 (staging) の鍵。証拠が無いのと同じ扱いの
+        // warning (改ざんではない)。「署名 cp が無い」と読める文言は出さない。
+        issues.push({
+          component: 'anchoring',
+          severity: 'warning',
+          message: t('trust.issueAnchoringUntrustedKeyEnvironment', {
+            keyId: untrustedKeyIds(verificationResult.signedCheckpointUntrustedKeys),
+          }),
+        });
       } else if (!verificationResult.signedCheckpointAnchored) {
         issues.push({
           component: 'anchoring',
@@ -228,10 +246,16 @@ export class TrustCalculator {
       !verificationResult.rootAnchored &&
       !verificationResult.exam?.present
     ) {
+      // #321: token は正しく署名されているが、このビルドが信頼しない環境 (staging) の鍵。root 未アンカーの
+      // warning と同じ重さで、「token が無い」と読める文言の代わりに理由を出す。
       issues.push({
         component: 'anchoring',
         severity: 'warning',
-        message: t('trust.issueRootNotAnchored'),
+        message: verificationResult.rootAnchorUntrustedKey
+          ? t('trust.issueRootUntrustedKeyEnvironment', {
+              keyId: untrustedKeyIds([verificationResult.rootAnchorUntrustedKey]),
+            })
+          : t('trust.issueRootNotAnchored'),
       });
     }
 

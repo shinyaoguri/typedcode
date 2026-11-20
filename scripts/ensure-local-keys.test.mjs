@@ -47,7 +47,7 @@ describe('the real repository', () => {
 
   it('ships an example for each localKeys.ts whose key array is empty outside comments', () => {
     const expected = {
-      [CHECKPOINT]: /LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey\[\] = \[ ?\] as const;/,
+      [CHECKPOINT]: /LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly LocalCheckpointPublicKey\[\] = \[ ?\] as const;/,
       [EXAM]: /LOCAL_EXAM_AUTHORITY_KEYS: readonly ExamAuthorityKey\[\] = \[ ?\] as const;/,
     };
     for (const rel of LOCAL_KEYS_FILES) {

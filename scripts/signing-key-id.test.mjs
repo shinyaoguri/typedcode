@@ -16,9 +16,9 @@ const REGISTRY = "export const keys = [{ keyId: 'tcp-202605-fd6d42', algorithm: 
 /** setup-env.mjs が書く形 (entry を JSON.stringify するのでキーも引用符付き)。 */
 function setupEnvLocalKeys(keyId) {
   return [
-    "import type { CheckpointPublicKey } from './registry.js';",
-    'export const LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [',
-    `  ${JSON.stringify({ keyId, algorithm: 'ECDSA-P256', status: 'active' })} as CheckpointPublicKey,`,
+    "import type { LocalCheckpointPublicKey } from './registry.js';",
+    'export const LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly LocalCheckpointPublicKey[] = [',
+    `  ${JSON.stringify({ keyId, algorithm: 'ECDSA-P256', status: 'active' })} as LocalCheckpointPublicKey,`,
     '];',
   ].join('\n');
 }

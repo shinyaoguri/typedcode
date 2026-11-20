@@ -1,6 +1,6 @@
 # ADR-0047: Python (Pyodide) を専用の Worker で動かし、ターミナルの入力を SharedArrayBuffer で stdin に渡す
 
-- **Status**: Accepted
+- **Status**: Accepted (Worker の置き場所を ADR-0056 で改訂: 同じ origin の module Worker から、opaque origin の sandbox iframe の中の classic Worker へ。stdin を SharedArrayBuffer で同期に渡す決定は変わらない)
 - **Date**: 2026-11-07
 - **Deciders**: @shinyaoguri
 - **PR / Commit**: (#649 を閉じる PR)
@@ -98,6 +98,7 @@ opaque origin への隔離 (Option D) は、入力の不具合と独立に決め
 ### Follow-ups / 残課題
 
 - Python を opaque origin に隔離する (Option D) かどうかは #650 で扱う
+  - **2026-11-20 追記**: 隔離した ([ADR-0056](0056-python-in-opaque-origin-runner.md)、#719)。SAB は runner の側で作り、親は行を postMessage で渡す形になった
 - EOF (Ctrl+D) と、Ctrl+C での停止は入れていない
 - 複数行をターミナルに貼ったときに `terminalInput` が行ごとに記録されない (`CTerminal` 側の不具合)。#648 で直す
 

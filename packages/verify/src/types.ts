@@ -11,6 +11,7 @@ import type {
   ProofVersionStatus,
   RootAnchorFailure,
   SubmissionPairStatus,
+  UntrustedEnvironmentKey,
 } from '@typedcode/shared';
 
 // Extended proof data with content and language
@@ -86,6 +87,11 @@ export interface VerificationResultData {
    */
   rootAnchorFailure?: RootAnchorFailure;
   /**
+   * token の署名は検証できたが、鍵の環境 (このビルドが信頼しない staging) を信頼しなかったので root を
+   * アンカーに数えなかった (#321。shared の `FullVerificationResult.rootAnchorUntrustedKey`)。`valid` は落ちない。
+   */
+  rootAnchorUntrustedKey?: UntrustedEnvironmentKey;
+  /**
    * `sessionStartToken` の sessionId と署名 cp の sessionId が食い違ったか (spec §6.3)。
    * true = 別セッションのトークン流用。**整合性 (chainValid) ではなく時刻アンカー層の問題**として扱う。
    */
@@ -131,6 +137,11 @@ export interface VerificationResultData {
   signedCheckpointDensity?: SignedCheckpointsVerificationResult['density'];
   signedCheckpointReason?: string;
   signedCheckpointAnchored?: boolean;
+  /**
+   * 署名 cp は検査を通ったが、鍵の環境 (このビルドが信頼しない staging) を信頼しなかった (#321。shared の
+   * `SignedCheckpointsVerificationResult.untrustedKeys`)。このとき `signedCheckpointAnchored` は false。
+   */
+  signedCheckpointUntrustedKeys?: UntrustedEnvironmentKey[];
   /** 分析層 (ADR-0009) の advisory レポート。判定ではない (valid とは独立軸)。 */
   analysis?: AnalysisReport;
   /**

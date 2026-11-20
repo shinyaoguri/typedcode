@@ -8,15 +8,16 @@
  *
  * 次に `npm run gen-checkpoint-key -w @typedcode/workers` を実行し、
  * 出力された公開鍵エントリを LOCAL_CHECKPOINT_PUBLIC_KEYS に append する。
- * `registry.ts` の本番鍵リストとマージして使われる。
+ * `registry.ts` の鍵リストとマージして使われる。ここの鍵の環境は常に `development` になる
+ * (`environment` は書かない。書いても index.ts が上書きする。#321)。
  *
  * gitignored なので、各開発者の dev 鍵や e2e の使い捨て鍵がコミットされて
  * 本番の verifier に信頼されることはない。本番公開鍵は `registry.ts` に append し、PR でレビューする。
  */
 
-import type { CheckpointPublicKey } from './registry.js';
+import type { LocalCheckpointPublicKey } from './registry.js';
 
-export const LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [
+export const LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly LocalCheckpointPublicKey[] = [
   // 例 (gen-checkpoint-key の出力をそのまま貼る):
   // {
   //   keyId: 'tcp-202605-xxxxxx',

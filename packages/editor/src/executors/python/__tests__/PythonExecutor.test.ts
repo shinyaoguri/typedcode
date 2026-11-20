@@ -1,23 +1,25 @@
 /**
- * PythonExecutor (メイン側のアダプタ) の振る舞い (#649)。
+ * PythonExecutor (メイン側のアダプタ) の振る舞い (#649 / #719)。
  *
- * Pyodide を動かす Worker だけを偽物に差し替える。偽の Worker は受け取ったメッセージを貯め、
- * テストが Worker からのメッセージを手で送る。stdin のチャネル・期限は本物を使う (line discipline はターミナル側。#707)。
+ * Pyodide を動かす runner (sandbox iframe + Worker) だけを偽物に差し替える。偽の runner は受け取った
+ * 要求を貯め、テストが runner からの (検査済みの) メッセージを手で送る。期限は本物を使う
+ * (line discipline はターミナル側。#707。stdin の SharedArrayBuffer は runner 側 = stdinChannelSource.test.ts)。
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { ExecutionCallbacks, ExecutionResult, InteractiveStdin } from '../../interfaces/ILanguageExecutor.js';
-import { PythonExecutor, findRequiredPackages, type PythonWorkerHandle } from '../PythonExecutor.js';
-import type { PythonWorkerMessage, PythonWorkerRequest } from '../pythonWorkerProtocol.js';
-import { StdinChannelReader } from '../stdinChannel.js';
+import { outputLimitNotice } from '../../sandbox/SandboxRunner.js';
+import { PythonExecutor, findRequiredPackages } from '../PythonExecutor.js';
+import type { PythonRunnerHandle } from '../PythonRunner.js';
+import type { PythonExecMessage, PythonRunnerRequest } from '../pythonRunnerProtocol.js';
 
-class FakeWorker implements PythonWorkerHandle {
-  onmessage: ((event: MessageEvent) => void) | null = null;
-  onerror: ((event: Event) => void) | null = null;
-  posted: PythonWorkerRequest[] = [];
+class FakeRunner implements PythonRunnerHandle {
+  onmessage: ((message: PythonExecMessage) => void) | null = null;
+  onerror: ((error: string) => void) | null = null;
+  posted: PythonRunnerRequest[] = [];
   terminated = false;
 
-  postMessage(message: PythonWorkerRequest): void {
+  postMessage(message: PythonRunnerRequest): void {
     this.posted.push(message);
   }
 
@@ -25,30 +27,39 @@ class FakeWorker implements PythonWorkerHandle {
     this.terminated = true;
   }
 
-  emit(message: PythonWorkerMessage): void {
-    this.onmessage?.({ data: message } as MessageEvent);
+  emit(message: PythonExecMessage): void {
+    this.onmessage?.(message);
   }
 
-  lastRun(): Extract<PythonWorkerRequest, { type: 'run' }> {
+  lastRun(): Extract<PythonRunnerRequest, { type: 'run' }> {
     const run = this.posted.filter((m) => m.type === 'run').at(-1);
     if (run?.type !== 'run') throw new Error('no run posted');
     return run;
   }
+
+  /** run の後に送った stdin の要求 */
+  stdinRequests(): PythonRunnerRequest[] {
+    return this.posted.filter((m) => m.type === 'stdin' || m.type === 'stdin-eof');
+  }
 }
 
-function setup(timeoutMs?: number) {
-  const workers: FakeWorker[] = [];
-  const executor = new PythonExecutor(() => {
-    const w = new FakeWorker();
-    workers.push(w);
-    return w;
-  }, timeoutMs);
+function setup(timeoutMs?: number, outputBudgetChars = 1_000_000) {
+  const workers: FakeRunner[] = [];
+  const executor = new PythonExecutor(
+    () => {
+      const w = new FakeRunner();
+      workers.push(w);
+      return w;
+    },
+    timeoutMs,
+    () => outputBudgetChars
+  );
   return { executor, workers };
 }
 
-async function initialize(executor: PythonExecutor, workers: FakeWorker[]): Promise<FakeWorker> {
+async function initialize(executor: PythonExecutor, workers: FakeRunner[]): Promise<FakeRunner> {
   const ready = executor.initialize();
-  const worker = workers.at(-1) as FakeWorker;
+  const worker = workers.at(-1) as FakeRunner;
   worker.emit({ type: 'ready' });
   await ready;
   return worker;
@@ -86,50 +97,65 @@ afterEach(() => {
 });
 
 describe('PythonExecutor', () => {
-  it('hands the line committed by the terminal to the waiting worker without echoing it again', async () => {
+  it('asks the runner to load Pyodide without passing any URL, storage name or credential', async () => {
+    const { executor, workers } = setup();
+    const worker = await initialize(executor, workers);
+    expect(worker.posted).toEqual([{ type: 'init' }]);
+  });
+
+  it('sends only the code, the imported package names and the output budget to the runner', async () => {
+    const { executor, workers } = setup(undefined, 1234);
+    const worker = await initialize(executor, workers);
+    startRun(executor, 'import numpy\nprint(1)\n');
+    expect(worker.lastRun()).toEqual({
+      type: 'run',
+      runId: 1,
+      code: 'import numpy\nprint(1)\n',
+      packages: ['numpy'],
+      outputBudgetChars: 1234,
+    });
+  });
+
+  it('forwards the line committed by the terminal to the runner without echoing it again', async () => {
     const { executor, workers } = setup();
     const worker = await initialize(executor, workers);
     const run = startRun(executor);
-    const { runId, stdinBuffer } = worker.lastRun();
+    const { runId } = worker.lastRun();
 
     worker.emit({ type: 'started', runId });
     worker.emit({ type: 'stdout', runId, text: 'name: ' });
-    worker.emit({ type: 'stdin-request', runId });
+    worker.emit({ type: 'stdin-request', runId, received: 0 });
     run.line('Taro\n');
 
     // エコーはターミナルがする (#707)。ここで stdout に足すと二重に出る
     expect(run.out.join('')).toBe('name: ');
-    expect(new TextDecoder().decode(new StdinChannelReader(stdinBuffer).read())).toBe('Taro\n');
+    expect(worker.stdinRequests()).toEqual([{ type: 'stdin', runId, text: 'Taro\n' }]);
 
     worker.emit({ type: 'done', runId, success: true, result: null });
     expect(await run.promise).toMatchObject({ success: true, exitCode: 0 });
   });
 
-  it('reports EOF to the waiting worker as an empty read once the terminal closes stdin (#707)', async () => {
+  it('sends EOF to the runner once the terminal closes stdin and nothing after it (#707)', async () => {
     const { executor, workers } = setup();
     const worker = await initialize(executor, workers);
     const run = startRun(executor);
-    const { runId, stdinBuffer } = worker.lastRun();
-    const reader = new StdinChannelReader(stdinBuffer);
-    const state = new Int32Array(stdinBuffer, 0, 1);
+    const { runId } = worker.lastRun();
 
     worker.emit({ type: 'started', runId });
     run.line('last\n');
     run.eof();
     run.line('after-eof\n');
-    // Worker の read を真似る: 入力を求め、書かれていれば読む (書かれていなければ待たずに null)
-    const reads: (string | null)[] = [];
-    for (let i = 0; i < 2; i++) {
-      worker.emit({ type: 'stdin-request', runId });
-      reads.push(Atomics.load(state, 0) === 1 ? new TextDecoder().decode(reader.read()) : null);
-    }
+    run.eof();
 
-    expect(reads).toEqual(['last\n', '']);
+    expect(worker.stdinRequests()).toEqual([
+      { type: 'stdin', runId, text: 'last\n' },
+      { type: 'stdin-eof', runId },
+    ]);
     worker.emit({ type: 'done', runId, success: true, result: null });
     expect(await run.promise).toMatchObject({ success: true });
   });
 
-  it('stops the worker on abort, resolves the run as aborted, and initializes a new worker for the next run', async () => {
+  it('stops the runner on abort, resolves the run as aborted, and initializes a new runner for the next run', async () => {
     const { executor, workers } = setup();
     const first = await initialize(executor, workers);
     const run = startRun(executor);
@@ -156,7 +182,7 @@ describe('PythonExecutor', () => {
 
     worker.emit({ type: 'started', runId });
     await vi.advanceTimersByTimeAsync(900);
-    worker.emit({ type: 'stdin-request', runId });
+    worker.emit({ type: 'stdin-request', runId, received: 0 });
     await vi.advanceTimersByTimeAsync(10_000);
     expect(run.result()).toBeNull();
     expect(worker.terminated).toBe(false);
@@ -168,7 +194,22 @@ describe('PythonExecutor', () => {
     expect(executor.isInitialized).toBe(false);
   });
 
-  it('ignores late messages from a stopped worker', async () => {
+  it('keeps counting time when the input the runner asks for is already on its way', async () => {
+    vi.useFakeTimers();
+    const { executor, workers } = setup(1_000);
+    const worker = await initialize(executor, workers);
+    const run = startRun(executor);
+    const { runId } = worker.lastRun();
+
+    worker.emit({ type: 'started', runId });
+    run.line('typed ahead\n');
+    // runner が行を受け取る前に入力を求めた (received 0 < sent 1)。行は届けば渡るので待ちにしない
+    worker.emit({ type: 'stdin-request', runId, received: 0 });
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(await run.promise).toMatchObject({ outcome: 'timeout' });
+  });
+
+  it('ignores late messages from a stopped runner', async () => {
     const { executor, workers } = setup();
     const first = await initialize(executor, workers);
     const stopped = startRun(executor);
@@ -176,12 +217,12 @@ describe('PythonExecutor', () => {
     executor.abort();
     await stopped.promise;
 
-    // 捨てた Worker の ready で、新しい Worker の初期化を終えたことにしない
+    // 捨てた runner の ready で、新しい runner の初期化を終えたことにしない
     const init = executor.initialize();
     first.emit({ type: 'ready' });
     await new Promise((r) => setTimeout(r, 0));
     expect(executor.isInitialized).toBe(false);
-    const second = workers.at(-1) as FakeWorker;
+    const second = workers.at(-1) as FakeRunner;
     second.emit({ type: 'ready' });
     await init;
 
@@ -195,7 +236,7 @@ describe('PythonExecutor', () => {
     expect(await run.promise).toMatchObject({ success: true });
   });
 
-  it('fails initialization when the worker reports an error and allows retrying', async () => {
+  it('fails initialization when the runner reports an error and allows retrying', async () => {
     const { executor, workers } = setup();
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const init = executor.initialize();
@@ -206,6 +247,42 @@ describe('PythonExecutor', () => {
 
     await initialize(executor, workers);
     expect(executor.isInitialized).toBe(true);
+  });
+
+  it('fails initialization when the runner itself fails (for example, it is not cross-origin isolated)', async () => {
+    const { executor, workers } = setup();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const init = executor.initialize();
+    workers[0]?.onerror?.('not isolated');
+    await expect(init).rejects.toThrow('Failed to initialize Python: not isolated');
+    expect(executor.isInitialized).toBe(false);
+  });
+
+  it('resolves the run as an error and drops the runner when the runner fails during the run', async () => {
+    const { executor, workers } = setup();
+    const worker = await initialize(executor, workers);
+    const run = startRun(executor, 'print(1)');
+    worker.onerror?.('The Python runner crashed: boom');
+    expect(await run.promise).toMatchObject({ outcome: 'error', error: 'The Python runner crashed: boom' });
+    expect(worker.terminated).toBe(true);
+    expect(executor.isInitialized).toBe(false);
+  });
+
+  it('cuts the output at the budget, reports it once on stderr and stops the runner as an error', async () => {
+    const { executor, workers } = setup(undefined, 10);
+    const worker = await initialize(executor, workers);
+    const run = startRun(executor, 'print("x" * 100)');
+    const { runId } = worker.lastRun();
+
+    worker.emit({ type: 'stdout', runId, text: '123456' });
+    worker.emit({ type: 'stderr', runId, text: 'abcdef' });
+    worker.emit({ type: 'stdout', runId, text: 'LATE' });
+
+    const result = await run.promise;
+    expect(result).toMatchObject({ outcome: 'error', error: 'Output limit exceeded', stdout: '123456' });
+    expect(run.err).toEqual(['abcd', outputLimitNotice(10)]);
+    expect(run.out).toEqual(['123456']);
+    expect(worker.terminated).toBe(true);
   });
 
   it('writes the Python error to stderr and resolves the run as a failure', async () => {
@@ -242,22 +319,24 @@ describe('PythonExecutor non-interactive run (#802)', () => {
     return { promise, out, stdinReady: () => stdinReady, programStarts: () => programStarts };
   }
 
-  it('hands the whole stdin to the worker and then reports EOF as an empty read', async () => {
+  it('sends the whole stdin to the runner after the run request and then EOF', async () => {
     const { executor, workers } = setup();
     const worker = await initialize(executor, workers);
     startBatchRun(executor, '3\n1 8 4\n');
-    const { runId, stdinBuffer } = worker.lastRun();
-    const reader = new StdinChannelReader(stdinBuffer);
-    const state = new Int32Array(stdinBuffer, 0, 1);
+    const { runId } = worker.lastRun();
 
-    // Worker の read を真似る: 入力を求め、書かれていれば読む (書かれていなければ待たずに null)
-    const reads: (string | null)[] = [];
-    for (let i = 0; i < 2; i++) {
-      worker.emit({ type: 'stdin-request', runId });
-      reads.push(Atomics.load(state, 0) === 1 ? new TextDecoder().decode(reader.read()) : null);
-    }
+    expect(worker.posted.slice(1).map((m) => m.type)).toEqual(['run', 'stdin', 'stdin-eof']);
+    expect(worker.stdinRequests()).toEqual([
+      { type: 'stdin', runId, text: '3\n1 8 4\n' },
+      { type: 'stdin-eof', runId },
+    ]);
+  });
 
-    expect(reads).toEqual(['3\n1 8 4\n', '']);
+  it('sends only EOF when the given stdin is empty', async () => {
+    const { executor, workers } = setup();
+    const worker = await initialize(executor, workers);
+    startBatchRun(executor, '');
+    expect(worker.stdinRequests()).toEqual([{ type: 'stdin-eof', runId: worker.lastRun().runId }]);
   });
 
   it('neither connects the terminal nor echoes the given stdin to stdout', async () => {
@@ -265,14 +344,14 @@ describe('PythonExecutor non-interactive run (#802)', () => {
     const worker = await initialize(executor, workers);
     const run = startBatchRun(executor, 'Taro\n');
     const { runId } = worker.lastRun();
-    worker.emit({ type: 'stdin-request', runId });
+    worker.emit({ type: 'stdin-request', runId, received: 2 });
     worker.emit({ type: 'done', runId, success: true, result: null });
     await run.promise;
 
     expect({ stdinReady: run.stdinReady(), out: run.out.join('') }).toEqual({ stdinReady: false, out: '' });
   });
 
-  it('reports the start of the user program when the worker starts running it', async () => {
+  it('reports the start of the user program when the runner starts running it', async () => {
     const { executor, workers } = setup();
     const worker = await initialize(executor, workers);
     const run = startBatchRun(executor, '');

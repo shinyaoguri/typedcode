@@ -15,7 +15,8 @@ import { runVerifyCli } from './helpers/verifyCli.js';
  * - C の実行系 (Wasmer の wasm と clang の webc) は起動では取らず、最初の実行で 1 回だけ取得・初期化し、
  *   続く実行は取り直さない (#617)
  * - Python の `input()` がターミナルに打った行を読み、`window.prompt` に落ちない。案内文は入力の前に出て、
- *   入力待ちの間に停止できる (#649。Pyodide を専用 Worker で動かし、stdin を SharedArrayBuffer で渡す)
+ *   入力待ちの間に停止できる (#649 / #719。Pyodide を opaque origin の sandbox iframe の中の Worker で動かし、
+ *   stdin は runner が作った SharedArrayBuffer で渡す。隔離そのものの回帰は python-isolation.spec.ts)
  * - C の端末入力 (#707): Enter が LF で届き、バックスペース・空行・日本語・貼り付けを含む行を fgets / scanf が
  *   読み、記録 (terminalInput) と一致する。空の行の Ctrl+D と「入力終了」で EOF を送れ、書きかけの行の Ctrl+D は
  *   行を確定するだけ。選択の無い Ctrl+C で入力待ちを止め、選択があればコピーして止めない。止めた次の実行は成功する
@@ -323,7 +324,7 @@ test('python: @nightly 入力を待つ間に停止すると aborted で終わり
   await page.locator('#stop-code-btn').click();
   expect(await waitOutcome(page, stopped, 15_000)).toBe('aborted');
 
-  // 停止で Worker ごと捨てるので、次の実行は Pyodide を読み込み直してから走る
+  // 停止で runner (iframe + Worker) ごと捨てるので、次の実行は Pyodide を読み込み直してから走る
   await replaceCode(app, 'print("after-stop-" + str(6 * 7))\n');
   const outcome = await runAndWait(page, FIRST_RUN_TIMEOUT_MS);
   expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
