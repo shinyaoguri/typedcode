@@ -12,10 +12,24 @@ import {
   writeZipVariant,
 } from './helpers/app.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
+import {
+  MAX_FAKE_RESULTS,
+  MAX_PROBLEM,
+  TWO_PROBLEMS,
+  appendToEditor,
+  createOpfsFolder,
+  editorGroup,
+  openAuthorFolder,
+  openFromExplorer,
+  setFakeVerification,
+  setNextPickedFolder,
+  startVerifyFromExplorer,
+  verifyCell,
+  verifyPanel,
+} from './helpers/author.js';
 import { loadExamFixture } from './helpers/examFixture.js';
 import { failStorageProbe } from './helpers/faults.js';
 import {
-  SAMPLE_PROBLEM_EXAMPLES,
   classPackageFile,
   loadClassPackage,
   sampleClassPackageWithExamples,
@@ -136,8 +150,9 @@ const SHOTS = [
       'エディタ (授業モード): 入出力例付きの問題を読んだときの問題パネル (問題文の下に「動作確認の例」。入力のコピーボタンと、入力の無い例の「入力なし」。#648)',
   },
   {
-    file: '20-author-examples.png',
-    caption: '出題 (/author): 問題文の下の「動作確認の例」の欄に例を 2 件入れた状態 (#648)',
+    file: '20-author-workspace.png',
+    caption:
+      '出題 (/author): 教材フォルダを開いた作業画面。左がエクスプローラー (問題・試験)、中央が左右に分けたエディタ (左で本文を編集、右でそのプレビュー)。本文は未保存の印つき (#796。監督コードは隠している)',
   },
   {
     file: '21-exam-gate-attestation-pending.png',
@@ -165,6 +180,68 @@ const SHOTS = [
     file: '26-settings-menu.png',
     caption:
       'エディタ (通常モード): 設定メニューを開いた状態。救出 (証明ではない) はここにある。左のダウンロードはメニューを持たないボタン 1 つ (#779。時計とハッシュは隠している)',
+  },
+  {
+    file: '27-author-welcome.png',
+    caption: '出題 (/author): 教材フォルダを開く前の起動画面 (フォルダを開く / 新しいフォルダを作る。#796)',
+  },
+  {
+    file: '20-author-workspace-en.png',
+    caption: '出題 (/author): 20 と同じ作業画面を英語の画面で (#796)',
+  },
+  {
+    file: '27-author-welcome-en.png',
+    caption: '出題 (/author): 27 と同じ起動画面を英語の画面で (#796)',
+  },
+  {
+    file: '28-author-exam-form.png',
+    caption:
+      '出題 (/author): 試験定義をフォームで開いた画面。3 問のうち 2 問を採用して出題順に並べ、右に書き出しのパネル (署名鍵と監督コードの欄。#797。監督コードは隠している)',
+  },
+  {
+    file: '29-author-student-preview.png',
+    caption:
+      '出題 (/author): 試験定義の学生プレビュー。採用した問題を出題順に、問題文・初期コード・公開ケースの入出力例で見せる (#797)',
+  },
+  {
+    file: '28-author-exam-form-en.png',
+    caption: '出題 (/author): 28 と同じ試験定義のフォームを英語の画面で (#797)',
+  },
+  {
+    file: '29-author-student-preview-en.png',
+    caption: '出題 (/author): 29 と同じ学生プレビューを英語の画面で (#797)',
+  },
+  {
+    file: '30-author-copy-conflict.png',
+    caption:
+      '出題 (/author): 問題を別のフォルダへコピーしようとして、コピー先に同じ名前のファイルがあったときの結果 (何も書かずに衝突したパスを並べる。#800)',
+  },
+  {
+    file: '30-author-copy-conflict-en.png',
+    caption: '出題 (/author): 30 と同じコピーの衝突の結果を英語の画面で (#800)',
+  },
+  {
+    file: '31-author-cases-form.png',
+    caption:
+      '出題 (/author): ケースファイルをフォームで開いた画面。左にケースの一覧 (入出力例・完全一致の印)、右に選んだケースの名前・入出力例として配る・照合・入力・期待する出力と末尾の改行の個数 (#798)',
+  },
+  {
+    file: '31-author-cases-form-en.png',
+    caption: '出題 (/author): 31 と同じケースファイルのフォームを英語の画面で (#798)',
+  },
+  {
+    file: '32-author-verify.png',
+    caption:
+      '出題 (/author): 問題の「検証」で下のパネルに出る解答例 × テストケースの結果表と、不一致のセルの差分 (期待 -2 / 実際 0)。実行の入口は偽物で作る (#799)',
+  },
+  {
+    file: '32-author-verify-en.png',
+    caption: '出題 (/author): 32 と同じ検証のパネルを英語の画面で (#799)',
+  },
+  {
+    file: '33-class-tabs.png',
+    caption:
+      'エディタ (授業モード): 問題を読み込んだ直後のタブ。タブ名は配布した初期コードのファイル名のまま (`p1.c`)。拡張子が二重に付かない (#828)',
   },
 ] as const;
 
@@ -217,6 +294,146 @@ function bundleWebp(frames: string[], dest: string): void {
     console.warn(`[shots] img2webp が失敗したので WebP を飛ばす: ${result.stderr || result.error}`);
     rmSync(dest, { force: true });
   }
+}
+
+/** /author の起動画面 (覚えているフォルダが無い新しい context) を撮る (#796) */
+async function shootAuthorWelcome(page: Page, file: ShotFile): Promise<void> {
+  await page.goto('/author');
+  await expect(page.locator('#author-root')).toHaveAttribute('data-workspace-state', 'welcome', { timeout: 60_000 });
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
+}
+
+/** /author の作業画面を撮る (#796)。OPFS の教材フォルダを dev フックで開き、本文を左で編集・右でプレビューする */
+async function shootAuthorWorkspace(page: Page, file: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-796', {
+    ...TWO_PROBLEMS,
+    'p1.md': [
+      '# 最大値',
+      '',
+      '1 行目に個数 n、2 行目に n 個の整数が与えられる。最大値を出力せよ。',
+      '',
+      '## 入力例',
+      '',
+      '```',
+      '3',
+      '1 8 4',
+      '```',
+      '',
+    ].join('\n'),
+    '中間試験.exam.yaml':
+      'format: tc-exam/1\nexamId: midterm\nkind: exam\nlanguages: [c]\nproblems: [p1.problem.yaml, p2.problem.yaml]\n',
+  });
+  await openFromExplorer(page, 'p1.md', 'statement');
+  await page.locator('#author-split-btn').click();
+  await editorGroup(page, 1).locator('[data-action="view-preview"]').click();
+  await expect(editorGroup(page, 1)).toHaveAttribute('data-view', 'preview');
+  await appendToEditor(page, '\n出力の末尾に改行を付けること。');
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
+}
+
+/**
+ * /author の検証のパネルを撮る (#799)。実行の入口は dev フックの偽物で、解答例 3 つ (一致 / 不一致 / 時間切れ) ×
+ * ケース 2 つの表を作り、不一致のセルを選んで差分を出す
+ */
+async function shootAuthorVerify(page: Page, file: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-799', {
+    ...MAX_PROBLEM,
+    'max.problem.yaml':
+      'format: tc-problem/1\nid: max\ntitle: 最大値\nstatement: max.md\nsolutions: [max-first.c, max-zero.c, max-loop.c]\ncases: max.cases.yaml\n',
+    'max-loop.c': 'int main(void) {\n  for (;;) {}\n}\n',
+  });
+  await setFakeVerification(page, [...MAX_FAKE_RESULTS, { filename: 'max-loop.c', outcome: 'timeout' }]);
+  await openFromExplorer(page, 'max-zero.c', 'solution');
+  await startVerifyFromExplorer(page, 'max.problem.yaml');
+  await expect(verifyPanel(page)).toHaveAttribute('data-verify-state', 'done');
+  await verifyCell(page, 1, 1).click();
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
+}
+
+/** /author の試験定義をフォームと学生プレビューで撮る (#797)。3 問の教材で 2 問を採用した試験定義を開く */
+async function shootAuthorExam(page: Page, formFile: ShotFile, previewFile: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-797', {
+    ...TWO_PROBLEMS,
+    'p1.problem.yaml':
+      'format: tc-problem/1\nid: p1\ntitle: 最大値\nstatement: p1.md\nstarter: p1.c\nsolutions: [p1-解答.c]\ncases: p1.cases.yaml\n',
+    'p1.md': '# 最大値\n\n1 行目に個数 n、2 行目に n 個の整数が与えられる。最大値を出力せよ。\n',
+    'p1.c': '#include <stdio.h>\n\nint main(void) {\n  /* ここに書く */\n  return 0;\n}\n',
+    'p1.cases.yaml':
+      'format: tc-cases/1\ncases:\n  - name: 例1\n    stdin: "3\\n1 8 4\\n"\n    stdout: "8\\n"\n    public: true\n  - name: 非公開\n    stdin: "1\\n5\\n"\n    stdout: "5\\n"\n',
+    'p3.problem.yaml': 'format: tc-problem/1\nid: p3\ntitle: 探索\nstatement: p3.md\n',
+    'p3.md': '# 探索\n',
+    '中間試験.exam.yaml':
+      'format: tc-exam/1\n# 前期の中間試験\nexamId: midterm\nkind: exam\nlanguages: [c]\nproblems:\n  - p2.problem.yaml\n  - p1.problem.yaml\n',
+  });
+  await page.locator('#author-explorer [data-explorer-path="中間試験.exam.yaml"]').click();
+  await expect(editorGroup(page).locator('[data-exam-form]')).toHaveAttribute('data-state', 'ok');
+  await page.locator('#author-settings-toggle').click();
+  await expect(page.locator('#author-build-btn')).toHaveAttribute('data-kind', 'exam');
+  const mask = [page.locator('#author-sb-token'), page.locator('#author-token')];
+  // ボタンの title (ツールチップ) を写さない
+  await page.mouse.move(640, 790);
+  await page.screenshot({ path: out(formFile), animations: 'disabled', mask });
+
+  await page.locator('#author-settings-toggle').click();
+  await editorGroup(page).locator('[data-action="view-preview"]').click();
+  await expect(editorGroup(page).locator('[data-exam-preview]')).toHaveAttribute('data-preview-state', 'ok');
+  await page.screenshot({ path: out(previewFile), animations: 'disabled', mask });
+}
+
+/**
+ * /author の「別のフォルダへコピー」で、コピー先に同じ名前のファイルがあったときの結果のダイアログを撮る (#800)。
+ * コピー先は OPFS の別のフォルダで、dev フックでピッカーの結果を差し替える
+ */
+async function shootAuthorCopyConflict(page: Page, file: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-800', {
+    ...TWO_PROBLEMS,
+    'p1.problem.yaml':
+      'format: tc-problem/1\nid: p1\ntitle: 最大値\nstatement: p1.md\nstarter: p1.c\nsolutions: [p1-解答.c]\n',
+    'p1.c': 'int main(void) {\n  return 0;\n}\n',
+  });
+  await createOpfsFolder(page, 'shots-shared-800', { 'p1.md': '# 最大値 (前年度)\n', 'p1.c': '/* 前年度 */\n' });
+  await setNextPickedFolder(page, 'shots-shared-800');
+  await page.locator('#author-explorer [data-action="copy-problem"][data-problem-path="p1.problem.yaml"]').click();
+  const result = page.locator('.modal-overlay[data-dialog="copy-result"]:not(.hidden)');
+  await expect(result).toHaveAttribute('data-copy-status', 'conflict');
+  await page.mouse.move(640, 790);
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
+}
+
+/** /author のケースファイルをフォームで撮る (#798)。公開・非公開・完全一致・CRLF の値を混ぜ、2 件目を選んだ状態 */
+async function shootAuthorCases(page: Page, file: ShotFile): Promise<void> {
+  await openAuthorFolder(page, 'shots-material-798', {
+    ...TWO_PROBLEMS,
+    'p1.problem.yaml':
+      'format: tc-problem/1\nid: p1\ntitle: 最大値\nstatement: p1.md\nsolutions: [p1-解答.c]\ncases: p1.cases.yaml\n',
+    'p1.cases.yaml': [
+      'format: tc-cases/1',
+      'cases:',
+      '  - name: 例1',
+      '    stdin: "3\\n1 8 4\\n"',
+      '    stdout: "8\\n"',
+      '    public: true',
+      '  - name: 負の数',
+      '    stdin: "4\\n  -3 -8\\n\\n-1 -5\\n\\n"',
+      '    stdout: "-1\\n"',
+      '    match: exact',
+      '  - name: Windows の改行',
+      '    stdin: "1\\r\\n5\\r\\n"',
+      '    stdout: "5\\r\\n"',
+      '',
+    ].join('\n'),
+  });
+  await page.locator('#author-explorer [data-explorer-path="p1.cases.yaml"]').click();
+  const form = editorGroup(page).locator('[data-cases-form]');
+  await expect(form).toHaveAttribute('data-state', 'ok');
+  await form.locator('[data-case-index="1"] [data-action="select-case"]').click();
+  await expect(form.locator('[data-case-index="1"]')).toHaveAttribute('data-selected', 'true');
+  // ボタンの title (ツールチップ) とフォーカスの枠を写さない
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.mouse.move(640, 790);
+  await page.screenshot({ path: out(file), animations: 'disabled', mask: [page.locator('#author-sb-token')] });
 }
 
 test.describe('見た目・動きの証跡 @shots', () => {
@@ -414,29 +631,73 @@ test.describe('見た目・動きの証跡 @shots', () => {
     await page.locator('#problem-panel').screenshot({ path: out('19-problem-examples.png'), animations: 'disabled' });
   });
 
-  // 20 (#648): /author の入出力例の欄。base には欄が無いので、追加ボタンが無ければそのまま問題文のペインを撮る
-  test('/author の入出力例の欄を撮る @shots', async ({ page }) => {
-    await page.goto('/author');
-    await page.locator('#author-statement-editor .view-lines').waitFor({ state: 'visible', timeout: 60_000 });
-    const add = page.locator('#author-add-example');
-    if ((await add.count()) > 0) {
-      for (const [index, example] of SAMPLE_PROBLEM_EXAMPLES.entries()) {
-        await add.click();
-        const row = page.locator(`#author-example-list [data-example-index="${index}"]`);
-        await row.locator('[data-field="name"]').fill(example.name);
-        await row.locator('[data-field="stdin"]').fill(example.stdin);
-        await row.locator('[data-field="stdout"]').fill(example.stdout);
-      }
-      // 打った欄へのスクロールを戻し、一覧の先頭から撮る
-      await page.locator('#author-example-list').evaluate((el) => {
-        (document.activeElement as HTMLElement | null)?.blur();
-        el.scrollTop = 0;
-      });
-    }
-    await page
-      .locator('.author-pane')
-      .first()
-      .screenshot({ path: out('20-author-examples.png'), animations: 'disabled' });
+  // 33 (#828): .tcclass を読んだ直後のタブ列。base (#828 の修正前) では `p1.c.c` / `p2.c.c` と写る
+  test('授業モードで問題を読み込んだ直後のタブ列を撮る @shots', async ({ page }) => {
+    const app = new EditorApp(page);
+    await app.openModeFresh('class', { screenShare: 'share', waitReady: false });
+    await waitDialogOpen(app, 'welcome');
+    await loadClassPackage(app);
+    // タブ列の帯だけを撮る (時計・ハッシュは入らない)
+    await page.locator('#editor-tabs').screenshot({ path: out('33-class-tabs.png'), animations: 'disabled' });
+  });
+
+  // 27 (#796): /author の起動画面 (覚えているフォルダが無い新しい context)
+  test('/author の起動画面を撮る @shots', async ({ page }) => {
+    await shootAuthorWelcome(page, '27-author-welcome.png');
+  });
+
+  // 20 (#796): /author の作業画面。OPFS の教材フォルダを dev フックで開き、本文を左で編集・右でプレビューする
+  test('/author の作業画面を撮る @shots', async ({ page }) => {
+    await shootAuthorWorkspace(page, '20-author-workspace.png');
+  });
+
+  // 28 / 29 (#797): /author の試験定義のフォームと学生プレビュー
+  test('/author の試験定義のフォームと学生プレビューを撮る @shots', async ({ page }) => {
+    await shootAuthorExam(page, '28-author-exam-form.png', '29-author-student-preview.png');
+  });
+
+  // 30 (#800): /author の問題のコピーで、コピー先に同じ名前のファイルがあったときの結果
+  test('/author の問題のコピーの衝突の結果を撮る @shots', async ({ page }) => {
+    await shootAuthorCopyConflict(page, '30-author-copy-conflict.png');
+  });
+
+  // 31 (#798): /author のケースファイルのフォーム
+  test('/author のケースファイルのフォームを撮る @shots', async ({ page }) => {
+    await shootAuthorCases(page, '31-author-cases-form.png');
+  });
+
+  // 32 (#799): /author の検証のパネル (結果表と不一致のセルの差分)。実行の入口は dev フックの偽物
+  test('/author の検証のパネルを撮る @shots', async ({ page }) => {
+    await shootAuthorVerify(page, '32-author-verify.png');
+  });
+
+  // 20-en / 27-en (#796)・28-en / 29-en (#797)・32-en (#799) ほか: 同じ画面を英語で (画面の言語はブラウザの言語から決まる)
+  test.describe('英語', () => {
+    test.use({ locale: 'en-US' });
+
+    test('/author の起動画面を英語で撮る @shots', async ({ page }) => {
+      await shootAuthorWelcome(page, '27-author-welcome-en.png');
+    });
+
+    test('/author の作業画面を英語で撮る @shots', async ({ page }) => {
+      await shootAuthorWorkspace(page, '20-author-workspace-en.png');
+    });
+
+    test('/author の試験定義のフォームと学生プレビューを英語で撮る @shots', async ({ page }) => {
+      await shootAuthorExam(page, '28-author-exam-form-en.png', '29-author-student-preview-en.png');
+    });
+
+    test('/author の問題のコピーの衝突の結果を英語で撮る @shots', async ({ page }) => {
+      await shootAuthorCopyConflict(page, '30-author-copy-conflict-en.png');
+    });
+
+    test('/author のケースファイルのフォームを英語で撮る @shots (#798)', async ({ page }) => {
+      await shootAuthorCases(page, '31-author-cases-form-en.png');
+    });
+
+    test('/author の検証のパネルを英語で撮る @shots', async ({ page }) => {
+      await shootAuthorVerify(page, '32-author-verify-en.png');
+    });
   });
 
   // 21〜23 (#236): 試験開始ゲートの人間確認の欄。ゲートを出している間に Turnstile (公開テストキー) と

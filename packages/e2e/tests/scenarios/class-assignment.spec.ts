@@ -79,7 +79,8 @@ for (const mode of ['class', 'assignment'] as const) {
 }
 
 // 回帰テスト: starter の filename (p1.c) と、starter が無い問題の `<problemId>.<ext>` (p2.c) が、
-// 拡張子込みのままタブに渡されて `.c.c` になっていた (#441)。
+// 拡張子込みのままタブに渡されて `.c.c` になっていた (#441)。ここは `data-filename` を見る。
+// タブに見える文字の二重拡張子 (#828) は scenarios/tab-visible-name.spec.ts が見る。
 for (const mode of ['class', 'assignment'] as const) {
   test(`${mode}: タブの名前は starter の filename と <problemId>.<ext> のまま、拡張子が二重に付かない`, async ({
     page,

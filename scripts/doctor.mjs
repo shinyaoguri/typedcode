@@ -23,6 +23,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync, spawnSync } from 'node:child_process';
 import { ensureLocalKeys, LOCAL_KEYS_FILES } from './ensure-local-keys.mjs';
+import { judgeSigningKeyId } from './signing-key-id.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = new Set(process.argv.slice(2));
@@ -361,36 +362,16 @@ function checkSigningKey() {
     }
   }
 
-  const localKeys = readFileOrNull('packages/shared/src/checkpointKeys/localKeys.ts') ?? '';
-
-  const hasEntry = /keyId\s*:\s*['"]tcp-/.test(localKeys);
-  const devVars = readFileOrNull('packages/workers/.dev.vars');
-  const devKeyId = devVars ? envOf(devVars).CHECKPOINT_SIGNING_KEY_ID : '';
-
-  if (!hasEntry && devKeyId && !isPlaceholder(devKeyId)) {
-    const registry = readFileOrNull('packages/shared/src/checkpointKeys/registry.ts');
-    if (registry?.includes(devKeyId)) {
-      report(
-        'warn',
-        `localKeys.ts に dev 鍵 entry なし。.dev.vars の keyId (${devKeyId}) は registry.ts に存在`,
-        `本番/staging 鍵をローカルに流用している状態。\n別 dev 鍵を生成推奨:\n  npm run gen-checkpoint-key -w @typedcode/workers`
-      );
-    } else {
-      report(
-        'fail',
-        `.dev.vars の keyId (${devKeyId}) が registry.ts にも localKeys.ts にもない`,
-        `gen-checkpoint-key を再実行して localKeys.ts に append、ID/JWK を .dev.vars に貼り直す`
-      );
-    }
-  } else if (hasEntry) {
-    report('ok', 'localKeys.ts に dev 鍵 entry あり');
-  } else {
-    report(
-      'warn',
-      'localKeys.ts に dev 鍵 entry なし、.dev.vars にも keyId なし',
-      `署名鍵を生成:\n  npm run gen-checkpoint-key -w @typedcode/workers\n出力の手順に従って localKeys.ts と .dev.vars を埋める`
-    );
-  }
+  // .dev.vars の keyId そのものが registry.ts / localKeys.ts に載っているか (setup-env と同じ判定。#827)
+  const { status, label, hint } = judgeSigningKeyId(
+    {
+      devVars: readFileOrNull('packages/workers/.dev.vars'),
+      registry: readFileOrNull('packages/shared/src/checkpointKeys/registry.ts'),
+      localKeys: readFileOrNull('packages/shared/src/checkpointKeys/localKeys.ts'),
+    },
+    { isPlaceholder }
+  );
+  report(status, label, hint);
 }
 
 // ============================================================================
@@ -641,7 +622,7 @@ function checkDeployedWorker(envName, configFile) {
     report(
       'warn',
       `${workerName} がまだデプロイされていない`,
-      `${envName === 'staging' ? 'main ブランチに push すると CI が自動デプロイ' : 'v* タグを push (gh release create) すると CI が承認待ちデプロイ'}`
+      `${envName === 'staging' ? 'main ブランチに push すると CI が自動デプロイ' : '正式版の昇格か patch (release.yml) がタグの ref で deploy.yml を起こすと CI が承認待ちデプロイ'}`
     );
   }
 

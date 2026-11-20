@@ -9,6 +9,7 @@ import type {
   ILanguageExecutor,
   ExecutorConfig,
   ExecutionCallbacks,
+  ExecutionOptions,
   ExecutionResult,
   InitializationProgress,
   ParsedError,
@@ -88,7 +89,7 @@ export abstract class BaseExecutor implements ILanguageExecutor {
    * Run the provided code
    * Subclasses must implement this method
    */
-  abstract run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult>;
+  abstract run(code: string, callbacks: ExecutionCallbacks, options?: ExecutionOptions): Promise<ExecutionResult>;
 
   /**
    * Request abort of current execution

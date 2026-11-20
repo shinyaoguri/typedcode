@@ -225,6 +225,32 @@ export async function widthOf(page: Page, selector: string): Promise<number> {
 }
 
 /**
+ * 要素の CSS トランジション (開閉のアニメーション) が終わり、幅が止まるまで待って、その幅を返す。止まったとみなすのは
+ * 「`getAnimations()` に running のものが無く、前回の読みと幅が同じ」とき。開いた直後に幅を読む・
+ * ハンドルを掴むと、アニメーション途中の値を読み、まだ動いているハンドルを掴み損ねる (#816)。
+ */
+export async function waitWidthSettled(page: Page, selector: string): Promise<number> {
+  let previous = Number.NaN;
+  let settled = Number.NaN;
+  await expect
+    .poll(
+      async () => {
+        const { animating, width } = await page.locator(selector).evaluate((el) => ({
+          animating: el.getAnimations().some((a) => a.playState === 'running'),
+          width: el.getBoundingClientRect().width,
+        }));
+        const stable = !animating && width === previous;
+        previous = width;
+        if (stable) settled = width;
+        return stable;
+      },
+      { message: `${selector} の幅が止まらない` }
+    )
+    .toBe(true);
+  return settled;
+}
+
+/**
  * Monaco の外 (`.workbench`) にファイルをドロップする。dragenter → dragover → drop を `DataTransfer`
  * 付きで発火する (テンプレートの取込は `.workbench` の drop、外部入力の記録は body の capture で拾う)。
  */

@@ -1,0 +1,390 @@
+name: Release
+
+# beta 版の日次の自動採番 (#843 / ADR-0055 の決定 2・4) と、正式版の昇格・学期中の patch (#844 / 決定 5・6)。
+# 手で起こすときは `action` で選ぶ (既定 beta)。schedule で走るのは beta だけ。
+#
+# 昇格 (action=promote, beta_tag=<beta タグ>): beta と同じコミットに正式版 `vYYYY.M.0` (beta タグから `-beta.N`
+# を除いた名前) を打ち、Latest の Release を作る。ノートは前回の正式版以降の全断片。拒否 (beta 形でない・無い・
+# そのサイクルの正式版が既にある・サイクルの月がまだ来ていない) は見送りではなく失敗にする。
+# patch (action=patch, branch=release/A.B): `release/A.B` の先端に `vA.B.P` を打ち、Release を作る (ノートは前の patch か `vA.B.0` 以降)。
+# どちらも、打ったタグの ref で deploy.yml を workflow_dispatch で起こす (`gh workflow run deploy.yml --ref <tag>`)。
+# 既定のトークンでも workflow_dispatch は起きる (起きないのは push などのイベント)。配信の定義はタグのコミットの
+# deploy.yml になり、test / check / e2e / nightly-gate と Environment production の承認はそちらの run で通る。
+# deploy.yml に workflow_dispatch が入る前 (#844 より前) のコミットに打った beta タグ (`v2027.2.0-beta.1` など) は、そのコミットの deploy.yml が
+# workflow_dispatch を持たないので昇格しても配信を起こせない (昇格に使わない)。
+#
+# 以下は beta。
+#
+# 毎日 1 回、staging への配信と実 URL の E2E まで通った main のコミット (Deploy の main push の run が success)
+# のうち最新のものに `vYYYY.M.0-beta.N` のタグを打ち、prerelease の GitHub Release を作る (Latest にしない)。
+# 版とコミットの決め方は scripts/release.mjs beta、ノートは scripts/release.mjs notes。
+#
+# 見送り: 最新のタグ以降に fix / feat が無い・Deploy が success のコミットが無い・main の最新の完了 nightly が
+# success でない、のどれかなら、理由を ::notice:: と job summary に出して緑で終える (nightly の失敗は
+# nightly 自身が Issue に集めているので、ここでは赤にしない)。git・API の失敗は赤にする。
+#
+# 既定のトークン (GITHUB_TOKEN) が作ったタグの push は他のワークフローを起こさない。beta 形のタグでは
+# production へ配信しない (deploy.yml の nightly-gate / deploy-production は `-` を含むタグで走らない)。
+# 打ったタグは消せない (ruleset)。打ち間違えたら消さずに、次の番号で前へ進める。
+on:
+  schedule:
+    # 05:47 JST。nightly (18:30 UTC 開始・上限 100 分) の後
+    - cron: '47 20 * * *'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: beta (次の beta 版) / promote (beta を正式版へ昇格) / patch (release/A.B から patch)
+        type: choice
+        options: [beta, promote, patch]
+        default: beta
+      beta_tag:
+        description: promote のとき必須。昇格する beta タグ (例 v2027.2.0-beta.40)
+        type: string
+        required: false
+      branch:
+        description: patch のとき必須。patch を出すブランチ (例 release/1.5)
+        type: string
+        required: false
+      dry_run:
+        description: タグを打たず、配信も起こさず、選ぶコミット・版・ノートだけを出す
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# 同時の run が同じ版を決めないよう、1 本ずつ走らせる (走っている run は止めない。beta / promote / patch も同じ組)
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  beta:
+    if: github.event_name == 'schedule' || inputs.action == 'beta'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          # 最新のタグ・タグ以降の履歴・既存の beta タグを読むため全履歴とタグが要る
+          fetch-depth: 0
+          persist-credentials: false
+
+      # release.mjs と nightly-gate.mjs は Node の標準ライブラリだけを使うので npm ci は要らない
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      - name: Require latest completed main nightly to succeed
+        id: nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          log="${RUNNER_TEMP}/nightly-gate.log"
+          code=0
+          node scripts/nightly-gate.mjs > "$log" 2>&1 || code=$?
+          cat "$log"
+          # 0 = 通過、1 = 判定の結果 (nightly が赤・完了 run なし) = 見送り、それ以外 = 判定できなかった = 失敗
+          case "$code" in
+            0)
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              ;;
+            1)
+              echo "::notice title=beta 版を見送り::main の最新の完了 nightly が success でない (詳細は job summary)"
+              {
+                echo "## beta 版を見送り"
+                echo
+                echo "main の最新の完了 nightly が success でない。"
+                echo
+                echo '```'
+                cat "$log"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              exit "$code"
+              ;;
+          esac
+
+      # exit 0 = 出す (stdout の tag= / sha= をそのまま output に)、3 = 見送り、それ以外 = 失敗
+      - name: Decide the next beta version
+        id: plan
+        if: steps.nightly.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/plan.out"
+          err="${RUNNER_TEMP}/plan.err"
+          code=0
+          node scripts/release.mjs beta > "$out" 2> "$err" || code=$?
+          cat "$out"
+          cat "$err" >&2
+          case "$code" in
+            0)
+              cat "$out" >> "$GITHUB_OUTPUT"
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              ;;
+            3)
+              reason="$(head -n 1 "$err")"
+              echo "::notice title=beta 版を見送り::${reason}"
+              {
+                echo "## beta 版を見送り"
+                echo
+                echo "$reason"
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              exit "$code"
+              ;;
+          esac
+
+      - name: Build release notes
+        if: steps.plan.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ steps.plan.outputs.sha }}
+        run: |
+          set -euo pipefail
+          notes="${RUNNER_TEMP}/notes.md"
+          node scripts/release.mjs notes --to "$SHA" > "$notes"
+          {
+            echo "## ${TAG} (\`${SHA}\`) のノート"
+            echo
+            cat "$notes"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create the beta prerelease
+        if: steps.plan.outputs.skip == 'false' && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ steps.plan.outputs.sha }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" --target "$SHA" --prerelease --latest=false --title "$TAG" --notes-file "${RUNNER_TEMP}/notes.md"
+
+      - name: Report the dry run
+        if: steps.plan.outputs.skip == 'false' && inputs.dry_run
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ steps.plan.outputs.sha }}
+        run: |
+          set -euo pipefail
+          echo "dry_run: ${TAG} を ${SHA} に打つはずだった (打っていない)"
+          {
+            echo "## dry_run"
+            echo
+            echo "タグは打っていない。打つはずだったタグ: \`${TAG}\`、コミット: \`${SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # 正式版の昇格 (#844 / ADR-0055 の決定 5)。拒否は見送りではなく失敗にする (人が起こしたものなので赤で知らせる)
+  promote:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'promote'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      # 打ったタグの ref で deploy.yml を workflow_dispatch で起こすため
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          # beta タグ・前回の正式版・その間の断片を読むため全履歴とタグが要る
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # exit 0 = 出す (stdout の tag= / sha= / since= をそのまま output に)、それ以外 = 拒否か失敗
+      - name: Decide the release version
+        id: plan
+        env:
+          BETA_TAG: ${{ inputs.beta_tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BETA_TAG" ]; then
+            echo "::error title=昇格を拒否::promote には beta_tag が要る"
+            exit 1
+          fi
+          out="${RUNNER_TEMP}/plan.out"
+          err="${RUNNER_TEMP}/plan.err"
+          code=0
+          node scripts/release.mjs promote --beta "$BETA_TAG" > "$out" 2> "$err" || code=$?
+          cat "$out"
+          cat "$err" >&2
+          if [ "$code" -ne 0 ]; then
+            echo "::error title=昇格を拒否::$(head -n 1 "$err")"
+            exit "$code"
+          fi
+          cat "$out" >> "$GITHUB_OUTPUT"
+
+      # ノートは前回の正式版以降の全断片 (途中の beta のノートに載ったものも含む)
+      - name: Build release notes
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ steps.plan.outputs.sha }}
+          SINCE: ${{ steps.plan.outputs.since }}
+        run: |
+          set -euo pipefail
+          notes="${RUNNER_TEMP}/notes.md"
+          node scripts/release.mjs notes --since "$SINCE" --to "$SHA" > "$notes"
+          {
+            echo "## ${TAG} (\`${SHA}\`、前回の正式版 ${SINCE} 以降) のノート"
+            echo
+            cat "$notes"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create the release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ steps.plan.outputs.sha }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" --target "$SHA" --latest --title "$TAG" --notes-file "${RUNNER_TEMP}/notes.md"
+
+      - name: Start the production deploy
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run deploy.yml --ref "$TAG"
+          {
+            echo "## production の配信を起こした"
+            echo
+            echo "\`${TAG}\` の ref で Deploy (deploy.yml) を起こした。test / check / e2e / nightly-gate の後、"
+            echo "Actions の Deploy の run で Environment production の承認が要る。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report the dry run
+        if: ${{ inputs.dry_run }}
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ steps.plan.outputs.sha }}
+          SINCE: ${{ steps.plan.outputs.since }}
+        run: |
+          set -euo pipefail
+          echo "dry_run: ${TAG} を ${SHA} に打つはずだった (打っていない。配信も起こしていない)"
+          {
+            echo "## dry_run"
+            echo
+            echo "タグは打たず、配信も起こしていない。打つはずだったタグ: \`${TAG}\`、コミット: \`${SHA}\`、前回の正式版: \`${SINCE}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # 学期中の patch (#844 / ADR-0055 の決定 6)。拒否は失敗にする
+  patch:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'patch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      # 打ったタグの ref で deploy.yml を workflow_dispatch で起こすため
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          # fetch-depth: 0 は全ブランチ (refs/remotes/origin/*。release/* を含む) と全タグを取る。
+          # release.mjs patch は origin/release/A.B の先端と、その系列のタグを読む
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # exit 0 = 出す (stdout の tag= / sha= をそのまま output に)、それ以外 = 拒否か失敗
+      - name: Decide the patch version
+        id: plan
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BRANCH" ]; then
+            echo "::error title=patch を拒否::patch には branch (release/A.B) が要る"
+            exit 1
+          fi
+          out="${RUNNER_TEMP}/plan.out"
+          err="${RUNNER_TEMP}/plan.err"
+          code=0
+          node scripts/release.mjs patch --branch "$BRANCH" > "$out" 2> "$err" || code=$?
+          cat "$out"
+          cat "$err" >&2
+          if [ "$code" -ne 0 ]; then
+            echo "::error title=patch を拒否::$(head -n 1 "$err")"
+            exit "$code"
+          fi
+          cat "$out" >> "$GITHUB_OUTPUT"
+
+      # ノートは最も近いタグ (前の patch か vA.B.0) 以降
+      - name: Build release notes
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ steps.plan.outputs.sha }}
+        run: |
+          set -euo pipefail
+          notes="${RUNNER_TEMP}/notes.md"
+          node scripts/release.mjs notes --to "$SHA" > "$notes"
+          {
+            echo "## ${TAG} (\`${SHA}\`) のノート"
+            echo
+            cat "$notes"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create the release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ steps.plan.outputs.sha }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" --target "$SHA" --title "$TAG" --notes-file "${RUNNER_TEMP}/notes.md"
+
+      - name: Start the production deploy
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run deploy.yml --ref "$TAG"
+          {
+            echo "## production の配信を起こした"
+            echo
+            echo "\`${TAG}\` の ref で Deploy (deploy.yml) を起こした。test / check / e2e / nightly-gate の後、"
+            echo "Actions の Deploy の run で Environment production の承認が要る。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report the dry run
+        if: ${{ inputs.dry_run }}
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ steps.plan.outputs.sha }}
+        run: |
+          set -euo pipefail
+          echo "dry_run: ${TAG} を ${SHA} に打つはずだった (打っていない。配信も起こしていない)"
+          {
+            echo "## dry_run"
+            echo
+            echo "タグは打たず、配信も起こしていない。打つはずだったタグ: \`${TAG}\`、コミット: \`${SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

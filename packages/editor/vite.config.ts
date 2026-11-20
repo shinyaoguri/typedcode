@@ -1,13 +1,14 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import wasm from 'vite-plugin-wasm';
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { verifyRedirectLocation } from '../../scripts/verify-redirect.mjs';
+import { resolveAppVersion } from '../../scripts/app-version.mjs';
 import { WORKTREE_ID_HEADER, worktreeIdOf } from '../../scripts/worktree-id.mjs';
 
-// ビルド情報を取得
+// ビルド情報を取得。版はビルドに渡したタグ名 (TYPEDCODE_VERSION) から決め、リポジトリのファイルからは読まない。
+// 渡されなければ dev+<コミット>、形に合わない値ならビルドを止める (#842 / ADR-0055)
 function getBuildInfo() {
-  const rootPkg = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf-8'));
   let gitCommit = 'unknown';
   let gitCommitDate = '';
   try {
@@ -17,7 +18,7 @@ function getBuildInfo() {
     // Git not available
   }
   return {
-    appVersion: rootPkg.version,
+    appVersion: resolveAppVersion({ version: process.env.TYPEDCODE_VERSION, commit: gitCommit }),
     gitCommit,
     gitCommitDate,
     buildDate: new Date().toISOString(),
@@ -27,8 +28,8 @@ function getBuildInfo() {
 const buildInfo = getBuildInfo();
 
 // dev ランチャー (scripts/dev.mjs) が割り当てたポート。個別起動時は未設定で、
-// その場合は既定 (5173/5174) にフォールバックする。verifyPort は /verify プロキシの
-// 追従先。
+// その場合は既定 (5173/5174) にフォールバックする。verifyPort は /verify のリダイレクト先
+// (下の verify-dev-redirect)。
 const editorPort = Number(process.env.EDITOR_PORT) || 5173;
 const verifyPort = Number(process.env.VERIFY_PORT) || 5174;
 
@@ -92,6 +93,22 @@ export default defineConfig({
     // 関数宣言の巻き上げに依存している monaco (vs/platform/instantiation) が壊れ、
     // 本番ビルドのエディタが起動しなくなる。build.target: 'esnext' と
     // worker.format: 'es' でネイティブ TLA が使えるので、そもそも不要。
+    // dev サーバで `/verify` と `/verify/...` を verify の dev サーバへ 302 でリダイレクトする (#829)。
+    // 転送 (server.proxy) にすると、verify の dev は `base: '/'` なので返る HTML の `/src/main.ts` を
+    // ブラウザが editor のオリジンで解決し、editor の main.ts が verify の HTML の上で走って落ちる。
+    // 本番 / preview は dist の `verify/` (verify の `base: '/verify/'`) をそのまま返すので、dev だけの処理。
+    {
+      name: 'verify-dev-redirect',
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          const location = verifyRedirectLocation(req.url, req.headers.host, verifyPort);
+          if (!location) return next();
+          res.statusCode = 302;
+          res.setHeader('Location', location);
+          res.end();
+        });
+      },
+    },
     // dev サーバで `/author` (拡張子なし) を `/author.html` に解決する。
     // 本番 (Cloudflare Pages) は clean URL で `/author` → `author.html` を自動配信するため不要。
     {
@@ -121,7 +138,7 @@ export default defineConfig({
   server: {
     port: editorPort,
     // ランチャー割当時 (EDITOR_PORT あり) は strictPort で「ずれたら失敗」にする。
-    // ポートがずれると /verify プロキシ (verifyPort 固定) や VITE_API_URL の配線が
+    // ポートがずれると /verify のリダイレクト先 (verifyPort 固定) や VITE_API_URL の配線が
     // 別プロセスを指してしまうため、黙ってずらさず即エラーにして気付かせる。
     // 手動の個別起動 (EDITOR_PORT なし) は従来どおり vite のフォールバックに任せる。
     strictPort: Boolean(process.env.EDITOR_PORT),
@@ -132,18 +149,12 @@ export default defineConfig({
       // サーバを再利用しないようにする (#552)。dev サーバだけで、preview / 本番の配信には付けない。
       [WORKTREE_ID_HEADER]: worktreeIdOf(resolve(__dirname, '../..')),
     },
-    proxy: {
-      '/verify': {
-        target: `http://localhost:${verifyPort}`,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/verify/, ''),
-      },
-    },
   },
   preview: {
-    // preview.proxy は未指定だと server.proxy を引き継ぎ、`/verify` を dev の verify サーバへ
-    // 転送してしまう (起動していなければ 502)。preview は dist の配信なので、deploy と同じく
-    // dist の `verify/` (e2e の playwright.build.config.ts が重ねる) をそのまま返す。
+    // preview は dist の配信なので、deploy と同じく dist の `verify/` (e2e の playwright.build.config.ts が
+    // 重ねる) をそのまま返す。dev の `/verify` のリダイレクト (verify-dev-redirect) は configureServer
+    // だけなので preview には効かない。preview.proxy は未指定だと server.proxy を引き継ぐので、server.proxy
+    // に `/verify` を足すときはここで打ち消すこと (dev の verify サーバへ転送されて 502 になる)。
     proxy: {},
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',

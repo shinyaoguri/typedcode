@@ -4,7 +4,11 @@
 import { FileSystemAccessService } from '../../services/FileSystemAccessService';
 import { FolderSyncManager } from '../../services/FolderSyncManager';
 import type { ScreenshotService } from '../../services/ScreenshotService';
-import { collectFolderChainImageHashes, loadFolderScreenshots } from '../../services/folderScreenshotLoader';
+import {
+  collectFolderChainImageHashes,
+  isZipInFolder,
+  loadFolderScreenshots,
+} from '../../services/folderScreenshotLoader';
 import type { FileProcessor, ParsedFileData } from '../../services/FileProcessor';
 import type { ContainerInput } from './FileController';
 import type { Sidebar } from '../Sidebar';
@@ -37,7 +41,8 @@ async function readScreenshotImage(fileEntry: FSAccessFileEntry): Promise<Parsed
 function affectsFolderScreenshots(path: string): boolean {
   if (path.startsWith('screenshots/')) return true;
   const name = path.split('/').pop() ?? path;
-  return !name.startsWith('.') && name.toLowerCase().endsWith('.json');
+  // ZIP の proof も集合の材料 (#786)。ZIP と見なす規則は集合づくりと同じ isZipInFolder (#834)
+  return !name.startsWith('.') && (name.toLowerCase().endsWith('.json') || isZipInFolder(name));
 }
 
 /** スクショの判定 (読み直しで変わったか) の比較に使う値。画像の中身は判定 (verified / tampered) に表れる */
@@ -64,6 +69,15 @@ interface FailedChange {
   /** 追加 (まだタブが無い) か変更 (タブを取り込み直す) か */
   kind: 'added' | 'modified';
   error: unknown;
+}
+
+/**
+ * 監視の変更の読み込み 1 本 (#787)。同じパスの読み込みが重なったら、最後に始めたものだけが結果を反映する
+ */
+interface ChangeLoad {
+  kind: FailedChange['kind'];
+  /** この読み込みがまだそのパスの最新か (読み終えた後・タブや一覧を書き換える直前に見る) */
+  isCurrent: () => boolean;
 }
 
 function errorMessage(error: unknown): string {
@@ -142,6 +156,18 @@ export class FolderController {
   private failedChanges = new Map<string, FailedChange>();
   /** 変更の読み込みが失敗し続けている間 true。失敗の表示は失敗に入った回だけ出す (#699 と同じ流儀) */
   private changeLoadFailing = false;
+  /**
+   * 走っている変更の読み込み (パス → 最後に始めた読み込み。#787)。同じパスの通知・やり直しは直列ではないので、
+   * 先に始めた読み込み (古い内容) が後から終わっても結果を捨てる (スクショの読み直しの世代と同じ形)。
+   * 読み込みが終わったら消し、削除の通知・フォルダを開き直すときにも消す (走っている読み込みは捨てられる)
+   */
+  private changeLoads = new Map<string, ChangeLoad>();
+  /**
+   * フォルダ内の ZIP (FSA パス) → その ZIP から開いたフォルダ行とタブのパス (#785)。ZIP のタブは ZIP のフォルダ
+   * (`sub.zip` なら `sub/…`) の下にあり ZIP 自体のパスでは引けないので、ZIP が変わった・消えたときはここから引く
+   * (パスの接頭辞では引かない。`sub.zip` と `sub2.zip`、同名の実フォルダを取り違える)
+   */
+  private zipContents = new Map<string, { folderId: string; tabPaths: string[] }>();
 
   constructor(deps: FolderControllerDependencies) {
     this.deps = deps;
@@ -201,6 +227,8 @@ export class FolderController {
     this.screenshotResyncFailing = false;
     this.failedChanges.clear();
     this.changeLoadFailing = false;
+    this.changeLoads.clear();
+    this.zipContents.clear();
 
     // ディレクトリを読み取り。まず個々のファイルの読み取りの失敗も失敗にする strict で読む (#773)。読めない
     // ファイルがあれば、それを飛ばした一覧で開く (読めないファイル 1 つでフォルダごと開けなくしない)。飛ばした
@@ -339,30 +367,35 @@ export class FolderController {
 
   /**
    * 新しいファイル (開いたときのファイル・監視中に足されたファイル) を読み込んでタブにする。読み取りに失敗したら
-   * 投げる (呼び出し側がやり直しに回す。#773)。読み方は開いたときも監視中も同じ
+   * 投げる (呼び出し側がやり直しに回す。#773)。読み方は開いたときも監視中も同じ。`isCurrent` は監視の読み込みの
+   * 世代 (#787): 読み終えたときに false なら、同じパスの新しい読み込みに譲って何も足さない
    */
   private async loadNewFile(
     fileEntry: FSAccessFileEntry,
     folderId: string | undefined,
-    folderMap: Map<string, string>
+    folderMap: Map<string, string>,
+    isCurrent: () => boolean = () => true
   ): Promise<void> {
     // screenshots フォルダ内の画像は、ファイル一覧に画像として追加する (クリックでプレビュー表示)。
     // manifest.json やその他のテキストファイルは通常処理 (FileProcessor に回すと平文で読まれる)
     if (isScreenshotImage(fileEntry.path)) {
-      this.deps.addImageFile(await readScreenshotImage(fileEntry), folderId);
+      const image = await readScreenshotImage(fileEntry);
+      if (isCurrent()) this.deps.addImageFile(image, folderId);
       return;
     }
 
-    // ZIPファイルを階層的に処理
-    if (fileEntry.name.endsWith('.zip')) {
+    // ZIPファイルを階層的に処理 (チェーン側の imageHash 集合も同じ規則で ZIP を読む。#786)
+    if (isZipInFolder(fileEntry.name)) {
       const parentPath = fileEntry.path.split('/').slice(0, -1).join('/');
-      await this.processZipWithinFolder(fileEntry, parentPath, folderId, folderMap);
+      await this.processZipWithinFolder(fileEntry, parentPath, folderId, folderMap, isCurrent);
       return;
     }
 
     const result = await this.deps.fileProcessor.processFromHandle(fileEntry.handle, fileEntry.path);
     // JSON・平文の success: false は読み取りの失敗 (壊れた JSON は error の proof として success で返る。#702)
     if (!result.success) throw new Error(result.error ?? `cannot read ${fileEntry.path}`);
+    // 読んでいる間に同じパスの新しい読み込みが始まった (#787。失敗は呼び出し側が世代を見て捨てる)
+    if (!isCurrent()) return;
 
     for (const fileData of result.files) {
       if (fileData.type === 'proof') {
@@ -424,13 +457,13 @@ export class FolderController {
   }
 
   /** 監視で足されたファイルを読み込む。読み取りに失敗したら投げる */
-  private async loadAddedFile(file: FSAccessFileEntry): Promise<void> {
+  private async loadAddedFile(file: FSAccessFileEntry, isCurrent: () => boolean): Promise<void> {
     const parentPath = file.path.split('/').slice(0, -1).join('/');
     const folderId = this.deps.sidebar.getFolderIdByPath(parentPath) ?? this.watchedRootFolderId ?? undefined;
-    const isZip = file.name.endsWith('.zip');
-    await this.loadNewFile(file, folderId, isZip ? this.buildFolderMapFromSidebar() : new Map());
-    // ZIP は processZipWithinFolder が照合と知らせを済ませる
-    if (isZip) return;
+    const isZip = isZipInFolder(file.name);
+    await this.loadNewFile(file, folderId, isZip ? this.buildFolderMapFromSidebar() : new Map(), isCurrent);
+    // ZIP は processZipWithinFolder が照合と知らせを済ませる。新しい読み込みに譲ったら、そちらが済ませる
+    if (isZip || !isCurrent()) return;
     if (!isScreenshotImage(file.path)) this.deps.settleSubmission();
     this.notify(`${t('messages.fileAdded')}: ${file.name}`);
   }
@@ -440,14 +473,18 @@ export class FolderController {
    * 監視は変更を通知済みとして記録するので、ここで落とすと二度と通知されず、タブが古い内容のまま残る
    */
   private async loadChange(file: FSAccessFileEntry, kind: FailedChange['kind']): Promise<void> {
-    const rootFolderId = this.watchedRootFolderId;
+    // 同じパスの読み込みが重なったら、最後に始めたものだけが結果を反映する (#787)。古い読み込みは成功しても
+    // 失敗しても何も確定しない (失敗として覚えない・失敗の表示を解かない)。新しい世代が正
+    const load: ChangeLoad = { kind, isCurrent: () => this.changeLoads.get(file.path) === load };
+    this.changeLoads.set(file.path, load);
     try {
-      if (kind === 'added') await this.loadAddedFile(file);
-      else await this.loadModifiedFile(file);
+      if (kind === 'added') await this.loadAddedFile(file, load.isCurrent);
+      else await this.loadModifiedFile(file, load.isCurrent);
     } catch (error) {
       console.error(`Error processing ${kind} file:`, file.path, error);
-      // 読んでいる間に別のフォルダを開いた
-      if (this.watchedRootFolderId !== rootFolderId) return;
+      // 同じパスの新しい読み込みに譲った・削除された・別のフォルダを開いた
+      if (!load.isCurrent()) return;
+      this.changeLoads.delete(file.path);
       this.failedChanges.set(file.path, { entry: file, kind, error });
       if (!this.changeLoadFailing) {
         this.changeLoadFailing = true;
@@ -455,6 +492,8 @@ export class FolderController {
       }
       return;
     }
+    if (!load.isCurrent()) return;
+    this.changeLoads.delete(file.path);
     if (this.changeLoadFailing && this.failedChanges.size === 0) {
       // やり直しが済んだ。ステータスバーは知らせ (notify) が通常の表示に戻している
       this.changeLoadFailing = false;
@@ -476,17 +515,24 @@ export class FolderController {
    * 新しい検証結果が混ざる)。
    */
   private async handleExternalFileModified(file: FSAccessFileEntry): Promise<void> {
-    // 足されたときの読み込みに失敗したファイルはまだタブが無い。変更の通知でも追加として読み込む (#773)
-    const kind = this.failedChanges.get(file.path)?.kind === 'added' ? 'added' : 'modified';
+    // 足されたときの読み込みに失敗した・まだ読み込み中のファイルはタブが無い。変更の通知でも追加として読み込む
+    // (#773 / #787。読み込み中の追加はこの読み込みに譲って結果を捨てる)
+    const added =
+      this.failedChanges.get(file.path)?.kind === 'added' || this.changeLoads.get(file.path)?.kind === 'added';
+    const kind = added ? 'added' : 'modified';
     this.failedChanges.delete(file.path);
     if (affectsFolderScreenshots(file.path)) this.scheduleScreenshotResync(file.path);
     await this.loadChange(file, kind);
   }
 
   /** 監視で変わったファイルを読み込んで取り込み直す。読み取りに失敗したら投げる */
-  private async loadModifiedFile(file: FSAccessFileEntry): Promise<void> {
-    const existingFileId = this.deps.sidebar.getFileIdByPath(file.path);
-    if (!existingFileId) return;
+  private async loadModifiedFile(file: FSAccessFileEntry, isCurrent: () => boolean): Promise<void> {
+    // ZIP は開いたときと同じ読み方で取り込み直す (古い配下は processZipWithinFolder が読み終えてから外す。#785)
+    if (isZipInFolder(file.name)) {
+      await this.loadAddedFile(file, isCurrent);
+      return;
+    }
+    if (!this.deps.sidebar.getFileIdByPath(file.path)) return;
 
     // 読み方は初回取り込み (loadNewFile) と同じ: screenshots/ の画像は Blob、それ以外は FileProcessor
     let fileData: ParsedFileData | undefined;
@@ -497,7 +543,9 @@ export class FolderController {
       if (!result.success) throw new Error(result.error ?? `cannot read ${file.path}`);
       fileData = result.files[0];
     }
-    if (!fileData) return;
+    // 読んでいる間に同じパスの新しい読み込みが始まった・ファイルが消えた (#787)
+    const existingFileId = this.deps.sidebar.getFileIdByPath(file.path);
+    if (!fileData || !existingFileId || !isCurrent()) return;
 
     this.deps.replaceFile(existingFileId, fileData);
     this.notify(`${t('messages.fileUpdated')}: ${file.name}`);
@@ -507,17 +555,42 @@ export class FolderController {
    * 外部でファイルが削除された時の処理
    */
   private handleExternalFileDeleted(path: string): void {
-    // 読み込みに失敗していた変更はやり直さない (削除として扱う。#773)
+    // 読み込みに失敗していた変更はやり直さない (削除として扱う。#773)。読み込み中の変更の結果も捨てる (#787)
     this.failedChanges.delete(path);
+    this.changeLoads.delete(path);
     this.screenshotProofPaths.delete(path);
     this.zipScreenshotProofs.delete(path);
     if (affectsFolderScreenshots(path)) this.scheduleScreenshotResync(path);
+    const filename = path.split('/').pop() ?? path;
+    // ZIP から開いたタブとフォルダ行は ZIP のパスでは引けない (#785)
+    if (this.removeZipContents(path)) {
+      this.notify(`${t('messages.fileDeleted')}: ${filename}`);
+      return;
+    }
     const fileId = this.deps.sidebar.getFileIdByPath(path);
     if (fileId) {
       this.deps.onFileRemove?.(fileId);
-      const filename = path.split('/').pop() ?? path;
       this.notify(`${t('messages.fileDeleted')}: ${filename}`);
     }
+  }
+
+  /**
+   * フォルダ内の ZIP から開いたタブとフォルダ行を外す (#785)。フォルダのスクショの読み直しの対象 (#742) からも外す。
+   * その ZIP から開いたものが無ければ false
+   */
+  private removeZipContents(zipPath: string): boolean {
+    const contents = this.zipContents.get(zipPath);
+    if (!contents) return false;
+    this.zipContents.delete(zipPath);
+    for (const tabPath of contents.tabPaths) {
+      this.screenshotProofPaths.delete(tabPath);
+      this.zipScreenshotProofs.delete(tabPath);
+    }
+    for (const fileId of this.deps.sidebar.getFileIdsInFolderTree(contents.folderId)) {
+      this.deps.onFileRemove?.(fileId);
+    }
+    this.deps.sidebar.removeFolder(contents.folderId);
+    return true;
   }
 
   /**
@@ -581,20 +654,21 @@ export class FolderController {
       // 取り込み直す proof を先にすべて読む。読んでいる間に足された proof も読み、残りが無くなったところで
       // (await を挟まずに) スクショを更新して取り込み直す。足された proof の取り込み口はスクショを待った後で
       // 引くので、ここより後なら新しいスクショを受け取る
-      const reread = new Map<string, { tabId: string; fileData: ParsedFileData } | null>();
+      // ZIP の proof ('zip') はタブと内容を確定の時点で引く (#834)。ZIP の取り込み直し (#785) は読み直しと並んで
+      // 走り、途中で終わるとタブ ID と内容が入れ替わる。ここで控えると、新しいタブを古いスクショのまま取りこぼす
+      const reread = new Map<string, { tabId: string; fileData: ParsedFileData } | 'zip' | null>();
       if (demand.force || changed) {
         const entries = new Map(listing.files.map((entry) => [entry.path, entry]));
         for (;;) {
           const pending = [...this.screenshotProofPaths].filter((path) => !reread.has(path));
           if (pending.length === 0) break;
           for (const path of pending) {
-            const tabId = this.deps.sidebar.getFileIdByPath(path);
             // フォルダのスクショへ落とした ZIP の proof は、ZIP から読んだ内容で取り込み直す (#742)
-            const zipProof = this.zipScreenshotProofs.get(path);
-            if (zipProof) {
-              reread.set(path, tabId ? { tabId, fileData: zipProof } : null);
+            if (this.zipScreenshotProofs.has(path)) {
+              reread.set(path, 'zip');
               continue;
             }
+            const tabId = this.deps.sidebar.getFileIdByPath(path);
             const entry = entries.get(path) ?? (await this.findFileEntry(current.rootHandle, path));
             if (!tabId || !entry) {
               reread.set(path, null);
@@ -616,7 +690,8 @@ export class FolderController {
         startTimestamp: loaded.startTimestamp,
       };
       if (loaded.screenshotService) this.deps.onScreenshotServiceUpdate?.(loaded.screenshotService);
-      for (const proof of reread.values()) {
+      for (const [path, entry] of reread) {
+        const proof = entry === 'zip' ? this.zipProofToReplace(path) : entry;
         if (!proof) continue;
         this.deps.replaceFile(proof.tabId, proof.fileData, {
           screenshots: loaded.screenshots,
@@ -640,6 +715,13 @@ export class FolderController {
     } finally {
       this.runningScreenshotResyncs--;
     }
+  }
+
+  /** フォルダのスクショへ落とした ZIP の proof の、いまのタブと ZIP から読んだ内容 (無くなっていれば null) */
+  private zipProofToReplace(path: string): { tabId: string; fileData: ParsedFileData } | null {
+    const fileData = this.zipScreenshotProofs.get(path);
+    const tabId = this.deps.sidebar.getFileIdByPath(path);
+    return fileData && tabId ? { tabId, fileData } : null;
   }
 
   /** 走査の一覧に無い proof (読み直しの間に足されたもの) のハンドルを引く。 */
@@ -727,13 +809,23 @@ export class FolderController {
     fileEntry: FSAccessFileEntry,
     parentPath: string,
     parentFolderId: string | undefined,
-    folderMap: Map<string, string>
+    folderMap: Map<string, string>,
+    isCurrent: () => boolean = () => true
   ): Promise<void> {
     // ZIP の読み取りの失敗は投げる (呼び出し側がやり直しに回す。#773)。中身が壊れた ZIP (下の success: false) は
     // 読み直しても変わらないので、やり直さない
     const file = await fileEntry.handle.getFile();
     const bytes = await file.arrayBuffer();
     const result = await this.deps.fileProcessor.process(new File([bytes], file.name, { type: file.type }));
+    // 読んでいる間に同じ ZIP の新しい読み込みが始まった (#787)。ここから先は await を挟まずに一覧を書き換える
+    if (!isCurrent()) return;
+
+    // 同じ ZIP から前に開いたもの (監視で ZIP が変わった) は外してから取り込み直す (#785)。新しい ZIP が壊れていても
+    // 古い提出物のタブは残さない。外したフォルダ行を指す folderMap の項目も消す
+    if (this.removeZipContents(fileEntry.path)) {
+      const liveFolders = new Set(this.deps.sidebar.getAllFolders().map((folder) => folder.id));
+      for (const [path, id] of folderMap) if (!liveFolders.has(id)) folderMap.delete(path);
+    }
 
     if (!result.success) {
       console.error('[FolderController] Failed to process ZIP:', result.error);
@@ -760,6 +852,8 @@ export class FolderController {
 
     this.deps.sidebar.addHierarchicalFolder(zipFolder);
     folderMap.set(zipFolderPath, zipFolderId);
+    const tabPaths: string[] = [];
+    this.zipContents.set(fileEntry.path, { folderId: zipFolderId, tabPaths });
 
     // ZIP内のフォルダ構造を作成
     if (result.folderPaths) {
@@ -814,6 +908,7 @@ export class FolderController {
       const fileParts = fullRelativePath.split('/');
       const fileParentPath = fileParts.slice(0, -1).join('/');
       const fileFolderId = folderMap.get(fileParentPath) ?? zipFolderId;
+      tabPaths.push(fullRelativePath);
 
       if (fileData.type === 'proof') {
         // フォルダのスクショを渡した proof は、フォルダのスクショが変わったら取り込み直す (#703 / #742)

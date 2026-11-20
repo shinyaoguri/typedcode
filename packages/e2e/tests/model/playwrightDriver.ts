@@ -2,13 +2,16 @@ import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { expect, type Page } from '@playwright/test';
 import JSZip from 'jszip';
-import { BOOT_TIMEOUT_MS, EditorApp } from '../helpers/app.js';
+import { BOOT_TIMEOUT_MS, CASUAL_SESSION_DB, EditorApp, NEUTRAL_PATH } from '../helpers/app.js';
 import { runVerifyCliWithVerdicts } from '../helpers/verifyCli.js';
 import {
   type EditorDriver,
   type EditorModel,
   type ModelLanguage,
   type ModelTab,
+  type ModelTabSwitch,
+  type ResumeTamper,
+  activate,
   fullFilename,
   nextUntitledName,
 } from './editorModel.js';
@@ -104,7 +107,7 @@ export class PlaywrightEditorDriver implements EditorDriver {
     await this.app.openCasualFresh();
     const tabs = await this.app.tabs();
     expect(tabs, 'casual starts with exactly one tab').toHaveLength(1);
-    const model: EditorModel = { tabs: [], activeId: null, pasteSeq: 0 };
+    const model: EditorModel = { tabs: [], activeId: null, pasteSeq: 0, switches: [] };
     model.tabs.push({
       id: tabs[0]!.id,
       name: nextUntitledName(model),
@@ -113,7 +116,8 @@ export class PlaywrightEditorDriver implements EditorDriver {
       externalPaste: false,
       maxEventCount: 0,
     });
-    model.activeId = tabs[0]!.id;
+    // 既定タブは active が無い状態から作られるので、切替の履歴の最初は null → 既定タブ
+    activate(model, tabs[0]!.id);
     await this.expectMatches(model);
     return model;
   }
@@ -203,11 +207,21 @@ export class PlaywrightEditorDriver implements EditorDriver {
    * 同期を待ってからブラウザのタブを閉じ (sessionStorage は消え、IndexedDB は残る)、同じコンテキストで
    * 開き直して (`?reset` 無し) 復旧ダイアログの「再開」を押す。手順は close-tab-recovery.spec.ts と同じ。
    * 復旧ダイアログが出ることが前提 (出なければ IndexedDB の復旧経路を通っていないので落とす)。
+   * `tamper` があれば、閉じた後・開き直す前に保存データへ入れる (`ResumeTamper`。#616)。
    */
-  async closeAndResume(): Promise<void> {
+  async closeAndResume(tamper: ResumeTamper): Promise<void> {
     await this.app.waitForSynced();
     const context = this.page.context();
     await this.page.close();
+    if (tamper !== 'none') {
+      // 書き換えは閉じた後に、session DB を開かないページから行う (閉じる前だと、閉じる時の visibility の
+      // append が値を進めてしまう。close-tab-recovery.spec.ts の #322 と同じ)
+      const neutral = await context.newPage();
+      await neutral.goto(NEUTRAL_PATH);
+      const changed = await tamperStoredSession(neutral, tamper);
+      await neutral.close();
+      this.log(`  ${tamper}: ${changed}`);
+    }
     const page = await context.newPage();
     this.page = page;
     this.app = new EditorApp(page);
@@ -221,6 +235,30 @@ export class PlaywrightEditorDriver implements EditorDriver {
     await expect.poll(() => this.app.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
   }
 
+  async expectStoredStateMatches(model: Readonly<EditorModel>): Promise<void> {
+    const expected = model.tabs
+      .map((t) => ({ id: t.id, content: t.content, tailIsCurrentHash: true, chainLinked: true }))
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    await expect
+      .poll(
+        async () =>
+          (await readStoredSession(this.page)).map((t) => ({
+            id: t.id,
+            content: toLf(t.content),
+            tailIsCurrentHash: t.events.length > 0 && t.events.at(-1)!.hash === t.currentHash,
+            chainLinked: t.events.every(
+              (e, i) => e.index === i && (i === 0 || e.previousHash === t.events[i - 1]!.hash)
+            ),
+          })),
+        {
+          timeout: 30_000,
+          message:
+            'stored tabs (id / content) match the model, each stored chain is linked and ends at the stored currentHash',
+        }
+      )
+      .toEqual(expected);
+  }
+
   async focusLossAndReturn(): Promise<void> {
     await this.app.simulateFocusLossAndReturn();
   }
@@ -231,7 +269,7 @@ export class PlaywrightEditorDriver implements EditorDriver {
    */
   async exportAllTabs(model: Readonly<EditorModel>): Promise<void> {
     const zipPath = await this.app.exportAllTabs();
-    await expectProofsMatch(zipPath, model.tabs);
+    await expectProofsMatch(zipPath, model);
   }
 
   /** 列の最後: 同期を待ってから全タブを export し、モデルの全タブと突き合わせる。 */
@@ -322,7 +360,8 @@ async function readProofs(zipPath: string): Promise<ExportedProof[]> {
  * 名前・言語がモデルと一致すること、Pure Typing が「外部ペーストをしたタブだけ false」であることを確かめる。
  * proof とタブの対応は並び順 (export はタブの表示順に proof を足す。名前は重なりうるので名前では引かない)。
  */
-async function expectProofsMatch(zipPath: string, tabs: readonly Readonly<ModelTab>[]): Promise<void> {
+async function expectProofsMatch(zipPath: string, model: Readonly<EditorModel>): Promise<void> {
+  const tabs: readonly Readonly<ModelTab>[] = model.tabs;
   const cli = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast']);
   const output = cli.stdout + cli.stderr;
   expect(cli.exitCode, `verify-cli --mode fast passes every proof\n${output}`).toBe(0);
@@ -340,4 +379,133 @@ async function expectProofsMatch(zipPath: string, tabs: readonly Readonly<ModelT
       `pure typing of ${proof.entry} is false only when the tab had an external paste`
     ).toBe(!tabs[i]!.externalPaste);
   }
+  // タブ切替の履歴: 追記順 (= モデルの手の順) に並ぶ (#401。閉じて再開をまたいでも)。timestamp の値は見ない。
+  // 履歴が空なら export は tab-switches.json を入れない
+  expect(await readTabSwitches(zipPath), 'tab-switches.json lists the tab switches in the order they happened').toEqual(
+    model.switches
+  );
+}
+
+async function readTabSwitches(zipPath: string): Promise<ModelTabSwitch[]> {
+  const zip = await JSZip.loadAsync(await readFile(zipPath));
+  const entry = zip.file('tab-switches.json');
+  if (!entry) return [];
+  const switches = JSON.parse(await entry.async('string')) as { fromTabId: string | null; toTabId: string }[];
+  return switches.map((s) => ({ from: s.fromTabId, to: s.toTabId }));
+}
+
+/** 保存された 1 タブ分 (tabs レコードと、そのタブの events を eventIndex 順に) */
+interface StoredTabState {
+  id: string;
+  content: string;
+  currentHash: string;
+  events: { index: number; hash: string; previousHash: string | null }[];
+}
+
+/** casual の session DB から全タブのレコードと events を読む (読み取りだけ。開いているエディタのページから呼ぶ)。 */
+function readStoredSession(page: Page): Promise<StoredTabState[]> {
+  return page.evaluate(
+    (dbName) =>
+      new Promise<StoredTabState[]>((resolve, reject) => {
+        const open = indexedDB.open(dbName);
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const tx = db.transaction(['tabs', 'events'], 'readonly');
+          const tabsReq = tx.objectStore('tabs').getAll();
+          const eventsReq = tx.objectStore('events').getAll();
+          tx.onerror = () => reject(tx.error);
+          tx.oncomplete = () => {
+            db.close();
+            type Row = { tabId: string; eventIndex: number; eventData: { hash: string; previousHash: string | null } };
+            const events = (eventsReq.result as Row[]).sort((a, b) => a.eventIndex - b.eventIndex);
+            resolve(
+              (tabsReq.result as { id: string; content: string; currentHash: string }[])
+                .map((t) => ({
+                  id: t.id,
+                  content: t.content,
+                  currentHash: t.currentHash,
+                  events: events
+                    .filter((e) => e.tabId === t.id)
+                    .map((e) => ({
+                      index: e.eventIndex,
+                      hash: e.eventData.hash,
+                      previousHash: e.eventData.previousHash,
+                    })),
+                }))
+                .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+            );
+          };
+        };
+      }),
+    CASUAL_SESSION_DB
+  );
+}
+
+/**
+ * 閉じたセッションの保存データに手を入れる (`ResumeTamper`。#616)。`page` は session DB を開かないページ。
+ * 手を入れたもの (ログ用) を返す。前提が崩れていたら (戻すイベントが無い・session が無い) throw する
+ * (手が空振りすると観測していないのに通ってしまうため)。
+ */
+function tamperStoredSession(page: Page, tamper: Exclude<ResumeTamper, 'none'>): Promise<string> {
+  return page.evaluate(
+    ({ dbName, tamper }) =>
+      new Promise<string>((resolve, reject) => {
+        const open = indexedDB.open(dbName);
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const tx = db.transaction(['sessions', 'tabs', 'events'], 'readwrite');
+          let summary = '';
+          let failure: Error | null = null;
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(failure ?? tx.error);
+          tx.oncomplete = () => {
+            db.close();
+            resolve(summary);
+          };
+          const fail = (message: string) => {
+            failure = new Error(message);
+            tx.abort();
+          };
+          if (tamper === 'emptyTabOrder') {
+            const req = tx.objectStore('sessions').getAll();
+            req.onsuccess = () => {
+              const sessions = req.result as { tabOrder: string[] }[];
+              if (sessions.length === 0) return fail('emptyTabOrder: no stored session');
+              for (const s of sessions) {
+                summary += `tabOrder ${s.tabOrder.length} -> 0; `;
+                s.tabOrder = [];
+                tx.objectStore('sessions').put(s);
+              }
+            };
+            return;
+          }
+          // staleHash: 各タブの currentHash を、events の 1 つ前の hash に戻す (#322 の手本は先頭の hash)
+          const tabsReq = tx.objectStore('tabs').getAll();
+          const eventsReq = tx.objectStore('events').getAll();
+          let pending = 2;
+          const done = () => {
+            if (--pending > 0) return;
+            type Row = { tabId: string; eventIndex: number; eventData: { hash: string } };
+            const events = (eventsReq.result as Row[]).sort((a, b) => a.eventIndex - b.eventIndex);
+            let rewound = 0;
+            for (const tab of tabsReq.result as { id: string; currentHash: string }[]) {
+              const own = events.filter((e) => e.tabId === tab.id);
+              const tail = own.at(-1)?.eventData.hash;
+              const previous = own.at(-2)?.eventData.hash;
+              if (!previous || !tail) continue;
+              tab.currentHash = previous;
+              tx.objectStore('tabs').put(tab);
+              rewound += 1;
+            }
+            if (rewound === 0) return fail('staleHash: no stored tab had 2+ events to rewind to');
+            summary = `rewound currentHash of ${rewound}/${tabsReq.result.length} tabs`;
+          };
+          tabsReq.onsuccess = done;
+          eventsReq.onsuccess = done;
+        };
+      }),
+    { dbName: CASUAL_SESSION_DB, tamper }
+  );
 }

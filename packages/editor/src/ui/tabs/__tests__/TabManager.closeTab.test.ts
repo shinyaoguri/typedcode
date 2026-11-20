@@ -369,3 +369,224 @@ describe('TabManager closing a tab (#342)', () => {
     expect(await service.getEvents(a.id)).toEqual([]);
   });
 });
+
+/** 手で開ける止め具 (タイマーに頼らず順序を作る)。`open()` を呼ぶまで `opened` は解決しない */
+function gate() {
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { opened, open };
+}
+
+/**
+ * 閉じたタブの後始末の途中 (完了待ちの後・削除の最中・削除の後で dispose の前・dispose の後) に
+ * 記録の要求が届いても、そのタブの events 行が残らない (#788)。
+ *
+ * 防いでいるのは、closeTab が retireTab を始める前に同期でタブを `tabs` から外すこと
+ * (TabManager.closeTab)。EventRecorder の記録の入口 (record / recordToTabId / recordToAllTabs) は
+ * 対象のタブを呼ばれた時点で TabManager から引くので、外した後の要求は閉じたタブに届かない。
+ * 外す前に始まった記録は `whenTabSettled` が待つ (上の #342 のケース)。
+ */
+describe('TabManager closing a tab while record requests keep arriving (#788)', () => {
+  let service: SessionStorageService | null = null;
+
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory();
+    setStorageNamespace('casual');
+    log = [];
+    appendDelayMs = 0;
+    MockPoswWorker.instances = [];
+    vi.stubGlobal('Worker', MockPoswWorker);
+    vi.stubGlobal('sessionStorage', { removeItem: vi.fn(), getItem: vi.fn(), setItem: vi.fn() });
+    vi.spyOn(TabManager.prototype, 'saveToStorage').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'debug').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    service?.close();
+    service = null;
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  type Setup = Awaited<ReturnType<typeof setup>>;
+  /** 後始末をその地点で止める。返す `reached` はそこに来たら開き、`release` を開くまで先へ進まない */
+  type Hold = (s: Setup, closedTabId: string, stop: { reached: () => void; release: Promise<void> }) => void;
+
+  const holdAfterSettled: Hold = (s, closedTabId, stop) => {
+    s.tabManager.setTabSettleBarrier(async (tabId) => {
+      await s.recorder.whenTabSettled(tabId);
+      if (tabId !== closedTabId) return;
+      stop.reached();
+      await stop.release;
+    });
+  };
+  const holdDuringDelete: Hold = (s, _closedTabId, stop) => {
+    const deleteTab = s.deleteTabSpy.getMockImplementation()!;
+    s.deleteTabSpy.mockImplementationOnce(async (tabId) => {
+      const deleting = deleteTab(tabId);
+      stop.reached();
+      await stop.release;
+      await deleting;
+    });
+  };
+  const holdAfterDeleteBeforeDispose: Hold = (s, _closedTabId, stop) => {
+    const deleteTab = s.deleteTabSpy.getMockImplementation()!;
+    s.deleteTabSpy.mockImplementationOnce(async (tabId) => {
+      await deleteTab(tabId);
+      // この後 retireTab は同期で TypingProof.dispose() に進む
+      stop.reached();
+      await stop.release;
+    });
+  };
+  /** dispose の後: 後始末を止めず、終わってから要求を出す */
+  const afterDisposed = null;
+
+  it.each([
+    ['right after the closed tab settled, before its rows are deleted', holdAfterSettled],
+    ['while the closed tab rows are being deleted', holdDuringDelete],
+    ['after the closed tab rows are deleted, before its worker is disposed', holdAfterDeleteBeforeDispose],
+    ['after the closed tab worker is disposed', afterDisposed],
+  ] as const)('leaves no events row for the closed tab when record requests arrive %s', async (_label, hold) => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c');
+    const b = await s.openTab('b.c');
+    await s.tabManager.switchTab(a.id);
+
+    const reached = gate();
+    const release = gate();
+    if (hold) hold(s, a.id, { reached: reached.open, release: release.opened });
+
+    expect(s.tabManager.closeTab(a.id)).toBe(true);
+    if (hold) {
+      await reached.opened;
+    } else {
+      await s.tabManager.whenTabsRetired();
+      expect(MockPoswWorker.instances[0]?.terminated).toBe(1);
+    }
+
+    // 閉じたタブ宛てになりうる入口から記録を要求する
+    s.recorder.record(keystroke);
+    s.recorder.recordToTabId(a.id, { type: 'focusChange', data: { focused: false } });
+    const recordedToAll = s.recorder.recordToAllTabs({ type: 'focusChange', data: { focused: true } });
+
+    release.open();
+    await s.tabManager.whenTabsRetired();
+    await recordedToAll;
+    await s.recorder.whenTabSettled(a.id);
+    await s.recorder.whenTabSettled(b.id);
+
+    expect(await service.getTab(a.id)).toBeNull();
+    expect(await service.getEvents(a.id)).toEqual([]);
+    // 要求は捨てられず、開いたままの B に載っている (record と recordToAllTabs の 2 件)
+    expect((await service.getEvents(b.id)).map((e) => e.sequence)).toEqual([1, 2]);
+  });
+});
+
+/**
+ * export 前の保存 (flushToIndexedDB) とタブを閉じる後始末の競合 (#833)。flush の走行は
+ * `currentSavePromise` に載らないので、閉じたタブの削除がそれを待たないと、flush が閉じたタブを
+ * 書いている最中に閉じたとき、削除の後に tabs 行と events 行が書き戻される。
+ */
+describe('TabManager closing a tab while flushToIndexedDB is saving (#833)', () => {
+  let service: SessionStorageService | null = null;
+
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory();
+    setStorageNamespace('casual');
+    log = [];
+    appendDelayMs = 0;
+    MockPoswWorker.instances = [];
+    vi.stubGlobal('Worker', MockPoswWorker);
+    vi.stubGlobal('sessionStorage', { removeItem: vi.fn(), getItem: vi.fn(), setItem: vi.fn() });
+    vi.spyOn(TabManager.prototype, 'saveToStorage').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    service?.close();
+    service = null;
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('leaves no rows for a tab closed while flushToIndexedDB is writing it, and still saves the open tab', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c');
+    const b = await s.openTab('b.c');
+
+    // flush が a の events を書く手前で止める
+    const writingA = gate();
+    const releaseA = gate();
+    const appendEvent = vi.mocked(s.service.appendEvent).getMockImplementation()!;
+    vi.mocked(s.service.appendEvent).mockImplementation(async (tabId, event) => {
+      if (tabId === a.id) {
+        writingA.open();
+        await releaseA.opened;
+      }
+      await appendEvent(tabId, event);
+    });
+    // 後始末が「記録の確定を待ち終えて、行を消す段」に来たことを知る
+    const settled = gate();
+    s.tabManager.setTabSettleBarrier(async (tabId) => {
+      await s.recorder.whenTabSettled(tabId);
+      if (tabId === a.id) settled.open();
+    });
+
+    const flushing = s.tabManager.flushToIndexedDB();
+    await writingA.opened;
+    s.tabManager.closeTab(a.id);
+    await settled.opened;
+    // flush が a を書いている間は、a の行を消さずに待つ
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(log).not.toContain(`deleted:${a.id}`);
+
+    releaseA.open();
+    const outcome = await flushing;
+    await s.tabManager.whenTabsRetired();
+
+    expect(outcome).toEqual({ idbOk: true, sessionStorageOk: true });
+    expect(log.indexOf(`appended:${a.id}`)).toBeLessThan(log.indexOf(`deleted:${a.id}`));
+    expect(await service.getTab(a.id)).toBeNull();
+    expect(await service.getEvents(a.id)).toEqual([]);
+    // 開いたままの B は flush で保存されている
+    expect(await service.getTab(b.id)).not.toBeNull();
+    expect((await service.getEvents(b.id)).map((e) => e.sequence)).toEqual(b.typingProof.events.map((e) => e.sequence));
+  });
+
+  it('does not write back a closed tab when flushToIndexedDB starts while its rows are being deleted', async () => {
+    const s = await setup();
+    service = s.service;
+    const a = await s.openTab('a.c');
+    const b = await s.openTab('b.c');
+
+    // 行を消し終えた直後 (dispose の前) で後始末を止める
+    const deleted = gate();
+    const releaseDelete = gate();
+    const deleteTab = s.deleteTabSpy.getMockImplementation()!;
+    s.deleteTabSpy.mockImplementationOnce(async (tabId) => {
+      await deleteTab(tabId);
+      deleted.open();
+      await releaseDelete.opened;
+    });
+
+    s.tabManager.closeTab(a.id);
+    await deleted.opened;
+    // 削除の途中に flush が始まり、終わる。閉じたタブは this.tabs から外れているので書かない
+    const outcome = await s.tabManager.flushToIndexedDB();
+    releaseDelete.open();
+    await s.tabManager.whenTabsRetired();
+
+    expect(outcome).toEqual({ idbOk: true, sessionStorageOk: true });
+    expect(await service.getTab(a.id)).toBeNull();
+    expect(await service.getEvents(a.id)).toEqual([]);
+    expect(await service.getTab(b.id)).not.toBeNull();
+    expect((await service.getEvents(b.id)).map((e) => e.sequence)).toEqual(b.typingProof.events.map((e) => e.sequence));
+  });
+});

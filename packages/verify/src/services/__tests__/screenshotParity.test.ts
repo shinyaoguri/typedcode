@@ -160,6 +160,33 @@ describe('collectFolderChainImageHashes', () => {
 
     expect(await collectFolderChainImageHashes(files)).toEqual(new Set());
   });
+
+  it('collects screenshot hashes from the proofs inside the ZIPs in the folder, skipping broken ZIPs, non-proof JSON in ZIPs and hidden ZIPs without failing (#786)', async () => {
+    const hashA = 'a'.repeat(64);
+    const hashHidden = 'c'.repeat(64);
+    const zipOf = async (entries: Record<string, string>) => {
+      const zip = new JSZip();
+      for (const [name, content] of Object.entries(entries)) zip.file(name, content);
+      return zip.generateAsync({ type: 'uint8array' });
+    };
+    const zipEntry = (name: string, bytes: Uint8Array) =>
+      ({
+        name,
+        path: name,
+        lastModified: 0,
+        handle: { getFile: async () => new File([bytes.slice()], name) },
+      }) as unknown as FSAccessFileEntry;
+    const files = [
+      zipEntry(
+        'sub.zip',
+        await zipOf({ 'main_proof.json': proofJson(hashA), 'tsconfig.json': '{"compilerOptions":{}}', 'x.json': '{' })
+      ),
+      zipEntry('broken.zip', enc.encode('not a zip')),
+      zipEntry('.hidden.zip', await zipOf({ 'main_proof.json': proofJson(hashHidden) })),
+    ];
+
+    expect(await collectFolderChainImageHashes(files, { strict: true })).toEqual(new Set([hashA]));
+  });
 });
 
 describe('loadFolderScreenshots', () => {

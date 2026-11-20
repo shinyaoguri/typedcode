@@ -12,12 +12,15 @@
  * - 停止とタイムアウト: Worker を `terminate()` して捨てる。次の実行で初期化し直す
  *   (`CodeExecutionController` の `!executor.isInitialized` の分岐)
  * - タイムアウトは入力を待っている間を数えない (pausableDeadline.ts)
+ * - 非対話の実行 (#802。`run` の options.stdin): stdin の全体をチャネルに積んで閉じ、渡し切った後の
+ *   読み込みに EOF を返す。ターミナルにはつながない。`showLastValue: false` で `=> 値` を出さない
  */
 
 import { BaseExecutor } from '../base/BaseExecutor.js';
 import type {
   ExecutorConfig,
   ExecutionCallbacks,
+  ExecutionOptions,
   ExecutionResult,
   InitializationProgress,
   ParsedError,
@@ -341,7 +344,8 @@ export class PythonExecutor extends BaseExecutor {
     }
   }
 
-  async run(code: string, callbacks: ExecutionCallbacks): Promise<ExecutionResult> {
+  async run(code: string, callbacks: ExecutionCallbacks, options: ExecutionOptions = {}): Promise<ExecutionResult> {
+    const showLastValue = options.showLastValue ?? true;
     const worker = this.worker;
     if (!this._initialized || !worker) {
       throw new Error('PythonExecutor not initialized. Call initialize() first.');
@@ -410,6 +414,7 @@ export class PythonExecutor extends BaseExecutor {
             case 'started':
               callbacks.onProgress?.('Running Python...');
               deadline.resume();
+              callbacks.onProgramStart?.();
               return;
             case 'stdin-request':
               // 先打ちの行があればすぐ渡す。無ければ、行が確定するまで時間を数えない
@@ -419,7 +424,7 @@ export class PythonExecutor extends BaseExecutor {
               }
               return;
             case 'done': {
-              if (message.result !== null) {
+              if (message.result !== null && showLastValue) {
                 const text = `=> ${message.result}\n`;
                 stdout += text;
                 callbacks.onStdout(text);
@@ -442,18 +447,25 @@ export class PythonExecutor extends BaseExecutor {
         },
       };
 
-      // ターミナルの入力は C と同じ connectStdin の経路で受ける (行の記録 terminalInput もそこにある)
-      callbacks.onStdinReady?.(
-        new WritableStream<Uint8Array>({
-          write: (chunk) => {
-            if (settled) return;
-            const { echo, lines } = discipline.feed(inputDecoder.decode(chunk, { stream: true }));
-            if (echo) callbacks.onStdout(echo);
-            for (const line of lines) channel.push(line);
-            deliverInput();
-          },
-        })
-      );
+      if (options.stdin !== undefined) {
+        // 非対話の実行 (#802): 全体を先に積んで閉じる (渡し切った後の読み込みは EOF)。
+        // ターミナルにはつながず、エコーもしない (line discipline を通さない)
+        channel.push(options.stdin);
+        channel.close();
+      } else {
+        // ターミナルの入力は C と同じ connectStdin の経路で受ける (行の記録 terminalInput もそこにある)
+        callbacks.onStdinReady?.(
+          new WritableStream<Uint8Array>({
+            write: (chunk) => {
+              if (settled) return;
+              const { echo, lines } = discipline.feed(inputDecoder.decode(chunk, { stream: true }));
+              if (echo) callbacks.onStdout(echo);
+              for (const line of lines) channel.push(line);
+              deliverInput();
+            },
+          })
+        );
+      }
 
       worker.postMessage({ type: 'run', runId, code, packages: findRequiredPackages(code), stdinBuffer });
     });

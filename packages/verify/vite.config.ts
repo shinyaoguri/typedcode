@@ -1,14 +1,14 @@
 import { defineConfig } from 'vite';
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { resolveAppVersion } from '../../scripts/app-version.mjs';
 import { WORKTREE_ID_HEADER, worktreeIdOf } from '../../scripts/worktree-id.mjs';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
-// ビルド情報を取得
+// ビルド情報を取得。版はビルドに渡したタグ名 (TYPEDCODE_VERSION) から決め、リポジトリのファイルからは読まない。
+// 渡されなければ dev+<コミット>、形に合わない値ならビルドを止める (#842 / ADR-0055)
 function getBuildInfo() {
-  const rootPkg = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf-8'));
   let gitCommit = 'unknown';
   let gitCommitDate = '';
   try {
@@ -18,7 +18,7 @@ function getBuildInfo() {
     // Git not available
   }
   return {
-    appVersion: rootPkg.version,
+    appVersion: resolveAppVersion({ version: process.env.TYPEDCODE_VERSION, commit: gitCommit }),
     gitCommit,
     gitCommitDate,
     buildDate: new Date().toISOString(),
@@ -35,7 +35,7 @@ export default defineConfig({
   base: isDev ? '/' : '/verify/',
   server: {
     port: verifyPort,
-    // ランチャー割当時 (VERIFY_PORT あり) は strictPort。editor の /verify プロキシが
+    // ランチャー割当時 (VERIFY_PORT あり) は strictPort。editor の /verify のリダイレクト先が
     // このポート固定で追従するため、ずれると配線が壊れる。黙ってずらさず失敗させる。
     // 手動の個別起動 (VERIFY_PORT なし) は従来どおりフォールバック可。
     strictPort: Boolean(process.env.VERIFY_PORT),

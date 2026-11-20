@@ -1,6 +1,6 @@
 # ADR-0028: ブランチ運用をタグ式 GitHub Flow にする (main 1 本 + v* タグで production リリース)
 
-- **Status**: Accepted (Supersedes [ADR-0026](0026-lightweight-git-flow-branching.md)) アプリ一括公開は [ADR-0052](0052-independent-app-packages-and-deployments.md) でタグの検証済み成果物を対象別に公開する方式へ変更予定 (#808)。main 1 本とタグの記録・既存検査は維持。
+- **Status**: Accepted (Supersedes [ADR-0026](0026-lightweight-git-flow-branching.md)。production へ出す契機・緊急修正の経路・`release/*` の扱い・タグの打ち方は [ADR-0055](0055-release-channels-and-calendar-versioning.md) が置換する。実装は #842〜#845 で、それまでは本 ADR の手順が現行。タグで全アプリと workers を一括で公開する点は [ADR-0052](0052-independent-app-packages-and-deployments.md) がアプリ別の公開へ置換する予定で、実装は #808)
 - **Date**: 2026-07-07
 - **Deciders**: (PR 上の合意者 / レビュアー)
 - **PR / Commit**: 移行 PR

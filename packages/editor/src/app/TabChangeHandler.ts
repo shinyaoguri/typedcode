@@ -8,10 +8,19 @@ import { updateProofStatus } from './AppHelpers.js';
 import { ExamPackageStore } from '../services/ExamPackageStore.js';
 import { ClassProblemStore } from '../services/ClassProblemStore.js';
 import { syncLanguageSelector, type LanguagePolicyTab } from './examLanguageGuard.js';
+import { tabFullFilename } from '../ui/tabs/TabUIController.js';
 
 interface TabInfo extends LanguagePolicyTab {
   filename: string;
   language: string;
+}
+
+/**
+ * ブラウザのタイトル。タブに見える名前 (`tabFullFilename` = 状態契約の `data-filename`) に揃える (#831)。
+ * `tab.filename` は拡張子なし (`Untitled-1`) でも拡張子込み (`p1.c`) でもあるので直には使わない。
+ */
+export function documentTitleFor(tab: Pick<TabInfo, 'filename' | 'language'>): string {
+  return `${tabFullFilename(tab)} - TypedCode`;
 }
 
 /**
@@ -20,7 +29,7 @@ interface TabInfo extends LanguagePolicyTab {
 export function handleTabChange(ctx: AppContext, tab: TabInfo): void {
   ctx.tabUIController?.updateUI();
   updateProofStatus(ctx);
-  document.title = `${tab.filename} - TypedCode`;
+  document.title = documentTitleFor(tab);
 
   // 値と選択肢 (試験の許可言語。#727) をタブに合わせる
   syncLanguageSelector(ctx, tab);

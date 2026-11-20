@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { VerificationState } from '@typedcode/shared';
 import type { TabManager, TabState } from '../TabManager.js';
-import { TabUIController, tabFullFilename } from '../TabUIController.js';
+import { TabUIController, tabDisplayParts, tabFullFilename } from '../TabUIController.js';
 
 interface FakeTab {
   id: string;
@@ -110,6 +110,122 @@ describe('TabUIController state contract', () => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
 
     expect(tabEl.dataset.filename).toBe('renamed.js');
+  });
+});
+
+/** タブに見える文字 (`.tab-filename` + `.tab-extension`) */
+function visibleName(tabEl: HTMLElement): string {
+  return `${tabEl.querySelector('.tab-filename')?.textContent ?? ''}${tabEl.querySelector('.tab-extension')?.textContent ?? ''}`;
+}
+
+function extensionSpan(tabEl: HTMLElement): HTMLElement {
+  return tabEl.querySelector<HTMLElement>('.tab-extension')!;
+}
+
+describe('TabUIController visible tab name (#828)', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="editor-tabs"><button class="add-tab-btn"></button></div>';
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('renders visible text that equals data-filename whether or not the stored name carries the extension', () => {
+    const container = render(
+      [
+        tab('a', { filename: 'p1.c', language: 'c' }),
+        tab('b', { filename: 'Untitled-1', language: 'c' }),
+        tab('c', { filename: 'a.py', language: 'c' }),
+      ],
+      'a'
+    );
+
+    const els = tabEls(container);
+    expect(els.map(visibleName)).toEqual(['p1.c', 'Untitled-1.c', 'a.py.c']);
+    for (const el of els) expect(visibleName(el)).toBe(el.dataset.filename);
+  });
+
+  /** 拡張子込みの名前 (p1.c) のタブで改名を始め、入力欄に `value` を入れて `key` で終える */
+  function editExtensionfulTab(value: string, key: 'Enter' | 'Escape') {
+    const tabs = [tab('a', { filename: 'p1.c', language: 'c' })];
+    const container = document.getElementById('editor-tabs')!;
+    const controller = new TabUIController({ container, tabManager: fakeTabManager(tabs, 'a'), basePath: '/' });
+    controller.updateUI();
+    const tabEl = tabEls(container)[0]!;
+    controller.startFilenameEdit(tabEl, 'a');
+    const input = tabEl.querySelector<HTMLInputElement>('.tab-filename-input')!;
+    const duringEdit = { value: input.value, extensionDisplay: extensionSpan(tabEl).style.display };
+    input.value = value;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    return { tabEl, duringEdit };
+  }
+
+  it('hides the extension span while editing a name that already carries the extension and restores it on confirm', () => {
+    const { tabEl, duringEdit } = editExtensionfulTab('q.c', 'Enter');
+
+    expect(duringEdit).toEqual({ value: 'p1.c', extensionDisplay: 'none' });
+    expect(tabEl.querySelector('.tab-filename')?.textContent).toBe('q');
+    expect(extensionSpan(tabEl).textContent).toBe('.c');
+    expect(tabEl.dataset.filename).toBe('q.c');
+    expect(extensionSpan(tabEl).style.display).toBe('');
+  });
+
+  it('shows the language extension after a rename to a name without one', () => {
+    const { tabEl } = editExtensionfulTab('plain', 'Enter');
+
+    expect(tabEl.querySelector('.tab-filename')?.textContent).toBe('plain');
+    expect(extensionSpan(tabEl).textContent).toBe('.c');
+    expect(tabEl.dataset.filename).toBe('plain.c');
+  });
+
+  it('restores the original visible name when the edit is cancelled with Escape', () => {
+    const { tabEl } = editExtensionfulTab('ignored.c', 'Escape');
+
+    expect(visibleName(tabEl)).toBe('p1.c');
+    expect(tabEl.dataset.filename).toBe('p1.c');
+    expect(extensionSpan(tabEl).style.display).toBe('');
+  });
+
+  it('keeps the extension span visible while editing a name without the extension', () => {
+    const tabs = [tab('a', { filename: 'Untitled-1', language: 'c' })];
+    const container = document.getElementById('editor-tabs')!;
+    const controller = new TabUIController({ container, tabManager: fakeTabManager(tabs, 'a'), basePath: '/' });
+    controller.updateUI();
+    const tabEl = tabEls(container)[0]!;
+
+    controller.startFilenameEdit(tabEl, 'a');
+
+    expect(tabEl.querySelector<HTMLInputElement>('.tab-filename-input')!.value).toBe('Untitled-1');
+    expect(extensionSpan(tabEl).style.display).toBe('');
+  });
+});
+
+describe('tabDisplayParts', () => {
+  it('splits the name and the language extension so that the stored extension is not repeated', () => {
+    expect(tabDisplayParts({ filename: 'p1', language: 'c' })).toEqual({ name: 'p1', extension: '.c' });
+    expect(tabDisplayParts({ filename: 'p1.c', language: 'c' })).toEqual({ name: 'p1', extension: '.c' });
+    expect(tabDisplayParts({ filename: 'main.py', language: 'python' })).toEqual({ name: 'main', extension: '.py' });
+    expect(tabDisplayParts({ filename: 'a.py', language: 'c' })).toEqual({ name: 'a.py', extension: '.c' });
+    expect(tabDisplayParts({ filename: 'notes', language: 'no-such-language' })).toEqual({
+      name: 'notes',
+      extension: '.txt',
+    });
+  });
+
+  it('joins back into tabFullFilename for every input', () => {
+    const inputs = [
+      { filename: 'p1', language: 'c' },
+      { filename: 'p1.c', language: 'c' },
+      { filename: 'main.py', language: 'python' },
+      { filename: 'a.py', language: 'c' },
+      { filename: 'v1.2', language: 'c' },
+      { filename: 'notes', language: 'no-such-language' },
+    ];
+    for (const input of inputs) {
+      const { name, extension } = tabDisplayParts(input);
+      expect(name + extension).toBe(tabFullFilename(input as TabState));
+    }
   });
 });
 

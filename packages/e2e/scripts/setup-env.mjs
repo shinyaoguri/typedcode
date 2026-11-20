@@ -29,6 +29,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureLocalKeys } from '../../../scripts/ensure-local-keys.mjs';
+import { isKeyIdRegistered, readSigningKeyId } from '../../../scripts/signing-key-id.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../../..');
@@ -37,24 +38,8 @@ const ROOT = resolve(HERE, '../../..');
 const TURNSTILE_SITE_KEY = '1x00000000000000000000AA';
 const TURNSTILE_SECRET_KEY = '1x0000000000000000000000000000000AA';
 
-/**
- * .dev.vars の本文から CHECKPOINT_SIGNING_KEY_ID の値だけを取り出す。無い・空なら null。
- * 他の行 (秘密 JWK を含む) は値を保持しない。
- */
-export function readSigningKeyId(devVarsText) {
-  for (const line of devVarsText.split(/\r?\n/)) {
-    const match = /^\s*CHECKPOINT_SIGNING_KEY_ID\s*=\s*(.*)$/.exec(line);
-    if (!match) continue;
-    const value = match[1].trim().replace(/^(['"])(.*)\1$/, '$2');
-    return value === '' ? null : value;
-  }
-  return null;
-}
-
-/** keyId が registry / localKeys のソースのどれかに、引用符付きの文字列として現れるか。 */
-export function isKeyIdRegistered(keyId, sourceTexts) {
-  return sourceTexts.some((text) => text.includes(`'${keyId}'`) || text.includes(`"${keyId}"`));
-}
+// 判定は doctor と共有する (#827)。setup-env.test.mjs が名前で import するので再 export する。
+export { isKeyIdRegistered, readSigningKeyId };
 
 /**
  * E2E 用の環境を root 配下に用意する。戻り値は終了コード。

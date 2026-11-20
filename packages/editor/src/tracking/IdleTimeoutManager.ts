@@ -5,6 +5,8 @@
  * 応答がなければ記録を一時停止する。
  */
 
+import { t } from '../i18n/index.js';
+
 export type IdleState = 'active' | 'warning' | 'suspended';
 
 export interface IdleTimeoutManagerOptions {
@@ -217,7 +219,7 @@ export class IdleTimeoutManager {
     let isOriginal = true;
 
     this.titleFlashInterval = setInterval(() => {
-      document.title = isOriginal ? '⚠️ 確認が必要です' : this.originalTitle;
+      document.title = isOriginal ? t('idleTimeout.titleFlash') : this.originalTitle;
       isOriginal = !isOriginal;
     }, 1000);
   }

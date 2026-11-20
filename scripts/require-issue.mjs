@@ -14,8 +14,8 @@
  *
  * require-tests / require-visual-evidence (見るファイルを含まない PR に限ってタイトルの型で免除する) と違い、
  * **タイトルの型 (docs / ci / chore) では一切免除しない** (require-tests.mjs の exemptionReason は使わない)。閉じ忘れは docs / ci / chore の PR にもあり、
- * 型で免除すると Issue を閉じる責務ごと抜ける。受け入れ条件を持たない PR (依存の手動更新・
- * リリース準備など) はラベルで通す。
+ * 型で免除すると Issue を閉じる責務ごと抜ける。受け入れ条件を持たない PR (依存の手動更新など)
+ * はラベルで通す。
  *
  * ルール:
  *   - author が dependabot[bot] → pass (依存更新は Issue から始まらない)
@@ -98,7 +98,7 @@ export function formatFailure(outcome) {
     '- コードスパン (バッククォート)・引用 (`>`)・打ち消し (`~~`) の中の `Closes #N` は GitHub が紐づけない。',
     '  素の本文として書く',
     '- 段階に分けた作業は、段階ごとに sub-issue を切ってそれを閉じる (親 Issue を `Refs` で開いたままにしない)',
-    `- 受け入れ条件を持たない PR (依存の手動更新・リリース準備など) は、ラベル \`${NO_ISSUE_LABEL}\` を付ける`,
+    `- 受け入れ条件を持たない PR (依存の手動更新など) は、ラベル \`${NO_ISSUE_LABEL}\` を付ける`,
     '',
     '本文の編集・ラベルの付け外しでこのチェックは再実行される。',
     '判定は本文の文字列ではなく、GitHub が作った紐づけ (closingIssuesReferences) を見る。根拠は ADR-0038',

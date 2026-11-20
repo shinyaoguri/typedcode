@@ -6,6 +6,7 @@
 
 import {
   getBuildInfo,
+  formatAppVersion,
   PROOF_FORMAT_VERSION,
   STORAGE_FORMAT_VERSION,
   GITHUB_URL,
@@ -56,7 +57,7 @@ export function showAboutDialog(i18n: I18nInstance): void {
         <img src="/icon-192.png" alt="TypedCode Verify" class="about-logo">
         <div class="about-title-section">
           <h2 class="about-app-name">TypedCode Verify</h2>
-          <p class="about-version">v${buildInfo.appVersion}</p>
+          <p class="about-version">${formatAppVersion(buildInfo.appVersion)}</p>
         </div>
       </div>
 

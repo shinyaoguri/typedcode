@@ -1,13 +1,22 @@
 # Changelog
 
-このファイルは TypedCode の主要な変更を記録します。
+このファイルは TypedCode の 1.4.0 までの主要な変更の記録で、これ以上は書き足しません。
+以後の変更履歴は [GitHub Releases](https://github.com/shinyaoguri/typedcode/releases) にあり、
+ノートの材料は [`changelog.d/`](changelog.d/README.md) の断片です ([ADR-0055](docs/adr/0055-release-channels-and-calendar-versioning.md))。
 
-書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
-バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) に従います。
+1.4.0 までの記録は、書式を [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠し、
+バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) に従っています。
 
 リリースは `v*` タグの push で production へ配信されます (タグ式 GitHub Flow、[ADR-0028](docs/adr/0028-tag-based-github-flow.md))。
 
-## [Unreleased]
+## [1.4.0] - 2026-11-19
+
+### 追加
+
+- 作問画面 (`/author`) を、教材フォルダのエクスプローラーとタブで問題を編集する画面に作り替えた。教材フォルダを読み書きして前回のフォルダで再開でき (#806)、定義ファイル (問題・ケース・試験) の読み書き (#803)、ケースファイルを一覧と入力・期待する出力の欄のフォームで編集する画面 (#823)、試験定義で採用問題と出題順を決めて学生プレビューと配布物を書き出す画面 (#821)、問題を参照ファイルごと別の教材フォルダへコピーする操作 (#818, #822) を持つ (#819)
+- 作問画面で、解答例をテストケースで一括検証し、期待する出力との違いを示すようにした。基盤として非対話の実行・C/C++ の時間上限・出力の比較を足した (#815, #824)
+- 授業・課題で書き出す ZIP に、タブの問題文を入れるようにした (#782)
+- verify-cli に `--result-json` を足し、検証の結論を機械可読に書き出せるようにした。偽造の E2E で、拒否した検査まで assert する (#673)
 
 ### 修正
 
@@ -15,6 +24,24 @@
 - 試験の束縛検証 (`verifyExamBinding`、verify-cli の `--exam-package`・verify Web の問題パッケージ読込) で、proof の `templateInjection` の内容を封印された問題の starter と照合するようにした。改造クライアントが別の完成コードを雛形として注入した proof は、正規の署名と受理ポリシーを満たしていても束縛失敗 (verify-cli は exit 1、`Starter: FAIL` と理由) になる。starter の無い問題への注入も失敗にする。正規の starter と同じ内容の注入 (複数回・編集後の再注入を含む) と注入なしは通る。旧 v1 の単一問題パッケージは starter を取り出せないので「未評価」と表示し、結論には影響させない。パッケージを渡していないときは照合済みと表示しない。照合の規則は system-spec §6.4 手順 5b (#718)
 - 試験モードで、試験開始ゲートの表示中に Turnstile + session/start を並行して先行取得するようにした。widget はゲートの中に出し、対話チャレンジもゲートで解ける (解錠前なので試験時間を使わない)。解錠の時点で取得できていれば `#0 humanAttestation` が `verified: true` (`session-start-token:<keyId>` の印) になる。これまでは Turnstile が構成済みでも #0 は常に合成の印だった。取得が済んでいない・失敗したときは待たずに解錠し、従来どおり合成の印で #0 を記録する (サーバを試験開始の critical path に置かない = ADR-0006)。ゲートの確認状態は `#exam-gate-attestation[data-attestation-state]` (`off` / `pending` / `verified` / `failed`) に出る (#236)
 - 試験モードで署名専用 token (ADR-0027) の取得に失敗したとき、取り直すようにした。これまでは起動時の 1 回きりで、起動時に Workers へ届かなかったセッションは網が戻っても checkpoint が最後まで署名されなかった。再取得は同時 1 本・ジッタ付き指数バックオフ (5 秒から倍々、上限 5 分)・`online` イベントで早める (15 秒の窓に散らし、教室の端末が同時に復帰してもバーストさせない)。export・保存・救出はこの成否を待たない。`TOKEN_EXPIRED` での取り直しと試験以外のモードへの適用はまだ (#236)
+- 拡張子込みの名前のタブで、拡張子が二重に見えるのを直した (#830)
+- a11y・フォルダ監視・コード実行まわりの triaged Issue 15 件を直した (#791)
+- editor で、別のタブに再開された側を読み取り専用にし、競合画面と救出を出すようにした (#756)
+- editor の残りの overlay に、名前・フォーカス管理・リスナーの解放を付けた (#755)
+- IME の分類を、文字種ではなく composition との対応付けで決めるようにした (#754)
+- C/C++ の停止を run ごとに持ち、コンパイラの警告と fatal error を表示するようにした (#752)
+- ターミナルなどエディタの外への貼り付けを、コードの外部入力として記録しないようにした (#760)
+- コード実行の start / result を、実行を始めたタブの proof に記録するようにした (#759)
+- 署名 token の期限切れ (TOKEN_EXPIRED) で、署名専用 token を取り直すようにした (#769)
+- PoSW Worker の起動に失敗した後は、30 秒待たずにメインスレッドの計算へ移るようにした (#762)
+- 型の違う `inputType` を構造エラーとして返し、検証が throw しないようにした (#765)
+- verify で、Worker の障害後は個体を捨て、新しい Worker で次の proof を検証するようにした (#761)
+- verify で、フォルダの知らせで集約を消さず、`screenshots/` の変化でスクショ検証を取り直すようにした (#753)
+- verify で、フォルダ監視の読み取り失敗を削除と取り違えないようにした (#768)
+- verify で、単体 JSON やフォルダで入れた壊れた `*_proof.json` を error の行にするようにした (#763)
+- verify で、画像プレビューの Blob URL を DOM のリスナーで解放するようにした (#764)
+- verify で、フォルダ監視による proof の更新を、同じタブ ID での取り込み直しにした (#704)
+- verify のチャートのイベント選択で、`fullscreenChange` など 3 種に訳を足した (#670)
 
 ## [1.3.0] - 2026-11-08
 
@@ -236,7 +263,7 @@
 - replay と乖離した `contentSnapshot` を外部入力相当として advisory 検出するようにした (#182)
 - Workers の dev 用 Worker 名を分離し、未捕捉例外の最終防衛を追加した (#165)
 
-[Unreleased]: https://github.com/shinyaoguri/typedcode/compare/v1.3.0...HEAD
+[1.4.0]: https://github.com/shinyaoguri/typedcode/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/shinyaoguri/typedcode/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/shinyaoguri/typedcode/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/shinyaoguri/typedcode/releases/tag/v1.1.0

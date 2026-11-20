@@ -12,7 +12,7 @@ updates:
       default-days: 7
     open-pull-requests-limit: 5
     # PR タイトルの type を本番依存は fix、dev 依存は chore に分ける (#333)。
-    # 本番依存の更新が fix としてリリース判断 (#332 の停滞検知) に数えられるようにする。
+    # 本番依存の更新が、fix として beta 版を出す判定と Release ノートに数えられるようにする (scripts/release.mjs)。
     # transitive の security updates が prefix-development に従うかは未確認 (従わなければ
     # 本番扱いの fix(deps) になり、安全側に倒れる)。
     commit-message:

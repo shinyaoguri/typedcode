@@ -135,7 +135,7 @@ export default defineConfig({
       // packages/editor/vite.config.ts が EDITOR_PORT (server.port + strictPort) と
       // WORKERS_PORT (VITE_API_URL 追従) を既に読む実装になっている。受け口は
       // 実装済みで、これまで渡していなかっただけなので env で渡す。
-      // VERIFY_PORT は editor の `/verify` プロキシの向き先 (spec は verify を直接開くが、配線を揃えておく)。
+      // VERIFY_PORT は editor の `/verify` のリダイレクト先 (#829。verify-web-via-editor.spec.ts が通る。他の spec は verify を直接開く)。
       env: { EDITOR_PORT: String(EDITOR_PORT), WORKERS_PORT: String(WORKERS_PORT), VERIFY_PORT: String(VERIFY_PORT) },
       cwd: '../..',
       port: EDITOR_PORT,

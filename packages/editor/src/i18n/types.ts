@@ -608,6 +608,7 @@ export interface TranslationKeys {
     suspendedMessage: string;
     suspendedHint: string;
     resumeButton: string;
+    titleFlash: string;
   };
 
   // Template import
@@ -725,11 +726,99 @@ export interface TranslationKeys {
     title: string;
     subtitle: string;
     copy: string;
-    reloadForLocale: string;
-    settings: { heading: string };
     statusbar: { noExamId: string; problems: string };
-    preview: { edit: string; preview: string };
-    run: { label: string; running: string; terminal: string; compilerLoading: string };
+    /** 文書の表示の切り替え (#796 / #797) */
+    views: { edit: string; preview: string; form: string; text: string; studentPreview: string };
+    /** 試験定義のフォーム (#797) */
+    exam: {
+      examId: string;
+      kind: string;
+      kindExam: string;
+      kindClass: string;
+      languages: string;
+      adopted: string;
+      available: string;
+      noAdopted: string;
+      noAvailable: string;
+      moveUp: string;
+      moveDown: string;
+      remove: string;
+      adopt: string;
+      missing: string;
+      invalid: string;
+      duplicate: string;
+      dragHint: string;
+      invalidDefinition: string;
+      openText: string;
+      fieldInvalid: string;
+      newExamTitle: string;
+      newExamLabel: string;
+    };
+    /** ケースファイルのフォーム (#798) */
+    cases: {
+      heading: string;
+      list: string;
+      add: string;
+      duplicate: string;
+      remove: string;
+      empty: string;
+      name: string;
+      public: string;
+      publicHint: string;
+      match: string;
+      matchTrim: string;
+      matchExact: string;
+      stdin: string;
+      stdout: string;
+      trailingNone: string;
+      trailingCount: string;
+      crlfNote: string;
+      nameEmpty: string;
+      nameDuplicate: string;
+      defaultName: string;
+      copyName: string;
+      publicMark: string;
+      exactMark: string;
+      invalidDefinition: string;
+      openText: string;
+      opFailed: string;
+    };
+    /** 学生プレビュー (#797) */
+    preview: {
+      note: string;
+      problem: string;
+      starter: string;
+      examples: string;
+      loading: string;
+      empty: string;
+      issuesHeading: string;
+    };
+    /** 書き出しのパネル (#797) */
+    export: {
+      heading: string;
+      target: string;
+      noExam: string;
+      createExam: string;
+      examId: string;
+      kind: string;
+      languages: string;
+      problems: string;
+      kindExam: string;
+      kindClass: string;
+      invalidTarget: string;
+      classHint: string;
+      buttonExam: string;
+      buttonClass: string;
+      working: string;
+      errorNoTarget: string;
+      errorUnknownExam: string;
+      errorNoKey: string;
+      errorGeneric: string;
+      errorDirty: string;
+      errorEmpty: string;
+      errorNoLanguages: string;
+    };
+    run: { label: string; running: string; stop: string; terminal: string; compilerLoading: string };
     key: {
       heading: string;
       tabExisting: string;
@@ -746,32 +835,173 @@ export interface TranslationKeys {
       registryHint: string;
       downloadPrivate: string;
     };
-    problem: {
+    /** 教材フォルダの起動画面 (#796) */
+    welcome: {
       heading: string;
-      examId: string;
-      problemId: string;
-      languages: string;
-      body: string;
-      bodyPlaceholder: string;
-      bundleHint: string;
-      addProblem: string;
-      removeProblem: string;
-      problemLabel: string;
-      starterToggle: string;
-      starterFilename: string;
-      starterLanguage: string;
-      starterContent: string;
-      starterPane: string;
-      renameHint: string;
-      /** 入出力例の欄 (#648) */
-      examplesHeading: string;
-      examplesHint: string;
-      exampleName: string;
-      exampleStdin: string;
-      exampleStdout: string;
-      exampleDefaultName: string;
-      addExample: string;
-      removeExample: string;
+      intro: string;
+      open: string;
+      create: string;
+      resume: string;
+      unsupported: string;
+      unavailableDenied: string;
+      unavailableMissing: string;
+      unavailableError: string;
+      openFailed: string;
+      opening: string;
+      createTitle: string;
+      createLabel: string;
+      createExists: string;
+      createInvalid: string;
+    };
+    /** エクスプローラー (#796) */
+    explorer: {
+      heading: string;
+      problems: string;
+      exams: string;
+      noProblems: string;
+      noExams: string;
+      newProblem: string;
+      newExam: string;
+      refresh: string;
+      openOther: string;
+      addPart: string;
+      assignPart: string;
+      missing: string;
+      invalid: string;
+      definition: string;
+      /** 問題ごとの操作「別のフォルダへコピー」(#800) */
+      copyProblem: string;
+    };
+    /** 問題を別の教材フォルダへコピーした結果 (#800) */
+    copyProblem: {
+      title: string;
+      close: string;
+      copied: string;
+      conflict: string;
+      sourceInvalid: string;
+      failed: string;
+      failedNote: string;
+      dirty: string;
+      sameFolder: string;
+      unsupported: string;
+      writtenLabel: string;
+      writtenBeforeFailureLabel: string;
+      conflictLabel: string;
+      dirtyLabel: string;
+      failedLabel: string;
+    };
+    /** 問題定義が参照するファイルの役割 */
+    roles: { statement: string; starter: string; hint: string; solution: string; cases: string };
+    /** 「追加」で作るファイルの既定の名前に入れる語 */
+    partWords: { starter: string; hint: string; solution: string };
+    /** タブと分割エディタ (#796) */
+    editor: {
+      save: string;
+      saveAll: string;
+      split: string;
+      closeGroup: string;
+      closeTab: string;
+      empty: string;
+      unsaved: string;
+      runNoFile: string;
+    };
+    dialogs: {
+      ok: string;
+      cancel: string;
+      newProblemTitle: string;
+      newProblemLabel: string;
+      addPartTitle: string;
+      assignPartTitle: string;
+      roleLabel: string;
+      fileNameLabel: string;
+      fileLabel: string;
+      noFiles: string;
+      conflictTitle: string;
+      conflictModified: string;
+      conflictDeleted: string;
+      conflictExists: string;
+      conflictChoice: string;
+      reload: string;
+      overwrite: string;
+      unsavedTitle: string;
+      unsavedBody: string;
+      discard: string;
+      closeDirtyBody: string;
+      closeDiscard: string;
+    };
+    /** 保存・読み込み・問題の操作の結果の知らせ */
+    notices: {
+      saved: string;
+      saveFailed: string;
+      reloadFailed: string;
+      openFailed: string;
+      invalidName: string;
+      exists: string;
+      unknownProblem: string;
+      definitionDirty: string;
+      definitionInvalid: string;
+      alreadyAssigned: string;
+      missingFile: string;
+      readFailed: string;
+      writeConflict: string;
+      writeFailed: string;
+    };
+    /** 書き出しを止めた理由 (教材の欠損・重なり) */
+    issues: {
+      heading: string;
+      missingFile: string;
+      invalidReference: string;
+      invalidDefinition: string;
+      unreadableFile: string;
+      duplicateId: string;
+      duplicateFilename: string;
+    };
+    /** 教員用の一括検証 (#799) */
+    verify: {
+      explorerAction: string;
+      tab: string;
+      heading: string;
+      empty: string;
+      start: string;
+      abort: string;
+      runningHint: string;
+      stateDone: string;
+      stateAborted: string;
+      solutionHeader: string;
+      verdicts: {
+        pending: string;
+        running: string;
+        match: string;
+        mismatch: string;
+        runtimeError: string;
+        timeout: string;
+        unsupported: string;
+      };
+      reasons: {
+        problemInvalid: string;
+        noSolutions: string;
+        noCases: string;
+        missingFile: string;
+        readFailed: string;
+        casesInvalid: string;
+        emptyCases: string;
+        terminalBusy: string;
+      };
+      runBlocked: string;
+      detail: {
+        selectHint: string;
+        cellTitle: string;
+        expected: string;
+        actual: string;
+        noLine: string;
+        noNewline: string;
+        stderr: string;
+        exitCode: string;
+        exitNone: string;
+        modeTrim: string;
+        modeExact: string;
+        notRun: string;
+      };
     };
     token: {
       heading: string;
@@ -779,12 +1009,6 @@ export interface TranslationKeys {
       regenerate: string;
       hint: string;
       embedPubkey: string;
-    };
-    build: {
-      button: string;
-      working: string;
-      errorNoKey: string;
-      errorGeneric: string;
     };
     result: {
       title: string;
@@ -802,11 +1026,6 @@ export interface TranslationKeys {
       note1: string;
       note2: string;
       note3: string;
-    };
-    classExport: {
-      button: string;
-      hint: string;
-      errorNoProblems: string;
     };
   };
 }

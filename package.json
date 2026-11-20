@@ -1,6 +1,6 @@
 {
   "name": "typedcode",
-  "version": "1.3.0",
+  "version": "0.0.0",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -16,8 +16,9 @@
     "build:verify": "npm run build -w @typedcode/verify",
     "build:verify-cli": "npm run build -w @typedcode/verify-cli",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "biome ci --error-on-warnings . && npm run lint:docs",
+    "lint": "biome ci --error-on-warnings . && npm run lint:docs && npm run lint:changelog",
     "lint:docs": "bash scripts/lint-docs-refs.sh",
+    "lint:changelog": "node scripts/release.mjs lint",
     "lint:fix": "biome check --write .",
     "lint:workflows": "bash scripts/actionlint.sh",
     "doctor": "node scripts/doctor.mjs",

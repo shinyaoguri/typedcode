@@ -5,8 +5,10 @@ TypedCode のブランチ運用は **タグ式 GitHub Flow** です。判断の�
 ## 全体像
 
 ```
-tags                v1.1.0        v1.2.0
-                      ●             ●          ← リリース = v* タグ (→ production デプロイ・承認ゲート)
+release/A.B                          ●──●       ← 学期中の緊急修正のときだけ切る (fix の cherry-pick → patch vA.B.P)
+                                    ╱
+tags          …-beta.N  …-beta.M  vA.B.0        ← beta は日次・自動。正式版 (2 月・8 月) は beta の昇格
+                 ●         ●      ●            ← 正式版と patch だけが production へ (承認ゲート)
 main     ●──●──●──●──●──●──●──●──●──●──●────   ← 唯一の長命ブランチ (push で staging 自動デプロイ)
           ╲  ╱   ╲  ╱      ╲  ╱
 feature   ●─●    ●─●        ●─●               ← 機能ごとに切る (PR → main, squash)
@@ -15,12 +17,14 @@ feature   ●─●    ●─●        ●─●               ← 機能ごと
 | 対象 | 役割 | デプロイ |
 |---|---|---|
 | `main` | 唯一の長命ブランチ・常時統合 | push → **staging** 自動 (https://staging.typedcode.pages.dev) |
-| `v*` タグ | 番号付きリリース | タグ push → **production** (承認ゲート付き。https://typedcode.dev) |
+| `vYYYY.M.0-beta.N` タグ | beta 版 (日次・自動。[ADR-0055](docs/adr/0055-release-channels-and-calendar-versioning.md)) | タグと prerelease の Release だけ。配信はまだ無い (beta 環境は #845) |
+| `vYYYY.M.0` タグ | 正式版 (2 月・8 月。beta の昇格) | 昇格がタグの ref で配信を起こす → **production** (承認ゲート付き。https://typedcode.dev) |
+| `release/A.B` と `vA.B.P` タグ | 学期中の patch (緊急修正のときだけ) | patch の起動がタグの ref で配信を起こす → **production** (承認ゲート付き) |
 | `<type>/*` | 機能開発 (`feat/*`, `fix/*`, ...) | PR → preview URL 自動発行 |
 
 公開先は GitHub からも開ける: PR 画面の「View deployment」(その PR の preview)、リポジトリのトップ右の Deployments 欄 (環境ごとの最新)、https://github.com/shinyaoguri/typedcode/deployments (環境ごとの履歴)。
 
-- `develop` / `release/*` / `hotfix/*` ブランチは**ありません**。main が常にリリース候補です。
+- `develop` / `hotfix/*` ブランチは**ありません**。`release/A.B` は学期中の緊急修正のときだけ正式版のタグから切ります (下の「本番緊急修正」)。それ以外は main が常にリリース候補です。
 - **`staging` はブランチ名として予約** (staging Pages エイリアスと衝突するため使用禁止)。
 
 ## 普段の開発フロー
@@ -61,6 +65,7 @@ gh pr merge --squash --delete-branch
 - **ロジックはユニットテスト** (各パッケージの `__tests__/` か `*.test.ts`。書き方は [packages/shared/AGENTS.md](packages/shared/AGENTS.md) の「テスト規約」)
 - **バグ修正は先に赤いテスト**: 再現するテストが落ちるのを確かめてから直す。すぐ直さない既知バグは E2E なら `test.fixme('#N ...')` で再現を置き、修正 PR で外す
 - **新しいテスト・検査は壊して赤を見てから仕上げる** (バグ修正に限らない): 検証対象の振る舞いを一時的に壊すか直した行を戻して、そのテストが赤くなるのを確かめる。壊しても緑のままのテストは書き直す。何を壊して赤くなったかは、PR の受け入れ条件の対応表の「壊すと赤になるか」列に書く。カバレッジと `require-tests` はテストの検証力を見ないため ([ADR-0037](docs/adr/0037-see-red-before-trusting-new-tests.md))
+- **proof の保証に関わる検査を足す・既知の除外を解消したら対応表を直す**: どの検査が何を保証し、何を観測しないか (fast / full、モック / 本物の PoSW、合成 / 実ブラウザ、凍結 / 同時生成、既知の除外) は [docs/assurance-map.md](docs/assurance-map.md) が正本
 - **変異検査の対象ファイルを変えたら、変更行に `npm run mutate` を回す**: `packages/shared/stryker.config.json` の `mutate` にあるファイル (対象の正本はそこ。検証系の数ファイル) を変えた PR は、変更行に絞って変異検査 ([StrykerJS](https://stryker-mutator.io/)) を回し、生き残った変異をテストで殺すか、同値変異 (振る舞いが変わらない変異) と判断した理由を PR の対応表に書く。道具は手元のコマンドだけで、CI にも `npm run check` / `check:fast` にも載せない (全体で数分かかり、同値変異が常に残る)。ADR-0037 の「壊して赤を見る」を機械でやるもので、カバレッジと `require-tests` が見ない検証力を測る ([ADR-0040](docs/adr/0040-mutation-testing-with-stryker-locally.md))。使い方は下の「変異検査」
 - **カバレッジは下げない**: 各パッケージの `vitest.config.ts` の `coverage.thresholds` が実測値の床で、下回ると CI の test job が落ちる。**機能 PR では床を動かさない**。床は、main で週 1 回測る定期ジョブ ([coverage-ratchet.yml](.github/workflows/coverage-ratchet.yml)) が「上げられる値」を Issue で知らせるので、それを受けた専用の PR で、Issue の表の値 (CI と同じ環境の実測) を書いて上げる。手元の実測は CI を上回りうるので、手元の `npm run coverage:ratchet` の値をそのまま使わない ([ADR-0039](docs/adr/0039-raise-coverage-floors-in-dedicated-prs.md))
 - **テストが本当に不要なら理由を書く**: 実装 (`packages/*/src`、ページエントリの `packages/*/*.html`、配信の振る舞いを変える設定 `packages/*/vite.config.ts`・`packages/*/public/_headers`・`packages/workers/wrangler*.toml`) を変えてテストを変えていない PR は、CI の `require-tests` ([pr-checks.yml](.github/workflows/pr-checks.yml)) が落とす。挙動を変えないリファクタなどでテストが不要な場合は、PR にラベル `no-test-needed` を付け、PR 本文の `## テスト不要の理由` 見出しの下に理由を書く (ラベル・本文の編集で再判定される)。依存更新の PR は対象外。`docs` / `ci` / `chore` 型が対象外になるのは実装を変えていない PR だけで、型の名乗りだけでは免除しない (#591)
@@ -113,7 +118,7 @@ git worktree list   # 一覧確認
 ### 気をつけること
 
 - **`node_modules` は worktree ごとに独立。** 作成した直後は必ず `npm ci` する。メインのチェックアウトも、`git pull` で lockfile が変わったら `npm ci` し直す (忘れると「コマンドが見つからない」系のエラーになる)
-- **dev サーバのポートは自動割当 ([ADR-0030](docs/adr/0030-dev-port-autoswitch.md))。** `npm run dev` は既定ポート (editor 5173 / verify 5174 / workers 8787) が使用中だと**セットごと +10** (5183/5184/8797, …) して空きへ移り、editor の `/verify` プロキシと `VITE_API_URL` も追従する。複数 worktree・別プロジェクトとの同時起動は無調整で共存でき、実際の URL は起動バナーで確認する。個別起動 (`npm run dev:editor` 等) は従来どおり固定ポート (衝突時は vite が +1 フォールバックするだけで配線は追従しない点に注意)
+- **dev サーバのポートは自動割当 ([ADR-0030](docs/adr/0030-dev-port-autoswitch.md))。** `npm run dev` は既定ポート (editor 5173 / verify 5174 / workers 8787) が使用中だと**セットごと +10** (5183/5184/8797, …) して空きへ移り、editor の `/verify` のリダイレクト先 (verify の dev サーバ。#829) と `VITE_API_URL` も追従する。複数 worktree・別プロジェクトとの同時起動は無調整で共存でき、実際の URL は起動バナーで確認する。個別起動 (`npm run dev:editor` 等) は従来どおり固定ポート (衝突時は vite が +1 フォールバックするだけで配線は追従しない点に注意)
 - **skip-worktree はインデックス単位で、worktree 間で共有されない。** メインのチェックアウトで隠している `packages/workers/wrangler.toml` のローカル版は、新しい worktree には存在しない (HEAD のプレースホルダ版がチェックアウトされる)
 - **gitignore 済みのローカル設定も worktree ごとに別。** `.dev.vars` や dev 鍵の置き場 `packages/shared/src/checkpointKeys/localKeys.ts` / `packages/shared/src/examAuthorityKeys/localKeys.ts` (#338) は新しい worktree に引き継がれない (`localKeys.ts` は `npm ci` の postinstall が `.example` の空配列版を置く)。ユニットテストはそのまま通るが、worktree 内で workers をローカル起動するには上の `wrangler.toml` と合わせて再セットアップが必要 ([packages/workers/AGENTS.md](packages/workers/AGENTS.md) の手順)。E2E は `npm run setup -w @typedcode/e2e` が鍵を実行時生成するので不要
 - **`git stash` は全 worktree 共有。** 取り違えやすいので、作業を退避したいときは stash ではなく WIP コミットにする
@@ -159,33 +164,56 @@ Claude Code のセッションは作業ディレクトリ単位で管理され�
 
 Issue の起票・着手してよい条件 (`verify: triaged`)・着手時の確認・作業中に踏んだ問題の行き先・コメントの置き場・ラベルは、[AGENTS.md の「Issue と着手」](AGENTS.md#issue-と着手) にまとめてあります。人にもエージェントにも同じ規律が効くので、ここには写しを置きません (写しは必ず古くなるため)。
 
-## リリース (v* タグ)
+## リリース (正式版 = beta の昇格)
+
+正式版 (production) は授業の無い 2 月と 8 月に、そのサイクルの beta 版を昇格して出す ([ADR-0055 の決定 5](docs/adr/0055-release-channels-and-calendar-versioning.md#5-正式版は-beta-の昇格))。昇格は beta と同じコミットに正式版のタグ (`vYYYY.M.0`。beta タグから `-beta.N` を除いた名前) を打ち、Latest の Release を作り、そのタグの ref で配信 (`deploy.yml`) を起こす。
 
 ```bash
-# 1. バージョン bump PR (ルート package.json。UI の About 表示に使われる)
-npm version <X.Y.Z> --no-git-tag-version --workspaces-update=false
-# → PR → squash merge
+# 1. 昇格する beta を選ぶ (そのサイクルの最新の beta。Releases の prerelease か git tag で見る)
+git fetch --tags origin
+git tag --list 'v*-beta.*' --sort=-creatordate | head
 
-# 2. main 先端の CI が green なことを確認してからタグを打つ
-gh run list --branch main -L 1
-gh release create vX.Y.Z --target main --title "vX.Y.Z" --generate-notes
+# 2. 下見: タグを打たず、配信も起こさず、打つタグ・コミット・前回の正式版・ノートを run の summary に出す
+gh workflow run release.yml -f action=promote -f beta_tag=vYYYY.M.0-beta.N -f dry_run=true
+
+# 3. 昇格する (タグ・Release を作り、タグの ref で Deploy を起こす)
+gh workflow run release.yml -f action=promote -f beta_tag=vYYYY.M.0-beta.N
+
+# 4. Actions の Deploy の run (ref がタグのもの) で、test / check / e2e / nightly-gate の後に production の承認を押す
 ```
 
-- タグ push で CI (test/check/e2e) と `nightly-gate` が走り、すべて green 後に **production デプロイが承認待ち**になる。`nightly-gate` は main の `e2e-nightly.yml` の最新の完了 run が `success` のときだけ通る (#593)。進行中は飛ばすが、失敗・cancelled・完了 run なし・API 取得失敗は拒否する。タグと nightly の SHA 一致は要求しない。
-- `nightly-gate` が落ちたら、原因を直し、`gh workflow run e2e-nightly.yml --ref main` で nightly を走らせて成功を待つ。その後、タグの Deploy run の失敗 job を re-run する (`gh run rerun <Deploy-run-id> --failed`、または Actions の Re-run failed jobs)。タグの付け替えは不要。ゲートは環境を持たない別 job なので、本番の承認待ちより前に止まる。
-- タグは main の履歴上のコミットにのみ有効 (CI が ancestor 検証で強制)。
-- **タグの付け替え・削除はしない** (ruleset でも禁止)。本番が壊れたら、まず下の「[本番を戻す](#本番を戻す-ロールバック)」で直前のデプロイへ戻し、fix を入れて**次のパッチタグ**で前へ進める。
+- 手元の下見は `git fetch --tags origin` の後に `node scripts/release.mjs promote --beta <beta タグ>` (`--today YYYY-MM-DD` で日付を変えられる)。ノートは前回の正式版以降の全断片で、途中の beta のノートに載ったものも含む (`node scripts/release.mjs notes --since <前回の正式版> --to <beta タグ>` で見られる)
+- About に出る版はタグ名から決まる (`deploy-production` がタグ名を `TYPEDCODE_VERSION` としてビルドに渡す) ので、版の bump の PR は要らない。ノートの材料と書き方は [changelog.d/README.md](changelog.d/README.md)
+- **昇格できない場合** (run は赤で終わり、理由が notice と log に出る):
+  - 渡したタグが beta 形 (`vYYYY.M.0-beta.N`) でない、またはそのタグが無い
+  - そのサイクルの正式版 (`vYYYY.M.0`) が既に出ている
+  - サイクルの月がまだ来ていない (3 月に `v2027.8.0-beta.N` は昇格できない。2 月の正式版が 3 月にずれたら、2 月の最後の beta を昇格する)
+  - `deploy.yml` に `workflow_dispatch` が入る前 (#844 より前) のコミットに打った beta タグ (`v2027.2.0-beta.1` など) は、昇格の判定は通っても、そのコミットの `deploy.yml` では配信を起こせない。昇格に使わない
+- 配信の定義は、タグのコミットにある `deploy.yml` になる (`workflow_dispatch` は指定した ref の定義で走る)。タグの ref でも test / check / e2e を再実行し、`deploy-production` は `node scripts/release.mjs verify-tag` でタグの位置 (正式版は main の祖先、patch は `release/A.B` の祖先で `vA.B.0` の子孫) を検証してから出す
+- `nightly-gate` は main の `e2e-nightly.yml` の最新の完了 run が `success` のときだけ通る (#593)。進行中は飛ばすが、失敗・cancelled・完了 run なし・API 取得失敗は拒否する。タグと nightly の SHA 一致は要求しない。ゲートは環境を持たない別 job なので、本番の承認待ちより前に止まる
+- `nightly-gate` が落ちたら、原因を直し、`gh workflow run e2e-nightly.yml --ref main` で nightly を走らせて成功を待つ。その後、タグの ref の Deploy の run の失敗 job を re-run する (`gh run rerun <Deploy-run-id> --failed`、または Actions の Re-run failed jobs)。タグの付け替えは不要
+- 配信を起こし直すとき (Deploy の run を最初からやり直す・昇格の run の配信の起動が失敗した) は `gh workflow run deploy.yml --ref <tag>`。タグは打ち直さない
+- **タグの付け替え・削除はしない** (ruleset でも禁止)。本番が壊れたら、まず下の「[本番を戻す](#本番を戻す-ロールバック)」で直前のデプロイへ戻し、fix を入れて**次の patch** で前へ進める
 - 破壊的な証明フォーマット変更は `PROOF_FORMAT_VERSION` とも対応させる。
-- 直前に CHANGELOG.md の `[Unreleased]` を `## [X.Y.Z] - <日付>` に切り、末尾の比較リンクも足す (1 の bump PR に含める)。
-- **いつリリースするか** (#332): 次のどちらかに当たったら、上の手順でリリースする。リリースの見送りは、理由を Issue に残せば認める。
-  - **本番に効くセキュリティ修正を main に入れたら、7 日以内**に下の「本番緊急修正」の手順でパッチタグを打つ。本番に効くセキュリティ修正とは、`security` ラベルの Issue を閉じた PR と、Dependabot の security update のこと。PR 側の `security` ラベルは付け漏れが多いので、Issue 側のラベルで判断する
-  - それ以外は、**最新タグから 7 日以内**にリリースする (#657。1 回のリリースを、壊れたときに原因を追える大きさに保つため)。超えると、次の段落の自動検知が Issue を開く
-- **授業・試験の期間にリリースを止める期間は、利用者がいない今は設けない**。利用者が付く前に [#662](https://github.com/shinyaoguri/typedcode/issues/662) で決める
-- **リリースの停滞は自動で検知する** (#410)。週次の `freshness.yml` が、最新の `v*` タグから **7 日を超え**、かつそのタグ以降に `fix` / `feat` のコミット (`feat(scope)!:` も含む) が **1 件以上**あるとき、`chore: 本番リリースの停滞 (自動)` という Issue を開く (open のものがあればコメントを追記する。docs / chore / ci だけの 7 日超は検知しない。判定は毎週月曜なので、実際に開くのはタグから 8〜15 日の間)。通知を受けたら、上の手順でリリースする。見送るならその理由を Issue にコメントする。判定は `scripts/release-stall.mjs`
+- **いつリリースするか** ([ADR-0055](docs/adr/0055-release-channels-and-calendar-versioning.md)): 正式版は 2 月と 8 月に昇格で出す (時期は規約で守る。それ以外の月の昇格を止める検査は無い)。それ以外の時期の変更は、下の「beta 版」として毎日自動で積まれる。
+  - **本番に効くセキュリティ修正を main に入れたら、7 日以内**に下の「本番緊急修正」の手順で patch を出す。本番に効くセキュリティ修正とは、`security` ラベルの Issue を閉じた PR と、Dependabot の security update のこと。PR 側の `security` ラベルは付け漏れが多いので、Issue 側のラベルで判断する
+- **授業・試験の期間の凍結は別に設けない** (#662 は ADR-0055 で決着した)。学期中に production へ入るのは patch だけになる
+
+### beta 版 (日次・自動)
+
+- 毎日 05:47 JST 頃に [`release.yml`](.github/workflows/release.yml) が走り、main の変更に beta 版 (`vYYYY.M.0-beta.N`) のタグを打って、prerelease の GitHub Release を作る (Latest にはしない)。beta 形のタグ (`-` を含む) では production へ配信しない
+- 出すのは次をすべて満たす日だけ。満たさない日は見送り、run は緑で終わる (理由は run の summary と notice に出る)。判定そのものができなかったとき (git・GitHub API の失敗) は見送りにせず、run を赤にする
+  - 最新のタグ (beta を含む) 以降に `fix` / `feat` のコミット (`feat(scope)!:` も含む) がある
+  - タグは main のコミットのうち、`Deploy` (staging への配信と実 URL の E2E) が success の最新のものに打つ。main の先端とは限らない。fix / feat を数えるのも、そのコミットまで
+  - main の最新の完了 nightly が success (`nightly-gate.mjs` と同じ判定)
+- 版の決め方: 向かうサイクル (`YYYY.M`) は、その日 (JST) 以降で最初に来る 2 月か 8 月で、その正式版が既に出ていれば次のサイクル。`N` は同じサイクルの beta タグの最大 + 1 (根拠と例は [ADR-0055 の決定 2](docs/adr/0055-release-channels-and-calendar-versioning.md#2-版の形と決め方))
+- 急ぐときは `gh workflow run release.yml` (`action` の既定が `beta`)。打たずに選ぶコミット・版・ノートだけを見るなら `gh workflow run release.yml -f dry_run=true`
+- 手元の下見は `git fetch --tags origin` の後に `GITHUB_REPOSITORY=shinyaoguri/typedcode node scripts/release.mjs beta` (`--today YYYY-MM-DD` で日付を変えられる。見送りは exit 3)
+- **打ったタグは消せない** (ruleset)。間違えたら消さずに、次の番号で前へ進める
 
 ## 本番を戻す (ロールバック)
 
-本番が壊れて fix を待てないときは、Cloudflare に残っている直前のデプロイへ戻す (#656)。タグも CI も通さないので数分で済む。戻すのは応急処置で、**その後に fix を入れて次のパッチタグを打ち、前へ進める**のは上の「リリース」「本番緊急修正」と同じ (タグは付け替えない)。
+本番が壊れて fix を待てないときは、Cloudflare に残っている直前のデプロイへ戻す (#656)。タグも CI も通さないので数分で済む。戻すのは応急処置で、**その後に fix を入れて次の patch を出し、前へ進める**のは下の「本番緊急修正」と同じ (タグは付け替えない)。
 
 **戻す順序は Pages → Workers (deploy の逆順)**。まず Pages (editor / verify) だけを戻すのが基本で、それで直らず Worker 側が原因と分かったときに Worker も戻す。「新しい Worker + 1 つ前の editor / verify」は動くことが不変条件で保証されている ([packages/workers/AGENTS.md](packages/workers/AGENTS.md) の不変条件 10) が、逆の「1 つ前の Worker + 新しい editor / verify」は保証しない。Worker だけを戻すときは、そのリリースで editor / verify が Worker の新しい API や応答に依存していないかを先に確かめる (`git diff <前のタグ> <今のタグ> -- packages/workers/src`)。
 
@@ -233,18 +261,41 @@ npx wrangler rollback <version-id> --config wrangler.staging.toml --message "<�
 - **戻る**: Pages の配信物 (editor / verify のバンドル。`VITE_API_URL` などビルド時に埋め込んだ値も含む)。Worker のコードと、**版ごとに記録されている secret の組・`compatibility_date`・vars** (`npx wrangler versions view <version-id> --config ...` で secret の名前と bindings が見える)。署名鍵のローテをまたいで戻すと旧 `keyId` の鍵で署名することになる。公開鍵レジストリは append-only なので、その鍵を `revoked` にしていなければ動く
 - **戻らない**: KV のデータ (`CHECKPOINT_SESSIONS`)、GitHub の secrets / Environment、Pages のカスタムドメインや設定。戻した後に `wrangler secret put` すると新しい版ができ、それが現役になる (戻した状態が上書きされる)
 
-## 本番緊急修正 (hotfix)
+## 本番緊急修正 (patch)
 
-専用ブランチはありません。通常フローの最短経路で回します。本番緊急修正も `nightly-gate` を通します。赤なら上の「リリース」の復旧手順で nightly を緑にしてから失敗 job を再実行します:
+学期中の production は正式版 `vA.B.0` のまま動くので、main の先端 (半年分の未リリースの変更を含む) からは出さない。正式版のタグから切った `release/A.B` に fix だけを cherry-pick して、patch `vA.B.P` を出す ([ADR-0055 の決定 6](docs/adr/0055-release-channels-and-calendar-versioning.md#6-学期中の-patch))。
+
+**patch にしてよいのは次の 3 つだけ**: 本番に効くセキュリティ修正・データを失う不具合・授業や試験が続けられない不具合。機能の追加と見た目の変更は次の正式版まで待つ。本番に効くセキュリティ修正を main に入れたら 7 日以内に patch を出す (上の「リリース」の「いつリリースするか」)。
 
 ```bash
+# 1. fix を先に main へ入れる (普段の開発フローと同じ。PR は Issue を閉じる)
+
+# 2. release/A.B が無ければ、production の正式版のタグから切る (最初の patch が要るときだけ)
+git fetch --tags origin
+git push origin 'vA.B.0^{commit}:refs/heads/release/A.B'
+
+# 3. main の fix を cherry-pick した PR を release/A.B 宛てに出す
 git fetch origin
-git worktree add .claude/worktrees/critical-bug -b fix/critical-bug origin/main
-# 修正 → PR → squash merge → staging で確認
-gh release create vX.Y.(Z+1) --target main --generate-notes   # 即パッチリリース
+git worktree add .claude/worktrees/backport-x -b fix/backport-x origin/release/A.B
+cd .claude/worktrees/backport-x
+git cherry-pick -x <main の fix のコミット>
+git push -u origin fix/backport-x
+gh pr create --base release/A.B --label no-issue --title "fix: …" --body "<元の fix の PR (#N) への参照>"
+
+# 4. merge した後、patch を出す (先に -f dry_run=true で下見できる)
+gh workflow run release.yml -f action=patch -f branch=release/A.B
+
+# 5. Actions の Deploy の run (ref が vA.B.P のもの) で、test / check / e2e / nightly-gate の後に production の承認を押す
 ```
 
-main が唯一のブランチなので、旧 Git Flow のような「main と develop の両方へ反映」という手当ては不要です。
+- **`release/A.B` にだけある修正を作らない**。fix は必ず先に main へ入れ、その cherry-pick を入れる (次の正式版で修正が消えないように)
+- backport の PR は `Closes #N` で Issue を閉じられない (紐づけは既定ブランチ宛ての PR にしか作られない)。本文に元の fix の PR を書き、ラベル `no-issue` を付けて `require-issue` を通す。Issue は元の fix の PR が閉じている
+- `release/**` 宛ての PR と push でも test / check / e2e が走り、PR にはプレビューも出る。staging へは出さない (`deploy-staging` は main の push だけ)
+- patch のタグは `release/A.B` の先端に打たれる。版は `vA.B.<既存の最大 + 1>`。先端に新しいコミットが無い (既に `vA.B.*` が付いている)・`vA.B.0` が無い・先端が `vA.B.0` の子孫でない、のどれかなら拒否される。手元の下見は `node scripts/release.mjs patch --branch release/A.B`
+- 配信の定義は patch のタグのコミット (= `release/A.B`) にある `deploy.yml` になる。main の構成が変わった後も、`release/A.B` は自分のコードに合う定義で出せる
+- 本番緊急修正も `nightly-gate` を通す。赤なら上の「リリース」の復旧手順で nightly を緑にしてから失敗 job を再実行する
+- **patch の配信は、起こしてから production の承認待ちになるまでに 20 分ほどかかる** (タグの ref で test / check / e2e を再実行するため。`v1.5.0` の通しでは約 19 分だった。#844)。本番が壊れていて待てないときは、先に上の「[本番を戻す](#本番を戻す-ロールバック)」で直前のデプロイへ戻し、その後に patch で前へ進める
+- 初回の正式版 (`v2027.2.0`) までの production は `v1.5.x` で、その間の緊急修正は `release/1.5` から出す
 
 ## ADR を積み重ねる stacked PR
 
@@ -256,11 +307,11 @@ Settings → General → Pull Requests:
 
 - **Default to squash merging** を有効化 (普段の feature→main を squash 既定に)
 - Rebase merging も有効のまま (stacked PR の flatten 用)
-- **Automatically delete head branches** を有効化 (長命ブランチは main のみで、ruleset が削除から保護している。`git sweep` の 1 段目でもある)
+- **Automatically delete head branches** を有効化 (消えては困るブランチ = main と `release/*` は ruleset が削除から保護している。`git sweep` の 1 段目でもある)
 
 Rulesets:
 
-- `main`: 削除・force-push 禁止 + **PR 必須 + required status checks (test / check / e2e / pr-title / require-tests / require-visual-evidence)**
+- `main` と `release/*`: 削除・force-push 禁止 + **PR 必須 + required status checks (test / check / e2e / pr-title / require-tests / require-visual-evidence)**。`main` は ruleset `protect-key-branches`、`release/*` は別の ruleset `protect-release-branches` で守る (`release/*` には直線の履歴の規則を入れない。理由と作り方は [docs/setup.md](docs/setup.md) の「Rulesets」)
 - `v*` タグ: 削除・更新禁止
 
 コミットの規約は [Conventional Commits](https://www.conventionalcommits.org/) に従います。

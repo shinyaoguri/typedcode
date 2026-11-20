@@ -42,8 +42,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log(`Nightly gate passed: ${run.html_url}`);
   } catch (error) {
     // 赤・run なしのエラー文は案内を含む。API 失敗や入力不正のときだけ足す (二重に出さない)
-    const message = error.message.includes(RECOVERY) ? error.message : `${error.message}\n${RECOVERY}`;
+    const judged = error.message.includes(RECOVERY);
+    const message = judged ? error.message : `${error.message}\n${RECOVERY}`;
     console.error(`Nightly gate failed: ${message}`);
-    process.exitCode = 1;
+    // 1 = 判定の結果 (nightly が赤・完了 run なし)、2 = 判定できなかった (API の失敗・入力の誤り)。
+    // deploy.yml はどちらでも止める。release.yml は 1 だけを見送り (緑) にし、2 は赤にする (#843。
+    // 判定できない状態が毎日「見送り」として緑で流れ続けないように分ける)
+    process.exitCode = judged ? 1 : 2;
   }
 }
