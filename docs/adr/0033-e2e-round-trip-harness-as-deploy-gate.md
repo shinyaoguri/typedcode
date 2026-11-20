@@ -69,6 +69,8 @@ TypedCode の価値は「キーストロークの証明が本当に検証を通�
 
 - 新しい spec を足すときは既定で `--mode fast` にすること。full を増やすなら CI 時間の再計測が要る
 - E2E は Chromium のみ。他ブラウザでの記録系の差異は未カバー
+  - **方針 (2026-11-05 決定, [#596](https://github.com/shinyaoguri/typedcode/issues/596))**: 検証していないブラウザでは記録させない。editor は起動時 (Phase 0.5) に、UA が Chromium 系 (`Chrome/` か `Chromium/` を名乗る) でなければ `unsupported-browser` を出して止める。Safari・iOS の全ブラウザ (WebKit)・Firefox のほか、どのエンジンも名乗らない UA も止まる (許可リスト)。見るのは UA 文字列だけで、偽装への耐性ではなく利用者への案内。判定は `packages/editor/src/app/browserSupport.ts`、固定は `packages/e2e/tests/unsupported-browser.spec.ts`。Firefox を通すなら、先に nightly に Firefox の project を足して happy-path・IME・貼り付けを回してから遮断を外す
+  - verify (Web) は Chromium 以外を保証しないが、遮断もしない。他のブラウザで壊れたという実害の報告が出たら、WebKit / Firefox の smoke (投入 → 結論) を足す
 
 ## References
 
