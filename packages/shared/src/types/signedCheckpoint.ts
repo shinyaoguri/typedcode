@@ -5,6 +5,8 @@
  * 他の types/* ファイルに依存しない独立した型ファイルにしている。
  */
 
+import type { RegistryKeyTrustStatus } from '../checkpointKeys/keyValidity.js';
+
 /** 署名対象の payload */
 export interface SignedCheckpointPayload {
   version: 1;
@@ -47,6 +49,16 @@ export interface SignedCheckpointVerificationDetail {
   valid: boolean;
   warning?: 'key-revoked-but-trusted-by-time';
   reason?: string;
+  /**
+   * 鍵の判定に進んだときだけ付く keyId (#809)。registry にある鍵は registry の値、`keyStatus: 'unknown'` のときは
+   * envelope の値 (proof 由来なので表示層で無害化する)。署名より前の検査で落ちた cp には付かない。
+   */
+  keyId?: string;
+  /**
+   * 鍵の信頼状態 (#809)。keyId が registry に無ければ `unknown`、署名が合って有効期間を判定したらその結果。
+   * 署名が合わなかった・署名より前の検査で落ちた cp には付かない (鍵の判定まで進んでいない)。
+   */
+  keyStatus?: RegistryKeyTrustStatus;
 }
 
 /** signed checkpoint 全体の検証結果 */

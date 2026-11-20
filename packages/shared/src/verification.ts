@@ -14,6 +14,7 @@ import type {
   EventHashData,
   ExportedProof,
   SessionStartTokenVerificationResult,
+  ChainFailureCode,
 } from './types.js';
 
 // Re-export hash utilities for backward compatibility
@@ -79,8 +80,22 @@ export interface FullVerificationResult {
    */
   policy: AcceptancePolicyResult;
   metadataValid: boolean;
+  /**
+   * `metadataValid` の内訳 (#809)。`typingProofHash` と `content` の照合 (`finalContentHash` を含む) が合ったか。
+   * `typingProofHash` / `typingProofData` / `content` のどれかが無くて照合しなかったときは付かない。
+   * `metadataValid` = `typingProofHashValid && rootValid && eventMetadataValid`。
+   */
+  typingProofHashValid?: boolean;
+  /** `metadataValid` の内訳 (#809)。イベント列の構造検査とメタデータの再カウント (`verifyProofMetadata`) が合ったか。付く条件は `typingProofHashValid` と同じ */
+  eventMetadataValid?: boolean;
   rootValid?: boolean;
   chainValid: boolean;
+  /**
+   * `verifyChain` が止まった検査 (#809)。チェーンの連結 (sequence・時刻・previousHash・反復数・hash) と PoSW の
+   * 再計算のどちらで落ちたかを `errorMessage` の文字列を読まずに分ける。`verifyChain` が通れば付かない
+   * (`chainValid` は finalHash・cp・content も含む複合なので、`chainFailure` が無くても false になりうる)。
+   */
+  chainFailure?: ChainFailureCode;
   finalHashValid?: boolean;
   contentValid?: boolean;
   checkpointValid?: boolean;
@@ -857,6 +872,7 @@ export async function verifyChain(
       return {
         valid: false,
         errorAt: i,
+        failure: 'sequence-mismatch',
         message: `Sequence mismatch at event ${i}: expected ${i}, got ${event.sequence}`,
         event,
       };
@@ -867,6 +883,7 @@ export async function verifyChain(
       return {
         valid: false,
         errorAt: i,
+        failure: 'timestamp-regression',
         message: `Timestamp violation at event ${i}`,
         event,
       };
@@ -878,6 +895,7 @@ export async function verifyChain(
       return {
         valid: false,
         errorAt: i,
+        failure: 'previous-hash-mismatch',
         message: `Previous hash mismatch at event ${i}`,
         event,
       };
@@ -891,6 +909,7 @@ export async function verifyChain(
       return {
         valid: false,
         errorAt: i,
+        failure: 'posw-iterations-mismatch',
         message: `PoSW iterations mismatch at event ${i}: expected ${POSW_ITERATIONS}, got ${event.posw.iterations}`,
         event,
       };
@@ -904,6 +923,7 @@ export async function verifyChain(
         return {
           valid: false,
           errorAt: i,
+          failure: 'posw-mismatch',
           message: `PoSW verification failed at event ${i}`,
           event,
         };
@@ -924,6 +944,7 @@ export async function verifyChain(
       return {
         valid: false,
         errorAt: i,
+        failure: 'hash-mismatch',
         message: `Hash mismatch at event ${i}`,
         event,
         expectedHash: event.hash,
@@ -986,6 +1007,8 @@ export async function verifyProofFile(
   let isPureTyping = false;
   let metadataError: string | undefined;
   let eventMetadataResult: ProofMetadataVerificationResult | undefined;
+  // metadataValid の内訳 (#809)。照合しなかったときは undefined のまま
+  let typingProofHashValid: boolean | undefined;
 
   if (proof.typingProofHash && proof.typingProofData && proof.content !== undefined && proof.content !== null) {
     const metaResult = await verifyTypingProofHash(proof.typingProofHash, proof.typingProofData, proof.content);
@@ -997,6 +1020,7 @@ export async function verifyProofFile(
     rootValid = rootResult.valid;
     rootAnchored = rootResult.rootAnchored;
     rootAnchorFailure = rootResult.anchorFailure;
+    typingProofHashValid = metaResult.valid;
     metadataValid = metaResult.valid && rootValid && eventMetadataResult.valid;
     metadataError = !metaResult.valid
       ? 'Typing proof hash does not match metadata (the proof may have been tampered with, or proof.json may have been reformatted or re-serialized, e.g. key order changed: pass proof.json exactly as exported)'
@@ -1095,10 +1119,13 @@ export async function verifyProofFile(
     integrityValid,
     policy: { applied, evaluated: integrityValid, violations },
     metadataValid,
+    typingProofHashValid,
+    eventMetadataValid: eventMetadataResult?.valid,
     rootValid,
     rootAnchored,
     rootAnchorFailure,
     chainValid,
+    chainFailure: chainResult.failure,
     finalHashValid: finalHashResult.valid,
     contentValid: contentResult.valid,
     checkpointValid: checkpointResult.valid,

@@ -42,6 +42,47 @@ export type RegistryKeyVerdict =
   | { ok: false; code: 'not-yet-valid' | 'expired' | 'revoked-before-anchor' | 'revoked-without-revoked-at' };
 
 /**
+ * 鍵の信頼状態を機械可読にした列挙 (#809)。`checkRegistryKeyValidityAt` の verdict と「registry に無い」を
+ * 1 つの値で表す。消費者 (署名 cp / sessionStartToken / 出題者鍵) の結果に、自由文の `reason` とは別に載せる。
+ *
+ * - `trusted`: registry にあり、anchor の時点で有効
+ * - `trusted-revoked-after-anchor`: anchor より後に失効した鍵。信頼するが警告を添える
+ * - `unknown`: keyId が registry に無い (この検証器の registry が古い可能性もある)
+ * - `revoked`: anchor 以前に失効した鍵、または `revokedAt` の無い `status: 'revoked'`
+ * - `expired` / `not-yet-valid`: anchor が有効期間の外
+ * - `malformed-entry`: registry のエントリの日時が parse できない (fail-closed で信頼しない)
+ */
+export type RegistryKeyTrustStatus =
+  | 'trusted'
+  | 'trusted-revoked-after-anchor'
+  | 'unknown'
+  | 'revoked'
+  | 'expired'
+  | 'not-yet-valid'
+  | 'malformed-entry';
+
+/**
+ * verdict を `RegistryKeyTrustStatus` に写す (判定はしない。判定は `checkRegistryKeyValidityAt` だけが持つ)。
+ * 「registry に無い」は verdict を作る前に分かるので、`unknown` は呼び出し側が自分で付ける。
+ */
+export function registryKeyTrustStatus(verdict: RegistryKeyVerdict): Exclude<RegistryKeyTrustStatus, 'unknown'> {
+  if (verdict.ok) {
+    return verdict.revokedAfterAnchor ? 'trusted-revoked-after-anchor' : 'trusted';
+  }
+  switch (verdict.code) {
+    case 'malformed-date':
+      return 'malformed-entry';
+    case 'not-yet-valid':
+      return 'not-yet-valid';
+    case 'expired':
+      return 'expired';
+    case 'revoked-before-anchor':
+    case 'revoked-without-revoked-at':
+      return 'revoked';
+  }
+}
+
+/**
  * registry エントリが `anchorTs` (epoch ms) の時点で有効かを判定する。
  *
  * - `validFrom` / `validUntil` / `revokedAt` のいずれかが parse 不能なら `malformed-date`

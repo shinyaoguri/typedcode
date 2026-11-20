@@ -73,6 +73,34 @@ export type {
   RootAnchorFailureCode,
 } from './verification.js';
 
+// 仕様別の検証 (#809 / ADR-0053) — 版から検証器を 1 つだけ選ぶ入口と共通の結果。型名は内部用 (公開名は #811 で確定)
+export {
+  verifyProofBySpec,
+  identifyProofSpec,
+  isLegacyTypingProofStructure,
+  SPEC_RESULT_SCHEMA,
+} from './specs/index.js';
+export type {
+  SpecId,
+  SpecTrustInput,
+  SpecVerificationContext,
+  SpecSupportStatus,
+  SpecSupportCode,
+  SpecDeclaredIdentifier,
+  SpecSupport,
+  SpecCheckStatus,
+  SpecCheckCode,
+  SpecCheck,
+  SpecChecks,
+  SpecLimitationCode,
+  SpecKeyRole,
+  SpecTrustedKey,
+  SpecTrustResult,
+  SpecIntegrity,
+  LegacyTypingProofDetail,
+  SpecVerificationResult,
+} from './specs/index.js';
+
 // 受理ポリシー (#296 / ADR-0043) — 整合性とは別に、採点者が opt-in で足す受理要件の評価
 export {
   evaluateAcceptancePolicy,
@@ -132,6 +160,7 @@ export {
 export type {
   CheckpointPublicKey,
   CheckpointPublicKeyStatus,
+  RegistryKeyTrustStatus,
 } from './checkpointKeys/index.js';
 
 // 試験モード (ADR-0006): 封印問題パッケージ + 監督コード束縛

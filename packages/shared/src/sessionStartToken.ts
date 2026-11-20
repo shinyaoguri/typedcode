@@ -23,6 +23,7 @@ import {
   CHECKPOINT_PUBLIC_KEYS,
   checkRegistryKeyValidityAt,
   findCheckpointPublicKey,
+  registryKeyTrustStatus,
   type CheckpointPublicKey,
 } from './checkpointKeys/index.js';
 
@@ -200,7 +201,13 @@ export async function verifySessionStartToken(
   // 信頼アンカーは registry。未登録 keyId は拒否 (自己署名トークンを valid にしない)。
   const entry = findCheckpointPublicKey(token.keyId, registry) ?? null;
   if (!entry) {
-    return { valid: false, reason: `Unknown keyId: ${token.keyId}`, keyId: token.keyId, unknownKey: true };
+    return {
+      valid: false,
+      reason: `Unknown keyId: ${token.keyId}`,
+      keyId: token.keyId,
+      unknownKey: true,
+      keyStatus: 'unknown',
+    };
   }
 
   const issuedTs = Date.parse(token.payload.issuedAt);
@@ -211,6 +218,8 @@ export async function verifySessionStartToken(
   // 鍵の有効期間 / 失効を issuedAt を anchor に判定 (署名 cp と同じ実装を共有 = #233)。
   // registry の日時が parse 不能なエントリは信頼しない (fail-closed)。
   const verdict = checkRegistryKeyValidityAt(entry, issuedTs);
+  // 鍵の信頼状態を機械可読で残す (#809。加算のみで、判定と reason は変えない)。以降の結果すべてに載せる
+  const keyStatus = registryKeyTrustStatus(verdict);
   if (!verdict.ok) {
     const reason = ((): string => {
       switch (verdict.code) {
@@ -226,7 +235,7 @@ export async function verifySessionStartToken(
           return `key ${entry.keyId} status is 'revoked' but revokedAt is missing`;
       }
     })();
-    return { valid: false, reason, keyId: entry.keyId };
+    return { valid: false, reason, keyId: entry.keyId, keyStatus };
   }
 
   let cryptoKey: CryptoKey;
@@ -239,14 +248,14 @@ export async function verifySessionStartToken(
       ['verify']
     );
   } catch {
-    return { valid: false, reason: 'Failed to import registry public key', keyId: entry.keyId };
+    return { valid: false, reason: 'Failed to import registry public key', keyId: entry.keyId, keyStatus };
   }
 
   let signatureBytes: Uint8Array;
   try {
     signatureBytes = hexToUint8Array(token.signature);
   } catch {
-    return { valid: false, reason: 'Malformed signature hex', keyId: entry.keyId };
+    return { valid: false, reason: 'Malformed signature hex', keyId: entry.keyId, keyStatus };
   }
 
   const signingInput = new TextEncoder().encode(deterministicStringify(token.payload));
@@ -259,11 +268,11 @@ export async function verifySessionStartToken(
       signingInput as unknown as ArrayBuffer
     );
   } catch {
-    return { valid: false, reason: 'Signature verification error', keyId: entry.keyId };
+    return { valid: false, reason: 'Signature verification error', keyId: entry.keyId, keyStatus };
   }
 
   if (!valid) {
-    return { valid: false, reason: 'Session token signature is invalid', keyId: entry.keyId };
+    return { valid: false, reason: 'Session token signature is invalid', keyId: entry.keyId, keyStatus };
   }
-  return { valid: true, keyId: entry.keyId };
+  return { valid: true, keyId: entry.keyId, keyStatus };
 }

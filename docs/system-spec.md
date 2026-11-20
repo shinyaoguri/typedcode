@@ -811,6 +811,71 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 
 配線: **verify-cli** は `--exam-package <file.tcexam>` で渡す (任意、未指定なら root 束縛のみ表示し「package 未提供」を明示)。**verify(web)** は試験束縛カードで root 束縛を常時表示し、「問題パッケージを読み込む」で `.tcexam` を取り込み当該タブを再検証して完全束縛を表示する。package 指定で束縛が失敗すれば全体を invalid とする。**package を渡したのに `exam` ブロックが無い proof も invalid** (#218) — 一斉採点で casual proof が混ざると束縛が一切検証されないまま通過するため、ゲートのサイレント無効化を許さない (ZIP では per-proof に失敗させる)。
 
+### 6.5. 仕様別の検証と共通の結果 (#809, ADR-0053)
+
+shared の `verifyProofBySpec` (`packages/shared/src/specs/`) は、proof の版から検証器を 1 つだけ選び、結果を共通の形で返す入口 ([ADR-0053](adr/0053-versioned-verification-contracts.md))。**公式 Web / CLI はまだ使っていない** (どちらも §6.3 の `verifyProofFile` を直接呼ぶ。切り替えは #811)。それまで両者は §6.3 のバージョンゲートどおり 1.0.0・1.1.0 も受理し、この入口だけが `unsupported` を返す。結果の型名は内部用で、公開する名前は #811 で確定する。
+
+#### 6.5.1. 識別と対応表
+
+識別は静的な registry への**完全一致だけ**で行う。大小比較や「同じ major だから」で対応済みにしない。`unsupported` / `malformed` では検証器を呼ばず (未知の版を 1.2.0 の規則で読まない)、検証に失敗しても別の版で試し直さない。
+
+| 入力 | `support.status` (`code`) | 検証器 |
+|---|---|---|
+| object でない | `malformed` (`not-an-object`) | なし |
+| `kind` か `specVersion` のキーを持つ (#810 の新形式の識別子。`version` と同居していても legacy に落とさない) | 形が正しければ `unsupported` (`kind-not-registered`)、不正 (片方が無い・`kind` が `^[a-z][a-z0-9-]{0,63}$` でない・`specVersion` が 1 以上の整数でない) なら `malformed` (`kind-malformed`) | なし (いまは登録なし) |
+| `version` が無い / `MAJOR.MINOR.PATCH` でない (`parseVersionStrict`) | `malformed` (`version-missing` / `version-malformed`) | なし |
+| `version === '1.2.0'` で、legacy の検証器に渡せる構造 | `supported` (`spec: 'legacy-typing-proof@1.2.0'`) | `verifyProofFile` (+ exam なら `verifyExamBinding`) |
+| `version === '1.2.0'` だが構造が不正 (`typingProofHash`・`typingProofData` と `metadata`・`content`・`proof.events` (`verifyEventArrayStructure`) の欠落や型違い、`checkpoints`・署名 envelope・`sessionStartToken`・`exam`・`fingerprint` の型違い) | `malformed` (`structure-invalid`) | なし |
+| それ以外の正しい形の版 (`1.0.0`・`1.1.0`・`1.3.0`・`2.0.0` など) | `unsupported` (`version-not-registered`) | なし |
+
+legacy として対応する proof の版は、凍結 proof (#581) がある `1.2.0` だけ (2026-11-20 メンテナ決定。ADR-0053 §2)。結果に写す自己申告の識別子は、厳密に parse できた版の数字から組み直した値、上の文字種に合う `kind`、整数の `specVersion` だけで、生の文字列は載せない (shared/AGENTS.md 不変条件 11)。
+
+legacy 1.2.0 の中の方式は、版ではなくブロックの有無で分かれる (1.2.0 の仕様の一部):
+
+| 方式 | 見分け方 | root の式 (§4.2) | 問題パッケージ |
+|---|---|---|---|
+| アンカー無し | `exam` も `sessionStartToken` も無い | `SHA256(fp ‖ nonce)` | なし |
+| sessionStartToken (ADR-0017) | `sessionStartToken` があり `exam` が無い | `SHA256(fp ‖ nonce ‖ serverNonce)` | なし |
+| exam v1 (ADR-0006) | `exam` があり `rootBinding` が `'v2'` でない | `SHA256(fp ‖ nonce ‖ packageHash ‖ startToken)` | `.tcexam` (`formatVersion` 1、平文は単一問題) |
+| exam v2 (ADR-0012) | `exam.rootBinding === 'v2'` | 上の末尾に `problemContentHash` | `.tcexam` (`formatVersion` 1、平文は `tcexam-exam/1` の N 問バンドル) |
+
+`exam` と `sessionStartToken` の両方を持つ proof は exam の式で検証し、token は使わない (`sessionAnchor` は `not-applicable`、token の鍵は `trust.keys` に載せない)。
+
+#### 6.5.2. legacy 1.2.0 の制限
+
+- **版が証拠に束縛されていない**: `version` は `typingProofHash` の入力ではない。受理する版の間で名乗り替えても検出できない (§8.1)。legacy 1.2.0 の結果には常に limitation `legacy-spec-version-unbound` を付ける。新仕様の安全性 (版の束縛) を旧ファイルへ後付けしない
+- 出題者鍵の有効期間は、出題者の自己申告の `releaseTime` で判定する (§6.4 手順 1)。出題者鍵の判定に進んだら limitation `exam-key-anchor-self-declared` を付ける
+- 評価時刻 (`evaluationTime`) は判定に使わない。鍵の有効期間・失効は証拠側の時刻 (署名 cp の `serverTimestamp`・token の `issuedAt`・パッケージの `releaseTime`) で判定する (§8.4)。評価時刻は結果の `evaluation.time` に写して残すだけ
+
+#### 6.5.3. 結果の各軸
+
+| 軸 | 意味 |
+|---|---|
+| `support` | 対応状況 (上の表)。`supported` のときだけ `spec` が付く |
+| `checks` | 項目別: `structure`・`metadata` (`typingProofHash` と再カウント)・`root`・`chain` (sequence・時刻・previousHash・反復数・hash)・`posw` (`intermediateHash` の再計算)・`finalHash`・`content`・`checkpoints` (未署名 cp)・`signedCheckpoints`・`sessionAnchor`・`problemBinding`。それぞれ `pass` / `fail` (`code` つき) / `not-checked` / `not-applicable` |
+| `integrity` と `limitations` | 保証範囲。`integrity` は語彙だけ ADR-0020 / ADR-0031 と同じ (`proven` / `partial` / `failed`) で、`checks` だけから導く (下の写像の規則)。`unsupported` / `malformed` では `not-evaluated`。`limitations` は省略・欠落した検査と legacy の制限の code |
+| `trust` | 鍵の信頼。`snapshot` は呼び出し側が渡した鍵一覧の識別 (`label` と、`{ checkpointKeys, examAuthorityKeys }` を `deterministicStringify` した SHA-256 の `digest`)。`keys` は証拠に現れた鍵ごとの `role` (`checkpoint` / `session-token` / `exam-authority`)・`keyId`・`status`・`anchor` (ISO 8601 に正規化した証拠側の時刻) |
+| `acceptance` | 受理ポリシー (§6.3.1) の評価結果 |
+| `evaluation` | 評価時刻とモード (入力の写し) |
+| `detail` | legacy の元の結果 (`FullVerificationResult` と `ExamBindingVerificationResult`)。**共通契約ではない** |
+
+写像の規則:
+
+- **走っていない検査は `pass` にも `fail` にもしない**。前段で止まった検査は `not-checked`: `verifyChain` が PoSW の不一致で止まれば `chain` は `not-checked`、連結の検査で止まれば `posw` は `not-checked`、どちらかで止まれば `finalHash` は `not-checked`、root が合わなければ `sessionAnchor` は `not-checked`。どこで止まったかは `FullVerificationResult.chainFailure` (`verifyChain` の `failure`) から取り、`errorMessage` の文字列は読まない
+- fast は `posw: not-checked` と limitation `posw-not-recomputed` (`integrity: partial`)
+- `checkpoints` は cp が無ければ `not-applicable`。`signedCheckpoints` は署名 cp が無ければ `not-applicable`。`sessionAnchor` は token が無ければ `not-applicable`、token の検証失敗は `rootAnchorFailure.code`、token と署名 cp の sessionId の不一致は `token-session-mismatch` で `fail`。exam の proof に token が同梱されていても root には使われないので `not-applicable` だが、`verifyProofFile` が sessionId を突き合わせて食い違えば `token-session-mismatch` で `fail`
+- `problemBinding` は `exam` が無ければ `not-applicable`。exam なのに `examPackage` が渡されなければ `not-checked` と limitation `problem-package-not-provided`。渡されたら**入口が自分で** `parseExamPackageManifest` と `verifyExamBinding` を呼び、その合否を `verifyProofFile` の `examBindingVerified` に渡す (呼び出し側が「検証済み」と申告する口は無い)
+- `integrity` は `checks` **だけから**導く: どれかが `fail` なら `failed`、`fail` が無くどれかが `not-checked` なら `partial` (fast の PoSW、問題パッケージの無い exam の問題束縛など)、すべて `pass` か `not-applicable` なら `proven`。鍵を信頼できない失敗 (署名 cp・token・出題者鍵)、token の検証失敗、token と署名 cp の sessionId の不一致もすべて `failed` で、原因は各検査の `code` (`signed-checkpoint-key-untrusted`・`token-unknown-key`・`token-invalid`・`exam-authority-key-untrusted` など) と `trust.keys[].status` で分かる。`verifyProofFile` が `integrityValid: false` にする proof は必ずどれかの検査が `fail` になるので、この入口は legacy より甘くならない (`integrity !== 'failed'` ⇔ legacy の `integrityValid` が true かつ問題束縛が `fail` でない。`specIntegrity.test.ts` が固定する)
+- 似た名前の別の値: ADR-0020 の `assurance.integrity` (`deriveAssurance`) は、署名 cp・token の失敗と sessionId の不一致を時刻アンカー層に数えて integrity に流さず、スクリーンショットの改ざんを含む。`FullVerificationResult.integrityValid` (§6.3.1) は問題束縛を含まない。`verifyProofBySpec` の `integrity` はどちらとも別の値で、互いに置き換えない
+- 鍵の `status` は `trusted` / `trusted-revoked-after-anchor` / `unknown` / `revoked` / `expired` / `not-yet-valid` / `malformed-entry`。`checkRegistryKeyValidityAt` の verdict を `registryKeyTrustStatus` で写したもの (未登録は `unknown`) で、署名 cp・token・出題者鍵の検証結果に `keyStatus` として載る (自由文の `reason` は読まない)。署名が合わなかった署名 cp の鍵は判定に進んでいないので載せない。未登録の鍵の `keyId` は `^[A-Za-z0-9._-]{1,128}$` に合うときだけ載せる
+- `acceptance` は `integrity` が `failed` か `not-evaluated` なら `evaluated: false`。それ以外は `verifyProofFile` の `policy` をそのまま使う (こちらは token・署名 cp の失敗でも評価しない)
+
+隠れた入力を持たない: 入口は時計 (`Date.now()`・`performance.now()`) もネットワーク (`fetch`) も使わず、`trust` と `evaluationTime` は必須 (欠ければ既定の registry に落とさず throw)。同じ入力・信頼・方針・評価時刻なら同じ結果を返す。
+
+#### 6.5.4. 検証器の不具合を直したとき
+
+維持するのは仕様の意味で、過去の誤判定ではない (ADR-0053 §4)。legacy の検証器に不具合や脆弱性が見つかれば直す。直した結果として凍結 proof などの判定が変わるときは、変わる理由と、どの結果が変わるかを PR と本書の変更履歴に残す。凍結 fixture を作り直して判定を合わせることはしない (fixtures/frozen-proofs/README.md)。
+
 ---
 
 ## 7. 耐改ざん性 (Defense in Depth)
@@ -871,7 +936,7 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
   - root 式の入力 (fingerprint の `hash` と `components`、`initialHashNonce`、`exam` ブロックの root の入力、`sessionStartToken` の `serverNonce`。Layer 1)。token のそれ以外 (署名された `payload`・`signature`・`keyId`・`algorithm`) を書き換えると token を検証できず `valid` が落ちる (改ざんではなく時刻アンカーの失敗として `rootAnchorFailure` で返す。#329)
   - 未署名 cp の照合値 (Layer 5) と、署名 cp の `payload` (ECDSA。Layer 6)
 
-  検証器は `proof.version` で対象を切り替えない (`MIN_SUPPORTED_VERSION` 以降のどの版も同じ規則で検証する)。版で違うのは proof が持ちうるブロックで、1.1.0 で加わった `exam` と 1.2.0 で加わった `sessionStartToken` は、proof にあれば root の入力に加わる (分岐は版ではなくブロックの有無で決まる。`verifyInitialHashRoot`)。**上のどれにも入らないフィールドは、書き換えても `valid` が変わらない**: イベントの派生フィールド (`description` / `insertLength` / `selectedText` など。#328)、`version` (§6.3 のバージョンゲートで分類するだけ。下限未満・不正形式にすれば拒否されるが、受理する版の間で名乗り替えても検出しない)、`proof` ブロックの `totalEvents` / `startTime` / `endTime` / `signature`、トップレベルの `metadata` (`typingProofData.metadata` はハッシュ対象)、§5.3 で自己申告とした `rootAnchored` / `mode` / `filename` / `language`。このうち `language` は試験の許可言語の照合 (§6.4 手順 5c) が読むので、許可されない値にすれば束縛は落ちるが、許可された値への書き換えはこの照合では検出できない (照合は申告値を見るだけで、`language` はハッシュにも署名にも入らない。#731)。表示や判断にこれらを使うときは、検証済みの値から導き直す (分析器は `pickHashedEventFields` へ射影する。shared/AGENTS.md 不変条件 12)
+  公式 Web / CLI が使う `verifyProofFile` は `proof.version` で規則を切り替えない (`MIN_SUPPORTED_VERSION` 以降のどの版も同じ規則で検証する)。仕様別の入口 `verifyProofBySpec` (§6.5。公式アプリの切り替えは #811) は版の完全一致で検証器を選び、いまは `1.2.0` だけを legacy の検証器 (= `verifyProofFile`) で読む。どちらの入口でも、1.2.0 の中の root の方式は版ではなくブロックの有無で分かれる: 1.1.0 で加わった `exam` と 1.2.0 で加わった `sessionStartToken` は、proof にあれば root の入力に加わる (`verifyInitialHashRoot`)。**上のどれにも入らないフィールドは、書き換えても `valid` が変わらない**: イベントの派生フィールド (`description` / `insertLength` / `selectedText` など。#328)、`version` (§6.3 のバージョンゲートで分類するだけ。下限未満・不正形式にすれば拒否されるが、受理する版の間で名乗り替えても検出しない)、`proof` ブロックの `totalEvents` / `startTime` / `endTime` / `signature`、トップレベルの `metadata` (`typingProofData.metadata` はハッシュ対象)、§5.3 で自己申告とした `rootAnchored` / `mode` / `filename` / `language`。このうち `language` は試験の許可言語の照合 (§6.4 手順 5c) が読むので、許可されない値にすれば束縛は落ちるが、許可された値への書き換えはこの照合では検出できない (照合は申告値を見るだけで、`language` はハッシュにも署名にも入らない。#731)。表示や判断にこれらを使うときは、検証済みの値から導き直す (分析器は `pickHashedEventFields` へ射影する。shared/AGENTS.md 不変条件 12)
   - テスト: fast で「どのイベントのどのハッシュ対象フィールドを 1 つ変えても拒否する」ことは `verification.property.test.ts` の `rejects a proof in which any one hashed field of any one event was changed` が生成した proof で固定する。正規の proof が full で通る正の対照は `frozenProofs.test.ts` (凍結 fixture)
 - **流用検出**: 別の fingerprint / sessionId / initialEventChainHash 由来のデータ流用は決定的に検出される
 - **時刻アンカリング (signed checkpoints 利用時)**: 各 envelope の `serverTimestamp` は「サーバが署名要求を受け取った時刻」を証明する → proof は最古の `serverTimestamp` 以降に存在していたことが証明される
@@ -1122,3 +1187,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-18 | 一括検証の基盤 (#802) | §4.10 の実行条件に、時間上限の正本の定数・数え始め (プログラムの開始から。コンパイルは数えない)・対話の実行には掛けないこと・Python の最後の式の値を出力に足さないことを追記 |
 | 2026-11-19 | ケースファイルのフォーム (#798) | §4.10 に、フォームで編集した値の改行は LF になり、編集していない値の CRLF は変えないことを追記 |
 | 2026-11-19 | 一括検証の画面 (#799) | §4.10 の実行条件に、コンパイルが終わらない解答は中止で抜けること・未保存の内容を対象にすること・ターミナルの実行と排他にすることを追記 |
+| 2026-11-20 | 仕様別の検証の入口 (#809, ADR-0053) | §6.5 を追加: shared の `verifyProofBySpec` は版の完全一致で検証器を選び、いまは proof `1.2.0` だけを legacy の検証器 (`verifyProofFile`) で読む (1.0.0・1.1.0 などは `unsupported`)。対応状況・項目別の検査・保証範囲・鍵の信頼・受理を分けた結果と、legacy の制限 (版の未束縛など)・不具合修正時の扱いを記述。署名 cp・token・出題者鍵の検証結果に鍵の信頼状態 `keyStatus`、`verifyChain` に `failure`、`FullVerificationResult` に `chainFailure` などを加算 (既存の判定は不変)。§8.1 の「版で切り替えない」を、`verifyProofFile` と新しい入口の現状に合わせて直した。公式 Web / CLI の切り替えは #811 |

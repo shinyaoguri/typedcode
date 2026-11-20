@@ -29,7 +29,11 @@ import type {
 import type { ExportedProof } from '../types/proof.js';
 import { computeHash, deterministicStringify, arrayBufferToHex } from '../utils/hashUtils.js';
 import { EXAM_AUTHORITY_KEYS, findExamAuthorityKey, type ExamAuthorityKey } from '../examAuthorityKeys/index.js';
-import { checkRegistryKeyValidityAt } from '../checkpointKeys/keyValidity.js';
+import {
+  checkRegistryKeyValidityAt,
+  registryKeyTrustStatus,
+  type RegistryKeyTrustStatus,
+} from '../checkpointKeys/keyValidity.js';
 import {
   EXAM_PACKAGE_FORMAT_VERSION,
   EXAM_PROOF_VERSION,
@@ -377,6 +381,12 @@ export interface ExamPackageSignatureResult {
   registryEntry?: ExamAuthorityKey | null;
   /** trust はするが注意を要する場合の警告 (例: 失効前に署名された package を時刻で trust) */
   warning?: string;
+  /**
+   * 出題者鍵の信頼状態 (#809)。未登録なら `unknown`、`releaseTime` を anchor に有効期間を判定したらその結果。
+   * 鍵の判定より前で落ちた (algorithm・同梱鍵の不一致・releaseTime が parse 不能) ときは付かない。
+   * 署名の成否とは別の値で、`trusted` でも署名が合わなければ `valid: false`。
+   */
+  keyStatus?: RegistryKeyTrustStatus;
 }
 
 /**
@@ -405,7 +415,7 @@ export async function verifyExamPackageSignature(
   // 信頼アンカーは registry。未登録 keyId は (埋め込み鍵があっても) 信頼しない。
   const registryEntry = findExamAuthorityKey(manifest.keyId, registry) ?? null;
   if (!registryEntry) {
-    return { valid: false, reason: `Unknown keyId: ${manifest.keyId}`, registryEntry: null };
+    return { valid: false, reason: `Unknown keyId: ${manifest.keyId}`, registryEntry: null, keyStatus: 'unknown' };
   }
 
   // 同梱 publicKeyJwk があれば registry エントリと一致必須 (埋め込み鍵すり替えの検出)。
@@ -420,14 +430,17 @@ export async function verifyExamPackageSignature(
   // 鍵の有効期間 / 失効を releaseTime で判定 (期限切れ・失効鍵での署名を弾く)。
   const validity = checkExamKeyValidityAtRelease(registryEntry, manifest.releaseTime);
   if (!validity.ok) {
-    return { valid: false, reason: validity.reason, registryEntry };
+    return validity.keyStatus
+      ? { valid: false, reason: validity.reason, registryEntry, keyStatus: validity.keyStatus }
+      : { valid: false, reason: validity.reason, registryEntry };
   }
+  const keyStatus = validity.keyStatus;
 
   let signatureBytes: Uint8Array;
   try {
     signatureBytes = hexToBytes(manifest.signature);
   } catch {
-    return { valid: false, reason: 'Malformed signature hex', registryEntry };
+    return { valid: false, reason: 'Malformed signature hex', registryEntry, keyStatus };
   }
 
   let cryptoKey: CryptoKey;
@@ -440,7 +453,7 @@ export async function verifyExamPackageSignature(
       ['verify']
     );
   } catch {
-    return { valid: false, reason: 'Invalid public key', registryEntry };
+    return { valid: false, reason: 'Invalid public key', registryEntry, keyStatus };
   }
 
   const signingInput = new TextEncoder().encode(deterministicStringify(examPackageSigningCore(manifest)));
@@ -454,13 +467,13 @@ export async function verifyExamPackageSignature(
       asArrayBuffer(new Uint8Array(signingInput))
     );
   } catch {
-    return { valid: false, reason: 'Signature verification error', registryEntry };
+    return { valid: false, reason: 'Signature verification error', registryEntry, keyStatus };
   }
 
   if (!valid) {
-    return { valid: false, registryEntry };
+    return { valid: false, registryEntry, keyStatus };
   }
-  return { valid: true, registryEntry, warning: validity.warning };
+  return { valid: true, registryEntry, warning: validity.warning, keyStatus };
 }
 
 /**
@@ -475,34 +488,47 @@ export async function verifyExamPackageSignature(
 function checkExamKeyValidityAtRelease(
   entry: ExamAuthorityKey,
   releaseTime: string
-): { ok: true; warning?: string } | { ok: false; reason: string } {
+):
+  | { ok: true; warning?: string; keyStatus: RegistryKeyTrustStatus }
+  | { ok: false; reason: string; keyStatus?: RegistryKeyTrustStatus } {
   const releaseTs = Date.parse(releaseTime);
   if (!Number.isFinite(releaseTs)) {
     return { ok: false, reason: 'Package releaseTime is not a valid date' };
   }
   const verdict = checkRegistryKeyValidityAt(entry, releaseTs);
+  // 鍵の信頼状態を機械可読で残す (#809。加算のみで、判定と reason は変えない)
+  const keyStatus = registryKeyTrustStatus(verdict);
   if (!verdict.ok) {
     switch (verdict.code) {
       case 'malformed-date':
         return {
           ok: false,
           reason: `Authority key ${entry.keyId} has an unparsable ${verdict.field} in the registry`,
+          keyStatus,
         };
       case 'not-yet-valid':
-        return { ok: false, reason: `Authority key ${entry.keyId} was not yet valid at package release time` };
+        return {
+          ok: false,
+          reason: `Authority key ${entry.keyId} was not yet valid at package release time`,
+          keyStatus,
+        };
       case 'expired':
-        return { ok: false, reason: `Authority key ${entry.keyId} had expired by package release time` };
+        return { ok: false, reason: `Authority key ${entry.keyId} had expired by package release time`, keyStatus };
       case 'revoked-before-anchor':
-        return { ok: false, reason: `Authority key ${entry.keyId} was revoked at or before package release time` };
+        return {
+          ok: false,
+          reason: `Authority key ${entry.keyId} was revoked at or before package release time`,
+          keyStatus,
+        };
       case 'revoked-without-revoked-at':
-        return { ok: false, reason: `Authority key ${entry.keyId} is revoked (status) without revokedAt` };
+        return { ok: false, reason: `Authority key ${entry.keyId} is revoked (status) without revokedAt`, keyStatus };
     }
   }
   if (verdict.revokedAfterAnchor) {
     // 失効前に署名された package は trust するが警告 (registry の運用方針)。
-    return { ok: true, warning: `Authority key ${entry.keyId} was revoked after this package was released` };
+    return { ok: true, warning: `Authority key ${entry.keyId} was revoked after this package was released`, keyStatus };
   }
-  return { ok: true };
+  return { ok: true, keyStatus };
 }
 
 // ============================================================================
@@ -573,6 +599,12 @@ export interface ExamBindingVerificationResult {
   /** trust はするが注意を要する警告 (例: 失効前に署名された package を時刻で trust) */
   warning?: string;
   registryEntry?: ExamAuthorityKey | null;
+  /**
+   * 出題者鍵の信頼状態 (#809。`verifyExamPackageSignature` の `keyStatus`)。package 署名の検証に進まなかった
+   * (exam ブロックが無い・examProofVersion が未対応・root の入力が欠けている) ときと、鍵の判定より前で
+   * 落ちたときは付かない。
+   */
+  authorityKeyStatus?: RegistryKeyTrustStatus;
 }
 
 export interface VerifyExamBindingOptions {
@@ -634,6 +666,7 @@ export async function verifyExamBinding(
     packageSignatureValid: sig.valid,
     warning: sig.warning,
     registryEntry: sig.registryEntry ?? null,
+    ...(sig.keyStatus ? { authorityKeyStatus: sig.keyStatus } : {}),
   };
   if (!sig.valid) {
     return { ...result, reason: sig.reason ?? 'Package signature invalid' };

@@ -28,6 +28,7 @@ import {
   CHECKPOINT_PUBLIC_KEYS,
   checkRegistryKeyValidityAt,
   findCheckpointPublicKey,
+  registryKeyTrustStatus,
   type CheckpointPublicKey,
 } from './checkpointKeys/index.js';
 
@@ -310,11 +311,15 @@ function hexToUint8Array(hex: string): Uint8Array {
 export async function resolveCheckpointPublicKey(
   envelope: SignedCheckpointEnvelope,
   registry: readonly CheckpointPublicKey[] = CHECKPOINT_PUBLIC_KEYS
-): Promise<{ ok: true; cryptoKey: CryptoKey; registryEntry: CheckpointPublicKey } | { ok: false; reason: string }> {
+): Promise<
+  | { ok: true; cryptoKey: CryptoKey; registryEntry: CheckpointPublicKey }
+  | { ok: false; reason: string; unknownKey?: true }
+> {
   // 信頼アンカーは registry。未登録 keyId は (埋め込み鍵があっても) 信頼しない。
   const registryEntry = findCheckpointPublicKey(envelope.keyId, registry) ?? null;
   if (!registryEntry) {
-    return { ok: false, reason: `Unknown keyId: ${envelope.keyId}` };
+    // unknownKey (#809): 「鍵を知らない」を reason の文字列からではなく構造で取れるようにする
+    return { ok: false, reason: `Unknown keyId: ${envelope.keyId}`, unknownKey: true };
   }
 
   // 同梱 publicKeyJwk があれば registry エントリと一致必須 (埋め込み鍵すり替えの検出)。
@@ -349,10 +354,12 @@ export async function resolveCheckpointPublicKey(
 export async function verifyCheckpointSignature(
   envelope: SignedCheckpointEnvelope,
   registry: readonly CheckpointPublicKey[] = CHECKPOINT_PUBLIC_KEYS
-): Promise<{ valid: boolean; reason?: string; registryEntry?: CheckpointPublicKey | null }> {
+): Promise<{ valid: boolean; reason?: string; registryEntry?: CheckpointPublicKey | null; unknownKey?: true }> {
   const resolved = await resolveCheckpointPublicKey(envelope, registry);
   if (!resolved.ok) {
-    return { valid: false, reason: resolved.reason };
+    return resolved.unknownKey
+      ? { valid: false, reason: resolved.reason, unknownKey: true }
+      : { valid: false, reason: resolved.reason };
   }
 
   // signature が不正な hex (奇数長など) でも throw せず valid:false を返す。
@@ -637,8 +644,13 @@ export async function verifySignedCheckpoints(
 
     const sigResult = await verifyCheckpointSignature(envelope, registry);
     if (!sigResult.valid) {
+      // 未登録の鍵だけは「鍵の信頼」の結果として keyStatus を残す (#809)。署名が合わない場合は鍵の判定に
+      // 進んでいないので付けない。
+      const keyFields: Pick<SignedCheckpointVerificationDetail, 'keyId' | 'keyStatus'> = sigResult.unknownKey
+        ? { keyId: envelope.keyId, keyStatus: 'unknown' }
+        : {};
       return fail(
-        { ...detailBase, reason: sigResult.reason ?? 'signature invalid' },
+        { ...detailBase, ...keyFields, reason: sigResult.reason ?? 'signature invalid' },
         sigResult.reason ?? `Signed checkpoint signature invalid at event ${payload.eventIndex}`,
         payload.eventIndex
       );
@@ -650,36 +662,45 @@ export async function verifySignedCheckpoints(
       // 鍵の有効期間 / 失効判定は checkpointKeys/keyValidity.ts に一本化 (#233)。
       // registry の日時が parse 不能なエントリは信頼しない (fail-closed)。
       const verdict = checkRegistryKeyValidityAt(entry, serverTs);
+      // 鍵の信頼状態を機械可読で残す (#809。加算のみで、判定と reason は変えない)
+      const keyFields: Pick<SignedCheckpointVerificationDetail, 'keyId' | 'keyStatus'> = {
+        keyId: entry.keyId,
+        keyStatus: registryKeyTrustStatus(verdict),
+      };
       if (!verdict.ok) {
         const at = `at event ${payload.eventIndex}`;
         switch (verdict.code) {
           case 'malformed-date':
             return fail(
-              { ...detailBase, reason: `key ${entry.keyId} has an unparsable ${verdict.field} in the registry` },
+              {
+                ...detailBase,
+                ...keyFields,
+                reason: `key ${entry.keyId} has an unparsable ${verdict.field} in the registry`,
+              },
               `Signed checkpoint key ${entry.keyId} has an unparsable ${verdict.field} in the registry ${at}`,
               payload.eventIndex
             );
           case 'not-yet-valid':
             return fail(
-              { ...detailBase, reason: `key ${entry.keyId} not yet valid at serverTimestamp` },
+              { ...detailBase, ...keyFields, reason: `key ${entry.keyId} not yet valid at serverTimestamp` },
               `Signed checkpoint key ${entry.keyId} validFrom is after serverTimestamp ${at}`,
               payload.eventIndex
             );
           case 'expired':
             return fail(
-              { ...detailBase, reason: `key ${entry.keyId} expired before serverTimestamp` },
+              { ...detailBase, ...keyFields, reason: `key ${entry.keyId} expired before serverTimestamp` },
               `Signed checkpoint key ${entry.keyId} validUntil is before serverTimestamp ${at}`,
               payload.eventIndex
             );
           case 'revoked-before-anchor':
             return fail(
-              { ...detailBase, reason: `key ${entry.keyId} revoked before serverTimestamp` },
+              { ...detailBase, ...keyFields, reason: `key ${entry.keyId} revoked before serverTimestamp` },
               `Signed checkpoint key ${entry.keyId} was revoked at or before serverTimestamp ${at}`,
               payload.eventIndex
             );
           case 'revoked-without-revoked-at':
             return fail(
-              { ...detailBase, reason: `key ${entry.keyId} revoked without revokedAt` },
+              { ...detailBase, ...keyFields, reason: `key ${entry.keyId} revoked without revokedAt` },
               `Signed checkpoint key ${entry.keyId} status is 'revoked' but revokedAt is missing`,
               payload.eventIndex
             );
@@ -687,6 +708,7 @@ export async function verifySignedCheckpoints(
       } else if (verdict.revokedAfterAnchor) {
         detail.warning = 'key-revoked-but-trusted-by-time';
       }
+      Object.assign(detail, keyFields);
     }
 
     timedAnchors.push({ eventMs: eventTimeMs(event), serverMs: serverTs, clientMs: clientTs });
