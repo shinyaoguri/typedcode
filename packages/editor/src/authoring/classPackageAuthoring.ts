@@ -15,6 +15,7 @@ import {
   EXAM_BUNDLE_SCHEMA,
   CLASS_PACKAGE_SCHEMA,
   type ClassPackage,
+  type ClassPolicy,
   type ExamBundle,
   type ExamBundleProblem,
 } from '@typedcode/shared';
@@ -28,6 +29,8 @@ export interface BuildClassPackageParams {
   problems: ExamBundleProblem[];
   /** 許可言語 (グローバル allow-list)。 */
   languages: string[];
+  /** 方針 (#645)。省くと方針の無い (#645 より前と同じ) `.tcclass` になり、開いた入口の能力で開く。 */
+  policy?: ClassPolicy;
 }
 
 /**
@@ -78,6 +81,7 @@ export function buildClassPackage(params: BuildClassPackageParams): string {
     schema: CLASS_PACKAGE_SCHEMA,
     classId,
     allowed: { languages },
+    ...(params.policy ? { policy: { ...params.policy } } : {}),
     bundle,
   };
   return encodeClassPackage(pkg);

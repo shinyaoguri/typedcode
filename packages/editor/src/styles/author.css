@@ -804,6 +804,23 @@ body::before {
   height: 16px;
 }
 
+/* 授業の配布物の方針 (#645): 「教室で実施」/「持ち帰り」の選択 */
+.author-class-policy {
+  margin: var(--spacing-lg) 0 0;
+  padding: 0;
+  border: none;
+}
+.author-class-policy legend {
+  padding: 0;
+  font-weight: 500;
+}
+.author-class-policy .author-check {
+  margin-top: var(--spacing-sm);
+}
+.author-class-policy .author-hint {
+  margin-left: calc(16px + var(--spacing-sm));
+}
+
 /* 鍵設定パネル内の既存鍵/新規生成タブ */
 .author-tabs {
   display: flex;

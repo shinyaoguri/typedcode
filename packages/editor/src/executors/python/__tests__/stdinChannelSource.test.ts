@@ -1,12 +1,74 @@
 /**
- * Python の stdin のチャネル (#649)。メインが書き、Worker が `Atomics.wait` で待って読む。
+ * Python の stdin のチャネル (#649 / #719)。runner が書き、Worker が `Atomics.wait` で待って読む。
  *
+ * ソースは文字列定数 (runner と Worker に連結する) なので、node の vm で評価して関数を取り出す。
  * テストは 1 つのスレッドで書き手と読み手を動かす。読み手が待つ場面は、onWait (Worker が
  * `stdin-request` を送るところ) で書き手が offer することで表す。
  */
 
 import { describe, it, expect } from 'vitest';
-import { StdinChannelReader, StdinChannelWriter, createStdinBuffer } from '../stdinChannel.js';
+import vm from 'node:vm';
+import { STDIN_CHANNEL_SOURCE } from '../stdinChannelSource.js';
+
+interface StdinChannelWriter {
+  push(text: string): void;
+  close(): void;
+  offer(): boolean;
+  readonly pendingBytes: number;
+}
+
+interface StdinChannelReader {
+  read(onWait?: () => void): Uint8Array;
+}
+
+const source = vm.runInNewContext(`${STDIN_CHANNEL_SOURCE}\n({ tcCreateStdinBuffer, tcStdinWriter, tcStdinRead })`, {
+  SharedArrayBuffer,
+  Int32Array,
+  Uint8Array,
+  Atomics,
+  TextEncoder,
+  Math,
+}) as {
+  tcCreateStdinBuffer(capacity: number): SharedArrayBuffer;
+  tcStdinWriter(buffer: SharedArrayBuffer): {
+    push(text: string): void;
+    close(): void;
+    offer(): boolean;
+    pendingBytes(): number;
+  };
+  tcStdinRead(buffer: SharedArrayBuffer, onWait?: () => void): Uint8Array;
+};
+
+function createStdinBuffer(capacity = 64 * 1024): SharedArrayBuffer {
+  return source.tcCreateStdinBuffer(capacity);
+}
+
+/** 文字列ソースの書き手・読み手を、元のクラスと同じ形で包む */
+class StdinChannelWriterImpl implements StdinChannelWriter {
+  private readonly inner;
+  constructor(buffer: SharedArrayBuffer) {
+    this.inner = source.tcStdinWriter(buffer);
+  }
+  push(text: string): void {
+    this.inner.push(text);
+  }
+  close(): void {
+    this.inner.close();
+  }
+  offer(): boolean {
+    return this.inner.offer();
+  }
+  get pendingBytes(): number {
+    return this.inner.pendingBytes();
+  }
+}
+
+class StdinChannelReaderImpl implements StdinChannelReader {
+  constructor(private readonly buffer: SharedArrayBuffer) {}
+  read(onWait?: () => void): Uint8Array {
+    return source.tcStdinRead(this.buffer, onWait);
+  }
+}
 
 const decode = (chunks: Uint8Array[]): string => {
   const total = chunks.reduce((n, c) => n + c.length, 0);
@@ -21,7 +83,7 @@ const decode = (chunks: Uint8Array[]): string => {
 
 function channel(capacity?: number) {
   const buffer = createStdinBuffer(capacity);
-  return { writer: new StdinChannelWriter(buffer), reader: new StdinChannelReader(buffer) };
+  return { writer: new StdinChannelWriterImpl(buffer), reader: new StdinChannelReaderImpl(buffer) };
 }
 
 /** 書き手が貯めた入力を、読み手が求めるたびに渡して、全部読み切るまでの断片を返す */

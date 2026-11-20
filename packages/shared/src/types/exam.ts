@@ -169,8 +169,27 @@ export interface ClassPackage {
   /** 授業/課題の識別子 (自己申告ラベル)。 */
   classId: string;
   allowed: { languages: string[] };
+  /**
+   * 教員が決める方針 (#645)。無いファイル (#645 より前に作ったもの) は、開いた入口 (`/class` / `/assignment`)
+   * の能力のまま開く。ある場合は入口より優先する。
+   */
+  policy?: ClassPolicy;
   /** 問題バンドル (exam と共通の平文構造)。 */
   bundle: ExamBundle;
+}
+
+/**
+ * `.tcclass` の方針 (#645)。授業と課題の違いだった 3 つの能力を、教員が配布物で決める。
+ * 3 つとも必須の boolean で、欠けたもの・型の違うものは補完せずファイルごと拒否する (`parseClassPackage`)。
+ * /author の「教室で実施」は `/class` の、「持ち帰り」は `/assignment` の能力値を書く。
+ */
+export interface ClassPolicy {
+  /** 画面のスクリーンショットを撮るか (真なら読み込み時・起動時に画面共有の選択を出す) */
+  screenshots: boolean;
+  /** フルスクリーン状態を受動的に記録するか (要求バナーは出さない) */
+  fullscreenTracking: boolean;
+  /** export 前の人間確認 (Turnstile) を best-effort にするか (不達でも提出 ZIP を出す) */
+  preExportBestEffort: boolean;
 }
 
 /**

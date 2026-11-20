@@ -23,6 +23,7 @@ import type {
   ExecutionOptions,
   ExecutionResult,
   InitializationProgress,
+  InteractiveStdin,
   ParsedError,
 } from '../interfaces/ILanguageExecutor.js';
 
@@ -357,8 +358,9 @@ export class CExecutor extends BaseExecutor {
           // 非対話の実行 (#802): 全体を書いてから閉じる (EOF)。ターミナルにはつながない
           feedAndClose(runInstance.stdin, execution.stdin);
         } else {
-          // Notify caller that stdin is ready for connection
-          callbacks.onStdinReady?.(runInstance.stdin.toWritableStream());
+          // 対話の実行 (#707): ターミナルが確定した行と EOF を pipe に渡す。tty (`terminal: true`) は使わない
+          // (行の編集は Python と同じ line discipline が受け持ち、記録と受け取る行を同じ文字列にする)
+          callbacks.onStdinReady?.(pipeInteractiveStdin(runInstance.stdin));
         }
       }
       callbacks.onProgramStart?.();
@@ -588,6 +590,32 @@ function feedAndClose(stdin: WritableBytes, text: string): void {
       // 既に閉じている
     }
   })();
+}
+
+/**
+ * 対話の実行の stdin (#707) を Wasmer の pipe に写す。書き込みと close を 1 本の列に並べ、渡した行を
+ * 順に届けてから閉じる (close で EOF。プログラムは止めない)。close の後の行は捨てる。
+ * プログラムが先に終わって書けなかったときの失敗は捨てる
+ */
+export function pipeInteractiveStdin(stdin: WritableBytes): InteractiveStdin {
+  let closed = false;
+  let queue: Promise<void> = Promise.resolve();
+  const enqueue = (op: () => Promise<void>): void => {
+    queue = queue.then(op).catch(() => {
+      // 読まずに終わった・既に閉じている
+    });
+  };
+  return {
+    writeLine(line) {
+      if (closed) return;
+      enqueue(() => stdin.write(line));
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      enqueue(() => stdin.close());
+    },
+  };
 }
 
 /**

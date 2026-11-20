@@ -25,7 +25,7 @@ import { settleWithin } from './idbFaults.js';
 
 const DB_NAME = 'typedcode-session';
 /** SessionStorageService の DB_VERSION */
-const CURRENT_VERSION = 3;
+const CURRENT_VERSION = 4;
 
 function makeEvent(sequence: number): StoredEvent {
   return {

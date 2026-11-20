@@ -386,6 +386,9 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
           VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
           VITE_API_URL: ${{ vars.VITE_API_URL }}
+          # staging の Worker が署名した proof を、このビルドの /verify/ では時刻証拠に数える (#321)。
+          # production のビルドには渡さない (本番の verify は staging の鍵を信頼しない)
+          TYPEDCODE_TRUST_STAGING_KEYS: 'true'
 
       - name: Merge build outputs
         run: |
@@ -445,6 +448,9 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
           VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          # staging の Worker が署名した proof を、このビルドの /verify/ では時刻証拠に数える (#321)。
+          # production のビルドには渡さない (本番の verify は staging の鍵を信頼しない)
+          TYPEDCODE_TRUST_STAGING_KEYS: 'true'
 
       - name: Merge build outputs
         run: |

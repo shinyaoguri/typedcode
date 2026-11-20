@@ -166,6 +166,23 @@ export interface StoredTabData {
   sessionStartToken?: SessionStartToken | null;
 }
 
+/**
+ * タブのチェーンの書き込み位置 (IndexedDB の `tabProgress`。#627)。
+ *
+ * イベントを append するたびに変わる小さな状態だけを、全文とチェックポイントを持つ tabs 行から分けて持つ。
+ * `SessionStorageService.appendEvent` が events の add と同じ transaction で put する (片方だけ残らない)。
+ * 読み出し (`getTab` / `loadTabs`) は tabs 行と重ね、`lastWrittenEventIndex` の大きい方の
+ * `lastWrittenEventIndex` / `currentHash` を採る。復元のチェーンの続きは、これではなく events 末尾の hash を正とする (#322)。
+ */
+export interface StoredTabProgressData {
+  tabId: string;
+  sessionId: string;
+  lastWrittenEventIndex: number;
+  currentHash: string | null;
+  /** 最後に append した時刻 (epoch ms) */
+  lastModifiedAt: number;
+}
+
 /** イベントデータ（IndexedDB格納用） */
 export interface StoredEventData {
   id?: number;

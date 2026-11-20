@@ -14,7 +14,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { CHECKPOINT_PUBLIC_KEYS, checkRegistryKeyValidityAt } from '../checkpointKeys/index.js';
+import { CHECKPOINT_PUBLIC_KEYS, asDevelopmentKeys, checkRegistryKeyValidityAt } from '../checkpointKeys/index.js';
+import { CHECKPOINT_PUBLIC_KEYS as REGISTRY_CHECKPOINT_KEYS } from '../checkpointKeys/registry.js';
 import { EXAM_AUTHORITY_KEYS } from '../examAuthorityKeys/index.js';
 import type { RegistryKeyValidityFields } from '../checkpointKeys/index.js';
 
@@ -78,5 +79,39 @@ describe.each(REGISTRIES)('registry format: $name', ({ entries }) => {
   it('keyId が重複しないこと (findCheckpointPublicKey は先勝ちで解決する)', () => {
     const ids = entries.map((e) => e.keyId);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+/**
+ * 鍵の環境 (#321)。検証器は環境で時刻証拠に数えるかを決めるので、registry.ts のエントリに環境が無いと
+ * (JSON の registry と同じく) 信頼されなくなる。追加した鍵の書き忘れ・綴りの誤りをここで止める。
+ */
+describe('registry format: checkpoint key environments (#321)', () => {
+  it('gives every registry.ts entry an environment of production or staging', () => {
+    for (const entry of REGISTRY_CHECKPOINT_KEYS) {
+      expect(['production', 'staging'], `${entry.keyId}.environment`).toContain(entry.environment);
+    }
+  });
+
+  it('keeps the production and staging keys apart (the staging key is not labeled production)', () => {
+    const environmentOf = (keyId: string) => REGISTRY_CHECKPOINT_KEYS.find((k) => k.keyId === keyId)?.environment;
+
+    expect(environmentOf('tcp-202605-fd6d42')).toBe('production');
+    expect(environmentOf('tcp-202606-0e46c9')).toBe('staging');
+  });
+
+  it('labels a local key as development even when it claims another environment', () => {
+    const [local] = asDevelopmentKeys([
+      {
+        keyId: 'tcp-local-claims-production',
+        algorithm: 'ECDSA-P256',
+        publicKeyJwk: { kty: 'EC', crv: 'P-256', x: 'x', y: 'y' },
+        status: 'active',
+        validFrom: '2026-01-01T00:00:00Z',
+        environment: 'production',
+      } as Parameters<typeof asDevelopmentKeys>[0][number],
+    ]);
+
+    expect(local?.environment).toBe('development');
   });
 });

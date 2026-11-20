@@ -3,7 +3,7 @@
  * 言語に応じたExecutorの選択、実行、中断を管理
  */
 
-import type { ILanguageExecutor, ParsedError } from '../executors/interfaces/ILanguageExecutor.js';
+import type { ILanguageExecutor, InteractiveStdin, ParsedError } from '../executors/interfaces/ILanguageExecutor.js';
 import type { CTerminal } from '../terminal/CTerminal.js';
 import type { CodeExecutionEventData, CodeExecutionOutcome, EventType } from '@typedcode/shared';
 import { getCExecutor, WasmerSdkCorruptedError } from '../executors/c/CExecutor.js';
@@ -276,8 +276,15 @@ export class CodeExecutionController {
             this.callbacks.onShowErrors?.(errors, ownerTabId);
           }
         },
-        onStdinReady: (stdinStream: WritableStream<Uint8Array>) => {
-          if (isCurrent()) this.terminal?.connectStdin(stdinStream);
+        onStdinReady: (stdin: InteractiveStdin) => {
+          // 選択の無い Ctrl+C は停止ボタンと同じ abort (#707)。古い run の Ctrl+C は新しい run を止めない
+          if (isCurrent()) {
+            this.terminal?.connectStdin(stdin, {
+              onInterrupt: () => {
+                if (isCurrent()) this.abort();
+              },
+            });
+          }
         },
         onProgress: (msg: string) => {
           if (isCurrent()) this.terminal?.writeInfo(msg + '\n');

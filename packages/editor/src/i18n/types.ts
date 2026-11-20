@@ -441,6 +441,10 @@ export interface TranslationKeys {
     runtimeResetComplete: string;
     runtimeCorruptionDetected: string;
     runtimeResetting: string;
+    /** 「入力終了」ボタンの文字 (#707) */
+    endInput: string;
+    /** 「入力終了」ボタンの title (EOF の説明) */
+    endInputTitle: string;
   };
 
   // Log viewer
@@ -807,12 +811,18 @@ export interface TranslationKeys {
       kindClass: string;
       invalidTarget: string;
       classHint: string;
+      policy: string;
+      policyClassroom: string;
+      policyClassroomHint: string;
+      policyTakeHome: string;
+      policyTakeHomeHint: string;
       buttonExam: string;
       buttonClass: string;
       working: string;
       errorNoTarget: string;
       errorUnknownExam: string;
       errorNoKey: string;
+      errorNoPolicy: string;
       errorGeneric: string;
       errorDirty: string;
       errorEmpty: string;

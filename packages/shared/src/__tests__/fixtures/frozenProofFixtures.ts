@@ -26,7 +26,11 @@ export function loadFrozenExamPackage(name: 'exam-v1' | 'exam-v2'): unknown {
 }
 
 export function frozenCheckpointKey(): CheckpointPublicKey {
-  return loadFrozenFixture<CheckpointPublicKey>('checkpoint-key.json');
+  // 鍵の JSON は作り直さない (README)。環境 (#321) は JSON の後から入った項目なので、読み込むときに足す
+  return {
+    ...loadFrozenFixture<Omit<CheckpointPublicKey, 'environment'>>('checkpoint-key.json'),
+    environment: 'production',
+  };
 }
 
 export function frozenExamAuthorityKey(): ExamAuthorityKey {
