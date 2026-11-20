@@ -15,7 +15,9 @@
     "preshots": "npm run setup && npm run install-browsers",
     "shots": "SHOTS=1 playwright test --grep @shots",
     "prebench:posw": "npm run setup && npm run install-browsers",
-    "bench:posw": "BENCH=1 playwright test --grep @bench --workers=1",
+    "bench:posw": "BENCH=1 playwright test posw.bench.spec.ts --grep @bench --workers=1",
+    "prebench:export": "npm run setup && npm run install-browsers",
+    "bench:export": "BENCH=1 playwright test export-capacity.bench.spec.ts --grep @bench --workers=1",
     "report": "playwright show-report",
     "install-browsers": "playwright install chromium",
     "typecheck": "tsc --noEmit"
