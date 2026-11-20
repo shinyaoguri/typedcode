@@ -372,6 +372,10 @@ export const ja: VerifyTranslationKeys = {
         'セッション開始トークンが別の端末向けに発行されているため、開始時刻を確かめられません（チェーン根は自己整合しており、内容の改ざんではありません）',
     },
     issueRootNotAnchored: 'チェーン根がサーバアンカーされていません（開始時刻が未固定・オフライン捏造の余地）',
+    issueRootUntrustedKeyEnvironment:
+      'セッション開始トークンは staging 環境の鍵 ${keyId} で署名されているため、開始時刻の根拠に数えていません（内容の改ざんではありません。この検証器は本番の鍵だけを信頼します）',
+    issueAnchoringUntrustedKeyEnvironment:
+      '署名チェックポイントは staging 環境の鍵 ${keyId} で署名されているため、時刻アンカーに数えていません（内容の改ざんではありません。この検証器は本番の鍵だけを信頼します）',
     issueNotPureTyping: 'ピュアタイピングではありません（ペースト/バルク挿入あり）',
     issueExamBindingFailed: '問題束縛（署名/内容ハッシュ）の検証に失敗しました',
     issueExamUnverified: '問題パッケージ未読込のため真正性は未確認です',

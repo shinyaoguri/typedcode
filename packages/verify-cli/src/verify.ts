@@ -13,6 +13,7 @@ import {
   normalizeProofLanguage,
   parseVersionStrict,
   EXAM_AUTHORITY_KEYS,
+  trustedCheckpointKeyEnvironments,
   type ProofFile,
   type VerificationProgressCallback,
   type VerificationMode,
@@ -27,6 +28,7 @@ import {
   type CheckpointPublicKey,
   type ProofVersionStatus,
   type RootAnchorFailure,
+  type UntrustedEnvironmentKey,
   type AcceptancePolicyResult,
 } from '@typedcode/shared';
 import { ProgressBar } from './progress.js';
@@ -100,6 +102,12 @@ export interface CLIVerificationResult {
    * 改ざんではないので整合性は落ちないが、`valid` は false (exit 1)。`keyId` は proof 由来。
    */
   rootAnchorFailure?: RootAnchorFailure;
+  /**
+   * token の署名は検証できたが、鍵の環境 (既定では staging) を信頼しなかったので root をアンカーに数えなかった
+   * (#321。shared の `FullVerificationResult.rootAnchorUntrustedKey`)。`valid` は落とさない。
+   * 署名 cp の側は `signedCheckpoints.untrustedKeys`。
+   */
+  rootAnchorUntrustedKey?: UntrustedEnvironmentKey;
   /**
    * 受理ポリシー (#296 / ADR-0043) の評価結果 (shared の `FullVerificationResult.policy` そのもの)。
    * `--require-*` を 1 つも立てなければ `applied` は全部 false で、`violations` は空。
@@ -182,6 +190,12 @@ export interface VerifyProofOptions {
    * (本番運用はこちら)。テスト鍵を注入して web↔CLI パリティを比較するための口 (#216)。
    */
   signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
+  /**
+   * staging の鍵で署名された token / 署名 cp を時刻証拠に数えるか (#321。`--allow-staging-keys`)。
+   * 既定 false は production と development の鍵だけを数える。信頼する環境の決め方は shared の
+   * `trustedCheckpointKeyEnvironments` (verify の staging ビルドと同じ関数)。
+   */
+  allowStagingKeys?: boolean;
 }
 
 /**
@@ -244,6 +258,7 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     // 免除は検証済み束縛のみ。package 未提供 (binding=undefined) の exam proof は gate 対象。
     examBindingVerified: binding?.valid === true,
     signedCheckpointKeyRegistry: options.signedCheckpointKeyRegistry,
+    trustedKeyEnvironments: trustedCheckpointKeyEnvironments({ allowStaging: options.allowStagingKeys === true }),
   });
 
   progressBar.complete();
@@ -380,6 +395,7 @@ export async function verifyProof(proof: ProofFile, options: VerifyProofOptions 
     signedCheckpoints: result.signedCheckpoints,
     rootAnchored: result.rootAnchored ?? false,
     rootAnchorFailure: result.rootAnchorFailure,
+    rootAnchorUntrustedKey: result.rootAnchorUntrustedKey,
     policy: result.policy,
     analysis,
     assurance,

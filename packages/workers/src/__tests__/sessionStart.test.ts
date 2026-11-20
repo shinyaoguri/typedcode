@@ -41,6 +41,7 @@ beforeAll(async () => {
     publicKeyJwk: await crypto.subtle.exportKey('jwk', keyPair.publicKey),
     status: 'active',
     validFrom: '2026-01-01T00:00:00.000Z',
+    environment: 'production',
   };
 });
 
