@@ -112,7 +112,10 @@ export interface AppContext {
   skipUnloadConfirm: boolean;
   /** 現在のモード (ADR-0011): URL パスで確定する (casual/class/assignment/exam)。 */
   mode: EditorMode;
-  /** mode に対応する能力集合 (単一の真実源)。 */
+  /**
+   * 実効の能力 (単一の真実源)。mode の能力に、授業/課題で読み込んだ `.tcclass` の方針 (#645) を重ねたもの。
+   * 方針の無い問題・未読込では mode の能力のまま。書き換えは `app/classPolicyRuntime.ts` の `applyClassPolicy` だけが行う。
+   */
   capabilities: ModeCapabilities;
   /** 試験モードか (= mode === 'exam')。既存の試験専用分岐が使う派生フラグ。 */
   examMode: boolean;

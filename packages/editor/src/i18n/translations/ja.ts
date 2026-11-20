@@ -784,7 +784,8 @@ export const ja: TranslationKeys = {
       classHint: '授業用の .tcclass は封印・署名をしません。署名鍵と監督コードは要りません。',
       policy: '実施のしかた',
       policyClassroom: '教室で実施',
-      policyClassroomHint: '開いたときに画面共有を求め、全画面かどうかを記録します。提出は認証サーバに届かなくても出せます。',
+      policyClassroomHint:
+        '開いたときに画面共有を求め、全画面かどうかを記録します。提出は認証サーバに届かなくても出せます。',
       policyTakeHome: '持ち帰り',
       policyTakeHomeHint: '画面共有を求めず、全画面かどうかも記録しません。',
       buttonExam: '.tcexam を書き出す',

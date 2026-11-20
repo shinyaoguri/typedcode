@@ -2,12 +2,15 @@
  * 状態契約 (packages/editor/AGENTS.md「状態契約」) のうち、DOM の 1 要素に閉じないもの。
  *
  * - `html[data-app-state]`: アプリの段階
+ * - `html[data-cap-screenshots]` / `[data-cap-fullscreen-tracking]` / `[data-cap-pre-export-best-effort]`:
+ *   `.tcclass` の方針 (#645) が決める 3 つの実効の能力 (`true` / `false`)
  * - `window.__tcTestSnapshot` (dev 限定): E2E が DOM の契約と突き合わせる内部状態の写し
  *
  * E2E は翻訳テキストや CSS クラスではなくこれを読む (ADR-0034)。値や形を変えるときは
  * packages/e2e の読み手 (`tests/helpers/app.ts` の `EditorApp`) と同じ PR で変える。
  */
 
+import type { ModeCapabilities } from './mode.js';
 import type { TabState } from '../ui/tabs/TabManager.js';
 import { tabFullFilename } from '../ui/tabs/TabUIController.js';
 
@@ -29,6 +32,19 @@ export function setAppState(state: AppState, root: HTMLElement = document.docume
 
 export function getAppState(root: HTMLElement = document.documentElement): AppState | null {
   return (root.dataset.appState as AppState | undefined) ?? null;
+}
+
+/**
+ * 方針 (#645) が決める 3 つの実効の能力を `html` に出す。起動時と、問題を読み込んで方針を当てたときに呼ぶ。
+ * E2E は入口 (`/class` `/assignment`) と方針の組み合わせで能力が同じになることをこれで見る。
+ */
+export function setCapabilityContract(
+  caps: Pick<ModeCapabilities, 'screenshots' | 'fullscreenTracking' | 'preExportBestEffort'>,
+  root: HTMLElement = document.documentElement
+): void {
+  root.dataset.capScreenshots = String(caps.screenshots);
+  root.dataset.capFullscreenTracking = String(caps.fullscreenTracking);
+  root.dataset.capPreExportBestEffort = String(caps.preExportBestEffort);
 }
 
 /** `__tcTestSnapshot` のタブ 1 本分。filename は DOM の `data-filename` と同じ拡張子込みの名前。 */

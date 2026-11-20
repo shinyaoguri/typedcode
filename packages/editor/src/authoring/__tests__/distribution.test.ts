@@ -186,13 +186,16 @@ describe('exporting an exam definition', () => {
   it.each([
     ['classroom', 'assignment', 'class'],
     ['take-home', 'class', 'assignment'],
-  ] as const)('writes a %s policy that opens under /%s with the /%s capabilities', async (preset, openedIn, expected) => {
-    const exam = 'format: tc-exam/1\nexamId: c\nkind: class\nlanguages: [c]\nproblems: [合計.problem.yaml]\n';
-    const { workspace } = await setup({ ...material(), 'c.exam.yaml': exam });
-    const distribution = await exportExam(workspace, 'c.exam.yaml', undefined, preset);
-    const pkg = parseClassPackage(JSON.parse(distribution.content));
-    expect(capabilitiesWithPolicy(openedIn, pkg?.policy ?? null)).toEqual(MODE_CAPABILITIES_FIXTURE[expected]);
-  });
+  ] as const)(
+    'writes a %s policy that opens under /%s with the /%s capabilities',
+    async (preset, openedIn, expected) => {
+      const exam = 'format: tc-exam/1\nexamId: c\nkind: class\nlanguages: [c]\nproblems: [合計.problem.yaml]\n';
+      const { workspace } = await setup({ ...material(), 'c.exam.yaml': exam });
+      const distribution = await exportExam(workspace, 'c.exam.yaml', undefined, preset);
+      const pkg = parseClassPackage(JSON.parse(distribution.content));
+      expect(capabilitiesWithPolicy(openedIn, pkg?.policy ?? null)).toEqual(MODE_CAPABILITIES_FIXTURE[expected]);
+    }
+  );
 
   it('refuses to create a class package without a chosen policy', async () => {
     const exam = 'format: tc-exam/1\nexamId: c\nkind: class\nlanguages: [c]\nproblems: [合計.problem.yaml]\n';

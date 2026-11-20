@@ -53,7 +53,11 @@ describe('setStorageNamespace is the single switch that re-points every getter',
 describe('keys that the reset removes (modeLocalStorageKeys / modeSessionStorageKeys)', () => {
   it('lists only the current mode keys for casual (un-suffixed)', () => {
     setStorageNamespace('casual');
-    expect(modeLocalStorageKeys()).toEqual(['typedcode-exam-packages', 'typedcode-class-problems']);
+    expect(modeLocalStorageKeys()).toEqual([
+      'typedcode-exam-packages',
+      'typedcode-class-problems',
+      'typedcode-class-policy',
+    ]);
     expect(modeSessionStorageKeys()).toEqual(['typedcode-tabs', 'typedcode-session-active']);
   });
 
@@ -62,6 +66,7 @@ describe('keys that the reset removes (modeLocalStorageKeys / modeSessionStorage
     expect(modeLocalStorageKeys()).toEqual([
       'typedcode-exam-packages-assignment',
       'typedcode-class-problems-assignment',
+      'typedcode-class-policy-assignment',
     ]);
     expect(modeSessionStorageKeys()).toEqual(['typedcode-tabs-assignment', 'typedcode-session-active-assignment']);
   });
