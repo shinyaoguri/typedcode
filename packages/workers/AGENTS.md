@@ -2,11 +2,21 @@
 
 `@typedcode/workers` は **Cloudflare Workers の API サーバ**。Turnstile 検証・セッション開始トークンと署名済みチェックポイントの発行を担当する。
 
+このファイルには、毎回読む責務・不変条件・罠だけを置く。理由・例外・表・一覧は [docs/](docs/) にあるので、下の「触る前に読む」で当たる文書を、コードを触る前に読む (置き場の規則は root の [AGENTS.md](../../AGENTS.md)「ドキュメント階層」)。
+
 ## 責務と境界
 
 - **持つ**: Turnstile API への HTTP 検証、ECDSA-P256 でのセッション開始トークン・cp 署名、KV を使った per-session のリプレイ防止と冪等処理
 - **持たない (#415 でやめた)**: export 前アテステーションの署名。`/api/verify-captcha` は Turnstile の結果を `signature: 'unsigned'` で返す (形は旧 editor との互換のために残す)。署名用の secret も持たない
 - **持たない**: ハッシュチェーン計算 (shared に委譲)、proof の保管 (Workers は stateful な保管庫ではない)、ユーザー個別ストレージ
+
+## 触る前に読む
+
+| 触るもの | 先に読む |
+|---|---|
+| `/api/checkpoint/sign` のエラーコード、CORS (`ALLOWED_ORIGINS`)、per-session の上限、Rate Limiting | [docs/api.md](docs/api.md) |
+| KV のキー・record の形・タブ台帳、容量の見積もり、KV が枯渇したときの挙動 | [docs/kv.md](docs/kv.md) |
+| `wrangler*.toml`・シークレットの宣言・`Env` の型、ローカルの立ち上げ、デプロイ環境と GitHub Environments | [docs/operations.md](docs/operations.md) |
 
 ## 重要な不変条件
 
@@ -14,7 +24,7 @@
 2. **`CHECKPOINT_SIGNING_KEY_*` シークレット**: 本番では `wrangler secret put` で投入。秘密鍵を git に入れない
 3. **公開鍵レジストリは append-only**: `packages/shared/src/checkpointKeys/registry.ts`。失効は `status: 'revoked'` で表現し、削除しない。**鍵のローテは必ず `keyId` の変更を伴う**: `getSigningKey` は署名のたびにレジストリの公開鍵と env の秘密 JWK が対であること (`SIGNING_KEY_MISMATCH`) と、その鍵が今有効であること (`SIGNING_KEY_INVALID`) を確かめるので、同一 `keyId` のまま JWK だけを差し替えると 500 になる。キャッシュは `keyId` と JWK 文字列の**両方**が一致したときだけ再利用する (#285)
 4. **KV は eventually consistent**: 同一 key への高頻度書き込みは ~1 write/sec の制限あり。cp トリガが頻発しないよう shared 側がハイブリッドトリガを使う ([docs/adr/0001-hybrid-checkpoint-trigger.md](../../docs/adr/0001-hybrid-checkpoint-trigger.md))
-5. **CORS のオリジン**: 編集 / 検証アプリのドメインを許可。ワイルドカード禁止 (下記「CORS と濫用防止の設計」参照)
+5. **CORS のオリジン**: 編集 / 検証アプリのドメインを許可。ワイルドカード禁止 ([docs/api.md](docs/api.md)「CORS と濫用防止の設計」参照)
 6. **`sessionId` は信用しない**: クライアントが投げる任意の文字列。サーバ側で `firstSeenAt` を KV に保存し改ざんを防ぐ
 7. **`/api/checkpoint/sign` は `sessionStartToken` 前提** (ADR-0027): token 検証は KV read より**前**に行い、無認証リクエストに KV コストを払わない。sessionId は token に束縛され、新規 sessionId の作成コスト = Turnstile 1 回になる。exam は署名専用 token を editor が best-effort 取得する (root には焼かない)。**token の最大有効期間 `SESSION_TOKEN_MAX_AGE_MS` (30 日) は sign 経路 (`checkpoint.ts`) だけで検査し、検証器 (`verifySessionStartToken`) は age を見ない** (#227): 検証器も同じ関数を呼ぶので、そこに入れると過去の proof の採点が壊れる。無期限だと KV TTL (7 日) ごとに `signedCount` とタブ台帳がリセットされ続けるのを有界化する。未来の `issuedAt` は弾かない (作れるのは署名鍵を持つ者だけで、その者は sign を経由しなくてよい)
 8. **`serverTimestamp` は同一 record 内で厳密増加させる** (#226): 検証器は連続する署名 cp の `serverTimestamp` に厳密増加を要求するので、`clampServerTimestamp` が署名前に `max(now, lastServerTimestamp + 1ms)` へクランプし、その値で署名・保存する (発動時は `console.warn`、sessionId は出さない)。既に読んだ record を使うので KV の読み書きは増やさない。限界: KV は結果整合なので、別コロで record が stale に見える窓や、put が 429 で落ちた直後は塞げない (そこは検証器側の許容 = 別件)。冪等再送は前回 envelope を返すので対象外
@@ -50,245 +60,6 @@ src/
 | `/health` | GET | ヘルスチェック。dev (`npm run dev` の `--var DEV_WORKTREE_ID`) では作業ツリーの識別子 `worktree` も返す (e2e の照合用。#552)。署名鍵の readiness は [README の `/health`](README.md#get-health) を参照 |
 
 `/api/session/start` (ADR-0017) は **Turnstile ゲート + root アンカー + 人間ゲート**を 1 リクエストで兼ねる。`handleSessionStart` (`src/index.ts`) が `verifyTurnstile` + hostname 照合 → `getSigningKey` (checkpoint.ts から export、鍵流用) で `createSessionStartToken` を署名発行。**KV を使わない** (ステートレス・冪等不要)。入力検証は shared の `validateSessionStartInput` (sessionId / fingerprintHash)。トークン検証 (registry-only) は shared の `verifySessionStartToken`。
-
-## エラーコード (`/api/checkpoint/sign`)
-
-| Code | HTTP | 意味 |
-|---|---|---|
-| `SCHEMA_INVALID` | 400 | リクエスト body のスキーマ違反 |
-| `TOKEN_REQUIRED` | 401 | `sessionStartToken` 不在 (ADR-0027。KV read より前に弾く) |
-| `TOKEN_INVALID` | 401 | token の署名 / registry / 形式が不正 (内部理由はログのみ) |
-| `TOKEN_SESSION_MISMATCH` | 401 | `token.payload.sessionId` ≠ `input.sessionId` (token 使い回しで新規 sessionId を連打する手口を塞ぐ) |
-| `TOKEN_EXPIRED` | 401 | `token.payload.issuedAt` から `SESSION_TOKEN_MAX_AGE_MS` (30 日) を超えている (#227。KV read より前)。editor は恒久失敗にせず、より新しい token が解決されたら再送する |
-| `TAB_LIMIT_EXCEEDED` | 429 | per-session タブ台帳 (`tabs:{sessionId}`) が `MAX_TABS_PER_SESSION` (64) 超過 |
-| `NON_MONOTONIC` | 409 | `checkpointIndex` が単調増加していない |
-| `CHECKPOINT_CONFLICT` | 409 | 同一 index で内容不一致 (冪等性が成立しない) |
-| `SESSION_LIMIT_EXCEEDED` | 429 | KV の `SESSION_MAX_CHECKPOINTS` 超過 |
-| `SIGNING_KEY_NOT_CONFIGURED` | 500 | `CHECKPOINT_SIGNING_KEY_*` 未設定 |
-| `SIGNING_KEY_UNKNOWN` | 500 | `keyId` がレジストリに存在しない |
-| `SIGNING_KEY_MISMATCH` | 500 | env の秘密 JWK がレジストリの同 `keyId` の公開鍵と対ではない (JWK の差し替えミス。署名前に検知) |
-| `SIGNING_KEY_INVALID` | 500 | レジストリの署名鍵が現時点で無効 (revoked / 有効期間外 / 日時 parse 不能。`checkRegistryKeyValidityAt`)。`revokedAt` が未来の鍵は警告ログのみで署名する |
-| `SIGNING_ERROR` | 500 | 署名計算で予期しない失敗 |
-| `SESSION_PERSIST_FAILED` | 503 | **初回** checkpoint の KV 書き込み失敗。`firstSeenAt` が固定されないため署名済み envelope は返さずクライアントにリトライさせる (2 回目以降の書き込み失敗は best-effort で 200) |
-| `SESSION_STATE_UNAVAILABLE` | 503 | KV の**読み取り**失敗、または読めた record が不正形 (#297)。「existing = null」と混同すると既存セッションに別の `firstSeenAt` で署名してしまう (#151/#153) ため、署名せずリトライさせる |
-
-`SCHEMA_INVALID` には `sessionId` / `tabId` の文字種違反 (`^[A-Za-z0-9._-]+$` 外。#297) も含む。
-
-## CORS と濫用防止の設計
-
-CORS は `ALLOWED_ORIGINS` (env var, カンマ区切り) による**許可リスト方式**で実装する (`src/index.ts` の `resolveCorsOrigin`)。
-
-許可判定の優先順位 (**fail-closed**):
-
-1. `ALLOWED_ORIGINS` に一致 (**完全一致** or `https://*.domain` の**サブドメイン wildcard**) → その Origin を reflect
-2. `ENVIRONMENT === 'development'` のとき `localhost` / `127.0.0.1` → 自動許可 (DX)
-3. それ以外 → `Access-Control-Allow-Origin` を**付与しない** (ブラウザのクロスオリジン読み取りを拒否)
-
-ワイルドカード `*` は一切返さない (Origin 不在のリクエストにはヘッダ自体を付けない)。許可オリジンは `wrangler.{production,staging}.toml` の `[vars]` に直接 commit する (公開ドメインでありシークレットではない)。
-
-**fail-closed**: 非 development で `ALLOWED_ORIGINS` が空 / 不一致なら拒否する。以前は未設定時に任意 Origin を reflect する fail-open だったが、staging/production の config に値を commit したため廃止した。**新しい環境を追加するときは `ALLOWED_ORIGINS` の設定が必須** (未設定だとフロントから API を読めない)。
-
-**editor と verify は同一 Pages プロジェクト** (`editor=/`, `verify=/verify`) にデプロイされるため origin は環境ごとに 1 つ。実際の設定:
-
-| 環境 | Worker | `ALLOWED_ORIGINS` | 理由 |
-|---|---|---|---|
-| production | `typedcode-api` | `https://typedcode.dev,https://typedcode.pages.dev` | カスタムドメイン + 既定 pages.dev |
-| staging | `typedcode-api-staging` | `https://*.typedcode.pages.dev` | staging デプロイ (`staging.typedcode.pages.dev`) + PR プレビュー (`<branch>.typedcode.pages.dev`) を許可 |
-| dev (local) | (local) | 未設定 | `ENVIRONMENT=development` で localhost 自動許可 |
-
-`*.domain` wildcard は **1 段以上のサブドメインを要求** し (apex は含めない)、先頭リテラルドット要求で `https://eviltypedcode.pages.dev` のような prefix 偽装を弾く。`*.pages.dev` のように広げると他人の Pages サイトまで通るので**自プロジェクト配下に限定**すること (`<branch>.<project>.pages.dev` は自プロジェクトの branch alias に限られる)。新しいカスタムドメイン (例: `www.`) を足すときは production の `ALLOWED_ORIGINS` に追記する。
-
-**CORS の限界と濫用防止**: CORS はブラウザのクロスオリジン**読み取り**のみを制限し、サーバ間アクセス (curl 等) は防げない。`/api/checkpoint/sign` は「任意 content への serverTimestamp 付き署名」を返すだけで、それ自体は何の権限も与えない (署名は『この内容がこのサーバ時刻に提示された』ことしか証明しない)。署名 API の濫用に対する実際の防御線は:
-
-- **per-(sessionId, tabId) 上限** (タブ単位。名前は `SESSION_` だが per-tab): `SESSION_MAX_CHECKPOINTS` (50,000) と `SESSION_TTL_SECONDS` (7 日)。ただし `sessionId`/`tabId` はクライアント任意文字列なので**新規 sessionId を連打されると効かない** (per-key 上限のため)
-- **入力サイズ上限**: `MAX_JSON_BODY_BYTES` (8KiB。`src/body.ts`) を**全 POST で読み込み中に強制** (Content-Length は信用せず実バイトで打ち切り、Turnstile fetch・署名・KV に触れる前に 400)。Turnstile トークンは型・非空・`MAX_TURNSTILE_TOKEN_LENGTH` (2048) を検査。スキーマ厳格化 (64-hex / 最大長) も併用
-- **IP / グローバル rate limit**: Cloudflare の WAF / Rate Limiting Rules に委譲 (Worker コード外。下記の通り**必ず設定する**)
-
-### Rate Limiting の設定 (#136・defense-in-depth)
-
-**恒久対策は実装済み** (ADR-0027): `/api/checkpoint/sign` は `sessionStartToken` 前提になり、無認証リクエストは KV に触れる前に 401 で棄却される。新規 sessionId の作成コストは Turnstile 1 回に転嫁され、tabId 連打も per-session タブ台帳 (64) で有界。Rate Limiting Rule は **defense-in-depth** として引き続き推奨する (ECDSA 検証そのものの CPU コストと、session/start への負荷を抑える):
-
-1. Cloudflare ダッシュボード → 対象 Worker のゾーン → Security → WAF → Rate limiting rules
-2. Rule: `URI Path eq "/api/checkpoint/sign"` かつ method POST に対し、**同一 IP から 60 秒あたり N リクエスト** (署名 API の実利用は 1 セッション数秒〜十数秒に 1 回程度なので N=60 程度から始め、正規利用のログを見て調整) を超えたら `Block` (または `Managed Challenge`)
-3. `/api/session/start` にも同様の Rule を推奨 (Turnstile ゲートはあるが署名を伴う)
-4. 設定後、正規の連続 checkpoint (長時間セッション) が誤ブロックされないことを staging で確認する
-
-> この Rule は Worker コード外 (ダッシュボード管理) なのでリポジトリに設定証跡が残らない。**新環境 (staging/production) を立てるたびに手動で入れること。** 未設定でも ADR-0027 の token ゲートで KV write 増幅 DoS は成立しないが、署名 API の CPU 消費までは抑えられない。
-
-## KV ネームスペース
-
-session record のキーは **`session:{sessionId}:{tabId}`** (タブ毎)。`checkpointIndex` はタブ毎に 0 始まりで sessionId はブラウザセッション共有のため、sessionId だけでキーイングすると複数タブ (class の N 問タブ等) で 2 枚目以降が衝突して 1 つも署名されない。verifier は `firstSeenAt` をタブ間で共有要求しない (proof = 1 タブ) ので per-tab で安全。
-
-| Binding | キー | 内容 | TTL |
-|---|---|---|---|
-| `CHECKPOINT_SESSIONS` | `session:{sessionId}:{tabId}` | session record: `firstSeenAt`, `lastCheckpointIndex`, `lastServerTimestamp`, `signedCount`, `lastEnvelope` (冪等用) | 7 日 |
-| `CHECKPOINT_SESSIONS` | `tabs:{sessionId}` | per-session タブ台帳 (`string[]`、ADR-0027 のタブ上限用) | 7 日 |
-
-**キーの不変条件 (#297)**:
-
-- キーは `checkpoint.ts` の `sessionRecordKey` / `tabRegistryKey` だけが組み立てる。**レコード種別ごとに接頭辞を分ける** (かつて台帳を `session:{sessionId}:tabs` に置いていたため、tabId=`tabs` の record と同じキーになり、後続タブの署名が例外になった)。新しい種別を足すときも別接頭辞にすること
-- `sessionId` / `tabId` は shared の `validateSignedCheckpointInput` / `validateSessionStartInput` が **`^[A-Za-z0-9._-]+$` (≤200 文字)** に限る。区切り `:` を締め出すので `a:b`/`c` と `a`/`b:c` が同じ record キーに潰れない。ASCII 限定なので KV キーのバイト長上限 (512) にも収まる。editor の ID は `crypto.randomUUID()` なので常に集合内。2 つの validator の文字種は**同じ集合に揃える** (ずれると token は発行できるが署名できない sessionId が生まれる)
-- KV の `get<T>('json')` は cast するだけなので、読んだ値は `isSessionRecord` / `isTabRegistry` で形を確かめる。不正形の **record は 503 `SESSION_STATE_UNAVAILABLE`** (null 扱いにすると別 `firstSeenAt` で署名する #151 の罠)、不正形の **台帳は read 失敗と同じ扱い** (cap 判定をスキップして署名は通す)
-- **record キーは変えない**: 変えると進行中セッションが新しい `firstSeenAt` で署名され、editor の #151 ガードで署名が止まる
-
-**移行 (#297 の台帳キー変更)**: 旧台帳 `session:{sessionId}:tabs` は読まれなくなり、TTL 7 日で自然消滅する。デプロイ直後の進行中セッションは台帳が空から数え直しになるが、cap が一時的に甘くなる側にしか倒れないので特別な移行作業は不要。record キーは据え置きなので署名の継続性 (`firstSeenAt`・冪等再送) には影響しない。
-
-**firstSeenAt の分裂 (#151)**: KV は結果整合で他コロへの伝播に最大 ~60 秒かかる。cp 周期 (~10s) 内にコロ切替 (モバイル網等) が起きると、切替先では `existing=null` と誤認して**別の `firstSeenAt`** で署名しうる。verifier は全 envelope の firstSeenAt 完全一致を要求するため、そのまま proof に載ると正直な提出が丸ごと fail する。**緩和はクライアント側** — editor の `SignedCheckpointService` が既知の firstSeenAt と食い違う envelope を破棄してバックオフ再送する (伝播後のリトライは正しい値で署名される)。恒久対策 (Durable Object での per-session 逐次化) は W5 の ADR 課題。
-
-### KV の容量見積もりと枯渇時の挙動 (#330)
-
-**授業・試験で使う環境 (staging / production とも) は Workers Paid が前提**。Free の KV write は 1 日 1,000 回で、40 人の授業なら開始から数分で尽きる。KV を使う API は `/api/checkpoint/sign` だけ (`/api/session/start` と `/api/verify-captcha` は KV に触れない)。
-
-**1 リクエストあたりの KV 操作** (`checkpoint.ts` の `handleSignCheckpoint`):
-
-| 場面 | read | write | 根拠 |
-|---|---|---|---|
-| 2 回目以降の署名 | 1 (session record) | 1 (session record) | 冒頭の `CHECKPOINT_SESSIONS.get(sessionKey)` と、署名後の `put(sessionKey)` |
-| タブの初回署名 (`isFirstCheckpoint`) | +1 (タブ台帳 `tabs:{sessionId}`) | +1 (台帳。そのタブが台帳に無いときだけ) | `get(tabsKey)` と `put(tabsKey)` |
-| 冪等再送 / `NON_MONOTONIC` / `CHECKPOINT_CONFLICT` / `SESSION_LIMIT_EXCEEDED` | 1 | 0 | 署名と `put` の前に return する |
-| token の不備 (401) | 0 | 0 | token 検証は KV read より前 (不変条件 7) |
-
-**見積もりの式**: 1 人あたりの cp 数/分 `N = max(60 / MAX_CHECKPOINT_INTERVAL_S, イベント数/分 ÷ MAX_EVENTS_PER_CHECKPOINT)`。`MAX_*` は shared の `DEFAULT_MAX_CHECKPOINT_INTERVAL_MS` / `DEFAULT_MAX_EVENTS_PER_CHECKPOINT` ([ADR-0001](../../docs/adr/0001-hybrid-checkpoint-trigger.md)。`CheckpointManager.shouldCreateCheckpoint`)。何も操作していない間は cp が出ないので 0 になる。現行の既定値では間隔側が 6 件/分、打鍵が 600 イベント/分を超えるとイベント側が支配する。
-
-```
-KV write ≈ 人数 × 分 × N + タブ数 × 1    (台帳の write)
-KV read  ≈ 人数 × 分 × N + タブ数 × 1    (台帳の read) + 冪等再送・409 などの再送ぶん
-```
-
-例: 40 人 × 90 分 × 6 件/分 = 約 21,600 write (read もほぼ同数)。Free の 1 日 1,000 write は約 4 分で尽き、1 人あたりでも約 2.8 時間ぶんにしかならない。Paid なら月に含まれる 100 万 write の約 2% で、超過課金になっても write 分で 1 コマ約 $0.11。数字は上の式からの**机上の見積もり**で、負荷試験で確かめたものではない。
-
-**Cloudflare の上限** (確認日 2026-11-01。出典: [KV limits](https://developers.cloudflare.com/kv/platform/limits/) / [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/) / [Workers limits](https://developers.cloudflare.com/workers/platform/limits/)。料金・上限は改定されうるので、判断の前に出典を見直すこと):
-
-| | Free | Paid |
-|---|---|---|
-| KV read | 100,000/日 | 月 1,000 万を含み、超過は $0.50/100 万 |
-| KV write | 1,000/日 (超えるとエラー) | 月 100 万を含み、超過は $5.00/100 万 |
-| 同じキーへの write | 1 回/秒 | 1 回/秒 |
-| Workers リクエスト | 100,000/日 (超えると Error 1027) | — |
-
-**枯渇 (KV のエラー) 時の挙動** (read 失敗・初回の write 失敗・2 回目以降の write 失敗は `checkpoint.test.ts` のケースが押さえている。台帳の行はコード (`handleSignCheckpoint` の `try/catch`) からの読み取り):
-
-| 枯渇するもの | 挙動 | クライアント |
-|---|---|---|
-| read (session record) | 全署名が 503 `SESSION_STATE_UNAVAILABLE` (初回に限らない)。署名しない | editor の `SignedCheckpointService` がバックオフ再送 |
-| write、タブの初回 cp | 503 `SESSION_PERSIST_FAILED`。署名済み envelope は破棄 | 同上 (`firstSeenAt` が固定されるまで署名は成立しない) |
-| write、2 回目以降 | **200 のまま** envelope を返す。record は更新されず (`lastCheckpointIndex` / `lastEnvelope` が古いまま)、次に書けた署名で追従する | 成功として扱う (失敗に気づかない) |
-| read (タブ台帳) / write (台帳) | エラーにならない。台帳が読めなければタブ数の上限判定を飛ばし、書けなければ台帳が欠けて上限が甘くなる側にしか倒れない | 影響なし |
-
-editor は署名を best-effort で扱い、export は `waitForFlush` が timeout で返るので止まらない。ただし署名待ちの cp は未署名のまま残る。write の枯渇後に始まるタブは初回 cp が 503 になって署名が付かない形で現れるので、授業・試験の前に Paid であることを確かめる。
-
-Durable Objects 化 (ADR-0027 Option C) は `firstSeenAt` の分裂 (#151) の恒久対策として別に扱う。Paid であれば、容量を理由に急ぐものではない。
-
-## 観測性・シークレット宣言・型 (運用)
-
-`wrangler.{staging,production}.toml` に以下を宣言している (dev の `wrangler.toml` は skip-worktree なので対象外):
-
-- **`[observability] enabled = true`**: Workers Logs を有効化。`head_sampling_rate = 1` は低トラフィックな署名 API 向けに全リクエスト記録。トラフィックが増えたら下げる。
-- **`[secrets] required = [...]`**: `TURNSTILE_SECRET_KEY` / `CHECKPOINT_SIGNING_KEY_ID` / `CHECKPOINT_SIGNING_KEY_JWK` を必須宣言 (export 前アテステーションの署名用 secret は #415 で外した。Worker に残っていても無害で、消す順序は CHANGELOG)。`wrangler secret put` 漏れがあると **deploy 時にエラー**になり、設定漏れによる本番事故を防ぐ。`--dry-run` (CI の config 検証) では secret の存在チェックは走らない。
-
-**Env の型**: 現状 `src/index.ts` の `Env` / `checkpoint.ts` の `CheckpointEnv` は手書き。`npm run cf-typegen` (= `wrangler types`) で config から `worker-configuration.d.ts` を生成できる (gitignore 済み・commit しない)。生成された runtime types へ完全移行 (= `@cloudflare/workers-types` を外し tsconfig を更新、手書き `Env` を撤去) は**別途の follow-up**。今は手書き `Env` が source of truth なので、binding を増やしたら手書き側も更新すること。
-
-## ローカル開発のフロー
-
-1. `cp .dev.vars.example .dev.vars` で雛形コピー
-2. Turnstile キーを `.dev.vars` に貼り付け
-3. `npm run gen-checkpoint-key -w @typedcode/workers` で開発用鍵生成
-4. 公開鍵を `packages/shared/src/checkpointKeys/localKeys.ts` に貼り付け (gitignore 済み。無ければ `npm install` / `npm run doctor` が `.example` から作る。#338)
-5. 秘密鍵 (`CHECKPOINT_SIGNING_KEY_JWK`) と `CHECKPOINT_SIGNING_KEY_ID` を `.dev.vars` に貼り付け
-6. `wrangler kv namespace create CHECKPOINT_SESSIONS` で KV 作成し `wrangler.toml` の ID を置換 (こちらも skip-worktree)
-7. `npm run dev` で http://localhost:8787
-
-詳細は [packages/workers/README.md](README.md) を参照。
-
-## デプロイ環境 (3 系統)
-
-| 環境 | wrangler 設定 | トリガ | Worker 名 |
-|---|---|---|---|
-| dev (ローカル) | `wrangler.toml` (skip-worktree) | `npm run dev` | (local) |
-| staging | `wrangler.staging.toml` | **main push → CI 自動** | `typedcode-api-staging` |
-| production | `wrangler.production.toml` | **正式版の昇格・patch → タグの ref の workflow_dispatch → CI 承認待ち** | `typedcode-api` |
-
-- staging / production の wrangler config は KV ID も含めて HEAD に直接 commit されている (KV namespace ID は CF API token なしではアクセス不能なので実質的にシークレットではない)
-- ローカル `wrangler.toml` は各開発者の dev KV ID を保持 (skip-worktree のため commit されない)
-- staging Worker は別名 (`typedcode-api-staging`) として登録され、production と完全独立
-
-### CI デプロイの前提 (GitHub Environments + Secrets)
-
-GitHub repo の Settings → Environments に **2 つの環境** を作成:
-
-**Repo level (Settings → Secrets and variables → Actions)**
-- `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_PROJECT_NAME` (環境共通)
-- **`CLOUDFLARE_API_TOKEN` は repo level に置かない** — 後述の通り Environment ごとに分ける (preview/staging で本番デプロイ権限の token を露出させない)
-
-**Environment `staging`** (承認なし、自動デプロイ。preview もこの環境)
-- Secrets:
-  - `CLOUDFLARE_API_TOKEN` — **staging/preview 専用** (Pages:Edit + staging Worker のみ。本番 Worker 権限なし)
-  - `VITE_API_URL` — staging Workers の URL (ビルド時に bundle に baked-in)
-  - `VITE_TURNSTILE_SITE_KEY` — Cloudflare の公開テスト用 site key `1x00000000000000000000AA` (ADR-0049)
-
-**Environment `production`** (Required reviewers 設定推奨 = 承認待ち)
-- Secrets:
-  - `CLOUDFLARE_API_TOKEN` — **本番専用** (承認ゲート配下なので Approve を経ないと使われない)
-  - `VITE_API_URL` — 本番 Workers の URL
-  - `VITE_TURNSTILE_SITE_KEY` — 本番 Turnstile site key
-- **Protection rule**: Required reviewers に 1 名以上 (自分でもよい) → main push 時に Actions タブで手動承認が必要になる
-
-> deploy job は全て `environment:` を宣言済みなので、Environment secret は同名 repo secret を**自動上書き**する。ワークフロー変更は不要。
-
-(KV namespace ID は wrangler.{staging,production}.toml に直接 commit するので環境 secret には入れない)
-
-### Workers 個別 secrets (Wrangler 経由)
-
-`wrangler secret put` は Worker 名ごとに別管理。staging と production で別々に投入:
-
-```bash
-# staging Worker (typedcode-api-staging)
-cd packages/workers
-wrangler secret put TURNSTILE_SECRET_KEY --config wrangler.staging.toml
-wrangler secret put CHECKPOINT_SIGNING_KEY_ID --config wrangler.staging.toml
-wrangler secret put CHECKPOINT_SIGNING_KEY_JWK --config wrangler.staging.toml
-
-# production Worker (typedcode-api)
-wrangler secret put TURNSTILE_SECRET_KEY --config wrangler.production.toml
-# ... 同様
-```
-
-### 初回セットアップ手順
-
-```bash
-# 1. KV ネームスペース作成 (staging + production)
-wrangler kv namespace create CHECKPOINT_SESSIONS_STAGING
-wrangler kv namespace create CHECKPOINT_SESSIONS_PRODUCTION
-# → 出力された 2 つの ID を GitHub Environment Secrets に投入
-
-# 2. 署名鍵生成 (環境ごとに別鍵を推奨)
-npm run gen-checkpoint-key -w @typedcode/workers   # staging 用
-npm run gen-checkpoint-key -w @typedcode/workers   # production 用
-# → 各 keyId を packages/shared/src/checkpointKeys/registry.ts に append (永続)
-# → JWK は対応 Worker に wrangler secret put
-
-# 3. 各 Worker に他のシークレット (TURNSTILE_SECRET_KEY 等) を投入
-
-# 4. GitHub Environment "production" に Required reviewers を 1 名以上設定
-```
-
-### デプロイの流れ (運用)
-
-```
-ローカル開発 (npm run dev)
-   ↓ feature ブランチ → PR → squash merge
-main ブランチ push
-   ↓
-[CI] test → deploy-staging (auto)
-   ↓
-post-deploy 検査 (ヘッダ・署名鍵・CORS) → staging のブラウザ E2E
-   ↓ release.yml の promote (beta → 正式版) か patch (release/A.B)。タグを打ち、タグの ref で deploy.yml を起こす
-[CI] test → deploy-production (タグの位置の検証 → 承認待ち)
-   ↓ Actions タブで Approve
-本番デプロイ実行 (Workers → Pages の順。不変条件 10)
-```
-
-本番が壊れて直前の版へ戻すときの手順 (Pages → Workers の順、staging では Pages の rollback が使えないこと、戻らない状態) は [CONTRIBUTING.md「本番を戻す」](../../CONTRIBUTING.md#本番を戻す-ロールバック) にある。
 
 ## よくある罠
 

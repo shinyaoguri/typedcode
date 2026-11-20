@@ -2,6 +2,8 @@
 
 `@typedcode/e2e` は **実物のエディタをブラウザで動かし、証明を export して verify-cli (と検証 Web) で検証する round-trip E2E**。editor の記録系・shared の検証系・CLI・verify の表示を 1 本で同時に検証する。
 
+このファイルには、毎回読む責務・不変条件・罠だけを置く。理由・例外・表・一覧は [docs/](docs/) にあるので、下の「触る前に読む」で当たる文書を、コードを触る前に読む (置き場の規則は root の [AGENTS.md](../../AGENTS.md)「ドキュメント階層」)。
+
 ## 責務と境界
 
 - **持つ**: Playwright (Chromium) でのシナリオ駆動、export ZIP の取得、verify-cli の spawn と exit code / `--result-json` (どの検査で落ちたか = `failedCheck`。stdout の文言ではなくこれを assert する) / `--analysis-json` / `--analysis-bundle` 判定、敵対的パック (偽造・改竄・合成打鍵・AI 一括投入) の負のオラクル、検証 Web (verify) に ZIP を入れて状態契約を読む Web↔CLI パリティ
@@ -18,129 +20,54 @@
 5. **既知バグは失敗する再現を先に置く**: すぐ直さないバグは `test.fixme('#N ...')` (Issue 番号をタイトルに含める) で再現を置き、修正 PR で `fixme` を外す
 6. **検証 Web の判定は verify-cli と突き合わせる**: verify Web の判定 (`data-status` / `#assurance-strip` / `#result-status-icon` の data-*) は、同じ ZIP に対する verify-cli の判定 (`runVerifyCliWithVerdicts`: proof ごとの `valid` + `--analysis-bundle` の三層保証) と一致することを assert し、値そのもの (fast なら integrity `partial` など) も併せて見る (両方が同じ向きに壊れても緑にしないため)。CLI から機械的に読めない **success / warning、verified / partial の区別は Web だけの TrustCalculator の導出**なので、パリティの対象外 (`tests/helpers/verifyWeb.ts` の `expectWebCliParity` の doc)
 
+## 触る前に読む
+
+| すること | 先に読む |
+|---|---|
+| spec を足す・探す、helper や設定ファイルの役割を知る | [docs/layout.md](docs/layout.md) (spec と設定ファイルの一覧) |
+| nightly・本番ビルド・staging・ベンチ・証跡の回し方、CI のシャード、`helpers/app.ts` の入口 | [docs/running.md](docs/running.md) |
+| spec が不安定・環境で落ちる、新しい操作を書く | [docs/pitfalls.md](docs/pitfalls.md) |
+
 ## 構成
 
-```
-tests/
-├── helpers/app.ts        # EditorApp ページオブジェクト + ZIP/proof 読み出しヘルパ
-├── helpers/verifyCli.ts  # tsx で verify-cli/src/cli.ts を直接実行 (build 待ち不要。dist は verify-cli の test:dist が担保)
-├── helpers/verifyWeb.ts  # VerifyWebApp: 検証 Web を開き #file-input に ZIP/JSON を渡し、data-* の状態契約だけを読む
-├── helpers/scenario.ts   # 利用シーン網羅 (scenarios/) の操作とフィクスチャ: .tcclass / テンプレート YAML、メニュー操作、問題の読み込み、マウスでのドラッグ・リサイズ、ファイルのドロップ、ノート付き export (app.ts は並行作業と衝突しないよう触らずここに置く)
-├── helpers/examFixture.ts # exam の fixture (fixtures/exam/fixture.json) を読む: 監督コード・パッケージのパス・出題者鍵の keyId
-├── helpers/author.ts     # /author (作問画面) の足場 (#796): OPFS に教材フォルダを作って dev フックで画面に開かせる・OPFS のファイルを読む / 外部での変更を模擬して書く・画面の文書の状態 (`document(path)`)・エクスプローラーの項目 / エディタ群 / タブ / ダイアログの locator・ケースファイルのフォームの locator と `parseCasesText` (#798。dev サーバが配る editor の `definitions.ts` をページの中で import し、画面と同じ parser でファイルを読む。dev サーバでだけ動く)
-├── helpers/faults.ts     # 障害注入 (#435): Workers の API を 1 つずつ 503 / abort / hang (呼び出し回数を返す)、Turnstile のスクリプトの遮断、IndexedDB の open 失敗・QuotaExceeded・request の success 後の transaction の abort (#543)、保存先の注入の解除、起動時の空き容量の試験の書き込みだけの失敗 (`failStorageProbe`。QuotaExceeded か、ディスク満杯で Chromium が返す `DataError: Failed to write blobs (IOError)` での abort。#626)、getDisplayMedia の stream の退避とトラックの ended
-├── happy-path / multi-tab-export / reload-recovery / close-tab-recovery / ...
-├── happy-path-ja.spec.ts # ja の UI の代表往復 (#597): `test.use({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' })` で `<html lang="ja">` を確かめ、打鍵 → export → verify-cli (fast)。project は増やさない (全 spec が倍になる)
-├── workers-hang-export.spec.ts  # Workers 無応答 (route で応答しない) でも class の export が上限内に ZIP を出す (#324。fetch 上限 + best-effort 予算)
-├── tab-create-auth-budget.spec.ts # Turnstile の配信元と Workers を両方無応答にしても、class の新規タブがタブ作成の予算 (`TAB_CREATE_VERIFICATION_BUDGET_MS`) + 5 秒以内に打鍵を受け付け、未アンカーの proof が verify-cli (fast) で通る (#375)
-├── proof-forgery / tamper-detection / ai-bulk-insert / synthetic-keystroke  (敵対的パック)
-├── fault-session-start / fault-checkpoint-sign / fault-turnstile / fault-network / fault-storage  # 障害注入 (#435): session/start・checkpoint/sign の失敗 (API ごとに別ファイル。hang 待ちを含む 1 ファイルが CI で Playwright の Slow Test の閾値 5 分を超えたため / #525)、Turnstile 不達、オフラインの往復、IndexedDB の障害 (起動時の open の失敗で起動失敗のエラー画面 `boot-failure` が出る = #325。保存の QuotaExceeded で `failed` / `degraded`・その状態での export・解除後の回復とリロード後の export = #543)。transaction の abort は `fault-storage-abort` (#543)、保存先が全滅した状態からの救出ボタン (casual 2 タブ・exam の問題パネル) は `fault-storage-rescue` (#544。exam の分は fixture が無いとき CI では落とし、ローカルでは skip)
-├── fault-posw-worker.spec.ts # PoSW Worker の起動失敗 (#701): route で Worker のスクリプトを 404 にしても、#0 が 30 秒の期限を待たずに記録され、打鍵の backlog (`pendingCount`) が短時間で 0 になり、export が verify-cli (fast) を通る
-├── storage-low.spec.ts    # 空き容量の不足 (#626): 起動時の試験で書けない (QuotaExceeded と I/O の DataError の 2 形) と `storage-low` が出て「このまま続ける」で ready まで起動する・書けた起動では警告も試験用 DB も残らない・not-found 画面では試験しない・利用中の保存の QuotaExceeded で通知 (`#block-notification[data-notice]`) が 1 回だけ出る。dev サーバの試験の書き込み量は vite.editor.config.mjs が小さく縮める
-├── multi-instance / history-navigation / viewport / ime-undo / idle / screen-capture-lock / reset-url  # 環境の揺さぶり (#435): 多重起動・戻る / 進む・狭い画面・IME と undo / redo・アイドル停止・画面共有の停止・`?reset` が何も消さないこと (#323) とリセットの現在のモード限定
-├── unsupported-browser.spec.ts # 未対応ブラウザの遮断 (#596): UA を上書きした Chromium で、Safari / Firefox の UA なら `unsupported-browser` が出て `initializing` のまま・タブ 0・イベント 0・セッション DB が作られないこと、Chrome / Edge の UA なら起動すること。UA ごとの境界 (iOS の Chrome = WebKit など) は editor のユニット `app/__tests__/browserSupport.test.ts`
-├── code-execution.spec.ts # JS / TS の実行の隔離と停止 (#290 / ADR-0041): 停止後に出力・副作用が出ない・同期ループ中も記録が進む (テスト側の watchdog)・親 DOM / IndexedDB / localStorage / ネットワーク / `/author` の `#author-jwk` に届かない (`/author` は OPFS の教材フォルダを開いて初期コードの文書を実行する。教材に種類が試験の試験定義を置き、書き出しのパネルに `#author-jwk` の欄を出す = #797)・停止 → 即再実行・outcome の区別とエラーのマーカーの行・出力予算・異常の後の export と verify-cli (fast)・`/author` の「停止」(`#author-stop-btn`。実行中だけ押せ、止めると aborted で検証を始められる。C の実行系の読み込み中に止めても排他が外れる = #820)。実行の状態は `data-exec-*`、上限は dev 限定の `window.__tcExecLimits` で縮める
-├── author-workspace.spec.ts # /author の作問画面 (#795 / #796): OPFS の教材フォルダを dev フック __tcTestAuthorWorkspace.openInPage で画面に開かせ、開く・編集・保存・ページの読み直し後の前回のフォルダでの再開、問題の作成と要素の追加、未保存の印と外部の変更での競合 (上書きしない・上書きする・読み直す)、分割とプレビューを data-* の状態契約で確かめる
-├── author-exam.spec.ts # /author の試験定義 (#797): 新しい試験を作り、3 問から 2 問をフォームで採用して並べ替え (上へ / 下へ はキーボード) → 保存 → 学生プレビューの順 (`[data-preview-problem]`) と、採用しなかった問題のファイルが OPFS に残ること・採用問題の初期コードを消して書き出すと `#author-build-error[data-reason="invalid"]` の `[data-issues]` に問題とパスが出てダウンロードが起きないこと・書き出した `.tcexam` を `/exam` のゲートで開くと初期コードの入ったタブと公開ケースの入出力例が見えること。ゲートの 1 本は使い捨ての出題者鍵を作り、`page.route` で `fixtures/exam/authority-keys.mjs` の応答に公開鍵を足す (秘密鍵はディスクに置かない。fixture が無いとき CI では落とし、ローカルでは skip)
-├── author-copy-problem.spec.ts # /author の「別のフォルダへコピー」(#800): OPFS の 2 つのフォルダを使い、dev フック __tcTestAuthorWorkspace.setNextPickedDirectory でピッカーの結果をコピー先に差し替える。成功 (コピー先に定義と参照ファイルが同じ相対パス・同じ内容ででき、コピー先を開くとその問題が並ぶ)・衝突 (何も書かずに衝突したパスを出す)・同じフォルダ (何も書かない)・未保存 (ピッカーを開かない)・コピー後に読み直しても元のフォルダで再開することを、`copy-result` のダイアログの `data-copy-status` と `[data-copy-paths] > li[data-path]` で確かめる
-├── author-cases.spec.ts # /author のケースファイルのフォーム (#798): 追加 (キーボード)・複製・改名・削除 → 保存 → YAML と読み直した一覧、先頭の空白・空行・末尾の改行 2 個の値の往復と末尾の改行の表示 (`data-count`)、`public` の切り替えで学生プレビューの入出力例が増減、CRLF の値を選び直しやフォーカスの出入りで書き換えず別の欄の編集でも残す、名前が空・重複の誤り、読めないファイルのテキスト表示への切り替え。保存したファイルは `parseCasesText` で読む
-├── author-verification.spec.ts # /author の教員用の一括検証の画面 (#799 / ADR-0051): PR ごとは dev フック `setFakeVerification` で実行の入口を偽物にし、エクスプローラーの「検証」で結果表が出てセルが結果どおりの判定になる・不一致のセルで期待と実際の差分が出る・中止で残りを走らせず aborted になり検証中は「実行」が使えない・解答例の無い問題は blocked で理由を出す・下のパネルの切り替えを `#author-verify-panel` の data-* で確かめる。`@nightly` は実物の C (0 で初期化した誤答が負の数だけのケースで不一致・無限ループが時間切れで画面を操作できる) と Python (一致し、最後の式の値が混ざらない)
-├── terminal-paste.spec.ts # ターミナルの入力 textarea への paste (#697): 記録件数が増えず、proof にソースへの externalInput / contentChange として載らない (負の対照)・同じ proof でエディタへの実ペーストは insertFromPaste で残る (正の対照)・ターミナルにだけ貼った proof は verify-cli (fast) で pureTyping。xterm は Ctrl+V を ^V にするので paste イベントを textarea に dispatch する
-├── code-execution-c-python.spec.ts # @nightly: C (Wasmer + clang) と Python (Pyodide) の実行のスモーク (#589): hello の出力・proof の result イベント (success)・export が verify-cli (fast) を通る、C のコンパイルエラーの行番号とマーカーが利用者のコードの行を指す (#489 の回帰)、Python の `input()` がターミナルに打った行を読み `window.prompt` を呼ばない・案内文が入力の前に出る・入力待ちの停止が aborted で次の実行ができる (#649)。clang の webc (約 100 MB) と Pyodide を外部から取るので PR ゲートには載せない
-├── code-execution-c-stdout.spec.ts # @nightly: C / C++ の stdout の支援コードを別の翻訳単位にした (#709)。`stdio.h` を書かない `printf` がその行のエラーとマーカーになり、書けば成功して export が verify-cli を通ること、利用者の翻訳単位に `FILE` / `EOF` が入らないこと、改行の無いプロンプトが入力の前に出ること、`__LINE__` / `__FILE__` が利用者のソースのままであること、利用者の `setvbuf` (バッファあり / NULL) と `fflush` の挙動、C++ の `<cstdio>`
-├── code-execution-cpp-warnings.spec.ts # @nightly: C++ の hello が警告を出さないこと (`-xc++` の位置の警告と、libc++ の版の `#warning` = #871)。利用者の `#warning` と `-Wformat` は、1 回ずつ端末と行のマーカーに出る。手順は `helpers/cExecution.ts` (`enlargeTerminal` で広げ、`countInTerminal` で run の先頭が見えていることを確かめてから数える)
-├── c-runtime-lazy.spec.ts # C / C++ の実行系を最初の実行まで取らない (#617): JS だけの起動・実行・export で、Wasmer の SDK・wasm・clang の webc を要求しないこと。clang の取得の失敗 (route で 503) で run が error になり、次の実行で取り直すこと (`#runtime-state-indicator[data-runtime-state]`)。実 Clang で 1 回だけ初期化することは `code-execution-c-python.spec.ts` の `@nightly`、本番ビルドは `production-build.spec.ts`
-├── code-execution-c-diagnostics.spec.ts # @nightly: 実 Clang の診断 (#708)。警告だけのコンパイルが success のまま警告を 1 回出して元の行に warning のマーカーを付け、次の実行で消えること、fatal error の行マーカー、失敗時に error と warning が 1 回ずつ出ること、C++ も同じ。xterm の DOM は見えている行しか持たないので、`helpers/cExecution.ts` の `enlargeTerminal` でパネルを広げ、run の先頭の行が見えているときだけ数える
-├── code-execution-c-abort.spec.ts # @nightly: 実 Clang のコンパイル中の停止 (#711 / #870)。dev サーバの `CExecutor` の singleton を page から import して包み、利用者のプログラムを起動しないこと・executor の結果が aborted・直後の再実行に混ざらないことを見る (C / C++。内部の名前に依存するので、名前が変わると明示のメッセージで落ちる)。`Process.kill()` が clang の wasm を止めず worker を塞ぎ続ける既知の不具合 (#711 に残る条件) は `test.fail()` で固定してある。直したら外す
-├── persisted-sequence-under-backlog.spec.ts # @nightly: 200 文字ずつ、PoSW の処理待ち 1,000 件以下で打ち続け、処理待ちが残るうちに IndexedDB の events が 0 から欠けずに続く (contentSnapshot を含む) こと、掃ける前に読み直しても gap が出ず、export が verify-cli (fast) を通ることを見る (#873)
-├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)。export のダウンロードの瞬間 (自己検証より前) にも件数とハッシュが揃っている (#521)
-├── export-during-verify.spec.ts # 1 回目の export のダウンロード直後 (自己検証の終わる前) に押した 2 回目の export も ZIP を出し、verify-cli (fast) で pass する (#565)。ダウンロードの瞬間に何かを読む・押すときは、`a[download]` の追加を MutationObserver で捕まえる (この 2 本が例)
-├── fault-exam-signing-token.spec.ts # exam の開始時に session/start が応答しない (#236): ゲートの人間確認 (`#exam-gate-attestation[data-attestation-state]`) が `pending` のまま解錠でき、#0 は合成の印 (`verified:false`)、token の無い間も export は止まらず checkpoint は未署名。塞ぎを外して `online` を起こすと署名 token を取り直し、以降の checkpoint が署名されて verify-cli --exam-package (fast) が通る。fixture が無いとき CI では落とし、ローカルでは skip
-├── exam-roundtrip.spec.ts # exam モードの round-trip (#229): 誤コードの拒否 → ゲートの人間確認が `verified` になってから正コードで解錠 (#0 が `verified:true` で token 由来の印を持つ = #236) → 打鍵 → export → verify-cli --exam-package (束縛 PASS) と負のオラクル → 同じ ZIP を verify Web に入れ、`#exam-load-btn` から同じ `.tcexam` を渡すと `#assurance-strip[data-temporal]` が `exam-t0` になり、verify-cli の `--analysis-bundle` と一致する (渡す前は exam-t0 でないことも見る。束縛の内訳は Web に契約が無いので見ない)。fixture が無いとき CI では落とし、ローカルでは skip。#718 以降は starter 照合の正の対照も兼ね、`#2 templateInjection` が封印 starter (`/* TODO */`) と同じことと、受理ポリシー 4 条件 (`EXAM_STRICT_FLAGS`) + `--exam-package` で exit 0・`Starter: PASS` を見る
-├── exam-forged-starter.spec.ts # starter 照合の負の対照 (#718): 正規に解錠 → `__tcTestForgeTemplateInjection` で別の完成コードを注入 (改造クライアントの再現) → 打鍵 → export。実ローカル Workers の署名 cp が載ったまま、同じ条件の verify-cli が exit 1・`Starter: FAIL` と理由を出し、他の束縛行は PASS のまま
-├── exam-language.spec.ts # 許可言語の負の対照 (#727): fixture (`allowed.languages=['c']`) で解錠 → html の選択肢が無効・select の値を直接 html にした change も断る (`data-notice=language-not-allowed`) → 打鍵 → sessionStorage のタブ状態を html に書き換えてリロード (`addInitScript`) → コードは残り、プレビューは `data-preview-state=not-allowed`・実行は `data-exec-run` が付かない → export した proof を verify-cli が `Languages: FAIL` で exit 1 (他の束縛行は PASS)。正の対照は exam-roundtrip の `Languages: PASS`
-├── scenarios/*.spec.ts   # editor の利用シーン網羅 (#434): 入口 (`entry.spec.ts`: `/` の規約通知・直リンクの最初の画面・モード表示。#644)・規約・class/assignment・復旧の新規開始・タブ並べ替え・8 言語・テーマ/表示言語・リセット・テンプレート・パネル・問題の入出力例 (`problem-examples.spec.ts`: 表示・タブ切替・リロード・コピーが proof に記録されない。#648)・セルフレビュー・メインメニュー。各シナリオは expectConsistent() と verify-cli (fast) で締める。既知の製品バグは test.fixme('#N ...') で再現を置く
-│                         # `scenarios/closed-tabs.spec.ts` (#317): 閉じたタブがリロードで開かないこと、「閉じたタブ」から開き直して打鍵 → export が verify-cli を通ること、最後のタブ・テンプレートの取り込みでも残ること。前のセッションのタブを開き直したときの署名の sessionId は `recovery-fresh.spec.ts` が見る (操作は `helpers/closedTabs.ts`)
-├── verify-web-parity / verify-web-submission / verify-web-ui  # 検証 Web の往復 (3 ファイルに分割: 1 ファイル 10 本が CI で Playwright の Slow Test の閾値 5 分を超えたため / #533)。parity = Web↔CLI パリティ・改ざん・version gate。submission = 複数ファイルの混在 (#215)・壊れた proof (#292)・同梱ソースの差し替え (#293)。ui = タブを閉じたあとの active / 表示の一致 (#281 / #387)・チャートタブ (#395)。共通の手順 (`typeAndExport` / `expectWebCliParity` / `proofNames`) は `helpers/verifyWeb.ts`
-├── verify-web-drop.spec.ts # 検証 Web の投入経路 (#590): 案内パネル `#drop-zone` とサイドバーへの drag & drop、「フォルダを開く」で入れた無改ざん / 改ざんの ZIP が、`#file-input` で入れたときと同じ結論 (行・判定・`#queue-status` の集約) になる。検証がフォルダを開く処理の末尾より先に終わっても集約が残ること (#683) は、verify のユニット `folderStatusSummary.test.ts` が開く処理の末尾を止めて固定する (監視が開いたときの一覧を基準にするようになり、ここで遅らせていた初期スナップショットが無くなった。#734)。drop は `DataTransfer` を積んだ DragEvent (`dropFiles`)、フォルダは `showDirectoryPicker` だけを OPFS に作ったディレクトリのハンドルに差し替える (`openFolder`。走査・ZIP の展開・検証は本物)
-├── verify-web-folder-update.spec.ts # 検証 Web のフォルダ監視の外部更新 (#695): 「フォルダを開く」で開いた proof を OPFS 上で上書き (`overwriteFolderFile`) すると、3 秒間隔の監視が拾い、開いているタブの判定 (状態契約。書き換え後の proof の verify-cli と突き合わせ) とコードプレビューの本文 (`previewContent`) が新しい proof のものになる。改ざん → 正常と正常 → 改ざんの 2 本。`screenshots/` の画像を別の画像で上書きすると、同じフォルダの proof のスクショ検証が取り直されて `data-component="screenshots"` の error が出る 1 本 (#703。`openFolder` / `overwriteFolderFile` は `{ path, from }` でフォルダ内の相対パスに置ける)。監視の開始より前に書いた上書きは拾われないので、拾われるまで書き直す
-├── verify-web-image-preview.spec.ts # 検証 Web の画像プレビューの Blob URL (#729): 手で作った PNG を OPFS のフォルダの `screenshots/` に置いて「フォルダを開く」で入れ、初期表示・外部更新 (#696)・別画像への切替で、pageerror が 0 件・`naturalWidth` が各 PNG の幅になる・表示した URL がそれぞれ 1 回だけ解放される (`URL.revokeObjectURL` を init script で記録)。editor の export を要さない
-├── a11y-axe / i18n-leak / layout-overflow  # 画面の機械検査 (#728): `helpers/uiTour.ts` の `walkTour` が対象画面 (各モードの ready・About・共通ダイアログ・検証 Web の初期 / 結果) を巡り (localhost 以外への通信は止める)、axe の違反が基準 (`helpers/a11yBaseline.ts`。rule + セレクタ + 画面 + Issue) から増えない・ja / en で翻訳キーの名前が画面に出ない・768×1024 / 480×800 で切られる要素や画面に収まらないダイアログが無い (`helpers/uiInvariants.ts`) を見る。それぞれ負の対照を 1 本持つ。axe の成功はスクリーンリーダーの実操作の確認ではない (#305)。基準の作り直しは README の「a11y・i18n・レイアウトの検査」
-├── verify-cli-strict / verify-cli-strict-sparse  # verify-cli の strict フラグのゲート (#590。疎な proof を作る 1 本が遅い CI で数分かかるので分割): 署名 cp の無い proof は `--require-root-anchor` で exit 1 (`failedCheck: policy` / `root-anchor-missing`。`--require-anchor-density` は cp 0 件を対象外にする)、密な署名 cp の proof は両フラグで exit 0、署名が途中で止まり末尾 500 イベント超が未署名の proof (sparse) は `--require-anchor-density` で exit 1 (`anchor-density-sparse`)。理由は `--result-json` で読む。共通の手順は `helpers/strictPolicy.ts`。**密な proof は 1 打鍵ごとに `waitForSynced` を挟んで打つ** (`typeAtRecordingPace`): まとめて打つと PoSW の処理待ちのぶん cp の指すイベントの時刻が古くなり、遅いランナーでは正直な proof でも密度ゲートの「署名 cp の間のイベント時刻の幅 50 秒」を超えて疎になる
-├── model/                # model-based E2E (#436): fast-check の fc.commands でランダムな操作列を流し、各手の後にモデル (editorModel.ts) と状態契約・snapshot・件数・エラーを突き合わせ、最後に全タブの export を verify-cli (fast) で検証する。手には、ブラウザのタブを閉じて復旧ダイアログから再開する `CloseAndResume` (IndexedDB からの復旧経路。`Reload` は sessionStorage 経路。#450) と、その変種で閉じた後に保存データへ手を入れてから再開する `CloseAndResume(staleHash)` (tabs レコードの `currentHash` を 1 つ前の hash に戻す = #322) / `CloseAndResume(emptyTabOrder)` (session の `tabOrder` を空にする = #367) を含む。観測には、モデルが追記順に持つタブ切替の履歴 (from / to) と export の `tab-switches.json` の並びの一致 (#401。timestamp の値は見ない) と、再開の後と列の最後の保存データの照合 (tabs レコードの集合・内容がモデルと一致し、保存された events が前の hash でつながり、`currentHash` が events 末尾。`expectStoredStateMatches`) を含む (#616)。PR ゲートは固定シード 2 本 × 15 手 (手を足したら dry-run でシードを選び直す。根拠は model-based.spec.ts のコメント)、`@nightly` はランダムシードの長尺。実アプリの操作は playwrightDriver.ts、実行と失敗の報告 (シード・縮約後の操作列・再実行コマンド) は runner.ts。C ランタイムの取得先 (`assets.typedcode.dev`) は列ごとのコンテキストで常に route で止める。console.error の許可は持たない (#617 で、起動では C ランタイムを取りに行かなくなった。起動で取りに行けば列が落ちるので、その見張りも兼ねる。外部配信の到達性で結果を変えない。C の実物の実行は `@nightly` の spec が見る。#771)。PR ゲートの時間の上限 (縮約の持ち時間・1 回目と retry の test timeout。retry では縮約しない) は `scripts/model-time-budget.mjs` が正本で、e2e-shard の `timeout-minutes` に収まることを `model-time-budget.test.mjs` が見る
-├── shots.spec.ts         # @shots: 証跡の撮影だけ (assert なし・通常実行から除外)。撮影 spec を増やすなら *.shots.spec.ts (require-tests がテストに数えない命名) にし、タイトルに @shots を付ける
-├── posw.bench.spec.ts    # @bench: 記録側 PoSW のスループットと backlog を 1 倍と CPU 4 倍相当で測る (assert なし・通常実行と CI から除外。`npm run bench:posw` = BENCH=1)。CDP の CPU スロットルは dedicated Worker に効かないので、PoSW の Worker は route で差し込む busy-wait で処理時間を引き延ばす (ADR-0045 / #241)
-├── export-capacity.bench.spec.ts # @bench: export の容量の測定 (#628。assert なし・通常実行と CI から除外)。実操作 (本物の打鍵 → 本物のダウンロード → verify-cli) と、dev 限定のフック `__tcTestCapacity.pad` でイベント列を水増しした段階的な測定。**水増しした proof はチェーンが繋がらず検証に通らない容量の測定用**で、ZIP は保存しない。件数は `CAP_STEPS`、メモリ予算は `CAP_BUDGET_MB`。結果は `packages/e2e/bench/` (gitignore 済み) に JSON
-├── deployed.spec.ts      # デプロイ済みの staging 専用 (#655。既定・build の config からは外す): `/casual` で打鍵 → export → verify-cli (fast) が pass、console / pageerror 0 件、署名付き checkpoint と sessionStartToken の keyId がすべて staging の鍵 (spec の定数。registry.ts に active で載っていることも見る)、temporal が `anchored`、同じ ZIP を配信物の `/verify/` に入れて verify-cli と状態契約が一致する。dev フックに依存しない
-└── production-build.spec.ts  # dist 専用スモーク (editor + /verify/。既定 config からは testIgnore で除外)。`@nightly` の C の hello (@wasmer/sdk の worker は本番ビルドでしか壊れない = #364) は PR ゲートの test:build から外し、毎晩だけ回す (#589)
-playwright.config.ts       # dev 用: webServer で workers(:8787) + editor vite dev(:5173) + verify vite dev(:5174)
-ports.ts                   # 上の 3 ポート (E2E_*_PORT で上書き)。playwright.config.ts と global-setup.ts が読む (build 設定も workers の値を読む)
-browser-env.ts             # ブラウザの locale / timezoneId (en-US・UTC = 従来の CI と同じ。#597)。3 つの config の `use` が読み、手元の TZ・LANG に依存させない。ja を通す spec は test.use で上書きする
-global-setup.ts            # テストより前に、起こした / 再利用した 3 台がこの作業ツリーのサーバかを照合し、違えば throw (#552。下記の罠)。照合部は checkIdentities として export
-global-setup.build.ts      # build 設定用: workers 1 台だけを checkIdentities で照合する (再実行例は test:build。#560)
-scripts/server-identity.mjs # 上の照合の判定 (純関数) と問い合わせ。テストは server-identity.test.mjs (node --test)
-playwright.build.config.ts # dist 用: workers + editor/verify を build し、verify を editor の dist の verify/ に重ねて vite preview(:4173)
-playwright.deployed.config.ts # デプロイ済みの配信物用 (#655): サーバを起こさず globalSetup も持たない。baseURL は必須の E2E_DEPLOYED_URL (無ければ throw)。deployed.spec.ts だけを走らせる
-scripts/setup-env.mjs      # CI 用: 無い localKeys.ts を .example から作る (#338) + Turnstile 公開テストキー配置 + checkpoint 署名鍵を実行時生成
-scripts/setup-exam-fixture.mjs # exam 用 fixture: 使い捨ての出題者鍵を作り make-exam-package.mjs で p1 / other の .tcexam を packages/e2e/fixtures/exam/ (gitignore 済み) に生成。`npm run setup` が setup-env.mjs の次に走る。揃っていれば何もしない (fixture.json の bundle が今の `BUNDLE` と違えば作り直す = 古い starter 空の fixture を使い続けない。#718。`setup-exam-fixture.test.mjs` が見る)
-exam-keys/ + vite.editor.config.mjs + vite.verify.config.mjs # exam の出題者鍵の差し替え (下記の罠): editor / verify の dev サーバ用 Vite プラグインと、verify-cli (tsx) 用の resolve フック
-scripts/stage-verify-dist.mjs # dist 用: deploy.yml の「Merge build outputs」と同じ配置 (editor/dist/verify) を作る
-shots/                     # npm run shots の出力 (PNG・アニメーション WebP・manifest.json)。gitignore 済み
-```
+`tests/` の spec・helper と、設定ファイルの一覧は [docs/layout.md](docs/layout.md)。spec を足したら、その一覧に 1 行足す。
 
 ## 実行
 
 ```bash
 npm run test -w @typedcode/e2e               # 全シナリオ (サーバは Playwright が自動起動)。pretest が setup と install-browsers を先に走らせる (#335)
 npm run test:build -w @typedcode/e2e         # 本番ビルドのスモークのみ (build → vite preview)
-E2E_DEPLOYED_URL=https://staging.typedcode.pages.dev npm run test:deployed -w @typedcode/e2e   # デプロイ済みの staging の round-trip (#655)
 npm run test:headed -w @typedcode/e2e        # 失敗調査 (ブラウザ表示)
-npm run shots -w @typedcode/e2e              # 見た目・動きの証跡を shots/ に撮る (@shots だけ。WebP の束ねに img2webp が要る。preshots が同じ準備をする)
-npm run setup -w @typedcode/e2e              # 単独で打つとき: テストキー + 署名鍵 + exam fixture の用意 (pretest / preshots が呼ぶ)
-npm run install-browsers -w @typedcode/e2e   # 単独で打つとき: Chromium の導入 (同上。OS の共有ライブラリは入れない)
-NIGHTLY=1 npm run test -w @typedcode/e2e -- --grep @nightly   # 毎晩の長い E2E だけ (model-based の長尺。FC_SEED / FC_RUNS / FC_STEPS で上書き) と C / Python の実行のスモーク
-NIGHTLY=1 npm run test:build -w @typedcode/e2e -- --grep @nightly   # 本番ビルドの @nightly だけ (C の hello。@wasmer/sdk を上げる PR では手元でも回す)
-npm run bench:posw -w @typedcode/e2e         # 記録側 PoSW のベンチ (@bench だけ。packages/e2e/bench/ に JSON。BENCH_ITERATIONS で反復数の見積もり。ADR-0045)
-npm run bench:export -w @typedcode/e2e       # export の容量のベンチ (`export-capacity.bench.spec.ts` だけ。`-- --grep "padded"` / `"real typing"` で絞る。重いので 1 本ずつ)
 ```
 
-**`@nightly` は通常の実行と CI のシャードから外れる** (`playwright.config.ts` と `playwright.build.config.ts` の grepInvert。`@shots` と同じ扱いで、`NIGHTLY=1` のときだけ含める)。毎晩 `.github/workflows/e2e-nightly.yml` が `--grep @nightly --retries=0` で dev 設定 (`test`) と本番ビルド (`test:build`。出力先は `test-results-build/` に分ける) の順に回し、失敗したらテストの出力ディレクトリの `model-failure.md` (シード・縮約後の操作列・再実行コマンド) を同名の open Issue に集める。PR ゲートの shard (`retries: 1`) で retry で通った flaky も同じ形で集める (#583): CI のときだけ両 config が `reports/e2e.json` / `reports/e2e-build.json` に Playwright の json レポートを出し、`scripts/e2e-flaky.mjs` (ルートの scripts/) が job summary に一覧を出し、main への push の run でだけ deploy.yml の `e2e-flaky-report` が `test: E2E の flaky (自動)` の Issue に run の URL・テスト名・1 回目のエラーの先頭を追記する。model-based の失敗は報告に出る `FC_SEED=… FC_PATH=… FC_REPLAY_PATH=…` を付けて同じ列を再実行できる。fast-check の縮約は同じ列を何度も流し直すので、**列ごとに新しいブラウザコンテキストで始める** (同じページで `openCasualFresh()` を繰り返すと前の列の状態が残る)。
-
-**`pretest` / `preshots` は `npm run setup && npm run install-browsers`**。`.env` も `.dev.vars` もブラウザも無い新しい worktree・環境で、`npm ci` の直後に `npm run test` だけで通る。どちらも繰り返し実行して安全: setup は既存の `.dev.vars` を上書きせず鍵 ID の検査だけ、`playwright install` は導入済みなら何もしない。`test:headed` / `test:ui` / `test:build` には付けていない (準備済みの環境で使う前提)。`--with-deps` は sudo が要るので付けておらず、Linux で共有ライブラリが足りなければ手で `npx playwright install --with-deps chromium` を打つ (CI は deploy.yml の既存 step が入れる)。
-
-CI では `deploy.yml` の `e2e-shard` job が Playwright の `--shard` で 3 分割して matrix で並列に走らせ (分割数の正本は matrix の `shard: [1, 2, 3]`。分母は `strategy.job-total` から取るので、変えるのはそこだけ。#772) (`test:build` は shard 1 だけ)、集約 job **`e2e`** が全 shard の成功を要求する。`e2e` が main ruleset の required check であり、`build-preview` (PR プレビューの build。deploy は `deploy-preview.yml` が成功した run の artifact でだけ行う) / `deploy-staging` / `deploy-production` の **必須ゲート** (`needs: [test, check, e2e]`) になっている。matrix の job は check 名が `e2e (shard 1/3)` に変わるので、**集約 job の名前 `e2e` と `if: always()` を外さないこと** (外すと shard 失敗時に skipped = ruleset 上は通過になる)。shard の手元再現は `npm run test -w @typedcode/e2e -- --shard=1/3`
-
-**`test:deployed` は staging にだけ当てる (#655 / ADR-0049)**。CI では `deploy.yml` の `e2e-staging` job が、main push の `deploy-staging` の後に、その deploy の Pages の URL (wrangler-action の `deployment-url` = `https://<label>.typedcode.pages.dev`。deploy ごとに固定で、後の push で `staging.` の alias が動いても相手がずれない) を `E2E_DEPLOYED_URL` に渡して走らせる。job 間では `<label>` だけを渡す (プロジェクト名が secret に入っていて、URL のままでは GitHub が secret を含む job output として空にする)。staging は Turnstile の公開テストキーで動くので headless で通る。production の deploy には付けない (本物の Turnstile は headless で安定して通らず、通すための緩めを production に入れない)。spec は staging の署名鍵を期待するので、production に向けても通らない。`npm run setup` は要らない (相手は手元の workers ではなく、verify-cli が import する `localKeys.ts` は `npm ci` の postinstall が `.example` から作る)
-
-### モード共通の入口 (helpers/app.ts)
-
-- `openModeFresh(mode, { acceptTerms, screenShare, waitReady })`: `/<mode>` を新しい context で開く (保存データを消す仕組みは無い。独立は Playwright の context 分離が担う)。利用規約は init script で localStorage `typedcode-terms-accepted` を入れて飛ばす (既定は casual 以外)。起動時の画面共有の選択ダイアログ (`.screen-share-choice-dialog`。class と exam で出ることを確認済み) は `screenShare: 'share' | 'optOut'` で選ぶ (`optOut` は続けて出る確認ダイアログ `.screen-share-optout-confirm-dialog` の confirm まで閉じる。#374)。問題の読み込み・試験ゲートは各モードの spec 側で足す
-- **editor の UI 状態は状態契約と `expectConsistent()` で判定する** (#433): タブ・カウンタ・同期・アプリの段階・ダイアログは [packages/editor/AGENTS.md の「状態契約」](../editor/AGENTS.md) の data-* と dev フック `__tcTestSnapshot` だけを読む (`tabs()` / `openDialogs()` / `snapshot()` / `appState()`)。操作の後は `expectConsistent()` で DOM と内部状態の一致を確かめる (アクティブなタブの PoSW pending が 0 になって DOM が追いつくまで待ち、揃わなければ食い違いの一覧を添えて落ちる。タブに見える名前 = `.tab-filename` + `.tab-extension` が `data-filename` と同じことも見る。改名の編集中のタブは除く。#828)。タブに見える名前そのものは `visibleTabNames()` で読む (回帰は `scenarios/tab-visible-name.spec.ts`)。`__tcTestSnapshot` は dev 限定なので `production-build.spec.ts` からは使わない。タブ操作は `addTab` / `switchToTab` / `renameTab` / `requestCloseTab` + `answerCloseTab` / `setLanguage` を使う。通しの例は `tests/state-contract.spec.ts`
-- export は `exportAllTabs` (左のダウンロードボタン `#download-btn`) と `exportViaLogButton` (問題パネルの `#download-log-btn`。exam はこちらに一本化される)。どちらも全タブの ZIP で (#779)、タブ 1 つなら `<name>_TC<ts>.zip`、2 つ以上なら `ALL_TC<ts>.zip`。セルフレビューにノートを書いて出すのは `helpers/scenario.ts` の `exportWithNote`
-- `writeZipVariant` / `tamperFirstContentChange`: export ZIP を書き換えた ZIP (改ざん・proof の改名・壊れたエントリの追加) を作る。verify Web には ZIP のまま渡す
+- nightly・staging (`test:deployed`)・証跡 (`shots`)・ベンチ・セットアップのコマンドと、CI のシャードは [docs/running.md](docs/running.md)
+- **`@nightly` は通常の実行と CI のシャードから外れる** (`playwright.config.ts` と `playwright.build.config.ts` の grepInvert。`@shots` と同じ扱いで、`NIGHTLY=1` のときだけ含める)
+- **editor の UI 状態は状態契約と `expectConsistent()` で判定する** (#433)。`helpers/app.ts` の入口 (`openModeFresh` など) は docs/running.md
 
 ## よくある罠
 
-- **別の作業ツリーのサーバは再利用しない (#552)**: `reuseExistingServer` (ローカルのみ) は `port:` の TCP 応答しか見ないので、並行する worktree の本物の editor / workers / verify が同じポートを握っていると、黙ってそこにつながる。向こうの worktree の `.dev.vars` の鍵で署名された証明を、こちらの `localKeys.ts` で検証して `Unknown keyId: tcp-e2e-…` で落ちるなど、原因から離れた所で失敗する。そのため各 dev サーバは作業ツリーの識別子 (`scripts/worktree-id.mjs`。sha256(realpath(リポジトリのルート)) の先頭 12 桁) を名乗り (editor / verify は `vite.config.ts` の `server.headers` の `X-TypedCode-Worktree`、workers は packages/workers の `dev` スクリプトが渡す `--var DEV_WORKTREE_ID` を `/health` の `worktree` で返す)、`global-setup.ts` がテストより前に 3 台を照合する。別の識別子・識別子なし (照合が入る前の版で動く worktree か、TypedCode 以外のプロセス)・応答なしのどれかなら、テストを 1 本も走らせずに「ポート N は別の作業ツリーのサーバが使用中 (相手: <パス>)」の形で throw する (相手のパスは `git worktree list` の各パスを同じ式でハッシュして引く)。止めるか `E2E_*_PORT` で空きポートを指定する。照合は CI でも走る (CI は毎回この checkout からサーバを起こすので必ず一致し、名乗りの配線が壊れたら CI で気付ける)。build 設定 (`playwright.build.config.ts` / `test:build`) も workers 1 台を `global-setup.build.ts` で照合する (#560。editor-preview は `reuseExistingServer: false` で毎回この作業ツリーの dist から起こすので照合しない)。build 設定の workers も `--port` を渡し、editor-preview に `WORKERS_PORT` を渡すので、`E2E_WORKERS_PORT` を変えれば workers もビルドした editor の `VITE_API_URL` もそのポートに揃う
-- **exam の出題者鍵は開発者の鍵置き場に書かない (#229, #338)**: `packages/shared/src/examAuthorityKeys/localKeys.ts` は verifier の信頼の根で、開発者が自分の dev 鍵を置く場所 (gitignore 済み。無ければ `.example` から作られる)。E2E の使い捨て鍵を書くと開発者の鍵を壊し、e2e の後も手元の通常の dev サーバ・verifier が偽の出題者鍵を信頼し続ける。そのため fixture 生成はこのファイルを触らず、`./localKeys` の import を E2E の実行時だけ差し替える (editor と verify の dev サーバは `playwright.config.ts` の webServer が `--config ../e2e/vite.editor.config.mjs` / `vite.verify.config.mjs` で起こす。verify Web は `.tcexam` の署名をこの registry で検証するので、差し替えないと束縛が検証済みにならず `exam-t0` にならない。verify-cli は `runVerifyCli(..., { examAuthorityKeys: true })` が `exam-keys/node-register.mjs` を tsx の `--import` に付ける)。`--exam-package` に E2E の fixture を渡すときだけ `examAuthorityKeys: true` にし、他の検証は本物の registry のままにする。差し替え先 (`fixtures/exam/authority-keys.mjs`) が無ければどちらも何もしない。spec は `localKeys.ts` に fixture の keyId が混ざっていないことも assert する。**同じ作業ツリーの通常の dev サーバ (`npm run dev`) が同じポートを握っていると、下の照合は通るが差し替えが効かず「出題者の署名を検証できない」で落ちる**ので、`E2E_EDITOR_PORT` 等で空きポートを指定する (別の worktree のサーバなら照合が先に落とす)。注: `setup-env.mjs` は `.dev.vars` の無い環境で checkpoint 鍵の `localKeys.ts` に E2E の公開鍵を書く (その環境には開発者の鍵が無い前提。gitignore 済みなので `git status` には出ない)
-- **exam の解錠は Argon2id がメインスレッドで同期に走る**: 押した直後の数秒ページが固まる (本番パラメータのまま。署名検証 + 復号で数秒、遅い CI ランナーを見込んで `unlockExam` は 120 秒待つ)。誤コードのエラー表示 (`#exam-gate-error` の `hidden` 属性) と `html[data-app-state]` (`gate` → `ready`) で待ち、翻訳テキストは読まない。誤コードと「署名が信頼できない」は文言でしか区別できないので、同じ test の中で誤コード → 正コードの順に流し、正コードで解錠できることを「署名検証は通っている」の証拠にしている
-- **`verify-cli` は tsx で src を直接実行**: build を待たずに済むよう `helpers/verifyCli.ts` が `tsx cli.ts` で src を直接実行する。配布物 `dist/cli.js` (esbuild の単一 ESM bundle, #298) が素の node で動くことは verify-cli の `npm run test:dist` が CI で担保する
-- **待ちの既定は 30 秒で、`waitFor` 系にも効く (#584)**: 両 config の `actionTimeout` / `navigationTimeout` は 30 秒。`actionTimeout` は context の既定 timeout になるので (手で作る `browser.newContext()` も同じ)、click などの操作だけでなく、timeout を渡していない `page.waitForFunction` / `waitForEvent` (`download` / `popup` / `filechooser` / `load`) / `locator.waitFor` もこの値で切れる。30 秒を超えて待つ箇所は、その呼び出しに timeout を渡す (起動待ちは `helpers/app.ts` の `BOOT_TIMEOUT_MS`)。`expect` / `expect.poll` は `expect.timeout` (15 秒) が決め、`page.evaluate` と `keyboard.type` は上限を持たない
-- **class のリロードに `reloadAndResume()` は使えない**: class は起動のたびに画面共有の選択が出るので、`eventCount` 待ちで止まる。`waitForSynced` → `reload` → 画面共有の選択に答える → `waitResumed` の順に spec の中で行う (例: `scenarios/problem-examples.spec.ts`)。クリップボードは playwright.config.ts で読み書きの権限が付いているので、`navigator.clipboard.readText()` で中身を確かめられる
-- **打鍵直後の即リロードはイベント取り残し**: PoSW / IndexedDB flush 前に reload するとチェーンが途切れる。`waitForSynced` (`#sync-status-item[data-state="synced"]` + `#event-count[data-count]` の安定) を挟む。event-count が 30 秒以内に安定しなければ throw する (#229。以前は黙って return し、原因から離れた所で落ちていた)
-- **URL を開くだけで保存データは消えない (#323)**: `?reset` の全消去は撤去済み (`?reset` も `?reset=1` も何も消さない)。テストの独立は Playwright の context 分離に頼る。同じ context で `openCasualFresh()` を繰り返しても前のセッションは残る (復旧ダイアログ・復元が出る)。init script で入れた localStorage の値 (`installTermsAccepted`) もそのまま残る。消去を検査するのは設定メニューのリセット (`scenarios/reset.spec.ts`。現在のモードの DB とキーだけが消える)
-- **verify Web の判定は「選んだファイル」のもの**: `#assurance-strip` / `#result-status-icon` は表示中のタブ 1 つ分しか持たない。`VerifyWebApp.readVerdict` はサイドバーの行を選んでから読む。同じ export から作った ZIP を 2 つ入れると表示名 (`data-filename`) が重なって行が定まらないので、`writeZipVariant({ renameProof })` で proof 名を変える。`data-status` が `success` のプレーンテキスト (README・ソース) に判定は付かないので、読むのは `*_proof.json` だけ
-- **verify Web の完了待ちはサイドバーの全行で見る**: `#vp-step-*` は表示中のタブの進捗表示 (状態契約の外) なので待ちに使わない。`waitSettled` は全 `.file-item` の `data-status` が pending / verifying でなく、それが 2 回続けて同じになるまで待つ
-- **`vite preview` は `server.proxy` を引き継ぐ**: editor の dev は `/verify` を転送せず verify の dev サーバへリダイレクトする (#829) ので、いまは引き継ぐ proxy が無い。editor の `server.proxy` に `/verify` を足すときは `preview.proxy: {}` で打ち消す (しないと本番ビルドのスモークで `/verify` が dev の verify サーバへ転送され 502 になる)
-- **headless では本物の window blur が出ない**: `window.dispatchEvent(new Event('blur'))` で発火させる (handleBlur は isTrusted 非依存)
-- **画面共有は fake-media フラグで動く**: `playwright.config.ts` の chromium 引数で `getDisplayMedia` が monitor の fake stream を返す
-- **画面共有の停止は `track.stop()` では再現できない**: ページ自身が止めたトラックには `ended` が発火しない。`faults.ts` の `captureDisplayStreams` で stream を退避し、`endLastScreenShare` でトラックに `ended` を直接投げる
-- **API の障害は 1 つずつ塞ぐ**: `**/api/**` をまとめて塞ぐと casual の export 前認証 (`/api/verify-captcha`) まで落ち、export が設計どおり中止される。`injectApiFault` でエンドポイントを選び、返る `calls()` で注入が空振りしていないことを assert する。hang は 1 回あたり fetch 上限 (10 秒) かかるので、`addTab` (expect の既定 15 秒) では足りないことがある
-- **`setOffline` は読込後にだけ使う**: 読込前に入れると Monaco などの読み込みまで遮断される。読込後の数秒の往復では Vite の HMR がページを読み直さないことを実測した (`fault-network.spec.ts` が navigation の回数で見張る)
-- **長い composition は文字数ぶんのイベントになる (#783)**: Monaco は composition の開始時の preedit を 1 文字ずつの編集にする (Chromium の `textupdate` は 1 回でも、`NativeEditContext` が `viewController.type` に渡して 1 文字ずつ積む) ので、CDP の `Input.imeSetComposition` で 160 文字を 1 回送ると、1 文字の `insertCompositionText` が 160 件積まれる。PoSW (`POSW_ITERATIONS` 反復) の処理は CI の 2 並列で約 5 件/秒 (#783 の実測) なので、`expectConsistent()` の既定の上限 (`CONSISTENT_TIMEOUT_MS`) では掃けない。1 回の操作で 100 件を超えるイベントを積む手順の後は、`expectConsistent({ timeoutMs })` で上限を延ばす (例: `ime-provenance.spec.ts` の長い確定)
-- **打鍵した改行は `\r\n` になる**: `devices['Desktop Chrome']` は Windows の UA なので Monaco のモデルの改行が CRLF になり、`keyboard.type('a\n')` の内容は `a\r\n`。最終内容を文字列で比べる spec は改行を打たないか、改行を正規化して比べる
-- **undo / redo は Ctrl 系で押す**: `devices['Desktop Chrome']` は Windows の UA なので、Monaco は mac の上でも Ctrl+Z / Ctrl+Shift+Z を undo / redo にする (`ControlOrMeta` だと mac では Cmd になって何も起きない)
-- **`page.clock` の時刻表記は `hh:mm:ss`**: `'60:00'` は不正 (分は 59 まで)。1 時間は `'01:00:00'`。setInterval のカウントダウンは `fastForward` (各タイマー高々 1 回) ではなく `runFor` で回す
-- **AI 一括投入の再現は dev フック経由**: `keyboard.insertText` は Monaco が 1 文字ずつ分解するため再現にならない。`window.__tcTestInsertBlock` (dev 限定) で `executeEdits` を 1 回適用する。改造クライアントの雛形注入は `window.__tcTestForgeTemplateInjection(content)` (dev 限定。templateInjection を記録し、EditorController を外した間にモデルを差し替えるので contentChange は載らない。#718)
-- **保存済みの `currentHash` を書き換える改ざんは、tabs 行と `tabProgress` の両方を書き換える (#627)**: editor は 2 つを重ねて読む (`lastWrittenEventIndex` の大きい方、同じなら `tabProgress`) ので、片方だけを巻き戻すと他方が採られ、改ざんが空振りして緑のままになる (`close-tab-recovery.spec.ts` の #322 と `model/playwrightDriver.ts` の staleHash)
-- **dev サーバ向けの spec は本番ビルドの退行を検出できない (#255)**: チャンク分割・バンドル変換の壊れ方は `vite build` の出力にしか現れない。`production-build.spec.ts` + `playwright.build.config.ts` がその 1 本の番人で、`vite preview` に対して走る。dev フック (`__tcTestInsertBlock` / `__tcTestSnapshot`) は dist に無い (無いことを同 spec が assert する) ので、この経路の spec は増やすなら **dev 限定 API に依存しない**こと
+見出しだけを並べる。本文 (理由・経緯・回避の書き方) は [docs/pitfalls.md](docs/pitfalls.md) にあり、同じ見出しで始まる。罠を足すときは、本文を docs/pitfalls.md に書き、ここには見出しを 1 行足す。
+
+- 別の作業ツリーのサーバは再利用しない (#552)
+- exam の出題者鍵は開発者の鍵置き場に書かない (#229, #338)
+- exam の解錠は Argon2id がメインスレッドで同期に走る
+- `verify-cli` は tsx で src を直接実行
+- 待ちの既定は 30 秒で、`waitFor` 系にも効く (#584)
+- class のリロードに `reloadAndResume()` は使えない
+- 打鍵直後の即リロードはイベント取り残し
+- URL を開くだけで保存データは消えない (#323)
+- verify Web の判定は「選んだファイル」のもの
+- verify Web の完了待ちはサイドバーの全行で見る
+- `vite preview` は `server.proxy` を引き継ぐ
+- headless では本物の window blur が出ない
+- 画面共有は fake-media フラグで動く
+- 画面共有の停止は `track.stop()` では再現できない
+- API の障害は 1 つずつ塞ぐ
+- `setOffline` は読込後にだけ使う
+- 長い composition は文字数ぶんのイベントになる (#783)
+- 打鍵した改行は `\r\n` になる
+- undo / redo は Ctrl 系で押す
+- `page.clock` の時刻表記は `hh:mm:ss`
+- AI 一括投入の再現は dev フック経由
+- 保存済みの `currentHash` を書き換える改ざんは、tabs 行と `tabProgress` の両方を書き換える (#627)
+- dev サーバ向けの spec は本番ビルドの退行を検出できない (#255)

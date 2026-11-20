@@ -8,7 +8,7 @@ TypedCode 向けの Cloudflare Workers API。Turnstile 人間認証、セッシ�
 - **署名済みチェックポイントサービス**: 証明チェックポイントへの ECDSA-P256 + サーバ時刻署名。KV による per-session の `firstSeenAt` 管理と冪等処理を含む。署名は**セッション開始トークン前提** ([ADR-0027](../../docs/adr/0027-checkpoint-sign-requires-session-token.md))
 - **Turnstile 検証**: Cloudflare Turnstile トークンを検証
 - **export 前アテステーション**: Turnstile の検証結果を**署名しない**アテステーション (`signature: "unsigned"`) として返す ([#415](https://github.com/shinyaoguri/typedcode/issues/415)。作成時の経路は ADR-0017 で session/start に統合済み)
-- **CORS サポート**: `ALLOWED_ORIGINS` による許可リスト方式 (fail-closed。詳細は [AGENTS.md](AGENTS.md))
+- **CORS サポート**: `ALLOWED_ORIGINS` による許可リスト方式 (fail-closed。詳細は [docs/api.md](docs/api.md))
 
 ## セットアップ
 
@@ -216,7 +216,7 @@ Turnstile トークンを検証し、成功時は検証結果をアテステー�
 | `SESSION_PERSIST_FAILED` | 503 | 初回チェックポイントの KV 書き込み失敗 (署名せずリトライさせる) |
 | `SESSION_STATE_UNAVAILABLE` | 503 | KV の読み取り失敗 (署名せずリトライさせる) |
 
-各コードの設計意図は [AGENTS.md](AGENTS.md) を参照。
+各コードの設計意図は [docs/api.md](docs/api.md) を参照。
 
 ### GET `/api/checkpoint/public-keys`
 

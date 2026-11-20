@@ -2,12 +2,26 @@
 
 `@typedcode/verify` は **エクスポート ZIP を独立に検証する Web アプリ**。エディタとは別ドメインでも動くべきで、検証はクライアント側で完結する。
 
+このファイルには、毎回読む責務・不変条件・罠だけを置く。理由・例外・表・一覧は [docs/](docs/) にあるので、下の「触る前に読む」で当たる文書を、コードを触る前に読む (置き場の規則は root の [AGENTS.md](../../AGENTS.md)「ドキュメント階層」)。
+
 ## 責務と境界
 
 - **持つ**: ファイル投入 (drag&drop / FSA API)、Worker 経由のチェーン検証、PoSW 検証、署名済み cp の検証、UI 表示 (タイムライン、チャート、信頼スコア)、差分表示
 - **持たない**: イベント生成、proof の改変。**読み取り専用**
 
+## 触る前に読む
+
+| 触るもの | 先に読む |
+|---|---|
+| 下の不変条件に関わるコード (検証の合成・スクリーンショット・ZIP の読み出し・提出物の照合・フォルダ監視) | [docs/invariants.md](docs/invariants.md) の同じ番号 |
+| どこに何があるか、投入から結果の表示までの流れ | [docs/architecture.md](docs/architecture.md) (ディレクトリ一覧・データフロー) |
+| `data-*` 属性と、それを読む E2E | [docs/state-contract.md](docs/state-contract.md) |
+| `state/VerificationQueue`、`TrustCalculator`、タブの status の決め方 | [docs/verification.md](docs/verification.md) |
+| 結果パネルのカード (分析・三層保証・プロセス要約)、シークバー、チャートの配置 | [docs/result-ui.md](docs/result-ui.md) |
+
 ## 重要な不変条件
+
+長い項目は見出しと最初の文だけを置いてある。全文 (理由・例外・回帰テスト) の正本は [docs/invariants.md](docs/invariants.md) の同じ番号で、関わるコードを触る前に読む。番号は変えない (コード・テスト・他の文書が番号で参照する)。足す・変えるときは、全文を docs/invariants.md に書き、ここには見出しを 1 行だけ置く。
 
 1. **検証は cp の間隔を仮定しない** ([docs/adr/0004-verifier-checkpoint-stance.md](../../docs/adr/0004-verifier-checkpoint-stance.md)): 33 イベントごとでも 100 イベントごとでも 1 cp しかなくても動かなくてはいけない。`shared` 側の `CHECKPOINT_INTERVAL` の値を hard-code しない
 2. **未署名 cp の sampling を信頼しない**: 検証成功条件として「サンプリングで OK だった」だけでは不可。フルチェーン検証または署名済み cp の連結検証が前提 (PR #60 のハードニング)
@@ -19,109 +33,26 @@
 8. **入力の種類で「0 枚」と「未検査」を区別する**: ZIP とフォルダは**コンテナ**なので `screenshots/` が無ければ 0 枚 = 剥ぎ取り疑いを見る。proof.json 単体は検査対象が無いので `undefined` = 未検査として issue を上げない (verify-cli の `Screenshots: not checked` と同じ意味論)。両者を混同すると overclaim または誤検知になる
 9. **JSZip の `.async(...)` を直接呼ばない** (#234): ZIP エントリの読み出しは shared の `readZipEntryBytes` / `readZipEntryText` に `ZipFileProcessor` が作った `ZipExtractionBudget` を渡して行う。`.async(...)` は申告サイズを無視して最後まで展開するので、サイズを詐称した ZIP で採点者のブラウザが OOM する。`services/__tests__/zipReadPolicy.test.ts` が直接呼び出しを機械的に禁止する (文書ルールだけだった #149 では 6 箇所まで再発した)
 10. **拡張子 → 言語の表は shared の `LANGUAGE_MAP` が正本** (#278): `KNOWN_LANGUAGES` (= proof の `language` の allowlist の導出元。#248) もここから導出される。verify に表を書き起こさない。`services/fileUtils.ts` は shared の `getLanguageFromExtension` / `getFileType` / `isProofFilename` を再エクスポートするだけで、`isBinaryFile` だけ「画像は別経路で扱う」ため `isImageFile` 除外を重ねる。`services/__tests__/fileUtilsPolicy.test.ts` が表の再出現を機械的に禁止する
-11. **proof の名前 (`*_proof.json` / `*_proof_N.json`, shared の `isProofExportFilename`) なのに読めないファイルは、plaintext / success として並べず error として残す** (#292)。判定は `JsonFileProcessor.classifyJsonText` 1 か所で、ZIP (`ZipFileProcessor.parseTextFile`)・単体 JSON・フォルダを開く (`processFromHandle`) の全経路がこれを通る (#702。以前は ZIP だけで、単体・フォルダでは平文タブになっていた)。壊れていても `type: 'proof'` で返し、`FileController.addFileToVerification` が JSON 破損・proof 構造なしを `status: 'error'` のタブ/行にする (検証キューには載せない)。黙って通常の JSON に落とすと壊れたタブが緑の流し見で見落とされ、verify-cli の失敗扱いとも食い違う。`services/__tests__/zipBrokenProof.test.ts` / `jsonBrokenProof.test.ts` と E2E `verify-web-submission.spec.ts` (ZIP) / `verify-web-drop.spec.ts` (単体・フォルダ) が固定
+11. **proof の名前 (`*_proof.json` / `*_proof_N.json`, shared の `isProofExportFilename`) なのに読めないファイルは、plaintext / success として並べず error として残す** (#292)
 
-12. **同梱ソースと `proof.content` の照合は shared の `matchSubmissionSources` に委譲する** (#293): `FileController` が登録した材料 (フォルダごとの proof・ソース・読めない proof) を、全ファイルが揃ってから `settleSubmission` で照合する (途中で判定すると、まだ読んでいないソースが「欠落」に見える。ZIP は `processFile` の末尾、フォルダは `FolderController` が読み込み後に呼ぶ)。名前の推測 (ベース名の一致) を再び書かない — 同名のタブの 2 つ目 (`main_proof_1.json` ↔ `main_1.c`) が黙って未照合になる (これが旧実装の欠陥だった)。結論は verify-cli と同じ: **不一致・対応の曖昧さは error、ソース欠落・孤立ソースは warning** (`ContentMismatchInfo.severity`。TrustCalculator の `source` issue と `VerificationController.deriveStatus` が同じ軸で見る)。proof のタブに付くのは status と `source` issue だけで、**整合性 (integrity) のバッジは proven のまま**。照合結果は検証が終わった後に付くこともあるので、status の出所は `VerificationController.recomputeStatus` に一本化してある (FileController は `onSubmissionChange` で通知するだけで、status を導出し直さない)。ソースは proof の有無・照合の結果によらず**常に平文タブとして開ける** (不一致のときは行差分ビュー)。比較はバイト厳密なので、ソース候補は BOM を落とさない生バイト (`ParsedFileData.rawBytes`) を持つ。`ui/__tests__/submissionCheck.test.ts` が Web の配線を、`services/__tests__/webCliParity.submission.test.ts` が同じ ZIP での CLI との結論の一致を固定する
-13. **外部更新 (FSA フォルダ監視) は同じタブ ID での取り込み直し** (#695)。表示状態 (proofData・language・startTimestamp)・照合材料 (`proofs[]` / `unreadable[]` / `sources[]`)・検証結果を新しい内容の同じスナップショットに揃え、更新経路で状態を部分的に組み立てない (旧実装は status と結果だけを初期化して新しい rawData を検証に回し、古い本文と新しい検証結果を合成して表示していた)。`FolderController.handleExternalFileModified` は読んだ内容を `FileController.replaceFile` に渡すだけで、組み立ては初回取り込みと同じ関数 (`readProof` / `proofSnapshot` / `sourceMaterial`) が行う。コンテナ由来の入力 (フォルダ・スクリーンショット・記録開始時刻) は取り込み時のものを使い回し、タブの種類 (proof / 平文 / 画像) も取り込み時のまま。旧 proof の検証はキューから `remove` し、「検証中 N/M」は N が M を超えないよう数え直す。`ui/__tests__/folderProofUpdate.test.ts` が固定する。**例外はフォルダのスクリーンショット** (#703): 監視で `screenshots/` 配下か proof 候補 (`*.json` と、フォルダ内の ZIP。どちらもチェーン側の imageHash 集合の材料。ZIP の中の proof も集合に入れないと、集合が空なら改竄を見逃し、ほかの proof のハッシュだけなら ZIP の proof 自身の画像を改竄と出す = #786。ZIP と見なす規則は `folderScreenshotLoader.isZipInFolder` の 1 つ = #834) が変わったら、`FolderController` がフォルダのスクショを開いたときと同じ読み方で読み直し、フォルダのスクショを渡した proof をディスクから読み直して `replaceFile(tabId, fileData, container)` で取り込み直す (proof ごとに 1 回。同じ走査の通知はまとめ、`screenshots/` が変わっていないときは判定が変わった場合だけ)。監視中に足した proof にもフォルダのスクショ (無ければ `[]` = 0 枚。不変条件 8) を渡す。**読み直しの読み取り失敗は「無い」ではない** (14 と同じ考え方): 読み直しは一覧・proof・manifest・画像を `strict` で読み (`readDirectoryRecursive` / `collectFolderChainImageHashes` / `loadFolderScreenshots` / `ScreenshotService.loadFromFolder` の任意の引数。`NotFoundError` だけを無い = 0 枚・欠損と見る。`services/fsaErrors.isNotFound`)、1 つでも読めなければ何も確定せず、求めを残して次に監視の走査が成功した回 (`onSyncComplete`) にやり直す。失敗に入った回だけステータスバーに出す。**フォルダを開くときも同じ規則** (#773): `openFolder` は一覧・チェーン側の imageHash 集合・スクショをまず `strict` で読み、スクショの読みが `NotFoundError` 以外で失敗したら、フォルダのスクショを「まだ読めていない」として proof には未検査 (`undefined`) で渡し (0 枚・欠損で確定しない)、読み直しの求めを残す。`strict` の一覧が失敗したら `strict` なしの一覧で開き (読めないファイル 1 つでフォルダごと開けなくしない。ディレクトリ自体が読めないときだけ `folderReadError`)、一覧が不完全な間はスクショを同じく未検査にする。飛ばしたファイルは監視の基準 (14) に無いので、次の走査で追加として入る。**読み込みに失敗した変更は覚えてやり直す** (#773): 監視で追加・変更されたファイル、開くときに一覧には載ったが中身を読めなかったファイルの読み込みの失敗 (`getFile` の例外・JSON と平文の `success: false`・ZIP の `arrayBuffer()` までの失敗。中身が壊れた ZIP は対象外) を `failedChanges` に覚え、`onSyncComplete` でやり直す (監視は変更を通知済みとして記録するので、落とすと二度と通知されない)。削除の通知が来たらやり直さず、新しい通知が来たらそちらを優先する (追加に失敗したファイルへの変更の通知は追加として読む)。一覧に載ったファイルは `failedChanges` のやり直しだけ、一覧から飛ばしたファイルは `onFileAdded` だけが効き、同じファイルを二重に取り込まない。**フォルダ内の ZIP のスクショは `processZipWithinFolder` の 1 か所で決める** (#742): 同梱のスクショがあればそれ、無ければフォルダのスクショ (`screenshots/` が無ければ 0 枚、まだ読めていなければ未検査)。開いたときの ZIP も監視中に足した ZIP も同じ規則を通る。フォルダのスクショへ落とした ZIP の proof は取り込み直しの対象で、ZIP から読んだ内容 (`zipScreenshotProofs`) で `replaceFile` する (同梱のスクショを使った ZIP の proof は対象外)。読み直しは ZIP の proof のタブと内容を、読んでいる途中ではなく確定の直前に引く (並んで走る ZIP の取り込み直しでタブ ID が入れ替わるため。#834)。**同じパスの読み込みは世代で管理する** (#787): 監視の通知とやり直しは直列ではないので、`changeLoads` にパスごとの最後に始めた読み込みを持ち、読み終えた後・タブや一覧を書き換える直前に自分が最新かを見る。古い読み込みは成功しても失敗しても何も確定しない (失敗として覚えない・失敗の表示を解かない)。追加の読み込み中に来た変更の通知は追加として読む。**フォルダ内の ZIP の変更・削除は、記録した配下から引く** (#785): ZIP から開いたタブは ZIP のフォルダ行 (`sub.zip` なら `sub/…`) の下にあり ZIP のパスでは引けないので、`zipContents` (ZIP の FSA パス → フォルダ行とタブのパス) から引く (パスの接頭辞では引かない)。変更では読み終えて世代を確かめてから古い配下を外し、開いたときと同じ `processZipWithinFolder` で取り込み直す (新しい ZIP が壊れていても古い提出物のタブは残さない)。削除では配下のタブとフォルダ行を外す。**サブフォルダの削除は、配下のファイルの削除の通知が先に来ることに依っている** (#835): `FolderSyncManager.checkForChanges` が消えたファイルを 1 件ずつ通知してからフォルダの削除を通知するので、`handleExternalFolderDeleted` は空になったフォルダ行を外すだけでよい (この順序を変えるなら、配下の後始末をフォルダの削除側に足す)。`ui/__tests__/folderScreenshotResync.test.ts`・`folderWatchBaseline.test.ts`・`folderProofUpdate.test.ts`・`folderZipUpdate.test.ts`・`folderZipChainImageHashes.test.ts`・`folderSubfolderDelete.test.ts` が固定する
-14. **フォルダ監視の読み取り失敗は削除ではない** (#699)。`FolderSyncManager.traverseForComparison` は読み取りの失敗 (ディレクトリの `values()`・個別の `getFile()`) を握り潰さずに投げ、`checkForChanges` はその回の追加・変更・削除を一切確定せず前回のスナップショットを保って `onSyncError` を呼ぶ (読めなかったエントリを「消えた」と見ると、読み込み済みのタブ・検証結果が一覧から消える)。その間の変更は次に完全に読めた回の差分で拾う。**監視の基準は、フォルダを開いたときに実際に読み込んだ一覧** (#734。`openFolder` が `startWatching` に渡す): 読み込み済みのファイルが「追加」として重ならず、開くときに読めずに飛ばしたファイルは次の走査で追加として入る。一覧を渡さない呼び出しは初回の走査を基準にするが、読めなかった回は基準にせず、最初に完全に読めた回を通知なしで基準にする。`FolderController` は失敗に入った回だけステータスバーに出し (3 秒ごとに出し直すと検証集約の表示が上書きされ続ける)、復旧した回に `onStatusBarUpdate` で通常の表示に戻す。`services/__tests__/FolderSyncManager.test.ts` と `ui/__tests__/folderProofUpdate.test.ts` が固定する
-
-## ディレクトリ一覧
-
-| ディレクトリ | 役割 |
-|---|---|
-| `ui/` | `AppController`, `TabBar`, `ActivityBar`, `StatusBarUI`, `ResultPanel`, `Sidebar`, `AnalysisReportCard` (ADR-0009 の advisory 表示。打鍵動態の旧 `TypingPatternCard` はここに統合済み), `ProcessSummaryCard` (W3 プロセス要約), `ChartEventSelector` |
-| `ui/controllers/` | `VerificationController`, `TabController`, `FileController`, `FolderController`, `ChartController` |
-| `state/` | `VerificationQueue`, `UIStateManager`, `VerifyTabManager`, `ChartState` |
-| `charts/` | `TimelineChart`, `MouseChart`, `IntegratedChart`, `SeekbarController` (Chart.js) |
-| `services/` | `FileSystemAccessService`, `FolderSyncManager`, `SyntaxHighlighter`, `TrustCalculator`, `DiffService`, `ChartPreferencesService`, `proofVerification` (shared への委譲アダプタ + 総合判定 / 保証入力の写像) |
-| `workers/` | `verificationWorker.ts` (Web Worker のメッセージ入出力のみ。検証は `services/proofVerification` へ) |
+12. **同梱ソースと `proof.content` の照合は shared の `matchSubmissionSources` に委譲する** (#293): `FileController` が登録した材料 (フォルダごとの proof・ソース・読めない proof) を、全ファイルが揃ってから `settleSubmission` で照合する (途中で判定すると、まだ読んでいないソースが「欠落」に見える。ZIP は `processFile` の末尾、フォルダは `FolderController` が読み込み後に呼ぶ)
+13. **外部更新 (FSA フォルダ監視) は同じタブ ID での取り込み直し** (#695)。表示状態 (proofData・language・startTimestamp)・照合材料 (`proofs[]` / `unreadable[]` / `sources[]`)・検証結果を新しい内容の同じスナップショットに揃え、更新経路で状態を部分的に組み立てない (旧実装は status と結果だけを初期化して新しい rawData を検証に回し、古い本文と新しい検証結果を合成して表示していた)
+14. **フォルダ監視の読み取り失敗は削除ではない** (#699)。`FolderSyncManager.traverseForComparison` は読み取りの失敗 (ディレクトリの `values()`・個別の `getFile()`) を握り潰さずに投げ、`checkForChanges` はその回の追加・変更・削除を一切確定せず前回のスナップショットを保って `onSyncError` を呼ぶ (読めなかったエントリを「消えた」と見ると、読み込み済みのタブ・検証結果が一覧から消える)
 
 ## データフロー
 
-```
-File Selection (drag&drop / FSA API)
-  → FileProcessor (JSON / ZIP)
-  → 形式判定 (single / multi: タブ毎に独立 proof)
-  → VerificationController → VerificationQueue
-  → workers/verificationWorker.ts (Web Worker。メッセージ入出力のみ)
-  → services/proofVerification.runProofVerification
-     ├─ verifyExamBinding (ADR-0006。package 提供時は**必ず**・verifyProofFile より前。
-     │  #218: `proof.exam &&` を条件にすると exam ブロック無しの proof で束縛が黙って無効化される)
-     ├─ shared の verifyProofFile (metadata / chain / PoSW / finalHash / content /
-     │  checkpoint / 署名済み cp / sessionStartToken 突合 の合成は**すべて shared**)
-     └─ runAnalysis (ADR-0009。advisory のみ・valid に不反映・失敗しても検証結果を落とさない)
-  → VerificationController.handleComplete (タブ status を決める唯一の場所)
-  → TabController.renderResult (TrustCalculator / deriveAssurance)
-  → ResultPanel + charts
-```
-
-ネットワークには出ない (Workers の `/api` を呼ばない)。人間証明 (attestation) の `signature` は検証しない (検証 API は撤去済み。ADR-0017 / #340。export 前 attestation は #415 で署名自体をやめ、新しい proof は `'unsigned'`、旧 proof の HMAC 値は legacy として読むだけ)。
-
-**Worker 内で検証を再合成しないこと** (#211)。過去にここでレイヤを組み直していたため、
-`sessionStartToken` ↔ 署名 cp の sessionId 突合 (spec §6.3) が web だけ欠落し、`chainValid` に
-署名 cp の失敗を畳み込んで整合性チップが誤って FAILED になっていた。web↔CLI の結論一致は
-`services/__tests__/webCliParity.test.ts` (#216) が CI で固定する — verify-cli の `verifyProof` を
-実際に呼んで `valid` / 三層保証 / exam 束縛 / スクショ集計 (tampered・chainOnly) を突き合わせるので、
-片側だけ直すと落ちる。スクショの**読込経路** (ZIP vs フォルダ) の一致は `screenshotParity.test.ts` (#212) の担当。
+流れの図と各段の注記は [docs/architecture.md](docs/architecture.md)。**Worker 内で検証を再合成しないこと** (#211): 検証の合成は shared の `verifyProofFile` に一本化してあり、web と CLI の結論の一致は `services/__tests__/webCliParity.test.ts` (#216) が固定している。
 
 ## 状態契約 (data-* 属性)
 
-E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく、ここに挙げる **data-\* 属性** で読む ([ADR-0034](../../docs/adr/0034-replace-manual-verification-with-automated-tests.md))。値はすべて生の enum (shared / TrustCalculator / VerificationController の値そのもの) で、翻訳しない。
+E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく、[docs/state-contract.md](docs/state-contract.md) の表に挙げる **data-\* 属性** で読む ([ADR-0034](../../docs/adr/0034-replace-manual-verification-with-automated-tests.md))。値はすべて生の enum (shared / TrustCalculator / VerificationController の値そのもの) で、翻訳しない。
 
-| 要素 | 属性 | 取りうる値 | 意味 |
-|---|---|---|---|
-| `#assurance-strip` | `data-integrity` | `proven` / `partial` / `failed` | 三層保証の整合性 (shared `IntegrityLevel`)。`partial` = fast モードで PoSW 未再計算 (#214) |
-| `#assurance-strip` | `data-temporal` | `anchored` / `partial` / `unanchored` / `exam-t0` | 時刻アンカー (shared `TemporalLevel`) |
-| `#assurance-strip` | `data-pure-typing` | `true` / `false` | 著述性の `provenance.pureTyping` (advisory。判定ではない) |
-| `#assurance-strip .assurance-chip` | `data-axis` | `integrity` / `temporal` / `provenance` / `mode` | どの軸のチップか |
-| 〃 (`integrity` / `temporal` のチップ) | `data-level` | 上の `data-integrity` / `data-temporal` と同じ値 | チップ単位の判定 |
-| 〃 (`provenance` のチップ) | `data-pure-typing` | `true` / `false` | **`data-level` は付けない** (著述性はレベルを持たない。ADR-0009 / ADR-0020) |
-| 〃 (`mode` のチップ) | `data-mode` | proof の自己申告 `mode` (`normalizeProofMode` 済み) | 参考表示。保証の導出には使っていない |
-| `#exam-starter-row` | `data-starter` | `matched` / `mismatch` / `not-evaluated` | 試験束縛の starter 照合 (shared `ExamStarterCheck.status`。#718)。package 未提供・束縛の前段で失敗したときは行を隠す (照合済みと出さない) |
-| `#exam-language-row` | `data-language-check` | `allowed` / `not-allowed` / `not-evaluated` | 試験束縛の許可言語の照合 (shared `ExamLanguageCheck.status`。#727)。隠す条件は starter の行と同じ。proof.language は提出時の言語の申告 |
-| `#result-status-icon` | `data-level` | `verified` / `partial` / `failed` | 総合判定 (`TrustCalculator` の `TrustLevel`) |
-| `#trust-issues-list .trust-issue-item` | `data-component` / `data-severity` | `TrustIssueComponent` (`metadata` / `version` / `chain` / `posw` / `screenshots` / `source` / `anchoring` / `exam` / `typing`) / `error` / `warning` | 信頼バッジの issue 1 件。リストは issue が 0 件なら無い。`version` は proof の形式バージョン (#223): `newer` は warning、`tooOld` / `malformed` は error。**`VerificationController` の status と同じ軸** (`newer` → `warning`) |
-| `#file-list .file-item` | `data-status` | `pending` / `verifying` / `success` / `warning` / `error` / `cancelled` | ファイルの検証状態。`cancelled` = 利用者が検証をキャンセルした (未検証。判定ではないので `error` と区別し、色も中立色にする。#331) |
-| `#file-list .file-item` | `data-filename` | 表示名 | どのファイルの行か |
-| `#tabbar .tab` | `data-status` / `data-filename` | `.file-item` と同じ | タブの検証状態 |
-| `#tabbar .tab` | `data-active` | `true` (アクティブ時のみ。それ以外は属性なし) | アクティブなタブ (#281) |
-| `#file-list .file-item` | `data-active` | `true` (アクティブ時のみ。それ以外は属性なし) | アクティブなファイル行 (#281) |
-| `#result-status-card` | `data-filename` | 表示名 | 結果パネルが判定を描画しているファイル (判定を表示していない間は属性なし。#281) |
-| `.chart-tab` (`#tab-integrated` / `#tab-timeline` / `#tab-mouse`) | `data-active` | `true` (選択中のみ。それ以外は属性なし) | 結果パネルのチャートタブの選択状態 (#395) |
-| `.chart-panel` (`#panel-integrated` / `#panel-timeline` / `#panel-mouse`) | `data-active` | `true` (表示中のみ。それ以外は属性なし) | 表示中のチャートパネル。タブを押せたかは対応するパネルで見る (#395) |
-| `#queue-status` | `data-proof-total` / `data-proof-passed` / `data-proof-failed` / `data-proof-cancelled` | 0 以上の整数 (10 進文字列。4 つ同時に付く) | 検証が全件済んだあとのステータスバーの集約 (#282)。total = proof のタブ数 (plaintext・画像は数えない。検証できなかった `*_proof.json` は数える)、passed = status が `success` / `warning` (警告は passed に数える = verify-cli の `valid` と同じ軸)、failed = `error`、cancelled = `cancelled` (passed にも failed にも入れない。「全件済んだ」の判定では済みに数える。#331)。**検証中・proof 0 件・ステータスバーが他の表示 (Ready / エラー / メッセージ) の間は属性なし**。failed > 0 のときだけクリックで最初に失敗した proof を開く |
-
-- **判定を表示していない間は属性を付けない** (`none` などの値は使わない)。検証中 (`startProgress` / `showLoading`)・プレーンテキスト / 画像表示・`reset()`・assurance 無しの描画では `#assurance-strip` の 3 属性と `#result-status-icon` の `data-level` を外す。前のタブの判定が残ると、E2E が別ファイルの判定を読んで通ってしまう。検証自体が失敗したタブ (status `error`・結果なし。未対応形式など) を開いたときも `TabController.showTabContent` が進捗 UI のエラー表示に切り替えるので属性は付かない (以前は何もせず、直前のファイルの判定が残っていた)。E2E は属性が現れるのを待ってから読む
-- **キャンセルしたタブ (`cancelled`) を開くと、進捗 UI に「キャンセルした」表示と再検証ボタン (`#vp-retry-btn`) を出す**。判定は無いので `#assurance-strip` / `#result-status-icon` の data-* は付けない。キャンセルボタン (`#vp-cancel-btn`) は表示中のタブが pending / verifying の間だけ出る (#331)
-- **ステータスバーの集約 (`services/verificationSummary.summarizeVerification`) の入力はタブの status だけ** (#282)。検証結果から導出し直さない (Sidebar / TabBar と食い違う余地ができ、検証キューに載らない読めない proof が抜ける)。集約を出すのは `AppController.updateStatusBar` (表示の決め方は `ui/statusBarView.renderStatusBar`) の 1 か所で、`StatusBarUI` は `setSummary` 以外の表示に切り替えるたびに data-proof-* を外す。**操作の知らせ (フォルダを開いた・監視でファイルが変わった) は `statusBar.setMessage` で直接出さず `onStatusBarUpdate(message)` に渡す** (#683): 集約を出せるときは集約が優先される。集約を出し直す契機は検証の完了だけなので、検証が先に終わった後に知らせで上書きすると集約が消えたまま残る (`ui/__tests__/folderStatusSummary.test.ts`)
-- **`data-status` の出所は `VerificationController` (`tabManager.updateTab` と同じ値を Sidebar / TabBar に流す) に一本化する**。Sidebar / TabBar は受け取った値を出すだけで、検証結果から導出し直さない (`ui/__tests__/fileStatusState.test.ts` が 3 者の一致を固定)
-- `#result-status-icon` の `data-level` は `TrustCalculator` の結果を描画したときだけ付ける。`ResultData.trustResult` は必須で、ResultPanel は TrustLevel を導出し直さない
-- 属性値は `escapeHtml` を通す (innerHTML 生成。自己申告 `mode` は proof 由来なので特に。#210)
-- **active は 4 か所 (TabBar / VerifyTabManager / Sidebar / 結果パネルの表示中ファイル) にあり、タブ・ファイルを閉じた後は `TabController.settleActiveAfterRemoval` で一致させる** (#281)。`handleTabClose` / `removeFile` / `removeFolder` はすべてここを通る。次に選ぶのは TabBar の active (開いているタブだけが候補。未オープンのファイルは選ばない)。開いているタブが 0 件なら Sidebar / VerifyTabManager の active も外す (閉じたファイルを指したまま残さない。#387)。`removeFolder` は子孫フォルダのファイルまで外す (`Sidebar.getFileIdsInFolderTree`。`getFilesInFolder` は直下のみで件数表示用)。`VerifyTabManager.removeTab` はアクティブを消しても自動で別タブに切り替えず active を外すだけ (どれを表示するかは TabController が決める)。`ui/__tests__/tabClose.test.ts` が固定する
-- **この契約 (要素・属性名・値域・「無い」の意味) を変えるときは、`packages/e2e` の E2E と同じ PR で変える**。片方だけ変えると E2E が赤になるか、もっと悪いと別の要素を読んで黙って通る。ユニットテストは `ui/__tests__/ResultPanelState.test.ts` / `fileStatusState.test.ts`。E2E 側の読み手は [`packages/e2e/tests/helpers/verifyWeb.ts`](../e2e/tests/helpers/verifyWeb.ts) (`VerifyWebApp`) 1 か所で、[`verify-web-parity.spec.ts`](../e2e/tests/verify-web-parity.spec.ts) (ほか `verify-web-submission` / `verify-web-ui`) が同じ ZIP に対する verify-cli の判定との一致 (Web↔CLI パリティ)、[`exam-roundtrip.spec.ts`](../e2e/tests/exam-roundtrip.spec.ts) が `#exam-load-btn` から `.tcexam` を渡したあとの `data-temporal` (`exam-t0`) と CLI の一致 (#229)、[`production-build.spec.ts`](../e2e/tests/production-build.spec.ts) が本番ビルド (`/verify/`) で属性が出ることを見る
-- 検証モードの初期値は URL クエリ `?mode=fast|audit|full` で上書きできる (E2E 用。既定 `full`、不正値は無視。`services/verifyModeQuery.ts`)
-- `#file-input` は `multiple`。change の購読は `AppController` の `bindFileInput` 1 か所だけ (WelcomePanel 等は `click()` で開くだけ)。二重購読は `ui/__tests__/fileInput.test.ts` が機械的に禁止する
-
-## 検証キュー (`state/VerificationQueue`)
-
-- Worker は 1 本で、1 件ずつ処理する。待ち行列は **proof のイベント数の少ない順** (同数は到着順。処理中の 1 件は動かさない)。重い proof の後ろで軽い proof の結果が待たされないため (#331)
-- `cancel(id)`: 待ち行列から外すか、処理中なら Worker を terminate して作り直して次へ進め、`onCancelled` を呼ぶ (→ `VerificationController.handleCancelled` が `cancelled` を流す)。`remove(id)` は同じ外し方でコールバックを呼ばず、その id のモード・問題パッケージも消す (ファイルを消したとき。`TabController.forgetFile` が呼ぶので、ファイル単体の削除もフォルダごとの削除も通る)
-- **パース済みの proof は完了 (result / error / cancel / remove) で手放す**。再検証 (`reverifyWithManifest(id, manifest, proofData)` / キャンセル後の `requeue(id, proofData)`) は**呼び出し側がタブの `proofData` を渡す** (キューに写しを残さない)。`requeue` はいまの既定モードで並べ直す (重い full を止め、fast に切り替えてから再検証する逃げ道)
-- 作り直す前の Worker や、処理中でない id から遅れて届いたメッセージは捨てる。`state/__tests__/VerificationQueue.test.ts` が Worker のモックで固定する
-- **Worker 自体の障害 (`onerror`・`new Worker` の失敗) では、その個体を terminate して捨てる** (読み込みに失敗した Worker は後続の要求にも応答しない)。処理中の項目を 1 度だけエラーにし、次の項目は新しい Worker で処理する。応答 (result / error) を返せないままの障害が `MAX_CONSECUTIVE_WORKER_FAILURES` 回続いたら、処理中と待ち行列の項目をすべてエラーで終える (#700)。proof 単位の `error` メッセージは Worker の障害ではないので、同じ Worker のまま次へ進む
+- 全表と、属性を付ける・外す規則 (判定を表示していない間は付けない、`data-status` の出所、active の 4 か所の同期) は docs/state-contract.md にある。属性を足す・変えるときは表を同じ PR で直す
+- **この契約 (要素・属性名・値域・「無い」の意味) を変えるときは、`packages/e2e` の E2E と同じ PR で変える**。片方だけ変えると E2E が赤になるか、もっと悪いと別の要素を読んで黙って通る。
 
 ## 信頼スコア (`TrustCalculator`)
 
-`TrustCalculator.calculate` は加減点スコアではなく **issue リスト** を組み立て、`determineLevel` で `failed`(error あり) / `partial`(warning あり) / `verified`(issue なし) に落とす。issue を上げる要素:
-
-- **error**: metadata 不正、ハッシュチェーン不正、スクショ改竄、**提出物の不整合 (同梱ソースが `proof.content` と不一致・対応が曖昧。`source` component。#293)**、署名 cp が anchored だが invalid、**セッション開始トークンと署名 cp の sessionId 不一致 (spec §6.3。整合性ではなく `anchoring` 層に上げる)**、**token はあるが検証できない (`rootAnchorFailure`、#329。未登録 keyId / 署名不正 / 端末束縛の不一致。`anchoring` 層に上げ、そのときは root 未アンカーの warning を重ねない。文言は `trust.issueSessionTokenUntrusted.*` で、未登録 keyId のときだけ keyId と「registry が古い可能性」を出す)**、exam 束縛失敗 (package 提供時)
-- **warning**: 未アンカー (署名 cp なし)、post-hoc 一括署名疑い、**アンカー密度が疎 (ADR-0016, `signedCheckpointDensity.sparse`)**、**root 未サーバアンカー (ADR-0017, `!rootAnchored` かつ非 exam)**、非ピュアタイピング (ペースト/バルク挿入)、**同梱ソースの欠落 (`source` component)**、`screenShareOptOut`、exam だが問題パッケージ未読込、スクショ欠損
-
-`VerificationController.handleComplete` のタブ status 判定と **同じ軸** を見るので、両者を揃えて変更すること (タブが緑なのに信頼バッジが警告、のような不整合を避ける)。status の error 側は `proofVerification.isOverallValid` (= verify-cli の `valid` と同じ合成: shared の `verifyProofFile` × exam 束縛 × スクショ改竄) 一本に寄せてあるので、error 条件を増やすときは CLI 側も同時に見ること。`component` を増やしたら `ResultPanel.getComponentLabel` にラベルも追加する。#146 で handleComplete にスクショ改竄 (error)・スクショ欠損・`screenShareOptOut` (warning) を合流済み。attestation の署名は検証しないので status 軸にも信頼バッジにも入れない (#340)。
-
-chain issue の `message` は常に翻訳済み文言 (`trust.issueChainInvalid`)。worker の英文 (`verificationResult.message`) は信頼バッジの issue には出さず、技術的な詳細は chain カード (`chainErrorDetails`) に出す (#281)。
-
-スクショの per-image 判定 (ハッシュ突合 + チェーン裏付け) の実体は **shared の `checkScreenshotImage`** (#147)。verify 側で再実装しない — verify-cli と結論が食い違うため。
+`TrustCalculator` は加減点ではなく issue リストを組み立てる。`VerificationController.handleComplete` のタブ status 判定と **同じ軸** を見るので、両者を揃えて変更すること (タブが緑なのに信頼バッジが警告、のような不整合を避ける)。error 条件を増やすときは CLI 側も同時に見ること。issue の区分と全文は [docs/verification.md](docs/verification.md) (検証キューも同じ文書)。
 
 ## よくある罠
 
@@ -130,34 +61,3 @@ chain issue の `message` は常に翻訳済み文言 (`trust.issueChainInvalid`
 - **チャートのズーム / パン状態は `ChartPreferencesService` で永続化**: 検証結果のリセット時にクリアするか、ユーザー設定として残すかの線引きに注意
 - **`tab-switches.json` はチェーン外の平文サイドファイル**: 各タブの proof とは独立で、ハッシュ連鎖に入らず verify / verify-cli も読まない。順序や内容を変えても検証結果は変わらない (監査用の人間向け情報)
 - **試験束縛カード (ADR-0006)**: `proof.exam` がある proof は root 束縛を worker が runtime で検証済み (`verifyInitialHashRoot` の exam 分岐。worker は proofData 全体を受け取る)。完全束縛 (署名/復号/内容) は **`.tcexam` を「問題パッケージを読み込む」で取り込んだとき** `verifyExamBinding` で検証 → `VerificationQueue.reverifyWithManifest` で当該タブのみ再検証 (proof はタブの `proofData` を渡す。キューは完了した proof を持っていない)。result-card は**折りたたみ式** (`.result-card-content` は既定 `display:none`、ヘッダクリックで展開) なので、ボタンは展開後に現れる。なお package 未提供 (root 束縛のみ) のカードは **warning (緑にしない) + 既定展開** にしてある (`examBindingCardStatus`。導線を畳みの中に隠さない。#281)
-
-## 分析カード (ADR-0009)
-
-- worker が検証後に shared の `runAnalysis` を実行し `VerificationResultData.analysis` で返す。**advisory であって判定ではない** — `valid` / TrustCalculator / タブ status には一切反映しない (ここを破ると ADR-0009 の直交性が壊れる)
-- 表示は `AnalysisReportCard` (`#card-analysis`)。severity (`info`/`notice`/`review`)・score/confidence・summary に加え **evidence (event index) をボタンで出す**
-- evidence クリックは `document` に `verify:seek-to-event` CustomEvent を dispatch し、`ChartController` が `SeekbarController.seekTo(eventIndex + 1)` で当該イベント適用後の状態へジャンプする (「シグナルを見る → 現場を検分」の 1 クリック化)
-- 分析ロジックは shared に置く。verify 側に分析器を書かない (テストの厚みが shared 側にあるため。verify のユニットテストは #135 で導入済みだが純関数中心)
-- **分析できなかった分析器を「シグナルなし」と見せない** (#301): `runAnalysis` は分析器ごとに期限 (shared の `ANALYZER_TIMEOUT_MS` = 10 秒) を付け、throw・期限切れ・不正な出力を `AnalysisReport.analyzerStatus` に残して resolve する。解決しない分析器があっても検証結果は期限後に返る。カードは `analysisAvailability` で `complete` / `partial` / `unavailable` を決め、カードの `data-analysis-availability` (状態契約) に出す。`unavailable` (ok の分析器が 0) はバッジを「分析不能」(warning)、`partial` は注記を出し、分析器の一覧に status (`data-analyzer-status`) と message を出す。「分析シグナルなし」は `complete` のときだけ。message と id は外部分析器が決められる未信頼の文字列なので `escapeHtml` を通す。`runProofVerification` の `analyzers` / `analysisTimeoutMs` はテストの継ぎ目 (本番は渡さない)。全滅のとき `summarizeAnalysisForAssurance` が undefined を返し、著述性の signal 数も null になる
-
-## 三層保証バッジ (ADR-0020)
-
-- 結果画面最上部の `#assurance-strip` に **整合性 / 時刻アンカー / 著述性** の 3 チップ (+ 自己申告 mode の参考チップ) を出す。導出は shared の `deriveAssurance` (**verify 側で再実装しない** — CLI と食い違うため)
-- 導出は `TabController.renderResult` で行う (スクショ改竄数を持つのがこの層だけのため)。入力は実証拠のみで **自己申告 `proof.mode` は使わない**。`AssuranceInput` への写像は `proofVerification.buildAssuranceInput` に切り出してあり、verify-cli の同じ写像との一致をパリティテストが固定する (#216)
-- **著述性チップは常に advisory**: 判定色 (緑/赤) を使わず破線・中立色。pureTyping + シグナル数の事実併記のみ。ここを判定に見せる変更は ADR-0009/0020 違反
-- 既存の TrustCalculator (issue リスト) とタブ status は詳細表示として併存。三層バッジは語彙、issue は根拠の列挙という役割分担
-
-## プロセス要約カード (Phase 8 W3)
-
-- shared の `summarizeProcess` (純関数) を `buildResultData` で実行し、カード列の先頭 `#card-process-summary` に表示。**中立な記述であって疑い表示ではない** (疑いは AnalysisReportCard)
-- 見どころ (初回実行 / 最長停止 / 最大書き直し / 復帰直後バースト / 外部入力) は `verify:seek-to-event` で当該イベントへジャンプ (分析カードと同じ経路)
-- 抽出ロジックは shared に置く (テストは shared 側)。閾値も shared の `PROCESS_*` 定数が単一ソース
-- **再生 (W3-C)**: `SeekbarController` は再生モード `steps` (50ms/イベント・従来) と `x1/x10/x60` (イベント timestamp に比例 — 停止やバーストの緩急が見える) を持つ。`#seekbar-speed` で巡回。**見どころマーカー** は `setKeyMoments(moments)` で `#seekbar-markers` に描画 (kind 別の色・クリックでシーク)。moments は TabController が `summarizeProcess(events)` から渡す
-
-## UI レイアウトの不変条件 (UI レビュー 2026-06-12)
-
-- **チャート/シークバーはステータスカード直後 (result-cards の前)** に置く。採点の主要ツールなので 9 枚のカードの下に埋めない (index.html の `#chart-section` 位置)。戻さないこと
-- **シークバー初期化は content をガードにしない**: `TabController.renderCharts` は `proofData.content` の有無に関わらず `seekbarController.initialize` を呼ぶ。proof.json 単体 (ソースファイルなし) では content が無く、`SeekbarController` が events から最終状態を再構成する。content ガードを戻すと JSON 単体で再生/マーカーが死ぬ
-- **読込直後の自動オープン**: `VerificationController.handleComplete` が「アクティブタブが null なら最初に完了した proof を `openTabForFile`」する。ウェルカム画面のまま放置しない
-- **ステータスカードは縦 2 段**: 上段 `.result-status-row` (アイコン+タイトル+ミニゲージ)、下段 `#assurance-strip` (三層バッジ全幅)。横 1 列に詰めると三層チップとタイトルが重なって縦書き崩れする
-- **分析シグナルの文言は `summaryKey` 優先**: `AnalysisSignal.summaryKey` があれば verify 側で `t()` ローカライズ (shared は i18n を持たないため)。`summary` は英語フォールバック。analyzer に生英語を直書きしない
-- **打鍵動態は AnalysisReportCard に統合済み (ADR-0009)**: 旧 `TypingPatternCard` (human/uncertain/suspicious の判定スコアゲージ) は ADR-0023 の非判定方針と緊張するため廃止し、shared の `typingPatternAnalyzer` が `TypingPatternAnalyzer` の所見を `keystroke-content-consistency` 次元の **advisory signal** として `runAnalysis` に折り込む。判定ゲージは持ち込まず issue ベースの手掛かりのみ。**W5 ゲートで `review` には上げない** (critical も notice 止まり)。打鍵動態サンプルが乏しい proof では黙る (★6b 配慮)。verify 側に分析器を書かない原則どおりロジックは shared。
