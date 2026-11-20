@@ -311,7 +311,7 @@ Settings → General → Pull Requests:
 
 Rulesets:
 
-- `main` と `release/*`: 削除・force-push 禁止 + **PR 必須 + required status checks (test / check / e2e / pr-title / require-tests / require-visual-evidence)**。`release/*` は main と同じ ruleset (`protect-key-branches`) の対象に足す (手順は [docs/setup.md](docs/setup.md) の「Rulesets」)
+- `main` と `release/*`: 削除・force-push 禁止 + **PR 必須 + required status checks (test / check / e2e / pr-title / require-tests / require-visual-evidence)**。`main` は ruleset `protect-key-branches`、`release/*` は別の ruleset `protect-release-branches` で守る (`release/*` には直線の履歴の規則を入れない。理由と作り方は [docs/setup.md](docs/setup.md) の「Rulesets」)
 - `v*` タグ: 削除・更新禁止
 
 コミットの規約は [Conventional Commits](https://www.conventionalcommits.org/) に従います。
