@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { EditorApp, installTermsAccepted, readProofEvents } from '../helpers/app.js';
 import { runVerifyCli } from '../helpers/verifyCli.js';
+import { closeClosedTabs, closedTabRows, openClosedTabs, openClosedTabsUntilListed } from '../helpers/closedTabs.js';
 import {
   clickSettingsItem,
   loadClassPackage,
@@ -231,4 +232,29 @@ test('casual のリセットは casual の session DB とキーだけを消し�
   await page.goto('/assignment');
   await waitResumed(app);
   expect((await app.tabs()).map((t) => t.id)).toEqual(assignmentTabs);
+});
+
+test('casual: リセットは閉じたタブ (#317) も消し、「閉じたタブ」の一覧が空になる', async ({ page }) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.typeCode('int closed;');
+  await app.waitForSynced();
+  const closed = (await app.tabs())[0]!;
+  await app.addTab();
+  await app.waitForSynced();
+  await app.requestCloseTab(closed.id);
+  await app.answerCloseTab('confirm');
+  // 閉じたタブとして一覧に載っている (リセットの前提)
+  await openClosedTabsUntilListed(app, closed.id);
+  await closeClosedTabs(app);
+
+  await openReset(app);
+  await confirmResetAndWaitReload(app, /\/casual$/);
+  await app.waitReady();
+
+  await openClosedTabs(app);
+  await expect(page.locator('[data-dialog="closed-tabs"]')).toHaveAttribute('data-count', '0');
+  expect(await closedTabRows(app)).toEqual([]);
+  await closeClosedTabs(app);
+  await app.expectConsistent();
 });

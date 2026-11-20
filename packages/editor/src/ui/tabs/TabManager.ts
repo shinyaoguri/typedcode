@@ -36,6 +36,7 @@ import { shouldRecordTabSwitch } from './tabSwitchPolicy.js';
 import { type SyncStatus, type PersistOutcome, resolveSyncStatus, isPersistFailure } from './syncStatus.js';
 import { t } from '../../i18n/index.js';
 import {
+  type ArchivedTabSummary,
   type SessionStorageService,
   getSessionStorageService,
   EventChainConflictError,
@@ -144,6 +145,9 @@ export interface CreateTabOptions {
   sharedAttestation?: HumanAttestationEventData;
 }
 
+/** 閉じたタブの IndexedDB の行の扱い (#317)。`archive` は残す、`delete` は消す (exam) */
+export type ClosedTabPolicy = 'archive' | 'delete';
+
 /** UUID生成 */
 function generateUUID(): string {
   return crypto.randomUUID();
@@ -159,6 +163,12 @@ export class TabManager {
   private tabSwitches: TabSwitchEvent[] = [];
   /** 試験モードのタブロック (ADR-0010): true の間 createTab/closeTab を源流で拒否する。 */
   private examLocked = false;
+  /**
+   * 閉じたタブの IndexedDB の行の扱い (#317)。`archive` = tabs 行を `archived: true` で残し events も残す
+   * (メインメニューの「閉じたタブ」から開き直せる)、`delete` = tabs 行・events・位置を消す (exam だけ。#145)。
+   * 既定は消さない側
+   */
+  private closedTabPolicy: ClosedTabPolicy = 'archive';
   /** 復元中フラグ。復元時に switchTab が発火する合成スイッチイベントを
    *  IndexedDB に二重永続化しないために使う。 */
   private isRestoring = false;
@@ -205,6 +215,8 @@ export class TabManager {
   private tabSettleBarrier: ((tabId: string) => Promise<void>) | null = null;
   /** 閉じたタブの後始末 (retireTab) のうち、まだ終わっていないもの */
   private retiringTabs = new Set<Promise<void>>();
+  /** 開き直している最中の閉じたタブ (#317。二度押しで同じタブを 2 つ組み立てない) */
+  private reopeningTabs = new Set<string>();
   private startTime: number = performance.now();
   private sessionService: SessionStorageService;
 
@@ -444,6 +456,11 @@ export class TabManager {
     this.examLocked = locked;
   }
 
+  /** 閉じたタブの行を残すか消すか (#317)。exam だけ `delete` にする (main.ts) */
+  setClosedTabPolicy(policy: ClosedTabPolicy): void {
+    this.closedTabPolicy = policy;
+  }
+
   async createTab(
     filename: string = 'untitled',
     language: string = 'c',
@@ -593,14 +610,21 @@ export class TabManager {
    * - VITE_API_URL 未設定なら null を返す
    * - typingProof に onCheckpointCreated hook を仕掛け、新規 checkpoint を service へ流す
    * - 既存 checkpoints (restore 時に流入) があれば restore() で chain state を復元
+   * - 署名するセッションは、proof が既に結びついたセッション (署名済み cp か root の token の sessionId) を優先し、
+   *   無ければ今のセッションにする (#317)。前のセッションの閉じたタブを今のセッションで開き直しても、同じ proof の
+   *   署名 cp の sessionId が混ざらず (verifier が拒否する)、root の token と cp の sessionId も食い違わない
    */
   private attachSignedCheckpointService(
     tabId: string,
     typingProof: TypingProof,
     existingCheckpoints?: readonly import('@typedcode/shared').CheckpointData[]
   ): SignedCheckpointService | null {
-    const sessionId = this.sessionService.getCurrentSessionId();
-    if (!sessionId) return null;
+    const currentSessionId = this.sessionService.getCurrentSessionId();
+    if (!currentSessionId) return null;
+    const sessionId =
+      existingCheckpoints?.find((cp) => cp.signature)?.signature?.payload.sessionId ??
+      typingProof.sessionStartToken?.payload.sessionId ??
+      currentSessionId;
 
     const service = createSignedCheckpointServiceIfEnabled({
       sessionId,
@@ -608,7 +632,7 @@ export class TabManager {
       getInitialEventChainHash: () => typingProof.getInitialEventChainHash(),
       // ADR-0027: sign は sessionStartToken 前提。token はセッション単位 (タブ横断) なので
       // 毎回セッションレベルで解決する (exam の best-effort 取得で後から届くケースに対応)。
-      getSessionStartToken: () => this.findSigningToken(),
+      getSessionStartToken: () => this.findSigningToken(sessionId),
       // TOKEN_EXPIRED (#682): その token をセッション単位で使えないと記憶し、署名専用 token を取り直す。
       // 取り直した token は signingOnlyToken に入れて root には焼かない (不変条件 1・3)
       onTokenExpired: (token) => this.handleSigningTokenExpired(token),
@@ -654,9 +678,11 @@ export class TabManager {
    * TOKEN_EXPIRED で拒否するので、最初に見つかったタブの古い token を使い続けると、後から開いた
    * タブが新しい token を持っていても全タブの署名が落ちる。期限の判定自体はサーバに任せる
    * (editor の時計では判定しない)。
+   *
+   * `sessionId` を渡すと、今のセッションの代わりにそのセッションの token を探す (#317。前のセッションの閉じたタブを
+   * 開き直したとき、そのタブの proof が結びついたセッションで署名を続けるため)。
    */
-  private findSigningToken(): SessionStartToken | null {
-    const sessionId = this.sessionService.getCurrentSessionId();
+  private findSigningToken(sessionId = this.sessionService.getCurrentSessionId()): SessionStartToken | null {
     if (!sessionId) return null;
     let latest: SessionStartToken | null = null;
     let latestIssuedAt = Number.NEGATIVE_INFINITY;
@@ -815,6 +841,8 @@ export class TabManager {
     const tab = this.tabs.get(tabId);
     if (!tab) return false;
 
+    // 閉じたタブとして残す内容は、モデルを破棄する前に読む (#317。閉じた後に編集は来ない)
+    const content = tab.model.getValue();
     // モデルを破棄
     tab.model.dispose();
     // 署名サービスのリスナを解除
@@ -825,9 +853,9 @@ export class TabManager {
     this.tabOrder = this.tabOrder.filter((id) => id !== tabId);
     this.savedEventCursor.delete(tabId);
 
-    // IndexedDB の行とイベントを削除し、PoSW Worker を終了する (#145, #342)。
+    // IndexedDB の行を閉じたタブとして残し (exam は削除。#145, #317)、PoSW Worker を終了する (#342)。
     // 記録中のイベントの確定を待つので後段は非同期 (fire-and-forget)。
-    this.retireTab(tab);
+    this.retireTab(tab, content);
 
     // タブが0になった場合
     if (this.tabs.size === 0) {
@@ -865,12 +893,16 @@ export class TabManager {
    * 2. `tabSettleBarrier`: 確定した記録の IndexedDB への append が済むまで待つ。drain だけでは足りない。
    *    append は確定後の `.then` で走るので、ここで待たずに行を消すと、そのあとで tabs 行の無い
    *    events 行が増える (孤児)。
-   * 3. `deleteTabFromIndexedDB`: tabs 行と events 行を消す。計算中のイベントは捨てず、タブごと消える。
+   * 3. 行の後始末 (`closedTabPolicy`):
+   *    - `archive` (exam 以外。#317): `archiveTabInIndexedDB` が、確定したチェーンを欠けなく events に足し、
+   *      tabs 行を `archived: true` で残す。計算中だったイベントも閉じたタブの記録に入る。
+   *    - `delete` (exam): `deleteTabFromIndexedDB` が tabs 行と events 行を消す。計算中のイベントは捨てず、タブごと消える。
    * 4. `TypingProof.dispose()`: PoSW Worker を終了する。途中で失敗・打ち切りでも必ず終了する。
    *
    * 他のタブの記録には触らない。
    */
-  private retireTab(tab: TabState): void {
+  private retireTab(tab: TabState, content: string): void {
+    const policy = this.closedTabPolicy;
     const retiring = (async () => {
       try {
         const drain = await tab.typingProof.waitForQueueDrain();
@@ -880,7 +912,11 @@ export class TabManager {
           );
         }
         await this.tabSettleBarrier?.(tab.id);
-        await this.deleteTabFromIndexedDB(tab.id);
+        if (policy === 'archive') {
+          await this.archiveTabInIndexedDB(tab, content);
+        } else {
+          await this.deleteTabFromIndexedDB(tab.id);
+        }
       } catch (e) {
         console.warn('[TabManager] Failed to settle closed tab before disposing it:', e);
       } finally {
@@ -911,11 +947,73 @@ export class TabManager {
   }
 
   /**
+   * 閉じたタブを IndexedDB に残す (#317。exam 以外)。
+   *
+   * `deleteTabFromIndexedDB` と同じく、走っている保存 (デバウンス・flush) を待ってから書く (待たないと、
+   * 閉じる前のスナップショットを書いている保存が後から archived の無い行で上書きする)。ここより後に始まる
+   * 保存は、もう this.tabs に無いこのタブを書かない。
+   *
+   * 書くのは `SessionStorageService.archiveTab` の 1 transaction: メモリ上の確定したチェーンのうち IndexedDB に
+   * 無いイベント (EventRecorder を通らない記録など) を足し、tabs 行を `archived: true` で置き、位置を揃える。
+   * 失敗・中断しても行を消さない (閉じる前の行と events が残り、次の IndexedDB からの再開で開いたタブとして
+   * 戻る = 削除には倒れない)。二重インスタンスの拒否 (`SessionOwnershipError` / `EventChainConflictError`) も
+   * 同じく何も書かずに残す。
+   */
+  private async archiveTabInIndexedDB(tab: TabState, content: string): Promise<void> {
+    if (!this.sessionService.isInitialized()) return;
+    const sessionId = this.sessionService.getCurrentSessionId();
+    if (!sessionId) return;
+    try {
+      const running: Promise<unknown>[] = [this.currentSavePromise ?? Promise.resolve(), ...this.flushPersists];
+      await Promise.all(running.map((p) => p.catch(() => undefined)));
+      const proofState = tab.typingProof.serializeState();
+      const row: StoredTabData = {
+        ...this.buildStoredTabData(tab.id, tab, sessionId, content, proofState),
+        archived: true,
+        archivedAt: Date.now(),
+      };
+      await this.sessionService.archiveTab(row, proofState.events);
+    } catch (e) {
+      console.warn('[TabManager] Failed to archive closed tab in IndexedDB (the previous rows are kept):', e);
+    }
+  }
+
+  /** tabs 行に書く形 (`saveToIndexedDB`・閉じたタブの保存・開き直しで同じ形にする) */
+  private buildStoredTabData(
+    id: string,
+    tab: TabState,
+    sessionId: string,
+    content: string,
+    proofState: SerializedProofState
+  ): StoredTabData {
+    return {
+      id,
+      sessionId,
+      filename: tab.filename,
+      language: tab.language,
+      content,
+      createdAt: tab.createdAt,
+      lastModifiedAt: Date.now(),
+      lastWrittenEventIndex: proofState.events.length - 1,
+      currentHash: proofState.currentHash,
+      initialHashNonce: proofState.initialHashNonce,
+      startTime: proofState.startTime,
+      verificationState: tab.verificationState,
+      verificationDetails: tab.verificationDetails,
+      checkpoints: proofState.checkpoints,
+      examContext: proofState.examContext,
+      sessionStartToken: proofState.sessionStartToken,
+    };
+  }
+
+  /**
    * すべてのタブを閉じる（テンプレートインポート用）
    * 通常のcloseTabと異なり、最後の1つも閉じる
    */
   async closeAllTabs(): Promise<void> {
     const closedTabs = Array.from(this.tabs.values());
+    // 閉じたタブとして残す内容は、モデルを破棄する前に読む (#317)
+    const contents = new Map(closedTabs.map((tab) => [tab.id, tab.model.getValue()] as const));
 
     // すべてのモデルと署名サービスを破棄
     for (const tab of this.tabs.values()) {
@@ -932,10 +1030,11 @@ export class TabManager {
 
     // ストレージもクリア
     sessionStorage.removeItem(tabsKey());
-    // IndexedDB の行とイベントの削除と PoSW Worker の終了 (#145, #342。残すと復旧ダイアログに
-    // ゴースト表示される / Worker が漏れる)。記録中のイベントの確定を待つので後段は非同期
+    // IndexedDB の行を閉じたタブとして残し (exam は削除。#145, #317。閉じたタブは復元の対象から外れるので
+    // 復旧ダイアログにゴースト表示されない)、PoSW Worker を終了する (#342。残すと漏れる)。
+    // 記録中のイベントの確定を待つので後段は非同期
     for (const tab of closedTabs) {
-      this.retireTab(tab);
+      this.retireTab(tab, contents.get(tab.id) ?? '');
     }
   }
 
@@ -1496,24 +1595,7 @@ export class TabManager {
         throw e;
       }
 
-      const tabData: StoredTabData = {
-        id,
-        sessionId,
-        filename: tab.filename,
-        language: tab.language,
-        content: tab.model.getValue(),
-        createdAt: tab.createdAt,
-        lastModifiedAt: Date.now(),
-        lastWrittenEventIndex: proofState.events.length - 1,
-        currentHash: proofState.currentHash,
-        initialHashNonce: proofState.initialHashNonce,
-        startTime: proofState.startTime,
-        verificationState: tab.verificationState,
-        verificationDetails: tab.verificationDetails,
-        checkpoints: proofState.checkpoints,
-        examContext: proofState.examContext,
-        sessionStartToken: proofState.sessionStartToken,
-      };
+      const tabData = this.buildStoredTabData(id, tab, sessionId, tab.model.getValue(), proofState);
       await this.sessionService.saveTab(tabData);
     }
 
@@ -1959,56 +2041,7 @@ export class TabManager {
         const storedTab = storedTabs.find((t) => t.id === tabId);
         if (!storedTab) continue;
 
-        // イベントを読み込み
-        const events = await this.sessionService.getEvents(tabId);
-        debugLog(`[TabManager] Tab ${tabId}: ${events.length} events loaded`);
-
-        // TypingProofを復元
-        const poswWorker = createPoswWorker();
-        const typingProof = await TypingProof.fromSerializedState(
-          {
-            events,
-            currentHash: storedTab.currentHash,
-            initialHashNonce: storedTab.initialHashNonce,
-            startTime: storedTab.startTime,
-            pendingEvents: [], // IndexedDB復元時はpendingEventsなし
-            checkpoints: storedTab.checkpoints,
-            examContext: storedTab.examContext,
-            // sessionStartToken (ADR-0017) を必ず引き継ぐ。落とすと casual/class の
-            // サーバアンカーが失われ、復旧後の proof が root 不一致で検証不能になる。
-            sessionStartToken: storedTab.sessionStartToken ?? null,
-          },
-          this.fingerprint,
-          this.fingerprintComponents,
-          poswWorker
-        );
-
-        // Pending Event の増減を保存 (即時) と表示の追従へつなぐ
-        this.watchProofChanges(typingProof);
-
-        const signedCheckpointService = this.attachSignedCheckpointService(
-          storedTab.id,
-          typingProof,
-          typingProof.checkpoints
-        );
-
-        // Monacoモデルを作成
-        // #142 / #413: content がチェーンより先行していたら replay 結果へ整合させ、元の content は保全する
-        const restored = await this.restoreContent(storedTab, storedTab.content, events);
-        const model = monaco.editor.createModel(restored.content, storedTab.language);
-
-        const tab: TabState = {
-          id: storedTab.id,
-          filename: storedTab.filename,
-          language: storedTab.language,
-          typingProof,
-          model,
-          createdAt: storedTab.createdAt,
-          verificationState: storedTab.verificationState,
-          verificationDetails: storedTab.verificationDetails,
-          signedCheckpointService,
-          unprovenContents: restored.unprovenContents,
-        };
+        const tab = await this.restoreTabFromIndexedDB(storedTab);
 
         this.tabs.set(storedTab.id, tab);
         this.tabOrder.push(storedTab.id);
@@ -2036,6 +2069,122 @@ export class TabManager {
       console.error('[TabManager] Failed to load from IndexedDB:', e);
       return false;
     }
+  }
+
+  /**
+   * IndexedDB の tabs 行と events から、タブの実行時状態を組み立てる (IndexedDB からの再開と、閉じたタブを
+   * 開き直す経路で共通。#317)。this.tabs には入れない。チェーンの続きは events 末尾の hash を正とする (#322)
+   */
+  private async restoreTabFromIndexedDB(storedTab: StoredTabData): Promise<TabState> {
+    // イベントを読み込み
+    const events = await this.sessionService.getEvents(storedTab.id);
+    debugLog(`[TabManager] Tab ${storedTab.id}: ${events.length} events loaded`);
+
+    // TypingProofを復元
+    const poswWorker = createPoswWorker();
+    const typingProof = await TypingProof.fromSerializedState(
+      {
+        events,
+        currentHash: storedTab.currentHash,
+        initialHashNonce: storedTab.initialHashNonce,
+        startTime: storedTab.startTime,
+        pendingEvents: [], // IndexedDB復元時はpendingEventsなし
+        checkpoints: storedTab.checkpoints,
+        examContext: storedTab.examContext,
+        // sessionStartToken (ADR-0017) を必ず引き継ぐ。落とすと casual/class の
+        // サーバアンカーが失われ、復旧後の proof が root 不一致で検証不能になる。
+        sessionStartToken: storedTab.sessionStartToken ?? null,
+      },
+      this.fingerprint!,
+      this.fingerprintComponents!,
+      poswWorker
+    );
+
+    // Pending Event の増減を保存 (即時) と表示の追従へつなぐ
+    this.watchProofChanges(typingProof);
+
+    const signedCheckpointService = this.attachSignedCheckpointService(
+      storedTab.id,
+      typingProof,
+      typingProof.checkpoints
+    );
+
+    // Monacoモデルを作成
+    // #142 / #413: content がチェーンより先行していたら replay 結果へ整合させ、元の content は保全する
+    const restored = await this.restoreContent(storedTab, storedTab.content, events);
+    const model = monaco.editor.createModel(restored.content, storedTab.language);
+
+    return {
+      id: storedTab.id,
+      filename: storedTab.filename,
+      language: storedTab.language,
+      typingProof,
+      model,
+      createdAt: storedTab.createdAt,
+      verificationState: storedTab.verificationState,
+      verificationDetails: storedTab.verificationDetails,
+      signedCheckpointService,
+      unprovenContents: restored.unprovenContents,
+    };
+  }
+
+  /**
+   * 閉じたタブの一覧 (#317。メインメニューの「閉じたタブ」)。前のセッションのものも含め、閉じた時刻の新しい順
+   */
+  async listArchivedTabs(): Promise<ArchivedTabSummary[]> {
+    if (!this.sessionService.isInitialized()) return [];
+    return this.sessionService.listArchivedTabs();
+  }
+
+  /**
+   * 閉じたタブを開き直す (#317)。tabs 行と events からタブを組み立て (`restoreTabFromIndexedDB`)、
+   * 今のセッションの開いているタブとして tabs 行を書き直して (`archived` を外し sessionId を今のセッションへ)、
+   * アクティブにする。前のセッションのタブも開き直せる。タブは独立した proof (root・チェーン) を持つので、
+   * 記録はそのまま続く。署名は proof が結びついたセッションのまま続ける (`attachSignedCheckpointService`)。
+   *
+   * 書き直しが失敗したら (所有権を失った・容量切れなど) 組み立てたタブを捨てて null を返す。行は閉じたタブの
+   * まま残る (消えない)。exam (タブロック中)・行が無い・閉じたタブでない・既に開いているときも null。
+   */
+  async reopenArchivedTab(tabId: string): Promise<TabState | null> {
+    if (this.examLocked) return null;
+    // 既に開いている・同じタブを開き直している最中 (二度押し) なら何もしない
+    if (this.tabs.has(tabId) || this.reopeningTabs.has(tabId)) return null;
+    if (!this.fingerprint || !this.fingerprintComponents) return null;
+    const sessionId = this.sessionService.getCurrentSessionId();
+    if (!sessionId || !this.sessionService.isInitialized()) return null;
+
+    this.reopeningTabs.add(tabId);
+    try {
+      const stored = await this.sessionService.getTab(tabId);
+      if (!stored?.archived) return null;
+
+      const tab = await this.restoreTabFromIndexedDB(stored);
+      try {
+        const proofState = tab.typingProof.serializeState();
+        await this.sessionService.saveTab(
+          this.buildStoredTabData(tabId, tab, sessionId, tab.model.getValue(), proofState)
+        );
+      } catch (e) {
+        console.error('[TabManager] Failed to reopen the closed tab (it stays closed):', e);
+        this.discardTab(tab);
+        return null;
+      }
+
+      this.tabs.set(tabId, tab);
+      this.tabOrder.push(tabId);
+      await this.switchTab(tabId);
+      this.saveToStorage();
+      return tab;
+    } finally {
+      this.reopeningTabs.delete(tabId);
+    }
+  }
+
+  /** 組み立てたが this.tabs に入れなかったタブを片付ける (Worker・モデル・署名のリスナを残さない) */
+  private discardTab(tab: TabState): void {
+    tab.model.dispose();
+    tab.signedCheckpointService?.dispose();
+    tab.typingProof.dispose();
   }
 
   /**

@@ -24,6 +24,19 @@ import { mergeTabProgress } from './tabProgress.js';
 // Re-export types for convenience
 export type { SessionMetadata, StoredTabData, StoredEventData, StoredTabSwitchData, SessionSummary, TabSummary };
 
+/** 閉じたタブ 1 つ分の要約 (#317。メインメニューの「閉じたタブ」の一覧) */
+export interface ArchivedTabSummary {
+  id: string;
+  /** 閉じたときに属していたセッション (前のセッションのタブも開き直せる) */
+  sessionId: string;
+  filename: string;
+  language: string;
+  /** 閉じた時刻 (epoch ms) */
+  archivedAt: number;
+  /** IndexedDB にある events の件数 */
+  eventCount: number;
+}
+
 // DB 名はモード別に名前空間化する (ADR-0011 PR3): casual=typedcode-session、他は -<mode>。
 // storageKeys.sessionDbName() を使用時 (initialize) に呼ぶ — main.ts が最初期に NS を確定する。
 // 2 → 3: unprovenContents ストアを追加 (#413。既存のストアと行は変えない)
@@ -415,9 +428,9 @@ export class SessionStorageService {
     const session = await this.getLatestSession();
     if (!session) return false;
 
-    // タブが存在するかチェック
-    const tabCount = await this.getTabCount(session.sessionId);
-    return tabCount > 0;
+    // 開いているタブが存在するかチェック (閉じたタブ = archived は数えない。#317)
+    const tabs = await this.loadTabs(session.sessionId);
+    return tabs.length > 0;
   }
 
   /**
@@ -708,11 +721,13 @@ export class SessionStorageService {
   }
 
   /**
-   * セッションの全タブを読み込み (チェーンの書き込み位置は `tabProgress` と重ねる。#627)
+   * セッションの開いているタブを読み込み (チェーンの書き込み位置は `tabProgress` と重ねる。#627)。
+   * 閉じたタブ (`archived`) は復元の対象でないので外す (#317。#145 の「閉じたタブが蘇る」を起こさない)
    */
   async loadTabs(sessionId: string): Promise<StoredTabData[]> {
     const db = await this.getDb();
-    return this.readTabsWithProgress(db, (tabsStore) => tabsStore.index('sessionId').getAll(sessionId));
+    const tabs = await this.readTabsWithProgress(db, (tabsStore) => tabsStore.index('sessionId').getAll(sessionId));
+    return tabs.filter((tab) => !tab.archived);
   }
 
   /**
@@ -788,11 +803,154 @@ export class SessionStorageService {
   }
 
   /**
-   * タブ数を取得
+   * 閉じたタブを残す (#317)。`deleteTab` の代わりに、exam 以外でタブを閉じたときに呼ぶ。
+   *
+   * 1 つの readwrite transaction で、(1) `events` のうち IndexedDB にまだ無いものを add し、(2) tabs 行を
+   * `archived: true` で put し、(3) 位置 (`tabProgress`) を events 末尾に揃える。どれかが失敗・中断すれば
+   * 全部が巻き戻るので、「events だけ増えて tabs 行は閉じる前のまま」「tabs 行だけ archived で events が
+   * 欠けている」のどちらも残らない (失敗したら閉じる前の行と events がそのまま残る = 削除へは倒れない)。
+   *
+   * 同じ seq に別の hash のイベントが既にあれば (二重インスタンスの乖離。#484 / #237)、何も書かずに
+   * `EventChainConflictError` で reject する。所有権を失ったインスタンスの書き込みは `getWritableDb` が
+   * `SessionOwnershipError` で拒否する (#237 PR-3)。events・位置は消さない。
    */
-  async getTabCount(sessionId: string): Promise<number> {
+  async archiveTab(tab: StoredTabData, events: readonly StoredEvent[]): Promise<void> {
+    if (!tab.archived) throw new Error('archiveTab requires a row with archived: true');
+    const db = await this.getWritableDb();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_EVENTS, STORE_TABS, STORE_TAB_PROGRESS], 'readwrite');
+      let conflict: EventChainConflictError | null = null;
+
+      settleOnCommit(
+        transaction,
+        'Failed to archive tab',
+        () => {
+          console.log('[SessionStorage] Tab archived:', tab.id);
+          resolve();
+        },
+        (error) => {
+          // 乖離で自分から abort したときは、その理由で返す
+          if (conflict) {
+            reject(conflict);
+            return;
+          }
+          console.error('[SessionStorage]', error);
+          reject(error);
+        }
+      );
+
+      const eventsStore = transaction.objectStore(STORE_EVENTS);
+      const existingRequest = eventsStore.index('tabId').getAll(tab.id);
+      existingRequest.onsuccess = () => {
+        const stored = new Map<number, string>();
+        for (const row of existingRequest.result as StoredEventData[]) {
+          stored.set(row.eventIndex, row.eventData.hash);
+        }
+        const writtenAt = Date.now();
+        for (const event of events) {
+          const storedHash = stored.get(event.sequence);
+          if (storedHash === undefined) {
+            const eventData: StoredEventData = {
+              tabId: tab.id,
+              sessionId: tab.sessionId,
+              eventIndex: event.sequence,
+              eventData: event,
+              writtenAt,
+            };
+            eventsStore.add(eventData);
+          } else if (storedHash !== event.hash) {
+            conflict = new EventChainConflictError(tab.id, event.sequence, storedHash, event.hash);
+            transaction.abort();
+            return;
+          }
+        }
+
+        transaction.objectStore(STORE_TABS).put(tab);
+        const last = events[events.length - 1];
+        if (last) {
+          const progress: StoredTabProgressData = {
+            tabId: tab.id,
+            sessionId: tab.sessionId,
+            lastWrittenEventIndex: last.sequence,
+            currentHash: last.hash,
+            lastModifiedAt: writtenAt,
+          };
+          transaction.objectStore(STORE_TAB_PROGRESS).put(progress);
+        }
+      };
+    });
+  }
+
+  /**
+   * セッションの開いているタブをすべて閉じたタブにする (#317。復旧ダイアログの「新規」→「前のセッションを残す」)。
+   * tabs 行に `archived: true` と `archivedAt` を足すだけで、events・位置・スクリーンショットには触らない。
+   * 1 つの transaction で書くので、一部のタブだけが閉じたタブになることはない。閉じたタブにした件数を返す
+   */
+  async archiveSessionTabs(sessionId: string, archivedAt: number): Promise<number> {
+    const db = await this.getWritableDb();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_TABS], 'readwrite');
+      let archived = 0;
+
+      settleOnCommit(
+        transaction,
+        'Failed to archive session tabs',
+        () => resolve(archived),
+        (error) => {
+          console.error('[SessionStorage]', error);
+          reject(error);
+        }
+      );
+
+      const tabsStore = transaction.objectStore(STORE_TABS);
+      const request = tabsStore.index('sessionId').getAll(sessionId);
+      request.onsuccess = () => {
+        for (const tab of request.result as StoredTabData[]) {
+          if (tab.archived) continue;
+          tabsStore.put({ ...tab, archived: true, archivedAt });
+          archived++;
+        }
+      };
+    });
+  }
+
+  /**
+   * 閉じたタブの一覧 (#317。メインメニューの「閉じたタブ」)。どのセッションのものも含め、閉じた時刻の新しい順。
+   * 読むだけ (所有権を失った後も読める)
+   */
+  async listArchivedTabs(): Promise<ArchivedTabSummary[]> {
     const db = await this.getDb();
-    return IndexedDBHelper.countByIndex(db, STORE_TABS, 'sessionId', sessionId);
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_TABS, STORE_EVENTS], 'readonly');
+      const summaries: ArchivedTabSummary[] = [];
+
+      transaction.oncomplete = () => resolve(summaries.sort((a, b) => b.archivedAt - a.archivedAt));
+      transaction.onerror = () => reject(new Error(`Failed to list archived tabs: ${transaction.error?.message}`));
+      transaction.onabort = () =>
+        reject(new Error(`Failed to list archived tabs: ${transaction.error?.message ?? 'aborted'}`));
+
+      const eventsIndex = transaction.objectStore(STORE_EVENTS).index('tabId');
+      const tabsRequest = transaction.objectStore(STORE_TABS).getAll();
+      tabsRequest.onsuccess = () => {
+        for (const tab of tabsRequest.result as StoredTabData[]) {
+          if (!tab.archived) continue;
+          const countRequest = eventsIndex.count(tab.id);
+          countRequest.onsuccess = () => {
+            summaries.push({
+              id: tab.id,
+              sessionId: tab.sessionId,
+              filename: tab.filename,
+              language: tab.language,
+              archivedAt: tab.archivedAt ?? 0,
+              eventCount: countRequest.result,
+            });
+          };
+        }
+      };
+    });
   }
 
   // ============================================================================

@@ -164,6 +164,13 @@ export interface StoredTabData {
   examContext?: ExamSessionContext | null;
   /** セッション開始トークン (ADR-0017)。casual/class で session/start 成功時のみ。リロード復帰で保持 */
   sessionStartToken?: SessionStartToken | null;
+  /**
+   * 閉じたタブ (#317)。true の行は復元の対象 (`loadTabs`) と復旧ダイアログの件数から外れ、メインメニューの
+   * 「閉じたタブ」から開き直せる。旧い行には欄が無い (`undefined` は false と読む)。exam は付けずに削除する
+   */
+  archived?: boolean;
+  /** 閉じた時刻 (epoch ms)。`archived` が true の行だけが持つ */
+  archivedAt?: number;
 }
 
 /**

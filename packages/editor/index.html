@@ -126,6 +126,11 @@
                 <i class="fas fa-file-import"></i>
                 <span data-i18n="activityBar.importTemplate">Import Template</span>
               </button>
+              <!-- 閉じたタブの一覧 (#317)。exam では main.ts が取り除く (exam は閉じたタブを残さない) -->
+              <button class="dropdown-item" id="closed-tabs-btn">
+                <i class="fas fa-box-archive"></i>
+                <span data-i18n="activityBar.closedTabs">Closed tabs</span>
+              </button>
             </div>
           </div>
           <div class="activitybar-divider"></div>
@@ -495,9 +500,9 @@
           <h3 data-i18n="tabCloseDialog.title">タブを閉じる</h3>
         </div>
         <div class="modal-body">
-          <p class="modal-warning" data-i18n="tabCloseDialog.warning">この操作は取り消せません！</p>
+          <p class="modal-warning" data-i18n="tabCloseDialog.warning">閉じたタブは、メインメニューの「閉じたタブ」から開き直せます。</p>
           <p id="tab-close-filename" class="tab-close-filename"></p>
-          <p data-i18n="tabCloseDialog.description">以下のデータが完全に削除されます：</p>
+          <p data-i18n="tabCloseDialog.description">以下のデータはこのブラウザに残ります：</p>
           <ul class="modal-list">
             <li><i class="fas fa-keyboard"></i> <span data-i18n="tabCloseDialog.itemKeystrokes">記録されたキーストローク</span></li>
             <li><i class="fas fa-link"></i> <span data-i18n="tabCloseDialog.itemHashChain">ハッシュチェーン（証明データ）</span></li>

@@ -421,7 +421,9 @@ function readStoredSession(page: Page): Promise<StoredTabState[]> {
               (progressReq.result as (Position & { tabId: string })[]).map((p) => [p.tabId, p] as const)
             );
             resolve(
-              (tabsReq.result as (Position & { id: string; content: string })[])
+              (tabsReq.result as (Position & { id: string; content: string; archived?: boolean })[])
+                // 閉じたタブ (#317) は行と events が残るが、開いているタブ (モデルの tabs) ではない
+                .filter((t) => !t.archived)
                 .map((t) => {
                   const p = progress.get(t.id);
                   return {
@@ -502,7 +504,9 @@ function tamperStoredSession(page: Page, tamper: Exclude<ResumeTamper, 'none'>):
             const events = (eventsReq.result as Row[]).sort((a, b) => a.eventIndex - b.eventIndex);
             const progressRows = progressReq.result as { tabId: string; currentHash: string }[];
             let rewound = 0;
-            for (const tab of tabsReq.result as { id: string; currentHash: string }[]) {
+            for (const tab of tabsReq.result as { id: string; currentHash: string; archived?: boolean }[]) {
+              // 閉じたタブ (#317) は再開で開かないので、手を入れても観測されない
+              if (tab.archived) continue;
               const own = events.filter((e) => e.tabId === tab.id);
               const tail = own.at(-1)?.eventData.hash;
               const previous = own.at(-2)?.eventData.hash;
