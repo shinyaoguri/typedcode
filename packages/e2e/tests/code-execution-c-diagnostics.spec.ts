@@ -30,8 +30,8 @@ import {
  */
 
 test.describe.configure({ timeout: 360_000 });
-// C++ の 1 回目は初期化の行と clang 16 / libc++ の定型の警告 (`-x c++` と `Libc++ only supports Clang 17`) で 20 行を超える。
-// ターミナルを広げても run の先頭が流れないよう、画面を高くしておく
+// 1 回目の run は実行系の初期化の行と診断・出力を合わせて行数が多い。ターミナルを広げても run の先頭が流れないよう、
+// 画面を高くしておく (C++ の定型の警告 2 つは #871 で出なくなった。`code-execution-cpp-warnings.spec.ts`)
 test.use({ viewport: { width: 1280, height: 1400 } });
 
 /** #708 の再現の例: `if (0)` の中の誤った printf は実行されず、警告だけが出る */
@@ -56,7 +56,7 @@ test('c: @nightly 警告だけのコンパイルは success のまま、警告�
   await enlargeTerminal(page);
   expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
   await expect.poll(() => terminalText(page)).toContain('ran despite warning');
-  // clang の行・列が利用者のコードの位置を指す (preamble の分ずれない = #489 の `#line 1`)
+  // clang の行・列が利用者のコードの位置を指す (利用者のソースには何も前置しない = #709。#489 の回帰)
   const warning = /main\.c:3:25: warning: format specifies type 'int'/;
   expect(await countInTerminal(page, warning), await terminalText(page)).toBe(1);
   await expect.poll(() => squigglyLines(page, 'warning')).toEqual(['    if (0) printf("%d", "oops");']);

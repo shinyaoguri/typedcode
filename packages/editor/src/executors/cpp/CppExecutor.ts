@@ -25,6 +25,8 @@ import type {
  * `<__config>` を 1 回だけ取り込む。以後の `<__config>` は include guard で読まれないので警告は出ず、
  * pop で診断の状態を戻すので、利用者のコードの `#warning` とほかの警告はそのまま出る。
  * libc++ のヘッダはどれも最初に `<__config>` を読むので、先に取り込んでも利用者のコードの意味は変わらない。
+ * `-include` はすべての入力に掛かるので、stdout の支援コード (`STDOUT_SUPPORT_SOURCE`。#709) の翻訳単位の
+ * `<stdio.h>` からも出なくなる (支援コードの側では黙らせない)。
  * 版の揃った webc に替わったら (#573) 外してよい
  */
 export const LIBCXX_VERSION_WARNING_GUARD = `#pragma clang diagnostic push

@@ -197,7 +197,7 @@ vi.mock('@wasmer/sdk', () => {
   return { Wasmer };
 });
 
-const { CExecutor, buildSourceWithPreamble, pipeInteractiveStdin } = await import('../CExecutor.js');
+const { CExecutor, STDOUT_SUPPORT_SOURCE, pipeInteractiveStdin } = await import('../CExecutor.js');
 const { CppExecutor, LIBCXX_VERSION_WARNING_GUARD, LIBCXX_VERSION_WARNING_GUARD_PATH } = await import(
   '../../cpp/CppExecutor.js'
 );
@@ -246,10 +246,9 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
 
     await executor.run('int main(){return 0;}', callbacks);
 
-    expect(Object.keys(sdk.sandboxFiles[0] ?? {})).toEqual(['/workspace/main.c']);
-    expect(String(sdk.sandboxFiles[0]?.['/workspace/main.c'])).toContain('setvbuf(stdout, (char *)0, _IONBF, 0);');
     expect(sdk.commands[0]?.args).toEqual([
       '/workspace/main.c',
+      '/workspace/__typedcode_stdout.c',
       '-o',
       '/workspace/main.wasm',
       '-target',
@@ -520,29 +519,60 @@ describe('run ownership across a stop and an immediate re-run (#711)', () => {
   });
 });
 
-describe('compile error line numbers (#489)', () => {
-  it('places `#line 1` immediately before the user code so clang numbers its lines from 1', () => {
-    const source = buildSourceWithPreamble('int main(){return undefined_var;}');
-
-    expect(source.endsWith('#line 1\nint main(){return undefined_var;}')).toBe(true);
-    expect(source).toContain('setvbuf(stdout, (char *)0, _IONBF, 0);');
-  });
-
-  it('sends the #line-prefixed source to clang for both C and C++', async () => {
-    for (const [Executor, sourceFile] of [
+describe('stdout support in a separate translation unit (#709)', () => {
+  it('passes the user source to clang byte-for-byte, so line numbers, __LINE__ and missing includes stay as written (#489)', async () => {
+    for (const [Executor, source] of [
       [CExecutor, '/workspace/main.c'],
       [CppExecutor, '/workspace/main.cpp'],
     ] as const) {
       sdk.reset();
       const executor = new Executor();
       await executor.initialize();
-      await executor.run('int main(){return 0;}', collectCallbacks().callbacks);
+      const code = 'int main(){\n  printf("%d", __LINE__);\n  return 0;\n}\n';
+      await executor.run(code, collectCallbacks().callbacks);
 
-      const source = sdk.sandboxFiles[0]?.[sourceFile];
-      expect(String(source).endsWith('#line 1\nint main(){return 0;}')).toBe(true);
+      expect(sdk.sandboxFiles[0]?.[source]).toBe(code);
     }
   });
 
+  it('compiles and links the unbuffered-stdout support as a second input with the same extension as the user source', async () => {
+    for (const [Executor, source, support] of [
+      [CExecutor, '/workspace/main.c', '/workspace/__typedcode_stdout.c'],
+      [CppExecutor, '/workspace/main.cpp', '/workspace/__typedcode_stdout.cpp'],
+    ] as const) {
+      sdk.reset();
+      const executor = new Executor();
+      await executor.initialize();
+      await executor.run('int main(){return 0;}', collectCallbacks().callbacks);
+
+      // C++ の libc++ の警告の guard (#871) は入力ではなく `-include` で読ませるヘッダなので、ここでは除いて見る
+      const files = Object.keys(sdk.sandboxFiles[0] ?? {}).filter((f) => f !== LIBCXX_VERSION_WARNING_GUARD_PATH);
+      expect(files).toEqual([source, support]);
+      expect(sdk.sandboxFiles[0]?.[support]).toBe(STDOUT_SUPPORT_SOURCE);
+      expect(sdk.commands[0]?.args?.slice(0, 2)).toEqual([source, support]);
+    }
+  });
+
+  it('makes stdout unbuffered from a constructor that runs before main, leaving the user free to call setvbuf later', () => {
+    expect(STDOUT_SUPPORT_SOURCE).toMatch(
+      /__attribute__\(\(constructor\)\)\s*static void \w+\(void\) \{\s*setvbuf\(stdout, \(char \*\)0, _IONBF, 0\);\s*\}/
+    );
+  });
+
+  it('does not turn diagnostics from the support translation unit into markers on the user source', () => {
+    const executor = new CExecutor();
+    const stderr = [
+      '/workspace/__typedcode_stdout.cpp:4:1: warning: something in the support code',
+      "/workspace/main.cpp:2:3: error: use of undeclared identifier 'printf'",
+    ].join('\n');
+
+    expect(executor.parseErrors(stderr)).toEqual([
+      { line: 2, column: 3, severity: 'error', message: "use of undeclared identifier 'printf'" },
+    ]);
+  });
+});
+
+describe('compile error line numbers (#489)', () => {
   it('reads line 1 from a clang message that points at the first user line', () => {
     const executor = new CExecutor();
 
