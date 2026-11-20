@@ -106,6 +106,24 @@ const chainResult = await verifyChain(events, onProgress, { skipPosw: false });
 const poswResult = await verifyPoSW(previousHash, eventDataString, event.posw);
 ```
 
+#### 仕様別の検証 (`verifyProofBySpec`)
+
+proof の版から検証器を 1 つだけ選び、対応状況・項目別の検査・保証範囲・鍵の信頼・受理を分けた結果を返す入口 (#809。規則は [system-spec §6.5](../../docs/system-spec.md))。信頼する鍵と評価時刻は必ず渡す (既定の registry に落とさない)。いまは legacy の proof `1.2.0` だけを読み、それ以外の版は `unsupported` を返す。公式 Web / CLI はまだ `verifyProofFile` を使っており、切り替えは #811。結果の型名は内部用で、公開名は #811 で確定する。
+
+```typescript
+import { verifyProofBySpec, CHECKPOINT_PUBLIC_KEYS, EXAM_AUTHORITY_KEYS } from '@typedcode/shared';
+
+const result = await verifyProofBySpec(JSON.parse(proofJson), {
+  mode: 'full',
+  trust: { checkpointKeys: CHECKPOINT_PUBLIC_KEYS, examAuthorityKeys: EXAM_AUTHORITY_KEYS },
+  evaluationTime: '2026-11-20T00:00:00.000Z',
+  examPackage: undefined, // exam の proof なら .tcexam を JSON.parse した値
+});
+result.support.status; // 'supported' | 'unsupported' | 'malformed'
+result.integrity; // 'proven' | 'partial' | 'failed' | 'not-evaluated'
+result.checks.posw; // { status: 'pass' | 'fail' | 'not-checked' | 'not-applicable', code? }
+```
+
 ## 型定義
 
 ### EventType
