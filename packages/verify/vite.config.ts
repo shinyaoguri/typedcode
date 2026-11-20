@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { resolveAppVersion } from '../../scripts/app-version.mjs';
+import { resolveTrustStagingKeys } from '../../scripts/checkpoint-key-trust.mjs';
 import { WORKTREE_ID_HEADER, worktreeIdOf } from '../../scripts/worktree-id.mjs';
 
 const isDev = process.env.NODE_ENV !== 'production';
@@ -58,5 +59,8 @@ export default defineConfig({
     __GIT_COMMIT__: JSON.stringify(buildInfo.gitCommit),
     __GIT_COMMIT_DATE__: JSON.stringify(buildInfo.gitCommitDate),
     __BUILD_DATE__: JSON.stringify(buildInfo.buildDate),
+    // staging の checkpoint 鍵を時刻証拠に数えるビルドか (#321)。deploy.yml が staging と PR プレビューの
+    // ビルドにだけ TYPEDCODE_TRUST_STAGING_KEYS=true を渡す。未指定 (production・CI の検査・手元) は false
+    __TYPEDCODE_TRUST_STAGING_KEYS__: JSON.stringify(resolveTrustStagingKeys(process.env.TYPEDCODE_TRUST_STAGING_KEYS)),
   },
 });

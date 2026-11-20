@@ -441,6 +441,10 @@ export interface TranslationKeys {
     runtimeResetComplete: string;
     runtimeCorruptionDetected: string;
     runtimeResetting: string;
+    /** 「入力終了」ボタンの文字 (#707) */
+    endInput: string;
+    /** 「入力終了」ボタンの title (EOF の説明) */
+    endInputTitle: string;
   };
 
   // Log viewer
@@ -585,7 +589,7 @@ export interface TranslationKeys {
   unsupportedBrowser: {
     title: string;
     description: string;
-    safariNote: string;
+    untestedNote: string;
     hint: string;
   };
 

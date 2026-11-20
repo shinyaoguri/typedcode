@@ -201,6 +201,35 @@ test('停止ボタンは実行中だけ表示され、success・aborted・failur
   await expect(stopButton).toBeHidden();
 });
 
+test('ターミナルの文字を選んで Ctrl+C を押すとコピーになり、stdin を読まない実行には「入力終了」を出さない (#707)', async ({
+  page,
+}) => {
+  const app = await openJsTab(page);
+  const eofButton = page.locator('#stdin-eof-btn');
+  await expect(eofButton).toBeHidden();
+  await expect(eofButton).toHaveCSS('display', 'none');
+
+  // JS は stdin を持たないので、実行中も stdin の状態は付かず「入力終了」も出ない
+  await replaceCode(app, 'console.log("copy-me-" + 6 * 7);\nawait new Promise((r) => setTimeout(r, 1500));\n');
+  const run = await startRun(page);
+  await expect.poll(() => terminalText(page), { timeout: 30_000 }).toContain('copy-me-42');
+  await expect(page.locator(TERMINAL)).not.toHaveAttribute('data-stdin-state', /.*/);
+  await expect(eofButton).toBeHidden();
+  expect(await waitOutcome(page, run)).toBe('success');
+
+  // 出力の行をドラッグで選び、Ctrl+C でクリップボードへ (実行していないときもコピーは効く)
+  await page.evaluate(() => navigator.clipboard.writeText('clipboard-before'));
+  const row = page.locator(`${TERMINAL} .xterm-rows > div`, { hasText: 'copy-me-42' }).first();
+  const box = await row.boundingBox();
+  if (!box) throw new Error('terminal row is not visible');
+  await page.mouse.move(box.x + 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.press('Control+C');
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('copy-me-42');
+});
+
 test('同期の無限ループ中もエディタが応答して記録が進み、停止して再実行できる', async ({ page }) => {
   const app = await openJsTab(page);
   await replaceCode(app, 'for (;;) {}\n');

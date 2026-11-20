@@ -424,6 +424,8 @@ export const ja: TranslationKeys = {
     runtimeResetComplete: 'ランタイムのリセットが完了しました。',
     runtimeCorruptionDetected: 'ランタイムエラーを検出しました。次回実行時に自動リセットします。',
     runtimeResetting: 'ランタイムをリセット中...',
+    endInput: '入力終了',
+    endInputTitle: '入力を終える (EOF を送る。空の行で Ctrl+D と同じ)',
   },
 
   logViewer: {
@@ -561,9 +563,9 @@ export const ja: TranslationKeys = {
 
   unsupportedBrowser: {
     title: 'サポートされていないブラウザです',
-    description:
-      'TypedCode は画面キャプチャ機能（Screen Capture API）を使用するため、Chrome または Edge ブラウザでのみ動作します。',
-    safariNote: 'Safari では Screen Capture API が十分にサポートされていないため、ご利用いただけません。',
+    description: 'TypedCode は Chrome や Edge などの Chromium 系ブラウザでのみ動作します。',
+    untestedNote:
+      'Safari や Firefox など、それ以外のブラウザでは記録の動作（画面キャプチャや日本語入力など）を確かめていないため、証明を記録できません。',
     hint: '以下のブラウザでアクセスしてください：',
   },
 

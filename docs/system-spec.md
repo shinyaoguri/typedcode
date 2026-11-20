@@ -265,6 +265,7 @@ interface CheckpointData {
 **Workers 側処理** (`/api/checkpoint/sign`):
 1. スキーマ検証
 2. **sessionStartToken 検証 (ADR-0027)**: 同送された token の ECDSA 署名を registry で検証し、`token.payload.sessionId === input.sessionId` を要求 (KV read より前。無認証リクエストに KV コストを払わない)
+2a. **token の鍵の環境 (#321)**: token の鍵 (registry のエントリ) の `environment` が、この Worker の署名鍵 (`CHECKPOINT_SIGNING_KEY_ID` のエントリ) の `environment` と一致しなければ 401 `TOKEN_INVALID` (KV read より前。どちらかに環境が無ければ一致としない)。registry には production と staging の鍵が並ぶので、これが無いと本番の Worker が staging の Worker の発行した token で署名する。署名鍵が registry に無いときはここで判定せず、署名鍵のガード (500) が止める
 2b. **token の最大有効期間 (#227)**: `now - token.payload.issuedAt > SESSION_TOKEN_MAX_AGE_MS` (30 日) なら 401 `TOKEN_EXPIRED` (KV read より前)。この検査は sign 経路だけで行い、検証器 (`verifySessionStartToken`) は age を見ない (採点時に過去の proof が落ちないように)。未来の `issuedAt` は弾かない
 3. KV から `session:{sessionId}:{tabId}` を取得
 4. **firstSeenAt 確定**: 既存があればその値、なければ `now` で初回書込
@@ -640,6 +641,7 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 - `initialEventChainHash` の照合。root 式は proof の種別で分岐 (`verifyInitialHashRoot`):
   - **exam** (`proof.exam` あり): 試験モードの root 式 (v1 = `SHA256(fp ‖ nonce ‖ packageHash ‖ startToken)`、v2 = 末尾に `‖ problemContentHash`。`proof.exam.rootBinding` で分岐。§4.2)。proof 自己完結・package 不要
   - **anchored casual/class** (`proof.sessionStartToken` あり, ADR-0017): `SHA256(fp ‖ nonce ‖ serverNonce)`。加えてトークンの ECDSA を **registry で検証** (registry-only = C1。未登録 keyId は信頼しない)、鍵の有効期間/失効を `issuedAt` を anchor に判定、`token.fingerprintHash === proof.fingerprint.hash` (端末束縛)。成立で `rootAnchored=true`
+    - **信頼しない環境の鍵の token (#321)**: 署名・鍵の有効期間・端末束縛がすべて通っても、token の鍵の `environment` が検証器の信頼する環境 (既定は `production` と `development`。§8.4) に無ければ `rootAnchored=false` とし、`untrustedTokenKey` (`FullVerificationResult.rootAnchorUntrustedKey`: `keyId` と `environment`) を返す。失敗ではないので `rootAnchorFailure` は付けず、`valid` / `integrityValid` / `metadataValid` は落とさない (token の無い proof と同じ扱い。`requireRootAnchor` なら `root-anchor-missing` の違反)。署名が壊れた token は環境によらず下の失敗
     - **token を検証できないとき (#329)**: 未登録 keyId・署名不正・端末束縛の不一致は、それだけでは改ざんとしない。root を token の `serverNonce` 込みの式で照合し、**合えば root は有効** (`metadataValid` は落ちない = 整合性 `proven` のまま) で `rootAnchored=false`、理由を `rootAnchorFailure` (`code`: `token-unknown-key` / `token-invalid` / `token-fingerprint-mismatch`、`reason`、`keyId`) で返す。総合の `valid` は false (exit 1)、`errorMessage` は `reason`。未登録 keyId のときだけ「検証器の registry が古い可能性」を出す (registry は append-only なので、実際に起きるのは古い検証器で新しい鍵の token を見る場合)。**合わなければ従来どおり root 不一致 = 改ざん** (`serverNonce` の書き換えはここで落ちる)。token を剥がしても、token の無い proof は `serverNonce` を含まない従来式で照合されるので root は合わない
   - **従来 casual/class**: `SHA256(fp ‖ nonce)`。`rootAnchored=false`
 - `metadata` (pasteEvents, dropEvents, insertEvents, ...) を全イベント走査で再カウントして照合。`isPureTyping` は `evaluatePureTyping` (`typingProof/structuralEdit.ts`) が再計算する (advisory。`valid` を変えない。§7.1)
@@ -690,6 +692,11 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
     スキップされ、失効済みの鍵が黙って信頼されていた。fail-closed の粒度は **entry 単位**
     (registry 全体を無効化しない)。判定は `checkpointKeys/keyValidity.ts` に一本化されており、
     署名 cp / sessionStartToken / 出題者鍵 (`releaseTime` anchor) の 3 消費者が同じ実装を使う
+  - **鍵の環境 (#321)**: 上の検査を全 envelope が通った後で、どれかの鍵の `environment` が検証器の信頼する環境
+    (§8.4) に無ければ、署名 cp を時刻証拠に数えない: `anchored=false`・`valid=false`・`coverage` は署名 cp が
+    0 件のときと同じ・`temporal` / `density` は null、`untrustedKeys` (`keyId` と `environment`) を付ける。
+    改ざんではないので `reason` は付けず、総合の `valid` も落とさない (`requireSignedCheckpoints` なら違反)。
+    環境の無い registry のエントリ (型を通らない JSON の registry) は信頼しない (fail-closed)
 - envelope 配列全体:
   - 全 envelope で `sessionId` 一致
   - 全 envelope で `firstSeenAt` 一致 ← sessionId 流用防御
@@ -978,6 +985,7 @@ legacy 1.2.0 の中の方式は、版ではなくブロックの有無で分か�
 - 漏洩発覚時の対処: `revokedAt` を設定して registry に残す。`serverTimestamp < revokedAt` の envelope は warning 付きで trust、`>=` は fail。配布済みの verify / verify-cli は再リリースまで旧 registry のまま
 - registry の日時は手書きなので **parse 不能な entry は信頼しない** (fail-closed)。typo は `__tests__/registryFormat.test.ts` が CI で止める (厳密 ISO-8601 UTC・実在する日時・`revoked` なら `revokedAt` 必須)
 - 鍵ローテーション: 新旧並走運用 (新鍵 validFrom = 旧鍵 validUntil)
+- **鍵の環境 (#321)**: registry (`checkpointKeys/registry.ts`) の各エントリは `environment: 'production' | 'staging'` を必ず持つ (`registryFormat.test.ts` が強制)。localKeys.ts (gitignore 済み) の鍵は `checkpointKeys/index.ts` が `development` にする。staging の Worker は main への push ごとに自動デプロイされ、鍵の管理水準も本番より低いので、検証器は既定で `production` と `development` の鍵だけを時刻証拠 (token による root のアンカー・署名 cp) に数える。staging の鍵を数えるのは verify-cli の `--allow-staging-keys` と、`TYPEDCODE_TRUST_STAGING_KEYS=true` でビルドした verify (deploy.yml の staging と PR プレビューのビルド) だけ。範囲は shared の `trustedCheckpointKeyEnvironments` が決める。数えない証拠は「無い」扱いで、整合性・総合の `valid` は落とさない (§6.2 Layer 1 / Layer 6)。署名は全鍵で検証するので、署名の壊れた staging の証拠は従来どおり失敗。仕様別の入口 (`verifyProofBySpec`) は渡された鍵の一覧そのものを信頼し、環境では絞らない。Worker は自分の署名鍵と同じ環境の鍵の token だけを受け付ける (§4.6 手順 2a)。`/api/checkpoint/public-keys` は各鍵の `environment` も返す
 
 ---
 
@@ -992,7 +1000,7 @@ legacy 1.2.0 の中の方式は、版ではなくブロックの有無で分か�
    ```
    出力 ID を `packages/workers/wrangler.toml` の対応箇所に投入
 2. **本番鍵生成**: `npm run gen-checkpoint-key -w @typedcode/workers`
-   - 出力された公開鍵 entry を `packages/shared/src/checkpointKeys/registry.ts` に append、PR レビュー
+   - 出力された公開鍵 entry を `packages/shared/src/checkpointKeys/registry.ts` に append し、`environment` (`production` か `staging`) を書いて PR レビュー (§8.4)
    - 秘密鍵 JWK を `wrangler secret put CHECKPOINT_SIGNING_KEY_JWK`
    - keyId を `wrangler secret put CHECKPOINT_SIGNING_KEY_ID`
 3. **デプロイ**: `npm run deploy:production -w @typedcode/workers` (staging は `deploy:staging`。通常は CI 経由。`deploy` 単体は誤実行防止でエラー終了する)
@@ -1190,3 +1198,4 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-19 | 一括検証の画面 (#799) | §4.10 の実行条件に、コンパイルが終わらない解答は中止で抜けること・未保存の内容を対象にすること・ターミナルの実行と排他にすることを追記 |
 | 2026-11-20 | `.tcclass` の方針 (#645) | §4.8 に任意の `policy` (`screenshots` / `fullscreenTracking` / `preExportBestEffort`。ある場合は全て boolean 必須、部分指定・型違いは拒否) を追加。方針が入口 (`/class` / `/assignment`) の能力より優先し、無い旧ファイルは入口の能力のまま。`/author` は「教室で実施」「持ち帰り」を選んで書き出す。schema・proof の形式は不変 |
 | 2026-11-20 | 仕様別の検証の入口 (#809, ADR-0053) | §6.5 を追加: shared の `verifyProofBySpec` は版の完全一致で検証器を選び、いまは proof `1.2.0` だけを legacy の検証器 (`verifyProofFile`) で読む (1.0.0・1.1.0 などは `unsupported`)。対応状況・項目別の検査・保証範囲・鍵の信頼・受理を分けた結果と、legacy の制限 (版の未束縛など)・不具合修正時の扱いを記述。署名 cp・token・出題者鍵の検証結果に鍵の信頼状態 `keyStatus`、`verifyChain` に `failure`、`FullVerificationResult` に `chainFailure` などを加算 (既存の判定は不変)。§8.1 の「版で切り替えない」を、`verifyProofFile` と新しい入口の現状に合わせて直した。公式 Web / CLI の切り替えは #811 |
+| 2026-11-20 | staging の鍵を本番の検証器・Worker が信頼しない (#321) | registry のエントリに `environment` (`production` / `staging`) を必須にし、localKeys は `development` にした。検証器は既定で production と development の鍵だけを時刻証拠に数え、staging の鍵の token・署名 cp は `rootAnchorUntrustedKey` / `untrustedKeys` を付けて「無い」扱いにする (整合性・総合の `valid` は落とさない)。staging を数えるのは verify-cli `--allow-staging-keys` と staging 用にビルドした verify だけ。Worker は署名鍵と同じ環境の鍵の token だけを受け付ける。§4.6 手順 2a / §6.2 Layer 1・6 / §8.4 / §9.1 を反映。**proof フォーマットと既存の鍵 ID は不変** |

@@ -19,11 +19,11 @@ export interface InjectedAbort {
  *
  * request の `onsuccess` は呼び出し側が request を受け取った直後に同期で設定するので、microtask で
  * それを包み直し、呼び出し側のハンドラを走らせてから abort する。abort を先にすると、同じ transaction に
- * 次の request を足すハンドラ (`appendEvent` の tabs 行の更新) が終わった transaction に触って throw し、
+ * 次の request を足すハンドラ (`appendEvent` の位置の更新) が終わった transaction に触って throw し、
  * 「commit 時に失敗した」とは別の壊れ方になる。fake-indexeddb は `on*` のハンドラを addEventListener の
  * リスナーより後に呼ぶので、リスナーを足すのではなくハンドラを包む。
  *
- * 包むのは transaction の最後の request にする (`appendEvent` なら tabs 行の `put`)。最後の request の後なら
+ * 包むのは transaction の最後の request にする (`appendEvent` なら `tabProgress` の `put`)。最後の request の後なら
  * 待ちの request が無く、`error` は来ずに `abort` だけが来る (commit 時の失敗と同じ形)。途中の request の後に
  * abort すると、待ちの request の AbortError が `error` として bubble するので、`onabort` を待たない実装でも
  * reject してしまい、検査にならない。

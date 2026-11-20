@@ -43,7 +43,11 @@ function loadFixture<T>(name: string): T {
 /** full モードは PoSW (10,000 回 × イベント数) を再計算する。カバレッジ計測下でも収まる余裕をとる */
 const FULL_VERIFY_TIMEOUT_MS = 120_000;
 
-const checkpointRegistry: readonly CheckpointPublicKey[] = [loadFixture<CheckpointPublicKey>('checkpoint-key.json')];
+// 鍵の JSON は作り直さない (README)。環境 (#321) は後から必須になった項目なので、読み込むときに足す
+// (環境の無いエントリは信頼されない = fail-closed)
+const checkpointRegistry: readonly CheckpointPublicKey[] = [
+  { ...loadFixture<Omit<CheckpointPublicKey, 'environment'>>('checkpoint-key.json'), environment: 'production' },
+];
 const examAuthorityRegistry: readonly ExamAuthorityKey[] = [loadFixture<ExamAuthorityKey>('exam-authority-key.json')];
 
 /** verify-cli `verify.ts` の `deriveAssurance` 呼び出しと同じ写像 (分析・スクショは省く)。 */
