@@ -212,7 +212,12 @@ export async function verifySessionStartToken(
 
   const issuedTs = Date.parse(token.payload.issuedAt);
   if (!Number.isFinite(issuedTs)) {
-    return { valid: false, reason: 'Session token issuedAt is not a valid ISO date', keyId: entry.keyId };
+    return {
+      valid: false,
+      reason: 'Session token issuedAt is not a valid ISO date',
+      keyId: entry.keyId,
+      environment: entry.environment,
+    };
   }
 
   // 鍵の有効期間 / 失効を issuedAt を anchor に判定 (署名 cp と同じ実装を共有 = #233)。
@@ -235,7 +240,7 @@ export async function verifySessionStartToken(
           return `key ${entry.keyId} status is 'revoked' but revokedAt is missing`;
       }
     })();
-    return { valid: false, reason, keyId: entry.keyId, keyStatus };
+    return { valid: false, reason, keyId: entry.keyId, environment: entry.environment, keyStatus };
   }
 
   let cryptoKey: CryptoKey;
@@ -248,14 +253,26 @@ export async function verifySessionStartToken(
       ['verify']
     );
   } catch {
-    return { valid: false, reason: 'Failed to import registry public key', keyId: entry.keyId, keyStatus };
+    return {
+      valid: false,
+      reason: 'Failed to import registry public key',
+      keyId: entry.keyId,
+      environment: entry.environment,
+      keyStatus,
+    };
   }
 
   let signatureBytes: Uint8Array;
   try {
     signatureBytes = hexToUint8Array(token.signature);
   } catch {
-    return { valid: false, reason: 'Malformed signature hex', keyId: entry.keyId, keyStatus };
+    return {
+      valid: false,
+      reason: 'Malformed signature hex',
+      keyId: entry.keyId,
+      environment: entry.environment,
+      keyStatus,
+    };
   }
 
   const signingInput = new TextEncoder().encode(deterministicStringify(token.payload));
@@ -268,11 +285,23 @@ export async function verifySessionStartToken(
       signingInput as unknown as ArrayBuffer
     );
   } catch {
-    return { valid: false, reason: 'Signature verification error', keyId: entry.keyId, keyStatus };
+    return {
+      valid: false,
+      reason: 'Signature verification error',
+      keyId: entry.keyId,
+      environment: entry.environment,
+      keyStatus,
+    };
   }
 
   if (!valid) {
-    return { valid: false, reason: 'Session token signature is invalid', keyId: entry.keyId, keyStatus };
+    return {
+      valid: false,
+      reason: 'Session token signature is invalid',
+      keyId: entry.keyId,
+      environment: entry.environment,
+      keyStatus,
+    };
   }
-  return { valid: true, keyId: entry.keyId, keyStatus };
+  return { valid: true, keyId: entry.keyId, environment: entry.environment, keyStatus };
 }
