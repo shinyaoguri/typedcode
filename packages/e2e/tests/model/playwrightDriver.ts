@@ -32,29 +32,21 @@ const DOC_END = 'Control+End';
 const SAME_TAB_CLICK_GAP_MS = 350;
 
 /**
- * C ランタイムの取得先 (CExecutor が clang の webc を取る外部配信)。editor は起動のたびに C ランタイムを
- * バックグラウンドで初期化するので、model の列はリロード・再開のたびにここへ取りに行く。到達できる日と
- * できない日で結果が変わらないよう、model では常に route で止める (`start()`。#771)。model の手に
- * コードを実行する手は無く、C の実物の実行は `@nightly` の code-execution-c-python.spec.ts /
- * production-build.spec.ts が外部配信で見る。
+ * C ランタイムの取得先 (CExecutor が clang の webc を取る外部配信)。editor は C / C++ を実行するまで C ランタイムを
+ * 取らない (#617) ので、コードを実行する手の無い model の列はここへ取りに行かないはず。到達できる日とできない日で
+ * 結果が変わらないよう、model では常に route で止める (`start()`。#771)。万一起動や再開で取りに行けば、止めた結果の
+ * console.error が許可リストに無いので列が落ちる (起動で取らないことの見張りを兼ねる)。C の実物の実行は `@nightly` の
+ * code-execution-c-python.spec.ts / production-build.spec.ts が外部配信で見る。
  */
 const EXTERNAL_C_RUNTIME_ORIGIN = 'https://assets.typedcode.dev/';
-
-const BLOCKED_C_RUNTIME = 'C ランタイムの取得先を route で止めた結果 (EXTERNAL_C_RUNTIME_ORIGIN。#771)';
 
 /**
  * console.error のうち、既知のノイズとして許すもの。根拠を書けるものだけを足す (無闇に広げない)。
  * 判定は文言 (`msg.text()`) の 1 行目の完全一致と、`url` があれば発生元 (`msg.location().url`) の前方一致。
  * 1 行目だけを見るのは、console.error に Error を渡すと 2 行目以降にスタック (dev と build で行番号が変わる) が付くため。
+ * (起動のたびの C ランタイムの取得を止めた結果の 3 件 = #771 は、起動で取らなくなったので外した。#617)
  */
-const ALLOWED_CONSOLE_ERRORS: readonly { text: string; url?: string; reason: string }[] = [
-  { text: 'Failed to load resource: net::ERR_FAILED', url: EXTERNAL_C_RUNTIME_ORIGIN, reason: BLOCKED_C_RUNTIME },
-  { text: '[CExecutor] Initialization failed: TypeError: Failed to fetch', reason: BLOCKED_C_RUNTIME },
-  {
-    text: '[RuntimeManager] C runtime initialization failed: Error: Failed to initialize C compiler: Failed to fetch',
-    reason: BLOCKED_C_RUNTIME,
-  },
-];
+const ALLOWED_CONSOLE_ERRORS: readonly { text: string; url?: string; reason: string }[] = [];
 
 function isAllowedConsoleError(text: string, url: string): boolean {
   const firstLine = text.split('\n', 1)[0];

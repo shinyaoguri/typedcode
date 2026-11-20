@@ -12,6 +12,8 @@ import { runVerifyCli } from './helpers/verifyCli.js';
  * - C と Python の hello が実行され、出力がターミナルに出て、proof の result イベントに success が載る
  * - その proof を含む export が verify-cli (fast) を通る
  * - C のコンパイルエラーが、利用者のコードの行を指す (preamble の行数分ずれない = #489 の回帰)
+ * - C の実行系 (Wasmer の wasm と clang の webc) は起動では取らず、最初の実行で 1 回だけ取得・初期化し、
+ *   続く実行は取り直さない (#617)
  * - Python の `input()` がターミナルに打った行を読み、`window.prompt` に落ちない。案内文は入力の前に出て、
  *   入力待ちの間に停止できる (#649。Pyodide を専用 Worker で動かし、stdin を SharedArrayBuffer で渡す)
  * - C の端末入力 (#707): Enter が LF で届き、バックスペース・空行・日本語・貼り付けを含む行を fgets / scanf が
@@ -162,6 +164,41 @@ test('c: @nightly コンパイルエラーの行番号が利用者のコード�
       return squigglies.map((top) => viewLines.find((l) => Math.abs(l.top - top) < 4)?.text ?? `(no line at ${top})`);
     })
     .toEqual(['    return undefined_var;']);
+});
+
+test('c: @nightly 起動では C の実行系を取らず、最初の実行で 1 回だけ取得・初期化し、続く実行は取り直さない (#617)', async ({
+  page,
+}) => {
+  const clangFetches: string[] = [];
+  const wasmerWasmFetches: string[] = [];
+  page.on('request', (request) => {
+    const url = request.url();
+    if (/\.webc(\?|$)/.test(url)) clangFetches.push(url);
+    if (/wasmer_sdk_js_bg\.wasm/.test(url)) wasmerWasmFetches.push(url);
+  });
+
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('c');
+  await replaceCode(
+    app,
+    '#include <stdio.h>\n\nint main(void) {\n    printf("lazy-c-%d\\n", 6 * 7);\n    return 0;\n}\n'
+  );
+  await app.waitForSynced();
+  const indicator = page.locator('#runtime-state-indicator');
+  await expect(indicator).toHaveAttribute('data-runtime-state', 'not-ready');
+  expect(clangFetches).toEqual([]);
+  expect(wasmerWasmFetches).toEqual([]);
+
+  expect(await runAndWait(page, FIRST_RUN_TIMEOUT_MS), `terminal:\n${await terminalText(page)}`).toBe('success');
+  await expect.poll(() => terminalText(page)).toContain('lazy-c-42');
+  await expect(indicator).toHaveAttribute('data-runtime-state', 'ready');
+  await expect(page.locator('#clang-loading-overlay')).toBeHidden();
+
+  expect(await runAndWait(page, 60_000), `terminal:\n${await terminalText(page)}`).toBe('success');
+  await expect.poll(() => terminalText(page)).toContain('lazy-c-42');
+  expect(clangFetches).toHaveLength(1);
+  expect(wasmerWasmFetches).toHaveLength(1);
 });
 
 test('python: @nightly hello が Pyodide で実行され、出力と success の result イベントが残り、verify-cli (fast) を通る', async ({
