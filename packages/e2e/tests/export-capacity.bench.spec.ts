@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { cpus, platform, release, tmpdir, totalmem } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,8 @@ import { runVerifyCli } from './helpers/verifyCli.js';
  *
  * - **実操作** (`real typing session`): 実エディタに実キーストロークで打鍵し、本物の「ダウンロード」で export する。
  *   イベント数・打鍵数・bytes/event (インデントあり / 無し)・各段階の時間を採り、できた ZIP を verify-cli で検証する
- *   (正の対照: 測定の経路が本物の export と同じであることの確認)。打鍵数は `CAP_REAL_CHARS` (既定 600)
+ *   (正の対照: 測定の経路が本物の export と同じであることの確認。ZIP は OS の
+ *   一時ディレクトリに残し、結果に置き場を書く)。打鍵数は `CAP_REAL_CHARS` (既定 600)
  * - **段階的な水増し** (`padded ladder`): 実際に打鍵した短い列を dev フック `__tcTestCapacity.pad` で指定の件数まで
  *   複製し (packages/editor/src/export/capacityPadding.ts)、同じ本物の「ダウンロード」で export する。**水増しした proof は
  *   容量の測定用で、ハッシュチェーンが繋がらず検証に通らない**。ZIP は保存せず、大きさと時間だけを記録する
@@ -402,7 +403,9 @@ async function measureExport(
 function save(name: string, result: unknown): void {
   console.log(JSON.stringify(result));
   mkdirSync(OUT, { recursive: true });
-  writeFileSync(`${OUT}${name}.json`, `${JSON.stringify(result, null, 2)}\n`);
+  // 同じ条件を何度か回してばらつきを見るので、実行ごとに別のファイルにする
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  writeFileSync(`${OUT}${name}-${stamp}.json`, `${JSON.stringify(result, null, 2)}\n`);
 }
 
 // ---------------------------------------------------------------------------
@@ -442,7 +445,8 @@ test('export capacity: real typing session and verify-cli positive control @benc
     const compact = JSON.stringify(proof);
     const byType: Record<string, { count: number; compactBytes: number }> = {};
     for (const e of events) {
-      const entry = (byType[e.type] ??= { count: 0, compactBytes: 0 });
+      const entry = byType[e.type] ?? { count: 0, compactBytes: 0 };
+      byType[e.type] = entry;
       entry.count++;
       entry.compactBytes += Buffer.byteLength(JSON.stringify(e));
     }
@@ -469,8 +473,9 @@ test('export capacity: real typing session and verify-cli positive control @benc
         ms: Date.now() - tv,
         tail: cli.stdout.split('\n').slice(-12).join('\n'),
       },
+      // 実操作の正規の proof なので残す (別のモードで検証し直せるように)。置き場は OS の一時ディレクトリ
+      zipPath,
     });
-    rmSync(zipPath, { force: true });
   }
   save(`export-capacity-real-${REAL_CHARS}`, result);
 });
