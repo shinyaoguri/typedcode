@@ -1,12 +1,12 @@
 # ADR-0054: 検証とログ再生を公開 SDK にし、公式 Web・CLI も同じ API を使う
 
-- **Status**: Accepted (方針決定済み、実装は #811〜#813)
+- **Status**: Accepted (方針決定済み、実装は #811・#812。§5 のうち npm への公開と外部サンプル = #813 は保留)
 - **Date**: 2026-11-18
 - **Deciders**: @shinyaoguri
-- **PR / Commit**: #805 を閉じる文書 PR
+- **PR / Commit**: #814 (#805 を閉じる文書 PR)
 
 **要約**: 外部アプリがログからサービスを作れるように、高水準の提出物検証と仕様別の文書再生を提供する。検証済みの範囲と派生データの限界を型・結果・文書で明示する。
-**人が判断すること**: なし。npm の権限と公開環境は配布段階で確認し、本 ADR で公開やサービス運用は行わない。
+**人が判断すること**: なし。配布 (#813) は保留で、再開の時期は決めていない。本 ADR で公開やサービス運用は行わない。
 
 ## Context
 
@@ -83,6 +83,8 @@ DOM、Monaco、localStorage、秘密鍵、公式 API への接続は不要とす
 
 ### 5. 配布とテスト
 
+**保留 (2026-11-18 メンテナ決定)**: npm への公開と、リポジトリ外の Node/browser サンプル (#813) は保留する。再開の時期は決めていない。保留の間、`packages/verifier` は workspace の内部パッケージとして公式 Web・CLI から使い (#811・#812)、外部のアプリは SDK を取り込めない。以下は再開するときの方針として残す。公式 Web・CLI が同じ入力で同じ結果を返すことの確認 (4 つ目の項目のうち Web と CLI の分) は、保留せず #811・#812 で行う。
+
 - SDK の `package.json` を SDK API の SemVer の正本にする。アプリの版・ファイル仕様版とは独立させる。内部 workspace のライブラリすべてを npm 公開する必要はない。
 - `exports` で検証・再生の公開入口を限定し、JS・型定義・README・ライセンス・必要な依存を配布する。公開 API にモノレポの相対パスを残さない。
 - `npm pack` の成果物をリポジトリ外の Node/browser の最小アプリへ入れて検証・再生する。秘密鍵不要の公開 fixture と、ネットワーク遮断時の例を用意する。Node のサポート版は package の engines、browser は検査済みの対応表を正本にする。
@@ -110,7 +112,7 @@ DOM、Monaco、localStorage、秘密鍵、公式 API への接続は不要とす
 
 - [#811](https://github.com/shinyaoguri/typedcode/issues/811): 検証 SDK と公式 Web/CLI の統合。
 - [#812](https://github.com/shinyaoguri/typedcode/issues/812): 再生 API・共通ビューと公式履歴表示の統合。
-- [#813](https://github.com/shinyaoguri/typedcode/issues/813): 配布物・外部例・SDK 版管理と公開。
+- [#813](https://github.com/shinyaoguri/typedcode/issues/813): 配布物・外部例・SDK 版管理と公開。保留 (§5)。
 - 前提: [ADR-0053](0053-versioned-verification-contracts.md)、[#809](https://github.com/shinyaoguri/typedcode/issues/809)。アプリ配置は [ADR-0052](0052-independent-app-packages-and-deployments.md)。
 
 ## References

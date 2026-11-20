@@ -1,9 +1,9 @@
 # ADR-0053: 仕様別の検証器を維持し、新仕様の識別子を暗号的に束縛する
 
-- **Status**: Accepted (方針決定済み、実装は #809・#810。現行形式・検証結果はこの文書 PR では変えない)
+- **Status**: Accepted (方針決定済み、実装は #809・#810。legacy として対応する proof の版は 1.2.0 だけ。#611 の反復数の変更は #810 の新仕様に含める。現行形式・検証結果はこの文書 PR では変えない)
 - **Date**: 2026-11-18
 - **Deciders**: @shinyaoguri
-- **PR / Commit**: #805 を閉じる文書 PR
+- **PR / Commit**: #814 (#805 を閉じる文書 PR)
 
 **要約**: 新しい書き手が破壊的な仕様変更を行っても、過去のファイルを元の仕様で検証する。仕様の識別・暗号整合性・信頼・受理を分け、未知形式を推測で検証しない。
 **人が判断すること**: なし。新形式の正確な計算式・割当値は #810 の仕様と固定ベクタで確定する。ここでは維持すべき契約を決める。
@@ -53,7 +53,9 @@ ADR-0051 の「作問改修では配布形式を変えない」という範囲�
 
 未登録の種類/版は `unsupported`、識別子や構造が不正なら malformed、既知形式で計算が一致しなければ検証失敗と区別する。検証失敗後に旧版へ fallback しない。入力内の URL から検証コード・信頼鍵を取得しない。
 
-legacy の対応一覧と識別規則は #809 で現行コード・既存 fixture に基づき確定する。旧 root 束縛やパッケージの方式も明示的に扱う。旧仕様に版の暗号的束縛がなければ、その保証を持つと説明しない。新仕様の安全性を旧ファイルへ後付けできない。
+legacy として対応する proof の版は、凍結 proof (#581) がある `1.2.0` だけにする (2026-11-20 メンテナ決定)。`1.0.0` と `1.1.0` は、現行の `MIN_SUPPORTED_VERSION` (`1.0.0`) では受け入れているが、当時の出力を固定したファイルが無く、元の規則で検証できていると確かめられない。利用者がいない現段階の破壊的変更として、#809 の exact dispatch では `unsupported` を返す。
+
+legacy の対応一覧の残り (root の束縛方式・問題形式) と識別規則は #809 で現行コード・既存 fixture に基づき確定する。旧 root 束縛やパッケージの方式も明示的に扱う。旧仕様に版の暗号的束縛がなければ、その保証を持つと説明しない。新仕様の安全性を旧ファイルへ後付けできない。
 
 ### 3. 新仕様では種類・版を証拠へ束縛する
 
@@ -81,6 +83,8 @@ legacy の対応一覧と識別規則は #809 で現行コード・既存 fixtur
 
 各仕様に、仕様書、検証実装、正常/改変/境界の固定ベクタをそろえる。既存の凍結ファイルは再生成せず、新しい形式は別ファイルとして追加する。新しい書き手と読み手だけを同時に試して完了にしない。旧仕様の再生も固定データで確かめる。
 
+PoSW の反復数を 1,000 に下げる変更 ([ADR-0045](0045-lower-posw-iterations-for-recording-throughput.md) / #611) は、proof の版 `1.3.0` を別に作らず、#810 の新仕様の最初の版に含める (2026-11-20 メンテナ決定)。別々に進めると形式の切り替えが 2 回になり、維持する legacy が `1.2.0` と `1.3.0` の 2 つに増える。反復数を下げる判断と測定値は ADR-0045 のまま有効で、変わるのは乗せる版だけである。
+
 利用者がいない初回は破壊的に切り替えてよい。利用開始後の形式変更は、読み手が旧新を扱える準備版を先に公開し、次に新形式の出力を有効にする。新形式の出力後は準備版より前へ戻さない。ブラウザに旧アプリが残ることと、保存済みファイルの長期サポートを区別し、試験中の強制 reload に依存しない。全過去アプリ版の総当たりや常時オンラインの互換性交渉サービスは作らない。
 
 ## Consequences
@@ -100,12 +104,12 @@ legacy の対応一覧と識別規則は #809 で現行コード・既存 fixtur
 ### Follow-ups / 残課題
 
 - [#809](https://github.com/shinyaoguri/typedcode/issues/809): legacy 一覧、仕様 dispatch、共通結果と trust/policy の境界。
-- [#810](https://github.com/shinyaoguri/typedcode/issues/810): 新仕様の式・ベクタ、生成側と検証側の実装。
+- [#810](https://github.com/shinyaoguri/typedcode/issues/810): 新仕様の式・ベクタ、生成側と検証側の実装。#611 (反復数 1,000) の受け入れ条件もここで満たす。
 - [#811](https://github.com/shinyaoguri/typedcode/issues/811)・[#812](https://github.com/shinyaoguri/typedcode/issues/812): SDK と再生への適用。
 
 ## References
 
-- [ADR-0020](0020-three-layer-assurance-vocabulary.md)、[ADR-0024](0024-data-minimization-tiers.md)、[ADR-0031](0031-integrity-partial-when-posw-skipped.md)、[ADR-0043](0043-acceptance-policy-separated-from-integrity.md)
+- [ADR-0020](0020-three-layer-assurance-vocabulary.md)、[ADR-0045](0045-lower-posw-iterations-for-recording-throughput.md)、[ADR-0024](0024-data-minimization-tiers.md)、[ADR-0031](0031-integrity-partial-when-posw-skipped.md)、[ADR-0043](0043-acceptance-policy-separated-from-integrity.md)
 - [version](../../packages/shared/src/version.ts)、[検証](../../packages/shared/src/verification.ts)、[鍵の時刻判定](../../packages/shared/src/checkpointKeys/keyValidity.ts)、[凍結 proof](../../packages/shared/src/__tests__/fixtures/frozen-proofs/README.md)
 - [AWS: Prepare/Activate と rollback](https://aws.amazon.com/builders-library/ensuring-rollback-safety-during-deployments/)
 - [Protocol Buffers の形式進化の原則](https://protobuf.dev/best-practices/dos-donts/) (Protobuf 自体は採用しない)

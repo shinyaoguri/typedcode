@@ -1,9 +1,9 @@
 # ADR-0052: author・editor・verify を同じリポジトリで独立してビルド・公開する
 
-- **Status**: Accepted (方針決定済み、実装は #807・#808。ADR-0011 の author/verify の同一 origin 配信と ADR-0028 のアプリ一括公開を実装時に置換)
+- **Status**: Accepted (方針決定済み、実装は #807・#808。#808 は #857〜#859 に分割。ADR-0011 の author/verify の同一 origin 配信と ADR-0028 のアプリ一括公開を実装時に置換。タグの付け方と production へ出す契機は [ADR-0055](0055-release-channels-and-calendar-versioning.md) に従う)
 - **Date**: 2026-11-18
 - **Deciders**: @shinyaoguri
-- **PR / Commit**: #805 を閉じる文書 PR
+- **PR / Commit**: #814 (#805 を閉じる文書 PR)
 
 **要約**: モノレポと main 1 本を維持し、author・editor・verify のパッケージ、origin、成果物、公開・復旧を分ける。内部ライブラリは各アプリのビルドに取り込む。
 **人が判断すること**: なし。メンテナが独立開発・独立公開を選択済み。外部設定・配信は本 ADR の作成では変更しない。
@@ -60,6 +60,15 @@ workspace のライブラリはアプリのビルドに取り込む。SDK の外
 
 当初は既存の全体 CI を維持してよい。変更パスに応じたテスト省略や新しいモノレポ管理製品は導入の条件にしない。
 
+#### リリースチャンネル (ADR-0055) との関係
+
+この ADR を書いた後に [ADR-0055](0055-release-channels-and-calendar-versioning.md) が先に実装された (#842〜#844)。ADR-0055 §9 のとおり、後から実装するこちらが、先に入った形へ合わせる。
+
+- タグの付け方 (beta 版・正式版・patch) と、production へ出る契機が正式版への昇格と `release/A.B` の patch だけであることは、ADR-0055 のまま変えない。この ADR が決めるのは公開の単位 (アプリ + 環境) である。
+- 分割後の構成へ production を切り替えるのは、分割を含む最初の正式版のときにする。`release/A.B` はそのブランチが持つ `deploy.yml` で配信されるので、旧構成の正式版が現役の間は、旧構成の Pages プロジェクトと Environment `production` の secrets を残す。
+- beta 環境 (#845) は、アプリ別の origin と Pages (#808) の後に足す。
+- アプリを指定する公開を、昇格・patch の手順とどう組み合わせるかは [#859](https://github.com/shinyaoguri/typedcode/issues/859) の着手時に決める。
+
 ### 3. URL と origin の移行
 
 `/author`・`/author.html`・`/verify` の従来の入口は各正規ホストへ転送し、editor origin に author の実働ページを残さない。新しい URL と古い入口の関係、query 等の扱いを配信テストで確かめる。内部リンク・アセット base・Worker・COOP/COEP・必要な API 許可を環境別にそろえる。verify は署名 API を呼ばないため、そのためだけに CORS を広げない。
@@ -78,19 +87,19 @@ workspace のライブラリはアプリのビルドに取り込む。SDK の外
 
 - 配信先、preview URL、開発サーバー、アプリ別の公開履歴を管理する必要がある。
 - shared を同じソースから作っても、本番の各アプリは異なる commit になりうる。ファイル形式による互換性管理が必要 (ADR-0053)。
-- #792 系の進行中のファイル移動と競合しうる。着手時に最新 main と関連 PR を確認し、受け入れ条件を無断で変更しない。
+- #792 系の進行中のファイル移動と競合しうる。着手時に最新 main と関連 PR を確認し、受け入れ条件を無断で変更しない (2026-11-20 追記: #792 系は #800 まで完了し、この競合は解消した)。
 
 ### Follow-ups / 残課題
 
 - [#807](https://github.com/shinyaoguri/typedcode/issues/807): author パッケージと共通実行器の抽出。
-- [#808](https://github.com/shinyaoguri/typedcode/issues/808): Pages/URL/環境/公開・復旧の分離。
+- [#808](https://github.com/shinyaoguri/typedcode/issues/808): Pages/URL/環境/公開・復旧の分離。3 つに分けて進める (2026-11-20 メンテナ決定): [#857](https://github.com/shinyaoguri/typedcode/issues/857) verify の origin (#807 を待たずに始められる)、[#858](https://github.com/shinyaoguri/typedcode/issues/858) author の origin (#807 の後)、[#859](https://github.com/shinyaoguri/typedcode/issues/859) アプリと環境を指定した公開・復旧 (最後)。
 - [#804](https://github.com/shinyaoguri/typedcode/issues/804): 全体の完了条件。
 - 上記実装時に CONTRIBUTING、各 AGENTS.md・README・system-spec の現在の挙動を更新する。この文書 PR は将来の構成を実装済みと書き換えない。
 
 ## References
 
 - [ADR-0011](0011-course-modes-and-path-routing.md)、[ADR-0028](0028-tag-based-github-flow.md)、[ADR-0030](0030-dev-port-autoswitch.md)、[ADR-0049](0049-staging-turnstile-testing-keys.md)、[ADR-0051](0051-authoring-from-local-material-folder.md)
-- [ADR-0053](0053-versioned-verification-contracts.md)、[ADR-0054](0054-public-verification-and-replay-sdk.md)
+- [ADR-0053](0053-versioned-verification-contracts.md)、[ADR-0054](0054-public-verification-and-replay-sdk.md)、[ADR-0055](0055-release-channels-and-calendar-versioning.md)
 - [現行 deploy](../../.github/workflows/deploy.yml)、[author](../../packages/editor/src/authoring/AuthorPage.ts)、[verify の base](../../packages/verify/vite.config.ts)
 - [Cloudflare Pages: Monorepos](https://developers.cloudflare.com/pages/configuration/monorepos/)、[CI からの Direct Upload](https://developers.cloudflare.com/pages/how-to/use-direct-upload-with-continuous-integration/)
 - [内部パッケージを利用側でコンパイルする選択肢](https://turborepo.dev/docs/core-concepts/internal-packages) (ツールの採用を意味しない)
