@@ -7,7 +7,7 @@
  * 結果は ADR-0053 §4 の軸を分けて返す:
  * - `support`: 入力をどの仕様の検証器で読んだか (対応状況)
  * - `checks`: 検査ごとの pass / fail / not-checked / not-applicable
- * - `integrity` と `limitations`: 保証範囲 (ADR-0020 / ADR-0031 の整合性の語彙と、省略・欠落した検査)
+ * - `integrity` と `limitations`: 保証範囲 (`checks` から導く整合性と、省略・欠落した検査)
  * - `trust`: 信頼に使った鍵一覧の識別と、証拠に現れた鍵ごとの信頼状態
  * - `acceptance`: 受理ポリシー (ADR-0043) への適合
  * - `evaluation`: 評価時刻とモード (入力の写し)
@@ -188,6 +188,14 @@ export interface SpecTrustResult {
   keys: SpecTrustedKey[];
 }
 
+/**
+ * 整合性。値の語彙は ADR-0020 / ADR-0031 と同じだが、`checks` だけから導く別の値:
+ * どれかが `fail` なら `failed`、`fail` が無くどれかが `not-checked` なら `partial`、すべて `pass` か
+ * `not-applicable` なら `proven`。`unsupported` / `malformed` では `not-evaluated`。
+ * 鍵を信頼できない失敗・token の検証失敗・sessionId の不一致も `failed` になる (legacy の `integrityValid` より
+ * 甘くしない)。`assurance.integrity` (署名 cp・token の失敗を時刻アンカー層に数える) とも、
+ * `FullVerificationResult.integrityValid` (問題束縛を含まない) とも別 (system-spec §6.5.3)
+ */
 export type SpecIntegrity = IntegrityLevel | 'not-evaluated';
 
 /**

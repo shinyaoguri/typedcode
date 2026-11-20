@@ -78,7 +78,7 @@ describe('verifyProofBySpec key status of the session token and the signed check
   });
 
   it.each(REGISTRY_VARIANTS.filter((v) => !v.status.startsWith('trusted')))(
-    'fails the signed checkpoints as an untrusted key, not as tampering, when the key is $status ($entry)',
+    'fails the signed checkpoints with the untrusted-key code when the key is $status ($entry)',
     async ({ entry }) => {
       const key = { ...frozenCheckpointKey(), ...entry } as CheckpointPublicKey;
       const context = frozenContext({ mode: 'fast' });
@@ -86,10 +86,7 @@ describe('verifyProofBySpec key status of the session token and the signed check
         ...context,
         trust: { ...context.trust, checkpointKeys: [key] },
       });
-      expect([result.checks.signedCheckpoints, result.integrity]).toEqual([
-        { status: 'fail', code: 'signed-checkpoint-key-untrusted' },
-        'partial',
-      ]);
+      expect(result.checks.signedCheckpoints).toEqual({ status: 'fail', code: 'signed-checkpoint-key-untrusted' });
     }
   );
 

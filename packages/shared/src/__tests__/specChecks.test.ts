@@ -175,14 +175,11 @@ describe('verifyProofBySpec check mapping: other evidence', () => {
     ]);
   });
 
-  it('reports a token whose signed payload changed as a session anchor failure without failing the integrity', async () => {
+  it('reports a token whose signed payload changed as a session anchor failure', async () => {
     const result = await verifyEdited((proof) => {
       proof.sessionStartToken!.payload.turnstileVerified = !proof.sessionStartToken!.payload.turnstileVerified;
     });
-    expect([result.checks.sessionAnchor, result.integrity]).toEqual([
-      { status: 'fail', code: 'token-invalid' },
-      'partial',
-    ]);
+    expect(result.checks.sessionAnchor).toEqual({ status: 'fail', code: 'token-invalid' });
   });
 
   it('reports signed checkpoints of another session as a session anchor failure', async () => {

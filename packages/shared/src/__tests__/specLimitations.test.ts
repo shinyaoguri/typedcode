@@ -3,7 +3,7 @@
  *
  * - fast の PoSW 省略、問題パッケージの不足、legacy の版の未束縛は `limitations` に出る
  * - 未知の鍵・失効した鍵は `trust.keys` に列挙型で出て、その検査は pass にならない
- * - 鍵を信頼できないことは整合性 (改ざん) と混ぜない
+ * - 鍵を信頼できない失敗は、整合性を failed にしたうえで、検査の code と trust.keys で証拠の不一致と区別する
  */
 
 import { describe, expect, it } from 'vitest';
@@ -240,9 +240,9 @@ describe('verifyProofBySpec: empty checkpoint key registry', () => {
     expect(result.checks.sessionAnchor).toEqual({ status: 'fail', code: 'token-unknown-key' });
   });
 
-  it('does not call an unknown key tampering', async () => {
+  it('reports the integrity as failed when the time evidence is signed by an unknown key, as legacy does', async () => {
     const result = await verifyProofBySpec(loadFrozenProof('casual-anchored'), withCheckpointKeys([]));
-    expect(result.integrity).toBe('partial');
+    expect(result.integrity).toBe('failed');
   });
 
   it('does not evaluate the acceptance policy while the time evidence is untrusted', async () => {

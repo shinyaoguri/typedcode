@@ -853,7 +853,7 @@ legacy 1.2.0 の中の方式は、版ではなくブロックの有無で分か�
 |---|---|
 | `support` | 対応状況 (上の表)。`supported` のときだけ `spec` が付く |
 | `checks` | 項目別: `structure`・`metadata` (`typingProofHash` と再カウント)・`root`・`chain` (sequence・時刻・previousHash・反復数・hash)・`posw` (`intermediateHash` の再計算)・`finalHash`・`content`・`checkpoints` (未署名 cp)・`signedCheckpoints`・`sessionAnchor`・`problemBinding`。それぞれ `pass` / `fail` (`code` つき) / `not-checked` / `not-applicable` |
-| `integrity` と `limitations` | 保証範囲。`integrity` は ADR-0020 / ADR-0031 の語彙 (`proven` / `partial` / `failed`) で、`unsupported` / `malformed` では `not-evaluated`。`limitations` は省略・欠落した検査と legacy の制限の code |
+| `integrity` と `limitations` | 保証範囲。`integrity` は語彙だけ ADR-0020 / ADR-0031 と同じ (`proven` / `partial` / `failed`) で、`checks` だけから導く (下の写像の規則)。`unsupported` / `malformed` では `not-evaluated`。`limitations` は省略・欠落した検査と legacy の制限の code |
 | `trust` | 鍵の信頼。`snapshot` は呼び出し側が渡した鍵一覧の識別 (`label` と、`{ checkpointKeys, examAuthorityKeys }` を `deterministicStringify` した SHA-256 の `digest`)。`keys` は証拠に現れた鍵ごとの `role` (`checkpoint` / `session-token` / `exam-authority`)・`keyId`・`status`・`anchor` (ISO 8601 に正規化した証拠側の時刻) |
 | `acceptance` | 受理ポリシー (§6.3.1) の評価結果 |
 | `evaluation` | 評価時刻とモード (入力の写し) |
@@ -862,10 +862,11 @@ legacy 1.2.0 の中の方式は、版ではなくブロックの有無で分か�
 写像の規則:
 
 - **走っていない検査は `pass` にも `fail` にもしない**。前段で止まった検査は `not-checked`: `verifyChain` が PoSW の不一致で止まれば `chain` は `not-checked`、連結の検査で止まれば `posw` は `not-checked`、どちらかで止まれば `finalHash` は `not-checked`、root が合わなければ `sessionAnchor` は `not-checked`。どこで止まったかは `FullVerificationResult.chainFailure` (`verifyChain` の `failure`) から取り、`errorMessage` の文字列は読まない
-- fast は `posw: not-checked` と limitation `posw-not-recomputed`、`integrity: partial`
-- `checkpoints` は cp が無ければ `not-applicable`。`signedCheckpoints` は署名 cp が無ければ `not-applicable`。`sessionAnchor` は token が無ければ `not-applicable`、token の検証失敗は `rootAnchorFailure.code`、token と署名 cp の sessionId の不一致は `token-session-mismatch` で `fail`
+- fast は `posw: not-checked` と limitation `posw-not-recomputed` (`integrity: partial`)
+- `checkpoints` は cp が無ければ `not-applicable`。`signedCheckpoints` は署名 cp が無ければ `not-applicable`。`sessionAnchor` は token が無ければ `not-applicable`、token の検証失敗は `rootAnchorFailure.code`、token と署名 cp の sessionId の不一致は `token-session-mismatch` で `fail`。exam の proof に token が同梱されていても root には使われないので `not-applicable` だが、`verifyProofFile` が sessionId を突き合わせて食い違えば `token-session-mismatch` で `fail`
 - `problemBinding` は `exam` が無ければ `not-applicable`。exam なのに `examPackage` が渡されなければ `not-checked` と limitation `problem-package-not-provided`。渡されたら**入口が自分で** `parseExamPackageManifest` と `verifyExamBinding` を呼び、その合否を `verifyProofFile` の `examBindingVerified` に渡す (呼び出し側が「検証済み」と申告する口は無い)
-- `integrity` は `deriveAssurance` の integrity の規則をそのまま使い、1 つだけ足す: 署名 cp が**証拠の不一致** (署名・連鎖・照合値) で落ちたら `failed`。鍵を信頼できないこと (未登録・失効・期間外) による署名 cp の失敗、token の検証失敗 (shared/AGENTS.md 不変条件 13)、sessionId の不一致は `integrity` を落とさず、`checks` と `trust` に出す。問題束縛の失敗は `deriveAssurance` どおり `failed`
+- `integrity` は `checks` **だけから**導く: どれかが `fail` なら `failed`、`fail` が無くどれかが `not-checked` なら `partial` (fast の PoSW、問題パッケージの無い exam の問題束縛など)、すべて `pass` か `not-applicable` なら `proven`。鍵を信頼できない失敗 (署名 cp・token・出題者鍵)、token の検証失敗、token と署名 cp の sessionId の不一致もすべて `failed` で、原因は各検査の `code` (`signed-checkpoint-key-untrusted`・`token-unknown-key`・`token-invalid`・`exam-authority-key-untrusted` など) と `trust.keys[].status` で分かる。`verifyProofFile` が `integrityValid: false` にする proof は必ずどれかの検査が `fail` になるので、この入口は legacy より甘くならない (`integrity !== 'failed'` ⇔ legacy の `integrityValid` が true かつ問題束縛が `fail` でない。`specIntegrity.test.ts` が固定する)
+- 似た名前の別の値: ADR-0020 の `assurance.integrity` (`deriveAssurance`) は、署名 cp・token の失敗と sessionId の不一致を時刻アンカー層に数えて integrity に流さず、スクリーンショットの改ざんを含む。`FullVerificationResult.integrityValid` (§6.3.1) は問題束縛を含まない。`verifyProofBySpec` の `integrity` はどちらとも別の値で、互いに置き換えない
 - 鍵の `status` は `trusted` / `trusted-revoked-after-anchor` / `unknown` / `revoked` / `expired` / `not-yet-valid` / `malformed-entry`。`checkRegistryKeyValidityAt` の verdict を `registryKeyTrustStatus` で写したもの (未登録は `unknown`) で、署名 cp・token・出題者鍵の検証結果に `keyStatus` として載る (自由文の `reason` は読まない)。署名が合わなかった署名 cp の鍵は判定に進んでいないので載せない。未登録の鍵の `keyId` は `^[A-Za-z0-9._-]{1,128}$` に合うときだけ載せる
 - `acceptance` は `integrity` が `failed` か `not-evaluated` なら `evaluated: false`。それ以外は `verifyProofFile` の `policy` をそのまま使う (こちらは token・署名 cp の失敗でも評価しない)
 

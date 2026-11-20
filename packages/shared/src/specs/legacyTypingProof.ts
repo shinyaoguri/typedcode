@@ -3,14 +3,15 @@
  *
  * 中身は既存の `verifyProofFile` (と、exam なら `verifyExamBinding`) そのもので、規則は 1 つも変えない。
  * ここはその結果を共通の結果 (`types.ts`) の軸へ写すだけ。写すときは自由文 (`errorMessage` / `reason`) を
- * 読まず、下位の結果の構造化したフィールド (`chainFailure`・`keyStatus` など) だけを使う。
+ * 読まず、下位の結果の構造化したフィールド (`chainFailure`・`keyStatus` など) だけを使う。整合性は写した
+ * `checks` だけから導く (`deriveIntegrity`)。legacy が `integrityValid: false` にする proof は、必ずどれかの
+ * 検査が `fail` になる (= この入口は legacy より甘くならない)。
  *
  * 1.2.0 の中の root の方式 (アンカー無し / sessionStartToken / exam v1 / exam v2) は、いまと同じく
  * ブロックの有無で分かれる (`verifyInitialHashRoot`)。これは 1.2.0 の仕様の一部 (system-spec §6.5)。
  */
 
 import { normalizeAcceptancePolicy, type AcceptancePolicyResult } from '../acceptancePolicy.js';
-import { deriveAssurance } from '../assurance.js';
 import type { RegistryKeyTrustStatus } from '../checkpointKeys/keyValidity.js';
 import {
   parseExamPackageManifest,
@@ -145,7 +146,10 @@ function signedCheckpointsCheck(sc: SignedCheckpointsVerificationResult): SpecCh
 function sessionAnchorCheck(proof: ProofFile, r: FullVerificationResult): SpecCheck {
   // exam の root は token を使わない (verifyInitialHashRoot は exam 分岐が先)。token が同梱されていても
   // root のアンカーには使われないので対象外にする (token の鍵も trust.keys に載せない)
-  if (!proof.sessionStartToken || proof.exam) return NOT_APPLICABLE;
+  // ただし legacy は exam でも token と署名 cp の sessionId を突き合わせて integrityValid を落とすので、
+  // 食い違いだけは fail に出す (legacy より甘くしない)
+  if (!proof.sessionStartToken) return NOT_APPLICABLE;
+  if (proof.exam) return r.sessionTokenMismatch === true ? fail('token-session-mismatch') : NOT_APPLICABLE;
   if (r.rootAnchorFailure) return fail(r.rootAnchorFailure.code);
   if (r.sessionTokenMismatch === true) return fail('token-session-mismatch');
   return r.rootValid === true && r.rootAnchored === true ? PASS : NOT_CHECKED;
@@ -155,8 +159,6 @@ interface ProblemBindingOutcome {
   check: SpecCheck;
   /** 渡されたパッケージを `verifyExamBinding` にかけた結果。パッケージが無い・読めないときは無い */
   binding?: ExamBindingVerificationResult;
-  /** deriveAssurance に渡す exam の証拠 */
-  assurance?: { present: true; packageProvided: boolean; bindingValid?: boolean };
   limitations: SpecLimitationCode[];
   keys: SpecTrustedKey[];
 }
@@ -171,7 +173,6 @@ async function verifyProblemBinding(
   if (context.examPackage === undefined) {
     return {
       check: NOT_CHECKED,
-      assurance: { present: true, packageProvided: false },
       limitations: ['problem-package-not-provided'],
       keys: [],
     };
@@ -180,7 +181,6 @@ async function verifyProblemBinding(
   if (!manifest) {
     return {
       check: fail('exam-package-malformed'),
-      assurance: { present: true, packageProvided: true, bindingValid: false },
       limitations: [],
       keys: [],
     };
@@ -204,7 +204,6 @@ async function verifyProblemBinding(
   return {
     check,
     binding,
-    assurance: { present: true, packageProvided: true, bindingValid: binding.valid },
     // 出題者鍵の判定に進んだら、その anchor が自己申告の releaseTime であることを示す
     limitations: keyStatus === undefined ? [] : ['exam-key-anchor-self-declared'],
     keys,
@@ -222,33 +221,20 @@ async function sessionTokenKeys(proof: ProofFile, context: SpecVerificationConte
 }
 
 /**
- * 整合性 (ADR-0020 / ADR-0031 の語彙)。`deriveAssurance` の integrity の規則をそのまま使い、
- * 1 つだけ足す: 署名 cp が**証拠の不一致**で落ちたら `failed` (署名の改ざん・別 proof からの流用など)。
- * 鍵を信頼できないことによる失敗 (未登録・失効など) と、token の検証失敗 (不変条件 13) と、
- * token と cp の sessionId の不一致は、整合性ではなく `checks` と `trust` に出す。
+ * 整合性 (語彙は ADR-0020 / ADR-0031 の `proven` / `partial` / `failed`) を `checks` **だけから**導く:
+ * - `failed`: どれかの検査が `fail`
+ * - `partial`: `fail` が無く、どれかが `not-checked` (fast の PoSW、パッケージの無い exam の問題束縛など)
+ * - `proven`: すべて `pass` か `not-applicable`
+ *
+ * 鍵を信頼できない失敗 (署名 cp・token・出題者鍵)、token の検証失敗、token と cp の sessionId の不一致も
+ * `failed` になる。legacy の `verifyProofFile` が `integrityValid: false` にする proof に、この入口が
+ * `proven` / `partial` を返さないため (legacy より甘くしない)。原因は各検査の `code` と `trust.keys` で分かる。
+ * `assurance.integrity` (ADR-0020。署名 cp・token の失敗を時刻アンカー層に数える) とは別の値。
  */
-function deriveIntegrity(r: FullVerificationResult, exam: ProblemBindingOutcome['assurance']): SpecIntegrity {
-  const sc = r.signedCheckpoints;
-  const base = deriveAssurance({
-    metadataValid: r.metadataValid,
-    chainValid: r.chainValid,
-    exam,
-    rootAnchored: r.rootAnchored === true,
-    signedCheckpoints: sc
-      ? {
-          anchored: sc.anchored,
-          valid: sc.valid,
-          sparse: sc.density?.sparse,
-          postHocSuspected: sc.temporal?.postHocSuspected,
-          terminal: sc.coverage.terminalAnchored,
-        }
-      : undefined,
-    sessionTokenMismatch: r.sessionTokenMismatch === true,
-    isPureTyping: r.isPureTyping,
-    poswSkipped: r.poswSkipped === true,
-  }).integrity;
-  if (sc?.anchored && !sc.valid && !signedCheckpointsFailedOnTrust(sc)) return 'failed';
-  return base;
+function deriveIntegrity(checks: SpecChecks): SpecIntegrity {
+  const statuses = Object.values(checks).map((check) => check.status);
+  if (statuses.includes('fail')) return 'failed';
+  return statuses.includes('not-checked') ? 'partial' : 'proven';
 }
 
 /**
@@ -295,7 +281,7 @@ export async function verifyLegacyTypingProof(
     ...problem.keys,
   ];
 
-  const integrity = deriveIntegrity(legacyProof, problem.assurance);
+  const integrity = deriveIntegrity(checks);
   // 受理ポリシーは整合性が落ちたら評価しない (ADR-0043)。legacy の評価結果は legacy の integrityValid
   // (token・署名 cp の失敗も含む) が通ったときだけ evaluated なので、それをそのまま使う
   const acceptance: AcceptancePolicyResult =

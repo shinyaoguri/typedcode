@@ -120,7 +120,7 @@ const result = await verifyProofBySpec(JSON.parse(proofJson), {
   examPackage: undefined, // exam の proof なら .tcexam を JSON.parse した値
 });
 result.support.status; // 'supported' | 'unsupported' | 'malformed'
-result.integrity; // 'proven' | 'partial' | 'failed' | 'not-evaluated'
+result.integrity; // checks から導く: fail があれば 'failed'、not-checked があれば 'partial'、他は 'proven' (未対応は 'not-evaluated')
 result.checks.posw; // { status: 'pass' | 'fail' | 'not-checked' | 'not-applicable', code? }
 ```
 
