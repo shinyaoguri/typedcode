@@ -235,7 +235,7 @@ async function readyExecutor() {
 }
 
 describe('CExecutor on @wasmer/sdk 0.19', () => {
-  it('compiles /workspace/<source> with the same clang arguments as before', async () => {
+  it('compiles /workspace/<source> and links the emulated process clocks that declare clock() (#714)', async () => {
     const executor = await readyExecutor();
     const { callbacks } = collectCallbacks();
 
@@ -250,6 +250,7 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
       '-target',
       'wasm32-wasi',
       '-O2',
+      '-lwasi-emulated-process-clocks',
     ]);
   });
 
