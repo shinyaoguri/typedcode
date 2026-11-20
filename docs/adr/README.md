@@ -78,7 +78,7 @@
 | [0044](0044-fingerprint-collection-scope.md) | Accepted | fingerprint の収集を用途のあるコンポーネントに絞る (canvas・fonts を集めず、WebGL は `unmaskedVendor` / `unmaskedRenderer` の 2 値だけ。残す 13 キーごとに理由を書き、新しいキーは読むコードか理由を書いてから集める。旧 proof は受け付け続ける) |
 | [0045](0045-lower-posw-iterations-for-recording-throughput.md) | Accepted (実装は #611) | PoSW の反復数を 10,000 から 1,000 に下げる (CPU 4 倍相当で記録が入力に追いつかない実測が根拠・偽造側の下限は 10,000 でも分単位で防御にならない・記録側の await / 同期は形式と安全性に影響しない実装詳細・root アンカーで変える案と同期化だけの案は不採用) |
 | [0046](0046-entry-without-mode-choice.md) | Accepted (段階 1 = #644 を実装) | 学生にモードを選ばせず、`/` で練習のエディタを直接開く (モードは配布物と教員のリンクが決める・未知パスは not-found・titlebar はモード表示だけ・練習の規約は受動通知で同意を記録・段階 2 で授業と課題を `.tcclass` の方針に統合・段階 3 で保存領域を配布物単位に) |
-| [0047](0047-python-in-dedicated-worker-with-terminal-stdin.md) | Accepted | Python (Pyodide) を専用の module Worker で動かし、ターミナルの入力を SharedArrayBuffer の行チャネルで stdin に渡す (`prompt()` のまま・JSPI でメインスレッドのままを却下・行の編集はメイン側・stdout は write ハンドラで逐次・停止とタイムアウトは terminate・タイムアウトは入力待ちを数えない・opaque origin への隔離は #650) |
+| [0047](0047-python-in-dedicated-worker-with-terminal-stdin.md) | Accepted (Worker の置き場所を ADR-0056 で改訂) | Python (Pyodide) を専用の module Worker で動かし、ターミナルの入力を SharedArrayBuffer の行チャネルで stdin に渡す (`prompt()` のまま・JSPI でメインスレッドのままを却下・行の編集はメイン側・stdout は write ハンドラで逐次・停止とタイムアウトは terminate・タイムアウトは入力待ちを数えない・opaque origin への隔離は #650) |
 | [0048](0048-problem-io-examples-shown-not-judged.md) | Accepted (段階 1 = #648) | 問題に入出力例 (`examples: { name, stdin, stdout }[]`) を持たせ、受講者には判定せず問題パネルに見せるだけにする (自動判定・テストボタンを却下・「テスト」の語を UI に出さない・入力のコピーボタン・proof に記録しない・1 件以上のときだけ正準形に含めハッシュ不変・入出力例付きの `.tcexam` は新しい editor が前提・非公開テストと比較規則は段階 2) |
 | [0049](0049-staging-turnstile-testing-keys.md) | Accepted (Worker = #660、E2E = #655) | staging と PR プレビューは Turnstile の公開テストキーで動かし、main push ごとに staging の実 URL をブラウザ E2E で通す (Worker は testing key の結果を staging でだけ通し、production・未知の環境では拒否・E2E 用の迂回ヘッダと best-effort 経路だけの案を却下・production には当てない・本物の Turnstile を通すのは production だけになる) |
 | [0050](0050-pull-request-event-for-pr-checks.md) | Accepted (#685) | PR の検査 (pr-title・pr-checks) は `pull_request` で走らせ、`pull_request_target` は書き込みの要る labeler だけにポリシーで許可する (GitHub が 2026-12-02 に公開リポジトリの `pull_request_target` を既定で止めるため・3 本とも許可する案と labeler を `workflow_run` に分ける案を却下・PR が自分のゲートを書き換えられる点は差分に出るので受け入れる) |
@@ -87,6 +87,7 @@
 | [0053](0053-versioned-verification-contracts.md) | Accepted (実装は #809・#810。legacy は proof 1.2.0 だけ・#611 は #810 に含める) | 仕様別の検証器を維持し、新仕様の識別子を暗号的に束縛する。legacy の保証限界と現在の信頼・受理を分ける |
 | [0054](0054-public-verification-and-replay-sdk.md) | Accepted (実装は #811・#812。§5 の配布 = #813 は保留) | 検証とログ再生を公開 SDK にし、公式 Web・CLI と外部アプリが同じ API を使う |
 | [0055](0055-release-channels-and-calendar-versioning.md) | Accepted (実装は #842〜#845) | リリースを main → beta → 正式版 (年 2 回) の 3 チャンネルにし、版を暦の形でタグから自動採番する (正式版は 2 月・8 月に beta を昇格・beta は日次で専用環境へ・版は `vYYYY.M.0-beta.N` → `vYYYY.M.0` → `vYYYY.M.P`・正本はタグと GitHub Releases でリリースはファイルを変えない・変更履歴は `changelog.d/` の断片・学期中の patch は `release/A.B` へ cherry-pick・bump の PR と 7 日の規則と停滞検知をやめる・ADR-0028 の一部を置換) |
+| [0056](0056-python-in-opaque-origin-runner.md) | Accepted | Python (Pyodide) を opaque origin の sandbox iframe (`allow-scripts` + `allow="cross-origin-isolated"`) の中の classic Worker で実行し、proof の保存領域から隔離する (SAB は runner が作り、親は行を渡す・fail closed・通信は取得元と PyPI だけ。ADR-0047 の Worker の置き場所を改訂) |
 
 ## 参考
 
