@@ -105,6 +105,7 @@ export type {
   DecodedExamPlaintext,
   ClassPackageSchema,
   ClassPackage,
+  ClassPolicy,
 } from './exam.js';
 
 // テンプレート関連
