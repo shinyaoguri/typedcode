@@ -1,17 +1,28 @@
 /**
  * PythonExecutor (メイン側のアダプタ) の振る舞い (#649 / #719)。
  *
+<<<<<<< HEAD
  * Pyodide を動かす runner (sandbox iframe + Worker) だけを偽物に差し替える。偽の runner は受け取った
  * 要求を貯め、テストが runner からの (検査済みの) メッセージを手で送る。期限は本物を使う
  * (line discipline はターミナル側。#707。stdin の SharedArrayBuffer は runner 側 = stdinChannelSource.test.ts)。
+=======
+ * Pyodide を動かす Worker だけを偽物に差し替える。偽の Worker は受け取ったメッセージを貯め、
+ * テストが Worker からのメッセージを手で送る。stdin のチャネル・期限は本物を使う (line discipline はターミナル側。#707)。
+>>>>>>> origin/main
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { ExecutionCallbacks, ExecutionResult, InteractiveStdin } from '../../interfaces/ILanguageExecutor.js';
+<<<<<<< HEAD
 import { outputLimitNotice } from '../../sandbox/SandboxRunner.js';
 import { PythonExecutor, findRequiredPackages } from '../PythonExecutor.js';
 import type { PythonRunnerHandle } from '../PythonRunner.js';
 import type { PythonExecMessage, PythonRunnerRequest } from '../pythonRunnerProtocol.js';
+=======
+import { PythonExecutor, findRequiredPackages, type PythonWorkerHandle } from '../PythonExecutor.js';
+import type { PythonWorkerMessage, PythonWorkerRequest } from '../pythonWorkerProtocol.js';
+import { StdinChannelReader } from '../stdinChannel.js';
+>>>>>>> origin/main
 
 class FakeRunner implements PythonRunnerHandle {
   onmessage: ((message: PythonExecMessage) => void) | null = null;
@@ -97,6 +108,7 @@ afterEach(() => {
 });
 
 describe('PythonExecutor', () => {
+<<<<<<< HEAD
   it('asks the runner to load Pyodide without passing any URL, storage name or credential', async () => {
     const { executor, workers } = setup();
     const worker = await initialize(executor, workers);
@@ -117,6 +129,9 @@ describe('PythonExecutor', () => {
   });
 
   it('forwards the line committed by the terminal to the runner without echoing it again', async () => {
+=======
+  it('hands the line committed by the terminal to the waiting worker without echoing it again', async () => {
+>>>>>>> origin/main
     const { executor, workers } = setup();
     const worker = await initialize(executor, workers);
     const run = startRun(executor);
@@ -124,38 +139,71 @@ describe('PythonExecutor', () => {
 
     worker.emit({ type: 'started', runId });
     worker.emit({ type: 'stdout', runId, text: 'name: ' });
+<<<<<<< HEAD
     worker.emit({ type: 'stdin-request', runId, received: 0 });
+=======
+    worker.emit({ type: 'stdin-request', runId });
+>>>>>>> origin/main
     run.line('Taro\n');
 
     // エコーはターミナルがする (#707)。ここで stdout に足すと二重に出る
     expect(run.out.join('')).toBe('name: ');
+<<<<<<< HEAD
     expect(worker.stdinRequests()).toEqual([{ type: 'stdin', runId, text: 'Taro\n' }]);
+=======
+    expect(new TextDecoder().decode(new StdinChannelReader(stdinBuffer).read())).toBe('Taro\n');
+>>>>>>> origin/main
 
     worker.emit({ type: 'done', runId, success: true, result: null });
     expect(await run.promise).toMatchObject({ success: true, exitCode: 0 });
   });
 
+<<<<<<< HEAD
   it('sends EOF to the runner once the terminal closes stdin and nothing after it (#707)', async () => {
     const { executor, workers } = setup();
     const worker = await initialize(executor, workers);
     const run = startRun(executor);
     const { runId } = worker.lastRun();
+=======
+  it('reports EOF to the waiting worker as an empty read once the terminal closes stdin (#707)', async () => {
+    const { executor, workers } = setup();
+    const worker = await initialize(executor, workers);
+    const run = startRun(executor);
+    const { runId, stdinBuffer } = worker.lastRun();
+    const reader = new StdinChannelReader(stdinBuffer);
+    const state = new Int32Array(stdinBuffer, 0, 1);
+>>>>>>> origin/main
 
     worker.emit({ type: 'started', runId });
     run.line('last\n');
     run.eof();
     run.line('after-eof\n');
+<<<<<<< HEAD
     run.eof();
 
     expect(worker.stdinRequests()).toEqual([
       { type: 'stdin', runId, text: 'last\n' },
       { type: 'stdin-eof', runId },
     ]);
+=======
+    // Worker の read を真似る: 入力を求め、書かれていれば読む (書かれていなければ待たずに null)
+    const reads: (string | null)[] = [];
+    for (let i = 0; i < 2; i++) {
+      worker.emit({ type: 'stdin-request', runId });
+      reads.push(Atomics.load(state, 0) === 1 ? new TextDecoder().decode(reader.read()) : null);
+    }
+
+    expect(reads).toEqual(['last\n', '']);
+>>>>>>> origin/main
     worker.emit({ type: 'done', runId, success: true, result: null });
     expect(await run.promise).toMatchObject({ success: true });
   });
 
+<<<<<<< HEAD
   it('stops the runner on abort, resolves the run as aborted, and initializes a new runner for the next run', async () => {
+=======
+  it('stops the worker on abort, resolves the run as aborted, and initializes a new worker for the next run', async () => {
+>>>>>>> origin/main
     const { executor, workers } = setup();
     const first = await initialize(executor, workers);
     const run = startRun(executor);

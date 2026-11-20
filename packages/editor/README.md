@@ -15,6 +15,10 @@
 - **エクスポート**: 証明 JSON・ソースコード・スクリーンショット・README を含む ZIP アーカイブ
 - **i18n**: 日本語と英語の UI
 
+## 対応ブラウザ
+
+Chromium 系のブラウザ (Chrome・Edge・Opera・Brave など) だけで記録できます。E2E を Chromium でしか回していないため ([ADR-0033](../../docs/adr/0033-e2e-round-trip-harness-as-deploy-gate.md))、Safari と Firefox (と iOS のブラウザ。iOS では Chrome も WebKit で動く) は起動時に「サポートされていないブラウザです」の画面で止め、証明を記録させません (#596)。判定はユーザーエージェント (UA) の文字列だけで行います (`src/app/browserSupport.ts`)。
+
 ## ブラウザ内コード実行
 
 | 言語 | ランタイム | 補足 |
