@@ -505,11 +505,8 @@ async function initializeTabManager(
   });
 
   ctx.proofStatusDisplay.setSnapshotCallback(
-    (content) => {
-      const activeProof = ctx.tabManager?.getActiveProof();
-      if (!activeProof) return Promise.reject(new Error('No active proof'));
-      return activeProof.recordContentSnapshot(content);
-    },
+    // EventRecorder を通して記録し、他のイベントと同じく確定順に IndexedDB へ append する (#873)
+    (content) => ctx.eventRecorder?.recordContentSnapshot(content) ?? Promise.reject(new Error('No active proof')),
     () => ctx.editor.getValue()
   );
 
