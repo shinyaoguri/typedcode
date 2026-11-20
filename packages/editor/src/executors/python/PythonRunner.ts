@@ -16,7 +16,11 @@
  */
 
 import { getExecutionLimits } from '../sandbox/limits.js';
-import { buildPythonRunnerSrcdoc, PYTHON_RUNNER_IFRAME_ALLOW, PYTHON_RUNNER_IFRAME_TOKENS } from './pythonRunnerDocument.js';
+import {
+  buildPythonRunnerSrcdoc,
+  PYTHON_RUNNER_IFRAME_ALLOW,
+  PYTHON_RUNNER_IFRAME_TOKENS,
+} from './pythonRunnerDocument.js';
 import { type PythonExecMessage, type PythonRunnerRequest, parsePythonRunnerMessage } from './pythonRunnerProtocol.js';
 
 /** PythonExecutor が使う runner の形 (テストでは偽物に差し替える) */

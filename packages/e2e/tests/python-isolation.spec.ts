@@ -192,3 +192,120 @@ test('python: @nightly 実行コードから proof の IndexedDB に届かず、
   expect(after.slice(0, before.length)).toEqual(before);
   await expectExportPasses(app);
 });
+
+test('python: @nightly 隔離した runner でも stdout / stderr / 複数行の input / sys.stdin / 空の行の Ctrl+D の EOF が動く', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('python');
+  await replaceCode(
+    app,
+    [
+      'import sys',
+      'a = input("a? ")',
+      'b = sys.stdin.readline()',
+      'print("got", a, b.strip())',
+      'print("err-line", file=sys.stderr)',
+      'rest = sys.stdin.read()',
+      'print("rest", repr(rest))',
+      '',
+    ].join('\n')
+  );
+
+  const run = await startRun(page);
+  await expect(page.locator(TERMINAL)).toHaveAttribute('data-stdin-state', 'open', { timeout: FIRST_RUN_TIMEOUT_MS });
+  await typeLine(page, 'いち');
+  await typeLine(page, 'two');
+  await typeLine(page, 'three');
+  await page.keyboard.press('Control+D');
+
+  const outcome = await waitOutcome(page, run, 60_000);
+  expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
+  await expect
+    .poll(() => terminalLines(page))
+    .toEqual(expect.arrayContaining(['a? いち', 'got いち two', 'err-line', "rest 'three\\n'"]));
+});
+
+test('python: @nightly 無限ループの間も打鍵が記録され、停止すると aborted で終わり、export が verify-cli を通る', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('python');
+  await replaceCode(app, 'while True:\n    pass\n');
+
+  const run = await startRun(page);
+  await expect(page.locator(TERMINAL)).toHaveAttribute('data-stdin-state', 'open', { timeout: FIRST_RUN_TIMEOUT_MS });
+  // ループの間もエディタは応答し、打鍵が記録される
+  const before = await app.eventCount();
+  await app.typeCode('# typing while looping\n');
+  await expect.poll(() => app.eventCount()).toBeGreaterThan(before);
+  await expect(page.locator(TERMINAL)).toHaveAttribute('data-exec-state', 'running');
+
+  await page.locator('#stop-code-btn').click();
+  expect(await waitOutcome(page, run, 15_000)).toBe('aborted');
+  await expect(page.locator('iframe[data-python-runner]')).toHaveCount(0);
+  await expectExportPasses(app);
+});
+
+test('python: @nightly 出力が予算を超えると打ち切って error で終わり、次の実行は runner を作り直して動く', async ({
+  page,
+}) => {
+  // dev 限定の上書きで出力の予算を縮める (limits.ts の __tcExecLimits)
+  await page.addInitScript(() => {
+    (window as unknown as { __tcExecLimits?: unknown }).__tcExecLimits = { outputBudgetChars: 5_000 };
+  });
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('python');
+  await replaceCode(app, 'for i in range(1000000):\n    print(i)\n');
+
+  expect(await runAndWait(page)).toBe('error');
+  await expect.poll(() => terminalText(page)).toContain('Output limit exceeded (5000 characters)');
+  await expect(page.locator('iframe[data-python-runner]')).toHaveCount(0);
+
+  await replaceCode(app, 'print("after-limit-" + str(6 * 7))\n');
+  expect(await runAndWait(page)).toBe('success');
+  await expect.poll(() => terminalText(page)).toContain('after-limit-42');
+  await expectExportPasses(app);
+});
+
+test('python: Pyodide を取得できないと runner の初期化が error で終わり、エディタの記録と export は止まらない', async ({
+  page,
+}) => {
+  // Pyodide の取得を止めておき、その間に runner の iframe の属性を確かめてから失敗させる (外部に依存しない)
+  let releaseRoute!: () => void;
+  const held = new Promise<void>((resolve) => {
+    releaseRoute = resolve;
+  });
+  let requested = false;
+  await page.context().route(PYODIDE_ROUTE, async (route) => {
+    requested = true;
+    await held;
+    await route.abort();
+  });
+
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('python');
+  await replaceCode(app, 'print("never")\n');
+
+  const run = await startRun(page);
+  const runner = page.locator('iframe[data-python-runner]');
+  await expect(runner).toHaveCount(1);
+  await expect(runner).toHaveAttribute('sandbox', 'allow-scripts');
+  await expect(runner).toHaveAttribute('allow', 'cross-origin-isolated');
+  // runner が cross-origin isolated で動き始め、Worker が Pyodide を取りに来た (fail closed の手前まで進んだ)
+  await expect.poll(() => requested, { timeout: 30_000 }).toBe(true);
+  releaseRoute();
+
+  expect(await waitOutcome(page, run, 60_000)).toBe('error');
+  await expect(runner).toHaveCount(0);
+  expect(await terminalText(page)).not.toContain('never');
+
+  const before = await app.eventCount();
+  await app.typeCode('# still recording\n');
+  await expect.poll(() => app.eventCount()).toBeGreaterThan(before);
+  await expectExportPasses(app);
+});

@@ -22,7 +22,7 @@
  *
  * 定義する関数:
  * - `tcCreateStdinBuffer(capacity)`: データ領域が capacity バイトの SharedArrayBuffer
- * - `tcStdinWriter(buffer)`: 書き手 `{ push(text), close(), offer() }`。offer は書いたら true
+ * - `tcStdinWriter(buffer)`: 書き手 `{ push(text), close(), offer(), pendingBytes() }`。offer は書いたら true
  * - `tcStdinRead(buffer, onWait)`: 読み手。書かれていなければ onWait を 1 回呼んでから待つ
  */
 export const STDIN_CHANNEL_SOURCE = String.raw`
@@ -46,6 +46,11 @@ export const STDIN_CHANNEL_SOURCE = String.raw`
       },
       close: function () {
         closed = true;
+      },
+      pendingBytes: function () {
+        var total = 0;
+        for (var i = 0; i < queue.length; i++) total += queue[i].length;
+        return total;
       },
       offer: function () {
         if (Atomics.load(control, 0) !== 0) return false;

@@ -104,7 +104,9 @@ export function parsePythonRunnerMessage(data: unknown, runnerId: string): Pytho
     case 'init-error':
       return isText(d.error) ? { type: 'init-error', error: d.error } : null;
     case 'run-progress':
-      return isRunId(d.runId) && isText(d.message) ? { type: 'run-progress', runId: d.runId, message: d.message } : null;
+      return isRunId(d.runId) && isText(d.message)
+        ? { type: 'run-progress', runId: d.runId, message: d.message }
+        : null;
     case 'stdout':
     case 'stderr':
       return isRunId(d.runId) && isText(d.text) ? { type: d.type, runId: d.runId, text: d.text } : null;
