@@ -86,7 +86,7 @@ export function installCapacityHook(getTabManager: () => TabManager | null): voi
 
     const baseEvents = proof.events.length;
     const firstKeyDown = proof.events.findIndex((e) => e.type === 'keyDown');
-    const bodyStart = firstKeyDown >= 0 ? firstKeyDown : 0;
+    const bodyStart = Math.max(firstKeyDown, 0);
     const padded = buildCapacityPadding(proof.events, proof.checkpoints, {
       targetEvents,
       bodyStart,
