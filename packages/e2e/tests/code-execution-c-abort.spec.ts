@@ -74,11 +74,12 @@ async function installExecutorTrace(page: Page, lang: 'c' | 'cpp'): Promise<void
       runWithOptions: (code: string, cb: Callbacks, ...rest: unknown[]) => Promise<Result>;
       holdProcess: (run: unknown, process: unknown, isProgram: boolean) => boolean;
     };
-    const mod =
-      language === 'c'
-        ? await import(/* @vite-ignore */ '/src/executors/c/CExecutor.ts')
-        : await import(/* @vite-ignore */ '/src/executors/cpp/CppExecutor.ts');
-    const executor = (language === 'c' ? mod.getCExecutor() : mod.getCppExecutor()) as Executor;
+    // dev サーバが配る editor のモジュールの URL (e2e の tsc には解決させない)
+    const url = language === 'c' ? '/src/executors/c/CExecutor.ts' : '/src/executors/cpp/CppExecutor.ts';
+    const mod = (await import(/* @vite-ignore */ url)) as Record<string, () => Executor>;
+    const getExecutor = mod[language === 'c' ? 'getCExecutor' : 'getCppExecutor'];
+    if (!getExecutor) throw new Error(`${url} に executor の取得関数が無い`);
+    const executor = getExecutor();
     if (typeof executor.runWithOptions !== 'function' || typeof executor.holdProcess !== 'function') {
       throw new Error('CExecutor の runWithOptions / holdProcess が見つからない (名前が変わったら spec を直す)');
     }
@@ -162,7 +163,9 @@ for (const lang of ['c', 'cpp'] as const) {
     expect(await waitOutcome(page, stopped, 15_000)).toBe('aborted');
     // executor の run も aborted で終わる (コンパイラの wait が kill で返る)。利用者のプログラムは保持 (= 起動) されず、
     // executor にも出力が届いていない
-    await expect.poll(async () => (await trace(page))[0]?.result, { timeout: 15_000 }).toMatchObject({ outcome: 'aborted' });
+    await expect
+      .poll(async () => (await trace(page))[0]?.result, { timeout: 15_000 })
+      .toMatchObject({ outcome: 'aborted' });
     expect((await trace(page))[0]).toMatchObject({ stdout: '', held: [false] });
     expect(await terminalText(page)).not.toContain(EXECUTED_MARK);
 

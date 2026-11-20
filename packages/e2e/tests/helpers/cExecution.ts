@@ -72,6 +72,7 @@ export async function terminalText(page: Page): Promise<string> {
 /**
  * ターミナルのパネルを上へ広げる (`#terminal-resize-handle` をドラッグ)。既定の高さは 10 行ほどで、コンパイラの診断と
  * 実行の出力を合わせると run の先頭が流れるので、出力を数える前に広げる。xterm は広がった分だけ scrollback から行を戻す。
+ * 広げられる高さは画面の高さで決まるので、行数の多い run を数える spec は viewport も高くする。
  * ハンドルは run の後 (パネルが開いてから) にしか掴めない
  */
 export async function enlargeTerminal(page: Page): Promise<void> {
@@ -82,7 +83,8 @@ export async function enlargeTerminal(page: Page): Promise<void> {
   const x = box.x + box.width / 2;
   await page.mouse.move(x, box.y + box.height / 2);
   await page.mouse.down();
-  await page.mouse.move(x, Math.max(0, box.y - 400), { steps: 10 });
+  // 画面の上端近くまで引く (パネルの上限で止まる)
+  await page.mouse.move(x, 80, { steps: 10 });
   await page.mouse.up();
   await expect.poll(rows).toBeGreaterThan(before);
 }

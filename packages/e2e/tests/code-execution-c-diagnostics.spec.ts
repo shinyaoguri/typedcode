@@ -30,6 +30,9 @@ import {
  */
 
 test.describe.configure({ timeout: 360_000 });
+// C++ の 1 回目は初期化の行と clang 16 / libc++ の定型の警告 (`-x c++` と `Libc++ only supports Clang 17`) で 20 行を超える。
+// ターミナルを広げても run の先頭が流れないよう、画面を高くしておく
+test.use({ viewport: { width: 1280, height: 1400 } });
 
 /** #708 の再現の例: `if (0)` の中の誤った printf は実行されず、警告だけが出る */
 const WARNING_ONLY_C = [
@@ -97,20 +100,17 @@ test('c: @nightly 失敗したコンパイルの error と warning は 1 回ず�
   const app = new EditorApp(page);
   await app.openCasualFresh();
   await app.setLanguage('c');
-  await replaceLines(app, [
-    '#include <stdio.h>',
-    'int main(void) {',
-    '    1 + 2;',
-    '    return undefined_var;',
-    '}',
-  ]);
+  await replaceLines(app, ['#include <stdio.h>', 'int main(void) {', '    1 + 2;', '    return undefined_var;', '}']);
 
   const outcome = await runAndWait(page, FIRST_RUN_TIMEOUT_MS);
   // 診断と出力の全体を数えられるよう、run の先頭が流れない高さに広げる
   await enlargeTerminal(page);
   expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('failure');
   await expect.poll(() => countInTerminal(page, /main\.c:4:12: error: use of undeclared identifier/)).toBe(1);
-  expect(await countInTerminal(page, /main\.c:3:\d+: warning: expression result unused/), await terminalText(page)).toBe(1);
+  expect(
+    await countInTerminal(page, /main\.c:3:\d+: warning: expression result unused/),
+    await terminalText(page)
+  ).toBe(1);
   await expect.poll(() => squigglyLines(page, 'error')).toEqual(['    return undefined_var;']);
   expect(await squigglyLines(page, 'warning')).toEqual(['    1 + 2;']);
 });
@@ -142,9 +142,7 @@ test('cpp: @nightly C++ でも警告だけなら success のまま main.cpp の�
 
   await replaceLines(app, ['#include <cstdio>', '#include "student.hpp"', 'int main() {', '}']);
   expect(await runAndWait(page, 60_000)).toBe('failure');
-  await expect
-    .poll(() => countInTerminal(page, /main\.cpp:2:10: fatal error: 'student\.hpp' file not found/))
-    .toBe(1);
+  await expect.poll(() => countInTerminal(page, /main\.cpp:2:10: fatal error: 'student\.hpp' file not found/)).toBe(1);
   await expect.poll(() => squigglyLines(page, 'error')).toEqual(['#include "student.hpp"']);
   expect(await squigglyLines(page, 'warning')).toEqual([]);
 });
