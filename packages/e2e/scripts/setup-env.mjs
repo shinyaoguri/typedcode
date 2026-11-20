@@ -116,10 +116,11 @@ export async function setupEnv({ root = ROOT, log = console.log, error = console
     localKeys,
     [
       '// E2E 用に自動生成 (CI)。コミットしないこと。',
-      "import type { CheckpointPublicKey } from './registry.js';",
+      "import type { LocalCheckpointPublicKey } from './registry.js';",
       '',
-      'export const LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [',
-      `  ${JSON.stringify(publicEntry)} as CheckpointPublicKey,`,
+      // 環境 (#321) は書かない: localKeys.ts の鍵は shared の checkpointKeys/index.ts が development にする
+      'export const LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly LocalCheckpointPublicKey[] = [',
+      `  ${JSON.stringify(publicEntry)} as LocalCheckpointPublicKey,`,
       '];',
       '',
     ].join('\n')

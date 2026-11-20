@@ -42,6 +42,7 @@ import type {
   VerificationMode,
   VerificationResultData,
 } from '../types.js';
+import { trustedKeyEnvironmentsForBuild } from './checkpointKeyTrust.js';
 
 /** 検証以前に弾く不備 (i18n キー)。Worker はこれを sendError で返す。 */
 export type UnsupportedProofReason = 'errors.unsupportedFormat' | 'errors.noEvents';
@@ -54,6 +55,11 @@ export interface RunProofVerificationOptions {
   onChainProgress?: (current: number, total: number) => void;
   /** 公開鍵レジストリ (テストから注入)。未指定なら shared の既定 registry。 */
   signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
+  /**
+   * staging の鍵で署名された token / 署名 cp を時刻証拠に数えるか (#321)。未指定ならビルド時の値
+   * (`BUILD_TRUSTS_STAGING_KEYS`。staging と PR プレビューのビルドだけ true)。テストから両方を確かめるための口。
+   */
+  trustStagingKeys?: boolean;
   /** 出題者鍵レジストリ (テストから注入)。未指定なら shared の既定 registry (`EXAM_AUTHORITY_KEYS`) */
   examAuthorityRegistry?: readonly ExamAuthorityKey[];
   /**
@@ -191,6 +197,7 @@ export async function runProofVerification(
     mode,
     examBindingVerified: examBinding?.valid === true,
     signedCheckpointKeyRegistry: options.signedCheckpointKeyRegistry,
+    trustedKeyEnvironments: trustedKeyEnvironmentsForBuild(options.trustStagingKeys),
   });
 
   const signedCheckpoints = result.signedCheckpoints ?? EMPTY_SIGNED_CHECKPOINTS;
@@ -227,6 +234,7 @@ export async function runProofVerification(
     rootValid: result.rootValid,
     rootAnchored: result.rootAnchored,
     rootAnchorFailure: result.rootAnchorFailure,
+    rootAnchorUntrustedKey: result.rootAnchorUntrustedKey,
     sessionTokenMismatch: result.sessionTokenMismatch,
     versionStatus: result.versionStatus,
     declaredVersion: normalizeDeclaredVersion(proof.version),
@@ -247,6 +255,7 @@ export async function runProofVerification(
     signedCheckpointTemporal: signedCheckpoints.temporal,
     signedCheckpointDensity: signedCheckpoints.density,
     signedCheckpointReason: signedCheckpoints.reason,
+    signedCheckpointUntrustedKeys: signedCheckpoints.untrustedKeys,
     signedCheckpointReport: buildSignedCheckpointReport(
       proof.checkpoints ?? [],
       signedCheckpoints,

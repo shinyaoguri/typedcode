@@ -11,7 +11,22 @@ import type { SignedCheckpointAlgorithm } from '../types/proof.js';
 
 export type CheckpointPublicKeyStatus = 'active' | 'revoked';
 
-export interface CheckpointPublicKey {
+/**
+ * 鍵を運用する環境 (#321)。検証器は署名を検証した後で、鍵の環境を信頼するかを決める
+ * (`keyEnvironment.ts`)。既定で信頼するのは production と development。
+ *
+ * - `production`: 本番の Worker (`typedcode-api`) の署名鍵
+ * - `staging`: staging の Worker (`typedcode-api-staging`。PR プレビューもこの Worker を叩く) の署名鍵。
+ *   main への push ごとに自動デプロイされ、鍵の管理水準も本番より低いので、本番の検証器は既定で信頼しない
+ * - `development`: 各開発者の `localKeys.ts` (gitignore 済み) の鍵。`index.ts` が付ける (registry.ts には書かない)
+ */
+export type CheckpointKeyEnvironment = 'production' | 'staging' | 'development';
+
+/** registry.ts に書いてよい環境 (development の鍵は localKeys.ts にだけ置く) */
+export type RegistryCheckpointKeyEnvironment = Exclude<CheckpointKeyEnvironment, 'development'>;
+
+/** 公開鍵のエントリのうち環境を除いた部分。localKeys.ts はこの形で書く (環境は index.ts が付ける) */
+export interface LocalCheckpointPublicKey {
   keyId: string;
   algorithm: SignedCheckpointAlgorithm;
   publicKeyJwk: JsonWebKey;
@@ -29,10 +44,23 @@ export interface CheckpointPublicKey {
   description?: string;
 }
 
+/** 検証器と Worker が扱う公開鍵のエントリ。環境は必須 (#321) */
+export interface CheckpointPublicKey extends LocalCheckpointPublicKey {
+  environment: CheckpointKeyEnvironment;
+}
+
+/** registry.ts のエントリ。環境は production か staging のどちらかを必ず書く (#321) */
+export interface RegistryCheckpointPublicKey extends LocalCheckpointPublicKey {
+  environment: RegistryCheckpointKeyEnvironment;
+}
+
 /**
- * 本番公開鍵レジストリ (append-only)
+ * 公開鍵レジストリ (append-only)
  *
- * **このファイルは本番運用される鍵のみを記述する。PR でレビューする想定。**
+ * **このファイルは運用される Worker (production / staging) の鍵だけを記述する。PR でレビューする想定。**
+ * 各エントリには `environment` を必ず書く (#321。`__tests__/registryFormat.test.ts` が強制する)。
+ * 検証器は既定で production の鍵だけを時刻証拠に数え、staging の鍵は明示したとき
+ * (verify-cli の `--allow-staging-keys`、verify の staging ビルド) だけ数える。
  *
  * 各開発者の dev 鍵は `localKeys.ts` に書く (gitignore 済み。`.example` から作られる。#338)。
  * 鍵生成: `npm run gen-checkpoint-key -w @typedcode/workers`
@@ -41,8 +69,7 @@ export interface CheckpointPublicKey {
  * - 一度追加した鍵は revoke しても配列から削除しない (`status: 'revoked'` + `revokedAt` で残す)
  * - 過去 proof の検証可能性を維持するため historical commit から鍵を辿れることが重要
  */
-export const CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [
-  // 本番環境
+export const CHECKPOINT_PUBLIC_KEYS: readonly RegistryCheckpointPublicKey[] = [
   {
     keyId: 'tcp-202605-fd6d42',
     algorithm: 'ECDSA-P256',
@@ -55,8 +82,8 @@ export const CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [
     status: 'active',
     validFrom: '2026-05-28T14:43:43.346Z',
     description: 'Initial signing key. Private half lives in the Workers secret CHECKPOINT_SIGNING_KEY_JWK.',
+    environment: 'production',
   },
-  // staging環境
   {
     keyId: 'tcp-202606-0e46c9',
     algorithm: 'ECDSA-P256',
@@ -70,6 +97,7 @@ export const CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [
     },
     status: 'active',
     validFrom: '2026-06-04T16:09:16.485Z',
+    environment: 'staging',
   },
 ] as const;
 

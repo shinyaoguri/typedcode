@@ -175,3 +175,16 @@ describe('GET /api/checkpoint/public-keys caching (#370)', () => {
     expect(body).not.toHaveProperty('cacheTtlSec');
   });
 });
+
+describe('GET /api/checkpoint/public-keys environments (#321)', () => {
+  it('labels every key with its environment so a reader can tell production keys from staging keys', async () => {
+    const res = await worker.fetch(new Request('https://api.test/api/checkpoint/public-keys'), baseEnv());
+    const body = (await res.json()) as { keys: Array<{ keyId: string; environment?: unknown }> };
+
+    expect(body.keys.length).toBeGreaterThan(0);
+    for (const key of body.keys) {
+      expect(['production', 'staging', 'development'], `${key.keyId}.environment`).toContain(key.environment);
+    }
+    expect(body.keys.find((k) => k.keyId === 'tcp-202606-0e46c9')?.environment).toBe('staging');
+  });
+});

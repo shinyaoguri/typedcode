@@ -96,6 +96,10 @@ async function main(): Promise<void> {
   const requireSignedCheckpoints = args.includes('--require-signed-checkpoints');
   const requireTerminalAnchor = args.includes('--require-final-anchor');
 
+  // staging の鍵 (#321): 既定では staging の Worker が署名した token / 署名 cp を時刻証拠に数えない。
+  // staging で作った proof を staging の鍵込みで確かめるとき (staging の E2E など) だけ明示する。
+  const allowStagingKeys = args.includes('--allow-staging-keys');
+
   // 分析レポートの JSON 出力 (ADR-0009): 評価ハーネス/集計スクリプトの機械可読な入口。
   // advisory であって判定ではない — exit code には一切影響しない。
   const analysisJsonPath = flagValue(args, '--analysis-json');
@@ -334,6 +338,7 @@ async function main(): Promise<void> {
           requireRootAnchor,
           requireSignedCheckpoints,
           requireTerminalAnchor,
+          allowStagingKeys,
           analyzers,
           screenshotSummary,
         });

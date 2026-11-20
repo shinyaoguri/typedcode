@@ -1,6 +1,6 @@
 # ADR-0002: 署名済みチェックポイントは ECDSA-P256 + append-only 鍵レジストリで運用する
 
-- **Status**: Accepted
+- **Status**: Accepted (2026-11-20 に鍵の環境を追補: registry の鍵は環境を持ち、検証器は既定で staging の鍵を時刻証拠に数えない。#321)
 - **Date**: 2026-05-28
 
 ## Context
@@ -43,6 +43,12 @@
   - (#338 で gitignore に変更: 当初は空配列のファイルを追跡したうえで `git update-index` のインデックス単位のフラグで隠していたが、worktree 間で共有されず、e2e の setup が書き換えた鍵が誤コミットされる経路が残った。いまは追跡せず、無ければ `npm install` (postinstall) が `localKeys.ts.example` から作る)
 - **秘密鍵**: 本番は `wrangler secret put`、開発は `.dev.vars`。git には絶対に入れない
 - **発行ツール**: `npm run gen-checkpoint-key -w @typedcode/workers` で公開鍵 / 秘密鍵 / keyId を一括生成
+- **鍵の環境 (2026-11-20 追補, [#321](https://github.com/shinyaoguri/typedcode/issues/321))**: registry のエントリは `environment: 'production' | 'staging'` を必ず持つ (localKeys.ts の鍵は読み込む側が常に `development` にする)。当初は staging の鍵も本番の鍵と区別なく `active` で並べていたが、staging は main への push ごとに自動で配信され、PR のプレビューも承認なしで staging の Worker を叩く。staging の鍵が本番と同じ信頼を受けると、本番の時刻保証の強さが「ブランチを push できる人」の範囲まで下がる
+  - **検証器**: registry の全鍵で署名を検証した後で、鍵の環境を信頼するかを決める。既定で時刻証拠 (sessionStartToken による root のアンカーと署名 cp) に数えるのは production と development の鍵だけ。staging を数えるのは、verify-cli の `--allow-staging-keys` と、`TYPEDCODE_TRUST_STAGING_KEYS=true` でビルドした verify (staging と PR プレビューの配信) だけ。環境の書かれていないエントリは信頼しない
+  - **staging の鍵で署名済みの既存 proof**: 改ざんではないので、整合性と総合の合否 (verify-cli の exit code) は落とさない。時刻の証拠が無い proof と同じ結論にし (temporal を anchored / partial に上げない。受理ポリシーは「無い」として評価する)、staging の鍵であることを理由として表示する。署名そのものが壊れていれば従来どおり失敗。既存の keyId は変えず、鍵のローテーションも前提にしない
+  - **Worker**: `/api/checkpoint/sign` は、自分の署名鍵と同じ環境の鍵で発行された token だけを受け付ける (本番の Worker は、staging の Worker が発行した token では署名しない)。本番の Worker の署名鍵が `tcp-202605-fd6d42` であることは、2026-11-20 に本番の `/health` (`environment: production`、`signing.keyId`) で確かめた
+  - **却下した案**: staging の証拠を未登録の鍵 (#329) と同じく失敗 (exit 1) にする案。staging の editor の export 後の自己検証と、staging で作った proof の確認が一律に失敗になる。署名を剥がした proof と比べて捏造の余地は増えないので、失敗にする利益が無い
+  - **残る穴**: Worker は、自分の `ENVIRONMENT` と署名鍵の環境が合っているかを確かめない (設定の取り違えは検知しない)。`/api/checkpoint/public-keys` は環境を付けて全鍵を返す (自環境の鍵だけには絞っていない)
 
 verifier 側は `/api/checkpoint/public-keys` をキャッシュするか、registry に含まれている鍵をローカルで使う (オフライン検証可)。
 
