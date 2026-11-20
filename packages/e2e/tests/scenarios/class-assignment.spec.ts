@@ -7,7 +7,10 @@ import { test, expect } from '@playwright/test';
 import { EditorApp, listProofEntries, readAllProofEvents, type EditorMode } from '../helpers/app.js';
 import { runVerifyCli, runVerifyCliWithResult } from '../helpers/verifyCli.js';
 import {
+  CLASS_POLICIES,
   SAMPLE_CLASS_ID,
+  capabilityContract,
+  contractOf,
   loadClassPackage,
   panelOpen,
   sampleClassPackage,
@@ -74,6 +77,17 @@ for (const mode of ['class', 'assignment'] as const) {
 
     const result = runVerifyCli(zipPath, ['--mode', 'fast']);
     expect(result.passed, result.stdout + result.stderr).toBe(true);
+    await app.expectConsistent();
+  });
+}
+
+// #645: 方針 (policy) を持たない旧 .tcclass は、開いた入口の能力のまま開く (/class は教室、/assignment は持ち帰りの値)。
+for (const mode of ['class', 'assignment'] as const) {
+  test(`${mode}: 方針の無い .tcclass を読んでも入口の能力が変わらない`, async ({ page }) => {
+    const app = new EditorApp(page);
+    await openAndLoad(app, mode);
+    const expected = mode === 'class' ? CLASS_POLICIES.classroom : CLASS_POLICIES.takeHome;
+    expect(await capabilityContract(page)).toEqual(contractOf(expected));
     await app.expectConsistent();
   });
 }
