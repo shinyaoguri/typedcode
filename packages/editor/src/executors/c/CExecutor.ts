@@ -41,7 +41,7 @@ export type { ParsedError } from '../interfaces/ILanguageExecutor.js';
 const CLANG_VERSION = '0.1.1';
 
 /** Guest directory where the source and compiled binary are placed */
-const WORKSPACE_DIR = '/workspace';
+export const WORKSPACE_DIR = '/workspace';
 
 /**
  * 利用者のコードの後ろに付けるリンクの引数 (C / C++ 共通)。
@@ -101,6 +101,8 @@ static void __typedcode_init_stdout(void) {
 export interface CompileOptions {
   sourceFile?: string;
   compileArgs?: string[];
+  /** 利用者のソースと一緒に sandbox に置くファイル (ゲストの絶対パス → 内容)。`-include` で読ませるヘッダなど (#871) */
+  extraFiles?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -292,7 +294,7 @@ export class CExecutor extends BaseExecutor {
       // Each run gets a fresh sandbox holding clang and the source file
       sandbox = await wasmer.sandboxes.create({
         packages: [clangPkg],
-        files: { [`${WORKSPACE_DIR}/${sourceFile}`]: modifiedCode },
+        files: { ...options.extraFiles, [`${WORKSPACE_DIR}/${sourceFile}`]: modifiedCode },
       });
       if (run.aborted) return abortedResult();
 

@@ -198,7 +198,9 @@ vi.mock('@wasmer/sdk', () => {
 });
 
 const { CExecutor, buildSourceWithPreamble, pipeInteractiveStdin } = await import('../CExecutor.js');
-const { CppExecutor } = await import('../../cpp/CppExecutor.js');
+const { CppExecutor, LIBCXX_VERSION_WARNING_GUARD, LIBCXX_VERSION_WARNING_GUARD_PATH } = await import(
+  '../../cpp/CppExecutor.js'
+);
 const { C_EXECUTOR_CONFIG, CPP_EXECUTOR_CONFIG, getLazyCExecutor, getLazyCppExecutor } = await import(
   '../LazyClangExecutor.js'
 );
@@ -527,15 +529,17 @@ describe('compile error line numbers (#489)', () => {
   });
 
   it('sends the #line-prefixed source to clang for both C and C++', async () => {
-    for (const Executor of [CExecutor, CppExecutor]) {
+    for (const [Executor, sourceFile] of [
+      [CExecutor, '/workspace/main.c'],
+      [CppExecutor, '/workspace/main.cpp'],
+    ] as const) {
       sdk.reset();
       const executor = new Executor();
       await executor.initialize();
       await executor.run('int main(){return 0;}', collectCallbacks().callbacks);
 
-      const files = Object.values(sdk.sandboxFiles[0] ?? {});
-      expect(files).toHaveLength(1);
-      expect(String(files[0]).endsWith('#line 1\nint main(){return 0;}')).toBe(true);
+      const source = sdk.sandboxFiles[0]?.[sourceFile];
+      expect(String(source).endsWith('#line 1\nint main(){return 0;}')).toBe(true);
     }
   });
 
@@ -564,6 +568,42 @@ const FATAL_ERROR = `/workspace/main.c:2:10: fatal error: 'student.h' file not f
          ^~~~~~~~~~~
 1 error generated.
 `;
+
+describe('C++ compile arguments (#871)', () => {
+  async function cppCompileArgs(): Promise<readonly string[]> {
+    const executor = new CppExecutor();
+    await executor.initialize();
+    await executor.run('int main(){return 0;}', collectCallbacks().callbacks);
+    return sdk.commands[0]?.args ?? [];
+  }
+
+  it('passes no -x language option after the C++ input file, where clang ignores it with a warning', async () => {
+    const args = await cppCompileArgs();
+
+    const input = args.indexOf('/workspace/main.cpp');
+    expect(input).toBeGreaterThanOrEqual(0);
+    expect(args.slice(input + 1).filter((arg) => arg.startsWith('-x'))).toEqual([]);
+    expect(args).toContain('-std=c++17');
+  });
+
+  it('force-includes the guard header it places next to the source, so libc++ is configured inside the guard', async () => {
+    const args = await cppCompileArgs();
+
+    const include = args.indexOf('-include');
+    expect(args.slice(include, include + 2)).toEqual(['-include', LIBCXX_VERSION_WARNING_GUARD_PATH]);
+    expect(sdk.sandboxFiles[0]?.[LIBCXX_VERSION_WARNING_GUARD_PATH]).toBe(LIBCXX_VERSION_WARNING_GUARD);
+  });
+
+  it('silences only -W#warnings, only while <__config> is included, and restores the diagnostic state afterwards', () => {
+    expect(LIBCXX_VERSION_WARNING_GUARD.split('\n')).toEqual([
+      '#pragma clang diagnostic push',
+      '#pragma clang diagnostic ignored "-W#warnings"',
+      '#include <__config>',
+      '#pragma clang diagnostic pop',
+      '',
+    ]);
+  });
+});
 
 describe('compiler diagnostics (#708)', () => {
   it('forwards compiler warnings once on a successful compile and still reports the run as a success', async () => {
