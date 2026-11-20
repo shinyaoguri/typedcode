@@ -172,17 +172,26 @@ async function drain(app: EditorApp): Promise<void> {
 }
 
 /** 200 文字ずつ打ち、PoSW の backlog が 1,000 件を超えないよう待ちながら進める。打った打鍵数を返す */
-async function typeChunked(app: EditorApp, text: string): Promise<number> {
+async function typeChunked(app: EditorApp, text: string): Promise<{ keys: number; focusLost: number }> {
   await app.focusEditor();
   let keys = 0;
+  let focusLost = 0;
   for (let i = 0; i < text.length; i += 200) {
+    // フォーカスがエディタの外へ出たまま打つと、打鍵がボタンなどへ届く (言語切替のボタンに Enter が届いてページが
+    // 読み直された実例がある)。チャンクごとに確かめ、外れていたら数えて末尾へ戻す
+    const inEditor = await app.page.evaluate(() => !!document.activeElement?.closest('.monaco-editor'));
+    if (!inEditor) {
+      focusLost++;
+      await app.focusEditor();
+      await app.page.keyboard.press('ControlOrMeta+End');
+    }
     const chunk = text.slice(i, i + 200);
     await app.page.keyboard.type(chunk);
     keys += chunk.length;
     while ((await pending(app)).pending > 1000) await app.page.waitForTimeout(200);
   }
   await drain(app);
-  return keys;
+  return { keys, focusLost };
 }
 
 // ---------------------------------------------------------------------------
@@ -417,18 +426,31 @@ test('export capacity: real typing session and verify-cli positive control @benc
   const app = new EditorApp(page);
   await app.openCasualFresh();
   await drain(app);
+  // 打鍵の途中でページが読み直されたら、その回は実操作の測定として無効 (結果に残して見分ける)
+  const navigations: string[] = [];
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) navigations.push(`${new Date().toISOString()} ${frame.url()}`);
+  });
+  const phases: Record<string, string> = { typingStart: new Date().toISOString() };
   const before = await pending(app);
   const t0 = Date.now();
-  const keystrokes = await typeChunked(app, codeText(REAL_CHARS));
+  const { keys: keystrokes, focusLost } = await typeChunked(app, codeText(REAL_CHARS));
   const typingMs = Date.now() - t0;
   const after = await pending(app);
+  phases.typingEnd = new Date().toISOString();
 
   const { metrics, zipPath } = await measureExport(browser, page, true);
+  phases.exportEnd = new Date().toISOString();
   await context.close();
+  phases.contextClosed = new Date().toISOString();
 
   const result: Record<string, unknown> = {
     kind: 'real-typing',
     environment: environment(browser),
+    valid: navigations.length === 0,
+    navigations,
+    focusLost,
+    phases,
     keystrokes,
     typingMs,
     eventsBeforeTyping: before.total,
@@ -453,6 +475,7 @@ test('export capacity: real typing session and verify-cli positive control @benc
     const mode = VERIFY_MODE ?? (events.length > 20_000 ? 'fast' : 'full');
     const tv = Date.now();
     const cli = runVerifyCli(zipPath, ['--mode', mode]);
+    phases.verified = new Date().toISOString();
     Object.assign(result, {
       proofEvents: events.length,
       checkpoints: proof.checkpoints?.length ?? 0,
