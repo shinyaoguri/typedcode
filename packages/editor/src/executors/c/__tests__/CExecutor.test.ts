@@ -197,8 +197,13 @@ vi.mock('@wasmer/sdk', () => {
   return { Wasmer };
 });
 
-const { CExecutor, buildSourceWithPreamble, pipeInteractiveStdin } = await import('../CExecutor.js');
-const { CppExecutor } = await import('../../cpp/CppExecutor.js');
+const { CExecutor, STDOUT_SUPPORT_SOURCE, pipeInteractiveStdin } = await import('../CExecutor.js');
+const { CppExecutor, LIBCXX_VERSION_WARNING_GUARD, LIBCXX_VERSION_WARNING_GUARD_PATH } = await import(
+  '../../cpp/CppExecutor.js'
+);
+const { C_EXECUTOR_CONFIG, CPP_EXECUTOR_CONFIG, getLazyCExecutor, getLazyCppExecutor } = await import(
+  '../LazyClangExecutor.js'
+);
 
 function collectCallbacks() {
   const out = { stdout: '', stderr: '', stdin: null as InteractiveStdin | null };
@@ -241,10 +246,9 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
 
     await executor.run('int main(){return 0;}', callbacks);
 
-    expect(Object.keys(sdk.sandboxFiles[0] ?? {})).toEqual(['/workspace/main.c']);
-    expect(String(sdk.sandboxFiles[0]?.['/workspace/main.c'])).toContain('setvbuf(stdout, (char *)0, _IONBF, 0);');
     expect(sdk.commands[0]?.args).toEqual([
       '/workspace/main.c',
+      '/workspace/__typedcode_stdout.c',
       '-o',
       '/workspace/main.wasm',
       '-target',
@@ -330,6 +334,35 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
 
     await executor.initialize();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the Wasmer client of a failed clang download and downloads again on the next initialize (#617)', async () => {
+    const executor = new CExecutor();
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 503, statusText: 'Service Unavailable' }));
+
+    await expect(executor.initialize()).rejects.toThrow('Failed to initialize C compiler');
+    expect(executor.isInitialized).toBe(false);
+    expect(sdk.clientsClosed).toBe(1);
+
+    await executor.initialize();
+    expect(executor.isInitialized).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('the lazy C / C++ entry (#617)', () => {
+  it('carries the same config as the executors it loads', () => {
+    expect(C_EXECUTOR_CONFIG).toEqual(new CExecutor().config);
+    expect(CPP_EXECUTOR_CONFIG).toEqual(new CppExecutor().config);
+  });
+
+  it('initializes the shared CExecutor and CppExecutor singletons on the first initialize', async () => {
+    const { getCExecutor } = await import('../CExecutor.js');
+    const { getCppExecutor } = await import('../../cpp/CppExecutor.js');
+    await getLazyCExecutor().initialize();
+    await getLazyCppExecutor().initialize();
+    expect(getCExecutor().isInitialized).toBe(true);
+    expect(getCppExecutor().isInitialized).toBe(true);
   });
 });
 
@@ -486,27 +519,60 @@ describe('run ownership across a stop and an immediate re-run (#711)', () => {
   });
 });
 
-describe('compile error line numbers (#489)', () => {
-  it('places `#line 1` immediately before the user code so clang numbers its lines from 1', () => {
-    const source = buildSourceWithPreamble('int main(){return undefined_var;}');
+describe('stdout support in a separate translation unit (#709)', () => {
+  it('passes the user source to clang byte-for-byte, so line numbers, __LINE__ and missing includes stay as written (#489)', async () => {
+    for (const [Executor, source] of [
+      [CExecutor, '/workspace/main.c'],
+      [CppExecutor, '/workspace/main.cpp'],
+    ] as const) {
+      sdk.reset();
+      const executor = new Executor();
+      await executor.initialize();
+      const code = 'int main(){\n  printf("%d", __LINE__);\n  return 0;\n}\n';
+      await executor.run(code, collectCallbacks().callbacks);
 
-    expect(source.endsWith('#line 1\nint main(){return undefined_var;}')).toBe(true);
-    expect(source).toContain('setvbuf(stdout, (char *)0, _IONBF, 0);');
+      expect(sdk.sandboxFiles[0]?.[source]).toBe(code);
+    }
   });
 
-  it('sends the #line-prefixed source to clang for both C and C++', async () => {
-    for (const Executor of [CExecutor, CppExecutor]) {
+  it('compiles and links the unbuffered-stdout support as a second input with the same extension as the user source', async () => {
+    for (const [Executor, source, support] of [
+      [CExecutor, '/workspace/main.c', '/workspace/__typedcode_stdout.c'],
+      [CppExecutor, '/workspace/main.cpp', '/workspace/__typedcode_stdout.cpp'],
+    ] as const) {
       sdk.reset();
       const executor = new Executor();
       await executor.initialize();
       await executor.run('int main(){return 0;}', collectCallbacks().callbacks);
 
-      const files = Object.values(sdk.sandboxFiles[0] ?? {});
-      expect(files).toHaveLength(1);
-      expect(String(files[0]).endsWith('#line 1\nint main(){return 0;}')).toBe(true);
+      // C++ の libc++ の警告の guard (#871) は入力ではなく `-include` で読ませるヘッダなので、ここでは除いて見る
+      const files = Object.keys(sdk.sandboxFiles[0] ?? {}).filter((f) => f !== LIBCXX_VERSION_WARNING_GUARD_PATH);
+      expect(files).toEqual([source, support]);
+      expect(sdk.sandboxFiles[0]?.[support]).toBe(STDOUT_SUPPORT_SOURCE);
+      expect(sdk.commands[0]?.args?.slice(0, 2)).toEqual([source, support]);
     }
   });
 
+  it('makes stdout unbuffered from a constructor that runs before main, leaving the user free to call setvbuf later', () => {
+    expect(STDOUT_SUPPORT_SOURCE).toMatch(
+      /__attribute__\(\(constructor\)\)\s*static void \w+\(void\) \{\s*setvbuf\(stdout, \(char \*\)0, _IONBF, 0\);\s*\}/
+    );
+  });
+
+  it('does not turn diagnostics from the support translation unit into markers on the user source', () => {
+    const executor = new CExecutor();
+    const stderr = [
+      '/workspace/__typedcode_stdout.cpp:4:1: warning: something in the support code',
+      "/workspace/main.cpp:2:3: error: use of undeclared identifier 'printf'",
+    ].join('\n');
+
+    expect(executor.parseErrors(stderr)).toEqual([
+      { line: 2, column: 3, severity: 'error', message: "use of undeclared identifier 'printf'" },
+    ]);
+  });
+});
+
+describe('compile error line numbers (#489)', () => {
   it('reads line 1 from a clang message that points at the first user line', () => {
     const executor = new CExecutor();
 
@@ -532,6 +598,42 @@ const FATAL_ERROR = `/workspace/main.c:2:10: fatal error: 'student.h' file not f
          ^~~~~~~~~~~
 1 error generated.
 `;
+
+describe('C++ compile arguments (#871)', () => {
+  async function cppCompileArgs(): Promise<readonly string[]> {
+    const executor = new CppExecutor();
+    await executor.initialize();
+    await executor.run('int main(){return 0;}', collectCallbacks().callbacks);
+    return sdk.commands[0]?.args ?? [];
+  }
+
+  it('passes no -x language option after the C++ input file, where clang ignores it with a warning', async () => {
+    const args = await cppCompileArgs();
+
+    const input = args.indexOf('/workspace/main.cpp');
+    expect(input).toBeGreaterThanOrEqual(0);
+    expect(args.slice(input + 1).filter((arg) => arg.startsWith('-x'))).toEqual([]);
+    expect(args).toContain('-std=c++17');
+  });
+
+  it('force-includes the guard header it places next to the source, so libc++ is configured inside the guard', async () => {
+    const args = await cppCompileArgs();
+
+    const include = args.indexOf('-include');
+    expect(args.slice(include, include + 2)).toEqual(['-include', LIBCXX_VERSION_WARNING_GUARD_PATH]);
+    expect(sdk.sandboxFiles[0]?.[LIBCXX_VERSION_WARNING_GUARD_PATH]).toBe(LIBCXX_VERSION_WARNING_GUARD);
+  });
+
+  it('silences only -W#warnings, only while <__config> is included, and restores the diagnostic state afterwards', () => {
+    expect(LIBCXX_VERSION_WARNING_GUARD.split('\n')).toEqual([
+      '#pragma clang diagnostic push',
+      '#pragma clang diagnostic ignored "-W#warnings"',
+      '#include <__config>',
+      '#pragma clang diagnostic pop',
+      '',
+    ]);
+  });
+});
 
 describe('compiler diagnostics (#708)', () => {
   it('forwards compiler warnings once on a successful compile and still reports the run as a success', async () => {

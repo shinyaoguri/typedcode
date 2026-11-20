@@ -3,6 +3,7 @@ import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
 import { EditorApp, listProofEntries } from './helpers/app.js';
+import { enlargeTerminal } from './helpers/cExecution.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
 
 /** `vite preview` が配る editor の dist */
@@ -82,9 +83,16 @@ test('production build: エディタが console エラーなくマウントし�
       insertBlock: typeof w.__tcTestInsertBlock,
       snapshot: typeof w.__tcTestSnapshot,
       forgeTemplateInjection: typeof w.__tcTestForgeTemplateInjection,
+      // export の容量の測定 (#628) 用の水増し。本番に残るとイベント列を書き換えられる
+      capacity: typeof w.__tcTestCapacity,
     };
   });
-  expect(hooks).toEqual({ insertBlock: 'undefined', snapshot: 'undefined', forgeTemplateInjection: 'undefined' });
+  expect(hooks).toEqual({
+    insertBlock: 'undefined',
+    snapshot: 'undefined',
+    forgeTemplateInjection: 'undefined',
+    capacity: 'undefined',
+  });
 });
 
 /**
@@ -147,6 +155,37 @@ test('production build: / を開くと練習のエディタが直接開き、Mon
   await expect(page.locator('.monaco-editor')).toHaveCount(1);
   expect(workerFetches, workerFetches.join('\n')).toHaveLength(1);
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});
+
+/**
+ * C / C++ の実行系 (#617) の取得。CExecutor / CppExecutor のチャンク (Wasmer の SDK を含む)、Wasmer の glue・worker・wasm、
+ * clang の webc。最初の C / C++ の実行まで、どれも取りに行かない
+ */
+const C_RUNTIME_ASSETS = [/CExecutor/, /CppExecutor/, /wasmer/i, /browser-worker/, /\.webc(\?|$)/];
+
+test('production build: JS だけの起動と編集では C / C++ の実行系 (Wasmer・clang) を取りに行かない (#617)', async ({
+  page,
+}) => {
+  // 照合の名前が配信物から消えたら (チャンク名の変更)、この検査は何も見なくなるので先に落とす
+  const assets = readdirSync(join(EDITOR_DIST, 'assets'));
+  expect(assets.filter((name) => /^CExecutor-.*\.js$/.test(name))).toHaveLength(1);
+  expect(assets.filter((name) => /^wasmer_sdk_js_bg-.*\.wasm$/.test(name))).toHaveLength(1);
+
+  // 万一取りに行っても外部へは出さない (要求そのものは記録に残る)
+  await page.route('https://assets.typedcode.dev/**', (route) => route.abort('blockedbyclient'));
+  const requested: string[] = [];
+  page.on('request', (req) => requested.push(req.url()));
+
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('javascript');
+  await app.focusEditor();
+  await page.keyboard.type('console.log(6 * 7);');
+  await expect.poll(() => app.eventCount(), { timeout: 30_000 }).toBeGreaterThan(1);
+  await page.waitForLoadState('networkidle');
+
+  const leaked = requested.filter((url) => C_RUNTIME_ASSETS.some((re) => re.test(new URL(url).pathname)));
+  expect(leaked, `JS だけの利用で取得した URL:\n${requested.join('\n')}`).toEqual([]);
 });
 
 test('production build: /author に教材フォルダの dev 限定フックが残っていない', async ({ page }) => {
@@ -277,8 +316,56 @@ test('production build: JS の実行が sandbox (iframe 内の Worker) で動き
  * (code-execution-c-python.spec.ts) では検出できないので、ここで本番ビルドの C の hello を実行する。
  * clang の webc (約 100 MB) を外部 (assets.typedcode.dev) から取るので PR ゲートには載せず `@nightly` にする
  * (playwright.build.config.ts の grepInvert。NIGHTLY=1 で含まれる)。
+ * clang の webc は最初の実行まで取らず、2 回目の実行では取り直さないことも見る (#617。dynamic import にした
+ * CExecutor のチャンクから Wasmer の worker が本番ビルドで起動できることの確認を兼ねる)。
  */
 test('production build: @nightly C の hello が Wasmer の clang でコンパイルされて実行され、success で終わる', async ({
+  page,
+}) => {
+  test.setTimeout(360_000);
+  const pageErrors: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+  const clangFetches: string[] = [];
+  page.on('request', (req) => {
+    if (/\.webc(\?|$)/.test(req.url())) clangFetches.push(req.url());
+  });
+
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('c');
+  await app.focusEditor();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.press('Delete');
+  // dev フック (`__tcTestInsertBlock`) は dist に無いので打鍵で入れる。改行の自動インデントを通らないよう 1 行にし、
+  // 計算した値を出す (コードの文字列がそのまま出ているのではなく、実行された証拠にする)
+  await page.keyboard.type('int printf(const char *, ...);int main(void){printf("hello-c-%d\\n", 6 * 7);return 0;}');
+  // C の実行系は最初の実行まで取らない (#617)
+  expect(clangFetches).toEqual([]);
+
+  const terminal = page.locator('#xterm-container');
+  await page.locator('#run-code-btn').click();
+  await expect(terminal).toHaveAttribute('data-exec-run', '1');
+  // 1 回目の実行は Wasmer の初期化と clang の取得を含む
+  await expect(terminal).toHaveAttribute('data-exec-state', 'idle', { timeout: 240_000 });
+  await expect(terminal).toHaveAttribute('data-exec-outcome', 'success');
+  await expect(terminal.locator('.xterm-rows')).toContainText('hello-c-42');
+
+  // 2 回目の実行は取り直さない (#617)
+  await page.locator('#run-code-btn').click();
+  await expect(terminal).toHaveAttribute('data-exec-run', '2');
+  await expect(terminal).toHaveAttribute('data-exec-state', 'idle', { timeout: 60_000 });
+  await expect(terminal).toHaveAttribute('data-exec-outcome', 'success');
+  expect(clangFetches).toHaveLength(1);
+  expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});
+
+/**
+ * コンパイラの警告 (#708) を本番ビルドで確かめる: 警告だけのコンパイルは success のまま実行まで進み、
+ * 警告がターミナルに出て、その行に warning のマーカー (Monaco の squiggly) が付く。コンパイルの stderr は
+ * `spawn({ stderr: 'capture' })` + `wait()` で取っており、その経路が本番の worker の差し替えの下でも動くことはここでしか見えない。
+ * 行・列と fatal error・C++ の診断は dev の `code-execution-c-diagnostics.spec.ts` が見る。clang の webc を外部から取るので `@nightly`。
+ */
+test('production build: @nightly C の警告だけのコンパイルは success のまま、警告がターミナルとその行のマーカーに出る', async ({
   page,
 }) => {
   test.setTimeout(360_000);
@@ -291,17 +378,25 @@ test('production build: @nightly C の hello が Wasmer の clang でコンパ�
   await app.focusEditor();
   await page.keyboard.press('Control+A');
   await page.keyboard.press('Delete');
-  // dev フック (`__tcTestInsertBlock`) は dist に無いので打鍵で入れる。改行の自動インデントを通らないよう 1 行にし、
-  // 計算した値を出す (コードの文字列がそのまま出ているのではなく、実行された証拠にする)
-  await page.keyboard.type('int printf(const char *, ...);int main(void){printf("hello-c-%d\\n", 6 * 7);return 0;}');
+  // dev フックは dist に無いので打鍵で入れる。自動インデントを通らないよう 1 行にする。
+  // `if (0)` の中の誤った printf は実行されず、警告だけが出る (#708 の再現の例)
+  await page.keyboard.type(
+    'int printf(const char *, ...);int main(void){if(0)printf("%d","oops");printf("ran-despite-warning\\n");return 0;}'
+  );
 
   const terminal = page.locator('#xterm-container');
   await page.locator('#run-code-btn').click();
   await expect(terminal).toHaveAttribute('data-exec-run', '1');
-  // 1 回目の実行は Wasmer の初期化と clang の取得を含む
   await expect(terminal).toHaveAttribute('data-exec-state', 'idle', { timeout: 240_000 });
   await expect(terminal).toHaveAttribute('data-exec-outcome', 'success');
-  await expect(terminal.locator('.xterm-rows')).toContainText('hello-c-42');
+  // 既定のターミナルは 10 行ほどで、警告の行が流れうるので広げてから読む
+  await enlargeTerminal(page);
+  const rows = terminal.locator('.xterm-rows');
+  await expect(rows).toContainText('ran-despite-warning');
+  await expect(rows).toContainText(/main\.c:1:\d+: warning: format specifies type 'int'/);
+  // C には Monaco 自身の診断が無いので、squiggly は実行のマーカーだけ (コードは 1 行なので 1 個)
+  await expect(page.locator('.monaco-editor .squiggly-warning')).toHaveCount(1);
+  await expect(page.locator('.monaco-editor .squiggly-error')).toHaveCount(0);
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
 
