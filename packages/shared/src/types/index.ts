@@ -105,6 +105,7 @@ export type {
   DecodedExamPlaintext,
   ClassPackageSchema,
   ClassPackage,
+  ClassPolicy,
 } from './exam.js';
 
 // テンプレート関連
@@ -158,6 +159,7 @@ export type {
   // IndexedDB セッション永続化関連
   SessionMetadata,
   StoredTabData,
+  StoredTabProgressData,
   StoredEventData,
   StoredTabSwitchData,
   StoredUnprovenContentData,

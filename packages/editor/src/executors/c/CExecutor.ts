@@ -43,6 +43,16 @@ const CLANG_VERSION = '0.1.1';
 /** Guest directory where the source and compiled binary are placed */
 const WORKSPACE_DIR = '/workspace';
 
+/**
+ * 利用者のコードの後ろに付けるリンクの引数 (C / C++ 共通)。
+ *
+ * webc のドライバは `-D_WASI_EMULATED_PROCESS_CLOCKS` を自分で足して `<time.h>` に `clock()` を宣言させるが、
+ * リンクには `-lc` しか渡さず、実体のある `libwasi-emulated-process-clocks.a` (sysroot にある) を足さない。
+ * そのままでは `clock()` が `undefined symbol: clock` でリンクに落ちる (#714)。
+ * このライブラリの `clock()` はプログラムの開始からの CLOCK_MONOTONIC の経過 (= 実時間) を返し、CPU 時間ではない
+ */
+const LINK_ARGS = ['-lwasi-emulated-process-clocks'];
+
 const RUNTIME_ERROR_PATTERNS = [
   'runtimeerror',
   'memory access out of bounds',
@@ -297,6 +307,7 @@ export class CExecutor extends BaseExecutor {
           'wasm32-wasi',
           '-O2',
           ...extraArgs,
+          ...LINK_ARGS,
         ])
         .spawn({ stdin: 'closed', stdout: 'capture', stderr: 'capture' });
       if (!this.holdProcess(run, compiler, false)) return abortedResult();

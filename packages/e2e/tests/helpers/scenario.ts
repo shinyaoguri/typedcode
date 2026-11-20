@@ -69,6 +69,36 @@ export function sampleClassPackageWithExamples() {
   };
 }
 
+/**
+ * `.tcclass` の方針 (#645)。/author の「教室で実施」= `/class`、「持ち帰り」= `/assignment` の能力値
+ * (editor の `CLASS_POLICY_PRESETS`)。
+ */
+export const CLASS_POLICIES = {
+  classroom: { screenshots: true, fullscreenTracking: true, preExportBestEffort: true },
+  takeHome: { screenshots: false, fullscreenTracking: false, preExportBestEffort: false },
+} as const;
+
+/** 方針が決める 3 つの実効の能力 (状態契約 `html[data-cap-*]`)。値は `'true'` / `'false'` (属性が無ければ null) */
+export async function capabilityContract(
+  page: Page
+): Promise<Record<keyof typeof CLASS_POLICIES.classroom, string | null>> {
+  const html = page.locator('html');
+  return {
+    screenshots: await html.getAttribute('data-cap-screenshots'),
+    fullscreenTracking: await html.getAttribute('data-cap-fullscreen-tracking'),
+    preExportBestEffort: await html.getAttribute('data-cap-pre-export-best-effort'),
+  };
+}
+
+/** 方針を状態契約の文字列にしたもの (`capabilityContract` と比べる) */
+export function contractOf(policy: Record<keyof typeof CLASS_POLICIES.classroom, boolean>) {
+  return {
+    screenshots: String(policy.screenshots),
+    fullscreenTracking: String(policy.fullscreenTracking),
+    preExportBestEffort: String(policy.preExportBestEffort),
+  };
+}
+
 /** 問題パッケージ (既定は `sampleClassPackage`) を JSON 化した `.tcclass`。 */
 export function classPackageFile(pkg: object = sampleClassPackage()): FilePayload {
   return {
@@ -160,8 +190,14 @@ export function panelOpen(page: Page, panelId: 'log-viewer' | 'problem-panel'): 
 /**
  * 授業 / 課題で「問題を読み込む」(`#load-problem-btn`) から `.tcclass` を取り込み、問題タブができて
  * エディタと記録が立ち上がるまで待つ。
+ * 画面共有を求める方針 (#645) の問題を、画面共有をしていない入口 (`/assignment`) で読み込むと、読み込みの直後に
+ * 画面共有の選択が出る。そのときは `screenShare` でボタンを選ぶ (省略時は触らない)。
  */
-export async function loadClassPackage(app: EditorApp, file: FilePayload = classPackageFile()): Promise<void> {
+export async function loadClassPackage(
+  app: EditorApp,
+  file: FilePayload = classPackageFile(),
+  opts: { screenShare?: 'share' } = {}
+): Promise<void> {
   await app.page.locator('#load-problem-btn').click();
   await waitDialogOpen(app, 'class-problem-loader');
   await app.page.locator('#class-loader-file').setInputFiles(file);
@@ -169,6 +205,11 @@ export async function loadClassPackage(app: EditorApp, file: FilePayload = class
   await expect(load).toBeEnabled();
   await load.click();
   await waitDialogClosed(app, 'class-problem-loader');
+  if (opts.screenShare) {
+    const choice = app.page.locator(`.screen-share-choice-dialog [data-choice="${opts.screenShare}"]`);
+    await choice.waitFor({ state: 'visible', timeout: 30_000 });
+    await choice.click();
+  }
   await app.waitReady();
   // 問題タブは 1 本ずつ作られ、最後に問題パネルが開く (main.ts の openClassTabs)。waitReady は先頭のタブで
   // 抜けるので、全タブがそろったことはパネルの data-open で待つ。

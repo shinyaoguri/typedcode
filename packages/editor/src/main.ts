@@ -34,8 +34,8 @@ import {
   type ClassPackage,
   type RecordEventInput,
 } from '@typedcode/shared';
-import { resolveModeFromPath, capabilitiesFor, type EditorMode } from './core/mode.js';
-import { setAppState, getAppState, buildTestSnapshot } from './core/stateContract.js';
+import { resolveModeFromPath, acceptsClassPolicy, capabilitiesWithPolicy, type EditorMode } from './core/mode.js';
+import { setAppState, getAppState, buildTestSnapshot, setCapabilityContract } from './core/stateContract.js';
 import { renderModeBadge } from './ui/components/ModeBadge.js';
 import { showTermsNotice } from './ui/components/TermsNotice.js';
 import { setStorageNamespace, tabsKey, sessionActiveKey } from './core/storageKeys.js';
@@ -93,6 +93,8 @@ import { ExamStartGate } from './ui/components/ExamStartGate.js';
 import { ExamPackageStore } from './services/ExamPackageStore.js';
 import { ClassProblemLoader } from './ui/components/ClassProblemLoader.js';
 import { ClassProblemStore } from './services/ClassProblemStore.js';
+import { ClassPolicyStore } from './services/ClassPolicyStore.js';
+import { applyClassPolicy, startFullscreenTracking } from './app/classPolicyRuntime.js';
 import { FullscreenTracker } from './tracking/FullscreenTracker.js';
 import { EventRecorder, SessionContentRegistry } from './core/index.js';
 import type { AppContext } from './core/AppContext.js';
@@ -114,7 +116,11 @@ import {
   showScreenShareOptOutBanner,
   hideScreenShareOptOutBanner,
 } from './ui/dialogs/ScreenCaptureDialogs.js';
-import { initSessionStorageService, SessionStorageBlockedError } from './services/SessionStorageService.js';
+import {
+  getSessionStorageService,
+  initSessionStorageService,
+  SessionStorageBlockedError,
+} from './services/SessionStorageService.js';
 import {
   probeStorageCapacity,
   resolveStorageProbeBytes,
@@ -280,7 +286,8 @@ const ctx: AppContext = {
   skipUnloadConfirm: false,
   examMode,
   mode,
-  capabilities: capabilitiesFor(mode),
+  // 授業/課題は、前に読み込んだ問題の方針 (#645) を入口の能力に重ねて起動する (リロード後も同じ能力)
+  capabilities: capabilitiesWithPolicy(mode, acceptsClassPolicy(mode) ? ClassPolicyStore.get() : null),
 
   // Welcome Screen
   welcomeScreen: null as WelcomeScreen | null,
@@ -352,6 +359,9 @@ ctx.trackers.environment.setAssistDeclarationProvider(() => {
     formatOnPaste: opts.get(EO.formatOnPaste),
   });
 });
+
+// 方針 (#645) が決める能力を状態契約に出す (E2E が入口と方針の組み合わせを見る)。
+setCapabilityContract(ctx.capabilities);
 
 // proof に生成時のモードを記録する (ADR-0011: 自己申告ラベル、全モード共通)。
 ctx.proofExporter.setMode(ctx.mode);
@@ -1147,6 +1157,15 @@ async function runClassLoad(appCtx: AppContext): Promise<void> {
   const pkg = await loader.prompt();
   if (!pkg) return; // スキップ = 素のエディタ / 現状維持
   hideWelcomeScreen(appCtx);
+  // 配布物の方針 (#645) を、問題のタブを作る前に当てる (方針の無い旧ファイルは入口の能力に戻す)。
+  // 画面共有を求める方針なら、ここで起動時と同じ画面共有の選択を出す
+  await applyClassPolicy(appCtx, pkg.policy ?? null, {
+    startScreenShare: () => startScreenShareForPolicy(appCtx),
+    hideScreenShareUi: () => {
+      hideScreenShareOptOutBanner();
+      hideScreenCaptureLockOverlay();
+    },
+  });
   await openClassTabs(appCtx, pkg);
   // 問題タブができたのでキャプチャ再有効化・LogViewer 初期化・UI 更新 (welcome 経由の取込に対応)。
   appCtx.trackers.screenshot?.setCaptureEnabled(true);
@@ -1217,6 +1236,126 @@ function restoreClassProblemDisplay(appCtx: AppContext): void {
   if (!problem) return;
   appCtx.problemPanel.setProblem(problem.statement, problem.examples);
   if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
+}
+
+// ========================================
+// 画面共有の選択 (起動時と、画面共有を求める方針の問題を読み込んだとき #645)
+// ========================================
+
+/** 画面共有を再開 (または初めて有効化) する。ロック画面とオプトアウトのバナーのボタンから呼ぶ。 */
+async function resumeScreenShare(): Promise<boolean> {
+  const tracker = ctx.trackers.screenshot;
+  if (!tracker) return false;
+  const success = await requestScreenCaptureWithRetry(tracker);
+  if (success) {
+    // オプトアウトから画面共有に切り替え成功
+    tracker.setOptedOut(false);
+    hideScreenShareOptOutBanner();
+    // ストリーム停止時のコールバックを設定（重要：再開後もストリーム停止を検知）
+    tracker.setStreamStoppedCallback(() => {
+      showScreenCaptureLockOverlay(resumeScreenShare, continueWithoutScreenShare);
+    });
+  }
+  return success;
+}
+
+/** 画面共有なしで継続 (オプトアウトに切り替え)。ロック画面のボタンから呼ぶ。 */
+async function continueWithoutScreenShare(): Promise<boolean> {
+  const tracker = ctx.trackers.screenshot;
+  if (!tracker) return false; // オーバーレイを閉じない
+  // ロックオーバーレイを一時的に非表示にして確認ダイアログを表示
+  hideScreenCaptureLockOverlay();
+  const confirmed = await showScreenShareOptOutConfirmDialog();
+  if (confirmed) {
+    tracker.setOptedOut(true);
+    tracker.emitScreenShareOptOutEvent();
+    showScreenShareOptOutBanner(resumeScreenShare);
+    return true; // オーバーレイは既に非表示
+  }
+  // キャンセルされた場合はロックオーバーレイを再表示
+  showScreenCaptureLockOverlay(resumeScreenShare, continueWithoutScreenShare);
+  return false;
+}
+
+/**
+ * 起動後に、スクリーンショットを撮る方針の問題を読み込んだとき (#645。例: `/assignment` で「教室で実施」の問題)、
+ * 起動時と同じ画面共有の選択を出して screenshot tracker を始める。記録は起動時と同じく全タブへ流す。
+ */
+async function startScreenShareForPolicy(appCtx: AppContext): Promise<void> {
+  if (!ScreenshotTracker.isSupported()) {
+    showNotification(t('screenCapture.notSupported') ?? 'Screen Capture not supported in this browser');
+    return;
+  }
+  const sessionService = getSessionStorageService();
+  const tracker = new ScreenshotTracker(sessionService);
+  const sessionId = sessionService.getCurrentSessionId();
+  if (sessionId) tracker.setSessionId(sessionId);
+  tracker.setCallback((event) => {
+    void appCtx.eventRecorder?.recordToAllTabs({ type: event.type, data: event.data, description: event.description });
+  });
+  // タブが無い間は撮らない (起動時と同じ。撮っても記録先のチェーンが無く、検証で「チェーンに裏付けの無い画像」になる)。
+  // 問題のタブを作った後に runClassLoad が有効に戻す
+  if (!appCtx.tabManager?.hasAnyTabs()) tracker.setCaptureEnabled(false);
+  // ロック画面とバナーのボタン (resumeScreenShare など) は ctx.trackers.screenshot を見るので、選択の前に入れる
+  appCtx.trackers.screenshot = tracker;
+  appCtx.proofExporter.setScreenshotTracker(tracker);
+  await promptScreenShareChoice(tracker, false);
+  // オプトアウトは起動時の Phase 5.5 と同じく、記録のコールバックを付けた後で発火する (後から作るタブへも流し直される)
+  if (tracker.isOptedOut()) tracker.emitScreenShareOptOutEvent();
+}
+
+/**
+ * 画面共有の選択ダイアログ (「画面共有を開始」/「画面共有なしで使用」) を出し、選ばれたとおりに始める。
+ * 許可が得られなかったらロック画面を出して false を返す (オプトアウトを確定したときは true)。
+ * `atBoot` のときは、選択の間だけ初期化オーバーレイを隠し、許可要求の進み具合をそこに出す。
+ */
+async function promptScreenShareChoice(tracker: ScreenshotTracker, atBoot: boolean): Promise<boolean> {
+  const hideInitOverlay = (): void => {
+    if (atBoot) initOverlay?.classList.add('hidden');
+  };
+  const showInitOverlay = (): void => {
+    if (!atBoot) return;
+    initOverlay?.classList.remove('hidden');
+    updateInitMessage(t('app.initializing'));
+  };
+  const progress = atBoot ? updateInitMessage : undefined;
+  const requestAndWatch = async (): Promise<boolean> => {
+    const permissionGranted = await requestScreenCaptureWithRetry(tracker, progress);
+    if (!permissionGranted) {
+      showScreenCaptureLockOverlay(resumeScreenShare, continueWithoutScreenShare);
+      return false;
+    }
+    // ストリーム停止時のコールバックを設定
+    tracker.setStreamStoppedCallback(() => {
+      showScreenCaptureLockOverlay(resumeScreenShare, continueWithoutScreenShare);
+    });
+    return true;
+  };
+
+  // 選択ダイアログを表示：「画面共有を開始」または「画面共有なしで使用」
+  hideInitOverlay();
+  const choice = await showScreenShareChoiceDialog();
+  showInitOverlay();
+
+  if (choice !== 'optOut') {
+    // 「画面共有を開始」を選択、またはキャンセル (従来どおり画面共有を要求)
+    return requestAndWatch();
+  }
+  // オプトアウトの確認ダイアログを表示
+  hideInitOverlay();
+  const confirmed = await showScreenShareOptOutConfirmDialog();
+  showInitOverlay();
+  if (!confirmed) {
+    // キャンセルされた場合は画面共有を要求
+    return requestAndWatch();
+  }
+  // オプトアウト確定
+  tracker.setOptedOut(true);
+  // 注: オプトアウトイベントは記録のコールバックが設定されてから発火する (起動時は Phase 5.5)
+  // バナーを表示（途中から画面共有を有効にするボタン付き）
+  showScreenShareOptOutBanner(resumeScreenShare);
+  console.log('[TypedCode] Screen sharing opted out');
+  return true;
 }
 
 /**
@@ -1360,110 +1499,16 @@ async function initializeApp(): Promise<void> {
     // ScreenshotTrackerはSessionStorageServiceを使用してスクリーンショットを保存
     const screenshotTracker = new ScreenshotTracker(sessionService);
 
-    // onContinueWithout コールバック: 画面共有なしで継続（オプトアウトに切り替え）
-    const onContinueWithout = async (): Promise<boolean> => {
-      const tracker = ctx.trackers.screenshot;
-      if (tracker) {
-        // ロックオーバーレイを一時的に非表示にして確認ダイアログを表示
-        hideScreenCaptureLockOverlay();
-        const confirmed = await showScreenShareOptOutConfirmDialog();
-        if (confirmed) {
-          tracker.setOptedOut(true);
-          tracker.emitScreenShareOptOutEvent();
-          showScreenShareOptOutBanner(onResume);
-          return true; // オーバーレイは既に非表示
-        } else {
-          // キャンセルされた場合はロックオーバーレイを再表示
-          showScreenCaptureLockOverlay(onResume, onContinueWithout);
-          return false;
-        }
-      }
-      return false; // オーバーレイを閉じない
-    };
-
-    // onResume コールバック: 画面共有を再開（または初めて有効化）
-    const onResume = async (): Promise<boolean> => {
-      const tracker = ctx.trackers.screenshot;
-      if (tracker) {
-        const success = await requestScreenCaptureWithRetry(tracker);
-        if (success) {
-          // オプトアウトから画面共有に切り替え成功
-          tracker.setOptedOut(false);
-          hideScreenShareOptOutBanner();
-          // ストリーム停止時のコールバックを設定（重要：再開後もストリーム停止を検知）
-          tracker.setStreamStoppedCallback(() => {
-            showScreenCaptureLockOverlay(onResume, onContinueWithout);
-          });
-        }
-        return success;
-      }
-      return false;
-    };
-
     if (!ctx.capabilities.promptScreenShareAtStart) {
       // 通常モード (casual, ADR-0015): 起動時に画面共有を**勧誘しない**。opt-out 状態で始め、
       // 「画面共有を有効にする」バナー (onResume) から後でオプトインできる。ダイアログは一切出さない。
       // opt-out イベントは後段 (コールバック設定後) に emitScreenShareOptOutEvent で記録される。
       screenshotTracker.setOptedOut(true);
-      showScreenShareOptOutBanner(onResume);
+      showScreenShareOptOutBanner(resumeScreenShare);
       console.log('[TypedCode] Screen-share not prompted at start (opt-in via banner) for mode:', ctx.mode);
-    } else {
-      // 選択ダイアログを表示：「画面共有を開始」または「画面共有なしで使用」
-      initOverlay?.classList.add('hidden');
-      const choice = await showScreenShareChoiceDialog();
-      initOverlay?.classList.remove('hidden');
-      updateInitMessage(t('app.initializing'));
-
-      if (choice === 'cancelled') {
-        // キャンセルされた場合は画面共有を要求（従来の動作）
-        const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
-        if (!permissionGranted) {
-          showScreenCaptureLockOverlay(onResume, onContinueWithout);
-          return;
-        }
-        // ストリーム停止時のコールバックを設定
-        screenshotTracker.setStreamStoppedCallback(() => {
-          showScreenCaptureLockOverlay(onResume, onContinueWithout);
-        });
-      } else if (choice === 'optOut') {
-        // オプトアウトの確認ダイアログを表示
-        initOverlay?.classList.add('hidden');
-        const confirmed = await showScreenShareOptOutConfirmDialog();
-        initOverlay?.classList.remove('hidden');
-        updateInitMessage(t('app.initializing'));
-
-        if (!confirmed) {
-          // キャンセルされた場合は画面共有を要求
-          const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
-          if (!permissionGranted) {
-            showScreenCaptureLockOverlay(onResume, onContinueWithout);
-            return;
-          }
-          // ストリーム停止時のコールバックを設定
-          screenshotTracker.setStreamStoppedCallback(() => {
-            showScreenCaptureLockOverlay(onResume, onContinueWithout);
-          });
-        } else {
-          // オプトアウト確定
-          screenshotTracker.setOptedOut(true);
-          // 注: オプトアウトイベントはTrackersInitializer後にコールバックが設定されてから発火される
-          // バナーを表示（途中から画面共有を有効にするボタン付き）
-          showScreenShareOptOutBanner(onResume);
-          console.log('[TypedCode] Screen sharing opted out');
-        }
-      } else {
-        // 「画面共有を開始」を選択
-        const permissionGranted = await requestScreenCaptureWithRetry(screenshotTracker, updateInitMessage);
-        if (!permissionGranted) {
-          showScreenCaptureLockOverlay(onResume, onContinueWithout);
-          return;
-        }
-        // ストリーム停止時のコールバックを設定
-        screenshotTracker.setStreamStoppedCallback(() => {
-          showScreenCaptureLockOverlay(onResume, onContinueWithout);
-        });
-      }
-    } // end: promptScreenShareAtStart の選択ダイアログ分岐 (ADR-0015)
+    } else if (!(await promptScreenShareChoice(screenshotTracker, true))) {
+      return;
+    }
 
     ctx.trackers.screenshot = screenshotTracker;
   } else {
@@ -1674,10 +1719,7 @@ async function initializeApp(): Promise<void> {
   // exam は警告バナー + 要求ボタン (fullscreenBanner=true、ボタンが開始ジェスチャ)。
   // class は受動記録のみ (fullscreenBanner=false、状態は記録するがバナーは出さない)。
   if (ctx.capabilities.fullscreenTracking) {
-    ctx.fullscreenTracker.setRecordCallback((event) => {
-      void ctx.eventRecorder?.recordToAllTabs(event);
-    });
-    ctx.fullscreenTracker.initialize(ctx.capabilities.fullscreenBanner);
+    startFullscreenTracking(ctx);
   }
 
   // Phase 7: ターミナルとコード実行の初期化

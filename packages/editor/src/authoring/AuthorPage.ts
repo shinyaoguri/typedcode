@@ -34,6 +34,7 @@ import { escapeHtml } from '@typedcode/shared';
 import { t, getI18n } from '../i18n/index.js';
 import { formatProctorTokenForDisplay, generateProctorToken, type CreatedExamPackage } from './examPackageAuthoring.js';
 import { generateAuthorityKey } from './authorityKey.js';
+import type { ClassPolicyPreset } from '../core/mode.js';
 import { createDistribution, type ExamSecrets } from './distribution.js';
 import { buildProctorMemo } from './proctorMemo.js';
 import { ADDABLE_ROLES, type AddableRole, AuthorWorkspace } from './workspace/authorWorkspace.js';
@@ -88,6 +89,7 @@ type BuildErrorReason =
   | 'empty'
   | 'no-languages'
   | 'no-key'
+  | 'no-policy'
   | 'failed';
 
 /** Blob をファイル名つきでダウンロードさせる。 */
@@ -1071,6 +1073,7 @@ export class AuthorPage {
     const kind = ok?.kind ?? null;
     this.el('author-export-secrets').hidden = kind !== 'exam';
     this.el('author-export-class-hint').hidden = kind !== 'class';
+    this.el('author-export-class-policy').hidden = kind !== 'class';
     if (!this.building) {
       button.disabled = ok === null;
       button.innerHTML = this.buildButtonLabel(kind);
@@ -1118,6 +1121,16 @@ export class AuthorPage {
         case 'ok':
           break;
       }
+      // 授業の配布物は方針 (#645) を選んでから書き出す。既定は当てない (入口に任せていた旧ファイルと意味が変わるので、
+      // 教員が「教室で実施」か「持ち帰り」かを決める)
+      let classPolicy: ClassPolicyPreset | undefined;
+      if (result.exam.kind === 'class') {
+        classPolicy = this.selectedClassPolicy() ?? undefined;
+        if (!classPolicy) {
+          this.showBuildError('no-policy', t('author.export.errorNoPolicy'));
+          return;
+        }
+      }
       let secrets: ExamSecrets | undefined;
       if (result.exam.kind === 'exam') {
         const keyId = this.input('author-keyid').value.trim();
@@ -1133,7 +1146,11 @@ export class AuthorPage {
           proctorToken: this.input('author-token').value,
         };
       }
-      const distribution = await createDistribution(result.exam, result.problems, { secrets, now: new Date() });
+      const distribution = await createDistribution(result.exam, result.problems, {
+        secrets,
+        ...(classPolicy ? { classPolicy } : {}),
+        now: new Date(),
+      });
       downloadBlob(distribution.filename, distribution.content, 'application/json');
       if (distribution.kind === 'exam') this.showResult(distribution.created, distribution.filename);
     } catch (err) {
@@ -1142,6 +1159,13 @@ export class AuthorPage {
       this.building = false;
       this.renderExportPanel();
     }
+  }
+
+  /** 書き出しのパネルで選んだ授業の方針 (#645)。選んでいなければ null */
+  private selectedClassPolicy(): ClassPolicyPreset | null {
+    const checked = this.root.querySelector<HTMLInputElement>('input[name="author-class-policy"]:checked');
+    const value = checked?.value;
+    return value === 'classroom' || value === 'take-home' ? value : null;
   }
 
   /** 書き出しの誤りを書き出しのパネルに出す (パネルが閉じていれば開く)。欠損は一覧 (`[data-issues]`) にする */
@@ -1273,6 +1297,19 @@ export class AuthorPage {
                 <dt>${escapeHtml(t('author.export.problems'))}</dt><dd data-summary="problems"></dd>
               </dl>
               <p class="author-hint" id="author-export-class-hint" hidden>${escapeHtml(t('author.export.classHint'))}</p>
+              <fieldset class="author-class-policy" id="author-export-class-policy" hidden>
+                <legend>${escapeHtml(t('author.export.policy'))}</legend>
+                <label class="author-check">
+                  <input type="radio" name="author-class-policy" value="classroom">
+                  <span>${escapeHtml(t('author.export.policyClassroom'))}</span>
+                </label>
+                <p class="author-hint">${escapeHtml(t('author.export.policyClassroomHint'))}</p>
+                <label class="author-check">
+                  <input type="radio" name="author-class-policy" value="take-home">
+                  <span>${escapeHtml(t('author.export.policyTakeHome'))}</span>
+                </label>
+                <p class="author-hint">${escapeHtml(t('author.export.policyTakeHomeHint'))}</p>
+              </fieldset>
 
               <div id="author-export-secrets" hidden>
                 <div class="author-settings-divider"></div>

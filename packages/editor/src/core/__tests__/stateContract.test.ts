@@ -6,7 +6,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildTestSnapshot, getAppState, setAppState, type SnapshotSource } from '../stateContract.js';
+import {
+  buildTestSnapshot,
+  getAppState,
+  setAppState,
+  setCapabilityContract,
+  type SnapshotSource,
+} from '../stateContract.js';
 
 interface FakeTabInput {
   id: string;
@@ -106,5 +112,18 @@ describe('app state attribute', () => {
 
     expect(document.documentElement.getAttribute('data-app-state')).toBe('gate');
     expect(getAppState()).toBe('gate');
+  });
+});
+
+describe('capability attributes (#645)', () => {
+  it('writes the three policy-driven capabilities as raw true/false on html', () => {
+    setCapabilityContract({ screenshots: false, fullscreenTracking: true, preExportBestEffort: false });
+
+    const html = document.documentElement;
+    expect([
+      html.getAttribute('data-cap-screenshots'),
+      html.getAttribute('data-cap-fullscreen-tracking'),
+      html.getAttribute('data-cap-pre-export-best-effort'),
+    ]).toEqual(['false', 'true', 'false']);
   });
 });

@@ -394,7 +394,11 @@ interface StoredTabState {
   events: { index: number; hash: string; previousHash: string | null }[];
 }
 
-/** casual の session DB から全タブのレコードと events を読む (読み取りだけ。開いているエディタのページから呼ぶ)。 */
+/**
+ * casual の session DB から全タブのレコードと events を読む (読み取りだけ。開いているエディタのページから呼ぶ)。
+ * currentHash は editor の `getTab` / `loadTabs` と同じく、tabs 行と tabProgress (#627) の位置の大きい方
+ * (同じなら tabProgress) から採る。
+ */
 function readStoredSession(page: Page): Promise<StoredTabState[]> {
   return page.evaluate(
     (dbName) =>
@@ -403,16 +407,29 @@ function readStoredSession(page: Page): Promise<StoredTabState[]> {
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
           const db = open.result;
-          const tx = db.transaction(['tabs', 'events'], 'readonly');
+          const tx = db.transaction(['tabs', 'tabProgress', 'events'], 'readonly');
           const tabsReq = tx.objectStore('tabs').getAll();
+          const progressReq = tx.objectStore('tabProgress').getAll();
           const eventsReq = tx.objectStore('events').getAll();
           tx.onerror = () => reject(tx.error);
           tx.oncomplete = () => {
             db.close();
             type Row = { tabId: string; eventIndex: number; eventData: { hash: string; previousHash: string | null } };
+            type Position = { lastWrittenEventIndex: number; currentHash: string };
             const events = (eventsReq.result as Row[]).sort((a, b) => a.eventIndex - b.eventIndex);
+            const progress = new Map(
+              (progressReq.result as (Position & { tabId: string })[]).map((p) => [p.tabId, p] as const)
+            );
             resolve(
-              (tabsReq.result as { id: string; content: string; currentHash: string }[])
+              (tabsReq.result as (Position & { id: string; content: string })[])
+                .map((t) => {
+                  const p = progress.get(t.id);
+                  return {
+                    ...t,
+                    currentHash:
+                      p && p.lastWrittenEventIndex >= t.lastWrittenEventIndex ? p.currentHash : t.currentHash,
+                  };
+                })
                 .map((t) => ({
                   id: t.id,
                   content: t.content,
@@ -447,7 +464,7 @@ function tamperStoredSession(page: Page, tamper: Exclude<ResumeTamper, 'none'>):
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
           const db = open.result;
-          const tx = db.transaction(['sessions', 'tabs', 'events'], 'readwrite');
+          const tx = db.transaction(['sessions', 'tabs', 'tabProgress', 'events'], 'readwrite');
           let summary = '';
           let failure: Error | null = null;
           tx.onerror = () => reject(tx.error);
@@ -473,14 +490,17 @@ function tamperStoredSession(page: Page, tamper: Exclude<ResumeTamper, 'none'>):
             };
             return;
           }
-          // staleHash: 各タブの currentHash を、events の 1 つ前の hash に戻す (#322 の手本は先頭の hash)
+          // staleHash: 各タブの currentHash を、events の 1 つ前の hash に戻す (#322 の手本は先頭の hash)。
+          // append の位置は tabProgress にもあり、読み出しは同じ位置なら tabProgress を採るので両方戻す (#627)
           const tabsReq = tx.objectStore('tabs').getAll();
+          const progressReq = tx.objectStore('tabProgress').getAll();
           const eventsReq = tx.objectStore('events').getAll();
-          let pending = 2;
+          let pending = 3;
           const done = () => {
             if (--pending > 0) return;
             type Row = { tabId: string; eventIndex: number; eventData: { hash: string } };
             const events = (eventsReq.result as Row[]).sort((a, b) => a.eventIndex - b.eventIndex);
+            const progressRows = progressReq.result as { tabId: string; currentHash: string }[];
             let rewound = 0;
             for (const tab of tabsReq.result as { id: string; currentHash: string }[]) {
               const own = events.filter((e) => e.tabId === tab.id);
@@ -489,12 +509,17 @@ function tamperStoredSession(page: Page, tamper: Exclude<ResumeTamper, 'none'>):
               if (!previous || !tail) continue;
               tab.currentHash = previous;
               tx.objectStore('tabs').put(tab);
+              for (const progress of progressRows.filter((p) => p.tabId === tab.id)) {
+                progress.currentHash = previous;
+                tx.objectStore('tabProgress').put(progress);
+              }
               rewound += 1;
             }
             if (rewound === 0) return fail('staleHash: no stored tab had 2+ events to rewind to');
             summary = `rewound currentHash of ${rewound}/${tabsReq.result.length} tabs`;
           };
           tabsReq.onsuccess = done;
+          progressReq.onsuccess = done;
           eventsReq.onsuccess = done;
         };
       }),
