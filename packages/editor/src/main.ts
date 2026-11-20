@@ -333,6 +333,9 @@ if (import.meta.env.DEV) {
       ctx.editorController.attach(editor);
     }
   };
+
+  // export の容量の測定 (#628) 専用: アクティブなタブのイベント列を水増しする (検証には通らない。devCapacityHook.ts)
+  void import('./export/devCapacityHook.js').then((hook) => hook.installCapacityHook(() => ctx.tabManager));
 }
 
 // editor-assist 宣言 (ADR-0019): Monaco の解決済みオプションから支援機能の実効状態を
@@ -505,11 +508,8 @@ async function initializeTabManager(
   });
 
   ctx.proofStatusDisplay.setSnapshotCallback(
-    (content) => {
-      const activeProof = ctx.tabManager?.getActiveProof();
-      if (!activeProof) return Promise.reject(new Error('No active proof'));
-      return activeProof.recordContentSnapshot(content);
-    },
+    // EventRecorder を通して記録し、他のイベントと同じく確定順に IndexedDB へ append する (#873)
+    (content) => ctx.eventRecorder?.recordContentSnapshot(content) ?? Promise.reject(new Error('No active proof')),
     () => ctx.editor.getValue()
   );
 
