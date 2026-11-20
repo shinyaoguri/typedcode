@@ -56,6 +56,7 @@ async function createTestKey(): Promise<TestKey> {
       status: 'active',
       validFrom: '2020-01-01T00:00:00Z',
       description: 'test key',
+      environment: 'production',
     },
   };
 }

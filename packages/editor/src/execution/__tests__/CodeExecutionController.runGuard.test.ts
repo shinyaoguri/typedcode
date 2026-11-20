@@ -60,6 +60,8 @@ const { CodeExecutionController } = await import('../CodeExecutionController.js'
 function fakeTerminal() {
   const written: string[] = [];
   const state: Record<string, string | undefined> = {};
+  /** connectStdin に渡された onInterrupt (ターミナルの Ctrl+C の配線。#707) */
+  const interrupts: Array<(() => void) | undefined> = [];
   const terminal = {
     clear: () => {
       written.length = 0;
@@ -69,7 +71,9 @@ function fakeTerminal() {
     writeInfo: (t: string) => written.push(t),
     writeSuccess: (t: string) => written.push(t),
     disconnectStdin: () => {},
-    connectStdin: () => {},
+    connectStdin: (_stdin: unknown, options?: { onInterrupt?: () => void }) => {
+      interrupts.push(options?.onInterrupt);
+    },
     markRunStarted: (id: number) => {
       state.execState = 'running';
       state.execRun = String(id);
@@ -80,7 +84,7 @@ function fakeTerminal() {
       state.execOutcome = outcome;
     },
   };
-  return { terminal: terminal as unknown as CTerminal, written, state };
+  return { terminal: terminal as unknown as CTerminal, written, state, interrupts };
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -88,7 +92,7 @@ const target = { language: 'javascript', filename: 'a.js', code: 'x' };
 
 function setup() {
   const controller = new CodeExecutionController();
-  const { terminal, written, state } = fakeTerminal();
+  const { terminal, written, state, interrupts } = fakeTerminal();
   const results: CodeExecutionEventData[] = [];
   const runEnds = vi.fn();
   controller.setTerminal(terminal);
@@ -98,8 +102,10 @@ function setup() {
     },
     onRunEnd: runEnds,
   });
-  return { controller, written, state, results, runEnds };
+  return { controller, written, state, results, runEnds, interrupts };
 }
+
+const noStdin = { writeLine: () => {}, close: () => {} };
 
 const ok: ExecutionResult = { success: true, exitCode: 0, stdout: '', stderr: '' };
 
@@ -200,6 +206,38 @@ describe('CodeExecutionController run guard', () => {
       ['success', 0],
       ['failure', 1],
     ]);
+  });
+});
+
+describe('CodeExecutionController terminal Ctrl+C (#707)', () => {
+  it('stops the run and records aborted when the terminal reports Ctrl+C', async () => {
+    const { controller, results, interrupts } = setup();
+    const run = controller.run(target);
+    await flush();
+    fake.runs[0]?.callbacks.onStdinReady?.(noStdin);
+
+    interrupts[0]?.();
+
+    expect([fake.aborts, controller.running, results.map((r) => r.outcome)]).toEqual([1, false, ['aborted']]);
+    fake.runs[0]?.resolve(ok);
+    await run;
+  });
+
+  it('does not let a Ctrl+C wired to a stopped run stop the next run', async () => {
+    const { controller, results, interrupts } = setup();
+    const first = controller.run(target);
+    await flush();
+    fake.runs[0]?.callbacks.onStdinReady?.(noStdin);
+    controller.abort();
+
+    const second = controller.run(target);
+    await flush();
+    interrupts[0]?.();
+
+    expect([fake.aborts, controller.running, results.map((r) => r.outcome)]).toEqual([1, true, ['aborted']]);
+    fake.runs[0]?.resolve(ok);
+    fake.runs[1]?.resolve(ok);
+    await Promise.all([first, second]);
   });
 });
 

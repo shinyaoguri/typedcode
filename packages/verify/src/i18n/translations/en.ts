@@ -378,6 +378,10 @@ export const en: VerifyTranslationKeys = {
         'Start time cannot be confirmed: the session start token was issued for another device (the chain root is self-consistent; not content tampering)',
     },
     issueRootNotAnchored: 'Chain root is not server-anchored (start time unfixed; offline forgery possible)',
+    issueRootUntrustedKeyEnvironment:
+      'The session start token is signed by the staging key ${keyId}, so it does not count as evidence of the start time (not content tampering; this verifier trusts production keys only)',
+    issueAnchoringUntrustedKeyEnvironment:
+      'The signed checkpoints are signed by the staging key ${keyId}, so they do not count as temporal anchors (not content tampering; this verifier trusts production keys only)',
     issueNotPureTyping: 'Not pure typing (paste / bulk insertion detected)',
     issueExamBindingFailed: 'Exam binding (signature / content hash) verification failed',
     issueExamUnverified: 'Problem package not loaded; authenticity unverified',

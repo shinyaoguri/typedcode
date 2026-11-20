@@ -26,6 +26,7 @@ export const BOOLEAN_FLAGS = new Set([
   '--require-root-anchor',
   '--require-signed-checkpoints',
   '--require-final-anchor',
+  '--allow-staging-keys',
   '--no-default-analyzers',
   '--help',
   '-h',

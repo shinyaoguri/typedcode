@@ -44,9 +44,13 @@ import {
   type AcceptancePolicyResult,
 } from './acceptancePolicy.js';
 import { verifySessionStartToken, computeAnchoredChainRoot } from './sessionStartToken.js';
-import { CHECKPOINT_PUBLIC_KEYS } from './checkpointKeys/index.js';
+import {
+  CHECKPOINT_PUBLIC_KEYS,
+  DEFAULT_TRUSTED_CHECKPOINT_KEY_ENVIRONMENTS,
+  isCheckpointKeyEnvironmentTrusted,
+} from './checkpointKeys/index.js';
 import type { SignedCheckpointsVerificationResult } from './types.js';
-import type { CheckpointPublicKey } from './checkpointKeys/index.js';
+import type { CheckpointKeyEnvironment, CheckpointPublicKey, UntrustedEnvironmentKey } from './checkpointKeys/index.js';
 
 /**
  * Proof file with content (extends ExportedProof)
@@ -117,6 +121,12 @@ export interface FullVerificationResult {
    */
   rootAnchorFailure?: RootAnchorFailure;
   /**
+   * token の署名は検証できたが、鍵の環境を信頼しなかったので root をアンカーに数えなかった (#321)。
+   * `rootAnchorFailure` と違い `valid` / `integrityValid` は落とさない (token の無い proof と同じ扱い)。
+   * 署名 cp の側は `signedCheckpoints.untrustedKeys` に出る。
+   */
+  rootAnchorUntrustedKey?: UntrustedEnvironmentKey;
+  /**
    * `sessionStartToken` の sessionId と署名 cp の sessionId が食い違ったか (spec §6.3 / ADR-0017)。
    * true = 別セッションのトークンを流用した proof。`valid` には既に反映済みだが、UI が
    * 「どの層が落ちたか」を chain ではなく時刻アンカー層として提示できるよう独立に返す
@@ -151,6 +161,14 @@ export interface VerifyProofFileOptions extends AcceptancePolicy {
   /** 公開鍵レジストリ (テスト/CLI から注入) */
   signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
   /**
+   * 時刻証拠 (sessionStartToken・署名 cp) に数える鍵の環境 (#321)。既定は
+   * `DEFAULT_TRUSTED_CHECKPOINT_KEY_ENVIRONMENTS` (production と development)。staging を足すのは
+   * verify-cli の `--allow-staging-keys` と staging 用にビルドした verify だけ
+   * (`trustedCheckpointKeyEnvironments({ allowStaging })`)。範囲の外の鍵の証拠は「無い」ものとして扱い、
+   * 整合性と `valid` は落とさない。
+   */
+  trustedKeyEnvironments?: readonly CheckpointKeyEnvironment[];
+  /**
    * exam 束縛が実際に検証済みか (#131)。呼び出し側が `verifyExamBinding` (署名→packageHash→root→
    * 内容ハッシュ) に合格したときのみ true を渡す。`requireRootAnchor` の exam 免除はこのフラグに
    * 基づく — `proof.exam` の**存在だけ**では免除しない (架空の exam ブロックを付けるだけで gate を
@@ -181,6 +199,11 @@ export type VerificationProgressCallback = (current: number, total: number) => v
 export interface VerifyInitialHashRootOptions {
   /** セッション開始トークン (ADR-0017) の署名検証に使う公開鍵 registry */
   signedCheckpointKeyRegistry?: readonly CheckpointPublicKey[];
+  /**
+   * root のアンカーに数える鍵の環境 (#321)。既定は `DEFAULT_TRUSTED_CHECKPOINT_KEY_ENVIRONMENTS`
+   * (production と development)。範囲の外の鍵の token は、署名が正しくても root をアンカーしない。
+   */
+  trustedKeyEnvironments?: readonly CheckpointKeyEnvironment[];
 }
 
 /**
@@ -221,6 +244,12 @@ export interface VerifyInitialHashRootResult {
    * 検証できなかった。`valid: false` (root 不一致 = 改ざん) のときは付かない。
    */
   anchorFailure?: RootAnchorFailure;
+  /**
+   * token の署名は registry の鍵で検証できたが、その鍵の環境を信頼しなかった (#321。既定では staging)。
+   * `rootAnchored: false` になるが、改ざんでも検証の失敗でもないので `anchorFailure` は付けず、
+   * `valid` も落とさない (token の無い proof と同じ扱い)。
+   */
+  untrustedTokenKey?: UntrustedEnvironmentKey;
 }
 
 /**
@@ -298,6 +327,7 @@ export async function verifyInitialHashRoot(
   let computedInitialHash: string;
   let rootAnchored = false;
   let anchorFailure: RootAnchorFailure | undefined;
+  let untrustedTokenKey: UntrustedEnvironmentKey | undefined;
   let rootMismatchReason: string;
 
   if (proof.exam) {
@@ -334,8 +364,20 @@ export async function verifyInitialHashRoot(
         reason: `${UNTRUSTED_TOKEN_PREFIX}session start token fingerprintHash does not match proof fingerprint (issued for another device)`,
       };
     }
+    // #321: 署名が正しい token でも、信頼しない環境 (既定では staging) の鍵なら root のアンカーに数えない。
+    // 失敗 (anchorFailure) ではなく「アンカーの証拠が無い」側に倒す。署名が壊れた token は上で失敗のまま。
+    const trustedKeyEnvironments = options.trustedKeyEnvironments ?? DEFAULT_TRUSTED_CHECKPOINT_KEY_ENVIRONMENTS;
+    if (
+      anchorFailure === undefined &&
+      !isCheckpointKeyEnvironmentTrusted(tokenResult.environment, trustedKeyEnvironments)
+    ) {
+      // 署名が通った token の keyId は registry のエントリと一致している。環境の無いエントリは信頼しない (fail-closed)
+      const keyId = token.keyId;
+      untrustedTokenKey =
+        tokenResult.environment === undefined ? { keyId } : { keyId, environment: tokenResult.environment };
+    }
     computedInitialHash = await computeAnchoredChainRoot(fingerprintHash, nonce, token.payload.serverNonce);
-    rootAnchored = anchorFailure === undefined;
+    rootAnchored = anchorFailure === undefined && untrustedTokenKey === undefined;
     rootMismatchReason =
       'Initial event chain hash does not match server-anchored root (fingerprint, nonce, serverNonce)';
   } else {
@@ -365,9 +407,13 @@ export async function verifyInitialHashRoot(
     };
   }
 
-  return anchorFailure
-    ? { valid: true, computedInitialHash, expectedInitialHash, rootAnchored, anchorFailure }
-    : { valid: true, computedInitialHash, expectedInitialHash, rootAnchored };
+  if (anchorFailure) {
+    return { valid: true, computedInitialHash, expectedInitialHash, rootAnchored, anchorFailure };
+  }
+  if (untrustedTokenKey) {
+    return { valid: true, computedInitialHash, expectedInitialHash, rootAnchored, untrustedTokenKey };
+  }
+  return { valid: true, computedInitialHash, expectedInitialHash, rootAnchored };
 }
 
 function firstMismatchIndex(left: string, right: string): number {
@@ -1004,6 +1050,7 @@ export async function verifyProofFile(
   let rootValid = false;
   let rootAnchored = false;
   let rootAnchorFailure: RootAnchorFailure | undefined;
+  let rootAnchorUntrustedKey: UntrustedEnvironmentKey | undefined;
   let isPureTyping = false;
   let metadataError: string | undefined;
   let eventMetadataResult: ProofMetadataVerificationResult | undefined;
@@ -1015,11 +1062,13 @@ export async function verifyProofFile(
     // ADR-0017: root の token 検証に署名鍵 registry を渡す (registry-only = C1)。
     const rootResult = await verifyInitialHashRoot(proof, {
       signedCheckpointKeyRegistry: options.signedCheckpointKeyRegistry,
+      trustedKeyEnvironments: options.trustedKeyEnvironments,
     });
     eventMetadataResult = verifyProofMetadata(proof.typingProofData, events);
     rootValid = rootResult.valid;
     rootAnchored = rootResult.rootAnchored;
     rootAnchorFailure = rootResult.anchorFailure;
+    rootAnchorUntrustedKey = rootResult.untrustedTokenKey;
     typingProofHashValid = metaResult.valid;
     metadataValid = metaResult.valid && rootValid && eventMetadataResult.valid;
     metadataError = !metaResult.valid
@@ -1050,6 +1099,7 @@ export async function verifyProofFile(
   //    issuedAt は書き換えられる)。
   const signedCheckpointResult = await verifyProofSignedCheckpoints(proof, {
     registry: options.signedCheckpointKeyRegistry,
+    trustedKeyEnvironments: options.trustedKeyEnvironments,
     sessionAnchorIssuedAt: rootAnchored ? (proof.sessionStartToken?.payload.issuedAt ?? null) : null,
   });
 
@@ -1124,6 +1174,7 @@ export async function verifyProofFile(
     rootValid,
     rootAnchored,
     rootAnchorFailure,
+    ...(rootAnchorUntrustedKey ? { rootAnchorUntrustedKey } : {}),
     chainValid,
     chainFailure: chainResult.failure,
     finalHashValid: finalHashResult.valid,
