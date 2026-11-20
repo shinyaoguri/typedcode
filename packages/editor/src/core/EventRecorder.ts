@@ -6,7 +6,7 @@
  * ブラウザタブを閉じた後も復旧可能
  */
 
-import type { EventType, RecordEventInput, StoredEvent } from '@typedcode/shared';
+import type { EventType, RecordEventInput, RecordEventResult, StoredEvent } from '@typedcode/shared';
 import type { TabManager, TabState } from '../ui/tabs/TabManager.js';
 import type { LogViewer } from '../ui/components/LogViewer.js';
 import { t } from '../i18n/index.js';
@@ -170,6 +170,33 @@ export class EventRecorder {
     void this.recordToTab(tab, event).then(() => {
       this.persistence.saveTabsToSessionStorage(this.tabManager);
     });
+  }
+
+  /**
+   * アクティブタブに contentSnapshot を記録し、確定したら IndexedDB へ append する (#873)。
+   * ProofStatusDisplay が 100 イベントごとに呼ぶ。以前は proof へ直接記録して append せず、保存を
+   * TabManager のデバウンス保存 (saveToIndexedDB) に任せていた。PoSW の処理待ちが続く間はデバウンスが
+   * 発火しないので、その間に読み直すと、保存済みの events にスナップショットの分だけ sequence の飛びが残った。
+   * 他のイベントと同じく「確定の通知順」に append を始める (recordToTab と同じ。#471)。
+   * `enabled` は見ない (直接記録していた従来どおり、スナップショットの記録の有無は変えない)。
+   */
+  recordContentSnapshot(content: string): Promise<RecordEventResult> {
+    const tab = this.tabManager.getActiveTab();
+    if (!tab) return Promise.reject(new Error('No active proof'));
+
+    const recordPromise = tab.typingProof.recordContentSnapshot(content);
+    const settled = recordPromise
+      .then(async (result) => {
+        if (!result.recorded) return;
+        const recordedEvent = tab.typingProof.events[result.index];
+        if (recordedEvent) await this.persistEvent(tab.id, recordedEvent);
+      })
+      .catch(() => {
+        // 記録の失敗は呼び出し側 (ProofStatusDisplay) が recordPromise で受けてログに出す
+      });
+    // タブを閉じるとき、この append も待つ (#342)
+    this.trackInFlight(tab.id, settled);
+    return recordPromise;
   }
 
   /** record() の完了待ちを tabId に紐づける。終われば自分で外れる (catch 済みなので reject しない) */
