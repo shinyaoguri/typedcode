@@ -246,7 +246,7 @@ CI が `wrangler` を使ってデプロイするので、適切な権限の API 
 
 ### Rulesets (Settings → Rules → Rulesets)
 
-- **`protect-key-branches`** (ブランチ): 対象は `main` だけ。削除・force push を禁じ、PR・必須チェック・署名・直線の履歴を求める
+- **`protect-key-branches`** (ブランチ): 対象は `main` だけ。削除・force push を禁じ、PR・必須チェック・署名・直線の履歴を求める。必須チェックは、最新の main を取り込んだ状態で緑であることも求める (`strict_required_status_checks_policy: true`。[ADR-0034](adr/0034-replace-manual-verification-with-automated-tests.md) の決定 6)。承認レビューの件数は 0
 - **`protect-release-branches`** (ブランチ): 対象は `release/*` (学期中の patch のブランチ。[ADR-0055](adr/0055-release-channels-and-calendar-versioning.md) の決定 6)。規則は `protect-key-branches` と同じものから、次の 2 点だけを変える
   - **直線の履歴 (`required_linear_history`) を入れない**。main の履歴には旧 Git Flow の頃の merge コミットがあり、この規則は新しいブランチの作成でその履歴の全体を見る。main から切る `release/A.B` は必ずそのコミットを含むので、規則があると正式版のタグからブランチを切る push (CONTRIBUTING.md「本番緊急修正」の手順 2) が `This branch must not contain merge commits` で拒否される (#855)。そのため `release/*` は `protect-key-branches` の対象に足さず、別の ruleset にする。直線の履歴は、規則が無くても保たれる (リポジトリが許す merge 方式は squash だけで、PR の規則も `allowed_merge_methods` を squash に限っている)
   - **必須チェックは作成時に求めない** (`do_not_enforce_on_create`)。必須チェックには PR でしか走らない検査 (`pr-title`・`require-issue` など) が入っている
