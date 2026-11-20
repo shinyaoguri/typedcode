@@ -5,7 +5,9 @@
  */
 
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { decodeExamPlaintext, decryptExamPackage } from '@typedcode/shared';
+import { decodeExamPlaintext, decryptExamPackage, parseClassPackage } from '@typedcode/shared';
+import { MODE_CAPABILITIES_FIXTURE } from '../../core/__tests__/fixtures/modeCapabilities.js';
+import { capabilitiesWithPolicy, type ClassPolicyPreset } from '../../core/mode.js';
 import { createDistribution, type ExamSecrets } from '../distribution.js';
 import { AuthorWorkspace } from '../workspace/authorWorkspace.js';
 import { applyExamFormOp } from '../workspace/examForm.js';
@@ -78,10 +80,19 @@ async function editExam(workspace: AuthorWorkspace, path: string, ops: Parameter
   expect((await workspace.save(path)).status).toBe('saved');
 }
 
-async function exportExam(workspace: AuthorWorkspace, path: string, secrets?: ExamSecrets) {
+async function exportExam(
+  workspace: AuthorWorkspace,
+  path: string,
+  secrets?: ExamSecrets,
+  classPolicy: ClassPolicyPreset | null = 'classroom'
+) {
   const bundle = await workspace.buildExamBundle(path);
   if (bundle.status !== 'ok') throw new Error(`cannot export: ${JSON.stringify(bundle)}`);
-  return createDistribution(bundle.exam, bundle.problems, { secrets, now: new Date('2026-06-10T01:00:00.000Z') });
+  return createDistribution(bundle.exam, bundle.problems, {
+    secrets,
+    ...(classPolicy ? { classPolicy } : {}),
+    now: new Date('2026-06-10T01:00:00.000Z'),
+  });
 }
 
 let secrets: ExamSecrets;
@@ -168,6 +179,25 @@ describe('exporting an exam definition', () => {
     const before = fs.snapshot();
     await exportExam(workspace, 'e.exam.yaml', secrets);
     expect(fs.snapshot()).toEqual(before);
+  });
+
+  // #645: 「教室で実施」「持ち帰り」は、それぞれ /class・/assignment の能力値を方針として書く。
+  // 読み込んだ側 (editor) で、どちらの入口で開いても選んだプリセットの入口と同じ能力になることまで見る
+  it.each([
+    ['classroom', 'assignment', 'class'],
+    ['take-home', 'class', 'assignment'],
+  ] as const)('writes a %s policy that opens under /%s with the /%s capabilities', async (preset, openedIn, expected) => {
+    const exam = 'format: tc-exam/1\nexamId: c\nkind: class\nlanguages: [c]\nproblems: [合計.problem.yaml]\n';
+    const { workspace } = await setup({ ...material(), 'c.exam.yaml': exam });
+    const distribution = await exportExam(workspace, 'c.exam.yaml', undefined, preset);
+    const pkg = parseClassPackage(JSON.parse(distribution.content));
+    expect(capabilitiesWithPolicy(openedIn, pkg?.policy ?? null)).toEqual(MODE_CAPABILITIES_FIXTURE[expected]);
+  });
+
+  it('refuses to create a class package without a chosen policy', async () => {
+    const exam = 'format: tc-exam/1\nexamId: c\nkind: class\nlanguages: [c]\nproblems: [合計.problem.yaml]\n';
+    const { workspace } = await setup({ ...material(), 'c.exam.yaml': exam });
+    await expect(exportExam(workspace, 'c.exam.yaml', undefined, null)).rejects.toThrow();
   });
 
   it('refuses to create an exam package without a signing key', async () => {

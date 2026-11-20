@@ -4,10 +4,12 @@
  * 種類 (`kind`) で生成器を選ぶだけで、生成器 (`createExamBundlePackage` / `buildClassPackage`) は変えない。
  * - `exam`: 署名鍵と監督コードで封印・署名した `.tcexam`。鍵と監督コードは呼び出し側 (書き出しのパネルの入力欄) から
  *   受け取り、ここでもどこにも保存しない (ADR-0051 D7)
- * - `class`: 封印も署名もしない `.tcclass` (examId を classId に使う)
+ * - `class`: 封印も署名もしない `.tcclass` (examId を classId に使う)。方針 (#645) は書き出しのパネルで選んだプリセット
+ *   (「教室で実施」/「持ち帰り」) を `CLASS_POLICY_PRESETS` の値で書く。選んでいなければ書き出さない (黙って既定を当てない)
  */
 
 import type { ExamBundleProblem } from '@typedcode/shared';
+import { CLASS_POLICY_PRESETS, type ClassPolicyPreset } from '../core/mode.js';
 import { buildClassPackage } from './classPackageAuthoring.js';
 import { type CreatedExamPackage, createExamBundlePackage, importAuthoritySigner } from './examPackageAuthoring.js';
 import type { ExamDefinition } from './workspace/definitions.js';
@@ -32,16 +34,19 @@ export type Distribution =
   | { readonly kind: 'class'; readonly filename: string; readonly content: string };
 
 /**
- * 配布物を作る。`exam` は `secrets` が要る (無ければ throw)。`now` は releaseTime に使う。
- * @throws 鍵が読めない・生成器の検証に通らないとき (生成器の例外をそのまま投げる)
+ * 配布物を作る。`exam` は `secrets` が、`class` は `classPolicy` が要る (無ければ throw)。`now` は releaseTime に使う。
+ * @throws 鍵・方針が無い・鍵が読めない・生成器の検証に通らないとき (生成器の例外をそのまま投げる)
  */
 export async function createDistribution(
   exam: ExamDefinition,
   problems: ExamBundleProblem[],
-  options: { secrets?: ExamSecrets; now: Date }
+  options: { secrets?: ExamSecrets; classPolicy?: ClassPolicyPreset; now: Date }
 ): Promise<Distribution> {
   if (exam.kind === 'class') {
-    const content = buildClassPackage({ classId: exam.examId, problems, languages: exam.languages });
+    const preset = options.classPolicy;
+    if (!preset) throw new Error('A policy (classroom or take-home) is required for a class package');
+    const policy = CLASS_POLICY_PRESETS[preset];
+    const content = buildClassPackage({ classId: exam.examId, problems, languages: exam.languages, policy });
     return { kind: 'class', filename: `${exam.examId}.tcclass`, content: `${content}\n` };
   }
   const secrets = options.secrets;
