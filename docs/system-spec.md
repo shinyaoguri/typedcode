@@ -334,10 +334,11 @@ interface SignedCheckpointEnvelope {
 
 授業モード (`/class`) は「**監督下だが封印しない**(問題は公開)」モード (ADR-0011 §3)。試験の暗号機構 (封印・監督コード・根束縛) は持たず、問題配布の真正性は **tier ① 自己申告** (ADR-0011 §4①) に拠る。
 
-- **配布フォーマット (`*.tcclass`, JSON)**: `{ schema: 'tcclass/1', classId, allowed:{languages}, bundle }`。`bundle` は試験と**同一の `ExamBundle` (`tcexam-exam/1`)** を**平文**で内包する (暗号化・署名なし)。受講者は `/class` の非ブロッキングローダで読み込む (監督コード不要・スキップ可)。`parseClassPackage` は構造検証のみ。
+- **配布フォーマット (`*.tcclass`, JSON)**: `{ schema: 'tcclass/1', classId, allowed:{languages}, policy?, bundle }`。`bundle` は試験と**同一の `ExamBundle` (`tcexam-exam/1`)** を**平文**で内包する (暗号化・署名なし)。受講者は `/class` の非ブロッキングローダで読み込む (監督コード不要・スキップ可)。`parseClassPackage` は構造検証のみ。
 - **タブ展開**: 各問を 1 タブで開く (1問1タブ)。class タブは **casual タブ** (`examContext` なし → 通常の genesis、**root 束縛なし**)。スターターコードは `templateInjectionEvent` で「与えられた雛形」として注入し、`templateName='tcclass/${classId}/${problemId}'` が **self-asserted problemId を proof に残す**。`mode:'class'` は自己申告で記録される。**新イベント型/proof フィールドは増えず `PROOF_FORMAT_VERSION` は据え置き** (完全後方互換)。
 - **能力差** (`core/mode.ts`): casual に対し問題表示 (`problemPanel`) と**受動的 fullscreen 記録** (`fullscreenTracking` だが要求バナーは出さない = `fullscreenBanner:false`) を足す。タブは緩 (`tabLock:false`)、汎用 DL も残す。教室・多人数・不安定網ゆえ export は best-effort。
-- **オーサリング**: `/author` は同じ問題から封印 (`.tcexam`) と未封印 (`.tcclass`) の両方を出せる (`buildClassPackage`、examId を classId に流用)。
+- **方針 (`policy`, #645)**: 教員が配布物で決める能力。`{ screenshots, fullscreenTracking, preExportBestEffort }` の 3 つで、**ある場合は全て boolean で必須**。欠け・型違い (`'false'`・`0`・`null` など)・`policy` 自体が object でないものは補完も変換もせず、`parseClassPackage` がファイルごと拒否する (知らないキーは落とす)。`policy` の無いファイル (#645 より前のもの) は従来どおり読め、開いた入口 (`/class` / `/assignment`) の能力のまま開く。ある場合は入口より優先し、editor は問題のタブを作る前に能力を切り替える (`capabilitiesWithPolicy`: 3 つを上書きし、起動時の画面共有の勧誘は `screenshots` に従う)。スクリーンショットを撮る方針を画面共有していない入口で読むと、その場で画面共有の選択を出す。撮らない方針なら画面共有を止める。当てた方針はモード別の localStorage (`typedcode-class-policy-<mode>`) に覚え、リロード後もその能力で起動する (方針の無い問題を読むか、リセットで消える)。schema は `tcclass/1` のまま、proof の形式と `proof.mode` (パスで決まる自己申告) は変わらない。試験 (`.tcexam`) と練習は方針を見ない。
+- **オーサリング**: `/author` は同じ問題から封印 (`.tcexam`) と未封印 (`.tcclass`) の両方を出せる (`buildClassPackage`、examId を classId に流用)。`.tcclass` は書き出しのパネルで「教室で実施」(= `/class` の能力値: 3 つとも `true`) か「持ち帰り」(= `/assignment` の能力値: 3 つとも `false`) を選んで方針を書く。選ばないと書き出さない (既定は当てない)。
 - **保証**: class proof の保証は低い (formative)。AI 写経は防げない (ADR-0011 の割り切り)。「上に偽れない (試験の保証は暗号束縛由来)・取り違えは Moodle が拾う」ので署名/封印は不要。
 
 ### 4.9. 問題の入出力例 (ADR-0048)
@@ -1086,7 +1087,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | **入口 / `/`** | `/` と `/casual` は練習 (casual) のエディタを直接開く (ADR-0046。学生にモードを選ばせない)。`/class` `/assignment` `/exam` は教員が配る直リンクの入口。それ以外のパスは not-found 画面 (`/` へのリンクだけ。エディタは初期化せず chunk も読まない) に落とし、タイポ (`/exsm` 等) を黙って練習にしない。ADR-0015 の 4 モード比較カードと「続きから」バッジは撤去した |
 | **(練習) 練習モード / `/casual`** | 素のエディタ・お試し/個人・最低保証 (ADR-0015。表示名「練習/Demo」、内部 id/ルートは `casual`)。利用規約モーダルなし (同意は入口で一度)・画面共有は既定オフでバナーからオプトイン。Turnstile `#0` は維持。proof 整合は不変 |
 | **モード表示** | エディタ titlebar に現在のモード名を出すだけ (ADR-0046)。別モードへ移るメニューは持たない (ADR-0015 のドロップダウンを撤去)。他モードのセッションへは配られたリンクで戻る |
-| **(授業) 授業モード / `.tcclass`** | URL パス `/class` で入る封印なしモード (ADR-0014)。平文問題ファイル `.tcclass` (`{schema:'tcclass/1', classId, allowed, bundle}`、暗号・署名なし) を読み込み問題表示 + N タブ展開。tier ① 自己申告 (root 束縛なし)。fullscreen は受動記録 (要求バナーなし) |
+| **(授業) 授業モード / `.tcclass`** | URL パス `/class` で入る封印なしモード (ADR-0014)。平文問題ファイル `.tcclass` (`{schema:'tcclass/1', classId, allowed, policy?, bundle}`、暗号・署名なし。`policy` は教員が決める方針 = #645) を読み込み問題表示 + N タブ展開。tier ① 自己申告 (root 束縛なし)。fullscreen は受動記録 (要求バナーなし) |
 | **(試験) 封印問題パッケージ / `.tcexam`** | 出題者が Argon2id + AES-256-GCM で封印し ECDSA-P256 署名した問題ファイル。Moodle で事前配布 |
 | **(試験) 監督コード / `startToken`** | T0 に監督が解禁する 8 文字 Crockford Base32 (40bit)。封印を解錠しチェーン根に焼かれる |
 | **(試験) packageHash** | manifest の canonical core (− `{signature, publicKeyJwk}`) の SHA-256。root と `proof.exam` に束縛 |
@@ -1208,5 +1209,6 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | 2026-11-18 | 一括検証の基盤 (#802) | §4.10 の実行条件に、時間上限の正本の定数・数え始め (プログラムの開始から。コンパイルは数えない)・対話の実行には掛けないこと・Python の最後の式の値を出力に足さないことを追記 |
 | 2026-11-19 | ケースファイルのフォーム (#798) | §4.10 に、フォームで編集した値の改行は LF になり、編集していない値の CRLF は変えないことを追記 |
 | 2026-11-19 | 一括検証の画面 (#799) | §4.10 の実行条件に、コンパイルが終わらない解答は中止で抜けること・未保存の内容を対象にすること・ターミナルの実行と排他にすることを追記 |
+| 2026-11-20 | `.tcclass` の方針 (#645) | §4.8 に任意の `policy` (`screenshots` / `fullscreenTracking` / `preExportBestEffort`。ある場合は全て boolean 必須、部分指定・型違いは拒否) を追加。方針が入口 (`/class` / `/assignment`) の能力より優先し、無い旧ファイルは入口の能力のまま。`/author` は「教室で実施」「持ち帰り」を選んで書き出す。schema・proof の形式は不変 |
 | 2026-11-20 | 仕様別の検証の入口 (#809, ADR-0053) | §6.5 を追加: shared の `verifyProofBySpec` は版の完全一致で検証器を選び、いまは proof `1.2.0` だけを legacy の検証器 (`verifyProofFile`) で読む (1.0.0・1.1.0 などは `unsupported`)。対応状況・項目別の検査・保証範囲・鍵の信頼・受理を分けた結果と、legacy の制限 (版の未束縛など)・不具合修正時の扱いを記述。署名 cp・token・出題者鍵の検証結果に鍵の信頼状態 `keyStatus`、`verifyChain` に `failure`、`FullVerificationResult` に `chainFailure` などを加算 (既存の判定は不変)。§8.1 の「版で切り替えない」を、`verifyProofFile` と新しい入口の現状に合わせて直した。公式 Web / CLI の切り替えは #811 |
 | 2026-11-20 | staging の鍵を本番の検証器・Worker が信頼しない (#321) | registry のエントリに `environment` (`production` / `staging`) を必須にし、localKeys は `development` にした。検証器は既定で production と development の鍵だけを時刻証拠に数え、staging の鍵の token・署名 cp は `rootAnchorUntrustedKey` / `untrustedKeys` を付けて「無い」扱いにする (整合性・総合の `valid` は落とさない)。staging を数えるのは verify-cli `--allow-staging-keys` と staging 用にビルドした verify だけ。Worker は署名鍵と同じ環境の鍵の token だけを受け付ける。§4.6 手順 2a / §6.2 Layer 1・6 / §8.4 / §9.1 を反映。**proof フォーマットと既存の鍵 ID は不変** |

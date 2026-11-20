@@ -836,12 +836,18 @@ export interface TranslationKeys {
       kindClass: string;
       invalidTarget: string;
       classHint: string;
+      policy: string;
+      policyClassroom: string;
+      policyClassroomHint: string;
+      policyTakeHome: string;
+      policyTakeHomeHint: string;
       buttonExam: string;
       buttonClass: string;
       working: string;
       errorNoTarget: string;
       errorUnknownExam: string;
       errorNoKey: string;
+      errorNoPolicy: string;
       errorGeneric: string;
       errorDirty: string;
       errorEmpty: string;

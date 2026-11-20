@@ -49,11 +49,19 @@ export function classProblemsKey(): string {
 }
 
 /**
+ * 読み込んだ `.tcclass` の方針 (localStorage) のキー (#645)。授業/課題で方針を持つ問題を読み込むと書き、
+ * 起動時にこれを入口の能力に重ねる (リロード後も同じ能力で開くため)。方針の無い問題を読み込むと消す。
+ */
+export function classPolicyKey(): string {
+  return `typedcode-class-policy${ns}`;
+}
+
+/**
  * 現在のモードが localStorage に持つキー (リセットの消去対象)。モード共通のキー (規約同意・表示言語・
  * テーマ) は含めない。新しいモード別キーを足したらここにも追加すること (#323)。
  */
 export function modeLocalStorageKeys(): readonly string[] {
-  return [examPackagesKey(), classProblemsKey()];
+  return [examPackagesKey(), classProblemsKey(), classPolicyKey()];
 }
 
 /** 現在のモードが sessionStorage に持つキー (リセットの消去対象)。足したらここにも追加する (#323)。 */
