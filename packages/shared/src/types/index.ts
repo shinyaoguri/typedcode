@@ -158,6 +158,7 @@ export type {
   // IndexedDB セッション永続化関連
   SessionMetadata,
   StoredTabData,
+  StoredTabProgressData,
   StoredEventData,
   StoredTabSwitchData,
   StoredUnprovenContentData,

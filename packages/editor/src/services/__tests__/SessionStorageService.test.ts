@@ -7,13 +7,15 @@
  *   EventRecorder と TabManager.saveToIndexedDB が同じイベントを二重に書くため正常系)。hash が違えば
  *   二重インスタンスの競合として reject し、tabs を汚さない (#484 / #237)
  * - clearSession / deleteTab が対象のストアを消す (#317 で変えるときに赤くなる)
+ * - append は全文入りの tabs 行を書き直さず、位置を events と同じ transaction で `tabProgress` に書く。
+ *   読み出しは tabs 行と重ねる。版 3 の DB はそのまま読め、upgrade が abort しても旧版のまま残る (#627)
  * - 書き込みは transaction の commit で成功とし、request の success の後に abort されたら reject する (#543)
  *
  * vitest は node 環境なので、`indexedDB` はテストごとに新しい `IDBFactory` を差して DB を分離する。
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IDBFactory } from 'fake-indexeddb';
+import { IDBFactory, IDBDatabase as FakeIDBDatabase, IDBObjectStore as FakeIDBObjectStore } from 'fake-indexeddb';
 import type {
   StoredEvent,
   StoredTabData,
@@ -102,11 +104,11 @@ function requestDone<T>(request: IDBRequest<T>): Promise<T> {
 }
 
 /**
- * DB_VERSION 2 (unprovenContents を足す前) の形で DB を作り、タブ 1 つとイベント 1 件を入れて閉じる。
- * ストアと index は v2 の `createObjectStores` と同じ (アップグレードの前提を固定する)。
+ * 旧版 (2 = unprovenContents を足す前 / 3 = tabProgress を足す前) の形で DB を作り、タブ 1 つとイベントを入れて閉じる。
+ * ストアと index はその版の `createObjectStores` と同じ (アップグレードの前提を固定する)。
  */
-async function seedVersion2Database(tab: StoredTabData, event: StoredEvent): Promise<void> {
-  const open = indexedDB.open('typedcode-session', 2);
+async function seedLegacyDatabase(version: 2 | 3, tab: StoredTabData, events: StoredEvent[]): Promise<void> {
+  const open = indexedDB.open('typedcode-session', version);
   open.onupgradeneeded = () => {
     const db = open.result;
     const sessions = db.createObjectStore('sessions', { keyPath: 'sessionId' });
@@ -127,17 +129,23 @@ async function seedVersion2Database(tab: StoredTabData, event: StoredEvent): Pro
     shots.createIndex('sessionId', 'sessionId', { unique: false });
     shots.createIndex('timestamp', 'timestamp', { unique: false });
     shots.createIndex('eventSequence', 'eventSequence', { unique: false });
+    if (version >= 3) {
+      const unproven = db.createObjectStore('unprovenContents', { keyPath: 'id', autoIncrement: true });
+      unproven.createIndex('tabId', 'tabId', { unique: false });
+    }
   };
   const db = await requestDone(open);
   const tx = db.transaction(['tabs', 'events'], 'readwrite');
   tx.objectStore('tabs').put(tab);
-  tx.objectStore('events').add({
-    tabId: tab.id,
-    sessionId: tab.sessionId,
-    eventIndex: event.sequence,
-    eventData: event,
-    writtenAt: 1,
-  });
+  for (const event of events) {
+    tx.objectStore('events').add({
+      tabId: tab.id,
+      sessionId: tab.sessionId,
+      eventIndex: event.sequence,
+      eventData: event,
+      writtenAt: 1,
+    });
+  }
   await new Promise<void>((resolve, reject) => {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
@@ -543,7 +551,7 @@ describe('SessionStorageService', () => {
 
     it('upgrading a version 2 database keeps the tabs and events it already held', async () => {
       const tab = makeTab('tab-1', 'session-old', { content: 'kept' });
-      await seedVersion2Database(tab, makeEvent(0));
+      await seedLegacyDatabase(2, tab, [makeEvent(0)]);
 
       service = new SessionStorageService();
       await service.initialize();
@@ -553,7 +561,7 @@ describe('SessionStorageService', () => {
     });
 
     it('upgrading a version 2 database adds a store that can hold preserved contents', async () => {
-      await seedVersion2Database(makeTab('tab-1', 'session-old'), makeEvent(0));
+      await seedLegacyDatabase(2, makeTab('tab-1', 'session-old'), [makeEvent(0)]);
 
       service = new SessionStorageService();
       await service.initialize();
@@ -575,7 +583,7 @@ describe('SessionStorageService', () => {
       const opened = await openService();
       service = opened.service;
       await service.saveTab(makeTab('tab-1', opened.sessionId));
-      // appendEvent は events の add → tabs の get → tabs の put を 1 つの transaction で行う。最後の put の後に
+      // appendEvent は events の add → tabs の count → tabProgress の put を 1 つの transaction で行う。最後の put の後に
       // abort させると待ちの request が無く、error は来ずに abort だけが来る (commit 時の失敗と同じ形)
       injected = abortTransactionsAfterWriteSuccess(['put']);
 
@@ -600,6 +608,218 @@ describe('SessionStorageService', () => {
 
       await expect(settleWithin(service.createSession())).rejects.toThrow(/Failed to create session/);
       expect(service.getCurrentSessionId()).toBeNull();
+    });
+  });
+
+  describe('chain position kept apart from the tab row (#627)', () => {
+    /** appendEvent 1 回の間に put / add へ渡された値を、JSON の長さで合計する (書き込み量の代わり) */
+    async function bytesWrittenByOneAppend(content: string): Promise<number> {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(
+        makeTab('tab-1', opened.sessionId, {
+          content,
+          checkpoints: Array.from({ length: content.length > 1000 ? 200 : 0 }, (_, i) => ({
+            eventIndex: i * 100,
+            hash: `cp-${i}`.padEnd(64, '0'),
+            timestamp: i,
+            contentHash: 'c'.repeat(64),
+          })),
+        })
+      );
+      await service.appendEvent('tab-1', makeEvent(0));
+
+      const proto = FakeIDBObjectStore.prototype as unknown as Record<
+        'put' | 'add',
+        (...args: unknown[]) => IDBRequest
+      >;
+      const originals = { put: proto.put, add: proto.add };
+      let bytes = 0;
+      for (const method of ['put', 'add'] as const) {
+        proto[method] = function (this: IDBObjectStore, ...args: unknown[]) {
+          bytes += JSON.stringify(args[0]).length;
+          return originals[method].apply(this, args);
+        };
+      }
+      try {
+        await service.appendEvent('tab-1', makeEvent(1));
+      } finally {
+        proto.put = originals.put;
+        proto.add = originals.add;
+        service.close();
+        service = null;
+      }
+      return bytes;
+    }
+
+    it('one append writes the same bytes whether the tab holds a few characters or hundreds of kilobytes', async () => {
+      // 時刻の桁数で長さが揺れないように固定する
+      vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+      const small = await bytesWrittenByOneAppend('x');
+      globalThis.indexedDB = new IDBFactory();
+      const large = await bytesWrittenByOneAppend('x'.repeat(300_000));
+
+      expect(large).toBe(small);
+    });
+
+    it('an append aborted at commit leaves neither the event nor the advanced chain position behind', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+      await service.appendEvent('tab-1', makeEvent(0));
+      // appendEvent の最後の request (位置の put) の後に abort させる = commit 時の失敗
+      const injected = abortTransactionsAfterWriteSuccess(['put']);
+      try {
+        await settleWithin(service.appendEvent('tab-1', makeEvent(1))).catch(() => {});
+      } finally {
+        injected.restore();
+      }
+
+      expect((await service.getEvents('tab-1')).map((e) => e.sequence)).toEqual([0]);
+      const tab = await service.getTab('tab-1');
+      expect([tab?.lastWrittenEventIndex, tab?.currentHash]).toEqual([0, 'hash-0']);
+      // 注入が空振りしていない (abort が実際に起きた)
+      expect(injected.aborted()).toBe(1);
+    });
+
+    it('loadTabs reports the chain position the appends reached', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+
+      await service.appendEvent('tab-1', makeEvent(0));
+      await service.appendEvent('tab-1', makeEvent(1));
+
+      const [tab] = await service.loadTabs(opened.sessionId);
+      expect([tab?.lastWrittenEventIndex, tab?.currentHash]).toEqual([1, 'hash-1']);
+    });
+
+    it('a tab row saved from an older snapshot does not rewind the chain position the appends reached', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+      await service.appendEvent('tab-1', makeEvent(0));
+      await service.appendEvent('tab-1', makeEvent(1));
+
+      await service.saveTab(
+        makeTab('tab-1', opened.sessionId, { content: 'newer', lastWrittenEventIndex: 0, currentHash: 'hash-0' })
+      );
+
+      const tab = await service.getTab('tab-1');
+      expect([tab?.content, tab?.lastWrittenEventIndex, tab?.currentHash]).toEqual(['newer', 1, 'hash-1']);
+    });
+
+    it('at the same position, the hash written together with the events wins over the tab row hash', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+      await service.appendEvent('tab-1', makeEvent(0));
+
+      await service.saveTab(makeTab('tab-1', opened.sessionId, { lastWrittenEventIndex: 0, currentHash: 'stale' }));
+
+      expect((await service.getTab('tab-1'))?.currentHash).toBe('hash-0');
+    });
+
+    it('a tab row saved further ahead than the appends wins over the recorded chain position', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+      await service.appendEvent('tab-1', makeEvent(0));
+
+      await service.saveTab(makeTab('tab-1', opened.sessionId, { lastWrittenEventIndex: 3, currentHash: 'hash-3' }));
+
+      const tab = await service.getTab('tab-1');
+      expect([tab?.lastWrittenEventIndex, tab?.currentHash]).toEqual([3, 'hash-3']);
+    });
+
+    it('an append for a tab without a tab row leaves no chain position for a row saved later under that id', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.appendEvent('tab-1', makeEvent(4));
+
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+
+      expect((await service.getTab('tab-1'))?.lastWrittenEventIndex).toBe(-1);
+    });
+
+    it('deleteTab also drops the chain position, so a row saved again under that id starts from its own values', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+      await service.appendEvent('tab-1', makeEvent(0));
+
+      await service.deleteTab('tab-1');
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+
+      expect((await service.getTab('tab-1'))?.lastWrittenEventIndex).toBe(-1);
+    });
+
+    it('clearSession also drops the chain positions', async () => {
+      const opened = await openService();
+      service = opened.service;
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+      await service.appendEvent('tab-1', makeEvent(0));
+
+      await service.clearSession();
+      await service.saveTab(makeTab('tab-1', opened.sessionId));
+
+      expect((await service.getTab('tab-1'))?.lastWrittenEventIndex).toBe(-1);
+    });
+
+    it('upgrading a version 3 database keeps its tab rows, chain positions and events as they were', async () => {
+      const tab = makeTab('tab-1', 'session-old', { content: 'kept', lastWrittenEventIndex: 1, currentHash: 'hash-1' });
+      await seedLegacyDatabase(3, tab, [makeEvent(0), makeEvent(1)]);
+
+      service = new SessionStorageService();
+      await service.initialize();
+
+      expect(await service.loadTabs('session-old')).toEqual([tab]);
+      expect((await service.getEvents('tab-1')).map((e) => e.hash)).toEqual(['hash-0', 'hash-1']);
+    });
+
+    it('after upgrading a version 3 database, appends continue the chain position of the old tab row', async () => {
+      const tab = makeTab('tab-1', 'session-old', { content: 'kept', lastWrittenEventIndex: 0, currentHash: 'hash-0' });
+      await seedLegacyDatabase(3, tab, [makeEvent(0)]);
+      service = new SessionStorageService();
+      await service.initialize();
+      // seed は sessions 行を持たないので、appendEvent が要る sessionId は createSession で立てる
+      await service.createSession();
+
+      await service.appendEvent('tab-1', makeEvent(1));
+
+      const reloaded = await service.getTab('tab-1');
+      expect([reloaded?.content, reloaded?.lastWrittenEventIndex, reloaded?.currentHash]).toEqual([
+        'kept',
+        1,
+        'hash-1',
+      ]);
+    });
+
+    it('an upgrade that aborts leaves the version 3 database and its rows untouched, and the next open upgrades it', async () => {
+      const tab = makeTab('tab-1', 'session-old', { content: 'kept', lastWrittenEventIndex: 0, currentHash: 'hash-0' });
+      await seedLegacyDatabase(3, tab, [makeEvent(0)]);
+      const proto = FakeIDBDatabase.prototype as unknown as {
+        createObjectStore: (name: string, ...rest: unknown[]) => IDBObjectStore;
+      };
+      const original = proto.createObjectStore;
+      proto.createObjectStore = function (this: IDBDatabase, name: string, ...rest: unknown[]) {
+        if (name === 'tabProgress') throw new Error('injected upgrade failure');
+        return original.call(this, name, ...rest);
+      };
+      try {
+        await expect(settleWithin(new SessionStorageService().initialize())).rejects.toThrow();
+      } finally {
+        proto.createObjectStore = original;
+      }
+
+      const raw = await requestDone(indexedDB.open('typedcode-session'));
+      const rawTabs = await requestDone(raw.transaction('tabs').objectStore('tabs').getAll());
+      expect([raw.version, raw.objectStoreNames.contains('tabProgress'), rawTabs]).toEqual([3, false, [tab]]);
+      raw.close();
+
+      service = new SessionStorageService();
+      await service.initialize();
+      expect(await service.loadTabs('session-old')).toEqual([tab]);
     });
   });
 
