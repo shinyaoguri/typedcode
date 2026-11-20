@@ -161,3 +161,19 @@ describe('verifyProofBySpec key status of the exam authority', () => {
     expect(result.trust.keys).toEqual([expect.objectContaining({ role: 'exam-authority', status: 'trusted' })]);
   });
 });
+
+describe('verifyProofBySpec trusts exactly the checkpoint keys it is given, whatever their environment (#321)', () => {
+  it('anchors the root and the signed checkpoints with a staging key the caller put in the trust input', async () => {
+    const key: CheckpointPublicKey = { ...frozenCheckpointKey(), environment: 'staging' };
+    const context = frozenContext({ mode: 'fast' });
+    const result = await verifyProofBySpec(loadFrozenProof('casual-anchored'), {
+      ...context,
+      trust: { ...context.trust, checkpointKeys: [key] },
+    });
+
+    expect({ sessionAnchor: result.checks.sessionAnchor, signedCheckpoints: result.checks.signedCheckpoints }).toEqual({
+      sessionAnchor: { status: 'pass' },
+      signedCheckpoints: { status: 'pass' },
+    });
+  });
+});

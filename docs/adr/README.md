@@ -33,7 +33,7 @@
 | # | Status | Title |
 |---|---|---|
 | [0001](0001-hybrid-checkpoint-trigger.md) | Accepted | チェックポイントトリガをハイブリッド (events OR elapsed time) にする |
-| [0002](0002-signed-checkpoints-with-ecdsa-p256.md) | Accepted | 署名済みチェックポイントは ECDSA-P256 + append-only 鍵レジストリ |
+| [0002](0002-signed-checkpoints-with-ecdsa-p256.md) | Accepted (鍵の環境を追補 #321) | 署名済みチェックポイントは ECDSA-P256 + append-only 鍵レジストリ |
 | [0003](0003-idempotent-signing-retry.md) | Accepted | 署名 API は内容ベースの冪等性で再送を吸収する |
 | [0004](0004-verifier-checkpoint-stance.md) | Accepted | 検証側は未署名 cp の sampling を成功条件にしない |
 | [0005](0005-input-type-policy.md) | Accepted | 許可/禁止 InputType の方針 |

@@ -45,6 +45,8 @@ export async function createTestKey(overrides: Partial<CheckpointPublicKey> = {}
     validUntil: overrides.validUntil,
     revokedAt: overrides.revokedAt,
     description: overrides.description ?? 'test key',
+    // 既定は検証器が既定で信頼する production (#321)。staging の鍵を作るときだけ上書きする
+    environment: overrides.environment ?? 'production',
   };
   return { keyId, publicKey: keyPair.publicKey, privateKey: keyPair.privateKey, publicKeyJwk, registryEntry };
 }

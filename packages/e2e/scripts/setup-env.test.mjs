@@ -19,7 +19,7 @@ const CHECKPOINT_EXAMPLE = 'packages/shared/src/checkpointKeys/localKeys.ts.exam
 const EXAM_EXAMPLE = 'packages/shared/src/examAuthorityKeys/localKeys.ts.example';
 
 const SECRET_JWK = '{"kty":"EC","crv":"P-256","d":"SECRET-D-VALUE","x":"xx","y":"yy"}';
-const EMPTY_LOCAL_KEYS = 'export const LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly CheckpointPublicKey[] = [];\n';
+const EMPTY_LOCAL_KEYS = 'export const LOCAL_CHECKPOINT_PUBLIC_KEYS: readonly LocalCheckpointPublicKey[] = [];\n';
 const REGISTRY = "export const CHECKPOINT_PUBLIC_KEYS = [{ keyId: 'tcp-prod-2026', status: 'active' }];\n";
 
 let root;
