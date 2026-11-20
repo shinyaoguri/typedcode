@@ -246,14 +246,27 @@ CI が `wrangler` を使ってデプロイするので、適切な権限の API 
 
 ### Rulesets (Settings → Rules → Rulesets)
 
-- **`protect-key-branches`** (ブランチ): `main` の削除・force push を禁じ、PR と必須チェックを求める。学期中の patch のブランチ `release/*` ([ADR-0055](adr/0055-release-channels-and-calendar-versioning.md) の決定 6) も同じ規則で守るため、**Target branches に `release/*` を足す** (規則を別の ruleset に二重に持たない)
-  - 画面: Settings → Rules → Rulesets → `protect-key-branches` → Target branches → Add target → Include by pattern → `release/*`
-  - 同じ画面の「Require status checks to pass」で **Do not require status checks on creation** を有効にしてから Save changes。必須チェックには PR でしか走らない検査 (`pr-title`・`require-issue` など) が入っているので、有効にしないと、正式版のタグから `release/A.B` を切る push (CONTRIBUTING.md「本番緊急修正」の手順 2) が作成の時点で拒否される
+- **`protect-key-branches`** (ブランチ): 対象は `main` だけ。削除・force push を禁じ、PR・必須チェック・署名・直線の履歴を求める
+- **`protect-release-branches`** (ブランチ): 対象は `release/*` (学期中の patch のブランチ。[ADR-0055](adr/0055-release-channels-and-calendar-versioning.md) の決定 6)。規則は `protect-key-branches` と同じものから、次の 2 点だけを変える
+  - **直線の履歴 (`required_linear_history`) を入れない**。main の履歴には旧 Git Flow の頃の merge コミットがあり、この規則は新しいブランチの作成でその履歴の全体を見る。main から切る `release/A.B` は必ずそのコミットを含むので、規則があると正式版のタグからブランチを切る push (CONTRIBUTING.md「本番緊急修正」の手順 2) が `This branch must not contain merge commits` で拒否される (#855)。そのため `release/*` は `protect-key-branches` の対象に足さず、別の ruleset にする。直線の履歴は、規則が無くても保たれる (リポジトリが許す merge 方式は squash だけで、PR の規則も `allowed_merge_methods` を squash に限っている)
+  - **必須チェックは作成時に求めない** (`do_not_enforce_on_create`)。必須チェックには PR でしか走らない検査 (`pr-title`・`require-issue` など) が入っている
+  - 作り方: `protect-key-branches` を読み、名前・対象と上の 2 点だけを変えて作る
+
+    ```bash
+    id=$(gh api repos/<owner>/<repo>/rulesets --jq '.[] | select(.name == "protect-key-branches") | .id')
+    gh api "repos/<owner>/<repo>/rulesets/$id" \
+      | jq '{name: "protect-release-branches", target, enforcement, bypass_actors,
+             conditions: {ref_name: {include: ["refs/heads/release/*"], exclude: []}},
+             rules: [.rules[] | select(.type != "required_linear_history")
+                     | if .type == "required_status_checks" then .parameters.do_not_enforce_on_create = true else . end]}' \
+      | gh api -X POST repos/<owner>/<repo>/rulesets --input -
+    ```
+
   - 設定の確認 (読むだけ):
 
     ```bash
-    gh api repos/<owner>/<repo>/rulesets --jq '.[] | select(.name == "protect-key-branches") | .id'
-    gh api repos/<owner>/<repo>/rulesets/<ruleset-id> --jq '{include: .conditions.ref_name.include, on_creation: [.rules[] | select(.type == "required_status_checks") | .parameters.do_not_enforce_on_create]}'
+    gh api repos/<owner>/<repo>/rulesets --jq '.[] | "\(.id) \(.name) \(.target)"'
+    gh api repos/<owner>/<repo>/rulesets/<ruleset-id> --jq '{include: .conditions.ref_name.include, rules: [.rules[].type]}'
     ```
 
 - **`v*` タグ**: 削除と更新を禁じる (作成は許す)。打ったタグは付け替えない
