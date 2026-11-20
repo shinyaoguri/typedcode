@@ -46,12 +46,14 @@ git push -u origin feat/my-change
 gh pr create --fill
 
 # 4. CI 通過 + セルフレビュー後、Squash and Merge → 掃除
+#    (main が先へ進んでいたら、先に gh pr update-branch でブランチを更新して CI を待つ。下の箇条書き)
 gh pr merge --squash --delete-branch
 ```
 
 - **PR は小さく** (目安 ±400 行)。1 PR = 1 つの関心事。
 - **PR タイトルも Conventional Commits 形式にする**。Squash and Merge では PR タイトルがマージコミットのメッセージになります。
 - マージ前に lint / type check / test / build が緑であること (main は required status checks で強制)。手元では `npm run check` で同じ検査を回せる。
+- **必須チェックは、最新の main を取り込んだ状態で緑であること** (ruleset の strict。[ADR-0034](docs/adr/0034-replace-manual-verification-with-automated-tests.md) の決定 6)。自分の PR より後に別の PR が main へ入ると、緑だった PR も「ブランチが古い」としてマージできなくなる。`gh pr update-branch` (PR 番号を省くと今いるブランチの PR。GitHub 上で main を merge する) か、手元で `git fetch origin && git merge origin/main && git push` でブランチを更新し、CI が回り直すのを待ってからマージする。squash merge なので、PR のブランチに merge コミットが入っても main の履歴は直線のまま。並行して PR を出しているときは、マージする順を決めて 1 本ずつ更新すると、CI の回り直し (e2e は約 20 分) が少なくて済む。
 - 「完了」の基準は下記「完了の定義」。**CI が緑なら手動の動作確認は不要**にすることが目標で、そのためにテストを足す。
 - マージされると main push の CI が staging へ自動デプロイする。staging / production ともデプロイ直後に `scripts/post-deploy-check.mjs` がその deploy の不変 URL (alias・custom domain ではなく) で editor / verify の COOP・COEP、Worker の署名 readiness、Pages の Origin に対する CORS preflight を検査し、不備があれば deploy job を失敗させる (#579)。staging では続く `e2e-staging` job がその deploy の URL をブラウザで通す (打鍵 → 署名付き checkpoint → export → verify-cli と `/verify/`。#655)。staging は Turnstile の公開テストキーで動くので、本物の Turnstile は production でしか通らない ([ADR-0049](docs/adr/0049-staging-turnstile-testing-keys.md))。人が触って確かめるなら https://staging.typedcode.pages.dev で。
 - **マージしたら、メインのチェックアウトから `git sweep` を実行して**ローカルブランチと worktree を掃除する (下記「マージ後の掃除」)。
@@ -311,7 +313,7 @@ Settings → General → Pull Requests:
 
 Rulesets:
 
-- `main` と `release/*`: 削除・force-push 禁止 + **PR 必須 + required status checks (test / check / e2e / pr-title / require-tests / require-visual-evidence)**。`main` は ruleset `protect-key-branches`、`release/*` は別の ruleset `protect-release-branches` で守る (`release/*` には直線の履歴の規則を入れない。理由と作り方は [docs/setup.md](docs/setup.md) の「Rulesets」)
+- `main` と `release/*`: 削除・force-push 禁止 + **PR 必須 + required status checks (test / check / e2e / pr-title / require-tests / require-visual-evidence / require-issue)**。`main` の必須チェックは最新の main の上で緑であることも求める (strict。上の「普段の開発フロー」)。`main` は ruleset `protect-key-branches`、`release/*` は別の ruleset `protect-release-branches` で守る (`release/*` には直線の履歴の規則を入れない。理由と作り方は [docs/setup.md](docs/setup.md) の「Rulesets」)
 - `v*` タグ: 削除・更新禁止
 
 コミットの規約は [Conventional Commits](https://www.conventionalcommits.org/) に従います。
