@@ -426,6 +426,8 @@ export const en: TranslationKeys = {
     runtimeResetComplete: 'Runtime reset complete.',
     runtimeCorruptionDetected: 'Runtime error detected. Will auto-reset on next execution.',
     runtimeResetting: 'Resetting runtime...',
+    endInput: 'End input',
+    endInputTitle: 'End input (send EOF; same as Ctrl+D on an empty line)',
   },
 
   logViewer: {
@@ -562,8 +564,9 @@ export const en: TranslationKeys = {
 
   unsupportedBrowser: {
     title: 'Unsupported Browser',
-    description: 'TypedCode uses the Screen Capture API and only works in Chrome or Edge browsers.',
-    safariNote: 'Safari does not fully support the Screen Capture API, so it cannot be used.',
+    description: 'TypedCode only works in Chromium-based browsers such as Chrome and Edge.',
+    untestedNote:
+      'Other browsers, such as Safari and Firefox, cannot record proofs because recording (screen capture, IME input, and so on) has not been tested on them.',
     hint: 'Please access using one of the following browsers:',
   },
 
