@@ -35,19 +35,20 @@ import { VerifyWebApp, expectWebCliParity, proofNames } from './helpers/verifyWe
  */
 
 /**
- * staging の Worker の checkpoint 署名鍵 (`packages/shared/src/checkpointKeys/registry.ts` の「staging環境」)。
- * registry のエントリは環境を機械可読に持たない (コメントだけ) ので、keyId をここに置き、registry に
- * 載っていて active であることを下の test で確かめる。staging の鍵を替えたら (registry に足した上で) ここを直す。
+ * staging の Worker の checkpoint 署名鍵 (`packages/shared/src/checkpointKeys/registry.ts` の `environment: 'staging'`)。
+ * keyId をここに置き、registry に staging の鍵として active で載っていることを下の test で確かめる。
+ * staging の鍵を替えたら (registry に足した上で) ここを直す。
  */
 const STAGING_CHECKPOINT_KEY_ID = 'tcp-202606-0e46c9';
 
 /** Cloudflare Web Analytics のビーコン。配信物に差し込まれても本件と無関係 (production-build.spec と同じ)。 */
 const isIrrelevant = (text: string) => /cloudflareinsights\.com|cdn-cgi\/rum/.test(text);
 
-test('staging の期待する署名鍵が registry に active で載っている', () => {
+test('staging の期待する署名鍵が registry に staging の鍵として active で載っている', () => {
   const entry = CHECKPOINT_PUBLIC_KEYS.find((k) => k.keyId === STAGING_CHECKPOINT_KEY_ID);
   expect(entry, `${STAGING_CHECKPOINT_KEY_ID} が registry.ts に無い`).toBeDefined();
   expect(entry!.status).toBe('active');
+  expect(entry!.environment).toBe('staging');
 });
 
 test('deployed: casual で打鍵 → export が staging の署名付きで verify-cli と配信物の /verify/ を通る', async ({
@@ -76,7 +77,9 @@ test('deployed: casual で打鍵 → export が staging の署名付きで verif
   const zipPath = await app.exportAllTabs();
 
   // ② verify-cli (fast) が pass する。三層保証は `--analysis-bundle` から読む。
-  const cli = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast']);
+  // staging の Worker が署名した proof なので、staging の鍵を時刻証拠に数える `--allow-staging-keys` を付ける
+  // (既定の verify-cli は production の鍵だけを数える。#321)。配信物の /verify/ は staging のビルドなので同じ範囲を信頼する。
+  const cli = runVerifyCliWithVerdicts(zipPath, ['--mode', 'fast', '--allow-staging-keys']);
   expect(cli.passed, cli.stdout + cli.stderr).toBe(true);
   expect(cli.verdicts.length).toBeGreaterThan(0);
   expect(cli.verdicts[0]!.valid).toBe(true);

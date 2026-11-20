@@ -354,6 +354,8 @@ interface ConclusionOptions {
   screenshots?: ScreenshotVerificationSummary;
   /** 検証モード (#214)。既定は `fast` (PoSW 再計算はスタブ Worker では回せないため)。 */
   mode?: VerificationMode;
+  /** staging の鍵を時刻証拠に数えるか (#321)。web は staging ビルドの値、CLI は `--allow-staging-keys` */
+  trustStagingKeys?: boolean;
 }
 
 /** verify (web) の経路: Worker が使う合成 → UI (TabController / VerificationController) の総合判定と三層保証。 */
@@ -366,6 +368,7 @@ async function webConclusion(
     mode: options.mode ?? 'fast',
     manifest: options.manifest,
     signedCheckpointKeyRegistry: registry,
+    ...(options.trustStagingKeys !== undefined ? { trustStagingKeys: options.trustStagingKeys } : {}),
   });
   const screenshotsTampered = options.screenshots?.tampered;
   const trust = TrustCalculator.calculate(result, undefined);
@@ -398,6 +401,7 @@ async function cliConclusion(
     examPackageManifest: options.manifest,
     signedCheckpointKeyRegistry: registry,
     screenshotSummary: options.screenshots,
+    allowStagingKeys: options.trustStagingKeys,
   });
   return {
     valid: result.valid,
@@ -475,6 +479,53 @@ describe('web ↔ CLI parity (#216)', () => {
     // 別セッションの署名 cp はこの proof の時刻証拠にならない (#295 / #329 後半)。root のアンカーだけが残る。
     expect(web.assurance.temporal).toBe('partial');
     expect(cli.assurance.temporal).toBe('partial');
+  });
+
+  describe('a proof signed by a staging key (#321)', () => {
+    // 本番の registry と同じく production と staging の鍵が並ぶ。staging の Worker と正直にやり取りした proof
+    const stagingProof = async () => {
+      const stagingKey = await createTestKey({ environment: 'staging' });
+      const proof = await buildAnchoredProof({
+        key: stagingKey,
+        tokenSessionId: 'session-A',
+        checkpointSessionId: 'session-A',
+      });
+      return { proof, registry: [testKey.registryEntry, stagingKey.registryEntry] };
+    };
+
+    it('agrees that the production build and the default CLI keep it valid but do not anchor it', async () => {
+      const { proof, registry: mixed } = await stagingProof();
+
+      const web = await webConclusion(proof, mixed, { trustStagingKeys: false });
+      const cli = await cliConclusion(proof, mixed);
+
+      expectSameConclusion(web, cli);
+      expect(cli.valid).toBe(true);
+      expect(cli.assurance.integrity).toBe('partial');
+      expect(cli.assurance.temporal).toBe('unanchored');
+    });
+
+    it('agrees that the staging build and --allow-staging-keys anchor it', async () => {
+      const { proof, registry: mixed } = await stagingProof();
+
+      const web = await webConclusion(proof, mixed, { trustStagingKeys: true });
+      const cli = await cliConclusion(proof, mixed, { trustStagingKeys: true });
+
+      expectSameConclusion(web, cli);
+      expect(cli.assurance.temporal).toBe('anchored');
+    });
+
+    it('does not trust staging keys in a build without the staging define (the production build)', async () => {
+      // vitest には define が無い = TYPEDCODE_TRUST_STAGING_KEYS を渡さない production のビルドと同じ
+      const { proof, registry: mixed } = await stagingProof();
+
+      const result = await runProofVerification(proof, { mode: 'fast', signedCheckpointKeyRegistry: mixed });
+
+      expect(result.rootAnchored).toBe(false);
+      expect(result.signedCheckpointAnchored).toBe(false);
+      expect(result.rootAnchorUntrustedKey?.environment).toBe('staging');
+      expect(result.signedCheckpointUntrustedKeys?.map((k) => k.environment)).toEqual(['staging']);
+    });
   });
 
   describe('a session start token signed by a key outside the registry (#329)', () => {

@@ -394,6 +394,12 @@ export interface VerifyTranslationKeys {
       fingerprintMismatch: string;
     };
     issueRootNotAnchored: string;
+    /**
+     * 信頼しない環境 (staging) の鍵の時刻証拠 (#321)。`${keyId}` (registry の keyId。複数はカンマ区切り) を受ける。
+     * root (session start token) と署名 cp で文言を分ける。
+     */
+    issueRootUntrustedKeyEnvironment: string;
+    issueAnchoringUntrustedKeyEnvironment: string;
     issueNotPureTyping: string;
     issueExamBindingFailed: string;
     issueExamUnverified: string;
