@@ -208,6 +208,7 @@ export {
   checkExamLanguage,
   CLASS_PACKAGE_SCHEMA,
   parseClassPackage,
+  parseClassPolicy,
   encodeClassPackage,
 } from './exam/index.js';
 

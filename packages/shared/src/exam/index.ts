@@ -35,6 +35,7 @@ export type { ExamStarterCheck, ExamStarterMatchResult, ExamStarterEventLike } f
 export {
   CLASS_PACKAGE_SCHEMA,
   parseClassPackage,
+  parseClassPolicy,
   encodeClassPackage,
 } from './classPackage.js';
 
