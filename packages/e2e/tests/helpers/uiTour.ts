@@ -62,10 +62,10 @@ const VALID_PROOF = fileURLToPath(
 /**
  * 同じ origin (dev サーバの localhost) 以外への通信を全部止める。
  *
- * 手元 (外部に届かない) と CI (Turnstile・Wasmer の配信元に届く) で画面を揃えるため。届くと
- * Turnstile の widget (cross-origin の iframe。製品の DOM ではない) やランタイムの状態表示が変わり、
- * axe の結果・表示テキストが環境で食い違う。止めたときの表示 (認証は失敗のフォールバック、C の
- * ランタイムは初期化失敗) は製品の正規の経路で、検査の対象として扱う。
+ * 手元 (外部に届かない) と CI (Turnstile の配信元に届く) で画面を揃えるため。届くと
+ * Turnstile の widget (cross-origin の iframe。製品の DOM ではない) が変わり、
+ * axe の結果・表示テキストが環境で食い違う。止めたときの表示 (認証は失敗のフォールバック) は製品の
+ * 正規の経路で、検査の対象として扱う。C の実行系 (Wasmer の配信元) は最初の C の実行まで取らない (#617)。
  */
 export async function blockExternalRequests(page: Page): Promise<void> {
   await page.context().route(

@@ -17,6 +17,7 @@ import {
 } from '@wasmer/sdk';
 
 import { BaseExecutor } from '../base/BaseExecutor.js';
+import { WasmerSdkCorruptedError } from './errors.js';
 import type {
   ExecutorConfig,
   ExecutionCallbacks,
@@ -42,6 +43,16 @@ const CLANG_VERSION = '0.1.1';
 /** Guest directory where the source and compiled binary are placed */
 const WORKSPACE_DIR = '/workspace';
 
+/**
+ * 利用者のコードの後ろに付けるリンクの引数 (C / C++ 共通)。
+ *
+ * webc のドライバは `-D_WASI_EMULATED_PROCESS_CLOCKS` を自分で足して `<time.h>` に `clock()` を宣言させるが、
+ * リンクには `-lc` しか渡さず、実体のある `libwasi-emulated-process-clocks.a` (sysroot にある) を足さない。
+ * そのままでは `clock()` が `undefined symbol: clock` でリンクに落ちる (#714)。
+ * このライブラリの `clock()` はプログラムの開始からの CLOCK_MONOTONIC の経過 (= 実時間) を返し、CPU 時間ではない
+ */
+const LINK_ARGS = ['-lwasi-emulated-process-clocks'];
+
 const RUNTIME_ERROR_PATTERNS = [
   'runtimeerror',
   'memory access out of bounds',
@@ -62,16 +73,8 @@ const RUNTIME_ERROR_PATTERNS = [
   'atomics.wait',
 ];
 
-/**
- * Error class for unrecoverable Wasmer SDK corruption
- * When this error is thrown, user must reload the page
- */
-export class WasmerSdkCorruptedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'WasmerSdkCorruptedError';
-  }
-}
+// 判定する側が Wasmer を読まずに済むよう、型は errors.ts に置く (#617)
+export { WasmerSdkCorruptedError };
 
 /**
  * clang に渡すソースを組み立てる: stdout を非バッファ化する preamble + ユーザーのコード。
@@ -186,6 +189,9 @@ export class CExecutor extends BaseExecutor {
       });
     } catch (error) {
       console.error('[CExecutor] Initialization failed:', error);
+      // 失敗した回の client (worker pool) を手放す。次の initialize が作り直す (#617。再試行で client を溜めない)
+      this.closeWasmer();
+      this.clangPkg = null;
 
       // Check if this is an unrecoverable Wasmer SDK corruption
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -301,6 +307,7 @@ export class CExecutor extends BaseExecutor {
           'wasm32-wasi',
           '-O2',
           ...extraArgs,
+          ...LINK_ARGS,
         ])
         .spawn({ stdin: 'closed', stdout: 'capture', stderr: 'capture' });
       if (!this.holdProcess(run, compiler, false)) return abortedResult();

@@ -7,6 +7,7 @@
  *   EventRecorder が直前イベントを今回のイベントとして LogViewer と IndexedDB に二重投入していた。
  * - 起動時ワンショットを、後から作ったタブに流し直す (#405)。
  *   class / assignment は起動時にタブが無いので、recordToAllTabs の時点では載せる先が無い。
+ * - contentSnapshot も他のイベントと同じく確定順に IndexedDB へ append する (#873)。
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -155,6 +156,40 @@ describe('EventRecorder with a dropped event (#284)', () => {
 
     expect(typingProof.events.length).toBe(1);
     expect(addLogEntry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('EventRecorder.recordContentSnapshot (#873)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('Worker', MockPoswWorker);
+    persistence.saveEventToIndexedDB.mockReset();
+    persistence.saveEventToIndexedDB.mockImplementation(async () => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('appends a content snapshot to IndexedDB in chain order together with the surrounding events', async () => {
+    const { typingProof, recorder } = await setup();
+
+    recorder.record({ type: 'contentChange', inputType: 'insertText', data: 'a' });
+    const snapshot = recorder.recordContentSnapshot('a');
+    recorder.record({ type: 'contentChange', inputType: 'insertText', data: 'b' });
+    await snapshot;
+    await recorder.whenTabSettled('tab-1');
+
+    const appended = persistence.saveEventToIndexedDB.mock.calls.map((call) => {
+      const [tabId, event] = call as unknown as [string, { sequence: number; type: string }];
+      return [tabId, event.sequence, event.type];
+    });
+    expect(appended).toEqual([
+      ['tab-1', 0, 'contentChange'],
+      ['tab-1', 1, 'contentSnapshot'],
+      ['tab-1', 2, 'contentChange'],
+    ]);
+    expect(typingProof.events.map((e) => e.type)).toEqual(['contentChange', 'contentSnapshot', 'contentChange']);
   });
 });
 
