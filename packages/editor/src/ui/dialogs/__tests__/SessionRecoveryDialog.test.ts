@@ -66,7 +66,7 @@ describe('showSessionRecoveryDialog accessibility', () => {
 
   it.each([
     ['resume', resumeBtn],
-    ['fresh', freshBtn],
+    ['fresh-delete', freshBtn],
   ] as const)('resolves with %s, removes the dialog and returns focus to the opener', async (choice, button) => {
     const opener = document.getElementById('opener')!;
     opener.focus();
@@ -92,6 +92,14 @@ describe('showSessionRecoveryDialog accessibility', () => {
     remove.mockRestore();
   });
 
+  it('resolves "New Session" at once as fresh-delete when keeping is not offered (exam)', async () => {
+    const result = showSessionRecoveryDialog(summary, { offerKeep: false });
+    expect(document.getElementById('session-fresh-keep-btn')).toBeNull();
+    freshBtn().click();
+    vi.advanceTimersByTime(1000);
+    await expect(result).resolves.toEqual({ choice: 'fresh-delete' });
+  });
+
   it('releases the previous dialog listener when a new dialog replaces it', () => {
     const add = vi.spyOn(document, 'addEventListener');
     const remove = vi.spyOn(document, 'removeEventListener');
@@ -102,5 +110,72 @@ describe('showSessionRecoveryDialog accessibility', () => {
     expect(count(add) - count(remove)).toBe(1); // 残るのは表示中の 1 つだけ
     add.mockRestore();
     remove.mockRestore();
+  });
+});
+
+/**
+ * 「新規」の 2 段目 (#317): exam 以外は「前のファイルを残す」(既定) と「完全に削除する」を選ばせる。
+ * 状態契約は overlay の `data-step` (`choose` / `fresh`) と、ボタンの `data-action`。
+ */
+describe('showSessionRecoveryDialog keep-or-delete step (#317)', () => {
+  const step = (): string | undefined =>
+    document.querySelector<HTMLElement>('[data-dialog="session-recovery"]')?.dataset.step;
+  const action = (name: string): HTMLButtonElement =>
+    document.querySelector<HTMLButtonElement>(`[data-action="${name}"]`)!;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  it('shows the keep/delete choice after "New Session" without resolving, focusing the keep choice', () => {
+    const result = vi.fn();
+    void showSessionRecoveryDialog(summary, { offerKeep: true }).then(result);
+    expect(step()).toBe('choose');
+    expect(action('fresh-keep').hidden).toBe(true);
+
+    action('fresh').click();
+
+    expect(step()).toBe('fresh');
+    expect(action('fresh-keep').hidden).toBe(false);
+    expect(action('fresh-delete').hidden).toBe(false);
+    expect(action('resume').hidden).toBe(true);
+    expect(document.activeElement).toBe(action('fresh-keep'));
+    expect(result).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['fresh-keep', 'fresh-keep'],
+    ['fresh-delete', 'fresh-delete'],
+  ] as const)('resolves with %s from the second step', async (button, choice) => {
+    const result = showSessionRecoveryDialog(summary, { offerKeep: true });
+    action('fresh').click();
+    action(button).click();
+    vi.advanceTimersByTime(1000);
+    await expect(result).resolves.toEqual({ choice });
+  });
+
+  it('goes back to the first step with "Back" and focuses resume again', () => {
+    void showSessionRecoveryDialog(summary, { offerKeep: true });
+    action('fresh').click();
+    action('back').click();
+    expect(step()).toBe('choose');
+    expect(action('fresh-keep').hidden).toBe(true);
+    expect(document.activeElement).toBe(action('resume'));
+  });
+
+  it('keeps Tab within the visible buttons of the second step', () => {
+    void showSessionRecoveryDialog(summary, { offerKeep: true });
+    action('fresh').click();
+    action('fresh-keep').focus(); // フッタの最後の見えているボタン
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    document.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(action('back'));
   });
 });

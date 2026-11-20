@@ -6,7 +6,7 @@ import { EditorApp } from '../helpers/app.js';
  * 不変条件 (#237) の下では、同じモードを新しいウィンドウで開いても使えなかったので、ボタンも `?fresh=1` の処理も無い。
  */
 
-test('メインメニューは「新規ファイル」・区切り線・「テンプレートを読み込む」だけで、新規ウィンドウの項目は無い (#442)', async ({
+test('メインメニューは「新規ファイル」・区切り線・「テンプレートを読み込む」・「閉じたタブ」(#317) だけで、新規ウィンドウの項目は無い (#442)', async ({
   page,
 }) => {
   const app = new EditorApp(page);
@@ -14,10 +14,11 @@ test('メインメニューは「新規ファイル」・区切り線・「テ�
   await page.locator('#main-menu-btn').click();
 
   const items = page.locator('#main-menu-dropdown > *');
-  await expect(items).toHaveCount(3);
+  await expect(items).toHaveCount(4);
   await expect(items.nth(0)).toHaveAttribute('id', 'new-file-btn');
   await expect(items.nth(1)).toHaveClass(/dropdown-divider/);
   await expect(items.nth(2)).toHaveAttribute('id', 'import-template-btn');
+  await expect(items.nth(3)).toHaveAttribute('id', 'closed-tabs-btn');
   await expect(page.locator('#new-window-btn')).toHaveCount(0);
 });
 

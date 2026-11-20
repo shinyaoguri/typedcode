@@ -125,6 +125,8 @@ import { showUnprovenContentDialog } from './ui/dialogs/UnprovenContentDialog.js
 import { showBootFailure } from './app/bootFailure.js';
 import { detectUnsupportedBrowser } from './app/browserSupport.js';
 import { languagePolicyFor, syncLanguageSelector } from './app/examLanguageGuard.js';
+import { closedTabPolicyFor, setupClosedTabsMenu, shouldClearScreenshotsWhenAllTabsClosed } from './app/closedTabs.js';
+import { startNewSession } from './app/sessionStart.js';
 
 // shared ライブラリのトレースログは dev サーバ時のみ有効化 (本番は no-op)。
 setSharedDebug(import.meta.env.DEV);
@@ -469,6 +471,8 @@ async function initializeTabManager(
   ctx.tabManager = new TabManager(ctx.editor);
   // 試験の許可言語 (#727): 言語変更の境界。UI の選択肢を経ない変更もここで止める
   ctx.tabManager.setLanguageGuard((tab, language) => languagePolicyFor(ctx).isAllowed(tab, language));
+  // 閉じたタブは残して「閉じたタブ」から開き直せるようにする (#317)。exam だけ従来どおり削除する
+  ctx.tabManager.setClosedTabPolicy(closedTabPolicyFor(ctx.mode));
 
   const editorTabsContainer = document.getElementById('editor-tabs');
   if (editorTabsContainer) {
@@ -679,6 +683,15 @@ function initializeTerminal(): void {
       console.error('[TemplateImport] Error:', error);
       showNotification(t('template.error'));
     }
+  });
+
+  // 閉じたタブの一覧と開き直し (#317。exam では項目を出さない)
+  setupClosedTabsMenu(ctx, {
+    notify: showNotification,
+    afterReopen: () => {
+      initializeLogViewer(ctx);
+      notifyRestoreDivergences();
+    },
   });
 
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
@@ -1517,7 +1530,10 @@ async function initializeApp(): Promise<void> {
       } else {
         // タブを閉じた後の再開 - ダイアログを表示
         initOverlay?.classList.add('hidden');
-        const result = await showSessionRecoveryDialog(sessionSummary);
+        // exam 以外は「新規」の後に「前のファイルを残す (既定) / 完全に削除する」を選ばせる (#317)
+        const result = await showSessionRecoveryDialog(sessionSummary, {
+          offerKeep: closedTabPolicyFor(ctx.mode) === 'archive',
+        });
         initOverlay?.classList.remove('hidden');
         updateInitMessage(t('app.initializing'));
 
@@ -1528,17 +1544,25 @@ async function initializeApp(): Promise<void> {
           sessionRecovered = true;
           console.log('[TypedCode] Session recovered:', sessionId);
         } else {
-          // 新規セッションを開始 - sessionService.clearSession()で古いスクリーンショットも削除される
-          await sessionService.clearSession();
-          const newSession = await sessionService.createSession();
+          // 新規セッションを開始。「前のファイルを残す」は前のタブを閉じたタブにする (events・スクリーンショットは残る)。
+          // 「完全に削除する」と exam は clearSession() で全ストア (スクリーンショットを含む) を消す (#317)
+          const newSession = await startNewSession(
+            sessionService,
+            sessionSummary.sessionId,
+            result.choice === 'fresh-keep' ? 'keep' : 'delete'
+          );
           sessionId = newSession.sessionId;
           console.log('[TypedCode] Fresh session started:', sessionId);
         }
       }
     } else {
-      // タブがない場合は自動的に新規セッション - sessionService.clearSession()でスクリーンショットも削除
-      await sessionService.clearSession();
-      const newSession = await sessionService.createSession();
+      // 開いているタブがない場合は自動的に新規セッション。exam は従来どおり全ストアを消し、それ以外は
+      // 閉じたタブ・記録・スクリーンショットを残す (利用者の明示の操作なしに消さない。#317)
+      const newSession = await startNewSession(
+        sessionService,
+        null,
+        closedTabPolicyFor(ctx.mode) === 'archive' ? 'keep' : 'delete'
+      );
       sessionId = newSession.sessionId;
     }
   } else {
@@ -1627,10 +1651,13 @@ async function initializeApp(): Promise<void> {
     ctx.proofStatusDisplay.reset();
     // スクリーンショットのキャプチャを無効化（タブがないので保存先がない）
     ctx.trackers.screenshot?.setCaptureEnabled(false);
-    // 既存のスクリーンショットを全て削除
-    ctx.trackers.screenshot?.clearStorage().catch((err) => {
-      console.error('[TypedCode] Failed to clear screenshots:', err);
-    });
+    // 既存のスクリーンショットは消さない (利用者の明示の操作なしに記録を消さない。#317)。
+    // exam は従来どおり消す (exam はタブロックで閉じられないので、ここには来ない)
+    if (shouldClearScreenshotsWhenAllTabsClosed(ctx.mode)) {
+      ctx.trackers.screenshot?.clearStorage().catch((err) => {
+        console.error('[TypedCode] Failed to clear screenshots:', err);
+      });
+    }
   });
 
   // Phase 4.9: EventRecorder の初期化 (#132)。

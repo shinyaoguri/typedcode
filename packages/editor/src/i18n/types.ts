@@ -80,6 +80,8 @@ export interface TranslationKeys {
     menu: string;
     newFile: string;
     importTemplate: string;
+    /** メインメニューの「閉じたタブ」(#317) */
+    closedTabs: string;
     toggleTerminal: string;
     toggleLogPanel: string;
     togglePreview: string;
@@ -648,6 +650,29 @@ export interface TranslationKeys {
     startFresh: string;
     resuming: string;
     clearing: string;
+    /** exam 以外の注意書き (「新規」の後に残すか消すかを選べる。#317) */
+    warningKeep: string;
+    /** 「新規」の 2 段目 (#317) */
+    freshMessage: string;
+    keepHint: string;
+    deleteHint: string;
+    keepPrevious: string;
+    deleteAll: string;
+    back: string;
+    starting: string;
+  };
+
+  // 閉じたタブの一覧 (#317)
+  closedTabs: {
+    title: string;
+    description: string;
+    empty: string;
+    /** ${language} / ${count} / ${time} */
+    itemMeta: string;
+    reopen: string;
+    close: string;
+    loadFailed: string;
+    reopenFailed: string;
   };
 
   // 復元時に証明と食い違った元のコードの通知 (#413)

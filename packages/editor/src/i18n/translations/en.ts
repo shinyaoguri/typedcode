@@ -62,6 +62,7 @@ export const en: TranslationKeys = {
     menu: 'Menu',
     newFile: 'New File',
     importTemplate: 'Import Template',
+    closedTabs: 'Closed tabs',
     toggleTerminal: 'Toggle Terminal',
     toggleLogPanel: 'Toggle Log Panel',
     togglePreview: 'Toggle Preview',
@@ -96,8 +97,8 @@ export const en: TranslationKeys = {
 
   tabCloseDialog: {
     title: 'Close Tab',
-    warning: 'This action cannot be undone!',
-    description: 'The following data will be permanently deleted:',
+    warning: 'You can reopen a closed tab from "Closed tabs" in the main menu.',
+    description: 'The following data is kept in this browser:',
     itemKeystrokes: 'Recorded keystrokes',
     itemHashChain: 'Hash chain (proof data)',
     itemScreenshots: 'Associated screenshots',
@@ -323,7 +324,7 @@ export const en: TranslationKeys = {
     newTab: 'New Tab',
     closeTab: 'Close Tab',
     lastTabWarning: 'Cannot close the last tab',
-    closeConfirm: 'Close "${tabName}"?\nRecorded operation logs will also be deleted.',
+    closeConfirm: 'Close "${tabName}"?\nYou can reopen it from "Closed tabs" in the main menu.',
     verifiedTooltip: 'Verified',
     failedTooltip: 'Verification Failed',
     failureTimeout: 'Timeout',
@@ -597,7 +598,7 @@ export const en: TranslationKeys = {
     author: 'Author',
     description: 'Description',
     filesToCreate: 'Files to Create',
-    warningExistingTabs: 'All existing tabs will be closed. Unsaved data will be lost.',
+    warningExistingTabs: 'All existing tabs will be closed. You can reopen them from "Closed tabs" in the main menu.',
     import: 'Import',
     importing: 'Importing template...',
     success: 'Created ${count} files',
@@ -621,6 +622,27 @@ export const en: TranslationKeys = {
     startFresh: 'New Session',
     resuming: 'Resuming session...',
     clearing: 'Clearing data...',
+    warningKeep: 'If you choose "New Session", you can keep your previous files or delete them permanently.',
+    freshMessage: 'What should happen to the files of your previous session?',
+    keepHint:
+      '"Keep previous files" keeps your previous files and records in this browser. You can reopen them from "Closed tabs" in the main menu.',
+    deleteHint:
+      '"Delete permanently" deletes all code, records and screenshots of the previous session. This cannot be undone. Choose this on a shared computer.',
+    keepPrevious: 'Keep previous files',
+    deleteAll: 'Delete permanently',
+    back: 'Back',
+    starting: 'Starting a new session...',
+  },
+
+  closedTabs: {
+    title: 'Closed tabs',
+    description: 'The code and records of closed tabs are kept in this browser. Reopen a tab to continue recording it.',
+    empty: 'There are no closed tabs.',
+    itemMeta: '${language} · ${count} events · closed ${time}',
+    reopen: 'Reopen',
+    close: 'Close',
+    loadFailed: 'Could not load the closed tabs.',
+    reopenFailed: 'Could not reopen the closed tab.',
   },
 
   // Original code that did not match the proof on restore (#413)
