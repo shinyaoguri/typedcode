@@ -91,6 +91,7 @@ test('tabs レコードの currentHash が古くても、再開後のチェー�
   await page.close();
 
   // 同じ origin の、エディタを起動しないページから tabs レコードの currentHash を events 先頭の hash に巻き戻す。
+  // append の位置は tabProgress にもあり (#627)、読み出しは同じ位置なら tabProgress を採るので、そちらも巻き戻す。
   const neutral = await context.newPage();
   await neutral.goto(NEUTRAL_PATH);
   const rewound = await neutral.evaluate(
@@ -100,12 +101,13 @@ test('tabs レコードの currentHash が古くても、再開後のチェー�
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
           const db = open.result;
-          const tx = db.transaction(['tabs', 'events'], 'readwrite');
+          const tx = db.transaction(['tabs', 'tabProgress', 'events'], 'readwrite');
           const tabsReq = tx.objectStore('tabs').getAll();
+          const progressReq = tx.objectStore('tabProgress').getAll();
           const eventsReq = tx.objectStore('events').getAll();
           tx.oncomplete = () => db.close();
           tx.onerror = () => reject(tx.error);
-          let pending = 2;
+          let pending = 3;
           const done = () => {
             if (--pending > 0) return;
             const tab = (tabsReq.result as Array<{ currentHash: string }>)[0];
@@ -120,9 +122,14 @@ test('tabs レコードの currentHash が古くても、再開後のチェー�
             const last = events[events.length - 1]!.eventData.hash;
             tab.currentHash = stale;
             tx.objectStore('tabs').put(tab);
+            for (const progress of progressReq.result as Array<{ currentHash: string }>) {
+              progress.currentHash = stale;
+              tx.objectStore('tabProgress').put(progress);
+            }
             resolve({ stale, last });
           };
           tabsReq.onsuccess = done;
+          progressReq.onsuccess = done;
           eventsReq.onsuccess = done;
         };
       })
@@ -346,4 +353,155 @@ test('#654 export の後に打鍵せず閉じて再開しても、署名が 409 
   const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
   expect(result.passed, result.stdout + result.stderr).toBe(true);
   expect(allPassed(result.results)).toBe(true);
+});
+
+/**
+ * 閉じたセッションの session DB を、版 3 (tabProgress を足す前。#627) の形に作り直す。`page` は session DB を
+ * 開かないページ。行は全部 (tabProgress を除く) そのまま書き戻し、tabs 行の currentHash は、版 3 の
+ * appendEvent が書いたはずの位置ではなく events 先頭の hash に巻き戻す (#322: 末尾のイベントを正とするか)。
+ * 返り値は作り直した後の版と、巻き戻した hash・events 末尾の hash。
+ */
+function rebuildSessionDbAsVersion3(page: Page): Promise<{ version: number; stale: string; last: string }> {
+  return page.evaluate(
+    () =>
+      new Promise<{ version: number; stale: string; last: string }>((resolve, reject) => {
+        const DB = 'typedcode-session';
+        const fail = (message: string) => reject(new Error(message));
+        const open = indexedDB.open(DB);
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const current = open.result;
+          const names = Array.from(current.objectStoreNames).filter((n) => n !== 'tabProgress');
+          const tx = current.transaction(names, 'readonly');
+          const rows: Record<string, unknown[]> = {};
+          for (const name of names) {
+            const req = tx.objectStore(name).getAll();
+            req.onsuccess = () => {
+              rows[name] = req.result;
+            };
+          }
+          tx.onerror = () => reject(tx.error);
+          tx.oncomplete = () => {
+            current.close();
+            type Ev = { tabId: string; eventIndex: number; eventData: { hash: string } };
+            const events = (rows.events as Ev[]).sort((a, b) => a.eventIndex - b.eventIndex);
+            const tabs = rows.tabs as { currentHash: string }[];
+            if (tabs.length !== 1 || events.length < 2) {
+              return fail(`unexpected session DB: tabs=${tabs.length} events=${events.length}`);
+            }
+            const stale = events[0]!.eventData.hash;
+            const last = events.at(-1)!.eventData.hash;
+            tabs[0]!.currentHash = stale;
+
+            const deleting = indexedDB.deleteDatabase(DB);
+            deleting.onblocked = () => fail('deleteDatabase was blocked (an editor page still holds the DB)');
+            deleting.onerror = () => reject(deleting.error);
+            deleting.onsuccess = () => {
+              const legacy = indexedDB.open(DB, 3);
+              legacy.onerror = () => reject(legacy.error);
+              // 版 3 の SessionStorageService.createObjectStores と同じストアと index
+              legacy.onupgradeneeded = () => {
+                const db = legacy.result;
+                const sessions = db.createObjectStore('sessions', { keyPath: 'sessionId' });
+                sessions.createIndex('createdAt', 'createdAt', { unique: false });
+                sessions.createIndex('isActive', 'isActive', { unique: false });
+                const t = db.createObjectStore('tabs', { keyPath: 'id' });
+                t.createIndex('sessionId', 'sessionId', { unique: false });
+                t.createIndex('lastModifiedAt', 'lastModifiedAt', { unique: false });
+                const e = db.createObjectStore('events', { keyPath: 'id', autoIncrement: true });
+                e.createIndex('tabId', 'tabId', { unique: false });
+                e.createIndex('sessionId', 'sessionId', { unique: false });
+                e.createIndex('tabId_eventIndex', ['tabId', 'eventIndex'], { unique: true });
+                e.createIndex('writtenAt', 'writtenAt', { unique: false });
+                const sw = db.createObjectStore('tabSwitches', { keyPath: 'id', autoIncrement: true });
+                sw.createIndex('sessionId', 'sessionId', { unique: false });
+                sw.createIndex('timestamp', 'switchEvent.timestamp', { unique: false });
+                const shots = db.createObjectStore('screenshots', { keyPath: 'id' });
+                shots.createIndex('sessionId', 'sessionId', { unique: false });
+                shots.createIndex('timestamp', 'timestamp', { unique: false });
+                shots.createIndex('eventSequence', 'eventSequence', { unique: false });
+                const unproven = db.createObjectStore('unprovenContents', { keyPath: 'id', autoIncrement: true });
+                unproven.createIndex('tabId', 'tabId', { unique: false });
+              };
+              legacy.onsuccess = () => {
+                const db = legacy.result;
+                const write = db.transaction(names, 'readwrite');
+                for (const name of names) {
+                  for (const row of rows[name] ?? []) write.objectStore(name).put(row);
+                }
+                write.onerror = () => reject(write.error);
+                write.oncomplete = () => {
+                  const version = db.version;
+                  db.close();
+                  resolve({ version, stale, last });
+                };
+              };
+            };
+          };
+        };
+      })
+  );
+}
+
+/** session DB の今の版 (開いているエディタのページから呼ぶ) */
+function sessionDbVersion(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const open = indexedDB.open('typedcode-session');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const version = open.result.version;
+          open.result.close();
+          resolve(version);
+        };
+      })
+  );
+}
+
+/**
+ * #627: append の位置を tabs 行から tabProgress に分けた (DB の版 3 → 4)。版 3 のまま残っている session DB
+ * (tabProgress が無く、tabs 行の currentHash が末尾より古い) から再開しても、upgrade の後に元のコードと
+ * チェーンが戻り、末尾のイベントからチェーンが続いて検証が pass し、救出 ZIP も今の内容で出る。
+ */
+test('#627 版 3 の session DB から再開しても、末尾のイベントからチェーンが続いて検証が pass し、救出もできる', async ({
+  page,
+  context,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.typeCode('int a = 1;\n');
+  await app.waitForSynced();
+  await page.close();
+
+  const neutral = await context.newPage();
+  await neutral.goto(NEUTRAL_PATH);
+  const legacy = await rebuildSessionDbAsVersion3(neutral);
+  await neutral.close();
+  expect(legacy.version, 'precondition: the session DB is back at version 3').toBe(3);
+  expect(legacy.stale, 'precondition: the tab row hash differs from the chain tail').not.toBe(legacy.last);
+
+  const app2 = await resumeInNewPage(context);
+  expect(await sessionDbVersion(app2.page), 'the resumed editor upgraded the session DB').toBe(4);
+  expect(await app2.editorValue()).toContain('int a = 1;');
+
+  await app2.typeCode('int b = 2;\n');
+  await app2.waitForSynced();
+  const zipPath = await app2.exportAllTabs();
+  const result = runVerifyCliWithResult(zipPath, ['--mode', 'fast']);
+  expect(result.passed, result.stdout + result.stderr).toBe(true);
+  expect(allPassed(result.results)).toBe(true);
+
+  const downloading = app2.page.waitForEvent('download', { timeout: 30_000 });
+  await app2.page.locator('#settings-btn').click();
+  await app2.page.locator('#rescue-download-btn').click();
+  const rescue = await downloading;
+  const rescuePath = join(mkdtempSync(join(tmpdir(), 'tc-e2e-rescue-')), rescue.suggestedFilename());
+  await rescue.saveAs(rescuePath);
+  const manifest = JSON.parse(await readZipEntryText(rescuePath, 'rescue-manifest.json')) as {
+    tabs: { source: string }[];
+  };
+  const [tab] = (await app2.snapshot()).tabs;
+  expect(tab?.content).toContain('int b = 2;');
+  expect(await readZipEntryText(rescuePath, manifest.tabs[0]!.source)).toBe(tab!.content);
 });

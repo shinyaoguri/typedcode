@@ -6,10 +6,23 @@
 import type { CodeExecutionOutcome } from '@typedcode/shared';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import type { InteractiveStdin } from '../executors/interfaces/ILanguageExecutor.js';
 import { StdinLineDiscipline } from './stdinLineDiscipline.js';
 
 /** Callback type for terminal input events */
 export type TerminalInputCallback = (input: string) => void;
+
+/**
+ * ターミナルの stdin の状態 (#707)。`open` = 入力をプログラムへ渡す、`closed` = EOF を送った後
+ * (入力は捨て、Ctrl+C の停止だけ効く)、null = 実行中のプログラムにつながっていない。
+ * コンテナの `data-stdin-state` にも出す (状態契約。null のときは属性なし)
+ */
+export type StdinState = 'open' | 'closed' | null;
+
+export interface ConnectStdinOptions {
+  /** 選択の無い Ctrl+C で呼ぶ (実行を止める。#707) */
+  onInterrupt?: () => void;
+}
 
 export class CTerminal {
   private terminal: Terminal;
@@ -20,13 +33,15 @@ export class CTerminal {
   private isWaitingForInput: boolean = false;
   private disposed: boolean = false;
 
-  // Stream connection mode for WASI stdin
-  private stdinWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
-  private encoder = new TextEncoder();
+  // 対話の実行の stdin (#707)。行の編集はここ (line discipline) で行い、確定した行だけをプログラムに渡す
+  private stdin: InteractiveStdin | null = null;
+  private stdinClosed = false;
+  private onInterrupt: (() => void) | null = null;
+  private stdinStateListener: ((state: StdinState) => void) | null = null;
 
-  // stdin モードで打った・貼った入力を行に区切って inputCallback (terminalInput の記録) に渡すための行バッファ。
-  // エコーは WASI 側がするので、ここでは確定した行だけを使う (Python と同じ line discipline で 1 文字ずつ処理する)
-  private stdinLineLog = new StdinLineDiscipline();
+  // 打った・貼った入力を 1 文字ずつ行に区切る。確定した行を、プログラムの stdin と inputCallback
+  // (terminalInput の記録) の両方に同じ文字列で渡す (Python と共有の line discipline)
+  private lineDiscipline = new StdinLineDiscipline();
 
   // Callback for input events (called when user presses Enter)
   private inputCallback: TerminalInputCallback | null = null;
@@ -73,16 +88,23 @@ export class CTerminal {
     this.terminal.open(container);
     this.fit();
 
+    // Ctrl+C は選択があればコピーを優先し、xterm に `\x03` を送らせない (選択が無ければ onData の停止へ。#707)
+    this.terminal.attachCustomKeyEventHandler((event) => {
+      if (!isCopyShortcut(event) || !this.terminal.hasSelection()) return true;
+      if (event.type === 'keydown') {
+        const selection = this.terminal.getSelection();
+        // コピーは記録しない (SessionContentRegistry に登録しない。問題の例のコピーと同じ扱い)
+        void navigator.clipboard?.writeText(selection).catch(() => {});
+        // 次の Ctrl+C が停止になるよう選択を外す (多くの端末と同じ)
+        this.terminal.clearSelection();
+      }
+      return false;
+    });
+
     // Handle user input
     this.terminal.onData((data) => {
-      // Stream connection mode: forward input directly to WASI stdin
-      if (this.stdinWriter) {
-        this.logStdinLines(data);
-
-        // Forward to stdin as one chunk (no local echo - WASI program handles echo)
-        this.stdinWriter.write(this.encoder.encode(data)).catch(() => {
-          // Ignore errors when program has ended
-        });
+      if (this.stdin) {
+        this.handleStdinData(data);
         return;
       }
 
@@ -227,13 +249,17 @@ export class CTerminal {
   }
 
   /**
-   * Connect to a WASI program's stdin stream
-   * In this mode, user input is forwarded directly to the stream
+   * 実行中のプログラムの stdin につなぐ (#707)。以後の入力は line discipline で行にまとめ、
+   * エコーはここでターミナルに書き、確定した行だけを stdin と inputCallback に渡す
    */
-  connectStdin(stdinStream: WritableStream<Uint8Array>): void {
+  connectStdin(stdin: InteractiveStdin, options: ConnectStdinOptions = {}): void {
     if (this.disposed) return;
-    this.stdinWriter = stdinStream.getWriter();
+    this.stdin = stdin;
+    this.stdinClosed = false;
+    this.onInterrupt = options.onInterrupt ?? null;
+    this.lineDiscipline = new StdinLineDiscipline();
     this.terminal.options.disableStdin = false; // Enable input
+    this.setStdinState('open');
     this.terminal.focus();
   }
 
@@ -241,32 +267,77 @@ export class CTerminal {
    * Disconnect from the stdin stream
    */
   disconnectStdin(): void {
-    if (this.stdinWriter) {
-      try {
-        this.stdinWriter.releaseLock();
-      } catch {
-        // Ignore errors if stream is already closed
-      }
-      this.stdinWriter = null;
-    }
-    this.stdinLineLog = new StdinLineDiscipline(); // Clear line buffer
+    this.stdin = null;
+    this.stdinClosed = false;
+    this.onInterrupt = null;
+    this.lineDiscipline = new StdinLineDiscipline(); // Clear line buffer
     this.terminal.options.disableStdin = true; // Disable input after program ends
+    this.setStdinState(null);
   }
 
   /**
-   * stdin モードの入力 (xterm の onData 1 回分) を行に区切り、確定した空でない行ごとに inputCallback を呼ぶ。
-   * 貼り付けは `"3\r5\r"` のような塊で 1 回に届くので、塊のまま判定せず 1 文字ずつ処理する (#648)。
-   * Enter (`\r` / `\n`) で確定、バックスペースで 1 文字消す、Ctrl+C (`\x03`) で書きかけの行を捨てる。
+   * 「入力終了」(#707): 書きかけの行があれば LF 付きで確定して渡してから、stdin を閉じる (EOF)。
+   * つながっていない・閉じた後は何もしない
    */
-  private logStdinLines(data: string): void {
-    const segments = data.split('\x03');
-    segments.forEach((segment, index) => {
-      if (index > 0) this.stdinLineLog = new StdinLineDiscipline(); // Ctrl+C - clear buffer
-      for (const line of this.stdinLineLog.feed(segment).lines) {
-        const text = line.slice(0, -1); // 確定した行の末尾の "\n" を外す
-        if (this.inputCallback && text.length > 0) this.inputCallback(text);
-      }
-    });
+  endInput(): void {
+    if (!this.stdin || this.stdinClosed) return;
+    const pending = this.lineDiscipline.flush();
+    if (pending !== null) {
+      this.terminal.write('\n');
+      this.commitLine(pending);
+    }
+    this.closeStdin();
+  }
+
+  /** stdin の状態 (#707)。null = 実行中のプログラムにつながっていない */
+  getStdinState(): StdinState {
+    if (!this.stdin) return null;
+    return this.stdinClosed ? 'closed' : 'open';
+  }
+
+  /** stdin の状態が変わるたびに呼ぶ (「入力終了」ボタンの表示に使う。#707) */
+  setStdinStateListener(listener: ((state: StdinState) => void) | null): void {
+    this.stdinStateListener = listener;
+  }
+
+  /**
+   * stdin につながっている間の入力 (xterm の onData 1 回分)。貼り付けは `"3\r5\r"` のような塊で
+   * 1 回に届くので、line discipline が 1 文字ずつ処理する (#648)。確定した行は stdin と記録に同じ文字列で渡し、
+   * 空の行の Ctrl+D で閉じ、Ctrl+C で止める (#707)。閉じた後は Ctrl+C だけを見る
+   */
+  private handleStdinData(data: string): void {
+    if (this.stdinClosed) {
+      if (data.includes('\x03')) this.onInterrupt?.();
+      return;
+    }
+    const { echo, lines, eof, interrupt } = this.lineDiscipline.feed(data);
+    if (echo) this.terminal.write(echo);
+    for (const line of lines) this.commitLine(line);
+    if (interrupt) {
+      this.onInterrupt?.();
+      return;
+    }
+    if (eof) this.closeStdin();
+  }
+
+  /** 確定した行 (末尾の "\n" 込み) をプログラムへ渡し、空でなければ inputCallback に記録させる */
+  private commitLine(line: string): void {
+    this.stdin?.writeLine(line);
+    const text = line.slice(0, -1); // 確定した行の末尾の "\n" を外す
+    if (this.inputCallback && text.length > 0) this.inputCallback(text);
+  }
+
+  private closeStdin(): void {
+    if (!this.stdin || this.stdinClosed) return;
+    this.stdinClosed = true;
+    this.stdin.close();
+    this.setStdinState('closed');
+  }
+
+  private setStdinState(state: StdinState): void {
+    if (state) this.container.dataset.stdinState = state;
+    else delete this.container.dataset.stdinState;
+    this.stdinStateListener?.(state);
   }
 
   /**
@@ -281,7 +352,7 @@ export class CTerminal {
    * Check if stdin stream is connected
    */
   isStdinConnected(): boolean {
-    return this.stdinWriter !== null;
+    return this.stdin !== null;
   }
 
   /**
@@ -326,4 +397,9 @@ export class CTerminal {
   getTerminal(): Terminal {
     return this.terminal;
   }
+}
+
+/** コピーのキー (Ctrl+C。Shift / Alt / Meta との組み合わせは除く。macOS の Cmd+C はブラウザ既定のコピー) */
+function isCopyShortcut(event: KeyboardEvent): boolean {
+  return event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === 'c';
 }

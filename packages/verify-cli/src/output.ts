@@ -69,6 +69,7 @@ import type {
   ProofExtractionFailureReason,
   ProofVersionStatus,
   RootAnchorFailure,
+  UntrustedEnvironmentKey,
   SubmissionPair,
   SubmissionSeverity,
 } from '@typedcode/shared';
@@ -94,6 +95,11 @@ export interface VerificationOutput {
   rootAnchored?: boolean;
   /** token はあるが検証できなかった理由 (#329)。`Root anchor:` 行を UNTRUSTED にする。`keyId` は proof 由来。 */
   rootAnchorFailure?: RootAnchorFailure;
+  /**
+   * token は検証できたが、鍵の環境 (既定では staging) を信頼しなかった (#321)。`Root anchor:` 行を
+   * unanchored にして理由を出す (失敗ではないので UNTRUSTED にしない)。
+   */
+  rootAnchorUntrustedKey?: UntrustedEnvironmentKey;
   /**
    * 受理ポリシー (#296 / ADR-0043)。要件を 1 つでも立てたときだけ `--- Acceptance policy ---` 節を出す
    * (立てなければ出力は変えない)。
@@ -427,6 +433,20 @@ function formatProcessSummary(p: ProcessSummary): string[] {
   return lines;
 }
 
+/** 信頼しない環境の鍵の証拠を数えるためのフラグの案内 (#321) */
+const ALLOW_STAGING_HINT = 'pass --allow-staging-keys to count staging keys';
+
+/**
+ * 信頼しない環境の鍵の書き出し (#321)。例: `a staging key (tcp-202606-0e46c9)`。keyId と環境は registry の値だが、
+ * 出力の流儀にそろえて `safe()` を通す。環境の無いエントリ (JSON の registry) は `an unlabeled key`。
+ */
+function describeUntrustedKeys(keys: readonly UntrustedEnvironmentKey[]): string {
+  const environments = [...new Set(keys.map((k) => k.environment ?? 'unlabeled'))];
+  const label = environments.length === 1 ? environments[0]! : environments.join('/');
+  const article = /^[aeiou]/.test(label) ? 'an' : 'a';
+  return `${article} ${safe(label)} key (${keys.map((k) => safe(k.keyId)).join(', ')})`;
+}
+
 /**
  * `Root anchor: UNTRUSTED` 行の括弧内 (#329)。改ざんの判定ではないので「開始時刻の根拠が無い」側の
  * 言い方にそろえる。registry が古い可能性に触れるのは未知の keyId のときだけ。
@@ -572,6 +592,11 @@ export function formatResult(result: VerificationOutput): string {
     } else if (result.rootAnchorFailure) {
       // #329: token はあるが検証できない。「token が無い」と出すと事実に反する。keyId は proof 由来。
       lines.push(`Root anchor: ${c('red', 'UNTRUSTED')} (${describeRootAnchorFailure(result.rootAnchorFailure)})`);
+    } else if (result.rootAnchorUntrustedKey) {
+      // #321: token は正しく署名されているが、信頼しない環境 (staging) の鍵。改ざんでも失敗でもない。
+      lines.push(
+        `Root anchor: ${c('yellow', 'unanchored')} (session start token is signed by ${describeUntrustedKeys([result.rootAnchorUntrustedKey])} — not counted as a time anchor; ${ALLOW_STAGING_HINT})`
+      );
     } else {
       lines.push(`Root anchor: ${c('yellow', 'unanchored')} (no session start token — offline fabrication possible)`);
     }
@@ -579,7 +604,12 @@ export function formatResult(result: VerificationOutput): string {
 
   const sc = result.signedCheckpoints;
   if (sc) {
-    if (!sc.anchored) {
+    if (!sc.anchored && sc.untrustedKeys && sc.untrustedKeys.length > 0) {
+      // #321: 署名 cp は検査を通ったが、信頼しない環境 (staging) の鍵。時刻証拠に数えない (失敗ではない)。
+      lines.push(
+        `Anchoring:   ${c('yellow', 'unavailable')} (signed checkpoints are signed by ${describeUntrustedKeys(sc.untrustedKeys)} — not counted as time anchors; ${ALLOW_STAGING_HINT})`
+      );
+    } else if (!sc.anchored) {
       lines.push(`Anchoring:   ${c('yellow', 'unavailable')} (no signed checkpoints)`);
     } else if (sc.valid) {
       const cov = sc.coverage;
@@ -784,6 +814,7 @@ ${c('cyan', 'Usage:')}
                    [--exam-package <file.tcexam>] [--submitted-at <ISO>]
                    [--require-anchor-density] [--require-root-anchor]
                    [--require-signed-checkpoints] [--require-final-anchor]
+                   [--allow-staging-keys]
                    [--analysis-json <out.json>] [--result-json <out.json>]
                    [--analysis-bundle <out.json>]
                    [--aggregate-bundle <out.json>]
@@ -816,6 +847,12 @@ ${c('cyan', 'Options:')}
                    default (unanchored root is only a warning). Exam proofs are exempt
                    ONLY when their binding is verified via --exam-package (#131); a
                    self-declared exam block alone does not bypass the gate.
+  --allow-staging-keys
+                   Count a session start token / signed checkpoints signed by a staging
+                   key as time anchors (#321). Off by default: only production keys (and
+                   local development keys) anchor the timeline, and staging-signed
+                   evidence is reported as "unanchored" without failing the proof. Use it
+                   only for proofs made against the staging deployment.
   --require-signed-checkpoints
                    Fail (exit 1) when the proof has no signed checkpoint at all (#296).
                    Off by default (no signed checkpoint is only "Anchoring: unavailable").

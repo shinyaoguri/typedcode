@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { EditorApp, readAllProofEvents } from './helpers/app.js';
+import { EditorApp, readAllProofEvents, readProofEvents } from './helpers/app.js';
 import { runVerifyCli } from './helpers/verifyCli.js';
 
 /**
@@ -13,7 +13,11 @@ import { runVerifyCli } from './helpers/verifyCli.js';
  * - その proof を含む export が verify-cli (fast) を通る
  * - C のコンパイルエラーが、利用者のコードの行を指す (preamble の行数分ずれない = #489 の回帰)
  * - Python の `input()` がターミナルに打った行を読み、`window.prompt` に落ちない。案内文は入力の前に出て、
- *   入力待ちの間に停止できる (#649。Pyodide を専用 Worker で動かし、stdin を SharedArrayBuffer で渡す)
+ *   入力待ちの間に停止できる (#649 / #719。Pyodide を opaque origin の sandbox iframe の中の Worker で動かし、
+ *   stdin は runner が作った SharedArrayBuffer で渡す。隔離そのものの回帰は python-isolation.spec.ts)
+ * - C の端末入力 (#707): Enter が LF で届き、バックスペース・空行・日本語・貼り付けを含む行を fgets / scanf が
+ *   読み、記録 (terminalInput) と一致する。空の行の Ctrl+D と「入力終了」で EOF を送れ、書きかけの行の Ctrl+D は
+ *   行を確定するだけ。選択の無い Ctrl+C で入力待ちを止め、選択があればコピーして止めない。止めた次の実行は成功する
  *
  * 本番ビルド (`vite preview`) での C の hello は production-build.spec.ts の `@nightly` が見る
  * (@wasmer/sdk の worker の解決は本番ビルドでしか壊れない。editor/AGENTS.md の #364 の項)。
@@ -283,8 +287,250 @@ test('python: @nightly 入力を待つ間に停止すると aborted で終わり
   await page.locator('#stop-code-btn').click();
   expect(await waitOutcome(page, stopped, 15_000)).toBe('aborted');
 
-  // 停止で Worker ごと捨てるので、次の実行は Pyodide を読み込み直してから走る
+  // 停止で runner (iframe + Worker) ごと捨てるので、次の実行は Pyodide を読み込み直してから走る
   await replaceCode(app, 'print("after-stop-" + str(6 * 7))\n');
+  const outcome = await runAndWait(page, FIRST_RUN_TIMEOUT_MS);
+  expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
+  await expect.poll(() => terminalText(page)).toContain('after-stop-42');
+  expect(await terminalText(page)).not.toContain('never');
+});
+
+// ---- C の端末入力 (#707) ----
+
+/** C のプログラムが stdin を読める (ターミナルが stdin につながった) まで待つ。状態契約 `data-stdin-state` で読む */
+async function waitStdinOpen(page: Page): Promise<void> {
+  await expect(page.locator(TERMINAL)).toHaveAttribute('data-stdin-state', 'open', { timeout: FIRST_RUN_TIMEOUT_MS });
+}
+
+/**
+ * ターミナルの入力 textarea に貼り付けを届ける (headless の Chromium は実ペーストの paste イベントを出さないので、
+ * terminal-paste.spec.ts と同じく clipboardData を持つ ClipboardEvent を dispatch する)
+ */
+async function pasteIntoTerminal(page: Page, text: string): Promise<void> {
+  const textarea = page.locator(`${TERMINAL} .xterm-helper-textarea`);
+  await textarea.focus();
+  await textarea.evaluate((el, t) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/plain', t);
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+  }, text);
+}
+
+/** proof の terminalInput イベントが記録した行 (description の「ラベル: 」の後ろ) */
+function terminalInputLines(events: { type: string; description?: unknown }[]): string[] {
+  return events
+    .filter((e) => e.type === 'terminalInput')
+    .map((e) => String(e.description ?? '').replace(/^[^:]*: /, ''));
+}
+
+/** C のコードを行の配列で置く */
+async function replaceCLines(app: EditorApp, lines: string[]): Promise<void> {
+  await replaceCode(app, `${lines.join('\n')}\n`);
+}
+
+test('c: @nightly fgets と scanf が Enter・バックスペース・空行・日本語・貼り付けを含む行を読み、記録と一致する (#707)', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('c');
+  await replaceCLines(app, [
+    '#include <stdio.h>',
+    '#include <string.h>',
+    'int main(void) {',
+    '    char s[64];',
+    '    for (int i = 0; i < 3; i++) {',
+    '        if (!fgets(s, sizeof s, stdin)) return 2;',
+    '        size_t n = strlen(s);',
+    '        int nl = n > 0 && s[n - 1] == 10;',
+    '        if (nl) s[n - 1] = 0;',
+    '        printf("line%d=[%s] len=%zu nl=%d\\n", i, s, n, nl);',
+    '    }',
+    '    int a, b;',
+    '    if (scanf("%d %d", &a, &b) != 2) return 3;',
+    '    printf("sum=%d\\n", a + b);',
+    '    return 0;',
+    '}',
+  ]);
+
+  const run = await startRun(page);
+  await waitStdinOpen(page);
+  await page.locator(TERMINAL).click();
+  // 12 → Backspace → 3 → Enter は "13\n" (Enter は LF。#707 の再現)
+  await page.keyboard.type('12');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type('3');
+  await page.keyboard.press('Enter');
+  // 打った行はエコーされ (編集後の "13")、プログラムの出力と並ぶ
+  await expect.poll(() => terminalLines(page)).toEqual(expect.arrayContaining(['13', 'line0=[13] len=3 nl=1']));
+  // 空行
+  await page.keyboard.press('Enter');
+  await expect.poll(() => terminalLines(page)).toEqual(expect.arrayContaining(['line1=[] len=1 nl=1']));
+  // 日本語のバックスペースは 1 文字 (UTF-8 の 3 バイト) を消す
+  await page.keyboard.type('日本語');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => terminalLines(page)).toEqual(expect.arrayContaining(['line2=[日本] len=7 nl=1']));
+  // 貼り付けの塊 (改行込み) を scanf が読む
+  await pasteIntoTerminal(page, '3 5\r');
+
+  const outcome = await waitOutcome(page, run, 60_000);
+  expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
+  // 見えている行 (ターミナルの高さの分) に、後半のエコーと結果が並ぶ
+  await expect.poll(() => terminalLines(page)).toEqual(expect.arrayContaining(['日本', '3 5', 'sum=8']));
+
+  // 記録 (terminalInput) はプログラムが受け取った行と同じ。空行は記録しない (#648)
+  await app.waitForSynced();
+  const zipPath = await app.exportAllTabs();
+  expect(terminalInputLines(await readProofEvents(zipPath))).toEqual(['13', '日本', '3 5']);
+  const result = runVerifyCli(zipPath, ['--mode', 'fast']);
+  expect(result.passed, result.stdout + result.stderr).toBe(true);
+});
+
+test('c: @nightly Enter は LF で届き、空の行の Ctrl+D で getchar が EOF を返して feof が真になる (#707)', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('c');
+  await replaceCLines(app, [
+    '#include <stdio.h>',
+    'int main(void) {',
+    '    int a = getchar();',
+    '    int b = getchar();',
+    '    printf("a=%d b=%d eof=%d\\n", a, b, feof(stdin) != 0);',
+    '    return 0;',
+    '}',
+  ]);
+
+  const run = await startRun(page);
+  await waitStdinOpen(page);
+  await page.locator(TERMINAL).click();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Control+D');
+
+  const outcome = await waitOutcome(page, run, 60_000);
+  expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
+  await expect.poll(() => terminalLines(page)).toEqual(expect.arrayContaining(['a=10 b=-1 eof=1']));
+});
+
+test('c: @nightly 書きかけの行の Ctrl+D は行を確定するだけで、「入力終了」が残りの行を確定してから EOF を送る (#707)', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('c');
+  await replaceCLines(app, [
+    '#include <stdio.h>',
+    'int main(void) {',
+    '    int c, chars = 0, lines = 0;',
+    '    while ((c = getchar()) != EOF) {',
+    '        chars++;',
+    '        if (c == 10) printf("got-line %d\\n", ++lines);',
+    '    }',
+    '    printf("chars=%d lines=%d\\n", chars, lines);',
+    '    return 0;',
+    '}',
+  ]);
+
+  const run = await startRun(page);
+  await waitStdinOpen(page);
+  await page.locator(TERMINAL).click();
+  await page.keyboard.type('ab');
+  await page.keyboard.press('Control+D');
+  // 書きかけの "ab" は LF 付きで確定し、stdin は閉じない (ループは続く)
+  await expect.poll(() => terminalLines(page)).toEqual(expect.arrayContaining(['got-line 1']));
+  await expect(page.locator(TERMINAL)).toHaveAttribute('data-stdin-state', 'open');
+  await expect(page.locator(TERMINAL)).toHaveAttribute('data-exec-state', 'running');
+
+  await page.keyboard.type('cd');
+  await page.locator('#stdin-eof-btn').click();
+
+  const outcome = await waitOutcome(page, run, 60_000);
+  expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
+  await expect.poll(() => terminalLines(page)).toEqual(expect.arrayContaining(['chars=6 lines=2']));
+});
+
+test('cpp: @nightly C++ のプログラムも C と同じ行の入力を読み、空の行の Ctrl+D で EOF になる (#707)', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('cpp');
+  // stdin の経路 (CExecutor の pipe) を見る。<iostream> はこの環境のコンパイルが重いので <cstdio> にする
+  await replaceCLines(app, [
+    '#include <cstdio>',
+    '#include <cstring>',
+    'int main() {',
+    '    char s[32];',
+    '    if (!std::fgets(s, sizeof s, stdin)) return 2;',
+    '    s[std::strcspn(s, "\\n")] = 0;',
+    '    int n = 0, sum = 0;',
+    '    while (std::scanf("%d", &n) == 1) sum += n;',
+    '    std::printf("cpp=[%s] sum=%d eof=%d\\n", s, sum, std::feof(stdin) != 0);',
+    '    return 0;',
+    '}',
+  ]);
+
+  const run = await startRun(page);
+  await waitStdinOpen(page);
+  await page.locator(TERMINAL).click();
+  await page.keyboard.type('ab');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('3 4');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Control+D');
+
+  const outcome = await waitOutcome(page, run, FIRST_RUN_TIMEOUT_MS);
+  expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
+  await expect.poll(() => terminalLines(page)).toEqual(expect.arrayContaining(['cpp=[a] sum=7 eof=1']));
+});
+
+test('c: @nightly 選択があれば Ctrl+C はコピーして実行を続け、選択が無ければ入力待ちを止め、次の実行が成功する (#707)', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('c');
+  await replaceCLines(app, [
+    '#include <stdio.h>',
+    'int main(void) {',
+    '    char s[16];',
+    '    printf("wait-input\\n");',
+    '    if (fgets(s, sizeof s, stdin)) printf("never\\n");',
+    '    return 0;',
+    '}',
+  ]);
+
+  const stopped = await startRun(page);
+  await waitStdinOpen(page);
+  await expect.poll(() => terminalLines(page)).toEqual(expect.arrayContaining(['wait-input']));
+
+  // ターミナルの 1 行目 (実行の案内) をドラッグで選んで Ctrl+C: コピーになり、止めない
+  await page.evaluate(() => navigator.clipboard.writeText('clipboard-before'));
+  const firstRow = page.locator(`${TERMINAL} .xterm-rows > div`).first();
+  const box = await firstRow.boundingBox();
+  if (!box) throw new Error('terminal row is not visible');
+  await page.mouse.move(box.x + 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.press('Control+C');
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Compiling');
+  await expect(page.locator(TERMINAL)).toHaveAttribute('data-exec-state', 'running');
+
+  // 選択はコピーで外れるので、次の Ctrl+C は入力待ちを止める
+  await page.keyboard.press('Control+C');
+  expect(await waitOutcome(page, stopped, 15_000)).toBe('aborted');
+
+  await replaceCLines(app, [
+    '#include <stdio.h>',
+    'int main(void) {',
+    '    printf("after-stop-%d\\n", 6 * 7);',
+    '    return 0;',
+    '}',
+  ]);
   const outcome = await runAndWait(page, FIRST_RUN_TIMEOUT_MS);
   expect(outcome, `terminal:\n${await terminalText(page)}`).toBe('success');
   await expect.poll(() => terminalText(page)).toContain('after-stop-42');

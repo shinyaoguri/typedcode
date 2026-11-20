@@ -54,6 +54,7 @@ export {
 export type {
   CheckpointPublicKey,
   CheckpointPublicKeyStatus,
+  CheckpointKeyEnvironment,
   RegistryKeyVerdict,
 } from './checkpointKeys/index.js';
 

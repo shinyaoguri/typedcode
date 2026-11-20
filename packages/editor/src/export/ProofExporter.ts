@@ -177,7 +177,7 @@ export class ProofExporter {
   /**
    * ScreenshotTrackerを設定
    */
-  setScreenshotTracker(tracker: ScreenshotTracker): void {
+  setScreenshotTracker(tracker: ScreenshotTracker | null): void {
     this.screenshotTracker = tracker;
   }
 

@@ -15,7 +15,8 @@
  *   append する (gitignore 済みなのでコミットされない。無ければ `npm install` / `npm run doctor` が
  *   `.example` から作る。#338)
  * - **本番運用鍵**: 公開鍵を packages/shared/src/checkpointKeys/registry.ts に
- *   append して PR レビュー、私的 JWK は `wrangler secret put` で本番に投入
+ *   append して PR レビュー、私的 JWK は `wrangler secret put` で本番に投入。registry には
+ *   `environment` ('production' か 'staging') を書き足す (#321。localKeys.ts には書かない)
  */
 
 import { webcrypto } from 'node:crypto';
@@ -43,7 +44,10 @@ async function main() {
   console.log('=== Public key entry ===');
   console.log('For LOCAL dev: append to packages/shared/src/checkpointKeys/localKeys.ts');
   console.log('  (gitignored. If missing, run `npm install` or `npm run doctor` to create it from the .example)');
-  console.log('For PRODUCTION: append to packages/shared/src/checkpointKeys/registry.ts and open a PR');
+  console.log('For PRODUCTION / STAGING: append to packages/shared/src/checkpointKeys/registry.ts and open a PR,');
+  console.log(
+    "  adding environment: 'production' or 'staging' (#321; the verifiers trust production keys only by default)"
+  );
   console.log('');
   console.log(
     JSON.stringify(

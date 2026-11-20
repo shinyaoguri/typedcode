@@ -184,7 +184,8 @@ function samePublicKeyParts(a: JsonWebKey, b: JsonWebKey): boolean {
  *
  * キャッシュは `keyId` と JWK 文字列の**両方**が一致するときだけ再利用する。ローテは必ず keyId の
  * 変更を伴う (同一 keyId の JWK 差し替えはガードで 500)。
- * (#321 で「自環境の鍵だけを許す」条件を足すときはこのガードの中に追加する。)
+ * 鍵の環境 (#321) はここでは見ない。token の鍵と署名鍵の環境の一致は `handleSignCheckpoint` が token の検証の
+ * 直後 (KV read より前) に確かめる。Worker の `ENVIRONMENT` と署名鍵の環境の一致は確かめていない。
  *
  * エラーの `code` は `SIGNING_KEY_NOT_CONFIGURED` / `SIGNING_KEY_UNKNOWN` / `SIGNING_KEY_INVALID` /
  * `SIGNING_KEY_MISMATCH`。JWK の parse / import 失敗は code なしで throw する (呼び出し側で SIGNING_ERROR)。
@@ -239,6 +240,13 @@ export async function getSigningKey(
   const key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
   cachedPrivateKey = { keyId, jwkText, key };
   return cachedPrivateKey;
+}
+
+/**
+ * token の鍵と署名鍵が同じ環境か (#321)。どちらかの環境が無い (型を通らない registry) ときは一致としない。
+ */
+function isSameKeyEnvironment(tokenEnvironment: unknown, signingEnvironment: unknown): boolean {
+  return typeof tokenEnvironment === 'string' && tokenEnvironment === signingEnvironment;
 }
 
 /**
@@ -311,6 +319,24 @@ export async function handleSignCheckpoint(
   if (!tokenResult.valid) {
     // 検証失敗の内部理由 (registry の keyId 等) は返さず固定文言。詳細はサーバログのみ。
     console.warn('[checkpoint] session token rejected:', tokenResult.reason);
+    return jsonResponse(
+      { error: 'Session start token is invalid', code: 'TOKEN_INVALID' } satisfies ErrorBody,
+      401,
+      responder.cors()
+    );
+  }
+  // #321: 自分の署名鍵と同じ環境の鍵で発行された token だけを受け入れる。registry には production と staging の
+  // 鍵が並ぶので、環境を見ないと本番の Worker が staging の Worker の発行した token で署名してしまう。
+  // 署名鍵が registry に無い (未設定・未登録) ときはここでは判定しない: その後の getSigningKey が 500 で止め、
+  // 署名は出ない。環境の無い registry のエントリは一致とみなさない (fail-closed)。
+  const signingEntry = env.CHECKPOINT_SIGNING_KEY_ID
+    ? findCheckpointPublicKey(env.CHECKPOINT_SIGNING_KEY_ID, keyRegistry)
+    : undefined;
+  if (signingEntry && !isSameKeyEnvironment(tokenResult.environment, signingEntry.environment)) {
+    // クライアントには固定文言 (内部の環境名・keyId はサーバログのみ。上の TOKEN_INVALID と同じ方針)。
+    console.warn(
+      `[checkpoint] session token rejected: token key environment ${String(tokenResult.environment)} does not match signing key environment ${String(signingEntry.environment)}`
+    );
     return jsonResponse(
       { error: 'Session start token is invalid', code: 'TOKEN_INVALID' } satisfies ErrorBody,
       401,
