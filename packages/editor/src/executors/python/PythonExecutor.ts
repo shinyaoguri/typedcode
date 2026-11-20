@@ -4,7 +4,6 @@
  * Executes Python code in the browser using Pyodide (CPython compiled to WebAssembly).
  * Supports automatic package installation via micropip.
  *
-<<<<<<< HEAD
  * Pyodide は opaque origin の sandbox iframe の中の Worker (runner。PythonRunner.ts /
  * pythonRunnerDocument.ts) で動かす (#649 / #719)。実行コードから editor の IndexedDB (proof)・
  * localStorage・DOM に届かない。runner が cross-origin isolated でなければ実行しない (fail closed)。
@@ -14,15 +13,6 @@
  *   書き、Worker は `Atomics.wait` で待つ。EOF (空の行の Ctrl+D・「入力終了」) は `stdin-eof` で渡す
  *   (#707。`input()` は EOFError になる)
  * - 停止とタイムアウト: runner を `terminate()` (iframe ごと除去) して捨てる。次の実行で初期化し直す
-=======
- * Pyodide は専用の module Worker (`pythonWorker.ts`) で動かす (#649)。メインスレッドはここで
- * Worker を作り、メッセージを中継するだけ。
- * - stdin: ターミナル (`CTerminal`) が line discipline (stdinLineDiscipline.ts) で行にした入力を、
- *   SharedArrayBuffer のチャネル (stdinChannel.ts) で渡す。Worker は `Atomics.wait` で待つ
- *   (editor は cross-origin isolated なので SharedArrayBuffer を使える)。EOF (空の行の Ctrl+D・「入力終了」)
- *   はチャネルを閉じて渡す (#707。`input()` は EOFError になる)
- * - 停止とタイムアウト: Worker を `terminate()` して捨てる。次の実行で初期化し直す
->>>>>>> origin/main
  *   (`CodeExecutionController` の `!executor.isInitialized` の分岐)
  * - タイムアウトは入力を待っている間を数えない (pausableDeadline.ts)
  * - 出力の予算 (stdout + stderr の文字数。JS / TS の sandbox と同じ `OUTPUT_BUDGET_CHARS`) を超えたら、
@@ -49,27 +39,7 @@ import {
   isPythonRunMessage,
   type PythonExecMessage,
   type PythonRunMessage,
-<<<<<<< HEAD
 } from './pythonRunnerProtocol.js';
-=======
-  type PythonWorkerRequest,
-} from './pythonWorkerProtocol.js';
-import { StdinChannelWriter, createStdinBuffer } from './stdinChannel.js';
-
-/** Worker の使う分だけの形 (テストでは偽物に差し替える) */
-export interface PythonWorkerHandle {
-  postMessage(message: PythonWorkerRequest): void;
-  terminate(): void;
-  onmessage: ((event: MessageEvent) => void) | null;
-  onerror: ((event: Event) => void) | null;
-}
-
-function createPythonWorker(): PythonWorkerHandle {
-  return new Worker(new URL('./pythonWorker.ts', import.meta.url), {
-    type: 'module',
-  }) as unknown as PythonWorkerHandle;
-}
->>>>>>> origin/main
 
 // Python standard library modules (to exclude from micropip install)
 const PYTHON_STDLIB_MODULES = new Set([
@@ -375,12 +345,7 @@ export class PythonExecutor extends BaseExecutor {
 
     this.resetAbort();
     const runId = ++this.runSeq;
-<<<<<<< HEAD
     const budget = this.outputBudgetChars();
-=======
-    const stdinBuffer = createStdinBuffer();
-    const channel = new StdinChannelWriter(stdinBuffer);
->>>>>>> origin/main
 
     return new Promise<ExecutionResult>((resolve) => {
       let stdout = '';
@@ -497,7 +462,6 @@ export class PythonExecutor extends BaseExecutor {
         },
       };
 
-<<<<<<< HEAD
       worker.postMessage({
         type: 'run',
         runId,
@@ -505,29 +469,6 @@ export class PythonExecutor extends BaseExecutor {
         packages: findRequiredPackages(code),
         outputBudgetChars: budget,
       });
-=======
-      if (options.stdin !== undefined) {
-        // 非対話の実行 (#802): 全体を先に積んで閉じる (渡し切った後の読み込みは EOF)。
-        // ターミナルにはつながず、エコーもしない (line discipline を通さない)
-        channel.push(options.stdin);
-        channel.close();
-      } else {
-        // ターミナルの入力は C と同じ connectStdin の経路で受ける (#707)。エコーと行の編集はターミナルの
-        // line discipline がしていて、ここには確定した行と EOF (空の行の Ctrl+D・「入力終了」) だけが来る
-        callbacks.onStdinReady?.({
-          writeLine: (line) => {
-            if (settled) return;
-            channel.push(line);
-            deliverInput();
-          },
-          close: () => {
-            if (settled) return;
-            channel.close();
-            deliverInput();
-          },
-        });
-      }
->>>>>>> origin/main
 
       if (options.stdin !== undefined) {
         // 非対話の実行 (#802): 全体を先に送って閉じる (渡し切った後の読み込みは EOF)。
