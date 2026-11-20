@@ -1528,9 +1528,7 @@ async function initializeApp(): Promise<void> {
     },
   });
 
-  ctx.runtime.initializeCRuntime().catch(() => {
-    // Background initialization failed, but continue
-  });
+  // C / C++ の実行系 (Wasmer + clang) は起動時に取らない。最初の C / C++ の実行で初期化する (#617)
 
   if (isTurnstileConfigured()) {
     preloadTurnstile().catch(() => {

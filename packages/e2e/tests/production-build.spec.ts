@@ -149,6 +149,37 @@ test('production build: / を開くと練習のエディタが直接開き、Mon
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
 
+/**
+ * C / C++ の実行系 (#617) の取得。CExecutor / CppExecutor のチャンク (Wasmer の SDK を含む)、Wasmer の glue・worker・wasm、
+ * clang の webc。最初の C / C++ の実行まで、どれも取りに行かない
+ */
+const C_RUNTIME_ASSETS = [/CExecutor/, /CppExecutor/, /wasmer/i, /browser-worker/, /\.webc(\?|$)/];
+
+test('production build: JS だけの起動と編集では C / C++ の実行系 (Wasmer・clang) を取りに行かない (#617)', async ({
+  page,
+}) => {
+  // 照合の名前が配信物から消えたら (チャンク名の変更)、この検査は何も見なくなるので先に落とす
+  const assets = readdirSync(join(EDITOR_DIST, 'assets'));
+  expect(assets.filter((name) => /^CExecutor-.*\.js$/.test(name))).toHaveLength(1);
+  expect(assets.filter((name) => /^wasmer_sdk_js_bg-.*\.wasm$/.test(name))).toHaveLength(1);
+
+  // 万一取りに行っても外部へは出さない (要求そのものは記録に残る)
+  await page.route('https://assets.typedcode.dev/**', (route) => route.abort('blockedbyclient'));
+  const requested: string[] = [];
+  page.on('request', (req) => requested.push(req.url()));
+
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('javascript');
+  await app.focusEditor();
+  await page.keyboard.type('console.log(6 * 7);');
+  await expect.poll(() => app.eventCount(), { timeout: 30_000 }).toBeGreaterThan(1);
+  await page.waitForLoadState('networkidle');
+
+  const leaked = requested.filter((url) => C_RUNTIME_ASSETS.some((re) => re.test(new URL(url).pathname)));
+  expect(leaked, `JS だけの利用で取得した URL:\n${requested.join('\n')}`).toEqual([]);
+});
+
 test('production build: /author に教材フォルダの dev 限定フックが残っていない', async ({ page }) => {
   // dev フック `__tcTestAuthorWorkspace` (authorMain.ts の `import.meta.env.DEV` ガード内の dynamic import。#795) は
   // 任意のハンドルを教材フォルダとして覚えさせられるので、本番に残してはいけない。preview は clean URL を
@@ -277,6 +308,8 @@ test('production build: JS の実行が sandbox (iframe 内の Worker) で動き
  * (code-execution-c-python.spec.ts) では検出できないので、ここで本番ビルドの C の hello を実行する。
  * clang の webc (約 100 MB) を外部 (assets.typedcode.dev) から取るので PR ゲートには載せず `@nightly` にする
  * (playwright.build.config.ts の grepInvert。NIGHTLY=1 で含まれる)。
+ * clang の webc は最初の実行まで取らず、2 回目の実行では取り直さないことも見る (#617。dynamic import にした
+ * CExecutor のチャンクから Wasmer の worker が本番ビルドで起動できることの確認を兼ねる)。
  */
 test('production build: @nightly C の hello が Wasmer の clang でコンパイルされて実行され、success で終わる', async ({
   page,
@@ -284,6 +317,10 @@ test('production build: @nightly C の hello が Wasmer の clang でコンパ�
   test.setTimeout(360_000);
   const pageErrors: string[] = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));
+  const clangFetches: string[] = [];
+  page.on('request', (req) => {
+    if (/\.webc(\?|$)/.test(req.url())) clangFetches.push(req.url());
+  });
 
   const app = new EditorApp(page);
   await app.openCasualFresh();
@@ -294,6 +331,8 @@ test('production build: @nightly C の hello が Wasmer の clang でコンパ�
   // dev フック (`__tcTestInsertBlock`) は dist に無いので打鍵で入れる。改行の自動インデントを通らないよう 1 行にし、
   // 計算した値を出す (コードの文字列がそのまま出ているのではなく、実行された証拠にする)
   await page.keyboard.type('int printf(const char *, ...);int main(void){printf("hello-c-%d\\n", 6 * 7);return 0;}');
+  // C の実行系は最初の実行まで取らない (#617)
+  expect(clangFetches).toEqual([]);
 
   const terminal = page.locator('#xterm-container');
   await page.locator('#run-code-btn').click();
@@ -302,6 +341,13 @@ test('production build: @nightly C の hello が Wasmer の clang でコンパ�
   await expect(terminal).toHaveAttribute('data-exec-state', 'idle', { timeout: 240_000 });
   await expect(terminal).toHaveAttribute('data-exec-outcome', 'success');
   await expect(terminal.locator('.xterm-rows')).toContainText('hello-c-42');
+
+  // 2 回目の実行は取り直さない (#617)
+  await page.locator('#run-code-btn').click();
+  await expect(terminal).toHaveAttribute('data-exec-run', '2');
+  await expect(terminal).toHaveAttribute('data-exec-state', 'idle', { timeout: 60_000 });
+  await expect(terminal).toHaveAttribute('data-exec-outcome', 'success');
+  expect(clangFetches).toHaveLength(1);
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
 
