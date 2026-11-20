@@ -57,6 +57,9 @@ npm run lint:workflows  # .github/workflows を actionlint + shellcheck で検�
 npm run lint:changelog  # changelog.d/ の断片の名前と本文を検査 (= node scripts/release.mjs lint。書き方は changelog.d/README.md)
 node scripts/release.mjs notes  # 前回の v* タグ以降に追加された changelog.d/ の断片 (と断片の無い fix / feat の件名) から Release ノートを組む (stdout)
 node scripts/release.mjs beta   # 次の beta 版と打つコミットを決める (tag= / sha= を stdout。見送りは exit 3。Deploy の run を gh api で読むので GITHUB_REPOSITORY が要る)
+node scripts/release.mjs promote --beta <beta タグ>      # beta を正式版へ昇格するときの版・コミット・前回の正式版 (tag= / sha= / since=。拒否は exit 2)
+node scripts/release.mjs patch --branch release/A.B      # release/A.B の先端に打つ patch の版 (tag= / sha=。拒否は exit 2)
+node scripts/release.mjs verify-tag <tag>                # production へ出すタグの位置の検証 (deploy-production が呼ぶ。拒否は exit 1)
 node scripts/check-deps.mjs  # packages/*/README.md の依存表 (名前と用途だけ。版は書かない) と package.json を名前で突合 (#269)
 
 # ユニットテスト (カバレッジ付き。test:coverage を持つ全パッケージ。CI の test job も同じコマンド)
@@ -78,7 +81,7 @@ npm run check:fast  # 上から e2e と test:build を除いたもの (build・t
 
 ## 開発フロー
 
-- ブランチ運用は**タグ式 GitHub Flow** (main 1 本 + `v*` タグ。beta 版 `vYYYY.M.0-beta.N` は日次で自動、production へ出るのは `-` を含まないタグ)。手順は [CONTRIBUTING.md](CONTRIBUTING.md)、根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md) と [ADR-0055](docs/adr/0055-release-channels-and-calendar-versioning.md)
+- ブランチ運用は**タグ式 GitHub Flow** (main 1 本 + `v*` タグ。beta 版 `vYYYY.M.0-beta.N` は日次で自動、production へ出るのは beta を昇格した正式版 `vYYYY.M.0` と、`release/A.B` から出す patch `vA.B.P` だけ。`release/*` は学期中の緊急修正のときだけ正式版のタグから切る)。手順は [CONTRIBUTING.md](CONTRIBUTING.md)、根拠は [ADR-0028](docs/adr/0028-tag-based-github-flow.md) と [ADR-0055](docs/adr/0055-release-channels-and-calendar-versioning.md)
 - **利用者に見える変更は `changelog.d/` に断片を 1 つ足す** (リリースのノートの材料。書き方は [changelog.d/README.md](changelog.d/README.md))
 - **作業は git worktree で行う** (メインのチェックアウトのブランチを切り替えない)
 - **マージしたら、メインのチェックアウトから `git sweep` を実行して** worktree とローカルブランチを掃除する (使用中・dirty な worktree は自動スキップ。[ADR-0029](docs/adr/0029-merge-cleanup-script.md))
@@ -97,7 +100,7 @@ Issue の起票から PR の close までの規律はこの節で完結する。
 3. 着手時に、Issue 本文と全コメントを読み、各受け入れ条件を現行コードと突き合わせて「まだ有効 / 既に満たされている / 差し替えが要る」をプランに書く。事実のずれ (行番号・綴り・数) は先に本文を直す。条件を緩める・絞る・差し替えるときは、本文は直さず根拠をコメントして人の判断を待つ
 4. プラン (変更点・確認方法) を Issue にコメントする。PR を出した後に変わったら、差分を PR にコメントする
 5. PR 本文の「Test plan」に、閉じる Issue ごとに受け入れ条件と確かめ方の対応表を置く (形は [PR テンプレート](.github/pull_request_template.md))。`Closes #N` は PR 本文に書く
-6. **PR は必ず Issue を閉じる**。閉じる Issue が無い PR は CI の `require-issue` が落とす。見るのは本文の文字列ではなく、GitHub が実際に作った紐づけ (`Closes #N` が効いているか) なので、コードスパン・引用の中に書いた `Closes` は数えない。段階に分けて進める作業は、親を `Refs` で開いたままにせず、段階ごとに sub-issue を切ってそれを閉じる。受け入れ条件を持たない PR (依存の手動更新など) だけ、ラベル `no-issue` を付けて通す ([ADR-0038](docs/adr/0038-every-pr-closes-an-issue.md))
+6. **PR は必ず Issue を閉じる**。閉じる Issue が無い PR は CI の `require-issue` が落とす。見るのは本文の文字列ではなく、GitHub が実際に作った紐づけ (`Closes #N` が効いているか) なので、コードスパン・引用の中に書いた `Closes` は数えない。段階に分けて進める作業は、親を `Refs` で開いたままにせず、段階ごとに sub-issue を切ってそれを閉じる。受け入れ条件を持たない PR (依存の手動更新など) だけ、ラベル `no-issue` を付けて通す ([ADR-0038](docs/adr/0038-every-pr-closes-an-issue.md))。`release/A.B` 宛ての backport の PR も、`Closes #N` が既定ブランチ宛ての PR にしか効かないので、本文に元の fix の PR を書いて `no-issue` で通す (Issue は元の PR が閉じる。手順は CONTRIBUTING.md「本番緊急修正」)
 
 移行: ゲートを入れた時点 (#377) で既に `status: in progress` の Issue は、印が無くても続けてよい。
 

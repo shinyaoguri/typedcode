@@ -205,7 +205,7 @@ Durable Objects 化 (ADR-0027 Option C) は `firstSeenAt` の分裂 (#151) の�
 |---|---|---|---|
 | dev (ローカル) | `wrangler.toml` (skip-worktree) | `npm run dev` | (local) |
 | staging | `wrangler.staging.toml` | **main push → CI 自動** | `typedcode-api-staging` |
-| production | `wrangler.production.toml` | **v* タグ push → CI 承認待ち** | `typedcode-api` |
+| production | `wrangler.production.toml` | **正式版の昇格・patch → タグの ref の workflow_dispatch → CI 承認待ち** | `typedcode-api` |
 
 - staging / production の wrangler config は KV ID も含めて HEAD に直接 commit されている (KV namespace ID は CF API token なしではアクセス不能なので実質的にシークレットではない)
 - ローカル `wrangler.toml` は各開発者の dev KV ID を保持 (skip-worktree のため commit されない)
@@ -281,8 +281,8 @@ main ブランチ push
 [CI] test → deploy-staging (auto)
    ↓
 post-deploy 検査 (ヘッダ・署名鍵・CORS) → staging のブラウザ E2E
-   ↓ gh release create vX.Y.Z (タグ push)
-[CI] test → deploy-production (承認待ち)
+   ↓ release.yml の promote (beta → 正式版) か patch (release/A.B)。タグを打ち、タグの ref で deploy.yml を起こす
+[CI] test → deploy-production (タグの位置の検証 → 承認待ち)
    ↓ Actions タブで Approve
 本番デプロイ実行 (Workers → Pages の順。不変条件 10)
 ```

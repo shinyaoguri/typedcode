@@ -1,11 +1,16 @@
 name: Deploy
 
 on:
+  # release/** は学期中の patch のブランチ (ADR-0055 の決定 6)。push と PR で test / check / e2e を走らせるが、
+  # staging へは出さない (deploy-staging は main の push だけ)
   push:
-    branches: [main]
-    tags: ['v*']
+    branches: [main, 'release/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'release/**']
+  # production へ出る唯一の入口。release.yml の promote / patch がタグの ref を指定して起こす
+  # (`gh workflow run deploy.yml --ref <tag>`)。指定した ref にある定義で走るので、配信の定義はタグのコミットのもの
+  # になる (release/* は自分のコードに合う定義を持つ。#844)。タグの push では走らない
+  workflow_dispatch:
 
 # デフォルトは read-only。デプロイ等が必要な job は各 job の permissions で個別に昇格する
 # (deploy-staging / deploy-production)。リポジトリ設定は既に default_workflow_permissions: read だが、
@@ -13,8 +18,9 @@ on:
 permissions:
   contents: read
 
-# ref ごとに 1 run。PR は新しい push で古い run をキャンセル (CI 節約)。
-# push (= deploy) は cancel-in-progress が false なので、実行中の run は途中でキャンセルしない。
+# ref ごとに 1 run (タグの ref の workflow_dispatch はタグごと、release/* の push はブランチごと)。
+# PR は新しい push で古い run をキャンセル (CI 節約)。
+# push と workflow_dispatch (= deploy) は cancel-in-progress が false なので、実行中の run は途中でキャンセルしない。
 # 同じグループで待機中の古い run は、新しい run が来るとキャンセルされ最新だけが残る
 # (キューに積まれて全部走るわけではない)。最新 run が最後に走るので
 # 「古い deploy が後から完了して新しい成果物を上書きする」競合を防ぐ。
@@ -23,23 +29,27 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# 構成 (タグ式 GitHub Flow, ADR-0028):
+# 構成 (タグ式 GitHub Flow, ADR-0028 / ADR-0055):
 #   test                   — どのトリガでも必ず走る (test:coverage を持つ全 workspace のユニットテスト + カバレッジの床)
 #   check                  — どのトリガでも必ず走る (全 package typecheck/build + Worker config dry-run)
-#   build-preview          — feature → main PR で Pages プレビューを build して artifact に上げる
+#   build-preview          — main / release/** 宛ての PR で Pages プレビューを build して artifact に上げる
 #                            (secrets を持たない。プレビュー URL の発行は deploy-preview.yml。#582)
 #   deploy-staging         — main push で Workers staging + Pages staging (--branch=staging) を更新
 #   e2e-staging            — deploy-staging の後に、その deploy の Pages の URL をブラウザで round-trip する
 #                            (packages/e2e の test:deployed。secrets を持たない。production には無い。#655)
-#   nightly-gate           — `-` を含まない v* タグ (正式版と patch) の push で main の最新の完了 nightly が
-#                            success か確認 (#593)。beta 形のタグ (`-beta.N`) では走らない (ADR-0055)
-#   deploy-production      — `-` を含まない v* タグ (正式版と patch) の push で Workers production + Pages production を更新
+#   nightly-gate           — `-` を含まない v* タグ (正式版と patch) の ref の workflow_dispatch で、main の最新の
+#                            完了 nightly が success か確認 (#593)。beta 形のタグ (`-beta.N`) では走らない (ADR-0055)
+#   deploy-production      — `-` を含まない v* タグ (正式版と patch) の ref の workflow_dispatch で
+#                            Workers production + Pages production を更新
 #                            (GitHub Environment "production" の Required reviewers で承認待ち)
 #
 # 設計判断:
-#   - 本番は手動承認ゲート前提。main = staging で動作確認 → v* タグ (gh release create) → 承認 → 本番。
-#   - タグ push でも test/check/e2e を再実行する (リリースゲート)。タグは CI 未通過の
-#     コミットにも打ててしまうため、タグ時の再検証が唯一の強制ゲートになる。
+#   - 本番は手動承認ゲート前提。main = staging で動作確認 → beta タグ (日次) → 昇格 (正式版) か
+#     release/A.B からの patch (release.yml がタグを打ち、タグの ref でこのワークフローを起こす) → 承認 → 本番。
+#   - タグの ref の workflow_dispatch でも test/check/e2e を再実行する (リリースゲート)。タグは CI 未通過の
+#     コミットにも打ててしまうため、タグの ref での再検証が唯一の強制ゲートになる。
+#   - タグの位置 (.0 は main の祖先、patch は release/A.B の祖先で vA.B.0 の子孫) は deploy-production が
+#     scripts/release.mjs verify-tag で検証する。
 #   - Pages の Cloudflare バンドルは VITE_API_URL が baked-in なので、
 #     ターゲットごとに build を回す (staging build と production build が別物)。
 
@@ -566,7 +576,7 @@ jobs:
   # beta 形のタグ (`vYYYY.M.0-beta.N`。`-` を含む) は production へ出さないので走らせない
   # (ADR-0055 の決定 4。scripts/release.test.mjs がこの条件を固定する)。
   nightly-gate:
-    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push' && !contains(github.ref_name, '-')
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -587,14 +597,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   # --------------------------------------------------------------------
-  # v* タグ push: production 環境 (Workers + Pages) を更新
-  # リリース = `gh release create vX.Y.Z` によるタグ作成 (CONTRIBUTING.md 参照)。
+  # v* タグの ref の workflow_dispatch: production 環境 (Workers + Pages) を更新
+  # 起こすのは release.yml の promote (正式版) と patch (release/A.B)。手で起こし直すなら
+  # `gh workflow run deploy.yml --ref <tag>` (CONTRIBUTING.md「リリース」)。
   # GitHub Environment "production" の Required reviewers で承認待ち。
   # --------------------------------------------------------------------
   deploy-production:
     needs: [test, check, e2e, nightly-gate]
-    # 正式版と patch (`-` を含まない v* タグ) だけ。beta 形のタグでは production へ配信しない (ADR-0055 の決定 4)
-    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push' && !contains(github.ref_name, '-')
+    # 正式版と patch (`-` を含まない v* タグ) の ref の workflow_dispatch だけ。beta 形のタグでは production へ
+    # 配信しない (ADR-0055 の決定 4)。タグの push では起きない (#844)
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
     runs-on: ubuntu-latest
     # 注: Environment "production" の承認待ち時間は timeout-minutes に含まれない
     # (job 開始 = 承認後)。実行時間のみの上限。
@@ -610,20 +622,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: true
-          # ancestor ガード (下) が main との祖先関係を辿るため全履歴を取得する
+          # タグの位置の検証 (下) が main / release/* との祖先関係とタグを辿るため全履歴とタグを取得する
           fetch-depth: 0
-
-      # タグは任意のコミットに打てるため、main の履歴上のコミットであることを検証する。
-      # main に載っていないコミットへのタグでは本番デプロイを拒否する。
-      - name: Verify tag commit is on main
-        run: |
-          git fetch origin main
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: 'npm'
+
+      # タグは任意のコミットに打てるため、位置を検証する (npm ci より前。release.mjs は標準ライブラリだけ)。
+      # 正式版 (vA.B.0) は main の祖先、patch (vA.B.P) は release/A.B の祖先で vA.B.0 の子孫であること
+      # (ADR-0055 の決定 6)。外れたタグ・参照が解決できないときは本番デプロイを拒否する。
+      - name: Verify tag placement (main / release/A.B)
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch origin main '+refs/heads/release/*:refs/remotes/origin/release/*'
+          node scripts/release.mjs verify-tag "$TAG"
 
       - name: Install dependencies
         run: npm ci --include=optional
