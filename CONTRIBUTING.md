@@ -294,6 +294,7 @@ gh workflow run release.yml -f action=patch -f branch=release/A.B
 - patch のタグは `release/A.B` の先端に打たれる。版は `vA.B.<既存の最大 + 1>`。先端に新しいコミットが無い (既に `vA.B.*` が付いている)・`vA.B.0` が無い・先端が `vA.B.0` の子孫でない、のどれかなら拒否される。手元の下見は `node scripts/release.mjs patch --branch release/A.B`
 - 配信の定義は patch のタグのコミット (= `release/A.B`) にある `deploy.yml` になる。main の構成が変わった後も、`release/A.B` は自分のコードに合う定義で出せる
 - 本番緊急修正も `nightly-gate` を通す。赤なら上の「リリース」の復旧手順で nightly を緑にしてから失敗 job を再実行する
+- **patch の配信は、起こしてから production の承認待ちになるまでに 20 分ほどかかる** (タグの ref で test / check / e2e を再実行するため。`v1.5.0` の通しでは約 19 分だった。#844)。本番が壊れていて待てないときは、先に上の「[本番を戻す](#本番を戻す-ロールバック)」で直前のデプロイへ戻し、その後に patch で前へ進める
 - 初回の正式版 (`v2027.2.0`) までの production は `v1.5.x` で、その間の緊急修正は `release/1.5` から出す
 
 ## ADR を積み重ねる stacked PR
