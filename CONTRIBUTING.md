@@ -101,6 +101,31 @@ npm run mutate -w @typedcode/shared -- --mutate 'src/verification.ts:100-150,src
 - 同値変異は常に残る (対象の件数や内訳は実行のたびに端末で見る)。読み方は「survived のうち、そのファイルの判定が変わるのに緑のもの」だけ拾う。殺すテストを足したら、ADR-0037 のとおり、足したテストが壊して赤くなることも確かめる
 - 対象ファイルを増やす・減らすときは `packages/shared/stryker.config.json` の `mutate` を直す (docs には書き写さない)
 
+## 個別のコマンド
+
+毎回使うコマンド (install・dev・build・lint・test・check) は [AGENTS.md](AGENTS.md) の「ビルド・開発コマンド」にあります。ここには、使う場面の決まっているものを置きます。
+
+```bash
+# 検査の内訳 (どれも npm run check に含まれる)
+npm run lint:docs   # docs/ とルートの *.md に [[...]] 形式のローカル記憶参照が残っていないか (#343)
+npm run lint:changelog  # changelog.d/ の断片の名前と本文を検査 (= node scripts/release.mjs lint。書き方は changelog.d/README.md)
+node scripts/check-deps.mjs  # packages/*/README.md の依存表 (名前と用途だけ。版は書かない) と package.json を名前で突合 (#269)
+
+# 検査ではないもの (check にも CI にも含めない)
+npm run mutate -w @typedcode/shared         # 変異検査 (StrykerJS)。shared の検証系を変えたら変更行に回す。`check` / `check:fast` には含めない・CI にも載せない (数分かかる)。範囲の絞り方は CONTRIBUTING.md「変異検査」、根拠は ADR-0040
+npm run coverage:ratchet                    # 各 vitest.config.ts の床を実測まで引き上げる。機能 PR では回さない (床は定期ジョブの知らせを受けた専用の PR で上げる。ADR-0039)
+npm run shots -w @typedcode/e2e             # 見た目・動きの証跡を packages/e2e/shots/ に撮る (検査ではない。ADR-0036)
+npm run bench:posw -w @typedcode/e2e        # 記録側 PoSW のスループットと backlog を 1 倍と CPU 4 倍相当で測る (検査ではない。ADR-0045)
+npm run bench:export -w @typedcode/e2e      # export の容量 (件数ごとの proof の JSON の大きさ・各段階の時間・メモリ) を測る (検査ではない。#628)
+
+# リリース (scripts/release.mjs。手順は下の「リリース」「本番緊急修正」)
+node scripts/release.mjs notes  # 前回の v* タグ以降に追加された changelog.d/ の断片 (と断片の無い fix / feat の件名) から Release ノートを組む (stdout)
+node scripts/release.mjs beta   # 次の beta 版と打つコミットを決める (tag= / sha= を stdout。見送りは exit 3。Deploy の run を gh api で読むので GITHUB_REPOSITORY が要る)
+node scripts/release.mjs promote --beta <beta タグ>      # beta を正式版へ昇格するときの版・コミット・前回の正式版 (tag= / sha= / since=。拒否は exit 2)
+node scripts/release.mjs patch --branch release/A.B      # release/A.B の先端に打つ patch の版 (tag= / sha=。拒否は exit 2)
+node scripts/release.mjs verify-tag <tag>                # production へ出すタグの位置の検証 (deploy-production が呼ぶ。拒否は exit 1)
+```
+
 ## 並行作業 (git worktree)
 
 作業はメインのチェックアウトでブランチを切り替えるのではなく、git worktree で並行作業します。リポジトリ直下は常に main のままにしておき、ブランチでの作業は worktree 側で行います。これにより、レビュー中に別タスクを並行で進めたり、main で動作確認しながらブランチを編集したりできます。Claude Code のセッションも同じ流儀で `.claude/worktrees/` 配下に worktree を作って動きます。
