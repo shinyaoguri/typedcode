@@ -21,7 +21,7 @@ packages/
 └── e2e/        # Playwright E2E (編集→export→verify-cli round-trip、CI deploy ゲート)
 ```
 
-サブシステムを触る場合は **必ず該当パッケージの `AGENTS.md`** を読むこと。各パッケージの責務 / 境界 / 不変条件 / 罠が記述されています。
+サブシステムを触る場合は **必ず該当パッケージの `AGENTS.md`** を読むこと。各パッケージの責務 / 境界 / 不変条件 / 罠が記述されています。詳細を `packages/<名>/docs/` に分けたパッケージでは、`AGENTS.md` の「触る前に読む」が指す文書も、当たる場面で読むこと。
 
 | パッケージ | AGENTS.md | 主な責務 |
 |---|---|---|
@@ -51,33 +51,23 @@ npm run build
 
 # Lint / Format (Biome, #157。CI の check job も同じコマンド)
 npm run lint        # biome ci . + lint:docs + lint:changelog (チェックのみ。CI の check job も同じコマンド)
-npm run lint:docs   # docs/ とルートの *.md に [[...]] 形式のローカル記憶参照が残っていないか (#343)
 npm run lint:fix    # biome check --write . (安全な自動修正 + format)
 npm run lint:workflows  # .github/workflows を actionlint + shellcheck で検査 (版と sha256 を固定して .cache/ に落とす。#351)
-npm run lint:changelog  # changelog.d/ の断片の名前と本文を検査 (= node scripts/release.mjs lint。書き方は changelog.d/README.md)
-node scripts/release.mjs notes  # 前回の v* タグ以降に追加された changelog.d/ の断片 (と断片の無い fix / feat の件名) から Release ノートを組む (stdout)
-node scripts/release.mjs beta   # 次の beta 版と打つコミットを決める (tag= / sha= を stdout。見送りは exit 3。Deploy の run を gh api で読むので GITHUB_REPOSITORY が要る)
-node scripts/release.mjs promote --beta <beta タグ>      # beta を正式版へ昇格するときの版・コミット・前回の正式版 (tag= / sha= / since=。拒否は exit 2)
-node scripts/release.mjs patch --branch release/A.B      # release/A.B の先端に打つ patch の版 (tag= / sha=。拒否は exit 2)
-node scripts/release.mjs verify-tag <tag>                # production へ出すタグの位置の検証 (deploy-production が呼ぶ。拒否は exit 1)
-node scripts/check-deps.mjs  # packages/*/README.md の依存表 (名前と用途だけ。版は書かない) と package.json を名前で突合 (#269)
 
 # ユニットテスト (カバレッジ付き。test:coverage を持つ全パッケージ。CI の test job も同じコマンド)
 npm run test:coverage                       # = npm run test:coverage --workspaces --if-present
 npm run test:run -w @typedcode/shared       # 個別実行 (カバレッジ無し。test:coverage も同様に -w で)
-npm run mutate -w @typedcode/shared         # 変異検査 (StrykerJS)。shared の検証系を変えたら変更行に回す。`check` / `check:fast` には含めない・CI にも載せない (数分かかる)。範囲の絞り方は CONTRIBUTING.md「変異検査」、根拠は ADR-0040
-npm run coverage:ratchet                    # 各 vitest.config.ts の床を実測まで引き上げる。機能 PR では回さない (床は定期ジョブの知らせを受けた専用の PR で上げる。ADR-0039)
 
 # E2E (Playwright。workers + editor の dev サーバを自動起動して round-trip 検証)
 npm run test -w @typedcode/e2e
 # 注: CI は「ユニット (test job) + e2e (e2e job)」を全 deploy のゲートにしている
-npm run shots -w @typedcode/e2e             # 見た目・動きの証跡を packages/e2e/shots/ に撮る (検査ではない。ADR-0036)
-npm run bench:posw -w @typedcode/e2e        # 記録側 PoSW のスループットと backlog を 1 倍と CPU 4 倍相当で測る (検査ではない。ADR-0045)
-npm run bench:export -w @typedcode/e2e      # export の容量 (件数ごとの proof の JSON の大きさ・各段階の時間・メモリ) を測る (検査ではない。#628)
 
 # 手元で CI と同じ検査を 1 コマンドで (完了の定義 = CONTRIBUTING.md / ADR-0034)
 npm run check       # typecheck → lint → lint:workflows → check-deps → test:coverage → scripts/*.test.mjs (PR ゲートのテスト) → build → test:dist (verify-cli) → Workers の --dry-run → e2e → test:build (本番ビルドの e2e)
 npm run check:fast  # 上から e2e と test:build を除いたもの (build・test:dist・dry-run は含む)
+
+# 検査の内訳 (lint:docs / lint:changelog / check-deps)・検査ではないもの (mutate / coverage:ratchet / shots / bench:*)・
+# リリースの下見 (scripts/release.mjs) は CONTRIBUTING.md「個別のコマンド」
 ```
 
 ## 開発フロー
@@ -153,6 +143,8 @@ Issue の起票から PR の close までの規律はこの節で完結する。
 ## ドキュメント階層
 
 仕様は [docs/system-spec.md](docs/system-spec.md) (定数・アルゴリズム・用語集)、判断の根拠は [docs/adr/](docs/adr/)、開発の進め方は [CONTRIBUTING.md](CONTRIBUTING.md)、変更履歴は [GitHub Releases](https://github.com/shinyaoguri/typedcode/releases) (材料は [`changelog.d/`](changelog.d/README.md) の断片。[CHANGELOG.md](CHANGELOG.md) は 1.4.0 までの記録) が真実の在処です。コードの触り方は本ファイルと `packages/*/AGENTS.md`、利用者視点の使い方は `packages/*/README.md` にあります。
+
+**`AGENTS.md` は小さく保つ** (#687): Codex は root から起動ディレクトリまでの `AGENTS.md` を結合し、既定では合計 32 KiB で読み込みを止める。`packages/*/AGENTS.md` に置くのは、責務と境界・不変条件・罠の見出し・読む入口まで。理由・経緯・手順・表・一覧は `packages/*/docs/` に書き、`AGENTS.md` には見出しを 1 行だけ足す。このファイルにも、毎回は要らない詳細を足さない (置き場は `CONTRIBUTING.md` か `docs/`)。
 
 ## 環境設定
 
