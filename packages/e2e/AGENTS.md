@@ -65,6 +65,7 @@ npm run test:headed -w @typedcode/e2e        # 失敗調査 (ブラウザ表示)
 - API の障害は 1 つずつ塞ぐ
 - `setOffline` は読込後にだけ使う
 - 長い composition は文字数ぶんのイベントになる (#783)
+- 打鍵 1 文字は約 5 件のイベントになり、処理の速さは負荷で大きく変わる (#892)
 - 打鍵した改行は `\r\n` になる
 - undo / redo は Ctrl 系で押す
 - `page.clock` の時刻表記は `hh:mm:ss`
