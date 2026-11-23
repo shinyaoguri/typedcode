@@ -187,33 +187,143 @@ export function panelOpen(page: Page, panelId: 'log-viewer' | 'problem-panel'): 
   return page.locator(`#${panelId}`).getAttribute('data-open');
 }
 
+/** 方針の 3 つの能力 (`.tcclass` の `policy`)。 */
+export type ClassPolicyValue = Record<keyof typeof CLASS_POLICIES.classroom, boolean>;
+
 /**
- * 授業 / 課題で「問題を読み込む」(`#load-problem-btn`) から `.tcclass` を取り込み、問題タブができて
- * エディタと記録が立ち上がるまで待つ。
- * 画面共有を求める方針 (#645) の問題を、画面共有をしていない入口 (`/assignment`) で読み込むと、読み込みの直後に
- * 画面共有の選択が出る。そのときは `screenShare` でボタンを選ぶ (省略時は触らない)。
+ * 方針の URL の符号 (#646)。editor の `classPolicyCode` と同じ規則を E2E 側で独立に持つ (期待値なので実装から引かない):
+ * 「教室で実施」= `classroom`、「持ち帰り」= `take-home`、それ以外は `custom-<s><f><b>` (0/1)。
+ */
+export function policyCode(policy: ClassPolicyValue): string {
+  const bits = [policy.screenshots, policy.fullscreenTracking, policy.preExportBestEffort].map((b) => (b ? '1' : '0'));
+  const joined = bits.join('');
+  if (joined === '111') return 'classroom';
+  if (joined === '000') return 'take-home';
+  return `custom-${joined}`;
+}
+
+/** `policyCode` の逆 (作業スペースの URL から方針を読む)。 */
+function policyOfCode(code: string): ClassPolicyValue {
+  if (code === 'classroom') return { ...CLASS_POLICIES.classroom };
+  if (code === 'take-home') return { ...CLASS_POLICIES.takeHome };
+  const m = /^custom-([01])([01])([01])$/.exec(code);
+  if (!m) throw new Error(`unknown policy code: ${code}`);
+  return { screenshots: m[1] === '1', fullscreenTracking: m[2] === '1', preExportBestEffort: m[3] === '1' };
+}
+
+/** 作業スペースの URL のパス (#646): `/w/class/<encodeURIComponent(classId)>/<方針の符号>`。 */
+export function workspacePath(classId: string, policy: ClassPolicyValue): string {
+  return `/w/class/${encodeURIComponent(classId)}/${policyCode(policy)}`;
+}
+
+/**
+ * `.tcclass` を `fromPath` で読み込んだときに開く作業スペースのパス (#646 の決定 4)。方針は配布物の方針、
+ * 無ければ入口の既定: 作業スペースの中ならその方針、`/class` は「教室で実施」、`/assignment` と練習 (`/`) は「持ち帰り」。
+ */
+export function expectedWorkspacePath(pkg: { classId: string; policy?: ClassPolicyValue }, fromPath: string): string {
+  const ws = /^\/w\/class\/[^/]+\/([^/]+)\/?$/.exec(fromPath);
+  const entrance = ws
+    ? policyOfCode(ws[1]!)
+    : fromPath.replace(/\/+$/, '') === '/class'
+      ? CLASS_POLICIES.classroom
+      : CLASS_POLICIES.takeHome;
+  return workspacePath(pkg.classId, pkg.policy ?? entrance);
+}
+
+/** 言語 id → 拡張子 (editor の `examFileExtension` と同じ対応。問題のタブのファイル名の期待値に使う) */
+const PROBLEM_FILE_EXTENSIONS: Record<string, string> = {
+  c: 'c',
+  cpp: 'cpp',
+  python: 'py',
+  javascript: 'js',
+  typescript: 'ts',
+};
+
+interface ClassPackageShape {
+  classId: string;
+  policy?: ClassPolicyValue;
+  allowed?: { languages?: string[] };
+  bundle?: { problems?: Array<{ problemId: string; starter?: { filename?: string; language?: string } }> };
+}
+
+/** 配布物の各問題のタブのファイル名 (`data-filename`): starter の filename、無ければ `<problemId>.<ext>` */
+export function problemFilenames(pkg: ClassPackageShape): string[] {
+  return (pkg.bundle?.problems ?? []).map((p) => {
+    if (p.starter?.filename) return p.starter.filename;
+    const language = p.starter?.language ?? pkg.allowed?.languages?.[0] ?? 'c';
+    return `${p.problemId}.${PROBLEM_FILE_EXTENSIONS[language] ?? language}`;
+  });
+}
+
+/** 「問題を読み込む」(`#load-problem-btn`) を押してローダを開く。 */
+export async function openClassLoader(app: EditorApp): Promise<void> {
+  await app.page.locator('#load-problem-btn').click();
+  await waitDialogOpen(app, 'class-problem-loader');
+}
+
+/**
+ * 開いているローダに `.tcclass` を入れて読み込み、問題タブができてエディタと記録が立ち上がるまで待つ。
+ * 読み込むと、その配布物の作業スペース (`/w/class/<classId>/<方針>`。#646) へページごと移り、移り先の起動が
+ * 問題のタブを開く。今の作業スペースと同じ (改訂) なら移らずにその場で開く。
+ * スクリーンショットを撮る方針の作業スペースは起動のたびに画面共有の選択を出すので、`screenShare` で選ぶ
+ * (省略時は `share`)。利用規約に未同意なら、移り先 (練習以外) で規約のモーダルが出る (呼び出し側で同意しておく)。
+ */
+export async function submitClassPackage(
+  app: EditorApp,
+  file: FilePayload = classPackageFile(),
+  opts: { screenShare?: 'share' | 'optOut' } = {}
+): Promise<void> {
+  const { page } = app;
+  const pkg = JSON.parse(file.buffer.toString('utf8')) as ClassPackageShape;
+  const fromPath = new URL(page.url()).pathname;
+  const target = expectedWorkspacePath(pkg, fromPath);
+  await page.locator('#class-loader-file').setInputFiles(file);
+  const load = page.locator('#class-loader-load');
+  await expect(load).toBeEnabled();
+  await load.click();
+  if (fromPath === target) {
+    await waitDialogClosed(app, 'class-problem-loader');
+  } else {
+    await page.waitForURL((url) => url.pathname === target, { timeout: 30_000 });
+    if (policyOfCode(target.split('/')[4]!).screenshots) {
+      const choice = opts.screenShare ?? 'share';
+      const button = page.locator(`.screen-share-choice-dialog [data-choice="${choice}"]`);
+      await button.waitFor({ state: 'visible', timeout: 30_000 });
+      await button.click();
+      if (choice === 'optOut') {
+        const confirm = page.locator('.screen-share-optout-confirm-dialog [data-action="confirm"]');
+        await confirm.waitFor({ state: 'visible', timeout: 30_000 });
+        await confirm.click();
+      }
+    }
+  }
+  await app.waitReady();
+  // 問題タブは 1 本ずつ作られる (main.ts の openClassTabs)。waitReady は先頭のタブで抜け、改訂では問題パネルも
+  // 開いたままなので、全問題のタブがそろうまで data-filename で待つ。最後に問題パネルが開く。
+  const expected = problemFilenames(pkg);
+  await expect
+    .poll(
+      async () => {
+        const open = new Set((await app.tabs()).map((t) => t.filename));
+        return expected.filter((name) => !open.has(name));
+      },
+      { timeout: 60_000 }
+    )
+    .toEqual([]);
+  await expect(page.locator('#problem-panel')).toHaveAttribute('data-open', 'true', { timeout: 30_000 });
+  await expect.poll(() => app.appState(), { timeout: 30_000 }).toBe('ready');
+}
+
+/**
+ * 「問題を読み込む」から `.tcclass` を取り込み、その作業スペースで問題タブができるまで待つ (`submitClassPackage`)。
  */
 export async function loadClassPackage(
   app: EditorApp,
   file: FilePayload = classPackageFile(),
-  opts: { screenShare?: 'share' } = {}
+  opts: { screenShare?: 'share' | 'optOut' } = {}
 ): Promise<void> {
-  await app.page.locator('#load-problem-btn').click();
-  await waitDialogOpen(app, 'class-problem-loader');
-  await app.page.locator('#class-loader-file').setInputFiles(file);
-  const load = app.page.locator('#class-loader-load');
-  await expect(load).toBeEnabled();
-  await load.click();
-  await waitDialogClosed(app, 'class-problem-loader');
-  if (opts.screenShare) {
-    const choice = app.page.locator(`.screen-share-choice-dialog [data-choice="${opts.screenShare}"]`);
-    await choice.waitFor({ state: 'visible', timeout: 30_000 });
-    await choice.click();
-  }
-  await app.waitReady();
-  // 問題タブは 1 本ずつ作られ、最後に問題パネルが開く (main.ts の openClassTabs)。waitReady は先頭のタブで
-  // 抜けるので、全タブがそろったことはパネルの data-open で待つ。
-  await expect(app.page.locator('#problem-panel')).toHaveAttribute('data-open', 'true', { timeout: 30_000 });
+  await openClassLoader(app);
+  await submitClassPackage(app, file, opts);
 }
 
 /**

@@ -106,15 +106,15 @@ export interface AppContext {
   /** リセット確定用: beforeunload の確認も状態保存も飛ばす (全消去して起動し直すため)。 */
   skipBeforeUnload: boolean;
   /**
-   * 作業が失われない遷移 (表示言語の切替) 用: beforeunload の確認 (preventDefault) だけを
+   * 作業が失われない遷移 (表示言語の切替・作業スペースへの移動 #646) 用: beforeunload の確認 (preventDefault) だけを
    * 出さない。状態保存 (sessionStorage 同期保存・リロード検出) は通常どおり走るので、`skipBeforeUnload` では代用できない (#445)。
    */
   skipUnloadConfirm: boolean;
-  /** 現在のモード (ADR-0011): URL パスで確定する (casual/class/assignment/exam)。 */
+  /** 現在のモード (ADR-0011): URL パスで確定する (casual/class/assignment/exam。作業スペースは方針から。#646)。 */
   mode: EditorMode;
   /**
-   * 実効の能力 (単一の真実源)。mode の能力に、授業/課題で読み込んだ `.tcclass` の方針 (#645) を重ねたもの。
-   * 方針の無い問題・未読込では mode の能力のまま。書き換えは `app/classPolicyRuntime.ts` の `applyClassPolicy` だけが行う。
+   * 実効の能力 (単一の真実源)。mode の能力に、`.tcclass` の方針 (#645) を重ねたもの。起動時に決め、途中で変えない:
+   * 作業スペース (#646) はその方針、旧来の `/class` `/assignment` は前に読み込んだ方針 (無ければ mode の能力のまま)。
    */
   capabilities: ModeCapabilities;
   /** 試験モードか (= mode === 'exam')。既存の試験専用分岐が使う派生フラグ。 */

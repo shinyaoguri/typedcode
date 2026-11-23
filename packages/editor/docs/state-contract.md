@@ -9,7 +9,7 @@ E2E (`packages/e2e`) は editor の UI 状態を、翻訳テキストや CSS ク
 | 要素 | 属性 | 取りうる値 | 意味 |
 |---|---|---|---|
 | `html` | `data-app-state` | `initializing` / `not-found` / `gate` / `ready` | アプリの段階 (`core/stateContract.ts`)。`not-found` = 未知パスの「このページはありません」画面 (#644)、`gate` = 試験のスタートゲート (`ExamStartGate`) で解錠待ち、`ready` = 編集できる (タブ 0 本のウェルカム画面を含む)。利用規約・画面共有の選択・復旧ダイアログの間は `initializing`。起動を途中で止める画面 (別タブで起動中・未対応ブラウザ・認証失敗・起動処理の失敗) でも `initializing` のまま残るので、何で止まったかは `data-dialog` で見る |
-| `html` | `data-cap-screenshots` / `data-cap-fullscreen-tracking` / `data-cap-pre-export-best-effort` | `true` / `false` | `.tcclass` の方針 (#645) を重ねた実効の能力 (`ctx.capabilities` の 3 つ)。起動時と、問題を読み込んで方針を当てたとき (`applyClassPolicy`) に更新する |
+| `html` | `data-cap-screenshots` / `data-cap-fullscreen-tracking` / `data-cap-pre-export-best-effort` | `true` / `false` | `.tcclass` の方針 (#645) を重ねた実効の能力 (`ctx.capabilities` の 3 つ)。起動時に決まり、ページの中では変わらない (方針の違う問題は別の作業スペースへページごと移る。#646) |
 | `#editor-tabs .editor-tab` | `data-tab-id` | タブ id | どのタブか (契約以前からある属性) |
 | 〃 | `data-active` | `true` / `false` (全タブに付ける) | アクティブなタブ。タブがあれば `true` はちょうど 1 つ |
 | 〃 | `data-filename` | 拡張子込みの名前 (`Untitled-1.c`) | タブに表示される名前 (`tabFullFilename`)。改名の確定 (`startFilenameEdit` の finishEdit) でも更新する。タブに見える文字 (`.tab-filename` + `.tab-extension`) はこの値と一致する (同じ分け方 `tabDisplayParts` から作る。#828)。改名の編集中は、保存されている名前が拡張子込み (`p1.c`) のときだけ `.tab-extension` を隠す |

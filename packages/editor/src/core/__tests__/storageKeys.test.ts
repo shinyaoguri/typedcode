@@ -1,13 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classPolicyKey,
   examPackagesKey,
+  instanceGuardNamespace,
   modeLocalStorageKeys,
   modeSessionStorageKeys,
+  modeStorageNamespace,
+  pendingClassPackageKey,
   sessionActiveKey,
   sessionDbName,
   setStorageNamespace,
+  setWorkspaceStorageNamespace,
   tabsKey,
+  workspaceStorageNamespace,
 } from '../storageKeys.js';
+import type { ClassWorkspace } from '../mode.js';
+
+const CLASSROOM = { screenshots: true, fullscreenTracking: true, preExportBestEffort: true };
+const TAKE_HOME = { screenshots: false, fullscreenTracking: false, preExportBestEffort: false };
+const LEGACY_MODES = ['casual', 'class', 'assignment', 'exam'] as const;
+
+function classWs(classId: string, policy = CLASSROOM): ClassWorkspace {
+  return { kind: 'class', classId, policy };
+}
 
 describe('storage namespace for casual', () => {
   it('keeps legacy un-suffixed names so existing sessions migrate for free', () => {
@@ -58,7 +73,11 @@ describe('keys that the reset removes (modeLocalStorageKeys / modeSessionStorage
       'typedcode-class-problems',
       'typedcode-class-policy',
     ]);
-    expect(modeSessionStorageKeys()).toEqual(['typedcode-tabs', 'typedcode-session-active']);
+    expect(modeSessionStorageKeys()).toEqual([
+      'typedcode-tabs',
+      'typedcode-session-active',
+      'typedcode-pending-class-package',
+    ]);
   });
 
   it('lists only the suffixed keys for the current mode and none of the other modes', () => {
@@ -68,7 +87,11 @@ describe('keys that the reset removes (modeLocalStorageKeys / modeSessionStorage
       'typedcode-class-problems-assignment',
       'typedcode-class-policy-assignment',
     ]);
-    expect(modeSessionStorageKeys()).toEqual(['typedcode-tabs-assignment', 'typedcode-session-active-assignment']);
+    expect(modeSessionStorageKeys()).toEqual([
+      'typedcode-tabs-assignment',
+      'typedcode-session-active-assignment',
+      'typedcode-pending-class-package-assignment',
+    ]);
   });
 
   it('never includes the mode-independent keys (terms, locale, theme)', () => {
@@ -79,5 +102,63 @@ describe('keys that the reset removes (modeLocalStorageKeys / modeSessionStorage
       expect(all).not.toContain('typedcode-locale');
       expect(all).not.toContain('typedcode-theme');
     }
+  });
+});
+
+describe('storage namespace for a workspace (#646)', () => {
+  it('names every key with -w:class:<encoded classId>:<policy code>', () => {
+    setWorkspaceStorageNamespace(classWs('2026-algo-week3'));
+    expect([sessionDbName(), tabsKey(), classPolicyKey(), pendingClassPackageKey()]).toEqual([
+      'typedcode-session-w:class:2026-algo-week3:classroom',
+      'typedcode-tabs-w:class:2026-algo-week3:classroom',
+      'typedcode-class-policy-w:class:2026-algo-week3:classroom',
+      'typedcode-pending-class-package-w:class:2026-algo-week3:classroom',
+    ]);
+    setStorageNamespace('casual');
+  });
+
+  it('gives the same classId with a different policy a different session db', () => {
+    expect(sessionDbName(workspaceStorageNamespace(classWs('c', CLASSROOM)))).not.toBe(
+      sessionDbName(workspaceStorageNamespace(classWs('c', TAKE_HOME)))
+    );
+  });
+
+  it('never collides with the legacy per-mode namespaces', () => {
+    const legacy = LEGACY_MODES.map(modeStorageNamespace);
+    for (const ws of [classWs('class'), classWs('exam', TAKE_HOME), classWs('')]) {
+      expect(legacy).not.toContain(workspaceStorageNamespace(ws));
+    }
+  });
+
+  it('keeps a .tcclass workspace and a .tcexam workspace with the same id apart', () => {
+    expect(workspaceStorageNamespace(classWs('lesson'))).not.toBe(
+      workspaceStorageNamespace({ kind: 'exam', examId: 'lesson' })
+    );
+  });
+
+  it('derives the keys of another namespace without switching the current one', () => {
+    setStorageNamespace('casual');
+    const target = workspaceStorageNamespace(classWs('c', TAKE_HOME));
+    expect([pendingClassPackageKey(target), tabsKey()]).toEqual([
+      'typedcode-pending-class-package-w:class:c:take-home',
+      'typedcode-tabs',
+    ]);
+  });
+});
+
+describe('instanceGuardNamespace', () => {
+  it('keeps the legacy guard name equal to the mode', () => {
+    for (const mode of LEGACY_MODES) {
+      setStorageNamespace(mode);
+      expect(instanceGuardNamespace()).toBe(mode);
+    }
+  });
+
+  it('names a workspace guard after the workspace so two workspaces run side by side', () => {
+    setWorkspaceStorageNamespace(classWs('a'));
+    const a = instanceGuardNamespace();
+    setWorkspaceStorageNamespace(classWs('b'));
+    expect([a, instanceGuardNamespace()]).toEqual(['w:class:a:classroom', 'w:class:b:classroom']);
+    setStorageNamespace('casual');
   });
 });

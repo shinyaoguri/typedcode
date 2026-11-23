@@ -747,6 +747,10 @@ export interface TranslationKeys {
       skipButton: string;
       loading: string;
       errorInvalidFile: string;
+      /** classId が URL のパスに置けない (`.` / `..`) とき (#646) */
+      errorUnsupportedClassId: string;
+      /** 作業スペースへ配布物を渡せなかった (sessionStorage に書けない) とき (#646) */
+      errorOpenWorkspace: string;
     };
   };
 

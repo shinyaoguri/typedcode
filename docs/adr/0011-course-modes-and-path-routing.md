@@ -1,6 +1,6 @@
 # ADR-0011: 授業・課題・試験を1ドメインのパスで分岐し、能力プリセットでモデル化する
 
-- **Status**: Accepted (実装済み)。ただし **§6 前半 (モードと能力集合をチェーンに焼く) は未実装** — `mode` は export 時に top-level へ付くだけでハッシュ対象外、能力集合は記録されない。§6 後半 (保証ラベルを実証拠から機械判定) は [ADR-0020](0020-three-layer-assurance-vocabulary.md) で実現した ([#232](https://github.com/shinyaoguri/typedcode/issues/232))。§3 の授業と課題は [ADR-0046](0046-entry-without-mode-choice.md) の段階 2 (#645) で `.tcclass` の方針に統合する予定 (学生にモードを選ばせず、配布物と教員のリンクがモードを決める) author/verify の同一 origin 配信は [ADR-0052](0052-independent-app-packages-and-deployments.md) で独立公開へ変更予定 (#807・#808)。学生モードのパス分岐は維持。
+- **Status**: Accepted (実装済み)。ただし **§6 前半 (モードと能力集合をチェーンに焼く) は未実装** — `mode` は export 時に top-level へ付くだけでハッシュ対象外、能力集合は記録されない。§6 後半 (保証ラベルを実証拠から機械判定) は [ADR-0020](0020-three-layer-assurance-vocabulary.md) で実現した ([#232](https://github.com/shinyaoguri/typedcode/issues/232))。§3 の授業と課題は [ADR-0046](0046-entry-without-mode-choice.md) の段階 2 (#645) で `.tcclass` の方針に統合する予定 (学生にモードを選ばせず、配布物と教員のリンクがモードを決める) author/verify の同一 origin 配信は [ADR-0052](0052-independent-app-packages-and-deployments.md) で独立公開へ変更予定 (#807・#808)。学生モードのパス分岐は維持。**ストレージのモード別名前空間は、問題 (`.tcclass`) を読み込んだ後の保存領域について [ADR-0058](0058-workspace-per-distribution.md) が置き換えた** (配布物ごとの作業スペース `/w/class/<classId>/<方針>`。旧来のモード別の領域は移さず消さず、今どおり開く)。
 - **Date**: 2026-06-07 (Accepted: 2026-06-08)
 - **Deciders**: (PR 上の合意者 / レビュアー)
 - **PR / Commit**: #81 (ADR) / #82 #83 #84 (PR1–3 実装。マージ済み)

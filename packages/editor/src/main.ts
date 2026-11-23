@@ -4,9 +4,13 @@
 // (PR1/PR2 の「モード切替時 auto-clear」を置換)。**NS は最初期に確定**させる — 以降の storage
 // 参照が storageKeys の getter を使うため。
 // ルート (#644): 未知パスは 'not-found' で、entry.ts が NotFoundPage だけを描きこのモジュールを読み込まない (#302)。
-// ここに来るのは `/` `/casual` (どちらも練習) と `/class` `/assignment` `/exam` のとき。
+// ここに来るのは `/` `/casual` (どちらも練習) と `/class` `/assignment` `/exam`、作業スペース `/w/...` のとき。
+// 作業スペース (#646): `.tcclass` ごとの保存領域。モードは配布物の方針から決まり (`modeForClassPolicy`)、
+// 名前空間は `-w:<作業スペースの名前>`。旧来の入口の名前空間 (''・-class・-assignment・-exam) はそのまま残る。
+const workspace: ClassWorkspace | null = parseWorkspacePath(window.location.pathname);
 const mode: EditorMode = resolveModeFromPath(window.location.pathname);
-setStorageNamespace(mode);
+if (workspace) setWorkspaceStorageNamespace(workspace);
+else setStorageNamespace(mode);
 const examMode = mode === 'exam';
 
 // 機能別アクセント (要望): 作成アプリは data-feature=editor、色はモードで切替 (data-mode)。
@@ -34,11 +38,29 @@ import {
   type ClassPackage,
   type RecordEventInput,
 } from '@typedcode/shared';
-import { resolveModeFromPath, acceptsClassPolicy, capabilitiesWithPolicy, type EditorMode } from './core/mode.js';
+import {
+  resolveModeFromPath,
+  acceptsClassPolicy,
+  capabilitiesWithPolicy,
+  parseWorkspacePath,
+  classWorkspaceFor,
+  classWorkspacePath,
+  isRoutableClassId,
+  sameWorkspace,
+  type ClassWorkspace,
+  type EditorMode,
+} from './core/mode.js';
 import { setAppState, getAppState, buildTestSnapshot, setCapabilityContract } from './core/stateContract.js';
 import { renderModeBadge } from './ui/components/ModeBadge.js';
 import { showTermsNotice } from './ui/components/TermsNotice.js';
-import { setStorageNamespace, tabsKey, sessionActiveKey } from './core/storageKeys.js';
+import {
+  setStorageNamespace,
+  setWorkspaceStorageNamespace,
+  workspaceStorageNamespace,
+  instanceGuardNamespace,
+  tabsKey,
+  sessionActiveKey,
+} from './core/storageKeys.js';
 import { OperationDetector } from './tracking/OperationDetector.js';
 import { CompositionTracker } from './tracking/CompositionTracker.js';
 import { KeystrokeTracker } from './tracking/KeystrokeTracker.js';
@@ -94,7 +116,8 @@ import { ExamPackageStore } from './services/ExamPackageStore.js';
 import { ClassProblemLoader } from './ui/components/ClassProblemLoader.js';
 import { ClassProblemStore } from './services/ClassProblemStore.js';
 import { ClassPolicyStore } from './services/ClassPolicyStore.js';
-import { applyClassPolicy, startFullscreenTracking } from './app/classPolicyRuntime.js';
+import { PendingClassPackageStore } from './services/PendingClassPackageStore.js';
+import { startFullscreenTracking } from './app/classPolicyRuntime.js';
 import { FullscreenTracker } from './tracking/FullscreenTracker.js';
 import { EventRecorder, SessionContentRegistry } from './core/index.js';
 import type { AppContext } from './core/AppContext.js';
@@ -116,11 +139,7 @@ import {
   showScreenShareOptOutBanner,
   hideScreenShareOptOutBanner,
 } from './ui/dialogs/ScreenCaptureDialogs.js';
-import {
-  getSessionStorageService,
-  initSessionStorageService,
-  SessionStorageBlockedError,
-} from './services/SessionStorageService.js';
+import { initSessionStorageService, SessionStorageBlockedError } from './services/SessionStorageService.js';
 import {
   probeStorageCapacity,
   resolveStorageProbeBytes,
@@ -288,8 +307,11 @@ const ctx: AppContext = {
   skipUnloadConfirm: false,
   examMode,
   mode,
-  // 授業/課題は、前に読み込んだ問題の方針 (#645) を入口の能力に重ねて起動する (リロード後も同じ能力)
-  capabilities: capabilitiesWithPolicy(mode, acceptsClassPolicy(mode) ? ClassPolicyStore.get() : null),
+  // 授業/課題は、前に読み込んだ問題の方針 (#645) を入口の能力に重ねて起動する (リロード後も同じ能力)。
+  // 作業スペース (#646) は、その領域に保存した方針 (移る前に書く) を、無ければ URL の方針を重ねる
+  capabilities: workspace
+    ? capabilitiesWithPolicy(mode, ClassPolicyStore.get() ?? workspace.policy)
+    : capabilitiesWithPolicy(mode, acceptsClassPolicy(mode) ? ClassPolicyStore.get() : null),
 
   // Welcome Screen
   welcomeScreen: null as WelcomeScreen | null,
@@ -425,14 +447,16 @@ if (ctx.capabilities.problemPanel) {
   document.getElementById('problem-rescue-btn')?.addEventListener('click', () => {
     rescueCode();
   });
-  // 非封印モード (授業/課題) は「問題を読み込む」でいつでも平文 `.tcclass` を取り込める (ADR-0015)。
-  // exam は封印ゲートで入るのでこのボタンは出さない (sealedProblem で判別)。
-  if (!ctx.capabilities.sealedProblem) {
-    document.body.classList.add('can-load-problem');
-    document.getElementById('load-problem-btn')?.addEventListener('click', () => {
-      void runClassLoad(ctx);
-    });
-  }
+}
+
+// 非封印モード (練習・授業/課題・作業スペース) は「問題を読み込む」でいつでも平文 `.tcclass` を取り込める
+// (ADR-0015。練習は #646 から)。読み込むとその配布物の作業スペースへ移る (runClassLoad)。
+// exam は封印ゲートで入るのでこのボタンは出さない (sealedProblem で判別)。
+if (!ctx.capabilities.sealedProblem) {
+  document.body.classList.add('can-load-problem');
+  document.getElementById('load-problem-btn')?.addEventListener('click', () => {
+    void runClassLoad(ctx);
+  });
 }
 
 // ========================================
@@ -1161,26 +1185,66 @@ function restoreExamProblemDisplay(appCtx: AppContext): void {
 }
 
 /**
- * 授業/課題モードの問題読み込み (ADR-0014/0015)。左の「問題を読み込む」からいつでも呼べる。
- * 非ブロッキングの問題ローダで平文 `.tcclass` を取り込み、各問を 1 タブで展開する。
- * スキップ時 (resolve(null)) は何もしない。ウェルカム画面が出ていれば閉じてエディタへ切り替える。
+ * 問題の読み込み (ADR-0014/0015、#646)。左の「問題を読み込む」からいつでも呼べる。
+ * 非ブロッキングの問題ローダで平文 `.tcclass` を取り込み、その配布物の作業スペース
+ * (`/w/class/<classId>/<方針>`。方針は配布物の方針、無ければ入口の既定 = `classWorkspaceFor`) で開く:
+ * - 今いる作業スペースと同じ (同じ classId・同じ方針 = 改訂): ここで問題文を差し替え、無い問題のタブだけ足す
+ * - それ以外 (練習・旧来の入口・別の作業スペース): 移り先の保存領域に配布物と方針を書いてから、ページごと移る。
+ *   移り先の起動が配布物を受け取って問題のタブを開く (`openPendingClassPackage`)
+ * スキップ時 (resolve(null)) は何もしない。
  */
 async function runClassLoad(appCtx: AppContext): Promise<void> {
   const loader = new ClassProblemLoader();
   const pkg = await loader.prompt();
   if (!pkg) return; // スキップ = 素のエディタ / 現状維持
+  if (!isRoutableClassId(pkg.classId)) {
+    showNotification(t('class.loader.errorUnsupportedClassId'));
+    return;
+  }
+  const target = classWorkspaceFor(pkg, appCtx.mode, workspace);
+  if (workspace && sameWorkspace(workspace, target)) {
+    // 改訂: 方針は作業スペースの名前に入っているので、ここでは変わらない
+    await openClassPackage(appCtx, pkg);
+    return;
+  }
+  await moveToClassWorkspace(appCtx, target, pkg);
+}
+
+/**
+ * 配布物の作業スペースへ移る (#646)。移り先の名前空間に方針と配布物を書いてから遷移する。
+ * 今の作業は表示言語の切替 (#445) と同じく、確認を出さずに保存して離れる (`skipUnloadConfirm`。beforeunload が
+ * sessionStorage へ同期保存し、リロード検出の印を立てるので、戻れば同じタブが開く)。その前に IndexedDB への保存も
+ * 1 回流しておく (`flushToIndexedDB` は reject せず、PoSW の処理待ちは待たない)。
+ */
+async function moveToClassWorkspace(appCtx: AppContext, target: ClassWorkspace, pkg: ClassPackage): Promise<void> {
+  const targetNamespace = workspaceStorageNamespace(target);
+  ClassPolicyStore.save(target.policy, targetNamespace);
+  if (!PendingClassPackageStore.put(targetNamespace, pkg)) {
+    showNotification(t('class.loader.errorOpenWorkspace'));
+    return;
+  }
+  await appCtx.tabManager?.flushToIndexedDB();
+  appCtx.skipUnloadConfirm = true;
+  window.location.assign(classWorkspacePath(target));
+}
+
+/**
+ * 作業スペースの起動時 (#646): 移る前に置かれた配布物があれば受け取って (消してから) 問題のタブを開く。
+ * EventRecorder の後に呼ぶので、ここで作るタブにも起動時ワンショットが流し直される (#405)。
+ */
+async function openPendingClassPackage(appCtx: AppContext): Promise<void> {
+  if (!workspace) return;
+  const pkg = PendingClassPackageStore.take();
+  if (pkg) await openClassPackage(appCtx, pkg);
+}
+
+/**
+ * 作業スペースで配布物を開く (初回と改訂の両方)。ウェルカム画面を閉じ、問題のタブをそろえ、
+ * キャプチャ再有効化・LogViewer 初期化・UI 更新を行う。
+ */
+async function openClassPackage(appCtx: AppContext, pkg: ClassPackage): Promise<void> {
   hideWelcomeScreen(appCtx);
-  // 配布物の方針 (#645) を、問題のタブを作る前に当てる (方針の無い旧ファイルは入口の能力に戻す)。
-  // 画面共有を求める方針なら、ここで起動時と同じ画面共有の選択を出す
-  await applyClassPolicy(appCtx, pkg.policy ?? null, {
-    startScreenShare: () => startScreenShareForPolicy(appCtx),
-    hideScreenShareUi: () => {
-      hideScreenShareOptOutBanner();
-      hideScreenCaptureLockOverlay();
-    },
-  });
   await openClassTabs(appCtx, pkg);
-  // 問題タブができたのでキャプチャ再有効化・LogViewer 初期化・UI 更新 (welcome 経由の取込に対応)。
   appCtx.trackers.screenshot?.setCaptureEnabled(true);
   initializeLogViewer(appCtx);
   appCtx.tabUIController?.updateUI();
@@ -1188,33 +1252,49 @@ async function runClassLoad(appCtx: AppContext): Promise<void> {
 
 /**
  * 授業モード (ADR-0014): バンドル各問を 1 タブで開く (封印・root 束縛なし = casual genesis)。
- * exam の openBundleTabs と同じ `sharedAttestation` で先頭タブの #0 を共有し Turnstile storm を避ける。
- * starter は templateInjection で「与えられた雛形」として記録し、`templateName='tcclass/${problemId}'`
+ * exam の openBundleTabs と同じ `sharedAttestation` で、この呼び出しで作る先頭タブの #0 を共有し Turnstile storm を避ける。
+ * starter は templateInjection で「与えられた雛形」として記録し、`templateName='tcclass/${classId}/${problemId}'`
  * が **self-asserted problemId を proof に残す** (tier ①)。問題本文は ProblemPanel + ClassProblemStore。
  * タブは固定しない (tabLock なし) ので受講者は自由にタブを足せる。
+ *
+ * **改訂 (#646)**: 同じファイル名のタブが開いていれば作り直さず (書いた中身と記録はそのまま)、問題文と入出力例だけ
+ * 差し替える。タブが無い問題 (改訂で足された問題・閉じた問題) だけ新しいタブを作る。作ったタブがあれば先頭を、
+ * 無ければ今のタブを開き、その問題文を出す。
  */
 async function openClassTabs(appCtx: AppContext, pkg: ClassPackage): Promise<void> {
   const problems = pkg.bundle.problems;
+  const openFilenames = new Set((appCtx.tabManager?.getAllTabs() ?? []).map((tab) => tab.filename));
   let sharedAttestation: HumanAttestationEventData | null = null;
+  let firstCreated: TabState | null = null;
 
-  for (let i = 0; i < problems.length; i++) {
-    const problem = problems[i]!;
+  for (const problem of problems) {
     const language = problem.starter?.language ?? pkg.allowed.languages[0] ?? 'c';
     const filename = problem.starter?.filename ?? `${problem.problemId}.${examFileExtension(language)}`;
     const starterContent = problem.starter?.content ?? '';
 
+    // 問題文はタブより先に保存する (作成時のタブ切替で TabChangeHandler がこの問題文を出す)
+    ClassProblemStore.save(filename, {
+      problemId: problem.problemId,
+      statement: problem.statement,
+      ...(problem.examples ? { examples: problem.examples } : {}),
+    });
+    if (openFilenames.has(filename)) continue; // 改訂: 書いているタブは残す
+
     const tab: TabState | null =
       (await appCtx.tabManager?.createTab(filename, language, starterContent, {
-        ...(i > 0 && sharedAttestation ? { sharedAttestation } : {}),
+        ...(sharedAttestation ? { sharedAttestation } : {}),
       })) ?? null;
+    if (!tab) continue;
+    openFilenames.add(filename);
 
-    if (i === 0 && tab) {
+    if (!firstCreated) {
+      firstCreated = tab;
       sharedAttestation = tab.typingProof.getHumanAttestation();
     }
 
     // starter は「タイプされていない雛形」なので注入イベントで明示する (純タイピング判定を汚さない)。
     // templateName に classId/problemId を入れて self-asserted ラベルを残す (tier ①)。
-    if (tab && starterContent.length > 0) {
+    if (starterContent.length > 0) {
       const contentHash = await computeHash(starterContent);
       await tab.typingProof.recordTemplateInjection({
         templateName: `tcclass/${pkg.classId}/${problem.problemId}`,
@@ -1227,19 +1307,11 @@ async function openClassTabs(appCtx: AppContext, pkg: ClassPackage): Promise<voi
         injectionSource: 'file_import',
       });
     }
-
-    ClassProblemStore.save(filename, {
-      problemId: problem.problemId,
-      statement: problem.statement,
-      ...(problem.examples ? { examples: problem.examples } : {}),
-    });
   }
 
-  // 先頭タブをアクティブにし、その問題文を表示する。
-  const first = appCtx.tabManager?.getAllTabs()[0];
-  if (first) await appCtx.tabManager?.switchTab(first.id);
-  appCtx.problemPanel.setProblem(problems[0]?.statement ?? '', problems[0]?.examples);
-  if (!appCtx.problemPanel.isVisible) appCtx.problemPanel.show();
+  // 作ったタブの先頭 (無ければ今のタブ) をアクティブにし、その問題文を表示する。
+  if (firstCreated) await appCtx.tabManager?.switchTab(firstCreated.id);
+  restoreClassProblemDisplay(appCtx);
 }
 
 /** リロード時: 復元タブの filename に対応する問題本文を ClassProblemStore から再表示する。 */
@@ -1252,7 +1324,7 @@ function restoreClassProblemDisplay(appCtx: AppContext): void {
 }
 
 // ========================================
-// 画面共有の選択 (起動時と、画面共有を求める方針の問題を読み込んだとき #645)
+// 画面共有の選択 (起動時)
 // ========================================
 
 /** 画面共有を再開 (または初めて有効化) する。ロック画面とオプトアウトのバナーのボタンから呼ぶ。 */
@@ -1288,33 +1360,6 @@ async function continueWithoutScreenShare(): Promise<boolean> {
   // キャンセルされた場合はロックオーバーレイを再表示
   showScreenCaptureLockOverlay(resumeScreenShare, continueWithoutScreenShare);
   return false;
-}
-
-/**
- * 起動後に、スクリーンショットを撮る方針の問題を読み込んだとき (#645。例: `/assignment` で「教室で実施」の問題)、
- * 起動時と同じ画面共有の選択を出して screenshot tracker を始める。記録は起動時と同じく全タブへ流す。
- */
-async function startScreenShareForPolicy(appCtx: AppContext): Promise<void> {
-  if (!ScreenshotTracker.isSupported()) {
-    showNotification(t('screenCapture.notSupported') ?? 'Screen Capture not supported in this browser');
-    return;
-  }
-  const sessionService = getSessionStorageService();
-  const tracker = new ScreenshotTracker(sessionService);
-  const sessionId = sessionService.getCurrentSessionId();
-  if (sessionId) tracker.setSessionId(sessionId);
-  tracker.setCallback((event) => {
-    void appCtx.eventRecorder?.recordToAllTabs({ type: event.type, data: event.data, description: event.description });
-  });
-  // タブが無い間は撮らない (起動時と同じ。撮っても記録先のチェーンが無く、検証で「チェーンに裏付けの無い画像」になる)。
-  // 問題のタブを作った後に runClassLoad が有効に戻す
-  if (!appCtx.tabManager?.hasAnyTabs()) tracker.setCaptureEnabled(false);
-  // ロック画面とバナーのボタン (resumeScreenShare など) は ctx.trackers.screenshot を見るので、選択の前に入れる
-  appCtx.trackers.screenshot = tracker;
-  appCtx.proofExporter.setScreenshotTracker(tracker);
-  await promptScreenShareChoice(tracker, false);
-  // オプトアウトは起動時の Phase 5.5 と同じく、記録のコールバックを付けた後で発火する (後から作るタブへも流し直される)
-  if (tracker.isOptedOut()) tracker.emitScreenShareOptOutEvent();
 }
 
 /**
@@ -1437,8 +1482,9 @@ function showStorageLowDialog(): Promise<void> {
 // ========================================
 
 async function initializeApp(): Promise<void> {
-  // Phase 0: 複数インスタンスの検出 (モード別名前空間: 別モードのタブを誤ブロックしない)
-  const instanceGuard = new SingleInstanceGuard(mode);
+  // Phase 0: 複数インスタンスの検出 (保存領域別: 別モード・別の作業スペースのタブを誤ブロックしない)
+  // 名前は保存領域ごと: 旧来の入口はモード名、作業スペースは `w:<作業スペースの名前>` (#646)
+  const instanceGuard = new SingleInstanceGuard(instanceGuardNamespace());
   const hasExistingInstance = await instanceGuard.checkForExistingInstance();
 
   if (hasExistingInstance) {
@@ -1777,6 +1823,9 @@ async function initializeApp(): Promise<void> {
 
   // Phase 10: IdleTimeoutManagerの初期化
   initializeIdleTimeoutManager();
+
+  // 作業スペース (#646): 移る前に置かれた配布物があれば、ここで問題のタブを開く (初回も改訂も同じ経路)
+  await openPendingClassPackage(ctx);
 
   // 状態契約: ここから編集できる (タブ 0 本ならウェルカム画面)
   setAppState('ready');

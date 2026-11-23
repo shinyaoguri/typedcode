@@ -38,4 +38,9 @@ describe('ClassPolicyStore', () => {
     localStorage.setItem(classPolicyKey(), '{broken');
     expect(ClassPolicyStore.get()).toBeNull();
   });
+
+  it('reads and writes the policy of another namespace without touching the current one', () => {
+    ClassPolicyStore.save(TAKE_HOME, '-w:class:c:take-home');
+    expect([ClassPolicyStore.get('-w:class:c:take-home'), ClassPolicyStore.get()]).toEqual([TAKE_HOME, null]);
+  });
 });

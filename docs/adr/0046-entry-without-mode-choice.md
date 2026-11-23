@@ -1,6 +1,6 @@
 # ADR-0046: 学生にモードを選ばせず、`/` で練習のエディタを直接開く
 
-- **Status**: Accepted (段階 1 = #644 を実装。段階 2 = #645・段階 3 = #646 は未着手)
+- **Status**: Accepted (段階 1 = #644・段階 2 = #645 を実装。段階 3 = #646 は [ADR-0058](0058-workspace-per-distribution.md) で実装)
 - **Date**: 2026-11-06
 - **Deciders**: @shinyaoguri
 - **PR / Commit**: (#644 を閉じる PR)

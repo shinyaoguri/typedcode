@@ -70,6 +70,7 @@ E2E (`packages/e2e`) は editor の UI 状態を、翻訳テキストや CSS ク
 - 試験の許可言語は境界ごとに判定する (#727)
 - 授業/課題モードの平文問題配布 (ADR-0014/0015)
 - `.tcclass` の方針 (`policy`) は入口の能力より優先する (#645)
+- 作業スペースは配布物ごとで、移るときは移り先の領域に書いてからページごと移る (#646 / ADR-0058)
 - 入場時の初期状態 (ADR-0015)
 
 ### 作問画面 (`/author`) — [docs/pitfalls/authoring.md](docs/pitfalls/authoring.md)

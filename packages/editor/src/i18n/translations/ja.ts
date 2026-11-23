@@ -716,6 +716,8 @@ export const ja: TranslationKeys = {
       skipButton: 'スキップ',
       loading: '読み込み中…',
       errorInvalidFile: '問題ファイルの形式が不正です（.tcclass を選択してください）。',
+      errorUnsupportedClassId: 'この問題ファイルは開けません（授業 ID の「.」「..」は URL に使えません）。',
+      errorOpenWorkspace: 'この問題ファイルの作業スペースを開けませんでした（ブラウザの保存領域が使えません）。',
     },
   },
 

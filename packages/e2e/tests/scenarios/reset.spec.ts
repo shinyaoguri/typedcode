@@ -80,7 +80,8 @@ test('class: リセットは Esc と背景クリックでは何も消さずに�
   // 確認ダイアログは、消えるモード名と、そのモードのタブ数を出す。
   await expect(page.locator('#reset-scope')).toHaveAttribute('data-mode', 'class');
   await expect(page.locator('#reset-scope')).toHaveAttribute('data-tab-count', String(before.length));
-  await confirmResetAndWaitReload(app, /\/class$/);
+  // 問題を読み込んだので作業スペース (#646) にいる。リセットはその作業スペースを消して同じ URL で起動し直す
+  await confirmResetAndWaitReload(app, /\/w\/class\/2026-algo-week3\/classroom$/);
   // 現在のモードを消して起動し直す。規約の同意はモード共通のキーなので残り、出るのは画面共有の選択から。
   await waitDialogOpen(app, 'screen-share-choice');
   await page.locator('.screen-share-choice-dialog [data-choice="share"]').click();
@@ -159,7 +160,7 @@ test('自分の接続でトランザクションが走っている最中にリ�
   expect(tabs.tabs[0]!.content).toBe('');
 });
 
-test('casual のリセットは casual の session DB とキーだけを消し、assignment / exam のデータと規約同意は残す (#323)', async ({
+test('casual のリセットは casual の session DB とキーだけを消し、作業スペース / assignment / exam のデータと規約同意は残す (#323)', async ({
   page,
 }) => {
   const app = new EditorApp(page);
@@ -168,11 +169,12 @@ test('casual のリセットは casual の session DB とキーだけを消し�
   await app.waitForSynced();
   const casualIds = (await app.tabs()).map((t) => t.id);
 
-  // assignment に実データ (問題タブ) を作る。
+  // assignment から問題を読み、その作業スペース (#646) に実データ (問題タブ) を作る。
   await installTermsAccepted(page);
   await page.goto('/assignment');
   await waitDialogOpen(app, 'welcome');
   await loadClassPackage(app);
+  await expect(page).toHaveURL(/\/w\/class\/2026-algo-week3\/take-home$/);
   await typeIntoEveryTab(app, 'int mine;');
   await app.waitForSynced();
   const assignmentTabs = (await app.tabs()).map((t) => t.id);
@@ -216,20 +218,26 @@ test('casual のリセットは casual の session DB とキーだけを消し�
       casualClassCache: localStorage.getItem('typedcode-class-problems'),
     },
     session: {
-      assignmentTabs: sessionStorage.getItem('typedcode-tabs-assignment'),
+      workspaceTabs: sessionStorage.getItem('typedcode-tabs-w:class:2026-algo-week3:take-home'),
       examTabs: sessionStorage.getItem('typedcode-tabs-exam'),
     },
   }));
-  // casual 用のキーは消え、assignment / exam のものと規約同意は残る。
+  // casual 用のキーは消え、作業スペース / assignment / exam のものと規約同意は残る。
   expect(after.local.casualClassCache).toBeNull();
   expect(after.local.examCache).toBe('{"marker":"exam"}');
   expect(after.local.terms).not.toBeNull();
   expect(after.session.examTabs).toBe('exam-tabs');
-  expect(after.session.assignmentTabs).not.toBeNull();
-  expect(after.dbs).toEqual(expect.arrayContaining(['typedcode-session-assignment', 'typedcode-session-exam']));
+  expect(after.session.workspaceTabs).not.toBeNull();
+  expect(after.dbs).toEqual(
+    expect.arrayContaining([
+      'typedcode-session-w:class:2026-algo-week3:take-home',
+      'typedcode-session-assignment',
+      'typedcode-session-exam',
+    ])
+  );
 
-  // assignment のセッションは、/assignment を開き直すと元のタブがそのまま復元される。
-  await page.goto('/assignment');
+  // 作業スペースのセッションは、その URL を開き直すと元のタブがそのまま復元される。
+  await page.goto('/w/class/2026-algo-week3/take-home');
   await waitResumed(app);
   expect((await app.tabs()).map((t) => t.id)).toEqual(assignmentTabs);
 });

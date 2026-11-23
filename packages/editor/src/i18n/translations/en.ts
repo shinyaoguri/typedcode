@@ -720,6 +720,9 @@ export const en: TranslationKeys = {
       skipButton: 'Skip',
       loading: 'Loading…',
       errorInvalidFile: 'The problem file is malformed (please select a .tcclass file).',
+      errorUnsupportedClassId:
+        'This problem file cannot be opened: its class ID ("." or "..") cannot be used in a URL.',
+      errorOpenWorkspace: 'Could not open the workspace for this problem file (browser storage is unavailable).',
     },
   },
 

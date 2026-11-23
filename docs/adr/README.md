@@ -42,7 +42,7 @@
 | [0008](0008-exam-fullscreen-request-not-enforce.md) | Accepted | 試験モードはフルスクリーンを要求するが強制せず状態を記録する |
 | [0009](0009-pluggable-analysis-layer.md) | Accepted | 改ざん検証と直交する pluggable な分析層フレームワークを定義する |
 | [0010](0010-exam-session-model.md) | Accepted (sticky 部分は ADR-0011 で置換) | 試験モードのセッション構造 (1問1タブ・固定・リロード復帰可能) |
-| [0011](0011-course-modes-and-path-routing.md) | Accepted (実装済み。§6 前半は未実装・後半は ADR-0020 で実現。§3 の授業と課題は ADR-0046 段階 2 で統合予定。author/verify 配信は ADR-0052 で分離予定、学生モードのパスは維持) | 授業・課題・試験を1ドメインのパスで分岐し能力プリセットでモデル化する |
+| [0011](0011-course-modes-and-path-routing.md) | Accepted (実装済み。§6 前半は未実装・後半は ADR-0020 で実現。§3 の授業と課題は ADR-0046 段階 2 で統合予定。author/verify 配信は ADR-0052 で分離予定、学生モードのパスは維持。問題を読み込んだ後のストレージ名前空間は ADR-0058 で置換) | 授業・課題・試験を1ドメインのパスで分岐し能力プリセットでモデル化する |
 | [0012](0012-sealed-starter-template-in-exam-payload.md) | Accepted | 封印問題の平文を構造化し N問バンドル＋問題ごとのスターターコードを同梱する |
 | [0013](0013-exam-schedule-advisory-keep-manifest-format.md) | Accepted | 試験スケジュールを advisory とし manifest フォーマットは据え置く |
 | [0014](0014-class-mode-unsealed-problem-distribution.md) | Accepted | 授業モードは平文 `.tcclass` で問題を配布し受動 fullscreen を記録する (tier ①) |
@@ -77,7 +77,7 @@
 | [0043](0043-acceptance-policy-separated-from-integrity.md) | Accepted | 受理ポリシー (root / 密度 / 署名 cp の存在 / 最終署名の 4 つの opt-in 要件) を検証の結論から分け、`integrityValid` と `policy.violations` (列挙型の code) で返す (密度 gate を signedCheckpoints から外す・整合性が落ちたら評価しない・Web は適用しない・time-box は入れない) |
 | [0044](0044-fingerprint-collection-scope.md) | Accepted | fingerprint の収集を用途のあるコンポーネントに絞る (canvas・fonts を集めず、WebGL は `unmaskedVendor` / `unmaskedRenderer` の 2 値だけ。残す 13 キーごとに理由を書き、新しいキーは読むコードか理由を書いてから集める。旧 proof は受け付け続ける) |
 | [0045](0045-lower-posw-iterations-for-recording-throughput.md) | Accepted (実装は #611) | PoSW の反復数を 10,000 から 1,000 に下げる (CPU 4 倍相当で記録が入力に追いつかない実測が根拠・偽造側の下限は 10,000 でも分単位で防御にならない・記録側の await / 同期は形式と安全性に影響しない実装詳細・root アンカーで変える案と同期化だけの案は不採用) |
-| [0046](0046-entry-without-mode-choice.md) | Accepted (段階 1 = #644 を実装) | 学生にモードを選ばせず、`/` で練習のエディタを直接開く (モードは配布物と教員のリンクが決める・未知パスは not-found・titlebar はモード表示だけ・練習の規約は受動通知で同意を記録・段階 2 で授業と課題を `.tcclass` の方針に統合・段階 3 で保存領域を配布物単位に) |
+| [0046](0046-entry-without-mode-choice.md) | Accepted (段階 1 = #644・段階 2 = #645 を実装。段階 3 = #646 は ADR-0058) | 学生にモードを選ばせず、`/` で練習のエディタを直接開く (モードは配布物と教員のリンクが決める・未知パスは not-found・titlebar はモード表示だけ・練習の規約は受動通知で同意を記録・段階 2 で授業と課題を `.tcclass` の方針に統合・段階 3 で保存領域を配布物単位に) |
 | [0047](0047-python-in-dedicated-worker-with-terminal-stdin.md) | Accepted (Worker の置き場所を ADR-0056 で改訂) | Python (Pyodide) を専用の module Worker で動かし、ターミナルの入力を SharedArrayBuffer の行チャネルで stdin に渡す (`prompt()` のまま・JSPI でメインスレッドのままを却下・行の編集はメイン側・stdout は write ハンドラで逐次・停止とタイムアウトは terminate・タイムアウトは入力待ちを数えない・opaque origin への隔離は #650) |
 | [0048](0048-problem-io-examples-shown-not-judged.md) | Accepted (段階 1 = #648) | 問題に入出力例 (`examples: { name, stdin, stdout }[]`) を持たせ、受講者には判定せず問題パネルに見せるだけにする (自動判定・テストボタンを却下・「テスト」の語を UI に出さない・入力のコピーボタン・proof に記録しない・1 件以上のときだけ正準形に含めハッシュ不変・入出力例付きの `.tcexam` は新しい editor が前提・非公開テストと比較規則は段階 2) |
 | [0049](0049-staging-turnstile-testing-keys.md) | Accepted (Worker = #660、E2E = #655) | staging と PR プレビューは Turnstile の公開テストキーで動かし、main push ごとに staging の実 URL をブラウザ E2E で通す (Worker は testing key の結果を staging でだけ通し、production・未知の環境では拒否・E2E 用の迂回ヘッダと best-effort 経路だけの案を却下・production には当てない・本物の Turnstile を通すのは production だけになる) |
@@ -89,6 +89,7 @@
 | [0055](0055-release-channels-and-calendar-versioning.md) | Accepted (実装は #842〜#845) | リリースを main → beta → 正式版 (年 2 回) の 3 チャンネルにし、版を暦の形でタグから自動採番する (正式版は 2 月・8 月に beta を昇格・beta は日次で専用環境へ・版は `vYYYY.M.0-beta.N` → `vYYYY.M.0` → `vYYYY.M.P`・正本はタグと GitHub Releases でリリースはファイルを変えない・変更履歴は `changelog.d/` の断片・学期中の patch は `release/A.B` へ cherry-pick・bump の PR と 7 日の規則と停滞検知をやめる・ADR-0028 の一部を置換) |
 | [0056](0056-python-in-opaque-origin-runner.md) | Accepted | Python (Pyodide) を opaque origin の sandbox iframe (`allow-scripts` + `allow="cross-origin-isolated"`) の中の classic Worker で実行し、proof の保存領域から隔離する (SAB は runner が作り、親は行を渡す・fail closed・通信は取得元と PyPI だけ。ADR-0047 の Worker の置き場所を改訂) |
 | [0057](0057-keep-closed-tabs-as-archive.md) | Accepted | 閉じたタブ・取り込みで置き換えたタブ・前のセッションを、消さずに「閉じたタブ」として残す (exam を除く。削除は利用者の明示の操作だけ・1 transaction で書き失敗は削除へ倒さない・`DB_VERSION` は上げない・開き直したタブは元のセッションで署名を続ける) |
+| [0058](0058-workspace-per-distribution.md) | Accepted | 問題の配布物ごとに作業スペース (URL `/w/class/<classId>/<方針>` と保存領域 `-w:class:<classId>:<方針>`) を分ける (種別を名前の先頭に置き試験 `exam:` と分ける・同じ配布物の改訂は問題文だけ差し替える・旧来のモード別の領域は移さず消さない・`proof.mode` は方針から決める) |
 
 ## 参考
 

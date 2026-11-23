@@ -7,7 +7,9 @@ import { loadExamFixture } from './examFixture.js';
 import {
   classPackageFile,
   loadClassPackage,
+  openClassLoader,
   openSelfReviewForExport,
+  submitClassPackage,
   waitDialogClosed,
   waitDialogOpen,
 } from './scenario.js';
@@ -143,17 +145,10 @@ export async function walkTour(page: Page, flow: TourFlow, visit: ScreenVisitor)
       await waitDialogOpen(app, 'welcome');
       await at('class-welcome');
 
-      // loadClassPackage と同じ手順を、ローダーが開いた所で一度止めて巡る。
-      await page.locator('#load-problem-btn').click();
-      await waitDialogOpen(app, 'class-problem-loader');
+      // loadClassPackage と同じ手順を、ローダーが開いた所で一度止めて巡る。読み込むと作業スペースへ移る (#646)。
+      await openClassLoader(app);
       await at('class-problem-loader');
-      await page.locator('#class-loader-file').setInputFiles(classPackageFile());
-      const load = page.locator('#class-loader-load');
-      await expect(load).toBeEnabled();
-      await load.click();
-      await waitDialogClosed(app, 'class-problem-loader');
-      await app.waitReady();
-      await expect(page.locator('#problem-panel')).toHaveAttribute('data-open', 'true', { timeout: 30_000 });
+      await submitClassPackage(app, classPackageFile());
       await at('class-ready');
       return;
     }
