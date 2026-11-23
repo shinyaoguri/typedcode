@@ -193,5 +193,5 @@ main 1 本・PR は squash・main push で staging、という ADR-0028 の形�
 
 - [ADR-0026](0026-lightweight-git-flow-branching.md)、[ADR-0028](0028-tag-based-github-flow.md)、[ADR-0043](0043-acceptance-policy-separated-from-integrity.md)、[ADR-0049](0049-staging-turnstile-testing-keys.md)
 - #840 (追跡)、#662 (凍結期間)、#657 (7 日の規則)、#410 (停滞の検知)、#85・#332 (停滞の実例)、#808 と PR #814 (ADR-0052)、#813 (SDK の版)
-- [CONTRIBUTING.md](../../CONTRIBUTING.md)「リリース」「本番緊急修正」、[deploy.yml](../../.github/workflows/deploy.yml)、[release-stall.mjs](../../scripts/release-stall.mjs)
+- [CONTRIBUTING.md](../../CONTRIBUTING.md)「リリース」「本番緊急修正」、[deploy.yml](../../.github/workflows/deploy.yml)、`release-stall.mjs` (#848 で撤去)
 - 外部: [GitHub Actions: 既定のトークンが起こしたイベントは新しいワークフローを起こさない](https://docs.github.com/en/actions/concepts/security/github_token)、[Calendar Versioning](https://calver.org/)、[Semantic Versioning 2.0.0](https://semver.org/lang/ja/)

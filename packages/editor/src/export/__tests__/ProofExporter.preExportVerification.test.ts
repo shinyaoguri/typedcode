@@ -1,9 +1,10 @@
 /**
  * ProofExporter のエクスポート前 Turnstile 認証 (best-effort 分岐) のテスト。
  *
- * editor/AGENTS.md 不変条件 6: export は Turnstile 検証を通すが、exam/class/assignment は
+ * editor/AGENTS.md 不変条件 6: export は Turnstile 検証を通すが、exam / class は
  * `preExportBestEffort=true` で、不達/失敗でも**失敗 attestation を記録して**提出 ZIP を出す
  * (ADR-0006/0011: 教室の不安定網で提出そのものを不能にしない)。casual は従来どおりブロックする。
+ * assignment は casual と同じ `false` でブロックし、`.tcclass` の方針が上書きする (#645)。
  *
  * #224: 単一タブ用の検証にだけこの分岐が無く、class/assignment の受講者が Turnstile 不達で単一タブ
  * ZIP を一切出せなくなっていた。#779 で書き出しを全タブの 1 系統にしたので、検証も全タブ版
