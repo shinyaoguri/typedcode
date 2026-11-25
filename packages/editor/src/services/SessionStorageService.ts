@@ -1122,6 +1122,66 @@ export class SessionStorageService {
   }
 
   /**
+   * 保存済みのイベント列の飛びで記録を切り詰める (#878。ADR-0058)。
+   *
+   * 1 つの readwrite transaction で、(1) そのタブの `eventIndex >= fromEventIndex` のイベント (飛びより後) を
+   * 読み、(2) 元の content とそのイベント (`truncatedEvents`) を `unprovenContents` に add し、(3) そのイベントを
+   * events ストアから、書き込み位置を `tabProgress` から消す。どれかが失敗すれば全部が巻き戻る (元の content も
+   * イベントも失わない)。消すのは飛びより後のイベントだけで、`unprovenContents` に写したものに限る。
+   *
+   * 消さないと、切り詰めた記録の続きの入力が同じ `(tabId, eventIndex)` の古い行と hash で食い違い
+   * (`EventChainConflictError`)、保存も閉じたタブの保存 (`archiveTab`) も通らない。位置を残すと、古い末尾が
+   * 位置として読まれ続ける。所有権を失ったインスタンスは `getWritableDb` が拒否する (#237)。
+   *
+   * @returns 外したイベント数
+   */
+  async preserveTruncatedEvents(
+    record: Omit<StoredUnprovenContentData, 'id' | 'reason' | 'truncatedEvents'>,
+    fromEventIndex: number
+  ): Promise<number> {
+    const db = await this.getWritableDb();
+    const tabId = record.tabId;
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_EVENTS, STORE_TAB_PROGRESS, STORE_UNPROVEN_CONTENTS], 'readwrite');
+      let truncatedCount = 0;
+
+      settleOnCommit(
+        transaction,
+        'Failed to truncate events at a sequence gap',
+        () => {
+          console.log(`[SessionStorage] Truncated ${truncatedCount} events after a sequence gap for tab:`, tabId);
+          resolve(truncatedCount);
+        },
+        (error) => {
+          console.error('[SessionStorage]', error);
+          reject(error);
+        }
+      );
+
+      const eventsStore = transaction.objectStore(STORE_EVENTS);
+      const request = eventsStore.index('tabId').getAll(tabId);
+      request.onsuccess = () => {
+        const rows = (request.result as StoredEventData[])
+          .filter((row) => row.eventIndex >= fromEventIndex)
+          .sort((a, b) => a.eventIndex - b.eventIndex);
+        truncatedCount = rows.length;
+        const preserved: Omit<StoredUnprovenContentData, 'id'> = {
+          ...record,
+          reason: 'sequence-gap',
+          truncatedEvents: rows.map((row) => row.eventData),
+        };
+        // add (put にしない = 既存の保全を上書きする経路を持たない。不変条件 8)
+        transaction.objectStore(STORE_UNPROVEN_CONTENTS).add(preserved);
+        for (const row of rows) {
+          if (row.id !== undefined) eventsStore.delete(row.id);
+        }
+        transaction.objectStore(STORE_TAB_PROGRESS).delete(tabId);
+      };
+    });
+  }
+
+  /**
    * タブの元の content を、残した順 (古い順) に返す。
    */
   async getUnprovenContents(tabId: string): Promise<StoredUnprovenContentData[]> {

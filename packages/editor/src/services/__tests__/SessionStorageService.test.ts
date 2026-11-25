@@ -571,6 +571,106 @@ describe('SessionStorageService', () => {
     });
   });
 
+  describe('truncating the record at a sequence gap (#878)', () => {
+    /** tab-1 に 0..2 と 4..5 (3 が欠けた飛び)、tab-2 に 0..1 を保存した状態 */
+    async function seedGap(): Promise<{ service: SessionStorageService; sessionId: string }> {
+      const opened = await openService();
+      await opened.service.saveTab(makeTab('tab-1', opened.sessionId));
+      await opened.service.saveTab(makeTab('tab-2', opened.sessionId));
+      for (const seq of [0, 1, 2, 4, 5]) await opened.service.appendEvent('tab-1', makeEvent(seq));
+      for (const seq of [0, 1]) await opened.service.appendEvent('tab-2', makeEvent(seq));
+      return opened;
+    }
+
+    const original = makeUnproven('tab-1', 'code written after the gap');
+
+    it('moves the events after the gap into the preserved original instead of losing them', async () => {
+      const opened = await seedGap();
+      service = opened.service;
+
+      await service.preserveTruncatedEvents(original, 3);
+
+      const [preserved] = await service.getUnprovenContents('tab-1');
+      expect([preserved?.reason, preserved?.truncatedEvents?.map((e) => e.sequence)]).toEqual(['sequence-gap', [4, 5]]);
+    });
+
+    it('keeps the events before the gap and removes the ones after it from the record', async () => {
+      const opened = await seedGap();
+      service = opened.service;
+
+      await service.preserveTruncatedEvents(original, 3);
+
+      expect((await service.getEvents('tab-1')).map((e) => e.sequence)).toEqual([0, 1, 2]);
+    });
+
+    it('lets the truncated record continue past the old sequences without a chain conflict', async () => {
+      const opened = await seedGap();
+      service = opened.service;
+      await service.preserveTruncatedEvents(original, 3);
+
+      // 切り詰めた記録の続き: 3 から先は古い行と別の hash
+      for (const seq of [3, 4, 5, 6]) await service.appendEvent('tab-1', makeEvent(seq, { hash: `new-${seq}` }));
+
+      expect((await service.getEvents('tab-1')).map((e) => e.hash)).toEqual([
+        'hash-0',
+        'hash-1',
+        'hash-2',
+        'new-3',
+        'new-4',
+        'new-5',
+        'new-6',
+      ]);
+    });
+
+    it('drops the stored chain position so the old tail after the gap is not read back as the position', async () => {
+      const opened = await seedGap();
+      service = opened.service;
+
+      await service.preserveTruncatedEvents(original, 3);
+
+      // 位置は tabs 行 (saveTab で書いた -1) だけになる。tabProgress を残すと古い末尾 (5) が採られる
+      expect((await service.getTab('tab-1'))?.lastWrittenEventIndex).toBe(-1);
+    });
+
+    it('leaves the events of other tabs untouched', async () => {
+      const opened = await seedGap();
+      service = opened.service;
+
+      await service.preserveTruncatedEvents(original, 0);
+
+      expect((await service.getEvents('tab-2')).map((e) => e.sequence)).toEqual([0, 1]);
+    });
+
+    it('changes nothing when the transaction fails, so neither the events nor the original are lost', async () => {
+      const opened = await seedGap();
+      service = opened.service;
+      const injected = abortTransactionsAfterWriteSuccess(['delete']);
+      try {
+        await expect(settleWithin(service.preserveTruncatedEvents(original, 3))).rejects.toThrow();
+      } finally {
+        injected.restore();
+      }
+
+      expect([
+        (await service.getEvents('tab-1')).map((e) => e.sequence),
+        await service.getUnprovenContents('tab-1'),
+      ]).toEqual([[0, 1, 2, 4, 5], []]);
+    });
+
+    it('refuses to remove events once another instance has taken over the session', async () => {
+      const opened = await seedGap();
+      service = opened.service;
+      const other = new SessionStorageService();
+      await other.initialize();
+      await other.resumeSession(opened.sessionId);
+      await service.verifyOwnership();
+
+      await expect(service.preserveTruncatedEvents(original, 3)).rejects.toBeInstanceOf(SessionOwnershipError);
+      expect((await service.getEvents('tab-1')).map((e) => e.sequence)).toEqual([0, 1, 2, 4, 5]);
+      other.close();
+    });
+  });
+
   describe('transaction aborted after the write request succeeded (#543)', () => {
     let injected: InjectedAbort | null = null;
 

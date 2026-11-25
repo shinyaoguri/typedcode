@@ -213,7 +213,13 @@ export interface StoredTabSwitchData {
  * PoSW の処理待ちが残ったまま閉じると、打鍵はチェーンに載らないのに content にだけ残る。
  * 復元はバッファを replay 版にして proof を valid に保ち、元の content はここに**追記のみ**で残す
  * (tabs の `saveTab` の put とは別のストアなので、その後の保存やリロードで上書きされない)。
+ *
+ * 保存済みのイベント列に sequence の飛びがあったときも、記録を飛びの手前で切り詰め、その後のコードを
+ * ここに残す (#878。`reason: 'sequence-gap'`)。飛びより後のイベントは `truncatedEvents` に写してから
+ * events ストアから外す (ADR-0058)。証明には戻さない。
  */
+export type UnprovenContentReason = 'pending-events' | 'sequence-gap';
+
 export interface StoredUnprovenContentData {
   /** 追記の順 (autoIncrement) */
   id?: number;
@@ -230,6 +236,16 @@ export interface StoredUnprovenContentData {
   chainEventCount: number;
   /** 見つけた時刻 (epoch ms) */
   detectedAt: number;
+  /**
+   * 元の content を残した理由。無い行 (#413 の版が書いた行) は `'pending-events'` (処理待ちが残ったまま閉じた)。
+   * `'sequence-gap'` は保存済みのイベント列の飛びで記録を切り詰めた (#878)
+   */
+  reason?: UnprovenContentReason;
+  /**
+   * `'sequence-gap'` のとき、切り詰めて events ストアから外した、飛びより後のイベント (保存されていた順)。
+   * 証明ではない (チェーンに戻さない)。何が記録されていたかを後から確かめるためだけに残す
+   */
+  truncatedEvents?: StoredEvent[];
 }
 
 /** セッションサマリー（復旧ダイアログ用） */

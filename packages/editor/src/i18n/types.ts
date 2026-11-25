@@ -679,6 +679,7 @@ export interface TranslationKeys {
   unprovenContent: {
     title: string;
     message: string;
+    messageSequenceGap: string;
     tabSummary: string;
     showDiff: string;
     download: string;
