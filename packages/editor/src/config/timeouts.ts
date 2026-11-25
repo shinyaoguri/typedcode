@@ -11,7 +11,7 @@
 export const WORKERS_FETCH_TIMEOUT_MS = 10_000;
 
 /**
- * best-effort モード (`capabilities.preExportBestEffort`: exam/class/assignment) での
+ * best-effort モード (`capabilities.preExportBestEffort`: exam / class。assignment は casual と同じくブロックし、`.tcclass` の方針が上書きする) での
  * export 前認証全体 (Turnstile スクリプト読込 + チャレンジ + 検証) の予算。
  * 超過したら失敗 attestation を記録して ZIP を出す。casual (best-effort でない) には適用しない。
  */
