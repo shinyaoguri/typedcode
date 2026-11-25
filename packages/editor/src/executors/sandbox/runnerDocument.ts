@@ -8,8 +8,8 @@
  *
  * CSP (meta): 既定はすべて禁止し、runner の inline script・Worker 内の AsyncFunction
  * ('unsafe-eval')・Blob Worker (blob:) だけを許す。`connect-src 'none'` で fetch / XHR /
- * WebSocket による外部送信の経路を作らない。srcdoc は親の CSP も継承するので、親に CSP を
- * 入れるときは blob: Worker と 'unsafe-eval' を塞がないこと (#411)。
+ * WebSocket による外部送信の経路を作らない。srcdoc は親の CSP (`config/deliveryHeaders.ts`) も継承するので、
+ * 親の CSP で runner の inline script・blob: Worker・'unsafe-eval' を塞がないこと (#411)。
  */
 
 import { SANDBOX_WORKER_SOURCE } from './workerSource.js';

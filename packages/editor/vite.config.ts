@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { verifyRedirectLocation } from '../../scripts/verify-redirect.mjs';
 import { resolveAppVersion } from '../../scripts/app-version.mjs';
 import { WORKTREE_ID_HEADER, worktreeIdOf } from '../../scripts/worktree-id.mjs';
+import { CROSS_ORIGIN_ISOLATION_HEADERS, deliveryHeaders, renderHeadersFile } from './src/config/deliveryHeaders.js';
 
 // ビルド情報を取得。版はビルドに渡したタグ名 (TYPEDCODE_VERSION) から決め、リポジトリのファイルからは読まない。
 // 渡されなければ dev+<コミット>、形に合わない値ならビルドを止める (#842 / ADR-0055)
@@ -84,10 +85,31 @@ function wasmerSdkBundledWorkers(): Plugin {
   };
 }
 
+// 本番 (Cloudflare Pages) の `_headers` と `vite preview` のヘッダ (COOP / COEP / CSP) を、同じ値から作る (#411)。
+// CSP の connect-src に入る API の origin はビルドごとに違う (`VITE_API_URL`) ので、静的な `public/_headers` には
+// 書かず、ビルドで dist の直下に `_headers` を出す。deploy は editor の dist を土台に verify を `verify/` に重ねるので、
+// この `_headers` が配信物の直下になり、`/verify/*` にも掛かる。値の正本と許可の理由は src/config/deliveryHeaders.ts。
+// dev サーバには CSP を付けない (Vite の HMR の client が inline script と WebSocket を使う)。
+function deliveryHeadersFile(): Plugin {
+  let headers: Record<string, string> = {};
+  return {
+    name: 'delivery-headers',
+    config(_config, { mode }) {
+      // loadEnv は .env より process.env (上の WORKERS_PORT の追従を含む) を優先する。ビルドと同じ値を preview も使う
+      headers = deliveryHeaders(loadEnv(mode, __dirname, 'VITE_').VITE_API_URL);
+      return { preview: { headers } };
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: '_headers', source: renderHeadersFile(headers) });
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     wasm(),
     wasmerSdkBundledWorkers(),
+    deliveryHeadersFile(),
     // vite-plugin-top-level-await は使わない (#255)。このプラグインは
     // チャンクの全エクスポートを先頭の let へ巻き上げて本体を async IIFE で包むため、
     // 関数宣言の巻き上げに依存している monaco (vs/platform/instantiation) が壊れ、
@@ -143,8 +165,7 @@ export default defineConfig({
     // 手動の個別起動 (EDITOR_PORT なし) は従来どおり vite のフォールバックに任せる。
     strictPort: Boolean(process.env.EDITOR_PORT),
     headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'credentialless',
+      ...CROSS_ORIGIN_ISOLATION_HEADERS,
       // この dev サーバがどの作業ツリーのものかを名乗る。e2e の globalSetup が照合し、別の worktree の
       // サーバを再利用しないようにする (#552)。dev サーバだけで、preview / 本番の配信には付けない。
       [WORKTREE_ID_HEADER]: worktreeIdOf(resolve(__dirname, '../..')),
@@ -156,10 +177,7 @@ export default defineConfig({
     // だけなので preview には効かない。preview.proxy は未指定だと server.proxy を引き継ぐので、server.proxy
     // に `/verify` を足すときはここで打ち消すこと (dev の verify サーバへ転送されて 502 になる)。
     proxy: {},
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'credentialless',
-    },
+    // headers (COOP / COEP / CSP) は deliveryHeadersFile が入れる (本番の `_headers` と同じ値)
   },
   build: {
     target: 'esnext',

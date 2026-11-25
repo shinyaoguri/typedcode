@@ -1,7 +1,9 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+import { parseCsp, parseHeadersFile } from '../../editor/src/config/deliveryHeaders.js';
+import { E2E_PORTS } from '../ports.js';
 import { EditorApp, listProofEntries } from './helpers/app.js';
 import { enlargeTerminal } from './helpers/cExecution.js';
 import { VerifyWebApp } from './helpers/verifyWeb.js';
@@ -28,6 +30,33 @@ const EDITOR_DIST = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..
  * spec (verify-web-*.spec.ts) が担うので、ここには増やさない (AGENTS.md「CI 時間を意識」)。
  * dist には dev フックが無いので、dev 限定 API に依存しないこと。
  */
+/**
+ * CSP (#411) の違反を数える。本番の CSP は生成した `_headers` と `vite preview` のヘッダ (vite.config.ts の
+ * `deliveryHeadersFile`) で同じ値になる。違反はブラウザが違反した文書・Worker の console に出すので、page (iframe を
+ * 含む) と page の Worker の console から拾う。runner の srcdoc の中の Worker の違反は console に届かないが、
+ * そこで止まると実行が success にならないので、実行の spec が拾う。どの spec でも違反は 0 件でなければならない。
+ */
+const CSP_VIOLATION = /Content Security Policy/i;
+
+function watchCspViolations(page: Page): string[] {
+  const violations: string[] = [];
+  const record = (where: string, text: string) => {
+    if (CSP_VIOLATION.test(text)) violations.push(`${where}: ${text}`);
+  };
+  page.on('console', (msg) => record(msg.location().url || 'page', msg.text()));
+  page.on('pageerror', (err) => record('pageerror', err.message));
+  page.on('worker', (worker) => worker.on('console', (msg) => record(worker.url(), msg.text())));
+  return violations;
+}
+
+let cspViolations: string[] = [];
+test.beforeEach(({ page }) => {
+  cspViolations = watchCspViolations(page);
+});
+test.afterEach(() => {
+  expect(cspViolations, cspViolations.join('\n')).toEqual([]);
+});
+
 test('production build: エディタが console エラーなくマウントし打鍵できる', async ({ page }) => {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
@@ -308,6 +337,68 @@ test('production build: JS の実行が sandbox (iframe 内の Worker) で動き
   await expect(terminal.locator('.xterm-rows')).toContainText('hello-42');
   await expect(page.locator('iframe[data-code-runner]')).toHaveCount(0);
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});
+
+/**
+ * 本番の配信ヘッダ (#411)。`_headers` は editor のビルドが dist の直下に生成する (vite.config.ts の `deliveryHeadersFile`。
+ * API の origin がビルドごとに違うので静的なファイルにしない)。deploy.yml は editor の dist を土台に verify を `verify/` に
+ * 重ねるので、この直下の `_headers` が `/verify/*` にも掛かる。ここでは、生成物が受け入れ条件の directive を持つことと、
+ * preview が editor・`/verify/`・作問画面・Wasmer の worker (同じ origin の URL の worker は自分の応答の CSP を受ける) に
+ * 同じ値を返すことを見る。CSP の中身の細部はユニットテスト (editor の `deliveryHeaders.test.ts`) が固定する。
+ */
+test('production build: 生成した _headers の CSP と COOP / COEP を、editor・/verify/・Wasmer の worker の配信が同じ値で返す (#411)', async ({
+  request,
+}) => {
+  const rules = parseHeadersFile(readFileSync(join(EDITOR_DIST, '_headers'), 'utf8'));
+  expect([...rules.keys()]).toEqual(['/*']);
+  const expected = rules.get('/*') ?? {};
+  expect(expected['Cross-Origin-Opener-Policy']).toBe('same-origin');
+  expect(expected['Cross-Origin-Embedder-Policy']).toBe('credentialless');
+
+  const policy = parseCsp(expected['Content-Security-Policy'] ?? '');
+  expect(policy.get('default-src')).toEqual(["'self'"]);
+  expect(policy.get('object-src')).toEqual(["'none'"]);
+  expect(policy.get('base-uri')).toEqual(["'self'"]);
+  expect(policy.get('frame-ancestors')).toEqual(["'self'"]);
+  expect(policy.get('script-src')).toContain("'wasm-unsafe-eval'");
+  // ビルドの VITE_API_URL (playwright.build.config.ts が WORKERS_PORT で workers に向ける) への通信を許す
+  expect(policy.get('connect-src')).toContain(`http://localhost:${E2E_PORTS.workers}`);
+
+  const wasmerWorker = readdirSync(join(EDITOR_DIST, 'assets')).find((name) => /^browser-worker-.*\.js$/.test(name));
+  expect(wasmerWorker, 'Wasmer の worker のチャンク名が変わった').toBeDefined();
+  for (const path of ['/casual', '/verify/', '/author.html', `/assets/${wasmerWorker}`]) {
+    const response = await request.get(path);
+    expect(response.status(), path).toBe(200);
+    const headers = response.headers();
+    expect(headers['content-security-policy'], path).toBe(expected['Content-Security-Policy']);
+    expect(headers['cross-origin-opener-policy'], path).toBe('same-origin');
+    expect(headers['cross-origin-embedder-policy'], path).toBe('credentialless');
+  }
+});
+
+/**
+ * HTML プレビュー (#291) の srcdoc は親の CSP を継承する。学習者の inline の script と inline のイベントハンドラが、
+ * 本番の CSP の下でも動くこと (#411。`'unsafe-inline'` を外すのは専用ページにする #897)。dev フックは dist に無いので、
+ * HTML は `insertText` で 1 回に入れる (打鍵だと Monaco の HTML モードが閉じタグを補う)。
+ */
+test('production build: HTML プレビューの学習者の script と inline のハンドラが本番の CSP の下で動く (#411)', async ({
+  page,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  await app.setLanguage('html');
+  await app.focusEditor();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.press('Delete');
+  await page.keyboard.insertText(
+    '<p id="r">init</p><button id="b" onclick="document.getElementById(\'r\').textContent += \'+click\'">b</button>' +
+      '<script>document.getElementById("r").textContent = "script-ran";</script>'
+  );
+  await page.locator('#toggle-preview-btn').click();
+  const preview = page.frameLocator('#preview-iframe');
+  await expect(preview.locator('#r')).toHaveText('script-ran');
+  await preview.locator('#b').click();
+  await expect(preview.locator('#r')).toHaveText('script-ran+click');
 });
 
 /**

@@ -5,6 +5,7 @@
 
 import { t } from '../i18n/index.js';
 import type { SessionStartToken } from '@typedcode/shared';
+import { TURNSTILE_ORIGIN } from '../config/deliveryHeaders.js';
 import { WORKERS_FETCH_TIMEOUT_MS } from '../config/timeouts.js';
 
 declare global {
@@ -71,7 +72,7 @@ export function loadTurnstileScript(): Promise<void> {
 
   loadPromise = new Promise<void>((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+    script.src = `${TURNSTILE_ORIGIN}/turnstile/v0/api.js`;
     script.async = true;
     script.defer = true;
 

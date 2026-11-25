@@ -16,6 +16,7 @@ import {
   type WritableBytes,
 } from '@wasmer/sdk';
 
+import { CLANG_ASSETS_ORIGIN } from '../../config/deliveryHeaders.js';
 import { BaseExecutor } from '../base/BaseExecutor.js';
 import { WasmerSdkCorruptedError } from './errors.js';
 import type {
@@ -182,7 +183,7 @@ export class CExecutor extends BaseExecutor {
         // 1. CORS issues with Wasmer CDN
         // 2. Cloudflare Pages 25MB file size limit
         // Version in filename ensures cache busting when updated
-        const clangWebcUrl = `https://assets.typedcode.dev/wasm/clang-${CLANG_VERSION}.webc`;
+        const clangWebcUrl = `${CLANG_ASSETS_ORIGIN}/wasm/clang-${CLANG_VERSION}.webc`;
         const response = await fetch(clangWebcUrl);
         if (!response.ok) {
           throw new Error(`Failed to fetch clang.webc: ${response.status} ${response.statusText}`);
