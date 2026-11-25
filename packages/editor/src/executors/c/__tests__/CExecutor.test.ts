@@ -197,7 +197,7 @@ vi.mock('@wasmer/sdk', () => {
   return { Wasmer };
 });
 
-const { CExecutor, STDOUT_SUPPORT_SOURCE, pipeInteractiveStdin } = await import('../CExecutor.js');
+const { CExecutor, C_COMPILE_FLAGS, STDOUT_SUPPORT_SOURCE, pipeInteractiveStdin } = await import('../CExecutor.js');
 const { CppExecutor, LIBCXX_VERSION_WARNING_GUARD, LIBCXX_VERSION_WARNING_GUARD_PATH } = await import(
   '../../cpp/CppExecutor.js'
 );
@@ -253,7 +253,7 @@ describe('CExecutor on @wasmer/sdk 0.19', () => {
       '/workspace/main.wasm',
       '-target',
       'wasm32-wasi',
-      '-O2',
+      ...C_COMPILE_FLAGS,
       '-lwasi-emulated-process-clocks',
     ]);
   });
@@ -598,6 +598,57 @@ const FATAL_ERROR = `/workspace/main.c:2:10: fatal error: 'student.h' file not f
          ^~~~~~~~~~~
 1 error generated.
 `;
+
+describe('fixed C compile flags (#710)', () => {
+  it('fixes the C standard, warnings and optimization to the values adopted for classes', () => {
+    expect(C_COMPILE_FLAGS).toEqual([
+      '-std=c17',
+      '-Wall',
+      '-Wextra',
+      '-Wpedantic',
+      '-Werror=implicit-function-declaration',
+      '-O0',
+    ]);
+  });
+
+  it('passes exactly the fixed C flags to clang, between the target and the link arguments, with no other optimization level', async () => {
+    const executor = await readyExecutor();
+
+    await executor.run('int main(void){return 0;}', collectCallbacks().callbacks);
+
+    const args = sdk.commands[0]?.args ?? [];
+    const target = args.indexOf('-target');
+    expect(args.slice(target, target + 2 + C_COMPILE_FLAGS.length)).toEqual([
+      '-target',
+      'wasm32-wasi',
+      ...C_COMPILE_FLAGS,
+    ]);
+    expect(args.filter((arg) => /^-O/.test(arg))).toEqual(['-O0']);
+  });
+
+  it('keeps the C++ compile arguments as they were and mixes none of the C-only flags into them', async () => {
+    const executor = new CppExecutor();
+    await executor.initialize();
+
+    await executor.run('int main(){return 0;}', collectCallbacks().callbacks);
+
+    const args = sdk.commands[0]?.args ?? [];
+    expect(args).toEqual([
+      '/workspace/main.cpp',
+      '/workspace/__typedcode_stdout.cpp',
+      '-o',
+      '/workspace/main.wasm',
+      '-target',
+      'wasm32-wasi',
+      '-O2',
+      '-std=c++17',
+      '-include',
+      LIBCXX_VERSION_WARNING_GUARD_PATH,
+      '-lwasi-emulated-process-clocks',
+    ]);
+    expect(args.filter((arg) => C_COMPILE_FLAGS.includes(arg))).toEqual([]);
+  });
+});
 
 describe('C++ compile arguments (#871)', () => {
   async function cppCompileArgs(): Promise<readonly string[]> {

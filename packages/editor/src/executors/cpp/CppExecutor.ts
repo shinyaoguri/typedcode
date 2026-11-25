@@ -38,6 +38,9 @@ export const LIBCXX_VERSION_WARNING_GUARD = `#pragma clang diagnostic push
 /** LIBCXX_VERSION_WARNING_GUARD を置くゲストのパス */
 export const LIBCXX_VERSION_WARNING_GUARD_PATH = `${WORKSPACE_DIR}/typedcode-libcxx-guard.h`;
 
+/** C++ のコンパイルフラグ (target の後ろに付ける)。C の `C_COMPILE_FLAGS` とは別に持つ (#710) */
+const CPP_COMPILE_ARGS: readonly string[] = ['-O2', '-std=c++17', '-include', LIBCXX_VERSION_WARNING_GUARD_PATH];
+
 export class CppExecutor extends CExecutor {
   override readonly config: ExecutorConfig = {
     id: 'cpp',
@@ -57,8 +60,9 @@ export class CppExecutor extends CExecutor {
       {
         sourceFile: 'main.cpp',
         // C++ として扱わせるのは拡張子 `.cpp` (ドライバが `-x c++` を cc1 に渡す)。`-xc++` は入力ファイルの
-        // 後ろでは効かずに警告だけを出し、前に置いても cc1 とリンクの引数は変わらないので渡さない (#871)
-        compileArgs: ['-std=c++17', '-include', LIBCXX_VERSION_WARNING_GUARD_PATH],
+        // 後ろでは効かずに警告だけを出し、前に置いても cc1 とリンクの引数は変わらないので渡さない (#871)。
+        // C の固定のフラグ (`C_COMPILE_FLAGS`。#710) は使わない (C++ の規格・警告・最適化は #710 の範囲外で、従来の `-O2`)
+        compileArgs: CPP_COMPILE_ARGS,
         extraFiles: { [LIBCXX_VERSION_WARNING_GUARD_PATH]: LIBCXX_VERSION_WARNING_GUARD },
       },
       execution

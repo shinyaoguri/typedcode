@@ -104,8 +104,10 @@ test('c: @nightly clock() はこの実行環境では実時間で進み、眠っ
 }) => {
   const app = new EditorApp(page);
   await app.openCasualFresh();
-  // 300ms 眠る。ネイティブの clock() (CPU 時間) ならほぼ進まないが、ここでは実時間なので 300ms 前後進む
+  // 300ms 眠る。ネイティブの clock() (CPU 時間) ならほぼ進まないが、ここでは実時間なので 300ms 前後進む。
+  // nanosleep は POSIX の関数で、C の固定のフラグ (`-std=c17` の厳密モード。#710) では機能マクロが無いと宣言されない
   const code = [
+    '#define _POSIX_C_SOURCE 199309L',
     '#include <stdio.h>',
     '#include <time.h>',
     '',
