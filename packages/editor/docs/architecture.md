@@ -13,7 +13,7 @@
 | `executors/` | 言語別実行: C, C++ (Wasmer SDK), JavaScript, TypeScript, Python (Pyodide)。TS は Monaco 同梱の TS worker で transpile (型チェックなし。#605)。Python は opaque origin の sandbox iframe の中の classic Worker (`python/PythonRunner.ts` / `pythonRunnerDocument.ts` / `pythonRunnerWorkerSource.ts`) で Pyodide を動かし、stdin は runner の SharedArrayBuffer の行チャネルで渡す (ADR-0047 / ADR-0056)。`sandbox/` = JS / TS を opaque origin の sandbox iframe 内の Blob Worker で動かす `SandboxRunner` と、その runner (srcdoc + CSP)・Worker のソース (文字列定数)・メッセージの検査・上限 (ADR-0041)。`nonInteractive/` = stdin を一括で渡して stdout を回収する非対話の実行の入口 (`runNonInteractive`。教員用の一括検証が使う。#802) |
 | `ui/components/` | モーダル / 通知 / ドロップダウン / パネル |
 | `export/` | `ProofExporter`, README テンプレート、救出 (`rescueBundle.ts` の純関数 `buildRescueBundle` と `RescueExporter`。証明ではない `RESCUE_TC<ts>.zip`。導線は設定メニューの `#rescue-download-btn` と問題パネルの `#problem-rescue-btn`。#544 / ADR-0042) |
-| `services/` | `TurnstileService`, `StorageService`, `ScreenshotStorageService`, `SignedCheckpointService` |
+| `services/` | `TurnstileService`, `SessionStorageService`, `ScreenshotStorageService`, `SignedCheckpointService` |
 | `terminal/` | `CTerminal` (xterm.js) |
 | `i18n/` | 翻訳 (ja/en) と型定義 |
 | `authoring/` | `/author` (作問)。`AuthorPage.ts` = 殻 (組み立て・書き出しのパネル・実行と検証の配線)。`distribution.ts` = 試験定義と問題列から配布物 (`.tcexam` / `.tcclass`) を作る入口 (生成器 `examPackageAuthoring.ts`・`classPackageAuthoring.ts` は変えない)。`ui/` = 画面の部品 (`WelcomeView`・`ExplorerView`・`EditorArea`・`ExamFormView`・`ExamPreviewView`・`CasesFormView`・`VerificationPanel`・`authorDialogs`・`issueList`、ファイルの種類ごとの表示の登録 `documentViews.ts`。DOM と Monaco はここと殻だけが触る) と、DOM に触れない小さな状態・純関数 (`editorLayout.ts` = 群とタブの配置、`partNames.ts` = 追加するファイルの既定の名前、`messages.ts` = 理由の文、`copyResult.ts` = コピーの結果の文、`fileKinds.ts`)。`workspace/` = 教材フォルダ (ADR-0051 / system-spec §4.10): 状態 `authorWorkspace.ts` (`AuthorWorkspace` = 索引・開いている文書・問題と試験の操作。DOM に触れず、ユニットテストの中心)、試験定義のフォームの操作 (`examForm.ts`) とケースファイルのフォームの操作 (`casesForm.ts`)、定義ファイル (問題・ケース・試験) の parse / 新規作成 / 書き戻し (`definitions.ts`)、参照パスの解決と逆向き (`paths.ts`)、教材 → `ExamBundleProblem[]` の変換と欠損検出 (`examBundle.ts`)、問題のコピー (`copyProblem.ts`。調べ終えてから書き、定義を最後に書く。#817) と、画面からのコピーの可否と実行 (`problemCopy.ts`。#800)、フォルダの読み書きと再開 (`materialFolder.ts`・`folderAccess.ts`・`folderHandleStore.ts`)。純関数はファイルを `WorkspaceReader` (`reader.ts`) の注入越しに読む。パスはすべて教材フォルダの根からの相対 POSIX パス (先頭に `/` を付けない)。`verification/` = 教員用の一括検証 (#802 / #799): 比較 (`compareOutput.ts`)、一括の実行器 (`runBatchVerification.ts`)、対象の収集 (`collectTargets.ts`)、結果表の状態と排他 (`verificationTable.ts` の `ExecutionLock`)、行ごとの差分 (`outputDiff.ts`)、E2E 用の偽の入口 (`fakeRunner.ts`。dev フックだけが使う) |
@@ -37,7 +37,7 @@ User Action
 ```
 ProofExporter.exportAllTabsAsZip() (#download-btn / 問題パネルの #download-log-btn。タブ 0 なら export.noTabs を通知して戻る)
   → performSelfReview() (ADR-0022。capabilities.selfReview、exam は off。1 回だけ・任意の reflectionNote をアクティブなタブのチェーンへ)
-  → performPreExportVerificationForAllTabs() (Turnstile。全タブに記録。exam/class/assignment は best-effort)
+  → performPreExportVerificationForAllTabs() (Turnstile。全タブに記録。exam / class は best-effort。assignment は casual と同じくブロックし、`.tcclass` の方針が上書きする)
   → タブごとに drainQueueOrAbort() → exportProof()
   → getProofData() → ScreenshotTracker.getAllScreenshots()
   → (授業・課題で問題を読み込んだタブだけ) 問題文を <base>_problem(_N).md として同梱 (#778。証明の対象外)

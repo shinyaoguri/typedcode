@@ -1107,7 +1107,7 @@ typedcode-verify my-code.zip --mode audit    # 将来用 (現状 full と同等)
 | `SESSION_MAX_CHECKPOINTS` | 50000 / (sessionId, tabId) 単位。名前は `SESSION_` だが per-tab。error code `SESSION_LIMIT_EXCEEDED` と合わせて互換のため据え置き | `workers/src/checkpoint.ts` |
 | `MAX_TABS_PER_SESSION` | 64 | `workers/src/checkpoint.ts` (ADR-0027) |
 | `WORKERS_FETCH_TIMEOUT_MS` | 10_000 | `editor/src/config/timeouts.ts` (Workers への 1 回の fetch の上限。verify-captcha / session/start / checkpoint/sign。超過は既存の失敗経路 = retry・degraded fallback・署名の backoff 再試行に合流。#324) |
-| `PRE_EXPORT_VERIFICATION_BUDGET_MS` | 15_000 | `editor/src/config/timeouts.ts` (best-effort モード = exam/class/assignment の export 前認証全体の予算。超過は失敗 attestation を記録して ZIP を出す。casual には適用しない。#324) |
+| `PRE_EXPORT_VERIFICATION_BUDGET_MS` | 15_000 | `editor/src/config/timeouts.ts` (best-effort モード = exam / class (assignment は casual と同じくブロックし、`.tcclass` の方針が上書きする) の export 前認証全体の予算。超過は失敗 attestation を記録して ZIP を出す。casual には適用しない。#324) |
 | `TAB_CREATE_VERIFICATION_BUDGET_MS` | 15_000 (`PRE_EXPORT_VERIFICATION_BUDGET_MS` と同じ値) | `editor/src/config/timeouts.ts` (casual/class/assignment のタブ作成時の認証全体 = Turnstile + session/start の予算。超過したら表示中のチャレンジも閉じ、失敗 attestation を #0 に記録して非アンカーで開始する。後から届いた token は root に使わず署名専用に回す。#375) |
 | `STORAGE_PROBE_BYTES` | 209_715_200 (200MB) | `editor/src/services/StorageCapacityProbe.ts` (起動時の空き容量の試験で、セッション DB とは別の IndexedDB `typedcode-storage-probe` に書いて消す量。授業 3 時間の典型 約 90MB の約 2 倍。書けなければ警告し、続行は選べる。dev ビルドに限り `VITE_STORAGE_PROBE_BYTES` で上書きできる。#626) |
 | `STORAGE_PROBE_TIMEOUT_MS` | 10_000 | `editor/src/services/StorageCapacityProbe.ts` (上の試験の上限時間。超えたら書き込みを abort して判定せずに起動を続ける。#626) |
