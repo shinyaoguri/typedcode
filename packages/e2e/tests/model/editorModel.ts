@@ -53,6 +53,7 @@ export interface EditorModel {
   /**
    * active が変わった手の履歴 (追記順。#616)。export の `tab-switches.json` はこの順に並ぶ
    * (閉じて再開をまたいでも追記順で戻す = #401)。active が変わらない手 (同じタブへの切替・復元) は積まない。
+   * 履歴はセッション単位で、新しいセッションになる手 (タブ 0 本からの Reload) で空になる (#891)。
    * timestamp の値はモデルで決められないので持たない
    */
   switches: ModelTabSwitch[];
@@ -320,12 +321,14 @@ export class Reload extends EditorCommand {
     const name = nextUntitledName(m);
     const createdId = await d.reload(hadNoTabs);
     if (hadNoTabs) {
-      // casual はタブ 0 本で起動すると既定タブを 1 本開く (ADR-0015)。
+      // casual はタブ 0 本で起動すると既定タブを 1 本開く (ADR-0015)。開いたタブが無いので新しいセッションになり、
+      // 切替の履歴はセッション単位なので前のセッションの分を持ち越さない (#891)。
       if (!createdId) throw new Error('reload with no tabs should create the default tab');
+      m.switches = [];
       m.tabs.push(newTab(createdId, name));
       activate(m, createdId);
     }
-    // それ以外は全部そのまま復元される (順序・active・内容・言語・名前・切替の履歴)。
+    // それ以外は全部そのまま復元される (同じセッションの再開。順序・active・内容・言語・名前・切替の履歴)。
   }
   toString(): string {
     return 'Reload()';

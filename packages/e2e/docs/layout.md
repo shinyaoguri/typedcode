@@ -36,6 +36,7 @@ tests/
 ├── code-execution-c-flags.spec.ts # @nightly: C の固定のコンパイルフラグ (`C_COMPILE_FLAGS`。#710) が実 Clang に効いていること。模範解答の hello が警告なしに C17 の厳密モード (`__STRICT_ANSI__`)・最適化なし (`__OPTIMIZE__` が無い) で実行されること、未使用の変数・printf の書式の不一致・未使用の引数が警告で success のままなこと、宣言の無い関数の呼び出しがエラーで実行しないこと。手順は `helpers/cExecution.ts`
 ├── code-execution-c-abort.spec.ts # @nightly: 実 Clang のコンパイル中の停止 (#711 / #870)。dev サーバの `CExecutor` の singleton を page から import して包み、利用者のプログラムを起動しないこと・executor の結果が aborted・直後の再実行に混ざらないことを見る (C / C++。内部の名前に依存するので、名前が変わると明示のメッセージで落ちる)。`Process.kill()` が clang の wasm を止めず worker を塞ぎ続ける既知の不具合 (#711 に残る条件) は `test.fail()` で固定してある。直したら外す
 ├── persisted-sequence-under-backlog.spec.ts # @nightly: 200 文字ずつ、PoSW の処理待ち 1,000 件以下で打ち続け、処理待ちが残るうちに IndexedDB の events が 0 から欠けずに続く (contentSnapshot を含む) こと、掃ける前に読み直しても gap が出ず、export が verify-cli (fast) を通ることを見る (#873)
+├── restore-sequence-gap.spec.ts # 保存済みの events に飛びがあるまま再開・読み直したとき (#878 / ADR-0058): 閉じた後 (または読み直しの直前) に events の 1 行を消して飛びを作り、再開するとバッファが飛びの手前の版になり、`unproven-content` に `data-reason="sequence-gap"` の行が出て、保存されていた content と飛びより後のイベント (`truncatedEvents`) が `unprovenContents` に残り events が 0 から欠けずに続くこと、export した proof が飛びの手前の記録を先頭にそのまま持ち飛びより後のイベントを含まず verify-cli (fast) を通ること、続きを打った export と読み直し後の export も通ることを見る。IndexedDB からの再開と sessionStorage からの読み直しの 2 本
 ├── state-contract.spec.ts # editor の状態契約: タブ操作の各段階で DOM の data-* と __tcTestSnapshot が一致する (#433)。export のダウンロードの瞬間 (自己検証より前) にも件数とハッシュが揃っている (#521)
 ├── export-during-verify.spec.ts # 1 回目の export のダウンロード直後 (自己検証の終わる前) に押した 2 回目の export も ZIP を出し、verify-cli (fast) で pass する (#565)。ダウンロードの瞬間に何かを読む・押すときは、`a[download]` の追加を MutationObserver で捕まえる (この 2 本が例)
 ├── fault-exam-signing-token.spec.ts # exam の開始時に session/start が応答しない (#236): ゲートの人間確認 (`#exam-gate-attestation[data-attestation-state]`) が `pending` のまま解錠でき、#0 は合成の印 (`verified:false`)、token の無い間も export は止まらず checkpoint は未署名。塞ぎを外して `online` を起こすと署名 token を取り直し、以降の checkpoint が署名されて verify-cli --exam-package (fast) が通る。fixture が無いとき CI では落とし、ローカルでは skip
@@ -67,6 +68,7 @@ playwright.deployed.config.ts # デプロイ済みの配信物用 (#655): サー
 scripts/setup-env.mjs      # CI 用: 無い localKeys.ts を .example から作る (#338) + Turnstile 公開テストキー配置 + checkpoint 署名鍵を実行時生成
 scripts/setup-exam-fixture.mjs # exam 用 fixture: 使い捨ての出題者鍵を作り make-exam-package.mjs で p1 / other の .tcexam を packages/e2e/fixtures/exam/ (gitignore 済み) に生成。`npm run setup` が setup-env.mjs の次に走る。揃っていれば何もしない (fixture.json の bundle が今の `BUNDLE` と違えば作り直す = 古い starter 空の fixture を使い続けない。#718。`setup-exam-fixture.test.mjs` が見る)
 exam-keys/ + vite.editor.config.mjs + vite.verify.config.mjs # exam の出題者鍵の差し替え (下記の罠): editor / verify の dev サーバ用 Vite プラグインと、verify-cli (tsx) 用の resolve フック
+scripts/drain-wait.mjs     # `expectConsistent` (helpers/app.ts) の待ちの判定 (純関数。#892): 処理待ちが進んでいる間は上限まで待ち、一定時間進まなければ stalled。失敗の報告に添える推移の整形も持つ。テストは drain-wait.test.mjs (node --test)
 scripts/stage-verify-dist.mjs # dist 用: deploy.yml の「Merge build outputs」と同じ配置 (editor/dist/verify) を作る
 shots/                     # npm run shots の出力 (PNG・アニメーション WebP・manifest.json)。gitignore 済み
 ```

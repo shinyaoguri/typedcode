@@ -23,14 +23,6 @@ const DIRECT_INSERT = `int main(){${'int x=1;'.repeat(40)}return 0;} // あ`;
 
 const COMPOSITION_TYPES = new Set(['insertCompositionText', 'insertFromComposition', 'deleteCompositionText']);
 
-/**
- * 長い composition の後に PoSW の処理待ちが掃けるまでの上限 (#783)。Monaco は composition の開始時の preedit を
- * 1 文字ずつの編集にする (`NativeEditContext` → `viewController.type`) ので、160 文字の preedit は 1 文字の
- * `insertCompositionText` 160 件になり、確定と合わせて約 164 件を一度に積む。CI のランナー (2 並列) の処理は
- * 約 5 件/秒で、`expectConsistent` の既定 (30 秒) では掃けきらない。
- */
-const LONG_COMPOSITION_DRAIN_TIMEOUT_MS = 120_000;
-
 interface Observed {
   /** proof の全イベント (記録順)。 */
   events: ProofEvent[];
@@ -141,7 +133,9 @@ test('150 文字を超える長い確定も composition 系で、Pure Typing: YE
   await app.typeCode('// ');
   const committed = '亜'.repeat(160);
   await compose(page, 'あ'.repeat(160), committed);
-  await app.expectConsistent({ timeoutMs: LONG_COMPOSITION_DRAIN_TIMEOUT_MS });
+  // 160 文字の preedit は 1 文字ずつの `insertCompositionText` 160 件になり、確定と合わせて約 164 件を一度に積む (#783)。
+  // expectConsistent は処理待ちが減り続けている間は上限 (120 秒) まで待つので、延ばさなくてよい (#892)。
+  await app.expectConsistent();
   expect((await app.snapshot()).tabs[0]!.content).toBe(`// ${committed}`);
 
   const { changes, verdict } = await exportAndVerify(app);

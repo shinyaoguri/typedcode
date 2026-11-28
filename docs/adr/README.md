@@ -88,7 +88,8 @@
 | [0054](0054-public-verification-and-replay-sdk.md) | Accepted (実装は #811・#812。§5 の配布 = #813 は保留) | 検証とログ再生を公開 SDK にし、公式 Web・CLI と外部アプリが同じ API を使う |
 | [0055](0055-release-channels-and-calendar-versioning.md) | Accepted (実装は #842〜#845) | リリースを main → beta → 正式版 (年 2 回) の 3 チャンネルにし、版を暦の形でタグから自動採番する (正式版は 2 月・8 月に beta を昇格・beta は日次で専用環境へ・版は `vYYYY.M.0-beta.N` → `vYYYY.M.0` → `vYYYY.M.P`・正本はタグと GitHub Releases でリリースはファイルを変えない・変更履歴は `changelog.d/` の断片・学期中の patch は `release/A.B` へ cherry-pick・bump の PR と 7 日の規則と停滞検知をやめる・ADR-0028 の一部を置換) |
 | [0056](0056-python-in-opaque-origin-runner.md) | Accepted | Python (Pyodide) を opaque origin の sandbox iframe (`allow-scripts` + `allow="cross-origin-isolated"`) の中の classic Worker で実行し、proof の保存領域から隔離する (SAB は runner が作り、親は行を渡す・fail closed・通信は取得元と PyPI だけ。ADR-0047 の Worker の置き場所を改訂) |
-| [0057](0057-keep-closed-tabs-as-archive.md) | Accepted | 閉じたタブ・取り込みで置き換えたタブ・前のセッションを、消さずに「閉じたタブ」として残す (exam を除く。削除は利用者の明示の操作だけ・1 transaction で書き失敗は削除へ倒さない・`DB_VERSION` は上げない・開き直したタブは元のセッションで署名を続ける) |
+| [0057](0057-keep-closed-tabs-as-archive.md) | Accepted (決定 1 の例外 = 復元で見つけたイベント列の飛びより後を保全に写して events から外す、を ADR-0058 で追補 #878) | 閉じたタブ・取り込みで置き換えたタブ・前のセッションを、消さずに「閉じたタブ」として残す (exam を除く。削除は利用者の明示の操作だけ・1 transaction で書き失敗は削除へ倒さない・`DB_VERSION` は上げない・開き直したタブは元のセッションで署名を続ける) |
+| [0058](0058-truncate-record-at-sequence-gap.md) | Accepted | 復元で見つけたイベント列の飛びは、手前で記録を切り詰め、飛びより後を保全に写してから events から外す (#413 と同じ `unprovenContents` と通知・写すのと外すのは 1 つの transaction・証明に戻さない・ADR-0057 の決定 1 への唯一の例外・切り詰めたタブの以後は署名されないことを受け入れる) |
 
 ## 参考
 

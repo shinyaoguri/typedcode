@@ -484,6 +484,7 @@ problems:              # 採用する問題を出題順に並べる
 
 - export は常に開いている全タブを書き出す (editor の左のダウンロードボタンと、問題パネルの「ログをダウンロード」はどちらも同じ全タブの ZIP。#779)。タブが N 個なら `*_proof.json` も N 個になる。各タブは独立した proof で、**タブ間をつなぐハッシュ鎖は無い**
 - `tab-switches.json` はチェーン外の平文サイドファイルで、ハッシュに入らず、どの検証器 (verify / verify-cli) も読まない (監査用の人間向け情報)
+- `tab-switches.json` は今のセッションの切替の履歴で、追記順に並ぶ (#401)。IndexedDB の `tabSwitches` は sessionId で引き、リロード (sessionStorage の控え) でもブラウザのタブを閉じて再開 (IndexedDB) でも同じ履歴に戻る。控えが別のセッションのもの (最後のタブを閉じてからリロードすると、開いたタブが無いので新しいセッションになる) なら持ち越さない。同じセッションの中の操作 (タブを閉じる・テンプレートの取り込み) では履歴を空にしないので、閉じたタブへの切替も残る (#891)
 - `<base>_problem.md` (#778) は、授業・課題 (`/class` / `/assignment`) で `.tcclass` から問題を読み込んだタブだけに入る。中身は配布ファイルのその問題の `statement` をそのまま UTF-8 で書いたもの。名前は proof と同じ base・同じ番号 (`<base>_proof_N.json` なら `<base>_problem_N.md`。shared の `createExportNamer`)。問題文は editor の `ClassProblemStore` (filename キー) から引くので、読み込んだ後に改名したタブには入らない。`tab-switches.json` と同じくチェーン外の平文で、proof JSON にもハッシュにも入らず、どの検証器も読まない (ソースの候補からも外す。§5.2.1)。試験 (`/exam`) と練習には入れない。ZIP の README の一覧には「証明の対象外」として載る
 - `screenshots/` は撮影があった場合のみ含まれる
 
@@ -619,6 +620,16 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 - 同じタブで食い違いが 2 回以上起きたら追記する (最初の元のコードを残す)。同じ内容が既にあれば重ねない
 - 復元のたびに保全済みの元のコードを読み戻し、タブのメモリ上の状態に載せる。救出 (§5.4) はそのメモリを読む (IndexedDB に依存しない)
 - 食い違ったときは通知 (`data-dialog="unproven-content"`) を出す。差分の大きさは「元 X 文字 → 証明 Y 文字」で示す (処理待ちが途中の編集や削除だと、差分は末尾に限らず、元のほうが短いこともある)。通知から、差分 (Monaco の diff editor。左 = 証明の版、右 = 元のコード、読み取り専用) と元のコードのダウンロード (`UNPROVEN_<source>`) を開ける。元のコードをバッファへ自動で戻すことはしない (戻すと証明と食い違う)
+
+#### 5.4.2. 保存済みのイベント列の飛び (#878、ADR-0058)
+
+保存の失敗・古い版が残した DB などで、IndexedDB の events に sequence の飛び (`events[i].sequence !== events[i-1].sequence + 1`) が残っていると、飛びをまたいだ記録のまま export した proof は検証に通らない。復元 (sessionStorage からの読み直し・IndexedDB からの再開・閉じたタブの開き直し) はこう扱う (`ui/tabs/restoredChain.ts` の `trimRestoredChain` と `TabManager.restoreContent`)。
+
+- 記録は最初の飛びの手前で切り詰める。チェックポイントは、残したイベントを指すもの (`eventIndex < 残したイベント数`) だけを残す (署名済みを含む。切り詰めた先を指すものを残すと verifier が拒否する)。飛びが無くても、イベントの外を指すチェックポイントは外す
+- バッファは切り詰めた記録の replay 版にし、保存されていた content (飛びより後のコードを含む) を §5.4.1 と同じ `unprovenContents` に `reason: 'sequence-gap'` で残す。飛びより後のイベントは同じ行の `truncatedEvents` に写し、**同じ transaction で** events ストアと `tabProgress` から消す (`SessionStorageService.preserveTruncatedEvents`)。失敗すれば何も変えない。DB のバージョンは変えない (行に任意の欄を足すだけ)
+- 外したイベントは証明に戻さない (proof にも救出のメモリにも載せない)。以降の入力は、切り詰めた記録の続きとして同じタブに記録する
+- 通知は §5.4.1 と同じ `unproven-content` で、行の `data-reason="sequence-gap"` と理由ごとの説明で知らせる
+- 切り詰めた先の署名済みチェックポイントを外すので、そのタブの以後のチェックポイントはサーバの `checkpointIndex` と食い違って署名されない (時刻アンカーが付かない。proof は検証を通る)。署名の再開は別 Issue
 
 ---
 
