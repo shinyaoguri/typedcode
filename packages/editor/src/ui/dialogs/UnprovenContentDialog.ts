@@ -8,16 +8,26 @@
  * 文言は「末尾 N 文字」ではなく「元 X 文字 → 証明 Y 文字」: 処理待ちが途中の編集や削除だと、差分は
  * 末尾に限らず、元のほうが短いこともある。
  *
- * 状態契約 (packages/editor/AGENTS.md): overlay に `data-dialog="unproven-content"`。タブごとの行
- * (`.unproven-item`) に `data-tab-id` / `data-original-length` / `data-chain-length`、ボタンに
+ * 保存済みのイベント列に飛びがあって記録を切り詰めたタブ (#878) も同じ通知・同じ操作で知らせる。理由ごとに
+ * 説明の段落を分け (`.unproven-message[data-reason]`。今回の行にある理由だけを出す)、行にも理由を出す。
+ *
+ * 状態契約 (packages/editor/docs/state-contract.md): overlay に `data-dialog="unproven-content"`。タブごとの行
+ * (`.unproven-item`) に `data-tab-id` / `data-original-length` / `data-chain-length` /
+ * `data-reason` (`pending-events` | `sequence-gap`)、ボタンに
  * `data-action="show-diff" | "download"`。差分の置き場 (`.unproven-diff`) の `data-diff-tab-id` は
  * 表示中の差分のタブ id (表示していなければ空文字)。
  */
 
-import { createExportNamer, escapeHtml } from '@typedcode/shared';
+import { createExportNamer, escapeHtml, type UnprovenContentReason } from '@typedcode/shared';
 import { t } from '../../i18n/index.js';
 import { showModal } from '../components/Modal.js';
 import type { RestoreDivergence } from '../tabs/TabManager.js';
+
+/** 理由ごとの説明 (出す順) */
+const REASON_MESSAGES: readonly { reason: UnprovenContentReason; key: string }[] = [
+  { reason: 'pending-events', key: 'unprovenContent.message' },
+  { reason: 'sequence-gap', key: 'unprovenContent.messageSequenceGap' },
+];
 
 /** 差分の表示 (Monaco の diff editor。テストでは差し替える) */
 export interface DiffView {
@@ -61,7 +71,8 @@ export async function showUnprovenContentDialog(
       return `
         <li class="unproven-item" data-tab-id="${escapeHtml(divergence.tabId)}"
             data-original-length="${divergence.original.length}"
-            data-chain-length="${divergence.chainContent.length}">
+            data-chain-length="${divergence.chainContent.length}"
+            data-reason="${divergence.reason}">
           <span class="unproven-summary">${escapeHtml(summary)}</span>
           <span class="unproven-actions">
             <button type="button" class="modal-btn modal-btn-cancel" data-action="show-diff">
@@ -86,7 +97,9 @@ export async function showUnprovenContentDialog(
     closeOnOverlayClick: false,
     closeOnEscape: true,
     content: `
-      <p class="unproven-message">${t('unprovenContent.message')}</p>
+      ${REASON_MESSAGES.filter(({ reason }) => divergences.some((d) => d.reason === reason))
+        .map(({ reason, key }) => `<p class="unproven-message" data-reason="${reason}">${t(key)}</p>`)
+        .join('')}
       <ul class="unproven-list">${listHtml}</ul>
       <p class="unproven-diff-label hidden">${t('unprovenContent.diffLabel')}</p>
       <div class="unproven-diff hidden" data-diff-tab-id=""></div>

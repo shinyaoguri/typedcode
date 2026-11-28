@@ -650,6 +650,8 @@ export const en: TranslationKeys = {
     title: 'Some edits were not recorded in the proof',
     message:
       'Edits that were still being processed when the page closed are not in the proof, so the editor shows the version recorded in the proof. The original code is kept, and you can compare it or download it.',
+    messageSequenceGap:
+      'Part of the saved record was missing, so the record was cut just before the missing part and the editor shows the version at that point. The code written after that point is kept, and you can compare it or download it. You can keep writing in this tab (new input is recorded as a continuation of the shortened record).',
     tabSummary: '${filename}: original ${original} chars → proof ${chain} chars',
     showDiff: 'Show diff',
     download: 'Download original code',

@@ -621,6 +621,16 @@ PoSW の処理待ちが残ったまま閉じる (またはリロードする) �
 - 復元のたびに保全済みの元のコードを読み戻し、タブのメモリ上の状態に載せる。救出 (§5.4) はそのメモリを読む (IndexedDB に依存しない)
 - 食い違ったときは通知 (`data-dialog="unproven-content"`) を出す。差分の大きさは「元 X 文字 → 証明 Y 文字」で示す (処理待ちが途中の編集や削除だと、差分は末尾に限らず、元のほうが短いこともある)。通知から、差分 (Monaco の diff editor。左 = 証明の版、右 = 元のコード、読み取り専用) と元のコードのダウンロード (`UNPROVEN_<source>`) を開ける。元のコードをバッファへ自動で戻すことはしない (戻すと証明と食い違う)
 
+#### 5.4.2. 保存済みのイベント列の飛び (#878、ADR-0058)
+
+保存の失敗・古い版が残した DB などで、IndexedDB の events に sequence の飛び (`events[i].sequence !== events[i-1].sequence + 1`) が残っていると、飛びをまたいだ記録のまま export した proof は検証に通らない。復元 (sessionStorage からの読み直し・IndexedDB からの再開・閉じたタブの開き直し) はこう扱う (`ui/tabs/restoredChain.ts` の `trimRestoredChain` と `TabManager.restoreContent`)。
+
+- 記録は最初の飛びの手前で切り詰める。チェックポイントは、残したイベントを指すもの (`eventIndex < 残したイベント数`) だけを残す (署名済みを含む。切り詰めた先を指すものを残すと verifier が拒否する)。飛びが無くても、イベントの外を指すチェックポイントは外す
+- バッファは切り詰めた記録の replay 版にし、保存されていた content (飛びより後のコードを含む) を §5.4.1 と同じ `unprovenContents` に `reason: 'sequence-gap'` で残す。飛びより後のイベントは同じ行の `truncatedEvents` に写し、**同じ transaction で** events ストアと `tabProgress` から消す (`SessionStorageService.preserveTruncatedEvents`)。失敗すれば何も変えない。DB のバージョンは変えない (行に任意の欄を足すだけ)
+- 外したイベントは証明に戻さない (proof にも救出のメモリにも載せない)。以降の入力は、切り詰めた記録の続きとして同じタブに記録する
+- 通知は §5.4.1 と同じ `unproven-content` で、行の `data-reason="sequence-gap"` と理由ごとの説明で知らせる
+- 切り詰めた先の署名済みチェックポイントを外すので、そのタブの以後のチェックポイントはサーバの `checkpointIndex` と食い違って署名されない (時刻アンカーが付かない。proof は検証を通る)。署名の再開は別 Issue
+
 ---
 
 ## 6. 検証フェーズ
