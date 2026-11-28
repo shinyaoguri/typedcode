@@ -38,8 +38,9 @@ test.describe.configure({ timeout: 360_000 });
 const EXECUTED_MARK = 'EXECUTED_AFTER_COMPILE_ABORT';
 
 /**
- * コンパイルに時間のかかるコード: F が 1 個の関数、L1..L7 がそれぞれ 4 倍にして 4^7 = 16384 個の関数を -O2 で
- * コンパイルさせる (手元の clang 16 / Wasmer で約 40 秒。4^6 で約 10 秒)。外部リンケージなので最適化で消えない
+ * コンパイルに時間のかかるコード: F が 1 個の関数、L1..L7 がそれぞれ 4 倍にして 4^7 = 16384 個の関数を
+ * コンパイルさせる (C は `-O0`、C++ は `-O2`。#710。時間は -O2 の頃の手元の clang 16 / Wasmer で約 40 秒、4^6 で約 10 秒)。
+ * 外部リンケージなので最適化で消えない
  */
 function slowToCompile(lang: 'c' | 'cpp'): string {
   const lines = [lang === 'c' ? '#include <stdio.h>' : '#include <cstdio>'];

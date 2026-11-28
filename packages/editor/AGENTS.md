@@ -53,6 +53,7 @@ E2E (`packages/e2e`) は editor の UI 状態を、翻訳テキストや CSS ク
 - C / C++ の利用者のソースには何も前置しない (#709)
 - C++ のコンパイルは `-xc++` を渡さず、libc++ の版の `#warning` を `-include` の guard で黙らせる (#871)
 - C / C++ のリンクには `-lwasi-emulated-process-clocks` を渡す (#714)
+- C のコンパイルフラグは `C_COMPILE_FLAGS` の 1 か所に固定し、C++ に混ぜない (#710)
 - HTML プレビュー iframe は opaque origin (#291/#299)
 - ユーザーの JS / TS は opaque origin の sandbox iframe 内の Worker でだけ実行する (#290 / ADR-0041)
 - Python (Pyodide) は、エディタのメインスレッドでも同じ origin でも動かさない (#649 / #719 / ADR-0047 / ADR-0056)
