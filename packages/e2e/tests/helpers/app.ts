@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import JSZip from 'jszip';
 import type { Download, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { type DrainSample, formatDrainTrajectory, judgeDrain } from '../../scripts/drain-wait.mjs';
 
 /**
  * アプリの起動待ち (Monaco の `.view-lines` が visible になるまで) の上限。待ちの既定は config の
@@ -343,21 +344,33 @@ export class EditorApp {
    * (`#current-hash[data-hash]`)、`#language-selector` の値。
    *
    * 件数とハッシュは PoSW の非同期処理で動くので、アクティブなタブの pending が 0 になり DOM が
-   * 追いつくまで待つ (DOM と snapshot は 1 回の evaluate で同時に読む)。上限までに揃わなければ
-   * 食い違いの一覧を添えて落ちる。`timeoutMs` は上限を延ばす。1 回の操作で多数のイベントを積む手順
-   * (長い composition など) の後だけに使い、既定は `CONSISTENT_TIMEOUT_MS` (#783)。
+   * 追いつくまで待つ (DOM と snapshot は 1 回の evaluate で同時に読む)。待ちは進捗で決める (#892):
+   * 確定件数が増えるか pending が減っている間は上限 (`CONSISTENT_CAP_MS`、`timeoutMs` で変えられる) まで待ち、
+   * `CONSISTENT_STALL_MS` の間 1 件も進まなければ止まっているとみなす。揃わなければ、食い違いの一覧に
+   * 諦めた理由 (stalled / cap) と pending・確定件数の推移を添えて落ちる (scripts/drain-wait.mjs)。
    */
   async expectConsistent(options: { timeoutMs?: number } = {}): Promise<void> {
-    let last: string[] = [];
-    await expect
-      .poll(
-        async () => {
-          last = await this.page.evaluate(readContractMismatches, TAB_SELECTOR);
-          return last;
-        },
-        { timeout: options.timeoutMs ?? CONSISTENT_TIMEOUT_MS, intervals: [100, 250, 500] }
-      )
-      .toEqual([]);
+    const limits = { stallMs: CONSISTENT_STALL_MS, capMs: options.timeoutMs ?? CONSISTENT_CAP_MS };
+    const intervals = [100, 250, 500];
+    const samples: DrainSample[] = [];
+    const startedAt = Date.now();
+    for (let i = 0; ; i++) {
+      const { mismatches, pending, committed } = await this.page.evaluate(readContractMismatches, TAB_SELECTOR);
+      if (mismatches.length === 0) return;
+      samples.push({ atMs: Date.now() - startedAt, pending, committed });
+      const verdict = judgeDrain(samples, limits);
+      if (verdict !== 'wait') {
+        const reason =
+          verdict === 'stalled'
+            ? `no progress for ${limits.stallMs} ms (stalled)`
+            : `still progressing at the ${limits.capMs} ms cap`;
+        expect(
+          mismatches,
+          `DOM and snapshot did not converge: ${reason}; active tab trajectory: ${formatDrainTrajectory(samples)}`
+        ).toEqual([]);
+      }
+      await this.page.waitForTimeout(intervals[Math.min(i, intervals.length - 1)]!);
+    }
   }
 
   /**
@@ -438,8 +451,20 @@ export class EditorApp {
 /** editor のタブ要素 (状態契約の data-* を持つ)。 */
 const TAB_SELECTOR = '#editor-tabs .editor-tab';
 
-/** `expectConsistent` が DOM と snapshot の収束を待つ上限 (PoSW のキューが掃けるまでを含む)。 */
-const CONSISTENT_TIMEOUT_MS = 30_000;
+/**
+ * `expectConsistent` が「止まっている」とみなすまでの、1 件も進まない時間 (#892)。ブラウザを 1 コアに絞って他の
+ * 負荷と並べた実測 (約 1.3 件/秒) で、進んだ観測どうしの間が最長 2.4 秒だったので、その 8 倍を取る。PoSW の Worker
+ * が応答を落としたときにメインスレッドへ切り替えるまでの期限 (shared の `PoswManager` の 30 秒) より短いので、
+ * 応答が失われた止まり方も見逃さない。
+ */
+const CONSISTENT_STALL_MS = 20_000;
+
+/**
+ * `expectConsistent` が進み続けていても諦める上限 (#892)。#783 の長い composition (約 164 件) を CI で掃く
+ * ために延ばした値 (120 秒) と同じ。model の `Type` の最長 (約 36 文字 = 約 180 件) も、CI の約 5 件/秒なら
+ * 40 秒弱で掃ける (以前の固定 30 秒はこの最長とほぼ同じで、nightly で `still has N pending` になった)。
+ */
+const CONSISTENT_CAP_MS = 120_000;
 
 /** `__tcTestSnapshot` のタブ 1 本分 (editor の `core/stateContract.ts` の `TestSnapshotTab`)。 */
 export interface EditorSnapshotTab {
@@ -471,12 +496,17 @@ export interface DomTab {
 }
 
 /**
- * ページ内で DOM の状態契約と snapshot を同時に読み、食い違いを文字列で返す (一致なら空)。
- * `page.evaluate` に渡すのでクロージャの外の値を参照しない。
+ * ページ内で DOM の状態契約と snapshot を同時に読み、食い違いを文字列で返す (一致なら空)。あわせて、待ちの判定
+ * (scripts/drain-wait.mjs) に使うアクティブなタブの処理待ち (`pending`) と確定件数 (`committed`) を返す
+ * (アクティブなタブが無ければ null)。`page.evaluate` に渡すのでクロージャの外の値を参照しない。
  */
-function readContractMismatches(tabSelector: string): string[] {
+function readContractMismatches(tabSelector: string): {
+  mismatches: string[];
+  pending: number | null;
+  committed: number | null;
+} {
   const fn = (window as unknown as { __tcTestSnapshot?: () => EditorSnapshot }).__tcTestSnapshot;
-  if (!fn) return ['__tcTestSnapshot not available (dev hook missing)'];
+  if (!fn) return { mismatches: ['__tcTestSnapshot not available (dev hook missing)'], pending: null, committed: null };
   const snap = fn();
   const tabEls = [...document.querySelectorAll<HTMLElement>(tabSelector)];
   const domTabs = tabEls.map((el) => ({
@@ -532,7 +562,7 @@ function readContractMismatches(tabSelector: string): string[] {
     if (count !== '0') out.push(`event count with no tabs: dom=${count} (expected 0)`);
     if (hash !== '') out.push(`hash with no tabs: dom=${hash} (expected empty)`);
   }
-  return out;
+  return { mismatches: out, pending: activeTab?.pendingCount ?? null, committed: activeTab?.totalEvents ?? null };
 }
 
 /** エディタのモード (URL の 1 段目)。 */

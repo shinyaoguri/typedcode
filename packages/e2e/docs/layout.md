@@ -67,6 +67,7 @@ playwright.deployed.config.ts # デプロイ済みの配信物用 (#655): サー
 scripts/setup-env.mjs      # CI 用: 無い localKeys.ts を .example から作る (#338) + Turnstile 公開テストキー配置 + checkpoint 署名鍵を実行時生成
 scripts/setup-exam-fixture.mjs # exam 用 fixture: 使い捨ての出題者鍵を作り make-exam-package.mjs で p1 / other の .tcexam を packages/e2e/fixtures/exam/ (gitignore 済み) に生成。`npm run setup` が setup-env.mjs の次に走る。揃っていれば何もしない (fixture.json の bundle が今の `BUNDLE` と違えば作り直す = 古い starter 空の fixture を使い続けない。#718。`setup-exam-fixture.test.mjs` が見る)
 exam-keys/ + vite.editor.config.mjs + vite.verify.config.mjs # exam の出題者鍵の差し替え (下記の罠): editor / verify の dev サーバ用 Vite プラグインと、verify-cli (tsx) 用の resolve フック
+scripts/drain-wait.mjs     # `expectConsistent` (helpers/app.ts) の待ちの判定 (純関数。#892): 処理待ちが進んでいる間は上限まで待ち、一定時間進まなければ stalled。失敗の報告に添える推移の整形も持つ。テストは drain-wait.test.mjs (node --test)
 scripts/stage-verify-dist.mjs # dist 用: deploy.yml の「Merge build outputs」と同じ配置 (editor/dist/verify) を作る
 shots/                     # npm run shots の出力 (PNG・アニメーション WebP・manifest.json)。gitignore 済み
 ```

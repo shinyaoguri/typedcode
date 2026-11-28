@@ -484,6 +484,7 @@ problems:              # 採用する問題を出題順に並べる
 
 - export は常に開いている全タブを書き出す (editor の左のダウンロードボタンと、問題パネルの「ログをダウンロード」はどちらも同じ全タブの ZIP。#779)。タブが N 個なら `*_proof.json` も N 個になる。各タブは独立した proof で、**タブ間をつなぐハッシュ鎖は無い**
 - `tab-switches.json` はチェーン外の平文サイドファイルで、ハッシュに入らず、どの検証器 (verify / verify-cli) も読まない (監査用の人間向け情報)
+- `tab-switches.json` は今のセッションの切替の履歴で、追記順に並ぶ (#401)。IndexedDB の `tabSwitches` は sessionId で引き、リロード (sessionStorage の控え) でもブラウザのタブを閉じて再開 (IndexedDB) でも同じ履歴に戻る。控えが別のセッションのもの (最後のタブを閉じてからリロードすると、開いたタブが無いので新しいセッションになる) なら持ち越さない。同じセッションの中の操作 (タブを閉じる・テンプレートの取り込み) では履歴を空にしないので、閉じたタブへの切替も残る (#891)
 - `<base>_problem.md` (#778) は、授業・課題 (`/class` / `/assignment`) で `.tcclass` から問題を読み込んだタブだけに入る。中身は配布ファイルのその問題の `statement` をそのまま UTF-8 で書いたもの。名前は proof と同じ base・同じ番号 (`<base>_proof_N.json` なら `<base>_problem_N.md`。shared の `createExportNamer`)。問題文は editor の `ClassProblemStore` (filename キー) から引くので、読み込んだ後に改名したタブには入らない。`tab-switches.json` と同じくチェーン外の平文で、proof JSON にもハッシュにも入らず、どの検証器も読まない (ソースの候補からも外す。§5.2.1)。試験 (`/exam`) と練習には入れない。ZIP の README の一覧には「証明の対象外」として載る
 - `screenshots/` は撮影があった場合のみ含まれる
 
