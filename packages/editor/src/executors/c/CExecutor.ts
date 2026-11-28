@@ -54,6 +54,46 @@ export const WORKSPACE_DIR = '/workspace';
  */
 const LINK_ARGS = ['-lwasi-emulated-process-clocks'];
 
+/** 出力の target (C / C++ 共通)。WASI の wasm を作り、Wasmer の sandbox で動かす */
+const TARGET_ARGS = ['-target', 'wasm32-wasi'];
+
+/**
+ * C のコンパイルフラグ (#710)。授業に合わせて固定した値の正本で、学生は変えられない (設定の UI も配布物の欄も持たない)。
+ *
+ * - `-std=c17`: 規格を C17 に固定する (GNU 拡張のモードではない。`__STRICT_ANSI__` が立つので、wasi-libc (musl) は
+ *   POSIX / BSD の拡張 (`<math.h>` の `M_PI`・`<time.h>` の `nanosleep` など) を、`_POSIX_C_SOURCE` などの機能マクロを書かないかぎり宣言しない)
+ * - `-Wall -Wextra -Wpedantic`: 主な警告を出す (未使用の変数・printf の書式の不一致など)。警告はエラーにしない
+ * - `-Werror=implicit-function-declaration`: 宣言の無い関数の呼び出し (ヘッダの書き忘れなど) だけはエラーにする
+ * - `-O0`: 最適化しない (未定義動作を定義するものではない)
+ *
+ * C だけに付ける: `CppExecutor` は自分の `compileArgs` を渡し、これを使わない (C++ の設定は #710 の範囲外)。
+ * 値を変えたら `packages/editor/README.md` の「ブラウザ内コード実行」の記述も直す
+ */
+export const C_COMPILE_FLAGS: readonly string[] = [
+  '-std=c17',
+  '-Wall',
+  '-Wextra',
+  '-Wpedantic',
+  '-Werror=implicit-function-declaration',
+  '-O0',
+];
+
+/**
+ * clang に渡す引数の全体 (#710)。入力 (利用者のソースと stdout の支援コード) → 出力 → target → 言語ごとの
+ * フラグ (`compileArgs`) → リンクの引数、の順に並べる
+ */
+export function buildClangArgs(sourceFile: string, compileArgs: readonly string[]): string[] {
+  return [
+    `${WORKSPACE_DIR}/${sourceFile}`,
+    `${WORKSPACE_DIR}/${stdoutSupportFileName(sourceFile)}`,
+    '-o',
+    `${WORKSPACE_DIR}/main.wasm`,
+    ...TARGET_ARGS,
+    ...compileArgs,
+    ...LINK_ARGS,
+  ];
+}
+
 const RUNTIME_ERROR_PATTERNS = [
   'runtimeerror',
   'memory access out of bounds',
@@ -115,7 +155,8 @@ export function stdoutSupportFileName(sourceFile: string): string {
 /** Options for compiling with different settings */
 export interface CompileOptions {
   sourceFile?: string;
-  compileArgs?: string[];
+  /** target の後ろに付ける言語ごとのフラグ (規格・警告・最適化)。C は `C_COMPILE_FLAGS` */
+  compileArgs?: readonly string[];
   /** 利用者のソースと一緒に sandbox に置くファイル (ゲストの絶対パス → 内容)。`-include` で読ませるヘッダなど (#871) */
   extraFiles?: Readonly<Record<string, string>>;
 }
@@ -225,7 +266,7 @@ export class CExecutor extends BaseExecutor {
   }
 
   async run(code: string, callbacks: ExecutionCallbacks, execution: ExecutionOptions = {}): Promise<ExecutionResult> {
-    return this.runWithOptions(code, callbacks, {}, execution);
+    return this.runWithOptions(code, callbacks, { compileArgs: C_COMPILE_FLAGS }, execution);
   }
 
   /**
@@ -321,17 +362,7 @@ export class CExecutor extends BaseExecutor {
       // Compile the code (clang package used as selector = its entrypoint).
       // run() ではなく spawn() で起こし、abort() がコンパイラを止められるよう Process を持つ (#711)
       const compiler = await sandbox
-        .command(clangPkg, [
-          `${WORKSPACE_DIR}/${sourceFile}`,
-          `${WORKSPACE_DIR}/${supportFile}`,
-          '-o',
-          `${WORKSPACE_DIR}/main.wasm`,
-          '-target',
-          'wasm32-wasi',
-          '-O2',
-          ...extraArgs,
-          ...LINK_ARGS,
-        ])
+        .command(clangPkg, buildClangArgs(sourceFile, extraArgs))
         .spawn({ stdin: 'closed', stdout: 'capture', stderr: 'capture' });
       if (!this.holdProcess(run, compiler, false)) return abortedResult();
       const compileResult = await compiler.wait({ check: false });

@@ -1,10 +1,14 @@
 // @vitest-environment happy-dom
 /**
- * 復元時に証明と食い違った元のコードの通知 (#413 の受け入れ条件 1・3)。
+ * 復元時に証明と食い違った元のコードの通知 (#413 の受け入れ条件 1・3)。イベント列の飛びで記録を
+ * 切り詰めたタブ (#878) も同じ通知で知らせ、理由を行と説明の段落の `data-reason` に出す。
  *
  * 差分の表示 (Monaco) とダウンロードは依存として差し替え、状態契約 (data-*) で確かめる。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getI18n } from '../../../i18n/index.js';
+import { en } from '../../../i18n/translations/en.js';
+import { ja } from '../../../i18n/translations/ja.js';
 import type { RestoreDivergence } from '../../tabs/TabManager.js';
 import { showUnprovenContentDialog, type UnprovenContentDialogDeps } from '../UnprovenContentDialog.js';
 
@@ -14,6 +18,7 @@ const appended: RestoreDivergence = {
   language: 'c',
   original: 'int x;PENDING',
   chainContent: 'int x;',
+  reason: 'pending-events',
 };
 
 const deleted: RestoreDivergence = {
@@ -22,6 +27,17 @@ const deleted: RestoreDivergence = {
   language: 'python',
   original: 'ac',
   chainContent: 'abc',
+  reason: 'pending-events',
+};
+
+/** 保存済みのイベント列の飛びで記録を切り詰めたタブ (#878) */
+const truncated: RestoreDivergence = {
+  tabId: 'tab-3',
+  filename: 'gap',
+  language: 'c',
+  original: 'int a;int b;',
+  chainContent: 'int a;',
+  reason: 'sequence-gap',
 };
 
 function fakeDeps() {
@@ -53,6 +69,7 @@ describe('showUnprovenContentDialog (#413)', () => {
   afterEach(() => {
     vi.useRealTimers();
     document.body.innerHTML = '';
+    getI18n().setLocale('ja');
   });
 
   it('opens nothing when no tab diverged', async () => {
@@ -119,5 +136,34 @@ describe('showUnprovenContentDialog (#413)', () => {
 
     expect(overlay()!.querySelector('img')).toBeNull();
     expect(row('tab-1').querySelector('.unproven-summary')!.textContent).toContain('<img src=x onerror=alert(1)>');
+  });
+
+  it('marks each row with why its original code was kept', () => {
+    void showUnprovenContentDialog([appended, truncated], fakeDeps().deps);
+
+    expect([...overlay()!.querySelectorAll<HTMLElement>('.unproven-item')].map((r) => r.dataset.reason)).toEqual([
+      'pending-events',
+      'sequence-gap',
+    ]);
+  });
+
+  it('explains only the reasons present in this notice', () => {
+    void showUnprovenContentDialog([truncated], fakeDeps().deps);
+
+    const messages = [...overlay()!.querySelectorAll<HTMLElement>('.unproven-message')];
+    expect(messages.map((m) => m.dataset.reason)).toEqual(['sequence-gap']);
+  });
+
+  it.each([
+    ['ja', ja.unprovenContent.messageSequenceGap],
+    ['en', en.unprovenContent.messageSequenceGap],
+  ] as const)('explains a truncated record in the %s locale', (locale, expected) => {
+    getI18n().setLocale(locale);
+
+    void showUnprovenContentDialog([truncated], fakeDeps().deps);
+
+    expect(overlay()!.querySelector<HTMLElement>('.unproven-message[data-reason="sequence-gap"]')!.textContent).toBe(
+      expected
+    );
   });
 });

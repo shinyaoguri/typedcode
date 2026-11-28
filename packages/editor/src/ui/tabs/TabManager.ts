@@ -22,7 +22,9 @@ import type {
   VerificationDetails,
   StoredTabData,
   StoredUnprovenContentData,
+  UnprovenContentReason,
   ExamSessionContext,
+  CheckpointData,
 } from '@typedcode/shared';
 import {
   isTurnstileConfigured,
@@ -32,6 +34,7 @@ import {
 import { performVerificationWithUI } from './TabVerificationUI.js';
 import { resolveRestoreOrder } from './restoreOrder.js';
 import { reconcileRestoredContent } from './restoredContent.js';
+import { type RestoredSequenceGap, trimRestoredChain } from './restoredChain.js';
 import { shouldRecordTabSwitch } from './tabSwitchPolicy.js';
 import { type SyncStatus, type PersistOutcome, resolveSyncStatus, isPersistFailure } from './syncStatus.js';
 import { t } from '../../i18n/index.js';
@@ -86,6 +89,11 @@ export interface RestoreDivergence {
   original: string;
   /** 証明に載っている内容 (バッファに置いた版) */
   chainContent: string;
+  /**
+   * 外した理由。`'pending-events'` = 処理待ちが残ったまま閉じた (#413)、`'sequence-gap'` = 保存済みの
+   * イベント列の飛びで記録を切り詰めた (#878)
+   */
+  reason: UnprovenContentReason;
 }
 
 /** タブ変更コールバック */
@@ -1025,7 +1033,8 @@ export class TabManager {
     this.tabs.clear();
     this.tabOrder = [];
     this.activeTabId = null;
-    this.tabSwitches = [];
+    // 切替の履歴は空にしない (#891)。取り込みは同じセッションの中の操作で、履歴はセッション単位
+    // (IndexedDB には残っているので、メモリだけ空にすると、閉じて再開したときに古い履歴が戻って食い違う)
     this.savedEventCursor.clear();
 
     // ストレージもクリア
@@ -1674,11 +1683,17 @@ export class TabManager {
    * 2 回目以降の復元では replay が合うので何もしないが、保全済みの元の content は毎回読み戻して
    * `TabState.unprovenContents` に載せる (救出はメモリだけを読む = ADR-0042)。IndexedDB が使えなくても
    * 復元は止めず、元の content はメモリに残す。
+   *
+   * `gap` (保存済みのイベント列の飛び。#878) があれば、`events` は飛びの手前で切り詰めた後のもの。
+   * replay が合っても合わなくても元の content を保全して知らせ、飛びより後のイベントは同じ transaction で
+   * `unprovenContents` に写して events ストアから外す (`preserveTruncatedEvents`。ADR-0058)。外さないと、
+   * 続きの入力が古い行と食い違って保存できない。
    */
   private async restoreContent(
     tab: { id: string; filename: string; language: string },
     savedContent: string,
-    events: readonly StoredEvent[]
+    events: readonly StoredEvent[],
+    gap: RestoredSequenceGap | null = null
   ): Promise<{ content: string; unprovenContents: StoredUnprovenContentData[] }> {
     const reconciled = reconcileRestoredContent(savedContent, events);
     if (reconciled.replayError !== undefined) {
@@ -1689,10 +1704,51 @@ export class TabManager {
     let preserved: StoredUnprovenContentData[] = [];
     if (canPersist) {
       try {
-        preserved = await this.sessionService.getUnprovenContents(tab.id);
+        // 飛びで外したイベント (#878) はメモリに載せない (救出は元のコードだけを読む)
+        preserved = (await this.sessionService.getUnprovenContents(tab.id)).map(
+          ({ truncatedEvents: _truncated, ...rest }) => rest
+        );
       } catch (e) {
         console.error(`[TabManager] Tab ${tab.id}: could not read preserved original contents:`, e);
       }
+    }
+
+    if (gap) {
+      const chainContent = reconciled.content;
+      const base: StoredUnprovenContentData = {
+        tabId: tab.id,
+        sessionId: this.sessionService.getCurrentSessionId(),
+        filename: tab.filename,
+        language: tab.language,
+        content: savedContent,
+        chainContentLength: chainContent.length,
+        chainEventCount: events.length,
+        detectedAt: Date.now(),
+      };
+      // メモリ (救出が読む) には外したイベントを載せない。イベントは保存した行にだけ残す
+      const record: StoredUnprovenContentData = { ...base, reason: 'sequence-gap' };
+      if (canPersist) {
+        try {
+          await this.sessionService.preserveTruncatedEvents(base, gap.keptEventCount);
+        } catch (e) {
+          // 写せなければイベントも消さない (同じ transaction)。元の content だけでも残す
+          console.error(`[TabManager] Tab ${tab.id}: could not move the events after the sequence gap:`, e);
+          try {
+            await this.sessionService.appendUnprovenContent(record);
+          } catch (e2) {
+            console.error(`[TabManager] Tab ${tab.id}: could not preserve the original content:`, e2);
+          }
+        }
+      }
+      this.restoreDivergences.push({
+        tabId: tab.id,
+        filename: tab.filename,
+        language: tab.language,
+        original: savedContent,
+        chainContent,
+        reason: 'sequence-gap',
+      });
+      return { content: chainContent, unprovenContents: [...preserved, record] };
     }
 
     const divergence = reconciled.divergence;
@@ -1731,10 +1787,41 @@ export class TabManager {
         language: tab.language,
         original: divergence.original,
         chainContent: divergence.chainContent,
+        reason: 'pending-events',
       });
     }
 
     return { content: reconciled.content, unprovenContents: preserved };
+  }
+
+  /**
+   * 保存済みのイベント列を、続きを記録できる形にそろえる (#878。判断は純関数 `trimRestoredChain`)。
+   * 飛びがあれば手前で切り詰め、残したイベントの外を指すチェックポイントを外す。保全と通知は `restoreContent`
+   */
+  private trimRestoredEvents(
+    tabId: string,
+    events: StoredEvent[],
+    checkpoints: CheckpointData[] | undefined
+  ): { events: StoredEvent[]; checkpoints: CheckpointData[] | undefined; gap: RestoredSequenceGap | null } {
+    if (events.length > 0 && events[0]!.sequence !== 0) {
+      console.error(
+        `[TabManager] Event chain broken for tab ${tabId}: first event has sequence ${events[0]!.sequence}, expected 0`
+      );
+    }
+    const trimmed = trimRestoredChain(events, checkpoints);
+    if (trimmed.gap) {
+      console.warn(
+        `[TabManager] Event sequence gap at tab ${tabId}: event ${trimmed.gap.keptEventCount} has sequence ` +
+          `${trimmed.gap.foundSequence}. The record is truncated to ${trimmed.gap.keptEventCount} events ` +
+          `(${trimmed.gap.truncatedEventCount} events after the gap are preserved, not proven. #878).`
+      );
+    }
+    if (trimmed.droppedCheckpointCount > 0) {
+      console.warn(
+        `[TabManager] Tab ${tabId}: dropped ${trimmed.droppedCheckpointCount} checkpoint(s) pointing past the restored events`
+      );
+    }
+    return trimmed;
   }
 
   /**
@@ -1849,8 +1936,8 @@ export class TabManager {
       this.tabOrder.push(id);
     }
 
-    // タブ切り替え履歴を復元
-    this.tabSwitches = rawStorage.tabSwitches ?? [];
+    // タブ切り替え履歴を復元 (V1 の控えは sessionId を持たないので、今のセッションの履歴を IndexedDB から読む。#891)
+    this.tabSwitches = await this.tabSwitchesForCurrentSession(undefined, rawStorage.tabSwitches);
 
     // アクティブタブを復元 (復元中フラグ: 合成スイッチを IndexedDB に再保存しない)
     this.isRestoring = true;
@@ -1880,28 +1967,13 @@ export class TabManager {
       const lightweightTab = storage.tabs[id];
       if (!lightweightTab) continue;
 
-      // 1. IndexedDBからイベントを読み込み
-      const events = await this.sessionService.getEvents(id);
-
-      // イベントの整合性チェック
-      if (events.length > 0) {
-        const firstEvent = events[0];
-        if (firstEvent && firstEvent.sequence !== 0) {
-          console.error(
-            `[TabManager] Event chain broken for tab ${id}: first event has sequence ${firstEvent.sequence}, expected 0`
-          );
-        }
-        // シーケンス番号の連続性をチェック
-        for (let i = 1; i < events.length; i++) {
-          const prev = events[i - 1];
-          const curr = events[i];
-          if (prev && curr && curr.sequence !== prev.sequence + 1) {
-            console.error(
-              `[TabManager] Event sequence gap at tab ${id}: event ${i} has sequence ${curr.sequence}, expected ${prev.sequence + 1}`
-            );
-          }
-        }
-      }
+      // 1. IndexedDBからイベントを読み込み、飛びがあれば手前で切り詰める (#878)
+      const trimmed = this.trimRestoredEvents(
+        id,
+        await this.sessionService.getEvents(id),
+        lightweightTab.proofState.checkpoints
+      );
+      const events = trimmed.events;
       debugLog(`[TabManager] Tab ${id}: loaded ${events.length} events from IndexedDB`);
 
       // 2. 同期確認
@@ -1926,7 +1998,7 @@ export class TabManager {
         currentHash: lightweightTab.proofState.currentHash,
         initialHashNonce: lightweightTab.proofState.initialHashNonce,
         startTime: lightweightTab.proofState.startTime,
-        checkpoints: lightweightTab.proofState.checkpoints,
+        checkpoints: trimmed.checkpoints,
         examContext: lightweightTab.proofState.examContext,
         sessionStartToken: lightweightTab.proofState.sessionStartToken ?? null,
       };
@@ -1950,7 +2022,8 @@ export class TabManager {
       const restored = await this.restoreContent(
         { id, filename: lightweightTab.filename, language: lightweightTab.language },
         lightweightTab.content,
-        events
+        events,
+        trimmed.gap
       );
       const model = monaco.editor.createModel(restored.content, lightweightTab.language);
 
@@ -1972,8 +2045,8 @@ export class TabManager {
       this.tabOrder.push(id);
     }
 
-    // タブ切り替え履歴を復元
-    this.tabSwitches = storage.tabSwitches ?? [];
+    // タブ切り替え履歴を復元 (別のセッションの控えなら持ち越さない。#891)
+    this.tabSwitches = await this.tabSwitchesForCurrentSession(storage.sessionId, storage.tabSwitches);
 
     // アクティブタブを復元 (復元中フラグ: 合成スイッチを IndexedDB に再保存しない)
     this.isRestoring = true;
@@ -1989,6 +2062,30 @@ export class TabManager {
     }
 
     return true;
+  }
+
+  /**
+   * sessionStorage の控えから戻すタブ切り替え履歴 (#891)。履歴はセッション単位 (IndexedDB の tabSwitches は
+   * sessionId で引き、閉じて再開すると今のセッションの分だけが戻る) なので、メモリの履歴もそれに揃える:
+   * 控えが今のセッションのものなら控えの履歴 (IndexedDB への追記より新しいことがある) を使い、そうでなければ
+   * 今のセッションの履歴を IndexedDB から読む。そうでない控えは、最後のタブを閉じてからリロードして新しい
+   * セッションになったとき (開いたタブが無いので main.ts が新しいセッションを作る) と、sessionId を持たない V1。
+   * 前のセッションの履歴を持ち越すと、export の `tab-switches.json` が「リロードしたか、閉じて再開したか」で変わる。
+   * IndexedDB から読めなければ空にする (`tab-switches.json` はチェーン外の監査用の情報で、復元を止めない)。
+   */
+  private async tabSwitchesForCurrentSession(
+    snapshotSessionId: string | undefined,
+    snapshotSwitches: TabSwitchEvent[] | undefined
+  ): Promise<TabSwitchEvent[]> {
+    const currentSessionId = this.sessionService.getCurrentSessionId();
+    // セッションが無い (IndexedDB を使えていない) ときは、比べる相手も読む先も無いので控えのまま (従来どおり)
+    if (!currentSessionId || snapshotSessionId === currentSessionId) return snapshotSwitches ?? [];
+    try {
+      return await this.sessionService.getTabSwitches(currentSessionId);
+    } catch (e) {
+      console.warn('[TabManager] Failed to read the tab switches of the current session:', e);
+      return [];
+    }
   }
 
   /**
@@ -2076,8 +2173,13 @@ export class TabManager {
    * 開き直す経路で共通。#317)。this.tabs には入れない。チェーンの続きは events 末尾の hash を正とする (#322)
    */
   private async restoreTabFromIndexedDB(storedTab: StoredTabData): Promise<TabState> {
-    // イベントを読み込み
-    const events = await this.sessionService.getEvents(storedTab.id);
+    // イベントを読み込み、飛びがあれば手前で切り詰める (#878)
+    const trimmed = this.trimRestoredEvents(
+      storedTab.id,
+      await this.sessionService.getEvents(storedTab.id),
+      storedTab.checkpoints
+    );
+    const events = trimmed.events;
     debugLog(`[TabManager] Tab ${storedTab.id}: ${events.length} events loaded`);
 
     // TypingProofを復元
@@ -2089,7 +2191,7 @@ export class TabManager {
         initialHashNonce: storedTab.initialHashNonce,
         startTime: storedTab.startTime,
         pendingEvents: [], // IndexedDB復元時はpendingEventsなし
-        checkpoints: storedTab.checkpoints,
+        checkpoints: trimmed.checkpoints,
         examContext: storedTab.examContext,
         // sessionStartToken (ADR-0017) を必ず引き継ぐ。落とすと casual/class の
         // サーバアンカーが失われ、復旧後の proof が root 不一致で検証不能になる。
@@ -2111,7 +2213,7 @@ export class TabManager {
 
     // Monacoモデルを作成
     // #142 / #413: content がチェーンより先行していたら replay 結果へ整合させ、元の content は保全する
-    const restored = await this.restoreContent(storedTab, storedTab.content, events);
+    const restored = await this.restoreContent(storedTab, storedTab.content, events, trimmed.gap);
     const model = monaco.editor.createModel(restored.content, storedTab.language);
 
     return {

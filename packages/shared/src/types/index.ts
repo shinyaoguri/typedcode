@@ -163,6 +163,7 @@ export type {
   StoredEventData,
   StoredTabSwitchData,
   StoredUnprovenContentData,
+  UnprovenContentReason,
   SessionSummary,
   TabSummary,
   // Pending Event（PoSW未完了イベント）

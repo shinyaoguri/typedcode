@@ -53,6 +53,7 @@ E2E (`packages/e2e`) は editor の UI 状態を、翻訳テキストや CSS ク
 - C / C++ の利用者のソースには何も前置しない (#709)
 - C++ のコンパイルは `-xc++` を渡さず、libc++ の版の `#warning` を `-include` の guard で黙らせる (#871)
 - C / C++ のリンクには `-lwasi-emulated-process-clocks` を渡す (#714)
+- C のコンパイルフラグは `C_COMPILE_FLAGS` の 1 か所に固定し、C++ に混ぜない (#710)
 - HTML プレビュー iframe は opaque origin (#291/#299)
 - ユーザーの JS / TS は opaque origin の sandbox iframe 内の Worker でだけ実行する (#290 / ADR-0041)
 - Python (Pyodide) は、エディタのメインスレッドでも同じ origin でも動かさない (#649 / #719 / ADR-0047 / ADR-0056)
@@ -88,7 +89,7 @@ E2E (`packages/e2e`) は editor の UI 状態を、翻訳テキストや CSS ク
 - `SingleInstanceGuard` はページを離れるとき (`pagehide`) にだけ破棄する (#483)
 - スクリーンショットは「チェーンに記録できるときだけ」保存する (#503)
 - タブを閉じる後始末は順序が要る (#342)
-- exam を除き、利用者の明示の操作なしに、コードとイベントを IndexedDB から削除しない (#317 / ADR-0057)
+- exam を除き、利用者の明示の操作なしに、コードとイベントを IndexedDB から削除しない (#317 / ADR-0057。例外は、復元で見つけたイベント列の飛びより後の行を `unprovenContents` へ写してから消すことだけ = #878 / ADR-0058)
 - IndexedDB のバージョンマイグレーション
 - IndexedDB の接続のライフサイクル (#325)
 

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { EditorApp, readProofEvents, readZipEntryText } from './helpers/app.js';
+import { BOOT_TIMEOUT_MS, EditorApp, readProofEvents, readZipEntryText } from './helpers/app.js';
 import { allPassed, runVerifyCliWithResult } from './helpers/verifyCli.js';
 
 /**
@@ -59,4 +59,51 @@ test('リロードを重ねても tab-switches.json に fromTabId: null の合�
   }>;
 
   expect(switches.filter((s) => s.fromTabId === null)).toHaveLength(1);
+});
+
+/** export した ZIP の tab-switches.json の from / to の並び (timestamp は見ない) */
+async function tabSwitchPairs(zipPath: string): Promise<{ fromTabId: string | null; toTabId: string }[]> {
+  const switches = JSON.parse(await readZipEntryText(zipPath, 'tab-switches.json')) as Array<{
+    fromTabId: string | null;
+    toTabId: string;
+  }>;
+  return switches.map(({ fromTabId, toTabId }) => ({ fromTabId, toTabId }));
+}
+
+/**
+ * 最後のタブを閉じてからリロードすると、開いたタブが無いので新しいセッションになる (#891)。タブ切替の履歴は
+ * セッション単位なので、前のセッションの切替 (閉じたタブへの切替) を持ち越さない。以前はリロード (sessionStorage
+ * 経路) だけが持ち越し、ブラウザのタブを閉じて再開 (IndexedDB 経路。今のセッションの分だけが戻る) した後の export と
+ * 食い違っていた (nightly の model-based E2E が見つけた列: 閉じる → リロード → 閉じて再開 → export)。
+ */
+test('#891 最後のタブを閉じてからリロードすると、tab-switches.json に前のセッションの切替が入らず、閉じて再開しても同じ', async ({
+  page,
+  context,
+}) => {
+  const app = new EditorApp(page);
+  await app.openCasualFresh();
+  const [closed] = await app.tabs();
+  await app.requestCloseTab(closed!.id);
+  await app.answerCloseTab('confirm');
+
+  // タブ 0 本で起動すると casual は既定タブを 1 本開く (ADR-0015)
+  await app.reloadAndResume();
+  const opened = await app.tabs();
+  expect(opened).toHaveLength(1);
+  const expected = [{ fromTabId: null, toTabId: opened[0]!.id }];
+  expect(await tabSwitchPairs(await app.exportAllTabs())).toEqual(expected);
+
+  // ブラウザのタブを閉じて、復旧ダイアログから再開する (IndexedDB 経路)
+  await app.waitForSynced();
+  await page.close();
+  const page2 = await context.newPage();
+  const app2 = new EditorApp(page2);
+  await page2.goto('/casual');
+  const resume = page2.locator('#session-resume-btn');
+  await resume.waitFor({ state: 'visible', timeout: 15_000 });
+  await resume.click();
+  await page2.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible', timeout: BOOT_TIMEOUT_MS });
+  await expect.poll(() => app2.eventCount(), { timeout: 30_000 }).toBeGreaterThan(0);
+
+  expect(await tabSwitchPairs(await app2.exportAllTabs())).toEqual(expected);
 });
