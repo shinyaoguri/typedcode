@@ -1025,7 +1025,8 @@ export class TabManager {
     this.tabs.clear();
     this.tabOrder = [];
     this.activeTabId = null;
-    this.tabSwitches = [];
+    // 切替の履歴は空にしない (#891)。取り込みは同じセッションの中の操作で、履歴はセッション単位
+    // (IndexedDB には残っているので、メモリだけ空にすると、閉じて再開したときに古い履歴が戻って食い違う)
     this.savedEventCursor.clear();
 
     // ストレージもクリア
@@ -1849,8 +1850,8 @@ export class TabManager {
       this.tabOrder.push(id);
     }
 
-    // タブ切り替え履歴を復元
-    this.tabSwitches = rawStorage.tabSwitches ?? [];
+    // タブ切り替え履歴を復元 (V1 の控えは sessionId を持たないので、今のセッションの履歴を IndexedDB から読む。#891)
+    this.tabSwitches = await this.tabSwitchesForCurrentSession(undefined, rawStorage.tabSwitches);
 
     // アクティブタブを復元 (復元中フラグ: 合成スイッチを IndexedDB に再保存しない)
     this.isRestoring = true;
@@ -1972,8 +1973,8 @@ export class TabManager {
       this.tabOrder.push(id);
     }
 
-    // タブ切り替え履歴を復元
-    this.tabSwitches = storage.tabSwitches ?? [];
+    // タブ切り替え履歴を復元 (別のセッションの控えなら持ち越さない。#891)
+    this.tabSwitches = await this.tabSwitchesForCurrentSession(storage.sessionId, storage.tabSwitches);
 
     // アクティブタブを復元 (復元中フラグ: 合成スイッチを IndexedDB に再保存しない)
     this.isRestoring = true;
@@ -1989,6 +1990,30 @@ export class TabManager {
     }
 
     return true;
+  }
+
+  /**
+   * sessionStorage の控えから戻すタブ切り替え履歴 (#891)。履歴はセッション単位 (IndexedDB の tabSwitches は
+   * sessionId で引き、閉じて再開すると今のセッションの分だけが戻る) なので、メモリの履歴もそれに揃える:
+   * 控えが今のセッションのものなら控えの履歴 (IndexedDB への追記より新しいことがある) を使い、そうでなければ
+   * 今のセッションの履歴を IndexedDB から読む。そうでない控えは、最後のタブを閉じてからリロードして新しい
+   * セッションになったとき (開いたタブが無いので main.ts が新しいセッションを作る) と、sessionId を持たない V1。
+   * 前のセッションの履歴を持ち越すと、export の `tab-switches.json` が「リロードしたか、閉じて再開したか」で変わる。
+   * IndexedDB から読めなければ空にする (`tab-switches.json` はチェーン外の監査用の情報で、復元を止めない)。
+   */
+  private async tabSwitchesForCurrentSession(
+    snapshotSessionId: string | undefined,
+    snapshotSwitches: TabSwitchEvent[] | undefined
+  ): Promise<TabSwitchEvent[]> {
+    const currentSessionId = this.sessionService.getCurrentSessionId();
+    // セッションが無い (IndexedDB を使えていない) ときは、比べる相手も読む先も無いので控えのまま (従来どおり)
+    if (!currentSessionId || snapshotSessionId === currentSessionId) return snapshotSwitches ?? [];
+    try {
+      return await this.sessionService.getTabSwitches(currentSessionId);
+    } catch (e) {
+      console.warn('[TabManager] Failed to read the tab switches of the current session:', e);
+      return [];
+    }
   }
 
   /**
