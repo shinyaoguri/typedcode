@@ -57,6 +57,7 @@ E2E (`packages/e2e`) は判定を翻訳テキストや色クラスではなく�
 ## よくある罠
 
 - **`finalChainHash` の検証は 2 段**: `proof.finalHash` が記録値、`verifyFinalChainHash` が再計算値。両者一致を確認する
+- **本番では editor の CSP の下で動く (#411)**: deploy は verify の dist を editor の dist の `verify/` に置き、editor のビルドが直下に生成する `_headers` の CSP が `/verify/*` にも掛かる (verify の `public/_headers` は今の配置では使われない)。外部の配信元を足すときは `packages/editor/src/config/deliveryHeaders.ts` も直す
 - **File System Access API はブラウザ依存**: Chrome/Edge のみ。フォールバック (`<input type="file">`) を維持
 - **チャートのズーム / パン状態は `ChartPreferencesService` で永続化**: 検証結果のリセット時にクリアするか、ユーザー設定として残すかの線引きに注意
 - **`tab-switches.json` はチェーン外の平文サイドファイル**: 各タブの proof とは独立で、ハッシュ連鎖に入らず verify / verify-cli も読まない。順序や内容を変えても検証結果は変わらない (監査用の人間向け情報)

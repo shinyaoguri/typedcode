@@ -101,6 +101,7 @@ E2E (`packages/e2e`) は editor の UI 状態を、翻訳テキストや CSS ク
 - IME の composition は Monaco の `onDidCompositionStart` / `onDidCompositionEnd` で取る (#720)
 - `editor.inComposition` で確定の編集を判定しない (#720)
 - Monaco の `onDidChangeModelContent` イベントは ICustomEvent ではない
+- 配信ヘッダ (COOP / COEP / CSP) は `config/deliveryHeaders.ts` から作り、`public/_headers` に書かない (#411)
 - ビルド時に注入される `__GIT_COMMIT__` 等
 - 記録させるのは Chromium 系だけ (#596 / ADR-0033)
 

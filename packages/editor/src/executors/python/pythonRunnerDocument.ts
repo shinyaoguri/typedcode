@@ -19,8 +19,8 @@
  * CSP (meta): 既定はすべて禁止し、runner の inline script・Wasm のコンパイル ('wasm-unsafe-eval')・
  * Blob の Worker・Pyodide の配信元からのスクリプトを許す。`'unsafe-eval'` は付けない (Python から
  * `js.eval` で runner の中身に触れさせない)。通信 (connect-src) は Pyodide の配信元と、micropip が
- * import から拾ったパッケージを入れるための PyPI だけ。srcdoc は親の CSP も継承するので、親に CSP を
- * 入れるときはこれらを塞がないこと (#411)。
+ * import から拾ったパッケージを入れるための PyPI だけ。srcdoc は親の CSP (`config/deliveryHeaders.ts`) も
+ * 継承するので、親の CSP でこれらを塞がないこと (#411。親は同じ定数から許可を作る)。
  */
 
 import { scriptLiteral } from '../sandbox/runnerDocument.js';
